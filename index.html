@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>NeoCAD</title>
+  <style>
+    html,body{height:100%;margin:0;background:#0a0e13;color:#d5e1ec;font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace;font-size:13px}
+    #app{display:flex;flex-direction:column;height:100vh}
+    header{padding:8px 14px;background:#0e141b;border-bottom:1px solid #223041;display:flex;gap:14px;align-items:center}
+    header b{color:#e8a33d}
+    #status{font-size:11px;color:#7a8b9b}
+    #status.solved{color:#55c07a}
+    #status.bad{color:#e0605c}
+    canvas{display:block;flex:1;background:#0a0e13}
+    #log{padding:6px 14px;font-size:11px;color:#7a8b9b;border-top:1px solid #223041;max-height:100px;overflow-y:auto}
+  </style>
+</head>
+<body>
+  <div id="app">
+    <header>
+      <span>NEO<b>CAD</b></span>
+      <span id="status">loading kernel…</span>
+    </header>
+    <canvas id="cv"></canvas>
+    <div id="log"></div>
+  </div>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
