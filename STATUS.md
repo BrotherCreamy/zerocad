@@ -43,20 +43,37 @@ the disk to 20MB free before I caught it; see the incident note below).
 Node pinned via `.nvmrc` to LTS through nvm, installed alongside (not
 replacing) the system Node other projects on this machine may depend on.
 
+- **`src/model.ts`** — the entity graph on top of the kernel. A `Point`
+  is a name plus one `Problem` variable per `model.dim` coordinate;
+  nothing else is hardcoded to 2D.
+- **`src/relations/basic.ts`** — `dist`/`fix`/`coincident`/`midpoint`,
+  written generically over `model.dim`. `test/model.test.ts` proves this
+  isn't just a claim: the *identical* relation code is run against a 2D
+  model and a 3D model in separate tests, both solving correctly (7/7
+  tests passing total, `npm test`).
+- **First browser milestone** (`index.html` + `src/main.ts`, `npm run
+  dev`): loads the WASM kernel over `fetch` (the real browser path, not
+  the Node test's byte-buffer shortcut), builds a small solved model,
+  renders it to canvas. Verified via headless Chrome — solves in 4
+  iterations, exact distance and midpoint.
+
 ## Not started yet
 
 - Tool-authoring layer: the `abstract class Tool { onDown/onMove/onUp/
   render }` API + a registry (`defineTool`), so built-in tools are
   ordinary uses of the same extension point a user/AI would use at the
-  REPL.
-- The 2D geometry "standard library" (point, line, circle, arc, and the
-  relation vocabulary — dist/hor/ver/coin/mid/sym/fix/par/perp/ang/on/
-  rad/eq/tan/fillet) reimplemented as `Problem` residual blocks using
-  `Dual` arithmetic, generalized over an N-length coordinate vector per
-  point rather than hardcoded x/y (2D now, 3D is "add the 3D layer").
-- Canvas rendering + the command-line REPL (a scoped JS/TS evaluator,
-  not raw `eval` on `window` — curated globals only: the kernel API,
-  math, the tool registry).
+  REPL. This is the centerpiece of the "write a rectangle tool at the
+  terminal" goal and deserves the same unhurried design pass the kernel
+  got — deliberately did not rush it in the same session as the disk
+  incident.
+- The rest of the 2D geometry "standard library" (line, circle, arc, and
+  the rest of the relation vocabulary — hor/ver/sym/par/perp/ang/on/rad/
+  eq/tan/fillet) as more `Problem` residual blocks, same pattern as
+  `basic.ts`.
+- The command-line REPL itself: a scoped JS/TS evaluator, not raw
+  `eval` on `window` — curated globals only (the kernel API, math, the
+  tool registry). Not started; the sandboxing approach needs its own
+  careful pass, not a rush job.
 - Viewport control, save/open, and settings exposed as ordinary commands
   in that same language, per the brief's "tool up the whole interface
   for AI/automation use" goal.
