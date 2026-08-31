@@ -13,7 +13,13 @@ export interface PointEntity {
   varIndices: number[]; // one per dimension
 }
 
-export type Entity = PointEntity;
+export interface LineEntity {
+  kind: "line";
+  name: string;
+  refs: [string, string]; // two point names — purely referential, owns no variables
+}
+
+export type Entity = PointEntity | LineEntity;
 
 export class Model {
   problem = new Problem();
@@ -48,9 +54,25 @@ export class Model {
     return ent;
   }
 
+  addLine(a: string, b: string, name?: string): LineEntity {
+    this.point(a); this.point(b); // validates both exist and are points
+    if (a === b) throw new Error("a line needs two different points");
+    const nm = name ?? this.autoName("l");
+    if (this.entities.has(nm)) throw new Error(`"${nm}" already exists`);
+    const ent: LineEntity = { kind: "line", name: nm, refs: [a, b] };
+    this.entities.set(nm, ent);
+    return ent;
+  }
+
   point(name: string): PointEntity {
     const e = this.entities.get(name);
     if (!e || e.kind !== "point") throw new Error(`"${name}" is not a point`);
+    return e;
+  }
+
+  line(name: string): LineEntity {
+    const e = this.entities.get(name);
+    if (!e || e.kind !== "line") throw new Error(`"${name}" is not a line`);
     return e;
   }
 

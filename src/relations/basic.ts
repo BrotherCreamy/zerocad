@@ -52,3 +52,21 @@ export function midpoint(model: Model, mName: string, aName: string, bName: stri
     model.problem.addResidual([gi, ai, bi], (l) => [l[0].sub(l[1].add(l[2]).div(2))], `mid(${mName})[${i}]`);
   });
 }
+
+// hor/ver are genuinely 2D-only (like a cross product is genuinely 3D-only) —
+// "same y" / "same x" isn't a concept that generalizes to N dimensions, so
+// unlike dist/fix/coincident/midpoint above these deliberately don't try.
+
+/** same y (index 1) */
+export function horizontal(model: Model, aName: string, bName: string): void {
+  if (model.dim !== 2) throw new Error("horizontal is a 2D relation");
+  const a = model.point(aName), b = model.point(bName);
+  model.problem.addResidual([a.varIndices[1], b.varIndices[1]], (l) => [l[0].sub(l[1])], `hor(${aName},${bName})`);
+}
+
+/** same x (index 0) */
+export function vertical(model: Model, aName: string, bName: string): void {
+  if (model.dim !== 2) throw new Error("vertical is a 2D relation");
+  const a = model.point(aName), b = model.point(bName);
+  model.problem.addResidual([a.varIndices[0], b.varIndices[0]], (l) => [l[0].sub(l[1])], `ver(${aName},${bName})`);
+}

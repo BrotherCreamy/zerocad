@@ -57,23 +57,52 @@ replacing) the system Node other projects on this machine may depend on.
   renders it to canvas. Verified via headless Chrome — solves in 4
   iterations, exact distance and midpoint.
 
+- **Tool-authoring layer** (`src/tools/tool.ts`): `abstract class Tool {
+  onDown/onMove/onUp/onCancel/render }`, a `ToolContext` (model +
+  requestRender/requestSolve/finish — no ambient globals reachable from
+  inside a tool), and `defineTool(name, ctor)` for registration.
+  `src/tools/engine.ts` wires real DOM pointer events to whichever tool
+  is armed, with a 2D screen<->world transform (cellwork's convention:
+  `screen = ox + x*scale, oy - y*scale`) and a one-shot-by-default
+  lifecycle (a tool deactivates once it calls `ctx.finish()` — same
+  "gesture completes, re-arm explicitly" shape cellwork's pointer tools
+  already used).
+- **`src/tools/point.ts`** and **`src/tools/rectangle.ts`** — two tools
+  built with that API, nothing privileged. Point is the trivial case
+  (click, place, finish). Rectangle is the concrete example from the
+  brief: `onDown` remembers the first corner *without* touching the
+  model, `onMove` just requests a preview redraw, `render()` draws a
+  dashed preview from the tool's own in-progress state, and `onUp` is
+  the only place anything is committed — four points, four lines,
+  `hor`/`ver` relations, one solve.
+- **Verified with a real mouse drag**, not just unit tests: armed the
+  rectangle tool through the (temporary, see below) command input,
+  dispatched actual `mousePressed`/`mouseMoved`/`mouseReleased` events
+  on the canvas via headless Chrome, and confirmed (a) mid-drag nothing
+  exists in the model yet — 0 entities — only a live preview renders,
+  (b) on release exactly 4 points + 4 lines commit, forming a precise
+  axis-aligned rectangle matching the drag distance, (c) status flips to
+  SOLVED, (d) the tool deactivates afterward. `test/tools.test.ts` also
+  covers this at the unit level (10/10 tests passing overall) plus the
+  no-real-drag-commits-nothing edge case.
+- **`Line` entity** added to `model.ts` (two point refs, owns no
+  variables — purely referential, like cellwork's lines) and
+  **`horizontal`/`vertical`** added to `relations/basic.ts` — these are
+  deliberately 2D-only (like a cross product is genuinely 3D-only),
+  unlike `dist`/`fix`/`coincident`/`midpoint` which stay dimension-generic.
+
 ## Not started yet
 
-- Tool-authoring layer: the `abstract class Tool { onDown/onMove/onUp/
-  render }` API + a registry (`defineTool`), so built-in tools are
-  ordinary uses of the same extension point a user/AI would use at the
-  REPL. This is the centerpiece of the "write a rectangle tool at the
-  terminal" goal and deserves the same unhurried design pass the kernel
-  got — deliberately did not rush it in the same session as the disk
-  incident.
-- The rest of the 2D geometry "standard library" (line, circle, arc, and
-  the rest of the relation vocabulary — hor/ver/sym/par/perp/ang/on/rad/
-  eq/tan/fillet) as more `Problem` residual blocks, same pattern as
-  `basic.ts`.
+- The rest of the 2D geometry "standard library" — circle, arc, and the
+  rest of the relation vocabulary (sym/par/perp/ang/on/rad/eq/tan/
+  fillet) — same pattern as `basic.ts`.
 - The command-line REPL itself: a scoped JS/TS evaluator, not raw
   `eval` on `window` — curated globals only (the kernel API, math, the
-  tool registry). Not started; the sandboxing approach needs its own
-  careful pass, not a rush job.
+  tool registry). `main.ts` currently has a deliberately temporary
+  stand-in (a plain text input that just calls `engine.arm(name)`) so
+  the pointer-event/render pipeline was testable without waiting on the
+  REPL's own design pass — clearly labeled in the UI as a stand-in, not
+  the real thing.
 - Viewport control, save/open, and settings exposed as ordinary commands
   in that same language, per the brief's "tool up the whole interface
   for AI/automation use" goal.
