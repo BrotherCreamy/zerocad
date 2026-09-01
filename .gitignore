@@ -4,3 +4,7 @@ dist/
 src/kernel/wasm-gen/
 *.log
 .DS_Store
+
+# Agent worktrees — isolated checkouts for implementing sessions live here.
+# A worker's tree is its own repository state, never content of this one.
+.claude/worktrees/
