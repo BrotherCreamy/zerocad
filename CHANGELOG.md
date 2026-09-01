@@ -7,6 +7,58 @@ decisions.
 
 ---
 
+## The 3-point circle tool
+
+Onshape's *3 point circle*, with a mouse. Type `circle3`, click three times,
+and a circle passes through all three.
+
+| two clicks and the cursor — the dashed circumcircle, live | committed: one circle, three `oncircle`s, two inferred coincidences |
+|---|---|
+| ![A rectangle with its hor/ver marks. A dashed amber circle passes exactly through its top-left corner p1 and its bottom-right corner p3 and down past the cursor below the shape; small amber crosses sit on the two corners that have been clicked. The log reads "armed: rectangle" then "armed: circle3"](docs/images/33-circle3-preview.png) | ![The same rectangle, the circle now solid and pale, threading p1, p3 and a third point p7 below the shape, with its centre p8 inside. Small ring and dot marks sit at each of the three. The log shows rels() answering r1 hor l1 … r5 coin p5 p1, r6 coin p6 p3, r7 oncircle p5 c1, r8 oncircle p6 c1, r9 oncircle p7 c1](docs/images/34-circle3-solved.png) |
+
+The right-hand log is the whole story of the feature. Nine relations, and the
+last five were all made by three mouse clicks: two coincidences the tool
+*inferred* because those clicks landed on existing corners, and the three
+`oncircle`s that are the circle's entire definition.
+
+**It is a composition, not a computation.** A tool that worked out the
+circumcircle and then called `addCircle(centre, r)` would draw the same
+picture and lose everything: the circle would merely have *matched* the three
+points once. Because the constraints are real and stay, the circle follows
+its rim points when they move, each relation wears a glyph, `rels()` lists
+them, and any one of them can be deleted on its own. That is what
+`docs/plans/free-entities.md` was for; this is it being spent.
+
+- **Every click places a real point, through `placePoint`.** So all three
+  carry snapping and inference, identically to the other tools — which is
+  why "a 3-point circle through two existing corners" above needed no
+  special case at all.
+- **The whole gesture is one undo step.** Nothing is created until the third
+  click, so the bracket the engine already puts around one pointer event
+  covers the lot: one Ctrl+Z takes the circle, its three rim points and its
+  five relations together. No engine change; the shape the rectangle tool
+  set.
+- **A collinear third click is refused rather than solved.** Three
+  `oncircle`s on three points in a line are a system with no solution, so
+  committing would put a `CONFLICT` header over a drawing that should never
+  have been made and leave the user to undo it to find out why. The tool
+  stays armed on the first two clicks, so aiming the third elsewhere just
+  works. *Near*-collinear is the user's call and goes through: the threshold
+  is a relative sine — an angle of about 1e-9 radians, the same form and
+  number `intersect.ts` uses for parallel — so it means the same thing at
+  every zoom and in every unit, which an area threshold would not.
+- **The preview stops at a rim 1e6 pixels away.** Past that the arc sags less
+  than a pixel across the window, so what would be drawn is a straight line;
+  a preview that lies about what the next click will build is worse than no
+  preview. The commit is unaffected.
+
+*Known gap, worth naming:* the refusal is a `console.warn`, not a line in the
+app's log pane. Nothing in the `Tool` interface can write there yet — `fillet`
+reports a corner it cannot round by *throwing*, which reaches the page as an
+uncaught error. Giving tools a way to speak is a follow-up on `TODO.md`.
+
+---
+
 ## Drag an edge, a rim, an arc — not just a point
 
 With nothing armed, a left-drag that starts on any geometry now drags it. That

@@ -654,7 +654,47 @@ replacing) the system Node other projects on this machine may depend on.
   rather than by expecting a particular circle.
   *Not changed:* the pointer tools. Drag-centre-to-rim is the right pointer
   gesture and is Onshape's own; a 3-point-circle *tool* is now a trivial
-  composition and is listed on `TODO.md` as enabled, not built.
+  composition and is listed on `TODO.md` as enabled, not built. **↳ Since
+  built** — see the next entry, and it really was trivial.
+
+- **The 3-point circle tool** (`src/tools/circle3.ts`). `circle3` — bare word
+  or `arm("circle3")` — then three clicks, and a circle passes through all
+  three. Onshape calls it *3 point circle*; `circle3` is the name that is also
+  a legal identifier.
+  The tool adds nothing to the model and nothing to the solver: it commits one
+  **free** `circle()`, three `onCircle`s and a solve. That is the whole
+  implementation, and it is the free-entities package being spent rather than
+  merely demonstrated. The difference from a tool that computed the
+  circumcircle and called `addCircle(centre, r)` is not visible in the first
+  frame and is the entire point: the constraints stay, so the circle *follows*
+  its rim points when they move, each relation wears a glyph, `rels()` lists
+  them, and any one can be deleted alone.
+  *Every click goes through `placePoint`*, so all three carry snapping and
+  inference like every other tool's clicks — which is why a 3-point circle
+  through two existing corners is three clicks and no special case. The
+  browser spec draws a rectangle, clicks two of its corners, and reads the two
+  inferred coincidences out of `rels()` beside the three `oncircle`s.
+  *One user action.* Nothing is created until the third click, so the bracket
+  the engine already puts round a single pointer event covers circle, rim
+  points and relations together — one Ctrl+Z. The rectangle tool set that
+  shape; no engine change was needed for this one either.
+  *Preview:* after the second click, the dashed circumcircle through the two
+  clicks and the cursor, computed in **screen pixels** — the same closed form,
+  and a pixel radius needs no scale factor, which is `intersect.ts`'s reason
+  for living in screen space too.
+  *Known and deliberate:* an **exactly** collinear third click is refused (the
+  tool stays armed on the two good clicks) rather than committed, because
+  three `oncircle`s on three collinear points have no solution and committing
+  would leave a `CONFLICT` header over a drawing that should never have
+  existed. Near-collinear goes through — it is the user's call. The threshold
+  is a relative *sine*, i.e. an angle of ~1e-9 radians, not an area: an area
+  threshold would call a large drawing bent and a small copy of it straight.
+  Unit-tested at three scales.
+  *Known gap:* the refusal is a `console.warn`. A `Tool` has no channel to the
+  app's log pane — `fillet` reports a corner it cannot round by *throwing*,
+  which reaches the page as an uncaught error — and giving tools one means a
+  new `ToolContext` field, which is an `engine.ts` change this package was
+  scoped out of. On `TODO.md` as a follow-up.
 
 - **Dragging an edge, a rim or an arc** (`src/tools/engine.ts`). With nothing
   armed, a left-drag that starts on *any* geometry drags it — the last leftover
@@ -691,6 +731,10 @@ replacing) the system Node other projects on this machine may depend on.
 
 The working list lives in [`TODO.md`](TODO.md), so it has one home rather
 than drifting between two. In short: saving user-authored tools, `del` of
+several names at once, edge dragging, a way for a tool to say something to
+the user that is neither a thrown error nor a console line, and the remaining
+interaction ideas to carry over from `cellwork`.
+
 several names at once, a 3-point circle tool (now a trivial composition),
 and the remaining interaction ideas to carry over from `cellwork`.
 

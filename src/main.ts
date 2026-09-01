@@ -19,6 +19,7 @@ import "./tools/point.ts";
 import "./tools/line.ts";
 import "./tools/rectangle.ts";
 import "./tools/circle.ts";
+import "./tools/circle3.ts";
 import "./tools/arc.ts";
 import "./tools/fillet.ts";
 

@@ -106,6 +106,73 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### The 3-point circle tool: spending the free-entities package
+
+This is the package that tests whether the previous one was worth it. The
+free-entities plan ended by putting a 3-point-circle *tool* on `TODO.md` as
+"enabled, not built", with the claim that it would be a trivial composition.
+It was: one new file, one import line, and nothing else in `src/`. Nothing was
+added to the model, the solver, the relation vocabulary, or `persist.ts`'s
+replay table — `addCircle`, `setCoords` and `onCircle` were all already there,
+which is the evidence that this is a composition rather than a feature.
+
+**The decision that carries the package is what *not* to build.** A tool that
+solved the circumcircle in closed form and called `addCircle(centre, radius)`
+is shorter than what is here and draws the identical first frame. It is also
+wrong, and the wrongness is invisible until someone drags a rim point: that
+circle merely *matched* three points once, so it stays where it was drawn
+while the points walk away from it. The circle here is defined by three
+`onCircle`s that stay in the model, so it follows them, wears three glyphs,
+lists in `rels()`, and can be taken apart one constraint at a time. The unit
+suite asserts the following, not the drawing — the drawing is what a computed
+circle would also pass.
+
+**The closed form is still needed, for three other things**, which is the
+small irony of the above: previewing, seeding, and refusing. It lives in the
+tool as `circumcircle()`, taking plain numbers and knowing nothing about which
+space it is being asked about — the commit asks it in world coordinates, the
+preview in screen pixels, and the view transform being affine with a uniform
+scale is what makes those the same answer. That is `intersect.ts`'s design,
+borrowed deliberately.
+
+**Deviation from the spec, and why.** The spec asked for the circle's centre
+to be seeded at the three clicks' centroid, reasoning that the solver deserves
+to start near the answer. Since the circumcentre was already computed two
+lines earlier, seeding at the *exact* answer serves that reason better than an
+approximation of it, at no cost. The circle is still free in the sense that
+matters: a constructor argument here only ever seeded a variable, which is the
+observation the whole previous package rests on.
+
+**Refusing a collinear commit was the one genuinely contestable call.** The
+alternative is to let it through and let the solver report `CONFLICT` — which
+is honest, and is what this codebase does everywhere else, since a model that
+cannot be satisfied is a normal state here rather than an error. It was
+rejected because this particular conflict is not a statement the user made and
+might want to keep: they aimed a third click, and three collinear points have
+no circle at all, so what they would get is a drawing they never asked for and
+have to undo before they can find out why. Staying armed on the two good
+clicks makes the recovery the obvious next click, which is the choice
+`fillet.ts` already made for a corner it cannot round. **Near**-collinear is
+left alone entirely: a very large circle is a legitimate thing to draw, and
+the threshold is set at an angle of ~1e-9 radians so that only the exactly
+degenerate case is caught.
+
+That threshold is a *relative sine* rather than an area, and the difference is
+not pedantry: the natural expression of "are these three collinear" is twice
+the triangle's area, and an area threshold calls a large drawing bent and a
+scaled-down copy of the same drawing straight. Dividing through by the two
+side lengths makes it an angle, which is scale-free — and there is a unit test
+at three scales that fails against the area form.
+
+**The thing this package could not do**, and the reason is worth recording
+because it will come up again: a tool has no way to tell the user anything.
+The refusal writes a `console.warn`, which no user will ever see. Giving tools
+a line in the app's log pane wants a `log` on `ToolContext`, which means
+editing `engine.ts` — and the edge-drag package was in flight in that file, so
+the spec ruled it out. It is on `TODO.md`, along with the observation that
+`fillet` currently reports its refusals by *throwing*, which reaches the page
+as an uncaught error and is worse.
+
 ### Edge dragging: a translation is a target, not a move
 
 The feature is small and the interesting part is entirely in what a drag
