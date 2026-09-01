@@ -13,6 +13,7 @@ import { Repl, fmt } from "./repl.ts";
 import { neocadScope } from "./replenv.ts";
 import { ToolEngine, type View } from "./tools/engine.ts";
 import { describePick, type Pick } from "./picking.ts";
+import { constrainedBy, GLYPH_HALF_H, GLYPH_HALF_W } from "./glyphs.ts";
 import { getToolCtor } from "./tools/tool.ts";
 import "./tools/point.ts";
 import "./tools/line.ts";
@@ -67,9 +68,16 @@ async function main() {
     for (let y = view.oy % (view.scale * 10); y < r.height; y += view.scale * 10) { g.moveTo(0, y); g.lineTo(r.width, y); }
     g.stroke();
 
-    const hovered = engine.hover?.name;
-    const stroke = (name: string) => (name === hovered ? "#e8a33d" : "#afc6d9");
-    const weight = (name: string) => (name === hovered ? 2.2 : 1.4);
+    // What the cursor is over lights up — and hovering a *constraint* lights up
+    // everything that constraint is about. That spread is the payoff of drawing
+    // glyphs at all: hover `⊥` and see which two lines it means, rather than
+    // reading two names off a tag and hunting for them.
+    const hov = engine.hover;
+    const lit = new Set<string>(
+      hov ? (hov.kind === "relation" ? constrainedBy(model, hov.name) : [hov.name]) : [],
+    );
+    const stroke = (name: string) => (lit.has(name) ? "#e8a33d" : "#afc6d9");
+    const weight = (name: string) => (lit.has(name) ? 2.2 : 1.4);
 
     for (const e of model.entities.values()) {
       g.strokeStyle = stroke(e.name);
@@ -102,10 +110,57 @@ async function main() {
       if (e.kind !== "point") continue;
       const [sx, sy] = engine.worldToScreen(model.coords(e.name));
       g.fillStyle = stroke(e.name);
-      g.beginPath(); g.arc(sx, sy, e.name === hovered ? 5 : 3.5, 0, Math.PI * 2); g.fill();
+      g.beginPath(); g.arc(sx, sy, lit.has(e.name) ? 5 : 3.5, 0, Math.PI * 2); g.fill();
       g.fillText(e.name, sx + 6, sy - 6);
     }
+
+    // After the entities so a mark is never hidden by the drawing it describes,
+    // and before the tool overlay so a gesture in progress stays on top of
+    // everything — the geometry being placed is what the eye should be on.
+    renderGlyphs(hov?.kind === "relation" ? hov.name : null);
     engine.renderOverlay();
+  }
+
+  /**
+   * The constraint marks, in the same visual family as the hover tag: a small
+   * rounded box, dim until the cursor is on it. Dim on purpose — there is one
+   * of these per constraint and a drawing has many, so they have to read as an
+   * annotation layer rather than as geometry.
+   */
+  function renderGlyphs(hoveredRelation: string | null) {
+    const marks = engine.glyphs();
+    if (!marks.length) return;
+    g.save();
+    g.font = "12px ui-monospace, Menlo, monospace";
+    g.textAlign = "center";
+    g.textBaseline = "middle";
+    for (const mark of marks) {
+      const on = mark.relation === hoveredRelation;
+      const [x, y] = mark.screen;
+      roundedBox(x - GLYPH_HALF_W, y - GLYPH_HALF_H, GLYPH_HALF_W * 2, GLYPH_HALF_H * 2, 3);
+      g.fillStyle = on ? "#20303f" : "#0e141bee";
+      g.fill();
+      g.strokeStyle = on ? "#e8a33d" : "#2c3d4f";
+      g.lineWidth = 1;
+      g.stroke();
+      g.fillStyle = on ? "#e8a33d" : "#8fa7bb";
+      // Nudged down a hair: several of these marks (— ∥ ⊥ ∴) sit high in their
+      // em box, and centring by metrics leaves them looking as though they are
+      // escaping upward out of the box.
+      g.fillText(mark.symbol, x, y + 0.5);
+    }
+    g.restore();
+  }
+
+  /** A rounded rectangle path. `ctx.roundRect` is newer than this needs to be. */
+  function roundedBox(x: number, y: number, w: number, h: number, r: number) {
+    g.beginPath();
+    g.moveTo(x + r, y);
+    g.arcTo(x + w, y, x + w, y + h, r);
+    g.arcTo(x + w, y + h, x, y + h, r);
+    g.arcTo(x, y + h, x, y, r);
+    g.arcTo(x, y, x + w, y, r);
+    g.closePath();
   }
 
   function solveAndRender() {
@@ -215,7 +270,9 @@ async function main() {
     // No tag while a tool is armed: the snap marker is saying the useful thing
     // by then, and a tag left over from before the gesture would follow the
     // cursor showing a name that is no longer under it.
-    if (!pick || engine.active || !model.entities.has(pick.name)) {
+    // `model.has`, not `model.entities.has`: a hovered glyph is a *relation*
+    // pick, and the tag names it exactly as it names a point.
+    if (!pick || engine.active || !model.has(pick.name)) {
       hoverEl.hidden = true;
       return;
     }
@@ -236,6 +293,17 @@ async function main() {
       snapping: (on?: boolean) => {
         if (on !== undefined) engine.snapping = on;
         return engine.snapping;
+      },
+      glyphs: (on?: boolean) => {
+        if (on !== undefined) {
+          engine.glyphsOn = on;
+          // A hover held on a glyph that has just been switched off would leave
+          // the tag naming something no longer on screen, and the entities it
+          // constrains lit with nothing to explain why.
+          if (!on && engine.hover?.kind === "relation") engine.hover = null;
+          render();
+        }
+        return engine.glyphsOn;
       },
       cancel: () => engine.cancel(),
       refresh: () => { solveAndRender(); },

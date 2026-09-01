@@ -15,6 +15,7 @@ import type { ResidualBlock } from "../kernel/problem.ts";
 import { getToolCtor, type Tool, type ToolContext, type PointerInfo, type RenderContext } from "./tool.ts";
 import { assignView, panBy, screenToWorld, worldToScreen, zoomAbout, type View } from "../view.ts";
 import { hitTest, type Pick } from "../picking.ts";
+import { glyphAt, placeGlyphs, type Glyph } from "../glyphs.ts";
 import { findSnap, type Snap } from "../snapping.ts";
 
 export type { View };
@@ -97,7 +98,10 @@ export class ToolEngine {
   private idle: {
     id: number; sx: number; sy: number; x0: number; y0: number; moved: boolean; point: string | null;
   } | null = null;
-  /** What the cursor is over, for the highlight and the hover tag. */
+  /**
+   * What the cursor is over, for the highlight and the hover tag. A `relation`
+   * pick is a constraint glyph — see `pickAt`.
+   */
   hover: Pick | null = null;
   /**
    * Where the cursor is being treated as being, while a tool is drawing.
@@ -107,6 +111,12 @@ export class ToolEngine {
   snap: Snap | null = null;
   /** Set false to place coordinates exactly where the cursor is. */
   snapping = true;
+  /**
+   * Whether the constraint glyphs are drawn and pickable. On by default, as in
+   * an Onshape sketch: the feature exists so a constraint nobody typed
+   * announces itself, and a switch you have to know to flick cannot do that.
+   */
+  glyphsOn = true;
 
   constructor(
     model: Model,
@@ -172,6 +182,37 @@ export class ToolEngine {
 
   screenToWorld(sx: number, sy: number): number[] {
     return screenToWorld(this.view, sx, sy);
+  }
+
+  /**
+   * The constraint glyphs as they stand this frame — empty when they are off.
+   *
+   * Recomputed on demand rather than cached, because there is no moment at
+   * which a cache could be invalidated honestly: a drag moves geometry without
+   * touching the model's structure, and a solve moves it without anything
+   * calling in here at all. The work is a few arithmetic operations per
+   * relation, which is nothing next to the solve that just ran.
+   */
+  glyphs(): Glyph[] {
+    return this.glyphsOn ? placeGlyphs(this.model, this.view) : [];
+  }
+
+  /**
+   * What is under (sx, sy): **glyphs first**, then geometry.
+   *
+   * Glyphs are the top tier because they are small and deliberate to aim at.
+   * A glyph you cannot click because a point happens to sit near it defeats
+   * the feature — and unlike geometry, a glyph is only ever where it is
+   * because it was put there, so there is no ambiguity about whether it was
+   * the thing meant.
+   *
+   * Snapping deliberately does not consult this. Glyphs are UI, not geometry,
+   * and nothing should ever be *placed* at one.
+   */
+  pickAt(sx: number, sy: number): Pick | null {
+    const gl = glyphAt(this.glyphs(), sx, sy);
+    if (gl) return { name: gl.relation, kind: "relation", distance: 0 };
+    return hitTest(this.model, this.view, sx, sy);
   }
 
   /** Canvas-local pixels for a pointer or wheel event. */
@@ -329,8 +370,11 @@ export class ToolEngine {
     // it did not, and picks if it never moved at all.
     if (kind === "down" && e.button === 0) {
       // Only points are draggable in v1. Everything else — an edge, a rim,
-      // empty canvas — keeps exactly the behaviour it had.
-      const under = hitTest(this.model, this.view, sx, sy);
+      // empty canvas — keeps exactly the behaviour it had. A press that landed
+      // on a glyph grabs nothing, which is the same statement as the glyph
+      // being the top pick tier: it must not be possible to aim at a mark and
+      // start dragging the geometry behind it.
+      const under = this.pickAt(sx, sy);
       const point = under?.kind === "point" ? under.name : null;
       this.idle = { id: e.pointerId, sx, sy, x0: sx, y0: sy, moved: false, point };
       this.canvas.setPointerCapture?.(e.pointerId);
@@ -364,7 +408,7 @@ export class ToolEngine {
       const { moved, point } = this.idle;
       this.idle = null;
       if (!moved) {
-        const pick = hitTest(this.model, this.view, sx, sy);
+        const pick = this.pickAt(sx, sy);
         if (pick) this.onPick(pick);
       } else if (point) {
         // One ordinary solve, through the host's solve path, so the status
@@ -405,7 +449,7 @@ export class ToolEngine {
   }
 
   private updateHover(sx: number, sy: number): void {
-    const next = hitTest(this.model, this.view, sx, sy);
+    const next = this.pickAt(sx, sy);
     if (next?.name === this.hover?.name) return;
     this.hover = next;
     this.onRenderOnly();
