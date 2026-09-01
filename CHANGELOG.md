@@ -7,6 +7,68 @@ decisions.
 
 ---
 
+## Constraints you can see, name, and delete
+
+Relations have names now — `r1`, `r2`, … alongside `p1` and `l1` — and `del`
+removes one, with Onshape's cascade. This is the item inference made urgent:
+a tool that constrains your drawing on your behalf hands you a constraint you
+did not type, and until now you could not see it, list it, or take it back.
+
+| the corner a tool constrained | the constraint deleted, the corners dragged apart | two undos later |
+|---|---|---|
+| ![Two rectangles meeting at a shared corner. The hover tag under the corner reads "p3 -60, 42 · r5", and the log below shows rels() output: r1 hor l1, r2 hor l3, r3 ver l2, r4 ver l4, r5 coin p5 p3, and four more](docs/images/15-relations-and-hover.png) | ![The same two rectangles, now separated — the upper one has been dragged up and left, and the corner they used to share is two corners in two places. The hover tag reads "p3 -86.667, 60.333" with no relation names after it. The log shows del("r5") answering [r5]](docs/images/16-constraint-deleted.png) | ![The rectangles are joined at the corner again and the hover tag reads "p3 -60, 42 · r5" once more. The log has gained two lines: "undid — 3 back, 1 forward" and "undid — 2 back, 2 forward"](docs/images/17-undone.png) |
+
+Neither rectangle in the first picture was drawn with a constraint typed at
+the command line. The second was started three pixels off the first's corner,
+the tool inferred a coincidence, and `r5` is that inference with a name on it.
+The hover tag names the relations constraining whatever is under the cursor,
+`rels()` lists them all (`rels("p5")` lists the ones naming `p5`), and the
+flow from noticing to removing needs no new interaction model: hover to see
+`r7`, click to drop the name into the command line, type `del("r7")`.
+
+**The middle picture is the point.** A constraint removed from a list and a
+constraint removed from the *problem* look identical until something pulls on
+it. Drag the corner after `del("r5")` and the rectangles come apart, which is
+the only way to see that a residual block really left the solver.
+
+**The cascade is Onshape's**, deliberately, so that people arrive knowing it:
+a relation takes nothing else with it; a point takes everything that
+references it — a line's endpoint, a circle's centre, an arc's centre or ends
+— recursively, and every relation naming any of them; a line, circle or arc
+takes the relations naming it and leaves its points, which were the drawing's
+points first. `del` returns the names it removed, so the log answers "what did
+that just take with it".
+
+**And there is no "are you sure?", because undo is the confirmation.** `del`
+is one user action, one Ctrl+Z from harmless — the pattern `open()` already
+set. The third picture is two keystrokes after the second: geometry, journal
+and registry all back, byte-for-byte identical to `save()` before the
+deletion.
+
+Underneath: `Problem.addResidual` now returns a monotonic `BlockHandle` and
+`Problem.removeBlock` spends it, blocks being stored as `{ id, block }` so a
+removal never shifts another block's identity. `Model` gained a relation
+registry and one wrapper, `model.relation(op, args, body)`, which every
+function in `relations/` is now a single call to. Deletions are journalled as
+their expansion — `deleteEntity` / `deleteRelation`, one per name — so a
+reopened file removes exactly what was removed rather than recomputing a
+cascade against a model that may have been built differently since. Old files
+carry neither op and open unchanged.
+
+**A bug the registry flushed out on the way past:** `concentric` and
+`arcEndpoints` are defined in terms of `coincident` and `onCircle`, and both
+calls used to journal, so reopening a file containing either quietly added the
+inner constraint a *second* time. A relation defined in terms of another is
+now one relation — the inner call's blocks join the outer entry and it
+journals nothing.
+
+**Documented, not fixed:** a deleted point's variables stay in the flat
+vector, referenced by nothing. Orphans take part in no residual, so the solve
+leaves them exactly where they are — they cost memory, not correctness — and a
+save/reopen does not shed them either, since replay re-runs the same creates
+and deletes. Compaction means remapping every captured index list in every
+closure, which is a different piece of work with a different risk profile.
+
 ## Undo and redo
 
 Ctrl+Z, at last. **Ctrl+Z / Cmd+Z** undoes, **Ctrl+Shift+Z** and **Ctrl+Y**

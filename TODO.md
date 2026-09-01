@@ -51,7 +51,15 @@ are flagged as such.
   No 3-point arc yet.
 - **Fillet** takes its radius when armed — `arm("fillet", { radius: 8 })`,
   default 10 — and reuses the shared corner as a tangent point so nothing is
-  orphaned (there is no delete yet). A miss-click is a miss, not a cancel.
+  orphaned. (That was originally because there was no delete; it is still the
+  right shape, since a fillet that stranded points would leave stray dots for
+  the user to clean up by hand.) A miss-click is a miss, not a cancel.
+- **Deleting:** `del(name)` takes one name and cascades the way Onshape does
+  — a relation takes nothing with it, a point takes what references it, a
+  curve takes its relations but not its points. **No confirmation prompt:**
+  `del` is one user action, so undo is the confirmation, which is the pattern
+  `open()` already set. Deleted variables are tombstoned rather than
+  compacted; the leak is documented in `STATUS.md`.
 - **Constraints attach to edges, not corner points**, wherever the user means
   an edge (`hor("l1")` rather than `hor("a","b")`) — relations resolve their
   line's endpoints lazily, so they survive a fillet re-pointing the edge.
@@ -80,12 +88,12 @@ are flagged as such.
 Queue for Opus, in order. Each gets a spec in `docs/plans/` before work
 starts.
 
-- [ ] **Relation identity + deletion with cascade** — spec written,
-      [`docs/plans/constraint-deletion.md`](docs/plans/constraint-deletion.md).
-      Relations get names like entities do; `del()` cascades the way Onshape
-      does; variables are tombstoned rather than compacted (the boring design
-      ships first, and the leak is documented). Canvas constraint *glyphs*
-      are a follow-up spec on top of the registry this creates.
+- [ ] **Constraint glyphs on the canvas** — the follow-up the deletion
+      package was built to make possible. The registry (`model.relations`)
+      now knows every relation's name, op and args, so a glyph layer has
+      everything it needs; what it wants is a spec about placement,
+      hit-testing and clutter at low zoom. The hover tag is the interim
+      answer and stays either way.
 - [ ] **Snap to intersections.** Points, midpoints and along-a-curve are
       done; where two curves cross needs real intersection maths.
 - [ ] **Box-select.** With name-based selection this means dragging a box
@@ -99,6 +107,34 @@ starts.
 
 ## Done
 
+- [x] **Relation identity + deletion with cascade** — spec:
+      [`docs/plans/constraint-deletion.md`](docs/plans/constraint-deletion.md),
+      now marked shipped-pending-review. Relations are registry entries named
+      `r1`, `r2`, … built by one wrapper (`model.relation`) that every
+      function in `relations/` is a single call to; `Problem.addResidual`
+      returns a monotonic `BlockHandle` and `removeBlock` spends it (the only
+      kernel change); `del(name)` deletes an entity or a relation with
+      Onshape's cascade and returns what it took; deletions journal as
+      `deleteEntity` / `deleteRelation`, one per name; `rels()` and `del()`
+      are on `help()`; the hover tag names the relations on whatever is under
+      the cursor. Variables are tombstoned rather than compacted, and the leak
+      is documented in `STATUS.md` and pinned by tests.
+      *Discovered while doing it:* `concentric` and `arcEndpoints` are written
+      in terms of `coincident` and `onCircle`, and **both** calls journalled —
+      so reopening a file containing either quietly applied the inner
+      constraint a second time. Nothing caught it because the round-trip tests
+      compare entities and coordinates, and a duplicated identical residual
+      only doubles a weight that is already satisfied. The registry made it
+      unignorable (two entries cannot both own the same blocks), and the fix
+      is that a relation defined in terms of another is *one* relation.
+      Also found: a relation that throws part-way has to roll back its blocks
+      *and* the name counter, or a replay — which performs only the calls that
+      succeeded — names everything after it one step out.
+      *Left for later, deliberately:* variable compaction (remapping every
+      captured index list inside every closure is a different piece of work
+      with a different risk profile); constraint glyphs on the canvas, which
+      are the follow-up above; and `del` of several names at once, which wants
+      box-select more than it wants a signature change.
 - [x] **Undo/redo** — Ctrl+Z / Cmd+Z undoes, Ctrl+Shift+Z and Ctrl+Y redo,
       `undo()`/`redo()` do the same through the same host handles. A stack of
       whole-model snapshots (`src/undo.ts`, cap 100, pushing clears redo),

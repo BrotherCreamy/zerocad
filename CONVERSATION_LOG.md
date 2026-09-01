@@ -106,6 +106,91 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### Giving relations names, and what that turned up
+
+The spec for this one framed the gap exactly right: entities have names and
+relations do not, and a constraint you cannot refer to is a constraint you
+cannot inspect or remove. That was survivable while every constraint was one
+you typed. Inference ended it — a tool that constrains your drawing on your
+behalf hands you something you did not ask for and, until this package, could
+not take back.
+
+Most of the work was mechanical, and the diff should read that way: every
+function in `relations/` swapped its opening `model.record(...)` for a
+`model.relation(op, args, body)` wrapper around its body, and its
+`model.problem.addResidual` calls for `model.addResidual` so the wrapper can
+collect the handles. What was *not* mechanical was three decisions the wrapper
+forced, each of which only became visible once the registry existed.
+
+**A relation defined in terms of another is one relation.** `concentric` is a
+`coincident` on two centres; `arcEndpoints` is two `onCircle`s. The obvious
+implementation registers three entries for `concentric` — an outer and an
+inner — and the moment I wrote it down it was obviously wrong: two entries
+claiming the same residual blocks cannot both be right, because deleting
+either leaves the other holding handles the kernel has already forgotten, and
+the kernel is specified to throw on exactly that. So the inner call's blocks
+join the outer entry and it takes no name.
+
+Following that thread found a real bug that had been sitting there since those
+relations were written. Both calls also *journalled*, so a file containing a
+`conc` or an `arcends` came back from `open()` with the inner constraint
+applied twice. Nothing caught it: the round-trip tests compare entities and
+coordinates, and a duplicated identical residual only doubles a weight that is
+already satisfied, so every number stayed right. It would have surfaced years
+later as a mysterious stiffness in a model that had been saved and reopened a
+few times. Worth noting for its own sake — the registry did not fix this
+because anyone went looking, it fixed it because a stricter representation
+made the duplication impossible to state.
+
+**A relation that throws has to roll back its name.** Blocks obviously; the
+counter less obviously. A replay performs only the calls that succeeded, so a
+mistyped relation that burned `r7` in the live session would leave the reopened
+model naming everything after it one step lower — and the deletion journal
+refers to relations *by name*. Determinism here is not tidiness, it is the
+difference between `deleteRelation("r7")` removing the tangency it removed and
+removing something else.
+
+**The cascade is Onshape's, and the interesting part is the asymmetry.** It
+follows references inward — who needs me — and never outward — what do I need.
+Deleting a line therefore reaches nothing, while deleting one of its endpoints
+reaches the line. Stated that way the "a curve does not take its points" rule
+is not a special case, it is the same rule; and the implementation is a
+worklist over `dependents`, which stays correct if an entity kind that
+references another is ever added.
+
+Two judgement calls I want on the record because a reviewer might disagree.
+The first: **deletion is journalled as its expansion**, one `deleteEntity` or
+`deleteRelation` per name, which is the *opposite* of how `fillet` is
+journalled. A fillet re-expands identically on replay because its expansion is
+a pure function of its arguments; a cascade is computed against the model as it
+stood, and a replay recomputing it could remove a different set. So the two
+ops go in the replay table and `del` itself does not.
+
+The second: **`del` re-solves through the host, and no other editing command
+does.** That is an inconsistency and I chose it deliberately. Deleting a
+constraint is precisely the edit whose purpose is to change what the solver is
+allowed to do, and leaving `CONFLICT` on the header after removing the
+constraint that caused it is the stale-readout bug this repo already has an
+incident note about. Nothing moves — the drawing was satisfying more than it
+now has to — so the cost is one frame.
+
+And one thing I did **not** do: compacting the variable vector. A deleted
+point's variables stay in it, referenced by nothing. Compaction means remapping
+every captured index list inside every closure in the problem, which is a
+different piece of work with a different risk profile, and the failure mode of
+getting it subtly wrong is a drawing that solves to the wrong answer rather
+than one that costs a few bytes. The leak is bounded by how much a session
+deletes; a save/reopen does not shed it, because replay re-runs the same
+creates and deletes. Both facts are tests, not comments, which is the
+difference between a documented decision and a bug waiting to be rediscovered.
+
+The e2e is the part I would look at first if reviewing this. Everything above
+is arguable from a unit test except one thing: whether the residual block
+really left the *problem*, as opposed to leaving a list that claims to describe
+the problem. The only way to see that is to pull on it — so the test drags the
+corners apart after the delete, and the screenshot in the changelog is the
+same gesture.
+
 ### Undo, and the design that was already lying there
 
 The interesting thing about undo here is that almost none of it is new code.

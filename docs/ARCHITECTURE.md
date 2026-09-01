@@ -55,6 +55,15 @@ exact derivatives, because `Dual` arithmetic propagates both at once — so
 there is no finite-difference perturbation anywhere, and the Jacobian is
 exact and sparse for free.
 
+`addResidual` hands back a **block handle** — monotonic, never reused — and
+`removeBlock` spends it. A handle rather than an index, because something
+above this file has to remember which blocks belong to which constraint and an
+index would be invalidated by every removal that happened to come earlier in
+the list. Removing an unknown handle throws: the only way to hold one is to
+have been given it, so one that names nothing means the bookkeeping above has
+lost track, and a silent no-op would leave that constraint in the drawing with
+no sign of why.
+
 `solve()` runs Levenberg–Marquardt in TypeScript and calls into Rust once per
 Newton step for the linear solve. The Rust side never forms `JᵀJ` explicitly —
 it is a matrix-free conjugate gradient on the damped normal equations — so
@@ -84,6 +93,22 @@ debug in TypeScript and is not where the time goes.
 `relations/` holds equations. A relation adds one residual block and changes
 nothing else.
 
+Both halves are **named**. Entities always were; relations are, now, because
+a constraint you cannot refer to is a constraint you cannot inspect or
+remove — survivable while every constraint is one you typed, and not
+survivable once a tool infers them on your behalf. `Model` keeps a relation
+registry beside its entity map, filled by one wrapper (`model.relation`) that
+every function in `relations/` is written as a single call to: it journals the
+call, gathers the residual-block handles the body adds, and registers them
+under `r1`, `r2`, … Entities and relations share the namespace, because
+`del("r3")` has to mean one thing.
+
+A relation defined in terms of another — `concentric` via `coincident`,
+`arcEndpoints` via two `onCircle`s — is **one** relation: the inner call's
+blocks join the outer entry and it journals nothing. Two entries claiming the
+same blocks could not both be right, since deleting either would leave the
+other holding handles the kernel has forgotten.
+
 This is why a `Line` owns no variables — it is two point references and
 nothing more — and why an `Arc` does not automatically constrain its own
 endpoints to lie on its own circle. That is the `arcends` relation's job. The
@@ -95,6 +120,39 @@ over- or under-constrain; an operation can leave the model malformed.** Hence
 `operations.ts` being its own file rather than another function in
 `relations/`. `fillet` creates entities and re-points a line, so it is an
 operation. Everything in `relations/` is not.
+
+## Deleting cascades inward, and undo is the confirmation
+
+`del(name)` removes an entity or a relation and takes with it whatever could
+not survive without it. The cascade is Onshape's: a relation takes nothing
+else, a point takes everything that references it (recursively) plus every
+relation naming any of them, and a line, circle or arc takes the relations
+naming it while leaving its points alone. The rule underneath is that the
+closure follows references **inward** — who needs me — and never outward —
+what do I need. That asymmetry is the whole of it: deleting a line reaches
+nothing, deleting one of its endpoints reaches the line.
+
+**There is no confirmation prompt, because undo is the confirmation.** `del`
+is one user action, so a cascade that took more than was meant is one Ctrl+Z
+from harmless — the pattern `open()` already set. It returns the names it
+removed so the log can answer "what did that just take with it".
+
+Deletion is journalled as its **expansion** — one `deleteEntity` or
+`deleteRelation` per name — rather than as the `del` call, which is the
+opposite of how an operation like `fillet` is journalled and for a good
+reason: a `fillet` re-expands identically on replay, while a cascade is
+computed against the model as it stood, and recomputing it later could remove
+a different set. `Model`'s two primitives refuse to leave the model malformed
+(they will not delete something still referenced or still constrained), so a
+hand-edited file gets a reason rather than a line with no endpoint.
+
+**Variables are tombstoned, not compacted.** A deleted point's variables stay
+in the flat vector, referenced by nothing. The damped solve leaves orphans
+exactly where they are, so they cost memory and not correctness. Compaction
+means remapping every captured index list inside every closure — real work
+with real risk — and a save/reopen does not shed the leak either, because
+replay re-runs the same creates and the same deletes. Both facts are pinned by
+tests rather than left to be rediscovered.
 
 ## Relations follow their entities, not their indices
 

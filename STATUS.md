@@ -390,12 +390,77 @@ replacing) the system Node other projects on this machine may depend on.
   measure if it ever is not); and there is **no undo of a view change**, since
   the view is not part of the model.
 
+- **Named relations, and deletion with cascade** (`Model.relation` +
+  `Model.relations` in `src/model.ts`, `del` in `src/operations.ts`,
+  `BlockHandle` / `removeBlock` in `src/kernel/problem.ts`) — relations are
+  registry entries named `r1`, `r2`, … beside the entities, because a
+  constraint you cannot refer to is one you cannot inspect or remove, which
+  stopped being survivable the moment tools began inferring constraints on the
+  user's behalf.
+  Every function in `relations/` is one call to **`model.relation(op, args,
+  body)`**: it journals the call (replacing the bare `model.record` each used
+  to open with, so there is one place to forget rather than two), collects the
+  residual-block handles the body adds, registers them, and returns the name.
+  Relations return their name where they used to return `void`. Entities and
+  relations share one namespace, since `del("r3")` has to mean one thing. A
+  relation defined in terms of another — `concentric` via `coincident`,
+  `arcEndpoints` via two `onCircle`s — is **one** relation: the inner call's
+  blocks join the outer entry and it journals nothing. That last part fixed a
+  real bug rather than only tidying: both used to journal, so reopening a file
+  containing a `conc` or an `arcends` quietly applied the inner constraint
+  twice. A relation that throws part-way is rolled back — blocks removed, name
+  counter restored — because a replay performs only the calls that succeeded
+  and would otherwise name everything after it one step out.
+  **The kernel change**, the only one: `Problem.addResidual` returns a
+  monotonic, never-reused `BlockHandle` and `Problem.removeBlock(handle)`
+  removes that block. Blocks are stored as `{ id, block }` so a removal never
+  shifts another block's identity, and an unknown handle throws rather than
+  being ignored. `problem.ts` still has never heard of a point.
+  **`del(name)`** deletes an entity or a relation with Onshape's cascade — a
+  relation takes nothing else; a point takes everything referencing it,
+  recursively, plus every relation naming any of them; a line, circle or arc
+  takes the relations naming it and leaves its points. The closure follows
+  references *inward* (who needs me), never outward (what do I need), which is
+  what makes it Onshape's rather than merely transitive. It returns the names
+  it removed. **There is no confirmation prompt: undo is the confirmation**,
+  `del` being one user action and therefore one Ctrl+Z from harmless.
+  Deletion is journalled as its **expansion** (`deleteEntity` /
+  `deleteRelation`, one entry per name) rather than as the `del` call, because
+  a cascade is computed against the model as it stood and recomputing it later
+  could remove a different set. Old files carry neither op and open unchanged;
+  no format version bump. `Model`'s two primitives refuse to remove something
+  still referenced or still constrained, so a hand-edited file gets a reason
+  rather than a line with no endpoint.
+  **Command surface:** `del(name)` and `rels(name?)`, both on `help()`.
+  `rels()` prints the short op name — `r3  coin p5 p3` — so a listed relation
+  reads back as a line you could retype. The **hover tag** gained the relation
+  names (`p5  12, 30 · r3 r7`), which is the whole of this package's
+  visibility story; constraint glyphs on the canvas are the follow-up that
+  builds on the same registry. `del` is the one editing command that re-solves
+  through the host, because it is the one edit whose purpose is to change the
+  solver's verdict and a stale `CONFLICT` header is a bug this project has
+  already been bitten by.
+  **The documented leak:** variables are **tombstoned, not compacted**. A
+  deleted point's variables stay in the flat vector referenced by nothing;
+  they take part in no residual, so the damped solve leaves them exactly where
+  they are and they cost memory rather than correctness. It is bounded by how
+  much one session deletes — and **a save/reopen does not shed it**, since
+  replay re-runs the same creates and the same deletes. Both are pinned by
+  tests in `test/deletion.test.ts`. Compaction means remapping every captured
+  index list inside every closure, which is real work with real risk and is
+  deliberately a later package.
+  Also deliberate: a relation authored at the command line that calls
+  `model.problem.addResidual` directly still works and is still anonymous —
+  the same anonymity every relation had until now. Route it through
+  `model.relation` and `model.addResidual` to get a name and a `del`.
+
 ## What's next
 
 The working list lives in [`TODO.md`](TODO.md), so it has one home rather
-than drifting between two. In short: a picking/selection model (which most
-of the rest is waiting on), deleting entities, saving user-authored tools,
-and the remaining interaction ideas to carry over from `cellwork`.
+than drifting between two. In short: constraint glyphs drawn on the canvas
+(now that the registry they need exists), snapping to intersections, saving
+user-authored tools, and the remaining interaction ideas to carry over from
+`cellwork`.
 
 ## Incident note (disk space)
 
