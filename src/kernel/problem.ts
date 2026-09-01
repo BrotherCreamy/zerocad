@@ -46,6 +46,16 @@ function norm2(r: number[]): number {
   return Math.sqrt(sum);
 }
 
+/** Largest magnitude in `r`, or 0 if it is empty. A loop, for norm2's reason. */
+function maxAbs(r: number[]): number {
+  let worst = 0;
+  for (const v of r) {
+    const mag = Math.abs(v);
+    if (mag > worst) worst = mag;
+  }
+  return worst;
+}
+
 export interface SolveReport {
   solved: boolean;
   iterations: number;
@@ -88,14 +98,21 @@ export class Problem {
     this.blocks = [];
   }
 
-  /** Evaluate all residual blocks at the current values, with full sparse Jacobian. */
-  private evaluate(): { r: number[]; rows: number[]; cols: number[]; vals: number[]; labels: (string | undefined)[] } {
+  /**
+   * Evaluate all residual blocks at the current values, with full sparse
+   * Jacobian. `extra` blocks are evaluated after the stored ones and are not
+   * retained; `storedRows` is where they begin, which is all a caller needs to
+   * tell an accusation from a nudge (see `solve`).
+   */
+  private evaluate(extra: ResidualBlock[] = []): {
+    r: number[]; rows: number[]; cols: number[]; vals: number[]; labels: (string | undefined)[]; storedRows: number;
+  } {
     const r: number[] = [];
     const rows: number[] = [];
     const cols: number[] = [];
     const vals: number[] = [];
     const labels: (string | undefined)[] = [];
-    for (const block of this.blocks) {
+    const run = (block: ResidualBlock) => {
       const varIndices = resolve(block.varIndices);
       const locals = varIndices.map((gi, li) => Dual.variable(this.values[gi], li));
       const outs = block.fn(locals);
@@ -110,17 +127,39 @@ export class Problem {
           vals.push(deriv);
         }
       }
-    }
-    return { r, rows, cols, vals, labels };
+    };
+    // Stored blocks first, so the row count at the hand-over is the boundary
+    // between what the problem *is* and what this one solve was also asked to
+    // weigh. A row index, rather than a flag per block, because that is what
+    // the report has to slice.
+    for (const block of this.blocks) run(block);
+    const storedRows = r.length;
+    for (const block of extra) run(block);
+    return { r, rows, cols, vals, labels, storedRows };
   }
 
-  /** Damped Gauss-Newton (Levenberg-Marquardt), warm-started from current values. */
-  solve(opts: { maxIter?: number; tol?: number } = {}): SolveReport {
+  /**
+   * Damped Gauss-Newton (Levenberg-Marquardt), warm-started from current
+   * values.
+   *
+   * `extra` blocks take part in this solve and this solve only: they are
+   * evaluated alongside the stored ones at every iteration and are gone when
+   * it returns, having been added to nothing. That is what a caller wants for
+   * a residual that expresses a momentary intention rather than a property of
+   * the model — a soft pull toward wherever a cursor happens to be, say.
+   *
+   * They are also excluded from the report. A deliberately weak residual never
+   * reaches zero (that is what makes it weak), so counting it as an offender
+   * would report a conflict that is not one; and `maxResidual` is meant to say
+   * how well the *model* is satisfied, which a transient nudge would spoil.
+   */
+  solve(opts: { maxIter?: number; tol?: number; extra?: ResidualBlock[] } = {}): SolveReport {
     const maxIter = opts.maxIter ?? 60;
     const tol = opts.tol ?? 1e-9;
+    const extra = opts.extra ?? [];
     const n = this.values.length;
 
-    let { r, rows, cols, vals, labels } = this.evaluate();
+    let { r, rows, cols, vals, labels, storedRows } = this.evaluate(extra);
     let norm = norm2(r);
     if (n === 0 || r.length === 0) {
       return { solved: true, iterations: 0, maxResidual: 0, offenders: [] };
@@ -137,10 +176,11 @@ export class Problem {
         );
         const saved = this.values.slice();
         for (let i = 0; i < n; i++) this.values[i] += dx[i];
-        const next = this.evaluate();
+        const next = this.evaluate(extra);
         const nextNorm = norm2(next.r);
         if (isFinite(nextNorm) && nextNorm < norm) {
           r = next.r; rows = next.rows; cols = next.cols; vals = next.vals; labels = next.labels;
+          storedRows = next.storedRows;
           norm = nextNorm;
           lambda = Math.max(1e-10, lambda / 3);
           improved = true;
@@ -152,9 +192,11 @@ export class Problem {
       if (!improved) break;
     }
 
+    // Only the stored rows may accuse, or report how far off the model is.
+    const stored = r.slice(0, storedRows);
     const offenders: { label: string; residual: number }[] = [];
     const seen = new Map<string, number>();
-    r.forEach((v, i) => {
+    stored.forEach((v, i) => {
       const mag = Math.abs(v);
       if (mag > 0.05) {
         const label = labels[i] ?? `r${i}`;
@@ -164,6 +206,6 @@ export class Problem {
     for (const [label, residual] of seen) offenders.push({ label, residual });
     offenders.sort((a, b) => b.residual - a.residual);
 
-    return { solved: offenders.length === 0, iterations, maxResidual: Math.max(0, ...r.map(Math.abs)), offenders };
+    return { solved: offenders.length === 0, iterations, maxResidual: maxAbs(stored), offenders };
   }
 }

@@ -1,7 +1,10 @@
 # Plan: dragging geometry (kinematic drag)
 
-**Status: queued.** Do not start until the inference/line-tool work from
-`onshape-inference.md` is reviewed and pushed.
+**Status: shipped.** Kept as the design record. Built as specified, with two
+notes: the mid-drag trade-off between a soft pull and the constraints turned
+out to be visible enough to document (see `CHANGELOG.md` and the last kernel
+test), and the delivery was a PR rather than a local commit, the process
+having changed under it.
 
 The defining interaction of a constraint sketcher, and the one Onshape users
 reach for first: with nothing armed, grab a point and pull. The geometry

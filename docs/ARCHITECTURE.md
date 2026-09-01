@@ -58,6 +58,17 @@ Newton step for the linear solve. The Rust side never forms `JᵀJ` explicitly �
 it is a matrix-free conjugate gradient on the damped normal equations — so
 memory stays proportional to the number of non-zeros rather than to n².
 
+`solve()` also takes `extra?: ResidualBlock[]` — residuals that take part in
+that one solve and are stored nowhere. The distinction they draw is between a
+*constraint*, which is a claim about the drawing, and an *intention*, which is
+a claim about the hand: "this point wants to be under the cursor" is true for
+one frame and false by the next, and putting it in `blocks` would make the
+model briefly contain something it does not mean. Extras are kept out of the
+offender report and out of `maxResidual`, because a deliberately weak residual
+never reaches zero and a report that counted it would call every drag a
+conflict. This stays geometry-free: `problem.ts` has still never heard of a
+point, and the blocks are built a layer up, in the engine.
+
 **Why split it that way?** The expensive inner loop is the linear solve, and
 that is the part worth having in WASM. The outer loop is bookkeeping —
 damping, step acceptance, convergence — which is easier to read, change and
@@ -123,6 +134,14 @@ change: "multi-stage" is just "finishes later".
 
 The engine keeps navigation and tool use on separate mouse buttons, so a
 gesture can be panned through without the tool ever seeing it.
+
+With no tool armed the left button has three meanings, decided by what it
+landed on and whether it moved: press a point and move, and the point is
+dragged with the model following it; press anything else and move, and the
+view pans; press and do not move, and whatever is under the cursor has its name
+put into the command line. The hit-test happens once, at press time — from the
+first frame of a drag the geometry is moving under the cursor, so re-asking
+what is beneath it would hand the drag to whatever the drawing swept past.
 
 ## The REPL is scoped, not sandboxed
 

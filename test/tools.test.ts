@@ -5,6 +5,8 @@ import { ensureKernelLoaded } from "../src/kernel/problem.ts";
 import { Model } from "../src/model.ts";
 import { RectangleTool } from "../src/tools/rectangle.ts";
 import { PointTool } from "../src/tools/point.ts";
+import { pullTo } from "../src/tools/engine.ts";
+import { horizontal } from "../src/relations/basic.ts";
 import type { ToolContext } from "../src/tools/tool.ts";
 
 async function loadKernel() {
@@ -76,4 +78,40 @@ test("RectangleTool: a click with no real drag commits nothing", async () => {
   tool.onUp({ world: [5, 5], screen: [0, 0] });
   assert.equal(model.entities.size, 0);
   assert.equal(ctx.finished, false, "a no-op drag shouldn't count as a finished gesture");
+});
+
+// The drag's pull, without a browser. What a real drag looks like on top of
+// this is in test/e2e/drag.e2e.ts — these are the mathematics of one frame.
+
+test("pullTo drags a free point onto the cursor and a constrained one as far as it may go", async () => {
+  await loadKernel();
+  const model = new Model(2);
+  model.addPoint([0, 0], "a");
+  model.addPoint([10, 0], "b");
+  horizontal(model, "a", "b");
+
+  // b is free along x and held level with a; the cursor asks for both.
+  model.problem.solve({ extra: pullTo(model, "b", [40, 25]) });
+  const b = model.coords("b");
+  assert.ok(Math.abs(b[0] - 40) < 1e-6, `x follows the cursor exactly: ${b[0]}`);
+  assert.ok(Math.abs(b[1] - model.coords("a")[1]) < 1e-6, `hor held: b.y = ${b[1]}`);
+
+  // And nothing was kept: solving again changes nothing, because the model
+  // never contained the pull.
+  const before = model.coords("b");
+  model.solve();
+  assert.deepEqual(model.coords("b"), before);
+  assert.equal(model.journal.filter((j) => j.op !== "addPoint" && j.op !== "horizontal").length, 0,
+    "a drag journals nothing — it changes values, not structure");
+});
+
+test("pullTo is dimension-generic: a 2D cursor leaves the third coordinate alone", async () => {
+  await loadKernel();
+  const model = new Model(3);
+  model.addPoint([0, 0, 7], "a");
+
+  model.problem.solve({ extra: pullTo(model, "a", [3, 4]) });
+  const a = model.coords("a");
+  assert.ok(Math.abs(a[0] - 3) < 1e-6 && Math.abs(a[1] - 4) < 1e-6, `a = ${a}`);
+  assert.equal(a[2], 7, "depth is not something a 2D cursor can mean");
 });

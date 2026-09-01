@@ -311,6 +311,48 @@ replacing) the system Node other projects on this machine may depend on.
   degeneracy check measuring only the first two coordinates, which refused
   every segment that moved in z alone.
 
+- **Kinematic drag** (`src/tools/engine.ts`, `src/kernel/problem.ts`) — with
+  nothing armed, press on a point and pull: the model follows the cursor while
+  every constraint holds. Drag the free corner of a constrained rectangle and
+  it resizes as a rectangle; drag a point held at a distance from a fixed one
+  and it swings round the circle.
+  The mechanism is a **temporary residual**. `Problem.solve()` now takes
+  `extra?: ResidualBlock[]` — blocks evaluated alongside the stored ones for
+  that one solve, added to nothing, gone when it returns. Each pointer move
+  solves with a soft pull toward the cursor (`(x - cursor.x) * 0.12`, one
+  residual per coordinate, cellwork's weight) and renders; the release runs one
+  ordinary solve through the host's solve path. `problem.ts` still has never
+  heard of a point: the blocks are built in the engine, which is allowed to
+  know what one is.
+  Extras are **excluded from the offender report** and from `maxResidual`. A
+  soft pull never reaches zero — that is what makes it soft — so counting it
+  would paint `CONFLICT` across the header for the duration of every drag.
+  Worth knowing, and tested: least squares weighs everything at once, so a
+  cursor held far past where a point can follow does not stall politely against
+  the constraints, it *trades* against them, and the drawing goes a little out
+  of true until the button comes up. At w = 0.12 the displacement is roughly
+  the overshoot over 71 — invisible when the cursor is a pixel or two from the
+  point it is pulling, which is the ordinary case. It is why the intermediate
+  frames render without touching the status line, and why release solves again
+  with no pull: that solve puts everything back to 1e-6.
+  A `fix`ed point needs no special case; the pull (0.12) loses to the fix
+  residuals (1) and it effectively stays put, which falls out of the
+  arithmetic. Nothing is journalled — a drag changes values, not structure, and
+  solved coordinates already ride along in a saved file, which
+  `test/e2e/drag.e2e.ts` round-trips.
+  `cancel()` (Escape, or a file being opened mid-gesture) **settles** a drag
+  rather than dropping it, for the same reason the release does: the last frame
+  was solved with the pull applied, so abandoning it without a final solve
+  leaves the cursor's influence baked into the geometry and the status line
+  stale. It cannot undo the drag — nothing has undo — but it can decline to
+  leave a compromise behind. `test/engine.test.ts` covers that and the three
+  neighbouring cases, driving the engine with synthetic pointer events against
+  a stand-in canvas: a press that never moved, a pan, and an ordinary release.
+  Deliberately not in v1, each a known difference from Onshape: **only points
+  drag** (an edge or a rim still pans, as it did); **no inference or snapping
+  while dragging** (Onshape infers mid-drag); and **no undo** — nothing has undo
+  yet, so for now a drag is undone by dragging back.
+
 ## What's next
 
 The working list lives in [`TODO.md`](TODO.md), so it has one home rather

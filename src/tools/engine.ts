@@ -11,6 +11,7 @@
 // without the tool ever seeing it — start a rectangle, pan, finish it.
 
 import type { Model } from "../model.ts";
+import type { ResidualBlock } from "../kernel/problem.ts";
 import { getToolCtor, type Tool, type ToolContext, type PointerInfo, type RenderContext } from "./tool.ts";
 import { assignView, panBy, screenToWorld, worldToScreen, zoomAbout, type View } from "../view.ts";
 import { hitTest, type Pick } from "../picking.ts";
@@ -29,6 +30,39 @@ const MIDDLE_BUTTON = 4;
 /** Movement past this many pixels turns a click into a drag. cellwork's value. */
 const DRAG_THRESHOLD = 3;
 
+/**
+ * How hard a drag pulls the grabbed point toward the cursor, relative to a
+ * constraint's weight of 1. cellwork's number, and the balance it strikes is
+ * the whole feel of the interaction: small enough that a real constraint wins
+ * outright, large enough that geometry nothing constrains sits under the
+ * cursor exactly. A pull is never satisfied at the expense of the drawing —
+ * that is what makes this a *kinematic* drag rather than a move.
+ */
+const DRAG_PULL = 0.12;
+
+/**
+ * The temporary residuals a drag hands to one solve: each coordinate of
+ * `name` weakly wanting to be the matching coordinate of `world`.
+ *
+ * Written as a residual per coordinate rather than as a distance, because a
+ * distance residual is a square in disguise near its own root and least
+ * squares would end up minimising a fourth power. `(x - target) * w` is
+ * linear, exact, and has a gradient everywhere including at the answer.
+ *
+ * Only as many coordinates as the viewport supplied are pulled, so in a 3D
+ * model dragging moves the point within the plane the viewport is drawing and
+ * leaves the depth alone — which is the only thing a 2D cursor can honestly
+ * mean.
+ */
+export function pullTo(model: Model, name: string, world: number[], weight = DRAG_PULL): ResidualBlock[] {
+  const idx = model.point(name).varIndices.slice(0, world.length);
+  return [{
+    varIndices: idx,
+    fn: (locals) => locals.map((v, i) => v.sub(world[i]).mul(weight)),
+    label: `drag(${name})`,
+  }];
+}
+
 export class ToolEngine {
   model: Model;
   view: View;
@@ -41,11 +75,19 @@ export class ToolEngine {
   /** Which pointer is panning, and where it was last seen. */
   private panning: { id: number; sx: number; sy: number } | null = null;
   /**
-   * A left press with no tool armed. It becomes a pan if it moves and a pick
-   * if it doesn't — cellwork's behaviour, and the reason you rarely need the
-   * right button.
+   * A left press with no tool armed. What it becomes depends on what it landed
+   * on and whether it moves: a press on a point that moves drags that point, a
+   * press anywhere else that moves pans, and a press that does not move picks
+   * — cellwork's behaviour, and the reason you rarely need the right button.
+   *
+   * `point` is the name of the point under the press, if there was one. It is
+   * captured at press time rather than re-hit-tested each move, because the
+   * geometry is moving under the cursor from then on and the answer would
+   * change.
    */
-  private idle: { id: number; sx: number; sy: number; x0: number; y0: number; moved: boolean } | null = null;
+  private idle: {
+    id: number; sx: number; sy: number; x0: number; y0: number; moved: boolean; point: string | null;
+  } | null = null;
   /** What the cursor is over, for the highlight and the hover tag. */
   hover: Pick | null = null;
   /**
@@ -133,12 +175,28 @@ export class ToolEngine {
     this.active = new Ctor(ctx);
   }
 
+  /**
+   * Abandons whatever gesture is in progress — Escape, or a model being
+   * swapped out underneath one.
+   *
+   * A drag has to be *settled* rather than merely dropped. Its last frame was
+   * solved with the pull still applied, so the geometry it left behind is the
+   * compromise between the drawing and a cursor that is no longer there, and
+   * the status line still reads whatever it did before the gesture began.
+   * Cancelling therefore ends a drag the same way releasing the button does:
+   * one ordinary solve through the host's path. There is nothing else it
+   * *could* mean, since nothing here has undo yet — "cancel" cannot put the
+   * geometry back, so the least it can do is not leave a pull baked into it.
+   */
   cancel(): void {
     this.active?.onCancel();
     this.active = null;
+    const wasDragging = this.idle?.moved === true
+      && this.idle.point !== null && this.model.entities.has(this.idle.point);
     this.idle = null;
     this.snap = null;
-    this.onRenderOnly();
+    if (wasDragging) this.onSolveRender();
+    else this.onRenderOnly();
   }
 
   private dispatch(kind: "down" | "move" | "up", e: PointerEvent): void {
@@ -209,9 +267,14 @@ export class ToolEngine {
     }
     this.snap = null;
 
-    // Nothing armed: the left button pans if it moves and picks if it doesn't.
+    // Nothing armed: the left button drags a point if it grabbed one, pans if
+    // it did not, and picks if it never moved at all.
     if (kind === "down" && e.button === 0) {
-      this.idle = { id: e.pointerId, sx, sy, x0: sx, y0: sy, moved: false };
+      // Only points are draggable in v1. Everything else — an edge, a rim,
+      // empty canvas — keeps exactly the behaviour it had.
+      const under = hitTest(this.model, this.view, sx, sy);
+      const point = under?.kind === "point" ? under.name : null;
+      this.idle = { id: e.pointerId, sx, sy, x0: sx, y0: sy, moved: false, point };
       this.canvas.setPointerCapture?.(e.pointerId);
       return;
     }
@@ -219,22 +282,53 @@ export class ToolEngine {
     if (kind === "move") {
       if (!this.idle.moved && Math.hypot(sx - this.idle.x0, sy - this.idle.y0) > DRAG_THRESHOLD) {
         this.idle.moved = true;
+        // The highlight belongs to looking around, and the drag has taken over.
+        if (this.hover) this.hover = null;
       }
       if (this.idle.moved) {
-        assignView(this.view, panBy(this.view, sx - this.idle.sx, sy - this.idle.sy));
+        if (this.idle.point) this.dragTo(this.idle.point, sx, sy);
+        else assignView(this.view, panBy(this.view, sx - this.idle.sx, sy - this.idle.sy));
         this.onRenderOnly();
       }
       this.idle.sx = sx;
       this.idle.sy = sy;
     } else {
       this.canvas.releasePointerCapture?.(e.pointerId);
-      const clicked = !this.idle.moved;
+      const { moved, point } = this.idle;
       this.idle = null;
-      if (clicked) {
+      if (!moved) {
         const pick = hitTest(this.model, this.view, sx, sy);
         if (pick) this.onPick(pick);
+      } else if (point) {
+        // One ordinary solve, through the host's solve path, so the status
+        // line reports the settled model rather than a frame of a gesture.
+        this.onSolveRender();
       }
     }
+  }
+
+  /**
+   * One frame of a kinematic drag: solve the model as it stands with a
+   * temporary pull on `name` toward the cursor, and leave the result in place.
+   *
+   * The pull is `extra`, not a stored residual, so it exists for this solve
+   * and no other — the model never contains "this point wants to be at the
+   * cursor", which stops being true the moment the cursor moves. Nothing is
+   * journalled either: a drag changes coordinates, and coordinates already
+   * ride along in a saved file.
+   *
+   * The report is deliberately ignored. Mid-drag the header does not churn:
+   * a cursor held past what the constraints allow leaves the model a little
+   * out of true for as long as it is held, and flashing CONFLICT through a
+   * gesture that is about to settle correctly would be noise. Release is what
+   * asks for the truth.
+   */
+  private dragTo(name: string, sx: number, sy: number): void {
+    // A file opened mid-gesture swaps the model out from under this.
+    if (!this.model.entities.has(name)) { this.idle = null; return; }
+    // No snapping: v1 drags to where the cursor actually is. Onshape infers
+    // while dragging; that is a follow-up, deliberately not this.
+    this.model.problem.solve({ extra: pullTo(this.model, name, this.screenToWorld(sx, sy)) });
   }
 
   private updateHover(sx: number, sy: number): void {

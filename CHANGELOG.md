@@ -7,6 +7,69 @@ decisions.
 
 ---
 
+## Dragging geometry
+
+The interaction the solver was built for: with nothing armed, press on a point
+and pull. The geometry follows the cursor *while every constraint holds*.
+
+| before | during |
+|---|---|
+| ![A rectangle 80 by 60, built from the four commands visible in the log below it: four points, four lines, hor/ver on each edge, and a fix on the bottom-left corner p1](docs/images/10-drag-before.png) | ![The same drawing from the same viewpoint, with p3 dragged up and to the right. p1 has not moved by a pixel; p2 has followed in x and p4 in y; all four edges are still exactly level or plumb](docs/images/11-drag-after.png) |
+
+The right-hand frame is from the *middle* of the gesture, with the button still
+down — same viewport, same grid, so the two can be flipped between. `p1` is
+pinned by a `fix` and has not moved by a pixel. `p3` is the corner being
+dragged. `p2` and `p4` were not touched by the cursor at all and moved anyway,
+because `hor` and `ver` on the edges say they must: that is the whole feature
+in one picture, and it is what makes this a *kinematic* drag rather than moving
+a point.
+
+**The mechanism is a residual that lasts one solve.** `Problem.solve()` now
+takes `extra?: ResidualBlock[]`: blocks evaluated alongside the stored ones at
+every iteration of that solve, added to nothing, gone when it returns. Each
+pointer move solves with a soft pull toward the cursor — `(x - cursor.x) *
+0.12` per coordinate, cellwork's weight — and renders. Release runs one
+ordinary solve without the pull, which is what settles the model and updates
+the header. The weight is the whole feel of the thing: small enough that a real
+constraint wins outright, large enough that geometry nothing constrains sits
+under the cursor exactly.
+
+**A soft pull may never accuse.** Extras are excluded from the offender report
+and from `maxResidual`, because a residual that never reaches zero is doing
+what it was asked to do, and letting it into the report would paint `CONFLICT`
+across the header for the duration of every drag.
+
+**What the tests caught, and it is arithmetic rather than a bug:** least
+squares weighs everything at once, so a cursor dragged far past where a point
+can follow does not stall against the constraints — it trades against them, and
+the drawing goes slightly out of true for as long as the button is held (at w =
+0.12, the overshoot divided by about 71). In ordinary use the cursor is a pixel
+or two from the point it is pulling and this is invisible. It is nonetheless
+the reason intermediate frames never touch the status line, and the reason
+release solves again: that solve puts everything back to 1e-6.
+
+A **`fix`ed point needs no special case** — the pull loses to the fix residuals
+and the point stays put, which falls out of the mathematics rather than being
+checked for. And **nothing is journalled**: a drag changes values, not
+structure, and a saved file already carries solved coordinates, so a dragged
+drawing round-trips through save/open unchanged.
+
+**Abandoning a drag settles it.** `Escape` mid-gesture cannot put the geometry
+back — nothing here has undo yet — but it must not leave the cursor's pull
+baked into the drawing either, with the header still reading whatever it did
+before the gesture began. So `cancel()` ends a drag the same way releasing the
+button does: one ordinary solve, through the host's path.
+
+Deliberately not in this version, each a known difference from Onshape and each
+a follow-up rather than an oversight: **only points drag** (press an edge or a
+rim and it still pans, exactly as before); **no inference or snapping while
+dragging**, which Onshape does do; and **no undo**, because nothing here has
+undo yet — for now a drag is undone by dragging back.
+
+Eleven new unit tests and six new end-to-end ones, the latter including the two
+gestures dragging shares its button with: a press that does not move is still a
+pick, and a press that is not on a point still pans. 135 unit, 3 kernel, 63 e2e.
+
 ## The line tool
 
 Point, rectangle, circle, arc, fillet — and, until now, not the most basic

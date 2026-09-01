@@ -106,6 +106,78 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### Dragging, and the difference between a constraint and an intention
+
+The drag needed one thing the kernel could not do: solve the model *plus*
+something that is only true for this frame. The alternative — add the pull as
+an ordinary residual block, solve, remove it again — was rejected on both
+counts it can be judged by. It is slower, since `Problem` has no removal and
+would have needed one; and it is a lie about what the model contains, because
+for the duration of that call the drawing genuinely has a constraint in it
+saying a corner belongs under the cursor. A constraint is a claim about the
+drawing. A drag is a claim about the hand. `solve({ extra })` keeps them apart
+without the kernel learning what either of them is: it still has never heard
+of a point, and the residual blocks are built one layer up in the engine,
+which is allowed to know.
+
+The one design decision inside `problem.ts` was the offender report. Evaluate
+the stored blocks first, keep the row count at the hand-over, and slice the
+report there. It could have been a flag on the block instead, but the report
+is a slice of the residual vector and a row index is the thing that actually
+indexes it. The *reason* for excluding extras is worth writing down plainly: a
+soft pull never reaches zero, that being what "soft" means, so a report that
+counted it would say `CONFLICT` for the whole of every drag — a header that
+lies during the most common interaction in the program is worse than no header.
+
+Then the tests said something I had not expected, and it changed the shape of
+the engine code. Least squares does not stall politely against a constraint it
+cannot beat; it *trades*. Pull a fixed point 150 units and the fix gives way by
+2.1 — the whole system settling into the compromise that minimises the sum. At
+w = 0.12 the displacement is about the overshoot over 71, which is nothing when
+the cursor is a pixel from the point it is dragging, and quite visible if you
+hold it far away. So mid-drag the model can genuinely be out of true, and can
+genuinely have offenders among the *stored* blocks — correctly so. Two
+consequences, both now load-bearing: the intermediate frames call
+`model.problem.solve(...)` directly and ignore the report, rendering without
+touching the status line, and release runs an ordinary solve through the host's
+path, which is what makes the header the settled truth rather than a frame of a
+gesture. The last kernel test walks exactly that lifecycle. I would rather have
+that test than a comment.
+
+Two smaller things. The pull is one residual per coordinate, not one on the
+distance to the cursor, because a distance residual is a square in disguise
+near its own root and least squares would end up minimising a fourth power —
+the repo's standing rule about never writing a residual that is already a
+square. And the point being dragged is hit-tested **once**, at press time,
+rather than each move: from the first frame onward the geometry is moving under
+the cursor, so re-asking "what is under the pointer" would hand the drag to
+whatever the drawing swept past.
+
+Review caught a third thing I had written down as a known edge instead of
+fixing: `cancel()` mid-drag. I had reasoned that "cancel cannot undo the drag,
+because nothing has undo, so leaving the geometry where it is is the honest
+option". That is half an argument. Cancel cannot restore the *pre-drag*
+geometry, true — but what it was leaving behind was not the drag's result
+either, it was the last frame's *compromise between the drawing and a cursor
+that no longer exists*, with the header still showing whatever it said before
+the gesture. The right reading is that abandoning a drag and releasing it
+differ in whether the pull's final position is intended, not in whether the
+model should be left consistent. So `cancel()` settles through the host's solve
+path exactly as `pointerup` does. The unit test for it fails against the old
+code, which is the only reason to trust it.
+
+That test needed the engine driven without a browser, which turned out to be
+easy — a stand-in canvas that records its listeners, and synthetic pointer
+events fired at them. Worth having for the whole class of "what happens when a
+gesture is abandoned", which has no mouse event of its own and is otherwise
+only reachable through the keyboard.
+
+What is deliberately absent is inference during the drag, which Onshape does
+have. It is a real difference and it is documented rather than smoothed over,
+along with only-points-drag and the absence of undo — a drag is currently
+undone by dragging back, which is honest but not something to leave standing
+for long. Undo is next in the queue and the drag makes its case for it.
+
 ### The line tool, and what "chaining" actually has to mean
 
 Second half of the same plan document. The interesting question was not how to

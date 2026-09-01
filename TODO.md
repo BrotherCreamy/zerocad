@@ -80,12 +80,6 @@ are flagged as such.
 Queue for Opus, in order. Each gets a spec in `docs/plans/` before work
 starts.
 
-- [ ] **Dragging geometry** — spec next. Onshape's defining interaction:
-      with nothing armed, drag a point and the model follows it while every
-      constraint holds (cellwork proved the mechanism: solve with temporary
-      soft residuals pulling the point toward the cursor). Needs `Problem`
-      to accept temporary residual blocks — a legitimate, geometry-free
-      kernel-surface addition.
 - [ ] **Undo/redo.** Ctrl+Z is not optional in a CAD tool and nothing has it
       yet. The journal changes the design space (an add can be undone by
       truncate-and-replay; a drag by restoring values) — needs a short
@@ -109,6 +103,24 @@ starts.
 
 ## Done
 
+- [x] **Dragging geometry** — with nothing armed, press a point and pull; the
+      model follows the cursor while every constraint holds. `Problem.solve()`
+      takes `extra?: ResidualBlock[]`, temporary residuals evaluated for one
+      solve and stored nowhere, and each pointer move solves with a soft pull
+      (w = 0.12) toward the cursor. Extras are kept out of the offender report,
+      or every drag would read `CONFLICT`.
+      *Discovered while doing it:* a pull that cannot be satisfied does not
+      stall against the constraints, it trades against them — least squares
+      weighs everything at once — so a cursor held far past where a point can
+      go leaves the drawing a little out of true until release. Invisible at
+      ordinary cursor distances, and the settling solve undoes it exactly; it
+      is the reason mid-drag frames must not touch the status line.
+      Abandoning a drag (Escape, or opening a file mid-gesture) settles it with
+      one ordinary solve rather than dropping it, or the cursor's pull stays
+      baked into the geometry and the status line is stale.
+      *Left for later, deliberately:* only points drag (edges and rims still
+      pan), nothing is inferred or snapped mid-drag, and there is no undo — for
+      now a drag is undone by dragging back.
 - [x] **The line tool** — click-click with Onshape's chaining: the committed
       end *is* the next segment's start, the same entity, so nothing needs
       joining. Nothing is committed until the second click, so an abandoned
