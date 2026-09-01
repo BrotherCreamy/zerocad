@@ -16,10 +16,16 @@
 // Snapping (src/snapping.ts) already decides *what* was aimed at; all that is
 // left is the mapping from its three kinds to the relation each one means:
 //
-//   point     an existing point      coincident(new, that point)
-//   midpoint  the middle of an edge  midpoint(new, that line)   — line form
-//   curve     somewhere along a line pointOnLine(new, that line)
-//   curve     somewhere on a rim     onCircle(new, that circle or arc)
+//   point         an existing point      coincident(new, that point)
+//   intersection  two curves crossing    the on-curve relation for *each* of them
+//   midpoint      the middle of an edge  midpoint(new, that line)   — line form
+//   curve         somewhere along a line pointOnLine(new, that line)
+//   curve         somewhere on a rim     onCircle(new, that circle or arc)
+//
+// The intersection row is the one worth reading twice. Two relations, not one:
+// a point told only that it is on the line drifts along the line the moment
+// anything moves, and the crossing it was placed at is gone. Constrained to
+// both curves it *is* the crossing, and drag either curve and it rides.
 
 import type { PointerInfo, ToolContext } from "./tool.ts";
 import type { Model } from "../model.ts";
@@ -50,6 +56,14 @@ export function placePoint(ctx: ToolContext, info: PointerInfo, name?: string): 
  * defensive rather than reachable.)
  */
 export function inferFromSnap(model: Model, pointName: string, snap: Snap): void {
+  // An intersection is the one snap that means *two* things, and it applies
+  // both: `onCurve` per target, each an ordinary relation with its own name,
+  // its own glyph and its own `del`. Nothing here is special-cased downstream.
+  if (snap.kind === "intersection") {
+    for (const name of snap.targets) onCurve(model, pointName, name);
+    return;
+  }
+
   const target = model.entities.get(snap.targets[0]);
   if (!target || target.name === pointName) return;
 
@@ -63,8 +77,15 @@ export function inferFromSnap(model: Model, pointName: string, snap: Snap): void
       if (target.kind === "line") midpoint(model, pointName, target.name);
       return;
     case "curve":
-      if (target.kind === "line") pointOnLine(model, pointName, target.name);
-      else if (target.kind === "circle" || target.kind === "arc") onCircle(model, pointName, target.name);
+      onCurve(model, pointName, target.name);
       return;
   }
+}
+
+/** "This point lies on that curve", whichever kind of curve it is. */
+function onCurve(model: Model, pointName: string, curveName: string): void {
+  const target = model.entities.get(curveName);
+  if (!target || target.name === pointName) return;
+  if (target.kind === "line") pointOnLine(model, pointName, target.name);
+  else if (target.kind === "circle" || target.kind === "arc") onCircle(model, pointName, target.name);
 }

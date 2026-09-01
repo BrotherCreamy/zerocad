@@ -106,6 +106,72 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### Snapping to crossings, and three decisions the spec left open
+
+The spec for this one was unusually specific about *what*, which left the
+interesting arguments to be had about *how*. Three of them are worth writing
+down, because in each case the obvious answer is the wrong one.
+
+**Screen space, not world space.** The instinct is that geometry belongs in
+world coordinates and the view is a presentation detail, so the intersection
+algebra should live in world space and the tolerances should be converted. But
+follow the callers: the prefilter measures pixel distance to the cursor, the
+tolerance for "is that a crossing I meant" is eight pixels, and the arc-sweep
+test picking already owned is written against *screen* angles, in a convention
+whose own comment says "screen angles run the other way from world angles".
+Doing the algebra in world space would have meant writing that sweep test a
+second time in the opposite convention — which is precisely the thing the spec
+said not to do ("one definition of on the arc"). And the cost of screen space
+turns out to be nothing: the view transform is affine with a uniform scale, so
+a segment stays a segment, a circle stays a circle, and the exact screen
+crossing maps back through `screenToWorld` to the exact world crossing. The
+e2e checks that against a closed form computed independently, and it holds to
+better than 1e-6 on a crossing at an irrational x.
+
+Having chosen screen space, the sweep test had to move somewhere both
+`picking.ts` and the new code could reach. It went **down**, into
+`intersect.ts`, which knows nothing about models — rather than having
+`intersect.ts` import `picking.ts`, which would have inverted the layering to
+save a file. `picking.ts` now imports it back, and the behaviour is pinned by
+a unit test that asserts the predicate itself, including its asymmetry and the
+fact that slack only extends the far end.
+
+**Degeneracy is measured in pixels, not in the discriminant.** The
+textbook answer is `disc <= 0 → no intersection, disc == 0 → tangent`. The
+textbook answer does not survive contact with a solver. A tangency that
+`tangent(l, c)` actually holds has a residual around 1e-11, but the *root
+separation* goes as the square root of the discriminant, so those two "equal"
+roots come out about a thousandth of a pixel apart and an exact test never
+fires — you get two crossings where the drawing has a touch, and two inferred
+constraints where the user meant one relation that already exists. So the rule
+became: two candidates closer together than `TANGENT_EPS` (0.05 screen pixels)
+are one candidate, and one candidate is a tangency, so return nothing. That
+threshold is far above solver noise at any plausible radius and far below
+anything a hand can aim between. The same rule covers the circle–circle cases
+for free, internal and external tangency alike, which is a good sign it is the
+right rule rather than three special cases.
+
+**Two relations, not one.** This is the spec's own point and it deserves
+repeating because the snap is the visible part and the inference is the
+feature. A point placed at a crossing and told only "you are on this line"
+looks identical for exactly one frame, and then slides off the circle the
+moment anything moves. `placePoint` therefore applies the on-curve relation per
+target, and the e2e proves the machinery engages rather than assuming it: it
+checks both relations are in the registry under their own names, that both wear
+a glyph, that dragging the edge leaves the point on the rim *and* on the edge
+to 1e-4, and that two Ctrl+Z unwind the pair cleanly.
+
+**Rejected:** keeping `Snap.target` alongside a new `Snap.targets`, as a
+compatibility shim. There were four call sites. Two fields that can disagree,
+forever, is a worse trade than a rename that the type checker completes for
+you.
+
+**Left in place deliberately:** the along-a-curve tier still snaps to an arc's
+whole circle, as it always has; only the crossings are gated by sweep. That is
+inconsistent on its face, and it is the existing behaviour — snapping along a
+rim is deliberately more forgiving than picking one — so changing it is a
+separate decision, not a side effect of this package.
+
 ### Drawing the constraints, and what only looking could settle
 
 This package is small and the interesting part of it is not the code. Almost
