@@ -291,6 +291,6 @@ test("del() hands back what it took, so the log answers for the cascade", async 
 test("del and rels are on the help card, since neither is guessable", async () => {
   const { repl } = makeRepl();
   const help = (await run(repl, "help()")).value as string;
-  assert.match(help, /del\(name\)/);
+  assert.match(help, /del\(name, \.\.\.\)/);
   assert.match(help, /rels\(name\?\)/);
 });

@@ -7,6 +7,21 @@ decisions.
 
 ---
 
+## `del` takes the whole box-select's worth
+
+`del("p1", "l5", …)` — several names, one call, one undo step. Box select
+puts eight names in the command line; making `del` take them is the other
+half of that gesture. Three rules, each tested: every name is validated
+**before** anything is removed, so a typo in the middle of a batch costs
+nothing rather than half the batch; a name an earlier cascade already took
+is skipped silently, because handing over a point *and* the line on it is
+the normal shape of a box-selected batch, not a mistake; and the host
+re-solve happens once, after the batch. Journalling needed no change at all
+— a deletion was already recorded as its expansion, one entry per removal,
+and a replay test pins that the batch form round-trips identically.
+
+---
+
 ## `circle()` — a circle you have yet to define
 
 The owner's complaint, in his words: *"It's weird if you want a circle not

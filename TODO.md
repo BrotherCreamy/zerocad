@@ -88,7 +88,10 @@ are flagged as such.
   orphaned. (That was originally because there was no delete; it is still the
   right shape, since a fillet that stranded points would leave stray dots for
   the user to clean up by hand.) A miss-click is a miss, not a cancel.
-- **Deleting:** `del(name)` takes one name and cascades the way Onshape does
+- **Deleting:** `del(name, …)` takes one name or several (a box-select's
+      worth is the expected batch: every name is validated before anything is
+      removed, a name an earlier cascade already took is skipped, the batch is
+      one undo step) and cascades the way Onshape does
   — a relation takes nothing with it, a point takes what references it, a
   curve takes its relations but not its points. **No confirmation prompt:**
   `del` is one user action, so undo is the confirmation, which is the pattern
@@ -123,10 +126,6 @@ Queue for Opus, in order. Each gets a spec in `docs/plans/` before work
 starts.
 
 - [ ] **Saving user-authored tools** — blocked on the owner decision above.
-- [ ] **`del` of several names at once.** Now that a box can put eight names in
-      the command line, `del("p1", "p2", …)` is the obvious next thing to want;
-      it was deliberately left out of the deletion package pending box select,
-      and box select has now arrived.
 - [ ] **A 3-point circle tool.** Now a trivial composition rather than a
       feature: `circle()` plus three `oncircle`s is the whole of it, so the
       tool is three clicks and no new model or solver work. Enabled by the
@@ -156,6 +155,14 @@ starts.
 
 ## Done
 
+- [x] **`del` of several names at once** — `del("p1", "l5", …)`, the batch a
+      box select naturally produces. Validation of every name happens before
+      the first removal (a typo mid-batch costs nothing), a name an earlier
+      cascade already took is skipped silently, and the whole batch is one
+      entry and therefore one undo step. Journalling was already per-removal
+      (the expansion), so nothing about persistence had to change — pinned by
+      a replay test anyway. Implemented directly by the supervising session:
+      small enough that a spec would have been longer than the diff.
 - [x] **Entities defined by constraints, not constructors** — spec:
       [`docs/plans/free-entities.md`](docs/plans/free-entities.md), now marked
       shipped-pending-review. Every constructor argument is optional, in

@@ -254,3 +254,44 @@ test("relation names are deterministic across a replay, fillet's internals inclu
   // would have in the original session rather than colliding.
   assert.equal(dist(reopened, "p2", "p3", 25), dist(m, "p2", "p3", 25));
 });
+
+test("del of several names is one call, cascades each, in order", async () => {
+  await loadKernel();
+  const m = new Model(2);
+  m.addPoint([0, 0], "a");
+  m.addPoint([10, 0], "b");
+  m.addPoint([50, 50], "loner");
+  m.addLine("a", "b", "l");
+  const removed = del(m, "loner", "l");
+  assert.deepEqual(removed, ["loner", "l"]);
+  assert.ok(m.has("a") && m.has("b"), "the line's points were the user's points first");
+});
+
+test("a bad name anywhere in the batch removes nothing at all", async () => {
+  await loadKernel();
+  const m = new Model(2);
+  m.addPoint([0, 0], "a");
+  m.addPoint([10, 0], "b");
+  assert.throws(() => del(m, "a", "nope", "b"), /"nope" is not/);
+  assert.ok(m.has("a") && m.has("b"), "validation happens before the first removal");
+  assert.ok(!m.journal.some((e) => e.op === "deleteEntity"), "and the journal saw none of it");
+  assert.throws(() => del(m), /at least one name/);
+});
+
+test("a name an earlier cascade already took is skipped, not an error", async () => {
+  await loadKernel();
+  const m = new Model(2);
+  m.addPoint([0, 0], "a");
+  m.addPoint([10, 0], "b");
+  m.addLine("a", "b", "l");
+  dist(m, "a", "b", 10);
+  // A box select hands over the point AND the line on it; deleting the point
+  // takes the line, and the line's own turn must be a no-op.
+  const removed = del(m, "a", "l");
+  assert.deepEqual(removed.filter((n) => n === "l").length, 1, "the line went exactly once");
+  assert.ok(!m.has("a") && !m.has("l"));
+  assert.ok(m.has("b"));
+  // And the journal replays to the same place.
+  const reopened = open(save(m));
+  assert.deepEqual(shape(reopened), shape(m));
+});

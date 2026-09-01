@@ -215,9 +215,10 @@ export function neocadScope(h: EnvHandles): Bag {
   const operations: Bag = {
     fillet: (l1: string, l2: string, r: number) => fillet(model, l1, l2, r),
     /**
-     * Deletes an entity or a relation, cascading the way Onshape does, and
-     * hands back the names it took — so "what did that just remove" has an
-     * answer in the log rather than only on the canvas.
+     * Deletes entities and relations — one name or a box-select's worth —
+     * cascading the way Onshape does, and hands back the names it took, so
+     * "what did that just remove" has an answer in the log rather than only
+     * on the canvas. The whole batch is one entry and therefore one undo.
      *
      * It re-solves through the host afterwards, unlike the other editing
      * commands, because deleting a constraint is exactly the edit whose point
@@ -227,9 +228,9 @@ export function neocadScope(h: EnvHandles): Bag {
      * drawing was already satisfying more than it now has to — so the solve
      * costs a frame and buys an honest header.
      */
-    del: (name: string) => {
-      const removed = del(model, name);
-      h.solve?.();
+    del: (...names: string[]) => {
+      const removed = del(model, ...names);
+      h.solve?.(); // once, after the whole batch — one edit, one verdict
       return removed;
     },
   };
@@ -346,7 +347,7 @@ function help(scope: Bag): string {
     "           near the middle of the view, for your relations to define",
     "relations  dist fix coin mid hor ver par perp ang on eq",
     "           rad oncircle conc eqrad tan sym arcends",
-    "operations fillet(line1, line2, radius)  del(name)",
+    "operations fillet(line1, line2, radius)  del(name, ...)",
     "files      save()  open(text)  download(name)  openFile()  journal()",
     "history    undo()  redo()          — ctrl+z, ctrl+shift+z (ctrl+y)",
     "viewport   arm(tool, opts)  cancel()  zoom(f)  pan(dx,dy)  refresh()",

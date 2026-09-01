@@ -153,11 +153,37 @@ function filletBody(model: Model, l1Name: string, l2Name: string, r: number): st
  * `deleteRelation` per name — rather than as the single `del` call, so a
  * replay removes exactly what was removed rather than recomputing a cascade
  * against a model that may since have been built differently.
+ *
+ * **Several names at once are one call and one cascade each, in order.**
+ * `del("p1", "l5", …)` is what a box select naturally produces. Every name is
+ * checked before anything is removed — a typo in the middle of a batch costs
+ * nothing rather than half the batch — and a name an earlier cascade already
+ * took is skipped silently: handing over a point and the line that depends on
+ * it is the normal shape of a box-selected batch, not a mistake.
  */
-export function del(model: Model, name: string): string[] {
+export function del(model: Model, ...names: string[]): string[] {
+  if (names.length === 0) throw new Error("del needs at least one name");
+  // Validate every name before removing anything: a typo in the middle of a
+  // box-selected batch should cost nothing, not leave half the batch gone.
+  // (Undo would recover it, but an error that edits is still an error that
+  // edits.)
+  for (const n of names) {
+    if (!model.has(n)) throw new Error(`"${n}" is not an entity or a relation`);
+  }
+  const removed: string[] = [];
+  for (const n of names) {
+    // An earlier name's cascade may already have taken this one — a box
+    // select hands over a point *and* the line on it, and deleting the point
+    // deletes the line. Already-gone is the cascade working, not an error.
+    if (!model.has(n)) continue;
+    removed.push(...delOne(model, n));
+  }
+  return removed;
+}
+
+function delOne(model: Model, name: string): string[] {
   const isEntity = model.entities.has(name);
   const isRelation = model.relations.has(name);
-  if (!isEntity && !isRelation) throw new Error(`"${name}" is not an entity or a relation`);
 
   const doomed = isEntity ? entityClosure(model, name) : new Set<string>();
   // Every relation that names anything on the way out, plus the relation
