@@ -51,7 +51,12 @@ export class FilletTool extends Tool {
       // gesture, so the obvious next move (pick a different second edge) works.
       this.first = first;
       this.ctx.requestRender();
-      throw e;
+      // Refused out loud where there is a user to tell: a throw from a
+      // pointer handler reaches the page as an uncaught error nobody sees
+      // explained. Headless there is no pane and a caller, so it stays a
+      // throw there — which is also what keeps unit tests honest.
+      if (!this.ctx.log) throw e;
+      this.ctx.log(`fillet: ${e instanceof Error ? e.message : e}`);
     }
   }
 

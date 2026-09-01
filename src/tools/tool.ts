@@ -45,6 +45,15 @@ export interface ToolContext {
    * a tool driven directly in a test has nothing to hit-test against.
    */
   pick?(screen: [number, number]): Pick | null;
+  /**
+   * One line to the user, in the app's log pane. This is how a tool refuses a
+   * gesture out loud: a `throw` from a pointer handler reaches the page as an
+   * uncaught error nobody sees explained, and `console.warn` reaches nobody
+   * at all. Absent headless, like `pick` — the convention there is to fall
+   * back to whatever a caller with no user in front of them deserves: rethrow
+   * a real refusal, keep the `console.warn` for an advisory.
+   */
+  log?(line: string): void;
 }
 
 export abstract class Tool {

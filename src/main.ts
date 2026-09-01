@@ -278,6 +278,9 @@ async function main() {
     onRenderOnly: render,
     onPick: insertToken,
     onUserAction: (phase) => (phase === "before" ? beginUserAction() : endUserAction()),
+    // A tool refusing a gesture ("those three points lie on one line") is the
+    // user's business, not the console's — same channel an entry's error uses.
+    onLog: (line) => log(line, "err"),
   });
 
   // The hover tag follows the cursor and names whatever is under it.

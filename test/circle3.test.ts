@@ -284,3 +284,18 @@ test("Circle3Tool: a click on an existing point makes the rim point coincident w
       `${p} is not on the rim: centre ${centre}, r ${r}`);
   }
 });
+
+test("Circle3Tool: the collinear refusal reaches the log pane when there is one", async () => {
+  await loadKernel();
+  const model = new Model(2);
+  const ctx = fakeCtx(model) as ReturnType<typeof fakeCtx> & { log(l: string): void; lines: string[] };
+  ctx.lines = [];
+  ctx.log = (l: string) => ctx.lines.push(l);
+  const tool = new Circle3Tool(ctx);
+
+  tool.onDown(raw([0, 0]));
+  tool.onDown(raw([10, 0]));
+  tool.onDown(raw([25, 0]));
+  assert.equal(ctx.lines.length, 1);
+  assert.match(ctx.lines[0], /lie on one line/);
+});

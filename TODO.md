@@ -111,8 +111,10 @@ are flagged as such.
 - **The command line is curation, not a sandbox.** Typed code runs with the
   app's full authority; the scope exists for legibility and typo-catching,
   and says so honestly rather than claiming to be a security boundary.
-- **Process:** direct commits to the working branch, pushed after review; no
-  PRs (owner's instruction).
+- **Process:** work packages arrive as PRs against the working branch, per
+  the header above (owner approved the PR flow after originally asking for
+  direct commits). Small items whose spec would be longer than the diff may
+  be committed directly by the supervising session, with the same test gate.
 
 ## Decisions needed from the owner
 
@@ -129,30 +131,6 @@ Queue for Opus, in order. Each gets a spec in `docs/plans/` before work
 starts.
 
 - [ ] **Saving user-authored tools** — blocked on the owner decision above.
-- [ ] **`del` of several names at once.** Now that a box can put eight names in
-      the command line, `del("p1", "p2", …)` is the obvious next thing to want;
-      it was deliberately left out of the deletion package pending box select,
-      and box select has now arrived.
-- [ ] **A tool needs a way to say something to the user.** Today it has two,
-      and both are wrong: `fillet` *throws* to report a corner it cannot round
-      (which reaches the page as an uncaught error), and `circle3` writes a
-      `console.warn` the user will never see. What is wanted is one line in
-      the app's log pane, which means a `log` on `ToolContext` filled in by
-      `ToolEngine.arm` and routed to `main.ts`'s `log()` — small, but an
-      `engine.ts` change, so it was left out of the circle3 package while edge
-      dragging was in flight there.
-- [ ] **Dragging an edge.** A left-drag that starts on an edge or a rim still
-      pans, which is the one leftover from the old mouse map. Onshape drags
-      the edge. Not in this package's spec, and the gesture has to stay
-      distinct from box select (which starts on *empty* canvas), so it is a
-      clean follow-up rather than a loose end.
-
-- [ ] **A 3-point circle tool.** Now a trivial composition rather than a
-      feature: `circle()` plus three `oncircle`s is the whole of it, so the
-      tool is three clicks and no new model or solver work. Enabled by the
-      free-entities package, deliberately not built by it — that package was
-      about the command surface, and drag-centre-to-rim is still the right
-      *pointer* gesture for the ordinary case (it is Onshape's own).
 ## Smaller things
 
 - [x] `docs/plans/` specs that have shipped gain a one-line "shipped" note
@@ -170,6 +148,12 @@ starts.
 
 ## Done
 
+- [x] **A tool can say something to the user** — `ToolContext.log`, filled in
+      by the engine, routed to the log pane by `main.ts`. `fillet` no longer
+      throws its refusals at the page and `circle3` no longer whispers to the
+      console; headless, both keep their old behaviour (throw / warn), the
+      `pick` convention. Direct commit by the supervising session, same
+      test gate.
 - [x] **The 3-point circle tool** — spec:
       [`docs/plans/circle3-tool.md`](docs/plans/circle3-tool.md), now marked
       shipped-pending-review. `arm("circle3")` (or the bare word), three

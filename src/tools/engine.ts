@@ -117,6 +117,7 @@ export class ToolEngine {
   private onRenderOnly: () => void;
   private onPick: (pick: Pick) => void;
   private onUserAction: (phase: "before" | "after") => void;
+  private onLog?: (line: string) => void;
   /**
    * Whether a user action is currently open, so that `before` and `after`
    * always arrive in pairs. The engine owns the balancing rather than leaving
@@ -201,6 +202,8 @@ export class ToolEngine {
        * began, a gesture ended. Anything else wanting that fact gets it too.
        */
       onUserAction?: (phase: "before" | "after") => void;
+      /** One line to the user in the host's log pane — see ToolContext.log. */
+      onLog?: (line: string) => void;
     },
   ) {
     this.model = model;
@@ -211,6 +214,7 @@ export class ToolEngine {
     this.onRenderOnly = callbacks.onRenderOnly;
     this.onPick = callbacks.onPick ?? (() => {});
     this.onUserAction = callbacks.onUserAction ?? (() => {});
+    this.onLog = callbacks.onLog;
     canvas.addEventListener("pointerleave", () => {
       if (this.hover) { this.hover = null; this.onRenderOnly(); }
     });
@@ -320,6 +324,7 @@ export class ToolEngine {
         this.snap = null;
       },
       pick: ([sx, sy]) => hitTest(this.model, this.view, sx, sy),
+      log: this.onLog,
     };
     this.active = new Ctor(ctx);
   }

@@ -382,3 +382,37 @@ test("FilletTool: a refused corner keeps the first edge so the pick can be retri
   assert.equal(ctx.finished, true);
   assert.equal([...model.entities.values()].filter((e) => e.kind === "arc").length, 1);
 });
+
+test("FilletTool: a corner it cannot round is refused out loud, not thrown at the page", async () => {
+  await loadKernel();
+  const model = new Model(2);
+  rightCorner(model);
+  const ctx = pickingCtx(model) as ReturnType<typeof pickingCtx> & { log(l: string): void; lines: string[] };
+  ctx.lines = [];
+  ctx.log = (l: string) => ctx.lines.push(l);
+  ctx.options = { radius: 1000 }; // far too large for 20-unit legs
+  const tool = new FilletTool(ctx);
+
+  tool.onDown({ world: [0, 10], screen: screenAt([0, 10]) });
+  tool.onDown({ world: [10, 0], screen: screenAt([10, 0]) }); // must not throw
+  assert.equal(ctx.lines.length, 1, "the refusal reaches the log pane");
+  assert.match(ctx.lines[0], /^fillet: .*too large/);
+  assert.equal(ctx.finished, false, "the gesture stays live on the first edge");
+  assert.equal([...model.entities.values()].filter((e) => e.kind === "arc").length, 0);
+
+  // The obvious next move still works: re-arm with a sane radius by clicking on.
+  ctx.options = { radius: 4 };
+  tool.onDown({ world: [10, 0], screen: screenAt([10, 0]) });
+  assert.equal(ctx.finished, true, "the held first edge plus a workable second finishes");
+});
+
+test("FilletTool: headless, with no log channel, a refusal still throws", async () => {
+  await loadKernel();
+  const model = new Model(2);
+  rightCorner(model);
+  const ctx = pickingCtx(model); // no .log — the convention for a caller with no user
+  ctx.options = { radius: 1000 };
+  const tool = new FilletTool(ctx);
+  tool.onDown({ world: [0, 10], screen: screenAt([0, 10]) });
+  assert.throws(() => tool.onDown({ world: [10, 0], screen: screenAt([10, 0]) }), /too large/);
+});

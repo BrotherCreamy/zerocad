@@ -211,8 +211,11 @@ test("a collinear third click is refused rather than solved", async () => {
   const m = await app.model();
   assert.equal(m.size, 0, "nothing may be built for a circle that cannot exist");
   assert.equal(m.activeTool, "circle3", "and the tool stays armed, holding the two good clicks");
-  assert.ok(warnings.some((w) => w.includes("circle3")),
-    `the refusal has to say why: ${JSON.stringify(warnings)}`);
+  // The refusal reaches the app's own log pane — the tool-voice change moved
+  // it there from console.warn, where no user would ever have seen it.
+  assert.match(await app.log(), /circle3: .*lie on one line/,
+    "the refusal has to say why, in the pane the user reads");
+  assert.equal(warnings.length, 0, "and nothing needs the console any more");
 
   // The two good clicks survived, so aiming the third off the line finishes
   // the gesture that was already half done.

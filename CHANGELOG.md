@@ -7,6 +7,24 @@ decisions.
 
 ---
 
+## A tool can now say no out loud
+
+`ToolContext` gained a `log` channel, filled in by the engine and routed to
+the app's log pane. Before it a tool had two ways to refuse a gesture and
+both were wrong: `fillet` *threw*, which reaches the page as an uncaught
+error nobody sees explained, and `circle3` wrote a `console.warn` no user
+ever reads. Both now put one line in the pane, in the same style as an
+entry's error, and the gesture stays live exactly as before.
+
+Headless — a tool driven directly in a test, with no pane and no user — the
+old behaviours are kept deliberately: a real refusal still throws and an
+advisory still warns, which is what keeps unit tests honest and is the same
+convention `pick` set (a context provides what its environment has). Both
+directions are pinned by tests, and the collinear-refusal e2e now asserts
+the pane text instead of capturing console traffic.
+
+---
+
 ## The 3-point circle tool
 
 Onshape's *3 point circle*, with a mouse. Type `circle3`, click three times,
