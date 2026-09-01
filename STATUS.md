@@ -255,10 +255,13 @@ replacing) the system Node other projects on this machine may depend on.
   point, triangle for a midpoint, circle for somewhere along a curve), drawn
   after the tool's own preview so it can never be hidden by it: if the cursor
   is not where it looks, that has to be the most visible thing on screen.
-  Snapping only *moves* the cursor. It does not reuse the point it snapped to
-  — welding coincident geometry is a separate, destructive decision and
-  conflating the two would make snapping quietly lossy. `snapping(false)`
-  turns it off.
+  Snapping makes the click *exact*; it does not join anything. Drawing a
+  rectangle that starts on another's corner leaves two points at precisely the
+  same position which are still two separate points — drag one and the other
+  stays behind. Joining them is usually what was meant but not always, and a
+  wrong guess leaves a constraint nobody asked for and nothing can currently
+  delete, so it is a separate decision (see `TODO.md`) rather than something
+  snapping does quietly. `snapping(false)` turns snapping off.
 
 ## What's next
 

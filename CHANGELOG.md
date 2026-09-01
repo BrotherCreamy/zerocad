@@ -27,11 +27,17 @@ The marker is drawn *after* the tool's own preview, so it can't be hidden by
 it. If the cursor is not where it looks, that had better be the most visible
 thing on screen.
 
-**Snapping only moves the cursor.** It does not reuse the point it snapped to,
-so drawing a rectangle on the corner of another leaves two points in the same
-place rather than sharing one. Sharing is often what you want and sometimes
-badly not, and guessing is destructive — welding is on `TODO.md` as its own
-decision. `snapping(false)` turns the whole thing off.
+**Snapping makes the click exact; it does not join anything.** Draw one
+rectangle starting on another's corner and you get two points at precisely the
+same position — which are still two separate points. Drag one and the other
+stays behind. They look joined and aren't.
+
+Joining them ("welding") is usually what you meant, but not always, and a tool
+that does it automatically is guessing at intent. A wrong guess leaves a
+constraint you never asked for and currently have no way to delete; guessing
+the other way costs one command, `coin("p3", "p5")`. So it is on `TODO.md` as
+its own decision rather than folded into snapping. `snapping(false)` turns the
+whole thing off.
 
 The screenshot above caught a bug on its first render, which is becoming a
 theme: the hover tag kept following the cursor mid-drag, still naming whatever
