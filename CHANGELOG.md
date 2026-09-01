@@ -7,6 +7,63 @@ decisions.
 
 ---
 
+## Undo and redo
+
+Ctrl+Z, at last. **Ctrl+Z / Cmd+Z** undoes, **Ctrl+Shift+Z** and **Ctrl+Y**
+redo, and `undo()` / `redo()` are ordinary commands doing exactly the same
+thing through the same handle.
+
+| three actions | one Ctrl+Z | two Ctrl+Z |
+|---|---|---|
+| ![A filleted rectangle. The log below reads: rectangle armed, then fillet("l1","l2",12). The drawing is 290 by 135 screen pixels with a rounded top-right corner, and p3 sits at the bottom right where a mouse drag left it](docs/images/12-undo-three-actions.png) | ![The same drawing from the same viewpoint, taller and narrower — p3 is back where the rectangle tool put it. The rounded corner is still there. The log has gained one line: "undid — 2 back, 1 forward"](docs/images/13-undo-once.png) | ![The same rectangle again, now with a square top-right corner: the arc and its two tangent points are gone and the four corners p1–p4 are all that is left. The log reads "undid — 1 back, 2 forward"](docs/images/14-undo-twice.png) |
+
+Three things were done to that drawing: the **rectangle tool** was dragged out
+with the mouse, `fillet("l1","l2",12)` was typed, and then **`p3` was dragged**
+with the mouse. Three keystrokes walk back through them one at a time, in that
+order — and the third action is the one to look at hardest, because a drag
+journals nothing and logs nothing, so in the first frame it exists only as
+geometry. Undo puts it back all the same. The counter in the log ("*N* back,
+*M* forward") is the stack saying where in the history it now is.
+
+**Snapshots, not journal cleverness.** The journal invites a smarter design —
+undo a structural change by truncating the journal and replaying it — and it is
+the wrong one: value-only changes like a drag are never journalled, so that
+design needs value snapshots *as well*, and the hybrid is more machinery than
+either half of it. Instead the stack holds whole models in the format the repo
+already had: the text `save()` writes, which carries the journal *and* the
+solved coordinates, restores through the same path `open()` uses, and compares
+for equality as a string. One representation does both jobs, and `src/undo.ts`
+ends up being a stack and nothing else — it imports nothing at all.
+
+**One step is one thing the user did**, which is a question about the interface
+and is therefore answered in `main.ts`, by one comparison: snapshot before the
+action, snapshot after, record a step only if they differ. Nothing enumerates
+which commands are edits — `ls()` and `help()` stay out of the history because
+they leave the model identical, not because they are on a list. A command entry
+is one step (so an entry that draws four points is one Ctrl+Z), a tool
+commit is one step, a completed drag is one step, and opening a file is one
+step, so opening the wrong one is one Ctrl+Z from harmless.
+
+**The engine still does not know undo exists.** It gained a single callback,
+`onUserAction("before" | "after")`, fired around a press or release handed to an
+armed tool and around a drag from its first moving frame to its settling solve.
+That is a neutral fact about a gesture rather than anything to do with history;
+the engine sits below undo in the layering, and this is what it is entitled to
+say. Cancelling a drag with Escape closes the action like a release does,
+because a cancelled drag *is* a settled drag and leaves the same geometry
+behind.
+
+**The one carve-out: while the command line holds uncommitted text, Ctrl+Z is
+the browser's** and edits the text. A half-typed command on screen makes the
+keystroke genuinely ambiguous, and undoing the drawing out from under someone
+mid-sentence is the worse of the two wrong answers; an empty input is the
+signal that the keystroke is meant for the model.
+
+**Deliberately not saved.** History is per-session: it lives in memory, and a
+reopened file starts with an empty stack. Restoring is a full replay of a saved
+model, so undo through a large drawing costs what opening it costs — fine at
+this size, and the thing to measure first if it ever is not.
+
 ## Dragging geometry
 
 The interaction the solver was built for: with nothing armed, press on a point

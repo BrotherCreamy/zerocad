@@ -1,7 +1,8 @@
 # Plan: undo/redo
 
-**Status: queued.** Starts after the kinematic-drag PR (#1) merges — it hooks
-the drag lifecycle that PR introduces.
+**Status: shipped, pending review** (branch `claude/undo-redo`, PR against
+`claude/resume-tasks-o7q02e`). Built as specced; the deviations are listed at
+the bottom under "As built".
 
 Ctrl+Z is not optional in a CAD tool, and nothing here has it. The design
 below is deliberately the boring one.
@@ -75,3 +76,30 @@ PR workflow: isolated worktree, branch `claude/undo-redo` from the tip of
 `claude/resume-tasks-o7q02e` *after* PR #1 has merged, PR against the working
 branch. Two commits: (1) `src/undo.ts` + policy wiring + unit tests;
 (2) keybindings + e2e + docs.
+
+## As built
+
+Everything above, plus four things the spec did not decide:
+
+- **The engine owns the pairing of `before`/`after`, not the host.** The spec
+  named two fire sites (tool dispatch, drag start/settled release); there is a
+  third, and it is the reason the balancing had to move into the engine — a
+  drag can also end by being *abandoned*, when the model is swapped out from
+  under it. A `cancel()` (Escape) closes the action too, because a cancelled
+  drag is a settled drag and leaves the same geometry behind. An unpaired
+  `before` would strand the host's bracket silently, so the engine closes in a
+  `finally` and `test/engine.test.ts` checks all three exits.
+- **The snapshot is the text of `save(model, false)`, not a `SavedModel`
+  object.** One representation then serves both jobs the design needs — the
+  before/after comparison is string equality, and the restore is the same
+  `open()` path — and a stored snapshot shares no structure with the live
+  model.
+- **The host's bracket counts depth**, so only the outermost records a step.
+  `open()` typed at the command line is a user action nested inside a command
+  entry, and without this it would record two.
+- **A fixed TypeError, in code this touches:** a drag whose model was swapped
+  out from under it wrote to a cleared `idle` on the next pointer move.
+
+Deliberate limitations, documented in `STATUS.md` and the CHANGELOG: the
+history is per-session and not saved; restoring is a full replay, so undo costs
+what opening the file costs; the view is not undoable.

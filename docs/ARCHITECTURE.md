@@ -37,7 +37,9 @@ this document are consequences of it.
 ```
 
 `view.ts` sits off to the side: the 2D screen↔world transform, used by the
-tool engine and the renderer, depending on nothing.
+tool engine and the renderer, depending on nothing. `undo.ts` sits beside it
+for the same reason — a stack of snapshots, generic over what a snapshot is,
+importing nothing at all.
 
 ## The kernel knows nothing about geometry
 
@@ -187,6 +189,34 @@ Opening only performs calls from a fixed table, so a file is data rather than
 a script. That table is a `Map` — a plain object answers a lookup for
 `"constructor"` from `Object.prototype`, which let a hostile file straight past
 the guard.
+
+## Undo is the save format, on a stack
+
+Because a saved file is a journal *plus* the solved values, it is also a
+complete description of a state to come back to — so undo is a stack of them,
+and restoring one is the same code path as `open()`.
+
+The clever alternative is worth naming so it is not rediscovered: undo a
+structural change by truncating the journal and replaying. It cannot work on
+its own, because the changes that are not journalled are exactly the ones a
+user makes most often. A drag changes values and records nothing (deliberately
+— see above), so a truncating undo would need value snapshots as well, and two
+half-mechanisms cost more than one whole one.
+
+**What counts as one undo step is a question about the interface**, so it is
+answered in `main.ts` and nowhere lower. The answer is one comparison —
+snapshot before the action, snapshot after, record a step only if they differ —
+which means nothing has to enumerate which commands are edits. `ls()` stays out
+of the history because it leaves the model identical.
+
+This is also why the tool engine gained `onUserAction("before" | "after")`
+rather than anything named after undo. The engine is below undo in the layering
+and must not know it exists; what it reports is the neutral fact only it can
+see, that a gesture began and a gesture ended. The engine does own the
+*pairing*, because it alone knows every way a gesture can end — released,
+cancelled, or abandoned when the model is swapped out mid-drag — and a `before`
+without its `after` would strand the host's bracket with no visible symptom
+until the next action went unrecorded.
 
 ## Why there is an end-to-end suite
 

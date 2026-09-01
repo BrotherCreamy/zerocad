@@ -80,10 +80,6 @@ are flagged as such.
 Queue for Opus, in order. Each gets a spec in `docs/plans/` before work
 starts.
 
-- [ ] **Undo/redo.** Ctrl+Z is not optional in a CAD tool and nothing has it
-      yet. The journal changes the design space (an add can be undone by
-      truncate-and-replay; a drag by restoring values) — needs a short
-      design pass before speccing.
 - [ ] **Constraint visibility and deletion.** Onshape shows constraint
       glyphs and lets you delete one you didn't want; inference makes this
       matter more, since tools now create constraints on the user's behalf.
@@ -103,6 +99,33 @@ starts.
 
 ## Done
 
+- [x] **Undo/redo** — Ctrl+Z / Cmd+Z undoes, Ctrl+Shift+Z and Ctrl+Y redo,
+      `undo()`/`redo()` do the same through the same host handles. A stack of
+      whole-model snapshots (`src/undo.ts`, cap 100, pushing clears redo),
+      where a snapshot is the text `save()` writes — it already carries the
+      journal *and* the values, already restores through `open()`, and compares
+      as a string. Journal-truncation undo was considered and rejected: a drag
+      is not journalled, so it would need value snapshots as well.
+      One step is one *user action*, decided in `main.ts` by comparing the
+      snapshot before and after — nothing lists which commands are edits, so
+      `ls()` and `help()` stay out of the history by arithmetic rather than by
+      enumeration. The engine gained one neutral callback,
+      `onUserAction("before"|"after")`, and still has no idea undo exists.
+      *Discovered while doing it:* the pairing of that callback has to be the
+      engine's job, not the host's, because only the engine knows every way a
+      gesture can end — released, cancelled with Escape, or abandoned because
+      the model was swapped out mid-drag. An unpaired `before` strands the
+      host's bracket with no symptom until the *next* action silently goes
+      unrecorded, which is the kind of bug that is found weeks later. Also
+      found while in there: a drag whose model is swapped out from under it
+      wrote to a cleared `idle` on the next pointer move — a live TypeError,
+      now fixed.
+      *Left for later, deliberately:* history is per-session and is **not**
+      saved, so a reopened file starts with an empty stack; restoring replays
+      the whole model, so undo costs what opening the file costs (fine at
+      present sizes — measure before optimising); a view change is not undoable,
+      the view not being part of the model; and while the command input holds
+      uncommitted text Ctrl+Z belongs to the browser's text undo, not the model.
 - [x] **Dragging geometry** — with nothing armed, press a point and pull; the
       model follows the cursor while every constraint holds. `Problem.solve()`
       takes `extra?: ResidualBlock[]`, temporary residuals evaluated for one
