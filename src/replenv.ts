@@ -18,6 +18,7 @@ import * as basic from "./relations/basic.ts";
 import * as geom from "./relations/geometry.ts";
 import { fillet } from "./operations.ts";
 import { save as saveModel } from "./persist.ts";
+import { clampScale } from "./view.ts";
 
 type Bag = Record<string, unknown>;
 
@@ -176,7 +177,7 @@ export function neocadScope(h: EnvHandles): Bag {
     view: h.view,
     zoom: (factor: number) => {
       if (!h.view) throw new Error("no viewport in this environment");
-      h.view.scale *= factor;
+      h.view.scale = clampScale(h.view.scale * factor);
       h.refresh?.();
       return h.view.scale;
     },

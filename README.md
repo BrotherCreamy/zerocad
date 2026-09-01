@@ -84,6 +84,7 @@ src/operations.ts        operations, which change structure rather than add equa
 src/persist.ts           save/open — a file is the model's journal, replayed
 src/repl.ts              the scoped evaluator: curated scope, no reach into page globals
 src/replenv.ts           what that scope contains — the app's whole command surface
+src/view.ts              the 2D view transform, as pure testable functions
 src/tools/tool.ts         abstract class Tool + defineTool registry
 src/tools/engine.ts       wires real DOM pointer events to the armed tool
 src/tools/point.ts        the trivial example tool
@@ -112,6 +113,12 @@ solve()
 zoom(1.5); pan(0, -20)             // the viewport is just more commands
 ls()                               // what's in the model
 ```
+
+The viewport works the way Onshape's does: the wheel zooms about the
+cursor, right- or middle-drag pans. Navigation is deliberately on
+different buttons from tool use, so the left button always belongs to
+whichever tool is armed — you can start a rectangle, pan to see where it
+is going, and finish it without the tool noticing.
 
 Drawing tools are `point`, `rectangle`, `circle` and `arc` — type the name
 to arm one. `fillet` rounds the corner where two lines meet:

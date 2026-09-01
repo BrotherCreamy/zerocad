@@ -201,6 +201,22 @@ replacing) the system Node other projects on this machine may depend on.
   Round-tripping is a fixed point: open then save reproduces the file byte
   for byte.
 
+- **Mouse navigation** (`src/view.ts` + the tool engine): the wheel zooms
+  about the cursor, right- or middle-drag pans. Onshape's split, and the
+  reason for it is that navigation and tool use stay on separate buttons —
+  the left button belongs to whichever tool is armed and nothing else, so a
+  drawing can be re-framed *during* a gesture. Start a rectangle, pan, finish
+  it, and the tool never sees the pan.
+  That last part turned on a detail of the pointer spec: pressing a second
+  button while one is already down does not fire another `pointerdown`, it
+  arrives as a `pointermove` with the `buttons` mask updated. Panning
+  therefore watches the mask (what is held) rather than `button` (what just
+  changed).
+  The transform itself moved to `src/view.ts` as pure functions so it can be
+  tested without a canvas — zoom-about-a-point is solved directly rather than
+  nudged, so the anchor does not drift as zooms accumulate, and the scale is
+  clamped at both ends.
+
 ## Not started yet
 
 - **Deleting entities.** There is no `remove` yet, and it is not trivial:

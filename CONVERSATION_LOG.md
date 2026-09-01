@@ -432,11 +432,46 @@ All three were invisible to unit tests and obvious within seconds of
 running the thing. Worth keeping the browser pass in the loop for anything
 that touches the app rather than the mathematics.
 
+## Mouse navigation
+
+Until now the viewport could only be driven by `zoom()` and `pan()` at the
+command line, which is a strange way to have to look around a drawing.
+`STATUS.md` named "Onshape-style pan controls" specifically, so the design
+was already settled: wheel zooms about the cursor, right- or middle-drag
+pans.
+
+The part worth writing down is *why* navigation is on separate buttons.
+The left button belongs to whichever tool is armed and nothing else, which
+means the drawing can be re-framed in the middle of a gesture — start a
+rectangle, pan to see where it is heading, finish it, and the tool never
+sees the pan at all.
+
+Making that actually work turned on a detail of the pointer spec. Pressing
+a second button while one is already held does **not** fire another
+`pointerdown`; it arrives as a `pointermove` with the `buttons` mask
+updated. The first implementation keyed off `button` (what just changed)
+and so panning mid-gesture silently did nothing — the browser pass caught
+it, which is the fourth time now that only running the thing surfaced the
+problem. Panning watches the mask instead, and releases the same way,
+because the release of the second button is likewise reported as a move
+rather than an up.
+
+The transform moved out to `src/view.ts` as pure functions over
+`{ox, oy, scale}`, mostly so the arithmetic could be tested without a
+canvas. Zoom-about-a-point is solved directly — read the world point under
+the cursor, then place the origin so it lands back on the same pixel —
+rather than nudged, so the anchor does not drift as zooms accumulate. A
+test zooms in twenty notches and back out twenty and checks the view is
+where it started.
+
 ## What to know before continuing
 
 The `STATUS.md` "not started yet" list is now: **deleting entities**, **a
 picking/selection model**, **saving user-authored tools and relations**,
-and the rest of the cellwork interaction ideas.
+and the remaining cellwork interaction ideas (hover snaps, `sel`/`desel`,
+box-select, nested `(...)` sub-commands, the icon toolbox) — most of which
+want the picking model first, and several of which are UX decisions with
+prior art in cellwork worth consulting rather than guessing at.
 
 Saving user-authored definitions is the interesting one to think about
 before building. A file currently records calls into the built-in
