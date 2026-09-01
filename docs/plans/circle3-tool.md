@@ -1,6 +1,13 @@
 # Plan: the 3-point circle tool
 
-**Status: in flight** (2026-09-01).
+**Status: shipped, pending review** (2026-09-01). Built as specified in one
+commit on `claude/circle3-tool`, with one deliberate deviation: the circle's
+centre is seeded at the **circumcentre** rather than at the three clicks'
+centroid. The closed form was already in the file for the preview and the
+collinearity test, so seeding at the exact answer serves the reason the spec
+gave for the centroid — "the solver deserves to start near the answer" —
+better than an approximation of it, and costs nothing. What else was decided
+and discovered is in `TODO.md`'s Done entry; the behaviour is in `STATUS.md`.
 
 The composition the free-entities package promised: Onshape's *3 point
 circle* as a pointer tool. Three clicks on three positions; a circle through

@@ -127,12 +127,14 @@ starts.
       the command line, `del("p1", "p2", …)` is the obvious next thing to want;
       it was deliberately left out of the deletion package pending box select,
       and box select has now arrived.
-- [ ] **A 3-point circle tool.** Now a trivial composition rather than a
-      feature: `circle()` plus three `oncircle`s is the whole of it, so the
-      tool is three clicks and no new model or solver work. Enabled by the
-      free-entities package, deliberately not built by it — that package was
-      about the command surface, and drag-centre-to-rim is still the right
-      *pointer* gesture for the ordinary case (it is Onshape's own).
+- [ ] **A tool needs a way to say something to the user.** Today it has two,
+      and both are wrong: `fillet` *throws* to report a corner it cannot round
+      (which reaches the page as an uncaught error), and `circle3` writes a
+      `console.warn` the user will never see. What is wanted is one line in
+      the app's log pane, which means a `log` on `ToolContext` filled in by
+      `ToolEngine.arm` and routed to `main.ts`'s `log()` — small, but an
+      `engine.ts` change, so it was left out of the circle3 package while edge
+      dragging was in flight there.
 - [ ] **Dragging an edge.** A left-drag that starts on an edge or a rim still
       pans, which is the one leftover from the old mouse map. Onshape drags
       the edge. Not in this package's spec, and the gesture has to stay
@@ -155,6 +157,43 @@ starts.
       `test/e2e/livesolve.e2e.ts`, which counts solves in the page.
 
 ## Done
+
+- [x] **The 3-point circle tool** — spec:
+      [`docs/plans/circle3-tool.md`](docs/plans/circle3-tool.md), now marked
+      shipped-pending-review. `arm("circle3")` (or the bare word), three
+      clicks, and what is committed is one free `circle()`, three `oncircle`s
+      and a solve. Every click goes through `placePoint`, so all three carry
+      snapping and inference — a 3-point circle through two existing corners
+      is three clicks and no special case. Nothing is created until the third
+      click, so the engine's existing bracket makes the whole gesture one undo
+      step; a dashed circumcircle previews after the second. Footprint was the
+      new file, one import line in `main.ts`, tests and docs — `engine.ts`,
+      `replenv.ts`, `operations.ts` and `persist.ts` were all untouched.
+      *Decided while doing it:* **the centre is seeded at the circumcentre,
+      not the spec's centroid.** The spec asked for the centroid so the solver
+      would not start somewhere wild; the closed form was already in the file
+      for the preview and the collinearity test, so seeding at the exact
+      answer serves that reason better than an approximation of it and costs
+      nothing. The circle is still free — a constructor argument here only
+      ever seeded a variable.
+      *And:* **the collinearity epsilon is a relative sine, not an area.** An
+      area threshold would call a large drawing bent and a small copy of it
+      straight; dividing through by the two side lengths makes the test an
+      angle, scale-free at any zoom and in any unit. Same form and same number
+      as `intersect.ts`'s parallel test, and there is a unit test at three
+      scales that fails on the area form.
+      *Left in place deliberately:* the refusal is a `console.warn`, not a
+      line in the app's log pane. A `Tool` has no channel to that pane — it
+      would take a new `ToolContext` field, which means editing `engine.ts`,
+      which the spec ruled out because the edge-drag package is in flight
+      there. Worth a follow-up: **tools have no way to say anything to the
+      user**, and `fillet` currently *throws* to report a corner it cannot
+      round, which reaches the page as an uncaught error.
+      *And:* the preview is not drawn when the circumradius exceeds 1e6 screen
+      pixels. What would be drawn there is a straight line (the sag is well
+      under a pixel across the window), and asking a canvas for an arc of
+      radius 1e8 is a good way to hang a tab. The *commit* is unaffected — a
+      near-collinear circle is the user's to make.
 
 - [x] **Entities defined by constraints, not constructors** — spec:
       [`docs/plans/free-entities.md`](docs/plans/free-entities.md), now marked
@@ -196,7 +235,9 @@ starts.
       dragging flips branches. Onshape's behaviour, written into `CHANGELOG.md`
       as a property rather than left to be read as nondeterminism. And the
       pointer tools are untouched — a 3-point-circle *tool* is now trivial and
-      is listed under "Next up" as enabled, not built.
+      is listed under "Next up" as enabled, not built. **↳ Built, one package
+      later**, exactly as trivially as promised: `src/tools/circle3.ts` plus
+      one import line, and nothing else.
 
 - [x] **Box select, and live solve for typed edits** — spec:
       [`docs/plans/box-select.md`](docs/plans/box-select.md), now marked
