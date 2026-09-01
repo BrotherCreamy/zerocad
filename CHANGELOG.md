@@ -7,6 +7,63 @@ decisions.
 
 ---
 
+## Drag an edge, a rim, an arc — not just a point
+
+With nothing armed, a left-drag that starts on any geometry now drags it. That
+was the last leftover from the old mouse map: a point dragged, and everything
+else panned, because when the drag was built nothing better existed yet.
+Onshape drags the edge, and now so does this.
+
+**Dragging an entity is dragging every point it is made of by the same
+offset** — expressed as a *target*, not as a move. Each governing point gets
+one soft pull toward its grab-time position plus however far the cursor has
+travelled, and the solver does the rest. Nothing new was needed:
+`Problem.solve({extra})` and the 0.12 weight are the point drag's, and the
+whole change is one exported function saying which points govern which entity
+(a line: its two endpoints; a circle: its centre; an arc: centre, start, end).
+
+| the constrained rectangle, before | the top edge dragged 90px up, mid-gesture | released, and exact |
+|---|---|---|
+| ![A rectangle 90 by 40 with constraint marks: an em dash on the top edge, a vertical bar on each upright, an em dash and a double-headed arrow at the bottom, and a # under the bottom-left corner p1. The log shows rels() listing r1 hor l1, r2 ver l2, r3 hor l3, r4 ver l4, r5 dist p1 p2 90, r6 fix p1](docs/images/29-edge-drag-before.png) | ![The same rectangle mid-drag with the mouse button still down: it is now roughly 90 by 70, the top edge having travelled up while the fixed bottom-left corner stayed on its mark. The uprights are still plumb and the top edge still level; the log is unchanged](docs/images/30-edge-drag-during.png) | ![The same taller rectangle after release. The log has gained solve() returning solved:true, maxResidual 2.386e-11, offenders empty — the drag left the model exactly satisfied, not approximately](docs/images/31-edge-drag-after.png) |
+
+The middle frame is the interesting one: the cursor went up *and* 40px to the
+right, and the rectangle only went up. `ver` on the uprights and `fix` on the
+corner had their say, the sideways half of the pull lost, and the shape stayed
+a rectangle throughout. That is the same trade the point drag has always made
+— it is just that a whole edge is now making it.
+
+**A rim drags the circle, it does not resize it.** Dragging a circle moves it
+in Onshape too, and resizing is what `rad` and the centre-out `circle` tool are
+for. The evidence is two `ls()` calls in one frame:
+
+![A circle up and to the right of the rectangle, its centre p5 marked. The log shows two ls() calls: the first has p5 at (0.000, 70.000) and c1 with r=22.000, the second — after the circle was dragged by its rim — has p5 at (40.000, 56.667) and c1 still r=22.000](docs/images/32-rim-drag.png)
+
+120px right and 40px down at scale 3 is 40 and 13.33 world units, which is
+exactly where the centre went. The radius is the same to three decimals because
+nothing pulled on it: an arc behaves the same way, its three points travelling
+together and its radius following from `arcends` rather than being dragged.
+
+Smaller things that came with it:
+
+- **Single points use the offset form too**, so there is one code path rather
+  than two. The side benefit is that a point grabbed a few pixels off-centre no
+  longer jumps to the cursor as the drag starts.
+- **Settling, cancel and undo are untouched.** A drag is one action whether it
+  is released or escaped, and Escape still settles rather than dropping — the
+  same reasoning as before.
+- **The only left-drag that still pans** is a press that landed on a constraint
+  glyph. A glyph is UI: it grabs nothing, having no position of its own, and it
+  is not empty canvas either, so it must not draw a box.
+- **No rigid rotation**, deliberately. Translation plus the solver is what
+  Onshape's drag does; a rotation would need a second degree of freedom the
+  gesture does not carry.
+
+Two e2e assertions asserted the retired behaviour and now assert its reversal,
+in the files that made the claim — `drag.e2e.ts` and `boxselect.e2e.ts`. The
+new stories live in `test/e2e/edgedrag.e2e.ts`.
+
+---
+
 ## `del` takes the whole box-select's worth
 
 `del("p1", "l5", …)` — several names, one call, one undo step. Box select

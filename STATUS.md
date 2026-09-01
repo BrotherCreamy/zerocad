@@ -230,8 +230,9 @@ replacing) the system Node other projects on this machine may depend on.
   because every relation here already takes entity names as strings: click two
   points after typing `dist(` and you have `dist("p1", "p2"` ready to finish.
   Hovering highlights the entity and shows a tag naming it. With no tool armed,
-  a left-drag pans and a left-click picks; with one armed, the left button is
-  the tool's, as before.
+  a left-click picks and a left-drag depends on what it grabbed — geometry
+  drags, empty canvas box-selects (see the box-select and edge-drag entries
+  below); with one armed, the left button is the tool's, as before.
 
 - **The fillet tool** (`src/tools/fillet.ts`) — click two edges that meet and
   the corner between them is rounded. The first tool built on picking, and the
@@ -390,10 +391,11 @@ replacing) the system Node other projects on this machine may depend on.
   neighbouring cases, driving the engine with synthetic pointer events against
   a stand-in canvas: a press that never moved, a pan, and an ordinary release.
   Deliberately not in v1, each a known difference from Onshape: **only points
-  drag** (an edge or a rim still pans, as it did) and **no inference or snapping
-  while dragging** (Onshape infers mid-drag). A settled drag is now one undo
-  step, so the note that used to stand here — that a drag is undone by dragging
-  back — no longer applies.
+  drag** and **no inference or snapping while dragging** (Onshape infers
+  mid-drag). A settled drag is now one undo step, so the note that used to
+  stand here — that a drag is undone by dragging back — no longer applies.
+  The first of those two is no longer true either: the edge-drag entry below
+  generalised it to any geometry. The second still is.
 
 - **Undo/redo** (`src/undo.ts`, policy in `src/main.ts`) — Ctrl+Z / Cmd+Z
   undoes, Ctrl+Shift+Z and Ctrl+Y redo, and `undo()` / `redo()` are ordinary
@@ -589,8 +591,9 @@ replacing) the system Node other projects on this machine may depend on.
   **A box is a multi-click**: each name goes through the same `onPick` path a
   single click's does, so "there is no selection set" survives the feature
   rather than being replaced by it. An empty box inserts nothing, Escape
-  cancels, and a press that grabbed anything at all is not a box — a point
-  drags, an edge or a glyph pans. **Relations are not selectable and no code
+  cancels, and a press that grabbed anything at all is not a box — geometry
+  drags (a point since the kinematic-drag package, an edge or a rim since the
+  edge-drag one), a glyph pans. **Relations are not selectable and no code
   says so**: they live in a registry beside the entity map, so a box never sees
   them.
   *Reverses a register entry* (left-drag on empty canvas used to pan, which was
@@ -653,13 +656,43 @@ replacing) the system Node other projects on this machine may depend on.
   gesture and is Onshape's own; a 3-point-circle *tool* is now a trivial
   composition and is listed on `TODO.md` as enabled, not built.
 
+- **Dragging an edge, a rim or an arc** (`src/tools/engine.ts`). With nothing
+  armed, a left-drag that starts on *any* geometry drags it — the last leftover
+  from the old mouse map, in which everything but a point panned. **Dragging an
+  entity is dragging every point it is made of by the same offset**, and the
+  offset is a *target* rather than a move: one soft pull per governing point,
+  each toward that point's grab-time position plus however far the cursor has
+  travelled. The machinery is exactly the point drag's — `Problem.solve({extra})`
+  at weight 0.12 — so the constraints still win: an edge of a constrained
+  rectangle carries the rectangle, an edge held by a `fix` strains toward the
+  cursor and settles back legally.
+  Which points govern which entity is one small exported function
+  (`dragGoverns`): a line is its two endpoints, **a circle is its centre alone**
+  — dragging a rim moves the circle and does not resize it, which is Onshape's
+  behaviour and the only reading under which the gesture is a translation — and
+  an arc is centre, start and end, its radius following from `arcends` rather
+  than being dragged.
+  The offset form replaced "pull the point to the cursor" for single points
+  too, so there is one code path and not two, with the side benefit that a point
+  grabbed a few pixels off-centre no longer jumps to the cursor as the drag
+  starts. Settling, cancel and the undo bracket are untouched: a drag is one
+  action whether it is released or escaped.
+  **The only left-drag that still pans is one that started on a constraint
+  glyph.** A glyph is UI: it grabs nothing, because it has no position of its
+  own to move, and it is not empty canvas either, so it must not box. Leaving
+  the pan there was preferred to making the press inert — the gesture does
+  something rather than nothing, and it is the same press that has never
+  dragged or boxed.
+  *Known and deliberate:* **no rigid rotation** (translation only; the solver
+  resolves the rest, which is what Onshape's drag does too), and still no
+  inference or snapping mid-drag.
+
 ## What's next
 
 The working list lives in [`TODO.md`](TODO.md), so it has one home rather
 than drifting between two. In short: saving user-authored tools, `del` of
 several names at once, a 3-point circle tool (now a trivial composition),
-edge dragging, and the remaining interaction ideas to carry over from
-`cellwork`.
+and the remaining interaction ideas to carry over from `cellwork`.
 
 ## Incident note (disk space)
 

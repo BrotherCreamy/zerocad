@@ -10,13 +10,19 @@
 // split is what lets you re-frame the drawing in the middle of a gesture
 // without the tool ever seeing it — start a rectangle, pan, finish it.
 //
-// With nothing armed the left button has four meanings, decided by what the
-// press landed on and whether it moved: a point drags, empty canvas draws a
-// selection box (see ../boxselect.ts), any other geometry pans, and a press
-// that never moved picks. Empty canvas used to pan, which was cellwork's
-// habit; both ancestor CADs make that gesture box select and the standing rule
-// is that tools work like Onshape, so it does here too. Panning did not lose
-// anything by it — it keeps the middle and right buttons and `pan()`.
+// With nothing armed the left button has three meanings, decided by what the
+// press landed on and whether it moved: **any geometry drags** — a point, an
+// edge, a rim — empty canvas draws a selection box (see ../boxselect.ts), and
+// a press that never moved picks. Both of the first two used to pan, which was
+// cellwork's habit; both ancestor CADs box-select on empty canvas and drag the
+// geometry everywhere else, and the standing rule is that tools work like
+// Onshape, so they do here too. Panning did not lose anything by either change
+// — it keeps the middle and right buttons and `pan()`.
+//
+// The one press that still pans on the left button is one that landed on a
+// constraint glyph, which is UI rather than geometry: it grabs nothing, so
+// there is nothing for it to drag, and it is not empty canvas either, so it
+// must not box.
 
 import type { Model } from "../model.ts";
 import type { ResidualBlock } from "../kernel/problem.ts";
@@ -73,6 +79,34 @@ export function pullTo(model: Model, name: string, world: number[], weight = DRA
   }];
 }
 
+/**
+ * The points a drag on `pick` moves — its *governing* points, the ones whose
+ * coordinates are the only thing the entity is made of.
+ *
+ * A line is its two endpoints, so dragging an edge is dragging both of them by
+ * the same offset: the edge translates as a *target*, and what actually
+ * happens to it is whatever the constraints allow. A circle is its centre
+ * alone — dragging a rim moves the circle, it does not resize it, which is
+ * both Onshape's behaviour and the only reading under which the gesture is a
+ * translation. (Resizing is what `rad` and the centre-out `circle` tool are
+ * for.) An arc is centre, start and end, because those three are what an arc
+ * has; its radius follows from the endpoints via `arcends` rather than being
+ * dragged directly.
+ *
+ * A glyph pick governs nothing: a constraint is not geometry and has no
+ * position of its own to move.
+ *
+ * Returned without duplicates, since a repeated name would be a second pull on
+ * the same point and would quietly weigh that point twice.
+ */
+export function dragGoverns(model: Model, pick: Pick): string[] {
+  if (pick.kind === "relation") return [];
+  const e = model.entities.get(pick.name);
+  if (!e) return [];
+  const names = e.kind === "point" ? [e.name] : model.refsOf(e);
+  return [...new Set(names)];
+}
+
 export class ToolEngine {
   model: Model;
   view: View;
@@ -95,18 +129,26 @@ export class ToolEngine {
   private panning: { id: number; sx: number; sy: number } | null = null;
   /**
    * A left press with no tool armed. What it becomes depends on what it landed
-   * on and whether it moves: a press on a point that moves drags that point, a
-   * press on *empty canvas* that moves drags a selection box, a press on any
-   * other geometry that moves pans, and a press that does not move picks.
+   * on and whether it moves: a press on *geometry* that moves drags it, a press
+   * on *empty canvas* that moves drags a selection box, a press on a constraint
+   * glyph that moves pans, and a press that does not move picks.
    *
-   * `point` is the name of the point under the press, if there was one, and
-   * `empty` records that the press landed on nothing at all. Both are captured
-   * at press time rather than re-hit-tested each move, because the geometry is
-   * moving under the cursor from then on and the answer would change.
+   * `drag` is the plan for the first of those — which points the grabbed
+   * entity is made of and where each of them was when it was grabbed, plus the
+   * world position of the press itself. `empty` records that the press landed
+   * on nothing at all.
+   *
+   * All of it is captured at press time rather than re-hit-tested each move,
+   * because the geometry is moving under the cursor from then on: re-asking
+   * what is beneath the cursor would hand the drag to whatever the drawing
+   * swept past, and re-reading the grabbed points' positions would make the
+   * offset relative to where they have already been pulled, which compounds
+   * into a runaway.
    */
   private idle: {
-    id: number; sx: number; sy: number; x0: number; y0: number;
-    moved: boolean; point: string | null; empty: boolean;
+    id: number; sx: number; sy: number; x0: number; y0: number; moved: boolean;
+    drag: { names: string[]; origins: number[][]; grab: number[] } | null;
+    empty: boolean;
   } | null = null;
   /**
    * The selection box being dragged, in canvas pixels: `a` is where the press
@@ -309,8 +351,8 @@ export class ToolEngine {
   cancel(): void {
     this.active?.onCancel();
     this.active = null;
-    const wasDragging = this.idle?.moved === true
-      && this.idle.point !== null && this.model.entities.has(this.idle.point);
+    const wasDragging = this.idle?.moved === true && this.idle.drag !== null
+      && this.idle.drag.names.every((n) => this.model.entities.has(n));
     this.idle = null;
     this.box = null;
     this.snap = null;
@@ -401,17 +443,21 @@ export class ToolEngine {
     }
     this.snap = null;
 
-    // Nothing armed: the left button drags a point if it grabbed one, drags a
-    // selection box if it grabbed nothing, pans if it grabbed some other piece
-    // of geometry, and picks if it never moved at all.
+    // Nothing armed: the left button drags whatever geometry it grabbed, drags
+    // a selection box if it grabbed nothing, pans if it grabbed a glyph, and
+    // picks if it never moved at all.
     if (kind === "down" && e.button === 0) {
-      // Only points are draggable. A press that landed on a glyph grabs
-      // nothing *and* is not empty canvas, which is the same statement as the
-      // glyph being the top pick tier: it must not be possible to aim at a
-      // mark and start either dragging the geometry behind it or a box over it.
+      // A press that landed on a glyph grabs nothing *and* is not empty
+      // canvas, which is the same statement as the glyph being the top pick
+      // tier: it must not be possible to aim at a mark and start either
+      // dragging the geometry behind it or a box over it.
       const under = this.pickAt(sx, sy);
-      const point = under?.kind === "point" ? under.name : null;
-      this.idle = { id: e.pointerId, sx, sy, x0: sx, y0: sy, moved: false, point, empty: under === null };
+      const grab = this.screenToWorld(sx, sy);
+      const names = under ? dragGoverns(this.model, under) : [];
+      const drag = names.length
+        ? { names, origins: names.map((n) => this.model.coords(n).slice(0, grab.length)), grab }
+        : null;
+      this.idle = { id: e.pointerId, sx, sy, x0: sx, y0: sy, moved: false, drag, empty: under === null };
       this.canvas.setPointerCapture?.(e.pointerId);
       return;
     }
@@ -428,7 +474,7 @@ export class ToolEngine {
         // drag started from, not the one it is already a pixel into. Neither a
         // pan nor a selection box opens one: the view is not the model, and
         // selecting is not editing.
-        if (this.idle.point) { this.beginUserAction(); this.dragTo(this.idle.point, sx, sy); }
+        if (this.idle.drag) { this.beginUserAction(); this.dragTo(sx, sy); }
         else if (this.idle.empty) this.box = { ax: this.idle.x0, ay: this.idle.y0, bx: sx, by: sy };
         else assignView(this.view, panBy(this.view, sx - this.idle.sx, sy - this.idle.sy));
         this.onRenderOnly();
@@ -442,7 +488,7 @@ export class ToolEngine {
       }
     } else {
       this.canvas.releasePointerCapture?.(e.pointerId);
-      const { moved, point } = this.idle;
+      const { moved, drag } = this.idle;
       const box = this.box;
       this.idle = null;
       this.box = null;
@@ -460,7 +506,7 @@ export class ToolEngine {
           this.onPick({ name, kind: entity.kind, distance: 0 });
         }
         this.onRenderOnly(); // the box is gone; the canvas has to stop drawing it
-      } else if (point) {
+      } else if (drag) {
         // One ordinary solve, through the host's solve path, so the status
         // line reports the settled model rather than a frame of a gesture.
         this.onSolveRender();
@@ -474,10 +520,26 @@ export class ToolEngine {
 
   /**
    * One frame of a kinematic drag: solve the model as it stands with a
-   * temporary pull on `name` toward the cursor, and leave the result in place.
+   * temporary pull on each grabbed point toward where the cursor has carried
+   * it, and leave the result in place.
    *
-   * The pull is `extra`, not a stored residual, so it exists for this solve
-   * and no other — the model never contains "this point wants to be at the
+   * **The gesture is a translation, expressed as a target rather than as a
+   * move.** Every grabbed point is pulled toward its own grab-time position
+   * plus the offset the cursor has travelled since the press, so the whole
+   * entity *wants* to arrive rigidly displaced — and what actually happens to
+   * it is whatever the constraints permit. Drag an edge of a constrained
+   * rectangle and the rectangle follows; drag one held by a `fix` and it
+   * strains toward the cursor without breaking anything. A single point is the
+   * same statement with one pull, which is why there is one code path: the
+   * offset form also means a point grabbed a few pixels off-centre does not
+   * jump to the cursor as the drag starts.
+   *
+   * Rotation is deliberately not attempted. A rigid rotation would need a
+   * second degree of freedom the gesture does not carry, and translation plus
+   * the solver already reproduces what Onshape does with the same drag.
+   *
+   * The pulls are `extra`, not stored residuals, so they exist for this solve
+   * and no other — the model never contains "this point wants to be under the
    * cursor", which stops being true the moment the cursor moves. Nothing is
    * journalled either: a drag changes coordinates, and coordinates already
    * ride along in a saved file.
@@ -488,14 +550,24 @@ export class ToolEngine {
    * gesture that is about to settle correctly would be noise. Release is what
    * asks for the truth.
    */
-  private dragTo(name: string, sx: number, sy: number): void {
+  private dragTo(sx: number, sy: number): void {
+    const plan = this.idle?.drag;
+    if (!plan) return;
     // A file opened mid-gesture swaps the model out from under this. The action
     // is closed here too: a gesture that is abandoned rather than released must
     // still balance its `before`, or a host bracketing it waits forever.
-    if (!this.model.entities.has(name)) { this.idle = null; this.endUserAction(); return; }
-    // No snapping: v1 drags to where the cursor actually is. Onshape infers
+    if (!plan.names.every((n) => this.model.entities.has(n))) {
+      this.idle = null;
+      this.endUserAction();
+      return;
+    }
+    // No snapping: a drag goes to where the cursor actually is. Onshape infers
     // while dragging; that is a follow-up, deliberately not this.
-    this.model.problem.solve({ extra: pullTo(this.model, name, this.screenToWorld(sx, sy)) });
+    const world = this.screenToWorld(sx, sy);
+    const offset = world.map((w, i) => w - plan.grab[i]);
+    const extra = plan.names.flatMap((n, k) =>
+      pullTo(this.model, n, plan.origins[k].map((c, i) => c + offset[i])));
+    this.model.problem.solve({ extra });
   }
 
   private updateHover(sx: number, sy: number): void {

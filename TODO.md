@@ -36,20 +36,23 @@ are flagged as such.
   same path, so this decision survives box select rather than being replaced
   by it.
 - **Mouse:** with a tool armed, the left button belongs to the tool; with
-  nothing armed, left-click picks, left-drag on a point drags it, left-drag on
-  **empty canvas box-selects**, and left-drag on any other geometry pans.
-  Wheel zooms about the cursor (scroll up = in). Middle- or right-drag pans;
-  the right-click menu is suppressed. ⚠ *Deviation:* Onshape pans with middle
-  only and uses right-click for a context menu. When a context menu exists,
-  right-drag pan should yield to it; middle-drag stays.
-  **↺ Reversed by the box-select package (2026-09).** This entry used to read
-  "left-drag pans", which was cellwork's habit. SolidWorks and Onshape both
-  make that gesture box select, and the guiding rule above — tools work like
+  nothing armed, left-click picks, **left-drag on any geometry drags it** — a
+  point, an edge, a rim, an arc — and left-drag on **empty canvas
+  box-selects**. Wheel zooms about the cursor (scroll up = in). Middle- or
+  right-drag pans; the right-click menu is suppressed. ⚠ *Deviation:* Onshape
+  pans with middle only and uses right-click for a context menu. When a context
+  menu exists, right-drag pan should yield to it; middle-drag stays.
+  **↺ Reversed in two steps (2026-09).** This entry used to read "left-drag
+  pans", which was cellwork's habit. The box-select package took the empty-
+  canvas half and the edge-drag package took the rest, both for the same
+  reason: SolidWorks and Onshape box-select on empty canvas and drag the
+  geometry everywhere else, and the guiding rule above — tools work like
   Onshape, so people arrive knowing them — outranks a register entry inherited
-  from the prototype. Panning lost nothing by the change: middle-drag,
-  right-drag and `pan()` all still pan, and a left-drag that started on an
-  edge or a rim still pans too. **Veto-able here**, like everything else in
-  this list.
+  from the prototype. Panning lost nothing by either change: middle-drag,
+  right-drag and `pan()` all still pan. The one left-drag that still pans is a
+  press that landed on a **constraint glyph**, which grabs nothing (a glyph is
+  UI, with no position of its own) and is not empty canvas either.
+  **Veto-able here**, like everything else in this list.
 - **Box select follows the SolidWorks/Onshape direction convention**, exactly:
   left→right selects only what is fully contained and is drawn as a solid
   translucent rectangle; right→left selects anything it touches and is drawn
@@ -132,12 +135,6 @@ starts.
       free-entities package, deliberately not built by it — that package was
       about the command surface, and drag-centre-to-rim is still the right
       *pointer* gesture for the ordinary case (it is Onshape's own).
-- [ ] **Dragging an edge.** A left-drag that starts on an edge or a rim still
-      pans, which is the one leftover from the old mouse map. Onshape drags
-      the edge. Not in this package's spec, and the gesture has to stay
-      distinct from box select (which starts on *empty* canvas), so it is a
-      clean follow-up rather than a loose end.
-
 ## Smaller things
 
 - [x] `docs/plans/` specs that have shipped gain a one-line "shipped" note
@@ -155,6 +152,24 @@ starts.
 
 ## Done
 
+- [x] **Dragging an edge** — spec:
+      [`docs/plans/edge-drag.md`](docs/plans/edge-drag.md), now marked
+      shipped-pending-review. Dragging an entity is dragging every point it is
+      made of by the same offset, as a *target*: one soft pull per governing
+      point, so the constraints still get their say. A circle's rim drags its
+      centre and leaves the radius alone; an arc's rim drags centre, start and
+      end. The register entry above is updated: the old mouse map is now gone
+      entirely.
+      *Decided while doing it:* the offset form replaced "pull to the cursor"
+      for **single points too**, rather than keeping two code paths — a point
+      grabbed a few pixels off-centre no longer jumps to the cursor as the drag
+      starts, which nobody had asked for but everybody expects.
+      *Left for later, deliberately:* **no rigid rotation** (translation only,
+      as specified — Onshape's drag does the same and lets the solver resolve
+      the rest); **no inference or snapping mid-drag**, still; and a press on a
+      **constraint glyph** still pans, which is now the only left-drag that
+      does. Making it inert instead was considered and rejected — see
+      `CONVERSATION_LOG.md`.
 - [x] **`del` of several names at once** — `del("p1", "l5", …)`, the batch a
       box select naturally produces. Validation of every name happens before
       the first removal (a typo mid-batch costs nothing), a name an earlier

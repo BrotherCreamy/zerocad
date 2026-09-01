@@ -1,6 +1,12 @@
 # Plan: dragging an edge or a rim
 
-**Status: in flight** (2026-09-01).
+**Status: shipped, pending review.** Built as specified. Two things the spec
+left open, both decided in the build and recorded in `CONVERSATION_LOG.md`:
+single-point drags moved to the same offset form rather than keeping a second
+code path (so a point grabbed off-centre no longer jumps to the cursor), and a
+press that lands on a **constraint glyph** still pans — it is now the only
+left-drag that does, the alternative being a press that does nothing visible at
+all.
 
 The one leftover from the old mouse map: a left-drag that starts on an edge,
 a rim or an arc still pans. Onshape drags the geometry. The register's mouse

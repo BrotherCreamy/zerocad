@@ -130,10 +130,16 @@ test("a press that does not move is still a pick, not a drag", async () => {
     `a click moved the point from ${before} to ${after}`);
 });
 
-test("dragging from an edge still pans, and changes nothing", async () => {
+test("dragging from an edge drags the drawing, and no longer pans", async () => {
+  // This is the assertion the edge-drag package reversed: the same gesture used
+  // to move the view and leave the model alone, and now does the opposite. The
+  // fuller story — every constraint still exact, the offset it lands on — is in
+  // edgedrag.e2e.ts; what this one is for is that the old meaning is gone from
+  // the file that asserted it.
   await app.page.fill("#cmd", "");
   const before = await app.model();
-  // The middle of l1, which is an edge and not a point.
+  // The middle of l1, which is an edge and not a point. p1 is fixed and l1 is
+  // level, so the edge strains sideways rather than translating freely.
   const [ax, ay] = await screenOf("p1");
   const [bx, by] = await screenOf("p2");
   const from = await app.at((ax + bx) / 2, (ay + by) / 2);
@@ -141,12 +147,18 @@ test("dragging from an edge still pans, and changes nothing", async () => {
   await app.page.mouse.down();
   await app.page.mouse.move(from.x + 40, from.y - 20, { steps: 5 });
   await app.page.mouse.up();
-  await app.page.waitForTimeout(150);
+  await app.page.waitForTimeout(200);
 
   const after = await app.model();
-  assert.ok(Math.abs(after.view.ox - before.view.ox - 40) < 1e-6, `panned by ${after.view.ox - before.view.ox}`);
-  assert.deepEqual(after.points, before.points, "an edge drag moves the view, not the drawing");
-  assert.equal(await cmd(), "");
+  assert.deepEqual({ ox: after.view.ox, oy: after.view.oy }, { ox: before.view.ox, oy: before.view.oy },
+    "the view stayed put");
+  const travelled = Math.hypot(after.points.p2[0] - before.points.p2[0], after.points.p2[1] - before.points.p2[1]);
+  assert.ok(travelled > 5, `p2 only moved ${travelled.toFixed(2)} world units`);
+  assert.ok(Math.abs(after.points.p1[0] + 40) < 1e-6 && Math.abs(after.points.p1[1] + 30) < 1e-6,
+    `the fixed corner moved to ${after.points.p1}`);
+  assert.ok(Math.abs(after.points.p1[1] - after.points.p2[1]) < 1e-6, "and l1 is still exactly level");
+  assert.equal(await cmd(), "", "a drag is not a selection");
+  assert.equal(await app.status(), "SOLVED");
 });
 
 test("a dragged drawing saves and reopens where it was left", async () => {
