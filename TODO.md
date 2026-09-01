@@ -88,8 +88,12 @@ are flagged as such.
 Queue for Opus, in order. Each gets a spec in `docs/plans/` before work
 starts.
 
-- [ ] **Snap to intersections.** Points, midpoints and along-a-curve are
-      done; where two curves cross needs real intersection maths.
+- [ ] **Snap to intersections** — spec written,
+      [`docs/plans/intersection-snap.md`](docs/plans/intersection-snap.md),
+      implementation in flight. Crossings slot between exact points and
+      midpoints in the snap tiers, and the point of the feature is the
+      inference: a point placed on a crossing gets BOTH on-curve relations,
+      so it rides the intersection when either curve moves.
 - [ ] **Box-select.** With name-based selection this means dragging a box
       inserts several names at once. Wants to follow the drag work.
 - [ ] **Saving user-authored tools** — blocked on the owner decision above.
