@@ -15,7 +15,7 @@ kernel, not the kernel's whole purpose. The kernel itself knows nothing about ge
 variable vector and residual blocks — so the same solver is meant to be
 usable for anything shaped like a nonlinear least-squares problem.
 
-This project is the successor to [`cellwork`](../cellwork), a single-file
+This project is the successor to [`cellwork`](https://github.com/BrotherCreamy/cellwork), a single-file
 prototype that proved out the CAD interaction ideas (keyboard-first
 commands, live constraint solving, hover snaps, a fillet tool) but with a
 hand-rolled dense Gaussian-elimination solver and no extensibility story.
@@ -178,8 +178,10 @@ consequence of how the scope is built, described in `src/repl.ts`.
 ```sh
 npm install
 npm run build:kernel   # cargo -> wasm-pack, produces src/kernel/wasm-gen/ (gitignored, regenerated)
-npm test                # Rust unit tests are separate: npm run test:kernel
-npm run dev             # Vite dev server
+npm test               # unit tests — the mathematics, no browser needed
+npm run test:e2e       # end-to-end — a real browser driving the real app
+npm run test:all       # both, plus the Rust crate's own tests
+npm run dev            # Vite dev server
 ```
 
 Rust must be installed via the official script at rustup.rs, **not**
@@ -198,3 +200,10 @@ compile Rust and LLVM from source).
 - [`CONVERSATION_LOG.md`](CONVERSATION_LOG.md) — the longer narrative
   behind the decisions, newest first. Useful when picking this up from a
   different machine or a fresh context.
+
+## Contributing
+
+[`CONTRIBUTING.md`](CONTRIBUTING.md) covers setup, the three test suites and
+where new code goes; [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) explains
+why the layers are drawn where they are. [`CLAUDE.md`](CLAUDE.md) is the terse
+version for AI contributors.
