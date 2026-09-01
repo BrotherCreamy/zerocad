@@ -190,7 +190,7 @@ test("constraints a tool inferred are saved like any other, and re-solve the sam
   // A rectangle whose first corner was clicked onto the existing point `a`,
   // exactly as the engine would hand it over after a snap.
   const tool = new RectangleTool(ctx);
-  tool.onDown({ world: [10, 10], screen: [0, 0], snap: { world: [10, 10], screen: [0, 0], kind: "point", target: "a" } });
+  tool.onDown({ world: [10, 10], screen: [0, 0], snap: { world: [10, 10], screen: [0, 0], kind: "point", targets: ["a"] } });
   tool.onUp({ world: [60, 40], screen: [0, 0] });
   assert.ok(m.journal.some((e) => e.op === "coincident"), "sanity: the inference happened");
 

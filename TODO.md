@@ -88,12 +88,6 @@ are flagged as such.
 Queue for Opus, in order. Each gets a spec in `docs/plans/` before work
 starts.
 
-- [ ] **Snap to intersections** — spec written,
-      [`docs/plans/intersection-snap.md`](docs/plans/intersection-snap.md),
-      implementation in flight. Crossings slot between exact points and
-      midpoints in the snap tiers, and the point of the feature is the
-      inference: a point placed on a crossing gets BOTH on-curve relations,
-      so it rides the intersection when either curve moves.
 - [ ] **Box-select.** With name-based selection this means dragging a box
       inserts several names at once. Wants to follow the drag work.
 - [ ] **Saving user-authored tools** — blocked on the owner decision above.
@@ -113,6 +107,34 @@ starts.
       rather than a reflex.
 
 ## Done
+
+- [x] **Snap to intersections** — spec:
+      [`docs/plans/intersection-snap.md`](docs/plans/intersection-snap.md),
+      now marked shipped-pending-review. Crossings slot between exact points
+      and midpoints in the snap tiers; `src/intersect.ts` holds the three
+      closed forms and the arc-sweep test, which moved down out of
+      `picking.ts` so snapping and picking cannot disagree about where an arc
+      stops. The point of the feature is the inference: a point placed on a
+      crossing gets BOTH on-curve relations, so it rides the intersection when
+      either curve moves. Marker is an ×; `Snap.target` became
+      `Snap.targets: string[]`.
+      *Decided while doing it:* the algebra is in **screen space**, not world
+      space — every caller asks in pixels (the prefilter distance, the 8px
+      tolerance, picking's screen-angle sweep test), the view transform is
+      affine with a uniform scale so the exact screen crossing maps back to the
+      exact world crossing, and world space would have meant a second angular
+      convention for the one test that must not have two. And degeneracy is
+      judged in **pixels between the two candidate roots** (`TANGENT_EPS`,
+      0.05px) rather than on a zero discriminant: a tangency the solver
+      actually holds has residual ~1e-11 but root separation ~1e-3 px, so an
+      exact test never fires.
+      *Rejected:* keeping a `target` field alongside `targets` as a
+      compatibility shim. Four call sites, and two fields that can disagree is
+      a worse trade than a rename.
+      *Left in place deliberately:* the along-a-curve tier still treats an arc
+      as its whole circle, as it always did — only crossings are gated by
+      sweep. Snapping along a rim is more forgiving than picking one, and
+      tightening it was not in this spec.
 
 - [x] **Constraint glyphs** — spec:
       [`docs/plans/constraint-glyphs.md`](docs/plans/constraint-glyphs.md),

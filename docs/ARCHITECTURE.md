@@ -47,6 +47,14 @@ answering one question — what is under it, where should it be pulled to, what
 marks should the drawing be wearing. None of them draws anything or holds any
 state, which is what lets all three be tested without a canvas.
 
+`intersect.ts` sits one step *below* those three: closed-form crossings and the
+arc-sweep test, over plain numbers, with no idea a Model exists. It is where it
+is because picking and snapping must give the same answer to "is this angle on
+the arc" — picking asks it of the cursor, snapping asks it of a candidate
+crossing — and a second copy would eventually disagree about an arc's last few
+pixels, producing a crossing you can snap to but not click. Keeping it below
+both is what lets them share the definition without either importing the other.
+
 ## The kernel knows nothing about geometry
 
 `Problem` is a flat vector of numbers plus a list of residual blocks. It has

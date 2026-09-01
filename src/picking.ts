@@ -17,12 +17,18 @@
 // under the cursor at the same time as the line, and it is almost always the
 // point that was meant, so points win outright rather than by being nearer.
 //
+// The one piece of geometry this file does not own is the arc-sweep test —
+// "is this angle inside the arc?" — which lives in intersect.ts because
+// snapping to a crossing needs the same answer. Two copies of it would
+// eventually disagree about an arc's last few pixels.
+//
 // There is one tier above everything here, and it is not in this file: the
 // constraint glyphs (see glyphs.ts), which the engine consults before calling
 // `hitTest` at all. They live a layer up because they are UI drawn over the
 // drawing rather than part of it — the same reason snapping ignores them.
 
 import type { Entity, Model, RelationEntry } from "./model.ts";
+import { arcSlack, screenAngle, withinSweep } from "./intersect.ts";
 import { worldToScreen, type View } from "./view.ts";
 
 /**
@@ -49,19 +55,6 @@ export const PICK_LINE = 5;
 
 function dist(ax: number, ay: number, bx: number, by: number): number {
   return Math.hypot(ax - bx, ay - by);
-}
-
-/** Angle from a circle's centre to a point, in screen space (y-down). */
-function screenAngle(cx: number, cy: number, sx: number, sy: number): number {
-  return Math.atan2(sy - cy, sx - cx);
-}
-
-/** How far counter-clockwise (in world terms) `to` is from `from`, in [0, 2pi). */
-function sweepFrom(from: number, to: number): number {
-  let d = from - to; // screen angles run the other way from world angles
-  while (d < 0) d += Math.PI * 2;
-  while (d >= Math.PI * 2) d -= Math.PI * 2;
-  return d;
 }
 
 /**
@@ -101,9 +94,10 @@ export function hitTest(model: Model, view: View, sx: number, sy: number): Pick 
       const a0 = screenAngle(cx, cy, ...screenOf(e.start));
       const a1 = screenAngle(cx, cy, ...screenOf(e.end));
       const here = screenAngle(cx, cy, sx, sy);
-      // A small slack so the very ends of an arc are still pickable.
-      const slack = r > 1 ? PICK_CURVE / r : 0.1;
-      if (sweepFrom(a0, here) > sweepFrom(a0, a1) + slack) continue;
+      // A small slack so the very ends of an arc are still pickable. The test
+      // itself lives in intersect.ts, so snapping to a crossing and picking a
+      // rim agree on where an arc stops.
+      if (!withinSweep(a0, a1, here, arcSlack(r, PICK_CURVE))) continue;
     }
     best = { name: e.name, kind: e.kind, distance: d };
   }

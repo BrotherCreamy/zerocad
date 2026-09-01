@@ -17,6 +17,7 @@ import { ArcTool } from "../src/tools/arc.ts";
 import { PointTool } from "../src/tools/point.ts";
 import { placePoint } from "../src/tools/place.ts";
 import { fix } from "../src/relations/basic.ts";
+import { radius } from "../src/relations/geometry.ts";
 import { findSnap } from "../src/snapping.ts";
 import { screenToWorld, worldToScreen, type View } from "../src/view.ts";
 import type { PointerInfo, ToolContext } from "../src/tools/tool.ts";
@@ -125,12 +126,12 @@ test("placePoint: a curve snap on a line becomes pointOnLine; on a rim, onCircle
   const ctx = fakeCtx(model);
 
   const onEdge = nearMiss(model, [10, 0], 0, 1);
-  assert.deepEqual([onEdge.snap?.kind, onEdge.snap?.target], ["curve", "l"]);
+  assert.deepEqual([onEdge.snap?.kind, onEdge.snap?.targets?.[0]], ["curve", "l"]);
   placePoint(ctx, onEdge, "q");
   assert.deepEqual(model.journal.at(-1), { op: "pointOnLine", args: ["q", "l"] });
 
   const onRim = nearMiss(model, [10, 60], 1, 1);
-  assert.deepEqual([onRim.snap?.kind, onRim.snap?.target], ["curve", "c"]);
+  assert.deepEqual([onRim.snap?.kind, onRim.snap?.targets?.[0]], ["curve", "c"]);
   placePoint(ctx, onRim, "r");
   assert.deepEqual(model.journal.at(-1), { op: "onCircle", args: ["r", "c"] });
 
@@ -141,6 +142,36 @@ test("placePoint: a curve snap on a line becomes pointOnLine; on a rim, onCircle
   assert.ok(Math.abs(model.coords("q")[1]) < 1e-6, "q stayed on the edge");
   const r = model.coords("r");
   assert.ok(Math.abs(Math.hypot(r[0], r[1] - 60) - model.radius("c")) < 1e-6, "r stayed on the rim");
+});
+
+test("placePoint: an intersection snap applies the on-curve relation for both curves", async () => {
+  await loadKernel();
+  const model = new Model(2);
+  model.addPoint([-40, 0], "a"); model.addPoint([40, 0], "b"); model.addLine("a", "b", "l");
+  model.addPoint([0, 0], "ctr"); model.addCircle("ctr", 30, "c");
+  const ctx = fakeCtx(model);
+
+  const at = nearMiss(model, [30, 0], 2, -2);
+  assert.equal(at.snap?.kind, "intersection");
+  placePoint(ctx, at, "x");
+  assert.deepEqual(model.journal.slice(-2), [
+    { op: "pointOnLine", args: ["x", "l"] },
+    { op: "onCircle", args: ["x", "c"] },
+  ], "two relations — one per curve — is what makes the point stay the crossing");
+
+  // And the crossing rides: move the line up and x has to come with it. The
+  // radius is pinned as well, or the solver is free to grow the circle to meet
+  // the line instead — a legal answer to an under-constrained sketch, and not
+  // the question being asked here.
+  fix(model, "ctr", [0, 0]);
+  radius(model, "c", 30);
+  fix(model, "a", [-40, 10]);
+  fix(model, "b", [40, 10]);
+  assert.equal(model.solve().solved, true);
+  const x = model.coords("x");
+  assert.ok(Math.abs(x[1] - 10) < 1e-6, `x should be on the line at y=10, got ${x}`);
+  assert.ok(Math.abs(Math.hypot(x[0], x[1]) - 30) < 1e-6, `and still on the rim, got ${x}`);
+  assert.ok(x[0] > 0, "and on the side it was placed, not the far one");
 });
 
 test("placePoint: no snap, no constraint — a click in empty space is just a point", async () => {

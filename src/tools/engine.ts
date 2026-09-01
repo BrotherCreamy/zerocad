@@ -478,6 +478,10 @@ export class ToolEngine {
     g.beginPath();
     if (this.snap.kind === "point") {
       g.rect(x - 5, y - 5, 10, 10); // a square: an exact, existing point
+    } else if (this.snap.kind === "intersection") {
+      // An x: two curves crossing, drawn as the thing itself.
+      g.moveTo(x - 5, y - 5); g.lineTo(x + 5, y + 5);
+      g.moveTo(x + 5, y - 5); g.lineTo(x - 5, y + 5);
     } else if (this.snap.kind === "midpoint") {
       g.moveTo(x, y - 6); // a triangle: derived, but still an exact position
       g.lineTo(x + 6, y + 5);

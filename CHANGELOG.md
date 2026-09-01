@@ -7,6 +7,58 @@ decisions.
 
 ---
 
+## Where two curves cross is now a place you can click
+
+The last gap in the snap vocabulary. Points, midpoints and along-a-curve
+existed; the *crossing* — the place a draughtsman most often actually means —
+did not. It slots between exact points and midpoints: an existing point still
+wins outright (it is the thing itself), but a crossing beats a midpoint, which
+is a property of one curve, and beats either curve alone.
+
+| the × on a crossing, mid-gesture | clicked: one point, two relations | the line tilted, and the point rode it |
+|---|---|---|
+| ![A circle and a level edge crossing it, with the point tool armed. A small green × sits exactly where the edge meets the circle's right-hand rim, three pixels from where the cursor actually is](docs/images/20-intersection-snap.png) | ![The same drawing with p4 now placed on the crossing, wearing two small round marks side by side. The log reads: r4 oncircle p4 c1, r5 on p4 l1](docs/images/21-intersection-placed.png) | ![The same drawing after dragging the edge's left end down by 34 units. The circle has not moved; the edge now runs diagonally, and p4 has travelled down and right along the rim to sit exactly where the tilted edge cuts it, still wearing both marks. The header reads SOLVED](docs/images/22-intersection-ride.png) |
+
+**The pairing is the feature, not the ×.** `placePoint` on an intersection
+applies the on-curve relation for *each* curve — `on p4 l1` and
+`oncircle p4 c1`, two ordinary relations with two names, two glyphs and two
+`del`s. That is what makes the snapped point *stay* the crossing rather than
+being a one-frame courtesy: the third picture is the same drawing after
+dragging the edge's far end down, and p4 has ridden the intersection along the
+rim. A point told only that it is on the line would have slid off the circle
+the instant anything moved.
+
+`Snap` therefore carries `targets: string[]` rather than a single `target`,
+because an intersection is *about* two curves; `describeSnap` reads
+`l1 × c2`.
+
+**Degenerate cases return nothing, deliberately.** Parallel and collinear
+lines, coincident and tangent circles, a tangent chord: all produce either no
+crossing or a doubled one, and a doubled root is a *tangency*, which is already
+its own relation. Manufacturing a crossing out of one would put a snap — and
+two constraints — where the drawing says two curves touch rather than cross.
+"Doubled" is judged on how far apart the two candidates are in pixels rather
+than on a discriminant being exactly zero, because a tangency the solver
+actually holds leaves its roots a thousandth of a pixel apart and an exact test
+would never fire on real numbers.
+
+The new `src/intersect.ts` holds the three closed forms (segment–segment,
+segment–circle, circle–circle) and, moved down out of `picking.ts`, the
+**arc-sweep test**. That move is the point of where the file sits: an
+intersection has to agree with picking about where an arc stops, and two copies
+of "is this angle on the arc" would eventually disagree about an arc's last few
+pixels — giving a snap that cannot be clicked, or the reverse. The algebra is
+in screen space, because everything that asks it a question asks in pixels and
+the view transform is affine with a uniform scale, so the exact screen crossing
+maps back to the exact world crossing.
+
+Cost discipline, since candidates are recomputed on every cursor move: curves
+are prefiltered on the distance the along-a-curve tier already computes, and
+only the survivors are intersected pairwise. A crossing within tolerance of the
+cursor lies on both its curves, so both curves are themselves within tolerance
+— the prefilter cannot lose a candidate, and it turns a pairwise scan of the
+drawing into a pairwise scan of the two or three curves under the hand.
+
 ## Constraints you can see without being told where to look
 
 Every relation now wears a small mark beside the geometry it constrains. The

@@ -246,24 +246,65 @@ replacing) the system Node other projects on this machine may depend on.
   the second pick can be retried.
 
 - **Snapping** (`src/snapping.ts`) — while a tool is drawing, the cursor is
-  pulled onto whatever meaningful geometry is near it: an existing point, the
-  middle of an edge, or the nearest position along a line or rim. Tolerances
+  pulled onto whatever meaningful geometry is near it: an existing point,
+  **where two curves cross**, the middle of an edge, or the nearest position
+  along a line or rim, in that order of precedence. Tolerances
   are in screen pixels and the tiers mirror picking's, for the same reason.
   The tool is handed a snapped world coordinate and **never learns that
   anything happened** — a tool should be about its own gesture, not about how
   precise the cursor is. A marker shows what was caught (square for an exact
-  point, triangle for a midpoint, circle for somewhere along a curve), drawn
+  point, × for a crossing, triangle for a midpoint, circle for somewhere along
+  a curve), drawn
   after the tool's own preview so it can never be hidden by it: if the cursor
   is not where it looks, that has to be the most visible thing on screen.
   On its own snapping makes the click *exact* but joins nothing; what joins
   things is inference, below.
+  A `Snap` carries `targets: string[]` rather than one name, because an
+  intersection is about *two* curves and that pairing is the feature; every
+  other kind fills in exactly one. `describeSnap` reads `l1 × c2`.
+
+- **Intersections** (`src/intersect.ts`) — three closed forms
+  (segment–segment, segment–circle, circle–circle) over plain numbers in
+  screen space, plus the **arc-sweep test**, which lives here rather than in
+  `picking.ts` where it started. Both files ask the same question — "is this
+  angle on the arc?" — and two copies of the answer would eventually disagree
+  about an arc's last few pixels, giving a crossing you can snap to but not
+  click, or the reverse. Screen space because every caller asks in pixels and
+  the view transform is affine with a uniform scale, so the exact screen
+  crossing maps back through `screenToWorld` to the exact world crossing;
+  world space would have bought nothing and cost a second angular convention.
+  **Degenerate cases return nothing**: parallel and collinear lines,
+  coincident, nested and tangent circles, a tangent chord. A doubled root is a
+  *tangency* — already its own relation — and manufacturing a crossing out of
+  one would place two constraints where the drawing says two curves touch
+  rather than cross. Doubling is judged on the two candidates being within
+  `TANGENT_EPS` (0.05px) of each other rather than on an exactly-zero
+  discriminant, because a tangency the solver actually holds leaves its roots a
+  thousandth of a pixel apart: the residual is ~1e-11 but the root separation
+  goes as its square root, so an exact test never fires on real numbers.
+  Candidates are prefiltered on the distance the along-a-curve tier already
+  computes (`nearestOnCurve`, now shared) and only the survivors are
+  intersected pairwise. That cannot lose a candidate — a crossing within
+  tolerance of the cursor lies on both its curves, so both curves are within
+  tolerance too — and it keeps a per-cursor-move cost proportional to what is
+  under the hand rather than to the drawing.
+  **Known limitation:** the along-a-curve tier still treats an arc as its whole
+  circle, as it always has; only the *crossings* are gated by sweep. Snapping
+  along a rim is more forgiving than picking one, and changing it was not part
+  of this package.
 
 - **Constraint inference** (`src/tools/place.ts`) — a tool that places a point
   on existing geometry applies the relation that implies. Onshape calls it
   inferencing, SolidWorks calls it automatic sketch relations, and the mapping
   is theirs: a point snap becomes `coin`, a midpoint snap becomes the *line*
   form of `mid`, a curve snap becomes `on` for a line or `oncircle` for a
-  circle or arc. So a rectangle drawn from another's corner genuinely follows
+  circle or arc, and an **intersection snap becomes both at once** — the
+  on-curve relation for each of the two curves it names. That last one is what
+  makes a point clicked on a crossing *stay* the crossing when either curve
+  moves; with one relation it would slide along that curve and off the other
+  the instant anything moved. Two relations, two registry entries, two glyphs,
+  two `del`s: nothing downstream treats the pair specially.
+  So a rectangle drawn from another's corner genuinely follows
   that corner when it moves — which it demonstrably did not before.
   **Nothing is merged.** Two points stay two points, joined by an ordinary
   constraint the user could have typed themselves; merging entities is a
@@ -506,9 +547,8 @@ replacing) the system Node other projects on this machine may depend on.
 ## What's next
 
 The working list lives in [`TODO.md`](TODO.md), so it has one home rather
-than drifting between two. In short: snapping to intersections, box-select,
-saving user-authored tools, and the remaining interaction ideas to carry over
-from `cellwork`.
+than drifting between two. In short: box-select, saving user-authored tools,
+and the remaining interaction ideas to carry over from `cellwork`.
 
 ## Incident note (disk space)
 

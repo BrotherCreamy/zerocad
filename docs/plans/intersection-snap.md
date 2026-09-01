@@ -1,6 +1,16 @@
 # Plan: snap to intersections
 
-**Status: queued.** The last gap in the snap vocabulary: points, midpoints and
+**Status: shipped, pending review** (PR against `claude/resume-tasks-o7q02e`).
+Built as specced. Two deviations worth knowing, both recorded in `TODO.md` and
+`CONVERSATION_LOG.md`: the algebra is in **screen space** rather than world
+space, so that picking's arc-sweep test could be shared literally rather than
+re-derived in the opposite angular convention (it moved down into the new
+`src/intersect.ts`, which `picking.ts` now imports); and degeneracy is judged
+on the **pixel separation of the two candidate roots** rather than on a zero
+discriminant, because a tangency the solver actually holds leaves those roots
+about a thousandth of a pixel apart and an exact test would never fire.
+
+The last gap in the snap vocabulary: points, midpoints and
 along-a-curve exist; where two curves *cross* does not, and it is the place a
 draughtsman most often actually means. Onshape snaps there and infers
 coincidence with **both** curves — that pairing is the feature, not the X on
