@@ -7,6 +7,86 @@ decisions.
 
 ---
 
+## `circle()` — a circle you have yet to define
+
+The owner's complaint, in his words: *"It's weird if you want a circle not
+defined by a center and radius but the tool requires it."* You can now say what
+you actually mean:
+
+```js
+c = circle()
+oncircle("p1", c); oncircle("p2", c); oncircle("p3", c)   // the 3-point circle
+```
+
+| `circle()` typed — a circle exists, defined by nothing yet | the three `oncircle`s, and it threads them exactly |
+|---|---|
+| ![Three points p1, p2 and p3, each wearing a # fix mark, scattered across the canvas. A small circle with its centre p4 sits by itself in the middle of the window, nowhere near them. The log reads c = circle() → c1 and rels() listing only the three fixes](docs/images/26-free-circle-seeded.png) | ![The same three points, now each wearing a # and a • on-circle mark, with one large circle passing exactly through all three and its centre p4 well to the right. The log adds r4, r5, r6 oncircle and then [[59.999999999, -10.000000000], 58.309518948]](docs/images/27-free-circle-solved.png) |
+
+The last line of the right-hand log is the point of the whole thing. The
+circumcircle of (10,−40), (110,−40) and (10,20) is centred (60, −10) with
+radius √(50² + 30²) = 58.30951894845…; the solver reports (59.99999999986,
+−10.00000000027) and 58.30951894833. Not "solved: true" — the closed form, to
+ten digits, and **nobody typed `solve()`**.
+
+**Nothing about existing calls changed meaning.** The insight the package rides
+on is that a constructor argument here was never a constraint: `circ(centre, r)`
+only *seeds* a radius variable and `pt(x, y)` pins nothing. The misfit was that
+the arguments were mandatory. So every one of them is now optional, whatever is
+missing is auto-created free, and old files replay untouched.
+
+- **Auto-created pieces are real entities.** A free circle's centre is a
+  named, visible, draggable, dimensionable point, exactly like a rectangle
+  tool's corners. It answers to `ls()`, `rels()`, hover and `del`, and it
+  outlives the circle when the circle is deleted, the same as a centre you
+  placed by hand. Nothing downstream was taught anything.
+- **A seed is never degenerate.** A free `line()`'s endpoints are 20 units
+  apart, not coincident: a zero-length line has no direction and half the
+  relation vocabulary — `tan`, `par`, `ang` — divides by that direction's
+  length. A free `arc()` seeds as a quarter arc, and an auto-seeded arc below
+  2D is refused rather than built flat.
+- **Long names beside the short ones**: `point()`, `line()`, `circle()` next to
+  `pt()`, `ln()`, `circ()`. A creator function and a tool share a name without
+  trouble — a bare word arms the tool, a call is an expression — which `arc`
+  and `fillet` have been quietly doing all along.
+- **A free piece appears where you are looking**, not at the world origin. The
+  middle of the window is read in the command layer and passed down as an
+  ordinary coordinate; the model still has never heard of a viewport. Headless
+  it falls back to the model's plain defaults.
+- **The journal stays honest.** Each constructor records as *the one call that
+  was made*, never its expansion, and re-expands deterministically on replay —
+  so a `circle()`-then-constrain model reopens byte-identical, auto-names
+  included, and the constraints still bite after a nudge.
+
+A free line is held by nothing but what it touches:
+
+![Two circles of different sizes, centres p1 and p2 both fix-marked, with radius marks on each. A single straight line runs from p3 at the upper-left rim of the small circle to p4 beyond the big one, grazing both — a tangency mark sits at each touch point. The log reads t = line(); tan(t,"c1"); tan(t,"c2"); dist("p3","p4",170), and rels() lists all seven](docs/images/28-free-line-tangent.png)
+
+### Multiple solutions, honestly
+
+Tangent + through-a-point + radius admits **up to four circles**, and this one
+picks the branch nearest its seed. Dragging it flips branches. That is not
+nondeterminism and it is not a bug — it is what Onshape does, and what any
+least-squares sketcher does: the equations have several roots and the solver
+returns the one it started closest to. The three-point circle above has no such
+ambiguity, which is exactly why that is the example checked against a closed
+form. Where a construction is ambiguous, the seed is the answer to "which one",
+and moving a free piece before you constrain it is a legitimate way to choose.
+
+Two things surfaced while writing the browser tests, both now pinned by the
+tests that found them. `circ("p1", 6)` only *seeds* a radius, so "tangent to
+two circles" with unpinned radii is satisfied by shrinking a circle onto the
+line — the test says `rad()` too, and says why. And what counts as one undo
+step is decided around a *submitted* entry, so a `del()` pushed straight into
+the evaluator is not a step at all and the next `undo()` undoes the entry
+before it.
+
+**What this does not change: the pointer tools.** Drag-centre-to-rim is the
+right *pointer* gesture and is Onshape's own. This is freedom on the command
+surface; a 3-point-circle *tool* is now a trivial composition, and is on
+`TODO.md` as enabled rather than built.
+
+---
+
 ## Drag a box round it, and every name lands in the command line
 
 Left-drag on empty canvas is now box select, with the direction of the drag

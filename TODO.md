@@ -18,11 +18,6 @@ otherwise.
 
 ## In flight
 
-- **Free entities, command half** ([`docs/plans/free-entities.md`](docs/plans/free-entities.md))
-  — the model layer shipped (constructors' args optional, non-degenerate
-  seeds, journal-as-the-call); box-select has merged, so `replenv.ts` is
-  free and the command layer (`circle()` long names, view-centre seeding)
-  is next.
 - **Standing duty**: after every merged PR, run `npm run build:single` and
   republish `dist-single/neocad.html` to the owner's review artifact
   (same URL each time).
@@ -63,6 +58,20 @@ are flagged as such.
   the entity, the same rule picking follows. **Constraint glyphs are not
   box-selectable**: they are UI, and a box full of `r`-names nobody asked for
   would be noise, so the flow for relations stays hover-and-click.
+- **Every constructor argument is optional, and a missing one is not a
+  constraint.** `circle()`, `line()`, `arc()`, `point()` are all legal;
+  whatever is left out is auto-created free, with a seed that is never
+  degenerate, for the relations to define. This follows from what the
+  arguments always were — `circ(centre, r)` seeds a radius variable, it does
+  not constrain one — so no existing call changed meaning and old files replay
+  untouched. Long names (`point`/`line`/`circle`) sit beside the short ones.
+  **Where a free piece lands is a question about the window, not the model**:
+  the command layer reads the middle of the view and passes it down as a
+  coordinate, and the model still knows nothing about a viewport.
+  **Ambiguity is answered by the seed**: tangent + through-point + radius
+  admits up to four circles, and the solver returns the branch nearest where
+  the piece started — Onshape's behaviour, and dragging flips branches. Said
+  out loud in `CHANGELOG.md` so nobody reads branch choice as nondeterminism.
 - **Tools do not dimension what they draw.** A rectangle gets `hor`/`ver` on
   its edges but no size; a circle's radius stays free. Matches Onshape's
   undimensioned-sketch behaviour — the user adds `dist`/`rad` when they mean
@@ -118,6 +127,12 @@ starts.
       the command line, `del("p1", "p2", …)` is the obvious next thing to want;
       it was deliberately left out of the deletion package pending box select,
       and box select has now arrived.
+- [ ] **A 3-point circle tool.** Now a trivial composition rather than a
+      feature: `circle()` plus three `oncircle`s is the whole of it, so the
+      tool is three clicks and no new model or solver work. Enabled by the
+      free-entities package, deliberately not built by it — that package was
+      about the command surface, and drag-centre-to-rim is still the right
+      *pointer* gesture for the ordinary case (it is Onshape's own).
 - [ ] **Dragging an edge.** A left-drag that starts on an edge or a rim still
       pans, which is the one leftover from the old mouse map. Onshape drags
       the edge. Not in this package's spec, and the gesture has to stay
@@ -140,6 +155,48 @@ starts.
       `test/e2e/livesolve.e2e.ts`, which counts solves in the page.
 
 ## Done
+
+- [x] **Entities defined by constraints, not constructors** — spec:
+      [`docs/plans/free-entities.md`](docs/plans/free-entities.md), now marked
+      shipped-pending-review. Every constructor argument is optional, in
+      `model.ts` and at the command line: `circle()` is a legal way to say "a
+      circle, which the relations I am about to type will define", and the
+      owner's two examples type verbatim. Auto-created pieces are real, named,
+      first-class entities with seeds that are never degenerate; each
+      constructor journals as the one call made and re-expands deterministically
+      on replay. Long names `point`/`line`/`circle` sit beside `pt`/`ln`/`circ`.
+      Shipped in two commits — model half first (it carried no conflict risk
+      with box-select, which owned `replenv.ts`), command half after.
+      *Decided while doing it:* **the view-centre seed is passed down as a
+      coordinate, not learned by the model.** A free circle at the world origin
+      is baffling — you type it and nothing appears — but "the middle of the
+      window" is a fact about a window, so `replenv.ts` reads it and calls
+      `addPoint(coords)` like any other caller. It needs the canvas's *size* as
+      well as the transform, which a `View` has no business holding, hence a
+      separate `viewSize` handle rather than a fatter `View`.
+      *And:* the anchor is used only where the model would otherwise fall back
+      to the origin for want of anything to derive a position from. Given any
+      reference the model already seeds beside it, and hauling that to the
+      middle of the window would be worse, not better.
+      *And:* headless, the command layer passes `null` rather than the model's
+      own default coordinates, so a journal written with no viewport is exactly
+      what the model layer writes — one call, no expansion. On screen the
+      journal records the coordinate actually used, so a drawing reopens where
+      it was drawn. Both directions round-trip in tests.
+      *Discovered while doing it:* **`circ("p1", 6)` only seeds a radius**, so
+      "a line tangent to two circles" with unpinned radii is satisfied by
+      shrinking a circle onto the line. Obvious in hindsight and exactly the
+      distinction this package is built on; the test now says `rad()` too.
+      *And:* **what counts as one undo step is decided around a submitted
+      entry** — a `del()` pushed straight into the evaluator is not a step, and
+      the next `undo()` undoes the entry before it. A test-harness trap, not a
+      product bug, but it will catch the next person too.
+      *Left in place deliberately:* tangent + through-point + radius admits up
+      to four circles and the solver returns the branch nearest its seed;
+      dragging flips branches. Onshape's behaviour, written into `CHANGELOG.md`
+      as a property rather than left to be read as nondeterminism. And the
+      pointer tools are untouched — a 3-point-circle *tool* is now trivial and
+      is listed under "Next up" as enabled, not built.
 
 - [x] **Box select, and live solve for typed edits** — spec:
       [`docs/plans/box-select.md`](docs/plans/box-select.md), now marked

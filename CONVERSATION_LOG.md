@@ -106,6 +106,75 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### Free entities: the arguments were never constraints
+
+The owner's complaint was about a tool that insists on a centre and a radius
+when what you actually know is three points on the rim. The tempting reading is
+that this wants a new kind of entity, or a solver mode, or a family of
+alternate constructors — `circleThrough3Points`, `circleTangentTangentRadius`,
+and so on down the Onshape menu.
+
+It wants none of that, and the reason is one observation: **a constructor
+argument here was never a constraint.** `circ(centre, r)` does not constrain a
+radius, it *seeds* a variable; `pt(x, y)` pins nothing. Everything that pins
+anything is a relation. So the misfit was not that the constructors took the
+wrong arguments — it was only that they insisted on them. Make every argument
+optional, auto-create whatever is missing, and the owner's examples type
+themselves. No existing call changes meaning, no saved file needs a version
+bump, and the alternate constructors are all compositions.
+
+**What we did not do, and why.** A `circleThrough(p1, p2, p3)` helper would
+have been three lines and would have been the wrong three lines: it fixes the
+particular case the owner happened to name while leaving the general complaint
+untouched, and it puts a constraint inside a constructor — the exact blurring
+of structure and equations that `model.ts` and `relations/` are split to
+prevent. Similarly rejected: a solver mode for "under-determined construction",
+which is what an under-constrained model already is.
+
+**Where a free piece goes was the only genuinely new decision.** A circle that
+materialises at the world origin while the user is looking somewhere else is
+indistinguishable from a bug — you type `circle()`, nothing appears. But "the
+middle of the window" is a fact about a window, and `model.ts` learning about
+viewports would be a layering violation of the same kind as a `Point` in the
+kernel. So the command layer reads the view centre and passes it down as an
+ordinary coordinate: `addPoint([x, y])`, which the model has always accepted
+from anyone. Two smaller shapes fell out of that. It needs the canvas's *size*
+as well as the transform, and a `View` — a pure ox/oy/scale transform — has no
+business holding a window size, so `EnvHandles` gained a separate `viewSize`
+function rather than the `View` gaining fields. And headless, the command layer
+passes `null` rather than the model's own default coordinates, so a journal
+written with no viewport is byte-for-byte what the model layer writes: one
+call, no expansion. On screen the coordinate goes into the journal, so a
+drawing reopens where it was drawn rather than wherever the window points next
+time.
+
+The anchor is deliberately *not* used whenever something is missing — only
+where the model would otherwise fall back to the origin for want of anything to
+derive a position from. `ln("a")` seeds its second endpoint beside `a`, and
+dragging that to the middle of the window because it happened to be
+auto-created would be worse, not better.
+
+**Honesty about branches.** Tangent + through-point + radius has up to four
+solutions. Least-squares returns the one nearest its seed, and dragging flips
+between them. There is no fixing this and nothing to fix — it is what Onshape
+does — but there is a difference between a documented property and an
+undocumented surprise, so it is written into the changelog as behaviour. The
+consequence for testing is sharper: an ambiguous construction can only be
+checked by *satisfying its constraints*, while the three-point circle is unique
+and therefore gets checked against the closed-form circumcircle, exactly. A
+test that asserted a particular tangent circle would be asserting the seed.
+
+**Two things the browser found.** First, `circ("p1", 6)` only seeds a radius —
+so the "line tangent to two circles" test passed nothing until the radii were
+actually constrained with `rad()`, because the solver was free to shrink a
+circle onto the line and call it tangent. That is the package's own central
+distinction biting the person who wrote it, which is worth recording. Second,
+what counts as one undo step is decided in `main.ts` around a *submitted*
+entry, so a `del()` pushed straight into the evaluator by a test is not a step
+and the following `undo()` quietly undoes the entry before it. Not a product
+bug — but a trap for the next person writing an e2e, so the test types it and
+says why.
+
 ### Box select, a register entry overruled, and a key that was deaf
 
 The spec settled the interesting question before work started — the

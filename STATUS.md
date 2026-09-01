@@ -605,11 +605,61 @@ replacing) the system Node other projects on this machine may depend on.
   rectangle is pixels; there is no shift-to-add, there being no selection set
   to add to.
 
+- **Entities defined by constraints, not constructors** (`src/model.ts`'s four
+  constructors, the creator commands in `src/replenv.ts`). **Every constructor
+  argument is optional**, in the model and at the command line alike:
+  `circle()`, `line()`, `arc()` and `point()` are all legal, and whatever is
+  missing is auto-created free for the relations to define. Long names sit
+  beside the short ones — `point`/`line`/`circle` next to `pt`/`ln`/`circ` —
+  which costs nothing, because a creator function and a tool have shared a name
+  since `arc` and `fillet` did (a bare word arms the tool, a call is an
+  expression). `null` means the same as absent everywhere, since a journal
+  round-trips through JSON and JSON has no `undefined`.
+  The design rests on one observation: **a constructor argument here was never
+  a constraint.** `circ(centre, r)` only seeds a radius variable and `pt(x,y)`
+  pins nothing, so making the arguments optional changes no existing call's
+  meaning and old files replay untouched.
+  *Auto-created pieces are first-class.* A free circle's centre is a real,
+  named, visible, draggable point — the rectangle tool's corners set that
+  precedent — and everything downstream needed no changes to handle it: `ls()`,
+  `rels()`, hover, glyphs, `del` (which leaves the centre, as it does for any
+  circle) and undo, all confirmed in the browser rather than assumed.
+  *No seed is ever degenerate.* A free line's endpoints are 20 units apart, not
+  coincident, because a zero-length line has no direction and `tan`/`par`/`ang`
+  divide by that direction's length; a free arc seeds as a quarter arc; an
+  auto-seeded arc below 2D throws rather than being built flat.
+  *Journal discipline:* each constructor records as **the one call that was
+  made**, never its expansion — the auto-created sub-entities journal nothing
+  — and re-expands deterministically, so a `circle()`-then-constrain model
+  reopens byte-identical with the same auto-names.
+  *Where a free piece appears:* the middle of the window, decided in
+  `replenv.ts` and passed down as an ordinary coordinate. The model never
+  learns what a viewport is. This needs the canvas's **size** as well as the
+  transform — a `View` is only a transform and has no business holding a window
+  size — hence the separate `viewSize` handle in `EnvHandles`. Headless there
+  is nothing to ask and the model's plain defaults stand; the anchor is used
+  only where the model would otherwise fall back to the origin for want of
+  anything to derive a position from (a line with neither endpoint, a circle or
+  arc with no centre), since given any reference the model already seeds beside
+  it.
+  *Known and deliberate:* **tangent + through-point + radius admits up to four
+  circles**, and the solver lands on the branch nearest its seed; dragging flips
+  branches. That is Onshape's behaviour and every least-squares sketcher's, not
+  nondeterminism — which is why the *three-point* circle is the case checked
+  against a closed form (exact circumcentre and circumradius to 1e-6), and why
+  the ambiguous one is checked by satisfying all three of its constraints
+  rather than by expecting a particular circle.
+  *Not changed:* the pointer tools. Drag-centre-to-rim is the right pointer
+  gesture and is Onshape's own; a 3-point-circle *tool* is now a trivial
+  composition and is listed on `TODO.md` as enabled, not built.
+
 ## What's next
 
 The working list lives in [`TODO.md`](TODO.md), so it has one home rather
-than drifting between two. In short: box-select, saving user-authored tools,
-and the remaining interaction ideas to carry over from `cellwork`.
+than drifting between two. In short: saving user-authored tools, `del` of
+several names at once, a 3-point circle tool (now a trivial composition),
+edge dragging, and the remaining interaction ideas to carry over from
+`cellwork`.
 
 ## Incident note (disk space)
 

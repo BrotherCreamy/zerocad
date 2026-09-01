@@ -125,6 +125,9 @@ export interface ModelSummary {
   points: Record<string, number[]>;
   radii: Record<string, number>;
   lines: { name: string; refs: [string, string] }[];
+  /** Circles by name with the point their centre *is* — which for a free
+   * circle is a point nothing named, so a test cannot hardcode it. */
+  circles: { name: string; center: string }[];
   arcs: { name: string; center: string; start: string; end: string }[];
   journalOps: string[];
   activeTool: string | null;
@@ -192,6 +195,7 @@ export async function openApp(): Promise<AppContext> {
           points: Object.fromEntries(of("point").map((e) => [e.name, model.coords(e.name)])),
           radii: Object.fromEntries([...of("circle"), ...of("arc")].map((e) => [e.name, model.radius(e.name)])),
           lines: of("line").map((e) => ({ name: e.name, refs: e.refs })),
+          circles: of("circle").map((e) => ({ name: e.name, center: e.center })),
           arcs: of("arc").map((e) => ({ name: e.name, center: e.center, start: e.start, end: e.end })),
           journalOps: model.journal.map((j) => j.op),
           activeTool: engine.active ? engine.active.name : null,
