@@ -1,6 +1,21 @@
 # Plan: dimension values on the canvas
 
-**Status: in flight** (2026-09-01).
+**Status: shipped, pending review** (2026-09-01). Built as specified, on
+`claude/dimension-labels`. The one thing the spec delegated — whether
+extension/leader lines earn their pixels — was answered by building both and
+looking: **kept, and dashed**. Drawn solid they read as geometry (a `dist`
+across a rectangle's diagonal drew what looked like a diagonal edge that does
+not exist); dashed and dim they read as annotation, and that same diagonal is
+where they earn their keep, since a `dist` need not lie along any line and
+nothing else says which two points a floating number belongs to.
+
+Two corrections to the spec, both recorded in `CONVERSATION_LOG.md`: `ang`
+takes **radians**, not degrees, so the label converts and is deliberately not
+what you would retype (flagged in the register, and it closes with
+retargeting); and `ang` now draws **one** label at the shared corner instead
+of the two marks it used to get, since the same number twice answers nothing.
+`rad` has no leader line back to its arc — not asked for, and the `R` prefix
+already says which dimension it is.
 
 `dist("p1","p2",50)` puts a ↔ mark on the drawing and the 50 nowhere. In
 Onshape a dimension *is* its value — the number on the canvas is the whole

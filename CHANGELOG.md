@@ -7,6 +7,70 @@ decisions.
 
 ---
 
+## A dimension is now its number
+
+`dist("p1","p2",50)` used to put a `↔` on the drawing and the 50 nowhere.
+In Onshape a dimension *is* its value — the number is the whole point of
+dimensioning — so the three dimensioned relations now draw theirs: `50`
+midway along the span, `R22` just outside the rim, `30°` at the corner two
+lines share.
+
+![A rectangle with a filleted top-left corner and a line running up and to the right from its top-right corner. Below the shape, a dashed dimension line with arrows at both ends runs the full width between two short witness lines, broken in the middle by a box reading 110; to the right of the shape the same arrangement runs vertically, reading 73. R22 sits beside the fillet arc, 30° sits at the corner where the sloping line leaves the rectangle, and the plain hor/ver marks sit beside each of them](docs/images/35-dimension-labels.png)
+
+**A dimension label is a glyph, not a second overlay.** It anchors in world
+space and offsets in screen pixels, hovers with the relation's name, lights
+up what the relation constrains, drops that name in the command line when
+clicked, disappears with `del`, and goes away with `glyphs(false)` — every
+one of those because it is the same glyph, not because any of it was
+written twice. The value comes out of `RelationEntry.args`, which keeps the
+call as it was made, so nothing under the UI changed at all: no model
+change, no journal change, no new relation kind.
+
+![The same sketch with the cursor on the 110. The label's box, its dimension line, its arrows and the two corners it measures between are all amber, and the hover tag under it reads "r5  dist p3 p4 110"](docs/images/36-dimension-hover.png)
+
+Three things a label needed that a mark did not:
+
+- **A box the width of its text**, so aiming at `120.5` is not aiming at
+  the 18px square a `○` gets. `halfW` is per glyph now and `glyphAt` reads
+  it. `glyphs.ts` still has no canvas — it is a pure function of (model,
+  view), which is what lets it be tested headless — so the width comes from
+  a constant, `GLYPH_CHAR_W`, and an e2e test measures the browser's real
+  monospace advance and fails if the two ever drift apart.
+- **Room in a stacking row.** A row used to step by a fixed 17px; with a
+  wide box in it that drew `—` (this edge is level) touching `110` (this
+  edge is 110 long), which reads as *minus* 110. Rows now advance by each
+  box's actual edges, with a label asking for a little daylight.
+- **One label for `ang`, not two.** `∥` is drawn on both lines because one
+  mark leaves "parallel to what" unanswered. The same angle written twice
+  answers nothing, so the number goes once, at the shared corner, nudged
+  along the bisector into the wedge. Two lines that share no corner still
+  have an angle; it goes midway between their middles.
+
+**Witness and dimension lines: kept, dashed.** The spec left this to
+whichever read better in a browser, so both were built and photographed.
+Solid, they were indistinguishable from the drawing — a `dist` across a
+rectangle's diagonal drew what looked exactly like a diagonal edge that
+does not exist. Dashed and dim they read as annotation, and that diagonal
+is precisely where they earn their pixels: a `dist` need not lie along any
+line, and without them a number floats in the middle of a sketch with
+nothing saying which two points it belongs to.
+
+Which *side* of an edge a dimension sits on is the argument order:
+`dist("p3","p4")` and `dist("p4","p3")` are the same constraint and land on
+opposite sides, which is how the screenshot above gets its dimensions
+outside the shape.
+
+**Two caveats, both deliberate.** `ang` is typed in radians and labelled in
+degrees, because a drawing has said degrees since drawings existed — so a
+label is not quite the thing you would retype, and that seam closes when
+retargeting does. And **a value cannot be edited in place**: clicking one
+inserts the relation's name, exactly as clicking any glyph does, and `del`
+plus retype is still the way to change 50 to 60. Editing needs a way to
+change a relation's target, which lives inside a residual closure; it is an
+owner decision in `TODO.md`, not something to smuggle in behind a label.
+
+---
+
 ## A tool can now say no out loud
 
 `ToolContext` gained a `log` channel, filled in by the engine and routed to

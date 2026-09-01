@@ -75,6 +75,20 @@ are flagged as such.
   admits up to four circles, and the solver returns the branch nearest where
   the piece started — Onshape's behaviour, and dragging flips branches. Said
   out loud in `CHANGELOG.md` so nobody reads branch choice as nondeterminism.
+- **A dimension is drawn as its value, and a dimension label is a glyph.**
+  `dist`, `rad` and `ang` render their target (`50`, `R22`, `30°`) instead of
+  a generic mark, because in Onshape the number *is* the dimension. It is the
+  same glyph everything else uses — same hover, same click-inserts-the-name,
+  same `glyphs(false)` — rather than a dimensions overlay beside it, so there
+  is one annotation layer and one switch. Values are read from
+  `RelationEntry.args`, formatted trimmed to at most 3 decimals. `dist` also
+  draws **dashed** witness and dimension lines: solid ones were tried first
+  and read as geometry (a `dist` across a diagonal drew what looked like an
+  edge that is not there). ⚠ *Deviation:* `ang` is typed in **radians** and
+  labelled in **degrees**, so the label is not what you would retype — see
+  the retargeting decision below, which is where that seam gets closed.
+  **No editing in place**: clicking a value inserts the relation's name, and
+  `del` plus retype is today's editing story.
 - **Tools do not dimension what they draw.** A rectangle gets `hor`/`ver` on
   its edges but no size; a circle's radius stays free. Matches Onshape's
   undimensioned-sketch behaviour — the user adds `dist`/`rad` when they mean
@@ -144,11 +158,6 @@ Queue for Opus, in order. Each gets a spec in `docs/plans/` before work
 starts.
 
 - [ ] **Saving user-authored tools** — blocked on the owner decision above.
-- [ ] **Dimension values on the canvas** — spec:
-      [`docs/plans/dimension-labels.md`](docs/plans/dimension-labels.md), in
-      flight. `dist`/`rad`/`ang` draw their value as their glyph, Onshape
-      style; read from `RelationEntry.args`, so pure UI. Editing a value in
-      place is explicitly NOT in it — see the new owner decision below.
 - [ ] **Inference while dragging.** Onshape infers (and shows) coincidence
       and alignment as you drag; both drag packages deliberately left it out.
       Wants a spec that decides what a mid-drag snap *commits* — a drag that
@@ -177,6 +186,33 @@ starts.
 
 ## Done
 
+- [x] **Dimension values on the canvas** — spec:
+      [`docs/plans/dimension-labels.md`](docs/plans/dimension-labels.md), now
+      marked shipped-pending-review. `dist`, `rad` and `ang` draw their target
+      (`50`, `R22`, `30°`) as their glyph, read from `RelationEntry.args`, so
+      nothing below the UI changed: no model change, no journal change, no new
+      relation kind. A label hovers, picks, highlights and hides with
+      `glyphs(false)` exactly as a mark does, because it is one.
+      *Decided while doing it:* the spec left the witness/dimension lines to
+      whichever read better in a browser — **kept, dashed**. Solid, they were
+      indistinguishable from geometry (a `dist` across a rectangle's diagonal
+      drew what looked like a diagonal edge that does not exist); dashed and
+      dim they read as annotation, and they earn their pixels in exactly that
+      diagonal case, where nothing else says which two points a floating
+      number measures. `ang` gets **one** label at the shared corner rather
+      than the two marks `∠` used to get: two marks answer "which pair", two
+      copies of the same number answer nothing.
+      *Discovered while doing it:* a stacking row that stepped by a fixed
+      17px drew `—` touching `110`, which reads as *minus* 110 — the row now
+      advances by each box's real edges. And `ang` takes radians while its
+      label says degrees; drawing radians on a sketch would be the wrong fix,
+      so the seam is flagged in the register and closes with retargeting.
+      *Left in place deliberately:* no editing in place (owner decision
+      below); `rad` gets no leader line back to its arc; a label sits on the
+      side its relation's argument order puts it (`dist("p3","p4")` and
+      `dist("p4","p3")` land on opposite sides of the same edge), which is
+      the same hand-placement story every glyph has and is what the
+      screenshots use to put the dimensions outside the shape.
 - [x] **A tool can say something to the user** — `ToolContext.log`, filled in
       by the engine, routed to the log pane by `main.ts`. `fillet` no longer
       throws its refusals at the page and `circle3` no longer whispers to the
