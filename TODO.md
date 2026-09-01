@@ -88,12 +88,11 @@ are flagged as such.
 Queue for Opus, in order. Each gets a spec in `docs/plans/` before work
 starts.
 
-- [ ] **Constraint glyphs on the canvas** — the follow-up the deletion
-      package was built to make possible. The registry (`model.relations`)
-      now knows every relation's name, op and args, so a glyph layer has
-      everything it needs; what it wants is a spec about placement,
-      hit-testing and clutter at low zoom. The hover tag is the interim
-      answer and stays either way.
+- [ ] **Constraint glyphs** — spec written,
+      [`docs/plans/constraint-glyphs.md`](docs/plans/constraint-glyphs.md):
+      one marker per relation beside its geometry, hover names it and
+      highlights what it constrains, click drops its name in the command
+      line. Top picking tier, screen-space offsets, `glyphs(false)` to hide.
 - [ ] **Snap to intersections.** Points, midpoints and along-a-curve are
       done; where two curves cross needs real intersection maths.
 - [ ] **Box-select.** With name-based selection this means dragging a box
