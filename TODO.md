@@ -96,15 +96,16 @@ starts.
 
 - [x] `docs/plans/` specs that have shipped gain a one-line "shipped" note
       at top rather than being deleted — they are the design record.
-- [ ] **A relation added from the command line leaves the header stale.**
-      `dist("a","b",50)` adds the residual and redraws, but does not solve, so
-      the status can still read `SOLVED` while the drawing plainly violates
-      what was just typed until someone calls `solve()`. Found while setting
-      up the glyph screenshots, and only by looking at the picture. The right
-      fix is probably the one `del` already uses — re-solve through the host
-      — but "which commands are edits" is exactly the enumeration `main.ts`
-      has so far avoided having to write, so it wants a moment's thought
-      rather than a reflex.
+- [x] **A relation added from the command line leaves the header stale.**
+      Fixed: **a command entry that changed the model re-solves through the
+      host**, the way tools, drags and `del` already do. The worry that it
+      would need an enumeration of which commands are edits turned out to be
+      unfounded — the undo bracket already computes exactly that answer by
+      comparing the snapshot before the entry with the snapshot after, so
+      `endUserAction` now returns it instead of swallowing it. `ls()` and
+      `help()` provably do not solve; a contradictory `rad()` flips the header
+      to `CONFLICT` on the keystroke that caused it. Pinned by
+      `test/e2e/livesolve.e2e.ts`, which counts solves in the page.
 
 ## Done
 

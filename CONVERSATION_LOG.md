@@ -106,6 +106,44 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### The stale header, and the answer that was already there
+
+The bug was known and had been sitting under "smaller things" with a warning
+attached: the obvious fix is to re-solve after an edit, and the obvious
+implementation is a list of which commands are edits — which is exactly the
+enumeration `main.ts` has refused to write since undo was built, because such a
+list is wrong the moment anyone adds a relation and forgets to update it, and
+wrong *silently*.
+
+The list is unnecessary. Undo has been answering the same question all along:
+"is this one step" is decided by snapshotting the model before an entry and
+after it and comparing the two strings, and that comparison is precisely "did
+this entry change the model". `UndoStack.pushIfChanged` even returns the
+answer; `endUserAction` was throwing it away. Now it returns it, and `submit`
+calls `solveAndRender()` when it is true and `render()` when it is false. Six
+lines, no new concept, and the property that matters is structural rather than
+maintained: an entry cannot be an undo step and not re-solve, because both come
+off the same boolean.
+
+Three things fell out of it that are worth writing down.
+
+**An entry that throws is not an edit.** A relation that fails part-way rolls
+back its blocks and its name counter (a fix from the deletion package), so the
+snapshot is unchanged and nothing re-solves. That was not designed here; it is
+the earlier fix paying a dividend, and there is now a test pinning it.
+
+**A history move must not re-solve through this path.** `undo()` and `redo()`
+replace the whole model, and `swapModel` already solves and draws it.
+`endUserAction` returns `false` for those, along with every nested close — only
+the outermost bracket has an answer at all.
+
+**Existing specs that type a redundant `solve()` were left alone**, as the
+spec asked. None of them asserted staleness — they typed `solve()` to *make*
+the model settle, and it still does. Removing them would have been a diff with
+no meaning in it. The one new assertion this needed is the negative one, "`ls()`
+did not solve", which cannot be seen from the geometry; `test/e2e/livesolve.e2e.ts`
+wraps `model.solve` in the page and counts calls.
+
 ### Snapping to crossings, and three decisions the spec left open
 
 The spec for this one was unusually specific about *what*, which left the

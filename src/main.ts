@@ -229,11 +229,26 @@ async function main() {
     }
   }
 
-  function endUserAction() {
-    if (actionDepth === 0) return; // defensive: an unbalanced `after` records nothing
-    if (--actionDepth > 0) return;
-    if (movedHistory) { movedHistory = false; return; }
-    undoStack.pushIfChanged(actionBefore, snapshot());
+  /**
+   * Closes the bracket, and **returns whether the model changed** — the same
+   * comparison the undo stack is deciding on, handed back rather than computed
+   * a second time somewhere else.
+   *
+   * That answer has a second customer: a command entry that changed the model
+   * has to re-solve, or the header goes on reporting the verdict from before
+   * whatever was just typed. Enumerating which commands are edits is exactly
+   * what this file has been avoiding since undo was written, and there is no
+   * reason to start now when the arithmetic is already here.
+   *
+   * `false` for a nested close (only the outermost bracket has an answer) and
+   * for a history move, which restored a model that `swapModel` has already
+   * solved and drawn.
+   */
+  function endUserAction(): boolean {
+    if (actionDepth === 0) return false; // defensive: an unbalanced `after` records nothing
+    if (--actionDepth > 0) return false;
+    if (movedHistory) { movedHistory = false; return false; }
+    return undoStack.pushIfChanged(actionBefore, snapshot());
   }
 
   /** Runs `fn` as one undoable step. */
@@ -390,15 +405,29 @@ async function main() {
     // nothing, `pt(0,0)` does not and records one. An entry that draws four
     // points is deliberately one step too, because one thing was typed.
     beginUserAction();
+    let changed = false;
     try {
       const result = await repl.eval(src);
       for (const line of result.output) log(line, "out");
       if (!result.ok) log(`${result.error!.name}: ${result.error!.message}`, "err");
       else if (result.value !== undefined) log(fmt(result.value), "out");
-      render();
     } finally {
-      endUserAction();
+      changed = endUserAction();
     }
+
+    // **An entry that changed the model re-solves**, the way a tool, a drag and
+    // `del` already do. Without it `dist("a","b",50)` added its residual, redrew
+    // and left the header reading `SOLVED` over a drawing that plainly violated
+    // what had just been typed — the stale-readout family this project has been
+    // bitten by before. Onshape's continuous solve, and cellwork's, both agree.
+    //
+    // Which entries those are is *not* enumerated anywhere: it is the undo
+    // bracket's own snapshot comparison, reused. So `ls()` and `help()` cost
+    // nothing, and any relation anyone ever adds is covered without being
+    // listed. A redundant `solve()` typed afterwards is harmless, which is why
+    // the specs that still type one were left alone.
+    if (changed) solveAndRender();
+    else render();
   }
 
   cmdEl.addEventListener("keydown", (e) => {

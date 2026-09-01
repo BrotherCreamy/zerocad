@@ -544,6 +544,23 @@ replacing) the system Node other projects on this machine may depend on.
   the same anonymity every relation had until now. Route it through
   `model.relation` and `model.addResidual` to get a name and a `del`.
 
+- **Typed edits re-solve (`src/main.ts`).** A command entry that changed the
+  model goes through `solveAndRender()`, so the status readout always
+  describes the drawing on screen. Before this, `dist("a","b",50)` added its
+  residual and redrew and the header went on reading `SOLVED` over geometry
+  that violated it until someone typed `solve()` — the stale-readout family,
+  third sighting. **Which entries count is not enumerated anywhere:** it is
+  the undo bracket's own before/after snapshot comparison, which
+  `endUserAction` now returns rather than swallowing. One consequence worth
+  stating: the two customers cannot drift apart, because "this is one undo
+  step" and "this needs re-solving" are now literally the same boolean.
+  `ls()`, `help()`, a bare expression and an entry that throws all leave the
+  model identical and therefore solve nothing;
+  `test/e2e/livesolve.e2e.ts` wraps `model.solve` in the page and counts,
+  because "it did not solve" is not otherwise assertable. A redundant
+  `solve()` typed afterwards remains harmless, so the older specs that type
+  one were left alone.
+
 ## What's next
 
 The working list lives in [`TODO.md`](TODO.md), so it has one home rather

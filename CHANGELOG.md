@@ -7,6 +7,35 @@ decisions.
 
 ---
 
+## What you type is solved, so the header is never a lie
+
+A relation typed at the command line used to add its residual, redraw, and
+leave the status readout saying whatever it said before — `SOLVED` over a
+drawing that plainly violated the constraint just entered, until someone
+thought to type `solve()`. The stale-readout family, third sighting, and found
+the same way as the first two: by looking at a picture the numbers said was
+fine.
+
+**A command entry that changed the model now re-solves**, the way a tool, a
+drag and `del` already did. Onshape's continuous solve, and cellwork's.
+
+![The app with a level 80-unit edge and a circle above it. The header reads CONFLICT: rad(c1). The log shows every line that was typed — fix, hor, dist, circ, rad 25, rad 12 — and no solve() among them](docs/images/23-live-solve-conflict.png)
+
+Nothing in the app enumerates which commands are edits, and nothing needed to:
+**the answer was already being computed one line away.** The undo bracket
+decides what counts as one step by snapshotting the model before an entry and
+after it and comparing, which is exactly the question "did that change
+anything". `endUserAction` now returns that comparison instead of swallowing
+it. So `ls()`, `help()` and `2 + 2` cost nothing, an entry that throws costs
+nothing, and every relation anyone ever adds — including one authored at the
+command line five minutes from now — is covered without appearing on a list.
+
+The picture above is the whole of the test: no `solve()` was typed, the
+distance constraint was applied, and a second `rad` on the same circle flipped
+the header to `CONFLICT` on the keystroke that caused it.
+
+---
+
 ## Where two curves cross is now a place you can click
 
 The last gap in the snap vocabulary. Points, midpoints and along-a-curve
