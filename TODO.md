@@ -80,12 +80,12 @@ are flagged as such.
 Queue for Opus, in order. Each gets a spec in `docs/plans/` before work
 starts.
 
-- [ ] **Constraint visibility and deletion.** Onshape shows constraint
-      glyphs and lets you delete one you didn't want; inference makes this
-      matter more, since tools now create constraints on the user's behalf.
-      Deletion needs `Problem` to support removing residual blocks, and
-      entity deletion needs variable compaction — the largest infrastructure
-      item on the list, wants a real design doc.
+- [ ] **Relation identity + deletion with cascade** — spec written,
+      [`docs/plans/constraint-deletion.md`](docs/plans/constraint-deletion.md).
+      Relations get names like entities do; `del()` cascades the way Onshape
+      does; variables are tombstoned rather than compacted (the boring design
+      ships first, and the leak is documented). Canvas constraint *glyphs*
+      are a follow-up spec on top of the registry this creates.
 - [ ] **Snap to intersections.** Points, midpoints and along-a-curve are
       done; where two curves cross needs real intersection maths.
 - [ ] **Box-select.** With name-based selection this means dragging a box
