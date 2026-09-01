@@ -23,16 +23,18 @@
 // satisfy it anyway.
 //
 // With **no default frame there is no inference at all**: the drawing has no
-// notion of level, and inferring against the kernel's own axes would be the
-// world frame coming back in through the side door. The line is still drawn,
-// and still snaps; it simply arrives unconstrained.
+// notion of level, so the preview is not pulled anywhere, no guide is drawn
+// and nothing is constrained. Inferring against the kernel's own axes — even
+// only in the preview — would be the world frame coming back in through the
+// side door, and would promise a constraint that never lands.
 //
-// ⚠ Half-1 gap, deliberate and bounded: the aim and its guide are still
-// computed against the kernel's axes rather than the default frame's, so a
-// *tilted* default frame gets a preview that disagrees with the constraint
-// that lands. Nothing in this half can tilt a frame by hand — frames are not
-// drawn or draggable until the second half of the package, which is where
-// the aim becomes frame-relative along with the rest of the tool work.
+// **The aim, the guide and the constraint are one answer**, read off the
+// default frame's own axes. A tilted frame tilts all three together: the
+// preview snaps onto the frame's +x, the dashed guide lies along it, and the
+// `hor` that lands means that same direction. (Half 1 shipped with the first
+// two computed against the kernel's axes and only the third against the
+// frame, which was invisible while nothing could tilt a frame by hand and
+// wrong the moment something could.)
 //
 // The chain itself is dimension-generic — points and lines are — so the tool
 // works unchanged in a 3D model and simply infers no axis there, since
@@ -40,6 +42,7 @@
 
 import { Tool, defineTool, type PointerInfo, type RenderContext } from "./tool.ts";
 import { horizontal, vertical } from "../relations/basic.ts";
+import { frameBasis } from "../relations/refs.ts";
 import { placePoint } from "./place.ts";
 
 /** How near an axis the preview has to be, in degrees, to be pulled onto it. */
@@ -67,6 +70,13 @@ function distance(a: number[], b: number[]): number {
 interface Aim {
   world: number[];
   axis: Axis;
+  /**
+   * The world direction the guide lies along — the default frame's own +x or
+   * +y, not the canvas's. Carried on the aim rather than recomputed at render
+   * time so that what is drawn is provably the same direction the aim was
+   * measured against, whatever the frame does between the two.
+   */
+  along?: number[];
 }
 
 export class LineTool extends Tool {
@@ -157,24 +167,52 @@ export class LineTool extends Tool {
     // Horizontal and vertical are not (see relations/basic.ts), so above two
     // dimensions the tool draws the same and simply infers no axis.
     if (from.length !== 2) return { world: p.world, axis: null };
-    const dx = p.world[0] - from[0];
-    const dy = p.world[1] - from[1];
-    if (Math.hypot(dx, dy) < DEGENERATE) return { world: p.world, axis: null }; // no direction to read
+    const axes = this.axes();
+    // No default frame, or one dragged onto its own origin: nothing to be
+    // level *with*, so no aim, no guide and no constraint.
+    if (!axes) return { world: p.world, axis: null };
+    const { ux, uy } = axes;
+
+    // The cursor's offset from the start, read in the frame's coordinates: how
+    // far along its +x, and how far along its +y. Every test below is on those
+    // two numbers, so all of it turns with the frame.
+    const d = [p.world[0] - from[0], p.world[1] - from[1]];
+    if (Math.hypot(d[0], d[1]) < DEGENERATE) return { world: p.world, axis: null }; // no direction to read
+    const along = d[0] * ux[0] + d[1] * ux[1];
+    const across = d[0] * uy[0] + d[1] * uy[1];
+    const on = (u: number[], t: number) => [from[0] + u[0] * t, from[1] + u[1] * t];
 
     if (p.snap) {
-      const scale = Math.max(1, Math.abs(dx), Math.abs(dy));
-      if (Math.abs(dy) <= ALREADY_ON_AXIS * scale) return { world: p.world, axis: "horizontal" };
-      if (Math.abs(dx) <= ALREADY_ON_AXIS * scale) return { world: p.world, axis: "vertical" };
+      // A snap wins outright, and the constraint comes along only if the
+      // snapped position already satisfies it — measured in the frame, so a
+      // snap that is level with a tilted frame counts and one that is merely
+      // level with the canvas does not.
+      const scale = Math.max(1, Math.abs(along), Math.abs(across));
+      if (Math.abs(across) <= ALREADY_ON_AXIS * scale) return { world: p.world, axis: "horizontal", along: ux };
+      if (Math.abs(along) <= ALREADY_ON_AXIS * scale) return { world: p.world, axis: "vertical", along: uy };
       return { world: p.world, axis: null };
     }
 
-    if (Math.abs(dy) <= Math.abs(dx) * AXIS_SLOPE) {
-      return { world: [p.world[0], from[1]], axis: "horizontal" };
+    if (Math.abs(across) <= Math.abs(along) * AXIS_SLOPE) {
+      return { world: on(ux, along), axis: "horizontal", along: ux };
     }
-    if (Math.abs(dx) <= Math.abs(dy) * AXIS_SLOPE) {
-      return { world: [from[0], p.world[1]], axis: "vertical" };
+    if (Math.abs(along) <= Math.abs(across) * AXIS_SLOPE) {
+      return { world: on(uy, across), axis: "vertical", along: uy };
     }
     return { world: p.world, axis: null };
+  }
+
+  /**
+   * The default frame's axes, or null when there is no default frame — or when
+   * the one there is has been dragged onto its own origin and has no direction
+   * left to offer. Read fresh each time: the frame is ordinary geometry and may
+   * have moved since the last cursor event, including during this very gesture.
+   */
+  private axes(): { ux: number[]; uy: number[] } | null {
+    const m = this.ctx.model;
+    if (!m.defaultFrame || !m.entities.has(m.defaultFrame)) return null;
+    const { ux, uy } = frameBasis(m, m.defaultFrame)();
+    return Math.hypot(ux[0], ux[1]) > 0.5 ? { ux, uy } : null;
   }
 
   render(r: RenderContext): void {
@@ -185,9 +223,15 @@ export class LineTool extends Tool {
 
     r.g.save();
     // The guide first, so the segment itself draws over it.
-    if (this.aim.axis) {
+    if (this.aim.axis && this.aim.along) {
       const far = 4000; // longer than any canvas; the rest is clipped away
-      const [ux, uy] = this.aim.axis === "horizontal" ? [1, 0] : [0, 1];
+      // Along the *frame's* axis, taken to screen space through the same
+      // transform the geometry uses — so the guide is drawn where the
+      // constraint that is about to land actually points, tilt and all.
+      const [gx, gy] = r.worldToScreen(this.aim.along.map((c, i) => from[i] + c));
+      const [dx, dy] = [gx - ax, gy - ay];
+      const glen = Math.hypot(dx, dy) || 1;
+      const [ux, uy] = [dx / glen, dy / glen];
       r.g.strokeStyle = "#e8a33d";
       r.g.globalAlpha = 0.4;
       r.g.setLineDash([2, 5]);

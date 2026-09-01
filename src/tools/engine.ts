@@ -570,9 +570,50 @@ export class ToolEngine {
     // while dragging; that is a follow-up, deliberately not this.
     const world = this.screenToWorld(sx, sy);
     const offset = world.map((w, i) => w - plan.grab[i]);
-    const extra = plan.names.flatMap((n, k) =>
-      pullTo(this.model, n, plan.origins[k].map((c, i) => c + offset[i])));
+    const targets = plan.names.map((n, k) => plan.origins[k].map((c, i) => c + offset[i]));
+    // A point a *frame* is built out of is moved outright before the solve
+    // rather than only pulled at. See `movesDatum` for why a pull alone cannot
+    // shift one.
+    plan.names.forEach((n, k) => { if (this.movesDatum(n)) this.moveOutright(n, targets[k]); });
+    const extra = plan.names.flatMap((n, k) => pullTo(this.model, n, targets[k]));
     this.model.problem.solve({ extra });
+  }
+
+  /**
+   * Whether dragging `name` moves a **datum** — a point some frame reads.
+   *
+   * These have to be moved outright, and the reason is a direct consequence of
+   * the decision that a frame is read and never pushed (see
+   * `relations/frameBasis`). A `hor(line, frame)` residual does not declare the
+   * frame's points among its variables, so the Jacobian has no row saying "turn
+   * the frame and the line must follow". The damped solve then keeps a step
+   * only if it lowers the *total* residual — and turning the frame a hair
+   * raises every levelled edge's residual by the edge's whole length times that
+   * angle, where the drag's own weak pull can only lower its own row by a
+   * fraction of it. Every step is rejected, lambda runs away, and the frame
+   * simply does not move: measured at three thousandths of a degree against a
+   * drag that asked for twenty-six degrees.
+   *
+   * Which is not a bug in the datum decision but its other half. A datum is
+   * moved *by the user*, and the drawing follows; the solver never gets a
+   * vote on where it goes. So the drag assigns the position and the same solve
+   * then carries the drawing to it — one Gauss-Seidel sweep, exactly the cost
+   * `frameBasis` says this trade costs.
+   *
+   * The weak pull is still applied on top, and still does its ordinary work:
+   * if the point is *also* an ordinary part of the drawing (a frame's origin
+   * that is also a rectangle's corner), the relations naming it do declare it,
+   * they win the solve as they always did, and the gesture degrades gracefully
+   * to the kinematic drag everything else gets.
+   */
+  private movesDatum(name: string): boolean {
+    return this.model.dependents(name).some((e) => e.kind === "frame");
+  }
+
+  /** Puts a point where the drag asks, with no journal entry — as a seed does. */
+  private moveOutright(name: string, world: number[]): void {
+    const idx = this.model.point(name).varIndices;
+    world.forEach((v, i) => this.model.problem.setVar(idx[i], v));
   }
 
   private updateHover(sx: number, sy: number): void {

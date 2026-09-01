@@ -207,14 +207,20 @@ export function neocadScope(h: EnvHandles): Bag {
   /**
    * Coordinate frames, as ordinary commands.
    *
-   * Deliberately plain in this half of the package: `frame()` seeds its auto
-   * points the way the model does, not at the middle of the view the way
-   * `circle()` does, and nothing draws a frame yet. Those belong with the
-   * tools, and putting them here first would mean the model half could not be
-   * reviewed without the drawing half in the other hand.
+   * `frame()` seeds like every other free constructor: the origin lands in the
+   * middle of what is on screen and the model puts the x-ref a span to its
+   * right, so a frame you typed is a frame you can see. That matters more here
+   * than for a circle — a frame is the thing `hor` and `ver` are measured
+   * against, and one that materialised off-screen would leave the whole
+   * vocabulary pointing at something invisible.
+   *
+   * An x-ref given without an origin is left alone, exactly as `ln` leaves a
+   * line given one endpoint: the model seeds the missing point beside the one
+   * it was handed, which is nearer what was meant than the middle of the
+   * window is.
    */
   geometry.frame = (origin?: string | null, xref?: string | null) =>
-    model.addFrame(origin ?? null, xref ?? null).name;
+    model.addFrame(origin ?? (xref == null ? anchor() : null), xref ?? null).name;
   geometry.setDefaultFrame = (name: string | null) => {
     model.setDefaultFrame(name ?? null);
     return model.defaultFrame ?? "no default frame";
@@ -365,7 +371,11 @@ function help(scope: Bag): string {
     "           every argument is optional: what you leave out is created free",
     "           near the middle of the view, for your relations to define",
     "frames     frame(origin, xref)  setDefaultFrame(name)  defaultFrame()",
-    "           there is no world frame: hor/ver/fix are relative to one",
+    "           there is no world frame: hor/ver/fix are relative to one, and",
+    "           say so if you have made none. A frame draws as an axes marker",
+    "           at its origin, brighter when it is the default; drag the marker",
+    "           to move it, or its x-ref to turn it and everything levelled",
+    "           against it. The line tool infers H/V only against the default.",
     "relations  dist fix coin mid hor ver par perp ang on eq",
     "           rad oncircle conc eqrad tan sym arcends",
     "operations fillet(line1, line2, radius)  del(name, ...)",

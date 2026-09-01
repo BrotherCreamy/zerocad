@@ -29,6 +29,7 @@
 
 import type { Entity, Model, RelationEntry } from "./model.ts";
 import { arcSlack, screenAngle, withinSweep } from "./intersect.ts";
+import { frameArms, frameMarker } from "./framemarker.ts";
 import { worldToScreen, type View } from "./view.ts";
 
 /**
@@ -104,18 +105,42 @@ export function hitTest(model: Model, view: View, sx: number, sy: number): Pick 
   if (best) return best;
 
   // Tier 3: lines — nearest point on the *segment*, so the infinite extension
-  // of a short edge is not pickable halfway across the drawing.
+  // of a short edge is not pickable halfway across the drawing — and frames,
+  // which are the two arms of their axes marker and nothing else.
+  //
+  // Frames share the tier rather than out-ranking lines because there is
+  // nothing deliberate about where a marker lands: unlike a constraint glyph
+  // it sits wherever its origin does, so it has no claim to win a tie it is
+  // not actually nearer. Its origin *point* still wins outright from tier 1,
+  // which is the right answer — a click on the corner of the marker is a click
+  // on the point the marker is drawn from, and dragging that turns the frame.
   for (const e of model.entities.values()) {
     if (e.kind !== "line") continue;
-    const [ax, ay] = screenOf(e.refs[0]);
-    const [bx, by] = screenOf(e.refs[1]);
-    const len = dist(ax, ay, bx, by);
-    if (len < 1e-6) continue;
-    const t = Math.max(0, Math.min(1, ((sx - ax) * (bx - ax) + (sy - ay) * (by - ay)) / (len * len)));
-    const d = dist(sx, sy, ax + t * (bx - ax), ay + t * (by - ay));
-    if (d < PICK_LINE && (!best || d < best.distance)) best = { name: e.name, kind: "line", distance: d };
+    const d = toSegment(sx, sy, screenOf(e.refs[0]), screenOf(e.refs[1]));
+    if (d !== null && d < PICK_LINE && (!best || d < best.distance)) {
+      best = { name: e.name, kind: "line", distance: d };
+    }
+  }
+  for (const e of model.entities.values()) {
+    if (e.kind !== "frame") continue;
+    const marker = frameMarker(model, view, e.name);
+    if (!marker) continue; // collapsed: nothing drawn, so nothing to hit
+    for (const [a, b] of frameArms(marker)) {
+      const d = toSegment(sx, sy, a, b);
+      if (d !== null && d < PICK_LINE && (!best || d < best.distance)) {
+        best = { name: e.name, kind: "frame", distance: d };
+      }
+    }
   }
   return best;
+}
+
+/** Distance from (sx, sy) to the segment a–b, or null if the segment is a dot. */
+function toSegment(sx: number, sy: number, [ax, ay]: [number, number], [bx, by]: [number, number]): number | null {
+  const len = dist(ax, ay, bx, by);
+  if (len < 1e-6) return null;
+  const t = Math.max(0, Math.min(1, ((sx - ax) * (bx - ax) + (sy - ay) * (by - ay)) / (len * len)));
+  return dist(sx, sy, ax + t * (bx - ax), ay + t * (by - ay));
 }
 
 /**
@@ -183,13 +208,13 @@ function describeGeometry(model: Model, name: string, kind: Entity["kind"], n: (
       const [a, b] = [model.coords(l.refs[0]), model.coords(l.refs[1])];
       return `${name}  ${l.refs[0]}–${l.refs[1]}  len ${n(Math.hypot(b[0] - a[0], b[1] - a[1]))}`;
     }
-    // Nothing produces a frame pick yet — frames are drawn, hovered and
-    // picked in the second half of the coordinate-frames package. The case
-    // exists so this switch stays exhaustive rather than silently returning
-    // undefined the day it does.
+    // A frame picks by its axes marker (see framemarker.ts). The tag says
+    // whether it is the default, because that is the whole difference between
+    // a frame a bare `hor` means and one it does not.
     case "frame": {
       const f = model.frame(name);
-      return `${name}  origin ${f.origin}, +x toward ${f.xref}`;
+      const dflt = model.defaultFrame === name ? "  (default)" : "";
+      return `${name}  origin ${f.origin}, +x toward ${f.xref}${dflt}`;
     }
   }
 }

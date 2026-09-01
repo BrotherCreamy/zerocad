@@ -282,3 +282,95 @@ test("LineTool: the chain is dimension-generic — it draws in 3D, with no axis 
     "horizontal and vertical are genuinely 2D-only, so nothing is inferred here");
   assert.deepEqual(model.coords(linesOf(model)[1].refs[1]), [10, 0, 7]);
 });
+
+// --- the aim, the guide and the constraint, against a *tilted* frame ---------
+//
+// The half-1 gap this closes: the tool inferred `hor(line, frame)` while
+// computing the aim and drawing the guide against the kernel's own axes, so a
+// tilted default frame got a preview that disagreed with the constraint about
+// to land. All three now read the same frame.
+
+/** A frame turned `deg` counter-clockwise, parked well away from the drawing. */
+function tiltedFrame(model: Model, deg: number): void {
+  const rad = (deg * Math.PI) / 180;
+  model.addPoint(FRAME_AT, "f_o");
+  model.addPoint([FRAME_AT[0] + Math.cos(rad), FRAME_AT[1] + Math.sin(rad)], "f_x");
+  model.addFrame("f_o", "f_x", "f");
+  model.setDefaultFrame("f");
+}
+
+/** The segment the tool committed, as a unit direction. */
+function segmentDirection(model: Model): number[] {
+  const [l] = linesOf(model);
+  const [a, b] = l.refs.map((n) => model.coords(n));
+  const d = [b[0] - a[0], b[1] - a[1]];
+  const len = Math.hypot(d[0], d[1]);
+  return [d[0] / len, d[1] / len];
+}
+
+test("LineTool: a tilted frame tilts the aim — the segment lands on the frame's +x, not the canvas's", async () => {
+  await loadKernel();
+  const model = new Model(2);
+  tiltedFrame(model, 30);
+  const tool = new LineTool(fakeCtx(model));
+
+  // Two degrees off the *frame's* x — which is 32° off the canvas's, far
+  // outside the tolerance, so any answer here can only have come from the frame.
+  const rad = (32 * Math.PI) / 180;
+  tool.onDown(click(model, [0, 0]));
+  tool.onDown(click(model, [60 * Math.cos(rad), 60 * Math.sin(rad)]));
+
+  const [l] = linesOf(model);
+  assert.deepEqual(model.journal.filter((e) => e.op === "horizontal").map((e) => e.args), [[l.name, "f"]]);
+  const [dx, dy] = segmentDirection(model);
+  const wedge = dx * Math.sin((30 * Math.PI) / 180) - dy * Math.cos((30 * Math.PI) / 180);
+  assert.ok(Math.abs(wedge) < 1e-9, `the committed segment lies along the frame's +x (wedge ${wedge})`);
+  assert.equal(model.solve().solved, true, "so the constraint that landed is already satisfied");
+});
+
+test("LineTool: the dashed guide is drawn along the same tilted axis the constraint means", async () => {
+  await loadKernel();
+  const model = new Model(2);
+  tiltedFrame(model, 30);
+  const tool = new LineTool(fakeCtx(model));
+  tool.onDown(click(model, [0, 0]));
+  const rad = (32 * Math.PI) / 180;
+  tool.onMove(click(model, [60 * Math.cos(rad), 60 * Math.sin(rad)]));
+
+  // The guide is the first stroked path the tool draws, and it is the only one
+  // 8000px long — the preview segment and the start marker are both short.
+  const segments: [number, number, number, number][] = [];
+  let at: [number, number] = [0, 0];
+  const g = {
+    save() {}, restore() {}, beginPath() {}, stroke() {}, arc() {}, setLineDash() {},
+    moveTo(x: number, y: number) { at = [x, y]; },
+    lineTo(x: number, y: number) { segments.push([at[0], at[1], x, y]); at = [x, y]; },
+    strokeStyle: "", lineWidth: 0, globalAlpha: 1,
+  } as unknown as CanvasRenderingContext2D;
+  tool.render({ g, worldToScreen: (w) => worldToScreen(view, w) });
+
+  const guide = segments.find((s) => Math.hypot(s[2] - s[0], s[3] - s[1]) > 1000);
+  assert.ok(guide, "a guide was drawn at all");
+  // Screen y runs the other way from world y, so a frame turned 30° CCW in the
+  // world is a guide sloping 30° *up* the canvas to the right.
+  // Mod 180: a guide is a line through the start, drawn both ways, so which
+  // end of it the path happens to begin at says nothing.
+  const angle = (Math.atan2(-(guide![3] - guide![1]), guide![2] - guide![0]) * 180) / Math.PI;
+  const off = (((angle - 30) % 180) + 180) % 180;
+  assert.ok(Math.min(off, 180 - off) < 1e-6,
+    `the guide lies along the frame's +x, not the canvas's (got ${angle}°)`);
+});
+
+test("LineTool: with no default frame nothing is inferred, and nothing is quietly straightened", async () => {
+  await loadKernel();
+  const model = new Model(2); // no frame at all
+  const tool = new LineTool(fakeCtx(model));
+  tool.onDown(click(model, [0, 0]));
+  tool.onDown(click(model, offLevel(60, AXIS_DEGREES - 1)));
+
+  assert.deepEqual(opsOf(model).filter((o) => o === "horizontal" || o === "vertical"), [],
+    "there is nothing to be level with, so nothing claims the line is");
+  const [a, b] = linesOf(model)[0].refs.map((n) => model.coords(n));
+  assert.ok(Math.abs(a[1] - b[1]) > 1,
+    "and the preview is not pulled onto the kernel's axes either — that is the world frame by the back door");
+});

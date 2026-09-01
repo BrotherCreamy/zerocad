@@ -33,6 +33,7 @@
 
 import type { Entity, Model } from "./model.ts";
 import { arcSlack, intersect, screenAngle, withinSweep, type Curve, type Pt } from "./intersect.ts";
+import { frameArms, frameMarker } from "./framemarker.ts";
 import { worldToScreen, type View } from "./view.ts";
 
 /** Which of the two selections the drag direction asked for. */
@@ -98,9 +99,16 @@ export function selectInBox(model: Model, view: View, rect: ScreenRect, mode: Bo
 function contains(model: Model, view: View, e: Entity, rect: ScreenRect, screenOf: (n: string) => Pt): boolean {
   if (e.kind === "point") return rectContainsPoint(rect, screenOf(e.name));
   if (e.kind === "line") return rectContainsSegment(rect, screenOf(e.refs[0]), screenOf(e.refs[1]));
-  // A frame catches nothing yet: it has no drawn extent to test a rectangle
-  // against until the second half of the coordinate-frames package draws one.
-  if (e.kind === "frame") return false;
+  // A frame *is* its axes marker as far as a box is concerned — the same extent
+  // the cursor picks and the eye sees. Not its two points: those are ordinary
+  // points, selected on their own account, and the x-ref can be dragged far
+  // outside a box that plainly contains the whole marker.
+  if (e.kind === "frame") {
+    const arms = frameSegments(model, view, e.name);
+    // A collapsed frame draws nothing, so it is inside nothing — `every` on an
+    // empty list would otherwise call it contained by every box on the canvas.
+    return arms.length > 0 && arms.every(([a, b]) => rectContainsSegment(rect, a, b));
+  }
   const c = screenOf(e.center);
   const r = model.radius(e.name) * view.scale;
   if (e.kind === "circle") return rectContainsCircle(rect, c, r);
@@ -111,11 +119,19 @@ function contains(model: Model, view: View, e: Entity, rect: ScreenRect, screenO
 function touches(model: Model, view: View, e: Entity, rect: ScreenRect, screenOf: (n: string) => Pt): boolean {
   if (e.kind === "point") return rectContainsPoint(rect, screenOf(e.name));
   if (e.kind === "line") return rectTouchesSegment(rect, screenOf(e.refs[0]), screenOf(e.refs[1]));
-  if (e.kind === "frame") return false; // see contains()
+  if (e.kind === "frame") {
+    return frameSegments(model, view, e.name).some(([a, b]) => rectTouchesSegment(rect, a, b));
+  }
   const c = screenOf(e.center);
   const r = model.radius(e.name) * view.scale;
   if (e.kind === "circle") return rectTouchesCircle(rect, c, r);
   return rectTouchesArc(rect, arcCurve(model, view, e, screenOf));
+}
+
+/** A frame's marker arms in screen space — empty when it has collapsed. */
+function frameSegments(model: Model, view: View, name: string): [Pt, Pt][] {
+  const marker = frameMarker(model, view, name);
+  return marker ? frameArms(marker) : [];
 }
 
 /** An arc as the screen-space curve `intersect.ts` understands. */

@@ -13,6 +13,7 @@ import { Repl, fmt } from "./repl.ts";
 import { neocadScope } from "./replenv.ts";
 import { ToolEngine, type View } from "./tools/engine.ts";
 import { describePick, type Pick } from "./picking.ts";
+import { frameMarker } from "./framemarker.ts";
 import { constrainedBy, type Glyph } from "./glyphs.ts";
 import { getToolCtor } from "./tools/tool.ts";
 import "./tools/point.ts";
@@ -68,9 +69,10 @@ async function main() {
     // is an invitation to relate geometry to a global frame that this app is
     // in the process of not having: geometry is defined by its relations to
     // other geometry, and a coordinate frame, where wanted, is an entity the
-    // user creates. Those exist now — `frame()` at the command line — but this
-    // loop does not draw one yet: the axes marker, and picking and dragging a
-    // frame, are the second half of that package. See TODO.md's register.
+    // user creates. The *user's* frames are drawn below, in the entity pass,
+    // because a frame is geometry rather than annotation — it is a thing in
+    // the drawing that can be clicked, dragged and deleted, not a note about
+    // one. What is absent is only the frame nobody made.
 
     // What the cursor is over lights up — and hovering a *constraint* lights up
     // everything that constraint is about. That spread is the payoff of drawing
@@ -106,6 +108,8 @@ async function main() {
         g.beginPath();
         g.arc(cx, cy, model.radius(e.name) * view.scale, -ang(e.start), -ang(e.end), true);
         g.stroke();
+      } else if (e.kind === "frame") {
+        drawFrame(e.name, lit.has(e.name));
       }
     }
 
@@ -123,6 +127,63 @@ async function main() {
     // everything — the geometry being placed is what the eye should be on.
     renderGlyphs(hov?.kind === "relation" ? hov.name : null);
     engine.renderOverlay();
+  }
+
+  /**
+   * A coordinate frame: two short arrows out of its origin, along +x and +y,
+   * lettered, with the frame's name beside it the way a point's name sits
+   * beside the point.
+   *
+   * **The default frame is drawn brighter**, because that difference is the
+   * whole of what the pointer means: a bare `hor` is level with *that* frame
+   * and not with any other one on the canvas. It is the only ambient state in
+   * the app that changes what a typed word does, so it had better be visible
+   * without asking.
+   *
+   * Arms are a fixed pixel length (see framemarker.ts) — the x-ref's distance
+   * carries no meaning — and the letters are what make a *tilted* frame
+   * readable at a glance, which is exactly the case the whole package exists
+   * for. Drawn in the entity pass, not with the glyphs: a frame is a thing in
+   * the drawing that can be clicked, dragged and deleted, not a note about one.
+   */
+  function drawFrame(name: string, lit: boolean) {
+    const marker = frameMarker(model, view, name);
+    if (!marker) return; // collapsed onto its own origin: no axes to draw
+    const isDefault = model.defaultFrame === name;
+    const colour = lit ? "#e8a33d" : isDefault ? "#c9dcec" : "#7b93a8";
+    g.save();
+    g.strokeStyle = colour;
+    g.fillStyle = colour;
+    g.lineWidth = lit ? 2.2 : isDefault ? 1.6 : 1.2;
+    g.font = "10px ui-monospace, Menlo, monospace";
+    const arms: [[number, number], string][] = [[marker.x, "x"], [marker.y, "y"]];
+    for (const [tip, letter] of arms) {
+      const [dx, dy] = [tip[0] - marker.origin[0], tip[1] - marker.origin[1]];
+      const len = Math.hypot(dx, dy);
+      const [ux, uy] = [dx / len, dy / len];
+      g.beginPath();
+      g.moveTo(marker.origin[0], marker.origin[1]);
+      g.lineTo(tip[0], tip[1]);
+      // An arrowhead as two strokes rather than a filled triangle: at this size
+      // a fill reads as a blob, and the open head is what a datum triad uses.
+      for (const s of [1, -1]) {
+        const a = Math.atan2(uy, ux) + s * 0.4;
+        g.moveTo(tip[0], tip[1]);
+        g.lineTo(tip[0] - Math.cos(a) * 6, tip[1] - Math.sin(a) * 6);
+      }
+      g.stroke();
+      g.fillText(letter, tip[0] + ux * 6 - 3, tip[1] + uy * 6 + 3.5);
+    }
+    g.font = "11px monospace";
+    // Away from both arms, not at a fixed corner: the arms turn with the frame,
+    // and a label pinned below-right would sit on top of one of them as soon as
+    // the frame was tilted — which is the case this package is about. Opposite
+    // their bisector is the one direction that stays clear whatever the tilt.
+    const bx = (marker.x[0] + marker.y[0]) / 2 - marker.origin[0];
+    const by = (marker.x[1] + marker.y[1]) / 2 - marker.origin[1];
+    const bl = Math.hypot(bx, by) || 1;
+    g.fillText(name, marker.origin[0] - (bx / bl) * 14 - 3, marker.origin[1] - (by / bl) * 14 + 4);
+    g.restore();
   }
 
   /**
