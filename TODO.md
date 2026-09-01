@@ -28,6 +28,22 @@ The guiding rule, set by the owner: **tools work like Onshape/SolidWorks, so
 people arrive already knowing how to use them.** Deviations from that rule
 are flagged as such.
 
+- **No world frame — coordinate frames are entities** (owner's direction,
+  2026-09-01, chosen over "keep the frame but hide it" and "directions stay,
+  origin goes"). The grid is gone; there is no drawn origin; and, in the
+  in-flight coordinate-frames package, `hor`/`ver`/`fix` become
+  frame-relative, erroring with a helpful message when no frame is given
+  and no default is set. `frame(origin?, xref?)` makes one out of two
+  ordinary points; `setDefaultFrame(name)` picks the one relations mean
+  when unnamed. A drawing with no frame floats in the solver's gauge, which
+  the damped solve already handles. ⚠ *Deviations from Onshape, veto-able:*
+  Onshape HAS a sketch origin and frame — this deliberately does not; the
+  rectangle tool goes intrinsic (par/perp, no hor/ver ever); H/V inference
+  works only while a default frame is set. **Old saved files carrying
+  frameless `hor`/`ver`/`fix` will not open** — accepted pre-release, said
+  in the CHANGELOG.
+  *Spec:* [`docs/plans/coordinate-frames.md`](docs/plans/coordinate-frames.md).
+
 - **Selection:** there is no selection set. Clicking geometry drops its name
   into the command line (cellwork's model — "the viewport is a selection
   portal"). Names are inserted quoted and comma-separated, because commands
