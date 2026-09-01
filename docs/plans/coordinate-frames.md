@@ -1,6 +1,19 @@
 # Plan: no world frame — coordinate frames are entities
 
-**Status: in flight** (2026-09-01). Owner's direction, verbatim intent: the
+**Status: half 1 built, half 2 in flight** (2026-09-01). What half 1 decided
+along the way, for whoever builds half 2: a frame is **read, not pushed** —
+its two points are re-read at every evaluation but are not declared as
+variables of the residuals that read them, because declaring them lets the
+solver level a line by turning the frame instead (measured; see
+`CONVERSATION_LOG.md` and `relations/refs.ts`). That is what makes the
+closed-form test below true, and it is what makes dragging a frame's x-ref
+turn the drawing rather than start a tug of war. `fix` above 2D keeps its
+gauge-relative meaning, since one direction does not settle a 3D frame. The
+rectangle went intrinsic in half 1 rather than half 2, because `hor` needs a
+frame and a clean sheet has none. Still open for half 2: the line tool's aim
+and guide are computed against the kernel's axes, not the frame's.
+
+Owner's direction, verbatim intent: the
 background grid is gone (already shipped); there should be **no built-in
 origin and no built-in world coordinate system at all**, because an origin
 tempts the user into relating geometry to a global frame; instead the user

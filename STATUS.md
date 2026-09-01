@@ -74,7 +74,9 @@ replacing) the system Node other projects on this machine may depend on.
   model, `onMove` just requests a preview redraw, `render()` draws a
   dashed preview from the tool's own in-progress state, and `onUp` is
   the only place anything is committed — four points, four lines,
-  `hor`/`ver` relations, one solve.
+  the relations that make it a rectangle, one solve. (Those were `hor`/`ver`
+  until coordinate frames arrived; they are `par`/`par`/`perp` now — see the
+  coordinate-frames entry below.)
 - **Verified with a real mouse drag**, not just unit tests: armed the
   rectangle tool through the command input (a tool-name-only stand-in
   at that point; the real REPL landed later, see below),
@@ -770,6 +772,41 @@ replacing) the system Node other projects on this machine may depend on.
   *Known and deliberate:* **no rigid rotation** (translation only; the solver
   resolves the rest, which is what Onshape's drag does too), and still no
   inference or snapping mid-drag.
+
+- **Coordinate frames, and no world frame** (`model.ts`, `relations/basic.ts`,
+  `relations/refs.ts`) — half 1 of the package: the model and the relations.
+  A `Frame` is an origin point plus a point fixing +x, purely referential the
+  way a `Line` is: it owns no variables and its two points are ordinary
+  points. `addFrame(origin?, xref?, name?)` follows the free-entities
+  conventions — everything optional, missing pieces auto-created and seeded a
+  span apart so a frame with no direction cannot be constructed, journalled as
+  the one call that was made. Frames are **2D-only**: +y is +x turned a
+  quarter turn, which settles a frame in 2D and leaves a whole rotation free
+  above it.
+  `hor`, `ver` and `fix` are relative to a frame now — the one named, or
+  `model.defaultFrame` at call time, and an error naming the fix when there is
+  neither. The journal always carries the frame the call *resolved* to, so an
+  entry cannot change meaning when the default changes later; old files
+  carrying frameless entries are refused by the replay table with that same
+  message, and the format version is 2.
+  **A frame is read, not pushed.** `frameBasis` (`relations/refs.ts`) re-reads
+  the frame's origin and unit axes at every evaluation and hands them to the
+  residual as values; the frame's two points are not among the block's
+  declared variables. Declaring them was tried first and measured: the solver
+  then satisfies a `hor` by turning the frame rather than the line (≈8° of a
+  9° error, on a 40-unit line against a 20-unit frame arm), and without
+  normalising it shrinks the frame's arm as well. So a frame moves only when
+  something moves *it*, and the drawing follows within the same solve because
+  the basis is re-read. That is what makes "level against a tilted frame"
+  settle at exactly the frame's tilt.
+  Two tools bridged: **the rectangle tool is intrinsic** (`par`, `par`,
+  `perp` — no `hor`/`ver`, so it works with no frame at all, and three
+  relations rather than four because the fourth was redundant), and **the line
+  tool's axis inference fires only when a default frame is set**, against that
+  frame. *Not in half 1:* frames are not drawn, picked, dragged or
+  box-selected, `frame()` at the command line does not seed at the view centre
+  the way `circle()` does, and the line tool's aim and guide are still
+  computed against the kernel's axes rather than the frame's.
 
 ## What's next
 
