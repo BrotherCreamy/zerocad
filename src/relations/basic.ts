@@ -4,16 +4,8 @@
 // Dual-arithmetic formula; nothing here is privileged over what a user
 // could write themselves at the REPL later.
 
-import { Dual } from "../kernel/dual.ts";
 import type { Model } from "../model.ts";
-
-function vecSub(a: Dual[], b: Dual[]): Dual[] {
-  return a.map((ai, i) => ai.sub(b[i]));
-}
-
-function normSquared(v: Dual[]): Dual {
-  return v.reduce((acc, c) => acc.add(c.mul(c)), Dual.constant(0));
-}
+import { norm, vecSub } from "./vec.ts";
 
 /** |a - b| = target */
 export function dist(model: Model, aName: string, bName: string, target: number): void {
@@ -22,7 +14,7 @@ export function dist(model: Model, aName: string, bName: string, target: number)
   const varIndices = [...a.varIndices, ...b.varIndices];
   model.problem.addResidual(varIndices, (l) => {
     const A = l.slice(0, dim), B = l.slice(dim);
-    return [normSquared(vecSub(B, A)).sqrt().sub(target)];
+    return [norm(vecSub(B, A)).sub(target)];
   }, `dist(${aName},${bName})`);
 }
 
