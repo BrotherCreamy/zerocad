@@ -249,6 +249,18 @@ preference between two failure modes: honest label layout has to move marks as
 the model solves, and a mark that jumps about while you drag is worse than one
 that overlaps its neighbour and stays put.
 
+**A dimension's value is one of those marks.** `dist`, `rad` and `ang` draw
+their target — `50`, `R22`, `30°` — where their generic symbol would have gone,
+read out of the relation registry's `args`. Two things follow from that being a
+glyph rather than a dimensions overlay. First, hovering, picking, highlighting
+and `glyphs(false)` all work on a dimension without a line of code, because
+they are not written twice. Second, the only thing the label needed that a mark
+did not is a box the width of its text — so `Glyph` carries its own half-extents
+and `glyphAt` reads them, rather than every glyph being an 18px square. The text
+width comes from a constant, because `glyphs.ts` has no canvas and having one
+would end its testability; an end-to-end test measures the browser's real
+monospace advance against that constant so the assumption cannot rot quietly.
+
 With no tool armed the left button has four meanings, decided by what it landed
 on and whether it moved: press a point and move, and the point is dragged with
 the model following it; press *empty canvas* and move, and a selection box is

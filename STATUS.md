@@ -482,6 +482,50 @@ replacing) the system Node other projects on this machine may depend on.
   rather than cached, because no cache could be invalidated honestly: a drag
   and a solve both move geometry without touching the model's structure.
 
+- **Dimension values are those glyphs** (`labelFor` in `src/glyphs.ts`) —
+  `dist`, `rad` and `ang` draw their target instead of a generic mark: `50`
+  midway along the span offset across it, `R22` just outside the rim toward
+  the upper right, `30°` at the corner two lines share, nudged along the
+  bisector into the wedge (or between the two edges' middles when they share
+  no corner). In Onshape a dimension *is* its number, and a separate
+  dimensions overlay would duplicate the hovering, the picking, the
+  highlighting and the `glyphs(false)` switch and then drift from them.
+  The value is read from `RelationEntry.args` — the relation registry keeps
+  the call as it was made — so this is pure UI over data that already
+  existed: no model change, no journal change, no new relation kind. Values
+  are trimmed to at most three decimals (`50`, not `50.000`), and a target
+  that is not a number falls back to the generic mark rather than drawing
+  `NaN`.
+  **The box is the text's box.** `halfW` is per glyph and `glyphAt` reads it,
+  so aiming at the last digit of `120.5` is not a miss. `glyphs.ts` has no
+  canvas and must not grow one, so widths come from `GLYPH_CHAR_W` (7.2px,
+  the 12px monospace advance) — a constant that is a claim about the font
+  `main.ts` sets, checked against the browser's own `measureText` by
+  `test/e2e/dimensions.e2e.ts`. Rows of marks now advance by each box's real
+  edges rather than by a fixed step, because a wide label stepping 17px sat
+  under its neighbour: `—` beside `110` drew as *minus* 110.
+  `ang` gets **one** label rather than the two marks a two-line relation
+  usually gets — two marks answer "which pair", two copies of one number
+  answer nothing.
+  **`dist` draws dashed witness and dimension lines** with arrowheads, from
+  the two points it measures between (`Glyph.ends`, drawn by `main.ts`).
+  Solid ones were built first and read as geometry — a `dist` across a
+  rectangle's diagonal drew what looked like an edge that is not there — and
+  the dashed version is where the information (which two points is this
+  number about?) survives without that. Which side of an edge a dimension
+  sits on follows the argument order: `dist("p3","p4")` and `dist("p4","p3")`
+  are the same constraint on opposite sides.
+  Deliberate limitations: **a value cannot be edited in place.** Clicking one
+  inserts the relation's name like any other glyph, and `del` plus retype is
+  the editing story, because changing a target means rebuilding the closure
+  that captured it — an owner decision in `TODO.md`, along with named
+  dimension parameters. **`ang` takes radians and labels degrees**, so a
+  label is not quite what you would retype; drawing radians on a sketch
+  would be the wrong fix, and this seam closes with retargeting. `rad` has
+  no leader line back to its arc, and nothing moves a label out of a
+  crowded spot — that is still the no-layout-engine decision above, with
+  `glyphs(false)` as the escape hatch.
+
 - **Named relations, and deletion with cascade** (`Model.relation` +
   `Model.relations` in `src/model.ts`, `del` in `src/operations.ts`,
   `BlockHandle` / `removeBlock` in `src/kernel/problem.ts`) — relations are

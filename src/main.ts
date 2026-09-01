@@ -13,7 +13,7 @@ import { Repl, fmt } from "./repl.ts";
 import { neocadScope } from "./replenv.ts";
 import { ToolEngine, type View } from "./tools/engine.ts";
 import { describePick, type Pick } from "./picking.ts";
-import { constrainedBy, GLYPH_HALF_H, GLYPH_HALF_W } from "./glyphs.ts";
+import { constrainedBy, type Glyph } from "./glyphs.ts";
 import { getToolCtor } from "./tools/tool.ts";
 import "./tools/point.ts";
 import "./tools/line.ts";
@@ -136,20 +136,73 @@ async function main() {
     g.font = "12px ui-monospace, Menlo, monospace";
     g.textAlign = "center";
     g.textBaseline = "middle";
+    for (const mark of marks) if (mark.ends) dimensionLines(mark, mark.relation === hoveredRelation);
     for (const mark of marks) {
       const on = mark.relation === hoveredRelation;
       const [x, y] = mark.screen;
-      roundedBox(x - GLYPH_HALF_W, y - GLYPH_HALF_H, GLYPH_HALF_W * 2, GLYPH_HALF_H * 2, 3);
+      roundedBox(x - mark.halfW, y - mark.halfH, mark.halfW * 2, mark.halfH * 2, 3);
       g.fillStyle = on ? "#20303f" : "#0e141bee";
       g.fill();
       g.strokeStyle = on ? "#e8a33d" : "#2c3d4f";
       g.lineWidth = 1;
       g.stroke();
-      g.fillStyle = on ? "#e8a33d" : "#8fa7bb";
+      // A dimension is brighter than an annotation on purpose: it states
+      // something the user asked for, where `∥` states something they may only
+      // have implied. Onshape draws its dimensions the same way — a value
+      // reads as part of the drawing, an inferred mark as a note about it.
+      g.fillStyle = on ? "#e8a33d" : mark.isLabel ? "#cfe0ee" : "#8fa7bb";
       // Nudged down a hair: several of these marks (— ∥ ⊥ ∴) sit high in their
       // em box, and centring by metrics leaves them looking as though they are
       // escaping upward out of the box.
       g.fillText(mark.symbol, x, y + 0.5);
+    }
+    g.restore();
+  }
+
+  /**
+   * A `dist` label's witness and dimension lines: a stub out from each end of
+   * what is being measured, and a line between them at the label's own level,
+   * with an arrow into each end.
+   */
+  function dimensionLines(mark: Glyph, on: boolean) {
+    const [a, b] = mark.ends!;
+    const [lx, ly] = mark.screen;
+    // How far out the dimension line sits: the label's own offset, projected
+    // back onto the perpendicular so the line passes through the label.
+    const px = b[1] - a[1], py = a[0] - b[0];
+    const len = Math.hypot(px, py);
+    if (!(len > 1e-6)) return;
+    const [ux, uy] = [px / len, py / len];
+    const off = (lx - a[0]) * ux + (ly - a[1]) * uy;
+    const at = (p: [number, number], t: number): [number, number] => [p[0] + ux * t, p[1] + uy * t];
+
+    g.save();
+    g.strokeStyle = on ? "#e8a33d" : "#33485c";
+    g.lineWidth = 1;
+    g.setLineDash([3, 3]);
+    g.beginPath();
+    // Witness lines start clear of the geometry, the way a draughtsman's do —
+    // touching the point would make them read as part of the drawing.
+    for (const end of [a, b]) {
+      const gap = off >= 0 ? 4 : -4;
+      g.moveTo(...at(end, gap));
+      g.lineTo(...at(end, off + gap));
+    }
+    g.moveTo(...at(a, off));
+    g.lineTo(...at(b, off));
+    g.stroke();
+    // Arrowheads, pointing outward into the witness lines.
+    const dx = (b[0] - a[0]) / Math.hypot(b[0] - a[0], b[1] - a[1]);
+    const dy = (b[1] - a[1]) / Math.hypot(b[0] - a[0], b[1] - a[1]);
+    g.fillStyle = on ? "#e8a33d" : "#40566b";
+    for (const [end, s] of [[a, 1], [b, -1]] as const) {
+      const tip = at(end, off);
+      g.beginPath();
+      g.moveTo(tip[0], tip[1]);
+      g.lineTo(tip[0] + s * dx * 7 + ux * 2.5, tip[1] + s * dy * 7 + uy * 2.5);
+      g.lineTo(tip[0] + s * dx * 7 - ux * 2.5, tip[1] + s * dy * 7 - uy * 2.5);
+      g.closePath();
+      g.fill();
     }
     g.restore();
   }

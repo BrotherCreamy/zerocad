@@ -106,6 +106,70 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### Dimension labels: the number was already in the model
+
+The whole package is a rendering change, and that is the point of it. A
+relation registry entry has kept `args` — the call exactly as it was made —
+since relations became named, so `dist("p1","p2",50)` has always had the 50
+sitting in it; the drawing just never said so. Nothing was added to the model,
+the journal, `persist.ts`'s replay table or the relation vocabulary. If a
+package this visible needs no change below the UI, the layering underneath it
+is doing its job.
+
+**The one real design decision was to make a label a glyph rather than a
+dimensions overlay.** An overlay would have had to grow its own hover, its own
+picking tier, its own highlight path and its own visibility switch, all
+duplicating the four `glyphs.ts` already has, and then drift from them one fix
+at a time. As a glyph, every one of those behaviours came for free and the e2e
+suite could assert them by asking `engine.glyphs()` the same questions the
+existing glyph suite asks. The only thing a label genuinely needed was a box
+the width of its text — `halfW` per glyph, which `glyphAt` and `main.ts` both
+read — because a hit-box frozen at a mark's 18px square clips a number and
+makes aiming at its last digit a miss.
+
+**`glyphs.ts` still has no canvas, and that cost something honest.** Sizing a
+box to text wants `measureText`, which would have meant a canvas in a module
+whose whole testability comes from being a pure function of (model, view). So
+the width comes from a constant, `GLYPH_CHAR_W`, which is a *claim* about the
+font `main.ts` sets — and the browser measured 7.2246px against the 7.2 in the
+source. A comment saying "keep these in step" would have rotted; an e2e test
+that measures the real advance and fails on drift will not.
+
+**Extension lines: the spec delegated this and the browser answered it.**
+Built solid first, they looked like geometry. The case that settled it was a
+`dist` across a rectangle's diagonal: the dimension line drew what any reader
+would take for a diagonal edge, in a sketch that has no such edge. The
+tempting conclusion was to drop them — but that same diagonal is the case that
+*needs* them, because a `dist` need not lie along any line, and without them
+its number floats in the middle of the drawing with nothing saying which two
+points it is about. Dashed and dim, they read as annotation and keep the
+information. Kept.
+
+**Two places the spec was wrong about the code, both worth writing down.** It
+said degrees are what `ang` takes; `ang` takes radians. The label converts,
+because a drawing has said degrees since drawings existed, which means the
+number on the canvas is not the number you would retype — a genuine seam,
+flagged in the register rather than papered over by drawing radians on a
+sketch. And the spec's placement rules implied `ang` would keep the two marks
+a two-line relation gets; it now gets one, at the shared corner. `∥` is drawn
+twice because one mark leaves "parallel to what?" unanswered, and that
+reasoning does not transfer: the same number written twice answers nothing.
+
+**One bug was caught by looking at a picture, as usual.** The first screenshot
+showed the `—` on the bottom edge touching the `110` beside it, and the pair
+read as *minus* 110. The cause was a stacking row that stepped by a fixed
+17px, which is fine when every box is 18px wide and wrong the moment one is
+50. Rows now advance by each box's real edges. Nothing in the numbers could
+have shown that.
+
+**What is deliberately not here is editing.** Clicking a value inserts the
+relation's name, exactly as clicking any glyph does. Making the number
+editable means changing a relation's target, which lives inside the residual
+closure that captured it, and the owner's own "radius d4" example hints at
+named dimension parameters rather than a one-off setter. That is a design
+decision, so it stays on `TODO.md` as one instead of being answered by
+whichever implementation was convenient behind a double-click.
+
 ### The 3-point circle tool: spending the free-entities package
 
 This is the package that tests whether the previous one was worth it. The
