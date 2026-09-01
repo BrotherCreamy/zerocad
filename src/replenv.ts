@@ -11,12 +11,12 @@
 // implicitly, since a REPL entry always has one in hand.
 
 import { Dual } from "./kernel/dual.ts";
-import { Model, type Entity } from "./model.ts";
+import { Model, type Entity, type RelationEntry } from "./model.ts";
 import type { SolveReport } from "./kernel/problem.ts";
 import { Tool, defineTool, listTools } from "./tools/tool.ts";
 import * as basic from "./relations/basic.ts";
 import * as geom from "./relations/geometry.ts";
-import { fillet } from "./operations.ts";
+import { del, fillet } from "./operations.ts";
 import { save as saveModel } from "./persist.ts";
 import { clampScale } from "./view.ts";
 
@@ -70,6 +70,25 @@ export interface EnvHandles {
  */
 function bind<A extends unknown[]>(model: Model, fn: (m: Model, ...args: A) => void) {
   return (...args: A) => fn(model, ...args);
+}
+
+/**
+ * The short name each relation is called by at the command line, keyed by the
+ * op the model records. `rels()` prints these rather than the internal op so
+ * that a listed relation reads back as something you could have typed —
+ * `r3  coin p5 p3` is a line you can retype, `r3  coincident p5 p3` is not
+ * quite.
+ */
+const SHORT_OP: Record<string, string> = {
+  coincident: "coin", midpoint: "mid", horizontal: "hor", vertical: "ver",
+  parallel: "par", perpendicular: "perp", angle: "ang", pointOnLine: "on",
+  equalLength: "eq", radius: "rad", onCircle: "oncircle", concentric: "conc",
+  equalRadius: "eqrad", tangent: "tan", symmetric: "sym", arcEndpoints: "arcends",
+};
+
+function describeRelation(r: RelationEntry): string {
+  const arg = (a: unknown) => (typeof a === "string" ? a : JSON.stringify(a));
+  return `${r.name}  ${SHORT_OP[r.op] ?? r.op} ${r.args.map(arg).join(" ")}`.trimEnd();
 }
 
 function describe(e: Entity, model: Model): string {
@@ -137,6 +156,24 @@ export function neocadScope(h: EnvHandles): Bag {
   // equations — see operations.ts for why that is worth keeping separate.
   const operations: Bag = {
     fillet: (l1: string, l2: string, r: number) => fillet(model, l1, l2, r),
+    /**
+     * Deletes an entity or a relation, cascading the way Onshape does, and
+     * hands back the names it took — so "what did that just remove" has an
+     * answer in the log rather than only on the canvas.
+     *
+     * It re-solves through the host afterwards, unlike the other editing
+     * commands, because deleting a constraint is exactly the edit whose point
+     * is to change the solver's verdict: leaving `CONFLICT` on the header
+     * after removing the constraint that caused it is the stale-readout bug
+     * this project has already been bitten by once. Nothing moves — the
+     * drawing was already satisfying more than it now has to — so the solve
+     * costs a frame and buys an honest header.
+     */
+    del: (name: string) => {
+      const removed = del(model, name);
+      h.solve?.();
+      return removed;
+    },
   };
 
   // Save and open, as ordinary commands like everything else. `save()` hands
@@ -185,6 +222,16 @@ export function neocadScope(h: EnvHandles): Bag {
 
     solve: () => (h.solve ? h.solve() : model.solve()),
     ls: () => [...model.entities.values()].map((e) => describe(e, model)),
+    /**
+     * The constraints, by name — all of them, or (given a name) just the ones
+     * that mention it. This is the other half of what makes an inferred
+     * constraint answerable for: the hover tag says *that* `p5` is
+     * constrained, `rels("p5")` says by what.
+     */
+    rels: (name?: string) => {
+      const all = name === undefined ? [...model.relations.values()] : model.relationsNaming(name);
+      return all.map(describeRelation);
+    },
     coords: (name: string) => model.coords(name),
 
     arm: (name: string, options?: Record<string, unknown>) => {
@@ -228,11 +275,12 @@ function help(scope: Bag): string {
     "geometry   pt(x,y)  ln(a,b)  circ(center,r)  arc(center,start,end,r)",
     "relations  dist fix coin mid hor ver par perp ang on eq",
     "           rad oncircle conc eqrad tan sym arcends",
-    "operations fillet(line1, line2, radius)",
+    "operations fillet(line1, line2, radius)  del(name)",
     "files      save()  open(text)  download(name)  openFile()  journal()",
     "history    undo()  redo()          — ctrl+z, ctrl+shift+z (ctrl+y)",
     "viewport   arm(tool, opts)  cancel()  zoom(f)  pan(dx,dy)  refresh()",
-    "inspect    ls()  coords(name)  solve()  tools()  hover()  snapping(on)  model",
+    "inspect    ls()  rels(name?)  coords(name)  solve()  tools()  hover()",
+    "           snapping(on)  model",
     "authoring  Tool  defineTool(name, ctor)  Dual",
     "",
     "A bare assignment persists between entries (box = class extends Tool {…});",
