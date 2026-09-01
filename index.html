@@ -12,10 +12,13 @@
     #status.solved{color:#55c07a}
     #status.bad{color:#e0605c}
     canvas{display:block;flex:1;background:#0a0e13;cursor:crosshair}
-    #log{padding:6px 14px;font-size:11px;color:#7a8b9b;border-top:1px solid #223041;max-height:100px;overflow-y:auto}
+    #log{padding:6px 14px;font-size:11px;color:#7a8b9b;border-top:1px solid #223041;white-space:pre-wrap;max-height:190px;overflow-y:auto}
     #cmdrow{display:flex;align-items:center;gap:8px;padding:6px 14px;border-top:1px solid #223041;background:#0e141b}
     #cmd{flex:1;background:transparent;border:none;outline:none;color:#d5e1ec;font-family:inherit;font-size:13px}
     #cmdhint{font-size:10.5px;color:#46586a}
+    #log .in{color:#46586a}
+    #log .err{color:#e0605c}
+    #log .out{color:#8fa7bb}
   </style>
 </head>
 <body>
@@ -28,8 +31,8 @@
     <div id="log"></div>
     <div id="cmdrow">
       <span style="color:#e8a33d">&gt;</span>
-      <input id="cmd" autocomplete="off" spellcheck="false" placeholder="tool name (point, rectangle) + Enter">
-      <span id="cmdhint">stand-in for the real REPL — see STATUS.md</span>
+      <input id="cmd" autocomplete="off" spellcheck="false" placeholder="a tool name, or any expression — try help()">
+      <span id="cmdhint">up/down for history</span>
     </div>
   </div>
   <script type="module" src="/src/main.ts"></script>

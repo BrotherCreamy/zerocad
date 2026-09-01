@@ -1,12 +1,16 @@
-// Interactive milestone: the tool-authoring layer wired to a real canvas.
-// The text input here is a deliberately temporary stand-in for the real
-// REPL (a scoped JS/TS evaluator) — it just type-switches the armed tool
-// by name for now, so the pointer-event/render pipeline is testable before
-// the REPL's own design gets its turn. See STATUS.md.
+// Browser entry point: the kernel, the model, the tool engine and the REPL
+// wired to a canvas. The command line at the bottom is now the real thing —
+// a scoped evaluator over the command surface in replenv.ts — rather than
+// the tool-name-only stand-in it replaced. A bare tool name still arms that
+// tool, because that shortcut is genuinely the most common entry and reads
+// better than arm("rectangle"); anything else is evaluated.
 
 import { ensureKernelLoaded } from "./kernel/problem.ts";
 import { Model } from "./model.ts";
+import { Repl, fmt } from "./repl.ts";
+import { neocadScope } from "./replenv.ts";
 import { ToolEngine, type View } from "./tools/engine.ts";
+import { getToolCtor } from "./tools/tool.ts";
 import "./tools/point.ts";
 import "./tools/rectangle.ts";
 
@@ -16,9 +20,10 @@ const cv = document.getElementById("cv") as HTMLCanvasElement;
 const g = cv.getContext("2d")!;
 const cmdEl = document.getElementById("cmd") as HTMLInputElement;
 
-function log(msg: string) {
+function log(msg: string, cls?: string) {
   const d = document.createElement("div");
   d.textContent = msg;
+  if (cls) d.className = cls;
   logEl.appendChild(d);
   logEl.scrollTop = logEl.scrollHeight;
 }
@@ -56,11 +61,29 @@ async function main() {
     g.strokeStyle = "#afc6d9";
     g.lineWidth = 1.4;
     for (const e of model.entities.values()) {
-      if (e.kind !== "line") continue;
-      const [ax, ay] = engine.worldToScreen(model.coords(e.refs[0]));
-      const [bx, by] = engine.worldToScreen(model.coords(e.refs[1]));
-      g.beginPath(); g.moveTo(ax, ay); g.lineTo(bx, by); g.stroke();
+      if (e.kind === "line") {
+        const [ax, ay] = engine.worldToScreen(model.coords(e.refs[0]));
+        const [bx, by] = engine.worldToScreen(model.coords(e.refs[1]));
+        g.beginPath(); g.moveTo(ax, ay); g.lineTo(bx, by); g.stroke();
+      } else if (e.kind === "circle") {
+        const [cx, cy] = engine.worldToScreen(model.coords(e.center));
+        g.beginPath(); g.arc(cx, cy, model.radius(e.name) * view.scale, 0, Math.PI * 2); g.stroke();
+      } else if (e.kind === "arc") {
+        // Screen y runs the other way from world y, so a world-space CCW
+        // sweep is drawn clockwise here — hence the negated angles and the
+        // `true` sweep flag.
+        const ctr = model.coords(e.center);
+        const [cx, cy] = engine.worldToScreen(ctr);
+        const ang = (n: string) => {
+          const p = model.coords(n);
+          return Math.atan2(p[1] - ctr[1], p[0] - ctr[0]);
+        };
+        g.beginPath();
+        g.arc(cx, cy, model.radius(e.name) * view.scale, -ang(e.start), -ang(e.end), true);
+        g.stroke();
+      }
     }
+
     g.fillStyle = "#afc6d9";
     g.font = "11px monospace";
     for (const e of model.entities.values()) {
@@ -77,32 +100,77 @@ async function main() {
     statusEl.textContent = report.solved ? "SOLVED" : `CONFLICT: ${report.offenders.map((o) => o.label).join(", ")}`;
     statusEl.className = report.solved ? "solved" : "bad";
     render();
+    return report;
   }
 
   const engine = new ToolEngine(model, cv, view, { onSolveRender: solveAndRender, onRenderOnly: render });
-  (window as unknown as { __neocad: unknown }).__neocad = { model, engine }; // debug hook, not for production use
+
+  const repl = new Repl(neocadScope({
+    model,
+    view,
+    arm: (name) => engine.arm(name),
+    cancel: () => engine.cancel(),
+    refresh: () => { solveAndRender(); },
+    solve: () => solveAndRender(),
+  }));
+
+  (window as unknown as { __neocad: unknown }).__neocad = { model, engine, repl }; // debug/automation hook
+
+  const history: string[] = [];
+  let historyAt = 0;
+
+  async function submit(src: string) {
+    log(`> ${src}`, "in");
+    history.push(src);
+    historyAt = history.length;
+
+    // A bare tool name arms it — the one shortcut, and only when the whole
+    // entry is an identifier that is actually a registered tool.
+    if (/^[A-Za-z_$][\w$]*$/.test(src) && getToolCtor(src)) {
+      try {
+        engine.arm(src);
+        log(`armed: ${src}`, "out");
+      } catch (err) {
+        log(String(err instanceof Error ? err.message : err), "err");
+      }
+      return;
+    }
+
+    const result = await repl.eval(src);
+    for (const line of result.output) log(line, "out");
+    if (!result.ok) log(`${result.error!.name}: ${result.error!.message}`, "err");
+    else if (result.value !== undefined) log(fmt(result.value), "out");
+    render();
+  }
 
   cmdEl.addEventListener("keydown", (e) => {
-    if (e.key !== "Enter") return;
-    const name = cmdEl.value.trim();
-    cmdEl.value = "";
-    if (!name) return;
-    try {
-      engine.arm(name);
-      log(`armed: ${name}`);
-    } catch (err) {
-      log(`error: ${err instanceof Error ? err.message : String(err)}`);
+    if (e.key === "ArrowUp" && history.length) {
+      e.preventDefault();
+      historyAt = Math.max(0, historyAt - 1);
+      cmdEl.value = history[historyAt] ?? "";
+    } else if (e.key === "ArrowDown" && history.length) {
+      e.preventDefault();
+      historyAt = Math.min(history.length, historyAt + 1);
+      cmdEl.value = history[historyAt] ?? "";
+    } else if (e.key === "Escape") {
+      engine.cancel();
+      log("cancelled", "out");
+    } else if (e.key === "Enter") {
+      const src = cmdEl.value.trim();
+      cmdEl.value = "";
+      if (src) void submit(src);
     }
   });
 
   render();
-  statusEl.textContent = "ready — type a tool name (point, rectangle) + Enter, then use the canvas";
+  statusEl.textContent = "ready — type help(), a tool name, or any expression";
+  log("type help() for the command surface");
   cmdEl.focus();
 }
 
 main().catch((e) => {
   statusEl.textContent = "ERROR — see log";
   statusEl.className = "bad";
-  log(String((e && e.stack) || e));
+  log(String((e && e.stack) || e), "err");
   console.error(e);
 });
