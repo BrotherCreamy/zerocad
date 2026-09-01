@@ -1,10 +1,12 @@
 # Plan: entities defined by constraints, not constructors
 
-**Status: model layer shipped (commit 1 of 2); the command layer waits for
-the box-select merge** — only the command layer touches `replenv.ts`, so the
-model half carried no conflict risk and went first while Opus capacity was
-limit-blocked (2026-09-01). Implemented directly by the supervising session
-for that reason; the command layer follows the original worker/PR route.
+**Status: shipped, pending review** (2026-09-01). Two commits, as planned:
+the model layer went first, implemented directly by the supervising session
+while Opus capacity was limit-blocked — only the command layer touches
+`replenv.ts`, so the model half carried no conflict risk with box-select —
+and the command layer followed the worker/PR route on `claude/free-entities`.
+What was decided and discovered along the way is in `TODO.md`'s Done entry;
+the behaviour is in `STATUS.md`.
 
 Owner's direction, quoted because it is the whole requirement: *"need to be
 able to define elements by constraints. E.g. the code equivalent of 'create a

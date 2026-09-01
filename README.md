@@ -116,6 +116,24 @@ zoom(1.5); pan(0, -20)             // the viewport is just more commands
 ls()                               // what's in the model
 ```
 
+**Every constructor argument is optional**, because none of them was ever a
+constraint — `circ(centre, r)` only *seeds* a radius, it does not pin one. So
+you can create a thing and then say what it is, which is usually what you
+actually know:
+
+```js
+k = circle()                       // a circle. Defined by nothing, yet
+oncircle("p1", k)                  // through these three points, and
+oncircle("p2", k); oncircle("p3", k)   // that is the whole 3-point circle
+```
+
+Whatever you leave out is auto-created free — a real, named, draggable point,
+seeded in the middle of the view so it appears where you are looking — and
+`point`/`line`/`circle` are long names for `pt`/`ln`/`circ`. Where a
+construction is ambiguous (tangent + through-a-point + radius admits four
+circles) the solver returns the branch nearest the seed, and dragging flips
+branches, exactly as Onshape does.
+
 The viewport works the way Onshape's does: the wheel zooms about the
 cursor, right- or middle-drag pans. Navigation is deliberately on
 different buttons from tool use, so the left button always belongs to
