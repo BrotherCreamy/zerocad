@@ -352,6 +352,32 @@ async function main() {
     }
   });
 
+  /**
+   * Ctrl+Z / Cmd+Z undoes; Ctrl+Shift+Z and Ctrl+Y redo. On `window` rather
+   * than on the canvas, because the keystroke means the same thing wherever the
+   * focus happens to be — and the focus is nearly always the command line,
+   * which is the one place a canvas-scoped binding would never fire.
+   *
+   * The carve-out: **while the command input holds uncommitted text, Ctrl+Z is
+   * the browser's**, and it edits the text. A half-typed command on screen makes
+   * the keystroke ambiguous in a way nothing can resolve from the outside, and
+   * undoing the model out from under someone mid-sentence is the worse of the
+   * two wrong answers. An empty input is the signal that the keystroke is meant
+   * for the drawing. This is deliberately about the text and not about the
+   * focus: text left sitting in the box is visible, and what is visible is what
+   * a user is reasoning from.
+   */
+  window.addEventListener("keydown", (e) => {
+    if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+    const key = e.key.toLowerCase();
+    const undoing = key === "z" && !e.shiftKey;
+    const redoing = (key === "z" && e.shiftKey) || key === "y";
+    if (!undoing && !redoing) return;
+    if (cmdEl.value !== "") return; // the text's undo, not the model's
+    e.preventDefault();
+    log(step(undoing ? "undo" : "redo"), "out");
+  });
+
   render();
   statusEl.textContent = "ready — type help(), a tool name, or any expression";
   log("type help() for the command surface");

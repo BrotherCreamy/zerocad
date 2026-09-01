@@ -106,6 +106,67 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### Undo, and the design that was already lying there
+
+The interesting thing about undo here is that almost none of it is new code.
+The spec's central claim — snapshots, not journal cleverness — is the sort of
+thing that sounds like giving up until you look at what the alternative costs.
+Journal truncation is *obviously* the clever design: the model already knows
+the calls that built it, so drop the last one and replay. It falls over on the
+first thing a user does after drawing, which is drag something. A drag changes
+values and journals nothing, on purpose, so truncation would see nothing to
+truncate. Undo would then need value snapshots *as well as* journal surgery,
+and two mechanisms that each half-work are worse than one that works.
+
+And the snapshot format was already written. `save()` produces text that
+carries the journal and the solved coordinates, `open()` puts one back,
+`swapModel` already re-points the engine and the REPL at a new model and is
+already tested for keeping the user's own command-line bindings alive. So the
+whole feature is a stack of strings plus a decision about *when* to push one.
+`src/undo.ts` imports nothing at all, which is a good sign about where the
+complexity ended up rather than a boast about the file.
+
+**The decision worth writing down is what counts as one step**, and the thing
+I did not expect was that it needs no list. The first shape I sketched had the
+host asking "is this command an edit?" — which means a table of command names,
+which means every new relation has a third place to be registered and a fourth
+way to silently do nothing. What replaced it is one comparison: snapshot
+before, snapshot after, push only if the text differs. `ls()` and `help()`
+stay out of the history because they leave the model identical, not because
+anyone remembered to exclude them. A command added next year is covered.
+
+The second decision is where that policy lives, and it is the layer rule doing
+its usual work. The engine is below undo and must not learn it exists, so what
+it offers is a neutral bracket — `onUserAction("before" | "after")`, a gesture
+began, a gesture ended — and `main.ts` hangs the snapshot-compare-push on it.
+What I got wrong first was giving the *host* the job of pairing those phases.
+The engine is the only thing that knows all the ways a gesture can end: a
+release, an Escape, and a swap of the model out from under a drag in progress.
+Miss one and the host's bracket stays open forever, and the symptom is not the
+missed action — it is the *next* one, silently unrecorded, possibly minutes
+later. So the engine owns the pairing, closes it in a `finally`, and the tests
+that matter most in this package are the three that check it closes on each of
+those three exits. (Reading that path also turned up a real bug of the same
+family: a drag whose model was swapped out wrote to a cleared `idle` on the
+next pointer move — an uncaught TypeError, sitting there since the drag work.)
+
+Two smaller things I deliberately did *not* do. Undo does not restore the
+**view**: panning and zooming are not edits to the drawing, and a Ctrl+Z that
+scrolls the page back is a well-known annoyance in tools that conflate them.
+And the history is **not saved** with the file. A reopened drawing starts with
+an empty stack — which is standard, is one line in the CHANGELOG, and stays a
+documented decision rather than an undiscovered gap.
+
+The carve-out took the longest to settle for how small it is. Ctrl+Z with a
+half-typed command in the box could mean the text or the model, and nothing
+outside the user's head can resolve it. Both wrong answers are bad; undoing
+the *drawing* while someone is mid-sentence is the worse one, because the text
+is right there in front of them and the geometry might be off-screen. So text
+in the input keeps the keystroke. Note that the test is the text, not the
+focus: what is visible is what a user reasons from, and an input with
+`dist("p1", ` sitting in it looks like it is being typed whether or not it
+holds focus.
+
 ### Dragging, and the difference between a constraint and an intention
 
 The drag needed one thing the kernel could not do: solve the model *plus*

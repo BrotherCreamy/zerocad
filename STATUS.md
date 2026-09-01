@@ -349,9 +349,46 @@ replacing) the system Node other projects on this machine may depend on.
   neighbouring cases, driving the engine with synthetic pointer events against
   a stand-in canvas: a press that never moved, a pan, and an ordinary release.
   Deliberately not in v1, each a known difference from Onshape: **only points
-  drag** (an edge or a rim still pans, as it did); **no inference or snapping
-  while dragging** (Onshape infers mid-drag); and **no undo** — nothing has undo
-  yet, so for now a drag is undone by dragging back.
+  drag** (an edge or a rim still pans, as it did) and **no inference or snapping
+  while dragging** (Onshape infers mid-drag). A settled drag is now one undo
+  step, so the note that used to stand here — that a drag is undone by dragging
+  back — no longer applies.
+
+- **Undo/redo** (`src/undo.ts`, policy in `src/main.ts`) — Ctrl+Z / Cmd+Z
+  undoes, Ctrl+Shift+Z and Ctrl+Y redo, and `undo()` / `redo()` are ordinary
+  commands over the same host handles, so the keystroke and the command cannot
+  drift apart.
+  The mechanism is a **stack of whole-model snapshots**, and the snapshot format
+  is the text `save()` writes — which already carries the journal *and* the
+  solved coordinates, already restores through `open()`, and compares for
+  equality as a string. The alternative (truncate the journal and replay) was
+  rejected because value-only changes — a drag, a solve — are never journalled,
+  so it would need value snapshots as well and be strictly more machinery.
+  `undo.ts` is a stack and nothing else: generic over what a snapshot is,
+  importing nothing, cap 100 (cellwork's), pushing clears redo.
+  **What counts as one step** is decided in `main.ts` by one comparison —
+  snapshot before, snapshot after, record only if they differ. Nothing
+  enumerates which commands are edits: `ls()` and `help()` stay out of the
+  history because they leave the model identical. One step each for a command
+  entry that changed something (an entry drawing four points is one step,
+  because one thing was typed), a tool commit, a settled drag, and an `open()`.
+  `undo()`/`redo()` push nothing themselves.
+  The engine gained **one callback**, `onUserAction("before" | "after")`, fired
+  around a press or release handed to an armed tool and around a drag from its
+  first moving frame to its settling solve. It is deliberately neutral — the
+  engine is below undo in the layering and must not learn undo exists — and the
+  engine owns the *pairing*, because it is the only thing that knows every way a
+  gesture can end (released, cancelled with Escape, or abandoned because the
+  model was swapped out mid-gesture). An unpaired `before` would strand the
+  host's bracket silently, so `test/engine.test.ts` covers all three exits.
+  **The carve-out:** while the command input holds uncommitted text, Ctrl+Z is
+  the browser's and edits the text. A half-typed command makes the keystroke
+  ambiguous, and an empty input is the signal that it is meant for the model.
+  Deliberate limitations: history is **per-session and not saved** — a reopened
+  file starts with an empty stack; restoring is a full replay, so undo costs
+  what opening the file costs (fine at present sizes, and the first thing to
+  measure if it ever is not); and there is **no undo of a view change**, since
+  the view is not part of the model.
 
 ## What's next
 

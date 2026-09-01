@@ -86,6 +86,7 @@ src/persist.ts           save/open — a file is the model's journal, replayed
 src/repl.ts              the scoped evaluator: curated scope, no reach into page globals
 src/replenv.ts           what that scope contains — the app's whole command surface
 src/view.ts              the 2D view transform, as pure testable functions
+src/undo.ts              a stack of whole-model snapshots; imports nothing
 src/tools/tool.ts         abstract class Tool + defineTool registry
 src/tools/engine.ts       wires real DOM pointer events to the armed tool
 src/tools/point.ts        the trivial example tool
@@ -142,6 +143,14 @@ A saved file is that journal — the calls that built the model, replayed on
 open — because a residual block holds a closure and closures do not survive
 JSON. The upshot is that the save format is a transcript of the same public
 API you type at the command line, so anything you can type, you can save.
+
+**Ctrl+Z / Cmd+Z** undoes and **Ctrl+Shift+Z** (or **Ctrl+Y**) redoes;
+`undo()` and `redo()` do the same thing from the command line. One step is
+one thing you did — a command entry that changed the model, a tool commit, a
+completed drag, or opening a file — and the mechanism is the save format
+above: the stack holds whole models as text, so undo is `open()` on a
+snapshot. The exception is that with uncommitted text in the command input
+Ctrl+Z stays the browser's, and edits the text.
 
 One thing worth knowing when constraining geometry you intend to modify
 later: `hor` and `ver` take *either* two point names or a single line
