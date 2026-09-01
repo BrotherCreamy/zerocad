@@ -88,11 +88,6 @@ are flagged as such.
 Queue for Opus, in order. Each gets a spec in `docs/plans/` before work
 starts.
 
-- [ ] **Constraint glyphs** — spec written,
-      [`docs/plans/constraint-glyphs.md`](docs/plans/constraint-glyphs.md):
-      one marker per relation beside its geometry, hover names it and
-      highlights what it constrains, click drops its name in the command
-      line. Top picking tier, screen-space offsets, `glyphs(false)` to hide.
 - [ ] **Snap to intersections.** Points, midpoints and along-a-curve are
       done; where two curves cross needs real intersection maths.
 - [ ] **Box-select.** With name-based selection this means dragging a box
@@ -103,9 +98,46 @@ starts.
 
 - [x] `docs/plans/` specs that have shipped gain a one-line "shipped" note
       at top rather than being deleted — they are the design record.
+- [ ] **A relation added from the command line leaves the header stale.**
+      `dist("a","b",50)` adds the residual and redraws, but does not solve, so
+      the status can still read `SOLVED` while the drawing plainly violates
+      what was just typed until someone calls `solve()`. Found while setting
+      up the glyph screenshots, and only by looking at the picture. The right
+      fix is probably the one `del` already uses — re-solve through the host
+      — but "which commands are edits" is exactly the enumeration `main.ts`
+      has so far avoided having to write, so it wants a moment's thought
+      rather than a reflex.
 
 ## Done
 
+- [x] **Constraint glyphs** — spec:
+      [`docs/plans/constraint-glyphs.md`](docs/plans/constraint-glyphs.md),
+      now marked shipped-pending-review. One mark per relation beside the
+      geometry it constrains (`src/glyphs.ts` computes the placements and
+      nothing else — no canvas, no pointer, no state); hovering one names the
+      relation on the hover tag *and* lights up every entity it constrains;
+      clicking one drops its name into the command line exactly as clicking
+      geometry does. Glyphs are the top picking tier, above points, and take
+      no part in snapping. Anchors are world-space, offsets screen-space;
+      marks sharing an anchor stack in a row and there is no layout engine.
+      `glyphs()` / `glyphs(true|false)` on `help()`, default on.
+      *Decided while doing it:* the spec's symbol table was re-judged in a
+      browser at real size, as the spec asked — `coin` moved from `◦` to `○`
+      (`◦` is two pixels across and reads as dirt), `on`/`oncircle` from `◦`
+      to `●` (the spec gave them the same mark as `coin`, which cannot be
+      right), `fix` from `⚓` to `#`, and `dist`/`arcends` gained marks they
+      were never given. Tofu was ruled out by bitmap identity against a
+      codepoint no font has; **advance width cannot detect it in a monospace
+      stack**, where present and absent measure identically.
+      *Discovered while doing it:* a relation typed at the command line does
+      not re-solve, so the header can go on reading `SOLVED` while the drawing
+      violates the constraint just added — the stale-readout family this
+      project has been bitten by before. Pre-existing and untouched here (it
+      is why `del` re-solves through the host), and it is listed under
+      "Smaller things" below.
+      *Left for later, deliberately:* per-relation and per-kind hiding, leader
+      lines from a mark to its geometry, and any real layout pass. Crowding on
+      a busy drawing is genuine and `glyphs(false)` is the v1 answer to it.
 - [x] **Relation identity + deletion with cascade** — spec:
       [`docs/plans/constraint-deletion.md`](docs/plans/constraint-deletion.md),
       now marked shipped-pending-review. Relations are registry entries named

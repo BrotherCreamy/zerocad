@@ -106,6 +106,71 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### Drawing the constraints, and what only looking could settle
+
+This package is small and the interesting part of it is not the code. Almost
+everything mechanical was already in place: PR #3 gave relations names and a
+registry, `describePick` already described things for a tag, the engine already
+had a tier-ordered hit test, and `main.ts` already highlighted whatever was
+hovered. The glyph layer is `placeGlyphs(model, view)` plus one new value in a
+union plus about forty lines of canvas drawing.
+
+The one structural decision worth recording is **`Pick.kind` gaining
+`"relation"` rather than a second, parallel pick type.** A glyph is not an
+entity, and the honest-looking design has a separate `GlyphPick` alongside
+`Pick`. I wrote it that way first and it was immediately wrong: hovering,
+describing, highlighting, and dropping a name into the command line all want to
+do the *same thing* to a glyph pick as to a point pick, so a parallel type
+means writing every one of those paths twice and then keeping the two in step
+forever. Widening the existing type made the rest of the package fall out as a
+handful of switches, exactly as the spec predicted.
+
+The other one is smaller and worth naming because I nearly did the opposite:
+**`describeRelation` and its short-name table moved down from `replenv.ts` to
+`picking.ts`.** The hover tag needs it now, and picking sits below the command
+surface, so the alternative was a second copy. Two tables would have meant the
+canvas and the command line could quietly start calling the same relation two
+different things, which is precisely the sort of drift nothing would ever
+catch.
+
+**Legibility was the actual work, and it needed eyes.** The spec proposed a
+symbol table and said the implementer owns it and must judge it from
+screenshots. That instruction earned its place three times over:
+
+- My first attempt at detecting missing glyphs measured `ctx.measureText`
+  against a codepoint no font has. In a **monospace** stack that is useless —
+  every glyph, present or absent, gets the same advance — and the check
+  cheerfully reported that `|`, `=` and `r` were all tofu. The measurement that
+  works is bitmap identity: render the character and `U+FFFF` to two canvases
+  and compare the pixels. Worth writing down, because the width test is the
+  obvious one and it is confidently wrong.
+- The spec's table gave `coin` and `on` the same `◦`. That is not a legibility
+  problem you can see in a table — both rows look fine — and it is obvious the
+  moment two marks that mean different things sit next to each other on a
+  drawing. `coin` also deserved better than `◦`, which at 12px is two pixels
+  across and reads as dirt rather than as a symbol; it is the most common
+  relation of all, since it is the one inference produces.
+- `⚓` for `fix` turned out to *render* — the risk the spec named — and still
+  be the wrong choice, because at 12px it is a dense smudge. The spec offered
+  `#` as the fallback and `#` is simply better.
+
+And the screenshots caught something entirely unrelated: while setting up the
+"drawing wearing its glyphs" picture I typed a `tan` at the command line and the
+circle plainly was not tangent, while the header read `SOLVED`. A relation added
+from the command line adds its residual and redraws but does not solve. That is
+the stale-readout family this project has been bitten by before, it is
+pre-existing, and it is not this package's to fix — but it is now on `TODO.md`
+rather than waiting to be rediscovered. It is also the fourth time in this
+project that looking at a picture found something no assertion was watching for.
+
+**Deliberately not built:** any kind of layout pass. Marks sharing an anchor
+stack in a row and everything else is left to crowd. The spec ruled a layout
+engine out and I agree with it more after building this than before: the honest
+version of label layout has to move marks as the model solves, and a mark that
+jumps about while you drag is worse than a mark that overlaps its neighbour and
+stays put. `glyphs(false)` is the v1 escape hatch, and per-relation hiding can
+follow if the crowding turns out to matter.
+
 ### Giving relations names, and what that turned up
 
 The spec for this one framed the gap exactly right: entities have names and

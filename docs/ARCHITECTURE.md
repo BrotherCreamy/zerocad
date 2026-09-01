@@ -41,6 +41,12 @@ tool engine and the renderer, depending on nothing. `undo.ts` sits beside it
 for the same reason — a stack of snapshots, generic over what a snapshot is,
 importing nothing at all.
 
+`picking.ts`, `snapping.ts` and `glyphs.ts` sit at the same height as each
+other, just above the model: each is a pure function of (model, view, cursor)
+answering one question — what is under it, where should it be pulled to, what
+marks should the drawing be wearing. None of them draws anything or holds any
+state, which is what lets all three be tested without a canvas.
+
 ## The kernel knows nothing about geometry
 
 `Problem` is a flat vector of numbers plus a list of residual blocks. It has
@@ -194,6 +200,36 @@ change: "multi-stage" is just "finishes later".
 
 The engine keeps navigation and tool use on separate mouse buttons, so a
 gesture can be panned through without the tool ever seeing it.
+
+## Constraints are drawn, and a drawn constraint is a thing you can click
+
+Every relation wears a small mark beside the geometry it constrains. The tiers
+that decide what a click means put those marks **above everything else**,
+including points — which until then won outright. The reasoning is the same one
+that makes a point beat a line it sits on, only stronger: a mark is small,
+deliberate to aim at, and only ever on screen because something put it there,
+so a mark you cannot click because a point wandered near it defeats the whole
+feature.
+
+**Snapping does not consult them.** Picking and snapping have mirrored tiers
+and it would be easy to keep them mirrored here too, but a glyph is UI rather
+than geometry and nothing should ever be *placed* at one.
+
+A glyph pick travels as an ordinary `Pick` with `kind: "relation"`, not as a
+parallel type. Everything downstream of a pick — the hover tag, the highlight,
+dropping a name into the command line — wants to do the same thing with a glyph
+as with a point, so a second type would mean writing every one of those paths
+twice and keeping them in step forever.
+
+The placements come from `glyphs.ts`, which computes and does not draw. Two
+rules cover all of it: **anchors are world-space and offsets are screen-space**,
+so a mark follows its geometry through a solve while staying a constant number
+of pixels off it at any zoom; and **there is no layout engine** — marks sharing
+an anchor stack in a row and everything else is left to crowd, with
+`glyphs(false)` as the escape hatch. That is not laziness so much as a
+preference between two failure modes: honest label layout has to move marks as
+the model solves, and a mark that jumps about while you drag is worse than one
+that overlaps its neighbour and stays put.
 
 With no tool armed the left button has three meanings, decided by what it
 landed on and whether it moved: press a point and move, and the point is

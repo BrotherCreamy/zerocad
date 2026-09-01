@@ -16,6 +16,11 @@
 // The tiers matter as much as the tolerances. A point sitting on a line is
 // under the cursor at the same time as the line, and it is almost always the
 // point that was meant, so points win outright rather than by being nearer.
+//
+// There is one tier above everything here, and it is not in this file: the
+// constraint glyphs (see glyphs.ts), which the engine consults before calling
+// `hitTest` at all. They live a layer up because they are UI drawn over the
+// drawing rather than part of it — the same reason snapping ignores them.
 
 import type { Entity, Model, RelationEntry } from "./model.ts";
 import { worldToScreen, type View } from "./view.ts";
