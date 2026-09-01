@@ -1,4 +1,15 @@
-// One small marker per relation, drawn beside the geometry it constrains.
+// One small marker per relation, drawn beside the geometry it constrains — and
+// for the three dimensioned relations, that marker is the dimension's *value*.
+//
+// `dist("p1","p2",50)` used to put a ↔ on the drawing and the 50 nowhere. In
+// Onshape a dimension *is* its number, so `dist`, `rad` and `ang` draw theirs
+// (`50`, `R12`, `45°`) in place of a generic mark. That is a label, not a
+// second overlay: it hovers, picks, highlights and switches off through
+// `glyphs(false)` exactly as every other mark does, because it *is* one. The
+// only thing it needs that a mark did not is a box the width of its text —
+// hence `halfW` per glyph. Editing a value in place is deliberately not part of
+// this: a click drops the relation's name in the command line like any other
+// glyph. See TODO.md's owner decision on retargeting.
 //
 // This is the fuller answer to the question the hover tag only half answers.
 // The tag says "something constrains this point, and it is called r7" — but
@@ -38,6 +49,22 @@ export const GLYPH_STEP = 17;
 export const GLYPH_HALF_W = 9;
 export const GLYPH_HALF_H = 8;
 
+/**
+ * One character's advance in the 12px monospace the renderer draws glyphs in.
+ *
+ * This file has no canvas and must not grow one — it is a pure function of
+ * (model, view) and that is what lets it be tested without a browser. So a
+ * dimension label's box is sized from a constant rather than from
+ * `measureText`, which is honest only as long as the constant matches the font
+ * main.ts actually sets. An e2e test measures the real advance in the browser
+ * and fails if the two drift apart; that is the guard, not a comment.
+ */
+export const GLYPH_CHAR_W = 7.2;
+/** Breathing room either side of a label's text, in pixels. */
+const LABEL_PAD = 5;
+/** And outside its box, when it shares an anchor with something else. */
+const LABEL_MARGIN = 2;
+
 export interface Glyph {
   /** The relation's name, `r5` — what a click drops into the command line. */
   relation: string;
@@ -51,6 +78,23 @@ export interface Glyph {
   anchor: [number, number];
   /** The entities it constrains — what lights up when it is hovered. */
   highlights: string[];
+  /**
+   * Half the box's width and height, in pixels — its drawn size *and* its pick
+   * region, which are the same rectangle on purpose. A generic mark is always
+   * `GLYPH_HALF_W` × `GLYPH_HALF_H`; a dimension label is as wide as its text,
+   * because aiming at `120.5` must not mean aiming at a 18px square that clips
+   * it.
+   */
+  halfW: number;
+  halfH: number;
+  /** True for the dimensioned relations, which draw their value, not a mark. */
+  isLabel: boolean;
+  /**
+   * For a `dist` label, the two points it measures between, in the same
+   * pixels — what the witness and dimension lines are drawn from. Absent for
+   * everything else, which is how the renderer knows there is nothing to draw.
+   */
+  ends?: [[number, number], [number, number]];
 }
 
 /**
@@ -98,12 +142,68 @@ function fallbackSymbol(op: string): string {
   return (op[0] ?? "?").toLowerCase();
 }
 
+/**
+ * A dimension's number, as a draughtsman would write it: `50`, not `50.000`,
+ * and `12.347` rather than `12.34657`.
+ *
+ * Three decimals is the precision the rest of the app already prints at
+ * (`ls()`, the hover tag), so a label and the tag under it agree. Trailing
+ * zeros go because a dimension reads as a *statement of intent* — someone
+ * typed 50 — and `50.000` reads as a measurement.
+ */
+export function formatValue(v: number): string {
+  if (!Number.isFinite(v)) return "?";
+  const s = (Math.round(v * 1000) / 1000).toString();
+  // Exponential notation for something absurd would be worse than useless in a
+  // 30px box, but it is still better than "1e+21" being silently truncated by
+  // the box — so it is left alone and the box is sized to it.
+  return s;
+}
+
+/**
+ * The text a dimensioned relation draws instead of its generic mark, or null
+ * for every other relation.
+ *
+ * The value is read straight out of `RelationEntry.args` — the registry keeps
+ * the call as it was made — so this is pure UI over data that already exists.
+ * A relation whose target argument is not a number (a hand-edited file, a
+ * user-defined op that happens to be called `dist`) falls back to the mark
+ * rather than drawing `NaN`.
+ */
+export function labelFor(op: string, args: unknown[]): string | null {
+  switch (op) {
+    case "dist": {
+      const v = args[2];
+      return typeof v === "number" ? formatValue(v) : null;
+    }
+    case "radius": {
+      const v = args[1];
+      // Onshape's prefix. `R12` says which dimension it is without a leader
+      // line having to say it.
+      return typeof v === "number" ? `R${formatValue(v)}` : null;
+    }
+    case "angle": {
+      const v = args[2];
+      // The relation stores radians — `ang(l1,l2,Math.PI/4)` is how it is
+      // typed — but a drawing says degrees, because that is what a drawing has
+      // always said and what Onshape shows. The mismatch between the label and
+      // what you would retype is filed as an owner decision (see TODO.md);
+      // drawing radians on a sketch to paper over it would be the wrong fix.
+      return typeof v === "number" ? `${formatValue((v * 180) / Math.PI)}°` : null;
+    }
+    default:
+      return null;
+  }
+}
+
 /** Where a glyph belongs, and which way it is nudged off that spot. */
 interface Anchor {
   /** World coordinates. */
   world: number[];
   /** A *screen*-space unit vector, so the nudge is constant under zoom. */
   dir: [number, number];
+  /** The span a dimension line should reach across, in world coordinates. */
+  ends?: [number[], number[]];
 }
 
 const DIAG = Math.SQRT1_2;
@@ -135,6 +235,7 @@ function atSegmentMid(model: Model, aName: string, bName: string): Anchor {
   return {
     world: a.map((ai, i) => (ai + b[i]) / 2),
     dir: perp(screenDir(b[0] - a[0], b[1] - a[1])),
+    ends: [a, b],
   };
 }
 
@@ -169,6 +270,39 @@ function atNearestRim(model: Model, lineName: string, circleName: string): Ancho
   const t = len2 > 1e-12 ? ((ctr[0] - a[0]) * ux + (ctr[1] - a[1]) * uy) / len2 : 0;
   const foot = [a[0] + t * ux, a[1] + t * uy];
   return atRim(model, circleName, Math.atan2(foot[1] - ctr[1], foot[0] - ctr[0]));
+}
+
+/**
+ * Where an angle's value goes: at the corner the two lines make, nudged along
+ * the bisector into the wedge between them — which is where a draughtsman
+ * writes it and where Onshape puts it.
+ *
+ * Two lines that share no endpoint still have an angle between them, and it is
+ * still worth stating; there is simply no corner to write it at, so the label
+ * goes midway between the two edges' middles. That is the honest placement for
+ * a claim about two directions rather than about a corner.
+ */
+function atVertex(model: Model, l1Name: string, l2Name: string): Anchor {
+  const l1 = model.line(l1Name), l2 = model.line(l2Name);
+  const shared = l1.refs.find((r) => l2.refs.includes(r));
+  if (shared === undefined) {
+    const a = atLineMid(model, l1Name).world, b = atLineMid(model, l2Name).world;
+    return { world: a.map((ai, i) => (ai + b[i]) / 2), dir: DOWN_RIGHT };
+  }
+  const v = model.coords(shared);
+  const away = (l: { refs: [string, string] }) => {
+    const far = model.coords(l.refs[0] === shared ? l.refs[1] : l.refs[0]);
+    return screenDir(far[0] - v[0], far[1] - v[1]);
+  };
+  const [ax, ay] = away(l1), [bx, by] = away(l2);
+  const bis = Math.hypot(ax + bx, ay + by);
+  // Anti-parallel lines (a straight angle) have no bisector — the two
+  // directions cancel. A perpendicular to one of them is as good an answer as
+  // any and, unlike NaN, it draws.
+  const dir: [number, number] = bis > 1e-9
+    ? [(ax + bx) / bis, (ay + by) / bis]
+    : perp([ax, ay]);
+  return { world: v, dir };
 }
 
 /** The one string argument that names something the model still holds. */
@@ -218,9 +352,13 @@ function anchorsFor(model: Model, r: RelationEntry): Anchor[] {
         : atSegmentMid(model, str(args[0]), str(args[1]))];
     case "parallel":
     case "perpendicular":
-    case "angle":
     case "equalLength":
       return [atLineMid(model, str(args[0])), atLineMid(model, str(args[1]))];
+    // One label, not two. `∥` is drawn twice because a single mark would leave
+    // "parallel to *what*" unanswered; `45°` written twice is just the same
+    // number in two places, and Onshape writes it once, at the corner.
+    case "angle":
+      return [atVertex(model, str(args[0]), str(args[1]))];
     case "equalRadius":
       return [atRim(model, str(args[0]), Math.PI / 4), atRim(model, str(args[1]), Math.PI / 4)];
     case "concentric":
@@ -263,7 +401,16 @@ export function constrainedBy(model: Model, relationName: string): string[] {
  */
 export function placeGlyphs(model: Model, view: View): Glyph[] {
   const out: Glyph[] = [];
-  /** How many glyphs already claimed each anchor, for the stacking row. */
+  /**
+   * How far along each anchor's row is already spoken for — the right-hand edge
+   * of the last box placed there, relative to the first box's centre.
+   *
+   * An edge rather than a count, because a row can now hold boxes of different
+   * widths: a `110` beside the `—` saying that edge is level. Counting would
+   * step both by the same 17px and slide the wide one under its neighbour,
+   * which is how `— 110` came to read as *minus* 110 in the first drawing this
+   * was tried on.
+   */
   const taken = new Map<string, number>();
 
   for (const r of model.relations.values()) {
@@ -273,7 +420,13 @@ export function placeGlyphs(model: Model, view: View): Glyph[] {
     } catch {
       continue;
     }
-    const symbol = GLYPH_SYMBOL[r.op] ?? fallbackSymbol(r.op);
+    const label = labelFor(r.op, r.args);
+    const symbol = label ?? GLYPH_SYMBOL[r.op] ?? fallbackSymbol(r.op);
+    // Sized to the text, so the box a label is picked by is the box it is drawn
+    // in. A generic mark keeps the square it always had.
+    const halfW = label
+      ? Math.max(GLYPH_HALF_W, ([...label].length * GLYPH_CHAR_W) / 2 + LABEL_PAD)
+      : GLYPH_HALF_W;
     const highlights = constrainedBy(model, r.name);
     for (const a of anchors) {
       const anchor = worldToScreen(view, [a.world[0], a.world[1]]);
@@ -281,15 +434,32 @@ export function placeGlyphs(model: Model, view: View): Glyph[] {
       // opposite ways from one spot are not in each other's way and should not
       // be pushed apart as though they were.
       const key = `${Math.round(anchor[0])}:${Math.round(anchor[1])}:${a.dir[0].toFixed(2)}:${a.dir[1].toFixed(2)}`;
-      const nth = taken.get(key) ?? 0;
-      taken.set(key, nth + 1);
+      // Where along the row this box's centre goes: hard against what is
+      // already there, plus each box's own margin. Marks keep the half-pixel
+      // *overlap* they have always had (two of them land GLYPH_STEP apart,
+      // narrower than their boxes); a label asks for daylight instead, since a
+      // number touching a neighbouring mark reads as one longer number.
+      const margin = label ? LABEL_MARGIN : (GLYPH_STEP - GLYPH_HALF_W * 2) / 2;
+      const edge = taken.get(key);
+      const along = edge === undefined ? 0 : edge + margin + halfW;
+      taken.set(key, along + halfW + margin);
+      // A wide label nudged *sideways* has to travel the extra width it has
+      // over a mark, or its near edge sits where a mark's centre would — on the
+      // geometry. Nudged up or down it does not, because it is no taller.
+      const push = GLYPH_OFFSET + (halfW - GLYPH_HALF_W) * Math.abs(a.dir[0]);
       out.push({
         relation: r.name,
         op: r.op,
         symbol,
         highlights,
         anchor,
-        screen: [anchor[0] + a.dir[0] * GLYPH_OFFSET + nth * GLYPH_STEP, anchor[1] + a.dir[1] * GLYPH_OFFSET],
+        halfW,
+        halfH: GLYPH_HALF_H,
+        isLabel: label !== null,
+        ...(label !== null && a.ends
+          ? { ends: a.ends.map((w) => worldToScreen(view, [w[0], w[1]])) as [[number, number], [number, number]] }
+          : {}),
+        screen: [anchor[0] + a.dir[0] * push + along, anchor[1] + a.dir[1] * push],
       });
     }
   }
@@ -311,7 +481,10 @@ export function glyphAt(glyphs: Glyph[], sx: number, sy: number): Glyph | null {
   let bestD = Infinity;
   for (const gl of glyphs) {
     const dx = sx - gl.screen[0], dy = sy - gl.screen[1];
-    if (Math.abs(dx) > GLYPH_HALF_W || Math.abs(dy) > GLYPH_HALF_H) continue;
+    if (Math.abs(dx) > gl.halfW || Math.abs(dy) > gl.halfH) continue;
+    // Nearest *centre*, still — a wide label whose centre is further away than
+    // a mark's loses the overlap, which is the same rule as before and keeps a
+    // small mark clickable when a long dimension is drawn over it.
     const d = Math.hypot(dx, dy);
     if (d < bestD) { best = gl; bestD = d; }
   }

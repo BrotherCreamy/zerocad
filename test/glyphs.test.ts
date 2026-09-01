@@ -12,12 +12,13 @@ import { readFile } from "node:fs/promises";
 import { ensureKernelLoaded } from "../src/kernel/problem.ts";
 import { Model } from "../src/model.ts";
 import {
-  constrainedBy, glyphAt, placeGlyphs, GLYPH_OFFSET, GLYPH_STEP, GLYPH_HALF_W,
+  constrainedBy, formatValue, glyphAt, labelFor, placeGlyphs,
+  GLYPH_CHAR_W, GLYPH_OFFSET, GLYPH_STEP, GLYPH_HALF_W,
 } from "../src/glyphs.ts";
 import { worldToScreen, type View } from "../src/view.ts";
 import { coincident, dist, fix, horizontal, midpoint, vertical } from "../src/relations/basic.ts";
 import {
-  concentric, equalLength, parallel, perpendicular, pointOnLine, radius, symmetric, tangent,
+  angle, concentric, equalLength, parallel, perpendicular, pointOnLine, radius, symmetric, tangent,
 } from "../src/relations/geometry.ts";
 import { del } from "../src/operations.ts";
 
@@ -245,6 +246,158 @@ test("the nearest glyph wins when two boxes overlap", () => {
   const between = (a.screen[0] + b.screen[0]) / 2;
   assert.equal(glyphAt([a, b], between - 2, a.screen[1])?.relation, a.relation);
   assert.equal(glyphAt([a, b], between + 2, a.screen[1])?.relation, b.relation);
+});
+
+// --- dimension labels ------------------------------------------------------
+// The three dimensioned relations draw their *value* in place of a mark, which
+// is what makes a sketch read like an Onshape sketch rather than like a
+// diagram of its own constraints. Everything below is about that number: how
+// it is written, where it goes, and the box it is clicked by.
+
+test("a dimension's value is written the way it was typed, not to six decimals", () => {
+  assert.equal(formatValue(50), "50", "not 50.000 — a dimension is an intent, not a measurement");
+  assert.equal(formatValue(120.5), "120.5");
+  assert.equal(formatValue(12.3456), "12.346", "three decimals when they are real");
+  assert.equal(formatValue(0.0001), "0", "and rounded away when they are not");
+  assert.equal(formatValue(-3.5), "-3.5");
+  assert.equal(formatValue(NaN), "?", "a renderer must draw something rather than NaN");
+});
+
+test("dist, rad and ang label themselves; nothing else does", () => {
+  assert.equal(labelFor("dist", ["p1", "p2", 50]), "50");
+  assert.equal(labelFor("radius", ["c1", 12]), "R12", "Onshape's prefix");
+  assert.equal(labelFor("angle", ["l1", "l2", Math.PI / 6]), "30°",
+    "the relation stores radians; a drawing says degrees");
+  assert.equal(labelFor("angle", ["l1", "l2", Math.PI]), "180°");
+  assert.equal(labelFor("coincident", ["p1", "p2"]), null);
+  assert.equal(labelFor("horizontal", ["l1"]), null);
+});
+
+test("a dimensioned relation with a non-numeric target falls back to its mark", () => {
+  // A hand-edited file, or a user-defined op that happens to be called `dist`.
+  // Drawing `RNaN` would be worse than drawing the generic symbol.
+  assert.equal(labelFor("dist", ["p1", "p2", "fifty"]), null);
+  assert.equal(labelFor("radius", ["c1"]), null);
+  const m = scaffold();
+  m.relation("dist", ["p1", "p2", "fifty"], () => {
+    m.addResidual([m.point("p1").varIndices[0]], (l) => [l[0].sub(0)], "odd");
+  });
+  const gl = placeGlyphs(m, view)[0];
+  assert.equal(gl.symbol, "↔");
+  assert.equal(gl.isLabel, false);
+});
+
+test("dist draws its number midway along the span, offset across it", () => {
+  const m = scaffold();
+  const r = dist(m, "p1", "p2", 50);
+  const gl = placeGlyphs(m, view).find((g) => g.relation === r)!;
+
+  assert.equal(gl.symbol, "50", "the value, where the ↔ used to be");
+  assert.equal(gl.isLabel, true);
+  assert.deepEqual(gl.anchor, at([20, 0]), "midway between the two points");
+  assert.equal(gl.screen[0], gl.anchor[0], "not shifted along the span");
+  assert.equal(Math.abs(gl.screen[1] - gl.anchor[1]), GLYPH_OFFSET, "across it");
+});
+
+test("rad draws R-and-its-number just outside the rim, up and to the right", async () => {
+  await loadKernel();
+  const m = new Model(2);
+  m.addPoint([0, 0], "ctr");
+  m.addCircle("ctr", 20, "c1");
+  const r = radius(m, "c1", 12.5);
+  const gl = placeGlyphs(m, view).find((g) => g.relation === r)!;
+
+  assert.equal(gl.symbol, "R12.5");
+  const rim = at([20 * Math.SQRT1_2, 20 * Math.SQRT1_2]);
+  assert.deepEqual(gl.anchor.map(Math.round), rim.map(Math.round));
+  const ctr = at([0, 0]);
+  assert.ok(Math.hypot(gl.screen[0] - ctr[0], gl.screen[1] - ctr[1])
+    > Math.hypot(gl.anchor[0] - ctr[0], gl.anchor[1] - ctr[1]), "outside the rim, not inside it");
+  assert.ok(gl.screen[0] > gl.anchor[0] && gl.screen[1] < gl.anchor[1], "up and to the right");
+});
+
+test("ang draws its degrees at the corner the two lines share, inside the angle", () => {
+  const m = new Model(2);
+  m.addPoint([0, 0], "v");
+  m.addPoint([40, 0], "a");
+  m.addPoint([0, 40], "b");
+  m.addLine("v", "a", "l1");
+  m.addLine("v", "b", "l2");
+  const r = angle(m, "l1", "l2", Math.PI / 2);
+  const marks = placeGlyphs(m, view).filter((g) => g.relation === r);
+
+  assert.equal(marks.length, 1, "one number, not the two marks `∥` gets — it is the same number twice");
+  assert.equal(marks[0].symbol, "90°");
+  assert.deepEqual(marks[0].anchor, at([0, 0]), "the shared corner");
+  // The wedge here opens up and to the right in world terms, so on screen the
+  // label is to the right of the corner and above it.
+  assert.ok(marks[0].screen[0] > marks[0].anchor[0], "into the angle, not away from it");
+  assert.ok(marks[0].screen[1] < marks[0].anchor[1]);
+});
+
+test("two lines with no shared corner still get their angle, between their middles", () => {
+  const m = scaffold(); // l1 along the bottom, l2 along the top, no shared point
+  const r = angle(m, "l1", "l2", Math.PI / 4);
+  const marks = placeGlyphs(m, view).filter((g) => g.relation === r);
+  assert.equal(marks.length, 1);
+  assert.deepEqual(marks[0].anchor, at([20, 15]), "midway between the two edges' middles");
+});
+
+test("the label's box is as wide as its text, and is what picks it", () => {
+  const m = scaffold();
+  const r = dist(m, "p1", "p2", 137.25);
+  const gl = placeGlyphs(m, view).find((g) => g.relation === r)!;
+
+  assert.equal(gl.symbol, "137.25");
+  assert.ok(gl.halfW > GLYPH_HALF_W * 1.5, `"137.25" needs more than a mark's box, got ${gl.halfW}`);
+  assert.ok(Math.abs(gl.halfW * 2 - (gl.symbol.length * GLYPH_CHAR_W + 10)) < 1e-9,
+    "the text's own width plus a little padding");
+
+  const [gx, gy] = gl.screen;
+  assert.equal(glyphAt([gl], gx + GLYPH_HALF_W + 4, gy)?.relation, r,
+    "a click on the last digit is a click on the dimension, not a miss");
+  assert.equal(glyphAt([gl], gx + gl.halfW + 2, gy), null, "and past the text it is a miss");
+});
+
+test("a wide label nudged sideways clears the geometry as far as a small mark does", () => {
+  const m = scaffold();
+  // A vertical edge, so the nudge is horizontal and the label's width is in the
+  // way. Its *near edge* should sit where a mark's near edge would.
+  const rd = dist(m, "p2", "p3", 137.25);
+  const gl = placeGlyphs(m, view).find((g) => g.relation === rd)!;
+  const near = Math.abs(gl.screen[0] - gl.anchor[0]) - gl.halfW;
+  assert.ok(Math.abs(near - (GLYPH_OFFSET - GLYPH_HALF_W)) < 1e-9,
+    `the wide one should travel its extra width; its box starts ${near}px out, a mark's starts ` +
+    `${GLYPH_OFFSET - GLYPH_HALF_W}px out`);
+  assert.equal(gl.screen[1], gl.anchor[1], "and it is not pushed along the edge to do it");
+});
+
+test("a label and a mark sharing an anchor do not sit on top of each other", () => {
+  // The failure this pins was visible in the first screenshot taken of the
+  // feature: `—` (l3 is level) and `110` (l3 is 110 long) share an anchor, and
+  // a row that steps by a fixed 17px drew them touching — which reads as
+  // *minus* 110.
+  for (const order of [0, 1]) {
+    const m = scaffold();
+    const rd = () => dist(m, "p1", "p2", 137.25);
+    const rh = () => horizontal(m, "p1", "p2"); // same anchor, same direction
+    const [first, second] = order === 0 ? [rd(), rh()] : [rh(), rd()];
+    const g = byRelation(m, view);
+    const [a, b] = [g.get(first)!, g.get(second)!];
+    assert.equal(a.screen[1], b.screen[1], "still a row");
+    assert.ok(b.screen[0] - a.screen[0] > a.halfW + b.halfW,
+      `the boxes overlap: ${a.symbol} is ${a.halfW * 2}px wide, ${b.symbol} is ${b.halfW * 2}px, ` +
+      `and their centres are ${b.screen[0] - a.screen[0]}px apart`);
+  }
+});
+
+test("only a dist label carries the span its dimension lines are drawn across", () => {
+  const m = scaffold();
+  const rd = dist(m, "p1", "p2", 50);
+  const rh = horizontal(m, "l1");
+  const g = byRelation(m, view);
+  assert.deepEqual(g.get(rd)!.ends, [at([0, 0]), at([40, 0])], "the two points, in screen pixels");
+  assert.equal(g.get(rh)!.ends, undefined, "nothing else has a span to measure");
 });
 
 test("glyphs follow the view when it pans and zooms", () => {
