@@ -208,6 +208,7 @@ test("a tool authored at the REPL registers and drives like a built-in", async (
   let finished = false, solves = 0, renders = 0;
   const ctx: ToolContext = {
     model,
+    options: {},
     requestRender: () => { renders++; },
     requestSolve: () => { solves++; model.solve(); },
     finish: () => { finished = true; },

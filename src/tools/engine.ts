@@ -101,18 +101,24 @@ export class ToolEngine {
     this.onRenderOnly();
   }
 
-  /** Arms `toolName`, cancelling whatever was active. Throws if the name isn't registered. */
-  arm(toolName: string): void {
+  /**
+   * Arms `toolName`, cancelling whatever was active. Throws if the name isn't
+   * registered. `options` is handed to the tool as `ctx.options`, which is how
+   * a tool that needs a parameter up front — a fillet radius, say — gets one.
+   */
+  arm(toolName: string, options: Record<string, unknown> = {}): void {
     this.active?.onCancel();
     const Ctor = getToolCtor(toolName);
     if (!Ctor) throw new Error(`no tool "${toolName}"`);
     const ctx: ToolContext = {
       model: this.model,
+      options,
       requestRender: () => this.onRenderOnly(),
       requestSolve: () => this.onSolveRender(),
       finish: () => {
         this.active = null;
       },
+      pick: ([sx, sy]) => hitTest(this.model, this.view, sx, sy),
     };
     this.active = new Ctor(ctx);
   }

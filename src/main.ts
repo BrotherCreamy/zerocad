@@ -17,6 +17,7 @@ import "./tools/point.ts";
 import "./tools/rectangle.ts";
 import "./tools/circle.ts";
 import "./tools/arc.ts";
+import "./tools/fillet.ts";
 
 const statusEl = document.getElementById("status")!;
 const logEl = document.getElementById("log")!;
@@ -165,7 +166,7 @@ async function main() {
     return {
       model,
       view,
-      arm: (name: string) => engine.arm(name),
+      arm: (name: string, options?: Record<string, unknown>) => engine.arm(name, options),
       pick: () => engine.hover?.name ?? null,
       cancel: () => engine.cancel(),
       refresh: () => { solveAndRender(); },

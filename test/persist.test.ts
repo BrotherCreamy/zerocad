@@ -129,6 +129,7 @@ test("geometry drawn with a tool saves like anything else", async () => {
   const m = new Model(2);
   const ctx: ToolContext = {
     model: m,
+    options: {},
     requestRender: () => {},
     requestSolve: () => { m.solve(); },
     finish: () => {},

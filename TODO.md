@@ -10,9 +10,6 @@ Checked items stay for one release's worth of history, then move out to
 
 Roughly in the order that unblocks the most.
 
-- [ ] **A pointer-driven fillet tool.** Click two lines, round the corner.
-      The `fillet` operation is done, and picking now exists — this is the
-      first thing to build on it.
 - [ ] **Hover snaps.** Snap to endpoints, midpoints, centres and
       intersections while a tool is dragging. `hitTest` is most of the work;
       what's left is feeding the snapped point to the armed tool instead of
@@ -62,6 +59,7 @@ Roughly in the order that unblocks the most.
 
 ## Done
 
+- [x] The fillet tool — click two edges to round the corner
 - [x] Picking and hover — click geometry to drop its name in the command line
 - [x] Browser verification in the repo as `npm run test:e2e`
 - [x] Contributor docs: CONTRIBUTING, docs/ARCHITECTURE, CLAUDE.md

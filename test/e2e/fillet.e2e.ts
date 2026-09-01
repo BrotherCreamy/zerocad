@@ -75,6 +75,73 @@ test("all four corners can be filleted", async () => {
   for (const a of m.arcs) assert.ok(Math.abs(m.radii[a.name] - 10) < 1e-6);
 });
 
+test("the fillet tool rounds a corner from two clicks", async () => {
+  // A fresh rectangle to work on, well clear of the earlier one.
+  await app.type("rectangle");
+  const p0 = await app.at(700, 120);
+  const p1 = await app.at(1000, 340);
+  await app.page.mouse.move(p0.x, p0.y);
+  await app.page.mouse.down();
+  await app.page.mouse.move(p1.x, p1.y, { steps: 8 });
+  await app.page.mouse.up();
+  await app.page.waitForTimeout(250);
+
+  const before = await app.model();
+  const fresh = before.lines.slice(-4); // the four edges just drawn
+
+  /** The middle of an edge, in page coordinates. */
+  const midOf = async (edge: { refs: [string, string] }) => {
+    const [sx, sy] = await app.page.evaluate((refs) => {
+      const { model, engine } = (window as never as {
+        __neocad: { model: { coords(n: string): number[] }; engine: { worldToScreen(w: number[]): [number, number] } };
+      }).__neocad;
+      const a = model.coords(refs[0]), b = model.coords(refs[1]);
+      return engine.worldToScreen([(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]);
+    }, edge.refs);
+    return app.at(sx, sy);
+  };
+
+  await app.type('arm("fillet", { radius: 12 })');
+  assert.equal((await app.model()).activeTool, "fillet");
+
+  const first = await midOf(fresh[0]);
+  await app.page.mouse.click(first.x, first.y);
+  await app.page.waitForTimeout(150);
+  assert.equal((await app.model()).byKind.arc, before.byKind.arc, "one click commits nothing");
+  assert.equal((await app.model()).activeTool, "fillet", "and the tool is still armed");
+
+  const second = await midOf(fresh[1]);
+  await app.page.mouse.click(second.x, second.y);
+  await app.page.waitForTimeout(250);
+
+  const after = await app.model();
+  assert.equal(after.byKind.arc, (before.byKind.arc ?? 0) + 1, "the corner was rounded");
+  assert.equal(after.activeTool, null, "and the tool stood down");
+  assert.equal(await app.status(), "SOLVED");
+
+  const arc = after.arcs[after.arcs.length - 1];
+  assert.ok(Math.abs(after.radii[arc.name] - 12) < 1e-6,
+    `the arm-time radius was used, got ${after.radii[arc.name]}`);
+});
+
+test("clicking a point with the fillet tool armed is a miss, not a crash", async () => {
+  await app.type('arm("fillet", { radius: 6 })');
+  const m = await app.model();
+  const name = Object.keys(m.points)[0];
+  const [sx, sy] = await app.page.evaluate((n) => {
+    const { model, engine } = (window as never as {
+      __neocad: { model: { coords(x: string): number[] }; engine: { worldToScreen(w: number[]): [number, number] } };
+    }).__neocad;
+    return engine.worldToScreen(model.coords(n));
+  }, name);
+  const p = await app.at(sx, sy);
+  await app.page.mouse.click(p.x, p.y);
+  await app.page.waitForTimeout(150);
+  assert.equal((await app.model()).byKind.arc, m.byKind.arc, "nothing happened");
+  assert.equal((await app.model()).activeTool, "fillet", "and the gesture is still live");
+  await app.type("cancel()");
+});
+
 test("no uncaught page errors", () => {
   assert.deepEqual(app.pageErrors, []);
 });

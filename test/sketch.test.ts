@@ -17,6 +17,7 @@ async function loadKernel() {
 function fakeCtx(model: Model) {
   const c = {
     model,
+    options: {},
     solves: 0,
     renders: 0,
     finished: false,
@@ -281,4 +282,103 @@ test("fillet: refuses corners it cannot round, with a reason", async () => {
   m3.addLine("x", "y", "s1");
   m3.addLine("y", "z", "s2");
   assert.throws(() => fillet(m3, "s1", "s2", 1), /collinear/);
+});
+
+// --- the fillet tool -------------------------------------------------------
+
+import { FilletTool, DEFAULT_RADIUS } from "../src/tools/fillet.ts";
+import { hitTest } from "../src/picking.ts";
+import { worldToScreen, type View } from "../src/view.ts";
+
+const view: View = { ox: 400, oy: 300, scale: 3 };
+
+/** A tool context that can pick, so the fillet tool has something to click. */
+function pickingCtx(model: Model) {
+  const c = fakeCtx(model) as ReturnType<typeof fakeCtx> & { pick(s: [number, number]): unknown };
+  c.pick = ([sx, sy]: [number, number]) => hitTest(model, view, sx, sy);
+  return c;
+}
+const screenAt = (world: number[]): [number, number] => worldToScreen(view, world);
+
+test("FilletTool: clicking two edges rounds the corner between them", async () => {
+  await loadKernel();
+  const model = new Model(2);
+  rightCorner(model); // a(0,20) — p(0,0) — b(20,0), edges l1 and l2
+  const ctx = pickingCtx(model);
+  const tool = new FilletTool(ctx);
+
+  tool.onDown({ world: [0, 10], screen: screenAt([0, 10]) }); // midway along l1
+  assert.equal(model.entities.size, 3 + 2, "the first click commits nothing");
+  assert.equal(ctx.finished, false, "and the gesture is not over");
+
+  tool.onDown({ world: [10, 0], screen: screenAt([10, 0]) }); // midway along l2
+  assert.equal(ctx.finished, true);
+
+  const arcs = [...model.entities.values()].filter((e) => e.kind === "arc");
+  assert.equal(arcs.length, 1);
+  assert.equal(model.solve().solved, true);
+  assert.ok(Math.abs(model.radius(arcs[0].name) - DEFAULT_RADIUS) < 1e-6,
+    `an unarmed radius falls back to the default, got ${model.radius(arcs[0].name)}`);
+});
+
+test("FilletTool: takes its radius from the arm-time options", async () => {
+  await loadKernel();
+  const model = new Model(2);
+  rightCorner(model);
+  const ctx = pickingCtx(model);
+  ctx.options = { radius: 4 };
+  const tool = new FilletTool(ctx);
+  tool.onDown({ world: [0, 10], screen: screenAt([0, 10]) });
+  tool.onDown({ world: [10, 0], screen: screenAt([10, 0]) });
+
+  const arc = [...model.entities.values()].find((e) => e.kind === "arc")!;
+  assert.ok(Math.abs(model.radius(arc.name) - 4) < 1e-6);
+});
+
+test("FilletTool: clicking empty space or a point is a miss, not a cancel", async () => {
+  await loadKernel();
+  const model = new Model(2);
+  rightCorner(model);
+  const ctx = pickingCtx(model);
+  const tool = new FilletTool(ctx);
+
+  tool.onDown({ world: [500, 500], screen: screenAt([500, 500]) }); // nothing there
+  tool.onDown({ world: [0, 20], screen: screenAt([0, 20]) }); // a point, not an edge
+  assert.equal(model.entities.size, 5, "nothing happened");
+
+  // The gesture is still fresh, so a proper pair still works.
+  tool.onDown({ world: [0, 10], screen: screenAt([0, 10]) });
+  tool.onDown({ world: [10, 0], screen: screenAt([10, 0]) });
+  assert.equal(ctx.finished, true);
+  assert.equal([...model.entities.values()].filter((e) => e.kind === "arc").length, 1);
+});
+
+test("FilletTool: the same edge twice is ignored", async () => {
+  await loadKernel();
+  const model = new Model(2);
+  rightCorner(model);
+  const ctx = pickingCtx(model);
+  const tool = new FilletTool(ctx);
+  tool.onDown({ world: [0, 10], screen: screenAt([0, 10]) });
+  tool.onDown({ world: [0, 15], screen: screenAt([0, 15]) }); // same edge, further along
+  assert.equal(ctx.finished, false, "one edge is not a corner");
+  assert.equal([...model.entities.values()].filter((e) => e.kind === "arc").length, 0);
+});
+
+test("FilletTool: a refused corner keeps the first edge so the pick can be retried", async () => {
+  await loadKernel();
+  const model = new Model(2);
+  rightCorner(model);
+  const ctx = pickingCtx(model);
+  ctx.options = { radius: 500 }; // far too large for these legs
+  const tool = new FilletTool(ctx);
+  tool.onDown({ world: [0, 10], screen: screenAt([0, 10]) });
+  assert.throws(() => tool.onDown({ world: [10, 0], screen: screenAt([10, 0]) }), /too large/);
+  assert.equal(ctx.finished, false);
+
+  // Still holding the first edge: a smaller radius and the same second pick works.
+  ctx.options = { radius: 5 };
+  tool.onDown({ world: [10, 0], screen: screenAt([10, 0]) });
+  assert.equal(ctx.finished, true);
+  assert.equal([...model.entities.values()].filter((e) => e.kind === "arc").length, 1);
 });

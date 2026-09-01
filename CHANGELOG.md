@@ -7,6 +7,32 @@ decisions.
 
 ---
 
+## The fillet tool
+
+Click two edges that meet; the corner rounds. The first tool built on picking,
+and the case that motivated it — `fillet` the operation had been usable from
+the command line for a while, but only if you already knew both edges by name.
+
+```js
+arm("fillet", { radius: 8 })   // then click two edges
+```
+
+Two additions to the tool API came out of it, both of which the next few tools
+want anyway:
+
+- `ctx.pick(screen)` — hit-test from inside a tool.
+- `arm(name, options)` — hand a tool a parameter it needs *before* it can do
+  anything. A fillet needs a radius; a fixed-size circle tool would need one
+  too. Better one mechanism than each tool inventing its own.
+
+Two behaviours worth stating because they were deliberate: clicking something
+that isn't an edge is a **miss**, not a cancelled gesture (the likeliest cause
+is aiming slightly off, and losing the whole gesture for that would be
+infuriating), and a corner the operation refuses — collinear legs, a radius too
+big — keeps the first edge so the second pick can be retried.
+
+---
+
 ## Picking, and an end-to-end suite
 
 ### Clicking geometry

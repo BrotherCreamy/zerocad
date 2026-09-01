@@ -15,6 +15,7 @@ async function loadKernel() {
 function fakeCtx(model: Model): ToolContext & { solves: number; renders: number; finished: boolean } {
   const c = {
     model,
+    options: {},
     solves: 0,
     renders: 0,
     finished: false,

@@ -8,6 +8,7 @@
 // example the interface was designed around.
 
 import type { Model } from "../model.ts";
+import type { Pick } from "../picking.ts";
 
 export interface PointerInfo {
   world: number[]; // world-space coordinates, length = model.dim
@@ -24,6 +25,17 @@ export interface ToolContext {
   requestRender(): void; // redraw without resolving (e.g. a live drag preview)
   requestSolve(): void; // resolve the model and redraw — call after committing new geometry/relations
   finish(): void; // tool signals its gesture is complete; the engine decides whether to re-arm it
+  /**
+   * Whatever the tool was armed with: `arm("fillet", { radius: 8 })`. A tool
+   * that needs a number before it can do anything (a fillet radius, a fixed
+   * circle size) reads it here rather than inventing a way to be told.
+   */
+  options: Record<string, unknown>;
+  /**
+   * What is under a screen point, if anything. Absent outside a viewport —
+   * a tool driven directly in a test has nothing to hit-test against.
+   */
+  pick?(screen: [number, number]): Pick | null;
 }
 
 export abstract class Tool {

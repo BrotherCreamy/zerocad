@@ -24,8 +24,8 @@ type Bag = Record<string, unknown>;
 
 export interface EnvHandles {
   model: Model;
-  /** Arms a registered tool by name. Absent outside the browser. */
-  arm?: (toolName: string) => void;
+  /** Arms a registered tool by name, optionally with arm-time options. */
+  arm?: (toolName: string, options?: Record<string, unknown>) => void;
   /** The name of whatever the cursor is currently over, if anything. */
   pick?: () => string | null;
   /** Cancels whatever tool is armed. */
@@ -166,9 +166,9 @@ export function neocadScope(h: EnvHandles): Bag {
     ls: () => [...model.entities.values()].map((e) => describe(e, model)),
     coords: (name: string) => model.coords(name),
 
-    arm: (name: string) => {
+    arm: (name: string, options?: Record<string, unknown>) => {
       if (!h.arm) throw new Error("no viewport in this environment");
-      h.arm(name);
+      h.arm(name, options);
       return `armed: ${name}`;
     },
     cancel: () => { h.cancel?.(); return "cancelled"; },
@@ -205,7 +205,7 @@ function help(scope: Bag): string {
     "           rad oncircle conc eqrad tan sym arcends",
     "operations fillet(line1, line2, radius)",
     "files      save()  open(text)  download(name)  openFile()  journal()",
-    "viewport   arm(tool)  cancel()  zoom(f)  pan(dx,dy)  refresh()",
+    "viewport   arm(tool, opts)  cancel()  zoom(f)  pan(dx,dy)  refresh()",
     "inspect    ls()  coords(name)  solve()  tools()  hover()  model",
     "authoring  Tool  defineTool(name, ctor)  Dual",
     "",

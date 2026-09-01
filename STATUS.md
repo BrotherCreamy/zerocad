@@ -233,6 +233,18 @@ replacing) the system Node other projects on this machine may depend on.
   a left-drag pans and a left-click picks; with one armed, the left button is
   the tool's, as before.
 
+- **The fillet tool** (`src/tools/fillet.ts`) — click two edges that meet and
+  the corner between them is rounded. The first tool built on picking, and the
+  case that motivated picking: the `fillet` operation was perfectly usable from
+  the command line, but only if you already knew both edges by name.
+  It also added two things to the tool API that the next few tools want anyway.
+  `ctx.pick(screen)` hit-tests from inside a tool, and `arm(name, options)`
+  hands a tool a parameter it needs before it can do anything —
+  `arm("fillet", { radius: 8 })` — rather than each such tool inventing its own
+  way of being told. Clicking something that isn't an edge is a *miss*, not a
+  cancelled gesture, and a corner the operation refuses keeps the first edge so
+  the second pick can be retried.
+
 ## What's next
 
 The working list lives in [`TODO.md`](TODO.md), so it has one home rather

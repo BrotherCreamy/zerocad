@@ -106,6 +106,27 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### The fillet tool
+
+The first thing built on picking, and the thing picking was for. `fillet` as
+an operation had been complete and reachable from the command line for a
+while, but only usable if you already knew both edges by name — which is
+exactly the gap a viewport is supposed to close.
+
+Two additions to the tool API fell out of it, and both are worth having beyond
+this one tool. `ctx.pick(screen)` lets a tool hit-test — hover snaps will want
+the same thing. And `arm(name, options)` hands a tool a parameter it needs
+before it can do anything: a fillet needs a radius, a fixed-size circle tool
+would need one too, and one mechanism beats each such tool inventing its own
+way of being told.
+
+Two deliberate behaviours. Clicking something that isn't an edge is a *miss*
+rather than a cancelled gesture — the likeliest cause is aiming slightly off,
+and losing the whole gesture over that would be maddening. And when the
+operation refuses a corner (collinear legs, too large a radius) the tool keeps
+the first edge, so the obvious next move — pick a different second edge, or
+re-arm with a smaller radius — just works.
+
 ### Picking, and reading cellwork instead of guessing
 
 `TODO.md` had picking at the top with a *decision needed* flag: cellwork had
