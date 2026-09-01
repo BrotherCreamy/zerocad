@@ -217,30 +217,12 @@ replacing) the system Node other projects on this machine may depend on.
   nudged, so the anchor does not drift as zooms accumulate, and the scale is
   clamped at both ends.
 
-## Not started yet
+## What's next
 
-- **Deleting entities.** There is no `remove` yet, and it is not trivial:
-  variables live in a flat vector, so removing one means compacting it and
-  remapping every block. The lazy-`varIndices` change is a step toward
-  making that tractable, since blocks can now resolve through entities
-  rather than holding raw indices.
-- **A picking/selection model**, which is what a pointer-driven fillet tool
-  needs (the operation is done and reachable from the command line, but
-  clicking two lines to round their corner needs hit-testing first). This is
-  the same `sel`/`desel` work listed below.
-- **Tools and relations authored at the REPL are not saved.** They are
-  closures, which is the same reason the residual blocks aren't — a file
-  records calls to the built-in vocabulary. Saving user-authored definitions
-  means saving their *source*, which is a real feature and a real decision
-  (a file that carries code is a different kind of file), not an oversight.
-- Porting the rest of the interaction niceties already proven out in
-  `cellwork` (nested `(...)` sub-commands, hover snaps, selection via a
-  real `sel`/`desel` command, box-select, Onshape-style pan controls, the
-  icon toolbox) onto the new architecture — not reinventing them, just
-  carrying the same *ideas* over since they were already validated there.
-  The REPL landing is what unblocks most of these: `sel`/`desel` and the
-  nested sub-commands are command-language features, and there is now a
-  command language to put them in.
+The working list lives in [`TODO.md`](TODO.md), so it has one home rather
+than drifting between two. In short: a picking/selection model (which most
+of the rest is waiting on), deleting entities, saving user-authored tools,
+and the remaining interaction ideas to carry over from `cellwork`.
 
 ## Incident note (disk space)
 

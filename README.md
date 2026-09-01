@@ -189,8 +189,12 @@ compile Rust and LLVM from source).
 
 ## Current status
 
-See [`STATUS.md`](STATUS.md) for the up-to-date, itemized account of
-what's built and verified versus what's still ahead, and
-[`CONVERSATION_LOG.md`](CONVERSATION_LOG.md) for the narrative of how
-this session went — useful if picking this up from a different machine
-or a fresh context.
+- [`CHANGELOG.md`](CHANGELOG.md) — what's been built, newest first, with
+  screenshots. The quickest way to see what this thing actually does.
+- [`TODO.md`](TODO.md) — what's next, and which items need a decision
+  before they can be started.
+- [`STATUS.md`](STATUS.md) — the itemized account of what exists and why
+  it's shaped the way it is.
+- [`CONVERSATION_LOG.md`](CONVERSATION_LOG.md) — the longer narrative
+  behind the decisions, newest first. Useful when picking this up from a
+  different machine or a fresh context.
