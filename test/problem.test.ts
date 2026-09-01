@@ -9,7 +9,7 @@ import { Dual, dhypot } from "../src/kernel/dual.ts";
 // eventually will in the browser (just a different transport for the bytes).
 async function loadKernel() {
   const bytes = await readFile(new URL("../src/kernel/wasm-gen/neocad_kernel_bg.wasm", import.meta.url));
-  await ensureKernelLoaded(bytes as unknown as BufferSource);
+  await ensureKernelLoaded(bytes);
 }
 
 test("two points, a distance constraint, one point fixed: solves to the target length", async () => {

@@ -7,7 +7,7 @@ import { dist, fix, coincident, midpoint } from "../src/relations/basic.ts";
 
 async function loadKernel() {
   const bytes = await readFile(new URL("../src/kernel/wasm-gen/neocad_kernel_bg.wasm", import.meta.url));
-  await ensureKernelLoaded(bytes as unknown as BufferSource);
+  await ensureKernelLoaded(bytes);
 }
 
 test("2D: fix + dist solves a triangle-free two-point system", async () => {

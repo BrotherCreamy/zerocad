@@ -11,7 +11,7 @@ import {
 
 async function loadKernel() {
   const bytes = await readFile(new URL("../src/kernel/wasm-gen/neocad_kernel_bg.wasm", import.meta.url));
-  await ensureKernelLoaded(bytes as unknown as BufferSource);
+  await ensureKernelLoaded(bytes);
 }
 
 /** A 2D model with a fully-fixed reference line "ref" from (0,0) to (1,0). */

@@ -16,10 +16,10 @@ Two things about the toolchain that will otherwise cost you an afternoon:
   source*. That filled a 92GB disk to 20MB free once already; the incident note
   is at the bottom of [`STATUS.md`](STATUS.md).
 - **`npm run build:kernel` downloads binaryen** for the `wasm-opt` pass. If
-  that download is blocked, `npx wasm-pack build --dev --target web --out-dir
-  src/kernel/wasm-gen` skips the pass and produces a working (larger) kernel.
-  Don't disable `wasm-opt` in `Cargo.toml` to work around a local network
-  problem — that would deoptimise everyone's build.
+  that download is blocked, `npm run build:kernel:dev` skips the pass and
+  produces a working (larger) kernel. Don't disable `wasm-opt` in `Cargo.toml`
+  to work around a local network problem — that would deoptimise everyone's
+  build.
 
 Node is pinned by `.nvmrc`. Playwright's browser comes from
 `npx playwright install chromium`; the e2e harness also finds a chromium
@@ -29,10 +29,11 @@ without a second download.
 ## Tests
 
 ```sh
-npm test           # unit — the mathematics. Fast, no browser.
+npm run typecheck   # tsc --noEmit
+npm test            # unit — the mathematics. Fast, no browser.
 npm run test:kernel # the Rust crate's own tests
-npm run test:e2e   # end-to-end — a real browser driving the real app
-npm run test:all   # all three
+npm run test:e2e    # end-to-end — a real browser driving the real app
+npm run test:all    # all of the above
 ```
 
 `npm run test:e2e` starts and stops its own dev server, or reuses one you

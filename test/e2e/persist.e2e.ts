@@ -25,7 +25,7 @@ test("a drawing made with the mouse and the command line saves", async () => {
   await app.type(`fillet("${edges[0]}", "${edges[1]}", 10); solve()`);
 
   const r = await app.repl("save()");
-  assert.equal(r.ok, true, r.error);
+  assert.equal(r.ok, true, r.error ?? '');
   saved = r.value as string;
   assert.ok(saved.includes("neocad-model"));
 });
@@ -38,7 +38,7 @@ test("opening restores the drawing exactly", async () => {
 
   await app.repl(`SAVED = ${JSON.stringify(saved)}`);
   const opened = await app.repl("open(SAVED)");
-  assert.equal(opened.ok, true, opened.error);
+  assert.equal(opened.ok, true, opened.error ?? '');
 
   const after = await app.model();
   assert.deepEqual(after.byKind, before.byKind);
@@ -57,7 +57,7 @@ test("the reopened model is live, not a picture", async () => {
   const name = Object.keys((await app.model()).points)[0];
   await app.repl(`model.setCoords("${name}", [999, 999])`);
   const report = await app.repl("solve()");
-  assert.equal(report.ok, true, report.error);
+  assert.equal(report.ok, true, report.error ?? '');
   assert.equal((report.value as { solved: boolean }).solved, true);
   const moved = (await app.model()).points[name];
   assert.ok(Math.abs(moved[0] - 999) > 1, "the constraints pulled it back, so they were genuinely rebuilt");

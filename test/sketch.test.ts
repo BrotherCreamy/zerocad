@@ -11,7 +11,7 @@ import type { ToolContext } from "../src/tools/tool.ts";
 
 async function loadKernel() {
   const bytes = await readFile(new URL("../src/kernel/wasm-gen/neocad_kernel_bg.wasm", import.meta.url));
-  await ensureKernelLoaded(bytes as unknown as BufferSource);
+  await ensureKernelLoaded(bytes);
 }
 
 function fakeCtx(model: Model) {

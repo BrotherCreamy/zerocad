@@ -180,7 +180,7 @@ npm install
 npm run build:kernel   # cargo -> wasm-pack, produces src/kernel/wasm-gen/ (gitignored, regenerated)
 npm test               # unit tests — the mathematics, no browser needed
 npm run test:e2e       # end-to-end — a real browser driving the real app
-npm run test:all       # both, plus the Rust crate's own tests
+npm run test:all       # both, plus typecheck and the Rust crate's own tests
 npm run dev            # Vite dev server
 ```
 

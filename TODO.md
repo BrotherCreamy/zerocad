@@ -44,25 +44,14 @@ Roughly in the order that unblocks the most.
 
 ## Smaller things
 
-- [ ] **`tsconfig.json` doesn't actually typecheck the project.** `npx tsc
-      --noEmit` fails on every local import, because the project uses the
-      literal `.ts` extensions Node's strip-only mode requires and the
-      config doesn't set `allowImportingTsExtensions`. Tests are the real
-      safety net today; a working `tsc` would be a second one.
-- [ ] **No `wasm-opt` fallback.** `npm run build:kernel` downloads binaryen
-      for the release profile. On a machine that can't reach it, the build
-      fails outright rather than falling back — `wasm-pack build --dev`
-      works and skips the pass. Worth a documented escape hatch rather than
-      turning `wasm-opt` off for everyone in `Cargo.toml`.
-- [ ] **`Problem.solve` uses `Math.hypot(...r)`.** Spreading the residual
-      vector is fine at today's sizes and will blow the stack at some point.
-      A plain loop costs nothing.
-- [ ] **`residualNormsOnly` is dead code** in `src/kernel/problem.ts` — it
-      documents a plain-float fast path that was never wired up. Either wire
-      it or delete it.
+- [ ] **`Problem` has no way to remove a residual block.** Not needed yet, but
+      dragging a point wants *temporary* ones (a soft pull toward the cursor,
+      dropped when the drag ends), and deleting an entity will want real
+      removal.
 
 ## Done
 
+- [x] A working `npm run typecheck`, and three smaller fixes alongside it
 - [x] Snapping — a tool's cursor is pulled onto points, midpoints and curves
 - [x] The fillet tool — click two edges to round the corner
 - [x] Picking and hover — click geometry to drop its name in the command line

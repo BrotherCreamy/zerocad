@@ -33,6 +33,19 @@ function resolve(refs: VarRefs): number[] {
   return typeof refs === "function" ? refs() : refs;
 }
 
+/**
+ * Euclidean norm, as a loop rather than `Math.hypot(...r)`. Spreading the
+ * residual vector into an argument list works fine until the model is big
+ * enough to exceed the engine's argument limit, at which point it throws
+ * rather than slowing down — a bad failure mode for something that scales
+ * with the size of the drawing.
+ */
+function norm2(r: number[]): number {
+  let sum = 0;
+  for (const v of r) sum += v * v;
+  return Math.sqrt(sum);
+}
+
 export interface SolveReport {
   solved: boolean;
   iterations: number;
@@ -40,9 +53,17 @@ export interface SolveReport {
   offenders: { label: string; residual: number }[];
 }
 
+/**
+ * How the kernel can be handed to us: a URL to fetch (the browser path) or the
+ * bytes directly (what the tests do, since Node has no fetch for a local file
+ * worth bothering with). The type said `string` for a long time and every test
+ * cast its way around it, which is exactly the sort of lie a typecheck is for.
+ */
+export type WasmSource = string | URL | Response | BufferSource | WebAssembly.Module;
+
 let wasmReady: Promise<unknown> | null = null;
-export function ensureKernelLoaded(wasmUrl?: string): Promise<unknown> {
-  if (!wasmReady) wasmReady = initWasm(wasmUrl ? { module_or_path: wasmUrl } : undefined);
+export function ensureKernelLoaded(wasm?: WasmSource): Promise<unknown> {
+  if (!wasmReady) wasmReady = initWasm(wasm ? { module_or_path: wasm } : undefined);
   return wasmReady;
 }
 
@@ -93,12 +114,6 @@ export class Problem {
     return { r, rows, cols, vals, labels };
   }
 
-  private residualNormsOnly(): number[] {
-    // still runs Dual arithmetic (simplest correct path for v1); only .val is read.
-    // A plain-float fast path can replace this later if profiling calls for it.
-    return this.evaluate().r;
-  }
-
   /** Damped Gauss-Newton (Levenberg-Marquardt), warm-started from current values. */
   solve(opts: { maxIter?: number; tol?: number } = {}): SolveReport {
     const maxIter = opts.maxIter ?? 60;
@@ -106,7 +121,7 @@ export class Problem {
     const n = this.values.length;
 
     let { r, rows, cols, vals, labels } = this.evaluate();
-    let norm = Math.hypot(...r);
+    let norm = norm2(r);
     if (n === 0 || r.length === 0) {
       return { solved: true, iterations: 0, maxResidual: 0, offenders: [] };
     }
@@ -123,10 +138,10 @@ export class Problem {
         const saved = this.values.slice();
         for (let i = 0; i < n; i++) this.values[i] += dx[i];
         const next = this.evaluate();
-        const norm2 = Math.hypot(...next.r);
-        if (isFinite(norm2) && norm2 < norm) {
+        const nextNorm = norm2(next.r);
+        if (isFinite(nextNorm) && nextNorm < norm) {
           r = next.r; rows = next.rows; cols = next.cols; vals = next.vals; labels = next.labels;
-          norm = norm2;
+          norm = nextNorm;
           lambda = Math.max(1e-10, lambda / 3);
           improved = true;
         } else {

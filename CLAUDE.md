@@ -13,17 +13,17 @@ what's below. [`TODO.md`](TODO.md) is what's next.
 
 ```sh
 npm install && npm run build:kernel   # wasm-gen/ is gitignored, regenerate it
+npm run typecheck   # tsc --noEmit
 npm test            # unit, ~1s, no browser
 npm run test:kernel # the Rust crate
-npm run test:e2e    # real browser, real app, ~12s — starts its own dev server
-npm run test:all    # all three
+npm run test:e2e    # real browser, real app, ~13s — starts its own dev server
+npm run test:all    # all of the above
 npm run dev         # vite on :5173
 ```
 
-If `build:kernel` fails downloading binaryen, use
-`npx wasm-pack build --dev --target web --out-dir src/kernel/wasm-gen` — it
-skips `wasm-opt`. Do **not** disable `wasm-opt` in `Cargo.toml` to work around
-a local network problem.
+If `build:kernel` fails downloading binaryen, `npm run build:kernel:dev` skips
+`wasm-opt` and produces a working (larger) kernel. Do **not** disable
+`wasm-opt` in `Cargo.toml` to work around a local network problem.
 
 ## Things that fail silently if you get them wrong
 
@@ -31,10 +31,8 @@ a local network problem.
   `--experimental-strip-types`, which does no module resolution.
 - **No TypeScript parameter-property shorthand** (`constructor(private x)`) —
   same reason; it needs real transformation, not type-stripping.
-- `npx tsc --noEmit` **does not currently work** on this project (the tsconfig
-  lacks `allowImportingTsExtensions`, so every local import errors). It is on
-  `TODO.md`. Until then the test suites are the safety net — don't read a wall
-  of `tsc` errors as something you broke.
+- `npm run typecheck` works and should stay at zero errors. It is part of
+  `npm run test:all`.
 - A new relation must be registered in **both** `src/replenv.ts` (so it's
   callable) and `src/persist.ts`'s replay table (so it survives save/open).
   Nothing catches this but a test.
