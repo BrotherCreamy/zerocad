@@ -13,13 +13,26 @@
 // before its second click leaves no stray point behind, which is the same
 // reason rectangle.ts builds nothing until onUp.
 //
-// **Horizontal/vertical inference.** While the preview is within a few degrees
-// of an axis it is drawn exactly on that axis, with a guide, and the committed
-// line gets `hor(line)` or `ver(line)` — the *line* form, so the constraint
-// still means "this edge is level" after a fillet re-points it. An endpoint
-// snap beats the axis guess: if the click landed on real geometry, that is
-// what was aimed at, and the axis constraint is applied only if the snapped
-// position happens to satisfy it anyway.
+// **Horizontal/vertical inference, and only against a frame somebody chose.**
+// While the preview is within a few degrees of an axis it is drawn exactly on
+// that axis, with a guide, and the committed line gets `hor(line, frame)` or
+// `ver(line, frame)` — the *line* form, so the constraint still means "this
+// edge is level" after a fillet re-points it. An endpoint snap beats the axis
+// guess: if the click landed on real geometry, that is what was aimed at, and
+// the axis constraint is applied only if the snapped position happens to
+// satisfy it anyway.
+//
+// With **no default frame there is no inference at all**: the drawing has no
+// notion of level, and inferring against the kernel's own axes would be the
+// world frame coming back in through the side door. The line is still drawn,
+// and still snaps; it simply arrives unconstrained.
+//
+// ⚠ Half-1 gap, deliberate and bounded: the aim and its guide are still
+// computed against the kernel's axes rather than the default frame's, so a
+// *tilted* default frame gets a preview that disagrees with the constraint
+// that lands. Nothing in this half can tilt a frame by hand — frames are not
+// drawn or draggable until the second half of the package, which is where
+// the aim becomes frame-relative along with the rest of the tool work.
 //
 // The chain itself is dimension-generic — points and lines are — so the tool
 // works unchanged in a 3D model and simply infers no axis there, since
@@ -88,8 +101,12 @@ export class LineTool extends Tool {
     const a = this.anchor ?? placePoint(this.ctx, this.pending!);
     const b = placePoint(this.ctx, { ...p, world: aim.world });
     const line = m.addLine(a, b);
-    if (aim.axis === "horizontal") horizontal(m, line.name);
-    else if (aim.axis === "vertical") vertical(m, line.name);
+    // Only against a frame the user chose. `resolveFrame` would throw without
+    // one, and a tool must not turn a drawing gesture into an error message.
+    if (m.defaultFrame) {
+      if (aim.axis === "horizontal") horizontal(m, line.name, m.defaultFrame);
+      else if (aim.axis === "vertical") vertical(m, line.name, m.defaultFrame);
+    }
 
     // The committed end becomes the next segment's start: the same entity.
     this.pending = null;

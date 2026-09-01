@@ -9,6 +9,7 @@ import { radius, tangent, onCircle } from "../src/relations/geometry.ts";
 import { fillet } from "../src/operations.ts";
 import { RectangleTool } from "../src/tools/rectangle.ts";
 import type { ToolContext } from "../src/tools/tool.ts";
+import { axisFrame } from "./frames.ts"; // hor/ver/fix are frame-relative now
 
 async function loadKernel() {
   const bytes = await readFile(new URL("../src/kernel/wasm-gen/neocad_kernel_bg.wasm", import.meta.url));
@@ -30,6 +31,7 @@ function shape(m: Model) {
 test("a model survives a save/open round trip, geometry and all", async () => {
   await loadKernel();
   const m = new Model(2);
+  axisFrame(m);
   m.addPoint([0, 0], "a");
   m.addPoint([3, 4], "b");
   fix(m, "a", [0, 0]);
@@ -45,6 +47,7 @@ test("a model survives a save/open round trip, geometry and all", async () => {
 test("the reopened model is still live — constraints replayed, not just coordinates", async () => {
   await loadKernel();
   const m = new Model(2);
+  axisFrame(m);
   m.addPoint([0, 0], "a");
   m.addPoint([3, 4], "b");
   fix(m, "a", [0, 0]);
@@ -63,6 +66,7 @@ test("the reopened model is still live — constraints replayed, not just coordi
 test("saving preserves the solution an under-constrained model happened to land on", async () => {
   await loadKernel();
   const m = new Model(2);
+  axisFrame(m);
   m.addPoint([0, 0], "a");
   m.addPoint([6, 8], "b"); // only the distance is constrained, so the angle is free
   fix(m, "a", [0, 0]);
@@ -79,6 +83,7 @@ test("saving preserves the solution an under-constrained model happened to land 
 test("a fillet is saved as the one call that was made, not its expansion", async () => {
   await loadKernel();
   const m = new Model(2);
+  axisFrame(m);
   m.addPoint([0, 20], "a");
   m.addPoint([0, 0], "p");
   m.addPoint([20, 0], "b");
@@ -106,6 +111,7 @@ test("a fillet is saved as the one call that was made, not its expansion", async
 test("circles, arcs and tangency round-trip", async () => {
   await loadKernel();
   const m = new Model(2);
+  axisFrame(m);
   m.addPoint([0, 0], "ctr");
   fix(m, "ctr", [0, 0]);
   m.addCircle("ctr", 1, "c");
@@ -146,6 +152,7 @@ test("geometry drawn with a tool saves like anything else", async () => {
 test("both forms of midpoint survive the round trip, each as the form it was called in", async () => {
   await loadKernel();
   const m = new Model(2);
+  axisFrame(m);
   m.addPoint([0, 0], "a");
   m.addPoint([40, 0], "b");
   m.addPoint([40, 40], "c");
@@ -179,6 +186,7 @@ test("both forms of midpoint survive the round trip, each as the form it was cal
 test("constraints a tool inferred are saved like any other, and re-solve the same", async () => {
   await loadKernel();
   const m = new Model(2);
+  axisFrame(m);
   m.addPoint([10, 10], "a");
   const ctx: ToolContext = {
     model: m,
@@ -209,6 +217,7 @@ test("constraints a tool inferred are saved like any other, and re-solve the sam
 test("open and save again produces an identical file", async () => {
   await loadKernel();
   const m = new Model(2);
+  axisFrame(m);
   m.addPoint([0, 0], "a");
   m.addPoint([5, 5], "b");
   fix(m, "a", [0, 0]);
@@ -278,6 +287,7 @@ test("a journal step that cannot run says which step and why", async () => {
 test("radii are restored for arcs as well as circles", async () => {
   await loadKernel();
   const m = new Model(2);
+  axisFrame(m);
   m.addPoint([0, 0], "ctr");
   m.addPoint([10, 0], "s");
   m.addPoint([0, 10], "e");
@@ -317,6 +327,7 @@ test("auto-naming steps past a gap rather than reusing a taken name", async () =
 test("a reopened model can still be drawn on — the fillet case that hung", async () => {
   await loadKernel();
   const m = new Model(2);
+  axisFrame(m);
   // Auto-named throughout, the way the tools and the command line produce it.
   const a = m.addPoint([0, 20]).name;
   const p = m.addPoint([0, 0]).name;

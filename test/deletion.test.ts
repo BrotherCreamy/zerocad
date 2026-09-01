@@ -16,6 +16,7 @@ import { coincident, dist, fix, horizontal, vertical } from "../src/relations/ba
 import { onCircle, radius } from "../src/relations/geometry.ts";
 import { del, fillet } from "../src/operations.ts";
 import { open, save } from "../src/persist.ts";
+import { axisFrame } from "./frames.ts";
 
 async function loadKernel() {
   const bytes = await readFile(new URL("../src/kernel/wasm-gen/neocad_kernel_bg.wasm", import.meta.url));
@@ -32,9 +33,15 @@ function shape(m: Model) {
   };
 }
 
-/** An axis-aligned rectangle p1..p4 / l1..l4, with p1 pinned. */
+/**
+ * An axis-aligned rectangle p1..p4 / l1..l4, with p1 pinned — and the fixture
+ * frame `f` (plus its two points) that hor/ver/fix are level with, which is
+ * why the entity listings below start with three names the drawing did not
+ * put there.
+ */
 function rectangle(): Model {
   const m = new Model(2);
+  axisFrame(m);
   m.addPoint([0, 0], "p1");
   m.addPoint([40, 0], "p2");
   m.addPoint([40, 25], "p3");
@@ -56,6 +63,7 @@ function rectangle(): Model {
 test("deleting a relation removes its blocks and nothing else", async () => {
   await loadKernel();
   const m = new Model(2);
+  axisFrame(m);
   m.addPoint([0, 0], "a");
   m.addPoint([9, 9], "b");
   fix(m, "a", [2, 3]);
@@ -66,7 +74,7 @@ test("deleting a relation removes its blocks and nothing else", async () => {
   const blocksBefore = m.problem.blockCount;
   assert.deepEqual(del(m, coin), [coin]);
   assert.equal(m.problem.blockCount, blocksBefore - 2, "both coordinates of the coincidence went");
-  assert.equal(m.entities.size, 2, "and not one entity with it");
+  assert.equal(m.entities.size, 5, "and not one entity with it — a, b, and the fixture frame's three");
 
   // The proof that the equation is really gone, not merely unlisted: move the
   // point it used to follow and watch b stay where it is.
@@ -85,7 +93,8 @@ test("deleting a point takes exactly what could not survive without it", async (
   // p1 is an endpoint of l1 and l4, so both edges go; and with them every
   // relation naming p1, l1 or l4 — including the fillet's own tangency on l1.
   assert.deepEqual(del(m, "p1"), ["r1", "r4", "r5", "r8", "l1", "l4", "p1"]);
-  assert.deepEqual([...m.entities.keys()], ["p2", "p3", "p4", "l2", "l3", "p5", "p6", "a1"]);
+  assert.deepEqual([...m.entities.keys()],
+    ["f_o", "f_x", "f", "p2", "p3", "p4", "l2", "l3", "p5", "p6", "a1"]);
   assert.deepEqual([...m.relations.keys()], ["r2", "r3", "r6", "r7", "r9"]);
 
   // What is left is still a model, not wreckage: no relation refers to
@@ -102,7 +111,8 @@ test("deleting a curve takes its relations and leaves the points alone", async (
   // The arc's radius, its endpoint conditions and both tangencies name a1.
   // The points do not: they were the drawing's points before the arc existed.
   assert.deepEqual(del(m, "a1"), ["r6", "r7", "r8", "r9", "a1"]);
-  assert.deepEqual([...m.entities.keys()], ["p1", "p2", "p3", "p4", "l1", "l2", "l3", "l4", "p5", "p6"]);
+  assert.deepEqual([...m.entities.keys()],
+    ["f_o", "f_x", "f", "p1", "p2", "p3", "p4", "l1", "l2", "l3", "l4", "p5", "p6"]);
   assert.deepEqual([...m.relations.keys()], ["r1", "r2", "r3", "r4", "r5"]);
   assert.equal(m.solve().solved, true);
 });
@@ -128,7 +138,7 @@ test("del of a name that is neither an entity nor a relation says so", async () 
   assert.throws(() => del(m, "p99"), /"p99" is not an entity or a relation/);
   assert.throws(() => del(m, "r99"), /"r99" is not an entity or a relation/);
   assert.throws(() => del(m, ""), /"" is not an entity or a relation/);
-  assert.deepEqual([...m.entities.keys()].length, 8, "and changed nothing on the way out");
+  assert.deepEqual([...m.entities.keys()].length, 11, "and changed nothing on the way out");
 });
 
 test("the primitives refuse to leave the model malformed", async () => {

@@ -3,12 +3,17 @@
 
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { openApp, type AppContext } from "./harness.ts";
+import { axisFrame, openApp, type AppContext } from "./harness.ts";
 
 let app: AppContext;
 let saved: string;
 
-before(async () => { app = await openApp(); });
+before(async () => {
+  app = await openApp();
+  // Parked clear of the drawing: only its direction is wanted, for the
+  // hor/ver below.
+  await axisFrame(app, [0, 400]);
+});
 after(async () => { await app.close(); });
 
 test("a drawing made with the mouse and the command line saves", async () => {
@@ -22,6 +27,10 @@ test("a drawing made with the mouse and the command line saves", async () => {
   await app.page.waitForTimeout(200);
 
   const edges = (await app.model()).lines.map((l) => l.name);
+  // The rectangle tool says "rectangle" intrinsically now — par, par, perp —
+  // so being *level* is asked for here, which is what keeps this drawing rigid
+  // enough for the reopened-model test below to mean something.
+  await app.type(`hor("${edges[0]}"); ver("${edges[1]}")`);
   await app.type(`fillet("${edges[0]}", "${edges[1]}", 10); solve()`);
 
   const r = await app.repl("save()");
@@ -54,13 +63,24 @@ test("opening restores the drawing exactly", async () => {
 });
 
 test("the reopened model is live, not a picture", async () => {
-  const name = Object.keys((await app.model()).points)[0];
-  await app.repl(`model.setCoords("${name}", [999, 999])`);
+  // A point of the *drawing*: the fixture frame's own two are constrained by
+  // nothing, so shoving one of those would prove nothing either way.
+  const name = Object.keys((await app.model()).points).find((n) => !n.startsWith("f_"))!;
+  const was = (await app.model()).points[name];
+  // Shoved a good way off, but on the drawing's own scale. The rectangle tool
+  // is intrinsic now, and `par`'s residual is a wedge — quadratic in the
+  // drawing's size, where the old `hor` was linear in a coordinate — so
+  // hurling a fillet's tangent point a thousand units away no longer converges
+  // in sixty iterations. That is a fact about the constraint's conditioning,
+  // not about whether it was rebuilt, which is what this test is asking.
+  const shoved = [was[0] + 60, was[1] + 45];
+  await app.repl(`model.setCoords("${name}", [${shoved[0]}, ${shoved[1]}])`);
   const report = await app.repl("solve()");
   assert.equal(report.ok, true, report.error ?? '');
   assert.equal((report.value as { solved: boolean }).solved, true);
   const moved = (await app.model()).points[name];
-  assert.ok(Math.abs(moved[0] - 999) > 1, "the constraints pulled it back, so they were genuinely rebuilt");
+  assert.ok(Math.hypot(moved[0] - shoved[0], moved[1] - shoved[1]) > 1,
+    "the constraints pulled it back, so they were genuinely rebuilt");
 });
 
 test("tools still work on a reopened model", async () => {

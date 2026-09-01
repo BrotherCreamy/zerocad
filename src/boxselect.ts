@@ -98,6 +98,9 @@ export function selectInBox(model: Model, view: View, rect: ScreenRect, mode: Bo
 function contains(model: Model, view: View, e: Entity, rect: ScreenRect, screenOf: (n: string) => Pt): boolean {
   if (e.kind === "point") return rectContainsPoint(rect, screenOf(e.name));
   if (e.kind === "line") return rectContainsSegment(rect, screenOf(e.refs[0]), screenOf(e.refs[1]));
+  // A frame catches nothing yet: it has no drawn extent to test a rectangle
+  // against until the second half of the coordinate-frames package draws one.
+  if (e.kind === "frame") return false;
   const c = screenOf(e.center);
   const r = model.radius(e.name) * view.scale;
   if (e.kind === "circle") return rectContainsCircle(rect, c, r);
@@ -108,6 +111,7 @@ function contains(model: Model, view: View, e: Entity, rect: ScreenRect, screenO
 function touches(model: Model, view: View, e: Entity, rect: ScreenRect, screenOf: (n: string) => Pt): boolean {
   if (e.kind === "point") return rectContainsPoint(rect, screenOf(e.name));
   if (e.kind === "line") return rectTouchesSegment(rect, screenOf(e.refs[0]), screenOf(e.refs[1]));
+  if (e.kind === "frame") return false; // see contains()
   const c = screenOf(e.center);
   const r = model.radius(e.name) * view.scale;
   if (e.kind === "circle") return rectTouchesCircle(rect, c, r);

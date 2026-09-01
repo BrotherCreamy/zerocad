@@ -4,10 +4,17 @@
 
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { openApp, type AppContext } from "./harness.ts";
+import { FIXTURE_ENTITIES, axisFrame, openApp, type AppContext } from "./harness.ts";
 
 let app: AppContext;
-before(async () => { app = await openApp(); });
+before(async () => {
+  app = await openApp();
+  // The tool's axis inference only fires against a *default* frame — inferring
+  // against the kernel's own axes would be the world frame coming back in
+  // through the side door — so there has to be one before anything is drawn.
+  // Hence FIXTURE_ENTITIES in the counts below.
+  await axisFrame(app);
+});
 after(async () => { await app.close(); });
 
 async function clickAt(sx: number, sy: number) {
@@ -23,18 +30,18 @@ test("click, click, chain — and the middle vertex is one point, not two", asyn
   assert.equal((await app.model()).activeTool, "line");
 
   await clickAt(200, 120);
-  assert.equal((await app.model()).size, 0, "the first click commits nothing to abandon");
+  assert.equal((await app.model()).size, FIXTURE_ENTITIES, "the first click commits nothing to abandon");
 
   await clickAt(200, 300); // straight down
   const one = await app.model();
   assert.equal(one.byKind.line, 1);
-  assert.equal(one.byKind.point, 2);
+  assert.equal(one.byKind.point, 2 + 2, "two, plus the frame's own");
   assert.equal(one.activeTool, "line", "the chain continues without re-arming");
 
   await clickAt(420, 300); // then straight across: an L
   const two = await app.model();
   assert.equal(two.byKind.line, 2);
-  assert.equal(two.byKind.point, 3, "three points for two segments — the vertex is shared");
+  assert.equal(two.byKind.point, 3 + 2, "three points for two segments — the vertex is shared");
   assert.equal(two.lines[0].refs[1], two.lines[1].refs[0], "literally the same entity");
   assert.equal(await app.status(), "SOLVED");
 });
@@ -43,8 +50,8 @@ test("the segments were drawn upright and level, and say so as line-form constra
   const entries = (await app.repl("journal()")).value as string[];
   const m = await app.model();
   const axis = entries.filter((e) => e.startsWith("vertical(") || e.startsWith("horizontal("));
-  assert.deepEqual(axis, [`vertical("${m.lines[0].name}")`, `horizontal("${m.lines[1].name}")`],
-    "one argument each — the line form, which survives a fillet re-pointing the edge");
+  assert.deepEqual(axis, [`vertical("${m.lines[0].name}", "f")`, `horizontal("${m.lines[1].name}", "f")`],
+    "the line form, which survives a fillet re-pointing the edge — and the frame it is level with");
 
   // And they are live: move the shared vertex and the far ends follow it.
   const vertex = m.lines[0].refs[1];

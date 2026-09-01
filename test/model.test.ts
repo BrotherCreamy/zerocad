@@ -5,6 +5,7 @@ import { ensureKernelLoaded } from "../src/kernel/problem.ts";
 import { Model } from "../src/model.ts";
 import { dist, fix, coincident, horizontal, midpoint } from "../src/relations/basic.ts";
 import { arcEndpoints, concentric, radius } from "../src/relations/geometry.ts";
+import { axisFrame } from "./frames.ts";
 
 async function loadKernel() {
   const bytes = await readFile(new URL("../src/kernel/wasm-gen/neocad_kernel_bg.wasm", import.meta.url));
@@ -14,6 +15,7 @@ async function loadKernel() {
 test("2D: fix + dist solves a triangle-free two-point system", async () => {
   await loadKernel();
   const m = new Model(2);
+  axisFrame(m); // hor/ver/fix are frame-relative now — see test/frames.ts
   m.addPoint([0, 0], "a");
   m.addPoint([3, 4], "b");
   fix(m, "a", [0, 0]);
@@ -40,6 +42,7 @@ test("3D: the exact same relation code works with 3 coordinates", async () => {
 test("coincident merges two points regardless of starting position", async () => {
   await loadKernel();
   const m = new Model(2);
+  axisFrame(m);
   m.addPoint([0, 0], "a");
   m.addPoint([9, 9], "b");
   fix(m, "a", [2, 3]);
@@ -52,6 +55,7 @@ test("coincident merges two points regardless of starting position", async () =>
 test("midpoint tracks two independently-fixed endpoints", async () => {
   await loadKernel();
   const m = new Model(2);
+  axisFrame(m);
   m.addPoint([0, 0], "a");
   m.addPoint([10, 0], "b");
   m.addPoint([0, 0], "mid");
@@ -74,6 +78,7 @@ test("midpoint tracks two independently-fixed endpoints", async () => {
 test("relations are named r1, r2, … and carry the call that made them", async () => {
   await loadKernel();
   const m = new Model(2);
+  axisFrame(m);
   m.addPoint([0, 0], "a");
   m.addPoint([3, 4], "b");
   const r1 = fix(m, "a", [0, 0]);
@@ -91,6 +96,7 @@ test("relations are named r1, r2, … and carry the call that made them", async 
 test("relationsNaming finds every relation that mentions an entity", async () => {
   await loadKernel();
   const m = new Model(2);
+  axisFrame(m);
   m.addPoint([0, 0], "a");
   m.addPoint([10, 0], "b");
   m.addLine("a", "b", "l");
@@ -107,6 +113,7 @@ test("relationsNaming finds every relation that mentions an entity", async () =>
 test("entities and relations share one namespace, so a name means one thing", async () => {
   await loadKernel();
   const m = new Model(2);
+  axisFrame(m);
   m.addPoint([0, 0], "r1"); // a point may be called r1 — but then no relation is
   m.addPoint([1, 1], "b");
   assert.equal(fix(m, "r1", [0, 0]), "r2", "the auto-name steps over the taken one");
@@ -151,13 +158,15 @@ test("an arcEndpoints owns both of its onCircle blocks", async () => {
 test("a relation that throws leaves no name, no journal entry and no blocks", async () => {
   await loadKernel();
   const m = new Model(2);
+  axisFrame(m);
   m.addPoint([0, 0], "a");
   const before = m.problem.blockCount;
+  const journalled = m.journal.length; // the fixture frame's entries and the addPoint
 
   assert.throws(() => fix(m, "a", [0, 0, 0]), /fix needs 2 coordinates/);
   assert.equal(m.relations.size, 0, "nothing registered");
   assert.equal(m.problem.blockCount, before, "and nothing left in the problem");
-  assert.deepEqual(m.journal.map((e) => e.op), ["addPoint"]);
+  assert.deepEqual(m.journal.slice(journalled).map((e) => e.op), [], "and nothing journalled");
 
   // The harder case, which the shipped relations happen not to reach because
   // they all validate up front: a body that gets some blocks in and *then*

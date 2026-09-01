@@ -8,6 +8,7 @@ import { ArcTool } from "../src/tools/arc.ts";
 import { fillet } from "../src/operations.ts";
 import { fix, horizontal, vertical } from "../src/relations/basic.ts";
 import type { ToolContext } from "../src/tools/tool.ts";
+import { axisFrame } from "./frames.ts";
 
 async function loadKernel() {
   const bytes = await readFile(new URL("../src/kernel/wasm-gen/neocad_kernel_bg.wasm", import.meta.url));
@@ -63,6 +64,7 @@ test("CircleTool: a click with no drag commits nothing", async () => {
 test("a drawn circle keeps its radius through a solve — the variable is free, not adrift", async () => {
   await loadKernel();
   const model = new Model(2);
+  axisFrame(model);
   const tool = new CircleTool(fakeCtx(model));
   tool.onDown(at([0, 0]));
   tool.onUp(at([7, 0]));
@@ -127,6 +129,7 @@ test("ArcTool: cancelling mid-gesture leaves nothing behind", async () => {
  * share a y". That is the form that survives a fillet re-pointing an edge.
  */
 function rightCorner(model: Model) {
+  axisFrame(model); // what "level" and "square" mean here — see test/frames.ts
   model.addPoint([0, 20], "a");
   model.addPoint([0, 0], "p");
   model.addPoint([20, 0], "b");
@@ -176,11 +179,9 @@ test("fillet: trims both legs back and leaves no orphaned point", async () => {
   // Every point in the model is referenced by something — the old corner was
   // reused as a tangent point rather than stranded.
   const referenced = new Set<string>();
-  for (const e of model.entities.values()) {
-    if (e.kind === "line") e.refs.forEach((n) => referenced.add(n));
-    if (e.kind === "circle") referenced.add(e.center);
-    if (e.kind === "arc") { referenced.add(e.center); referenced.add(e.start); referenced.add(e.end); }
-  }
+  // Through refsOf, so this keeps asking the real question as entity kinds are
+  // added — the frame the fixture built references two points of its own.
+  for (const e of model.entities.values()) model.refsOf(e).forEach((n) => referenced.add(n));
   for (const e of model.entities.values()) {
     if (e.kind === "point") assert.ok(referenced.has(e.name), `${e.name} is orphaned`);
   }
@@ -191,6 +192,7 @@ test("fillet: trims both legs back and leaves no orphaned point", async () => {
 test("fillet: works on a non-right angle too", async () => {
   await loadKernel();
   const model = new Model(2);
+  axisFrame(model);
   // A 60-degree corner at the origin, both legs pinned by fixing their far ends
   // and constraining the corner to lie on each leg's direction via fix.
   model.addPoint([20, 0], "a");
@@ -228,6 +230,7 @@ test("a line-form relation follows the line through a fillet; a point-form one d
   // Point form: "these two points share a y". It keeps constraining the two
   // points it named, and the re-pointed leg is left free to swing.
   const stale = new Model(2);
+  axisFrame(stale);
   stale.addPoint([0, 20], "a");
   stale.addPoint([0, 0], "p");
   stale.addPoint([20, 0], "b");
@@ -249,6 +252,7 @@ test("a line-form relation follows the line through a fillet; a point-form one d
 test("a line relation keeps holding after the line is re-pointed by hand", async () => {
   await loadKernel();
   const model = new Model(2);
+  axisFrame(model);
   model.addPoint([0, 0], "a");
   model.addPoint([10, 5], "b");
   model.addPoint([20, 40], "c");
@@ -308,7 +312,7 @@ test("FilletTool: clicking two edges rounds the corner between them", async () =
   const tool = new FilletTool(ctx);
 
   tool.onDown({ world: [0, 10], screen: screenAt([0, 10]) }); // midway along l1
-  assert.equal(model.entities.size, 3 + 2, "the first click commits nothing");
+  assert.equal(model.entities.size, 3 + 2 + 3, "the first click commits nothing"); // +3: the fixture frame
   assert.equal(ctx.finished, false, "and the gesture is not over");
 
   tool.onDown({ world: [10, 0], screen: screenAt([10, 0]) }); // midway along l2
@@ -344,7 +348,7 @@ test("FilletTool: clicking empty space or a point is a miss, not a cancel", asyn
 
   tool.onDown({ world: [500, 500], screen: screenAt([500, 500]) }); // nothing there
   tool.onDown({ world: [0, 20], screen: screenAt([0, 20]) }); // a point, not an edge
-  assert.equal(model.entities.size, 5, "nothing happened");
+  assert.equal(model.entities.size, 8, "nothing happened"); // 3 points, 2 lines, and the fixture frame
 
   // The gesture is still fresh, so a proper pair still works.
   tool.onDown({ world: [0, 10], screen: screenAt([0, 10]) });

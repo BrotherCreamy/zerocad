@@ -20,6 +20,7 @@ import { findSnap } from "../src/snapping.ts";
 import { save, open } from "../src/persist.ts";
 import { screenToWorld, worldToScreen, type View } from "../src/view.ts";
 import type { PointerInfo, ToolContext } from "../src/tools/tool.ts";
+import { axisFrame } from "./frames.ts";
 
 async function loadKernel() {
   const bytes = await readFile(new URL("../src/kernel/wasm-gen/neocad_kernel_bg.wasm", import.meta.url));
@@ -171,6 +172,9 @@ test("Circle3Tool: the circle follows its rim points, which is the whole point o
   // Nail two of the rim points down and move the third: a computed circle
   // would sit where it was drawn; a constrained one goes with it.
   const names = [...model.entities.values()].filter((e) => e.kind === "point").map((e) => e.name);
+  // The fixture frame goes in after the names are read, so it contributes no
+  // points to that list — and after the clicks, so it snaps to nothing.
+  axisFrame(model);
   fix(model, names[0], [0, 0]);
   fix(model, names[1], [8, 0]);
   model.setCoords(names[2], [0, 12]);
@@ -256,14 +260,18 @@ test("Circle3Tool: a click on an existing point makes the rim point coincident w
   const model = new Model(2);
   model.addPoint([0, 0], "a");
   model.addPoint([8, 0], "b");
-  fix(model, "a", [0, 0]);
-  fix(model, "b", [8, 0]);
 
   const ctx = fakeCtx(model);
   const tool = new Circle3Tool(ctx);
   tool.onDown(clickAt(model, [0, 0])); // straight onto a
   tool.onDown(clickAt(model, [8, 0])); // straight onto b
   tool.onDown(raw([0, 6])); // and one on empty canvas
+
+  // Pinned after the clicks, so the fixture frame's origin — which also sits
+  // at (0,0) — is not there to compete with `a` for the first snap.
+  axisFrame(model);
+  fix(model, "a", [0, 0]);
+  fix(model, "b", [8, 0]);
 
   const coincidences = [...model.relations.values()].filter((r) => r.op === "coincident");
   assert.equal(coincidences.length, 2,

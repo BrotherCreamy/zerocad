@@ -12,7 +12,7 @@
 
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { openApp, type AppContext } from "./harness.ts";
+import { axisFrame, openApp, type AppContext } from "./harness.ts";
 
 let app: AppContext;
 after(async () => { await app.close(); });
@@ -46,7 +46,9 @@ async function drag(name: string, dx: number, dy: number, mid?: () => Promise<vo
 before(async () => {
   app = await openApp();
   // A rectangle whose edges are constrained, with one corner pinned. p1 is the
-  // fixed corner and p3 the one opposite it.
+  // fixed corner and p3 the one opposite it. `hor`/`ver`/`fix` are relative to
+  // a frame now, so the fixture makes one first.
+  await axisFrame(app);
   await app.type("pt(-40,-30); pt(40,-30); pt(40,30); pt(-40,30)");
   await app.type('ln("p1","p2"); ln("p2","p3"); ln("p3","p4"); ln("p4","p1")');
   await app.type('hor("l1"); ver("l2"); hor("l3"); ver("l4")');

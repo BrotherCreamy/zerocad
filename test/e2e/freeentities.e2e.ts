@@ -21,7 +21,7 @@
 
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { openApp, distanceToLine, type AppContext } from "./harness.ts";
+import { axisFrame, openApp, distanceToLine, type AppContext } from "./harness.ts";
 
 let app: AppContext;
 before(async () => { app = await openApp(); });
@@ -35,6 +35,9 @@ const EMPTY = JSON.stringify({
 
 async function reset(): Promise<void> {
   await app.type(`open(${JSON.stringify(EMPTY)})`);
+  // A clean sheet has no frame at all now, and `fix` needs one. Hence the
+  // extra two points in every count below: the frame's origin and x-ref.
+  await axisFrame(app);
 }
 
 /** Wraps `model.solve` in the page so solves can be counted from here. */
@@ -95,7 +98,7 @@ test("the three-point circle, typed: circle() then three oncircles, no solve()",
   await app.type("c = circle()");
   const seeded = await app.model();
   assert.equal(seeded.byKind.circle, 1, "circle() with no arguments made a circle");
-  assert.equal(seeded.byKind.point, 4, "and a real, named centre point of its own");
+  assert.equal(seeded.byKind.point, 4 + 2, "and a real, named centre point of its own");
 
   // The owner's example, verbatim apart from the point names.
   await app.type('oncircle("p1", c); oncircle("p2", c); oncircle("p3", c)');

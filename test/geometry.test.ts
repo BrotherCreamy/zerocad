@@ -8,6 +8,7 @@ import {
   angle, arcEndpoints, concentric, equalLength, equalRadius, onCircle,
   parallel, perpendicular, pointOnLine, radius, symmetric, tangent,
 } from "../src/relations/geometry.ts";
+import { axisFrame } from "./frames.ts";
 
 async function loadKernel() {
   const bytes = await readFile(new URL("../src/kernel/wasm-gen/neocad_kernel_bg.wasm", import.meta.url));
@@ -42,6 +43,7 @@ function distToLine(p: number[], a: number[], b: number[]): number {
 test("parallel: a free line swings to match a fixed one", async () => {
   await loadKernel();
   const m = new Model(2);
+  axisFrame(m); // hor/ver/fix are frame-relative now — see test/frames.ts
   withRefLine(m);
   m.addPoint([0, 5], "a");
   m.addPoint([3, 7], "b");
@@ -56,6 +58,7 @@ test("parallel: a free line swings to match a fixed one", async () => {
 test("perpendicular: a free line squares up against a fixed one", async () => {
   await loadKernel();
   const m = new Model(2);
+  axisFrame(m); // hor/ver/fix are frame-relative now — see test/frames.ts
   withRefLine(m);
   m.addPoint([0, 0], "a");
   m.addPoint([3, 7], "b");
@@ -70,6 +73,7 @@ test("perpendicular: a free line squares up against a fixed one", async () => {
 test("angle: 60 degrees off a fixed reference line", async () => {
   await loadKernel();
   const m = new Model(2);
+  axisFrame(m); // hor/ver/fix are frame-relative now — see test/frames.ts
   withRefLine(m);
   m.addPoint([0, 0], "a");
   m.addPoint([3, 1], "b");
@@ -86,6 +90,7 @@ test("angle: 60 degrees off a fixed reference line", async () => {
 test("pointOnLine: a stray point slides onto the line", async () => {
   await loadKernel();
   const m = new Model(2);
+  axisFrame(m); // hor/ver/fix are frame-relative now — see test/frames.ts
   m.addPoint([0, 0], "a");
   m.addPoint([10, 10], "b");
   fix(m, "a", [0, 0]);
@@ -101,6 +106,7 @@ test("pointOnLine: a stray point slides onto the line", async () => {
 test("equalLength: one segment takes the other's length", async () => {
   await loadKernel();
   const m = new Model(2);
+  axisFrame(m); // hor/ver/fix are frame-relative now — see test/frames.ts
   m.addPoint([0, 0], "a");
   m.addPoint([4, 0], "b");
   fix(m, "a", [0, 0]);
@@ -120,6 +126,7 @@ test("equalLength: one segment takes the other's length", async () => {
 test("radius + onCircle: the rim finds the point, the point finds the rim", async () => {
   await loadKernel();
   const m = new Model(2);
+  axisFrame(m); // hor/ver/fix are frame-relative now — see test/frames.ts
   m.addPoint([0, 0], "ctr");
   fix(m, "ctr", [0, 0]);
   m.addCircle("ctr", 1, "c");
@@ -135,6 +142,7 @@ test("radius + onCircle: the rim finds the point, the point finds the rim", asyn
 test("concentric + equalRadius: a second circle matches the first", async () => {
   await loadKernel();
   const m = new Model(2);
+  axisFrame(m); // hor/ver/fix are frame-relative now — see test/frames.ts
   m.addPoint([2, 3], "c1ctr");
   fix(m, "c1ctr", [2, 3]);
   m.addCircle("c1ctr", 7, "c1");
@@ -151,6 +159,7 @@ test("concentric + equalRadius: a second circle matches the first", async () => 
 test("tangent: a free radius grows until the circle kisses a fixed line", async () => {
   await loadKernel();
   const m = new Model(2);
+  axisFrame(m); // hor/ver/fix are frame-relative now — see test/frames.ts
   m.addPoint([0, 0], "ctr");
   fix(m, "ctr", [0, 0]);
   m.addCircle("ctr", 1, "c");
@@ -167,6 +176,7 @@ test("tangent: a free radius grows until the circle kisses a fixed line", async 
 test("tangent: a free line slides in until it kisses a fixed circle", async () => {
   await loadKernel();
   const m = new Model(2);
+  axisFrame(m); // hor/ver/fix are frame-relative now — see test/frames.ts
   m.addPoint([0, 0], "ctr");
   fix(m, "ctr", [0, 0]);
   m.addCircle("ctr", 5, "c");
@@ -183,6 +193,7 @@ test("tangent: a free line slides in until it kisses a fixed circle", async () =
 test("symmetric: a point mirrors across a fixed line", async () => {
   await loadKernel();
   const m = new Model(2);
+  axisFrame(m); // hor/ver/fix are frame-relative now — see test/frames.ts
   m.addPoint([0, 0], "s");
   m.addPoint([0, 10], "e");
   fix(m, "s", [0, 0]);
@@ -200,6 +211,7 @@ test("symmetric: a point mirrors across a fixed line", async () => {
 test("arcEndpoints: both ends are pulled onto the arc's own circle", async () => {
   await loadKernel();
   const m = new Model(2);
+  axisFrame(m); // hor/ver/fix are frame-relative now — see test/frames.ts
   m.addPoint([0, 0], "ctr");
   fix(m, "ctr", [0, 0]);
   m.addPoint([10, 0], "s");

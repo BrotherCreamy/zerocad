@@ -7,6 +7,7 @@ import { hitTest, describePick, PICK_POINT } from "../src/picking.ts";
 import { worldToScreen, type View } from "../src/view.ts";
 import { coincident, fix, horizontal } from "../src/relations/basic.ts";
 import { del } from "../src/operations.ts";
+import { axisFrame } from "./frames.ts";
 
 async function loadKernel() {
   const bytes = await readFile(new URL("../src/kernel/wasm-gen/neocad_kernel_bg.wasm", import.meta.url));
@@ -133,6 +134,7 @@ test("describePick says something useful for each kind", async () => {
 test("the hover tag names the relations constraining what is under the cursor", async () => {
   await loadKernel();
   const m = new Model(2);
+  axisFrame(m); // hor/fix are frame-relative now — see test/frames.ts
   m.addPoint([1.5, 2], "a");
   m.addPoint([4.5, 6], "b");
   m.addLine("a", "b", "l");
