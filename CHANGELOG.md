@@ -7,6 +7,64 @@ decisions.
 
 ---
 
+## Picking, and an end-to-end suite
+
+### Clicking geometry
+
+![The rectangle drawn, with a hovered circle highlighted amber, a tag reading "c1 r 28" beside the cursor, and the command line showing dist("p1", "p2"](docs/images/06-picking.png)
+
+The selection model is ported from cellwork, and it is not the obvious one:
+**there is no selection set.** Clicking geometry drops its *name* into the
+command line and that is all. The viewport is a selection portal, not
+somewhere state accumulates — so there is nothing to clear, nothing to get out
+of sync, and only one way to refer to an entity.
+
+It suits this codebase even better than it suited cellwork, because every
+relation here already takes entity names as strings. Type `dist(`, click two
+points, and you have `dist("p1", "p2"` waiting for a number.
+
+The TODO had this written down as "a real `sel`/`desel` pair", which was an
+invention — reading cellwork settled it. Its README puts it plainly: *"the
+viewport is a selection portal — clicking geometry only drops its name into
+the command line."*
+
+Hit-testing is in **screen** space, so the tolerance stays a constant number
+of pixels however far you zoom. The tiers matter as much as the tolerances:
+points beat curves beat lines, because a point sitting on a line is under the
+cursor at the same time as the line and is almost always what was meant. An
+arc is only pickable within its own sweep.
+
+Hovering highlights the entity and names it in a tag. With nothing armed, a
+left-drag pans and a left-click picks; with a tool armed, the left button is
+the tool's, exactly as before.
+
+### An end-to-end suite in the repo
+
+The browser checks behind this project's "verified with a real mouse" bar had
+been living outside the repo, which meant nobody else could run them. They are
+now `npm run test:e2e` — 39 checks across six specs, about 12 seconds, with the
+runner starting and stopping its own dev server.
+
+They exist because a good deal of this is only wrong once assembled. The
+running count of bugs that passed the entire unit suite and were obvious within
+seconds in a browser is now **six**.
+
+### And two more of those, found by looking at the screenshot above
+
+The first version of that picture had an **ellipse** in it. The canvas bitmap
+only resized on `window.resize`, but the log pane grows as you type commands
+and takes height from the viewport — so the drawing was quietly squashed. It
+had been that way for a long time; no assertion noticed, and one glance did.
+A `ResizeObserver` fixes it, and there is now a test asserting the bitmap keeps
+square pixels as the log fills.
+
+The first version also read `dist("p1" "p2"` — names inserted with no comma,
+because cellwork's commands are space-separated and this one's are function
+calls. Picks are comma-separated now, so what lands in the input is actually
+finishable.
+
+---
+
 ## Mouse navigation
 
 The viewport could previously only be driven by `zoom()` and `pan()` at the

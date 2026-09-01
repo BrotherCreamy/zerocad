@@ -19,8 +19,8 @@ const worldAt = (app: AppContext, sx: number, sy: number) =>
 test("the wheel zooms about the cursor, and the page does not scroll", async () => {
   await app.type("a = pt(0,0); b = pt(40,30); fix(a,[0,0]); fix(b,[40,30]); ln(a,b); solve()");
   const start = (await app.model()).view;
-  const anchor = app.at(700, 300);
-  const under = await worldAt(app, 700, 300);
+  const anchor = await app.at(700, 250);
+  const under = await worldAt(app, 700, 250);
 
   await app.page.mouse.move(anchor.x, anchor.y);
   await app.page.mouse.wheel(0, -300);
@@ -29,7 +29,7 @@ test("the wheel zooms about the cursor, and the page does not scroll", async () 
   const zoomed = (await app.model()).view;
   assert.ok(zoomed.scale > start.scale, `${start.scale} -> ${zoomed.scale}`);
 
-  const stillUnder = await worldAt(app, 700, 300);
+  const stillUnder = await worldAt(app, 700, 250);
   assert.ok(Math.abs(stillUnder[0] - under[0]) < 1e-6 && Math.abs(stillUnder[1] - under[1]) < 1e-6,
     `the point under the cursor drifted: ${under} -> ${stillUnder}`);
   assert.equal(await app.page.evaluate(() => window.scrollY), 0, "the page must not scroll");
@@ -42,7 +42,7 @@ test("the wheel zooms about the cursor, and the page does not scroll", async () 
 test("right-drag and middle-drag both pan, one pixel per pixel", async () => {
   for (const button of ["right", "middle"] as const) {
     const before = (await app.model()).view;
-    const from = app.at(600, 500);
+    const from = await app.at(600, 330);
     await app.page.mouse.move(from.x, from.y);
     await app.page.mouse.down({ button });
     await app.page.mouse.move(from.x + 80, from.y - 60, { steps: 6 });
@@ -58,7 +58,7 @@ test("right-drag and middle-drag both pan, one pixel per pixel", async () => {
 
 test("navigation leaves the model alone", async () => {
   const before = await app.model();
-  const from = app.at(400, 400);
+  const from = await app.at(400, 300);
   await app.page.mouse.move(from.x, from.y);
   await app.page.mouse.down({ button: "right" });
   await app.page.mouse.move(from.x + 40, from.y + 40, { steps: 4 });
@@ -73,7 +73,7 @@ test("navigation leaves the model alone", async () => {
 test("a tool's gesture survives being panned through", async () => {
   const before = await app.model();
   await app.type("rectangle");
-  const start = app.at(250, 550);
+  const start = await app.at(250, 200);
   await app.page.mouse.move(start.x, start.y);
   await app.page.mouse.down(); // left: the tool's gesture begins
   await app.page.mouse.move(start.x + 50, start.y + 40, { steps: 3 });

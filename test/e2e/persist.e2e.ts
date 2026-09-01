@@ -13,8 +13,8 @@ after(async () => { await app.close(); });
 
 test("a drawing made with the mouse and the command line saves", async () => {
   await app.type("rectangle");
-  const p0 = app.at(250, 200);
-  const p1 = app.at(550, 420);
+  const p0 = await app.at(250, 140);
+  const p1 = await app.at(550, 360);
   await app.page.mouse.move(p0.x, p0.y);
   await app.page.mouse.down();
   await app.page.mouse.move(p1.x, p1.y, { steps: 8 });
@@ -67,7 +67,7 @@ test("tools still work on a reopened model", async () => {
   await app.repl("open(SAVED)");
   const before = await app.model();
   await app.type("circle");
-  const c = app.at(800, 550);
+  const c = await app.at(820, 200);
   await app.page.mouse.move(c.x, c.y);
   await app.page.mouse.down();
   await app.page.mouse.move(c.x + 50, c.y, { steps: 4 });

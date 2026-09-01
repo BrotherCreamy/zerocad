@@ -13,6 +13,7 @@
 import type { Model } from "../model.ts";
 import { getToolCtor, type Tool, type ToolContext, type PointerInfo, type RenderContext } from "./tool.ts";
 import { assignView, panBy, screenToWorld, worldToScreen, zoomAbout, type View } from "../view.ts";
+import { hitTest, type Pick } from "../picking.ts";
 
 export type { View };
 
@@ -24,6 +25,9 @@ const ZOOM_PER_NOTCH = 1.12;
 const RIGHT_BUTTON = 2;
 const MIDDLE_BUTTON = 4;
 
+/** Movement past this many pixels turns a click into a drag. cellwork's value. */
+const DRAG_THRESHOLD = 3;
+
 export class ToolEngine {
   model: Model;
   view: View;
@@ -32,14 +36,28 @@ export class ToolEngine {
   private g: CanvasRenderingContext2D;
   private onSolveRender: () => void;
   private onRenderOnly: () => void;
+  private onPick: (pick: Pick) => void;
   /** Which pointer is panning, and where it was last seen. */
   private panning: { id: number; sx: number; sy: number } | null = null;
+  /**
+   * A left press with no tool armed. It becomes a pan if it moves and a pick
+   * if it doesn't — cellwork's behaviour, and the reason you rarely need the
+   * right button.
+   */
+  private idle: { id: number; sx: number; sy: number; x0: number; y0: number; moved: boolean } | null = null;
+  /** What the cursor is over, for the highlight and the hover tag. */
+  hover: Pick | null = null;
 
   constructor(
     model: Model,
     canvas: HTMLCanvasElement,
     view: View,
-    callbacks: { onSolveRender: () => void; onRenderOnly: () => void },
+    callbacks: {
+      onSolveRender: () => void;
+      onRenderOnly: () => void;
+      /** An entity was clicked with no tool armed. */
+      onPick?: (pick: Pick) => void;
+    },
   ) {
     this.model = model;
     this.canvas = canvas;
@@ -47,6 +65,10 @@ export class ToolEngine {
     this.g = canvas.getContext("2d")!;
     this.onSolveRender = callbacks.onSolveRender;
     this.onRenderOnly = callbacks.onRenderOnly;
+    this.onPick = callbacks.onPick ?? (() => {});
+    canvas.addEventListener("pointerleave", () => {
+      if (this.hover) { this.hover = null; this.onRenderOnly(); }
+    });
     canvas.addEventListener("pointerdown", (e) => this.dispatch("down", e));
     canvas.addEventListener("pointermove", (e) => this.dispatch("move", e));
     canvas.addEventListener("pointerup", (e) => this.dispatch("up", e));
@@ -98,6 +120,7 @@ export class ToolEngine {
   cancel(): void {
     this.active?.onCancel();
     this.active = null;
+    this.idle = null;
     this.onRenderOnly();
   }
 
@@ -138,12 +161,53 @@ export class ToolEngine {
       return;
     }
 
-    if (!this.active) return;
-    if (kind === "down" && e.button !== 0) return; // the left button is the tool's
-    const info: PointerInfo = { world: this.screenToWorld(sx, sy), screen: [sx, sy] };
-    if (kind === "down") this.active.onDown(info);
-    else if (kind === "move") this.active.onMove(info);
-    else this.active.onUp(info);
+    // Hover is informational and updates whether or not a tool is armed, but
+    // not while a button is down — mid-gesture the cursor is doing something
+    // else and a flickering highlight is just noise.
+    if (kind === "move" && e.buttons === 0) this.updateHover(sx, sy);
+
+    if (this.active) {
+      if (kind === "down" && e.button !== 0) return; // the left button is the tool's
+      const info: PointerInfo = { world: this.screenToWorld(sx, sy), screen: [sx, sy] };
+      if (kind === "down") this.active.onDown(info);
+      else if (kind === "move") this.active.onMove(info);
+      else this.active.onUp(info);
+      return;
+    }
+
+    // Nothing armed: the left button pans if it moves and picks if it doesn't.
+    if (kind === "down" && e.button === 0) {
+      this.idle = { id: e.pointerId, sx, sy, x0: sx, y0: sy, moved: false };
+      this.canvas.setPointerCapture?.(e.pointerId);
+      return;
+    }
+    if (!this.idle || e.pointerId !== this.idle.id) return;
+    if (kind === "move") {
+      if (!this.idle.moved && Math.hypot(sx - this.idle.x0, sy - this.idle.y0) > DRAG_THRESHOLD) {
+        this.idle.moved = true;
+      }
+      if (this.idle.moved) {
+        assignView(this.view, panBy(this.view, sx - this.idle.sx, sy - this.idle.sy));
+        this.onRenderOnly();
+      }
+      this.idle.sx = sx;
+      this.idle.sy = sy;
+    } else {
+      this.canvas.releasePointerCapture?.(e.pointerId);
+      const clicked = !this.idle.moved;
+      this.idle = null;
+      if (clicked) {
+        const pick = hitTest(this.model, this.view, sx, sy);
+        if (pick) this.onPick(pick);
+      }
+    }
+  }
+
+  private updateHover(sx: number, sy: number): void {
+    const next = hitTest(this.model, this.view, sx, sy);
+    if (next?.name === this.hover?.name) return;
+    this.hover = next;
+    this.onRenderOnly();
   }
 
   /** Call after clearing the canvas each frame — draws the active tool's live preview, if any. */

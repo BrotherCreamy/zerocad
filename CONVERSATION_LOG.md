@@ -106,6 +106,71 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### Picking, and reading cellwork instead of guessing
+
+`TODO.md` had picking at the top with a *decision needed* flag: cellwork had
+already solved this and the ideas were validated there, so porting beat
+inventing — but that meant actually reading it rather than assuming what it
+did. So cellwork was cloned into the session and read.
+
+Just as well. The TODO said "a real `sel`/`desel` pair", which I had made up.
+cellwork's answer is different and better: **there is no selection set at
+all.** Clicking geometry calls `insertToken(name)` and drops the name into the
+command line. Its README states the principle outright — "the viewport is a
+selection portal — clicking geometry only drops its name into the command
+line."
+
+That fits neocad even better than it fitted cellwork, because every relation
+here takes entity names as strings. Type `dist(`, click two points, and the
+input reads `dist("p1", "p2"`. Nothing accumulates, nothing needs clearing,
+and there is exactly one way to refer to an entity.
+
+The hit-testing is cellwork's too, including the parts that look arbitrary
+until you think about them. It works in **screen** space, so the tolerance is a
+constant number of pixels at any zoom — which is what a hand expects. And it is
+*tiered* rather than nearest-wins: points (8px) beat curves (6px) beat lines
+(5px), because a point sitting on a line is under the cursor at the same time
+as the line, and it is almost always the point that was meant.
+
+One deliberate difference. cellwork pans by left-dragging empty space; neocad
+reserves the left button for the armed tool. Both are kept: with a tool armed
+the left button is the tool's, and with nothing armed a left-drag pans and a
+left-click picks. The right and middle buttons pan either way.
+
+**Two more assembly bugs, both found by looking at a screenshot.** The first
+render of the picking screenshot had an ellipse in it where a circle should
+have been. The canvas bitmap only resized on `window.resize`, and the log pane
+grows as commands are typed, taking height from the viewport — so the bitmap
+kept its old aspect and the drawing was squashed to fit. That had been true for
+a long time and no assertion had ever noticed. A `ResizeObserver` fixes it,
+with a test that the bitmap keeps square pixels as the log fills.
+
+The same screenshot showed the command line reading `dist("p1" "p2"` — no
+comma. cellwork's commands are space-separated so it never needed one; neocad's
+are function calls, so it does. Picks are comma-separated now, which is the
+difference between "most of the call is written" and "most of the call is
+written but you have to punctuate it".
+
+That is six bugs now that passed the whole unit suite and were obvious on
+sight. It is a consistent enough pattern to be worth stating as a rule, which
+`CLAUDE.md` and `CONTRIBUTING.md` now do: run the app, and when you take a
+screenshot to check something, actually look at it.
+
+**Also this round:** the browser verification moved into the repo as
+`npm run test:e2e`. It had been living in a scratchpad outside the repository,
+which made every "verified in a browser" claim unreproducible by anyone else —
+including by me in a later session. The runner owns the dev server rather than
+the harness doing it, because node's test runner runs files in parallel and
+five processes racing for one port is not a test; and it spawns vite's binary
+directly rather than `npm run dev`, because npm spawns a shell which spawns
+vite, so killing what we spawned left the real server orphaned and the port
+held for the next run.
+
+The harness's `at()` helper also grew a guard worth keeping: it refuses
+coordinates outside the canvas. Several tests were silently clicking below the
+canvas's bottom edge once the log pane had grown, which reads as "the feature
+is broken" rather than "the coordinate was wrong". It now says which it is.
+
 ### Mouse navigation
 
 Until now the viewport could only be driven by `zoom()` and `pan()` at the

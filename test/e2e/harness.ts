@@ -88,8 +88,15 @@ async function requireServer(): Promise<void> {
 export interface AppContext {
   page: Page;
   browser: Browser;
-  /** Canvas-relative screen coordinates -> absolute page coordinates. */
-  at(sx: number, sy: number): { x: number; y: number };
+  /**
+   * Canvas-relative screen coordinates -> absolute page coordinates.
+   *
+   * Measured fresh every time rather than cached: the log pane grows as a test
+   * types into it, which moves the canvas's bottom edge up. A cached rect
+   * silently sends later clicks past the edge of the canvas, where they do
+   * nothing and the failure looks like the feature is broken.
+   */
+  at(sx: number, sy: number): Promise<{ x: number; y: number }>;
   /** Types a line into the command input and presses Enter, as a user would. */
   type(source: string): Promise<void>;
   /**
@@ -133,16 +140,28 @@ export async function openApp(): Promise<AppContext> {
     { timeout: 20_000 },
   );
 
-  const box = await page.$eval("#cv", (el) => {
-    const r = el.getBoundingClientRect();
-    return { x: r.x, y: r.y };
-  });
-
   return {
     page,
     browser,
     pageErrors,
-    at: (sx, sy) => ({ x: box.x + sx, y: box.y + sy }),
+    async at(sx, sy) {
+      const box = await page.$eval("#cv", (el) => {
+        const r = el.getBoundingClientRect();
+        return { x: r.x, y: r.y, width: r.width, height: r.height };
+      });
+      // A point outside the canvas is never what a test meant, and a mouse
+      // event there lands on the log pane and does nothing — which reads as
+      // "the feature is broken" rather than "the coordinate was wrong". The
+      // canvas shrinks as the log fills, so this is easy to do by accident.
+      if (sx < 0 || sy < 0 || sx > box.width || sy > box.height) {
+        throw new Error(
+          `(${sx}, ${sy}) is outside the canvas, which is currently ` +
+          `${Math.round(box.width)}x${Math.round(box.height)}. The canvas shrinks as the log pane ` +
+          `fills, so pick coordinates that fit the smaller size.`,
+        );
+      }
+      return { x: box.x + sx, y: box.y + sy };
+    },
     async type(source) {
       await page.fill("#cmd", source);
       await page.press("#cmd", "Enter");

@@ -11,6 +11,7 @@ import { open as openModelText } from "./persist.ts";
 import { Repl, fmt } from "./repl.ts";
 import { neocadScope } from "./replenv.ts";
 import { ToolEngine, type View } from "./tools/engine.ts";
+import { describePick, type Pick } from "./picking.ts";
 import { getToolCtor } from "./tools/tool.ts";
 import "./tools/point.ts";
 import "./tools/rectangle.ts";
@@ -22,6 +23,7 @@ const logEl = document.getElementById("log")!;
 const cv = document.getElementById("cv") as HTMLCanvasElement;
 const g = cv.getContext("2d")!;
 const cmdEl = document.getElementById("cmd") as HTMLInputElement;
+const hoverEl = document.getElementById("hovertag")!;
 
 function log(msg: string, cls?: string) {
   const d = document.createElement("div");
@@ -34,11 +36,10 @@ function log(msg: string, cls?: string) {
 function sizeCanvas() {
   const dpr = devicePixelRatio || 1;
   const r = cv.getBoundingClientRect();
-  cv.width = r.width * dpr;
-  cv.height = r.height * dpr;
+  cv.width = Math.max(1, Math.round(r.width * dpr));
+  cv.height = Math.max(1, Math.round(r.height * dpr));
   g.setTransform(dpr, 0, 0, dpr, 0, 0);
 }
-addEventListener("resize", sizeCanvas);
 
 async function main() {
   statusEl.textContent = "loading kernel…";
@@ -63,9 +64,13 @@ async function main() {
     for (let y = view.oy % (view.scale * 10); y < r.height; y += view.scale * 10) { g.moveTo(0, y); g.lineTo(r.width, y); }
     g.stroke();
 
-    g.strokeStyle = "#afc6d9";
-    g.lineWidth = 1.4;
+    const hovered = engine.hover?.name;
+    const stroke = (name: string) => (name === hovered ? "#e8a33d" : "#afc6d9");
+    const weight = (name: string) => (name === hovered ? 2.2 : 1.4);
+
     for (const e of model.entities.values()) {
+      g.strokeStyle = stroke(e.name);
+      g.lineWidth = weight(e.name);
       if (e.kind === "line") {
         const [ax, ay] = engine.worldToScreen(model.coords(e.refs[0]));
         const [bx, by] = engine.worldToScreen(model.coords(e.refs[1]));
@@ -89,12 +94,12 @@ async function main() {
       }
     }
 
-    g.fillStyle = "#afc6d9";
     g.font = "11px monospace";
     for (const e of model.entities.values()) {
       if (e.kind !== "point") continue;
       const [sx, sy] = engine.worldToScreen(model.coords(e.name));
-      g.beginPath(); g.arc(sx, sy, 3.5, 0, Math.PI * 2); g.fill();
+      g.fillStyle = stroke(e.name);
+      g.beginPath(); g.arc(sx, sy, e.name === hovered ? 5 : 3.5, 0, Math.PI * 2); g.fill();
       g.fillText(e.name, sx + 6, sy - 6);
     }
     engine.renderOverlay();
@@ -108,13 +113,60 @@ async function main() {
     return report;
   }
 
-  const engine = new ToolEngine(model, cv, view, { onSolveRender: solveAndRender, onRenderOnly: render });
+  /**
+   * Clicking geometry drops its *name* into the command line rather than
+   * accumulating a selection somewhere. cellwork's idea, and it fits here even
+   * better: every relation takes entity names, so clicking two lines writes
+   * most of `fillet(` for you. Nothing to clear, nothing to get out of sync.
+   */
+  function insertToken(pick: Pick) {
+    const v = cmdEl.value;
+    // Separate arguments with a comma, because these are function calls: two
+    // clicks after `dist(` should leave `dist("p1", "p2"`, ready to finish,
+    // rather than something that still needs punctuating by hand.
+    const needsComma = /[\w"\]]\s*$/.test(v);
+    cmdEl.value = v + (needsComma ? ", " : "") + `"${pick.name}"`;
+    cmdEl.focus();
+    log(`${pick.name} → command line`, "out");
+  }
+
+  // The canvas has to follow its own box, not just window resizes: the log
+  // pane grows as commands are typed and takes height from the viewport. Left
+  // to a resize listener the bitmap keeps its old aspect and the drawing is
+  // quietly squashed — circles come out as ellipses, which is the sort of
+  // thing no assertion catches and one glance does.
+  new ResizeObserver(() => {
+    sizeCanvas();
+    render();
+  }).observe(cv);
+
+  const engine = new ToolEngine(model, cv, view, {
+    onSolveRender: solveAndRender,
+    onRenderOnly: render,
+    onPick: insertToken,
+  });
+
+  // The hover tag follows the cursor and names whatever is under it.
+  cv.addEventListener("pointermove", (e) => {
+    const pick = engine.hover;
+    if (!pick || !model.entities.has(pick.name)) {
+      hoverEl.hidden = true;
+      return;
+    }
+    const rect = cv.getBoundingClientRect();
+    hoverEl.hidden = false;
+    hoverEl.style.left = `${e.clientX - rect.left + 12}px`;
+    hoverEl.style.top = `${e.clientY - rect.top + 12}px`;
+    hoverEl.textContent = describePick(model, pick);
+  });
+  cv.addEventListener("pointerleave", () => { hoverEl.hidden = true; });
 
   function handles() {
     return {
       model,
       view,
       arm: (name: string) => engine.arm(name),
+      pick: () => engine.hover?.name ?? null,
       cancel: () => engine.cancel(),
       refresh: () => { solveAndRender(); },
       solve: () => solveAndRender(),

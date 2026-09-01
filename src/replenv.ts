@@ -26,6 +26,8 @@ export interface EnvHandles {
   model: Model;
   /** Arms a registered tool by name. Absent outside the browser. */
   arm?: (toolName: string) => void;
+  /** The name of whatever the cursor is currently over, if anything. */
+  pick?: () => string | null;
   /** Cancels whatever tool is armed. */
   cancel?: () => void;
   /** Re-solves and redraws. Absent outside the browser. */
@@ -170,6 +172,7 @@ export function neocadScope(h: EnvHandles): Bag {
       return `armed: ${name}`;
     },
     cancel: () => { h.cancel?.(); return "cancelled"; },
+    hover: () => h.pick?.() ?? null,
     refresh: () => { h.refresh?.(); return "ok"; },
 
     // Viewport control as an ordinary command, per the brief's goal of having
@@ -203,7 +206,7 @@ function help(scope: Bag): string {
     "operations fillet(line1, line2, radius)",
     "files      save()  open(text)  download(name)  openFile()  journal()",
     "viewport   arm(tool)  cancel()  zoom(f)  pan(dx,dy)  refresh()",
-    "inspect    ls()  coords(name)  solve()  tools()  model",
+    "inspect    ls()  coords(name)  solve()  tools()  hover()  model",
     "authoring  Tool  defineTool(name, ctor)  Dual",
     "",
     "A bare assignment persists between entries (box = class extends Tool {…});",

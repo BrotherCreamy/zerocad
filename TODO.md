@@ -10,18 +10,22 @@ Checked items stay for one release's worth of history, then move out to
 
 Roughly in the order that unblocks the most.
 
-- [ ] **A picking / selection model.** Hit-test the entity under the cursor,
-      a real `sel` / `desel` pair, and a way to render what's selected.
-      Blocks most of what's below it, so it goes first.
-      - *Decision needed:* cellwork already solved this and the ideas were
-        validated there. Worth porting its model rather than inventing a
-        second one — but that means deciding which parts carry over.
 - [ ] **A pointer-driven fillet tool.** Click two lines, round the corner.
-      The `fillet` operation is done and reachable from the command line;
-      this is only waiting on picking.
-- [ ] **Hover snaps.** Snap to endpoints, midpoints, centers and
-      intersections while a tool is dragging. Needs picking.
-- [ ] **Box-select.** Needs picking and `sel`.
+      The `fillet` operation is done, and picking now exists — this is the
+      first thing to build on it.
+- [ ] **Hover snaps.** Snap to endpoints, midpoints, centres and
+      intersections while a tool is dragging. `hitTest` is most of the work;
+      what's left is feeding the snapped point to the armed tool instead of
+      the raw cursor position, and drawing the snap marker.
+- [ ] **Dragging a point with the mouse.** cellwork solves with soft
+      residuals pulling the dragged point toward the cursor (weight ~0.12) so
+      the rest of the model follows its constraints — a very natural
+      interaction for a constraint solver. Needs `Problem.solve` to accept
+      *temporary* residual blocks, which it currently cannot.
+- [ ] **Box-select.** Now that picking is name-based rather than a selection
+      set, this wants thought: dragging a box would naturally insert *several*
+      names at once. Probably worth doing after the fillet tool shows how
+      multi-pick should read.
 - [ ] **Deleting entities.** No `remove` yet, and it isn't trivial:
       variables live in one flat vector, so removing a point means
       compacting it and remapping every residual block that refers to a
@@ -58,6 +62,9 @@ Roughly in the order that unblocks the most.
 
 ## Done
 
+- [x] Picking and hover — click geometry to drop its name in the command line
+- [x] Browser verification in the repo as `npm run test:e2e`
+- [x] Contributor docs: CONTRIBUTING, docs/ARCHITECTURE, CLAUDE.md
 - [x] Mouse navigation — wheel zooms about the cursor, drag pans
 - [x] Save and open as ordinary commands
 - [x] The `fillet` operation

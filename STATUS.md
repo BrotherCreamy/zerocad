@@ -217,6 +217,22 @@ replacing) the system Node other projects on this machine may depend on.
   nudged, so the anchor does not drift as zooms accumulate, and the scale is
   clamped at both ends.
 
+- **Picking and hover** (`src/picking.ts`) — hit-testing in *screen* space, so
+  the pick tolerance stays a constant number of pixels however far the view is
+  zoomed. Tiered rather than nearest-wins: points beat curves beat lines, since
+  a point sitting on a line is under the cursor at the same time as the line
+  and is almost always what was meant. An arc is only pickable within its own
+  sweep.
+  The selection model is cellwork's, and it is not the obvious one: **there is
+  no selection set.** Clicking geometry drops its *name* into the command line
+  and that is all — the viewport is a selection portal, not somewhere state
+  accumulates. It suits this codebase even better than it suited cellwork,
+  because every relation here already takes entity names as strings: click two
+  points after typing `dist(` and you have `dist("p1", "p2"` ready to finish.
+  Hovering highlights the entity and shows a tag naming it. With no tool armed,
+  a left-drag pans and a left-click picks; with one armed, the left button is
+  the tool's, as before.
+
 ## What's next
 
 The working list lives in [`TODO.md`](TODO.md), so it has one home rather

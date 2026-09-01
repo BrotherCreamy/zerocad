@@ -32,8 +32,8 @@ test("a tool authored at the command line drives like a built-in", async () => {
   assert.ok((await app.log()).includes("armed: replbox"));
 
   const before = await app.model();
-  const p0 = app.at(250, 180);
-  const p1 = app.at(500, 330);
+  const p0 = await app.at(250, 120);
+  const p1 = await app.at(500, 300);
 
   await app.page.mouse.move(p0.x, p0.y);
   await app.page.mouse.down();
@@ -55,14 +55,14 @@ test("a tool authored at the command line drives like a built-in", async () => {
   const xs = fresh.map((p) => p[0]).sort((a, b) => a - b);
   const ys = fresh.map((p) => p[1]).sort((a, b) => a - b);
   assert.ok(Math.abs(xs[3] - xs[0] - 250 / after.view.scale) < 1e-3, `width ${xs[3] - xs[0]}`);
-  assert.ok(Math.abs(ys[3] - ys[0] - 150 / after.view.scale) < 1e-3, `height ${ys[3] - ys[0]}`);
+  assert.ok(Math.abs(ys[3] - ys[0] - 180 / after.view.scale) < 1e-3, `height ${ys[3] - ys[0]}`);
   assert.ok(Math.abs(xs[0] - xs[1]) < 1e-9 && Math.abs(ys[0] - ys[1]) < 1e-9, "axis-aligned to solver tolerance");
 });
 
 test("the circle tool drags from centre to rim", async () => {
   await app.type("circle");
   const before = await app.model();
-  const c = app.at(700, 550);
+  const c = await app.at(700, 380);
 
   await app.page.mouse.move(c.x, c.y);
   await app.page.mouse.down();
@@ -83,7 +83,7 @@ test("the circle tool drags from centre to rim", async () => {
 test("the arc tool spans three clicks and snaps the last one to the rim", async () => {
   await app.type("arc");
   const before = await app.model();
-  const c = app.at(250, 600);
+  const c = await app.at(760, 150);
 
   await app.page.mouse.click(c.x, c.y);
   await app.page.waitForTimeout(80);

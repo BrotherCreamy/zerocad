@@ -11,7 +11,7 @@
     #status{font-size:11px;color:#7a8b9b}
     #status.solved{color:#55c07a}
     #status.bad{color:#e0605c}
-    canvas{display:block;flex:1;background:#0a0e13;cursor:crosshair}
+    canvas{display:block;width:100%;height:100%;background:#0a0e13;cursor:crosshair}
     #log{padding:6px 14px;font-size:11px;color:#7a8b9b;border-top:1px solid #223041;white-space:pre-wrap;max-height:190px;overflow-y:auto}
     #cmdrow{display:flex;align-items:center;gap:8px;padding:6px 14px;border-top:1px solid #223041;background:#0e141b}
     #cmd{flex:1;background:transparent;border:none;outline:none;color:#d5e1ec;font-family:inherit;font-size:13px}
@@ -19,6 +19,9 @@
     #log .in{color:#46586a}
     #log .err{color:#e0605c}
     #log .out{color:#8fa7bb}
+    #hovertag{position:absolute;pointer-events:none;font-family:inherit;font-size:11px;color:#e8a33d;
+      background:#0e141bdd;border:1px solid #223041;padding:2px 6px;border-radius:3px;white-space:nowrap;z-index:5}
+    #viewwrap{position:relative;flex:1;min-height:0}
   </style>
 </head>
 <body>
@@ -27,7 +30,10 @@
       <span>NEO<b>CAD</b></span>
       <span id="status">loading kernel…</span>
     </header>
-    <canvas id="cv"></canvas>
+    <div id="viewwrap">
+      <canvas id="cv"></canvas>
+      <div id="hovertag" hidden></div>
+    </div>
     <div id="log"></div>
     <div id="cmdrow">
       <span style="color:#e8a33d">&gt;</span>

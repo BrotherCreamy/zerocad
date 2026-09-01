@@ -13,8 +13,8 @@ after(async () => { await app.close(); });
 
 test("filleting a drawn rectangle rounds the corner and keeps the box square", async () => {
   await app.type("rectangle");
-  const p0 = app.at(220, 180);
-  const p1 = app.at(620, 480);
+  const p0 = await app.at(220, 120);
+  const p1 = await app.at(620, 400);
   await app.page.mouse.move(p0.x, p0.y);
   await app.page.mouse.down();
   await app.page.mouse.move(p1.x, p1.y, { steps: 8 });
