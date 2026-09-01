@@ -7,6 +7,59 @@ decisions.
 
 ---
 
+## Constraint inference
+
+Snapping made a click land exactly on a corner. Inference is the step that
+makes it *mean* that corner: when a tool places a point on existing geometry
+it now applies the relation that implies, and the shapes are genuinely joined.
+
+![Two rectangles drawn with the mouse, meeting at a single shared corner, with the log below showing the constraint the tool applied: coincident("p5", "p3")](docs/images/08-inference.png)
+
+Onshape calls this *inferencing*, SolidWorks calls it automatic sketch
+relations, and the behaviour here is deliberately theirs rather than invented:
+
+| what you clicked | what you get |
+|---|---|
+| an existing point | `coin(new, that point)` |
+| the middle of an edge | `mid(new, that line)` — the line form |
+| somewhere along a line | `on(new, that line)` |
+| somewhere on a rim | `oncircle(new, that circle or arc)` |
+
+The screenshot above is the acceptance test that defined "done": rectangle B
+was drawn with a mouse drag starting three pixels off rectangle A's corner,
+and A's corner has since been moved with `fix`. B's corner came with it —
+before this change two points sat at identical coordinates, unconnected, and
+moving one left the other behind.
+
+Two points, one constraint. **Nothing is merged**: the new point is a new
+point, and the constraint is an ordinary one the user could have typed and
+will be able to delete once constraint deletion exists. Inference is
+downstream of snapping rather than beside it, so `snapping(false)` turns off
+both — one switch, as in Onshape, not two.
+
+The mechanics are small: `PointerInfo` now carries the `Snap` the engine used
+alongside the coordinate it produced, and `placePoint` (`src/tools/place.ts`)
+is the one place that turns a snap into a relation. A tool that ignores the
+new field behaves exactly as before; the point, rectangle, circle and arc
+tools go through the helper. The rectangle keeps the whole first `PointerInfo`
+from `onDown` rather than only its coordinate, since by `onUp` that snap is
+the only record of what the gesture was started *on*; its two derived corners
+get nothing, because nothing was clicked there.
+
+`midpoint` gained the line form it was missing — `mid(m, "l1")` beside
+`mid(m, "a", "b")` — resolving the line's endpoints lazily, the same
+distinction `hor`/`ver` already drew and for the same reason: a midpoint snap
+means "the middle of this edge", which has to survive a fillet re-pointing it.
+Both forms save and reopen as the form they were called in.
+
+One thing worth knowing, because it looks like a bug and is not: a coincident
+constraint between two *free* points does not make one follow the other on
+solve — least squares moves both and meets in the middle. Pin one (`fix`, or
+another constraint) and the other follows exactly. The tests do that rather
+than asserting a direction the mathematics never promised.
+
+---
+
 ## Snapping
 
 While a tool is drawing, the cursor is pulled onto nearby geometry — so a

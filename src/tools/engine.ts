@@ -191,12 +191,15 @@ export class ToolEngine {
     if (this.active) {
       if (kind === "down" && e.button !== 0) return; // the left button is the tool's
 
-      // The tool is handed a *snapped* world coordinate and never learns that
-      // anything happened — which is the point. A tool should be about its own
-      // gesture, not about how precise the cursor is.
+      // The tool is handed a *snapped* world coordinate, and the snap that
+      // produced it. A tool that only reads `world` behaves exactly as it did
+      // before — it is about its own gesture, not about how precise the cursor
+      // is. A tool that places points reads `snap` too, and applies the
+      // constraint the user was aiming for (see place.ts). Inference is
+      // downstream of snapping, so `snapping(false)` turns off both.
       this.snap = this.snapping ? findSnap(this.model, this.view, sx, sy) : null;
       const world = this.snap ? this.snap.world : this.screenToWorld(sx, sy);
-      const info: PointerInfo = { world, screen: [sx, sy] };
+      const info: PointerInfo = { world, screen: [sx, sy], ...(this.snap ? { snap: this.snap } : {}) };
 
       if (kind === "down") this.active.onDown(info);
       else if (kind === "move") this.active.onMove(info);

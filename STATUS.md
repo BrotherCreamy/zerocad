@@ -255,13 +255,39 @@ replacing) the system Node other projects on this machine may depend on.
   point, triangle for a midpoint, circle for somewhere along a curve), drawn
   after the tool's own preview so it can never be hidden by it: if the cursor
   is not where it looks, that has to be the most visible thing on screen.
-  As built here, snapping makes the click *exact* but joins nothing — two
-  points at the same position are still two separate points. The decided next
-  step (owner's call, matching Onshape/SolidWorks) is constraint inference:
-  the tool applies the corresponding relation — `coin`, point-on-curve,
-  midpoint — to whatever it snapped to. Spec in
-  `docs/plans/onshape-inference.md`. `snapping(false)` turns snapping, and
-  with it inference, off.
+  On its own snapping makes the click *exact* but joins nothing; what joins
+  things is inference, below.
+
+- **Constraint inference** (`src/tools/place.ts`) — a tool that places a point
+  on existing geometry applies the relation that implies. Onshape calls it
+  inferencing, SolidWorks calls it automatic sketch relations, and the mapping
+  is theirs: a point snap becomes `coin`, a midpoint snap becomes the *line*
+  form of `mid`, a curve snap becomes `on` for a line or `oncircle` for a
+  circle or arc. So a rectangle drawn from another's corner genuinely follows
+  that corner when it moves — which it demonstrably did not before.
+  **Nothing is merged.** Two points stay two points, joined by an ordinary
+  constraint the user could have typed themselves; merging entities is a
+  different feature living in deletion territory. Inference is downstream of
+  snapping rather than beside it, so `snapping(false)` turns off both — one
+  switch, as in Onshape, not two.
+  The mechanism is deliberately thin: `PointerInfo` carries the `Snap` the
+  engine used alongside the coordinate it produced, and `placePoint` is the
+  single place that turns one into a relation. A tool that ignores the field
+  behaves exactly as before. The rectangle tool keeps the whole first
+  `PointerInfo` from `onDown` rather than only its coordinate, because by
+  `onUp` that snap is the only record of what the gesture was started on; its
+  two *derived* corners get no inference, since nothing was clicked there.
+  The arc tool prefers a snapped third click over its own rim projection —
+  `arcends` then stretches the arc to reach it, rather than the click being
+  quietly moved back onto the drawn rim.
+  `midpoint` gained the line form it was missing (`mid(m, "l1")` beside
+  `mid(m, "a", "b")`), resolving the line's endpoints lazily — the same
+  distinction `hor`/`ver` already drew, for the same reason. Both forms
+  round-trip through save/open as the form they were called in.
+  Worth knowing, because it looks like a bug and is not: a coincident
+  constraint between two *free* points does not make one follow the other on
+  solve — least squares moves both and meets in the middle. Pin one and the
+  other follows exactly, which is what the tests do.
 
 ## What's next
 

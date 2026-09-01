@@ -106,6 +106,64 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### Inference built: the snap now says what it meant
+
+Implementing `docs/plans/onshape-inference.md`, which read as an instruction
+rather than a design question — the design had already been settled by the
+owner's correction, so this was execution.
+
+The shape of it fell out of one observation: snapping had already done the
+hard part. `findSnap` decides *what* was aimed at and in which of three
+senses; all that was missing was the line that turns "you aimed at p3" into
+`coin(new, p3)`. So the change is genuinely small — `PointerInfo` carries the
+`Snap` alongside the coordinate it produced, and one helper, `placePoint`,
+owns the whole mapping. Every tool that puts a point where the user clicked
+goes through it; a tool that ignores the new field behaves exactly as it did
+before, which matters because tools authored at the command line are the same
+kind of thing as the built-ins and must not need updating.
+
+The rectangle tool needed the only structural change: it was keeping
+`p.world` from `onDown` and nothing else, and by `onUp` that coordinate is all
+that remains of a gesture that started *on* something. It keeps the whole
+`PointerInfo` now. Its two derived corners get no inference, deliberately —
+nothing was clicked there, and inventing a constraint for a corner the user
+never pointed at would be the guessing the whole approach avoids.
+
+Three things worth writing down, since none is obvious from the diff.
+
+**A coincident constraint between two free points does not make one follow the
+other.** The first version of the acceptance test moved rectangle A's corner
+with `setCoords` and asserted B's corner arrived there; it arrived halfway,
+and the test was wrong rather than the feature. Least squares with both ends
+free minimises the step, so the two points meet in the middle — which is
+correct, and is what a sketcher does too when nothing else is holding either
+end. The tests pin one end with `fix` and then ask whether the other followed
+exactly. Recorded in `TODO.md` and `CHANGELOG.md` as well, because it will
+look like a bug to whoever meets it next.
+
+**`midpoint` had the same trap `hor`/`ver` escaped**, and inference is what
+walked into it: a midpoint snap means "the middle of this edge", so applying
+the point form `mid(m, a, b)` would have captured the two endpoints the line
+happened to have and then gone on constraining them after a fillet re-pointed
+it. It has the line form now, resolving lazily through `model.line()` at each
+evaluation, and the round-trip test checks that each call site saves and
+reopens as the *form* it was called in rather than merely at the right
+coordinates.
+
+**The arc tool's third click had two rules that disagreed.** It projects the
+end onto the rim so nothing jumps on solve; a snap says the end belongs on
+some other geometry. Projecting after snapping would silently undo an aim the
+user took deliberately, so the snap wins and `arcends` stretches the arc to
+reach it — the constraint system settles it, which is the whole point of
+having one.
+
+Verified in a browser as well as in tests, per the rule that has now caught
+six bugs: the screenshot in `CHANGELOG.md` is two rectangles drawn with a real
+mouse, meeting at exactly one corner, with the log below showing the
+`coincident("p5", "p3")` the tool applied on the user's behalf — the
+constraint is an ordinary one they could have typed, which is exactly the
+claim being made.
+
 ### "Weld" retired: it's constraint inference, like every other sketcher
 
 The snapping work left a question framed as "welding coincident points", with

@@ -10,6 +10,7 @@
 
 import { Tool, defineTool, type PointerInfo, type RenderContext } from "./tool.ts";
 import { arcEndpoints } from "../relations/geometry.ts";
+import { placePoint } from "./place.ts";
 
 /** Pulls `p` onto the circle of radius `r` about `c`, keeping its direction. */
 function ontoRim(p: number[], c: number[], r: number): number[] {
@@ -21,41 +22,48 @@ function ontoRim(p: number[], c: number[], r: number): number[] {
 
 export class ArcTool extends Tool {
   readonly name = "arc";
-  private center: number[] | null = null;
-  private start: number[] | null = null;
+  /** The three clicks, kept whole so each one's snap survives to commit. */
+  private center: PointerInfo | null = null;
+  private start: PointerInfo | null = null;
   private hover: number[] | null = null;
 
   onDown(p: PointerInfo): void {
     if (this.ctx.model.dim !== 2) throw new Error("arc is a 2D tool");
 
     if (!this.center) {
-      this.center = p.world;
+      this.center = p;
       this.hover = p.world;
       this.ctx.requestRender();
       return;
     }
 
     if (!this.start) {
-      if (Math.hypot(p.world[0] - this.center[0], p.world[1] - this.center[1]) < 1e-6) return; // no radius yet
-      this.start = p.world;
+      if (Math.hypot(p.world[0] - this.center.world[0], p.world[1] - this.center.world[1]) < 1e-6) return; // no radius yet
+      this.start = p;
       this.hover = p.world;
       this.ctx.requestRender();
       return;
     }
 
     // Third click: the end of the sweep, and the whole thing commits at once.
-    const c = this.center, s = this.start;
+    const centre = this.center, first = this.start;
+    const c = centre.world, s = first.world;
     const r = Math.hypot(s[0] - c[0], s[1] - c[1]);
-    const e = ontoRim(p.world, c, r); // snap it to the rim so nothing jumps on solve
+    // Normally the end click is pulled onto the rim so nothing jumps on solve.
+    // But if it snapped to something, that geometry is what was meant: keep
+    // the snapped position and let `arcends` and the inferred constraint
+    // settle the radius between them, rather than quietly overriding a click
+    // the user aimed at a corner.
+    const end: PointerInfo = p.snap ? p : { ...p, world: ontoRim(p.world, c, r) };
     this.center = null;
     this.start = null;
     this.hover = null;
 
     const m = this.ctx.model;
-    const ctr = m.addPoint(c);
-    const sp = m.addPoint(s);
-    const ep = m.addPoint(e);
-    const arc = m.addArc(ctr.name, sp.name, ep.name, r);
+    const ctr = placePoint(this.ctx, centre);
+    const sp = placePoint(this.ctx, first);
+    const ep = placePoint(this.ctx, end);
+    const arc = m.addArc(ctr, sp, ep, r);
     arcEndpoints(m, arc.name);
 
     this.ctx.requestSolve();
@@ -77,7 +85,7 @@ export class ArcTool extends Tool {
 
   render(r: RenderContext): void {
     if (!this.center || !this.hover) return;
-    const c = this.center;
+    const c = this.center.world;
     const [cx, cy] = r.worldToScreen(c);
     const ang = (p: number[]) => Math.atan2(p[1] - c[1], p[0] - c[0]);
 
@@ -98,10 +106,10 @@ export class ArcTool extends Tool {
       r.g.stroke();
     } else {
       // Stage three: radius is fixed, so show the sweep growing.
-      const [sx, sy] = r.worldToScreen(this.start);
+      const [sx, sy] = r.worldToScreen(this.start.world);
       const rad = Math.hypot(sx - cx, sy - cy);
       r.g.beginPath();
-      r.g.arc(cx, cy, rad, -ang(this.start), -ang(this.hover), true);
+      r.g.arc(cx, cy, rad, -ang(this.start.world), -ang(this.hover), true);
       r.g.stroke();
       r.g.beginPath();
       r.g.moveTo(cx, cy);

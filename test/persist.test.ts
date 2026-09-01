@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import { ensureKernelLoaded } from "../src/kernel/problem.ts";
 import { Model } from "../src/model.ts";
 import { save, open, toSaved } from "../src/persist.ts";
-import { dist, fix, horizontal, vertical } from "../src/relations/basic.ts";
+import { dist, fix, horizontal, midpoint, vertical } from "../src/relations/basic.ts";
 import { radius, tangent, onCircle } from "../src/relations/geometry.ts";
 import { fillet } from "../src/operations.ts";
 import { RectangleTool } from "../src/tools/rectangle.ts";
@@ -141,6 +141,69 @@ test("geometry drawn with a tool saves like anything else", async () => {
   const reopened = open(save(m));
   assert.deepEqual(shape(reopened), shape(m));
   assert.equal([...reopened.entities.values()].filter((e) => e.kind === "line").length, 4);
+});
+
+test("both forms of midpoint survive the round trip, each as the form it was called in", async () => {
+  await loadKernel();
+  const m = new Model(2);
+  m.addPoint([0, 0], "a");
+  m.addPoint([40, 0], "b");
+  m.addPoint([40, 40], "c");
+  m.addLine("a", "b", "l");
+  m.addPoint([20, 0], "pointForm");
+  m.addPoint([20, 0], "lineForm");
+  fix(m, "a", [0, 0]);
+  fix(m, "b", [40, 0]);
+  midpoint(m, "pointForm", "a", "b"); // captures these two points
+  midpoint(m, "lineForm", "l");       // means "the middle of this edge"
+  m.solve();
+
+  const once = save(m);
+  assert.equal(save(open(once)), once, "the arity each was called with is what is saved");
+  const reopened = open(once);
+  assert.deepEqual(shape(reopened), shape(m));
+
+  // The distinction has to survive too, not just the coordinates: re-point the
+  // edge, and only the line form follows it.
+  reopened.retargetLine("l", "b", "c");
+  fix(reopened, "c", [40, 40]);
+  assert.equal(reopened.solve().solved, true);
+  const at = (n: string, x: number, y: number) => {
+    const c = reopened.coords(n);
+    return Math.hypot(c[0] - x, c[1] - y) < 1e-6 ? true : `${n} is at ${c}`;
+  };
+  assert.equal(at("lineForm", 20, 20), true, "the line form should follow the re-pointed edge");
+  assert.equal(at("pointForm", 20, 0), true, "the point form should stay on the two points it named");
+});
+
+test("constraints a tool inferred are saved like any other, and re-solve the same", async () => {
+  await loadKernel();
+  const m = new Model(2);
+  m.addPoint([10, 10], "a");
+  const ctx: ToolContext = {
+    model: m,
+    options: {},
+    requestRender: () => {},
+    requestSolve: () => { m.solve(); },
+    finish: () => {},
+  };
+  // A rectangle whose first corner was clicked onto the existing point `a`,
+  // exactly as the engine would hand it over after a snap.
+  const tool = new RectangleTool(ctx);
+  tool.onDown({ world: [10, 10], screen: [0, 0], snap: { world: [10, 10], screen: [0, 0], kind: "point", target: "a" } });
+  tool.onUp({ world: [60, 40], screen: [0, 0] });
+  assert.ok(m.journal.some((e) => e.op === "coincident"), "sanity: the inference happened");
+
+  const once = save(m);
+  assert.equal(save(open(once)), once);
+  const reopened = open(once);
+  assert.deepEqual(shape(reopened), shape(m));
+
+  // Still a live constraint after the round trip, not just matching numbers.
+  fix(reopened, "a", [80, 5]);
+  assert.equal(reopened.solve().solved, true);
+  const corner = reopened.coords("p1"); // the rectangle's first corner — `a` took no auto-name
+  assert.ok(Math.hypot(corner[0] - 80, corner[1] - 5) < 1e-6, `the corner should have followed a, got ${corner}`);
 });
 
 test("open and save again produces an identical file", async () => {

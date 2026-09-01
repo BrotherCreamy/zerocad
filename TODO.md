@@ -107,6 +107,19 @@ starts.
 
 ## Done
 
+- [x] **Constraint inference** — a tool that places a point on existing
+      geometry applies the relation that implies (`coin` on a point, the line
+      form of `mid` on a midpoint, `on`/`oncircle` on a curve), so a rectangle
+      drawn from another's corner genuinely follows it. `snapping(false)`
+      turns it off with snapping, one switch, as in Onshape. There is no
+      "weld": two points stay two points, joined by an ordinary constraint.
+      *Discovered while doing it:* `midpoint` was point-form only and now has
+      the lazily-resolving line form `mid(m, "l1")` beside it, the same
+      distinction `hor`/`ver` already drew. And a coincident constraint
+      between two *free* points splits the difference on solve rather than one
+      following the other — which is correct least-squares behaviour, and the
+      reason the tests pin one end with `fix` before asking whether the other
+      followed.
 - [x] A working `npm run typecheck`, and three smaller fixes alongside it
 - [x] Snapping — a tool's cursor is pulled onto points, midpoints and curves
 - [x] The fillet tool — click two edges to round the corner

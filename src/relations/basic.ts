@@ -39,14 +39,39 @@ export function coincident(model: Model, aName: string, bName: string): void {
   });
 }
 
-/** m is the midpoint of a and b, coordinate by coordinate */
-export function midpoint(model: Model, mName: string, aName: string, bName: string): void {
-  model.record("midpoint", [mName, aName, bName]);
-  const m = model.point(mName), a = model.point(aName), b = model.point(bName);
+/**
+ * m is the midway point, coordinate by coordinate — of two named points
+ * (`midpoint(model, "m", "a", "b")`) or of a *line* (`midpoint(model, "m", "l")`).
+ *
+ * The two forms are the same distinction `horizontal`/`vertical` make below,
+ * and for the same reason: the point form captures the two points it was given
+ * and goes on constraining them, while the line form re-reads the line's
+ * endpoints at every evaluation, so a fillet re-pointing that edge takes the
+ * midpoint with it. Prefer the line form when what is meant is "the middle of
+ * this edge" — which is what a midpoint snap means, so that is the form
+ * inference applies.
+ */
+export function midpoint(model: Model, mName: string, aName: string, bName?: string): void {
+  model.record("midpoint", bName === undefined ? [mName, aName] : [mName, aName, bName]);
+  const m = model.point(mName);
+  const label = bName === undefined ? `mid(${mName},${aName})` : `mid(${mName})`;
+  const ends = midpointEnds(model, aName, bName);
   m.varIndices.forEach((gi, i) => {
-    const ai = a.varIndices[i], bi = b.varIndices[i];
-    model.problem.addResidual([gi, ai, bi], (l) => [l[0].sub(l[1].add(l[2]).div(2))], `mid(${mName})[${i}]`);
+    const vars = typeof ends === "function"
+      ? () => { const [a, b] = ends(); return [gi, a[i], b[i]]; }
+      : [gi, ends[0][i], ends[1][i]];
+    model.problem.addResidual(vars, (l) => [l[0].sub(l[1].add(l[2]).div(2))], `${label}[${i}]`);
   });
+}
+
+/** The two points a midpoint is between: named directly, or read off a line. */
+function midpointEnds(model: Model, aName: string, bName?: string): number[][] | (() => number[][]) {
+  if (bName !== undefined) return [model.point(aName).varIndices, model.point(bName).varIndices];
+  model.line(aName); // fail now if it isn't a line, rather than at the first solve
+  return () => {
+    const l = model.line(aName);
+    return [model.point(l.refs[0]).varIndices, model.point(l.refs[1]).varIndices];
+  };
 }
 
 // hor/ver are genuinely 2D-only (like a cross product is genuinely 3D-only) —

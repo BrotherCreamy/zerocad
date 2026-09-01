@@ -9,10 +9,19 @@
 
 import type { Model } from "../model.ts";
 import type { Pick } from "../picking.ts";
+import type { Snap } from "../snapping.ts";
 
 export interface PointerInfo {
   world: number[]; // world-space coordinates, length = model.dim
   screen: [number, number]; // raw screen/canvas pixels, for UI-space rendering (e.g. drag boxes)
+  /**
+   * What `world` was pulled onto, if anything — the geometry the user was
+   * aiming at rather than the pixel they hit. A tool that ignores this behaves
+   * exactly as it did before snapping existed; a tool that places points hands
+   * it to `placePoint` (see place.ts), which turns it into the constraint the
+   * user meant. Absent when nothing was near enough, or when snapping is off.
+   */
+  snap?: Snap;
 }
 
 export interface RenderContext {
