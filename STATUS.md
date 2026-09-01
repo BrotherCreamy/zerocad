@@ -390,6 +390,55 @@ replacing) the system Node other projects on this machine may depend on.
   measure if it ever is not); and there is **no undo of a view change**, since
   the view is not part of the model.
 
+- **Constraint glyphs on the canvas** (`src/glyphs.ts`, drawn by `main.ts`,
+  hit-tested by `ToolEngine.pickAt`) — one small boxed mark per relation,
+  beside the geometry it constrains, in the same visual family as the hover
+  tag. This is the fuller half of the visibility story the hover tag began:
+  the tag answers "what constrains *this*?" once you have thought to hover the
+  right thing, and a drawing wearing its glyphs answers it before you ask.
+  `placeGlyphs(model, view)` computes placements and nothing else — no canvas,
+  no pointer, no state — so it is unit-testable, and it is the only thing that
+  decides where a mark goes.
+  **Anchors are world-space, offsets are screen-space:** a mark belongs to a
+  place in the drawing and follows it through a solve or a drag, while sitting
+  a constant number of pixels off it at any zoom, which is the convention
+  every tolerance in this codebase uses. Marks sharing an anchor **stack in a
+  row**, and that is the whole crowding story — deliberately no layout engine,
+  whose own failure mode (labels jumping about as the model solves) would be
+  worse than the crowding it fixed. A relation about two things gets a mark on
+  *each* (`par`, `perp`, `eq`, `eqrad`, `sym`), because one mark says a right
+  angle exists somewhere and two say which pair.
+  **Interaction, inventing nothing:** hovering a mark names the relation on
+  the hover tag (`r5  coin p5 p3`, through the same `describePick`) *and*
+  lights up every entity that relation constrains; clicking one drops its name
+  into the command line exactly as clicking geometry does, so `del(` + click +
+  `)` is still the whole deletion flow. `Pick.kind` gained `"relation"` rather
+  than a parallel type, since everything downstream of a pick does the same
+  thing with it.
+  **Glyphs are the top picking tier**, above points — a mark is small,
+  deliberate to aim at, and only ever where it is because something put it
+  there, so a mark you cannot click because a point wandered near it would
+  defeat the feature. They take no part in **snapping**: they are UI, not
+  geometry, and nothing should ever be placed at one. A press that lands on a
+  glyph also grabs nothing, so a mark cannot be used to start dragging the
+  geometry behind it.
+  **Command surface:** `glyphs()` reports, `glyphs(true|false)` sets, on
+  `help()`, default **on** as in an Onshape sketch. Off empties the layer and
+  stops glyphs being picked, since a mark you cannot see but can still click
+  would be a trap.
+  **The symbols** were judged in a browser at the real 12px rather than in the
+  source, as the spec required, and tofu was ruled out by bitmap identity
+  against a codepoint no font has — advance width cannot detect it in a
+  monospace stack, where a present and an absent glyph measure identically.
+  `coin` is `○` (the spec's `◦` is two pixels across), `on`/`oncircle` `●`,
+  `fix` `#` (`⚓` renders but muddies at 12px), `sym` `⇌`; `dist` (`↔`) and
+  `arcends` (`●`) were given marks the spec's table omitted. An op with no
+  entry — a relation authored at the command line — anchors on the first
+  entity it names and takes the op's first letter, so runtime extensibility
+  does not leave holes in the layer. Placements are recomputed each frame
+  rather than cached, because no cache could be invalidated honestly: a drag
+  and a solve both move geometry without touching the model's structure.
+
 - **Named relations, and deletion with cascade** (`Model.relation` +
   `Model.relations` in `src/model.ts`, `del` in `src/operations.ts`,
   `BlockHandle` / `removeBlock` in `src/kernel/problem.ts`) — relations are
@@ -434,9 +483,9 @@ replacing) the system Node other projects on this machine may depend on.
   **Command surface:** `del(name)` and `rels(name?)`, both on `help()`.
   `rels()` prints the short op name — `r3  coin p5 p3` — so a listed relation
   reads back as a line you could retype. The **hover tag** gained the relation
-  names (`p5  12, 30 · r3 r7`), which is the whole of this package's
-  visibility story; constraint glyphs on the canvas are the follow-up that
-  builds on the same registry. `del` is the one editing command that re-solves
+  names (`p5  12, 30 · r3 r7`), which was this package's whole visibility
+  story; the constraint glyphs above are the follow-up that builds on the same
+  registry. `del` is the one editing command that re-solves
   through the host, because it is the one edit whose purpose is to change the
   solver's verdict and a stale `CONFLICT` header is a bug this project has
   already been bitten by.
@@ -457,10 +506,9 @@ replacing) the system Node other projects on this machine may depend on.
 ## What's next
 
 The working list lives in [`TODO.md`](TODO.md), so it has one home rather
-than drifting between two. In short: constraint glyphs drawn on the canvas
-(now that the registry they need exists), snapping to intersections, saving
-user-authored tools, and the remaining interaction ideas to carry over from
-`cellwork`.
+than drifting between two. In short: snapping to intersections, box-select,
+saving user-authored tools, and the remaining interaction ideas to carry over
+from `cellwork`.
 
 ## Incident note (disk space)
 

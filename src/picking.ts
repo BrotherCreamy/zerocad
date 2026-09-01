@@ -16,13 +16,28 @@
 // The tiers matter as much as the tolerances. A point sitting on a line is
 // under the cursor at the same time as the line, and it is almost always the
 // point that was meant, so points win outright rather than by being nearer.
+//
+// There is one tier above everything here, and it is not in this file: the
+// constraint glyphs (see glyphs.ts), which the engine consults before calling
+// `hitTest` at all. They live a layer up because they are UI drawn over the
+// drawing rather than part of it — the same reason snapping ignores them.
 
-import type { Entity, Model } from "./model.ts";
+import type { Entity, Model, RelationEntry } from "./model.ts";
 import { worldToScreen, type View } from "./view.ts";
+
+/**
+ * What a pick can be. `"relation"` is not an entity kind: it is a constraint
+ * glyph, which the engine hit-tests ahead of everything here (see glyphs.ts).
+ * It rides in the same envelope because everything downstream of a pick —
+ * the hover tag, the highlight, dropping a name into the command line — wants
+ * to do the same thing with it, and a second parallel type would mean writing
+ * all of that twice.
+ */
+export type PickKind = Entity["kind"] | "relation";
 
 export interface Pick {
   name: string;
-  kind: Entity["kind"];
+  kind: PickKind;
   /** Screen-space distance in pixels, for choosing between candidates. */
   distance: number;
 }
@@ -120,12 +135,41 @@ export function hitTest(model: Model, view: View, sx: number, sy: number): Pick 
  * to undoing it needs no new interaction model — hover to see `r7`, click to
  * put the name in the command line, type `del("r7")`.
  *
- * Constraint glyphs drawn on the canvas are the fuller answer and a follow-up;
- * they build on the same registry.
+ * Constraint glyphs drawn on the canvas are the fuller answer, and they land in
+ * the same tag: hovering one describes the *relation* rather than the geometry,
+ * so `r5  coin p5 p3` appears under the cursor for the same reason `p5  12, 30`
+ * does. One tag, one code path, no second way to say the same thing.
  */
 export function describePick(model: Model, pick: Pick): string {
+  if (pick.kind === "relation") {
+    const r = model.relations.get(pick.name);
+    return r ? describeRelation(r) : pick.name;
+  }
   const n = (v: number) => (Math.round(v * 1000) / 1000).toString();
-  return `${describeGeometry(model, pick, n)}${relationTag(model, pick.name)}`;
+  return `${describeGeometry(model, pick.name, pick.kind, n)}${relationTag(model, pick.name)}`;
+}
+
+/**
+ * The short name each relation is called by at the command line, keyed by the
+ * op the model records. Both `rels()` and the hover tag print through it, so a
+ * relation reads back as something you could have typed — `r3  coin p5 p3` is
+ * a line you can retype, `r3  coincident p5 p3` is not quite.
+ *
+ * It lives here rather than in replenv.ts, where it started, because the hover
+ * tag needs it and picking sits below the command surface. One table, so the
+ * canvas and the command line cannot drift into calling the same relation two
+ * different things.
+ */
+export const SHORT_OP: Record<string, string> = {
+  coincident: "coin", midpoint: "mid", horizontal: "hor", vertical: "ver",
+  parallel: "par", perpendicular: "perp", angle: "ang", pointOnLine: "on",
+  equalLength: "eq", radius: "rad", onCircle: "oncircle", concentric: "conc",
+  equalRadius: "eqrad", tangent: "tan", symmetric: "sym", arcEndpoints: "arcends",
+};
+
+export function describeRelation(r: RelationEntry): string {
+  const arg = (a: unknown) => (typeof a === "string" ? a : JSON.stringify(a));
+  return `${r.name}  ${SHORT_OP[r.op] ?? r.op} ${r.args.map(arg).join(" ")}`.trimEnd();
 }
 
 function relationTag(model: Model, name: string): string {
@@ -133,17 +177,17 @@ function relationTag(model: Model, name: string): string {
   return rs.length ? `  ·  ${rs.map((r) => r.name).join(" ")}` : "";
 }
 
-function describeGeometry(model: Model, pick: Pick, n: (v: number) => string): string {
-  switch (pick.kind) {
+function describeGeometry(model: Model, name: string, kind: Entity["kind"], n: (v: number) => string): string {
+  switch (kind) {
     case "point":
-      return `${pick.name}  ${model.coords(pick.name).map(n).join(", ")}`;
+      return `${name}  ${model.coords(name).map(n).join(", ")}`;
     case "circle":
     case "arc":
-      return `${pick.name}  r ${n(model.radius(pick.name))}`;
+      return `${name}  r ${n(model.radius(name))}`;
     case "line": {
-      const l = model.line(pick.name);
+      const l = model.line(name);
       const [a, b] = [model.coords(l.refs[0]), model.coords(l.refs[1])];
-      return `${pick.name}  ${l.refs[0]}–${l.refs[1]}  len ${n(Math.hypot(b[0] - a[0], b[1] - a[1]))}`;
+      return `${name}  ${l.refs[0]}–${l.refs[1]}  len ${n(Math.hypot(b[0] - a[0], b[1] - a[1]))}`;
     }
   }
 }

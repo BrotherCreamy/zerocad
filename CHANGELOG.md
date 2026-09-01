@@ -7,6 +7,70 @@ decisions.
 
 ---
 
+## Constraints you can see without being told where to look
+
+Every relation now wears a small mark beside the geometry it constrains. The
+previous entry gave constraints names and put those names on the hover tag,
+which answers "what is constraining this?" — but only once you have thought to
+hover the right thing. A drawing wearing its glyphs answers it before you ask,
+which is the point: the constraints most in need of announcing are exactly the
+ones you did not type.
+
+| a constrained drawing wearing its glyphs | hovering one, and the spread |
+|---|---|
+| ![Two rectangles and a circle. Small boxed marks sit beside the geometry: an em dash beside each level edge, a vertical bar beside each upright one, a hollow ring at the corner the two rectangles share, a double-headed arrow beside the left edge, a perpendicular sign twice, an "r" on the circle's upper-right rim and an arc mark where the circle touches the extension of a rectangle edge. The log shows solve() returning solved:true, maxResidual 2.4e-11, no offenders](docs/images/18-constraint-glyphs.png) | ![The same drawing with the cursor on the perpendicular mark above the top rectangle. That mark and its twin beside the second rectangle are both boxed in amber, the hover tag reads "r12 perp l1 l6", and the two lines it names — the top edge of one rectangle and the right edge of the other — are drawn in amber while everything else stays pale](docs/images/19-glyph-hover.png) |
+
+**Hovering a mark lights up everything the constraint is about**, which is the
+half that a tag alone cannot do. The right-hand picture is a perpendicularity
+between two edges in two different rectangles: hover either of its marks and
+both of them go amber, and so do both lines. Reading `perp l1 l6` off a tag and
+then hunting for `l6` is a different and worse experience.
+
+Otherwise glyphs invent nothing. Clicking one drops its name into the command
+line exactly as clicking geometry does, so `del(` + click + `)` remains the
+whole deletion flow. They are the **top picking tier** — above points, which
+until now won outright — because a mark is small, deliberate to aim at, and
+only ever where it is because something put it there; a glyph you cannot click
+because a point wandered near it would defeat the feature. They take no part in
+snapping, being UI rather than geometry. `glyphs(false)` empties the layer and
+stops them being picked; `glyphs()` reports. Default on, as in an Onshape
+sketch.
+
+**Anchors are world-space; offsets are screen-space.** A mark belongs to a
+place in the drawing and follows it through a solve or a drag, but sits a
+constant number of pixels off that place at any zoom — the convention every
+tolerance in this codebase already uses. Marks sharing an anchor stack in a
+row, and that is the entire crowding story: a busy drawing *will* crowd, and
+`glyphs(false)` is the v1 answer rather than a layout engine, which would bring
+its own failure mode of labels jumping about as the model solves.
+
+**On the symbols.** The spec proposed a table and left legibility to be judged
+from screenshots rather than from the source, which turned out to matter. Each
+candidate was rendered at the real 12px and inspected enlarged, and checked for
+tofu by bitmap identity against a codepoint no font has (advance width tells
+you nothing in a monospace stack — present and absent measure the same).
+Nothing shipped as a tofu box, and four marks changed:
+
+- `coin` is **`○`**, not the spec's `◦`: at 12px `◦` is two pixels across and
+  reads as dirt on the screen. `coin` is the most common relation of all — it
+  is the one inference produces — so it takes the crispest mark in the set.
+- `on` / `oncircle` are **`●`**. The spec gave them the same `◦` as `coin`,
+  which cannot be right: a point *lying on* something is a filled dot on that
+  thing, and a hollow ring is two points sharing one place.
+- `fix` is **`#`**, not `⚓`. The anchor is not tofu — it does render — but it
+  is the densest mark of the lot and turns to mush at 12px. The spec offered
+  both.
+- `sym` is **`⇌`**, the standard equilibrium arrow.
+
+Two relations had no mark in the spec's table and needed one, since a relation
+that drew nothing would look like a constraint that does not exist: `dist`
+(`↔`, between its two points) and `arcends` (`●` on each endpoint, since it is
+literally two `onCircle`s). A relation authored at the command line — an op
+nothing in `src/` has heard of — anchors on the first entity it names and takes
+the op's first letter, for the same reason.
+
+---
+
 ## Constraints you can see, name, and delete
 
 Relations have names now — `r1`, `r2`, … alongside `p1` and `l1` — and `del`

@@ -11,7 +11,8 @@
 // implicitly, since a REPL entry always has one in hand.
 
 import { Dual } from "./kernel/dual.ts";
-import { Model, type Entity, type RelationEntry } from "./model.ts";
+import { Model, type Entity } from "./model.ts";
+import { describeRelation } from "./picking.ts";
 import type { SolveReport } from "./kernel/problem.ts";
 import { Tool, defineTool, listTools } from "./tools/tool.ts";
 import * as basic from "./relations/basic.ts";
@@ -30,6 +31,12 @@ export interface EnvHandles {
   pick?: () => string | null;
   /** Turns cursor snapping on or off; reports the current state when given nothing. */
   snapping?: (on?: boolean) => boolean;
+  /**
+   * Turns the constraint glyphs on or off; reports the current state when given
+   * nothing. Off empties the layer *and* stops glyphs being pickable, because a
+   * mark you cannot see but can still click would be a trap.
+   */
+  glyphs?: (on?: boolean) => boolean;
   /** Cancels whatever tool is armed. */
   cancel?: () => void;
   /** Re-solves and redraws. Absent outside the browser. */
@@ -72,24 +79,10 @@ function bind<A extends unknown[]>(model: Model, fn: (m: Model, ...args: A) => v
   return (...args: A) => fn(model, ...args);
 }
 
-/**
- * The short name each relation is called by at the command line, keyed by the
- * op the model records. `rels()` prints these rather than the internal op so
- * that a listed relation reads back as something you could have typed —
- * `r3  coin p5 p3` is a line you can retype, `r3  coincident p5 p3` is not
- * quite.
- */
-const SHORT_OP: Record<string, string> = {
-  coincident: "coin", midpoint: "mid", horizontal: "hor", vertical: "ver",
-  parallel: "par", perpendicular: "perp", angle: "ang", pointOnLine: "on",
-  equalLength: "eq", radius: "rad", onCircle: "oncircle", concentric: "conc",
-  equalRadius: "eqrad", tangent: "tan", symmetric: "sym", arcEndpoints: "arcends",
-};
-
-function describeRelation(r: RelationEntry): string {
-  const arg = (a: unknown) => (typeof a === "string" ? a : JSON.stringify(a));
-  return `${r.name}  ${SHORT_OP[r.op] ?? r.op} ${r.args.map(arg).join(" ")}`.trimEnd();
-}
+// `describeRelation` and the short-name table it reads used to live here. They
+// moved down to picking.ts when the hover tag started describing relations too
+// — one table, so the canvas and the command line cannot end up calling the
+// same relation two different things.
 
 function describe(e: Entity, model: Model): string {
   switch (e.kind) {
@@ -245,6 +238,16 @@ export function neocadScope(h: EnvHandles): Bag {
       if (!h.snapping) throw new Error("no viewport in this environment");
       return h.snapping(on);
     },
+    /**
+     * The constraint glyphs, on by default as they are in an Onshape sketch —
+     * the feature exists so that constraints you did not type announce
+     * themselves, which they cannot do from behind a switch you have to know to
+     * flick. Per-relation or per-kind hiding is deliberately not v1.
+     */
+    glyphs: (on?: boolean) => {
+      if (!h.glyphs) throw new Error("no viewport in this environment");
+      return h.glyphs(on);
+    },
     refresh: () => { h.refresh?.(); return "ok"; },
 
     // Viewport control as an ordinary command, per the brief's goal of having
@@ -280,7 +283,7 @@ function help(scope: Bag): string {
     "history    undo()  redo()          — ctrl+z, ctrl+shift+z (ctrl+y)",
     "viewport   arm(tool, opts)  cancel()  zoom(f)  pan(dx,dy)  refresh()",
     "inspect    ls()  rels(name?)  coords(name)  solve()  tools()  hover()",
-    "           snapping(on)  model",
+    "           snapping(on)  glyphs(on)  model",
     "authoring  Tool  defineTool(name, ctor)  Dual",
     "",
     "A bare assignment persists between entries (box = class extends Tool {…});",
