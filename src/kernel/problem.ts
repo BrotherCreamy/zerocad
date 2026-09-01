@@ -29,6 +29,19 @@ export interface ResidualBlock {
   label?: string; // for diagnostics/offender reporting, optional
 }
 
+/**
+ * A ticket for one stored residual block, handed out by `addResidual` and
+ * spent by `removeBlock`.
+ *
+ * Monotonic and never reused, which is the whole point of it being a handle
+ * rather than an index: something above this file has to remember which blocks
+ * belong to which constraint, and an index would be invalidated by every
+ * removal that happened to come earlier in the list. A number that is only
+ * ever handed out once can be held indefinitely and is either still live or
+ * definitely gone — never quietly someone else's.
+ */
+export type BlockHandle = number;
+
 function resolve(refs: VarRefs): number[] {
   return typeof refs === "function" ? refs() : refs;
 }
@@ -79,7 +92,14 @@ export function ensureKernelLoaded(wasm?: WasmSource): Promise<unknown> {
 
 export class Problem {
   private values: number[] = [];
-  private blocks: ResidualBlock[] = [];
+  /**
+   * Stored blocks, each under the handle it was added with. Kept as
+   * `{ id, block }` entries rather than a bare array so that removing one
+   * cannot shift another block's identity — the handles a caller is holding
+   * stay valid across any number of removals.
+   */
+  private blocks: { id: BlockHandle; block: ResidualBlock }[] = [];
+  private nextHandle: BlockHandle = 1;
 
   addVar(initial: number): number {
     this.values.push(initial);
@@ -88,14 +108,32 @@ export class Problem {
   getVar(i: number): number { return this.values[i]; }
   setVar(i: number, v: number): void { this.values[i] = v; }
   get varCount(): number { return this.values.length; }
+  get blockCount(): number { return this.blocks.length; }
 
-  addResidual(varIndices: VarRefs, fn: (locals: Dual[]) => Dual[], label?: string): void {
-    this.blocks.push({ varIndices, fn, label });
+  addResidual(varIndices: VarRefs, fn: (locals: Dual[]) => Dual[], label?: string): BlockHandle {
+    const id = this.nextHandle++;
+    this.blocks.push({ id, block: { varIndices, fn, label } });
+    return id;
+  }
+
+  /**
+   * Forgets the block `handle` names. An unknown handle throws rather than
+   * being ignored: the only way to hold one is to have been given it, so a
+   * handle that names nothing means whatever is keeping the books above this
+   * file has lost track — and a removal that silently did nothing would leave
+   * that constraint in the drawing with no sign of why.
+   */
+  removeBlock(handle: BlockHandle): void {
+    const i = this.blocks.findIndex((e) => e.id === handle);
+    if (i < 0) throw new Error(`no residual block ${handle}`);
+    this.blocks.splice(i, 1);
   }
 
   clear(): void {
     this.values = [];
     this.blocks = [];
+    // The handle counter deliberately does *not* reset: a handle from before
+    // the clear must not come back to life as some later block's.
   }
 
   /**
@@ -132,7 +170,7 @@ export class Problem {
     // between what the problem *is* and what this one solve was also asked to
     // weigh. A row index, rather than a flag per block, because that is what
     // the report has to slice.
-    for (const block of this.blocks) run(block);
+    for (const entry of this.blocks) run(entry.block);
     const storedRows = r.length;
     for (const block of extra) run(block);
     return { r, rows, cols, vals, labels, storedRows };

@@ -181,3 +181,64 @@ test("a pull held far past what the constraints allow bends them, and the settli
   const d = Math.hypot(p.getVar(bx) - p.getVar(ax), p.getVar(by) - p.getVar(ay));
   assert.ok(Math.abs(d - 50) < 1e-6, `distance settled to ${d}`);
 });
+
+// --- block handles ---------------------------------------------------------
+//
+// A block can now be taken back out again, which is what makes a constraint
+// deletable one layer up. The handle is what makes that safe: it names one
+// block for as long as that block exists, and never comes to mean another.
+
+test("removeBlock takes a residual out of the problem for good", async () => {
+  await loadKernel();
+  const p = new Problem();
+  const x = p.addVar(5);
+  const toZero = p.addResidual([x], (l) => [l[0].sub(0)], "to_zero");
+  assert.equal(p.solve().solved, true);
+  assert.ok(Math.abs(p.getVar(x)) < 1e-9, "solved to the constraint");
+
+  p.removeBlock(toZero);
+  p.setVar(x, 42);
+  const after = p.solve();
+  assert.equal(after.solved, true);
+  assert.equal(p.getVar(x), 42, "with nothing left to satisfy, the value is left where it is");
+});
+
+test("handles survive the removal of blocks added before them", async () => {
+  await loadKernel();
+  const p = new Problem();
+  const x = p.addVar(0), y = p.addVar(0);
+  const first = p.addResidual([x], (l) => [l[0].sub(3)], "x=3");
+  const second = p.addResidual([y], (l) => [l[0].sub(7)], "y=7");
+  // An index would now be stale; a handle is not. This is the whole reason
+  // blocks are stored as { id, block } rather than as a bare list.
+  p.removeBlock(first);
+  assert.equal(p.blockCount, 1);
+  p.solve();
+  assert.ok(Math.abs(p.getVar(y) - 7) < 1e-9, "the surviving block is still the one it was");
+
+  p.removeBlock(second);
+  assert.equal(p.blockCount, 0);
+});
+
+test("a handle is never handed out twice, and an unknown one is an error", async () => {
+  const p = new Problem();
+  const a = p.addResidual([p.addVar(0)], (l) => [l[0]], "a");
+  p.removeBlock(a);
+  const b = p.addResidual([p.addVar(0)], (l) => [l[0]], "b");
+  assert.notEqual(b, a, "a freed handle is not reissued");
+
+  // Silence here would hide a bookkeeping bug above this file: the only way to
+  // hold a handle is to have been given it, so one that names nothing means
+  // something has lost track of which blocks belong to what.
+  assert.throws(() => p.removeBlock(a), /no residual block/);
+  assert.throws(() => p.removeBlock(9999), /no residual block/);
+});
+
+test("clear() does not let an old handle come back to life", async () => {
+  const p = new Problem();
+  const stale = p.addResidual([p.addVar(0)], (l) => [l[0]], "stale");
+  p.clear();
+  const fresh = p.addResidual([p.addVar(0)], (l) => [l[0]], "fresh");
+  assert.notEqual(fresh, stale);
+  assert.throws(() => p.removeBlock(stale), /no residual block/);
+});
