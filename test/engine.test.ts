@@ -107,15 +107,65 @@ test("cancelling a press that never became a drag solves nothing", async () => {
   assert.ok(counts.renders > 0, "but the canvas is still repainted");
 });
 
-test("cancelling a pan solves nothing either", async () => {
+test("cancelling a selection box solves nothing, and selects nothing", async () => {
   const { engine, fire, counts } = await setup();
 
-  // A press on empty space: it pans, and a pan has never touched the model.
+  // A press on empty space draws a box, and a box has never touched the model.
   fire("pointerdown", { clientX: 400, clientY: 300, button: 0, buttons: 1 });
   fire("pointermove", { clientX: 460, clientY: 340, button: -1, buttons: 1 });
-  engine.cancel();
+  assert.ok(engine.box, "the box is up");
 
+  engine.cancel();
+  assert.equal(engine.box, null, "Escape drops it");
   assert.equal(counts.solves, 0);
+
+  // The release that follows an Escape must not belatedly select: the press
+  // state was cleared, so there is nothing left for it to complete.
+  fire("pointerup", { clientX: 460, clientY: 340, button: 0, buttons: 0 });
+  assert.equal(counts.picks, 0);
+});
+
+test("a left-drag on empty canvas draws a box and selects what it catches", async () => {
+  const { engine, fire, counts } = await setup();
+  const view = { ...engine.view };
+
+  // The fixture's two points are at world (0,0) and (10,0), which this view
+  // puts at screen (0,0) and (10,0). Dragging right→left over both is a
+  // crossing box; either way it catches the pair.
+  fire("pointerdown", { clientX: 40, clientY: 30, button: 0, buttons: 1 });
+  fire("pointermove", { clientX: -20, clientY: -30, button: -1, buttons: 1 });
+  assert.equal(engine.boxMode, "crossing", "right→left is a crossing box");
+
+  fire("pointerup", { clientX: -20, clientY: -30, button: 0, buttons: 0 });
+  assert.equal(counts.picks, 2, "both points went to the command line");
+  assert.equal(engine.box, null, "and the box is gone");
+  assert.deepEqual({ ...engine.view }, view, "a box is not a pan — the view did not move");
+  assert.equal(counts.solves, 0, "selecting is not editing");
+});
+
+test("a box that catches nothing inserts nothing", async () => {
+  const { fire, counts } = await setup();
+  fire("pointerdown", { clientX: 300, clientY: 300, button: 0, buttons: 1 });
+  fire("pointermove", { clientX: 380, clientY: 360, button: -1, buttons: 1 });
+  fire("pointerup", { clientX: 380, clientY: 360, button: 0, buttons: 0 });
+  assert.equal(counts.picks, 0);
+});
+
+test("a press that grabbed a point drags it, and draws no box", async () => {
+  const { engine, fire, counts } = await setup();
+  const before = { ...engine.view };
+
+  // The rule has two halves and this is the second: only a press on *nothing*
+  // becomes a box. (The e2e suite covers the third case — a press on an edge,
+  // which still pans — since this fixture has no edge to aim at.)
+  fire("pointerdown", { clientX: 10, clientY: 0, button: 0, buttons: 1 });
+  fire("pointermove", { clientX: 70, clientY: 40, button: -1, buttons: 1 });
+  assert.equal(engine.box, null, "a press on a point drags it, and draws no box");
+  fire("pointerup", { clientX: 70, clientY: 40, button: 0, buttons: 0 });
+
+  assert.deepEqual({ ...engine.view }, before, "and it did not pan either");
+  assert.equal(counts.picks, 0);
+  assert.equal(counts.solves, 1, "it was a drag, so it settled");
 });
 
 test("releasing a drag settles it, and a release without movement picks", async () => {
@@ -171,18 +221,23 @@ test("a cancelled drag closes its bracket, because it settles like a release", a
   assert.deepEqual(actions, ["before@0", "after@1"]);
 });
 
-test("a pick and a pan are not user actions at all", async () => {
+test("a pick, a pan and a box are not user actions at all", async () => {
   const { fire, actions } = await setup();
 
   // Pressed and released on a point without moving: a pick.
   fire("pointerdown", { clientX: 10, clientY: 0, button: 0, buttons: 1 });
   fire("pointerup", { clientX: 11, clientY: 0, button: 0, buttons: 0 });
-  // Pressed on empty space and moved: a pan. The view is not the model.
+  // Pressed on empty space and moved: a selection box. Selecting is not
+  // editing, and this one catches both points on the way past.
   fire("pointerdown", { clientX: 400, clientY: 300, button: 0, buttons: 1 });
-  fire("pointermove", { clientX: 460, clientY: 340, button: -1, buttons: 1 });
-  fire("pointerup", { clientX: 460, clientY: 340, button: 0, buttons: 0 });
+  fire("pointermove", { clientX: -20, clientY: -20, button: -1, buttons: 1 });
+  fire("pointerup", { clientX: -20, clientY: -20, button: 0, buttons: 0 });
+  // Right-dragged: a pan. The view is not the model.
+  fire("pointerdown", { clientX: 400, clientY: 300, button: 2, buttons: 2 });
+  fire("pointermove", { clientX: 460, clientY: 340, button: -1, buttons: 2 });
+  fire("pointerup", { clientX: 460, clientY: 340, button: 2, buttons: 0 });
 
-  assert.deepEqual(actions, [], "neither changes the model, and neither opens a bracket");
+  assert.deepEqual(actions, [], "none of the three changes the model, and none opens a bracket");
 });
 
 test("an armed tool brackets its press and its release", async () => {

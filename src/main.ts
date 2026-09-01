@@ -439,14 +439,30 @@ async function main() {
       e.preventDefault();
       historyAt = Math.min(history.length, historyAt + 1);
       cmdEl.value = history[historyAt] ?? "";
-    } else if (e.key === "Escape") {
-      engine.cancel();
-      log("cancelled", "out");
     } else if (e.key === "Enter") {
       const src = cmdEl.value.trim();
       cmdEl.value = "";
       if (src) void submit(src);
     }
+  });
+
+  /**
+   * Escape abandons whatever gesture is in progress. **On `window`, not on the
+   * command input**, for the reason the box select found: pressing the mouse on
+   * the canvas blurs the input (a canvas is not focusable, so focus falls to
+   * the body), so a binding on the input is deaf during exactly the gestures
+   * Escape exists to abandon. It still fires while the command line has focus,
+   * because keydown bubbles — this widens where the key works and narrows
+   * nothing.
+   *
+   * No carve-out for text in the input, unlike Ctrl+Z below: Escape has never
+   * meant anything to a text field here, so there is nothing to be ambiguous
+   * with.
+   */
+  window.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    engine.cancel();
+    log("cancelled", "out");
   });
 
   /**

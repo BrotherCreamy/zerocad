@@ -104,7 +104,13 @@ test("clicking empty space picks nothing", async () => {
   assert.equal(await cmd(), "");
 });
 
-test("a left-drag on empty space pans instead of picking", async () => {
+// This one used to assert the opposite — that a left-drag on empty canvas
+// pans. Reversed deliberately: both ancestor CADs make that gesture box
+// select, and the standing rule is that tools work like Onshape. Panning kept
+// the middle and right buttons and `pan()`, and box select is covered in full
+// by boxselect.e2e.ts; what is checked here is only that the old meaning is
+// gone, and that a drag is still not a single pick.
+test("a left-drag on empty space box-selects instead of panning", async () => {
   await app.page.fill("#cmd", "");
   const before = (await app.model()).view;
   const from = await app.at(500, 400);
@@ -115,8 +121,9 @@ test("a left-drag on empty space pans instead of picking", async () => {
   await app.page.waitForTimeout(120);
 
   const after = (await app.model()).view;
-  assert.ok(Math.abs(after.ox - before.ox - 60) < 1e-6, `panned by ${after.ox - before.ox}`);
-  assert.equal(await cmd(), "", "a drag is not a pick");
+  assert.deepEqual({ ox: after.ox, oy: after.oy }, { ox: before.ox, oy: before.oy },
+    "the view must not move — this gesture is a selection box now");
+  assert.equal(await cmd(), "", "and it caught nothing, so it inserted nothing");
 });
 
 test("with a tool armed, the left button belongs to the tool, not to picking", async () => {

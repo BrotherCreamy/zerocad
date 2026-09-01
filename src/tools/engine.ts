@@ -9,12 +9,21 @@
 // middle and right buttons pan and the wheel zooms about the cursor. That
 // split is what lets you re-frame the drawing in the middle of a gesture
 // without the tool ever seeing it — start a rectangle, pan, finish it.
+//
+// With nothing armed the left button has four meanings, decided by what the
+// press landed on and whether it moved: a point drags, empty canvas draws a
+// selection box (see ../boxselect.ts), any other geometry pans, and a press
+// that never moved picks. Empty canvas used to pan, which was cellwork's
+// habit; both ancestor CADs make that gesture box select and the standing rule
+// is that tools work like Onshape, so it does here too. Panning did not lose
+// anything by it — it keeps the middle and right buttons and `pan()`.
 
 import type { Model } from "../model.ts";
 import type { ResidualBlock } from "../kernel/problem.ts";
 import { getToolCtor, type Tool, type ToolContext, type PointerInfo, type RenderContext } from "./tool.ts";
 import { assignView, panBy, screenToWorld, worldToScreen, zoomAbout, type View } from "../view.ts";
 import { hitTest, type Pick } from "../picking.ts";
+import { boxFrom, selectInBox, type BoxMode } from "../boxselect.ts";
 import { glyphAt, placeGlyphs, type Glyph } from "../glyphs.ts";
 import { findSnap, type Snap } from "../snapping.ts";
 
@@ -87,17 +96,27 @@ export class ToolEngine {
   /**
    * A left press with no tool armed. What it becomes depends on what it landed
    * on and whether it moves: a press on a point that moves drags that point, a
-   * press anywhere else that moves pans, and a press that does not move picks
-   * — cellwork's behaviour, and the reason you rarely need the right button.
+   * press on *empty canvas* that moves drags a selection box, a press on any
+   * other geometry that moves pans, and a press that does not move picks.
    *
-   * `point` is the name of the point under the press, if there was one. It is
-   * captured at press time rather than re-hit-tested each move, because the
-   * geometry is moving under the cursor from then on and the answer would
-   * change.
+   * `point` is the name of the point under the press, if there was one, and
+   * `empty` records that the press landed on nothing at all. Both are captured
+   * at press time rather than re-hit-tested each move, because the geometry is
+   * moving under the cursor from then on and the answer would change.
    */
   private idle: {
-    id: number; sx: number; sy: number; x0: number; y0: number; moved: boolean; point: string | null;
+    id: number; sx: number; sy: number; x0: number; y0: number;
+    moved: boolean; point: string | null; empty: boolean;
   } | null = null;
+  /**
+   * The selection box being dragged, in canvas pixels: `a` is where the press
+   * landed and `b` is where the cursor is now. Null when no box is in progress.
+   *
+   * Kept unnormalised on purpose — which corner came first *is* the mode, and
+   * normalising here would throw away the only thing that distinguishes a
+   * window from a crossing.
+   */
+  box: { ax: number; ay: number; bx: number; by: number } | null = null;
   /**
    * What the cursor is over, for the highlight and the hover tag. A `relation`
    * pick is a constraint glyph — see `pickAt`.
@@ -174,6 +193,16 @@ export class ToolEngine {
     if (!this.actionOpen) return;
     this.actionOpen = false;
     this.onUserAction("after");
+  }
+
+  /**
+   * Which selection the box in progress means, or null if there is no box.
+   * Left→right is a window, right→left a crossing — the SolidWorks/Onshape
+   * convention, which is worth matching exactly because it is one of the few
+   * gestures every CAD user already has in their hands.
+   */
+  get boxMode(): BoxMode | null {
+    return this.box ? boxFrom(this.box.ax, this.box.ay, this.box.bx, this.box.by).mode : null;
   }
 
   worldToScreen(world: number[]): [number, number] {
@@ -271,6 +300,11 @@ export class ToolEngine {
    * same way a release does. A drag abandoned with Escape is therefore one undo
    * step, exactly like one that was released: the two leave the same geometry
    * behind, so it would be strange for only one of them to be reversible.
+   *
+   * A selection box is the opposite case and is simply dropped: nothing was
+   * committed, so there is nothing to settle and nothing to insert. Clearing
+   * `idle` is what makes the release that follows a no-op rather than a
+   * belated selection.
    */
   cancel(): void {
     this.active?.onCancel();
@@ -278,6 +312,7 @@ export class ToolEngine {
     const wasDragging = this.idle?.moved === true
       && this.idle.point !== null && this.model.entities.has(this.idle.point);
     this.idle = null;
+    this.box = null;
     this.snap = null;
     if (wasDragging) this.onSolveRender();
     else this.onRenderOnly();
@@ -366,17 +401,17 @@ export class ToolEngine {
     }
     this.snap = null;
 
-    // Nothing armed: the left button drags a point if it grabbed one, pans if
-    // it did not, and picks if it never moved at all.
+    // Nothing armed: the left button drags a point if it grabbed one, drags a
+    // selection box if it grabbed nothing, pans if it grabbed some other piece
+    // of geometry, and picks if it never moved at all.
     if (kind === "down" && e.button === 0) {
-      // Only points are draggable in v1. Everything else — an edge, a rim,
-      // empty canvas — keeps exactly the behaviour it had. A press that landed
-      // on a glyph grabs nothing, which is the same statement as the glyph
-      // being the top pick tier: it must not be possible to aim at a mark and
-      // start dragging the geometry behind it.
+      // Only points are draggable. A press that landed on a glyph grabs
+      // nothing *and* is not empty canvas, which is the same statement as the
+      // glyph being the top pick tier: it must not be possible to aim at a
+      // mark and start either dragging the geometry behind it or a box over it.
       const under = this.pickAt(sx, sy);
       const point = under?.kind === "point" ? under.name : null;
-      this.idle = { id: e.pointerId, sx, sy, x0: sx, y0: sy, moved: false, point };
+      this.idle = { id: e.pointerId, sx, sy, x0: sx, y0: sy, moved: false, point, empty: under === null };
       this.canvas.setPointerCapture?.(e.pointerId);
       return;
     }
@@ -390,9 +425,11 @@ export class ToolEngine {
       if (this.idle.moved) {
         // The action opens on the first frame that actually moves geometry, and
         // before that frame is solved — the state to go back to is the one the
-        // drag started from, not the one it is already a pixel into. A press
-        // that pans opens nothing: the view is not the model.
+        // drag started from, not the one it is already a pixel into. Neither a
+        // pan nor a selection box opens one: the view is not the model, and
+        // selecting is not editing.
         if (this.idle.point) { this.beginUserAction(); this.dragTo(this.idle.point, sx, sy); }
+        else if (this.idle.empty) this.box = { ax: this.idle.x0, ay: this.idle.y0, bx: sx, by: sy };
         else assignView(this.view, panBy(this.view, sx - this.idle.sx, sy - this.idle.sy));
         this.onRenderOnly();
       }
@@ -406,10 +443,23 @@ export class ToolEngine {
     } else {
       this.canvas.releasePointerCapture?.(e.pointerId);
       const { moved, point } = this.idle;
+      const box = this.box;
       this.idle = null;
+      this.box = null;
       if (!moved) {
         const pick = this.pickAt(sx, sy);
         if (pick) this.onPick(pick);
+      } else if (box) {
+        // A box is a multi-click: every name it caught goes down the same path
+        // a single click's name does, so there is one story about what
+        // selecting means and one place that implements it. An empty box picks
+        // nothing and therefore inserts nothing.
+        const { rect, mode } = boxFrom(box.ax, box.ay, box.bx, box.by);
+        for (const name of selectInBox(this.model, this.view, rect, mode)) {
+          const entity = this.model.entities.get(name)!;
+          this.onPick({ name, kind: entity.kind, distance: 0 });
+        }
+        this.onRenderOnly(); // the box is gone; the canvas has to stop drawing it
       } else if (point) {
         // One ordinary solve, through the host's solve path, so the status
         // line reports the settled model rather than a frame of a gesture.
@@ -455,12 +505,44 @@ export class ToolEngine {
     this.onRenderOnly();
   }
 
-  /** Call after clearing the canvas each frame — draws the active tool's live preview, if any. */
+  /**
+   * Call after clearing the canvas each frame — draws whatever gesture is in
+   * progress: the active tool's live preview, or the selection box. Never
+   * both, since a box only ever happens with nothing armed.
+   */
   renderOverlay(): void {
+    this.renderBox();
     if (!this.active) return;
     const r: RenderContext = { g: this.g, worldToScreen: (w) => this.worldToScreen(w) };
     this.active.render(r);
     this.renderSnapMarker();
+  }
+
+  /**
+   * The selection box, drawn so its *mode* is readable at a glance and without
+   * having to remember which way you dragged: a window is a solid blue edge, a
+   * crossing a dashed green one. Those are SolidWorks' colours and Onshape's
+   * dash, and the two differ in three ways at once — line style, hue and fill
+   * tint — because one difference is easy to miss mid-gesture and the two
+   * modes select genuinely different things.
+   */
+  private renderBox(): void {
+    if (!this.box) return;
+    const { rect, mode } = boxFrom(this.box.ax, this.box.ay, this.box.bx, this.box.by);
+    const g = this.g;
+    g.save();
+    if (mode === "window") {
+      g.fillStyle = "#5a96dc22";
+      g.strokeStyle = "#6fa8dc";
+    } else {
+      g.fillStyle = "#55c07a22";
+      g.strokeStyle = "#7cc47f";
+      g.setLineDash([5, 4]);
+    }
+    g.lineWidth = 1.2;
+    g.fillRect(rect.x0, rect.y0, rect.x1 - rect.x0, rect.y1 - rect.y0);
+    g.strokeRect(rect.x0, rect.y0, rect.x1 - rect.x0, rect.y1 - rect.y0);
+    g.restore();
   }
 
   /**

@@ -41,11 +41,21 @@ tool engine and the renderer, depending on nothing. `undo.ts` sits beside it
 for the same reason — a stack of snapshots, generic over what a snapshot is,
 importing nothing at all.
 
-`picking.ts`, `snapping.ts` and `glyphs.ts` sit at the same height as each
-other, just above the model: each is a pure function of (model, view, cursor)
-answering one question — what is under it, where should it be pulled to, what
-marks should the drawing be wearing. None of them draws anything or holds any
-state, which is what lets all three be tested without a canvas.
+`picking.ts`, `snapping.ts`, `glyphs.ts` and `boxselect.ts` sit at the same
+height as each other, just above the model: each is a pure function of (model,
+view, cursor or rectangle) answering one question — what is under it, where
+should it be pulled to, what marks should the drawing be wearing, what does
+this rectangle catch. None of them draws anything or holds any state, which is
+what lets all four be tested without a canvas.
+
+`boxselect.ts` is a separate file from `picking.ts` rather than another
+function in it because the two answer differently-shaped questions. Picking is
+dominated by *choosing* — tiers, tolerances, nearest wins — because only one
+thing can be under the cursor. A box selects everything that qualifies and
+nothing competes, so it has no tiers at all; what it has instead is two
+predicates per entity kind (contained, touched) and no tolerance beyond the
+arc slack. Sharing a file would have meant one of the two concepts leaking
+into the other's code.
 
 `intersect.ts` sits one step *below* those three: closed-form crossings and the
 arc-sweep test, over plain numbers, with no idea a Model exists. It is where it
@@ -239,13 +249,28 @@ preference between two failure modes: honest label layout has to move marks as
 the model solves, and a mark that jumps about while you drag is worse than one
 that overlaps its neighbour and stays put.
 
-With no tool armed the left button has three meanings, decided by what it
-landed on and whether it moved: press a point and move, and the point is
-dragged with the model following it; press anything else and move, and the
-view pans; press and do not move, and whatever is under the cursor has its name
-put into the command line. The hit-test happens once, at press time — from the
-first frame of a drag the geometry is moving under the cursor, so re-asking
-what is beneath it would hand the drag to whatever the drawing swept past.
+With no tool armed the left button has four meanings, decided by what it landed
+on and whether it moved: press a point and move, and the point is dragged with
+the model following it; press *empty canvas* and move, and a selection box is
+dragged out; press any other geometry and move, and the view pans; press and do
+not move, and whatever is under the cursor has its name put into the command
+line. The hit-test happens once, at press time — from the first frame of a drag
+the geometry is moving under the cursor, so re-asking what is beneath it would
+hand the drag to whatever the drawing swept past.
+
+Empty canvas used to pan, which was cellwork's habit and is written into the
+decision register as such. It was reversed deliberately: SolidWorks and Onshape
+both make that gesture box select, and the standing rule that tools work like
+Onshape outranks a register entry inherited from the prototype. Panning lost
+nothing by it — middle-drag, right-drag and `pan()` all still pan — while
+gaining a gesture every CAD user already has in their hands.
+
+A box is **a multi-click and nothing more**: every name it catches goes down
+the same path a single click's name does, into the command line, quoted and
+comma-separated. That is what keeps the "no selection set" decision intact
+under a feature that in most CAD *is* the selection set. Constraint glyphs are
+not box-selectable, and it takes no code to say so — relations live in a
+registry beside the entity map rather than in it, so a box never sees them.
 
 ## The REPL is scoped, not sandboxed
 
@@ -322,7 +347,7 @@ until the next action went unrecorded.
 
 ## Why there is an end-to-end suite
 
-Four bugs so far were invisible to the unit tests and obvious within seconds
+Five bugs so far were invisible to the unit tests and obvious within seconds
 of running the app:
 
 1. a status readout that went stale, so a conflict could be introduced from
@@ -333,7 +358,11 @@ of running the app:
    and hung the tab the first time anything handed out names out of order;
 4. a pan that silently did nothing mid-gesture, because a second mouse button
    pressed while one is held arrives as a `pointermove` and never as a
-   `pointerdown`.
+   `pointerdown`;
+5. Escape, bound to the command input, which a mouse press on the canvas
+   blurs — so the one key that abandons a gesture was deaf during every
+   gesture. It passed every test that existed, because each of them picked
+   something first and picking re-focuses the input.
 
 None of these are mathematics. They are all *assembly*. Hence `npm run
 test:e2e`, and hence the expectation that anything touching the app is checked

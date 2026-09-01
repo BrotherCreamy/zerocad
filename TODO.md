@@ -32,12 +32,32 @@ are flagged as such.
   into the command line (cellwork's model — "the viewport is a selection
   portal"). Names are inserted quoted and comma-separated, because commands
   here are function calls: two clicks after `dist(` leave `dist("p1", "p2"`.
+  **A box select is a multi-click** and nothing more — the names go down the
+  same path, so this decision survives box select rather than being replaced
+  by it.
 - **Mouse:** with a tool armed, the left button belongs to the tool; with
-  nothing armed, left-drag pans and left-click picks. Wheel zooms about the
-  cursor (scroll up = in). Middle- or right-drag pans; the right-click menu
-  is suppressed. ⚠ *Deviation:* Onshape pans with middle only and uses
-  right-click for a context menu. When a context menu exists, right-drag pan
-  should yield to it; middle-drag stays.
+  nothing armed, left-click picks, left-drag on a point drags it, left-drag on
+  **empty canvas box-selects**, and left-drag on any other geometry pans.
+  Wheel zooms about the cursor (scroll up = in). Middle- or right-drag pans;
+  the right-click menu is suppressed. ⚠ *Deviation:* Onshape pans with middle
+  only and uses right-click for a context menu. When a context menu exists,
+  right-drag pan should yield to it; middle-drag stays.
+  **↺ Reversed by the box-select package (2026-09).** This entry used to read
+  "left-drag pans", which was cellwork's habit. SolidWorks and Onshape both
+  make that gesture box select, and the guiding rule above — tools work like
+  Onshape, so people arrive knowing them — outranks a register entry inherited
+  from the prototype. Panning lost nothing by the change: middle-drag,
+  right-drag and `pan()` all still pan, and a left-drag that started on an
+  edge or a rim still pans too. **Veto-able here**, like everything else in
+  this list.
+- **Box select follows the SolidWorks/Onshape direction convention**, exactly:
+  left→right selects only what is fully contained and is drawn as a solid
+  translucent rectangle; right→left selects anything it touches and is drawn
+  dashed, in a different tint. Containment and touching are screen-space
+  tests, and a rectangle wholly inside a circle touches nothing — the rim is
+  the entity, the same rule picking follows. **Constraint glyphs are not
+  box-selectable**: they are UI, and a box full of `r`-names nobody asked for
+  would be noise, so the flow for relations stays hover-and-click.
 - **Tools do not dimension what they draw.** A rectangle gets `hor`/`ver` on
   its edges but no size; a circle's radius stays free. Matches Onshape's
   undimensioned-sketch behaviour — the user adds `dist`/`rad` when they mean
@@ -88,9 +108,16 @@ are flagged as such.
 Queue for Opus, in order. Each gets a spec in `docs/plans/` before work
 starts.
 
-- [ ] **Box-select.** With name-based selection this means dragging a box
-      inserts several names at once. Wants to follow the drag work.
 - [ ] **Saving user-authored tools** — blocked on the owner decision above.
+- [ ] **`del` of several names at once.** Now that a box can put eight names in
+      the command line, `del("p1", "p2", …)` is the obvious next thing to want;
+      it was deliberately left out of the deletion package pending box select,
+      and box select has now arrived.
+- [ ] **Dragging an edge.** A left-drag that starts on an edge or a rim still
+      pans, which is the one leftover from the old mouse map. Onshape drags
+      the edge. Not in this package's spec, and the gesture has to stay
+      distinct from box select (which starts on *empty* canvas), so it is a
+      clean follow-up rather than a loose end.
 
 ## Smaller things
 
@@ -108,6 +135,39 @@ starts.
       `test/e2e/livesolve.e2e.ts`, which counts solves in the page.
 
 ## Done
+
+- [x] **Box select, and live solve for typed edits** — spec:
+      [`docs/plans/box-select.md`](docs/plans/box-select.md), now marked
+      shipped-pending-review. Left-drag on empty canvas draws a selection box:
+      left→right is a window (fully contained, solid translucent rectangle),
+      right→left a crossing (anything touched, dashed, different tint). The
+      predicates live in `src/boxselect.ts` — screen-space, no canvas, no
+      state, on top of `intersect.ts` so a box and a click agree about where an
+      arc stops. Names drop into the command line quoted and comma-separated,
+      exactly as clicks do. Empty box inserts nothing; Escape cancels; glyphs
+      are not selectable; a press on a point still drags and a press on other
+      geometry still pans. **The register entry above was reversed by this
+      package**, with the reversal noted there for the owner to veto.
+      *Decided while doing it:* `boxselect.ts` is a fourth peer beside
+      `picking.ts` rather than a function inside it, because picking is
+      dominated by *choosing* (tiers, tolerances, nearest wins) and a box
+      chooses nothing — it takes everything that qualifies. It projects
+      entities to screen curves itself rather than borrowing snapping's
+      private helper, which would have been a lateral import between peers;
+      the piece that genuinely must not be duplicated, the arc-sweep test, is
+      already below in `intersect.ts` and is what both use.
+      *Discovered while doing it:* **Escape was bound to the command input,
+      and a mouse press on the canvas blurs it** — a canvas is not focusable,
+      so focus falls to the body — which made Escape deaf during exactly the
+      gestures it exists to abandon. Never noticed because every earlier
+      Escape test had picked something first, and `insertToken` re-focuses the
+      input. It is on `window` now, the same reasoning that already put Ctrl+Z
+      there. Found by writing the box-cancel browser story, not by reasoning.
+      *Left for later, deliberately:* a box catches only what is on screen, by
+      construction (the rectangle is pixels); there is no shift-to-add,
+      because there is no selection set to add to; and edge-dragging is still
+      a pan, which is now the only leftover from the old mouse map and is
+      listed under "Next up".
 
 - [x] **Snap to intersections** — spec:
       [`docs/plans/intersection-snap.md`](docs/plans/intersection-snap.md),

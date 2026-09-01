@@ -7,6 +7,52 @@ decisions.
 
 ---
 
+## Drag a box round it, and every name lands in the command line
+
+Left-drag on empty canvas is now box select, with the direction of the drag
+choosing what kind — the SolidWorks and Onshape convention exactly, because it
+is one of the few gestures every CAD user already has in their hands.
+
+| left → right: **window**, solid, only what is fully contained | right → left: **crossing**, dashed, anything it touches |
+|---|---|
+| ![A rectangle with its constraint marks, a circle to the upper right, and an edge running out of the rectangle's top-right corner to a point beyond. A solid-edged translucent blue box is drawn round the rectangle. The log below reads p1, p2, p3, p4, l1, l2, l3, l4, each "→ command line"](docs/images/24-window-box.png) | ![The same drawing with a dashed green box in the same place. The log reads the same eight names and then two more: l5 and c1 — the edge the box merely clipped, and the circle whose rim passes through it](docs/images/25-crossing-box.png) |
+
+The two pictures are the same rectangle in the same place. The difference is
+the last two lines of the log: `l5`, the edge the box only *clipped*, and `c1`,
+the circle whose rim passes through the box while its centre sits outside. A
+window box leaves both; a crossing box takes them.
+
+**A box is a multi-click.** The names drop into the command line quoted and
+comma-separated, exactly as clicking them one at a time would, which is what
+keeps the "there is no selection set" decision intact under a feature that in
+most CAD *is* the selection set. An empty box inserts nothing, Escape mid-drag
+cancels, and a box started anywhere but empty canvas is not a box at all —
+press a point and it still drags, press an edge and it still pans.
+
+**Constraint glyphs are not box-selectable**, and that took no code: relations
+live in a registry beside the entity map rather than in it, so a box never sees
+them. A box that filled the command line with a dozen `r`-names nobody asked
+for would be noise; the flow for relations stays hover-and-click.
+
+The predicates live in the new `src/boxselect.ts`, screen-space and testable
+without a canvas, on top of `intersect.ts` — so a box and a click cannot
+disagree about where an arc stops. The one worth stating out loud: **a
+rectangle wholly inside a circle touches nothing.** The entity is the rim, not
+the disc, which is the same rule that makes clicking the middle of a circle
+pick nothing.
+
+**This reverses a decision in the register, deliberately and in the open.** The
+register said left-drag on empty canvas pans, which was cellwork's habit; the
+standing rule that tools work like Onshape outranks it. Panning lost nothing —
+middle-drag, right-drag and `pan()` all still pan.
+
+*Found while writing the browser story:* Escape was bound to the command input,
+and pressing the mouse on the canvas blurs it (a canvas is not focusable), so
+Escape was deaf during exactly the gestures it exists to abandon. It is on
+`window` now, the same reasoning that already put Ctrl+Z there.
+
+---
+
 ## What you type is solved, so the header is never a lie
 
 A relation typed at the command line used to add its residual, redraw, and
