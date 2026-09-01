@@ -9,6 +9,7 @@ import { norm, vecSub } from "./vec.ts";
 
 /** |a - b| = target */
 export function dist(model: Model, aName: string, bName: string, target: number): void {
+  model.record("dist", [aName, bName, target]);
   const a = model.point(aName), b = model.point(bName);
   const dim = model.dim;
   const varIndices = [...a.varIndices, ...b.varIndices];
@@ -20,6 +21,7 @@ export function dist(model: Model, aName: string, bName: string, target: number)
 
 /** pins every coordinate of a point to fixed numbers */
 export function fix(model: Model, name: string, at: number[]): void {
+  model.record("fix", [name, at]);
   const p = model.point(name);
   if (at.length !== p.varIndices.length) throw new Error(`fix needs ${p.varIndices.length} coordinates`);
   p.varIndices.forEach((gi, i) => {
@@ -29,6 +31,7 @@ export function fix(model: Model, name: string, at: number[]): void {
 
 /** a and b occupy the same point, coordinate by coordinate */
 export function coincident(model: Model, aName: string, bName: string): void {
+  model.record("coincident", [aName, bName]);
   const a = model.point(aName), b = model.point(bName);
   a.varIndices.forEach((gi, i) => {
     const bi = b.varIndices[i];
@@ -38,6 +41,7 @@ export function coincident(model: Model, aName: string, bName: string): void {
 
 /** m is the midpoint of a and b, coordinate by coordinate */
 export function midpoint(model: Model, mName: string, aName: string, bName: string): void {
+  model.record("midpoint", [mName, aName, bName]);
   const m = model.point(mName), a = model.point(aName), b = model.point(bName);
   m.varIndices.forEach((gi, i) => {
     const ai = a.varIndices[i], bi = b.varIndices[i];
@@ -62,6 +66,7 @@ export function midpoint(model: Model, mName: string, aName: string, bName: stri
 /** Same y: `horizontal(m, "a", "b")` for two points, or `horizontal(m, "l")` for a line. */
 export function horizontal(model: Model, aName: string, bName?: string): void {
   if (model.dim !== 2) throw new Error("horizontal is a 2D relation");
+  model.record("horizontal", bName === undefined ? [aName] : [aName, bName]);
   const { vars, label } = axisRefs(model, 1, "hor", aName, bName);
   model.problem.addResidual(vars, (l) => [l[0].sub(l[1])], label);
 }
@@ -69,6 +74,7 @@ export function horizontal(model: Model, aName: string, bName?: string): void {
 /** Same x: `vertical(m, "a", "b")` for two points, or `vertical(m, "l")` for a line. */
 export function vertical(model: Model, aName: string, bName?: string): void {
   if (model.dim !== 2) throw new Error("vertical is a 2D relation");
+  model.record("vertical", bName === undefined ? [aName] : [aName, bName]);
   const { vars, label } = axisRefs(model, 0, "ver", aName, bName);
   model.problem.addResidual(vars, (l) => [l[0].sub(l[1])], label);
 }

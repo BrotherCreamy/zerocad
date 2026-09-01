@@ -17,6 +17,7 @@ import { Tool, defineTool, listTools } from "./tools/tool.ts";
 import * as basic from "./relations/basic.ts";
 import * as geom from "./relations/geometry.ts";
 import { fillet } from "./operations.ts";
+import { save as saveModel } from "./persist.ts";
 
 type Bag = Record<string, unknown>;
 
@@ -28,6 +29,16 @@ export interface EnvHandles {
   cancel?: () => void;
   /** Re-solves and redraws. Absent outside the browser. */
   refresh?: () => void;
+  /**
+   * Replaces the whole model with one read from a saved file. Needs the host,
+   * because everything pointed at the old model — the viewport, the tool
+   * engine, the command scope — has to be pointed at the new one.
+   */
+  openModel?: (json: string) => void;
+  /** Hands the saved file to the user as a download. Browser only. */
+  download?: (json: string, filename: string) => void;
+  /** Prompts for a file and opens it. Browser only. */
+  openFile?: () => void;
   /**
    * The host's own solve path, if it has one. `solve()` prefers this over
    * calling model.solve() directly so that a solve typed at the command line
@@ -115,6 +126,31 @@ export function neocadScope(h: EnvHandles): Bag {
     fillet: (l1: string, l2: string, r: number) => fillet(model, l1, l2, r),
   };
 
+  // Save and open, as ordinary commands like everything else. `save()` hands
+  // back the file's text rather than writing it anywhere, which is the
+  // command-line-shaped thing to do: it composes. `download`/`openFile` are
+  // the browser conveniences on top.
+  const persistence: Bag = {
+    save: () => saveModel(model),
+    open: (json: string) => {
+      if (!h.openModel) throw new Error("open needs a host that can swap the model");
+      if (typeof json !== "string") throw new Error("open takes the text of a saved model");
+      h.openModel(json);
+      return "opened";
+    },
+    download: (filename = "sketch.neocad.json") => {
+      if (!h.download) throw new Error("no download in this environment");
+      h.download(saveModel(model), filename);
+      return filename;
+    },
+    openFile: () => {
+      if (!h.openFile) throw new Error("no file picker in this environment");
+      h.openFile();
+      return "choose a file…";
+    },
+    journal: () => model.journal.map((e) => `${e.op}(${e.args.map((a) => JSON.stringify(a)).join(", ")})`),
+  };
+
   const commands: Bag = {
     model,
     Model,
@@ -153,7 +189,7 @@ export function neocadScope(h: EnvHandles): Bag {
     },
   };
 
-  const scope: Bag = { ...relations, ...geometry, ...operations, ...commands };
+  const scope: Bag = { ...relations, ...geometry, ...operations, ...persistence, ...commands };
   scope.help = () => help(scope);
   return scope;
 }
@@ -164,6 +200,7 @@ function help(scope: Bag): string {
     "relations  dist fix coin mid hor ver par perp ang on eq",
     "           rad oncircle conc eqrad tan sym arcends",
     "operations fillet(line1, line2, radius)",
+    "files      save()  open(text)  download(name)  openFile()  journal()",
     "viewport   arm(tool)  cancel()  zoom(f)  pan(dx,dy)  refresh()",
     "inspect    ls()  coords(name)  solve()  tools()  model",
     "authoring  Tool  defineTool(name, ctor)  Dual",

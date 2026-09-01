@@ -63,6 +63,12 @@ function corner(model: Model, l1Name: string, l2Name: string) {
 export function fillet(model: Model, l1Name: string, l2Name: string, r: number): string {
   if (model.dim !== 2) throw new Error("fillet is a 2D operation");
   if (!(r > 0)) throw new Error("fillet needs a positive radius");
+  // Journalled as the one call the user made, not as the entities and
+  // relations it expands into — replaying it re-expands them identically.
+  return model.asOperation("fillet", [l1Name, l2Name, r], () => filletBody(model, l1Name, l2Name, r));
+}
+
+function filletBody(model: Model, l1Name: string, l2Name: string, r: number): string {
 
   const { l1, shared, a, b } = corner(model, l1Name, l2Name);
   const p = model.coords(shared);

@@ -7,6 +7,7 @@
 
 import { ensureKernelLoaded } from "./kernel/problem.ts";
 import { Model } from "./model.ts";
+import { open as openModelText } from "./persist.ts";
 import { Repl, fmt } from "./repl.ts";
 import { neocadScope } from "./replenv.ts";
 import { ToolEngine, type View } from "./tools/engine.ts";
@@ -44,7 +45,9 @@ async function main() {
   await ensureKernelLoaded();
   log("kernel loaded");
 
-  const model = new Model(2);
+  // `let`, not `const`: opening a saved file replaces the model outright, and
+  // everything below reads through this binding so the swap reaches all of it.
+  let model = new Model(2);
   const view: View = { ox: 0, oy: 0, scale: 3 };
   sizeCanvas();
   const r0 = cv.getBoundingClientRect();
@@ -107,16 +110,63 @@ async function main() {
 
   const engine = new ToolEngine(model, cv, view, { onSolveRender: solveAndRender, onRenderOnly: render });
 
-  const repl = new Repl(neocadScope({
-    model,
-    view,
-    arm: (name) => engine.arm(name),
-    cancel: () => engine.cancel(),
-    refresh: () => { solveAndRender(); },
-    solve: () => solveAndRender(),
-  }));
+  function handles() {
+    return {
+      model,
+      view,
+      arm: (name: string) => engine.arm(name),
+      cancel: () => engine.cancel(),
+      refresh: () => { solveAndRender(); },
+      solve: () => solveAndRender(),
+      openModel: (json: string) => swapModel(openModelText(json)),
+      download: (json: string, filename: string) => {
+        const url = URL.createObjectURL(new Blob([json], { type: "application/json" }));
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = filename;
+        link.click();
+        URL.revokeObjectURL(url);
+      },
+      openFile: () => {
+        const input = document.createElement("input");
+        input.type = "file";
+        input.accept = ".json,application/json";
+        input.addEventListener("change", async () => {
+          const file = input.files?.[0];
+          if (!file) return;
+          try {
+            swapModel(openModelText(await file.text()));
+            log(`opened ${file.name}`, "out");
+          } catch (err) {
+            log(`${err instanceof Error ? err.message : err}`, "err");
+          }
+        });
+        input.click();
+      },
+    };
+  }
 
-  (window as unknown as { __neocad: unknown }).__neocad = { model, engine, repl }; // debug/automation hook
+  const repl = new Repl(neocadScope(handles()));
+
+  /**
+   * Points everything at a different model. The tool engine and the command
+   * scope both hold their own reference, so both are re-pointed here — the
+   * REPL's names are redefined rather than the whole REPL being rebuilt, so
+   * anything the user bound at the command line survives opening a file.
+   */
+  function swapModel(next: Model) {
+    model = next;
+    engine.cancel();
+    engine.model = next;
+    repl.define(neocadScope(handles()));
+    exposeDebugHook();
+    solveAndRender();
+  }
+
+  function exposeDebugHook() {
+    (window as unknown as { __neocad: unknown }).__neocad = { model, engine, repl }; // debug/automation hook
+  }
+  exposeDebugHook();
 
   const history: string[] = [];
   let historyAt = 0;

@@ -47,6 +47,7 @@ function chunk<T>(flat: T[], dim: number, count: number): T[][] {
 
 /** Two lines point the same way (or exactly opposite): their wedge vanishes. */
 export function parallel(model: Model, l1: string, l2: string): void {
+  model.record("parallel", [l1, l2]);
   const dim = model.dim;
   model.problem.addResidual(joinVars(lineVars(model, l1), lineVars(model, l2)), (l) => {
     const [a, b, c, d] = chunk(l, dim, 4);
@@ -56,6 +57,7 @@ export function parallel(model: Model, l1: string, l2: string): void {
 
 /** Two lines meet at a right angle: their directions' dot product vanishes. */
 export function perpendicular(model: Model, l1: string, l2: string): void {
+  model.record("perpendicular", [l1, l2]);
   const dim = model.dim;
   model.problem.addResidual(joinVars(lineVars(model, l1), lineVars(model, l2)), (l) => {
     const [a, b, c, d] = chunk(l, dim, 4);
@@ -71,6 +73,7 @@ export function perpendicular(model: Model, l1: string, l2: string): void {
  * residual stays smooth everywhere including at 0 and pi.
  */
 export function angle(model: Model, l1: string, l2: string, radians: number): void {
+  model.record("angle", [l1, l2, radians]);
   const dim = model.dim;
   const target = Math.cos(radians);
   model.problem.addResidual(joinVars(lineVars(model, l1), lineVars(model, l2)), (l) => {
@@ -82,6 +85,7 @@ export function angle(model: Model, l1: string, l2: string, radians: number): vo
 
 /** A point lies somewhere on the infinite line through a line's two endpoints. */
 export function pointOnLine(model: Model, pointName: string, lineName: string): void {
+  model.record("pointOnLine", [pointName, lineName]);
   const p = model.point(pointName);
   const dim = model.dim;
   model.problem.addResidual(joinVars(p.varIndices, lineVars(model, lineName)), (l) => {
@@ -92,6 +96,7 @@ export function pointOnLine(model: Model, pointName: string, lineName: string): 
 
 /** Two lines have the same length. */
 export function equalLength(model: Model, l1: string, l2: string): void {
+  model.record("equalLength", [l1, l2]);
   const dim = model.dim;
   model.problem.addResidual(joinVars(lineVars(model, l1), lineVars(model, l2)), (l) => {
     const [a, b, c, d] = chunk(l, dim, 4);
@@ -106,12 +111,14 @@ export function equalLength(model: Model, l1: string, l2: string): void {
 
 /** Pins a circle's (or arc's) radius to a number. */
 export function radius(model: Model, circleName: string, target: number): void {
+  model.record("radius", [circleName, target]);
   const c = model.circular(circleName);
   model.problem.addResidual([c.radiusVar], (l) => [l[0].sub(target)], `rad(${circleName})`);
 }
 
 /** A point sits on a circle's rim: its distance from the center equals the radius. */
 export function onCircle(model: Model, pointName: string, circleName: string): void {
+  model.record("onCircle", [pointName, circleName]);
   const p = model.point(pointName);
   const c = model.circular(circleName);
   const center = model.point(c.center);
@@ -124,11 +131,13 @@ export function onCircle(model: Model, pointName: string, circleName: string): v
 
 /** Two circles/arcs share a center. */
 export function concentric(model: Model, c1: string, c2: string): void {
+  model.record("concentric", [c1, c2]);
   coincident(model, model.circular(c1).center, model.circular(c2).center);
 }
 
 /** Two circles/arcs have the same radius. */
 export function equalRadius(model: Model, c1: string, c2: string): void {
+  model.record("equalRadius", [c1, c2]);
   const a = model.circular(c1), b = model.circular(c2);
   model.problem.addResidual([a.radiusVar, b.radiusVar], (l) => [l[0].sub(l[1])], `eqrad(${c1},${c2})`);
 }
@@ -141,6 +150,7 @@ export function equalRadius(model: Model, c1: string, c2: string): void {
  * only vanishes when the distance is 0, and the radius is positive).
  */
 export function tangent(model: Model, lineName: string, circleName: string): void {
+  model.record("tangent", [lineName, circleName]);
   const c = model.circular(circleName);
   const center = model.point(c.center);
   const dim = model.dim;
@@ -161,6 +171,7 @@ export function tangent(model: Model, lineName: string, circleName: string): voi
  * so this stays generic rather than being marked 2D-only.
  */
 export function symmetric(model: Model, aName: string, bName: string, lineName: string): void {
+  model.record("symmetric", [aName, bName, lineName]);
   const a = model.point(aName), b = model.point(bName);
   const dim = model.dim;
   const varIndices = joinVars(a.varIndices, b.varIndices, lineVars(model, lineName));
@@ -186,6 +197,7 @@ export function symmetric(model: Model, aName: string, bName: string, lineName: 
  * tool that creates an arc calls this straight after.
  */
 export function arcEndpoints(model: Model, arcName: string): void {
+  model.record("arcEndpoints", [arcName]);
   const a = model.arc(arcName);
   onCircle(model, a.start, arcName);
   onCircle(model, a.end, arcName);

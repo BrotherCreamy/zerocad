@@ -179,24 +179,44 @@ replacing) the system Node other projects on this machine may depend on.
   form. Filleting a drawn rectangle keeps the rectangle square; before this
   it visibly did not. Both behaviours are pinned in `test/sketch.test.ts`.
 
+- **Save and open** (`src/persist.ts`), as ordinary commands: `save()` hands
+  back the file's text, `open(text)` replaces the model, plus `download()`
+  and `openFile()` in the browser and `journal()` to read back what a model
+  is made of. That completes the brief's "tool up the whole interface" goal.
+  A model cannot be serialised directly — a residual block holds a *closure*,
+  and closures do not survive JSON — so a saved file is the model's
+  **journal**: what was done to it, in order, replayed on open. Which is a
+  happier answer than it sounds, because those calls are exactly what the
+  command line already takes. The format is a transcript of the public API,
+  not a second description of the model's internals that has to be kept in
+  step with them.
+  An operation is journalled as the single call the user made rather than
+  its expansion, so a fillet reads as `fillet("l1","l2",5)` and re-expands on
+  replay. Solved coordinates ride along and are restored afterwards: replay
+  alone reaches *a* valid configuration, but an under-constrained model has
+  many, and reopening a drawing should give back the one that was saved.
+  Opening only ever performs calls from a fixed table, so a file is data
+  rather than a script — and the table is a `Map`, because a plain object
+  would have answered a lookup for `"constructor"` from `Object.prototype`.
+  Round-tripping is a fixed point: open then save reproduces the file byte
+  for byte.
+
 ## Not started yet
 
-- **Save/open** as ordinary commands in the same language — the last piece of
-  the "tool up the whole interface" goal. The shape of the problem is now
-  clear: a model is a flat variable vector, named entities, and residual
-  blocks. The first two serialise directly; the third does not, because a
-  block holds a *closure*. So saving means recording the commands that built
-  the model and replaying them — which is tidy, since those commands are
-  exactly what the REPL already takes.
 - **Deleting entities.** There is no `remove` yet, and it is not trivial:
   variables live in a flat vector, so removing one means compacting it and
-  remapping every block. The lazy-`varIndices` change above is a step toward
-  making that tractable, since blocks can now resolve through entities rather
-  than holding raw indices.
+  remapping every block. The lazy-`varIndices` change is a step toward
+  making that tractable, since blocks can now resolve through entities
+  rather than holding raw indices.
 - **A picking/selection model**, which is what a pointer-driven fillet tool
   needs (the operation is done and reachable from the command line, but
   clicking two lines to round their corner needs hit-testing first). This is
   the same `sel`/`desel` work listed below.
+- **Tools and relations authored at the REPL are not saved.** They are
+  closures, which is the same reason the residual blocks aren't — a file
+  records calls to the built-in vocabulary. Saving user-authored definitions
+  means saving their *source*, which is a real feature and a real decision
+  (a file that carries code is a different kind of file), not an oversight.
 - Porting the rest of the interaction niceties already proven out in
   `cellwork` (nested `(...)` sub-commands, hover snaps, selection via a
   real `sel`/`desel` command, box-select, Onshape-style pan controls, the

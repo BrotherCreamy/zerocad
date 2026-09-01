@@ -81,6 +81,7 @@ src/relations/vec.ts     Dual-vector helpers (dot, wedge) every relation is buil
 src/relations/basic.ts   dist / fix / coincident / midpoint (generic) / hor / ver (2D-only)
 src/relations/geometry.ts par / perp / ang / on / eq / rad / oncircle / conc / eqrad / tan / sym
 src/operations.ts        operations, which change structure rather than add equations: fillet
+src/persist.ts           save/open — a file is the model's journal, replayed
 src/repl.ts              the scoped evaluator: curated scope, no reach into page globals
 src/replenv.ts           what that scope contains — the app's whole command surface
 src/tools/tool.ts         abstract class Tool + defineTool registry
@@ -118,6 +119,21 @@ to arm one. `fillet` rounds the corner where two lines meet:
 ```js
 fillet("l1", "l2", 8); solve()     // an arc tangent to both legs
 ```
+
+Saving is a command too. `save()` returns the file's text and `open(text)`
+replaces the model; `download()` and `openFile()` are the browser
+conveniences on top, and `journal()` shows what a model is made of.
+
+```js
+text = save()                      // the whole drawing, as JSON
+open(text)                         // ...and back again
+journal()                          // ["addPoint([0,0],\"p1\")", "fillet(\"l1\",\"l2\",8)", ...]
+```
+
+A saved file is that journal — the calls that built the model, replayed on
+open — because a residual block holds a closure and closures do not survive
+JSON. The upshot is that the save format is a transcript of the same public
+API you type at the command line, so anything you can type, you can save.
 
 One thing worth knowing when constraining geometry you intend to modify
 later: `hor` and `ver` take *either* two point names or a single line

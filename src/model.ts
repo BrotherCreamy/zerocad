@@ -59,31 +59,87 @@ export interface CircularRef {
   radiusVar: number;
 }
 
+/** One recorded step in how a model was built. See `journal` below. */
+export interface JournalEntry {
+  op: string;
+  args: unknown[];
+}
+
 export class Model {
   problem = new Problem();
   dim: number;
   entities = new Map<string, Entity>();
   private counters = new Map<string, number>();
 
+  /**
+   * How this model was built, in order — every entity created, every
+   * relation applied, every operation run.
+   *
+   * This exists because a model cannot be serialised directly: a residual
+   * block holds a *closure*, and closures do not survive a round trip
+   * through JSON. What does survive is the sequence of calls that produced
+   * them, so saving a model means writing down what was done to it and
+   * loading means doing it again. See src/persist.ts.
+   */
+  journal: JournalEntry[] = [];
+  private recording = true;
+
   constructor(dim = 2) {
     this.dim = dim;
   }
 
-  private autoName(prefix: string): string {
-    const n = (this.counters.get(prefix) ?? 0) + 1;
-    this.counters.set(prefix, n);
-    let name = `${prefix}${n}`;
-    while (this.entities.has(name)) {
-      this.counters.set(prefix, n + 1);
-      name = `${prefix}${this.counters.get(prefix)}`;
+  /** Appends to the journal, unless recording is suppressed. */
+  record(op: string, args: unknown[]): void {
+    if (this.recording) this.journal.push({ op, args });
+  }
+
+  /**
+   * Records `op` and then runs `body` with recording suppressed, so an
+   * operation is journalled as the single call the user made rather than as
+   * the handful of entities and relations it happened to expand into.
+   * Replaying the call re-expands it identically.
+   */
+  asOperation<T>(op: string, args: unknown[], body: () => T): T {
+    this.record(op, args);
+    return this.withoutRecording(body);
+  }
+
+  /** Runs `body` without journalling anything it does. Used by replay. */
+  withoutRecording<T>(body: () => T): T {
+    const prev = this.recording;
+    this.recording = false;
+    try {
+      return body();
+    } finally {
+      this.recording = prev;
     }
+  }
+
+  private autoName(prefix: string): string {
+    let n = this.counters.get(prefix) ?? 0;
+    let name: string;
+    do {
+      n += 1;
+      name = `${prefix}${n}`;
+    } while (this.entities.has(name));
+    this.counters.set(prefix, n);
     return name;
   }
 
   private claimName(prefix: string, name?: string): string {
-    const nm = name ?? this.autoName(prefix);
-    if (this.entities.has(nm)) throw new Error(`"${nm}" already exists`);
-    return nm;
+    if (name === undefined) return this.autoName(prefix);
+    if (this.entities.has(name)) throw new Error(`"${name}" already exists`);
+    // An explicit name that looks like an auto-generated one moves the counter
+    // past it, so a later auto-name cannot collide. This matters most when a
+    // model is rebuilt from a saved file: every entity comes back under the
+    // explicit name it was saved with, and without this the counters would
+    // still read zero and the next auto-name would land on a taken name.
+    const m = new RegExp(`^${prefix}(\\d+)$`).exec(name);
+    if (m) {
+      const n = Number(m[1]);
+      if (Number.isSafeInteger(n) && n > (this.counters.get(prefix) ?? 0)) this.counters.set(prefix, n);
+    }
+    return name;
   }
 
   addPoint(coords: number[], name?: string): PointEntity {
@@ -94,6 +150,7 @@ export class Model {
     const varIndices = coords.map((c) => this.problem.addVar(c));
     const ent: PointEntity = { kind: "point", name: nm, varIndices };
     this.entities.set(nm, ent);
+    this.record("addPoint", [coords, nm]);
     return ent;
   }
 
@@ -103,6 +160,7 @@ export class Model {
     const nm = this.claimName("l", name);
     const ent: LineEntity = { kind: "line", name: nm, refs: [a, b] };
     this.entities.set(nm, ent);
+    this.record("addLine", [a, b, nm]);
     return ent;
   }
 
@@ -112,6 +170,7 @@ export class Model {
     const nm = this.claimName("c", name);
     const ent: CircleEntity = { kind: "circle", name: nm, center, radiusVar: this.problem.addVar(radius) };
     this.entities.set(nm, ent);
+    this.record("addCircle", [center, radius, nm]);
     return ent;
   }
 
@@ -122,6 +181,7 @@ export class Model {
     const nm = this.claimName("a", name);
     const ent: ArcEntity = { kind: "arc", name: nm, center, start, end, radiusVar: this.problem.addVar(radius) };
     this.entities.set(nm, ent);
+    this.record("addArc", [center, start, end, radius, nm]);
     return ent;
   }
 
@@ -173,6 +233,7 @@ export class Model {
       throw new Error(`${name} needs ${e.varIndices.length} coordinates, got ${coords.length}`);
     }
     e.varIndices.forEach((gi, i) => this.problem.setVar(gi, coords[i]));
+    this.record("setCoords", [name, coords]);
   }
 
   /**
@@ -188,6 +249,7 @@ export class Model {
     const other = l.refs[1 - i];
     if (other === to) throw new Error("a line needs two different points");
     l.refs[i] = to;
+    this.record("retargetLine", [lineName, from, to]);
   }
 
   radius(name: string): number {

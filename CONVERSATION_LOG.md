@@ -367,19 +367,84 @@ sessions that only appeared once the app was assembled and drawn — the
 first being the stale status readout — and both would have shipped on
 unit tests alone.
 
+## Save and open, and a loop that had been waiting to hang
+
+The last piece of the brief's "tool up the whole interface" goal, and the
+design had already been written down twice in earlier passes, so this was
+honouring a stated plan rather than inventing one.
+
+**A file is the journal.** A model cannot be serialised directly, because
+a residual block holds a closure and closures do not survive JSON. What
+survives is the sequence of calls that produced them. So `Model` gained a
+journal — every entity created, every relation applied, every operation
+run — and a saved file is that list, replayed on open.
+
+This is a better answer than it first sounds. The save format is not a
+second description of the model's internals that has to be kept in step
+with them; it is a transcript of the public API. Anything you can type at
+the command line, you can save, and vice versa. An operation is journalled
+as the single call the user made rather than the handful of entities and
+relations it expands into, so a fillet reads as `fillet("l1","l2",5)` and
+re-expands identically on replay.
+
+Solved coordinates ride along and are restored after the replay. Not
+strictly necessary — replaying and re-solving reaches *a* valid
+configuration — but an under-constrained model has many, and reopening a
+drawing should give back the one that was saved rather than whichever the
+solver happens to find that day.
+
+Opening only ever performs calls from a fixed table, so a file is data
+rather than a script. A test for that caught something worth keeping: the
+table was a plain object, and a file naming `"constructor"` sailed past
+the `if (!table[op])` guard, because object lookup walks up to
+`Object.prototype`. It is a `Map` now, which has no prototype chain.
+
+**The bug underneath.** Wiring `open()` into the browser hung the page
+outright — not an exception, a spin that took the tab with it. The Node
+round-trip tests all passed, which narrowed it to the host, and it turned
+out not to be in the new code at all:
+
+```js
+const n = (this.counters.get(prefix) ?? 0) + 1;   // const
+while (this.entities.has(name)) {
+  this.counters.set(prefix, n + 1);               // always the same n
+  name = `${prefix}${this.counters.get(prefix)}`;
+}
+```
+
+`Model.autoName` had always been able to loop forever — any two
+consecutive taken names and it recomputes the same candidate until the tab
+dies. Nothing had ever hit it, because names were only ever handed out in
+order. A replay is the first thing that takes names *out of order*: every
+journal entry carries the explicit name it was saved under, so the
+counters stay at zero, and then the fillet's own internal `addPoint()`
+asks for an auto-name, finds `p1` taken, finds `p2` taken, and spins.
+
+Fixed on both sides: the loop increments properly, and an explicit name
+shaped like an auto-generated one now moves the counter past it — which is
+the right behaviour anyway, replay or not. Naming a point `p7` by hand
+should mean the next automatic one is `p8`.
+
+That is the third bug in this project's life that only appeared once the
+app was assembled and driven — after the stale status readout and the
+fillet that passed every numerical check while drawing a broken rectangle.
+All three were invisible to unit tests and obvious within seconds of
+running the thing. Worth keeping the browser pass in the loop for anything
+that touches the app rather than the mathematics.
+
 ## What to know before continuing
 
-The `STATUS.md` "not started yet" list is now: **save/open as commands**,
-**deleting entities**, **a picking/selection model**, and the rest of the
-cellwork interaction ideas.
+The `STATUS.md` "not started yet" list is now: **deleting entities**, **a
+picking/selection model**, **saving user-authored tools and relations**,
+and the rest of the cellwork interaction ideas.
 
-On save/open, the shape of the problem is clear enough to write down: a
-model is a flat variable vector, a set of named entities, and a set of
-residual blocks. The first two serialise directly. The third does not — a
-residual block holds a *closure* — so saving a model means recording the
-sequence of commands that built it and replaying them, rather than trying
-to serialise the blocks. Which is tidy, because those commands are
-exactly what the REPL already takes.
+Saving user-authored definitions is the interesting one to think about
+before building. A file currently records calls into the built-in
+vocabulary, which is why it can be plain data. A tool defined at the REPL
+is a closure, so saving it means saving its *source* — and a file that
+carries code is a different kind of file, with a different set of
+questions about what opening one is allowed to do. That is a decision
+worth making deliberately rather than drifting into.
 
 On deleting: variables live in a flat vector, so removing one means
 compacting it and remapping every block that refers to a later index. The
