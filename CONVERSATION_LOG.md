@@ -106,6 +106,101 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### Box select, a register entry overruled, and a key that was deaf
+
+The spec settled the interesting question before work started — the
+SolidWorks/Onshape direction convention, left→right window and right→left
+crossing — so what is worth writing down here is the three things it left open
+and the one thing nobody expected.
+
+**Where the predicates live.** The obvious home was `picking.ts`: it already
+answers "what does the pointer mean, in screen space", already imports
+`intersect.ts`, already has the entity-to-screen projection. It was the wrong
+home. Picking is dominated by *choosing* — tiers, tolerances, a nearest-wins
+comparison threaded through every branch — because only one thing can be under
+a cursor. A box chooses nothing; it takes everything that qualifies, and has no
+tolerance at all beyond a pixel of arc slack. Putting them in one file would
+have meant either concept leaking into the other's code. So `boxselect.ts` is a
+fourth peer beside `picking.ts`, `snapping.ts` and `glyphs.ts`, and the
+architecture doc says why.
+
+That decision cost one small duplication: `snapping.ts` has a private
+`screenCurve` that projects an entity into the plain screen curve
+`intersect.ts` understands, and `boxselect.ts` now has its own. Exporting
+snapping's and importing it would have created a lateral dependency between two
+peers — precisely what `intersect.ts` was pushed down below both of them to
+avoid. The hazard the architecture doc actually names is two copies of "is this
+angle on the arc" drifting apart, and that test is *not* duplicated: both files
+call `withinSweep`. What is duplicated is a fifteen-line projection with no
+judgement in it, and even its one parameter (the slack) legitimately differs
+between the callers.
+
+**An arc's bounds are its own, not its circle's.** The easy version of
+containment measures an arc against the bounding box of the whole circle it
+lies on. It is wrong in a way a user can see: a quarter arc tucked in a corner
+would refuse to be window-selected until the box was three times its size, for
+no visible reason. So `arcBounds` takes the two endpoints plus whichever of the
+four cardinal points the sweep actually reaches. This is also the one place the
+sweep test is asked *without* slack — slack exists to make an arc's last pixels
+reachable by a cursor, and a bounding box wants the true extent.
+
+**A rectangle inside a circle touches nothing.** Stated in the spec, and worth
+restating because it looks like a bug the first time someone hits it. The
+entity is the rim. It falls out of the implementation rather than being special
+-cased: touching is "contained, or crosses the boundary", and those two are
+exhaustive for a closed curve — if part of the rim were inside the box and part
+outside, it would have to cross.
+
+**And the thing nobody expected.** The Escape-cancels-the-box story failed, and
+kept failing, with the box still up after the keypress. Escape was bound to the
+command input's `keydown`. A mouse press on the canvas blurs that input — a
+canvas is not focusable, so focus falls to the body — which means the binding
+was deaf during *every* gesture, which is the only time Escape means anything.
+It had never been caught because each earlier Escape test picked something
+first, and `insertToken` re-focuses the input on a pick. So the key worked in
+tests and would have failed for a user who dragged before clicking. It is on
+`window` now, which is the same reasoning that already put Ctrl+Z there, and it
+still fires from the command line because keydown bubbles. Fifth entry for the
+list of bugs that were invisible to the unit suite and obvious in a browser.
+
+### The stale header, and the answer that was already there
+
+The bug was known and had been sitting under "smaller things" with a warning
+attached: the obvious fix is to re-solve after an edit, and the obvious
+implementation is a list of which commands are edits — which is exactly the
+enumeration `main.ts` has refused to write since undo was built, because such a
+list is wrong the moment anyone adds a relation and forgets to update it, and
+wrong *silently*.
+
+The list is unnecessary. Undo has been answering the same question all along:
+"is this one step" is decided by snapshotting the model before an entry and
+after it and comparing the two strings, and that comparison is precisely "did
+this entry change the model". `UndoStack.pushIfChanged` even returns the
+answer; `endUserAction` was throwing it away. Now it returns it, and `submit`
+calls `solveAndRender()` when it is true and `render()` when it is false. Six
+lines, no new concept, and the property that matters is structural rather than
+maintained: an entry cannot be an undo step and not re-solve, because both come
+off the same boolean.
+
+Three things fell out of it that are worth writing down.
+
+**An entry that throws is not an edit.** A relation that fails part-way rolls
+back its blocks and its name counter (a fix from the deletion package), so the
+snapshot is unchanged and nothing re-solves. That was not designed here; it is
+the earlier fix paying a dividend, and there is now a test pinning it.
+
+**A history move must not re-solve through this path.** `undo()` and `redo()`
+replace the whole model, and `swapModel` already solves and draws it.
+`endUserAction` returns `false` for those, along with every nested close — only
+the outermost bracket has an answer at all.
+
+**Existing specs that type a redundant `solve()` were left alone**, as the
+spec asked. None of them asserted staleness — they typed `solve()` to *make*
+the model settle, and it still does. Removing them would have been a diff with
+no meaning in it. The one new assertion this needed is the negative one, "`ls()`
+did not solve", which cannot be seen from the geometry; `test/e2e/livesolve.e2e.ts`
+wraps `model.solve` in the page and counts calls.
+
 ### Snapping to crossings, and three decisions the spec left open
 
 The spec for this one was unusually specific about *what*, which left the

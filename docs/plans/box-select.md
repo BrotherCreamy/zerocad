@@ -1,6 +1,14 @@
 # Plan: box select, and live solve for typed edits
 
-**Status: queued.** Two concerns, two clearly separated commits — the second
+**Status: shipped, pending review.** Both parts built as specified, in the two
+commits asked for. Two things the spec did not anticipate, both recorded in
+`TODO.md` and `CONVERSATION_LOG.md`: `boxselect.ts` became a fourth peer file
+beside `picking.ts` rather than living inside it, and Escape turned out to have
+been bound to the command input, which a mouse press on the canvas blurs — so
+it was deaf during exactly the gestures it exists to abandon, and moved to
+`window`.
+
+**Status when written: queued.** Two concerns, two clearly separated commits — the second
 is a small pre-existing bug fix that needs a semantic decision recorded, and
 it rides along because it is too small to carry PR overhead alone.
 

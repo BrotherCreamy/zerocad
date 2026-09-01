@@ -7,6 +7,80 @@ decisions.
 
 ---
 
+## Drag a box round it, and every name lands in the command line
+
+Left-drag on empty canvas is now box select, with the direction of the drag
+choosing what kind — the SolidWorks and Onshape convention exactly, because it
+is one of the few gestures every CAD user already has in their hands.
+
+| left → right: **window**, solid, only what is fully contained | right → left: **crossing**, dashed, anything it touches |
+|---|---|
+| ![A rectangle with its constraint marks, a circle to the upper right, and an edge running out of the rectangle's top-right corner to a point beyond. A solid-edged translucent blue box is drawn round the rectangle. The log below reads p1, p2, p3, p4, l1, l2, l3, l4, each "→ command line"](docs/images/24-window-box.png) | ![The same drawing with a dashed green box in the same place. The log reads the same eight names and then two more: l5 and c1 — the edge the box merely clipped, and the circle whose rim passes through it](docs/images/25-crossing-box.png) |
+
+The two pictures are the same rectangle in the same place. The difference is
+the last two lines of the log: `l5`, the edge the box only *clipped*, and `c1`,
+the circle whose rim passes through the box while its centre sits outside. A
+window box leaves both; a crossing box takes them.
+
+**A box is a multi-click.** The names drop into the command line quoted and
+comma-separated, exactly as clicking them one at a time would, which is what
+keeps the "there is no selection set" decision intact under a feature that in
+most CAD *is* the selection set. An empty box inserts nothing, Escape mid-drag
+cancels, and a box started anywhere but empty canvas is not a box at all —
+press a point and it still drags, press an edge and it still pans.
+
+**Constraint glyphs are not box-selectable**, and that took no code: relations
+live in a registry beside the entity map rather than in it, so a box never sees
+them. A box that filled the command line with a dozen `r`-names nobody asked
+for would be noise; the flow for relations stays hover-and-click.
+
+The predicates live in the new `src/boxselect.ts`, screen-space and testable
+without a canvas, on top of `intersect.ts` — so a box and a click cannot
+disagree about where an arc stops. The one worth stating out loud: **a
+rectangle wholly inside a circle touches nothing.** The entity is the rim, not
+the disc, which is the same rule that makes clicking the middle of a circle
+pick nothing.
+
+**This reverses a decision in the register, deliberately and in the open.** The
+register said left-drag on empty canvas pans, which was cellwork's habit; the
+standing rule that tools work like Onshape outranks it. Panning lost nothing —
+middle-drag, right-drag and `pan()` all still pan.
+
+*Found while writing the browser story:* Escape was bound to the command input,
+and pressing the mouse on the canvas blurs it (a canvas is not focusable), so
+Escape was deaf during exactly the gestures it exists to abandon. It is on
+`window` now, the same reasoning that already put Ctrl+Z there.
+
+---
+
+## What you type is solved, so the header is never a lie
+
+A relation typed at the command line used to add its residual, redraw, and
+leave the status readout saying whatever it said before — `SOLVED` over a
+drawing that plainly violated the constraint just entered, until someone
+thought to type `solve()`. The stale-readout family, third sighting, and found
+the same way as the first two: by looking at a picture the numbers said was
+fine.
+
+**A command entry that changed the model now re-solves**, the way a tool, a
+drag and `del` already did. Onshape's continuous solve, and cellwork's.
+
+![The app with a level 80-unit edge and a circle above it. The header reads CONFLICT: rad(c1). The log shows every line that was typed — fix, hor, dist, circ, rad 25, rad 12 — and no solve() among them](docs/images/23-live-solve-conflict.png)
+
+Nothing in the app enumerates which commands are edits, and nothing needed to:
+**the answer was already being computed one line away.** The undo bracket
+decides what counts as one step by snapshotting the model before an entry and
+after it and comparing, which is exactly the question "did that change
+anything". `endUserAction` now returns that comparison instead of swallowing
+it. So `ls()`, `help()` and `2 + 2` cost nothing, an entry that throws costs
+nothing, and every relation anyone ever adds — including one authored at the
+command line five minutes from now — is covered without appearing on a list.
+
+The picture above is the whole of the test: no `solve()` was typed, the
+distance constraint was applied, and a second `rad` on the same circle flipped
+the header to `CONFLICT` on the keystroke that caused it.
+---
+
 ## The latest build now lives at a URL you can just open
 
 `npm run build:single` (scripts/singlefile.mjs) folds the whole app — the
@@ -21,7 +95,9 @@ importing `main.ts`, so the memoized loader never tries to fetch
 
 Known limitation, deliberate for now: the artifact viewer blocks
 viewer-initiated downloads, so `download()` is inert there; `save()` /
-`open(text)` (copy-paste persistence) work fine. Verified before first
+`open(text)` (copy-paste persistence) work fine. *(Closed the same day:
+the entry shim now bridges the anchor click into the viewer's
+confirmed-save flow, so `download()` works in the artifact too.)* Verified before first
 publish with a Playwright smoke run against the built file: draw a
 rectangle, constrain it, `solve()` → SOLVED at 4 iterations, residual
 4e-10, and the screenshot actually shows a rectangle with its glyphs.

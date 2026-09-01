@@ -552,6 +552,59 @@ replacing) the system Node other projects on this machine may depend on.
   In the artifact sandbox `download()` is inert (viewer downloads are
   blocked); `save()`/`open(text)` work.
 
+- **Typed edits re-solve (`src/main.ts`).** A command entry that changed the
+  model goes through `solveAndRender()`, so the status readout always
+  describes the drawing on screen. Before this, `dist("a","b",50)` added its
+  residual and redrew and the header went on reading `SOLVED` over geometry
+  that violated it until someone typed `solve()` — the stale-readout family,
+  third sighting. **Which entries count is not enumerated anywhere:** it is
+  the undo bracket's own before/after snapshot comparison, which
+  `endUserAction` now returns rather than swallowing. One consequence worth
+  stating: the two customers cannot drift apart, because "this is one undo
+  step" and "this needs re-solving" are now literally the same boolean.
+  `ls()`, `help()`, a bare expression and an entry that throws all leave the
+  model identical and therefore solve nothing;
+  `test/e2e/livesolve.e2e.ts` wraps `model.solve` in the page and counts,
+  because "it did not solve" is not otherwise assertable. A redundant
+  `solve()` typed afterwards remains harmless, so the older specs that type
+  one were left alone.
+
+- **Box select (`src/boxselect.ts`, the gesture in `src/tools/engine.ts`).**
+  Left-drag on empty canvas drags a rectangle; **the direction is the mode**,
+  SolidWorks/Onshape convention exactly — left→right is a *window* (only what
+  is fully contained, solid edge, translucent fill), right→left a *crossing*
+  (anything touched, dashed, different tint). The file is a fourth peer beside
+  `picking.ts`, `snapping.ts` and `glyphs.ts`: a pure function of (model, view,
+  rectangle), no canvas and no state, so all of it is unit-tested. It sits on
+  `intersect.ts` for segment–segment, segment–circle and the arc-sweep test, so
+  **a box and a click cannot disagree about where an arc stops**.
+  Per kind: a point by its position; a segment contained when both ends are and
+  touched when either end is inside or it crosses the boundary; a circle
+  contained when its whole extent is and touched when the rim passes through —
+  **a rectangle wholly inside a circle touches nothing**, because the entity is
+  the rim and not the disc, the same rule picking follows. An arc measures
+  containment against its *own* extent (endpoints plus whichever cardinal
+  points its sweep reaches), not its whole circle's, or a quarter arc in a
+  corner would refuse a box three times its size.
+  **A box is a multi-click**: each name goes through the same `onPick` path a
+  single click's does, so "there is no selection set" survives the feature
+  rather than being replaced by it. An empty box inserts nothing, Escape
+  cancels, and a press that grabbed anything at all is not a box — a point
+  drags, an edge or a glyph pans. **Relations are not selectable and no code
+  says so**: they live in a registry beside the entity map, so a box never sees
+  them.
+  *Reverses a register entry* (left-drag on empty canvas used to pan, which was
+  cellwork's habit); the reversal is recorded in `TODO.md` for the owner to
+  veto. Panning keeps middle-drag, right-drag and `pan()`.
+  *Fixed on the way:* **Escape moved from the command input to `window`.** A
+  mouse press on the canvas blurs the input — a canvas is not focusable, so
+  focus falls to the body — so the old binding was deaf during exactly the
+  gestures Escape exists to abandon. It had never shown up because every
+  earlier Escape test picked something first, and picking re-focuses the input.
+  *Known and deliberate:* a box only ever catches what is on screen, since the
+  rectangle is pixels; there is no shift-to-add, there being no selection set
+  to add to.
+
 ## What's next
 
 The working list lives in [`TODO.md`](TODO.md), so it has one home rather
