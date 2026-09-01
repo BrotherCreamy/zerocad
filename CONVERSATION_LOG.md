@@ -106,6 +106,34 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### "Weld" retired: it's constraint inference, like every other sketcher
+
+The snapping work left a question framed as "welding coincident points", with
+options sketched out as though this were an open design problem. The owner's
+review corrected the framing in one line: no CAD program has "weld". Onshape
+and SolidWorks solved this decades ago — when a sketch tool places a point on
+existing geometry, it keeps two points and applies a **coincident constraint**
+between them automatically. Constraints on curves and midpoints likewise.
+Onshape calls it inferencing; SolidWorks calls it automatic sketch relations.
+Tools should work the way those do, so people arrive already knowing how to
+use them.
+
+Worth recording *why* the earlier framing went wrong, since it is a
+reasoning error worth not repeating: the "a tool that welds is guessing at
+intent" concern treated this as a novel design question, when it is a solved
+one with twenty years of user expectation behind it. The standard answer is:
+apply the constraint, visibly, and let the user delete it if it was wrong.
+The missing delete is real, but it is an argument for building constraint
+deletion (now on `TODO.md`), not for inventing a nonstandard concept to
+avoid the guess.
+
+Also surfaced while writing the spec: there is no plain **line tool**. Point,
+rectangle, circle, arc, fillet — and not the most basic tool in any sketcher.
+It is specced alongside inference (chaining clicks, shared vertices,
+horizontal/vertical inference) in `docs/plans/onshape-inference.md`, which is
+written as an implementation instruction for a second Claude session to
+execute.
+
 ### Snapping, and what cellwork actually meant by it
 
 Both READMEs list "hover snaps" among cellwork's proven ideas, so the first

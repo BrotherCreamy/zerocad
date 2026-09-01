@@ -255,13 +255,13 @@ replacing) the system Node other projects on this machine may depend on.
   point, triangle for a midpoint, circle for somewhere along a curve), drawn
   after the tool's own preview so it can never be hidden by it: if the cursor
   is not where it looks, that has to be the most visible thing on screen.
-  Snapping makes the click *exact*; it does not join anything. Drawing a
-  rectangle that starts on another's corner leaves two points at precisely the
-  same position which are still two separate points — drag one and the other
-  stays behind. Joining them is usually what was meant but not always, and a
-  wrong guess leaves a constraint nobody asked for and nothing can currently
-  delete, so it is a separate decision (see `TODO.md`) rather than something
-  snapping does quietly. `snapping(false)` turns snapping off.
+  As built here, snapping makes the click *exact* but joins nothing — two
+  points at the same position are still two separate points. The decided next
+  step (owner's call, matching Onshape/SolidWorks) is constraint inference:
+  the tool applies the corresponding relation — `coin`, point-on-curve,
+  midpoint — to whatever it snapped to. Spec in
+  `docs/plans/onshape-inference.md`. `snapping(false)` turns snapping, and
+  with it inference, off.
 
 ## What's next
 

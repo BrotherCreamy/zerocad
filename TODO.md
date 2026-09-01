@@ -13,18 +13,22 @@ Roughly in the order that unblocks the most.
 - [ ] **Snap to intersections.** Points, midpoints and positions along a
       curve are done; where two curves cross is the obvious gap, and needs
       real intersection maths rather than a nearest-point projection.
-- [ ] **Welding coincident points.** Snapping makes a click land on the
-      *exact* coordinate of an existing point — but it still creates a **new**
-      point there. Draw one rectangle starting on another's corner and you get
-      two points at the same position that are not connected to each other:
-      drag one and the other stays behind. They look joined and aren't.
-      Making them genuinely one point — or adding `coin` between them — is
-      usually what was meant.
-      - *Decision needed:* usually, not always. A tool that welds
-        automatically is guessing at intent, and a wrong guess leaves a
-        constraint you never asked for and currently have no way to delete.
-        Guessing the other way costs one command: `coin("p3", "p5")`. So:
-        weld on snap, offer an explicit `weld` operation, or leave it manual?
+- [ ] **Constraint inference** — *decided, spec in
+      [`docs/plans/onshape-inference.md`](docs/plans/onshape-inference.md),
+      implementation in progress.* Tools behave like Onshape/SolidWorks: a
+      point placed on existing geometry gets the matching constraint applied
+      automatically (`coin` on a point, point-on-curve on an edge, `mid` on a
+      midpoint), so a rectangle drawn from another's corner genuinely shares
+      that corner. Onshape calls it inferencing. There is no "weld" — an
+      earlier draft of this file invented that term, and it is retired: two
+      points stay two points, joined by an ordinary coincident constraint.
+- [ ] **A line tool** — same plan document. Click-click with Onshape-style
+      chaining and horizontal/vertical inference. Somehow the most basic
+      sketch tool of all was never built.
+- [ ] **Constraint visibility and deletion.** Onshape shows constraint glyphs
+      and lets you delete one you didn't want; inference makes that matter
+      more, since tools now create constraints on your behalf. Deletion needs
+      `Problem` to support removing residual blocks — see below.
 - [ ] **Dragging a point with the mouse.** cellwork solves with soft
       residuals pulling the dragged point toward the cursor (weight ~0.12) so
       the rest of the model follows its constraints — a very natural

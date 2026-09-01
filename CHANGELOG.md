@@ -27,17 +27,14 @@ The marker is drawn *after* the tool's own preview, so it can't be hidden by
 it. If the cursor is not where it looks, that had better be the most visible
 thing on screen.
 
-**Snapping makes the click exact; it does not join anything.** Draw one
-rectangle starting on another's corner and you get two points at precisely the
-same position — which are still two separate points. Drag one and the other
-stays behind. They look joined and aren't.
-
-Joining them ("welding") is usually what you meant, but not always, and a tool
-that does it automatically is guessing at intent. A wrong guess leaves a
-constraint you never asked for and currently have no way to delete; guessing
-the other way costs one command, `coin("p3", "p5")`. So it is on `TODO.md` as
-its own decision rather than folded into snapping. `snapping(false)` turns the
-whole thing off.
+**As first shipped, snapping made the click exact but joined nothing** — two
+points at the same position were still two separate points, and dragging one
+left the other behind. That gap has since been decided the way every
+mainstream sketcher does it: Onshape-style **constraint inference**, where the
+tool applies an ordinary `coin` (or point-on-curve, or midpoint) constraint to
+whatever it snapped to. Spec in
+[`docs/plans/onshape-inference.md`](docs/plans/onshape-inference.md).
+`snapping(false)` turns snapping — and with it, inference — off.
 
 The screenshot above caught a bug on its first render, which is becoming a
 theme: the hover tag kept following the cursor mid-drag, still naming whatever
