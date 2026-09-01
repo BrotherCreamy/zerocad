@@ -9,9 +9,10 @@ the TypeScript layer both run together, client-side, in the browser.
 2D CAD sketching (points, lines, circles, arcs; a relation vocabulary of
 distance, coincidence, midpoint, horizontal/vertical, parallel,
 perpendicular, angle, point-on-line, equal-length, radius, on-circle,
-concentric, equal-radius, tangent and symmetry; rectangle, circle and arc
-tools; and a fillet) is the **first standard library** built on that
-kernel, not the kernel's whole purpose. The kernel itself knows nothing about geometry — just a flat
+concentric, equal-radius, tangent and symmetry; line, rectangle, circle and
+arc tools with Onshape-style constraint inference; and a fillet) is the
+**first standard library** built on that kernel, not the kernel's whole
+purpose. The kernel itself knows nothing about geometry — just a flat
 variable vector and residual blocks — so the same solver is meant to be
 usable for anything shaped like a nonlinear least-squares problem.
 

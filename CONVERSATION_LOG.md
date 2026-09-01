@@ -106,6 +106,53 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### The line tool, and what "chaining" actually has to mean
+
+Second half of the same plan document. The interesting question was not how to
+draw a line — it is two points and a `ln` — but what happens between segments.
+
+Onshape chains: the end of one segment is the start of the next. The lazy
+reading of that, given inference had just been built, would be "commit a new
+point and make it coincident with the previous end". That is wrong, and
+usefully so. A chained vertex is not two points that agree; it is **one
+point**, and saying it with a constraint would give the drawing twice the
+vertices it looks like it has, each pair held together by an equation the
+solver has to keep satisfying. So the tool holds the committed end point's
+*name* and hands it straight to the next `addLine`. Inference exists for
+points that genuinely are new and land on something; it is not the mechanism
+for a shared vertex.
+
+Two smaller decisions in the same spirit. Nothing is committed on the first
+click, so an abandoned chain leaves nothing behind — the same rule
+`rectangle.ts` follows, and the reason a mis-click costs nothing. And the
+tool never calls `ctx.finish()`: it stays armed until cancelled, which is what
+made "multi-stage tool" a non-event when the arc tool needed it, and needed no
+engine change here either.
+
+**Precedence between the two kinds of inference** was the one real judgement
+call. Within 3° of an axis the segment is pulled level and gets `hor`/`ver`;
+land on an existing point and it gets `coin`. When both apply, the snap wins.
+The reasoning: an axis guess is inferred from a rough aim, while a click that
+landed on real geometry is a deliberate one, and sliding it onto an axis would
+silently undo it — the same argument that settled the arc tool's third click
+an hour earlier. The axis constraint still comes along when the snapped
+position happens to satisfy it, since nothing is being given up in that case.
+
+**Dimension-genericity earned its keep immediately.** `CLAUDE.md` asks for
+relations to be written generically and proved with a 3D test rather than a
+comment; a chain of points and lines is generic even though `hor`/`ver` are
+not, so the tool infers no axis above two dimensions and otherwise behaves
+identically. Writing that test found a real bug on the first run: the
+degeneracy check ("did this click land on the segment's own start?") measured
+`Math.hypot(dx, dy)` and nothing else, so in 3D every segment that moved only
+in z looked like a zero-length click and was silently refused. It would never
+have surfaced in the 2D app.
+
+Verified in the browser as the rule requires: the screenshot in `CHANGELOG.md`
+is a chain mid-draw — an upright committed segment, a diagonal one that was
+left alone because it is past the tolerance, and a third in progress locked
+exactly level with its guide running across the canvas.
+
 ### Inference built: the snap now says what it meant
 
 Implementing `docs/plans/onshape-inference.md`, which read as an instruction

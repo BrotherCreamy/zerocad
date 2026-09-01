@@ -7,6 +7,44 @@ decisions.
 
 ---
 
+## The line tool
+
+Point, rectangle, circle, arc, fillet — and, until now, not the most basic
+tool in any sketcher. `line` is click-click, chaining, Onshape-shaped.
+
+![Two committed segments — one upright, one at an angle — with a third in progress: its preview locked exactly level and a faint dashed guide running the width of the canvas through the vertex it starts from](docs/images/09-line-tool.png)
+
+**The chain shares its vertices.** The end of a committed segment *is* the
+start of the next one — the same point entity, not a copy joined by a
+constraint. There is nothing to infer between them: they are one vertex, as
+chained segments are in Onshape. Drag it and both segments follow, because
+there is only one thing there to drag.
+
+**Nothing is committed on the first click**, so a chain abandoned before its
+second click leaves no stray point behind — the same reason the rectangle
+tool builds nothing until `onUp`. `Escape` ends the chain; what was committed
+stays.
+
+**Horizontal and vertical are inferred.** Within 3° of an axis the preview is
+drawn exactly on it, with the guide in the screenshot above, and the committed
+line gets `hor(line)` or `ver(line)` — the line form, so it still means "this
+edge is level" after a fillet re-points the edge. Further off than that,
+nothing is inferred and nothing is straightened: the middle segment in the
+picture is at an angle and stayed there.
+
+An **endpoint snap beats the axis guess**. If the click landed on real
+geometry, that is what was aimed at, and quietly sliding it onto an axis would
+undo a deliberate aim — so the snap wins, and the axis constraint comes along
+only when the snapped position satisfies it anyway.
+
+The chain itself is dimension-generic — it is only points and lines — so the
+tool works unchanged in a 3D model and simply infers no axis there, `hor`/`ver`
+being genuinely 2D-only. Writing that test earned its keep immediately: it
+caught a degeneracy check that measured only the first two coordinates, and so
+refused every segment that moved in z alone.
+
+---
+
 ## Constraint inference
 
 Snapping made a click land exactly on a corner. Inference is the step that

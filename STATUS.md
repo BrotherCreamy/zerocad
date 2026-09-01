@@ -289,6 +289,28 @@ replacing) the system Node other projects on this machine may depend on.
   solve — least squares moves both and meets in the middle. Pin one and the
   other follows exactly, which is what the tests do.
 
+- **The line tool** (`src/tools/line.ts`) — click, click, chaining, shaped
+  like Onshape's, and the last obvious gap in the toolbox: point, rectangle,
+  circle, arc and fillet all existed and the most basic tool of all did not.
+  The chain **shares its vertices**: the end of a committed segment *is* the
+  start of the next one, the same point entity rather than a copy joined by a
+  constraint, so there is nothing to infer between them and dragging the
+  vertex moves both segments because there is only one thing there. Nothing is
+  committed until the second click, so an abandoned chain leaves no stray
+  point; `Escape` ends the chain and keeps what was drawn.
+  Within 3° of an axis the preview locks onto it, a dashed guide shows why,
+  and the committed line gets `hor(line)`/`ver(line)` — the line form, so it
+  survives a fillet. Past the tolerance nothing is inferred and nothing is
+  straightened. An endpoint snap beats the axis guess, because a click that
+  landed on real geometry is a deliberate aim and sliding it onto an axis
+  would undo it; the axis constraint still comes along when the snapped
+  position satisfies it anyway.
+  The chain is dimension-generic — it is only points and lines — so it works
+  unchanged in a 3D model and infers no axis there, `hor`/`ver` being
+  genuinely 2D-only. That test paid for itself on the spot: it caught a
+  degeneracy check measuring only the first two coordinates, which refused
+  every segment that moved in z alone.
+
 ## What's next
 
 The working list lives in [`TODO.md`](TODO.md), so it has one home rather

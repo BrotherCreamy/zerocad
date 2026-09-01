@@ -11,14 +11,9 @@ remote unreviewed.
 
 ## In flight
 
-- [ ] **Constraint inference** — Opus implementing now, from
-      [`docs/plans/onshape-inference.md`](docs/plans/onshape-inference.md).
-      A point placed on existing geometry gets the matching constraint
-      applied automatically — `coin` on a point, point-on-curve on an edge,
-      midpoint on a midpoint — exactly as Onshape/SolidWorks do.
-- [ ] **A line tool** — same plan document. Click-click with Onshape-style
-      chaining (shared vertices) and horizontal/vertical inference. Somehow
-      the most basic sketch tool of all was never built.
+Nothing — both items from
+[`docs/plans/onshape-inference.md`](docs/plans/onshape-inference.md)
+(constraint inference, and the line tool) are built and in **Done** below.
 
 ## Decisions made so far — veto here if any are wrong
 
@@ -107,6 +102,17 @@ starts.
 
 ## Done
 
+- [x] **The line tool** — click-click with Onshape's chaining: the committed
+      end *is* the next segment's start, the same entity, so nothing needs
+      joining. Nothing is committed until the second click, so an abandoned
+      chain leaves no stray point. Horizontal/vertical inference within 3° of
+      an axis, in the line form, with an endpoint snap taking precedence.
+      Escape ends the chain and keeps what was drawn.
+      *Discovered while doing it:* the chain is dimension-generic (it is only
+      points and lines), so the tool works in a 3D model and simply infers no
+      axis there — and writing that test caught a real bug, a degeneracy check
+      that measured only the first two coordinates and so refused every
+      segment that moved in z alone.
 - [x] **Constraint inference** — a tool that places a point on existing
       geometry applies the relation that implies (`coin` on a point, the line
       form of `mid` on a midpoint, `on`/`oncircle` on a curve), so a rectangle
