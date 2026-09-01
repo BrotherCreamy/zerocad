@@ -7,6 +7,27 @@ decisions.
 
 ---
 
+## The latest build now lives at a URL you can just open
+
+`npm run build:single` (scripts/singlefile.mjs) folds the whole app — the
+esbuild-bundled TypeScript, the page style and markup, and the WASM kernel
+as base64 — into one self-contained `dist-single/neocad.html`, published as
+a claude.ai artifact so the owner can review each merged change without
+checking anything out. A small buildstamp (git short rev + date) sits in the
+header so the page says which commit it is. The entry shim decodes the
+embedded kernel and hands the bytes to `ensureKernelLoaded` *before*
+importing `main.ts`, so the memoized loader never tries to fetch
+`wasm-gen/` over the network — there is no network copy to fetch.
+
+Known limitation, deliberate for now: the artifact viewer blocks
+viewer-initiated downloads, so `download()` is inert there; `save()` /
+`open(text)` (copy-paste persistence) work fine. Verified before first
+publish with a Playwright smoke run against the built file: draw a
+rectangle, constrain it, `solve()` → SOLVED at 4 iterations, residual
+4e-10, and the screenshot actually shows a rectangle with its glyphs.
+
+---
+
 ## Where two curves cross is now a place you can click
 
 The last gap in the snap vocabulary. Points, midpoints and along-a-curve

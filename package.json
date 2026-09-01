@@ -13,7 +13,8 @@
     "test:e2e": "node --experimental-strip-types test/e2e/run.ts",
     "test:all": "npm run typecheck && npm test && npm run test:kernel && npm run test:e2e",
     "typecheck": "tsc --noEmit",
-    "build:kernel:dev": "cd kernel-rs && wasm-pack build --dev --target web --out-dir ../src/kernel/wasm-gen"
+    "build:kernel:dev": "cd kernel-rs && wasm-pack build --dev --target web --out-dir ../src/kernel/wasm-gen",
+    "build:single": "node scripts/singlefile.mjs"
   },
   "devDependencies": {
     "@types/node": "^26.4.0",

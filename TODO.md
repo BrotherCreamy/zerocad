@@ -18,9 +18,15 @@ otherwise.
 
 ## In flight
 
-Nothing — both items from
-[`docs/plans/onshape-inference.md`](docs/plans/onshape-inference.md)
-(constraint inference, and the line tool) are built and in **Done** below.
+- **Box select + live solve** ([`docs/plans/box-select.md`](docs/plans/box-select.md))
+  — an Opus worker was mid-implementation when it hit the account's monthly
+  spend limit (2026-09-01, resets 11:50 UTC). Its partial work is intact in
+  its worktree; Fable will resume the same worker after the reset rather
+  than restart. Last state: implementation done through the drag register
+  change, updating the picking e2e test that asserted the old behaviour.
+- **Standing duty**: after every merged PR, run `npm run build:single` and
+  republish `dist-single/neocad.html` to the owner's review artifact
+  (same URL each time).
 
 ## Decisions made so far — veto here if any are wrong
 

@@ -543,6 +543,14 @@ replacing) the system Node other projects on this machine may depend on.
   `model.problem.addResidual` directly still works and is still anonymous —
   the same anonymity every relation had until now. Route it through
   `model.relation` and `model.addResidual` to get a name and a `del`.
+- **`scripts/singlefile.mjs`** (`npm run build:single`) — folds app, page
+  and WASM kernel (base64) into one self-contained
+  `dist-single/neocad.html` with a git-rev buildstamp in the header. This
+  is what gets published as the owner's review artifact after each merge;
+  the entry shim (`scripts/single-entry.ts`) feeds the embedded kernel
+  bytes to `ensureKernelLoaded` before `main.ts` loads, so nothing fetches.
+  In the artifact sandbox `download()` is inert (viewer downloads are
+  blocked); `save()`/`open(text)` work.
 
 ## What's next
 
