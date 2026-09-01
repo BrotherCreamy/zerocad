@@ -46,23 +46,25 @@ function chunk<T>(flat: T[], dim: number, count: number): T[][] {
 }
 
 /** Two lines point the same way (or exactly opposite): their wedge vanishes. */
-export function parallel(model: Model, l1: string, l2: string): void {
-  model.record("parallel", [l1, l2]);
-  const dim = model.dim;
-  model.problem.addResidual(joinVars(lineVars(model, l1), lineVars(model, l2)), (l) => {
-    const [a, b, c, d] = chunk(l, dim, 4);
-    return wedge(vecSub(b, a), vecSub(d, c));
-  }, `par(${l1},${l2})`);
+export function parallel(model: Model, l1: string, l2: string): string {
+  return model.relation("parallel", [l1, l2], () => {
+    const dim = model.dim;
+    model.addResidual(joinVars(lineVars(model, l1), lineVars(model, l2)), (l) => {
+      const [a, b, c, d] = chunk(l, dim, 4);
+      return wedge(vecSub(b, a), vecSub(d, c));
+    }, `par(${l1},${l2})`);
+  });
 }
 
 /** Two lines meet at a right angle: their directions' dot product vanishes. */
-export function perpendicular(model: Model, l1: string, l2: string): void {
-  model.record("perpendicular", [l1, l2]);
-  const dim = model.dim;
-  model.problem.addResidual(joinVars(lineVars(model, l1), lineVars(model, l2)), (l) => {
-    const [a, b, c, d] = chunk(l, dim, 4);
-    return [dot(vecSub(b, a), vecSub(d, c))];
-  }, `perp(${l1},${l2})`);
+export function perpendicular(model: Model, l1: string, l2: string): string {
+  return model.relation("perpendicular", [l1, l2], () => {
+    const dim = model.dim;
+    model.addResidual(joinVars(lineVars(model, l1), lineVars(model, l2)), (l) => {
+      const [a, b, c, d] = chunk(l, dim, 4);
+      return [dot(vecSub(b, a), vecSub(d, c))];
+    }, `perp(${l1},${l2})`);
+  });
 }
 
 /**
@@ -72,36 +74,39 @@ export function perpendicular(model: Model, l1: string, l2: string): void {
  * as u·v = |u||v|cos(theta) rather than by taking an arccos, so the
  * residual stays smooth everywhere including at 0 and pi.
  */
-export function angle(model: Model, l1: string, l2: string, radians: number): void {
-  model.record("angle", [l1, l2, radians]);
-  const dim = model.dim;
-  const target = Math.cos(radians);
-  model.problem.addResidual(joinVars(lineVars(model, l1), lineVars(model, l2)), (l) => {
-    const [a, b, c, d] = chunk(l, dim, 4);
-    const u = vecSub(b, a), v = vecSub(d, c);
-    return [dot(u, v).sub(norm(u).mul(norm(v)).mul(target))];
-  }, `ang(${l1},${l2})`);
+export function angle(model: Model, l1: string, l2: string, radians: number): string {
+  return model.relation("angle", [l1, l2, radians], () => {
+    const dim = model.dim;
+    const target = Math.cos(radians);
+    model.addResidual(joinVars(lineVars(model, l1), lineVars(model, l2)), (l) => {
+      const [a, b, c, d] = chunk(l, dim, 4);
+      const u = vecSub(b, a), v = vecSub(d, c);
+      return [dot(u, v).sub(norm(u).mul(norm(v)).mul(target))];
+    }, `ang(${l1},${l2})`);
+  });
 }
 
 /** A point lies somewhere on the infinite line through a line's two endpoints. */
-export function pointOnLine(model: Model, pointName: string, lineName: string): void {
-  model.record("pointOnLine", [pointName, lineName]);
-  const p = model.point(pointName);
-  const dim = model.dim;
-  model.problem.addResidual(joinVars(p.varIndices, lineVars(model, lineName)), (l) => {
-    const [q, a, b] = chunk(l, dim, 3);
-    return wedge(vecSub(q, a), vecSub(b, a));
-  }, `on(${pointName},${lineName})`);
+export function pointOnLine(model: Model, pointName: string, lineName: string): string {
+  return model.relation("pointOnLine", [pointName, lineName], () => {
+    const p = model.point(pointName);
+    const dim = model.dim;
+    model.addResidual(joinVars(p.varIndices, lineVars(model, lineName)), (l) => {
+      const [q, a, b] = chunk(l, dim, 3);
+      return wedge(vecSub(q, a), vecSub(b, a));
+    }, `on(${pointName},${lineName})`);
+  });
 }
 
 /** Two lines have the same length. */
-export function equalLength(model: Model, l1: string, l2: string): void {
-  model.record("equalLength", [l1, l2]);
-  const dim = model.dim;
-  model.problem.addResidual(joinVars(lineVars(model, l1), lineVars(model, l2)), (l) => {
-    const [a, b, c, d] = chunk(l, dim, 4);
-    return [norm(vecSub(b, a)).sub(norm(vecSub(d, c)))];
-  }, `eq(${l1},${l2})`);
+export function equalLength(model: Model, l1: string, l2: string): string {
+  return model.relation("equalLength", [l1, l2], () => {
+    const dim = model.dim;
+    model.addResidual(joinVars(lineVars(model, l1), lineVars(model, l2)), (l) => {
+      const [a, b, c, d] = chunk(l, dim, 4);
+      return [norm(vecSub(b, a)).sub(norm(vecSub(d, c)))];
+    }, `eq(${l1},${l2})`);
+  });
 }
 
 // --- circles and arcs ------------------------------------------------------
@@ -110,36 +115,48 @@ export function equalLength(model: Model, l1: string, l2: string): void {
 // also name a start and end point.
 
 /** Pins a circle's (or arc's) radius to a number. */
-export function radius(model: Model, circleName: string, target: number): void {
-  model.record("radius", [circleName, target]);
-  const c = model.circular(circleName);
-  model.problem.addResidual([c.radiusVar], (l) => [l[0].sub(target)], `rad(${circleName})`);
+export function radius(model: Model, circleName: string, target: number): string {
+  return model.relation("radius", [circleName, target], () => {
+    const c = model.circular(circleName);
+    model.addResidual([c.radiusVar], (l) => [l[0].sub(target)], `rad(${circleName})`);
+  });
 }
 
 /** A point sits on a circle's rim: its distance from the center equals the radius. */
-export function onCircle(model: Model, pointName: string, circleName: string): void {
-  model.record("onCircle", [pointName, circleName]);
-  const p = model.point(pointName);
-  const c = model.circular(circleName);
-  const center = model.point(c.center);
-  const dim = model.dim;
-  model.problem.addResidual([...p.varIndices, ...center.varIndices, c.radiusVar], (l) => {
-    const [q, ctr] = chunk(l, dim, 2);
-    return [norm(vecSub(q, ctr)).sub(l[2 * dim])];
-  }, `oncircle(${pointName},${circleName})`);
+export function onCircle(model: Model, pointName: string, circleName: string): string {
+  return model.relation("onCircle", [pointName, circleName], () => {
+    const p = model.point(pointName);
+    const c = model.circular(circleName);
+    const center = model.point(c.center);
+    const dim = model.dim;
+    model.addResidual([...p.varIndices, ...center.varIndices, c.radiusVar], (l) => {
+      const [q, ctr] = chunk(l, dim, 2);
+      return [norm(vecSub(q, ctr)).sub(l[2 * dim])];
+    }, `oncircle(${pointName},${circleName})`);
+  });
 }
 
-/** Two circles/arcs share a center. */
-export function concentric(model: Model, c1: string, c2: string): void {
-  model.record("concentric", [c1, c2]);
-  coincident(model, model.circular(c1).center, model.circular(c2).center);
+/**
+ * Two circles/arcs share a center.
+ *
+ * Defined in terms of `coincident`, and *one* relation all the same: the inner
+ * call's blocks join this entry rather than registering separately, so `del`
+ * on the concentricity takes exactly what the concentricity added. (It also
+ * stops the inner call journalling itself, which used to make a reopened file
+ * carry the coincidence twice.)
+ */
+export function concentric(model: Model, c1: string, c2: string): string {
+  return model.relation("concentric", [c1, c2], () => {
+    coincident(model, model.circular(c1).center, model.circular(c2).center);
+  });
 }
 
 /** Two circles/arcs have the same radius. */
-export function equalRadius(model: Model, c1: string, c2: string): void {
-  model.record("equalRadius", [c1, c2]);
-  const a = model.circular(c1), b = model.circular(c2);
-  model.problem.addResidual([a.radiusVar, b.radiusVar], (l) => [l[0].sub(l[1])], `eqrad(${c1},${c2})`);
+export function equalRadius(model: Model, c1: string, c2: string): string {
+  return model.relation("equalRadius", [c1, c2], () => {
+    const a = model.circular(c1), b = model.circular(c2);
+    model.addResidual([a.radiusVar, b.radiusVar], (l) => [l[0].sub(l[1])], `eqrad(${c1},${c2})`);
+  });
 }
 
 /**
@@ -149,16 +166,17 @@ export function equalRadius(model: Model, c1: string, c2: string): void {
  * here because a tangent line never passes *through* the center (the wedge
  * only vanishes when the distance is 0, and the radius is positive).
  */
-export function tangent(model: Model, lineName: string, circleName: string): void {
-  model.record("tangent", [lineName, circleName]);
-  const c = model.circular(circleName);
-  const center = model.point(c.center);
-  const dim = model.dim;
-  model.problem.addResidual(joinVars(lineVars(model, lineName), center.varIndices, [c.radiusVar]), (l) => {
-    const [a, b, ctr] = chunk(l, dim, 3);
-    const u = vecSub(b, a);
-    return [wedgeNorm(vecSub(ctr, a), u).div(norm(u)).sub(l[3 * dim])];
-  }, `tan(${lineName},${circleName})`);
+export function tangent(model: Model, lineName: string, circleName: string): string {
+  return model.relation("tangent", [lineName, circleName], () => {
+    const c = model.circular(circleName);
+    const center = model.point(c.center);
+    const dim = model.dim;
+    model.addResidual(joinVars(lineVars(model, lineName), center.varIndices, [c.radiusVar]), (l) => {
+      const [a, b, ctr] = chunk(l, dim, 3);
+      const u = vecSub(b, a);
+      return [wedgeNorm(vecSub(ctr, a), u).div(norm(u)).sub(l[3 * dim])];
+    }, `tan(${lineName},${circleName})`);
+  });
 }
 
 // --- symmetry --------------------------------------------------------------
@@ -170,22 +188,23 @@ export function tangent(model: Model, lineName: string, circleName: string): voi
  * half-turn about the line, which is the same relation one dimension up,
  * so this stays generic rather than being marked 2D-only.
  */
-export function symmetric(model: Model, aName: string, bName: string, lineName: string): void {
-  model.record("symmetric", [aName, bName, lineName]);
-  const a = model.point(aName), b = model.point(bName);
-  const dim = model.dim;
-  const varIndices = joinVars(a.varIndices, b.varIndices, lineVars(model, lineName));
+export function symmetric(model: Model, aName: string, bName: string, lineName: string): string {
+  return model.relation("symmetric", [aName, bName, lineName], () => {
+    const a = model.point(aName), b = model.point(bName);
+    const dim = model.dim;
+    const varIndices = joinVars(a.varIndices, b.varIndices, lineVars(model, lineName));
 
-  model.problem.addResidual(varIndices, (l) => {
-    const [p, q, s, e] = chunk(l, dim, 4);
-    const mid = p.map((pi, i) => pi.add(q[i]).div(2));
-    return wedge(vecSub(mid, s), vecSub(e, s));
-  }, `sym(${aName},${bName},${lineName})|mid`);
+    model.addResidual(varIndices, (l) => {
+      const [p, q, s, e] = chunk(l, dim, 4);
+      const mid = p.map((pi, i) => pi.add(q[i]).div(2));
+      return wedge(vecSub(mid, s), vecSub(e, s));
+    }, `sym(${aName},${bName},${lineName})|mid`);
 
-  model.problem.addResidual(varIndices, (l) => {
-    const [p, q, s, e] = chunk(l, dim, 4);
-    return [dot(vecSub(q, p), vecSub(e, s))];
-  }, `sym(${aName},${bName},${lineName})|perp`);
+    model.addResidual(varIndices, (l) => {
+      const [p, q, s, e] = chunk(l, dim, 4);
+      return [dot(vecSub(q, p), vecSub(e, s))];
+    }, `sym(${aName},${bName},${lineName})|perp`);
+  });
 }
 
 // --- arcs ------------------------------------------------------------------
@@ -196,9 +215,10 @@ export function symmetric(model: Model, aName: string, bName: string, lineName: 
  * hor/ver — the model holds structure, relations hold equations — so a
  * tool that creates an arc calls this straight after.
  */
-export function arcEndpoints(model: Model, arcName: string): void {
-  model.record("arcEndpoints", [arcName]);
-  const a = model.arc(arcName);
-  onCircle(model, a.start, arcName);
-  onCircle(model, a.end, arcName);
+export function arcEndpoints(model: Model, arcName: string): string {
+  return model.relation("arcEndpoints", [arcName], () => {
+    const a = model.arc(arcName);
+    onCircle(model, a.start, arcName);
+    onCircle(model, a.end, arcName);
+  });
 }

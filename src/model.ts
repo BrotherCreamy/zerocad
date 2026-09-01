@@ -11,7 +11,8 @@
 // with, so the same relation code (see src/relations) works whether the
 // model is 2D or 3D.
 
-import { Problem, type SolveReport } from "./kernel/problem.ts";
+import { Problem, type BlockHandle, type SolveReport, type VarRefs } from "./kernel/problem.ts";
+import type { Dual } from "./kernel/dual.ts";
 
 export interface PointEntity {
   kind: "point";
@@ -65,11 +66,39 @@ export interface JournalEntry {
   args: unknown[];
 }
 
+/**
+ * A relation, as the model remembers it: the call that made it, and the
+ * residual blocks it put into the problem.
+ *
+ * Entities have had names since the beginning and relations have not, which
+ * made a constraint something you could add and never again refer to. That is
+ * survivable while every constraint is one you typed; it stops being
+ * survivable the moment a *tool* infers one on your behalf, because a
+ * constraint you did not ask for and cannot name is a trap. So a relation is
+ * an entry here, named `r1`, `r2`, … exactly as entities are named.
+ *
+ * `args` is the call as it was made — the same list the journal stores — which
+ * is what `del` reads to answer "does this relation name that entity".
+ */
+export interface RelationEntry {
+  name: string;
+  op: string;
+  args: unknown[];
+  blocks: BlockHandle[];
+}
+
 export class Model {
   problem = new Problem();
   dim: number;
   entities = new Map<string, Entity>();
+  /** Named relations, in the order they were made. See `relation()`. */
+  relations = new Map<string, RelationEntry>();
   private counters = new Map<string, number>();
+  /**
+   * The relation currently being built, if any — see `relation()`. Its
+   * presence is also what tells a nested relation call that it is nested.
+   */
+  private building: { name: string; blocks: BlockHandle[] } | null = null;
 
   /**
    * How this model was built, in order — every entity created, every
@@ -115,20 +144,29 @@ export class Model {
     }
   }
 
+  /**
+   * Whether anything already answers to `name`. Entities and relations share
+   * one namespace on purpose: `del("r3")` has to mean one thing, and a model
+   * holding both a point and a relation called `r3` would make it mean two.
+   */
+  has(name: string): boolean {
+    return this.entities.has(name) || this.relations.has(name);
+  }
+
   private autoName(prefix: string): string {
     let n = this.counters.get(prefix) ?? 0;
     let name: string;
     do {
       n += 1;
       name = `${prefix}${n}`;
-    } while (this.entities.has(name));
+    } while (this.has(name));
     this.counters.set(prefix, n);
     return name;
   }
 
   private claimName(prefix: string, name?: string): string {
     if (name === undefined) return this.autoName(prefix);
-    if (this.entities.has(name)) throw new Error(`"${name}" already exists`);
+    if (this.has(name)) throw new Error(`"${name}" already exists`);
     // An explicit name that looks like an auto-generated one moves the counter
     // past it, so a later auto-name cannot collide. This matters most when a
     // model is rebuilt from a saved file: every entity comes back under the
@@ -140,6 +178,81 @@ export class Model {
       if (Number.isSafeInteger(n) && n > (this.counters.get(prefix) ?? 0)) this.counters.set(prefix, n);
     }
     return name;
+  }
+
+  /**
+   * Runs `body` as one named relation: journals the call, collects every
+   * residual block `body` adds, registers the lot under a fresh `rN`, and
+   * returns that name.
+   *
+   * Every function in `relations/` is written as one call to this — which is
+   * also what replaced the bare `record()` those functions used to open with,
+   * so there is one place a relation can be forgotten rather than two.
+   *
+   * Two things it settles that were previously ambiguous:
+   *
+   * - **A relation written in terms of another is one relation.** `concentric`
+   *   is defined as a `coincident` on two centres and `arcEndpoints` as two
+   *   `onCircle`s; the inner calls contribute their blocks to the outer entry,
+   *   take no name of their own, and journal nothing. (Before this they
+   *   journalled *both*, so reopening such a file quietly added the inner
+   *   constraint a second time.)
+   * - **A relation that throws leaves no trace.** Whatever blocks the body got
+   *   as far as adding are removed and the name counter is put back, so a
+   *   mistyped relation cannot shift the names a replay will hand out.
+   *
+   * A relation authored at the command line that calls `problem.addResidual`
+   * directly still works exactly as before — its blocks simply belong to no
+   * relation, which is the same anonymity every relation had until now. Route
+   * it through `model.relation` and `model.addResidual` to get a name and a
+   * `del`.
+   */
+  relation(op: string, args: unknown[], body: () => void): string {
+    if (this.building) {
+      // Nested: absorbed into the relation already being built.
+      body();
+      return this.building.name;
+    }
+    const counterWas = this.counters.get("r");
+    const name = this.claimName("r");
+    const building = { name, blocks: [] as BlockHandle[] };
+    this.building = building;
+    try {
+      // Suppressed, so an inner relation's own `record` does not double up.
+      this.withoutRecording(body);
+    } catch (e) {
+      for (const h of building.blocks) this.problem.removeBlock(h);
+      if (counterWas === undefined) this.counters.delete("r");
+      else this.counters.set("r", counterWas);
+      throw e;
+    } finally {
+      this.building = null;
+    }
+    this.relations.set(name, { name, op, args, blocks: building.blocks });
+    this.record(op, args);
+    return name;
+  }
+
+  /**
+   * Adds a residual block, remembering it as part of the relation currently
+   * being built. Identical to `problem.addResidual` outside a `relation()`
+   * body, so it is always the safe one to call.
+   */
+  addResidual(varIndices: VarRefs, fn: (locals: Dual[]) => Dual[], label?: string): BlockHandle {
+    const handle = this.problem.addResidual(varIndices, fn, label);
+    this.building?.blocks.push(handle);
+    return handle;
+  }
+
+  relationOf(name: string): RelationEntry {
+    const r = this.relations.get(name);
+    if (!r) throw new Error(`"${name}" is not a relation`);
+    return r;
+  }
+
+  /** Every relation whose call named `name`, in creation order. */
+  relationsNaming(name: string): RelationEntry[] {
+    return [...this.relations.values()].filter((r) => r.args.some((a) => a === name));
   }
 
   addPoint(coords: number[], name?: string): PointEntity {
@@ -254,6 +367,56 @@ export class Model {
 
   radius(name: string): number {
     return this.problem.getVar(this.circular(name).radiusVar);
+  }
+
+  /** The point names an entity is built out of. A point is built out of none. */
+  refsOf(e: Entity): string[] {
+    switch (e.kind) {
+      case "point": return [];
+      case "line": return [...e.refs];
+      case "circle": return [e.center];
+      case "arc": return [e.center, e.start, e.end];
+    }
+  }
+
+  /** Every entity that names `name` among its references, in creation order. */
+  dependents(name: string): Entity[] {
+    return [...this.entities.values()].filter((e) => this.refsOf(e).includes(name));
+  }
+
+  /**
+   * Removes one entity. A *primitive*: it will not tidy up after itself, and
+   * refuses while anything still points at what is being removed, because the
+   * alternative is a line whose endpoint does not exist — which is not an
+   * over-constrained model the solver can complain about, it is a model that
+   * throws when it is next drawn. Working out what else has to go is `del`'s
+   * job (see operations.ts), and journalling the expansion rather than the
+   * cascade is what lets a saved file replay the same deletions.
+   *
+   * The point's variables stay in the problem, referenced by nothing. See the
+   * note on tombstones in operations.ts.
+   */
+  deleteEntity(name: string): void {
+    const e = this.entities.get(name);
+    if (!e) throw new Error(`"${name}" is not an entity`);
+    const held = this.dependents(name);
+    if (held.length) {
+      throw new Error(`"${name}" is still used by ${held.map((d) => d.name).join(", ")}`);
+    }
+    const constrained = this.relationsNaming(name);
+    if (constrained.length) {
+      throw new Error(`"${name}" is still constrained by ${constrained.map((r) => r.name).join(", ")}`);
+    }
+    this.entities.delete(name);
+    this.record("deleteEntity", [name]);
+  }
+
+  /** Removes one relation and the residual blocks it added. */
+  deleteRelation(name: string): void {
+    const r = this.relationOf(name);
+    for (const h of r.blocks) this.problem.removeBlock(h);
+    this.relations.delete(name);
+    this.record("deleteRelation", [name]);
   }
 
   solve(): SolveReport {

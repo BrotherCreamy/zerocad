@@ -254,3 +254,43 @@ test("a relation authored at the REPL is a residual like any other", async () =>
   const [qx, qy] = model.coords("p1");
   assert.ok(Math.abs(qx - 3) < 1e-6 && Math.abs(qy - 9) < 1e-6, `expected (3, 9), got (${qx}, ${qy})`);
 });
+
+// --- listing and deleting constraints --------------------------------------
+
+test("rels() lists the constraints under names you can retype", async () => {
+  await loadKernel();
+  const { repl } = makeRepl();
+  await run(repl, `a = pt(0, 0); b = pt(10, 0); l = ln(a, b); coin(a, b); hor(l); dist(a, b, 10)`);
+
+  // The short name each relation is called by, not the internal op — so a
+  // listed line reads back as something that could have been typed.
+  assert.deepEqual((await run(repl, "rels()")).value, [
+    "r1  coin p1 p2",
+    "r2  hor l1",
+    "r3  dist p1 p2 10",
+  ]);
+  assert.deepEqual((await run(repl, 'rels("l1")')).value, ["r2  hor l1"]);
+  assert.deepEqual((await run(repl, 'rels("p2")')).value, ["r1  coin p1 p2", "r3  dist p1 p2 10"]);
+  assert.deepEqual((await run(repl, 'rels("nothing")')).value, []);
+});
+
+test("del() hands back what it took, so the log answers for the cascade", async () => {
+  await loadKernel();
+  const { repl, model } = makeRepl();
+  await run(repl, `a = pt(0, 0); b = pt(10, 0); l = ln(a, b); hor(l); fix(a, [0, 0])`);
+
+  assert.deepEqual((await run(repl, 'del("r1")')).value, ["r1"], "a relation takes nothing with it");
+  assert.deepEqual((await run(repl, 'del("p1")')).value, ["r2", "l1", "p1"], "a point takes what needs it");
+  assert.deepEqual([...model.entities.keys()], ["p2"]);
+
+  const bad = await repl.eval('del("l9")');
+  assert.equal(bad.ok, false);
+  assert.match(bad.error!.message, /"l9" is not an entity or a relation/);
+});
+
+test("del and rels are on the help card, since neither is guessable", async () => {
+  const { repl } = makeRepl();
+  const help = (await run(repl, "help()")).value as string;
+  assert.match(help, /del\(name\)/);
+  assert.match(help, /rels\(name\?\)/);
+});

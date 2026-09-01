@@ -72,20 +72,34 @@ files and why operations deserve more scrutiny in review.
 
 ### Adding a relation
 
-Write a function taking the model and some entity names, add one residual
-block whose value is zero exactly when the relation holds, and give it a label
-— the label is what a conflict names, so make it read like the call.
+Write a function taking the model and some entity names, wrap the body in
+`model.relation(...)`, add one residual block whose value is zero exactly when
+the relation holds, and give it a label — the label is what a conflict names,
+so make it read like the call. The wrapper journals the call, collects the
+blocks, names the result `rN`, and hands that name back; a relation returns
+its name.
 
 ```ts
-export function equalLength(model: Model, l1: string, l2: string): void {
-  model.record("equalLength", [l1, l2]);       // so it survives save/open
-  const dim = model.dim;
-  model.problem.addResidual(joinVars(lineVars(model, l1), lineVars(model, l2)), (l) => {
-    const [a, b, c, d] = chunk(l, dim, 4);
-    return [norm(vecSub(b, a)).sub(norm(vecSub(d, c)))];
-  }, `eq(${l1},${l2})`);
+export function equalLength(model: Model, l1: string, l2: string): string {
+  return model.relation("equalLength", [l1, l2], () => {
+    const dim = model.dim;
+    model.addResidual(joinVars(lineVars(model, l1), lineVars(model, l2)), (l) => {
+      const [a, b, c, d] = chunk(l, dim, 4);
+      return [norm(vecSub(b, a)).sub(norm(vecSub(d, c)))];
+    }, `eq(${l1},${l2})`);
+  });
 }
 ```
+
+Note `model.addResidual`, not `model.problem.addResidual`: the wrapper cannot
+collect a handle it is never told about, and a block added straight to the
+problem belongs to no relation and can never be deleted. (Outside a
+`model.relation` body the two are identical, so `model.addResidual` is always
+the safe one.)
+
+A relation written in terms of another one — `concentric` calls `coincident`
+— just calls it: the inner call's blocks join your entry, and it neither
+journals nor takes a name of its own. One user-level call is one relation.
 
 Three things that are easy to get wrong:
 

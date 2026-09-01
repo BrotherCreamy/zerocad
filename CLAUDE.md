@@ -36,8 +36,13 @@ If `build:kernel` fails downloading binaryen, `npm run build:kernel:dev` skips
 - A new relation must be registered in **both** `src/replenv.ts` (so it's
   callable) and `src/persist.ts`'s replay table (so it survives save/open).
   Nothing catches this but a test.
-- `model.record(...)` as the first line of a relation is what puts it in the
-  journal. Forget it and the relation silently vanishes on save/open.
+- A relation's body must be wrapped in `model.relation(op, args, body)` — that
+  is what journals it *and* what gives it a name and a `del`. Forget it and
+  the relation silently vanishes on save/open.
+- Inside that body use `model.addResidual`, not `model.problem.addResidual`.
+  The wrapper cannot collect a handle it is never told about, and a block
+  added straight to the problem belongs to no relation and can never be
+  removed.
 
 ## The layer rule
 

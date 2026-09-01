@@ -5,6 +5,8 @@ import { ensureKernelLoaded } from "../src/kernel/problem.ts";
 import { Model } from "../src/model.ts";
 import { hitTest, describePick, PICK_POINT } from "../src/picking.ts";
 import { worldToScreen, type View } from "../src/view.ts";
+import { coincident, fix, horizontal } from "../src/relations/basic.ts";
+import { del } from "../src/operations.ts";
 
 async function loadKernel() {
   const bytes = await readFile(new URL("../src/kernel/wasm-gen/neocad_kernel_bg.wasm", import.meta.url));
@@ -126,4 +128,27 @@ test("describePick says something useful for each kind", async () => {
   assert.equal(describePick(m, { name: "a", kind: "point", distance: 0 }), "a  1.5, 2");
   assert.equal(describePick(m, { name: "c", kind: "circle", distance: 0 }), "c  r 7");
   assert.equal(describePick(m, { name: "l", kind: "line", distance: 0 }), "l  a–b  len 5");
+});
+
+test("the hover tag names the relations constraining what is under the cursor", async () => {
+  await loadKernel();
+  const m = new Model(2);
+  m.addPoint([1.5, 2], "a");
+  m.addPoint([4.5, 6], "b");
+  m.addLine("a", "b", "l");
+  fix(m, "a", [1.5, 2]);      // r1
+  coincident(m, "a", "b");    // r2
+  horizontal(m, "l");         // r3
+
+  // This is the whole of the visibility story: a constraint a tool inferred on
+  // your behalf now says so somewhere you will actually look.
+  assert.equal(describePick(m, { name: "a", kind: "point", distance: 0 }), "a  1.5, 2  ·  r1 r2");
+  assert.equal(describePick(m, { name: "l", kind: "line", distance: 0 }), "l  a–b  len 5  ·  r3");
+
+  // ...and says nothing at all when there is nothing to say.
+  m.addPoint([9, 9], "free");
+  assert.equal(describePick(m, { name: "free", kind: "point", distance: 0 }), "free  9, 9");
+
+  del(m, "r2");
+  assert.equal(describePick(m, { name: "a", kind: "point", distance: 0 }), "a  1.5, 2  ·  r1");
 });

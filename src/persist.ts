@@ -59,6 +59,13 @@ function replayTable(model: Model): Map<string, (...args: unknown[]) => unknown>
     addArc: bound("addArc"),
     setCoords: bound("setCoords"),
     retargetLine: bound("retargetLine"),
+    // Deletion is journalled as its *expansion* — one entry per name `del`
+    // removed — rather than as the `del` call itself, so a replay removes
+    // exactly what was removed rather than recomputing a cascade against a
+    // model that may have been built differently since. Old files carry
+    // neither op and open unchanged; there is nothing to version-bump.
+    deleteEntity: bound("deleteEntity"),
+    deleteRelation: bound("deleteRelation"),
 
     dist: rel(basic.dist),
     fix: rel(basic.fix),

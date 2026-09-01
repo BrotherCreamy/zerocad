@@ -1,5 +1,9 @@
 # Plan: relation identity, deletion, and cascade
 
+**Shipped, pending review** — branch `claude/constraint-deletion`, PR against
+`claude/resume-tasks-o7q02e`. Built as specified; the deviations are listed at
+the bottom of this file under "What shipped differently, and why".
+
 **Status: queued.** The largest infrastructure item on the list, and the one
 inference made urgent: tools now create constraints on the user's behalf, and
 a constraint you cannot see or remove is a trap. Onshape shows its constraints
@@ -123,3 +127,36 @@ tip of `claude/resume-tasks-o7q02e`, PR against the working branch. Three
 commits: (1) relation registry + kernel `removeBlock` + unit tests;
 (2) `del` with cascade + journal/replay + commands + unit tests;
 (3) hover tag + e2e + docs.
+
+## What shipped differently, and why
+
+Four things, none of them large, all of them decided while building:
+
+1. **A relation defined in terms of another is one relation, not two.**
+   `concentric` is a `coincident` on two centres and `arcEndpoints` is two
+   `onCircle`s; the inner calls now contribute their blocks to the outer
+   registry entry rather than registering separately. Two entries claiming
+   the same blocks cannot both be right — deleting either would leave the
+   other holding handles the kernel has already forgotten, and the kernel is
+   specified to throw on exactly that. Absorbing the inner call also fixed a
+   latent bug the registry made visible: both calls used to journal, so
+   reopening a file with a `conc` or an `arcends` in it silently added the
+   inner constraint a second time.
+2. **A relation that throws leaves no trace.** Its blocks come back out and
+   the `r` counter is restored. Without this a mistyped relation would shift
+   every later auto-name by one, and a replay — which only performs the calls
+   that succeeded — would not agree with the session it came from. §1 asks
+   for replay determinism; this is part of paying for it.
+3. **Entities and relations share one namespace.** `del("r3")` has to mean
+   one thing, so a point may not be called `r3` while a relation is.
+4. **The `del` command re-solves through the host.** Every other editing
+   command leaves the status line to the next solve. Deleting a constraint is
+   the one edit whose *purpose* is to change the solver's verdict, and
+   leaving `CONFLICT` on the header after removing the constraint that caused
+   it is precisely the stale-readout bug this project has already been bitten
+   by once. Nothing moves — the drawing was satisfying more than it now has
+   to — so it costs a frame and buys an honest header.
+
+Not done, deliberately: variable compaction (tombstones ship as specified,
+and the leak is documented in `STATUS.md`), and constraint glyphs on the
+canvas, which are the follow-up spec this package exists to make possible.

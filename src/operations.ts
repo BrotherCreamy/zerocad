@@ -6,7 +6,7 @@
 // with different eyes: a relation can only ever over- or under-constrain,
 // while an operation can leave the model malformed.
 
-import type { Model } from "./model.ts";
+import type { Entity, Model } from "./model.ts";
 import { arcEndpoints, radius, tangent } from "./relations/geometry.ts";
 
 function unit(v: number[]): number[] {
@@ -113,4 +113,103 @@ function filletBody(model: Model, l1Name: string, l2Name: string, r: number): st
   tangent(model, l2Name, arc.name);
 
   return arc.name;
+}
+
+// --- deletion ---------------------------------------------------------------
+
+/**
+ * Deletes an entity or a relation by name, taking with it whatever could not
+ * survive without it. Returns the names it removed, deletion order first.
+ *
+ * The cascade is Onshape's, and deliberately so — people arrive knowing it:
+ *
+ * - a **relation** takes nothing else. Removing a constraint is the one
+ *   deletion that cannot break anything: the drawing is simply freer.
+ * - a **point** takes everything that references it — a line's endpoint, a
+ *   circle's centre, an arc's centre/start/end — recursively, and then every
+ *   relation naming any of them. The alternative is a line whose endpoint
+ *   does not exist, which is not an over-constrained model the solver can
+ *   complain about but a model that throws the next time it is drawn.
+ * - a **line, circle or arc** takes the relations naming it and nothing more.
+ *   Its points were the user's points first, and are usually still wanted.
+ *
+ * **The confirmation is undo, not a prompt.** `del` is one user action, so a
+ * cascade that took more than was meant is one Ctrl+Z from harmless — the
+ * pattern `open()` already set. That is also why the removed names are
+ * returned rather than merely logged: "what did that just take with it" is a
+ * question worth being able to answer afterwards.
+ *
+ * **Variables are tombstoned, not compacted.** A deleted point's variables
+ * stay in the flat vector, referenced by nothing; the damped solve leaves
+ * orphans exactly where they are, so they cost memory and not correctness.
+ * Compaction means remapping every captured index list inside every closure —
+ * real work with real risk, and the boring design ships first. The leak is
+ * bounded by how much a session deletes, and a save/reopen does not shed it
+ * either: replay re-runs the same creates and the same deletes.
+ *
+ * This is an *operation*, not a relation: it changes structure rather than
+ * adding equations, and it can leave the model malformed if the cascade is
+ * wrong. It is journalled as its **expansion** — one `deleteEntity` or
+ * `deleteRelation` per name — rather than as the single `del` call, so a
+ * replay removes exactly what was removed rather than recomputing a cascade
+ * against a model that may since have been built differently.
+ */
+export function del(model: Model, name: string): string[] {
+  const isEntity = model.entities.has(name);
+  const isRelation = model.relations.has(name);
+  if (!isEntity && !isRelation) throw new Error(`"${name}" is not an entity or a relation`);
+
+  const doomed = isEntity ? entityClosure(model, name) : new Set<string>();
+  // Every relation that names anything on the way out, plus the relation
+  // itself when that is what was asked for.
+  const relations = [...model.relations.values()]
+    .filter((r) => (isRelation && r.name === name) || r.args.some((a) => typeof a === "string" && doomed.has(a)))
+    .map((r) => r.name);
+
+  const removed: string[] = [];
+  // Relations first: an entity cannot go while something still constrains it,
+  // and the primitive says so rather than leaving a dangling residual.
+  for (const r of relations) {
+    model.deleteRelation(r);
+    removed.push(r);
+  }
+  // Then entities, dependents before the things they depend on. A pass at a
+  // time rather than a hand-written order, so this stays right if an entity
+  // kind that references another entity is ever added.
+  const left = new Set(doomed);
+  while (left.size) {
+    const ready = [...left].filter((n) => model.dependents(n).length === 0);
+    if (!ready.length) throw new Error(`cannot untangle the references around "${name}"`);
+    for (const n of ready) {
+      model.deleteEntity(n);
+      removed.push(n);
+      left.delete(n);
+    }
+  }
+  return removed;
+}
+
+/**
+ * The entities that cannot outlive `name`: itself, whatever references it,
+ * whatever references those, and so on. In creation order, so the answer — and
+ * therefore the journal a replay reads — does not depend on Set iteration
+ * order of a worklist.
+ *
+ * Note the asymmetry that makes the cascade Onshape's rather than merely
+ * transitive: it follows *references inward* (who needs me) and never outward
+ * (what do I need). Deleting a line therefore reaches nothing, while deleting
+ * one of its endpoints reaches the line.
+ */
+function entityClosure(model: Model, name: string): Set<string> {
+  const found = new Set<string>();
+  const queue = [name];
+  while (queue.length) {
+    const n = queue.shift()!;
+    if (found.has(n)) continue;
+    found.add(n);
+    for (const d of model.dependents(n)) queue.push(d.name);
+  }
+  const ordered = new Set<string>();
+  for (const e of model.entities.values() as Iterable<Entity>) if (found.has(e.name)) ordered.add(e.name);
+  return ordered;
 }

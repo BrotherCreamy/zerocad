@@ -109,9 +109,31 @@ export function hitTest(model: Model, view: View, sx: number, sy: number): Pick 
   return best;
 }
 
-/** A short description of a pick, for the hover tag. */
+/**
+ * A short description of a pick, for the hover tag — and the whole of this
+ * package's *visibility* story.
+ *
+ * The tag ends with the names of the relations constraining what is under the
+ * cursor (`p5  12, 30 · r3 r7`). That is what makes an inferred constraint
+ * answerable for: a tool that quietly made your new corner coincident with an
+ * old one has now said so somewhere you will look, and the flow from noticing
+ * to undoing it needs no new interaction model — hover to see `r7`, click to
+ * put the name in the command line, type `del("r7")`.
+ *
+ * Constraint glyphs drawn on the canvas are the fuller answer and a follow-up;
+ * they build on the same registry.
+ */
 export function describePick(model: Model, pick: Pick): string {
   const n = (v: number) => (Math.round(v * 1000) / 1000).toString();
+  return `${describeGeometry(model, pick, n)}${relationTag(model, pick.name)}`;
+}
+
+function relationTag(model: Model, name: string): string {
+  const rs = model.relationsNaming(name);
+  return rs.length ? `  ·  ${rs.map((r) => r.name).join(" ")}` : "";
+}
+
+function describeGeometry(model: Model, pick: Pick, n: (v: number) => string): string {
   switch (pick.kind) {
     case "point":
       return `${pick.name}  ${model.coords(pick.name).map(n).join(", ")}`;
