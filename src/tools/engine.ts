@@ -14,6 +14,7 @@ import type { Model } from "../model.ts";
 import { getToolCtor, type Tool, type ToolContext, type PointerInfo, type RenderContext } from "./tool.ts";
 import { assignView, panBy, screenToWorld, worldToScreen, zoomAbout, type View } from "../view.ts";
 import { hitTest, type Pick } from "../picking.ts";
+import { findSnap, type Snap } from "../snapping.ts";
 
 export type { View };
 
@@ -47,6 +48,14 @@ export class ToolEngine {
   private idle: { id: number; sx: number; sy: number; x0: number; y0: number; moved: boolean } | null = null;
   /** What the cursor is over, for the highlight and the hover tag. */
   hover: Pick | null = null;
+  /**
+   * Where the cursor is being treated as being, while a tool is drawing.
+   * Null when nothing is near enough to snap to, or when no tool is armed —
+   * snapping is for placing geometry, not for looking around.
+   */
+  snap: Snap | null = null;
+  /** Set false to place coordinates exactly where the cursor is. */
+  snapping = true;
 
   constructor(
     model: Model,
@@ -117,6 +126,7 @@ export class ToolEngine {
       requestSolve: () => this.onSolveRender(),
       finish: () => {
         this.active = null;
+        this.snap = null;
       },
       pick: ([sx, sy]) => hitTest(this.model, this.view, sx, sy),
     };
@@ -127,6 +137,7 @@ export class ToolEngine {
     this.active?.onCancel();
     this.active = null;
     this.idle = null;
+    this.snap = null;
     this.onRenderOnly();
   }
 
@@ -167,19 +178,33 @@ export class ToolEngine {
       return;
     }
 
-    // Hover is informational and updates whether or not a tool is armed, but
-    // not while a button is down — mid-gesture the cursor is doing something
-    // else and a flickering highlight is just noise.
-    if (kind === "move" && e.buttons === 0) this.updateHover(sx, sy);
+    // Hover is for looking around with nothing armed. Once a tool is armed the
+    // snap marker is the feedback that matters, and two highlights competing
+    // for the same cursor is worse than one — so hover stops entirely rather
+    // than going stale behind the gesture.
+    if (this.active) {
+      if (this.hover) { this.hover = null; this.onRenderOnly(); }
+    } else if (kind === "move" && e.buttons === 0) {
+      this.updateHover(sx, sy);
+    }
 
     if (this.active) {
       if (kind === "down" && e.button !== 0) return; // the left button is the tool's
-      const info: PointerInfo = { world: this.screenToWorld(sx, sy), screen: [sx, sy] };
+
+      // The tool is handed a *snapped* world coordinate and never learns that
+      // anything happened — which is the point. A tool should be about its own
+      // gesture, not about how precise the cursor is.
+      this.snap = this.snapping ? findSnap(this.model, this.view, sx, sy) : null;
+      const world = this.snap ? this.snap.world : this.screenToWorld(sx, sy);
+      const info: PointerInfo = { world, screen: [sx, sy] };
+
       if (kind === "down") this.active.onDown(info);
       else if (kind === "move") this.active.onMove(info);
       else this.active.onUp(info);
+      if (kind === "move") this.onRenderOnly(); // so the snap marker follows
       return;
     }
+    this.snap = null;
 
     // Nothing armed: the left button pans if it moves and picks if it doesn't.
     if (kind === "down" && e.button === 0) {
@@ -221,5 +246,33 @@ export class ToolEngine {
     if (!this.active) return;
     const r: RenderContext = { g: this.g, worldToScreen: (w) => this.worldToScreen(w) };
     this.active.render(r);
+    this.renderSnapMarker();
+  }
+
+  /**
+   * A marker showing what the cursor has been pulled onto. Drawn after the
+   * tool's own preview so it is never hidden by it — if the cursor is not
+   * where it looks, that has to be the most visible thing on screen.
+   */
+  private renderSnapMarker(): void {
+    if (!this.snap) return;
+    const [x, y] = this.snap.screen;
+    const g = this.g;
+    g.save();
+    g.strokeStyle = "#55c07a";
+    g.lineWidth = 1.6;
+    g.beginPath();
+    if (this.snap.kind === "point") {
+      g.rect(x - 5, y - 5, 10, 10); // a square: an exact, existing point
+    } else if (this.snap.kind === "midpoint") {
+      g.moveTo(x, y - 6); // a triangle: derived, but still an exact position
+      g.lineTo(x + 6, y + 5);
+      g.lineTo(x - 6, y + 5);
+      g.closePath();
+    } else {
+      g.arc(x, y, 5, 0, Math.PI * 2); // a circle: somewhere along a curve
+    }
+    g.stroke();
+    g.restore();
   }
 }

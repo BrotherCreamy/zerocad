@@ -150,7 +150,10 @@ async function main() {
   // The hover tag follows the cursor and names whatever is under it.
   cv.addEventListener("pointermove", (e) => {
     const pick = engine.hover;
-    if (!pick || !model.entities.has(pick.name)) {
+    // No tag while a tool is armed: the snap marker is saying the useful thing
+    // by then, and a tag left over from before the gesture would follow the
+    // cursor showing a name that is no longer under it.
+    if (!pick || engine.active || !model.entities.has(pick.name)) {
       hoverEl.hidden = true;
       return;
     }
@@ -168,6 +171,10 @@ async function main() {
       view,
       arm: (name: string, options?: Record<string, unknown>) => engine.arm(name, options),
       pick: () => engine.hover?.name ?? null,
+      snapping: (on?: boolean) => {
+        if (on !== undefined) engine.snapping = on;
+        return engine.snapping;
+      },
       cancel: () => engine.cancel(),
       refresh: () => { solveAndRender(); },
       solve: () => solveAndRender(),

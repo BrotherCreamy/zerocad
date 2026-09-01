@@ -10,10 +10,14 @@ Checked items stay for one release's worth of history, then move out to
 
 Roughly in the order that unblocks the most.
 
-- [ ] **Hover snaps.** Snap to endpoints, midpoints, centres and
-      intersections while a tool is dragging. `hitTest` is most of the work;
-      what's left is feeding the snapped point to the armed tool instead of
-      the raw cursor position, and drawing the snap marker.
+- [ ] **Snap to intersections.** Points, midpoints and positions along a
+      curve are done; where two curves cross is the obvious gap, and needs
+      real intersection maths rather than a nearest-point projection.
+- [ ] **Welding coincident points.** Snapping moves the cursor but never
+      reuses an existing point — a rectangle drawn corner-to-corner on
+      another lands two points at the same place rather than sharing one.
+      Sharing is often what's wanted, but not always, and it is destructive
+      to guess. Probably a `weld` operation, or `coin` applied on commit.
 - [ ] **Dragging a point with the mouse.** cellwork solves with soft
       residuals pulling the dragged point toward the cursor (weight ~0.12) so
       the rest of the model follows its constraints — a very natural
@@ -59,6 +63,7 @@ Roughly in the order that unblocks the most.
 
 ## Done
 
+- [x] Snapping — a tool's cursor is pulled onto points, midpoints and curves
 - [x] The fillet tool — click two edges to round the corner
 - [x] Picking and hover — click geometry to drop its name in the command line
 - [x] Browser verification in the repo as `npm run test:e2e`

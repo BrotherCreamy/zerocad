@@ -106,6 +106,45 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### Snapping, and what cellwork actually meant by it
+
+Both READMEs list "hover snaps" among cellwork's proven ideas, so the first
+job was working out what that actually referred to. Reading the source: in
+cellwork, pointer tools fill *argument slots*, so clicking an existing point
+used that point and clicking empty space auto-created one. The snap fell out
+of picking — there was no geometric snapping at all.
+
+neocad's tools are gesture-based rather than slot-based (you drag a rectangle,
+you don't fill in its four corners), so the direct port doesn't apply. The
+same *idea* — a click near existing geometry should mean that geometry, not
+something a pixel away from it — lands here as snapping the coordinate a tool
+receives.
+
+Which turns out to be the better shape for this codebase anyway, because the
+tool never learns anything happened. `rectangle.ts` needed no changes at all;
+it asks for `p.world` and gets a snapped one. A tool should be about its own
+gesture, not about how precise the cursor is.
+
+The marker is drawn after the tool's own preview rather than before, which is
+deliberate: if the cursor is not where it looks, that has to be the most
+visible thing on screen, not something a dashed rectangle can cover.
+
+**One thing deliberately not done.** Snapping moves the cursor; it does not
+reuse the point it snapped to. Drawing a rectangle on the corner of another
+leaves two points in the same place rather than sharing one. Sharing is often
+what you want — and sometimes badly not, and it cannot be undone by moving
+something afterwards. Conflating "be precise" with "merge these" would make
+snapping quietly destructive, so welding is on `TODO.md` as its own decision
+with its own consequences.
+
+**And another screenshot bug**, which is now a reliable enough pattern to
+expect. The first render showed the hover tag following the cursor mid-drag,
+still naming the point that had been under it *before* the gesture started —
+sitting next to a snap marker that was correctly reporting something else
+entirely. Hover now stops the moment a tool is armed. Two highlights competing
+for one cursor is worse than one, and the snap marker is the one that matters
+while something is being drawn.
+
 ### The fillet tool
 
 The first thing built on picking, and the thing picking was for. `fillet` as

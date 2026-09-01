@@ -7,6 +7,40 @@ decisions.
 
 ---
 
+## Snapping
+
+While a tool is drawing, the cursor is pulled onto nearby geometry — so a
+rectangle dragged corner-to-corner on an existing one lands *exactly* on both,
+not a pixel and a half off.
+
+![A rectangle being dragged from an existing corner, with a green triangle marking a snap to the midpoint of the top edge](docs/images/07-snapping.png)
+
+Three kinds, in tiers that mirror picking's: an existing **point** (square
+marker), the **middle of an edge** (triangle), or the nearest position along a
+**curve** (circle). Tolerances are in screen pixels, so they hold at any zoom.
+
+The tool is handed a snapped coordinate and never learns anything happened,
+which is the point — a tool should be about its own gesture, not about how
+precise the cursor is. `rectangle.ts` needed no changes at all.
+
+The marker is drawn *after* the tool's own preview, so it can't be hidden by
+it. If the cursor is not where it looks, that had better be the most visible
+thing on screen.
+
+**Snapping only moves the cursor.** It does not reuse the point it snapped to,
+so drawing a rectangle on the corner of another leaves two points in the same
+place rather than sharing one. Sharing is often what you want and sometimes
+badly not, and guessing is destructive — welding is on `TODO.md` as its own
+decision. `snapping(false)` turns the whole thing off.
+
+The screenshot above caught a bug on its first render, which is becoming a
+theme: the hover tag kept following the cursor mid-drag, still naming whatever
+had been under it *before* the gesture started. Hover now stops entirely once a
+tool is armed — the snap marker is the feedback that matters by then, and two
+highlights competing for one cursor is worse than one.
+
+---
+
 ## The fillet tool
 
 Click two edges that meet; the corner rounds. The first tool built on picking,

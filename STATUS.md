@@ -245,6 +245,21 @@ replacing) the system Node other projects on this machine may depend on.
   cancelled gesture, and a corner the operation refuses keeps the first edge so
   the second pick can be retried.
 
+- **Snapping** (`src/snapping.ts`) — while a tool is drawing, the cursor is
+  pulled onto whatever meaningful geometry is near it: an existing point, the
+  middle of an edge, or the nearest position along a line or rim. Tolerances
+  are in screen pixels and the tiers mirror picking's, for the same reason.
+  The tool is handed a snapped world coordinate and **never learns that
+  anything happened** — a tool should be about its own gesture, not about how
+  precise the cursor is. A marker shows what was caught (square for an exact
+  point, triangle for a midpoint, circle for somewhere along a curve), drawn
+  after the tool's own preview so it can never be hidden by it: if the cursor
+  is not where it looks, that has to be the most visible thing on screen.
+  Snapping only *moves* the cursor. It does not reuse the point it snapped to
+  — welding coincident geometry is a separate, destructive decision and
+  conflating the two would make snapping quietly lossy. `snapping(false)`
+  turns it off.
+
 ## What's next
 
 The working list lives in [`TODO.md`](TODO.md), so it has one home rather

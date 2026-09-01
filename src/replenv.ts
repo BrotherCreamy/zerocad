@@ -28,6 +28,8 @@ export interface EnvHandles {
   arm?: (toolName: string, options?: Record<string, unknown>) => void;
   /** The name of whatever the cursor is currently over, if anything. */
   pick?: () => string | null;
+  /** Turns cursor snapping on or off; reports the current state when given nothing. */
+  snapping?: (on?: boolean) => boolean;
   /** Cancels whatever tool is armed. */
   cancel?: () => void;
   /** Re-solves and redraws. Absent outside the browser. */
@@ -173,6 +175,10 @@ export function neocadScope(h: EnvHandles): Bag {
     },
     cancel: () => { h.cancel?.(); return "cancelled"; },
     hover: () => h.pick?.() ?? null,
+    snapping: (on?: boolean) => {
+      if (!h.snapping) throw new Error("no viewport in this environment");
+      return h.snapping(on);
+    },
     refresh: () => { h.refresh?.(); return "ok"; },
 
     // Viewport control as an ordinary command, per the brief's goal of having
@@ -206,7 +212,7 @@ function help(scope: Bag): string {
     "operations fillet(line1, line2, radius)",
     "files      save()  open(text)  download(name)  openFile()  journal()",
     "viewport   arm(tool, opts)  cancel()  zoom(f)  pan(dx,dy)  refresh()",
-    "inspect    ls()  coords(name)  solve()  tools()  hover()  model",
+    "inspect    ls()  coords(name)  solve()  tools()  hover()  snapping(on)  model",
     "authoring  Tool  defineTool(name, ctor)  Dual",
     "",
     "A bare assignment persists between entries (box = class extends Tool {…});",
