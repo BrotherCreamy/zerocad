@@ -50,7 +50,7 @@ export function placePoint(ctx: ToolContext, info: PointerInfo, name?: string): 
  * defensive rather than reachable.)
  */
 export function inferFromSnap(model: Model, pointName: string, snap: Snap): void {
-  const target = model.entities.get(snap.target);
+  const target = model.entities.get(snap.targets[0]);
   if (!target || target.name === pointName) return;
 
   switch (snap.kind) {

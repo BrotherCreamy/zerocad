@@ -19,8 +19,8 @@ async function screenOf(name: string) {
   return app.at(sx, sy);
 }
 const snapState = () => app.page.evaluate(() => {
-  const s = (window as never as { __neocad: { engine: { snap: { kind: string; target: string } | null } } }).__neocad.engine.snap;
-  return s ? { kind: s.kind, target: s.target } : null;
+  const s = (window as never as { __neocad: { engine: { snap: { kind: string; targets: string[] } | null } } }).__neocad.engine.snap;
+  return s ? { kind: s.kind, targets: s.targets } : null;
 });
 
 before(async () => {
@@ -51,7 +51,7 @@ test("the snap marker reports what it caught", async () => {
   const target = await screenOf("p2");
   await app.page.mouse.move(target.x + 3, target.y + 2);
   await app.page.waitForTimeout(150);
-  assert.deepEqual(await snapState(), { kind: "point", target: "p2" });
+  assert.deepEqual(await snapState(), { kind: "point", targets: ["p2"] });
 
   // The middle of an edge is a different kind of snap.
   const m = await app.model();
@@ -65,7 +65,7 @@ test("the snap marker reports what it caught", async () => {
   const mid = await app.at(sx, sy);
   await app.page.mouse.move(mid.x + 2, mid.y - 2);
   await app.page.waitForTimeout(150);
-  assert.deepEqual(await snapState(), { kind: "midpoint", target: m.lines[0].name });
+  assert.deepEqual(await snapState(), { kind: "midpoint", targets: [m.lines[0].name] });
   await app.type("cancel()");
 });
 

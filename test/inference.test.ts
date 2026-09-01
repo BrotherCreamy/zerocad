@@ -125,12 +125,12 @@ test("placePoint: a curve snap on a line becomes pointOnLine; on a rim, onCircle
   const ctx = fakeCtx(model);
 
   const onEdge = nearMiss(model, [10, 0], 0, 1);
-  assert.deepEqual([onEdge.snap?.kind, onEdge.snap?.target], ["curve", "l"]);
+  assert.deepEqual([onEdge.snap?.kind, onEdge.snap?.targets?.[0]], ["curve", "l"]);
   placePoint(ctx, onEdge, "q");
   assert.deepEqual(model.journal.at(-1), { op: "pointOnLine", args: ["q", "l"] });
 
   const onRim = nearMiss(model, [10, 60], 1, 1);
-  assert.deepEqual([onRim.snap?.kind, onRim.snap?.target], ["curve", "c"]);
+  assert.deepEqual([onRim.snap?.kind, onRim.snap?.targets?.[0]], ["curve", "c"]);
   placePoint(ctx, onRim, "r");
   assert.deepEqual(model.journal.at(-1), { op: "onCircle", args: ["r", "c"] });
 
