@@ -173,6 +173,25 @@ test("solve() still works with no host attached", async () => {
   assert.equal(((await run(repl, "solve()")).value as { solved: boolean }).solved, true);
 });
 
+test("frames are reachable from the command line, and hor needs one", async () => {
+  await loadKernel();
+  // Deliberately unframed: a new model has no coordinate frame at all, and
+  // this checks the command surface says so rather than quietly picking one.
+  const { repl, model } = makeRepl(new Model(2), false);
+  await run(repl, "l = ln()");
+  const bare = await repl.eval("hor(l)");
+  assert.equal(bare.ok, false);
+  assert.match(bare.error!.message, /no default frame — frame\(\) then setDefaultFrame\(\)/);
+  assert.equal((await run(repl, "defaultFrame()")).value, null);
+
+  assert.equal((await run(repl, "frame()")).value, "f1", "the constructor hands back its name");
+  assert.equal((await run(repl, 'setDefaultFrame("f1")')).value, "f1");
+  assert.equal((await run(repl, "defaultFrame()")).value, "f1");
+  await run(repl, "hor(l)");
+  assert.deepEqual(model.relations.get("r1")!.args, ["l1", "f1"], "and the entry names it");
+  assert.match(String((await run(repl, "help()")).value), /setDefaultFrame\(name\)/);
+});
+
 test("ls() and help() describe what is there", async () => {
   const { repl } = makeRepl();
   await run(repl, "pt(1, 2)");
