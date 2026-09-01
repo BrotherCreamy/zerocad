@@ -7,6 +7,58 @@ decisions.
 
 ---
 
+## Dragging geometry
+
+The interaction the solver was built for: with nothing armed, press on a point
+and pull. The geometry follows the cursor *while every constraint holds*.
+
+![A constrained rectangle mid-drag: the bottom-left corner p1 is fixed and has not moved, while the opposite corner p3 has been pulled up and to the right — the rectangle has resized to follow it and all four edges are still exactly level or plumb. The header reads SOLVED](docs/images/10-drag.png)
+
+That is a frame from the middle of a gesture, with the button still down. The
+rectangle's edges carry `hor`/`ver` and `p1` carries a `fix`; the corner
+opposite is being dragged, and the two corners between it and the fixed one
+are going along because the constraints say they must.
+
+**The mechanism is a residual that lasts one solve.** `Problem.solve()` now
+takes `extra?: ResidualBlock[]`: blocks evaluated alongside the stored ones at
+every iteration of that solve, added to nothing, gone when it returns. Each
+pointer move solves with a soft pull toward the cursor — `(x - cursor.x) *
+0.12` per coordinate, cellwork's weight — and renders. Release runs one
+ordinary solve without the pull, which is what settles the model and updates
+the header. The weight is the whole feel of the thing: small enough that a real
+constraint wins outright, large enough that geometry nothing constrains sits
+under the cursor exactly.
+
+**A soft pull may never accuse.** Extras are excluded from the offender report
+and from `maxResidual`, because a residual that never reaches zero is doing
+what it was asked to do, and letting it into the report would paint `CONFLICT`
+across the header for the duration of every drag.
+
+**What the tests caught, and it is arithmetic rather than a bug:** least
+squares weighs everything at once, so a cursor dragged far past where a point
+can follow does not stall against the constraints — it trades against them, and
+the drawing goes slightly out of true for as long as the button is held (at w =
+0.12, the overshoot divided by about 71). In ordinary use the cursor is a pixel
+or two from the point it is pulling and this is invisible. It is nonetheless
+the reason intermediate frames never touch the status line, and the reason
+release solves again: that solve puts everything back to 1e-6.
+
+A **`fix`ed point needs no special case** — the pull loses to the fix residuals
+and the point stays put, which falls out of the mathematics rather than being
+checked for. And **nothing is journalled**: a drag changes values, not
+structure, and a saved file already carries solved coordinates, so a dragged
+drawing round-trips through save/open unchanged.
+
+Deliberately not in this version, each a known difference from Onshape and each
+a follow-up rather than an oversight: **only points drag** (press an edge or a
+rim and it still pans, exactly as before); **no inference or snapping while
+dragging**, which Onshape does do; and **no undo**, because nothing here has
+undo yet — for now a drag is undone by dragging back.
+
+Seven new unit tests and six new end-to-end ones, the latter including the two
+gestures dragging shares its button with: a press that does not move is still a
+pick, and a press that is not on a point still pans. 131 unit, 3 kernel, 63 e2e.
+
 ## The line tool
 
 Point, rectangle, circle, arc, fillet — and, until now, not the most basic
