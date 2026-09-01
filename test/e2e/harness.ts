@@ -16,7 +16,12 @@ import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { chromium, type Browser, type Page } from "playwright";
 
-export const APP_URL = "http://localhost:5173/";
+/**
+ * Where the app under test lives. run.ts sets this to the private server it
+ * started for exactly this run; the 5173 fallback only matters when a single
+ * spec file is run by hand against `npm run dev`.
+ */
+export const APP_URL = process.env.NEOCAD_E2E_URL ?? "http://localhost:5173/";
 
 /**
  * Playwright refuses to launch unless the browser build it was compiled
@@ -80,8 +85,8 @@ async function serverIsUp(): Promise<boolean> {
 async function requireServer(): Promise<void> {
   if (await serverIsUp()) return;
   throw new Error(
-    `no dev server at ${APP_URL}. Run the suite with \`npm run test:e2e\`, which starts one, ` +
-    "or start it yourself with `npm run dev`.",
+    `no dev server at ${APP_URL}. Run the suite with \`npm run test:e2e\`, which starts its own ` +
+    "on a private port — or start one with `npm run dev` and point NEOCAD_E2E_URL at it.",
   );
 }
 

@@ -6,35 +6,63 @@
 // means it is reliably torn down — a spawned child keeps its parent alive, so
 // a test process that starts a server never exits on its own.
 //
-// If a dev server is already running (`npm run dev` in another terminal) this
-// reuses it and leaves it alone.
+// **Every run claims its own free port.** The runner used to reuse anything it
+// found on 5173, which was convenient right up until more than one checkout of
+// this repo existed on a machine: with implementation work running in isolated
+// worktrees, a suite that reuses "the" dev server can silently test another
+// worktree's code — and pass, for the wrong tree. A test that can pass for the
+// wrong code is worse than no test. To point the suite at a server you manage
+// yourself, set NEOCAD_E2E_URL explicitly; nothing is ever reused by accident.
 
 import { spawn } from "node:child_process";
-import { APP_URL } from "./harness.ts";
+import { createServer } from "node:net";
 
 const root = new URL("../..", import.meta.url).pathname;
 
-async function serverIsUp(): Promise<boolean> {
+async function isUp(url: string): Promise<boolean> {
   try {
-    return (await fetch(APP_URL, { signal: AbortSignal.timeout(1500) })).ok;
+    return (await fetch(url, { signal: AbortSignal.timeout(1500) })).ok;
   } catch {
     return false;
   }
 }
 
+/** A port the OS says is free right now. */
+function freePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const srv = createServer();
+    srv.once("error", reject);
+    srv.listen(0, "127.0.0.1", () => {
+      const { port } = srv.address() as { port: number };
+      srv.close(() => resolve(port));
+    });
+  });
+}
+
 async function main(): Promise<number> {
-  const reused = await serverIsUp();
-  // Vite's binary directly, not `npm run dev`: npm spawns a shell which
-  // spawns vite, so killing what we spawned would leave the real server
-  // orphaned and the port held for the next run.
-  const viteBin = new URL("../../node_modules/vite/bin/vite.js", import.meta.url).pathname;
-  const server = reused ? null : spawn(process.execPath, [viteBin], { cwd: root, stdio: "ignore" });
-  if (reused) console.log("using the dev server already running on 5173");
+  const explicit = process.env.NEOCAD_E2E_URL;
+  let url: string;
+  let server: ReturnType<typeof spawn> | null = null;
+
+  if (explicit) {
+    url = explicit;
+    if (!(await isUp(url))) throw new Error(`NEOCAD_E2E_URL is set to ${url}, but nothing answers there`);
+    console.log(`testing against ${url} (NEOCAD_E2E_URL)`);
+  } else {
+    const port = await freePort();
+    url = `http://localhost:${port}/`;
+    // Vite's binary directly, not `npm run dev`: npm spawns a shell which
+    // spawns vite, so killing what we spawned would leave the real server
+    // orphaned and the port held for the next run. --strictPort so a race for
+    // the port fails loudly instead of vite drifting to a neighbouring one.
+    const viteBin = new URL("../../node_modules/vite/bin/vite.js", import.meta.url).pathname;
+    server = spawn(process.execPath, [viteBin, "--port", String(port), "--strictPort"], { cwd: root, stdio: "ignore" });
+  }
 
   try {
     if (server) {
       const deadline = Date.now() + 30_000;
-      while (!(await serverIsUp())) {
+      while (!(await isUp(url))) {
         if (Date.now() > deadline) throw new Error("the dev server did not come up within 30s — try `npm run dev` by hand to see why");
         await new Promise((r) => setTimeout(r, 300));
       }
@@ -43,7 +71,7 @@ async function main(): Promise<number> {
     const tests = spawn(
       process.execPath,
       ["--experimental-strip-types", "--test", "--test-concurrency=2", "test/e2e/*.e2e.ts"],
-      { cwd: root, stdio: "inherit" },
+      { cwd: root, stdio: "inherit", env: { ...process.env, NEOCAD_E2E_URL: url } },
     );
     return await new Promise<number>((resolve) => tests.on("exit", (code) => resolve(code ?? 1)));
   } finally {

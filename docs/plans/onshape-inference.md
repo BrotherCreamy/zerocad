@@ -1,5 +1,8 @@
 # Plan: Onshape-style constraint inference (and a line tool)
 
+> **Shipped** in `bc4573f` (inference) and `1f2a46d` (line tool), reviewed and
+> merged to the working branch. Kept as the design record.
+
 **Decision, made by the project owner:** there is no "weld" concept —
 no mainstream CAD program has one. Tools behave like Onshape/SolidWorks so
 people already know how to use them. When a sketch tool places a point on

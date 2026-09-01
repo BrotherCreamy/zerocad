@@ -5,9 +5,16 @@ what exists; `CHANGELOG.md` is what already happened, newest first.
 
 **How work happens here:** the owner sets direction and can veto
 anything in the register below. Fable (the managing session) writes the specs
-in `docs/plans/`, reviews every diff, and pushes. Opus (the implementing
-session) builds from those specs and commits locally. Nothing reaches the
-remote unreviewed.
+in `docs/plans/` and reviews everything; Opus (the implementing session)
+builds from those specs. As of the kinematic-drag package, each work package
+runs in an **isolated worktree on its own branch and arrives as a PR against
+the working branch** — Fable reviews on the PR (a review comment plus merge,
+or plus close; GitHub does not allow formally approving a PR opened under
+your own identity), so the review record is visible on GitHub rather than
+buried in a chat log. Parallel workers only ever get disjoint specs; the e2e
+runner claims a private port per run so a suite can never silently test
+another worktree's code. `main` stays untouched until the owner says
+otherwise.
 
 ## In flight
 
@@ -97,8 +104,8 @@ starts.
 
 ## Smaller things
 
-- [ ] `docs/plans/` specs that have shipped should gain a one-line "shipped"
-      note at top rather than being deleted — they are the design record.
+- [x] `docs/plans/` specs that have shipped gain a one-line "shipped" note
+      at top rather than being deleted — they are the design record.
 
 ## Done
 
