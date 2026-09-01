@@ -46,6 +46,16 @@ function norm2(r: number[]): number {
   return Math.sqrt(sum);
 }
 
+/** Largest magnitude in `r`, or 0 if it is empty. A loop, for norm2's reason. */
+function maxAbs(r: number[]): number {
+  let worst = 0;
+  for (const v of r) {
+    const mag = Math.abs(v);
+    if (mag > worst) worst = mag;
+  }
+  return worst;
+}
+
 export interface SolveReport {
   solved: boolean;
   iterations: number;
@@ -196,6 +206,6 @@ export class Problem {
     for (const [label, residual] of seen) offenders.push({ label, residual });
     offenders.sort((a, b) => b.residual - a.residual);
 
-    return { solved: offenders.length === 0, iterations, maxResidual: Math.max(0, ...stored.map(Math.abs)), offenders };
+    return { solved: offenders.length === 0, iterations, maxResidual: maxAbs(stored), offenders };
   }
 }

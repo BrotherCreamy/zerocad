@@ -12,12 +12,17 @@ decisions.
 The interaction the solver was built for: with nothing armed, press on a point
 and pull. The geometry follows the cursor *while every constraint holds*.
 
-![A constrained rectangle mid-drag: the bottom-left corner p1 is fixed and has not moved, while the opposite corner p3 has been pulled up and to the right — the rectangle has resized to follow it and all four edges are still exactly level or plumb. The header reads SOLVED](docs/images/10-drag.png)
+| before | during |
+|---|---|
+| ![A rectangle 80 by 60, built from the four commands visible in the log below it: four points, four lines, hor/ver on each edge, and a fix on the bottom-left corner p1](docs/images/10-drag-before.png) | ![The same drawing from the same viewpoint, with p3 dragged up and to the right. p1 has not moved by a pixel; p2 has followed in x and p4 in y; all four edges are still exactly level or plumb](docs/images/11-drag-after.png) |
 
-That is a frame from the middle of a gesture, with the button still down. The
-rectangle's edges carry `hor`/`ver` and `p1` carries a `fix`; the corner
-opposite is being dragged, and the two corners between it and the fixed one
-are going along because the constraints say they must.
+The right-hand frame is from the *middle* of the gesture, with the button still
+down — same viewport, same grid, so the two can be flipped between. `p1` is
+pinned by a `fix` and has not moved by a pixel. `p3` is the corner being
+dragged. `p2` and `p4` were not touched by the cursor at all and moved anyway,
+because `hor` and `ver` on the edges say they must: that is the whole feature
+in one picture, and it is what makes this a *kinematic* drag rather than moving
+a point.
 
 **The mechanism is a residual that lasts one solve.** `Problem.solve()` now
 takes `extra?: ResidualBlock[]`: blocks evaluated alongside the stored ones at
@@ -49,15 +54,21 @@ checked for. And **nothing is journalled**: a drag changes values, not
 structure, and a saved file already carries solved coordinates, so a dragged
 drawing round-trips through save/open unchanged.
 
+**Abandoning a drag settles it.** `Escape` mid-gesture cannot put the geometry
+back — nothing here has undo yet — but it must not leave the cursor's pull
+baked into the drawing either, with the header still reading whatever it did
+before the gesture began. So `cancel()` ends a drag the same way releasing the
+button does: one ordinary solve, through the host's path.
+
 Deliberately not in this version, each a known difference from Onshape and each
 a follow-up rather than an oversight: **only points drag** (press an edge or a
 rim and it still pans, exactly as before); **no inference or snapping while
 dragging**, which Onshape does do; and **no undo**, because nothing here has
 undo yet — for now a drag is undone by dragging back.
 
-Seven new unit tests and six new end-to-end ones, the latter including the two
+Eleven new unit tests and six new end-to-end ones, the latter including the two
 gestures dragging shares its button with: a press that does not move is still a
-pick, and a press that is not on a point still pans. 131 unit, 3 kernel, 63 e2e.
+pick, and a press that is not on a point still pans. 135 unit, 3 kernel, 63 e2e.
 
 ## The line tool
 

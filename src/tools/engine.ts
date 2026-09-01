@@ -175,12 +175,28 @@ export class ToolEngine {
     this.active = new Ctor(ctx);
   }
 
+  /**
+   * Abandons whatever gesture is in progress — Escape, or a model being
+   * swapped out underneath one.
+   *
+   * A drag has to be *settled* rather than merely dropped. Its last frame was
+   * solved with the pull still applied, so the geometry it left behind is the
+   * compromise between the drawing and a cursor that is no longer there, and
+   * the status line still reads whatever it did before the gesture began.
+   * Cancelling therefore ends a drag the same way releasing the button does:
+   * one ordinary solve through the host's path. There is nothing else it
+   * *could* mean, since nothing here has undo yet — "cancel" cannot put the
+   * geometry back, so the least it can do is not leave a pull baked into it.
+   */
   cancel(): void {
     this.active?.onCancel();
     this.active = null;
+    const wasDragging = this.idle?.moved === true
+      && this.idle.point !== null && this.model.entities.has(this.idle.point);
     this.idle = null;
     this.snap = null;
-    this.onRenderOnly();
+    if (wasDragging) this.onSolveRender();
+    else this.onRenderOnly();
   }
 
   private dispatch(kind: "down" | "move" | "up", e: PointerEvent): void {

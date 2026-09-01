@@ -115,6 +115,9 @@ starts.
       go leaves the drawing a little out of true until release. Invisible at
       ordinary cursor distances, and the settling solve undoes it exactly; it
       is the reason mid-drag frames must not touch the status line.
+      Abandoning a drag (Escape, or opening a file mid-gesture) settles it with
+      one ordinary solve rather than dropping it, or the cursor's pull stays
+      baked into the geometry and the status line is stale.
       *Left for later, deliberately:* only points drag (edges and rims still
       pan), nothing is inferred or snapped mid-drag, and there is no undo — for
       now a drag is undone by dragging back.

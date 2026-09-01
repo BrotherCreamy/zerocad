@@ -340,6 +340,14 @@ replacing) the system Node other projects on this machine may depend on.
   arithmetic. Nothing is journalled — a drag changes values, not structure, and
   solved coordinates already ride along in a saved file, which
   `test/e2e/drag.e2e.ts` round-trips.
+  `cancel()` (Escape, or a file being opened mid-gesture) **settles** a drag
+  rather than dropping it, for the same reason the release does: the last frame
+  was solved with the pull applied, so abandoning it without a final solve
+  leaves the cursor's influence baked into the geometry and the status line
+  stale. It cannot undo the drag — nothing has undo — but it can decline to
+  leave a compromise behind. `test/engine.test.ts` covers that and the three
+  neighbouring cases, driving the engine with synthetic pointer events against
+  a stand-in canvas: a press that never moved, a pan, and an ordinary release.
   Deliberately not in v1, each a known difference from Onshape: **only points
   drag** (an edge or a rim still pans, as it did); **no inference or snapping
   while dragging** (Onshape infers mid-drag); and **no undo** — nothing has undo

@@ -153,6 +153,25 @@ rather than each move: from the first frame onward the geometry is moving under
 the cursor, so re-asking "what is under the pointer" would hand the drag to
 whatever the drawing swept past.
 
+Review caught a third thing I had written down as a known edge instead of
+fixing: `cancel()` mid-drag. I had reasoned that "cancel cannot undo the drag,
+because nothing has undo, so leaving the geometry where it is is the honest
+option". That is half an argument. Cancel cannot restore the *pre-drag*
+geometry, true — but what it was leaving behind was not the drag's result
+either, it was the last frame's *compromise between the drawing and a cursor
+that no longer exists*, with the header still showing whatever it said before
+the gesture. The right reading is that abandoning a drag and releasing it
+differ in whether the pull's final position is intended, not in whether the
+model should be left consistent. So `cancel()` settles through the host's solve
+path exactly as `pointerup` does. The unit test for it fails against the old
+code, which is the only reason to trust it.
+
+That test needed the engine driven without a browser, which turned out to be
+easy — a stand-in canvas that records its listeners, and synthetic pointer
+events fired at them. Worth having for the whole class of "what happens when a
+gesture is abandoned", which has no mouse event of its own and is otherwise
+only reachable through the keyboard.
+
 What is deliberately absent is inference during the drag, which Onshape does
 have. It is a real difference and it is documented rather than smoothed over,
 along with only-points-drag and the absence of undo — a drag is currently
