@@ -118,6 +118,19 @@ are flagged as such.
 
 ## Decisions needed from the owner
 
+- [ ] **How should a dimension's value be edited, and are dimensions named?**
+      Today the only way to change `dist("p1","p2",50)` to 60 is `del` and
+      retype, because a relation captures its target inside its residual
+      closure. Onshape double-clicks the number and types. And the owner's
+      own free-entities example said *"radius d4"* — which reads as named
+      dimension parameters (`d4 = 25; rad(c, "d4")`, one number driving many
+      relations, editable in one place). Options, roughly increasing in
+      scope: (a) a `retarget(relation, value)` operation that rebuilds the
+      relation in place under the same name; (b) named scalar parameters as
+      first-class entities relations may reference; (c) both, with (a) as
+      the double-click surface and (b) underneath. The dimension-labels
+      package draws the numbers either way; this decides what clicking them
+      can eventually do.
 - [ ] **May a saved file carry code?** A tool authored at the command line is
       a live JS class; saving it means saving source text that `open()` would
       evaluate — so opening a file someone sent you would run their code.
@@ -131,6 +144,22 @@ Queue for Opus, in order. Each gets a spec in `docs/plans/` before work
 starts.
 
 - [ ] **Saving user-authored tools** — blocked on the owner decision above.
+- [ ] **Dimension values on the canvas** — spec:
+      [`docs/plans/dimension-labels.md`](docs/plans/dimension-labels.md), in
+      flight. `dist`/`rad`/`ang` draw their value as their glyph, Onshape
+      style; read from `RelationEntry.args`, so pure UI. Editing a value in
+      place is explicitly NOT in it — see the new owner decision below.
+- [ ] **Inference while dragging.** Onshape infers (and shows) coincidence
+      and alignment as you drag; both drag packages deliberately left it out.
+      Wants a spec that decides what a mid-drag snap *commits* — a drag that
+      quietly adds constraints is a bigger decision than a tool click doing
+      the same, because nothing was aimed.
+- [ ] **A 3-point arc tool.** The register has noted "no 3-point arc yet"
+      since the arc tool shipped; circle3 is the pattern to follow.
+- [ ] **A right-click context menu.** The register's mouse entry already
+      promises right-drag pan yields to a menu when one exists. What goes in
+      it is the design question (Onshape: delete, dimension, fix, tool arms).
+
 ## Smaller things
 
 - [x] `docs/plans/` specs that have shipped gain a one-line "shipped" note
