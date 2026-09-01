@@ -19,7 +19,7 @@ import * as basic from "./relations/basic.ts";
 import * as geom from "./relations/geometry.ts";
 import { del, fillet } from "./operations.ts";
 import { save as saveModel } from "./persist.ts";
-import { clampScale } from "./view.ts";
+import { clampScale, screenToWorld } from "./view.ts";
 
 type Bag = Record<string, unknown>;
 
@@ -69,6 +69,15 @@ export interface EnvHandles {
   solve?: () => SolveReport;
   /** The 2D view transform, so pan/zoom is an ordinary command like everything else. */
   view?: { ox: number; oy: number; scale: number };
+  /**
+   * The viewport's size in CSS pixels. Kept apart from `view` because a
+   * `View` is only a transform — it has no idea how big the window showing
+   * it is — and the two together are what "the middle of what the user is
+   * looking at" needs. A function rather than a value: the log pane grows as
+   * commands are typed and takes height from the canvas, so a size read once
+   * at startup would drift.
+   */
+  viewSize?: () => [number, number];
 }
 
 /**
@@ -136,14 +145,70 @@ export function neocadScope(h: EnvHandles): Bag {
     arcEndpoints: bind(model, geom.arcEndpoints),
   };
 
+  /**
+   * Where a piece nobody placed should go: the middle of what is on screen.
+   *
+   * A free `circle()` materialising at the world origin is baffling — you
+   * type it, nothing appears, and the drawing looks broken until you happen
+   * to pan back. So the command layer decides the coordinate and passes it
+   * down as an ordinary argument. The model stays where it was: it takes
+   * coordinates, and has still never heard of a viewport.
+   *
+   * Undefined when there is nothing to ask (headless tests, a REPL with no
+   * canvas) or when the model is not 2D, since a `View` is a 2D transform and
+   * has no middle to offer a model of any other dimension. Both cases fall
+   * back to the model's own plain defaults.
+   */
+  function viewSeed(): number[] | undefined {
+    if (!h.view || !h.viewSize || model.dim !== 2) return undefined;
+    const [width, height] = h.viewSize();
+    return screenToWorld(h.view, width / 2, height / 2);
+  }
+
+  /**
+   * A free point at the view centre for a constructor to hang its auto-created
+   * pieces off, or `null` to leave the model to seed its own.
+   *
+   * It is wanted in exactly the cases where the model would otherwise fall
+   * back to the origin for lack of anything to derive a position from: a line
+   * with neither endpoint, a circle or arc with no centre. Given *any*
+   * reference the model already seeds beside it — a line's missing endpoint
+   * lands 20 units from the one it was given — and dragging that to the middle
+   * of the window instead would be worse, not better.
+   *
+   * Returning `null` rather than the model's own default coordinates is
+   * deliberate: it keeps the headless journal exactly what the model layer
+   * writes, one call with no expansion, while on screen the journal records
+   * the coordinate actually used — so a drawing reopens where it was drawn
+   * rather than wherever the window happens to be pointing next time.
+   */
+  function anchor(): string | null {
+    const seed = viewSeed();
+    return seed ? model.addPoint(seed).name : null;
+  }
+
   const geometry: Bag = {
     // Creation returns the entity's *name*, because that is what every
     // relation takes — `dist(pt(0,0), pt(3,4), 10)` reads straight through.
-    pt: (...coords: number[]) => model.addPoint(coords).name,
-    ln: (a: string, b: string) => model.addLine(a, b).name,
-    circ: (center: string, r: number) => model.addCircle(center, r).name,
-    arc: (center: string, start: string, end: string, r: number) => model.addArc(center, start, end, r).name,
+    //
+    // Every argument is optional, because none of them was ever a constraint
+    // — see model.ts. `circle()` is a legal way to say "a circle, which the
+    // relations I am about to type will define".
+    pt: (...coords: number[]) => model.addPoint(coords.length ? coords : viewSeed()).name,
+    ln: (a?: string | null, b?: string | null) =>
+      model.addLine(a ?? (b == null ? anchor() : null), b ?? null).name,
+    circ: (center?: string | null, r?: number | null) =>
+      model.addCircle(center ?? anchor(), r ?? null).name,
+    arc: (center?: string | null, start?: string | null, end?: string | null, r?: number | null) =>
+      model.addArc(center ?? anchor(), start ?? null, end ?? null, r ?? null).name,
   };
+  // Long names beside the short ones, the way every relation already has both.
+  // The owner's examples are written `circle()`, and a creator function shares
+  // a name with a tool without trouble: a bare word arms the tool, a call is
+  // an expression — `arc` and `fillet` have both been doing this all along.
+  geometry.point = geometry.pt;
+  geometry.line = geometry.ln;
+  geometry.circle = geometry.circ;
 
   // Operations change the model's structure rather than only adding
   // equations — see operations.ts for why that is worth keeping separate.
@@ -276,6 +341,9 @@ export function neocadScope(h: EnvHandles): Bag {
 function help(scope: Bag): string {
   return [
     "geometry   pt(x,y)  ln(a,b)  circ(center,r)  arc(center,start,end,r)",
+    "           point()  line()  circle()  — the same three, long names",
+    "           every argument is optional: what you leave out is created free",
+    "           near the middle of the view, for your relations to define",
     "relations  dist fix coin mid hor ver par perp ang on eq",
     "           rad oncircle conc eqrad tan sym arcends",
     "operations fillet(line1, line2, radius)  del(name)",

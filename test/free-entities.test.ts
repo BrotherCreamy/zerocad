@@ -11,6 +11,7 @@ import { fix } from "../src/relations/basic.ts";
 import { onCircle, radius, tangent } from "../src/relations/geometry.ts";
 import { del } from "../src/operations.ts";
 import { save, open } from "../src/persist.ts";
+import { neocadScope } from "../src/replenv.ts";
 
 async function loadKernel() {
   const bytes = await readFile(new URL("../src/kernel/wasm-gen/neocad_kernel_bg.wasm", import.meta.url));
@@ -204,4 +205,124 @@ test("auto-name counters stay deterministic across a round trip with deletions",
   assert.equal(save(reopened), save(m));
   // The next auto-name in the reopened model matches what the original would give.
   assert.equal(reopened.addCircle().name, m.addCircle().name);
+});
+
+// --- the command layer -----------------------------------------------------
+//
+// The same freedom through the surface a user actually types at, plus the one
+// thing the model deliberately cannot do: put a piece nobody placed in the
+// middle of the window rather than at the world origin.
+
+type Scope = Record<string, unknown>;
+
+/** The command surface, headless by default; pass a viewport to seed from it. */
+function scopeOf(model: Model, viewport?: Viewport): Scope {
+  return neocadScope({
+    model,
+    ...(viewport ? { view: viewport.view, viewSize: () => viewport.size } : {}),
+  });
+}
+
+interface Viewport {
+  view: { ox: number; oy: number; scale: number };
+  size: [number, number];
+}
+
+/** A viewport whose centre is world (225, -175), so a seed there is unmistakable. */
+function offCentreViewport(): Viewport {
+  return { view: { ox: 100, oy: 50, scale: 2 }, size: [1100, 800] };
+}
+
+const call = (s: Scope, name: string, ...args: unknown[]) =>
+  (s[name] as (...a: unknown[]) => string)(...args);
+
+test("every creator command takes no arguments at all", () => {
+  const m = new Model(2);
+  const s = scopeOf(m);
+  assert.equal(m.entities.get(call(s, "pt"))?.kind, "point");
+  assert.equal(m.entities.get(call(s, "ln"))?.kind, "line");
+  assert.equal(m.entities.get(call(s, "circ"))?.kind, "circle");
+  assert.equal(m.entities.get(call(s, "arc"))?.kind, "arc");
+});
+
+test("the long names are the same three functions, not a second implementation", () => {
+  const s = scopeOf(new Model(2));
+  assert.equal(s.point, s.pt);
+  assert.equal(s.line, s.ln);
+  assert.equal(s.circle, s.circ);
+});
+
+test("headless, a free constructor still journals as the ONE call the model layer writes", () => {
+  const m = new Model(2);
+  const s = scopeOf(m);
+  call(s, "circ");
+  call(s, "ln");
+  assert.deepEqual(m.journal.map((e) => e.op), ["addCircle", "addLine"],
+    "with no viewport there is no coordinate to pass down, so nothing is added above the model");
+  assert.deepEqual(m.coords(m.circle("c1").center), [0, 0], "and the model's plain default stands");
+});
+
+test("with a viewport, a free piece lands in the middle of the view", () => {
+  const m = new Model(2);
+  const s = scopeOf(m, offCentreViewport());
+  assert.deepEqual(m.coords(call(s, "pt")), [225, -175]);
+  assert.deepEqual(m.coords(m.circle(call(s, "circ")).center), [225, -175]);
+  assert.deepEqual(m.coords(m.arc(call(s, "arc")).center), [225, -175]);
+  assert.deepEqual(m.coords(m.line(call(s, "ln")).refs[0]), [225, -175]);
+});
+
+test("panning moves where the next free piece appears", () => {
+  const m = new Model(2);
+  const vp = offCentreViewport();
+  const s = scopeOf(m, vp);
+  assert.deepEqual(m.coords(m.circle(call(s, "circ")).center), [225, -175]);
+  vp.view.ox -= 200; // the window now looks 100 world units further right
+  assert.deepEqual(m.coords(m.circle(call(s, "circ")).center), [325, -175]);
+});
+
+test("a free line's endpoints are still seeded apart when the view places them", () => {
+  const m = new Model(2);
+  const s = scopeOf(m, offCentreViewport());
+  const [a, b] = m.line(call(s, "ln")).refs;
+  const d = Math.hypot(...m.coords(a).map((v, i) => v - m.coords(b)[i]));
+  assert.ok(d > 1, `view seeding must not collapse the line: endpoints ${d} apart`);
+});
+
+test("an argument that WAS given still decides where its neighbours go", () => {
+  const m = new Model(2);
+  const s = scopeOf(m, offCentreViewport());
+  m.addPoint([0, 0], "here");
+  // The missing endpoint belongs beside the one that was named, not in the
+  // middle of the window — dragging it across the drawing would be worse.
+  const other = m.line(call(s, "ln", "here")).refs.find((n) => n !== "here")!;
+  assert.ok(Math.hypot(...m.coords(other)) < 50, `auto endpoint ran off to ${m.coords(other)}`);
+  // Same for a centre that was named: the view has no say.
+  assert.deepEqual(m.coords(m.circle(call(s, "circ", "here")).center), [0, 0]);
+});
+
+test("explicit coordinates are never overridden by the view", () => {
+  const m = new Model(2);
+  const s = scopeOf(m, offCentreViewport());
+  assert.deepEqual(m.coords(call(s, "pt", 3, 4)), [3, 4]);
+  assert.equal(m.radius(call(s, "circ", null, 7)), 7);
+});
+
+test("a model that is not 2D falls back to the plain defaults", () => {
+  // A View is a 2D transform and has no middle to offer a 3D model; the
+  // alternative is a coordinate-count mismatch thrown from addPoint.
+  const m = new Model(3);
+  const s = scopeOf(m, offCentreViewport());
+  assert.deepEqual(m.coords(call(s, "pt")), [0, 0, 0]);
+});
+
+test("a view-seeded model round-trips through save/open unchanged", async () => {
+  await loadKernel();
+  const m = new Model(2);
+  const s = scopeOf(m, offCentreViewport());
+  call(s, "circ");
+  call(s, "ln");
+  m.solve();
+  const first = save(m);
+  assert.equal(save(open(first)), first,
+    "the coordinate the view chose is in the journal, so replay never re-asks the window");
 });

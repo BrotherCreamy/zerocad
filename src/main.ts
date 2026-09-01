@@ -303,6 +303,14 @@ async function main() {
     return {
       model,
       view,
+      // Measured fresh on every ask, not cached: the log pane grows as
+      // commands are typed and takes its height from the canvas, so a size
+      // read once at startup would put "the middle of the view" steadily
+      // below the middle of what is actually on screen.
+      viewSize: (): [number, number] => {
+        const r = cv.getBoundingClientRect();
+        return [r.width, r.height];
+      },
       arm: (name: string, options?: Record<string, unknown>) => engine.arm(name, options),
       pick: () => engine.hover?.name ?? null,
       snapping: (on?: boolean) => {
