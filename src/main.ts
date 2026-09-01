@@ -63,11 +63,12 @@ async function main() {
   function render() {
     const r = cv.getBoundingClientRect();
     g.clearRect(0, 0, r.width, r.height);
-    g.strokeStyle = "#131c26";
-    g.beginPath();
-    for (let x = view.ox % (view.scale * 10); x < r.width; x += view.scale * 10) { g.moveTo(x, 0); g.lineTo(x, r.height); }
-    for (let y = view.oy % (view.scale * 10); y < r.height; y += view.scale * 10) { g.moveTo(0, y); g.lineTo(r.width, y); }
-    g.stroke();
+    // No grid, and no origin marker either — deliberately (owner's call,
+    // 2026-09-01). A grid is a picture of a world lattice, and a drawn origin
+    // is an invitation to relate geometry to a global frame that this app is
+    // in the process of not having: geometry is defined by its relations to
+    // other geometry, and coordinate frames, where wanted, will be entities
+    // the user creates. See TODO.md's register.
 
     // What the cursor is over lights up — and hovering a *constraint* lights up
     // everything that constraint is about. That spread is the payoff of drawing
