@@ -106,6 +106,61 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### No world frame: why the frame is read and never pushed
+
+The spec for this package said to take the frame's point variables *lazily*,
+"the house rule", so that a frame whose points get re-targeted keeps its
+relations honest. Half 1 does follow the house rule — the frame's position is
+re-read at every evaluation — but it deliberately does **not** declare those
+points as variables of the residual block, and that is worth writing down
+because it is the one place the implementation departs from the letter of the
+spec.
+
+Declaring them was built first, and then measured. Put a 40-unit line seven
+units off level, say `hor(line, frame)` against a frame with a 20-unit arm,
+and solve: the *frame* turns about 8° and the line barely moves. Both readings
+satisfy the constraint — the residual only says the two directions agree — and
+least squares splits the correction in proportion to how far each thing has to
+move, which on those numbers favours the frame heavily. It was worse than
+that with the residual written as a plain `wedge(d, xref - origin)`, the form
+`par` uses: shrinking the frame's arm makes the residual smaller directly, so
+the solver pulled the arm in by 14% as well and called it level.
+
+Three things could have been done about it. Normalising the frame's direction
+kills the shrinking (and is kept, for that reason) but not the turning.
+Making the frame's arm enormously long makes it stiff — the frame's share of
+the rotation goes as roughly (drawing size / arm)² — but "enormously" turns
+out to mean about 1e6 against a drawing of order 100, which is a magic number
+pretending to be a design. And translation cannot be fixed that way at all:
+`fix` reads the origin with exactly the sensitivity it reads the point, so a
+fixed point and the frame's origin simply meet in the middle. A drawing pinned
+to a frame would drift across the canvas as it was dimensioned.
+
+So the third option: the frame is a **datum**, and a datum is not something
+the geometry referencing it pushes around. Every CAD system a user arrives
+from behaves that way. The frame's position enters the residual as a value,
+refreshed each evaluation; the block declares only the geometry it constrains.
+The Jacobian is exact for the block as declared, and where the frame does move
+— because a drag or a dimension moved it — the solve behaves like one
+Gauss-Seidel sweep and converges without complaint.
+
+Two payoffs beyond the principle. The spec's own acceptance test becomes
+literally true: a drawing levelled against a frame tilted 30° settles at
+exactly 30°, not somewhere between its own angle and the frame's, so the check
+can be closed-form instead of `solved: true`. And the mechanical part of the
+package really is mechanical — every existing test keeps the coordinates it
+was written with, because nothing a test constrains can drag the fixture frame
+off the axes.
+
+Two smaller decisions, both deliberate and both documented where they live.
+`fix` above 2D keeps its old gauge-relative meaning, because a frame is an
+origin plus one direction and that settles nothing in 3D; making `fix`
+frame-only would have cost the vocabulary its dimension-genericity, which is
+load-bearing elsewhere. And the rectangle tool went intrinsic in half 1
+rather than half 2, not out of enthusiasm but because there was no honest
+alternative: `hor` needs a frame, a new model has none, and a rectangle tool
+that throws on a clean sheet is a broken app.
+
 ### Dimension labels: the number was already in the model
 
 The whole package is a rendering change, and that is the point of it. A

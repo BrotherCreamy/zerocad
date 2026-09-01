@@ -7,6 +7,71 @@ decisions.
 
 ---
 
+## There is no world frame any more (half 1: model and relations)
+
+The owner's direction: **no built-in origin and no built-in world coordinate
+system at all**, because an origin tempts every drawing into being related to
+a global grid. Instead a coordinate frame is a thing you make, and one of them
+can be the default. The grid went earlier; this is the rest of it.
+
+A **frame** is an origin point plus a point fixing +x — purely referential
+like a line, owning no variables, its two points ordinary draggable
+constrainable points. `addFrame(origin?, xref?, name?)` follows the
+free-entities conventions throughout: every argument optional, `null` the same
+as absent, missing pieces auto-created and seeded a span apart so a frame with
+no direction cannot be built, and the whole thing journalled as the one call
+that was made. +y is +x turned a quarter turn, which settles a frame in 2D and
+leaves a whole rotation free above it — so frames are 2D-only, the same call
+`hor`/`ver` already make.
+
+`hor`, `ver` and `fix` are now **relative to a frame**: the one named, or the
+default at call time. With neither, they refuse, and say what to do about it —
+*no default frame — frame() then setDefaultFrame(), or say which frame*. The
+journal always records the frame the call resolved to, so an entry cannot
+change meaning because the default changed afterwards.
+
+> **⚠ Saved files from before this package will not open.** They carry
+> frameless `hor`/`ver`/`fix` entries and there is no world frame left to
+> resolve them against. The replay table refuses them by step and name with
+> exactly the message above, rather than skipping them silently. Accepted
+> deliberately: this is pre-release with one owner, and a compatibility shim
+> would have to preserve precisely the semantics the package exists to remove.
+> The format version is 2; a version-1 file with nothing frameless in it still
+> opens.
+
+**A frame is read, never pushed — the one decision worth arguing about.** A
+residual block declares the variables it reads, and declaring the frame's two
+points would put them in the Jacobian, which lets the solver satisfy
+`hor(line, frame)` by turning the *frame*. Measured, it does exactly that: on
+a 40-unit line seven units off level against a frame with a 20-unit arm, least
+squares turns the frame about 8° and the line barely at all — and with an
+un-normalised wedge it also pulls the frame's arm in by 14%, because shrinking
+the thing being measured against is cheaper still. A frame the drawing shoves
+around is not a datum, and a datum is the whole of what a frame is for. So the
+frame's position is re-read at every evaluation — lazily, so a re-targeted
+frame is still followed — and handed to the residual as a value. Two things
+follow: a drawing levelled against a tilted frame settles at *exactly* the
+frame's tilt rather than somewhere between its own and the frame's, and moving
+a frame moves the drawing hanging off it, which is the gesture the second half
+of this package is built around.
+
+Two tools needed bridging, since a fresh model now has no frame at all:
+
+- **The rectangle tool goes intrinsic** — `par` on each pair of opposite
+  sides, one `perp` at a corner. A tool that could not draw a rectangle until
+  you had made a frame would be a tool that mostly does not work, and "a
+  rectangle is a rectangle in any frame" is the truer statement anyway. Three
+  relations where there were four; the fourth was always redundant. ⚠ A
+  deviation from Onshape, which infers H/V against its sketch frame.
+- **The line tool infers an axis only when a default frame is set**, and
+  infers against it. Inferring against the kernel's own axes would be the
+  world frame coming back in through the side door.
+
+*Half 1 is the model and the relations. The command surface beyond a bare
+`frame()`/`setDefaultFrame()`, the drawn axes marker, frame picking and
+dragging, and the end-to-end story — tilt a frame by its x-ref and watch the
+whole "level" drawing turn with it — are half 2.*
+
 ## A dimension is now its number
 
 `dist("p1","p2",50)` used to put a `↔` on the drawing and the 50 nowhere.

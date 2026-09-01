@@ -6,13 +6,21 @@ import { Model } from "../src/model.ts";
 import { Repl } from "../src/repl.ts";
 import { neocadScope } from "../src/replenv.ts";
 import { getToolCtor, type ToolContext } from "../src/tools/tool.ts";
+import { axisFrame } from "./frames.ts";
 
 async function loadKernel() {
   const bytes = await readFile(new URL("../src/kernel/wasm-gen/neocad_kernel_bg.wasm", import.meta.url));
   await ensureKernelLoaded(bytes);
 }
 
-function makeRepl(model = new Model(2)) {
+/**
+ * A REPL over a fresh model. `framed` adds the fixture frame that hor/ver/fix
+ * are relative to now — as a model call rather than a typed `frame()`, so the
+ * auto-names the entries below assert against (`p1`, `l1`) still come out
+ * where they always did. `frame()` as a typed command has its own test.
+ */
+function makeRepl(model = new Model(2), framed = true) {
+  if (framed && model.dim === 2 && !model.defaultFrame) axisFrame(model);
   const armed: string[] = [];
   const view = { ox: 0, oy: 0, scale: 3 };
   const repl = new Repl(neocadScope({
@@ -106,7 +114,7 @@ test("geometry commands build real entities", async () => {
   const a = (await run(repl, "pt(0, 0)")).value;
   const b = (await run(repl, "pt(3, 4)")).value;
   await run(repl, `ln("${a}", "${b}")`);
-  assert.equal(model.entities.size, 3);
+  assert.equal(model.entities.size, 3 + 3, "two points, a line, and the fixture frame's three");
   assert.deepEqual(model.coords(String(b)), [3, 4]);
 });
 
@@ -146,6 +154,7 @@ test("viewport control is an ordinary command", async () => {
 test("solve() goes through the host's solve path, so the viewport cannot go stale", async () => {
   await loadKernel();
   const model = new Model(2);
+  axisFrame(model);
   let hostSolves = 0;
   const repl = new Repl(neocadScope({
     model,
@@ -164,12 +173,32 @@ test("solve() still works with no host attached", async () => {
   assert.equal(((await run(repl, "solve()")).value as { solved: boolean }).solved, true);
 });
 
+test("frames are reachable from the command line, and hor needs one", async () => {
+  await loadKernel();
+  // Deliberately unframed: a new model has no coordinate frame at all, and
+  // this checks the command surface says so rather than quietly picking one.
+  const { repl, model } = makeRepl(new Model(2), false);
+  await run(repl, "l = ln()");
+  const bare = await repl.eval("hor(l)");
+  assert.equal(bare.ok, false);
+  assert.match(bare.error!.message, /no default frame — frame\(\) then setDefaultFrame\(\)/);
+  assert.equal((await run(repl, "defaultFrame()")).value, null);
+
+  assert.equal((await run(repl, "frame()")).value, "f1", "the constructor hands back its name");
+  assert.equal((await run(repl, 'setDefaultFrame("f1")')).value, "f1");
+  assert.equal((await run(repl, "defaultFrame()")).value, "f1");
+  await run(repl, "hor(l)");
+  assert.deepEqual(model.relations.get("r1")!.args, ["l1", "f1"], "and the entry names it");
+  assert.match(String((await run(repl, "help()")).value), /setDefaultFrame\(name\)/);
+});
+
 test("ls() and help() describe what is there", async () => {
   const { repl } = makeRepl();
   await run(repl, "pt(1, 2)");
   const listing = (await run(repl, "ls()")).value as string[];
-  assert.equal(listing.length, 1);
-  assert.match(listing[0], /p1\s+point\s+\(1\.000, 2\.000\)/);
+  assert.equal(listing.length, 4, "the point, and the fixture frame with its two");
+  assert.match(listing.at(-1)!, /p1\s+point\s+\(1\.000, 2\.000\)/);
+  assert.match(listing[2], /f\s+frame\s+origin f_o, \+x toward f_x\s+\(default\)/);
   assert.match(String((await run(repl, "help()")).value), /defineTool/);
 });
 
@@ -217,12 +246,13 @@ test("a tool authored at the REPL registers and drives like a built-in", async (
 
   tool.onDown({ world: [0, 0], screen: [0, 0] });
   tool.onMove({ world: [40, 20], screen: [0, 0] });
-  assert.equal(model.entities.size, 0, "mid-drag nothing is committed — it is a live preview");
+  assert.equal(model.entities.size, 3, "mid-drag nothing is committed — only the fixture frame is there");
   assert.ok(renders >= 2);
 
   tool.onUp({ world: [40, 20], screen: [0, 0] });
 
-  const points = [...model.entities.values()].filter((e) => e.kind === "point");
+  const points = [...model.entities.values()]
+    .filter((e) => e.kind === "point" && !e.name.startsWith("f_"));
   const lines = [...model.entities.values()].filter((e) => e.kind === "line");
   assert.equal(points.length, 4, "four corners");
   assert.equal(lines.length, 4, "four edges");
@@ -264,12 +294,13 @@ test("rels() lists the constraints under names you can retype", async () => {
 
   // The short name each relation is called by, not the internal op — so a
   // listed line reads back as something that could have been typed.
+  // Every hor carries the frame it is level with, so it reads back as one too.
   assert.deepEqual((await run(repl, "rels()")).value, [
     "r1  coin p1 p2",
-    "r2  hor l1",
+    "r2  hor l1 f",
     "r3  dist p1 p2 10",
   ]);
-  assert.deepEqual((await run(repl, 'rels("l1")')).value, ["r2  hor l1"]);
+  assert.deepEqual((await run(repl, 'rels("l1")')).value, ["r2  hor l1 f"]);
   assert.deepEqual((await run(repl, 'rels("p2")')).value, ["r1  coin p1 p2", "r3  dist p1 p2 10"]);
   assert.deepEqual((await run(repl, 'rels("nothing")')).value, []);
 });
@@ -281,7 +312,7 @@ test("del() hands back what it took, so the log answers for the cascade", async 
 
   assert.deepEqual((await run(repl, 'del("r1")')).value, ["r1"], "a relation takes nothing with it");
   assert.deepEqual((await run(repl, 'del("p1")')).value, ["r2", "l1", "p1"], "a point takes what needs it");
-  assert.deepEqual([...model.entities.keys()], ["p2"]);
+  assert.deepEqual([...model.entities.keys()], ["f_o", "f_x", "f", "p2"]);
 
   const bad = await repl.eval('del("l9")');
   assert.equal(bad.ok, false);

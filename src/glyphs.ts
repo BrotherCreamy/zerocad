@@ -319,6 +319,8 @@ function atEntity(model: Model, name: string): Anchor {
     case "line": return atLineMid(model, name);
     case "circle":
     case "arc": return atRim(model, name, Math.PI / 4);
+    // A frame is its origin, as far as a mark beside it is concerned.
+    case "frame": return atPoint(model, e.origin);
   }
 }
 
@@ -346,8 +348,11 @@ function anchorsFor(model: Model, r: RelationEntry): Anchor[] {
     case "horizontal":
     case "vertical":
       // Both forms exist — one line name, or two point names — and the glyph
-      // goes beside the edge either way.
-      return [args.length === 1
+      // goes beside the edge either way. Which form this is comes off the
+      // subject's *kind* rather than off the argument count: every entry now
+      // also carries the frame it is level with, so both forms have more than
+      // one argument.
+      return [model.entities.get(str(args[0]))?.kind === "line"
         ? atLineMid(model, str(args[0]))
         : atSegmentMid(model, str(args[0]), str(args[1]))];
     case "parallel":

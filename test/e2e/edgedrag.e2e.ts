@@ -15,7 +15,7 @@
 
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { openApp, type AppContext } from "./harness.ts";
+import { axisFrame, openApp, type AppContext } from "./harness.ts";
 
 let app: AppContext;
 after(async () => { await app.close(); });
@@ -54,6 +54,10 @@ async function dragFrom(sx: number, sy: number, dx: number, dy: number, mid?: ()
 
 before(async () => {
   app = await openApp();
+  // `hor`/`ver` are relative to a frame now. Only its *direction* matters
+  // here — nothing is fixed to it — so it is parked well above the drawing,
+  // where its two points cannot be caught by a drag meant for an edge.
+  await axisFrame(app, [0, 200]);
   // A constrained rectangle: four edges level or plumb, one of them measured.
   // Nothing is fixed, so the whole thing is free to travel — which is the
   // point, since an edge drag is a translation the constraints then argue with.

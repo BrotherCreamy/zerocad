@@ -99,6 +99,8 @@ function describe(e: Entity, model: Model): string {
     case "line": return `${e.name}  line   ${e.refs[0]}–${e.refs[1]}`;
     case "circle": return `${e.name}  circle  center ${e.center}, r=${model.radius(e.name).toFixed(3)}`;
     case "arc": return `${e.name}  arc    center ${e.center}, ${e.start}→${e.end}, r=${model.radius(e.name).toFixed(3)}`;
+    case "frame": return `${e.name}  frame  origin ${e.origin}, +x toward ${e.xref}`
+      + (model.defaultFrame === e.name ? "  (default)" : "");
   }
 }
 
@@ -202,6 +204,23 @@ export function neocadScope(h: EnvHandles): Bag {
     arc: (center?: string | null, start?: string | null, end?: string | null, r?: number | null) =>
       model.addArc(center ?? anchor(), start ?? null, end ?? null, r ?? null).name,
   };
+  /**
+   * Coordinate frames, as ordinary commands.
+   *
+   * Deliberately plain in this half of the package: `frame()` seeds its auto
+   * points the way the model does, not at the middle of the view the way
+   * `circle()` does, and nothing draws a frame yet. Those belong with the
+   * tools, and putting them here first would mean the model half could not be
+   * reviewed without the drawing half in the other hand.
+   */
+  geometry.frame = (origin?: string | null, xref?: string | null) =>
+    model.addFrame(origin ?? null, xref ?? null).name;
+  geometry.setDefaultFrame = (name: string | null) => {
+    model.setDefaultFrame(name ?? null);
+    return model.defaultFrame ?? "no default frame";
+  };
+  geometry.defaultFrame = () => model.defaultFrame;
+
   // Long names beside the short ones, the way every relation already has both.
   // The owner's examples are written `circle()`, and a creator function shares
   // a name with a tool without trouble: a bare word arms the tool, a call is
@@ -345,6 +364,8 @@ function help(scope: Bag): string {
     "           point()  line()  circle()  — the same three, long names",
     "           every argument is optional: what you leave out is created free",
     "           near the middle of the view, for your relations to define",
+    "frames     frame(origin, xref)  setDefaultFrame(name)  defaultFrame()",
+    "           there is no world frame: hor/ver/fix are relative to one",
     "relations  dist fix coin mid hor ver par perp ang on eq",
     "           rad oncircle conc eqrad tan sym arcends",
     "operations fillet(line1, line2, radius)  del(name, ...)",

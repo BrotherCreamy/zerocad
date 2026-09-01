@@ -15,6 +15,7 @@ import { Model } from "../src/model.ts";
 import { fix, horizontal } from "../src/relations/basic.ts";
 import { ToolEngine, type View } from "../src/tools/engine.ts";
 import "../src/tools/point.ts"; // registers the "point" tool, armed below
+import { axisFrame } from "./frames.ts";
 
 async function loadKernel() {
   const bytes = await readFile(new URL("../src/kernel/wasm-gen/neocad_kernel_bg.wasm", import.meta.url));
@@ -52,6 +53,10 @@ function fakeCanvas() {
 async function setup() {
   await loadKernel();
   const model = new Model(2);
+  // hor/ver/fix are relative to a frame now, so the fixture makes one — and
+  // its origin and x-ref are ordinary points, which is why the counts below
+  // are of four points rather than two.
+  axisFrame(model);
   model.addPoint([0, 0], "a");
   model.addPoint([10, 0], "b");
   horizontal(model, "a", "b");
@@ -129,15 +134,16 @@ test("a left-drag on empty canvas draws a box and selects what it catches", asyn
   const { engine, fire, counts } = await setup();
   const view = { ...engine.view };
 
-  // The fixture's two points are at world (0,0) and (10,0), which this view
-  // puts at screen (0,0) and (10,0). Dragging right→left over both is a
-  // crossing box; either way it catches the pair.
+  // The drawing's two points are at world (0,0) and (10,0), which this view
+  // puts at screen (0,0) and (10,0); the fixture frame's origin and x-ref sit
+  // at (0,0) and (1,0) beside them. Dragging right→left over the lot is a
+  // crossing box; either way it catches all four.
   fire("pointerdown", { clientX: 40, clientY: 30, button: 0, buttons: 1 });
   fire("pointermove", { clientX: -20, clientY: -30, button: -1, buttons: 1 });
   assert.equal(engine.boxMode, "crossing", "right→left is a crossing box");
 
   fire("pointerup", { clientX: -20, clientY: -30, button: 0, buttons: 0 });
-  assert.equal(counts.picks, 2, "both points went to the command line");
+  assert.equal(counts.picks, 4, "every point in the box went to the command line");
   assert.equal(engine.box, null, "and the box is gone");
   assert.deepEqual({ ...engine.view }, view, "a box is not a pan — the view did not move");
   assert.equal(counts.solves, 0, "selecting is not editing");
@@ -288,6 +294,7 @@ test("a tool that throws still closes its bracket", async () => {
 async function shapes() {
   await loadKernel();
   const model = new Model(2);
+  axisFrame(model); // what `fix`/`hor` below are level with — see test/frames.ts
   model.addPoint([0, 0], "a");
   model.addPoint([60, 0], "b");
   model.addLine("a", "b", "l1");

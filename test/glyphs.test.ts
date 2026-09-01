@@ -21,6 +21,7 @@ import {
   angle, concentric, equalLength, parallel, perpendicular, pointOnLine, radius, symmetric, tangent,
 } from "../src/relations/geometry.ts";
 import { del } from "../src/operations.ts";
+import { axisFrame } from "./frames.ts";
 
 async function loadKernel() {
   const bytes = await readFile(new URL("../src/kernel/wasm-gen/neocad_kernel_bg.wasm", import.meta.url));
@@ -33,6 +34,7 @@ const at = (world: number[]) => worldToScreen(view, world);
 /** A rectangle-ish scaffold: two horizontal edges and one vertical. */
 function scaffold(): Model {
   const m = new Model(2);
+  axisFrame(m); // what hor/ver are level with — see test/frames.ts
   m.addPoint([0, 0], "p1");
   m.addPoint([40, 0], "p2");
   m.addPoint([40, 30], "p3");
@@ -53,7 +55,9 @@ test("one glyph per relation, carrying the relation's name and a mark", () => {
   assert.equal(gl.relation, r);
   assert.equal(gl.op, "horizontal");
   assert.equal(gl.symbol.length > 0, true, "something is actually drawn");
-  assert.deepEqual(gl.highlights, ["l1"]);
+  // The frame is one of the things the relation is *about* — "level with f" —
+  // so hovering the mark lights it up alongside the edge.
+  assert.deepEqual(gl.highlights, ["l1", "f"]);
 });
 
 test("a point relation anchors on its point; an edge relation on the edge's middle", () => {

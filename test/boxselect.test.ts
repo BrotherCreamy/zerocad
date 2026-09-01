@@ -202,6 +202,8 @@ test("relations are never box-selectable, because a box only sees entities", asy
   await loadKernel();
   const m = new Model(2);
   const view: View = { ox: 400, oy: 300, scale: 3 };
+  const { axisFrame } = await import("./frames.ts");
+  axisFrame(m);
   m.addPoint([0, 0], "a");
   m.addPoint([10, 0], "b");
   m.addLine("a", "b", "l");
@@ -212,7 +214,10 @@ test("relations are never box-selectable, because a box only sees entities", asy
 
   const everything: ScreenRect = { x0: 0, y0: 0, x1: 800, y1: 600 };
   const names = selectInBox(m, view, everything, "crossing");
-  assert.deepEqual(names, ["a", "b", "l"], "no r-names — glyphs are UI, not geometry");
+  // The fixture frame's two points are caught like any other points; the frame
+  // itself is not, having nothing drawn for a rectangle to catch — and no
+  // r-names, because glyphs are UI rather than geometry.
+  assert.deepEqual(names, ["f_o", "f_x", "a", "b", "l"]);
 });
 
 test("a circle selects by its rim in a real model too", async () => {

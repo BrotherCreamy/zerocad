@@ -3,10 +3,16 @@
 
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { openApp, type AppContext } from "./harness.ts";
+import { axisFrame, openApp, type AppContext } from "./harness.ts";
 
 let app: AppContext;
-before(async () => { app = await openApp(); });
+before(async () => {
+  app = await openApp();
+  // The REPL-authored tool below says hor/ver, which are relative to a frame
+  // now. Parked well clear of where it is dragged out, since only its
+  // direction matters here.
+  await axisFrame(app, [0, 400]);
+});
 after(async () => { await app.close(); });
 
 // One line, because the command input is one line — exactly what a user types.

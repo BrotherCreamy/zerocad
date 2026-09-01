@@ -51,7 +51,33 @@ export interface ArcEntity {
   radiusVar: number;
 }
 
-export type Entity = PointEntity | LineEntity | CircleEntity | ArcEntity;
+/**
+ * A coordinate frame: an origin point plus a point fixing the +x direction.
+ *
+ * There is no built-in world frame in this model, and that absence is the
+ * point — an origin nobody made tempts every drawing into being related to
+ * it. A frame exists only because a user made one, and `hor`, `ver` and
+ * `fix` mean nothing until one does.
+ *
+ * Like a line, a frame is purely *referential*: it owns no variables, and its
+ * two points are ordinary points that can be dragged, dimensioned and
+ * constrained like any other. Only the x-ref's *direction* from the origin
+ * counts; how far away it sits is irrelevant, which is why `fix` normalises
+ * it and `hor`/`ver` — which only ask about direction — do not.
+ *
+ * +y is +x turned a quarter turn counter-clockwise. That is fully determined
+ * in 2D and not in any higher dimension (an origin and one direction leave a
+ * whole rotation free about that axis), so frames are 2D-only, the same call
+ * `horizontal`/`vertical` already make.
+ */
+export interface FrameEntity {
+  kind: "frame";
+  name: string;
+  origin: string; // a point name
+  xref: string;   // a point name; its direction from the origin is +x
+}
+
+export type Entity = PointEntity | LineEntity | CircleEntity | ArcEntity | FrameEntity;
 
 /** Circles and arcs share a center + radius; relations that only need those two treat them alike. */
 export interface CircularRef {
@@ -93,6 +119,12 @@ export class Model {
   entities = new Map<string, Entity>();
   /** Named relations, in the order they were made. See `relation()`. */
   relations = new Map<string, RelationEntry>();
+  /**
+   * Which frame `hor`/`ver`/`fix` mean when they are not told which. Null in
+   * a new model, and stays null until someone makes a frame and says so —
+   * see `setDefaultFrame`.
+   */
+  defaultFrame: string | null = null;
   private counters = new Map<string, number>();
   /**
    * The relation currently being built, if any — see `relation()`. Its
@@ -301,7 +333,7 @@ export class Model {
     // line has no direction, and half the relation vocabulary (tan, par,
     // ang) divides by that direction's length. The offset guarantees the
     // seed is never degenerate; the solver is free to move it afterwards.
-    const span = 20;
+    const span = Model.FREE_SPAN;
     let a = aGiven, b = bGiven;
     if (a == null && b == null) {
       a = this.withoutRecording(() => this.addPoint()).name;
@@ -356,8 +388,81 @@ export class Model {
     return ent;
   }
 
+  /**
+   * A coordinate frame: an origin and a point giving it a +x direction.
+   *
+   * Free-entities conventions throughout — both arguments optional, `null`
+   * the same as absent, missing points auto-created as real named points,
+   * and the whole thing journalled as *this one call* so a replay re-expands
+   * it identically rather than seeing two stray points.
+   *
+   * The auto-created pair is seeded a span apart for the same reason a free
+   * line's endpoints are, only more sharply: a frame whose two points
+   * coincide has no direction at all, so every relation written against it
+   * would be meaningless. A degenerate seed has to be impossible, not merely
+   * discouraged.
+   */
+  addFrame(origin?: string | null, xref?: string | null, name?: string | null): FrameEntity {
+    if (this.dim !== 2) throw new Error("a frame is a 2D entity");
+    if (origin != null) this.point(origin);
+    if (xref != null) this.point(xref);
+    if (origin != null && origin === xref) throw new Error("a frame needs two different points");
+    const span = Model.FREE_SPAN;
+    let o = origin, x = xref;
+    if (o == null && x == null) {
+      o = this.withoutRecording(() => this.addPoint()).name;
+      x = this.freePointOffset(this.coords(o), 0, span).name;
+    } else if (x == null) {
+      x = this.freePointOffset(this.coords(o!), 0, span).name;
+    } else if (o == null) {
+      o = this.freePointOffset(this.coords(x), 0, -span).name;
+    }
+    const nm = this.claimName("f", name ?? undefined);
+    const ent: FrameEntity = { kind: "frame", name: nm, origin: o!, xref: x! };
+    this.entities.set(nm, ent);
+    this.record("addFrame", [origin ?? null, xref ?? null, nm]);
+    return ent;
+  }
+
+  /**
+   * Which frame `hor`/`ver`/`fix` mean when they are not told. A model-level
+   * pointer and nothing more: a new model has **no** default, because a frame
+   * exists only because a user made one.
+   *
+   * Journalled, because it changes what a later relation call *means*. What
+   * it does not do is change what an *already journalled* relation means —
+   * the relations resolve this at call time and record the answer, so a
+   * saved file never depends on what the default happened to be later.
+   */
+  setDefaultFrame(name: string | null): void {
+    if (name != null) this.frame(name); // fail on a name that is not a frame
+    this.defaultFrame = name ?? null;
+    this.record("setDefaultFrame", [name ?? null]);
+  }
+
+  /**
+   * The frame a call meant: the one it named, or the default, resolved *now*.
+   * Relations call this and journal what comes back, so the entry carries an
+   * explicit frame name whatever the caller typed.
+   */
+  resolveFrame(name?: string | null): string {
+    const n = name ?? this.defaultFrame;
+    if (n == null) {
+      throw new Error("no default frame — frame() then setDefaultFrame(), or say which frame");
+    }
+    this.frame(n);
+    return n;
+  }
+
   /** Seed for a radius nobody specified. A seed, not a constraint. */
   static readonly DEFAULT_RADIUS = 10;
+
+  /**
+   * How far apart an auto-created pair of points is seeded — a free line's
+   * endpoints, a frame's origin and x-ref. A seed, not a constraint; what it
+   * buys is that the direction between them is never zero.
+   */
+  static readonly FREE_SPAN = 20;
 
   point(name: string): PointEntity {
     const e = this.entities.get(name);
@@ -380,6 +485,12 @@ export class Model {
   arc(name: string): ArcEntity {
     const e = this.entities.get(name);
     if (!e || e.kind !== "arc") throw new Error(`"${name}" is not an arc`);
+    return e;
+  }
+
+  frame(name: string): FrameEntity {
+    const e = this.entities.get(name);
+    if (!e || e.kind !== "frame") throw new Error(`"${name}" is not a frame`);
     return e;
   }
 
@@ -437,6 +548,7 @@ export class Model {
       case "line": return [...e.refs];
       case "circle": return [e.center];
       case "arc": return [e.center, e.start, e.end];
+      case "frame": return [e.origin, e.xref];
     }
   }
 
@@ -468,6 +580,12 @@ export class Model {
     if (constrained.length) {
       throw new Error(`"${name}" is still constrained by ${constrained.map((r) => r.name).join(", ")}`);
     }
+    // The default is a pointer at a frame, so it cannot outlive one. Cleared
+    // here in the primitive rather than up in `del`, because the primitive is
+    // also what a replay calls — and journalled as its own expansion, the
+    // same discipline the deletion itself follows, so reopening a file gets
+    // the pointer the deletion left rather than one recomputed later.
+    if (this.defaultFrame === name) this.setDefaultFrame(null);
     this.entities.delete(name);
     this.record("deleteEntity", [name]);
   }

@@ -24,7 +24,15 @@ import * as geom from "./relations/geometry.ts";
 import { fillet } from "./operations.ts";
 
 export const FORMAT = "neocad-model";
-export const VERSION = 1;
+/**
+ * 2 since coordinate frames. A version-1 file is still *read* rather than
+ * turned away at the door, because the useful thing to say about one is not
+ * "wrong version" but which step of it no longer means anything: its
+ * `hor`/`ver`/`fix` entries name no frame, and with no world frame left there
+ * is nothing to resolve them against. The replay table lets those entries
+ * throw their own message and reports the step. See the CHANGELOG.
+ */
+export const VERSION = 2;
 
 export interface SavedModel {
   format: typeof FORMAT;
@@ -57,6 +65,11 @@ function replayTable(model: Model): Map<string, (...args: unknown[]) => unknown>
     addLine: bound("addLine"),
     addCircle: bound("addCircle"),
     addArc: bound("addArc"),
+    addFrame: bound("addFrame"),
+    // The default frame is journalled because it changes what a *later*
+    // relation call means. It never changes what an already-journalled one
+    // means: hor/ver/fix resolve it when they are called and record the answer.
+    setDefaultFrame: bound("setDefaultFrame"),
     setCoords: bound("setCoords"),
     retargetLine: bound("retargetLine"),
     // Deletion is journalled as its *expansion* — one entry per name `del`

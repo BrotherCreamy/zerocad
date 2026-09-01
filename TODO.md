@@ -30,19 +30,51 @@ are flagged as such.
 
 - **No world frame — coordinate frames are entities** (owner's direction,
   2026-09-01, chosen over "keep the frame but hide it" and "directions stay,
-  origin goes"). The grid is gone; there is no drawn origin; and, in the
-  in-flight coordinate-frames package, `hor`/`ver`/`fix` become
-  frame-relative, erroring with a helpful message when no frame is given
-  and no default is set. `frame(origin?, xref?)` makes one out of two
-  ordinary points; `setDefaultFrame(name)` picks the one relations mean
-  when unnamed. A drawing with no frame floats in the solver's gauge, which
-  the damped solve already handles. ⚠ *Deviations from Onshape, veto-able:*
-  Onshape HAS a sketch origin and frame — this deliberately does not; the
-  rectangle tool goes intrinsic (par/perp, no hor/ver ever); H/V inference
-  works only while a default frame is set. **Old saved files carrying
-  frameless `hor`/`ver`/`fix` will not open** — accepted pre-release, said
-  in the CHANGELOG.
+  origin goes"). The grid is gone; there is no drawn origin; and
+  `hor`/`ver`/`fix` are frame-relative, erroring with a helpful message when
+  no frame is given and no default is set. `frame(origin?, xref?)` makes one
+  out of two ordinary points; `setDefaultFrame(name)` picks the one relations
+  mean when unnamed. A drawing with no frame floats in the solver's gauge,
+  which the damped solve already handles. ⚠ *Deviations from Onshape,
+  veto-able:* Onshape HAS a sketch origin and frame — this deliberately does
+  not; the rectangle tool goes intrinsic (par/perp, no hor/ver ever); H/V
+  inference works only while a default frame is set. **Old saved files
+  carrying frameless `hor`/`ver`/`fix` will not open** — accepted pre-release,
+  said in the CHANGELOG. Format version is now 2.
+  *Half 1 (model + relations) is built; half 2 is in flight.*
   *Spec:* [`docs/plans/coordinate-frames.md`](docs/plans/coordinate-frames.md).
+
+  Decided while building half 1, and open to veto:
+
+  - **A frame is read, never pushed.** Its two points are not declared as
+    variables of the residuals that read it, so a `hor` turns the *line* and
+    never the frame. Declaring them was tried and measured first: least
+    squares then turns the frame instead (about 8° of a 9° error, on a
+    40-unit line against a 20-unit frame arm) and, without normalising, also
+    shrinks the frame's arm to make the residual smaller still. A frame the
+    drawing pushes around is not a datum. The cost is one Jacobian that is
+    exact for the block as declared rather than for every number its residual
+    touches; the benefit is that "level against a tilted frame" settles at
+    *exactly* the frame's tilt, which is the package's own acceptance test.
+  - **`fix` above 2D keeps its old, gauge-relative meaning.** An origin plus
+    one direction settles a frame in 2D and leaves a rotation free in 3D, so
+    `addFrame` is 2D-only — and a `fix` that could not be written at all in a
+    3D model would take the dimension-genericity of the relation vocabulary
+    with it. This is the one place the kernel's own axes are still visible.
+    Closing it needs a frame entity carrying a second reference direction,
+    which is a package of its own.
+  - **`hor`/`ver` normalise the frame's direction** where `par`/`perp` take
+    both of theirs raw — otherwise collapsing the frame satisfies them, and
+    that is exactly what the solver does when given the chance.
+  - *Known half-1 gap, for half 2:* the line tool's aim and its dashed guide
+    are still computed against the kernel's axes rather than the default
+    frame's, so a *tilted* default frame gets a preview that disagrees with
+    the constraint that lands. Nothing in half 1 can tilt a frame by hand.
+  - *Noted, not acted on:* an intrinsic rectangle's `par` residual is a wedge
+    — quadratic in the drawing's size, where `hor` was linear in a coordinate
+    — so hurling a corner of a filleted rectangle a thousand units away no
+    longer re-solves inside sixty iterations. Displacements on the drawing's
+    own scale are unaffected.
 
 - **Selection:** there is no selection set. Clicking geometry drops its name
   into the command line (cellwork's model — "the viewport is a selection

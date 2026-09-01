@@ -6,7 +6,7 @@
 
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { openApp, type AppContext } from "./harness.ts";
+import { axisFrame, openApp, type AppContext } from "./harness.ts";
 
 let app: AppContext;
 before(async () => { app = await openApp(); });
@@ -41,7 +41,10 @@ test("a rectangle drawn from another's corner follows it when that corner moves"
   assert.equal(await app.status(), "SOLVED", "two rectangles sharing a corner is not a conflict");
   assert.deepEqual(b.points.p5, b.points.p3, "B's first corner sits on A's second");
 
-  // Move A's corner. B's has to come with it.
+  // Move A's corner. B's has to come with it. `fix` is relative to a frame
+  // now, and this one goes in after the drawing so that the counts above are
+  // still of the rectangles alone.
+  await axisFrame(app);
   await app.type('fix("p3", [40, 15]); solve()');
   const after = await app.model();
   assert.equal(await app.status(), "SOLVED");

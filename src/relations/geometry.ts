@@ -14,36 +14,8 @@
 
 import type { Model } from "../model.ts";
 import { dot, norm, vecSub, wedge, wedgeNorm } from "./vec.ts";
+import { chunk, joinVars, lineVars } from "./refs.ts";
 import { coincident } from "./basic.ts";
-
-/**
- * A line's endpoint variables, resolved *lazily*. Every line-taking relation
- * below declares its variables through one of these thunks rather than a
- * captured list, so a relation genuinely means "this line" — if an operation
- * later re-points the line at a different endpoint (a fillet trimming a
- * corner back), the relation follows it instead of going on constraining
- * whichever points the line happened to have when it was written.
- *
- * `model.line()` is re-run each evaluation, which also means a relation on a
- * line that is later removed fails loudly rather than reading stale indices.
- */
-function lineVars(model: Model, lineName: string): () => number[] {
-  model.line(lineName); // fail now, not at the first solve, if the name is wrong
-  return () => {
-    const l = model.line(lineName);
-    return [...model.point(l.refs[0]).varIndices, ...model.point(l.refs[1]).varIndices];
-  };
-}
-
-/** Concatenates several lazy variable lists into one. */
-function joinVars(...parts: (number[] | (() => number[]))[]): () => number[] {
-  return () => parts.flatMap((p) => (typeof p === "function" ? p() : p));
-}
-
-/** Splits a flat Dual array into `count` vectors of `dim` each. */
-function chunk<T>(flat: T[], dim: number, count: number): T[][] {
-  return Array.from({ length: count }, (_, k) => flat.slice(k * dim, (k + 1) * dim));
-}
 
 /** Two lines point the same way (or exactly opposite): their wedge vanishes. */
 export function parallel(model: Model, l1: string, l2: string): string {

@@ -3,7 +3,7 @@
 
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { openApp, type AppContext } from "./harness.ts";
+import { axisFrame, openApp, type AppContext } from "./harness.ts";
 
 let app: AppContext;
 before(async () => { app = await openApp(); });
@@ -40,6 +40,8 @@ test("a bare assignment persists between entries", async () => {
 });
 
 test("geometry and relations build a solved model from the command line", async () => {
+  // `fix` is relative to a frame now, and a fresh drawing has none.
+  await axisFrame(app);
   await app.type('ctr = pt(0, 0); fix(ctr, [0, 0]); c = circ(ctr, 10)');
   await app.type('a = pt(-40, 30); b = pt(40, 30); fix(a, [-40, 30]); fix(b, [40, 30]); tan(ln(a, b), c)');
   await app.type("solve()");

@@ -67,8 +67,10 @@ async function main() {
     // 2026-09-01). A grid is a picture of a world lattice, and a drawn origin
     // is an invitation to relate geometry to a global frame that this app is
     // in the process of not having: geometry is defined by its relations to
-    // other geometry, and coordinate frames, where wanted, will be entities
-    // the user creates. See TODO.md's register.
+    // other geometry, and a coordinate frame, where wanted, is an entity the
+    // user creates. Those exist now — `frame()` at the command line — but this
+    // loop does not draw one yet: the axes marker, and picking and dragging a
+    // frame, are the second half of that package. See TODO.md's register.
 
     // What the cursor is over lights up — and hovering a *constraint* lights up
     // everything that constraint is about. That spread is the payoff of drawing

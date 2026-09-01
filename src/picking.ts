@@ -183,5 +183,13 @@ function describeGeometry(model: Model, name: string, kind: Entity["kind"], n: (
       const [a, b] = [model.coords(l.refs[0]), model.coords(l.refs[1])];
       return `${name}  ${l.refs[0]}–${l.refs[1]}  len ${n(Math.hypot(b[0] - a[0], b[1] - a[1]))}`;
     }
+    // Nothing produces a frame pick yet — frames are drawn, hovered and
+    // picked in the second half of the coordinate-frames package. The case
+    // exists so this switch stays exhaustive rather than silently returning
+    // undefined the day it does.
+    case "frame": {
+      const f = model.frame(name);
+      return `${name}  origin ${f.origin}, +x toward ${f.xref}`;
+    }
   }
 }

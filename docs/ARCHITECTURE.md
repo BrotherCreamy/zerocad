@@ -204,6 +204,41 @@ and the two are not interchangeable once a model starts changing shape:
 Prefer the line form for anything that is a property of an edge. The built-in
 tools use it.
 
+## There is no world frame, and a frame is a datum
+
+The kernel keeps a flat vector of numbers and those numbers have to live
+somewhere, but that substrate is a **gauge, not a frame**: nothing in the
+user-facing vocabulary may reference it. `hor`, `ver` and `fix` are relative
+to a `Frame` — an origin point plus a point fixing +x, purely referential the
+way a `Line` is — and refuse to run when none is named and no default is set.
+Everything else in the vocabulary (`dist`, `par`, `perp`, `ang`, `tan`, `on`,
+…) is already intrinsic and did not change. A drawing with no frame simply
+floats: the damped solve leaves unconstrained directions where they were
+seeded, so nothing needs anchoring for the mathematics to work.
+
+**A relation reads a frame; it never pushes one.** This is the exception to
+the rule above it, and it is deliberate. A residual block declares the
+variables it reads, and declaring a frame's two points would put them in the
+Jacobian — at which point the solver can satisfy "this line is level" by
+turning the *frame*, which it does: measured at about 8° of a 9° error for a
+40-unit line against a 20-unit frame arm, plus a 14% shortening of the arm if
+the residual is not normalised, because a shorter arm makes a wedge smaller.
+Both readings satisfy the equation; only one of them is what a datum means.
+
+So `frameBasis` (`relations/refs.ts`) re-reads a frame's origin and unit axes
+at every evaluation and hands them to the residual as *values*. The house rule
+about laziness is kept — a frame whose points are re-targeted is still
+followed, and moving a frame moves the drawing hanging off it within the same
+solve — while the frame itself moves only when something moves it. The
+Jacobian stays exact for the block as declared rather than for every number
+the residual touches, which costs nothing while the frame is still and behaves
+like one Gauss-Seidel sweep while it is not.
+
+The default frame is a model-level pointer resolved **at call time** and
+journalled resolved, so a saved entry cannot change meaning because the
+default changed afterwards — the same instinct that makes a deletion journal
+its expansion rather than the cascade.
+
 ## Tools are not privileged
 
 A tool is a class with `onDown` / `onMove` / `onUp` / `onCancel` / `render`,

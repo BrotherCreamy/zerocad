@@ -21,6 +21,7 @@ import { radius } from "../src/relations/geometry.ts";
 import { findSnap } from "../src/snapping.ts";
 import { screenToWorld, worldToScreen, type View } from "../src/view.ts";
 import type { PointerInfo, ToolContext } from "../src/tools/tool.ts";
+import { axisFrame } from "./frames.ts";
 
 async function loadKernel() {
   const bytes = await readFile(new URL("../src/kernel/wasm-gen/neocad_kernel_bg.wasm", import.meta.url));
@@ -80,6 +81,7 @@ test("placePoint: a point snap becomes a coincident constraint", async () => {
 
   // And it is a live constraint, not a coordinate that happens to match:
   // move the target and the placed point comes with it.
+  axisFrame(model); // added after the clicks, so it snaps to nothing — see test/frames.ts
   fix(model, "a", [40, 25]);
   assert.equal(model.solve().solved, true);
   const at = model.coords(placed);
@@ -101,6 +103,7 @@ test("placePoint: a midpoint snap becomes the *line* form of midpoint", async ()
   assert.deepEqual(model.journal.at(-1), { op: "midpoint", args: ["m", "l"] },
     "two arguments after the model — the line form, not mid(m, a, b)");
 
+  axisFrame(model); // added after the clicks, so it snaps to nothing — see test/frames.ts
   fix(model, "a", [0, 0]);
   fix(model, "b", [40, 0]);
   assert.equal(model.solve().solved, true);
@@ -135,6 +138,7 @@ test("placePoint: a curve snap on a line becomes pointOnLine; on a rim, onCircle
   placePoint(ctx, onRim, "r");
   assert.deepEqual(model.journal.at(-1), { op: "onCircle", args: ["r", "c"] });
 
+  axisFrame(model); // added after the clicks, so it snaps to nothing — see test/frames.ts
   fix(model, "a", [0, 0]);
   fix(model, "b", [40, 0]);
   fix(model, "ctr", [0, 60]);
@@ -163,6 +167,7 @@ test("placePoint: an intersection snap applies the on-curve relation for both cu
   // radius is pinned as well, or the solver is free to grow the circle to meet
   // the line instead — a legal answer to an under-constrained sketch, and not
   // the question being asked here.
+  axisFrame(model); // added after the clicks, so it snaps to nothing — see test/frames.ts
   fix(model, "ctr", [0, 0]);
   radius(model, "c", 30);
   fix(model, "a", [-40, 10]);
@@ -237,6 +242,7 @@ test("the arc tool prefers a snapped end click over projecting it onto the rim",
 
   // And it stays there: `arcends` stretches the arc out to reach the point
   // rather than the click being quietly moved back onto the drawn rim.
+  axisFrame(model); // added after the clicks, so it snaps to nothing — see test/frames.ts
   fix(model, "target", [0, 40]);
   assert.equal(model.solve().solved, true);
   const [ex, ey] = model.coords(a.end);
@@ -270,6 +276,7 @@ test("a rectangle drawn from another's corner follows that corner when it moves"
   assert.deepEqual(model.coords("p5"), model.coords("p3"), "B's first corner is on A's");
 
   // Now move A's corner, and B's must come along.
+  axisFrame(model); // added after the clicks, so it snaps to nothing — see test/frames.ts
   fix(model, "p3", [130, 70]);
   const report = model.solve();
   assert.equal(report.solved, true, JSON.stringify(report.offenders));
@@ -290,6 +297,7 @@ test("...and does not, when snapping (and so inference) is off", async () => {
   drawRectangle(model, ctx, raw([100, 50]), raw([160, 90]));
   assert.equal(opsOf(model).includes("coincident"), false, "nothing was inferred");
 
+  axisFrame(model); // added after the clicks, so it snaps to nothing — see test/frames.ts
   fix(model, "p3", [130, 70]);
   assert.equal(model.solve().solved, true);
   const stranded = model.coords("p5");

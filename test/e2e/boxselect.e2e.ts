@@ -12,7 +12,7 @@
 
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { openApp, type AppContext } from "./harness.ts";
+import { axisFrame, openApp, type AppContext } from "./harness.ts";
 
 let app: AppContext;
 after(async () => { await app.close(); });
@@ -55,6 +55,9 @@ async function dragBox(ax: number, ay: number, bx: number, by: number, mid?: () 
 
 before(async () => {
   app = await openApp();
+  // `fix` is relative to a frame now; this one sits on the kernel's origin,
+  // clear of the drawing on the left and of the point out to the right.
+  await axisFrame(app);
   // A rectangle on the left, and a long edge reaching out of it to a point on
   // the right. A box round the rectangle contains it whole and only *clips*
   // the reaching edge, which is the difference between the two modes.

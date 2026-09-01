@@ -8,6 +8,7 @@ import { PointTool } from "../src/tools/point.ts";
 import { pullTo } from "../src/tools/engine.ts";
 import { horizontal } from "../src/relations/basic.ts";
 import type { ToolContext } from "../src/tools/tool.ts";
+import { axisFrame } from "./frames.ts";
 
 async function loadKernel() {
   const bytes = await readFile(new URL("../src/kernel/wasm-gen/neocad_kernel_bg.wasm", import.meta.url));
@@ -40,7 +41,10 @@ test("PointTool: onDown places a point and finishes the gesture", async () => {
   assert.equal(ctx.finished, true);
 });
 
-test("RectangleTool: drag from (0,0) to (100,50) builds an axis-aligned rectangle", async () => {
+// The rectangle's relations are intrinsic — two `par` and one `perp` — so it
+// needs no frame and comes out square in whatever direction it was dragged.
+// Dragged along the kernel's own axes, as here, that is an axis-aligned box.
+test("RectangleTool: drag from (0,0) to (100,50) builds a rectangle along the drag", async () => {
   await loadKernel();
   const model = new Model(2);
   const ctx = fakeCtx(model);
@@ -86,6 +90,7 @@ test("RectangleTool: a click with no real drag commits nothing", async () => {
 test("pullTo drags a free point onto the cursor and a constrained one as far as it may go", async () => {
   await loadKernel();
   const model = new Model(2);
+  axisFrame(model); // what "level" means here — see test/frames.ts
   model.addPoint([0, 0], "a");
   model.addPoint([10, 0], "b");
   horizontal(model, "a", "b");
@@ -101,7 +106,8 @@ test("pullTo drags a free point onto the cursor and a constrained one as far as 
   const before = model.coords("b");
   model.solve();
   assert.deepEqual(model.coords("b"), before);
-  assert.equal(model.journal.filter((j) => j.op !== "addPoint" && j.op !== "horizontal").length, 0,
+  const fixtureOps = ["addPoint", "addFrame", "setDefaultFrame", "horizontal"];
+  assert.equal(model.journal.filter((j) => !fixtureOps.includes(j.op)).length, 0,
     "a drag journals nothing — it changes values, not structure");
 });
 

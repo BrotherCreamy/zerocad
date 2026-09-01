@@ -12,6 +12,7 @@ import { onCircle, radius, tangent } from "../src/relations/geometry.ts";
 import { del } from "../src/operations.ts";
 import { save, open } from "../src/persist.ts";
 import { neocadScope } from "../src/replenv.ts";
+import { axisFrame } from "./frames.ts";
 
 async function loadKernel() {
   const bytes = await readFile(new URL("../src/kernel/wasm-gen/neocad_kernel_bg.wasm", import.meta.url));
@@ -60,6 +61,7 @@ test("addLine still rejects the same point twice", () => {
 test("addCircle() auto-creates a real, named, first-class center point", async () => {
   await loadKernel();
   const m = new Model(2);
+  axisFrame(m); // what the `fix` below is relative to — see test/frames.ts
   const c = m.addCircle();
   const center = m.point(c.center); // throws if not a real point entity
   assert.deepEqual(m.coords(center.name), [0, 0]);
@@ -123,6 +125,7 @@ test("a free constructor journals as ONE call — its expansion journals nothing
 test("the three-point circle: circle(), three onCircles, exact circumcircle", async () => {
   await loadKernel();
   const m = new Model(2);
+  axisFrame(m);
   // Circumcircle of (0,0), (8,0), (0,6) is centered (4,3) with radius 5.
   m.addPoint([0, 0], "p1"); fix(m, "p1", [0, 0]);
   m.addPoint([8, 0], "p2"); fix(m, "p2", [8, 0]);
@@ -141,6 +144,7 @@ test("the three-point circle: circle(), three onCircles, exact circumcircle", as
 test("tangent + point + radius pins a free circle on all three counts", async () => {
   await loadKernel();
   const m = new Model(2);
+  axisFrame(m);
   m.addPoint([0, 0], "a"); fix(m, "a", [0, 0]);
   m.addPoint([30, 0], "b"); fix(m, "b", [30, 0]);
   m.addLine("a", "b", "l1"); // the x-axis
@@ -160,6 +164,7 @@ test("tangent + point + radius pins a free circle on all three counts", async ()
 test("a free-circle model survives save/open byte-for-byte and stays live", async () => {
   await loadKernel();
   const m = new Model(2);
+  axisFrame(m);
   m.addPoint([0, 0], "p1"); fix(m, "p1", [0, 0]);
   m.addPoint([8, 0], "p2"); fix(m, "p2", [8, 0]);
   m.addPoint([0, 6], "p3"); fix(m, "p3", [0, 6]);
