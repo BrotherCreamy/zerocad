@@ -106,6 +106,63 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### Edge dragging: a translation is a target, not a move
+
+The feature is small and the interesting part is entirely in what a drag
+*means*. The naive implementation is to move the grabbed points by the mouse
+delta and then solve — and it is wrong in a way that only shows up on a
+constrained drawing: the move has already happened by the time the solver is
+consulted, so the solver's job becomes "clean up after this", and whether the
+constraints or the hand win depends on which residuals happen to be stiffer.
+It also cannot express the thing an edge drag is actually for, which is *asking*
+for a rigid translation and letting the drawing answer.
+
+So the offset is a **target**: every governing point gets one soft pull toward
+where it would be if the entity had translated rigidly, and the least-squares
+solve weighs those pulls against every real constraint at once. Drag an edge of
+a rectangle and it moves; drag an edge one of whose corners is `fix`ed and only
+the free half goes, because the fix outweighs the pull by 1 to 0.12. Nothing
+about that had to be written — it is the point drag's mechanism with more than
+one pull, which is the reason this package is one function and a handful of
+lines rather than a subsystem.
+
+**Grab-time positions, captured once.** Re-reading the points' positions each
+frame and adding the frame's delta would compound: the pull moves the point,
+the next frame measures from where the pull left it, and the geometry runs away
+from the cursor. Capturing the origins at the press and always measuring the
+offset from the press position makes the drag idempotent in the cursor's
+position — the same cursor position gives the same target however it got there,
+which is also what makes a drag reversible by dragging back.
+
+**Single points changed too, and that was a deliberate choice** rather than an
+oversight. The point drag pulled toward the cursor itself, which is fine when
+the press is exactly on the point and jumps by up to 8 pixels (the pick radius)
+when it is not. The offset form has no such discontinuity, and keeping two code
+paths to preserve a jump nobody wants would have been the worse trade. Every
+existing drag test still passes, because a test that presses exactly on a point
+cannot tell the two apart.
+
+**What a rim drag does was the one real design question.** Dragging a circle's
+rim could plausibly resize it — the rim is where a radius handle would be, and
+the centre-out `circle` tool creates a circle by exactly that gesture. It does
+not, for two reasons: Onshape moves the circle, and the whole package is
+defined as "translate the thing you grabbed", so a single entity behaving as a
+resize would be a special case in a feature that otherwise has none. Resizing
+has `rad` and the tool.
+
+**Rejected: making a glyph press inert.** With geometry dragging everywhere, a
+left-drag that started on a constraint glyph is the only press left that pans,
+which is arguably an inconsistency. The alternative was to make it do nothing
+at all. A press that produces no feedback of any kind reads as a broken app,
+whereas a pan is at least an action and is what that press has always done; and
+a glyph is small enough that the case is rare either way. Recorded here because
+it is the sort of thing that looks like an oversight later. It is not.
+
+**Rejected: rigid rotation**, which the spec also excluded. A drag carries one
+vector; a rotation needs a centre and an angle, so the gesture would have to
+mean something different depending on where within the entity it grabbed —
+which is a modifier-key feature, not this one. Onshape drags translate too.
+
 ### Free entities: the arguments were never constraints
 
 The owner's complaint was about a tool that insists on a centre and a radius
