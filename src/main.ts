@@ -7,7 +7,8 @@
 
 import { ensureKernelLoaded } from "./kernel/problem.ts";
 import { Model } from "./model.ts";
-import { open as openModelText } from "./persist.ts";
+import { open as openModelText, save as saveModel } from "./persist.ts";
+import { UndoStack } from "./undo.ts";
 import { Repl, fmt } from "./repl.ts";
 import { neocadScope } from "./replenv.ts";
 import { ToolEngine, type View } from "./tools/engine.ts";
@@ -142,10 +143,70 @@ async function main() {
     render();
   }).observe(cv);
 
+  // ---- undo ----------------------------------------------------------------
+  //
+  // The stack holds serialised models and nothing else (see undo.ts). All the
+  // judgement lives here, in the host, because "what is one undo step" is a
+  // question about the *interface* — a claim about what the user thinks they
+  // just did — and nothing below this file is entitled to an opinion on it.
+  //
+  // The policy is one comparison: snapshot before the action, snapshot after,
+  // and record a step only if the two differ. That is what keeps `ls()`,
+  // `help()`, a click that picked nothing and a tool's first click out of the
+  // history without any of them having to be enumerated. Being the same text
+  // `save()` writes, a snapshot also compares by value for free.
+
+  const undoStack = new UndoStack<string>();
+  const snapshot = () => saveModel(model, false);
+
+  let actionDepth = 0;
+  let actionBefore = "";
+  /** Set by undo()/redo(): they move through the history, they do not add to it. */
+  let movedHistory = false;
+
+  function beginUserAction() {
+    // Only the outermost bracket counts. A command entry that opens a file, or
+    // a pointer event that lands mid-`await` in the REPL, would otherwise
+    // record the same edit twice.
+    if (actionDepth++ === 0) {
+      actionBefore = snapshot();
+      movedHistory = false;
+    }
+  }
+
+  function endUserAction() {
+    if (actionDepth === 0) return; // defensive: an unbalanced `after` records nothing
+    if (--actionDepth > 0) return;
+    if (movedHistory) { movedHistory = false; return; }
+    undoStack.pushIfChanged(actionBefore, snapshot());
+  }
+
+  /** Runs `fn` as one undoable step. */
+  function asUserAction<T>(fn: () => T): T {
+    beginUserAction();
+    try {
+      return fn();
+    } finally {
+      endUserAction();
+    }
+  }
+
+  function step(direction: "undo" | "redo"): string {
+    const target = direction === "undo" ? undoStack.undo(snapshot()) : undoStack.redo(snapshot());
+    if (target === undefined) return `nothing to ${direction}`;
+    // Flagged before the swap, not after: `swapModel` re-enters this file
+    // (it cancels any gesture, which can close a user action), and the flag has
+    // to already be set by the time it does.
+    movedHistory = true;
+    swapModel(openModelText(target));
+    return `${direction === "undo" ? "undid" : "redid"} — ${undoStack.depth} back, ${undoStack.redoDepth} forward`;
+  }
+
   const engine = new ToolEngine(model, cv, view, {
     onSolveRender: solveAndRender,
     onRenderOnly: render,
     onPick: insertToken,
+    onUserAction: (phase) => (phase === "before" ? beginUserAction() : endUserAction()),
   });
 
   // The hover tag follows the cursor and names whatever is under it.
@@ -179,7 +240,13 @@ async function main() {
       cancel: () => engine.cancel(),
       refresh: () => { solveAndRender(); },
       solve: () => solveAndRender(),
-      openModel: (json: string) => swapModel(openModelText(json)),
+      // Opening a file is one undo step, so opening the wrong one is one Ctrl+Z
+      // from harmless. (Typed at the command line this is already inside
+      // `submit`'s bracket; the bracket here is what covers `openFile()`, whose
+      // work happens in an event handler long after the entry returned.)
+      openModel: (json: string) => asUserAction(() => swapModel(openModelText(json))),
+      undo: () => step("undo"),
+      redo: () => step("redo"),
       download: (json: string, filename: string) => {
         const url = URL.createObjectURL(new Blob([json], { type: "application/json" }));
         const link = document.createElement("a");
@@ -196,7 +263,8 @@ async function main() {
           const file = input.files?.[0];
           if (!file) return;
           try {
-            swapModel(openModelText(await file.text()));
+            const text = await file.text();
+            asUserAction(() => swapModel(openModelText(text)));
             log(`opened ${file.name}`, "out");
           } catch (err) {
             log(`${err instanceof Error ? err.message : err}`, "err");
@@ -249,11 +317,20 @@ async function main() {
       return;
     }
 
-    const result = await repl.eval(src);
-    for (const line of result.output) log(line, "out");
-    if (!result.ok) log(`${result.error!.name}: ${result.error!.message}`, "err");
-    else if (result.value !== undefined) log(fmt(result.value), "out");
-    render();
+    // One entry is one undo step — if it changed anything. The comparison is
+    // what decides: `ls()` and `help()` leave the model identical and record
+    // nothing, `pt(0,0)` does not and records one. An entry that draws four
+    // points is deliberately one step too, because one thing was typed.
+    beginUserAction();
+    try {
+      const result = await repl.eval(src);
+      for (const line of result.output) log(line, "out");
+      if (!result.ok) log(`${result.error!.name}: ${result.error!.message}`, "err");
+      else if (result.value !== undefined) log(fmt(result.value), "out");
+      render();
+    } finally {
+      endUserAction();
+    }
   }
 
   cmdEl.addEventListener("keydown", (e) => {

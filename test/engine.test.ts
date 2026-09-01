@@ -14,6 +14,7 @@ import { ensureKernelLoaded } from "../src/kernel/problem.ts";
 import { Model } from "../src/model.ts";
 import { fix, horizontal } from "../src/relations/basic.ts";
 import { ToolEngine, type View } from "../src/tools/engine.ts";
+import "../src/tools/point.ts"; // registers the "point" tool, armed below
 
 async function loadKernel() {
   const bytes = await readFile(new URL("../src/kernel/wasm-gen/neocad_kernel_bg.wasm", import.meta.url));
@@ -60,12 +61,17 @@ async function setup() {
   const { canvas, fire } = fakeCanvas();
   const view: View = { ox: 0, oy: 0, scale: 1 };
   const counts = { solves: 0, renders: 0, picks: 0 };
+  // Every user-action phase in order, each tagged with how many solves had
+  // happened by the time it arrived — which is how the "after" phase is checked
+  // to land on the *settled* model rather than on a frame of the gesture.
+  const actions: string[] = [];
   const engine = new ToolEngine(model, canvas, view, {
     onSolveRender: () => { counts.solves++; model.solve(); },
     onRenderOnly: () => { counts.renders++; },
     onPick: () => { counts.picks++; },
+    onUserAction: (phase) => { actions.push(`${phase}@${counts.solves}`); },
   });
-  return { model, engine, fire, counts };
+  return { model, engine, fire, counts, actions };
 }
 
 test("cancelling mid-drag settles the model instead of keeping the pull", async () => {
@@ -126,4 +132,80 @@ test("releasing a drag settles it, and a release without movement picks", async 
   fire("pointerup", { clientX: 40, clientY: 0, button: 0, buttons: 0 });
   assert.equal(counts.picks, 1, "the name still goes to the command line");
   assert.equal(counts.solves, 1, "and nothing was solved for it");
+});
+
+// --- the user-action bracket ----------------------------------------------
+//
+// The engine reports "a gesture began" and "a gesture ended" and nothing more;
+// what main.ts hangs on that is undo. These tests are about the property the
+// host depends on and cannot check for itself: the two phases always come in
+// pairs, and "after" arrives once the model has settled. An unpaired "before"
+// would leave the host's bracket open for the rest of the session — a failure
+// with no symptom until the next thing the user does goes unrecorded.
+
+test("a drag brackets from its first moving frame to its settling solve", async () => {
+  const { fire, actions, counts } = await setup();
+
+  fire("pointerdown", { clientX: 10, clientY: 0, button: 0, buttons: 1 });
+  assert.deepEqual(actions, [], "a press is not yet a gesture — it may still be a pick");
+
+  fire("pointermove", { clientX: 40, clientY: 0, button: -1, buttons: 1 });
+  assert.deepEqual(actions, ["before@0"], "the state to go back to is the one before the first frame");
+  fire("pointermove", { clientX: 60, clientY: 0, button: -1, buttons: 1 });
+  assert.deepEqual(actions, ["before@0"], "and a drag is one action however many frames it takes");
+
+  fire("pointerup", { clientX: 60, clientY: 0, button: 0, buttons: 0 });
+  assert.deepEqual(actions, ["before@0", "after@1"], "closed *after* the settling solve");
+  assert.equal(counts.solves, 1);
+});
+
+test("a cancelled drag closes its bracket, because it settles like a release", async () => {
+  const { engine, fire, actions } = await setup();
+
+  fire("pointerdown", { clientX: 10, clientY: 0, button: 0, buttons: 1 });
+  fire("pointermove", { clientX: 40, clientY: 0, button: -1, buttons: 1 });
+  engine.cancel();
+
+  // Escape mid-drag leaves geometry behind exactly as a release does, so it is
+  // the same one step. Leaving it open would also strand the host's bracket.
+  assert.deepEqual(actions, ["before@0", "after@1"]);
+});
+
+test("a pick and a pan are not user actions at all", async () => {
+  const { fire, actions } = await setup();
+
+  // Pressed and released on a point without moving: a pick.
+  fire("pointerdown", { clientX: 10, clientY: 0, button: 0, buttons: 1 });
+  fire("pointerup", { clientX: 11, clientY: 0, button: 0, buttons: 0 });
+  // Pressed on empty space and moved: a pan. The view is not the model.
+  fire("pointerdown", { clientX: 400, clientY: 300, button: 0, buttons: 1 });
+  fire("pointermove", { clientX: 460, clientY: 340, button: -1, buttons: 1 });
+  fire("pointerup", { clientX: 460, clientY: 340, button: 0, buttons: 0 });
+
+  assert.deepEqual(actions, [], "neither changes the model, and neither opens a bracket");
+});
+
+test("an armed tool brackets its press and its release", async () => {
+  const { engine, fire, actions, model } = await setup();
+  engine.arm("point");
+
+  const before = model.entities.size;
+  fire("pointerdown", { clientX: 100, clientY: 100, button: 0, buttons: 1 });
+  fire("pointerup", { clientX: 100, clientY: 100, button: 0, buttons: 0 });
+
+  // The point tool commits on the press and finishes there, so the release
+  // reaches no tool at all — hence one pair, not two. The rectangle commits the
+  // other way round, on release, which is exactly why both are bracketed and
+  // the host is left to notice which one changed anything.
+  assert.equal(model.entities.size, before + 1, "the click placed a point");
+  assert.deepEqual(actions, ["before@0", "after@1"]);
+});
+
+test("a tool that throws still closes its bracket", async () => {
+  const { engine, fire, actions } = await setup();
+  engine.arm("point");
+  (engine as unknown as { active: { onDown(): void } }).active.onDown = () => { throw new Error("boom"); };
+
+  assert.throws(() => fire("pointerdown", { clientX: 5, clientY: 5, button: 0, buttons: 1 }), /boom/);
+  assert.deepEqual(actions, ["before@0", "after@0"], "the bracket is closed in a finally");
 });

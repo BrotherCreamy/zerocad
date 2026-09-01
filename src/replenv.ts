@@ -40,6 +40,14 @@ export interface EnvHandles {
    * engine, the command scope — has to be pointed at the new one.
    */
   openModel?: (json: string) => void;
+  /**
+   * Steps the model back or forward through the host's undo history, reporting
+   * what happened. Host-provided for the same reason `openModel` is: undoing
+   * means replacing the whole model, which only the host can do — and the host
+   * is also the only layer that knows what counted as one user action.
+   */
+  undo?: () => string;
+  redo?: () => string;
   /** Hands the saved file to the user as a download. Browser only. */
   download?: (json: string, filename: string) => void;
   /** Prompts for a file and opens it. Browser only. */
@@ -154,6 +162,17 @@ export function neocadScope(h: EnvHandles): Bag {
       return "choose a file…";
     },
     journal: () => model.journal.map((e) => `${e.op}(${e.args.map((a) => JSON.stringify(a)).join(", ")})`),
+    // The same thing Ctrl+Z does, and not a parallel implementation of it: both
+    // go through the host handle, so a difference between the keystroke and the
+    // command is not something this codebase can express.
+    undo: () => {
+      if (!h.undo) throw new Error("no undo history in this environment");
+      return h.undo();
+    },
+    redo: () => {
+      if (!h.redo) throw new Error("no undo history in this environment");
+      return h.redo();
+    },
   };
 
   const commands: Bag = {
@@ -211,6 +230,7 @@ function help(scope: Bag): string {
     "           rad oncircle conc eqrad tan sym arcends",
     "operations fillet(line1, line2, radius)",
     "files      save()  open(text)  download(name)  openFile()  journal()",
+    "history    undo()  redo()          — ctrl+z, ctrl+shift+z (ctrl+y)",
     "viewport   arm(tool, opts)  cancel()  zoom(f)  pan(dx,dy)  refresh()",
     "inspect    ls()  coords(name)  solve()  tools()  hover()  snapping(on)  model",
     "authoring  Tool  defineTool(name, ctor)  Dual",

@@ -72,6 +72,15 @@ export class ToolEngine {
   private onSolveRender: () => void;
   private onRenderOnly: () => void;
   private onPick: (pick: Pick) => void;
+  private onUserAction: (phase: "before" | "after") => void;
+  /**
+   * Whether a user action is currently open, so that `before` and `after`
+   * always arrive in pairs. The engine owns the balancing rather than leaving
+   * it to the host, because the engine is the only thing that knows all the
+   * ways a gesture can end — released, cancelled, or abandoned because the
+   * model was swapped out from under it.
+   */
+  private actionOpen = false;
   /** Which pointer is panning, and where it was last seen. */
   private panning: { id: number; sx: number; sy: number } | null = null;
   /**
@@ -108,6 +117,19 @@ export class ToolEngine {
       onRenderOnly: () => void;
       /** An entity was clicked with no tool armed. */
       onPick?: (pick: Pick) => void;
+      /**
+       * Brackets one thing the user did with the pointer — a click handed to an
+       * armed tool, or a drag from the moment it starts moving to the solve
+       * that settles it. Fired in `before`/`after` pairs, always both.
+       *
+       * The engine deliberately does not know *why* a host wants this. It is
+       * what undo is built on (main.ts snapshots the model at `before` and
+       * pushes it at `after` if anything changed), but the engine sits below
+       * undo in the layering and must not learn that undo exists — so what it
+       * offers is the neutral fact it is uniquely able to report: a gesture
+       * began, a gesture ended. Anything else wanting that fact gets it too.
+       */
+      onUserAction?: (phase: "before" | "after") => void;
     },
   ) {
     this.model = model;
@@ -117,6 +139,7 @@ export class ToolEngine {
     this.onSolveRender = callbacks.onSolveRender;
     this.onRenderOnly = callbacks.onRenderOnly;
     this.onPick = callbacks.onPick ?? (() => {});
+    this.onUserAction = callbacks.onUserAction ?? (() => {});
     canvas.addEventListener("pointerleave", () => {
       if (this.hover) { this.hover = null; this.onRenderOnly(); }
     });
@@ -127,6 +150,20 @@ export class ToolEngine {
     canvas.addEventListener("wheel", (e) => this.onWheel(e), { passive: false });
     // Without this a right-drag pan ends in a context menu over the drawing.
     canvas.addEventListener("contextmenu", (e) => e.preventDefault());
+  }
+
+  /** Opens a user action, if one is not already open. Idempotent by design. */
+  private beginUserAction(): void {
+    if (this.actionOpen) return;
+    this.actionOpen = true;
+    this.onUserAction("before");
+  }
+
+  /** Closes the open user action, if there is one. Safe to call from any exit. */
+  private endUserAction(): void {
+    if (!this.actionOpen) return;
+    this.actionOpen = false;
+    this.onUserAction("after");
   }
 
   worldToScreen(world: number[]): [number, number] {
@@ -184,9 +221,15 @@ export class ToolEngine {
    * compromise between the drawing and a cursor that is no longer there, and
    * the status line still reads whatever it did before the gesture began.
    * Cancelling therefore ends a drag the same way releasing the button does:
-   * one ordinary solve through the host's path. There is nothing else it
-   * *could* mean, since nothing here has undo yet — "cancel" cannot put the
-   * geometry back, so the least it can do is not leave a pull baked into it.
+   * one ordinary solve through the host's path. "Cancel" cannot put the
+   * geometry back — that is what Ctrl+Z is for, and it is a separate keystroke
+   * meaning a separate thing — so the least it can do is not leave a pull baked
+   * into the drawing.
+   *
+   * Because a cancelled drag *is* a settled drag, it closes the user action the
+   * same way a release does. A drag abandoned with Escape is therefore one undo
+   * step, exactly like one that was released: the two leave the same geometry
+   * behind, so it would be strange for only one of them to be reversible.
    */
   cancel(): void {
     this.active?.onCancel();
@@ -197,6 +240,7 @@ export class ToolEngine {
     this.snap = null;
     if (wasDragging) this.onSolveRender();
     else this.onRenderOnly();
+    this.endUserAction();
   }
 
   private dispatch(kind: "down" | "move" | "up", e: PointerEvent): void {
@@ -259,10 +303,24 @@ export class ToolEngine {
       const world = this.snap ? this.snap.world : this.screenToWorld(sx, sy);
       const info: PointerInfo = { world, screen: [sx, sy], ...(this.snap ? { snap: this.snap } : {}) };
 
-      if (kind === "down") this.active.onDown(info);
-      else if (kind === "move") this.active.onMove(info);
-      else this.active.onUp(info);
-      if (kind === "move") this.onRenderOnly(); // so the snap marker follows
+      // A press or a release is one thing the user did; a move is part of one.
+      // Which of down and up actually commits geometry differs by tool — the
+      // rectangle builds nothing until it is released, the line and the fillet
+      // commit on the click — so both are bracketed and the host is left to
+      // notice that one of them changed nothing.
+      const tool = this.active;
+      if (kind === "move") {
+        tool.onMove(info);
+        this.onRenderOnly(); // so the snap marker follows
+        return;
+      }
+      this.beginUserAction();
+      try {
+        if (kind === "down") tool.onDown(info);
+        else tool.onUp(info);
+      } finally {
+        this.endUserAction();
+      }
       return;
     }
     this.snap = null;
@@ -286,12 +344,21 @@ export class ToolEngine {
         if (this.hover) this.hover = null;
       }
       if (this.idle.moved) {
-        if (this.idle.point) this.dragTo(this.idle.point, sx, sy);
+        // The action opens on the first frame that actually moves geometry, and
+        // before that frame is solved — the state to go back to is the one the
+        // drag started from, not the one it is already a pixel into. A press
+        // that pans opens nothing: the view is not the model.
+        if (this.idle.point) { this.beginUserAction(); this.dragTo(this.idle.point, sx, sy); }
         else assignView(this.view, panBy(this.view, sx - this.idle.sx, sy - this.idle.sy));
         this.onRenderOnly();
       }
-      this.idle.sx = sx;
-      this.idle.sy = sy;
+      // `dragTo` clears `idle` if the model was swapped out mid-gesture, so this
+      // is not the redundant check it looks like — without it that swap ends in
+      // a TypeError on the next pointer move.
+      if (this.idle) {
+        this.idle.sx = sx;
+        this.idle.sy = sy;
+      }
     } else {
       this.canvas.releasePointerCapture?.(e.pointerId);
       const { moved, point } = this.idle;
@@ -304,6 +371,10 @@ export class ToolEngine {
         // line reports the settled model rather than a frame of a gesture.
         this.onSolveRender();
       }
+      // After the settling solve, so a host taking a snapshot here gets the
+      // model as it will stay rather than a frame of the gesture. A no-op for a
+      // pick or a pan, neither of which ever opened an action.
+      this.endUserAction();
     }
   }
 
@@ -324,8 +395,10 @@ export class ToolEngine {
    * asks for the truth.
    */
   private dragTo(name: string, sx: number, sy: number): void {
-    // A file opened mid-gesture swaps the model out from under this.
-    if (!this.model.entities.has(name)) { this.idle = null; return; }
+    // A file opened mid-gesture swaps the model out from under this. The action
+    // is closed here too: a gesture that is abandoned rather than released must
+    // still balance its `before`, or a host bracketing it waits forever.
+    if (!this.model.entities.has(name)) { this.idle = null; this.endUserAction(); return; }
     // No snapping: v1 drags to where the cursor actually is. Onshape infers
     // while dragging; that is a follow-up, deliberately not this.
     this.model.problem.solve({ extra: pullTo(this.model, name, this.screenToWorld(sx, sy)) });
