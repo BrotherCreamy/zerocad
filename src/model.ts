@@ -255,48 +255,109 @@ export class Model {
     return [...this.relations.values()].filter((r) => r.args.some((a) => a === name));
   }
 
-  addPoint(coords: number[], name?: string): PointEntity {
-    if (coords.length !== this.dim) {
+  /**
+   * Every constructor argument below is optional, because none of them were
+   * ever constraints — `addCircle`'s radius only seeds a variable, and
+   * `addPoint`'s coords pin nothing. Whatever is missing is auto-created
+   * free with a sensible seed, so `addCircle()` is a legal way to say "a
+   * circle, to be defined by the relations I am about to apply".
+   *
+   * `null` means the same as absent everywhere: the journal round-trips
+   * through JSON, which has no undefined, so a missing argument comes back
+   * from a saved file as null.
+   *
+   * Auto-created sub-entities (a free circle's center, a free line's
+   * endpoints) are real, named, first-class points — but they journal
+   * nothing of their own. The constructor journals as the one call that was
+   * made and re-expands identically on replay, the same discipline
+   * operations follow. (The double-journal bug this avoids is documented on
+   * `relation()`.)
+   */
+  addPoint(coords?: number[] | null, name?: string | null): PointEntity {
+    if (coords != null && coords.length !== this.dim) {
       throw new Error(`point needs ${this.dim} coordinates, got ${coords.length}`);
     }
-    const nm = this.claimName("p", name);
-    const varIndices = coords.map((c) => this.problem.addVar(c));
+    const nm = this.claimName("p", name ?? undefined);
+    const seed = coords ?? new Array<number>(this.dim).fill(0);
+    const varIndices = seed.map((c) => this.problem.addVar(c));
     const ent: PointEntity = { kind: "point", name: nm, varIndices };
     this.entities.set(nm, ent);
-    this.record("addPoint", [coords, nm]);
+    this.record("addPoint", [coords ?? null, nm]);
     return ent;
   }
 
-  addLine(a: string, b: string, name?: string): LineEntity {
-    this.point(a); this.point(b); // validates both exist and are points
-    if (a === b) throw new Error("a line needs two different points");
-    const nm = this.claimName("l", name);
-    const ent: LineEntity = { kind: "line", name: nm, refs: [a, b] };
+  /** A point along axis `axis` from `from`, for seeding auto-created pieces. */
+  private freePointOffset(from: number[], axis: number, by: number): PointEntity {
+    const seed = from.slice();
+    seed[axis] += by;
+    return this.withoutRecording(() => this.addPoint(seed));
+  }
+
+  addLine(aGiven?: string | null, bGiven?: string | null, name?: string | null): LineEntity {
+    if (aGiven != null) this.point(aGiven); // validates it exists and is a point
+    if (bGiven != null) this.point(bGiven);
+    if (aGiven != null && aGiven === bGiven) throw new Error("a line needs two different points");
+    // Missing endpoints are auto-created and seeded APART — a zero-length
+    // line has no direction, and half the relation vocabulary (tan, par,
+    // ang) divides by that direction's length. The offset guarantees the
+    // seed is never degenerate; the solver is free to move it afterwards.
+    const span = 20;
+    let a = aGiven, b = bGiven;
+    if (a == null && b == null) {
+      a = this.withoutRecording(() => this.addPoint()).name;
+      b = this.freePointOffset(this.coords(a), 0, span).name;
+    } else if (b == null) {
+      b = this.freePointOffset(this.coords(a!), 0, span).name;
+    } else if (a == null) {
+      a = this.freePointOffset(this.coords(b), 0, -span).name;
+    }
+    const nm = this.claimName("l", name ?? undefined);
+    const ent: LineEntity = { kind: "line", name: nm, refs: [a!, b!] };
     this.entities.set(nm, ent);
-    this.record("addLine", [a, b, nm]);
+    this.record("addLine", [aGiven ?? null, bGiven ?? null, nm]);
     return ent;
   }
 
-  addCircle(center: string, radius: number, name?: string): CircleEntity {
-    this.point(center);
-    if (!(radius > 0)) throw new Error("a circle needs a positive radius");
-    const nm = this.claimName("c", name);
-    const ent: CircleEntity = { kind: "circle", name: nm, center, radiusVar: this.problem.addVar(radius) };
+  addCircle(center?: string | null, radius?: number | null, name?: string | null): CircleEntity {
+    if (center != null) this.point(center);
+    if (radius != null && !(radius > 0)) throw new Error("a circle needs a positive radius");
+    const c = center ?? this.withoutRecording(() => this.addPoint()).name;
+    const nm = this.claimName("c", name ?? undefined);
+    const ent: CircleEntity = {
+      kind: "circle", name: nm, center: c,
+      radiusVar: this.problem.addVar(radius ?? Model.DEFAULT_RADIUS),
+    };
     this.entities.set(nm, ent);
-    this.record("addCircle", [center, radius, nm]);
+    this.record("addCircle", [center ?? null, radius ?? null, nm]);
     return ent;
   }
 
-  addArc(center: string, start: string, end: string, radius: number, name?: string): ArcEntity {
-    this.point(center); this.point(start); this.point(end);
-    if (start === end) throw new Error("an arc needs two different endpoints");
-    if (!(radius > 0)) throw new Error("an arc needs a positive radius");
-    const nm = this.claimName("a", name);
-    const ent: ArcEntity = { kind: "arc", name: nm, center, start, end, radiusVar: this.problem.addVar(radius) };
+  addArc(center?: string | null, start?: string | null, end?: string | null,
+         radius?: number | null, name?: string | null): ArcEntity {
+    if (center != null) this.point(center);
+    if (start != null) this.point(start);
+    if (end != null) this.point(end);
+    if (start != null && start === end) throw new Error("an arc needs two different endpoints");
+    if (radius != null && !(radius > 0)) throw new Error("an arc needs a positive radius");
+    const r = radius ?? Model.DEFAULT_RADIUS;
+    if ((start == null || end == null) && this.dim < 2) {
+      // The quarter-arc seed below needs two independent axes to be
+      // non-degenerate; below 2D there is no second axis to offset along.
+      throw new Error("an auto-seeded arc needs at least 2 dimensions");
+    }
+    // Auto pieces seed as a non-degenerate quarter arc around the center.
+    const c = center ?? this.withoutRecording(() => this.addPoint()).name;
+    const s = start ?? this.freePointOffset(this.coords(c), 0, r).name;
+    const e = end ?? this.freePointOffset(this.coords(c), 1, r).name;
+    const nm = this.claimName("a", name ?? undefined);
+    const ent: ArcEntity = { kind: "arc", name: nm, center: c, start: s, end: e, radiusVar: this.problem.addVar(r) };
     this.entities.set(nm, ent);
-    this.record("addArc", [center, start, end, radius, nm]);
+    this.record("addArc", [center ?? null, start ?? null, end ?? null, radius ?? null, nm]);
     return ent;
   }
+
+  /** Seed for a radius nobody specified. A seed, not a constraint. */
+  static readonly DEFAULT_RADIUS = 10;
 
   point(name: string): PointEntity {
     const e = this.entities.get(name);

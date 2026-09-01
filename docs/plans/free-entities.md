@@ -1,7 +1,10 @@
 # Plan: entities defined by constraints, not constructors
 
-**Status: queued — starts after the box-select PR merges** (both touch
-`replenv.ts`/docs; serial keeps review clean).
+**Status: model layer shipped (commit 1 of 2); the command layer waits for
+the box-select merge** — only the command layer touches `replenv.ts`, so the
+model half carried no conflict risk and went first while Opus capacity was
+limit-blocked (2026-09-01). Implemented directly by the supervising session
+for that reason; the command layer follows the original worker/PR route.
 
 Owner's direction, quoted because it is the whole requirement: *"need to be
 able to define elements by constraints. E.g. the code equivalent of 'create a

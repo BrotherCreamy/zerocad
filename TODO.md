@@ -24,6 +24,11 @@ otherwise.
   its worktree; Fable will resume the same worker after the reset rather
   than restart. Last state: implementation done through the drag register
   change, updating the picking e2e test that asserted the old behaviour.
+- **Free entities, model half** ([`docs/plans/free-entities.md`](docs/plans/free-entities.md))
+  — constructors' args are now optional at the model layer; auto-created
+  pieces seed non-degenerate and journal nothing of their own. The command
+  layer (`circle()` et al. in `replenv.ts`) waits for box-select to merge,
+  since both touch that file.
 - **Standing duty**: after every merged PR, run `npm run build:single` and
   republish `dist-single/neocad.html` to the owner's review artifact
   (same URL each time).
