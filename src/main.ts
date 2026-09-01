@@ -13,6 +13,8 @@ import { ToolEngine, type View } from "./tools/engine.ts";
 import { getToolCtor } from "./tools/tool.ts";
 import "./tools/point.ts";
 import "./tools/rectangle.ts";
+import "./tools/circle.ts";
+import "./tools/arc.ts";
 
 const statusEl = document.getElementById("status")!;
 const logEl = document.getElementById("log")!;

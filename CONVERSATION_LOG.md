@@ -291,20 +291,102 @@ The README's command-line examples are executed verbatim by a script
 before being committed, on the principle that documentation which has
 never been run is a guess.
 
+## Sketch tools, the fillet, and a contract change it forced
+
+Continuing down the `STATUS.md` list.
+
+**Circle and arc tools.** Circle is a drag from center to rim. Arc is
+three clicks — center, radius, sweep — and it was the interesting one,
+because it is the first tool to span more than a single gesture. That
+needed no engine change whatsoever: a tool stays armed until it calls
+`ctx.finish()`, so "multi-stage" is just "finishes later". The one-shot
+lifecycle turned out to have been the right shape already, which is
+pleasant to discover rather than assume.
+
+Both leave the radius unconstrained on commit. That follows the
+rectangle tool's existing choice not to dimension the box it draws: the
+shape keeps the size it was drawn at, because nothing pulls on that
+variable and the solver leaves it alone, while staying free to be driven
+later by a `rad` or a tangency. Pinning it would make every drawn circle
+rigid, which is the wrong default for a constraint sketcher.
+
+**The fillet.** The satisfying part is that it needed no new mathematics
+at all — `tan` on each leg, `arcends`, `rad`, and that is the whole
+thing. Those four are also *complete*, which is worth stating because it
+is not obvious: a tangent line touches its circle at exactly one point,
+so an endpoint lying on both the leg and the circle can only be the
+point of tangency. There is nothing further to say.
+
+Structurally it reuses the shared corner as the tangent point on the
+first leg instead of replacing it, so nothing is orphaned. That was a
+deliberate constraint on the design rather than an optimisation: the
+model has no delete yet, so an operation that stranded points would
+leave stray dots on the canvas forever.
+
+It also earned `src/operations.ts` a file of its own, because "operation"
+and "relation" are genuinely different things and it is worth naming the
+difference. A relation only ever adds an equation; the worst it can do is
+over- or under-constrain. An operation changes the structure and can
+leave the model malformed. They want reviewing with different eyes.
+
+**The contract change the fillet forced.** The first browser run of the
+fillet passed every numerical check — tangent to both legs to six
+decimal places — and produced a visibly broken rectangle. The right edge
+had gone slack and slanted.
+
+The cause: relations captured *variable indices* when they were created.
+The rectangle tool had said `hor(cornerA, cornerB)`, meaning "this edge
+is level" but saying "these two points share a y". When the fillet
+re-pointed the edge at a new tangent point, the constraint stayed behind
+on the old corner and the edge was left free to swing.
+
+The first instinct was to document this as a caveat and move on, and
+that is in fact what the first pass did — the note said fixing it
+properly was "too big to smuggle in alongside a fillet." Then the
+screenshot arrived. Filleting a rectangle is the most obvious thing
+anyone would try with this feature, and it produced garbage. Going back
+to actually measure the change rather than estimate it: four lines in
+`problem.ts`. The earlier judgement had been made without looking.
+
+So `Problem.addResidual` now takes either a fixed index list or a thunk
+re-consulted at every evaluation, and every line-taking relation uses the
+thunk. `hor`/`ver` take either two point names or one line name — both
+are real things a sketcher means when they pick something and say
+"level" — and the built-in tools use the line form. A relation on a line
+now genuinely means *this line*, and follows it through structural
+surgery.
+
+The two forms are kept, rather than the point form being removed, because
+both are legitimate; the difference is documented at every level and both
+behaviours are pinned by tests, so nobody has to rediscover it from a bad
+screenshot. Filleting a drawn rectangle now keeps the rectangle square.
+
+The lesson worth keeping: the numerical checks all passed. Only rendering
+the thing and looking at it caught this. That is the second bug in two
+sessions that only appeared once the app was assembled and drawn — the
+first being the stale status readout — and both would have shipped on
+unit tests alone.
+
 ## What to know before continuing
 
-The `STATUS.md` "not started yet" list is now: a **fillet** (the most
-interesting one left — it has to create an arc *and* constrain it tangent
-to both legs in a single move), **circle/arc drawing tools** (the
-entities and relations exist and are reachable from the command line, but
-there is no drag-to-create tool for them yet the way `rectangle.ts`
-exists), **save/open as commands**, and the rest of the cellwork
-interaction ideas.
+The `STATUS.md` "not started yet" list is now: **save/open as commands**,
+**deleting entities**, **a picking/selection model**, and the rest of the
+cellwork interaction ideas.
 
-On save/open specifically, the shape of the problem is now clear enough
-to write down: a model is a flat variable vector, a set of named
-entities, and a set of residual blocks. The first two serialise
-directly. The third does not — a residual block holds a *closure* — so
-saving a model means recording the sequence of commands that built it and
-replaying them, rather than trying to serialise the blocks. Which is
-tidy, because those commands are exactly what the REPL already takes.
+On save/open, the shape of the problem is clear enough to write down: a
+model is a flat variable vector, a set of named entities, and a set of
+residual blocks. The first two serialise directly. The third does not — a
+residual block holds a *closure* — so saving a model means recording the
+sequence of commands that built it and replaying them, rather than trying
+to serialise the blocks. Which is tidy, because those commands are
+exactly what the REPL already takes.
+
+On deleting: variables live in a flat vector, so removing one means
+compacting it and remapping every block that refers to a later index. The
+lazy-`varIndices` change makes that more tractable than it was, since a
+block can now resolve through an entity rather than holding a raw index.
+
+A pointer-driven fillet tool — click two lines, round the corner — is
+waiting on picking, not on the fillet itself. The operation is done and
+reachable from the command line; what it needs is hit-testing, which is
+the same work as `sel`/`desel`.

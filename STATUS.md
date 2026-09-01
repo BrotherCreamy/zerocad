@@ -144,20 +144,59 @@ replacing) the system Node other projects on this machine may depend on.
   and a contradictory constraint correctly reporting `CONFLICT` with the
   offending relation named. 42/42 unit tests, 19/19 browser checks.
 
+- **Circle and arc tools** (`tools/circle.ts`, `tools/arc.ts`). Circle is a
+  drag from center to rim. Arc is *three clicks* — center, then radius, then
+  sweep — which made it the first tool to span more than one gesture, and
+  needed no engine change at all: a tool stays armed until it calls
+  `ctx.finish()`, so a multi-stage tool is simply one that finishes later.
+  Both leave the radius unconstrained on commit, matching the rectangle
+  tool's choice not to dimension what it draws: the shape keeps the size it
+  was drawn at (nothing pulls on that variable, so the solver leaves it be)
+  while staying free to be driven later by a `rad` or a tangency.
+- **`fillet`** (`src/operations.ts`) — the last item from cellwork's
+  vocabulary. It composes entirely out of the existing relations, which is
+  the part worth noticing: `tan` on each leg, `arcends`, and `rad`. Those
+  four are also *complete*, because a tangent line touches its circle exactly
+  once, so an endpoint lying on both the leg and the circle can only be the
+  point of tangency — no separate statement needed.
+  Structurally it reuses the shared corner as the tangent point on the first
+  leg rather than replacing it, so nothing is left orphaned (the model has no
+  delete yet, and an operation that stranded points would leave stray dots on
+  the canvas forever). It refuses corners it cannot round — collinear legs, a
+  radius larger than the legs — with a reason rather than a bad solve.
+- **Operations vs. relations** is now a real distinction in the tree
+  (`src/operations.ts`). A relation only ever adds an equation and can at
+  worst over- or under-constrain; an operation changes the structure and can
+  leave the model malformed. Worth reviewing with different eyes.
+- **Relations on lines resolve their endpoints lazily.** `Problem.addResidual`
+  now accepts either a fixed index list or a thunk re-consulted at each
+  evaluation, and every line-taking relation uses the thunk. This came
+  straight out of building the fillet: a relation on a line means "this
+  line", not "these two points as they stood when I was written", and
+  re-pointing a leg used to leave its constraints behind on the old corner.
+  `hor`/`ver` accordingly take *either* two point names or one line name —
+  both are real things a sketcher means — and the built-in tools use the line
+  form. Filleting a drawn rectangle keeps the rectangle square; before this
+  it visibly did not. Both behaviours are pinned in `test/sketch.test.ts`.
+
 ## Not started yet
 
-- A **fillet** tool/relation — the one item from cellwork's vocabulary not
-  yet carried over, and the most interesting, since it has to create
-  geometry (an arc) *and* constrain it (tangent to both legs) in one move.
-- **Circle and arc drawing tools.** The entities and their relations exist
-  and are reachable from the command line, but there is no drag-to-create
-  circle or arc tool yet the way `rectangle.ts` exists for rectangles.
-- **Save/open** as ordinary commands in the same language — the remaining
-  piece of the "tool up the whole interface" goal now that viewport
-  control is done. A model is a flat variable vector plus named entities
-  plus residual blocks; the first two serialise directly, the third is the
-  open question (a residual block holds a *closure*, so saving a model
-  means saving the calls that built it, not the closures themselves).
+- **Save/open** as ordinary commands in the same language — the last piece of
+  the "tool up the whole interface" goal. The shape of the problem is now
+  clear: a model is a flat variable vector, named entities, and residual
+  blocks. The first two serialise directly; the third does not, because a
+  block holds a *closure*. So saving means recording the commands that built
+  the model and replaying them — which is tidy, since those commands are
+  exactly what the REPL already takes.
+- **Deleting entities.** There is no `remove` yet, and it is not trivial:
+  variables live in a flat vector, so removing one means compacting it and
+  remapping every block. The lazy-`varIndices` change above is a step toward
+  making that tractable, since blocks can now resolve through entities rather
+  than holding raw indices.
+- **A picking/selection model**, which is what a pointer-driven fillet tool
+  needs (the operation is done and reachable from the command line, but
+  clicking two lines to round their corner needs hit-testing first). This is
+  the same `sel`/`desel` work listed below.
 - Porting the rest of the interaction niceties already proven out in
   `cellwork` (nested `(...)` sub-commands, hover snaps, selection via a
   real `sel`/`desel` command, box-select, Onshape-style pan controls, the

@@ -45,14 +45,17 @@ export class RectangleTool extends Tool {
     const b = m.addPoint([x1, y0]);
     const c = m.addPoint([x1, y1]);
     const d = m.addPoint([x0, y1]);
-    m.addLine(a.name, b.name);
-    m.addLine(b.name, c.name);
-    m.addLine(c.name, d.name);
-    m.addLine(d.name, a.name);
-    horizontal(m, a.name, b.name);
-    horizontal(m, d.name, c.name);
-    vertical(m, a.name, d.name);
-    vertical(m, b.name, c.name);
+    const ab = m.addLine(a.name, b.name);
+    const bc = m.addLine(b.name, c.name);
+    const cd = m.addLine(c.name, d.name);
+    const da = m.addLine(d.name, a.name);
+    // Constrain the *edges*, not the corner points. What is meant is "this
+    // side is level", and saying it that way means the box stays square when
+    // an operation later re-points an edge — filleting a corner, for one.
+    horizontal(m, ab.name);
+    horizontal(m, cd.name);
+    vertical(m, bc.name);
+    vertical(m, da.name);
 
     this.ctx.requestSolve();
     this.ctx.finish();

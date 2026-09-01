@@ -9,9 +9,9 @@ the TypeScript layer both run together, client-side, in the browser.
 2D CAD sketching (points, lines, circles, arcs; a relation vocabulary of
 distance, coincidence, midpoint, horizontal/vertical, parallel,
 perpendicular, angle, point-on-line, equal-length, radius, on-circle,
-concentric, equal-radius, tangent and symmetry; a drag-to-create
-rectangle tool) is the **first standard library** built on that kernel,
-not the kernel's whole purpose. The kernel itself knows nothing about geometry — just a flat
+concentric, equal-radius, tangent and symmetry; rectangle, circle and arc
+tools; and a fillet) is the **first standard library** built on that
+kernel, not the kernel's whole purpose. The kernel itself knows nothing about geometry — just a flat
 variable vector and residual blocks — so the same solver is meant to be
 usable for anything shaped like a nonlinear least-squares problem.
 
@@ -80,12 +80,15 @@ src/model.ts             Entity graph: Point / Line / Circle / Arc, dimension-ge
 src/relations/vec.ts     Dual-vector helpers (dot, wedge) every relation is built from
 src/relations/basic.ts   dist / fix / coincident / midpoint (generic) / hor / ver (2D-only)
 src/relations/geometry.ts par / perp / ang / on / eq / rad / oncircle / conc / eqrad / tan / sym
+src/operations.ts        operations, which change structure rather than add equations: fillet
 src/repl.ts              the scoped evaluator: curated scope, no reach into page globals
 src/replenv.ts           what that scope contains — the app's whole command surface
 src/tools/tool.ts         abstract class Tool + defineTool registry
 src/tools/engine.ts       wires real DOM pointer events to the armed tool
 src/tools/point.ts        the trivial example tool
 src/tools/rectangle.ts    the concrete example the Tool API was designed around
+src/tools/circle.ts       drag from center to rim
+src/tools/arc.ts          center, radius, sweep — a three-click gesture
 src/main.ts              browser entry point (canvas render loop + the REPL)
 test/                    node --test, no browser needed (WASM loaded via a byte buffer)
 ```
@@ -108,6 +111,21 @@ solve()
 zoom(1.5); pan(0, -20)             // the viewport is just more commands
 ls()                               // what's in the model
 ```
+
+Drawing tools are `point`, `rectangle`, `circle` and `arc` — type the name
+to arm one. `fillet` rounds the corner where two lines meet:
+
+```js
+fillet("l1", "l2", 8); solve()     // an arc tangent to both legs
+```
+
+One thing worth knowing when constraining geometry you intend to modify
+later: `hor` and `ver` take *either* two point names or a single line
+name, and they are not interchangeable. `hor("a", "b")` pins those two
+points forever; `hor("l1")` means "this edge is level" and re-reads the
+line's endpoints every solve. Only the second survives an operation that
+re-points the edge — which is exactly what a fillet does when it trims a
+corner back. The built-in tools use the line form.
 
 Tools are authored in the same place, through the same `defineTool` the
 built-ins use — this is the whole point of the architecture:

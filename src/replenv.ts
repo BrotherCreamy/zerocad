@@ -16,6 +16,7 @@ import type { SolveReport } from "./kernel/problem.ts";
 import { Tool, defineTool, listTools } from "./tools/tool.ts";
 import * as basic from "./relations/basic.ts";
 import * as geom from "./relations/geometry.ts";
+import { fillet } from "./operations.ts";
 
 type Bag = Record<string, unknown>;
 
@@ -108,6 +109,12 @@ export function neocadScope(h: EnvHandles): Bag {
     arc: (center: string, start: string, end: string, r: number) => model.addArc(center, start, end, r).name,
   };
 
+  // Operations change the model's structure rather than only adding
+  // equations — see operations.ts for why that is worth keeping separate.
+  const operations: Bag = {
+    fillet: (l1: string, l2: string, r: number) => fillet(model, l1, l2, r),
+  };
+
   const commands: Bag = {
     model,
     Model,
@@ -146,7 +153,7 @@ export function neocadScope(h: EnvHandles): Bag {
     },
   };
 
-  const scope: Bag = { ...relations, ...geometry, ...commands };
+  const scope: Bag = { ...relations, ...geometry, ...operations, ...commands };
   scope.help = () => help(scope);
   return scope;
 }
@@ -156,6 +163,7 @@ function help(scope: Bag): string {
     "geometry   pt(x,y)  ln(a,b)  circ(center,r)  arc(center,start,end,r)",
     "relations  dist fix coin mid hor ver par perp ang on eq",
     "           rad oncircle conc eqrad tan sym arcends",
+    "operations fillet(line1, line2, radius)",
     "viewport   arm(tool)  cancel()  zoom(f)  pan(dx,dy)  refresh()",
     "inspect    ls()  coords(name)  solve()  tools()  model",
     "authoring  Tool  defineTool(name, ctor)  Dual",

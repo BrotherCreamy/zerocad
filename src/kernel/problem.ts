@@ -10,10 +10,27 @@
 import { Dual } from "./dual.ts";
 import initWasm, { solve_step } from "./wasm-gen/neocad_kernel.js";
 
+/**
+ * Which variables a block reads, either as a fixed list or as a thunk
+ * re-consulted at every evaluation.
+ *
+ * The thunk form exists because the entity a relation is *about* can be
+ * restructured under it. A relation on a line means "this line", not "these
+ * two points as they stood when I was written" — so when an operation
+ * re-points that line at a different endpoint (a fillet trimming a corner
+ * back, say), the relation has to follow. A captured index list cannot; a
+ * thunk that reads the line's current refs can.
+ */
+export type VarRefs = number[] | (() => number[]);
+
 export interface ResidualBlock {
-  varIndices: number[];
+  varIndices: VarRefs;
   fn: (locals: Dual[]) => Dual[];
   label?: string; // for diagnostics/offender reporting, optional
+}
+
+function resolve(refs: VarRefs): number[] {
+  return typeof refs === "function" ? refs() : refs;
 }
 
 export interface SolveReport {
@@ -41,7 +58,7 @@ export class Problem {
   setVar(i: number, v: number): void { this.values[i] = v; }
   get varCount(): number { return this.values.length; }
 
-  addResidual(varIndices: number[], fn: (locals: Dual[]) => Dual[], label?: string): void {
+  addResidual(varIndices: VarRefs, fn: (locals: Dual[]) => Dual[], label?: string): void {
     this.blocks.push({ varIndices, fn, label });
   }
 
@@ -58,7 +75,8 @@ export class Problem {
     const vals: number[] = [];
     const labels: (string | undefined)[] = [];
     for (const block of this.blocks) {
-      const locals = block.varIndices.map((gi, li) => Dual.variable(this.values[gi], li));
+      const varIndices = resolve(block.varIndices);
+      const locals = varIndices.map((gi, li) => Dual.variable(this.values[gi], li));
       const outs = block.fn(locals);
       for (const out of outs) {
         const rowIdx = r.length;
@@ -67,7 +85,7 @@ export class Problem {
         for (const [localSlot, deriv] of out.grad) {
           if (deriv === 0) continue;
           rows.push(rowIdx);
-          cols.push(block.varIndices[localSlot]);
+          cols.push(varIndices[localSlot]);
           vals.push(deriv);
         }
       }

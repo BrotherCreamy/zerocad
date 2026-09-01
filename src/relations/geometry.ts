@@ -17,15 +17,27 @@ import { dot, norm, vecSub, wedge, wedgeNorm } from "./vec.ts";
 import { coincident } from "./basic.ts";
 
 /**
- * The variable indices and Dual-slicing for a line's two endpoints. Every
- * line-taking relation below needs the same thing: the global indices to
- * declare, and a way to turn the local Duals back into two point vectors.
+ * A line's endpoint variables, resolved *lazily*. Every line-taking relation
+ * below declares its variables through one of these thunks rather than a
+ * captured list, so a relation genuinely means "this line" — if an operation
+ * later re-points the line at a different endpoint (a fillet trimming a
+ * corner back), the relation follows it instead of going on constraining
+ * whichever points the line happened to have when it was written.
+ *
+ * `model.line()` is re-run each evaluation, which also means a relation on a
+ * line that is later removed fails loudly rather than reading stale indices.
  */
-function lineParts(model: Model, lineName: string) {
-  const l = model.line(lineName);
-  const a = model.point(l.refs[0]);
-  const b = model.point(l.refs[1]);
-  return { varIndices: [...a.varIndices, ...b.varIndices], dim: model.dim };
+function lineVars(model: Model, lineName: string): () => number[] {
+  model.line(lineName); // fail now, not at the first solve, if the name is wrong
+  return () => {
+    const l = model.line(lineName);
+    return [...model.point(l.refs[0]).varIndices, ...model.point(l.refs[1]).varIndices];
+  };
+}
+
+/** Concatenates several lazy variable lists into one. */
+function joinVars(...parts: (number[] | (() => number[]))[]): () => number[] {
+  return () => parts.flatMap((p) => (typeof p === "function" ? p() : p));
 }
 
 /** Splits a flat Dual array into `count` vectors of `dim` each. */
@@ -35,9 +47,8 @@ function chunk<T>(flat: T[], dim: number, count: number): T[][] {
 
 /** Two lines point the same way (or exactly opposite): their wedge vanishes. */
 export function parallel(model: Model, l1: string, l2: string): void {
-  const p1 = lineParts(model, l1), p2 = lineParts(model, l2);
   const dim = model.dim;
-  model.problem.addResidual([...p1.varIndices, ...p2.varIndices], (l) => {
+  model.problem.addResidual(joinVars(lineVars(model, l1), lineVars(model, l2)), (l) => {
     const [a, b, c, d] = chunk(l, dim, 4);
     return wedge(vecSub(b, a), vecSub(d, c));
   }, `par(${l1},${l2})`);
@@ -45,9 +56,8 @@ export function parallel(model: Model, l1: string, l2: string): void {
 
 /** Two lines meet at a right angle: their directions' dot product vanishes. */
 export function perpendicular(model: Model, l1: string, l2: string): void {
-  const p1 = lineParts(model, l1), p2 = lineParts(model, l2);
   const dim = model.dim;
-  model.problem.addResidual([...p1.varIndices, ...p2.varIndices], (l) => {
+  model.problem.addResidual(joinVars(lineVars(model, l1), lineVars(model, l2)), (l) => {
     const [a, b, c, d] = chunk(l, dim, 4);
     return [dot(vecSub(b, a), vecSub(d, c))];
   }, `perp(${l1},${l2})`);
@@ -61,10 +71,9 @@ export function perpendicular(model: Model, l1: string, l2: string): void {
  * residual stays smooth everywhere including at 0 and pi.
  */
 export function angle(model: Model, l1: string, l2: string, radians: number): void {
-  const p1 = lineParts(model, l1), p2 = lineParts(model, l2);
   const dim = model.dim;
   const target = Math.cos(radians);
-  model.problem.addResidual([...p1.varIndices, ...p2.varIndices], (l) => {
+  model.problem.addResidual(joinVars(lineVars(model, l1), lineVars(model, l2)), (l) => {
     const [a, b, c, d] = chunk(l, dim, 4);
     const u = vecSub(b, a), v = vecSub(d, c);
     return [dot(u, v).sub(norm(u).mul(norm(v)).mul(target))];
@@ -74,9 +83,8 @@ export function angle(model: Model, l1: string, l2: string, radians: number): vo
 /** A point lies somewhere on the infinite line through a line's two endpoints. */
 export function pointOnLine(model: Model, pointName: string, lineName: string): void {
   const p = model.point(pointName);
-  const parts = lineParts(model, lineName);
   const dim = model.dim;
-  model.problem.addResidual([...p.varIndices, ...parts.varIndices], (l) => {
+  model.problem.addResidual(joinVars(p.varIndices, lineVars(model, lineName)), (l) => {
     const [q, a, b] = chunk(l, dim, 3);
     return wedge(vecSub(q, a), vecSub(b, a));
   }, `on(${pointName},${lineName})`);
@@ -84,9 +92,8 @@ export function pointOnLine(model: Model, pointName: string, lineName: string): 
 
 /** Two lines have the same length. */
 export function equalLength(model: Model, l1: string, l2: string): void {
-  const p1 = lineParts(model, l1), p2 = lineParts(model, l2);
   const dim = model.dim;
-  model.problem.addResidual([...p1.varIndices, ...p2.varIndices], (l) => {
+  model.problem.addResidual(joinVars(lineVars(model, l1), lineVars(model, l2)), (l) => {
     const [a, b, c, d] = chunk(l, dim, 4);
     return [norm(vecSub(b, a)).sub(norm(vecSub(d, c)))];
   }, `eq(${l1},${l2})`);
@@ -134,11 +141,10 @@ export function equalRadius(model: Model, c1: string, c2: string): void {
  * only vanishes when the distance is 0, and the radius is positive).
  */
 export function tangent(model: Model, lineName: string, circleName: string): void {
-  const parts = lineParts(model, lineName);
   const c = model.circular(circleName);
   const center = model.point(c.center);
   const dim = model.dim;
-  model.problem.addResidual([...parts.varIndices, ...center.varIndices, c.radiusVar], (l) => {
+  model.problem.addResidual(joinVars(lineVars(model, lineName), center.varIndices, [c.radiusVar]), (l) => {
     const [a, b, ctr] = chunk(l, dim, 3);
     const u = vecSub(b, a);
     return [wedgeNorm(vecSub(ctr, a), u).div(norm(u)).sub(l[3 * dim])];
@@ -156,9 +162,8 @@ export function tangent(model: Model, lineName: string, circleName: string): voi
  */
 export function symmetric(model: Model, aName: string, bName: string, lineName: string): void {
   const a = model.point(aName), b = model.point(bName);
-  const parts = lineParts(model, lineName);
   const dim = model.dim;
-  const varIndices = [...a.varIndices, ...b.varIndices, ...parts.varIndices];
+  const varIndices = joinVars(a.varIndices, b.varIndices, lineVars(model, lineName));
 
   model.problem.addResidual(varIndices, (l) => {
     const [p, q, s, e] = chunk(l, dim, 4);

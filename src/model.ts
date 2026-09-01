@@ -161,6 +161,35 @@ export class Model {
     return e.varIndices.map((i) => this.problem.getVar(i));
   }
 
+  /**
+   * Moves a point outright. This is a *starting guess*, not a constraint —
+   * the next solve is free to move it again. Operations that build geometry
+   * use it to seed the solver near the answer they intend, which is what
+   * picks one solution out of several that all satisfy the constraints.
+   */
+  setCoords(name: string, coords: number[]): void {
+    const e = this.point(name);
+    if (coords.length !== e.varIndices.length) {
+      throw new Error(`${name} needs ${e.varIndices.length} coordinates, got ${coords.length}`);
+    }
+    e.varIndices.forEach((gi, i) => this.problem.setVar(gi, coords[i]));
+  }
+
+  /**
+   * Points one end of a line at a different point. Structural surgery, used
+   * by operations that trim geometry back — a fillet moving a leg's endpoint
+   * from the old corner to the new tangent point, for instance.
+   */
+  retargetLine(lineName: string, from: string, to: string): void {
+    const l = this.line(lineName);
+    this.point(to);
+    const i = l.refs.indexOf(from);
+    if (i < 0) throw new Error(`"${lineName}" does not reference "${from}"`);
+    const other = l.refs[1 - i];
+    if (other === to) throw new Error("a line needs two different points");
+    l.refs[i] = to;
+  }
+
   radius(name: string): number {
     return this.problem.getVar(this.circular(name).radiusVar);
   }

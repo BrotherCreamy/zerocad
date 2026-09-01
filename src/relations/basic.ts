@@ -48,17 +48,43 @@ export function midpoint(model: Model, mName: string, aName: string, bName: stri
 // hor/ver are genuinely 2D-only (like a cross product is genuinely 3D-only) —
 // "same y" / "same x" isn't a concept that generalizes to N dimensions, so
 // unlike dist/fix/coincident/midpoint above these deliberately don't try.
+//
+// Both take either two point names or a single *line* name, because both are
+// real: a sketcher either picks two points and says "level", or picks an edge
+// and says "level". The forms are not interchangeable once the model starts
+// changing shape, and the difference matters. The two-point form pins those
+// two points forever. The line form means "this line", and resolves the
+// line's endpoints at every evaluation — so if an operation re-points the
+// line at a different endpoint (a fillet trimming a corner back), the
+// constraint follows the line instead of being left on the old corner.
+// Prefer the line form when what you mean is a property of the edge.
 
-/** same y (index 1) */
-export function horizontal(model: Model, aName: string, bName: string): void {
+/** Same y: `horizontal(m, "a", "b")` for two points, or `horizontal(m, "l")` for a line. */
+export function horizontal(model: Model, aName: string, bName?: string): void {
   if (model.dim !== 2) throw new Error("horizontal is a 2D relation");
-  const a = model.point(aName), b = model.point(bName);
-  model.problem.addResidual([a.varIndices[1], b.varIndices[1]], (l) => [l[0].sub(l[1])], `hor(${aName},${bName})`);
+  const { vars, label } = axisRefs(model, 1, "hor", aName, bName);
+  model.problem.addResidual(vars, (l) => [l[0].sub(l[1])], label);
 }
 
-/** same x (index 0) */
-export function vertical(model: Model, aName: string, bName: string): void {
+/** Same x: `vertical(m, "a", "b")` for two points, or `vertical(m, "l")` for a line. */
+export function vertical(model: Model, aName: string, bName?: string): void {
   if (model.dim !== 2) throw new Error("vertical is a 2D relation");
-  const a = model.point(aName), b = model.point(bName);
-  model.problem.addResidual([a.varIndices[0], b.varIndices[0]], (l) => [l[0].sub(l[1])], `ver(${aName},${bName})`);
+  const { vars, label } = axisRefs(model, 0, "ver", aName, bName);
+  model.problem.addResidual(vars, (l) => [l[0].sub(l[1])], label);
+}
+
+/** The one coordinate from each of two points — named directly, or via a line. */
+function axisRefs(model: Model, axis: number, tag: string, aName: string, bName?: string) {
+  if (bName !== undefined) {
+    const a = model.point(aName), b = model.point(bName);
+    return { vars: [a.varIndices[axis], b.varIndices[axis]], label: `${tag}(${aName},${bName})` };
+  }
+  model.line(aName); // fail now if it isn't a line, rather than at the first solve
+  return {
+    vars: () => {
+      const l = model.line(aName);
+      return [model.point(l.refs[0]).varIndices[axis], model.point(l.refs[1]).varIndices[axis]];
+    },
+    label: `${tag}(${aName})`,
+  };
 }
