@@ -73,3 +73,111 @@ test("dual-number chain rule matches finite-difference on a nonlinear residual",
   assert.ok(Math.abs((out.grad.get(0) ?? 0) - dfdx) < 1e-5, `d/dx: AD=${out.grad.get(0)} FD=${dfdx}`);
   assert.ok(Math.abs((out.grad.get(1) ?? 0) - dfdy) < 1e-5, `d/dy: AD=${out.grad.get(1)} FD=${dfdy}`);
 });
+
+// ---------------------------------------------------------------------------
+// Temporary residuals: `solve({ extra })`.
+//
+// These exist for dragging — each pointer move solves with a weak pull toward
+// the cursor — but nothing here knows that, and nothing in problem.ts does
+// either. The properties being pinned down are the ones a caller relies on:
+// the extras act, they are not kept, and they are never allowed to accuse.
+
+/** The soft pull a drag uses, as a residual block: (x - target) * w. */
+function pull(varIndex: number, target: number, w = 0.12) {
+  return { varIndices: [varIndex], fn: (l: Dual[]) => [l[0].sub(target).mul(w)], label: "pull" };
+}
+
+test("an extra residual pulls an otherwise-free variable to its target", async () => {
+  await loadKernel();
+  const p = new Problem();
+  const x = p.addVar(0);
+  p.addResidual([p.addVar(0)], (l) => [l[0].sub(0)], "unrelated"); // so the problem isn't empty
+
+  const report = p.solve({ extra: [pull(x, 40)] });
+  assert.equal(report.solved, true, JSON.stringify(report.offenders));
+  // Nothing else touches x, so the pull's own minimum is the answer — the
+  // weight scales the residual, not where it is zero.
+  assert.ok(Math.abs(p.getVar(x) - 40) < 1e-6, `x = ${p.getVar(x)}`);
+});
+
+test("extras are gone when the solve returns — nothing was stored", async () => {
+  await loadKernel();
+  const p = new Problem();
+  const x = p.addVar(0);
+  p.addResidual([x], (l) => [l[0].sub(0)], "fix_x");
+
+  p.solve({ extra: [pull(x, 100)] });
+  assert.ok(p.getVar(x) > 0.5, `the pull should have dragged x off zero, got ${p.getVar(x)}`);
+
+  // The same Problem, solved again with nothing extra: only the stored
+  // residual is left, so x comes all the way home.
+  const settled = p.solve();
+  assert.equal(settled.solved, true);
+  assert.ok(Math.abs(p.getVar(x)) < 1e-6, `x = ${p.getVar(x)} — an extra block outlived its solve`);
+});
+
+test("an unsatisfiable extra is not an offender", async () => {
+  await loadKernel();
+  const p = new Problem();
+  const x = p.addVar(0);
+
+  // Two extras pulling the same variable in opposite directions cannot both be
+  // satisfied; they still must not paint a conflict, because a soft pull that
+  // does not reach zero is doing exactly what it was asked to do.
+  p.addResidual([p.addVar(0)], (l) => [l[0].sub(0)], "unrelated");
+  const report = p.solve({ extra: [pull(x, -1000), pull(x, 1000)] });
+  assert.deepEqual(report.offenders, []);
+  assert.equal(report.solved, true);
+  assert.ok(report.maxResidual < 1e-6, `maxResidual = ${report.maxResidual} — it counted an extra`);
+});
+
+test("a pull loses to a real constraint and settles on the nearest point of it", async () => {
+  await loadKernel();
+  const p = new Problem();
+  const ax = p.addVar(0), ay = p.addVar(0);
+  const bx = p.addVar(30), by = p.addVar(10);
+  p.addResidual([ax], (l) => [l[0].sub(0)], "fix_a_x");
+  p.addResidual([ay], (l) => [l[0].sub(0)], "fix_a_y");
+  p.addResidual([ax, ay, bx, by], (l) => [dhypot(l[2].sub(l[0]), l[3].sub(l[1])).sub(50)], "dist_ab");
+
+  // Drag b out along +x, to a cursor position a little off the circle. b lands
+  // where the circle of radius 50 comes closest to where the cursor went, and
+  // the constraint is what decides that.
+  const report = p.solve({ extra: [pull(bx, 52), pull(by, 0)] });
+  assert.equal(report.solved, true, JSON.stringify(report.offenders));
+  const d = Math.hypot(p.getVar(bx) - p.getVar(ax), p.getVar(by) - p.getVar(ay));
+  assert.ok(Math.abs(d - 50) < 0.05, `the constraint gave way: distance = ${d}`);
+  assert.ok(Math.abs(p.getVar(bx) - 50) < 0.1 && Math.abs(p.getVar(by)) < 0.05,
+    `b = (${p.getVar(bx)}, ${p.getVar(by)}), expected the near side of the circle at (50, 0)`);
+  assert.deepEqual(report.offenders, []);
+});
+
+test("a pull held far past what the constraints allow bends them, and the settling solve undoes it", async () => {
+  // Least squares weighs everything at once, so a pull that cannot be
+  // satisfied does not simply stall against the constraints — it trades
+  // against them, and a cursor dragged far past where a point can follow
+  // leaves the model a couple of units out of true. That is arithmetic, not a
+  // bug, and it is the reason the drag renders intermediate frames without
+  // touching the status line and runs one ordinary solve on release.
+  await loadKernel();
+  const p = new Problem();
+  const ax = p.addVar(0), ay = p.addVar(0);
+  const bx = p.addVar(30), by = p.addVar(10);
+  p.addResidual([ax], (l) => [l[0].sub(0)], "fix_a_x");
+  p.addResidual([ay], (l) => [l[0].sub(0)], "fix_a_y");
+  p.addResidual([ax, ay, bx, by], (l) => [dhypot(l[2].sub(l[0]), l[3].sub(l[1])).sub(50)], "dist_ab");
+
+  const dragging = p.solve({ extra: [pull(bx, 200), pull(by, 0)] });
+  assert.ok(p.getVar(ax) > 1, `a was pulled off its fix by ${p.getVar(ax)} — expected the trade to be visible`);
+  // The stored blocks are entitled to say they are unhappy about it; the pull
+  // that caused it is not on the list, which is the whole of the guarantee.
+  assert.ok(dragging.offenders.some((o) => o.label === "fix_a_x"));
+  assert.ok(!dragging.offenders.some((o) => o.label === "pull"),
+    `an extra reached the offender report: ${JSON.stringify(dragging.offenders)}`);
+
+  const settled = p.solve(); // release: the same model, no pull
+  assert.equal(settled.solved, true);
+  assert.ok(Math.abs(p.getVar(ax)) < 1e-6 && Math.abs(p.getVar(ay)) < 1e-6, "a came back to its fix exactly");
+  const d = Math.hypot(p.getVar(bx) - p.getVar(ax), p.getVar(by) - p.getVar(ay));
+  assert.ok(Math.abs(d - 50) < 1e-6, `distance settled to ${d}`);
+});
