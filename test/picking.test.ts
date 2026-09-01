@@ -184,7 +184,7 @@ test("picks a frame along either arm of its axes marker", async () => {
   assert.equal(hitTest(m, view, ox, oy - FRAME_ARM_PX * 0.6)?.name, "fr");
   // Past the arm's end and still clear of the x-ref point itself, which this
   // view puts 60px out — the arm is 30, and only the direction to it matters.
-  assert.equal(hitTest(m, view, ox + FRAME_ARM_PX * 1.5, oy), null, "past the arm's end there is nothing");
+  assert.equal(hitTest(m, view, ox + FRAME_ARM_PX + 10, oy), null, "past the arm's end there is nothing");
   assert.equal(hitTest(m, view, ox - 20, oy + 20), null, "and nothing behind the origin either");
 });
 

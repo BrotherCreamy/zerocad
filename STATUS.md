@@ -774,7 +774,8 @@ replacing) the system Node other projects on this machine may depend on.
   inference or snapping mid-drag.
 
 - **Coordinate frames, and no world frame** (`model.ts`, `relations/basic.ts`,
-  `relations/refs.ts`) — half 1 of the package: the model and the relations.
+  `relations/refs.ts`, `framemarker.ts`, `picking.ts`, `boxselect.ts`,
+  `main.ts`, `tools/engine.ts`, `tools/line.ts`, `replenv.ts`).
   A `Frame` is an origin point plus a point fixing +x, purely referential the
   way a `Line` is: it owns no variables and its two points are ordinary
   points. `addFrame(origin?, xref?, name?)` follows the free-entities
@@ -803,10 +804,34 @@ replacing) the system Node other projects on this machine may depend on.
   `perp` — no `hor`/`ver`, so it works with no frame at all, and three
   relations rather than four because the fourth was redundant), and **the line
   tool's axis inference fires only when a default frame is set**, against that
-  frame. *Not in half 1:* frames are not drawn, picked, dragged or
-  box-selected, `frame()` at the command line does not seed at the view centre
-  the way `circle()` does, and the line tool's aim and guide are still
-  computed against the kernel's axes rather than the frame's.
+  frame — its aim, its dashed guide and the constraint it lands are one answer
+  read off that frame's axes, so a tilted frame tilts all three together. With
+  no default frame there is no aim and no guide, rather than a preview pulled
+  onto the kernel's axes promising a constraint that never arrives.
+  **A frame is drawn, and behaves like the geometry it is.** A small axes
+  marker at the origin — two lettered arrows of a fixed pixel length (the
+  x-ref's *distance* means nothing, only its direction), the name beside it,
+  and the default frame brighter, because which frame is default is the only
+  ambient state in the app that changes what a typed `hor` means. It is drawn
+  in the entity pass of `render()`, not with the glyphs. `framemarker.ts` owns
+  the marker's screen geometry, because `main.ts` draws it, `picking.ts`
+  hit-tests it and `boxselect.ts` catches it and three copies of "where are
+  the arms" would drift. A frame therefore hovers, picks, box-selects, drags
+  and `del`s with no new interaction model; its origin point still wins a pick
+  at the marker's corner, which is the right answer — dragging that turns the
+  frame, dragging the marker moves it.
+  **A drag on a point a frame reads moves it outright**, then lets the same
+  solve carry the drawing to it. That is the other face of read-never-pushed:
+  with the frame's points outside the Jacobian of the residuals that read
+  them, the damped solve rejects every step that turns the frame (turning it
+  raises a residual the step cannot see how to lower), λ runs away, and the
+  frame does not move — measured at 0.003° against a gesture asking for 26°.
+  The weak pull is still applied on top, so a frame point that is also
+  ordinary geometry keeps its relations' say. `frame()` seeds its origin at
+  the middle of the view like every other free constructor.
+  *Known and deliberate:* a frame has no rotation gesture of its own — you
+  turn one by dragging its x-ref, which is the same gesture as dragging any
+  other point, and there is no rigid-rotate anywhere in the app yet.
 
 ## What's next
 

@@ -23,8 +23,12 @@ import type { Model } from "./model.ts";
 import type { Pt } from "./intersect.ts";
 import { worldToScreen, type View } from "./view.ts";
 
-/** How long each arm is, in screen pixels. Small: a marker, not geometry. */
-export const FRAME_ARM_PX = 30;
+/**
+ * How long each arm is, in screen pixels. Small — a marker, not geometry — but
+ * long enough that its two letters clear the origin point's own name label,
+ * which is drawn in the pass after this one and cannot move out of the way.
+ */
+export const FRAME_ARM_PX = 36;
 
 /** A frame's marker in screen space: where it sits and where each arm ends. */
 export interface FrameMarker {

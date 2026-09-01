@@ -172,7 +172,7 @@ async function main() {
         g.lineTo(tip[0] - Math.cos(a) * 6, tip[1] - Math.sin(a) * 6);
       }
       g.stroke();
-      g.fillText(letter, tip[0] + ux * 6 - 3, tip[1] + uy * 6 + 3.5);
+      g.fillText(letter, tip[0] + ux * 8 - 3, tip[1] + uy * 8 + 3.5);
     }
     g.font = "11px monospace";
     // Away from both arms, not at a fixed corner: the arms turn with the frame,

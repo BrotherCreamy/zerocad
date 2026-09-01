@@ -1,17 +1,22 @@
 # Plan: no world frame — coordinate frames are entities
 
-**Status: half 1 built, half 2 in flight** (2026-09-01). What half 1 decided
-along the way, for whoever builds half 2: a frame is **read, not pushed** —
-its two points are re-read at every evaluation but are not declared as
-variables of the residuals that read them, because declaring them lets the
+**Status: SHIPPED, both halves** (2026-09-01). What the build decided along
+the way, all of it now in `TODO.md`'s register: a frame is **read, not
+pushed** — its two points are re-read at every evaluation but are not declared
+as variables of the residuals that read them, because declaring them lets the
 solver level a line by turning the frame instead (measured; see
 `CONVERSATION_LOG.md` and `relations/refs.ts`). That is what makes the
-closed-form test below true, and it is what makes dragging a frame's x-ref
-turn the drawing rather than start a tug of war. `fix` above 2D keeps its
-gauge-relative meaning, since one direction does not settle a 3D frame. The
-rectangle went intrinsic in half 1 rather than half 2, because `hor` needs a
-frame and a clean sheet has none. Still open for half 2: the line tool's aim
-and guide are computed against the kernel's axes, not the frame's.
+closed-form test below true. `fix` above 2D keeps its gauge-relative meaning,
+since one direction does not settle a 3D frame. The rectangle went intrinsic
+in half 1 rather than half 2, because `hor` needs a frame and a clean sheet
+has none.
+
+The one thing this spec assumed and got wrong: it took for granted that
+dragging a frame's x-ref would "turn the drawing rather than start a tug of
+war". It does neither on its own — read-never-pushed also means the solver's
+own step test *refuses* to move the frame, because turning it raises residuals
+the step has no derivative for. Half 2 therefore moves a dragged datum
+outright and lets the solve follow. See the register.
 
 Owner's direction, verbatim intent: the
 background grid is gone (already shipped); there should be **no built-in

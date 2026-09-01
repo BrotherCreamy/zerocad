@@ -41,10 +41,11 @@ are flagged as such.
   inference works only while a default frame is set. **Old saved files
   carrying frameless `hor`/`ver`/`fix` will not open** — accepted pre-release,
   said in the CHANGELOG. Format version is now 2.
-  *Half 1 (model + relations) is built; half 2 is in flight.*
+  ✅ **Built, both halves** — model and relations, then the command surface,
+  the drawn marker, picking/dragging/boxing, and the end-to-end story.
   *Spec:* [`docs/plans/coordinate-frames.md`](docs/plans/coordinate-frames.md).
 
-  Decided while building half 1, and open to veto:
+  Decided while building it, and open to veto:
 
   - **A frame is read, never pushed.** Its two points are not declared as
     variables of the residuals that read it, so a `hor` turns the *line* and
@@ -66,10 +67,32 @@ are flagged as such.
   - **`hor`/`ver` normalise the frame's direction** where `par`/`perp` take
     both of theirs raw — otherwise collapsing the frame satisfies them, and
     that is exactly what the solver does when given the chance.
-  - *Known half-1 gap, for half 2:* the line tool's aim and its dashed guide
-    are still computed against the kernel's axes rather than the default
-    frame's, so a *tilted* default frame gets a preview that disagrees with
-    the constraint that lands. Nothing in half 1 can tilt a frame by hand.
+  - **Dragging a point that a frame reads *moves* it, rather than pulling at
+    it** — and this is the other face of read-never-pushed, not an exception
+    to it. With the frame's points outside the Jacobian of the residuals that
+    read them, the damped solve rejects every step that turns the frame
+    (turning it raises a residual the step cannot see how to lower), λ runs
+    away by a factor of eight per rejection, and the frame does not move:
+    measured at 0.003° against a gesture asking for 26°. So the drag assigns
+    the position and the same solve carries the drawing to it — one
+    Gauss-Seidel sweep, exactly the cost `frameBasis` says this trade costs. A
+    datum is moved by the user; the solver never votes on where it goes. The
+    weak pull is still applied on top, so a frame's point that is also
+    ordinary geometry keeps its relations' say.
+  - **A frame's marker is a fixed pixel length, and that is what is picked and
+    boxed.** How far the x-ref sits from the origin means nothing — only the
+    direction does — so drawing to it would put a number on screen that
+    carries no information. The origin *point* still out-ranks the marker in
+    the pick tiers where they meet, which is what makes "drag the corner to
+    turn it, drag the arm to move it" two different gestures.
+  - ✅ *The half-1 gap is closed:* the line tool's aim, its dashed guide and
+    the constraint it lands are one answer, read off the default frame's own
+    axes. With no default frame there is now no aim and no guide either,
+    where half 1 still pulled the preview onto the kernel's axes.
+  - *Not built, and nobody has asked for it:* a frame has no rotate gesture of
+    its own. You turn one by dragging its x-ref, which is the same gesture as
+    dragging any other point. ⚠ *Deviation:* Onshape's sketch frame cannot be
+    moved at all, so there is nothing to match here.
   - *Noted, not acted on:* an intrinsic rectangle's `par` residual is a wedge
     — quadratic in the drawing's size, where `hor` was linear in a coordinate
     — so hurling a corner of a filleted rectangle a thousand units away no

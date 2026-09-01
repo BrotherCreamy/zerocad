@@ -273,14 +273,14 @@ test("a frame is boxed by its axes marker — the same extent the cursor picks",
   const view: View = { ox: 400, oy: 300, scale: 3 };
   const [ox, oy] = worldToScreen(view, [0, 0]);
 
-  // The marker reaches 30px right and 30px up out of the origin. A box round
-  // exactly that contains the frame — but not the x-ref point, which this view
-  // puts 60px out: a frame's arm length is drawn, not measured.
-  const round: ScreenRect = { x0: ox - 5, y0: oy - 40, x1: ox + 40, y1: oy + 5 };
+  // The marker reaches an arm's length right and up out of the origin. A box
+  // round exactly that contains the frame — but not the x-ref point, which this
+  // view puts 60px out: a frame's arm length is drawn, not measured.
+  const round: ScreenRect = { x0: ox - 5, y0: oy - 45, x1: ox + 45, y1: oy + 5 };
   assert.deepEqual(selectInBox(m, view, round, "window"), ["o", "fr"]);
 
   // Half the marker: touched, not contained.
-  const half: ScreenRect = { x0: ox + 10, y0: oy - 5, x1: ox + 40, y1: oy + 5 };
+  const half: ScreenRect = { x0: ox + 10, y0: oy - 5, x1: ox + 45, y1: oy + 5 };
   assert.deepEqual(selectInBox(m, view, half, "window"), [], "a clipped marker is not fully inside");
   assert.deepEqual(selectInBox(m, view, half, "crossing"), ["fr"], "but it is touched");
 

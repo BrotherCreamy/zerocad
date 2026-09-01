@@ -106,6 +106,60 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### No world frame, half 2: a datum is moved, not persuaded
+
+Half 2 was meant to be the presentation half — draw the frame, let it be
+clicked and dragged, close the line tool's aim against the frame's axes, tell
+the story end to end. Most of it was. The exception is worth the entry.
+
+**The package's own poster gesture did not work.** Drag a frame's x-ref and
+the whole levelled drawing is supposed to turn to follow. It moved the frame
+0.003° against a gesture asking for 26 — not slowly, not approximately:
+essentially not at all, silently, with `SOLVED` on the header the whole time.
+
+The cause is the direct consequence of the half-1 decision recorded above,
+and it is one the spec did not see coming: it assumed read-never-pushed was
+exactly what would make this drag work ("turn the drawing rather than start a
+tug of war"). It prevents the tug of war, certainly. It also stops the drag.
+A `hor(line, frame)` block does not declare the frame's points, so the
+Jacobian has no row saying "turn the frame and the line must follow". The
+drag's own weak pull *does* have a row, so the linear step does move the
+frame — and then the damped solve evaluates the result, finds the total
+residual has gone *up* (every levelled edge's error grows by its whole length
+times the angle, where the pull's row falls by a fraction of that), rejects
+the step and multiplies λ by eight. Eight tries per iteration, and the frame
+sits still. Every part of that is the trust-region step acceptance doing
+precisely its job on a problem whose derivative it was deliberately not given.
+
+The fix is the other half of the same principle rather than a retreat from
+it: **a datum is moved by the user, not negotiated with by the solver.** A
+drag on a point that some frame reads assigns the position outright, and the
+same solve then carries the drawing to it — the Gauss-Seidel sweep
+`frameBasis`'s own note says this trade costs, now actually being taken.
+The weak pull is still applied on top, so nothing is lost where the point
+happens to be ordinary geometry as well: those relations *do* declare it, they
+win the solve as they always did, and the gesture degrades to the ordinary
+kinematic drag. That case has its own test, because it is the one where the
+outright move must not be the last word.
+
+Three smaller things, all judgement calls:
+
+- **The marker's arms are a fixed pixel length.** How far the x-ref sits from
+  the origin is meaningless — only its direction counts — so an arm drawn to
+  it would put a number on screen that carries no information and changes with
+  the zoom. It also makes the marker a deliberate, constant-sized target, the
+  same argument that puts constraint glyphs in the top pick tier.
+- **The origin point out-ranks the marker in the pick tiers**, because points
+  are tier 1 and nothing was changed about that. It turns out to be the right
+  answer rather than a compromise: dragging the corner turns the frame,
+  dragging an arm moves it, and those are two gestures a hand can tell apart.
+- **`framemarker.ts` exists because three files needed the same answer** —
+  `main.ts` draws the marker, `picking.ts` hit-tests it, `boxselect.ts`
+  catches it — and `picking.ts` and `boxselect.ts` are peers, so putting it in
+  either would have been the first sideways import between them. Three copies
+  of "where are the arms" drift by a few pixels and leave a frame that refuses
+  to be clicked where it plainly is.
+
 ### No world frame: why the frame is read and never pushed
 
 The spec for this package said to take the frame's point variables *lazily*,
