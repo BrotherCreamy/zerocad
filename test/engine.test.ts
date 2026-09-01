@@ -156,8 +156,8 @@ test("a press that grabbed a point drags it, and draws no box", async () => {
   const before = { ...engine.view };
 
   // The rule has two halves and this is the second: only a press on *nothing*
-  // becomes a box. (The e2e suite covers the third case — a press on an edge,
-  // which still pans — since this fixture has no edge to aim at.)
+  // becomes a box. (The edge and rim cases are below, on a fixture that has
+  // some.)
   fire("pointerdown", { clientX: 10, clientY: 0, button: 0, buttons: 1 });
   fire("pointermove", { clientX: 70, clientY: 40, button: -1, buttons: 1 });
   assert.equal(engine.box, null, "a press on a point drags it, and draws no box");
@@ -263,4 +263,194 @@ test("a tool that throws still closes its bracket", async () => {
 
   assert.throws(() => fire("pointerdown", { clientX: 5, clientY: 5, button: 0, buttons: 1 }), /boom/);
   assert.deepEqual(actions, ["before@0", "after@0"], "the bracket is closed in a finally");
+});
+
+// --- dragging an edge, a rim, an arc ---------------------------------------
+//
+// Dragging a whole entity is dragging every point it is made of by the same
+// offset, as a *target*: one soft pull each, toward that point's grab-time
+// position plus however far the cursor has travelled. Nothing about the
+// gesture is new — it is the point drag with more than one pull — so what
+// these check is the arithmetic of the offset (which is what a rigid
+// translation means), and that the tiers underneath still decide correctly
+// what a press grabbed.
+
+/**
+ * A free line, a free circle and a free arc, none of them constrained. The
+ * view is `setup`'s, so a client coordinate is a world coordinate with y
+ * flipped: world (0,0) is screen (0,0) and world (60,-20) is screen (60,20).
+ *
+ * The three are placed well apart, and each drag below presses at a spot that
+ * is far from every point in the model — the point tier wins outright inside
+ * 8px, and a test that accidentally grabbed an endpoint would still pass for
+ * the wrong reason.
+ */
+async function shapes() {
+  await loadKernel();
+  const model = new Model(2);
+  model.addPoint([0, 0], "a");
+  model.addPoint([60, 0], "b");
+  model.addLine("a", "b", "l1");
+  model.addPoint([100, -100], "cc");
+  model.addCircle("cc", 30, "c1");
+  model.addPoint([200, -200], "ac");
+  model.addPoint([240, -200], "as");
+  model.addPoint([200, -160], "ae");
+  model.addArc("ac", "as", "ae", 40, "a1");
+  model.solve();
+
+  const { canvas, fire } = fakeCanvas();
+  const view: View = { ox: 0, oy: 0, scale: 1 };
+  const counts = { solves: 0, renders: 0, picks: 0 };
+  const actions: string[] = [];
+  const engine = new ToolEngine(model, canvas, view, {
+    onSolveRender: () => { counts.solves++; model.solve(); },
+    onRenderOnly: () => { counts.renders++; },
+    onPick: () => { counts.picks++; },
+    onUserAction: (phase) => { actions.push(`${phase}@${counts.solves}`); },
+  });
+  return { model, engine, fire, counts, actions };
+}
+
+/** Press at (x0,y0), move by (dx,dy) screen pixels, release. */
+function dragBy(fire: (t: string, e: Record<string, unknown>) => void,
+                x0: number, y0: number, dx: number, dy: number): void {
+  fire("pointerdown", { clientX: x0, clientY: y0, button: 0, buttons: 1 });
+  fire("pointermove", { clientX: x0 + dx / 2, clientY: y0 + dy / 2, button: -1, buttons: 1 });
+  fire("pointermove", { clientX: x0 + dx, clientY: y0 + dy, button: -1, buttons: 1 });
+  fire("pointerup", { clientX: x0 + dx, clientY: y0 + dy, button: 0, buttons: 0 });
+}
+
+/** How far each named point has moved from `from`, componentwise. */
+function moved(model: Model, from: Record<string, number[]>): Record<string, number[]> {
+  return Object.fromEntries(Object.entries(from).map(([n, was]) =>
+    [n, model.coords(n).map((c, i) => c - was[i])]));
+}
+
+test("dragging a free edge moves both endpoints by the drag offset", async () => {
+  const { model, engine, fire, counts } = await shapes();
+  const before = { a: model.coords("a"), b: model.coords("b") };
+  const view = { ...engine.view };
+
+  // The middle of l1, 30px from either endpoint. 30 right and 20 up on screen
+  // is +30, +20 in world, y being flipped.
+  dragBy(fire, 30, 0, 30, -20);
+
+  const d = moved(model, before);
+  for (const [name, delta] of Object.entries(d)) {
+    assert.ok(Math.abs(delta[0] - 30) < 1e-6 && Math.abs(delta[1] - 20) < 1e-6,
+      `${name} moved by ${delta}, not by the drag offset (30, 20)`);
+  }
+  assert.deepEqual({ ...engine.view }, view, "an edge drag moves the drawing, not the view");
+  assert.equal(engine.box, null, "and it is not a selection box either");
+  assert.equal(counts.picks, 0, "a drag is not a pick");
+  assert.equal(counts.solves, 1, "it settled once, on release");
+});
+
+test("an edge with a fixed endpoint strains toward the cursor and settles legally", async () => {
+  const { model, fire } = await shapes();
+  fix(model, "a", [0, 0]);
+  model.solve();
+  const b0 = model.coords("b");
+
+  dragBy(fire, 30, 0, 40, 0); // 40px right, along the edge
+
+  const a = model.coords("a");
+  assert.ok(Math.hypot(a[0], a[1]) < 1e-6, `the fixed endpoint ended at ${a}`);
+  // The other end is free, so it goes exactly where the pull asked — which is
+  // the drag offset, not half of it: this is a translation as a *target*, and
+  // the constraint took its share out of the fixed end alone.
+  const b = model.coords("b");
+  assert.ok(Math.abs(b[0] - (b0[0] + 40)) < 1e-6 && Math.abs(b[1] - b0[1]) < 1e-6,
+    `the free end went to ${b}, not to ${[b0[0] + 40, b0[1]]}`);
+});
+
+test("dragging a rim translates a circle and does not resize it", async () => {
+  const { model, fire } = await shapes();
+  const c0 = model.coords("cc");
+  const r0 = model.radius("c1");
+
+  // Screen (130,100) is on the rim: the centre is world (100,-100), and 30
+  // world units to its right.
+  dragBy(fire, 130, 100, 30, -20);
+
+  const c = model.coords("cc");
+  assert.ok(Math.abs(c[0] - (c0[0] + 30)) < 1e-6 && Math.abs(c[1] - (c0[1] + 20)) < 1e-6,
+    `the centre went to ${c}, not to ${[c0[0] + 30, c0[1] + 20]}`);
+  // The radius is what a rim drag must *not* touch — dragging a circle moves
+  // it, and resizing is `rad` and the centre-out tool's job.
+  assert.ok(Math.abs(model.radius("c1") - r0) < 1e-6,
+    `the radius went from ${r0} to ${model.radius("c1")}`);
+});
+
+test("dragging an arc's rim carries its centre and both endpoints", async () => {
+  const { model, fire } = await shapes();
+  const before = { ac: model.coords("ac"), as: model.coords("as"), ae: model.coords("ae") };
+  const r0 = model.radius("a1");
+
+  // 45° round the arc from its start, which is inside the sweep and 40px from
+  // the centre — well clear of every point in the model.
+  const [x, y] = [200 + 40 * Math.SQRT1_2, 200 - 40 * Math.SQRT1_2];
+  dragBy(fire, x, y, 30, -20);
+
+  for (const [name, delta] of Object.entries(moved(model, before))) {
+    assert.ok(Math.abs(delta[0] - 30) < 1e-6 && Math.abs(delta[1] - 20) < 1e-6,
+      `${name} moved by ${delta}, not by the drag offset (30, 20)`);
+  }
+  assert.ok(Math.abs(model.radius("a1") - r0) < 1e-6, "and the arc is the same size it was");
+});
+
+test("cancelling an edge drag settles it, and it is still one action", async () => {
+  const { model, engine, fire, actions, counts } = await shapes();
+  fix(model, "a", [0, 0]);
+  model.solve();
+
+  fire("pointerdown", { clientX: 30, clientY: 0, button: 0, buttons: 1 });
+  fire("pointermove", { clientX: 90, clientY: -40, button: -1, buttons: 1 });
+  assert.ok(Math.hypot(...model.coords("a")) > 0.1,
+    `mid-drag the pull has bent the fix, a = ${model.coords("a")}`);
+  assert.equal(counts.solves, 0, "intermediate frames do not go through the solve path");
+
+  engine.cancel();
+
+  assert.ok(Math.hypot(...model.coords("a")) < 1e-6,
+    `Escape settled the model: a = ${model.coords("a")}`);
+  assert.deepEqual(actions, ["before@0", "after@1"], "one action, closed after the settling solve");
+});
+
+test("a press on an edge that never moves is still a pick", async () => {
+  const { model, fire, counts } = await shapes();
+  const before = { a: model.coords("a"), b: model.coords("b") };
+
+  fire("pointerdown", { clientX: 30, clientY: 0, button: 0, buttons: 1 });
+  fire("pointermove", { clientX: 32, clientY: 1, button: -1, buttons: 1 }); // inside the 3px threshold
+  fire("pointerup", { clientX: 32, clientY: 1, button: 0, buttons: 0 });
+
+  assert.equal(counts.picks, 1, "the edge's name goes to the command line, as it always did");
+  assert.equal(counts.solves, 0, "and nothing was dragged");
+  for (const [name, delta] of Object.entries(moved(model, before))) {
+    assert.ok(Math.hypot(...delta) < 1e-9, `${name} moved by ${delta} on a click`);
+  }
+});
+
+test("a press on a constraint glyph drags nothing, boxes nothing, and pans", async () => {
+  const { model, engine, fire, counts } = await shapes();
+  horizontal(model, "l1");
+  const before = { a: model.coords("a"), b: model.coords("b") };
+  const view = { ...engine.view };
+
+  const glyph = engine.glyphs()[0];
+  assert.ok(glyph, "the relation wears a mark");
+  const [gx, gy] = glyph.screen;
+  dragBy(fire, gx, gy, 40, -20);
+
+  // A glyph is UI, not geometry: it has no position of its own to move, and it
+  // is not empty canvas either, so a box would be wrong too. What is left is
+  // the pan — the last left-drag in the app that still pans.
+  for (const [name, delta] of Object.entries(moved(model, before))) {
+    assert.ok(Math.hypot(...delta) < 1e-9, `${name} moved by ${delta} — the glyph dragged geometry`);
+  }
+  assert.equal(engine.box, null, "and drew no box");
+  assert.equal(counts.solves, 0, "nothing to settle");
+  assert.ok(Math.abs(engine.view.ox - view.ox - 40) < 1e-6, `panned by ${engine.view.ox - view.ox}`);
 });

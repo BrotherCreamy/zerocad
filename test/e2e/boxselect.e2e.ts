@@ -181,9 +181,9 @@ test("a press on a point still drags it rather than boxing", async () => {
   assert.equal(await app.status(), "SOLVED");
 });
 
-test("a press on an edge still pans, and draws no box", async () => {
+test("a press on an edge drags it, and draws no box", async () => {
   await app.page.fill("#cmd", "");
-  const before = (await app.model()).view;
+  const before = await app.model();
   const [ax, ay] = await screenOf("p1");
   const [bx, by] = await screenOf("p2");
   const from = await app.at((ax + bx) / 2, (ay + by) / 2);
@@ -194,11 +194,18 @@ test("a press on an edge still pans, and draws no box", async () => {
   await app.page.waitForTimeout(80);
   assert.equal((await boxState()).open, false, "a box that starts on an edge is not a box");
   await app.page.mouse.up();
-  await app.page.waitForTimeout(150);
+  await app.page.waitForTimeout(200);
 
-  const after = (await app.model()).view;
-  assert.ok(Math.abs(after.ox - before.ox - 40) < 1e-6, `panned by ${after.ox - before.ox}`);
-  assert.equal(await cmd(), "");
+  // The half of the rule this file guards is the first clause: a press on
+  // geometry is not a box. What that press *is* changed with the edge-drag
+  // package — it used to pan and now drags the edge — so the second clause
+  // moved with it. p1 is fixed, so it is p2 that goes.
+  const after = await app.model();
+  assert.deepEqual({ ox: after.view.ox, oy: after.view.oy }, { ox: before.view.ox, oy: before.view.oy },
+    "the view stayed put — an edge drag is not a pan any more");
+  const travelled = Math.hypot(after.points.p2[0] - before.points.p2[0], after.points.p2[1] - before.points.p2[1]);
+  assert.ok(travelled > 5, `p2 only moved ${travelled.toFixed(2)} world units`);
+  assert.equal(await cmd(), "", "a drag is not a selection");
 });
 
 test("middle- and right-drag still pan", async () => {
