@@ -212,7 +212,9 @@ export class LineTool extends Tool {
     const m = this.ctx.model;
     if (!m.defaultFrame || !m.entities.has(m.defaultFrame)) return null;
     const { ux, uy } = frameBasis(m, m.defaultFrame)();
-    return Math.hypot(ux[0], ux[1]) > 0.5 ? { ux, uy } : null;
+    // `frameBasis` floors a collapsed frame's direction to the zero vector
+    // rather than dividing by zero; anything else it hands back is a unit.
+    return ux[0] === 0 && ux[1] === 0 ? null : { ux, uy };
   }
 
   render(r: RenderContext): void {
