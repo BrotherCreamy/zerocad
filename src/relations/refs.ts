@@ -14,7 +14,9 @@
 // the same reason and would otherwise have to import from geometry.ts, which
 // imports it back.
 
-import type { Model } from "../model.ts";
+import { Dual } from "../kernel/dual.ts";
+import { parseAxisRef, type Model } from "../model.ts";
+import { vecSub } from "./vec.ts";
 
 /**
  * A line's endpoint variables, resolved lazily. `model.line()` is re-run each
@@ -88,6 +90,99 @@ export function frameBasis(model: Model, frameName: string): () => FrameBasis {
     const ux = len < DEGENERATE_FRAME ? [0, 0] : [d[0] / len, d[1] / len];
     return { origin: o, ux, uy: [-ux[1], ux[0]] };
   };
+}
+
+// --- directions ------------------------------------------------------------
+//
+// `par`, `perp` and `ang` are claims about *directions* and nothing else, and
+// a direction can come from three places: a line, two named points, or a
+// frame's axis. `directionOf` is the one place that turns a written reference
+// into one, which is what keeps `"f1.x"` from being parsed in five files with
+// four slightly different answers.
+
+/**
+ * One side of a direction relation, ready to be joined into a residual.
+ *
+ * The three constructors below differ in exactly one way that matters, and it
+ * is the datum decision the frames package settled: a line or a point pair
+ * contributes *variables*, so the solver may move it to satisfy the relation,
+ * while a frame axis contributes none and therefore never moves. `par(l1, l2)`
+ * turns both lines; `par(l1, "f1.x")` turns only the line, which is precisely
+ * what `hor` did and precisely what a datum means. The asymmetry is visible
+ * right here, in `width: 0` and in a direction built out of
+ * `Dual.constant` — a constant carries an empty gradient, so the frame is
+ * absent from the Jacobian as a matter of arithmetic rather than of
+ * bookkeeping anyone has to remember.
+ */
+export interface DirectionRef {
+  /** How many of the residual's Duals belong to this side. Zero for an axis. */
+  width: number;
+  /** Those variables, lazily — so this side follows a line that is re-pointed. */
+  vars: () => number[];
+  /** This side's direction, given exactly its own `width` Duals. */
+  direction: (own: Dual[]) => Dual[];
+  /** The frame an axis reference reads, or null when this side is geometry. */
+  frame: string | null;
+}
+
+/** The direction from the first `dim` Duals to the second — a line or a point pair. */
+function fromEnds(dim: number, vars: () => number[]): DirectionRef {
+  return {
+    width: 2 * dim,
+    vars,
+    direction: (own) => vecSub(own.slice(dim), own.slice(0, dim)),
+    frame: null,
+  };
+}
+
+/**
+ * The direction a written reference denotes: a line's, or a frame axis's.
+ *
+ * A frame's axis arrives **normalised**, from `frameBasis`. That is not
+ * cosmetic — it is the rule `hor`/`ver` established and the register records
+ * why: with a raw arm the solver can shrink the frame to make a wedge smaller
+ * and call the relation satisfied. It also puts the residual on exactly the
+ * scale `hor` had (|d|·sin), so `par(l, "f.x")` is numerically the same
+ * equation `hor(l, f)` was, and the frames package's closed-form tests hold to
+ * the same tolerances in the new spelling.
+ *
+ * A collapsed frame has no direction to offer and `frameBasis` floors it to
+ * the zero vector rather than dividing by zero, so an axis reference against
+ * one degrades to a residual that is trivially satisfied — a claim about a
+ * direction that is no longer there. The same degradation `hor` had, and for
+ * the same reason: NaN in a Jacobian does not fail loudly.
+ */
+export function directionOf(model: Model, ref: string): DirectionRef {
+  const axis = parseAxisRef(ref);
+  if (!axis) return fromEnds(model.dim, lineVars(model, ref));
+  // Frames are 2D-only (an origin plus one direction leaves a rotation free
+  // above that), so their axes are too. Said here rather than left to
+  // `model.frame` so the message names what was actually written.
+  if (model.dim !== 2) throw new Error(`"${ref}": a frame is a 2D entity, so its axes are too`);
+  const basis = frameBasis(model, axis.frame);
+  return {
+    width: 0,
+    vars: () => [],
+    direction: () => {
+      const b = basis();
+      return (axis.axis === "x" ? b.ux : b.uy).map((c) => Dual.constant(c));
+    },
+    frame: axis.frame,
+  };
+}
+
+/**
+ * The direction between two named points — the form that pins *those two
+ * points* rather than following an edge.
+ *
+ * Kept because it is a real thing to mean and not merely because `hor` had it:
+ * "these two corners are level with each other" is a claim about the corners.
+ * The line form is still the one to prefer for anything that is a property of
+ * an edge, since it survives a fillet re-pointing that edge and this does not.
+ */
+export function directionOfPoints(model: Model, aName: string, bName: string): DirectionRef {
+  const a = model.point(aName), b = model.point(bName);
+  return fromEnds(model.dim, () => [...a.varIndices, ...b.varIndices]);
 }
 
 /** Concatenates several lazy variable lists into one. */

@@ -13,47 +13,115 @@
 // same call the `horizontal`/`vertical` pair in basic.ts makes.
 
 import type { Model } from "../model.ts";
+import type { Dual } from "../kernel/dual.ts";
 import { dot, norm, vecSub, wedge, wedgeNorm } from "./vec.ts";
-import { chunk, joinVars, lineVars } from "./refs.ts";
+import { chunk, directionOf, directionOfPoints, joinVars, lineVars, type DirectionRef } from "./refs.ts";
 import { coincident } from "./basic.ts";
 
-/** Two lines point the same way (or exactly opposite): their wedge vanishes. */
-export function parallel(model: Model, l1: string, l2: string): string {
-  return model.relation("parallel", [l1, l2], () => {
-    const dim = model.dim;
-    model.addResidual(joinVars(lineVars(model, l1), lineVars(model, l2)), (l) => {
-      const [a, b, c, d] = chunk(l, dim, 4);
-      return wedge(vecSub(b, a), vecSub(d, c));
-    }, `par(${l1},${l2})`);
-  });
+// --- the direction relations -----------------------------------------------
+//
+// `par`, `perp` and `ang` are the relations that read their arguments for a
+// *direction* and for nothing else, which is exactly the set that can take a
+// **frame-axis reference** — `"f1.x"`, `"f1.y"` — beside an ordinary line.
+// That is where `hor` and `ver` went: `par("l1", "f1.y")` is "vertical", and
+// nothing in the vocabulary implies a privileged pair of directions any more.
+//
+// The rule is worth stating as a rule, because it is what settles the ones
+// that do *not* take an axis reference. An axis is a direction and no more —
+// it has no length and no position — so:
+//
+//   * `eq` is excluded: an axis has no length to be equal to.
+//   * `on` and `sym` are excluded: both need a *located* line, not a
+//     direction. "This point lies on the frame's x axis" is a real thing to
+//     want, and `fix(p, [t, 0])` already says it against a frame that has an
+//     origin; reading `"f1.x"` as a line through the origin here would give
+//     one syntax two meanings.
+//   * `tan` is excluded for the same reason `on` is — the line side of a
+//     tangency is a place, not a heading.
+//
+// `ang` is *included*, and it is the strongest case of the three: "this edge
+// at 30° to the frame" is what a draughtsman means by an angle far more often
+// than "30° between these two edges", and the residual reads its second
+// argument for a direction and a length that is 1 by construction.
+
+/**
+ * Which two directions a call meant, and the argument list to journal for it.
+ *
+ * One string argument after the subject is ambiguous on its face — second
+ * point, or the other side? The model settles it on the subject's *kind*,
+ * exactly as `hor`/`ver` used to: only the point form takes a second point, so
+ * whatever follows a line name can only be the thing it is relative to.
+ */
+function directionSides(model: Model, a: string, b: string, c?: string | null):
+  { u: DirectionRef; v: DirectionRef; args: string[] } {
+  if (model.entities.get(a)?.kind === "point") {
+    if (b == null || c == null) {
+      throw new Error(`"${a}" is a point: give the second point and what the pair is relative to`);
+    }
+    return { u: directionOfPoints(model, a, b), v: directionOf(model, c), args: [a, b, c] };
+  }
+  if (c != null) throw new Error(`"${a}" is not a point, so this takes two references, not three`);
+  return { u: directionOf(model, a), v: directionOf(model, b), args: [a, b] };
 }
 
-/** Two lines meet at a right angle: their directions' dot product vanishes. */
-export function perpendicular(model: Model, l1: string, l2: string): string {
-  return model.relation("perpendicular", [l1, l2], () => {
-    const dim = model.dim;
-    model.addResidual(joinVars(lineVars(model, l1), lineVars(model, l2)), (l) => {
-      const [a, b, c, d] = chunk(l, dim, 4);
-      return [dot(vecSub(b, a), vecSub(d, c))];
-    }, `perp(${l1},${l2})`);
+/**
+ * The shared body of `parallel` and `perpendicular`: read two directions and
+ * say how they must relate.
+ *
+ * Parallel is "the wedge vanishes", perpendicular is "the dot vanishes" — both
+ * linear in each input and well clear of being a square, whose gradient would
+ * vanish at its own root.
+ */
+function directionRelation(
+  model: Model, op: string, tag: string,
+  a: string, b: string, c: string | null | undefined,
+  residual: (u: Dual[], v: Dual[]) => Dual[],
+): string {
+  const { u, v, args } = directionSides(model, a, b, c);
+  return model.relation(op, args, () => {
+    model.addResidual(joinVars(u.vars, v.vars), (l) =>
+      residual(u.direction(l.slice(0, u.width)), v.direction(l.slice(u.width))),
+    `${tag}(${args.join(",")})`);
   });
 }
 
 /**
- * The angle between two lines, in radians. Unsigned — this is the angle
- * between the two directions as undirected lines would have it, because
- * a *signed* angle needs an orientation, which only exists in 2D. Stated
- * as u·v = |u||v|cos(theta) rather than by taking an arccos, so the
- * residual stays smooth everywhere including at 0 and pi.
+ * Two directions point the same way (or exactly opposite): their wedge
+ * vanishes. Each side is a line or a frame axis (`par("l1", "f1.x")`), and the
+ * first may instead be a pair of points (`par("p1", "p3", "f1.x")`).
+ */
+export function parallel(model: Model, l1: string, l2: string, l3?: string | null): string {
+  return directionRelation(model, "parallel", "par", l1, l2, l3, (u, v) => wedge(u, v));
+}
+
+/**
+ * Two directions are at a right angle: their dot product vanishes. Same three
+ * forms as `parallel`.
+ */
+export function perpendicular(model: Model, l1: string, l2: string, l3?: string | null): string {
+  return directionRelation(model, "perpendicular", "perp", l1, l2, l3, (u, v) => [dot(u, v)]);
+}
+
+/**
+ * The angle between two directions, in radians. Unsigned — this is the angle
+ * between them as undirected lines would have it, because a *signed* angle
+ * needs an orientation, which only exists in 2D. Stated as u·v = |u||v|cos(θ)
+ * rather than by taking an arccos, so the residual stays smooth everywhere
+ * including at 0 and π.
+ *
+ * Either side may be a frame axis, which is how "this edge sits at 30° to the
+ * frame" is written. There is deliberately **no point-pair form**: the
+ * trailing numeric target would have to be told apart from a third name by
+ * arity alone, and `hor`/`ver` never offered an angle either — a form nobody
+ * has asked for is not worth an ambiguity.
  */
 export function angle(model: Model, l1: string, l2: string, radians: number): string {
+  const u = directionOf(model, l1), v = directionOf(model, l2);
   return model.relation("angle", [l1, l2, radians], () => {
-    const dim = model.dim;
     const target = Math.cos(radians);
-    model.addResidual(joinVars(lineVars(model, l1), lineVars(model, l2)), (l) => {
-      const [a, b, c, d] = chunk(l, dim, 4);
-      const u = vecSub(b, a), v = vecSub(d, c);
-      return [dot(u, v).sub(norm(u).mul(norm(v)).mul(target))];
+    model.addResidual(joinVars(u.vars, v.vars), (l) => {
+      const du = u.direction(l.slice(0, u.width)), dv = v.direction(l.slice(u.width));
+      return [dot(du, dv).sub(norm(du).mul(norm(dv)).mul(target))];
     }, `ang(${l1},${l2})`);
   });
 }

@@ -6,7 +6,7 @@
 // with different eyes: a relation can only ever over- or under-constrain,
 // while an operation can leave the model malformed.
 
-import type { Entity, Model } from "./model.ts";
+import { argRefersTo, type Entity, type Model } from "./model.ts";
 import { arcEndpoints, radius, tangent } from "./relations/geometry.ts";
 
 function unit(v: number[]): number[] {
@@ -187,9 +187,12 @@ function delOne(model: Model, name: string): string[] {
 
   const doomed = isEntity ? entityClosure(model, name) : new Set<string>();
   // Every relation that names anything on the way out, plus the relation
-  // itself when that is what was asked for.
+  // itself when that is what was asked for. "Names" goes through
+  // `argRefersTo`, so a frame referenced only by an axis (`par("l1","f.x")`)
+  // still takes that relation with it — see `Model.relationsNaming`.
   const relations = [...model.relations.values()]
-    .filter((r) => (isRelation && r.name === name) || r.args.some((a) => typeof a === "string" && doomed.has(a)))
+    .filter((r) => (isRelation && r.name === name)
+      || r.args.some((a) => [...doomed].some((d) => argRefersTo(a, d))))
     .map((r) => r.name);
 
   const removed: string[] = [];

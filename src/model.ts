@@ -79,6 +79,58 @@ export interface FrameEntity {
 
 export type Entity = PointEntity | LineEntity | CircleEntity | ArcEntity | FrameEntity;
 
+/**
+ * A **frame-axis reference**: the string `"f1.x"` or `"f1.y"`, naming the
+ * direction of that frame's axis rather than any entity.
+ *
+ * This is what replaced `hor`/`ver`. Those words implied a privileged pair of
+ * directions — a world frame in vocabulary form — where what is actually meant
+ * is "parallel to an axis I can name", so `par("l1", "f1.y")` says "vertical"
+ * and there is no second spelling of it.
+ *
+ * The *syntax* lives here, in the layer that owns the namespace, for two
+ * reasons that both come back to names. `claimName` refuses a dot precisely so
+ * that no entity can ever be called `f1.x`, and `relationsNaming` has to know
+ * that an argument reading `f1.x` is a reference *to* `f1` or deleting a frame
+ * would leave relations reading one that is gone. Turning a reference into an
+ * actual direction is a different job and lives one layer up, beside the rest
+ * of the lazy plumbing, in `relations/refs.ts`.
+ */
+export type AxisName = "x" | "y";
+
+/**
+ * The frame and axis a reference names, or null for an ordinary name.
+ *
+ * Throws on a dot followed by anything else, rather than falling back to
+ * "ordinary name": a name with a dot in it cannot exist (see `claimName`), so
+ * `par("l1", "f1.z")` is a typo with no other possible reading, and answering
+ * `"f1.z" is not a line` would send the reader looking for the wrong mistake.
+ */
+export function parseAxisRef(ref: string): { frame: string; axis: AxisName } | null {
+  const dot = ref.indexOf(".");
+  if (dot < 0) return null;
+  const frame = ref.slice(0, dot);
+  const axis = ref.slice(dot + 1);
+  if (axis !== "x" && axis !== "y") {
+    throw new Error(`"${ref}" is not a frame axis — say "${frame}.x" or "${frame}.y"`);
+  }
+  return { frame, axis };
+}
+
+/**
+ * Whether one recorded argument refers to the entity called `name` — directly,
+ * or through one of its axes.
+ *
+ * Deliberately total and non-throwing, unlike `parseAxisRef`: this runs over
+ * every argument of every relation whenever something is deleted, including
+ * arguments that are numbers, arrays, or a hand-edited file's nonsense, and a
+ * deletion is no place to start validating syntax. A prefix test is all the
+ * question needs — `f1.` can only ever have been written about `f1`.
+ */
+export function argRefersTo(arg: unknown, name: string): boolean {
+  return typeof arg === "string" && (arg === name || arg.startsWith(`${name}.`));
+}
+
 /** Circles and arcs share a center + radius; relations that only need those two treat them alike. */
 export interface CircularRef {
   name: string;
@@ -198,6 +250,14 @@ export class Model {
 
   private claimName(prefix: string, name?: string): string {
     if (name === undefined) return this.autoName(prefix);
+    // A dot is reserved for the frame-axis reference syntax (see
+    // `parseAxisRef`). Refused here rather than merely discouraged, because
+    // this is the only place that can guarantee it: a point called `f1.x`
+    // would make `par("l1", "f1.x")` mean two things, and which one it meant
+    // would depend on the order the drawing happened to be built in.
+    if (name.includes(".")) {
+      throw new Error(`"${name}" cannot contain a dot — "f1.x" names a frame's axis`);
+    }
     if (this.has(name)) throw new Error(`"${name}" already exists`);
     // An explicit name that looks like an auto-generated one moves the counter
     // past it, so a later auto-name cannot collide. This matters most when a
@@ -282,9 +342,19 @@ export class Model {
     return r;
   }
 
-  /** Every relation whose call named `name`, in creation order. */
+  /**
+   * Every relation whose call named `name`, in creation order — counting a
+   * frame named through one of its axes (`par("l1", "f1.x")` names `f1`).
+   *
+   * That last clause is load-bearing rather than a nicety. This is what
+   * `deleteEntity` consults before letting an entity go and what `del`'s
+   * cascade reads, so a frame whose axis reference did not count as naming it
+   * could be deleted out from under a relation still reading it — a residual
+   * that then throws inside the next solve, which is the failure mode furthest
+   * from where the mistake was made.
+   */
   relationsNaming(name: string): RelationEntry[] {
-    return [...this.relations.values()].filter((r) => r.args.some((a) => a === name));
+    return [...this.relations.values()].filter((r) => r.args.some((a) => argRefersTo(a, name)));
   }
 
   /**
