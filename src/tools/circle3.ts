@@ -22,63 +22,10 @@
 import { Tool, defineTool, type PointerInfo, type RenderContext } from "./tool.ts";
 import { onCircle } from "../relations/geometry.ts";
 import { placePoint } from "./place.ts";
-
-/**
- * Relative sine below which three points are one straight line.
- *
- * Scale-free, and deliberately the same form and the same number as
- * intersect.ts's parallel test: it is compared against the product of the two
- * side lengths, so it means "the angle subtended at the first point is under
- * ~1e-9 radians" at any zoom, in any unit. A *near*-collinear circle is a
- * legitimate thing to draw and the user's call to make; only the exactly
- * degenerate case is refused.
- */
-export const COLLINEAR_EPS = 1e-9;
-
-/**
- * Screen radius past which the preview is not drawn. A rim this far away sags
- * by well under a pixel across the whole window, so what would be drawn is a
- * straight line — and asking a canvas for an arc of radius 10^8 is a good way
- * to find out how slowly it can do that.
- */
-const PREVIEW_MAX_R = 1e6;
-
-export interface Circumcircle {
-  center: [number, number];
-  radius: number;
-}
-
-/**
- * The circle through three points, in closed form — or null when they are
- * collinear, because the "circle" through three points on a line is that
- * line, and a line is not a circle.
- *
- * Plain numbers in and out, with no idea which space it is being asked about,
- * exactly as intersect.ts is: the commit asks it in world coordinates because
- * that is where the model lives, and the preview asks it in screen pixels
- * because that is where it draws and a pixel radius needs no scale factor.
- * The view transform is affine with a uniform scale, so the two agree.
- *
- * Written about `a` as the origin rather than from the raw determinant: the
- * coordinates that go into it are then differences rather than absolute
- * positions, which is what stops a drawing far from the origin losing its
- * significant digits to cancellation.
- */
-export function circumcircle(a: number[], b: number[], c: number[]): Circumcircle | null {
-  const bx = b[0] - a[0], by = b[1] - a[1];
-  const cx = c[0] - a[0], cy = c[1] - a[1];
-  // |d| = 2 |b-a| |c-a| sin(theta), so dividing through by the two lengths is
-  // what makes the test below an angle rather than an area — an area threshold
-  // would call a large drawing collinear and a small one not.
-  const d = 2 * (bx * cy - by * cx);
-  if (Math.abs(d) <= 2 * COLLINEAR_EPS * Math.hypot(bx, by) * Math.hypot(cx, cy)) return null;
-
-  const bb = bx * bx + by * by;
-  const cc = cx * cx + cy * cy;
-  const ux = (cy * bb - by * cc) / d;
-  const uy = (bx * cc - cx * bb) / d;
-  return { center: [a[0] + ux, a[1] + uy], radius: Math.hypot(ux, uy) };
-}
+// The closed form and its collinearity threshold left this file when the
+// 3-point *arc* tool needed the same two, and needed them to agree — see the
+// header of circumcircle.ts.
+import { circumcircle, PREVIEW_MAX_R } from "./circumcircle.ts";
 
 export class Circle3Tool extends Tool {
   readonly name = "circle3";

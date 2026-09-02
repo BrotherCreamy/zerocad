@@ -22,6 +22,7 @@ import "./tools/rectangle.ts";
 import "./tools/circle.ts";
 import "./tools/circle3.ts";
 import "./tools/arc.ts";
+import "./tools/arc3.ts";
 import "./tools/fillet.ts";
 
 const statusEl = document.getElementById("status")!;

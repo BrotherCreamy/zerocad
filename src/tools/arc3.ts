@@ -1,0 +1,217 @@
+// Two endpoints, then a point the arc passes through — Onshape's *3 point
+// arc*, and the sibling of circle3.ts in every respect but one.
+//
+// **The click order is end, end, waypoint**, which is Onshape's and is worth
+// saying out loud twice: it is not (start, waypoint, end), and it is not the
+// centre-point arc's (centre, start, end). The first two clicks are the two
+// ends of the arc; the third only says *which* of the two arcs between them
+// was meant, and how far it bulges to start with.
+//
+// The one place it parts company with circle3 is what happens to that third
+// click: **nothing**. In Onshape the waypoint is not kept as geometry, and it
+// is not kept here either. A 3-point circle's three clicks are all rim points
+// and all three `onCircle`s are the circle's definition; an arc's waypoint is
+// a *choice*, not a claim, and keeping it would leave a point in the drawing
+// that the user never asked for and would have to clean up by hand — the same
+// reason the fillet reuses its shared corner rather than stranding it.
+// So the arc is under-constrained afterwards — its bulge is free — which is
+// the register's standing rule that tools do not dimension what they draw,
+// and exactly the bargain the centre-point arc tool already strikes. Someone
+// who wants the bulge held says `rad(...)` or drops a point on the rim.
+//
+// What *is* asserted is `arcEndpoints`: an arc's endpoints lying on its own
+// circle is a relation in this model rather than a constructor fact (see
+// ArcEntity in model.ts), so a tool that builds an arc has to say it. Without
+// it the seeded numbers would be the only thing holding the arc together and
+// the first drag would pull it apart.
+//
+// Everything else is circle3's shape: each endpoint click goes through
+// `placePoint` so snapping and inference apply to it, nothing at all is
+// created before the third click so the whole gesture is one undo step, and a
+// degenerate third click is refused through `ctx.log` with the gesture left
+// live rather than committed into a conflict.
+
+import { Tool, defineTool, type PointerInfo, type RenderContext } from "./tool.ts";
+import { arcEndpoints } from "../relations/geometry.ts";
+import { placePoint } from "./place.ts";
+import { circumcircle, PREVIEW_MAX_R } from "./circumcircle.ts";
+
+/**
+ * Two clicks closer together than this (in world units) are one click, and one
+ * click is not two endpoints.
+ *
+ * Same number and same reason as the centre-point arc tool's zero-radius
+ * guard: a second press this close to the first is a double-click, not a
+ * gesture. It is in world units rather than pixels, which means at a wild
+ * enough zoom-out two genuinely distinct clicks could fall inside it — that
+ * is the same trade arc.ts already makes, and the failure mode (the second
+ * click does nothing, click again) is self-explanatory.
+ */
+const SAME_POINT_EPS = 1e-6;
+
+/** How far counter-clockwise `to` is from `from`, in [0, 2pi). World angles. */
+function ccwFrom(from: number, to: number): number {
+  const d = (to - from) % (Math.PI * 2);
+  return d < 0 ? d + Math.PI * 2 : d;
+}
+
+export interface Arc3 {
+  center: [number, number];
+  radius: number;
+  /** Which of the two endpoint clicks the CCW sweep starts at: 0 or 1. */
+  startIndex: 0 | 1;
+}
+
+/**
+ * The arc through `a` and `b` that passes through `w`: its circle, and which
+ * of the two endpoints the sweep starts at. Null when the three are collinear.
+ *
+ * The sweep runs counter-clockwise in world space from `start` to `end` —
+ * main.ts's rendering convention and, via `withinSweep`, intersect.ts's and
+ * picking.ts's definition of what is *on* the arc. Both of the two arcs
+ * between `a` and `b` are drawable; only one of them contains `w`, and this
+ * picks it by asking whether `w` is reached before `b` going counter-clockwise
+ * from `a`. Swapping the two costs the gesture nothing — both clicks are
+ * endpoints either way, and only the label moves.
+ *
+ * Plain numbers in and out, in a y-up convention, so the commit can ask it in
+ * world coordinates and the preview can ask it in world coordinates too and
+ * negate the angles once at the point of drawing, which is where screen-space
+ * y-down belongs.
+ */
+export function arcThrough(a: number[], b: number[], w: number[]): Arc3 | null {
+  const found = circumcircle(a, b, w);
+  if (!found) return null;
+  const ang = (p: number[]) => Math.atan2(p[1] - found.center[1], p[0] - found.center[0]);
+  const toB = ccwFrom(ang(a), ang(b));
+  const toW = ccwFrom(ang(a), ang(w));
+  return { center: found.center, radius: found.radius, startIndex: toW < toB ? 0 : 1 };
+}
+
+export class Arc3Tool extends Tool {
+  readonly name = "arc3";
+  /** The endpoint clicks so far, kept whole so each one's snap survives to commit. */
+  private ends: PointerInfo[] = [];
+  private hover: number[] | null = null;
+
+  onDown(p: PointerInfo): void {
+    if (this.ctx.model.dim !== 2) throw new Error("arc3 is a 2D tool");
+    this.hover = p.world;
+
+    if (this.ends.length < 2) {
+      // A second press on top of the first is a double-click, not a second
+      // endpoint. Swallowed rather than logged: nothing went wrong, and the
+      // centre-point arc tool already ignores its own degenerate click in
+      // silence.
+      const first = this.ends[0];
+      if (first && Math.hypot(p.world[0] - first.world[0], p.world[1] - first.world[1]) < SAME_POINT_EPS) return;
+      this.ends.push(p);
+      this.ctx.requestRender();
+      return; // nothing is committed until the third click — see the header
+    }
+
+    const [first, second] = this.ends;
+    const found = arcThrough(first.world, second.world, p.world);
+    if (!found) {
+      // Refuse rather than build, circle3's shape exactly: three points on one
+      // line have no arc between them either, and committing one would leave a
+      // CONFLICT header over a drawing that should never have been made.
+      // Staying armed on the two endpoint clicks means the obvious next move —
+      // aim the waypoint off the line — just works.
+      const why = `${this.name}: those three points lie on one line — no arc passes through them`;
+      // The log pane where there is one; the console's ear headless, where an
+      // advisory (the gesture stays live) does not deserve a throw.
+      if (this.ctx.log) this.ctx.log(why);
+      else console.warn(why);
+      this.ctx.requestRender();
+      return;
+    }
+
+    this.ends = [];
+    this.hover = null;
+
+    const m = this.ctx.model;
+    // The endpoints first, so their auto-names come before the arc's own
+    // centre and a replay hands out the same ones. Placed in click order,
+    // *then* assigned to start/end by the sweep — so which end is "start"
+    // never changes which point is which, only which way round the arc goes.
+    const placed = [first, second].map((info) => placePoint(this.ctx, info));
+    const start = placed[found.startIndex];
+    const end = placed[1 - found.startIndex];
+    // A *free* arc, free-entities style: the centre argument is null, so the
+    // model makes a real named point for it. The radius and the centre
+    // coordinates are seeds and nothing more (a constructor argument in this
+    // model never was a constraint) — but seeding them at the circumcircle
+    // rather than at the library defaults means the solver's first step is
+    // chosen by where the drawing is rather than by where the world starts,
+    // and it means the arc drawn on screen is the arc that was previewed.
+    const arc = m.addArc(null, start, end, found.radius);
+    m.setCoords(arc.center, found.center);
+    arcEndpoints(m, arc.name);
+
+    this.ctx.requestSolve();
+    this.ctx.finish();
+  }
+
+  onMove(p: PointerInfo): void {
+    if (!this.ends.length) return;
+    this.hover = p.world;
+    this.ctx.requestRender();
+  }
+
+  onCancel(): void {
+    this.ends = [];
+    this.hover = null;
+    this.ctx.requestRender();
+  }
+
+  render(r: RenderContext): void {
+    if (!this.ends.length) return;
+    r.g.save();
+    r.g.strokeStyle = "#e8a33d";
+    r.g.lineWidth = 1.3;
+
+    // Where the endpoint clicks landed. A three-click tool that shows nothing
+    // after the first click looks like a tool that ignored it.
+    for (const info of this.ends) {
+      const [x, y] = r.worldToScreen(info.world);
+      r.g.beginPath();
+      r.g.moveTo(x - 4, y);
+      r.g.lineTo(x + 4, y);
+      r.g.moveTo(x, y - 4);
+      r.g.lineTo(x, y + 4);
+      r.g.stroke();
+    }
+
+    // Two endpoints and a cursor already determine the arc — including which
+    // side it bulges to — so from here the preview is the answer itself.
+    if (this.ends.length === 2 && this.hover) {
+      const worlds = [this.ends[0].world, this.ends[1].world];
+      const found = arcThrough(worlds[0], worlds[1], this.hover);
+      const [cx, cy] = found ? r.worldToScreen(found.center) : [0, 0];
+      // The radius is measured on screen rather than scaled from the world
+      // one: no scale factor to look up, and it cannot disagree with where
+      // worldToScreen just put the centre.
+      const [sx, sy] = r.worldToScreen(worlds[0]);
+      const rad = found ? Math.hypot(sx - cx, sy - cy) : 0;
+      // Nothing at all when the three are collinear, or when the rim is so far
+      // away that what would be drawn is a straight line: a preview that lies
+      // about what the next click will build is worse than no preview.
+      if (found && rad < PREVIEW_MAX_R) {
+        // Screen y runs the other way from world y, so a world-space CCW sweep
+        // is drawn clockwise here — the negated angles and the `true` flag,
+        // exactly as main.ts draws a committed arc.
+        const ang = (p: number[]) => Math.atan2(p[1] - found.center[1], p[0] - found.center[0]);
+        const startW = worlds[found.startIndex];
+        const endW = worlds[1 - found.startIndex];
+        r.g.setLineDash([4, 3]);
+        r.g.beginPath();
+        r.g.arc(cx, cy, rad, -ang(startW), -ang(endW), true);
+        r.g.stroke();
+      }
+    }
+    r.g.restore();
+  }
+}
+
+defineTool("arc3", Arc3Tool);

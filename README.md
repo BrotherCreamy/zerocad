@@ -93,7 +93,10 @@ src/tools/engine.ts       wires real DOM pointer events to the armed tool
 src/tools/point.ts        the trivial example tool
 src/tools/rectangle.ts    the concrete example the Tool API was designed around
 src/tools/circle.ts       drag from center to rim
+src/tools/circle3.ts      three clicks, a circle through all three
 src/tools/arc.ts          center, radius, sweep — a three-click gesture
+src/tools/arc3.ts         two endpoints, then a point the arc passes through
+src/tools/circumcircle.ts the closed form those two share
 src/main.ts              browser entry point (canvas render loop + the REPL)
 test/                    node --test, no browser needed (WASM loaded via a byte buffer)
 ```
@@ -159,8 +162,11 @@ different buttons from tool use, so the left button always belongs to
 whichever tool is armed — you can start a rectangle, pan to see where it
 is going, and finish it without the tool noticing.
 
-Drawing tools are `point`, `rectangle`, `circle` and `arc` — type the name
-to arm one. `fillet` rounds the corner where two lines meet:
+Drawing tools are `point`, `rectangle`, `circle`, `circle3`, `arc` and
+`arc3` — type the name to arm one. The two numbered ones are Onshape's
+*3 point circle* (three clicks, all three on the rim) and *3 point arc*
+(the two endpoints, then a point the arc passes through). `fillet` rounds
+the corner where two lines meet:
 
 ```js
 fillet("l1", "l2", 8); solve()     // an arc tangent to both legs

@@ -8,13 +8,20 @@
 // typed, and against the three relations still being there afterwards. What
 // only a browser can answer — that the whole gesture is one undo step, and that
 // the preview is actually drawn — is in test/e2e/circle3.e2e.ts.
+//
+// The closed form itself now lives in src/tools/circumcircle.ts, shared with
+// the 3-point arc tool. Its tests stayed here rather than moving to a file of
+// their own: this is where they were written, this is the tool they were
+// written about, and a `circumcircle.test.ts` holding four cases would be a
+// second place to look for the same thing.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { ensureKernelLoaded } from "../src/kernel/problem.ts";
 import { Model } from "../src/model.ts";
-import { Circle3Tool, circumcircle, COLLINEAR_EPS } from "../src/tools/circle3.ts";
+import { Circle3Tool } from "../src/tools/circle3.ts";
+import { circumcircle, COLLINEAR_EPS } from "../src/tools/circumcircle.ts";
 import { fix } from "../src/relations/basic.ts";
 import { findSnap } from "../src/snapping.ts";
 import { save, open } from "../src/persist.ts";

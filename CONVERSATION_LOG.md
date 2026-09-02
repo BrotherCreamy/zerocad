@@ -106,6 +106,64 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### The 3-point arc, and the click that is thrown away on purpose
+
+This one arrived without a spec — a sibling of `circle3` with the instruction
+to write the spec first and then build it. Two things in it are worth the
+entry, because neither is visible in the diff and one of them is a decision I
+could have gone the other way on.
+
+**The waypoint is not geometry.** `circle3` and `arc3` look like the same
+tool: three clicks, a circumcircle, one free entity seeded at the answer. They
+differ in what the third click *means*. All three of a 3-point circle's clicks
+are rim points, and all three `onCircle`s are the circle's definition — the
+circle follows the points, which is the thing a user can feel and the reason
+the free-entities package existed. A 3-point arc's third click is not a claim
+about the arc; it is a *choice between two arcs*. Onshape does not keep it,
+and the temptation to keep it anyway is strong precisely because it would make
+`arc3` symmetric with `circle3` and would leave the arc pinned instead of
+loose.
+
+I rejected it on three grounds. The first is deference: this repo copies
+Onshape where Onshape has an answer, and Onshape throws the waypoint away. The
+second is the standing rule that tools do not dimension what they draw — a
+waypoint held by an `onCircle` is a dimension in all but name, since it fixes
+the one thing about the arc the endpoints leave free. The third is the one
+that actually decided it, and it is the fillet's argument reused: the point
+would sit in the middle of the arc, named, drawn and listed in `ls()`, and
+nothing would ever want it there. It *is* deletable — `del` takes the point
+and its `onCircle` together, and the arc simply stays put and goes loose — so
+this is litter rather than a trap. But the fillet reuses its shared corner
+precisely so that a gesture does not leave stray dots for the user to clean up
+by hand, and a tool that makes the user delete part of its own output every
+time is a worse deal than an arc that starts under-constrained, which is what
+every other tool in the box already hands back. So the bulge is free, it is
+documented in three places, and there is a test that *demonstrates* the
+freedom rather than asserting the absence of a constraint — it shoves the
+centre along the perpendicular bisector and finds the system just as solved at
+a different radius. A caveat that is documented and tested is a decision.
+
+**Writing my own spec is a weaker check than being handed one.** The `circle3`
+spec was written by a different session, and its one deviation — centroid seed
+versus circumcentre — is on the record because there was something to deviate
+*from*. Here the spec and the implementation come from the same head, so
+"built as specified, no deviations" means considerably less than it usually
+does. Two things did move from coding into specifying rather than the other
+way round (the second-click-on-the-first guard, and pulling `circumcircle` out
+into its own module), and I have noted them at the top of the plan for
+whoever reviews it. The honest summary is that the spec is a design record
+here, not an independent check.
+
+**The one thing I would have got wrong without a picture.** The e2e spec first
+asserted that a downward-bulging arc has its centre *above* the chord. That is
+true for a minor arc and false for a major one — the answer flips with the
+sagitta — and the browser caught it as a failure on the second story. The
+right question is where the *midpoint of the sweep* is, which is also what a
+person looking at the drawing actually judges. The screenshot shows the same
+thing from the other side: image 42's arc bows above the rectangle while its
+centre `p7` sits below the top edge, which looks wrong for about a second and
+is exactly right.
+
 ### No world frame, half 2: a datum is moved, not persuaded
 
 Half 2 was meant to be the presentation half — draw the frame, let it be

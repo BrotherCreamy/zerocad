@@ -7,6 +7,81 @@ decisions.
 
 ---
 
+## The 3-point arc tool, and the click it deliberately throws away
+
+Onshape's *3 point arc* as a pointer tool: `arm("arc3")` — or the bare word —
+then **the two endpoints, then a point the arc passes through**. That order is
+worth saying twice, because it is neither the natural guess (start, waypoint,
+end) nor the centre-point arc tool's (centre, start, end); it is Onshape's.
+
+What is committed is two `placePoint`s, one **free** `addArc` whose centre is
+auto-created and seeded at the circumcentre, its radius at the circumradius,
+and one `arcEndpoints`. No new journal op, no model change, no solver change —
+`addArc`, `setCoords` and `arcEndpoints` were all already in `persist.ts`'s
+replay table, which is the evidence that this is a composition and not a new
+kind of thing. `engine.ts`, `replenv.ts`, `persist.ts` and `operations.ts` are
+untouched; `tools()` lists `arc3` without being told, because it reads the
+registry.
+
+**The third click places nothing, and that is the design.** In Onshape the
+waypoint is not kept as geometry, and keeping it would leave a point in the
+drawing the user never asked for and would have to clean up by hand — the
+fillet's reason for reusing its shared corner rather than stranding it.
+Its whole job is to *choose*: which of the two arcs between the endpoints, and
+where the centre and radius start from. So the arc is under-constrained
+afterwards — seven unknowns against `arcEndpoints`' two equations, with the
+**bulge free** — which is the same bargain the centre-point arc tool already
+strikes and the register's standing rule that tools do not dimension what they
+draw. The alternative, keeping the waypoint as a third point with an
+`onCircle` (precisely what `circle3` does), was rejected on both counts. There
+is a test that shoves the centre along the endpoints' perpendicular bisector
+and finds the system just as solved at a visibly different radius: the freedom
+is asserted, not merely written down. A user who wants the bulge held says
+`rad(...)` or drops a point on the rim.
+
+**The sweep is chosen, not assumed.** `main.ts` draws an arc counter-clockwise
+in world space from `start` to `end`, so the two endpoint clicks are assigned
+to those two roles in whichever order puts the waypoint *inside* that sweep —
+both clicks are endpoints either way, only the label moves. This is the claim
+that needed testing hardest, because an arc bulging the wrong way satisfies
+every residual to machine precision and is still the wrong drawing, which is
+the fillet bug's exact shape. The unit tests therefore ask `withinSweep` and
+`screenAngle` themselves — `intersect.ts`'s one definition of what is *on* an
+arc, the one picking and snapping already sit on — rather than a second
+opinion written for the occasion. Flipping the choice in the source fails
+three of them.
+
+Everything else is `circle3`'s shape, and deliberately so: both endpoint
+clicks go through `placePoint`, so an arc from one existing corner to another
+is three clicks and no special case; nothing is created before the third
+click, so the engine's existing bracket makes the whole gesture one Ctrl+Z; a
+dashed preview after the second click shows the arc the next click will build,
+bulge and all; an exactly collinear third click is refused through `ctx.log`
+with the gesture left live, and near-collinear is the user's call. A second
+click on top of the first is swallowed as a double-click, the way `arc.ts`
+already swallows its own zero-radius one.
+
+One shared piece moved: **`circumcircle` and `COLLINEAR_EPS` now live in
+`src/tools/circumcircle.ts`**, out of `circle3.ts`. Two tools need the same
+closed form *and the same answer* to "are these three points on one line", and
+two copies of a scale-free epsilon is the sort of thing that drifts until one
+tool refuses a gesture the other accepts. The new file registers no tool, so
+importing it has no side effect — `place.ts` is the precedent for a helper
+module under `tools/`.
+
+| two endpoint clicks and the cursor — the dashed arc, live | committed: one arc, one `arcends`, two inferred coincidences |
+|---|---|
+| ![A rectangle with its parallel and perpendicular marks. Its top-left corner p1 and top-right corner p2 are both lit amber, and a dashed amber arc springs from one to the other, bowing up above the rectangle to the cursor. It is one arc, not a circle — nothing is drawn below the top edge. The log reads "armed: rectangle" then "armed: arc3"](docs/images/41-arc3-preview.png) | ![The same rectangle with the arc now solid and pale, still running corner to corner over the top of the shape. Two new points p5 and p6 sit on the two corners with ring-and-dot marks beside them, and the arc's own centre p7 sits just inside the rectangle below the top edge. There is no point at the top of the bulge — the third click left nothing behind. The log shows rels() answering r1 par l1 l3, r2 par l2 l4, r3 perp l1 l2, r4 coin p5 p1, r5 coin p6 p2, r6 arcends a1](docs/images/42-arc3-committed.png) |
+
+The right-hand picture carries the two claims that matter. **There is no point
+at the top of the bulge** — the waypoint chose the arc and was thrown away.
+And the centre `p7` sits *below* the chord while the arc bows *above* it,
+which is simply what a minor arc looks like; a test written about which side
+the centre falls on would flip its answer with the sagitta, so the browser
+spec asks about the midpoint of the sweep instead.
+
+Unit 350 → 364, e2e 150 → 156, kernel unchanged.
+
 ## There is no world frame any more
 
 The owner's direction: **no built-in origin and no built-in world coordinate
