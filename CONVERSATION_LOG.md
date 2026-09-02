@@ -106,6 +106,73 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### Retiring hor/ver, and the two questions the spec left open
+
+The spec was clear about the *what* — `hor`/`ver` removed, `par`/`perp`/`ang`
+take `"f1.x"`, persistence translates — and left two things to be decided
+honestly. Both are worth writing down because both had a tempting wrong answer.
+
+**Which other relations should take an axis reference?** The spec named `ang`,
+`sym` and `on` as candidates and said to decide each. The tempting answer is
+per-relation taste. The answer that survives is a *rule*, and it comes from
+asking what an axis reference actually denotes: a **direction**, with no length
+and no position. From that, the set is forced. `par`, `perp` and `ang` read
+their arguments for a direction and nothing else, so they take one. `eq`
+compares lengths and an axis has none. `on`, `sym` and `tan` each need a
+*located* line — a place, not a heading — and the tempting move there is to
+read `"f1.x"` as the line through the frame's origin along +x, which is a
+perfectly sensible thing to want and exactly the wrong way to get it: one
+syntax would then mean two different things depending on which relation was
+reading it, and `fix(p, [t, 0])` already says "somewhere along the frame's x"
+against a frame that has an origin. `ang` is the only inclusion `hor`/`ver`
+did not already justify, and it is flagged as veto-able for that reason —
+though "this edge at 30° to the frame" is, if anything, the commoner draughting
+intent.
+
+**What happens to the point form?** `hor("a", "b")` was a documented capability
+with a table of its own in `ARCHITECTURE.md`, and the spec's instruction to
+translate point-form journal entries has no destination unless `par` has one
+too. Dropping it would have been a silent capability regression smuggled in
+under a rename. So `par`/`perp` take a point pair as their first side, settled
+on the subject's *kind* exactly as `hor` settled it — the same arity trick, in
+the same house style. `ang` does not get one: its trailing numeric target would
+have to be told from a third name by arity alone, and a form nobody has asked
+for is not worth an ambiguity.
+
+**Two things the spec did not anticipate, found while building.**
+
+The first is a genuine bug the axis syntax would have introduced. `f1.x` is not
+an entity name, so `relationsNaming("f1")` — which is what `deleteEntity`
+consults before letting anything go, and what `del`'s cascade reads — would not
+have seen it. A frame could then be deleted while a relation was still reading
+it, and the symptom would be a residual throwing inside the *next solve*: about
+as far from the mistake as a failure can land. The fix is one predicate,
+`referentOf`, in `model.ts` — which is also the honest home for the syntax,
+since `claimName` refusing a dot is a namespace decision and `relationsNaming`
+understanding a dot is a reference decision. Turning a reference into a
+direction is a different job and stayed in `relations/refs.ts`, one layer up,
+beside `frameBasis`. One parser, two questions, each answered in the layer that
+owns it.
+
+The second was found by looking at a screenshot rather than at a number. The
+`∥` mark for `parallel` is **not in the browser's monospace** and draws as a
+tofu slab. It had been in the symbol table since the glyphs package and nobody
+noticed, because `par` was a rare relation — the intrinsic rectangle's two, and
+little else. Retiring `hor`/`ver` into it made it the commonest mark on any
+drawing, four to a rectangle. The measurement that settles it: in that font
+every mark advances 7.2246px and `∥` advances 6, which is the browser
+substituting a fallback face. `//` is in the font, is what a draughtsman
+writes, and reads instantly. The guard is the interesting part — an e2e now
+measures *every* symbol in the table against the monospace cell, because this
+is precisely the class of thing a picture can be looked at and still missed,
+and precisely the class of thing a number settles in a line.
+
+**One thing that needed no decision at all.** `par(l, "f.y")` is numerically
+identical to what `ver(l)` computed — the wedge with +y *is* the dot with +x,
+for a unit basis — so the frames package's closed-form tilted-frame tests came
+across with their assertions and tolerances untouched. That is the check that
+the rename really is a rename.
+
 ### The context menu, and the search for the seam it should type through
 
 The spec for this one was unusually specific about *what* every item should do

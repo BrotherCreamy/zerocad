@@ -926,6 +926,52 @@ replacing) the system Node other projects on this machine may depend on.
   a right-click with a tool armed opens the ordinary menu; and a right press
   taken during a left drag opens nothing.
 
+- **`hor`/`ver` retired into frame-axis references.** The vocabulary no longer
+  names a privileged pair of directions anywhere. `par`, `perp` and `ang`
+  accept a **frame-axis reference** — the string `"f1.x"` or `"f1.y"` — beside
+  an ordinary line, and `xaxis(frame?)`/`yaxis(frame?)` hand one back with the
+  default resolved at call time. `par("l1", yaxis())` is what `ver("l1")` was;
+  the residual is identical (the wedge with +y *is* the dot with +x), so the
+  frames package's closed-form tilted-frame tests hold unchanged in the new
+  spelling. `horizontal`/`vertical` are **removed, not aliased**: reaching for
+  one gets the standing `no such name: hor`.
+  **Resolution has one home** — `directionOf` in `relations/refs.ts`, beside
+  `frameBasis` — while the *syntax* belongs to `model.ts`, which owns the
+  namespace: `claimName` refuses a dot in any entity name so a reference can
+  never collide with one, and `relationsNaming`/`del` read `f1.x` as naming
+  `f1` so a frame cannot be deleted out from under a relation still reading it.
+  **Datum semantics are now structural rather than remembered**: an axis
+  contributes no variables and a direction built from `Dual.constant`, whose
+  gradient is empty, so the frame is outside the Jacobian by construction. Two
+  ordinary lines in `par` still push each other; two frame axes on one relation
+  are refused, since that residual could declare no variables at all.
+  **Which relations may take one is a rule**: an axis is a direction with no
+  length and no position, so `eq` (no length), `on`, `sym` and `tan` (all need
+  a *located* line) are excluded, and each exclusion is written into
+  `relations/geometry.ts` rather than left to be rediscovered.
+  `par`/`perp` keep the point-pair form (`par("p1","p3","f.x")`); `ang`
+  deliberately has none, since its trailing numeric target would have to be
+  told from a third name by arity alone. `fix` is untouched.
+  **Downstream**: the line tool infers `par(line, "f.x")`/`par(line, "f.y")`;
+  a `par` or `ang` whose other side is an axis wears **one** mark, on the line,
+  since there is no second edge to put one beside — and hovering it still
+  lights the frame, because the highlight resolves `f1.x` back to `f1`.
+  The parallel mark is `//`: `∥` is not in the browser's monospace and drew as
+  a tofu slab (every other mark advances 7.2246px, `∥` advances 6), which was
+  invisible while `par` was rare and glaring the moment it became the drawing's
+  commonest mark. An e2e now measures every symbol in the table against the
+  monospace cell.
+  **Format version 3**, and version-2 files **translate** rather than being
+  refused: `horizontal(l, f)` replays as `parallel(l, "f.x")`, `vertical(l, f)`
+  as `parallel(l, "f.y")`, point forms carrying their extra name. The
+  *translated* journal is what gets installed, so such a file re-saves in the
+  new vocabulary — `save(open(x)) ≠ x` across this boundary, deliberately, and
+  byte-stable from there on. Version-1 files are still refused by step, with
+  the same message, now raised by the translation that has to resolve the frame
+  they lack.
+  *Spec:* [`docs/plans/retire-hor-ver.md`](docs/plans/retire-hor-ver.md).
+
+
 ## What's next
 
 The working list lives in [`TODO.md`](TODO.md), so it has one home rather

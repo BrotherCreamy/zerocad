@@ -107,9 +107,10 @@ Three things that are easy to get wrong:
   *line*, so the relation follows that line if an operation re-points it.
 - **Write it dimension-generically** unless it genuinely isn't. Expressed
   through `dot()` and `wedge()`, most "2D" definitions hold unchanged in any
-  dimension. Where one really is 2D-only — `hor`, `ver` — throw for other
-  dimensions rather than silently doing something wrong, and prove the generic
-  ones with a 3D test rather than asserting it in a comment.
+  dimension. Where something really is 2D-only — a coordinate frame, and so
+  any reference to one of its axes — throw for other dimensions rather than
+  silently doing something wrong, and prove the generic ones with a 3D test
+  rather than asserting it in a comment.
 - **Never make a residual that is already a square.** Its gradient vanishes at
   its own root, so least-squares ends up minimising a fourth power and
   converges badly. Use the wedge's components, not their sum of squares.
@@ -124,8 +125,9 @@ example the interface was designed around. `onDown` should not touch the model;
 commit in `onUp` and then call `ctx.requestSolve()` and `ctx.finish()`. Draw
 previews from the tool's own state in `render()`.
 
-Prefer constraining *edges* over corner points (`hor(edge)` over
-`hor(cornerA, cornerB)`), so the result survives being filleted later.
+Prefer constraining *edges* over corner points (`par(edge, xaxis())` over
+`par(cornerA, cornerB, xaxis())`), so the result survives being filleted
+later.
 
 ## Documentation
 

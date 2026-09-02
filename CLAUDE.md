@@ -85,8 +85,9 @@ improvement without a measurement.
   with a 3D test rather than a comment. Where it really is 2D-only, throw.
 - **Never make a residual that is already a square** — its gradient vanishes at
   its own root and least-squares ends up minimising a fourth power.
-- Prefer `hor(edge)` over `hor(cornerA, cornerB)` — the line form survives
-  structural surgery, the point form doesn't.
+- Prefer `par(edge, xaxis())` over `par(cornerA, cornerB, xaxis())` — the
+  line form survives structural surgery, the point form doesn't. (There is no
+  `hor`/`ver`: a frame's axes are things `par`/`perp`/`ang` take by name.)
 
 ## Documentation is part of the change
 

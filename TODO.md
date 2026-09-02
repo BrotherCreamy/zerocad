@@ -52,14 +52,55 @@ are flagged as such.
   default frame at the command line. `fix` stays (frame-relative already,
   and it names no privileged direction). Old journals translate
   (`horizontal(l, f)` → `parallel(l, "f.x")`), format version 3.
-  *Spec:* [`docs/plans/retire-hor-ver.md`](docs/plans/retire-hor-ver.md),
-  queued behind the context-menu package.
+  *Spec:* [`docs/plans/retire-hor-ver.md`](docs/plans/retire-hor-ver.md).
+  ✅ **Built.** `par`, `perp` and `ang` take a frame-axis reference;
+  `xaxis()`/`yaxis()` resolve the default at call time; `hor`/`ver` are gone
+  from `relations/basic.ts`, from the command surface and from the glyph
+  table; the line tool infers `par(l, "f.x")`; v2 files translate and
+  re-save in the new vocabulary, format version 3.
+
+  Decided while retiring them, and open to veto:
+
+  - **The audit came out as a rule, not a list.** An axis reference is a
+    *direction* — no length, no position — so exactly the relations that
+    read an argument for its direction alone may take one: `par`, `perp`,
+    `ang`. `eq` is out (an axis has no length to be equal to); `on`, `sym`
+    and `tan` are out (each needs a *located* line, and reading `"f1.x"` as
+    a line through the frame's origin would give one syntax two meanings —
+    `fix(p, [t, 0])` already says "somewhere along the frame's x").
+    ⚠ *Veto-able:* `ang` was included on the argument that "this edge at
+    30° to the frame" is the commoner draughting intent; it is the one
+    inclusion `hor`/`ver` did not already justify.
+  - **`par`/`perp` kept the point-pair form** (`par("p1","p3","f.x")`),
+    settled on the subject's kind exactly as `hor` settled it, so the
+    two-forms distinction ARCHITECTURE.md documents survives the rename.
+    `ang` deliberately has no point form: its trailing numeric target would
+    have to be told from a third name by arity alone.
+  - **Two frame axes on one relation is refused.** Both sides being datums
+    means a residual declaring no variables — nothing the solver could
+    move — so it is an error rather than a constraint that silently either
+    holds already or never can.
+  - **A dot is refused in every entity name**, at `claimName`, so a
+    reference can never collide with a name. `relationsNaming` and `del`'s
+    cascade read `f1.x` as naming `f1`, or a frame could be deleted out
+    from under a relation still reading it.
+  - **v2 files translate rather than being refused**, and a translated file
+    re-saves in the new vocabulary — `save(open(x)) ≠ x` across this
+    boundary, deliberately, since a file that opened as `par` and saved
+    back as `hor` would keep the retired words alive in the format forever.
+    v1 files are still refused by step.
+  - *Found by looking at the picture:* **`∥` is not in the browser's
+    monospace** and drew as a tofu slab — every other mark advances
+    7.2246px in that font and `∥` advances 6. Invisible while `par` was
+    rare; the commonest mark in the drawing the moment `hor`/`ver` retired
+    into it. The mark is `//` now, and an e2e measures every symbol in the
+    table against the monospace cell so the next one cannot rot quietly.
 
   Decided while building it, and open to veto:
 
   - **A frame is read, never pushed.** Its two points are not declared as
-    variables of the residuals that read it, so a `hor` turns the *line* and
-    never the frame. Declaring them was tried and measured first: least
+    variables of the residuals that read it, so an axis `par` turns the *line*
+    and never the frame. Declaring them was tried and measured first: least
     squares then turns the frame instead (about 8° of a 9° error, on a
     40-unit line against a 20-unit frame arm) and, without normalising, also
     shrinks the frame's arm to make the residual smaller still. A frame the
@@ -74,9 +115,11 @@ are flagged as such.
     with it. This is the one place the kernel's own axes are still visible.
     Closing it needs a frame entity carrying a second reference direction,
     which is a package of its own.
-  - **`hor`/`ver` normalise the frame's direction** where `par`/`perp` take
-    both of theirs raw — otherwise collapsing the frame satisfies them, and
-    that is exactly what the solver does when given the chance.
+  - **A frame's direction is normalised** where two ordinary lines' are taken
+    raw — otherwise collapsing the frame satisfies the relation, and that is
+    exactly what the solver does when given the chance. (Established for
+    `hor`/`ver`, and carried into the axis references that replaced them: the
+    residual is on the same |d|·sin scale it always was.)
   - **Dragging a point that a frame reads *moves* it, rather than pulling at
     it** — and this is the other face of read-never-pushed, not an exception
     to it. With the frame's points outside the Jacobian of the residuals that
@@ -103,10 +146,12 @@ are flagged as such.
     its own. You turn one by dragging its x-ref, which is the same gesture as
     dragging any other point. ⚠ *Deviation:* Onshape's sketch frame cannot be
     moved at all, so there is nothing to match here.
-  - *Noted, not acted on:* an intrinsic rectangle's `par` residual is a wedge
-    — quadratic in the drawing's size, where `hor` was linear in a coordinate
-    — so hurling a corner of a filleted rectangle a thousand units away no
-    longer re-solves inside sixty iterations. Displacements on the drawing's
+  - *Noted, not acted on:* an intrinsic rectangle's line-to-line `par`
+    residual is a wedge — quadratic in the drawing's size, where `hor` was
+    linear in a coordinate — so hurling a corner of a filleted rectangle a
+    thousand units away no longer re-solves inside sixty iterations. (An axis
+    `par` is *not* affected: its second side is a unit vector, so it is
+    linear again, exactly as `hor` was.) Displacements on the drawing's
     own scale are unaffected.
 
 - **Selection:** there is no selection set. Clicking geometry drops its name

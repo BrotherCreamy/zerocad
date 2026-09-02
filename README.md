@@ -7,8 +7,9 @@ tool-authoring layer on top. There is no server: the Rust/WASM kernel and
 the TypeScript layer both run together, client-side, in the browser.
 
 2D CAD sketching (points, lines, circles, arcs; a relation vocabulary of
-distance, coincidence, midpoint, horizontal/vertical, parallel,
-perpendicular, angle, point-on-line, equal-length, radius, on-circle,
+distance, coincidence, midpoint, parallel, perpendicular (either of which
+takes a coordinate frame's axis by name), angle, point-on-line,
+equal-length, radius, on-circle,
 concentric, equal-radius, tangent and symmetry; line, rectangle, circle and
 arc tools with Onshape-style constraint inference; and a fillet) is the
 **first standard library** built on that kernel, not the kernel's whole
@@ -34,10 +35,10 @@ The brief that started this project asked for a kernel that is:
   `midpoint` should work unchanged whether a point has 2 coordinates or
   3 (`src/relations/basic.ts` proves this: the identical relation
   functions are run against a 2D model and a 3D model in
-  `test/model.test.ts`, both solving correctly). Some relations —
-  `horizontal`/`vertical` — are genuinely 2D-only concepts, the same way
-  a cross product is genuinely 3D-only, and are marked as such rather
-  than forced to generalize.
+  `test/model.test.ts`, both solving correctly). A few things are
+  genuinely 2D-only, the same way a cross product is genuinely 3D-only —
+  a coordinate frame, and therefore any reference to one of its axes —
+  and are marked as such rather than forced to generalize.
 - **Extensible from the command line**: type a new tool's definition into
   the REPL and have it immediately usable in the viewport — the same
   extension point built-in tools use, not a separate plugin API. This
@@ -80,8 +81,8 @@ src/kernel/problem.ts    Problem: variables + residual blocks + solve() (LM loop
 src/model.ts             Entity graph: Point / Line / Circle / Arc / Frame, dimension-generic
 src/relations/vec.ts     Dual-vector helpers (dot, wedge) every relation is built from
 src/relations/refs.ts    lazy variable lists, and a frame's basis as re-read values
-src/relations/basic.ts   dist / fix / coincident / midpoint (generic) / hor / ver (frame-relative, 2D-only)
-src/relations/geometry.ts par / perp / ang / on / eq / rad / oncircle / conc / eqrad / tan / sym
+src/relations/basic.ts   dist / fix (frame-relative) / coincident / midpoint — all dimension-generic
+src/relations/geometry.ts par / perp / ang (any of which takes a frame axis) / on / eq / rad / oncircle / conc / eqrad / tan / sym
 src/operations.ts        operations, which change structure rather than add equations: fillet
 src/persist.ts           save/open — a file is the model's journal, replayed
 src/repl.ts              the scoped evaluator: curated scope, no reach into page globals
@@ -141,20 +142,34 @@ branches, exactly as Onshape does.
 
 **There is no world frame, and no origin.** Geometry is defined by its
 relations to other geometry; an origin nobody made is what tempts a drawing
-into being related to a global grid instead. So `hor`, `ver` and `fix` are
-relative to a **coordinate frame**, which is a thing you make: `frame()` is an
-origin point plus a point fixing +x — two ordinary, draggable, constrainable
-points — and `setDefaultFrame(name)` says which one those three mean when they
-are not told. With no frame at all they refuse, and say what to do about it. A
-frame draws as a small axes marker at its origin, brighter when it is the
-default; drag the marker to move it, or its x-ref to turn it, and everything
-levelled or fixed against it follows.
+into being related to a global grid instead. So `fix` — and any mention of a
+direction to be level with — is relative to a **coordinate frame**, which is a
+thing you make: `frame()` is an origin point plus a point fixing +x — two
+ordinary, draggable, constrainable points — and `setDefaultFrame(name)` says
+which one is meant when none is named. With no frame at all they refuse, and
+say what to do about it. A frame draws as a small axes marker at its origin,
+brighter when it is the default; drag the marker to move it, or its x-ref to
+turn it, and everything levelled or fixed against it follows.
+
+**There is no `hor` or `ver` either**, and for the same reason one step
+further on: those words say the universe hands you a privileged pair of
+directions. A frame's axes are things you can name — `"f1.x"`, `"f1.y"` — and
+`par`, `perp` and `ang` take one wherever they take a line. `xaxis()` and
+`yaxis()` fill in the default frame.
 
 ```js
 f = frame()                        // at the middle of the view, +x to the right
-setDefaultFrame(f)                 // ...and now hor/ver/fix mean this one
-hor("l1"); fix("p1", [0, 0])       // level with f; at f's own origin
+setDefaultFrame(f)                 // ...and now fix and xaxis()/yaxis() mean this one
+par("l1", xaxis())                 // "horizontal": level with f
+par("l2", yaxis())                 // "vertical"
+perp("l3", "f.x")                  // or name the frame outright
+fix("p1", [0, 0])                  // at f's own origin
 ```
+
+The axis is **read and never pushed**: a line levelled against a tilted frame
+settles at exactly the frame's tilt, rather than the two meeting halfway. Two
+ordinary lines in `par` still move each other; that asymmetry is what makes a
+frame a datum.
 
 The viewport works the way Onshape's does: the wheel zooms about the
 cursor, right- or middle-drag pans. Navigation is deliberately on
@@ -204,13 +219,13 @@ snapshot. The exception is that with uncommitted text in the command input
 Ctrl+Z stays the browser's, and edits the text.
 
 One thing worth knowing when constraining geometry you intend to modify
-later: `hor` and `ver` take *either* two point names or a single line
-name, and they are not interchangeable. `hor("a", "b")` pins those two
-points forever; `hor("l1")` means "this edge is level" and re-reads the
-line's endpoints every solve. Only the second survives an operation that
+later: `par` and `perp` take *either* two point names or a single line
+name for their first side, and the two are not interchangeable.
+`par("a", "b", xaxis())` pins those two points forever;
+`par("l1", xaxis())` means "this edge is level" and re-reads the line's
+endpoints every solve. Only the second survives an operation that
 re-points the edge — which is exactly what a fillet does when it trims a
-corner back. The built-in tools use the line form. (Either form takes the
-frame it is level with as a last argument, or means the default one.)
+corner back. The built-in tools use the line form.
 
 Tools are authored in the same place, through the same `defineTool` the
 built-ins use — this is the whole point of the architecture:
