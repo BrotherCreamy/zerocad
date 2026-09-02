@@ -169,8 +169,10 @@ are flagged as such.
   numbers). `snapping(false)` turns off snapping *and* inference, like
   Onshape's inferencing toggle. Inference never merges points — two points,
   one ordinary constraint.
-- **Arc tool** is Onshape's *center point arc* (click centre, start, end).
-  No 3-point arc yet.
+- **Arc tools**: `arc` is Onshape's *center point arc* (click centre, start,
+  end); `arc3` is its *3 point arc* (click the two **endpoints**, then a point
+  the arc passes through — Onshape's order, not start-waypoint-end). The
+  waypoint is not kept as geometry, so `arc3` leaves the arc's bulge free.
 - **Fillet** takes its radius when armed — `arm("fillet", { radius: 8 })`,
   default 10 — and reuses the shared corner as a tangent point so nothing is
   orphaned. (That was originally because there was no delete; it is still the
@@ -234,8 +236,6 @@ starts.
       Wants a spec that decides what a mid-drag snap *commits* — a drag that
       quietly adds constraints is a bigger decision than a tool click doing
       the same, because nothing was aimed.
-- [ ] **A 3-point arc tool.** The register has noted "no 3-point arc yet"
-      since the arc tool shipped; circle3 is the pattern to follow.
 - [ ] **A right-click context menu.** The register's mouse entry already
       promises right-drag pan yields to a menu when one exists. What goes in
       it is the design question (Onshape: delete, dimension, fix, tool arms).
@@ -256,6 +256,50 @@ starts.
       `test/e2e/livesolve.e2e.ts`, which counts solves in the page.
 
 ## Done
+
+- [x] **The 3-point arc tool** — spec:
+      [`docs/plans/arc3-tool.md`](docs/plans/arc3-tool.md), now marked
+      shipped-pending-review. `arm("arc3")` (or the bare word), then **the two
+      endpoints, then a point the arc passes through** — Onshape's click order
+      for *3 point arc*, which is neither start-waypoint-end nor the
+      centre-point arc's centre-start-end. What is committed is two
+      `placePoint`s, one free `addArc` with its centre auto-created and seeded
+      at the circumcentre, and one `arcEndpoints`. Footprint was the new file,
+      one shared helper module, one import line in `main.ts`, tests and docs;
+      `engine.ts`, `replenv.ts`, `persist.ts` and `operations.ts` were all
+      untouched, and **no new journal op was needed** — which is the evidence
+      that it is a composition rather than a new kind of thing.
+      *Decided while doing it:* **the third click places nothing.** Onshape
+      does not keep the waypoint as geometry and neither does this, so the arc
+      is under-constrained on commit — seven unknowns against `arcEndpoints`'
+      two equations, with the *bulge* free. That is the standing rule that
+      tools do not dimension what they draw, and the same bargain `arc.ts`
+      already strikes. The alternative, keeping the waypoint as a third point
+      with an `onCircle` (exactly what `circle3` does), was rejected: it
+      contradicts Onshape and leaves a point the user never asked for and
+      would have to clean up by hand. The freedom is *asserted* — a
+      unit test shoves the centre along the endpoints' perpendicular bisector
+      and finds the system just as solved at a different radius.
+      *And:* **the sweep is tested against `withinSweep`, not against a second
+      opinion.** An arc bulging the wrong way satisfies every residual to
+      machine precision and is still the wrong drawing, which is the fillet
+      bug's shape; so the tool's world-space choice of which click is `start`
+      is checked against `intersect.ts`'s own screen-space definition of what
+      is on an arc. Flipping the choice in the source fails three tests.
+      *And:* **`circumcircle` moved out of `circle3.ts`** into
+      `src/tools/circumcircle.ts`, with `COLLINEAR_EPS` and the preview's
+      radius cap. Two tools needing the same closed form is fine; two tools
+      needing the same *epsilon* is not something to leave in two places, or
+      one will eventually refuse a gesture the other accepts.
+      *Left in place deliberately:* the bulge is free, as above — documented,
+      tested, and `rad(...)` is the answer for anyone who wants it held. Also
+      the same-place guard is in **world units** (`1e-6`), matching `arc.ts`:
+      at a wild enough zoom-out two genuinely distinct clicks could fall
+      inside it, and the failure mode is "the second click did nothing, click
+      again".
+      *Discovered:* the register's "no 3-point arc yet" line and the
+      circle3 entry's `console.warn` gap were both stale; both corrected in
+      `STATUS.md`.
 
 - [x] **Dimension values on the canvas** — spec:
       [`docs/plans/dimension-labels.md`](docs/plans/dimension-labels.md), now

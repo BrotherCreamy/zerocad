@@ -12,7 +12,8 @@
 // is not kept here either. A 3-point circle's three clicks are all rim points
 // and all three `onCircle`s are the circle's definition; an arc's waypoint is
 // a *choice*, not a claim, and keeping it would leave a point in the drawing
-// that the user never asked for and cannot delete without breaking the arc.
+// that the user never asked for and would have to clean up by hand — the same
+// reason the fillet reuses its shared corner rather than stranding it.
 // So the arc is under-constrained afterwards — its bulge is free — which is
 // the register's standing rule that tools do not dimension what they draw,
 // and exactly the bargain the centre-point arc tool already strikes. Someone

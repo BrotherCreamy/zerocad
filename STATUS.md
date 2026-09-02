@@ -154,7 +154,9 @@ replacing) the system Node other projects on this machine may depend on.
   Both leave the radius unconstrained on commit, matching the rectangle
   tool's choice not to dimension what it draws: the shape keeps the size it
   was drawn at (nothing pulls on that variable, so the solver leaves it be)
-  while staying free to be driven later by a `rad` or a tangency.
+  while staying free to be driven later by a `rad` or a tangency. **↳ The
+  3-point arc is now built too** — see its own entry below; `arc.ts` remains
+  the *centre point* arc.
 - **`fillet`** (`src/operations.ts`) — the last item from cellwork's
   vocabulary. It composes entirely out of the existing relations, which is
   the part worth noticing: `tan` on each leg, `arcends`, and `rad`. Those
@@ -740,7 +742,61 @@ replacing) the system Node other projects on this machine may depend on.
   app's log pane — `fillet` reports a corner it cannot round by *throwing*,
   which reaches the page as an uncaught error — and giving tools one means a
   new `ToolContext` field, which is an `engine.ts` change this package was
-  scoped out of. On `TODO.md` as a follow-up.
+  scoped out of. On `TODO.md` as a follow-up. **↳ Closed:** tools have a voice
+  now (`ctx.log`), and the refusal goes to the pane.
+
+- **The 3-point arc tool** (`src/tools/arc3.ts`). `arc3` — bare word or
+  `arm("arc3")` — then three clicks: **the two endpoints first, then a point
+  the arc passes through.** Onshape calls it *3 point arc*, and that click
+  order is Onshape's; it is neither the natural guess (start, waypoint, end)
+  nor `arc.ts`'s (centre, start, end), which is exactly why it is written down
+  here.
+  What it commits is two `placePoint`s, one **free** `addArc` with its centre
+  auto-created and seeded at the circumcentre (radius at the circumradius),
+  and one `arcEndpoints`. No new journal op was needed — `addArc`, `setCoords`
+  and `arcEndpoints` were all already in the replay table, which is the
+  evidence that it is a composition. `arcEndpoints` is not optional: an arc's
+  endpoints lying on its own circle is a relation in this model rather than a
+  constructor fact, so a tool that builds an arc has to say so.
+  *The third click places nothing, and that is the design.* In Onshape the
+  waypoint is not kept as geometry; keeping it here would leave a point the
+  user never asked for and would have to clean up by hand — the fillet's
+  reason for reusing its shared corner rather than stranding it. Its whole
+  job is to choose which of the two arcs was meant and where the centre and
+  radius start from. **So the arc is under-constrained afterwards — the bulge
+  is free**: seven unknowns (two endpoints, a centre, a radius) against
+  `arcEndpoints`' two equations. That is the same bargain `arc.ts` already
+  strikes and the standing rule that tools do not dimension what they draw.
+  The rejected alternative — the waypoint as a third point with an `onCircle`,
+  which is exactly what `circle3` does — is in `CONVERSATION_LOG.md`. A unit
+  test shoves the centre along the endpoints' perpendicular bisector and finds
+  the system just as solved at a different radius, so the freedom is asserted
+  rather than merely claimed. `rad(...)` is how a user pins it.
+  *The sweep is chosen, not assumed.* `main.ts` draws an arc counter-clockwise
+  in world space from `start` to `end`, so the two clicks are assigned to those
+  roles in whichever order puts the waypoint inside the sweep — both are
+  endpoints either way, only the label moves. An arc that bulges the wrong way
+  satisfies every residual to machine precision and is still the wrong
+  drawing (the fillet bug's shape), so the tests ask `withinSweep` and
+  `screenAngle` themselves — `intersect.ts`'s one definition of what is *on*
+  an arc — rather than a second opinion. Flipping the choice in the source
+  fails three of them.
+  *The rest is `circle3`'s shape:* both endpoint clicks carry snapping and
+  inference, so an arc from one existing corner to another is three clicks and
+  no special case; nothing is created before the third click, so the whole
+  gesture is one Ctrl+Z with no engine change; the dashed preview after the
+  second click shows the arc the next click will build, bulge and all; an
+  exactly collinear third click is refused through `ctx.log` with the gesture
+  left live, and near-collinear is the user's call. A second click on top of
+  the first is swallowed as a double-click, the way `arc.ts` already swallows
+  its zero-radius one.
+  *One shared piece moved:* `circumcircle` and `COLLINEAR_EPS` now live in
+  `src/tools/circumcircle.ts` rather than inside `circle3.ts`. Two tools need
+  the same closed form and the same answer to "are these three points on one
+  line"; two copies of a scale-free epsilon drift until one tool refuses a
+  gesture the other accepts. The new file registers no tool, so importing it
+  has no side effect — `place.ts` is the precedent.
+  The pictures are in `CHANGELOG.md`, images 41 and 42.
 
 - **Dragging an edge, a rim or an arc** (`src/tools/engine.ts`). With nothing
   armed, a left-drag that starts on *any* geometry drags it — the last leftover

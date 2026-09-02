@@ -1,5 +1,14 @@
 # Plan: the 3-point arc tool
 
+**Status: shipped, pending review** (2026-09-02). Built as specified on
+`claude/arc3-tool`, with no deviation from the design below — the spec was
+written by the implementing session, so it had no chance to be wrong in the
+usual way, and what that costs is noted in `CONVERSATION_LOG.md`. One thing
+the writing changed: the second-click-on-the-first refusal and the extraction
+of `circumcircle` into its own module were both decided while specifying, not
+while coding. What was decided and discovered is in `TODO.md`'s Done entry;
+the behaviour is in `STATUS.md`.
+
 The sibling `docs/plans/circle3-tool.md` promised and the register has been
 asking for since the arc tool shipped: Onshape's *3 point arc* as a pointer
 tool. Three clicks — **the two endpoints first, then a point the arc passes
@@ -62,7 +71,8 @@ built and why `arcEndpoints` has to be applied by hand) and
   the waypoint as a third point with an `onCircle`, which is precisely what
   `circle3` does — was rejected twice over: it contradicts Onshape's own
   behaviour, and it leaves a point in the drawing that the user did not ask
-  for and cannot remove without breaking the arc. A user who wants the bulge
+  for and would have to clean up by hand — the fillet's reason for reusing
+  its shared corner rather than stranding it. A user who wants the bulge
   held can say `rad(a1, …)` or drop a point on the rim; that is the same
   answer the whole toolset gives.
 - **The whole gesture is one user action.** Nothing is created before the
