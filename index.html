@@ -21,6 +21,21 @@
     #log .out{color:#8fa7bb}
     #hovertag{position:absolute;pointer-events:none;font-family:inherit;font-size:11px;color:#e8a33d;
       background:#0e141bdd;border:1px solid #223041;padding:2px 6px;border-radius:3px;white-space:nowrap;z-index:5}
+    /* The context menu, in the hover tag's family: same ground, same border,
+       same corner. It is the other thing that appears at the cursor over the
+       drawing, so the two ought to look like one idea. */
+    #ctxmenu{position:absolute;font-family:inherit;font-size:11.5px;background:#0e141bf5;
+      border:1px solid #223041;border-radius:4px;padding:3px 0;z-index:6;min-width:120px;
+      box-shadow:0 6px 20px #000a;user-select:none}
+    #ctxmenu .head{padding:3px 10px 5px;margin-bottom:3px;border-bottom:1px solid #223041;
+      color:#7a8b9b;font-size:10.5px;white-space:nowrap}
+    #ctxmenu .item{display:flex;justify-content:space-between;gap:18px;padding:3px 10px;
+      color:#d5e1ec;white-space:nowrap;cursor:default}
+    #ctxmenu .item .cmd{color:#46586a}
+    #ctxmenu .item:hover{background:#20303f;color:#e8a33d}
+    #ctxmenu .item:hover .cmd{color:#8fa7bb}
+    #ctxmenu .item.off,#ctxmenu .item.off:hover{color:#46586a;background:transparent}
+    #ctxmenu .why{padding:0 10px 4px;color:#7a8b9b;font-size:10px;white-space:nowrap}
     #viewwrap{position:relative;flex:1;min-height:0}
   </style>
 </head>
@@ -33,6 +48,7 @@
     <div id="viewwrap">
       <canvas id="cv"></canvas>
       <div id="hovertag" hidden></div>
+      <div id="ctxmenu" hidden></div>
     </div>
     <div id="log"></div>
     <div id="cmdrow">

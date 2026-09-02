@@ -23,6 +23,13 @@
 // constraint glyph, which is UI rather than geometry: it grabs nothing, so
 // there is nothing for it to drag, and it is not empty canvas either, so it
 // must not box.
+//
+// The right button now splits the same way the left one does, and by the same
+// rule: **the press decides nothing, the release does.** Past the drag
+// threshold it is a pan, exactly as it always was; released without moving it
+// is a context menu (see ../menu.ts) for whatever it landed on. Middle-drag is
+// untouched and never opens anything — one button that is unambiguously
+// navigation is worth keeping.
 
 import type { Model } from "../model.ts";
 import type { ResidualBlock } from "../kernel/problem.ts";
@@ -118,6 +125,7 @@ export class ToolEngine {
   private onPick: (pick: Pick) => void;
   private onUserAction: (phase: "before" | "after") => void;
   private onLog?: (line: string) => void;
+  private onContextMenu: (pick: Pick | null, sx: number, sy: number) => void;
   /**
    * Whether a user action is currently open, so that `before` and `after`
    * always arrive in pairs. The engine owns the balancing rather than leaving
@@ -126,8 +134,20 @@ export class ToolEngine {
    * model was swapped out from under it.
    */
   private actionOpen = false;
-  /** Which pointer is panning, and where it was last seen. */
-  private panning: { id: number; sx: number; sy: number } | null = null;
+  /**
+   * The navigation gesture in progress: which pointer, where it was last seen,
+   * where it started, whether it has passed the threshold, and whether it is
+   * the *right* button — the only one a context menu can come out of.
+   *
+   * `x0`/`y0`/`moved` are the same split the left button has always made
+   * between a click and a drag, applied to the right button so that a press and
+   * release in the same place can mean something other than a zero-length pan.
+   * Reusing DRAG_THRESHOLD rather than inventing a second number is the point:
+   * one hand, one idea of what "did not move" means.
+   */
+  private panning:
+    | { id: number; sx: number; sy: number; x0: number; y0: number; moved: boolean; menu: boolean }
+    | null = null;
   /**
    * A left press with no tool armed. What it becomes depends on what it landed
    * on and whether it moves: a press on *geometry* that moves drags it, a press
@@ -204,6 +224,18 @@ export class ToolEngine {
       onUserAction?: (phase: "before" | "after") => void;
       /** One line to the user in the host's log pane — see ToolContext.log. */
       onLog?: (line: string) => void;
+      /**
+       * A right press released without moving, with what it landed on (null for
+       * empty canvas) and where, in canvas pixels.
+       *
+       * Named for the gesture rather than for the menu, the way `onUserAction`
+       * is named for the gesture rather than for undo: the engine reports what
+       * only it can see and holds no opinion about what a host does with it. A
+       * host with no menu passes nothing and the right button keeps panning and
+       * nothing else, which is what every test written before this existed
+       * assumes.
+       */
+      onContextMenu?: (pick: Pick | null, sx: number, sy: number) => void;
     },
   ) {
     this.model = model;
@@ -215,6 +247,7 @@ export class ToolEngine {
     this.onPick = callbacks.onPick ?? (() => {});
     this.onUserAction = callbacks.onUserAction ?? (() => {});
     this.onLog = callbacks.onLog;
+    this.onContextMenu = callbacks.onContextMenu ?? (() => {});
     canvas.addEventListener("pointerleave", () => {
       if (this.hover) { this.hover = null; this.onRenderOnly(); }
     });
@@ -383,10 +416,20 @@ export class ToolEngine {
     if (this.panning) {
       if (navHeld) {
         if (kind === "move") {
-          assignView(this.view, panBy(this.view, sx - this.panning.sx, sy - this.panning.sy));
-          this.panning.sx = sx;
-          this.panning.sy = sy;
-          this.onRenderOnly();
+          // Nothing moves until the threshold is passed, so that a right press
+          // meant as a menu does not shift the drawing by the pixel or two a
+          // hand adds while a button goes down. Past it the pan is the same
+          // incremental one it always was — at most one threshold's worth of
+          // travel is dropped, which is invisible and is exactly what the left
+          // button's own click/drag split already costs.
+          const p = this.panning;
+          if (!p.moved && Math.hypot(sx - p.x0, sy - p.y0) > DRAG_THRESHOLD) p.moved = true;
+          if (p.moved) {
+            assignView(this.view, panBy(this.view, sx - p.sx, sy - p.sy));
+            this.onRenderOnly();
+          }
+          p.sx = sx;
+          p.sy = sy;
         }
         return;
       }
@@ -394,10 +437,22 @@ export class ToolEngine {
       // move rather than an up. End the pan and let the event fall through, so
       // a tool still mid-drag picks its gesture straight back up.
       this.canvas.releasePointerCapture?.(this.panning.id);
+      const finished = this.panning;
       this.panning = null;
+      // A right press that never moved is a menu, and only when nothing else is
+      // still held: a right click taken *during* a left drag is not a request
+      // to open anything over the gesture it would interrupt.
+      if (finished.menu && !finished.moved && e.buttons === 0) {
+        this.onContextMenu(this.pickAt(sx, sy), sx, sy);
+        return;
+      }
       if (kind === "up") return; // ...unless this was the release itself
     } else if (navHeld) {
-      this.panning = { id: e.pointerId, sx, sy };
+      // Only the right button can end in a menu. The middle stays purely
+      // navigational — one button that unambiguously means "move the view" is
+      // worth keeping, and it is the button Onshape pans with anyway.
+      const menu = (e.buttons & RIGHT_BUTTON) !== 0 && (e.buttons & MIDDLE_BUTTON) === 0;
+      this.panning = { id: e.pointerId, sx, sy, x0: sx, y0: sy, moved: false, menu };
       this.canvas.setPointerCapture?.(e.pointerId);
       if (kind === "down") e.preventDefault();
       return;
