@@ -46,12 +46,12 @@ async function drag(name: string, dx: number, dy: number, mid?: () => Promise<vo
 before(async () => {
   app = await openApp();
   // A rectangle whose edges are constrained, with one corner pinned. p1 is the
-  // fixed corner and p3 the one opposite it. `hor`/`ver`/`fix` are relative to
-  // a frame now, so the fixture makes one first.
+  // fixed corner and p3 the one opposite it. `fix` and the axis references are
+  // relative to a frame, so the fixture makes one first.
   await axisFrame(app);
   await app.type("pt(-40,-30); pt(40,-30); pt(40,30); pt(-40,30)");
   await app.type('ln("p1","p2"); ln("p2","p3"); ln("p3","p4"); ln("p4","p1")');
-  await app.type('hor("l1"); ver("l2"); hor("l3"); ver("l4")');
+  await app.type('par("l1", xaxis()); par("l2", yaxis()); par("l3", xaxis()); par("l4", yaxis())');
   await app.type('fix("p1", [-40,-30]); solve()');
 });
 
@@ -72,7 +72,7 @@ test("dragging a corner resizes the rectangle and keeps it a rectangle", async (
   const m = await app.model();
   const [p1, p2, p3, p4] = [m.points.p1, m.points.p2, m.points.p3, m.points.p4];
 
-  // Every edge still exactly horizontal or vertical. "Exactly": these are
+  // Every edge still exactly along one of the frame's axes. "Exactly": these are
   // constraints, and a drag that leaves them approximately satisfied has
   // broken the drawing however good it looks.
   assert.ok(Math.abs(p1[1] - p2[1]) < 1e-6, `l1 is off level by ${p1[1] - p2[1]}`);

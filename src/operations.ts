@@ -44,7 +44,7 @@ function corner(model: Model, l1Name: string, l2Name: string) {
  *
  * The legs' *directions* are deliberately left alone. A fillet in a
  * parametric sketch does not pin the lines it rounds — whatever already
- * constrains them (hor/ver, a dimension, another relation) still decides
+ * constrains them (an axis par, a dimension, another relation) still decides
  * where they point, and the fillet solves within that. On an otherwise
  * unconstrained pair of lines the result is therefore under-determined, and
  * the seeded starting positions are what pick a sensible answer.

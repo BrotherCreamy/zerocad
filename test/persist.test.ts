@@ -4,8 +4,8 @@ import { readFile } from "node:fs/promises";
 import { ensureKernelLoaded } from "../src/kernel/problem.ts";
 import { Model } from "../src/model.ts";
 import { save, open, toSaved } from "../src/persist.ts";
-import { dist, fix, horizontal, midpoint, vertical } from "../src/relations/basic.ts";
-import { radius, tangent, onCircle } from "../src/relations/geometry.ts";
+import { dist, fix, midpoint } from "../src/relations/basic.ts";
+import { parallel, radius, tangent, onCircle } from "../src/relations/geometry.ts";
 import { fillet } from "../src/operations.ts";
 import { RectangleTool } from "../src/tools/rectangle.ts";
 import type { ToolContext } from "../src/tools/tool.ts";
@@ -91,8 +91,8 @@ test("a fillet is saved as the one call that was made, not its expansion", async
   fix(m, "b", [20, 0]);
   m.addLine("a", "p", "l1");
   m.addLine("p", "b", "l2");
-  vertical(m, "l1");
-  horizontal(m, "l2");
+  parallel(m, "l1", "f.y");
+  parallel(m, "l2", "f.x");
   fillet(m, "l1", "l2", 5);
   m.solve();
 
@@ -336,8 +336,8 @@ test("a reopened model can still be drawn on — the fillet case that hung", asy
   fix(m, b, [20, 0]);
   const l1 = m.addLine(a, p).name;
   const l2 = m.addLine(p, b).name;
-  vertical(m, l1);
-  horizontal(m, l2);
+  parallel(m, l1, "f.y");
+  parallel(m, l2, "f.x");
   fillet(m, l1, l2, 5);
   m.solve();
 

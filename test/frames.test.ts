@@ -1,5 +1,10 @@
-// Coordinate frames: the entity, the default pointer, and what `hor`, `ver`
-// and `fix` mean now that there is no world frame to fall back on.
+// Coordinate frames: the entity, the default pointer, and what `fix` and a
+// frame-axis reference mean now that there is no world frame to fall back on.
+//
+// `hor`/`ver` were retired after this package shipped and the tests that used
+// them are here in the new spelling — `par(l, "f.x")` and `par(l, "f.y")` —
+// with the closed-form assertions untouched, because the equation did not
+// change with the word.
 //
 // The interesting assertions here are the closed-form ones. "Solves against a
 // tilted frame" is easy to satisfy accidentally — a solver that levelled the
@@ -11,7 +16,8 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { ensureKernelLoaded } from "../src/kernel/problem.ts";
 import { Model } from "../src/model.ts";
-import { dist, fix, horizontal, vertical } from "../src/relations/basic.ts";
+import { dist, fix } from "../src/relations/basic.ts";
+import { parallel } from "../src/relations/geometry.ts";
 import { del } from "../src/operations.ts";
 import { FORMAT, VERSION, open, save } from "../src/persist.ts";
 import { neocadScope } from "../src/replenv.ts";
@@ -22,6 +28,16 @@ async function loadKernel() {
 }
 
 const TILT = Math.PI / 6; // 30°, which no axis-aligned accident lands on
+
+/**
+ * The `xaxis()`/`yaxis()` helpers as the command line offers them — through
+ * the real scope rather than a copy, since resolving the default at call time
+ * is the whole of what they do.
+ */
+const axisOf = (m: Model, which: "xaxis" | "yaxis", frame?: string | null) =>
+  (neocadScope({ model: m })[which] as (f?: string | null) => string)(frame);
+const xaxis = (m: Model, frame?: string | null) => axisOf(m, "xaxis", frame);
+const yaxis = (m: Model, frame?: string | null) => axisOf(m, "yaxis", frame);
 
 /** A model whose frame `f` is tilted by `TILT` about `at`. */
 function tilted(at = [0, 0]): Model {
@@ -90,7 +106,7 @@ test("a frame and its default survive a save/open round trip, byte for byte", as
   await loadKernel();
   const m = tilted([4, 6]);
   m.addLine(null, null, "l");
-  horizontal(m, "l");
+  parallel(m, "l", "f.x");
   m.solve();
 
   const once = save(m);
@@ -107,8 +123,8 @@ test("no frame and no default: the error says what to do about it", () => {
   m.addLine(null, null, "l");
   m.addPoint([1, 2], "p");
   for (const call of [
-    () => horizontal(m, "l"),
-    () => vertical(m, "l"),
+    () => parallel(m, "l", xaxis(m)),
+    () => parallel(m, "l", yaxis(m)),
     () => fix(m, "p", [0, 0]),
   ]) {
     assert.throws(call, /no default frame — frame\(\) then setDefaultFrame\(\), or say which frame/);
@@ -118,7 +134,7 @@ test("no frame and no default: the error says what to do about it", () => {
   assert.equal(m.problem.blockCount, 0);
 });
 
-test("hor against a tilted frame levels the line to the frame, exactly", async () => {
+test("par against a tilted frame levels the line to the frame, exactly", async () => {
   await loadKernel();
   const m = tilted();
   m.addPoint([0, 0], "a");
@@ -126,7 +142,7 @@ test("hor against a tilted frame levels the line to the frame, exactly", async (
   m.addLine("a", "b", "l");
   fix(m, "a", [0, 0]);
   dist(m, "a", "b", 10);
-  horizontal(m, "l");
+  parallel(m, "l", "f.x");
 
   assert.equal(m.solve().solved, true);
   const [a, b] = [m.coords("a"), m.coords("b")];
@@ -138,7 +154,7 @@ test("hor against a tilted frame levels the line to the frame, exactly", async (
     "and neither did its x-ref");
 });
 
-test("ver against a tilted frame is the frame's +y, exactly", async () => {
+test("par against a tilted frame's +y is that direction, exactly", async () => {
   await loadKernel();
   const m = tilted();
   m.addPoint([0, 0], "a");
@@ -146,7 +162,7 @@ test("ver against a tilted frame is the frame's +y, exactly", async () => {
   m.addLine("a", "b", "l");
   fix(m, "a", [0, 0]);
   dist(m, "a", "b", 10);
-  vertical(m, "l");
+  parallel(m, "l", "f.y");
 
   assert.equal(m.solve().solved, true);
   const [a, b] = [m.coords("a"), m.coords("b")];
@@ -184,7 +200,7 @@ test("the frame is read at every evaluation, so turning it turns the drawing", a
   m.addLine("a", "b", "l");
   fix(m, "a", [0, 0]);
   dist(m, "a", "b", 10);
-  horizontal(m, "l");
+  parallel(m, "l", "f.x");
   m.solve();
 
   // Turn the frame by moving its x-ref — the gesture half 2 makes a drag.
@@ -208,19 +224,19 @@ test("the default is resolved at call time and journalled resolved", async () =>
   m.addLine(null, null, "l");
 
   m.setDefaultFrame("a");
-  const r = horizontal(m, "l");
-  assert.deepEqual(m.relationOf(r).args, ["l", "a"], "the entry names the frame, not the pointer");
+  const r = parallel(m, "l", xaxis(m));
+  assert.deepEqual(m.relationOf(r).args, ["l", "a.x"], "the entry names the frame, not the pointer");
 
   // Moving the default afterwards must not reach back and change what that
   // relation meant — which is the whole reason the name is resolved eagerly.
   m.setDefaultFrame("b");
-  assert.deepEqual(m.relationOf(r).args, ["l", "a"]);
-  assert.deepEqual(open(save(m)).relationOf(r).args, ["l", "a"], "and a reopened file agrees");
+  assert.deepEqual(m.relationOf(r).args, ["l", "a.x"]);
+  assert.deepEqual(open(save(m)).relationOf(r).args, ["l", "a.x"], "and a reopened file agrees");
   assert.equal(open(save(m)).defaultFrame, "b");
 
   m.setDefaultFrame(null);
   assert.equal(m.defaultFrame, null, "null clears it");
-  assert.throws(() => horizontal(m, "l"), /no default frame/);
+  assert.throws(() => xaxis(m), /no default frame/);
   assert.throws(() => m.setDefaultFrame("l"), /"l" is not a frame/);
 });
 
@@ -234,7 +250,7 @@ test("a frame takes its relations, not its points; and its points take it", asyn
   await loadKernel();
   const m = tilted();
   m.addLine(null, null, "l");
-  const r = horizontal(m, "l");
+  const r = parallel(m, "l", "f.x");
 
   // The line rules: deleting the frame reaches the relations naming it and
   // stops there — its two points were the drawing's points first.
@@ -245,7 +261,7 @@ test("a frame takes its relations, not its points; and its points take it", asyn
   // ...and the cascade runs inward, so one of those points takes the frame.
   const m2 = tilted();
   m2.addLine(null, null, "l2");
-  horizontal(m2, "l2");
+  parallel(m2, "l2", "f.x");
   assert.deepEqual(del(m2, "x"), ["r1", "f", "x"], "the frame cannot outlive its x-ref");
 });
 
@@ -266,10 +282,11 @@ test("deleting the default frame clears the pointer, journalled as the expansion
   assert.equal(reopened.has("f"), false);
 });
 
-// --- the files that no longer mean anything --------------------------------
+// --- the older files -------------------------------------------------------
 
 test("a pre-frames file is refused by name and step, not silently skipped", () => {
-  // Exactly what this app used to write: `hor`/`fix` with no frame in sight.
+  // Exactly what this app used to write before frames: `hor`/`fix` with no
+  // frame in sight.
   // There is no world frame left to resolve them against and a compatibility
   // shim would preserve precisely the semantics this package removes, so the
   // file is refused — with the message that says what a frame is for.
@@ -293,15 +310,70 @@ test("a pre-frames file is refused by name and step, not silently skipped", () =
     ],
     values: { points: {}, radii: {} },
   });
+  // The message now comes out of the *translation* rather than out of `hor`
+  // itself — `hor` is gone — but it is the same message at the same step,
+  // because the translation is what has to resolve the frame the entry lacks.
   assert.throws(() => open(oldHor), /step 2, horizontal\("l"\): no default frame/);
+});
+
+test("a version-2 file's hor/ver are translated, and re-save in the new vocabulary", async () => {
+  await loadKernel();
+  // A file this app wrote hours before `hor`/`ver` were retired: the frame is
+  // named in every entry, so the entries still say exactly what they meant.
+  const v2 = JSON.stringify({
+    format: FORMAT, version: 2, dim: 2,
+    journal: [
+      { op: "addPoint", args: [[0, 0], "o"] },
+      { op: "addPoint", args: [[Math.cos(TILT), Math.sin(TILT)], "x"] },
+      { op: "addFrame", args: ["o", "x", "f"] },
+      { op: "setDefaultFrame", args: ["f"] },
+      { op: "addPoint", args: [[0, 0], "a"] },
+      { op: "addPoint", args: [[9, 1], "b"] },
+      { op: "addLine", args: ["a", "b", "l"] },
+      { op: "addPoint", args: [[2, 2], "c"] },
+      { op: "addPoint", args: [[6, 3], "d"] },
+      { op: "fix", args: ["a", [0, 0], "f"] },
+      { op: "dist", args: ["a", "b", 10] },
+      { op: "horizontal", args: ["l", "f"] },
+      { op: "vertical", args: ["c", "d", "f"] },  // the point form
+    ],
+    values: { points: {}, radii: {} },
+  });
+
+  const m = open(v2);
+  assert.deepEqual(m.journal.slice(-2), [
+    { op: "parallel", args: ["l", "f.x"] },
+    // Parallel to +y, not perpendicular to +x: the same equation, but `rels()`
+    // and the glyph then read as what the drawing actually claims.
+    { op: "parallel", args: ["c", "d", "f.y"] },
+  ], "translated on the way in");
+
+  // And it means the same geometry it always did.
+  assert.equal(m.solve().solved, true);
+  const [a, b] = [m.coords("a"), m.coords("b")];
+  assert.ok(Math.abs(Math.atan2(b[1] - a[1], b[0] - a[0]) - TILT) < 1e-9, "still level with the frame");
+  // Undirected: parallel is a claim about an axis, not a ray, so the pair may
+  // settle either way along the frame's +y — and does, from this seed.
+  const [c, d] = [m.coords("c"), m.coords("d")];
+  const off = Math.abs(Math.atan2(d[1] - c[1], d[0] - c[0]) - (TILT + Math.PI / 2)) % Math.PI;
+  assert.ok(Math.min(off, Math.PI - off) < 1e-9,
+    "and the point pair still lies along the frame's +y");
+
+  // save(open(x)) !== x across this boundary, deliberately: a file that opened
+  // as `par` and saved back as `hor` would keep the retired words alive
+  // forever. It does round-trip from here on.
+  const saved = save(m);
+  assert.equal(saved.includes("horizontal"), false, "the old words are gone from the file");
+  assert.match(saved, /"version": 3/);
+  assert.equal(save(open(saved)), saved, "and the new file is stable");
 });
 
 // --- the command surface ----------------------------------------------------
 //
 // `frame()` is a free constructor like `circ()` and seeds like one: the origin
 // in the middle of the view, the x-ref a span to its right. It matters more
-// here than for a circle — a frame off the edge of the window would leave the
-// whole of `hor`/`ver`/`fix` pointing at something nobody can see.
+// here than for a circle — a frame off the edge of the window would leave
+// `fix` and every axis reference pointing at something nobody can see.
 
 /** The command surface over `model`, with a viewport whose centre is (225, -175). */
 function scopeWithView(model: Model): Record<string, unknown> {
@@ -371,11 +443,11 @@ test("help() covers the frame vocabulary — it is the one thing with no world t
 });
 
 test("the format version says the vocabulary changed, and still reads the old envelope", () => {
-  assert.equal(VERSION, 2);
+  assert.equal(VERSION, 3);
   // A version-1 file with nothing frameless in it opens unchanged: the version
   // wall is not what refuses the ones above, the missing frame is.
   const empty = JSON.stringify({ format: FORMAT, version: 1, dim: 2, journal: [], values: { points: {}, radii: {} } });
   assert.equal(open(empty).entities.size, 0);
-  const future = JSON.stringify({ format: FORMAT, version: 3, dim: 2, journal: [], values: { points: {}, radii: {} } });
-  assert.throws(() => open(future), /version 3, and this build only reads up to 2/);
+  const future = JSON.stringify({ format: FORMAT, version: 4, dim: 2, journal: [], values: { points: {}, radii: {} } });
+  assert.throws(() => open(future), /version 4, and this build only reads up to 3/);
 });

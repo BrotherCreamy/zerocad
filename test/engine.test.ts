@@ -12,7 +12,8 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { ensureKernelLoaded } from "../src/kernel/problem.ts";
 import { Model } from "../src/model.ts";
-import { dist, fix, horizontal } from "../src/relations/basic.ts";
+import { dist, fix } from "../src/relations/basic.ts";
+import { parallel } from "../src/relations/geometry.ts";
 import { ToolEngine, type View } from "../src/tools/engine.ts";
 import "../src/tools/point.ts"; // registers the "point" tool, armed below
 import { axisFrame } from "./frames.ts";
@@ -53,13 +54,13 @@ function fakeCanvas() {
 async function setup() {
   await loadKernel();
   const model = new Model(2);
-  // hor/ver/fix are relative to a frame now, so the fixture makes one — and
-  // its origin and x-ref are ordinary points, which is why the counts below
-  // are of four points rather than two.
+  // `fix` and the axis references are relative to a frame, so the fixture
+  // makes one — and its origin and x-ref are ordinary points, which is why the
+  // counts below are of four points rather than two.
   axisFrame(model);
   model.addPoint([0, 0], "a");
   model.addPoint([10, 0], "b");
-  horizontal(model, "a", "b");
+  parallel(model, "a", "b", "f.x");
   fix(model, "a", [0, 0]);
   model.solve();
 
@@ -365,7 +366,7 @@ test("a tool that throws still closes its bracket", async () => {
 async function shapes() {
   await loadKernel();
   const model = new Model(2);
-  axisFrame(model); // what `fix`/`hor` below are level with — see test/frames.ts
+  axisFrame(model); // what `fix` and `f.x` below mean — see test/frames.ts
   model.addPoint([0, 0], "a");
   model.addPoint([60, 0], "b");
   model.addLine("a", "b", "l1");
@@ -513,7 +514,7 @@ test("a press on an edge that never moves is still a pick", async () => {
 
 test("a press on a constraint glyph drags nothing, boxes nothing, and pans", async () => {
   const { model, engine, fire, counts } = await shapes();
-  horizontal(model, "l1");
+  parallel(model, "l1", "f.x");
   const before = { a: model.coords("a"), b: model.coords("b") };
   const view = { ...engine.view };
 
@@ -537,7 +538,7 @@ test("a press on a constraint glyph drags nothing, boxes nothing, and pans", asy
 
 test("dragging a frame's x-ref turns it, and the levelled drawing follows", async () => {
   const { model, fire } = await shapes();
-  horizontal(model, "l1"); // level with the fixture frame, which sits on the origin
+  parallel(model, "l1", "f.x"); // level with the fixture frame, which sits on the origin
   model.solve();
 
   // The fixture frame's x-ref is one unit out, at screen (1, 0) in this view.
@@ -550,7 +551,7 @@ test("dragging a frame's x-ref turns it, and the levelled drawing follows", asyn
     `the frame turned to ${(tilt * 180) / Math.PI}°, not to ${(Math.atan2(10, 1) * 180) / Math.PI}°`);
 
   // The whole of the point: a pull alone cannot move a datum. The frame's
-  // points are not variables of the `hor` residual that reads them, so the
+  // points are not variables of the `par` residual that reads them, so the
   // damped solve rejects every step that turns the frame — it raises a
   // residual it cannot see how to lower — and the frame sits still. Measured
   // at three thousandths of a degree before this was fixed.

@@ -1,6 +1,5 @@
-// The line tool, with real clicks: chaining, the shared vertex, the
-// horizontal/vertical guide, and Escape ending a chain without losing what was
-// already drawn.
+// The line tool, with real clicks: chaining, the shared vertex, the axis
+// guide, and Escape ending a chain without losing what was already drawn.
 
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
@@ -49,9 +48,9 @@ test("click, click, chain — and the middle vertex is one point, not two", asyn
 test("the segments were drawn upright and level, and say so as line-form constraints", async () => {
   const entries = (await app.repl("journal()")).value as string[];
   const m = await app.model();
-  const axis = entries.filter((e) => e.startsWith("vertical(") || e.startsWith("horizontal("));
-  assert.deepEqual(axis, [`vertical("${m.lines[0].name}", "f")`, `horizontal("${m.lines[1].name}", "f")`],
-    "the line form, which survives a fillet re-pointing the edge — and the frame it is level with");
+  const axis = entries.filter((e) => e.startsWith("parallel("));
+  assert.deepEqual(axis, [`parallel("${m.lines[0].name}", "f.y")`, `parallel("${m.lines[1].name}", "f.x")`],
+    "the line form, which survives a fillet re-pointing the edge — and the axis it is parallel to");
 
   // And they are live: move the shared vertex and the far ends follow it.
   const vertex = m.lines[0].refs[1];

@@ -13,14 +13,16 @@
 // before its second click leaves no stray point behind, which is the same
 // reason rectangle.ts builds nothing until onUp.
 //
-// **Horizontal/vertical inference, and only against a frame somebody chose.**
-// While the preview is within a few degrees of an axis it is drawn exactly on
-// that axis, with a guide, and the committed line gets `hor(line, frame)` or
-// `ver(line, frame)` — the *line* form, so the constraint still means "this
-// edge is level" after a fillet re-points it. An endpoint snap beats the axis
-// guess: if the click landed on real geometry, that is what was aimed at, and
-// the axis constraint is applied only if the snapped position happens to
-// satisfy it anyway.
+// **Axis inference, and only against a frame somebody chose.** While the
+// preview is within a few degrees of one of the default frame's axes it is
+// drawn exactly on that axis, with a guide, and the committed line gets
+// `par(line, "f.x")` or `par(line, "f.y")` — the *line* form, so the
+// constraint still means "this edge is level" after a fillet re-points it.
+// (It used to land `hor`/`ver`; those words implied a world frame and are
+// gone. Same equation, said against an axis the drawing can name.) An endpoint
+// snap beats the axis guess: if the click landed on real geometry, that is
+// what was aimed at, and the axis constraint is applied only if the snapped
+// position happens to satisfy it anyway.
 //
 // With **no default frame there is no inference at all**: the drawing has no
 // notion of level, so the preview is not pulled anywhere, no guide is drawn
@@ -31,17 +33,17 @@
 // **The aim, the guide and the constraint are one answer**, read off the
 // default frame's own axes. A tilted frame tilts all three together: the
 // preview snaps onto the frame's +x, the dashed guide lies along it, and the
-// `hor` that lands means that same direction. (Half 1 shipped with the first
-// two computed against the kernel's axes and only the third against the
-// frame, which was invisible while nothing could tilt a frame by hand and
-// wrong the moment something could.)
+// `par` that lands names that same axis. (Half 1 shipped with the first two
+// computed against the kernel's axes and only the third against the frame,
+// which was invisible while nothing could tilt a frame by hand and wrong the
+// moment something could.)
 //
 // The chain itself is dimension-generic — points and lines are — so the tool
-// works unchanged in a 3D model and simply infers no axis there, since
-// horizontal and vertical are genuinely 2D-only concepts.
+// works unchanged in a 3D model and simply infers no axis there, since a frame
+// is a 2D entity and so are its axes.
 
 import { Tool, defineTool, type PointerInfo, type RenderContext } from "./tool.ts";
-import { horizontal, vertical } from "../relations/basic.ts";
+import { parallel } from "../relations/geometry.ts";
 import { frameBasis } from "../relations/refs.ts";
 import { placePoint } from "./place.ts";
 
@@ -59,7 +61,12 @@ const DEGENERATE = 1e-6;
  */
 const ALREADY_ON_AXIS = 1e-9;
 
-type Axis = "horizontal" | "vertical" | null;
+/**
+ * Which of the default frame's axes the preview is lined up with, if either.
+ * `"x"`/`"y"` rather than `"horizontal"`/`"vertical"`: the words went with the
+ * relations, and what is left is genuinely a question about which axis.
+ */
+type Axis = "x" | "y" | null;
 
 /** Across every coordinate, not just the two a viewport draws. */
 function distance(a: number[], b: number[]): number {
@@ -111,12 +118,10 @@ export class LineTool extends Tool {
     const a = this.anchor ?? placePoint(this.ctx, this.pending!);
     const b = placePoint(this.ctx, { ...p, world: aim.world });
     const line = m.addLine(a, b);
-    // Only against a frame the user chose. `resolveFrame` would throw without
-    // one, and a tool must not turn a drawing gesture into an error message.
-    if (m.defaultFrame) {
-      if (aim.axis === "horizontal") horizontal(m, line.name, m.defaultFrame);
-      else if (aim.axis === "vertical") vertical(m, line.name, m.defaultFrame);
-    }
+    // Only against a frame the user chose, and named outright rather than left
+    // to the default: `resolveFrame` would throw without one, and a tool must
+    // not turn a drawing gesture into an error message.
+    if (m.defaultFrame && aim.axis) parallel(m, line.name, `${m.defaultFrame}.${aim.axis}`);
 
     // The committed end becomes the next segment's start: the same entity.
     this.pending = null;
@@ -164,8 +169,8 @@ export class LineTool extends Tool {
    */
   private resolve(from: number[], p: PointerInfo): Aim {
     // A chain of segments is dimension-generic — it is only points and lines.
-    // Horizontal and vertical are not (see relations/basic.ts), so above two
-    // dimensions the tool draws the same and simply infers no axis.
+    // A frame's axes are not (a frame is 2D-only), so above two dimensions the
+    // tool draws the same and simply infers no axis.
     if (from.length !== 2) return { world: p.world, axis: null };
     const axes = this.axes();
     // No default frame, or one dragged onto its own origin: nothing to be
@@ -188,16 +193,16 @@ export class LineTool extends Tool {
       // snap that is level with a tilted frame counts and one that is merely
       // level with the canvas does not.
       const scale = Math.max(1, Math.abs(along), Math.abs(across));
-      if (Math.abs(across) <= ALREADY_ON_AXIS * scale) return { world: p.world, axis: "horizontal", along: ux };
-      if (Math.abs(along) <= ALREADY_ON_AXIS * scale) return { world: p.world, axis: "vertical", along: uy };
+      if (Math.abs(across) <= ALREADY_ON_AXIS * scale) return { world: p.world, axis: "x", along: ux };
+      if (Math.abs(along) <= ALREADY_ON_AXIS * scale) return { world: p.world, axis: "y", along: uy };
       return { world: p.world, axis: null };
     }
 
     if (Math.abs(across) <= Math.abs(along) * AXIS_SLOPE) {
-      return { world: on(ux, along), axis: "horizontal", along: ux };
+      return { world: on(ux, along), axis: "x", along: ux };
     }
     if (Math.abs(along) <= Math.abs(across) * AXIS_SLOPE) {
-      return { world: on(uy, across), axis: "vertical", along: uy };
+      return { world: on(uy, across), axis: "y", along: uy };
     }
     return { world: p.world, axis: null };
   }

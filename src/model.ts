@@ -40,8 +40,8 @@ export interface CircleEntity {
 // are ordinary points, so they can be constrained (coincident with a line's
 // end, say) like any other. What makes them *arc* endpoints — lying on the
 // arc's own circle — is not automatic: it's the `arcEndpoints` relation, for
-// the same reason a Line doesn't imply hor/ver. Tools that create arcs are
-// expected to apply it (see relations/geometry.ts).
+// the same reason a Line implies no relation of its own. Tools that create
+// arcs are expected to apply it (see relations/geometry.ts).
 export interface ArcEntity {
   kind: "arc";
   name: string;
@@ -56,19 +56,19 @@ export interface ArcEntity {
  *
  * There is no built-in world frame in this model, and that absence is the
  * point — an origin nobody made tempts every drawing into being related to
- * it. A frame exists only because a user made one, and `hor`, `ver` and
- * `fix` mean nothing until one does.
+ * it. A frame exists only because a user made one, and `fix` — and every
+ * reference to an axis — means nothing until one does.
  *
  * Like a line, a frame is purely *referential*: it owns no variables, and its
  * two points are ordinary points that can be dragged, dimensioned and
  * constrained like any other. Only the x-ref's *direction* from the origin
- * counts; how far away it sits is irrelevant, which is why `fix` normalises
- * it and `hor`/`ver` — which only ask about direction — do not.
+ * counts; how far away it sits is irrelevant, which is why `frameBasis` hands
+ * both axes out normalised.
  *
  * +y is +x turned a quarter turn counter-clockwise. That is fully determined
  * in 2D and not in any higher dimension (an origin and one direction leave a
- * whole rotation free about that axis), so frames are 2D-only, the same call
- * `horizontal`/`vertical` already make.
+ * whole rotation free about that axis), so frames are 2D-only — and so, in
+ * turn, are the axis references that name their directions.
  */
 export interface FrameEntity {
   kind: "frame";
@@ -118,17 +118,25 @@ export function parseAxisRef(ref: string): { frame: string; axis: AxisName } | n
 }
 
 /**
- * Whether one recorded argument refers to the entity called `name` — directly,
- * or through one of its axes.
+ * Which entity a recorded argument is *about*: itself, or — for an axis
+ * reference — the frame behind it. Null for an argument that is not a name at
+ * all (a distance, a coordinate pair).
  *
- * Deliberately total and non-throwing, unlike `parseAxisRef`: this runs over
- * every argument of every relation whenever something is deleted, including
- * arguments that are numbers, arrays, or a hand-edited file's nonsense, and a
- * deletion is no place to start validating syntax. A prefix test is all the
- * question needs — `f1.` can only ever have been written about `f1`.
+ * Deliberately total and non-throwing, unlike `parseAxisRef`. This runs over
+ * every argument of every relation whenever something is deleted or a glyph is
+ * hovered, including a hand-edited file's nonsense, and neither of those is a
+ * place to start validating syntax. It also does not check that the name
+ * exists: the question here is what a string *refers to*, not what is there.
  */
+export function referentOf(arg: unknown): string | null {
+  if (typeof arg !== "string") return null;
+  const dot = arg.indexOf(".");
+  return dot < 0 ? arg : arg.slice(0, dot);
+}
+
+/** Whether one recorded argument refers to the entity called `name`. */
 export function argRefersTo(arg: unknown, name: string): boolean {
-  return typeof arg === "string" && (arg === name || arg.startsWith(`${name}.`));
+  return referentOf(arg) === name;
 }
 
 /** Circles and arcs share a center + radius; relations that only need those two treat them alike. */
@@ -172,9 +180,9 @@ export class Model {
   /** Named relations, in the order they were made. See `relation()`. */
   relations = new Map<string, RelationEntry>();
   /**
-   * Which frame `hor`/`ver`/`fix` mean when they are not told which. Null in
-   * a new model, and stays null until someone makes a frame and says so —
-   * see `setDefaultFrame`.
+   * Which frame `fix` and the `xaxis()`/`yaxis()` helpers mean when they are
+   * not told which. Null in a new model, and stays null until someone makes a
+   * frame and says so — see `setDefaultFrame`.
    */
   defaultFrame: string | null = null;
   private counters = new Map<string, number>();
@@ -495,7 +503,7 @@ export class Model {
   }
 
   /**
-   * Which frame `hor`/`ver`/`fix` mean when they are not told. A model-level
+   * Which frame `fix` and `xaxis()`/`yaxis()` mean when not told. A model-level
    * pointer and nothing more: a new model has **no** default, because a frame
    * exists only because a user made one.
    *

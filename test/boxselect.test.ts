@@ -208,8 +208,8 @@ test("relations are never box-selectable, because a box only sees entities", asy
   m.addPoint([10, 0], "b");
   m.addLine("a", "b", "l");
   // A relation whose glyph would sit right in the middle of the box.
-  const { horizontal } = await import("../src/relations/basic.ts");
-  horizontal(m, "l");
+  const { parallel } = await import("../src/relations/geometry.ts");
+  parallel(m, "l", "f.x");
   assert.ok(m.relations.size > 0, "the fixture really does have a relation");
 
   const everything: ScreenRect = { x0: 0, y0: 0, x1: 800, y1: 600 };

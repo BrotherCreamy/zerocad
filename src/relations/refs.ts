@@ -2,15 +2,15 @@
 //
 // A relation declares *which variables it reads* either as a captured list or
 // as a thunk re-consulted at every evaluation. The thunk form is the house
-// rule for anything whose subject can be restructured underneath it: `hor(l1)`
-// means "this edge is level", so if a fillet re-points that edge at a new
-// tangent point the constraint has to follow. A captured index list cannot; a
-// thunk that re-reads the entity's current refs can. This was learned the hard
+// rule for anything whose subject can be restructured underneath it:
+// `par("l1", "f.x")` means "this edge is level", so if a fillet re-points that
+// edge at a new tangent point the constraint has to follow. A captured index
+// list cannot; a thunk that re-reads the entity's current refs can. This was learned the hard
 // way — the fillet's first version passed every numerical check to six decimals
 // while visibly wrecking the rectangle it was applied to.
 //
 // These live in their own file because both relation modules need them:
-// geometry.ts has always used `lineVars`, and basic.ts needs `frameVars` for
+// geometry.ts has always used `lineVars`, and basic.ts needs `frameBasis` for
 // the same reason and would otherwise have to import from geometry.ts, which
 // imports it back.
 
@@ -56,7 +56,7 @@ const DEGENERATE_FRAME = 1e-9;
  * **The frame is read as a value, not declared as a variable, and that is a
  * decision rather than an oversight.** A residual block names the variables it
  * reads; naming the frame's two points would put them in the Jacobian, and a
- * solver handed `hor(line, frame)` would then be free to satisfy it by turning
+ * solver handed `par(line, "f.x")` would then be free to satisfy it by turning
  * the *frame* instead of the line — which, measured, is exactly what it does:
  * on a 40-unit line seven units out of level against a frame with a 20-unit
  * arm, least squares turns the frame 8° and the line barely at all. A frame
@@ -75,9 +75,9 @@ const DEGENERATE_FRAME = 1e-9;
  * The floor on the arm's length is what a collapsed frame gets instead of a
  * division by zero; NaN in a Jacobian does not fail loudly, it fails as a
  * solve that quietly stops converging everywhere at once. Floored, `fix`
- * degrades to "sit on the origin" and `hor`/`ver` to a claim about a direction
- * that is no longer there. `addFrame` seeds its two points a span apart so
- * this cannot arise by construction; it can only be dragged into.
+ * degrades to "sit on the origin" and an axis reference to a claim about a
+ * direction that is no longer there. `addFrame` seeds its two points a span
+ * apart so this cannot arise by construction; it can only be dragged into.
  */
 export function frameBasis(model: Model, frameName: string): () => FrameBasis {
   model.frame(frameName); // fail now, not at the first solve

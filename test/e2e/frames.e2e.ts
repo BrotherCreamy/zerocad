@@ -78,16 +78,21 @@ const modPi = (d: number) => {
   return Math.min(x, Math.PI - x);
 };
 
-test("with no frame at all, hor says exactly what to do about it", async () => {
+test("with no frame at all, an axis reference says exactly what to do about it", async () => {
   await app.type("pt(-140,-70); pt(-80,-68)");
   await app.type('ln("p1","p2")');
-  await app.type('hor("l1")');
+  await app.type('par("l1", xaxis())');
 
   const log = await app.log();
   assert.match(log, /no default frame — frame\(\) then setDefaultFrame\(\), or say which frame/,
     "the refusal is the fix, spelled out, not a stack trace");
   const m = await app.model();
-  assert.equal(m.journalOps.includes("horizontal"), false, "and nothing was added on the way out");
+  assert.equal(m.journalOps.includes("parallel"), false, "and nothing was added on the way out");
+
+  // And the words that used to say this are gone rather than deprecated, so a
+  // hand reaching for them gets the standing unknown-name message.
+  await app.type('hor("l1")');
+  assert.match(await app.log(), /no such name: hor/);
 
   await app.type('fix("p1",[0,0])');
   assert.match(await app.log(), /no default frame/, "fix refuses the same way, for the same reason");
@@ -166,7 +171,8 @@ test("tilting the frame by its x-ref turns the whole levelled drawing with it", 
   const [a, b, c, d] = Object.keys((await app.model()).points).slice(-4);
   await app.type(`ln("${a}","${b}"); ln("${b}","${c}"); ln("${c}","${d}"); ln("${d}","${a}")`);
   const lines = (await app.model()).lines.slice(-4).map((l) => l.name);
-  await app.type(`hor("${lines[0]}"); ver("${lines[1]}"); hor("${lines[2]}"); ver("${lines[3]}")`);
+  await app.type(`par("${lines[0]}", xaxis()); par("${lines[1]}", yaxis());`
+    + ` par("${lines[2]}", xaxis()); par("${lines[3]}", yaxis())`);
   await app.type(`dist("${a}","${b}",60); dist("${b}","${c}",40)`);
   await app.type(`fix("${a}",[-100,4])`);
   await app.type("solve()");
@@ -294,8 +300,8 @@ test("the line tool's aim, its guide and its constraint all read the tilted fram
   const line = now.lines.at(-1)!;
   assert.equal(now.lines.length, before.lines.length + 1, "one segment was drawn");
   const rels = await app.repl(`rels("${line.name}")`);
-  assert.ok((rels.value as string[]).some((r) => r.includes("hor")),
-    `the constraint that landed is hor: ${JSON.stringify(rels.value)}`);
+  assert.ok((rels.value as string[]).some((r) => r.includes("par") && r.includes(".x")),
+    `the constraint that landed is a par to the frame's +x: ${JSON.stringify(rels.value)}`);
 
   // The segment lies along the frame's +x *as placed*, before any solving had
   // to correct it: the preview was pulled onto the same axis the constraint
@@ -369,7 +375,7 @@ test("a box catches the frame by its marker, and del takes the frame's relations
   assert.ok(m.points[frame.xrefName]);
   // And the vocabulary that needed it says so again, rather than silently
   // meaning something else.
-  await app.type(`hor("${m.lines[0].name}")`);
+  await app.type(`par("${m.lines[0].name}", xaxis())`);
   assert.match(await app.log(), /no default frame/);
 });
 

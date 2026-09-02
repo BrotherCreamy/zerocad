@@ -16,7 +16,7 @@ import {
   GLYPH_CHAR_W, GLYPH_OFFSET, GLYPH_STEP, GLYPH_HALF_W,
 } from "../src/glyphs.ts";
 import { worldToScreen, type View } from "../src/view.ts";
-import { coincident, dist, fix, horizontal, midpoint, vertical } from "../src/relations/basic.ts";
+import { coincident, dist, fix, midpoint } from "../src/relations/basic.ts";
 import {
   angle, concentric, equalLength, parallel, perpendicular, pointOnLine, radius, symmetric, tangent,
 } from "../src/relations/geometry.ts";
@@ -31,10 +31,10 @@ async function loadKernel() {
 const view: View = { ox: 400, oy: 300, scale: 3 };
 const at = (world: number[]) => worldToScreen(view, world);
 
-/** A rectangle-ish scaffold: two horizontal edges and one vertical. */
+/** A rectangle-ish scaffold: two edges along the fixture frame's +x, one along +y. */
 function scaffold(): Model {
   const m = new Model(2);
-  axisFrame(m); // what hor/ver are level with — see test/frames.ts
+  axisFrame(m); // the frame `f.x` and `f.y` below name — see test/frames.ts
   m.addPoint([0, 0], "p1");
   m.addPoint([40, 0], "p2");
   m.addPoint([40, 30], "p3");
@@ -50,20 +50,21 @@ const byRelation = (m: Model, v: View) =>
 
 test("one glyph per relation, carrying the relation's name and a mark", () => {
   const m = scaffold();
-  const r = horizontal(m, "l1");
+  const r = parallel(m, "l1", "f.x");
   const [gl] = placeGlyphs(m, view);
   assert.equal(gl.relation, r);
-  assert.equal(gl.op, "horizontal");
+  assert.equal(gl.op, "parallel");
   assert.equal(gl.symbol.length > 0, true, "something is actually drawn");
   // The frame is one of the things the relation is *about* — "level with f" —
-  // so hovering the mark lights it up alongside the edge.
+  // so hovering the mark lights it up alongside the edge, even though what the
+  // relation names is `f.x` rather than `f` itself.
   assert.deepEqual(gl.highlights, ["l1", "f"]);
 });
 
 test("a point relation anchors on its point; an edge relation on the edge's middle", () => {
   const m = scaffold();
   const rc = coincident(m, "p1", "p3");
-  const rh = horizontal(m, "l1");
+  const rh = parallel(m, "l1", "f.x");
   const g = byRelation(m, view);
 
   assert.deepEqual(g.get(rc)!.anchor, at([0, 0]), "the constrained point itself");
@@ -72,7 +73,7 @@ test("a point relation anchors on its point; an edge relation on the edge's midd
 
 test("the offset from the anchor is a constant pixel distance at any zoom", () => {
   const m = scaffold();
-  horizontal(m, "l1");
+  parallel(m, "l1", "f.x");
   coincident(m, "p1", "p3");
 
   for (const scale of [0.4, 3, 90]) {
@@ -87,7 +88,7 @@ test("the offset from the anchor is a constant pixel distance at any zoom", () =
 
 test("the anchor itself is world-space, so it follows the drawing", () => {
   const m = scaffold();
-  horizontal(m, "l1");
+  parallel(m, "l1", "f.x");
   const before = placeGlyphs(m, view)[0].anchor;
   m.setCoords("p2", [40, 20]); // the edge tilts, so its middle moves
   const after = placeGlyphs(m, view)[0].anchor;
@@ -111,8 +112,8 @@ test("glyphs sharing an anchor stack in a row rather than piling up", () => {
 
 test("relations on different anchors are left where they are", () => {
   const m = scaffold();
-  const h1 = horizontal(m, "l1");
-  const h2 = horizontal(m, "l2");
+  const h1 = parallel(m, "l1", "f.x");
+  const h2 = parallel(m, "l2", "f.x");
   const g = byRelation(m, view);
   assert.deepEqual(g.get(h1)!.anchor, at([20, 0]));
   assert.deepEqual(g.get(h2)!.anchor, at([20, 30]));
@@ -141,19 +142,45 @@ test("parallel, equal length and symmetric are two-mark relations too", () => {
 
 test("the glyph sits beside an edge, not along it", () => {
   const m = scaffold();
-  horizontal(m, "l1"); // a level edge, so "beside" means above or below
+  parallel(m, "l1", "f.x"); // a level edge, so "beside" means above or below
   const gl = placeGlyphs(m, view)[0];
   assert.equal(gl.screen[0], gl.anchor[0], "not shifted along the edge");
   assert.ok(Math.abs(gl.screen[1] - gl.anchor[1]) === GLYPH_OFFSET, "shifted across it");
 });
 
-test("hor/ver in their two-point form anchor between the two points", () => {
+test("par/perp in their two-point form anchor between the two points", () => {
   const m = scaffold();
-  const rh = horizontal(m, "p1", "p3");
-  const rv = vertical(m, "p2", "p4");
+  const rh = parallel(m, "p1", "p3", "f.x");
+  const rv = parallel(m, "p2", "p4", "f.y");
   const g = byRelation(m, view);
   assert.deepEqual(g.get(rh)!.anchor, at([20, 15]));
   assert.deepEqual(g.get(rv)!.anchor, at([20, 15]));
+});
+
+test("an axis-referenced par gets one mark, on the line — there is no second edge", () => {
+  const m = scaffold();
+  // The case `hor` never had to answer: `par` puts a mark on each of its two
+  // sides, and one side of this one is a direction with nowhere to draw. A
+  // mark invented for it — at the frame's origin, say — would sit on geometry
+  // the relation does not constrain.
+  const r = parallel(m, "l1", "f.x");
+  const marks = placeGlyphs(m, view).filter((gl) => gl.relation === r);
+  assert.equal(marks.length, 1, "one mark, not two and not none");
+  assert.deepEqual(marks[0].anchor, at([20, 0]), "the middle of the edge it constrains");
+  assert.equal(marks[0].symbol, "//");
+
+  // The point form is the same story with a segment for a subject.
+  const rp = parallel(m, "p1", "p3", "f.y");
+  const pointMarks = placeGlyphs(m, view).filter((gl) => gl.relation === rp);
+  assert.equal(pointMarks.length, 1);
+  assert.deepEqual(pointMarks[0].anchor, at([20, 15]));
+
+  // ...and an angle to an axis has no corner to be written at, so it goes
+  // beside the edge rather than at a vertex that does not exist.
+  const ra = angle(m, "l3", "f.x", Math.PI / 3);
+  const angleMarks = placeGlyphs(m, view).filter((gl) => gl.relation === ra);
+  assert.deepEqual(angleMarks.map((mk) => mk.anchor), [at([40, 15])]);
+  assert.equal(angleMarks[0].symbol, "60°", "still its own value, as every dimension is");
 });
 
 test("dist anchors between its two points; midpoint on the point it defines", () => {
@@ -219,8 +246,8 @@ test("a relation naming nothing the model still holds draws nothing, and does no
 
 test("deleting a relation takes its glyph with it", () => {
   const m = scaffold();
-  const r = horizontal(m, "l1");
-  horizontal(m, "l2");
+  const r = parallel(m, "l1", "f.x");
+  parallel(m, "l2", "f.x");
   assert.equal(placeGlyphs(m, view).length, 2);
   del(m, r);
   const left = placeGlyphs(m, view);
@@ -230,7 +257,7 @@ test("deleting a relation takes its glyph with it", () => {
 
 test("glyphs are picked by their own box, wherever the geometry is", () => {
   const m = scaffold();
-  horizontal(m, "l1");
+  parallel(m, "l1", "f.x");
   const gl = placeGlyphs(m, view)[0];
   const [gx, gy] = gl.screen;
 
@@ -274,7 +301,7 @@ test("dist, rad and ang label themselves; nothing else does", () => {
     "the relation stores radians; a drawing says degrees");
   assert.equal(labelFor("angle", ["l1", "l2", Math.PI]), "180°");
   assert.equal(labelFor("coincident", ["p1", "p2"]), null);
-  assert.equal(labelFor("horizontal", ["l1"]), null);
+  assert.equal(labelFor("parallel", ["l1", "f.x"]), null);
 });
 
 test("a dimensioned relation with a non-numeric target falls back to its mark", () => {
@@ -378,13 +405,13 @@ test("a wide label nudged sideways clears the geometry as far as a small mark do
 
 test("a label and a mark sharing an anchor do not sit on top of each other", () => {
   // The failure this pins was visible in the first screenshot taken of the
-  // feature: `—` (l3 is level) and `110` (l3 is 110 long) share an anchor, and
-  // a row that steps by a fixed 17px drew them touching — which reads as
-  // *minus* 110.
+  // feature: the mark saying an edge is level and `110` (it is 110 long) share
+  // an anchor, and a row that steps by a fixed 17px drew them touching — which
+  // read as *minus* 110.
   for (const order of [0, 1]) {
     const m = scaffold();
     const rd = () => dist(m, "p1", "p2", 137.25);
-    const rh = () => horizontal(m, "p1", "p2"); // same anchor, same direction
+    const rh = () => parallel(m, "p1", "p2", "f.x"); // same anchor, same direction
     const [first, second] = order === 0 ? [rd(), rh()] : [rh(), rd()];
     const g = byRelation(m, view);
     const [a, b] = [g.get(first)!, g.get(second)!];
@@ -398,7 +425,7 @@ test("a label and a mark sharing an anchor do not sit on top of each other", () 
 test("only a dist label carries the span its dimension lines are drawn across", () => {
   const m = scaffold();
   const rd = dist(m, "p1", "p2", 50);
-  const rh = horizontal(m, "l1");
+  const rh = parallel(m, "l1", "f.x");
   const g = byRelation(m, view);
   assert.deepEqual(g.get(rd)!.ends, [at([0, 0]), at([40, 0])], "the two points, in screen pixels");
   assert.equal(g.get(rh)!.ends, undefined, "nothing else has a span to measure");

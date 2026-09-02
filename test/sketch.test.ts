@@ -6,7 +6,8 @@ import { Model } from "../src/model.ts";
 import { CircleTool } from "../src/tools/circle.ts";
 import { ArcTool } from "../src/tools/arc.ts";
 import { fillet } from "../src/operations.ts";
-import { fix, horizontal, vertical } from "../src/relations/basic.ts";
+import { fix } from "../src/relations/basic.ts";
+import { parallel } from "../src/relations/geometry.ts";
 import type { ToolContext } from "../src/tools/tool.ts";
 import { axisFrame } from "./frames.ts";
 
@@ -137,8 +138,8 @@ function rightCorner(model: Model) {
   fix(model, "b", [20, 0]);
   model.addLine("a", "p", "l1");
   model.addLine("p", "b", "l2");
-  vertical(model, "l1");
-  horizontal(model, "l2");
+  parallel(model, "l1", "f.y");
+  parallel(model, "l2", "f.x");
 }
 
 test("fillet: rounds a right angle, tangent to both legs", async () => {
@@ -202,7 +203,7 @@ test("fillet: works on a non-right angle too", async () => {
   fix(model, "b", [20 * Math.cos(Math.PI / 3), 20 * Math.sin(Math.PI / 3)]);
   model.addLine("a", "p", "l1");
   model.addLine("p", "b", "l2");
-  horizontal(model, "a", "p"); // leg 1 held on the x-axis
+  parallel(model, "a", "p", "f.x"); // leg 1 held on the frame's x axis
 
   const arcName = fillet(model, "l1", "l2", 4);
   const report = model.solve();
@@ -238,8 +239,8 @@ test("a line-form relation follows the line through a fillet; a point-form one d
   fix(stale, "b", [20, 0]);
   stale.addLine("a", "p", "l1");
   stale.addLine("p", "b", "l2");
-  vertical(stale, "l1");
-  horizontal(stale, "p", "b"); // names the corner, not the edge
+  parallel(stale, "l1", "f.y");
+  parallel(stale, "p", "b", "f.x"); // names the corner, not the edge
   fillet(stale, "l1", "l2", 5);
   stale.solve();
   const sl2 = stale.line("l2");
@@ -258,7 +259,7 @@ test("a line relation keeps holding after the line is re-pointed by hand", async
   model.addPoint([20, 40], "c");
   fix(model, "a", [0, 0]);
   model.addLine("a", "b", "l");
-  horizontal(model, "l");
+  parallel(model, "l", "f.x");
   assert.equal(model.solve().solved, true);
   assert.ok(Math.abs(model.coords("b")[1]) < 1e-6, "b levelled with a");
 

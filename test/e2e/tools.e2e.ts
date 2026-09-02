@@ -22,7 +22,7 @@ const REPL_TOOL = 'defineTool("replbox", class extends Tool { name = "replbox"; 
   + 'onUp(p) { if (!this.s) return; const [x0,y0] = this.s, [x1,y1] = p.world; this.s = null; '
   + 'const q = pt(x0,y0), r = pt(x1,y0), s = pt(x1,y1), u = pt(x0,y1); '
   + 'const e1 = ln(q,r), e2 = ln(r,s), e3 = ln(s,u), e4 = ln(u,q); '
-  + 'hor(e1); hor(e3); ver(e2); ver(e4); '
+  + 'par(e1, xaxis()); par(e3, xaxis()); par(e2, yaxis()); par(e4, yaxis()); '
   + 'this.ctx.requestSolve(); this.ctx.finish(); } '
   + 'render(r) { if (!this.s || !this.c) return; const [x0,y0] = this.s, [x1,y1] = this.c; '
   + 'const c = [[x0,y0],[x1,y0],[x1,y1],[x0,y1]].map((w) => r.worldToScreen(w)); '

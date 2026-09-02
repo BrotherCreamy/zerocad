@@ -9,8 +9,9 @@
 // of `dot` and `wedge` (see vec.ts) the definitions that people think of as
 // 2D turn out to hold unchanged in any dimension. "Parallel" is "the wedge
 // vanishes" whether that wedge has one component or three. Where a relation
-// is genuinely 2D-only it says so and throws, rather than pretending —
-// same call the `horizontal`/`vertical` pair in basic.ts makes.
+// is genuinely 2D-only it says so and throws, rather than pretending. The
+// frame-axis references below are the one place that bites: a frame is 2D-only,
+// so an axis reference is too, while the relation taking it is not.
 
 import type { Model } from "../model.ts";
 import type { Dual } from "../kernel/dual.ts";
@@ -52,16 +53,27 @@ import { coincident } from "./basic.ts";
  * exactly as `hor`/`ver` used to: only the point form takes a second point, so
  * whatever follows a line name can only be the thing it is relative to.
  */
-function directionSides(model: Model, a: string, b: string, c?: string | null):
+function directionSides(model: Model, op: string, a: string, b: string, c?: string | null):
   { u: DirectionRef; v: DirectionRef; args: string[] } {
-  if (model.entities.get(a)?.kind === "point") {
-    if (b == null || c == null) {
-      throw new Error(`"${a}" is a point: give the second point and what the pair is relative to`);
+  const sides = (): { u: DirectionRef; v: DirectionRef; args: string[] } => {
+    if (model.entities.get(a)?.kind === "point") {
+      if (b == null || c == null) {
+        throw new Error(`"${a}" is a point: give the second point and what the pair is relative to`);
+      }
+      return { u: directionOfPoints(model, a, b), v: directionOf(model, c), args: [a, b, c] };
     }
-    return { u: directionOfPoints(model, a, b), v: directionOf(model, c), args: [a, b, c] };
+    if (c != null) throw new Error(`"${a}" is not a point, so this takes two references, not three`);
+    return { u: directionOf(model, a), v: directionOf(model, b), args: [a, b] };
+  };
+  const made = sides();
+  // Two frame axes are two datums, and a datum is read and never pushed — so
+  // the residual would declare no variables at all and the solver would have
+  // nothing it could move to satisfy it. Refused rather than added as a
+  // constraint that silently either holds already or never can.
+  if (made.u.frame && made.v.frame) {
+    throw new Error(`${op} needs something it can move: "${a}" and "${made.args.at(-1)}" are both frame axes`);
   }
-  if (c != null) throw new Error(`"${a}" is not a point, so this takes two references, not three`);
-  return { u: directionOf(model, a), v: directionOf(model, b), args: [a, b] };
+  return made;
 }
 
 /**
@@ -77,7 +89,7 @@ function directionRelation(
   a: string, b: string, c: string | null | undefined,
   residual: (u: Dual[], v: Dual[]) => Dual[],
 ): string {
-  const { u, v, args } = directionSides(model, a, b, c);
+  const { u, v, args } = directionSides(model, tag, a, b, c);
   return model.relation(op, args, () => {
     model.addResidual(joinVars(u.vars, v.vars), (l) =>
       residual(u.direction(l.slice(0, u.width)), v.direction(l.slice(u.width))),
@@ -117,6 +129,9 @@ export function perpendicular(model: Model, l1: string, l2: string, l3?: string 
  */
 export function angle(model: Model, l1: string, l2: string, radians: number): string {
   const u = directionOf(model, l1), v = directionOf(model, l2);
+  if (u.frame && v.frame) {
+    throw new Error(`ang needs something it can move: "${l1}" and "${l2}" are both frame axes`);
+  }
   return model.relation("angle", [l1, l2, radians], () => {
     const target = Math.cos(radians);
     model.addResidual(joinVars(u.vars, v.vars), (l) => {
@@ -251,8 +266,8 @@ export function symmetric(model: Model, aName: string, bName: string, lineName: 
 
 /**
  * What makes an arc's endpoints *its* endpoints: both lie on its circle.
- * Not applied by Model.addArc for the same reason a Line doesn't imply
- * hor/ver — the model holds structure, relations hold equations — so a
+ * Not applied by Model.addArc for the same reason a Line implies no relation
+ * of its own — the model holds structure, relations hold equations — so a
  * tool that creates an arc calls this straight after.
  */
 export function arcEndpoints(model: Model, arcName: string): string {

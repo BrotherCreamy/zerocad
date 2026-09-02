@@ -180,7 +180,7 @@ export function describePick(model: Model, pick: Pick): string {
  * different things.
  */
 export const SHORT_OP: Record<string, string> = {
-  coincident: "coin", midpoint: "mid", horizontal: "hor", vertical: "ver",
+  coincident: "coin", midpoint: "mid",
   parallel: "par", perpendicular: "perp", angle: "ang", pointOnLine: "on",
   equalLength: "eq", radius: "rad", onCircle: "oncircle", concentric: "conc",
   equalRadius: "eqrad", tangent: "tan", symmetric: "sym", arcEndpoints: "arcends",
