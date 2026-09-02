@@ -162,6 +162,14 @@ different buttons from tool use, so the left button always belongs to
 whichever tool is armed — you can start a rectangle, pan to see where it
 is going, and finish it without the tool noticing.
 
+**Right-click without moving opens a menu** for whatever is under the
+cursor — an entity, a constraint mark, or empty canvas. Everything on it
+is a shortcut to a command: *Dimension* on an edge types
+`dist("p3", "p4", 80)` with the length it already has, *Delete* on a
+constraint types `del("r5")`, and the empty-canvas menu arms a tool. Each
+item shows the command beside its label, and the log records what it
+typed, so the menu teaches the command line rather than replacing it.
+
 Drawing tools are `point`, `rectangle`, `circle`, `circle3`, `arc` and
 `arc3` — type the name to arm one. The two numbered ones are Onshape's
 *3 point circle* (three clicks, all three on the rim) and *3 point arc*

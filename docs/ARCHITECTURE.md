@@ -41,6 +41,12 @@ tool engine and the renderer, depending on nothing. `undo.ts` sits beside it
 for the same reason — a stack of snapshots, generic over what a snapshot is,
 importing nothing at all.
 
+`menu.ts` sits *beside* `main.ts` rather than under it: it is browser-layer
+code that reads the model and returns command strings, and it runs none of
+them. It is above `replenv.ts` in spirit — everything it produces is text for
+that command surface to evaluate — but it imports nothing from there, because
+it only needs to know what the commands are *called*.
+
 `picking.ts`, `snapping.ts`, `glyphs.ts` and `boxselect.ts` sit at the same
 height as each other, just above the model: each is a pure function of (model,
 view, cursor or rectangle) answering one question — what is under it, where
@@ -318,6 +324,54 @@ comma-separated. That is what keeps the "no selection set" decision intact
 under a feature that in most CAD *is* the selection set. Constraint glyphs are
 not box-selectable, and it takes no code to say so — relations live in a
 registry beside the entity map rather than in it, so a box never sees them.
+
+The **right** button makes the same split, on the same threshold: past three
+pixels it pans, exactly as it always did; released where it landed it opens a
+context menu. The press decides nothing and the release decides, which is the
+only arrangement under which a menu can be added without taking a pan away.
+Middle-drag is left purely navigational, because one button that unambiguously
+means "move the view" is worth keeping.
+
+## The context menu only ever types
+
+`menu.ts` builds a menu out of a model and a pick, and every item on it is a
+**command string**. Nothing on the menu calls into the model; choosing an item
+hands that string to `submit` — the function the Enter key calls — and the app
+behaves as though it had been typed, because it was.
+
+That is a stronger claim than it sounds. Logging, the command recall history,
+the undo bracket and the "re-solve if this changed anything" comparison all
+live in `submit` and nowhere else, so an item that reached the model any other
+way would be a second, slightly different answer to what running a command
+means — and the two would drift, one bug at a time. Going through `submit`
+means there is nothing new to get right: a menu-typed `dist` is one journal
+entry and one undo step because a typed `dist` already was.
+
+The rejected alternative is worth naming, because it is the one that needs no
+change to `main.ts` and is therefore tempting: write the text into the command
+input and dispatch a synthetic Enter. It reaches the same function by
+pretending to be a keyboard, which destroys whatever was half-typed, hides the
+seam from anyone reading the menu's code, and breaks the first time the input's
+key handling changes. One named hook passed in from the host is smaller and
+says what it is.
+
+The split inside the file follows from that. `menuFor(model, pick)` is pure —
+model and pick in, labels and command strings out, no DOM anywhere near it — so
+"which items for which pick kind" and "what does Dimension type for an arc" are
+unit tests. The DOM half is a `<div>` in the hover tag's visual family, and it
+shows each item's command beside its label: the menu exists to be a shortcut
+*to the command line*, and an item that hid what it was about to do would be a
+fourth editing surface rather than a faster way to type.
+
+Two consequences of the "no new machinery" rule are visible on the menu itself.
+A **dimension carries the current measurement**, so it holds what it measures
+and moves nothing — which also means a point gets no Dimension item, because a
+point has no measurement of its own. And **Fix is shown disabled when there is
+no default frame**, carrying `resolveFrame`'s own message: creating a frame to
+make the item work would be a datum nobody chose, quietly becoming what every
+later `hor` means, which is the exact thing the no-world-frame decision
+prevents. A menu that cannot do anything a command cannot do also cannot do
+that.
 
 ## The REPL is scoped, not sandboxed
 

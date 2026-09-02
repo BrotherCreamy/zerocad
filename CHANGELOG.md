@@ -7,6 +7,100 @@ decisions.
 
 ---
 
+## The right-click menu, which only ever types
+
+![The context menu open on an edge](docs/images/43-context-menu-on-an-edge.png)
+
+**Right-press and release without moving opens a menu; right-drag still pans.**
+The right button now makes exactly the split the left one has always made, on
+exactly the same three-pixel threshold: the press decides nothing, the release
+decides. That is what lets the register's standing promise — right-drag pan
+yields to a context menu once one exists — be cashed without taking anything
+away. Panning is untouched, the browser's own menu stays suppressed, and
+middle-drag remains purely navigational and never opens anything.
+
+**Everything on the menu is a shortcut to a command the log shows.** An item
+does not call into the model; it types a line into the same machinery the
+keyboard uses. On an entity: *Insert name* (what a left-click already does),
+*Delete* (`del("l3")`), *Dimension*, and on a point *Fix*. On a constraint
+glyph: the relation's own description as the header, and *Delete*. On empty
+canvas: the eight tool arms, plus *Frame*. Each row shows the command beside
+its label, because a menu that hid what it was about to do would be a fourth
+way to edit the drawing instead of a faster way to type.
+
+**The seam is `submit`** — the function the Enter key calls — passed to the
+menu as an explicit `run` hook. That was the one real design question here, and
+it turns on "a shortcut to a typed command" being a claim about *machinery*
+rather than about outcome: it has to log the entry, push it onto the recall
+history, bracket it as one undo step, and re-solve if it changed anything. All
+four already live in `submit` and nowhere else, so anything short of calling it
+would be a second, slightly different answer to what typing a command means,
+and the two would drift. The alternative — writing the text into `#cmd` and
+dispatching a synthetic Enter — reaches the same function by pretending to be a
+keyboard: it makes the seam invisible to a reader, destroys whatever was
+half-typed, and breaks the moment the input's keydown handling changes.
+
+The consequence is that there is nothing to check about undo, journalling or
+the status line, because none of it is new. `Dimension` on an edge is one
+`dist` in the journal, one Ctrl+Z, one solve, one line in the log — the same as
+if it had been typed, because it was.
+
+![The dimension the menu typed, and the log line it wrote](docs/images/44-dimension-from-the-menu.png)
+
+**A dimension carries the current measurement**, so the action reads as *hold
+it where it is* — Onshape's own dimension-tool behaviour, and the only reading
+under which the item is safe to click without looking: it adds a constraint the
+drawing already satisfies and moves nothing. A line gets `dist(end, end, len)`,
+a circle or arc `rad(name, r)`. A point gets no Dimension at all, because a
+single point has no measurement of its own, only measurements to other things —
+and what a point wants instead is the item below it.
+
+**Fix is shown disabled when there is no default frame**, carrying the model's
+own standing message (`no default frame — frame() then setDefaultFrame(), or
+say which frame`) read out of `resolveFrame` rather than copied, so the menu and
+the command line cannot drift on the wording. Shown and disabled rather than
+omitted, because the missing frame is exactly what the user needs told; an item
+that simply was not there would leave "why can I not pin this point"
+unanswered. It never quietly makes one — a datum nobody chose, silently
+becoming what every later `hor` is measured against, is precisely what the
+no-world-frame decision exists to prevent. And the coordinates it types are the
+point's position **in the frame**, not its raw numbers: against a frame that is
+turned or sitting off the gauge's origin, raw numbers would be a `fix` that
+yanks the point somewhere else the instant it landed, which is not "hold it
+where it is" by any reading. There is a unit test with a frame turned 90° and
+moved that fails on the raw form.
+
+The *Frame* item on empty canvas is `setDefaultFrame(frame())` when the drawing
+has no frame at all and `frame()` once it has one. A first frame is nearly
+always meant to be the default — `hor`, `ver` and `fix` do nothing until one is
+set, so a first frame that was not the default would leave a marker on screen
+and the same error message as before. A second frame is a different intent, and
+silently repointing the default would move every bare `hor` in the drawing.
+
+Escape closes the menu, and so does a press anywhere else — a *left* press is
+also swallowed, so the click that dismissed a menu does not go on to pick, drag
+or box on the canvas underneath it. Other buttons fall through, so a right-click
+elsewhere closes this menu and opens the next one in one gesture. Opening a file
+or pressing Ctrl+Z closes it too: an open menu names entities of the model being
+replaced, and `del("l3")` offered for an `l3` that no longer exists is a lie.
+
+New file `src/menu.ts`, which splits so that the interesting half has no DOM in
+it: `menuFor(model, pick)` takes a model and a pick and returns labels and
+command strings, which is what lets "which items for which kind" and "what does
+Dimension type for an arc" be unit tests. `engine.ts` gained one callback and
+the right button's threshold; `main.ts` gained the wiring and the `run` hook;
+`index.html` gained the menu's styling, beside the hover tag's. Nothing else
+changed — no new journal op, no model change, no solver change, no new relation.
+
+*Known and deliberate:* the items are hard-coded per pick kind, so nothing
+defined at the command line can add one — the same gap "tools are not
+privileged" closed for tools, left open here and noted in `TODO.md`. No
+submenus, icons or arrow-key navigation. A right-click with a tool armed opens
+the ordinary menu rather than something tool-specific, which is one rule
+instead of two. A right press taken *during* a left drag opens nothing.
+
+---
+
 ## The 3-point arc tool, and the click it deliberately throws away
 
 Onshape's *3 point arc* as a pointer tool: `arm("arc3")` — or the bare word —

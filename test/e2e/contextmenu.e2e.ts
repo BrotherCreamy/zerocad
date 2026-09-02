@@ -60,7 +60,7 @@ async function commands(): Promise<Record<string, string>> {
 
 async function choose(label: string): Promise<void> {
   const handle = await app.page.evaluateHandle((want) => {
-    const rows = [...document.querySelectorAll("#ctxmenu .item")];
+    const rows = Array.from(document.querySelectorAll("#ctxmenu .item"));
     return rows.find((el) => el.firstElementChild?.textContent === want) ?? null;
   }, label);
   const el = handle.asElement();
