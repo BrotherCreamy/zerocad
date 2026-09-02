@@ -7,7 +7,7 @@ decisions.
 
 ---
 
-## There is no world frame any more (half 1: model and relations)
+## There is no world frame any more
 
 The owner's direction: **no built-in origin and no built-in world coordinate
 system at all**, because an origin tempts every drawing into being related to
@@ -67,10 +67,80 @@ Two tools needed bridging, since a fresh model now has no frame at all:
   infers against it. Inferring against the kernel's own axes would be the
   world frame coming back in through the side door.
 
-*Half 1 is the model and the relations. The command surface beyond a bare
-`frame()`/`setDefaultFrame()`, the drawn axes marker, frame picking and
-dragging, and the end-to-end story — tilt a frame by its x-ref and watch the
-whole "level" drawing turn with it — are half 2.*
+### And a frame is a thing you can see and take hold of
+
+A frame draws as a small axes marker at its origin: two short arrows along +x
+and +y, lettered, with the frame's name beside it the way a point's name sits
+beside the point. It is drawn in the **entity** pass, not with the constraint
+glyphs — a frame is a thing in the drawing that can be clicked, dragged and
+deleted, not a note about one. The arms are a fixed length in pixels, because
+how far the x-ref sits from the origin carries no meaning at all; drawing to
+it would put a number on screen that means nothing and changes with the zoom.
+
+**The default frame is drawn brighter.** Which frame is the default is the
+only ambient state in this app that changes what a typed word does, so it had
+better be visible without asking.
+
+![Two coordinate frames on an otherwise empty canvas, each a pair of short
+arrows lettered x and y out of a dot, with the frame's name below it. The left
+one, f1, is tilted about thirty degrees and drawn in a bright pale blue; the
+right one, f2, is square to the window and drawn dimmer and
+thinner](docs/images/39-default-frame-brighter.png)
+
+Frames then hover, pick, box-select, drag and `del` with no new interaction
+model, because every one of those was already written against "an entity is
+the points it is made of". The marker is what the cursor aims at; the frame's
+*origin point* still wins the pick where the two meet, which is the right
+answer — dragging the point turns the frame, dragging the marker moves it.
+
+`frame()` seeds its origin at the middle of the view like every other free
+constructor, which matters more here than for a circle: a frame is what `hor`
+and `ver` are measured against, and one that materialised off-screen would
+leave the whole vocabulary pointing at something nobody can see.
+
+**The line tool's aim, its guide and its constraint are now one answer.** Half
+1 inferred `hor(line, frame)` while computing the aim and drawing the dashed
+guide against the kernel's axes — invisible while nothing could tilt a frame
+by hand, and wrong the moment something could. All three read the default
+frame's own axes now, and with no default frame there is no aim and no guide
+either, rather than a preview promising a constraint that never lands.
+
+![The line tool mid-gesture beside two frames. A long dotted guide runs up and
+to the right at the tilted frame f1's own angle — plainly not parallel to the
+square frame f2's x arrow — with the dashed preview segment lying along
+it](docs/images/40-tilted-guide.png)
+
+### The poster: tilt the frame, and the drawing turns with it
+
+![A dimensioned rectangle, its edges level and plumb, with hor and ver marks,
+a 60 and a 40 dimension and a fix mark on its lower-left corner. To its right
+a small axes marker, f1, square to the window](docs/images/37-frame-levelled.png)
+
+![The same sketch after its frame's x-ref has been dragged upward: the axes
+marker now leans about thirty degrees, and the whole rectangle — dimensions,
+marks and all — has turned by exactly that much about the frame's
+origin](docs/images/38-frame-tilted.png)
+
+Nothing was typed between those two pictures. The x-ref was dragged thirty-odd
+pixels upward, and every edge that said "level with f1" turned to stay level
+with it, keeping its dimensions, pivoting about the corner that was `fix`ed in
+the frame's coordinates.
+
+**Which did not work at first, and the fix is the other half of
+read-never-pushed.** The first version moved the frame three thousandths of a
+degree against a gesture asking for twenty-six. Since a `hor(line, frame)`
+residual does not declare the frame's points among its variables, the Jacobian
+has no row saying "turn the frame and the line follows" — so the damped solve
+tried a step that turned the frame, found it *raised* the total residual
+(every levelled edge's error grows by its whole length times the angle) and
+rejected it, multiplying λ by eight each time until the frame sat still.
+
+So **a drag on a point some frame reads moves it outright**, and the same solve
+then carries the drawing to it: one Gauss-Seidel sweep, exactly the cost
+`frameBasis` said this trade costs. A datum is moved by the user; the solver
+never gets a vote on where it goes. The weak kinematic pull is still applied
+on top, so a frame's point that is *also* ordinary geometry keeps its
+relations' say and the gesture degrades to the ordinary drag.
 
 ## A dimension is now its number
 

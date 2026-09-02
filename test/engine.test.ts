@@ -12,7 +12,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { ensureKernelLoaded } from "../src/kernel/problem.ts";
 import { Model } from "../src/model.ts";
-import { fix, horizontal } from "../src/relations/basic.ts";
+import { dist, fix, horizontal } from "../src/relations/basic.ts";
 import { ToolEngine, type View } from "../src/tools/engine.ts";
 import "../src/tools/point.ts"; // registers the "point" tool, armed below
 import { axisFrame } from "./frames.ts";
@@ -136,14 +136,15 @@ test("a left-drag on empty canvas draws a box and selects what it catches", asyn
 
   // The drawing's two points are at world (0,0) and (10,0), which this view
   // puts at screen (0,0) and (10,0); the fixture frame's origin and x-ref sit
-  // at (0,0) and (1,0) beside them. Dragging right→left over the lot is a
-  // crossing box; either way it catches all four.
+  // at (0,0) and (1,0) beside them, and the frame's own axes marker reaches
+  // 30px out of that origin. Dragging right→left over the lot is a crossing
+  // box; either way it catches all four points and the frame.
   fire("pointerdown", { clientX: 40, clientY: 30, button: 0, buttons: 1 });
   fire("pointermove", { clientX: -20, clientY: -30, button: -1, buttons: 1 });
   assert.equal(engine.boxMode, "crossing", "right→left is a crossing box");
 
   fire("pointerup", { clientX: -20, clientY: -30, button: 0, buttons: 0 });
-  assert.equal(counts.picks, 4, "every point in the box went to the command line");
+  assert.equal(counts.picks, 5, "every point in the box, and the frame, went to the command line");
   assert.equal(engine.box, null, "and the box is gone");
   assert.deepEqual({ ...engine.view }, view, "a box is not a pan — the view did not move");
   assert.equal(counts.solves, 0, "selecting is not editing");
@@ -460,4 +461,50 @@ test("a press on a constraint glyph drags nothing, boxes nothing, and pans", asy
   assert.equal(engine.box, null, "and drew no box");
   assert.equal(counts.solves, 0, "nothing to settle");
   assert.ok(Math.abs(engine.view.ox - view.ox - 40) < 1e-6, `panned by ${engine.view.ox - view.ox}`);
+});
+
+// --- dragging a datum -------------------------------------------------------
+
+test("dragging a frame's x-ref turns it, and the levelled drawing follows", async () => {
+  const { model, fire } = await shapes();
+  horizontal(model, "l1"); // level with the fixture frame, which sits on the origin
+  model.solve();
+
+  // The fixture frame's x-ref is one unit out, at screen (1, 0) in this view.
+  // Ten pixels up is a 84° turn — big, so nothing here can pass by accident.
+  dragBy(fire, 1, 0, 0, -10);
+
+  const [o, x] = [model.coords("f_o"), model.coords("f_x")];
+  const tilt = Math.atan2(x[1] - o[1], x[0] - o[0]);
+  assert.ok(Math.abs(tilt - Math.atan2(10, 1)) < 1e-6,
+    `the frame turned to ${(tilt * 180) / Math.PI}°, not to ${(Math.atan2(10, 1) * 180) / Math.PI}°`);
+
+  // The whole of the point: a pull alone cannot move a datum. The frame's
+  // points are not variables of the `hor` residual that reads them, so the
+  // damped solve rejects every step that turns the frame — it raises a
+  // residual it cannot see how to lower — and the frame sits still. Measured
+  // at three thousandths of a degree before this was fixed.
+  const [a, b] = [model.coords("a"), model.coords("b")];
+  const d = [b[0] - a[0], b[1] - a[1]];
+  const u = [Math.cos(tilt), Math.sin(tilt)];
+  const len = Math.hypot(d[0], d[1]);
+  assert.ok(Math.abs((d[0] * u[1] - d[1] * u[0]) / len) < 1e-6,
+    `the edge is ${(Math.asin((d[0] * u[1] - d[1] * u[0]) / len) * 180) / Math.PI}° off the frame it is level with`);
+});
+
+test("a datum that is also ordinary geometry still obeys its constraints", async () => {
+  const { model, fire } = await shapes();
+  // The frame's x-ref held a unit away from an ordinary point of the drawing.
+  // The outright move puts it where the cursor asked; the solve that follows is
+  // where the relation gets its say, exactly as it does for any other point —
+  // so the gesture degrades to the kinematic drag rather than overriding it.
+  dist(model, "f_x", "a", 1);
+  model.solve();
+
+  dragBy(fire, 1, 0, 0, -40);
+
+  const [x, a] = [model.coords("f_x"), model.coords("a")];
+  const away = Math.hypot(x[0] - a[0], x[1] - a[1]);
+  assert.ok(Math.abs(away - 1) < 1e-6, `the dimension should still hold exactly; it reads ${away}`);
+  assert.ok(x[1] < 40, `and the point is not simply where the cursor asked: ${x}`);
 });

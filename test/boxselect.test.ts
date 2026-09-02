@@ -214,10 +214,10 @@ test("relations are never box-selectable, because a box only sees entities", asy
 
   const everything: ScreenRect = { x0: 0, y0: 0, x1: 800, y1: 600 };
   const names = selectInBox(m, view, everything, "crossing");
-  // The fixture frame's two points are caught like any other points; the frame
-  // itself is not, having nothing drawn for a rectangle to catch — and no
-  // r-names, because glyphs are UI rather than geometry.
-  assert.deepEqual(names, ["f_o", "f_x", "a", "b", "l"]);
+  // The fixture frame's two points are caught like any other points, and the
+  // frame itself by its axes marker — but no r-names, because glyphs are UI
+  // rather than geometry, and that is what this test is about.
+  assert.deepEqual(names, ["f_o", "f_x", "f", "a", "b", "l"]);
 });
 
 test("a circle selects by its rim in a real model too", async () => {
@@ -254,6 +254,50 @@ test("the sweep test is the same one picking uses, applied to arc endpoints", as
   const lowerLeft: ScreenRect = { x0: centre[0] - 70, y0: centre[1], x1: centre[0], y1: centre[1] + 70 };
   assert.equal(selectInBox(m, view, lowerLeft, "crossing").includes("arc1"), false,
     "the opposite quarter of the same circle has no arc in it");
+});
+
+// --- frames -----------------------------------------------------------------
+
+/** A frame at the world origin, aligned with the world's x. */
+function framedModel(): Model {
+  const m = new Model(2);
+  m.addPoint([0, 0], "o");
+  m.addPoint([20, 0], "x");
+  m.addFrame("o", "x", "fr");
+  return m;
+}
+
+test("a frame is boxed by its axes marker — the same extent the cursor picks", async () => {
+  await loadKernel();
+  const m = framedModel();
+  const view: View = { ox: 400, oy: 300, scale: 3 };
+  const [ox, oy] = worldToScreen(view, [0, 0]);
+
+  // The marker reaches an arm's length right and up out of the origin. A box
+  // round exactly that contains the frame — but not the x-ref point, which this
+  // view puts 60px out: a frame's arm length is drawn, not measured.
+  const round: ScreenRect = { x0: ox - 5, y0: oy - 45, x1: ox + 45, y1: oy + 5 };
+  assert.deepEqual(selectInBox(m, view, round, "window"), ["o", "fr"]);
+
+  // Half the marker: touched, not contained.
+  const half: ScreenRect = { x0: ox + 10, y0: oy - 5, x1: ox + 45, y1: oy + 5 };
+  assert.deepEqual(selectInBox(m, view, half, "window"), [], "a clipped marker is not fully inside");
+  assert.deepEqual(selectInBox(m, view, half, "crossing"), ["fr"], "but it is touched");
+
+  const elsewhere: ScreenRect = { x0: ox + 100, y0: oy + 100, x1: ox + 200, y1: oy + 200 };
+  assert.deepEqual(selectInBox(m, view, elsewhere, "crossing"), []);
+});
+
+test("a collapsed frame is inside nothing, not inside everything", async () => {
+  await loadKernel();
+  const m = framedModel();
+  m.setCoords("x", [0, 0]); // dragged onto its own origin: no axes left to draw
+  const view: View = { ox: 400, oy: 300, scale: 3 };
+  const everything: ScreenRect = { x0: 0, y0: 0, x1: 800, y1: 600 };
+  // The two points are still caught; the frame is not, because there is
+  // nothing drawn for the box to contain. An `every` over no arms would have
+  // said the opposite, which is the bug this pins.
+  assert.deepEqual(selectInBox(m, view, everything, "window"), ["o", "x"]);
 });
 
 test("screenAngle and the arc curve agree about where an arc starts", () => {

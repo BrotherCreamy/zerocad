@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import { ensureKernelLoaded } from "../src/kernel/problem.ts";
 import { Model } from "../src/model.ts";
 import { hitTest, describePick, PICK_POINT } from "../src/picking.ts";
+import { FRAME_ARM_PX } from "../src/framemarker.ts";
 import { worldToScreen, type View } from "../src/view.ts";
 import { coincident, fix, horizontal } from "../src/relations/basic.ts";
 import { del } from "../src/operations.ts";
@@ -153,4 +154,71 @@ test("the hover tag names the relations constraining what is under the cursor", 
 
   del(m, "r2");
   assert.equal(describePick(m, { name: "a", kind: "point", distance: 0 }), "a  1.5, 2  ·  r1");
+});
+
+// --- frames -----------------------------------------------------------------
+//
+// A frame is picked by its axes marker: two arms of a fixed pixel length out of
+// its origin (see src/framemarker.ts). Nothing else about a frame is on screen,
+// so nothing else about it can be aimed at.
+
+/** Origin at the world origin, +x along the world's, unless `deg` says otherwise. */
+function framedModel(deg = 0): Model {
+  const m = new Model(2);
+  const rad = (deg * Math.PI) / 180;
+  m.addPoint([0, 0], "o");
+  m.addPoint([20 * Math.cos(rad), 20 * Math.sin(rad)], "x");
+  m.addFrame("o", "x", "fr");
+  return m;
+}
+
+test("picks a frame along either arm of its axes marker", async () => {
+  await loadKernel();
+  const m = framedModel();
+  const [ox, oy] = at([0, 0]);
+
+  const alongX = hitTest(m, view, ox + FRAME_ARM_PX * 0.6, oy);
+  assert.equal(alongX?.name, "fr");
+  assert.equal(alongX?.kind, "frame");
+  // +y is up the canvas, screen y running the other way from world y.
+  assert.equal(hitTest(m, view, ox, oy - FRAME_ARM_PX * 0.6)?.name, "fr");
+  // Past the arm's end and still clear of the x-ref point itself, which this
+  // view puts 60px out — the arm is 30, and only the direction to it matters.
+  assert.equal(hitTest(m, view, ox + FRAME_ARM_PX + 10, oy), null, "past the arm's end there is nothing");
+  assert.equal(hitTest(m, view, ox - 20, oy + 20), null, "and nothing behind the origin either");
+});
+
+test("a frame's arms turn with it, so a tilted frame is picked where it is drawn", async () => {
+  await loadKernel();
+  const m = framedModel(45);
+  const [ox, oy] = at([0, 0]);
+  const d = (FRAME_ARM_PX * 0.6) / Math.SQRT2;
+
+  assert.equal(hitTest(m, view, ox + d, oy - d)?.name, "fr", "the +x arm now runs up and to the right");
+  assert.equal(hitTest(m, view, ox + FRAME_ARM_PX * 0.6, oy), null, "and no longer along the canvas's x");
+});
+
+test("the frame's own origin point still wins the pick — it is the higher tier", async () => {
+  await loadKernel();
+  const m = framedModel();
+  const [ox, oy] = at([0, 0]);
+  assert.equal(hitTest(m, view, ox + 2, oy)?.name, "o",
+    "a click on the corner of the marker grabs the point the marker is drawn from");
+});
+
+test("a frame collapsed onto its own origin draws nothing and picks as nothing", async () => {
+  await loadKernel();
+  const m = framedModel();
+  m.setCoords("x", [0, 0]);
+  const [ox, oy] = at([0, 0]);
+  assert.equal(hitTest(m, view, ox + FRAME_ARM_PX * 0.6, oy), null);
+});
+
+test("the hover tag says which frame is the default, because that is what a bare hor means", async () => {
+  await loadKernel();
+  const m = framedModel();
+  const pick = { name: "fr", kind: "frame" as const, distance: 0 };
+  assert.equal(describePick(m, pick), "fr  origin o, +x toward x");
+  m.setDefaultFrame("fr");
+  assert.match(describePick(m, pick), /\(default\)$/);
 });

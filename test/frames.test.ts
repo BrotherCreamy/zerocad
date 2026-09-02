@@ -14,6 +14,7 @@ import { Model } from "../src/model.ts";
 import { dist, fix, horizontal, vertical } from "../src/relations/basic.ts";
 import { del } from "../src/operations.ts";
 import { FORMAT, VERSION, open, save } from "../src/persist.ts";
+import { neocadScope } from "../src/replenv.ts";
 
 async function loadKernel() {
   const bytes = await readFile(new URL("../src/kernel/wasm-gen/neocad_kernel_bg.wasm", import.meta.url));
@@ -293,6 +294,80 @@ test("a pre-frames file is refused by name and step, not silently skipped", () =
     values: { points: {}, radii: {} },
   });
   assert.throws(() => open(oldHor), /step 2, horizontal\("l"\): no default frame/);
+});
+
+// --- the command surface ----------------------------------------------------
+//
+// `frame()` is a free constructor like `circ()` and seeds like one: the origin
+// in the middle of the view, the x-ref a span to its right. It matters more
+// here than for a circle — a frame off the edge of the window would leave the
+// whole of `hor`/`ver`/`fix` pointing at something nobody can see.
+
+/** The command surface over `model`, with a viewport whose centre is (225, -175). */
+function scopeWithView(model: Model): Record<string, unknown> {
+  return neocadScope({
+    model,
+    view: { ox: 100, oy: 50, scale: 2 },
+    viewSize: () => [1100, 800],
+  });
+}
+
+const callScope = (s: Record<string, unknown>, name: string, ...args: unknown[]) =>
+  (s[name] as (...a: unknown[]) => string)(...args);
+
+test("frame() seeds its origin at the middle of the view, x-ref to its right", () => {
+  const m = new Model(2);
+  const f = m.frame(callScope(scopeWithView(m), "frame"));
+  assert.deepEqual(m.coords(f.origin), [225, -175]);
+  const x = m.coords(f.xref);
+  assert.equal(x[1], -175, "and level with it, so the frame starts square to the window");
+  assert.ok(x[0] > 225, `the x-ref is to the right of the origin, not on it: ${x}`);
+});
+
+test("frame() headless still seeds itself, so a test's journal stays the one call", () => {
+  const m = new Model(2);
+  const s = neocadScope({ model: m }); // no viewport to ask
+  const f = m.frame(callScope(s, "frame"));
+  assert.deepEqual(m.journal.map((e) => e.op), ["addFrame"]);
+  assert.deepEqual(m.coords(f.origin), [0, 0], "the model's own plain default stands");
+});
+
+test("frame(): an x-ref given without an origin seeds beside it, not at the window", () => {
+  const m = new Model(2);
+  const s = scopeWithView(m);
+  m.addPoint([0, 0], "here");
+  const f = m.frame(callScope(s, "frame", null, "here"));
+  assert.equal(f.xref, "here");
+  assert.ok(Math.hypot(...m.coords(f.origin)) < 50,
+    `the origin belongs beside the point it was given, not in the middle of the window: ${m.coords(f.origin)}`);
+});
+
+test("setDefaultFrame and defaultFrame() are the pointer, readable and clearable", () => {
+  const m = new Model(2);
+  const s = scopeWithView(m);
+  assert.equal(callScope(s, "defaultFrame"), null);
+  const f = callScope(s, "frame");
+  assert.equal(callScope(s, "setDefaultFrame", f), f);
+  assert.equal(callScope(s, "defaultFrame"), f);
+  assert.equal(callScope(s, "setDefaultFrame", null), "no default frame");
+  assert.equal(callScope(s, "defaultFrame"), null);
+});
+
+test("ls() names a frame by its pieces, and says which one is the default", () => {
+  const m = new Model(2);
+  const s = scopeWithView(m);
+  const f = callScope(s, "frame");
+  const line = () => (callScope(s, "ls") as unknown as string[]).find((l) => l.startsWith(f))!;
+  assert.match(line(), /frame  origin p\d+, \+x toward p\d+$/);
+  callScope(s, "setDefaultFrame", f);
+  assert.match(line(), /\(default\)$/);
+});
+
+test("help() covers the frame vocabulary — it is the one thing with no world to fall back on", () => {
+  const help = callScope(neocadScope({ model: new Model(2) }), "help");
+  for (const word of ["frame(", "setDefaultFrame", "defaultFrame()", "no world frame"]) {
+    assert.ok(help.includes(word), `help() should mention ${word}`);
+  }
 });
 
 test("the format version says the vocabulary changed, and still reads the old envelope", () => {
