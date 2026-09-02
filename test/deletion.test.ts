@@ -12,8 +12,8 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { ensureKernelLoaded } from "../src/kernel/problem.ts";
 import { Model } from "../src/model.ts";
-import { coincident, dist, fix, horizontal, vertical } from "../src/relations/basic.ts";
-import { onCircle, radius } from "../src/relations/geometry.ts";
+import { coincident, dist, fix } from "../src/relations/basic.ts";
+import { onCircle, parallel, radius } from "../src/relations/geometry.ts";
 import { del, fillet } from "../src/operations.ts";
 import { open, save } from "../src/persist.ts";
 import { axisFrame } from "./frames.ts";
@@ -50,10 +50,10 @@ function rectangle(): Model {
   m.addLine("p2", "p3", "l2");
   m.addLine("p3", "p4", "l3");
   m.addLine("p4", "p1", "l4");
-  horizontal(m, "l1");   // r1
-  horizontal(m, "l3");   // r2
-  vertical(m, "l2");     // r3
-  vertical(m, "l4");     // r4
+  parallel(m, "l1", "f.x");   // r1
+  parallel(m, "l3", "f.x");   // r2
+  parallel(m, "l2", "f.y");   // r3
+  parallel(m, "l4", "f.y");   // r4
   fix(m, "p1", [0, 0]);  // r5
   return m;
 }

@@ -7,6 +7,87 @@ decisions.
 
 ---
 
+## `hor` and `ver` are retired; a level edge is parallel to an axis you can name
+
+![A rectangle levelled against a tilted frame, each edge wearing one // mark](docs/images/45-par-to-a-frame-axis.png)
+
+**The words implied a world frame, so the words are gone.** The
+coordinate-frames package took the world frame out of the model and left it
+standing in the vocabulary: `hor` still says the universe hands you a
+privileged pair of directions. What is meant is "parallel to an axis I can
+name", so that is now the only way to say it. `par("l1", "f1.y")` is vertical;
+`par("l1", "f1.x")` is level; `perp` and `ang` take an axis the same way.
+`horizontal` and `vertical` are **removed, not aliased** — reaching for one
+gets `no such name: hor`, which the REPL already said for every other typo.
+
+**`xaxis(frame?)` and `yaxis(frame?)`** hand back the reference string,
+resolving the default frame *at call time* through the same `resolveFrame`
+every frame-relative call uses — so a drawing with no default gets the one
+standing message about what to do, and the answer is baked into the string the
+relation journals. A saved entry cannot change meaning because the default
+moved afterwards. The owner's sketch was `parallel(l1, *defaultframe.Y)`;
+`par("l1", yaxis())` is as close as that gets without the evaluator learning a
+new kind of expression.
+
+**Datum semantics carry over, and now say so in the arithmetic.** An axis
+reference contributes a direction and no variables, so the solver can never
+satisfy it by turning the frame — the direction is built out of
+`Dual.constant`, whose gradient is empty, which puts the frame outside the
+Jacobian as a matter of construction rather than of bookkeeping. Two ordinary
+lines in `par` still push each other. The axis arrives normalised from
+`frameBasis`, which keeps the collapse exploit shut and puts the residual on
+exactly the `|d|·sin` scale `hor` had: `par(l, "f.x")` is the same equation,
+wedge for wedge, and the frames package's closed-form tilted-frame tests hold
+to the same tolerances in the new spelling.
+
+**Which relations take one is a rule rather than a list.** An axis is a
+direction — no length, no position — so exactly the relations that read an
+argument for its direction alone may take one: `par`, `perp`, `ang`. `eq` has
+no length to be equal to; `on`, `sym` and `tan` each need a *located* line, and
+reading `"f1.x"` as a line through the frame's origin would give one syntax two
+meanings (`fix(p, [t, 0])` already says "somewhere along the frame's x").
+`par`/`perp` keep the point-pair form `hor` had — `par("p1","p3","f.x")` —
+settled on the subject's kind exactly as `hor` settled it. `fix` is untouched:
+it was frame-relative already and names no privileged direction.
+
+**A dot is now refused in every entity name**, at `claimName`, so a reference
+can never collide with one. `relationsNaming` and `del`'s cascade read `f1.x`
+as naming `f1` — without that a frame could be deleted out from under a
+relation still reading it, and the symptom would be a residual throwing inside
+the next solve, as far from the mistake as a failure gets.
+
+**Glyphs.** `—` and `|` went with their relations. A `par` whose other side is
+an axis reference gets **one** mark, on the line: there is no second edge to
+put one beside, and inventing a place for it would be a mark on geometry the
+relation does not constrain. An `ang` against an axis has no corner to be
+written at, so it goes beside the edge. Hovering either still lights up the
+frame, because the highlight resolves `f1.x` back to `f1`.
+
+**The parallel mark is `//`, not `∥`.** Found by looking at the picture rather
+than the numbers: U+2225 is not in the browser's monospace and drew as a tofu
+slab. Every other mark advances 7.2246px in that font; `∥` advances 6, which is
+the substitution showing. It was invisible while `par` was a rare relation and
+became the commonest mark in the drawing the moment `hor` and `ver` retired
+into it. `//` is also what a draughtsman writes. An end-to-end test now
+measures every symbol in the table against the monospace cell, so the next one
+cannot rot quietly.
+
+**Format version 3, and old files translate rather than being refused.** A
+version-2 entry `horizontal(l, f)` replays as `parallel(l, "f.x")` and
+`vertical(l, f)` as `parallel(l, "f.y")` — parallel to +y rather than
+perpendicular to +x, which is the same equation (the wedge with +y *is* the dot
+with +x) but reads afterwards as what the drawing actually claims. Point forms
+carry their extra name along. **`save(open(x))` differs from `x` across this
+boundary, deliberately:** the translated journal is what gets installed, so a
+v2 file re-saves in the new vocabulary. A file that opened as `par` and saved
+back as `hor` would keep the retired words alive in the format forever. It
+round-trips byte for byte from there on. Version-1 files — the pre-frames ones,
+whose `hor`/`ver`/`fix` name no frame at all — are still refused by step, with
+the same message, now raised by the translation that has to resolve the frame
+they lack.
+
+---
+
 ## The right-click menu, which only ever types
 
 ![The context menu open on an edge](docs/images/43-context-menu-on-an-edge.png)

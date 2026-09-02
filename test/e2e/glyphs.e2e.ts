@@ -16,12 +16,13 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { axisFrame, openApp, type AppContext } from "./harness.ts";
+import { GLYPH_SYMBOL } from "../../src/glyphs.ts";
 
 let app: AppContext;
 before(async () => {
   app = await openApp();
-  // `hor` needs a frame to be level with. Only its direction matters here, so
-  // it is parked well clear of the drawing, where its two points cannot be
+  // An axis reference needs a frame to name. Only its direction matters here,
+  // so it is parked well clear of the drawing, where its two points cannot be
   // mistaken for one of the rectangle's corners by a pick.
   await axisFrame(app, [0, 400]);
 });
@@ -179,10 +180,12 @@ test("hovering an edge's glyph lights up that edge", async () => {
   // The rectangle tool says "rectangle" intrinsically — par, par, perp — and
   // no longer claims any edge is level, so being level is something this test
   // now asks for out loud, against the frame the fixture made.
-  await app.type('hor("l1")');
-  const hor = (await glyphs()).find((g) => g.op === "horizontal");
-  assert.ok(hor, "the edge that was just told to be level is constrained");
-  const line = hor.highlights[0];
+  await app.type('par("l1", xaxis())');
+  // The rectangle tool already laid down `par(l1, l3)`, so pick out the one
+  // whose other side is the *frame* — that is the one just asked for.
+  const level = (await glyphs()).find((g) => g.op === "parallel" && g.highlights.includes("f"));
+  assert.ok(level, "the edge that was just told to be level is constrained");
+  const line = level.highlights[0];
 
   const [a, b] = await app.page.evaluate((n) => {
     const { model, engine } = (window as never as Probe).__neocad;
@@ -193,8 +196,9 @@ test("hovering an edge's glyph lights up that edge", async () => {
   const on = [a[0] + (b[0] - a[0]) * 0.25, a[1] + (b[1] - a[1]) * 0.25];
 
   assert.equal(await amberIn(on[0] - 3, on[1] - 3, 7, 7), false, "cold before the hover");
-  await hoverAt(...hor.screen);
-  assert.equal(await hoverTag(), `${hor.relation}  hor ${line} f`);
+  await hoverAt(...level.screen);
+  // The tag reads back as a line you could retype, axis reference and all.
+  assert.equal(await hoverTag(), `${level.relation}  par ${line} f.x`);
   assert.equal(await amberIn(on[0] - 3, on[1] - 3, 7, 7), true,
     "hovering the mark should light the edge it is about, along its whole length");
 });
@@ -264,6 +268,27 @@ test("glyphs(false) empties the layer and hands the click back to the geometry",
   assert.equal((await app.repl("glyphs(true)")).value, true);
   assert.equal((await glyphs()).length > 0, true, "and back on again");
   await app.type(`del("${at!.name}")`); // tidy the probe point away
+});
+
+test("every mark in the symbol table is actually in the browser's monospace", async () => {
+  // The failure this pins was on screen for a whole package before anyone
+  // looked closely: `∥` is not in the font, so it drew as a solid tofu slab —
+  // legible as *something*, which is why it survived, and legible as nothing in
+  // particular, which is why it should not have. It went unnoticed while
+  // `parallel` was a rare mark; it became the commonest one the moment `hor`
+  // and `ver` were retired into it.
+  //
+  // A missing character shows up as a *different advance*: the font is
+  // monospace, so every glyph it actually has is one cell wide, and a
+  // substituted one is not. That is a test a picture cannot be relied on for.
+  const bad = await app.page.evaluate((symbols: string[]) => {
+    const cv = document.getElementById("cv") as HTMLCanvasElement;
+    const g = cv.getContext("2d")!;
+    g.font = "12px ui-monospace, Menlo, monospace";
+    const cell = g.measureText("M").width;
+    return symbols.filter((s) => Math.abs(g.measureText(s).width - [...s].length * cell) > 0.1);
+  }, Object.values(GLYPH_SYMBOL));
+  assert.deepEqual(bad, [], `these marks are not in the font and draw as tofu: ${bad.join(" ")}`);
 });
 
 test("glyphs() is on help()", async () => {

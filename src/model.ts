@@ -40,8 +40,8 @@ export interface CircleEntity {
 // are ordinary points, so they can be constrained (coincident with a line's
 // end, say) like any other. What makes them *arc* endpoints — lying on the
 // arc's own circle — is not automatic: it's the `arcEndpoints` relation, for
-// the same reason a Line doesn't imply hor/ver. Tools that create arcs are
-// expected to apply it (see relations/geometry.ts).
+// the same reason a Line implies no relation of its own. Tools that create
+// arcs are expected to apply it (see relations/geometry.ts).
 export interface ArcEntity {
   kind: "arc";
   name: string;
@@ -56,19 +56,19 @@ export interface ArcEntity {
  *
  * There is no built-in world frame in this model, and that absence is the
  * point — an origin nobody made tempts every drawing into being related to
- * it. A frame exists only because a user made one, and `hor`, `ver` and
- * `fix` mean nothing until one does.
+ * it. A frame exists only because a user made one, and `fix` — and every
+ * reference to an axis — means nothing until one does.
  *
  * Like a line, a frame is purely *referential*: it owns no variables, and its
  * two points are ordinary points that can be dragged, dimensioned and
  * constrained like any other. Only the x-ref's *direction* from the origin
- * counts; how far away it sits is irrelevant, which is why `fix` normalises
- * it and `hor`/`ver` — which only ask about direction — do not.
+ * counts; how far away it sits is irrelevant, which is why `frameBasis` hands
+ * both axes out normalised.
  *
  * +y is +x turned a quarter turn counter-clockwise. That is fully determined
  * in 2D and not in any higher dimension (an origin and one direction leave a
- * whole rotation free about that axis), so frames are 2D-only, the same call
- * `horizontal`/`vertical` already make.
+ * whole rotation free about that axis), so frames are 2D-only — and so, in
+ * turn, are the axis references that name their directions.
  */
 export interface FrameEntity {
   kind: "frame";
@@ -78,6 +78,66 @@ export interface FrameEntity {
 }
 
 export type Entity = PointEntity | LineEntity | CircleEntity | ArcEntity | FrameEntity;
+
+/**
+ * A **frame-axis reference**: the string `"f1.x"` or `"f1.y"`, naming the
+ * direction of that frame's axis rather than any entity.
+ *
+ * This is what replaced `hor`/`ver`. Those words implied a privileged pair of
+ * directions — a world frame in vocabulary form — where what is actually meant
+ * is "parallel to an axis I can name", so `par("l1", "f1.y")` says "vertical"
+ * and there is no second spelling of it.
+ *
+ * The *syntax* lives here, in the layer that owns the namespace, for two
+ * reasons that both come back to names. `claimName` refuses a dot precisely so
+ * that no entity can ever be called `f1.x`, and `relationsNaming` has to know
+ * that an argument reading `f1.x` is a reference *to* `f1` or deleting a frame
+ * would leave relations reading one that is gone. Turning a reference into an
+ * actual direction is a different job and lives one layer up, beside the rest
+ * of the lazy plumbing, in `relations/refs.ts`.
+ */
+export type AxisName = "x" | "y";
+
+/**
+ * The frame and axis a reference names, or null for an ordinary name.
+ *
+ * Throws on a dot followed by anything else, rather than falling back to
+ * "ordinary name": a name with a dot in it cannot exist (see `claimName`), so
+ * `par("l1", "f1.z")` is a typo with no other possible reading, and answering
+ * `"f1.z" is not a line` would send the reader looking for the wrong mistake.
+ */
+export function parseAxisRef(ref: string): { frame: string; axis: AxisName } | null {
+  const dot = ref.indexOf(".");
+  if (dot < 0) return null;
+  const frame = ref.slice(0, dot);
+  const axis = ref.slice(dot + 1);
+  if (axis !== "x" && axis !== "y") {
+    throw new Error(`"${ref}" is not a frame axis — say "${frame}.x" or "${frame}.y"`);
+  }
+  return { frame, axis };
+}
+
+/**
+ * Which entity a recorded argument is *about*: itself, or — for an axis
+ * reference — the frame behind it. Null for an argument that is not a name at
+ * all (a distance, a coordinate pair).
+ *
+ * Deliberately total and non-throwing, unlike `parseAxisRef`. This runs over
+ * every argument of every relation whenever something is deleted or a glyph is
+ * hovered, including a hand-edited file's nonsense, and neither of those is a
+ * place to start validating syntax. It also does not check that the name
+ * exists: the question here is what a string *refers to*, not what is there.
+ */
+export function referentOf(arg: unknown): string | null {
+  if (typeof arg !== "string") return null;
+  const dot = arg.indexOf(".");
+  return dot < 0 ? arg : arg.slice(0, dot);
+}
+
+/** Whether one recorded argument refers to the entity called `name`. */
+export function argRefersTo(arg: unknown, name: string): boolean {
+  return referentOf(arg) === name;
+}
 
 /** Circles and arcs share a center + radius; relations that only need those two treat them alike. */
 export interface CircularRef {
@@ -120,9 +180,9 @@ export class Model {
   /** Named relations, in the order they were made. See `relation()`. */
   relations = new Map<string, RelationEntry>();
   /**
-   * Which frame `hor`/`ver`/`fix` mean when they are not told which. Null in
-   * a new model, and stays null until someone makes a frame and says so —
-   * see `setDefaultFrame`.
+   * Which frame `fix` and the `xaxis()`/`yaxis()` helpers mean when they are
+   * not told which. Null in a new model, and stays null until someone makes a
+   * frame and says so — see `setDefaultFrame`.
    */
   defaultFrame: string | null = null;
   private counters = new Map<string, number>();
@@ -198,6 +258,14 @@ export class Model {
 
   private claimName(prefix: string, name?: string): string {
     if (name === undefined) return this.autoName(prefix);
+    // A dot is reserved for the frame-axis reference syntax (see
+    // `parseAxisRef`). Refused here rather than merely discouraged, because
+    // this is the only place that can guarantee it: a point called `f1.x`
+    // would make `par("l1", "f1.x")` mean two things, and which one it meant
+    // would depend on the order the drawing happened to be built in.
+    if (name.includes(".")) {
+      throw new Error(`"${name}" cannot contain a dot — "f1.x" names a frame's axis`);
+    }
     if (this.has(name)) throw new Error(`"${name}" already exists`);
     // An explicit name that looks like an auto-generated one moves the counter
     // past it, so a later auto-name cannot collide. This matters most when a
@@ -282,9 +350,19 @@ export class Model {
     return r;
   }
 
-  /** Every relation whose call named `name`, in creation order. */
+  /**
+   * Every relation whose call named `name`, in creation order — counting a
+   * frame named through one of its axes (`par("l1", "f1.x")` names `f1`).
+   *
+   * That last clause is load-bearing rather than a nicety. This is what
+   * `deleteEntity` consults before letting an entity go and what `del`'s
+   * cascade reads, so a frame whose axis reference did not count as naming it
+   * could be deleted out from under a relation still reading it — a residual
+   * that then throws inside the next solve, which is the failure mode furthest
+   * from where the mistake was made.
+   */
   relationsNaming(name: string): RelationEntry[] {
-    return [...this.relations.values()].filter((r) => r.args.some((a) => a === name));
+    return [...this.relations.values()].filter((r) => r.args.some((a) => argRefersTo(a, name)));
   }
 
   /**
@@ -425,7 +503,7 @@ export class Model {
   }
 
   /**
-   * Which frame `hor`/`ver`/`fix` mean when they are not told. A model-level
+   * Which frame `fix` and `xaxis()`/`yaxis()` mean when not told. A model-level
    * pointer and nothing more: a new model has **no** default, because a frame
    * exists only because a user made one.
    *

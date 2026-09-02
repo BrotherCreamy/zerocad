@@ -38,7 +38,7 @@
 //     much larger piece of work with its own failure modes (labels that jump
 //     about as the drawing solves being the obvious one).
 
-import type { Model, RelationEntry } from "./model.ts";
+import { referentOf, type Model, type RelationEntry } from "./model.ts";
 import { worldToScreen, type View } from "./view.ts";
 
 /** How far a glyph sits from its anchor, in screen pixels. */
@@ -117,9 +117,19 @@ export const GLYPH_SYMBOL: Record<string, string> = {
   onCircle: "●",
   arcEndpoints: "●",
   midpoint: "∴",
-  horizontal: "—",
-  vertical: "|",
-  parallel: "∥",
+  // `—` and `|` went with `horizontal` and `vertical`. A level edge wears the
+  // parallel mark now, because that is what it now is: parallel to a frame's
+  // axis, with the frame's own marker on the canvas saying which direction.
+  //
+  // `//` rather than `∥` (U+2225), which is not in the browser's monospace and
+  // draws as a tofu slab — measured: every other mark advances 7.2246px in
+  // that font and `∥` advances 6, which is the substitution showing. It went
+  // unnoticed while `par` was rare; it is the commonest mark in the drawing
+  // now. `//` is also what a draughtsman writes, so this is the better mark
+  // even where the font has the other one. `test/e2e/glyphs.e2e.ts` measures
+  // every symbol in this table against the monospace cell, so the next one
+  // cannot rot quietly.
+  parallel: "//",
   perpendicular: "⊥",
   angle: "∠",
   equalLength: "=",
@@ -327,6 +337,23 @@ function atEntity(model: Model, name: string): Anchor {
 const str = (v: unknown): string => v as string;
 
 /**
+ * Whether an argument names something on the canvas, as opposed to a frame
+ * axis (`"f1.x"`) or a number.
+ *
+ * An exact lookup is the whole test and no syntax knowledge is needed for it:
+ * a name may not contain a dot (see `Model.claimName`), so an axis reference
+ * can never be an entity's name.
+ */
+function isGeometry(model: Model, arg: unknown): boolean {
+  return typeof arg === "string" && model.entities.has(arg);
+}
+
+/** That entity's own anchor, or nothing at all for a side with no geometry. */
+function anchorIfGeometry(model: Model, arg: unknown): Anchor[] {
+  return isGeometry(model, arg) ? [atEntity(model, str(arg))] : [];
+}
+
+/**
  * Where a relation's glyphs go — one anchor per glyph, so the relations that
  * are a claim about *two* things (parallel, equal length, symmetric) get a mark
  * on each of them. That is the whole reason `⊥` is worth drawing twice: one
@@ -345,25 +372,37 @@ function anchorsFor(model: Model, r: RelationEntry): Anchor[] {
       return [atPoint(model, str(args[0]))];
     case "dist":
       return [atSegmentMid(model, str(args[0]), str(args[1]))];
-    case "horizontal":
-    case "vertical":
-      // Both forms exist — one line name, or two point names — and the glyph
-      // goes beside the edge either way. Which form this is comes off the
-      // subject's *kind* rather than off the argument count: every entry now
-      // also carries the frame it is level with, so both forms have more than
-      // one argument.
-      return [model.entities.get(str(args[0]))?.kind === "line"
-        ? atLineMid(model, str(args[0]))
-        : atSegmentMid(model, str(args[0]), str(args[1]))];
     case "parallel":
-    case "perpendicular":
+    case "perpendicular": {
+      // A mark on each side that is real geometry. Three arguments is the
+      // point-pair form (`par("p1","p3","f.x")`), whose first side is a
+      // segment rather than an edge.
+      //
+      // **A frame axis gets no mark of its own**, which is what these two
+      // needed over `equalLength` below. There is no second line to put one
+      // beside, and inventing a place for it — the frame's origin, say — would
+      // be a mark sitting on geometry the relation does not constrain. The
+      // frame's own marker is already on the canvas saying where the direction
+      // comes from, and hovering the mark on the line highlights it.
+      const pointForm = args.length === 3;
+      const first = pointForm
+        ? [atSegmentMid(model, str(args[0]), str(args[1]))]
+        : anchorIfGeometry(model, args[0]);
+      return [...first, ...anchorIfGeometry(model, args[pointForm ? 2 : 1])];
+    }
     case "equalLength":
       return [atLineMid(model, str(args[0])), atLineMid(model, str(args[1]))];
     // One label, not two. `∥` is drawn twice because a single mark would leave
     // "parallel to *what*" unanswered; `45°` written twice is just the same
     // number in two places, and Onshape writes it once, at the corner.
-    case "angle":
-      return [atVertex(model, str(args[0]), str(args[1]))];
+    case "angle": {
+      if (isGeometry(model, args[0]) && isGeometry(model, args[1])) {
+        return [atVertex(model, str(args[0]), str(args[1]))];
+      }
+      // Against a frame axis there is no corner to write it at: the angle is
+      // to a *direction*, and the two never meet. It goes beside the edge.
+      return anchorIfGeometry(model, isGeometry(model, args[0]) ? args[0] : args[1]);
+    }
     case "equalRadius":
       return [atRim(model, str(args[0]), Math.PI / 4), atRim(model, str(args[1]), Math.PI / 4)];
     case "concentric":
@@ -389,11 +428,21 @@ function anchorsFor(model: Model, r: RelationEntry): Anchor[] {
  * The entities a relation constrains — everything it named that the model still
  * holds. This is what a hovered glyph lights up, and it is the payoff of the
  * whole feature: hover `⊥` and see *which two* lines it means.
+ *
+ * An axis reference lights up its **frame**, which is what `hor(l1, f1)` did
+ * when the frame was an ordinary argument. Hovering the `∥` on a levelled edge
+ * should still answer "level with *what*", and the answer is a marker on the
+ * canvas that can be highlighted.
  */
 export function constrainedBy(model: Model, relationName: string): string[] {
   const r = model.relations.get(relationName);
   if (!r) return [];
-  return r.args.filter((a): a is string => typeof a === "string" && model.entities.has(a));
+  const out: string[] = [];
+  for (const a of r.args) {
+    const name = referentOf(a);
+    if (name !== null && model.entities.has(name) && !out.includes(name)) out.push(name);
+  }
+  return out;
 }
 
 /**

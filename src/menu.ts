@@ -114,12 +114,12 @@ export function menuFor(model: Model, pick: Pick | null): Menu {
  *
  * **Frame is `setDefaultFrame(frame())` when the drawing has no frame at all,
  * and `frame()` once it has one.** There is no world frame, so a drawing's first
- * frame is nearly always meant to be the default — `hor`, `ver` and `fix` do
- * nothing at all until one is set, and a first frame that was not the default
- * would leave the user with a marker on screen and the same error message they
- * had before. A *second* frame is a different intent: something specific is
- * being measured against it, and silently repointing the default would move
- * every bare `hor` in the drawing. Neither case ever creates a frame the user
+ * frame is nearly always meant to be the default — `fix`, `xaxis()` and
+ * `yaxis()` do nothing at all until one is set, and a first frame that was not
+ * the default would leave the user with a marker on screen and the same error
+ * message they had before. A *second* frame is a different intent: something
+ * specific is being measured against it, and silently repointing the default
+ * would move every bare `xaxis()` in the drawing. Neither case ever creates a frame the user
  * did not ask for, which is the rule the no-world-frame decision turns on.
  */
 function emptyCanvasMenu(model: Model): Menu {
@@ -181,7 +181,7 @@ export function dimensionCommand(model: Model, pick: Pick): string | null {
  * coordinates* and refuses to run without one. A menu item that created a frame
  * to make itself work would be the exact thing the no-world-frame decision
  * exists to prevent: a datum nobody chose, quietly becoming what every later
- * `hor` is measured against. So the item is shown and disabled, carrying the
+ * `par(l, xaxis())` is measured against. So the item is shown and disabled, carrying the
  * model's own standing message — read out of `resolveFrame` rather than copied,
  * so there is one wording of it in the codebase and the menu cannot drift from
  * what the command line says.

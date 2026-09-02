@@ -1,7 +1,10 @@
 # Plan: retire hor/ver — a frame's axes are things par/perp can take
 
-**Status: queued — starts after the context-menu PR merges** (overlapping
-files; serial keeps review clean).
+**Status: built.** See the CHANGELOG entry, `STATUS.md`, and the register
+entry in `TODO.md` for what was decided while building it — in particular the
+axis-reference audit (which came out as a rule rather than a list), the
+point-pair form kept on `par`/`perp`, the deletion-cascade fix the syntax
+needed, and the `∥` tofu box found in a screenshot.
 
 Owner's direction, near-verbatim: *"horizontal/vertical implies a world
 frame… should just be parallel and perpendicular. If they want a 'vertical'

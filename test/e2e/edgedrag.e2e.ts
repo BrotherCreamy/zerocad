@@ -63,7 +63,7 @@ before(async () => {
   // point, since an edge drag is a translation the constraints then argue with.
   await app.type("pt(-40,-30); pt(40,-30); pt(40,30); pt(-40,30)");
   await app.type('ln("p1","p2"); ln("p2","p3"); ln("p3","p4"); ln("p4","p1")');
-  await app.type('hor("l1"); ver("l2"); hor("l3"); ver("l4"); dist("p1","p2",80)');
+  await app.type('par("l1", xaxis()); par("l2", yaxis()); par("l3", xaxis()); par("l4", yaxis()); dist("p1","p2",80)');
   await app.type("solve()");
 });
 
@@ -95,7 +95,7 @@ test("dragging an edge carries the constrained rectangle with it", async () => {
     `the measured edge is ${Math.hypot(p2[0] - p1[0], p2[1] - p1[1])} long, not 80`);
 
   // 45px right and 30px up at scale 3 is 15 and 10 world units. The grabbed
-  // edge went there; the rest of the rectangle came along, because ver() ties
+  // edge went there; the rest of the rectangle came along, because the +y par ties
   // the uprights to it.
   const scale = m.view.scale;
   for (const name of ["p1", "p2"]) {

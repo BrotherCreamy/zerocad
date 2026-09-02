@@ -14,7 +14,7 @@ async function loadKernel() {
 }
 
 /**
- * A REPL over a fresh model. `framed` adds the fixture frame that hor/ver/fix
+ * A REPL over a fresh model. `framed` adds the fixture frame that `fix` and
  * are relative to now — as a model call rather than a typed `frame()`, so the
  * auto-names the entries below assert against (`p1`, `l1`) still come out
  * where they always did. `frame()` as a typed command has its own test.
@@ -173,22 +173,33 @@ test("solve() still works with no host attached", async () => {
   assert.equal(((await run(repl, "solve()")).value as { solved: boolean }).solved, true);
 });
 
-test("frames are reachable from the command line, and hor needs one", async () => {
+test("frames are reachable from the command line, and an axis reference needs one", async () => {
   await loadKernel();
   // Deliberately unframed: a new model has no coordinate frame at all, and
   // this checks the command surface says so rather than quietly picking one.
   const { repl, model } = makeRepl(new Model(2), false);
   await run(repl, "l = ln()");
-  const bare = await repl.eval("hor(l)");
+  const bare = await repl.eval("par(l, xaxis())");
   assert.equal(bare.ok, false);
   assert.match(bare.error!.message, /no default frame — frame\(\) then setDefaultFrame\(\)/);
   assert.equal((await run(repl, "defaultFrame()")).value, null);
 
+  // `hor` and `ver` are gone rather than deprecated, so the standing
+  // unknown-name message is what a hand reaching for them now gets.
+  const gone = await repl.eval("hor(l)");
+  assert.equal(gone.ok, false);
+  assert.match(gone.error!.message, /no such name: hor/);
+  assert.match((await repl.eval("ver(l)")).error!.message, /no such name: ver/);
+
   assert.equal((await run(repl, "frame()")).value, "f1", "the constructor hands back its name");
   assert.equal((await run(repl, 'setDefaultFrame("f1")')).value, "f1");
   assert.equal((await run(repl, "defaultFrame()")).value, "f1");
-  await run(repl, "hor(l)");
-  assert.deepEqual(model.relations.get("r1")!.args, ["l1", "f1"], "and the entry names it");
+  // The helpers resolve the default *at call time* and bake the answer into
+  // the reference, so the entry names a frame rather than a pointer.
+  assert.equal((await run(repl, "yaxis()")).value, "f1.y");
+  assert.equal((await run(repl, 'xaxis("f1")')).value, "f1.x");
+  await run(repl, "par(l, xaxis())");
+  assert.deepEqual(model.relations.get("r1")!.args, ["l1", "f1.x"], "and the entry names it");
   assert.match(String((await run(repl, "help()")).value), /setDefaultFrame\(name\)/);
 });
 
@@ -221,7 +232,7 @@ test("a tool authored at the REPL registers and drives like a built-in", async (
         this.start = null;
         const a = pt(x0, y0), b = pt(x1, y0), c = pt(x1, y1), d = pt(x0, y1);
         ln(a, b); ln(b, c); ln(c, d); ln(d, a);
-        hor(a, b); hor(d, c); ver(a, d); ver(b, c);
+        par(a, b, xaxis()); par(d, c, xaxis()); par(a, d, yaxis()); par(b, c, yaxis());
         this.ctx.requestSolve();
         this.ctx.finish();
       }
@@ -290,17 +301,17 @@ test("a relation authored at the REPL is a residual like any other", async () =>
 test("rels() lists the constraints under names you can retype", async () => {
   await loadKernel();
   const { repl } = makeRepl();
-  await run(repl, `a = pt(0, 0); b = pt(10, 0); l = ln(a, b); coin(a, b); hor(l); dist(a, b, 10)`);
+  await run(repl, `a = pt(0, 0); b = pt(10, 0); l = ln(a, b); coin(a, b); par(l, xaxis()); dist(a, b, 10)`);
 
   // The short name each relation is called by, not the internal op — so a
-  // listed line reads back as something that could have been typed.
-  // Every hor carries the frame it is level with, so it reads back as one too.
+  // listed line reads back as something that could have been typed. The axis
+  // reference reads back verbatim: `par("l1", "f.x")` is a line you could type.
   assert.deepEqual((await run(repl, "rels()")).value, [
     "r1  coin p1 p2",
-    "r2  hor l1 f",
+    "r2  par l1 f.x",
     "r3  dist p1 p2 10",
   ]);
-  assert.deepEqual((await run(repl, 'rels("l1")')).value, ["r2  hor l1 f"]);
+  assert.deepEqual((await run(repl, 'rels("l1")')).value, ["r2  par l1 f.x"]);
   assert.deepEqual((await run(repl, 'rels("p2")')).value, ["r1  coin p1 p2", "r3  dist p1 p2 10"]);
   assert.deepEqual((await run(repl, 'rels("nothing")')).value, []);
 });
@@ -308,7 +319,7 @@ test("rels() lists the constraints under names you can retype", async () => {
 test("del() hands back what it took, so the log answers for the cascade", async () => {
   await loadKernel();
   const { repl, model } = makeRepl();
-  await run(repl, `a = pt(0, 0); b = pt(10, 0); l = ln(a, b); hor(l); fix(a, [0, 0])`);
+  await run(repl, `a = pt(0, 0); b = pt(10, 0); l = ln(a, b); par(l, xaxis()); fix(a, [0, 0])`);
 
   assert.deepEqual((await run(repl, 'del("r1")')).value, ["r1"], "a relation takes nothing with it");
   assert.deepEqual((await run(repl, 'del("p1")')).value, ["r2", "l1", "p1"], "a point takes what needs it");

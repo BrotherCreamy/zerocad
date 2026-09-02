@@ -115,12 +115,10 @@ export function neocadScope(h: EnvHandles): Bag {
     coincident: bind(model, basic.coincident),
     mid: bind(model, basic.midpoint),
     midpoint: bind(model, basic.midpoint),
-    // 2D-only, from relations/basic.ts
-    hor: bind(model, basic.horizontal),
-    horizontal: bind(model, basic.horizontal),
-    ver: bind(model, basic.vertical),
-    vertical: bind(model, basic.vertical),
-    // relations/geometry.ts
+    // relations/geometry.ts. `par`, `perp` and `ang` additionally take a
+    // frame-axis reference — `par("l1", yaxis())` is what `ver("l1")` was;
+    // see the helpers below and relations/geometry.ts for why those three.
+
     par: bind(model, geom.parallel),
     parallel: bind(model, geom.parallel),
     perp: bind(model, geom.perpendicular),
@@ -226,6 +224,24 @@ export function neocadScope(h: EnvHandles): Bag {
     return model.defaultFrame ?? "no default frame";
   };
   geometry.defaultFrame = () => model.defaultFrame;
+
+  /**
+   * A frame's axis, as the string `par`, `perp` and `ang` take:
+   * `par("l1", yaxis())` is what `ver("l1")` used to be.
+   *
+   * These exist so the frame can be left out, the way it could be left out of
+   * `hor` — and they resolve it the same way, through `resolveFrame` **at call
+   * time**, so a drawing with no default gets the one standing message about
+   * what to do instead of a reference to a frame called `null`. The answer is
+   * baked into the string the relation then journals, which is why a saved
+   * entry cannot change meaning when the default moves afterwards.
+   *
+   * A helper rather than new syntax in the evaluator: the owner's sketch was
+   * `parallel(l1, *defaultframe.Y)`, and `par("l1", yaxis())` is as close as
+   * that gets without the REPL learning a new kind of expression.
+   */
+  geometry.xaxis = (frame?: string | null) => `${model.resolveFrame(frame)}.x`;
+  geometry.yaxis = (frame?: string | null) => `${model.resolveFrame(frame)}.y`;
 
   // Long names beside the short ones, the way every relation already has both.
   // The owner's examples are written `circle()`, and a creator function shares
@@ -371,12 +387,16 @@ function help(scope: Bag): string {
     "           every argument is optional: what you leave out is created free",
     "           near the middle of the view, for your relations to define",
     "frames     frame(origin, xref)  setDefaultFrame(name)  defaultFrame()",
-    "           there is no world frame: hor/ver/fix are relative to one, and",
-    "           say so if you have made none. A frame draws as an axes marker",
-    "           at its origin, brighter when it is the default; drag the marker",
-    "           to move it, or its x-ref to turn it and everything levelled",
-    "           against it. The line tool infers H/V only against the default.",
-    "relations  dist fix coin mid hor ver par perp ang on eq",
+    "           xaxis(frame?)  yaxis(frame?)  — a frame's axis, by name",
+    "           there is no world frame: fix and the axes are relative to one,",
+    "           and say so if you have made none. There is no hor/ver either:",
+    '           par(l, yaxis()) is vertical, par(l, xaxis()) is level, and',
+    '           par/perp/ang take any axis by name — par("l1", "f2.x").',
+    "           A frame draws as an axes marker at its origin, brighter when it",
+    "           is the default; drag the marker to move it, or its x-ref to turn",
+    "           it and everything levelled against it. The line tool infers an",
+    "           axis par only against the default.",
+    "relations  dist fix coin mid par perp ang on eq",
     "           rad oncircle conc eqrad tan sym arcends",
     "operations fillet(line1, line2, radius)  del(name, ...)",
     "files      save()  open(text)  download(name)  openFile()  journal()",

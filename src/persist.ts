@@ -25,14 +25,28 @@ import { fillet } from "./operations.ts";
 
 export const FORMAT = "neocad-model";
 /**
- * 2 since coordinate frames. A version-1 file is still *read* rather than
- * turned away at the door, because the useful thing to say about one is not
- * "wrong version" but which step of it no longer means anything: its
- * `hor`/`ver`/`fix` entries name no frame, and with no world frame left there
- * is nothing to resolve them against. The replay table lets those entries
- * throw their own message and reports the step. See the CHANGELOG.
+ * 3 since `hor`/`ver` were retired in favour of frame-axis references.
+ *
+ * Older files are still *read*, and the two older versions are read
+ * differently on purpose, because what is wrong with each is different.
+ *
+ * A **version-2** file's `horizontal`/`vertical` entries name a frame and
+ * therefore still say exactly what they meant; only the vocabulary they say it
+ * in is gone. So they are **translated** rather than refused (see `translate`)
+ * — two lines of code that keep every file this app has ever written openable,
+ * including the ones behind the register's own screenshots.
+ *
+ * A **version-1** file's entries name no frame at all, and with no world frame
+ * left there is nothing to resolve them against. Those are still refused, and
+ * still refused *by step*, because the useful thing to say about one is not
+ * "wrong version" but which line of it no longer means anything.
+ *
+ * A translated file re-saves in the new vocabulary, so `save(open(x)) !== x`
+ * across this boundary. That is deliberate and stated in the CHANGELOG: a file
+ * that opened as `par` and saved back as `hor` would keep the retired words
+ * alive in the format forever.
  */
-export const VERSION = 2;
+export const VERSION = 3;
 
 export interface SavedModel {
   format: typeof FORMAT;
@@ -68,7 +82,8 @@ function replayTable(model: Model): Map<string, (...args: unknown[]) => unknown>
     addFrame: bound("addFrame"),
     // The default frame is journalled because it changes what a *later*
     // relation call means. It never changes what an already-journalled one
-    // means: hor/ver/fix resolve it when they are called and record the answer.
+    // means: `fix` and the axis helpers resolve it when they are called and
+    // record the answer.
     setDefaultFrame: bound("setDefaultFrame"),
     setCoords: bound("setCoords"),
     retargetLine: bound("retargetLine"),
@@ -84,8 +99,8 @@ function replayTable(model: Model): Map<string, (...args: unknown[]) => unknown>
     fix: rel(basic.fix),
     coincident: rel(basic.coincident),
     midpoint: rel(basic.midpoint),
-    horizontal: rel(basic.horizontal),
-    vertical: rel(basic.vertical),
+    // `horizontal`/`vertical` are not here: they are rewritten into `parallel`
+    // before the lookup happens. See `translate`.
 
     parallel: rel(geom.parallel),
     perpendicular: rel(geom.perpendicular),
@@ -102,6 +117,32 @@ function replayTable(model: Model): Map<string, (...args: unknown[]) => unknown>
 
     fillet: rel(fillet),
   }));
+}
+
+/**
+ * A journal entry written in a vocabulary that no longer exists, rewritten
+ * into the one that replaced it. Everything else passes straight through.
+ *
+ * `horizontal(l, f)` becomes `parallel(l, "f.x")` and `vertical(l, f)` becomes
+ * `parallel(l, "f.y")` — parallel to +y rather than perpendicular to +x, which
+ * is the same equation either way (the wedge with +y *is* the dot with +x) but
+ * reads properly afterwards: `rels()` says `par l1 f.y` and the glyph says
+ * `∥`, where a `perp` would have left the drawing claiming a right angle to an
+ * axis it is square to. The point forms carry their extra name along.
+ *
+ * It needs the half-built model for two reasons. Which form an entry is comes
+ * off the subject's *kind*, exactly as it did when `horizontal` decided it.
+ * And a version-1 entry names no frame at all, so it reaches `resolveFrame`
+ * here and is told what it is missing — the same message, at the same step, as
+ * before this translation existed.
+ */
+function translate(model: Model, entry: JournalEntry): JournalEntry {
+  if (entry.op !== "horizontal" && entry.op !== "vertical") return entry;
+  const axis = entry.op === "horizontal" ? "x" : "y";
+  const [a, b, c] = entry.args as (string | null | undefined)[];
+  const pointForm = model.entities.get(String(a))?.kind === "point";
+  const ref = `${model.resolveFrame(pointForm ? c : b)}.${axis}`;
+  return { op: "parallel", args: pointForm ? [a, b, ref] : [a, ref] };
 }
 
 /** The model as a plain object, ready for JSON.stringify. */
@@ -136,20 +177,36 @@ export function fromSaved(saved: SavedModel): Model {
   const table = replayTable(model);
 
   // Replay with recording off, then install the journal wholesale, so a model
-  // that is opened and saved again round-trips to the same file.
+  // that is opened and saved again round-trips to the same file. What is
+  // installed is the *translated* journal rather than the file's own, which is
+  // the one place those two can differ: an entry rewritten on the way in has
+  // to be rewritten on the way out too, or the file would keep saying
+  // `horizontal` forever and nothing would ever finish the migration.
+  const replayed: JournalEntry[] = [];
   model.withoutRecording(() => {
     saved.journal.forEach((entry, i) => {
-      const fn = table.get(entry.op);
-      if (!fn) throw new Error(`step ${i + 1}: "${entry.op}" is not something a model file may do`);
       if (!Array.isArray(entry.args)) throw new Error(`step ${i + 1}: "${entry.op}" has no arguments`);
+      // The step is reported with the *original* op and arguments, since that
+      // is what is written in the file the reader is looking at.
+      const where = (e: unknown) =>
+        new Error(`step ${i + 1}, ${entry.op}(${entry.args.map((a) => JSON.stringify(a)).join(", ")}): ${e instanceof Error ? e.message : e}`);
+      let step: JournalEntry;
       try {
-        fn(...entry.args);
+        step = translate(model, entry);
       } catch (e) {
-        throw new Error(`step ${i + 1}, ${entry.op}(${entry.args.map((a) => JSON.stringify(a)).join(", ")}): ${e instanceof Error ? e.message : e}`);
+        throw where(e);
       }
+      const fn = table.get(step.op);
+      if (!fn) throw new Error(`step ${i + 1}: "${step.op}" is not something a model file may do`);
+      try {
+        fn(...step.args);
+      } catch (e) {
+        throw where(e);
+      }
+      replayed.push({ op: step.op, args: step.args });
     });
   });
-  model.journal = saved.journal.map((e) => ({ op: e.op, args: e.args }));
+  model.journal = replayed;
 
   // Put the saved solution back — see the note at the top about why.
   const vals = saved.values ?? { points: {}, radii: {} };

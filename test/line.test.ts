@@ -1,7 +1,7 @@
 // The line tool: click, click, chain. Driven through the same `pointerAt`
 // shape the engine builds, so the snap-dependent behaviour (an endpoint snap
-// beating the horizontal/vertical guess) is exercised for real rather than
-// through hand-written Snap objects.
+// beating the axis guess) is exercised for real rather than through
+// hand-written Snap objects.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -160,13 +160,13 @@ test("LineTool: a second click on the segment's own start is ignored, not a lost
   assert.equal(linesOf(model).length, 1);
 });
 
-// --- horizontal / vertical inference ---------------------------------------
+// --- axis inference --------------------------------------------------------
 
 /** The world position of a segment `len` long from the origin, `deg` off level. */
 const offLevel = (len: number, deg: number) =>
   [len * Math.cos((deg * Math.PI) / 180), len * Math.sin((deg * Math.PI) / 180)];
 
-test("LineTool: a nearly-level segment is pulled level and gets hor, in the line form", async () => {
+test("LineTool: a nearly-level segment is pulled level and gets par to +x, in the line form", async () => {
   await loadKernel();
   const model = framed();
   const tool = new LineTool(fakeCtx(model));
@@ -174,27 +174,28 @@ test("LineTool: a nearly-level segment is pulled level and gets hor, in the line
   tool.onDown(click(model, offLevel(60, AXIS_DEGREES - 1)));
 
   const [l] = linesOf(model);
-  assert.deepEqual(model.journal.filter((e) => e.op === "horizontal").map((e) => e.args), [[l.name, "f"]],
-    "the line form — one argument, the line — so it survives a fillet re-pointing the edge");
+  assert.deepEqual(model.journal.filter((e) => e.op === "parallel").map((e) => e.args), [[l.name, "f.x"]],
+    "the line form — the line and an axis — so it survives a fillet re-pointing the edge");
   const [a, b] = l.refs.map((n) => model.coords(n));
   assert.ok(Math.abs(a[1] - b[1]) < 1e-9, `the preview was pulled onto the axis, ys ${a[1]} and ${b[1]}`);
   assert.ok(Math.abs(b[0] - 60 * Math.cos(((AXIS_DEGREES - 1) * Math.PI) / 180)) < 1e-6,
     "only the off-axis coordinate is corrected");
 });
 
-test("LineTool: a nearly-upright segment gets ver; anything further off gets neither", async () => {
+test("LineTool: a nearly-upright segment gets par to +y; anything further off gets neither", async () => {
   await loadKernel();
   const model = framed();
   const tool = new LineTool(fakeCtx(model));
   tool.onDown(click(model, [0, 0]));
-  tool.onDown(click(model, [2, 60])); // under 2 degrees off vertical
-  assert.deepEqual(opsOf(model).filter((o) => o === "vertical").length, 1);
+  tool.onDown(click(model, [2, 60])); // under 2 degrees off the frame's +y
+  assert.deepEqual(model.journal.filter((e) => e.op === "parallel").map((e) => e.args),
+    [[linesOf(model)[0].name, "f.y"]]);
 
   const off = framed();
   const t2 = new LineTool(fakeCtx(off));
   t2.onDown(click(off, [0, 0]));
   t2.onDown(click(off, offLevel(60, AXIS_DEGREES + 2)));
-  assert.deepEqual(opsOf(off).filter((o) => o === "horizontal" || o === "vertical"), [],
+  assert.deepEqual(opsOf(off).filter((o) => o === "parallel"), [],
     "past the tolerance the line is left as drawn");
   const [l] = linesOf(off);
   const [a, b] = l.refs.map((n) => off.coords(n));
@@ -217,7 +218,7 @@ test("LineTool: an endpoint snap beats the axis guess", async () => {
 
   const ops = opsOf(model);
   assert.ok(ops.includes("coincident"), "the point it landed on is what was meant");
-  assert.equal(ops.includes("horizontal"), false, "so the axis guess is dropped rather than fighting it");
+  assert.equal(ops.includes("parallel"), false, "so the axis guess is dropped rather than fighting it");
 
   pin(model, "target", target);
   assert.equal(model.solve().solved, true, "which is why it does not conflict");
@@ -234,7 +235,7 @@ test("LineTool: ...unless the snapped point is level anyway, in which case both 
   tool.onDown(click(model, [60, 0], 3, -2));
 
   const ops = opsOf(model);
-  assert.ok(ops.includes("coincident") && ops.includes("horizontal"),
+  assert.ok(ops.includes("coincident") && ops.includes("parallel"),
     "nothing is given up when the snap already satisfies the axis");
   pin(model, "target", [60, 0]);
   assert.equal(model.solve().solved, true, JSON.stringify(model.solve().offenders));
@@ -247,22 +248,22 @@ test("LineTool: the chain follows the solver, so the next segment starts where t
   const tool = new LineTool(ctx);
 
   tool.onDown(click(model, [0, 0]));
-  tool.onDown(click(model, [50, 0])); // a level segment, so hor ties the two ys
+  tool.onDown(click(model, [50, 0])); // a level segment, so the par ties the two ys
   const [first] = linesOf(model);
 
   // Now drag the chain's far end somewhere else, through the constraint.
   pin(model, first.refs[0], [0, 30]);
   assert.equal(model.solve().solved, true);
   const moved = model.coords(first.refs[1]);
-  assert.ok(near(moved, [50, 30]), `hor carried the chain's end with it, now at ${moved}`);
+  assert.ok(near(moved, [50, 30]), `the axis par carried the chain's end with it, now at ${moved}`);
 
   // A click barely off level *from where that point now is*. Read from the
   // stale click position (50, 0) this would be 31 degrees out and infer
-  // nothing; read from the point, it is half a degree and infers hor.
+  // nothing; read from the point, it is half a degree and infers the axis.
   tool.onDown(click(model, [100, 30.5]));
   const [, second] = linesOf(model);
   assert.equal(second.refs[0], first.refs[1], "the same shared vertex");
-  assert.equal(opsOf(model).filter((o) => o === "horizontal").length, 2,
+  assert.equal(opsOf(model).filter((o) => o === "parallel").length, 2,
     "the second segment was measured from the vertex's current position");
 });
 
@@ -278,17 +279,17 @@ test("LineTool: the chain is dimension-generic — it draws in 3D, with no axis 
 
   assert.equal(linesOf(model).length, 2);
   assert.equal(pointsOf(model).length, 3, "the vertex is shared in 3D too");
-  assert.deepEqual(opsOf(model).filter((o) => o === "horizontal" || o === "vertical"), [],
-    "horizontal and vertical are genuinely 2D-only, so nothing is inferred here");
+  assert.deepEqual(opsOf(model).filter((o) => o === "parallel"), [],
+    "a frame and its axes are 2D-only, so nothing is inferred here");
   assert.deepEqual(model.coords(linesOf(model)[1].refs[1]), [10, 0, 7]);
 });
 
 // --- the aim, the guide and the constraint, against a *tilted* frame ---------
 //
-// The half-1 gap this closes: the tool inferred `hor(line, frame)` while
-// computing the aim and drawing the guide against the kernel's own axes, so a
-// tilted default frame got a preview that disagreed with the constraint about
-// to land. All three now read the same frame.
+// The half-1 gap this closes: the tool inferred the axis constraint against
+// the frame while computing the aim and drawing the guide against the kernel's
+// own axes, so a tilted default frame got a preview that disagreed with the
+// constraint about to land. All three now read the same frame.
 
 /** A frame turned `deg` counter-clockwise, parked well away from the drawing. */
 function tiltedFrame(model: Model, deg: number): void {
@@ -321,7 +322,7 @@ test("LineTool: a tilted frame tilts the aim — the segment lands on the frame'
   tool.onDown(click(model, [60 * Math.cos(rad), 60 * Math.sin(rad)]));
 
   const [l] = linesOf(model);
-  assert.deepEqual(model.journal.filter((e) => e.op === "horizontal").map((e) => e.args), [[l.name, "f"]]);
+  assert.deepEqual(model.journal.filter((e) => e.op === "parallel").map((e) => e.args), [[l.name, "f.x"]]);
   const [dx, dy] = segmentDirection(model);
   const wedge = dx * Math.sin((30 * Math.PI) / 180) - dy * Math.cos((30 * Math.PI) / 180);
   assert.ok(Math.abs(wedge) < 1e-9, `the committed segment lies along the frame's +x (wedge ${wedge})`);
@@ -368,7 +369,7 @@ test("LineTool: with no default frame nothing is inferred, and nothing is quietl
   tool.onDown(click(model, [0, 0]));
   tool.onDown(click(model, offLevel(60, AXIS_DEGREES - 1)));
 
-  assert.deepEqual(opsOf(model).filter((o) => o === "horizontal" || o === "vertical"), [],
+  assert.deepEqual(opsOf(model).filter((o) => o === "parallel"), [],
     "there is nothing to be level with, so nothing claims the line is");
   const [a, b] = linesOf(model)[0].refs.map((n) => model.coords(n));
   assert.ok(Math.abs(a[1] - b[1]) > 1,

@@ -190,22 +190,24 @@ tests rather than left to be rediscovered.
 re-consulted at every evaluation.
 
 The thunk form exists because the thing a relation is *about* can be
-restructured underneath it. `hor(l1)` means "this edge is level" — if a fillet
-later re-points that edge at a new tangent point, the constraint has to follow.
-A captured index list cannot; a thunk that reads the line's current refs can.
+restructured underneath it. `par("l1", "f.x")` means "this edge is level" — if
+a fillet later re-points that edge at a new tangent point, the constraint has
+to follow. A captured index list cannot; a thunk that reads the line's current
+refs can.
 
 This was learned the hard way: the fillet's first version passed every
 numerical check to six decimal places while visibly wrecking the rectangle it
 was applied to, because the rectangle's edge constraints stayed behind on the
 old corners.
 
-`hor` and `ver` therefore take **either** two point names or one line name,
-and the two are not interchangeable once a model starts changing shape:
+`par` and `perp` therefore take **either** two point names or one line name
+for their first side, and the two are not interchangeable once a model starts
+changing shape:
 
 | form | means | survives re-pointing? |
 |---|---|---|
-| `hor("a", "b")` | these two points share a y | no — it keeps constraining those points |
-| `hor("l1")` | this edge is level | yes — it re-reads the line each solve |
+| `par("a", "b", "f.x")` | these two points share a y | no — it keeps constraining those points |
+| `par("l1", "f.x")` | this edge is level | yes — it re-reads the line each solve |
 
 Prefer the line form for anything that is a property of an edge. The built-in
 tools use it.
@@ -214,25 +216,42 @@ tools use it.
 
 The kernel keeps a flat vector of numbers and those numbers have to live
 somewhere, but that substrate is a **gauge, not a frame**: nothing in the
-user-facing vocabulary may reference it. `hor`, `ver` and `fix` are relative
-to a `Frame` — an origin point plus a point fixing +x, purely referential the
-way a `Line` is — and refuse to run when none is named and no default is set.
-Everything else in the vocabulary (`dist`, `par`, `perp`, `ang`, `tan`, `on`,
-…) is already intrinsic and did not change. A drawing with no frame simply
-floats: the damped solve leaves unconstrained directions where they were
-seeded, so nothing needs anchoring for the mathematics to work.
+user-facing vocabulary may reference it. `fix` is relative to a `Frame` — an
+origin point plus a point fixing +x, purely referential the way a `Line` is —
+and refuses to run when none is named and no default is set. Everything else
+in the vocabulary (`dist`, `par`, `perp`, `ang`, `tan`, `on`, …) is intrinsic:
+a claim about geometry relative to other geometry. A drawing with no frame
+simply floats: the damped solve leaves unconstrained directions where they
+were seeded, so nothing needs anchoring for the mathematics to work.
+
+**There is no `hor`/`ver` either, and that is the same decision one step
+further.** Those words name a privileged pair of directions whether or not a
+frame is behind them. What they meant is written against a frame's axis
+instead: `par`, `perp` and `ang` take a **frame-axis reference** — the string
+`"f1.x"` or `"f1.y"` — anywhere they take a line, and `xaxis()`/`yaxis()` fill
+in the default. The rule for which relations may take one falls out of what an
+axis *is*: a direction with no length and no position, so exactly the
+relations that read an argument for its direction alone. `eq` has no length to
+compare against; `on`, `sym` and `tan` each need a located line, and reading
+`"f1.x"` as a line through the origin would give one syntax two meanings.
+
+A dot is refused in every entity name, at `claimName`, so a reference can
+never collide with one — and `relationsNaming` reads `f1.x` as naming `f1`, or
+a frame could be deleted out from under a relation still reading it.
 
 **A relation reads a frame; it never pushes one.** This is the exception to
 the rule above it, and it is deliberate. A residual block declares the
 variables it reads, and declaring a frame's two points would put them in the
-Jacobian — at which point the solver can satisfy "this line is level" by
-turning the *frame*, which it does: measured at about 8° of a 9° error for a
+Jacobian — at which point the solver can satisfy "this line is parallel to
+your +x" by turning the *frame*, which it does: measured at about 8° of a 9° error for a
 40-unit line against a 20-unit frame arm, plus a 14% shortening of the arm if
 the residual is not normalised, because a shorter arm makes a wedge smaller.
 Both readings satisfy the equation; only one of them is what a datum means.
 
 So `frameBasis` (`relations/refs.ts`) re-reads a frame's origin and unit axes
-at every evaluation and hands them to the residual as *values*. The house rule
+at every evaluation and hands them to the residual as *values* — as
+`Dual.constant`s, whose gradients are empty, so the frame is outside the
+Jacobian by construction rather than by anyone remembering to leave it out. The house rule
 about laziness is kept — a frame whose points are re-targeted is still
 followed, and moving a frame moves the drawing hanging off it within the same
 solve — while the frame itself moves only when something moves it. The
@@ -369,7 +388,7 @@ and moves nothing — which also means a point gets no Dimension item, because a
 point has no measurement of its own. And **Fix is shown disabled when there is
 no default frame**, carrying `resolveFrame`'s own message: creating a frame to
 make the item work would be a datum nobody chose, quietly becoming what every
-later `hor` means, which is the exact thing the no-world-frame decision
+later `xaxis()` means, which is the exact thing the no-world-frame decision
 prevents. A menu that cannot do anything a command cannot do also cannot do
 that.
 

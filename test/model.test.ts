@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { ensureKernelLoaded } from "../src/kernel/problem.ts";
 import { Model } from "../src/model.ts";
-import { dist, fix, coincident, horizontal, midpoint } from "../src/relations/basic.ts";
-import { arcEndpoints, concentric, radius } from "../src/relations/geometry.ts";
+import { dist, fix, coincident, midpoint } from "../src/relations/basic.ts";
+import { arcEndpoints, concentric, parallel, radius } from "../src/relations/geometry.ts";
 import { axisFrame } from "./frames.ts";
 
 async function loadKernel() {
@@ -15,7 +15,7 @@ async function loadKernel() {
 test("2D: fix + dist solves a triangle-free two-point system", async () => {
   await loadKernel();
   const m = new Model(2);
-  axisFrame(m); // hor/ver/fix are frame-relative now — see test/frames.ts
+  axisFrame(m); // fix and the axis references are frame-relative — see test/frames.ts
   m.addPoint([0, 0], "a");
   m.addPoint([3, 4], "b");
   fix(m, "a", [0, 0]);
@@ -102,7 +102,7 @@ test("relationsNaming finds every relation that mentions an entity", async () =>
   m.addLine("a", "b", "l");
   fix(m, "a", [0, 0]);
   dist(m, "a", "b", 10);
-  horizontal(m, "l");
+  parallel(m, "l", "f.x");
 
   assert.deepEqual(m.relationsNaming("a").map((r) => r.name), ["r1", "r2"]);
   assert.deepEqual(m.relationsNaming("l").map((r) => r.name), ["r3"]);

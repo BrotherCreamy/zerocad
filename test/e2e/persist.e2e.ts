@@ -30,7 +30,7 @@ test("a drawing made with the mouse and the command line saves", async () => {
   // The rectangle tool says "rectangle" intrinsically now — par, par, perp —
   // so being *level* is asked for here, which is what keeps this drawing rigid
   // enough for the reopened-model test below to mean something.
-  await app.type(`hor("${edges[0]}"); ver("${edges[1]}")`);
+  await app.type(`par("${edges[0]}", xaxis()); par("${edges[1]}", yaxis())`);
   await app.type(`fillet("${edges[0]}", "${edges[1]}", 10); solve()`);
 
   const r = await app.repl("save()");

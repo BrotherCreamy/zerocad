@@ -6,7 +6,7 @@ import { Model } from "../src/model.ts";
 import { RectangleTool } from "../src/tools/rectangle.ts";
 import { PointTool } from "../src/tools/point.ts";
 import { pullTo } from "../src/tools/engine.ts";
-import { horizontal } from "../src/relations/basic.ts";
+import { parallel } from "../src/relations/geometry.ts";
 import type { ToolContext } from "../src/tools/tool.ts";
 import { axisFrame } from "./frames.ts";
 
@@ -93,20 +93,20 @@ test("pullTo drags a free point onto the cursor and a constrained one as far as 
   axisFrame(model); // what "level" means here — see test/frames.ts
   model.addPoint([0, 0], "a");
   model.addPoint([10, 0], "b");
-  horizontal(model, "a", "b");
+  parallel(model, "a", "b", "f.x");
 
   // b is free along x and held level with a; the cursor asks for both.
   model.problem.solve({ extra: pullTo(model, "b", [40, 25]) });
   const b = model.coords("b");
   assert.ok(Math.abs(b[0] - 40) < 1e-6, `x follows the cursor exactly: ${b[0]}`);
-  assert.ok(Math.abs(b[1] - model.coords("a")[1]) < 1e-6, `hor held: b.y = ${b[1]}`);
+  assert.ok(Math.abs(b[1] - model.coords("a")[1]) < 1e-6, `level with a still held: b.y = ${b[1]}`);
 
   // And nothing was kept: solving again changes nothing, because the model
   // never contained the pull.
   const before = model.coords("b");
   model.solve();
   assert.deepEqual(model.coords("b"), before);
-  const fixtureOps = ["addPoint", "addFrame", "setDefaultFrame", "horizontal"];
+  const fixtureOps = ["addPoint", "addFrame", "setDefaultFrame", "parallel"];
   assert.equal(model.journal.filter((j) => !fixtureOps.includes(j.op)).length, 0,
     "a drag journals nothing — it changes values, not structure");
 });

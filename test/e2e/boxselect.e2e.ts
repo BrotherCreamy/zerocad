@@ -228,7 +228,7 @@ test("middle- and right-drag still pan", async () => {
 
 test("a box does not select constraint glyphs", async () => {
   await app.page.fill("#cmd", "");
-  await app.type('hor("l1"); ver("l2")');
+  await app.type('par("l1", xaxis()); par("l2", yaxis())');
   const rels = await app.repl("rels().length");
   assert.ok((rels.value as number) > 0, "there are relations to accidentally catch");
 

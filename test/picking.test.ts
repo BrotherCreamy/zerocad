@@ -6,7 +6,8 @@ import { Model } from "../src/model.ts";
 import { hitTest, describePick, PICK_POINT } from "../src/picking.ts";
 import { FRAME_ARM_PX } from "../src/framemarker.ts";
 import { worldToScreen, type View } from "../src/view.ts";
-import { coincident, fix, horizontal } from "../src/relations/basic.ts";
+import { coincident, fix } from "../src/relations/basic.ts";
+import { parallel } from "../src/relations/geometry.ts";
 import { del } from "../src/operations.ts";
 import { axisFrame } from "./frames.ts";
 
@@ -135,13 +136,13 @@ test("describePick says something useful for each kind", async () => {
 test("the hover tag names the relations constraining what is under the cursor", async () => {
   await loadKernel();
   const m = new Model(2);
-  axisFrame(m); // hor/fix are frame-relative now — see test/frames.ts
+  axisFrame(m); // fix and the axis references are frame-relative — see test/frames.ts
   m.addPoint([1.5, 2], "a");
   m.addPoint([4.5, 6], "b");
   m.addLine("a", "b", "l");
   fix(m, "a", [1.5, 2]);      // r1
   coincident(m, "a", "b");    // r2
-  horizontal(m, "l");         // r3
+  parallel(m, "l", "f.x");    // r3
 
   // This is the whole of the visibility story: a constraint a tool inferred on
   // your behalf now says so somewhere you will actually look.
@@ -214,7 +215,7 @@ test("a frame collapsed onto its own origin draws nothing and picks as nothing",
   assert.equal(hitTest(m, view, ox + FRAME_ARM_PX * 0.6, oy), null);
 });
 
-test("the hover tag says which frame is the default, because that is what a bare hor means", async () => {
+test("the hover tag says which frame is the default, because that is what a bare xaxis() means", async () => {
   await loadKernel();
   const m = framedModel();
   const pick = { name: "fr", kind: "frame" as const, distance: 0 };
