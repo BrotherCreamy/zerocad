@@ -44,6 +44,16 @@ are flagged as such.
   ✅ **Built, both halves** — model and relations, then the command surface,
   the drawn marker, picking/dragging/boxing, and the end-to-end story.
   *Spec:* [`docs/plans/coordinate-frames.md`](docs/plans/coordinate-frames.md).
+  **↻ Extended by the owner (2026-09-02): `hor`/`ver` are retired outright.**
+  The words themselves imply a privileged pair of directions — a world frame
+  in vocabulary form. "Vertical" becomes `par("l1", yaxis())`: `par`/`perp`
+  learn to take a frame-axis reference (`"f1.x"`/`"f1.y"`, direction only,
+  datum semantics — read, never pushed), and `xaxis()`/`yaxis()` resolve the
+  default frame at the command line. `fix` stays (frame-relative already,
+  and it names no privileged direction). Old journals translate
+  (`horizontal(l, f)` → `parallel(l, "f.x")`), format version 3.
+  *Spec:* [`docs/plans/retire-hor-ver.md`](docs/plans/retire-hor-ver.md),
+  queued behind the context-menu package.
 
   Decided while building it, and open to veto:
 
