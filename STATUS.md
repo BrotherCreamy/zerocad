@@ -889,6 +889,43 @@ replacing) the system Node other projects on this machine may depend on.
   turn one by dragging its x-ref, which is the same gesture as dragging any
   other point, and there is no rigid-rotate anywhere in the app yet.
 
+- **A right-click context menu** (`src/menu.ts`, wired in `src/main.ts`,
+  styled in `index.html`). **Right-press and release without moving opens it;
+  right-drag still pans** — the right button makes the same click/drag split
+  the left one always has, on the same three-pixel threshold, so the release
+  decides and the press decides nothing. Middle-drag stays purely
+  navigational and never opens anything. The browser's own menu is still
+  suppressed on the canvas, and now on the menu element too.
+  **Every item is a shortcut to a command the log shows.** On an entity:
+  *Insert name* (what a left-click already does), *Delete*, *Dimension* — and
+  *Fix* on a point. On a constraint glyph: the relation's description as the
+  header, and *Delete*. On empty canvas: the eight tool arms, plus *Frame*
+  (`setDefaultFrame(frame())` when the drawing has no frame at all, `frame()`
+  once it has one). Each row shows the command beside its label.
+  **The seam is `submit`** — the very function the Enter key calls, handed to
+  the menu as an explicit `run` hook. Logging, the recall history, the one
+  undo bracket and the re-solve all live there and nowhere else, so an item
+  that went any other way would be a second answer to what typing a command
+  means. Nothing about undo, journalling or the status readout is new: a
+  menu-typed `dist` is one journal entry, one undo step and one solve because
+  a typed `dist` already was.
+  **A dimension carries the current measurement** — a line's length, a
+  circle's or arc's radius — so the action means "hold it where it is" and
+  moves nothing. A point gets no Dimension (no single natural measurement)
+  and neither does a frame (its arm's length is drawn at a fixed pixel size).
+  **Fix is shown disabled when there is no default frame**, with the model's
+  own `resolveFrame` message beneath it, and never quietly makes one. Its
+  coordinates are the point's position *in the frame*, not its raw numbers,
+  or the relation would move what it claims to hold.
+  `menuFor(model, pick)` is pure — model and pick in, labels and command
+  strings out — which is what puts the item logic in the unit suite
+  (`test/menu.test.ts`); the gesture and the whole browser story are in
+  `test/engine.test.ts` and `test/e2e/contextmenu.e2e.ts`.
+  *Known and deliberate:* the items are hard-coded per pick kind, so nothing
+  defined at the command line can add one; no submenus, icons or arrow keys;
+  a right-click with a tool armed opens the ordinary menu; and a right press
+  taken during a left drag opens nothing.
+
 ## What's next
 
 The working list lives in [`TODO.md`](TODO.md), so it has one home rather

@@ -13,6 +13,7 @@ import { Repl, fmt } from "./repl.ts";
 import { neocadScope } from "./replenv.ts";
 import { ToolEngine, type View } from "./tools/engine.ts";
 import { describePick, type Pick } from "./picking.ts";
+import { ContextMenu, menuFor } from "./menu.ts";
 import { frameMarker } from "./framemarker.ts";
 import { constrainedBy, type Glyph } from "./glyphs.ts";
 import { getToolCtor } from "./tools/tool.ts";
@@ -31,6 +32,7 @@ const cv = document.getElementById("cv") as HTMLCanvasElement;
 const g = cv.getContext("2d")!;
 const cmdEl = document.getElementById("cmd") as HTMLInputElement;
 const hoverEl = document.getElementById("hovertag")!;
+const menuEl = document.getElementById("ctxmenu")!;
 
 function log(msg: string, cls?: string) {
   const d = document.createElement("div");
@@ -296,15 +298,15 @@ async function main() {
    * better: every relation takes entity names, so clicking two lines writes
    * most of `fillet(` for you. Nothing to clear, nothing to get out of sync.
    */
-  function insertToken(pick: Pick) {
+  function insertName(name: string) {
     const v = cmdEl.value;
     // Separate arguments with a comma, because these are function calls: two
     // clicks after `dist(` should leave `dist("p1", "p2"`, ready to finish,
     // rather than something that still needs punctuating by hand.
     const needsComma = /[\w"\]]\s*$/.test(v);
-    cmdEl.value = v + (needsComma ? ", " : "") + `"${pick.name}"`;
+    cmdEl.value = v + (needsComma ? ", " : "") + `"${name}"`;
     cmdEl.focus();
-    log(`${pick.name} → command line`, "out");
+    log(`${name} → command line`, "out");
   }
 
   // The canvas has to follow its own box, not just window resizes: the log
@@ -391,14 +393,45 @@ async function main() {
     return `${direction === "undo" ? "undid" : "redid"} — ${undoStack.depth} back, ${undoStack.redoDepth} forward`;
   }
 
+  /**
+   * The context menu, and the seam it goes through.
+   *
+   * **`run` is `submit` — the very function the Enter key calls** — and finding
+   * that seam was the design question this package had to answer. A menu item is
+   * specified as "a shortcut to a command the log shows", which is a statement
+   * about *machinery*, not about outcome: it has to log the entry, push it onto
+   * the recall history, bracket it as one undo step, and re-solve if it changed
+   * anything. All four of those already live in `submit` and nowhere else, so
+   * anything short of calling it would be a second, slightly different answer to
+   * what typing a command means — and the two would drift.
+   *
+   * The alternative considered and rejected was writing the text into `#cmd` and
+   * dispatching a synthetic Enter. That reaches the same function by pretending
+   * to be a keyboard, which makes the seam invisible to a reader, destroys
+   * whatever the user had half-typed, and would break the moment the input's
+   * keydown handling changed. One named function passed to the menu is the
+   * smaller and more honest hook.
+   */
+  const menu = new ContextMenu(menuEl, {
+    run: (command) => void submit(command),
+    insert: insertName,
+  });
+
   const engine = new ToolEngine(model, cv, view, {
     onSolveRender: solveAndRender,
     onRenderOnly: render,
-    onPick: insertToken,
+    onPick: (pick) => insertName(pick.name),
     onUserAction: (phase) => (phase === "before" ? beginUserAction() : endUserAction()),
     // A tool refusing a gesture ("those three points lie on one line") is the
     // user's business, not the console's — same channel an entry's error uses.
     onLog: (line) => log(line, "err"),
+    onContextMenu: (pick, sx, sy) => {
+      // The tag and the menu would otherwise sit on top of one another, both
+      // naming the same thing — and the tag cannot update while the cursor is
+      // over the menu, so it would go stale as well as redundant.
+      hoverEl.hidden = true;
+      menu.show(menuFor(model, pick), sx, sy);
+    },
   });
 
   // The hover tag follows the cursor and names whatever is under it.
@@ -498,6 +531,11 @@ async function main() {
    */
   function swapModel(next: Model) {
     model = next;
+    // An open menu names entities of the model being replaced, so every command
+    // on it is about to be a lie. Undo swaps the model, which is exactly the
+    // case: Ctrl+Z with a menu open must not leave `del("l3")` offered for an
+    // `l3` that no longer exists.
+    menu.close();
     engine.cancel();
     engine.model = next;
     repl.define(neocadScope(handles()));
@@ -591,6 +629,14 @@ async function main() {
    */
   window.addEventListener("keydown", (e) => {
     if (e.key !== "Escape") return;
+    // The menu first, and then nothing else. Escape means "undo the last thing
+    // that appeared", and with a menu on screen that is the menu — cancelling
+    // the gesture underneath it as well would abandon a half-drawn rectangle
+    // that the user was only right-clicking to look away from.
+    if (menu.close()) {
+      log("menu closed", "out");
+      return;
+    }
     engine.cancel();
     log("cancelled", "out");
   });

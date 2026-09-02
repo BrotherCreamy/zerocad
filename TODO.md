@@ -119,10 +119,18 @@ are flagged as such.
 - **Mouse:** with a tool armed, the left button belongs to the tool; with
   nothing armed, left-click picks, **left-drag on any geometry drags it** — a
   point, an edge, a rim, an arc — and left-drag on **empty canvas
-  box-selects**. Wheel zooms about the cursor (scroll up = in). Middle- or
-  right-drag pans; the right-click menu is suppressed. ⚠ *Deviation:* Onshape
-  pans with middle only and uses right-click for a context menu. When a context
-  menu exists, right-drag pan should yield to it; middle-drag stays.
+  box-selects**. Wheel zooms about the cursor (scroll up = in). Middle-drag
+  pans. **The right button splits the way the left one does:** past the same
+  three-pixel threshold it pans, released where it landed it opens the context
+  menu; the browser's own menu stays suppressed either way.
+  **✔ The deviation noted here is resolved (2026-09-02).** It used to read
+  "middle- or right-drag pans; the right-click menu is suppressed", flagged as
+  a deviation because Onshape pans with the middle button only and spends the
+  right one on a menu — with the standing promise that right-drag pan would
+  yield to a menu once one existed. It has, and it cost nothing: the release
+  decides, so a right-drag pans exactly as it always did and only a right press
+  that never moved means anything new. Middle-drag stays purely navigational
+  and never opens anything.
   **↺ Reversed in two steps (2026-09).** This entry used to read "left-drag
   pans", which was cellwork's habit. The box-select package took the empty-
   canvas half and the edge-drag package took the rest, both for the same
@@ -248,9 +256,13 @@ starts.
       dressed as parity. What could still exist someday: a mid-drag *soft*
       snap of the drag target (position only, nothing committed). Low value
       next to everything else; parked.
-- [ ] **A right-click context menu.** The register's mouse entry already
-      promises right-drag pan yields to a menu when one exists. What goes in
-      it is the design question (Onshape: delete, dimension, fix, tool arms).
+
+With the context menu shipped, nothing else is queued — the next package needs
+a direction from the owner. Discovered while building it, and worth a package
+of its own someday: **the menu's items are hard-coded per pick kind**, so a
+relation or tool added at the command line cannot put itself on one. That is
+the same shape as "tools are not privileged", and a menu that could be
+extended the way `defineTool` extends the tool registry would close it.
 
 ## Smaller things
 
@@ -268,6 +280,45 @@ starts.
       `test/e2e/livesolve.e2e.ts`, which counts solves in the page.
 
 ## Done
+
+- [x] **The right-click context menu** — spec:
+      [`docs/plans/context-menu.md`](docs/plans/context-menu.md), now marked
+      shipped-pending-review. **Right-press and release without moving opens a
+      menu; right-drag still pans** — the right button now makes the same
+      click/drag split the left one always has, on the same three-pixel
+      threshold, so the release decides and the press decides nothing. The
+      menu is a `<div>` in the hover tag's visual family, and **every item is
+      a shortcut to a command the log shows**: an entity gets Insert name /
+      Delete / Dimension (and Fix, on a point), a constraint glyph gets its
+      description and Delete, empty canvas gets the eight tool arms plus
+      Frame. The register's mouse entry above is updated — the right-click
+      deviation it carried is resolved.
+      *Decided while doing it:* **the seam is `submit`**, the function the
+      Enter key calls, handed to the menu as an explicit `run` hook. "A
+      shortcut to a typed command" is a claim about machinery rather than
+      outcome — logging, the recall history, one undo bracket and the re-solve
+      all live in `submit` and nowhere else — so anything short of calling it
+      would be a second, slightly different answer to what typing means.
+      Writing into `#cmd` and dispatching a synthetic Enter was rejected: it
+      reaches the same function by pretending to be a keyboard, makes the seam
+      invisible to a reader, and destroys whatever was half-typed.
+      *And:* **Fix types the point's coordinates in the default frame**, not
+      its raw ones. The spec said "current coords", which means "hold it where
+      it is"; against a frame that is turned or moved off the gauge's origin,
+      raw numbers would yank the point somewhere else the moment the relation
+      landed. There is a unit test with a frame turned 90° and moved, which
+      fails on the raw form.
+      *And, beyond the spec:* each item shows the command it is about to type
+      beside its label. The menu exists to be a shortcut *to the command
+      line*, and an item that hid what it was about to do would be a fourth
+      way to edit the drawing rather than a faster way to type.
+      *Left in place deliberately:* the items are hard-coded per pick kind, so
+      nothing defined at the command line can add one (noted under "Next up");
+      no submenus, icons or keyboard arrows, per the spec; a right-click with
+      a tool armed opens the menu rather than doing something tool-specific,
+      which is one rule instead of two; and a right press taken *during* a
+      left drag opens nothing, because interrupting a gesture in progress is
+      never what it means.
 
 - [x] **The 3-point arc tool** — spec:
       [`docs/plans/arc3-tool.md`](docs/plans/arc3-tool.md), now marked

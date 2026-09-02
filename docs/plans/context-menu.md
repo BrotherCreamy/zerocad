@@ -1,6 +1,16 @@
 # Plan: the right-click context menu
 
-**Status: in flight** (2026-09-02).
+**Status: shipped, pending review** (2026-09-02). Built as specified on
+`claude/context-menu`. Two things the spec left to the build, both recorded
+in `CONVERSATION_LOG.md`: the seam a menu item types through is `submit` in
+`main.ts` — the function the Enter key already calls, passed to the menu as
+an explicit `run` hook rather than reached by faking a keystroke — and `fix`
+is given the point's coordinates **in the default frame**, not its raw ones,
+because the spec's "current coords" means "hold it where it is" and raw
+numbers would not. Two additions beyond the letter of the spec: every item
+shows the command it is about to type, beside its label; and the header on
+an entity is the hover tag's own sentence rather than a second spelling of
+it. Screenshots 43 and 44.
 
 The register's mouse entry has promised this since box select: "when a
 context menu exists, right-drag pan should yield to it; middle-drag stays."

@@ -106,6 +106,84 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### The context menu, and the search for the seam it should type through
+
+The spec for this one was unusually specific about *what* every item should do
+and deliberately silent on *how* an item does it: "the menu types into the same
+machinery the command line uses". Finding that machinery was the whole of the
+work worth writing down; everything else in the package is bookkeeping.
+
+**The seam is `submit`.** There were three candidates, and the choice matters
+more than it looks.
+
+The first was to call the REPL directly — `repl.eval("del(\"r5\")")`. It is the
+obvious one and it is wrong, because it would produce a menu action that does
+not appear in the log, is not one undo step, does not push onto the recall
+history and does not re-solve. Each of those is a separate bug and each would
+be found separately, weeks apart.
+
+The second was to write the text into `#cmd` and dispatch a synthetic Enter.
+This reaches the right function, and it is the version I would expect an agent
+in a hurry to write, because it needs no change to `main.ts` at all. It is
+worse than it looks: it destroys whatever the user had half-typed (which is
+often the very thing they right-clicked to add a name to), it makes the seam
+invisible to anyone reading `menu.ts` — the connection between the menu and the
+command line is a keystroke code, not a function call — and it breaks silently
+the first time the input's keydown handling changes shape. Faking input to your
+own app is a way of programming against yourself.
+
+The third, and what is here, is one explicit hook: `main.ts` hands the menu
+`run: (command) => void submit(command)`. `submit` is the function the Enter
+key calls. It logs the entry, pushes it onto the history, opens the undo
+bracket, evaluates, closes the bracket and re-solves if anything changed — all
+five, in that order, in one place. The instruction I was working from allowed a
+small explicit hook in `main.ts` over reaching into the DOM, and this is why
+that is the right preference in general: the hook is one line and one named
+argument, and it makes the claim "a menu item is a typed command" checkable by
+reading rather than by trusting.
+
+The payoff is the size of the test surface. Nothing about undo, journalling,
+the recall history or the status readout is new, so nothing about them needed
+designing. The e2e test that says "the Dimension action is one undo step"
+passes because a typed `dist` was already one undo step; it is a regression
+test on the seam, not on a mechanism.
+
+**`fix` gets frame coordinates, not raw ones.** The spec said
+`fix(name, current-coords)`, and taken literally that is `model.coords(name)`.
+Taken literally it is also wrong, because `fix` has been frame-relative since
+the no-world-frame change: against a frame turned 45° and sitting off the
+gauge's origin, `fix("p1", [13, 9])` means a *different place* from where p1
+is, and the constraint would move the point the instant it landed. The item is
+specified as "hold it where it is", so it types the point's offset from the
+frame's origin along each unit axis. There is a unit test with a frame turned
+90° and moved to (10, 5) which fails on the raw form; without it the bug would
+have been invisible in every test that used the suite's axis-aligned fixture
+frame, which is nearly all of them.
+
+**Disabled rather than absent, for Fix with no frame.** Omitting the item would
+have been less code and is the wrong answer: the absence of a frame is exactly
+the thing the user needs told, and a menu that silently varies its own length
+teaches nothing. The message is read out of `model.resolveFrame`'s own throw
+rather than copied, so there is one wording in the codebase.
+
+**Two things beyond the spec.** Each item shows the command it is about to
+type, in dim text beside its label. That is not decoration — the stated purpose
+of the menu is to *teach the commands rather than hide them*, and an item
+labelled only "Dimension" hides them exactly as much as a toolbar button does.
+And the header on an entity is `describePick`'s sentence, the same one the
+hover tag writes, rather than a second spelling of the same fact.
+
+**What I left alone, and why.** A right-click while a tool is armed opens the
+ordinary menu rather than something tool-specific: two rules where one will do,
+and the ordinary menu's tool arms are a reasonable escape hatch out of a
+half-finished gesture anyway. A right press taken *during* a left drag opens
+nothing, because interrupting a gesture in progress is never what it means —
+this is the `buttons`-mask path that once made mid-gesture panning silently do
+nothing, so it has a test of its own. And the menu's contents are hard-coded
+per pick kind, which is a real gap next to "tools are not privileged": a
+relation defined at the command line cannot put itself on a menu. Closing that
+is a package, not a paragraph, and it is in `TODO.md`.
+
 ### The 3-point arc, and the click that is thrown away on purpose
 
 This one arrived without a spec — a sibling of `circle3` with the instruction

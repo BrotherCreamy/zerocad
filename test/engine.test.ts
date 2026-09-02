@@ -70,14 +70,84 @@ async function setup() {
   // happened by the time it arrived — which is how the "after" phase is checked
   // to land on the *settled* model rather than on a frame of the gesture.
   const actions: string[] = [];
+  /** Every context-menu request the engine made: what it landed on, and where. */
+  const menus: { name: string | null; at: [number, number] }[] = [];
   const engine = new ToolEngine(model, canvas, view, {
     onSolveRender: () => { counts.solves++; model.solve(); },
     onRenderOnly: () => { counts.renders++; },
     onPick: () => { counts.picks++; },
     onUserAction: (phase) => { actions.push(`${phase}@${counts.solves}`); },
+    onContextMenu: (pick, sx, sy) => { menus.push({ name: pick?.name ?? null, at: [sx, sy] }); },
   });
-  return { model, engine, fire, counts, actions };
+  return { model, engine, fire, counts, actions, menus };
 }
+
+// The right button's own click/drag split. `buttons: 2` is the right button
+// held; `button: 2` is the right button being the one that changed.
+const RIGHT_DOWN = { button: 2, buttons: 2 };
+const RIGHT_HELD = { button: -1, buttons: 2 };
+const RIGHT_UP = { button: 2, buttons: 0 };
+
+test("a right press released where it landed asks for a menu, and does not pan", async () => {
+  const { engine, fire, menus, counts } = await setup();
+  const view = { ...engine.view };
+
+  // On the point at (10, 0) — the menu has to be told what it landed on, since
+  // the whole feature is that the items differ by kind.
+  fire("pointerdown", { clientX: 10, clientY: 0, ...RIGHT_DOWN });
+  fire("pointermove", { clientX: 11, clientY: 1, ...RIGHT_HELD }); // inside the threshold
+  fire("pointerup", { clientX: 11, clientY: 1, ...RIGHT_UP });
+
+  assert.deepEqual(menus, [{ name: "b", at: [11, 1] }]);
+  assert.deepEqual({ ...engine.view }, view, "a press that did not move must not have panned");
+  assert.equal(counts.picks, 0, "and it is not a pick either — the left button owns that");
+});
+
+test("a right press on empty canvas still asks for a menu, with nothing under it", async () => {
+  const { fire, menus } = await setup();
+  fire("pointerdown", { clientX: 400, clientY: 300, ...RIGHT_DOWN });
+  fire("pointerup", { clientX: 400, clientY: 300, ...RIGHT_UP });
+  assert.deepEqual(menus, [{ name: null, at: [400, 300] }]);
+});
+
+test("a right DRAG still pans, and asks for no menu — the release decides, not the press", async () => {
+  const { engine, fire, menus } = await setup();
+  const before = { ...engine.view };
+
+  fire("pointerdown", { clientX: 200, clientY: 200, ...RIGHT_DOWN });
+  fire("pointermove", { clientX: 240, clientY: 230, ...RIGHT_HELD });
+  fire("pointermove", { clientX: 280, clientY: 260, ...RIGHT_HELD });
+  fire("pointerup", { clientX: 280, clientY: 260, ...RIGHT_UP });
+
+  assert.deepEqual(menus, [], "a drag is a pan and nothing else");
+  // The first frame past the threshold is what carries the view, so at most one
+  // threshold's worth of travel is dropped — which is what makes the split free.
+  assert.ok(engine.view.ox > before.ox + 60 && engine.view.ox <= before.ox + 80,
+    `the view panned with the cursor: ox went ${before.ox} → ${engine.view.ox}`);
+  assert.ok(engine.view.oy > before.oy + 40 && engine.view.oy <= before.oy + 60,
+    `and in y too: oy went ${before.oy} → ${engine.view.oy}`);
+});
+
+test("the middle button is navigation only — it never asks for a menu", async () => {
+  const { fire, menus } = await setup();
+  fire("pointerdown", { clientX: 300, clientY: 300, button: 1, buttons: 4 });
+  fire("pointerup", { clientX: 300, clientY: 300, button: 1, buttons: 0 });
+  assert.deepEqual(menus, [], "one button that unambiguously means pan is worth keeping");
+});
+
+test("a right click taken during a left drag opens nothing over the gesture", async () => {
+  const { fire, menus } = await setup();
+
+  // Pressing a second button while one is held arrives as a *move* with the
+  // mask updated, never as another pointerdown — the bug that made mid-gesture
+  // panning silently do nothing, and the reason this path is worth a test.
+  fire("pointerdown", { clientX: 10, clientY: 0, button: 0, buttons: 1 });
+  fire("pointermove", { clientX: 40, clientY: 20, button: -1, buttons: 1 });
+  fire("pointermove", { clientX: 40, clientY: 20, button: -1, buttons: 3 }); // right goes down too
+  fire("pointermove", { clientX: 40, clientY: 20, button: -1, buttons: 1 }); // and comes back up
+
+  assert.deepEqual(menus, [], "the left drag is still in progress; nothing may interrupt it");
+});
 
 test("cancelling mid-drag settles the model instead of keeping the pull", async () => {
   const { model, engine, fire, counts } = await setup();
