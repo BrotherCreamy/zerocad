@@ -18,6 +18,12 @@
 // number of pixels is what a datum triad looks like in every CAD package, and
 // it is also what makes the marker a *deliberate* target the way a constraint
 // glyph is.
+//
+// Which is why **snapping deliberately does not consult this**. An arm's tip
+// is at no meaningful position — it is a pixel length — so placing geometry
+// there would be placing it at an artefact of the zoom. A frame's origin and
+// x-ref are ordinary points, and snapping catches those as it catches any
+// other.
 
 import type { Model } from "./model.ts";
 import type { Pt } from "./intersect.ts";

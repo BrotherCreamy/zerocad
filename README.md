@@ -77,9 +77,10 @@ now a command language to put them in.
 kernel-rs/              Rust crate -> WASM. The only place linear algebra happens.
 src/kernel/dual.ts       forward-mode automatic differentiation (dual numbers)
 src/kernel/problem.ts    Problem: variables + residual blocks + solve() (LM loop)
-src/model.ts             Entity graph: Point / Line / Circle / Arc, dimension-generic
+src/model.ts             Entity graph: Point / Line / Circle / Arc / Frame, dimension-generic
 src/relations/vec.ts     Dual-vector helpers (dot, wedge) every relation is built from
-src/relations/basic.ts   dist / fix / coincident / midpoint (generic) / hor / ver (2D-only)
+src/relations/refs.ts    lazy variable lists, and a frame's basis as re-read values
+src/relations/basic.ts   dist / fix / coincident / midpoint (generic) / hor / ver (frame-relative, 2D-only)
 src/relations/geometry.ts par / perp / ang / on / eq / rad / oncircle / conc / eqrad / tan / sym
 src/operations.ts        operations, which change structure rather than add equations: fillet
 src/persist.ts           save/open — a file is the model's journal, replayed
@@ -105,6 +106,7 @@ command surface, and it is the primary interface — not a debug console.
 
 ```js
 a = pt(0, 0); b = pt(80, 0)        // entities; each returns its name
+setDefaultFrame(frame())           // something to be level with, and fixed to
 fix(a, [0, 0]); dist(a, b, 100)    // relations, curried against the model
 solve()                            // -> { solved: true, iterations: 3, ... }
 
@@ -133,6 +135,23 @@ seeded in the middle of the view so it appears where you are looking — and
 construction is ambiguous (tangent + through-a-point + radius admits four
 circles) the solver returns the branch nearest the seed, and dragging flips
 branches, exactly as Onshape does.
+
+**There is no world frame, and no origin.** Geometry is defined by its
+relations to other geometry; an origin nobody made is what tempts a drawing
+into being related to a global grid instead. So `hor`, `ver` and `fix` are
+relative to a **coordinate frame**, which is a thing you make: `frame()` is an
+origin point plus a point fixing +x — two ordinary, draggable, constrainable
+points — and `setDefaultFrame(name)` says which one those three mean when they
+are not told. With no frame at all they refuse, and say what to do about it. A
+frame draws as a small axes marker at its origin, brighter when it is the
+default; drag the marker to move it, or its x-ref to turn it, and everything
+levelled or fixed against it follows.
+
+```js
+f = frame()                        // at the middle of the view, +x to the right
+setDefaultFrame(f)                 // ...and now hor/ver/fix mean this one
+hor("l1"); fix("p1", [0, 0])       // level with f; at f's own origin
+```
 
 The viewport works the way Onshape's does: the wheel zooms about the
 cursor, right- or middle-drag pans. Navigation is deliberately on
@@ -176,7 +195,8 @@ name, and they are not interchangeable. `hor("a", "b")` pins those two
 points forever; `hor("l1")` means "this edge is level" and re-reads the
 line's endpoints every solve. Only the second survives an operation that
 re-points the edge — which is exactly what a fillet does when it trims a
-corner back. The built-in tools use the line form.
+corner back. The built-in tools use the line form. (Either form takes the
+frame it is level with as a last argument, or means the default one.)
 
 Tools are authored in the same place, through the same `defineTool` the
 built-ins use — this is the whole point of the architecture:
@@ -188,8 +208,8 @@ defineTool("box", class extends Tool {
   onUp(p) {
     const [x0, y0] = this.s, [x1, y1] = p.world; this.s = null
     const q = pt(x0, y0), r = pt(x1, y0), s = pt(x1, y1), u = pt(x0, y1)
-    ln(q, r); ln(r, s); ln(s, u); ln(u, q)
-    hor(q, r); hor(u, s); ver(q, u); ver(r, s)
+    const [l1, l2, l3, l4] = [ln(q, r), ln(r, s), ln(s, u), ln(u, q)]
+    par(l1, l3); par(l2, l4); perp(l1, l2)   // intrinsic: no frame needed
     this.ctx.requestSolve(); this.ctx.finish()
   }
   render(r) { /* draw a live preview from this.s / this.c */ }
