@@ -231,11 +231,13 @@ Queue for Opus, in order. Each gets a spec in `docs/plans/` before work
 starts.
 
 - [ ] **Saving user-authored tools** — blocked on the owner decision above.
-- [ ] **Inference while dragging.** Onshape infers (and shows) coincidence
-      and alignment as you drag; both drag packages deliberately left it out.
-      Wants a spec that decides what a mid-drag snap *commits* — a drag that
-      quietly adds constraints is a bigger decision than a tool click doing
-      the same, because nothing was aimed.
+- [ ] **~~Inference while dragging~~ — re-scoped down, near-wontfix.** Checked
+      against the guiding rule before speccing: Onshape does *not* commit
+      constraints during a drag — dragging moves geometry, and inference
+      belongs to placement clicks. So the original framing was a deviation
+      dressed as parity. What could still exist someday: a mid-drag *soft*
+      snap of the drag target (position only, nothing committed). Low value
+      next to everything else; parked.
 - [ ] **A right-click context menu.** The register's mouse entry already
       promises right-drag pan yields to a menu when one exists. What goes in
       it is the design question (Onshape: delete, dimension, fix, tool arms).
