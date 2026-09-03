@@ -268,25 +268,17 @@ are flagged as such.
 
 ## Decisions needed from the owner
 
-- [ ] **How should a dimension's value be edited, and are dimensions named?**
-      Today the only way to change `dist("p1","p2",50)` to 60 is `del` and
-      retype, because a relation captures its target inside its residual
-      closure. Onshape double-clicks the number and types. And the owner's
-      own free-entities example said *"radius d4"* — which reads as named
-      dimension parameters (`d4 = 25; rad(c, "d4")`, one number driving many
-      relations, editable in one place). Options, roughly increasing in
-      scope: (a) a `retarget(relation, value)` operation that rebuilds the
-      relation in place under the same name; (b) named scalar parameters as
-      first-class entities relations may reference; (c) both, with (a) as
-      the double-click surface and (b) underneath. The dimension-labels
-      package draws the numbers either way; this decides what clicking them
-      can eventually do.
-- [ ] **May a saved file carry code?** A tool authored at the command line is
-      a live JS class; saving it means saving source text that `open()` would
-      evaluate — so opening a file someone sent you would run their code.
-      Today such tools are simply lost on save (the geometry they drew
-      survives). Options: never; save as inert text to paste back by hand;
-      or prompt before evaluating.
+- [x] **How a dimension's value is edited — DECIDED by the owner
+      (2026-09-02):** *"should be a `set(d4.value, 60)` where d4 is the
+      dimension."* Dimensions (`dist`/`rad`/`ang`) become the `d` namespace,
+      the dimension itself is the named value-holder (no separate parameter
+      table), and `set()` rebuilds it in place under the same name. In
+      flight: [`docs/plans/dimensions-are-named.md`](docs/plans/dimensions-are-named.md).
+- [x] **May a saved file carry code? — DECIDED by the owner (2026-09-02):
+      inert text, pasted back by hand.** The file carries a REPL-authored
+      tool's source as data; `open()` never evaluates it, and the paste is
+      the consent. Queued behind the named-dimensions package (both touch
+      `persist.ts`).
 
 ## Next up
 
