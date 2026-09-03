@@ -41,6 +41,14 @@ tool engine and the renderer, depending on nothing. `undo.ts` sits beside it
 for the same reason — a stack of snapshots, generic over what a snapshot is,
 importing nothing at all.
 
+`toolsource.ts` sits in the `tools/ | operations.ts | persist.ts` row, between
+those first and last two: it holds the *text* of tools authored at the command
+line, which `persist.ts` carries in a file and `replenv.ts` captures and prints.
+It is deliberately not inside either — the registry in `tools/tool.ts` stays
+ignorant of persistence, and `persist.ts` stays ignorant of the session — and
+what it keeps is session state, not model state. See "A file carries its tools'
+source" below.
+
 `menu.ts` sits *beside* `main.ts` rather than under it: it is browser-layer
 code that reads the model and returns command strings, and it runs none of
 them. It is above `replenv.ts` in spirit — everything it produces is text for
@@ -472,6 +480,47 @@ Opening only performs calls from a fixed table, so a file is data rather than
 a script. That table is a `Map` — a plain object answers a lookup for
 `"constructor"` from `Object.prototype`, which let a hostile file straight past
 the guard.
+
+## A file carries its tools' source, and the paste is the consent
+
+A tool authored at the command line is a class over its module, so it is
+exactly as unserialisable as a residual block. What can be written down is what
+was written down for the model: **the text the user typed**. So a saved file
+carries an optional `tools: {name, source}[]` beside the journal, and every
+word of it is inert. `open()` replays geometry and evaluates nothing; it says
+what the file carries, `toolSource(name)` prints one, and pasting it back is an
+ordinary entry that a person read before pressing Enter. There is deliberately
+no button that runs it for them — that would make a file a script again, which
+is the one thing the section above is for.
+
+**Where the capture lives decides most of it.** The entry text is known only to
+`repl.ts`, and `repl.ts` must stay as ignorant of tools as `problem.ts` is of
+points; what a tool *is* is known only to the command surface. So the evaluator
+publishes a plain fact — `repl.entry`, the entry in flight — and the host wires
+it to the command surface through the `currentEntry` handle, the same shape as
+`openModel` and `solve`. Capture is then a wrapper around `defineTool` in
+`replenv.ts`, and two properties come from that position rather than from a
+check: a built-in registers from its own module and never passes through the
+wrapper, so built-ins are never captured; and a `defineTool` reached any other
+way has no entry in flight, so nothing is recorded.
+
+What is stored is the **whole entry**, because an entry may build helpers around
+its class and slicing out the class expression would be both a parser project
+and a lie about what ran.
+
+**This is session state, and the type system is not what keeps it out of the
+model.** `tools` is a *parameter* of `save`/`toSaved` defaulting to none, and
+the only caller that passes any is the `save()` a user typed. `main.ts`'s undo
+snapshot is `save(model, false)` — so a tool definition cannot register as an
+edit to the drawing, and it takes no enumeration of "which commands are edits"
+to arrange, which is the same trick the undo bracket already plays.
+
+`toolsource.ts` holds the store and two rules that only matter when names
+collide: a definition this session watched wins over a file's version of the
+same name (the store then matches what is actually registered), and opening a
+second file drops the first file's carried sources (they belonged to a drawing
+that is no longer open, and carrying them into the next `save()` would smuggle
+one file's tools into another's).
 
 ## Undo is the save format, on a stack
 

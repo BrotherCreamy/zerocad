@@ -278,6 +278,15 @@ are flagged as such.
   it), replayed on open, and `open()` only runs calls from a fixed table — a
   hostile file can at worst draw something odd. Solved coordinates ride
   along so an under-constrained model reopens exactly as saved.
+  **A file may also carry the source of tools authored at the command line,
+  and that changes nothing about the rule:** the source is inert text,
+  `open()` evaluates none of it, `toolSource(name)` prints it, and pasting it
+  back is an ordinary entry — the paste is the consent. Nothing in a file runs
+  that the user did not themselves type, and no button, menu item or flag
+  exists that would run it for them. Capture is the whole entry that called
+  `defineTool`, is session state rather than model state (not journalled, not
+  an undo step), and rides the file as an optional field that did not move
+  `VERSION` off 4.
 - **The command line is curation, not a sandbox.** Typed code runs with the
   app's full authority; the scope exists for legibility and typo-catching,
   and says so honestly rather than claiming to be a security boundary.
@@ -297,19 +306,31 @@ are flagged as such.
       stores radians while its label reads degrees, so `set` on an angle takes
       radians. Degree input is a separate ask.
 - [x] **May a saved file carry code? — DECIDED by the owner (2026-09-02):
-      inert text, pasted back by hand.** The file carries a REPL-authored
-      tool's source as data; `open()` never evaluates it, and the paste is
-      the consent. Was queued behind the named-dimensions package because both
-      touch `persist.ts`; that package is now in review, so this one is next.
+      inert text, pasted back by hand — and BUILT (2026-09-03).** The file
+      carries a REPL-authored tool's source as data; `open()` never evaluates
+      it, and the paste is the consent. Shipped as specced in
+      [`docs/plans/tool-source-in-files.md`](docs/plans/tool-source-in-files.md);
+      the register entry above ("A saved file is data") now states it as
+      standing behaviour.
 
 ## Next up
 
 Queue for Opus, in order. Each gets a spec in `docs/plans/` before work
 starts.
 
-- [ ] **Saving user-authored tools** — the owner decision above is made and
-      the `persist.ts` conflict is cleared (named dimensions is in review), so
-      this is unblocked. Note it will land on **format version 4**.
+- [x] **Saving user-authored tools** — done (2026-09-03), on format version 4
+      without bumping it: an optional `tools: {name, source}[]` beside the
+      journal, captured by a wrapper around `defineTool` in `replenv.ts` from
+      the entry the evaluator publishes as `repl.entry`. Spec:
+      [`docs/plans/tool-source-in-files.md`](docs/plans/tool-source-in-files.md).
+      **Found while building, left deliberately** (each documented in the plan
+      and pinned by a test): a tool defined asynchronously *after* its entry
+      returns is not captured, because there is no entry in flight to capture;
+      a carried name that is already registered gets no "paste it" line, since
+      that sentence would not be true of it; and re-defining a tool replaces
+      its stored source rather than keeping a history. A source is stored per
+      name, so two tools defined in one entry each store that whole entry —
+      correct, and mildly surprising if you paste both.
 - [ ] **~~Inference while dragging~~ — re-scoped down, near-wontfix.** Checked
       against the guiding rule before speccing: Onshape does *not* commit
       constraints during a drag — dragging moves geometry, and inference

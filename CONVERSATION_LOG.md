@@ -106,6 +106,65 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### Tool source in saved files, and where the capture had to happen
+
+The owner's decision settled the *policy* completely — a REPL-authored tool's
+source rides in the file as inert text, `open()` never runs it, the paste is
+the consent — and left one real question: how does anything know the text of
+the entry that is calling `defineTool` at the moment it calls it?
+
+Four seams were available and three of them are wrong in an interesting way.
+
+**Rebuild the scope per entry**, with a `defineTool` closed over that entry's
+text. It works and it is the most literal reading of "the wrapper knows the
+entry", but it rebuilds the whole command surface on every keystroke-ending
+Enter, and the scope is the thing bare assignments persist into — a fresh one
+per entry is exactly what `repl.ts` documents itself as *not* doing.
+
+**Let `repl.ts` do the capturing.** It is the only file that has the text, so
+this is the shortest diff. It is also the one edit that would end the
+evaluator's generality: the file's whole claim is that it knows how to scope
+and evaluate and nothing else. A `toolsource` import there is the same mistake
+as a `Point` import in `problem.ts`, one storey up.
+
+**A module-level "current entry" in `repl.ts`, read by `replenv.ts`.** No host
+wiring at all, which is tempting. But it is ambient state shared by every
+`Repl` in the process, and the tests make several; the moment two exist, the
+capture belongs to whichever ran last. Ambient globals are also precisely what
+the curated scope exists to avoid, so writing one to implement a feature *about*
+the scope reads badly.
+
+**What was built: the evaluator publishes a fact, the host wires it.**
+`repl.entry` is the entry in flight, `null` between entries, saved and restored
+around nested evaluation. `EnvHandles.currentEntry` is how the command surface
+asks for it — the same shape as `openModel`, `solve` and `view`, which are all
+"things only the host can answer". It costs one line in `main.ts` and one in a
+test, and in exchange the dependency is visible in the wiring instead of hidden
+in a module.
+
+Two things then came free, which is the sign the seam was in the right place.
+**Built-ins are never captured** — they register from their own modules at
+import time and never touch the wrapper — so the rule needed no check and
+cannot be broken by adding a built-in. And **a `defineTool` reached any other
+way records nothing**, because there is no entry in flight; that also covers a
+tool defined asynchronously after its entry returned, which is a limitation
+rather than a feature and is written down as one.
+
+The other decision worth keeping: `tools` is a *parameter* of `save`, not
+something it reads from a global. `main.ts` takes its undo snapshots with
+`save(model, false)`, so leaving the parameter at its default is what keeps
+authoring a tool from landing on the undo stack — no enumeration of "which
+commands are edits", the same trick the undo bracket already plays with its
+snapshot comparison. Had the sources been read from a module singleton inside
+`toSaved`, every `defineTool` would have been an undo step, and the symptom
+(Ctrl+Z appearing to do nothing) would have been baffling.
+
+The inertness is checked the only way that means anything: the test fixtures'
+tool sources would set a marker and throw if anything ever evaluated them, and
+they are dragged through open, list, print and re-save with the marker still
+unset. An assertion that `open` "does not evaluate" would have been a comment;
+this fails if anyone ever adds the convenience button.
+
 ### Named dimensions, and the three decisions the spec left to the code
 
 The owner's sentence — editing a dimension *"should be a `set(d4.value, 60)`

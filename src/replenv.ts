@@ -14,11 +14,12 @@ import { Dual } from "./kernel/dual.ts";
 import { Model, type Entity } from "./model.ts";
 import { describeRelation } from "./picking.ts";
 import type { SolveReport } from "./kernel/problem.ts";
-import { Tool, defineTool, listTools } from "./tools/tool.ts";
+import { Tool, defineTool, listTools, type ToolCtor } from "./tools/tool.ts";
 import * as basic from "./relations/basic.ts";
 import * as geom from "./relations/geometry.ts";
 import { del, fillet, set } from "./operations.ts";
-import { save as saveModel } from "./persist.ts";
+import { save as saveModel, savedTools } from "./persist.ts";
+import { carryIntoSession, toolSources, type ToolSourceStore } from "./toolsource.ts";
 import { clampScale, screenToWorld } from "./view.ts";
 
 type Bag = Record<string, unknown>;
@@ -70,6 +71,30 @@ export interface EnvHandles {
   /** The 2D view transform, so pan/zoom is an ordinary command like everything else. */
   view?: { ox: number; oy: number; scale: number };
   /**
+   * The text of the entry being evaluated right now — `repl.entry`.
+   *
+   * This is the capture seam for tool sources, and it points *up* on purpose:
+   * the REPL knows the entry text and nothing else does, this layer knows what
+   * a tool is and the REPL must not. So the evaluator publishes the plain fact
+   * and the host wires the two together, which is one line in `main.ts` and
+   * one in a test. Absent means nothing is captured — which is exactly right
+   * for a `defineTool` reached any way other than by someone typing it.
+   */
+  currentEntry?: () => string | null;
+  /**
+   * One line to the user, in the app's log pane — the same channel a tool
+   * refusing a gesture speaks on (`ToolContext.log`). `open()` uses it to
+   * mention the tools a file carries. Absent headless, where the return value
+   * carries the same lines instead.
+   */
+  log?: (line: string) => void;
+  /**
+   * Where the session keeps the source of tools authored here. The module
+   * singleton by default; a host (or a test) may hand over its own. Session
+   * state, not model state — see toolsource.ts.
+   */
+  toolSources?: ToolSourceStore;
+  /**
    * The viewport's size in CSS pixels. Kept apart from `view` because a
    * `View` is only a transform — it has no idea how big the window showing
    * it is — and the two together are what "the middle of what the user is
@@ -106,6 +131,7 @@ function describe(e: Entity, model: Model): string {
 
 export function neocadScope(h: EnvHandles): Bag {
   const model = h.model;
+  const sources = h.toolSources ?? toolSources;
 
   const relations: Bag = {
     // dimension-generic, from relations/basic.ts
@@ -297,16 +323,35 @@ export function neocadScope(h: EnvHandles): Bag {
   // command-line-shaped thing to do: it composes. `download`/`openFile` are
   // the browser conveniences on top.
   const persistence: Bag = {
-    save: () => saveModel(model),
+    // The tools go in here and *only* here, not in `toSaved`'s default,
+    // because the same function writes the undo stack's snapshots — see
+    // persist.ts. A file the user asked for carries them; a snapshot does not,
+    // so authoring a tool is not an edit to the drawing.
+    save: () => saveModel(model, true, sources.all()),
+    /**
+     * Opens a file, and **evaluates nothing**.
+     *
+     * If the file carries tool sources they are taken into the session as text
+     * and mentioned, one line each. That is the whole of it: the source sits
+     * in a Map until the user pastes it back, at which point it is an ordinary
+     * entry that they read before pressing Enter. There is deliberately no
+     * button, menu item or flag that runs it for them — the paste is the
+     * consent, and a shortcut past it would make a file a script.
+     */
     open: (json: string) => {
       if (!h.openModel) throw new Error("open needs a host that can swap the model");
       if (typeof json !== "string") throw new Error("open takes the text of a saved model");
-      h.openModel(json);
-      return "opened";
+      h.openModel(json); // first, so a file that will not open carries nothing
+      const notices = carryIntoSession(savedTools(json), sources);
+      for (const line of notices) h.log?.(line);
+      // With a host the lines are already on screen and repeating them in the
+      // return value would print each one twice. With no host — a headless
+      // REPL, a test — the return value is the only channel there is.
+      return h.log ? "opened" : ["opened", ...notices].join("\n");
     },
     download: (filename = "sketch.neocad.json") => {
       if (!h.download) throw new Error("no download in this environment");
-      h.download(saveModel(model), filename);
+      h.download(saveModel(model, true, sources.all()), filename);
       return filename;
     },
     openFile: () => {
@@ -333,8 +378,58 @@ export function neocadScope(h: EnvHandles): Bag {
     Model,
     Dual,
     Tool,
-    defineTool,
-    tools: () => listTools(),
+    /**
+     * `defineTool`, plus the one thing the registry must not know about: the
+     * entry that called it is remembered, so a `save()` can carry the tool's
+     * source as text.
+     *
+     * The wrapper is here rather than in `tools/tool.ts` because this is the
+     * only door a user comes through. A built-in registers itself from its own
+     * module at import time and never touches this function, so "built-ins are
+     * never captured" needs no check anywhere — it is a property of where the
+     * wrapper sits. Same for a `defineTool` called later from inside a tool's
+     * own callback: there is no entry in flight, so nothing is recorded.
+     *
+     * Registration first, capture second: a source is only stored for a tool
+     * that is actually registered.
+     */
+    defineTool: (name: string, ctor: ToolCtor) => {
+      defineTool(name, ctor);
+      const entry = h.currentEntry?.();
+      // The *whole* entry, deliberately — an entry may build helpers around
+      // its class, and slicing the class expression out would be a parser
+      // project and a lie about what ran.
+      if (entry) sources.capture(name, entry);
+    },
+    /**
+     * The stored source of a tool, for reading and for pasting back. Text in,
+     * text out; this is the only way a carried source ever leaves the store,
+     * and it hands it to the log rather than to the evaluator.
+     */
+    toolSource: (name: string) => {
+      const source = sources.get(name);
+      if (source === undefined) {
+        throw new Error(`no source stored for ${JSON.stringify(name)} — only a tool defined at this `
+          + "command line, or carried by a file you opened, has one");
+      }
+      return source;
+    },
+    /**
+     * The tools, active ones first. A source carried by a file but never
+     * pasted is listed too and marked, because "the file has a gear tool and
+     * you cannot arm it" is precisely the state the user needs told; leaving
+     * it out of the listing would make the notice `open()` printed look like a
+     * message about nothing.
+     */
+    tools: () => {
+      const active = listTools();
+      return [
+        ...active,
+        ...sources.names()
+          .filter((name) => !active.includes(name))
+          .map((name) => `${name} (source only — toolSource(${JSON.stringify(name)}) to see it)`),
+      ];
+    },
 
     solve: () => (h.solve ? h.solve() : model.solve()),
     ls: () => [...model.entities.values()].map((e) => describe(e, model)),
@@ -419,11 +514,14 @@ function help(scope: Bag): string {
     "           value is the one thing you can set. ang stores radians (its",
     "           label reads degrees); dist and rad store what you typed.",
     "files      save()  open(text)  download(name)  openFile()  journal()",
+    "           a file carries the source of tools you defined here, as text:",
+    "           open() never runs it, toolSource(name) prints it, and pasting",
+    "           it back is an ordinary entry — the paste is the consent.",
     "history    undo()  redo()          — ctrl+z, ctrl+shift+z (ctrl+y)",
     "viewport   arm(tool, opts)  cancel()  zoom(f)  pan(dx,dy)  refresh()",
     "inspect    ls()  rels(name?)  coords(name)  solve()  tools()  hover()",
     "           snapping(on)  glyphs(on)  model",
-    "authoring  Tool  defineTool(name, ctor)  Dual",
+    "authoring  Tool  defineTool(name, ctor)  toolSource(name)  Dual",
     "",
     "A bare assignment persists between entries (box = class extends Tool {…});",
     "a const/let/class declaration does not.",

@@ -57,6 +57,23 @@ const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor as
 export class Repl {
   /** The live scope. Bare assignments in an entry land here and persist. */
   readonly scope: Bag;
+  /**
+   * The text of the entry being evaluated right now, or `null` between
+   * entries. Published because the entry text is the one honest record of what
+   * a user ran, and something above this file wants it *while* it runs: a tool
+   * defined at the command line is saved as the entry that defined it (see
+   * `toolsource.ts`), and by the time `eval` returns that text is gone.
+   *
+   * Deliberately a plain fact rather than a hook: this file stays ignorant of
+   * why anyone would want it, exactly as it is ignorant of what a point is.
+   * The command surface reads it through a host handle (`currentEntry`), so
+   * the dependency is visible in the wiring rather than ambient.
+   *
+   * Nested evaluation (an entry that awaits something which evaluates another)
+   * saves and restores rather than clearing, so the outer entry's text is
+   * still there when it resumes.
+   */
+  entry: string | null = null;
   private output: string[] = [];
 
   constructor(globals: Bag = {}) {
@@ -120,11 +137,15 @@ export class Repl {
       }
     }
 
+    const outer = this.entry;
+    this.entry = src;
     try {
       const value = await run(this.proxy());
       return { ok: true, value, output: this.output };
     } catch (e) {
       return { ok: false, value: undefined, error: asError(e), output: this.output };
+    } finally {
+      this.entry = outer;
     }
   }
 
