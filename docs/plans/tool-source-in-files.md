@@ -136,8 +136,8 @@ untouched, as required.
   only — toolSource("gear") to see it)`) and plain names for active tools, so
   existing uses that look for a name still work.
 
-**Verification as run.** `npm run test:all` green before each commit: 429 unit
-tests (415 before, +14 in `test/toolsource.test.ts`), 175 e2e (173 before, +2 in
+**Verification as run.** `npm run test:all` green before each commit: 430 unit
+tests (415 before, +15 in `test/toolsource.test.ts`), 175 e2e (173 before, +2 in
 `test/e2e/toolsource.e2e.ts` — which authors a tool, saves, **reloads the page**
 into a session that has never heard of it, opens the file, reads the notice,
 pastes, arms and draws). Screenshot 48 tells the same story through the file
