@@ -82,6 +82,17 @@ test("redefining a tool replaces its stored source", async () => {
   assert.equal(store.names().filter((n) => n === "t_redef").length, 1);
 });
 
+test("an entry that defines two tools is stored whole under both names", async () => {
+  const { repl, store } = session();
+  const entry = 'defineTool("t_pair_a", class extends Tool { name = "t_pair_a"; });'
+    + ' defineTool("t_pair_b", class extends Tool { name = "t_pair_b"; });';
+  await run(repl, entry);
+  // Correct — the entry is what would have to be pasted to get either back —
+  // and worth knowing: pasting one of them defines both.
+  assert.equal(store.get("t_pair_a"), entry);
+  assert.equal(store.get("t_pair_b"), entry);
+});
+
 test("built-ins are never captured, and neither is a defineTool nobody typed", async () => {
   const { repl, store } = session();
   // `point` registered itself from its own module at import time, which does

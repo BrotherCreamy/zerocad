@@ -205,6 +205,23 @@ replacing) the system Node other projects on this machine may depend on.
   Round-tripping is a fixed point: open then save reproduces the file byte
   for byte.
 
+- **A file also carries the source of tools authored at the command line**
+  (`src/toolsource.ts`), as an optional `tools: {name, source}[]` field beside
+  the journal — **inert text**. `open()` evaluates none of it: it says what
+  the file carries (one line per tool, through the log), `toolSource(name)`
+  prints a source, `tools()` marks a carried source as not armable, and
+  pasting it back is an ordinary entry the user has read. The paste is the
+  consent; there is no affordance that runs it for them.
+  The capture is the *whole entry* that called `defineTool`, taken by a
+  wrapper in `replenv.ts` — so built-ins, which register from their own
+  modules, are never captured, and nothing has to check for them. This is
+  **session state**: not journalled, unknown to `model.ts`, and not an undo
+  step, because the undo bracket's snapshot is `save(model)` with the tools
+  parameter left at its default of none. `VERSION` stays 4 — an additive
+  optional field is not a break in either direction.
+  The inertness is pinned by a test that opens, lists, prints and re-saves a
+  source which would set a marker and throw if anything ever evaluated it.
+
 - **Mouse navigation** (`src/view.ts` + the tool engine): the wheel zooms
   about the cursor, right- or middle-drag pans. Onshape's split, and the
   reason for it is that navigation and tool use stay on separate buttons —

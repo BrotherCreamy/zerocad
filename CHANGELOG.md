@@ -7,6 +7,63 @@ decisions.
 
 ---
 
+## A saved file carries its tools' source — as text you paste back yourself
+
+![A fresh session after openFile(): the log reads "this file carries the source of tool "spot" — toolSource("spot") shows it; paste it to enable", then the printed source, then the pasted entry, then "armed: spot", with p5 drawn by the re-enabled tool beside the four points that came out of the file](docs/images/48-a-file-carries-its-tool.png)
+
+**The owner's decision, built exactly as decided: inert text, pasted back by
+hand.** A tool authored at the command line now rides in the saved file as its
+own source, `open()` never evaluates it, and the paste is the consent. This
+closes the register's oldest open question without spending any of the
+"a saved file is data" rule: nothing in a file runs that the user did not
+themselves type.
+
+**What is captured is the whole entry.** A tool is a class over its module, so
+it cannot be serialised any more than a residual block can — but the text the
+user typed can be written down, exactly as the journal writes down the calls
+they made. The *whole* entry, not the class expression sliced out of it: an
+entry may build helpers around its class, and cutting one expression out of it
+would be both a parser project and a lie about what ran.
+
+**The capture seam was the design question.** The entry text is known only to
+the evaluator; what a tool is, is known only to the command surface; and
+`repl.ts` has to stay as ignorant of tools as `problem.ts` is of points. So the
+evaluator publishes a plain fact — `repl.entry`, the entry in flight — and the
+host wires the two together through a `currentEntry` handle. Capture then lives
+in `replenv`'s `defineTool` wrapper, and two properties fall out of *where* it
+sits rather than out of any check: a built-in registers from its own module and
+never comes through that door, so built-ins are never captured; and a
+`defineTool` called later from inside a tool's own callback has no entry in
+flight, so nothing is recorded for it.
+
+**It is session state, not model state.** Not in the journal, not known to
+`model.ts`, and not an undo step — the undo bracket compares `save(model)`
+snapshots, and `tools` is a *parameter* of `save` that defaults to none, so a
+snapshot cannot see one. That is why the sources are passed in at the one call
+site the user asked for rather than read from a global; a pinned test asserts
+that authoring a tool leaves the snapshot byte-identical.
+
+**`VERSION` stays 4.** An optional field that older code ignores is not a format
+break in either direction, and there are no third-party readers of v4 to
+protect — the reasoning is in the comment beside the constant rather than in a
+bump nobody could act on.
+
+**What a user sees.** Opening a file that carries tools prints one line per
+tool — `this file carries the source of tool "spot" — toolSource("spot") shows
+it; paste it to enable` — through the log, from both doors into opening a file
+(the `open()` command and the file picker, sharing one function so the two
+cannot drift). `tools()` lists a carried-but-not-pasted source distinctly from
+something armable, `toolSource(name)` prints it, and pasting it is an ordinary
+entry that the wrapper re-captures, so the next `save()` carries it forward.
+There is deliberately no button, menu item or flag that runs it for you.
+
+**The inertness is tested, not asserted.** A file whose `tools` entry would set
+a marker and throw if it were ever evaluated travels open → list → print →
+save; the marker stays unset, the name stays unregistered, the text comes back
+unchanged, and only a paste — a person typing — makes anything run.
+
+---
+
 ## Dimensions are named `d1`, `d2`, … and `set()` edits one
 
 ![A levelled rectangle with a filleted corner, dimensioned 120, 70 and R20, the log showing dist returning d1 and d2](docs/images/46-dimensions-are-named.png)
