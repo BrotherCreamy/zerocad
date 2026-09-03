@@ -186,7 +186,10 @@ test("Delete on a constraint glyph removes that relation", async () => {
 
   await rightClick(at![0], at![1]);
   assert.equal(await header(), `${name}  dist p1 p2 60`, "the header is the relation, spelled as typed");
-  assert.deepEqual(await items(), ["Delete"], "a constraint is not geometry: there is nothing else to do to it");
+  // A `dist` is a dimension, so it has a value to set as well as a relation to
+  // delete. A constraint glyph gets Delete alone — that pair is covered in the
+  // unit suite, and the Set value… item is exercised in its own test below.
+  assert.deepEqual(await items(), ["Set value…", "Delete"]);
   assert.equal((await commands()).Delete, `del("${name}")`);
 
   await choose("Delete");

@@ -21,11 +21,14 @@
 import { Model, type JournalEntry } from "./model.ts";
 import * as basic from "./relations/basic.ts";
 import * as geom from "./relations/geometry.ts";
-import { fillet } from "./operations.ts";
+import { fillet, set } from "./operations.ts";
 
 export const FORMAT = "neocad-model";
 /**
- * 3 since `hor`/`ver` were retired in favour of frame-axis references.
+ * 4 since dimensions became `d`-named — see `relationRenamer` for what that
+ * costs an older file and how it is paid.
+ *
+ * 3 was `hor`/`ver` being retired in favour of frame-axis references.
  *
  * Older files are still *read*, and the two older versions are read
  * differently on purpose, because what is wrong with each is different.
@@ -42,11 +45,13 @@ export const FORMAT = "neocad-model";
  * "wrong version" but which line of it no longer means anything.
  *
  * A translated file re-saves in the new vocabulary, so `save(open(x)) !== x`
- * across this boundary. That is deliberate and stated in the CHANGELOG: a file
- * that opened as `par` and saved back as `hor` would keep the retired words
- * alive in the format forever.
+ * across either boundary — the ops rewritten at 2→3, the `deleteRelation`
+ * names rewritten at 3→4. That is deliberate and stated in the CHANGELOG: a
+ * file that opened as `par` and saved back as `hor`, or that kept pointing a
+ * deletion at a name the model no longer uses, would carry the old world
+ * forward forever.
  */
-export const VERSION = 3;
+export const VERSION = 4;
 
 export interface SavedModel {
   format: typeof FORMAT;
@@ -116,7 +121,73 @@ function replayTable(model: Model): Map<string, (...args: unknown[]) => unknown>
     arcEndpoints: rel(geom.arcEndpoints),
 
     fillet: rel(fillet),
+    // `set` is journalled as the one call the user made, like every operation,
+    // so replaying it re-runs the edit rather than the dimension it rebuilt.
+    set: rel(set),
   }));
+}
+
+/**
+ * The names a **version-3** file's relations had, mapped to the ones they get
+ * now that dimensions are `d`-named.
+ *
+ * This is the whole cost of the rename, and it is worth being precise about
+ * where it lands. Relation names are handed out *by order of creation*, so
+ * re-prefixing does not merely rename things — it changes which relation a
+ * given string picks out. Almost nothing in a saved journal holds one: a
+ * relation entry records the geometry it constrains, not its own name. The
+ * exception is `deleteRelation`, which is nothing but a name, and a v3 file
+ * that deleted its second relation says `deleteRelation("r2")` where the
+ * rebuilt model may now call that same relation `d1`.
+ *
+ * So the map is computed **from the replay itself** rather than by scanning the
+ * journal. It has to be: `fillet` is one journal entry that creates four
+ * relations, and a scan would have to know that — and would be wrong again the
+ * next time an operation's expansion changed. Watching the registry fill up
+ * instead is exact by construction, since the old scheme's `r1`, `r2`, … came
+ * out in exactly this order.
+ *
+ * The `while` loop reproduces the one wrinkle in the old naming: `autoName`
+ * skipped a name an *entity* had already taken, so a drawing with a point
+ * explicitly called `r2` pushed its second relation to `r3`. Entity names are
+ * untouched by any of this and the replay reaches this point having made the
+ * same ones, so consulting the live entity map here gives the old answer
+ * exactly.
+ *
+ * Version 4 files run through none of it — `active` is false and every entry
+ * passes through untouched — but a v3 file with no deletions still runs the
+ * bookkeeping, which costs a few string comparisons and keeps one code path
+ * instead of two.
+ */
+function relationRenamer(model: Model, version: number) {
+  const active = version < 4;
+  const map = new Map<string, string>();
+  const seen = new Set<string>();
+  let oldN = 0;
+  return {
+    /** Called after every replayed step, to name whatever it created. */
+    note(): void {
+      if (!active) return;
+      for (const name of model.relations.keys()) {
+        if (seen.has(name)) continue;
+        seen.add(name);
+        let was: string;
+        do { oldN += 1; was = `r${oldN}`; } while (model.entities.has(was));
+        map.set(was, name);
+      }
+    },
+    /** Called before every replayed step, to point a deletion at the right thing. */
+    rewrite(entry: JournalEntry): JournalEntry {
+      if (!active || entry.op !== "deleteRelation") return entry;
+      const [was] = entry.args;
+      const now = typeof was === "string" ? map.get(was) : undefined;
+      // A name with no mapping is left alone so it fails at the primitive with
+      // its own message. Rewriting it into something plausible would turn a
+      // hand-edited file's typo into a deletion of whatever happened to be
+      // there.
+      return now === undefined ? entry : { op: entry.op, args: [now] };
+    },
+  };
 }
 
 /**
@@ -175,6 +246,7 @@ export function fromSaved(saved: SavedModel): Model {
 
   const model = new Model(saved.dim ?? 2);
   const table = replayTable(model);
+  const renamer = relationRenamer(model, saved.version);
 
   // Replay with recording off, then install the journal wholesale, so a model
   // that is opened and saved again round-trips to the same file. What is
@@ -192,7 +264,7 @@ export function fromSaved(saved: SavedModel): Model {
         new Error(`step ${i + 1}, ${entry.op}(${entry.args.map((a) => JSON.stringify(a)).join(", ")}): ${e instanceof Error ? e.message : e}`);
       let step: JournalEntry;
       try {
-        step = translate(model, entry);
+        step = translate(model, renamer.rewrite(entry));
       } catch (e) {
         throw where(e);
       }
@@ -203,6 +275,9 @@ export function fromSaved(saved: SavedModel): Model {
       } catch (e) {
         throw where(e);
       }
+      // After the step, so the relations it created are named while the order
+      // they came out in is still the order the old scheme would have used.
+      renamer.note();
       replayed.push({ op: step.op, args: step.args });
     });
   });

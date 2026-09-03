@@ -21,7 +21,7 @@
 // the only reading under which the item is safe to click without looking: it
 // adds a constraint the drawing already satisfies, and moves nothing.
 
-import type { Model } from "./model.ts";
+import { SETTABLE_PROPERTY, valueArgIndex, type Model } from "./model.ts";
 import { describePick, type Pick } from "./picking.ts";
 import { frameBasis } from "./relations/refs.ts";
 
@@ -31,13 +31,16 @@ import { frameBasis } from "./relations/refs.ts";
  * `run` types a command; that is nearly all of them. `insert` drops a quoted
  * name into the command line, which is not a command but *is* exactly what a
  * left-click already does — it is on the menu so the menu describes itself
- * rather than to add a capability. `disabled` is an item that is shown and
- * cannot be chosen, with the reason it cannot; see Fix, below, for the one case
- * this exists for.
+ * rather than to add a capability. `type` puts an **unfinished** command there
+ * for the user to complete, which is what an item needing a number the menu
+ * cannot know has to do — see Set value…, below. `disabled` is an item that is
+ * shown and cannot be chosen, with the reason it cannot; see Fix, below, for
+ * the one case this exists for.
  */
 export type MenuAction =
   | { do: "run"; command: string }
   | { do: "insert"; name: string }
+  | { do: "type"; text: string }
   | { do: "disabled"; why: string };
 
 export interface MenuItem {
@@ -99,14 +102,45 @@ export function menuFor(model: Model, pick: Pick | null): Menu {
   if (!pick) return emptyCanvasMenu(model);
   if (pick.kind === "relation") {
     return {
-      // The same sentence the hover tag writes for a glyph — `r5  dist p1 p2 50`
+      // The same sentence the hover tag writes for a glyph — `d1  dist p1 p2 50`
       // — because the menu is answering the question the tag just asked, and two
       // spellings of one relation would be two things to keep in step.
       header: describePick(model, pick),
-      items: [{ label: "Delete", action: { do: "run", command: `del(${quoted(pick.name)})` } }],
+      items: [
+        ...setValueItem(model, pick.name),
+        { label: "Delete", action: { do: "run", command: `del(${quoted(pick.name)})` } },
+      ],
     };
   }
   return entityMenu(model, pick);
+}
+
+/**
+ * **Set value…** on a dimension glyph, and nothing at all on any other
+ * relation — a `par` has no value to set, and an item that existed only to
+ * report that would be worse than no item.
+ *
+ * It **types an unfinished command** rather than running one: `set("d4.value", `
+ * with the caret after the comma, for the user to finish with a number. That is
+ * the house pattern for a command needing input the menu cannot know, and it is
+ * the only shape available under the rule the menu is built on — every item is
+ * a command the log shows, and a menu that popped its own number prompt would
+ * be a fourth editing surface. The trailing ellipsis in the label is the
+ * standing UI convention for "this asks you for something", so the item admits
+ * up front that it does not finish the job.
+ *
+ * The dimension's *current* value is deliberately not typed in. It is already
+ * on the drawing — the glyph you just right-clicked is the number — and
+ * pre-filling it would leave the user editing a literal rather than stating
+ * one, with a wrong keystroke silently re-committing the old value.
+ */
+function setValueItem(model: Model, name: string): MenuItem[] {
+  const r = model.relations.get(name);
+  if (!r || valueArgIndex(r.op) === null) return [];
+  return [{
+    label: "Set value…",
+    action: { do: "type", text: `set(${quoted(`${name}.${SETTABLE_PROPERTY}`)}, ` },
+  }];
 }
 
 /**
@@ -231,10 +265,32 @@ export interface MenuHost {
   run(command: string): void;
   /** Drops a quoted name into the command line, exactly as a left-click does. */
   insert(name: string): void;
+  /**
+   * Puts an unfinished command in the command line, ready to be completed and
+   * submitted by hand. Separate from `insert` because it is not appending a
+   * name to whatever is being composed — it is starting a different command,
+   * and half a `dist(` in front of it would only be in the way.
+   */
+  type(text: string): void;
 }
 
 /** How close to the viewport's edge the menu may sit, in pixels. */
 const EDGE_MARGIN = 4;
+
+/**
+ * What an item shows beside its label: the exact text it is about to put in the
+ * command line. That is the feature and not decoration — an unfinished command
+ * shows unfinished, so the item cannot look like it is going to do more than it
+ * does.
+ */
+function hintFor(action: MenuAction): string {
+  switch (action.do) {
+    case "run": return action.command;
+    case "type": return action.text;
+    case "insert": return `"${action.name}"`;
+    case "disabled": return "";
+  }
+}
 
 /**
  * The menu on screen: a `<div>` over the canvas, in the hover tag's visual
@@ -342,7 +398,7 @@ export class ContextMenu {
     row.className = "item";
     const hint = document.createElement("span");
     hint.className = "cmd";
-    hint.textContent = item.action.do === "run" ? item.action.command : `"${item.action.name}"`;
+    hint.textContent = hintFor(item.action);
     row.appendChild(hint);
     const action = item.action;
     // Closed before the command runs, so the log line the action writes is not
@@ -350,7 +406,8 @@ export class ContextMenu {
     row.addEventListener("click", () => {
       this.close();
       if (action.do === "run") this.host.run(action.command);
-      else this.host.insert(action.name);
+      else if (action.do === "type") this.host.type(action.text);
+      else if (action.do === "insert") this.host.insert(action.name);
     });
     return row;
   }

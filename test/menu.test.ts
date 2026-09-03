@@ -150,17 +150,35 @@ test("Fix pins where the point is in the frame's coordinates, not in the kernel'
   assert.deepEqual(model.coords(p).map((v) => Math.round(v * 1e6) / 1e6), [13, 9]);
 });
 
-test("a glyph's menu is its description and one Delete", async () => {
+test("a dimension glyph's menu is its description, Set value… and Delete", async () => {
   await loadKernel();
   const model = new Model(2);
   const a = model.addPoint([0, 0]).name;
   const b = model.addPoint([50, 0]).name;
-  const r = model.relation("dist", [a, b, 50], () => {});
+  const d = model.relation("dist", [a, b, 50], () => {});
+  assert.equal(d, "d1", "a dist is a dimension");
+
+  const menu = menuFor(model, { name: d, kind: "relation", distance: 0 });
+  assert.equal(menu.header, `${d}  dist ${a} ${b} 50`);
+  assert.deepEqual(labels(menu), ["Set value…", "Delete"]);
+  assert.equal(commandFor(menu, "Delete"), `del("${d}")`);
+
+  // It *types* rather than runs: the number is the user's to supply, and an
+  // item that ran something would have had to invent one.
+  const setItem = menu.items.find((i) => i.label === "Set value…")!;
+  assert.deepEqual(setItem.action, { do: "type", text: `set("${d}.value", ` });
+});
+
+test("a constraint glyph's menu has no Set value… — there is no value to set", async () => {
+  await loadKernel();
+  const model = new Model(2);
+  const a = model.addPoint([0, 0]).name;
+  const b = model.addPoint([50, 0]).name;
+  const r = model.relation("coincident", [a, b], () => {});
+  assert.equal(r, "r1", "a coincidence is a constraint");
 
   const menu = menuFor(model, { name: r, kind: "relation", distance: 0 });
-  assert.equal(menu.header, `${r}  dist ${a} ${b} 50`);
   assert.deepEqual(labels(menu), ["Delete"]);
-  assert.equal(commandFor(menu, "Delete"), `del("${r}")`);
 });
 
 test("empty canvas arms the tools, and every tool name it types is registered", async () => {

@@ -309,6 +309,27 @@ async function main() {
     log(`${name} → command line`, "out");
   }
 
+  /**
+   * Puts an unfinished command in the line for the user to complete — what the
+   * menu's Set value… does, since only the user knows the number.
+   *
+   * It **replaces** what is there rather than appending, which is the opposite
+   * of `insertName` and right for the opposite reason. A name is another
+   * argument to whatever is being composed; a partial command is a different
+   * command, and `dist("p1", set("d4.value", ` is not a thing anyone was
+   * typing. Nothing is submitted either way — the seam the menu's `run` goes
+   * through is deliberately not this one.
+   */
+  function typeCommand(text: string) {
+    cmdEl.value = text;
+    cmdEl.focus();
+    // The caret at the end, so the next keystroke is the number. Chrome puts it
+    // where it last was on a programmatic value change, which for a line that
+    // was previously empty is position 0 — i.e. in front of the whole command.
+    cmdEl.setSelectionRange(text.length, text.length);
+    log(`${text}… → command line`, "out");
+  }
+
   // The canvas has to follow its own box, not just window resizes: the log
   // pane grows as commands are typed and takes height from the viewport. Left
   // to a resize listener the bitmap keeps its old aspect and the drawing is
@@ -415,6 +436,7 @@ async function main() {
   const menu = new ContextMenu(menuEl, {
     run: (command) => void submit(command),
     insert: insertName,
+    type: typeCommand,
   });
 
   const engine = new ToolEngine(model, cv, view, {

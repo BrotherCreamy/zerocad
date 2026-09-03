@@ -306,13 +306,16 @@ test("rels() lists the constraints under names you can retype", async () => {
   // The short name each relation is called by, not the internal op — so a
   // listed line reads back as something that could have been typed. The axis
   // reference reads back verbatim: `par("l1", "f.x")` is a line you could type.
+  //
+  // The `dist` reads `d1`, which is the listing's half of the dimension split:
+  // scanning `rels()` for something to `set` means looking for a `d`.
   assert.deepEqual((await run(repl, "rels()")).value, [
     "r1  coin p1 p2",
     "r2  par l1 f.x",
-    "r3  dist p1 p2 10",
+    "d1  dist p1 p2 10",
   ]);
   assert.deepEqual((await run(repl, 'rels("l1")')).value, ["r2  par l1 f.x"]);
-  assert.deepEqual((await run(repl, 'rels("p2")')).value, ["r1  coin p1 p2", "r3  dist p1 p2 10"]);
+  assert.deepEqual((await run(repl, 'rels("p2")')).value, ["r1  coin p1 p2", "d1  dist p1 p2 10"]);
   assert.deepEqual((await run(repl, 'rels("nothing")')).value, []);
 });
 
