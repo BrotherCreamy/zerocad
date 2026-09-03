@@ -7,7 +7,8 @@
 
 import { ensureKernelLoaded } from "./kernel/problem.ts";
 import { Model } from "./model.ts";
-import { open as openModelText, save as saveModel } from "./persist.ts";
+import { open as openModelText, save as saveModel, savedTools } from "./persist.ts";
+import { carryIntoSession, toolSources } from "./toolsource.ts";
 import { UndoStack } from "./undo.ts";
 import { Repl, fmt } from "./repl.ts";
 import { neocadScope } from "./replenv.ts";
@@ -480,6 +481,14 @@ async function main() {
     return {
       model,
       view,
+      // The command surface captures the source of a tool defined at the
+      // command line, and the entry text is something only the evaluator
+      // knows. `repl` is initialised on the next line but this is only ever
+      // called from inside an entry, by which time it exists.
+      currentEntry: () => repl.entry,
+      // The tool-voice channel, for `open()` mentioning what a file carries.
+      log: (line: string) => log(line, "out"),
+      toolSources,
       // Measured fresh on every ask, not cached: the log pane grows as
       // commands are typed and takes its height from the canvas, so a size
       // read once at startup would put "the middle of the view" steadily
@@ -534,6 +543,11 @@ async function main() {
             const text = await file.text();
             asUserAction(() => swapModel(openModelText(text)));
             log(`opened ${file.name}`, "out");
+            // The picker is the other door to the same act, so it says the
+            // same thing about tools the file carries — through the same
+            // function `open()` uses, or the two would drift into two answers
+            // to what opening a file means. Nothing here evaluates anything.
+            for (const line of carryIntoSession(savedTools(text), toolSources)) log(line, "out");
           } catch (err) {
             log(`${err instanceof Error ? err.message : err}`, "err");
           }

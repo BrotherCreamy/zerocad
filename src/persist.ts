@@ -22,6 +22,7 @@ import { Model, type JournalEntry } from "./model.ts";
 import * as basic from "./relations/basic.ts";
 import * as geom from "./relations/geometry.ts";
 import { fillet, set } from "./operations.ts";
+import type { ToolSource } from "./toolsource.ts";
 
 export const FORMAT = "neocad-model";
 /**
@@ -50,6 +51,14 @@ export const FORMAT = "neocad-model";
  * file that opened as `par` and saved back as `hor`, or that kept pointing a
  * deletion at a name the model no longer uses, would carry the old world
  * forward forever.
+ *
+ * **`tools` did not bump it.** An optional field that older code ignores and
+ * newer code reads is not a format break in either direction: a v4 file with
+ * tools opens in a build that has never heard of them (it drops them, which is
+ * the same thing that build would have done with them anyway), and a v4 file
+ * without tools opens here as a file that carries none. Bumping would have
+ * refused the first case for no reason — and there are no third-party readers
+ * of v4 to protect, since this app is the only one there has ever been.
  */
 export const VERSION = 4;
 
@@ -60,6 +69,18 @@ export interface SavedModel {
   journal: JournalEntry[];
   /** Solved coordinates, keyed by point name; radii keyed by circle/arc name. */
   values: { points: Record<string, number[]>; radii: Record<string, number> };
+  /**
+   * The source of any tools authored at the command line, as **inert text**.
+   * Absent when there are none, so a drawing with no tools saves exactly the
+   * bytes it always did.
+   *
+   * A sibling of the journal rather than part of it, because it is not
+   * something that was done to the model — see `toolsource.ts`. Nothing here
+   * reads it back: `open()` replays the journal and never so much as looks at
+   * this field. `savedTools` is the only reader, and all it does is hand the
+   * strings to whoever asked, to render.
+   */
+  tools?: ToolSource[];
 }
 
 /**
@@ -216,25 +237,69 @@ function translate(model: Model, entry: JournalEntry): JournalEntry {
   return { op: "parallel", args: pointForm ? [a, b, ref] : [a, ref] };
 }
 
-/** The model as a plain object, ready for JSON.stringify. */
-export function toSaved(model: Model): SavedModel {
+/**
+ * The model as a plain object, ready for JSON.stringify.
+ *
+ * `tools` is a parameter rather than something read from a global because it
+ * is not the model's — the model has never heard of the command line. It
+ * defaults to none, which is what keeps the undo stack honest: `main.ts`
+ * snapshots with `save(model, false)` and therefore never sees a tool source,
+ * so defining a tool cannot register as an edit to the drawing.
+ */
+export function toSaved(model: Model, tools: readonly ToolSource[] = []): SavedModel {
   const points: Record<string, number[]> = {};
   const radii: Record<string, number> = {};
   for (const e of model.entities.values()) {
     if (e.kind === "point") points[e.name] = model.coords(e.name);
     else if (e.kind === "circle" || e.kind === "arc") radii[e.name] = model.radius(e.name);
   }
-  return {
+  const saved: SavedModel = {
     format: FORMAT,
     version: VERSION,
     dim: model.dim,
     journal: model.journal.map((e) => ({ op: e.op, args: e.args })),
     values: { points, radii },
   };
+  // Absent, not empty: a file from a session that authored no tools is byte
+  // for byte the file this app has always written.
+  if (tools.length) saved.tools = tools.map((t) => ({ name: t.name, source: t.source }));
+  return saved;
 }
 
-export function save(model: Model, pretty = true): string {
-  return JSON.stringify(toSaved(model), null, pretty ? 2 : 0);
+export function save(model: Model, pretty = true, tools: readonly ToolSource[] = []): string {
+  return JSON.stringify(toSaved(model, tools), null, pretty ? 2 : 0);
+}
+
+/**
+ * The tool sources a file carries, as text. **Reading, and nothing else** —
+ * this is where the "a saved file is data" rule is kept for the one field that
+ * looks like code: entries are validated for shape, copied into fresh objects,
+ * and handed back as strings. No caller of this function evaluates them, and
+ * the test suite says so with a source that would announce itself if it ran.
+ *
+ * Anything malformed is skipped rather than refused, because a tool source is
+ * not load-bearing: a drawing whose `tools` array a hand edit mangled should
+ * still open as a drawing.
+ */
+export function savedTools(saved: string | SavedModel): ToolSource[] {
+  let parsed: unknown = saved;
+  if (typeof saved === "string") {
+    try {
+      parsed = JSON.parse(saved);
+    } catch {
+      return []; // `open` has already reported the same file as unparseable
+    }
+  }
+  const raw = (parsed as { tools?: unknown } | null)?.tools;
+  if (!Array.isArray(raw)) return [];
+  const out: ToolSource[] = [];
+  for (const entry of raw) {
+    if (!entry || typeof entry !== "object") continue;
+    const { name, source } = entry as { name?: unknown; source?: unknown };
+    if (typeof name !== "string" || typeof source !== "string") continue;
+    out.push({ name, source });
+  }
+  return out;
 }
 
 export function fromSaved(saved: SavedModel): Model {
