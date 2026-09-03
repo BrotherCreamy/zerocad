@@ -130,8 +130,34 @@ survivable once a tool infers them on your behalf. `Model` keeps a relation
 registry beside its entity map, filled by one wrapper (`model.relation`) that
 every function in `relations/` is written as a single call to: it journals the
 call, gathers the residual-block handles the body adds, and registers them
-under `r1`, `r2`, … Entities and relations share the namespace, because
+under a name. Entities and relations share the namespace, because
 `del("r3")` has to mean one thing.
+
+**Which name depends on whether the relation is a dimension.** `dist`, `rad`
+and `ang` are `d1`, `d2`, …; everything else is `r1`, `r2`, …. The split is
+Onshape's — a dimension is a number you put on the drawing, a constraint is a
+statement about shape — and it belongs here rather than merely in the UI because
+the name is what you *do* things to: a `d` is something to go back and edit
+(`set("d4.value", 60)`), an `r` is something to add or delete. `fix` is not a
+dimension: it carries coordinates rather than one value.
+
+The prefix is read from the op inside `model.relation` rather than passed in by
+each relation. An argument that every relation must remember is an argument one
+of them will eventually forget, and the failure would be silent — this
+codebase's characteristic bug. The rollback on a throwing relation restores
+whichever counter the claim moved, because putting `"r"` back after claiming
+`"d"` leaves the `d` counter advanced, and a name shifted by a relation that
+failed is a name a replay will not reproduce.
+
+**Editing a dimension is an operation, not another relation.** `set` replaces an
+equation rather than adding one, so it sits in `operations.ts` with the rest of
+the structure-adjacent work. `Model.rebuildRelation` re-runs the dimension in
+place under the same name — same registry position, `args` updated — so
+`rels()`, the glyph's label and `del`'s reference scan all tell the truth
+afterwards without being told anything. It builds the new blocks *before*
+removing the old ones, which is the only ordering under which a body that throws
+leaves the relation as it was: the other way round deletes a working constraint
+and then fails, with the closures gone and nothing to put back.
 
 A relation defined in terms of another — `concentric` via `coincident`,
 `arcEndpoints` via two `onCircle`s — is **one** relation: the inner call's
@@ -381,6 +407,16 @@ unit tests. The DOM half is a `<div>` in the hover tag's visual family, and it
 shows each item's command beside its label: the menu exists to be a shortcut
 *to the command line*, and an item that hid what it was about to do would be a
 fourth editing surface rather than a faster way to type.
+
+**An item may also type a command it cannot finish.** Set value… on a dimension
+glyph puts `set("d4.value", ` in the command line and stops, for the user to
+supply the number. That is the only shape available under the rule above — a
+menu that popped its own number prompt would be the fourth editing surface the
+rule exists to prevent — and it needed a third action kind rather than reusing
+Insert name, because a partial command *replaces* what is being composed where a
+name appends to it. `dist("p1", set("d4.value", ` is not a thing anyone was
+typing. The item shows the unfinished text beside its label, so it cannot look
+like it is about to do more than it does.
 
 Two consequences of the "no new machinery" rule are visible on the menu itself.
 A **dimension carries the current measurement**, so it holds what it measures

@@ -519,21 +519,68 @@ replacing) the system Node other projects on this machine may depend on.
   number about?) survives without that. Which side of an edge a dimension
   sits on follows the argument order: `dist("p3","p4")` and `dist("p4","p3")`
   are the same constraint on opposite sides.
-  Deliberate limitations: **a value cannot be edited in place.** Clicking one
-  inserts the relation's name like any other glyph, and `del` plus retype is
-  the editing story, because changing a target means rebuilding the closure
-  that captured it — an owner decision in `TODO.md`, along with named
-  dimension parameters. **`ang` takes radians and labels degrees**, so a
-  label is not quite what you would retype; drawing radians on a sketch
-  would be the wrong fix, and this seam closes with retargeting. `rad` has
-  no leader line back to its arc, and nothing moves a label out of a
-  crowded spot — that is still the no-layout-engine decision above, with
+  Deliberate limitations: **a value still cannot be edited on the canvas.**
+  Clicking one inserts the relation's name like any other glyph; editing is
+  `set("d1.value", 60)` at the command line, or Set value… on the glyph's
+  menu, which types that command for you (see the next entry). **`ang` takes
+  radians and labels degrees**, so a label is not quite what you would
+  retype — and `set` on an angle takes radians for the same reason. Drawing
+  radians on a sketch would be the wrong fix and guessing the unit from the
+  number would be worse; degree input is an open owner decision in `TODO.md`.
+  `rad` has no leader line back to its arc, and nothing moves a label out of
+  a crowded spot — that is still the no-layout-engine decision above, with
   `glyphs(false)` as the escape hatch.
+
+- **Dimensions are named `d1`, `d2`, … and `set()` edits one**
+  (`DIMENSION_OPS` / `relationPrefix` / `parseValueRef` / `rebuildRelation` in
+  `src/model.ts`, `set` in `src/operations.ts`) — the owner's decision,
+  verbatim: editing a dimension *"should be a `set(d4.value, 60)` where d4 is
+  the dimension."* There is no parameter table: the dimension **is** the named
+  value-holder.
+  **The `d` namespace.** `dist`, `rad` and `ang` are dimensions — a number you
+  put on the drawing — and claim `d` names; every other relation stays `r`.
+  Onshape's split, and it earns its keep because the name says which kind of
+  thing you are holding. **`fix` is not a dimension**: it carries coordinates
+  rather than one value. The prefix is read from the op inside
+  `model.relation` rather than passed in by each relation, so a new relation
+  cannot get it wrong by omission — and the throw-rollback restores whichever
+  counter the claim actually moved, or a failed `dist` would silently shift
+  every later dimension's name and a replay would hand out different ones.
+  **`set` is an operation, not a relation**: it replaces an equation rather
+  than adding one. `Model.rebuildRelation` re-runs the dimension **in place
+  under the same name** — same registry position, `args` updated — so
+  `rels()`, the glyph's label and `del`'s reference scan all tell the truth
+  afterwards with no code told anything. New blocks are built *before* the old
+  ones are removed, which is the only ordering under which a refused value
+  leaves the relation intact (blocks are closures; there would be nothing to
+  put back). Journalled as the one call, one undo step, and it re-solves
+  through the host — the `del` precedent, sharpened: changing the verdict is
+  the whole purpose of the call.
+  `"d4.value"` is the only settable property, parsed by `parseValueRef` beside
+  `parseAxisRef` in the layer that owns the namespace. An unknown property, a
+  non-dimension, or a value that is not a number each gets a throw naming what
+  *is* settable.
+  **Command surface:** `set(path, value)`, on `help()`, registered in both
+  `replenv.ts` and `persist.ts`'s replay table. The menu's **Set value…** on a
+  dimension glyph *types* `set("d4.value", ` into the command line rather than
+  running anything — a third `MenuAction` (`type`), because a partial command
+  replaces the line where Insert name appends to it.
+  **Format version 4.** Names are handed out by creation order, so
+  re-prefixing changes which relation a recorded name picks out. Only
+  `deleteRelation` holds one, so a v3 journal replays through a map from old
+  name to new and its `deleteRelation` args are rewritten. The map is built
+  **from the replay** rather than from a scan, because `fillet` is one entry
+  that creates four relations. As at 2→3 the rewritten journal is installed,
+  so a v3 file re-saves pointing at names the model uses.
+  Worth knowing and not a bug: nothing pins a bare rectangle's *orientation*,
+  so lengthening one edge lets the whole drawing rotate slightly unless it is
+  levelled against a datum — the no-world-frame decision working as designed.
 
 - **Named relations, and deletion with cascade** (`Model.relation` +
   `Model.relations` in `src/model.ts`, `del` in `src/operations.ts`,
   `BlockHandle` / `removeBlock` in `src/kernel/problem.ts`) — relations are
-  registry entries named `r1`, `r2`, … beside the entities, because a
+  registry entries named beside the entities (`r1`, `r2`, … for constraints and
+  `d1`, `d2`, … for dimensions — see the entry above), because a
   constraint you cannot refer to is one you cannot inspect or remove, which
   stopped being survivable the moment tools began inferring constraints on the
   user's behalf.
@@ -576,10 +623,10 @@ replacing) the system Node other projects on this machine may depend on.
   reads back as a line you could retype. The **hover tag** gained the relation
   names (`p5  12, 30 · r3 r7`), which was this package's whole visibility
   story; the constraint glyphs above are the follow-up that builds on the same
-  registry. `del` is the one editing command that re-solves
-  through the host, because it is the one edit whose purpose is to change the
-  solver's verdict and a stale `CONFLICT` header is a bug this project has
-  already been bitten by.
+  registry. `del` re-solves through the host — as `set` now does, for the same
+  reason — because these are the edits whose purpose is to change the solver's
+  verdict, and a stale `CONFLICT` header is a bug this project has already been
+  bitten by.
   **The documented leak:** variables are **tombstoned, not compacted**. A
   deleted point's variables stay in the flat vector referenced by nothing;
   they take part in no residual, so the damped solve leaves them exactly where

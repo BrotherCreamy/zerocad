@@ -257,6 +257,32 @@ test("the value's place in the argument list is known for every dimension and no
   for (const op of DIMENSION_OPS) assert.equal(typeof valueArgIndex(op), "number", op);
 });
 
+test("every op in DIMENSION_OPS can actually be rebuilt by set", async () => {
+  await loadKernel();
+  // Three tables have to agree for a dimension to work end to end: DIMENSION_OPS
+  // (which gives it a `d` name), VALUE_ARG (which says where its value sits) and
+  // operations.ts's REBUILD (which re-runs it). The first two are checked above;
+  // this drives the third from the first, so adding a fourth dimension without a
+  // REBUILD entry fails here rather than the first time a user types `set`.
+  const fixtures: Record<string, (m: Model) => string> = {
+    dist: (m) => dist(m, "a", "b", 10),
+    radius: (m) => radius(m, "c", 5),
+    angle: (m) => angle(m, "l1", "l2", Math.PI / 3),
+  };
+  for (const op of DIMENSION_OPS) {
+    assert.ok(fixtures[op], `${op} is a dimension with no fixture here — add one, and a REBUILD entry`);
+    const m = pair();
+    m.addPoint([0, 10], "c2");
+    m.addCircle("c2", 5, "c");
+    m.addLine("a", "b", "l1");
+    m.addLine("a", "c2", "l2");
+    const name = fixtures[op](m);
+    // Would throw `"<op>" cannot be rebuilt` if REBUILD were missing an entry.
+    assert.equal(set(m, `${name}.value`, op === "angle" ? Math.PI / 4 : 7), name, op);
+    assert.equal(m.solve().solved, true, op);
+  }
+});
+
 test("parseValueRef is the f1.x syntax, one property along", () => {
   assert.deepEqual(parseValueRef("d4.value"), { name: "d4", property: "value" });
   assert.throws(() => parseValueRef("d4"), /names no property/);

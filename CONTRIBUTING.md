@@ -118,6 +118,16 @@ Three things that are easy to get wrong:
 Then register it in `src/replenv.ts` (short name and long) and in
 `src/persist.ts`'s replay table, or it won't survive a save.
 
+**If it carries a single value the user would want to go back and change**, it
+is a *dimension* rather than a constraint: add its op to `DIMENSION_OPS` in
+`src/model.ts` so it claims a `d` name, its value's argument index to
+`VALUE_ARG` beside it, and a line to `REBUILD` in `src/operations.ts` so `set`
+can re-run it. Miss the first and the relation is `r`-named and has no
+`.value`; miss either of the others and `set` throws on something it should
+have handled. `test/dimensions.test.ts` checks that the three tables agree.
+A relation that carries *coordinates* is not a dimension — that is why `fix`
+is `r`-named — and neither is one that carries no number at all.
+
 ### Adding a tool
 
 Subclass `Tool`, call `defineTool`. See `src/tools/rectangle.ts` — that is the
