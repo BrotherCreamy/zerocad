@@ -7,6 +7,108 @@ decisions.
 
 ---
 
+## Dimensions are named `d1`, `d2`, … and `set()` edits one
+
+![A levelled rectangle with a filleted corner, dimensioned 120, 70 and R20, the log showing dist returning d1 and d2](docs/images/46-dimensions-are-named.png)
+
+**The owner's decision, verbatim: editing a dimension *"should be a
+`set(d4.value, 60)` where d4 is the dimension."*** That closes the register's
+open question, and it closes it by adding nothing: there is no parameter table,
+no second registry, no new kind of entity. The dimension already had a name and
+already held the value; it just needed the right name and a way to say so.
+
+**`dist`, `rad` and `ang` are dimensions and claim `d` names.** Everything else
+— `par`, `perp`, `coin`, `tan`, `on`, `eq`, `sym`, `fix` — stays `r`. The split
+is the one Onshape draws: a dimension is a number you put on the drawing, a
+constraint is a statement about shape. It earns its keep because the name now
+tells you which kind of thing you are holding: a `d` is something to go back and
+edit, an `r` is something to add or delete. Nothing else changed — `del`,
+`rels()`, glyphs, hover, the journal all worked the moment the prefix did,
+because none of them ever cared what a name started with.
+
+**`fix` is deliberately not a dimension.** It carries *coordinates* — two of
+them, in a frame — rather than one value, so there is nothing for `.value` to
+mean; and Onshape's fix is a constraint too.
+
+**The prefix is decided by the op, inside `model.relation`.** Read from a lookup
+rather than passed in by each relation, because an argument every relation has
+to remember is an argument one of them will eventually forget — this codebase
+has a whole CLAUDE.md section about that failure. The throw-rollback now puts
+back whichever counter the claim actually moved: restoring `"r"` after claiming
+`"d"` would leave a failed `dist` silently shifting every later dimension's
+name, and a replay would then hand out different ones.
+
+![The same drawing after set("d1.value", 190): wider, still level, still tangent, the log showing the command and d1 coming back](docs/images/47-set-a-dimensions-value.png)
+
+**`set("d4.value", 60)` is an operation, not a relation.** It does not add an
+equation, it *replaces* one — old residual blocks out of the problem, fresh ones
+in — which is structure-adjacent bookkeeping of exactly the kind `operations.ts`
+exists to hold apart from `relations/`. The relation is rebuilt **in place under
+the same name**: same registry position, `args` updated, so `rels()`, the glyph's
+label and `del`'s reference scan all tell the truth about `d4` afterwards without
+being told anything. That the name survives is the whole point of the dimension
+having one.
+
+**New blocks are built before old ones are removed**, which is the only ordering
+under which a body that throws leaves the relation exactly as it was. The other
+way round, a bad value would delete a working constraint and *then* fail — and
+residual blocks are closures, so there would be nothing left to put back.
+
+**`ang` takes radians, because that is what the relation stores.** The label on
+the drawing reads degrees; that seam is the documented one and this package does
+not close it. Guessing the caller's unit from the size of the number would be
+worse than one honest unit, and degree input is the owner's to ask for. The
+throw says "a number of radians (the label reads degrees; the relation stores
+radians)" where a user holding the wrong unit will actually meet it.
+
+**One user action, so one undo step, and the host re-solves after.** The `del`
+precedent, only sharper: changing the answer is the entire thing `set` does, so
+leaving a stale verdict on the header would be the readout bug this project has
+already been bitten by twice.
+
+**The menu gains Set value… on a dimension glyph, and it *types*.** It puts
+`set("d4.value", ` in the command line, unfinished, for the user to complete —
+the house pattern for a command needing input the menu cannot know, and the only
+shape available under the rule that every item is a command the log shows. A
+menu that popped its own number prompt would be a fourth editing surface. The
+item shows exactly that unfinished text beside its label, so it cannot look like
+it is about to do more than it does; the current value is deliberately *not*
+pre-filled, since it is already on the drawing and pre-filling it would leave the
+user editing a literal rather than stating one. A constraint glyph gets no such
+item at all — there is no value to set, and an item existing only to say so would
+be worse than none.
+
+**Format version 4, and version-3 files translate rather than being refused.**
+Relation names are handed out by order of creation, so re-prefixing changes which
+relation a given string picks out. Almost nothing in a journal holds one — a
+relation entry records the geometry it constrains, not its own name — with one
+exception: `deleteRelation`, which is nothing but a name. So a v3 journal is
+replayed with a map from the name each relation *had* to the name it *gets*, and
+`deleteRelation` args are rewritten through it. The map is computed **from the
+replay itself** rather than by scanning the journal, because `fillet` is one
+entry that expands into four relations and a scan would be off by four from there
+on — and would be wrong again the next time an operation's expansion changed. It
+also reproduces the old naming's one wrinkle, skipping a name an *entity* had
+taken. As at 2→3, the rewritten journal is what gets installed, so a v3 file
+re-saves pointing at names the model actually uses and round-trips byte for byte
+from then on.
+
+**Verification.** 414 unit tests (was 396) and 173 in the browser (was 165). The
+unit side asserts block counts and dead handles rather than behaviour where it
+can: a rebuild that left the old block in would still *solve* — to a drawing
+satisfying neither the old value nor the new — and every behavioural assertion
+short of counting would pass it. The browser side covers what only assembly can
+get wrong: geometry that actually moves to the new value, a header that is not
+still reporting the verdict from before the edit, one Ctrl+Z returning the old
+value, and the menu item typing something that does nothing until it is finished
+by hand. The screenshots above are a real session; the tilt visible in an earlier
+take of them was the drawing's free rotation — nothing pins a bare rectangle's
+orientation — so the poster pair levels it against a datum first, and the
+right angles, the tangencies and the untouched `70` were checked to nine decimal
+places rather than by eye.
+
+---
+
 ## `hor` and `ver` are retired; a level edge is parallel to an axis you can name
 
 ![A rectangle levelled against a tilted frame, each edge wearing one // mark](docs/images/45-par-to-a-frame-axis.png)

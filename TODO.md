@@ -218,11 +218,31 @@ are flagged as such.
   `RelationEntry.args`, formatted trimmed to at most 3 decimals. `dist` also
   draws **dashed** witness and dimension lines: solid ones were tried first
   and read as geometry (a `dist` across a diagonal drew what looked like an
-  edge that is not there). ⚠ *Deviation:* `ang` is typed in **radians** and
-  labelled in **degrees**, so the label is not what you would retype — see
-  the retargeting decision below, which is where that seam gets closed.
-  **No editing in place**: clicking a value inserts the relation's name, and
-  `del` plus retype is today's editing story.
+  edge that is not there). ⚠ *Deviation, still open:* `ang` is typed in
+  **radians** and labelled in **degrees**, so the label is not what you would
+  retype — and `set("d3.value", …)` takes radians for the same reason, since a
+  dimension stores what its relation stores. Deliberately left: guessing the
+  unit from the size of the number would be worse than one honest unit, and
+  degree input is the owner's to ask for.
+  **No editing in place on the canvas**: clicking a value still inserts the
+  relation's name. Editing itself is `set("d1.value", 60)` from the command
+  line, or Set value… on the glyph's menu, which types that command for you.
+- **Dimensions are the `d` namespace, and a dimension is the value-holder.**
+  `dist`, `rad` and `ang` claim `d1`, `d2`, … and everything else claims
+  `r1`, `r2`, …, because a dimension is a number you put on the drawing and a
+  constraint is a statement about shape — Onshape's split, and the name now
+  says which you are holding. **`fix` is not a dimension**: it carries
+  coordinates rather than one value, and Onshape calls it a constraint too.
+  The prefix is decided by the op inside `model.relation` rather than passed
+  in by each relation, so a new relation cannot get it wrong by omission.
+  **`set(path, value)` is an operation**, not a relation: it replaces an
+  equation rather than adding one, rebuilding the relation **in place under
+  the same name** so every reference to `d4` still means what it meant. The
+  new blocks are built before the old ones are removed, so a refused value
+  costs the drawing nothing. One user action, one undo step, and it re-solves
+  through the host — the `del` precedent, sharpened by the fact that changing
+  the verdict is the whole purpose of the call. `"d4.value"` is the only
+  settable property; the syntax is `f1.x`'s, one property along.
 - **Tools do not dimension what they draw.** A rectangle gets `hor`/`ver` on
   its edges but no size; a circle's radius stays free. Matches Onshape's
   undimensioned-sketch behaviour — the user adds `dist`/`rad` when they mean
@@ -269,23 +289,27 @@ are flagged as such.
 ## Decisions needed from the owner
 
 - [x] **How a dimension's value is edited — DECIDED by the owner
-      (2026-09-02):** *"should be a `set(d4.value, 60)` where d4 is the
-      dimension."* Dimensions (`dist`/`rad`/`ang`) become the `d` namespace,
-      the dimension itself is the named value-holder (no separate parameter
-      table), and `set()` rebuilds it in place under the same name. In
-      flight: [`docs/plans/dimensions-are-named.md`](docs/plans/dimensions-are-named.md).
+      (2026-09-02), and shipped.** *"should be a `set(d4.value, 60)` where d4
+      is the dimension."* The design is now a register entry above
+      ("Dimensions are the `d` namespace"); spec:
+      [`docs/plans/dimensions-are-named.md`](docs/plans/dimensions-are-named.md).
+      **Still open underneath it**, and not this package's to answer: `ang`
+      stores radians while its label reads degrees, so `set` on an angle takes
+      radians. Degree input is a separate ask.
 - [x] **May a saved file carry code? — DECIDED by the owner (2026-09-02):
       inert text, pasted back by hand.** The file carries a REPL-authored
       tool's source as data; `open()` never evaluates it, and the paste is
-      the consent. Queued behind the named-dimensions package (both touch
-      `persist.ts`).
+      the consent. Was queued behind the named-dimensions package because both
+      touch `persist.ts`; that package is now in review, so this one is next.
 
 ## Next up
 
 Queue for Opus, in order. Each gets a spec in `docs/plans/` before work
 starts.
 
-- [ ] **Saving user-authored tools** — blocked on the owner decision above.
+- [ ] **Saving user-authored tools** — the owner decision above is made and
+      the `persist.ts` conflict is cleared (named dimensions is in review), so
+      this is unblocked. Note it will land on **format version 4**.
 - [ ] **~~Inference while dragging~~ — re-scoped down, near-wontfix.** Checked
       against the guiding rule before speccing: Onshape does *not* commit
       constraints during a drag — dragging moves geometry, and inference
@@ -318,6 +342,25 @@ extended the way `defineTool` extends the tool registry would close it.
 
 ## Done
 
+- [x] **Dimensions are named, and `set()` edits their value** — spec:
+      [`docs/plans/dimensions-are-named.md`](docs/plans/dimensions-are-named.md),
+      now marked shipped-pending-review. `dist`/`rad`/`ang` claim `d1`, `d2`, …
+      and every other relation stays `r`-named; `set("d4.value", 60)` rebuilds
+      the dimension in place under the same name, journals as the one call, is
+      one undo step and re-solves through the host. The menu's **Set value…**
+      types the unfinished command rather than running anything. Format version
+      **4**, with v3 files translated: `deleteRelation` args are rewritten
+      through a map built during the replay, since re-prefixing changes which
+      relation a recorded name picks out.
+      *Discovered while doing it:* the map has to come from the replay rather
+      than from a scan of the journal, because `fillet` is one journal entry
+      that creates four relations — and would be wrong again the next time an
+      operation's expansion changed. Also worth knowing: nothing pins a bare
+      rectangle's **orientation**, so a `set` that lengthens one edge lets the
+      whole drawing rotate a little unless something levels it against a datum.
+      That is the no-world-frame decision working as designed, not a bug, but it
+      surprises on first sight — the package's screenshots level the drawing
+      first so the picture shows the edit and not the rotation.
 - [x] **The right-click context menu** — spec:
       [`docs/plans/context-menu.md`](docs/plans/context-menu.md), now marked
       shipped-pending-review. **Right-press and release without moving opens a

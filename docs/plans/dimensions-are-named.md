@@ -1,6 +1,13 @@
 # Plan: dimensions are named, and set() edits their value
 
-**Status: in flight** (2026-09-02). Owner's decision, verbatim: editing a
+**Status: shipped, pending review** (2026-09-03) — built as specified. Two
+things worth reading the code for rather than this file: the v3 translation map
+is computed *from the replay* rather than from a scan of the journal (a
+`fillet` is one entry that makes four relations), and the menu needed a third
+`MenuAction` — `type` — because a partial command replaces the command line
+where `insert` appends to it.
+
+Owner's decision, verbatim: editing a
 dimension *"should be a `set(d4.value, 60)` where d4 is the dimension."*
 This closes the register's open question — no separate parameter table: the
 dimension **is** the named value-holder, exactly as his first-day example

@@ -75,17 +75,19 @@ test("midpoint tracks two independently-fixed endpoints", async () => {
 // naming discipline, because everything about deletion and about replaying a
 // saved file rests on the names coming out the same way twice.
 
-test("relations are named r1, r2, … and carry the call that made them", async () => {
+test("relations are named r1, r2, … — or d1, d2, … — and carry the call that made them", async () => {
   await loadKernel();
   const m = new Model(2);
   axisFrame(m);
   m.addPoint([0, 0], "a");
   m.addPoint([3, 4], "b");
+  // `fix` is a constraint and `dist` a dimension, so the two counters run
+  // independently: the second relation made is `d1`, not `r2`.
   const r1 = fix(m, "a", [0, 0]);
-  const r2 = dist(m, "a", "b", 10);
-  assert.deepEqual([r1, r2], ["r1", "r2"]);
+  const d1 = dist(m, "a", "b", 10);
+  assert.deepEqual([r1, d1], ["r1", "d1"]);
 
-  const entry = m.relationOf("r2");
+  const entry = m.relationOf("d1");
   assert.equal(entry.op, "dist");
   assert.deepEqual(entry.args, ["a", "b", 10]);
   assert.equal(entry.blocks.length, 1, "dist is one residual block");
@@ -104,9 +106,11 @@ test("relationsNaming finds every relation that mentions an entity", async () =>
   dist(m, "a", "b", 10);
   parallel(m, "l", "f.x");
 
-  assert.deepEqual(m.relationsNaming("a").map((r) => r.name), ["r1", "r2"]);
-  assert.deepEqual(m.relationsNaming("l").map((r) => r.name), ["r3"]);
-  assert.deepEqual(m.relationsNaming("b").map((r) => r.name), ["r2"]);
+  // Registry order, not name order: `d1` (the dist) was made before `r2` (the
+  // par), and a mixed namespace must not reorder the answer.
+  assert.deepEqual(m.relationsNaming("a").map((r) => r.name), ["r1", "d1"]);
+  assert.deepEqual(m.relationsNaming("l").map((r) => r.name), ["r2"]);
+  assert.deepEqual(m.relationsNaming("b").map((r) => r.name), ["d1"]);
   assert.deepEqual(m.relationsNaming("nothing"), []);
 });
 

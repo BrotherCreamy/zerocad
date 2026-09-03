@@ -106,6 +106,75 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### Named dimensions, and the three decisions the spec left to the code
+
+The owner's sentence — editing a dimension *"should be a `set(d4.value, 60)`
+where d4 is the dimension"* — settles the interface completely and says nothing
+about the machinery. Three things had to be decided while building it, and each
+had a plausible wrong answer that would have passed the tests.
+
+**Where does the prefix come from?** The spec offered "an argument or a lookup,
+whichever reads better". An argument reads better at the call site and is the
+wrong choice, because it is an argument every relation has to remember and one
+of them will eventually not. The failure would be silent — a `d`-worthy relation
+quietly named `r7`, discovered whenever someone next tries to `set` it. A lookup
+on the op inside `model.relation` cannot be forgotten by a relation that does not
+know it exists, and gives a user-authored relation the right default (`r`, since
+it has no value to set) for free.
+
+The related trap is the one the spec flagged: the rollback. It used to restore
+`counters.get("r")` because there was only ever an `"r"`. Restoring `"r"` after
+claiming `"d"` would leave the `d` counter advanced by a relation that *failed*
+— and since names are handed out by order, a replay would then produce different
+ones. It is a one-line change and the sort of one-line change that stays wrong
+for months.
+
+**How is a relation rebuilt without losing it?** The obvious implementation
+removes the old blocks, re-runs the relation, and registers the result. It works
+until the re-run throws — at which point the old blocks are gone, and they were
+closures, so there is nothing to put back. The drawing has silently lost a
+constraint because someone typed a bad number. Reversing the order costs nothing
+and makes the failure free: build the new blocks first, and if the body throws,
+remove *those* and leave the entry untouched. `rebuildRelation` also reuses the
+`building` field that nested relations go through, which is what lets `set` call
+`dist` and have it land in the existing entry rather than claiming `d2`.
+
+Keeping the registry *position* is a `Map` detail worth stating out loud:
+`Map.set` on a key that already exists keeps its insertion order. Delete-then-set
+would have moved the dimension to the end, which nothing today depends on and
+which would have broken the moment something did.
+
+**How does a version-3 file's `deleteRelation` find its target?** The spec says
+to build an old-name/new-name map during replay, and the temptation is to build
+it by walking the journal instead: it looks equivalent and needs no plumbing in
+the replay loop. It is wrong, and `fillet` is why — one journal entry that
+expands into four relations. A journal scan would be off by four from that point
+on, and would be wrong again the next time an operation's expansion changed.
+Watching the registry fill up as the replay runs is exact by construction,
+because the old scheme's `r1`, `r2`, … came out in exactly that order.
+
+The finicky part is the old `autoName`'s skip: it stepped over a name an
+*entity* had already claimed, so a drawing with a point called `r1` had its
+first relation named `r2`. Entity names are untouched by this change and the
+replay reaches each step having made the same ones, so consulting the live entity
+map reproduces the old answer exactly rather than approximately. A `deleteRelation`
+naming something the map does not know is left alone deliberately, so a
+hand-edited file's typo fails with its own message instead of being rewritten
+into the deletion of whatever happened to be in that slot.
+
+**And one thing found by looking at the picture.** The first screenshot pair
+showed a rectangle that visibly *tilted* after a `set` lengthened one edge. The
+numbers said everything was fine, which is exactly the situation CLAUDE.md warns
+about — so it was checked rather than assumed: right angles at 90.000000000,
+edges parallel to 1e-6, the other dimension and the arc's radius and both
+tangencies unmoved to nine decimals. The tilt is real and correct. Nothing pins a
+bare rectangle's *orientation* — the rectangle tool adds two `par`s and a `perp`,
+which fix its shape and leave its heading free — so the whole drawing rotates a
+little as it re-solves. That is the no-world-frame decision working as designed.
+The poster pair levels the drawing against a datum first, so the picture shows
+the edit rather than the rotation, and the surprise is written into `TODO.md` so
+the next person to meet it does not spend the afternoon on it.
+
 ### Retiring hor/ver, and the two questions the spec left open
 
 The spec was clear about the *what* — `hor`/`ver` removed, `par`/`perp`/`ang`

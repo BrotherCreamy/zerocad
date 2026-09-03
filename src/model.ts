@@ -118,6 +118,73 @@ export function parseAxisRef(ref: string): { frame: string; axis: AxisName } | n
 }
 
 /**
+ * The relations that are **dimensions**: a number you put on the drawing,
+ * rather than a statement about shape. They are named `d1`, `d2`, … and
+ * everything else is named `r1`, `r2`, ….
+ *
+ * The split is Onshape's, and it is worth having because the two are used
+ * differently: a dimension is the thing you go back and *edit*
+ * (`set("d4.value", 60)`), a constraint is the thing you add or delete. Naming
+ * them apart means the name itself says which kind you are holding, which is
+ * the whole reason the owner asked for `d4` rather than `r4`.
+ *
+ * `fix` is deliberately **not** here even though it carries numbers. It carries
+ * *coordinates* — two of them, in a frame — not one value, so there is nothing
+ * for `set("…​.value", x)` to mean; and Onshape's fix is a constraint too.
+ *
+ * The set lives in this file rather than in `relations/` because this layer
+ * owns the namespace, and a relation authored at the command line gets `r`
+ * without having to know any of this exists.
+ */
+export const DIMENSION_OPS: ReadonlySet<string> = new Set(["dist", "radius", "angle"]);
+
+/** Which index of a dimension's recorded `args` holds its value. */
+const VALUE_ARG: Record<string, number> = { dist: 2, radius: 1, angle: 2 };
+
+/** The name prefix a relation made by `op` claims. See `DIMENSION_OPS`. */
+export function relationPrefix(op: string): string {
+  return DIMENSION_OPS.has(op) ? "d" : "r";
+}
+
+/**
+ * Where a dimension keeps its value, in its recorded argument list — or null if
+ * `op` is not a dimension at all. `set` is the only caller; it is here beside
+ * the set that decides what a dimension *is*, so the two cannot disagree about
+ * which ops have a value to set.
+ */
+export function valueArgIndex(op: string): number | null {
+  return DIMENSION_OPS.has(op) ? VALUE_ARG[op] : null;
+}
+
+/** The only settable property, and what `set` says when it is asked for another. */
+export const SETTABLE_PROPERTY = "value";
+
+/**
+ * A **property reference**: the string `"d4.value"`, naming a dimension's value
+ * rather than any entity.
+ *
+ * The syntax is the one `f1.x` established, and it lives here for the same
+ * reason that one does — this layer owns the namespace, and `claimName` refuses
+ * a dot precisely so that nothing can ever be *called* `d4.value`. Unlike
+ * `parseAxisRef` it does not return null for a plain name: a bare `set("d4", …)`
+ * is a mistake with exactly one likely intent, so it is told what to type
+ * instead rather than being handed on to fail somewhere less helpful.
+ */
+export function parseValueRef(ref: string): { name: string; property: string } {
+  if (typeof ref !== "string") throw new Error(`set takes a property like "d4.${SETTABLE_PROPERTY}"`);
+  const dot = ref.indexOf(".");
+  if (dot < 0) {
+    throw new Error(`"${ref}" names no property — say "${ref}.${SETTABLE_PROPERTY}"`);
+  }
+  const name = ref.slice(0, dot);
+  const property = ref.slice(dot + 1);
+  if (property !== SETTABLE_PROPERTY) {
+    throw new Error(`"${ref}" is not settable — the only settable property is "${name}.${SETTABLE_PROPERTY}"`);
+  }
+  return { name, property };
+}
+
+/**
  * Which entity a recorded argument is *about*: itself, or — for an axis
  * reference — the frame behind it. Null for an argument that is not a name at
  * all (a distance, a coordinate pair).
@@ -161,7 +228,8 @@ export interface JournalEntry {
  * survivable while every constraint is one you typed; it stops being
  * survivable the moment a *tool* infers one on your behalf, because a
  * constraint you did not ask for and cannot name is a trap. So a relation is
- * an entry here, named `r1`, `r2`, … exactly as entities are named.
+ * an entry here, named exactly as entities are named — `d1`, `d2`, … for the
+ * dimensions and `r1`, `r2`, … for everything else (see `DIMENSION_OPS`).
  *
  * `args` is the call as it was made — the same list the journal stores — which
  * is what `del` reads to answer "does this relation name that entity".
@@ -309,12 +377,22 @@ export class Model {
    */
   relation(op: string, args: unknown[], body: () => void): string {
     if (this.building) {
-      // Nested: absorbed into the relation already being built.
+      // Nested: absorbed into the relation already being built. Also the seam
+      // `rebuildRelation` goes through, which is why the name comes from the
+      // entry being built rather than from a fresh claim.
       body();
       return this.building.name;
     }
-    const counterWas = this.counters.get("r");
-    const name = this.claimName("r");
+    // Dimensions are `d`-named and everything else `r`-named — see
+    // `DIMENSION_OPS`. The prefix is read from the op rather than passed in by
+    // each relation, so a new relation cannot get it wrong by omission, which
+    // is the failure this codebase keeps meeting.
+    const prefix = relationPrefix(op);
+    // Whichever counter this claim is about to move is the one the rollback
+    // below has to put back. Reading "r" here while claiming "d" would leave a
+    // failed `dist` having quietly shifted every later dimension's name.
+    const counterWas = this.counters.get(prefix);
+    const name = this.claimName(prefix);
     const building = { name, blocks: [] as BlockHandle[] };
     this.building = building;
     try {
@@ -322,8 +400,8 @@ export class Model {
       this.withoutRecording(body);
     } catch (e) {
       for (const h of building.blocks) this.problem.removeBlock(h);
-      if (counterWas === undefined) this.counters.delete("r");
-      else this.counters.set("r", counterWas);
+      if (counterWas === undefined) this.counters.delete(prefix);
+      else this.counters.set(prefix, counterWas);
       throw e;
     } finally {
       this.building = null;
@@ -331,6 +409,41 @@ export class Model {
     this.relations.set(name, { name, op, args, blocks: building.blocks });
     this.record(op, args);
     return name;
+  }
+
+  /**
+   * Re-runs an existing relation **in place**: same name, same position in the
+   * registry, new arguments and new residual blocks. What `set` is built on.
+   *
+   * The name is the whole point of the exercise — a dimension you edit is still
+   * `d4` afterwards, so every reference to it (a glyph, a `rels()` line, a
+   * `del`) keeps meaning what it meant. `Map.set` on a key that is already
+   * there keeps its insertion position, so the registry order is untouched too.
+   *
+   * **The new blocks are built before the old ones are removed**, which is the
+   * only ordering under which a body that throws leaves the relation exactly as
+   * it was. The other way round, a bad value would delete a working constraint
+   * and then fail — and the blocks are closures, so there would be nothing left
+   * to put back.
+   *
+   * Journals nothing. The operation that calls this records itself as the one
+   * call the user made, the way every operation does.
+   */
+  rebuildRelation(name: string, op: string, args: unknown[], body: () => void): void {
+    const entry = this.relationOf(name);
+    const outer = this.building;
+    const building = { name, blocks: [] as BlockHandle[] };
+    this.building = building;
+    try {
+      this.withoutRecording(body);
+    } catch (e) {
+      for (const h of building.blocks) this.problem.removeBlock(h);
+      throw e;
+    } finally {
+      this.building = outer;
+    }
+    for (const h of entry.blocks) this.problem.removeBlock(h);
+    this.relations.set(name, { name, op, args, blocks: building.blocks });
   }
 
   /**

@@ -17,7 +17,7 @@ import type { SolveReport } from "./kernel/problem.ts";
 import { Tool, defineTool, listTools } from "./tools/tool.ts";
 import * as basic from "./relations/basic.ts";
 import * as geom from "./relations/geometry.ts";
-import { del, fillet } from "./operations.ts";
+import { del, fillet, set } from "./operations.ts";
 import { save as saveModel } from "./persist.ts";
 import { clampScale, screenToWorld } from "./view.ts";
 
@@ -256,6 +256,22 @@ export function neocadScope(h: EnvHandles): Bag {
   const operations: Bag = {
     fillet: (l1: string, l2: string, r: number) => fillet(model, l1, l2, r),
     /**
+     * Changes a dimension's value — `set("d4.value", 60)` — rebuilding it in
+     * place under the same name. See operations.ts for why it is an operation
+     * and what the unit is (radians for `ang`).
+     *
+     * It re-solves through the host for exactly `del`'s reason, and a sharper
+     * version of it: the entire purpose of the call is to change where the
+     * geometry ends up, so a header still reading the old verdict — or a
+     * drawing still at the old size — would be the stale-readout bug wearing a
+     * different hat.
+     */
+    set: (path: string, value: number) => {
+      const name = set(model, path, value);
+      h.solve?.();
+      return name;
+    },
+    /**
      * Deletes entities and relations — one name or a box-select's worth —
      * cascading the way Onshape does, and hands back the names it took, so
      * "what did that just remove" has an answer in the log rather than only
@@ -399,6 +415,9 @@ function help(scope: Bag): string {
     "relations  dist fix coin mid par perp ang on eq",
     "           rad oncircle conc eqrad tan sym arcends",
     "operations fillet(line1, line2, radius)  del(name, ...)",
+    '           set("d4.value", 60)  — a dimension is named d1, d2, … and its',
+    "           value is the one thing you can set. ang stores radians (its",
+    "           label reads degrees); dist and rad store what you typed.",
     "files      save()  open(text)  download(name)  openFile()  journal()",
     "history    undo()  redo()          — ctrl+z, ctrl+shift+z (ctrl+y)",
     "viewport   arm(tool, opts)  cancel()  zoom(f)  pan(dx,dy)  refresh()",

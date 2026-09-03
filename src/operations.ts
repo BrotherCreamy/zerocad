@@ -6,8 +6,12 @@
 // with different eyes: a relation can only ever over- or under-constrain,
 // while an operation can leave the model malformed.
 
-import { argRefersTo, type Entity, type Model } from "./model.ts";
-import { arcEndpoints, radius, tangent } from "./relations/geometry.ts";
+import {
+  SETTABLE_PROPERTY, argRefersTo, parseValueRef, valueArgIndex,
+  type Entity, type Model,
+} from "./model.ts";
+import { dist } from "./relations/basic.ts";
+import { angle, arcEndpoints, radius, tangent } from "./relations/geometry.ts";
 
 function unit(v: number[]): number[] {
   const len = Math.hypot(...v);
@@ -113,6 +117,93 @@ function filletBody(model: Model, l1Name: string, l2Name: string, r: number): st
   tangent(model, l2Name, arc.name);
 
   return arc.name;
+}
+
+// --- editing a dimension ----------------------------------------------------
+
+/**
+ * How each dimension is re-run from its recorded arguments. One line per op,
+ * and deliberately not a lookup into `replenv`'s table or `persist`'s: both of
+ * those sit *above* this file, and a dimension has to be rebuildable by the
+ * layer that owns operations.
+ */
+const REBUILD: Record<string, (model: Model, args: unknown[]) => void> = {
+  dist: (m, a) => void dist(m, a[0] as string, a[1] as string, a[2] as number),
+  radius: (m, a) => void radius(m, a[0] as string, a[1] as number),
+  angle: (m, a) => void angle(m, a[0] as string, a[1] as string, a[2] as number),
+};
+
+/**
+ * The half of every "that has no value" message that says what does. Written
+ * in the *short* names, because those are what the user typed to make one —
+ * being told about `radius` after typing `rad` is a small riddle to no purpose.
+ */
+const onlyDims = `only dist, rad and ang have a .${SETTABLE_PROPERTY}`;
+
+/**
+ * Changes a dimension's value: `set("d4.value", 60)`.
+ *
+ * This is the owner's answer to how a dimension is edited, and the shape of it
+ * follows from his words — *"a `set(d4.value, 60)` where d4 is the dimension"*.
+ * There is no parameter table anywhere: the dimension **is** the named
+ * value-holder, which is why `dist`, `rad` and `ang` claim `d` names in the
+ * first place (see `DIMENSION_OPS`).
+ *
+ * **An operation, not a relation.** It does not add an equation — it replaces
+ * one, taking the relation's residual blocks out of the problem and putting
+ * fresh ones in. That is structure-adjacent bookkeeping of exactly the kind
+ * `operations.ts` exists to hold apart, and it is reviewable on the operation's
+ * terms: it can leave the drawing over- or under-constrained (so can any
+ * dimension), and it must not be able to leave it malformed. `rebuildRelation`
+ * is where that last guarantee lives — a body that throws leaves the old blocks
+ * in place, so a rejected value costs nothing.
+ *
+ * **In place, under the same name.** `d4` is still `d4` afterwards, still in
+ * the same position in the registry, with its `args` updated — so `rels()`, the
+ * glyph's label and `del`'s reference scan all tell the truth about it without
+ * being told anything. That is the whole point of the dimension being named.
+ *
+ * **The unit is what the relation stores**, which for `ang` means radians. The
+ * label on the drawing reads degrees, and that seam is documented rather than
+ * papered over here: guessing at the caller's intent from the size of the
+ * number would be worse than one honest unit. See `glyphs.ts`'s `labelFor`.
+ *
+ * Journalled as the one call the user made, so a replay re-runs `set` rather
+ * than the relation it rebuilt — which keeps a saved file a transcript of what
+ * was typed. One user action, so one undo step; the host re-solves afterwards
+ * (see `replenv.ts`), for the reason `del` does: an edit whose entire purpose
+ * is to change the answer must not leave a stale verdict on the header.
+ *
+ * Returns the dimension's name, unchanged — that being the claim worth making.
+ */
+export function set(model: Model, path: string, value: number): string {
+  const { name } = parseValueRef(path);
+  // One sentence for "there is nothing here to set", whatever the reason —
+  // wrong kind of thing, or nothing of that name at all. What the reader needs
+  // either way is which relations *do* have a value.
+  if (!model.relations.has(name)) {
+    const what = model.entities.has(name) ? `is an entity, not a dimension` : `is not a relation`;
+    throw new Error(`"${name}" ${what} — ${onlyDims}`);
+  }
+  const entry = model.relationOf(name);
+  const at = valueArgIndex(entry.op);
+  if (at === null) {
+    throw new Error(`"${name}" is a ${entry.op}, not a dimension — ${onlyDims}`);
+  }
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    // Radians named in the message rather than only in the docs: this is the
+    // throw a user reaches while holding the wrong unit in their head.
+    const unit = entry.op === "angle" ? " of radians (the label reads degrees; the relation stores radians)" : "";
+    throw new Error(`set needs a number${unit}, got ${JSON.stringify(value)}`);
+  }
+  const args = entry.args.slice();
+  args[at] = value;
+  const rebuild = REBUILD[entry.op];
+  if (!rebuild) throw new Error(`"${entry.op}" cannot be rebuilt`); // unreachable: DIMENSION_OPS and REBUILD agree
+  return model.asOperation("set", [path, value], () => {
+    model.rebuildRelation(name, entry.op, args, () => rebuild(model, args));
+    return name;
+  });
 }
 
 // --- deletion ---------------------------------------------------------------

@@ -364,7 +364,7 @@ test("a version-2 file's hor/ver are translated, and re-save in the new vocabula
   // forever. It does round-trip from here on.
   const saved = save(m);
   assert.equal(saved.includes("horizontal"), false, "the old words are gone from the file");
-  assert.match(saved, /"version": 3/);
+  assert.match(saved, /"version": 4/);
   assert.equal(save(open(saved)), saved, "and the new file is stable");
 });
 
@@ -443,11 +443,14 @@ test("help() covers the frame vocabulary — it is the one thing with no world t
 });
 
 test("the format version says the vocabulary changed, and still reads the old envelope", () => {
-  assert.equal(VERSION, 3);
+  // 4 now that dimensions are `d`-named; the hor/ver retirement was 3. Both
+  // boundaries are translations rather than walls, so this file's own v2
+  // fixture above still opens.
+  assert.equal(VERSION, 4);
   // A version-1 file with nothing frameless in it opens unchanged: the version
   // wall is not what refuses the ones above, the missing frame is.
   const empty = JSON.stringify({ format: FORMAT, version: 1, dim: 2, journal: [], values: { points: {}, radii: {} } });
   assert.equal(open(empty).entities.size, 0);
-  const future = JSON.stringify({ format: FORMAT, version: 4, dim: 2, journal: [], values: { points: {}, radii: {} } });
-  assert.throws(() => open(future), /version 4, and this build only reads up to 3/);
+  const future = JSON.stringify({ format: FORMAT, version: 5, dim: 2, journal: [], values: { points: {}, radii: {} } });
+  assert.throws(() => open(future), /version 5, and this build only reads up to 4/);
 });

@@ -7,9 +7,11 @@
 // second overlay: it hovers, picks, highlights and switches off through
 // `glyphs(false)` exactly as every other mark does, because it *is* one. The
 // only thing it needs that a mark did not is a box the width of its text —
-// hence `halfW` per glyph. Editing a value in place is deliberately not part of
-// this: a click drops the relation's name in the command line like any other
-// glyph. See TODO.md's owner decision on retargeting.
+// hence `halfW` per glyph. Editing a value *on the canvas* is deliberately not
+// part of this: a click drops the relation's name in the command line like any
+// other glyph. Editing itself is `set("d1.value", 60)` at the command line (see
+// operations.ts), or Set value… on the glyph's right-click menu, which types
+// that command and leaves the number to the user.
 //
 // This is the fuller answer to the question the hover tag only half answers.
 // The tag says "something constrains this point, and it is called r7" — but
@@ -199,6 +201,9 @@ export function labelFor(op: string, args: unknown[]): string | null {
       // always said and what Onshape shows. The mismatch between the label and
       // what you would retype is filed as an owner decision (see TODO.md);
       // drawing radians on a sketch to paper over it would be the wrong fix.
+      // `set("d3.value", …)` takes radians for the same reason — a dimension
+      // stores what its relation stores, and guessing the caller's unit from
+      // the size of the number would be a worse seam than this one.
       return typeof v === "number" ? `${formatValue((v * 180) / Math.PI)}°` : null;
     }
     default:
