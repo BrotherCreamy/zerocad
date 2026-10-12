@@ -34,13 +34,13 @@ test("click, click, chain — and the middle vertex is one point, not two", asyn
   await clickAt(200, 300); // straight down
   const one = await app.model();
   assert.equal(one.byKind.line, 1);
-  assert.equal(one.byKind.point, 2 + 2, "two, plus the frame's own");
+  assert.equal(one.byKind.point, 2 + 3, "two, plus the frame's own three");
   assert.equal(one.activeTool, "line", "the chain continues without re-arming");
 
   await clickAt(420, 300); // then straight across: an L
   const two = await app.model();
   assert.equal(two.byKind.line, 2);
-  assert.equal(two.byKind.point, 3 + 2, "three points for two segments — the vertex is shared");
+  assert.equal(two.byKind.point, 3 + 3, "three points for two segments — the vertex is shared");
   assert.equal(two.lines[0].refs[1], two.lines[1].refs[0], "literally the same entity");
   assert.equal(await app.status(), "SOLVED");
 });

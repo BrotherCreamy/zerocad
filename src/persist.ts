@@ -26,7 +26,22 @@ import type { ToolSource } from "./toolsource.ts";
 
 export const FORMAT = "neocad-model";
 /**
- * 5 since frames gained a y-ref for 3D: `addFrame`'s name moved from its third
+ * 6 since **the app is 3D** (3D phase 1, the camera half): it runs a `Model(3)`
+ * and writes `dim: 3` files whose drawings have depth. Nothing in a version-6
+ * journal would be *misparsed* by a version-5 build — every op and argument
+ * shape was already there — but it would be misread all the same, which is
+ * the break the version is for: a 2D-only build opens a 3D drawing as a 3D
+ * model, draws it flattened onto its x–y shadow, and refuses every tool on it.
+ * Better that it say "this file is version 6" than show a tilted sketch as a
+ * squashed one with no hint that anything is missing.
+ *
+ * Going the other way, every older file is 2D, and so is any file of any
+ * version that says `dim: 2`: opening one *into* a 3D model **lifts** it —
+ * keyed on `dim`, not on the version, because a 2D file is 2D whoever wrote it
+ * (see `lift2D`). The library still opens a file into its own dimension when
+ * not asked otherwise; it is the app that asks for 3.
+ *
+ * 5 was frames gaining a y-ref for 3D: `addFrame`'s name moved from its third
  * argument to its fourth, so the y-ref could sit beside the other two points
  * with the name last, as it is on every constructor. Every older file says
  * `addFrame(origin, xref, name)`, and `translate` rewrites that to
@@ -73,7 +88,7 @@ export const FORMAT = "neocad-model";
  * refused the first case for no reason — and there are no third-party readers
  * of v4 to protect, since this app is the only one there has ever been.
  */
-export const VERSION = 5;
+export const VERSION = 6;
 
 export interface SavedModel {
   format: typeof FORMAT;
@@ -263,6 +278,91 @@ function translate(model: Model, entry: JournalEntry, version: number): JournalE
 }
 
 /**
+ * What opening a 2D file into a 3D model does to it — **the lift**. Every
+ * coordinate argument gains a zero, and every 2D frame gains the y-ref a 3D
+ * frame cannot be without. Nothing else changes: the relation vocabulary was
+ * written dimension-generically from the start (that is what `dot` and `wedge`
+ * are for), so a `par`, a `tan` or a `dist` means in z = 0 of a 3D model
+ * exactly what it meant in the 2D one.
+ *
+ *   `addPoint([x, y], n)`      → `addPoint([x, y, 0], n)` — the kernel's z = 0,
+ *                                the plane the drawing always lived in;
+ *   `setCoords(n, [x, y])`     → `setCoords(n, [x, y, 0])`;
+ *   `fix(p, [x, y], f)`        → `fix(p, [x, y, 0], f)` — on the frame's plane;
+ *   `addFrame(o, x, null, f)`  → `addPoint(seed, "f_y")` then
+ *                                `addFrame(o, x, "f_y", f)`.
+ *
+ * The frame is the one that needs care, for two reasons. A 3D frame with no
+ * y-ref given *creates* one, auto-named — and an auto-name claimed here, in the
+ * middle of a replay, is a name some later entry of the file already holds for
+ * something else, so the very next step would fail with "already exists". So
+ * the lift names it outright, after its frame, choosing a name the file never
+ * uses (see `freshName`). And a 2D frame's +y is +x turned a quarter turn, so
+ * the y-ref belongs a quarter turn round from the x-ref in z = 0 — which only
+ * the *saved* coordinates know, the replay running on seeds; so it is seeded
+ * clear of the x axis here and put exactly in place after the saved values
+ * are restored (see `fromSaved`). Seeded in the one spot that also leaves the
+ * frame's own auto-created origin and x-ref, when the file had any, where the
+ * 2D replay put them and under the names it gave them.
+ *
+ * Keyed on the file's `dim` and never on its version: version 4 and version 5
+ * files are both 2D (the model half of 3D took version 5 without the app ever
+ * writing a 3D file), and a 2D model saved by the library at version 6 is just
+ * as 2D.
+ */
+function lift2D(model: Model, entry: JournalEntry, names: Set<string>, lifted: Map<string, string>): JournalEntry[] {
+  const coords = (v: unknown) => (Array.isArray(v) && v.length === 2 ? [...v, 0] : v);
+  const a = entry.args;
+  switch (entry.op) {
+    case "addPoint":
+      return [{ op: "addPoint", args: [coords(a[0]), ...a.slice(1)] }];
+    case "setCoords":
+      return [{ op: "setCoords", args: [a[0], coords(a[1]), ...a.slice(2)] }];
+    case "fix":
+      return [{ op: "fix", args: [a[0], coords(a[1]), ...a.slice(2)] }];
+    case "addFrame": {
+      const [origin, xref, yref, name] = a as (string | null | undefined)[];
+      if (yref != null) return [entry]; // a hand edit; let it fail at its own step
+      const y = freshName(`${name ?? "frame"}_y`, names);
+      names.add(y);
+      lifted.set(name ?? "", y);
+      const at = (n: string | null | undefined) => (n != null && model.entities.has(n) ? model.coords(n) : null);
+      const o = at(origin), x = at(xref);
+      // Clear of the x axis, and placed so a missing origin or x-ref is seeded
+      // where the 2D replay seeded it: each is laid off along the kernel's x
+      // from whichever of the three was given, exactly as `addFrame` does.
+      const seed = o && x ? [o[0] - (x[1] - o[1]), o[1] + (x[0] - o[0]), 0]
+        : o ? [o[0], o[1] + Model.FREE_SPAN, 0]
+          : x ? [x[0], x[1] + Model.FREE_SPAN, 0]
+            : [0, Model.FREE_SPAN, 0];
+      return [
+        { op: "addPoint", args: [seed, y] },
+        { op: "addFrame", args: [origin ?? null, xref ?? null, y, name ?? null] },
+      ];
+    }
+    default:
+      return [entry];
+  }
+}
+
+/** `base`, or `base2`, `base3`, … — the first that nothing in the file is called. */
+function freshName(base: string, taken: Set<string>): string {
+  if (!taken.has(base)) return base;
+  for (let k = 2; ; k++) if (!taken.has(`${base}${k}`)) return `${base}${k}`;
+}
+
+/** Every string anywhere in a journal's arguments — a superset of the names it uses. */
+function namesIn(journal: JournalEntry[]): Set<string> {
+  const out = new Set<string>();
+  const walk = (v: unknown) => {
+    if (typeof v === "string") out.add(v);
+    else if (Array.isArray(v)) v.forEach(walk);
+  };
+  for (const e of journal) if (Array.isArray(e.args)) walk(e.args);
+  return out;
+}
+
+/**
  * The model as a plain object, ready for JSON.stringify.
  *
  * `tools` is a parameter rather than something read from a global because it
@@ -327,16 +427,33 @@ export function savedTools(saved: string | SavedModel): ToolSource[] {
   return out;
 }
 
-export function fromSaved(saved: SavedModel): Model {
+/**
+ * A model rebuilt from a saved file — in the file's own dimension, or `dim`
+ * when given. The only conversion there is is 2D into 3D (see `lift2D`); the
+ * app always asks for 3, and everything else asks for nothing and gets the
+ * file's own.
+ */
+export function fromSaved(saved: SavedModel, dim?: number): Model {
   if (saved?.format !== FORMAT) throw new Error("not a neocad model");
   if (saved.version > VERSION) {
     throw new Error(`this file is version ${saved.version}, and this build only reads up to ${VERSION}`);
   }
   if (!Array.isArray(saved.journal)) throw new Error("model file has no journal");
 
-  const model = new Model(saved.dim ?? 2);
+  const fileDim = saved.dim ?? 2;
+  const into = dim ?? fileDim;
+  const lift = fileDim === 2 && into === 3;
+  if (into !== fileDim && !lift) {
+    throw new Error(`a ${fileDim}D file cannot open as a ${into}D model — only 2D files lift, into 3D`);
+  }
+  const model = new Model(into);
   const table = replayTable(model);
   const renamer = relationRenamer(model, saved.version);
+  // For the lift: what the file calls things, so a y-ref it adds can be named
+  // something the file never uses — and which frames got one, for the
+  // after-restore step below.
+  const taken = lift ? namesIn(saved.journal) : new Set<string>();
+  const liftedFrames = new Map<string, string>();
 
   // Replay with recording off, then install the journal wholesale, so a model
   // that is opened and saved again round-trips to the same file. What is
@@ -352,32 +469,48 @@ export function fromSaved(saved: SavedModel): Model {
       // is what is written in the file the reader is looking at.
       const where = (e: unknown) =>
         new Error(`step ${i + 1}, ${entry.op}(${entry.args.map((a) => JSON.stringify(a)).join(", ")}): ${e instanceof Error ? e.message : e}`);
-      let step: JournalEntry;
+      let steps: JournalEntry[];
       try {
-        step = translate(model, renamer.rewrite(entry), saved.version);
+        const step = translate(model, renamer.rewrite(entry), saved.version);
+        steps = lift ? lift2D(model, step, taken, liftedFrames) : [step];
       } catch (e) {
         throw where(e);
       }
-      const fn = table.get(step.op);
-      if (!fn) throw new Error(`step ${i + 1}: "${step.op}" is not something a model file may do`);
-      try {
-        fn(...step.args);
-      } catch (e) {
-        throw where(e);
+      for (const step of steps) {
+        const fn = table.get(step.op);
+        if (!fn) throw new Error(`step ${i + 1}: "${step.op}" is not something a model file may do`);
+        try {
+          fn(...step.args);
+        } catch (e) {
+          throw where(e);
+        }
+        replayed.push({ op: step.op, args: step.args });
       }
       // After the step, so the relations it created are named while the order
       // they came out in is still the order the old scheme would have used.
       renamer.note();
-      replayed.push({ op: step.op, args: step.args });
     });
   });
   model.journal = replayed;
 
-  // Put the saved solution back — see the note at the top about why.
+  // Put the saved solution back — see the note at the top about why. A lifted
+  // file's coordinates gain their zero here too.
   const vals = saved.values ?? { points: {}, radii: {} };
   model.withoutRecording(() => {
     for (const [name, coords] of Object.entries(vals.points ?? {})) {
-      if (model.entities.get(name)?.kind === "point") model.setCoords(name, coords);
+      const at = lift && Array.isArray(coords) && coords.length === 2 ? [...coords, 0] : coords;
+      if (model.entities.get(name)?.kind === "point") model.setCoords(name, at);
+    }
+    // A lifted frame's y-ref, put exactly where the 2D frame's +y was: a
+    // quarter turn counter-clockwise from its +x, in z = 0, measured from the
+    // positions just restored. Only the plane and the side count (frameBasis
+    // straightens the rest), so this makes the 3D frame's +y the 2D one's
+    // exactly, and its +z the kernel's.
+    for (const [frame, y] of liftedFrames) {
+      const f = model.entities.get(frame);
+      if (f?.kind !== "frame" || !model.entities.has(y)) continue;
+      const o = model.coords(f.origin), x = model.coords(f.xref);
+      model.setCoords(y, [o[0] - (x[1] - o[1]), o[1] + (x[0] - o[0]), o[2]]);
     }
   });
   for (const [name, r] of Object.entries(vals.radii ?? {})) {
@@ -388,12 +521,13 @@ export function fromSaved(saved: SavedModel): Model {
   return model;
 }
 
-export function open(json: string): Model {
+/** Opens a saved file — into `dim` dimensions when given (see `fromSaved`). */
+export function open(json: string, dim?: number): Model {
   let parsed: SavedModel;
   try {
     parsed = JSON.parse(json) as SavedModel;
   } catch (e) {
     throw new Error(`not valid JSON: ${e instanceof Error ? e.message : e}`);
   }
-  return fromSaved(parsed);
+  return fromSaved(parsed, dim);
 }

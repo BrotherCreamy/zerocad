@@ -39,8 +39,10 @@ test("the wheel zooms about the cursor, and the page does not scroll", async () 
   assert.ok(Math.abs((await app.model()).view.scale - start.scale) < 1e-9, "and back out again");
 });
 
-test("right-drag and middle-drag both pan, one pixel per pixel", async () => {
-  for (const button of ["right", "middle"] as const) {
+test("middle-drag pans, one pixel per pixel", async () => {
+  // The right button used to pan too; in the 3D app it orbits (Onshape's
+  // right-drag) — see test/e2e/camera.e2e.ts — and the middle is the pan.
+  for (const button of ["middle"] as const) {
     const before = (await app.model()).view;
     const from = await app.at(600, 330);
     await app.page.mouse.move(from.x, from.y);
@@ -59,15 +61,17 @@ test("right-drag and middle-drag both pan, one pixel per pixel", async () => {
 test("navigation leaves the model alone", async () => {
   const before = await app.model();
   const from = await app.at(400, 300);
-  await app.page.mouse.move(from.x, from.y);
-  await app.page.mouse.down({ button: "right" });
-  await app.page.mouse.move(from.x + 40, from.y + 40, { steps: 4 });
-  await app.page.mouse.up({ button: "right" });
+  for (const button of ["right", "middle"] as const) {
+    await app.page.mouse.move(from.x, from.y);
+    await app.page.mouse.down({ button });
+    await app.page.mouse.move(from.x + 40, from.y + 40, { steps: 4 });
+    await app.page.mouse.up({ button });
+  }
   await app.page.mouse.wheel(0, -120);
   await app.page.waitForTimeout(120);
   const after = await app.model();
   assert.equal(after.size, before.size);
-  assert.deepEqual(after.points, before.points);
+  assert.deepEqual(after.points, before.points, "an orbit, a pan and a zoom move the view, never the drawing");
 });
 
 test("a tool's gesture survives being panned through", async () => {
@@ -81,10 +85,11 @@ test("a tool's gesture survives being panned through", async () => {
 
   // Pan *during* the drag. A second button while one is held arrives as a
   // pointermove, not a pointerdown — which is why this used to do nothing.
+  // The middle button: the right one orbits in the 3D app.
   const during = (await app.model()).view;
-  await app.page.mouse.down({ button: "right" });
+  await app.page.mouse.down({ button: "middle" });
   await app.page.mouse.move(start.x + 90, start.y + 20, { steps: 4 });
-  await app.page.mouse.up({ button: "right" });
+  await app.page.mouse.up({ button: "middle" });
   await app.page.waitForTimeout(100);
 
   assert.ok(Math.abs((await app.model()).view.ox - during.ox - 40) < 1e-6, "the pan took effect");

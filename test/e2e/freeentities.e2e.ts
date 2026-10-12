@@ -36,7 +36,7 @@ const EMPTY = JSON.stringify({
 async function reset(): Promise<void> {
   await app.type(`open(${JSON.stringify(EMPTY)})`);
   // A clean sheet has no frame at all now, and `fix` needs one. Hence the
-  // extra two points in every count below: the frame's origin and x-ref.
+  // extra three points in every count below: the frame's origin, x-ref and y-ref.
   await axisFrame(app);
 }
 
@@ -98,7 +98,7 @@ test("the three-point circle, typed: circle() then three oncircles, no solve()",
   await app.type("c = circle()");
   const seeded = await app.model();
   assert.equal(seeded.byKind.circle, 1, "circle() with no arguments made a circle");
-  assert.equal(seeded.byKind.point, 4 + 2, "and a real, named centre point of its own");
+  assert.equal(seeded.byKind.point, 4 + 3, "and a real, named centre point of its own");
 
   // The owner's example, verbatim apart from the point names.
   await app.type('oncircle("p1", c); oncircle("p2", c); oncircle("p3", c)');

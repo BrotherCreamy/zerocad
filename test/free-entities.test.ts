@@ -312,12 +312,39 @@ test("explicit coordinates are never overridden by the view", () => {
   assert.equal(m.radius(call(s, "circ", null, 7)), 7);
 });
 
-test("a model that is not 2D falls back to the plain defaults", () => {
-  // A View is a 2D transform and has no middle to offer a 3D model; the
-  // alternative is a coordinate-count mismatch thrown from addPoint.
+test("a 3D model seeds where a click in the middle of the view would land", () => {
+  // With no default frame that is the plane facing the viewer through the
+  // orbit target — z = 0, in a view that has never been turned — so the 3D
+  // seed is the 2D one with no depth.
   const m = new Model(3);
   const s = scopeOf(m, offCentreViewport());
-  assert.deepEqual(m.coords(call(s, "pt")), [0, 0, 0]);
+  assert.deepEqual(m.coords(call(s, "pt")), [225, -175, 0]);
+  assert.deepEqual(m.coords(m.circle(call(s, "circ")).center), [225, -175, 0]);
+});
+
+test("...and on the default frame's plane, when there is one — even a tilted one", () => {
+  const m = new Model(3);
+  // A plane through (0, 0, 10) tipped 30° about the kernel's x axis.
+  const t = Math.PI / 6;
+  m.addPoint([0, 0, 10], "o");
+  m.addPoint([1, 0, 10], "x");
+  m.addPoint([0, Math.cos(t), 10 + Math.sin(t)], "y");
+  m.addFrame("o", "x", "y", "f");
+  m.setDefaultFrame("f");
+  const s = scopeOf(m, offCentreViewport());
+  const p = m.coords(call(s, "pt"));
+  // Looked at straight down, the middle of the view is still (225, -175) in x
+  // and y; the depth is wherever that ray meets the tilted plane.
+  assert.ok(Math.abs(p[0] - 225) < 1e-9 && Math.abs(p[1] + 175) < 1e-9, `p = ${p}`);
+  assert.ok(Math.abs(p[2] - (10 + -175 * Math.tan(t))) < 1e-9, `on the plane: p = ${p}`);
+});
+
+test("a model that is neither 2D nor 3D falls back to the plain defaults", () => {
+  // No view can show a 4D model, so there is no middle to offer; the
+  // alternative is a coordinate-count mismatch thrown from addPoint.
+  const m = new Model(4);
+  const s = scopeOf(m, offCentreViewport());
+  assert.deepEqual(m.coords(call(s, "pt")), [0, 0, 0, 0]);
 });
 
 test("a view-seeded model round-trips through save/open unchanged", async () => {

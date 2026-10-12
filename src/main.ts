@@ -18,6 +18,9 @@ import { ContextMenu, menuFor } from "./menu.ts";
 import { frameMarker } from "./framemarker.ts";
 import { constrainedBy, type Glyph } from "./glyphs.ts";
 import { getToolCtor } from "./tools/tool.ts";
+import { depth } from "./view.ts";
+import { arcFrame, arcSamples, arcSegments } from "./arcgeom.ts";
+import type { Entity } from "./model.ts";
 import "./tools/point.ts";
 import "./tools/line.ts";
 import "./tools/rectangle.ts";
@@ -51,6 +54,13 @@ function sizeCanvas() {
   g.setTransform(dpr, 0, 0, dpr, 0, 0);
 }
 
+/**
+ * The dimension the app's model has. Every door a model comes in by — a new
+ * one, an opened file, an undo — goes through this, so a 2D file opened here
+ * is lifted into 3D (see persist.ts) rather than swapping the app into 2D.
+ */
+const APP_DIM = 3;
+
 async function main() {
   statusEl.textContent = "loading kernel…";
   await ensureKernelLoaded();
@@ -58,7 +68,13 @@ async function main() {
 
   // `let`, not `const`: opening a saved file replaces the model outright, and
   // everything below reads through this binding so the swap reaches all of it.
-  let model = new Model(2);
+  //
+  // **Always 3D** — the owner's one-model decision: there is no 2D mode and no
+  // second model type, and a "sketch" is just geometry on a frame's plane. The
+  // camera starts square-on, looking down −z with +x right and +y up, so until
+  // something turns it the app looks and behaves exactly as the 2D one did,
+  // with every point at z = 0.
+  let model = new Model(APP_DIM);
   const view: View = { ox: 0, oy: 0, scale: 3 };
   sizeCanvas();
   const r0 = cv.getBoundingClientRect();
@@ -89,7 +105,16 @@ async function main() {
     const stroke = (name: string) => (lit.has(name) ? "#e8a33d" : "#afc6d9");
     const weight = (name: string) => (lit.has(name) ? 2.2 : 1.4);
 
-    for (const e of model.entities.values()) {
+    // Painter's order, far to near, one depth per entity — what a wireframe
+    // needs and all it needs until there are faces to hide behind (3D phase
+    // 4). Curves and frames are one pass and points a second on top, as they
+    // always were: a point's dot and name are what a hand aims at, and must
+    // not be painted over by an edge running behind them.
+    const byDepth = <T extends Entity>(es: T[]) =>
+      es.map((e) => ({ e, d: entityDepth(e) })).sort((a, b) => a.d - b.d).map((x) => x.e);
+    const all = [...model.entities.values()];
+
+    for (const e of byDepth(all.filter((x) => x.kind !== "point"))) {
       g.strokeStyle = stroke(e.name);
       g.lineWidth = weight(e.name);
       if (e.kind === "line") {
@@ -97,29 +122,35 @@ async function main() {
         const [bx, by] = engine.worldToScreen(model.coords(e.refs[1]));
         g.beginPath(); g.moveTo(ax, ay); g.lineTo(bx, by); g.stroke();
       } else if (e.kind === "circle") {
+        // The silhouette: a circle has no plane yet (3D phase 2 gives it one),
+        // so to every relation that reads it it is a sphere, and this is what a
+        // sphere looks like in an orthographic view. Seen square-on it is the
+        // circle exactly; seen at an angle it does not foreshorten, and that is
+        // the phase-2 seam showing rather than a rendering bug.
         const [cx, cy] = engine.worldToScreen(model.coords(e.center));
         g.beginPath(); g.arc(cx, cy, model.radius(e.name) * view.scale, 0, Math.PI * 2); g.stroke();
       } else if (e.kind === "arc") {
-        // Screen y runs the other way from world y, so a world-space CCW
-        // sweep is drawn clockwise here — hence the negated angles and the
-        // `true` sweep flag.
-        const ctr = model.coords(e.center);
-        const [cx, cy] = engine.worldToScreen(ctr);
-        const ang = (n: string) => {
-          const p = model.coords(n);
-          return Math.atan2(p[1] - ctr[1], p[0] - ctr[0]);
-        };
-        g.beginPath();
-        g.arc(cx, cy, model.radius(e.name) * view.scale, -ang(e.start), -ang(e.end), true);
-        g.stroke();
+        // In its own plane — the one through its centre and endpoints — and
+        // counter-clockwise from start to end about that plane's reference
+        // side (see arcgeom.ts; for a 2D arc, about +z, as always). Drawn as
+        // the projection of a fine polyline, a quarter-pixel from the true
+        // curve, which seen square-on is the circular arc and seen at an angle
+        // is part of an ellipse — the one picking and snapping aim at.
+        const f = arcFrame(model.coords(e.center), model.coords(e.start), model.coords(e.end), model.radius(e.name));
+        if (f) {
+          const pts = arcSamples(f, arcSegments(f.sweep, f.r * view.scale)).map((w) => engine.worldToScreen(w));
+          g.beginPath();
+          g.moveTo(...pts[0]);
+          for (const pt of pts.slice(1)) g.lineTo(...pt);
+          g.stroke();
+        }
       } else if (e.kind === "frame") {
         drawFrame(e.name, lit.has(e.name));
       }
     }
 
     g.font = "11px monospace";
-    for (const e of model.entities.values()) {
-      if (e.kind !== "point") continue;
+    for (const e of byDepth(all.filter((x) => x.kind === "point"))) {
       const [sx, sy] = engine.worldToScreen(model.coords(e.name));
       g.fillStyle = stroke(e.name);
       g.beginPath(); g.arc(sx, sy, lit.has(e.name) ? 5 : 3.5, 0, Math.PI * 2); g.fill();
@@ -134,9 +165,28 @@ async function main() {
   }
 
   /**
-   * A coordinate frame: two short arrows out of its origin, along +x and +y,
-   * lettered, with the frame's name beside it the way a point's name sits
-   * beside the point.
+   * How near the viewer an entity is, for the painter's sort: a point's own
+   * depth, the middle of a line, the centre of a circle or arc, a frame's
+   * origin. One number per entity is coarse — a long edge crossing a short one
+   * can sort the wrong way at the crossing — and is the spec's choice: nothing
+   * here is opaque yet, so the only thing the order decides is which of two
+   * strokes is on top where they cross.
+   */
+  function entityDepth(e: Entity): number {
+    const at = (name: string) => depth(view, model.coords(name));
+    switch (e.kind) {
+      case "point": return at(e.name);
+      case "line": return (at(e.refs[0]) + at(e.refs[1])) / 2;
+      case "circle":
+      case "arc": return at(e.center);
+      case "frame": return at(e.origin);
+    }
+  }
+
+  /**
+   * A coordinate frame: short arrows out of its origin, along +x and +y — and
+   * +z for a 3D frame — lettered, with the frame's name beside it the way a
+   * point's name sits beside the point.
    *
    * **The default frame is drawn brighter**, because that difference is the
    * whole of what the pointer means: a bare `hor` is level with *that* frame
@@ -144,11 +194,14 @@ async function main() {
    * the app that changes what a typed word does, so it had better be visible
    * without asking.
    *
-   * Arms are a fixed pixel length (see framemarker.ts) — the x-ref's distance
-   * carries no meaning — and the letters are what make a *tilted* frame
-   * readable at a glance, which is exactly the case the whole package exists
-   * for. Drawn in the entity pass, not with the glyphs: a frame is a thing in
-   * the drawing that can be clicked, dragged and deleted, not a note about one.
+   * Arms are a fixed pixel length when they lie flat to the screen, and
+   * foreshorten as the frame turns away (see framemarker.ts) — the refs'
+   * distance carries no meaning — and the letters are what make a *tilted*
+   * frame readable at a glance, which is exactly the case the whole package
+   * exists for. An axis pointing straight at the viewer has no arm to draw,
+   * and draws only its letter. Drawn in the entity pass, not with the glyphs: a
+   * frame is a thing in the drawing that can be clicked, dragged and deleted,
+   * not a note about one.
    */
   function drawFrame(name: string, lit: boolean) {
     const marker = frameMarker(model, view, name);
@@ -161,9 +214,16 @@ async function main() {
     g.lineWidth = lit ? 2.2 : isDefault ? 1.6 : 1.2;
     g.font = "10px ui-monospace, Menlo, monospace";
     const arms: [[number, number], string][] = [[marker.x, "x"], [marker.y, "y"]];
+    if (marker.z) arms.push([marker.z, "z"]);
     for (const [tip, letter] of arms) {
       const [dx, dy] = [tip[0] - marker.origin[0], tip[1] - marker.origin[1]];
       const len = Math.hypot(dx, dy);
+      if (!(len > 0.5)) {
+        // Pointing at the viewer: a dot of an arm. The letter alone, just off
+        // the origin, still says the axis is there and which way it faces.
+        g.fillText(letter, marker.origin[0] + 4, marker.origin[1] + 12);
+        continue;
+      }
       const [ux, uy] = [dx / len, dy / len];
       g.beginPath();
       g.moveTo(marker.origin[0], marker.origin[1]);
@@ -411,7 +471,7 @@ async function main() {
     // (it cancels any gesture, which can close a user action), and the flag has
     // to already be set by the time it does.
     movedHistory = true;
-    swapModel(openModelText(target));
+    swapModel(openModelText(target, APP_DIM));
     return `${direction === "undo" ? "undid" : "redid"} — ${undoStack.depth} back, ${undoStack.redoDepth} forward`;
   }
 
@@ -521,7 +581,7 @@ async function main() {
       // from harmless. (Typed at the command line this is already inside
       // `submit`'s bracket; the bracket here is what covers `openFile()`, whose
       // work happens in an event handler long after the entry returned.)
-      openModel: (json: string) => asUserAction(() => swapModel(openModelText(json))),
+      openModel: (json: string) => asUserAction(() => swapModel(openModelText(json, APP_DIM))),
       undo: () => step("undo"),
       redo: () => step("redo"),
       download: (json: string, filename: string) => {
@@ -541,7 +601,7 @@ async function main() {
           if (!file) return;
           try {
             const text = await file.text();
-            asUserAction(() => swapModel(openModelText(text)));
+            asUserAction(() => swapModel(openModelText(text, APP_DIM)));
             log(`opened ${file.name}`, "out");
             // The picker is the other door to the same act, so it says the
             // same thing about tools the file carries — through the same

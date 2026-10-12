@@ -203,7 +203,8 @@ test("Fix is disabled with the standing message when there is no default frame",
   const [sx, sy] = await screenOf("p1");
   await rightClick(sx, sy);
   assert.deepEqual(await items(), ["Insert name", "Delete", "Fix"], "a point has no natural dimension");
-  assert.match((await commands()).Fix, /^fix\("p1", \[-?[\d.]+, -?[\d.]+\]\)$/,
+  // Three frame coordinates: the app is 3D, and so is the fixture frame.
+  assert.match((await commands()).Fix, /^fix\("p1", \[-?[\d.]+, -?[\d.]+, -?[\d.]+\]\)$/,
     "with a frame set, Fix is a command like any other");
 
   await app.page.keyboard.press("Escape");
@@ -247,7 +248,11 @@ test("Escape closes the menu; so does a press elsewhere, and that press does not
     "and the click that dismissed it did not also pick");
 });
 
-test("a right DRAG still pans — the promise the register made when this was specced", async () => {
+test("a right DRAG orbits and opens no menu — the release decides, as the register promised", async () => {
+  // The promise was that a menu would cost the right button nothing, because
+  // the release decides. It held through the 3D package's change of what a
+  // right-drag *is* — Onshape's orbit, where in 2D it panned — because that
+  // change is past the threshold and the menu is before it.
   const before = (await app.model()).view;
   const from = await app.at(500, 300);
   const to = await app.at(560, 350);
@@ -257,13 +262,13 @@ test("a right DRAG still pans — the promise the register made when this was sp
   await app.page.mouse.up({ button: "right" });
   await app.page.waitForTimeout(150);
 
-  assert.equal(await menuOpen(), false, "a drag is a pan, not a menu");
+  assert.equal(await menuOpen(), false, "a drag is an orbit, not a menu");
   const after = (await app.model()).view;
-  assert.ok(Math.abs(after.ox - before.ox - 60) < 6 && Math.abs(after.oy - before.oy - 50) < 6,
-    `the view should have followed the cursor: ${JSON.stringify(before)} → ${JSON.stringify(after)}`);
+  assert.ok(after.right && after.up && Math.abs(after.up[2]) > 0.1,
+    `the view should have turned: ${JSON.stringify(before)} → ${JSON.stringify(after)}`);
 
-  // And back, so the next test's coordinates still mean what they say.
-  await app.type("pan(-60, -50)");
+  // And square-on again, so nothing after this is drawn at an angle.
+  await app.type("lookAt()");
 });
 
 test("no uncaught page errors", () => {
