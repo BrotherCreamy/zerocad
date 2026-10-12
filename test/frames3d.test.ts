@@ -250,12 +250,13 @@ test("onPlane: a line pinned off the plane meets it exactly where the arithmetic
   // The line through them crosses z = 0 three fifths of the way along:
   // (1, 2, 3) + 0.6·((4, -1, -2) − (1, 2, 3)) = (2.8, 0.2, 0).
   //
-  // Seeded near where they are pinned rather than both on the origin: a line
-  // that starts at zero length has no direction for `on` to read (its wedge
-  // has no gradient in p), which is the degenerate seed free-entities rules
-  // out — measured, that start wanders off in 60 iterations with or without
-  // anything 3D in the drawing. p itself starts well away from both line and
-  // plane.
+  // Seeded near where they are pinned. With the line's ends starting a long
+  // way from their fixes *and* p far off, this shape of system can stall in a
+  // spurious minimum in 3D — `on`'s wedge grows with p's distance, so least
+  // squares trades the fixes for it. Measured, and not `onPlane`'s doing: a
+  // second plain `on` in its place stalls too, from a seed `onPlane` survives
+  // (see TODO.md). That is not what this test is about, so the line starts
+  // near its pins and only p starts well away from both line and plane.
   m.addPoint(add(world([1, 2, 3]), [0.5, -0.3, 0.2]), "a");
   m.addPoint(add(world([4, -1, -2]), [-0.4, 0.6, 0.1]), "b");
   fix(m, "a", [1, 2, 3]);

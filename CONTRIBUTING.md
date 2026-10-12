@@ -107,10 +107,11 @@ Three things that are easy to get wrong:
   *line*, so the relation follows that line if an operation re-points it.
 - **Write it dimension-generically** unless it genuinely isn't. Expressed
   through `dot()` and `wedge()`, most "2D" definitions hold unchanged in any
-  dimension. Where something really is 2D-only — a coordinate frame, and so
-  any reference to one of its axes — throw for other dimensions rather than
-  silently doing something wrong, and prove the generic ones with a 3D test
-  rather than asserting it in a comment.
+  dimension. Where something really is dimension-specific — `fillet` and the
+  sketch tools (2D), a frame (2D or 3D, nothing else), a frame's `"z"` axis
+  and `onPlane` (3D) — throw for other dimensions rather than silently doing
+  something wrong, and prove the generic ones with a 3D test rather than
+  asserting it in a comment.
 - **Never make a residual that is already a square.** Its gradient vanishes at
   its own root, so least-squares ends up minimising a fourth power and
   converges badly. Use the wedge's components, not their sum of squares.

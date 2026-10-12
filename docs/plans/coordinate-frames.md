@@ -7,7 +7,8 @@ as variables of the residuals that read them, because declaring them lets the
 solver level a line by turning the frame instead (measured; see
 `CONVERSATION_LOG.md` and `relations/refs.ts`). That is what makes the
 closed-form test below true. `fix` above 2D keeps its gauge-relative meaning,
-since one direction does not settle a 3D frame. The rectangle went intrinsic
+since one direction does not settle a 3D frame (*closed since*: 3D phase 1
+gave 3D frames a y-ref and `fix` there a frame — see `3d-phase1.md`). The rectangle went intrinsic
 in half 1 rather than half 2, because `hor` needs a frame and a clean sheet
 has none.
 

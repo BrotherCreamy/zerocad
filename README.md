@@ -153,9 +153,9 @@ turn it, and everything levelled or fixed against it follows.
 
 **There is no `hor` or `ver` either**, and for the same reason one step
 further on: those words say the universe hands you a privileged pair of
-directions. A frame's axes are things you can name — `"f1.x"`, `"f1.y"` — and
-`par`, `perp` and `ang` take one wherever they take a line. `xaxis()` and
-`yaxis()` fill in the default frame.
+directions. A frame's axes are things you can name — `"f1.x"`, `"f1.y"`, and
+in a 3D model `"f1.z"` — and `par`, `perp` and `ang` take one wherever they
+take a line. `xaxis()`, `yaxis()` and `zaxis()` fill in the default frame.
 
 ```js
 f = frame()                        // at the middle of the view, +x to the right
