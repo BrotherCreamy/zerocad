@@ -25,7 +25,8 @@
 // cellwork's habit; both ancestor CADs box-select on empty canvas and drag the
 // geometry everywhere else, and the standing rule is that tools work like
 // Onshape, so they do here too. Panning did not lose anything by either change
-// — it keeps the middle and right buttons and `pan()`.
+// — it kept the middle and right buttons and `pan()` (the right has since
+// become the 3D orbit; the middle and `pan()` still pan).
 //
 // The one press that still pans on the left button is one that landed on a
 // constraint glyph, which is UI rather than geometry: it grabs nothing, so
@@ -158,12 +159,14 @@ export class ToolEngine {
   private actionOpen = false;
   /**
    * The navigation gesture in progress: which pointer, where it was last seen,
-   * where it started, whether it has passed the threshold, and whether it is
-   * the *right* button — the only one a context menu can come out of.
+   * where it started, whether it has passed the threshold, whether it is the
+   * *right* button — the only one a context menu can come out of — and whether
+   * it turns the view (`orbit`: the right button, in a 3D model) or moves it.
+   * The name predates the orbit; every gesture in it is navigation.
    *
    * `x0`/`y0`/`moved` are the same split the left button has always made
    * between a click and a drag, applied to the right button so that a press and
-   * release in the same place can mean something other than a zero-length pan.
+   * release in the same place can mean something other than a zero-length drag.
    * Reusing DRAG_THRESHOLD rather than inventing a second number is the point:
    * one hand, one idea of what "did not move" means.
    */
@@ -253,8 +256,8 @@ export class ToolEngine {
        * Named for the gesture rather than for the menu, the way `onUserAction`
        * is named for the gesture rather than for undo: the engine reports what
        * only it can see and holds no opinion about what a host does with it. A
-       * host with no menu passes nothing and the right button keeps panning and
-       * nothing else, which is what every test written before this existed
+       * host with no menu passes nothing and the right button keeps navigating
+       * and nothing else, which is what every test written before this existed
        * assumes.
        */
       onContextMenu?: (pick: Pick | null, sx: number, sy: number) => void;
@@ -278,7 +281,7 @@ export class ToolEngine {
     canvas.addEventListener("pointerup", (e) => this.dispatch("up", e));
     canvas.addEventListener("pointercancel", (e) => this.dispatch("up", e));
     canvas.addEventListener("wheel", (e) => this.onWheel(e), { passive: false });
-    // Without this a right-drag pan ends in a context menu over the drawing.
+    // Without this a right-drag orbit ends in a context menu over the drawing.
     canvas.addEventListener("contextmenu", (e) => e.preventDefault());
   }
 
