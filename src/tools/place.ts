@@ -43,16 +43,7 @@ import type { Snap } from "../snapping.ts";
 import { coincident, midpoint, onPlane } from "../relations/basic.ts";
 import { onCircle, pointOnLine } from "../relations/geometry.ts";
 import { framePlane } from "../workplane.ts";
-import { cross3, dot3, lift3, sub3 } from "../vec3.ts";
-
-/**
- * How far off the default frame's plane a point may be and still count as on
- * it, relative to its distance from the frame's origin (and never tighter than
- * that fraction of one unit). Loose enough to take a point lifted off a curve
- * the solver holds on the plane only to its own tolerance; a click that missed
- * the plane misses it by a great deal more than this.
- */
-const ON_PLANE = 1e-6;
+import { liesOn } from "../view.ts";
 
 /**
  * Creates the point a click asked for and applies whatever constraint the
@@ -93,11 +84,7 @@ export function requirePlanar(model: Model, tool: string): void {
  */
 export function holdOnSketchPlane(model: Model, pointName: string): string | null {
   const plane = framePlane(model);
-  if (!plane) return null;
-  const off = sub3(lift3(model.coords(pointName)), lift3(plane.origin));
-  const n = cross3(plane.u, plane.v);
-  const away = Math.hypot(off[0], off[1], off[2]);
-  if (Math.abs(dot3(off, n)) > ON_PLANE * Math.max(1, away)) return null;
+  if (!plane || !liesOn(plane, model.coords(pointName))) return null;
   return onPlane(model, pointName, model.defaultFrame);
 }
 

@@ -262,6 +262,28 @@ test("two lines that cross on screen but not in space are no crossing to snap to
   assert.ok(near(real.world, [0, 0, 0], 1e-9), `the crossing is at ${real.world}`);
 });
 
+test("drawing on a sketch plane, a vertex seen through it is no place to snap to", () => {
+  // Looking square-on at a wall (the x–z plane at y = 40) with a floor corner
+  // seventy units behind the very pixel aimed at, and one on the wall itself
+  // a hair further from the cursor.
+  const model = new Model(3);
+  model.addPoint([40, -30, 0], "behind");
+  model.addPoint([40.5, 40, 0], "onWall");
+  const view = alignView(v(), [1, 0, 0], [0, 0, 1], [0, 40, 0]);
+  const wall = { origin: [0, 40, 0], u: [1, 0, 0], v: [0, 0, 1] };
+  const [sx, sy] = worldToScreen(view, [40, 40, 0]);
+  assert.equal(findSnap(model, view, sx, sy)?.targets[0], "behind", "with no sketch, the nearest pixel wins, as ever");
+  assert.equal(findSnap(model, view, sx, sy, wall)?.targets[0], "onWall", "on the sketch, only the sketch's own");
+  // An edge running away through the wall: square-on it is a line along the
+  // wall's foot, but only one pixel of it is *on* the wall.
+  model.addPoint([10, -30, 0], "far");
+  model.addPoint([70, 70, 0], "near");
+  model.addLine("far", "near", "l1");
+  const [ex, ey] = worldToScreen(view, [25, 40, 0]); // where the edge is at y = −5
+  assert.equal(findSnap(model, view, ex, ey)?.targets[0], "l1", "with no sketch, it is a curve to snap along");
+  assert.equal(findSnap(model, view, ex, ey, wall), null, "on the sketch, that pixel of it is not on the wall");
+});
+
 test("a box catches an oblique arc by what is drawn", () => {
   const { model, f, view } = obliqueArcScene();
   const pts = Array.from({ length: 33 }, (_, k) => worldToScreen(view, f.at(20 * Math.cos((k / 32) * Math.PI / 2), 20 * Math.sin((k / 32) * Math.PI / 2))));

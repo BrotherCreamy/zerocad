@@ -68,6 +68,24 @@ export interface Plane {
   v: number[];
 }
 
+/**
+ * Whether `world` lies on `plane` — to a millionth of its distance from the
+ * plane's origin, and never tighter than a millionth of a unit. Loose enough to
+ * accept a point the solver holds on the plane only to its own tolerance, or
+ * one lifted off a curve that is; a point that is merely *behind* the plane on
+ * the same pixel misses it by a great deal more. The one answer to "is this on
+ * the sketch" that snapping and inference both ask.
+ */
+export function liesOn(plane: Plane, world: number[]): boolean {
+  const n = cross3(plane.u, plane.v);
+  const nLen = Math.hypot(n[0], n[1], n[2]);
+  if (!(nLen > 0)) return false;
+  const o = lift3(plane.origin), w = lift3(world);
+  const off = [w[0] - o[0], w[1] - o[1], w[2] - o[2]];
+  const away = Math.hypot(off[0], off[1], off[2]);
+  return Math.abs(dot3(off, n)) / nLen <= 1e-6 * Math.max(1, away);
+}
+
 /** How far the view may be zoomed, so a stray wheel event cannot wreck it. */
 export const MIN_SCALE = 1e-3;
 export const MAX_SCALE = 1e5;

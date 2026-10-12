@@ -16,7 +16,7 @@
 import type { Model } from "./model.ts";
 import { intersect, type Pt } from "./intersect.ts";
 import { nearestOnPolyline, screenCurve, screenOf as projectPoint, type ScreenCurve } from "./projection.ts";
-import type { View } from "./view.ts";
+import { liesOn, type Plane, type View } from "./view.ts";
 
 export type SnapKind = "point" | "intersection" | "midpoint" | "curve";
 
@@ -73,11 +73,25 @@ function dist(ax: number, ay: number, bx: number, by: number): number {
  * edge's two ends, and a pixel along a curve the point of the curve it shows
  * (see projection.ts). A click on a vertex seen obliquely lands *on* the
  * vertex, wherever the working plane happens to be.
+ *
+ * **`sketch`, when given, is the plane being drawn on** — the default frame's,
+ * in a 3D model — and then only places *on* it are offered. Seen square-on, a
+ * sketch has whole stacks of geometry behind it sharing its pixels: a floor's
+ * front and back corners are one pixel to a camera looking at the wall
+ * standing on its back edge. Snapping to whichever of a stack came first
+ * would pin a point of the wall to a corner of the floor seventy units behind
+ * it, dragging the wall's edge out of its own plane — the drawing obeying a
+ * click the user never made. A vertex, edge or crossing that really is on the
+ * sketch (the floor's back edge, which the wall stands on) is still found;
+ * what is only seen *through* the sketch is not a place on it. Without a
+ * sketch plane (no default frame, or a 2D model) everything is offered, as it
+ * always was.
  */
-export function findSnap(model: Model, view: View, sx: number, sy: number): Snap | null {
+export function findSnap(model: Model, view: View, sx: number, sy: number, sketch?: Plane | null): Snap | null {
   const screenOf = (name: string) => projectPoint(model, view, name);
   const make = (screen: Pt, world: number[], kind: SnapKind, ...targets: string[]): Snap =>
     ({ screen, world, kind, targets });
+  const onSketch = (world: number[]) => !sketch || liesOn(sketch, world);
 
   // Tier 1: an existing point. Exact, and almost always what was meant.
   let best: { snap: Snap; d: number } | null = null;
@@ -85,7 +99,8 @@ export function findSnap(model: Model, view: View, sx: number, sy: number): Snap
     if (e.kind !== "point") continue;
     const p = screenOf(e.name);
     const d = dist(sx, sy, p[0], p[1]);
-    if (d < SNAP_POINT && (!best || d < best.d)) best = { snap: make(p, model.coords(e.name), "point", e.name), d };
+    const world = model.coords(e.name);
+    if (d < SNAP_POINT && (!best || d < best.d) && onSketch(world)) best = { snap: make(p, world, "point", e.name), d };
   }
   if (best) return best.snap;
 
@@ -108,6 +123,7 @@ export function findSnap(model: Model, view: View, sx: number, sy: number): Snap
         const p = near[i].shape.lift(at), q = near[j].shape.lift(at);
         if (Math.hypot(...p.map((v, k) => v - q[k])) > sameWithin) continue;
         const world = p.map((v, k) => (v + q[k]) / 2);
+        if (!onSketch(world)) continue;
         best = { snap: make(at, world, "intersection", near[i].name, near[j].name), d };
       }
     }
@@ -124,7 +140,8 @@ export function findSnap(model: Model, view: View, sx: number, sy: number): Snap
     const d = dist(sx, sy, mid[0], mid[1]);
     if (d < SNAP_MIDPOINT && (!best || d < best.d)) {
       const A = model.coords(e.refs[0]), B = model.coords(e.refs[1]);
-      best = { snap: make(mid, A.map((v, k) => (v + B[k]) / 2), "midpoint", e.name), d };
+      const world = A.map((v, k) => (v + B[k]) / 2);
+      if (onSketch(world)) best = { snap: make(mid, world, "midpoint", e.name), d };
     }
   }
   if (best) return best.snap;
@@ -134,7 +151,8 @@ export function findSnap(model: Model, view: View, sx: number, sy: number): Snap
     const shape = screenCurve(model, view, e, SNAP_INTERSECTION);
     const at = shape && nearestOnCurve(shape, sx, sy);
     if (shape && at && at.d < SNAP_CURVE && (!best || at.d < best.d)) {
-      best = { snap: make(at.on, shape.lift(at.on), "curve", e.name), d: at.d };
+      const world = shape.lift(at.on);
+      if (onSketch(world)) best = { snap: make(at.on, world, "curve", e.name), d: at.d };
     }
   }
   return best?.snap ?? null;

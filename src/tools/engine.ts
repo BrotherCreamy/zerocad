@@ -46,7 +46,7 @@ import { getToolCtor, type Tool, type ToolContext, type PointerInfo, type Render
 import {
   assignView, orbitBy, panBy, screenToPlane, screenToWorld, worldToScreen, zoomAbout, type Plane, type View,
 } from "../view.ts";
-import { pointOnWorkingPlane } from "../workplane.ts";
+import { framePlane, pointOnWorkingPlane } from "../workplane.ts";
 import { hitTest, type Pick } from "../picking.ts";
 import { boxFrom, selectInBox, type BoxMode } from "../boxselect.ts";
 import { glyphAt, placeGlyphs, type Glyph } from "../glyphs.ts";
@@ -516,7 +516,9 @@ export class ToolEngine {
       // is. A tool that places points reads `snap` too, and applies the
       // constraint the user was aiming for (see place.ts). Inference is
       // downstream of snapping, so `snapping(false)` turns off both.
-      this.snap = this.snapping ? findSnap(this.model, this.view, sx, sy) : null;
+      // Only places on the sketch plane are offered while there is one — see
+      // findSnap for the stack of geometry a square-on view hides behind it.
+      this.snap = this.snapping ? findSnap(this.model, this.view, sx, sy, framePlane(this.model)) : null;
       // The plane is reported even when a snap moved the point off it: it is
       // what the gesture is being drawn on, and a tool laying out a shape from
       // a snapped corner still lays it out along that plane's axes.
