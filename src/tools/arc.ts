@@ -23,7 +23,10 @@ import { sketchSide } from "../curveplane.ts";
 import { cross3, lift3 } from "../vec3.ts";
 import type { Plane } from "../view.ts";
 
-/** Pulls `p` onto the sphere of radius `r` about `c`, keeping its direction. */
+/**
+ * Pulls `p` out to distance `r` from `c`, keeping its direction — onto the rim,
+ * since a click and the centre both lie in the working plane.
+ */
 function ontoRim(p: number[], c: number[], r: number): number[] {
   const d = p.map((v, i) => v - c[i]);
   const len = Math.hypot(...d);

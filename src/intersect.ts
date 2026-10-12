@@ -9,9 +9,9 @@
 // distance to the cursor, the tolerance for "is that a crossing I meant" is a
 // pixel count, and the arc-sweep test picking already had was written against
 // screen angles. The view is an orthographic projection, so a segment stays a
-// segment under it, a circle — a sphere, in 3D, until circles carry a plane —
-// projects to its silhouette circle, and an arc seen face-on stays a circular
-// arc. Doing the algebra in world space instead would have meant a second
+// segment under it, and a circle or arc seen face-on stays a circle or a
+// circular arc; seen obliquely its plane makes it (part of) an ellipse, which
+// reaches this file as a polyline. Doing the algebra in world space instead would have meant a second
 // definition of "on the arc" in the opposite angular convention, which is the
 // one thing the sweep test must not have. (Which world point a screen crossing
 // *is* is no longer one inverse away in 3D — see `projection.ts`, which lifts

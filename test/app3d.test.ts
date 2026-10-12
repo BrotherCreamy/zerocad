@@ -375,7 +375,7 @@ test("a lifted frame's +y is its 2D +y, even when the drawing turned it past whe
   assert.ok(Math.hypot(p[0], p[1] + 10, p[2]) < 1e-9, `p at ${p}`);
 });
 
-test("a lifted file re-saves as a 3D v6 file that reopens to itself", async () => {
+test("a lifted file re-saves as a 3D file of the current version that reopens to itself", async () => {
   await loadKernel();
   const m = open(file2D(5), 3);
   m.solve();
