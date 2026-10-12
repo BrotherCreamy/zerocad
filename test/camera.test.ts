@@ -3,10 +3,11 @@
 // The claims worth pinning are closed-form, the way the rest of this suite
 // pins geometry: an orbit by θ foreshortens the drawing by exactly cos θ; the
 // pivot stays on its pixel to the last bit a float has; a pixel on a plane
-// seen at an angle comes back as the point on that plane; an arc seen
-// obliquely is picked and snapped where it is *drawn*, not where its sphere's
-// silhouette would be. And the claim that keeps the 2D app's whole suite
-// meaningful: a view that has never been turned is the 2D transform, exactly.
+// seen at an angle comes back as the point on that plane; an arc or a circle
+// seen obliquely is picked and snapped where it is *drawn* — the ellipse its
+// plane projects to — not where a sphere's silhouette would be. And the claim
+// that keeps the 2D app's whole suite meaningful: a view that has never been
+// turned is the 2D transform, exactly.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -148,28 +149,40 @@ test("the 2D inverse in a turned view is where the pixel's ray meets z = 0", () 
 
 // --- which way round an arc goes ----------------------------------------------
 
+const UP = [0, 0, 1];
+
 test("a 2D arc turns about +z, exactly as main.ts always drew it", () => {
-  assert.deepEqual(arcNormal([0, 0], [10, 0], [0, 10]), [0, 0, 1]);
-  assert.deepEqual(arcNormal([0, 0], [0, 10], [10, 0]), [0, 0, 1], "the side, not the order");
-  const f = arcFrame([0, 0], [10, 0], [0, 10], 10)!;
+  assert.deepEqual(arcNormal([0, 0], [10, 0], [0, 10], UP), [0, 0, 1]);
+  assert.deepEqual(arcNormal([0, 0], [0, 10], [10, 0], UP), [0, 0, 1], "the side, not the order");
+  const f = arcFrame([0, 0], [10, 0], [0, 10], 10, UP)!;
   assert.ok(close(f.sweep, Math.PI / 2), "a quarter turn counter-clockwise");
-  const g = arcFrame([0, 0], [0, 10], [10, 0], 10)!;
+  const g = arcFrame([0, 0], [0, 10], [10, 0], 10, UP)!;
   assert.ok(close(g.sweep, (3 * Math.PI) / 2), "and the other way round is the reflex arc");
   // A semicircle has no plane of its own; it takes the one with +z.
-  assert.deepEqual(arcNormal([0, 0], [10, 0], [-10, 0]), [0, 0, 1]);
+  assert.deepEqual(arcNormal([0, 0], [10, 0], [-10, 0], UP), [0, 0, 1]);
 });
 
-test("in 3D the normal is the plane's, on the kernel's +z side, then +y, then +x", () => {
-  const n = arcNormal([0, 0, 0], [0, 0, 5], [5, 0, 0])!; // the x–z plane
-  assert.deepEqual(n.map(Math.abs), [0, 1, 0]);
-  assert.ok(n[1] > 0, "a vertical plane takes its +y side");
-  const tipped = arcNormal([0, 0, 0], [1, 0, 0], [0, Math.cos(2.5), Math.sin(2.5)])!;
-  assert.ok(tipped[2] > 0, `a plane tipped past vertical still turns about its upper side: ${tipped}`);
+test("in 3D the normal is the plane's, on its frame's +z side — never the kernel's", () => {
+  // The x–z plane, turned about by a frame whose +z is −y: the side is the
+  // frame's, whichever way round the kernel would have had it.
+  const n = arcNormal([0, 0, 0], [0, 0, 5], [5, 0, 0], [0, -1, 0])!;
+  assert.deepEqual(n.map((x) => x + 0), [0, -1, 0]);
+  // A plane tipped past the vertical: the kernel's rule flipped it to its
+  // upper side, so it drew as its complement. About its frame it does not.
+  const t = 2.5;
+  const side = [0, -Math.sin(t), Math.cos(t)]; // the plane's normal, below the horizon
+  const tipped = arcNormal([0, 0, 0], [1, 0, 0], [0, Math.cos(t), Math.sin(t)], side)!;
+  assert.ok(close(dot(tipped, side), 1), `about the frame's +z, which points down here: ${tipped}`);
+  const f = arcFrame([0, 0, 0], [1, 0, 0], [0, Math.cos(t), Math.sin(t)], 1, side)!;
+  assert.ok(close(f.sweep, Math.PI / 2), "and it is the quarter, as drawn — not the three quarters");
+  // A half-turn takes the plane through its diameter nearest the frame's.
+  const half = arcNormal([0, 0, 0], [5, 0, 0], [-5, 0, 0], [0, Math.SQRT1_2, Math.SQRT1_2])!;
+  assert.ok(close(half[0], 0) && close(half[1], Math.SQRT1_2) && close(half[2], Math.SQRT1_2), `${half}`);
 });
 
 test("an arc's frame puts every point on its circle, in its plane, start to end", () => {
   const c = [1, 2, 3], s = [1 + 4, 2, 3], e = [1, 2, 3 + 4];
-  const f = arcFrame(c, s, e, 4)!;
+  const f = arcFrame(c, s, e, 4, [0, -1, 0])!;
   for (let k = 0; k <= 8; k++) {
     const p = arcPoint(f, (f.sweep * k) / 8);
     assert.ok(close(Math.hypot(...p.map((x, i) => x - c[i])), 4), "on the circle");
@@ -181,8 +194,10 @@ test("an arc's frame puts every point on its circle, in its plane, start to end"
 test("sweepsAs says whether a tool's counter-clockwise is the drawn one", () => {
   // Counter-clockwise from (10,0) to (0,10) seen from +z is the quarter arc; seen
   // from −z it is the other one, so a tool looking from below must swap.
-  assert.equal(sweepsAs([0, 0, 0], [10, 0, 0], [0, 10, 0], [0, 0, 1]), true);
-  assert.equal(sweepsAs([0, 0, 0], [10, 0, 0], [0, 10, 0], [0, 0, -1]), false);
+  assert.equal(sweepsAs([0, 0, 0], [10, 0, 0], [0, 10, 0], [0, 0, 1], UP), true);
+  assert.equal(sweepsAs([0, 0, 0], [10, 0, 0], [0, 10, 0], [0, 0, -1], UP), false);
+  // And against a plane whose +z is −z, the other way about.
+  assert.equal(sweepsAs([0, 0, 0], [10, 0, 0], [0, 10, 0], [0, 0, 1], [0, 0, -1]), false);
 });
 
 // --- the drawing through the camera -------------------------------------------
@@ -194,7 +209,7 @@ function obliqueArcScene() {
   model.addPoint(f.at(0, 0), "c");
   model.addPoint(f.at(20, 0), "s");
   model.addPoint(f.at(0, 20), "e");
-  model.addArc("c", "s", "e", 20, "a1");
+  model.addArc("c", "s", "e", 20, null, "a1");
   // Square to the frame, then turned a radian away: its plane foreshortened
   // to cos(1) along +x, so the drawn arc is a good deal of ellipse.
   const view: View = orbitBy(alignView({ ox: 400, oy: 300, scale: 4 }, f.ux, f.uy, f.origin), 1, 0);
@@ -311,17 +326,28 @@ test("a 3D frame's marker has three arms that foreshorten, and face-on its +z is
   assert.ok(close(flen(face.x), FRAME_ARM_PX) && close(flen(face.y), FRAME_ARM_PX) && close(flen(face.z!), 0, 1e-9));
 });
 
-test("a circle's glyph sits on the silhouette the viewer sees, wherever the view is turned", async () => {
+test("a circle's glyph sits on its planar rim, up and to the right as the viewer sees it", async () => {
   await loadKernel();
   const model = new Model(3);
-  model.addPoint([5, 5, 5], "c");
+  const f = tiltedFrame(model);
+  model.addPoint(f.at(5, 5), "c");
   const circ = model.addCircle("c", 10).name;
   radius(model, circ, 10);
   const view = orbitBy(v(), 0.9, -0.6);
-  const [g] = placeGlyphs(model, view);
-  const centre = worldToScreen(view, [5, 5, 5]);
-  const away = Math.hypot(g.anchor[0] - centre[0], g.anchor[1] - centre[1]);
-  assert.ok(close(away, 10 * view.scale, 1e-9), `the rim anchor is ${away}px out, the silhouette ${10 * view.scale}`);
-  // Up and to the right of the centre on *screen*, at 45°, as in 2D.
-  assert.ok(close(g.anchor[0] - centre[0], away * Math.SQRT1_2, 1e-9) && close(g.anchor[1] - centre[1], -away * Math.SQRT1_2, 1e-9));
+  const g = placeGlyphs(model, view).find((x) => x.op === "radius")!;
+  // Read the anchor pixel back into the circle's plane: a pixel offset from the
+  // projected centre is P·(a, b)·scale, where P is how the plane's +x and +y
+  // land on screen (world-up), so (a, b) = P⁻¹·offset/scale.
+  const centre = worldToScreen(view, f.at(5, 5));
+  const { right, up } = viewAxes(view);
+  const [p, q, r, s] = [dot(f.ux, right), dot(f.uy, right), dot(f.ux, up), dot(f.uy, up)];
+  const [dx, dy] = [(g.anchor[0] - centre[0]) / view.scale, -(g.anchor[1] - centre[1]) / view.scale];
+  const det = p * s - q * r;
+  const [a, b] = [(s * dx - q * dy) / det, (p * dy - r * dx) / det];
+  assert.ok(close(Math.hypot(a, b), 10, 1e-9),
+    `the anchor is ${Math.hypot(a, b)} from the centre in the circle's own plane — on its rim, not a sphere's silhouette`);
+  // Up and to the right of the centre on *screen*, at 45°, as in 2D — and well
+  // inside where the silhouette would have put it, the plane being tilted.
+  assert.ok(close(Math.atan2(dy, dx), Math.PI / 4, 1e-9), `at ${Math.atan2(dy, dx)} rad on screen`);
+  assert.ok(Math.hypot(dx, dy) < 10 - 1, "foreshortened, as the drawn ellipse is");
 });

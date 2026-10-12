@@ -10,20 +10,20 @@
 //   * a **line** projects to a segment — orthographic projection is affine —
 //     and a pixel a fraction t along it is the world point a fraction t along
 //     the line, exactly;
-//   * a **circle** projects to its silhouette, a circle of radius r·scale about
-//     its projected centre. In 3D a circle has no plane yet (phase 2 gives it
-//     one), so it *is* a sphere to every relation that reads it, and the
-//     silhouette is exactly what a sphere looks like orthographically. A pixel
-//     on the rim stands for the point of the sphere on the camera-parallel
-//     great circle — the one point of the sphere that is under that pixel;
-//   * an **arc** has a plane — the one through its centre and endpoints (see
-//     arcgeom.ts) — and projects to part of an ellipse. **Seen face-on it is
-//     still a circular arc**, and it stays the exact `arc` curve it always was,
-//     so a 2D drawing and anything looked at square-on are picked, snapped and
-//     boxed by the very arithmetic that pinned them before. Seen obliquely it
-//     is a polyline fine enough (a quarter-pixel) that the eye and the hand
-//     cannot tell, and a pixel on it lifts back to the true arc by the angle
-//     along it.
+//   * a **circle** lies in a plane (its frame's orientation through its own
+//     centre, in 3D; the drawing's own in 2D — see curveplane.ts) and projects
+//     to an **ellipse**. Seen face-on that ellipse is a circle of radius
+//     r·scale about the projected centre, and it stays the exact `circle`
+//     curve it always was, so a 2D drawing and anything looked at square-on are
+//     picked, snapped and boxed by the very arithmetic that pinned them before.
+//     Seen obliquely it is a closed polyline fine enough (a quarter-pixel) that
+//     the eye and the hand cannot tell, and a pixel on it lifts back to the
+//     true rim by the angle round it. (Until 3D phase 2 a circle had no plane,
+//     was a sphere to every relation, and was drawn as its silhouette — a rim
+//     that never foreshortened. That is gone.)
+//   * an **arc** is the same, cut short: laid out in the plane through its
+//     centre and endpoints, counter-clockwise about its plane's +z (see
+//     arcgeom.ts), an exact `arc` curve face-on and a polyline obliquely.
 //
 // Lifting is what replaced `screenToWorld` for every pixel that is *on*
 // something. In 2D the inverse was exact and one formula; in 3D a pixel names a
@@ -31,15 +31,17 @@
 
 import type { Entity, Model } from "./model.ts";
 import { arcSlack, screenAngle, type Curve, type Pt } from "./intersect.ts";
-import { arcFrame, arcPoint, arcSamples, arcSegments } from "./arcgeom.ts";
+import { arcPoint, arcSamples, arcSegments, type ArcFrame } from "./arcgeom.ts";
+import { curveFrame } from "./curveplane.ts";
 import { viewAxes, worldToScreen, type View } from "./view.ts";
 import { dot3, lift3 } from "./vec3.ts";
 
 /**
- * How near to square-on an arc has to be seen to be drawn and picked as an
- * exact circular arc: the cosine between its normal and the line of sight
- * within a billionth of one. A view that has never been turned looks along
- * exactly +z, so every 2D arc is face-on with room to spare.
+ * How near to square-on a circle or arc has to be seen to be drawn and picked
+ * as an exact circle or circular arc: the cosine between its normal and the
+ * line of sight within a billionth of one. A view that has never been turned
+ * looks along exactly +z, so every 2D circle and arc is face-on with room to
+ * spare.
  */
 const FACE_ON = 1e-9;
 
@@ -81,39 +83,60 @@ export function screenCurve(model: Model, view: View, e: Entity, slackPx: number
     const C = model.coords(e.center);
     const r = model.radius(e.name);
     const c = worldToScreen(view, C);
-    return { curve: { kind: "circle", c, r: r * view.scale }, lift: silhouetteLift(view, C, r, c, dim) };
+    const f = curveFrame(model, e)!;
+    if (faceOn(view, f)) {
+      // Square-on, the rim is a circle on screen and the exact curve is the
+      // right one. A pixel on it lifts out along its screen direction, in the
+      // camera's plane — which, face-on, *is* the rim's plane.
+      return { curve: { kind: "circle", c, r: r * view.scale }, lift: faceOnLift(view, C, r, c, dim) };
+    }
+    return obliquely(view, f, r * view.scale, dim);
   }
   if (e.kind === "arc") {
     const C = model.coords(e.center);
     const r = model.radius(e.name);
     const c = worldToScreen(view, C);
     const rs = r * view.scale;
-    const f = arcFrame(C, model.coords(e.start), model.coords(e.end), r);
-    const facing = f ? dot3(f.normal, viewAxes(view).toward) : 1;
-    if (!f || 1 - Math.abs(facing) <= FACE_ON) {
+    const f = curveFrame(model, e);
+    if (!f || faceOn(view, f)) {
       // Square-on: the arc is a circular arc on screen, and the old exact
       // curve is the right one. Seen from behind, its counter-clockwise sweep
       // runs clockwise on screen — which is the same arc read from the other
       // end, so the two screen angles swap.
+      const facing = f ? dot3(f.normal, viewAxes(view).toward) : 1;
       const a0 = screenAngle(c[0], c[1], ...screenOf(model, view, e.start));
       const a1 = screenAngle(c[0], c[1], ...screenOf(model, view, e.end));
       return {
         curve: { kind: "arc", c, r: rs, a0: facing < 0 ? a1 : a0, a1: facing < 0 ? a0 : a1, slack: arcSlack(rs, slackPx) },
-        lift: silhouetteLift(view, C, r, c, dim),
+        lift: faceOnLift(view, C, r, c, dim),
       };
     }
-    const n = arcSegments(f.sweep, rs);
-    const pts = arcSamples(f, n).map((w) => worldToScreen(view, w));
-    return {
-      curve: { kind: "polyline", pts },
-      lift: (p) => {
-        const near = nearestOnPolyline(pts, p);
-        const k = near ? near.index + near.t : 0;
-        return arcPoint(f, (f.sweep * k) / n).slice(0, dim);
-      },
-    };
+    return obliquely(view, f, rs, dim);
   }
   return null;
+}
+
+/** Whether a circle or arc is seen square-on — see `FACE_ON`. */
+function faceOn(view: View, f: ArcFrame): boolean {
+  return 1 - Math.abs(dot3(f.normal, viewAxes(view).toward)) <= FACE_ON;
+}
+
+/**
+ * A circle or arc seen at an angle: the fine polyline it is drawn as, closed
+ * for a circle (its first and last samples are the same point), and a pixel on
+ * it lifted back to the true curve by how far round it is.
+ */
+function obliquely(view: View, f: ArcFrame, pixelRadius: number, dim: number): ScreenCurve {
+  const n = arcSegments(f.sweep, pixelRadius);
+  const pts = arcSamples(f, n).map((w) => worldToScreen(view, w));
+  return {
+    curve: { kind: "polyline", pts },
+    lift: (p) => {
+      const near = nearestOnPolyline(pts, p);
+      const k = near ? near.index + near.t : 0;
+      return arcPoint(f, (f.sweep * k) / n).slice(0, dim);
+    },
+  };
 }
 
 /**
@@ -129,12 +152,13 @@ function segmentParam(a: Pt, b: Pt, p: Pt): number {
 }
 
 /**
- * A pixel on a sphere's silhouette, as the point of the sphere it shows: out
- * from the centre along the screen direction of the pixel, in the camera's own
- * plane. In a view that has never been turned that plane is the drawing's own,
- * and this is the rim point of the circle, exactly as `screenToWorld` gave it.
+ * A pixel on a rim seen face-on, as the point of the rim it shows: out from the
+ * centre along the screen direction of the pixel, in the camera's own plane —
+ * which for a circle seen square-on is the circle's own plane. In a view that
+ * has never been turned that plane is the drawing's own, and this is the rim
+ * point exactly as `screenToWorld` gave it.
  */
-function silhouetteLift(view: View, C: number[], r: number, c: Pt, dim: number): (p: Pt) => number[] {
+function faceOnLift(view: View, C: number[], r: number, c: Pt, dim: number): (p: Pt) => number[] {
   const { right, up } = viewAxes(view);
   const C3 = lift3(C);
   return (p) => {

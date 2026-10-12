@@ -9,16 +9,17 @@
 // solver leaves it alone) but is still free to be driven later by a `rad`
 // or a tangency. Pinning it here would make every drawn circle rigid.
 //
-// In 3D the radius is the full distance from centre to rim, and the preview is
-// drawn the way the committed circle will be: its silhouette, `r * scale`
-// about the projected centre. Until circles carry a plane (3D phase 2) a
-// circle is a sphere to every relation that reads it, so on a plane seen at an
-// angle the outline is wider than the plane's own circle through the cursor —
-// the honest picture of what is being built, rather than a promise of a
-// planar circle the model does not have yet.
+// In 3D the circle lies on the sketch: it is given the default frame's plane
+// (see `CircleEntity`), so the tool refuses on its first click when there is
+// no default frame — before anything is placed — rather than drawing a circle
+// the model cannot hold. The radius is the distance from centre to rim in the
+// working plane, and the preview is drawn the way the committed circle will
+// be: sampled in that plane and projected, an ellipse on a plane seen at an
+// angle.
 
 import { Tool, defineTool, type PointerInfo, type RenderContext } from "./tool.ts";
-import { placePoint, requirePlanar } from "./place.ts";
+import { curveToolReady, placePoint, requirePlanar } from "./place.ts";
+import { arcSamples, arcSegments, circleFrame } from "../arcgeom.ts";
 
 export class CircleTool extends Tool {
   readonly name = "circle";
@@ -28,6 +29,7 @@ export class CircleTool extends Tool {
 
   onDown(p: PointerInfo): void {
     requirePlanar(this.ctx.model, this.name);
+    if (!curveToolReady(this.ctx, this.name)) return;
     this.from = p;
     this.rim = p.world;
     this.ctx.requestRender();
@@ -73,13 +75,19 @@ export class CircleTool extends Tool {
     const c = this.from.world;
     const [cx, cy] = r.worldToScreen(c);
     const [rx, ry] = r.worldToScreen(this.rim);
-    const radius = Math.hypot(...this.rim.map((v, i) => v - c[i])) * r.scale;
+    const radius = Math.hypot(...this.rim.map((v, i) => v - c[i]));
+    // In the plane the press landed on — the default frame's, in 3D — exactly
+    // as main.ts will draw the circle the release commits.
+    const plane = this.from.plane;
+    const f = circleFrame(c, radius, plane ? plane.u : [1, 0, 0], plane ? plane.v : [0, 1, 0]);
+    const pts = arcSamples(f, arcSegments(f.sweep, radius * r.scale)).map((w) => r.worldToScreen(w));
     r.g.save();
     r.g.strokeStyle = "#e8a33d";
     r.g.setLineDash([4, 3]);
     r.g.lineWidth = 1.3;
     r.g.beginPath();
-    r.g.arc(cx, cy, radius, 0, Math.PI * 2);
+    r.g.moveTo(...pts[0]);
+    for (const q of pts.slice(1)) r.g.lineTo(...q);
     r.g.stroke();
     r.g.beginPath();
     r.g.moveTo(cx, cy);

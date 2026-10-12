@@ -51,8 +51,8 @@ test("the three value-carrying relations are d-named and every other one is r-na
   }
   m.addLine("p1", "p2", "l1");
   m.addLine("p2", "p3", "l2");
-  m.addCircle("p5", 5, "c1");
-  m.addCircle("p6", 5, "c2");
+  m.addCircle("p5", 5, null, "c1");
+  m.addCircle("p6", 5, null, "c2");
 
   // A dimension is a number you put on the drawing. There are exactly three.
   assert.deepEqual([
@@ -167,7 +167,7 @@ test("set works on a radius and on an angle, in the unit the relation stores", a
   await loadKernel();
   const m = new Model(2);
   m.addPoint([0, 0], "ctr");
-  m.addCircle("ctr", 5, "c");
+  m.addCircle("ctr", 5, null, "c");
   const dr = radius(m, "c", 5);
   assert.equal(dr, "d1");
   set(m, "d1.value", 12);
@@ -273,7 +273,7 @@ test("every op in DIMENSION_OPS can actually be rebuilt by set", async () => {
     assert.ok(fixtures[op], `${op} is a dimension with no fixture here — add one, and a REBUILD entry`);
     const m = pair();
     m.addPoint([0, 10], "c2");
-    m.addCircle("c2", 5, "c");
+    m.addCircle("c2", 5, null, "c");
     m.addLine("a", "b", "l1");
     m.addLine("a", "c2", "l2");
     const name = fixtures[op](m);
@@ -362,7 +362,7 @@ test("a version-3 file's deleteRelation is pointed at the name that relation has
   // finish. That is the same rule the hor/ver translation follows.
   assert.deepEqual(m.journal.at(-1), { op: "deleteRelation", args: ["d2"] });
   const saved = save(m);
-  assert.match(saved, /"version": 6/); // the current version, whatever later boundaries it crossed
+  assert.match(saved, /"version": 7/); // the current version, whatever later boundaries it crossed
   assert.equal(save(open(saved)), saved, "and the file is stable from here on");
 });
 

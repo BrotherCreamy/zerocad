@@ -19,20 +19,23 @@
 // the entire gesture a single undo step — circle, rim points and relations go
 // back together or not at all.
 //
-// In 3D the circle through three clicks lies in their plane, and its centre is
+// In 3D the circle through three clicks lies in their plane — the sketch's —
+// and is given the default frame's plane (see `CircleEntity`); with no default
+// frame the first click is refused before anything is placed. Its centre is
 // held on the sketch plane with the rim points (see place.ts). The preview is
 // computed in the world, as the commit is, and drawn as the renderer will draw
-// the result — the silhouette, a circle being a sphere until phase 2 — because
-// the circle through three *projected* points is not the projection of anything
-// the model will hold once the plane is seen at an angle.
+// the result — sampled in its plane and projected, an ellipse seen at an angle
+// — because the circle through three *projected* points is not the projection
+// of anything the model will hold once the plane is seen at an angle.
 
 import { Tool, defineTool, type PointerInfo, type RenderContext } from "./tool.ts";
 import { onCircle } from "../relations/geometry.ts";
-import { holdOnSketchPlane, placePoint, requirePlanar } from "./place.ts";
+import { curveToolReady, holdOnSketchPlane, placePoint, requirePlanar } from "./place.ts";
 // The closed form and its collinearity threshold left this file when the
 // 3-point *arc* tool needed the same two, and needed them to agree — see the
 // header of circumcircle.ts.
-import { circumcircle, PREVIEW_MAX_R } from "./circumcircle.ts";
+import { circumcircle, circumFrame, PREVIEW_MAX_R } from "./circumcircle.ts";
+import { arcSamples, arcSegments } from "../arcgeom.ts";
 
 export class Circle3Tool extends Tool {
   readonly name = "circle3";
@@ -42,6 +45,7 @@ export class Circle3Tool extends Tool {
 
   onDown(p: PointerInfo): void {
     requirePlanar(this.ctx.model, this.name);
+    if (!this.clicks.length && !curveToolReady(this.ctx, this.name)) return;
     this.hover = p.world;
 
     if (this.clicks.length < 2) {
@@ -127,16 +131,17 @@ export class Circle3Tool extends Tool {
     // Two clicks and a cursor already determine the circle, so from here the
     // preview is the answer itself rather than a suggestion of it.
     if (this.clicks.length === 2 && this.hover) {
-      const found = circumcircle(this.clicks[0].world, this.clicks[1].world, this.hover);
-      const radius = found ? found.radius * r.scale : Infinity;
+      const f = circumFrame(this.clicks[0].world, this.clicks[1].world, this.hover);
+      const radius = f ? f.r * r.scale : Infinity;
       // Nothing at all when they are collinear, or when the rim is so far away
       // that what would be drawn is a straight line: a preview that lies about
       // what the next click will build is worse than no preview.
-      if (found && radius < PREVIEW_MAX_R) {
-        const [cx, cy] = r.worldToScreen(found.center);
+      if (f && radius < PREVIEW_MAX_R) {
+        const pts = arcSamples(f, arcSegments(f.sweep, radius)).map((w) => r.worldToScreen(w));
         r.g.setLineDash([4, 3]);
         r.g.beginPath();
-        r.g.arc(cx, cy, radius, 0, Math.PI * 2);
+        r.g.moveTo(...pts[0]);
+        for (const q of pts.slice(1)) r.g.lineTo(...q);
         r.g.stroke();
       }
     }

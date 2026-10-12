@@ -14,7 +14,7 @@
 
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { openApp, type AppContext } from "./harness.ts";
+import { openApp, sketchFrame, type AppContext } from "./harness.ts";
 
 let app: AppContext;
 before(async () => { app = await openApp(); });
@@ -96,6 +96,9 @@ test("a dimensioned sketch says its dimensions", async () => {
   await dragFromTo([240, 200], [560, 420]);
   await app.type('dist("p4", "p3", 110)');
   await app.type('dist("p3", "p2", 73)');
+  // The fillet's arc lies in a frame's plane in the 3D app: a sketch frame,
+  // parked out of the way, in the plane the rectangle was drawn in.
+  await sketchFrame(app);
   await app.type('fillet("l1", "l4", 22)'); // brings its own rad("a1", 22)
   await app.type('l5 = ln("p2", pt(60, 120))');
   await app.type('ang("l1", "l5", Math.PI / 6)');

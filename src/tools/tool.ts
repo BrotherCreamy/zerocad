@@ -38,10 +38,10 @@ export interface RenderContext {
   g: CanvasRenderingContext2D;
   worldToScreen(world: number[]): [number, number];
   /**
-   * Pixels per world unit. A tool previewing a circle draws it at `r * scale`
-   * about its projected centre, which is how the renderer draws a committed
-   * one — in 3D a circle is still a sphere, and that is its silhouette — so a
-   * preview cannot promise a different size from what the click will build.
+   * Pixels per world unit — how finely a preview has to sample a curve to be
+   * the curve the renderer will draw (see `arcSegments`). A circle previews as
+   * the committed one is drawn: sampled in its plane and projected, so a
+   * preview cannot promise a different shape from what the click will build.
    */
   scale: number;
 }

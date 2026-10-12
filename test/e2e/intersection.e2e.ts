@@ -15,7 +15,7 @@
 
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { openApp, type AppContext } from "./harness.ts";
+import { axisFrame, openApp, PARKED, type AppContext } from "./harness.ts";
 
 let app: AppContext;
 after(async () => { await app.close(); });
@@ -73,7 +73,12 @@ const CROSS_X = Math.sqrt(R * R - DY * DY); // 38.1576…
 
 before(async () => {
   app = await openApp();
-  await app.type(`ctr = pt(0,0); k = circ(ctr, ${R})`);
+  // A frame for the circle's plane — named, not the default, and parked off
+  // the canvas: a circle lies in a plane in the 3D app, and this suite is about
+  // snapping, not about the sketch's own `onplane` holds (with no default
+  // frame, a placed point is held by nothing but what it snapped to).
+  await axisFrame(app, PARKED, false);
+  await app.type(`ctr = pt(0,0); k = circ(ctr, ${R}, "f")`);
   await app.type(`la = pt(-70,${DY}); lb = pt(70,${DY}); edge = ln(la, lb)`);
   await app.type("solve()");
 });
@@ -185,7 +190,7 @@ test("an arc crosses only inside its own sweep", async () => {
   // top-right quadrant only. Two upright edges cut its *circle* at x = ±21.21;
   // only the right-hand one cuts the arc.
   const q = 30 / Math.SQRT2;
-  await app.type("ac = pt(0,0); as = pt(30,0); ae = pt(0,30); a1 = arc(ac, as, ae, 30)");
+  await app.type('ac = pt(0,0); as = pt(30,0); ae = pt(0,30); a1 = arc(ac, as, ae, 30, "f")');
   await app.type(`ra = pt(${q},-8); rb = pt(${q},60); right = ln(ra, rb)`);
   await app.type(`lla = pt(${-q},-8); llb = pt(${-q},60); left = ln(lla, llb)`);
   await app.type("solve()");

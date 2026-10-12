@@ -125,7 +125,7 @@ test("placePoint: a curve snap on a line becomes pointOnLine; on a rim, onCircle
   model.addPoint([40, 0], "b");
   model.addLine("a", "b", "l");
   model.addPoint([0, 60], "ctr");
-  model.addCircle("ctr", 10, "c");
+  model.addCircle("ctr", 10, null, "c");
   const ctx = fakeCtx(model);
 
   const onEdge = nearMiss(model, [10, 0], 0, 1);
@@ -152,7 +152,7 @@ test("placePoint: an intersection snap applies the on-curve relation for both cu
   await loadKernel();
   const model = new Model(2);
   model.addPoint([-40, 0], "a"); model.addPoint([40, 0], "b"); model.addLine("a", "b", "l");
-  model.addPoint([0, 0], "ctr"); model.addCircle("ctr", 30, "c");
+  model.addPoint([0, 0], "ctr"); model.addCircle("ctr", 30, null, "c");
   const ctx = fakeCtx(model);
 
   const at = nearMiss(model, [30, 0], 2, -2);

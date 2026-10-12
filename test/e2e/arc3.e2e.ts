@@ -16,7 +16,7 @@
 
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { openApp, type AppContext } from "./harness.ts";
+import { FIXTURE_ENTITIES, FIXTURE_JOURNAL, openApp, sketchFrame, type AppContext } from "./harness.ts";
 
 /** Anything the page wrote to the console, which is where a tool's refusal went before the log pane. */
 const warnings: string[] = [];
@@ -34,8 +34,14 @@ const EMPTY = JSON.stringify({
   journal: [], values: { points: {}, radii: {} },
 });
 
+/**
+ * A clean sheet with a sketch frame on it — parked off-canvas, in the plane
+ * every click below lands on. An arc lies in a plane, and in the 3D app the
+ * tool refuses without a default frame to give it one.
+ */
 async function reset(): Promise<void> {
   await app.type(`open(${JSON.stringify(EMPTY)})`);
+  await sketchFrame(app);
 }
 
 async function click(sx: number, sy: number): Promise<void> {
@@ -125,12 +131,12 @@ test("three clicks draw the arc through the two ends and the waypoint", async ()
 
   await click(240, 300); // endpoint
   let m = await app.model();
-  assert.equal(m.size, 0, "the first click commits nothing");
+  assert.equal(m.size, FIXTURE_ENTITIES, "the first click commits nothing");
   assert.equal(m.activeTool, "arc3", "and the tool stays armed — the gesture spans three clicks");
 
   await click(460, 300); // the other endpoint
   m = await app.model();
-  assert.equal(m.size, 0, "nor does the second");
+  assert.equal(m.size, FIXTURE_ENTITIES, "nor does the second");
   assert.equal(m.activeTool, "arc3");
 
   // The dashed arc through the two clicks and the cursor, bulging *upward*
@@ -153,10 +159,13 @@ test("three clicks draw the arc through the two ends and the waypoint", async ()
   assert.equal(m.byKind.arc, 1, "one arc");
   // Three points, not four: the waypoint is a choice, not geometry. Onshape
   // does not keep it and neither does this.
-  assert.equal(m.byKind.point, 3, "two endpoints and the free arc's own centre — the waypoint is not kept");
+  assert.equal(m.byKind.point - 3, 3, "two endpoints and the free arc's own centre — the waypoint is not kept");
   assert.equal(m.activeTool, null, "the gesture completed and the tool stood down");
   assert.equal(await app.status(), "SOLVED");
-  assert.deepEqual(m.journalOps, ["addPoint", "addPoint", "addArc", "setCoords", "arcEndpoints"],
+  // After the sketch frame's own entries: each placed point held on the sketch
+  // plane, and the arc's centre with them.
+  assert.deepEqual(m.journalOps.slice(FIXTURE_JOURNAL),
+    ["addPoint", "onPlane", "addPoint", "onPlane", "addArc", "setCoords", "onPlane", "arcEndpoints"],
     "no new journal op was needed, which is what makes this a composition");
 
   // The exact claim: the arc is seeded at the circumcircle of the two points
@@ -193,7 +202,7 @@ test("the whole three-click gesture is one undo step", async () => {
   await app.page.waitForTimeout(250);
 
   const m = await app.model();
-  assert.equal(m.size, 0,
+  assert.equal(m.size, FIXTURE_ENTITIES,
     `one Ctrl+Z must take the arc, its endpoints and its centre together — left ${JSON.stringify(m.byKind)}`);
   const rels = (await app.repl("rels()")).value as string[];
   assert.deepEqual(rels, [], "including the relation the gesture added");
@@ -243,7 +252,7 @@ test("an endpoint clicked on an existing corner picks up the coincidence", async
   await app.page.mouse.move(b.x, b.y, { steps: 8 });
   await app.page.mouse.up();
   await app.page.waitForTimeout(200);
-  assert.equal((await app.model()).byKind.point, 4, "the rectangle is there to click on");
+  assert.equal((await app.model()).byKind.point - 3, 4, "the rectangle is there to click on");
 
   await app.type("arc3");
   await click(200, 140); // dead on one corner
@@ -287,7 +296,7 @@ test("a collinear third click is refused rather than solved", async () => {
   await app.page.waitForTimeout(200);
 
   const m = await app.model();
-  assert.equal(m.size, 0, "nothing may be built for an arc that cannot exist");
+  assert.equal(m.size, FIXTURE_ENTITIES, "nothing may be built for an arc that cannot exist");
   assert.equal(m.activeTool, "arc3", "and the tool stays armed, holding the two endpoints");
   assert.match(await app.log(), /arc3: .*lie on one line/,
     "the refusal has to say why, in the pane the user reads");

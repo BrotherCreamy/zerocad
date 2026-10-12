@@ -75,7 +75,7 @@ test("picks a circle by its rim, not its middle", async () => {
   await loadKernel();
   const m = new Model(2);
   m.addPoint([0, 0], "ctr");
-  m.addCircle("ctr", 30, "c");
+  m.addCircle("ctr", 30, null, "c");
 
   const rim = at([30, 0]);
   assert.equal(hitTest(m, view, rim[0], rim[1])?.name, "c");
@@ -90,7 +90,7 @@ test("an arc is only pickable within its own sweep", async () => {
   m.addPoint([0, 0], "ctr");
   m.addPoint([30, 0], "s");
   m.addPoint([0, 30], "e");
-  m.addArc("ctr", "s", "e", 30, "arc"); // the quarter from +x round to +y
+  m.addArc("ctr", "s", "e", 30, null, "arc"); // the quarter from +x round to +y
 
   const inside = at([30 * Math.cos(Math.PI / 4), 30 * Math.sin(Math.PI / 4)]);
   assert.equal(hitTest(m, view, inside[0], inside[1])?.name, "arc", "within the sweep");
@@ -126,7 +126,7 @@ test("describePick says something useful for each kind", async () => {
   m.addPoint([1.5, 2], "a");
   m.addPoint([4.5, 6], "b");
   m.addLine("a", "b", "l");
-  m.addCircle("a", 7, "c");
+  m.addCircle("a", 7, null, "c");
 
   assert.equal(describePick(m, { name: "a", kind: "point", distance: 0 }), "a  1.5, 2");
   assert.equal(describePick(m, { name: "c", kind: "circle", distance: 0 }), "c  r 7");

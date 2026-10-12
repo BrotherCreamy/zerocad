@@ -158,12 +158,15 @@ function setValueItem(model: Model, name: string): MenuItem[] {
  */
 function emptyCanvasMenu(model: Model): Menu {
   const hasFrame = [...model.entities.values()].some((e) => e.kind === "frame");
+  const noPlane = curvesNeedAFrame(model);
   return {
     header: null,
     items: [
       ...TOOL_ITEMS.map(([label, tool]): MenuItem => ({
         label,
-        action: { do: "run", command: `arm(${quoted(tool)})` },
+        action: noPlane !== null && CURVE_TOOLS.has(tool)
+          ? { do: "disabled", why: noPlane }
+          : { do: "run", command: `arm(${quoted(tool)})` },
       })),
       {
         label: "Frame",
@@ -171,6 +174,34 @@ function emptyCanvasMenu(model: Model): Menu {
       },
     ],
   };
+}
+
+/**
+ * The tools that build a circle or an arc — the ones a 3D model cannot run
+ * without a default frame, since what they build is given that frame's plane
+ * (see `CircleEntity`). The fillet is one: it makes an arc.
+ */
+const CURVE_TOOLS: ReadonlySet<string> = new Set(["circle", "circle3", "arc", "arc3", "fillet"]);
+
+/**
+ * Why the curve tools cannot run here, or null when they can — the model's own
+ * standing message, read out of `resolveFrame` as Fix's is, so the menu and
+ * the command line say the same thing. Only a 3D model asks: a 2D circle needs
+ * no plane.
+ *
+ * **Shown and disabled, not hidden**, for Fix's reason: the absence of a frame
+ * is exactly what a user needs told, and an item that simply vanished would
+ * leave "where did Circle go" unanswered. Nor does the menu make the frame
+ * itself — that is the Frame item, one row down, which a user chooses.
+ */
+function curvesNeedAFrame(model: Model): string | null {
+  if (model.dim !== 3) return null;
+  try {
+    model.resolveFrame();
+    return null;
+  } catch (err) {
+    return err instanceof Error ? err.message : String(err);
+  }
 }
 
 function entityMenu(model: Model, pick: Pick): Menu {
@@ -181,7 +212,22 @@ function entityMenu(model: Model, pick: Pick): Menu {
   const dim = dimensionCommand(model, pick);
   if (dim) items.push({ label: "Dimension", action: { do: "run", command: dim } });
   if (pick.kind === "point") items.push(fixItem(model, pick.name));
+  if (pick.kind === "frame") items.push(sketchOnItem(model, pick.name));
   return { header: describePick(model, pick), items };
+}
+
+/**
+ * **Sketch on this**, on a frame: make it the default and look at it square-on
+ * — Onshape's "new sketch on this plane", as the two commands it is. Typed,
+ * like every item here, so the log teaches what it did and both halves can be
+ * retyped on their own: `setDefaultFrame` is the edit (journalled, one undo
+ * step), `lookAt` only moves the camera. In a 2D model there is nothing to
+ * turn the view toward, and the item is only the first half.
+ */
+function sketchOnItem(model: Model, frame: string): MenuItem {
+  const name = quoted(frame);
+  const command = model.dim === 3 ? `setDefaultFrame(${name}); lookAt(${name})` : `setDefaultFrame(${name})`;
+  return { label: "Sketch on this", action: { do: "run", command } };
 }
 
 /**

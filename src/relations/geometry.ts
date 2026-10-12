@@ -18,7 +18,7 @@
 import type { Model } from "../model.ts";
 import type { Dual } from "../kernel/dual.ts";
 import { dot, norm, vecSub, wedge, wedgeNorm } from "./vec.ts";
-import { chunk, directionOf, directionOfPoints, joinVars, lineVars, type DirectionRef } from "./refs.ts";
+import { chunk, directionOf, directionOfPoints, joinVars, lineVars, rimNormal, type DirectionRef } from "./refs.ts";
 import { coincident } from "./basic.ts";
 
 // --- the direction relations -----------------------------------------------
@@ -170,7 +170,10 @@ export function equalLength(model: Model, l1: string, l2: string): string {
 // --- circles and arcs ------------------------------------------------------
 // Every one of these reads the entity through model.circular(), so it accepts
 // a circle or an arc interchangeably — the two differ only in whether they
-// also name a start and end point.
+// also name a start and end point. In 3D both carry a plane (see
+// `CircleEntity`), and the two relations that are claims about the *rim* —
+// `onCircle` and `tangent` — read it; the ones about centre and radius alone
+// (`rad`, `conc`, `eqrad`) have no reason to.
 
 /** Pins a circle's (or arc's) radius to a number. */
 export function radius(model: Model, circleName: string, target: number): string {
@@ -180,7 +183,35 @@ export function radius(model: Model, circleName: string, target: number): string
   });
 }
 
-/** A point sits on a circle's rim: its distance from the center equals the radius. */
+/**
+ * The signed distance of a point (as Duals) off a rim's plane — the plane
+ * through the centre (as Duals) whose normal is `n` (plain numbers, a datum).
+ * Linear in both, and not a square: its gradient is the normal itself all the
+ * way down to the root.
+ */
+function offRim(q: Dual[], ctr: Dual[], n: number[]): Dual {
+  let acc = q[0].sub(ctr[0]).mul(n[0]);
+  for (let k = 1; k < q.length; k++) acc = acc.add(q[k].sub(ctr[k]).mul(n[k]));
+  return acc;
+}
+
+/**
+ * A point sits on a circle's rim: its distance from the center equals the
+ * radius — and, in 3D, it lies in the rim's plane.
+ *
+ * In 3D a circle carries a plane (see `CircleEntity`), and "on the circle"
+ * without it would be "on the sphere": a whole surface where a sketcher means a
+ * curve. So a 3D `onCircle` is **two** blocks: the distance, exactly as ever,
+ * and the point's signed distance off the plane through the centre parallel to
+ * the circle's frame, `(p − centre) · +z`. The frame is read as a datum
+ * (`rimNormal`), so the point and the centre move to satisfy it and the frame
+ * does not. The second block is its own block, not a second row of the first,
+ * so an offender report names `oncircle(p,c)|plane` when that is what fails.
+ *
+ * In 2D the second block would be trivially zero, and it is **not emitted**:
+ * a 2D `onCircle` is exactly the one block it always was, value for value —
+ * the suite pins that by block count.
+ */
 export function onCircle(model: Model, pointName: string, circleName: string): string {
   return model.relation("onCircle", [pointName, circleName], () => {
     const p = model.point(pointName);
@@ -191,6 +222,13 @@ export function onCircle(model: Model, pointName: string, circleName: string): s
       const [q, ctr] = chunk(l, dim, 2);
       return [norm(vecSub(q, ctr)).sub(l[2 * dim])];
     }, `oncircle(${pointName},${circleName})`);
+    const normal = rimNormal(model, circleName);
+    if (normal) {
+      model.addResidual([...p.varIndices, ...center.varIndices], (l) => {
+        const [q, ctr] = chunk(l, dim, 2);
+        return [offRim(q, ctr, normal())];
+      }, `oncircle(${pointName},${circleName})|plane`);
+    }
   });
 }
 
@@ -223,6 +261,16 @@ export function equalRadius(model: Model, c1: string, c2: string): string {
  * norm over the direction length — |(ctr-a) ^ u| / |u| — which is smooth
  * here because a tangent line never passes *through* the center (the wedge
  * only vanishes when the distance is 0, and the radius is positive).
+ *
+ * **In 3D a tangent line lies in the circle's plane.** It touches the rim at
+ * one point and runs along the rim's own direction there, both of which are in
+ * the plane — so a 3D `tangent` adds a second block holding both of the line's
+ * ends on the plane through the centre parallel to the circle's frame (the
+ * frame a datum, as for `onCircle`). Without it the distance block alone would
+ * describe a line tangent to a *sphere*, free to swing round the centre. In 2D
+ * that block is trivially zero and is not emitted; the 2D relation is the one
+ * block it always was. The line is still read lazily, so the plane block
+ * follows an edge a fillet re-points.
  */
 export function tangent(model: Model, lineName: string, circleName: string): string {
   return model.relation("tangent", [lineName, circleName], () => {
@@ -234,6 +282,14 @@ export function tangent(model: Model, lineName: string, circleName: string): str
       const u = vecSub(b, a);
       return [wedgeNorm(vecSub(ctr, a), u).div(norm(u)).sub(l[3 * dim])];
     }, `tan(${lineName},${circleName})`);
+    const normal = rimNormal(model, circleName);
+    if (normal) {
+      model.addResidual(joinVars(lineVars(model, lineName), center.varIndices), (l) => {
+        const [a, b, ctr] = chunk(l, dim, 3);
+        const n = normal();
+        return [offRim(a, ctr, n), offRim(b, ctr, n)];
+      }, `tan(${lineName},${circleName})|plane`);
+    }
   });
 }
 

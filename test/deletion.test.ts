@@ -130,7 +130,7 @@ test("the cascade reaches an arc through its start and end, not only its centre"
   m.addPoint([0, 0], "ctr");
   m.addPoint([10, 0], "s");
   m.addPoint([0, 10], "e");
-  m.addArc("ctr", "s", "e", 10, "a");
+  m.addArc("ctr", "s", "e", 10, null, "a");
   radius(m, "a", 10);
   m.addPoint([7, 7], "q");
   onCircle(m, "q", "a");

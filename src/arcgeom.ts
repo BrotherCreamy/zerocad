@@ -1,76 +1,70 @@
-// Which way round an arc goes, in any dimension the app draws — the one answer
-// the renderer, picking, snapping, box select, the arc tools and `fillet` all
-// need, and must all give the same way.
+// Which way round an arc goes, and where a circle's rim is, in any dimension
+// the app draws — the one answer the renderer, picking, snapping, box select,
+// the arc tools and `fillet` all need, and must all give the same way.
 //
 // Plain numbers in and out, no Model and no View, like intersect.ts: an arc
-// here is a centre, a radius and two endpoints.
+// here is a centre, a radius, two endpoints and a **side** — the direction its
+// sweep is counter-clockwise about — and a circle is a centre, a radius and
+// the two directions spanning its plane.
 //
-// **An arc entity names three points and no plane**, so in 3D "counter-
-// clockwise from start to end" needs a side to be counter-clockwise *from*.
-// The plane is the one through the centre and both endpoints — the spec's
-// definition, and the only one the entity can support until arcs carry a plane
-// of their own (3D phase 2). The side is the one rule that keeps every 2D arc
-// exactly what it was: **the normal on the kernel's +z side**, falling back to
-// +y and then +x for a plane that contains the z axis. A 2D arc, or an arc in
-// a lifted 2D file, lies in z = 0, so its normal is +z and it sweeps
-// counter-clockwise exactly as main.ts always drew it.
-//
-// That is the gauge showing through, and it is said here rather than hidden:
-// nothing *constrains* by it — no residual reads it — it only decides which of
-// the two arcs between two endpoints is drawn and picked. The tools and
-// `fillet` read the same rule and order their endpoints so the arc drawn is
-// the one the user aimed at, whichever side of its plane they were looking
-// from. Phase 2 gives an arc its plane and this rule becomes a fallback. Until
-// then its one visible wrinkle is an arc whose plane is turned through the
-// vertical: its reference side flips, and it is drawn as its complement.
+// **The side is the arc's plane's +z** (see `ArcEntity`): the +z of the frame
+// it names in 3D, and the 2D drawing's +z for a 2D arc, which is the
+// convention main.ts always drew by. The plane the arc is laid out in is the
+// one through its centre and both endpoints — the geometry says that much on
+// its own — and the side only decides which of its two normals the sweep is
+// counter-clockwise about, i.e. which of the two arcs between the endpoints is
+// meant. Before arcs carried a plane, that side was the kernel's +z (then +y,
+// then +x): the gauge showing through, and an arc whose plane was turned past
+// the vertical drew as its complement. That rule is retired; the one place it
+// survives is the translation of files written under it (persist.ts), so they
+// open as the arcs they were.
 
 import { cross3, dot3, lift3, unit3 } from "./vec3.ts";
-
-/** Below this a normal's z (then y) component counts as zero — the plane contains that axis. */
-const SIDE_EPS = 1e-9;
 
 /** Relative sine below which the two arms are one line and give no plane. */
 const COLLINEAR_EPS = 1e-12;
 
 /**
  * The unit normal an arc sweeps counter-clockwise about: the normal of the plane
- * through `c`, `s` and `e`, on the kernel's +z side (then +y, then +x). Null
- * when an endpoint sits on the centre and there is no direction to speak of.
+ * through `c`, `s` and `e`, on `side`'s side. Null when an endpoint sits on the
+ * centre and there is no direction to speak of.
  *
  * A half-turn — the endpoints exactly opposite — has no plane of its own; it
- * takes the plane through its diameter that is nearest to containing +x and +y,
- * i.e. the normal perpendicular to the diameter that leans most toward +z. A
- * 2D semicircle therefore still turns about +z, as it always did.
+ * takes the plane through its diameter nearest to the side's own plane, i.e.
+ * `side` with its component along the diameter taken out. A 2D semicircle
+ * therefore still turns about +z, as it always did.
+ *
+ * A plane exactly edge-on to the side (the arc's normal square to it) has no
+ * side to be on, and keeps the normal the endpoints give, start to end — which
+ * draws the short way round. So does an arc whose side is the zero vector (a
+ * frame collapsed onto its own origin; see `frameBasis`). Both are a drawing
+ * pulled far out of its own plane, and the rule only has to be something that
+ * draws.
  */
-export function arcNormal(c: number[], s: number[], e: number[]): number[] | null {
+export function arcNormal(c: number[], s: number[], e: number[], side: number[]): number[] | null {
   const [C, S, E] = [lift3(c), lift3(s), lift3(e)];
   const a = [S[0] - C[0], S[1] - C[1], S[2] - C[2]];
   const b = [E[0] - C[0], E[1] - C[1], E[2] - C[2]];
   const la = Math.hypot(a[0], a[1], a[2]), lb = Math.hypot(b[0], b[1], b[2]);
   if (!(la > 1e-12) || !(lb > 1e-12)) return null;
+  const k = lift3(side);
   const raw = cross3(a, b);
-  let n = Math.hypot(raw[0], raw[1], raw[2]) > COLLINEAR_EPS * la * lb ? unit3(raw) : null;
-  if (!n) {
-    // Collinear arms: a half-turn (or a zero sweep). Any plane through the
-    // diameter will do; take the one whose normal leans most toward +z.
-    const u = unit3(a)!;
-    for (const k of [[0, 0, 1], [0, 1, 0], [1, 0, 0]]) {
-      const along = dot3(k, u);
-      n = unit3([k[0] - along * u[0], k[1] - along * u[1], k[2] - along * u[2]]);
-      if (n) break;
-    }
+  const n = Math.hypot(raw[0], raw[1], raw[2]) > COLLINEAR_EPS * la * lb ? unit3(raw) : null;
+  if (n) return dot3(n, k) < 0 ? n.map((x) => (x === 0 ? 0 : -x)) : n;
+  // Collinear arms: a half-turn (or a zero sweep). The plane through the
+  // diameter nearest the side's: the side with its along-diameter part removed.
+  const u = unit3(a)!;
+  const along = dot3(k, u);
+  const toward = unit3([k[0] - along * u[0], k[1] - along * u[1], k[2] - along * u[2]]);
+  if (toward) return toward;
+  // The side is along the diameter, or is nothing: any normal to the diameter
+  // will draw. The first kernel axis clear of it, made square to it.
+  for (const axis of [[0, 0, 1], [0, 1, 0], [1, 0, 0]]) {
+    const d = dot3(axis, u);
+    const m = unit3([axis[0] - d * u[0], axis[1] - d * u[1], axis[2] - d * u[2]]);
+    if (m) return m;
   }
-  return orientUp(n!);
-}
-
-/** `n` or its opposite, whichever is on the kernel's +z side (ties: +y, then +x). */
-function orientUp(n: number[]): number[] {
-  for (const k of [2, 1, 0]) {
-    if (n[k] > SIDE_EPS) return n;
-    // Flipped without minting a −0, which would make two equal normals compare unequal.
-    if (n[k] < -SIDE_EPS) return n.map((c) => (c === 0 ? 0 : -c));
-  }
-  return n;
+  return null;
 }
 
 /**
@@ -78,7 +72,8 @@ function orientUp(n: number[]): number[] {
  * 0 at the start to `sweep` at the end. `u` points at the start, `v` is a
  * quarter turn on from it about `normal`, and `sweep` is in [0, 2π) — zero when
  * the two endpoint directions agree, which draws nothing, exactly as a canvas
- * arc from an angle to itself always drew nothing here.
+ * arc from an angle to itself always drew nothing here. A whole circle is the
+ * same shape with a sweep of 2π (`circleFrame`).
  *
  * Coordinates are always three, a 2D arc lying at z = 0.
  */
@@ -92,15 +87,15 @@ export interface ArcFrame {
 }
 
 /**
- * The frame of the arc of radius `r` about `c` from `s` to `e`, or null when
- * an endpoint sits on the centre.
+ * The frame of the arc of radius `r` about `c` from `s` to `e`, counter-
+ * clockwise about `side`, or null when an endpoint sits on the centre.
  *
  * The radius is the arc's own (its variable), not the distance to the start:
  * the two agree whenever `arcends` holds, and while a solve is still pulling
  * them together the drawing shows the arc the model actually has.
  */
-export function arcFrame(c: number[], s: number[], e: number[], r: number): ArcFrame | null {
-  const n = arcNormal(c, s, e);
+export function arcFrame(c: number[], s: number[], e: number[], r: number, side: number[]): ArcFrame | null {
+  const n = arcNormal(c, s, e, side);
   if (!n) return null;
   const C = lift3(c);
   const S = lift3(s), E = lift3(e);
@@ -110,6 +105,18 @@ export function arcFrame(c: number[], s: number[], e: number[], r: number): ArcF
   let sweep = Math.atan2(dot3(b, v), dot3(b, u));
   if (sweep < 0) sweep += Math.PI * 2;
   return { center: C, r, u, v, normal: n, sweep };
+}
+
+/**
+ * A whole circle of radius `r` about `c`, in the plane spanned by the unit
+ * directions `u` and `v` — the frame's +x and +y for a 3D circle, x and y for
+ * a 2D one. Laid out from `u` round toward `v`, a full turn, so the arc
+ * machinery (`arcPoint`, `arcSamples`) draws, picks and lifts it exactly as it
+ * does an arc: a planar circle seen at an angle is the ellipse it projects to.
+ */
+export function circleFrame(c: number[], r: number, u: number[], v: number[]): ArcFrame {
+  const U = lift3(u), V = lift3(v);
+  return { center: lift3(c), r, u: U, v: V, normal: cross3(U, V), sweep: Math.PI * 2 };
 }
 
 /** The point at angle `t` along the arc, from its start. */
@@ -142,16 +149,16 @@ export function arcSamples(f: ArcFrame, segments: number): number[][] {
 
 /**
  * Whether the arc of `c`'s circle drawn counter-clockwise from `s` to `e` about
- * `facing` is the arc `arcFrame` will draw for those same endpoints — i.e.
- * whether a tool that meant "counter-clockwise as seen from `facing`'s side"
- * should store them in that order, or swap them.
+ * `facing` is the arc `arcFrame` will draw for those same endpoints about
+ * `side` — i.e. whether a tool that meant "counter-clockwise as seen from
+ * `facing`'s side" should store them in that order, or swap them.
  *
  * Swapping is free: both arcs between two endpoints are drawable, and which
  * one is meant only ever depended on the order. So a tool decides what the
  * user aimed at in its own terms and asks this, rather than every tool having
  * to know the reference-side rule.
  */
-export function sweepsAs(c: number[], s: number[], e: number[], facing: number[]): boolean {
-  const n = arcNormal(c, s, e);
+export function sweepsAs(c: number[], s: number[], e: number[], facing: number[], side: number[]): boolean {
+  const n = arcNormal(c, s, e, side);
   return !n || dot3(n, lift3(facing)) >= 0;
 }

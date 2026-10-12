@@ -56,7 +56,11 @@ import { liesOn } from "../view.ts";
 export function placePoint(ctx: ToolContext, info: PointerInfo, name?: string): string {
   const placed = ctx.model.addPoint(info.world, name).name;
   if (info.snap) inferFromSnap(ctx.model, placed, info.snap);
-  if (!info.snap || info.snap.kind === "curve") holdOnSketchPlane(ctx.model, placed);
+  // A projected snap leaves the point as free as empty space does — it is on
+  // the sketch, at a position borrowed from something that is not — so it is
+  // held on the plane exactly as a click in empty space would be.
+  const free = !info.snap || info.snap.kind === "curve" || info.snap.kind === "projected";
+  if (free) holdOnSketchPlane(ctx.model, placed);
   return placed;
 }
 
@@ -69,6 +73,28 @@ export function placePoint(ctx: ToolContext, info: PointerInfo, name?: string): 
 export function requirePlanar(model: Model, tool: string): void {
   if (model.dim !== 2 && model.dim !== 3) {
     throw new Error(`${tool} draws in a 2D or 3D model, and this one is ${model.dim}D`);
+  }
+}
+
+/**
+ * Whether a tool that builds a circle or an arc may start a gesture: in a 3D
+ * model only with a default frame, because the shape will be given that
+ * frame's plane (see `CircleEntity`) and with no frame there is none to give.
+ * Asked on the first click, so a gesture that cannot end is refused before
+ * anything is placed — out loud, through `ctx.log`, in the model's own
+ * standing words, the way `fix` refuses at the command line. Headless, with no
+ * pane to tell, it throws. A 2D model always may: its circles need no plane.
+ */
+export function curveToolReady(ctx: ToolContext, tool: string): boolean {
+  if (ctx.model.dim !== 3) return true;
+  try {
+    ctx.model.resolveFrame();
+    return true;
+  } catch (e) {
+    const why = `${tool}: ${e instanceof Error ? e.message : e}`;
+    if (!ctx.log) throw new Error(why);
+    ctx.log(why);
+    return false;
   }
 }
 
@@ -119,6 +145,12 @@ export function inferFromSnap(model: Model, pointName: string, snap: Snap): void
       return;
     case "curve":
       onCurve(model, pointName, target.name);
+      return;
+    case "projected":
+      // Nothing, and deliberately: the new point is *not* at the point it was
+      // projected from — that one is off the sketch — so a coincidence would
+      // be a lie, and "lies under that point, seen along the plane's normal"
+      // is a relation this model does not have. The snap was a position aid.
       return;
   }
 }

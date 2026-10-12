@@ -23,10 +23,23 @@ import * as basic from "./relations/basic.ts";
 import * as geom from "./relations/geometry.ts";
 import { fillet, set } from "./operations.ts";
 import type { ToolSource } from "./toolsource.ts";
+import { freshName, planeTranslation } from "./planetranslation.ts";
 
 export const FORMAT = "neocad-model";
 /**
- * 6 since **the app is 3D** (3D phase 1, the camera half): it runs a `Model(3)`
+ * 7 since **circles and arcs carry a plane** (3D phase 2): `addCircle(center,
+ * radius, plane, name)`, `addArc(center, start, end, radius, plane, name)` and,
+ * in 3D, `fillet(l1, l2, r, plane)` — the plane a frame's name in a 3D model
+ * and null in a 2D one, sitting before the name as every constructor's
+ * arguments do. A version-6 build would read the new `addCircle` entry's plane
+ * as the circle's *name* — exactly the misreading the version is for. Older
+ * files are translated on the way in, keyed on the version: in 2D the plane is
+ * null and that is all; in 3D (a version-6 file, or a 2D file lifted) the
+ * plane is *chosen* — nearest frame normal for an arc, the default for a
+ * circle, a frame of the translation's own where none fits — by the rule
+ * written out in planetranslation.ts.
+ *
+ * 6 was **the app becoming 3D** (3D phase 1, the camera half): it runs a `Model(3)`
  * and writes `dim: 3` files whose drawings have depth. Nothing in a version-6
  * journal would be *misparsed* by a version-5 build — every op and argument
  * shape was already there — but it would be misread all the same, which is
@@ -88,7 +101,7 @@ export const FORMAT = "neocad-model";
  * refused the first case for no reason — and there are no third-party readers
  * of v4 to protect, since this app is the only one there has ever been.
  */
-export const VERSION = 6;
+export const VERSION = 7;
 
 export interface SavedModel {
   format: typeof FORMAT;
@@ -345,12 +358,6 @@ function lift2D(model: Model, entry: JournalEntry, names: Set<string>, lifted: M
   }
 }
 
-/** `base`, or `base2`, `base3`, … — the first that nothing in the file is called. */
-function freshName(base: string, taken: Set<string>): string {
-  if (!taken.has(base)) return base;
-  for (let k = 2; ; k++) if (!taken.has(`${base}${k}`)) return `${base}${k}`;
-}
-
 /** Every string anywhere in a journal's arguments — a superset of the names it uses. */
 function namesIn(journal: JournalEntry[]): Set<string> {
   const out = new Set<string>();
@@ -454,6 +461,9 @@ export function fromSaved(saved: SavedModel, dim?: number): Model {
   // after-restore step below.
   const taken = lift ? namesIn(saved.journal) : new Set<string>();
   const liftedFrames = new Map<string, string>();
+  // For files from before circles and arcs carried a plane: see
+  // planetranslation.ts. Passes everything through for version 7 and up.
+  const planes = planeTranslation(model, saved.journal, saved.version);
 
   // Replay with recording off, then install the journal wholesale, so a model
   // that is opened and saved again round-trips to the same file. What is
@@ -476,15 +486,25 @@ export function fromSaved(saved: SavedModel, dim?: number): Model {
       } catch (e) {
         throw where(e);
       }
-      for (const step of steps) {
-        const fn = table.get(step.op);
-        if (!fn) throw new Error(`step ${i + 1}: "${step.op}" is not something a model file may do`);
+      for (const lifted of steps) {
+        // The plane is given per step, *after* the steps before it have run:
+        // which frames exist, and where, is what it is chosen from.
+        let given: JournalEntry[];
         try {
-          fn(...step.args);
+          given = planes.give(lifted);
         } catch (e) {
           throw where(e);
         }
-        replayed.push({ op: step.op, args: step.args });
+        for (const step of given) {
+          const fn = table.get(step.op);
+          if (!fn) throw new Error(`step ${i + 1}: "${step.op}" is not something a model file may do`);
+          try {
+            fn(...step.args);
+          } catch (e) {
+            throw where(e);
+          }
+          replayed.push({ op: step.op, args: step.args });
+        }
       }
       // After the step, so the relations it created are named while the order
       // they came out in is still the order the old scheme would have used.
@@ -513,6 +533,9 @@ export function fromSaved(saved: SavedModel, dim?: number): Model {
       model.setCoords(y, [o[0] - (x[1] - o[1]), o[1] + (x[0] - o[0]), o[2]]);
     }
   });
+  // Arcs from before version 7 have their planes chosen from the geometry just
+  // restored, and any frame the translation made goes where its curve is.
+  planes.settle();
   for (const [name, r] of Object.entries(vals.radii ?? {})) {
     const e = model.entities.get(name);
     if (e && (e.kind === "circle" || e.kind === "arc")) model.problem.setVar(e.radiusVar, r);

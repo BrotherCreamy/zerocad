@@ -13,6 +13,7 @@ import {
 import { dist } from "./relations/basic.ts";
 import { angle, arcEndpoints, radius, tangent } from "./relations/geometry.ts";
 import { sweepsAs } from "./arcgeom.ts";
+import { framePlaneAxes } from "./curveplane.ts";
 import { cross3, lift3, sub3 } from "./vec3.ts";
 
 function unit(v: number[]): number[] {
@@ -67,27 +68,60 @@ function corner(model: Model, l1Name: string, l2Name: string) {
  * **In 3D the corner is a plane** — the one the two legs span — and every
  * step above is the same arithmetic in it: the bisector, the back-off along
  * each leg and the centre along the bisector are all lengths and dot products.
- * The one 2D-shaped decision is which endpoint the arc starts at, and that is
- * asked of the rule every arc is drawn by (see arcgeom.ts) rather than of a 2D
- * cross product, so the short arc between the tangent points is the one drawn
- * however the corner's plane is turned. In 2D the answer is the old one.
+ * The arc it makes needs a plane of its own, as every 3D arc does (see
+ * `ArcEntity`): `plane`, or the default frame resolved now and journalled
+ * resolved — `fix`'s rule. The corner has to *lie* in that frame's
+ * orientation, or the arc's own `arcends` and `tan` would pull the legs into a
+ * plane they are not in; a corner turned out of it is refused, naming the
+ * frame, rather than rounded into a conflict. (A 2D model refuses the argument,
+ * like `addArc`.) Which endpoint the arc starts at is asked of the rule every
+ * arc is drawn by (see arcgeom.ts), about that plane's +z, so the short arc
+ * between the tangent points is the one drawn however the corner is turned. In
+ * 2D the answer is the old one.
  *
  * Returns the new arc's name.
  */
-export function fillet(model: Model, l1Name: string, l2Name: string, r: number): string {
+export function fillet(model: Model, l1Name: string, l2Name: string, r: number, plane?: string | null): string {
   if (model.dim !== 2 && model.dim !== 3) throw new Error("fillet rounds a corner in a 2D or 3D model");
   if (!(r > 0)) throw new Error("fillet needs a positive radius");
+  if (model.dim === 2 && plane != null) {
+    throw new Error("a 2D fillet takes no plane — its arc lies in the one plane a 2D model has");
+  }
+  const frame = model.dim === 3 ? model.resolveFrame(plane) : null;
   // Journalled as the one call the user made, not as the entities and
-  // relations it expands into — replaying it re-expands them identically.
-  return model.asOperation("fillet", [l1Name, l2Name, r], () => filletBody(model, l1Name, l2Name, r));
+  // relations it expands into — replaying it re-expands them identically. The
+  // plane is journalled resolved, and only where there is one: a 2D fillet's
+  // entry is the three arguments it always was.
+  const args: unknown[] = frame == null ? [l1Name, l2Name, r] : [l1Name, l2Name, r, frame];
+  return model.asOperation("fillet", args, () => filletBody(model, l1Name, l2Name, r, frame));
 }
 
-function filletBody(model: Model, l1Name: string, l2Name: string, r: number): string {
+/**
+ * How far out of a frame's orientation a corner may be and still be rounded in
+ * it: the sine of the angle between the corner's normal and the frame's +z. A
+ * millionth — far above the solver's tolerance on legs held in a plane by
+ * `onPlane`, far below anything a drawing would show.
+ */
+export const IN_PLANE_SINE = 1e-6;
+
+function filletBody(model: Model, l1Name: string, l2Name: string, r: number, frame: string | null): string {
 
   const { l1, shared, a, b } = corner(model, l1Name, l2Name);
   const p = model.coords(shared);
   const u = unit(model.coords(a).map((c, i) => c - p[i]));
   const v = unit(model.coords(b).map((c, i) => c - p[i]));
+  // The side the arc turns about: its plane's +z, or the 2D drawing's.
+  const side = frame == null ? [0, 0, 1] : framePlaneAxes(model, frame)?.n;
+  if (!side) throw new Error(`"${frame}" has collapsed — it has no plane to round a corner in`);
+  if (frame != null) {
+    const n = cross3(lift3(u), lift3(v));
+    const nl = Math.hypot(...n);
+    const sine = nl > 1e-12 ? Math.hypot(...cross3(n.map((x) => x / nl), side)) : 0;
+    if (sine > IN_PLANE_SINE) {
+      throw new Error(`the corner between "${l1Name}" and "${l2Name}" is not in "${frame}"'s plane — `
+        + `fillet in the frame it is drawn on: fillet("${l1Name}", "${l2Name}", ${r}, "<frame>")`);
+    }
+  }
 
   // The interior angle at the corner decides how far back the legs are cut.
   const cosTheta = Math.min(1, Math.max(-1, u.reduce((s, ui, i) => s + ui * v[i], 0)));
@@ -117,13 +151,13 @@ function filletBody(model: Model, l1Name: string, l2Name: string, r: number): st
 
   // Sweep counter-clockwise from start to end, so order the two ends by which
   // way round is the short way — otherwise the arc renders as the reflex one.
-  // "Counter-clockwise" is about the side every arc is laid out from; the
-  // short way from t1 to t2 is counter-clockwise about the normal t1 × t2
-  // (taken from the centre), so t1 starts exactly when that normal is on it.
+  // "Counter-clockwise" is about the arc's plane's +z; the short way from t1
+  // to t2 is counter-clockwise about the normal t1 × t2 (taken from the
+  // centre), so t1 starts exactly when that normal is on +z's side.
   const short = cross3(sub3(lift3(t1), lift3(ctr)), sub3(lift3(t2), lift3(ctr)));
-  const [start, end] = sweepsAs(ctr, t1, t2, short) ? [shared, t2p.name] : [t2p.name, shared];
+  const [start, end] = sweepsAs(ctr, t1, t2, short, side) ? [shared, t2p.name] : [t2p.name, shared];
 
-  const arc = model.addArc(ctrp.name, start, end, r);
+  const arc = model.addArc(ctrp.name, start, end, r, frame);
   radius(model, arc.name, r);
   arcEndpoints(model, arc.name);
   tangent(model, l1.name, arc.name);

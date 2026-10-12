@@ -21,7 +21,7 @@ import { LineTool } from "../src/tools/line.ts";
 import { ArcTool } from "../src/tools/arc.ts";
 import { placePoint } from "../src/tools/place.ts";
 import { findSnap } from "../src/snapping.ts";
-import { arcFrame } from "../src/arcgeom.ts";
+import { curveFrame } from "../src/curveplane.ts";
 import { orbitBy, viewAxes, worldToScreen, type Plane, type View } from "../src/view.ts";
 import type { PointerInfo, ToolContext } from "../src/tools/tool.ts";
 import "../src/tools/point.ts";
@@ -142,9 +142,8 @@ test("the centre-point arc sweeps counter-clockwise as the viewer sees it, from 
     tool.onDown(at(0, 0));
     tool.onDown(at(10, 0));
     tool.onDown(at(0, 10));
-    const arc = [...model.entities.values()].find((e) => e.kind === "arc") as
-      { name: string; center: string; start: string; end: string };
-    const af = arcFrame(model.coords(arc.center), model.coords(arc.start), model.coords(arc.end), model.radius(arc.name))!;
+    const arc = [...model.entities.values()].find((e) => e.kind === "arc")!;
+    const af = curveFrame(model, arc)!;
     assert.ok(close(af.sweep, Math.PI / 2, 1e-9),
       `seen from the ${facing > 0 ? "front" : "back"}, the drawn arc sweeps ${af.sweep}, not a quarter turn`);
   }
@@ -165,7 +164,7 @@ test("fillet rounds a corner on a tilted plane: tangent, in the plane, the short
   const c = model.coords(arc.center);
   const expected = f.at(8, 8);
   assert.ok(Math.hypot(...sub(c, expected)) < 1e-6, `centre at ${c}, expected ${expected}`);
-  const af = arcFrame(c, model.coords(arc.start), model.coords(arc.end), model.radius(arcName))!;
+  const af = curveFrame(model, arc)!;
   assert.ok(close(af.sweep, Math.PI / 2, 1e-6), `the drawn arc is the quarter, not the reflex: ${af.sweep}`);
 });
 
@@ -345,8 +344,8 @@ test("v4 and v5 2D files open into a 3D model lifted: z = 0, frames on that plan
     assert.ok(Math.hypot(p[0] - (4 + 3 * c - 4 * s), p[1] - (6 + 3 * s + 4 * c), p[2]) < 1e-9, `p at ${p}`);
     assert.deepEqual(m.journal.find((e) => e.op === "fix")!.args, ["p", [3, 4, 0], "base"]);
     // The fillet re-expanded in 3D and drew the short arc.
-    const arc = [...m.entities.values()].find((e) => e.kind === "arc") as { name: string; center: string; start: string; end: string };
-    const af = arcFrame(m.coords(arc.center), m.coords(arc.start), m.coords(arc.end), m.radius(arc.name))!;
+    const arc = [...m.entities.values()].find((e) => e.kind === "arc")!;
+    const af = curveFrame(m, arc)!;
     assert.ok(af.sweep < Math.PI, `the fillet's arc is the short one: ${af.sweep}`);
   }
 });
@@ -383,7 +382,7 @@ test("a lifted file re-saves as a 3D v6 file that reopens to itself", async () =
   const text = save(m);
   const saved = JSON.parse(text);
   assert.equal(saved.version, VERSION);
-  assert.equal(saved.version, 6);
+  assert.equal(saved.version, 7);
   assert.equal(saved.dim, 3);
   assert.equal(save(open(text, 3)), text, "stable from here on");
   assert.equal(save(open(text)), text, "and a 3D file opens as itself without being asked");

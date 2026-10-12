@@ -150,6 +150,33 @@ export function frameBasis(model: Model, frameName: string): () => FrameBasis {
   };
 }
 
+/**
+ * The normal of the plane a circle's or arc's rim lies in, re-read at every
+ * evaluation — or null when its model gives circles no plane (anything but 3D;
+ * see `CircleEntity`). The +z of the frame the circle names, as plain numbers,
+ * so it reaches a residual as a datum exactly as an axis reference does:
+ * read, never pushed. A residual written against it moves the point to the
+ * plane and never the plane to the point.
+ *
+ * Lazy twice over: the circle's `plane` is re-read as well as the frame's
+ * points, so a relation follows the entity rather than whatever it pointed at
+ * when the relation was typed. A collapsed frame floors its +z to zero (see
+ * `frameBasis`), and a residual against it degrades to trivially satisfied —
+ * a claim about a plane that is no longer there — rather than to NaN.
+ */
+export function rimNormal(model: Model, circularName: string): (() => number[]) | null {
+  if (model.dim !== 3) return null;
+  model.circular(circularName); // fail now, not at the first solve
+  return () => {
+    const plane = model.circular(circularName).plane;
+    // A 3D circle always has one (the constructors resolve it); this branch is
+    // only a circle somebody built around the constructors, which then reads
+    // as having no plane to be on rather than throwing inside a solve.
+    if (plane === undefined) return [0, 0, 0];
+    return frameBasis(model, plane)().uz ?? [0, 0, 0];
+  };
+}
+
 // --- directions ------------------------------------------------------------
 //
 // `par`, `perp` and `ang` are claims about *directions* and nothing else, and

@@ -207,8 +207,13 @@ function describeGeometry(model: Model, name: string, kind: Entity["kind"], n: (
     case "point":
       return `${name}  ${model.coords(name).map(n).join(", ")}`;
     case "circle":
-    case "arc":
-      return `${name}  r ${n(model.radius(name))}`;
+    case "arc": {
+      // The plane it lies in, where it has one (3D): which frame a circle is
+      // parallel to is not visible in a view square to it, and is what decides
+      // whether `onCircle` and `tan` mean the rim you think they do.
+      const plane = model.circular(name).plane;
+      return `${name}  r ${n(model.radius(name))}${plane === undefined ? "" : `  in ${plane}`}`;
+    }
     case "line": {
       const l = model.line(name);
       const [a, b] = [model.coords(l.refs[0]), model.coords(l.refs[1])];

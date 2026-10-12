@@ -12,7 +12,7 @@ after(async () => { await app.close(); });
 test("help() reaches the whole command surface", async () => {
   await app.type("help()");
   const log = await app.log();
-  for (const expected of ["defineTool", "oncircle", "fillet(line1, line2, radius)", "save()", "zoom(f)"]) {
+  for (const expected of ["defineTool", "oncircle", "fillet(line1, line2, radius", "save()", "zoom(f)", "plane("]) {
     assert.ok(log.includes(expected), `help() should mention ${expected}`);
   }
 });

@@ -114,7 +114,7 @@ test("circles, arcs and tangency round-trip", async () => {
   axisFrame(m);
   m.addPoint([0, 0], "ctr");
   fix(m, "ctr", [0, 0]);
-  m.addCircle("ctr", 1, "c");
+  m.addCircle("ctr", 1, null, "c");
   m.addPoint([-10, 8], "u");
   m.addPoint([10, 8], "v");
   fix(m, "u", [-10, 8]);
@@ -298,7 +298,7 @@ test("radii are restored for arcs as well as circles", async () => {
   m.addPoint([10, 0], "s");
   m.addPoint([0, 10], "e");
   fix(m, "ctr", [0, 0]);
-  m.addArc("ctr", "s", "e", 10, "arc");
+  m.addArc("ctr", "s", "e", 10, null, "arc");
   radius(m, "arc", 10);
   m.solve();
   const reopened = open(save(m));

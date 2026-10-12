@@ -319,7 +319,17 @@ test("a 3D model seeds where a click in the middle of the view would land", () =
   const m = new Model(3);
   const s = scopeOf(m, offCentreViewport());
   assert.deepEqual(m.coords(call(s, "pt")), [225, -175, 0]);
-  assert.deepEqual(m.coords(m.circle(call(s, "circ")).center), [225, -175, 0]);
+  // A circle, though, is refused there: in 3D it needs a plane, and with no
+  // frame there is none to give it — refused *before* the view-centre anchor
+  // is made, so the failed call leaves no stray point behind.
+  const before = m.entities.size;
+  assert.throws(() => call(s, "circ"), /no default frame — frame\(\) then setDefaultFrame\(\)/);
+  assert.throws(() => call(s, "arc"), /no default frame/);
+  assert.equal(m.entities.size, before, "and nothing was made on the way to the refusal");
+  // With a frame it seeds there, like the point.
+  m.addPoint([0, 0, 0], "o"); m.addPoint([1, 0, 0], "x"); m.addPoint([0, 1, 0], "y");
+  m.addFrame("o", "x", "y", "f");
+  assert.deepEqual(m.coords(m.circle(call(s, "circ", null, null, "f")).center), [225, -175, 0]);
 });
 
 test("...and on the default frame's plane, when there is one — even a tilted one", () => {

@@ -28,7 +28,7 @@ import { save, open } from "../src/persist.ts";
 import { screenToWorld, worldToScreen, type View } from "../src/view.ts";
 import type { PointerInfo, ToolContext } from "../src/tools/tool.ts";
 import { axisFrame, tiltedFrame } from "./frames.ts";
-import { arcFrame } from "../src/arcgeom.ts";
+import { curveFrame } from "../src/curveplane.ts";
 
 async function loadKernel() {
   const bytes = await readFile(new URL("../src/kernel/wasm-gen/neocad_kernel_bg.wasm", import.meta.url));
@@ -400,7 +400,7 @@ test("Arc3Tool in 3D: the arc is in the clicks' plane, through the waypoint, hel
 
   // The arc the renderer will draw — laid out by the same rule — goes through
   // the waypoint, not round the other side.
-  const af = arcFrame(c, model.coords(arc.start), model.coords(arc.end), model.radius(arc.name))!;
+  const af = curveFrame(model, model.arc(arc.name))!;
   const w = f.at(0, -6);
   const d = w.map((v, i) => v - af.center[i]);
   let t = Math.atan2(d.reduce((s, x, i) => s + x * af.v[i], 0), d.reduce((s, x, i) => s + x * af.u[i], 0));

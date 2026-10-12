@@ -26,22 +26,59 @@ export interface LineEntity {
   refs: [string, string]; // two point names — purely referential, owns no variables
 }
 
-// A circle is a center point plus one variable of its own: the radius. That
-// structure is dimension-generic — in 3D the identical entity is a sphere,
-// and `rad`/`onCircle`/`concentric` read it without caring which it is.
+/**
+ * A circle: a center point, one variable of its own (the radius) and — in a 3D
+ * model — the **plane** it lies in, as a reference to a frame.
+ *
+ * In 2D every circle lies in the one plane there is, so it has no `plane` and
+ * refuses one. In 3D a circle without a plane would be a sphere, and spheres
+ * are not what a sketcher draws, so a 3D circle always carries one: the frame
+ * named, or the default frame resolved **at call time and journalled
+ * resolved** (`fix`'s rule), and no frame at all is refused with the standing
+ * message.
+ *
+ * **What the plane means — and what it does not.** The frame is read for its
+ * *orientation* and nothing else. The circle's rim is the circle of radius r
+ * in the plane **through the circle's own centre, parallel to the frame's x–y
+ * plane**. The centre is *not* held on the frame's plane: a constructor never
+ * constrains (the free-entities rule — an argument is never a constraint), so
+ * a circle whose centre is dragged off the frame's surface carries its rim with
+ * it, parallel, rather than being pulled back. A tool that draws a circle *on*
+ * a sketch holds its centre there with an ordinary `onPlane`, which can be
+ * read, hovered and deleted like any other relation. The plane orients the
+ * drawing (the rim projects as the ellipse it is), the picking and snapping,
+ * and the relations that read the rim — `onCircle` and `tangent` in 3D are
+ * claims about this planar rim, not about a sphere.
+ *
+ * Like a line's points the frame is a *reference*: deleting the frame takes
+ * the circle with it, because the circle cannot be without one (see
+ * `Model.dependents`). It is not a variable the circle owns — a frame is a
+ * datum, read and never pushed (see `frameBasis`).
+ */
 export interface CircleEntity {
   kind: "circle";
   name: string;
   center: string; // a point name
   radiusVar: number; // the one variable a circle owns
+  /** 3D only: the frame whose x–y plane the rim is parallel to. Absent in 2D. */
+  plane?: string;
 }
 
-// An arc is a circle that also names where it starts and ends. The endpoints
-// are ordinary points, so they can be constrained (coincident with a line's
-// end, say) like any other. What makes them *arc* endpoints — lying on the
-// arc's own circle — is not automatic: it's the `arcEndpoints` relation, for
-// the same reason a Line implies no relation of its own. Tools that create
-// arcs are expected to apply it (see relations/geometry.ts).
+/**
+ * An arc is a circle that also names where it starts and ends. The endpoints
+ * are ordinary points, so they can be constrained (coincident with a line's
+ * end, say) like any other. What makes them *arc* endpoints — lying on the
+ * arc's own circle — is not automatic: it's the `arcEndpoints` relation, for
+ * the same reason a Line implies no relation of its own. Tools that create
+ * arcs are expected to apply it (see relations/geometry.ts).
+ *
+ * In 3D an arc carries a plane exactly as a circle does — same resolution,
+ * same refusal, same reading — and the frame's +z is also what says which of
+ * the two arcs between its endpoints it is: the sweep runs counter-clockwise
+ * from `start` to `end` about that +z (see arcgeom.ts). Before arcs carried a
+ * plane that side came from the kernel's axes, which was the gauge showing
+ * through; files from then are translated on the way in (see persist.ts).
+ */
 export interface ArcEntity {
   kind: "arc";
   name: string;
@@ -49,6 +86,8 @@ export interface ArcEntity {
   start: string;
   end: string;
   radiusVar: number;
+  /** 3D only: the frame whose x–y plane the arc is parallel to, and whose +z it turns about. */
+  plane?: string;
 }
 
 /**
@@ -241,11 +280,13 @@ export function argRefersTo(arg: unknown, name: string): boolean {
   return referentOf(arg) === name;
 }
 
-/** Circles and arcs share a center + radius; relations that only need those two treat them alike. */
+/** Circles and arcs share a center + radius (+ plane, in 3D); relations that only need those treat them alike. */
 export interface CircularRef {
   name: string;
   center: string;
   radiusVar: number;
+  /** The frame the rim is parallel to, in a 3D model. See `CircleEntity`. */
+  plane?: string;
 }
 
 /** One recorded step in how a model was built. See `journal` below. */
@@ -318,14 +359,23 @@ export class Model {
   }
 
   /**
-   * Records `op` and then runs `body` with recording suppressed, so an
+   * Runs `body` with recording suppressed and then records `op`, so an
    * operation is journalled as the single call the user made rather than as
    * the handful of entities and relations it happened to expand into.
    * Replaying the call re-expands it identically.
+   *
+   * **Recorded only once the body has succeeded.** It used to record first,
+   * which left an operation that *refused* — a fillet whose radius was too big
+   * for its corner — sitting in the journal anyway, and a file saved after it
+   * then failed to reopen at that step. Nothing else is journalled while the
+   * body runs, so recording after it lands in the same place. An operation
+   * must therefore refuse before it changes anything, which `fillet` and `set`
+   * both do.
    */
   asOperation<T>(op: string, args: unknown[], body: () => T): T {
+    const result = this.withoutRecording(body);
     this.record(op, args);
-    return this.withoutRecording(body);
+    return result;
   }
 
   /** Runs `body` without journalling anything it does. Used by replay. */
@@ -576,22 +626,53 @@ export class Model {
     return ent;
   }
 
-  addCircle(center?: string | null, radius?: number | null, name?: string | null): CircleEntity {
+  /**
+   * A circle about `center` — and, in a 3D model, in `plane`'s orientation.
+   * See `CircleEntity` for what the plane means and does not.
+   *
+   * `plane` follows `fix`'s rule exactly: the frame named, or the default
+   * frame resolved **now** and journalled resolved, so a saved entry cannot
+   * change meaning when the default moves afterwards; with neither, the
+   * standing message. A 2D model refuses the argument outright rather than
+   * ignoring it — every 2D circle already lies in the one plane there is, and
+   * a reference the circle then never read would be a constraint-shaped thing
+   * that constrains nothing (`addFrame`'s y-ref rule).
+   *
+   * The plane is resolved before anything is created, so a refused call leaves
+   * no auto-created centre behind. The name moved from third argument to
+   * fourth for the plane to sit before it, as it is on every constructor;
+   * files older than format version 7 are translated on the way in.
+   */
+  addCircle(center?: string | null, radius?: number | null, plane?: string | null,
+            name?: string | null): CircleEntity {
     if (center != null) this.point(center);
     if (radius != null && !(radius > 0)) throw new Error("a circle needs a positive radius");
+    const frame = this.curvePlane("circle", plane);
     const c = center ?? this.withoutRecording(() => this.addPoint()).name;
     const nm = this.claimName("c", name ?? undefined);
     const ent: CircleEntity = {
       kind: "circle", name: nm, center: c,
       radiusVar: this.problem.addVar(radius ?? Model.DEFAULT_RADIUS),
     };
+    if (frame != null) ent.plane = frame;
     this.entities.set(nm, ent);
-    this.record("addCircle", [center ?? null, radius ?? null, nm]);
+    this.record("addCircle", [center ?? null, radius ?? null, frame, nm]);
     return ent;
   }
 
+  /**
+   * An arc about `center` from `start` to `end` — counter-clockwise about its
+   * plane's +z in 3D, about the 2D +z in 2D (see `ArcEntity`). `plane` is
+   * resolved exactly as `addCircle` resolves it.
+   *
+   * Missing pieces seed as a non-degenerate quarter arc around the centre:
+   * along the kernel's x and y in 2D, as they always did, and along the
+   * **plane's own** +x and +y in 3D, so that a free arc lies in the plane it
+   * names rather than in the gauge's x–y plane, which might be edge-on to it.
+   * Seeds and nothing more — no relation holds them there.
+   */
   addArc(center?: string | null, start?: string | null, end?: string | null,
-         radius?: number | null, name?: string | null): ArcEntity {
+         radius?: number | null, plane?: string | null, name?: string | null): ArcEntity {
     if (center != null) this.point(center);
     if (start != null) this.point(start);
     if (end != null) this.point(end);
@@ -603,15 +684,59 @@ export class Model {
       // non-degenerate; below 2D there is no second axis to offset along.
       throw new Error("an auto-seeded arc needs at least 2 dimensions");
     }
+    const frame = this.curvePlane("arc", plane);
     // Auto pieces seed as a non-degenerate quarter arc around the center.
     const c = center ?? this.withoutRecording(() => this.addPoint()).name;
-    const s = start ?? this.freePointOffset(this.coords(c), 0, r).name;
-    const e = end ?? this.freePointOffset(this.coords(c), 1, r).name;
+    const [along0, along1] = frame == null ? [null, null] : this.seedAxes(frame);
+    const seed = (axis: number, along: number[] | null) => along
+      ? this.withoutRecording(() => this.addPoint(this.coords(c).map((v, i) => v + r * along[i]))).name
+      : this.freePointOffset(this.coords(c), axis, r).name;
+    const s = start ?? seed(0, along0);
+    const e = end ?? seed(1, along1);
     const nm = this.claimName("a", name ?? undefined);
     const ent: ArcEntity = { kind: "arc", name: nm, center: c, start: s, end: e, radiusVar: this.problem.addVar(r) };
+    if (frame != null) ent.plane = frame;
     this.entities.set(nm, ent);
-    this.record("addArc", [center ?? null, start ?? null, end ?? null, radius ?? null, nm]);
+    this.record("addArc", [center ?? null, start ?? null, end ?? null, radius ?? null, frame, nm]);
     return ent;
+  }
+
+  /**
+   * The plane a new circle or arc gets: in 3D the frame named or the default,
+   * resolved now (`resolveFrame`, with its standing message); anywhere else
+   * none, and an argument naming one is refused rather than ignored. Public so
+   * the command line can ask before it makes anything a refused call would
+   * leave behind; it changes nothing.
+   */
+  curvePlane(kind: "circle" | "arc", plane: string | null | undefined): string | null {
+    if (this.dim === 3) return this.resolveFrame(plane);
+    if (plane != null) {
+      throw new Error(`a ${this.dim}D ${kind} takes no plane — it lies in the one plane a ${this.dim}D model has`);
+    }
+    return null;
+  }
+
+  /**
+   * A 3D frame's +x and +y as unit vectors, for *seeding* — laying a free
+   * arc's auto-created ends out in the plane it names. The same Gram–Schmidt
+   * `frameBasis` does, kept here in plain numbers because this layer sits
+   * below the relations and only needs a direction to put a seed along; no
+   * residual ever reads it. A collapsed frame falls back to the kernel's axes,
+   * which is as good a seed as any for a plane that is not there.
+   */
+  private seedAxes(frame: string): [number[], number[]] {
+    const f = this.frame(frame);
+    const o = this.coords(f.origin);
+    const unit = (v: number[]) => {
+      const len = Math.hypot(...v);
+      return len > 1e-9 ? v.map((x) => x / len) : null;
+    };
+    const ux = unit(this.coords(f.xref).map((v, i) => v - o[i]));
+    const arm = f.yref === undefined ? null : this.coords(f.yref).map((v, i) => v - o[i]);
+    if (!ux || !arm) return [[1, 0, 0], [0, 1, 0]];
+    const along = arm.reduce((s, v, i) => s + v * ux[i], 0);
+    const uy = unit(arm.map((v, i) => v - along * ux[i]));
+    return uy ? [ux, uy] : [[1, 0, 0], [0, 1, 0]];
   }
 
   /**
@@ -814,11 +939,13 @@ export class Model {
     return e;
   }
 
-  /** A circle or an arc, whichever `name` is — for relations that only need center + radius. */
+  /** A circle or an arc, whichever `name` is — for relations that only need center + radius (+ plane). */
   circular(name: string): CircularRef {
     const e = this.entities.get(name);
     if (!e || (e.kind !== "circle" && e.kind !== "arc")) throw new Error(`"${name}" is not a circle or arc`);
-    return { name: e.name, center: e.center, radiusVar: e.radiusVar };
+    const ref: CircularRef = { name: e.name, center: e.center, radiusVar: e.radiusVar };
+    if (e.plane !== undefined) ref.plane = e.plane;
+    return ref;
   }
 
   coords(name: string): number[] {
@@ -874,9 +1001,26 @@ export class Model {
     }
   }
 
-  /** Every entity that names `name` among its references, in creation order. */
+  /**
+   * The frame a 3D circle or arc lies parallel to, or undefined — for every
+   * other kind, and for any circle in a model whose circles carry no plane.
+   * Kept apart from `refsOf`, which is the *points* an entity is built of and
+   * what a drag moves: a frame is not a point, and dragging a circle must not
+   * try to drag the plane it is drawn on.
+   */
+  planeOf(e: Entity): string | undefined {
+    return e.kind === "circle" || e.kind === "arc" ? e.plane : undefined;
+  }
+
+  /**
+   * Every entity that names `name` among its references, in creation order —
+   * its points, and a circle's or arc's plane. The plane counts because a 3D
+   * circle cannot be without one: deleting a frame takes the circles and arcs
+   * drawn on it (inward, like a point taking its lines), and the primitive
+   * refuses to delete a frame they still stand on.
+   */
   dependents(name: string): Entity[] {
-    return [...this.entities.values()].filter((e) => this.refsOf(e).includes(name));
+    return [...this.entities.values()].filter((e) => this.refsOf(e).includes(name) || this.planeOf(e) === name);
   }
 
   /**
