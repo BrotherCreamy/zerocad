@@ -461,9 +461,10 @@ export function fromSaved(saved: SavedModel, dim?: number): Model {
   // after-restore step below.
   const taken = lift ? namesIn(saved.journal) : new Set<string>();
   const liftedFrames = new Map<string, string>();
-  // For files from before circles and arcs carried a plane: see
-  // planetranslation.ts. Passes everything through for version 7 and up.
-  const planes = planeTranslation(model, saved.journal, saved.version);
+  // For files from before circles and arcs carried a plane, and for any 2D
+  // file lifted into 3D (whose circles never had one): see
+  // planetranslation.ts. Passes everything else through.
+  const planes = planeTranslation(model, saved.journal, saved.version, lift);
 
   // Replay with recording off, then install the journal wholesale, so a model
   // that is opened and saved again round-trips to the same file. What is

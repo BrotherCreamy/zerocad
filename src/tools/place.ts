@@ -21,6 +21,7 @@
 //   midpoint      the middle of an edge  midpoint(new, that line)   — line form
 //   curve         somewhere along a line pointOnLine(new, that line)
 //   curve         somewhere on a rim     onCircle(new, that circle or arc)
+//   projected     a point off the sketch nothing at all — a position aid
 //
 // The intersection row is the one worth reading twice. Two relations, not one:
 // a point told only that it is on the line drifts along the line the moment
@@ -31,7 +32,8 @@
 // a click lands on that frame's plane (see ../workplane.ts), and the point it
 // makes is held there with `onPlane` — the same "the sketch you are drawing
 // on" every Onshape point has without saying so. Only where the snap leaves the
-// point anywhere to go: a click in empty space, or along a curve. A snap to a
+// point anywhere to go: a click in empty space, along a curve, or at the
+// projection of a point off the sketch (which pins nothing). A snap to a
 // vertex, a midpoint or a crossing already pins the point outright, so a plane
 // on top would be redundant where it agreed and a conflict where it did not.
 // And only when the point really is on the plane — a snap can carry a click to

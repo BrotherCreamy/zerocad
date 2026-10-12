@@ -1205,7 +1205,7 @@ replacing) the system Node other projects on this machine may depend on.
   arc whose v6 side disagrees with its frame's +z has its ends swapped.
   **Also:** `asOperation` journals after its body succeeds, so a refused
   operation (a fillet too big for its corner) no longer poisons the saved file.
-  533 unit tests, 195 e2e.
+  534 unit tests, 195 e2e.
   *Known and deliberate:* the plane never pins a centre (a tool's `onPlane`
   does); curves off the sketch are not projected (points only); a v6 *circle*
   cannot say which plane it was drawn in, so it takes the default; a v6 bare

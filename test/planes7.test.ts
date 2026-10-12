@@ -8,6 +8,7 @@ import { readFile } from "node:fs/promises";
 import { ensureKernelLoaded } from "../src/kernel/problem.ts";
 import { Model } from "../src/model.ts";
 import { FORMAT, VERSION, open, save } from "../src/persist.ts";
+import { fillet } from "../src/operations.ts";
 import { curveFrame } from "../src/curveplane.ts";
 import { arcPoint } from "../src/arcgeom.ts";
 import { tiltedFrame } from "./frames.ts";
@@ -168,6 +169,28 @@ test("a file with no frame at all gets one of the translation's own, in the curv
   assert.equal(m.solve().solved, true);
   const text = save(m);
   assert.equal(save(open(text)), text, "an ordinary frame from then on: it re-saves and reopens");
+});
+
+test("a version-7 2D file — null planes — lifts into 3D the same way, its curves given a plane", async () => {
+  await loadKernel();
+  // What the library writes for a 2D model today: the plane slot is there,
+  // and null, which is exactly what a 3D model cannot take.
+  const m2 = new Model(2);
+  m2.addPoint([40, 30], "c");
+  m2.addCircle("c", 12, null, "k");
+  m2.addArc("c", null, null, 8, null, "a");
+  m2.addPoint([0, 0], "q"); m2.addPoint([30, 0], "r"); m2.addPoint([0, 30], "s");
+  m2.addLine("r", "q", "l1"); m2.addLine("q", "s", "l2");
+  const text = save(m2);
+  assert.equal(JSON.parse(text).version, 7);
+  const m = open(text, 3);
+  const plane = m.circle("k").plane!;
+  assert.equal(m.arc("a").plane, plane, "one frame of the translation's own, for every curve in the 2D drawing");
+  assert.deepEqual(m.coords(m.frame(plane).origin), [40, 30, 0]);
+  assert.equal(m.solve().solved, true);
+  // And a fillet typed into the lifted drawing finds that plane to round in.
+  m.setDefaultFrame(plane);
+  assert.equal(m.arc(fillet(m, "l1", "l2", 5)).plane, plane);
 });
 
 test("an arc in a plane no frame shares gets a translation frame in that plane", async () => {

@@ -125,10 +125,16 @@ interface Made {
  * coordinates are back, to choose arcs' planes from them and put the frames it
  * made where their curves are.
  *
- * Inactive — `give` passes every step through — for files of version 7 and up.
+ * Active for files from before version 7 — and for a **2D file of any version
+ * lifted into 3D**, whose circles never had a plane to carry (a version-7 2D
+ * file says `addCircle(c, r, null, name)`, and the null is exactly what a 3D
+ * model cannot take). `lift` says which. Otherwise `give` passes every step
+ * through.
  */
-export function planeTranslation(model: Model, journal: JournalEntry[], version: number) {
-  const active = version < 7;
+export function planeTranslation(model: Model, journal: JournalEntry[], version: number, lift = false) {
+  const active = version < 7 || lift;
+  // Where the name is in the entry as written: after the plane from 7 on.
+  const v7 = version >= 7;
   const taken = new Set<string>();
   const doomed = new Set<string>();
   if (active) {
@@ -231,13 +237,15 @@ export function planeTranslation(model: Model, journal: JournalEntry[], version:
       const a = step.args;
       const three = model.dim === 3;
       if (step.op === "addCircle") {
-        const [center, radius, name] = a;
+        const [center, radius] = a;
+        const name = v7 ? a[3] : a[2];
         if (!three) return [{ op: "addCircle", args: [center ?? null, radius ?? null, null, name ?? null] }];
         const { plane, entries } = circlePlane(center, typeof name === "string" ? name : null);
         return [...entries, { op: "addCircle", args: [center ?? null, radius ?? null, plane, name ?? null] }];
       }
       if (step.op === "addArc") {
-        const [c, s, e, r, name] = a;
+        const [c, s, e, r] = a;
+        const name = v7 ? a[5] : a[4];
         if (!three) return [{ op: "addArc", args: [c ?? null, s ?? null, e ?? null, r ?? null, null, name ?? null] }];
         // Provisional: the arc's ends and centre may still be seeds, or not
         // exist yet. `settle` chooses from the saved geometry.

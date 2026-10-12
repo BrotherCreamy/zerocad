@@ -75,8 +75,10 @@ null; in 3D an arc takes the frame nearest its normal (read from the *saved*
 coordinates), a fillet its corner's, a circle the default; a file with no frame
 at all — any frameless 2D drawing — gets one frame of the translation's own,
 `plane`, lying where its curves are; and an arc that version 6 drew the other
-way round has its ends swapped so it opens as the arc it was. The rule is
-written out in `src/planetranslation.ts`.
+way round has its ends swapped so it opens as the arc it was. A 2D file of
+*any* version lifted into the app goes through the same rule, since its
+circles never had a plane — a version-7 2D file's null plane is exactly what a
+3D model cannot take. The rule is written out in `src/planetranslation.ts`.
 
 **Found and fixed on the way:** an operation journalled itself *before* its
 body ran, so a fillet refused for its radius stayed in the journal and the file
@@ -90,7 +92,7 @@ the default; a v6 bare `arc()` whose ends were auto-created cannot be swapped;
 painter's sort; the last click's snap marker stays on screen until the next
 redraw (older than this package — screenshot 54 moved the mouse off it).
 
-533 unit tests (from 493), 195 end-to-end (from 187), all green with the
+534 unit tests (from 493), 195 end-to-end (from 187), all green with the
 typecheck and the kernel's own.
 
 ---
