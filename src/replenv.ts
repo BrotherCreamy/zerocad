@@ -20,7 +20,9 @@ import * as geom from "./relations/geometry.ts";
 import { del, fillet, set } from "./operations.ts";
 import { save as saveModel, savedTools } from "./persist.ts";
 import { carryIntoSession, toolSources, type ToolSourceStore } from "./toolsource.ts";
-import { clampScale, screenToWorld } from "./view.ts";
+import { alignView, assignView, orbitBy, panBy, screenToWorld, zoomAbout, type View } from "./view.ts";
+import { pointOnWorkingPlane } from "./workplane.ts";
+import { frameBasis } from "./relations/refs.ts";
 
 type Bag = Record<string, unknown>;
 
@@ -68,8 +70,12 @@ export interface EnvHandles {
    * verdict from the previous solve.
    */
   solve?: () => SolveReport;
-  /** The 2D view transform, so pan/zoom is an ordinary command like everything else. */
-  view?: { ox: number; oy: number; scale: number };
+  /**
+   * The camera, so pan/zoom/orbit is an ordinary command like everything else.
+   * Navigation changes the view and never the model, so none of it is
+   * journalled — a saved drawing does not remember where it was looked at from.
+   */
+  view?: View;
   /**
    * The text of the entry being evaluated right now — `repl.entry`.
    *
@@ -113,6 +119,24 @@ function bind<A extends unknown[]>(model: Model, fn: (m: Model, ...args: A) => v
   return (...args: A) => fn(model, ...args);
 }
 
+/**
+ * Two coordinates where a 3D model wants three, made three with a zero — the
+ * one rule the command line and an opened 2D file share (see persist.ts).
+ *
+ * The app is 3D now, and a hand that has typed `pt(40, 30)` for as long as the
+ * app has existed should not be met with "point needs 3 coordinates". A 2D
+ * coordinate in a 3D model reads as the 3D one with no depth: for `pt` that is
+ * the kernel's z = 0 — a *seed*, the gauge every 2D drawing already lived in,
+ * and no constraint — and for `fix` it is the frame's own z = 0, which is the
+ * one thing `fix(p, [x, y])` can mean on a sketch plane: at (x, y) *on* it.
+ *
+ * Anything else is passed through untouched, so a wrong count still meets the
+ * model's own message.
+ */
+function lifted(model: Model, coords: number[]): number[] {
+  return model.dim === 3 && Array.isArray(coords) && coords.length === 2 ? [...coords, 0] : coords;
+}
+
 // `describeRelation` and the short-name table it reads used to live here. They
 // moved down to picking.ts when the hover tag started describing relations too
 // — one table, so the canvas and the command line cannot end up calling the
@@ -137,7 +161,7 @@ export function neocadScope(h: EnvHandles): Bag {
   const relations: Bag = {
     // dimension-generic, from relations/basic.ts
     dist: bind(model, basic.dist),
-    fix: bind(model, basic.fix),
+    fix: (name: string, at: number[], frame?: string | null) => basic.fix(model, name, lifted(model, at), frame),
     // 3D only: the point lies in the frame's plane. Frame-relative like `fix`.
     onplane: bind(model, basic.onPlane),
     onPlane: bind(model, basic.onPlane),
@@ -184,15 +208,21 @@ export function neocadScope(h: EnvHandles): Bag {
    * down as an ordinary argument. The model stays where it was: it takes
    * coordinates, and has still never heard of a viewport.
    *
+   * In a 3D model "the middle of the view" is a ray, so it is read where a
+   * click there would land: on the working plane (see workplane.ts) — the
+   * default frame's, so a free entity typed while sketching appears on the
+   * sketch, or the plane facing the viewer through the orbit target.
+   *
    * Undefined when there is nothing to ask (headless tests, a REPL with no
-   * canvas) or when the model is not 2D, since a `View` is a 2D transform and
-   * has no middle to offer a model of any other dimension. Both cases fall
-   * back to the model's own plain defaults.
+   * canvas) or when the model is neither 2D nor 3D, which no view can show.
+   * Both cases fall back to the model's own plain defaults.
    */
   function viewSeed(): number[] | undefined {
-    if (!h.view || !h.viewSize || model.dim !== 2) return undefined;
+    if (!h.view || !h.viewSize) return undefined;
     const [width, height] = h.viewSize();
-    return screenToWorld(h.view, width / 2, height / 2);
+    if (model.dim === 2) return screenToWorld(h.view, width / 2, height / 2);
+    if (model.dim === 3) return pointOnWorkingPlane(model, h.view, width / 2, height / 2).world;
+    return undefined;
   }
 
   /**
@@ -224,7 +254,7 @@ export function neocadScope(h: EnvHandles): Bag {
     // Every argument is optional, because none of them was ever a constraint
     // — see model.ts. `circle()` is a legal way to say "a circle, which the
     // relations I am about to type will define".
-    pt: (...coords: number[]) => model.addPoint(coords.length ? coords : viewSeed()).name,
+    pt: (...coords: number[]) => model.addPoint(coords.length ? lifted(model, coords) : viewSeed()).name,
     ln: (a?: string | null, b?: string | null) =>
       model.addLine(a ?? (b == null ? anchor() : null), b ?? null).name,
     circ: (center?: string | null, r?: number | null) =>
@@ -486,18 +516,53 @@ export function neocadScope(h: EnvHandles): Bag {
     // Viewport control as an ordinary command, per the brief's goal of having
     // the whole interface drivable the same way a tool is authored.
     view: h.view,
+    // About where the world origin is drawn, as it always was — through the
+    // camera's own zoom, so the orbit target stays on its pixel.
     zoom: (factor: number) => {
       if (!h.view) throw new Error("no viewport in this environment");
-      h.view.scale = clampScale(h.view.scale * factor);
+      assignView(h.view, zoomAbout(h.view, h.view.ox, h.view.oy, factor));
       h.refresh?.();
       return h.view.scale;
     },
     pan: (dx: number, dy: number) => {
       if (!h.view) throw new Error("no viewport in this environment");
-      h.view.ox += dx;
-      h.view.oy += dy;
+      assignView(h.view, panBy(h.view, dx, dy));
       h.refresh?.();
       return [h.view.ox, h.view.oy];
+    },
+    /**
+     * Turns the drawing about the orbit target — `yaw` radians about the
+     * screen's vertical, `pitch` about its horizontal — exactly as a right-drag
+     * does, and relative, like `pan` and `zoom`: the screen's axes have names a
+     * user can see, where an absolute azimuth would be measured from the
+     * kernel's axes, which nobody chose. Positive yaw carries the near side of
+     * the drawing right; positive pitch carries it down.
+     */
+    orbit: (yaw: number, pitch = 0) => {
+      if (!h.view) throw new Error("no viewport in this environment");
+      if (!Number.isFinite(yaw) || !Number.isFinite(pitch)) throw new Error("orbit takes two angles, in radians");
+      assignView(h.view, orbitBy(h.view, yaw, pitch));
+      h.refresh?.();
+      return "orbited";
+    },
+    /**
+     * Puts a frame's plane square to the screen, its +x to the right and +y up
+     * — Onshape's "normal to sketch", the gesture for going back to drawing on
+     * a plane after looking at it from somewhere else. The frame's origin keeps
+     * its place on screen and becomes what the next orbit turns about. The
+     * default frame when none is named, resolved like everything else that
+     * takes one.
+     */
+    lookAt: (frame?: string | null) => {
+      if (!h.view) throw new Error("no viewport in this environment");
+      const name = model.resolveFrame(frame);
+      const { origin, ux, uy } = frameBasis(model, name)();
+      if (ux.every((c) => c === 0) || uy.every((c) => c === 0)) {
+        throw new Error(`"${name}" has collapsed — it has no plane to look at`);
+      }
+      assignView(h.view, alignView(h.view, ux, uy, origin));
+      h.refresh?.();
+      return `looking at ${name}`;
     },
   };
 
@@ -522,10 +587,12 @@ function help(scope: Bag): string {
     "           is the default; drag the marker to move it, or its x-ref to turn",
     "           it and everything levelled against it. The line tool infers an",
     "           axis par only against the default.",
-    "           In a 3D model: frame(origin, xref, yref) is a plane (the y-ref",
+    "           The app is 3D: frame(origin, xref, yref) is a plane (the y-ref",
     "           picks its side of +x, not its exact angle), zaxis(frame?) is its",
     "           normal, onplane(p, frame?) holds a point in it, and fix takes",
-    "           [x, y, z] in the frame.",
+    "           [x, y, z] in the frame — or [x, y], on its plane. pt(x, y) is",
+    "           pt(x, y, 0). Tools draw on the default frame's plane and hold",
+    "           what they draw there with onplane.",
     "relations  dist fix coin mid par perp ang on eq",
     "           rad oncircle conc eqrad tan sym arcends onplane",
     "operations fillet(line1, line2, radius)  del(name, ...)",
@@ -538,6 +605,10 @@ function help(scope: Bag): string {
     "           it back is an ordinary entry — the paste is the consent.",
     "history    undo()  redo()          — ctrl+z, ctrl+shift+z (ctrl+y)",
     "viewport   arm(tool, opts)  cancel()  zoom(f)  pan(dx,dy)  refresh()",
+    "           orbit(yaw, pitch)  — turn the drawing, radians, like a right-drag",
+    "           lookAt(frame?)     — a frame's plane square-on, +x right, +y up",
+    "           right-drag orbits, middle-drag pans, the wheel zooms; a click",
+    "           lands on the default frame's plane (or the one facing you)",
     "inspect    ls()  rels(name?)  coords(name)  solve()  tools()  hover()",
     "           snapping(on)  glyphs(on)  model",
     "authoring  Tool  defineTool(name, ctor)  toolSource(name)  Dual",

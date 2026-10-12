@@ -211,7 +211,7 @@ test("a press on an edge drags it, and draws no box", async () => {
   assert.equal(await cmd(), "", "a drag is not a selection");
 });
 
-test("middle- and right-drag still pan", async () => {
+test("middle-drag still pans and right-drag orbits — neither draws a box", async () => {
   for (const button of ["middle", "right"] as const) {
     const before = (await app.model()).view;
     const from = await app.at(400, 200);
@@ -221,7 +221,13 @@ test("middle- and right-drag still pan", async () => {
     await app.page.mouse.up({ button });
     await app.page.waitForTimeout(120);
     const after = (await app.model()).view;
-    assert.ok(Math.abs(after.ox - before.ox - 30) < 1e-6, `${button}-drag panned by ${after.ox - before.ox}`);
+    if (button === "middle") {
+      assert.ok(Math.abs(after.ox - before.ox - 30) < 1e-6, `middle-drag panned by ${after.ox - before.ox}`);
+    } else {
+      // The 3D app's right button turns the view (Onshape's gesture); the
+      // box-select story is only that it does not *select* anything.
+      assert.ok(after.right && Math.abs(after.right[0] - 1) > 1e-3, `right-drag orbited: ${JSON.stringify(after)}`);
+    }
     assert.equal((await boxState()).open, false, `${button}-drag drew no box`);
   }
 });

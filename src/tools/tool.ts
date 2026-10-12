@@ -10,6 +10,7 @@
 import type { Model } from "../model.ts";
 import type { Pick } from "../picking.ts";
 import type { Snap } from "../snapping.ts";
+import type { Plane } from "../view.ts";
 
 export interface PointerInfo {
   world: number[]; // world-space coordinates, length = model.dim
@@ -22,11 +23,27 @@ export interface PointerInfo {
    * user meant. Absent when nothing was near enough, or when snapping is off.
    */
   snap?: Snap;
+  /**
+   * In a 3D model, the plane the cursor was read on — the working plane (the
+   * default frame's, or the one facing the viewer; see ../workplane.ts). A
+   * tool that only places points never needs it: `world` is already on it. A
+   * tool that lays out a *shape* from two clicks does — a rectangle's other two
+   * corners are along this plane's own axes, the way they were along x and y
+   * in 2D. Absent in a 2D model, whose plane is the whole world.
+   */
+  plane?: Plane;
 }
 
 export interface RenderContext {
   g: CanvasRenderingContext2D;
   worldToScreen(world: number[]): [number, number];
+  /**
+   * Pixels per world unit. A tool previewing a circle draws it at `r * scale`
+   * about its projected centre, which is how the renderer draws a committed
+   * one — in 3D a circle is still a sphere, and that is its silhouette — so a
+   * preview cannot promise a different size from what the click will build.
+   */
+  scale: number;
 }
 
 export interface ToolContext {

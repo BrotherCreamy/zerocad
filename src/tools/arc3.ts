@@ -31,10 +31,20 @@
 // degenerate third click is refused through `ctx.log` with the gesture left
 // live rather than committed into a conflict.
 
+//
+// In 3D the arc lies in the plane of its three clicks, and which way round it
+// goes is decided the way every arc's is (see ../arcgeom.ts): the tool works
+// out which of the two arcs between the endpoints holds the waypoint, and
+// orders the endpoints so that is the arc drawn. Its centre is held on the
+// sketch plane with its endpoints. The preview is the same arc, sampled in the
+// world and projected — on a plane seen at an angle it is part of an ellipse.
+
 import { Tool, defineTool, type PointerInfo, type RenderContext } from "./tool.ts";
 import { arcEndpoints } from "../relations/geometry.ts";
-import { placePoint } from "./place.ts";
+import { holdOnSketchPlane, placePoint, requirePlanar } from "./place.ts";
 import { circumcircle, PREVIEW_MAX_R } from "./circumcircle.ts";
+import { arcFrame, arcSamples, arcSegments } from "../arcgeom.ts";
+import { dot3, lift3, sub3 } from "../vec3.ts";
 
 /**
  * Two clicks closer together than this (in world units) are one click, and one
@@ -49,14 +59,9 @@ import { circumcircle, PREVIEW_MAX_R } from "./circumcircle.ts";
  */
 const SAME_POINT_EPS = 1e-6;
 
-/** How far counter-clockwise `to` is from `from`, in [0, 2pi). World angles. */
-function ccwFrom(from: number, to: number): number {
-  const d = (to - from) % (Math.PI * 2);
-  return d < 0 ? d + Math.PI * 2 : d;
-}
-
 export interface Arc3 {
-  center: [number, number];
+  /** As many coordinates as the clicks had. */
+  center: number[];
   radius: number;
   /** Which of the two endpoint clicks the CCW sweep starts at: 0 or 1. */
   startIndex: 0 | 1;
@@ -74,18 +79,23 @@ export interface Arc3 {
  * from `a`. Swapping the two costs the gesture nothing — both clicks are
  * endpoints either way, and only the label moves.
  *
- * Plain numbers in and out, in a y-up convention, so the commit can ask it in
- * world coordinates and the preview can ask it in world coordinates too and
- * negate the angles once at the point of drawing, which is where screen-space
- * y-down belongs.
+ * Plain numbers in and out, in world coordinates, two or three of them. The
+ * counter-clockwise sense is the one `arcFrame` lays every arc out in — about
+ * +z for a 2D arc, which is the world's y-up sense; about the arc's own plane's
+ * reference side in 3D — so the arc this picks is the arc that will be drawn.
  */
 export function arcThrough(a: number[], b: number[], w: number[]): Arc3 | null {
   const found = circumcircle(a, b, w);
   if (!found) return null;
-  const ang = (p: number[]) => Math.atan2(p[1] - found.center[1], p[0] - found.center[0]);
-  const toB = ccwFrom(ang(a), ang(b));
-  const toW = ccwFrom(ang(a), ang(w));
-  return { center: found.center, radius: found.radius, startIndex: toW < toB ? 0 : 1 };
+  const f = arcFrame(found.center, a, b, found.radius);
+  if (!f) return null;
+  // How far round from `a` the waypoint is, in the same sense the sweep from
+  // `a` to `b` is measured in: inside that sweep, `a` starts it; outside, the
+  // other arc is the one through `w`, and it starts at `b`.
+  const d = sub3(lift3(w), f.center);
+  let toW = Math.atan2(dot3(d, f.v), dot3(d, f.u));
+  if (toW < 0) toW += Math.PI * 2;
+  return { center: found.center, radius: found.radius, startIndex: toW < f.sweep ? 0 : 1 };
 }
 
 export class Arc3Tool extends Tool {
@@ -95,7 +105,7 @@ export class Arc3Tool extends Tool {
   private hover: number[] | null = null;
 
   onDown(p: PointerInfo): void {
-    if (this.ctx.model.dim !== 2) throw new Error("arc3 is a 2D tool");
+    requirePlanar(this.ctx.model, this.name);
     this.hover = p.world;
 
     if (this.ends.length < 2) {
@@ -104,7 +114,7 @@ export class Arc3Tool extends Tool {
       // centre-point arc tool already ignores its own degenerate click in
       // silence.
       const first = this.ends[0];
-      if (first && Math.hypot(p.world[0] - first.world[0], p.world[1] - first.world[1]) < SAME_POINT_EPS) return;
+      if (first && Math.hypot(...p.world.map((v, i) => v - first.world[i])) < SAME_POINT_EPS) return;
       this.ends.push(p);
       this.ctx.requestRender();
       return; // nothing is committed until the third click — see the header
@@ -147,6 +157,7 @@ export class Arc3Tool extends Tool {
     // and it means the arc drawn on screen is the arc that was previewed.
     const arc = m.addArc(null, start, end, found.radius);
     m.setCoords(arc.center, found.center);
+    holdOnSketchPlane(m, arc.center);
     arcEndpoints(m, arc.name);
 
     this.ctx.requestSolve();
@@ -188,25 +199,21 @@ export class Arc3Tool extends Tool {
     if (this.ends.length === 2 && this.hover) {
       const worlds = [this.ends[0].world, this.ends[1].world];
       const found = arcThrough(worlds[0], worlds[1], this.hover);
-      const [cx, cy] = found ? r.worldToScreen(found.center) : [0, 0];
-      // The radius is measured on screen rather than scaled from the world
-      // one: no scale factor to look up, and it cannot disagree with where
-      // worldToScreen just put the centre.
-      const [sx, sy] = r.worldToScreen(worlds[0]);
-      const rad = found ? Math.hypot(sx - cx, sy - cy) : 0;
+      const rad = found ? found.radius * r.scale : 0;
       // Nothing at all when the three are collinear, or when the rim is so far
       // away that what would be drawn is a straight line: a preview that lies
       // about what the next click will build is worse than no preview.
-      if (found && rad < PREVIEW_MAX_R) {
-        // Screen y runs the other way from world y, so a world-space CCW sweep
-        // is drawn clockwise here — the negated angles and the `true` flag,
-        // exactly as main.ts draws a committed arc.
-        const ang = (p: number[]) => Math.atan2(p[1] - found.center[1], p[0] - found.center[0]);
-        const startW = worlds[found.startIndex];
-        const endW = worlds[1 - found.startIndex];
+      const f = found && rad < PREVIEW_MAX_R
+        ? arcFrame(found.center, worlds[found.startIndex], worlds[1 - found.startIndex], found.radius)
+        : null;
+      if (f) {
+        // Sampled in the world and projected, exactly as main.ts draws the
+        // committed arc — so the preview is that arc, at any angle of view.
+        const pts = arcSamples(f, arcSegments(f.sweep, rad)).map((w) => r.worldToScreen(w));
         r.g.setLineDash([4, 3]);
         r.g.beginPath();
-        r.g.arc(cx, cy, rad, -ang(startW), -ang(endW), true);
+        r.g.moveTo(...pts[0]);
+        for (const pt of pts.slice(1)) r.g.lineTo(...pt);
         r.g.stroke();
       }
     }

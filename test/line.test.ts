@@ -267,7 +267,7 @@ test("LineTool: the chain follows the solver, so the next segment starts where t
     "the second segment was measured from the vertex's current position");
 });
 
-test("LineTool: the chain is dimension-generic — it draws in 3D, with no axis to infer", async () => {
+test("LineTool: the chain is dimension-generic — it draws in 3D, and with no frame infers nothing", async () => {
   await loadKernel();
   const model = framed(3);
   const tool = new LineTool(fakeCtx(model));
@@ -280,7 +280,7 @@ test("LineTool: the chain is dimension-generic — it draws in 3D, with no axis 
   assert.equal(linesOf(model).length, 2);
   assert.equal(pointsOf(model).length, 3, "the vertex is shared in 3D too");
   assert.deepEqual(opsOf(model).filter((o) => o === "parallel"), [],
-    "a frame and its axes are 2D-only, so nothing is inferred here");
+    "no default frame, so nothing to be level with — the 3D inference is in app3d.test.ts");
   assert.deepEqual(model.coords(linesOf(model)[1].refs[1]), [10, 0, 7]);
 });
 
@@ -348,7 +348,7 @@ test("LineTool: the dashed guide is drawn along the same tilted axis the constra
     lineTo(x: number, y: number) { segments.push([at[0], at[1], x, y]); at = [x, y]; },
     strokeStyle: "", lineWidth: 0, globalAlpha: 1,
   } as unknown as CanvasRenderingContext2D;
-  tool.render({ g, worldToScreen: (w) => worldToScreen(view, w) });
+  tool.render({ g, worldToScreen: (w) => worldToScreen(view, w), scale: view.scale });
 
   const guide = segments.find((s) => Math.hypot(s[2] - s[0], s[3] - s[1]) > 1000);
   assert.ok(guide, "a guide was drawn at all");

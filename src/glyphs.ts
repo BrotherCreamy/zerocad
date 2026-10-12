@@ -41,7 +41,8 @@
 //     about as the drawing solves being the obvious one).
 
 import { referentOf, type Model, type RelationEntry } from "./model.ts";
-import { worldToScreen, type View } from "./view.ts";
+import { viewAxes, worldToScreen, type View } from "./view.ts";
+import { lift3 } from "./vec3.ts";
 
 /** How far a glyph sits from its anchor, in screen pixels. */
 export const GLYPH_OFFSET = 15;
@@ -142,6 +143,10 @@ export const GLYPH_SYMBOL: Record<string, string> = {
   dist: "↔",
   fix: "#",
   symmetric: "⇌",
+  // A plane drawn the way a plane is always drawn — a parallelogram, a flat
+  // thing seen at an angle. Deferred from the model half of 3D phase 1 until
+  // there was a 3D drawing to look at it in.
+  onPlane: "▱",
 };
 
 /**
@@ -228,11 +233,22 @@ const DIAG = Math.SQRT1_2;
  */
 const DOWN_RIGHT: [number, number] = [DIAG, DIAG];
 
-/** The screen-space unit direction of a world-space one. Screen y is flipped. */
-function screenDir(dx: number, dy: number): [number, number] {
+/**
+ * The screen direction from one world point to another, as a unit vector — or
+ * the default nudge when the two land on the same pixel (an edge seen end-on,
+ * a collapsed one). Measured *on screen*, after projecting both ends, because
+ * the nudge is a screen-space thing: in 3D a world direction says nothing about
+ * which way a glyph should step off an edge until the camera has had its say.
+ * For a view that has never been turned this is the old world direction with y
+ * flipped.
+ */
+function dirBetween(view: View, from: number[], to: number[]): [number, number] {
+  const [ax, ay] = worldToScreen(view, from);
+  const [bx, by] = worldToScreen(view, to);
+  const dx = bx - ax, dy = by - ay;
   const len = Math.hypot(dx, dy);
   if (!(len > 1e-9)) return DOWN_RIGHT;
-  return [dx / len, -dy / len];
+  return [dx / len, dy / len];
 }
 
 /** A quarter turn, so a glyph on an edge sits beside it rather than on it. */
@@ -245,46 +261,61 @@ function atPoint(model: Model, name: string): Anchor {
 }
 
 /** Midway between two points, nudged off to one side of the segment. */
-function atSegmentMid(model: Model, aName: string, bName: string): Anchor {
+function atSegmentMid(model: Model, view: View, aName: string, bName: string): Anchor {
   const a = model.coords(aName), b = model.coords(bName);
   return {
     world: a.map((ai, i) => (ai + b[i]) / 2),
-    dir: perp(screenDir(b[0] - a[0], b[1] - a[1])),
+    dir: perp(dirBetween(view, a, b)),
     ends: [a, b],
   };
 }
 
-function atLineMid(model: Model, lineName: string): Anchor {
+function atLineMid(model: Model, view: View, lineName: string): Anchor {
   const l = model.line(lineName);
-  return atSegmentMid(model, l.refs[0], l.refs[1]);
+  return atSegmentMid(model, view, l.refs[0], l.refs[1]);
 }
 
-/** A point on a circle's rim, at `theta` in world terms, nudged outward. */
-function atRim(model: Model, circleName: string, theta: number): Anchor {
+/**
+ * A point on a circle's rim, `theta` round from the screen's right, nudged
+ * outward. The rim is the one the viewer sees — the silhouette, which for a
+ * view that has never been turned is the circle itself in world terms. (In 3D a
+ * circle is still a sphere to everything that reads it, and the silhouette is
+ * where it is drawn; see projection.ts.)
+ */
+function atRim(model: Model, view: View, circleName: string, theta: number): Anchor {
   const c = model.circular(circleName);
-  const ctr = model.coords(c.center);
+  const ctr = lift3(model.coords(c.center));
   const r = model.radius(circleName);
-  const dir = screenDir(Math.cos(theta), Math.sin(theta));
-  return { world: [ctr[0] + r * Math.cos(theta), ctr[1] + r * Math.sin(theta)], dir };
+  const { right, up } = viewAxes(view);
+  const cos = Math.cos(theta), sin = Math.sin(theta);
+  return {
+    world: [0, 1, 2].map((i) => ctr[i] + r * (cos * right[i] + sin * up[i])),
+    dir: [cos, -sin],
+  };
 }
 
 /**
  * The rim point nearest a line — where a tangency actually touches, or where it
  * is trying to. Found by dropping a perpendicular from the centre onto the
- * infinite line; if the centre is *on* the line (nothing tangent about it, but
- * a solve in progress can pass through that state) the direction is arbitrary
- * rather than NaN, because a renderer must not be able to throw.
+ * infinite line, in however many dimensions the drawing has; if the centre is
+ * *on* the line (nothing tangent about it, but a solve in progress can pass
+ * through that state) the direction is arbitrary rather than NaN, because a
+ * renderer must not be able to throw.
  */
-function atNearestRim(model: Model, lineName: string, circleName: string): Anchor {
+function atNearestRim(model: Model, view: View, lineName: string, circleName: string): Anchor {
   const c = model.circular(circleName);
   const ctr = model.coords(c.center);
   const l = model.line(lineName);
   const a = model.coords(l.refs[0]), b = model.coords(l.refs[1]);
-  const ux = b[0] - a[0], uy = b[1] - a[1];
-  const len2 = ux * ux + uy * uy;
-  const t = len2 > 1e-12 ? ((ctr[0] - a[0]) * ux + (ctr[1] - a[1]) * uy) / len2 : 0;
-  const foot = [a[0] + t * ux, a[1] + t * uy];
-  return atRim(model, circleName, Math.atan2(foot[1] - ctr[1], foot[0] - ctr[0]));
+  const u = b.map((bi, i) => bi - a[i]);
+  const len2 = u.reduce((s, ui) => s + ui * ui, 0);
+  const t = len2 > 1e-12 ? ctr.reduce((s, ci, i) => s + (ci - a[i]) * u[i], 0) / len2 : 0;
+  const out = a.map((ai, i) => ai + t * u[i] - ctr[i]);
+  const len = Math.hypot(...out);
+  if (!(len > 1e-12)) return atRim(model, view, circleName, 0);
+  const r = model.radius(circleName);
+  const world = ctr.map((ci, i) => ci + (r * out[i]) / len);
+  return { world, dir: dirBetween(view, ctr, world) };
 }
 
 /**
@@ -297,18 +328,16 @@ function atNearestRim(model: Model, lineName: string, circleName: string): Ancho
  * goes midway between the two edges' middles. That is the honest placement for
  * a claim about two directions rather than about a corner.
  */
-function atVertex(model: Model, l1Name: string, l2Name: string): Anchor {
+function atVertex(model: Model, view: View, l1Name: string, l2Name: string): Anchor {
   const l1 = model.line(l1Name), l2 = model.line(l2Name);
   const shared = l1.refs.find((r) => l2.refs.includes(r));
   if (shared === undefined) {
-    const a = atLineMid(model, l1Name).world, b = atLineMid(model, l2Name).world;
+    const a = atLineMid(model, view, l1Name).world, b = atLineMid(model, view, l2Name).world;
     return { world: a.map((ai, i) => (ai + b[i]) / 2), dir: DOWN_RIGHT };
   }
   const v = model.coords(shared);
-  const away = (l: { refs: [string, string] }) => {
-    const far = model.coords(l.refs[0] === shared ? l.refs[1] : l.refs[0]);
-    return screenDir(far[0] - v[0], far[1] - v[1]);
-  };
+  const away = (l: { refs: [string, string] }) =>
+    dirBetween(view, v, model.coords(l.refs[0] === shared ? l.refs[1] : l.refs[0]));
   const [ax, ay] = away(l1), [bx, by] = away(l2);
   const bis = Math.hypot(ax + bx, ay + by);
   // Anti-parallel lines (a straight angle) have no bisector — the two
@@ -327,13 +356,13 @@ function firstNamed(model: Model, r: RelationEntry): string | null {
 }
 
 /** Anchors an entity by its kind, for relations with no rule of their own. */
-function atEntity(model: Model, name: string): Anchor {
+function atEntity(model: Model, view: View, name: string): Anchor {
   const e = model.entities.get(name)!;
   switch (e.kind) {
     case "point": return atPoint(model, name);
-    case "line": return atLineMid(model, name);
+    case "line": return atLineMid(model, view, name);
     case "circle":
-    case "arc": return atRim(model, name, Math.PI / 4);
+    case "arc": return atRim(model, view, name, Math.PI / 4);
     // A frame is its origin, as far as a mark beside it is concerned.
     case "frame": return atPoint(model, e.origin);
   }
@@ -354,8 +383,8 @@ function isGeometry(model: Model, arg: unknown): boolean {
 }
 
 /** That entity's own anchor, or nothing at all for a side with no geometry. */
-function anchorIfGeometry(model: Model, arg: unknown): Anchor[] {
-  return isGeometry(model, arg) ? [atEntity(model, str(arg))] : [];
+function anchorIfGeometry(model: Model, view: View, arg: unknown): Anchor[] {
+  return isGeometry(model, arg) ? [atEntity(model, view, str(arg))] : [];
 }
 
 /**
@@ -365,7 +394,7 @@ function anchorIfGeometry(model: Model, arg: unknown): Anchor[] {
  * mark on one line says a right angle exists somewhere, two marks say which
  * pair.
  */
-function anchorsFor(model: Model, r: RelationEntry): Anchor[] {
+function anchorsFor(model: Model, view: View, r: RelationEntry): Anchor[] {
   const args = r.args;
   switch (r.op) {
     case "coincident":
@@ -376,7 +405,7 @@ function anchorsFor(model: Model, r: RelationEntry): Anchor[] {
     case "onCircle":
       return [atPoint(model, str(args[0]))];
     case "dist":
-      return [atSegmentMid(model, str(args[0]), str(args[1]))];
+      return [atSegmentMid(model, view, str(args[0]), str(args[1]))];
     case "parallel":
     case "perpendicular": {
       // A mark on each side that is real geometry. Three arguments is the
@@ -391,31 +420,31 @@ function anchorsFor(model: Model, r: RelationEntry): Anchor[] {
       // comes from, and hovering the mark on the line highlights it.
       const pointForm = args.length === 3;
       const first = pointForm
-        ? [atSegmentMid(model, str(args[0]), str(args[1]))]
-        : anchorIfGeometry(model, args[0]);
-      return [...first, ...anchorIfGeometry(model, args[pointForm ? 2 : 1])];
+        ? [atSegmentMid(model, view, str(args[0]), str(args[1]))]
+        : anchorIfGeometry(model, view, args[0]);
+      return [...first, ...anchorIfGeometry(model, view, args[pointForm ? 2 : 1])];
     }
     case "equalLength":
-      return [atLineMid(model, str(args[0])), atLineMid(model, str(args[1]))];
+      return [atLineMid(model, view, str(args[0])), atLineMid(model, view, str(args[1]))];
     // One label, not two. `∥` is drawn twice because a single mark would leave
     // "parallel to *what*" unanswered; `45°` written twice is just the same
     // number in two places, and Onshape writes it once, at the corner.
     case "angle": {
       if (isGeometry(model, args[0]) && isGeometry(model, args[1])) {
-        return [atVertex(model, str(args[0]), str(args[1]))];
+        return [atVertex(model, view, str(args[0]), str(args[1]))];
       }
       // Against a frame axis there is no corner to write it at: the angle is
       // to a *direction*, and the two never meet. It goes beside the edge.
-      return anchorIfGeometry(model, isGeometry(model, args[0]) ? args[0] : args[1]);
+      return anchorIfGeometry(model, view, isGeometry(model, args[0]) ? args[0] : args[1]);
     }
     case "equalRadius":
-      return [atRim(model, str(args[0]), Math.PI / 4), atRim(model, str(args[1]), Math.PI / 4)];
+      return [atRim(model, view, str(args[0]), Math.PI / 4), atRim(model, view, str(args[1]), Math.PI / 4)];
     case "concentric":
       return [atPoint(model, model.circular(str(args[0])).center)];
     case "radius":
-      return [atRim(model, str(args[0]), Math.PI / 4)];
+      return [atRim(model, view, str(args[0]), Math.PI / 4)];
     case "tangent":
-      return [atNearestRim(model, str(args[0]), str(args[1]))];
+      return [atNearestRim(model, view, str(args[0]), str(args[1]))];
     case "symmetric":
       return [atPoint(model, str(args[0])), atPoint(model, str(args[1]))];
     case "arcEndpoints": {
@@ -424,7 +453,7 @@ function anchorsFor(model: Model, r: RelationEntry): Anchor[] {
     }
     default: {
       const name = firstNamed(model, r);
-      return name ? [atEntity(model, name)] : [];
+      return name ? [atEntity(model, view, name)] : [];
     }
   }
 }
@@ -475,7 +504,7 @@ export function placeGlyphs(model: Model, view: View): Glyph[] {
   for (const r of model.relations.values()) {
     let anchors: Anchor[];
     try {
-      anchors = anchorsFor(model, r);
+      anchors = anchorsFor(model, view, r);
     } catch {
       continue;
     }
@@ -488,7 +517,7 @@ export function placeGlyphs(model: Model, view: View): Glyph[] {
       : GLYPH_HALF_W;
     const highlights = constrainedBy(model, r.name);
     for (const a of anchors) {
-      const anchor = worldToScreen(view, [a.world[0], a.world[1]]);
+      const anchor = worldToScreen(view, a.world);
       // Rounded to the pixel, and keyed by direction too: two glyphs nudged
       // opposite ways from one spot are not in each other's way and should not
       // be pushed apart as though they were.
@@ -516,7 +545,7 @@ export function placeGlyphs(model: Model, view: View): Glyph[] {
         halfH: GLYPH_HALF_H,
         isLabel: label !== null,
         ...(label !== null && a.ends
-          ? { ends: a.ends.map((w) => worldToScreen(view, [w[0], w[1]])) as [[number, number], [number, number]] }
+          ? { ends: a.ends.map((w) => worldToScreen(view, w)) as [[number, number], [number, number]] }
           : {}),
         screen: [anchor[0] + a.dir[0] * push + along, anchor[1] + a.dir[1] * push],
       });

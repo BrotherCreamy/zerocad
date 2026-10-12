@@ -13,7 +13,7 @@
 
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { axisFrame, openApp, type AppContext } from "./harness.ts";
+import { FIXTURE_ENTITIES, axisFrame, openApp, type AppContext } from "./harness.ts";
 
 let app: AppContext;
 before(async () => { app = await openApp(); });
@@ -67,7 +67,7 @@ test("a saved file carries a tool's source, and the paste is what enables it", a
   assert.ok(afterOpen.includes(
     'this file carries the source of tool "spot" — toolSource("spot") shows it; paste it to enable'),
     `the log should say what the file carries:\n${afterOpen}`);
-  assert.equal((await app.model()).size, 3, "the geometry replayed — the fixture frame and its points");
+  assert.equal((await app.model()).size, FIXTURE_ENTITIES, "the geometry replayed — the fixture frame and its points");
 
   // Carried, and honest about not being armable yet.
   const listed = (await app.repl("tools()")).value as string[];

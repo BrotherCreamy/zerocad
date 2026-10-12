@@ -27,7 +27,7 @@ import { findSnap } from "../src/snapping.ts";
 import { save, open } from "../src/persist.ts";
 import { screenToWorld, worldToScreen, type View } from "../src/view.ts";
 import type { PointerInfo, ToolContext } from "../src/tools/tool.ts";
-import { axisFrame } from "./frames.ts";
+import { axisFrame, tiltedFrame } from "./frames.ts";
 
 async function loadKernel() {
   const bytes = await readFile(new URL("../src/kernel/wasm-gen/neocad_kernel_bg.wasm", import.meta.url));
@@ -253,11 +253,32 @@ test("Circle3Tool: cancelling forgets the clicks so far", async () => {
   assert.equal(ctx.finished, true);
 });
 
-test("Circle3Tool is 2D-only and says so", async () => {
+test("Circle3Tool in 3D: the circle through three clicks on a tilted plane, centre held there too", async () => {
   await loadKernel();
   const model = new Model(3);
-  const tool = new Circle3Tool(fakeCtx(model));
-  assert.throws(() => tool.onDown({ world: [0, 0, 0], screen: [0, 0] }), /2D/);
+  const f = tiltedFrame(model);
+  const plane = { origin: f.origin, u: f.ux, v: f.uy };
+  const ctx = fakeCtx(model);
+  const tool = new Circle3Tool(ctx);
+  // (0,0), (8,0), (0,6) in the frame: the circumcircle is centred (4,3), r 5.
+  for (const [u, v] of [[0, 0], [8, 0], [0, 6]]) tool.onDown({ world: f.at(u, v), screen: [0, 0], plane });
+  assert.equal(ctx.finished, true);
+
+  const c = [...model.entities.values()].find((e) => e.kind === "circle") as { name: string; center: string };
+  const at = model.coords(c.center), expected = f.at(4, 3);
+  assert.ok(Math.hypot(...at.map((v, i) => v - expected[i])) < 1e-9, `centre at ${at}, expected ${expected}`);
+  assert.ok(Math.abs(model.radius(c.name) - 5) < 1e-9);
+  const held = model.journal.filter((e) => e.op === "onPlane").map((e) => e.args[0]);
+  assert.equal(held.length, 4, "three rim points and the centre are all on the sketch");
+  assert.ok(held.includes(c.center));
+  assert.equal(model.solve().solved, true);
+});
+
+test("circumcircle in 3D refuses three points on one line, at any orientation", () => {
+  const d = [0.3, -0.5, 0.81];
+  assert.equal(circumcircle([1, 2, 3], d.map((x, i) => [1, 2, 3][i] + 4 * x), d.map((x, i) => [1, 2, 3][i] - 7 * x)), null);
+  const found = circumcircle([0, 0, 5], [8, 0, 5], [0, 6, 5])!;
+  assert.deepEqual(found.center.map((v) => Math.round(v * 1e9) / 1e9), [4, 3, 5]);
 });
 
 // --- snapping and inference, which is what makes it compose ----------------

@@ -106,6 +106,90 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### The camera half of 3D, and where the spec's hopes did not hold
+
+The spec for half 2 hoped for a small footprint — "keep the exported names as
+close as honesty allows", "tools themselves should not need edits" — and the
+first decision was how to make the switch to `Model(3)` without weakening a
+single 2D behaviour the suite pins, since the reviewer would push hardest
+there. The answer was to build in three layers and prove each on its own: a
+camera and projection that are *bit-identical* to the 2D transform until
+turned (the whole 2D suite passed unmodified on that commit alone), then tools
+and an engine that only do anything different in a 3D model, then the switch.
+Each of the three was committed only after `test:all` ran green on exactly
+that tree.
+
+**Azimuth and elevation, rejected.** The spec named the camera's state as
+target, azimuth, elevation, scale. Two angles were the first thing written down
+and the first thing dropped: `lookAt(frame)` has to put a frame square-on *with
+its +x to the right*, and a frame tilted about its own normal needs a third
+angle (a roll) to say that. Adding a roll gives three Euler angles and their
+gimbal lock in exactly the top view the app starts in. And a turntable orbit —
+dragging changes azimuth about a fixed "up" — needs a world up to turn about,
+which can only be the kernel's z: the gauge becoming the drawing's "up", which
+the no-world-frame decision exists to prevent. So the camera stores its own
+screen axes, the orbit is a trackball about them (which is also how Onshape
+feels), and `orbit(yaw, pitch)` became *relative*, like `pan`, `zoom` and the
+mouse: an absolute azimuth would be measured from axes nobody chose. The
+orbit target is screen-anchored — pan and zoom carry it on its pixel — after
+weighing a world-anchored one, which leaves the pivot off-screen after any pan
+and swings the visible drawing about a point the user cannot see.
+
+**"Tools should not need edits" — five did.** Every drawing tool but point and
+line refused a 3D model outright, so the app would have lost its rectangle,
+circle and arc tools on the day it became 3D. The smallest honest change was
+to tell a tool which plane its cursor was read on (`PointerInfo.plane`) and let
+each lay its shape out there; the alternative, the engine handing tools 2D
+plane coordinates and mapping back, would have needed a second channel back
+for every point a tool creates and made tools written at the command line see
+a different world from the model. A rectangle on a default frame now follows
+the frame's axes where the 2D app followed the screen's — identical until a
+frame is turned in its own plane, flagged in the register. `fillet` became
+dimension-generic for a reason the spec could not see: it refused 3D, so every
+2D file with a fillet would have failed to open lifted.
+
+**The arc orientation rule nobody specified.** "An arc samples as a polyline
+in its own plane" leaves open which of the two arcs between two endpoints that
+is — an arc entity names three points and no normal. Considered: always the
+minor arc (breaks every reflex arc in every existing file); the default
+frame's +z (an arc would flip when the default changed — a drawing redrawn by a
+pointer nobody connected to it); the camera's side (an arc would flip as you
+orbit past its plane). The kernel's +z side of the arc's own plane is the only
+rule that keeps every 2D and lifted arc exactly what it was, at the price of
+the gauge showing through in rendering and picking — never in a residual — and
+an arc turned through the vertical flipping. It is written down as a seam
+rather than hidden, and the tools and `fillet` store endpoints so the drawn arc
+is the one meant. Phase 2 retires it.
+
+**What only the screenshot showed.** Every test was green when the poster was
+first taken, and the picture was wrong: a wall sketch's last corner had gone to
+the floor's *front* corner, seventy units behind the pixel aimed at, because
+square-on the two share a pixel and the point tier took the first. Every
+relation was satisfied. The fix is the rule that while sketching on a plane a
+snap is offered only where it lands on that plane; the alternative Onshape
+uses — snap to the off-plane vertex and constrain the *projection* — needs a
+relation this model does not have, and is phase 2's call. The same picture
+also first showed a hand-written legacy file solving into a near-degenerate
+shape; that turned out to be the file (under-constrained, and identical in the
+2D library), not the lift — checked before it was believed.
+
+**The lift's one trap.** A 2D frame opened into 3D needs a y-ref, and
+`addFrame` creates a missing one auto-named — mid-replay, where the next free
+`p`-name is very often a name some later entry of the file already holds, so
+the very next step fails with "already exists". The lift names it after its
+frame instead, from names the file never uses, and seeds it where the frame's
+own auto-created pieces keep their 2D names and positions. It is placed
+exactly only after the saved coordinates are restored, because a frame the
+drawing had turned before saving has its real +y only there — a replay seed
+would put it on the wrong side, and a pinned test shows the difference.
+
+**Version 6, argued against itself.** `persist.ts`'s own rule is that a bump
+is for a break in the old-reader direction, and nothing in a v6 journal would
+be misparsed by v5. It was bumped anyway, on the ground that a v5 build would
+open a 3D drawing as its flattened x–y shadow with every tool refusing it —
+misread rather than misparsed, which is the silent-meaning-change the rule is
+really about. Flagged.
+
 ### 3D frames, and what the spec left to the code
 
 The spec for the model half of 3D phase 1 was precise about the mathematics —

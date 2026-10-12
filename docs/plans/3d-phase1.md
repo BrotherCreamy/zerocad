@@ -1,11 +1,30 @@
 # Plan: 3D phase 1 — the third dimension
 
-**Status: half 1 built** (2026-10-12, PR against the working branch; half 2
-not started). Deviations and decisions from half 1 are in `TODO.md`'s 3D
-entry; the one that changes this plan is that **half 1 took format version
-5** (`addFrame`'s name moved to the fourth argument — see `persist.ts`), so
-half 2's bump is to **6**, and its 2D→3D lift should key on the file's `dim`
-field: v4 *and* v5 files are 2D.
+**Status: both halves built** (2026-10-12; half 1 merged as PR #18, half 2 on
+`claude/3d-phase1-app`). Deviations and decisions from both are in `TODO.md`'s
+3D entry; the one that changed this plan from half 1 is that **half 1 took
+format version 5** (`addFrame`'s name moved to the fourth argument — see
+`persist.ts`), so half 2's bump is to **6**, and its 2D→3D lift keys on the
+file's `dim` field: v4 *and* v5 files are 2D.
+
+**As built, half 2** — where it differs from the text below:
+
+- The camera stores its screen axes (`right`, `up`) and an orbit `target`,
+  not azimuth/elevation: `lookAt` needs a roll, and an orbit about the kernel's
+  z would make the gauge's z "up". The orbit is a trackball; `orbit(yaw, pitch)`
+  is relative, like `pan`/`zoom`.
+- The tools *did* need edits: rectangle, circle, circle3, arc and arc3 refused
+  3D, and now lay out in the working plane (`PointerInfo.plane`, new);
+  `RenderContext` gained `scale`; `fillet` became dimension-generic so lifted
+  2D files with fillets open.
+- Arcs needed an orientation rule the spec did not name (`arcgeom.ts`: the
+  plane's normal on the kernel's +z side). Oblique arcs are polylines in
+  picking/snapping/box select as well as rendering.
+- While sketching on a default frame's plane, snaps are offered only on it — a
+  bug found in the poster screenshot, not in the spec.
+- A 2D frame lifted from a file gains an explicitly named y-ref
+  (`<frame>_y`); an auto-named one would collide with later file entries.
+- `pt(x, y)`/`fix(p, [x, y])` at the command line lift to z = 0 like the file.
 
 First package of
 [`3d-roadmap.md`](3d-roadmap.md); read that first, then `CLAUDE.md`,

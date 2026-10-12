@@ -18,10 +18,17 @@
 // final click, so the engine's user-action bracket around that one event makes
 // the entire gesture a single undo step — circle, rim points and relations go
 // back together or not at all.
+//
+// In 3D the circle through three clicks lies in their plane, and its centre is
+// held on the sketch plane with the rim points (see place.ts). The preview is
+// computed in the world, as the commit is, and drawn as the renderer will draw
+// the result — the silhouette, a circle being a sphere until phase 2 — because
+// the circle through three *projected* points is not the projection of anything
+// the model will hold once the plane is seen at an angle.
 
 import { Tool, defineTool, type PointerInfo, type RenderContext } from "./tool.ts";
 import { onCircle } from "../relations/geometry.ts";
-import { placePoint } from "./place.ts";
+import { holdOnSketchPlane, placePoint, requirePlanar } from "./place.ts";
 // The closed form and its collinearity threshold left this file when the
 // 3-point *arc* tool needed the same two, and needed them to agree — see the
 // header of circumcircle.ts.
@@ -34,7 +41,7 @@ export class Circle3Tool extends Tool {
   private hover: number[] | null = null;
 
   onDown(p: PointerInfo): void {
-    if (this.ctx.model.dim !== 2) throw new Error("circle3 is a 2D tool");
+    requirePlanar(this.ctx.model, this.name);
     this.hover = p.world;
 
     if (this.clicks.length < 2) {
@@ -79,6 +86,7 @@ export class Circle3Tool extends Tool {
     // where the world happens to start rather than by where the drawing is.
     const circle = m.addCircle(null, found.radius);
     m.setCoords(circle.center, found.center);
+    holdOnSketchPlane(m, circle.center);
     for (const name of rim) onCircle(m, name, circle.name);
 
     this.ctx.requestSolve();
@@ -119,16 +127,16 @@ export class Circle3Tool extends Tool {
     // Two clicks and a cursor already determine the circle, so from here the
     // preview is the answer itself rather than a suggestion of it.
     if (this.clicks.length === 2 && this.hover) {
-      const [a, b, c] = [this.clicks[0].world, this.clicks[1].world, this.hover]
-        .map((w) => r.worldToScreen(w));
-      const found = circumcircle(a, b, c);
+      const found = circumcircle(this.clicks[0].world, this.clicks[1].world, this.hover);
+      const radius = found ? found.radius * r.scale : Infinity;
       // Nothing at all when they are collinear, or when the rim is so far away
       // that what would be drawn is a straight line: a preview that lies about
       // what the next click will build is worse than no preview.
-      if (found && found.radius < PREVIEW_MAX_R) {
+      if (found && radius < PREVIEW_MAX_R) {
+        const [cx, cy] = r.worldToScreen(found.center);
         r.g.setLineDash([4, 3]);
         r.g.beginPath();
-        r.g.arc(found.center[0], found.center[1], found.radius, 0, Math.PI * 2);
+        r.g.arc(cx, cy, radius, 0, Math.PI * 2);
         r.g.stroke();
       }
     }

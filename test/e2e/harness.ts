@@ -112,6 +112,14 @@ export interface AppContext {
   repl(source: string): Promise<{ ok: boolean; value: unknown; error?: string }>;
   /** A summary of the model, safe to send across the page boundary. */
   model(): Promise<ModelSummary>;
+  /**
+   * Where a world point is drawn right now, in canvas pixels — through the
+   * app's own camera, so a test can aim at geometry however the view has been
+   * turned. In a view that has never been turned this is the old 2D formula
+   * (`ox + x·scale`, `oy − y·scale`), which is what most of the suite still
+   * computes by hand.
+   */
+  screenOf(world: number[]): Promise<[number, number]>;
   status(): Promise<string>;
   log(): Promise<string>;
   /** Anything the page threw that nothing caught. Should always be empty. */
@@ -131,7 +139,12 @@ export interface ModelSummary {
   arcs: { name: string; center: string; start: string; end: string }[];
   journalOps: string[];
   activeTool: string | null;
-  view: { ox: number; oy: number; scale: number };
+  /**
+   * The camera. `right`/`up`/`target` are absent until something turns or
+   * moves it (see src/view.ts) — a view that has never been turned is the 2D
+   * transform exactly.
+   */
+  view: { ox: number; oy: number; scale: number; right?: number[]; up?: number[]; target?: number[] };
 }
 
 export async function openApp(): Promise<AppContext> {
@@ -203,6 +216,10 @@ export async function openApp(): Promise<AppContext> {
         };
       });
     },
+    screenOf: (world) => page.evaluate(
+      (w) => (window as never as PageGlobals).__neocad.engine.worldToScreen(w),
+      world,
+    ),
     status: () => page.$eval("#status", (el) => el.textContent ?? ""),
     log: () => page.$eval("#log", (el) => el.textContent ?? ""),
     async close() {
@@ -221,39 +238,50 @@ interface PageGlobals {
       radius(name: string): number;
       journal: { op: string; args: unknown[] }[];
     };
-    engine: { active: { name: string } | null; view: { ox: number; oy: number; scale: number } };
+    engine: {
+      active: { name: string } | null;
+      view: { ox: number; oy: number; scale: number };
+      worldToScreen(world: number[]): [number, number];
+    };
     repl: { eval(src: string): Promise<{ ok: boolean; value: unknown; error?: Error }> };
   };
 }
 
 /**
  * Adds the suite's fixture coordinate frame and makes it the default, so that
- * `hor`, `ver` and `fix` typed into a test mean what they meant before frames
- * existed: there is no world frame any more, and without one those three
- * refuse to run at all.
+ * `fix` and `xaxis()` typed into a test mean what they meant before frames
+ * existed: there is no world frame any more, and without one those refuse to
+ * run at all.
  *
  * Aligned with the kernel's own axes and, by default, sitting on its origin,
  * so frame coordinates and the numbers these tests were written with are the
  * same numbers. `at` parks it somewhere else for the tests that would
- * otherwise keep snapping to it — a frame's origin and x-ref are ordinary
- * points, and snapping does not know they belong to a frame.
+ * otherwise keep snapping to it — a frame's points are ordinary points, and
+ * snapping does not know they belong to a frame.
  *
- * Built through `model` rather than the `frame()` command so that its two
- * points can be named: an auto-named pair would take `p1` and `p2` and shift
+ * The app is 3D, so the frame is a 3D one: an origin, an x-ref one unit along
+ * the kernel's x and a y-ref one unit along its y, in z = 0. Its plane is
+ * therefore the plane every 2D test was already drawing in, and its +z the
+ * kernel's — which is also why, as the default frame, it is where every click
+ * lands and what every placed point is held on (`onPlane`).
+ *
+ * Built through `model` rather than the `frame()` command so that its points
+ * can be named: an auto-named set would take `p1`, `p2` and `p3` and shift
  * every name the tests below assert against. The command surface's own
  * `frame()` is exercised in repl.e2e.ts.
  */
 export async function axisFrame(app: AppContext, at: [number, number] = [0, 0]): Promise<void> {
   const r = await app.repl(
-    `model.addPoint([${at[0]}, ${at[1]}], "f_o");` +
-    `model.addPoint([${at[0] + 1}, ${at[1]}], "f_x");` +
-    `model.addFrame("f_o", "f_x", null, "f"); model.setDefaultFrame("f"); refresh(); "framed"`,
+    `model.addPoint([${at[0]}, ${at[1]}, 0], "f_o");` +
+    `model.addPoint([${at[0] + 1}, ${at[1]}, 0], "f_x");` +
+    `model.addPoint([${at[0]}, ${at[1] + 1}, 0], "f_y");` +
+    `model.addFrame("f_o", "f_x", "f_y", "f"); model.setDefaultFrame("f"); refresh(); "framed"`,
   );
   if (!r.ok) throw new Error(`could not build the fixture frame: ${r.error}`);
 }
 
-/** How many entities `axisFrame` adds: the frame and its two points. */
-export const FIXTURE_ENTITIES = 3;
+/** How many entities `axisFrame` adds: the frame and its three points. */
+export const FIXTURE_ENTITIES = 4;
 
 /** Perpendicular distance from a point to the infinite line through a and b. */
 export function distanceToLine(p: number[], a: number[], b: number[]): number {

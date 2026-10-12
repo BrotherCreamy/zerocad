@@ -147,7 +147,8 @@ test("the marker is pickable, and the tag says whether it is the default", async
   assert.equal(await app.repl("hover()").then((r) => r.value), "f1",
     "the axes marker is what a frame is, as far as the cursor is concerned");
   const tag = await app.page.$eval("#hovertag", (el) => el.textContent ?? "");
-  assert.match(tag, /^f1 {2}origin p\d+, \+x toward p\d+$/, `the hover tag reads "${tag}"`);
+  // A 3D frame, the app being 3D: its plane's +y side is named too.
+  assert.match(tag, /^f1 {2}origin p\d+, \+x toward p\d+, \+y toward p\d+$/, `the hover tag reads "${tag}"`);
 
   await app.page.mouse.down();
   await app.page.mouse.up();

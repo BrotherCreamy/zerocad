@@ -16,10 +16,32 @@
 // statement — a rectangle is a rectangle in any frame — and it leaves the
 // shape one degree of freedom it used to lack: its angle, which a user who
 // wants the box level pins with one `hor`.
+//
+// **In 3D the box is laid out in the working plane**, along that plane's own
+// two axes — the default frame's +x and +y when there is one, the screen's
+// right and up when there is not — which in a view that has never been turned
+// are x and y, exactly the 2D layout. Its two derived corners are held on the
+// sketch plane like the clicked ones (see place.ts), or a rectangle drawn on a
+// plane could fold about its own diagonal. The relations need nothing new:
+// `par` and `perp` were always dimension-generic.
 
 import { Tool, defineTool, type PointerInfo, type RenderContext } from "./tool.ts";
 import { parallel, perpendicular } from "../relations/geometry.ts";
-import { placePoint } from "./place.ts";
+import { holdOnSketchPlane, placePoint, requirePlanar } from "./place.ts";
+import type { Plane } from "../view.ts";
+
+/**
+ * The two corners a drag from `a` to `c` implies: `c`'s offset from `a`, split
+ * along the plane's two axes, each half laid off from `a`. With no plane (a 2D
+ * model) the axes are x and y and this is `[x1, y0]` and `[x0, y1]`.
+ */
+function otherCorners(a: number[], c: number[], plane?: Plane): [number[], number[]] {
+  if (!plane) return [[c[0], a[1]], [a[0], c[1]]];
+  const d = a.map((ai, i) => c[i] - ai);
+  const along = (u: number[]) => d.reduce((s, di, i) => s + di * u[i], 0);
+  const du = along(plane.u), dv = along(plane.v);
+  return [a.map((ai, i) => ai + du * plane.u[i]), a.map((ai, i) => ai + dv * plane.v[i])];
+}
 
 export class RectangleTool extends Tool {
   readonly name = "rectangle";
@@ -33,7 +55,7 @@ export class RectangleTool extends Tool {
   private current: number[] | null = null;
 
   onDown(p: PointerInfo): void {
-    if (this.ctx.model.dim !== 2) throw new Error("rectangle is a 2D tool");
+    requirePlanar(this.ctx.model, this.name);
     this.from = p;
     this.current = p.world;
     this.ctx.requestRender();
@@ -48,23 +70,25 @@ export class RectangleTool extends Tool {
   onUp(p: PointerInfo): void {
     if (!this.from) return;
     const from = this.from;
-    const [x0, y0] = from.world;
-    const [x1, y1] = p.world;
     this.from = null;
     this.current = null;
 
-    if (Math.hypot(x1 - x0, y1 - y0) < 1e-6) {
+    if (Math.hypot(...p.world.map((v, i) => v - from.world[i])) < 1e-6) {
       this.ctx.requestRender();
       return; // a click with no real drag — nothing to build
     }
 
     const m = this.ctx.model;
     // The two corners the user actually pointed at carry their inference; the
-    // other two are derived, and nothing was clicked there to infer from.
+    // other two are derived, and nothing was clicked there to infer from —
+    // except the sketch plane they were laid out on.
+    const [bAt, dAt] = otherCorners(from.world, p.world, from.plane);
     const a = placePoint(this.ctx, from);
-    const b = m.addPoint([x1, y0]).name;
+    const b = m.addPoint(bAt).name;
+    holdOnSketchPlane(m, b);
     const c = placePoint(this.ctx, p);
-    const d = m.addPoint([x0, y1]).name;
+    const d = m.addPoint(dAt).name;
+    holdOnSketchPlane(m, d);
     const ab = m.addLine(a, b);
     const bc = m.addLine(b, c);
     const cd = m.addLine(c, d);
@@ -94,14 +118,8 @@ export class RectangleTool extends Tool {
 
   render(r: RenderContext): void {
     if (!this.from || !this.current) return;
-    const [x0, y0] = this.from.world;
-    const [x1, y1] = this.current;
-    const corners: [number, number][] = [
-      r.worldToScreen([x0, y0]),
-      r.worldToScreen([x1, y0]),
-      r.worldToScreen([x1, y1]),
-      r.worldToScreen([x0, y1]),
-    ];
+    const [b, d] = otherCorners(this.from.world, this.current, this.from.plane);
+    const corners: [number, number][] = [this.from.world, b, this.current, d].map((w) => r.worldToScreen(w));
     r.g.save();
     r.g.strokeStyle = "#e8a33d";
     r.g.setLineDash([4, 3]);

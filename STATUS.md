@@ -372,7 +372,8 @@ replacing) the system Node other projects on this machine may depend on.
   unchanged in a 3D model and infers no axis there, `hor`/`ver` being
   genuinely 2D-only. That test paid for itself on the spot: it caught a
   degeneracy check measuring only the first two coordinates, which refused
-  every segment that moved in z alone.
+  every segment that moved in z alone. (↻ Since 3D phase 1's camera half it
+  infers in 3D too, against a 3D default frame's axes, in its plane.)
 
 - **Kinematic drag** (`src/tools/engine.ts`, `src/kernel/problem.ts`) — with
   nothing armed, press on a point and pull: the model follows the cursor while
@@ -710,7 +711,8 @@ replacing) the system Node other projects on this machine may depend on.
   them.
   *Reverses a register entry* (left-drag on empty canvas used to pan, which was
   cellwork's habit); the reversal is recorded in `TODO.md` for the owner to
-  veto. Panning keeps middle-drag, right-drag and `pan()`.
+  veto. Panning keeps middle-drag, right-drag and `pan()`. (↻ In the 3D app
+  right-drag orbits; middle-drag and `pan()` pan.)
   *Fixed on the way:* **Escape moved from the command input to `window`.** A
   mouse press on the canvas blurs the input — a canvas is not focusable, so
   focus falls to the body — so the old binding was deaf during exactly the
@@ -1038,9 +1040,10 @@ replacing) the system Node other projects on this machine may depend on.
 
 - **3D frames: a frame is a sketch plane** (`model.ts`, `relations/refs.ts`,
   `relations/basic.ts`, `persist.ts`, `replenv.ts`, `menu.ts`) — the model half
-  of 3D phase 1. **The app still runs `Model(2)`**; nothing on screen changed,
-  and everything here is reachable from a 3D model at the command line or in a
-  test. The camera, the app on `Model(3)` and 3D rendering are the second half.
+  of 3D phase 1. **The app still ran `Model(2)`** when this landed; nothing on
+  screen changed, and everything here was reachable from a 3D model at the
+  command line or in a test. (↻ The second half, the entry below, put the app
+  on `Model(3)`.)
   `addFrame(origin?, xref?, yref?, name?)`: in a 3D model the **y-ref** is a
   third ordinary point, auto-created when absent like every free piece, and
   seeded so the frame can never start degenerate even when two of the three
@@ -1070,10 +1073,75 @@ replacing) the system Node other projects on this machine may depend on.
   that used the gauge `fix` is refused by step with the standing no-frame
   message — the app has always been 2D, so only the command line or a test
   could have written one.
-  *Known and deliberate:* `onPlane` has no glyph symbol of its own yet (it
-  would draw the fallback `o`, but only in a 3D drawing, which the app cannot
-  show until the second half — choosing a mark is for when it can be looked
-  at); the line tool infers no axis in 3D (that needs the camera's projection).
+  *Known and deliberate (then):* `onPlane` had no glyph symbol of its own (it
+  would draw the fallback `o`, but only in a 3D drawing, which the app could
+  not show — choosing a mark is for when it can be looked at); the line tool
+  inferred no axis in 3D (that needed the camera's projection). Both closed by
+  the entry below.
+  *Spec:* [`docs/plans/3d-phase1.md`](docs/plans/3d-phase1.md).
+
+- **The app is 3D: camera, working plane, projected drawing, lifted files**
+  (`view.ts`, `vec3.ts`, `arcgeom.ts`, `projection.ts`, `workplane.ts`,
+  `intersect.ts`, `picking.ts`, `snapping.ts`, `boxselect.ts`, `glyphs.ts`,
+  `framemarker.ts`, `tools/*`, `operations.ts`, `replenv.ts`, `persist.ts`,
+  `main.ts`) — the camera half of 3D phase 1. **The app runs `Model(3)`,
+  always**; every door a model comes in by (new, open, the file picker, undo)
+  opens into 3D.
+  **The camera** (`view.ts`) is orthographic: `{ox, oy, scale}` as before plus
+  optional `right`/`up` screen axes in world terms and an orbit `target`. A
+  view with no orientation is the top view, evaluated term for term as the old
+  2D formula, so every 2D caller gets bit-identical numbers. `orbitBy` turns
+  the drawing about the screen's own axes (a trackball) about the target,
+  which `panBy`/`zoomAbout` keep on its pixel; `alignView` is `lookAt`'s
+  primitive; `depth` orders a painter's sort; `screenToPlane` is the one
+  pixel-to-place intersection, and `screenToWorld` stays the 2D inverse (the
+  ray's crossing with z = 0) for 2D models; `liesOn` is the shared "is this on
+  the sketch" test.
+  **The working plane** (`workplane.ts`) is the default frame's plane when
+  there is one, else the camera-parallel plane through the target (z = 0 in an
+  unturned view); a frame seen exactly edge-on falls back to the latter. The
+  engine reads every pointer event there, reports it as `PointerInfo.plane`,
+  and does a drag's offset arithmetic on the plane the press landed on.
+  **Mouse** (⚠ register): right-drag orbits in a 3D model (`ORBIT_PER_PIXEL`,
+  half a degree), middle-drag pans, the wheel zooms about the cursor, a right
+  press released in place opens the menu; a 2D model keeps right-drag pan.
+  `orbit(yaw, pitch)` and `lookAt(frame?)` join `pan`/`zoom`, unjournalled.
+  **Drawing** (`main.ts`): curves and frames depth-sorted, then points
+  depth-sorted on top. A circle is its silhouette (still a sphere to every
+  relation — the phase-2 seam). An arc is laid out in the plane through its
+  centre and endpoints and swept counter-clockwise about that plane's normal
+  on the kernel's +z side, then +y, then +x (`arcgeom.ts` — the gauge showing
+  through, in rendering and picking only, keeping every 2D arc as it was),
+  drawn as a quarter-pixel polyline. A frame draws a three-arrow triad from
+  `frameBasis`, each arm foreshortened.
+  **Picking, snapping, box select and glyphs** stay screen-space; what changed
+  is what each entity looks like on screen and which world point a pixel on it
+  stands for (`projection.ts`). A face-on arc is the exact screen arc it always
+  was; an oblique one is a polyline (`intersect.ts` gained polylines). Snap
+  world positions are lifted off the entity, never inverted from the pixel; a
+  screen crossing counts only where both curves' lifts are one place; and with
+  a sketch plane, only snaps on it are offered (a vertex merely *behind* a
+  square-on sketch is no place on it — found in the poster screenshot).
+  Glyph nudges are measured on screen; a circle's rim glyph sits on the
+  silhouette. `onPlane` wears `▱`.
+  **Tools** draw on the working plane: rectangle (derived corners along the
+  plane's axes), circle (full 3D radius; silhouette preview via
+  `RenderContext.scale`), circle3/arc3 (3D circumcircle, world-space previews),
+  arc (endpoints stored so the drawn sweep is counter-clockwise *as seen*),
+  line (axis inference against a 3D frame, in its plane). `placePoint` infers
+  `onPlane` with the default frame where the snap leaves the point free and the
+  point is on the plane; a tool's derived points get it too. `fillet` is
+  dimension-generic.
+  **Format version 6**; opening a 2D file into 3D (keyed on `dim`) lifts every
+  coordinate to z = 0 and gives each frame a named y-ref (`<frame>_y`, never a
+  name the file uses), placed from the saved coordinates. The library opens a
+  file in its own dimension unless asked. At the command line `pt(x, y)` and
+  `fix(p, [x, y])` take the same lift. 493 unit tests, 187 e2e.
+  *Known and deliberate:* circles are spheres (silhouettes; intersection snaps
+  only square-on); an arc turned through the vertical draws as its complement;
+  `pt(x, y)` seeds at the kernel's z = 0 even with a tilted default frame; typed
+  `frame()` seeds along kernel axes in a turned view; one depth per entity in
+  the painter's sort; no snapping to off-plane geometry while sketching.
   *Spec:* [`docs/plans/3d-phase1.md`](docs/plans/3d-phase1.md).
 
 

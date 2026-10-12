@@ -8,15 +8,18 @@
 // this file a question asks it in pixels: the snap prefilter measures pixel
 // distance to the cursor, the tolerance for "is that a crossing I meant" is a
 // pixel count, and the arc-sweep test picking already had was written against
-// screen angles. The view transform is affine with a uniform scale, so a
-// segment stays a segment and a circle stays a circle under it, and the exact
-// screen crossing maps back through `screenToWorld` to the exact world
-// crossing. Doing the algebra in world space instead would have meant a second
+// screen angles. The view is an orthographic projection, so a segment stays a
+// segment under it, a circle — a sphere, in 3D, until circles carry a plane —
+// projects to its silhouette circle, and an arc seen face-on stays a circular
+// arc. Doing the algebra in world space instead would have meant a second
 // definition of "on the arc" in the opposite angular convention, which is the
-// one thing the sweep test must not have.
+// one thing the sweep test must not have. (Which world point a screen crossing
+// *is* is no longer one inverse away in 3D — see `projection.ts`, which lifts
+// a crossing back onto each curve and keeps it only where the two agree.)
 //
 // The three closed forms are segment–segment, segment–circle and
-// circle–circle; an arc is a circle that then filters its results by sweep.
+// circle–circle; an arc is a circle that then filters its results by sweep,
+// and an arc seen obliquely is a polyline of segments.
 //
 // **Degenerate cases return nothing.** Parallel lines, coincident lines,
 // tangent circles, a circle inside another: all of them produce either no
@@ -30,7 +33,14 @@ export type Curve =
   | { kind: "segment"; a: Pt; b: Pt }
   | { kind: "circle"; c: Pt; r: number }
   /** `a0`/`a1` are screen angles of the arc's start and end; `slack` is in radians. */
-  | { kind: "arc"; c: Pt; r: number; a0: number; a1: number; slack: number };
+  | { kind: "arc"; c: Pt; r: number; a0: number; a1: number; slack: number }
+  /**
+   * A curve that is none of the above on screen, as a fine chain of segments —
+   * which in practice means an arc seen obliquely, whose projection is part of
+   * an ellipse. See `projection.ts` for how fine (a quarter-pixel at worst) and
+   * why an arc seen face-on stays an exact `arc` instead.
+   */
+  | { kind: "polyline"; pts: Pt[] };
 
 /**
  * Two candidate crossings closer together than this (in screen pixels) are one
@@ -99,12 +109,36 @@ export function arcSlack(r: number, pixels: number): number {
  * Order of the arguments does not matter; the result is unordered.
  */
 export function intersect(p: Curve, q: Curve): Pt[] {
+  // A polyline is its segments, each asked the ordinary question. A crossing
+  // that lands exactly on a joint is found by both segments meeting there, and
+  // is one crossing, not two.
+  if (p.kind === "polyline") return distinct(piecesOf(p).flatMap((s) => intersect(s, q)));
+  if (q.kind === "polyline") return distinct(piecesOf(q).flatMap((s) => intersect(p, s)));
   if (p.kind === "segment") {
     if (q.kind === "segment") return segmentSegment(p.a, p.b, q.a, q.b);
     return onArcs(segmentCircle(p.a, p.b, q.c, q.r), q);
   }
   if (q.kind === "segment") return onArcs(segmentCircle(q.a, q.b, p.c, p.r), p);
   return onArcs(onArcs(circleCircle(p.c, p.r, q.c, q.r), p), q);
+}
+
+/** A polyline's pieces as segments, skipping any of zero length. */
+export function piecesOf(curve: Extract<Curve, { kind: "polyline" }>): Extract<Curve, { kind: "segment" }>[] {
+  const out: Extract<Curve, { kind: "segment" }>[] = [];
+  for (let i = 1; i < curve.pts.length; i++) {
+    const a = curve.pts[i - 1], b = curve.pts[i];
+    if (a[0] !== b[0] || a[1] !== b[1]) out.push({ kind: "segment", a, b });
+  }
+  return out;
+}
+
+/** The points with near-duplicates (a millionth of a pixel) dropped. */
+function distinct(points: Pt[]): Pt[] {
+  const out: Pt[] = [];
+  for (const p of points) {
+    if (!out.some((q) => Math.abs(q[0] - p[0]) < 1e-6 && Math.abs(q[1] - p[1]) < 1e-6)) out.push(p);
+  }
+  return out;
 }
 
 /** Drops the candidates that fall outside `curve`'s sweep, if it is an arc. */
