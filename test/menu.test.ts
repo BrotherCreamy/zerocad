@@ -135,7 +135,7 @@ test("Fix pins where the point is in the frame's coordinates, not in the kernel'
   // the two apart.
   const o = model.addPoint([10, 5], "o").name;
   const x = model.addPoint([10, 6], "x").name; // +x points along world +y
-  model.addFrame(o, x, "f");
+  model.addFrame(o, x, null, "f");
   model.setDefaultFrame("f");
   const p = model.addPoint([13, 9]).name;
 
@@ -148,6 +148,32 @@ test("Fix pins where the point is in the frame's coordinates, not in the kernel'
   const report = model.solve();
   assert.ok(report.solved, "a fix at the current position should solve");
   assert.deepEqual(model.coords(p).map((v) => Math.round(v * 1e6) / 1e6), [13, 9]);
+});
+
+test("Fix in a 3D model is frame coordinates too — three of them, not the kernel's numbers", async () => {
+  // This menu used to type raw coordinates in 3D, back when `fix` there was
+  // gauge-relative. With that form gone, raw numbers would be read in the
+  // default frame and fling the point to wherever they land in it.
+  await loadKernel();
+  const model = new Model(3);
+  // A frame whose +x is world +y and whose plane is world y–z, so its +z is
+  // world +x: every frame coordinate is a different raw one.
+  const o = model.addPoint([10, 5, 2], "o").name;
+  const x = model.addPoint([10, 6, 2], "x").name;
+  const y = model.addPoint([10, 5, 7], "y").name;
+  model.addFrame(o, x, y, "f");
+  const p = model.addPoint([13, 9, 7]).name; // (3, 4, 5) from the origin, in world terms
+
+  // No default frame: shown, disabled, carrying the model's own message.
+  const item = menuFor(model, pickOf(model, p)).items.find((i) => i.label === "Fix")!;
+  assert.equal(item.action.do, "disabled");
+
+  model.setDefaultFrame("f");
+  assert.equal(commandFor(menuFor(model, pickOf(model, p)), "Fix"), `fix("${p}", [4, 5, 3])`);
+  fix(model, p, [4, 5, 3]);
+  assert.ok(model.solve().solved);
+  assert.deepEqual(model.coords(p).map((v) => Math.round(v * 1e6) / 1e6), [13, 9, 7],
+    "running what the menu typed holds the point exactly where it is");
 });
 
 test("a dimension glyph's menu is its description, Set value… and Delete", async () => {

@@ -29,6 +29,9 @@ test("2D: fix + dist solves a triangle-free two-point system", async () => {
 test("3D: the exact same relation code works with 3 coordinates", async () => {
   await loadKernel();
   const m = new Model(3);
+  // `fix` is frame-relative in 3D as in 2D since 3D frames closed the gauge
+  // seam; the kernel-aligned fixture keeps [0, 0, 0] meaning what it did.
+  axisFrame(m);
   m.addPoint([0, 0, 0], "a");
   m.addPoint([1, 1, 1], "b");
   fix(m, "a", [0, 0, 0]);

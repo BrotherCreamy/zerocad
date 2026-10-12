@@ -169,7 +169,7 @@ function framedModel(deg = 0): Model {
   const rad = (deg * Math.PI) / 180;
   m.addPoint([0, 0], "o");
   m.addPoint([20 * Math.cos(rad), 20 * Math.sin(rad)], "x");
-  m.addFrame("o", "x", "fr");
+  m.addFrame("o", "x", null, "fr");
   return m;
 }
 

@@ -52,7 +52,8 @@ export interface ArcEntity {
 }
 
 /**
- * A coordinate frame: an origin point plus a point fixing the +x direction.
+ * A coordinate frame: an origin point plus a point fixing the +x direction —
+ * and, in a 3D model, a third point fixing which way +y goes.
  *
  * There is no built-in world frame in this model, and that absence is the
  * point — an origin nobody made tempts every drawing into being related to
@@ -60,28 +61,41 @@ export interface ArcEntity {
  * reference to an axis — means nothing until one does.
  *
  * Like a line, a frame is purely *referential*: it owns no variables, and its
- * two points are ordinary points that can be dragged, dimensioned and
- * constrained like any other. Only the x-ref's *direction* from the origin
- * counts; how far away it sits is irrelevant, which is why `frameBasis` hands
- * both axes out normalised.
+ * points are ordinary points that can be dragged, dimensioned and constrained
+ * like any other. Only the x-ref's *direction* from the origin counts; how far
+ * away it sits is irrelevant, which is why `frameBasis` hands every axis out
+ * normalised.
  *
- * +y is +x turned a quarter turn counter-clockwise. That is fully determined
- * in 2D and not in any higher dimension (an origin and one direction leave a
- * whole rotation free about that axis), so frames are 2D-only — and so, in
- * turn, are the axis references that name their directions.
+ * In 2D, +y is +x turned a quarter turn counter-clockwise, and that settles the
+ * frame. In 3D it settles nothing — an origin and one direction leave a whole
+ * rotation free about that direction — so a 3D frame carries a **y-ref** as
+ * well, and the pair is what makes a 3D frame a *plane*: the one through the
+ * origin containing both refs, which is what a sketch is drawn on. The y-ref
+ * fixes that plane and which side of +x is +y; it does not fix the exact angle,
+ * because `frameBasis` straightens it against +x (Gram–Schmidt), and +z is
+ * then +x × +y. So a y-ref dragged anywhere in its half of the plane leaves
+ * the frame exactly where it was.
+ *
+ * `yref` is absent in a 2D model and always present in a 3D one: `addFrame`
+ * creates it when it is not given, the way it creates every missing piece.
+ * Frames exist only in 2D and 3D models — above that, two directions leave a
+ * rotation free again, and nobody has asked for a fourth axis.
  */
 export interface FrameEntity {
   kind: "frame";
   name: string;
   origin: string; // a point name
   xref: string;   // a point name; its direction from the origin is +x
+  /** 3D only: a point on the +y side of the frame's plane. Absent in 2D. */
+  yref?: string;
 }
 
 export type Entity = PointEntity | LineEntity | CircleEntity | ArcEntity | FrameEntity;
 
 /**
- * A **frame-axis reference**: the string `"f1.x"` or `"f1.y"`, naming the
- * direction of that frame's axis rather than any entity.
+ * A **frame-axis reference**: the string `"f1.x"`, `"f1.y"` or — for a 3D
+ * frame — `"f1.z"`, naming the direction of that frame's axis rather than any
+ * entity.
  *
  * This is what replaced `hor`/`ver`. Those words implied a privileged pair of
  * directions — a world frame in vocabulary form — where what is actually meant
@@ -95,26 +109,47 @@ export type Entity = PointEntity | LineEntity | CircleEntity | ArcEntity | Frame
  * would leave relations reading one that is gone. Turning a reference into an
  * actual direction is a different job and lives one layer up, beside the rest
  * of the lazy plumbing, in `relations/refs.ts`.
+ *
+ * `"z"` is syntax everywhere and meaning only in 3D. Whether a model's frames
+ * *have* a z axis is a question about the model, so it is asked by
+ * `Model.requireAxis` rather than here — this function stays a pure reading of
+ * a string, which is what lets `referentOf` and the deletion cascade lean on
+ * the same syntax without a model in hand.
  */
-export type AxisName = "x" | "y";
+export type AxisName = "x" | "y" | "z";
 
 /**
  * The frame and axis a reference names, or null for an ordinary name.
  *
  * Throws on a dot followed by anything else, rather than falling back to
  * "ordinary name": a name with a dot in it cannot exist (see `claimName`), so
- * `par("l1", "f1.z")` is a typo with no other possible reading, and answering
- * `"f1.z" is not a line` would send the reader looking for the wrong mistake.
+ * `par("l1", "f1.w")` is a typo with no other possible reading, and answering
+ * `"f1.w" is not a line` would send the reader looking for the wrong mistake.
  */
 export function parseAxisRef(ref: string): { frame: string; axis: AxisName } | null {
   const dot = ref.indexOf(".");
   if (dot < 0) return null;
   const frame = ref.slice(0, dot);
   const axis = ref.slice(dot + 1);
-  if (axis !== "x" && axis !== "y") {
-    throw new Error(`"${ref}" is not a frame axis — say "${frame}.x" or "${frame}.y"`);
+  if (axis !== "x" && axis !== "y" && axis !== "z") {
+    throw new Error(`"${ref}" is not a frame axis — say "${frame}.x" or "${frame}.y" (or "${frame}.z" in 3D)`);
   }
   return { frame, axis };
+}
+
+/**
+ * Whether a model of this many dimensions can hold a frame at all. 2D, where
+ * an origin and one direction settle it; 3D, where a second direction does.
+ * Anywhere else a frame would leave a rotation free, so there are none — and
+ * with no frames there is no `fix` either, since `fix` is a position *in* one.
+ */
+function framesExistIn(dim: number): boolean {
+  return dim === 2 || dim === 3;
+}
+
+/** What a model with no frames says when asked for one. One wording, two callers. */
+function noFramesIn(dim: number): string {
+  return `a ${dim}D model has no frames — a frame lives in a 2D or 3D model`;
 }
 
 /**
@@ -129,7 +164,7 @@ export function parseAxisRef(ref: string): { frame: string; axis: AxisName } | n
  * the whole reason the owner asked for `d4` rather than `r4`.
  *
  * `fix` is deliberately **not** here even though it carries numbers. It carries
- * *coordinates* — two of them, in a frame — not one value, so there is nothing
+ * *coordinates* — two or three of them, in a frame — not one value, so there is nothing
  * for `set("…​.value", x)` to mean; and Onshape's fix is a constraint too.
  *
  * The set lives in this file rather than in `relations/` because this layer
@@ -248,9 +283,9 @@ export class Model {
   /** Named relations, in the order they were made. See `relation()`. */
   relations = new Map<string, RelationEntry>();
   /**
-   * Which frame `fix` and the `xaxis()`/`yaxis()` helpers mean when they are
-   * not told which. Null in a new model, and stays null until someone makes a
-   * frame and says so — see `setDefaultFrame`.
+   * Which frame `fix`, `onPlane` and the `xaxis()`/`yaxis()`/`zaxis()` helpers
+   * mean when they are not told which. Null in a new model, and stays null
+   * until someone makes a frame and says so — see `setDefaultFrame`.
    */
   defaultFrame: string | null = null;
   private counters = new Map<string, number>();
@@ -580,43 +615,108 @@ export class Model {
   }
 
   /**
-   * A coordinate frame: an origin and a point giving it a +x direction.
+   * A coordinate frame: an origin, a point giving it a +x direction, and — in
+   * a 3D model — a point giving it a +y side, which together make it a plane.
+   * See `FrameEntity`.
    *
-   * Free-entities conventions throughout — both arguments optional, `null`
+   * Free-entities conventions throughout — every argument optional, `null`
    * the same as absent, missing points auto-created as real named points,
    * and the whole thing journalled as *this one call* so a replay re-expands
-   * it identically rather than seeing two stray points.
+   * it identically rather than seeing stray points. A 2D model refuses a
+   * y-ref outright rather than ignoring it: +y is already settled there, and
+   * a third point the frame then never read would be a constraint-shaped
+   * thing that constrains nothing.
    *
-   * The auto-created pair is seeded a span apart for the same reason a free
-   * line's endpoints are, only more sharply: a frame whose two points
-   * coincide has no direction at all, so every relation written against it
-   * would be meaningless. A degenerate seed has to be impossible, not merely
-   * discouraged.
+   * Auto-created pieces are seeded a span apart for the same reason a free
+   * line's endpoints are, only more sharply: a frame whose points coincide
+   * has no direction, and one whose y-ref lies on its own x axis has no
+   * plane, so every relation written against either would be meaningless. A
+   * degenerate seed has to be impossible, not merely discouraged — which in
+   * 3D takes a little more than "offset along the next axis", because two of
+   * the three points may have been *given*. A seed is laid along the first
+   * kernel axis that is not parallel to the arm already there (see
+   * `axisClearOf`), so `addFrame("o", "up")` with `up` straight along the
+   * kernel's y still gets a y-ref off that line. Only when the given points
+   * themselves coincide is there nothing a seed can do, and then the
+   * degeneracy is the drawing's, floored by `frameBasis` like a dragged one.
+   *
+   * The name is the last argument, as it is on every constructor here. That
+   * moved it from third to fourth; files older than format version 5 are
+   * translated on the way in — see `persist.ts`.
    */
-  addFrame(origin?: string | null, xref?: string | null, name?: string | null): FrameEntity {
-    if (this.dim !== 2) throw new Error("a frame is a 2D entity");
+  addFrame(origin?: string | null, xref?: string | null, yref?: string | null,
+           name?: string | null): FrameEntity {
+    // Everything is checked before anything is created, so a refused call
+    // leaves no auto-created point behind.
+    if (!framesExistIn(this.dim)) throw new Error(noFramesIn(this.dim));
     if (origin != null) this.point(origin);
     if (xref != null) this.point(xref);
-    if (origin != null && origin === xref) throw new Error("a frame needs two different points");
-    const span = Model.FREE_SPAN;
-    let o = origin, x = xref;
-    if (o == null && x == null) {
-      o = this.withoutRecording(() => this.addPoint()).name;
-      x = this.freePointOffset(this.coords(o), 0, span).name;
-    } else if (x == null) {
-      x = this.freePointOffset(this.coords(o!), 0, span).name;
-    } else if (o == null) {
-      o = this.freePointOffset(this.coords(x), 0, -span).name;
+    if (yref != null) {
+      if (this.dim === 2) {
+        throw new Error("a 2D frame takes no y-ref — its +y is +x turned a quarter turn, already");
+      }
+      this.point(yref);
     }
+    const given = [origin, xref, yref].filter((n) => n != null);
+    if (new Set(given).size !== given.length) {
+      throw new Error(`a frame needs ${this.dim === 2 ? "two" : "three"} different points`);
+    }
+
+    const span = Model.FREE_SPAN;
+    const arm = (from: string, to: string) => {
+      const [a, b] = [this.coords(from), this.coords(to)];
+      return b.map((v, i) => v - a[i]);
+    };
+    let o = origin ?? null, x = xref ?? null, y = yref ?? null;
+    // The origin first, since both arms are seeded off it. Given an x-ref it
+    // sits a span back along the kernel's x, as it always has — unless a given
+    // y-ref lies on that very line, in which case the next axis along.
+    if (o == null) {
+      if (x != null) {
+        const k = y == null ? 0 : Model.axisClearOf(arm(x, y), [0, 1, 2]);
+        o = this.freePointOffset(this.coords(x), k, -span).name;
+      } else if (y != null) {
+        o = this.freePointOffset(this.coords(y), 1, -span).name;
+      } else {
+        o = this.withoutRecording(() => this.addPoint()).name;
+      }
+    }
+    if (x == null) {
+      const k = y == null ? 0 : Model.axisClearOf(arm(o, y), [0, 1, 2]);
+      x = this.freePointOffset(this.coords(o), k, span).name;
+    }
+    if (y == null && this.dim === 3) {
+      y = this.freePointOffset(this.coords(o), Model.axisClearOf(arm(o, x), [1, 2, 0]), span).name;
+    }
+
     const nm = this.claimName("f", name ?? undefined);
-    const ent: FrameEntity = { kind: "frame", name: nm, origin: o!, xref: x! };
+    const ent: FrameEntity = { kind: "frame", name: nm, origin: o, xref: x };
+    if (y != null) ent.yref = y;
     this.entities.set(nm, ent);
-    this.record("addFrame", [origin ?? null, xref ?? null, nm]);
+    this.record("addFrame", [origin ?? null, xref ?? null, yref ?? null, nm]);
     return ent;
   }
 
   /**
-   * Which frame `fix` and `xaxis()`/`yaxis()` mean when not told. A model-level
+   * The first of the kernel axes in `order` that is not parallel to `avoid` —
+   * where a seed laid along it from the end of `avoid` can neither land on
+   * that line nor double back along it. With no direction to avoid (`avoid`
+   * of zero length) nothing helps, and the first axis is as good as any.
+   *
+   * At most one kernel axis can be parallel to a non-zero vector, so with two
+   * or more candidates this always finds a clear one.
+   */
+  private static axisClearOf(avoid: number[], order: number[]): number {
+    const len = Math.hypot(...avoid);
+    for (const k of order) {
+      const off = Math.sqrt(Math.max(0, len * len - avoid[k] * avoid[k]));
+      if (off > 1e-9 * len) return k;
+    }
+    return order[0];
+  }
+
+  /**
+   * Which frame `fix`, `onPlane` and the axis helpers mean when not told. A model-level
    * pointer and nothing more: a new model has **no** default, because a frame
    * exists only because a user made one.
    *
@@ -637,6 +737,9 @@ export class Model {
    * explicit frame name whatever the caller typed.
    */
   resolveFrame(name?: string | null): string {
+    // Said first, because in a model that cannot hold a frame the standing
+    // advice to go and make one would only lead to a second refusal.
+    if (!framesExistIn(this.dim)) throw new Error(noFramesIn(this.dim));
     const n = name ?? this.defaultFrame;
     if (n == null) {
       throw new Error("no default frame — frame() then setDefaultFrame(), or say which frame");
@@ -645,13 +748,39 @@ export class Model {
     return n;
   }
 
+  /**
+   * Refuses an axis this model's frames do not have. A 2D frame has an x and a
+   * y and nothing else: its "z" would be the normal to a plane every point
+   * already lies in, so anything written against it could only be trivially
+   * true or impossible. `ref`, when given, is what the caller wrote, so the
+   * message can quote it back.
+   */
+  requireAxis(axis: AxisName, ref?: string): void {
+    if (axis === "z" && this.dim !== 3) {
+      const what = ref === undefined ? "" : `"${ref}": `;
+      throw new Error(`${what}a 2D frame has no z axis — z is the normal to a 3D frame's plane`);
+    }
+  }
+
+  /**
+   * The written reference to one of a frame's axes — `"f1.z"` — with the frame
+   * resolved **now**: the one named, or the default. What `xaxis()`, `yaxis()`
+   * and `zaxis()` are at the command line, kept here so the axis check and the
+   * frame resolution happen in one order everywhere. The axis is checked
+   * first, because in a 2D model no frame you could make would have a z.
+   */
+  axisRef(axis: AxisName, frame?: string | null): string {
+    this.requireAxis(axis);
+    return `${this.resolveFrame(frame)}.${axis}`;
+  }
+
   /** Seed for a radius nobody specified. A seed, not a constraint. */
   static readonly DEFAULT_RADIUS = 10;
 
   /**
    * How far apart an auto-created pair of points is seeded — a free line's
-   * endpoints, a frame's origin and x-ref. A seed, not a constraint; what it
-   * buys is that the direction between them is never zero.
+   * endpoints, a frame's origin and its refs. A seed, not a constraint; what
+   * it buys is that the direction between them is never zero.
    */
   static readonly FREE_SPAN = 20;
 
@@ -739,7 +868,9 @@ export class Model {
       case "line": return [...e.refs];
       case "circle": return [e.center];
       case "arc": return [e.center, e.start, e.end];
-      case "frame": return [e.origin, e.xref];
+      // The y-ref is a reference like the other two, so deleting it takes the
+      // frame — a 3D frame cannot outlive the point that gives it a plane.
+      case "frame": return e.yref === undefined ? [e.origin, e.xref] : [e.origin, e.xref, e.yref];
     }
   }
 

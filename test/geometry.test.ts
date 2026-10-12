@@ -229,6 +229,9 @@ test("arcEndpoints: both ends are pulled onto the arc's own circle", async () =>
 test("3D: perpendicular is the identical code, one dimension up", async () => {
   await loadKernel();
   const m = new Model(3);
+  // `fix` in 3D is frame-relative now, as in 2D — the gauge form it used to
+  // have up here is gone. A kernel-aligned fixture keeps every number below.
+  axisFrame(m);
   m.addPoint([0, 0, 0], "r0");
   m.addPoint([1, 0, 0], "r1");
   fix(m, "r0", [0, 0, 0]);
@@ -247,6 +250,7 @@ test("3D: perpendicular is the identical code, one dimension up", async () => {
 test("3D: parallel uses all three wedge components, not just one", async () => {
   await loadKernel();
   const m = new Model(3);
+  axisFrame(m); // `fix` is frame-relative in 3D too
   m.addPoint([0, 0, 0], "r0");
   m.addPoint([1, 2, 3], "r1");
   fix(m, "r0", [0, 0, 0]);
@@ -268,6 +272,7 @@ test("3D: parallel uses all three wedge components, not just one", async () => {
 test("3D: symmetric about a line is a half-turn, and still solves", async () => {
   await loadKernel();
   const m = new Model(3);
+  axisFrame(m); // `fix` is frame-relative in 3D too
   m.addPoint([0, 0, 0], "s");
   m.addPoint([0, 0, 10], "e");
   fix(m, "s", [0, 0, 0]);

@@ -11,6 +11,7 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { openApp, axisFrame, type AppContext } from "./harness.ts";
+import { VERSION } from "../../src/persist.ts";
 
 let app: AppContext;
 before(async () => {
@@ -147,7 +148,8 @@ test("the menu's Set value… types the command and leaves the number to the use
 
 test("a set survives save and open, at the value it was set to", async () => {
   const text = (await app.repl("save()")).value as string;
-  assert.match(text, /"version": 4/);
+  // The app writes the current format — whatever later packages moved it to.
+  assert.ok(text.includes(`"version": ${VERSION}`), "the file is written in the current format");
   assert.match(text, /"op": "set"/);
 
   await app.type(`open(${JSON.stringify(text)})`);

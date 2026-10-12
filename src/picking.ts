@@ -184,6 +184,7 @@ export const SHORT_OP: Record<string, string> = {
   parallel: "par", perpendicular: "perp", angle: "ang", pointOnLine: "on",
   equalLength: "eq", radius: "rad", onCircle: "oncircle", concentric: "conc",
   equalRadius: "eqrad", tangent: "tan", symmetric: "sym", arcEndpoints: "arcends",
+  onPlane: "onplane",
 };
 
 export function describeRelation(r: RelationEntry): string {
@@ -214,7 +215,8 @@ function describeGeometry(model: Model, name: string, kind: Entity["kind"], n: (
     case "frame": {
       const f = model.frame(name);
       const dflt = model.defaultFrame === name ? "  (default)" : "";
-      return `${name}  origin ${f.origin}, +x toward ${f.xref}${dflt}`;
+      const plane = f.yref === undefined ? "" : `, +y toward ${f.yref}`;
+      return `${name}  origin ${f.origin}, +x toward ${f.xref}${plane}${dflt}`;
     }
   }
 }

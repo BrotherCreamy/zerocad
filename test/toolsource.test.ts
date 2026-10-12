@@ -15,7 +15,7 @@ import { ensureKernelLoaded } from "../src/kernel/problem.ts";
 import { Model } from "../src/model.ts";
 import { Repl } from "../src/repl.ts";
 import { neocadScope } from "../src/replenv.ts";
-import { open as openModel, save, savedTools, type SavedModel } from "../src/persist.ts";
+import { VERSION, open as openModel, save, savedTools, type SavedModel } from "../src/persist.ts";
 import { ToolSourceStore, carriedNotice, carryIntoSession } from "../src/toolsource.ts";
 import { defineTool, getToolCtor, listTools } from "../src/tools/tool.ts";
 import "../src/tools/point.ts"; // a built-in, registered the way built-ins are
@@ -139,7 +139,11 @@ test("save carries the source, and a session with no tools writes the file it al
   await run(repl, entry);
   const after = JSON.parse(await value(repl, "save()") as string) as SavedModel;
   assert.deepEqual(after.tools, [{ name: "t_saved", source: entry }]);
-  assert.equal(after.version, 4, "an additive optional field is not a format break");
+  // Whatever the current version is — the point is that carrying tools did not
+  // move it. (It was 4 when this was written; 3D frames moved it to 5 for a
+  // reason of their own.)
+  assert.equal(after.version, VERSION, "an additive optional field is not a format break");
+  assert.equal(JSON.parse(before).version, VERSION);
 
   // The rest of the file is untouched — the tools ride beside the journal.
   assert.deepEqual(after.journal, JSON.parse(before).journal);

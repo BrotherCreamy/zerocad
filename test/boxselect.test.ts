@@ -263,7 +263,7 @@ function framedModel(): Model {
   const m = new Model(2);
   m.addPoint([0, 0], "o");
   m.addPoint([20, 0], "x");
-  m.addFrame("o", "x", "fr");
+  m.addFrame("o", "x", null, "fr");
   return m;
 }
 

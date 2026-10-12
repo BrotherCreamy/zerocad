@@ -10,8 +10,10 @@
 // 2D turn out to hold unchanged in any dimension. "Parallel" is "the wedge
 // vanishes" whether that wedge has one component or three. Where a relation
 // is genuinely 2D-only it says so and throws, rather than pretending. The
-// frame-axis references below are the one place that bites: a frame is 2D-only,
-// so an axis reference is too, while the relation taking it is not.
+// frame-axis references below follow the frame they name: `"f1.x"` and
+// `"f1.y"` in 2D or 3D, `"f1.z"` only in 3D, since a 2D frame has no z — while
+// the relations taking them are generic, with the wedge simply growing from one
+// component to three.
 
 import type { Model } from "../model.ts";
 import type { Dual } from "../kernel/dual.ts";
@@ -23,7 +25,8 @@ import { coincident } from "./basic.ts";
 //
 // `par`, `perp` and `ang` are the relations that read their arguments for a
 // *direction* and for nothing else, which is exactly the set that can take a
-// **frame-axis reference** — `"f1.x"`, `"f1.y"` — beside an ordinary line.
+// **frame-axis reference** — `"f1.x"`, `"f1.y"`, and in 3D `"f1.z"` — beside an
+// ordinary line.
 // That is where `hor` and `ver` went: `par("l1", "f1.y")` is "vertical", and
 // nothing in the vocabulary implies a privileged pair of directions any more.
 //

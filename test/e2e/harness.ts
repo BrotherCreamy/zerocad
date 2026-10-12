@@ -247,7 +247,7 @@ export async function axisFrame(app: AppContext, at: [number, number] = [0, 0]):
   const r = await app.repl(
     `model.addPoint([${at[0]}, ${at[1]}], "f_o");` +
     `model.addPoint([${at[0] + 1}, ${at[1]}], "f_x");` +
-    `model.addFrame("f_o", "f_x", "f"); model.setDefaultFrame("f"); refresh(); "framed"`,
+    `model.addFrame("f_o", "f_x", null, "f"); model.setDefaultFrame("f"); refresh(); "framed"`,
   );
   if (!r.ok) throw new Error(`could not build the fixture frame: ${r.error}`);
 }
