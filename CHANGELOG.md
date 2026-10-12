@@ -7,6 +7,94 @@ decisions.
 
 ---
 
+## Planar discipline: circles and arcs carry a plane
+
+![A rectangle and two circles drawn on a sketch plane tipped off every kernel axis, turned a radian away: the rectangle is a parallelogram, and both circles are ellipses inscribed in it — one drawn with the circle tool, one through three clicked points, passing exactly through them](docs/images/55-circles-seen-as-ellipses.png)
+
+**3D phase 2.** Phase 1 left three honest lies in the drawing — a circle was a
+sphere (round from every angle, snapped only face-on), an arc's side came from
+the kernel's axes, and a sketch simply ignored geometry off its plane. All three
+are closed.
+
+| | |
+|---|---|
+| ![The same sketch square-on, after plane() and the circle and 3-point circle tools: two circles, a rectangle, the tilted frame's triad with its z arm pointing at the viewer](docs/images/54-circles-on-a-tilted-sketch-square-on.png) | ![The sketch turned, with the point tool armed over empty space: a dashed green square with a small ring sits on the sketch, and a faint dashed leader runs from it up to p13, a point thirty units off the plane — the projected snap](docs/images/56-projected-snap.png) |
+| ![A right-click on a second frame's arm: the frame lights amber and the menu reads Insert name, Delete, and Sketch on this with setDefaultFrame("f2"); lookAt("f2") beside it](docs/images/57-sketch-on-this.png) | ![A version-6 file opened and turned: a floor and a wall tipped up from it, each with its own arc and circle; the floor's circle is a flat ellipse and the wall's nearly round, and the log reports [floor, wall, floor, wall] for the four planes](docs/images/58-a-v6-file-opened-planar.png) |
+
+**A circle or arc in 3D names its plane — a frame.** `addCircle(center?,
+radius?, plane?, name?)`, `addArc(…, radius?, plane?, name?)`, `circ(c, r,
+plane?)`, `arc(c, s, e, r, plane?)`: the frame named, or the default resolved
+**at call time and journalled resolved** — `fix`'s rule — and with neither, the
+standing message. ⚠ **That is a real semantic change:** a 3D circle now needs a
+frame to exist, exactly as `fix` does; in a one-model 3D world a circle without
+a plane would be a sphere. A 2D model refuses the argument, and 2D behaviour is
+unchanged. **The plane is an orientation, never a constraint:** the rim is the
+circle through the circle's own centre parallel to the frame's x–y plane, and
+the centre is not pinned to the frame — a constructor never constrains — so
+dragging a centre off the frame carries the rim with it, parallel. (A tool
+holds what it draws on the sketch with an ordinary `onPlane`, as before.)
+Deleting a frame takes the circles and arcs on it.
+
+**`onCircle` and `tangent` mean the planar rim.** In 3D each gains a second
+block — the point (or both ends of the line) on the plane through the centre
+parallel to the frame, the frame read as a datum — so `oncircle` is a curve,
+not a sphere, and a tangent line lies in the circle's plane instead of swinging
+round its centre. **In 2D that block would be trivially zero and is not
+emitted**: block counts and residual values are exactly today's, and tests say
+so.
+
+**An arc turns about its frame's +z.** The kernel-axis side rule is retired;
+an arc on an upside-down frame draws the arc it was given, not its complement.
+`fillet(l1, l2, r, plane?)` gives its arc the default frame in 3D and refuses a
+corner that is not in that frame's orientation, naming the frame.
+
+**A planar circle is drawn, picked, snapped and boxed as the ellipse it
+projects to** — a closed quarter-pixel polyline seen obliquely, the exact
+circle face-on — through one new module, `curveplane.ts`, that answers "where is
+this rim" for the renderer, projection, glyphs, tools and fillet alike. The
+silhouette is gone, and with it the face-on-only intersection snaps.
+
+**A point off the sketch snaps at its projection** — the foot of the
+perpendicular onto the sketch plane — as a position aid only. It **infers
+nothing** (a coincidence with a point the new one is not at would be a lie),
+ranks below every place really on the sketch and above a bare curve, and is
+drawn as a **dashed hollow square with a leader** back to the point it borrows
+from. Points only in this package; projecting curves is later.
+
+**Starting a sketch.** `plane(origin?, xref?, yref?)` is a frame, made the
+default, looked at square-on — "start sketching here" in one call, journalling
+only the frame and the `setDefaultFrame`, never the camera. A frame's context
+menu gains **Sketch on this** (it types `setDefaultFrame("f"); lookAt("f")`).
+`frame()` typed in a turned view now seeds facing the viewer instead of along
+the kernel's axes. In 3D with no default frame the circle, arc and fillet tools
+refuse their first click out loud, and the empty-canvas menu shows them
+disabled with that message underneath.
+
+**Format version 7.** Older files translate on the way in: in 2D the plane is
+null; in 3D an arc takes the frame nearest its normal (read from the *saved*
+coordinates), a fillet its corner's, a circle the default; a file with no frame
+at all — any frameless 2D drawing — gets one frame of the translation's own,
+`plane`, lying where its curves are; and an arc that version 6 drew the other
+way round has its ends swapped so it opens as the arc it was. The rule is
+written out in `src/planetranslation.ts`.
+
+**Found and fixed on the way:** an operation journalled itself *before* its
+body ran, so a fillet refused for its radius stayed in the journal and the file
+saved after it failed to reopen at that step. Operations now journal once they
+have succeeded.
+
+**Known and deliberate:** a plane never pins a centre; curves off the sketch
+are not projected; a v6 circle cannot say which plane it was drawn on and takes
+the default; a v6 bare `arc()` whose ends were auto-created cannot be swapped;
+`pt(x, y)` still seeds at the kernel's z = 0; one depth per entity in the
+painter's sort; the last click's snap marker stays on screen until the next
+redraw (older than this package — screenshot 54 moved the mouse off it).
+
+533 unit tests (from 493), 195 end-to-end (from 187), all green with the
+typecheck and the kernel's own.
+
+---
+
 ## The app is 3D: an orbit camera, sketches on planes, and 2D files lifted
 
 ![A floor sketch and a wall sketch standing on its back edge, seen obliquely: the floor is a parallelogram with one filleted corner drawn as part of an ellipse, the wall's profile — two lines, a three-point arc bump, two more lines — rises from the floor's back edge, and each frame's triad shows its x, y and z arms foreshortened](docs/images/52-two-sketch-planes-oblique.png)

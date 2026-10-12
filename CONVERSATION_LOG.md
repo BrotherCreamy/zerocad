@@ -106,6 +106,102 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### Planar discipline: a plane is an orientation, and what the old files needed
+
+The spec settled the big fork itself — a circle's plane is a frame reference
+that orients the rim around wherever the centre is, and the circle op does
+*not* add an `onPlane(center)` — and building it confirmed the reading rather
+than overturning it. An auto-constraint would have made `addCircle` the one
+constructor that constrains, and a circle dragged off its sketch would have
+snapped back to a plane nobody asked for; the tools already hold what they
+place with an `onPlane` the user can see and delete, which is where that claim
+belongs. What the reading costs is honesty about the rim: it is the circle
+through the *centre*, parallel to the frame, and the doc comment and a test say
+exactly that (drag the centre nine units off the frame, the whole rim goes nine
+units with it).
+
+**Which relations read the plane.** `onCircle` and `tangent` — the two that are
+claims about the rim. `rad`, `conc` and `eqrad` read centre and radius only and
+were left alone; `concentric` across two different frames is still just "same
+centre", which is what it says. The second residual of each went in its own
+block rather than as a second row of the first, so an offender report can say
+`oncircle(p,c)|plane`, and in 2D the block is simply not added — which keeps
+the 2D relations block-for-block and value-for-value what they were (the spec's
+net, and a mutation run confirmed the new 3D tests fail without the blocks).
+`tangent` holds *both* line ends on the rim's plane, not only the touching
+point: a tangent line lies in the circle's plane, and one end alone would
+leave it free to tip out of it about the contact.
+
+**Arcs: the c/s/e plane, oriented by the frame.** Two readings were on the
+table: draw an arc in the plane through its centre and ends (the spec's
+wording — the geometry already says that much) with the frame deciding only the
+sweep's sense; or draw it in the frame-parallel plane through the centre, like
+a circle, with the ends projected. They agree whenever `arcends` holds, which
+in 3D now includes the plane block. The first was kept because it draws what
+the model actually has while a solve is still pulling, the way the existing
+code draws the arc's own radius rather than the distance to its start.
+
+**The fillet had to get a plane, and a refusal.** A fillet makes an arc, so in
+3D it resolves a frame like everything else and journals it. Choosing the frame
+by nearest normal instead was considered and rejected for new calls — the
+resolution rule is the same everywhere, and a magic choice would make the same
+typed `fillet` mean different frames in different drawings. A corner that is
+not in the resolved frame's orientation is refused by name: rounding it would
+put `arcends`/`tan` plane blocks in a fight with the legs. That refusal found an
+old bug: `asOperation` journalled before running its body, so *any* refused
+fillet (a radius too big for its corner, since the beginning) stayed in the
+journal and the next save produced a file that failed to reopen at that step.
+It journals after success now; every operation already refused before
+mutating, so nothing else changed.
+
+**The version-6 files were the hard part, and the spec's rule was not enough
+on its own.** "Nearest-normal match against the file's frames" assumes there
+*are* frames. A 2D drawing need never have had one (the no-world-frame package
+made frames optional), so every frameless 2D file with a circle would have been
+unopenable in the 3D app. Three options: refuse such files (losing them);
+keep a planeless "legacy" circle in 3D (keeping the very seam this package
+closes); or let the translation *make* a frame for them. The third was taken,
+with the same discipline as the lift's y-refs: named after nothing the file
+uses (`plane`, `plane2`…), placed just before the curve that needs it in the
+translated journal, lying in the curve's plane on its centre, an ordinary frame
+afterwards. It is visible — a triad appears on an old drawing — which is the
+honest price; a frame nobody can see would be a world frame by stealth.
+
+Two more things the rule needed. **Saved geometry, not replay seeds:** a
+three-point arc's centre is auto-created at the origin and only moved by a
+later `setCoords`, so the plane through the replay's points at the `addArc`
+step is nonsense; the arc is given a provisional frame at its step and chosen
+for real once the saved coordinates are restored. (The residuals read the
+plane lazily, so re-pointing it afterwards is safe.) **Deleted frames are no
+candidates:** a v6 journal can delete a frame a circle never knew about, and
+v7 would refuse that deletion while the circle stands on it. And the old side
+rule is kept in exactly one place, so an arc v6 drew counter-clockwise about
+the kernel's +z opens as that arc on a frame whose +z faces the other way —
+its ends are swapped. A circle has no normal to match, so it takes the default
+at its step; that is a guess and is documented as one.
+
+**The off-plane snap's tier.** Below every on-sketch point, crossing and
+midpoint, above a bare curve. A projected vertex is an exact position but a
+ghost: at the same pixel a real place that infers something true should win,
+while a vertex aimed at is a more particular intent than an edge passed over.
+Projected along the plane's normal, not the line of sight — the same thing
+square-on, and obliquely the nearest point of the sketch to the vertex, which
+is what "project into the sketch" means. It infers nothing; the point it makes
+gets only the sketch's own `onPlane`, as a click in empty space does. The
+existing point marker was already a hollow square, so "hollow" alone would not
+have been distinct: the projected one is dashed, ringed, and leads back to its
+source.
+
+**Smaller calls.** The curve tools refuse on the first click (logged, nothing
+placed) rather than at arm time — refusing in the constructor would have needed
+the engine's `arm` to change for one family of tools — and the empty-canvas menu
+shows them disabled with the model's own message, Fix's precedent. `plane()`
+seeds facing the viewer in a turned view, and so does a bare `frame()` (a
+phase-1 seam): "here" is the plane you are looking at; an unturned view
+journals exactly what it always did. The hover tag and `ls()` name a circle's
+plane, because nothing on screen says which frame a square-on circle is
+parallel to.
+
 ### The camera half of 3D, and where the spec's hopes did not hold
 
 The spec for half 2 hoped for a small footprint — "keep the exported names as

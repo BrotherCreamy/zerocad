@@ -101,7 +101,8 @@ replacing) the system Node other projects on this machine may depend on.
   circle is the `arcends` relation, not the constructor — for the same
   reason a `Line` doesn't imply `hor`/`ver`. `model.circular(name)` reads
   either one, so every radius-aware relation takes a circle or an arc
-  interchangeably.
+  interchangeably. (↻ In a 3D model both also name a **plane** — a frame — since
+  3D phase 2; see the planar-discipline entry below.)
 - **The rest of the sketch relation vocabulary** (`relations/geometry.ts`):
   `par`, `perp`, `ang`, `on`, `eq`, `rad`, `oncircle`, `conc`, `eqrad`,
   `tan`, `sym`, `arcends`. Most are dimension-generic, and not by
@@ -1142,7 +1143,76 @@ replacing) the system Node other projects on this machine may depend on.
   `pt(x, y)` seeds at the kernel's z = 0 even with a tilted default frame; typed
   `frame()` seeds along kernel axes in a turned view; one depth per entity in
   the painter's sort; no snapping to off-plane geometry while sketching.
+  (↻ The circle, arc, typed-`frame()` and off-plane-snap seams closed in 3D
+  phase 2 — next entry.)
   *Spec:* [`docs/plans/3d-phase1.md`](docs/plans/3d-phase1.md).
+- **Planar discipline: circles and arcs carry a plane** (`model.ts`,
+  `relations/refs.ts`, `relations/geometry.ts`, `curveplane.ts` (new),
+  `arcgeom.ts`, `projection.ts`, `glyphs.ts`, `snapping.ts`, `tools/*`,
+  `operations.ts`, `persist.ts`, `planetranslation.ts` (new), `replenv.ts`,
+  `menu.ts`, `main.ts`) — 3D phase 2.
+  **The plane.** A 3D `CircleEntity`/`ArcEntity` has `plane`, a frame name:
+  `addCircle(center?, radius?, plane?, name?)` and `addArc(…, radius?, plane?,
+  name?)` resolve it like `fix` (the one named, else the default **at call
+  time**, journalled resolved; with neither, the standing message — and before
+  any auto-created centre exists). A 2D model refuses the argument. The frame
+  gives orientation only: the **rim is the circle through the circle's own
+  centre parallel to the frame's x–y plane**; the centre is never pinned, so
+  dragging it off the frame carries the rim with it, parallel. A free 3D arc's
+  auto-created ends are seeded along the plane's own axes. `Model.dependents`
+  counts the plane, so **deleting a frame takes the circles and arcs on it**
+  (and the primitive refuses to orphan one).
+  **Relations.** In 3D `onCircle` is two blocks — the distance, as ever, and
+  `(p − centre) · +z` (`oncircle(p,c)|plane`) — and `tangent` gains a block
+  holding both line ends on the rim's plane (`tan(l,c)|plane`); the frame's +z
+  comes through `rimNormal` as a datum. In 2D neither extra block is emitted:
+  the 2D relations are the blocks they always were, pinned by block count and
+  by value. `arcends`, being two `onCircle`s, follows.
+  **Orientation.** An arc turns counter-clockwise about its frame's +z
+  (`arcFrame(c, s, e, r, side)`, `sweepsAs(…, side)`); the kernel-axis side rule
+  is gone from everything but the v6 translation.
+  **Drawing and hitting.** `curveplane.ts` answers "where is this rim" for
+  everyone (`curveFrame`, `curvePlaneOf`, `sketchSide`); `circleFrame` lays a
+  whole circle out for the arc machinery. A circle seen obliquely is a closed
+  quarter-pixel polyline on its ellipse — drawn, picked, snapped, boxed, lifted
+  by angle — and face-on the exact circle it always was. The silhouette is
+  gone; a rim glyph sits on the planar rim where the screen says up-right; the
+  hover tag and `ls()` name the plane (`c1  r 10  in f1`).
+  **Tools.** circle/circle3/arc/arc3 refuse their first click in 3D with no
+  default frame (`curveToolReady`: log, nothing placed; a throw headless), and
+  the empty-canvas menu shows those four and Fillet **disabled with the
+  model's own message**. Previews are sampled in their plane. `fillet(l1, l2,
+  r, plane?)` takes the default in 3D (journalled `[l1, l2, r, frame]`; a 2D
+  entry stays three arguments) and refuses a corner out of the frame's
+  orientation (`IN_PLANE_SINE`, a millionth).
+  **Off-plane snapping.** With a sketch plane, a point *off* it is offered at
+  its projection onto it — `"projected"`, the foot of the perpendicular along
+  the plane's normal — below every on-sketch point, crossing and midpoint and
+  above a bare curve, drawn as a dashed hollow square with a dashed leader back
+  to the point. It **infers nothing**; the placed point gets only the sketch's
+  own `onPlane`. Points only: projecting curves is later.
+  **Conveniences.** `plane(origin?, xref?, yref?)` = `frame()` +
+  `setDefaultFrame` + `lookAt`, journalling only the first two. `frame()` with
+  no refs in a *turned* view seeds them along the screen's right and up (an
+  unturned view journals exactly what it did). A frame's menu gains **Sketch on
+  this** → `setDefaultFrame("f"); lookAt("f")`.
+  **Format version 7**: the plane before the name. Older files translate
+  (`planetranslation.ts`): 2D → null planes; 3D → an arc takes the surviving
+  frame nearest its normal read from the *saved* geometry (default, then
+  earliest, on ties), a fillet its corner's, a circle the default (else one its
+  centre is on, else the earliest); where none fits, a translation frame
+  `plane` (never a name the file uses) in the curve's plane, on its centre; an
+  arc whose v6 side disagrees with its frame's +z has its ends swapped.
+  **Also:** `asOperation` journals after its body succeeds, so a refused
+  operation (a fillet too big for its corner) no longer poisons the saved file.
+  533 unit tests, 195 e2e.
+  *Known and deliberate:* the plane never pins a centre (a tool's `onPlane`
+  does); curves off the sketch are not projected (points only); a v6 *circle*
+  cannot say which plane it was drawn in, so it takes the default; a v6 bare
+  `arc()` with auto-created ends cannot be swapped and may open as its
+  complement on an upside-down frame; `pt(x, y)` still seeds at the kernel's
+  z = 0; one depth per entity in the painter's sort.
+  *Spec:* [`docs/plans/3d-phase2.md`](docs/plans/3d-phase2.md).
 
 
 ## What's next

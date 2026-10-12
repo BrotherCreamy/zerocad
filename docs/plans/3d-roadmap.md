@@ -52,7 +52,15 @@ What 3D adds is not a new solver — it is:
   kernel-+z arc orientation; on-plane inference beyond phase 1's minimal one;
   snapping to off-plane geometry by its projection; a `plane()` convenience;
   multiple frames as multiple sketch planes. (The camera "look at plane"
-  command shipped in phase 1 as `lookAt`.)
+  command shipped in phase 1 as `lookAt`.) *Spec:* `docs/plans/3d-phase2.md`.
+  ✅ **Built** — circles and arcs name a frame (the frame, not a normal ref);
+  phase 1's seams are closed: the silhouette circle (planar rims, drawn and hit
+  as ellipses), the kernel-+z arc side (an arc turns about its frame's +z), the
+  sketch-only snap filter (an off-plane *point* snaps at its projection, as a
+  position aid that infers nothing), and `frame()` seeding along kernel axes in
+  a turned view. `plane()` and "Sketch on this" make switching sketch planes
+  one gesture. **Left for later:** projecting off-plane *curves*, and on-plane
+  inference beyond phase 1's minimal one (see the register's 3D entry).
 - **Phase 3 — loops**: `src/loops.ts`, pure — closed chains of coplanar
   lines/arcs from shared/coincident endpoints; click-inside-a-region
   picking (the Onshape gesture) in screen space.
