@@ -28,6 +28,23 @@ The guiding rule, set by the owner: **tools work like Onshape/SolidWorks, so
 people arrive already knowing how to use them.** Deviations from that rule
 are flagged as such.
 
+- **3D — one constraint model, extrude and revolve** (owner's direction,
+  2026-10-12; roadmap: [`docs/plans/3d-roadmap.md`](docs/plans/3d-roadmap.md)).
+  Two forks the owner decided up front: **one `Model(3)`** rather than
+  Onshape's sketch/part split — a "sketch" is coplanar geometry, and the
+  purest continuation of the N-D kernel and dimension-generic relations —
+  and **extrude profiles are auto-detected closed loops**. What follows
+  from one-model, recorded here before any code: 3D frames (origin, x-ref,
+  y-ref) are the sketch planes, closing the register's fix-above-2D gauge
+  seam; the camera is orthographic with ray→working-plane pointing;
+  extrude expands into real entities plus per-point offset relations with
+  a `d`-named depth, so `set()` drives solids; revolve renders its sweep
+  parametrically from a live, constrainable section. ⚠ *Mouse map changes
+  in 3D (Onshape's):* right-DRAG orbits; middle pans; right-release keeps
+  the menu. Phases and the rest of the design in the roadmap; phase 1
+  (3D frames + fix/onPlane + camera + app on Model(3)) is in flight:
+  [`docs/plans/3d-phase1.md`](docs/plans/3d-phase1.md).
+
 - **No world frame — coordinate frames are entities** (owner's direction,
   2026-09-01, chosen over "keep the frame but hide it" and "directions stay,
   origin goes"). The grid is gone; there is no drawn origin; and
