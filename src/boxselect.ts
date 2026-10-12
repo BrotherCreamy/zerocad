@@ -32,9 +32,10 @@
 // of a circle is empty space.
 
 import type { Entity, Model } from "./model.ts";
-import { arcSlack, intersect, screenAngle, withinSweep, type Curve, type Pt } from "./intersect.ts";
+import { intersect, withinSweep, type Curve, type Pt } from "./intersect.ts";
 import { frameArms, frameMarker } from "./framemarker.ts";
-import { worldToScreen, type View } from "./view.ts";
+import { screenCurve, screenOf as projectPoint } from "./projection.ts";
+import type { View } from "./view.ts";
 
 /** Which of the two selections the drag direction asked for. */
 export type BoxMode = "window" | "crossing";
@@ -83,10 +84,7 @@ export function boxFrom(ax: number, ay: number, bx: number, by: number): { rect:
  * flow for relations stays hover-and-click, which is aimed and one at a time.
  */
 export function selectInBox(model: Model, view: View, rect: ScreenRect, mode: BoxMode): string[] {
-  const screenOf = (name: string): Pt => {
-    const c = model.coords(name);
-    return worldToScreen(view, [c[0], c[1]]);
-  };
+  const screenOf = (name: string): Pt => projectPoint(model, view, name);
   const test = mode === "window" ? contains : touches;
   const out: string[] = [];
   for (const e of model.entities.values()) {
@@ -109,10 +107,10 @@ function contains(model: Model, view: View, e: Entity, rect: ScreenRect, screenO
     // empty list would otherwise call it contained by every box on the canvas.
     return arms.length > 0 && arms.every(([a, b]) => rectContainsSegment(rect, a, b));
   }
-  const c = screenOf(e.center);
-  const r = model.radius(e.name) * view.scale;
-  if (e.kind === "circle") return rectContainsCircle(rect, c, r);
-  return rectContainsArc(rect, arcCurve(model, view, e, screenOf));
+  const shape = curveOf(model, view, e);
+  if (shape.kind === "circle") return rectContainsCircle(rect, shape.c, shape.r);
+  if (shape.kind === "arc") return rectContainsArc(rect, shape);
+  return shape.kind === "polyline" && rectContainsPolyline(rect, shape.pts);
 }
 
 /** Does `e` come into `rect` at all? */
@@ -122,10 +120,10 @@ function touches(model: Model, view: View, e: Entity, rect: ScreenRect, screenOf
   if (e.kind === "frame") {
     return frameSegments(model, view, e.name).some(([a, b]) => rectTouchesSegment(rect, a, b));
   }
-  const c = screenOf(e.center);
-  const r = model.radius(e.name) * view.scale;
-  if (e.kind === "circle") return rectTouchesCircle(rect, c, r);
-  return rectTouchesArc(rect, arcCurve(model, view, e, screenOf));
+  const shape = curveOf(model, view, e);
+  if (shape.kind === "circle") return rectTouchesCircle(rect, shape.c, shape.r);
+  if (shape.kind === "arc") return rectTouchesArc(rect, shape);
+  return shape.kind === "polyline" && rectTouchesPolyline(rect, shape.pts);
 }
 
 /** A frame's marker arms in screen space — empty when it has collapsed. */
@@ -134,23 +132,13 @@ function frameSegments(model: Model, view: View, name: string): [Pt, Pt][] {
   return marker ? frameArms(marker) : [];
 }
 
-/** An arc as the screen-space curve `intersect.ts` understands. */
-function arcCurve(
-  model: Model,
-  view: View,
-  e: Extract<Entity, { kind: "arc" }>,
-  screenOf: (n: string) => Pt,
-): Extract<Curve, { kind: "arc" }> {
-  const c = screenOf(e.center);
-  const r = model.radius(e.name) * view.scale;
-  return {
-    kind: "arc",
-    c,
-    r,
-    a0: screenAngle(c[0], c[1], ...screenOf(e.start)),
-    a1: screenAngle(c[0], c[1], ...screenOf(e.end)),
-    slack: arcSlack(r, ARC_SLACK_PX),
-  };
+/**
+ * A circle or arc as the screen-space curve `intersect.ts` understands: a
+ * circle's silhouette, an arc seen square-on as an exact arc, an arc seen
+ * obliquely as the polyline it is drawn with. See projection.ts.
+ */
+function curveOf(model: Model, view: View, e: Entity): Curve {
+  return screenCurve(model, view, e, ARC_SLACK_PX)!.curve;
 }
 
 // --- the predicates, over plain screen geometry -----------------------------
@@ -203,6 +191,20 @@ export function rectContainsArc(rect: ScreenRect, arc: Extract<Curve, { kind: "a
 
 export function rectTouchesArc(rect: ScreenRect, arc: Extract<Curve, { kind: "arc" }>): boolean {
   return rectContainsArc(rect, arc) || crossesBoundary(rect, arc);
+}
+
+/**
+ * An arc seen obliquely, drawn as a fine polyline: contained when every vertex
+ * is, since the polyline is what is drawn and it strays a quarter-pixel at
+ * most from the true curve.
+ */
+export function rectContainsPolyline(rect: ScreenRect, pts: Pt[]): boolean {
+  return pts.length > 0 && pts.every((p) => rectContainsPoint(rect, p));
+}
+
+/** A vertex inside, or a piece crossing the boundary — the segment rule, piece by piece. */
+export function rectTouchesPolyline(rect: ScreenRect, pts: Pt[]): boolean {
+  return pts.some((p) => rectContainsPoint(rect, p)) || crossesBoundary(rect, { kind: "polyline", pts });
 }
 
 /**

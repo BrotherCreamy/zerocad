@@ -28,9 +28,10 @@
 // drawing rather than part of it — the same reason snapping ignores them.
 
 import type { Entity, Model, RelationEntry } from "./model.ts";
-import { arcSlack, screenAngle, withinSweep } from "./intersect.ts";
+import { screenAngle, withinSweep } from "./intersect.ts";
 import { frameArms, frameMarker } from "./framemarker.ts";
-import { worldToScreen, type View } from "./view.ts";
+import { nearestOnPolyline, screenCurve, screenOf as projectPoint } from "./projection.ts";
+import type { View } from "./view.ts";
 
 /**
  * What a pick can be. `"relation"` is not an entity kind: it is a constraint
@@ -62,15 +63,15 @@ function dist(ax: number, ay: number, bx: number, by: number): number {
  * The entity under (sx, sy), or null. Screen coordinates are canvas-relative,
  * the same ones a PointerEvent gives after subtracting the bounding rect.
  *
- * Picking reads the first two coordinates of a point, so it is a 2D-viewport
- * operation by nature — in a 3D model it picks against the projection the
- * viewport is already drawing.
+ * Picking is against the drawing *as projected* — what the viewport is already
+ * showing — so in a 3D model it is the same screen-space question it always
+ * was, asked of each entity's shape on screen (see projection.ts). Depth plays
+ * no part: a point behind a line is as pickable as one in front of it, which
+ * is what a wireframe looks like and the only reading under which everything
+ * drawn can be clicked.
  */
 export function hitTest(model: Model, view: View, sx: number, sy: number): Pick | null {
-  const screenOf = (name: string) => {
-    const c = model.coords(name);
-    return worldToScreen(view, [c[0], c[1]]);
-  };
+  const screenOf = (name: string) => projectPoint(model, view, name);
 
   // Tier 1: points.
   let best: Pick | null = null;
@@ -84,22 +85,26 @@ export function hitTest(model: Model, view: View, sx: number, sy: number): Pick 
 
   // Tier 2: circles and arcs — near the rim, not near the middle. An arc also
   // has to be within its own sweep, or every arc would pick as a whole circle.
+  // An arc seen obliquely is a polyline on screen, and is near wherever any
+  // piece of it is.
   for (const e of model.entities.values()) {
     if (e.kind !== "circle" && e.kind !== "arc") continue;
-    const [cx, cy] = screenOf(e.center);
-    const r = model.radius(e.name) * view.scale;
-    const d = Math.abs(dist(sx, sy, cx, cy) - r);
-    if (d >= PICK_CURVE || (best && d >= best.distance)) continue;
-
-    if (e.kind === "arc") {
-      const a0 = screenAngle(cx, cy, ...screenOf(e.start));
-      const a1 = screenAngle(cx, cy, ...screenOf(e.end));
-      const here = screenAngle(cx, cy, sx, sy);
+    const shape = screenCurve(model, view, e, PICK_CURVE)!.curve;
+    let d: number;
+    if (shape.kind === "polyline") {
+      d = nearestOnPolyline(shape.pts, [sx, sy])?.d ?? Infinity;
+    } else if (shape.kind === "circle" || shape.kind === "arc") {
+      const [cx, cy] = shape.c;
+      d = Math.abs(dist(sx, sy, cx, cy) - shape.r);
       // A small slack so the very ends of an arc are still pickable. The test
       // itself lives in intersect.ts, so snapping to a crossing and picking a
       // rim agree on where an arc stops.
-      if (!withinSweep(a0, a1, here, arcSlack(r, PICK_CURVE))) continue;
+      if (shape.kind === "arc" && d < PICK_CURVE
+        && !withinSweep(shape.a0, shape.a1, screenAngle(cx, cy, sx, sy), shape.slack)) continue;
+    } else {
+      continue;
     }
+    if (d >= PICK_CURVE || (best && d >= best.distance)) continue;
     best = { name: e.name, kind: e.kind, distance: d };
   }
   if (best) return best;
@@ -207,7 +212,8 @@ function describeGeometry(model: Model, name: string, kind: Entity["kind"], n: (
     case "line": {
       const l = model.line(name);
       const [a, b] = [model.coords(l.refs[0]), model.coords(l.refs[1])];
-      return `${name}  ${l.refs[0]}–${l.refs[1]}  len ${n(Math.hypot(b[0] - a[0], b[1] - a[1]))}`;
+      // Over every coordinate: a 3D edge's length is not its shadow on x–y.
+      return `${name}  ${l.refs[0]}–${l.refs[1]}  len ${n(Math.hypot(...a.map((ai, i) => b[i] - ai)))}`;
     }
     // A frame picks by its axes marker (see framemarker.ts). The tag says
     // whether it is the default, because that is the whole difference between

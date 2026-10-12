@@ -47,3 +47,38 @@ export function axisFrame(model: Model, name = "f", at?: number[]): string {
   model.setDefaultFrame(name);
   return name;
 }
+
+/** A 3D frame's unit axes and a way to name points in its coordinates. */
+export interface TiltedFrame {
+  name: string;
+  origin: number[];
+  ux: number[];
+  uy: number[];
+  uz: number[];
+  /** The world point at frame coordinates (u, v, w) — w = 0 is on its plane. */
+  at(u: number, v: number, w?: number): number[];
+}
+
+/**
+ * A 3D frame turned off every kernel axis, made the default — the sketch plane
+ * a 3D test draws on when "it still works square to the kernel" would prove
+ * nothing. Its +x is the kernel's x turned `spin` about z; the whole frame is
+ * then tipped `tip` about that +x, so its plane is neither horizontal nor
+ * vertical and its +z leans away from every axis.
+ *
+ * The refs sit one unit out along the frame's own axes, so the y-ref is already
+ * square to the x-ref and `frameBasis` straightens nothing: the axes returned
+ * here are exactly the ones every relation reads.
+ */
+export function tiltedFrame(model: Model, name = "t", origin = [5, -3, 2], spin = 0.4, tip = 0.7): TiltedFrame {
+  const ux = [Math.cos(spin), Math.sin(spin), 0];
+  const uy = [-Math.sin(spin) * Math.cos(tip), Math.cos(spin) * Math.cos(tip), Math.sin(tip)];
+  const uz = [ux[1] * uy[2] - ux[2] * uy[1], ux[2] * uy[0] - ux[0] * uy[2], ux[0] * uy[1] - ux[1] * uy[0]];
+  const at = (u: number, v: number, w = 0) => origin.map((o, i) => o + u * ux[i] + v * uy[i] + w * uz[i]);
+  model.addPoint(origin, `${name}_o`);
+  model.addPoint(at(1, 0), `${name}_x`);
+  model.addPoint(at(0, 1), `${name}_y`);
+  model.addFrame(`${name}_o`, `${name}_x`, `${name}_y`, name);
+  model.setDefaultFrame(name);
+  return { name, origin, ux, uy, uz, at };
+}
