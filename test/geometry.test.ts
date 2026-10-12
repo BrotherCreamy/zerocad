@@ -129,7 +129,7 @@ test("radius + onCircle: the rim finds the point, the point finds the rim", asyn
   axisFrame(m); // `fix` is frame-relative now — see test/frames.ts
   m.addPoint([0, 0], "ctr");
   fix(m, "ctr", [0, 0]);
-  m.addCircle("ctr", 1, "c");
+  m.addCircle("ctr", 1, null, "c");
   radius(m, "c", 5);
   m.addPoint([3, 3], "q");
   onCircle(m, "q", "c");
@@ -145,10 +145,10 @@ test("concentric + equalRadius: a second circle matches the first", async () => 
   axisFrame(m); // `fix` is frame-relative now — see test/frames.ts
   m.addPoint([2, 3], "c1ctr");
   fix(m, "c1ctr", [2, 3]);
-  m.addCircle("c1ctr", 7, "c1");
+  m.addCircle("c1ctr", 7, null, "c1");
   radius(m, "c1", 7);
   m.addPoint([-4, 9], "c2ctr");
-  m.addCircle("c2ctr", 1, "c2");
+  m.addCircle("c2ctr", 1, null, "c2");
   concentric(m, "c1", "c2");
   equalRadius(m, "c1", "c2");
   ok(m);
@@ -162,7 +162,7 @@ test("tangent: a free radius grows until the circle kisses a fixed line", async 
   axisFrame(m); // `fix` is frame-relative now — see test/frames.ts
   m.addPoint([0, 0], "ctr");
   fix(m, "ctr", [0, 0]);
-  m.addCircle("ctr", 1, "c");
+  m.addCircle("ctr", 1, null, "c");
   m.addPoint([-10, 8], "a");
   m.addPoint([10, 8], "b");
   fix(m, "a", [-10, 8]);
@@ -179,7 +179,7 @@ test("tangent: a free line slides in until it kisses a fixed circle", async () =
   axisFrame(m); // `fix` is frame-relative now — see test/frames.ts
   m.addPoint([0, 0], "ctr");
   fix(m, "ctr", [0, 0]);
-  m.addCircle("ctr", 5, "c");
+  m.addCircle("ctr", 5, null, "c");
   radius(m, "c", 5);
   m.addPoint([-10, 8], "a");
   m.addPoint([10, 8], "b");
@@ -216,7 +216,7 @@ test("arcEndpoints: both ends are pulled onto the arc's own circle", async () =>
   fix(m, "ctr", [0, 0]);
   m.addPoint([10, 0], "s");
   m.addPoint([0, 10], "e");
-  m.addArc("ctr", "s", "e", 5, "arc");
+  m.addArc("ctr", "s", "e", 5, null, "arc");
   radius(m, "arc", 5);
   arcEndpoints(m, "arc");
   ok(m);

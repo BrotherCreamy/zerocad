@@ -5,7 +5,7 @@
 
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { openApp, distanceToLine, type AppContext } from "./harness.ts";
+import { openApp, distanceToLine, sketchFrame, type AppContext } from "./harness.ts";
 
 let app: AppContext;
 before(async () => { app = await openApp(); });
@@ -25,6 +25,9 @@ test("filleting a drawn rectangle rounds the corner and keeps the box square", a
   assert.equal(drawn.byKind.line, 4, "a rectangle to work on");
   const edges = drawn.lines.map((l) => l.name);
 
+  // A fillet's arc lies in a frame's plane in the 3D app; a sketch frame,
+  // parked out of the way, in the plane the rectangle was drawn in.
+  await sketchFrame(app);
   await app.type(`fillet("${edges[0]}", "${edges[1]}", 10); solve()`);
   const m = await app.model();
 
@@ -59,7 +62,8 @@ test("filleting a drawn rectangle rounds the corner and keeps the box square", a
   const referenced = new Set<string>();
   for (const l of m.lines) l.refs.forEach((n) => referenced.add(n));
   for (const a of m.arcs) [a.center, a.start, a.end].forEach((n) => referenced.add(n));
-  const orphans = Object.keys(m.points).filter((n) => !referenced.has(n));
+  // (The sketch frame's points belong to the frame.)
+  const orphans = Object.keys(m.points).filter((n) => !referenced.has(n) && !n.startsWith("f_"));
   assert.deepEqual(orphans, [], "no orphaned points left behind");
 });
 

@@ -42,7 +42,8 @@
 
 import { referentOf, type Model, type RelationEntry } from "./model.ts";
 import { viewAxes, worldToScreen, type View } from "./view.ts";
-import { lift3 } from "./vec3.ts";
+import { dot3, lift3 } from "./vec3.ts";
+import { curvePlaneOf } from "./curveplane.ts";
 
 /** How far a glyph sits from its anchor, in screen pixels. */
 export const GLYPH_OFFSET = 15;
@@ -276,20 +277,36 @@ function atLineMid(model: Model, view: View, lineName: string): Anchor {
 }
 
 /**
- * A point on a circle's rim, `theta` round from the screen's right, nudged
- * outward. The rim is the one the viewer sees — the silhouette, which for a
- * view that has never been turned is the circle itself in world terms. (In 3D a
- * circle is still a sphere to everything that reads it, and the silhouette is
- * where it is drawn; see projection.ts.)
+ * A point on a circle's rim that appears `theta` round from the screen's right,
+ * nudged outward. The rim is the planar one the circle has (see curveplane.ts),
+ * which seen at an angle is an ellipse; the point is the one of the rim whose
+ * screen direction from the centre is `theta` — so a mark sits off the
+ * upper-right of a tilted circle as it does off a square-on one. For a view that
+ * has never been turned and a 2D circle this is the old formula exactly: the
+ * rim's two directions are the screen's, and the point is `theta` round.
+ *
+ * Seen edge-on a rim is a segment on screen and most directions miss it; the
+ * mark then goes to the rim's own `theta`, which is on the rim and draws.
  */
 function atRim(model: Model, view: View, circleName: string, theta: number): Anchor {
   const c = model.circular(circleName);
   const ctr = lift3(model.coords(c.center));
   const r = model.radius(circleName);
+  const { u, v } = curvePlaneOf(model, circleName);
   const { right, up } = viewAxes(view);
   const cos = Math.cos(theta), sin = Math.sin(theta);
+  // How the rim's two directions land on screen (world-up convention): solve
+  // for the in-plane direction whose projection points along theta.
+  const [a, b, cc, d] = [dot3(u, right), dot3(v, right), dot3(u, up), dot3(v, up)];
+  const det = a * d - b * cc;
+  let [p, q] = [cos, sin];
+  if (Math.abs(det) > 1e-9) {
+    const [x, y] = [(d * cos - b * sin) / det, (a * sin - cc * cos) / det];
+    const len = Math.hypot(x, y);
+    [p, q] = [x / len, y / len];
+  }
   return {
-    world: [0, 1, 2].map((i) => ctr[i] + r * (cos * right[i] + sin * up[i])),
+    world: [0, 1, 2].map((i) => ctr[i] + r * (p * u[i] + q * v[i])),
     dir: [cos, -sin],
   };
 }

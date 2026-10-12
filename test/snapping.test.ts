@@ -82,7 +82,7 @@ test("snaps onto a circle's rim", async () => {
   await loadKernel();
   const m = new Model(2);
   m.addPoint([0, 0], "ctr");
-  m.addCircle("ctr", 30, "c");
+  m.addCircle("ctr", 30, null, "c");
   const [sx, sy] = at([30, 0]);
   const snap = findSnap(m, view, sx + 3, sy);
   assert.equal(snap?.kind, "curve");
@@ -185,7 +185,7 @@ test("parallel edges produce no crossing to snap to", async () => {
 test("a line crossing a circle snaps to the rim crossing", async () => {
   await loadKernel();
   const m = new Model(2);
-  m.addPoint([0, 0], "ctr"); m.addCircle("ctr", 30, "c");
+  m.addPoint([0, 0], "ctr"); m.addCircle("ctr", 30, null, "c");
   m.addPoint([-50, 0], "a"); m.addPoint([50, 0], "b"); m.addLine("a", "b", "l");
   const [sx, sy] = at([30, 0]);
   const snap = findSnap(m, view, sx + 2, sy - 2);
@@ -197,7 +197,7 @@ test("a line crossing a circle snaps to the rim crossing", async () => {
 test("a tangent line is not a crossing", async () => {
   await loadKernel();
   const m = new Model(2);
-  m.addPoint([0, 0], "ctr"); m.addCircle("ctr", 30, "c");
+  m.addPoint([0, 0], "ctr"); m.addCircle("ctr", 30, null, "c");
   // Tangent at (0, 30). The segment runs off-centre so its own midpoint is
   // nowhere near, leaving the tangency as the only thing that could be caught.
   m.addPoint([-50, 30], "a"); m.addPoint([60, 30], "b"); m.addLine("a", "b", "l");
@@ -215,7 +215,7 @@ test("an arc only crosses within its own sweep", async () => {
   const scene = (x: number) => {
     const m = new Model(2);
     m.addPoint([0, 0], "ctr"); m.addPoint([30, 0], "s"); m.addPoint([0, 30], "e");
-    m.addArc("ctr", "s", "e", 30, "arc");
+    m.addArc("ctr", "s", "e", 30, null, "arc");
     m.addPoint([x, -50], "a"); m.addPoint([x, 50], "b"); m.addLine("a", "b", "l");
     return m;
   };

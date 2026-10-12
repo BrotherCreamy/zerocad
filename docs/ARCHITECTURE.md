@@ -41,9 +41,12 @@ the plane a pixel lands on — used by the tool engine and the renderer, and
 depending on nothing but `vec3.ts`, plain three-vectors that import nothing.
 `undo.ts` sits beside it for the same reason — a stack of snapshots, generic
 over what a snapshot is, importing nothing at all. `arcgeom.ts` is the same
-kind of file: which way round an arc goes, over plain numbers, read by the
-renderer, the drawing-question modules, the arc tools and `fillet` alike (see
-"In 3D a pixel is a ray" below).
+kind of file: which way round an arc goes about a given side, and a whole
+circle laid out in a given plane, over plain numbers. `curveplane.ts` is the
+one that asks the model *which* numbers — a circle's or arc's plane read off
+its frame through `frameBasis`, so it sits above the relations like
+`workplane.ts` — and the renderer, the drawing-question modules, the glyphs,
+the arc tools and `fillet` all ask it (see "In 3D a pixel is a ray" below).
 
 `toolsource.ts` sits in the `tools/ | operations.ts | persist.ts` row, between
 those first and last two: it holds the *text* of tools authored at the command
@@ -76,9 +79,9 @@ arc slack. Sharing a file would have meant one of the two concepts leaking
 into the other's code.
 
 `projection.ts` sits between them and the model: each entity's shape *on
-screen* — a segment, a circle's silhouette, an arc that is an exact screen arc
-seen square-on and a fine polyline seen obliquely — and the way back, lifting a
-pixel on that shape to the world point of the entity it shows. Picking,
+screen* — a segment, a circle or arc that is an exact screen circle or arc seen
+square-on and a fine polyline on its ellipse seen obliquely — and the way back,
+lifting a pixel on that shape to the world point of the entity it shows. Picking,
 snapping and box select all ask it, so the three cannot disagree about where an
 oblique arc is drawn. `framemarker.ts` reads a frame's axes through
 `frameBasis`, the same function every relation written against the frame
@@ -211,7 +214,10 @@ relation naming any of them, and a line, circle or arc takes the relations
 naming it while leaving its points alone. The rule underneath is that the
 closure follows references **inward** — who needs me — and never outward —
 what do I need. That asymmetry is the whole of it: deleting a line reaches
-nothing, deleting one of its endpoints reaches the line.
+nothing, deleting one of its endpoints reaches the line. A 3D circle or arc
+needs the frame whose plane it lies in, so deleting a frame reaches the curves
+drawn on it (`Model.dependents` counts the plane, and the primitive refuses to
+orphan one) — while its points, as ever, stay.
 
 **There is no confirmation prompt, because undo is the confirmation.** `del`
 is one user action, so a cascade that took more than was meant is one Ctrl+Z
@@ -366,21 +372,50 @@ ray, and only the entity under it knows how deep it is. So a snap's world
 position is read off what it snapped to — a vertex's own coordinates, the
 midpoint of an edge's ends, a point of a curve lifted by its parameter — and a
 screen crossing of two curves is a crossing only where both curves' readings
-are one place in space. While sketching on a plane, a snap is offered only
-where it lands *on* that plane: seen square-on, a sketch has whole stacks of
-geometry behind it sharing its pixels, and a vertex seen through the sketch is
-not a place on it.
+are one place in space. While sketching on a plane, a snap is offered as
+itself only where it lands *on* that plane: seen square-on, a sketch has whole
+stacks of geometry behind it sharing its pixels, and a vertex seen through the
+sketch is not a place on it. **A point off the sketch is offered at its
+projection instead** — the foot of the perpendicular onto the plane, Onshape's
+"project into the sketch" — as a position aid that infers nothing: the new
+point is not at the one it borrowed from, so a coincidence would be a lie, and
+"under that point along the plane's normal" is a relation this model does not
+have. It ranks below every place really on the sketch and above a bare curve,
+and its marker is drawn hollow and dashed, with a leader back to its source, so
+it does not look like a snap that means something. Points only, so far.
 
-**A circle has no plane yet, so it is a sphere** to every relation and is drawn
-and hit as its silhouette. **An arc has a plane — through its centre and
-endpoints — but no side to be counter-clockwise from**, so `arcgeom.ts` supplies
-one rule for every reader: the plane's normal on the kernel's +z side (then +y,
-then +x). It is the gauge showing through, and said so: it decides only which
-of the two arcs between two endpoints is drawn and picked, no residual reads
-it, and it is the one rule under which every 2D arc stays exactly what it was.
-A tool that knows which way the user swept stores the endpoints in the order
-that makes the drawn arc that one. Both seams close in phase 2, when circles
-and arcs carry their plane.
+**A circle or arc lies in a plane, and the plane is a frame** (`CircleEntity`).
+In 3D a circle without one would be a sphere — which is what phase 1 had, drawn
+as a silhouette that never foreshortened — so a 3D circle or arc names a frame,
+resolved like `fix`'s (the default at call time, journalled resolved, the
+standing message with none), and a 2D one refuses the argument. **The frame is
+an orientation, not a constraint**: the rim is the circle through the
+circle's *own* centre parallel to the frame's x–y plane, and nothing pins the
+centre to the frame. That is the free-entities rule — an argument is never a
+constraint — and it is what lets a circle be dragged off its sketch with its
+rim carried along, parallel, rather than snapping back to a plane nobody asked
+it to be held on. A tool that draws on a sketch holds the centre there with an
+`onPlane` of its own, which can be seen, hovered and deleted.
+
+The relations that read the *rim* read the plane: `onCircle` in 3D is two
+blocks, the distance and the point's offset off the rim's plane, and `tangent`
+holds the line's ends on that plane; the frame's +z reaches them as a datum
+(`rimNormal`), read and never pushed. In 2D those blocks would be trivially
+zero, and they are **not emitted** — a 2D relation is the blocks it always was.
+
+An arc's plane also says which way round it goes: counter-clockwise about the
+frame's +z. Before arcs carried a plane that side came from the kernel's axes
+(+z, then +y, then +x) — the gauge showing through, which drew an arc turned
+through the vertical as its complement. The rule survives only in the
+translation of files written under it (`planetranslation.ts`), which swaps an
+arc's ends where the two disagree so the file opens as the drawing it was.
+
+`curveplane.ts` is the one place a rim is located — `curveFrame` lays any
+circle or arc out for `arcgeom.ts`'s machinery — and everything that draws,
+picks, snaps, boxes or labels a rim asks it. Seen face-on a rim is still the
+exact screen circle or arc it always was (so a 2D drawing is hit by the old
+arithmetic); seen obliquely it is a closed quarter-pixel polyline on its
+ellipse, lifted back to the true rim by angle.
 
 **A 2D file opens lifted** (`persist.ts`, keyed on the file's `dim`): every
 coordinate gains a zero, and every frame the y-ref a 3D frame cannot be without
@@ -566,7 +601,10 @@ to be kept in step with them. Anything you can type, you can save.
 Two details:
 
 - An operation is journalled as the single call the user made, not its
-  expansion, so `fillet("l1","l2",8)` is one line and re-expands on replay.
+  expansion, so `fillet("l1","l2",8)` is one line and re-expands on replay —
+  and only once it has *succeeded*: an operation refuses before it changes
+  anything, and a refusal leaves no entry behind (one used to, and the file
+  saved after it then failed to reopen at that step).
 - Solved coordinates are stored alongside and restored after the replay.
   Replay alone reaches *a* valid configuration, but an under-constrained model
   has many, and reopening a drawing should give back the one that was saved.

@@ -19,7 +19,8 @@ import { frameMarker } from "./framemarker.ts";
 import { constrainedBy, type Glyph } from "./glyphs.ts";
 import { getToolCtor } from "./tools/tool.ts";
 import { depth } from "./view.ts";
-import { arcFrame, arcSamples, arcSegments } from "./arcgeom.ts";
+import { arcSamples, arcSegments } from "./arcgeom.ts";
+import { curveFrame } from "./curveplane.ts";
 import type { Entity } from "./model.ts";
 import "./tools/point.ts";
 import "./tools/line.ts";
@@ -121,27 +122,25 @@ async function main() {
         const [ax, ay] = engine.worldToScreen(model.coords(e.refs[0]));
         const [bx, by] = engine.worldToScreen(model.coords(e.refs[1]));
         g.beginPath(); g.moveTo(ax, ay); g.lineTo(bx, by); g.stroke();
-      } else if (e.kind === "circle") {
-        // The silhouette: a circle has no plane yet (3D phase 2 gives it one),
-        // so to every relation that reads it it is a sphere, and this is what a
-        // sphere looks like in an orthographic view. Seen square-on it is the
-        // circle exactly; seen at an angle it does not foreshorten, and that is
-        // the phase-2 seam showing rather than a rendering bug.
-        const [cx, cy] = engine.worldToScreen(model.coords(e.center));
-        g.beginPath(); g.arc(cx, cy, model.radius(e.name) * view.scale, 0, Math.PI * 2); g.stroke();
-      } else if (e.kind === "arc") {
-        // In its own plane — the one through its centre and endpoints — and
-        // counter-clockwise from start to end about that plane's reference
-        // side (see arcgeom.ts; for a 2D arc, about +z, as always). Drawn as
-        // the projection of a fine polyline, a quarter-pixel from the true
-        // curve, which seen square-on is the circular arc and seen at an angle
-        // is part of an ellipse — the one picking and snapping aim at.
-        const f = arcFrame(model.coords(e.center), model.coords(e.start), model.coords(e.end), model.radius(e.name));
+      } else if (e.kind === "circle" || e.kind === "arc") {
+        // In its plane (see curveplane.ts): a circle the full turn round its
+        // centre in its frame's orientation, an arc counter-clockwise from
+        // start to end about its plane's +z (for a 2D arc, about +z, as
+        // always). Drawn as the projection of a fine polyline, a quarter-pixel
+        // from the true curve, which seen square-on is the circle or circular
+        // arc and seen at an angle is an ellipse, or part of one — the very
+        // curve picking and snapping aim at. (A circle was drawn as a sphere's
+        // silhouette until it carried a plane: round from every angle, which
+        // was the phase-2 seam showing.)
+        const f = curveFrame(model, e);
         if (f) {
           const pts = arcSamples(f, arcSegments(f.sweep, f.r * view.scale)).map((w) => engine.worldToScreen(w));
           g.beginPath();
           g.moveTo(...pts[0]);
           for (const pt of pts.slice(1)) g.lineTo(...pt);
+          // A circle's last sample is its first; closing the path joins them
+          // as a corner like any other rather than leaving two butt ends.
+          if (e.kind === "circle") g.closePath();
           g.stroke();
         }
       } else if (e.kind === "frame") {

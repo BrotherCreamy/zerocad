@@ -8,19 +8,25 @@
 // The sweep runs counter-clockwise *as the user sees it* from start to end. In
 // 2D that is counter-clockwise in world space, which is the convention main.ts
 // renders with. In 3D it is counter-clockwise seen from the front of the
-// working plane — the side facing the viewer (see PointerInfo.plane) — and the
-// endpoints are stored in whichever order makes that the arc every arc is
-// drawn as (see ../arcgeom.ts): swapping them is free, both arcs between two
-// points being drawable, and only the order says which one is meant.
+// working plane (see PointerInfo.plane), and the endpoints are stored in
+// whichever order makes that the arc drawn counter-clockwise about the arc's
+// own plane's +z — the default frame's, which the arc is given (see
+// ../arcgeom.ts and `ArcEntity`): swapping them is free, both arcs between two
+// points being drawable, and only the order says which one is meant. With no
+// default frame there is no plane to give it, and the first click is refused.
 
 import { Tool, defineTool, type PointerInfo, type RenderContext } from "./tool.ts";
 import { arcEndpoints } from "../relations/geometry.ts";
-import { placePoint, requirePlanar } from "./place.ts";
+import { curveToolReady, placePoint, requirePlanar } from "./place.ts";
 import { arcFrame, arcSamples, arcSegments, sweepsAs } from "../arcgeom.ts";
+import { sketchSide } from "../curveplane.ts";
 import { cross3, lift3 } from "../vec3.ts";
 import type { Plane } from "../view.ts";
 
-/** Pulls `p` onto the sphere of radius `r` about `c`, keeping its direction. */
+/**
+ * Pulls `p` out to distance `r` from `c`, keeping its direction — onto the rim,
+ * since a click and the centre both lie in the working plane.
+ */
 function ontoRim(p: number[], c: number[], r: number): number[] {
   const d = p.map((v, i) => v - c[i]);
   const len = Math.hypot(...d);
@@ -35,11 +41,12 @@ function facing(plane?: Plane): number[] {
 
 /**
  * The endpoints in stored order: `[s, e]` if the arc drawn counter-clockwise
- * from `s` to `e` about `front` is the arc every arc is laid out as, else
- * `[e, s]` — the same arc, read from its other end.
+ * from `s` to `e` about `front` is the arc drawn counter-clockwise about
+ * `side` (the arc's plane's +z), else `[e, s]` — the same arc, read from its
+ * other end.
  */
-function stored<T>(c: number[], s: T, e: T, sw: number[], ew: number[], front: number[]): [T, T] {
-  return sweepsAs(c, sw, ew, front) ? [s, e] : [e, s];
+function stored<T>(c: number[], s: T, e: T, sw: number[], ew: number[], front: number[], side: number[]): [T, T] {
+  return sweepsAs(c, sw, ew, front, side) ? [s, e] : [e, s];
 }
 
 export class ArcTool extends Tool {
@@ -53,6 +60,7 @@ export class ArcTool extends Tool {
     requirePlanar(this.ctx.model, this.name);
 
     if (!this.center) {
+      if (!curveToolReady(this.ctx, this.name)) return;
       this.center = p;
       this.hover = p.world;
       this.ctx.requestRender();
@@ -88,7 +96,7 @@ export class ArcTool extends Tool {
     const ep = placePoint(this.ctx, end);
     // Placed in click order, so the auto-names follow the clicks; *stored* in
     // the order that draws the arc the user swept.
-    const [startName, endName] = stored(c, sp, ep, first.world, end.world, facing(first.plane));
+    const [startName, endName] = stored(c, sp, ep, first.world, end.world, facing(first.plane), sketchSide(m));
     const arc = m.addArc(ctr, startName, endName, r);
     arcEndpoints(m, arc.name);
 
@@ -153,8 +161,9 @@ export class ArcTool extends Tool {
       const s = this.start.world;
       const rad = Math.hypot(...s.map((v, i) => v - c[i]));
       const e = ontoRim(this.hover, c, rad);
-      const [a, b] = stored(c, s, e, s, e, front);
-      const f = arcFrame(c, a, b, rad);
+      const side = sketchSide(this.ctx.model);
+      const [a, b] = stored(c, s, e, s, e, front, side);
+      const f = arcFrame(c, a, b, rad, side);
       if (f) stroke(arcSamples(f, arcSegments(f.sweep, rad * r.scale)));
       const [sx, sy] = r.worldToScreen(s);
       r.g.beginPath();

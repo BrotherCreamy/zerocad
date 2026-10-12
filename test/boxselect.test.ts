@@ -225,7 +225,7 @@ test("a circle selects by its rim in a real model too", async () => {
   const m = new Model(2);
   const view: View = { ox: 400, oy: 300, scale: 3 };
   m.addPoint([0, 0], "c");
-  m.addCircle("c", 40, "k"); // 120 screen pixels of radius
+  m.addCircle("c", 40, null, "k"); // 120 screen pixels of radius
 
   // A small box at the circle's centre: inside the disc, nowhere near the rim.
   const inside: ScreenRect = { x0: 380, y0: 280, x1: 420, y1: 320 };
@@ -244,7 +244,7 @@ test("the sweep test is the same one picking uses, applied to arc endpoints", as
   m.addPoint([0, 0], "c");
   m.addPoint([20, 0], "s");
   m.addPoint([0, 20], "e");
-  m.addArc("c", "s", "e", 20, "arc1"); // the upper-right quarter, in world terms
+  m.addArc("c", "s", "e", 20, null, "arc1"); // the upper-right quarter, in world terms
 
   const centre = worldToScreen(view, [0, 0]);
   const upperRight: ScreenRect = { x0: centre[0], y0: centre[1] - 70, x1: centre[0] + 70, y1: centre[1] };

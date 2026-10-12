@@ -14,7 +14,7 @@
 
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { openApp, type AppContext } from "./harness.ts";
+import { openApp, sketchFrame, type AppContext } from "./harness.ts";
 
 let app: AppContext;
 before(async () => { app = await openApp(); });
@@ -135,6 +135,10 @@ test("deleting it lets the corners come apart, and two undos put them back", asy
 });
 
 test("deleting a point takes what could not survive without it", async () => {
+  // A fillet makes an arc, and an arc in the 3D app lies in a frame's plane:
+  // a sketch frame first, parked out of the way, in the plane the rectangles
+  // were drawn in.
+  await sketchFrame(app);
   await app.type('fillet("l1", "l2", 12)');
   assert.equal(await app.status(), "SOLVED");
   const before = await app.model();

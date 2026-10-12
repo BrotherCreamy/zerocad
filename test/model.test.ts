@@ -132,8 +132,8 @@ test("a relation built out of another is one relation, not two", async () => {
   const m = new Model(2);
   m.addPoint([0, 0], "c1ctr");
   m.addPoint([5, 5], "c2ctr");
-  m.addCircle("c1ctr", 3, "c1");
-  m.addCircle("c2ctr", 4, "c2");
+  m.addCircle("c1ctr", 3, null, "c1");
+  m.addCircle("c2ctr", 4, null, "c2");
 
   // concentric is defined as a coincident on the two centres; arcEndpoints as
   // two onCircles. Each is one entry, owning all of the blocks.
@@ -154,7 +154,7 @@ test("an arcEndpoints owns both of its onCircle blocks", async () => {
   m.addPoint([0, 0], "ctr");
   m.addPoint([10, 0], "s");
   m.addPoint([0, 10], "e");
-  m.addArc("ctr", "s", "e", 10, "arc");
+  m.addArc("ctr", "s", "e", 10, null, "arc");
   const rad = radius(m, "arc", 10);
   const ends = arcEndpoints(m, "arc");
   assert.equal(m.relationOf(rad).blocks.length, 1);

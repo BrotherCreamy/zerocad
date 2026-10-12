@@ -133,9 +133,9 @@ function frameSegments(model: Model, view: View, name: string): [Pt, Pt][] {
 }
 
 /**
- * A circle or arc as the screen-space curve `intersect.ts` understands: a
- * circle's silhouette, an arc seen square-on as an exact arc, an arc seen
- * obliquely as the polyline it is drawn with. See projection.ts.
+ * A circle or arc as the screen-space curve `intersect.ts` understands: seen
+ * square-on an exact circle or arc, seen obliquely the polyline its ellipse is
+ * drawn with. See projection.ts.
  */
 function curveOf(model: Model, view: View, e: Entity): Curve {
   return screenCurve(model, view, e, ARC_SLACK_PX)!.curve;

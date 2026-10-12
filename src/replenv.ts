@@ -146,8 +146,10 @@ function describe(e: Entity, model: Model): string {
   switch (e.kind) {
     case "point": return `${e.name}  point  (${model.coords(e.name).map((v) => v.toFixed(3)).join(", ")})`;
     case "line": return `${e.name}  line   ${e.refs[0]}–${e.refs[1]}`;
-    case "circle": return `${e.name}  circle  center ${e.center}, r=${model.radius(e.name).toFixed(3)}`;
-    case "arc": return `${e.name}  arc    center ${e.center}, ${e.start}→${e.end}, r=${model.radius(e.name).toFixed(3)}`;
+    case "circle": return `${e.name}  circle  center ${e.center}, r=${model.radius(e.name).toFixed(3)}`
+      + (e.plane === undefined ? "" : `, in ${e.plane}`);
+    case "arc": return `${e.name}  arc    center ${e.center}, ${e.start}→${e.end}, r=${model.radius(e.name).toFixed(3)}`
+      + (e.plane === undefined ? "" : `, in ${e.plane}`);
     case "frame": return `${e.name}  frame  origin ${e.origin}, +x toward ${e.xref}`
       + (e.yref === undefined ? "" : `, +y toward ${e.yref}`)
       + (model.defaultFrame === e.name ? "  (default)" : "");
@@ -247,6 +249,35 @@ export function neocadScope(h: EnvHandles): Bag {
     return seed ? model.addPoint(seed).name : null;
   }
 
+  /**
+   * The screen's right and up in world terms, when there is a 3D view that has
+   * been turned off the kernel's own axes — or null, when a frame seeded along
+   * the kernel's x and y (the model's own seeding) is already facing the
+   * viewer and nothing need be done differently. Null headless, too.
+   */
+  function turnedScreenAxes(): { right: number[]; up: number[] } | null {
+    if (model.dim !== 3 || !h.view?.right || !h.view.up) return null;
+    const { right, up } = h.view;
+    const same = (a: number[], b: number[]) => a.every((v, i) => v === b[i]);
+    return same(right, [1, 0, 0]) && same(up, [0, 1, 0]) ? null : { right, up };
+  }
+
+  /**
+   * Puts a frame's plane square to the screen — `lookAt`'s body, shared with
+   * `plane()`. See `lookAt` below.
+   */
+  function lookAtFrame(frame?: string | null): string {
+    if (!h.view) throw new Error("no viewport in this environment");
+    const name = model.resolveFrame(frame);
+    const { origin, ux, uy } = frameBasis(model, name)();
+    if (ux.every((c) => c === 0) || uy.every((c) => c === 0)) {
+      throw new Error(`"${name}" has collapsed — it has no plane to look at`);
+    }
+    assignView(h.view, alignView(h.view, ux, uy, origin));
+    h.refresh?.();
+    return `looking at ${name}`;
+  }
+
   const geometry: Bag = {
     // Creation returns the entity's *name*, because that is what every
     // relation takes — `dist(pt(0,0), pt(3,4), 10)` reads straight through.
@@ -257,10 +288,19 @@ export function neocadScope(h: EnvHandles): Bag {
     pt: (...coords: number[]) => model.addPoint(coords.length ? lifted(model, coords) : viewSeed()).name,
     ln: (a?: string | null, b?: string | null) =>
       model.addLine(a ?? (b == null ? anchor() : null), b ?? null).name,
-    circ: (center?: string | null, r?: number | null) =>
-      model.addCircle(center ?? anchor(), r ?? null).name,
-    arc: (center?: string | null, start?: string | null, end?: string | null, r?: number | null) =>
-      model.addArc(center ?? anchor(), start ?? null, end ?? null, r ?? null).name,
+    // In 3D a circle or arc takes a plane — a frame, or the default. It is
+    // resolved here *before* the view-centre anchor is made, so a refusal ("no
+    // default frame", or a plane named in 2D) leaves no stray point behind,
+    // and resolved again by the model itself, which is what journals it.
+    circ: (center?: string | null, r?: number | null, plane?: string | null) => {
+      model.curvePlane("circle", plane);
+      return model.addCircle(center ?? anchor(), r ?? null, plane ?? null).name;
+    },
+    arc: (center?: string | null, start?: string | null, end?: string | null, r?: number | null,
+          plane?: string | null) => {
+      model.curvePlane("arc", plane);
+      return model.addArc(center ?? anchor(), start ?? null, end ?? null, r ?? null, plane ?? null).name;
+    },
   };
   /**
    * Coordinate frames, as ordinary commands.
@@ -282,8 +322,39 @@ export function neocadScope(h: EnvHandles): Bag {
    * would make the view-centre point, journal it, and *then* be refused, leaving
    * a stray point behind a call that failed.
    */
-  geometry.frame = (origin?: string | null, xref?: string | null, yref?: string | null) =>
-    model.addFrame(origin ?? (xref == null && yref == null ? anchor() : null), xref ?? null, yref ?? null).name;
+  geometry.frame = (origin?: string | null, xref?: string | null, yref?: string | null) => {
+    if (xref == null && yref == null) {
+      const axes = turnedScreenAxes();
+      if (axes) {
+        // A turned 3D view: the refs go along the screen's right and up, so a
+        // frame typed while looking at the drawing from somewhere is a plane
+        // *facing* the viewer — as it is, exactly, in a view nobody turned —
+        // rather than one along the kernel's axes, which might be edge-on to
+        // the screen. Made explicitly, so the journal says where they went.
+        const o = origin ?? anchor() ?? model.addPoint().name;
+        const at = model.coords(o);
+        const x = model.addPoint(at.map((v, i) => v + Model.FREE_SPAN * axes.right[i])).name;
+        const y = model.addPoint(at.map((v, i) => v + Model.FREE_SPAN * axes.up[i])).name;
+        return model.addFrame(o, x, y).name;
+      }
+    }
+    return model.addFrame(origin ?? (xref == null && yref == null ? anchor() : null), xref ?? null, yref ?? null).name;
+  };
+  /**
+   * `plane(origin?, xref?, yref?)` — **"start sketching here"** in one call: a
+   * frame (exactly `frame()`'s, seeded the same way), made the default, and,
+   * where there is a view to turn, looked at square-on (`lookAt`). Sugar and
+   * nothing more: it journals the two model calls it makes — the frame and
+   * `setDefaultFrame` — and never the camera, which no saved drawing
+   * remembers. Setting the default is the point of it: a plane you were not
+   * then drawing on would be `frame()`.
+   */
+  geometry.plane = (origin?: string | null, xref?: string | null, yref?: string | null) => {
+    const name = (geometry.frame as (o?: string | null, x?: string | null, y?: string | null) => string)(origin, xref, yref);
+    model.setDefaultFrame(name);
+    if (h.view && model.dim === 3) lookAtFrame(name);
+    return name;
+  };
   geometry.setDefaultFrame = (name: string | null) => {
     model.setDefaultFrame(name ?? null);
     return model.defaultFrame ?? "no default frame";
@@ -325,7 +396,7 @@ export function neocadScope(h: EnvHandles): Bag {
   // Operations change the model's structure rather than only adding
   // equations — see operations.ts for why that is worth keeping separate.
   const operations: Bag = {
-    fillet: (l1: string, l2: string, r: number) => fillet(model, l1, l2, r),
+    fillet: (l1: string, l2: string, r: number, plane?: string | null) => fillet(model, l1, l2, r, plane),
     /**
      * Changes a dimension's value — `set("d4.value", 60)` — rebuilding it in
      * place under the same name. See operations.ts for why it is an operation
@@ -553,17 +624,7 @@ export function neocadScope(h: EnvHandles): Bag {
      * default frame when none is named, resolved like everything else that
      * takes one.
      */
-    lookAt: (frame?: string | null) => {
-      if (!h.view) throw new Error("no viewport in this environment");
-      const name = model.resolveFrame(frame);
-      const { origin, ux, uy } = frameBasis(model, name)();
-      if (ux.every((c) => c === 0) || uy.every((c) => c === 0)) {
-        throw new Error(`"${name}" has collapsed — it has no plane to look at`);
-      }
-      assignView(h.view, alignView(h.view, ux, uy, origin));
-      h.refresh?.();
-      return `looking at ${name}`;
-    },
+    lookAt: (frame?: string | null) => lookAtFrame(frame),
   };
 
   const scope: Bag = { ...relations, ...geometry, ...operations, ...persistence, ...commands };
@@ -573,11 +634,16 @@ export function neocadScope(h: EnvHandles): Bag {
 
 function help(scope: Bag): string {
   return [
-    "geometry   pt(x,y)  ln(a,b)  circ(center,r)  arc(center,start,end,r)",
+    "geometry   pt(x,y)  ln(a,b)  circ(center,r,plane?)  arc(center,start,end,r,plane?)",
     "           point()  line()  circle()  — the same three, long names",
     "           every argument is optional: what you leave out is created free",
-    "           near the middle of the view, for your relations to define",
+    "           near the middle of the view, for your relations to define.",
+    "           In 3D a circle or arc lies in a plane — a frame, or the default",
+    "           one; with neither it says so. Its rim is parallel to the frame",
+    "           through its own centre, which the plane does not pin.",
     "frames     frame(origin, xref)  setDefaultFrame(name)  defaultFrame()",
+    "           plane(origin?, xref?, yref?) — a frame, made the default and",
+    "           looked at square-on: \"start sketching here\" in one call",
     "           xaxis(frame?)  yaxis(frame?)  — a frame's axis, by name",
     "           there is no world frame: fix and the axes are relative to one,",
     "           and say so if you have made none. There is no hor/ver either:",
@@ -592,10 +658,12 @@ function help(scope: Bag): string {
     "           normal, onplane(p, frame?) holds a point in it, and fix takes",
     "           [x, y, z] in the frame — or [x, y], on its plane. pt(x, y) is",
     "           pt(x, y, 0). Tools draw on the default frame's plane and hold",
-    "           what they draw there with onplane.",
+    "           what they draw there with onplane. A point off that plane",
+    "           snaps at its projection onto it (a dashed square) and infers",
+    "           nothing.",
     "relations  dist fix coin mid par perp ang on eq",
     "           rad oncircle conc eqrad tan sym arcends onplane",
-    "operations fillet(line1, line2, radius)  del(name, ...)",
+    "operations fillet(line1, line2, radius, plane?)  del(name, ...)",
     '           set("d4.value", 60)  — a dimension is named d1, d2, … and its',
     "           value is the one thing you can set. ang stores radians (its",
     "           label reads degrees); dist and rad store what you typed.",

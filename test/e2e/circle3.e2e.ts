@@ -14,7 +14,7 @@
 
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { openApp, type AppContext } from "./harness.ts";
+import { FIXTURE_ENTITIES, openApp, sketchFrame, type AppContext } from "./harness.ts";
 
 /** Anything the page wrote to the console, which is where a tool's refusal goes. */
 const warnings: string[] = [];
@@ -32,9 +32,18 @@ const EMPTY = JSON.stringify({
   journal: [], values: { points: {}, radii: {} },
 });
 
+/**
+ * A clean sheet with a sketch frame on it — parked off-canvas, in the plane
+ * every click below lands on. A circle lies in a plane, and in the 3D app the
+ * tool refuses without a default frame to give it one.
+ */
 async function reset(): Promise<void> {
   await app.type(`open(${JSON.stringify(EMPTY)})`);
+  await sketchFrame(app);
 }
+
+/** The sketch frame's own points, which are no part of what a test drew. */
+const drawn = (points: Record<string, number[]>) => Object.entries(points).filter(([n]) => !n.startsWith("f_"));
 
 async function click(sx: number, sy: number): Promise<void> {
   const at = await app.at(sx, sy);
@@ -88,12 +97,12 @@ test("three clicks on empty canvas draw the circle through all three", async () 
 
   await click(240, 200);
   let m = await app.model();
-  assert.equal(m.size, 0, "the first click commits nothing");
+  assert.equal(m.size, FIXTURE_ENTITIES, "the first click commits nothing");
   assert.equal(m.activeTool, "circle3", "and the tool stays armed — the gesture spans three clicks");
 
   await click(420, 180);
   m = await app.model();
-  assert.equal(m.size, 0, "nor does the second");
+  assert.equal(m.size, FIXTURE_ENTITIES, "nor does the second");
   assert.equal(m.activeTool, "circle3");
 
   // The dashed circumcircle through the two clicks and the cursor. The patch
@@ -111,13 +120,13 @@ test("three clicks on empty canvas draw the circle through all three", async () 
 
   m = await app.model();
   assert.equal(m.byKind.circle, 1, "one circle");
-  assert.equal(m.byKind.point, 4, "three rim points and the free circle's own centre");
+  assert.equal(drawn(m.points).length, 4, "three rim points and the free circle's own centre");
   assert.equal(m.activeTool, null, "the gesture completed and the tool stood down");
   assert.equal(await app.status(), "SOLVED");
 
   // The exact claim: the circle is the circumcircle of the three points it
   // placed, to 1e-6, computed independently of the app.
-  const rim = Object.entries(m.points).filter(([n]) => n !== m.circles[0].center).map(([, c]) => c);
+  const rim = drawn(m.points).filter(([n]) => n !== m.circles[0].center).map(([, c]) => c);
   assert.equal(rim.length, 3);
   const want = circumOf(rim[0], rim[1], rim[2]);
   const centre = m.points[m.circles[0].center];
@@ -139,7 +148,7 @@ test("the whole three-click gesture is one undo step", async () => {
   await app.page.waitForTimeout(250);
 
   const m = await app.model();
-  assert.equal(m.size, 0,
+  assert.equal(m.size, FIXTURE_ENTITIES,
     `one Ctrl+Z must take the circle, its rim points and its relations together — left ${JSON.stringify(m.byKind)}`);
   const rels = (await app.repl("rels()")).value as string[];
   assert.deepEqual(rels, [], "including the constraints the gesture added");
@@ -165,8 +174,7 @@ test("a 3-point circle clicked through an existing point picks up the coincidenc
   await app.page.mouse.up();
   await app.page.waitForTimeout(200);
 
-  const drawn = await app.model();
-  assert.equal(drawn.byKind.point, 4, "the rectangle is there to click on");
+  assert.equal(drawn((await app.model()).points).length, 4, "the rectangle is there to click on");
 
   await app.type("circle3");
   await click(200, 140); // dead on one corner
@@ -209,7 +217,7 @@ test("a collinear third click is refused rather than solved", async () => {
   await app.page.waitForTimeout(200);
 
   const m = await app.model();
-  assert.equal(m.size, 0, "nothing may be built for a circle that cannot exist");
+  assert.equal(m.size, FIXTURE_ENTITIES, "nothing may be built for a circle that cannot exist");
   assert.equal(m.activeTool, "circle3", "and the tool stays armed, holding the two good clicks");
   // The refusal reaches the app's own log pane — the tool-voice change moved
   // it there from console.warn, where no user would ever have seen it.

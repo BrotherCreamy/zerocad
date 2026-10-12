@@ -200,8 +200,8 @@ test("circle relations anchor on the rim, and concentric on the shared centre", 
   m.addPoint([50, 0], "a");
   m.addPoint([50, 40], "b");
   m.addLine("a", "b", "l");
-  m.addCircle("ctr", 20, "c1");
-  m.addCircle("ctr2", 30, "c2");
+  m.addCircle("ctr", 20, null, "c1");
+  m.addCircle("ctr2", 30, null, "c2");
 
   const rr = radius(m, "c1", 20);
   const rc = concentric(m, "c1", "c2");
@@ -334,7 +334,7 @@ test("rad draws R-and-its-number just outside the rim, up and to the right", asy
   await loadKernel();
   const m = new Model(2);
   m.addPoint([0, 0], "ctr");
-  m.addCircle("ctr", 20, "c1");
+  m.addCircle("ctr", 20, null, "c1");
   const r = radius(m, "c1", 12.5);
   const gl = placeGlyphs(m, view).find((g) => g.relation === r)!;
 

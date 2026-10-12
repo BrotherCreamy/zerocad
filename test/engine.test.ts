@@ -371,11 +371,11 @@ async function shapes() {
   model.addPoint([60, 0], "b");
   model.addLine("a", "b", "l1");
   model.addPoint([100, -100], "cc");
-  model.addCircle("cc", 30, "c1");
+  model.addCircle("cc", 30, null, "c1");
   model.addPoint([200, -200], "ac");
   model.addPoint([240, -200], "as");
   model.addPoint([200, -160], "ae");
-  model.addArc("ac", "as", "ae", 40, "a1");
+  model.addArc("ac", "as", "ae", 40, null, "a1");
   model.solve();
 
   const { canvas, fire } = fakeCanvas();

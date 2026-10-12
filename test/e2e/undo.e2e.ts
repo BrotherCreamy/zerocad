@@ -13,11 +13,22 @@
 
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { openApp, type AppContext } from "./harness.ts";
+import { axisFrame, FIXTURE_ENTITIES, openApp, PARKED, type AppContext } from "./harness.ts";
 
 let app: AppContext;
 after(async () => { await app.close(); });
-before(async () => { app = await openApp(); });
+before(async () => {
+  app = await openApp();
+  // A frame for the fillet's arc to lie in — a 3D arc has a plane — named,
+  // parked off the canvas, and *not* the default, so the rectangle below is
+  // the same four points and four lines it always was (a default frame would
+  // hold every corner on its plane with an `onplane` of its own). It is part
+  // of the "empty" drawing the undos walk back to.
+  await axisFrame(app, PARKED, false);
+});
+
+/** What `byKind` reports for the fixture frame on its own. */
+const FRAME = { point: 3, frame: 1 };
 
 /** The whole model as text — the same snapshot the undo stack stores. */
 async function saved(): Promise<string> {
@@ -71,10 +82,10 @@ test("three actions, three undos, and each lands exactly where it was", async ()
   await dragFromTo(await app.at(250, 120), await app.at(420, 300));
   drawn = await saved();
   const m1 = await app.model();
-  assert.deepEqual(m1.byKind, { point: 4, line: 4 }, "the rectangle was drawn");
+  assert.deepEqual(m1.byKind, { ...FRAME, point: 4 + FRAME.point, line: 4 }, "the rectangle was drawn");
 
   // 2. A command entry: filleting a corner, which is structural surgery.
-  await app.type('fillet("l1", "l2", 8)');
+  await app.type('fillet("l1", "l2", 8, "f")');
   filleted = await saved();
   const m2 = await app.model();
   assert.equal(m2.byKind.arc, 1, "the fillet added its arc");
@@ -100,11 +111,11 @@ test("three actions, three undos, and each lands exactly where it was", async ()
 
   await undoKey();
   assert.equal(await saved(), drawn, "two undos put the fillet back");
-  assert.deepEqual((await app.model()).byKind, { point: 4, line: 4 }, "the arc is gone again");
+  assert.deepEqual((await app.model()).byKind, { ...FRAME, point: 4 + FRAME.point, line: 4 }, "the arc is gone again");
 
   await undoKey();
   assert.equal(await saved(), empty, "three undos put the rectangle back");
-  assert.equal((await app.model()).size, 0, "an empty drawing, as at the start");
+  assert.equal((await app.model()).size, FIXTURE_ENTITIES, "an empty drawing, as at the start — its frame and nothing else");
 
   await undoKey();
   assert.equal(await saved(), empty, "and a fourth does nothing at all");
@@ -206,7 +217,7 @@ test("opening a file is one undo step", async () => {
   await app.repl(`OTHER = ${JSON.stringify(empty)}`);
   const opened = await app.repl("open(OTHER)");
   assert.equal(opened.ok, true, opened.error ?? "");
-  assert.equal((await app.model()).size, 0, "opened the empty drawing");
+  assert.equal((await app.model()).size, FIXTURE_ENTITIES, "opened the empty drawing");
 
   await undoKey();
   assert.equal(await saved(), here, "one Ctrl+Z from opening the wrong file");

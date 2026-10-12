@@ -44,7 +44,7 @@ are flagged as such.
   the menu. Phases and the rest of the design in the roadmap; phase 1
   (3D frames + fix/onPlane + camera + app on Model(3)) is built, both halves:
   [`docs/plans/3d-phase1.md`](docs/plans/3d-phase1.md). Phase 2 (planar
-  discipline) is next.
+  discipline) is built too — see below; phase 3 (loops) is next.
   ✅ **Phase 1, half 1 (model + relations) built.** 3D frames carry a
   y-ref; `frameBasis` straightens it (Gram–Schmidt) and takes +z = +x × +y;
   `fix` pins `[x, y, z]` in a frame and its frameless form is gone;
@@ -128,15 +128,22 @@ are flagged as such.
     picking only, never in a residual — and an arc whose plane is turned through
     the vertical draws as its complement. Tools and `fillet` store endpoints in
     the order that makes the drawn arc the one aimed at. Phase 2 retires it.
+    ✅ *Closed by phase 2:* an arc turns about its frame's +z; the kernel rule
+    survives only in the v6 translation.
   - **Circles are drawn as their silhouette** (the spec's choice): to every
     relation a circle is still a sphere, so on a plane seen obliquely it does
     not foreshorten, and it offers intersection snaps only square-on. The
-    phase-2 seam, visible in screenshot 50 on purpose.
+    phase-2 seam, visible in screenshot 50 on purpose. ✅ *Closed by phase 2:*
+    a circle lies in its frame's plane and is drawn and hit as its ellipse
+    (screenshot 55).
   - **While sketching on a plane, snaps offer only places on it.** Found in the
     poster screenshot: square-on, a wall's corner snapped to a floor corner
     seventy units behind the pixel. Snapping to off-plane geometry and
     constraining its projection (Onshape's way) needs a relation this model
-    lacks — phase 2's to decide.
+    lacks — phase 2's to decide. ✅ *Decided in phase 2:* an off-plane point is
+    offered at its projection as a position aid that **infers nothing** — the
+    relation is still missing, and a constraint to a projected ghost would be a
+    lie. The on-sketch-only rule stands for everything else.
   - **A 2D coordinate in the 3D app means z = 0**: `pt(40, 30)` seeds at the
     kernel's z = 0 (a seed, the gauge every 2D drawing lived in), and
     `fix(p, [x, y])` is on the frame's plane, journalled lifted. The same rule
@@ -157,6 +164,74 @@ are flagged as such.
     the wrong way where they cross (nothing is opaque yet); a lifted file's
     points carry no `onPlane` (the file never said so), so dragging one in a
     turned view moves it parallel to the working plane, which is z = 0 anyway.
+    (↻ Phase 2 closed the `frame()` one; the other three stand — see below.)
+
+  ✅ **Phase 2 (planar discipline) built** (2026-10-12):
+  [`docs/plans/3d-phase2.md`](docs/plans/3d-phase2.md). A 3D circle or arc
+  names a frame — resolved like `fix`'s, refused in 2D — whose orientation its
+  rim takes, through its own centre; `onCircle`/`tangent` are the planar rim in
+  3D (a second block each, never emitted in 2D); arcs turn about their frame's
+  +z; planar circles draw and hit as ellipses; an off-plane point snaps at its
+  projection and infers nothing; `plane()`; "Sketch on this"; format version 7.
+  Screenshots 54–58; the story is `test/e2e/planar.e2e.ts`.
+
+  Decided while building phase 2, and open to veto:
+
+  - ⚠ **A 3D circle needs a frame to exist, and the tools say so** (the spec's
+    semantic change, carried through): in 3D with no default frame, the circle,
+    3-point circle, arc and 3-point arc tools refuse their first click out loud
+    and place nothing, and **the empty-canvas menu shows them — and Fillet —
+    disabled, with the model's standing message** (Fix's precedent; the spec
+    did not ask for the menu half). A fresh app therefore draws no circle until
+    a frame exists — `plane()`, or the menu's Frame item.
+  - **The plane pins nothing**, as the spec recommended: the rim is through the
+    circle's own centre, parallel to the frame; a tool's `onPlane` holds a
+    drawn centre on the sketch, as before.
+  - **`tangent` in 3D holds both line ends on the rim's plane**, not only the
+    contact: a tangent line lies in its circle's plane. `rad`, `conc` and
+    `eqrad` do not read the plane (they are not claims about the rim).
+  - **An arc is drawn in the plane through its centre and ends**, oriented by
+    the frame's +z — not projected onto the frame-parallel plane. The two agree
+    whenever `arcends` holds; the chosen one draws what the model has mid-solve.
+  - **`fillet` takes a plane** (`fillet(l1, l2, r, plane?)`, the default in 3D,
+    journalled) and refuses a corner out of that frame's orientation by name,
+    rather than choosing a frame by nearest normal — one resolution rule for
+    every new call. (Nearest normal is the *translation's* rule for old files.)
+  - ⚠ **The v6 translation makes frames where none fits.** "Nearest-normal
+    against the file's frames" has nothing to match in a file with no frame at
+    all, which any 2D drawing may be. Refusing those files, or keeping a
+    planeless legacy circle in 3D, were the alternatives; instead the
+    translation adds a visible, ordinary frame named `plane` (never a name the
+    file uses) in the curve's plane on its centre — the lift's y-ref discipline
+    one size up. Also decided: arcs match by their **saved** geometry (a
+    three-point arc's centre is a seed at the origin during replay), frames the
+    file deletes are no candidates, ties go to the default then the earliest,
+    and an arc v6 drew the other way round has its ends swapped. A v6 circle
+    has no normal to match and takes the default at its step — a guess, said so.
+  - **The projected snap ranks below every on-sketch point, crossing and
+    midpoint, above a bare curve**, projects along the plane's normal (not the
+    line of sight), and is drawn as a **dashed** hollow square with a leader
+    back to its source — the existing point marker was already hollow, so
+    hollow alone would not have been distinct. Points only.
+  - **`plane()` sets the default** (the spec's recommendation): starting a
+    sketch is what it is for. It and a bare `frame()` seed facing the viewer in
+    a turned view (closing a phase-1 seam); an unturned view journals exactly
+    what it always did.
+  - **The hover tag and `ls()` name a circle's plane** (`c1  r 10  in f1`):
+    nothing on screen says which frame a square-on circle is parallel to.
+  - **Found and fixed: a refused operation used to stay in the journal.**
+    `asOperation` recorded before its body, so a fillet refused for its radius
+    (since fillets existed) left an entry that failed the saved file on reopen.
+    It records after success now.
+  - *Found, not fixed:* the last click's **snap marker lingers** after a tool
+    finishes on that click, until the next redraw (the solve's render happens
+    before `finish()` clears it) — cosmetic, older than this package, visible
+    in a screenshot taken without moving the mouse. A v6 bare `arc()` with
+    auto-created ends cannot have them swapped by the translation, so on a
+    frame facing the kernel's −z it opens as its complement. Projecting
+    *curves* into the sketch, and on-plane inference beyond phase 1's minimal
+    one, are not done. `pt(x, y)` with a tilted default frame, the per-entity
+    painter's sort and the lifted points' missing `onPlane` stand as above.
 
 - **No world frame — coordinate frames are entities** (owner's direction,
   2026-09-01, chosen over "keep the frame but hide it" and "directions stay,

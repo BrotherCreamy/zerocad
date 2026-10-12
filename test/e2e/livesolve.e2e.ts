@@ -13,7 +13,7 @@
 
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { openApp, type AppContext } from "./harness.ts";
+import { axisFrame, openApp, PARKED, type AppContext } from "./harness.ts";
 
 let app: AppContext;
 after(async () => { await app.close(); });
@@ -68,7 +68,10 @@ test("a relation typed at the command line takes effect without solve()", async 
 });
 
 test("a contradictory relation flips the header to CONFLICT, with no solve() typed", async () => {
-  await app.type("k = circ(pt(0,80), 20)");
+  // A circle lies in a plane in the 3D app: a frame for it, parked off the
+  // canvas and not the default, so nothing else about the drawing changes.
+  await axisFrame(app, PARKED, false);
+  await app.type('k = circ(pt(0,80), 20, "f")');
   await app.type('rad("c1", 20)');
   assert.equal(await app.status(), "SOLVED", "one radius is satisfiable");
 

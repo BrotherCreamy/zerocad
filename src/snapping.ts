@@ -16,9 +16,16 @@
 import type { Model } from "./model.ts";
 import { intersect, type Pt } from "./intersect.ts";
 import { nearestOnPolyline, screenCurve, screenOf as projectPoint, type ScreenCurve } from "./projection.ts";
-import { liesOn, type Plane, type View } from "./view.ts";
+import { liesOn, worldToScreen, type Plane, type View } from "./view.ts";
+import { cross3, dot3, lift3, unit3 } from "./vec3.ts";
 
-export type SnapKind = "point" | "intersection" | "midpoint" | "curve";
+/**
+ * What a snap caught. `"projected"` is the one that is not a place in the
+ * drawing at all: a point *off* the sketch plane, offered at its projection
+ * onto the plane — a position to draw at, and nothing to infer from (see
+ * `findSnap`).
+ */
+export type SnapKind = "point" | "intersection" | "midpoint" | "projected" | "curve";
 
 export interface Snap {
   /** Where the cursor should be treated as being. */
@@ -75,17 +82,33 @@ function dist(ax: number, ay: number, bx: number, by: number): number {
  * vertex, wherever the working plane happens to be.
  *
  * **`sketch`, when given, is the plane being drawn on** — the default frame's,
- * in a 3D model — and then only places *on* it are offered. Seen square-on, a
- * sketch has whole stacks of geometry behind it sharing its pixels: a floor's
- * front and back corners are one pixel to a camera looking at the wall
- * standing on its back edge. Snapping to whichever of a stack came first
- * would pin a point of the wall to a corner of the floor seventy units behind
- * it, dragging the wall's edge out of its own plane — the drawing obeying a
- * click the user never made. A vertex, edge or crossing that really is on the
- * sketch (the floor's back edge, which the wall stands on) is still found;
- * what is only seen *through* the sketch is not a place on it. Without a
- * sketch plane (no default frame, or a 2D model) everything is offered, as it
- * always was.
+ * in a 3D model — and then only places *on* it are offered as themselves.
+ * Seen square-on, a sketch has whole stacks of geometry behind it sharing its
+ * pixels: a floor's front and back corners are one pixel to a camera looking
+ * at the wall standing on its back edge. Snapping to whichever of a stack came
+ * first would pin a point of the wall to a corner of the floor seventy units
+ * behind it, dragging the wall's edge out of its own plane — the drawing
+ * obeying a click the user never made. A vertex, edge or crossing that really
+ * is on the sketch (the floor's back edge, which the wall stands on) is still
+ * found.
+ *
+ * **A point *off* the sketch is offered at its projection onto it** — Onshape's
+ * "use / project into the sketch", as a position aid and no more: tier 4, a
+ * `"projected"` snap whose world is the foot of the perpendicular from the
+ * point to the plane. Drawing a wall's outline over a floor's far corner then
+ * lands *on the wall*, square in front of that corner, which is what aiming at
+ * it meant. It infers **nothing** (see tools/place.ts): a coincidence with a
+ * point the new one is not at would be a lie, and a constraint to a projected
+ * ghost needs a relation this model does not have. Below every place that is
+ * really on the sketch — a point, a crossing or a midpoint there infers
+ * something true, and wins at any distance inside the tolerance — and above a
+ * bare curve, because a vertex aimed at is a more particular intent than an
+ * edge passed over. **Points only**, in this package: projecting edges and
+ * curves into the sketch is a larger change (a projected circle is an ellipse
+ * the snap would have to intersect) and is left for later.
+ *
+ * Without a sketch plane (no default frame, or a 2D model) everything is
+ * offered as itself, as it always was, and nothing is ever projected.
  */
 export function findSnap(model: Model, view: View, sx: number, sy: number, sketch?: Plane | null): Snap | null {
   const screenOf = (name: string) => projectPoint(model, view, name);
@@ -111,8 +134,9 @@ export function findSnap(model: Model, view: View, sx: number, sy: number, sketc
   // In 3D two curves can cross on screen without meeting at all — one in front
   // of the other. So each curve reads the crossing back to its own world point,
   // and it is a crossing only where the two readings are one place. Two curves
-  // in one sketch plane always agree; a circle, still a sphere, agrees with
-  // its neighbours only seen square-on, which is the phase-2 seam showing.
+  // in one sketch plane always agree, a circle's planar rim as much as a line —
+  // at any angle of view, which a circle drawn as a sphere's silhouette could
+  // not manage.
   const near = curvesNear(model, view, sx, sy, SNAP_INTERSECTION);
   const sameWithin = SAME_PLACE_PX / view.scale;
   for (let i = 0; i < near.length; i++) {
@@ -146,7 +170,23 @@ export function findSnap(model: Model, view: View, sx: number, sy: number, sketc
   }
   if (best) return best.snap;
 
-  // Tier 4: somewhere along a curve — the nearest point on it.
+  // Tier 4: a point off the sketch, at its projection onto it — a position aid
+  // that infers nothing. See the note above.
+  if (sketch) {
+    const foot = footOnPlane(sketch);
+    for (const e of model.entities.values()) {
+      if (e.kind !== "point") continue;
+      const world = model.coords(e.name);
+      if (onSketch(world) || !foot) continue;
+      const at = foot(world).slice(0, model.dim);
+      const p = worldToScreen(view, at);
+      const d = dist(sx, sy, p[0], p[1]);
+      if (d < SNAP_POINT && (!best || d < best.d)) best = { snap: make(p, at, "projected", e.name), d };
+    }
+    if (best) return best.snap;
+  }
+
+  // Tier 5: somewhere along a curve — the nearest point on it.
   for (const e of model.entities.values()) {
     const shape = screenCurve(model, view, e, SNAP_INTERSECTION);
     const at = shape && nearestOnCurve(shape, sx, sy);
@@ -199,6 +239,25 @@ function nearestOnCurve(shape: ScreenCurve, sx: number, sy: number): { on: Pt; d
   return near && { on: near.on, d: near.d };
 }
 
+/**
+ * The orthogonal projection onto a plane — the foot of the perpendicular from a
+ * point — or null for a plane with no normal to drop one along. Along the
+ * plane's *own* normal, not along the line of sight: seen square-on the two
+ * are one, and seen obliquely the foot is still the point of the sketch
+ * nearest the vertex, which is what "project it into the sketch" means, rather
+ * than wherever the pixel's ray happens to cross the plane.
+ */
+function footOnPlane(plane: Plane): ((world: number[]) => number[]) | null {
+  const n = unit3(cross3(lift3(plane.u), lift3(plane.v)));
+  if (!n) return null;
+  const o = lift3(plane.origin);
+  return (world) => {
+    const w = lift3(world);
+    const off = dot3([w[0] - o[0], w[1] - o[1], w[2] - o[2]], n);
+    return [w[0] - off * n[0], w[1] - off * n[1], w[2] - off * n[2]];
+  };
+}
+
 /** The curves within `tol` pixels of the cursor, with their screen shapes. */
 function curvesNear(
   model: Model,
@@ -222,6 +281,7 @@ export function describeSnap(snap: Snap): string {
     case "point": return snap.targets[0];
     case "intersection": return snap.targets.join(" × ");
     case "midpoint": return `mid ${snap.targets[0]}`;
+    case "projected": return `proj ${snap.targets[0]}`;
     case "curve": return `on ${snap.targets[0]}`;
   }
 }

@@ -791,6 +791,34 @@ export class ToolEngine {
     g.strokeStyle = "#55c07a";
     g.lineWidth = 1.6;
     g.beginPath();
+    if (this.snap.kind === "projected") {
+      // A point off the sketch, offered at its projection: the point marker's
+      // square, but **hollow** — dashed and inset by a ring, so it reads as a
+      // ghost of a vertex rather than a vertex — and a faint dashed leader back
+      // to the real point when the two are apart on screen, so it is plain
+      // what is being borrowed and from where. It infers nothing, and the
+      // marker must not look like a snap that does.
+      g.setLineDash([2.5, 2]);
+      g.rect(x - 6, y - 6, 12, 12);
+      g.stroke();
+      g.setLineDash([]);
+      g.beginPath();
+      g.arc(x, y, 1.6, 0, Math.PI * 2);
+      g.stroke();
+      const from = this.model.entities.has(this.snap.targets[0]) ? this.model.coords(this.snap.targets[0]) : null;
+      const [fx, fy] = from ? this.worldToScreen(from) : [x, y];
+      if (Math.hypot(fx - x, fy - y) > 3) {
+        g.globalAlpha = 0.55;
+        g.lineWidth = 1;
+        g.setLineDash([3, 3]);
+        g.beginPath();
+        g.moveTo(x, y);
+        g.lineTo(fx, fy);
+        g.stroke();
+      }
+      g.restore();
+      return;
+    }
     if (this.snap.kind === "point") {
       g.rect(x - 5, y - 5, 10, 10); // a square: an exact, existing point
     } else if (this.snap.kind === "intersection") {

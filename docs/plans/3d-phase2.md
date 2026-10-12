@@ -1,6 +1,9 @@
 # Plan: 3D phase 2 — planar discipline
 
-**Status: in flight** (2026-10-12). Second package of
+**Status: built** (2026-10-12) — see the register's 3D entry in `TODO.md` for
+what was decided on the way (notably: the v6 translation makes a frame where
+none fits, the curve tools show disabled in the menu without a default frame,
+and `fillet` takes a plane). Second package of
 [`3d-roadmap.md`](3d-roadmap.md). Read that, `CLAUDE.md`,
 `docs/ARCHITECTURE.md` (the new pixel-is-a-ray section), the register's 3D
 entry (phase 1's flagged seams are this package's backlog), and

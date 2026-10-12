@@ -9,7 +9,8 @@
 // line" — two copies of a scale-free epsilon is exactly the sort of thing that
 // drifts until one tool refuses a gesture the other accepts.
 
-import { cross3, dot3, lift3, sub3 } from "../vec3.ts";
+import { cross3, dot3, lift3, sub3, unit3 } from "../vec3.ts";
+import { circleFrame, type ArcFrame } from "../arcgeom.ts";
 
 /**
  * Relative sine below which three points are one straight line.
@@ -67,6 +68,23 @@ export function circumcircle(a: number[], b: number[], c: number[]): Circumcircl
   const ux = (cy * bb - by * cc) / d;
   const uy = (bx * cc - cx * bb) / d;
   return { center: [a[0] + ux, a[1] + uy], radius: Math.hypot(ux, uy) };
+}
+
+/**
+ * The circumcircle laid out in the plane of its three points, ready for the
+ * arc machinery to sample — what a preview draws, as the renderer will draw the
+ * committed circle: a whole turn in its plane, projected, so a plane seen at an
+ * angle shows the ellipse. Null when there is no circle.
+ */
+export function circumFrame(a: number[], b: number[], c: number[]): ArcFrame | null {
+  const found = circumcircle(a, b, c);
+  if (!found) return null;
+  const C = lift3(found.center);
+  const n = cross3(sub3(lift3(b), lift3(a)), sub3(lift3(c), lift3(a)));
+  const u = unit3(sub3(lift3(a), C));
+  const v = u && unit3(cross3(n, u));
+  if (!u || !v) return null;
+  return circleFrame(C, found.radius, u, v);
 }
 
 /**

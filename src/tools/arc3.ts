@@ -32,18 +32,21 @@
 // live rather than committed into a conflict.
 
 //
-// In 3D the arc lies in the plane of its three clicks, and which way round it
-// goes is decided the way every arc's is (see ../arcgeom.ts): the tool works
-// out which of the two arcs between the endpoints holds the waypoint, and
-// orders the endpoints so that is the arc drawn. Its centre is held on the
-// sketch plane with its endpoints. The preview is the same arc, sampled in the
-// world and projected — on a plane seen at an angle it is part of an ellipse.
+// In 3D the arc lies in the plane of its three clicks — the sketch's — and is
+// given the default frame's plane (see `ArcEntity`), whose +z it turns about;
+// with no default frame the first click is refused before anything is placed.
+// The tool works out which of the two arcs between the endpoints holds the
+// waypoint, and orders the endpoints so that is the arc drawn about that +z.
+// Its centre is held on the sketch plane with its endpoints. The preview is
+// the same arc, sampled in the world and projected — on a plane seen at an
+// angle it is part of an ellipse.
 
 import { Tool, defineTool, type PointerInfo, type RenderContext } from "./tool.ts";
 import { arcEndpoints } from "../relations/geometry.ts";
-import { holdOnSketchPlane, placePoint, requirePlanar } from "./place.ts";
+import { curveToolReady, holdOnSketchPlane, placePoint, requirePlanar } from "./place.ts";
 import { circumcircle, PREVIEW_MAX_R } from "./circumcircle.ts";
 import { arcFrame, arcSamples, arcSegments } from "../arcgeom.ts";
+import { sketchSide } from "../curveplane.ts";
 import { dot3, lift3, sub3 } from "../vec3.ts";
 
 /**
@@ -80,14 +83,15 @@ export interface Arc3 {
  * endpoints either way, and only the label moves.
  *
  * Plain numbers in and out, in world coordinates, two or three of them. The
- * counter-clockwise sense is the one `arcFrame` lays every arc out in — about
- * +z for a 2D arc, which is the world's y-up sense; about the arc's own plane's
- * reference side in 3D — so the arc this picks is the arc that will be drawn.
+ * counter-clockwise sense is about `side` — +z for a 2D arc, which is the
+ * world's y-up sense; the +z of the plane the arc will be given in 3D — which
+ * is how `arcFrame` lays every arc out, so the arc this picks is the arc that
+ * will be drawn.
  */
-export function arcThrough(a: number[], b: number[], w: number[]): Arc3 | null {
+export function arcThrough(a: number[], b: number[], w: number[], side: number[] = [0, 0, 1]): Arc3 | null {
   const found = circumcircle(a, b, w);
   if (!found) return null;
-  const f = arcFrame(found.center, a, b, found.radius);
+  const f = arcFrame(found.center, a, b, found.radius, side);
   if (!f) return null;
   // How far round from `a` the waypoint is, in the same sense the sweep from
   // `a` to `b` is measured in: inside that sweep, `a` starts it; outside, the
@@ -106,6 +110,7 @@ export class Arc3Tool extends Tool {
 
   onDown(p: PointerInfo): void {
     requirePlanar(this.ctx.model, this.name);
+    if (!this.ends.length && !curveToolReady(this.ctx, this.name)) return;
     this.hover = p.world;
 
     if (this.ends.length < 2) {
@@ -121,7 +126,7 @@ export class Arc3Tool extends Tool {
     }
 
     const [first, second] = this.ends;
-    const found = arcThrough(first.world, second.world, p.world);
+    const found = arcThrough(first.world, second.world, p.world, sketchSide(this.ctx.model));
     if (!found) {
       // Refuse rather than build, circle3's shape exactly: three points on one
       // line have no arc between them either, and committing one would leave a
@@ -198,13 +203,14 @@ export class Arc3Tool extends Tool {
     // side it bulges to — so from here the preview is the answer itself.
     if (this.ends.length === 2 && this.hover) {
       const worlds = [this.ends[0].world, this.ends[1].world];
-      const found = arcThrough(worlds[0], worlds[1], this.hover);
+      const side = sketchSide(this.ctx.model);
+      const found = arcThrough(worlds[0], worlds[1], this.hover, side);
       const rad = found ? found.radius * r.scale : 0;
       // Nothing at all when the three are collinear, or when the rim is so far
       // away that what would be drawn is a straight line: a preview that lies
       // about what the next click will build is worse than no preview.
       const f = found && rad < PREVIEW_MAX_R
-        ? arcFrame(found.center, worlds[found.startIndex], worlds[1 - found.startIndex], found.radius)
+        ? arcFrame(found.center, worlds[found.startIndex], worlds[1 - found.startIndex], found.radius, side)
         : null;
       if (f) {
         // Sampled in the world and projected, exactly as main.ts draws the

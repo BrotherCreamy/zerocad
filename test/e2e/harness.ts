@@ -270,18 +270,41 @@ interface PageGlobals {
  * every name the tests below assert against. The command surface's own
  * `frame()` is exercised in repl.e2e.ts.
  */
-export async function axisFrame(app: AppContext, at: [number, number] = [0, 0]): Promise<void> {
+export async function axisFrame(app: AppContext, at: [number, number] = [0, 0], asDefault = true): Promise<void> {
   const r = await app.repl(
     `model.addPoint([${at[0]}, ${at[1]}, 0], "f_o");` +
     `model.addPoint([${at[0] + 1}, ${at[1]}, 0], "f_x");` +
     `model.addPoint([${at[0]}, ${at[1] + 1}, 0], "f_y");` +
-    `model.addFrame("f_o", "f_x", "f_y", "f"); model.setDefaultFrame("f"); refresh(); "framed"`,
+    `model.addFrame("f_o", "f_x", "f_y", "f");` +
+    (asDefault ? `model.setDefaultFrame("f");` : "") + ` refresh(); "framed"`,
   );
   if (!r.ok) throw new Error(`could not build the fixture frame: ${r.error}`);
 }
 
 /** How many entities `axisFrame` adds: the frame and its three points. */
 export const FIXTURE_ENTITIES = 4;
+
+/** How many journal entries `axisFrame` adds: three points, the frame, and the default. */
+export const FIXTURE_JOURNAL = 5;
+
+/**
+ * Where a test parks its sketch frame when all it needs is for one to *exist*:
+ * far off the canvas in every direction a test clicks, so nothing snaps to its
+ * points, and in the kernel's x–y plane, so it is the plane every 2D-written
+ * test was already drawing in.
+ */
+export const PARKED: [number, number] = [150, 150];
+
+/**
+ * A default frame to sketch on, parked out of the way — what a test that draws
+ * a circle or an arc needs before anything else since 3D phase 2: in a 3D model
+ * a circle lies in a plane, and the tools refuse with no default frame to give
+ * them (see src/tools/place.ts). Every point a tool then places is held on the
+ * frame's plane with `onplane`, which the assertions below it account for.
+ */
+export async function sketchFrame(app: AppContext): Promise<void> {
+  await axisFrame(app, PARKED);
+}
 
 /** Perpendicular distance from a point to the infinite line through a and b. */
 export function distanceToLine(p: number[], a: number[], b: number[]): number {
