@@ -28,7 +28,7 @@ function tilted(): Model {
   const m = new Model(2);
   m.addPoint([0, 0], "o");
   m.addPoint([Math.cos(TILT), Math.sin(TILT)], "x");
-  m.addFrame("o", "x", "f");
+  m.addFrame("o", "x", null, "f");
   m.setDefaultFrame("f");
   return m;
 }
@@ -57,9 +57,13 @@ test("parseAxisRef: a dot means a frame's axis, and nothing else may", () => {
   assert.equal(parseAxisRef("l1"), null, "an ordinary name is not a reference");
   assert.deepEqual(parseAxisRef("f1.x"), { frame: "f1", axis: "x" });
   assert.deepEqual(parseAxisRef("f1.y"), { frame: "f1", axis: "y" });
+  // z is *syntax* in every model now; whether a frame has one is the model's
+  // question (`requireAxis`), asked where the reference is used — below.
+  assert.deepEqual(parseAxisRef("f1.z"), { frame: "f1", axis: "z" });
   // A dot followed by anything else is a typo with no other reading, so it
   // says so rather than being handed on as a name nothing will match.
-  assert.throws(() => parseAxisRef("f1.z"), /"f1\.z" is not a frame axis — say "f1\.x" or "f1\.y"/);
+  assert.throws(() => parseAxisRef("f1.w"),
+    /"f1\.w" is not a frame axis — say "f1\.x" or "f1\.y" \(or "f1\.z" in 3D\)/);
   assert.throws(() => parseAxisRef("f1."), /is not a frame axis/);
 });
 
@@ -68,26 +72,39 @@ test("a name cannot contain a dot, so a reference can never collide with one", (
   // The guard is at claimName, which is every entity kind's one way in.
   assert.throws(() => m.addPoint([0, 0], "f1.x"), /cannot contain a dot — "f1\.x" names a frame's axis/);
   assert.throws(() => m.addLine(null, null, "a.b"), /cannot contain a dot/);
-  assert.throws(() => m.addFrame(null, null, "w.x"), /cannot contain a dot/);
+  assert.throws(() => m.addFrame(null, null, null, "w.x"), /cannot contain a dot/);
 });
 
 test("an unknown frame or a bad suffix is refused where it is written", () => {
   const m = tilted();
   m.addLine(null, null, "l");
   assert.throws(() => parallel(m, "l", "g.x"), /"g" is not a frame/);
-  assert.throws(() => parallel(m, "l", "f.z"), /is not a frame axis/);
+  assert.throws(() => parallel(m, "l", "f.w"), /is not a frame axis/);
   // A line by that name is still just a line; nothing has changed for it.
   assert.throws(() => parallel(m, "l", "nope"), /"nope" is not a line/);
   assert.equal(m.relations.size, 0, "and none of the attempts left a relation");
   assert.equal(m.problem.blockCount, 0);
 });
 
-test("axis references are 2D-only, because a frame is", () => {
-  const m = new Model(3);
-  m.addPoint([0, 0, 0], "a");
-  m.addPoint([1, 1, 1], "b");
-  m.addLine("a", "b", "l");
-  assert.throws(() => parallel(m, "l", "f.x"), /a frame is a 2D entity, so its axes are too/);
+test("a 2D frame has no z axis — refused where it is written, and by zaxis() itself", () => {
+  // Used to read "axis references are 2D-only, because a frame is". Frames are
+  // 2D or 3D now (test/frames3d.test.ts has the 3D side); what is left of the
+  // old refusal is the one axis a 2D frame genuinely lacks.
+  const m = tilted();
+  m.addLine(null, null, "l");
+  for (const call of [
+    () => parallel(m, "l", "f.z"),
+    () => perpendicular(m, "l", "f.z"),
+    () => angle(m, "l", "f.z", 0.5),
+  ]) {
+    assert.throws(call, /"f\.z": a 2D frame has no z axis — z is the normal to a 3D frame's plane/);
+  }
+  // Refused before the frame is even looked up: in 2D no frame you could make
+  // would have one, so "no such frame" would be the wrong thing to fix.
+  assert.throws(() => parallel(m, "l", "nosuch.z"), /a 2D frame has no z axis/);
+  assert.throws(() => m.axisRef("z"), /a 2D frame has no z axis/);
+  assert.equal(m.relations.size, 0, "and none of the attempts left a relation");
+  assert.equal(m.problem.blockCount, 0);
 });
 
 // --- what they mean --------------------------------------------------------

@@ -10,6 +10,7 @@
 // tag, and `del`. Relations return that name; they used to return nothing.
 
 import type { Model } from "../model.ts";
+import type { Dual } from "../kernel/dual.ts";
 import { norm, vecSub } from "./vec.ts";
 import { frameBasis } from "./refs.ts";
 
@@ -27,40 +28,47 @@ export function dist(model: Model, aName: string, bName: string, target: number)
 }
 
 /**
+ * How far a point sits along one of a frame's unit axes, measured from the
+ * frame's origin: (p − origin) · axis, with the point as Duals and the frame as
+ * plain numbers. Plain numbers are what keep the frame out of the Jacobian —
+ * see `frameBasis`. Written out term by term so the 2D case is the very
+ * expression `fix` always evaluated, operation for operation.
+ */
+function alongAxis(p: Dual[], origin: number[], axis: number[]): Dual {
+  let acc = p[0].sub(origin[0]).mul(axis[0]);
+  for (let k = 1; k < p.length; k++) acc = acc.add(p[k].sub(origin[k]).mul(axis[k]));
+  return acc;
+}
+
+/**
  * Pins a point's position **in a frame's coordinates**: the frame's origin,
- * plus `at[0]` along its +x and `at[1]` along its +y.
+ * plus `at[0]` along its +x, `at[1]` along its +y and — in 3D — `at[2]` along
+ * its +z.
  *
  * There is no world frame to pin against, which is the whole of the coordinate
  * -frames change — an origin nobody made is exactly the thing that tempts a
- * drawing into being related to a global grid. So a 2D `fix` needs a frame:
- * the one named, or the default at call time, and it throws when there is
- * neither. The journal always carries the resolved name, so a saved file never
- * depends on what the default happened to be afterwards.
+ * drawing into being related to a global grid. So `fix` needs a frame: the one
+ * named, or the default at call time, and it throws when there is neither. The
+ * journal always carries the resolved name, so a saved file never depends on
+ * what the default happened to be afterwards.
  *
  * The frame is read, never pushed — see `frameBasis`. So this pins the point
  * to the frame and not the other way round, and a drawing with no frame at all
  * simply floats in the kernel's flat vector, which the damped solve is content
  * to leave where it was seeded.
  *
- * **Above 2D it keeps its old, gauge-relative meaning.** A frame is an origin
- * plus one direction, which fully determines a 2D frame and leaves a whole
- * rotation free in 3D, so `addFrame` is 2D-only — and a `fix` that could not
- * be written at all in a 3D model would take the dimension-genericity of this
- * vocabulary with it. Documented here rather than smoothed over: it is the one
- * place the gauge is still visible, and closing it needs a frame entity with
- * a second reference direction, which is a package of its own.
+ * **That is now true in 3D as well, and there is no frameless form left.**
+ * Until 3D frames existed, `fix` above 2D pinned the kernel's own coordinates,
+ * because a frame was an origin plus one direction and that settles nothing in
+ * 3D — the register recorded it as the one place the gauge was still visible.
+ * A 3D frame carries a second direction, so the seam is closed: a 3D `fix` pins
+ * `[x, y, z]` in a frame exactly as a 2D one pins `[x, y]`, and refuses with
+ * the same message when there is no frame to pin in. Above 3D there are no
+ * frames (see `Model.resolveFrame`), so there is no `fix` there either.
  */
 export function fix(model: Model, name: string, at: number[], frameName?: string | null): string {
   const p = model.point(name);
   if (at.length !== p.varIndices.length) throw new Error(`fix needs ${p.varIndices.length} coordinates`);
-  if (model.dim !== 2) {
-    if (frameName != null) throw new Error("a frame is a 2D entity");
-    return model.relation("fix", [name, at], () => {
-      p.varIndices.forEach((gi, i) => {
-        model.addResidual([gi], (l) => [l[0].sub(at[i])], `fix(${name}[${i}])`);
-      });
-    });
-  }
   const frame = model.resolveFrame(frameName);
   return model.relation("fix", [name, at, frame], () => {
     const basis = frameBasis(model, frame);
@@ -68,14 +76,52 @@ export function fix(model: Model, name: string, at: number[], frameName?: string
     // drawing still reports `fix(a[1])` rather than one lump. `at[i]` is a
     // length along an axis, so the axis has to be a unit vector — how far the
     // x-ref happens to sit from the origin must not change what [10, 0] means.
-    for (let i = 0; i < 2; i++) {
+    for (let i = 0; i < at.length; i++) {
       model.addResidual(p.varIndices, (l) => {
-        const { origin, ux, uy } = basis();
-        const axis = i === 0 ? ux : uy;
-        const rel = [l[0].sub(origin[0]), l[1].sub(origin[1])];
-        return [rel[0].mul(axis[0]).add(rel[1].mul(axis[1])).sub(at[i])];
+        const { origin, axes } = basis();
+        return [alongAxis(l, origin, axes[i]).sub(at[i])];
       }, `fix(${name}[${i}])`);
     }
+  });
+}
+
+/**
+ * A point lies in a frame's plane — the x–y plane of a 3D frame, the one its
+ * origin and both refs lie in. This is what "this point is on the sketch"
+ * means in a 3D model.
+ *
+ * The residual is the point's signed distance off the plane, (p − origin) · +z.
+ * Linear in the point and not a square, so its gradient is the plane's normal
+ * all the way down to the root. Distance rather than anything scaled, because
+ * +z is a unit vector: that is what lets a solve report `onplane(p,f)` off by
+ * a number that means something.
+ *
+ * Everything about the frame is `fix`'s: read and never pushed (so the point
+ * goes to the plane, never the plane to the point), resolved from the default
+ * **at call time** when no frame is named, and journalled resolved, so a
+ * saved entry cannot change meaning when the default moves afterwards.
+ *
+ * Refused in 2D rather than accepted as a no-op: every point of a 2D drawing is
+ * already in every frame's plane, so the relation could never say anything,
+ * and a constraint that constrains nothing is a trap on the hover tag.
+ *
+ * The long name is `onPlane` (the short one `onplane`), after `onCircle`: the
+ * family is "on" plus the kind of thing, and `pointOnLine` keeps its own name
+ * only because `on` was taken first.
+ */
+export function onPlane(model: Model, pointName: string, frameName?: string | null): string {
+  if (model.dim !== 3) {
+    throw new Error("onPlane needs a 3D model — in 2D every point already lies in every frame's plane");
+  }
+  const p = model.point(pointName);
+  const frame = model.resolveFrame(frameName);
+  return model.relation("onPlane", [pointName, frame], () => {
+    const basis = frameBasis(model, frame);
+    model.addResidual(p.varIndices, (l) => {
+      const { origin, uz } = basis();
+      // Non-null: a 3D model's frames all carry a y-ref, so all have a +z.
+      return [alongAxis(l, origin, uz!)];
+    }, `onplane(${pointName},${frame})`);
   });
 }
 

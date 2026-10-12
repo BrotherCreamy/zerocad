@@ -901,9 +901,10 @@ replacing) the system Node other projects on this machine may depend on.
   points. `addFrame(origin?, xref?, name?)` follows the free-entities
   conventions — everything optional, missing pieces auto-created and seeded a
   span apart so a frame with no direction cannot be constructed, journalled as
-  the one call that was made. Frames are **2D-only**: +y is +x turned a
-  quarter turn, which settles a frame in 2D and leaves a whole rotation free
-  above it.
+  the one call that was made. Frames were **2D-only** when this shipped: +y is
+  +x turned a quarter turn, which settles a frame in 2D and leaves a whole
+  rotation free above it. (*Superseded:* 3D frames carry a y-ref — see the
+  3D-frames entry below.)
   `hor`, `ver` and `fix` are relative to a frame now — the one named, or
   `model.defaultFrame` at call time, and an error naming the fix when there is
   neither. The journal always carries the frame the call *resolved* to, so an
@@ -1034,6 +1035,46 @@ replacing) the system Node other projects on this machine may depend on.
   the same message, now raised by the translation that has to resolve the frame
   they lack.
   *Spec:* [`docs/plans/retire-hor-ver.md`](docs/plans/retire-hor-ver.md).
+
+- **3D frames: a frame is a sketch plane** (`model.ts`, `relations/refs.ts`,
+  `relations/basic.ts`, `persist.ts`, `replenv.ts`, `menu.ts`) — the model half
+  of 3D phase 1. **The app still runs `Model(2)`**; nothing on screen changed,
+  and everything here is reachable from a 3D model at the command line or in a
+  test. The camera, the app on `Model(3)` and 3D rendering are the second half.
+  `addFrame(origin?, xref?, yref?, name?)`: in a 3D model the **y-ref** is a
+  third ordinary point, auto-created when absent like every free piece, and
+  seeded so the frame can never start degenerate even when two of the three
+  points were given (a seed goes along the first kernel axis not parallel to
+  the arm already there). A 2D model refuses a y-ref; a model of any other
+  dimension has no frames at all. **`frameBasis` straightens the y-ref**
+  (Gram–Schmidt against +x) and takes +z = +x × +y, so the y-ref fixes the plane
+  and its side, not the angle, and the axes are orthonormal and right-handed by
+  construction. Collapse floors **axis by axis**: a y-ref on the origin or on
+  the frame's own x axis floors +y and +z and keeps +x; an x-ref on the origin
+  floors +x and +z. The y floor scales with the arm's length (measured: an
+  absolute 1e-9 would let a billion-unit collinear arm's 1.3e-7 rounding
+  remainder through as a direction).
+  **`fix` in 3D pins `[x, y, z]` in a frame**, and the frameless form is
+  **gone** — in every dimension — so the gauge is no longer visible anywhere in
+  the vocabulary. **`onPlane(point, frame?)`** (`onplane`) holds a point in a
+  frame's plane: `(p − origin) · +z = 0`, a signed distance, read-never-pushed,
+  default resolved at call time and journalled resolved; refused in 2D.
+  **`"f1.z"`** is a frame-axis reference in 3D (refused in 2D, by
+  `Model.requireAxis`, before the frame is looked up), and `zaxis(frame?)`
+  joins `xaxis`/`yaxis`, all three through `Model.axisRef`. The context menu's
+  Fix item reads frame coordinates in either dimension (its raw-coordinates 3D
+  branch only made sense while `fix` there was gauge-relative).
+  **Format version 5**: `addFrame`'s name moved to its fourth argument, and every
+  older file's three-argument `addFrame` is translated on the way in (keyed on
+  the version, so a hand-edited v5 entry fails at its own step). A v4 *3D* file
+  that used the gauge `fix` is refused by step with the standing no-frame
+  message — the app has always been 2D, so only the command line or a test
+  could have written one.
+  *Known and deliberate:* `onPlane` has no glyph symbol of its own yet (it
+  would draw the fallback `o`, but only in a 3D drawing, which the app cannot
+  show until the second half — choosing a mark is for when it can be looked
+  at); the line tool infers no axis in 3D (that needs the camera's projection).
+  *Spec:* [`docs/plans/3d-phase1.md`](docs/plans/3d-phase1.md).
 
 
 ## What's next

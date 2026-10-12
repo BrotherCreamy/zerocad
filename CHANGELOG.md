@@ -7,6 +7,61 @@ decisions.
 
 ---
 
+## 3D frames: a frame is a sketch plane, and `fix` stops seeing the gauge
+
+**The model half of 3D phase 1.** Nothing on screen changed — the app still
+runs a 2D model, and the camera, the app on `Model(3)` and 3D rendering are
+the second half. What exists now is everything a 3D drawing needs underneath:
+frames that are planes, `fix` in three coordinates, a way to hold a point in a
+plane, and axis references that include the plane's normal. All of it is
+usable from the command line on a `new Model(3)` and pinned by closed-form
+tests.
+
+**A 3D frame is an origin, an x-ref and a y-ref.** In 2D an origin and one
+direction settle a frame; in 3D they leave a whole rotation free, which is why
+frames were 2D-only and why `fix` above 2D still pinned the kernel's own
+coordinates — the one place the register said the gauge was visible. The y-ref
+closes it. `addFrame(origin?, xref?, yref?, name?)` follows the free-entities
+rules (a missing piece is created, seeded so the frame cannot start degenerate
+even when two of its three points were given); a 2D model refuses a y-ref.
+
+**The y-ref picks the plane and its side, not the angle.** `frameBasis` takes
++y as the y-ref's direction with its +x component removed (Gram–Schmidt) and +z
+as +x × +y, so three clicks that are roughly an L give an exact, orthonormal,
+right-handed frame, and a y-ref dragged anywhere in its half of the plane
+changes nothing. A frame that collapses floors axis by axis rather than turning
+into NaN: a y-ref on the frame's own x axis loses +y and +z and keeps +x.
+
+**`fix` in 3D pins `[x, y, z]` in a frame, and the frameless form is gone** —
+in every dimension, so a 3D `fix` with no frame gets the same standing message
+a 2D one does. **`onPlane(point, frame?)`** (`onplane`) holds a point in a
+frame's plane: the signed distance `(p − origin) · +z`, a frame read and never
+pushed, the default resolved at call time and journalled resolved — exactly
+`fix`'s rules. **`"f1.z"`** is the plane's normal as an axis reference, so
+`par("l", zaxis())` stands an edge straight up off a sketch. A 2D model refuses
+`onPlane`, `"f1.z"` and `zaxis()`: there, every point is already in every
+frame's plane and there is no direction off it.
+
+**Format version 5.** `addFrame`'s name moved from third to fourth argument —
+name last, as on every constructor — and a build that knew only version 4 would
+have read the new entry as an auto-named frame and lost an explicit name, so
+the version moved. **Every older file still opens**: its three-argument
+`addFrame` is translated on the way in, and it re-saves as version 5
+(`save(open(x)) ≠ x` across this boundary, as across the earlier ones). The one
+file that will not open is a version-4 *3D* file that used the gauge `fix` —
+refused by step with the no-frame message, as a frameless version-1 file is.
+The app has only ever been 2D, so only the command line or a test could have
+written one.
+
+**What the tests check is the arithmetic, not the verdict.** Every 3D frame in
+`test/frames3d.test.ts` is turned by a rotation the test computes for itself,
+and the assertions are where that rotation says things land: a `fix` at
+`(3, −4, 5)`, a line pinned above and below the plane crossing it at
+`(2.8, 0.2, 0)`, `par`/`perp`/`ang` against all three axes — with the frame's
+points unmoved to the last bit. 452 unit tests (from 430); e2e unchanged at 175.
+
+---
+
 ## A saved file carries its tools' source — as text you paste back yourself
 
 ![A fresh session after openFile(): the log reads "this file carries the source of tool "spot" — toolSource("spot") shows it; paste it to enable", then the printed source, then the pasted entry, then "armed: spot", with p5 drawn by the re-enabled tool beside the four points that came out of the file](docs/images/48-a-file-carries-its-tool.png)

@@ -296,7 +296,7 @@ function tiltedFrame(model: Model, deg: number): void {
   const rad = (deg * Math.PI) / 180;
   model.addPoint(FRAME_AT, "f_o");
   model.addPoint([FRAME_AT[0] + Math.cos(rad), FRAME_AT[1] + Math.sin(rad)], "f_x");
-  model.addFrame("f_o", "f_x", "f");
+  model.addFrame("f_o", "f_x", null, "f");
   model.setDefaultFrame("f");
 }
 

@@ -1,6 +1,13 @@
 # Plan: 3D phase 1 — the third dimension
 
-**Status: in flight** (2026-10-12). First package of
+**Status: half 1 built** (2026-10-12, PR against the working branch; half 2
+not started). Deviations and decisions from half 1 are in `TODO.md`'s 3D
+entry; the one that changes this plan is that **half 1 took format version
+5** (`addFrame`'s name moved to the fourth argument — see `persist.ts`), so
+half 2's bump is to **6**, and its 2D→3D lift should key on the file's `dim`
+field: v4 *and* v5 files are 2D.
+
+First package of
 [`3d-roadmap.md`](3d-roadmap.md); read that first, then `CLAUDE.md`,
 `docs/ARCHITECTURE.md`, and the register's no-world-frame entry (the
 read-never-pushed datum rule and the drag-a-datum rule govern 3D frames
@@ -44,7 +51,8 @@ head.
   open — decide and document the translation (a 2D journal replays into a
   3D model with z=0 seeds and an (x,y)→(x,y,0) lift of every coordinate
   argument; `fix` two-coordinate forms lift to z=0 against their frame).
-  Bump VERSION to 5.
+  Bump VERSION to 5. *(↻ Half 1 already took 5 — bump to 6, and key the
+  lift on `dim`; see the status note at the top.)*
 - **Orthographic orbit camera** replacing the 2D transform in `view.ts`
   (keep the exported names/shape as close as honesty allows — everything
   downstream reads `worldToScreen`). Camera: target point, azimuth,

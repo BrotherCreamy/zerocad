@@ -227,13 +227,14 @@ export function dimensionCommand(model: Model, pick: Pick): string | null {
  * The coordinates are the point's position *in that frame* — its offset from the
  * origin along each unit axis — not its raw numbers. Raw numbers would be a
  * `fix` that yanks the point onto a tilted frame's coordinates the instant it is
- * added, which is not "hold it where it is" by any reading. Above 2D there are
- * no frames at all (a frame is an origin plus one direction, which leaves a
- * rotation free in 3D) and `fix` keeps its older gauge-relative meaning, so the
- * raw coordinates are the right ones there.
+ * added, which is not "hold it where it is" by any reading. That holds in 3D
+ * exactly as in 2D, one axis more: there used to be a raw-coordinates branch
+ * here for 3D, when `fix` up there was gauge-relative, and it went when 3D
+ * frames closed that seam — a raw `[x, y, z]` would now be read in the default
+ * frame and pull the point off to wherever those numbers land in it.
  */
 function fixItem(model: Model, name: string): MenuItem {
-  const at = model.dim === 2 ? frameCoords(model, name) : model.coords(name);
+  const at = frameCoords(model, name);
   if (typeof at === "string") return { label: "Fix", action: { do: "disabled", why: at } };
   return {
     label: "Fix",
@@ -253,10 +254,9 @@ function frameCoords(model: Model, name: string): number[] | string {
   } catch (err) {
     return err instanceof Error ? err.message : String(err);
   }
-  const { origin, ux, uy } = frameBasis(model, frame)();
-  const c = model.coords(name);
-  const rel = [c[0] - origin[0], c[1] - origin[1]];
-  return [rel[0] * ux[0] + rel[1] * ux[1], rel[0] * uy[0] + rel[1] * uy[1]];
+  const { origin, axes } = frameBasis(model, frame)();
+  const rel = model.coords(name).map((v, i) => v - origin[i]);
+  return axes.map((u) => rel.reduce((s, r, i) => s + r * u[i], 0));
 }
 
 /** What the menu needs of its host to be any use. */

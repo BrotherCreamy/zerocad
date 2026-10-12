@@ -26,7 +26,19 @@ import type { ToolSource } from "./toolsource.ts";
 
 export const FORMAT = "neocad-model";
 /**
- * 4 since dimensions became `d`-named — see `relationRenamer` for what that
+ * 5 since frames gained a y-ref for 3D: `addFrame`'s name moved from its third
+ * argument to its fourth, so the y-ref could sit beside the other two points
+ * with the name last, as it is on every constructor. Every older file says
+ * `addFrame(origin, xref, name)`, and `translate` rewrites that to
+ * `addFrame(origin, xref, null, name)` on the way in. Bumped rather than left
+ * at 4 by the rule the `tools` note below states: a build that knew only v4
+ * would read the new four-argument entry as `addFrame(origin, xref, null)` and
+ * auto-name the frame, so a frame called anything but `f1`, `f2`, … would
+ * vanish from under every later entry naming it. A break in that direction is
+ * what the version is for. (3D phase 1's model half; the app is still 2D, so
+ * a v5 file is as 2D as a v4 one — the `dim` field says which.)
+ *
+ * 4 was dimensions becoming `d`-named — see `relationRenamer` for what that
  * costs an older file and how it is paid.
  *
  * 3 was `hor`/`ver` being retired in favour of frame-axis references.
@@ -46,8 +58,9 @@ export const FORMAT = "neocad-model";
  * "wrong version" but which line of it no longer means anything.
  *
  * A translated file re-saves in the new vocabulary, so `save(open(x)) !== x`
- * across either boundary — the ops rewritten at 2→3, the `deleteRelation`
- * names rewritten at 3→4. That is deliberate and stated in the CHANGELOG: a
+ * across any of these boundaries — the ops rewritten at 2→3, the
+ * `deleteRelation` names rewritten at 3→4, the `addFrame` arity at 4→5. That
+ * is deliberate and stated in the CHANGELOG: a
  * file that opened as `par` and saved back as `hor`, or that kept pointing a
  * deletion at a name the model no longer uses, would carry the old world
  * forward forever.
@@ -60,7 +73,7 @@ export const FORMAT = "neocad-model";
  * refused the first case for no reason — and there are no third-party readers
  * of v4 to protect, since this app is the only one there has ever been.
  */
-export const VERSION = 4;
+export const VERSION = 5;
 
 export interface SavedModel {
   format: typeof FORMAT;
@@ -123,6 +136,7 @@ function replayTable(model: Model): Map<string, (...args: unknown[]) => unknown>
 
     dist: rel(basic.dist),
     fix: rel(basic.fix),
+    onPlane: rel(basic.onPlane),
     coincident: rel(basic.coincident),
     midpoint: rel(basic.midpoint),
     // `horizontal`/`vertical` are not here: they are rewritten into `parallel`
@@ -227,8 +241,19 @@ function relationRenamer(model: Model, version: number) {
  * And a version-1 entry names no frame at all, so it reaches `resolveFrame`
  * here and is told what it is missing — the same message, at the same step, as
  * before this translation existed.
+ *
+ * **`addFrame` from before version 5** names its frame third, where the name
+ * is fourth now (see `VERSION`). Keyed on the file's version rather than on
+ * how many arguments the entry happens to have, the way `relationRenamer` is:
+ * a version-5 entry is written with all four, and one that turns up with three
+ * is a hand edit that should fail at its own step — "a 2D frame takes no
+ * y-ref" — rather than be guessed at.
  */
-function translate(model: Model, entry: JournalEntry): JournalEntry {
+function translate(model: Model, entry: JournalEntry, version: number): JournalEntry {
+  if (entry.op === "addFrame" && version < 5) {
+    const [origin, xref, name] = entry.args;
+    return { op: "addFrame", args: [origin ?? null, xref ?? null, null, name ?? null] };
+  }
   if (entry.op !== "horizontal" && entry.op !== "vertical") return entry;
   const axis = entry.op === "horizontal" ? "x" : "y";
   const [a, b, c] = entry.args as (string | null | undefined)[];
@@ -329,7 +354,7 @@ export function fromSaved(saved: SavedModel): Model {
         new Error(`step ${i + 1}, ${entry.op}(${entry.args.map((a) => JSON.stringify(a)).join(", ")}): ${e instanceof Error ? e.message : e}`);
       let step: JournalEntry;
       try {
-        step = translate(model, renamer.rewrite(entry));
+        step = translate(model, renamer.rewrite(entry), saved.version);
       } catch (e) {
         throw where(e);
       }

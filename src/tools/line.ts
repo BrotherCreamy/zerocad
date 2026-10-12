@@ -39,8 +39,10 @@
 // moment something could.)
 //
 // The chain itself is dimension-generic — points and lines are — so the tool
-// works unchanged in a 3D model and simply infers no axis there, since a frame
-// is a 2D entity and so are its axes.
+// works unchanged in a 3D model and simply infers no axis there. 3D frames now
+// exist, but inferring against one means reading the cursor against the
+// frame's axes *as projected to the screen*, which is the camera's job and
+// arrives with it (3D phase 1, second half); the arithmetic below is planar.
 
 import { Tool, defineTool, type PointerInfo, type RenderContext } from "./tool.ts";
 import { parallel } from "../relations/geometry.ts";
@@ -169,8 +171,8 @@ export class LineTool extends Tool {
    */
   private resolve(from: number[], p: PointerInfo): Aim {
     // A chain of segments is dimension-generic — it is only points and lines.
-    // A frame's axes are not (a frame is 2D-only), so above two dimensions the
-    // tool draws the same and simply infers no axis.
+    // The aim below is planar arithmetic, so above two dimensions the tool
+    // draws the same and infers no axis until the camera can project one.
     if (from.length !== 2) return { world: p.world, axis: null };
     const axes = this.axes();
     // No default frame, or one dragged onto its own origin: nothing to be

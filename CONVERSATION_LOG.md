@@ -106,6 +106,87 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### 3D frames, and what the spec left to the code
+
+The spec for the model half of 3D phase 1 was precise about the mathematics —
+Gram–Schmidt on the y-ref, `uz = ux × uy`, `onPlane` as `dot(p − origin, uz)`,
+fix's frameless 3D form removed — and the mathematics went in as written. What
+it could not foresee were four smaller questions, each with an answer that
+would have passed the tests and been wrong.
+
+**Where the name goes, and what that costs a file.** The spec wrote
+`addFrame(origin?, xref?, yref?, name?)`: name last, as on every other
+constructor. That moves the name from the third argument to the fourth, and
+every saved file has it third. Three ways through were considered. *Keep the
+name third and append the y-ref* — rejected: it breaks the name-last
+convention every other constructor keeps, and the spec's signature, to save a
+translation. *Journal 2D frames in the old three-argument form and only 3D
+ones with four* — rejected: the journal is meant to be the call as made, and
+the replay table would carry an arity overload forever, for a benefit (2D
+files byte-identical) that evaporates the moment half 2 makes every model 3D.
+*Translate old entries by arity and leave the version at 4* — closest to
+right, and rejected on `persist.ts`'s own rule: a version-4-only build reading
+the new entry would call `addFrame(origin, xref, null)`, auto-name the frame,
+and lose any explicit name, so a later `setDefaultFrame("base")` fails. That
+is a format break in the old-reader direction, which is exactly what the
+`tools` note beside `VERSION` says a bump is for. So: version 5, translation
+keyed on the *version* (as `relationRenamer` is) rather than on arity, so a
+hand-edited three-argument entry in a v5 file fails at its own step instead of
+being guessed at. The cost is to half 2's plan, which had reserved 5 for the
+2D→3D lift: it takes 6, and should key that lift on the file's `dim` field,
+since v4 and v5 files are both 2D. Flagged in the register.
+
+**Seeds when two points are given.** In 2D, a missing frame point is offset
+along the kernel's x from the one given, and that can never be degenerate. In
+3D two of three points can be given, and "offset the missing one along the
+next axis" lands on the line the given two already make whenever they happen
+to lie along that axis — `addFrame("o", "up")` with `up` straight along the
+kernel's y would get a y-ref on its own x axis, a frame with no plane. The
+seed now goes along the first kernel axis *not parallel* to the arm already
+there. At most one kernel axis is parallel to a non-zero vector, so with two
+candidates there is always a clear one; only given points that coincide defeat
+it, and then the degeneracy is the drawing's.
+
+**How a 3D frame collapses.** The 2D floor zeroes both axes, but only because
++y is defined from +x. In 3D the axes are separately defined, so the choice
+was between flooring the whole frame on any collapse and flooring each axis on
+its own. Axis by axis won: a y-ref dragged onto the frame's own x axis leaves
++x perfectly well defined, and zeroing it as well would turn a level edge into
+an unconstrained one for no reason. The y floor is scaled by the arm's length,
+and that was measured rather than assumed: the Gram–Schmidt remainder of a
+collinear arm is rounding error proportional to its length — 1e-15 at three
+units, 1e-10 at a million, 1.3e-7 at a billion, the last past an absolute 1e-9.
+
+**`fix` outside 2D and 3D.** Removing the frameless form "in 3D" left 1D and
+4D models holding the only gauge `fix` in the vocabulary. Keeping it there
+would have kept a corner where the kernel's axes show, for models nothing
+uses; removing it costs those models `fix` entirely, since frames need 2D or
+3D. Removed, and `resolveFrame` now says "a 4D model has no frames" first,
+because the standing advice to go and make one would only lead to a second
+refusal.
+
+Two smaller things. **`"f1.z"` is syntax everywhere and meaning only in 3D**:
+`parseAxisRef` stays a pure reading of a string (the deletion cascade and
+`referentOf` lean on that with no model in hand), and `Model.requireAxis`
+refuses z in 2D *before* the frame is looked up — in 2D no frame you could
+make would have one, so "no such frame" would send the reader the wrong way.
+And **the context menu's Fix item** had a raw-coordinates branch for 3D that
+only made sense while `fix` there was gauge-relative; with that gone, raw
+numbers would have been read in the default frame and flung the point.
+
+**One measurement worth keeping from the tests.** `onPlane`'s closed-form test
+— a line pinned above and below the plane must cross it at (2.8, 0.2, 0) —
+first failed to converge. It looked like `onPlane`'s fault and was not: with a
+second plain `on` in its place the same system stalls too, from a seed
+`onPlane` survives, and the 2D analog converges from both. It is `on`'s
+wedge, whose scale grows with the point's distance, trading the line's `fix`es
+for itself when the line's ends still have far to travel. The test now seeds
+the line near its pins; the finding is in `TODO.md`.
+
+Left for half 2, deliberately: `onPlane`'s glyph symbol (a mark is chosen by
+looking at it, and no 3D drawing can be looked at yet) and the line tool's
+axis inference in 3D (it needs the camera's projection).
+
 ### Tool source in saved files, and where the capture had to happen
 
 The owner's decision settled the *policy* completely — a REPL-authored tool's

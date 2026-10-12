@@ -233,14 +233,20 @@ test("open and save again produces an identical file", async () => {
 test("a 3D model round-trips too", async () => {
   await loadKernel();
   const m = new Model(3);
+  // A 3D frame, with its y-ref, is part of what has to survive the trip now
+  // that `fix` needs one in 3D as well.
+  axisFrame(m);
   m.addPoint([0, 0, 0], "a");
   m.addPoint([1, 1, 1], "b");
   fix(m, "a", [0, 0, 0]);
   dist(m, "a", "b", 5);
   m.solve();
-  const reopened = open(save(m));
+  const once = save(m);
+  const reopened = open(once);
   assert.equal(reopened.dim, 3);
   assert.deepEqual(shape(reopened), shape(m));
+  assert.equal(reopened.frame("f").yref, "f_y");
+  assert.equal(save(reopened), once, "byte for byte");
 });
 
 // --- refusing bad input ----------------------------------------------------

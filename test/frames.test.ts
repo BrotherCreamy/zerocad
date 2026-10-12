@@ -44,7 +44,7 @@ function tilted(at = [0, 0]): Model {
   const m = new Model(2);
   m.addPoint(at, "o");
   m.addPoint([at[0] + Math.cos(TILT), at[1] + Math.sin(TILT)], "x");
-  m.addFrame("o", "x", "f");
+  m.addFrame("o", "x", null, "f");
   m.setDefaultFrame("f");
   return m;
 }
@@ -63,7 +63,7 @@ test("addFrame: every argument optional, and the pieces it makes are real points
   assert.throws(() => m.frame(o.name), /"p1" is not a frame/);
   assert.equal(m.addFrame(o.name).name, "f2", "an origin given, an x-ref made");
   assert.equal(m.addFrame(null, x.name).name, "f3", "or the other way round");
-  assert.equal(m.addFrame(o.name, x.name, "world").name, "world", "or named outright");
+  assert.equal(m.addFrame(o.name, x.name, null, "world").name, "world", "or named outright");
 });
 
 test("addFrame: a directionless frame is impossible to construct", () => {
@@ -82,21 +82,39 @@ test("addFrame: a directionless frame is impossible to construct", () => {
   assert.throws(() => m.addFrame("here", "here"), /two different points/);
 });
 
-test("a frame is 2D-only, because one direction does not settle a 3D frame", () => {
-  const m = new Model(3);
-  assert.throws(() => m.addFrame(), /a frame is a 2D entity/);
-  // ...and `fix` therefore keeps its old, gauge-relative meaning up there,
-  // which is the one place the kernel's own axes are still visible.
-  m.addPoint([1, 1, 1], "a");
-  assert.equal(fix(m, "a", [0, 0, 0]), "r1");
-  assert.deepEqual(m.relationOf("r1").args, ["a", [0, 0, 0]], "no frame in the entry");
-  assert.throws(() => fix(m, "a", [0, 0, 0], "f"), /a frame is a 2D entity/);
+test("a 2D frame refuses a y-ref, and a model with no frames says so", () => {
+  // This test used to read "a frame is 2D-only": one direction does not settle
+  // a 3D frame. A second one does, so 3D frames exist now (their own tests are
+  // in test/frames3d.test.ts) and what is left to pin here is the 2D side.
+  const m = new Model(2);
+  m.addPoint([0, 0], "o");
+  m.addPoint([1, 0], "x");
+  m.addPoint([0, 1], "y");
+  assert.throws(() => m.addFrame("o", "x", "y"),
+    /a 2D frame takes no y-ref — its \+y is \+x turned a quarter turn, already/);
+  // Refused before anything was made: a missing origin is not auto-created
+  // only to be stranded by the refusal that follows.
+  assert.throws(() => m.addFrame(null, null, "y"), /a 2D frame takes no y-ref/);
+  assert.equal(m.entities.size, 3, "no stray auto-created points");
+  assert.equal(m.journal.filter((e) => e.op === "addFrame").length, 0);
+
+  // Above 3D (and below 2D) two directions leave a rotation free again, so
+  // there are no frames — and, `fix` being a position in one, no `fix` either.
+  for (const dim of [1, 4]) {
+    const odd = new Model(dim);
+    assert.throws(() => odd.addFrame(), new RegExp(`a ${dim}D model has no frames — a frame lives in a 2D or 3D model`));
+    odd.addPoint(new Array(dim).fill(0), "a");
+    assert.throws(() => fix(odd, "a", new Array(dim).fill(0)), /has no frames/,
+      "the gauge form that once lived here is gone in every dimension");
+  }
 });
 
 test("a frame journals as the one call that was made", () => {
   const m = new Model(2);
   m.addFrame();
-  assert.deepEqual(m.journal, [{ op: "addFrame", args: [null, null, "f1"] }],
+  // Four arguments since format version 5 — the y-ref sits third, null in 2D,
+  // and the name last, as on every other constructor.
+  assert.deepEqual(m.journal, [{ op: "addFrame", args: [null, null, null, "f1"] }],
     "its two auto-created points journal nothing of their own");
   m.setDefaultFrame("f1");
   assert.deepEqual(m.journal.at(-1), { op: "setDefaultFrame", args: ["f1"] });
@@ -219,8 +237,8 @@ test("the frame is read at every evaluation, so turning it turns the drawing", a
 test("the default is resolved at call time and journalled resolved", async () => {
   await loadKernel();
   const m = new Model(2);
-  m.addFrame(null, null, "a");
-  m.addFrame(null, null, "b");
+  m.addFrame(null, null, null, "a");
+  m.addFrame(null, null, null, "b");
   m.addLine(null, null, "l");
 
   m.setDefaultFrame("a");
@@ -341,6 +359,10 @@ test("a version-2 file's hor/ver are translated, and re-save in the new vocabula
   });
 
   const m = open(v2);
+  // Its frame is translated too, at the 4→5 boundary rather than the 2→3 one:
+  // the name moves from third to fourth so a 3D frame's y-ref can sit beside
+  // the other refs.
+  assert.deepEqual(m.journal[2], { op: "addFrame", args: ["o", "x", null, "f"] });
   assert.deepEqual(m.journal.slice(-2), [
     { op: "parallel", args: ["l", "f.x"] },
     // Parallel to +y, not perpendicular to +x: the same equation, but `rels()`
@@ -364,7 +386,7 @@ test("a version-2 file's hor/ver are translated, and re-save in the new vocabula
   // forever. It does round-trip from here on.
   const saved = save(m);
   assert.equal(saved.includes("horizontal"), false, "the old words are gone from the file");
-  assert.match(saved, /"version": 4/);
+  assert.match(saved, /"version": 5/);
   assert.equal(save(open(saved)), saved, "and the new file is stable");
 });
 
@@ -443,14 +465,56 @@ test("help() covers the frame vocabulary — it is the one thing with no world t
 });
 
 test("the format version says the vocabulary changed, and still reads the old envelope", () => {
-  // 4 now that dimensions are `d`-named; the hor/ver retirement was 3. Both
-  // boundaries are translations rather than walls, so this file's own v2
-  // fixture above still opens.
-  assert.equal(VERSION, 4);
+  // 5 now that `addFrame` takes a y-ref before its name; `d`-named dimensions
+  // were 4 and the hor/ver retirement 3. Every boundary is a translation rather
+  // than a wall, so this file's own v2 fixture above still opens.
+  assert.equal(VERSION, 5);
   // A version-1 file with nothing frameless in it opens unchanged: the version
   // wall is not what refuses the ones above, the missing frame is.
   const empty = JSON.stringify({ format: FORMAT, version: 1, dim: 2, journal: [], values: { points: {}, radii: {} } });
   assert.equal(open(empty).entities.size, 0);
-  const future = JSON.stringify({ format: FORMAT, version: 5, dim: 2, journal: [], values: { points: {}, radii: {} } });
-  assert.throws(() => open(future), /version 5, and this build only reads up to 4/);
+  const future = JSON.stringify({ format: FORMAT, version: 6, dim: 2, journal: [], values: { points: {}, radii: {} } });
+  assert.throws(() => open(future), /version 6, and this build only reads up to 5/);
+});
+
+test("a version-4 frame opens with its name where the name goes now, and re-saves as 5", async () => {
+  await loadKernel();
+  // Exactly what the app wrote the day before 3D frames: the name third.
+  const v4 = JSON.stringify({
+    format: FORMAT, version: 4, dim: 2,
+    journal: [
+      { op: "addPoint", args: [[4, 6], "o"] },
+      { op: "addPoint", args: [[4 + Math.cos(TILT), 6 + Math.sin(TILT)], "x"] },
+      { op: "addFrame", args: ["o", "x", "base"] },
+      { op: "addFrame", args: [null, null, "f2"] },
+      { op: "setDefaultFrame", args: ["base"] },
+      { op: "addPoint", args: [[0, 0], "p"] },
+      { op: "fix", args: ["p", [3, 4], "base"] },
+    ],
+    values: { points: {}, radii: {} },
+  });
+  const m = open(v4);
+  // A name that is not an auto-name is the case that matters: a build that
+  // read the new arity the old way would have auto-named it and lost it.
+  assert.equal(m.frame("base").origin, "o");
+  assert.equal(m.frame("base").yref, undefined, "a 2D frame, as it always was");
+  assert.ok(m.has("f2"));
+  assert.deepEqual(m.journal[2], { op: "addFrame", args: ["o", "x", null, "base"] });
+  assert.equal(m.solve().solved, true);
+  const [c, s] = [Math.cos(TILT), Math.sin(TILT)];
+  const at = m.coords("p");
+  assert.ok(Math.hypot(at[0] - (4 + 3 * c - 4 * s), at[1] - (6 + 3 * s + 4 * c)) < 1e-9,
+    `and it still means the same frame: p at ${at}`);
+
+  const saved = save(m);
+  assert.match(saved, /"version": 5/);
+  assert.equal(save(open(saved)), saved, "stable from here on");
+
+  // The translation is keyed on the version, not on how many arguments an
+  // entry has: a version-5 file says all four, so a three-argument entry in
+  // one is a hand edit, and it fails at its own step rather than being
+  // guessed at.
+  const edited = JSON.parse(saved);
+  edited.journal[2] = { op: "addFrame", args: ["o", "x", "base"] };
+  assert.throws(() => open(JSON.stringify(edited)), /step 3, addFrame\("o", "x", "base"\): a 2D frame takes no y-ref/);
 });

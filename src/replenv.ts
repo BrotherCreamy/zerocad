@@ -125,6 +125,7 @@ function describe(e: Entity, model: Model): string {
     case "circle": return `${e.name}  circle  center ${e.center}, r=${model.radius(e.name).toFixed(3)}`;
     case "arc": return `${e.name}  arc    center ${e.center}, ${e.start}→${e.end}, r=${model.radius(e.name).toFixed(3)}`;
     case "frame": return `${e.name}  frame  origin ${e.origin}, +x toward ${e.xref}`
+      + (e.yref === undefined ? "" : `, +y toward ${e.yref}`)
       + (model.defaultFrame === e.name ? "  (default)" : "");
   }
 }
@@ -137,6 +138,9 @@ export function neocadScope(h: EnvHandles): Bag {
     // dimension-generic, from relations/basic.ts
     dist: bind(model, basic.dist),
     fix: bind(model, basic.fix),
+    // 3D only: the point lies in the frame's plane. Frame-relative like `fix`.
+    onplane: bind(model, basic.onPlane),
+    onPlane: bind(model, basic.onPlane),
     coin: bind(model, basic.coincident),
     coincident: bind(model, basic.coincident),
     mid: bind(model, basic.midpoint),
@@ -242,9 +246,14 @@ export function neocadScope(h: EnvHandles): Bag {
    * line given one endpoint: the model seeds the missing point beside the one
    * it was handed, which is nearer what was meant than the middle of the
    * window is.
+   *
+   * The y-ref is 3D's, and a 2D model refuses it. It counts as "given" for the
+   * anchoring rule too — and has to, or `frame(null, null, "p")` in a 2D model
+   * would make the view-centre point, journal it, and *then* be refused, leaving
+   * a stray point behind a call that failed.
    */
-  geometry.frame = (origin?: string | null, xref?: string | null) =>
-    model.addFrame(origin ?? (xref == null ? anchor() : null), xref ?? null).name;
+  geometry.frame = (origin?: string | null, xref?: string | null, yref?: string | null) =>
+    model.addFrame(origin ?? (xref == null && yref == null ? anchor() : null), xref ?? null, yref ?? null).name;
   geometry.setDefaultFrame = (name: string | null) => {
     model.setDefaultFrame(name ?? null);
     return model.defaultFrame ?? "no default frame";
@@ -265,9 +274,15 @@ export function neocadScope(h: EnvHandles): Bag {
    * A helper rather than new syntax in the evaluator: the owner's sketch was
    * `parallel(l1, *defaultframe.Y)`, and `par("l1", yaxis())` is as close as
    * that gets without the REPL learning a new kind of expression.
+   *
+   * `zaxis()` is the frame's normal, and exists only in a 3D model; in 2D it
+   * refuses on the spot rather than handing back a `"f1.z"` that the next
+   * relation would refuse instead. All three go through `model.axisRef`, so the
+   * axis is checked and the frame resolved in the same order everywhere.
    */
-  geometry.xaxis = (frame?: string | null) => `${model.resolveFrame(frame)}.x`;
-  geometry.yaxis = (frame?: string | null) => `${model.resolveFrame(frame)}.y`;
+  geometry.xaxis = (frame?: string | null) => model.axisRef("x", frame);
+  geometry.yaxis = (frame?: string | null) => model.axisRef("y", frame);
+  geometry.zaxis = (frame?: string | null) => model.axisRef("z", frame);
 
   // Long names beside the short ones, the way every relation already has both.
   // The owner's examples are written `circle()`, and a creator function shares
@@ -507,8 +522,12 @@ function help(scope: Bag): string {
     "           is the default; drag the marker to move it, or its x-ref to turn",
     "           it and everything levelled against it. The line tool infers an",
     "           axis par only against the default.",
+    "           In a 3D model: frame(origin, xref, yref) is a plane (the y-ref",
+    "           picks its side of +x, not its exact angle), zaxis(frame?) is its",
+    "           normal, onplane(p, frame?) holds a point in it, and fix takes",
+    "           [x, y, z] in the frame.",
     "relations  dist fix coin mid par perp ang on eq",
-    "           rad oncircle conc eqrad tan sym arcends",
+    "           rad oncircle conc eqrad tan sym arcends onplane",
     "operations fillet(line1, line2, radius)  del(name, ...)",
     '           set("d4.value", 60)  — a dimension is named d1, d2, … and its',
     "           value is the one thing you can set. ang stores radians (its",

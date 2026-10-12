@@ -262,8 +262,8 @@ were seeded, so nothing needs anchoring for the mathematics to work.
 further.** Those words name a privileged pair of directions whether or not a
 frame is behind them. What they meant is written against a frame's axis
 instead: `par`, `perp` and `ang` take a **frame-axis reference** — the string
-`"f1.x"` or `"f1.y"` — anywhere they take a line, and `xaxis()`/`yaxis()` fill
-in the default. The rule for which relations may take one falls out of what an
+`"f1.x"` or `"f1.y"`, and in 3D `"f1.z"` — anywhere they take a line, and
+`xaxis()`/`yaxis()`/`zaxis()` fill in the default. The rule for which relations may take one falls out of what an
 axis *is*: a direction with no length and no position, so exactly the
 relations that read an argument for its direction alone. `eq` has no length to
 compare against; `on`, `sym` and `tan` each need a located line, and reading
@@ -297,6 +297,20 @@ The default frame is a model-level pointer resolved **at call time** and
 journalled resolved, so a saved entry cannot change meaning because the
 default changed afterwards — the same instinct that makes a deletion journal
 its expansion rather than the cascade.
+
+**In 3D a frame is a plane, and the gauge is gone there too.** An origin and
+one direction settle a 2D frame and leave a rotation free in 3D, which is why
+`fix` above 2D used to pin the kernel's own coordinates — the one place the
+gauge stayed visible. A 3D frame carries a third point, a y-ref, and
+`frameBasis` reads it the same read-never-pushed way: +y is the y-ref's
+direction **straightened against +x** (Gram–Schmidt) and +z is +x × +y. So the
+y-ref fixes the plane and which side of +x is +y, not the exact angle, and the
+axes handed to a residual are orthonormal by construction — `fix(p, [x, y, z])`
+means distances along them, and `onPlane(p)` is the signed distance off the
+plane, `(p − origin) · +z`. A drawing on a sketch plane is then just geometry
+held in a frame's plane; there is no second model type and no sketch mode,
+which is the owner's one-model decision. Frames exist in 2D and 3D models only,
+and so does `fix`.
 
 ## Tools are not privileged
 

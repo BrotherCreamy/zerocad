@@ -44,6 +44,44 @@ are flagged as such.
   the menu. Phases and the rest of the design in the roadmap; phase 1
   (3D frames + fix/onPlane + camera + app on Model(3)) is in flight:
   [`docs/plans/3d-phase1.md`](docs/plans/3d-phase1.md).
+  ✅ **Phase 1, half 1 (model + relations) built.** 3D frames carry a
+  y-ref; `frameBasis` straightens it (Gram–Schmidt) and takes +z = +x × +y;
+  `fix` pins `[x, y, z]` in a frame and its frameless form is gone;
+  `onPlane(p, frame?)`; `"f1.z"` and `zaxis()`. The app still runs
+  `Model(2)` — half 2 (camera, app, rendering, gestures) is next.
+
+  Decided while building half 1, and open to veto:
+
+  - ⚠ **Format version 5 was taken by half 1, not half 2** (the spec put
+    the bump in half 2). `addFrame`'s name moved from third to fourth
+    argument so the y-ref sits with the other points, name last as on every
+    constructor — and a v4-only build would read the new entry as an
+    auto-named frame and lose an explicit name, which is exactly the kind of
+    break `persist.ts` says the version is for. Older files translate
+    (keyed on the version, not on arity). *Consequence for half 2:* its
+    bump is 6, and its 2D→3D lift should key on the file's `dim` field —
+    v4 *and* v5 files are 2D.
+  - **No `fix` outside 2D and 3D.** The gauge form went in every dimension,
+    not only 3D: a 1D or 4D model has no frames (two directions leave a
+    rotation free again above 3D) and now says so, rather than keeping one
+    corner of the vocabulary where the kernel's axes still show. Nothing in
+    the app or the suite used such a model.
+  - **Degenerate frames floor axis by axis**, not all at once: a y-ref on
+    the origin or on the frame's own x axis floors +y and +z but keeps +x,
+    which is still well defined; an x-ref on the origin floors +x and +z and
+    leaves +y as the y-ref's raw direction. The 2D floor is the special case
+    where +y is derived from +x and so goes with it.
+  - **Auto seeds pick a clear axis.** With two of a 3D frame's three points
+    given, "offset the missing one along the next kernel axis" can land on
+    the line the given two already make; the seed instead goes along the
+    first kernel axis not parallel to the arm already there.
+  - **A 2D model refuses a y-ref, and `"f1.z"`, rather than ignoring them.**
+    `zaxis()` refuses on the spot in 2D instead of handing back a string
+    the next relation would refuse.
+  - *Deferred to half 2:* `onPlane`'s glyph symbol (it would draw the
+    fallback `o`, and only in a 3D drawing the app cannot yet show — a mark
+    is chosen by looking at it), and line-tool axis inference in 3D (needs
+    the camera's projection).
 
 - **No world frame — coordinate frames are entities** (owner's direction,
   2026-09-01, chosen over "keep the frame but hide it" and "directions stay,
@@ -132,6 +170,10 @@ are flagged as such.
     with it. This is the one place the kernel's own axes are still visible.
     Closing it needs a frame entity carrying a second reference direction,
     which is a package of its own.
+    ✅ **Closed by 3D phase 1, half 1** (2026-10-12): a 3D frame carries
+    that second direction (a y-ref), `fix` in 3D is frame-relative exactly as
+    in 2D, and the gauge form is gone in every dimension. See the 3D entry
+    at the top of this list.
   - **A frame's direction is normalised** where two ordinary lines' are taken
     raw — otherwise collapsing the frame satisfies the relation, and that is
     exactly what the solver does when given the chance. (Established for
@@ -377,6 +419,32 @@ extended the way `defineTool` extends the tool registry would close it.
       `help()` provably do not solve; a contradictory `rad()` flips the header
       to `CONFLICT` on the keystroke that caused it. Pinned by
       `test/e2e/livesolve.e2e.ts`, which counts solves in the page.
+- [ ] **A constructor refused for its name strands its auto-created points.**
+      Found while building 3D frames, and older than them: `addLine`,
+      `addCircle`, `addArc` and `addFrame` create their missing points
+      (unjournalled, by design) *before* `claimName` checks the name, so
+      `addLine(null, null, "a.b")` throws with `p1` and `p2` left in the
+      model and nothing in the journal — points that vanish on save/open and
+      advance the `p` counter in a way a replay will not reproduce. Measured
+      directly: one refused `addLine` leaves 2 points, and a refused 2D
+      `addFrame` 2 more (a 3D one would leave 3). The fix is to validate (or claim) the name
+      before creating anything, uniformly across the four constructors; left
+      out of the 3D package so `addFrame` stays in step with the other three.
+- [ ] *Noted, not caused by anything new:* **in 3D, a far-off point held by
+      `on` to a line whose ends still have a long way to travel can stall**
+      when one more constraint picks a single spot on that line. `on`'s
+      residual is a wedge, whose scale grows with the point's distance, so
+      least squares can settle for violating the line's `fix`es instead —
+      measured at p ≈ 1800 units out with the fixes off by 2.5. Found writing
+      `onPlane`'s intersection test, and **not `onPlane`'s doing**: with a
+      second plain `on` (a fixed line through the same answer) in its place
+      the system stalls too, from a seed `onPlane` survives — each fails from
+      a seed the other converges from. The 2D analog converged from both
+      seeds tried. Seeded with the line near its pins, it converges in 5–8
+      iterations. Same family as the register's note that a wedge is
+      quadratic in the drawing's size; normalising `on` (dividing by the
+      line's length, as `tan` does) is the obvious thing to try, and would
+      need its own measurement.
 
 ## Done
 
