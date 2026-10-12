@@ -36,10 +36,14 @@ this document are consequences of it.
   └──────────────────────────────────────────────────────────────┘
 ```
 
-`view.ts` sits off to the side: the 2D screen↔world transform, used by the
-tool engine and the renderer, depending on nothing. `undo.ts` sits beside it
-for the same reason — a stack of snapshots, generic over what a snapshot is,
-importing nothing at all.
+`view.ts` sits off to the side: the orthographic camera — screen↔world, plus
+the plane a pixel lands on — used by the tool engine and the renderer, and
+depending on nothing but `vec3.ts`, plain three-vectors that import nothing.
+`undo.ts` sits beside it for the same reason — a stack of snapshots, generic
+over what a snapshot is, importing nothing at all. `arcgeom.ts` is the same
+kind of file: which way round an arc goes, over plain numbers, read by the
+renderer, the drawing-question modules, the arc tools and `fillet` alike (see
+"In 3D a pixel is a ray" below).
 
 `toolsource.ts` sits in the `tools/ | operations.ts | persist.ts` row, between
 those first and last two: it holds the *text* of tools authored at the command
@@ -70,6 +74,19 @@ nothing competes, so it has no tiers at all; what it has instead is two
 predicates per entity kind (contained, touched) and no tolerance beyond the
 arc slack. Sharing a file would have meant one of the two concepts leaking
 into the other's code.
+
+`projection.ts` sits between them and the model: each entity's shape *on
+screen* — a segment, a circle's silhouette, an arc that is an exact screen arc
+seen square-on and a fine polyline seen obliquely — and the way back, lifting a
+pixel on that shape to the world point of the entity it shows. Picking,
+snapping and box select all ask it, so the three cannot disagree about where an
+oblique arc is drawn. `framemarker.ts` reads a frame's axes through
+`frameBasis`, the same function every relation written against the frame
+reads, so the marker can never show a +y the constraints do not mean.
+
+`workplane.ts` sits above the relations (it reads a frame's basis) and below the
+tools and the command surface, which both need its one answer: the plane a
+click lands on in a 3D model.
 
 `intersect.ts` sits one step *below* those three: closed-form crossings and the
 arc-sweep test, over plain numbers, with no idea a Model exists. It is where it
@@ -312,6 +329,67 @@ held in a frame's plane; there is no second model type and no sketch mode,
 which is the owner's one-model decision. Frames exist in 2D and 3D models only,
 and so does `fix`.
 
+## In 3D a pixel is a ray
+
+The app runs a `Model(3)`. That changed almost nothing below `view.ts` — the
+kernel and the relations were dimension-generic already — and almost
+everything that turns a pixel into a place.
+
+**The camera is orthographic, and starts as the 2D transform.** A `View` is the
+old `{ox, oy, scale}` plus, once something turns it, the screen's own right and
+up axes in world terms and an orbit target. With no orientation it is the top
+view, evaluated term for term as the 2D formula, which is what let the whole
+2D suite stand unmodified while the app underneath it became 3D. The
+orientation is stored as axes rather than as an azimuth and elevation because
+`lookAt` must put a *tilted* frame square-on with its +x right, which needs a
+roll two angles cannot hold — and because an orbit about the kernel's z would
+make the gauge's z the drawing's "up", the world frame coming back in through
+the camera. So an orbit is a trackball about the screen's own axes, about a
+target that panning and zooming keep on its pixel. Perspective is deliberately
+absent: a sketcher draws in parallel projection, and a pick radius in pixels
+means the same thing at every depth only under one.
+
+**A click needs a surface, and it is the working plane** (`workplane.ts`): the
+default frame's plane when there is one — set a frame as the default and every
+tool draws on it, which is the sketch flow — else the plane facing the viewer
+through the orbit target. The engine reads every pointer event there and
+reports which plane it was (`PointerInfo.plane`), and a drag moves what it
+grabbed parallel to the plane its press landed on, fixed for the gesture.
+`placePoint` holds a point it places on the default frame's plane with
+`onPlane` — only where a snap has not already pinned it, and only when it is
+actually on the plane.
+
+**Picking, snapping and box select stay in screen space**; what changed is what
+each entity looks like there and which world point a pixel on it *is*
+(`projection.ts`). In 2D the inverse was one formula; in 3D a pixel names a
+ray, and only the entity under it knows how deep it is. So a snap's world
+position is read off what it snapped to — a vertex's own coordinates, the
+midpoint of an edge's ends, a point of a curve lifted by its parameter — and a
+screen crossing of two curves is a crossing only where both curves' readings
+are one place in space. While sketching on a plane, a snap is offered only
+where it lands *on* that plane: seen square-on, a sketch has whole stacks of
+geometry behind it sharing its pixels, and a vertex seen through the sketch is
+not a place on it.
+
+**A circle has no plane yet, so it is a sphere** to every relation and is drawn
+and hit as its silhouette. **An arc has a plane — through its centre and
+endpoints — but no side to be counter-clockwise from**, so `arcgeom.ts` supplies
+one rule for every reader: the plane's normal on the kernel's +z side (then +y,
+then +x). It is the gauge showing through, and said so: it decides only which
+of the two arcs between two endpoints is drawn and picked, no residual reads
+it, and it is the one rule under which every 2D arc stays exactly what it was.
+A tool that knows which way the user swept stores the endpoints in the order
+that makes the drawn arc that one. Both seams close in phase 2, when circles
+and arcs carry their plane.
+
+**A 2D file opens lifted** (`persist.ts`, keyed on the file's `dim`): every
+coordinate gains a zero, and every frame the y-ref a 3D frame cannot be without
+— named after its frame rather than auto-named, because an auto-name claimed
+mid-replay is a name some later entry already holds, and placed from the
+*saved* coordinates, since only they know where a frame the drawing had turned
+put its +y. The command line applies the same lift to a two-number `pt` or
+`fix`.
+
 ## Tools are not privileged
 
 A tool is a class with `onDown` / `onMove` / `onUp` / `onCancel` / `render`,
@@ -382,8 +460,9 @@ Empty canvas used to pan, which was cellwork's habit and is written into the
 decision register as such. It was reversed deliberately: SolidWorks and Onshape
 both make that gesture box select, and the standing rule that tools work like
 Onshape outranks a register entry inherited from the prototype. Panning lost
-nothing by it — middle-drag, right-drag and `pan()` all still pan — while
-gaining a gesture every CAD user already has in their hands.
+nothing by it — middle-drag, right-drag and `pan()` all still panned — while
+gaining a gesture every CAD user already has in their hands. (Right-drag has
+since become the 3D orbit; see below.)
 
 A box is **a multi-click and nothing more**: every name it catches goes down
 the same path a single click's name does, into the command line, quoted and
@@ -393,11 +472,13 @@ not box-selectable, and it takes no code to say so — relations live in a
 registry beside the entity map rather than in it, so a box never sees them.
 
 The **right** button makes the same split, on the same threshold: past three
-pixels it pans, exactly as it always did; released where it landed it opens a
-context menu. The press decides nothing and the release decides, which is the
-only arrangement under which a menu can be added without taking a pan away.
-Middle-drag is left purely navigational, because one button that unambiguously
-means "move the view" is worth keeping.
+pixels it **orbits** the view (in a 3D model — Onshape's right-drag; in a 2D one,
+with nothing to turn, it pans as it always did); released where it landed it
+opens a context menu. The press decides nothing and the release decides, which
+is the only arrangement under which a menu can be added without taking a
+gesture away — it held through the gesture itself changing from a pan to an
+orbit. Middle-drag is left purely navigational, because one button that
+unambiguously means "move the view" is worth keeping, and it is now the pan.
 
 ## The context menu only ever types
 
@@ -566,7 +647,7 @@ until the next action went unrecorded.
 
 ## Why there is an end-to-end suite
 
-Five bugs so far were invisible to the unit tests and obvious within seconds
+Six bugs so far were invisible to the unit tests and obvious within seconds
 of running the app:
 
 1. a status readout that went stale, so a conflict could be introduced from
@@ -582,6 +663,10 @@ of running the app:
    blurs — so the one key that abandons a gesture was deaf during every
    gesture. It passed every test that existed, because each of them picked
    something first and picking re-focuses the input.
+6. A wall sketched square-on whose last corner snapped to a floor vertex
+   seventy units *behind* the pixel aimed at — the two shared a pixel — so
+   the wall's edge ran diagonally out of its own plane with every relation
+   satisfied. Found by looking at a screenshot of the 3D package's poster.
 
 None of these are mathematics. They are all *assembly*. Hence `npm run
 test:e2e`, and hence the expectation that anything touching the app is checked

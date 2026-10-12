@@ -42,13 +42,14 @@ are flagged as such.
   parametrically from a live, constrainable section. ⚠ *Mouse map changes
   in 3D (Onshape's):* right-DRAG orbits; middle pans; right-release keeps
   the menu. Phases and the rest of the design in the roadmap; phase 1
-  (3D frames + fix/onPlane + camera + app on Model(3)) is in flight:
-  [`docs/plans/3d-phase1.md`](docs/plans/3d-phase1.md).
+  (3D frames + fix/onPlane + camera + app on Model(3)) is built, both halves:
+  [`docs/plans/3d-phase1.md`](docs/plans/3d-phase1.md). Phase 2 (planar
+  discipline) is next.
   ✅ **Phase 1, half 1 (model + relations) built.** 3D frames carry a
   y-ref; `frameBasis` straightens it (Gram–Schmidt) and takes +z = +x × +y;
   `fix` pins `[x, y, z]` in a frame and its frameless form is gone;
-  `onPlane(p, frame?)`; `"f1.z"` and `zaxis()`. The app still runs
-  `Model(2)` — half 2 (camera, app, rendering, gestures) is next.
+  `onPlane(p, frame?)`; `"f1.z"` and `zaxis()`. (At the time the app still
+  ran `Model(2)`; half 2, below, moved it.)
 
   Decided while building half 1, and open to veto:
 
@@ -81,7 +82,81 @@ are flagged as such.
   - *Deferred to half 2:* `onPlane`'s glyph symbol (it would draw the
     fallback `o`, and only in a 3D drawing the app cannot yet show — a mark
     is chosen by looking at it), and line-tool axis inference in 3D (needs
-    the camera's projection).
+    the camera's projection). ✅ *Both done in half 2:* the mark is `▱`, and
+    the line tool infers against a 3D frame's axes in its plane.
+
+  ✅ **Phase 1, half 2 (camera + app) built.** The app runs `Model(3)`, always.
+  An orthographic camera (`view.ts`) starts square-on — the 2D transform
+  exactly — and turns with a right-drag; a click lands on the **working plane**
+  (`workplane.ts`: the default frame's plane, else the plane facing the viewer
+  through the orbit target); everything is drawn through the projection and
+  painter's-sorted; frames draw a three-arrow triad; 2D files open lifted at
+  format version 6. `orbit(yaw, pitch)` and `lookAt(frame?)` are view
+  commands. Screenshots 49–53; the story is `test/e2e/camera.e2e.ts`.
+
+  Decided while building half 2, and open to veto:
+
+  - ⚠ **The camera stores its screen axes, not azimuth/elevation** (the spec
+    said "target, azimuth, elevation, scale"). Two angles cannot put a tilted
+    frame square-on with its +x right — `lookAt` needs a roll — and an orbit
+    about the kernel's z would make the gauge's z the drawing's "up". So the
+    orbit is a **trackball** about the screen's own axes (Onshape's feel), and
+    `orbit(yaw, pitch)` is **relative**, like `pan`/`zoom` and the mouse,
+    rather than setting absolute angles measured from axes nobody chose.
+  - **The orbit target is screen-anchored**: panning and zooming carry it so it
+    stays on its pixel, so an orbit is always about the middle of the window.
+    `lookAt(f)` makes the frame's origin the target, keeping its pixel.
+  - ⚠ **The tools needed edits** — the spec hoped not. Rectangle, circle,
+    circle3, arc and arc3 refused 3D outright; each now lays its shape out in
+    the working plane (`PointerInfo.plane`, new, says which). A rectangle on a
+    default frame is laid out along **the frame's** axes, where in the 2D app it
+    followed the screen's — the same thing until a frame is turned in its own
+    plane. `RenderContext` gained `scale`, so a circle preview can be the
+    silhouette the commit will draw. `fillet` became dimension-generic, or
+    every lifted 2D file with a fillet would have failed to open.
+  - **`onPlane` inference is minimal**, as the spec asked: `placePoint` adds it
+    only where the snap leaves the point free (none, or a curve) and only when
+    the point is on the plane; a vertex, midpoint or crossing snap already pins
+    it. A tool's unclicked points (a rectangle's derived corners, a 3-point
+    centre) get it too, or a rectangle could fold about its own diagonal.
+    Every sketch point therefore wears a `▱`, which looked acceptable in the
+    screenshots; a per-kind glyph switch is the remedy if it is not.
+  - ⚠ **An arc sweeps about its plane's normal on the kernel's +z side** (then
+    +y, then +x). An arc names three points and no plane, so something has to
+    say which side is counter-clockwise; this rule keeps every 2D and lifted
+    arc exactly what it was. It is the gauge showing through — in rendering and
+    picking only, never in a residual — and an arc whose plane is turned through
+    the vertical draws as its complement. Tools and `fillet` store endpoints in
+    the order that makes the drawn arc the one aimed at. Phase 2 retires it.
+  - **Circles are drawn as their silhouette** (the spec's choice): to every
+    relation a circle is still a sphere, so on a plane seen obliquely it does
+    not foreshorten, and it offers intersection snaps only square-on. The
+    phase-2 seam, visible in screenshot 50 on purpose.
+  - **While sketching on a plane, snaps offer only places on it.** Found in the
+    poster screenshot: square-on, a wall's corner snapped to a floor corner
+    seventy units behind the pixel. Snapping to off-plane geometry and
+    constraining its projection (Onshape's way) needs a relation this model
+    lacks — phase 2's to decide.
+  - **A 2D coordinate in the 3D app means z = 0**: `pt(40, 30)` seeds at the
+    kernel's z = 0 (a seed, the gauge every 2D drawing lived in), and
+    `fix(p, [x, y])` is on the frame's plane, journalled lifted. The same rule
+    the file lift uses.
+  - ⚠ **Format version 6** although nothing in a v6 journal would be
+    *misparsed* by a v5 build: such a build would open a 3D drawing as its
+    flattened shadow with every tool refusing it — misread, which is the break
+    the version is for. The lift is keyed on `dim`, never the version.
+  - **A lifted frame's y-ref is named after its frame** (`base_y`, or the first
+    free variant), because a y-ref auto-named mid-replay takes a name a later
+    entry of the file holds, and the next step fails. It is placed from the
+    *saved* coordinates, a quarter turn from the x-ref, so a frame the drawing
+    had turned keeps its +y.
+  - *Found, not fixed (phase 2):* `pt(x, y)` seeds at the kernel's z = 0 even
+    with a tilted default frame (`pt()` with no arguments lands on it);
+    `frame()` typed in a turned view seeds along the kernel's axes; the painter's
+    sort is one depth per entity, so a long edge crossing a short one can sort
+    the wrong way where they cross (nothing is opaque yet); a lifted file's
+    points carry no `onPlane` (the file never said so), so dragging one in a
+    turned view moves it parallel to the working plane, which is z = 0 anyway.
 
 - **No world frame — coordinate frames are entities** (owner's direction,
   2026-09-01, chosen over "keep the frame but hide it" and "directions stay,
@@ -225,8 +300,17 @@ are flagged as such.
   point, an edge, a rim, an arc — and left-drag on **empty canvas
   box-selects**. Wheel zooms about the cursor (scroll up = in). Middle-drag
   pans. **The right button splits the way the left one does:** past the same
-  three-pixel threshold it pans, released where it landed it opens the context
-  menu; the browser's own menu stays suppressed either way.
+  three-pixel threshold it **orbits** (the 3D app; it panned in 2D), released
+  where it landed it opens the context menu; the browser's own menu stays
+  suppressed either way.
+  **⚠ Changed for 3D (2026-10-12), Onshape's 3D map:** right-*drag* orbits the
+  view (a trackball about the screen's own axes, half a degree a pixel) where
+  it used to pan; middle-drag is now the only pan button; the release still
+  decides, so a right *click* is still the menu. A left press lands on the
+  working plane (the default frame's, else the one facing you), so picking,
+  dragging and boxing are unchanged in kind. A 2D model keeps right-drag pan,
+  having nothing to turn. `orbit(yaw, pitch)` and `lookAt(frame?)` join
+  `pan`/`zoom` at the command line. *Veto-able*, like everything here.
   **✔ The deviation noted here is resolved (2026-09-02).** It used to read
   "middle- or right-drag pans; the right-click menu is suppressed", flagged as
   a deviation because Onshape pans with the middle button only and spends the
@@ -242,7 +326,8 @@ are flagged as such.
   geometry everywhere else, and the guiding rule above — tools work like
   Onshape, so people arrive knowing them — outranks a register entry inherited
   from the prototype. Panning lost nothing by either change: middle-drag,
-  right-drag and `pan()` all still pan. The one left-drag that still pans is a
+  right-drag and `pan()` all still pan (right-drag has since become the 3D
+  orbit — see above). The one left-drag that still pans is a
   press that landed on a **constraint glyph**, which grabs nothing (a glyph is
   UI, with no position of its own) and is not empty canvas either.
   **Veto-able here**, like everything else in this list.
@@ -862,7 +947,8 @@ extended the way `defineTool` extends the tool registry would close it.
       points and lines), so the tool works in a 3D model and simply infers no
       axis there — and writing that test caught a real bug, a degeneracy check
       that measured only the first two coordinates and so refused every
-      segment that moved in z alone.
+      segment that moved in z alone. (↻ Since 3D phase 1's camera half it
+      *does* infer in 3D, against a 3D default frame's axes in its plane.)
 - [x] **Constraint inference** — a tool that places a point on existing
       geometry applies the relation that implies (`coin` on a point, the line
       form of `mid` on a midpoint, `on`/`oncircle` on a curve), so a rectangle

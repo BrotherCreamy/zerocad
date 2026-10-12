@@ -7,6 +7,99 @@ decisions.
 
 ---
 
+## The app is 3D: an orbit camera, sketches on planes, and 2D files lifted
+
+![A floor sketch and a wall sketch standing on its back edge, seen obliquely: the floor is a parallelogram with one filleted corner drawn as part of an ellipse, the wall's profile — two lines, a three-point arc bump, two more lines — rises from the floor's back edge, and each frame's triad shows its x, y and z arms foreshortened](docs/images/52-two-sketch-planes-oblique.png)
+
+**The camera half of 3D phase 1.** The app runs a `Model(3)`, always — the
+owner's one-model decision: no mode switch, no second model type, and a
+"sketch" is just geometry on a frame's plane. It starts square-on, looking down
+−z with +x right and +y up, and until something turns it the app looks and
+behaves exactly as the 2D one did, with every point at z = 0.
+
+| | |
+|---|---|
+| ![A rectangle and a circle drawn face-on on a default frame; each corner wears a small parallelogram mark, the on-plane constraint](docs/images/49-face-on-sketch.png) | ![The same drawing after a right-drag: the rectangle is a parallelogram, the frame's triad shows its z arm, and the circle is still a full circle — its silhouette, the phase-2 seam](docs/images/50-orbited.png) |
+| ![Looking square-on at an upright frame standing on the rectangle's far edge, with a profile drawn on it by the line and three-point-arc tools; the floor rectangle is edge-on, a line](docs/images/51-drawing-on-an-upright-frame.png) | ![A version-4 2D file opened in the 3D app and turned: the rectangle and its fillet lie flat, the frame has gained a y-ref called base_y, and the 70 and 50 dimension labels follow the projection](docs/images/53-a-2d-file-opened-lifted.png) |
+
+**⚠ The mouse map is Onshape's 3D one.** Right-**drag orbits**; middle-drag
+pans; the wheel zooms toward the cursor; a right press **released in place
+still opens the context menu**, because the release decides — the register's
+promise held through the change of what a right-drag *is*. The left button is
+exactly what it was, on the working plane. `pan()`/`zoom()` keep working, and
+`orbit(yaw, pitch)` and `lookAt(frame?)` join them — relative like them,
+never journalled like them. A 2D model (the library, the unit tests) keeps the
+old map: there is nothing to turn.
+
+**Orthographic, and an orbit is a trackball.** The camera stores its own
+screen axes rather than an azimuth and elevation, for two reasons: `lookAt`
+has to put a *tilted* frame square-on with its +x to the right, which two
+angles cannot express (it needs a roll), and an orbit about the kernel's z
+would make the gauge's z the drawing's "up". So a right-drag turns the
+drawing about the screen's own axes (half a degree per pixel, positive carrying
+the near side the way the hand moves), about an orbit target that panning and
+zooming keep on its pixel — "orbit" is always about the middle of the window.
+Perspective is deliberately not v1.
+
+**A click lands on the working plane.** A pixel names a ray, so it needs a
+surface: the **default frame's plane**, when there is one — set a frame as the
+default and every tool draws on it, Onshape's sketch flow — else the plane
+facing the viewer through the orbit target. A drag moves what it grabbed
+parallel to the plane the press landed on. **`placePoint` holds what it places
+on the sketch with `onPlane`**, deliberately minimally: only where the snap
+left the point free (no snap, or a curve snap), and only when it is actually on
+the plane. Its mark is `▱`, the one the model half deferred until it could be
+looked at.
+
+**The tools needed editing after all**, and the spec hoped they would not:
+rectangle, circle, circle3, arc and arc3 all refused 3D outright. Each now does
+its layout in the working plane (a rectangle's derived corners along the
+plane's axes; the 3-point tools' circumcircle in 3D; the centre-point arc
+counter-clockwise *as the viewer sees it*). The line tool's axis inference works
+against a tilted 3D frame, in its plane. `fillet` is dimension-generic too, or
+every 2D file with a fillet would have failed to open.
+
+**What the projection changed.** Lines project to segments; **a circle is drawn
+and hit as its silhouette**, because until phase 2 gives it a plane every
+relation reads it as a sphere — visible in the orbited picture above, and left
+visible on purpose. **An arc has a plane** — through its centre and endpoints —
+and **sweeps counter-clockwise about that plane's normal on the kernel's +z side**
+(then +y, then +x): the gauge showing through, said out loud, and the one rule
+that keeps every 2D arc what it was. Seen face-on an arc is picked, snapped and
+boxed by the exact arithmetic it always was; seen obliquely, as a quarter-pixel
+polyline. A snap's world position is read off what it snapped to, never off the
+pixel, and a screen crossing counts only where both curves agree it is one
+place in space.
+
+**While sketching on a plane, snaps only offer places on it.** Found by looking
+at the poster: seen square-on, the wall's last corner snapped to the floor's
+*front* corner seventy units behind the pixel, dragging the wall's edge out of
+its plane with every relation satisfied. What is only seen *through* a sketch
+is not a place on it; what is on it (the floor's back edge, which the wall
+stands on) is still found.
+
+**Format version 6, and 2D files open lifted.** Opening a 2D file — keyed on
+its `dim`, so v4 *and* v5 — gives every coordinate a zero and every frame the
+y-ref a 3D frame needs, named after the frame (`base_y`) so it cannot take a
+name the file uses later, and placed a quarter turn from the x-ref using the
+*saved* coordinates. At the command line `pt(x, y)` is `pt(x, y, 0)` and
+`fix(p, [x, y])` is on the frame's plane, journalled lifted. Version 6 because a
+2D-only build would open a 3D drawing as its flattened shadow with every tool
+refusing — nothing would be misparsed, but it would be misread. A re-saved
+lifted file is a v6, `dim: 3` file, byte-stable from there.
+
+**Known and deliberate, for phase 2:** circles are spheres (silhouette, no
+intersection snaps except face-on); an arc whose plane turns through the
+vertical flips its reference side and draws as its complement; `pt(x, y)` seeds
+at the kernel's z = 0, not on a tilted default frame; `frame()` typed in a
+turned view is still seeded along the kernel's axes; no snapping to off-plane
+geometry while sketching; one depth per entity in the painter's sort.
+
+493 unit tests (from 452), 187 end-to-end (from 175), all green with the
+typecheck and the kernel's own.
+
+---
+
 ## 3D frames: a frame is a sketch plane, and `fix` stops seeing the gauge
 
 **The model half of 3D phase 1.** Nothing on screen changed — the app still

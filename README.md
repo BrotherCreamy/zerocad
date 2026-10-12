@@ -6,7 +6,8 @@ differentiation and everything above it — with a runtime-extensible
 tool-authoring layer on top. There is no server: the Rust/WASM kernel and
 the TypeScript layer both run together, client-side, in the browser.
 
-2D CAD sketching (points, lines, circles, arcs; a relation vocabulary of
+CAD sketching — in 3D, on the planes of coordinate frames, through an
+orthographic orbit camera (points, lines, circles, arcs; a relation vocabulary of
 distance, coincidence, midpoint, parallel, perpendicular (either of which
 takes a coordinate frame's axis by name), angle, point-on-line,
 equal-length, radius, on-circle,
@@ -36,9 +37,11 @@ The brief that started this project asked for a kernel that is:
   3 (`src/relations/basic.ts` proves this: the identical relation
   functions are run against a 2D model and a 3D model in
   `test/model.test.ts`, both solving correctly). A few things are
-  genuinely 2D-only, the same way a cross product is genuinely 3D-only —
-  a coordinate frame, and therefore any reference to one of its axes —
-  and are marked as such rather than forced to generalize.
+  genuinely dimension-specific, the same way a cross product is genuinely
+  3D-only — a coordinate frame exists in 2D and 3D only (above that two
+  directions leave a rotation free), and a frame's z axis only in 3D —
+  and are marked as such rather than forced to generalize. The app itself
+  runs a 3D model; the library takes any dimension.
 - **Extensible from the command line**: type a new tool's definition into
   the REPL and have it immediately usable in the viewport — the same
   extension point built-in tools use, not a separate plugin API. This
@@ -87,7 +90,11 @@ src/operations.ts        operations, which change structure rather than add equa
 src/persist.ts           save/open — a file is the model's journal, replayed
 src/repl.ts              the scoped evaluator: curated scope, no reach into page globals
 src/replenv.ts           what that scope contains — the app's whole command surface
-src/view.ts              the 2D view transform, as pure testable functions
+src/view.ts              the orthographic camera, as pure testable functions (the 2D transform until turned)
+src/vec3.ts              three-vectors over plain numbers, for the camera and arc layout
+src/arcgeom.ts           which way round an arc goes, in its own plane — one rule for everyone
+src/projection.ts        each entity's shape on screen, and a pixel on it lifted back to the world
+src/workplane.ts         what a click lands on in 3D: the default frame's plane, or the one facing you
 src/undo.ts              a stack of whole-model snapshots; imports nothing
 src/tools/tool.ts         abstract class Tool + defineTool registry
 src/tools/engine.ts       wires real DOM pointer events to the armed tool
@@ -171,11 +178,22 @@ settles at exactly the frame's tilt, rather than the two meeting halfway. Two
 ordinary lines in `par` still move each other; that asymmetry is what makes a
 frame a datum.
 
-The viewport works the way Onshape's does: the wheel zooms about the
-cursor, right- or middle-drag pans. Navigation is deliberately on
-different buttons from tool use, so the left button always belongs to
-whichever tool is armed — you can start a rectangle, pan to see where it
-is going, and finish it without the tool noticing.
+The viewport works the way Onshape's does: **right-drag orbits**, middle-drag
+pans, the wheel zooms about the cursor. The camera is orthographic and starts
+square-on — the drawing in the plane z = 0, exactly as a 2D sketcher shows it
+— and `orbit(yaw, pitch)`, `pan(dx, dy)`, `zoom(f)` and `lookAt(frame?)` do the
+same from the command line (`lookAt` puts a frame's plane square to the screen,
++x right and +y up: Onshape's "normal to sketch"). Navigation is deliberately
+on different buttons from tool use, so the left button always belongs to
+whichever tool is armed — you can start a rectangle, turn the view to see
+where it is going, and finish it without the tool noticing.
+
+**A click lands on the default frame's plane** — set a frame as the default and
+every tool draws on it, holding what it draws there with `onplane` — or, with
+no default frame, on the plane facing you through the middle of the window. So
+sketching on a tilted plane is: make the frame, `setDefaultFrame`, `lookAt`,
+draw. `pt(x, y)` is `pt(x, y, 0)`, and `fix(p, [x, y])` is a position on the
+frame's plane. A 2D file from before 3D opens lifted into z = 0.
 
 **Right-click without moving opens a menu** for whatever is under the
 cursor — an entity, a constraint mark, or empty canvas. Everything on it

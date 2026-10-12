@@ -43,11 +43,16 @@ What 3D adds is not a new solver — it is:
   wheel zooms; right-release keeps the menu), ray→working-plane pointing
   so every existing tool draws onto the default frame's plane, rendering
   that projects (z-sorted, arcs sampled in their own plane).
-  *Spec:* `docs/plans/3d-phase1.md`.
+  *Spec:* `docs/plans/3d-phase1.md`. ✅ **Built, both halves** — with `lookAt`
+  and a minimal `onPlane` inference pulled forward from phase 2, and an
+  arc-orientation rule and sketch-plane snap filter phase 2 should revisit
+  (see the register's 3D entry).
 - **Phase 2 — planar discipline**: circles/arcs carry their plane (via the
-  frame or a normal ref); on-plane inference when a default frame is set;
-  a `plane()` convenience; multiple frames as multiple sketch planes;
-  camera "look at plane" command.
+  frame or a normal ref) — retiring phase 1's silhouette circles and its
+  kernel-+z arc orientation; on-plane inference beyond phase 1's minimal one;
+  snapping to off-plane geometry by its projection; a `plane()` convenience;
+  multiple frames as multiple sketch planes. (The camera "look at plane"
+  command shipped in phase 1 as `lookAt`.)
 - **Phase 3 — loops**: `src/loops.ts`, pure — closed chains of coplanar
   lines/arcs from shared/coincident endpoints; click-inside-a-region
   picking (the Onshape gesture) in screen space.
