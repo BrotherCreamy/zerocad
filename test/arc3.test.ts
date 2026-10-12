@@ -27,7 +27,8 @@ import { findSnap } from "../src/snapping.ts";
 import { save, open } from "../src/persist.ts";
 import { screenToWorld, worldToScreen, type View } from "../src/view.ts";
 import type { PointerInfo, ToolContext } from "../src/tools/tool.ts";
-import { axisFrame } from "./frames.ts";
+import { axisFrame, tiltedFrame } from "./frames.ts";
+import { arcFrame } from "../src/arcgeom.ts";
 
 async function loadKernel() {
   const bytes = await readFile(new URL("../src/kernel/wasm-gen/neocad_kernel_bg.wasm", import.meta.url));
@@ -375,11 +376,41 @@ test("Arc3Tool: cancelling forgets the clicks so far", async () => {
   assert.equal(ctx.finished, true);
 });
 
-test("Arc3Tool is 2D-only and says so", async () => {
+test("Arc3Tool in 3D: the arc is in the clicks' plane, through the waypoint, held on the sketch", async () => {
   await loadKernel();
   const model = new Model(3);
-  const tool = new Arc3Tool(fakeCtx(model));
-  assert.throws(() => tool.onDown({ world: [0, 0, 0], screen: [0, 0] }), /2D/);
+  const f = tiltedFrame(model);
+  const plane = { origin: f.origin, u: f.ux, v: f.uy };
+  const ctx = fakeCtx(model);
+  const tool = new Arc3Tool(ctx);
+  // Ends at (−10, 0) and (10, 0) in the frame, waypoint *below* them at (0, −6):
+  // in frame coordinates this is the lower arc, whichever way the plane faces.
+  const click = (u: number, v: number): PointerInfo => ({ world: f.at(u, v), screen: [0, 0], plane });
+  tool.onDown(click(-10, 0));
+  tool.onDown(click(10, 0));
+  tool.onDown(click(0, -6));
+  assert.equal(ctx.finished, true);
+
+  const arc = arcOf(model);
+  const c = model.coords(arc.center);
+  // The circumcircle in the plane: centre on the frame's y axis, at v where
+  // 10² + v² = (v + 6)², i.e. v = 16/3 — above the chord, the waypoint below.
+  const expected = f.at(0, 16 / 3);
+  assert.ok(Math.hypot(...c.map((v, i) => v - expected[i])) < 1e-9, `centre at ${c}, expected ${expected}`);
+
+  // The arc the renderer will draw — laid out by the same rule — goes through
+  // the waypoint, not round the other side.
+  const af = arcFrame(c, model.coords(arc.start), model.coords(arc.end), model.radius(arc.name))!;
+  const w = f.at(0, -6);
+  const d = w.map((v, i) => v - af.center[i]);
+  let t = Math.atan2(d.reduce((s, x, i) => s + x * af.v[i], 0), d.reduce((s, x, i) => s + x * af.u[i], 0));
+  if (t < 0) t += 2 * Math.PI;
+  assert.ok(t < af.sweep, `the waypoint is ${t} round a ${af.sweep} sweep — the other arc was drawn`);
+
+  // Endpoints and centre are all held on the sketch plane.
+  const held = model.journal.filter((e) => e.op === "onPlane").map((e) => e.args[0]);
+  assert.deepEqual(held.sort(), [arc.start, arc.end, arc.center].sort());
+  assert.equal(model.solve().solved, true);
 });
 
 // --- snapping and inference, which is what makes it compose ------------------

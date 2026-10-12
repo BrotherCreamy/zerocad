@@ -26,12 +26,33 @@
 // a point told only that it is on the line drifts along the line the moment
 // anything moves, and the crossing it was placed at is gone. Constrained to
 // both curves it *is* the crossing, and drag either curve and it rides.
+//
+// **In 3D there is one more row: the sketch plane.** With a default frame set,
+// a click lands on that frame's plane (see ../workplane.ts), and the point it
+// makes is held there with `onPlane` — the same "the sketch you are drawing
+// on" every Onshape point has without saying so. Only where the snap leaves the
+// point anywhere to go: a click in empty space, or along a curve. A snap to a
+// vertex, a midpoint or a crossing already pins the point outright, so a plane
+// on top would be redundant where it agreed and a conflict where it did not.
+// And only when the point really is on the plane — a snap can carry a click to
+// geometry off it, and the snap wins (it is what was aimed at).
 
 import type { PointerInfo, ToolContext } from "./tool.ts";
 import type { Model } from "../model.ts";
 import type { Snap } from "../snapping.ts";
-import { coincident, midpoint } from "../relations/basic.ts";
+import { coincident, midpoint, onPlane } from "../relations/basic.ts";
 import { onCircle, pointOnLine } from "../relations/geometry.ts";
+import { framePlane } from "../workplane.ts";
+import { cross3, dot3, lift3, sub3 } from "../vec3.ts";
+
+/**
+ * How far off the default frame's plane a point may be and still count as on
+ * it, relative to its distance from the frame's origin (and never tighter than
+ * that fraction of one unit). Loose enough to take a point lifted off a curve
+ * the solver holds on the plane only to its own tolerance; a click that missed
+ * the plane misses it by a great deal more than this.
+ */
+const ON_PLANE = 1e-6;
 
 /**
  * Creates the point a click asked for and applies whatever constraint the
@@ -44,7 +65,40 @@ import { onCircle, pointOnLine } from "../relations/geometry.ts";
 export function placePoint(ctx: ToolContext, info: PointerInfo, name?: string): string {
   const placed = ctx.model.addPoint(info.world, name).name;
   if (info.snap) inferFromSnap(ctx.model, placed, info.snap);
+  if (!info.snap || info.snap.kind === "curve") holdOnSketchPlane(ctx.model, placed);
   return placed;
+}
+
+/**
+ * Refuses a drawing tool in a model it cannot lay a shape out in. A shape needs
+ * a plane to be drawn on: a 2D model is one, and a 3D model has the working
+ * plane. Anything else has neither — and said here, by name, rather than as
+ * whatever `addPoint` complains about three steps later.
+ */
+export function requirePlanar(model: Model, tool: string): void {
+  if (model.dim !== 2 && model.dim !== 3) {
+    throw new Error(`${tool} draws in a 2D or 3D model, and this one is ${model.dim}D`);
+  }
+}
+
+/**
+ * Holds a point on the default frame's plane with `onPlane`, if this is a 3D
+ * model with a default frame and the point is on its plane. Returns the
+ * relation's name, or null when nothing applied.
+ *
+ * Exported for the points a tool makes *without* a click of their own — a
+ * rectangle's two derived corners, a three-point circle's centre — which are
+ * on the sketch because they were laid out there, and have to stay on it for
+ * the same reason the clicked ones do.
+ */
+export function holdOnSketchPlane(model: Model, pointName: string): string | null {
+  const plane = framePlane(model);
+  if (!plane) return null;
+  const off = sub3(lift3(model.coords(pointName)), lift3(plane.origin));
+  const n = cross3(plane.u, plane.v);
+  const away = Math.hypot(off[0], off[1], off[2]);
+  if (Math.abs(dot3(off, n)) > ON_PLANE * Math.max(1, away)) return null;
+  return onPlane(model, pointName, model.defaultFrame);
 }
 
 /**

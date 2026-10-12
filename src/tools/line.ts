@@ -38,11 +38,14 @@
 // which was invisible while nothing could tilt a frame by hand and wrong the
 // moment something could.)
 //
-// The chain itself is dimension-generic — points and lines are — so the tool
-// works unchanged in a 3D model and simply infers no axis there. 3D frames now
-// exist, but inferring against one means reading the cursor against the
-// frame's axes *as projected to the screen*, which is the camera's job and
-// arrives with it (3D phase 1, second half); the arithmetic below is planar.
+// The chain itself is dimension-generic — points and lines are — and so, now,
+// is the inference. In 3D the cursor lands on the default frame's own plane
+// (see ../workplane.ts), so its offset from the segment's start *is* a vector
+// in that plane, and "how far along +x, how far along +y" is two dot products
+// — the 2D arithmetic, written so it does not care how many coordinates there
+// are. The 3° test is therefore measured in the sketch plane, not on screen:
+// seen square-on the two are the same angle, and seen obliquely the plane's
+// own angle is the one the constraint that lands will hold.
 
 import { Tool, defineTool, type PointerInfo, type RenderContext } from "./tool.ts";
 import { parallel } from "../relations/geometry.ts";
@@ -73,6 +76,10 @@ type Axis = "x" | "y" | null;
 /** Across every coordinate, not just the two a viewport draws. */
 function distance(a: number[], b: number[]): number {
   return Math.hypot(...a.map((v, i) => v - b[i]));
+}
+
+function dot(a: number[], b: number[]): number {
+  return a.reduce((s, v, i) => s + v * b[i], 0);
 }
 
 /** Where the segment's far end should go, and which axis constraint that implies. */
@@ -170,10 +177,6 @@ export class LineTool extends Tool {
    * snapped position already satisfies it.
    */
   private resolve(from: number[], p: PointerInfo): Aim {
-    // A chain of segments is dimension-generic — it is only points and lines.
-    // The aim below is planar arithmetic, so above two dimensions the tool
-    // draws the same and infers no axis until the camera can project one.
-    if (from.length !== 2) return { world: p.world, axis: null };
     const axes = this.axes();
     // No default frame, or one dragged onto its own origin: nothing to be
     // level *with*, so no aim, no guide and no constraint.
@@ -182,12 +185,13 @@ export class LineTool extends Tool {
 
     // The cursor's offset from the start, read in the frame's coordinates: how
     // far along its +x, and how far along its +y. Every test below is on those
-    // two numbers, so all of it turns with the frame.
-    const d = [p.world[0] - from[0], p.world[1] - from[1]];
-    if (Math.hypot(d[0], d[1]) < DEGENERATE) return { world: p.world, axis: null }; // no direction to read
-    const along = d[0] * ux[0] + d[1] * ux[1];
-    const across = d[0] * uy[0] + d[1] * uy[1];
-    const on = (u: number[], t: number) => [from[0] + u[0] * t, from[1] + u[1] * t];
+    // two numbers, so all of it turns with the frame — and, in 3D, tilts with
+    // it.
+    const d = p.world.map((v, i) => v - from[i]);
+    if (Math.hypot(...d) < DEGENERATE) return { world: p.world, axis: null }; // no direction to read
+    const along = dot(d, ux);
+    const across = dot(d, uy);
+    const on = (u: number[], t: number) => from.map((f, i) => f + u[i] * t);
 
     if (p.snap) {
       // A snap wins outright, and the constraint comes along only if the
@@ -220,8 +224,11 @@ export class LineTool extends Tool {
     if (!m.defaultFrame || !m.entities.has(m.defaultFrame)) return null;
     const { ux, uy } = frameBasis(m, m.defaultFrame)();
     // `frameBasis` floors a collapsed frame's direction to the zero vector
-    // rather than dividing by zero; anything else it hands back is a unit.
-    return ux[0] === 0 && ux[1] === 0 ? null : { ux, uy };
+    // rather than dividing by zero; anything else it hands back is a unit. In
+    // 3D +y can floor on its own (a y-ref dragged onto the x axis), and a frame
+    // with no plane has no "level" to offer either.
+    const gone = (u: number[]) => u.every((c) => c === 0);
+    return gone(ux) || gone(uy) ? null : { ux, uy };
   }
 
   render(r: RenderContext): void {

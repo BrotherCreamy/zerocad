@@ -12,6 +12,8 @@ import {
 } from "./model.ts";
 import { dist } from "./relations/basic.ts";
 import { angle, arcEndpoints, radius, tangent } from "./relations/geometry.ts";
+import { sweepsAs } from "./arcgeom.ts";
+import { cross3, lift3, sub3 } from "./vec3.ts";
 
 function unit(v: number[]): number[] {
   const len = Math.hypot(...v);
@@ -62,10 +64,18 @@ function corner(model: Model, l1Name: string, l2Name: string) {
  * test/sketch.test.ts. Prefer the line form for anything that is a property
  * of an edge; it is what the built-in tools use.
  *
+ * **In 3D the corner is a plane** — the one the two legs span — and every
+ * step above is the same arithmetic in it: the bisector, the back-off along
+ * each leg and the centre along the bisector are all lengths and dot products.
+ * The one 2D-shaped decision is which endpoint the arc starts at, and that is
+ * asked of the rule every arc is drawn by (see arcgeom.ts) rather than of a 2D
+ * cross product, so the short arc between the tangent points is the one drawn
+ * however the corner's plane is turned. In 2D the answer is the old one.
+ *
  * Returns the new arc's name.
  */
 export function fillet(model: Model, l1Name: string, l2Name: string, r: number): string {
-  if (model.dim !== 2) throw new Error("fillet is a 2D operation");
+  if (model.dim !== 2 && model.dim !== 3) throw new Error("fillet rounds a corner in a 2D or 3D model");
   if (!(r > 0)) throw new Error("fillet needs a positive radius");
   // Journalled as the one call the user made, not as the entities and
   // relations it expands into — replaying it re-expands them identically.
@@ -80,7 +90,7 @@ function filletBody(model: Model, l1Name: string, l2Name: string, r: number): st
   const v = unit(model.coords(b).map((c, i) => c - p[i]));
 
   // The interior angle at the corner decides how far back the legs are cut.
-  const cosTheta = Math.min(1, Math.max(-1, u[0] * v[0] + u[1] * v[1]));
+  const cosTheta = Math.min(1, Math.max(-1, u.reduce((s, ui, i) => s + ui * v[i], 0)));
   const theta = Math.acos(cosTheta);
   if (theta < 1e-6 || Math.PI - theta < 1e-6) {
     throw new Error("cannot fillet a corner whose legs are collinear");
@@ -94,10 +104,10 @@ function filletBody(model: Model, l1Name: string, l2Name: string, r: number): st
     throw new Error(`radius ${r} is too large for this corner (needs ${backoff.toFixed(3)} of leg, have ${Math.min(legA, legB).toFixed(3)})`);
   }
 
-  const bisector = unit([u[0] + v[0], u[1] + v[1]]);
-  const t1 = [p[0] + u[0] * backoff, p[1] + u[1] * backoff];
-  const t2 = [p[0] + v[0] * backoff, p[1] + v[1] * backoff];
-  const ctr = [p[0] + bisector[0] * toCenter, p[1] + bisector[1] * toCenter];
+  const bisector = unit(u.map((ui, i) => ui + v[i]));
+  const t1 = p.map((pi, i) => pi + u[i] * backoff);
+  const t2 = p.map((pi, i) => pi + v[i] * backoff);
+  const ctr = p.map((pi, i) => pi + bisector[i] * toCenter);
 
   // Reuse the corner as leg one's tangent point; leg two gets a fresh one.
   model.setCoords(shared, t1);
@@ -107,8 +117,11 @@ function filletBody(model: Model, l1Name: string, l2Name: string, r: number): st
 
   // Sweep counter-clockwise from start to end, so order the two ends by which
   // way round is the short way — otherwise the arc renders as the reflex one.
-  const cross = (t1[0] - ctr[0]) * (t2[1] - ctr[1]) - (t1[1] - ctr[1]) * (t2[0] - ctr[0]);
-  const [start, end] = cross > 0 ? [shared, t2p.name] : [t2p.name, shared];
+  // "Counter-clockwise" is about the side every arc is laid out from; the
+  // short way from t1 to t2 is counter-clockwise about the normal t1 × t2
+  // (taken from the centre), so t1 starts exactly when that normal is on it.
+  const short = cross3(sub3(lift3(t1), lift3(ctr)), sub3(lift3(t2), lift3(ctr)));
+  const [start, end] = sweepsAs(ctr, t1, t2, short) ? [shared, t2p.name] : [t2p.name, shared];
 
   const arc = model.addArc(ctrp.name, start, end, r);
   radius(model, arc.name, r);

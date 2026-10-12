@@ -1,14 +1,22 @@
 // Wires real DOM pointer events on a canvas to whatever Tool is currently
-// armed, translating screen pixels to world coordinates via the view
-// transform in ../view.ts. A tool is one-shot by default — it deactivates
-// once it calls ctx.finish() — the same "gesture completes, arm the next one
-// explicitly" shape cellwork's pointer tools already used.
+// armed, translating screen pixels to world coordinates via the camera in
+// ../view.ts. A tool is one-shot by default — it deactivates once it calls
+// ctx.finish() — the same "gesture completes, arm the next one explicitly"
+// shape cellwork's pointer tools already used.
+//
+// **In a 3D model a pixel is a ray, and it lands on the working plane** — the
+// default frame's plane, or the camera-parallel plane through the orbit target
+// when there is no default frame (see ../workplane.ts). Every world coordinate
+// a tool is handed, and every offset a drag moves by, is read on that plane,
+// which is why the tools did not have to learn what a camera is.
 //
 // Navigation and tool use are kept on separate buttons, Onshape-style: the
 // left button belongs to whichever tool is armed and nothing else, while the
-// middle and right buttons pan and the wheel zooms about the cursor. That
-// split is what lets you re-frame the drawing in the middle of a gesture
-// without the tool ever seeing it — start a rectangle, pan, finish it.
+// middle button pans, the right button **orbits** (in a 3D model; in a 2D one,
+// with nothing to turn, it still pans), and the wheel zooms about the cursor.
+// That split is what lets you re-frame the drawing in the middle of a gesture
+// without the tool ever seeing it — start a rectangle, turn the view, finish
+// it.
 //
 // With nothing armed the left button has three meanings, decided by what the
 // press landed on and whether it moved: **any geometry drags** — a point, an
@@ -24,17 +32,21 @@
 // there is nothing for it to drag, and it is not empty canvas either, so it
 // must not box.
 //
-// The right button now splits the same way the left one does, and by the same
+// The right button splits the same way the left one does, and by the same
 // rule: **the press decides nothing, the release does.** Past the drag
-// threshold it is a pan, exactly as it always was; released without moving it
-// is a context menu (see ../menu.ts) for whatever it landed on. Middle-drag is
-// untouched and never opens anything — one button that is unambiguously
-// navigation is worth keeping.
+// threshold it orbits — Onshape's right-drag — where in 2D it panned; released
+// without moving it is a context menu (see ../menu.ts) for whatever it landed
+// on. Middle-drag is untouched and never opens anything — one button that is
+// unambiguously "move the view" is worth keeping, and it is the button Onshape
+// pans with.
 
 import type { Model } from "../model.ts";
 import type { ResidualBlock } from "../kernel/problem.ts";
 import { getToolCtor, type Tool, type ToolContext, type PointerInfo, type RenderContext } from "./tool.ts";
-import { assignView, panBy, screenToWorld, worldToScreen, zoomAbout, type View } from "../view.ts";
+import {
+  assignView, orbitBy, panBy, screenToPlane, screenToWorld, worldToScreen, zoomAbout, type Plane, type View,
+} from "../view.ts";
+import { pointOnWorkingPlane } from "../workplane.ts";
 import { hitTest, type Pick } from "../picking.ts";
 import { boxFrom, selectInBox, type BoxMode } from "../boxselect.ts";
 import { glyphAt, placeGlyphs, type Glyph } from "../glyphs.ts";
@@ -52,6 +64,14 @@ const MIDDLE_BUTTON = 4;
 
 /** Movement past this many pixels turns a click into a drag. cellwork's value. */
 const DRAG_THRESHOLD = 3;
+
+/**
+ * How far a right-drag turns the drawing, in radians per pixel: half a degree,
+ * so a drag across a third of a typical window turns it end for end. Slower
+ * than that and a quarter turn is a reach; faster and a steady oblique view is
+ * hard to hold.
+ */
+export const ORBIT_PER_PIXEL = Math.PI / 360;
 
 /**
  * How hard a drag pulls the grabbed point toward the cursor, relative to a
@@ -72,10 +92,12 @@ const DRAG_PULL = 0.12;
  * squares would end up minimising a fourth power. `(x - target) * w` is
  * linear, exact, and has a gradient everywhere including at the answer.
  *
- * Only as many coordinates as the viewport supplied are pulled, so in a 3D
- * model dragging moves the point within the plane the viewport is drawing and
- * leaves the depth alone — which is the only thing a 2D cursor can honestly
- * mean.
+ * Only as many coordinates as the viewport supplied are pulled. The engine
+ * supplies all of them in a 3D model — a point on the working plane — and a
+ * drag's target is the grabbed point moved by an offset that lies *in* that
+ * plane, so the depth the gesture cannot see is left where it was by
+ * construction rather than by not being pulled. A caller with only two
+ * coordinates still gets the old reading: the rest are left alone.
  */
 export function pullTo(model: Model, name: string, world: number[], weight = DRAG_PULL): ResidualBlock[] {
   const idx = model.point(name).varIndices.slice(0, world.length);
@@ -146,7 +168,7 @@ export class ToolEngine {
    * one hand, one idea of what "did not move" means.
    */
   private panning:
-    | { id: number; sx: number; sy: number; x0: number; y0: number; moved: boolean; menu: boolean }
+    | { id: number; sx: number; sy: number; x0: number; y0: number; moved: boolean; menu: boolean; orbit: boolean }
     | null = null;
   /**
    * A left press with no tool armed. What it becomes depends on what it landed
@@ -156,8 +178,8 @@ export class ToolEngine {
    *
    * `drag` is the plan for the first of those — which points the grabbed
    * entity is made of and where each of them was when it was grabbed, plus the
-   * world position of the press itself. `empty` records that the press landed
-   * on nothing at all.
+   * world position of the press itself and, in 3D, the plane that position was
+   * read on. `empty` records that the press landed on nothing at all.
    *
    * All of it is captured at press time rather than re-hit-tested each move,
    * because the geometry is moving under the cursor from then on: re-asking
@@ -168,7 +190,7 @@ export class ToolEngine {
    */
   private idle: {
     id: number; sx: number; sy: number; x0: number; y0: number; moved: boolean;
-    drag: { names: string[]; origins: number[][]; grab: number[] } | null;
+    drag: { names: string[]; origins: number[][]; grab: number[]; plane?: Plane } | null;
     empty: boolean;
   } | null = null;
   /**
@@ -288,8 +310,19 @@ export class ToolEngine {
     return worldToScreen(this.view, world);
   }
 
+  /**
+   * The world point under (sx, sy). In a 3D model, on the working plane — the
+   * one place a cursor can mean without help (see ../workplane.ts); in a 2D
+   * model, where the world is a plane already, the plain inverse.
+   */
   screenToWorld(sx: number, sy: number): number[] {
-    return screenToWorld(this.view, sx, sy);
+    return this.pointAt(sx, sy).world;
+  }
+
+  /** `screenToWorld`, plus the plane the point was read on — absent in 2D. */
+  private pointAt(sx: number, sy: number): { world: number[]; plane?: Plane } {
+    if (this.model.dim !== 3) return { world: screenToWorld(this.view, sx, sy) };
+    return pointOnWorkingPlane(this.model, this.view, sx, sy);
   }
 
   /**
@@ -425,7 +458,10 @@ export class ToolEngine {
           const p = this.panning;
           if (!p.moved && Math.hypot(sx - p.x0, sy - p.y0) > DRAG_THRESHOLD) p.moved = true;
           if (p.moved) {
-            assignView(this.view, panBy(this.view, sx - p.sx, sy - p.sy));
+            const [dx, dy] = [sx - p.sx, sy - p.sy];
+            assignView(this.view, p.orbit
+              ? orbitBy(this.view, dx * ORBIT_PER_PIXEL, dy * ORBIT_PER_PIXEL)
+              : panBy(this.view, dx, dy));
             this.onRenderOnly();
           }
           p.sx = sx;
@@ -452,7 +488,10 @@ export class ToolEngine {
       // navigational — one button that unambiguously means "move the view" is
       // worth keeping, and it is the button Onshape pans with anyway.
       const menu = (e.buttons & RIGHT_BUTTON) !== 0 && (e.buttons & MIDDLE_BUTTON) === 0;
-      this.panning = { id: e.pointerId, sx, sy, x0: sx, y0: sy, moved: false, menu };
+      // The right button turns a 3D view — Onshape's right-drag — and pans a
+      // 2D one, which has nothing to turn. The middle button always pans.
+      const orbit = menu && this.model.dim === 3;
+      this.panning = { id: e.pointerId, sx, sy, x0: sx, y0: sy, moved: false, menu, orbit };
       this.canvas.setPointerCapture?.(e.pointerId);
       if (kind === "down") e.preventDefault();
       return;
@@ -478,8 +517,17 @@ export class ToolEngine {
       // constraint the user was aiming for (see place.ts). Inference is
       // downstream of snapping, so `snapping(false)` turns off both.
       this.snap = this.snapping ? findSnap(this.model, this.view, sx, sy) : null;
-      const world = this.snap ? this.snap.world : this.screenToWorld(sx, sy);
-      const info: PointerInfo = { world, screen: [sx, sy], ...(this.snap ? { snap: this.snap } : {}) };
+      // The plane is reported even when a snap moved the point off it: it is
+      // what the gesture is being drawn on, and a tool laying out a shape from
+      // a snapped corner still lays it out along that plane's axes.
+      const at = this.pointAt(sx, sy);
+      const world = this.snap ? this.snap.world : at.world;
+      const info: PointerInfo = {
+        world,
+        screen: [sx, sy],
+        ...(this.snap ? { snap: this.snap } : {}),
+        ...(at.plane ? { plane: at.plane } : {}),
+      };
 
       // A press or a release is one thing the user did; a move is part of one.
       // Which of down and up actually commits geometry differs by tool — the
@@ -512,10 +560,10 @@ export class ToolEngine {
       // tier: it must not be possible to aim at a mark and start either
       // dragging the geometry behind it or a box over it.
       const under = this.pickAt(sx, sy);
-      const grab = this.screenToWorld(sx, sy);
+      const { world: grab, plane } = this.pointAt(sx, sy);
       const names = under ? dragGoverns(this.model, under) : [];
       const drag = names.length
-        ? { names, origins: names.map((n) => this.model.coords(n).slice(0, grab.length)), grab }
+        ? { names, origins: names.map((n) => this.model.coords(n).slice(0, grab.length)), grab, ...(plane ? { plane } : {}) }
         : null;
       this.idle = { id: e.pointerId, sx, sy, x0: sx, y0: sy, moved: false, drag, empty: under === null };
       this.canvas.setPointerCapture?.(e.pointerId);
@@ -623,7 +671,14 @@ export class ToolEngine {
     }
     // No snapping: a drag goes to where the cursor actually is. Onshape infers
     // while dragging; that is a follow-up, deliberately not this.
-    const world = this.screenToWorld(sx, sy);
+    //
+    // In 3D the cursor is read on the plane the press was read on, for the
+    // whole gesture — so the offset lies in that plane and the grabbed points
+    // move parallel to it, which is the drag's whole 3D story. Fixed at the
+    // press rather than re-read, so that nothing which moves mid-gesture — a
+    // frame being dragged, a view turned with the other hand — can tip the
+    // plane the arithmetic is done in.
+    const world = (plan.plane && screenToPlane(this.view, sx, sy, plan.plane)) || this.screenToWorld(sx, sy);
     const offset = world.map((w, i) => w - plan.grab[i]);
     const targets = plan.names.map((n, k) => plan.origins[k].map((c, i) => c + offset[i]));
     // A point a *frame* is built out of is moved outright before the solve
@@ -686,7 +741,7 @@ export class ToolEngine {
   renderOverlay(): void {
     this.renderBox();
     if (!this.active) return;
-    const r: RenderContext = { g: this.g, worldToScreen: (w) => this.worldToScreen(w) };
+    const r: RenderContext = { g: this.g, worldToScreen: (w) => this.worldToScreen(w), scale: this.view.scale };
     this.active.render(r);
     this.renderSnapMarker();
   }
