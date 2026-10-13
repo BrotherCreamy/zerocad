@@ -27,7 +27,7 @@
 // `hitTest` at all. They live a layer up because they are UI drawn over the
 // drawing rather than part of it — the same reason snapping ignores them.
 
-import type { Entity, FeatureEntry, Model, RelationEntry } from "./model.ts";
+import type { AxisName, Entity, FeatureEntry, Model, RelationEntry } from "./model.ts";
 import { screenAngle, withinSweep } from "./intersect.ts";
 import { frameArms, frameMarker } from "./framemarker.ts";
 import { nearestOnPolyline, screenCurve, screenOf as projectPoint } from "./projection.ts";
@@ -48,6 +48,12 @@ export interface Pick {
   kind: PickKind;
   /** Screen-space distance in pixels, for choosing between candidates. */
   distance: number;
+  /**
+   * For a frame: which arm of its marker was nearest — what a tool choosing an
+   * *axis* needs (the revolve tool turns it into `"f1.y"`). Absent for every
+   * other kind; a frame is still the one thing picked, whichever arm it was.
+   */
+  axis?: AxisName;
 }
 
 /** Pick radii in screen pixels, largest first — these are cellwork's. */
@@ -130,12 +136,12 @@ export function hitTest(model: Model, view: View, sx: number, sy: number): Pick 
     if (e.kind !== "frame") continue;
     const marker = frameMarker(model, view, e.name);
     if (!marker) continue; // collapsed: nothing drawn, so nothing to hit
-    for (const [a, b] of frameArms(marker)) {
+    frameArms(marker).forEach(([a, b], arm) => {
       const d = toSegment(sx, sy, a, b);
       if (d !== null && d < PICK_LINE && (!best || d < best.distance)) {
-        best = { name: e.name, kind: "frame", distance: d };
+        best = { name: e.name, kind: "frame", distance: d, axis: (["x", "y", "z"] as const)[arm] };
       }
-    }
+    });
   }
   return best;
 }

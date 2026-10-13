@@ -14,12 +14,15 @@ import { readFile } from "node:fs/promises";
 import { ensureKernelLoaded } from "../src/kernel/problem.ts";
 import { Model } from "../src/model.ts";
 import { onPlane } from "../src/relations/basic.ts";
-import { extrude, fillet } from "../src/operations.ts";
-import { FACE_DARK, FACE_LIGHT, faceColour, facesToDraw, featureFaces, loopOutlines, type Face } from "../src/faces.ts";
+import { extrude, fillet, revolve } from "../src/operations.ts";
+import { FACE_DARK, FACE_LIGHT, faceColour, facesToDraw, featureFaces, loopOutlines, orderedFaces, type Face } from "../src/faces.ts";
 import { arcSegments } from "../src/arcgeom.ts";
 import { findLoops, loopAt } from "../src/loops.ts";
+import { hitTest } from "../src/picking.ts";
+import { FRAME_ARM_PX } from "../src/framemarker.ts";
 import { depth, orbitBy, viewAxes, worldToScreen, type View } from "../src/view.ts";
 import { ExtrudeTool } from "../src/tools/extrude.ts";
+import { RevolveTool } from "../src/tools/revolve.ts";
 import { RectangleTool } from "../src/tools/rectangle.ts";
 import type { ToolContext } from "../src/tools/tool.ts";
 import { axisFrame } from "./frames.ts";
@@ -243,6 +246,8 @@ function toolCtx(model: Model, view: View, options: Record<string, unknown> = {}
       const loop = loopAt(model, view, sx, sy, loops);
       return loop ? { loops, index: loops.indexOf(loop) } : null;
     },
+    // The engine's own answer, as the revolve tool's second click asks it.
+    pick: ([sx, sy]: [number, number]) => hitTest(model, view, sx, sy),
     ...(log ? { log: (line: string) => { log.push(line); } } : {}),
   };
   return c as ToolContext & typeof c;
@@ -326,4 +331,316 @@ test("its preview fills the region even-odd and strokes it", async () => {
   assert.ok(calls.includes("fill(evenodd)"));
   assert.equal(calls.filter((c) => c === "closePath()").length, 3, "the outline, the hole and the island");
   assert.ok(calls.includes("stroke()"));
+});
+
+// --- a revolve's faces ------------------------------------------------------------------
+//
+// The same claims, for a surface no entity is: which way every quad faces
+// (worked out here from the solid's own shape — away from the axis on the
+// outside, toward it on the inside, along it at the ends), that each quad's
+// claimed normal is its own plane's, the caps (only when partial), the number
+// of steps (from the swept radius), and a torus sorting sanely at an angle.
+
+/** A block 10 to 30 out from the kernel-aligned frame's +y — the kernel's y — and 20 tall, revolved about it. */
+function turnedBlock(angle?: number, corners: number[][] = [[10, 0, 0], [30, 0, 0], [30, 20, 0], [10, 20, 0]]) {
+  const m = new Model(3);
+  axisFrame(m);
+  const pts = corners.map((c) => m.addPoint(c).name);
+  const lines = pts.map((p, i) => m.addLine(p, pts[(i + 1) % pts.length]).name);
+  for (const p of pts) onPlane(m, p, "f");
+  const f = m.featureOf(revolve(m, lines[0], "f.y", angle), "revolve");
+  return { m, lines, f };
+}
+
+/** How far a point is from the kernel's y axis. */
+const radial = (p: number[]) => Math.hypot(p[0], p[2]);
+const near = (a: number[], b: number[], tol: number) => Math.hypot(...sub(a, b)) <= tol;
+const cross = (a: number[], b: number[]) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+const unit = (v: number[]) => v.map((c) => c / Math.hypot(...v));
+
+/** A quad's own normal, from its diagonals — whichever way round. */
+const planeOf = (q: number[][]) => unit(cross(sub(q[2], q[0]), sub(q[3], q[1])));
+
+/** A washer's wall, by where its centroid is: the top, the bottom, the outside or the inside. */
+function washerWall(w: Face): "top" | "bottom" | "outer" | "inner" {
+  if (Math.abs(w.centroid[1] - 20) < 1e-9) return "top";
+  if (Math.abs(w.centroid[1]) < 1e-9) return "bottom";
+  return radial(w.centroid) > 20 ? "outer" : "inner";
+}
+
+/** That wall's outward direction at its centroid, written down from the shape. */
+function washerOut(w: Face): number[] {
+  const c = w.centroid;
+  const out = [c[0] / radial(c), 0, c[2] / radial(c)];
+  switch (washerWall(w)) {
+    case "top": return [0, 1, 0];
+    case "bottom": return [0, -1, 0];
+    case "outer": return out;
+    case "inner": return out.map((x) => -x);
+  }
+}
+
+test("a block turned a whole turn is a washer: rings of quads, no caps, every quad facing out of it along its own plane's normal", async () => {
+  await loadKernel();
+  const { m, f } = turnedBlock();
+  const scale = 4;
+  const faces = featureFaces(m, f, scale);
+  const steps = arcSegments(2 * Math.PI, 30 * scale);
+  assert.equal(faces.length, 4 * steps, "four members, one ring each, no caps");
+  assert.ok(faces.every((x) => x.kind === "wall"));
+  const kinds = new Map<string, number>();
+  for (const w of faces) {
+    kinds.set(washerWall(w), (kinds.get(washerWall(w)) ?? 0) + 1);
+    assert.ok(Math.abs(Math.hypot(...w.normal) - 1) < 1e-12, "unit length");
+    assert.ok(near(w.normal, washerOut(w), 1e-9), `${washerWall(w)} faces out: ${w.normal}`);
+    assert.ok(Math.abs(Math.abs(dot(w.normal, planeOf(w.outlines[0]))) - 1) < 1e-9, "square to its own quad");
+  }
+  assert.deepEqual([...kinds.values()], [steps, steps, steps, steps]);
+});
+
+test("turned a quarter: the start cap faces back against the sweep, the end cap on along it — and the last ring of every wall is the end face's twins", async () => {
+  await loadKernel();
+  // About +y, a quarter turn carries +x to −z: the material leaves the profile
+  // (in z = 0, at x > 0) toward −z, so the start cap faces +z; the end face
+  // lies in x = 0 at z < 0 and faces −x.
+  const { m, f } = turnedBlock(Math.PI / 2);
+  const faces = featureFaces(m, f, 4);
+  const [base, end] = [faces.find((x) => x.kind === "base")!, faces.find((x) => x.kind === "end")!];
+  assert.ok(near(base.normal, [0, 0, 1], 1e-12));
+  assert.ok(near(end.normal, [-1, 0, 0], 1e-12));
+  assert.equal(faces.filter((x) => x.kind !== "wall").length, 2);
+  for (const w of faces.filter((x) => x.kind === "wall")) assert.ok(near(w.normal, washerOut(w), 1e-9), washerWall(w));
+  const twins = f.twins[0].flatMap((l) => m.line(l).refs).map((p) => m.coords(p));
+  for (const p of end.outlines[0]) assert.ok(twins.some((q) => near(p, q, 0)), "the end cap is the twins, exactly");
+  const lastRing = faces.filter((x) => x.kind === "wall").flatMap((w) => w.outlines[0]).filter((p) => Math.abs(p[0]) < 1e-9 && p[2] < 0);
+  for (const p of lastRing) assert.ok(twins.some((q) => near(p, q, 0)), "the walls meet the end face on its own points");
+});
+
+test("seen from above, the quarter turn shows its start cap square-on, drawn last, and the bore it looks down into — and not its end cap", async () => {
+  await loadKernel();
+  const { m } = turnedBlock(Math.PI / 2);
+  const drawn = facesToDraw(m, ABOVE);
+  assert.equal(drawn.at(-1)!.kind, "base");
+  assert.equal(drawn.at(-1)!.shade, 1);
+  assert.ok(!drawn.some((d) => d.kind === "end"), "the end cap faces −x, edge-on to this view");
+  for (let i = 1; i < drawn.length; i++) assert.ok(drawn[i].depth >= drawn[i - 1].depth, "far to near");
+});
+
+test("steps are sized from the swept radius: more when zoomed in, fewer for a profile near the axis", async () => {
+  await loadKernel();
+  const { m, f } = turnedBlock();
+  assert.equal(featureFaces(m, f, 16).length, 4 * arcSegments(2 * Math.PI, 30 * 16));
+  assert.ok(arcSegments(2 * Math.PI, 30 * 16) > arcSegments(2 * Math.PI, 30 * 4));
+  const near1 = turnedBlock(undefined, [[1, 0, 0], [3, 0, 0], [3, 2, 0], [1, 2, 0]]);
+  assert.equal(featureFaces(near1.m, near1.f, 4).length, 4 * arcSegments(2 * Math.PI, 3 * 4));
+});
+
+test("a semicircle on its diameter turns into a sphere: every quad faces away from the centre, and the diameter on the axis sweeps nothing", async () => {
+  await loadKernel();
+  const m = new Model(3);
+  axisFrame(m);
+  const [lo, hi, c] = [m.addPoint([0, -10, 0]).name, m.addPoint([0, 10, 0]).name, m.addPoint([0, 0, 0]).name];
+  const arc = m.addArc(c, lo, hi, 10, "f").name;
+  const diameter = m.addLine(hi, lo).name;
+  const f = m.featureOf(revolve(m, diameter, "f.y"), "revolve");
+  assert.deepEqual(f.loops[0].slice().sort(), [arc, diameter].sort());
+  const scale = 4;
+  const faces = featureFaces(m, f, scale);
+  assert.equal(faces.length, arcSegments(2 * Math.PI, 10 * scale) * arcSegments(Math.PI, 10 * scale), "the arc's pieces, one ring each");
+  for (const w of faces) {
+    assert.ok(dot(w.normal, w.centroid) > 0, "away from the centre");
+    assert.ok(w.outlines[0].some((p) => radial(p) > 1e-9), "nothing lies along the axis");
+  }
+});
+
+test("a torus at an angle: every quad faces out of its tube, and what is drawn is exactly what faces the viewer, far to near", async () => {
+  await loadKernel();
+  const m = new Model(3);
+  axisFrame(m);
+  const ring = m.addCircle(m.addPoint([25, 10, 0]).name, 8, "f").name;
+  const f = m.featureOf(revolve(m, ring, "f.y"), "revolve");
+  const scale = 4;
+  const faces = featureFaces(m, f, scale);
+  assert.equal(faces.length, arcSegments(2 * Math.PI, 33 * scale) * arcSegments(2 * Math.PI, 8 * scale));
+  for (const w of faces) {
+    const c = w.centroid;
+    const tube = [(25 * c[0]) / radial(c), 10, (25 * c[2]) / radial(c)];
+    assert.ok(dot(w.normal, sub(c, tube)) > 0, "out of the tube");
+    assert.ok(Math.abs(Math.abs(dot(w.normal, planeOf(w.outlines[0]))) - 1) < 1e-6, "square to its own quad");
+  }
+  const view = orbitBy(ABOVE, 0.5, 0.6);
+  const { toward } = viewAxes(view);
+  const drawn = facesToDraw(m, view);
+  assert.equal(drawn.length, faces.filter((w) => dot(w.normal, toward) > 1e-9).length);
+  assert.ok(drawn.length > faces.length / 3 && drawn.length < (2 * faces.length) / 3, `about half: ${drawn.length} of ${faces.length}`);
+  for (let i = 1; i < drawn.length; i++) assert.ok(drawn[i].depth >= drawn[i - 1].depth, "far to near");
+});
+
+test("a hole in the profile turns into a tunnel: its walls face into it, and both caps carry it even-odd", async () => {
+  await loadKernel();
+  const m = new Model(3);
+  axisFrame(m);
+  const pts = [[10, 0, 0], [50, 0, 0], [50, 40, 0], [10, 40, 0]].map((c) => m.addPoint(c).name);
+  const lines = pts.map((p, i) => m.addLine(p, pts[(i + 1) % 4]).name);
+  const hole = m.addCircle(m.addPoint([30, 20, 0]).name, 8, "f").name;
+  const f = m.featureOf(revolve(m, lines[0], "f.y", 2), "revolve");
+  assert.deepEqual(f.loops, [lines, [hole]]);
+  const faces = featureFaces(m, f, 3);
+  for (const cap of faces.filter((x) => x.kind !== "wall")) assert.equal(cap.outlines.length, 2, `${cap.kind}: the outline and the hole`);
+  const tunnel = faces.filter((w) => {
+    if (w.kind !== "wall") return false;
+    const c = w.centroid;
+    return Math.hypot(radial(c) - 30, c[1] - 20) < 8.5;
+  });
+  assert.ok(tunnel.length > 0);
+  for (const w of tunnel) {
+    const c = w.centroid;
+    const core = [(30 * c[0]) / radial(c), 20, (30 * c[2]) / radial(c)];
+    assert.ok(dot(w.normal, sub(c, core)) < 0, "into the tunnel");
+  }
+});
+
+/**
+ * How many sampled pixels have a face painted over one that is nearer there,
+ * for faces in draw order — where a cap is one of the two. The true depth at a
+ * pixel is read off each face's own plane (screen-linear over a triangle of its
+ * outline); samples are each face's middle and points toward its corners.
+ */
+function capsPaintedWrong(view: View, faces: { kind: string; outlines: number[][][] }[]): number {
+  const scr = faces.map((f) => f.outlines.map((o) => o.map((w) => worldToScreen(view, w))));
+  const covers = (i: number, p: number[]) => scr[i].reduce((n, o) => n + (material([o.map(([x, y]) => [x, y, 0])], [p[0], p[1]]) ? 1 : 0), 0) % 2 === 1;
+  const depthAt = (i: number, p: number[]) => {
+    const o = faces[i].outlines[0], s = scr[i][0];
+    for (let k = 1; k + 1 < o.length; k++) {
+      const [a, b, c] = [s[0], s[k], s[k + 1]];
+      const det = (b[0] - a[0]) * (c[1] - a[1]) - (c[0] - a[0]) * (b[1] - a[1]);
+      if (Math.abs(det) < 1) continue; // a sliver gives no depth worth trusting
+      const u = ((p[0] - a[0]) * (c[1] - a[1]) - (c[0] - a[0]) * (p[1] - a[1])) / det;
+      const v = ((b[0] - a[0]) * (p[1] - a[1]) - (p[0] - a[0]) * (b[1] - a[1])) / det;
+      const d = [o[0], o[k], o[k + 1]].map((w) => depth(view, w));
+      return d[0] + u * (d[1] - d[0]) + v * (d[2] - d[0]);
+    }
+    return NaN;
+  };
+  let wrong = 0;
+  for (let i = 0; i < faces.length; i++) {
+    const o = scr[i][0];
+    const mid = [o.reduce((s, p) => s + p[0], 0) / o.length, o.reduce((s, p) => s + p[1], 0) / o.length];
+    for (const p of [mid, ...o.map((q) => [mid[0] * 0.6 + q[0] * 0.4, mid[1] * 0.6 + q[1] * 0.4])]) {
+      if (!covers(i, p)) continue;
+      const di = depthAt(i, p);
+      for (let j = i + 1; j < faces.length; j++) {
+        if (faces[i].kind === "wall" && faces[j].kind === "wall") continue;
+        if (!covers(j, p)) continue;
+        if (depthAt(j, p) < di - 1e-6 * Math.max(1, Math.abs(di))) wrong++;
+      }
+    }
+  }
+  return wrong;
+}
+
+test("a revolve past 300° wraps round in front of its own start cap — the cap goes before those walls, where its nearest point alone painted it over them", async () => {
+  await loadKernel();
+  const m = new Model(3);
+  axisFrame(m);
+  const pts = [[10, -15, 0], [40, -15, 0], [40, 15, 0], [10, 15, 0]].map((c) => m.addPoint(c).name);
+  const lines = pts.map((p, i) => m.addLine(p, pts[(i + 1) % 4]).name);
+  m.addCircle(m.addPoint([25, 0, 0]).name, 6, "f");
+  revolve(m, lines[0], "f.y", 5.6); // 321°
+  let nearestWouldFail = false;
+  for (const [yaw, pitch] of [[0, -0.7], [0.26, -0.7], [5.5, 0.7], [1.05, -0.3]]) {
+    const view = orbitBy({ ox: 400, oy: 300, scale: 3 }, yaw, pitch);
+    const ordered = orderedFaces(m, view);
+    assert.equal(capsPaintedWrong(view, ordered), 0, `${yaw}, ${pitch}`);
+    // The same faces with every cap keyed by its nearest point, as an extrude's are.
+    const nearest = ordered
+      .map((f) => ({ ...f, depth: f.kind === "wall" ? f.depth : Math.max(...f.outlines.flat().map((w) => depth(view, w))) }))
+      .sort((a, b) => a.depth - b.depth);
+    if (capsPaintedWrong(view, nearest) > 0) nearestWouldFail = true;
+  }
+  assert.ok(nearestWouldFail, "and at least one of these views is one the nearest-point key alone gets wrong");
+});
+
+// --- the revolve tool -------------------------------------------------------------------
+
+/** The kernel-aligned frame's +y arm, a little way out: where a hand clicks it in the top view. */
+const yArm = (): [number, number] => {
+  const [ox, oy] = worldToScreen(ABOVE, [0, 0, 0]);
+  return [ox, oy - FRAME_ARM_PX * 0.6];
+};
+
+test("the revolve tool: a click inside a region, then on a frame's +y arm — revolved about f.y, and the journal says what a typed call would", async () => {
+  await loadKernel();
+  const m = new Model(3);
+  axisFrame(m);
+  const pts = [[10, 0, 0], [30, 0, 0], [30, 20, 0], [10, 20, 0]].map((c) => m.addPoint(c).name);
+  const lines = pts.map((p, i) => m.addLine(p, pts[(i + 1) % 4]).name);
+  const ctx = toolCtx(m, ABOVE, { angle: 1.5 });
+  const tool = new RevolveTool(ctx);
+  const inside = worldToScreen(ABOVE, [20, 10, 0]);
+  assert.equal(tool.snaps, false);
+
+  tool.onMove({ world: [20, 10, 0], screen: inside });
+  assert.equal(ctx.renders, 1, "the region appeared");
+  tool.onDown({ world: [20, 10, 0], screen: inside });
+  assert.equal(ctx.finished, false, "one click is half the gesture");
+  assert.equal(m.features.size, 0);
+  assert.deepEqual(hitTest(m, ABOVE, ...yArm()), { name: "f", kind: "frame", distance: 0, axis: "y" });
+  tool.onDown({ world: [0, 0, 0], screen: yArm() });
+  assert.equal(ctx.finished, true);
+  assert.equal(ctx.solves, 1);
+  assert.deepEqual(m.journal.at(-1), { op: "revolve", args: [lines[0], "f.y", 1.5, "f", [lines]] });
+});
+
+test("the second click: nothing there is refused aloud, another region is taken instead, an axis revolve refuses is logged and the profile kept — then a line does it", async () => {
+  await loadKernel();
+  const m = new Model(3);
+  axisFrame(m);
+  const block = [[10, 0, 0], [30, 0, 0], [30, 20, 0], [10, 20, 0]].map((c) => m.addPoint(c).name);
+  const lines = block.map((p, i) => m.addLine(p, block[(i + 1) % 4]).name);
+  const other = [[10, 40, 0], [30, 40, 0], [30, 60, 0], [10, 60, 0]].map((c) => m.addPoint(c).name);
+  const others = other.map((p, i) => m.addLine(p, other[(i + 1) % 4]).name);
+  const across = m.addLine(m.addPoint([20, -10, 0]).name, m.addPoint([20, 30, 0]).name).name;
+  const beside = m.addLine(m.addPoint([-5, -10, 0]).name, m.addPoint([-5, 70, 0]).name).name;
+  const log: string[] = [];
+  const ctx = toolCtx(m, ABOVE, {}, log);
+  const tool = new RevolveTool(ctx);
+  const at = (x: number, y: number) => worldToScreen(ABOVE, [x, y, 0]);
+
+  tool.onDown({ world: [80, 80, 0], screen: at(80, 80) });
+  assert.match(log.at(-1)!, /^revolve: no closed region under the click/);
+  tool.onDown({ world: [15, 5, 0], screen: at(15, 5) });
+  tool.onDown({ world: [80, 80, 0], screen: at(80, 80) });
+  assert.match(log.at(-1)!, /^revolve: no line or frame axis under the click/);
+  // Inside the other block: that is the profile now — and back inside the
+  // first, that again. Neither is a refusal.
+  tool.onDown({ world: [15, 50, 0], screen: at(15, 50) });
+  tool.onDown({ world: [15, 5, 0], screen: at(15, 5) });
+  assert.equal(log.length, 2, "re-choosing a region is not a refusal");
+  // A line straight through the block: refused, and the block stays chosen.
+  tool.onDown({ world: [20, 25, 0], screen: at(20, 25) });
+  assert.match(log.at(-1)!, new RegExp(`^revolve: the profile l1,l2,l3,l4 crosses the axis ${across}`));
+  assert.equal(ctx.finished, false);
+  // Hovering a line now shows it as the axis, dashed.
+  tool.onMove({ world: [-5, 50, 0], screen: at(-5, 50) });
+  const calls: string[] = [];
+  const g = new Proxy({}, {
+    get: (_t, k) => (typeof k === "string" && /Style|lineWidth/.test(k) ? undefined : (...a: unknown[]) => { calls.push(String(k)); return a; }),
+    set: () => true,
+  }) as unknown as CanvasRenderingContext2D;
+  tool.render({ g, worldToScreen: (w) => worldToScreen(ABOVE, w), scale: ABOVE.scale });
+  assert.ok(calls.includes("setLineDash"), "the axis, dashed");
+  tool.onDown({ world: [-5, 50, 0], screen: at(-5, 50) });
+  assert.equal(ctx.finished, true);
+  const f = m.featureOf("e1", "revolve");
+  assert.deepEqual([f.axis, f.loops], [beside, [lines]]);
+  assert.ok(others.every((l) => !f.names.includes(l)));
+});
+
+test("a click on no region, headless, throws — the extrude tool's convention", async () => {
+  await loadKernel();
+  const m = new Model(3);
+  axisFrame(m);
+  assert.throws(() => new RevolveTool(toolCtx(m, ABOVE)).onDown({ world: [80, 80, 0], screen: worldToScreen(ABOVE, [80, 80, 0]) }),
+    /no closed region/);
 });
