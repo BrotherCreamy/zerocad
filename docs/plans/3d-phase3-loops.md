@@ -1,6 +1,8 @@
 # Plan: 3D phase 3 — closed loops, and clicking inside one
 
-**Status: in flight** (2026-10-12). Third package of
+**Status: built** (2026-10-13) — see the register's 3D entry in `TODO.md`
+for what was decided along the way, including the one deviation (arcs are
+exact in the inside test rather than sampled). Third package of
 [`3d-roadmap.md`](3d-roadmap.md); the owner's fork decided this package's
 shape up front: **extrude profiles are auto-detected closed loops**, with
 the Onshape gesture — click *inside* a region to pick it. Read the

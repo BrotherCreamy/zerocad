@@ -118,11 +118,16 @@ test("on a tilted sketch: a rectangle from the tool, one corner filleted with th
   assert.equal(m.arcs.length, 1, "the corner was rounded");
   arc = m.arcs[0].name;
 
+  // The radius is dragged out to the left: released to the right, at (59, 25),
+  // it lands within a few pixels of the fillet arc's circle — on no part of
+  // the arc, but face-on snapping offers an arc's whole circle (snapping.ts
+  // says so), and the radius quietly became 8.86.
   await app.type("circle");
   const c = await app.screenOf(onG(50, 25));
-  await leftDrag(c, [c[0] + 9 * m.view.scale, c[1]]);
+  await leftDrag(c, [c[0] - 9 * m.view.scale, c[1]]);
   m = await app.model();
   ring = m.circles[0].name;
+  assert.ok(Math.abs(m.radii[ring] - 9) < 1e-3, `an island of radius 9: ${m.radii[ring]}`);
   assert.equal(await app.status(), "SOLVED");
   for (const [name, p] of Object.entries(m.points)) {
     if (!["p1", "p2", "p3"].includes(name)) assert.ok(Math.abs(dot(sub(p, G_O), G_Z)) < 1e-6, `${name} is on the sketch`);

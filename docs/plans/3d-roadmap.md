@@ -64,6 +64,13 @@ What 3D adds is not a new solver — it is:
 - **Phase 3 — loops**: `src/loops.ts`, pure — closed chains of coplanar
   lines/arcs from shared/coincident endpoints; click-inside-a-region
   picking (the Onshape gesture) in screen space.
+  *Spec:* `docs/plans/3d-phase3-loops.md`. ✅ **Built** — `findLoops` (minimal
+  cycles per plane, whole circles, containment reported), `loopAt` (innermost,
+  then nearest; edge-on skipped) and a read-only `loops()`. Joined means a
+  shared point or a `coin`, never proximity — so a crossing or a T splits
+  nothing, and a component whose joined edges cross reports no loops (see the
+  register's 3D entry). Not wired to any click: phase 4's extrude tool is the
+  first caller.
 - **Phase 4 — extrude**: the operation (expansion: twin loop, side edges,
   per-point offset relations along the plane normal, one `d` dimension for
   depth), face lists for display, z-sorted flat-shaded canvas rendering.

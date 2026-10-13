@@ -7,6 +7,62 @@ decisions.
 
 ---
 
+## Closed loops: what regions a drawing has, and which one a click is in
+
+**3D phase 3.** Phase 4's extrude takes an *auto-detected* profile — the
+owner's decision — so before anything extrudes, the drawing has to answer two
+questions exactly. `src/loops.ts` answers both, and nothing in the app asks the
+second one yet: **a click inside a region still picks nothing** (box select and
+the menu depend on empty-canvas presses), and a loop is drawn nowhere.
+
+**`loops()`** lists them, one line each:
+
+```
+> loops()
+[loop of l1,a1,l2,l3,l4 in f1, area 1186.265,
+ loop of c1 in f1, area 254.469, inside l1,a1,l2,l3,l4]
+```
+
+A loop is a *question*, not an entity: asking journals nothing, claims no name
+and makes no undo step, so a loop is spoken of by its members. Members are
+listed counter-clockwise about the plane's normal (a frame's +z where a frame
+lies in that plane), from the earliest-made one.
+
+**Joined means held, never near** — the package's honesty line. Two curve ends
+are joined when they are the same point, or a `coin` holds them together
+(directly or through a chain). Two ends that merely sit on the same spot are
+*not* joined — nothing holds them there — and neither a **crossing** nor a
+**T** (an end held *on* an edge by `on`) splits anything. A drawing made with
+the tools joins by coincidence inference, so this reads the relation registry.
+
+**Minimal cycles, with containment reported.** A figure-eight is two loops; two
+rectangles sharing an edge are two, the edge in both and the six-edge outline in
+neither; a whole circle is a loop; an outline with an island is two, and the
+island's `parent` is the outline — phase 4 decides what a hole means. Every
+line end, arc centre and arc end must lie in one plane (a millionth, `liesOn`'s
+rule), and every arc's *frame* must agree with it; a box's twelve edges are its
+six faces and the belt round its middle is nothing.
+
+**`loopAt(model, view, sx, sy)`** casts the pixel's ray into each loop's plane
+and tests the hit by winding number, arcs exact. The innermost loop wins (an
+island beats the outline round it — containment, not depth, since coplanar
+loops tie on depth exactly), then the nearest plane, then the smaller area; a
+loop less than a pixel thick on screen is edge-on and offers no inside.
+
+**Known and deliberate:** a component whose joined edges *cross* reports no
+loops — with nothing joining them where they cross, its faces are not the
+regions the drawing shows (a self-crossing outline is no profile anyway); Onshape
+would split the regions at the crossing, which needs a join this model was never
+told about. A T does not split an edge for the same reason. `loops()` is silent
+about near-misses (an end not quite joined, a corner not quite in plane).
+
+563 unit tests (from 534), 199 end-to-end (from 195): the e2e draws a rectangle,
+fillets a corner and adds an island circle with the real tools on a tilted
+sketch, turns the view, and checks `loops()` against the drawing's own
+coordinates and `loopAt` against the position a real click carried.
+
+---
+
 ## Planar discipline: circles and arcs carry a plane
 
 ![A rectangle and two circles drawn on a sketch plane tipped off every kernel axis, turned a radian away: the rectangle is a parallelogram, and both circles are ellipses inscribed in it — one drawn with the circle tool, one through three clicked points, passing exactly through them](docs/images/55-circles-seen-as-ellipses.png)
