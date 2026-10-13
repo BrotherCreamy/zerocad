@@ -20,6 +20,7 @@ import {
   radius, symmetric, tangent,
 } from "../src/relations/geometry.ts";
 import { del, set } from "../src/operations.ts";
+import { extrusion } from "../src/relations/extrusion.ts";
 import { FORMAT, open, save } from "../src/persist.ts";
 import { axisFrame } from "./frames.ts";
 
@@ -54,7 +55,8 @@ test("the three value-carrying relations are d-named and every other one is r-na
   m.addCircle("p5", 5, null, "c1");
   m.addCircle("p6", 5, null, "c2");
 
-  // A dimension is a number you put on the drawing. There are exactly three.
+  // A dimension is a number you put on the drawing. There are three a sketch
+  // has; the fourth is an extrude's depth, checked below and in extrude.test.ts.
   assert.deepEqual([
     dist(m, "p1", "p2", 10),
     radius(m, "c1", 5),
@@ -78,8 +80,10 @@ test("the three value-carrying relations are d-named and every other one is r-na
     symmetric(m, "p3", "p4", "l1"),
   ], ["r1", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11"]);
 
-  // And the two claims the split rests on, said directly.
-  assert.deepEqual([...DIMENSION_OPS].sort(), ["angle", "dist", "radius"]);
+  // And the two claims the split rests on, said directly. The fourth, an
+  // extrude's depth, needs a 3D model and an extrude around it, and has its own
+  // file (test/extrude.test.ts).
+  assert.deepEqual([...DIMENSION_OPS].sort(), ["angle", "dist", "extrusion", "radius"]);
   assert.equal(relationPrefix("dist"), "d");
   assert.equal(relationPrefix("fix"), "r");
   // A relation authored at the command line has never heard of any of this and
@@ -205,7 +209,7 @@ test("set says what is settable when it is handed something that is not", async 
 
   // A relation with no value. The message names the three that have one, in
   // the short spellings the user typed to make them.
-  assert.throws(() => set(m, `${r}.value`, 3), /"r1" is a parallel, not a dimension — only dist, rad and ang have a \.value/);
+  assert.throws(() => set(m, `${r}.value`, 3), /"r1" is a parallel, not a dimension — only dist, rad, ang and an extrude's depth have a \.value/);
   // A name that is an entity, and a name that is nothing at all.
   assert.throws(() => set(m, "a.value", 3), /"a" is an entity, not a dimension/);
   assert.throws(() => set(m, "d99.value", 3), /"d99" is not a relation/);
@@ -251,6 +255,9 @@ test("the value's place in the argument list is known for every dimension and no
   assert.equal(valueArgIndex("dist"), 2);
   assert.equal(valueArgIndex("radius"), 1);
   assert.equal(valueArgIndex("angle"), 2);
+  // [frame, depth, …pairs]: second, so it is at a fixed place however many
+  // pairs follow it.
+  assert.equal(valueArgIndex("extrusion"), 1);
   assert.equal(valueArgIndex("fix"), null);
   assert.equal(valueArgIndex("parallel"), null);
   // Every dimension has to have one, or `set` would reach an unreachable throw.
@@ -268,9 +275,23 @@ test("every op in DIMENSION_OPS can actually be rebuilt by set", async () => {
     dist: (m) => dist(m, "a", "b", 10),
     radius: (m) => radius(m, "c", 5),
     angle: (m) => angle(m, "l1", "l2", Math.PI / 3),
+    // 3D only, so on a model of its own (see below); one pair is enough to
+    // prove `set` can re-run it.
+    extrusion: (m) => extrusion(m, "f", 10, "a", "b"),
   };
   for (const op of DIMENSION_OPS) {
     assert.ok(fixtures[op], `${op} is a dimension with no fixture here — add one, and a REBUILD entry`);
+    if (op === "extrusion") {
+      const m = new Model(3);
+      axisFrame(m);
+      m.addPoint([0, 0, 0], "a");
+      m.addPoint([0, 0, 10], "b");
+      const name = fixtures[op](m);
+      assert.equal(set(m, `${name}.value`, 7), name, op);
+      assert.equal(m.solve().solved, true, op);
+      assert.ok(Math.abs(m.coords("b")[2] - m.coords("a")[2] - 7) < 1e-9, "and the rebuilt depth is the one that holds");
+      continue;
+    }
     const m = pair();
     m.addPoint([0, 10], "c2");
     m.addCircle("c2", 5, null, "c");

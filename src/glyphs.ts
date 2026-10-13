@@ -212,6 +212,13 @@ export function labelFor(op: string, args: unknown[]): string | null {
       // the size of the number would be a worse seam than this one.
       return typeof v === "number" ? `${formatValue((v * 180) / Math.PI)}°` : null;
     }
+    case "extrusion": {
+      // An extrude's depth is a length, written as `dist` writes one — it is
+      // drawn beside a wall, with the wall's witness lines, so it needs no
+      // prefix to say what it measures.
+      const v = args[1];
+      return typeof v === "number" ? formatValue(v) : null;
+    }
     default:
       return null;
   }
@@ -468,6 +475,11 @@ function anchorsFor(model: Model, view: View, r: RelationEntry): Anchor[] {
       const a = model.arc(str(args[0]));
       return [atPoint(model, a.start), atPoint(model, a.end)];
     }
+    // One label for the whole lid, on the first pair it holds — the first
+    // corner's wall, which the expansion lists first — measured base to twin
+    // like a `dist`, so the depth reads as the length of an edge you can see.
+    case "extrusion":
+      return [atSegmentMid(model, view, str(args[2]), str(args[3]))];
     default: {
       const name = firstNamed(model, r);
       return name ? [atEntity(model, view, name)] : [];

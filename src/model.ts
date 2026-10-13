@@ -210,10 +210,14 @@ function noFramesIn(dim: number): string {
  * owns the namespace, and a relation authored at the command line gets `r`
  * without having to know any of this exists.
  */
-export const DIMENSION_OPS: ReadonlySet<string> = new Set(["dist", "radius", "angle"]);
+export const DIMENSION_OPS: ReadonlySet<string> = new Set(["dist", "radius", "angle", "extrusion"]);
 
-/** Which index of a dimension's recorded `args` holds its value. */
-const VALUE_ARG: Record<string, number> = { dist: 2, radius: 1, angle: 2 };
+/**
+ * Which index of a dimension's recorded `args` holds its value. An
+ * `extrusion` is `[frame, depth, …pairs]`: its value sits second so that it is
+ * at a fixed place however many pairs follow it.
+ */
+const VALUE_ARG: Record<string, number> = { dist: 2, radius: 1, angle: 2, extrusion: 1 };
 
 /** The name prefix a relation made by `op` claims. See `DIMENSION_OPS`. */
 export function relationPrefix(op: string): string {
@@ -317,12 +321,74 @@ export interface RelationEntry {
   blocks: BlockHandle[];
 }
 
+/**
+ * A **feature**: what an operation like `extrude` made, remembered as one named
+ * thing — `e1`, `e2`, … — so it can be listed, drawn and deleted as one.
+ *
+ * Everything an extrude *is* lives in the ordinary registries: its twin points,
+ * lines, arcs and circles and its top frame are entities, and the depth that
+ * holds them is a relation (`d`-named — see `DIMENSION_OPS`). The record adds
+ * no geometry and no equation. What it adds is the one fact neither registry
+ * can hold: *these pieces are one solid, on that profile*. The faces a solid is
+ * drawn with are read off it (see faces.ts) and stored nowhere.
+ *
+ * A record is to its pieces what a relation is to its arguments, and the
+ * deletion cascade treats it so (see operations.ts):
+ *
+ * - `names` is everything it refers to — the base profile it was built on and
+ *   every piece it made. Deleting any of them takes the record (the inward
+ *   rule: the record needs them), and nothing else beyond the ordinary cascade.
+ *   The pieces left behind are what they always were: ordinary geometry.
+ * - `owns` is the part of `names` the feature *made*. Deleting the feature
+ *   itself — `del("e1")` — takes those, and never the profile, which was the
+ *   user's before the feature existed (Onshape: deleting an extrude keeps its
+ *   sketch).
+ *
+ * The model primitives refuse to delete an entity or relation a record still
+ * names, for the reason they refuse one a relation still names: a record
+ * pointing at nothing is a model the renderer throws on.
+ *
+ * Rebuilt on replay, never saved: the journal carries the operation that made
+ * it, and re-running that makes the same record under the same name.
+ */
+export interface ExtrudeFeature {
+  kind: "extrude";
+  name: string;
+  /** The member the call named — how the profile was asked for. */
+  member: string;
+  /** The frame whose +z the lid is offset along: the profile's sketch frame. */
+  frame: string;
+  /** The lid's own frame: `frame` moved by the depth, so a sketch on the cap has a plane. */
+  top: string;
+  /** The `extrusion` dimension holding the lid — what `set("dN.value", …)` edits. */
+  depth: string;
+  /**
+   * The profile: the loop that was extruded, then every loop inside it, each as
+   * its members in walk order. A loop with children is a face with holes, and a
+   * hole's child an island in it — drawn even-odd, so nesting needs no record.
+   */
+  loops: string[][];
+  /** Each base member's twin on the lid, loop by loop, parallel to `loops`. */
+  twins: string[][];
+  /** The wall lines, one per profile vertex, base to twin. */
+  walls: string[];
+  /** Everything the record refers to. See above. */
+  names: string[];
+  /** The part of `names` the feature made, which deleting it takes. */
+  owns: string[];
+}
+
+/** Every kind of feature there is. One, for now; revolve is the next. */
+export type FeatureEntry = ExtrudeFeature;
+
 export class Model {
   problem = new Problem();
   dim: number;
   entities = new Map<string, Entity>();
   /** Named relations, in the order they were made. See `relation()`. */
   relations = new Map<string, RelationEntry>();
+  /** Named features — `e1`, `e2`, … — in the order they were made. See `FeatureEntry`. */
+  features = new Map<string, FeatureEntry>();
   /**
    * Which frame `fix`, `onPlane` and the `xaxis()`/`yaxis()`/`zaxis()` helpers
    * mean when they are not told which. Null in a new model, and stays null
@@ -390,12 +456,13 @@ export class Model {
   }
 
   /**
-   * Whether anything already answers to `name`. Entities and relations share
-   * one namespace on purpose: `del("r3")` has to mean one thing, and a model
-   * holding both a point and a relation called `r3` would make it mean two.
+   * Whether anything already answers to `name`. Entities, relations and
+   * features share one namespace on purpose: `del("r3")` has to mean one thing,
+   * and a model holding both a point and a relation called `r3` would make it
+   * mean two.
    */
   has(name: string): boolean {
-    return this.entities.has(name) || this.relations.has(name);
+    return this.entities.has(name) || this.relations.has(name) || this.features.has(name);
   }
 
   private autoName(prefix: string): string {
@@ -546,6 +613,45 @@ export class Model {
     const r = this.relations.get(name);
     if (!r) throw new Error(`"${name}" is not a relation`);
     return r;
+  }
+
+  /**
+   * Registers a feature under a fresh `eN` and returns it. Called from inside
+   * an operation's expansion and journalling nothing of its own: the operation
+   * is the journal entry, and re-running it makes this record again (see
+   * `FeatureEntry`).
+   *
+   * Every name the record gives must already answer to something, and `owns`
+   * must be a part of `names` — checked here, in the one place that can
+   * guarantee it, because a record naming nothing is a renderer that throws and
+   * a deletion that cannot find what it was told to take.
+   */
+  addFeature(feature: Omit<FeatureEntry, "name">): FeatureEntry {
+    for (const n of feature.names) {
+      if (!this.entities.has(n) && !this.relations.has(n)) throw new Error(`a feature cannot name "${n}" — there is no such thing`);
+    }
+    const named = new Set(feature.names);
+    for (const n of feature.owns) if (!named.has(n)) throw new Error(`a feature cannot own "${n}" without naming it`);
+    const name = this.claimName("e");
+    const entry: FeatureEntry = { ...feature, name };
+    this.features.set(name, entry);
+    return entry;
+  }
+
+  featureOf(name: string): FeatureEntry {
+    const f = this.features.get(name);
+    if (!f) throw new Error(`"${name}" is not a feature`);
+    return f;
+  }
+
+  /**
+   * Every feature whose record names `name` — an entity it was built on or
+   * made, or the dimension that holds it — in creation order. What the
+   * primitives consult before letting something go, and what `del` reads to
+   * find the records a deletion takes.
+   */
+  featuresNaming(name: string): FeatureEntry[] {
+    return [...this.features.values()].filter((f) => f.names.includes(name));
   }
 
   /**
@@ -1046,6 +1152,10 @@ export class Model {
     if (constrained.length) {
       throw new Error(`"${name}" is still constrained by ${constrained.map((r) => r.name).join(", ")}`);
     }
+    const featured = this.featuresNaming(name);
+    if (featured.length) {
+      throw new Error(`"${name}" is still part of ${featured.map((f) => f.name).join(", ")}`);
+    }
     // The default is a pointer at a frame, so it cannot outlive one. Cleared
     // here in the primitive rather than up in `del`, because the primitive is
     // also what a replay calls — and journalled as its own expansion, the
@@ -1056,12 +1166,33 @@ export class Model {
     this.record("deleteEntity", [name]);
   }
 
-  /** Removes one relation and the residual blocks it added. */
+  /**
+   * Removes one relation and the residual blocks it added. Refuses while a
+   * feature's record names it — an extrude's depth — for `deleteEntity`'s
+   * reason: the record would be left naming nothing.
+   */
   deleteRelation(name: string): void {
     const r = this.relationOf(name);
+    const featured = this.featuresNaming(name);
+    if (featured.length) {
+      throw new Error(`"${name}" is still part of ${featured.map((f) => f.name).join(", ")}`);
+    }
     for (const h of r.blocks) this.problem.removeBlock(h);
     this.relations.delete(name);
     this.record("deleteRelation", [name]);
+  }
+
+  /**
+   * Removes one feature's record — and only the record. A primitive, like the
+   * other two: what else goes with a feature is `del`'s decision (see
+   * operations.ts), and a deletion is journalled as its expansion, one
+   * primitive per name, so this is what a replay of one calls. Nothing names a
+   * record, so nothing can refuse it.
+   */
+  deleteFeature(name: string): void {
+    this.featureOf(name);
+    this.features.delete(name);
+    this.record("deleteFeature", [name]);
   }
 
   solve(): SolveReport {

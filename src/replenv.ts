@@ -12,12 +12,12 @@
 
 import { Dual } from "./kernel/dual.ts";
 import { Model, type Entity } from "./model.ts";
-import { describeRelation } from "./picking.ts";
+import { describeFeature, describeRelation } from "./picking.ts";
 import type { SolveReport } from "./kernel/problem.ts";
 import { Tool, defineTool, listTools, type ToolCtor } from "./tools/tool.ts";
 import * as basic from "./relations/basic.ts";
 import * as geom from "./relations/geometry.ts";
-import { del, fillet, set } from "./operations.ts";
+import { del, extrude, fillet, set } from "./operations.ts";
 import { save as saveModel, savedTools } from "./persist.ts";
 import { carryIntoSession, toolSources, type ToolSourceStore } from "./toolsource.ts";
 import { alignView, assignView, orbitBy, panBy, screenToWorld, zoomAbout, type View } from "./view.ts";
@@ -399,6 +399,15 @@ export function neocadScope(h: EnvHandles): Bag {
   const operations: Bag = {
     fillet: (l1: string, l2: string, r: number, plane?: string | null) => fillet(model, l1, l2, r, plane),
     /**
+     * Extrudes the closed loop a member is in — `extrude("l1", 20)` — and
+     * returns the feature's name. `frame` picks the loop when the member is in
+     * several (it is, once it is the edge of a wall too): the one parallel to
+     * that frame's plane. `loops` is the profile as the journal carries it
+     * resolved, and never needs typing. See operations.ts.
+     */
+    extrude: (member: string, depth?: number | null, frame?: string | null, loops?: string[][] | null) =>
+      extrude(model, member, depth ?? null, frame ?? null, loops ?? null),
+    /**
      * Changes a dimension's value — `set("d4.value", 60)` — rebuilding it in
      * place under the same name. See operations.ts for why it is an operation
      * and what the unit is (radians for `ang`).
@@ -549,7 +558,12 @@ export function neocadScope(h: EnvHandles): Bag {
     },
 
     solve: () => (h.solve ? h.solve() : model.solve()),
-    ls: () => [...model.entities.values()].map((e) => describe(e, model)),
+    // Entities, then features — `e1  extrude of …` — since a feature is a
+    // named thing `del` takes as surely as an entity.
+    ls: () => [
+      ...[...model.entities.values()].map((e) => describe(e, model)),
+      ...[...model.features.values()].map((f) => describeFeature(model, f)),
+    ],
     /**
      * The constraints, by name — all of them, or (given a name) just the ones
      * that mention it. This is the other half of what makes an inferred
@@ -562,7 +576,7 @@ export function neocadScope(h: EnvHandles): Bag {
     },
     /**
      * The closed loops the drawing contains, one line each — `loop of
-     * l1,l4,l3,l2 in f1, area 1200` — the profiles a future extrude will take.
+     * l1,l4,l3,l2 in f1, area 1200` — the profiles `extrude` takes.
      * A question, not an entity: it journals nothing and claims no name, so a
      * loop is spoken of by its members. See loops.ts for what joins two ends
      * (a shared point or a `coin`, never mere proximity).
@@ -679,6 +693,14 @@ function help(scope: Bag): string {
     '           set("d4.value", 60)  — a dimension is named d1, d2, … and its',
     "           value is the one thing you can set. ang stores radians (its",
     "           label reads degrees); dist and rad store what you typed.",
+    '           extrude(member, depth?, frame?) — a solid of the closed loop',
+    "           the member is in, holes and all, along its sketch frame's +z:",
+    '           a feature e1, a lid of twins and walls held by one depth',
+    '           dimension (set("d9.value", 40) moves the lid). frame picks the',
+    "           loop when the member is in several. The extrude tool does it by",
+    '           a click inside a region: arm("extrude", { depth: 20 }).',
+    '           del("e1") removes the solid and keeps its sketch; deleting any',
+    "           piece of it takes only the feature's record (its faces).",
     "files      save()  open(text)  download(name)  openFile()  journal()",
     "           a file carries the source of tools you defined here, as text:",
     "           open() never runs it, toolSource(name) prints it, and pasting",

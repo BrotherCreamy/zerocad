@@ -27,7 +27,7 @@
 // `hitTest` at all. They live a layer up because they are UI drawn over the
 // drawing rather than part of it — the same reason snapping ignores them.
 
-import type { Entity, Model, RelationEntry } from "./model.ts";
+import type { Entity, FeatureEntry, Model, RelationEntry } from "./model.ts";
 import { screenAngle, withinSweep } from "./intersect.ts";
 import { frameArms, frameMarker } from "./framemarker.ts";
 import { nearestOnPolyline, screenCurve, screenOf as projectPoint } from "./projection.ts";
@@ -167,10 +167,32 @@ function toSegment(sx: number, sy: number, [ax, ay]: [number, number], [bx, by]:
 export function describePick(model: Model, pick: Pick): string {
   if (pick.kind === "relation") {
     const r = model.relations.get(pick.name);
-    return r ? describeRelation(r) : pick.name;
+    return r ? `${describeRelation(r)}${featureTag(model, pick.name)}` : pick.name;
   }
   const n = (v: number) => (Math.round(v * 1000) / 1000).toString();
-  return `${describeGeometry(model, pick.name, pick.kind, n)}${relationTag(model, pick.name)}`;
+  return `${describeGeometry(model, pick.name, pick.kind, n)}${relationTag(model, pick.name)}${featureTag(model, pick.name)}`;
+}
+
+/**
+ * One line for a feature — what `ls()` prints and what the hover tag adds to
+ * any piece of one: `e1  extrude of l1,a1,l2,l3,l4 + 1 inside, depth d9 = 20
+ * along f1, lid f2`. A face is never under the cursor (faces do not pick — see
+ * faces.ts), so a feature is reached through its pieces: hovering a wall, a
+ * twin, a profile member or the depth's label ends the tag with `· e1`, and
+ * `ls()` says what `e1` is.
+ */
+export function describeFeature(model: Model, f: FeatureEntry): string {
+  const inner = f.loops.length - 1;
+  const r = model.relations.get(f.depth);
+  const value = r && typeof r.args[1] === "number" ? ` = ${Math.round(r.args[1] * 1000) / 1000}` : "";
+  return `${f.name}  extrude of ${f.loops[0].join(",")}${inner ? ` + ${inner} inside` : ""}, `
+    + `depth ${f.depth}${value} along ${f.frame}, lid ${f.top}`;
+}
+
+/** The features a piece belongs to, for the end of the hover tag. */
+function featureTag(model: Model, name: string): string {
+  const fs = model.featuresNaming(name);
+  return fs.length ? `  ·  ${fs.map((f) => f.name).join(" ")}` : "";
 }
 
 /**
@@ -194,6 +216,11 @@ export const SHORT_OP: Record<string, string> = {
 
 export function describeRelation(r: RelationEntry): string {
   const arg = (a: unknown) => (typeof a === "string" ? a : JSON.stringify(a));
+  // An extrude's depth names every twin it holds — dozens of names, and none
+  // of them typed. What a reader wants is the number and the direction.
+  if (r.op === "extrusion") {
+    return `${r.name}  extrusion ${arg(r.args[1])} along ${arg(r.args[0])}.z, ${(r.args.length - 2) / 2} pairs`;
+  }
   return `${r.name}  ${SHORT_OP[r.op] ?? r.op} ${r.args.map(arg).join(" ")}`.trimEnd();
 }
 

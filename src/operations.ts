@@ -7,13 +7,15 @@
 // while an operation can leave the model malformed.
 
 import {
-  SETTABLE_PROPERTY, argRefersTo, parseValueRef, valueArgIndex,
-  type Entity, type Model,
+  Model, SETTABLE_PROPERTY, parseValueRef, referentOf, valueArgIndex,
+  type Entity,
 } from "./model.ts";
 import { dist } from "./relations/basic.ts";
 import { angle, arcEndpoints, radius, tangent } from "./relations/geometry.ts";
+import { extrusion } from "./relations/extrusion.ts";
 import { sweepsAs } from "./arcgeom.ts";
 import { framePlaneAxes } from "./curveplane.ts";
+import { describeLoop, findLoops, joinClasses, parallel, type Loop } from "./loops.ts";
 import { cross3, lift3, sub3 } from "./vec3.ts";
 
 function unit(v: number[]): number[] {
@@ -166,6 +168,340 @@ function filletBody(model: Model, l1Name: string, l2Name: string, r: number, fra
   return arc.name;
 }
 
+// --- extrude ----------------------------------------------------------------
+
+/**
+ * The depth an extrude gets when it is not told one — a seed, by the
+ * free-entities rule, and from then on the depth dimension's value, which
+ * `set` edits like any other.
+ */
+export const DEFAULT_DEPTH = Model.DEFAULT_RADIUS;
+
+/**
+ * A profile **resolved**: the frame the lid is offset along, and the loops —
+ * the one extruded first, then every loop inside it, each as its members in
+ * walk order. What `extrude` journals; see there for why.
+ */
+export interface Profile {
+  frame: string;
+  loops: string[][];
+}
+
+/**
+ * Extrudes the closed loop `member` is in — a solid of that region, `depth`
+ * deep along its sketch frame's +z — and returns the new feature's name, `e1`.
+ *
+ * **An expansion into real geometry**, which is the one-model decision paying
+ * out: nothing here is a mesh. For every corner of the profile a twin point on
+ * the lid; for every member a twin member between the twins (an arc's or
+ * circle's on the lid's own frame, so a sketch on the top cap means what it
+ * says); for every corner a wall line from base to twin; one frame for the lid,
+ * the sketch frame moved by the depth; and **one dimension** — an `extrusion`,
+ * `d`-named — holding every twin at its base plus the depth along the frame's
+ * +z. So `set("d9.value", 40)` re-solves the solid like any dimension, and the
+ * twins and walls are ordinary entities: draggable, constrainable,
+ * dimensionable, with the solver negotiating between them and the depth. A
+ * record (`e1`, see `FeatureEntry`) says which pieces are one solid, for the
+ * renderer and for `del`; the faces are drawn from the live geometry and
+ * stored nowhere.
+ *
+ * **Holes come with the loop.** Every loop inside the one extruded is part of
+ * the profile — a hole, and inside a hole an island — and gets twins and walls
+ * exactly as the outline does. The caps are drawn even-odd, so an island in a
+ * hole extrudes solid without anyone deciding so. A circle has no corners, so a
+ * circle's walls are **display-only**: a tube is its two rims, their centres
+ * and the depth, and the cylinder between them is drawn, not built — there is
+ * no finite set of lines that is that surface, and a seam line drawn at an
+ * arbitrary angle would be a lie about where the circle starts.
+ *
+ * **Which loop.** `member` names any line, arc or circle; the loop is the one
+ * it is in (`findLoops`). A member in more than one — an edge two faces share,
+ * and after an extrude every profile edge, which is also an edge of a wall — is
+ * refused with the loops listed, unless `frame` narrows it to the loops
+ * parallel to that frame's plane. A member in none is refused with what makes a
+ * loop. The extrude tool skips the question: it hands over the loop under the
+ * click.
+ *
+ * **Which way.** Along `frame`'s +z — the frame given, or else the frame the
+ * loop lies in (the default first), or else one parallel to it. A loop in no
+ * frame's orientation is refused: an extrude reads its direction off a frame,
+ * as `fix` reads its coordinates off one, and inventing a frame would be a
+ * datum nobody chose. A negative depth extrudes the other way.
+ *
+ * **Journalled as the call, with the profile resolved** — `extrude("l1", 20,
+ * "f1", [["l1","a1","l2","l3","l4"],["c1"]])` — the same rule by which `fix`,
+ * `circ` and `fillet` journal the frame they resolved: a saved entry must not
+ * change meaning with the drawing it is replayed into. Here that is not
+ * hypothetical. Replay runs on *seeds* (nothing is solved until the saved
+ * values are put back), and a profile built from free lines and relations has
+ * no loop at all at its seeds — measured: a rectangle of four `ln()`s, coin'd
+ * and fixed into place, has one loop solved and none at replay — so re-finding
+ * the loop would fail the file and every undo after it. Given `loops`, nothing
+ * is looked for: the members are walked by their joins (relations, never
+ * positions) and checked closed, and that is all. A user never needs to type
+ * them.
+ *
+ * An operation, refusing before it changes anything (`asOperation` records only
+ * on success). 3D only.
+ */
+export function extrude(model: Model, member: string, depth?: number | null, frame?: string | null,
+                        loops?: string[][] | null): string {
+  if (model.dim !== 3) throw new Error("extrude needs a 3D model — a 2D drawing has no direction out of its plane");
+  const d = depth ?? DEFAULT_DEPTH;
+  if (typeof d !== "number" || !Number.isFinite(d) || d === 0) {
+    throw new Error(`extrude needs a non-zero depth, got ${JSON.stringify(depth)}`);
+  }
+  const e = typeof member === "string" ? model.entities.get(member) : undefined;
+  if (!e || (e.kind !== "line" && e.kind !== "arc" && e.kind !== "circle")) {
+    throw new Error(`${JSON.stringify(member)} is not a line, arc or circle — extrude names a member of the loop to extrude`);
+  }
+  const profile = loops != null ? givenProfile(model, member, frame, loops) : foundProfile(model, member, frame ?? null);
+  const plan = planExtrude(model, profile);
+  return model.asOperation("extrude", [member, d, profile.frame, profile.loops],
+    () => extrudeBody(model, member, d, plan));
+}
+
+/**
+ * The profile for the loop at `index` of `all` (what `findLoops` returned):
+ * that loop, every loop inside it, and the frame it is extruded along. What the
+ * extrude tool hands to `extrude` for the region under a click. Throws when no
+ * frame orients the loop — see `extrude`.
+ */
+export function profileOf(model: Model, all: Loop[], index: number, frame?: string | null): Profile {
+  const loop = all[index];
+  const f = frame ?? sketchFrameOf(model, loop);
+  // Every descendant, not only the children: a hole's island is part of the
+  // region too, and even-odd decides it is solid.
+  const inner: number[] = [];
+  const queue = [...loop.children];
+  while (queue.length) {
+    const i = queue.shift()!;
+    inner.push(i);
+    queue.push(...all[i].children);
+  }
+  inner.sort((a, b) => a - b);
+  return { frame: f, loops: [index, ...inner].map((i) => all[i].members.map((m) => m.name)) };
+}
+
+/** The frames to try, the default first and then in creation order — loops.ts's preference. */
+function framesByPreference(model: Model): string[] {
+  const all = [...model.entities.values()].filter((e) => e.kind === "frame").map((e) => e.name);
+  const d = model.defaultFrame;
+  return d != null && all.includes(d) ? [d, ...all.filter((f) => f !== d)] : all;
+}
+
+/** The frame a loop is extruded along when none is named. See `extrude`. */
+function sketchFrameOf(model: Model, loop: Loop): string {
+  if (loop.plane.frame !== null) return loop.plane.frame;
+  for (const f of framesByPreference(model)) {
+    const axes = framePlaneAxes(model, f);
+    if (axes && parallel(axes.n, loop.plane.normal)) return f;
+  }
+  throw new Error(`the loop of ${loop.members.map((m) => m.name).join(",")} lies in no frame's plane, and no frame is `
+    + "parallel to it — an extrude runs along a sketch frame's +z: make one on its plane (plane(…), or Sketch on this) "
+    + "and extrude again");
+}
+
+/** The loop `member` is in, found — and refused if it is in none, or in several. */
+function foundProfile(model: Model, member: string, frame: string | null): Profile {
+  const all = findLoops(model);
+  let mine = all.map((_, i) => i).filter((i) => all[i].members.some((m) => m.name === member));
+  if (frame !== null) {
+    model.frame(frame);
+    const axes = framePlaneAxes(model, frame);
+    if (!axes) throw new Error(`"${frame}" has collapsed — it has no +z to extrude along`);
+    mine = mine.filter((i) => parallel(all[i].plane.normal, axes.n));
+  }
+  if (mine.length === 0) {
+    const where = frame === null ? "" : ` parallel to ${frame}`;
+    throw new Error(`"${member}" is in no closed loop${where} — loops() lists the loops there are. A loop's ends join `
+      + "only at a shared point or a coin (never by touching), lie in one plane, and do not cross one another");
+  }
+  if (mine.length > 1) {
+    const list = mine.map((i) => describeLoop(all[i], all)).join("; ");
+    throw new Error(`"${member}" is in ${mine.length} loops — ${list}. Name the frame of the sketch it is in `
+      + `(extrude(${JSON.stringify(member)}, depth, "f1")), name a member only one of them has, or click inside the `
+      + "region with the extrude tool");
+  }
+  return profileOf(model, all, mine[0], frame);
+}
+
+/** A profile handed over whole — the journal's, or the tool's — checked for shape. */
+function givenProfile(model: Model, member: string, frame: string | null | undefined, loops: unknown): Profile {
+  if (typeof frame !== "string") throw new Error("a profile given as loops needs the frame it is extruded along");
+  model.frame(frame);
+  const ok = Array.isArray(loops) && loops.length > 0
+    && loops.every((l) => Array.isArray(l) && l.length > 0 && l.every((n) => typeof n === "string"));
+  if (!ok) throw new Error("extrude's loops are lists of member names, the extruded loop first");
+  const given = (loops as string[][]).map((l) => l.slice());
+  const flat = given.flat();
+  if (new Set(flat).size !== flat.length) throw new Error("a member appears twice in extrude's loops");
+  if (!flat.includes(member)) throw new Error(`"${member}" is not in the loops given`);
+  return { frame, loops: given };
+}
+
+/** One member of a profile loop, walked: its ends in walk order, null for a circle. */
+interface Walked {
+  name: string;
+  kind: "line" | "arc" | "circle";
+  from: string | null;
+  to: string | null;
+}
+
+interface ExtrudePlan {
+  frame: string;
+  loops: string[][];
+  walked: Walked[][];
+  classOf: Map<string, number>;
+  /** The frame's +z when the call was made — where the twins are seeded, and nothing else. */
+  z: number[];
+}
+
+/**
+ * Everything an extrude checks before it makes anything: the frame has a +z,
+ * and every loop walks closed by its joins. Read off relations and names only —
+ * which is what lets a replay, running on seeds, plan exactly what the call did.
+ */
+function planExtrude(model: Model, profile: Profile): ExtrudePlan {
+  const axes = framePlaneAxes(model, profile.frame);
+  if (!axes) throw new Error(`"${profile.frame}" has collapsed — it has no +z to extrude along`);
+  const classOf = joinClasses(model);
+  const walked = profile.loops.map((names) => walkLoop(model, classOf, names));
+  return { frame: profile.frame, loops: profile.loops, walked, classOf, z: axes.n };
+}
+
+/**
+ * A loop's members walked end to end by their **joins** — the joined classes
+ * loops.ts reads off the `coin` relations, never positions — starting forward
+ * along the first unless its far end does not meet the second. The same walk at
+ * the call and at every replay, so the twins come out in the same order under
+ * the same names. Refuses a loop that does not close, naming where it breaks.
+ */
+function walkLoop(model: Model, classOf: Map<string, number>, names: string[]): Walked[] {
+  const entity = (n: string) => {
+    const e = model.entities.get(n);
+    if (!e || (e.kind !== "line" && e.kind !== "arc" && e.kind !== "circle")) {
+      throw new Error(`"${n}" is not a line, arc or circle — it cannot be part of a loop`);
+    }
+    return e;
+  };
+  if (names.length === 1) {
+    const e = entity(names[0]);
+    if (e.kind !== "circle") throw new Error(`a loop of one member is a circle — "${names[0]}" is ${e.kind === "arc" ? "an arc" : "a line"}`);
+    return [{ name: e.name, kind: "circle", from: null, to: null }];
+  }
+  const ends = (n: string): [string, string] => {
+    const e = entity(n);
+    if (e.kind === "circle") throw new Error(`a circle is a loop on its own — "${n}" cannot be part of the loop ${names.join(",")}`);
+    return e.kind === "line" ? [e.refs[0], e.refs[1]] : [e.start, e.end];
+  };
+  const cls = (p: string) => classOf.get(p);
+  const meets = (p: string, n: string) => ends(n).some((q) => cls(q) === cls(p));
+  const apart = (a: string, b: string) => new Error(`"${a}" and "${b}" do not meet — the loop ${names.join(",")} is not closed`);
+  const kind = (n: string) => entity(n).kind as "line" | "arc";
+
+  const [a0, b0] = ends(names[0]);
+  const back = !meets(b0, names[1]);
+  if (back && !meets(a0, names[1])) throw apart(names[0], names[1]);
+  const out: Walked[] = [{ name: names[0], kind: kind(names[0]), from: back ? b0 : a0, to: back ? a0 : b0 }];
+  for (let i = 1; i < names.length; i++) {
+    const [a, b] = ends(names[i]);
+    const at = out[i - 1].to!;
+    if (cls(a) === cls(at)) out.push({ name: names[i], kind: kind(names[i]), from: a, to: b });
+    else if (cls(b) === cls(at)) out.push({ name: names[i], kind: kind(names[i]), from: b, to: a });
+    else throw apart(names[i - 1], names[i]);
+  }
+  if (cls(out[out.length - 1].to!) !== cls(out[0].from!)) throw apart(names[names.length - 1], names[0]);
+  return out;
+}
+
+/**
+ * The expansion, in an order a replay reproduces name for name: the lid's frame
+ * (its three points, then the frame), one twin point per joined class in walk
+ * order, the twin members, the walls, the depth, the record.
+ */
+function extrudeBody(model: Model, member: string, depth: number, plan: ExtrudePlan): string {
+  const { frame, walked, classOf, z } = plan;
+  // Seeds only: the depth relation is what holds them, and the solve after the
+  // call settles any frame that has turned since the plan was made.
+  const lifted = (p: string) => model.coords(p).map((c, i) => c + depth * z[i]);
+  const owns: string[] = [];
+  const made = (name: string) => { owns.push(name); return name; };
+
+  // The lid's frame: the sketch frame, moved. Held there by the depth's own
+  // pairs — read as a datum, so the lid can never turn the sketch.
+  const f = model.frame(frame);
+  const [o, x, y] = [f.origin, f.xref, f.yref!];
+  const [to, tx, ty] = [o, x, y].map((p) => made(model.addPoint(lifted(p)).name));
+  const top = made(model.addFrame(to, tx, ty).name);
+
+  // One twin per *joined class*, so the lid's corners are joined exactly where
+  // the profile's are — one point where the profile had a shared point or a
+  // coin — and the top cap is itself a loop.
+  const byClass = new Map<number, { base: string; twin: string }>();
+  const twinOf = (p: string): string => {
+    const k = classOf.get(p)!;
+    let t = byClass.get(k);
+    if (!t) {
+      t = { base: p, twin: made(model.addPoint(lifted(p)).name) };
+      byClass.set(k, t);
+    }
+    return t.twin;
+  };
+  for (const loop of walked) {
+    for (const m of loop) {
+      const e = model.entities.get(m.name)!;
+      if (e.kind === "circle") { twinOf(e.center); continue; }
+      twinOf(m.from!);
+      if (e.kind === "arc") twinOf(e.center);
+      twinOf(m.to!);
+    }
+  }
+
+  // Each member's twin, in the member's *own* direction. A curve on the sketch
+  // frame goes on the lid's frame; one on any other frame keeps its own — same
+  // orientation, so the twin arc is the same arc, with no side to decide.
+  const planeFor = (p: string | undefined) => (p === frame ? top : p);
+  const twins = walked.map((loop) => loop.map((m) => {
+    const e = model.entities.get(m.name)!;
+    if (e.kind === "line") return made(model.addLine(twinOf(e.refs[0]), twinOf(e.refs[1])).name);
+    if (e.kind === "arc") {
+      return made(model.addArc(twinOf(e.center), twinOf(e.start), twinOf(e.end), model.radius(e.name), planeFor(e.plane)).name);
+    }
+    if (e.kind === "circle") return made(model.addCircle(twinOf(e.center), model.radius(e.name), planeFor(e.plane)).name);
+    throw new Error(`"${m.name}" is not a line, arc or circle`); // unreachable: walkLoop checked
+  }));
+
+  // A wall at every corner, base to twin — once per joined class, so a corner
+  // two loops share has one. A circle has none (see `extrude`).
+  const walls: string[] = [];
+  const walled = new Set<number>();
+  for (const loop of walked) {
+    for (const m of loop) {
+      if (m.from === null) continue;
+      const k = classOf.get(m.from)!;
+      if (walled.has(k)) continue;
+      walled.add(k);
+      const { base, twin } = byClass.get(k)!;
+      walls.push(made(model.addLine(base, twin).name));
+    }
+  }
+
+  // The depth: corners and centres first (the label sits on the first wall),
+  // then the curves' radii, then the lid frame.
+  const pairs: string[] = [];
+  for (const { base, twin } of byClass.values()) pairs.push(base, twin);
+  walked.forEach((loop, i) => loop.forEach((m, j) => { if (m.kind !== "line") pairs.push(m.name, twins[i][j]); }));
+  pairs.push(o, to, x, tx, y, ty);
+  const held = made(extrusion(model, frame, depth, ...pairs));
+
+  return model.addFeature({
+    kind: "extrude", member, frame, top, depth: held,
+    loops: plan.loops.map((l) => l.slice()), twins, walls,
+    names: [...plan.loops.flat(), frame, ...owns], owns,
+  }).name;
+}
+
 // --- editing a dimension ----------------------------------------------------
 
 /**
@@ -178,6 +514,9 @@ const REBUILD: Record<string, (model: Model, args: unknown[]) => void> = {
   dist: (m, a) => void dist(m, a[0] as string, a[1] as string, a[2] as number),
   radius: (m, a) => void radius(m, a[0] as string, a[1] as number),
   angle: (m, a) => void angle(m, a[0] as string, a[1] as string, a[2] as number),
+  // An extrude's depth: the whole lid, one value. Without this line `set` on
+  // one throws — `test/dimensions.test.ts` drives every dimension through here.
+  extrusion: (m, a) => void extrusion(m, a[0] as string, a[1] as number, ...(a.slice(2) as string[])),
 };
 
 /**
@@ -185,7 +524,7 @@ const REBUILD: Record<string, (model: Model, args: unknown[]) => void> = {
  * in the *short* names, because those are what the user typed to make one —
  * being told about `radius` after typing `rad` is a small riddle to no purpose.
  */
-const onlyDims = `only dist, rad and ang have a .${SETTABLE_PROPERTY}`;
+const onlyDims = `only dist, rad, ang and an extrude's depth have a .${SETTABLE_PROPERTY}`;
 
 /**
  * Changes a dimension's value: `set("d4.value", 60)`.
@@ -256,8 +595,9 @@ export function set(model: Model, path: string, value: number): string {
 // --- deletion ---------------------------------------------------------------
 
 /**
- * Deletes an entity or a relation by name, taking with it whatever could not
- * survive without it. Returns the names it removed, deletion order first.
+ * Deletes an entity, a relation or a feature by name, taking with it whatever
+ * could not survive without it. Returns the names it removed, deletion order
+ * first.
  *
  * The cascade is Onshape's, and deliberately so — people arrive knowing it:
  *
@@ -270,6 +610,9 @@ export function set(model: Model, path: string, value: number): string {
  *   complain about but a model that throws the next time it is drawn.
  * - a **line, circle or arc** takes the relations naming it and nothing more.
  *   Its points were the user's points first, and are usually still wanted.
+ * - a **feature** takes what it made and never what it was built on; and
+ *   anything a feature's record names takes the record with it — see
+ *   `delOne`. Both are the same inward rule, read from the record's side.
  *
  * **The confirmation is undo, not a prompt.** `del` is one user action, so a
  * cascade that took more than was meant is one Ctrl+Z from harmless — the
@@ -306,7 +649,7 @@ export function del(model: Model, ...names: string[]): string[] {
   // (Undo would recover it, but an error that edits is still an error that
   // edits.)
   for (const n of names) {
-    if (!model.has(n)) throw new Error(`"${n}" is not an entity or a relation`);
+    if (!model.has(n)) throw new Error(`"${n}" is not an entity or a relation (or a feature)`);
   }
   const removed: string[] = [];
   for (const n of names) {
@@ -319,23 +662,53 @@ export function del(model: Model, ...names: string[]): string[] {
   return removed;
 }
 
+/**
+ * One name's cascade. A **feature** follows the same two rules, read the way a
+ * relation reads them:
+ *
+ * - its record names everything it was built on and made (see `FeatureEntry`),
+ *   so deleting any of those — a profile member, a twin, a wall, the depth —
+ *   takes the **record**, exactly as deleting a point takes a relation naming
+ *   it, and takes nothing else beyond the ordinary cascade. The lid, the walls
+ *   and the depth are ordinary geometry and relations and stay as they are,
+ *   drawn without faces; undo is the confirmation if that was not the intent.
+ * - `del("e1")` takes the record **and what the feature made** — its twins,
+ *   walls, top frame and depth, with whatever needs those — and never the
+ *   profile it was built on, which was the user's sketch before the feature
+ *   existed. Onshape's rule: deleting an extrude keeps its sketch.
+ */
 function delOne(model: Model, name: string): string[] {
-  const isEntity = model.entities.has(name);
-  const isRelation = model.relations.has(name);
+  const feature = model.features.get(name);
+  const owned = (pred: (n: string) => boolean) => (feature ? feature.owns.filter(pred) : []);
+  const seeds = feature ? owned((n) => model.entities.has(n)) : model.entities.has(name) ? [name] : [];
+  const asked = new Set(feature ? owned((n) => model.relations.has(n)) : model.relations.has(name) ? [name] : []);
 
-  const doomed = isEntity ? entityClosure(model, name) : new Set<string>();
-  // Every relation that names anything on the way out, plus the relation
-  // itself when that is what was asked for. "Names" goes through
-  // `argRefersTo`, so a frame referenced only by an axis (`par("l1","f.x")`)
-  // still takes that relation with it — see `Model.relationsNaming`.
+  const doomed = entityClosure(model, seeds);
+  // Every relation that names anything on the way out, plus the relations
+  // asked for. "Names" goes through `referentOf`, so a frame referenced only by
+  // an axis (`par("l1","f.x")`) still takes that relation with it — see
+  // `Model.relationsNaming`.
   const relations = [...model.relations.values()]
-    .filter((r) => (isRelation && r.name === name)
-      || r.args.some((a) => [...doomed].some((d) => argRefersTo(a, d))))
+    .filter((r) => asked.has(r.name) || r.args.some((a) => {
+      const n = referentOf(a);
+      return n !== null && doomed.has(n);
+    }))
     .map((r) => r.name);
+  // Every record naming anything on the way out — the inward rule — plus the
+  // feature asked for.
+  const going = new Set([...doomed, ...relations]);
+  const features = [...model.features.values()]
+    .filter((f) => f.name === name || f.names.some((n) => going.has(n)))
+    .map((f) => f.name);
 
   const removed: string[] = [];
-  // Relations first: an entity cannot go while something still constrains it,
-  // and the primitive says so rather than leaving a dangling residual.
+  // Records first, since they name relations and entities alike and the
+  // primitives refuse while one does; then relations, since an entity cannot go
+  // while something still constrains it.
+  for (const f of features) {
+    model.deleteFeature(f);
+    removed.push(f);
+  }
   for (const r of relations) {
     model.deleteRelation(r);
     removed.push(r);
@@ -357,8 +730,9 @@ function delOne(model: Model, name: string): string[] {
 }
 
 /**
- * The entities that cannot outlive `name`: itself, whatever references it,
- * whatever references those, and so on. In creation order, so the answer — and
+ * The entities that cannot outlive `names`: themselves, whatever references
+ * them, whatever references those, and so on. Several at once because a
+ * feature's deletion starts from everything it made. In creation order, so the answer — and
  * therefore the journal a replay reads — does not depend on Set iteration
  * order of a worklist.
  *
@@ -367,9 +741,9 @@ function delOne(model: Model, name: string): string[] {
  * (what do I need). Deleting a line therefore reaches nothing, while deleting
  * one of its endpoints reaches the line.
  */
-function entityClosure(model: Model, name: string): Set<string> {
+function entityClosure(model: Model, names: string[]): Set<string> {
   const found = new Set<string>();
-  const queue = [name];
+  const queue = [...names];
   while (queue.length) {
     const n = queue.shift()!;
     if (found.has(n)) continue;
