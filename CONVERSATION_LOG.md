@@ -106,6 +106,70 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### Closed loops: faces, not cycles, and what "joined" is allowed to mean
+
+The spec fixed the honesty line before any code: joined means one point or a
+`coin`, never proximity. Most of what follows is what that line implies once
+it meets real geometry.
+
+**Why faces rather than a cycle basis.** "Minimal cycles" has two readings. The
+graph-theory one is a minimum-weight cycle basis — the shortest set of cycles
+from which every other is a sum — and it is tempting because it needs no
+geometry. It was rejected on paper: a basis is free to trade a face for the
+outline round two faces whenever that is shorter, and nothing about lengths
+promises the faces win. The spec's own examples — a figure-eight is two, two
+rectangles sharing an edge are two with the edge in both — are statements about
+*faces*, so the module walks faces: order each vertex's edges by angle, walk
+with the interior on the left, keep the counter-clockwise walks. That needs the
+drawing to be planar in the strict sense — no two edges crossing — which is
+where the next decision came from.
+
+**A component whose joined edges cross has no faces worth reporting.** The
+rule was written in from the start, but the mutation pass — delete each rule,
+see which test notices — showed what it is for: without it a lopsided bow-tie
+comes back as a loop of its *net* area, 400, a number that describes no region
+anyone drew. Onshape would split it at the crossing;
+doing so here would mean inventing a join where the drawing has none, which is
+the one thing the honesty line forbids. So such a component reports nothing,
+and the register says so. The symmetric bow-tie the first test used had been
+passing for the wrong reason — its lobes cancel to zero area and it vanished
+regardless — which is why the test is lopsided now.
+
+**Ties at a vertex.** Angle alone orders a vertex's edges until two leave in
+the same direction: an arc leaving tangent to another, or the same line drawn
+twice. Curvature settles the first (the edge bending left sits just
+counter-clockwise), and the second needed a small trick: an imagined offset by
+edge index, to the left of each edge's direction from its lower-numbered end —
+which orders a pair one way at one end and the other way at the other, as two
+parallel edges a hair apart really are. Ordering both ends the same way leaves
+the sliver between the two copies unclosed; the duplicate-line test fails
+without the mirror, and the tangent-arcs test fails with the curvature order
+flipped.
+
+**Exact arcs in the inside test, a deviation from the spec's letter.** The spec
+suggested point-in-polygon with arcs sampled. But an arc's winding about a point
+has a closed form — the plain angle between its ends from outside its circle,
+that angle the long way round from inside — so there is no resolution to pick
+and `loopAt` and containment use one test. The sampling survives where it
+belongs: the edge-on measure samples arcs as they are drawn, because "how thick
+does this look" is a question about the drawing on screen.
+
+**The innermost rule turned out to coincide with a tie-break**, and was kept
+anyway. Coplanar loops share one plane object, so a click meets them at the
+same depth exactly, and "smaller area wins a depth tie" already picks the island
+over its outline. But the spec asked for the rule to be stated, and it is the
+one that survives a future where two coplanar loops' planes are computed apart
+and differ by noise — so the test nudges an outline's plane a ten-thousandth
+nearer and checks the island still wins, which is the only way to tell the two
+rules apart.
+
+**Found in the e2e, not fixed:** the island circle's radius was dragged to the
+right, released near the fillet arc's *unseen* continuation, and snapped to it —
+8.86 instead of 9, with nothing visible at the cursor. Face-on snapping offers an
+arc's whole circle, deliberately (`snapping.ts` says so); obliquely it offers
+only the drawn arc. The test drags left now, and the disagreement is in the
+register for someone to decide.
+
 ### Planar discipline: a plane is an orientation, and what the old files needed
 
 The spec settled the big fork itself — a circle's plane is a frame reference

@@ -95,6 +95,7 @@ src/vec3.ts              three-vectors over plain numbers, for the camera and ar
 src/arcgeom.ts           which way round an arc goes, in its own plane — one rule for everyone
 src/projection.ts        each entity's shape on screen, and a pixel on it lifted back to the world
 src/workplane.ts         what a click lands on in 3D: the default frame's plane, or the one facing you
+src/loops.ts             closed loops (joined by shared point or coin, never proximity), and which one a click is in
 src/undo.ts              a stack of whole-model snapshots; imports nothing
 src/tools/tool.ts         abstract class Tool + defineTool registry
 src/tools/engine.ts       wires real DOM pointer events to the armed tool
@@ -127,6 +128,7 @@ solve()
 
 zoom(1.5); pan(0, -20)             // the viewport is just more commands
 ls()                               // what's in the model
+loops()                            // its closed loops — the profiles an extrude will take
 ```
 
 **Every constructor argument is optional**, because none of them was ever a

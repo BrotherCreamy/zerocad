@@ -78,6 +78,17 @@ predicates per entity kind (contained, touched) and no tolerance beyond the
 arc slack. Sharing a file would have meant one of the two concepts leaking
 into the other's code.
 
+`loops.ts` is the fifth of them, at the same height: "what closed loops does
+this drawing contain" and "which one is this pixel inside". Unlike the other
+four it works in the world rather than on screen — a loop is a region of a
+plane, read through `curveplane.ts`, and only `loopAt`'s edge-on test is
+measured in pixels — and what it counts as connected comes from the relation
+registry as well as the geometry: two curve ends are joined only by being one
+point or by a `coin` holding them, never by sitting on the same spot, because a
+profile whose corners nothing holds together is not one the next drag will
+leave closed. A loop is a question rather than an entity: it is found afresh
+each time, journals nothing and has no name.
+
 `projection.ts` sits between them and the model: each entity's shape *on
 screen* — a segment, a circle or arc that is an exact screen circle or arc seen
 square-on and a fine polyline on its ellipse seen obliquely — and the way back,

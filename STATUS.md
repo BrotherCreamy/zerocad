@@ -1213,6 +1213,37 @@ replacing) the system Node other projects on this machine may depend on.
   complement on an upside-down frame; `pt(x, y)` still seeds at the kernel's
   z = 0; one depth per entity in the painter's sort.
   *Spec:* [`docs/plans/3d-phase2.md`](docs/plans/3d-phase2.md).
+- **Closed loops** (`src/loops.ts` (new), `replenv.ts`) — 3D phase 3. A pure
+  question-about-the-drawing module, boxselect's kind, and nothing in the app
+  calls it yet: a click inside a region still picks nothing, and loops are
+  drawn nowhere.
+  **`findLoops(model)`** returns every closed loop: a cycle of lines and arcs
+  in one plane, joined end to end, or a whole circle. *Joined* means the same
+  point entity or held by `coin` (a union over the relation registry, chains
+  included) — never proximity, a crossing or a T (an `on`); the module header
+  states it as the honesty line. *One plane* means every line end, arc centre
+  and arc end within `liesOn`'s millionth, and every arc's frame +z parallel
+  (sine ≤ 1e-6). Candidate planes come from each arc's and circle's frame and
+  each non-parallel line pair at a joined vertex. Per plane: bridges dropped
+  (Tarjan, multigraph-safe), any component whose edges cross is rejected, and
+  the bounded faces are walked with edges ordered by tangent, curvature, then a
+  mirrored index offset; a face revisiting a vertex is split there. Each `Loop`
+  has `plane` (origin, u, v, normal, and the frame whose plane it is, if one
+  is), `members` counter-clockwise about the normal from the earliest-made
+  (name, `reversed`, `from`/`to` points), `area` (Green's theorem, arcs in
+  closed form; positive as listed), and `parent`/`children` — the smallest
+  coplanar container, touching at a point allowed, sharing an edge not.
+  **`loopAt(model, view, sx, sy, loops?)`** casts the pixel's ray into each
+  plane and tests by winding number (arcs exact); the innermost hit wins, then
+  the nearest plane, then the smaller area; a loop under a pixel thick on
+  screen is edge-on and skipped.
+  **`loops()`** lists them — `loop of l1,a1,l2,l3,l4 in f1, area 1186.265`,
+  `…, inside …` for an island — and journals nothing, claims no name, makes no
+  undo step. 563 unit tests, 199 e2e.
+  *Known and deliberate:* a component whose joined edges cross reports no
+  loops, and a T or a crossing splits nothing (Onshape splits regions at every
+  intersection); `loops()` says nothing about near-misses.
+  *Spec:* [`docs/plans/3d-phase3-loops.md`](docs/plans/3d-phase3-loops.md).
 
 
 ## What's next

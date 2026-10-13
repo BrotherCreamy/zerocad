@@ -44,7 +44,8 @@ are flagged as such.
   the menu. Phases and the rest of the design in the roadmap; phase 1
   (3D frames + fix/onPlane + camera + app on Model(3)) is built, both halves:
   [`docs/plans/3d-phase1.md`](docs/plans/3d-phase1.md). Phase 2 (planar
-  discipline) is built too — see below; phase 3 (loops) is next.
+  discipline) and phase 3 (loops) are built too — see below; phase 4
+  (extrude) is next.
   ✅ **Phase 1, half 1 (model + relations) built.** 3D frames carry a
   y-ref; `frameBasis` straightens it (Gram–Schmidt) and takes +z = +x × +y;
   `fix` pins `[x, y, z]` in a frame and its frameless form is gone;
@@ -232,6 +233,78 @@ are flagged as such.
     *curves* into the sketch, and on-plane inference beyond phase 1's minimal
     one, are not done. `pt(x, y)` with a tilted default frame, the per-entity
     painter's sort and the lifted points' missing `onPlane` stand as above.
+
+  ✅ **Phase 3 (loops) built** (2026-10-13):
+  [`docs/plans/3d-phase3-loops.md`](docs/plans/3d-phase3-loops.md).
+  `src/loops.ts`, pure: `findLoops(model)` — every closed loop of lines and
+  arcs in one plane, and every whole circle, as minimal cycles with their plane,
+  members (counter-clockwise, with directions and end points), signed area and
+  containment (`parent`/`children`) — and `loopAt(model, view, sx, sy)`, the
+  click-inside test. `loops()` lists them, read-only. No click behaviour
+  changed and nothing is drawn: phase 4's extrude is the first consumer. The
+  story is `test/e2e/loops.e2e.ts`.
+
+  Decided while building phase 3, and open to veto:
+
+  - ⚠ **Joined means held, never near** (the spec's rule, recorded here as the
+    register entry it asked for). Two curve ends are joined only when they are
+    the same point entity or a `coin` holds them together, directly or through
+    a chain. Ends that merely sit on the same spot are not joined; nor does a
+    **crossing** (edges passing through each other with no end there) or a
+    **T** (an end held *on* an edge by `on`) split anything. *Deviation from
+    Onshape*, which computes regions from every intersection: here a region's
+    boundary is only ever what the drawing was told is connected. The
+    consequence a user will meet: a line drawn across a rectangle from edge to
+    edge (the tool infers `on` at each end) does not cut it in two.
+  - **A component whose joined edges cross reports no loops.** With nothing
+    joining them at the crossing, its faces are not the regions the drawing
+    shows — without this rule a lopsided bow-tie comes back as a "loop" of
+    its net area — and a self-crossing outline is no profile phase 4 could
+    extrude. Loops that overlap *without* being joined are each reported, and
+    neither contains the other.
+  - **Minimal cycles are faces**, not a shortest-cycle basis: each vertex
+    orders its edges by tangent, then curvature (an arc leaving tangent to
+    another), then a mirrored index offset (the same line drawn twice), and the
+    bounded faces are walked counter-clockwise. A face that revisits a vertex —
+    an island touching its outline at a point — is split there, so both loops
+    are reported. Bridges and dangling lines are dropped before anything else.
+  - **Containment touching at a point counts; sharing an edge cannot** (faces
+    sharing an edge are side by side). `parent` is the *smallest* coplanar
+    container, indexing the array `findLoops` returned.
+  - ⚠ **Arcs are exact in the inside test, not sampled** (the spec said
+    "arcs sampled, the curveplane machinery"). An arc's winding about a point
+    has a closed form, so `loopAt` and containment share one test with no
+    resolution to choose. Arcs are still *laid out* by `curveFrame`, and the
+    one sampled measure — how thick a loop looks on screen — uses
+    `arcSegments`, as drawing does.
+  - **`loopAt`: innermost, then nearest, then smaller area, then earlier.**
+    Containment outranks depth: coplanar loops tie on depth exactly, and a
+    container a hair nearer (noise) still loses to the loop it holds — tested
+    apart from the area tie-break it otherwise coincides with. A loop under
+    `EDGE_ON_PX` (one pixel) thick on screen is edge-on and skipped. It takes
+    an optional fifth argument, the loops already found, so a caller holding
+    them gets one of *those* back and its indices mean something.
+  - **A loop's plane:** a frame's whose plane it is (default first, then
+    earliest) — origin, +x, +y, +z; else the first arc's or circle's frame
+    orientation through its centre; else the normal whose largest component is
+    positive, +u along the first line. A 2D drawing names its default frame
+    (or the earliest). Members are listed counter-clockwise about that normal
+    from the earliest-made one, so `area` is positive as listed.
+  - **Coplanar means `liesOn`'s millionth, and an arc's frame must agree**
+    (+z parallel either way up, sine ≤ 1e-6 — fillet's `IN_PLANE_SINE`). An
+    arc whose points lie in a plane its frame does not is not in that plane.
+  - **`loops()` names a loop by its members** (`loop of l1,a1,l2,l3,l4 in f1,
+    area 1186.265`, then `, inside …` for an island) — it has no name of its
+    own, and claiming one would make a question into an entity. A plane with no
+    frame reads `in the plane facing (0, 0, 1)`.
+  - *Found, not fixed:* **face-on snapping offers an arc's whole circle**, as
+    `snapping.ts` documents — so in the e2e a circle's radius dragged out near
+    a fillet arc's *unseen* continuation snapped to it and became 8.86 instead
+    of 9, with nothing visible there. Seen obliquely, only the drawn arc snaps;
+    the two disagree. Worth deciding before phase 4 makes arcs common. Also:
+    `loops()` is silent about near-misses (an end not quite joined, a corner
+    not quite in plane), and regions from crossings — Onshape's behaviour —
+    would need joins this model is never told about; both are left for a spec.
 
 - **No world frame — coordinate frames are entities** (owner's direction,
   2026-09-01, chosen over "keep the frame but hide it" and "directions stay,
