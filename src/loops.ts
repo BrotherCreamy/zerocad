@@ -853,12 +853,10 @@ function contains(outer: Found, inner: Found, ob: Box, ib: Box): boolean {
 
 /** A loop's outline, re-read from the model in its plane — what `loopAt` tests a click against. */
 function outlineOf(model: Model, loop: Loop): Piece[] {
+  // `pieceOf` is each member in its own direction — a circle's being
+  // counter-clockwise about its own frame — so `reversed` is all it takes.
   return loop.members.map((m) => {
     const piece = pieceOf(model, m.name, loop.plane);
-    const e = model.entities.get(m.name)!;
-    // A circle's own way round is about its frame; `reversed` says the loop
-    // walks it the other way about the plane's normal.
-    if (e.kind === "circle") return (piece.kind === "arc" && piece.sweep < 0) ? reversed(piece) : piece;
     return m.reversed ? reversed(piece) : piece;
   });
 }

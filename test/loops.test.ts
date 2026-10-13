@@ -195,6 +195,22 @@ test("a whole circle is a loop by itself: area πr², no ends", () => {
   assert.deepEqual(loop.members, [{ name: c, reversed: false, from: null, to: null }]);
   assert.ok(close(loop.area, 100 * Math.PI), `area ${loop.area}`);
   assert.ok(close(traced(m, loop), 100 * Math.PI, 1e-3));
+
+  // In 3D, on a frame lying upside down in the default frame's plane: the
+  // plane is the default's, so the circle is walked against its own way round.
+  const n = new Model(3);
+  axisFrame(n, "f");
+  const [o, x, y] = [[0, 0, 0], [1, 0, 0], [0, -1, 0]].map((p) => n.addPoint(p).name);
+  n.addFrame(o, x, y, "under");
+  const ring = n.addCircle(n.addPoint([30, 0, 0]).name, 4, "under").name;
+  const [flipped] = findLoops(n);
+  assert.equal(flipped.plane.frame, "f");
+  assert.deepEqual(flipped.members, [{ name: ring, reversed: true, from: null, to: null }]);
+  assert.ok(close(flipped.area, 16 * Math.PI) && close(traced(n, flipped), 16 * Math.PI, 1e-3));
+  const view: View = { ox: 400, oy: 300, scale: 2 };
+  const found = findLoops(n);
+  assert.equal(loopAt(n, view, ...worldToScreen(view, [31, 1, 0]), found), found[0], "a click inside it is inside it");
+  assert.equal(loopAt(n, view, ...worldToScreen(view, [36, 0, 0]), found), null, "and one past its rim is not");
 });
 
 // --- islands and containment ------------------------------------------------------
