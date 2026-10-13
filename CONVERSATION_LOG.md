@@ -106,6 +106,93 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### Extrude, the model half: what a replay can see, and what a record is
+
+The spec's shape was clear — an operation, journalled as the call, expanding
+into twins, walls, one depth dimension and a record — and most of the work was
+in what "the same expansion on replay" turned out to require.
+
+**The profile is journalled resolved, and that was measured before it was
+decided.** The spec said journal-as-the-call, fillet's pattern. The worry was
+that `findLoops` reads *positions* — coplanarity to a millionth, crossings,
+the face walk's angles — while a replay runs on seeds: nothing is solved until
+the saved values go back, after the last step. A scratch run settled it: four
+`ln()`s (seeded on top of one another), coin'd at the corners and fixed into a
+40 × 30 rectangle, have one loop solved and **none** at their seeds. Replaying
+`extrude("l1", 20)` there would throw, failing the file — and every undo, since
+undo is the save format replayed. Three ways out were considered. Journalling
+the *expansion*, as `del` journals its cascade, has the precedent for exactly
+this reason (a cascade recomputed later could differ), but the spec asked for
+the call, and an expansion of thirty primitives is no longer a transcript of
+what was typed. Restoring values mid-replay is not available — they exist only
+for the model's final entities. What remained is the rule `fix`, `circ` and
+`fillet` already follow for the default frame: journal what the call resolved.
+So the entry is `extrude("l1", 20, "f1", [[…members…], …])`, and given loops a
+replay only walks them by their joins — relations, never positions — and checks
+each closes. The test that pins this builds that very rectangle.
+
+**What "the same order" needs.** Names are handed out in creation order, so a
+replay must create the twins in the order the call did. Everything that orders
+them is read off names and relations: the loops' member order (journalled), the
+walk's direction (forward along the first member unless its far end does not
+meet the second — joins, not geometry), and the joined classes (`coin`
+relations). One geometric question nearly crept in: a twin arc on the lid
+frame must turn the same way as its base, which is a question about which way
+its frame faces relative to the sketch frame — and a replay on seeds could
+answer it differently if a frame had since been dragged over. It was designed
+away instead of answered: a curve on the sketch frame twins onto the lid frame
+(same orientation by construction), and a curve on any *other* frame keeps its
+own (same orientation trivially). No side is ever decided.
+
+**One twin per joined class, not per point.** The line tool joins corners with
+a new point and a `coin`, so a drawn rectangle can have eight points at four
+corners. A twin per point would give the lid eight unjoined ends — and the top
+cap would not be a loop, so a second extrude on it would have nothing to find.
+Classing by `loops.ts`'s own `joinClasses` (exported for this) gives the lid
+one point per corner and one wall per corner, and the cap comes out a loop in
+the lid frame with the profile's area — tested.
+
+**The depth holds radii.** A twin circle has no ends for a point pair to hold;
+its radius would float. Two ways: an `eqrad` per curve (more names, `r`-named,
+deletable on their own, and a lid partly held by relations `set` does not
+touch), or a radius residual inside the `extrusion`. The second keeps "one
+relation holds the lid" literally true.
+
+**The sketch frame is a datum to the depth; the profile is not.** The lid
+frame's points are held at the sketch frame's points plus the depth, the sketch
+frame read as numbers, so the lid can never turn the sketch plane — the rule
+every relation against a frame keeps. The profile's own points are variables
+in their pairs, deliberately: that is what lets a constraint on the lid push
+the base, which is the demonstration the spec asked for (a diagonal held to 50,
+the depth set, the free width settling at √(50² − h² − d²) — a unit test).
+
+**Deleting a piece takes the record, not the solid.** The spec says deleting
+"any member entity of the feature takes the feature record with it". Read
+strictly, as a relation is read, the record needs its pieces and the pieces do
+not need the record — so the record goes and the rest stays, ordinary geometry
+without faces. Taking the whole solid was weighed: it is what a user deleting a
+profile edge might expect, but it would also mean deleting one wall line takes
+every other wall, which nothing else in the cascade does to its neighbours. It
+also settled the depth: `del("d9")` takes the record (it names the depth) and
+leaves the lid free, rather than being refused. `del("e1")` is the way a solid
+goes, and it takes only what it made — the primitives refuse to delete
+anything a record still names, which is what keeps the cascade honest.
+
+**The drift that was not the extrude's.** The first "`set` moves the lid and
+nothing else" test failed at 2e-5 — a corner of the *base* had moved. Traced:
+`fillet` holds its new tangent point and centre on the rim's plane, not the
+sketch's, so a rounded corner can slide along +z as a whole, and the damped
+step for the depth (which shares its first correction between twin and base)
+nudged it. With those two points held on the sketch the drift fell to 7e-7 —
+the rest an undimensioned sketch wandering in its in-plane freedom, and the
+tangency, which pins a tangent point only to second order. On a fully defined
+sketch it is 1.6e-11, and that is what the test now claims. The fillet seam is
+written up in the register rather than fixed here; it is older than extrude.
+
+**No version bump**, for the deletion ops' reason: new ops, no changed meaning,
+and an older build refuses a newer file at the step by name rather than
+misreading it.
+
 ### Closed loops: faces, not cycles, and what "joined" is allowed to mean
 
 The spec fixed the honesty line before any code: joined means one point or a

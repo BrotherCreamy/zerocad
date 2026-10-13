@@ -170,8 +170,13 @@ interface CircleRef {
  * together only by `coin` relations (a union over the registry), never by
  * where they are. Classes are numbered in the order their first point was
  * made, so everything downstream is deterministic.
+ *
+ * Exported for `extrude`, which gives each joined class one twin on the lid —
+ * so the lid's corners are joined exactly where the profile's were, by the
+ * same definition, and the top cap is itself a loop. It reads relations, never
+ * positions, which is also what lets a replay ask it before anything is solved.
  */
-function joinClasses(model: Model): Map<string, number> {
+export function joinClasses(model: Model): Map<string, number> {
   const up = new Map<string, string>();
   const find = (p: string): string => {
     let r = p;
@@ -237,7 +242,8 @@ function planeThrough(origin: number[], n: number[]): Plane {
   return { origin, u, v: cross3(n, u) };
 }
 
-function parallel(a: number[], b: number[]): boolean {
+/** Whether two unit directions agree, either way up, to `PARALLEL_SINE`. */
+export function parallel(a: number[], b: number[]): boolean {
   return Math.hypot(...cross3(a, b)) <= PARALLEL_SINE;
 }
 

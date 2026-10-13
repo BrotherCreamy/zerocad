@@ -21,7 +21,7 @@
 import { Model, type JournalEntry } from "./model.ts";
 import * as basic from "./relations/basic.ts";
 import * as geom from "./relations/geometry.ts";
-import { fillet, set } from "./operations.ts";
+import { extrude, fillet, set } from "./operations.ts";
 import type { ToolSource } from "./toolsource.ts";
 import { freshName, planeTranslation } from "./planetranslation.ts";
 
@@ -100,6 +100,16 @@ export const FORMAT = "neocad-model";
  * without tools opens here as a file that carries none. Bumping would have
  * refused the first case for no reason — and there are no third-party readers
  * of v4 to protect, since this app is the only one there has ever been.
+ *
+ * **Extrude did not bump it either** (3D phase 4). It adds two ops —
+ * `extrude`, and `deleteFeature` for a feature's record — and changes the
+ * meaning of none: no existing op's arguments moved, `values` is the same two
+ * maps (a lid's twins are ordinary points, its rims ordinary radii), and the
+ * feature registry is rebuilt by replay rather than saved. So an older file
+ * opens here exactly as it did, and a newer file in an older build is refused
+ * *at the step*, naming the op it does not know — not misread, which is the
+ * break a version is for. The deletion ops set the precedent when they were
+ * added the same way.
  */
 export const VERSION = 7;
 
@@ -161,6 +171,9 @@ function replayTable(model: Model): Map<string, (...args: unknown[]) => unknown>
     // neither op and open unchanged; there is nothing to version-bump.
     deleteEntity: bound("deleteEntity"),
     deleteRelation: bound("deleteRelation"),
+    // A feature's record, as `del` journals it — see `delOne`. Added with
+    // extrude, without a version bump, for the reason the two above were.
+    deleteFeature: bound("deleteFeature"),
 
     dist: rel(basic.dist),
     fix: rel(basic.fix),
@@ -184,6 +197,9 @@ function replayTable(model: Model): Map<string, (...args: unknown[]) => unknown>
     arcEndpoints: rel(geom.arcEndpoints),
 
     fillet: rel(fillet),
+    // Journalled with its profile resolved (see `extrude`), so a replay walks
+    // the loops it is handed and never looks for one among the seeds.
+    extrude: rel(extrude),
     // `set` is journalled as the one call the user made, like every operation,
     // so replaying it re-runs the edit rather than the dimension it rebuilt.
     set: rel(set),

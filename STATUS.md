@@ -1244,6 +1244,46 @@ replacing) the system Node other projects on this machine may depend on.
   loops, and a T or a crossing splits nothing (Onshape splits regions at every
   intersection); `loops()` says nothing about near-misses.
   *Spec:* [`docs/plans/3d-phase3-loops.md`](docs/plans/3d-phase3-loops.md).
+- **Extrude, the model half** (`extrude` in `src/operations.ts`,
+  `src/relations/extrusion.ts` (new), the feature registry in `src/model.ts`,
+  `persist.ts`, `replenv.ts`, `picking.ts`, `glyphs.ts`) — 3D phase 4, half 1.
+  **`extrude(member, depth?, frame?)`** finds the loop the member is in —
+  refusing none, or several (listed; `frame` narrows to the loop parallel to
+  it), or a loop no frame orients — and expands it, with every loop inside it,
+  into: a **lid frame** (the sketch frame's three points lifted by the depth,
+  then the frame); one **twin point per joined class** of the profile's points
+  (corners and centres, joined by `loops.ts`'s own `joinClasses`); a **twin
+  member** per member in its own direction (a curve on the sketch frame onto
+  the lid frame, any other keeps its own); a **wall line** per corner class,
+  base to twin (circles have none); and **one `extrusion` dimension**
+  (`d`-named, `[frame, depth, base₁, twin₁, …]`): per point pair three linear
+  residuals `twin − base − depth·ẑ`, per curve pair `r_twin − r_base`, the
+  frame's +z and its own points read as a datum. It is in `DIMENSION_OPS` with
+  its value at index 1 and has a `REBUILD` line, so **`set` moves the lid**.
+  Default depth `DEFAULT_DEPTH` (10, a seed); zero refused, negative goes the
+  other way. **Journalled as the call with its profile resolved** —
+  `[member, depth, frame, loops]` — and a profile handed over is walked by its
+  joins and checked closed, never re-found (replay runs on seeds, where a
+  profile of free lines has no loop).
+  **The record** (`FeatureEntry`, `model.features`, `e1`, `e2`, …, one
+  namespace with entities and relations): `member`, `frame`, `top`, `depth`,
+  `loops`, `twins`, `walls`, `names` (profile + frame + everything made) and
+  `owns` (everything made). Made by `addFeature` (journals nothing; the
+  operation is the entry), listed by `ls()` (`e1  extrude of l1,a1,… + 2
+  inside, depth d2 = 20 along f1, lid f2`), named at the end of the hover tag
+  of any piece (`· e1`). The depth's label is its value on the first wall,
+  with `dist`'s witness lines; `rels()` writes it `d1  extrusion 20 along
+  f1.z, 7 pairs` for a plain rectangle (four corners, three lid-frame points).
+  **Deletion:** `del("e1")` takes the record and what it owns (with whatever
+  needs those) and never the profile; deleting anything a record names takes
+  the record and nothing else; `deleteEntity`/`deleteRelation` refuse while a
+  record names the thing; `deleteFeature` is the journalled primitive. Format
+  version unchanged (7). 584 unit tests, 207 e2e.
+  *Known and deliberate:* a feature is expanded once (restructuring its
+  profile later does not regenerate the lid); the lid frame always has its own
+  points; `fillet`'s new points are not held on the sketch, so a `set` can stir
+  a rounded corner by a few millionths along +z.
+  *Spec:* [`docs/plans/3d-phase4-extrude.md`](docs/plans/3d-phase4-extrude.md).
 
 
 ## What's next

@@ -74,6 +74,12 @@ What 3D adds is not a new solver — it is:
 - **Phase 4 — extrude**: the operation (expansion: twin loop, side edges,
   per-point offset relations along the plane normal, one `d` dimension for
   depth), face lists for display, z-sorted flat-shaded canvas rendering.
+  *Spec:* `docs/plans/3d-phase4-extrude.md`. ✅ **Half 1 built** — the
+  expansion (twins per joined class, walls, a lid frame, one `extrusion`
+  dimension that `set` edits), the feature record and its deletion rules, and
+  the journal, which carries the profile resolved because a replay runs on
+  seeds (see the register's 3D entry). Half 2 — faces and the click-inside
+  tool — next.
 - **Phase 5 — revolve**: profile + axis reference (`f1.x` style) + angle
   dimension; parametric surface rendering from live geometry.
 - Later, undecided, not promised: booleans, 3D fillets, shaded WebGL,
