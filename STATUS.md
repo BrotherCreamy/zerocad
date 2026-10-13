@@ -1284,6 +1284,38 @@ replacing) the system Node other projects on this machine may depend on.
   points; `fillet`'s new points are not held on the sketch, so a `set` can stir
   a rounded corner by a few millionths along +z.
   *Spec:* [`docs/plans/3d-phase4-extrude.md`](docs/plans/3d-phase4-extrude.md).
+- **Extrude, the faces and the tool** (`src/faces.ts` (new),
+  `src/tools/extrude.ts` (new), `main.ts`, `tools/engine.ts`, `tools/tool.ts`) —
+  3D phase 4, half 2.
+  **Faces** are a pure function of (model, view), glyphs.ts's kind, recomputed
+  every frame from the live geometry and stored nowhere. `featureFaces` gives a
+  feature's two caps — each one outline per profile loop, filled even-odd — and
+  its walls: a quad per line, a strip of quads per arc or circle at
+  `arcSegments`' drawing resolution, the twin sampled piece for piece with its
+  base. Members are walked by position (so a profile whose join a deletion
+  opened still draws). Outward normals: caps along ∓/± the sketch frame's +z by
+  which way the lid went; walls `winding × (−1)^nesting × (edge × ẑ)`, the
+  winding from the signed area about +z and the nesting from how many other
+  loops contain a point of the loop. `facesToDraw` culls faces whose normal
+  points away from the viewer, sorts far to near — a wall by its centroid, a
+  cap by its nearest point — and shades each by `normal · toward` (a headlight);
+  `faceColour` maps that onto the panel slates `FACE_DARK`…`FACE_LIGHT`, a
+  quarter of the way up at worst. `main.ts` fills them (even-odd, plus a
+  0.75px stroke in the same colour against anti-aliasing seams) **before** the
+  entities, so every edge, point and glyph draws on top. A solid that cannot be
+  laid out (a collapsed frame) costs its own faces and never throws.
+  **The tool**: `arm("extrude", { depth })` (default `DEFAULT_DEPTH`). On move
+  it asks `ctx.regionAt(screen)` — new on `ToolContext`, answered by the engine
+  with `findLoops` + `loopAt` — and outlines the region (`regionOf`: the loop and
+  every loop inside it), tinted even-odd; a click there runs `profileOf` and
+  `extrude` with the profile resolved, solves and finishes; a click on nothing
+  logs `extrude: no closed region under the click …` and stays armed (a throw
+  headless). `Tool.snaps` (new, default true) is false for it, so the engine
+  neither snaps nor draws a marker. Idle clicks are unchanged. 600 unit tests,
+  210 e2e.
+  *Known and deliberate:* hidden edges show through faces; interpenetrating
+  solids can sort wrong where they cross; faces never pick, snap, box or wear a
+  glyph; a solid's side face extrudes only once a frame is made on its plane.
 
 
 ## What's next

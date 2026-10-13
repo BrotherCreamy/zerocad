@@ -12,7 +12,9 @@ distance, coincidence, midpoint, parallel, perpendicular (either of which
 takes a coordinate frame's axis by name), angle, point-on-line,
 equal-length, radius, on-circle,
 concentric, equal-radius, tangent and symmetry; line, rectangle, circle and
-arc tools with Onshape-style constraint inference; and a fillet) is the
+arc tools with Onshape-style constraint inference; a fillet; and extrude —
+a closed loop, holes and all, expanded into a real lid of twins and walls held
+by one depth dimension, drawn shaded) is the
 **first standard library** built on that kernel, not the kernel's whole
 purpose. The kernel itself knows nothing about geometry — just a flat
 variable vector and residual blocks — so the same solver is meant to be
@@ -86,7 +88,8 @@ src/relations/vec.ts     Dual-vector helpers (dot, wedge) every relation is buil
 src/relations/refs.ts    lazy variable lists, and a frame's basis as re-read values
 src/relations/basic.ts   dist / fix (frame-relative) / coincident / midpoint — all dimension-generic
 src/relations/geometry.ts par / perp / ang (any of which takes a frame axis) / on / eq / rad / oncircle / conc / eqrad / tan / sym
-src/operations.ts        operations, which change structure rather than add equations: fillet, del, set
+src/operations.ts        operations, which change structure rather than add equations: fillet, extrude, del, set
+src/relations/extrusion.ts the one dimension an extrude's lid is held by: twin = base + depth·ẑ
 src/persist.ts           save/open — a file is the model's journal, replayed
 src/repl.ts              the scoped evaluator: curated scope, no reach into page globals
 src/replenv.ts           what that scope contains — the app's whole command surface
@@ -96,6 +99,7 @@ src/arcgeom.ts           which way round an arc goes, in its own plane — one r
 src/projection.ts        each entity's shape on screen, and a pixel on it lifted back to the world
 src/workplane.ts         what a click lands on in 3D: the default frame's plane, or the one facing you
 src/loops.ts             closed loops (joined by shared point or coin, never proximity), and which one a click is in
+src/faces.ts             a solid's faces from its live geometry: culled, sorted per face, lit from the eye
 src/undo.ts              a stack of whole-model snapshots; imports nothing
 src/tools/tool.ts         abstract class Tool + defineTool registry
 src/tools/engine.ts       wires real DOM pointer events to the armed tool
@@ -106,6 +110,7 @@ src/tools/circle3.ts      three clicks, a circle through all three
 src/tools/arc.ts          center, radius, sweep — a three-click gesture
 src/tools/arc3.ts         two endpoints, then a point the arc passes through
 src/tools/circumcircle.ts the closed form those two share
+src/tools/extrude.ts      click inside a region; it is extruded
 src/main.ts              browser entry point (canvas render loop + the REPL)
 test/                    node --test, no browser needed (WASM loaded via a byte buffer)
 ```

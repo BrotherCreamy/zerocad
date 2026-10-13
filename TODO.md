@@ -44,8 +44,8 @@ are flagged as such.
   the menu. Phases and the rest of the design in the roadmap; phase 1
   (3D frames + fix/onPlane + camera + app on Model(3)) is built, both halves:
   [`docs/plans/3d-phase1.md`](docs/plans/3d-phase1.md). Phase 2 (planar
-  discipline) and phase 3 (loops) are built too — see below; phase 4
-  (extrude) is in flight, its model half built.
+  discipline), phase 3 (loops) and phase 4 (extrude) are built too — see
+  below; phase 5 (revolve) is next.
   ✅ **Phase 1, half 1 (model + relations) built.** 3D frames carry a
   y-ref; `frameBasis` straightens it (Gram–Schmidt) and takes +z = +x × +y;
   `fix` pins `[x, y, z]` in a frame and its frameless form is gone;
@@ -368,6 +368,44 @@ are flagged as such.
     freedom (1e-5 seen during a `set`). Tests that claim "nothing else moves"
     use a fully defined sketch. A feature is expanded once: restructuring its
     profile afterwards does not regenerate the lid.
+
+  ✅ **Phase 4, half 2 — faces, the per-face painter's, the click-inside tool —
+  built** (2026-10-13). `src/faces.ts` reads a solid's faces off its live
+  geometry each frame (even-odd caps, a wall quad per line and a strip per
+  curve), culls back faces, sorts per face and shades by a headlight; `main.ts`
+  fills them before the entities. `arm("extrude", { depth })` outlines the
+  region under the cursor and extrudes it on a click (`ToolContext.regionAt`,
+  new). Screenshots 60–63; the story is `test/e2e/extrude.e2e.ts`.
+
+  Decided while building half 2, and open to veto:
+
+  - ⚠ **A cap sorts by its nearest point, a wall by its centroid** — not every
+    face by its centroid as the spec said. Found in a screenshot: seen at a
+    grazing angle, a lid's centroid sorted behind the far wall of its own hole,
+    which then painted over the lid wherever it showed past the opening. For a
+    prism the visible cap has nothing of its own solid in front of its plane,
+    so its nearest point is at least as near as every point of the solid. A
+    unit test fails under the centroid key.
+  - **Back faces are culled** (not in the spec): outward normals are computed
+    from each loop's winding and nesting, so a convex solid can never sort
+    wrong and a non-convex one has far fewer faces to sort.
+  - **Curved walls are one face per drawn segment**, so a cylinder shades round
+    rather than as one flat slab; each face is stroked a hair wide in its own
+    colour, or anti-aliasing leaves a seam of background between neighbours
+    (measured: 1–3 levels out of ~60 with the stroke, background without).
+  - **Faces sit behind every entity, hidden edges included** — the spec's
+    order, so the sketch stays legible; it does make the profile's sketch read
+    through a solid. Dimming hidden edges is a follow-up, not done.
+  - **`Tool.snaps`** (new, default true): the extrude tool opts out, since a
+    snap marker would promise a vertex the click does not go to. Idle clicks
+    are unchanged — the click-inside behaviour lives in the tool only.
+  - **`ToolContext.regionAt(screen)`** (new, beside `pick`): the engine answers
+    "which region is under this pixel" with `findLoops` + `loopAt`, so a tool
+    never needs the camera.
+  - *Found, not fixed:* interpenetrating solids can sort wrong where they cross
+    (a sort is a sort); a face is not a pick target, so a solid's side face is
+    extruded by clicking inside its loop — and a wall's loop lies in no frame's
+    orientation, so that is refused until a frame is made on it.
 
 - **No world frame — coordinate frames are entities** (owner's direction,
   2026-09-01, chosen over "keep the frame but hide it" and "directions stay,

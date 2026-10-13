@@ -106,6 +106,61 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### Extrude, the faces: what a centroid sort gets wrong, and the click inside
+
+**Two PRs, and why.** The package split where the spec said it might: the
+expansion, the record, deletion and the file first, then the display and the
+tool. The first half alone carried the package's semantic decisions — the
+resolved profile, the record-only deletion, no version bump — and reviewing
+those in a diff full of fill colours would have buried them.
+
+**Culling was not in the spec, and it is what makes the sort tolerable.** The
+spec asked for faces sorted by camera depth at their centroid. A closed prism
+seen from outside shows only the faces turned toward the viewer, and for a
+convex one those never overlap each other, so with back faces gone the sort
+cannot be wrong at all. That needed each face's *outward* normal, and the
+order findLoops lists members in was not trusted for it — a loop's winding is
+measured (signed area about the sketch frame's +z) and its nesting counted
+(how many of the profile's other loops contain a point of it), and the wall
+faces away from the material on whichever side those say. A profile drawn
+clockwise is a test.
+
+**The centroid key failed, and a screenshot found it.** With holes the solid is
+not convex, and the case that bit was the obvious one once seen: turned to a
+grazing angle, the lid's centroid sorted *behind* the far wall of its own hole,
+so the wall was painted after the lid, over it, wherever it projected past the
+opening. Every number was right and the picture was wrong. The fix is a fact
+about prisms rather than a tweak: every point of the solid is a point of the
+visible cap moved back along the depth, so nothing of it is in front of that
+cap's plane, and the cap's *nearest* point is at least as near as anything it
+could overlap. A cap sorts by that; walls keep their centroids. The test that
+pins it builds a long solid with a hole near one end, checks that the cap is
+drawn last in four views, and also checks that at least one of those views is
+one a centroid sort gets wrong — it was run against the centroid key to make
+sure it fails there.
+
+**Seams.** Neighbouring quads of a curved wall share an edge exactly, and each
+anti-aliased against the background alone leaves a thin line of background
+between them. Stroking each face 0.75px in its own colour covers it: measured
+across a cylinder, the dips went from background-deep to 1–3 levels out of ~60.
+
+**The tool asks, the engine answers.** The tool needs "which region is under
+this pixel", which needs the camera; `ToolContext` gained `regionAt` beside
+`pick` rather than a `view`, so tools stay camera-blind and the engine owns
+every screen-space question. It hands `extrude` the loop it found, resolved,
+not a member name: after any extrude every profile edge is in two loops, and
+the click has already said which. And it opts out of snapping (`Tool.snaps`),
+because a vertex marker under the cursor would promise a click that goes
+somewhere else.
+
+**The e2e reads pixels.** Looking straight down the lid, the canvas's own
+pixels are asserted: the cap is exactly the square-on fill, the ring of the
+hole is transparent right through both caps, and the island is filled. Each
+probe is chosen from a few candidates by asking the app's `hover()` whether
+anything is there, since sketch geometry seen through a solid crosses its faces
+and a probe hardcoded onto a mark fails for the wrong reason (two did, the first
+time).
+
 ### Extrude, the model half: what a replay can see, and what a record is
 
 The spec's shape was clear — an operation, journalled as the call, expanding

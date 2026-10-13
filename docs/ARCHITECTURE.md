@@ -89,6 +89,11 @@ profile whose corners nothing holds together is not one the next drag will
 leave closed. A loop is a question rather than an entity: it is found afresh
 each time, journals nothing and has no name.
 
+`faces.ts` is the sixth: what a solid's faces are this frame, which of them
+face the viewer, in what order to fill them and how bright — computed, not
+drawn, so it is tested without a canvas (see "A solid's faces are drawn, never
+stored" below).
+
 `projection.ts` sits between them and the model: each entity's shape *on
 screen* — a segment, a circle or arc that is an exact screen circle or arc seen
 square-on and a fine polyline on its ellipse seen obliquely — and the way back,
@@ -473,6 +478,36 @@ change: "multi-stage" is just "finishes later".
 The engine keeps navigation and tool use on separate mouse buttons, so a
 gesture can be panned through without the tool ever seeing it.
 
+Screen-space questions are the engine's to answer, never the tool's: `pick`
+says what entity is under a pixel and `regionAt` which closed region it is
+inside (`findLoops` + `loopAt`), so a tool can choose things on screen without
+learning what a camera is. The extrude tool is the first to ask the second,
+and the click-inside gesture lives in it alone — with nothing armed, a click
+inside a region still picks nothing. A tool that chooses rather than places
+says so (`snaps = false`) and the engine neither pulls its cursor nor draws a
+marker promising a vertex the click will not go to.
+
+## A solid's faces are drawn, never stored
+
+An extrude is real geometry — twins, walls, a depth — and its *faces* are what
+the renderer fills between those pieces, read off where they are each frame
+(`faces.ts`, a pure function of model and view at glyphs.ts's height). So a
+face can never disagree with the edges over it. A cap is every profile loop in
+one path, filled even-odd, which makes a hole empty and an island in a hole
+solid with no triangulation and no nesting rule; a curved wall is one quad per
+drawn segment, so it shades round.
+
+**Painter's per face, culled, lit from the eye.** Each face's outward normal is
+computed from its loop's winding and nesting, faces turned away are not drawn,
+and the rest sort far to near and shade by the cosine to the line of sight — a
+headlight, because a light fixed anywhere would need a world frame to fix it in.
+A wall sorts by its centroid, a cap by its *nearest* point: nothing of a prism
+is in front of its visible cap's plane, and a centroid key let a grazing cap
+sort behind its own hole's far wall, which then painted over it. The faces go
+down first and every entity draws over them — so the sketch stays legible on a
+solid, at the price of hidden edges showing through — and a face never picks,
+snaps, boxes or wears a glyph: the pieces of a solid are what a hand aims at.
+
 ## Constraints are drawn, and a drawn constraint is a thing you can click
 
 Every relation wears a small mark beside the geometry it constrains. The tiers
@@ -725,7 +760,7 @@ until the next action went unrecorded.
 
 ## Why there is an end-to-end suite
 
-Six bugs so far were invisible to the unit tests and obvious within seconds
+Seven bugs so far were invisible to the unit tests and obvious within seconds
 of running the app:
 
 1. a status readout that went stale, so a conflict could be introduced from
@@ -745,6 +780,11 @@ of running the app:
    seventy units *behind* the pixel aimed at — the two shared a pixel — so
    the wall's edge ran diagonally out of its own plane with every relation
    satisfied. Found by looking at a screenshot of the 3D package's poster.
+7. A solid's lid, sorted by its centroid, drawn *before* the far wall of its
+   own hole at a grazing angle — so the wall painted over the lid wherever it
+   showed past the opening. Every face was the right shape and the right shade;
+   only the order was wrong. Found by looking at the extrude package's
+   screenshots.
 
 None of these are mathematics. They are all *assembly*. Hence `npm run
 test:e2e`, and hence the expectation that anything touching the app is checked
