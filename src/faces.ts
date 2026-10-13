@@ -180,6 +180,10 @@ export function loopOutlines(model: Model, loops: string[][], scale: number): nu
  * own faces and nothing else.
  */
 export function featureFaces(model: Model, f: FeatureEntry, scale: number): Face[] {
+  // A revolve's surface is not finitely many entities, and is drawn from the
+  // live profile — the display half, not yet built. Until then it draws as the
+  // wireframe it is made of: the profile and, partway, the end face.
+  if (f.kind !== "extrude") return [];
   const axes = framePlaneAxes(model, f.frame);
   if (!axes) return [];
   const z = axes.n;

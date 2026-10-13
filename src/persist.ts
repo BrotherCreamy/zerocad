@@ -21,7 +21,7 @@
 import { Model, type JournalEntry } from "./model.ts";
 import * as basic from "./relations/basic.ts";
 import * as geom from "./relations/geometry.ts";
-import { extrude, fillet, set } from "./operations.ts";
+import { extrude, fillet, revolve, set } from "./operations.ts";
 import type { ToolSource } from "./toolsource.ts";
 import { freshName, planeTranslation } from "./planetranslation.ts";
 
@@ -110,6 +110,10 @@ export const FORMAT = "neocad-model";
  * *at the step*, naming the op it does not know — not misread, which is the
  * break a version is for. The deletion ops set the precedent when they were
  * added the same way.
+ *
+ * **Nor did revolve** (3D phase 5), for the same reasons: one new op,
+ * `revolve`, whose end face is ordinary points, curves and frames in `values`,
+ * and whose surface is drawn, never saved.
  */
 export const VERSION = 7;
 
@@ -200,6 +204,10 @@ function replayTable(model: Model): Map<string, (...args: unknown[]) => unknown>
     // Journalled with its profile resolved (see `extrude`), so a replay walks
     // the loops it is handed and never looks for one among the seeds.
     extrude: rel(extrude),
+    // The same, about an axis — and given its loops it asks no question about
+    // positions either, so the geometric refusals the call made are not re-made
+    // against seeds (see `revolve`).
+    revolve: rel(revolve),
     // `set` is journalled as the one call the user made, like every operation,
     // so replaying it re-runs the edit rather than the dimension it rebuilt.
     set: rel(set),

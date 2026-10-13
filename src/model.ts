@@ -210,14 +210,15 @@ function noFramesIn(dim: number): string {
  * owns the namespace, and a relation authored at the command line gets `r`
  * without having to know any of this exists.
  */
-export const DIMENSION_OPS: ReadonlySet<string> = new Set(["dist", "radius", "angle", "extrusion"]);
+export const DIMENSION_OPS: ReadonlySet<string> = new Set(["dist", "radius", "angle", "extrusion", "revolution"]);
 
 /**
  * Which index of a dimension's recorded `args` holds its value. An
- * `extrusion` is `[frame, depth, …pairs]`: its value sits second so that it is
- * at a fixed place however many pairs follow it.
+ * `extrusion` is `[frame, depth, …pairs]` and a `revolution` `[axis, angle,
+ * …pairs]`: the value sits second so that it is at a fixed place however many
+ * pairs follow it.
  */
-const VALUE_ARG: Record<string, number> = { dist: 2, radius: 1, angle: 2, extrusion: 1 };
+const VALUE_ARG: Record<string, number> = { dist: 2, radius: 1, angle: 2, extrusion: 1, revolution: 1 };
 
 /** The name prefix a relation made by `op` claims. See `DIMENSION_OPS`. */
 export function relationPrefix(op: string): string {
@@ -378,8 +379,58 @@ export interface ExtrudeFeature {
   owns: string[];
 }
 
-/** Every kind of feature there is. One, for now; revolve is the next. */
-export type FeatureEntry = ExtrudeFeature;
+/**
+ * A revolve: a closed profile turned about an axis lying in its plane.
+ *
+ * Unlike an extrude, most of a revolve is **not** geometry. There is no finite
+ * set of entities that *is* a surface of revolution, so the swept surface is
+ * drawn from the live profile every frame (see faces.ts) and stored nowhere.
+ * What is real is what can be: the profile (the user's, untouched), the axis
+ * (read as a datum — a revolve never pushes it), one `revolution` dimension
+ * carrying the angle, and — for a partial revolve only — the **end face**: a
+ * twin of every profile corner and member, turned through the angle about the
+ * axis and held there by the dimension, so `set("dN.value", θ)` swings it and
+ * a sketch can be constrained against it. A full turn has no end face, so it
+ * makes no twins and its dimension holds nothing; see `revolve` in
+ * operations.ts for why a `set` on it refuses.
+ *
+ * `names`/`owns` mean exactly what they mean for an extrude — the deletion
+ * cascade reads only those two — and the axis's frame or line is among the
+ * names, since the solid was built on it.
+ */
+export interface RevolveFeature {
+  kind: "revolve";
+  name: string;
+  /** The member the call named — how the profile was asked for. */
+  member: string;
+  /** The profile's sketch frame: its plane holds the profile and the axis. */
+  frame: string;
+  /** What it turns about: a frame-axis reference (`"f1.y"`) or a line's name. Read as a datum. */
+  axis: string;
+  /** The `revolution` dimension carrying the angle (radians) — what `set("dN.value", …)` edits. */
+  angle: string;
+  /** The profile, as an extrude's: the loop turned, then every loop inside it, members in walk order. */
+  loops: string[][];
+  /** Partial only: each base member's twin on the end face, parallel to `loops`. Empty for a full turn. */
+  twins: string[][];
+  /** Partial only: the end face's frame — the sketch frame turned through the angle. Null for a full turn. */
+  end: string | null;
+  /** Everything the record refers to. See `ExtrudeFeature`. */
+  names: string[];
+  /** The part of `names` the feature made, which deleting it takes. */
+  owns: string[];
+}
+
+/** Every kind of feature there is. */
+export type FeatureEntry = ExtrudeFeature | RevolveFeature;
+
+/**
+ * A feature's record as an operation hands it over — everything but the name
+ * `addFeature` gives it. Distributed over the kinds (`Omit` on a union keeps
+ * only the fields every member shares, which would lose an extrude's walls).
+ */
+type WithoutName<F> = F extends unknown ? Omit<F, "name"> : never;
+export type FeatureDraft = WithoutName<FeatureEntry>;
 
 export class Model {
   problem = new Problem();
@@ -626,21 +677,30 @@ export class Model {
    * guarantee it, because a record naming nothing is a renderer that throws and
    * a deletion that cannot find what it was told to take.
    */
-  addFeature(feature: Omit<FeatureEntry, "name">): FeatureEntry {
+  addFeature(feature: FeatureDraft): FeatureEntry {
     for (const n of feature.names) {
       if (!this.entities.has(n) && !this.relations.has(n)) throw new Error(`a feature cannot name "${n}" — there is no such thing`);
     }
     const named = new Set(feature.names);
     for (const n of feature.owns) if (!named.has(n)) throw new Error(`a feature cannot own "${n}" without naming it`);
     const name = this.claimName("e");
-    const entry: FeatureEntry = { ...feature, name };
+    const entry = { ...feature, name } as FeatureEntry;
     this.features.set(name, entry);
     return entry;
   }
 
-  featureOf(name: string): FeatureEntry {
+  /**
+   * The feature called `name` — of the given kind, when one is asked for, so a
+   * caller that needs an extrude's walls or a revolve's axis is told plainly
+   * when the name is the other kind, rather than reading a field that is not
+   * there.
+   */
+  featureOf(name: string): FeatureEntry;
+  featureOf<K extends FeatureEntry["kind"]>(name: string, kind: K): Extract<FeatureEntry, { kind: K }>;
+  featureOf(name: string, kind?: FeatureEntry["kind"]): FeatureEntry {
     const f = this.features.get(name);
     if (!f) throw new Error(`"${name}" is not a feature`);
+    if (kind !== undefined && f.kind !== kind) throw new Error(`"${name}" is ${f.kind === "extrude" ? "an extrude" : "a revolve"}, not ${kind === "extrude" ? "an extrude" : "a revolve"}`);
     return f;
   }
 
@@ -1168,8 +1228,8 @@ export class Model {
 
   /**
    * Removes one relation and the residual blocks it added. Refuses while a
-   * feature's record names it — an extrude's depth — for `deleteEntity`'s
-   * reason: the record would be left naming nothing.
+   * feature's record names it — an extrude's depth, a revolve's angle — for
+   * `deleteEntity`'s reason: the record would be left naming nothing.
    */
   deleteRelation(name: string): void {
     const r = this.relationOf(name);

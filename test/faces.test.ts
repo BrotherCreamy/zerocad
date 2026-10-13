@@ -41,7 +41,7 @@ function box(d = 20, corners: number[][] = [[0, 0, 0], [40, 0, 0], [40, 30, 0], 
   const lines = pts.map((p, i) => m.addLine(p, pts[(i + 1) % pts.length]).name);
   for (const p of pts) onPlane(m, p, "f");
   const e = extrude(m, lines[0], d);
-  return { m, lines, f: m.featureOf(e) };
+  return { m, lines, f: m.featureOf(e, "extrude") };
 }
 
 const ABOVE: View = { ox: 400, oy: 300, scale: 4 };
@@ -83,7 +83,7 @@ test("seen from straight above only the lid is drawn — square on, at full shad
   assert.equal(drawn.length, 1);
   assert.equal(drawn[0].kind, "lid");
   assert.equal(drawn[0].shade, 1);
-  const lid = m.featureOf(f.name).twins[0].map((l) => m.line(l).refs[0]);
+  const lid = m.featureOf(f.name, "extrude").twins[0].map((l) => m.line(l).refs[0]);
   const want = lid.map((p) => worldToScreen(ABOVE, m.coords(p)));
   for (const p of want) assert.ok(drawn[0].outlines[0].some((q) => Math.hypot(q[0] - p[0], q[1] - p[1]) < 1e-9));
 });
@@ -125,7 +125,7 @@ test("a curved wall is a strip of quads at the curve's drawing resolution, each 
   const pts = [[0, 0, 0], [40, 0, 0], [40, 30, 0], [0, 30, 0]].map((c) => m.addPoint(c).name);
   const lines = pts.map((p, i) => m.addLine(p, pts[(i + 1) % 4]).name);
   const arc = fillet(m, lines[0], lines[1], 8);
-  const f = m.featureOf(extrude(m, lines[0], 20));
+  const f = m.featureOf(extrude(m, lines[0], 20), "extrude");
   const scale = 4;
   const walls = featureFaces(m, f, scale).filter((x) => x.kind === "wall");
   const n = arcSegments(Math.PI / 2, 8 * scale);
@@ -146,7 +146,7 @@ test("a hole's walls face into the hole, an island's out of it — and even-odd 
   const c = m.addPoint([30, 25, 0]).name;
   const hole = m.addCircle(c, 15, "f").name;
   const island = m.addCircle(c, 5, "f").name;
-  const f = m.featureOf(extrude(m, lines[0], 20));
+  const f = m.featureOf(extrude(m, lines[0], 20), "extrude");
   assert.deepEqual(f.loops, [lines, [hole], [island]]);
 
   const scale = 3;
@@ -185,7 +185,7 @@ test("a cap is drawn after every wall of its own — a grazing view where its ce
   const pts = [[0, 0, 0], [120, 0, 0], [120, 30, 0], [0, 30, 0]].map((c) => m.addPoint(c).name);
   const lines = pts.map((p, i) => m.addLine(p, pts[(i + 1) % 4]).name);
   m.addCircle(m.addPoint([105, 15, 0]).name, 10, "f");
-  const f = m.featureOf(extrude(m, lines[0], 40));
+  const f = m.featureOf(extrude(m, lines[0], 40), "extrude");
   let centroidWouldFail = false;
   for (const [yaw, pitch] of [[1.2, 0.2], [-1.3, 0.25], [1.45, 0.1], [0.4, 0.3]]) {
     const view = orbitBy(ABOVE, yaw, pitch);
@@ -273,7 +273,7 @@ test("the extrude tool: hovering inside outlines the region, a click there extru
   tool.onDown({ world: [5, 5, 0], screen: at(5, 5) });
   assert.equal(ctx.finished, true);
   assert.equal(ctx.solves, 1);
-  const f = m.featureOf("e1");
+  const f = m.featureOf("e1", "extrude");
   assert.deepEqual(f.loops, [lines, [hole], [island]], "between the outline and the hole: the outline, with its hole and the hole's island");
   assert.deepEqual(m.journal.at(-1), { op: "extrude", args: [lines[0], 12, "f", [lines, [hole], [island]]] });
 });
@@ -284,7 +284,7 @@ test("a click on the island takes the island; a click in the ring takes the hole
     const r = ringed();
     const ctx = toolCtx(r.m, ABOVE);
     new ExtrudeTool(ctx).onDown({ world: [x, 25, 0], screen: worldToScreen(ABOVE, [x, 25, 0]) });
-    const f = r.m.featureOf("e1");
+    const f = r.m.featureOf("e1", "extrude");
     assert.deepEqual(f.loops, want === "island" ? [[r.island]] : [[r.hole], [r.island]]);
     assert.equal(r.m.relationOf(f.depth).args[1], 10, "no depth armed: the default");
   }

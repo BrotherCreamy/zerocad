@@ -40,10 +40,11 @@
 //     much larger piece of work with its own failure modes (labels that jump
 //     about as the drawing solves being the obvious one).
 
-import { referentOf, type Model, type RelationEntry } from "./model.ts";
+import { parseAxisRef, referentOf, type Model, type RelationEntry } from "./model.ts";
 import { viewAxes, worldToScreen, type View } from "./view.ts";
-import { dot3, lift3 } from "./vec3.ts";
+import { dot3, lift3, sub3 } from "./vec3.ts";
 import { curvePlaneOf } from "./curveplane.ts";
+import { axisReader, turnPoint } from "./relations/revolution.ts";
 
 /** How far a glyph sits from its anchor, in screen pixels. */
 export const GLYPH_OFFSET = 15;
@@ -219,6 +220,12 @@ export function labelFor(op: string, args: unknown[]): string | null {
       const v = args[1];
       return typeof v === "number" ? formatValue(v) : null;
     }
+    case "revolution": {
+      // A revolve's angle, as `ang`'s is written and for `ang`'s reasons:
+      // radians stored, degrees drawn.
+      const v = args[1];
+      return typeof v === "number" ? `${formatValue((v * 180) / Math.PI)}°` : null;
+    }
     default:
       return null;
   }
@@ -373,6 +380,27 @@ function atVertex(model: Model, view: View, l1Name: string, l2Name: string): Anc
   return { world: v, dir };
 }
 
+/**
+ * Where a revolve's angle goes: halfway round the path the first profile
+ * corner sweeps — the arc a draughtsman would dimension, though nothing draws
+ * it but the faces — nudged outward, away from the axis. A full turn names no
+ * corners (it holds nothing; see `revolution`), so its label sits beside the
+ * axis it turns about: a frame axis at the frame's origin, a line at its middle.
+ */
+function atRevolution(model: Model, view: View, axis: string, angle: unknown, first: unknown): Anchor {
+  const ax = axisReader(model, axis).read();
+  if (typeof angle === "number" && typeof first === "string" && model.entities.get(first)?.kind === "point") {
+    const p = model.coords(first);
+    const world = turnPoint(p, ax, angle / 2);
+    const v = sub3(lift3(world), ax.origin);
+    const foot = ax.origin.map((o, i) => o + dot3(v, ax.dir) * ax.dir[i]);
+    return { world, dir: dirBetween(view, foot, world) };
+  }
+  const ref = parseAxisRef(axis);
+  if (ref) return atPoint(model, model.frame(ref.frame).origin);
+  return { ...atLineMid(model, view, axis), ends: undefined };
+}
+
 /** The one string argument that names something the model still holds. */
 function firstNamed(model: Model, r: RelationEntry): string | null {
   for (const a of r.args) if (typeof a === "string" && model.entities.has(a)) return a;
@@ -480,6 +508,8 @@ function anchorsFor(model: Model, view: View, r: RelationEntry): Anchor[] {
     // like a `dist`, so the depth reads as the length of an edge you can see.
     case "extrusion":
       return [atSegmentMid(model, view, str(args[2]), str(args[3]))];
+    case "revolution":
+      return [atRevolution(model, view, str(args[0]), args[1], args[2])];
     default: {
       const name = firstNamed(model, r);
       return name ? [atEntity(model, view, name)] : [];

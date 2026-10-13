@@ -176,17 +176,27 @@ export function describePick(model: Model, pick: Pick): string {
 /**
  * One line for a feature — what `ls()` prints and what the hover tag adds to
  * any piece of one: `e1  extrude of l1,a1,l2,l3,l4 + 1 inside, depth d9 = 20
- * along f1, lid f2`. A face is never under the cursor (faces do not pick — see
+ * along f1, lid f2`, or `e2  revolve of l5,l6,l7,l8, angle d10 = 270° about
+ * f1.y, end f3`. A face is never under the cursor (faces do not pick — see
  * faces.ts), so a feature is reached through its pieces: hovering a wall, a
  * twin, a profile member or the depth's label ends the tag with `· e1`, and
  * `ls()` says what `e1` is.
  */
 export function describeFeature(model: Model, f: FeatureEntry): string {
   const inner = f.loops.length - 1;
+  const profile = `${f.loops[0].join(",")}${inner ? ` + ${inner} inside` : ""}`;
+  const round = (v: number) => Math.round(v * 1000) / 1000;
+  if (f.kind === "revolve") {
+    // Degrees, as the label on the drawing says it; `rels()` has the radians a
+    // `set` takes. A full turn says so, since it is the one that has no end.
+    const r = model.relations.get(f.angle);
+    const value = r && typeof r.args[1] === "number" ? ` = ${round((r.args[1] * 180) / Math.PI)}°` : "";
+    return `${f.name}  revolve of ${profile}, angle ${f.angle}${value} about ${f.axis}, `
+      + (f.end === null ? "a full turn" : `end ${f.end}`);
+  }
   const r = model.relations.get(f.depth);
-  const value = r && typeof r.args[1] === "number" ? ` = ${Math.round(r.args[1] * 1000) / 1000}` : "";
-  return `${f.name}  extrude of ${f.loops[0].join(",")}${inner ? ` + ${inner} inside` : ""}, `
-    + `depth ${f.depth}${value} along ${f.frame}, lid ${f.top}`;
+  const value = r && typeof r.args[1] === "number" ? ` = ${round(r.args[1])}` : "";
+  return `${f.name}  extrude of ${profile}, depth ${f.depth}${value} along ${f.frame}, lid ${f.top}`;
 }
 
 /** The features a piece belongs to, for the end of the hover tag. */
@@ -220,6 +230,14 @@ export function describeRelation(r: RelationEntry): string {
   // of them typed. What a reader wants is the number and the direction.
   if (r.op === "extrusion") {
     return `${r.name}  extrusion ${arg(r.args[1])} along ${arg(r.args[0])}.z, ${(r.args.length - 2) / 2} pairs`;
+  }
+  // A revolve's angle likewise — in the radians `set` takes, with the degrees
+  // its label shows beside them, so the line answers "what do I type".
+  if (r.op === "revolution") {
+    const a = r.args[1];
+    const deg = typeof a === "number" ? ` (${Math.round((a * 180) / Math.PI * 1000) / 1000}°)` : "";
+    const pairs = (r.args.length - 2) / 2;
+    return `${r.name}  revolution ${arg(a)}${deg} about ${arg(r.args[0])}, ${pairs ? `${pairs} pairs` : "a full turn"}`;
   }
   return `${r.name}  ${SHORT_OP[r.op] ?? r.op} ${r.args.map(arg).join(" ")}`.trimEnd();
 }

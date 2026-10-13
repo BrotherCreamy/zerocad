@@ -17,7 +17,7 @@ import type { SolveReport } from "./kernel/problem.ts";
 import { Tool, defineTool, listTools, type ToolCtor } from "./tools/tool.ts";
 import * as basic from "./relations/basic.ts";
 import * as geom from "./relations/geometry.ts";
-import { del, extrude, fillet, set } from "./operations.ts";
+import { del, extrude, fillet, revolve, set } from "./operations.ts";
 import { save as saveModel, savedTools } from "./persist.ts";
 import { carryIntoSession, toolSources, type ToolSourceStore } from "./toolsource.ts";
 import { alignView, assignView, orbitBy, panBy, screenToWorld, zoomAbout, type View } from "./view.ts";
@@ -408,6 +408,15 @@ export function neocadScope(h: EnvHandles): Bag {
     extrude: (member: string, depth?: number | null, frame?: string | null, loops?: string[][] | null) =>
       extrude(model, member, depth ?? null, frame ?? null, loops ?? null),
     /**
+     * Revolves the closed loop a member is in about an axis — `revolve("l1",
+     * "f1.y", Math.PI)`, or `yaxis()` for the default frame's — through an angle
+     * in radians, a whole turn when left out, and returns the feature's name.
+     * The axis is a frame's axis or a line, read and never moved. `frame` and
+     * `loops` are extrude's. See operations.ts.
+     */
+    revolve: (member: string, axis: string, angle?: number | null, frame?: string | null, loops?: string[][] | null) =>
+      revolve(model, member, axis, angle ?? null, frame ?? null, loops ?? null),
+    /**
      * Changes a dimension's value — `set("d4.value", 60)` — rebuilding it in
      * place under the same name. See operations.ts for why it is an operation
      * and what the unit is (radians for `ang`).
@@ -558,8 +567,8 @@ export function neocadScope(h: EnvHandles): Bag {
     },
 
     solve: () => (h.solve ? h.solve() : model.solve()),
-    // Entities, then features — `e1  extrude of …` — since a feature is a
-    // named thing `del` takes as surely as an entity.
+    // Entities, then features — `e1  extrude of …`, `e2  revolve of …` —
+    // since a feature is a named thing `del` takes as surely as an entity.
     ls: () => [
       ...[...model.entities.values()].map((e) => describe(e, model)),
       ...[...model.features.values()].map((f) => describeFeature(model, f)),
@@ -701,6 +710,12 @@ function help(scope: Bag): string {
     '           a click inside a region: arm("extrude", { depth: 20 }).',
     '           del("e1") removes the solid and keeps its sketch; deleting any',
     "           piece of it takes only the feature's record (its faces).",
+    "           revolve(member, axis, angle?, frame?) — the same loop turned",
+    '           about an axis in its plane ("f1.y", yaxis(), or a line), angle',
+    "           in radians, a whole turn when left out. A partial revolve has a",
+    "           real end face, held by one angle dimension that set swings",
+    "           (radians; its label reads degrees); a full one has none, and",
+    "           turning it partial is a new revolve, not a set.",
     "files      save()  open(text)  download(name)  openFile()  journal()",
     "           a file carries the source of tools you defined here, as text:",
     "           open() never runs it, toolSource(name) prints it, and pasting",
