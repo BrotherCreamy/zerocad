@@ -268,19 +268,25 @@ export function extrude(model: Model, member: string, depth?: number | null, fra
  * frame orients the loop — see `extrude`.
  */
 export function profileOf(model: Model, all: Loop[], index: number, frame?: string | null): Profile {
-  const loop = all[index];
-  const f = frame ?? sketchFrameOf(model, loop);
-  // Every descendant, not only the children: a hole's island is part of the
-  // region too, and even-odd decides it is solid.
+  const f = frame ?? sketchFrameOf(model, all[index]);
+  return { frame: f, loops: regionOf(all, index).map((i) => all[i].members.map((m) => m.name)) };
+}
+
+/**
+ * The region a loop bounds, as indices into `all`: the loop, then every loop
+ * inside it in `findLoops` order. Every descendant, not only the children — a
+ * hole's island is part of the region too, and even-odd decides it is solid.
+ * What an extrude takes, and what the tool outlines before the click.
+ */
+export function regionOf(all: Loop[], index: number): number[] {
   const inner: number[] = [];
-  const queue = [...loop.children];
+  const queue = [...all[index].children];
   while (queue.length) {
     const i = queue.shift()!;
     inner.push(i);
     queue.push(...all[i].children);
   }
-  inner.sort((a, b) => a - b);
-  return { frame: f, loops: [index, ...inner].map((i) => all[i].members.map((m) => m.name)) };
+  return [index, ...inner.sort((a, b) => a - b)];
 }
 
 /** The frames to try, the default first and then in creation order — loops.ts's preference. */

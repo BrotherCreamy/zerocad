@@ -8,6 +8,7 @@
 // example the interface was designed around.
 
 import type { Model } from "../model.ts";
+import type { Loop } from "../loops.ts";
 import type { Pick } from "../picking.ts";
 import type { Snap } from "../snapping.ts";
 import type { Plane } from "../view.ts";
@@ -63,6 +64,14 @@ export interface ToolContext {
    */
   pick?(screen: [number, number]): Pick | null;
   /**
+   * The closed region a screen point is inside, if any — `pick`'s question
+   * asked of regions rather than entities (see ../loops.ts: the innermost loop
+   * whose inside the pixel's ray meets, then the nearest). `loops` is every
+   * loop `findLoops` found and `index` the one under the point, so its
+   * `children` mean something. Absent outside a viewport, like `pick`.
+   */
+  regionAt?(screen: [number, number]): { loops: Loop[]; index: number } | null;
+  /**
    * One line to the user, in the app's log pane. This is how a tool refuses a
    * gesture out loud: a `throw` from a pointer handler reaches the page as an
    * uncaught error nobody sees explained, and `console.warn` reaches nobody
@@ -75,6 +84,13 @@ export interface ToolContext {
 
 export abstract class Tool {
   abstract readonly name: string;
+  /**
+   * Whether the engine pulls this tool's cursor onto nearby geometry and draws
+   * the snap marker. True for everything that places points; false for a tool
+   * that chooses a *region* (extrude), where a marker saying "this click goes
+   * to that vertex" would be a promise the click does not keep.
+   */
+  readonly snaps: boolean = true;
   ctx: ToolContext;
 
   constructor(ctx: ToolContext) {

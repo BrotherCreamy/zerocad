@@ -7,6 +7,66 @@ decisions.
 
 ---
 
+## Extrude, half 2: shaded faces, and a click inside a region
+
+![A filleted block with a round hole through it, an island standing in the hole and a small boss on its lid, seen from above at three-quarters: the lid is the lightest face, the side walls darker, the hole shows its curved inner wall shading round and the background through its far end, and the sketch's edges, points and the labels 35, R8 and 10 are drawn crisply over the faces](docs/images/61-a-shaded-solid-with-a-hole-an-island-and-a-boss.png)
+
+**3D phase 4, half 2** — what the solid looks like, and the gesture that makes
+one. The extrude above was made by **one click inside the profile**; its depth
+was then `set` to 35 from the command line; the boss is a circle sketched *on
+the lid*, on the lid's own frame, and extruded 10 by another click.
+
+| | |
+|---|---|
+| ![The extrude tool armed over a tilted sketch: the profile under the cursor — a filleted rectangle with a hole and an island — is outlined in green and faintly tinted, the ring between the hole and the island left clear](docs/images/60-the-extrude-tool-outlines-the-region.png) | ![The same solid looked at straight down the lid: the lid is one flat slate face, the ring of the hole is black right through, and the island in the hole is filled — even-odd](docs/images/62-even-odd-seen-down-the-lid.png) |
+| ![Close up on the hole and the boss: the hole's far wall shades from light to dark round the curve in thin bands, the island's own cylinder recedes into the hole, and the boss stands off the lid with its side shaded round](docs/images/63-curved-walls-shade-round.png) | |
+
+**`arm("extrude", { depth: 20 })`, then click inside a region.** The region under
+the cursor is outlined as it moves — the loop and every loop inside it, filled
+faintly even-odd so the holes stay clear — exactly the profile a click would
+take (`loopAt`: the innermost loop, then the nearest). A click on nothing says
+so in the log and the tool stays armed. This is the app's first click-inside
+behaviour and it lives in the tool only: with nothing armed, a click inside a
+region still picks nothing and a press there still starts a box. The tool asks
+the engine for no snap (`Tool.snaps`), since a vertex marker would promise a
+click it does not keep.
+
+**Faces are read off the live geometry every frame** (`src/faces.ts`): two caps,
+each one even-odd path of every profile loop — so a hole is empty and an island
+in a hole is solid with no triangulation — and a wall per member, a quad for a
+line and a strip of quads for an arc or circle at the resolution the curve is
+drawn at. Each face's outward normal is *worked out*, from the loop's winding and
+how deep it is nested, so a profile drawn clockwise faces out just the same.
+
+**Painter's per face, back faces culled, lit from the eye.** Faces sort far to
+near and the ones facing away are not drawn; each is shaded by Lambert's cosine
+with the light along the line of sight — a headlight, because there is no world
+to hang a light in. A wall sorts by its centroid; a **cap by its nearest point**:
+nothing of a prism is in front of its visible cap's plane, and by its centroid a
+cap seen at a grazing angle sorted behind its own hole's far wall, which then
+painted over the cap wherever it showed past the opening (seen in a screenshot;
+pinned by a test that fails under the centroid key). The surface tones are the
+app's panel slates, dim enough that edges, points and labels — **drawn after the
+faces, hidden ones included** — stay the foreground.
+
+**Faces never pick, snap, box or wear a glyph.** The pieces of a solid do, as
+before; a face is display.
+
+600 unit tests (from 584), 210 end-to-end (from 207). The e2e makes the solid
+with the tool's click, reads the canvas's own pixels looking straight down the
+lid (the cap's square-on colour, nothing at all in the hole's ring, the island
+filled), sketches and extrudes the boss on the lid, checks that every cap is
+drawn after its own walls in a turned view, and round-trips the file with both
+solids in it.
+
+**Known and deliberate:** hidden edges show through faces (the spec's order —
+faces first, entities on top); per-face painter's is still a sort, so two
+separate solids interpenetrating can draw wrong where they cross; a face is not
+a target, so extruding a face of a solid means clicking inside the loop of its
+edges, and a wall's loop has no frame to extrude along until one is made on it.
+
+---
+
 ## Extrude, the model half: a loop becomes a lid, held by one depth
 
 ![A filleted rectangle with a hole and an island in it, drawn on a tilted sketch and extruded 20 along the sketch's +z, seen obliquely as a wireframe: the lid is a second copy of the outline, arc and both circles, five wall lines join the corners, the lid frame f2 sits 20 above the sketch frame f1, and a dimension label 20 with dashed witness lines stands beside the first wall](docs/images/59-extrude-the-lid-and-its-walls.png)
