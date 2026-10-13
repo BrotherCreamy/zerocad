@@ -768,6 +768,22 @@ are flagged as such.
 Queue for Opus, in order. Each gets a spec in `docs/plans/` before work
 starts.
 
+- [ ] **Sketch on a solid's face.** The one-model design makes it one step:
+      a command/menu item that makes a frame ON a picked face's plane (faces
+      will need to pick first — today they deliberately don't). Unlocks
+      stacked features drawn in place rather than by typing a frame.
+- [ ] **Regions under crossings and Ts** — the two ⚠ loop policies (a
+      crossing or an `on`-T splits nothing) deviate from Onshape, which
+      subdivides regions; extrude is where a user will feel it. Wants a
+      loops.ts extension, not a redesign.
+- [ ] **Display depth done right.** The 355° cap limit, hidden edges showing
+      through faces, and interpenetrating solids all trace to painter's
+      sorting. The honest fix is a real depth pass (BSP split or a WebGL
+      conversion of faces.ts's output). Measure before choosing.
+- [ ] **Feature regeneration** when a profile is restructured after the
+      feature (today: documented no-op).
+- [ ] **Face-on arcs snap as their whole circle** — parked decision from
+      phase 3, measured consequence recorded there.
 - [x] **Saving user-authored tools** — done (2026-09-03), on format version 4
       without bumping it: an optional `tools: {name, source}[]` beside the
       journal, captured by a wrapper around `defineTool` in `replenv.ts` from
