@@ -1,14 +1,17 @@
 // 3D phase 4 in a browser: a profile drawn with the real tools on a tilted
-// sketch, extruded, its depth set, undone, and saved.
+// sketch, extruded by a click inside it, its depth set, looked at, sketched
+// on, undone, and saved.
 //
 // The unit suite has the mathematics; what only the assembled app can say is
 // whether a profile drawn the way a person draws one — the rectangle, fillet
 // and circle tools on a tilted plane, plus an island typed into the hole —
-// extrudes into the solid its own coordinates say it should, whether `set`
-// typed at the command line moves the lid and the header stays honest, whether
-// one Ctrl+Z takes the whole feature away, and whether the file reopens.
-// Every position is checked against the drawing's own coordinates and the
-// sketch frame's +z computed here, never against `solved: true`.
+// extrudes, from one click inside it, into the solid its own coordinates say;
+// whether `set` typed at the command line moves the lid; whether the *pixels*
+// are what even-odd promises (looking square-on down the lid: material filled,
+// the hole's ring showing straight through, the island solid); whether a
+// sketch on the lid extrudes again; whether one Ctrl+Z takes a whole feature
+// away; and whether the file reopens. Positions are checked against the
+// drawing's own coordinates and the sketch frame's +z computed here.
 //
 // One app, tests in order: the states are cumulative.
 
@@ -30,7 +33,8 @@ const G_O = [10, 5, 6];
 const G_X = [Math.cos(A), 0, Math.sin(A)];
 const G_Y = [-Math.sin(A) * Math.sin(B), Math.cos(B), Math.cos(A) * Math.sin(B)];
 const G_Z = [G_X[1] * G_Y[2] - G_X[2] * G_Y[1], G_X[2] * G_Y[0] - G_X[0] * G_Y[2], G_X[0] * G_Y[1] - G_X[1] * G_Y[0]];
-const onG = (u: number, v: number) => G_O.map((o, i) => o + u * G_X[i] + v * G_Y[i]);
+/** A point of the sketch at (u, v), lifted `w` along its +z — w = 35 is the lid once the depth is set. */
+const onG = (u: number, v: number, w = 0) => G_O.map((o, i) => o + u * G_X[i] + v * G_Y[i] + w * G_Z[i]);
 
 async function leftDrag(a: [number, number], b: [number, number]): Promise<void> {
   const p = await app.at(...a), q = await app.at(...b);
@@ -47,6 +51,12 @@ async function clickAt(sx: number, sy: number): Promise<void> {
   await app.page.waitForTimeout(150);
 }
 
+async function moveTo(sx: number, sy: number): Promise<void> {
+  const at = await app.at(sx, sy);
+  await app.page.mouse.move(at.x, at.y, { steps: 3 });
+  await app.page.waitForTimeout(120);
+}
+
 async function key(combo: string): Promise<void> {
   await app.page.fill("#cmd", "");
   await app.page.keyboard.press(combo);
@@ -58,6 +68,40 @@ async function saved(): Promise<string> {
   assert.equal(r.ok, true, r.error ?? "");
   return r.value as string;
 }
+
+/** The canvas's own pixel at (sx, sy), as drawn — alpha 0 where nothing was. */
+const pixel = (sx: number, sy: number): Promise<number[]> => app.page.evaluate(([x, y]) => {
+  const cv = document.getElementById("cv") as HTMLCanvasElement;
+  const dpr = devicePixelRatio || 1;
+  return [...cv.getContext("2d")!.getImageData(Math.round(x * dpr), Math.round(y * dpr), 1, 1).data];
+}, [sx, sy]);
+
+/** faces.ts's fill for a face square to the viewer, read from the module the app runs. */
+const squareOnFill = (): Promise<number[]> => app.page.evaluate(async () => {
+  const path = "/src/faces.ts";
+  const { FACE_LIGHT } = await import(path);
+  return [...FACE_LIGHT, 255];
+});
+
+/**
+ * The first of `candidates` (lid points) whose pixel nothing pickable is
+ * over — no point, edge or mark within reach, as the app itself says through
+ * `hover()`. Sketch geometry seen through a solid crosses its faces, so a
+ * probe is chosen from a few rather than hardcoded onto one that a mark
+ * happens to cover.
+ */
+async function clearSpot(candidates: number[][]): Promise<[number, number] | null> {
+  for (const w of candidates) {
+    const at = await app.screenOf(w);
+    await moveTo(...at);
+    if ((await app.repl("hover()")).value === null) return at;
+  }
+  return null;
+}
+
+/** Points of the lid at radius r about (cu, cv), at a few angles. */
+const around = (cu: number, cv: number, r: number) =>
+  [135, 45, 225, 315, 180, 90, 270, 0].map((deg) => onG(cu + r * Math.cos((deg * Math.PI) / 180), cv + r * Math.sin((deg * Math.PI) / 180), 35));
 
 interface SeenFeature {
   name: string; loops: string[][]; twins: string[][]; walls: string[]; top: string; depth: string; owns: string[];
@@ -77,6 +121,16 @@ const features = (): Promise<SeenFeature[]> => app.page.evaluate(() => {
     return { ...f, pairs, value: args[1] as number };
   });
 });
+
+/** Every point twin of a feature sits at its base plus `depth` along +z. */
+async function lidAt(f: SeenFeature, depth: number): Promise<void> {
+  const m = await app.model();
+  for (const [base, twin] of f.pairs) {
+    if (!(base in m.points)) continue; // a radius pair
+    const off = sub(m.points[twin], m.points[base]);
+    assert.ok(dist3(off, G_Z.map((z) => depth * z)) < 1e-6, `${twin} is ${base} + ${depth}·z: ${off}`);
+  }
+}
 
 let outline: string[] = [];
 let hole = "";
@@ -103,14 +157,28 @@ test("on a tilted sketch: a rectangle, a filleted corner and a hole from the too
   await app.type(`ic = ${at(onG(48, 25))}; onplane(ic); island = circ(ic, 4)`);
   island = (await app.repl("island")).value as string;
   assert.equal(await app.status(), "SOLVED");
-  await app.type("orbit(0.5, -0.35)");
+  await app.type("orbit(0.5, 0.35)");
   beforeExtrude = await saved();
 });
 
-test('extrude("l1", 20) typed: one feature, the hole and the island in its profile, every twin its base plus 20 along the sketch\'s +z', async () => {
+test("the extrude tool: the region under the cursor is outlined; a click on nothing is refused aloud; a click inside extrudes it, hole and island and all", async () => {
   const m0 = await app.model();
-  await app.type(`extrude("${outline[0]}", 20)`);
-  assert.match(await app.log(), /> extrude\("l1", 20\)e1/, "the entry printed the feature it made");
+  await app.type('arm("extrude", { depth: 20 })');
+
+  // Hovering between the hole and the outline tints the region green.
+  const inside = await app.screenOf(onG(36, 34));
+  await moveTo(...inside);
+  const tint = await pixel(...inside);
+  assert.ok(tint[1] > 35 && tint[1] > tint[0] + 15, `the preview's green under the cursor: ${tint}`);
+
+  // A click where there is no region says so, and the tool stays armed.
+  await clickAt(...await app.screenOf(onG(95, 25)));
+  assert.match(await app.log(), /extrude: no closed region under the click/);
+  assert.equal((await app.model()).activeTool, "extrude");
+  assert.deepEqual(await features(), []);
+
+  await clickAt(...inside);
+  assert.equal((await app.model()).activeTool, null, "one click, then the tool is done");
   assert.equal(await app.status(), "SOLVED");
   const [f] = await features();
   assert.equal(f.name, "e1");
@@ -118,35 +186,37 @@ test('extrude("l1", 20) typed: one feature, the hole and the island in its profi
   assert.equal(f.loops.length, 3, "the outline, the hole, the island");
   assert.deepEqual(f.loops[0].slice().sort(), [...outline, arc].sort());
   assert.deepEqual(f.loops.slice(1), [[hole], [island]]);
-  // Five corners have walls; circles have none.
-  assert.equal(f.walls.length, 5);
-
+  assert.equal(f.walls.length, 5, "five corners have walls; circles have none");
+  await lidAt(f, 20);
   const m = await app.model();
-  for (const [base, twin] of f.pairs) {
-    if (!(base in m.points)) continue; // a radius pair
-    const off = sub(m.points[twin], m.points[base]);
-    assert.ok(dist3(off, G_Z.map((z) => 20 * z)) < 1e-6, `${twin} is ${base} + 20·z: ${off}`);
-  }
-  // Nothing of the sketch moved.
   for (const [n, p] of Object.entries(m0.points)) assert.ok(dist3(m.points[n], p) < 1e-6, `${n} stayed`);
+  // Journalled as the call a typed extrude makes, with the profile resolved.
+  const last = await app.page.evaluate(() => (window as never as { __neocad: { model: { journal: { op: string; args: unknown[] }[] } } }).__neocad.model.journal.at(-1));
+  assert.equal(last!.op, "extrude");
+  assert.deepEqual(last!.args.slice(1, 3), [20, "f1"]);
   const ls = (await app.repl("ls()")).value as string[];
   assert.match(ls.at(-1)!, /^e1  extrude of .* \+ 2 inside, depth d\d+ = 20 along f1, lid f2$/);
 });
 
-test("set the depth from the command line: the lid moves to 35, the walls stretch, the header stays SOLVED", async () => {
+test("one Ctrl+Z takes the whole feature away, and Ctrl+Shift+Z puts it back", async () => {
+  const after = await saved();
+  await key("Control+z");
+  assert.deepEqual(await features(), []);
+  assert.equal(await saved(), beforeExtrude, "back to the sketch, byte for byte");
+  await key("Control+Shift+z");
+  assert.equal(await saved(), after);
+});
+
+test("set the depth from the command line: the lid moves to 35, the walls stretch, the label says 35", async () => {
   const [f] = await features();
   await app.type(`set("${f.depth}.value", 35)`);
   assert.equal(await app.status(), "SOLVED");
+  await lidAt(f, 35);
   const m = await app.model();
-  for (const [base, twin] of f.pairs) {
-    if (!(base in m.points)) continue;
-    assert.ok(dist3(sub(m.points[twin], m.points[base]), G_Z.map((z) => 35 * z)) < 1e-6, twin);
-  }
   for (const w of f.walls) {
     const l = m.lines.find((x) => x.name === w)!;
     assert.ok(Math.abs(dist3(m.points[l.refs[0]], m.points[l.refs[1]]) - 35) < 1e-6, `${w} is 35 long`);
   }
-  // The depth's label says so.
   const label = await app.page.evaluate((d) => {
     const { engine } = (window as never as { __neocad: { engine: { glyphs(): { relation: string; symbol: string }[] } } }).__neocad;
     return engine.glyphs().find((g) => g.relation === d)?.symbol;
@@ -154,57 +224,137 @@ test("set the depth from the command line: the lid moves to 35, the walls stretc
   assert.equal(label, "35");
 });
 
+test("looking straight down the lid, the pixels are even-odd: the cap is filled, the hole's ring shows straight through, the island is solid — and none of it picks", async () => {
+  const [f] = await features();
+  await app.type(`lookAt("${f.top}"); zoom(1.6)`);
+  const fill = await squareOnFill();
+  const probes: [string, number[][], "face" | "empty"][] = [
+    ["the cap, between the outline and the hole", [onG(36, 34, 35), onG(40, 15, 35), onG(64, 35, 35), onG(35, 20, 35)], "face"],
+    ["the ring between the hole and the island", around(48, 25, 6.5), "empty"],
+    ["the island", around(48, 25, 2.2), "face"],
+  ];
+  for (const [what, candidates, want] of probes) {
+    // Clear of every point, edge and mark: a face is under the cursor, and a
+    // face picks nothing.
+    const at = await clearSpot(candidates);
+    assert.ok(at, `somewhere on ${what} is clear of the drawing's marks`);
+    const px = await pixel(...at);
+    if (want === "face") assert.deepEqual(px, fill, `${what}: the lid's square-on fill`);
+    else assert.equal(px[3], 0, `${what}: nothing drawn, through both caps: ${px}`);
+  }
+
+  // With nothing armed, a click on a face is still a click on nothing: no
+  // name typed, no feature, no region selected.
+  const cap = await app.screenOf(onG(36, 34, 35));
+  await clickAt(...cap);
+  assert.equal(await app.page.$eval("#cmd", (el) => (el as HTMLInputElement).value), "");
+  assert.equal((await features()).length, 1);
+});
+
+test("a circle sketched on the lid, on the lid's own frame, extrudes again by a click inside it: a boss", async () => {
+  const [f] = await features();
+  await app.type(`setDefaultFrame("${f.top}")`);
+  await app.type("circle");
+  const c = await app.screenOf(onG(60, 33, 35));
+  await leftDrag(c, [c[0] - 3 * (await app.model()).view.scale, c[1]]);
+  const m = await app.model();
+  const boss = m.circles.at(-1)!;
+  assert.ok(Math.abs(m.radii[boss.name] - 3) < 1e-3, `radius 3: ${m.radii[boss.name]}`);
+  assert.ok(Math.abs(dot(sub(m.points[boss.center], onG(0, 0, 35)), G_Z)) < 1e-6, "on the lid's plane");
+
+  await app.type('arm("extrude", { depth: 10 })');
+  await clickAt(...await app.screenOf(onG(60.5, 33.5, 35)));
+  const all = await features();
+  assert.equal(all.length, 2);
+  const g = all[1];
+  assert.deepEqual(g.loops, [[boss.name]], "the innermost region under the click: the circle, not the lid round it");
+  await lidAt(g, 10);
+  const m2 = await app.model();
+  const twin = g.pairs.find(([b]) => b === boss.center)![1];
+  assert.ok(Math.abs(dot(sub(m2.points[twin], onG(0, 0, 45)), G_Z)) < 1e-6, "the boss's lid is 45 up");
+  assert.equal(await app.status(), "SOLVED");
+});
+
+test("turned, the solid is shaded: faces back to front, each cap after its own walls, a pixel of the lid its own shade", async () => {
+  await app.type("orbit(0.45, 0.4)");
+  const drawn = await app.page.evaluate(async () => {
+    const path = "/src/faces.ts";
+    const { facesToDraw } = await import(path);
+    const { model, engine } = (window as never as { __neocad: { model: unknown; engine: { view: unknown } } }).__neocad;
+    return (facesToDraw(model, engine.view) as { feature: string; kind: string; shade: number; depth: number }[])
+      .map((d) => ({ feature: d.feature, kind: d.kind, shade: d.shade, depth: d.depth }));
+  });
+  assert.ok(drawn.length > 10, `${drawn.length} faces`);
+  assert.ok(drawn.every((d) => d.shade > 0 && d.shade <= 1));
+  for (let i = 1; i < drawn.length; i++) assert.ok(drawn[i].depth >= drawn[i - 1].depth);
+  // Each solid's cap comes after all its own walls.
+  for (const fe of ["e1", "e2"]) {
+    const mine = drawn.map((d, i) => ({ ...d, i })).filter((d) => d.feature === fe);
+    const cap = mine.find((d) => d.kind !== "wall")!;
+    assert.ok(mine.every((d) => d.kind !== "wall" || d.i < cap.i), `${fe}'s cap is drawn after its walls`);
+  }
+  // A pixel of the lid's material, clear of every mark, is the lid's own
+  // fill at the lid's own shade — the cap drawn last, over its walls.
+  const lid = drawn.find((d) => d.feature === "e1" && d.kind === "lid")!;
+  const want = await app.page.evaluate(async (shade) => {
+    const path = "/src/faces.ts";
+    const { faceColour } = await import(path);
+    return [...(faceColour(shade) as string).match(/\d+/g)!.map(Number), 255];
+  }, lid.shade);
+  const at = await clearSpot([onG(36, 34, 35), onG(40, 15, 35), onG(35, 20, 35), onG(64, 35, 35), onG(55, 14, 35), onG(33, 37, 35)]);
+  assert.ok(at, "somewhere on the lid is clear of the drawing's marks");
+  assert.deepEqual(await pixel(...at), want);
+  await app.page.mouse.move(5, 5);
+});
+
 test("hovering a wall names the feature it belongs to", async () => {
   const [f] = await features();
   const m = await app.model();
-  const wall = m.lines.find((x) => x.name === f.walls[2])!;
-  const [a, b] = [await app.screenOf(m.points[wall.refs[0]]), await app.screenOf(m.points[wall.refs[1]])];
-  const at = await app.at((a[0] * 2 + b[0]) / 3, (a[1] * 2 + b[1]) / 3);
-  await app.page.mouse.move(at.x, at.y, { steps: 3 });
-  await app.page.waitForTimeout(120);
-  assert.equal((await app.repl("hover()")).value, wall.name);
+  // Somewhere along some wall the wall itself is what is under the cursor.
+  let found = "";
+  for (const name of f.walls) {
+    const wall = m.lines.find((x) => x.name === name)!;
+    const [a, b] = [await app.screenOf(m.points[wall.refs[0]]), await app.screenOf(m.points[wall.refs[1]])];
+    for (const t of [0.5, 0.35, 0.65]) {
+      await moveTo(a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1]));
+      if ((await app.repl("hover()")).value === name) { found = name; break; }
+    }
+    if (found) break;
+  }
+  assert.ok(found, "a wall can be hovered");
   assert.match(await app.page.$eval("#hovertag", (el) => el.textContent ?? ""), /·\s+e1$/);
   await app.page.mouse.move(5, 5);
 });
 
-test("Ctrl+Z undoes the set, and one more takes the whole feature away; redo brings both back", async () => {
-  const afterSet = await saved();
-  await key("Control+z");
-  assert.equal((await features())[0].value, 20, "the set, undone");
-  await key("Control+z");
-  assert.deepEqual(await features(), [], "the extrude, undone in one step");
-  assert.equal(await saved(), beforeExtrude, "back to the sketch, byte for byte");
-  await key("Control+Shift+z");
-  await key("Control+Shift+z");
-  assert.equal(await saved(), afterSet);
-  assert.equal(await app.status(), "SOLVED");
-});
-
-test("save and open: the same file back, byte for byte, with the solid in it", async () => {
+test("save and open: the same file back, byte for byte, both solids in it", async () => {
   const file = await saved();
   await app.type(`open(${JSON.stringify(file)})`);
   assert.equal(await app.status(), "SOLVED");
   assert.equal(await saved(), file);
-  const [f] = await features();
-  assert.equal(f.name, "e1");
-  assert.equal(f.value, 35);
+  const all = await features();
+  assert.deepEqual(all.map((x) => [x.name, x.value]), [["e1", 35], ["e2", 10]]);
 });
 
-test('del("e1") takes the solid and leaves the sketch — the same entities, not moved by the deletion', async () => {
-  const before = (await app.model()).points;
-  await app.type('del("e1")');
+test('del("e2", "e1") takes both solids and leaves the sketch — the same entities, not moved by the deletion', async () => {
+  const before = await app.model();
+  const bossCentre = before.circles.at(-2)!.center; // the circle drawn on the lid, before its twin
+  await app.type('del("e2", "e1")');
   assert.deepEqual(await features(), []);
   const now = JSON.parse(await saved());
   const was = JSON.parse(beforeExtrude);
-  // The same entities as before the extrude; the journal now also says what was
-  // made and removed, which is the history and not the drawing.
-  assert.deepEqual(Object.keys(now.values.points).sort(), Object.keys(was.values.points).sort());
+  // The sketch's entities, and nothing of either solid — except the centre of
+  // the circle drawn on the lid. The circle went with the lid frame it was
+  // drawn on, which it cannot be without; its centre is a point the circle
+  // tool placed, and deleting a circle never takes its points.
+  const after = await app.model();
+  assert.ok(!after.circles.some((c) => c.center === bossCentre), "the lid's circle is gone");
+  assert.deepEqual(Object.keys(now.values.points).sort(), [...Object.keys(was.values.points), bossCentre].sort());
   // Compared with just before the deletion, not with before the extrude: the
   // tools draw an undimensioned sketch, and the solves since were free to move
   // it within its own freedom (a corner wandered 1e-5 during the `set`). What
   // the deletion must not do is move it at all.
   for (const n of Object.keys(was.values.points)) {
-    assert.ok(dist3(now.values.points[n], before[n]) < 1e-9, `${n} did not move`);
+    assert.ok(dist3(now.values.points[n], before.points[n]) < 1e-9, `${n} did not move`);
   }
   assert.equal(await app.status(), "SOLVED");
 });

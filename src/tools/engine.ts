@@ -52,6 +52,7 @@ import { hitTest, type Pick } from "../picking.ts";
 import { boxFrom, selectInBox, type BoxMode } from "../boxselect.ts";
 import { glyphAt, placeGlyphs, type Glyph } from "../glyphs.ts";
 import { findSnap, type Snap } from "../snapping.ts";
+import { findLoops, loopAt } from "../loops.ts";
 
 export type { View };
 
@@ -393,6 +394,13 @@ export class ToolEngine {
         this.snap = null;
       },
       pick: ([sx, sy]) => hitTest(this.model, this.view, sx, sy),
+      // Found afresh per ask, like everything screen-space here: a loop is a
+      // question, not an entity, and the drawing may have moved since.
+      regionAt: ([sx, sy]) => {
+        const loops = findLoops(this.model);
+        const loop = loopAt(this.model, this.view, sx, sy, loops);
+        return loop ? { loops, index: loops.indexOf(loop) } : null;
+      },
       log: this.onLog,
     };
     this.active = new Ctor(ctx);
@@ -521,7 +529,10 @@ export class ToolEngine {
       // downstream of snapping, so `snapping(false)` turns off both.
       // Only places on the sketch plane are offered while there is one — see
       // findSnap for the stack of geometry a square-on view hides behind it.
-      this.snap = this.snapping ? findSnap(this.model, this.view, sx, sy, framePlane(this.model)) : null;
+      // A tool that chooses regions rather than places points opts out
+      // (`Tool.snaps`), and gets neither the pull nor the marker.
+      this.snap = this.snapping && this.active.snaps
+        ? findSnap(this.model, this.view, sx, sy, framePlane(this.model)) : null;
       // The plane is reported even when a snap moved the point off it: it is
       // what the gesture is being drawn on, and a tool laying out a shape from
       // a snapped corner still lays it out along that plane's axes.

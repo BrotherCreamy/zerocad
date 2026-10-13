@@ -21,6 +21,7 @@ import { getToolCtor } from "./tools/tool.ts";
 import { depth } from "./view.ts";
 import { arcSamples, arcSegments } from "./arcgeom.ts";
 import { curveFrame } from "./curveplane.ts";
+import { faceColour, facesToDraw } from "./faces.ts";
 import type { Entity } from "./model.ts";
 import "./tools/point.ts";
 import "./tools/line.ts";
@@ -30,6 +31,7 @@ import "./tools/circle3.ts";
 import "./tools/arc.ts";
 import "./tools/arc3.ts";
 import "./tools/fillet.ts";
+import "./tools/extrude.ts";
 
 const statusEl = document.getElementById("status")!;
 const logEl = document.getElementById("log")!;
@@ -106,9 +108,15 @@ async function main() {
     const stroke = (name: string) => (lit.has(name) ? "#e8a33d" : "#afc6d9");
     const weight = (name: string) => (lit.has(name) ? 2.2 : 1.4);
 
-    // Painter's order, far to near, one depth per entity — what a wireframe
-    // needs and all it needs until there are faces to hide behind (3D phase
-    // 4). Curves and frames are one pass and points a second on top, as they
+    // A solid's faces first, so everything after is drawn over them: per face,
+    // far to near, back faces culled, lit from the eye (see faces.ts). The
+    // entities — edges, points, glyphs — then go on top, hidden ones included,
+    // so the sketch stays legible on a shaded solid and nothing a hand aims at
+    // is ever behind a face. Faces are display only: they never pick or snap.
+    renderFaces();
+
+    // Painter's order, far to near, one depth per entity, for the wireframe on
+    // top. Curves and frames are one pass and points a second on top, as they
     // always were: a point's dot and name are what a hand aims at, and must
     // not be painted over by an edge running behind them.
     const byDepth = <T extends Entity>(es: T[]) =>
@@ -164,12 +172,41 @@ async function main() {
   }
 
   /**
+   * Every solid's visible faces, already sorted and shaded by faces.ts. Each
+   * is filled even-odd (a cap's holes are its own inner loops) and then
+   * stroked a hair wide in its own colour: neighbouring pieces of a curved
+   * wall share an edge exactly, and anti-aliasing each one against the
+   * background alone leaves a faint seam of background between them.
+   */
+  function renderFaces() {
+    const faces = facesToDraw(model, view);
+    if (!faces.length) return;
+    g.save();
+    g.lineJoin = "round";
+    g.lineWidth = 0.75;
+    for (const face of faces) {
+      g.beginPath();
+      for (const outline of face.outlines) {
+        g.moveTo(...outline[0]);
+        for (const p of outline.slice(1)) g.lineTo(...p);
+        g.closePath();
+      }
+      const colour = faceColour(face.shade);
+      g.fillStyle = colour;
+      g.fill("evenodd");
+      g.strokeStyle = colour;
+      g.stroke();
+    }
+    g.restore();
+  }
+
+  /**
    * How near the viewer an entity is, for the painter's sort: a point's own
    * depth, the middle of a line, the centre of a circle or arc, a frame's
    * origin. One number per entity is coarse — a long edge crossing a short one
-   * can sort the wrong way at the crossing — and is the spec's choice: nothing
-   * here is opaque yet, so the only thing the order decides is which of two
-   * strokes is on top where they cross.
+   * can sort the wrong way at the crossing — and is enough: strokes are never
+   * opaque to each other in any way that matters, and the only opaque things,
+   * a solid's faces, are sorted per face and drawn first (see `renderFaces`).
    */
   function entityDepth(e: Entity): number {
     const at = (name: string) => depth(view, model.coords(name));
