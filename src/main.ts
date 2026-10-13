@@ -32,6 +32,7 @@ import "./tools/arc.ts";
 import "./tools/arc3.ts";
 import "./tools/fillet.ts";
 import "./tools/extrude.ts";
+import "./tools/revolve.ts";
 
 const statusEl = document.getElementById("status")!;
 const logEl = document.getElementById("log")!;

@@ -21,6 +21,7 @@ import {
 } from "../src/relations/geometry.ts";
 import { del, set } from "../src/operations.ts";
 import { extrusion } from "../src/relations/extrusion.ts";
+import { revolution } from "../src/relations/revolution.ts";
 import { FORMAT, open, save } from "../src/persist.ts";
 import { axisFrame } from "./frames.ts";
 
@@ -80,10 +81,11 @@ test("the three value-carrying relations are d-named and every other one is r-na
     symmetric(m, "p3", "p4", "l1"),
   ], ["r1", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11"]);
 
-  // And the two claims the split rests on, said directly. The fourth, an
-  // extrude's depth, needs a 3D model and an extrude around it, and has its own
-  // file (test/extrude.test.ts).
-  assert.deepEqual([...DIMENSION_OPS].sort(), ["angle", "dist", "extrusion", "radius"]);
+  // And the two claims the split rests on, said directly. The fourth and
+  // fifth, an extrude's depth and a revolve's angle, need a 3D model and a
+  // feature around them, and have files of their own (test/extrude.test.ts,
+  // test/revolve.test.ts).
+  assert.deepEqual([...DIMENSION_OPS].sort(), ["angle", "dist", "extrusion", "radius", "revolution"]);
   assert.equal(relationPrefix("dist"), "d");
   assert.equal(relationPrefix("fix"), "r");
   // A relation authored at the command line has never heard of any of this and
@@ -209,7 +211,7 @@ test("set says what is settable when it is handed something that is not", async 
 
   // A relation with no value. The message names the three that have one, in
   // the short spellings the user typed to make them.
-  assert.throws(() => set(m, `${r}.value`, 3), /"r1" is a parallel, not a dimension — only dist, rad, ang and an extrude's depth have a \.value/);
+  assert.throws(() => set(m, `${r}.value`, 3), /"r1" is a parallel, not a dimension — only dist, rad, ang, an extrude's depth and a revolve's angle have a \.value/);
   // A name that is an entity, and a name that is nothing at all.
   assert.throws(() => set(m, "a.value", 3), /"a" is an entity, not a dimension/);
   assert.throws(() => set(m, "d99.value", 3), /"d99" is not a relation/);
@@ -255,9 +257,10 @@ test("the value's place in the argument list is known for every dimension and no
   assert.equal(valueArgIndex("dist"), 2);
   assert.equal(valueArgIndex("radius"), 1);
   assert.equal(valueArgIndex("angle"), 2);
-  // [frame, depth, …pairs]: second, so it is at a fixed place however many
-  // pairs follow it.
+  // [frame, depth, …pairs] and [axis, angle, …pairs]: second, so it is at a
+  // fixed place however many pairs follow it.
   assert.equal(valueArgIndex("extrusion"), 1);
+  assert.equal(valueArgIndex("revolution"), 1);
   assert.equal(valueArgIndex("fix"), null);
   assert.equal(valueArgIndex("parallel"), null);
   // Every dimension has to have one, or `set` would reach an unreachable throw.
@@ -278,6 +281,8 @@ test("every op in DIMENSION_OPS can actually be rebuilt by set", async () => {
     // 3D only, so on a model of its own (see below); one pair is enough to
     // prove `set` can re-run it.
     extrusion: (m) => extrusion(m, "f", 10, "a", "b"),
+    // A quarter turn about the frame's z, of a point ten out along its x.
+    revolution: (m) => revolution(m, "f.z", Math.PI / 2, "a", "b"),
   };
   for (const op of DIMENSION_OPS) {
     assert.ok(fixtures[op], `${op} is a dimension with no fixture here — add one, and a REBUILD entry`);
@@ -290,6 +295,20 @@ test("every op in DIMENSION_OPS can actually be rebuilt by set", async () => {
       assert.equal(set(m, `${name}.value`, 7), name, op);
       assert.equal(m.solve().solved, true, op);
       assert.ok(Math.abs(m.coords("b")[2] - m.coords("a")[2] - 7) < 1e-9, "and the rebuilt depth is the one that holds");
+      continue;
+    }
+    if (op === "revolution") {
+      const m = new Model(3);
+      axisFrame(m);
+      m.addPoint([10, 0, 0], "a");
+      m.addPoint([0, 10, 0], "b");
+      const name = fixtures[op](m);
+      assert.equal(set(m, `${name}.value`, Math.PI), name, op);
+      assert.equal(m.solve().solved, true, op);
+      // Both points are free, so the solve may move either; what holds is the
+      // half turn about z between them.
+      const [a, b] = [m.coords("a"), m.coords("b")];
+      assert.ok(Math.hypot(b[0] + a[0], b[1] + a[1], b[2] - a[2]) < 1e-9, "and the rebuilt angle is the one that holds");
       continue;
     }
     const m = pair();

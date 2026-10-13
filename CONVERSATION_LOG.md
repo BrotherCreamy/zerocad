@@ -106,6 +106,94 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### Revolve: what can be real, and a sort no picture showed
+
+**One PR, two commits.** Extrude split into two PRs so its semantic decisions
+were not buried in fill colours. Revolve's semantics are just as separable, so the
+model half and the display half are separate commits, each with the full gate
+green — but one PR, because the halves are tightly coupled (whether there is an
+end face decides whether there are caps), and stacked PRs against one branch
+would show the first half's diff twice.
+
+**What is real.** The spec settled the shape — profile live, surface drawn, axis a
+datum, one angle dimension, end twins for a partial turn. Three things were left
+to decide in the code:
+
+- *How the relation knows its datum bases.* Extrusion reads "this base is one of
+  the sketch frame's points" off a frame argument. A revolve has more of them —
+  the axis's own points (a profile edge as its own axis is the cylinder case), and
+  the points of every frame it twins. A second list in the arguments would be a
+  list to keep in step. Letting a pair be *two frames* says it once: the frame
+  pair holds the end frame's three points, and its base frame's points are datum.
+  Both rules were checked by mutation — each pinning test fails with its rule
+  removed — because "the axis is never pushed" passes vacuously if nothing ever
+  tries.
+- *A curve on a frame that is not the sketch's.* Extrude keeps such a curve's
+  frame for its twin, since translation leaves an orientation alone. Turning does
+  not, so the twin needs that frame turned too. Refusing the profile was
+  considered; turning every frame a profile curve names costs four entities and is
+  decided by name alone, which a replay reproduces.
+- *A point on the axis.* Its twin sits on it. Sharing the point instead (no twin)
+  would have needed "is this on the axis" — a position, which a replay on seeds
+  cannot answer the same way.
+
+**Full and partial.** The spec recommended that a full turn make no twins and
+that `set` refuse to turn it partial; taken, and made symmetric — a partial one
+`set` to a whole turn refuses too, since its end face would lie on its start face.
+The refusals live in the relation, which is what `set` rebuilds through, so a
+refused value leaves the old one standing for free. The consequence written down:
+a full revolve's dimension holds no residual blocks. It is a label that `del`
+can find — and, by the uniform record-only rule, it is left behind holding nothing
+when a piece of the profile is deleted. Taking it with the record was considered
+and rejected: one deletion rule for every feature is worth an inert label.
+
+**The geometric refusals are not replayed.** Extrude learned that a replay runs
+on seeds. A revolve's refusals — axis out of the plane, profile across the axis —
+read positions, so a replay must not make them: given loops (the journal's form)
+nothing is checked but joins. The test builds a profile seeded straddling its axis
+and fixed clear of it; it reopens, and the test also shows the re-asked check
+failing at the seeds. Detecting "this is a replay" from the model's recording flag
+was considered and rejected as a hidden mode; "loops given" is the visible one.
+The tool, which also hands loops over, goes through `revolveProfile`, which makes
+the checks first — so the tool can refuse nothing the command line would accept.
+
+**A sort no picture showed.** "Revolve shading at grazing angles is exactly where
+sorting lies" — so besides looking, a script compared, at sampled pixels over 192
+views per shape, the true depth of every pair of faces drawn there against the
+order they were drawn in, and was itself checked by reversing the order (15,486
+errors). The poster's 270° and every torus were clean. A holed profile at 321°
+was not: 374 samples where the start cap was painted over walls nearer than it.
+A sweep past ~300° wraps round in front of its own start cap's plane, which is the
+one thing extrude's nearest-point key assumes never happens. The screenshot of
+that view looked fine; the cap and the bottom face differ by five levels, and only
+a canvas pixel read in the page settled it.
+
+The fix is the exact rule for a planar face, applied only where it bites: a cap
+goes after the faces of its own solid behind its plane and before those in front,
+so a cap that an overlapping wall in front would sort before is lowered just under
+that wall. Rejected: shifting those walls *later* instead (it reorders them
+against other solids' faces, a new error where solids sit near each other), and a
+full Newell sort (the right tool for arbitrary scenes, a much larger change than
+this package). Two refinements were measured, not assumed: bounding boxes alone
+over-reported overlap and left no key that fit, so an exact screen-overlap test
+follows them (6 → 0 bad samples at 344°, 38 → 28 at 355°); and a cap seen all but edge-on (shade
+4e-4 on a torus) was lowered under walls far behind it, so slivers keep their old
+key. What is left — 28 samples at 355° seen nearly along the axis — has a wall in
+front of the cap sorting below one behind it, both over the cap, and no single key
+can sit between: a true painter's limit, documented. A unit test proves itself:
+it passes, asserts the nearest-point order fails the same views, and fails with the
+rule removed.
+
+**Smaller things.** The swept surface draws no seam edges along it (the paths the
+profile's corners trace); its silhouette comes from shading, which read clearly in
+every screenshot, so they were left out rather than invented as display-only
+lines. The e2e files each carry their own pointer helpers (seven already did), so
+the revolve one follows that convention; the *unit* suites' profile helpers moved
+to `test/profiles.ts`, which the spec asked for. And a reminder for whoever runs
+the e2e next: editing a source file while the suite is running hot-reloads the
+page under the tests — the first baseline here showed ten failures that were
+nothing but that.
+
 ### Extrude, the faces: what a centroid sort gets wrong, and the click inside
 
 **Two PRs, and why.** The package split where the spec said it might: the

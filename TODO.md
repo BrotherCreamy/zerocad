@@ -44,8 +44,9 @@ are flagged as such.
   the menu. Phases and the rest of the design in the roadmap; phase 1
   (3D frames + fix/onPlane + camera + app on Model(3)) is built, both halves:
   [`docs/plans/3d-phase1.md`](docs/plans/3d-phase1.md). Phase 2 (planar
-  discipline), phase 3 (loops) and phase 4 (extrude) are built too — see
-  below; phase 5 (revolve) is next.
+  discipline), phase 3 (loops), phase 4 (extrude) and phase 5 (revolve) are
+  built too — see below. That is the whole roadmap, and the owner's original
+  ask ("extrude, revolve etc") closed.
   ✅ **Phase 1, half 1 (model + relations) built.** 3D frames carry a
   y-ref; `frameBasis` straightens it (Gram–Schmidt) and takes +z = +x × +y;
   `fix` pins `[x, y, z]` in a frame and its frameless form is gone;
@@ -406,6 +407,62 @@ are flagged as such.
     (a sort is a sort); a face is not a pick target, so a solid's side face is
     extruded by clicking inside its loop — and a wall's loop lies in no frame's
     orientation, so that is refused until a frame is made on it.
+
+  ✅ **Phase 5 (revolve) — built** (2026-10-13), one PR in two reviewable
+  commits (model half, then display and tool):
+  [`docs/plans/3d-phase5-revolve.md`](docs/plans/3d-phase5-revolve.md).
+  `revolve(member, axis, angle?, frame?)` turns the loop a member is in about a
+  frame axis or a line in its plane; the surface is drawn from the live profile
+  (`faces.ts`), the angle is one `revolution` dimension, and a partial turn has
+  a real end face held by it. `arm("revolve", { angle })`: click inside a
+  region, then on a line or a frame marker's arm. Screenshots 64–67; the story
+  is `test/e2e/revolve.e2e.ts`.
+
+  Decided while building it, and open to veto:
+
+  - ⚠ **A full revolve's angle cannot be `set` partial, nor a partial one to a
+    whole turn** — both refuse, in the relation, with the old value standing.
+    The spec's recommendation, taken: a full turn has no end face to swing, and
+    growing twins inside `set` would be an operation pretending to be a
+    dimension edit. Full-to-partial is `del` and a new revolve. A full
+    revolve's dimension therefore holds **no blocks** — a label, `360°`.
+  - ⚠ **A cap is lowered under any overlapping wall of its own in front of its
+    plane** — a change to the shared painter's, not in the spec. A sweep past
+    ~300° wraps round in front of its own start cap and the nearest-point key
+    painted the cap over those walls (a sort check: 374 bad samples at 321°;
+    confirmed on the canvas). Plane-side is exact for a planar face; an extrude
+    never has such a wall, so its order is unchanged (its tests pass as they
+    were). Cost in the noise (3–9 ms a frame either way, measured).
+  - **The relation's pairs can be two frames** (the end frame held at the
+    sketch frame turned), which also says which bases are a datum — the axis's
+    own points and a twinned frame's — without a second list. Both datum rules
+    are pinned by tests that fail when the rule is removed.
+  - **A profile curve on a frame other than the sketch's gets that frame turned
+    too** (extrude keeps it: a translated frame keeps its orientation, a turned
+    one does not). Chosen by name, never by which way a frame faces, so a
+    replay decides the same.
+  - **The geometric refusals are the call's and the tool's, never a replay's**:
+    given loops (the journal's form) nothing reads positions. A profile seeded
+    across its own axis and fixed off it reopens; the test shows the re-asked
+    check would have failed the file. A typed call that hands over loops skips
+    them too — that form is the journal's, and never needs typing.
+  - **Every joined class gets a twin, on the axis or not** — an on-axis corner's
+    twin sits on it. Sharing it would need "is this on the axis", a position.
+  - **`featureOf(name, kind?)`** — a typed lookup that names the other kind when
+    it is wrong; `FeatureEntry` is a union now.
+  - **`Pick.axis`** (new): which arm of a frame's marker a pick hit, so a tool
+    choosing an axis gets `"f1.y"` from a click. Optional; nothing else reads it.
+  - **The tool re-chooses on a click inside another region** at its second
+    step, rather than refusing — the profile was the thing the user changed
+    their mind about.
+  - *Found, not fixed:* a sweep within a few degrees of a whole turn, seen nearly
+    along its axis (355°, pitch ±1.2), can leave a wall over its start cap: a
+    wall in front of the cap sorts below one behind it, both over the cap, and
+    no single key fits both — a true painter's limit. Deleting a piece of a
+    full revolve takes its record and leaves its `360°` dimension holding
+    nothing (the uniform record-only rule). The swept surface never picks;
+    there are no seam edges drawn along it, so a revolve's silhouette comes
+    from its shading alone. A revolve, like an extrude, is expanded once.
 
 - **No world frame — coordinate frames are entities** (owner's direction,
   2026-09-01, chosen over "keep the frame but hide it" and "directions stay,

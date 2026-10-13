@@ -30,7 +30,7 @@
 // outward normal points away from the viewer is behind the solid and is not
 // drawn; the rest are sorted far to near — the painter's algorithm per face,
 // the roadmap's promised upgrade from one depth per entity: a wall by its
-// centroid, a cap by its nearest point (see `facesToDraw` for why a cap cannot
+// centroid, a cap by its nearest point (see `orderedFaces` for why a cap cannot
 // use its centroid) — and shaded by a headlight: Lambert's cosine with the light
 // along the line of sight (`toward`). Not a world light: there is no world
 // frame to hang one in, and a light fixed to the kernel's axes would be the
@@ -41,17 +41,35 @@
 // the entities do all of that, as before, and are drawn *over* the faces so
 // the sketch stays legible on a shaded solid. A click on a face is a click on
 // whatever entity is near it, or on nothing.
+//
+// **A revolve's faces are the same machinery with more of them derived** (see
+// `revolveFaces`). Its surface is not finitely many entities, so there is no
+// twin to draw a wall between: each piece of the profile is swept round the
+// axis in steps, a ring of quads, from the live profile and axis and the angle
+// dimension's value. Caps only for a partial revolve, even-odd as an extrude's;
+// normals the profile's own, turned; the same culling, sort and headlight —
+// with one rule the extrude never needed: a sweep past about 300° wraps round
+// in front of its own start cap, so a cap goes before any overlapping wall of
+// its own in front of its plane (see `orderedFaces`). The sort's limits are
+// otherwise the extrude's: a sort is a sort, so solids that interpenetrate can
+// draw wrong where they cross, and within a few degrees of a whole turn, seen
+// nearly along the axis, no single key can put a cap between its walls.
 
 import type { FeatureEntry, Model } from "./model.ts";
 import { arcSamples, arcSegments } from "./arcgeom.ts";
 import { curveFrame, framePlaneAxes } from "./curveplane.ts";
+import { axisReader, turnMatrix } from "./relations/revolution.ts";
 import { depth, viewAxes, worldToScreen, type View } from "./view.ts";
 import { cross3, dot3, lift3, sub3, unit3 } from "./vec3.ts";
 
 /** One face of a solid, in the world. */
 export interface Face {
   feature: string;
-  kind: "base" | "lid" | "wall";
+  /**
+   * `base` is the profile's own cap; `lid` an extrude's far cap and `end` a
+   * partial revolve's; `wall` every piece of the surface between them.
+   */
+  kind: "base" | "lid" | "end" | "wall";
   /**
    * Closed outlines, world coordinates. A cap has one per profile loop and is
    * filled even-odd; a wall piece has one, a quad.
@@ -73,7 +91,8 @@ export interface DrawnFace {
   shade: number;
   /**
    * What it sorts by, larger nearer; the list is ascending. A wall's centroid,
-   * a cap's nearest point — see `facesToDraw`.
+   * a cap's nearest point — or just under a wall of its own in front of its
+   * plane that overlaps it — see `orderedFaces`.
    */
   depth: number;
 }
@@ -180,29 +199,73 @@ export function loopOutlines(model: Model, loops: string[][], scale: number): nu
  * own faces and nothing else.
  */
 export function featureFaces(model: Model, f: FeatureEntry, scale: number): Face[] {
+  return f.kind === "revolve" ? revolveFaces(model, f, scale) : extrudeFaces(model, f, scale);
+}
+
+/**
+ * A profile's paths, loop by loop, member by member, each sampled as drawn —
+ * and the same of the members' twins, sampled piece for piece with their
+ * bases. Null when any of it cannot be laid out.
+ */
+function profilePaths(model: Model, loops: string[][], twins: string[][] | null, scale: number):
+  { base: number[][][][]; twin: number[][][][] | null } | null {
+  const base: number[][][][] = [];
+  const twin: number[][][][] = [];
+  for (let i = 0; i < loops.length; i++) {
+    const b: number[][][] = [];
+    const t: number[][][] = [];
+    for (let k = 0; k < loops[i].length; k++) {
+      const bp = memberPath(model, loops[i][k], scale);
+      if (!bp) return null;
+      b.push(bp);
+      if (twins) {
+        // The twin sampled piece for piece with its base, so a wall's quads pair up.
+        const tp = memberPath(model, twins[i][k], scale, bp.length - 1);
+        if (!tp || tp.length !== bp.length) return null;
+        t.push(tp);
+      }
+    }
+    base.push(b);
+    twin.push(t);
+  }
+  return { base, twin: twins ? twin : null };
+}
+
+/**
+ * Which way is out of the material at each loop's edges, read flat in the
+ * sketch plane: +1 when a loop's outside is on its right as walked (edge ×
+ * +z), −1 when on its left. From the loop's winding (signed area about +z) and
+ * how deeply it is nested in the profile's other loops — inside an even number
+ * it bounds material on its inside, an odd number and it is a hole. Nothing
+ * about the order the members were found in is trusted.
+ */
+function outwardSigns(outlines: number[][][], plane: { u: number[]; v: number[] }): number[] {
+  const origin = outlines[0][0];
+  const flat = outlines.map((o) => flatten(o, origin, plane.u, plane.v));
+  return outlines.map((_, i) => {
+    const winding = signedArea(flat[i]) < 0 ? -1 : 1;
+    // Nesting from a point *on* the loop (a segment's midpoint), so a loop
+    // touching another at a vertex is not miscounted at the touch.
+    const [a, b] = [flat[i][0], flat[i][1]];
+    const probe: [number, number] = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+    const depthIn = flat.reduce((n, other, k) => n + (k !== i && inPolygon(other, probe) ? 1 : 0), 0);
+    // Material on the loop's left (counter-clockwise, not a hole) puts the
+    // outside on its right, which is edge × +z.
+    return winding * (depthIn % 2 === 0 ? 1 : -1);
+  });
+}
+
+/** An extrude's faces: the profile's cap, the lid's, and a wall per member piece. */
+function extrudeFaces(model: Model, f: Extract<FeatureEntry, { kind: "extrude" }>, scale: number): Face[] {
   const axes = framePlaneAxes(model, f.frame);
   if (!axes) return [];
   const z = axes.n;
-  const base: number[][][][] = [];
-  const lid: number[][][][] = [];
-  for (let i = 0; i < f.loops.length; i++) {
-    const b: number[][][] = [];
-    const t: number[][][] = [];
-    for (let k = 0; k < f.loops[i].length; k++) {
-      const bp = memberPath(model, f.loops[i][k], scale);
-      if (!bp) return [];
-      // The twin sampled piece for piece with its base, so a wall's quads pair up.
-      const tp = memberPath(model, f.twins[i][k], scale, bp.length - 1);
-      if (!tp || tp.length !== bp.length) return [];
-      b.push(bp);
-      t.push(tp);
-    }
-    base.push(b);
-    lid.push(t);
-  }
+  const paths = profilePaths(model, f.loops, f.twins, scale);
+  if (!paths) return [];
+  const [base, lid] = [paths.base, paths.twin!];
   const flips = base.map(orient);
-  const baseOutlines = base.map((paths, i) => joined(paths, flips[i]));
-  const lidOutlines = lid.map((paths, i) => joined(paths, flips[i]));
+  const baseOutlines = base.map((p, i) => joined(p, flips[i]));
+  const lidOutlines = lid.map((p, i) => joined(p, flips[i]));
   if (baseOutlines.some((o) => o.length < 3)) return [];
 
   // Which way the lid went: its centre against the profile's, along +z.
@@ -213,41 +276,190 @@ export function featureFaces(model: Model, f: FeatureEntry, scale: number): Face
     { feature: f.name, kind: "lid", outlines: lidOutlines, normal: z.map((c) => up * c), centroid: lidMid },
   ];
 
-  // Each loop's winding about +z and its nesting, read flat in the sketch plane.
-  const origin = baseOutlines[0][0];
-  const flat = baseOutlines.map((o) => flatten(o, origin, axes.u, axes.v));
-  baseOutlines.forEach((_, i) => {
-    const winding = signedArea(flat[i]) < 0 ? -1 : 1;
-    // Nesting from a point *on* the loop (a segment's midpoint), so a loop
-    // touching another at a vertex is not miscounted at the touch.
-    const [a, b] = [flat[i][0], flat[i][1]];
-    const probe: [number, number] = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
-    const depthIn = flat.reduce((n, other, k) => n + (k !== i && inPolygon(other, probe) ? 1 : 0), 0);
-    // Material on the loop's left (counter-clockwise, not a hole) puts the
-    // outside on its right, which is edge × +z.
-    const outward = winding * (depthIn % 2 === 0 ? 1 : -1);
-    base[i].forEach((path, j) => {
-      const flip = flips[i][j];
-      const b = flip ? path.slice().reverse() : path;
-      const t = flip ? lid[i][j].slice().reverse() : lid[i][j];
-      for (let k = 0; k + 1 < b.length; k++) {
-        const quad = [b[k], b[k + 1], t[k + 1], t[k]];
-        const n = unit3(cross3(sub3(b[k + 1], b[k]), z));
-        if (!n) continue; // a piece of no length faces nowhere
-        faces.push({ feature: f.name, kind: "wall", outlines: [quad], normal: n.map((c) => outward * c), centroid: mean(quad) });
-      }
-    });
-  });
+  const signs = outwardSigns(baseOutlines, axes);
+  base.forEach((loop, i) => loop.forEach((path, j) => {
+    const flip = flips[i][j];
+    const b = flip ? path.slice().reverse() : path;
+    const t = flip ? lid[i][j].slice().reverse() : lid[i][j];
+    for (let k = 0; k + 1 < b.length; k++) {
+      const quad = [b[k], b[k + 1], t[k + 1], t[k]];
+      const n = unit3(cross3(sub3(b[k + 1], b[k]), z));
+      if (!n) continue; // a piece of no length faces nowhere
+      faces.push({ feature: f.name, kind: "wall", outlines: [quad], normal: n.map((c) => signs[i] * c), centroid: mean(quad) });
+    }
+  }));
   return faces;
 }
 
 /**
- * Every face to fill this frame, far to near, back faces culled, each with its
- * headlight shade. See the top of the file.
+ * A revolve's faces: every piece of every profile member swept round the axis
+ * in angular steps — a ring of quads per piece — and, for a partial revolve
+ * only, the two caps (the profile, and the end face), each even-odd as an
+ * extrude's are, so a hole in the profile turns into a tunnel and an island in
+ * it into a ring inside the tunnel.
+ *
+ * **The steps are sized from the swept radius**: as many as `arcSegments` gives
+ * the farthest point of the profile from the axis at this zoom, so the outer
+ * rim of the sweep is drawn as finely as a circle of that radius would be and
+ * everything nearer the axis — which turns through the same angle on a smaller
+ * circle — more finely still. One step count for the whole solid, so the rings
+ * of neighbouring members meet edge to edge with no crack between them.
+ *
+ * **Normals are the profile's, turned.** A surface of revolution's normal at a
+ * point is the profile's own in-plane normal there, turned about the axis —
+ * which is why the axis must lie in the profile's plane — so each quad faces
+ * the way its piece of the profile faces (`outwardSigns`, extrude's rule),
+ * turned to the middle of its step. A piece lying on the axis sweeps nothing
+ * and is skipped; one meeting the axis at an end sweeps a fan whose quads close
+ * to a point there — the solid closed on its axis, as a sphere or a cone is.
+ *
+ * **The caps**: the start cap faces back against the sweep, the end cap on along
+ * it, turned through the angle. The angle is the dimension's; the end cap and
+ * the last ring of every wall are read off the end face's live twins, so the
+ * surface meets the edges drawn over it however the end face got where it is.
  */
-export function facesToDraw(model: Model, view: View): DrawnFace[] {
+function revolveFaces(model: Model, f: Extract<FeatureEntry, { kind: "revolve" }>, scale: number): Face[] {
+  const plane = framePlaneAxes(model, f.frame);
+  if (!plane) return [];
+  const theta = model.relations.get(f.angle)?.args[1];
+  if (typeof theta !== "number" || !Number.isFinite(theta) || theta === 0) return [];
+  const axis = axisReader(model, f.axis).read();
+  const k = axis.dir;
+  if (k.every((c) => c === 0)) return [];
+  const partial = f.end !== null;
+  const paths = profilePaths(model, f.loops, partial ? f.twins : null, scale);
+  if (!paths) return [];
+  const flips = paths.base.map(orient);
+  const outlines = paths.base.map((p, i) => joined(p, flips[i]));
+  if (outlines.some((o) => o.length < 3)) return [];
+  const signs = outwardSigns(outlines, plane);
+
+  // How far each point is from the axis, and so how many steps the sweep takes.
+  const fromAxis = (p: number[]) => {
+    const v = sub3(p, axis.origin);
+    const along = dot3(v, k);
+    return Math.hypot(v[0] - along * k[0], v[1] - along * k[1], v[2] - along * k[2]);
+  };
+  const reach = Math.max(...outlines.flat().map(fromAxis));
+  const steps = arcSegments(Math.abs(theta), reach * scale);
+  const turns = Array.from({ length: steps + 1 }, (_, s) => turnMatrix(k, (theta * s) / steps));
+  const middles = Array.from({ length: steps }, (_, s) => turnMatrix(k, (theta * (s + 0.5)) / steps));
+  const apply = (m: number[][], v: number[]) => [0, 1, 2].map((r) => m[r][0] * v[0] + m[r][1] * v[1] + m[r][2] * v[2]);
+  const place = (m: number[][], p: number[]) => {
+    const v = apply(m, sub3(p, axis.origin));
+    return [0, 1, 2].map((i) => axis.origin[i] + v[i]);
+  };
+  const onAxis = (p: number[]) => fromAxis(p) <= 1e-9 * Math.max(1, reach);
+  const faces: Face[] = [];
+
+  if (partial) {
+    // Which way the material leaves the profile: the sweep's own direction at
+    // its middle, sgn(θ)·(axis × the way out from the axis to it).
+    const v = sub3(mean(outlines[0]), axis.origin);
+    const along = dot3(v, k);
+    const t0 = unit3(cross3(k, [0, 1, 2].map((i) => v[i] - along * k[i])));
+    if (!t0) return [];
+    const ahead = t0.map((c) => Math.sign(theta) * c);
+    const endOutlines = paths.twin!.map((p, i) => joined(p, flips[i]));
+    faces.push({ feature: f.name, kind: "base", outlines, normal: ahead.map((c) => -c), centroid: mean(outlines[0]) });
+    faces.push({ feature: f.name, kind: "end", outlines: endOutlines, normal: apply(turns[steps], ahead), centroid: mean(endOutlines[0]) });
+  }
+
+  paths.base.forEach((loop, i) => loop.forEach((path, j) => {
+    const flip = flips[i][j];
+    const b = flip ? path.slice().reverse() : path;
+    const tw = partial ? paths.twin![i][j] : null;
+    const t = tw && flip ? tw.slice().reverse() : tw;
+    // The member's rings: each step's turn of it, the last the end face's own twin.
+    const rings = turns.map((m, s) => (s === steps && t ? t : b.map((p) => place(m, p))));
+    for (let q = 0; q + 1 < b.length; q++) {
+      const n = unit3(cross3(sub3(b[q + 1], b[q]), plane.n));
+      if (!n || (onAxis(b[q]) && onAxis(b[q + 1]))) continue; // no length, or on the axis: it sweeps nothing
+      const out = n.map((c) => signs[i] * c);
+      for (let s = 0; s < steps; s++) {
+        const quad = [rings[s][q], rings[s][q + 1], rings[s + 1][q + 1], rings[s + 1][q]];
+        faces.push({ feature: f.name, kind: "wall", outlines: [quad], normal: apply(middles[s], out), centroid: mean(quad) });
+      }
+    }
+  }));
+  return faces;
+}
+
+/** A face that faces the viewer, in the world, with its shade and what it sorts by. */
+export interface OrderedFace extends Face {
+  shade: number;
+  depth: number;
+}
+
+/** Below this shade a cap is a sliver on screen, too nearly edge-on for the cap rule to act on. */
+const EDGE_ON_SHADE = 1e-3;
+
+/** A screen box, for the cheap "might these two overlap" question the cap rule asks. */
+type Box = [number, number, number, number];
+const boxOf = (pts: [number, number][]): Box => [
+  Math.min(...pts.map((p) => p[0])), Math.min(...pts.map((p) => p[1])),
+  Math.max(...pts.map((p) => p[0])), Math.max(...pts.map((p) => p[1])),
+];
+const boxesMeet = (a: Box, b: Box) => a[0] <= b[2] && b[0] <= a[2] && a[1] <= b[3] && b[1] <= a[3];
+
+/** Whether segments ab and cd cross at a point interior to both. */
+function cross2(a: [number, number], b: [number, number], c: [number, number], d: [number, number]): boolean {
+  const side = (p: [number, number], q: [number, number], r: [number, number]) => (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]);
+  const [d1, d2, d3, d4] = [side(a, b, c), side(a, b, d), side(c, d, a), side(c, d, b)];
+  return d1 * d2 < 0 && d3 * d4 < 0;
+}
+
+/**
+ * Whether a wall piece and a cap share pixels on screen: a corner of the piece
+ * inside the cap (even-odd, so not in a hole), a corner of the cap inside the
+ * piece, or an edge of each crossing. Asked only of pieces whose boxes meet the
+ * cap's and that would otherwise decide its key — boxes alone over-report, and
+ * an over-reported wall can leave no key that fits (see `orderedFaces`).
+ */
+function overlaps(cap: [number, number][][], piece: [number, number][]): boolean {
+  const inCap = (p: [number, number]) => cap.reduce((n, o) => n + (inPolygon(o, p) ? 1 : 0), 0) % 2 === 1;
+  if (piece.some(inCap)) return true;
+  if (cap.some((o) => o.some((p) => inPolygon(piece, p)))) return true;
+  for (const o of cap) {
+    for (let i = 0; i < o.length; i++) {
+      const [a, b] = [o[i], o[(i + 1) % o.length]];
+      for (let j = 0; j < piece.length; j++) if (cross2(a, b, piece[j], piece[(j + 1) % piece.length])) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Every face that faces the viewer, in the world, far to near — what
+ * `facesToDraw` projects. Exported so a test can ask, of a real pixel, whether
+ * the face painted last there is the nearest one.
+ *
+ * **What a face sorts by.** A wall by its centroid. A cap by its *nearest*
+ * point: by its centroid, an extrude's lid seen at a grazing angle sorted
+ * behind the far wall of its own hole, which then painted over the lid
+ * wherever it showed past the opening (seen in a screenshot, not a test) —
+ * and nothing of a prism is in front of its visible cap's plane, so its
+ * nearest point is never behind any of its own walls.
+ *
+ * **A revolve breaks that promise, and the plane says what to do instead.** A
+ * sweep past a half-turn wraps round in front of its own caps: past about 300°
+ * the walls just short of the end lie in front of the start cap's plane and,
+ * seen across the gap, over it on screen — and by the nearest-point key the
+ * cap was painted over them (found by a sort check over 192 views, and seen).
+ * The rule underneath is exact for a planar face: **a cap belongs after the
+ * faces of its own solid behind its plane and before those in front of it.**
+ * So where any wall of its own in front of its plane overlaps it on screen
+ * (boxes — cheap, and conservative) and would sort before it, the cap's key is
+ * lowered to just under the first such wall: the nearest it can sort and still
+ * go first, which is above every wall behind its plane whenever any one key
+ * could be. When none could — a wall behind sorting after one in front, both
+ * over the cap — the wall in front wins, since a wrap-around wall is large and
+ * near and the error it would hide is the one that shows. An extrude has no
+ * faces in front of a visible cap's plane, so its order is what it was.
+ */
+export function orderedFaces(model: Model, view: View): OrderedFace[] {
   const { toward } = viewAxes(view);
-  const out: DrawnFace[] = [];
+  const out: OrderedFace[] = [];
   for (const f of model.features.values()) {
     let faces: Face[];
     try {
@@ -255,29 +467,56 @@ export function facesToDraw(model: Model, view: View): DrawnFace[] {
     } catch {
       continue; // the render loop's rule: one solid's trouble costs its own faces
     }
+    const mine: (OrderedFace & { screen: [number, number][]; box: Box })[] = [];
     for (const face of faces) {
       const shade = dot3(face.normal, toward);
       if (!(shade > 1e-9)) continue;
-      // A wall sorts by its centroid. A cap that survives culling is the
-      // solid's *front* cap, and nothing of its own solid is in front of its
-      // plane — every point of a prism is a cap point moved back along the
-      // depth — so it sorts by its nearest point, which is never behind any of
-      // its own walls. By centroid, a cap seen at a grazing angle sorted behind
-      // the far wall of its own hole, and that wall painted over the cap
-      // wherever it showed past the opening (seen in a screenshot, not a test).
       const key = face.kind === "wall"
         ? depth(view, face.centroid)
         : Math.max(...face.outlines.flat().map((w) => depth(view, w)));
-      out.push({
-        feature: face.feature,
-        kind: face.kind,
-        outlines: face.outlines.map((o) => o.map((w) => worldToScreen(view, w))),
-        shade: Math.min(1, shade),
-        depth: key,
-      });
+      const screen = face.outlines[0].map((w) => worldToScreen(view, w));
+      mine.push({ ...face, shade: Math.min(1, shade), depth: key, screen, box: boxOf(screen) });
     }
+    // Walls far to near, so the first one that matters to a cap is the first found.
+    const walls = mine.filter((w) => w.kind === "wall").sort((a, b) => a.depth - b.depth);
+    for (const cap of mine) {
+      // A cap seen all but edge-on is a sliver with no inside to order, and
+      // which side of its plane a wall is on stops meaning anything: it keeps
+      // its nearest point (measured: a torus's end cap at a shade of 4e-4 was
+      // lowered under walls far behind it).
+      if (cap.kind === "wall" || cap.shade < EDGE_ON_SHADE) continue;
+      // The farthest of its own walls in front of its plane that overlaps it
+      // and would sort before it — and just under that: as near as the cap
+      // can sort and still go first, which is above every wall behind its
+      // plane whenever any key could be.
+      const on = cap.outlines[0][0];
+      const capScreen = cap.outlines.map((o) => o.map((w) => worldToScreen(view, w)));
+      for (const w of walls) {
+        if (w.depth > cap.depth) break;
+        if (!boxesMeet(cap.box, w.box)) continue;
+        if (!(dot3(cap.normal, sub3(w.centroid, on)) > 1e-9 * Math.max(1, Math.abs(cap.depth)))) continue;
+        if (!overlaps(capScreen, w.screen)) continue;
+        cap.depth = w.depth - 1e-6 * Math.max(1, Math.abs(w.depth));
+        break;
+      }
+    }
+    for (const { box: _b, screen: _s, ...face } of mine) out.push(face);
   }
   return out.sort((a, b) => a.depth - b.depth);
+}
+
+/**
+ * Every face to fill this frame, far to near, back faces culled, each with its
+ * headlight shade, projected. See the top of the file and `orderedFaces`.
+ */
+export function facesToDraw(model: Model, view: View): DrawnFace[] {
+  return orderedFaces(model, view).map((face) => ({
+    feature: face.feature,
+    kind: face.kind,
+    outlines: face.outlines.map((o) => o.map((w) => worldToScreen(view, w))),
+    shade: face.shade,
+    depth: face.depth,
+  }));
 }
 
 /**

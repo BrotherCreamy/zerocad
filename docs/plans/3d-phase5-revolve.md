@@ -1,6 +1,12 @@
 # Plan: 3D phase 5 — revolve
 
-**Status: in flight** (2026-10-13). Final package of the owner's original
+**Status: built** (2026-10-13) — one PR, in two reviewable commits (the
+model half, then the display and the tool). Deviations and additions are in
+the register's 3D entry (`TODO.md`): a cap is lowered under any overlapping wall
+of its own in front of its plane (a sweep past ~300° wrapped round in front of
+its start cap, and the nearest-point key painted the cap over it); the
+relation's pairs may be two frames; a profile curve on another frame gets that
+frame turned too. Final package of the owner's original
 ask ("extrude, revolve etc"); fifth of [`3d-roadmap.md`](3d-roadmap.md).
 Read the roadmap, `CLAUDE.md`, `docs/ARCHITECTURE.md`, and above all
 `docs/plans/3d-phase4-extrude.md` plus `src/faces.ts` and the feature
