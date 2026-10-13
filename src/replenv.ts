@@ -23,6 +23,7 @@ import { carryIntoSession, toolSources, type ToolSourceStore } from "./toolsourc
 import { alignView, assignView, orbitBy, panBy, screenToWorld, zoomAbout, type View } from "./view.ts";
 import { pointOnWorkingPlane } from "./workplane.ts";
 import { frameBasis } from "./relations/refs.ts";
+import { describeLoop, findLoops } from "./loops.ts";
 
 type Bag = Record<string, unknown>;
 
@@ -559,6 +560,17 @@ export function neocadScope(h: EnvHandles): Bag {
       const all = name === undefined ? [...model.relations.values()] : model.relationsNaming(name);
       return all.map(describeRelation);
     },
+    /**
+     * The closed loops the drawing contains, one line each — `loop of
+     * l1,l4,l3,l2 in f1, area 1200` — the profiles a future extrude will take.
+     * A question, not an entity: it journals nothing and claims no name, so a
+     * loop is spoken of by its members. See loops.ts for what joins two ends
+     * (a shared point or a `coin`, never mere proximity).
+     */
+    loops: () => {
+      const all = findLoops(model);
+      return all.map((loop) => describeLoop(loop, all));
+    },
     coords: (name: string) => model.coords(name),
 
     arm: (name: string, options?: Record<string, unknown>) => {
@@ -679,6 +691,9 @@ function help(scope: Bag): string {
     "           lands on the default frame's plane (or the one facing you)",
     "inspect    ls()  rels(name?)  coords(name)  solve()  tools()  hover()",
     "           snapping(on)  glyphs(on)  model",
+    "           loops() — the closed loops of lines and arcs (and whole circles),",
+    "           each in one plane: ends join only at a shared point or a coin,",
+    "           never by sitting on the same spot. Read-only; named by members.",
     "authoring  Tool  defineTool(name, ctor)  toolSource(name)  Dual",
     "",
     "A bare assignment persists between entries (box = class extends Tool {…});",
