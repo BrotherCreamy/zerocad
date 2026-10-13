@@ -30,7 +30,7 @@
 // outward normal points away from the viewer is behind the solid and is not
 // drawn; the rest are sorted far to near — the painter's algorithm per face,
 // the roadmap's promised upgrade from one depth per entity: a wall by its
-// centroid, a cap by its nearest point (see `facesToDraw` for why a cap cannot
+// centroid, a cap by its nearest point (see `orderedFaces` for why a cap cannot
 // use its centroid) — and shaded by a headlight: Lambert's cosine with the light
 // along the line of sight (`toward`). Not a world light: there is no world
 // frame to hang one in, and a light fixed to the kernel's axes would be the
@@ -47,12 +47,13 @@
 // twin to draw a wall between: each piece of the profile is swept round the
 // axis in steps, a ring of quads, from the live profile and axis and the angle
 // dimension's value. Caps only for a partial revolve, even-odd as an extrude's;
-// normals the profile's own, turned; the same culling, sort and headlight. The
-// sort's limits are the extrude's, written down there: a sort is a sort, so
-// solids that interpenetrate can draw wrong where they cross, and a revolve of
-// more than a half-turn wraps round its own caps — the nearest-point key is
-// exact for a cap only while nothing of its own solid is in front of its plane,
-// which a sweep past 180° does not promise.
+// normals the profile's own, turned; the same culling, sort and headlight —
+// with one rule the extrude never needed: a sweep past about 300° wraps round
+// in front of its own start cap, so a cap goes before any overlapping wall of
+// its own in front of its plane (see `orderedFaces`). The sort's limits are
+// otherwise the extrude's: a sort is a sort, so solids that interpenetrate can
+// draw wrong where they cross, and within a few degrees of a whole turn, seen
+// nearly along the axis, no single key can put a cap between its walls.
 
 import type { FeatureEntry, Model } from "./model.ts";
 import { arcSamples, arcSegments } from "./arcgeom.ts";
@@ -90,7 +91,8 @@ export interface DrawnFace {
   shade: number;
   /**
    * What it sorts by, larger nearer; the list is ascending. A wall's centroid,
-   * a cap's nearest point — see `facesToDraw`.
+   * a cap's nearest point — or just under a wall of its own in front of its
+   * plane that overlaps it — see `orderedFaces`.
    */
   depth: number;
 }

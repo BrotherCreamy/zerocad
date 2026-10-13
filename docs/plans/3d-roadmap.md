@@ -83,6 +83,14 @@ What 3D adds is not a new solver — it is:
   tool. See the register's 3D entry.
 - **Phase 5 — revolve**: profile + axis reference (`f1.x` style) + angle
   dimension; parametric surface rendering from live geometry.
+  *Spec:* `docs/plans/3d-phase5-revolve.md`. ✅ **Built** — the profile turned
+  about a frame axis or a line in its plane (read as a datum), one `revolution`
+  dimension, and for a partial turn a real end face of turned twins that `set`
+  swings; a whole turn makes none and refuses a `set` across. The surface is
+  swept from the live profile every frame; a cap now sorts before any wall of its
+  own in front of its plane, which a sweep past ~300° needs. The two-click tool
+  takes a region, then a line or a frame marker's arm. See the register's 3D
+  entry.
 - Later, undecided, not promised: booleans, 3D fillets, shaded WebGL,
   export.
 

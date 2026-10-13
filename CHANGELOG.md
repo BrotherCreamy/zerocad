@@ -7,6 +7,78 @@ decisions.
 
 ---
 
+## Revolve: a profile turned about an axis, and the owner's 3D ask closed
+
+![A tilted sketch with two solids on it, seen at three-quarters: in front, a long rectangular plate extruded 8; behind it, a filleted rectangle revolved 270° about the sketch frame's +y, its open quarter facing the viewer so both flat end faces — the filleted profile on the right and its turned twin on the left — show, with the bore of the ring visible between them and the label 270° beside the axis](docs/images/64-a-plate-and-a-filleted-profile-revolved-270.png)
+
+**3D phase 5** — the last of the roadmap, and with it the owner's original ask,
+*"extrude, revolve etc"*, closed: both are built. The solid above was made by the
+**revolve tool's two clicks** — inside the filleted profile, then on the arm of
+the sketch frame's marker — beside a plate extruded by extrude's one click.
+
+| | |
+|---|---|
+| ![The revolve tool mid-gesture, square-on: the filleted profile is chosen and tinted green, and a dashed green line runs along the frame's +y axis through the profile's height and past it — the axis the next click will take](docs/images/65-the-revolve-tool-shows-the-axis-before-the-click.png) | ![The same scene after set("d3.value", Math.PI): the end face has swung round to lie in the sketch plane on the far side of the axis, both flat faces now facing the viewer, the half ring behind them, and the label reading 180°](docs/images/66-the-angle-set-to-a-half-turn.png) |
+| ![Three revolves on one frame: a block with a round hole turned 180° about a line beside it, the hole a tunnel visible through both end faces; a circle turned 270° about the frame's +y, three quarters of a torus with its two round end faces; and a semicircle turned a whole turn about its own diameter, a sphere labelled 360°](docs/images/67-a-torus-a-sphere-and-a-tunnel.png) | |
+
+```
+> revolve("l5", yaxis(), 3 * Math.PI / 2)   // or arm("revolve", { angle }) and click
+e2
+> ls()
+…, e2  revolve of l5,l6,a1,l7,l8, angle d3 = 270° about f1.y, end f3
+> set("d3.value", Math.PI)                  // the end face swings; the label says 180°
+> revolve("l5", "f1.y")                     // a whole turn: no end face at all
+```
+
+**What is real, and what is drawn.** A sweep is not finitely many entities, so
+the **surface is drawn from the live profile every frame** — each member swept
+round the axis in steps sized from the swept radius, a ring of quads, shaded and
+sorted as an extrude's walls are — and stored nowhere. What is real is what can
+be: the **profile**, untouched; the **axis**, a frame-axis reference or a line,
+read as a datum and never pushed (a twin pulled away goes back; the axis does not
+move by a bit); **one `revolution` dimension** carrying the angle, in radians with
+degrees on its label — `ang`'s seam; and, for a **partial** turn, the **end face**:
+a twin of every profile corner, member and frame, held at its base turned about the
+axis by closed-form rotation residuals, three linear components per point. So
+`set` swings the end face, and the end face is ordinary geometry: hold a twin
+corner 26 from the profile's inner corner and the profile's free width gives way to
+`10·cos θ + √(26² − 100·sin² θ)`, and again when the angle is set — a unit test.
+
+**A whole turn makes no end face,** so it has no twins and its dimension holds
+nothing. **Turning a full revolve partial is a new feature, not a new value:** a
+`set` on its angle refuses and says so (and a partial one `set` to a whole turn
+refuses too). The geometry is refused when it is not a solid of revolution — an
+axis leaning out of the profile's plane or lying beside it, a profile or a rim
+bulging across the axis — and **touching the axis is allowed**: a semicircle on its
+diameter is a sphere, a triangle on a leg a cone, a rectangle about its own edge a
+cylinder. Holes come along as tunnels. The journal carries the resolved profile
+(extrude's measured rule) and the axis; the geometric refusals are the call's,
+never a replay's.
+
+**A sort the extrude rule could not have needed.** A sweep past about 300° wraps
+round *in front of its own start cap*, and the nearest-point key extrude's caps sort
+by painted the cap over those walls — found by a check of 192 views per shape
+(374 bad samples at 321°), then on the canvas, where the colours differ by five
+levels and the picture alone did not show it. A cap now goes before any overlapping
+wall of its own in front of its plane — the exact rule for a planar face — and
+extrude's order is unchanged. Clean at every view tried up to 344°.
+
+634 unit tests (from 600), 218 end-to-end (from 210). The e2e draws the plate and
+the filleted profile with the real tools on a tilted sketch, revolves it 270° by the
+tool's two clicks (a click on nothing refused aloud, the dashed axis on the canvas
+before the click), checks every end-face twin against a rotation computed in the
+test, sets the angle to 180° live, undoes the whole feature in one Ctrl+Z, reads a
+start-cap pixel at the cap's own shade, and round-trips the file byte for byte.
+
+**Known and deliberate:** the sort is still a sort — interpenetrating solids can
+draw wrong where they cross, and a sweep within a few degrees of a whole turn, seen
+nearly along its axis, can leave a wall over its start cap where no single key fits
+both; hidden edges show through faces, as on an extrude; the swept surface never
+picks (its profile and end face do); deleting a piece of a full revolve leaves its
+360° label holding nothing until it too is deleted.
+
+---
+
 ## Extrude, half 2: shaded faces, and a click inside a region
 
 ![A filleted block with a round hole through it, an island standing in the hole and a small boss on its lid, seen from above at three-quarters: the lid is the lightest face, the side walls darker, the hole shows its curved inner wall shading round and the background through its far end, and the sketch's edges, points and the labels 35, R8 and 10 are drawn crisply over the faces](docs/images/61-a-shaded-solid-with-a-hole-an-island-and-a-boss.png)

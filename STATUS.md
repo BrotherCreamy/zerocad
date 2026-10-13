@@ -1316,6 +1316,61 @@ replacing) the system Node other projects on this machine may depend on.
   *Known and deliberate:* hidden edges show through faces; interpenetrating
   solids can sort wrong where they cross; faces never pick, snap, box or wear a
   glyph; a solid's side face extrudes only once a frame is made on its plane.
+- **Revolve** (`revolve` and `revolveProfile`/`checkRevolve` in
+  `src/operations.ts`, `src/relations/revolution.ts` (new), `RevolveFeature` in
+  `src/model.ts`, `revolveFaces` and `orderedFaces` in `src/faces.ts`,
+  `src/tools/revolve.ts` (new), `Pick.axis` in `picking.ts`, `persist.ts`,
+  `replenv.ts`, `glyphs.ts`) — 3D phase 5, the last of the roadmap.
+  **`revolve(member, axis, angle?, frame?)`** finds the loop as `extrude` does
+  (the shared refusals speak for whichever op asked) and turns it about `axis` —
+  a frame-axis reference or a line's name, read through `axisReader` as a value
+  at every evaluation, never a variable — through `angle` radians (a whole turn
+  when left out; zero, NaN and more than a turn refused). Call-time refusals
+  (`checkRevolve`): the axis leaning out of the profile's plane (`IN_PLANE_SINE`)
+  or beside it, the profile — or an arc's or circle's rim, by its exact extremes —
+  crossing the axis; touching it is allowed. **A whole turn** makes one
+  `revolution` dimension with no pairs and no blocks, and the record. **A
+  partial turn** expands, in a replayable order: an end frame per frame the
+  profile is drawn on (the sketch frame's first — the record's `end`), each its
+  three points turned and the frame; a twin point per joined class; a twin
+  member per member (a curve on its frame's turned twin); and one
+  **`revolution`** (`d`-named, `[axis, angle, base₁, twin₁, …]`): per point
+  pair three linear Rodrigues residuals `twin − o − M·(base − o)`, per curve pair
+  `r_twin − r_base`, per frame pair its three points; bases that are the axis's
+  own points or a twinned frame's are read as a datum. In `DIMENSION_OPS`, value
+  at index 1, a `REBUILD` line — **`set` swings the end face**; the relation
+  refuses a partial angle with no pairs and a whole turn with pairs, so `set`
+  cannot cross between full and partial. **Journalled as the call** `[member,
+  axis, angle, frame, loops]`; given loops, nothing reads positions.
+  **The record** (`kind: "revolve"`): `member`, `frame`, `axis`, `angle`,
+  `loops`, `twins`, `end`, `names` (profile, sketch frame, the axis's frame or
+  line, everything made) and `owns`; deletion is extrude's. `featureOf(name,
+  kind?)` checks the kind. `ls()`: `e2  revolve of …, angle d3 = 270° about
+  f1.y, end f3` (or `a full turn`); `rels()`: `d3  revolution 4.712… (270°)
+  about f1.y, 8 pairs` for the filleted rectangle (six point classes, the arc's
+  radius, the sketch frame); the label is degrees, halfway round the first corner's
+  path (a full turn's beside the axis).
+  **Faces** (`revolveFaces`): each member path swept in `arcSegments(|θ|,
+  reach·scale)` steps (one count per solid, from its farthest point), a quad per
+  piece per step, its normal the profile's in-plane normal turned to the step's
+  middle, signed by the shared `outwardSigns`; a piece on the axis is skipped.
+  Caps only when partial, even-odd, the start facing back along the sweep and
+  the end on along it; the end cap and the last ring are the twins' live
+  positions. **`orderedFaces`** (new, what `facesToDraw` projects): walls by
+  centroid, caps by nearest point — then a cap that an overlapping wall of its
+  own in front of its plane would sort before is lowered just under that wall
+  (boxes, then an exact screen overlap; caps all but edge-on, shade < 1e-3, are
+  left alone). An extrude never has such a wall.
+  **The tool**: `arm("revolve", { angle })` — a click inside a region
+  (`regionAt`), outlined as it moves; then a click on a line or a frame marker's
+  arm (`Pick.axis`, new), the axis drawn dashed before the click; a click inside
+  another region re-chooses; refusals logged as `revolve: …`, the tool keeping
+  its state. Goes through `revolveProfile`. 634 unit tests, 218 e2e.
+  *Known and deliberate:* within a few degrees of a whole turn, seen nearly along
+  the axis, a wall can still draw over the start cap (no single key fits); a
+  deleted piece of a full revolve leaves its 360° dimension holding nothing; no
+  seam edges are drawn along the surface; the surface never picks.
+  *Spec:* [`docs/plans/3d-phase5-revolve.md`](docs/plans/3d-phase5-revolve.md).
 
 
 ## What's next

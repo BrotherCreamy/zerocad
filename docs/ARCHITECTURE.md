@@ -178,8 +178,9 @@ under a name. Entities and relations share the namespace, because
 `del("r3")` has to mean one thing.
 
 **Which name depends on whether the relation is a dimension.** `dist`, `rad`
-and `ang` are `d1`, `d2`, … — and so is an extrude's depth, the `extrusion`
-that holds its lid; everything else is `r1`, `r2`, …. The split is
+and `ang` are `d1`, `d2`, … — and so are an extrude's depth, the `extrusion`
+that holds its lid, and a revolve's angle, the `revolution` that holds its end
+face; everything else is `r1`, `r2`, …. The split is
 Onshape's — a dimension is a number you put on the drawing, a constraint is a
 statement about shape — and it belongs here rather than merely in the UI because
 the name is what you *do* things to: a `d` is something to go back and edit
@@ -233,6 +234,18 @@ the operation, never saved, and the faces a solid is drawn with are read off
 the live geometry each frame and stored nowhere. That is the one-model decision
 carried into solids: a lid is geometry a sketch can be constrained against, and
 `set` on its depth re-solves it like any dimension, because it is one.
+
+**A revolve keeps real only what can be real.** No finite set of entities is a
+surface of revolution, so a revolve makes no walls: its record names the profile
+and the axis (a frame axis or a line, read as a datum like every frame — the
+`revolution` holding it never declares the axis as variables, so nothing a revolve
+holds can turn it), and one `revolution` dimension carries the angle. A partial
+turn also has an end face — twins of the profile turned through the angle,
+closed-form, three linear residuals per point — so `set` swings it and a sketch
+can be constrained against it, as against a lid. A whole turn has no end face and
+makes nothing but the dimension, which then holds no blocks; turning it partial
+would mean growing geometry inside a dimension edit, so `set` refuses across that
+line and a new revolve is the way.
 
 ## Deleting cascades inward, and undo is the confirmation
 
@@ -479,11 +492,13 @@ The engine keeps navigation and tool use on separate mouse buttons, so a
 gesture can be panned through without the tool ever seeing it.
 
 Screen-space questions are the engine's to answer, never the tool's: `pick`
-says what entity is under a pixel and `regionAt` which closed region it is
-inside (`findLoops` + `loopAt`), so a tool can choose things on screen without
-learning what a camera is. The extrude tool is the first to ask the second,
-and the click-inside gesture lives in it alone — with nothing armed, a click
-inside a region still picks nothing. A tool that chooses rather than places
+says what entity is under a pixel — and, for a frame, which arm of its marker,
+so the revolve tool turns a click into `"f1.y"` — and `regionAt` which closed
+region it is inside (`findLoops` + `loopAt`), so a tool can choose things on
+screen without learning what a camera is. The extrude tool was the first to ask
+the second, the revolve tool asks both, and the click-inside gesture lives in
+the tools alone — with nothing armed, a click inside a region still picks
+nothing. A tool that chooses rather than places
 says so (`snaps = false`) and the engine neither pulls its cursor nor draws a
 marker promising a vertex the click will not go to.
 
@@ -507,6 +522,26 @@ sort behind its own hole's far wall, which then painted over it. The faces go
 down first and every entity draws over them — so the sketch stays legible on a
 solid, at the price of hidden edges showing through — and a face never picks,
 snaps, boxes or wears a glyph: the pieces of a solid are what a hand aims at.
+
+**A revolve's faces are derived further.** There are no walls to fill between,
+so each piece of the profile is swept round the live axis in steps sized from the
+swept radius — `arcSegments`' quarter-pixel at the farthest point, one count for
+the whole solid so neighbouring rings meet — and each quad's normal is the
+profile's own in-plane normal turned, which is exact for a surface of revolution
+and is why the axis must lie in the profile's plane. Caps only for a partial turn.
+
+**A cap goes before the walls of its own solid in front of its plane.** The
+nearest-point key rests on a prism having nothing in front of its visible cap's
+plane, and a revolve past about 300° does: its last stretch wraps round in front
+of its start cap, and the key painted the cap over it. For a planar face the
+exact order is by side — after what is behind its plane, before what is in front
+— so a cap that an overlapping wall of its own in front of its plane would sort
+before is lowered just under that wall (`orderedFaces`). An extrude never has
+such a wall, so nothing about it changed. It was found by a check of true depths
+at sampled pixels over 192 views a shape, not by a picture: the two shades
+differed by five levels. Within a few degrees of a whole turn, seen nearly along
+the axis, there are walls in front and behind that no one key can sit between —
+there a sort is a sort.
 
 ## Constraints are drawn, and a drawn constraint is a thing you can click
 
@@ -682,7 +717,11 @@ Two details:
   `extrude` journals the loop it resolved — its members, loop by loop — because
   a profile built from free lines and relations has no loop at all at its
   seeds. The call is still the call (the user typed two arguments); the journal
-  writes in what the call meant at the time it was made.
+  writes in what the call meant at the time it was made. `revolve` does the
+  same, and goes one step further for the same reason: its refusals that read
+  positions — the axis in the profile's plane, the profile on one side of it —
+  are made by the call and the tool and never by a replay, which would be
+  reading seeds.
 
 Opening only performs calls from a fixed table, so a file is data rather than
 a script. That table is a `Map` — a plain object answers a lookup for
