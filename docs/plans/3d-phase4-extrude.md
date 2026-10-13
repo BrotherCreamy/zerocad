@@ -1,6 +1,9 @@
 # Plan: 3D phase 4 — extrude
 
-**Status: in flight** (2026-10-13). Fourth package of
+**Status: in flight — half 1 (expansion, record, deletion, file) built**
+(2026-10-13); half 2 (faces, painter's, tool) next. Deviations are in the
+register's 3D entry: the journal carries the profile resolved, and deleting a
+piece takes only the record. Fourth package of
 [`3d-roadmap.md`](3d-roadmap.md), and the owner's headline feature. Read
 the roadmap, `CLAUDE.md`, `docs/ARCHITECTURE.md`, `src/loops.ts` (phase 3
 — your input), `src/operations.ts` (fillet is the operation precedent;

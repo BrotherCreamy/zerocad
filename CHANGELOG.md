@@ -7,6 +7,87 @@ decisions.
 
 ---
 
+## Extrude, the model half: a loop becomes a lid, held by one depth
+
+![A filleted rectangle with a hole and an island in it, drawn on a tilted sketch and extruded 20 along the sketch's +z, seen obliquely as a wireframe: the lid is a second copy of the outline, arc and both circles, five wall lines join the corners, the lid frame f2 sits 20 above the sketch frame f1, and a dimension label 20 with dashed witness lines stands beside the first wall](docs/images/59-extrude-the-lid-and-its-walls.png)
+
+**3D phase 4, half 1** — the expansion, the feature record, deletion and the
+file. The shading and the click-inside tool are the second half; until then a
+solid draws as the wireframe it is made of.
+
+```
+> extrude("l1", 20)
+e1
+> ls()
+…, e1  extrude of l1,a1,l2,l3,l4 + 2 inside, depth d2 = 20 along f1, lid f2
+> set("d2.value", 35)          // the lid moves; nothing else does
+> del("e1")                    // the solid goes; the sketch stays
+```
+
+**An extrude is real geometry, not a mesh.** `extrude(member, depth?)` finds
+the closed loop the member is in (`findLoops`) and expands it: a **twin** of
+every corner on the lid, a twin of every line, arc and circle between them, a
+**wall** line at every corner, a **lid frame** (the sketch frame moved by the
+depth, so a sketch on the cap has a plane), and **one dimension** — an
+`extrusion`, `d`-named — holding every twin at its base plus the depth along the
+sketch frame's +z. Three linear residuals per pair, never a square; one more per
+curve for its radius. So `set("d2.value", 35)` moves the lid like any other
+dimension, and the twins and walls are ordinary entities: draggable,
+constrainable, dimensionable.
+
+**The solver negotiates.** Hold a lid corner 50 from the opposite corner of the
+base, of a rectangle whose height is 30 and width free, and its width settles at
+√(50² − 30² − 20²) = 34.641; `set` the depth to 30 and the width gives way to
+√(50² − 30² − 30²) = 26.458. That is the one-model decision paying out — the
+lid is geometry the sketch can be constrained against — and it is a unit test.
+
+**Holes come with the loop.** Every loop inside the one extruded is part of
+the profile and gets twins too — a hole, and an island inside the hole. A circle
+has no corners, so a tube is two rims, two centres and the depth: its walls are
+display-only, for the second half to draw.
+
+**A feature is a record** — `e1` — holding which pieces are one solid: the
+profile it was built on, everything it made, the lid frame and the depth. It
+lists in `ls()`, and hovering any piece of it ends the tag with `· e1`.
+**`del("e1")` removes everything it made and never the sketch** (Onshape's
+rule). **Deleting any piece of it** — a profile edge, a wall, a lid corner, the
+depth — **takes the record and nothing more**: the record is to its pieces what
+a relation is to its arguments, so the pieces left behind stay what they always
+were, ordinary geometry. Undo is the confirmation.
+
+**Which loop.** A member in several loops is refused with the loops listed —
+and after an extrude every profile edge is also the edge of a wall, so it always
+is. `extrude("l9", 10, "f2")` narrows to the loop parallel to that frame (the
+lid's own, here); the click-inside tool (half 2) skips the question. A loop
+whose plane no frame orients is refused rather than given a frame nobody chose.
+
+**Journalled as the call, with its profile resolved** —
+`extrude("l1", 20, "f1", [["l1","a1","l2","l3","l4"],["c1"],["c2"]])` — the way
+`fix` and `fillet` journal the frame they resolved, and for a reason measured
+rather than supposed: replay runs on *seeds*, and a rectangle of four free `ln()`s
+coin'd and fixed into place has one loop solved and **none** at its seeds. A
+re-found profile would fail that file at its extrude, and every undo after it.
+Given the profile, a replay walks it by its joins (relations, never positions).
+
+**No format bump.** Two new ops (`extrude`, `deleteFeature`) and the meaning of
+none changed; an older build refuses a newer file at the step, by op name, as it
+did when the deletion ops arrived. Version stays 7.
+
+584 unit tests (from 563), 207 end-to-end (from 199): the e2e draws the profile
+with the real tools on a tilted sketch, extrudes it from the command line, sets
+the depth, undoes the set and then the whole feature one Ctrl+Z each, reopens
+the file byte for byte, and deletes the solid back to the sketch.
+
+**Known and deliberate:** a feature is expanded once — restructuring its profile
+afterwards (filleting a base corner) does not regenerate the lid. `fillet`
+holds its new tangent point and centre on the rim's plane, not on the sketch, so
+a rounded corner has a free direction along +z that a `set` can stir by a few
+millionths; a tool-drawn sketch is undimensioned, and a solve may wander in its
+freedom by 1e-5. The lid frame always has its own three points, even where the
+profile shares a point with its sketch frame.
+
+---
+
 ## Closed loops: what regions a drawing has, and which one a click is in
 
 **3D phase 3.** Phase 4's extrude takes an *auto-detected* profile — the

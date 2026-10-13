@@ -173,7 +173,8 @@ under a name. Entities and relations share the namespace, because
 `del("r3")` has to mean one thing.
 
 **Which name depends on whether the relation is a dimension.** `dist`, `rad`
-and `ang` are `d1`, `d2`, …; everything else is `r1`, `r2`, …. The split is
+and `ang` are `d1`, `d2`, … — and so is an extrude's depth, the `extrusion`
+that holds its lid; everything else is `r1`, `r2`, …. The split is
 Onshape's — a dimension is a number you put on the drawing, a constraint is a
 statement about shape — and it belongs here rather than merely in the UI because
 the name is what you *do* things to: a `d` is something to go back and edit
@@ -216,6 +217,18 @@ over- or under-constrain; an operation can leave the model malformed.** Hence
 `relations/`. `fillet` creates entities and re-points a line, so it is an
 operation. Everything in `relations/` is not.
 
+**A feature is a third registry, and it holds neither structure nor
+equations.** `extrude` expands a loop into ordinary entities — twin points and
+members, wall lines, a lid frame — held by one ordinary relation, the
+`extrusion` dimension. What none of that can say is *these pieces are one
+solid*, and that is the whole of a feature record (`e1`, in `model.features`,
+sharing the namespace so `del("e1")` means one thing): which profile it was
+built on, what it made, which relation is its depth. It is rebuilt by replaying
+the operation, never saved, and the faces a solid is drawn with are read off
+the live geometry each frame and stored nowhere. That is the one-model decision
+carried into solids: a lid is geometry a sketch can be constrained against, and
+`set` on its depth re-solves it like any dimension, because it is one.
+
 ## Deleting cascades inward, and undo is the confirmation
 
 `del(name)` removes an entity or a relation and takes with it whatever could
@@ -229,6 +242,15 @@ nothing, deleting one of its endpoints reaches the line. A 3D circle or arc
 needs the frame whose plane it lies in, so deleting a frame reaches the curves
 drawn on it (`Model.dependents` counts the plane, and the primitive refuses to
 orphan one) — while its points, as ever, stay.
+
+**A feature's record reads the same rule from both sides.** It names
+everything it was built on and made, so deleting any of those takes the
+record — and only the record, as deleting a point takes a relation and not the
+relation's other arguments; the pieces left are ordinary geometry and stay.
+Deleting the feature itself takes what it *made* (the record's `owns`) and
+never the profile it was built on, which was a sketch before the feature
+existed — Onshape's rule. The primitives refuse to delete anything a record
+still names, so a record can never point at nothing.
 
 **There is no confirmation prompt, because undo is the confirmation.** `del`
 is one user action, so a cascade that took more than was meant is one Ctrl+Z
@@ -619,6 +641,13 @@ Two details:
 - Solved coordinates are stored alongside and restored after the replay.
   Replay alone reaches *a* valid configuration, but an under-constrained model
   has many, and reopening a drawing should give back the one that was saved.
+- Which means **a replay runs on seeds**, and an operation whose expansion
+  depends on where things *are* would re-expand differently. `fix` and
+  `fillet` already journal the default frame they resolved for that reason;
+  `extrude` journals the loop it resolved — its members, loop by loop — because
+  a profile built from free lines and relations has no loop at all at its
+  seeds. The call is still the call (the user typed two arguments); the journal
+  writes in what the call meant at the time it was made.
 
 Opening only performs calls from a fixed table, so a file is data rather than
 a script. That table is a `Map` — a plain object answers a lookup for

@@ -45,7 +45,7 @@ are flagged as such.
   (3D frames + fix/onPlane + camera + app on Model(3)) is built, both halves:
   [`docs/plans/3d-phase1.md`](docs/plans/3d-phase1.md). Phase 2 (planar
   discipline) and phase 3 (loops) are built too — see below; phase 4
-  (extrude) is next.
+  (extrude) is in flight, its model half built.
   ✅ **Phase 1, half 1 (model + relations) built.** 3D frames carry a
   y-ref; `frameBasis` straightens it (Gram–Schmidt) and takes +z = +x × +y;
   `fix` pins `[x, y, z]` in a frame and its frameless form is gone;
@@ -305,6 +305,69 @@ are flagged as such.
     `loops()` is silent about near-misses (an end not quite joined, a corner
     not quite in plane), and regions from crossings — Onshape's behaviour —
     would need joins this model is never told about; both are left for a spec.
+
+  ✅ **Phase 4 (extrude), half 1 — the expansion, the record, deletion, the
+  file — built** (2026-10-13): [`docs/plans/3d-phase4-extrude.md`](docs/plans/3d-phase4-extrude.md).
+  `extrude(member, depth?, frame?)` expands the loop the member is in into
+  twins, twin members, corner walls, a lid frame and **one `extrusion`
+  dimension** (`set` moves the lid); a feature record `e1` lists in `ls()`,
+  tags its pieces' hover, and deletes with `del`. Half 2 (faces, the per-face
+  painter's, the click-inside tool) is next. The story so far is
+  `test/e2e/extrude.e2e.ts`; screenshot 59.
+
+  Decided while building half 1, and open to veto:
+
+  - ⚠ **The journal carries the profile resolved**, not only the call as
+    typed: `extrude("l1", 20, "f1", [["l1","a1",…],["c1"]])`. The spec said
+    journal-as-the-call; this is that call with what it resolved written in,
+    `fix`/`fillet`'s rule for the default frame — because replay runs on
+    seeds, and a profile made of free `ln()`s and relations has *no loop at
+    all* at its seeds (measured, and pinned by a test). A re-found profile
+    would fail that file and every undo after it. Given loops, a replay only
+    walks them by their joins. The user types two arguments; the tool hands
+    over the loop under the click the same way.
+  - ⚠ **Deleting a piece of a feature takes its record and nothing more** —
+    a profile edge, a wall, a lid corner, the depth itself. The spec's words
+    ("takes the feature record with it"), read the way a relation is read: the
+    record needs its pieces, the pieces do not need the record, so they stay as
+    ordinary geometry and the faces go. Taking the whole solid instead was
+    considered (deleting one wall would remove every other wall with it, which
+    no relation does to its arguments). `del("e1")` is how a solid goes; it
+    never takes the profile. The primitives refuse to delete what a record
+    still names. A second extrude on the first's lid loses its record with the
+    first (its profile was the lid) and its walls (they stand on the lid's
+    corners), and keeps its own lid.
+  - **Twins per joined class**, by loops.ts's own definition: corners joined by
+    `coin` (as the line tool joins them) get one twin and one wall, so the lid's
+    corners are shared points and **the top cap is itself a loop** (in the lid
+    frame, with the profile's area) — extrudable again, by `frame` or by click.
+  - **The depth holds radii too**: one residual per curve pair, `r_twin −
+    r_base`, in the same `extrusion`, so a twin circle (which has no ends to be
+    held by) keeps its base's size and `set` touches one relation. An addition
+    to the spec's "three components per pair", not a change to it.
+  - **The sketch frame is a datum to the depth**: its +z, and any pair whose
+    base is one of its points (the lid frame's), are read as plain numbers. The
+    profile's points are variables — so the lid can push the base, which is the
+    point (the negotiation demo is a unit test).
+  - **A curve on the sketch frame twins onto the lid frame; one on any other
+    frame keeps its own** (same orientation, so the same arc). Choosing by name
+    rather than by which way a frame faces is what keeps a replay on seeds from
+    deciding it differently. The lid frame always has its own three points.
+  - **No format bump** (version stays 7): two new ops, no changed meaning; an
+    older build refuses a newer file at the step, by op name — the deletion
+    ops' precedent.
+  - **`frame` narrows the loop**: after an extrude every profile edge is also a
+    wall face's edge, so a bare member is ambiguous; `extrude(m, d, "f2")` takes
+    the loop parallel to that frame. A loop in no frame's orientation is refused
+    (an extrude reads its direction off a frame; inventing one would be a datum
+    nobody chose). A negative depth extrudes the other way; zero is refused.
+  - *Found, not fixed:* **`fillet` leaves its tangent point and centre off the
+    sketch's `onPlane`** — held only on the rim's plane, so a rounded corner can
+    slide along +z as a whole; a `set` stirs it by a few millionths. And a
+    tool-drawn sketch is undimensioned, so any solve may wander within its
+    freedom (1e-5 seen during a `set`). Tests that claim "nothing else moves"
+    use a fully defined sketch. A feature is expanded once: restructuring its
+    profile afterwards does not regenerate the lid.
 
 - **No world frame — coordinate frames are entities** (owner's direction,
   2026-09-01, chosen over "keep the frame but hide it" and "directions stay,
