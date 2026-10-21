@@ -121,9 +121,12 @@ test/                    node --test, no browser needed (WASM loaded via a byte 
 
 ## The command line
 
-The input at the bottom of the window is a REPL over the app's own
-command surface, and it is the primary interface — not a debug console.
-`help()` lists everything in scope.
+The command line (a panel at the bottom-left until you move it — every
+piece of chrome can be dragged by its strip and resized by its corner) is a
+REPL over the app's own command surface, and it is the primary interface —
+not a debug console. `help()` lists everything in scope. The toolbar's
+buttons are shortcuts into it: each one types `arm("name")`, and the log
+shows it.
 
 ```js
 a = pt(0, 0); b = pt(80, 0)        // entities; each returns its name

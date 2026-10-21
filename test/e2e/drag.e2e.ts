@@ -93,7 +93,7 @@ test("dragging a corner resizes the rectangle and keeps it a rectangle", async (
 
 test("a distance constraint survives being dragged around", async () => {
   // Clear of the rectangle above it, and high enough on the canvas that the
-  // drag still lands inside it once the log pane has taken its share.
+  // drag stays clear of the log panel at the bottom-left.
   await app.type("pt(0,60); pt(30,60)");
   const names = Object.keys((await app.model()).points).slice(-2);
   const [anchor, free] = names;

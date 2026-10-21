@@ -122,11 +122,11 @@ test("frame() puts a frame in the middle of the view, where you can see it", asy
   await app.type("frame()");
   const f = await frameInfo("f1");
   const scale = (await app.model()).view.scale;
-  // Within a few pixels, not exactly: the log pane grows by the line the
-  // command itself logs, which takes that much height off the canvas between
-  // the measurement above and this one. Nothing near the ~43 world units back
-  // to the kernel's origin, which is what this is really telling apart.
-  assert.ok(Math.hypot(f.origin[0] - centre[0], f.origin[1] - centre[1]) * scale < 12,
+  // Exactly, to the pixel. This used to allow a dozen: the log pane took
+  // height from the canvas as the command logged its line, moving the middle
+  // between the measurement above and this one. The canvas is full-window now
+  // and nothing in the page resizes it.
+  assert.ok(Math.hypot(f.origin[0] - centre[0], f.origin[1] - centre[1]) * scale < 1e-6,
     `the origin landed at ${f.origin}, not at the middle of the view ${centre}`);
   assert.ok(Math.hypot(f.origin[0], f.origin[1]) > 20,
     `and it is nowhere near the kernel's origin, which is 43 units away: ${f.origin}`);

@@ -105,11 +105,16 @@ export interface EnvHandles {
    * The viewport's size in CSS pixels. Kept apart from `view` because a
    * `View` is only a transform — it has no idea how big the window showing
    * it is — and the two together are what "the middle of what the user is
-   * looking at" needs. A function rather than a value: the log pane grows as
-   * commands are typed and takes height from the canvas, so a size read once
-   * at startup would drift.
+   * looking at" needs. A function rather than a value: the window can be
+   * resized at any time, so a size read once at startup would drift.
    */
   viewSize?: () => [number, number];
+  /**
+   * The chrome's arrangement: given nothing, reports where each panel is;
+   * given `"reset"`, puts them all back. Per-viewer UI state (see panels.ts),
+   * which is why it is a host handle — the model never hears of it.
+   */
+  layout?: (command?: string) => string;
 }
 
 /**
@@ -618,6 +623,16 @@ export function neocadScope(h: EnvHandles): Bag {
       return h.glyphs(on);
     },
     refresh: () => { h.refresh?.(); return "ok"; },
+    /**
+     * Where the panels are — `layout()` — or all of them back where they
+     * started — `layout("reset")`. Not an edit: nothing here reaches the model,
+     * the journal or the undo history, because where a viewer keeps their log
+     * is not a fact about the drawing.
+     */
+    layout: (command?: string) => {
+      if (!h.layout) throw new Error("no viewport in this environment");
+      return h.layout(command);
+    },
 
     // Viewport control as an ordinary command, per the brief's goal of having
     // the whole interface drivable the same way a tool is authored.
@@ -725,6 +740,9 @@ function help(scope: Bag): string {
     "viewport   arm(tool, opts)  cancel()  zoom(f)  pan(dx,dy)  refresh()",
     "           orbit(yaw, pitch)  — turn the drawing, radians, like a right-drag",
     "           lookAt(frame?)     — a frame's plane square-on, +x right, +y up",
+    '           layout()  layout("reset") — where the panels are; put them back.',
+    "           Drag a panel by its strip, resize it by its corner; the",
+    "           arrangement is yours, in this browser, and never in a file.",
     "           right-drag orbits, middle-drag pans, the wheel zooms; a click",
     "           lands on the default frame's plane (or the one facing you)",
     "inspect    ls()  rels(name?)  coords(name)  solve()  tools()  hover()",

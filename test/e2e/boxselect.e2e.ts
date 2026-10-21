@@ -73,7 +73,8 @@ test("a left-drag on empty canvas draws a box instead of panning", async () => {
   const before = (await app.model()).view;
 
   let mid: { open: boolean; mode: string | null } = { open: false, mode: null };
-  await dragBox(60, 80, 320, 300, async () => { mid = await boxState(); });
+  // Empty canvas between the toolbar (on the left) and the rectangle.
+  await dragBox(130, 60, 330, 290, async () => { mid = await boxState(); });
 
   assert.equal(mid.open, true, "the box was up mid-gesture");
   assert.equal(mid.mode, "window", "dragged left→right, so a window");
@@ -121,8 +122,8 @@ test("the two boxes are drawn differently, and the drawing says which is which",
   // gestures are distinguishable, and the render reads the same field.
   await app.page.fill("#cmd", "");
   const seen: (string | null)[] = [];
-  await dragBox(80, 90, 300, 280, async () => { seen.push((await boxState()).mode); });
-  await dragBox(300, 280, 80, 90, async () => { seen.push((await boxState()).mode); });
+  await dragBox(130, 90, 300, 280, async () => { seen.push((await boxState()).mode); });
+  await dragBox(300, 280, 130, 90, async () => { seen.push((await boxState()).mode); });
   assert.deepEqual(seen, ["window", "crossing"]);
 });
 

@@ -1,5 +1,6 @@
 // Browser entry point: the kernel, the model, the tool engine and the REPL
-// wired to a canvas. The command line at the bottom is now the real thing —
+// wired to a canvas, with the chrome — toolbar, log, command line — floating
+// over it as panels (see panels.ts). The command line is the real thing —
 // a scoped evaluator over the command surface in replenv.ts — rather than
 // the tool-name-only stand-in it replaced. A bare tool name still arms that
 // tool, because that shortcut is genuinely the most common entry and reads
@@ -17,7 +18,8 @@ import { describePick, type Pick } from "./picking.ts";
 import { ContextMenu, menuFor } from "./menu.ts";
 import { frameMarker } from "./framemarker.ts";
 import { constrainedBy, type Glyph } from "./glyphs.ts";
-import { getToolCtor } from "./tools/tool.ts";
+import { getToolCtor, listTools } from "./tools/tool.ts";
+import { Panels, Toolbar, browserStorage, defaultLayout } from "./panels.ts";
 import { depth } from "./view.ts";
 import { arcSamples, arcSegments } from "./arcgeom.ts";
 import { curveFrame } from "./curveplane.ts";
@@ -41,6 +43,20 @@ const g = cv.getContext("2d")!;
 const cmdEl = document.getElementById("cmd") as HTMLInputElement;
 const hoverEl = document.getElementById("hovertag")!;
 const menuEl = document.getElementById("ctxmenu")!;
+const toolbarEl = document.getElementById("toolbar")!;
+
+/**
+ * The panels are placed before the kernel loads, so the page never shows the
+ * chrome in a heap while the WASM downloads. The toolbar's default height is
+ * sized to however many tools are registered *when it is asked* — the built-ins
+ * are all registered by the imports above, and one defined later at the command
+ * line grows an untouched toolbar through `syncToolbar` below.
+ */
+const panels = new Panels(
+  document.getElementById("viewwrap")!,
+  (area) => defaultLayout(area, listTools().length),
+  browserStorage(),
+);
 
 function log(msg: string, cls?: string) {
   const d = document.createElement("div");
@@ -97,6 +113,11 @@ async function main() {
     // because a frame is geometry rather than annotation — it is a thing in
     // the drawing that can be clicked, dragged and deleted, not a note about
     // one. What is absent is only the frame nobody made.
+    //
+    // The cost of that decision is that an empty model is a black rectangle,
+    // which the owner opened cold and read as broken. So an empty model says
+    // what to do — see `emptyHint`.
+    if (model.entities.size === 0) emptyHint(r.width, r.height);
 
     // What the cursor is over lights up — and hovering a *constraint* lights up
     // everything that constraint is about. That spread is the payoff of drawing
@@ -170,6 +191,58 @@ async function main() {
     // everything — the geometry being placed is what the eye should be on.
     renderGlyphs(hov?.kind === "relation" ? hov.name : null);
     engine.renderOverlay();
+    syncToolbar();
+  }
+
+  /**
+   * Brings the toolbar up to date with the registry and the armed tool. Neither
+   * announces a change — the registry is a plain map, and a tool finishing its
+   * gesture simply clears `engine.active` — so this is called from everywhere a
+   * change can have just happened: every redraw, every canvas press and
+   * release, every entry, Escape. It does DOM work only when something differs.
+   */
+  function syncToolbar() {
+    if (toolbar.sync()) panels.apply();
+  }
+
+  /**
+   * The words on an empty canvas: what it is, and every way in that exists.
+   *
+   * **Read off the model in the draw pass, and nothing else** — no flag set by
+   * a clear or cleared by a click — so a fresh page, an undo back to nothing,
+   * opening an empty file and deleting the last entity all show it without any
+   * of them knowing it exists, and the first entity of any kind, a frame
+   * included, takes it away. Muted, in the status line's colours: it is the
+   * page explaining itself, and should stop being noticed once read.
+   *
+   * Drawn first, so a tool's preview, should one be armed before anything
+   * exists, goes over it rather than under it.
+   */
+  function emptyHint(width: number, height: number) {
+    const lines: [string, string, string][] = [
+      ["13px", "#7a8b9b", "Nothing drawn yet."],
+      ["12px", "#56697b", "Pick a tool from the toolbar, right-click for the menu, or type help() in the command line."],
+    ];
+    g.save();
+    g.textAlign = "center";
+    g.textBaseline = "middle";
+    // Wrapped at its commas if the window is too narrow for the long line, so
+    // a phone-width view still reads every way in rather than the middle of one.
+    const rows: [string, string, string][] = [];
+    for (const [size, colour, text] of lines) {
+      g.font = `${size} "IBM Plex Mono", ui-monospace, Menlo, monospace`;
+      if (g.measureText(text).width <= width - 40) rows.push([size, colour, text]);
+      else for (const part of text.split(/(?<=,) /)) rows.push([size, colour, part]);
+    }
+    const step = 20;
+    let y = height / 2 - ((rows.length - 1) * step) / 2;
+    for (const [size, colour, text] of rows) {
+      g.font = `${size} "IBM Plex Mono", ui-monospace, Menlo, monospace`;
+      g.fillStyle = colour;
+      g.fillText(text, width / 2, y);
+      y += step;
+    }
+    g.restore();
   }
 
   /**
@@ -428,11 +501,11 @@ async function main() {
     log(`${text}… → command line`, "out");
   }
 
-  // The canvas has to follow its own box, not just window resizes: the log
-  // pane grows as commands are typed and takes height from the viewport. Left
-  // to a resize listener the bitmap keeps its old aspect and the drawing is
-  // quietly squashed — circles come out as ellipses, which is the sort of
-  // thing no assertion catches and one glance does.
+  // The canvas follows its own box. Since the chrome became floating panels
+  // nothing inside the page reflows it any more — the log used to, taking
+  // height as it filled — but the box still changes with the window, and a
+  // bitmap left at its old aspect quietly squashes the drawing: circles come
+  // out as ellipses, which no assertion catches and one glance does.
   new ResizeObserver(() => {
     sizeCanvas();
     render();
@@ -537,6 +610,18 @@ async function main() {
     type: typeCommand,
   });
 
+  /**
+   * The toolbar goes through the same seam as the menu, for the same reasons:
+   * a button types `arm("line")` into `submit`, so the log shows it, the
+   * recall history has it, and arming by button is in every respect arming by
+   * typing — journal and undo included, which for `arm` is nothing at all.
+   */
+  const toolbar = new Toolbar(toolbarEl, {
+    tools: listTools,
+    active: () => engine.active?.name ?? null,
+    run: (command) => void submit(command),
+  });
+
   const engine = new ToolEngine(model, cv, view, {
     onSolveRender: solveAndRender,
     onRenderOnly: render,
@@ -553,6 +638,27 @@ async function main() {
       menu.show(menuFor(model, pick), sx, sy);
     },
   });
+
+  /**
+   * **A press on the canvas keeps the canvas for the whole gesture.** The engine
+   * captures the pointer for a drag, a box and a pan, but not while a tool is
+   * armed — and with panels floating over the drawing, a tool's press-drag that
+   * wandered over the log would otherwise hand its moves and its release to the
+   * log, leaving the tool waiting for an up that never comes. Capturing here, on
+   * every press, is what makes "a drag that starts on the canvas never crosses
+   * to a panel" true for every gesture the engine has or will have, without the
+   * engine having to know panels exist. The panels capture their own presses
+   * (see panels.ts), which is the other half.
+   *
+   * Registered after the engine's listener, so it runs after the engine has
+   * dispatched the press — and so does the toolbar sync on release, by which
+   * time a tool that finished on that click has cleared `engine.active`.
+   */
+  cv.addEventListener("pointerdown", (e) => {
+    if (!cv.hasPointerCapture(e.pointerId)) cv.setPointerCapture(e.pointerId);
+    syncToolbar();
+  });
+  cv.addEventListener("pointerup", syncToolbar);
 
   // The hover tag follows the cursor and names whatever is under it.
   cv.addEventListener("pointermove", (e) => {
@@ -586,10 +692,9 @@ async function main() {
       // The tool-voice channel, for `open()` mentioning what a file carries.
       log: (line: string) => log(line, "out"),
       toolSources,
-      // Measured fresh on every ask, not cached: the log pane grows as
-      // commands are typed and takes its height from the canvas, so a size
-      // read once at startup would put "the middle of the view" steadily
-      // below the middle of what is actually on screen.
+      // Measured fresh on every ask, not cached: the window can be resized at
+      // any time, and a size read once at startup would put "the middle of the
+      // view" somewhere that is no longer the middle of what is on screen.
       viewSize: (): [number, number] => {
         const r = cv.getBoundingClientRect();
         return [r.width, r.height];
@@ -613,6 +718,14 @@ async function main() {
       },
       cancel: () => engine.cancel(),
       refresh: () => { solveAndRender(); },
+      // The chrome's arrangement. Typed through `submit` like everything else,
+      // and so bracketed as a user action — which records nothing, because the
+      // model is untouched: layout is the viewer's, not the drawing's.
+      layout: (command?: string) => {
+        if (command === undefined) return panels.report();
+        if (command === "reset") return panels.reset();
+        throw new Error(`layout() reports and layout("reset") restores the defaults; "${command}" is neither`);
+      },
       solve: () => solveAndRender(),
       // Opening a file is one undo step, so opening the wrong one is one Ctrl+Z
       // from harmless. (Typed at the command line this is already inside
@@ -698,6 +811,7 @@ async function main() {
       } catch (err) {
         log(String(err instanceof Error ? err.message : err), "err");
       }
+      syncToolbar();
       return;
     }
 
@@ -771,7 +885,26 @@ async function main() {
       return;
     }
     engine.cancel();
+    syncToolbar();
     log("cancelled", "out");
+  });
+
+  /**
+   * **Typing with nothing editable focused types into the command line.** A
+   * press on the canvas, the toolbar or a panel's strip leaves the focus on the
+   * body or where it was, and the first keystroke after it should not vanish.
+   * Focusing the input during `keydown` is enough: the character is inserted
+   * into whatever holds the focus once the keydown has been dispatched.
+   *
+   * Only printable keys without a modifier — Escape, Ctrl+Z and the arrows keep
+   * their own meanings — and never when something editable already has the
+   * focus, which is that thing's keystroke.
+   */
+  window.addEventListener("keydown", (e) => {
+    if (e.ctrlKey || e.metaKey || e.altKey || e.key.length !== 1) return;
+    const at = document.activeElement as HTMLElement | null;
+    if (at && (at.isContentEditable || at instanceof HTMLInputElement || at instanceof HTMLTextAreaElement)) return;
+    cmdEl.focus();
   });
 
   /**

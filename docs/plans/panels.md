@@ -1,6 +1,9 @@
 # Plan: a toolbar, and every piece of chrome movable and resizable
 
-**Status: in flight** (2026-10-21). Owner's direction, verbatim: *"add the
+**Status: built** (2026-10-21) — one PR against
+`claude/resume-tasks-o7q02e`, with an empty-canvas hint added to its scope
+after the owner's report; deviations are in `TODO.md`'s Done entry.
+Owner's direction, verbatim: *"add the
 buttons. but they should be a moveable toolbar. actually everything should
 be moveable and resizable."* The original brief listed cellwork's icon
 toolbox as a proven idea to port once the foundation existed; this is

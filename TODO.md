@@ -737,6 +737,21 @@ are flagged as such.
   `defineTool`, is session state rather than model state (not journalled, not
   an undo step), and rides the file as an optional field that did not move
   `VERSION` off 4.
+- **The chrome is panels, and their layout is the viewer's** (owner's
+  direction, 2026-10-21: *"a moveable toolbar. actually everything should be
+  moveable and resizable"*). The toolbar, the log and the command line are
+  each a panel over a full-window canvas, dragged by a title strip and resized
+  by a corner grip. **The header is the one fixed thing** — the title bar,
+  where the solve status lives. **Layout is per-viewer UI state**: in
+  `localStorage`, never in the journal, a saved file or the undo history, so
+  two people opening one file keep their own arrangements, and a storage that
+  throws costs the arrangement and nothing else. **Toolbar labels are the tool
+  names, not icons** — the names are what the command line calls the tools,
+  and icons would be a second vocabulary (the owner can veto). A button types
+  `arm("name")` through `submit`, the context menu's rule: it can do nothing a
+  typed command cannot. An empty model says what to do (owner's report, *"i
+  dont see anything in the artifact"*), drawn from the model, never a flag.
+  Spec: [`docs/plans/panels.md`](docs/plans/panels.md).
 - **The command line is curation, not a sandbox.** Typed code runs with the
   app's full authority; the scope exists for legibility and typo-catching,
   and says so honestly rather than claiming to be a security boundary.
@@ -853,8 +868,44 @@ extended the way `defineTool` extends the tool registry would close it.
       line's length, as `tan` does) is the obvious thing to try, and would
       need its own measurement.
 
+- [ ] **The toolbar does not grey out the curve tools when they cannot run.**
+      In a 3D model with no default frame the context menu shows circle, arc,
+      circle3, arc3 and fillet disabled with `resolveFrame`'s reason; the
+      toolbar arms them, and the first click is refused in the log ("no
+      default frame — frame() then setDefaultFrame()…"). Loud and correct, but
+      the menu's answer is better, and a newcomer following the empty-canvas
+      hint is the person most likely to pick "circle" first. `curvesNeedAFrame`
+      is private to `menu.ts`; sharing it is the natural shape.
+- [ ] **`tan` from a seed through the circle's centre conflicts.** `line()`
+      seeds at the middle of the view; with a circle centred exactly there,
+      `tan(t, "c1"); tan(t, "c2")` ends in CONFLICT rather than choosing a side.
+      Measured in the free-line e2e test (now moved off the seed). Same family
+      as the register's notes on seed-sensitive residuals; a seed nudged off a
+      centre, or `tan` picking a side at zero distance, would need its own
+      measurement.
+- [ ] **Panel positions are absolute pixels from the top-left.** A moved
+      panel stays put when the window grows (an untouched one follows its
+      default, which is anchored to the bottom edge). Anchoring a moved panel
+      to its nearest edge would fix it; not needed until someone resizes often.
+
 ## Done
 
+- [x] **A toolbar, every piece of chrome a movable panel, and an empty-canvas
+      hint** — spec: [`docs/plans/panels.md`](docs/plans/panels.md), now marked
+      built. See the register entry above. One PR; the hint was added to its
+      scope by the supervising session after the owner's *"i dont see
+      anything"*. **Deviations:** `layout` needed a host handle and a help line
+      in `replenv.ts` (the house pattern for viewport commands; nothing in the
+      model, relations, tools or engine changed); the spec asked to *verify*
+      that typing with nothing focused reaches the command line, and no such
+      rule existed — focus only came back on a pick — so it was added; the
+      canvas now captures every press in `main.ts`, because the engine did not
+      capture an armed tool's gesture and a rectangle released over the log was
+      never built.
+      *Discovered while doing it:* the free-line tangent e2e test had a circle
+      centred exactly where `line()` seeds from and passed only because the log
+      pane shifted "the middle of the view" as it grew — so **`line()` seeded
+      through a circle's centre then `tan`'d to it ends in CONFLICT** (below).
 - [x] **Dimensions are named, and `set()` edits their value** — spec:
       [`docs/plans/dimensions-are-named.md`](docs/plans/dimensions-are-named.md),
       now marked shipped-pending-review. `dist`/`rad`/`ang` claim `d1`, `d2`, …

@@ -94,12 +94,17 @@ export interface AppContext {
   page: Page;
   browser: Browser;
   /**
-   * Canvas-relative screen coordinates -> absolute page coordinates.
+   * Canvas-relative screen coordinates -> absolute page coordinates, for a
+   * point where the canvas is actually what a pointer would hit.
    *
-   * Measured fresh every time rather than cached: the log pane grows as a test
-   * types into it, which moves the canvas's bottom edge up. A cached rect
-   * silently sends later clicks past the edge of the canvas, where they do
-   * nothing and the failure looks like the feature is broken.
+   * The canvas is the whole area under the header, and nothing in the page
+   * resizes it any more — the log used to, taking height as a test typed into
+   * it, which is gone with the chrome becoming floating panels. What took its
+   * place is the panels themselves lying *over* the canvas: a click aimed at
+   * drawing that a panel covers lands on the panel and does nothing to the
+   * drawing, which reads as "the feature is broken" rather than "the
+   * coordinate was wrong". So this asks the browser what is on top at that
+   * pixel and refuses to hand back a point a panel would take.
    */
   at(sx: number, sy: number): Promise<{ x: number; y: number }>;
   /** Types a line into the command input and presses Enter, as a user would. */
@@ -166,19 +171,25 @@ export async function openApp(): Promise<AppContext> {
     browser,
     pageErrors,
     async at(sx, sy) {
-      const box = await page.$eval("#cv", (el) => {
+      const { box, panel } = await page.$eval("#cv", (el, [sx, sy]) => {
         const r = el.getBoundingClientRect();
-        return { x: r.x, y: r.y, width: r.width, height: r.height };
-      });
-      // A point outside the canvas is never what a test meant, and a mouse
-      // event there lands on the log pane and does nothing — which reads as
-      // "the feature is broken" rather than "the coordinate was wrong". The
-      // canvas shrinks as the log fills, so this is easy to do by accident.
+        const top = document.elementFromPoint(r.x + sx, r.y + sy);
+        const covering = top?.closest<HTMLElement>(".panel[data-panel]");
+        return {
+          box: { x: r.x, y: r.y, width: r.width, height: r.height },
+          panel: covering ? covering.dataset.panel ?? "?" : null,
+        };
+      }, [sx, sy]);
       if (sx < 0 || sy < 0 || sx > box.width || sy > box.height) {
         throw new Error(
-          `(${sx}, ${sy}) is outside the canvas, which is currently ` +
-          `${Math.round(box.width)}x${Math.round(box.height)}. The canvas shrinks as the log pane ` +
-          `fills, so pick coordinates that fit the smaller size.`,
+          `(${sx}, ${sy}) is outside the canvas, which is ` +
+          `${Math.round(box.width)}x${Math.round(box.height)}.`,
+        );
+      }
+      if (panel) {
+        throw new Error(
+          `(${sx}, ${sy}) is under the ${panel} panel, which would take the press instead of the ` +
+          `canvas. Aim the test somewhere the drawing is visible, or move the panel first.`,
         );
       }
       return { x: box.x + sx, y: box.y + sy };

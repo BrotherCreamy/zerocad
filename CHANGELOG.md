@@ -7,6 +7,84 @@ decisions.
 
 ---
 
+## A toolbar, every piece of chrome a movable panel, and an empty canvas that says what to do
+
+![A fresh page: the header reading ready, a narrow "tools" panel top-left listing point, line, rectangle, circle, circle3, arc, arc3, fillet, extrude and revolve, the log and the command line as two panels at the bottom-left, and across the middle of the otherwise empty canvas, in muted grey, "Nothing drawn yet." over "Pick a tool from the toolbar, right-click for the menu, or type help() in the command line."](docs/images/68-a-fresh-page-says-what-to-do.png)
+
+The owner, verbatim: *"add the buttons. but they should be a moveable toolbar.
+actually everything should be moveable and resizable."* And, opening the
+published build cold, *"i dont see anything in the artifact"* — the page had
+loaded and solved perfectly, but since the grid and the origin went, a fresh
+model was a black rectangle with nothing to say it was working, let alone what
+to do next. Both are answered here.
+
+| | |
+|---|---|
+| ![The default layout with a drawing on it: a constrained rectangle with a circle inside it and a 100 dimension along its top, a line off to the right with the line tool's dashed amber preview running from its end, a frame marker bottom-right; the toolbar on the left with "line" outlined in amber as the armed tool, and the log at the bottom showing the arm("rectangle"), arm("circle") and arm("line") lines the buttons typed](docs/images/69-toolbar-log-and-command-line-as-panels.png) | ![The same drawing with the chrome rearranged: the toolbar moved to the top-right corner, the log made tall and narrow down the left side with layout() printed at the bottom of it, and the command line moved to the top centre](docs/images/70-the-same-panels-rearranged.png) |
+
+**The toolbar** has one button per registered tool, built from the registry when
+it is drawn — so `extrude` and `revolve` are there, and a tool defined at the
+command line gets a button too (an untouched toolbar grows to hold it). **A
+button types `arm("line")`** through `submit`, the seam the context menu uses: the
+log shows the line, the recall history has it, and arming by button journals
+exactly what arming by typing journals, which is nothing — an e2e test reads the
+journal both ways. The armed tool's button is outlined in amber, the only amber
+in the chrome; Escape or a finished gesture lets it go. Labels are the tool
+names, the words the command line uses; there are no icons.
+
+**Every piece of chrome is a panel** — the toolbar, the log, the command line —
+dragged by its title strip and resized by its corner grip, over a canvas that is
+now the whole window under the header. Nothing reflows the drawing any more (the
+log used to take height from it as it filled). A panel is held where its strip
+stays reachable; the panel last pressed comes to the front. **The header is the
+one fixed thing**: it is the title bar, where the solve status lives.
+
+```
+> layout()
+toolbar  998,8  96x242
+log      8,100  330x620
+cmd      380,8  440x44
+> layout("reset")
+layout reset to the defaults
+```
+
+**Layout is the viewer's, not the drawing's** — `localStorage`, read and written
+through try/catch, never the journal, the file or the undo history. A storage
+that throws on every touch (a private window) costs the arrangement and nothing
+else; an e2e test makes one. Only panels the viewer has touched are stored, so an
+untouched panel follows its default — the log and command line stay on the
+bottom edge as the window resizes.
+
+**Gestures never cross.** A drag that starts on a panel's strip, released over
+the drawing with a tool armed, places nothing; a rectangle dragged out from the
+canvas and released over the log is built. The second needed a fix: the engine
+captured the pointer for drags, boxes and pans but not for an armed tool's
+gesture, so the log took the release and the rectangle never happened. The host
+now captures every canvas press (the test fails with that line removed).
+And typing with nothing editable focused — after a canvas click, say — goes to
+the command line.
+
+**The empty canvas** says *"Nothing drawn yet."* and names the three ways in, in
+the status line's muted colours. It is drawn from the model in the render pass —
+no flag — so a fresh page, an undo back to nothing and deleting the last entity
+all show it, and the first entity of any kind, a frame included, takes it away.
+
+Two existing e2e tests had layout assumptions the full-window canvas exposed,
+fixed rather than worked around: box-select's empty-canvas boxes started where
+the toolbar now is, and the free-line tangent test had put a circle's centre on
+the very spot `line()` seeds from, passing only because the growing log had
+dragged "the middle of the view" off it. The harness's `at()` now refuses a
+point a panel covers, with the panel's name, in place of the old
+canvas-shrinks-as-the-log-fills check. 645 unit tests (11 new), 237 e2e (19 new).
+
+*Known and deliberate:* positions are stored in pixels from the top-left, so a
+moved panel stays put when the window grows; the curve tools are not greyed out
+on the toolbar in a model with no default frame (the menu greys them; the
+toolbar arms them and the click is refused, loudly, in the log); no icons,
+docking or snapping between panels.
+
+---
+
 ## Revolve: a profile turned about an axis, and the owner's 3D ask closed
 
 ![A tilted sketch with two solids on it, seen at three-quarters: in front, a long rectangular plate extruded 8; behind it, a filleted rectangle revolved 270° about the sketch frame's +y, its open quarter facing the viewer so both flat end faces — the filleted profile on the right and its turned twin on the left — show, with the bore of the ring visible between them and the label 270° beside the axis](docs/images/64-a-plate-and-a-filleted-profile-revolved-270.png)
