@@ -101,6 +101,11 @@ profile whose corners nothing holds together is not one the next drag will
 leave closed. A loop is a question rather than an entity: it is found afresh
 each time, journals nothing and has no name.
 
+`sketchface.ts` sits beside `loops.ts`: given a loop and the line of sight, the
+three of its points a sketch plane on it is made of — pure, and read by the
+sketch tool and the context menu alike, so the two cannot make different planes
+of one face.
+
 `faces.ts` is the sixth: what a solid's faces are this frame, which of them
 face the viewer, in what order to fill them and how bright — computed, not
 drawn, so it is tested without a canvas (see "A solid's faces are drawn, never
@@ -514,6 +519,16 @@ nothing. A tool that chooses rather than places
 says so (`snaps = false`) and the engine neither pulls its cursor nor draws a
 marker promising a vertex the click will not go to.
 
+`regionAt` also reports the line of sight it looked along (`RegionHit.toward`),
+which is the half of the answer the sketch tool needs and the only part of the
+camera a tool ever sees: which side of a face was the one clicked. And a tool
+whose commit *is* a command — the sketch tool's `plane(a, b, c)`, which turns
+the view as well as making a frame — **types it** (`ctx.run`, the host's
+`submit`, the context menu's own seam) rather than reaching past the model to
+the camera. That is the menu's rule applied to a tool: the log, the recall
+history, the journal and the one undo step are the typed call's because it is
+one.
+
 ## A solid's faces are drawn, never stored
 
 An extrude is real geometry — twins, walls, a depth — and its *faces* are what
@@ -534,6 +549,15 @@ sort behind its own hole's far wall, which then painted over it. The faces go
 down first and every entity draws over them — so the sketch stays legible on a
 solid, at the price of hidden edges showing through — and a face never picks,
 snaps, boxes or wears a glyph: the pieces of a solid are what a hand aims at.
+
+**Sketching on a face needs no face to pick.** Every planar face of a solid is
+a closed loop of real entities — a lid its twin loop, a wall the quad of an
+edge, two side edges and the twin edge — so the face under a click is the
+region `loopAt` finds, and a frame on three of its own points (`plane(a, b,
+c)`, `sketchface.ts`) is the sketch plane, following the solid because its
+points are the solid's. Back-face culling gives the orientation for free: the
+first face a ray meets is one whose outward normal faces the viewer, so
+ordering the points to face the camera puts +z out of the solid.
 
 **A revolve's faces are derived further.** There are no walls to fill between,
 so each piece of the profile is swept round the live axis in steps sized from the

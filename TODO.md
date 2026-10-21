@@ -801,10 +801,63 @@ are flagged as such.
 Queue for Opus, in order. Each gets a spec in `docs/plans/` before work
 starts.
 
-- [ ] **Sketch on a solid's face.** The one-model design makes it one step:
-      a command/menu item that makes a frame ON a picked face's plane (faces
-      will need to pick first — today they deliberately don't). Unlocks
-      stacked features drawn in place rather than by typing a frame.
+- [x] **Sketch on a solid's face — BUILT (2026-10-21).** The one-model design
+      made it one step: `arm("sketch")` and a click inside a face, or
+      right-click → **Sketch on this face**, types `plane(a, b, c)` on three of
+      the face's own points, +z toward the viewer. Spec:
+      [`docs/plans/sketch-on-face.md`](docs/plans/sketch-on-face.md).
+      **The note that stood here was wrong, and what replaced it is worth
+      keeping:** faces did *not* need to pick first. A face is not an entity,
+      but every planar face of a solid is a closed loop of real entities — a
+      lid its twin loop, a wall the quad of an edge, two side edges and the
+      twin edge — and `loopAt` already finds the loop under a pixel, so a face
+      is something a *tool asks about*, as the extrude tool asks about a
+      region. Faces stay display only; nothing in `model.ts`, `faces.ts`, the
+      journal or persistence changed. **Orientation is back-face culling for
+      free:** the face a ray meets first is one it enters through, so its
+      outward normal faces the viewer, and ordering the points so
+      `(b − a) × (c − a)` faces the camera puts +z out of the solid — a
+      positive extrude on a wall is a boss, never a bore (tested both ways:
+      every face of a plate from its own outside, and the boss's lid outside).
+      The frame's points are the solid's, so it follows the solid (`set` the
+      depth and the wall's frame stays on the wall).
+      Deviations from the spec, each also marked in it:
+      - ⚠ **The tool types its command** (`ToolContext.run`, new — the host's
+        `submit`, the menu's very seam), because `plane()`'s `lookAt` is the
+        camera's and no tool holds the camera. The log, recall, journal and the
+        one undo step are then the typed call's because it is one. Headless
+        (no `run`) the tool refuses rather than half-commit.
+      - ⚠ **`sketchFrameFor(model, loop, toward)`**, not `(…, view)`: the
+        engine's `regionAt` now reports the line of sight it looked along
+        (`RegionHit.toward`), so the tool still learns no camera.
+      - ⚠ **A corner and its two neighbours**, not the first three vertices:
+        that reading, swapped to face the viewer, put +x along the face's
+        diagonal whenever it was seen from its back, and `lookAt` showed a wall
+        tipped by its aspect ratio — caught in the e2e screenshot. Now +x runs
+        along an edge (an e2e test asserts the wall comes up level). A point
+        partway along an edge is no corner and is skipped; then any three
+        vertices, then arc centres (a lens has two vertices).
+      - ⚠ **A whole circle lying off its own frame's plane is refused** (a
+        circle is held parallel to its frame, not on it, so the frame's points
+        would not be on the face).
+      - ⚠ **The outward-boss assertion** measures the boss's lid frame across
+        the wall's plane: its origin twins a plate *corner*, farther from the
+        centroid than the wall's middle whichever way the boss goes, so the
+        spec's straight-line distance could not tell out from in.
+      **Found while building, left deliberately:**
+      - **A boss's lid frame floats off the boss.** Extrude twins the sketch
+        frame's three points for the lid frame, and a face's frame is the
+        plate's corners — so a boss on a wall has its lid frame's marker and
+        points out past the plate's corner, in empty space, `depth` off the
+        wall (visible in the poster). Correct, and cluttered; the remedy would
+        be extrude choosing its lid frame from the profile rather than twinning
+        the sketch frame — an extrude change, not this package's.
+      - **The menu item and the tool make the frame default and look at it,
+        always** (`plane()`'s contract). Sketching on a face you only meant to
+        measure against means `frame(a, b, c)` typed.
+      - **Which edge is +x is whichever the loop starts at** — a wall may come
+        up portrait. Level or plumb, never tipped; choosing the longer edge is
+        a nicety nobody has asked for.
 - [ ] **Regions under crossings and Ts** — the two ⚠ loop policies (a
       crossing or an `on`-T splits nothing) deviate from Onshape, which
       subdivides regions; extrude is where a user will feel it. Wants a

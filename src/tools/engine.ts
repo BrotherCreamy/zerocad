@@ -43,9 +43,9 @@
 
 import type { Model } from "../model.ts";
 import type { ResidualBlock } from "../kernel/problem.ts";
-import { getToolCtor, type Tool, type ToolContext, type PointerInfo, type RenderContext } from "./tool.ts";
+import { getToolCtor, type Tool, type ToolContext, type PointerInfo, type RegionHit, type RenderContext } from "./tool.ts";
 import {
-  assignView, orbitBy, panBy, screenToPlane, screenToWorld, worldToScreen, zoomAbout, type Plane, type View,
+  assignView, orbitBy, panBy, screenToPlane, screenToWorld, viewAxes, worldToScreen, zoomAbout, type Plane, type View,
 } from "../view.ts";
 import { framePlane, pointOnWorkingPlane } from "../workplane.ts";
 import { hitTest, type Pick } from "../picking.ts";
@@ -149,6 +149,7 @@ export class ToolEngine {
   private onPick: (pick: Pick) => void;
   private onUserAction: (phase: "before" | "after") => void;
   private onLog?: (line: string) => void;
+  private onRun?: (command: string) => void;
   private onContextMenu: (pick: Pick | null, sx: number, sy: number) => void;
   /**
    * Whether a user action is currently open, so that `before` and `after`
@@ -250,6 +251,8 @@ export class ToolEngine {
       onUserAction?: (phase: "before" | "after") => void;
       /** One line to the user in the host's log pane — see ToolContext.log. */
       onLog?: (line: string) => void;
+      /** One line typed into the host's command machinery — see ToolContext.run. */
+      onRun?: (command: string) => void;
       /**
        * A right press released without moving, with what it landed on (null for
        * empty canvas) and where, in canvas pixels.
@@ -273,6 +276,7 @@ export class ToolEngine {
     this.onPick = callbacks.onPick ?? (() => {});
     this.onUserAction = callbacks.onUserAction ?? (() => {});
     this.onLog = callbacks.onLog;
+    this.onRun = callbacks.onRun;
     this.onContextMenu = callbacks.onContextMenu ?? (() => {});
     canvas.addEventListener("pointerleave", () => {
       if (this.hover) { this.hover = null; this.onRenderOnly(); }
@@ -376,6 +380,19 @@ export class ToolEngine {
   }
 
   /**
+   * The closed region (sx, sy) is inside, if any — see ToolContext.regionAt.
+   * Public as well, for the host's context menu, which offers "Sketch on this
+   * face" only where a right-click landed inside one. Found afresh per ask,
+   * like everything screen-space here: a loop is a question, not an entity,
+   * and the drawing may have moved since.
+   */
+  regionAt(sx: number, sy: number): RegionHit | null {
+    const loops = findLoops(this.model);
+    const loop = loopAt(this.model, this.view, sx, sy, loops);
+    return loop ? { loops, index: loops.indexOf(loop), toward: viewAxes(this.view).toward } : null;
+  }
+
+  /**
    * Arms `toolName`, cancelling whatever was active. Throws if the name isn't
    * registered. `options` is handed to the tool as `ctx.options`, which is how
    * a tool that needs a parameter up front — a fillet radius, say — gets one.
@@ -394,14 +411,9 @@ export class ToolEngine {
         this.snap = null;
       },
       pick: ([sx, sy]) => hitTest(this.model, this.view, sx, sy),
-      // Found afresh per ask, like everything screen-space here: a loop is a
-      // question, not an entity, and the drawing may have moved since.
-      regionAt: ([sx, sy]) => {
-        const loops = findLoops(this.model);
-        const loop = loopAt(this.model, this.view, sx, sy, loops);
-        return loop ? { loops, index: loops.indexOf(loop) } : null;
-      },
+      regionAt: ([sx, sy]) => this.regionAt(sx, sy),
       log: this.onLog,
+      run: this.onRun,
     };
     this.active = new Ctor(ctx);
   }

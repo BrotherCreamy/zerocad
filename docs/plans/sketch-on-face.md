@@ -1,6 +1,17 @@
 # Plan: sketch on a solid's face
 
-**Status: queued** (2026-10-21). First of the register's "Next up" queue;
+**Status: built** (2026-10-21) — `src/sketchface.ts`, `src/tools/sketch.ts`,
+the menu item, `test/sketchface.test.ts` and `test/e2e/sketchface.e2e.ts`.
+Deviations, each marked ⚠ where the text below was written before the code
+and in the register's queue entry: the helper takes the **line of sight**
+(`toward`), not the view; the preferred triple is **a corner and its two
+neighbours**, not the first three vertices; the tool **types** its command
+through a new `ToolContext.run`, and `regionAt` reports the `toward` it looked
+along; a whole circle lying *off* its own frame's plane is refused; and the
+outward-boss assertion measures the lid frame's origin across the wall's
+plane, not straight-line.
+
+First of the register's "Next up" queue;
 the gesture every stacked feature in Onshape starts with: pick a face, sketch
 on it, extrude. Read `CLAUDE.md`, `docs/ARCHITECTURE.md`, the 3D roadmap and
 phases 3–5 (`docs/plans/3d-*.md`), `src/loops.ts` (`findLoops`, `loopAt`),
@@ -44,11 +55,26 @@ whole trick.
   the rule above. Throws with a named reason when no three non-collinear
   points exist. Tested without a DOM against tilted loops and both
   orientations.
+  ⚠ *As built: `sketchFrameFor(model, loop, toward)` in `src/sketchface.ts` —
+  the line of sight (`viewAxes(view).toward`) rather than the view, because
+  the tool asking has no camera: the engine's `regionAt` now reports the
+  `toward` it looked along with the region. And "preferring the vertices in
+  loop order" became **the first corner (a vertex not on a straight run) with
+  its two neighbours**, swapped to face the viewer — the first-three-vertices
+  reading, swapped, put the sketch's +x along the face's diagonal whenever the
+  face was seen from its back, and `lookAt` then showed a wall tipped by its
+  own aspect ratio (found in the e2e screenshot). Any three vertices, then
+  arc centres (a lens has only two vertices), are the fallbacks.*
   - **A whole-circle loop** has only its centre. It also has its `plane` frame.
     Use that frame's own three points (`origin`, `xref`, `yref`), swapping
     `xref` and `yref` when the frame's +z faces away — so a lid that is a
     circle still gets a plane facing out. (A frame with no `yref` — 2D-style —
     cannot be flipped that way; refuse, naming the frame.)
+    ⚠ *As built, also refused: a circle whose centre is off its frame's plane.
+    A circle is held only parallel to its frame (the frame is an orientation,
+    not a constraint), so its frame's points are then not on the face. A 3D
+    frame always has a y-ref, so the no-`yref` refusal can only be reached by
+    a 2D model, which is refused before it.*
 - **The tool: `sketch`** (`arm("sketch")`; it appears on the toolbar and in
   `tools()` by registering, as every tool does). Extrude's gesture exactly:
   hovering outlines the region under the cursor (reuse extrude's outline
@@ -58,6 +84,11 @@ whole trick.
   typed call. A click outside any region is refused in the log, as extrude's
   is. The tool's hover must distinguish "this loop" from "the loop it is
   inside" as extrude does (innermost, then nearest).
+  ⚠ *As built: a tool could not do "what `plane` typed would do" — `lookAt`
+  is the camera's, and no tool holds it — so the tool types the line:
+  `ToolContext.run` (new; the host's `submit`, the menu's very seam). The log,
+  the recall history, the journal and the one undo step are then the typed
+  call's because it is one. Headless, with no `run`, the tool refuses.*
 - **The menu item: "Sketch on this face"** in the empty-canvas menu (the one
   shown when nothing is under the cursor), present only when the right-click
   landed inside a region, running the same `plane(a, b, c)` command. This
@@ -82,7 +113,16 @@ orbit so a wall faces the camera, arm `sketch`, click the wall, draw a circle
 on it (it must land on the wall, which `onPlane`/the working plane give for
 free), extrude that circle outward with a positive depth and assert the new
 solid's lid frame sits *outside* the first solid (its origin farther from the
-first solid's centroid than the wall is). Then the same by the context menu.
+first solid's centroid than the wall is). ⚠ *As built: the lid frame's
+origin twins one of the wall frame's points, a plate **corner**, which is
+farther from the centroid than the wall's middle whichever way the boss goes
+— so straight-line distance cannot tell out from in. The tests measure the
+lid frame's origin across the wall's plane (along its outward normal), and the
+boss's lid centre straight-line.* ⚠ *On the midpoint case: `loops.ts` joins
+at shared points and coins only, so a point held on an edge by `on` is no
+vertex (a T splits nothing); the honest collinear case is an edge drawn as two
+lines through a point, which is one five-member loop.* Then the same by the
+context menu.
 Undo in one step. Save/open byte-identity with a sketch-on-face in the
 history. LOOK at every screenshot: the poster is a boss on the side of a
 plate. Full `npm run test:all` per commit. Docs per `CLAUDE.md`: CHANGELOG at

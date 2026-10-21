@@ -106,6 +106,54 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### Sketch on a face: a face is a loop, and three of its points are the plane
+
+**The register's note — "faces will need to pick first" — was the wrong
+framing, and the spec (`docs/plans/sketch-on-face.md`) said why before any code:**
+a planar face of a solid is a loop of real entities, and the extrude tool had
+already shown that a region is something a tool asks about rather than
+something the canvas selects. So nothing about faces is stored, picked or
+journalled; the journal carries `plane(a, b, c)` on three point names.
+
+**Decisions made in the code, and what was rejected:**
+
+- *The tool types its command.* The spec asked for "what `plane(a, b, c)`
+  typed would do — frame, default, `lookAt`" and for the log to show the typed
+  call. A tool reaches the model, not the camera, so it could not do the third
+  part without either a camera handle on `ToolContext` or a second
+  implementation of `plane()` in the engine. Rejected both: a camera handle
+  breaks "screen-space questions are the engine's to answer", and a second
+  `plane()` is the drift the menu's design exists to prevent. `ToolContext.run`
+  is the menu's `run` handed to a tool; it executes synchronously inside the
+  pointer event's undo bracket (the REPL runs an entry synchronously up to its
+  first `await`), so the click is one step. Headless, with no `run`, the tool
+  refuses rather than make a frame nobody looks at.
+- *The line of sight travels with the region.* The helper needs which side of
+  the face was seen. Rather than give tools a view, `regionAt` returns the
+  `toward` it was asked along: a region is the answer to a question along a
+  ray, and the ray's direction is part of the answer. So the helper takes
+  `toward`, not `view` — a deviation from the spec's signature.
+- *A corner and its neighbours, found by looking.* The first cut took the
+  first three vertices in loop order and swapped the last two when the face
+  faced away — the spec's reading. Every unit test passed. The e2e screenshot
+  of the wall, after `lookAt`, showed it tipped: seen from its back the swap
+  made the x-ref the *diagonal* corner, so +x ran across the wall. Taking a
+  corner with its two neighbours keeps +x on an edge in both orientations; an
+  e2e assertion now checks that the wall's edge from origin to x-ref is level
+  on screen.
+- *A circle off its frame is refused.* The spec's whole-circle rule uses the
+  circle's frame's three points; a circle is held parallel to its frame and
+  not on it (the free-entities rule), so for one lying off it those points are
+  not on the face. Refused by name rather than given a plane beside its face.
+- *The spec's outward-boss measure could not fail.* "Its origin farther from
+  the first solid's centroid than the wall is": the boss's lid frame twins the
+  face frame's origin, which is a plate corner — farther than the wall's middle
+  whichever way the boss went. The tests measure that origin across the wall's
+  plane, and the boss's lid centre straight-line, both of which a bore fails.
+- *Left alone:* that same lid frame, twinned from the plate's corners, draws
+  its marker out past the corner, in empty space. Correct, and visible in the
+  poster; changing which frame an extrude's lid gets is an extrude decision.
+
 ### Clauses: one expression for "make a thing, defined by these"
 
 **The owner's complaint was about the shape of the call, not the model.** The

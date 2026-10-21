@@ -244,7 +244,7 @@ function toolCtx(model: Model, view: View, options: Record<string, unknown> = {}
     regionAt: ([sx, sy]: [number, number]) => {
       const loops = findLoops(model);
       const loop = loopAt(model, view, sx, sy, loops);
-      return loop ? { loops, index: loops.indexOf(loop) } : null;
+      return loop ? { loops, index: loops.indexOf(loop), toward: viewAxes(view).toward } : null;
     },
     // The engine's own answer, as the revolve tool's second click asks it.
     pick: ([sx, sy]: [number, number]) => hitTest(model, view, sx, sy),

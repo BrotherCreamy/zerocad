@@ -47,6 +47,23 @@ export interface RenderContext {
   scale: number;
 }
 
+/**
+ * A region under a pixel (see ../loops.ts: the innermost loop whose inside the
+ * pixel's ray meets, then the nearest). `loops` is every loop `findLoops`
+ * found and `index` the one under the point, so its `children` mean something.
+ *
+ * `toward` is the ray it was found along, pointing back out of the screen at
+ * the viewer, in world terms — which side of the region was the one seen. A
+ * region is the answer to a question asked along a line of sight, and the
+ * sketch tool needs that half of the answer to put a plane's +z on the side
+ * facing whoever clicked; a tool has no camera to ask it of afterwards.
+ */
+export interface RegionHit {
+  loops: Loop[];
+  index: number;
+  toward: number[];
+}
+
 export interface ToolContext {
   model: Model;
   requestRender(): void; // redraw without resolving (e.g. a live drag preview)
@@ -65,12 +82,10 @@ export interface ToolContext {
   pick?(screen: [number, number]): Pick | null;
   /**
    * The closed region a screen point is inside, if any — `pick`'s question
-   * asked of regions rather than entities (see ../loops.ts: the innermost loop
-   * whose inside the pixel's ray meets, then the nearest). `loops` is every
-   * loop `findLoops` found and `index` the one under the point, so its
-   * `children` mean something. Absent outside a viewport, like `pick`.
+   * asked of regions rather than entities. See `RegionHit`. Absent outside a
+   * viewport, like `pick`.
    */
-  regionAt?(screen: [number, number]): { loops: Loop[]; index: number } | null;
+  regionAt?(screen: [number, number]): RegionHit | null;
   /**
    * One line to the user, in the app's log pane. This is how a tool refuses a
    * gesture out loud: a `throw` from a pointer handler reaches the page as an
@@ -80,6 +95,16 @@ export interface ToolContext {
    * a real refusal, keep the `console.warn` for an advisory.
    */
   log?(line: string): void;
+  /**
+   * Types one line into the command machinery, exactly as if it had been typed
+   * at the command line — the context menu's `run`, handed to a tool. For a
+   * tool whose commit *is* a command with more to it than the model: the sketch
+   * tool types `plane(a, b, c)`, which turns the camera as well as making a
+   * frame, and going through the command line is what makes the log, the
+   * journal and the undo step those of the typed call rather than a second
+   * answer to what it means. Absent outside an app, like `log`.
+   */
+  run?(command: string): void;
 }
 
 export abstract class Tool {

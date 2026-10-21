@@ -7,6 +7,61 @@ decisions.
 
 ---
 
+## Sketch on a face: click a wall, draw, extrude — a boss on the side of a plate
+
+![A plate 80 by 50 and 20 deep, turned so its lid, its near wall and a sliver of its right wall face the viewer, shaded slate; standing out of the middle of the near wall toward the viewer is a cylinder, its base circle on the wall and its lid circle nearer, with the shaded strip of its side between them and the depth label 14 beside it; the wall's sketch frame f3 sits at the plate's corner p5 with its +z pointing out of the wall](docs/images/73-a-boss-sketched-on-the-side-of-a-plate.png)
+
+The gesture every stacked feature in Onshape starts with. Arm **`sketch`** and
+click inside a face — a solid's lid, a wall turned toward you, a revolve's end
+face, or a plain sketch loop — or right-click inside one and choose **Sketch on
+this face**. Either types one line:
+
+```js
+> plane("p5", "p12", "p4")      // three of the wall's own corners
+f3                              // made the default, looked at square-on
+```
+
+Draw on it with any tool (the working plane follows the default, so the circle
+lands on the wall), extrude it a positive depth, and it stands *out* of the
+solid.
+
+**There is no face to pick, and no new entity.** The register had said faces
+would need to pick first; they did not. Every planar face of a solid is a
+closed loop of real entities — a lid is its twin loop, a wall is the quad of an
+edge, two side edges and the twin edge — and `loopAt` already finds the loop
+under a pixel. So the face is a region the tool asks about, exactly as the
+extrude tool asks about a region; faces stay display only. And a frame on three
+of the loop's own points *is* the sketch plane: it journals as the ordinary
+`plane(a, b, c)` it is, and follows the solid, because its points are the
+solid's — `set` the plate's depth and the wall's frame stays on the wall.
+
+**Out of the solid, for free.** The three points are ordered so
+`(b − a) × (c − a)` faces the camera. A face you can click is the first one the
+ray meets, and the first surface a ray meets on a solid is one it enters
+through — one whose outward normal faces you. So one rule serves solids and
+plain loops alike, and a whole-circle lid uses its frame's three points, turned
+over (x-ref and y-ref swapped) when the frame faces away.
+
+![The same plate before the sketch, turned the same way, with the sketch tool armed in the toolbar: the near wall under the cursor is outlined in the extrude tool's green and tinted faintly](docs/images/74-the-sketch-tool-outlining-a-wall.png)
+
+**The tool types its command.** "What `plane(a, b, c)` typed would do" includes
+turning the camera, which no tool holds — so the tool hands the line to the
+command machinery (`ToolContext.run`, the context menu's own seam) and the log,
+the recall history, the journal and the single undo step are the typed call's
+because it is one. The hover outline is the extrude tool's, now shared by the
+three click-inside tools (`tools/region.ts`). ⚠ *Deviations, all in the spec
+and the register:* the helper takes the line of sight rather than the view
+(`regionAt` reports it); its preferred triple is a corner and its two
+neighbours, because the first three vertices swapped put +x along a wall's
+diagonal and `lookAt` showed it tipped — **found by looking at the
+screenshot**; a circle lying off its own frame's plane is refused; and the
+"outside the plate" test measures across the wall's plane, since the boss's lid
+frame twins a plate corner. *Left deliberately:* that lid frame's marker floats
+off the plate's corner, `depth` from the wall. Tests: 673 → 686 unit,
+247 → 254 e2e.
+
+---
+
 ## Clauses: an entity defined by any constraint set, in one expression
 
 ![The app solved: on the right a circle through three fixed points p1, p2 and p3, each wearing a fix mark and an oncircle mark, its auto-made centre p4 in the middle; on the left two fixed lines crossing, with p9 sitting exactly on the crossing and wearing two on marks; the log at the bottom reads x = pt(on(_, h), on(_, v)) answered p9, then on(_, "l1") echoed back as on(_, "l1"), then a red refusal: pt: on(_, "nope") names "nope", and there is no "nope"](docs/images/72-a-circle-and-a-point-each-defined-by-clauses.png)
