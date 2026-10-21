@@ -21,16 +21,10 @@
 // the command line would not.
 
 import { Tool, defineTool, type PointerInfo, type RenderContext } from "./tool.ts";
-import { regionOf, revolveProfile, revolveProfileOf } from "../operations.ts";
-import { loopOutlines } from "../faces.ts";
-import type { Loop } from "../loops.ts";
+import { revolveProfile, revolveProfileOf } from "../operations.ts";
 import type { Pick } from "../picking.ts";
 import { FULL_TURN, axisReader } from "../relations/revolution.ts";
-
-type Region = { loops: Loop[]; index: number };
-
-/** The tool's green, shared with the extrude tool's preview. */
-const GREEN = "#55c07a";
+import { REGION_GREEN, drawRegion, regionKey, type Region } from "./region.ts";
 
 export class RevolveTool extends Tool {
   readonly name = "revolve";
@@ -49,12 +43,6 @@ export class RevolveTool extends Tool {
     return typeof a === "number" && Number.isFinite(a) && a !== 0 && Math.abs(a) <= FULL_TURN ? a : FULL_TURN;
   }
 
-  /** Which loops a region is made of, by member names — what a hover is compared by. */
-  private static key(r: Region | null): string {
-    if (!r) return "";
-    return regionOf(r.loops, r.index).map((i) => r.loops[i].members.map((m) => m.name).join(",")).join("|");
-  }
-
   /** The axis a pick names: a line, or a frame's arm as `"f1.y"` — null for anything else. */
   private static axisOf(hit: Pick | null | undefined): string | null {
     if (!hit) return null;
@@ -66,7 +54,7 @@ export class RevolveTool extends Tool {
   onMove(p: PointerInfo): void {
     if (!this.region) {
       const next = this.ctx.regionAt?.(p.screen) ?? null;
-      const changed = RevolveTool.key(next) !== RevolveTool.key(this.under);
+      const changed = regionKey(next) !== regionKey(this.under);
       this.under = next;
       if (changed) this.ctx.requestRender();
       return;
@@ -137,29 +125,8 @@ export class RevolveTool extends Tool {
   render(r: RenderContext): void {
     const u = this.region ?? this.under;
     if (!u) return;
-    const m = this.ctx.model;
-    let outlines: number[][][];
-    try {
-      outlines = loopOutlines(m, regionOf(u.loops, u.index).map((i) => u.loops[i].members.map((mm) => mm.name)), r.scale);
-    } catch {
-      return; // the drawing moved under the hover; the next move asks again
-    }
-    if (!outlines.length) return;
-    r.g.save();
-    r.g.beginPath();
-    for (const o of outlines) {
-      const pts = o.map((w) => r.worldToScreen(w));
-      r.g.moveTo(...pts[0]);
-      for (const q of pts.slice(1)) r.g.lineTo(...q);
-      r.g.closePath();
-    }
-    r.g.fillStyle = this.region ? "#55c07a40" : "#55c07a2e";
-    r.g.fill("evenodd");
-    r.g.strokeStyle = GREEN;
-    r.g.lineWidth = 2.4;
-    r.g.stroke();
-    if (this.region && this.axisUnder) this.renderAxis(r, outlines);
-    r.g.restore();
+    const outlines = drawRegion(this.ctx.model, r, u, this.region ? "40" : "2e");
+    if (outlines && this.region && this.axisUnder) this.renderAxis(r, outlines);
   }
 
   private renderAxis(r: RenderContext, outlines: number[][][]): void {
@@ -175,13 +142,15 @@ export class RevolveTool extends Tool {
     const [lo, hi] = [Math.min(0, ...along), Math.max(0, ...along)];
     const pad = Math.max(1, (hi - lo) * 0.2);
     const at = (t: number) => r.worldToScreen(ax.origin.map((o, i) => o + t * ax.dir[i]));
+    r.g.save();
+    r.g.strokeStyle = REGION_GREEN;
     r.g.beginPath();
     r.g.moveTo(...at(lo - pad));
     r.g.lineTo(...at(hi + pad));
     r.g.setLineDash([8, 5]);
     r.g.lineWidth = 2;
     r.g.stroke();
-    r.g.setLineDash([]);
+    r.g.restore();
   }
 }
 

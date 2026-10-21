@@ -21,31 +21,24 @@
 // said which. The journal entry is the same one a typed call makes.
 
 import { Tool, defineTool, type PointerInfo, type RenderContext } from "./tool.ts";
-import { DEFAULT_DEPTH, extrude, profileOf, regionOf } from "../operations.ts";
-import { loopOutlines } from "../faces.ts";
-import type { Loop } from "../loops.ts";
+import { DEFAULT_DEPTH, extrude, profileOf } from "../operations.ts";
+import { drawRegion, regionKey, type Region } from "./region.ts";
 
 export class ExtrudeTool extends Tool {
   readonly name = "extrude";
   // It chooses a region, not a place: a snap marker would promise a vertex
   // the click does not go to.
   readonly snaps = false;
-  private under: { loops: Loop[]; index: number } | null = null;
+  private under: Region | null = null;
 
   private get depth(): number {
     const d = this.ctx.options.depth;
     return typeof d === "number" && Number.isFinite(d) && d !== 0 ? d : DEFAULT_DEPTH;
   }
 
-  /** Which loops a region is made of, by member names — what a hover is compared by. */
-  private static key(r: { loops: Loop[]; index: number } | null): string {
-    if (!r) return "";
-    return regionOf(r.loops, r.index).map((i) => r.loops[i].members.map((m) => m.name).join(",")).join("|");
-  }
-
   onMove(p: PointerInfo): void {
     const next = this.ctx.regionAt?.(p.screen) ?? null;
-    if (ExtrudeTool.key(next) === ExtrudeTool.key(this.under)) { this.under = next; return; }
+    if (regionKey(next) === regionKey(this.under)) { this.under = next; return; }
     this.under = next;
     this.ctx.requestRender();
   }
@@ -90,30 +83,7 @@ export class ExtrudeTool extends Tool {
    * would extrude.
    */
   render(r: RenderContext): void {
-    const u = this.under;
-    if (!u) return;
-    const m = this.ctx.model;
-    let outlines: number[][][];
-    try {
-      outlines = loopOutlines(m, regionOf(u.loops, u.index).map((i) => u.loops[i].members.map((mm) => mm.name)), r.scale);
-    } catch {
-      return; // the drawing moved under the hover; the next move asks again
-    }
-    if (!outlines.length) return;
-    r.g.save();
-    r.g.beginPath();
-    for (const o of outlines) {
-      const pts = o.map((w) => r.worldToScreen(w));
-      r.g.moveTo(...pts[0]);
-      for (const q of pts.slice(1)) r.g.lineTo(...q);
-      r.g.closePath();
-    }
-    r.g.fillStyle = "#55c07a2e";
-    r.g.fill("evenodd");
-    r.g.strokeStyle = "#55c07a";
-    r.g.lineWidth = 2.4;
-    r.g.stroke();
-    r.g.restore();
+    if (this.under) drawRegion(this.ctx.model, r, this.under);
   }
 }
 
