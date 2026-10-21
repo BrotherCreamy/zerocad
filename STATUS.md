@@ -1427,6 +1427,38 @@ replacing) the system Node other projects on this machine may depend on.
   that re-registers `circle` (or another curve tool's name) is greyed with it.
   *Spec:* [`docs/plans/toolbar-availability.md`](docs/plans/toolbar-availability.md).
 
+- **Clauses: an entity defined by any constraint set** (`src/clauses.ts` (new),
+  `src/replenv.ts`, `fmt` in `src/repl.ts`). `_` is one frozen value in scope;
+  a relation given `_` in any argument returns a `Clause` — `{ op, args }`, the
+  name it was called by and its arguments with `_` left in, printing as the
+  call (`on(_, "l1")`) — instead of applying. `pt`, `ln`, `circ`, `arc` and
+  `frame` split their arguments by type (a clause is never a number, a name or
+  null), make the entity exactly as before from the rest, then apply each
+  clause with `_` filled in, and return the name. `constrain(name,
+  ...clauses)` is the same on an existing entity, returning the relation names.
+  Pure command-layer sugar: a clause applied *is* the relation called by name,
+  so the model, relations, persist and the file format are unchanged — a unit
+  test saves a clause expression and its expanded lines to the same bytes, and
+  `del` cascades the same. **Checked before anything is made:** each is a
+  clause (a relation's `rN` where a clause goes — the `_` forgotten — is named
+  as such), mentions `_`, and names only entities that exist; a constructor's
+  own arguments are never `_` or an `rN`, and `pt`'s are numbers. `_` in a
+  numeric slot (`rad("c1", _)`, `fix(_, [_, 2])`) or past a relation's arity is
+  refused when the clause is made, from a slot list every relation binding now
+  carries. A clause given *to* a relation is refused too. `fmt` honours
+  `Symbol.for("nodejs.util.inspect.custom")` (Node's own convention), which is
+  how a clause prints without `repl.ts` knowing what one is. Unit:
+  `test/clauses.test.ts`; browser: `test/e2e/clauses.e2e.ts`. 673 unit tests,
+  247 e2e.
+  *Known and deliberate:* a relation that refuses *while applying*
+  (`ln(on(_, "l1"))` — a line is not a point) leaves the entity and any earlier
+  clause made; the refusal is the relation's own, prefixed with what was made
+  (`ln made l2, but on("l2", "l1") refused: …`), and at the command line the
+  entry is still one undo step. `_` must be written; omitting it is deferred
+  (register). `pt` now refuses a non-number argument it used to pass to the
+  model as a coordinate.
+  *Spec:* [`docs/plans/clauses.md`](docs/plans/clauses.md).
+
 
 ## What's next
 

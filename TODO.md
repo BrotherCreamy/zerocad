@@ -659,6 +659,20 @@ are flagged as such.
   admits up to four circles, and the solver returns the branch nearest where
   the piece started — Onshape's behaviour, and dragging flips branches. Said
   out loud in `CHANGELOG.md` so nobody reads branch choice as nondeterminism.
+- **Clauses: `_` is required; omission deferred** (2026-10-21). The owner:
+  *"please think about how to create a syntax that enables me to create
+  elements with arbitrary constraints. pt(x,y,z) is just one possible
+  constraint set — to have a function call based around just one possible
+  constraint set is not efficient."* Answered by clauses — `pt(on(_, "l1"),
+  on(_, "l2"))`, `circ(oncircle("p1", _), …)` — where a relation given the
+  placeholder `_` returns an inert clause and a constructor applies it to what
+  it made. **Decided, pending the owner's veto: `_` must be written.**
+  `circ(oncircle("p1"))`, with the subject's slot inferred from what is
+  missing, is deferred: it would make an arity-short relation call mean
+  something other than an error, and `_` says exactly which slot the subject
+  fills (`tan("l1", _)` and `tan(_, "c1")` are both unambiguous). **Omission
+  can be added later without breaking anything**, since every call that would
+  use it is an error today. Spec: [`docs/plans/clauses.md`](docs/plans/clauses.md).
 - **A dimension is drawn as its value, and a dimension label is a glyph.**
   `dist`, `rad` and `ang` render their target (`50`, `R22`, `30°`) instead of
   a generic mark, because in Onshape the number *is* the dimension. It is the
@@ -893,6 +907,23 @@ extended the way `defineTool` extends the tool registry would close it.
       mean the rule knowing tool classes, and nobody has redefined a built-in.
       The natural fix, when it matters, is a tool declaring what it needs
       (`static needsPlane = true`) and the rule asking the registered class.
+- [ ] **A free line held only by `par` and `on` collapses to zero length.**
+      `l = ln(); par(l, xaxis()); on("p1", l)` (or its clause form) solves
+      `SOLVED` with both endpoints on one spot: a zero direction satisfies a
+      wedge trivially, and nothing pins a length. Measured while building
+      clauses; pre-existing, and the same family as the register's notes on
+      degenerate residuals. A length (`eq`, or `dist` on the ends) avoids it.
+      Whether the solver should refuse a collapsed line, or `on`/`par` scale by
+      the line's length, needs its own measurement.
+- [ ] **A clause in the wrong slot is caught only after the entity is made.**
+      `circ(oncircle(_, "p1"))` — the subject where the point goes — makes the
+      circle and then `onCircle` refuses (the spec itself wrote it this way).
+      The slot lists in `replenv.ts` already name each slot `point`, `line`,
+      `circle`…; a pre-check comparing the subject's kind with its slot would
+      refuse before anything is made. Left out deliberately: the spec says the
+      relation's refusal is not second-guessed, and generic slots (`dist`'s
+      `a`/`b`, `par`'s line-or-point-or-axis) would need a kind language of
+      their own. The owner's call if the mistake turns out to be common.
 - [ ] **`tan` from a seed through the circle's centre conflicts.** `line()`
       seeds at the middle of the view; with a circle centred exactly there,
       `tan(t, "c1"); tan(t, "c2")` ends in CONFLICT rather than choosing a side.
@@ -906,6 +937,39 @@ extended the way `defineTool` extends the tool registry would close it.
       to its nearest edge would fix it; not needed until someone resizes often.
 
 ## Done
+
+- [x] **Clauses: an entity defined by any constraint set** — spec:
+      [`docs/plans/clauses.md`](docs/plans/clauses.md), now marked built.
+      `src/clauses.ts` (new) holds `_`, `Clause`, the per-relation slot lists
+      and the pre-checks; `replenv.ts` binds every relation through
+      `subjectable` and wraps the five constructors in `withClauses`;
+      `constrain(name, ...clauses)` is in scope. No change to `model.ts`,
+      `relations/`, `persist.ts` or the format — a unit test proves it by
+      saving a clause expression and its expansion to the same bytes.
+      **Deviations from the spec**, each small:
+      - ⚠ **The three-point circle is `oncircle("p1", _)`, not the spec's
+        `oncircle(_, "p1")`.** `oncircle` takes (point, circle), so the spec's
+        form makes the new circle the *point* — and is refused by `onCircle`
+        itself (`circ made c1, but oncircle("c1", "p1") refused: "c1" is not a
+        point`), exactly the "relation's own refusal" case the spec describes.
+        That its own author wrote it backwards says this mistake will be common;
+        see the item under Smaller things.
+      - **A refusal while applying names what was already made**: the relation's
+        own message is passed on unchanged, prefixed `ln made l2, but on("l2",
+        "l1") refused: …`. The spec asked that "the journal shows exactly what
+        happened"; headless, the message is the only other account.
+      - **`pt` refuses a non-number among its own arguments** (it used to pass
+        it to the model as a coordinate) — a stray string there is now most
+        likely a clause with its `_` forgotten.
+      - **A clause given *as an argument* to a relation is refused**
+        (`dist(on(_, "l1"), "p2", 5)`), at once, rather than meeting the
+        model's `"on(_, "l1")" is not a point`.
+      - `repl.ts`'s `fmt` honours `Symbol.for("nodejs.util.inspect.custom")`,
+        which is how a clause prints legibly without the evaluator importing it.
+      - The spec's `ln(par(_, xaxis()), on("p1", _))` collapses to a line of
+        length zero when solved, so the tests add `eq(_, "l1")`. Not a clause
+        problem — the expanded lines do the same, measured; see below.
+      Tests: 652 → 673 unit, 242 → 247 e2e. Screenshot 72, looked at.
 
 - [x] **The toolbar greys out a tool that cannot run** — spec:
       [`docs/plans/toolbar-availability.md`](docs/plans/toolbar-availability.md),

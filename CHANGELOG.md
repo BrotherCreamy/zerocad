@@ -7,6 +7,49 @@ decisions.
 
 ---
 
+## Clauses: an entity defined by any constraint set, in one expression
+
+![The app solved: on the right a circle through three fixed points p1, p2 and p3, each wearing a fix mark and an oncircle mark, its auto-made centre p4 in the middle; on the left two fixed lines crossing, with p9 sitting exactly on the crossing and wearing two on marks; the log at the bottom reads x = pt(on(_, h), on(_, v)) answered p9, then on(_, "l1") echoed back as on(_, "l1"), then a red refusal: pt: on(_, "nope") names "nope", and there is no "nope"](docs/images/72-a-circle-and-a-point-each-defined-by-clauses.png)
+
+The owner, verbatim: *"please think about how to create a syntax that enables
+me to create elements with arbitrary constraints. pt(x,y,z) is just one
+possible constraint set — to have a function call based around just one
+possible constraint set is not efficient."*
+
+**A relation given `_` does not apply — it returns a clause**, and the
+constructors `pt`, `ln`, `circ`, `arc` and `frame` take clauses after their own
+arguments, filling `_` with the name of what they made:
+
+```js
+c = circ(oncircle("p1", _), oncircle("p2", _), oncircle("p3", _))   // a 3-point circle
+c = circ(tan("l1", _), oncircle("p3", _), rad(_, 4))                // tangent, through p3, radius 4
+p = pt(on(_, "l1"), on(_, "l2"))                                    // the intersection
+p = pt(fix(_, [10, 20]))                                            // coordinates: one constraint set among many
+p = pt(-9, 1, on(_, "l1"), oncircle(_, "c1"))                       // a seed picks the branch
+```
+
+`constrain(name, ...clauses)` is the primitive — a constructor with clauses is
+`constrain(pt(), …)` — and returns the relation names it made. Constructors
+still return the name, so clauses nest. A clause typed alone prints as the call
+(`on(_, "l1")`), never as `{}`.
+
+**It is sugar and nothing else.** A clause applied is the relation called by
+name, so it journals as itself with its own `rN`/`dN` and `del`; `model.ts`,
+`relations/`, `persist.ts` and the file format are untouched, and a test saves
+a clause expression and its expanded lines to the same bytes. **Everything that
+can be refused is refused before anything is made** — `_` where a number goes
+(`rad("c1", _)`, at the moment the clause is typed), a name that does not exist,
+a relation's `rN` where a clause was meant (the `_` forgotten), `_` as a
+constructor's own argument. What is left to the relation is the relation's own
+refusal (`ln(on(_, "l1"))` — a line is not a point): the line is made by then,
+and the message says so — *`ln made l2, but on("l2", "l1") refused: "l2" is not
+a point`* — while the whole entry stays one undo step. ⚠ *The spec wrote the
+three-point circle `oncircle(_, "p1")`; `oncircle` takes (point, circle), so it
+is `oncircle("p1", _)` here.* `_` is required — omitting it is deferred; see the
+register. Tests: 652 → 673 unit, 242 → 247 e2e.
+
+---
+
 ## The toolbar greys out a tool that cannot run
 
 ![A fresh page: the tools panel top-left lists point, line and rectangle in the normal light text — rectangle under the pointer with the hover lift — then circle, circle3, arc, arc3 and fillet in a muted grey, then extrude and revolve light again; the empty-canvas hint is in the middle and the log and command line at the bottom-left](docs/images/71-curve-tools-greyed-until-there-is-a-frame.png)
