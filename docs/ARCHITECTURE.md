@@ -62,6 +62,11 @@ them. It is above `replenv.ts` in spirit — everything it produces is text for
 that command surface to evaluate — but it imports nothing from there, because
 it only needs to know what the commands are *called*.
 
+`panels.ts` sits beside it, for the same reason and with even less: the panel
+manager and the toolbar import nothing from the model or the tools. The
+toolbar is handed its tool names and armed tool by the host and hands back a
+command string; the panel manager is rectangles and `localStorage`.
+
 `picking.ts`, `snapping.ts`, `glyphs.ts` and `boxselect.ts` sit at the same
 height as each other, just above the model: each is a pure function of (model,
 view, cursor or rectangle) answering one question — what is under it, where
@@ -668,6 +673,36 @@ make the item work would be a datum nobody chose, quietly becoming what every
 later `xaxis()` means, which is the exact thing the no-world-frame decision
 prevents. A menu that cannot do anything a command cannot do also cannot do
 that.
+
+## The chrome floats, and its layout is the viewer's
+
+The canvas is the whole window under the header, and the toolbar, the log and
+the command line are panels over it (`panels.ts`). Nothing in the page reflows
+the drawing any more — the log used to, taking height from the canvas as it
+filled, which moved "the middle of the view" under every command that seeds
+there. The header is the one thing that does not move: it is the title bar.
+
+**A toolbar button is a context-menu item with a fixed place on screen.** It
+types `arm("name")` through `submit`, for every reason in the section above,
+and it is built from the tool registry when drawn rather than from a list kept
+beside it — so the extensibility claim ("tools are not privileged") reaches the
+toolbar too: a tool defined at the command line has a button.
+
+**Layout is not model state.** Where a viewer keeps their log is a fact about
+their screen. It lives in `localStorage`, every touch wrapped — a private window
+throws on the first one — and never reaches the journal, a saved file or the
+undo stack. Only the panels a viewer has touched are stored; the rest follow
+their defaults, and what is drawn is always the stored-or-default rectangle
+passed through `constrain` against the window as it is now. So shrinking the
+window pulls panels in without forgetting where they were put.
+
+**Gestures never cross**, and it takes both halves: a panel captures the
+pointer on its strip or grip, and the host captures it on every canvas press.
+The engine already captured drags, boxes and pans, but not an armed tool's
+gesture — harmless while the chrome sat beside the canvas, and a rectangle that
+never finished once a panel could sit on top of it. The capture lives in
+`main.ts` rather than the engine because it is a fact about the page (there are
+things over the canvas), not about gestures.
 
 ## The REPL is scoped, not sandboxed
 

@@ -113,6 +113,11 @@ async function main() {
     // because a frame is geometry rather than annotation — it is a thing in
     // the drawing that can be clicked, dragged and deleted, not a note about
     // one. What is absent is only the frame nobody made.
+    //
+    // The cost of that decision is that an empty model is a black rectangle,
+    // which the owner opened cold and read as broken. So an empty model says
+    // what to do — see `emptyHint`.
+    if (model.entities.size === 0) emptyHint(r.width, r.height);
 
     // What the cursor is over lights up — and hovering a *constraint* lights up
     // everything that constraint is about. That spread is the payoff of drawing
@@ -198,6 +203,46 @@ async function main() {
    */
   function syncToolbar() {
     if (toolbar.sync()) panels.apply();
+  }
+
+  /**
+   * The words on an empty canvas: what it is, and every way in that exists.
+   *
+   * **Read off the model in the draw pass, and nothing else** — no flag set by
+   * a clear or cleared by a click — so a fresh page, an undo back to nothing,
+   * opening an empty file and deleting the last entity all show it without any
+   * of them knowing it exists, and the first entity of any kind, a frame
+   * included, takes it away. Muted, in the status line's colours: it is the
+   * page explaining itself, and should stop being noticed once read.
+   *
+   * Drawn first, so a tool's preview, should one be armed before anything
+   * exists, goes over it rather than under it.
+   */
+  function emptyHint(width: number, height: number) {
+    const lines: [string, string, string][] = [
+      ["13px", "#7a8b9b", "Nothing drawn yet."],
+      ["12px", "#56697b", "Pick a tool from the toolbar, right-click for the menu, or type help() in the command line."],
+    ];
+    g.save();
+    g.textAlign = "center";
+    g.textBaseline = "middle";
+    // Wrapped at its commas if the window is too narrow for the long line, so
+    // a phone-width view still reads every way in rather than the middle of one.
+    const rows: [string, string, string][] = [];
+    for (const [size, colour, text] of lines) {
+      g.font = `${size} "IBM Plex Mono", ui-monospace, Menlo, monospace`;
+      if (g.measureText(text).width <= width - 40) rows.push([size, colour, text]);
+      else for (const part of text.split(/(?<=,) /)) rows.push([size, colour, part]);
+    }
+    const step = 20;
+    let y = height / 2 - ((rows.length - 1) * step) / 2;
+    for (const [size, colour, text] of rows) {
+      g.font = `${size} "IBM Plex Mono", ui-monospace, Menlo, monospace`;
+      g.fillStyle = colour;
+      g.fillText(text, width / 2, y);
+      y += step;
+    }
+    g.restore();
   }
 
   /**

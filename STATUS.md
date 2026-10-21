@@ -1372,6 +1372,43 @@ replacing) the system Node other projects on this machine may depend on.
   seam edges are drawn along the surface; the surface never picks.
   *Spec:* [`docs/plans/3d-phase5-revolve.md`](docs/plans/3d-phase5-revolve.md).
 
+- **A toolbar, the chrome as panels, and an empty-canvas hint**
+  (`src/panels.ts` (new), `src/main.ts`, `index.html`, `layout` in
+  `replenv.ts`). **The canvas is the whole window under the header**; the
+  toolbar, the log and the command line float over it as **panels** — a title
+  strip to drag by, a corner grip to resize by, both with pointer capture.
+  `constrain` keeps a panel's strip reachable (wholly inside top to bottom, at
+  least `KEEP` = 40px of it sideways) and its size between its minimum and the
+  area; the panel last pressed is raised (z-index from 10; the hover tag and
+  menu sit at 50/60). **The header is not a panel** — the one fixed thing.
+  **The toolbar** (`Toolbar`) builds one button per `listTools()` entry, in
+  registration order, and `syncToolbar` in `main.ts` re-reads the registry and
+  `engine.active` on every render, canvas press and release, entry and Escape,
+  touching the DOM only on a change. A button **types `arm("name")` through
+  `submit`** (hover text: that command); the armed one has `aria-pressed` and the
+  amber outline. Buttons and strips prevent `mousedown`, so the command line
+  keeps the focus. **Layout** (`Panels`): `stored` holds only panels the viewer
+  touched, under `neocad.panels.v1` in `localStorage` (`loadLayout`/`saveLayout`
+  never throw; `parseLayout` drops malformed entries one panel at a time);
+  everything else is `defaultLayout(area, toolCount)` — toolbar top-left sized to
+  its buttons, log and command line bottom-left, 560 wide — and what is shown is
+  `constrain(stored ?? default)`, so a small window pulls panels in without
+  forgetting where they were put. `layout()` reports, `layout("reset")` forgets.
+  Never journalled, saved or an undo step. **The canvas captures every press**
+  (in `main.ts`), so an armed tool's gesture released over a panel still ends on
+  the canvas. **Typing with nothing editable focused focuses the command line**
+  first. **An empty model draws a hint** in the render pass: *"Nothing drawn
+  yet."* and the three ways in, wrapped at its commas on a narrow canvas.
+  Unit: `test/panels.test.ts`; browser: `test/e2e/panels.e2e.ts`,
+  `test/e2e/emptyhint.e2e.ts`; the harness's `at()` refuses a point under a
+  panel. 645 unit tests, 237 e2e.
+  *Known and deliberate:* positions are absolute pixels from the top-left (a
+  moved panel does not follow a growing window); a viewer-resized toolbar
+  scrolls rather than grows when a tool is added; the toolbar does not grey out
+  the curve tools without a default frame, as the menu does; no icons, docking
+  or panel-to-panel snapping.
+  *Spec:* [`docs/plans/panels.md`](docs/plans/panels.md).
+
 
 ## What's next
 

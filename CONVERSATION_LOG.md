@@ -106,6 +106,72 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### Panels: a toolbar, movable chrome, and a canvas that explains itself
+
+**The owner asked for buttons, then for everything to move.** The spec turned
+that into one rule — every piece of chrome is a panel over a full-window
+canvas — and two that it borrowed: a button is the context menu's kind of
+thing (it types a command the log shows), and layout is per-viewer state.
+Mid-package the owner opened the published build and saw "nothing": a fresh
+model is a black rectangle since the grid went. The supervising session added
+an empty-canvas hint to the scope, since the toolbar is what the hint points at.
+
+**Decisions made in the code, and what was rejected:**
+
+- *Store every panel, or only the touched ones.* Storing the whole layout on
+  any change is simpler, and freezes every untouched panel at whatever the
+  defaults were on that screen — so the bottom pair would stop following the
+  bottom edge the first time the toolbar moved. Storing only touched panels
+  means "untouched" keeps meaning "default", including the toolbar's height,
+  which is sized to the tools there are and so grows when one is defined.
+- *Clamp what is stored, or what is shown.* Clamping the stored rectangle to a
+  small window would lose the viewer's arrangement the moment they shrank it.
+  Stored is what was asked for; shown is `constrain(stored)`.
+- *How much of a panel must stay on screen.* Wholly-inside is simplest and
+  forbids parking a log mostly off an edge, which is a reasonable thing to do.
+  The rule is the strip: wholly inside top to bottom, 40px of it sideways.
+- *Where the toolbar learns of changes.* Neither the registry nor the engine
+  announces anything, and both are out of this package's footprint. Rather than
+  add notifications there, `syncToolbar` re-reads both from every place a
+  change can have just happened — every render, canvas press and release,
+  entry and Escape — and does DOM work only on a difference. A
+  requestAnimationFrame poll was the other option; rejected as a loop that runs
+  forever to save four call sites.
+- *Clicking the armed button.* A toggle (typing `cancel()`) is natural, and
+  the spec did not ask for it; it types `arm` again, which re-arms fresh.
+- *Where the canvas capture goes.* The engine is where gestures live, but the
+  reason for the capture is the page — panels over the canvas — and the engine
+  is out of footprint. One listener in `main.ts`, after the engine's, which also
+  means the toolbar sync on release runs after a finishing tool cleared itself.
+  Checked by removing it: the cross-gesture test fails.
+- *The keyboard rule.* The spec said to verify that typing with nothing
+  focused reaches the command line. It did not: focus came back only on a pick,
+  and a toolbar makes the focus-less state common. Added as a window keydown
+  that focuses the input for a printable key with no modifier; buttons and
+  strips also prevent `mousedown`, so they never take focus in the first place.
+- *`layout` and replenv.* The footprint listed `main.ts` but not `replenv.ts`.
+  A `repl.define` from the host would have kept out of it and left `layout`
+  missing from `help()`; every other viewport command is a host handle there,
+  so this one is too.
+- *The hint.* Canvas text rather than a DOM overlay, so it is drawn from the
+  model in the render pass with no state to keep in step — the coordinator's
+  requirement, and the reason undo, open and delete all get it free. Two lines
+  rather than one: a short statement ("Nothing drawn yet.") reads as the page
+  working, where a single long instruction reads as an error message.
+
+**Two existing tests leaned on the old layout.** Box-select's empty-canvas boxes
+started where the toolbar now is — moved right. The free-line tangent test put
+a circle's centre on the world origin, which is exactly where `line()` now
+seeds; it had passed because the log grew and dragged the view's middle off
+it. The circles moved below the seed and the seed-sensitivity went into the
+TODO. The harness's `at()` now asks the browser what is on top at a pixel and
+refuses one a panel covers, which is the honest successor to the old
+"the canvas shrinks as the log fills" error.
+
+**Looking at the screenshots** caught one thing the tests could not: panels at
+95% opacity let the drawing ghost through the log, which read as a rendering
+fault. They are opaque.
+
 ### Revolve: what can be real, and a sort no picture showed
 
 **One PR, two commits.** Extrude split into two PRs so its semantic decisions

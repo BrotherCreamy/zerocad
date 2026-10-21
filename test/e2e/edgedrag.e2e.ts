@@ -116,8 +116,8 @@ test("dragging an edge carries the constrained rectangle with it", async () => {
 
 test("dragging a circle by its rim moves it without changing its radius", async () => {
   await app.page.fill("#cmd", "");
-  // Clear of the rectangle, and high enough that the drag stays on the canvas
-  // once the log pane has taken its share of the height.
+  // Clear of the rectangle, and high enough that the drag stays clear of the
+  // log panel at the bottom-left.
   await app.type("pt(0,60)");
   const centre = Object.keys((await app.model()).points).at(-1)!;
   await app.type(`circ("${centre}", 18)`);
