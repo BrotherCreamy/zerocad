@@ -156,6 +156,21 @@ oncircle("p1", k)                  // through these three points, and
 oncircle("p2", k); oncircle("p3", k)   // that is the whole 3-point circle
 ```
 
+Or say both in one expression. **A relation given `_` does not apply — it
+becomes a clause**, and a constructor takes clauses after its own arguments,
+filling `_` with what it made:
+
+```js
+c = circ(oncircle("p1", _), oncircle("p2", _), oncircle("p3", _))   // the same 3-point circle
+p = pt(on(_, "l1"), on(_, "l2"))                                    // the point where l1 and l2 cross
+```
+
+That is exactly `c = circle(); oncircle("p1", c); …` — each clause journals as
+its own relation, and the file saved is the same file. `constrain(name,
+...clauses)` does it to something that already exists. Every clause is checked
+before anything is made, and a number given beside them (`pt(-9, 1, on(_,
+"l1"))`) is still a seed, so it picks the branch.
+
 Whatever you leave out is auto-created free — a real, named, draggable point,
 seeded in the middle of the view so it appears where you are looking — and
 `point`/`line`/`circle` are long names for `pt`/`ln`/`circ`. Where a

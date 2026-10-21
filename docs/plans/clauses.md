@@ -1,6 +1,8 @@
 # Plan: clauses — an entity defined by any constraint set
 
-**Status: queued** (2026-10-21). The owner's ask, verbatim: *"please think
+**Status: built** (2026-10-21) — one PR against `claude/resume-tasks-o7q02e`;
+the deviations (chiefly: the three-point circle below is `oncircle("p1", _)`,
+since `oncircle` takes the point first) are in `TODO.md`'s Done entry. The owner's ask, verbatim: *"please think
 about how to create a syntax that enables me to create elements with arbitrary
 constraints. pt(x,y,z) is just one possible constraint set — to have a function
 call based around just one possible constraint set is not efficient."* The

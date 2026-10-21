@@ -117,7 +117,10 @@ Three things that are easy to get wrong:
   converges badly. Use the wedge's components, not their sum of squares.
 
 Then register it in `src/replenv.ts` (short name and long) and in
-`src/persist.ts`'s replay table, or it won't survive a save.
+`src/persist.ts`'s replay table, or it won't survive a save. The `replenv.ts`
+line takes a slot list too — `slots("circle", "#radius")` — which is what lets
+`_` stand in it as a clause and refuses `_` where a number goes (`#`); see
+`src/clauses.ts`.
 
 **If it carries a single value the user would want to go back and change**, it
 is a *dimension* rather than a constraint: add its op to `DIMENSION_OPS` in

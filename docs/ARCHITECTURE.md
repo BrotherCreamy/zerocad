@@ -730,6 +730,26 @@ Two consequences of using `with`, documented rather than smoothed over:
 - a `const` / `let` / `class` declaration does **not**, because it binds to the
   entry's own function scope.
 
+## A clause is a call not yet made
+
+`pt(on(_, "l1"), on(_, "l2"))` defines a point by two relations in one
+expression. A relation given `_` returns a **clause** — its name and its
+arguments with `_` still in, plain data — and a constructor fills `_` with what
+it made and calls the relation by name (`src/clauses.ts`, wired in
+`replenv.ts`). So a clause expression *is* its expansion: every relation
+journals as itself, and the model, the relations and the file format never
+hear of clauses — which a test checks by saving both forms to the same bytes.
+That is also why undo needs nothing: a submitted line is one step however many
+relations it makes.
+
+The one thing it adds below the surface is a **slot list per relation
+binding**, saying where `_` may go (`#` marks a number). Everything checkable
+is checked before the entity is made — the `del` batch rule — except a
+relation's own refusal while applying, which is the model's to make and is
+passed on with what was already made named in front of it. `repl.ts` shows a
+clause through Node's `inspect.custom` convention, so the evaluator still
+imports nothing from the surface it evaluates.
+
 ## A saved file is a journal
 
 A model cannot be serialised directly: a residual block holds a closure, and

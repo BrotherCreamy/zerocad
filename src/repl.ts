@@ -162,6 +162,8 @@ function asError(e: unknown): Error {
   return e instanceof Error ? e : new Error(String(e));
 }
 
+const INSPECT = Symbol.for("nodejs.util.inspect.custom");
+
 /** Short, readable rendering of a REPL value for the log pane. */
 export function fmt(v: unknown): string {
   if (typeof v === "string") return v;
@@ -173,6 +175,11 @@ export function fmt(v: unknown): string {
   if (v instanceof Map) return `Map(${v.size})`;
   if (v instanceof Set) return `Set(${v.size})`;
   if (Array.isArray(v)) return `[${v.map(fmt).join(", ")}]`;
+  // A value that says how it wants to be shown, by the convention Node's own
+  // REPL reads. It is how the command surface's clauses print as the call that
+  // made them — `on(_, "l1")` — without this file learning what a clause is.
+  const show = typeof v === "object" ? (v as Record<symbol, unknown>)[INSPECT] : undefined;
+  if (typeof show === "function") return String(show.call(v));
   if (typeof v === "object") {
     try {
       const s = JSON.stringify(v);

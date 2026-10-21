@@ -106,6 +106,54 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### Clauses: one expression for "make a thing, defined by these"
+
+**The owner's complaint was about the shape of the call, not the model.** The
+model already treated `pt(10, 20)`'s numbers as a seed; the vocabulary for any
+constraint set already existed. What it lacked was a way to say both in one
+breath. The spec (`docs/plans/clauses.md`) answered with `_` and inert
+clauses, and the rule that it be sugar only — and the decisive test is that a
+clause expression saves to the same bytes as its expansion, so the claim is
+checked rather than asserted.
+
+**Decisions made in the code, and what was rejected:**
+
+- *A frozen object for `_`, not a symbol.* A symbol prints as `Symbol(_)` and
+  throws inside a template string, and a refusal message is exactly where a
+  clause gets interpolated. An object with `toString` prints as `_` everywhere.
+- *Where the slot check lives.* `rad("c1", _)` is refused when the clause is
+  made, because that is the wrong expression; refusing at the constructor that
+  receives it would point at the wrong thing. That needs each relation's slots,
+  so the bindings in `replenv.ts` now carry a slot list, and the `relation()`
+  helper there will not take a binding without one — the "register a relation
+  in two places" problem stays two places, not three, because the second is
+  the line that already existed.
+- *How the evaluator shows a clause.* `repl.ts` must not import the command
+  layer, so `fmt` honours `Symbol.for("nodejs.util.inspect.custom")` — the
+  convention Node's own REPL reads — and a clause implements it. Rejected:
+  `toJSON` (it would print quoted) and "any object with its own `toString`"
+  (it would change how `Date` prints, for no reason of this package's).
+- *Applying a clause by name, from the surface's own table.* A clause holds no
+  function, only `op` and `args`, and is applied by looking `op` up in the
+  relations of the surface applying it — never the live scope, so assigning
+  `on = 5` changes what can be typed, not what an earlier clause means; and a
+  clause made before an `open()` applies to the model that is open now.
+- *Naming what was made when a relation refuses late.* The spec left the
+  relation's refusal alone, and it is passed on unchanged — but prefixed with
+  `ln made l2, but on("l2", "l1") refused:`. Without that, a headless caller
+  learns that something failed and not that a line now exists.
+- *Rejected: a kind check before anything is made.* The slot lists already
+  say `point`/`line`/`circle`, so comparing the subject's kind would catch
+  `oncircle(_, "p1")` — the very mistake the spec's own example makes —
+  before the circle exists. Not done, because the spec says the relation's
+  refusal is not second-guessed and the generic slots (`dist`'s `a`, `par`'s
+  line-or-point-or-axis) would need a small kind language. Filed under
+  Smaller things, as the owner's call.
+- *The spec's level-line example collapses.* `ln(par(_, xaxis()), on("p1",
+  _))` solves `SOLVED` with both ends on one spot — measured, and so does the
+  expanded form. It is the degenerate-wedge family, not clauses; filed, and
+  the tests pin a length with `eq` so they assert the geometry meant.
+
 ### The toolbar greys out a tool that cannot run
 
 **The menu and the toolbar disagreed** about the curve tools in a 3D model with
