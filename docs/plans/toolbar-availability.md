@@ -1,6 +1,7 @@
 # Plan: the toolbar greys out a tool that cannot run
 
-**Status: queued** (2026-10-21). Follow-up from the panels package
+**Status: built** (2026-10-21) — one PR against `claude/resume-tasks-o7q02e`;
+what it added beyond this text is in `TODO.md`'s Done entry. Follow-up from the panels package
 (`docs/plans/panels.md`), filed on the register by the worker who built it.
 Read `CLAUDE.md`, the panels spec, `src/panels.ts`, `src/menu.ts` (in
 particular `curvesNeedAFrame` and `CURVE_TOOLS`) and `src/main.ts`'s

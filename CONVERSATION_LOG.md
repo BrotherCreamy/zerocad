@@ -106,6 +106,33 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### The toolbar greys out a tool that cannot run
+
+**The menu and the toolbar disagreed** about the curve tools in a 3D model with
+no default frame: the menu greyed them with the model's reason, the toolbar
+armed them for the first click to be refused. The panels worker filed it; the
+spec (`docs/plans/toolbar-availability.md`) asked for one shared rule and the
+menu's look, and this is that, with no deviation.
+
+**Decisions made in the code, and what was rejected:**
+
+- *Ask per tool, or once per sync.* `ToolbarHost.unavailable(tool)` is asked
+  for every button on every render, so a 3D model with no frame throws and
+  catches `resolveFrame`'s error five times a render. Caching the answer per
+  render in the host would save that, at the price of a second place that
+  knows which tools share an answer — the thing the shared rule exists to
+  prevent. Five caught exceptions are microseconds; left uncached.
+- *Key the rule by tool class, not name.* A tool redefined at the command line
+  under `circle`'s name inherits the curve rule. Telling a built-in from its
+  replacement would need `toolavail.ts` to import tool classes, or tools to
+  declare `needsPlane` — a change to the tool contract for a case nobody has
+  hit. Left keyed by name, written down in `TODO.md`'s Smaller things.
+- *Grey the armed tool too.* When the frame goes away under an armed curve
+  tool, `arm` is unchanged (the spec), so the tool stays armed — but the
+  button greys rather than staying amber. The disabled style is placed after
+  the pressed one, which it ties on specificity: amber means "this click will
+  run this tool", and here it will not.
+
 ### Panels: a toolbar, movable chrome, and a canvas that explains itself
 
 **The owner asked for buttons, then for everything to move.** The spec turned

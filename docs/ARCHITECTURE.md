@@ -64,8 +64,15 @@ it only needs to know what the commands are *called*.
 
 `panels.ts` sits beside it, for the same reason and with even less: the panel
 manager and the toolbar import nothing from the model or the tools. The
-toolbar is handed its tool names and armed tool by the host and hands back a
-command string; the panel manager is rectangles and `localStorage`.
+toolbar is handed its tool names, armed tool and which tools cannot run by the
+host and hands back a command string; the panel manager is rectangles and
+`localStorage`.
+
+`toolavail.ts` is the one rule both of those read for *which tools can run
+here* — `toolUnavailable(model, tool)`, the reason or null. The menu imports it
+directly; the toolbar gets it only through `main.ts`'s host, which is what keeps
+`panels.ts` model-blind. The reason is read out of `resolveFrame`, never written
+here, so the menu, the toolbar and the command line's refusal are one sentence.
 
 `picking.ts`, `snapping.ts`, `glyphs.ts` and `boxselect.ts` sit at the same
 height as each other, just above the model: each is a pure function of (model,
