@@ -24,6 +24,7 @@
 import { SETTABLE_PROPERTY, valueArgIndex, type Model } from "./model.ts";
 import { describePick, type Pick } from "./picking.ts";
 import { frameBasis } from "./relations/refs.ts";
+import { toolUnavailable } from "./toolavail.ts";
 
 /**
  * What clicking an item does.
@@ -155,53 +156,29 @@ function setValueItem(model: Model, name: string): MenuItem[] {
  * specific is being measured against it, and silently repointing the default
  * would move every bare `xaxis()` in the drawing. Neither case ever creates a frame the user
  * did not ask for, which is the rule the no-world-frame decision turns on.
+ *
+ * A tool that cannot run here — a curve tool in a 3D model with no default
+ * frame — is **shown and disabled, not hidden**, for Fix's reason: the absence
+ * of a frame is exactly what a user needs told, and an item that simply
+ * vanished would leave "where did Circle go" unanswered. Which tools those are
+ * is `toolUnavailable`'s to say, not this menu's: the toolbar reads the same
+ * rule, so the two places that offer tools cannot disagree.
  */
 function emptyCanvasMenu(model: Model): Menu {
   const hasFrame = [...model.entities.values()].some((e) => e.kind === "frame");
-  const noPlane = curvesNeedAFrame(model);
   return {
     header: null,
     items: [
-      ...TOOL_ITEMS.map(([label, tool]): MenuItem => ({
-        label,
-        action: noPlane !== null && CURVE_TOOLS.has(tool)
-          ? { do: "disabled", why: noPlane }
-          : { do: "run", command: `arm(${quoted(tool)})` },
-      })),
+      ...TOOL_ITEMS.map(([label, tool]): MenuItem => {
+        const why = toolUnavailable(model, tool);
+        return { label, action: why !== null ? { do: "disabled", why } : { do: "run", command: `arm(${quoted(tool)})` } };
+      }),
       {
         label: "Frame",
         action: { do: "run", command: hasFrame ? "frame()" : "setDefaultFrame(frame())" },
       },
     ],
   };
-}
-
-/**
- * The tools that build a circle or an arc — the ones a 3D model cannot run
- * without a default frame, since what they build is given that frame's plane
- * (see `CircleEntity`). The fillet is one: it makes an arc.
- */
-const CURVE_TOOLS: ReadonlySet<string> = new Set(["circle", "circle3", "arc", "arc3", "fillet"]);
-
-/**
- * Why the curve tools cannot run here, or null when they can — the model's own
- * standing message, read out of `resolveFrame` as Fix's is, so the menu and
- * the command line say the same thing. Only a 3D model asks: a 2D circle needs
- * no plane.
- *
- * **Shown and disabled, not hidden**, for Fix's reason: the absence of a frame
- * is exactly what a user needs told, and an item that simply vanished would
- * leave "where did Circle go" unanswered. Nor does the menu make the frame
- * itself — that is the Frame item, one row down, which a user chooses.
- */
-function curvesNeedAFrame(model: Model): string | null {
-  if (model.dim !== 3) return null;
-  try {
-    model.resolveFrame();
-    return null;
-  } catch (err) {
-    return err instanceof Error ? err.message : String(err);
-  }
 }
 
 function entityMenu(model: Model, pick: Pick): Menu {

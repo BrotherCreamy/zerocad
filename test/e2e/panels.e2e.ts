@@ -348,6 +348,89 @@ test("storage that throws costs the arrangement and nothing else", async () => {
   }
 });
 
+// --- a tool that cannot run ----------------------------------------------------
+
+const CURVES = ["circle", "circle3", "arc", "arc3", "fillet"];
+const STANDING = "no default frame — frame() then setDefaultFrame(), or say which frame";
+
+/** Each button's tool, whether it is disabled, and its hover text. */
+const buttonStates = () => app.page.$$eval("#toolbar button", (els) =>
+  els.map((el) => ({ tool: (el as HTMLElement).dataset.tool!, off: (el as HTMLButtonElement).disabled, title: el.getAttribute("title") })));
+
+const disabledTools = async () => (await buttonStates()).filter((b) => b.off).map((b) => b.tool);
+
+test("in a fresh 3D app the curve tools are greyed, with the model's reason as their hover text", async () => {
+  await reloadApp(); // a fresh model: 3D, and no frame at all
+  assert.equal((await app.model()).size, 0);
+  const states = await buttonStates();
+  for (const b of states) {
+    if (CURVES.includes(b.tool)) {
+      assert.ok(b.off, `${b.tool} is disabled`);
+      assert.equal(b.title, STANDING, `${b.tool}'s hover is the reason, not the command`);
+    } else {
+      assert.ok(!b.off, `${b.tool} is enabled`);
+      assert.equal(b.title, `arm("${b.tool}")`);
+    }
+  }
+  assert.deepEqual(states.filter((b) => b.off).map((b) => b.tool), CURVES, "shown, not hidden: all five are still there");
+});
+
+test("a disabled button arms nothing and logs nothing — a real click on it", async () => {
+  const logBefore = await app.log();
+  const b = await rectOf('#toolbar button[data-tool="circle"]');
+  await app.page.mouse.click(b.x + b.width / 2, b.y + b.height / 2);
+  await app.page.waitForTimeout(80);
+  assert.equal(await armed(), null);
+  assert.deepEqual((await app.log()).slice(logBefore.length), "", "not a line in the log");
+  assert.deepEqual(await pressed(), []);
+});
+
+test("the context menu and the toolbar give the same reason", async () => {
+  const at = await app.at(700, 300);
+  await app.page.mouse.click(at.x, at.y, { button: "right" });
+  await app.page.waitForTimeout(120);
+  const why = await app.page.$$eval("#ctxmenu .why", (els) => els.map((el) => el.textContent));
+  await app.page.keyboard.press("Escape");
+  assert.equal(why.length, CURVES.length, "one reason per disabled menu item");
+  const titles = (await buttonStates()).filter((b) => b.off).map((b) => b.title);
+  assert.equal(titles.length, CURVES.length);
+  for (const t of [...why, ...titles]) assert.equal(t, STANDING);
+});
+
+test("a default frame enables them on the next render, and deleting it disables them again", async () => {
+  await app.type("setDefaultFrame(frame())");
+  assert.deepEqual(await disabledTools(), [], "nothing but the command was needed");
+  for (const b of await buttonStates()) assert.equal(b.title, `arm("${b.tool}")`);
+
+  await app.page.click('#toolbar button[data-tool="circle"]');
+  assert.equal(await armed(), "circle", "and an enabled curve button arms as any other does");
+  await app.page.keyboard.press("Escape");
+
+  const f = (await app.repl("defaultFrame()")).value as string;
+  await app.type(`del(${JSON.stringify(f)})`);
+  assert.equal((await app.repl("defaultFrame()")).value, null);
+  assert.deepEqual(await disabledTools(), CURVES);
+});
+
+test("an armed tool whose frame goes away is greyed, not amber — and arm() itself is unchanged", async () => {
+  await app.type("setDefaultFrame(frame())");
+  await app.type('arm("arc")');
+  assert.deepEqual(await pressed(), ["arc"]);
+  const f = (await app.repl("defaultFrame()")).value as string;
+  await app.type(`del(${JSON.stringify(f)})`);
+  // `arm` is untouched by this package: the tool stays armed and its click is
+  // refused in the log, as typing arm("arc") with no frame always was.
+  assert.equal(await armed(), "arc");
+  const look = await app.page.$eval('#toolbar button[data-tool="arc"]', (el) => {
+    const cs = getComputedStyle(el);
+    return { off: (el as HTMLButtonElement).disabled, color: cs.color, border: cs.borderColor };
+  });
+  assert.ok(look.off);
+  assert.equal(look.color, "rgb(70, 88, 106)", "the menu's .item.off grey, not the armed amber");
+  assert.doesNotMatch(look.border, /232, 163, 61/, "and no amber edge");
+  await app.page.keyboard.press("Escape");
+});
+
 test("no uncaught page errors", () => {
   assert.deepEqual(app.pageErrors, []);
 });

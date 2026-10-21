@@ -16,6 +16,7 @@ import { neocadScope } from "./replenv.ts";
 import { ToolEngine, type View } from "./tools/engine.ts";
 import { describePick, type Pick } from "./picking.ts";
 import { ContextMenu, menuFor } from "./menu.ts";
+import { toolUnavailable } from "./toolavail.ts";
 import { frameMarker } from "./framemarker.ts";
 import { constrainedBy, type Glyph } from "./glyphs.ts";
 import { getToolCtor, listTools } from "./tools/tool.ts";
@@ -615,10 +616,15 @@ async function main() {
    * a button types `arm("line")` into `submit`, so the log shows it, the
    * recall history has it, and arming by button is in every respect arming by
    * typing — journal and undo included, which for `arm` is nothing at all.
+   *
+   * Availability is the menu's rule too, read through `model` (the binding a
+   * file open swaps) on every sync — so a curve tool greys out in the same
+   * render that its Circle item would, for the same sentence.
    */
   const toolbar = new Toolbar(toolbarEl, {
     tools: listTools,
     active: () => engine.active?.name ?? null,
+    unavailable: (tool) => toolUnavailable(model, tool),
     run: (command) => void submit(command),
   });
 
