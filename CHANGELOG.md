@@ -7,6 +7,30 @@ decisions.
 
 ---
 
+## The toolbar greys out a tool that cannot run
+
+![A fresh page: the tools panel top-left lists point, line and rectangle in the normal light text — rectangle under the pointer with the hover lift — then circle, circle3, arc, arc3 and fillet in a muted grey, then extrude and revolve light again; the empty-canvas hint is in the middle and the log and command line at the bottom-left](docs/images/71-curve-tools-greyed-until-there-is-a-frame.png)
+
+In a 3D model with no default frame, the context menu already showed circle,
+circle3, arc, arc3 and fillet disabled with the model's reason — and the
+toolbar armed them anyway, for the first click to be refused in the log. The
+newcomer the empty-canvas hint sends to the toolbar was the person most likely
+to hit it. **Now the two agree:** the buttons are shown greyed, in the menu's
+disabled-item colour, and hovering one shows the same sentence the menu prints
+under its item and the command line prints on refusal — *"no default frame —
+frame() then setDefaultFrame(), or say which frame"*. A disabled button types
+nothing. `setDefaultFrame(frame())` (or the menu's Frame item) enables them on
+the next render; deleting that frame greys them again.
+
+The rule is one function, `toolUnavailable` in the new `src/toolavail.ts`,
+which the menu imports and the toolbar reaches only through its host — so
+`panels.ts` still knows nothing about the model, and a unit test now holds it
+to having no imports at all. `arm` is unchanged: typing `arm("circle")` with no
+frame still arms it, and the command line still refuses the click in the log.
+Tests: 645 → 652 unit, 237 → 242 e2e.
+
+---
+
 ## A toolbar, every piece of chrome a movable panel, and an empty canvas that says what to do
 
 ![A fresh page: the header reading ready, a narrow "tools" panel top-left listing point, line, rectangle, circle, circle3, arc, arc3, fillet, extrude and revolve, the log and the command line as two panels at the bottom-left, and across the middle of the otherwise empty canvas, in muted grey, "Nothing drawn yet." over "Pick a tool from the toolbar, right-click for the menu, or type help() in the command line."](docs/images/68-a-fresh-page-says-what-to-do.png)

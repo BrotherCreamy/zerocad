@@ -62,6 +62,10 @@
       white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     #toolbar button:hover{background:#20303f;color:#d5e1ec}
     #toolbar button[aria-pressed="true"]{color:#e8a33d;border-color:#e8a33d80;background:#e8a33d18}
+    /* A tool that cannot run: the menu's .item.off — muted, no hover lift, and
+       never amber, even if it was armed before the frame it needed went away.
+       After the pressed rule, which it ties on specificity and must beat. */
+    #toolbar button:disabled,#toolbar button:disabled:hover{color:#46586a;background:transparent;border-color:transparent}
   </style>
 </head>
 <body>

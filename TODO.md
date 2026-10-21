@@ -751,7 +751,11 @@ are flagged as such.
   `arm("name")` through `submit`, the context menu's rule: it can do nothing a
   typed command cannot. An empty model says what to do (owner's report, *"i
   dont see anything in the artifact"*), drawn from the model, never a flag.
-  Spec: [`docs/plans/panels.md`](docs/plans/panels.md).
+  **A tool that cannot run is greyed, not hidden**, on the toolbar as on the
+  menu, with the model's own reason as its hover text — one rule
+  (`src/toolavail.ts`) read by both, so the two can never disagree.
+  Spec: [`docs/plans/panels.md`](docs/plans/panels.md),
+  [`docs/plans/toolbar-availability.md`](docs/plans/toolbar-availability.md).
 - **The command line is curation, not a sandbox.** Typed code runs with the
   app's full authority; the scope exists for legibility and typo-catching,
   and says so honestly rather than claiming to be a security boundary.
@@ -868,7 +872,7 @@ extended the way `defineTool` extends the tool registry would close it.
       line's length, as `tan` does) is the obvious thing to try, and would
       need its own measurement.
 
-- [ ] **The toolbar does not grey out the curve tools when they cannot run.**
+- [x] **The toolbar does not grey out the curve tools when they cannot run.**
       In a 3D model with no default frame the context menu shows circle, arc,
       circle3, arc3 and fillet disabled with `resolveFrame`'s reason; the
       toolbar arms them, and the first click is refused in the log ("no
@@ -876,6 +880,19 @@ extended the way `defineTool` extends the tool registry would close it.
       the menu's answer is better, and a newcomer following the empty-canvas
       hint is the person most likely to pick "circle" first. `curvesNeedAFrame`
       is private to `menu.ts`; sharing it is the natural shape.
+      **Fixed** — the rule moved to `src/toolavail.ts`, the menu and the
+      toolbar host both read it, and a disabled button carries the reason as
+      its hover text. See Done.
+- [ ] **The tool-availability rule is keyed by name.** `toolUnavailable`
+      greys out whatever is registered as `circle`, `circle3`, `arc`, `arc3`
+      or `fillet` — so a tool defined at the command line under one of those
+      names (`defineTool("circle", …)`, replacing the built-in) is greyed
+      without a frame on the toolbar and the menu alike, even if it builds
+      nothing curved. A tool under any *new* name is never affected (unit
+      test). Left deliberately: telling a built-in from its replacement would
+      mean the rule knowing tool classes, and nobody has redefined a built-in.
+      The natural fix, when it matters, is a tool declaring what it needs
+      (`static needsPlane = true`) and the rule asking the registered class.
 - [ ] **`tan` from a seed through the circle's centre conflicts.** `line()`
       seeds at the middle of the view; with a circle centred exactly there,
       `tan(t, "c1"); tan(t, "c2")` ends in CONFLICT rather than choosing a side.
@@ -890,6 +907,24 @@ extended the way `defineTool` extends the tool registry would close it.
 
 ## Done
 
+- [x] **The toolbar greys out a tool that cannot run** — spec:
+      [`docs/plans/toolbar-availability.md`](docs/plans/toolbar-availability.md),
+      now marked built. `src/toolavail.ts` holds the rule the menu used to
+      keep privately (`CURVE_TOOLS`, `curvesNeedAFrame`, and
+      `toolUnavailable(model, tool)` over them); `menu.ts` imports it with its
+      output unchanged, and `ToolbarHost` grew `unavailable(tool)`, which
+      `main.ts` answers through the same rule. `Toolbar.sync` re-reads it on
+      every call and touches the DOM only when a reason changed. A disabled
+      button has the `disabled` attribute, the reason as its `title`, and the
+      menu's `.item.off` grey. **No deviation from the spec.** Two things it
+      did not ask for, both small: a unit test that `panels.ts` still has no
+      imports at all (the contract its header states, now enforced), and an
+      e2e test that a tool *armed* when its frame is deleted greys out rather
+      than staying amber — `arm` itself is untouched, so the tool stays armed
+      and its click is refused in the log, as before.
+      *Discovered:* the rule is keyed by tool name, so a command-line tool
+      that re-registers a built-in curve tool's name inherits the rule
+      (Smaller things, above).
 - [x] **A toolbar, every piece of chrome a movable panel, and an empty-canvas
       hint** — spec: [`docs/plans/panels.md`](docs/plans/panels.md), now marked
       built. See the register entry above. One PR; the hint was added to its

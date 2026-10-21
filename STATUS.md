@@ -1404,10 +1404,28 @@ replacing) the system Node other projects on this machine may depend on.
   panel. 645 unit tests, 237 e2e.
   *Known and deliberate:* positions are absolute pixels from the top-left (a
   moved panel does not follow a growing window); a viewer-resized toolbar
-  scrolls rather than grows when a tool is added; the toolbar does not grey out
-  the curve tools without a default frame, as the menu does; no icons, docking
-  or panel-to-panel snapping.
+  scrolls rather than grows when a tool is added; no icons, docking or
+  panel-to-panel snapping. (The toolbar not greying out the curve tools without
+  a default frame was a caveat here; it went with the next entry.)
   *Spec:* [`docs/plans/panels.md`](docs/plans/panels.md).
+
+- **The toolbar greys out a tool that cannot run** (`src/toolavail.ts` (new),
+  `src/menu.ts`, `src/panels.ts`, `src/main.ts`, `index.html`). One rule,
+  `toolUnavailable(model, tool)`: in a 3D model with no default frame the five
+  curve tools (`CURVE_TOOLS`: circle, circle3, arc, arc3, fillet) answer
+  `resolveFrame`'s own message, everything else null. The context menu's
+  disabled items and the toolbar's disabled buttons both come from it, so they
+  say the same sentence the command line's refusal does. `ToolbarHost` has
+  `unavailable(tool)`; `Toolbar.sync` re-reads it on every render and touches
+  the DOM only on a change. A disabled button is shown, not hidden: `disabled`,
+  its `title` the reason, in the menu's `.item.off` grey and never amber, even
+  when it was armed before its frame was deleted. `arm` is unchanged — typing
+  `arm("circle")` with no frame still arms it, and its click is still refused in
+  the log. Unit: `test/toolavail.test.ts`; browser: `test/e2e/panels.e2e.ts`.
+  652 unit tests, 242 e2e.
+  *Known and deliberate:* the rule is keyed by name, so a command-line tool
+  that re-registers `circle` (or another curve tool's name) is greyed with it.
+  *Spec:* [`docs/plans/toolbar-availability.md`](docs/plans/toolbar-availability.md).
 
 
 ## What's next

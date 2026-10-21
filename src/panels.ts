@@ -22,8 +22,9 @@
 // on purpose.
 //
 // This file imports nothing from the model or the tools. The toolbar is given
-// its tool names and its armed tool by its host, and hands back a command
-// string, so it can no more reach the model than the context menu can.
+// its tool names, its armed tool and which tools cannot run by its host, and
+// hands back a command string, so it can no more reach the model than the
+// context menu can.
 
 export interface Rect { x: number; y: number; w: number; h: number }
 export interface Size { w: number; h: number }
@@ -390,6 +391,12 @@ export interface ToolbarHost {
   tools(): string[];
   /** The armed tool's name, or null. */
   active(): string | null;
+  /**
+   * Why `tool` cannot run in the model as it stands, or null when it can —
+   * the rule the context menu reads (`toolUnavailable`), so a button and a
+   * menu item never disagree. Asked on every `sync`, so it must be cheap.
+   */
+  unavailable(tool: string): string | null;
   /** Types one line into the command machinery, as one user action — `submit`. */
   run(command: string): void;
 }
@@ -406,19 +413,29 @@ export interface ToolbarHost {
  * clicking. The label is the tool's name, which is what the command line calls
  * it — an icon would be a second vocabulary for the same thing — and the hover
  * text is the command itself.
+ *
+ * **A tool that cannot run is shown disabled, not hidden** — the menu's rule
+ * and Fix's reason: a circle button that vanished when the frame did would
+ * leave "where did circle go" unanswered, where a greyed one whose hover text
+ * is the model's own reason answers it. A disabled button types nothing.
  */
 export class Toolbar {
   private el: HTMLElement;
   private host: ToolbarHost;
   private names = "";
   private armed: string | null = null;
+  /** Every tool's reason (or "") as last shown, joined — compared, not diffed. */
+  private reasons = "";
 
   constructor(el: HTMLElement, host: ToolbarHost) {
     this.el = el;
     this.host = host;
   }
 
-  /** Rebuilds if the tool list changed and re-marks the armed button. Returns whether the list changed. */
+  /**
+   * Rebuilds if the tool list changed, re-marks the armed button and re-reads
+   * which tools cannot run. Returns whether the list changed.
+   */
   sync(): boolean {
     const tools = this.host.tools();
     const key = tools.join("\n");
@@ -428,6 +445,19 @@ export class Toolbar {
       this.el.textContent = "";
       for (const tool of tools) this.el.appendChild(this.button(tool));
       this.armed = null; // the new buttons carry no state; mark them below
+      this.reasons = "";
+    }
+    // Re-read on every call: availability follows the model (a frame made or
+    // deleted), and nothing announces that either.
+    const why = tools.map((t) => this.host.unavailable(t));
+    const reasons = why.map((w) => w ?? "").join("\n");
+    if (rebuilt || reasons !== this.reasons) {
+      this.reasons = reasons;
+      const buttons = Array.from(this.el.querySelectorAll<HTMLButtonElement>("button"));
+      buttons.forEach((b, i) => {
+        b.disabled = why[i] !== null;
+        b.title = why[i] ?? armCommand(tools[i]);
+      });
     }
     const active = this.host.active();
     if (rebuilt || active !== this.armed) {
@@ -450,7 +480,9 @@ export class Toolbar {
     // is not followed by Enter or Space re-pressing it instead of submitting.
     b.addEventListener("mousedown", (e) => e.preventDefault());
     b.addEventListener("contextmenu", (e) => e.preventDefault());
-    b.addEventListener("click", () => this.host.run(armCommand(tool)));
+    // The guard is for a click dispatched by script; a disabled button gets no
+    // click from a pointer in the first place.
+    b.addEventListener("click", () => { if (!b.disabled) this.host.run(armCommand(tool)); });
     return b;
   }
 }
