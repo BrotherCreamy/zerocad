@@ -24,6 +24,7 @@ import { alignView, assignView, orbitBy, panBy, screenToWorld, zoomAbout, type V
 import { pointOnWorkingPlane } from "./workplane.ts";
 import { frameBasis } from "./relations/refs.ts";
 import { describeLoop, findLoops } from "./loops.ts";
+import { _, checkClauses, checkOrdinary, slots, splitClauses, subjectable, type Clause, type Slot } from "./clauses.ts";
 
 type Bag = Record<string, unknown>;
 
@@ -121,7 +122,7 @@ export interface EnvHandles {
  * Curries a relation so REPL callers don't pass the model every time:
  * `dist("a", "b", 10)` rather than `dist(model, "a", "b", 10)`.
  */
-function bind<A extends unknown[]>(model: Model, fn: (m: Model, ...args: A) => void) {
+function bind<A extends unknown[]>(model: Model, fn: (m: Model, ...args: A) => string) {
   return (...args: A) => fn(model, ...args);
 }
 
@@ -166,46 +167,92 @@ export function neocadScope(h: EnvHandles): Bag {
   const model = h.model;
   const sources = h.toolSources ?? toolSources;
 
-  const relations: Bag = {
-    // dimension-generic, from relations/basic.ts
-    dist: bind(model, basic.dist),
-    fix: (name: string, at: number[], frame?: string | null) => basic.fix(model, name, lifted(model, at), frame),
-    // 3D only: the point lies in the frame's plane. Frame-relative like `fix`.
-    onplane: bind(model, basic.onPlane),
-    onPlane: bind(model, basic.onPlane),
-    coin: bind(model, basic.coincident),
-    coincident: bind(model, basic.coincident),
-    mid: bind(model, basic.midpoint),
-    midpoint: bind(model, basic.midpoint),
-    // relations/geometry.ts. `par`, `perp` and `ang` additionally take a
-    // frame-axis reference — `par("l1", yaxis())` is what `ver("l1")` was;
-    // see the helpers below and relations/geometry.ts for why those three.
-
-    par: bind(model, geom.parallel),
-    parallel: bind(model, geom.parallel),
-    perp: bind(model, geom.perpendicular),
-    perpendicular: bind(model, geom.perpendicular),
-    ang: bind(model, geom.angle),
-    angle: bind(model, geom.angle),
-    on: bind(model, geom.pointOnLine),
-    pointOnLine: bind(model, geom.pointOnLine),
-    eq: bind(model, geom.equalLength),
-    equalLength: bind(model, geom.equalLength),
-    rad: bind(model, geom.radius),
-    radius: bind(model, geom.radius),
-    oncircle: bind(model, geom.onCircle),
-    onCircle: bind(model, geom.onCircle),
-    conc: bind(model, geom.concentric),
-    concentric: bind(model, geom.concentric),
-    eqrad: bind(model, geom.equalRadius),
-    equalRadius: bind(model, geom.equalRadius),
-    tan: bind(model, geom.tangent),
-    tangent: bind(model, geom.tangent),
-    sym: bind(model, geom.symmetric),
-    symmetric: bind(model, geom.symmetric),
-    arcends: bind(model, geom.arcEndpoints),
-    arcEndpoints: bind(model, geom.arcEndpoints),
+  /**
+   * The relation vocabulary, short name and long, each with where `_` may
+   * stand (see clauses.ts). A slot marked `#` takes a number, so `_` there is
+   * refused when the clause is made. `relation` will not take a binding
+   * without one, so a new relation cannot arrive here unsaid.
+   */
+  const relations: Bag = {};
+  const relation = (names: [string, string] | [string], sig: Slot[], fn: (...args: never[]) => string) => {
+    for (const op of names) relations[op] = subjectable(op, sig, fn);
   };
+  // dimension-generic, from relations/basic.ts
+  relation(["dist"], slots("a", "b", "#distance"), bind(model, basic.dist));
+  relation(["fix"], slots("point", "#coordinates", "frame"),
+    (name: string, at: number[], frame?: string | null) => basic.fix(model, name, lifted(model, at), frame));
+  // 3D only: the point lies in the frame's plane. Frame-relative like `fix`.
+  relation(["onplane", "onPlane"], slots("point", "frame"), bind(model, basic.onPlane));
+  relation(["coin", "coincident"], slots("a", "b"), bind(model, basic.coincident));
+  relation(["mid", "midpoint"], slots("midpoint", "a", "b"), bind(model, basic.midpoint));
+  // relations/geometry.ts. `par`, `perp` and `ang` additionally take a
+  // frame-axis reference — `par("l1", yaxis())` is what `ver("l1")` was;
+  // see the helpers below and relations/geometry.ts for why those three.
+  relation(["par", "parallel"], slots("a", "b", "c"), bind(model, geom.parallel));
+  relation(["perp", "perpendicular"], slots("a", "b", "c"), bind(model, geom.perpendicular));
+  relation(["ang", "angle"], slots("a", "b", "#angle"), bind(model, geom.angle));
+  relation(["on", "pointOnLine"], slots("point", "line"), bind(model, geom.pointOnLine));
+  relation(["eq", "equalLength"], slots("line", "line"), bind(model, geom.equalLength));
+  relation(["rad", "radius"], slots("circle", "#radius"), bind(model, geom.radius));
+  relation(["oncircle", "onCircle"], slots("point", "circle"), bind(model, geom.onCircle));
+  relation(["conc", "concentric"], slots("circle", "circle"), bind(model, geom.concentric));
+  relation(["eqrad", "equalRadius"], slots("circle", "circle"), bind(model, geom.equalRadius));
+  relation(["tan", "tangent"], slots("line", "circle"), bind(model, geom.tangent));
+  relation(["sym", "symmetric"], slots("a", "b", "line"), bind(model, geom.symmetric));
+  relation(["arcends", "arcEndpoints"], slots("arc"), bind(model, geom.arcEndpoints));
+
+  /**
+   * Applies clauses to an entity that exists, returning the relation names
+   * they made — and the whole of what a constructor with clauses does once
+   * it has made its entity. Nothing is special about creation.
+   *
+   * Each clause is applied by looking its name up in *this* surface's
+   * vocabulary, never in the live scope: a user who assigns `on = 5` has
+   * changed what they can type, not what a clause they made earlier means.
+   */
+  //
+  // A relation refusing while it applies is the one failure the pre-check
+  // leaves to the relation, and by then the entity (and any earlier clause) is
+  // made. The refusal is passed on in the relation's own words, prefixed with
+  // what already happened — so "c1 is not a point" arrives as "circ made c1,
+  // but oncircle("c1", "p1") refused", and nobody is left guessing whether
+  // there is now a c1 in the drawing. (At the command line the whole entry is
+  // still one undo step; headless, this sentence is the only account.)
+  function applyClauses(who: string, name: string, clauses: Clause[], made: boolean): string[] {
+    const done: string[] = [];
+    for (const c of clauses) {
+      try {
+        done.push((relations[c.op] as (...a: unknown[]) => string)(...c.filled(name)));
+      } catch (e) {
+        const what = made ? [name, ...done] : done;
+        const before = what.length ? `made ${what.join(", ")}, but ` : "";
+        throw new Error(`${who}${made ? " " : ": "}${before}${c.shownWith(name)} refused: `
+          + `${e instanceof Error ? e.message : String(e)}`, { cause: e });
+      }
+    }
+    return done;
+  }
+
+  /**
+   * A constructor that also takes clauses, mixed with its own arguments by
+   * type — a clause is never a number, a name or null, so `circ("p0",
+   * rad(_, 4))` and `circ(rad(_, 4), "p0")` are the same call. Everything that
+   * can be refused is refused before `make` runs, so a mistake in the third
+   * clause leaves nothing behind; see `checkClauses` for the one deliberate
+   * exception, a relation refusing while it applies.
+   */
+  function withClauses<F extends (...args: never[]) => string>(who: string, make: F,
+    own?: (ordinary: unknown[]) => void) {
+    return (...args: unknown[]): string => {
+      const { ordinary, clauses } = splitClauses(args);
+      checkOrdinary(model, who, ordinary);
+      own?.(ordinary);
+      checkClauses(model, who, clauses);
+      const name = make(...(ordinary as Parameters<F>));
+      applyClauses(who, name, clauses, true);
+      return name;
+    };
+  }
 
   /**
    * Where a piece nobody placed should go: the middle of what is on screen.
@@ -291,22 +338,38 @@ export function neocadScope(h: EnvHandles): Bag {
     // Every argument is optional, because none of them was ever a constraint
     // — see model.ts. `circle()` is a legal way to say "a circle, which the
     // relations I am about to type will define".
-    pt: (...coords: number[]) => model.addPoint(coords.length ? lifted(model, coords) : viewSeed()).name,
-    ln: (a?: string | null, b?: string | null) =>
-      model.addLine(a ?? (b == null ? anchor() : null), b ?? null).name,
+    //
+    // Each also takes clauses — `pt(on(_, "l1"), on(_, "l2"))` — after or
+    // among its own arguments; see `withClauses` and clauses.ts.
+    //
+    // `pt` refuses anything but numbers among its own arguments, where it used
+    // to hand them to the model as coordinates: a stray string is now most
+    // likely a clause whose `_` was forgotten, and it deserves that answer
+    // rather than a point with a name for a coordinate.
+    pt: withClauses("pt", (...coords: number[]) =>
+      model.addPoint(coords.length ? lifted(model, coords) : viewSeed()).name,
+    (ordinary) => {
+      const bad = ordinary.find((a) => typeof a !== "number");
+      if (bad !== undefined) {
+        throw new Error(`pt: ${JSON.stringify(bad) ?? String(bad)} is neither a number nor a clause — `
+          + "pt takes a seed (numbers) and clauses");
+      }
+    }),
+    ln: withClauses("ln", (a?: string | null, b?: string | null) =>
+      model.addLine(a ?? (b == null ? anchor() : null), b ?? null).name),
     // In 3D a circle or arc takes a plane — a frame, or the default. It is
     // resolved here *before* the view-centre anchor is made, so a refusal ("no
     // default frame", or a plane named in 2D) leaves no stray point behind,
     // and resolved again by the model itself, which is what journals it.
-    circ: (center?: string | null, r?: number | null, plane?: string | null) => {
+    circ: withClauses("circ", (center?: string | null, r?: number | null, plane?: string | null) => {
       model.curvePlane("circle", plane);
       return model.addCircle(center ?? anchor(), r ?? null, plane ?? null).name;
-    },
-    arc: (center?: string | null, start?: string | null, end?: string | null, r?: number | null,
+    }),
+    arc: withClauses("arc", (center?: string | null, start?: string | null, end?: string | null, r?: number | null,
           plane?: string | null) => {
       model.curvePlane("arc", plane);
       return model.addArc(center ?? anchor(), start ?? null, end ?? null, r ?? null, plane ?? null).name;
-    },
+    }),
   };
   /**
    * Coordinate frames, as ordinary commands.
@@ -328,7 +391,7 @@ export function neocadScope(h: EnvHandles): Bag {
    * would make the view-centre point, journal it, and *then* be refused, leaving
    * a stray point behind a call that failed.
    */
-  geometry.frame = (origin?: string | null, xref?: string | null, yref?: string | null) => {
+  geometry.frame = withClauses("frame", (origin?: string | null, xref?: string | null, yref?: string | null) => {
     if (xref == null && yref == null) {
       const axes = turnedScreenAxes();
       if (axes) {
@@ -345,7 +408,7 @@ export function neocadScope(h: EnvHandles): Bag {
       }
     }
     return model.addFrame(origin ?? (xref == null && yref == null ? anchor() : null), xref ?? null, yref ?? null).name;
-  };
+  });
   /**
    * `plane(origin?, xref?, yref?)` — **"start sketching here"** in one call: a
    * frame (exactly `frame()`'s, seeded the same way), made the default, and,
@@ -677,7 +740,25 @@ export function neocadScope(h: EnvHandles): Bag {
     lookAt: (frame?: string | null) => lookAtFrame(frame),
   };
 
-  const scope: Bag = { ...relations, ...geometry, ...operations, ...persistence, ...commands };
+  /**
+   * `_`, the subject placeholder, and `constrain(name, ...clauses)`, the
+   * primitive every constructor with clauses is built from: `pt(on(_, "l1"))`
+   * is `constrain(pt(), on(_, "l1"))`, which is `p = pt(); on(p, "l1")`.
+   * Checked in full before the first clause applies, like a constructor's.
+   */
+  const clauses: Bag = {
+    _,
+    constrain: (name: unknown, ...given: unknown[]): string[] => {
+      if (name === _) throw new Error("constrain needs the name of an entity that exists — _ stands for one only inside a relation call");
+      if (typeof name !== "string" || !model.entities.has(name)) {
+        throw new Error(`constrain needs the name of an entity that exists, and there is no entity ${JSON.stringify(name) ?? String(name)}`);
+      }
+      checkClauses(model, "constrain", given);
+      return applyClauses("constrain", name, given as Clause[], false);
+    },
+  };
+
+  const scope: Bag = { ...relations, ...geometry, ...operations, ...persistence, ...clauses, ...commands };
   scope.help = () => help(scope);
   return scope;
 }
@@ -713,6 +794,13 @@ function help(scope: Bag): string {
     "           nothing.",
     "relations  dist fix coin mid par perp ang on eq",
     "           rad oncircle conc eqrad tan sym arcends onplane",
+    "clauses    _ is the thing being made. A relation given _ does not apply:",
+    "           it becomes a clause, and pt ln circ arc frame take clauses",
+    "           after their own arguments, applying each to what they made —",
+    '           circ(oncircle("p1", _), oncircle("p2", _), oncircle("p3", _))',
+    '           pt(on(_, "l1"), on(_, "l2"))      — the intersection',
+    "           constrain(name, ...clauses) applies them to what exists. All",
+    "           are checked before anything is made; each journals as itself.",
     "operations fillet(line1, line2, radius, plane?)  del(name, ...)",
     '           set("d4.value", 60)  — a dimension is named d1, d2, … and its',
     "           value is the one thing you can set. ang stores radians (its",
