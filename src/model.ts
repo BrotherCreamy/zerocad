@@ -448,6 +448,12 @@ export class Model {
   defaultFrame: string | null = null;
   private counters = new Map<string, number>();
   /**
+   * The name a constructor has claimed for an entity it has not put in
+   * `entities` yet, because the points it refers to are still being made —
+   * see `claimFirst`. Held here so that `autoName` steps around it.
+   */
+  private claimed: string | null = null;
+  /**
    * The relation currently being built, if any — see `relation()`. Its
    * presence is also what tells a nested relation call that it is nested.
    */
@@ -522,11 +528,18 @@ export class Model {
     do {
       n += 1;
       name = `${prefix}${n}`;
-    } while (this.has(name));
+    } while (this.has(name) || name === this.claimed);
     this.counters.set(prefix, n);
     return name;
   }
 
+  /**
+   * Checks the name and then claims it, in that order and in one call: every
+   * way it can refuse comes before the one effect it has (moving `prefix`'s
+   * counter), so a refused claim consumes nothing. That is what lets each
+   * constructor make it the *last* of its refusals and the *first* of its
+   * effects (see `claimFirst`) without a separate check.
+   */
   private claimName(prefix: string, name?: string): string {
     if (name === undefined) return this.autoName(prefix);
     // A dot is reserved for the frame-axis reference syntax (see
@@ -760,6 +773,38 @@ export class Model {
     return ent;
   }
 
+  /**
+   * The one order every constructor that auto-creates points keeps: claim the
+   * entity's name, *then* make its missing points (`makeParts`), and only
+   * after both does the caller put the entity itself in place.
+   *
+   * The constructor's other refusals all run before this is called. The name
+   * used to be claimed after the points were made, so a call refused for its
+   * name left them behind — real points, unjournalled because the
+   * constructor's own entry is what recreates them, that a save/open dropped
+   * and whose names a replay then handed out again to something else.
+   * Claiming first closes that, and claiming is safe to do first because it
+   * refuses before it consumes anything (see `claimName`).
+   *
+   * While the parts are made the claimed name is held aside, because the
+   * entity is not in `entities` to be seen yet: without that, a line
+   * explicitly called `p3` would have its own endpoint auto-named `p3` out
+   * from under it. Such a call used to be *refused*, as "already exists",
+   * naming a point the user never made; it now succeeds with the endpoints
+   * stepping around the name, the way auto-names step around every taken
+   * one. No call that succeeded before gets different names: the hold only
+   * changes an auto-name that would have landed on the claimed one.
+   */
+  private claimFirst<T>(prefix: string, name: string | null | undefined, makeParts: () => T): [string, T] {
+    const nm = this.claimName(prefix, name ?? undefined);
+    this.claimed = nm;
+    try {
+      return [nm, makeParts()];
+    } finally {
+      this.claimed = null;
+    }
+  }
+
   /** A point along axis `axis` from `from`, for seeding auto-created pieces. */
   private freePointOffset(from: number[], axis: number, by: number): PointEntity {
     const seed = from.slice();
@@ -776,17 +821,19 @@ export class Model {
     // ang) divides by that direction's length. The offset guarantees the
     // seed is never degenerate; the solver is free to move it afterwards.
     const span = Model.FREE_SPAN;
-    let a = aGiven, b = bGiven;
-    if (a == null && b == null) {
-      a = this.withoutRecording(() => this.addPoint()).name;
-      b = this.freePointOffset(this.coords(a), 0, span).name;
-    } else if (b == null) {
-      b = this.freePointOffset(this.coords(a!), 0, span).name;
-    } else if (a == null) {
-      a = this.freePointOffset(this.coords(b), 0, -span).name;
-    }
-    const nm = this.claimName("l", name ?? undefined);
-    const ent: LineEntity = { kind: "line", name: nm, refs: [a!, b!] };
+    const [nm, [a, b]] = this.claimFirst("l", name, () => {
+      let a = aGiven, b = bGiven;
+      if (a == null && b == null) {
+        a = this.withoutRecording(() => this.addPoint()).name;
+        b = this.freePointOffset(this.coords(a), 0, span).name;
+      } else if (b == null) {
+        b = this.freePointOffset(this.coords(a!), 0, span).name;
+      } else if (a == null) {
+        a = this.freePointOffset(this.coords(b), 0, -span).name;
+      }
+      return [a!, b!];
+    });
+    const ent: LineEntity = { kind: "line", name: nm, refs: [a, b] };
     this.entities.set(nm, ent);
     this.record("addLine", [aGiven ?? null, bGiven ?? null, nm]);
     return ent;
@@ -814,8 +861,7 @@ export class Model {
     if (center != null) this.point(center);
     if (radius != null && !(radius > 0)) throw new Error("a circle needs a positive radius");
     const frame = this.curvePlane("circle", plane);
-    const c = center ?? this.withoutRecording(() => this.addPoint()).name;
-    const nm = this.claimName("c", name ?? undefined);
+    const [nm, c] = this.claimFirst("c", name, () => center ?? this.withoutRecording(() => this.addPoint()).name);
     const ent: CircleEntity = {
       kind: "circle", name: nm, center: c,
       radiusVar: this.problem.addVar(radius ?? Model.DEFAULT_RADIUS),
@@ -851,15 +897,15 @@ export class Model {
       throw new Error("an auto-seeded arc needs at least 2 dimensions");
     }
     const frame = this.curvePlane("arc", plane);
-    // Auto pieces seed as a non-degenerate quarter arc around the center.
-    const c = center ?? this.withoutRecording(() => this.addPoint()).name;
-    const [along0, along1] = frame == null ? [null, null] : this.seedAxes(frame);
-    const seed = (axis: number, along: number[] | null) => along
-      ? this.withoutRecording(() => this.addPoint(this.coords(c).map((v, i) => v + r * along[i]))).name
-      : this.freePointOffset(this.coords(c), axis, r).name;
-    const s = start ?? seed(0, along0);
-    const e = end ?? seed(1, along1);
-    const nm = this.claimName("a", name ?? undefined);
+    const [nm, [c, s, e]] = this.claimFirst("a", name, () => {
+      // Auto pieces seed as a non-degenerate quarter arc around the center.
+      const c = center ?? this.withoutRecording(() => this.addPoint()).name;
+      const [along0, along1] = frame == null ? [null, null] : this.seedAxes(frame);
+      const seed = (axis: number, along: number[] | null) => along
+        ? this.withoutRecording(() => this.addPoint(this.coords(c).map((v, i) => v + r * along[i]))).name
+        : this.freePointOffset(this.coords(c), axis, r).name;
+      return [c, start ?? seed(0, along0), end ?? seed(1, along1)];
+    });
     const ent: ArcEntity = { kind: "arc", name: nm, center: c, start: s, end: e, radiusVar: this.problem.addVar(r) };
     if (frame != null) ent.plane = frame;
     this.entities.set(nm, ent);
@@ -958,29 +1004,31 @@ export class Model {
       const [a, b] = [this.coords(from), this.coords(to)];
       return b.map((v, i) => v - a[i]);
     };
-    let o = origin ?? null, x = xref ?? null, y = yref ?? null;
-    // The origin first, since both arms are seeded off it. Given an x-ref it
-    // sits a span back along the kernel's x, as it always has — unless a given
-    // y-ref lies on that very line, in which case the next axis along.
-    if (o == null) {
-      if (x != null) {
-        const k = y == null ? 0 : Model.axisClearOf(arm(x, y), [0, 1, 2]);
-        o = this.freePointOffset(this.coords(x), k, -span).name;
-      } else if (y != null) {
-        o = this.freePointOffset(this.coords(y), 1, -span).name;
-      } else {
-        o = this.withoutRecording(() => this.addPoint()).name;
+    const [nm, [o, x, y]] = this.claimFirst("f", name, () => {
+      let o = origin ?? null, x = xref ?? null, y = yref ?? null;
+      // The origin first, since both arms are seeded off it. Given an x-ref it
+      // sits a span back along the kernel's x, as it always has — unless a
+      // given y-ref lies on that very line, in which case the next axis along.
+      if (o == null) {
+        if (x != null) {
+          const k = y == null ? 0 : Model.axisClearOf(arm(x, y), [0, 1, 2]);
+          o = this.freePointOffset(this.coords(x), k, -span).name;
+        } else if (y != null) {
+          o = this.freePointOffset(this.coords(y), 1, -span).name;
+        } else {
+          o = this.withoutRecording(() => this.addPoint()).name;
+        }
       }
-    }
-    if (x == null) {
-      const k = y == null ? 0 : Model.axisClearOf(arm(o, y), [0, 1, 2]);
-      x = this.freePointOffset(this.coords(o), k, span).name;
-    }
-    if (y == null && this.dim === 3) {
-      y = this.freePointOffset(this.coords(o), Model.axisClearOf(arm(o, x), [1, 2, 0]), span).name;
-    }
+      if (x == null) {
+        const k = y == null ? 0 : Model.axisClearOf(arm(o, y), [0, 1, 2]);
+        x = this.freePointOffset(this.coords(o), k, span).name;
+      }
+      if (y == null && this.dim === 3) {
+        y = this.freePointOffset(this.coords(o), Model.axisClearOf(arm(o, x), [1, 2, 0]), span).name;
+      }
+      return [o, x, y] as const;
+    });
 
-    const nm = this.claimName("f", name ?? undefined);
     const ent: FrameEntity = { kind: "frame", name: nm, origin: o, xref: x };
     if (y != null) ent.yref = y;
     this.entities.set(nm, ent);

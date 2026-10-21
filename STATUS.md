@@ -750,6 +750,9 @@ replacing) the system Node other projects on this machine may depend on.
   made**, never its expansion — the auto-created sub-entities journal nothing
   — and re-expands deterministically, so a `circle()`-then-constrain model
   reopens byte-identical with the same auto-names.
+  *A refusal leaves nothing behind:* every check, the name included, runs
+  before the first auto-created point is made (`claimFirst`), so a refused
+  constructor strands no unjournalled points and moves no counter.
   *Where a free piece appears:* the middle of the window, decided in
   `replenv.ts` and passed down as an ordinary coordinate. The model never
   learns what a viewport is. This needs the canvas's **size** as well as the

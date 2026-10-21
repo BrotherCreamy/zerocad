@@ -7,6 +7,34 @@ decisions.
 
 ---
 
+## A refused constructor leaves nothing behind
+
+`line()`, `circle()`, `arc()` and `frame()` make the points they were not
+given — and used to make them *before* checking the name. So
+`line(null, null, "a.b")` refused, correctly, and left two points in the
+drawing that the journal knew nothing about: they vanished on save/open, and
+they had advanced the `p` counter, so the session and its own file handed out
+different names from then on. Measured: a refused `addLine` stranded 2 points,
+`addFrame` 2 in 2D and 3 in 3D, `addCircle` 1, `addArc` 3; now all four strand
+none, and after one refusal of each a session and its reopened file agree on
+every entity and on the next auto-name (they differed by 8 points in 2D, 9 in
+3D).
+
+Every refusal now runs before the first effect, the same rule `del` batches,
+clauses and operations already follow. The name is the last refusal and the
+first effect: `claimName` checks and then claims in one call, refusing before
+it moves a counter, so one helper (`claimFirst`) claims it and then makes the
+points. Successful calls journal byte-for-byte what they did before — pinned
+by hand in the tests — and the replay table did not change.
+
+One behaviour changed on purpose: a line explicitly named `p2`, when its own
+first endpoint would have been auto-named `p2`, used to be refused as
+`"p2" already exists`, about a point the user never made. The name is now held
+aside while the points are made, and the endpoints step around it. 53 new unit
+tests in `test/stranded.test.ts`, 20 of which fail on the old order.
+
+---
+
 ## Sketch on a face: click a wall, draw, extrude — a boss on the side of a plate
 
 ![A plate 80 by 50 and 20 deep, turned so its lid, its near wall and a sliver of its right wall face the viewer, shaded slate; standing out of the middle of the near wall toward the viewer is a cylinder, its base circle on the wall and its lid circle nearer, with the shaded strip of its side between them and the depth label 14 beside it; the wall's sketch frame f3 sits at the plate's corner p5 with its +z pointing out of the wall](docs/images/73-a-boss-sketched-on-the-side-of-a-plate.png)

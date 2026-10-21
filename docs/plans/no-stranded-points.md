@@ -1,6 +1,10 @@
 # Plan: a refused constructor leaves nothing behind
 
-**Status: queued** (2026-10-21). The register's "Smaller things" item: *a
+**Status: built** (2026-10-21) — one PR against `claude/resume-tasks-o7q02e`;
+`claimFirst` in `src/model.ts`, tests in `test/stranded.test.ts`. The one
+deviation (an explicit `pN` name its own auto-points would have taken now
+succeeds instead of being refused) is on the register's Done entry in
+`TODO.md`. The register's "Smaller things" item: *a
 constructor refused for its name strands its auto-created points.* Read
 `CLAUDE.md`, the register entry in `TODO.md`, and `src/model.ts`'s
 `claimName`, `addPoint`, `addLine`, `addCircle`, `addArc`, `addFrame`,

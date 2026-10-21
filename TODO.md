@@ -912,17 +912,34 @@ extended the way `defineTool` extends the tool registry would close it.
       `help()` provably do not solve; a contradictory `rad()` flips the header
       to `CONFLICT` on the keystroke that caused it. Pinned by
       `test/e2e/livesolve.e2e.ts`, which counts solves in the page.
-- [ ] **A constructor refused for its name strands its auto-created points.**
+- [x] **A constructor refused for its name strands its auto-created points.**
       Found while building 3D frames, and older than them: `addLine`,
-      `addCircle`, `addArc` and `addFrame` create their missing points
-      (unjournalled, by design) *before* `claimName` checks the name, so
-      `addLine(null, null, "a.b")` throws with `p1` and `p2` left in the
-      model and nothing in the journal — points that vanish on save/open and
-      advance the `p` counter in a way a replay will not reproduce. Measured
-      directly: one refused `addLine` leaves 2 points, and a refused 2D
-      `addFrame` 2 more (a 3D one would leave 3). The fix is to validate (or claim) the name
-      before creating anything, uniformly across the four constructors; left
-      out of the 3D package so `addFrame` stays in step with the other three.
+      `addCircle`, `addArc` and `addFrame` created their missing points
+      (unjournalled, by design) *before* `claimName` checked the name, so
+      `addLine(null, null, "a.b")` threw with `p1` and `p2` left in the
+      model and nothing in the journal — points that vanished on save/open and
+      advanced the `p` counter in a way a replay would not reproduce.
+      **Fixed** (`docs/plans/no-stranded-points.md`): every refusal now runs
+      before the first effect, and the name is claimed — `claimName` checks
+      then claims in one call, refusing before it moves any counter — as the
+      last refusal and the first effect, through one helper (`claimFirst`)
+      all four share. **Measured**, a refused call by name, before → after:
+      `addLine` 2 → 0 points, `addFrame` 2 (2D) / 3 (3D) → 0, `addCircle`
+      1 → 0, `addArc` 3 → 0; a session and its own file now agree on every
+      entity and on the next auto-name (they differed by 8 points in 2D and 9
+      in 3D after one refusal of each). `test/stranded.test.ts`, 53 tests, 20
+      of which fail on the old order; every successful call's journal entry
+      is pinned by hand and unchanged, and `persist.ts` was not touched.
+      *Deviation, deliberate:* a constructor given an explicit name in the
+      `pN` pattern that one of its own auto-points would have taken —
+      `addLine(null, null, "p2")` when the counter stands at 1 — used to be
+      refused as `"p2" already exists`, for a point the user never made. The
+      claimed name is now held aside while the points are made, so it
+      succeeds with endpoints `p3`, `p4`, as auto-names step around any taken
+      name. No call that succeeded before gets different names (the hold
+      only moves an auto-name that would have landed on the claimed one, which
+      is exactly the old refusal), and such a call replays identically.
+      *Not touched:* anything above `model.ts`.
 - [ ] *Noted, not caused by anything new:* **in 3D, a far-off point held by
       `on` to a line whose ends still have a long way to travel can stall**
       when one more constraint picks a single spot on that line. `on`'s
