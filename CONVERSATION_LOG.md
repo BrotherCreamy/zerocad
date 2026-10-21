@@ -106,6 +106,42 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### A refused constructor leaves nothing behind: claim first, and hold the claim
+
+The spec (`docs/plans/no-stranded-points.md`) asked which `claimName` is — a
+check or a reservation — and to order accordingly. **It is both, in one call,
+in the right order:** every way it refuses (a dot, a taken name) comes before
+its one effect (moving the prefix's counter), so a refused claim consumes
+nothing. No split was needed; it is placed last among each constructor's
+refusals and first among its effects.
+
+**Claiming first opened a hole the old order hid.** The entity is not in
+`entities` until its points exist, so between claim and insert nothing marks
+its name taken — and a line explicitly called `p2` would have its own first
+endpoint auto-named `p2`, the later `entities.set` silently overwriting one
+with the other. The old order never reached that: it made the point `p2` first
+and then refused the line as "already exists". Two ways to keep a hole shut:
+
+- *Predict and refuse.* Before making anything, simulate the auto-names the
+  missing points would get and refuse the explicit name if it is among them.
+  Rejected: it re-implements `autoName`'s walk to preserve a refusal that was
+  only ever an accident of ordering, with a message ("already exists") that
+  was false — the user had made no `p2`.
+- *Hold the claim aside* (chosen). `claimFirst` sets a private `claimed` name
+  that `autoName` steps around, exactly as it steps around every taken name,
+  for the duration of the points' making. The call now succeeds. It cannot
+  rename anything in a call that succeeded before: the hold only moves an
+  auto-name that would have landed on the claimed name, which is precisely the
+  case that used to be refused. And it replays identically, because replay
+  goes through the same code with the same explicit name.
+
+**The counters are private, so the tests read them the way a user does** — the
+next auto-name of every prefix, against a twin model that was never refused
+anything — rather than reaching into the map. The successful calls' journal
+entries are written out by hand rather than captured, so a change to one is a
+failure, not a regenerated expectation; that test passes on the old code too,
+which is the point.
+
 ### Sketch on a face: a face is a loop, and three of its points are the plane
 
 **The register's note — "faces will need to pick first" — was the wrong
