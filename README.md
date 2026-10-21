@@ -16,7 +16,8 @@ arc tools with Onshape-style constraint inference; a fillet; extrude —
 a closed loop, holes and all, expanded into a real lid of twins and walls held
 by one depth dimension, drawn shaded; and revolve — a loop turned about a frame
 axis or a line in its plane, its surface drawn from the live profile and, for a
-partial turn, its end face real geometry held by one angle dimension) is the
+partial turn, its end face real geometry held by one angle dimension — with
+sketching on a solid's face, a click inside it, to stack the next one on) is the
 **first standard library** built on that kernel, not the kernel's whole
 purpose. The kernel itself knows nothing about geometry — just a flat
 variable vector and residual blocks — so the same solver is meant to be
@@ -102,6 +103,7 @@ src/arcgeom.ts           which way round an arc goes, in its own plane — one r
 src/projection.ts        each entity's shape on screen, and a pixel on it lifted back to the world
 src/workplane.ts         what a click lands on in 3D: the default frame's plane, or the one facing you
 src/loops.ts             closed loops (joined by shared point or coin, never proximity), and which one a click is in
+src/sketchface.ts        the three points of a face a sketch plane on it is made of, +z toward you
 src/faces.ts             a solid's faces from its live geometry (a revolve's swept): culled, sorted per face, lit from the eye
 src/undo.ts              a stack of whole-model snapshots; imports nothing
 src/tools/tool.ts         abstract class Tool + defineTool registry
@@ -115,6 +117,8 @@ src/tools/arc3.ts         two endpoints, then a point the arc passes through
 src/tools/circumcircle.ts the closed form those two share
 src/tools/extrude.ts      click inside a region; it is extruded
 src/tools/revolve.ts      click inside a region, then on an axis; it is revolved
+src/tools/sketch.ts       click inside a face; plane(a, b, c) on its own points is typed
+src/tools/region.ts       the click-inside tools' shared region preview
 src/main.ts              browser entry point (canvas render loop + the REPL)
 test/                    node --test, no browser needed (WASM loaded via a byte buffer)
 ```

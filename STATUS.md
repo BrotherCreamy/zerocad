@@ -1458,6 +1458,41 @@ replacing) the system Node other projects on this machine may depend on.
   (register). `pt` now refuses a non-number argument it used to pass to the
   model as a coordinate.
   *Spec:* [`docs/plans/clauses.md`](docs/plans/clauses.md).
+- **Sketch on a face** (`src/sketchface.ts` (new), `src/tools/sketch.ts` (new),
+  `src/tools/region.ts` (new), `menu.ts`, `tools/tool.ts`, `tools/engine.ts`,
+  `main.ts`, `replenv.ts`'s help). A face is not an entity and is not picked:
+  every planar face of a solid — and every plain sketch loop — is a loop
+  `loopAt` finds, so the face under a click is a *region*, as the extrude tool
+  asks for one. **`sketchFrameFor(model, loop, toward)`** returns three of the
+  loop's own points — the first corner (a vertex not on a straight run) and its
+  two neighbours, so +x runs along an edge; failing that any three vertices off
+  one line, then arc centres; a whole circle its frame's three points — ordered
+  so `(b − a) × (c − a)` faces `toward`, the line of sight back at the viewer.
+  The first surface a ray meets is one whose outward normal faces it, so that
+  puts +z out of a solid: a positive extrude on a wall is a boss. Refusals by
+  name: a 2D model, a loop seen exactly edge-on, no three points off one line (a
+  semicircle closed by its diameter), a circle off its own frame's plane.
+  `sketchOnFaceCommand` is the same as `plane("a", "b", "c")`.
+  **The tool**, `arm("sketch")` (on the toolbar by registering): hover outlines
+  the region (the extrude tool's preview, now shared in `tools/region.ts` with
+  extrude and revolve), a click inside **types** `plane(a, b, c)` through
+  `ToolContext.run` (new; `main.ts` hands it `submit`, the menu's seam) and
+  finishes — so the log shows the call and its answer, the journal holds
+  `addFrame` + `setDefaultFrame`, the view turns square to the face, and it is
+  one undo step. A click on nothing logs `sketch: no face under the click …`
+  and stays armed; headless with no `run` it throws. `regionAt` (now also a
+  public `ToolEngine.regionAt`) reports `toward` with the region
+  (`RegionHit`). **The menu**: `menuFor(model, pick, region?)` — on empty
+  canvas inside a region of a 3D model, **Sketch on this face** runs the same
+  line, or shows disabled with the helper's reason. The frame's points are the
+  solid's, so it follows the solid (`set` the depth and the wall's frame stays
+  on the wall); `del` of the frame takes what was drawn on it and the record of
+  a feature built on it, never the solid. 686 unit tests, 254 e2e.
+  *Known and deliberate:* a boss's lid frame twins the face frame's corner
+  points, so its marker floats off the plate's corner; the plane is always
+  made the default and looked at (it is `plane()`); which edge is +x is
+  whichever the loop starts at.
+  *Spec:* [`docs/plans/sketch-on-face.md`](docs/plans/sketch-on-face.md).
 
 
 ## What's next
