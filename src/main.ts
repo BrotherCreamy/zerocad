@@ -36,6 +36,7 @@ import "./tools/arc3.ts";
 import "./tools/fillet.ts";
 import "./tools/extrude.ts";
 import "./tools/revolve.ts";
+import "./tools/sketch.ts";
 
 const statusEl = document.getElementById("status")!;
 const logEl = document.getElementById("log")!;
@@ -636,12 +637,18 @@ async function main() {
     // A tool refusing a gesture ("those three points lie on one line") is the
     // user's business, not the console's — same channel an entry's error uses.
     onLog: (line) => log(line, "err"),
+    // A tool whose commit is a command types it, as the menu does — the sketch
+    // tool's `plane(a, b, c)` — so it is logged, recalled and undone as typed.
+    onRun: (command) => void submit(command),
     onContextMenu: (pick, sx, sy) => {
       // The tag and the menu would otherwise sit on top of one another, both
       // naming the same thing — and the tag cannot update while the cursor is
       // over the menu, so it would go stale as well as redundant.
       hoverEl.hidden = true;
-      menu.show(menuFor(model, pick), sx, sy);
+      // On empty canvas the menu is also told which region the click is
+      // inside, for "Sketch on this face" — asked here, where the camera is,
+      // so the menu stays a pure function of what it is handed.
+      menu.show(menuFor(model, pick, pick ? null : engine.regionAt(sx, sy)), sx, sy);
     },
   });
 

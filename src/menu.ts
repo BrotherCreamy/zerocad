@@ -25,6 +25,8 @@ import { SETTABLE_PROPERTY, valueArgIndex, type Model } from "./model.ts";
 import { describePick, type Pick } from "./picking.ts";
 import { frameBasis } from "./relations/refs.ts";
 import { toolUnavailable } from "./toolavail.ts";
+import { sketchOnFaceCommand } from "./sketchface.ts";
+import type { RegionHit } from "./tools/tool.ts";
 
 /**
  * What clicking an item does.
@@ -94,13 +96,15 @@ function quoted(name: string): string {
 
 /**
  * The menu for whatever a right-click landed on: an entity, a constraint glyph
- * (`pick.kind === "relation"`), or empty canvas (`pick === null`).
+ * (`pick.kind === "relation"`), or empty canvas (`pick === null`) — and, on
+ * empty canvas, the closed region the click is inside, if any (the engine's
+ * `regionAt`, asked by the host), which is what offers "Sketch on this face".
  *
  * Pure, and deliberately so — it reads the model and returns strings. Nothing
  * here runs a command, touches the DOM or knows a menu can be on screen.
  */
-export function menuFor(model: Model, pick: Pick | null): Menu {
-  if (!pick) return emptyCanvasMenu(model);
+export function menuFor(model: Model, pick: Pick | null, region: RegionHit | null = null): Menu {
+  if (!pick) return emptyCanvasMenu(model, region);
   if (pick.kind === "relation") {
     return {
       // The same sentence the hover tag writes for a glyph — `d1  dist p1 p2 50`
@@ -164,7 +168,7 @@ function setValueItem(model: Model, name: string): MenuItem[] {
  * is `toolUnavailable`'s to say, not this menu's: the toolbar reads the same
  * rule, so the two places that offer tools cannot disagree.
  */
-function emptyCanvasMenu(model: Model): Menu {
+function emptyCanvasMenu(model: Model, region: RegionHit | null): Menu {
   const hasFrame = [...model.entities.values()].some((e) => e.kind === "frame");
   return {
     header: null,
@@ -177,8 +181,32 @@ function emptyCanvasMenu(model: Model): Menu {
         label: "Frame",
         action: { do: "run", command: hasFrame ? "frame()" : "setDefaultFrame(frame())" },
       },
+      ...sketchOnFaceItem(model, region),
     ],
   };
+}
+
+/**
+ * **Sketch on this face**, when the right-click landed inside a closed region:
+ * `plane(a, b, c)` on three of its own points, +z toward the viewer — the very
+ * line the sketch tool types for a click in the same place (see
+ * ../sketchface.ts), so menu and tool cannot make different planes of one face.
+ * The click is on empty canvas as far as picking goes — faces never pick — and
+ * the region is what makes it more than that, as it is for the extrude tool.
+ *
+ * Only in a 3D model, where a sketch plane is a frame with a side to it; a 2D
+ * drawing is one plane already. A face no plane can be made of — three points
+ * on one line, a circle off its own frame — is shown disabled with the reason,
+ * for Fix's reason: an item that vanished would leave "why not here" unanswered.
+ */
+function sketchOnFaceItem(model: Model, region: RegionHit | null): MenuItem[] {
+  if (!region || model.dim !== 3) return [];
+  const label = "Sketch on this face";
+  try {
+    return [{ label, action: { do: "run", command: sketchOnFaceCommand(model, region.loops[region.index], region.toward) } }];
+  } catch (err) {
+    return [{ label, action: { do: "disabled", why: err instanceof Error ? err.message : String(err) } }];
+  }
 }
 
 function entityMenu(model: Model, pick: Pick): Menu {
