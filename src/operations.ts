@@ -16,7 +16,7 @@ import { extrusion } from "./relations/extrusion.ts";
 import { FULL_TURN, axisReader, isFullTurn, revolution, turnPoint } from "./relations/revolution.ts";
 import { sweepsAs } from "./arcgeom.ts";
 import { curveFrame, framePlaneAxes } from "./curveplane.ts";
-import { describeLoop, findLoops, joinClasses, parallel, type Loop } from "./loops.ts";
+import { describeLoop, findLoops, isPortion, joinClasses, parallel, type Loop } from "./loops.ts";
 import { cross3, dot3, lift3, sub3 } from "./vec3.ts";
 
 function unit(v: number[]): number[] {
@@ -269,6 +269,8 @@ export function extrude(model: Model, member: string, depth?: number | null, fra
  */
 interface ProfileWords {
   op: "extrude" | "revolve";
+  /** The operation as a gerund, for a sentence about what it cannot do yet. */
+  doing: "extruding" | "revolving";
   /** The call that narrows an ambiguous member to one loop, by its sketch frame. */
   narrowed: (member: string) => string;
   /** Why the operation needs a sketch frame at all. */
@@ -277,12 +279,14 @@ interface ProfileWords {
 
 const EXTRUDE: ProfileWords = {
   op: "extrude",
+  doing: "extruding",
   narrowed: (m) => `extrude(${JSON.stringify(m)}, depth, "f1")`,
   needsFrame: "an extrude runs along a sketch frame's +z",
 };
 
 const REVOLVE: ProfileWords = {
   op: "revolve",
+  doing: "revolving",
   narrowed: (m) => `revolve(${JSON.stringify(m)}, axis, angle, "f1")`,
   needsFrame: "a revolve's end face lies on its sketch frame turned",
 };
@@ -292,9 +296,26 @@ const REVOLVE: ProfileWords = {
  * that loop, every loop inside it, and the frame it is extruded along. What the
  * extrude tool hands to `extrude` for the region under a click. Throws when no
  * frame orients the loop — see `extrude`.
+ *
+ * **And, for now, when the region is split** — any of its loops bounded by
+ * part of an entity, or running through a crossing (loops.ts). A profile here
+ * is lists of whole member names, and the expansion makes one twin per whole
+ * member between twins of its own ends: handed a portion it would twin the
+ * whole edge, and a crossing has no point to twin at all. So it is refused, by
+ * the member, until features over split regions are built (materialising the
+ * crossings and twinning portions — `docs/plans/regions-split.md`, PR 2),
+ * rather than producing a solid that is not the region the preview showed.
  */
 export function profileOf(model: Model, all: Loop[], index: number, frame?: string | null,
                           words: ProfileWords = EXTRUDE): Profile {
+  for (const i of regionOf(all, index)) {
+    const part = all[i].members.find((m) => isPortion(model, m));
+    if (!part) continue;
+    const whole = part.span === null ? "" : "part of ";
+    throw new Error(`this region is bounded by ${whole}${part.name} (from ${part.from} to ${part.to}) — `
+      + `${words.doing} split regions is not built yet. Regions split by a crossing or a T show and can be sketched on; `
+      + `to ${words.op} one today, draw its boundary from whole edges`);
+  }
   const f = frame ?? sketchFrameOf(model, all[index], words);
   return { frame: f, loops: regionOf(all, index).map((i) => all[i].members.map((m) => m.name)) };
 }
@@ -353,7 +374,7 @@ function foundProfile(model: Model, member: string, frame: string | null, words:
   if (mine.length === 0) {
     const where = frame === null ? "" : ` parallel to ${frame}`;
     throw new Error(`"${member}" is in no closed loop${where} — loops() lists the loops there are. A loop's ends join `
-      + "only at a shared point or a coin (never by touching), lie in one plane, and do not cross one another");
+      + "only at a shared point or a coin (never by touching), and lie in one plane");
   }
   if (mine.length > 1) {
     const list = mine.map((i) => describeLoop(all[i], all)).join("; ");

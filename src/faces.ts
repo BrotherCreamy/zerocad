@@ -56,7 +56,7 @@
 // nearly along the axis, no single key can put a cap between its walls.
 
 import type { FeatureEntry, Model } from "./model.ts";
-import { arcSamples, arcSegments } from "./arcgeom.ts";
+import { arcPoint, arcSamples, arcSegments } from "./arcgeom.ts";
 import { curveFrame, framePlaneAxes } from "./curveplane.ts";
 import { axisReader, turnMatrix } from "./relations/revolution.ts";
 import { depth, viewAxes, worldToScreen, type View } from "./view.ts";
@@ -101,15 +101,30 @@ export interface DrawnFace {
  * A member's points in its own direction — a line's two ends, an arc or
  * circle sampled as it is drawn (`segments` forces the count, so a twin is
  * sampled piece for piece with its base). Null if it cannot be laid out.
+ *
+ * `span` draws only that part of it: fractions of the entity in its own
+ * direction, as loops.ts measures a member's portion (a circle from its
+ * frame's +x, so `curveFrame`'s parameter is the same one).
  */
-function memberPath(model: Model, name: string, scale: number, segments?: number): number[][] | null {
+function memberPath(model: Model, name: string, scale: number, segments?: number,
+                    span: [number, number] | null = null): number[][] | null {
   const e = model.entities.get(name);
   if (!e) return null;
-  if (e.kind === "line") return [lift3(model.coords(e.refs[0])), lift3(model.coords(e.refs[1]))];
+  if (e.kind === "line") {
+    const [a, b] = [lift3(model.coords(e.refs[0])), lift3(model.coords(e.refs[1]))];
+    if (!span) return [a, b];
+    return span.map((t) => a.map((x, i) => x + t * (b[i] - x)));
+  }
   const f = curveFrame(model, e);
   if (!f) return null;
-  return arcSamples(f, segments ?? arcSegments(f.sweep, f.r * scale));
+  if (!span) return arcSamples(f, segments ?? arcSegments(f.sweep, f.r * scale));
+  const [t0, t1] = span.map((t) => t * f.sweep);
+  const n = segments ?? arcSegments(t1 - t0, f.r * scale);
+  return Array.from({ length: n + 1 }, (_, k) => arcPoint(f, t0 + ((t1 - t0) * k) / n));
 }
+
+/** A loop member as `loopOutlines` takes it: a name for the whole entity, or loops.ts's member with its `span`. */
+export type OutlineMember = string | { name: string; span: [number, number] | null };
 
 const gap = (a: number[], b: number[]) => Math.hypot(...sub3(a, b));
 
@@ -183,11 +198,14 @@ function inPolygon(poly: [number, number][], p: [number, number]): boolean {
 /**
  * The outlines of a set of loops, as they are drawn: each loop's members
  * walked closed, arcs sampled at `scale`. What the extrude tool previews a
- * region with, as well as what a cap is filled with.
+ * region with, as well as what a cap is filled with. A member that is part of
+ * its entity is drawn as that part, so a region split by a crossing or a T
+ * is outlined exactly — the outline stops where the region does.
  */
-export function loopOutlines(model: Model, loops: string[][], scale: number): number[][][] {
-  return loops.map((names) => {
-    const paths = names.map((n) => memberPath(model, n, scale)).filter((p): p is number[][] => p !== null);
+export function loopOutlines(model: Model, loops: OutlineMember[][], scale: number): number[][][] {
+  return loops.map((members) => {
+    const paths = members.map((m) => (typeof m === "string" ? memberPath(model, m, scale) : memberPath(model, m.name, scale, undefined, m.span)))
+      .filter((p): p is number[][] => p !== null);
     return paths.length ? joined(paths, orient(paths)) : [];
   }).filter((o) => o.length > 2);
 }

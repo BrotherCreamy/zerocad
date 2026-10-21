@@ -235,6 +235,50 @@ test("loopOutlines walks a loop closed whatever direction its members run", asyn
 
 // --- the tool ----------------------------------------------------------------------
 
+/** A rectangle with a line across it, flat on the kernel-aligned frame: two regions (loops.ts). */
+function split(): { m: Model; lines: string[]; across: string } {
+  const m = new Model(3);
+  axisFrame(m);
+  const pts = [[0, 0, 0], [40, 0, 0], [40, 30, 0], [0, 30, 0]].map((c) => m.addPoint(c).name);
+  const lines = pts.map((p, i) => m.addLine(p, pts[(i + 1) % 4]).name);
+  return { m, lines, across: m.addLine(m.addPoint([15, -10, 0]).name, m.addPoint([15, 40, 0]).name).name };
+}
+
+/** Two crossing circles, r = 10 and 12 apart: two crescents and a lens. */
+function lens(): Model {
+  const m = new Model(3);
+  axisFrame(m);
+  m.addCircle(m.addPoint([20, 15, 0]).name, 10, "f");
+  m.addCircle(m.addPoint([32, 15, 0]).name, 10, "f");
+  return m;
+}
+
+const shoelace = (o: number[][]) => Math.abs(o.reduce((s, p, i) => {
+  const q = o[(i + 1) % o.length];
+  return s + p[0] * q[1] - p[1] * q[0];
+}, 0) / 2);
+
+test("loopOutlines draws a part of an entity as that part: half a split rectangle stops at the crossing, a crescent at the lens", () => {
+  const { m } = split();
+  const loops = findLoops(m);
+  const key = (p: number[]) => p.map((x) => Math.round(x * 1e9) / 1e9 + 0).join(",");
+  const [left] = loopOutlines(m, [loops[0].members], 4);
+  assert.deepEqual(left.map(key).sort(), ["0,0,0", "0,30,0", "15,0,0", "15,30,0"], "four corners, two of them crossings — not the whole bottom and top edges");
+  assert.ok(Math.abs(shoelace(left) - 450) < 1e-9);
+
+  const n = lens();
+  // At 4000 px a unit, so the quarter-pixel sampling is fine enough to measure an area by.
+  const outlines = findLoops(n).map((l) => loopOutlines(n, [l.members], 4000)[0]);
+  const from = (p: number[], c: number[]) => Math.hypot(p[0] - c[0], p[1] - c[1]);
+  const [inC1, outC1, inC2, outC2] = [(p: number[]) => from(p, [20, 15]) <= 10 + 1e-9, (p: number[]) => from(p, [20, 15]) >= 10 - 1e-9,
+    (p: number[]) => from(p, [32, 15]) <= 10 + 1e-9, (p: number[]) => from(p, [32, 15]) >= 10 - 1e-9];
+  assert.ok(outlines[0].every((p) => inC1(p) && outC2(p)), "the left crescent: in c1, out of c2");
+  assert.ok(outlines[1].every((p) => inC1(p) && inC2(p)), "the lens: in both");
+  assert.ok(outlines[2].every((p) => outC1(p) && inC2(p)), "the right crescent: in c2, out of c1");
+  const lensArea = 200 * Math.acos(0.6) - 6 * 16;
+  assert.ok(Math.abs(shoelace(outlines[1]) - lensArea) < 1e-2, `sampled as drawn: ${shoelace(outlines[1])} against ${lensArea}`);
+});
+
 function toolCtx(model: Model, view: View, options: Record<string, unknown> = {}, log?: string[]) {
   const c = {
     model, options, solves: 0, renders: 0, finished: false,
@@ -307,6 +351,61 @@ test("a click on no region is refused out loud and the tool stays armed — and 
   assert.equal(ctx.finished, false);
   assert.equal(m.features.size, 0);
   assert.throws(() => new ExtrudeTool(toolCtx(m, ABOVE)).onDown({ world: [80, 80, 0], screen: outside }), /no closed region/);
+});
+
+test("on a split region the extrude tool outlines the half under the cursor, and a click there is refused by name, the tool still armed", async () => {
+  await loadKernel();
+  const { m, lines } = split();
+  const log: string[] = [];
+  const ctx = toolCtx(m, ABOVE, {}, log);
+  const tool = new ExtrudeTool(ctx);
+  const at = (x: number, y: number) => worldToScreen(ABOVE, [x, y, 0]);
+  tool.onMove({ world: [5, 15, 0], screen: at(5, 15) });
+  tool.onMove({ world: [6, 15, 0], screen: at(6, 15) });
+  assert.equal(ctx.renders, 1, "one region, asked about twice");
+  tool.onMove({ world: [30, 15, 0], screen: at(30, 15) });
+  assert.equal(ctx.renders, 2, "across the line is another region");
+  // What the preview draws: the right half's corners and nothing of the left.
+  const drawn: number[][] = [];
+  const g = new Proxy({}, {
+    get: (_t, k) => (typeof k === "string" && /Style|lineWidth/.test(k) ? undefined
+      : (...a: unknown[]) => { if (k === "moveTo" || k === "lineTo") drawn.push(a as number[]); }),
+    set: () => true,
+  }) as unknown as CanvasRenderingContext2D;
+  tool.render({ g, worldToScreen: (w) => worldToScreen(ABOVE, w), scale: ABOVE.scale });
+  const corners = [[15, 0], [40, 0], [40, 30], [15, 30]].map(([x, y]) => at(x, y).map((c) => Math.round(c)).join(","));
+  assert.deepEqual(drawn.map((p) => p.map((c) => Math.round(c)).join(",")).sort(), corners.sort());
+
+  const journal = m.journal.length;
+  tool.onDown({ world: [30, 15, 0], screen: at(30, 15) });
+  assert.match(log.at(-1)!, new RegExp(`^extrude: this region is bounded by part of ${lines[0]} \\(from .*\\) — extruding split regions is not built yet`));
+  assert.equal(ctx.finished, false);
+  assert.equal(m.features.size, 0);
+  assert.equal(m.journal.length, journal, "nothing half-built");
+});
+
+test("hovering from a crescent to the lens to the other crescent redraws each time: three regions of parts of the same two circles", async () => {
+  await loadKernel();
+  const m = lens();
+  const ctx = toolCtx(m, ABOVE);
+  const tool = new ExtrudeTool(ctx);
+  for (const x of [12, 26, 40]) tool.onMove({ world: [x, 15, 0], screen: worldToScreen(ABOVE, [x, 15, 0]) });
+  assert.equal(ctx.renders, 3);
+});
+
+test("the revolve tool on a split region, the line that splits it the axis: refused by name, the half still chosen", async () => {
+  await loadKernel();
+  const { m, lines, across } = split();
+  const log: string[] = [];
+  const ctx = toolCtx(m, ABOVE, {}, log);
+  const tool = new RevolveTool(ctx);
+  const at = (x: number, y: number) => worldToScreen(ABOVE, [x, y, 0]);
+  tool.onDown({ world: [30, 15, 0], screen: at(30, 15) });
+  assert.equal(ctx.pick([...at(15, 36)] as [number, number])?.name, across, "the click below lands on the line");
+  tool.onDown({ world: [15, 36, 0], screen: at(15, 36) });
+  assert.match(log.at(-1)!, new RegExp(`^revolve: this region is bounded by part of ${lines[0]} \\(from .*\\) — revolving split regions is not built yet`));
+  assert.equal(ctx.finished, false);
+  assert.equal(m.features.size, 0);
 });
 
 test("the extrude tool asks the engine for no snap; the tools that place points still do", async () => {
@@ -600,7 +699,10 @@ test("the second click: nothing there is refused aloud, another region is taken 
   const lines = block.map((p, i) => m.addLine(p, block[(i + 1) % 4]).name);
   const other = [[10, 40, 0], [30, 40, 0], [30, 60, 0], [10, 60, 0]].map((c) => m.addPoint(c).name);
   const others = other.map((p, i) => m.addLine(p, other[(i + 1) % 4]).name);
-  const across = m.addLine(m.addPoint([20, -10, 0]).name, m.addPoint([20, 30, 0]).name).name;
+  // Seen from above it runs straight through the block; it climbs out of the
+  // block's plane, so it is no axis for it — and, being in no plane of the
+  // block's, cuts no region of it (a line in the plane would: loops.ts).
+  const across = m.addLine(m.addPoint([20, -10, 0]).name, m.addPoint([20, 30, 30]).name).name;
   const beside = m.addLine(m.addPoint([-5, -10, 0]).name, m.addPoint([-5, 70, 0]).name).name;
   const log: string[] = [];
   const ctx = toolCtx(m, ABOVE, {}, log);
@@ -617,9 +719,9 @@ test("the second click: nothing there is refused aloud, another region is taken 
   tool.onDown({ world: [15, 50, 0], screen: at(15, 50) });
   tool.onDown({ world: [15, 5, 0], screen: at(15, 5) });
   assert.equal(log.length, 2, "re-choosing a region is not a refusal");
-  // A line straight through the block: refused, and the block stays chosen.
+  // That line as the axis: refused, and the block stays chosen.
   tool.onDown({ world: [20, 25, 0], screen: at(20, 25) });
-  assert.match(log.at(-1)!, new RegExp(`^revolve: the profile l1,l2,l3,l4 crosses the axis ${across}`));
+  assert.match(log.at(-1)!, new RegExp(`^revolve: the axis ${across} leans 36.87° out of the plane of the profile l1,l2,l3,l4`));
   assert.equal(ctx.finished, false);
   // Hovering a line now shows it as the axis, dashed.
   tool.onMove({ world: [-5, 50, 0], screen: at(-5, 50) });

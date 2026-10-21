@@ -8,7 +8,7 @@
 
 import type { RenderContext } from "./tool.ts";
 import type { Model } from "../model.ts";
-import type { Loop } from "../loops.ts";
+import { memberLabel, type Loop } from "../loops.ts";
 import { regionOf } from "../operations.ts";
 import { loopOutlines } from "../faces.ts";
 
@@ -21,11 +21,13 @@ export const REGION_GREEN = "#55c07a";
 /**
  * Which loops a region is made of, by member names — what a hover is compared
  * by, so the preview is redrawn when the region under the cursor changes and
- * not on every move within one.
+ * not on every move within one. A portion carries the vertices it runs
+ * between (`memberLabel`): a lens and the crescent beside it are made of parts
+ * of the same two circles.
  */
 export function regionKey(r: Region | null): string {
   if (!r) return "";
-  return regionOf(r.loops, r.index).map((i) => r.loops[i].members.map((m) => m.name).join(",")).join("|");
+  return regionOf(r.loops, r.index).map((i) => r.loops[i].members.map(memberLabel).join(",")).join("|");
 }
 
 /**
@@ -39,7 +41,7 @@ export function regionKey(r: Region | null): string {
 export function drawRegion(model: Model, r: RenderContext, region: Region, fill = "2e"): number[][][] | null {
   let outlines: number[][][];
   try {
-    outlines = loopOutlines(model, regionOf(region.loops, region.index).map((i) => region.loops[i].members.map((m) => m.name)), r.scale);
+    outlines = loopOutlines(model, regionOf(region.loops, region.index).map((i) => region.loops[i].members), r.scale);
   } catch {
     return null;
   }
