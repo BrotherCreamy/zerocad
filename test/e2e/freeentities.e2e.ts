@@ -204,8 +204,16 @@ test("a free line() made tangent to two circles", async () => {
   // Both radii are *constrained*, not merely seeded: a constructor argument
   // only ever seeds a variable, so without these the solver is free to shrink
   // a circle onto the line and call it tangent.
-  await app.type('fix(pt(0,0), [0,0]); circ("p1", 6); rad("c1", 6)');
-  await app.type('fix(pt(40,0), [40,0]); circ("p2", 10); rad("c2", 10)');
+  //
+  // The circles sit below the middle of the view, because that is where
+  // `line()` seeds its first endpoint: a seed straight through a centre is the
+  // one place `tan` cannot tell which side the line is meant to be on. This
+  // test used to put c1 *on* the world origin and pass anyway, only because the
+  // log pane took height from the canvas as the test typed, dragging "the
+  // middle of the view" off the origin; with the canvas full-window and
+  // nothing resizing it, the middle is the origin itself.
+  await app.type('fix(pt(0,-20), [0,-20]); circ("p1", 6); rad("c1", 6)');
+  await app.type('fix(pt(40,-20), [40,-20]); circ("p2", 10); rad("c2", 10)');
   await countSolves();
 
   await app.type("t = line()"); // both endpoints auto-created, seeded apart

@@ -12,20 +12,20 @@
     #status.solved{color:#55c07a}
     #status.bad{color:#e0605c}
     canvas{display:block;width:100%;height:100%;background:#0a0e13;cursor:crosshair}
-    #log{padding:6px 14px;font-size:11px;color:#7a8b9b;border-top:1px solid #223041;white-space:pre-wrap;max-height:190px;overflow-y:auto}
-    #cmdrow{display:flex;align-items:center;gap:8px;padding:6px 14px;border-top:1px solid #223041;background:#0e141b}
-    #cmd{flex:1;background:transparent;border:none;outline:none;color:#d5e1ec;font-family:inherit;font-size:13px}
-    #cmdhint{font-size:10.5px;color:#46586a}
+    #log{padding:4px 10px 6px;font-size:11px;color:#7a8b9b;white-space:pre-wrap;overflow-y:auto}
+    #cmdrow{display:flex;align-items:center;gap:8px;padding:0 16px 0 10px;overflow:hidden}
+    #cmd{flex:1;min-width:0;background:transparent;border:none;outline:none;color:#d5e1ec;font-family:inherit;font-size:13px}
+    #cmdhint{font-size:10.5px;color:#46586a;white-space:nowrap}
     #log .in{color:#46586a}
     #log .err{color:#e0605c}
     #log .out{color:#8fa7bb}
     #hovertag{position:absolute;pointer-events:none;font-family:inherit;font-size:11px;color:#e8a33d;
-      background:#0e141bdd;border:1px solid #223041;padding:2px 6px;border-radius:3px;white-space:nowrap;z-index:5}
+      background:#0e141bdd;border:1px solid #223041;padding:2px 6px;border-radius:3px;white-space:nowrap;z-index:50}
     /* The context menu, in the hover tag's family: same ground, same border,
        same corner. It is the other thing that appears at the cursor over the
        drawing, so the two ought to look like one idea. */
     #ctxmenu{position:absolute;font-family:inherit;font-size:11.5px;background:#0e141bf5;
-      border:1px solid #223041;border-radius:4px;padding:3px 0;z-index:6;min-width:120px;
+      border:1px solid #223041;border-radius:4px;padding:3px 0;z-index:60;min-width:120px;
       box-shadow:0 6px 20px #000a;user-select:none}
     #ctxmenu .head{padding:3px 10px 5px;margin-bottom:3px;border-bottom:1px solid #223041;
       color:#7a8b9b;font-size:10.5px;white-space:nowrap}
@@ -36,7 +36,32 @@
     #ctxmenu .item:hover .cmd{color:#8fa7bb}
     #ctxmenu .item.off,#ctxmenu .item.off:hover{color:#46586a;background:transparent}
     #ctxmenu .why{padding:0 10px 4px;color:#7a8b9b;font-size:10px;white-space:nowrap}
-    #viewwrap{position:relative;flex:1;min-height:0}
+    /* The canvas is the whole of the area under the header, and the chrome
+       floats over it as panels (see src/panels.ts) — so nothing reflows the
+       drawing when the log fills. Panels stack from z-index 10; the hover tag
+       and the menu sit far above any stack, being transient. */
+    #viewwrap{position:relative;flex:1;min-height:0;overflow:hidden}
+    .panel{position:absolute;display:flex;flex-direction:column;box-sizing:border-box;
+      background:#0e141bf2;border:1px solid #223041;border-radius:4px;box-shadow:0 4px 14px #0008}
+    .panel *{box-sizing:border-box}
+    /* The strip to drag by: the hover tag's ground and border, just tall enough
+       to grab (its height is set from panels.ts, which clamps against it). */
+    .panel>.ptitle{flex:none;display:flex;align-items:center;padding:0 7px;font-size:9.5px;
+      letter-spacing:.06em;color:#46586a;background:#0b1016;border-bottom:1px solid #223041;
+      border-radius:3px 3px 0 0;cursor:grab;user-select:none;touch-action:none}
+    .panel.held>.ptitle{cursor:grabbing;color:#7a8b9b}
+    .panel>.pbody{flex:1;min-height:0}
+    .panel>.pgrip{position:absolute;right:0;bottom:0;width:12px;height:12px;cursor:nwse-resize;touch-action:none;
+      background:linear-gradient(135deg,transparent 0 55%,#2c3d4f 55% 62%,transparent 62% 74%,#2c3d4f 74% 81%,transparent 81%)}
+    .panel.held>.pgrip,.panel>.pgrip:hover{background:linear-gradient(135deg,transparent 0 55%,#46586a 55% 62%,transparent 62% 74%,#46586a 74% 81%,transparent 81%)}
+    /* The toolbar: one button per registered tool, labelled with the name the
+       command line calls it. The amber is the armed tool's and nothing else's. */
+    #toolbar{display:flex;flex-direction:column;gap:2px;padding:3px;overflow-y:auto}
+    #toolbar button{flex:none;height:20px;padding:0 7px;text-align:left;font-family:inherit;font-size:11px;
+      color:#afc6d9;background:transparent;border:1px solid transparent;border-radius:3px;cursor:default;
+      white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    #toolbar button:hover{background:#20303f;color:#d5e1ec}
+    #toolbar button[aria-pressed="true"]{color:#e8a33d;border-color:#e8a33d80;background:#e8a33d18}
   </style>
 </head>
 <body>
@@ -47,14 +72,27 @@
     </header>
     <div id="viewwrap">
       <canvas id="cv"></canvas>
+      <div class="panel" data-panel="toolbar">
+        <div class="ptitle">tools</div>
+        <div id="toolbar" class="pbody"></div>
+        <div class="pgrip"></div>
+      </div>
+      <div class="panel" data-panel="log">
+        <div class="ptitle">log</div>
+        <div id="log" class="pbody"></div>
+        <div class="pgrip"></div>
+      </div>
+      <div class="panel" data-panel="cmd">
+        <div class="ptitle">command</div>
+        <div id="cmdrow" class="pbody">
+          <span style="color:#e8a33d">&gt;</span>
+          <input id="cmd" autocomplete="off" spellcheck="false" placeholder="a tool name, or any expression — try help()">
+          <span id="cmdhint">up/down for history</span>
+        </div>
+        <div class="pgrip"></div>
+      </div>
       <div id="hovertag" hidden></div>
       <div id="ctxmenu" hidden></div>
-    </div>
-    <div id="log"></div>
-    <div id="cmdrow">
-      <span style="color:#e8a33d">&gt;</span>
-      <input id="cmd" autocomplete="off" spellcheck="false" placeholder="a tool name, or any expression — try help()">
-      <span id="cmdhint">up/down for history</span>
     </div>
   </div>
   <script type="module" src="/src/main.ts"></script>
