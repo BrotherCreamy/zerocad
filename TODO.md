@@ -853,7 +853,10 @@ are flagged as such.
          slot lists. (Smaller things.)
       5. **Face-on arcs snap as their whole circle** — the parked phase 3
          decision, below.
-      6. **Toolbar labels are the tool names, not icons.** (Register: panels.)
+      6. ~~**Toolbar labels are the tool names, not icons.**~~ **Vetoed by the
+         owner (2026-10-22): icons**, with two more directions on the tray
+         (fully inside the viewport; turning column/row against the edge it
+         meets). Spec: [`docs/plans/toolbar-icons-docking.md`](docs/plans/toolbar-icons-docking.md).
 
 ## Next up
 
