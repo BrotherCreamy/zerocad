@@ -21,7 +21,7 @@
 import { Model, type JournalEntry } from "./model.ts";
 import * as basic from "./relations/basic.ts";
 import * as geom from "./relations/geometry.ts";
-import { extrude, fillet, revolve, set } from "./operations.ts";
+import { extrude, fillet, regen, revolve, set } from "./operations.ts";
 import type { ToolSource } from "./toolsource.ts";
 import { freshName, planeTranslation } from "./planetranslation.ts";
 
@@ -222,6 +222,12 @@ function replayTable(model: Model): Map<string, (...args: unknown[]) => unknown>
     // positions either, so the geometric refusals the call made are not re-made
     // against seeds (see `revolve`).
     revolve: rel(revolve),
+    // A feature brought back into step with its profile, journalled as the
+    // call with what it found resolved (see `regen`), so a replay walks the
+    // profiles it is handed and looks for nothing among the seeds. A new op and
+    // no new meaning for an old one, so no format bump — the deletion ops'
+    // precedent.
+    regen: rel(regen),
     // `set` is journalled as the one call the user made, like every operation,
     // so replaying it re-runs the edit rather than the dimension it rebuilt.
     set: rel(set),

@@ -377,7 +377,10 @@ export function memberName(m: ProfileMember): string {
  * pointing at nothing is a model the renderer throws on.
  *
  * Rebuilt on replay, never saved: the journal carries the operation that made
- * it, and re-running that makes the same record under the same name.
+ * it, and re-running that makes the same record under the same name. Rewritten
+ * in place (`rewriteFeature`) when its profile is restructured and the feature
+ * regenerates — same name, same position — so it always describes the
+ * expansion as it is, not as it was first made (see `regen` in operations.ts).
  */
 export interface ExtrudeFeature {
   kind: "extrude";
@@ -726,15 +729,40 @@ export class Model {
    * a deletion that cannot find what it was told to take.
    */
   addFeature(feature: FeatureDraft): FeatureEntry {
+    this.checkFeature(feature);
+    const name = this.claimName("e");
+    const entry = { ...feature, name } as FeatureEntry;
+    this.features.set(name, entry);
+    return entry;
+  }
+
+  /**
+   * Replaces a feature's record **in place** — same name, same position in the
+   * registry — with what an operation has rebuilt it as. What regeneration is
+   * built on (see `regen` in operations.ts): the record's `rebuildRelation`.
+   * `e1` is still `e1` afterwards, and `ls()`, the hover tag and `del` read the
+   * new record without being told anything.
+   *
+   * Checked exactly as a new record is, and refused across kinds: an extrude
+   * rebuilt as a revolve would be a different feature under an old name.
+   * Journals nothing — the operation that calls it is the entry.
+   */
+  rewriteFeature(name: string, feature: FeatureDraft): FeatureEntry {
+    const was = this.featureOf(name);
+    if (was.kind !== feature.kind) throw new Error(`"${name}" is ${was.kind === "extrude" ? "an extrude" : "a revolve"} — its record cannot become another kind's`);
+    this.checkFeature(feature);
+    const entry = { ...feature, name } as FeatureEntry;
+    this.features.set(name, entry);
+    return entry;
+  }
+
+  /** Every name a record gives answers to something, and it owns only what it names. */
+  private checkFeature(feature: FeatureDraft): void {
     for (const n of feature.names) {
       if (!this.entities.has(n) && !this.relations.has(n)) throw new Error(`a feature cannot name "${n}" — there is no such thing`);
     }
     const named = new Set(feature.names);
     for (const n of feature.owns) if (!named.has(n)) throw new Error(`a feature cannot own "${n}" without naming it`);
-    const name = this.claimName("e");
-    const entry = { ...feature, name } as FeatureEntry;
-    this.features.set(name, entry);
-    return entry;
   }
 
   /**

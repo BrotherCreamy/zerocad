@@ -17,7 +17,7 @@ import type { SolveReport } from "./kernel/problem.ts";
 import { Tool, defineTool, listTools, type ToolCtor } from "./tools/tool.ts";
 import * as basic from "./relations/basic.ts";
 import * as geom from "./relations/geometry.ts";
-import { del, extrude, fillet, revolve, set } from "./operations.ts";
+import { del, extrude, fillet, regen, revolve, set } from "./operations.ts";
 import { save as saveModel, savedTools } from "./persist.ts";
 import { carryIntoSession, toolSources, type ToolSourceStore } from "./toolsource.ts";
 import { alignView, assignView, orbitBy, panBy, screenToWorld, zoomAbout, type View } from "./view.ts";
@@ -467,6 +467,13 @@ export function neocadScope(h: EnvHandles): Bag {
   const operations: Bag = {
     fillet: (l1: string, l2: string, r: number, plane?: string | null) => fillet(model, l1, l2, r, plane),
     /**
+     * Brings a feature back into step with its profile as it is now —
+     * `regen("e1")` — keeping every twin and wall whose vertex or member is
+     * still there, and returns its name. For a profile restructured by hand.
+     * See operations.ts.
+     */
+    regen: (feature: string, regenerated?: unknown) => regen(model, feature, regenerated),
+    /**
      * Extrudes the closed loop a member is in — `extrude("l1", 20)` — and
      * returns the feature's name. `frame` picks the loop when the member is in
      * several (it is, once it is the edge of a wall too): the one parallel to
@@ -823,6 +830,9 @@ function help(scope: Bag): string {
     "           (radians; its label reads degrees); a full one has none, and",
     "           turning it partial is a new revolve, not a set. The revolve tool:",
     '           arm("revolve", { angle }), click inside a region, then the axis.',
+    '           regen("e1") brings a feature back into step with a profile you',
+    "           changed by hand — a line drawn across it, a hole drawn in it —",
+    "           keeping every twin and wall whose corner is still there.",
     "files      save()  open(text)  download(name)  openFile()  journal()",
     "           a file carries the source of tools you defined here, as text:",
     "           open() never runs it, toolSource(name) prints it, and pasting",
