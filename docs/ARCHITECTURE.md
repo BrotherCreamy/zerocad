@@ -111,8 +111,12 @@ entity is, named by the edges through it (`l1×l5`). A loop's members then walk
 *portions* of their entities (`from`/`to` a point or a crossing, and a `span`),
 each as long as the loop lets it be, so a drawing with no Ts or crossings reads
 exactly as it did. What may *keep* a crossing is a feature, never this module:
-it has to materialise it as a point held on both edges — an operation's job,
-and the line between the two layers (`docs/plans/regions-split.md`).
+`extrude` and `revolve` materialise each crossing their profile runs through as
+a point held `on` every edge the profile bounds there, before they twin
+anything — an operation's job, and the line between the two layers
+(`docs/plans/regions-split.md`). A crossing's key is a place along an edge
+that the next drag can renumber, so it is never journalled; once
+materialised, the crossing is a held point, a T, to every later question.
 
 `sketchface.ts` sits beside `loops.ts`: given a loop and the line of sight, the
 three of its points a sketch plane on it is made of — pure, and read by the
@@ -264,6 +268,18 @@ the operation, never saved, and the faces a solid is drawn with are read off
 the live geometry each frame and stored nowhere. That is the one-model decision
 carried into solids: a lid is geometry a sketch can be constrained against, and
 `set` on its depth re-solves it like any dimension, because it is one.
+
+**A profile member is a whole entity or a portion of one between two real
+points** (`Portion` in `model.ts`) — the region a crossing or a T cut out.
+The portion's ends are points by the time anything is twinned (crossings
+materialised, see the loops paragraph above), and it is drawn between those
+points as they are each frame, never over the `span` loops.ts found at hover
+time: a span is a snapshot, and a cap drawn over one would stay behind when
+the line that cut the region was dragged. The journal entry names the points
+the expansion itself made — known only after its body ran, so `asOperation`
+may take its arguments as a function — and a replay meeting a vertex the model
+has no point by makes it under that name: the same "not a point means a
+crossing" test loops.ts reads a vertex by.
 
 **A revolve keeps real only what can be real.** No finite set of entities is a
 surface of revolution, so a revolve makes no walls: its record names the profile

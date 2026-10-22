@@ -1,8 +1,9 @@
 # Plan: regions under crossings and T-junctions
 
-**Status: PR 1 built** (2026-10-21, branch `claude/regions-split-1`; see
-"PR 1 as built" below for what differs from this text); **PR 2 queued.** Two
-PRs. Second of the register's "Next up"
+**Status: both PRs built.** PR 1 (2026-10-21, branch
+`claude/regions-split-1`; see "PR 1 as built" below for what differs from this
+text); PR 2 (2026-10-22, branch `claude/regions-split-2`; see "PR 2 as built").
+Two PRs. Second of the register's "Next up"
 queue, and the one ⚠ deviation from Onshape in the loop policy: *"Onshape
 splits regions at every intersection; this model only knows what it was
 told."* The owner's standing rule — tools work like Onshape — decides it:
@@ -167,6 +168,73 @@ register and the PR:
   different depth — a stepped block from one sketch, the Onshape way — and a
   lens region of two crossing circles extruded. Orbit, LOOK, `set` a depth
   live, undo, save/open.
+
+### PR 2 as built (2026-10-22)
+
+Everything above, in one PR whose code is one commit (the display half turned
+out to be one function in `faces.ts`, too small to stand alone), with these
+differences — each also in `TODO.md`'s queue entry and the PR:
+
+- **The journal's `{name, from, to}` runs in the entity's own direction**
+  (a line from its first point, an arc from its start, a circle
+  counter-clockwise about its frame's +z) — `memberLabel`'s order. The spec
+  did not say; as walked, two points on a circle would not say which of its
+  two arcs is meant. The walk order is read off the joins, as for a whole
+  member.
+- **The entry names points its own body made, so it is read after the body.**
+  `Model.asOperation` now takes its arguments as an array or a function; the
+  extrude and revolve pass a function. Not in the spec, which said "journal the
+  real points" without noticing that their names do not exist until the body
+  has claimed them.
+- **A replay that meets a vertex the model has no point by makes it under that
+  name**, held on the edges that meet there — the rule loops.ts reads a vertex
+  by (`isVirtual`), carried into the file — seeded where the edges' lines come
+  closest (lines) or between their first points (curves): a placeholder the
+  saved values replace, as they replace every twin's seed. A vertex spelled
+  with `×` that is no point is refused at the door, so no key can be kept by
+  hand either.
+- **A materialised point is held on every edge the profile bounds there**, not
+  only "both": three lines through one spot can put a different pair of edges
+  at the corner in two loops of one region. Usually that is two.
+- **The new entry point `extrudeProfile`** (the tool's door, as
+  `revolveProfile` already was): a found `Profile` carries `crossings`, where
+  each key is now, which the journal never sees.
+- **The record names a portion's pre-existing end points** (a T's point, or a
+  crossing another feature made), so deleting one takes the record and a
+  record never names a point that is gone.
+- **One entity may be in a profile as several portions** — a band across a
+  circle runs along two arcs of it — so the given-profile check refuses only a
+  whole member twice, a portion twice, or a whole member beside a part of it.
+- **A whole-turn revolve materialises too**: its surface is swept between the
+  profile's points every frame, and a portion needs real ends to be swept
+  between.
+- **`checkRevolve` measures a portion over its own part**, from where its ends
+  are (a crossing's where `profileOf` found it): the half of a rectangle cut by
+  a line only touches that line, though the edges it is cut from run on across,
+  and revolves about it. PR 1's test of that case now asserts the revolve.
+- **The lid needed nothing**: its twins are whole lines and arcs between twin
+  points; only the base cap and the walls and sweeps that pair with it are
+  drawn from portions (`portionPath`, ends pinned to the points themselves).
+- **A version-7 file holding a portion is refused at its step** — the spec said
+  only that version 7 reads as before, which it does; a 7 with a portion in it
+  is a hand edit, and is told so rather than read as 8.
+- **The e2e poster** builds on PR 1's own e2e (`regions.e2e.ts`): the plate and
+  line drawn there, each half clicked with its own depth, the lens drawn beside
+  it with the circle tool. `docs/images/76-…` and `77-…`.
+
+*Found while building, left deliberately:*
+
+- **Deleting the first step takes the second's record**, and the second's two
+  walls standing on the shared crossings — the twin rule the spec asked for,
+  applied: a materialised point is the first feature's, and the second was
+  built on it. Undo is the confirmation.
+- **The two steps' walls along the shared line lie along each other** (each
+  feature stands its own wall on each shared crossing), which loops.ts reads as
+  overlap and so as no region: the riser between the steps is drawn but is no
+  loop the sketch or extrude tool can choose. Onshape merges the bodies; this
+  model keeps two solids.
+- The two steps' coplanar faces at the shared line are painter's-sorted like
+  any interpenetrating solids (see the register's display entry).
 
 ## Verification and docs
 

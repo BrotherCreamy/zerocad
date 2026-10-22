@@ -67,10 +67,12 @@ What 3D adds is not a new solver — it is:
   *Spec:* `docs/plans/3d-phase3-loops.md`. ✅ **Built** — `findLoops` (minimal
   cycles per plane, whole circles, containment reported), `loopAt` (innermost,
   then nearest; edge-on skipped) and a read-only `loops()`. Joined means a
-  shared point or a `coin`, never proximity — so a crossing or a T splits
-  nothing, and a component whose joined edges cross reports no loops (see the
-  register's 3D entry). Not wired to any click: phase 4's extrude tool is the
-  first caller.
+  shared point or a `coin`, never proximity. Not wired to any click: phase 4's
+  extrude tool is the first caller. *Since 2026-10-21/22
+  (`docs/plans/regions-split.md`):* a T and a crossing split regions, as
+  Onshape's do — a T because it is held, a crossing at a virtual vertex for
+  finding regions only — where at first they split nothing and a component
+  whose edges crossed reported no loops.
 - **Phase 4 — extrude**: the operation (expansion: twin loop, side edges,
   per-point offset relations along the plane normal, one `d` dimension for
   depth), face lists for display, z-sorted flat-shaded canvas rendering.
@@ -80,7 +82,11 @@ What 3D adds is not a new solver — it is:
   the journal, which carries the profile resolved because a replay runs on
   seeds; then faces read off the live geometry, culled, sorted per face (a cap
   by its nearest point) and lit from the eye, and the click-inside extrude
-  tool. See the register's 3D entry.
+  tool. See the register's 3D entry. *Since 2026-10-22:* a profile may be a
+  region a crossing or a T cut out — its members portions between real
+  points, each crossing materialised as a point held on its edges by the
+  feature, the journal at version 8 (`docs/plans/regions-split.md`, PR 2);
+  revolve likewise.
 - **Phase 5 — revolve**: profile + axis reference (`f1.x` style) + angle
   dimension; parametric surface rendering from live geometry.
   *Spec:* `docs/plans/3d-phase5-revolve.md`. ✅ **Built** — the profile turned

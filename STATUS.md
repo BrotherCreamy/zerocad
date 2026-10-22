@@ -1521,15 +1521,50 @@ replacing) the system Node other projects on this machine may depend on.
   is also the hover key (`memberLabel`), so the crescents of a lens differ.
   **The region preview** outlines portions (`loopOutlines` takes members), so
   the extrude, revolve and sketch tools outline exactly the sub-region under
-  the cursor. **`extrude`/`revolve` refuse a split region by name** (in
-  `profileOf`: *"this region is bounded by part of l1 (from l1×l5 to p5) —
-  extruding split regions is not built yet…"*) until PR 2 can twin portions.
+  the cursor. Until PR 2 (next entry), `extrude`/`revolve` refused a split
+  region by name, in `profileOf`.
   `sketchFrameFor` skips crossings, falls back to parted edges' own ends, and
   gives a lens of circles a circle's frame. 706 unit tests, 258 e2e.
   *Known and deliberate:* a crossing key is positional and may change under a
   drag; two held points of different classes on one spot cut once; collinear
   overlap is not a crossing; a 30 × 30 grid of crossing lines costs 31 ms a
   hover. *Spec:* [`docs/plans/regions-split.md`](docs/plans/regions-split.md).
+- **Features over split regions** (`operations.ts`'s `extrude`, `revolve`,
+  `profileOf`, `extrudeProfile` (new), `materialise`, `walkLoop`; `Portion` and
+  `ProfileMember` in `model.ts`; `faces.ts`'s `portionPath`; `portionAngles` in
+  `arcgeom.ts`; `persist.ts` `VERSION` 8) — the second half of
+  `regions-split`. A region cut out by a crossing or a T extrudes and revolves
+  as the preview outlined it: a plate with a line across it is a stepped block
+  from one sketch, a lens of two crossing circles a lens-shaped solid. A
+  profile member is a whole entity's name or a **`Portion`** `{name, from, to}`
+  between two **real points** in the entity's own direction. Before anything
+  is twinned, every crossing the profile runs through is **materialised**: a
+  point seeded at the crossing and held `on` (`oncircle` on curves) every edge
+  the profile bounds there, owned by the feature; a T's point is already real
+  and the feature only names it, as does a later feature on the other side of
+  the line, which finds the materialised point held on both edges. Twins per
+  joined class, a twin line or arc per portion between the twins of its ends,
+  walls per vertex; a revolve's end twins likewise, and a whole turn
+  materialises too (its surface is swept between those points). Caps, walls
+  and sweeps draw a portion between its two points **as they are now**, never
+  over the span found at hover time. **The journal** names the points:
+  `extrude("l4", 10, "f1", [[{"name":"l1","from":"p1","to":"p10"},…,"l4"]])`,
+  read after the body (`asOperation` takes its args as a function), and a
+  replay that meets a vertex the model has no point by makes it under that
+  name; a vertex spelled with `×` that is no point is refused, so no key is
+  ever kept. Bare names still mean whole members: a version-7 file reads as
+  before, and one claiming 7 with a portion in it is refused at its step.
+  `checkRevolve` measures a portion over its own part, so a half revolves
+  about the line that cut it. `ls()` and the hover tag name portions as
+  `loops()` does (`l1[p1→p10]`); `set`, `del` both ways and the hover `· eN`
+  carry over, a materialised point deleting as a twin in its position does.
+  772 unit tests, 263 e2e. *Known and deliberate:* deleting the first step of
+  a stepped block takes the second's record and its walls on the shared
+  crossings (the twin rule); the two steps' walls along the shared line
+  overlap, which loops.ts reads as no region, so the riser between the steps is
+  drawn but is no loop to sketch on; a replay seeds a materialised point at a
+  placeholder that the saved values replace. *Spec:*
+  [`docs/plans/regions-split.md`](docs/plans/regions-split.md).
 
 
 ## What's next

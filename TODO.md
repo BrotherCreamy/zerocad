@@ -261,8 +261,11 @@ are flagged as such.
     stands, as `loopAt` always was, so two coplanar edges crossing in their
     interiors are cut at a *virtual vertex* (`l1×l5`) for finding regions. A
     line drawn across a rectangle now cuts it in two. The ⚠ is gone: this was
-    the loop policy's one deviation from Onshape. Until PR 2, `extrude` and
-    `revolve` refuse a split region by name. See
+    the loop policy's one deviation from Onshape. **Since PR 2 (2026-10-22)
+    `extrude` and `revolve` build a split region**, and that is where a
+    crossing finally becomes *held*: the feature materialises each crossing
+    its profile runs through as a point held `on` the edges there, so "joined
+    means held" is kept by the feature rather than bent by the finder. See
     [`docs/plans/regions-split.md`](docs/plans/regions-split.md).
   - ~~**A component whose joined edges cross reports no loops.**~~ *Retired
     with the above (2026-10-21).* Cut at every crossing, no two pieces cross,
@@ -335,7 +338,11 @@ are flagged as such.
     all* at its seeds (measured, and pinned by a test). A re-found profile
     would fail that file and every undo after it. Given loops, a replay only
     walks them by their joins. The user types two arguments; the tool hands
-    over the loop under the click the same way.
+    over the loop under the click the same way. *(2026-10-22, regions split
+    PR 2: a member may be `{name, from, to}`, the part of an entity between two
+    real points, in its own direction; the points the expansion materialised
+    at crossings are named, and a replay makes them again under those names.
+    Format version 8.)*
   - ⚠ **Deleting a piece of a feature takes its record and nothing more** —
     a profile edge, a wall, a lid corner, the depth itself. The spec's words
     ("takes the feature record with it"), read the way a relation is read: the
@@ -365,7 +372,8 @@ are flagged as such.
     deciding it differently. The lid frame always has its own three points.
   - **No format bump** (version stays 7): two new ops, no changed meaning; an
     older build refuses a newer file at the step, by op name — the deletion
-    ops' precedent.
+    ops' precedent. *(Version 8 came with regions split PR 2, 2026-10-22, when
+    `extrude`'s and `revolve`'s profile argument did change shape.)*
   - **`frame` narrows the loop**: after an extrude every profile edge is also a
     wall face's edge, so a bare member is ambiguous; `extrude(m, d, "f2")` takes
     the loop parallel to that frame. A loop in no frame's orientation is refused
@@ -867,7 +875,7 @@ starts.
       - **Which edge is +x is whichever the loop starts at** — a wall may come
         up portrait. Level or plumb, never tipped; choosing the longer edge is
         a nicety nobody has asked for.
-- [ ] **Regions under crossings and Ts** — the two ⚠ loop policies (a
+- [x] **Regions under crossings and Ts — BUILT, both PRs (2026-10-21/22).** The two ⚠ loop policies (a
       crossing or an `on`-T splits nothing) deviate from Onshape, which
       subdivides regions; extrude is where a user will feel it. Wants a
       loops.ts extension, not a redesign. Spec:
@@ -875,9 +883,8 @@ starts.
       **PR 1 BUILT (2026-10-21)** — `loops.ts` cuts every edge at held Ts and
       at crossings (virtual vertices, `l1×l5`), members walk portions (`span`),
       `loopAt` and the region preview see sub-regions, `loops()` lists them,
-      and `extrude`/`revolve` refuse a split region by name. **PR 2** (features
-      over split regions: materialise, twin portions, journal v8) is next; tick
-      this then. Deviations from the spec, each also in its "PR 1 as built":
+      and `extrude`/`revolve` refused a split region by name until PR 2.
+      Deviations from the spec, each also in its "PR 1 as built":
       - ⚠ **A crossing key can collide with a name** — the spec thought the
         dot reservation prevented it; `×` is a legal name character. A key
         that is a name gets a prime (′); `isVirtual(model, v)` is the test.
@@ -915,6 +922,52 @@ starts.
       - `loopOutlines` draws a portion by re-reading the live entity over the
         span found at hover time, so mid-drag a preview can lag the crossing
         by one hover move.
+
+      **PR 2 BUILT (2026-10-22)** — features over split regions. A region a
+      crossing or a T cut out extrudes and revolves as the preview showed it:
+      a plate with a line across it is a stepped block from one sketch, a lens
+      of two crossing circles a lens-shaped solid (screenshots 76–77; the story
+      is `test/e2e/regions.e2e.ts`, the matrix `test/regionfeatures.test.ts`).
+      Every crossing the profile runs through is materialised — a point held
+      `on`/`oncircle` its edges, owned by the feature — before twins per vertex
+      and a twin line or arc per portion; the journal's members may be
+      `{name, from, to}` between real points, and the format is version 8.
+      Deviations from the spec, each also in its "PR 2 as built":
+      - ⚠ **`{name, from, to}` runs in the entity's own direction**, not as
+        walked (the spec did not say): two points on a circle bound two arcs.
+      - ⚠ **`Model.asOperation` may take its arguments as a function**, read
+        after the body: the entry names points only the body knows the names
+        of.
+      - ⚠ **A replay makes any vertex the model has no point by** under the
+        journal's name, held on the edges that meet there, seeded at a
+        placeholder the saved values replace. A vertex spelled `×` that is no
+        point is refused, so a key is never kept, by hand or otherwise.
+      - **A materialised point is held on every edge the profile bounds
+        there** (usually two; three lines through a spot can need more).
+      - **`extrudeProfile`** is the extrude tool's door (as `revolveProfile`
+        was); a found `Profile` carries where its crossings are.
+      - **The record names a portion's pre-existing ends** (a T's point, or
+        another feature's crossing), so deleting one takes the record.
+      - **One entity may be several portions of one profile** (a band across a
+        circle); only a whole member twice, a portion twice, or a whole
+        beside a part is refused.
+      - **A whole-turn revolve materialises its crossings too** — its surface
+        is swept between them.
+      - **`checkRevolve` measures a portion over its own part**, so a half of
+        a split rectangle revolves about the line that cut it (PR 1's test of
+        that case now asserts the revolve).
+      - **A version-7 file holding a portion is refused at its step**, as a
+        hand edit; every real version-7 file reads exactly as before.
+      **Found while building, left deliberately:**
+      - **Deleting the first step of a stepped block takes the second's
+        record** and its two walls on the shared crossings: the twin rule the
+        spec asked for, applied. Undo is the confirmation.
+      - **The two steps' walls along the shared line lie along each other**, so
+        loops.ts reads overlap there and the riser between the steps is drawn
+        but is no loop to sketch on or extrude from. Onshape merges the bodies;
+        this model keeps two solids, and has no booleans.
+      - The two steps' coplanar faces at the shared line sort as any
+        interpenetrating solids do (the display-depth item below).
 - [ ] **Display depth done right.** The 355° cap limit, hidden edges showing
       through faces, and interpenetrating solids all trace to painter's
       sorting. The honest fix is a real depth pass (BSP split or a WebGL
