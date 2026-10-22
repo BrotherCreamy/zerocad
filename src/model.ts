@@ -323,6 +323,33 @@ export interface RelationEntry {
 }
 
 /**
+ * The part of a line, arc or circle between two of the points on it — a
+ * member of a profile whose region was split by a crossing or a T (see
+ * loops.ts). `from` and `to` are **real points**, in the entity's **own
+ * direction** (a line from its first point, an arc from its start, a circle
+ * counter-clockwise about its frame's +z): own direction because two points on
+ * a circle bound two arcs of it, and only the direction says which. The order
+ * the loop walks it in is read off the joins, as a whole member's is.
+ */
+export interface Portion {
+  name: string;
+  from: string;
+  to: string;
+}
+
+/**
+ * One member of a feature's profile: an entity's name for the whole of it, or a
+ * `Portion`. A bare name means the whole member — which is all a profile was
+ * before regions split, so an older record (and an older file) reads as it did.
+ */
+export type ProfileMember = string | Portion;
+
+/** The entity a profile member is all or part of. */
+export function memberName(m: ProfileMember): string {
+  return typeof m === "string" ? m : m.name;
+}
+
+/**
  * A **feature**: what an operation like `extrude` made, remembered as one named
  * thing — `e1`, `e2`, … — so it can be listed, drawn and deleted as one.
  *
@@ -367,9 +394,14 @@ export interface ExtrudeFeature {
    * The profile: the loop that was extruded, then every loop inside it, each as
    * its members in walk order. A loop with children is a face with holes, and a
    * hole's child an island in it — drawn even-odd, so nesting needs no record.
+   * A member is a whole entity by name, or the part of one between two real
+   * points (`Portion`) when the region was split by a crossing or a T.
    */
-  loops: string[][];
-  /** Each base member's twin on the lid, loop by loop, parallel to `loops`. */
+  loops: ProfileMember[][];
+  /**
+   * Each base member's twin on the lid, loop by loop, parallel to `loops` — a
+   * portion's twin is a line or an arc between the twins of its ends.
+   */
   twins: string[][];
   /** The wall lines, one per profile vertex, base to twin. */
   walls: string[];
@@ -410,7 +442,7 @@ export interface RevolveFeature {
   /** The `revolution` dimension carrying the angle (radians) — what `set("dN.value", …)` edits. */
   angle: string;
   /** The profile, as an extrude's: the loop turned, then every loop inside it, members in walk order. */
-  loops: string[][];
+  loops: ProfileMember[][];
   /** Partial only: each base member's twin on the end face, parallel to `loops`. Empty for a full turn. */
   twins: string[][];
   /** Partial only: the end face's frame — the sketch frame turned through the angle. Null for a full turn. */
@@ -495,9 +527,12 @@ export class Model {
    * must therefore refuse before it changes anything, which `fillet` and `set`
    * both do.
    */
-  asOperation<T>(op: string, args: unknown[], body: () => T): T {
+  asOperation<T>(op: string, args: unknown[] | (() => unknown[]), body: () => T): T {
     const result = this.withoutRecording(body);
-    this.record(op, args);
+    // A function is read only now, after the body: an extrude over a crossing
+    // journals the names of the points its body materialised, which no one
+    // knows before it has made them.
+    this.record(op, typeof args === "function" ? args() : args);
     return result;
   }
 

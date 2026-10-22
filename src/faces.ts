@@ -17,6 +17,10 @@
 // its twin, and between an arc or circle and its twin a ruled strip, sampled
 // at the resolution the curve is drawn at (`arcSegments`), one quad per piece —
 // so a curved wall shades round, piece by piece, rather than as one flat slab.
+// A member that is a *portion* of its entity (a region split by a crossing or
+// a T) is drawn between its two points as they are now — never over a span
+// found when the region was, which a drag would leave behind — so the base cap
+// and its walls end exactly where the twins and wall lines stand.
 //
 // **Which way a face faces** is computed, not assumed. A cap's outward normal
 // is the sketch frame's +z, toward the lid for the lid and away for the
@@ -55,8 +59,8 @@
 // draw wrong where they cross, and within a few degrees of a whole turn, seen
 // nearly along the axis, no single key can put a cap between its walls.
 
-import type { FeatureEntry, Model } from "./model.ts";
-import { arcPoint, arcSamples, arcSegments } from "./arcgeom.ts";
+import type { FeatureEntry, Model, Portion, ProfileMember } from "./model.ts";
+import { arcPoint, arcSamples, arcSegments, portionAngles } from "./arcgeom.ts";
 import { curveFrame, framePlaneAxes } from "./curveplane.ts";
 import { axisReader, turnMatrix } from "./relations/revolution.ts";
 import { depth, viewAxes, worldToScreen, type View } from "./view.ts";
@@ -221,11 +225,41 @@ export function featureFaces(model: Model, f: FeatureEntry, scale: number): Face
 }
 
 /**
+ * A portion of a feature's profile, in its entity's own direction: the line
+ * between its two points, or the part of the arc or circle between them,
+ * sampled as drawn. Read off where the two points are **now** — never off a
+ * span found earlier, which is a snapshot (see loops.ts) — so the cap and the
+ * walls stop exactly at the points the twins and walls stand on, however the
+ * geometry has moved since. Null when it cannot be laid out.
+ */
+function portionPath(model: Model, p: Portion, scale: number): number[][] | null {
+  const e = model.entities.get(p.name);
+  const [a, b] = [p.from, p.to].map((v) => (model.entities.get(v)?.kind === "point" ? lift3(model.coords(v)) : null));
+  if (!e || !a || !b) return null;
+  if (e.kind === "line") return [a, b];
+  const f = curveFrame(model, e);
+  if (!f) return null;
+  const [t0, t1] = portionAngles(f, a, b);
+  const n = arcSegments(t1 - t0, f.r * scale);
+  const path = Array.from({ length: n + 1 }, (_, k) => arcPoint(f, t0 + ((t1 - t0) * k) / n));
+  // Its ends are the points themselves, not their shadows on a rim a solve
+  // has not quite reached: the cap closes where the walls stand.
+  path[0] = a;
+  path[n] = b;
+  return path;
+}
+
+/** A profile member's path: the whole entity, or the portion. */
+function profileMemberPath(model: Model, m: ProfileMember, scale: number): number[][] | null {
+  return typeof m === "string" ? memberPath(model, m, scale) : portionPath(model, m, scale);
+}
+
+/**
  * A profile's paths, loop by loop, member by member, each sampled as drawn —
  * and the same of the members' twins, sampled piece for piece with their
  * bases. Null when any of it cannot be laid out.
  */
-function profilePaths(model: Model, loops: string[][], twins: string[][] | null, scale: number):
+function profilePaths(model: Model, loops: ProfileMember[][], twins: string[][] | null, scale: number):
   { base: number[][][][]; twin: number[][][][] | null } | null {
   const base: number[][][][] = [];
   const twin: number[][][][] = [];
@@ -233,7 +267,7 @@ function profilePaths(model: Model, loops: string[][], twins: string[][] | null,
     const b: number[][][] = [];
     const t: number[][][] = [];
     for (let k = 0; k < loops[i].length; k++) {
-      const bp = memberPath(model, loops[i][k], scale);
+      const bp = profileMemberPath(model, loops[i][k], scale);
       if (!bp) return null;
       b.push(bp);
       if (twins) {

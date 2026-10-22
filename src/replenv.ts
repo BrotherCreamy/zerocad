@@ -11,7 +11,7 @@
 // implicitly, since a REPL entry always has one in hand.
 
 import { Dual } from "./kernel/dual.ts";
-import { Model, type Entity } from "./model.ts";
+import { Model, type Entity, type ProfileMember } from "./model.ts";
 import { describeFeature, describeRelation } from "./picking.ts";
 import type { SolveReport } from "./kernel/problem.ts";
 import { Tool, defineTool, listTools, type ToolCtor } from "./tools/tool.ts";
@@ -473,7 +473,7 @@ export function neocadScope(h: EnvHandles): Bag {
      * that frame's plane. `loops` is the profile as the journal carries it
      * resolved, and never needs typing. See operations.ts.
      */
-    extrude: (member: string, depth?: number | null, frame?: string | null, loops?: string[][] | null) =>
+    extrude: (member: string, depth?: number | null, frame?: string | null, loops?: ProfileMember[][] | null) =>
       extrude(model, member, depth ?? null, frame ?? null, loops ?? null),
     /**
      * Revolves the closed loop a member is in about an axis — `revolve("l1",
@@ -482,7 +482,7 @@ export function neocadScope(h: EnvHandles): Bag {
      * The axis is a frame's axis or a line, read and never moved. `frame` and
      * `loops` are extrude's. See operations.ts.
      */
-    revolve: (member: string, axis: string, angle?: number | null, frame?: string | null, loops?: string[][] | null) =>
+    revolve: (member: string, axis: string, angle?: number | null, frame?: string | null, loops?: ProfileMember[][] | null) =>
       revolve(model, member, axis, angle ?? null, frame ?? null, loops ?? null),
     /**
      * Changes a dimension's value — `set("d4.value", 60)` — rebuilding it in

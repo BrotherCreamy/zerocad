@@ -27,7 +27,7 @@
 // `hitTest` at all. They live a layer up because they are UI drawn over the
 // drawing rather than part of it — the same reason snapping ignores them.
 
-import type { AxisName, Entity, FeatureEntry, Model, RelationEntry } from "./model.ts";
+import type { AxisName, Entity, FeatureEntry, Model, ProfileMember, RelationEntry } from "./model.ts";
 import { screenAngle, withinSweep } from "./intersect.ts";
 import { frameArms, frameMarker } from "./framemarker.ts";
 import { nearestOnPolyline, screenCurve, screenOf as projectPoint } from "./projection.ts";
@@ -190,7 +190,7 @@ export function describePick(model: Model, pick: Pick): string {
  */
 export function describeFeature(model: Model, f: FeatureEntry): string {
   const inner = f.loops.length - 1;
-  const profile = `${f.loops[0].join(",")}${inner ? ` + ${inner} inside` : ""}`;
+  const profile = `${f.loops[0].map(profileText).join(",")}${inner ? ` + ${inner} inside` : ""}`;
   const round = (v: number) => Math.round(v * 1000) / 1000;
   if (f.kind === "revolve") {
     // Degrees, as the label on the drawing says it; `rels()` has the radians a
@@ -203,6 +203,15 @@ export function describeFeature(model: Model, f: FeatureEntry): string {
   const r = model.relations.get(f.depth);
   const value = r && typeof r.args[1] === "number" ? ` = ${round(r.args[1])}` : "";
   return `${f.name}  extrude of ${profile}, depth ${f.depth}${value} along ${f.frame}, lid ${f.top}`;
+}
+
+/**
+ * A profile member as `loops()` labels a portion: `l1[p1→p9]`, the part of
+ * `l1` from `p1` to `p9` in its own direction — the same text, now that the
+ * crossing is a real point, as `loops()` gives for the region it was.
+ */
+function profileText(m: ProfileMember): string {
+  return typeof m === "string" ? m : `${m.name}[${m.from}→${m.to}]`;
 }
 
 /** The features a piece belongs to, for the end of the hover tag. */

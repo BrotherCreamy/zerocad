@@ -15,13 +15,15 @@
 // it and the outline takes the outline with its hole, and a click on a solid's
 // lid takes the lid's own loop.
 //
-// It hands `extrude` the loop it found, resolved, rather than a member name to
-// look the loop up by: a member is in several loops once anything has been
-// extruded (every profile edge is also a wall's), and the click has already
-// said which. The journal entry is the same one a typed call makes.
+// It hands `extrude` the region it found (`extrudeProfile`), rather than a
+// member name to look the loop up by: a member is in several loops once
+// anything has been extruded (every profile edge is also a wall's), and the
+// click has already said which. A region split by a crossing extrudes as the
+// preview outlined it, the crossing made a point by the operation. The journal
+// entry is the same one a typed call makes.
 
 import { Tool, defineTool, type PointerInfo, type RenderContext } from "./tool.ts";
-import { DEFAULT_DEPTH, extrude, profileOf } from "../operations.ts";
+import { DEFAULT_DEPTH, extrudeProfile, profileOf } from "../operations.ts";
 import { drawRegion, regionKey, type Region } from "./region.ts";
 
 export class ExtrudeTool extends Tool {
@@ -50,8 +52,7 @@ export class ExtrudeTool extends Tool {
       return;
     }
     try {
-      const plan = profileOf(this.ctx.model, hit.loops, hit.index);
-      extrude(this.ctx.model, plan.loops[0][0], this.depth, plan.frame, plan.loops);
+      extrudeProfile(this.ctx.model, profileOf(this.ctx.model, hit.loops, hit.index), this.depth);
       this.under = null;
       this.ctx.requestSolve();
       this.ctx.finish();

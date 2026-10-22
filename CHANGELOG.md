@@ -7,6 +7,48 @@ decisions.
 
 ---
 
+## A stepped block from one sketch: split regions extrude and revolve
+
+![A plate on a tilted sketch plane with a line drawn across it, turned off square: the half left of the line is extruded 10 deep and the half right of it 20 deep, so the solid steps up at the line, the riser between the two lids shaded like the walls; the line's ends stick out past the plate above and below, and the two points where it crosses the plate's edges each wear two small "on" marks. Beside it, up and to the right, two crossing circles on the same plane, and the lens between them extruded 15 into a lens-shaped solid with curved walls](docs/images/76-a-stepped-block-and-a-lens-from-one-sketch.png)
+
+Draw a rectangle, draw a line across it, arm `extrude` and click one half —
+then the other, with a different depth. Two solids from one sketch, stepping
+up at the line, which is how Onshape does it and what the preview has outlined
+since the last entry. Two crossing circles do the same: click the lens between
+them and it extrudes as a lens.
+
+```js
+> ls()   // the feature lines, from the e2e's drawing
+e1  extrude of l1[p10→p5],l2,l3[p6→p11],l5[p10→p11], depth d1 = 20 along f1, lid f2
+e2  extrude of l1[p4→p10],l5[p10→p11],l3[p11→p7],l4, depth d2 = 10 along f1, lid f3
+```
+
+**The crossing becomes a point first.** Nothing holds two lines where they
+cross, so before anything is twinned the extrude makes each crossing its
+profile runs through a real point held `on` both lines — what
+`pt(on(_, "l1"), on(_, "l5"))` would make — and owns it, as it owns its twins:
+`p10` and `p11` above are the first extrude's. The second finds them held on
+both lines, a T, and makes nothing more. Then a twin per corner, a twin line
+(or arc, for part of a circle) per *portion* between the twins of its ends,
+and a wall at each corner, as ever; the caps and walls are drawn between the
+points as they are now, so moving the line moves the step with it.
+
+Everything an extrude was, it still is: `set("d2.value", 4)` moves that step's
+lid and nothing else, one Ctrl+Z takes a step away crossings and all, the
+hover tag says `· e1 e2` on a crossing both steps stand on, and `revolve`
+takes a split region the same way — the half of a rectangle on one side of a
+line turns about that line. Deleting the first step takes the second's record
+and its walls on the shared crossings, as deleting an extrude takes one built
+on its lid; undo is the confirmation.
+
+**The file is version 8**: a profile member may now be
+`{"name":"l1","from":"p1","to":"p10"}`, the part of `l1` between two points,
+and the points the extrude made are named in its entry, so a reopened file
+makes them again under the same names. A crossing's key (`l1×l5`) is never
+written down — it is a place along an edge, and a drag can renumber it.
+Version-7 files open exactly as before. 772 unit tests (13 new in
+`test/regionfeatures.test.ts`), 263 e2e.
+
 ## A line across a rectangle cuts it in two: regions split at crossings and Ts
 
 ![A rectangle on a tilted sketch plane, seen square-on, with a vertical line drawn across it that runs past its top and bottom edges to p9 and p8; the extrude tool is armed and the cursor is in the right-hand part, which is filled faint green and outlined in green from where the line crosses the top edge, round the right side, to where it crosses the bottom edge and up the line between them; the left part, and the line's stubs outside the rectangle, stay grey](docs/images/75-the-extrude-preview-stopping-at-a-crossing.png)

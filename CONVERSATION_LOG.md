@@ -106,6 +106,56 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### Features over split regions (PR 2): the feature is what makes a crossing held
+
+PR 1 found split regions and refused to build on them. PR 2 builds on them:
+a stepped block from one sketch, a lens from two circles. The spec had the
+shape (materialise, then expand; twin portions; journal v8). What was decided
+in the code, and what was rejected:
+
+- *Where materialising happens.* Inside the feature's own `asOperation`,
+  as the spec said, and owned by it — not as separate journal entries before
+  the extrude. Rejected: writing the point and its two `on`s to the journal as
+  ordinary steps, then an extrude naming them. Simpler to replay, but undo
+  would then take the extrude and leave three stray steps of the user's
+  drawing nobody typed, and `del("e1")` would leave a point the user never
+  made. A feature that made it owns it.
+- *How a replay knows which points to make.* The journal must name real
+  points, but at a replay those points do not exist yet — the extrude is what
+  makes them. Three shapes were weighed: (1) a separate argument listing edge
+  pairs to materialise, (2) a marker on the member saying "made here", (3) the
+  rule loops.ts already reads vertices by: a vertex is a crossing exactly when
+  the model has no point by that name. (3) won because it adds no vocabulary
+  and cannot disagree with the finder; the entry stays the call with what it
+  resolved written in. Its cost is that a hand-typed unknown name would be
+  made rather than refused — so a name spelled like a key (`×`) is refused,
+  and a made vertex must sit where two different edges of the profile meet.
+- *Reading the entry after the body.* The names exist only once the body has
+  claimed them. Predicting them (the next `p` numbers) was rejected: it would
+  duplicate `autoName`'s rules in operations.ts and break the first time they
+  changed. `asOperation` taking a function is a two-line change in the one
+  place that records.
+- *Own direction for `{from, to}`.* As walked, two points on a circle do not
+  say which arc; PR 1 hit this with labels and chose the entity's own
+  direction, and the journal follows the label so `ls()`, `loops()` and the
+  file all spell a portion the same way.
+- *Draw between points, never over spans.* PR 1 left the warning: a span is a
+  snapshot. Caps and walls are drawn from the points' current positions
+  (`portionAngles`), and a unit test drags the cutting line 10 units and checks
+  the cap's corners follow — over the span they could not have, since the
+  span is a fraction of the bottom edge and the bottom edge did not move.
+- *The revolve's side check had to learn portions.* The obvious first revolve
+  of a split region — a half about the line that cut it — was refused, because
+  the check measured the whole bottom edge, which runs on across the line.
+  PR 1's test had pinned that refusal as "split regions not built"; it now
+  asserts the revolve.
+- *Deletion was matched, not improved.* Deleting the first step of a stepped
+  block takes the second's record and its two walls on the shared crossings —
+  exactly what deleting a first extrude does to a second built on its lid. A
+  gentler rule (hand the crossing to the surviving feature) was considered and
+  left: it would be the first deletion that edits a record rather than
+  removing one, and undo already makes the cascade harmless.
+
 ### Regions split at crossings and Ts (PR 1): a crossing is a vertex of the question, not of the drawing
 
 The spec (`docs/plans/regions-split.md`) had settled the policy: a T is held,
