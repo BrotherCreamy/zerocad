@@ -121,12 +121,8 @@ async function saved(): Promise<string> {
   return r.value as string;
 }
 
-/** The canvas's own pixel at (sx, sy), as drawn. */
-const pixel = (sx: number, sy: number): Promise<number[]> => app.page.evaluate(([x, y]) => {
-  const cv = document.getElementById("cv") as HTMLCanvasElement;
-  const dpr = devicePixelRatio || 1;
-  return [...cv.getContext("2d")!.getImageData(Math.round(x * dpr), Math.round(y * dpr), 1, 1).data];
-}, [sx, sy]);
+/** The 2D canvas's pixel at (sx, sy): where a tool's preview is drawn. */
+const pixel = (sx: number, sy: number): Promise<number[]> => app.pixel(sx, sy, "drawing");
 
 /** The camera's line of sight back at the viewer, and a frame's +z, read from the modules the app runs. */
 const toward = (): Promise<number[]> => app.page.evaluate(async () => {

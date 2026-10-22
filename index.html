@@ -41,6 +41,13 @@
        drawing when the log fills. Panels stack from z-index 10; the hover tag
        and the menu sit far above any stack, being transient. */
     #viewwrap{position:relative;flex:1;min-height:0;overflow:hidden}
+    /* Two canvases, one picture: a solid's faces by WebGL with a depth test
+       (#faces, src/facelayer.ts) under the 2D drawing (#cv), which is clear
+       wherever it draws nothing so the faces and the ground show through.
+       Every pointer listener is on #cv; the faces canvas takes no events, so
+       a face can never be what a click lands on. */
+    #faces{position:absolute;left:0;top:0;pointer-events:none}
+    #cv{position:relative;background:transparent}
     .panel{position:absolute;display:flex;flex-direction:column;box-sizing:border-box;
       background:#0e141b;border:1px solid #223041;border-radius:4px;box-shadow:0 4px 14px #0008}
     .panel *{box-sizing:border-box}
@@ -75,6 +82,7 @@
       <span id="status">loading kernel…</span>
     </header>
     <div id="viewwrap">
+      <canvas id="faces"></canvas>
       <canvas id="cv"></canvas>
       <div class="panel" data-panel="toolbar">
         <div class="ptitle">tools</div>

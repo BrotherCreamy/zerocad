@@ -72,12 +72,8 @@ async function moveTo(sx: number, sy: number): Promise<void> {
   await app.page.waitForTimeout(150);
 }
 
-/** The canvas's own pixel at (sx, sy), as drawn. */
-const pixel = (sx: number, sy: number): Promise<number[]> => app.page.evaluate(([x, y]) => {
-  const cv = document.getElementById("cv") as HTMLCanvasElement;
-  const dpr = devicePixelRatio || 1;
-  return [...cv.getContext("2d")!.getImageData(Math.round(x * dpr), Math.round(y * dpr), 1, 1).data];
-}, [sx, sy]);
+/** The 2D canvas's pixel at (sx, sy): where a tool's preview is drawn. */
+const pixel = (sx: number, sy: number): Promise<number[]> => app.pixel(sx, sy, "drawing");
 
 /**
  * Whether the sketch's point (u, v) is drawn in the region tools' green

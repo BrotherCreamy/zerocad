@@ -8,7 +8,8 @@
 // extrudes, from one click inside it, into the solid its own coordinates say;
 // whether `set` typed at the command line moves the lid; whether the *pixels*
 // are what even-odd promises (looking square-on down the lid: material filled,
-// the hole's ring showing straight through, the island solid); whether a
+// the hole's ring showing straight through, the island solid) and, turned,
+// whether every pixel of the depth layer is the face nearest there; whether a
 // sketch on the lid extrudes again; whether one Ctrl+Z takes a whole feature
 // away; and whether the file reopens. Positions are checked against the
 // drawing's own coordinates and the sketch frame's +z computed here.
@@ -17,7 +18,7 @@
 
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { openApp, type AppContext } from "./harness.ts";
+import { checkPicture, openApp, type AppContext } from "./harness.ts";
 
 let app: AppContext;
 before(async () => { app = await openApp(); });
@@ -68,13 +69,6 @@ async function saved(): Promise<string> {
   assert.equal(r.ok, true, r.error ?? "");
   return r.value as string;
 }
-
-/** The canvas's own pixel at (sx, sy), as drawn — alpha 0 where nothing was. */
-const pixel = (sx: number, sy: number): Promise<number[]> => app.page.evaluate(([x, y]) => {
-  const cv = document.getElementById("cv") as HTMLCanvasElement;
-  const dpr = devicePixelRatio || 1;
-  return [...cv.getContext("2d")!.getImageData(Math.round(x * dpr), Math.round(y * dpr), 1, 1).data];
-}, [sx, sy]);
 
 /** faces.ts's fill for a face square to the viewer, read from the module the app runs. */
 const squareOnFill = (): Promise<number[]> => app.page.evaluate(async () => {
@@ -168,7 +162,7 @@ test("the extrude tool: the region under the cursor is outlined; a click on noth
   // Hovering between the hole and the outline tints the region green.
   const inside = await app.screenOf(onG(36, 34));
   await moveTo(...inside);
-  const tint = await pixel(...inside);
+  const tint = await app.pixel(...inside, "drawing");
   assert.ok(tint[1] > 35 && tint[1] > tint[0] + 15, `the preview's green under the cursor: ${tint}`);
 
   // A click where there is no region says so, and the tool stays armed.
@@ -238,7 +232,7 @@ test("looking straight down the lid, the pixels are even-odd: the cap is filled,
     // face picks nothing.
     const at = await clearSpot(candidates);
     assert.ok(at, `somewhere on ${what} is clear of the drawing's marks`);
-    const px = await pixel(...at);
+    const px = await app.pixel(...at, "faces");
     if (want === "face") assert.deepEqual(px, fill, `${what}: the lid's square-on fill`);
     else assert.equal(px[3], 0, `${what}: nothing drawn, through both caps: ${px}`);
   }
@@ -275,35 +269,21 @@ test("a circle sketched on the lid, on the lid's own frame, extrudes again by a 
   assert.equal(await app.status(), "SOLVED");
 });
 
-test("turned, the solid is shaded: faces back to front, each cap after its own walls, a pixel of the lid its own shade", async () => {
+test("turned, the solid is shaded by depth: every pixel off an outline is the nearest face's own shade — both lids over their walls — and the screen shows a lid pixel as it is", async () => {
   await app.type("orbit(0.45, 0.4)");
-  const drawn = await app.page.evaluate(async () => {
-    const path = "/src/faces.ts";
-    const { facesToDraw } = await import(path);
-    const { model, engine } = (window as never as { __neocad: { model: unknown; engine: { view: unknown } } }).__neocad;
-    return (facesToDraw(model, engine.view) as { feature: string; kind: string; shade: number; depth: number }[])
-      .map((d) => ({ feature: d.feature, kind: d.kind, shade: d.shade, depth: d.depth }));
-  });
-  assert.ok(drawn.length > 10, `${drawn.length} faces`);
-  assert.ok(drawn.every((d) => d.shade > 0 && d.shade <= 1));
-  for (let i = 1; i < drawn.length; i++) assert.ok(drawn[i].depth >= drawn[i - 1].depth);
-  // Each solid's cap comes after all its own walls.
-  for (const fe of ["e1", "e2"]) {
-    const mine = drawn.map((d, i) => ({ ...d, i })).filter((d) => d.feature === fe);
-    const cap = mine.find((d) => d.kind !== "wall")!;
-    assert.ok(mine.every((d) => d.kind !== "wall" || d.i < cap.i), `${fe}'s cap is drawn after its walls`);
-  }
-  // A pixel of the lid's material, clear of every mark, is the lid's own
-  // fill at the lid's own shade — the cap drawn last, over its walls.
-  const lid = drawn.find((d) => d.feature === "e1" && d.kind === "lid")!;
-  const want = await app.page.evaluate(async (shade) => {
-    const path = "/src/faces.ts";
-    const { faceColour } = await import(path);
-    return [...(faceColour(shade) as string).match(/\d+/g)!.map(Number), 255];
-  }, lid.shade);
+  assert.equal(await app.renderer(), "depth", "the depth layer draws the faces, not the painter's fallback");
+  const pic = await checkPicture(app, 6);
+  assert.ok(pic.onFace > 300, `${pic.onFace} samples on the solids`);
+  assert.deepEqual(pic.wrong, [], "every sample is the face nearest the viewer there");
+  for (const face of ["e1.lid", "e2.lid", "e1.wall"]) assert.ok(pic.seen.has(face), `${face} is in the picture: ${[...pic.seen]}`);
+
+  // What the eye gets: at a spot of the lid clear of every mark (asked of the
+  // app's own hover), the composed picture is the lid's own fill.
   const at = await clearSpot([onG(36, 34, 35), onG(40, 15, 35), onG(35, 20, 35), onG(64, 35, 35), onG(55, 14, 35), onG(33, 37, 35)]);
   assert.ok(at, "somewhere on the lid is clear of the drawing's marks");
-  assert.deepEqual(await pixel(...at), want);
+  const [{ face }] = await app.nearestFaces([at]);
+  assert.equal(`${face?.feature}.${face?.kind}`, "e1.lid");
+  assert.deepEqual(await app.pixel(...at, "screen"), [...face!.rgb, 255]);
   await app.page.mouse.move(5, 5);
 });
 

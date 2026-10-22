@@ -21,15 +21,15 @@ after(async () => { await app.close(); });
  * canvas's centre and 30px either side of it vertically — by default the whole
  * band the hint is written in.
  */
-const inkInHintBand = (dx = -300, width = 600) => app.page.$eval("#cv", (el, [dx, width]) => {
-  const cv = el as HTMLCanvasElement;
-  const g = cv.getContext("2d")!;
-  const [w, h] = [cv.width, cv.height];
-  const band = g.getImageData(Math.round(w / 2 + dx), Math.round(h / 2 - 30), width, 60).data;
-  let ink = 0;
-  for (let i = 3; i < band.length; i += 4) if (band[i] > 0) ink++;
-  return ink;
-}, [dx, width]);
+async function inkInHintBand(dx = -300, width = 600): Promise<number> {
+  const [w, h] = await app.page.$eval("#cv", (el) => [el.clientWidth, el.clientHeight]);
+  const at: [number, number][] = [];
+  for (let y = Math.round(h / 2 - 30); y < Math.round(h / 2 + 30); y++) {
+    for (let x = Math.round(w / 2 + dx); x < Math.round(w / 2 + dx) + width; x++) at.push([x, y]);
+  }
+  // The hint is written on the 2D canvas; its ink is anything not transparent there.
+  return (await app.pixels("drawing", at)).filter((d) => d[3] > 0).length;
+}
 
 /** The band's far left, where only the hint's long line reaches: a frame's marker at the centre never does. */
 const inkFarLeft = () => inkInHintBand(-320, 150);

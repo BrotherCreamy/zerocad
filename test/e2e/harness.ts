@@ -140,11 +140,52 @@ export interface AppContext {
    * computes by hand.
    */
   screenOf(world: number[]): Promise<[number, number]>;
+  /**
+   * RGBA at each canvas pixel, read from one of the pictures — and a test says
+   * which it means:
+   *
+   * - `"faces"`: the WebGL canvas the solids' faces are drawn on, alone —
+   *   transparent (alpha 0) where no face is. What a test about a face's
+   *   shade, even-odd or which face is in front reads; the entities drawn over
+   *   it are not in it. Throws when the app is drawing faces by the painter's.
+   * - `"drawing"`: the 2D canvas — entities, glyphs, a tool's preview, the
+   *   empty-canvas hint, and (only on the painter's fallback) the faces.
+   * - `"screen"`: the composed picture, as the browser shows it — a
+   *   screenshot of the canvas area, panels and all, decoded.
+   *
+   * Points are in the CSS pixels every other coordinate here is in, and each
+   * reads the pixel that contains it — so (x + 0.5, y + 0.5) is pixel (x, y)'s
+   * middle, which is where the oracle should be asked about it.
+   */
+  pixels(of: Picture, at: [number, number][]): Promise<number[][]>;
+  /** One pixel of `pixels`. */
+  pixel(sx: number, sy: number, of: Picture): Promise<number[]>;
+  /**
+   * Which visible face is nearest the viewer at each pixel — worked out here,
+   * by casting the pixel's ray against every visible face's plane (faces.ts's
+   * faces, read in the world, never through either renderer) — with the fill
+   * it should have, and how far the pixel is from the nearest outline of any
+   * visible face, where anti-aliasing makes any colour fair. The oracle a
+   * picture is checked against.
+   */
+  nearestFaces(at: [number, number][]): Promise<NearestFace[]>;
+  /** How the app is drawing faces: `"depth"`, or `"painter's"` where it has no WebGL. */
+  renderer(): Promise<string>;
   status(): Promise<string>;
   log(): Promise<string>;
   /** Anything the page threw that nothing caught. Should always be empty. */
   pageErrors: string[];
   close(): Promise<void>;
+}
+
+/** Which picture a pixel is read from — see `AppContext.pixels`. */
+export type Picture = "faces" | "drawing" | "screen";
+
+export interface NearestFace {
+  /** The face nearest the viewer at the pixel, or null where the ray meets no solid. */
+  face: { id: number; feature: string; kind: string; rgb: number[] } | null;
+  /** Distance in pixels to the nearest outline of any visible face. */
+  edge: number;
 }
 
 export interface ModelSummary {
@@ -264,6 +305,99 @@ export async function openApp(options: OpenOptions = {}): Promise<AppContext> {
       (w) => (window as never as PageGlobals).__neocad.engine.worldToScreen(w),
       world,
     ),
+    async pixels(of, at) {
+      if (of === "screen") {
+        // The browser's own composition: one screenshot of the canvas's box,
+        // decoded back in the page where there is something to decode it.
+        const box = await page.$eval("#cv", (el) => {
+          const r = el.getBoundingClientRect();
+          return { x: r.x, y: r.y, width: r.width, height: r.height };
+        });
+        const png = (await page.screenshot({ clip: box })).toString("base64");
+        return page.evaluate(async ([png, at]) => {
+          const img = new Image();
+          img.src = `data:image/png;base64,${png}`;
+          await img.decode();
+          const c = document.createElement("canvas");
+          [c.width, c.height] = [img.width, img.height];
+          const g = c.getContext("2d", { willReadFrequently: true })!;
+          g.drawImage(img, 0, 0);
+          const k = img.width / (document.getElementById("cv") as HTMLCanvasElement).getBoundingClientRect().width;
+          return at.map(([x, y]) => [...g.getImageData(Math.floor(x * k), Math.floor(y * k), 1, 1).data]);
+        }, [png, at] as [string, [number, number][]]);
+      }
+      return page.evaluate(([of, at]) => {
+        const cv = document.getElementById("cv") as HTMLCanvasElement;
+        const dpr = cv.width / cv.getBoundingClientRect().width;
+        let g = cv.getContext("2d")!;
+        if (of === "faces") {
+          if ((window as never as PageGlobals).__neocad.faces !== "depth") {
+            throw new Error("the app is drawing faces by the painter's, into the drawing: read \"drawing\" or \"screen\"");
+          }
+          // Copied through a 2D canvas, which hands back what was drawn
+          // without the premultiplication WebGL stores it with.
+          const faces = document.getElementById("faces") as HTMLCanvasElement;
+          const c = document.createElement("canvas");
+          [c.width, c.height] = [faces.width, faces.height];
+          g = c.getContext("2d", { willReadFrequently: true })!;
+          g.drawImage(faces, 0, 0);
+        }
+        return at.map(([x, y]) => [...g.getImageData(Math.floor(x * dpr), Math.floor(y * dpr), 1, 1).data]);
+      }, [of, at] as [Picture, [number, number][]]);
+    },
+    async pixel(sx, sy, of) {
+      return (await (this as AppContext).pixels(of, [[sx, sy]]))[0];
+    },
+    nearestFaces: (at) => page.evaluate(async (at) => {
+      const [facesPath, viewPath] = ["/src/faces.ts", "/src/view.ts"];
+      const { faceRGB, orderedFaces } = await import(facesPath);
+      const { viewAxes, worldToScreen } = await import(viewPath);
+      const { model, engine } = (window as never as PageGlobals).__neocad;
+      const view = engine.view;
+      const { right, up, toward } = viewAxes(view);
+      const dot = (a: number[], b: number[]) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+      type F = { feature: string; kind: string; normal: number[]; shade: number; outlines: number[][][] };
+      // Each face's screen box, three pixels wider all round: a pixel outside
+      // it is neither inside the face nor near enough its outline to matter.
+      const faces = (orderedFaces(model, view) as F[]).map((f) => {
+        const screen = f.outlines.map((o) => o.map((w) => worldToScreen(view, w) as [number, number]));
+        const all = screen.flat();
+        const box = [Math.min(...all.map((p) => p[0])) - 3, Math.min(...all.map((p) => p[1])) - 3,
+          Math.max(...all.map((p) => p[0])) + 3, Math.max(...all.map((p) => p[1])) + 3];
+        return { ...f, screen, box };
+      });
+      const inside = (o: [number, number][], x: number, y: number) => {
+        let odd = false;
+        for (let i = 0, j = o.length - 1; i < o.length; j = i++) {
+          const [a, b] = [o[i], o[j]];
+          if ((a[1] > y) !== (b[1] > y) && x < ((b[0] - a[0]) * (y - a[1])) / (b[1] - a[1]) + a[0]) odd = !odd;
+        }
+        return odd;
+      };
+      const toSegment = (p: number[], a: number[], b: number[]) => {
+        const [dx, dy] = [b[0] - a[0], b[1] - a[1]];
+        const len2 = dx * dx + dy * dy;
+        const t = len2 > 0 ? Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / len2)) : 0;
+        return Math.hypot(p[0] - a[0] - t * dx, p[1] - a[1] - t * dy);
+      };
+      return at.map(([x, y]) => {
+        // The pixel's ray: through the depth-zero point under it, along toward.
+        const [a, b] = [(x - view.ox) / view.scale, (view.oy - y) / view.scale];
+        const q = [0, 1, 2].map((i) => a * right[i] + b * up[i]);
+        let best: { f: F; d: number; i: number } | null = null;
+        let edge = 99; // "far from every outline" — JSON has no Infinity
+        for (const [i, f] of faces.entries()) {
+          if (x < f.box[0] || y < f.box[1] || x > f.box[2] || y > f.box[3]) continue;
+          for (const o of f.screen) for (let i = 0; i < o.length; i++) edge = Math.min(edge, toSegment([x, y], o[i], o[(i + 1) % o.length]));
+          if (f.screen.filter((o) => inside(o, x, y)).length % 2 === 0) continue;
+          // Where the ray crosses the face's plane, as a depth (larger nearer).
+          const d = (dot(f.normal, f.outlines[0][0]) - dot(f.normal, q)) / dot(f.normal, toward);
+          if (!best || d > best.d) best = { f, d, i };
+        }
+        return { face: best ? { id: best.i, feature: best.f.feature, kind: best.f.kind, rgb: faceRGB(best.f.shade) } : null, edge };
+      });
+    }, at),
+    renderer: () => page.evaluate(() => (window as never as PageGlobals).__neocad.faces),
     status: () => page.$eval("#status", (el) => el.textContent ?? ""),
     log: () => page.$eval("#log", (el) => el.textContent ?? ""),
     async close() {
@@ -284,10 +418,11 @@ interface PageGlobals {
     };
     engine: {
       active: { name: string } | null;
-      view: { ox: number; oy: number; scale: number };
+      view: { ox: number; oy: number; scale: number; right?: number[]; up?: number[] };
       worldToScreen(world: number[]): [number, number];
     };
     repl: { eval(src: string): Promise<{ ok: boolean; value: unknown; error?: Error }> };
+    faces: string;
   };
 }
 
@@ -348,6 +483,54 @@ export const PARKED: [number, number] = [150, 150];
  */
 export async function sketchFrame(app: AppContext): Promise<void> {
   await axisFrame(app, PARKED);
+}
+
+/** What `checkPicture` found. */
+export interface PictureCheck {
+  /** Samples clear of every outline, so ones whose colour is a fair question. */
+  checked: number;
+  /** Of those, the ones on a face. */
+  onFace: number;
+  /** Which faces were seen at least once, as `feature.kind`. */
+  seen: Set<string>;
+  /** Every sample whose pixel is not the nearest face's fill (or not empty where no face is). */
+  wrong: { at: [number, number]; want: string; got: number[] }[];
+}
+
+/**
+ * The faces' picture checked against the oracle (`nearestFaces`): a grid of
+ * samples every `step` pixels over the canvas — or over `box` — and at each
+ * one more than two pixels from any edge, the faces canvas must hold the
+ * fill of the face nearest the viewer there, or nothing where no solid is. A
+ * level of slack for the float the colour goes through; none for which face.
+ */
+export async function checkPicture(app: AppContext, step = 8, box?: [number, number, number, number]): Promise<PictureCheck> {
+  const [x0, y0, x1, y1] = box ?? await app.page.$eval("#cv", (el) => [0, 0, el.clientWidth, el.clientHeight] as [number, number, number, number]);
+  const at: [number, number][] = [];
+  for (let y = y0 + step / 2; y < y1; y += step) for (let x = x0 + step / 2; x < x1; x += step) at.push([Math.floor(x) + 0.5, Math.floor(y) + 0.5]);
+  // Two pixels to each corner of every sample too: where the nearest face
+  // changes between them the sample is on an edge — an outline, or one no
+  // outline draws, where one solid passes through another.
+  const corners = at.flatMap(([x, y]) => [[x - 2, y - 2], [x + 2, y - 2], [x - 2, y + 2], [x + 2, y + 2]] as [number, number][]);
+  const [want, got, around] = await Promise.all([app.nearestFaces(at), app.pixels("faces", at), app.nearestFaces(corners)]);
+  const out: PictureCheck = { checked: 0, onFace: 0, seen: new Set(), wrong: [] };
+  at.forEach((p, i) => {
+    const { face, edge } = want[i];
+    if (edge <= 2) return;
+    if (around.slice(4 * i, 4 * i + 4).some((c) => (c.face?.id ?? -1) !== (face?.id ?? -1))) return;
+    out.checked++;
+    const px = got[i];
+    if (!face) {
+      if (px[3] !== 0) out.wrong.push({ at: p, want: "nothing", got: px });
+      return;
+    }
+    out.onFace++;
+    out.seen.add(`${face.feature}.${face.kind}`);
+    if (px[3] !== 255 || face.rgb.some((c, k) => Math.abs(c - px[k]) > 1)) {
+      out.wrong.push({ at: p, want: `${face.feature}.${face.kind} rgb(${face.rgb})`, got: px });
+    }
+  });
+  return out;
 }
 
 /** Perpendicular distance from a point to the infinite line through a and b. */
