@@ -75,6 +75,14 @@ export const SCENES: Scene[] = [
     timed: true,
     source: `ls = poly([[10,0,0],[30,0,0],[30,20,0],[10,20,0]], "f"); fillet(ls[1], ls[2], 6); revolve(ls[0], "f.y")`,
   },
+  {
+    name: "boss-plate",
+    // Last, so the measurement's seeds for the scenes before it are unchanged.
+    what: "a boss on a plate: a 60 × 40 × 8 plate, and a boss r 10 × 15 on a frame on its lid",
+    source: `ls = poly([[0,0,0],[60,0,0],[60,40,0],[0,40,0]], "f"); extrude(ls[0], 8);
+      model.addFrame(P([30,20,8]), P([31,20,8]), P([30,21,8]), "h");
+      c = P([30,20,8]); onplane(c, "h"); k = model.addCircle(c, 10, "h").name; extrude(k, 15, "h")`,
+  },
 ];
 
 /** The scene by name. */
@@ -120,3 +128,55 @@ export async function look(app: AppContext, yaw: number, pitch: number, fill = 0
     hook.render();
   }, [yaw, pitch, fill, ...shift]);
 }
+
+/**
+ * The app's own frames, timed: `renderer` is what the app says it drew faces
+ * with, `submit` the milliseconds `render()` holds the main thread, `frame` the
+ * milliseconds between presented frames.
+ */
+export interface Frames { renderer: string; submit: number; frame: number; frames: number; faces: number }
+
+/**
+ * The app's real frames, in the page: the view turned a little each frame, as
+ * an orbit turns it, `render()` called, and the next animation frame awaited
+ * — so a frame the renderer has not finished, on the main thread or in the GPU
+ * process, holds the next one back and shows in the interval. Timing the two
+ * renderers on canvases of their own instead was tried and abandoned: Chrome
+ * moves a 2D canvas that is read back into CPU memory, so forcing a painted
+ * frame to finish changed what was being timed.
+ */
+export function appFrames(args: { frames: number }) {
+  return (async () => {
+    const viewPath = "/src/view.ts", facesPath = "/src/faces.ts";
+    const { assignView, orbitBy } = await import(viewPath);
+    const { visibleFaces } = await import(facesPath);
+    const hook = (window as never as { __neocad: {
+      model: { entities: Map<string, { kind: string; name: string }>; coords(n: string): number[] };
+      engine: { view: { ox: number; oy: number; scale: number } }; render(): void; faces?: string;
+    } }).__neocad;
+    const { model, engine } = hook;
+    const cv = document.getElementById("cv") as HTMLCanvasElement;
+    const W = cv.getBoundingClientRect().width, H = cv.getBoundingClientRect().height;
+    const pts = [...model.entities.values()].filter((e) => e.kind === "point").map((e) => model.coords(e.name));
+    const c = [0, 1, 2].map((i) => (Math.min(...pts.map((p) => p[i])) + Math.max(...pts.map((p) => p[i]))) / 2);
+    const r = Math.max(...pts.map((p) => Math.hypot(p[0] - c[0], p[1] - c[1], p[2] - c[2])));
+    const scale = (0.32 * Math.min(W, H)) / r;
+    // A three-quarter view to start from, the same for both renderers.
+    assignView(engine.view, orbitBy({ ox: W / 2 - c[0] * scale, oy: H / 2 + c[1] * scale, scale, target: c }, 0.6, 0.5));
+    const next = () => new Promise((done) => requestAnimationFrame(done));
+    const turn = () => assignView(engine.view, orbitBy(engine.view, 0.02, 0.005));
+    for (let i = 0; i < 10; i++) { turn(); hook.render(); await next(); }
+    let submit = 0;
+    const t0 = performance.now();
+    for (let i = 0; i < args.frames; i++) {
+      turn();
+      const t = performance.now();
+      hook.render();
+      submit += performance.now() - t;
+      await next();
+    }
+    const frame = (performance.now() - t0) / args.frames;
+    return { renderer: hook.faces ?? "painter's", submit: submit / args.frames, frame, frames: args.frames, faces: (visibleFaces(model, engine.view) as unknown[]).length };
+  })();
+}
+
