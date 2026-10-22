@@ -293,6 +293,25 @@ makes nothing but the dimension, which then holds no blocks; turning it partial
 would mean growing geometry inside a dimension edit, so `set` refuses across that
 line and a new revolve is the way.
 
+**A feature's expansion is a function of its profile, and follows it.** An
+operation that restructures a profile — `fillet` today, re-pointing leg two and
+adding an arc — ends, inside its own `asOperation`, by *regenerating* every
+feature on what it touched: the profile is found again as the call found it,
+and the old expansion is **diffed** against it rather than thrown away. A joined
+class of vertices that survives keeps its twin and wall; a line whose end moved
+keeps its twin, re-pointed; what is new is made as the expansion makes it; what
+has gone goes by the ordinary deletion cascade, last, once the record no longer
+names it. The dimension is rebuilt in place (`set`'s path) and the record
+rewritten in place (`rewriteFeature`), so names survive wherever identity does —
+which is what lets a relation a user put on a lid outlive a fillet on the base.
+The alternative, deleting the feature and extruding again, is simpler and
+would rename every twin, taking every relation on them with it. Only
+structural change regenerates: a solve, a drag or a `set` moves geometry, and
+faces are drawn from live geometry already. `regen("e1")` is the same machinery
+for a profile restructured by hand. The finding reads positions, so — exactly
+as `extrude` — the call journals what it found, resolved, and a replay is
+handed it.
+
 ## Deleting cascades inward, and undo is the confirmation
 
 `del(name)` removes an entity or a relation and takes with it whatever could
@@ -832,7 +851,9 @@ Two details:
   `extrude` journals the loop it resolved — its members, loop by loop — because
   a profile built from free lines and relations has no loop at all at its
   seeds. The call is still the call (the user typed two arguments); the journal
-  writes in what the call meant at the time it was made. `revolve` does the
+  writes in what the call meant at the time it was made. A `fillet` that
+  regenerated a feature, and `regen`, write in the profiles they found the same
+  way. `revolve` does the
   same, and goes one step further for the same reason: its refusals that read
   positions — the axis in the profile's plane, the profile on one side of it —
   are made by the call and the tool and never by a replay, which would be

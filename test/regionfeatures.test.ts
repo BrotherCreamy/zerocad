@@ -27,7 +27,7 @@ import { fix, onPlane } from "../src/relations/basic.ts";
 import { pointOnLine } from "../src/relations/geometry.ts";
 import { axisReader, turnPoint } from "../src/relations/revolution.ts";
 import { del, extrude, extrudeProfile, profileOf, revolve, set } from "../src/operations.ts";
-import { open, save } from "../src/persist.ts";
+import { VERSION, open, save } from "../src/persist.ts";
 import { findLoops, describeLoop } from "../src/loops.ts";
 import { featureFaces } from "../src/faces.ts";
 import { neocadScope } from "../src/replenv.ts";
@@ -230,7 +230,7 @@ test("save, open, save is byte-identical with the stepped block, a set and a del
   m.solve();
 
   const once = save(m);
-  assert.equal(JSON.parse(once).version, 8);
+  assert.ok(JSON.parse(once).version >= 8, "portions came in with version 8");
   const reopened = open(once);
   assert.equal(save(reopened), once, "byte-identical");
   for (const name of ["e1", "e2"]) {
@@ -253,7 +253,7 @@ test("a version-7 file reads as it always did; one claiming 7 with a portion in 
   const v7 = { ...JSON.parse(save(m)), version: 7 };
   const reopened = open(JSON.stringify(v7));
   assert.deepEqual(reopened.featureOf("e1").loops, [lines]);
-  assert.equal(save(reopened), JSON.stringify({ ...v7, version: 8 }, null, 2), "re-saved current, every entry as it was");
+  assert.equal(save(reopened), JSON.stringify({ ...v7, version: VERSION }, null, 2), "re-saved current, every entry as it was");
 
   const split = plate();
   extrude(split.m, split.lines[3], 10);

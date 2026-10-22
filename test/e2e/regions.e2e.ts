@@ -266,7 +266,7 @@ test("one Ctrl+Z at a time takes each step away whole — crossings and all — 
 
 test("save and open: the same file back, byte for byte, both steps in it, the crossings under the names they had", async () => {
   const file = await saved();
-  assert.equal(JSON.parse(file).version, 8);
+  assert.ok(JSON.parse(file).version >= 8, "portions came in with version 8");
   await app.type(`open(${JSON.stringify(file)})`);
   assert.equal(await app.status(), "SOLVED");
   assert.equal(await saved(), file);

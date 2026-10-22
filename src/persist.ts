@@ -21,13 +21,31 @@
 import { Model, type JournalEntry } from "./model.ts";
 import * as basic from "./relations/basic.ts";
 import * as geom from "./relations/geometry.ts";
-import { extrude, fillet, revolve, set } from "./operations.ts";
+import { extrude, featuresOnProfile, fillet, regen, revolve, set } from "./operations.ts";
 import type { ToolSource } from "./toolsource.ts";
 import { freshName, planeTranslation } from "./planetranslation.ts";
 
 export const FORMAT = "neocad-model";
 /**
- * 8 since **a feature's profile may carry portions** (regions split by a
+ * 9 since **a feature regenerates when its profile is restructured**
+ * (docs/plans/feature-regeneration.md): `fillet` now ends by bringing every
+ * feature standing on either leg back into step with the rounded profile, and
+ * when there was such a feature its entry carries a fifth argument — the
+ * features it regenerated, each with its profile resolved — and there is a new
+ * op, `regen`. The break is in `fillet`'s *meaning*: a version-8 build replaying
+ * a version-9 fillet after an extrude would round the sketch and leave the lid
+ * square, silently, and every name the regeneration made would be missing from
+ * under the entries after it. "This file is version 9" says what is wrong.
+ *
+ * Going the other way **a version-8 file opens exactly as it was**: its
+ * fillets regenerated nothing, so one whose leg a feature stood on is read as
+ * a fillet that regenerated nothing — `translate` writes in the empty list,
+ * which is what the build that saved it did. Otherwise the replay would make a
+ * twin arc, two twin points and a wall under auto-names the file's later
+ * entries may already hold — measured: a point drawn after the fillet fails at
+ * its own step, `"p14" already exists` (test/regen.test.ts).
+ *
+ * 8 was **a feature's profile may carry portions** (regions split by a
  * crossing or a T — docs/plans/regions-split.md): an `extrude` or `revolve`
  * entry's loops, which were lists of member names, may now hold `{name, from,
  * to}` for the part of a member between two points, and name points the
@@ -129,7 +147,7 @@ export const FORMAT = "neocad-model";
  * `revolve`, whose end face is ordinary points, curves and frames in `values`,
  * and whose surface is drawn, never saved.
  */
-export const VERSION = 8;
+export const VERSION = 9;
 
 export interface SavedModel {
   format: typeof FORMAT;
@@ -222,6 +240,11 @@ function replayTable(model: Model): Map<string, (...args: unknown[]) => unknown>
     // positions either, so the geometric refusals the call made are not re-made
     // against seeds (see `revolve`).
     revolve: rel(revolve),
+    // A feature brought back into step with its profile, journalled as the
+    // call with what it found resolved (see `regen`), so a replay walks the
+    // profiles it is handed and looks for nothing among the seeds. `fillet`'s
+    // own regeneration rides in its entry, the same way.
+    regen: rel(regen),
     // `set` is journalled as the one call the user made, like every operation,
     // so replaying it re-runs the edit rather than the dimension it rebuilt.
     set: rel(set),
@@ -308,6 +331,12 @@ function relationRenamer(model: Model, version: number) {
  * here and is told what it is missing — the same message, at the same step, as
  * before this translation existed.
  *
+ * **A `fillet` from before version 9** regenerated nothing, so one whose leg a
+ * feature's profile names is given the empty list of regenerated features —
+ * exactly what the build that wrote it did (see `VERSION`). Every other fillet
+ * passes through untouched, so a file with none after a feature re-saves byte
+ * for byte as it was, bar the version.
+ *
  * **An `extrude` or `revolve` from before version 8** has a profile of whole
  * members, so one carrying a portion is refused at its step (see `VERSION`);
  * every other one passes through untouched.
@@ -320,6 +349,11 @@ function relationRenamer(model: Model, version: number) {
  * y-ref" — rather than be guessed at.
  */
 function translate(model: Model, entry: JournalEntry, version: number): JournalEntry {
+  if (entry.op === "fillet" && version < 9 && entry.args.length <= 4) {
+    const [l1, l2, r, plane] = entry.args;
+    const legs = [l1, l2].filter((n): n is string => typeof n === "string");
+    if (featuresOnProfile(model, legs).length) return { op: "fillet", args: [l1, l2, r, plane ?? null, []] };
+  }
   if ((entry.op === "extrude" || entry.op === "revolve") && version < 8) {
     const loops = entry.args[entry.op === "extrude" ? 3 : 4];
     if (Array.isArray(loops) && loops.some((l) => Array.isArray(l) && l.some((m) => typeof m !== "string"))) {

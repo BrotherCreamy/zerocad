@@ -106,6 +106,61 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### Feature regeneration: diff, don't rebuild, and journal what was found
+
+The spec (`docs/plans/feature-regeneration.md`) set the rule — an expansion
+follows its profile, keeping identity — and the trigger, `fillet`, inside its
+own call. The bug was measured first, on the code before the fix: a 40 × 30
+extrude, a radius-8 fillet on a base corner, and the lid's edge over leg two
+leaning 14.9° from over the tangent point to the far corner, SOLVED. (Not "a
+rectangle", as the spec had it: the corner's twin follows the corner.) What was
+decided in the code, and what was rejected:
+
+- *Diff, not delete-and-redo.* Re-running the extrude from scratch was the
+  cheap way, and it would have renamed every twin, wall and the depth —
+  taking every relation a user had put on them, which is precisely what the
+  spec's "keep identity" is for. So the old expansion is read back off the
+  dimension's pairs (one twin per joined class), the record's twins
+  (parallel to its loops) and its walls, and matched against the new walk.
+  New things are made in exactly the order a fresh expansion makes them, so
+  a replay makes the same names; the record's `owns` comes out in that order
+  too, so a no-op `regen` rewrites an identical record.
+- *Finding versus splicing.* The first design considered splicing the arc
+  into the old profile between the two legs, by structure — position-free,
+  so `fillet`'s entry would not have had to change at all. Rejected: it can
+  only know what a fillet does, so it would miss a crossing the new arc makes
+  or a hole drawn since, and `regen` needs the finder anyway; two ways to know
+  a profile would one day disagree. So the profile is found as the call found
+  it — which reads positions, which is exactly extrude's replay problem. The
+  answer is extrude's: the call journals what it found, resolved, and a replay
+  walks it by its joins. That is the spec's "journal-as-the-call" rule as this
+  codebase already reads it (the user typed four arguments; the entry writes
+  in what they meant), not a departure from it.
+- *Where `fillet` cannot regenerate, it does not refuse.* `asOperation`'s
+  contract is refuse-before-change, and by the time the new profile can be
+  found the corner is already rounded. A rollback was considered and rejected
+  (the model has no transactions; undo is the only one, and it lives above
+  operations in main.ts). Leaving that one feature as it was is the old
+  behaviour for it, and `regen` then refuses with the reason.
+- *Version 9, and the translation.* A new op alone would not have bumped (the
+  deletion ops' precedent), but `fillet` changed meaning: an old build would
+  replay a new fillet without the lid and silently drop the names it made. Old
+  files the other way round needed the translation, measured necessary rather
+  than guessed: a version-8 file with a point drawn after its fillet, read
+  without the translation, regenerates on replay, claims the next auto-names,
+  and fails at that point's step — `"p14" already exists` (pinned in
+  `test/regen.test.ts`). An explicit empty list says what the old build
+  did, and is only written where a feature stood on a leg, so other old files
+  re-save untouched.
+- *Arcs are remade, lines re-pointed.* Adding `retargetArc` to the model was
+  considered and left: no operation re-points an arc's end yet, and the first
+  one that does should add it with its own reason.
+- *The chain.* Not in the spec, found by asking what happens to a solid
+  extruded on the lid: its profile's twin line gets re-pointed by the first
+  regeneration, so without the chain it would be left with a profile that no
+  longer closes. The hook queues every feature whose profile names a line it
+  re-pointed — the same hook any later restructuring operation calls.
+
 ### Features over split regions (PR 2): the feature is what makes a crossing held
 
 PR 1 found split regions and refused to build on them. PR 2 builds on them:

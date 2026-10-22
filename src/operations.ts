@@ -8,7 +8,7 @@
 
 import {
   Model, SETTABLE_PROPERTY, memberName, parseValueRef, referentOf, valueArgIndex,
-  type Entity, type Portion, type ProfileMember,
+  type Entity, type FeatureEntry, type Portion, type ProfileMember,
 } from "./model.ts";
 import { dist } from "./relations/basic.ts";
 import { angle, arcEndpoints, onCircle, pointOnLine, radius, tangent } from "./relations/geometry.ts";
@@ -86,19 +86,31 @@ function corner(model: Model, l1Name: string, l2Name: string) {
  *
  * Returns the new arc's name.
  */
-export function fillet(model: Model, l1Name: string, l2Name: string, r: number, plane?: string | null): string {
+export function fillet(model: Model, l1Name: string, l2Name: string, r: number, plane?: string | null,
+                       regenerated?: unknown): string {
   if (model.dim !== 2 && model.dim !== 3) throw new Error("fillet rounds a corner in a 2D or 3D model");
   if (!(r > 0)) throw new Error("fillet needs a positive radius");
   if (model.dim === 2 && plane != null) {
     throw new Error("a 2D fillet takes no plane — its arc lies in the one plane a 2D model has");
   }
   const frame = model.dim === 3 ? model.resolveFrame(plane) : null;
+  const given = regenerated == null ? null : givenRegenerated(regenerated, "fillet");
   // Journalled as the one call the user made, not as the entities and
   // relations it expands into — replaying it re-expands them identically. The
   // plane is journalled resolved, and only where there is one: a 2D fillet's
-  // entry is the three arguments it always was.
+  // entry is the three arguments it always was. So is the regeneration — the
+  // features standing on a leg, with what each profile became — and only where
+  // there was such a feature, so a fillet that touched none journals exactly
+  // what it always did.
   const args: unknown[] = frame == null ? [l1Name, l2Name, r] : [l1Name, l2Name, r, frame];
-  return model.asOperation("fillet", args, () => filletBody(model, l1Name, l2Name, r, frame));
+  let after: Regenerated[] | null = null;
+  return model.asOperation("fillet", () => (after === null ? args : [l1Name, l2Name, r, frame, after]), () => {
+    const arc = filletBody(model, l1Name, l2Name, r, frame);
+    // A profile with a rounded corner is a restructured profile: every feature
+    // standing on either leg follows it, inside this same call.
+    after = regenerateAfter(model, [l1Name, l2Name], given);
+    return arc;
+  });
 }
 
 /**
@@ -1074,6 +1086,457 @@ function revolveBody(model: Model, member: string, axis: string, angle: number, 
     kind: "revolve", member, frame, axis, angle: held, loops, twins, end: twinFrame.get(frame)!,
     names: [...new Set([...base, ...owns])], owns,
   }).name;
+}
+
+// --- regeneration -----------------------------------------------------------
+
+/**
+ * One feature brought back into step with its profile, as the journal carries
+ * it: the feature's name and the profile resolved — every vertex a real
+ * point, portions as `{name, from, to}` — exactly as `extrude` journals the
+ * profile it was built on, and for its measured reason: a replay runs on
+ * seeds, where a profile of free lines has no loop to be found, so a replay is
+ * handed the profile and walks it by its joins.
+ */
+export type Regenerated = [string, ProfileMember[][]];
+
+/** Every feature whose profile names one of `names` — whole, or a portion of it — in creation order. */
+export function featuresOnProfile(model: Model, names: readonly string[]): FeatureEntry[] {
+  return [...model.features.values()].filter((f) => f.loops.some((l) => l.some((m) => names.includes(memberName(m)))));
+}
+
+/**
+ * **The hook a restructuring operation ends with**: every feature whose profile
+ * names one of `changed` is regenerated — and then every feature whose profile
+ * names a piece one of those regenerations re-pointed (a solid standing on a
+ * lid whose edge just moved its end), and so on. `fillet` is the one caller
+ * today, with its two legs; the next operation that re-points or replaces a
+ * profile member calls this with what it touched, inside its own
+ * `asOperation`, so its journal entry stays the one call.
+ *
+ * At the call (`given` null) each profile is **found** (`refoundProfile`), and
+ * a feature whose profile cannot be found any more is **left as it was** — the
+ * operation has already changed the drawing, and refusing now could not put
+ * that back; `regen("e1")` then says why, by name. What comes back is what the
+ * operation journals beside its own arguments: which features were
+ * regenerated, in order, with their profiles resolved — or null when no
+ * feature's profile names anything that changed, so an operation that touched
+ * no feature journals exactly what it always did. At a replay (`given`) the
+ * features named are regenerated with the profiles named, and nothing is
+ * looked for.
+ */
+export function regenerateAfter(model: Model, changed: readonly string[], given: Regenerated[] | null): Regenerated[] | null {
+  if (given !== null) {
+    regenerateGiven(model, given);
+    return given;
+  }
+  const first = featuresOnProfile(model, changed);
+  if (first.length === 0) return null;
+  return regenerateFound(model, first.map((f) => f.name), null);
+}
+
+/** A journal's (or a typed call's) list of regenerated features, checked for shape and copied. */
+export function givenRegenerated(list: unknown, op: string): Regenerated[] {
+  const ok = Array.isArray(list)
+    && list.every((e) => Array.isArray(e) && e.length === 2 && typeof e[0] === "string" && Array.isArray(e[1]));
+  if (!ok) throw new Error(`${op}'s regenerated features are [feature, loops] pairs — the profile each was brought into step with`);
+  return (list as Regenerated[]).map(([name, loops]) => [name, loops]);
+}
+
+function regenerateGiven(model: Model, given: Regenerated[]): void {
+  for (const [name, loops] of given) {
+    const f = model.featureOf(name);
+    const profile = givenProfile(model, f.member, f.frame, loops, f.kind === "extrude" ? EXTRUDE : REVOLVE);
+    rebuildFeature(model, f, planSweep(model, profile));
+  }
+}
+
+/**
+ * Regenerates the features named, found, and every feature whose profile names
+ * a piece one of them re-pointed, each once, in the order they come up.
+ * `first`, when given, is the first feature's plan, already made — `regen`
+ * makes it before anything changes, so its refusal is a refusal.
+ */
+function regenerateFound(model: Model, start: string[], first: SweepPlan | null): Regenerated[] {
+  const out: Regenerated[] = [];
+  const queue = [...start];
+  const seen = new Set<string>();
+  while (queue.length) {
+    const name = queue.shift()!;
+    // A cascade earlier in the chain may have taken this record (the inward rule).
+    if (seen.has(name) || !model.features.has(name)) continue;
+    seen.add(name);
+    const f = model.featureOf(name);
+    let plan: SweepPlan;
+    if (first !== null && name === start[0]) plan = first;
+    else {
+      try {
+        plan = planRegen(model, f, refoundProfile(model, f));
+      } catch {
+        continue; // left as it was — see `regenerateAfter`
+      }
+    }
+    const { loops, touched } = rebuildFeature(model, f, plan);
+    out.push([name, loops]);
+    for (const g of featuresOnProfile(model, touched)) if (!seen.has(g.name)) queue.push(g.name);
+  }
+  return out;
+}
+
+/**
+ * A feature's profile **found again, the way the call found it**: the loop
+ * that now contains its `member`, parallel to its sketch frame, and every loop
+ * inside it — portions and crossings exactly as a fresh call resolves them
+ * (`profileOf`). Refuses by name when there is no such loop: a feature whose
+ * profile is gone is a deletion, not a regeneration. A member in several such
+ * loops (a line across the region, an edge two regions share) takes the one
+ * that keeps the most of the outline the feature was built on, and refuses a
+ * tie. A revolve is asked its geometric questions again (`checkRevolve`): this
+ * is a call, and reads positions as one.
+ */
+function refoundProfile(model: Model, f: FeatureEntry): Profile {
+  const words = f.kind === "extrude" ? EXTRUDE : REVOLVE;
+  const axes = framePlaneAxes(model, f.frame);
+  if (!axes) throw new Error(`"${f.frame}" has collapsed — ${f.name}'s profile has no plane to be found in`);
+  const all = findLoops(model);
+  const mine = all.map((_, i) => i)
+    .filter((i) => parallel(all[i].plane.normal, axes.n) && all[i].members.some((m) => m.name === f.member));
+  if (mine.length === 0) {
+    throw new Error(`${f.name}'s profile is gone — "${f.member}" is in no closed loop parallel to ${f.frame} now, so there `
+      + `is nothing to bring ${f.name} into step with. A feature whose profile is gone is deleted, not regenerated: `
+      + `del("${f.name}"); or close the loop again and regen("${f.name}")`);
+  }
+  let pick = mine[0];
+  if (mine.length > 1) {
+    const was = new Set(f.loops[0].map(memberName));
+    const kept = (i: number) => all[i].members.filter((m) => was.has(m.name)).length;
+    const most = Math.max(...mine.map(kept));
+    const best = mine.filter((i) => kept(i) === most);
+    if (best.length > 1) {
+      throw new Error(`${f.name}'s member "${f.member}" is in ${best.length} loops that keep as much of its profile — `
+        + `${best.map((i) => describeLoop(all[i], all)).join("; ")} — and regenerating cannot tell which is ${f.name}'s now`);
+    }
+    pick = best[0];
+  }
+  const profile = profileOf(model, all, pick, f.frame, words);
+  if (f.kind === "revolve") checkRevolve(model, profile, f.axis);
+  return profile;
+}
+
+/**
+ * The sweep plan for a found profile — with each loop the feature already had,
+ * member for member, **kept as the record wrote it**. findLoops may start a
+ * loop at another member or walk it the other way round; the same members are
+ * the same loop, and keeping the record's order keeps the twins, the
+ * dimension's pairs and the journal exactly as they were when nothing
+ * structural changed.
+ */
+function planRegen(model: Model, f: FeatureEntry, profile: Profile): SweepPlan {
+  const key = (l: ProfileMember[]) => l.map(memberText).sort().join("|");
+  const old = f.loops.map(key);
+  const found = profile.loops.map(key);
+  const same = old.length === found.length && old[0] === found[0]
+    && [...old].sort().join("\n") === [...found].sort().join("\n");
+  const loops = same ? f.loops : profile.loops.map((l, i) => {
+    const j = old.indexOf(found[i]);
+    return j >= 0 ? f.loops[j] : alignedTo(l, f.loops);
+  });
+  try {
+    return planSweep(model, { ...profile, loops });
+  } catch {
+    return planSweep(model, profile); // the record's order no longer walks; the found one does
+  }
+}
+
+/**
+ * A found loop started and walked as the record's loop sharing members with it
+ * was — from the first of those members, the same way round — so a rounded
+ * corner reads `l1,a1,l2,l3,l4` where the record read `l1,l2,l3,l4`, rather
+ * than wherever findLoops happened to begin. Order, not identity: the walk is
+ * read off the joins either way.
+ */
+function alignedTo(loop: ProfileMember[], old: ProfileMember[][]): ProfileMember[] {
+  const names = loop.map(memberName);
+  const ref = old.find((o) => o.some((m) => names.includes(memberName(m))));
+  if (!ref) return loop;
+  const order = ref.map(memberName).filter((n) => names.includes(n));
+  const start = names.indexOf(order[0]);
+  const forward = [...loop.slice(start), ...loop.slice(0, start)];
+  const back = [forward[0], ...forward.slice(1).reverse()];
+  const rising = (l: ProfileMember[]) => {
+    const at = order.map((n) => l.findIndex((m) => memberName(m) === n));
+    return at.filter((x, i) => i > 0 && x > at[i - 1]).length;
+  };
+  return rising(back) > rising(forward) ? back : forward;
+}
+
+/**
+ * **The diff and rebuild**: a feature's expansion brought into step with
+ * `plan`, its profile as it is now, keeping every piece whose identity
+ * survives — so a relation a user put on a twin or a wall is kept wherever the
+ * vertex or member it belongs to still exists.
+ *
+ * - A joined class of vertices that survives keeps its twin and its wall; a
+ *   new one gets both, made as the expansion makes them; one that has left the
+ *   profile loses both.
+ * - A member that survives with the same ends keeps its twin. A line whose end
+ *   was re-pointed (fillet's leg two) has its twin re-pointed to match
+ *   (`retargetLine`), so the twin entity — and what refers to it — survives. A
+ *   twin arc or circle whose ends or centre changed is made again: the model
+ *   has no primitive that re-points an arc, and no operation has needed one. A
+ *   new member gets a twin of its kind; a member that has gone loses its twin.
+ * - Crossings the profile now runs through are materialised, as `extrude`
+ *   does; one the feature made that the profile no longer runs through is
+ *   released with its holds.
+ * - The dimension keeps its name and value and is rebuilt in place to hold
+ *   exactly the new twins — `set`'s `REBUILD` path. The lid frame (a revolve's
+ *   end frames) keeps its name and points; an end frame no curve needs any
+ *   more goes, and one a new curve needs is made.
+ * - The record is rewritten in place (`rewriteFeature`), under the same name.
+ *
+ * What has gone goes **last, by the ordinary cascade** (`delOne`), once nothing
+ * of the feature names it: whatever referred to it goes with it — a user's
+ * relation on a vanished wall, the record of a feature built on it — as
+ * deleting it by hand would take them. Everything new is made in the order the
+ * expansion makes it, so a replay handed the same profile makes the same names,
+ * and the record lists what it owns in the order a fresh expansion would.
+ *
+ * Returns the profile resolved, for the journal, and the twins it re-pointed —
+ * pieces a feature built on this one's lid or end face may have in *its*
+ * profile, which the hook regenerates next.
+ */
+function rebuildFeature(model: Model, f: FeatureEntry, plan: SweepPlan): { loops: ProfileMember[][]; touched: string[] } {
+  const { frame, walked, classOf } = plan;
+  const dimName = f.kind === "extrude" ? f.depth : f.angle;
+  const dim = model.relationOf(dimName);
+  const value = dim.args[1] as number;
+  const kindOf = (n: string) => model.entities.get(n)?.kind;
+  const owns: string[] = [];
+  const made = (n: string) => { owns.push(n); return n; };
+  const touched: string[] = [];
+
+  // The points this feature materialised that the profile still runs through,
+  // with their holds (every relation it owns but its dimension), in the
+  // record's order; then whatever crossing is new.
+  const wasVertex = new Set(f.loops.flat().flatMap((m) => (typeof m === "string" ? [] : [m.from, m.to])));
+  const isVertex = new Set(plan.loops.flat().flatMap((m) => (typeof m === "string" ? [] : [m.from, m.to])));
+  const still = new Set(f.owns.filter((n) => kindOf(n) === "point" && wasVertex.has(n) && isVertex.has(n)));
+  for (const n of f.owns) {
+    if (still.has(n)) owns.push(n);
+    else if (n !== dimName && model.relations.has(n) && still.has(model.relationOf(n).args[0] as string)) owns.push(n);
+  }
+  materialise(model, plan, made);
+  const real = (v: string) => plan.made.get(v) ?? v;
+  const loops = resolvedLoops(plan);
+
+  const twinned = f.kind === "extrude" || f.end !== null;
+  const twins: string[][] = [];
+  const walls: string[] = [];
+  const pairs: string[] = [];
+  const framePairs: string[] = [];
+  let end: string | null = null;
+
+  if (twinned) {
+    // The old expansion, read back off the dimension: one twin per joined
+    // class (its point pairs, less the lid frame's own), and for a revolve the
+    // end frame of each frame a curve was drawn on.
+    const lidFrame = new Set(f.kind === "extrude" ? model.refsOf(model.frame(f.top)) : []);
+    const oldClass = new Map<number | string, { base: string; twin: string }>();
+    const oldFrames = new Map<string, string>();
+    const was = dim.args.slice(2) as string[];
+    for (let i = 0; i < was.length; i += 2) {
+      const [b, t] = [was[i], was[i + 1]];
+      if (kindOf(b) === "point" && kindOf(t) === "point" && !lidFrame.has(t)) {
+        const k = classKey(classOf, b);
+        if (!oldClass.has(k)) oldClass.set(k, { base: b, twin: t });
+      } else if (kindOf(b) === "frame") oldFrames.set(b, t);
+    }
+
+    // Where a new twin goes — its base moved by the depth, or turned through
+    // the angle, as the dimension holds it now — and which frame a curve's
+    // twin lies on.
+    let place: (p: string) => number[];
+    let planeFor: (p: string | undefined) => string | null | undefined;
+    if (f.kind === "extrude") {
+      const z = framePlaneAxes(model, frame)!.n;
+      place = (p) => model.coords(p).map((c, i) => c + value * z[i]);
+      owns.push(...model.refsOf(model.frame(f.top)), f.top);
+      planeFor = (p) => (p === frame ? f.top : p);
+      const [b, t] = [model.frame(frame), model.frame(f.top)];
+      framePairs.push(b.origin, t.origin, b.xref, t.xref, b.yref!, t.yref!);
+    } else {
+      const at = axisReader(model, f.axis).read();
+      place = (p) => turnPoint(model.coords(p), at, value);
+      // The end frames in revolveBody's order — the sketch frame's, then each
+      // frame a profile curve is drawn on — the old one wherever there was one.
+      const frames = [frame];
+      for (const loop of walked) {
+        for (const m of loop) {
+          const p = model.planeOf(model.entities.get(m.name)!);
+          if (p !== undefined && !frames.includes(p)) frames.push(p);
+        }
+      }
+      const twinFrame = new Map<string, string>();
+      for (const fr of frames) {
+        const old = oldFrames.get(fr);
+        if (old !== undefined) {
+          owns.push(...model.refsOf(model.frame(old)), old);
+          twinFrame.set(fr, old);
+        } else {
+          const b = model.frame(fr);
+          const [to, tx, ty] = [b.origin, b.xref, b.yref!].map((p) => made(model.addPoint(place(p)).name));
+          twinFrame.set(fr, made(model.addFrame(to, tx, ty).name));
+        }
+      }
+      end = twinFrame.get(frame)!;
+      planeFor = (p) => (p === undefined ? null : twinFrame.get(p)!);
+      for (const [fr, tf] of twinFrame) framePairs.push(fr, tf);
+    }
+
+    // One twin per joined class, in walk order: the old one where the class
+    // survives, else a new one where the expansion would put it.
+    const byClass = new Map<number | string, { base: string; twin: string }>();
+    const twinOf = (p: string): string => {
+      const k = classKey(classOf, p);
+      let t = byClass.get(k);
+      if (!t) {
+        t = oldClass.get(k) ?? { base: p, twin: model.addPoint(place(p)).name };
+        byClass.set(k, t);
+        owns.push(t.twin);
+      }
+      return t.twin;
+    };
+    for (const loop of walked) for (const m of loop) twinPoints(model, m, real, twinOf);
+
+    // Each member's twin: the old one, matched by entity and then by ends —
+    // kept as it is, or re-pointed where it is a line — else a new one.
+    const oldTwins = f.twins.flat();
+    const old = f.loops.flat().map((m, i) => ({ text: memberText(m), name: memberName(m), twin: oldTwins[i], used: false }));
+    const matched = (m: ProfileMember): string | undefined => {
+      const same = old.filter((o) => !o.used && o.name === memberName(m));
+      const hit = same.find((o) => o.text === memberText(m)) ?? same[0];
+      if (hit) hit.used = true;
+      return hit?.twin;
+    };
+    walked.forEach((loop, i) => {
+      twins.push(loop.map((m, j) => {
+        const e = model.entities.get(m.name)!;
+        const was = matched(loops[i][j]);
+        const t = was === undefined ? undefined : model.entities.get(was);
+        if (t?.kind === "line" && e.kind === "line") {
+          const want = m.ends!.map((v) => twinOf(real(v)));
+          // Re-pointed end by end; a twin wanted the other way round is made again.
+          if (t.refs[0] === want[0] || t.refs[1] !== want[0]) {
+            for (const k of [0, 1]) {
+              if (t.refs[k] !== want[k]) {
+                model.retargetLine(t.name, t.refs[k], want[k]);
+                touched.push(t.name);
+              }
+            }
+            return made(t.name);
+          }
+        } else if (t?.kind === "arc" && (e.kind === "arc" || (e.kind === "circle" && m.part))) {
+          const [s, n] = m.ends!.map((v) => twinOf(real(v)));
+          if (t.center === twinOf(e.center) && t.start === s && t.end === n && t.plane === planeFor(e.plane)) return made(t.name);
+        } else if (t?.kind === "circle" && e.kind === "circle" && !m.part) {
+          if (t.center === twinOf(e.center) && t.plane === planeFor(e.plane)) return made(t.name);
+        }
+        return made(twinMember(model, m, real, twinOf, planeFor));
+      }));
+    });
+
+    if (f.kind === "extrude") {
+      // A wall at every corner, once per joined class — the old wall wherever
+      // it still stands between the class's base and its twin.
+      const oldWall = new Map<number | string, string>();
+      for (const w of f.walls) {
+        const k = classKey(classOf, model.line(w).refs[0]);
+        if (!oldWall.has(k)) oldWall.set(k, w);
+      }
+      const walled = new Set<number | string>();
+      for (const loop of walked) {
+        for (const m of loop) {
+          if (m.from === null) continue;
+          const k = classKey(classOf, real(m.from));
+          if (walled.has(k)) continue;
+          walled.add(k);
+          const { base, twin } = byClass.get(k)!;
+          const w = oldWall.get(k);
+          const stands = w !== undefined && model.line(w).refs[0] === base && model.line(w).refs[1] === twin;
+          walls.push(made(stands ? w : model.addLine(base, twin).name));
+        }
+      }
+    }
+
+    // The pairs in the expansion's order: corners and centres, then the
+    // curves' radii, then the frames.
+    for (const { base, twin } of byClass.values()) pairs.push(base, twin);
+    walked.forEach((loop, i) => loop.forEach((m, j) => { if (m.kind !== "line") pairs.push(m.name, twins[i][j]); }));
+    pairs.push(...framePairs);
+  }
+
+  owns.push(dimName);
+  const args = [dim.args[0], value, ...pairs];
+  const rebuild = REBUILD[dim.op];
+  model.rebuildRelation(dimName, dim.op, args, () => rebuild(model, args));
+
+  const on = [...builtOn(plan), frame, ...(f.kind === "revolve" ? [referentOf(f.axis)!] : [])];
+  const names = [...new Set([...on, ...owns])];
+  if (f.kind === "extrude") {
+    model.rewriteFeature(f.name, { kind: "extrude", member: f.member, frame, top: f.top, depth: f.depth, loops, twins, walls, names, owns });
+  } else {
+    model.rewriteFeature(f.name, { kind: "revolve", member: f.member, frame, axis: f.axis, angle: f.angle, loops, twins, end, names, owns });
+  }
+
+  // What has gone, last: nothing of the feature names it now, so the ordinary
+  // cascade takes it and whatever needed it, and leaves the feature be.
+  const keep = new Set(owns);
+  for (const n of f.owns) if (!keep.has(n) && model.has(n)) delOne(model, n);
+  return { loops: resolvedLoops(plan), touched };
+}
+
+/**
+ * Regenerates a feature — `regen("e1")` — bringing its expansion back into
+ * step with its profile as it is now, keeping every piece whose identity
+ * survives (see `rebuildFeature`); then every feature built on a piece it
+ * re-pointed. Returns the feature's name.
+ *
+ * `fillet` does this by itself, for every feature on a leg it rounds (see
+ * `regenerateAfter`). This is the explicit door, for a profile restructured
+ * any other way: a line drawn across a region after it was extruded, a hole
+ * drawn inside it, an end re-pointed at the command line. Not on a solve, a
+ * drag or a `set`: those move geometry and restructure nothing, and a
+ * feature's faces are read off live geometry already. On an untouched feature
+ * it changes nothing — the same twins, walls and names — and journals once.
+ *
+ * Refuses a name that is no feature, and a feature whose profile is gone (see
+ * `refoundProfile`), before it changes anything. A feature built on this one
+ * whose profile can no longer be found is left as it was, as `fillet` leaves
+ * one.
+ *
+ * **Journalled as the call, with what it found resolved** — `regen("e1",
+ * [["e1", [["l1","a1","l2","l3","l4"]]]])`, each feature it regenerated with
+ * its profile — `extrude`'s rule, for `extrude`'s reason. A replay handed the
+ * list walks those profiles by their joins and looks for nothing.
+ */
+export function regen(model: Model, feature: string, regenerated?: unknown): string {
+  if (typeof feature !== "string" || !model.features.has(feature)) {
+    const kind = typeof feature !== "string" ? null
+      : model.entities.get(feature)?.kind ?? (model.relations.has(feature) ? "relation" : null);
+    const what = kind === null ? "is not a feature" : `is a ${kind}, not a feature`;
+    throw new Error(`${JSON.stringify(feature)} ${what} — regen takes a feature's name, as ls() lists them (e1, e2, …)`);
+  }
+  if (regenerated != null) {
+    const given = givenRegenerated(regenerated, "regen");
+    return model.asOperation("regen", [feature, given], () => { regenerateGiven(model, given); return feature; });
+  }
+  const f = model.featureOf(feature);
+  const plan = planRegen(model, f, refoundProfile(model, f));
+  let out: Regenerated[] = [];
+  return model.asOperation("regen", () => [feature, out], () => {
+    out = regenerateFound(model, [feature], plan);
+    return feature;
+  });
 }
 
 // --- editing a dimension ----------------------------------------------------

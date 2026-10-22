@@ -7,6 +7,61 @@ decisions.
 
 ---
 
+## Fillet an extruded corner and the lid is rounded too: features follow their profiles
+
+![Before: a 40 by 30 rectangle on a tilted sketch plane, extruded 20 and turned so the lid faces the viewer, its base seen through it; one base corner has been rounded with the fillet tool — the base shows the arc from p5 round to p15 with its R8 label — but the lid above it is still four-cornered, its right-hand edge running on a slant from p12, over the tangent point, to the far corner p13](docs/images/78-before-regeneration-a-square-lid-over-a-rounded-base.png)
+
+**The bug, measured first.** Extrude a rectangle, then fillet one of its base
+corners: the solver reported SOLVED, every relation satisfied, and the lid was
+wrong. `fillet` keeps the corner as leg one's tangent point — moving it 8 along
+leg one — and re-points leg two at a new tangent point; the lid's corner twin,
+held 20 over the corner, went with it, but the lid's copy of leg two still ran
+from that twin to the far corner. So the lid was a quadrilateral whose edge
+over leg two **leaned 14.9°** (atan 8/30) where the leg is plumb, over a base
+with an arc in it; no twin arc, no twin for the new tangent point, no wall
+there (`test/regen.test.ts`'s first case keeps that measurement, with the
+regeneration a version-8 file's fillet still has: none).
+
+![After: the same rectangle and fillet, the same view: the lid's corner is rounded exactly as the base's, a twin arc from p12 round to p18 about the twin centre p17, a new wall from p15 up to p18, and the curved wall between the two arcs shaded](docs/images/79-the-lid-rounded-as-the-base-is.png)
+
+**Now a feature's expansion follows its profile.** The fillet tool's two
+clicks round the base and the lid together, in one journal entry and one undo
+step: the twin arc lies on the lid frame about the centre's twin, the new
+tangent point gets a twin and a wall, and leg two's copy on the lid is **the
+same line, re-pointed** — so a relation on it, or on any twin or wall whose
+corner is still there, survives. The depth dimension keeps its name and value
+and is rebuilt to hold the new twins, so `set` carries the rounded lid:
+
+![The rounded solid with its depth set to 35: the lid, twin arc and all, 35 over the base, the walls stretched, the label reading 35](docs/images/80-the-rounded-lid-set-to-35.png)
+
+```js
+> fillet("l1", "l2", 8)          // l1…l4 extruded 20 off sketch frame t
+a1
+> journal().at(-1)
+{ op: "fillet", args: ["l1", "l2", 8, "t", [["e1", [["l1","a1","l2","l3","l4"]]]]] }
+> regen("e1")                    // nothing structural changed: nothing changes
+e1
+```
+
+Every feature standing on either leg regenerates — two extrudes of one sketch
+(up and down) both round; a revolve's end face rounds about the axis; a solid
+extruded on the lid follows the lid edge that moved. Where a vertex has really
+gone, its twin and wall go by the ordinary cascade, taking what was on them.
+**`regen("e1")`** is the explicit door for a profile changed by hand: draw a
+line across an extruded plate and `regen` makes it the half its member is in —
+the crossings made points, the far corners' twins and walls released, the
+surviving edges' twins re-pointed rather than remade. On an untouched feature
+it changes nothing and journals once; on a feature whose profile is gone it
+refuses, by name, and changes nothing. Not on a solve, a drag or a `set`: those
+move geometry, and faces are drawn from live geometry already.
+
+**The file is version 9.** A fillet that regenerated carries what it
+regenerated, profiles resolved — `extrude`'s rule, because a replay runs on
+seeds where a profile of free lines has no loop to find — and `regen` is a new
+op. A version-8 file opens exactly as it was: its fillets regenerated nothing,
+and one with a feature on a leg is read as saying so. 787 unit tests (15 new
+in `test/regen.test.ts`), 270 e2e (7 new in `test/e2e/regen.e2e.ts`).
+
 ## A stepped block from one sketch: split regions extrude and revolve
 
 ![A plate on a tilted sketch plane with a line drawn across it, turned off square: the half left of the line is extruded 10 deep and the half right of it 20 deep, so the solid steps up at the line, the riser between the two lids shaded like the walls; the line's ends stick out past the plate above and below, and the two points where it crosses the plate's edges each wear two small "on" marks. Beside it, up and to the right, two crossing circles on the same plane, and the lens between them extruded 15 into a lens-shaped solid with curved walls](docs/images/76-a-stepped-block-and-a-lens-from-one-sketch.png)
