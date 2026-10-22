@@ -465,12 +465,20 @@ export function neocadScope(h: EnvHandles): Bag {
   // Operations change the model's structure rather than only adding
   // equations — see operations.ts for why that is worth keeping separate.
   const operations: Bag = {
-    fillet: (l1: string, l2: string, r: number, plane?: string | null) => fillet(model, l1, l2, r, plane),
+    /**
+     * Rounds the corner two lines meet at, and regenerates every feature
+     * standing on either line, so an extruded corner rounds the lid as well as
+     * the sketch. `regenerated` is what the journal carries — the features it
+     * regenerated, profiles resolved — and never needs typing. See
+     * operations.ts.
+     */
+    fillet: (l1: string, l2: string, r: number, plane?: string | null, regenerated?: unknown) =>
+      fillet(model, l1, l2, r, plane, regenerated),
     /**
      * Brings a feature back into step with its profile as it is now —
      * `regen("e1")` — keeping every twin and wall whose vertex or member is
-     * still there, and returns its name. For a profile restructured by hand.
-     * See operations.ts.
+     * still there, and returns its name. For a profile restructured by hand;
+     * `fillet` does it by itself. See operations.ts.
      */
     regen: (feature: string, regenerated?: unknown) => regen(model, feature, regenerated),
     /**
@@ -830,9 +838,11 @@ function help(scope: Bag): string {
     "           (radians; its label reads degrees); a full one has none, and",
     "           turning it partial is a new revolve, not a set. The revolve tool:",
     '           arm("revolve", { angle }), click inside a region, then the axis.',
-    '           regen("e1") brings a feature back into step with a profile you',
-    "           changed by hand — a line drawn across it, a hole drawn in it —",
+    "           A feature follows its profile: fillet a corner of an extruded",
+    "           or revolved sketch and the lid (or end face) is rounded too,",
     "           keeping every twin and wall whose corner is still there.",
+    '           regen("e1") does the same for a profile you changed by hand —',
+    "           a line drawn across it, a hole drawn in it.",
     "files      save()  open(text)  download(name)  openFile()  journal()",
     "           a file carries the source of tools you defined here, as text:",
     "           open() never runs it, toolSource(name) prints it, and pasting",

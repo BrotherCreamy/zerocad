@@ -86,19 +86,31 @@ function corner(model: Model, l1Name: string, l2Name: string) {
  *
  * Returns the new arc's name.
  */
-export function fillet(model: Model, l1Name: string, l2Name: string, r: number, plane?: string | null): string {
+export function fillet(model: Model, l1Name: string, l2Name: string, r: number, plane?: string | null,
+                       regenerated?: unknown): string {
   if (model.dim !== 2 && model.dim !== 3) throw new Error("fillet rounds a corner in a 2D or 3D model");
   if (!(r > 0)) throw new Error("fillet needs a positive radius");
   if (model.dim === 2 && plane != null) {
     throw new Error("a 2D fillet takes no plane — its arc lies in the one plane a 2D model has");
   }
   const frame = model.dim === 3 ? model.resolveFrame(plane) : null;
+  const given = regenerated == null ? null : givenRegenerated(regenerated, "fillet");
   // Journalled as the one call the user made, not as the entities and
   // relations it expands into — replaying it re-expands them identically. The
   // plane is journalled resolved, and only where there is one: a 2D fillet's
-  // entry is the three arguments it always was.
+  // entry is the three arguments it always was. So is the regeneration — the
+  // features standing on a leg, with what each profile became — and only where
+  // there was such a feature, so a fillet that touched none journals exactly
+  // what it always did.
   const args: unknown[] = frame == null ? [l1Name, l2Name, r] : [l1Name, l2Name, r, frame];
-  return model.asOperation("fillet", args, () => filletBody(model, l1Name, l2Name, r, frame));
+  let after: Regenerated[] | null = null;
+  return model.asOperation("fillet", () => (after === null ? args : [l1Name, l2Name, r, frame, after]), () => {
+    const arc = filletBody(model, l1Name, l2Name, r, frame);
+    // A profile with a rounded corner is a restructured profile: every feature
+    // standing on either leg follows it, inside this same call.
+    after = regenerateAfter(model, [l1Name, l2Name], given);
+    return arc;
+  });
 }
 
 /**
