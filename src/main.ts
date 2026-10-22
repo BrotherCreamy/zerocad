@@ -17,7 +17,7 @@ import { ToolEngine, type View } from "./tools/engine.ts";
 import { describePick, type Pick } from "./picking.ts";
 import { ContextMenu, menuFor } from "./menu.ts";
 import { toolUnavailable } from "./toolavail.ts";
-import { frameMarker } from "./framemarker.ts";
+import { FRAME_ARM_PX, frameMarker } from "./framemarker.ts";
 import { constrainedBy, type Glyph } from "./glyphs.ts";
 import { getToolCtor, listTools } from "./tools/tool.ts";
 import { Panels, Toolbar, browserStorage, defaultLayout } from "./panels.ts";
@@ -26,6 +26,9 @@ import { depth } from "./view.ts";
 import { arcSamples, arcSegments } from "./arcgeom.ts";
 import { curveFrame } from "./curveplane.ts";
 import { createFaceLayer, paintFaces } from "./facelayer.ts";
+import { visibleFaces } from "./faces.ts";
+import { hiddenInk, inkRuns, occlusion, type Occlusion } from "./occlusion.ts";
+import { frameBasis } from "./relations/refs.ts";
 import type { Entity } from "./model.ts";
 import "./tools/point.ts";
 import "./tools/line.ts";
@@ -154,9 +157,18 @@ async function main() {
     // front answered per pixel by the depth layer under this canvas. The
     // entities — edges, points, glyphs — then go on top, hidden ones included,
     // so the sketch stays legible on a shaded solid and nothing a hand aims at
-    // is ever behind a face. Faces are display only: they never pick or snap.
+    // is ever behind a face; a hidden edge is told apart by its ink alone.
+    // Faces are display only: they never pick or snap.
     if (faceLayer) faceLayer.draw(model, view, r.width, r.height);
     else paintFaces(g, model, view);
+
+    // What of the drawing is behind a face — asked of the same faces on the
+    // CPU (occlusion.ts), whichever renderer drew them, so an edge's hidden
+    // stretches can be inked dimmed. The drawing still goes on top of the
+    // faces and still picks as before; only the ink changes. No solid, no
+    // question: a plain sketch draws exactly as it always has, at no cost.
+    const faces = model.features.size ? visibleFaces(model, view) : [];
+    occluded = faces.length ? occlusion(faces, view) : null;
 
     // Painter's order, far to near, one depth per entity, for the wireframe on
     // top. Curves and frames are one pass and points a second on top, as they
@@ -167,12 +179,9 @@ async function main() {
     const all = [...model.entities.values()];
 
     for (const e of byDepth(all.filter((x) => x.kind !== "point"))) {
-      g.strokeStyle = stroke(e.name);
       g.lineWidth = weight(e.name);
       if (e.kind === "line") {
-        const [ax, ay] = engine.worldToScreen(model.coords(e.refs[0]));
-        const [bx, by] = engine.worldToScreen(model.coords(e.refs[1]));
-        g.beginPath(); g.moveTo(ax, ay); g.lineTo(bx, by); g.stroke();
+        strokeEdge([model.coords(e.refs[0]), model.coords(e.refs[1])], false, stroke(e.name));
       } else if (e.kind === "circle" || e.kind === "arc") {
         // In its plane (see curveplane.ts): a circle the full turn round its
         // centre in its frame's orientation, an arc counter-clockwise from
@@ -184,16 +193,7 @@ async function main() {
         // silhouette until it carried a plane: round from every angle, which
         // was the phase-2 seam showing.)
         const f = curveFrame(model, e);
-        if (f) {
-          const pts = arcSamples(f, arcSegments(f.sweep, f.r * view.scale)).map((w) => engine.worldToScreen(w));
-          g.beginPath();
-          g.moveTo(...pts[0]);
-          for (const pt of pts.slice(1)) g.lineTo(...pt);
-          // A circle's last sample is its first; closing the path joins them
-          // as a corner like any other rather than leaving two butt ends.
-          if (e.kind === "circle") g.closePath();
-          g.stroke();
-        }
+        if (f) strokeEdge(arcSamples(f, arcSegments(f.sweep, f.r * view.scale)), e.kind === "circle", stroke(e.name));
       } else if (e.kind === "frame") {
         drawFrame(e.name, lit.has(e.name));
       }
@@ -267,6 +267,50 @@ async function main() {
   }
 
   /**
+   * This frame's faces, ready to say what is behind them — null when there is
+   * no solid to be behind, which is what keeps a plain sketch's drawing exactly
+   * what it was. Set by `render` before the entity pass, read by `strokeEdge`.
+   */
+  let occluded: Occlusion | null = null;
+
+  /**
+   * An edge — a polyline in the world: a line's two ends, a curve's drawn
+   * samples, a frame's arm — stroked in `colour` where nothing is in front of
+   * it and in its hidden ink where a face is (occlusion.ts), at the context's
+   * current width. Returns the ink its last point was drawn in, for whatever
+   * is drawn at that end (a frame's arrowhead).
+   *
+   * An edge all in one ink is the path the entity pass always drew, the same
+   * calls in the same order: a circle's last sample is its first, and closing
+   * the path joins them as a corner like any other rather than leaving two
+   * butt ends. Only an edge a face cuts is drawn as runs.
+   */
+  function strokeEdge(world: number[][], closed: boolean, colour: string): string {
+    const runs = occluded ? inkRuns(occluded, world, closed) : null;
+    if (!runs || runs.length === 1) {
+      const ink = runs && runs[0].hidden ? hiddenInk(colour) : colour;
+      const pts = world.map((w) => engine.worldToScreen(w));
+      g.strokeStyle = ink;
+      g.beginPath();
+      g.moveTo(...pts[0]);
+      for (const pt of pts.slice(1)) g.lineTo(...pt);
+      if (closed) g.closePath();
+      g.stroke();
+      return ink;
+    }
+    let ink = colour;
+    for (const run of runs) {
+      ink = run.hidden ? hiddenInk(colour) : colour;
+      g.strokeStyle = ink;
+      g.beginPath();
+      g.moveTo(...run.points[0]);
+      for (const pt of run.points.slice(1)) g.lineTo(...pt);
+      g.stroke();
+    }
+    return ink;
+  }
+
+  /**
    * How near the viewer an entity is, for the painter's sort: a point's own
    * depth, the middle of a line, the centre of a circle or arc, a frame's
    * origin. One number per entity is coarse — a long edge crossing a short one
@@ -308,6 +352,12 @@ async function main() {
   function drawFrame(name: string, lit: boolean) {
     const marker = frameMarker(model, view, name);
     if (!marker) return; // collapsed onto its own origin: no axes to draw
+    // The arms in the world, for asking what is in front of them: an arm is
+    // its axis from the origin for as far as its fixed pixel length reaches
+    // (framemarker.ts), so its screen tip is exactly the marker's.
+    const basis = frameBasis(model, name)();
+    const reach = FRAME_ARM_PX / view.scale;
+    const armEnd = (u: number[]) => basis.origin.map((c, i) => c + (u[i] ?? 0) * reach);
     const isDefault = model.defaultFrame === name;
     const colour = lit ? "#e8a33d" : isDefault ? "#c9dcec" : "#7b93a8";
     g.save();
@@ -315,9 +365,9 @@ async function main() {
     g.fillStyle = colour;
     g.lineWidth = lit ? 2.2 : isDefault ? 1.6 : 1.2;
     g.font = "10px ui-monospace, Menlo, monospace";
-    const arms: [[number, number], string][] = [[marker.x, "x"], [marker.y, "y"]];
-    if (marker.z) arms.push([marker.z, "z"]);
-    for (const [tip, letter] of arms) {
+    const arms: [[number, number], string, number[]][] = [[marker.x, "x", basis.ux], [marker.y, "y", basis.uy]];
+    if (marker.z && basis.uz) arms.push([marker.z, "z", basis.uz]);
+    for (const [tip, letter, axis] of arms) {
       const [dx, dy] = [tip[0] - marker.origin[0], tip[1] - marker.origin[1]];
       const len = Math.hypot(dx, dy);
       if (!(len > 0.5)) {
@@ -327,9 +377,17 @@ async function main() {
         continue;
       }
       const [ux, uy] = [dx / len, dy / len];
-      g.beginPath();
-      g.moveTo(marker.origin[0], marker.origin[1]);
-      g.lineTo(tip[0], tip[1]);
+      if (occluded) {
+        // With a solid about, an arm is an edge like any other — dimmed where
+        // a face is in front of it — and its head takes the ink the arm
+        // reached its tip in. The letters are labels and keep their colour.
+        g.strokeStyle = strokeEdge([basis.origin, armEnd(axis)], false, colour);
+        g.beginPath();
+      } else {
+        g.beginPath();
+        g.moveTo(marker.origin[0], marker.origin[1]);
+        g.lineTo(tip[0], tip[1]);
+      }
       // An arrowhead as two strokes rather than a filled triangle: at this size
       // a fill reads as a blob, and the open head is what a datum triad uses.
       for (const s of [1, -1]) {

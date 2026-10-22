@@ -7,6 +7,78 @@ decisions.
 
 ---
 
+## Hidden edges, dimmed: a shaded solid reads as a solid
+
+![Before: the stepped block from the front, the right and above, with a boss on its tall step's front wall; every edge in the same full ink, so the base's back edge, the far uprights and the cut line under the block look as near as the edges in front](docs/images/88-before-hidden-edges-stepped-block-all-in-full-ink.png)
+![After: the same view: the base's back edge, the far uprights, the cut line under the block and the part of the boss's foot circle behind the boss are drawn in a dull blue-grey; the edges in front, every point and name and every glyph are as they were](docs/images/89-stepped-block-hidden-edges-dimmed.png)
+
+**The drawing stays on top of the solid, and what a hand aims at is never
+behind a face; the part of an edge behind a face is drawn in a dimmed ink** —
+a drafting convention's hidden line. Nothing about picking, snapping, dragging
+or boxing changed: a dimmed edge picks where it is dimmed (tested). Points,
+names, a frame's letters and glyphs are never dimmed; a frame's arms are edges
+and are. A hovered edge stays amber, dimmed where hidden. No dashes: at this
+stroke width they turn to noise on a curved sweep.
+
+**Which part is hidden is asked of the faces, on the CPU**, by
+`src/occlusion.ts` — the e2e oracle that grades the depth layer, lifted out of
+the harness, which now imports it: one implementation, tested in Node. A
+sample of an edge is hidden when a visible face's screen box and then its
+even-odd outlines hold its pixel and the sample is more than half a pixel
+behind that face's plane, **measured square to the plane** — along the ray
+the quarter-pixel a curve is drawn to is multiplied by 1/cos of the grazing
+angle, and a strip seen nearly edge-on would hide its own boundary (tested
+about a degree off edge-on). Edges are sampled at least every 4 px; runs are
+cut half-way between disagreeing samples, within 2 px of the true crossing
+(tested on 40 random lines and views). The ink is the edge's colour 40% of the
+way from the faces' mid tone, solid, so it is one colour over any face.
+
+![The boss on a plate from the same side: the far half of the boss's foot circle and the plate's back and left base edges dimmed; the boss's top circle and the plate's near edges in full ink](docs/images/90-boss-on-a-plate-hidden-edges-dimmed.png)
+![A filleted profile turned a whole turn: the profile at the back of the sweep is dimmed where the sweep covers it — its outer wall and base — and in full ink along the top and down the bore as far as the hole's near rim](docs/images/91-filleted-turn-profile-dimmed-where-the-sweep-covers-it.png)
+
+**A plain sketch draws pixel for pixel as before**: with no solid nothing is
+asked and the old stroke calls run. Held against a picture *the previous
+build* drew — recorded in its own commit before the pass existed
+(`test/e2e/golden/hidden-plain-sketch.png`). The painter's fallback dims the
+same edges: it is the same 2D pass.
+
+**Measured** (`npm run measure:hidden`; headless Chromium, SwiftShader, 1100 ×
+768, a shared 4-core machine whose load ran from 5 to 12 while it ran). The
+build before and this one were measured alternately, three rounds, each the
+median of three fresh apps × 90 frames of an orbit:
+
+| scene | frame, before → after (ms, three rounds) | `render()`, mean before → after |
+|---|---|---|
+| stepped block + boss, 22 faces | 74.0 → 75.5, 72.0 → 50.0, 39.8 → 37.5 | 1.51 → 2.18 ms |
+| boss on a plate, 22 faces | 76.7 → 60.3, 49.4 → 49.5, 33.7 → 34.2 | 1.25 → 1.83 ms |
+| filleted full turn, 650 faces | 85.5 → 89.4, 52.7 → 54.2, 36.4 → 49.6 | 4.33 → 7.49 ms |
+
+The frame interval is the GPU process rasterising in software and is mostly
+noise here; `render()` is the main thread's share. The pass alone, timed in the
+page over the same views (medians of six runs), against the faces' own
+main-thread work, derived and drawn:
+
+| scene | faces | the pass | samples × faces → pairs past the box test |
+|---|---|---|---|
+| stepped block + boss | 0.54 ms | 1.19 ms | 1 226 × 22 → 3 547 |
+| boss on a plate | 0.43 ms | 0.90 ms | 838 × 22 → 2 196 |
+| filleted full turn | 3.73 ms | 2.26 ms | 238 × 860 → 2 650 |
+
+About twice the faces' cost where there are few faces, and less than it on the
+full turn, where faces whose boxes miss an edge's are dropped before its
+samples are asked.
+
+To see it: any solid, orbited (right-drag) until some of its edges are behind
+it.
+
+**Known and deliberate:** a face seen within about a degree of edge-on hides
+only what is more than half a pixel behind its plane, which along the ray can
+be far; an edge that is hidden but ends on the silhouette keeps up to 2 px of
+full ink at that end (the seam's slack); the golden picture is tied to the
+e2e browser, which is pinned, and is re-recorded only on purpose
+(`NEOCAD_E2E_GOLDEN_RECORD`). 797 unit tests (nine new), 284 e2e (seven new). Spec:
+[`docs/plans/hidden-edges.md`](docs/plans/hidden-edges.md).
+
 ## The tool tray: icons, held inside, turning with the edge it meets
 
 The owner, verbatim, on the panels package:

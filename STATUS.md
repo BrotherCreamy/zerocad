@@ -1318,7 +1318,9 @@ replacing) the system Node other projects on this machine may depend on.
   headless). `Tool.snaps` (new, default true) is false for it, so the engine
   neither snaps nor draws a marker. Idle clicks are unchanged. 600 unit tests,
   210 e2e.
-  *Known and deliberate:* hidden edges show through faces; interpenetrating
+  *Known and deliberate:* the drawing stays over the faces, hidden edges
+  included *(their hidden runs dimmed since 2026-10-22 — see "Hidden edges,
+  dimmed" below)*; interpenetrating
   solids can sort wrong where they cross *(fixed 2026-10-22: faces are drawn
   by depth — see "Faces drawn by depth" below; the sort described here is now
   only the fallback's, by centroid)*; faces never pick, snap, box or wear a
@@ -1638,12 +1640,44 @@ replacing) the system Node other projects on this machine may depend on.
   pixels (`app.pixels`), and checks a picture against an oracle casting each
   pixel's ray at the faces' planes (`nearestFaces`, `checkPicture`); scenes
   shared with the measurement in `test/e2e/scenes.ts`. 788 unit tests, 277
-  e2e. *Known and deliberate:* hidden edges show through (the
-  drawing-over-the-solid rule); the fallback's centroid sort is wrong where any
+  e2e. *Known and deliberate:* the drawing stays over the solid (its hidden
+  parts dimmed since — the next entry); the fallback's centroid sort is wrong where any
   sort is, a grazing lid past its own hole's far wall included, and a test
   holds it to that; nothing tests a lost context; in a browser with no GPU a
   frame is ~45 ms whichever renderer draws it. *Spec:*
   [`docs/plans/display-depth.md`](docs/plans/display-depth.md).
+
+- **Hidden edges, dimmed** (`src/occlusion.ts` (new), `strokeEdge` and
+  `drawFrame` in `src/main.ts`; `nearestFaces` in `test/e2e/harness.ts` now
+  imports the module). The drawing stays on top of the faces and picks, snaps
+  and drags as before; **the part of an edge behind a face is stroked in a
+  dimmed ink**. `occlusion(faces, view)` projects every visible face once a
+  frame with its screen box and plane; `hidden(occ, world)` asks whether a face
+  covers the point's pixel (box, then even-odd over its outlines) with the
+  point more than `SLACK_PX` (½ px) of world behind its plane, measured square
+  to the plane; `inkRuns(occ, polyline, closed)` samples a polyline at its
+  vertices and at least every `SAMPLE_PX` (4 px) between, first dropping the
+  faces whose boxes miss the edge's, and returns runs of screen points, the
+  seam half-way between disagreeing samples; `hiddenInk(css)` is the colour
+  `HIDDEN_KEEP` (40%) of the way from `faceRGB(0.5)`. `nearestFace` and
+  `outlineDistance` are the e2e oracle's two questions. `main.ts` asks only
+  when the model has a feature with a visible face; an edge all one ink is
+  stroked by the old calls. Frames' arms are edges; points, names, letters
+  and glyphs are untouched. **Measured** (`npm run measure:hidden`): see the
+  CHANGELOG. **Tests**: `test/occlusion.test.ts` (box from a corner, no faces,
+  grazing, the slack at three zooms, three runs with bounded seams, 40 random
+  lines' seams, a ring, the oracle, the ink) and `test/e2e/hidden.e2e.ts` (a
+  plain sketch pixel for pixel against the previous build's recorded drawing,
+  `test/e2e/golden/hidden-plain-sketch.png`; the stepped block's hidden and
+  near edges and a hidden point's dot; frame arms; a lit line amber in front
+  and dimmed amber under, picking where dimmed; the boss on a plate; the
+  painter's fallback). 797 unit tests (nine new), 284 e2e (seven new). *Known and deliberate:* a face seen within
+  about a degree of edge-on hides only what is more than half a pixel behind
+  its plane; a hidden edge that ends on the silhouette keeps up to 2 px of
+  full ink at that end; the golden picture is tied to the e2e browser (pinned
+  SwiftShader) and is re-recorded only deliberately
+  (`NEOCAD_E2E_GOLDEN_RECORD`). *Spec:*
+  [`docs/plans/hidden-edges.md`](docs/plans/hidden-edges.md).
 
 - **The tool tray: icons, held inside, turning with the edge it meets**
   (`src/tools/icons.ts` (new), `src/panels.ts`, the toolbar host in

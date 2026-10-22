@@ -636,10 +636,41 @@ is, a grazing lid past its own hole's far wall included (the case the deleted
 nearest-point key existed for; a test holds the fallback to it). It exists so
 a browser without WebGL still sees solids, not to be right.
 
-**The entities draw over the faces, hidden ones included** — so the sketch
-stays legible on a solid, at the price of hidden edges showing through — and a
-face never picks, snaps, boxes or wears a glyph: the pieces of a solid are what
-a hand aims at. The faces canvas has `pointer-events: none`; every listener is
+**The entities draw over the faces, hidden ones included, and the part of an
+edge behind a face is drawn in a dimmed ink** — the drafting convention for a
+hidden line, so a shaded solid reads as a solid and the sketch under it stays
+legible. Only the ink changes: every edge, point, name and glyph is still drawn
+on top and still picks, snaps and drags as before, and a face never picks,
+snaps, boxes or wears a glyph: the pieces of a solid are what a hand aims at.
+Points, names, a frame's letters and glyphs are never dimmed (a dimmed name is
+unreadable, a point is a target); a frame's arms are edges and dim like edges.
+
+*Which part is hidden is asked of the faces on the CPU* (`occlusion.ts`), not
+read back from the depth buffer, which would stall the frame. Each visible
+face is projected once a frame with its screen box; an edge — a line's two
+ends, a curve's drawn samples, a frame's arm — is sampled at least every 4 px
+on screen, and a sample is hidden when a face's box and then its even-odd
+outlines hold its pixel and the sample is more than half a pixel's worth of
+world *behind the face's plane, measured square to the plane*. Not along the
+ray: an edge lies in its own faces only to the quarter-pixel a curve is drawn
+to, and along the ray that error is multiplied by 1/cos of the grazing angle,
+so a face seen nearly edge-on would hide its own boundary. Runs of samples with
+one answer are stroked in full or hidden ink, the seam half-way between the two
+samples that disagree — within 2 px of the true crossing, which is the
+convention's resolution anyway. The hidden ink is the edge's colour 40% of the
+way from the faces' mid tone, a solid colour (the same over any face, and amber
+stays amber when lit); no dashes, which at this stroke width are noise on a
+curved sweep. With no solid nothing is asked and the old stroke calls run as
+they were, pixel for pixel (a test holds it to a picture the build before drew).
+The painter's fallback gets the same dimming: it is the same 2D pass. Measured
+(`npm run measure:hidden`, medians of six runs): the pass costs 1.2 ms a frame
+on the stepped block and 2.3 ms on a filleted full turn of 860 strips, against
+0.5 and 3.7 ms of the faces' own main-thread work (derived and drawn) — a
+couple of times the faces where there are few of them, less than them where
+there are many, because faces whose screen boxes miss an edge's are dropped
+before its samples are asked. The frame interval in the e2e browser did not
+move beyond its own noise; see the CHANGELOG. The e2e oracle that grades the depth layer asks the same module, so
+the app and the test cannot disagree about which face is in front. The faces canvas has `pointer-events: none`; every listener is
 on `#cv`, which is transparent wherever it draws nothing. The e2e suite reads
 either picture, or the composed one from a screenshot, and checks the faces
 against an oracle that casts each pixel's ray at the faces' planes, so the
