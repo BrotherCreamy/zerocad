@@ -2,25 +2,31 @@
 // nowhere.
 //
 // An extrude is real geometry (see `extrude` in operations.ts): twins, walls
-// and a depth dimension. Its *faces* are not. They are what the renderer fills
-// between those pieces, recomputed from wherever the pieces are now, so a face
-// can never disagree with the edges drawn over it: drag a lid corner, `set` the
+// and a depth dimension. Its *faces* are not. They are what is filled between
+// those pieces, recomputed from wherever the pieces are now, so a face can
+// never disagree with the edges drawn over it: drag a lid corner, `set` the
 // depth, and the faces are simply where the geometry is on the next frame.
 //
 // A pure function of (model, view), glyphs.ts's kind: no canvas, no state, and
-// so testable without a browser. main.ts fills what this returns.
+// so testable without a browser. **This file says what the faces are; it does
+// not draw them.** facelayer.ts does — by WebGL with a depth test where the
+// browser has it, which answers per pixel which face is in front, and by the
+// painter's (`facesToDraw`, the one sort left here) where it has not.
 //
 // **What a solid's faces are.** Two caps — the profile and the lid — each one
-// path of every loop in the profile, filled **even-odd**, so a hole is empty
-// and an island in a hole is solid with no triangulation and no rule about
-// nesting anywhere. And one wall per profile member: a quad between a line and
-// its twin, and between an arc or circle and its twin a ruled strip, sampled
-// at the resolution the curve is drawn at (`arcSegments`), one quad per piece —
-// so a curved wall shades round, piece by piece, rather than as one flat slab.
-// A member that is a *portion* of its entity (a region split by a crossing or
-// a T) is drawn between its two points as they are now — never over a span
-// found when the region was, which a drag would leave behind — so the base cap
-// and its walls end exactly where the twins and wall lines stand.
+// set of outlines, every loop in the profile, filled **even-odd**, so a hole
+// is empty and an island in a hole is solid with no triangulation and no rule
+// about nesting anywhere. And one wall per profile member: a quad between a
+// line and its twin, and between an arc or circle and its twin a ruled strip,
+// sampled at the resolution the curve is drawn at (`arcSegments`), one quad per
+// piece — so a curved wall shades round, piece by piece, rather than as one
+// flat slab. A member that is a *portion* of its entity (a region split by a
+// crossing or a T) is drawn between its two points as they are now — never
+// over a span found when the region was, which a drag would leave behind — so
+// the base cap and its walls end exactly where the twins and wall lines stand.
+// Every face is planar, which is all a depth buffer needs of it: a convex one
+// is its own triangle fan, and anything else is filled by the stencil method
+// with no triangulator (see facelayer.ts).
 //
 // **Which way a face faces** is computed, not assumed. A cap's outward normal
 // is the sketch frame's +z, toward the lid for the lid and away for the
@@ -30,34 +36,29 @@
 // loops, it bounds material on its inside; an odd number, a hole). Nothing
 // about the order the members were found in is trusted.
 //
-// **Drawn back to front, back faces culled, lit from the eye.** A face whose
-// outward normal points away from the viewer is behind the solid and is not
-// drawn; the rest are sorted far to near — the painter's algorithm per face,
-// the roadmap's promised upgrade from one depth per entity: a wall by its
-// centroid, a cap by its nearest point (see `orderedFaces` for why a cap cannot
-// use its centroid) — and shaded by a headlight: Lambert's cosine with the light
+// **Back faces culled, lit from the eye** (`visibleFaces`). A face whose
+// outward normal points away from the viewer is behind its solid and is left
+// out; the rest are shaded by a headlight: Lambert's cosine with the light
 // along the line of sight (`toward`). Not a world light: there is no world
 // frame to hang one in, and a light fixed to the kernel's axes would be the
 // gauge showing through again. A face square to the viewer is brightest; one
 // seen edge-on goes dark, which is what makes a turned solid read as one.
+// Which of the visible faces is in front is not this file's question any more:
+// a depth buffer answers it exactly, for interpenetrating solids and a sweep
+// that wraps round in front of its own cap alike, which no order of whole
+// faces could (measured: docs/plans/display-depth.md).
 //
 // **Faces are display only.** They never pick, snap, box or wear a glyph —
 // the entities do all of that, as before, and are drawn *over* the faces so
-// the sketch stays legible on a shaded solid. A click on a face is a click on
-// whatever entity is near it, or on nothing.
+// the sketch stays legible on a shaded solid, hidden edges included. A click
+// on a face is a click on whatever entity is near it, or on nothing.
 //
 // **A revolve's faces are the same machinery with more of them derived** (see
 // `revolveFaces`). Its surface is not finitely many entities, so there is no
 // twin to draw a wall between: each piece of the profile is swept round the
 // axis in steps, a ring of quads, from the live profile and axis and the angle
 // dimension's value. Caps only for a partial revolve, even-odd as an extrude's;
-// normals the profile's own, turned; the same culling, sort and headlight —
-// with one rule the extrude never needed: a sweep past about 300° wraps round
-// in front of its own start cap, so a cap goes before any overlapping wall of
-// its own in front of its plane (see `orderedFaces`). The sort's limits are
-// otherwise the extrude's: a sort is a sort, so solids that interpenetrate can
-// draw wrong where they cross, and within a few degrees of a whole turn, seen
-// nearly along the axis, no single key can put a cap between its walls.
+// normals the profile's own, turned; the same culling and headlight.
 
 import type { FeatureEntry, Model, Portion, ProfileMember } from "./model.ts";
 import { arcPoint, arcSamples, arcSegments, portionAngles } from "./arcgeom.ts";
@@ -81,11 +82,11 @@ export interface Face {
   outlines: number[][][];
   /** Outward, unit length. */
   normal: number[];
-  /** Where it is, for the painter's sort: the mean of its outline's points (a cap's, the outer loop's). */
+  /** Where it is: the mean of its outline's points (a cap's, the outer loop's) — what the painter's fallback sorts by. */
   centroid: number[];
 }
 
-/** A face as it is to be filled this frame. */
+/** A face as the painter's fallback fills it this frame. */
 export interface DrawnFace {
   feature: string;
   kind: Face["kind"];
@@ -93,11 +94,7 @@ export interface DrawnFace {
   outlines: [number, number][][];
   /** Lambert's cosine against the line of sight: 0 edge-on, 1 square to the viewer. */
   shade: number;
-  /**
-   * What it sorts by, larger nearer; the list is ascending. A wall's centroid,
-   * a cap's nearest point — or just under a wall of its own in front of its
-   * plane that overlaps it — see `orderedFaces`.
-   */
+  /** Its centroid's depth, larger nearer — what the painter's sorts by; the list is ascending. */
   depth: number;
 }
 
@@ -437,81 +434,21 @@ function revolveFaces(model: Model, f: Extract<FeatureEntry, { kind: "revolve" }
   return faces;
 }
 
-/** A face that faces the viewer, in the world, with its shade and what it sorts by. */
-export interface OrderedFace extends Face {
+/** A face that faces the viewer, in the world, with its headlight shade. */
+export interface VisibleFace extends Face {
+  /** Lambert's cosine against the line of sight: 0 edge-on, 1 square to the viewer. */
   shade: number;
-  depth: number;
-}
-
-/** Below this shade a cap is a sliver on screen, too nearly edge-on for the cap rule to act on. */
-const EDGE_ON_SHADE = 1e-3;
-
-/** A screen box, for the cheap "might these two overlap" question the cap rule asks. */
-type Box = [number, number, number, number];
-const boxOf = (pts: [number, number][]): Box => [
-  Math.min(...pts.map((p) => p[0])), Math.min(...pts.map((p) => p[1])),
-  Math.max(...pts.map((p) => p[0])), Math.max(...pts.map((p) => p[1])),
-];
-const boxesMeet = (a: Box, b: Box) => a[0] <= b[2] && b[0] <= a[2] && a[1] <= b[3] && b[1] <= a[3];
-
-/** Whether segments ab and cd cross at a point interior to both. */
-function cross2(a: [number, number], b: [number, number], c: [number, number], d: [number, number]): boolean {
-  const side = (p: [number, number], q: [number, number], r: [number, number]) => (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]);
-  const [d1, d2, d3, d4] = [side(a, b, c), side(a, b, d), side(c, d, a), side(c, d, b)];
-  return d1 * d2 < 0 && d3 * d4 < 0;
 }
 
 /**
- * Whether a wall piece and a cap share pixels on screen: a corner of the piece
- * inside the cap (even-odd, so not in a hole), a corner of the cap inside the
- * piece, or an edge of each crossing. Asked only of pieces whose boxes meet the
- * cap's and that would otherwise decide its key — boxes alone over-report, and
- * an over-reported wall can leave no key that fits (see `orderedFaces`).
+ * Every face of every solid that faces the viewer, in the world, each with its
+ * headlight shade — in no particular order, because nothing that draws them by
+ * depth needs one. A face whose outward normal points away from the viewer is
+ * behind its own solid and is left out.
  */
-function overlaps(cap: [number, number][][], piece: [number, number][]): boolean {
-  const inCap = (p: [number, number]) => cap.reduce((n, o) => n + (inPolygon(o, p) ? 1 : 0), 0) % 2 === 1;
-  if (piece.some(inCap)) return true;
-  if (cap.some((o) => o.some((p) => inPolygon(piece, p)))) return true;
-  for (const o of cap) {
-    for (let i = 0; i < o.length; i++) {
-      const [a, b] = [o[i], o[(i + 1) % o.length]];
-      for (let j = 0; j < piece.length; j++) if (cross2(a, b, piece[j], piece[(j + 1) % piece.length])) return true;
-    }
-  }
-  return false;
-}
-
-/**
- * Every face that faces the viewer, in the world, far to near — what
- * `facesToDraw` projects. Exported so a test can ask, of a real pixel, whether
- * the face painted last there is the nearest one.
- *
- * **What a face sorts by.** A wall by its centroid. A cap by its *nearest*
- * point: by its centroid, an extrude's lid seen at a grazing angle sorted
- * behind the far wall of its own hole, which then painted over the lid
- * wherever it showed past the opening (seen in a screenshot, not a test) —
- * and nothing of a prism is in front of its visible cap's plane, so its
- * nearest point is never behind any of its own walls.
- *
- * **A revolve breaks that promise, and the plane says what to do instead.** A
- * sweep past a half-turn wraps round in front of its own caps: past about 300°
- * the walls just short of the end lie in front of the start cap's plane and,
- * seen across the gap, over it on screen — and by the nearest-point key the
- * cap was painted over them (found by a sort check over 192 views, and seen).
- * The rule underneath is exact for a planar face: **a cap belongs after the
- * faces of its own solid behind its plane and before those in front of it.**
- * So where any wall of its own in front of its plane overlaps it on screen
- * (boxes — cheap, and conservative) and would sort before it, the cap's key is
- * lowered to just under the first such wall: the nearest it can sort and still
- * go first, which is above every wall behind its plane whenever any one key
- * could be. When none could — a wall behind sorting after one in front, both
- * over the cap — the wall in front wins, since a wrap-around wall is large and
- * near and the error it would hide is the one that shows. An extrude has no
- * faces in front of a visible cap's plane, so its order is what it was.
- */
-export function orderedFaces(model: Model, view: View): OrderedFace[] {
+export function visibleFaces(model: Model, view: View): VisibleFace[] {
   const { toward } = viewAxes(view);
-  const out: OrderedFace[] = [];
+  const out: VisibleFace[] = [];
   for (const f of model.features.values()) {
     let faces: Face[];
     try {
@@ -519,56 +456,34 @@ export function orderedFaces(model: Model, view: View): OrderedFace[] {
     } catch {
       continue; // the render loop's rule: one solid's trouble costs its own faces
     }
-    const mine: (OrderedFace & { screen: [number, number][]; box: Box })[] = [];
     for (const face of faces) {
       const shade = dot3(face.normal, toward);
-      if (!(shade > 1e-9)) continue;
-      const key = face.kind === "wall"
-        ? depth(view, face.centroid)
-        : Math.max(...face.outlines.flat().map((w) => depth(view, w)));
-      const screen = face.outlines[0].map((w) => worldToScreen(view, w));
-      mine.push({ ...face, shade: Math.min(1, shade), depth: key, screen, box: boxOf(screen) });
+      if (shade > 1e-9) out.push({ ...face, shade: Math.min(1, shade) });
     }
-    // Walls far to near, so the first one that matters to a cap is the first found.
-    const walls = mine.filter((w) => w.kind === "wall").sort((a, b) => a.depth - b.depth);
-    for (const cap of mine) {
-      // A cap seen all but edge-on is a sliver with no inside to order, and
-      // which side of its plane a wall is on stops meaning anything: it keeps
-      // its nearest point (measured: a torus's end cap at a shade of 4e-4 was
-      // lowered under walls far behind it).
-      if (cap.kind === "wall" || cap.shade < EDGE_ON_SHADE) continue;
-      // The farthest of its own walls in front of its plane that overlaps it
-      // and would sort before it — and just under that: as near as the cap
-      // can sort and still go first, which is above every wall behind its
-      // plane whenever any key could be.
-      const on = cap.outlines[0][0];
-      const capScreen = cap.outlines.map((o) => o.map((w) => worldToScreen(view, w)));
-      for (const w of walls) {
-        if (w.depth > cap.depth) break;
-        if (!boxesMeet(cap.box, w.box)) continue;
-        if (!(dot3(cap.normal, sub3(w.centroid, on)) > 1e-9 * Math.max(1, Math.abs(cap.depth)))) continue;
-        if (!overlaps(capScreen, w.screen)) continue;
-        cap.depth = w.depth - 1e-6 * Math.max(1, Math.abs(w.depth));
-        break;
-      }
-    }
-    for (const { box: _b, screen: _s, ...face } of mine) out.push(face);
   }
-  return out.sort((a, b) => a.depth - b.depth);
+  return out;
 }
 
 /**
- * Every face to fill this frame, far to near, back faces culled, each with its
- * headlight shade, projected. See the top of the file and `orderedFaces`.
+ * The painter's: every visible face projected, far to near by its centroid —
+ * what the fallback fills where there is no WebGL (facelayer.ts's
+ * `paintFaces`). The plainest key, and a sort, so it is wrong where any sort
+ * is: solids that pass through each other, a sweep that wraps round in front
+ * of its own cap, a cap seen at a grazing angle past its own hole's far wall.
+ * The depth layer is right in all three; this exists so a browser without
+ * WebGL still sees solids.
  */
 export function facesToDraw(model: Model, view: View): DrawnFace[] {
-  return orderedFaces(model, view).map((face) => ({
-    feature: face.feature,
-    kind: face.kind,
-    outlines: face.outlines.map((o) => o.map((w) => worldToScreen(view, w))),
-    shade: face.shade,
-    depth: face.depth,
-  }));
+  return visibleFaces(model, view)
+    .map((face) => ({ face, depth: depth(view, face.centroid) }))
+    .sort((a, b) => a.depth - b.depth)
+    .map(({ face, depth }) => ({
+      feature: face.feature,
+      kind: face.kind,
+      outlines: face.outlines.map((o) => o.map((w) => worldToScreen(view, w))),
+      shade: face.shade,
+      depth,
+    }));
 }
 
 /**

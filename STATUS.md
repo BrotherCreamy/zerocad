@@ -1319,7 +1319,9 @@ replacing) the system Node other projects on this machine may depend on.
   neither snaps nor draws a marker. Idle clicks are unchanged. 600 unit tests,
   210 e2e.
   *Known and deliberate:* hidden edges show through faces; interpenetrating
-  solids can sort wrong where they cross; faces never pick, snap, box or wear a
+  solids can sort wrong where they cross *(fixed 2026-10-22: faces are drawn
+  by depth — see "Faces drawn by depth" below; the sort described here is now
+  only the fallback's, by centroid)*; faces never pick, snap, box or wear a
   glyph; a solid's side face extrudes only once a frame is made on its plane.
 - **Revolve** (`revolve` and `revolveProfile`/`checkRevolve` in
   `src/operations.ts`, `src/relations/revolution.ts` (new), `RevolveFeature` in
@@ -1365,14 +1367,16 @@ replacing) the system Node other projects on this machine may depend on.
   centroid, caps by nearest point — then a cap that an overlapping wall of its
   own in front of its plane would sort before is lowered just under that wall
   (boxes, then an exact screen overlap; caps all but edge-on, shade < 1e-3, are
-  left alone). An extrude never has such a wall.
+  left alone). An extrude never has such a wall. *(Deleted 2026-10-22 with the
+  sort it served: `visibleFaces` culls and shades, a depth buffer orders.)*
   **The tool**: `arm("revolve", { angle })` — a click inside a region
   (`regionAt`), outlined as it moves; then a click on a line or a frame marker's
   arm (`Pick.axis`, new), the axis drawn dashed before the click; a click inside
   another region re-chooses; refusals logged as `revolve: …`, the tool keeping
   its state. Goes through `revolveProfile`. 634 unit tests, 218 e2e.
   *Known and deliberate:* within a few degrees of a whole turn, seen nearly along
-  the axis, a wall can still draw over the start cap (no single key fits); a
+  the axis, a wall can still draw over the start cap (no single key fits)
+  *(fixed 2026-10-22 by drawing faces by depth)*; a
   deleted piece of a full revolve leaves its 360° dimension holding nothing; no
   seam edges are drawn along the surface; the surface never picks.
   *Spec:* [`docs/plans/3d-phase5-revolve.md`](docs/plans/3d-phase5-revolve.md).
@@ -1599,6 +1603,45 @@ replacing) the system Node other projects on this machine may depend on.
   fillet on a *lid* corner regenerates what stands on the lid, not the feature
   that owns it. *Spec:*
   [`docs/plans/feature-regeneration.md`](docs/plans/feature-regeneration.md).
+
+- **Faces drawn by depth** (`src/facelayer.ts` (new), `visibleFaces` and the
+  fallback `facesToDraw` in `src/faces.ts`, `clipMatrix` in `src/view.ts`,
+  `#faces` in `index.html`, `main.ts`). A solid's faces are drawn by **WebGL
+  with a depth test** on `#faces`, a canvas under the 2D `#cv`, sized as its
+  twin, with `pointer-events: none`; `#cv` is transparent wherever it draws
+  nothing. The projection is the view's: `clipMatrix(view, w, h, [far, near],
+  anchor)` is `worldToScreen` and `depth` in clip coordinates, column-major,
+  the depth range the visible faces' own each frame (padded), points sent
+  relative to the world point at the middle of the screen. A face whose one
+  outline is convex goes in one batched triangle-fan draw; any other (a cap,
+  holes and all) is filled even-odd by the stencil method — fans invert a
+  stencil bit with no colour, then the same fans write colour and depth where
+  it is odd and clear it. Shade unchanged: `faceRGB(normal · toward)`, flat per
+  face; `faceColour` is its fill style, so both renderers write the same
+  bytes. Context `preserveDrawingBuffer: true` so a picture can be read back;
+  a lost context is asked back and the next frame redraws. **The painter's
+  fallback**: `createFaceLayer` returns null without WebGL (or a stencil
+  buffer, or shaders), and `main.ts` fills `facesToDraw` — visible faces far
+  to near by centroid — into `#cv` first, as before; nothing else branches on
+  it; the debug hook says which (`__neocad.faces`). Deleted: the nearest-point
+  cap key, the cap-lowering rule (`orderedFaces`, `overlaps`, the box tests),
+  and the limits they had. **Measured** (`npm run measure:depth`,
+  `test/e2e/depth.measure.ts`): the painter's wrong in 39 of 40 views of two
+  interpenetrating extrudes (mean 4 528 px), 13 of 40 of a 355° revolve, none
+  of a lone box or cylinder; frames 45.9 / 46.0 ms (stepped block) and 51.2 /
+  252.9 ms (filleted full turn), depth / painter's, headless Chromium on
+  SwiftShader. **Tests**: the e2e harness launches Chromium with SwiftShader
+  WebGL by name, opens the app with WebGL taken away on request
+  (`openApp({ webgl: false })`), reads `"faces"`, `"drawing"` or `"screen"`
+  pixels (`app.pixels`), and checks a picture against an oracle casting each
+  pixel's ray at the faces' planes (`nearestFaces`, `checkPicture`); scenes
+  shared with the measurement in `test/e2e/scenes.ts`. 788 unit tests, 277
+  e2e. *Known and deliberate:* hidden edges show through (the
+  drawing-over-the-solid rule); the fallback's centroid sort is wrong where any
+  sort is, a grazing lid past its own hole's far wall included, and a test
+  holds it to that; nothing tests a lost context; in a browser with no GPU a
+  frame is ~45 ms whichever renderer draws it. *Spec:*
+  [`docs/plans/display-depth.md`](docs/plans/display-depth.md).
 
 
 ## What's next

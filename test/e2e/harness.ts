@@ -350,7 +350,7 @@ export async function openApp(options: OpenOptions = {}): Promise<AppContext> {
     },
     nearestFaces: (at) => page.evaluate(async (at) => {
       const [facesPath, viewPath] = ["/src/faces.ts", "/src/view.ts"];
-      const { faceRGB, orderedFaces } = await import(facesPath);
+      const { faceRGB, visibleFaces } = await import(facesPath);
       const { viewAxes, worldToScreen } = await import(viewPath);
       const { model, engine } = (window as never as PageGlobals).__neocad;
       const view = engine.view;
@@ -359,7 +359,7 @@ export async function openApp(options: OpenOptions = {}): Promise<AppContext> {
       type F = { feature: string; kind: string; normal: number[]; shade: number; outlines: number[][][] };
       // Each face's screen box, three pixels wider all round: a pixel outside
       // it is neither inside the face nor near enough its outline to matter.
-      const faces = (orderedFaces(model, view) as F[]).map((f) => {
+      const faces = (visibleFaces(model, view) as F[]).map((f) => {
         const screen = f.outlines.map((o) => o.map((w) => worldToScreen(view, w) as [number, number]));
         const all = screen.flat();
         const box = [Math.min(...all.map((p) => p[0])) - 3, Math.min(...all.map((p) => p[1])) - 3,

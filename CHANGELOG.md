@@ -7,6 +7,75 @@ decisions.
 
 ---
 
+## Faces drawn by depth: solids through each other, and a 355° sweep, drawn right
+
+![Before: two bars on a turned view, a 60 × 20 × 20 bar along x and a 15 × 40 bar on a frame turned 20° driven through it; by the painter's sort the second bar's whole slab is painted over the first, uniform, as if it stood in front of all of it](docs/images/83-before-depth-one-solid-painted-over-the-other.png)
+
+**The painter's could not be right here, and it was measured first.** A sort
+over whole faces needs an order, and for two solids that pass through each
+other — or a sweep that wraps round in front of its own cap — the order does
+not exist. `npm run measure:depth` drew 40 seeded random orbits of each scene
+both ways, the app's painter's and a depth buffer drawing the same faces, and
+counted the pixels that differ by more than 6 levels away from every outline
+(headless Chromium 141, software WebGL, 1100 × 768):
+
+| scene | painter's wrong: mean / worst px | views with any |
+|---|---|---|
+| two interpenetrating extrudes | **4 528 / 14 647** | **39 of 40** |
+| 355° revolve with a bore | 20 / 199 | 13 of 40 |
+| stepped block + boss on its wall | 0 / 0 | 0 of 40 |
+| full turn of a filleted profile | 0 / 0 | 0 of 40 |
+| lone box, lone cylinder (convex) | 0 / 0 | 0 of 80 |
+
+The convex solids are the control: where the painter's cannot be wrong the two
+pictures agree everywhere but along outlines and the faint seams the painter's
+leaves between strip pieces.
+
+![After: the same view by depth: where the turned bar passes through the first, the first bar's faces show in front of it, a darker quadrilateral across the middle, and the slab no longer covers what is nearer](docs/images/84-two-solids-through-each-other-by-depth.png)
+
+**Now faces are drawn by WebGL with a depth test**, on a canvas of their own
+under the drawing, through the view's own orthographic projection
+(`clipMatrix` in `view.ts`: `worldToScreen` and `depth` in clip coordinates,
+unit-tested against both on 200 random views). Which face is in front is
+answered per pixel. A cap with holes is filled even-odd by the stencil method —
+fans that flip a stencil bit, then the same fans filling where it is odd — so
+there is still no triangulator and no new dependency; a wall quad, being
+convex, is just a fan, all of them in one draw. Shading is the same flat
+headlight to the byte. The nearest-point cap key, the cap-lowering rule and the
+355° limit they left are deleted, and the tests that pinned the sort are
+picture tests now (`test/e2e/depth.e2e.ts`): an oracle casts each sampled
+pixel's ray at the faces' planes, and the depth canvas must hold the nearest
+face's fill at every sample clear of an edge.
+
+![Before: close up on the gap of a 355° revolve, by the painter's: across the gap, where the end cap shows, stepped slivers of the sweep's walls are painted over it](docs/images/81-before-depth-355-revolve-walls-over-its-cap.png)
+![After: the same gap by depth: the cap across the gap is one clean dark wedge, and the top of the sweep has no seams](docs/images/82-the-355-revolve-by-depth.png)
+
+**It costs nothing in the e2e browser, and saves a lot there.** The app's own
+frames, `render()` each animation frame for 90 frames, by depth against the
+same app with WebGL taken away: **45.9 against 46.0 ms** for the stepped block,
+**51.2 against 252.9 ms** for a filleted full turn of 650 visible faces. With
+no GPU the 2D canvas is rasterised in software too, and 650 anti-aliased paths
+cost it more than a depth test does.
+
+```js
+> __neocad.faces          // in devtools: which way the app is drawing faces
+"depth"
+```
+
+**The painter's stays, as the fallback** where the browser has no WebGL — the
+one place it is chosen — now sorting by centroid: wrong where any sort is, a
+grazing lid past its own hole's far wall included, which a test holds it to.
+The e2e harness asks Chromium for its software WebGL by name, a test fails if
+the app ever falls back, and pixel reads say which picture they mean —
+`app.pixels("faces" | "drawing" | "screen", at)`, the last a real screenshot.
+
+**Known and deliberate:** hidden edges still show through the faces — the
+drawing-over-the-solid rule, kept; dimming them is its own follow-up. A face
+still never picks, snaps, boxes or wears a glyph: the faces canvas takes no
+pointer events. 788 unit tests (three new for the projection; two sort tests
+became pictures), 277 e2e (seven new). Spec:
+[`docs/plans/display-depth.md`](docs/plans/display-depth.md).
+
 ## Fillet an extruded corner and the lid is rounded too: features follow their profiles
 
 ![Before: a 40 by 30 rectangle on a tilted sketch plane, extruded 20 and turned so the lid faces the viewer, its base seen through it; one base corner has been rounded with the fillet tool — the base shows the arc from p5 round to p15 with its R8 label — but the lid above it is still four-cornered, its right-hand edge running on a slant from p12, over the tangent point, to the far corner p13](docs/images/78-before-regeneration-a-square-lid-over-a-rounded-base.png)

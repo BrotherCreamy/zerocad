@@ -21,16 +21,19 @@
 // they go so the next cap starts clean. Exact for every outline faces.ts
 // produces, and needing nothing faces.ts does not already hand over.
 //
-// **The painter's** is the 2D canvas path the app had before: faces far to
-// near, each filled even-odd and stroked a hair wide in its own colour (a
-// curved wall's neighbouring pieces share an edge exactly, and anti-aliasing
-// each against the background alone leaves a faint seam between them).
+// **The painter's** is the 2D canvas path the app had before, kept as the
+// fallback: faces far to near by centroid (`facesToDraw`), each filled
+// even-odd and stroked a hair wide in its own colour (a curved wall's
+// neighbouring pieces share an edge exactly, and anti-aliasing each against
+// the background alone leaves a seam between them — fainter with the stroke,
+// not gone; the depth layer's multisampling has none). Its sort is the plain
+// one, and wrong where any sort is; see `facesToDraw`.
 //
 // Neither ever picks: the depth canvas takes no pointer events, and the
 // painter's draws into a canvas whose listeners ask the entities, not this.
 
 import type { Model } from "./model.ts";
-import { faceColour, faceRGB, facesToDraw, orderedFaces } from "./faces.ts";
+import { faceColour, faceRGB, facesToDraw, visibleFaces } from "./faces.ts";
 import { clipMatrix, viewAxes, type View } from "./view.ts";
 import { cross3, dot3, sub3 } from "./vec3.ts";
 
@@ -178,7 +181,7 @@ export function createFaceLayer(canvas: HTMLCanvasElement): FaceLayer | null {
       gl.colorMask(true, true, true, true);
       gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT);
 
-      const faces = orderedFaces(model, view);
+      const faces = visibleFaces(model, view);
       if (!faces.length) return;
 
       // The depth range is the faces' own, each frame, with a margin so the

@@ -75,7 +75,7 @@ function measureInPage(args: { seed: number; views: number; tolerance: number })
     const [layerPath, viewPath, facesPath] = ["/src/facelayer.ts", "/src/view.ts", "/src/faces.ts"];
     const { paintFaces, createFaceLayer } = await import(layerPath);
     const { orbitBy, worldToScreen } = await import(viewPath);
-    const { orderedFaces } = await import(facesPath);
+    const { visibleFaces } = await import(facesPath);
     const { model } = (window as never as { __neocad: { model: { entities: Map<string, { kind: string; name: string }>; coords(n: string): number[] } } }).__neocad;
     const cv = document.getElementById("cv") as HTMLCanvasElement;
     const W = Math.round(cv.getBoundingClientRect().width), H = Math.round(cv.getBoundingClientRect().height);
@@ -128,7 +128,7 @@ function measureInPage(args: { seed: number; views: number; tolerance: number })
       mk.clearRect(0, 0, W, H);
       mk.lineWidth = 3;
       mk.strokeStyle = "#fff";
-      for (const f of orderedFaces(model, view) as { outlines: number[][][] }[]) {
+      for (const f of visibleFaces(model, view) as { outlines: number[][][] }[]) {
         mk.beginPath();
         for (const o of f.outlines) {
           const sp = o.map((w) => worldToScreen(view, w));
@@ -158,7 +158,7 @@ function measureInPage(args: { seed: number; views: number; tolerance: number })
       }
       mk.putImageData(pic, 0, 0);
       diffs.push(maskCanvas.toDataURL("image/png"));
-      return { view: i, different, wrong, faces: (orderedFaces(model, view) as unknown[]).length };
+      return { view: i, different, wrong, faces: (visibleFaces(model, view) as unknown[]).length };
     });
 
     (window as never as { __measured: unknown }).__measured = { views, W, H, diffs };
@@ -179,7 +179,7 @@ function appFrames(args: { frames: number }) {
   return (async () => {
     const viewPath = "/src/view.ts", facesPath = "/src/faces.ts";
     const { assignView, orbitBy } = await import(viewPath);
-    const { orderedFaces } = await import(facesPath);
+    const { visibleFaces } = await import(facesPath);
     const hook = (window as never as { __neocad: {
       model: { entities: Map<string, { kind: string; name: string }>; coords(n: string): number[] };
       engine: { view: { ox: number; oy: number; scale: number } }; render(): void; faces?: string;
@@ -206,7 +206,7 @@ function appFrames(args: { frames: number }) {
       await next();
     }
     const frame = (performance.now() - t0) / args.frames;
-    return { renderer: hook.faces ?? "painter's", submit: submit / args.frames, frame, frames: args.frames, faces: (orderedFaces(model, engine.view) as unknown[]).length };
+    return { renderer: hook.faces ?? "painter's", submit: submit / args.frames, frame, frames: args.frames, faces: (visibleFaces(model, engine.view) as unknown[]).length };
   })();
 }
 

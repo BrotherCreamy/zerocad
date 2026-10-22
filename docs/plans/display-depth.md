@@ -1,7 +1,7 @@
 # Plan: display depth done right
 
-**Status: measured; building** (2026-10-22). The numbers are below, under
-"Measured — before". Last of the register's "Next up" queue:
+**Status: built** (2026-10-22) — see "Measured — before" and "As built" below
+for the numbers and for what differs from this text. Last of the register's "Next up" queue:
 *"The 355° cap limit, hidden edges showing through faces, and interpenetrating
 solids all trace to painter's sorting. The honest fix is a real depth pass
 (BSP split or a WebGL conversion of faces.ts's output). Measure before
@@ -142,9 +142,10 @@ The e2e harness must run with WebGL available (headless Chromium needs its
 software GL enabled — find the launch flag, put the reason in the harness)
 and an e2e test must assert the depth path is the one in use, so the suite
 tests the real renderer and never silently the fallback. Pixel-reading e2e
-tests that look at faces (`extrude`, `revolve`, `regions`, `sketchface`)
-read the face canvas; those that look at entities or the hint read `#cv` as
-now — give the harness one helper for "the composed picture" so tests say
+tests that look at faces (`extrude`, `revolve`) read the face canvas
+(*corrected as built:* `regions` and `sketchface` read only a tool's green
+preview, which is on `#cv`, so they read the drawing); those that look at
+entities or the hint read `#cv` as now — give the harness one helper for "the composed picture" so tests say
 which they mean. A unit test for the projection matrix against
 `worldToScreen`/`depth` on random views. Full `npm run test:all`.
 
@@ -164,3 +165,70 @@ one PR against `claude/resume-tasks-o7q02e`, in reviewable commits (the
 measurement harness and numbers first — the "before" is evidence; then the
 renderer; then the deletions and docs). Do not merge; the supervising session
 reviews.
+
+## As built (2026-10-22)
+
+Three commits, as asked: the measurement (with the depth layer written but not
+yet wired in), the renderer, the deletions and docs. What differs from the text
+above, and what was found:
+
+- **"Both renderers exist in the tree" was not yet true** — the depth layer
+  had to be written for there to be anything to measure against. It went into
+  the first commit as `src/facelayer.ts`, unwired, beside the painter's (moved
+  out of `main.ts` unchanged), so the "before" is the app's painter's against a
+  depth buffer drawing the same faces.
+- **Time per frame is the app's own frames**, not each renderer on a canvas of
+  its own: forcing a painted 2D frame to finish needs a read back, and Chrome
+  then moves the canvas into CPU memory (0.6 ms a frame read-optimised against
+  12 ms as the app's canvas is made, same 22 faces), so the offscreen number
+  was of a different canvas. The app is timed instead — `render()` each
+  animation frame for 90 frames, once as it runs and once with WebGL taken
+  away (the harness's `openApp({ webgl: false })`, an init script making
+  `getContext("webgl")` answer null: the fallback's one door, nothing in the
+  app branching on a test). With the depth layer wired in:
+
+  | scene | depth | painter's (WebGL taken away) |
+  |---|---|---|
+  | stepped block + boss, 22 faces | 45.9 ms a frame | 46.0 ms |
+  | full turn, filleted, 650 faces | 51.2 ms a frame | 252.9 ms |
+
+  `render()`'s own share is 1–7 ms either way; the rest is the GPU process
+  (SwiftShader: no GPU here) rasterising and compositing. The stop rule (more
+  than 3× slower on the stepped block) is not close.
+- **"Wrong" excludes a band** 1.5 px either side of every visible outline, and
+  differences under 7 levels: the painter's anti-aliases against a hair-wide
+  stroke and leaves a faint seam between strip pieces, the depth layer
+  multisamples. The convex solids (wrong 0 in all 80 views) show the band is
+  only that. Along a dense sweep the band also hides some real error, so the
+  355° count is a floor.
+- **The painter's fallback sorts by centroid**, every face, now that the
+  nearest-point key and the cap-lowering rule are deleted as asked — which
+  undoes the fix those were for: a lid seen at a grazing angle past its own
+  hole's far wall is painted under it again, on the fallback only, and
+  `depth.e2e.ts` holds the fallback to being wrong there so the limit is a
+  decision rather than a rediscovery. Measured after (same 40 views): the
+  interpenetrating extrudes wrong 4 209 mean / 12 079 worst in 38 of 40; the
+  355° revolve 0 — the plain key happens to suit that sweep better than the
+  rule did.
+- **Walls skip the stencil.** A face whose one outline is convex (every wall
+  quad and strip piece) is its own triangle fan and goes in one batched draw;
+  only caps take the two stencil passes. Same picture, one draw call for the
+  walls instead of two per quad. Exact for any outline; `convex` checks.
+- **An edge with no outline.** Where one solid passes through another, the
+  line they cross along is drawn by neither, and anti-aliased all the same;
+  the e2e oracle's outline distance missed it and a first run failed there.
+  The harness now also skips a sample whose four neighbours two pixels away
+  are not all the same nearest face.
+- **The harness reads three pictures**, `"faces"`, `"drawing"` and `"screen"`
+  (`app.pixels(of, at)`), the last a real screenshot decoded, and has an oracle
+  (`app.nearestFaces`) that casts each pixel's ray against the visible faces'
+  planes, so a picture is checked without trusting either renderer
+  (`checkPicture`).
+- **The register's guess about the stepped block did not show**: its coplanar
+  faces at the shared line are back to back, one always culled; wrong 0 in 40
+  views before as well as after.
+- **The single-file build** needed nothing: the shaders are strings in
+  `facelayer.ts`, the canvas is in `index.html`'s body, which the build copies.
+  Opened from disk it reports the depth layer and fills the faces canvas.
+- **Hidden edges still show through**, as the plan said: the drawing-over-the-
+  solid rule. Dimming them is the separate follow-up it was.
