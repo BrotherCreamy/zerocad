@@ -34,7 +34,7 @@
 // the side it was seen from.
 
 import type { Model } from "./model.ts";
-import { PARALLEL_SINE, type Loop } from "./loops.ts";
+import { PARALLEL_SINE, isVirtual, type Loop } from "./loops.ts";
 import { frameBasis } from "./relations/refs.ts";
 import { liesOn } from "./view.ts";
 import { cross3, dot3, lift3, sub3 } from "./vec3.ts";
@@ -69,10 +69,14 @@ function turn(a: number[], b: number[], c: number[]): number {
  * plane over, which put +x along the diagonal whenever the face was seen from
  * its back: a wall then came up tilted by its own aspect ratio. Found by
  * looking at the screenshot.) A point partway along an edge is no corner, and
- * is skipped. Failing every corner, any three of the vertices off one line;
- * failing that, an arc's centre is a point of the loop's plane too (its rim,
- * and so its ends, lie in the plane through it), which is what a loop of only
- * two vertices — a lens of two arcs, a line closed by an arc — has to offer.
+ * is skipped, and so is a crossing (a vertex that is no point). Failing every
+ * corner, any three of the vertices off one line; failing that, an arc's centre
+ * is a point of the loop's plane too (its rim, and so its ends, lie in the plane
+ * through it), which is what a loop of only two vertices — a lens of two arcs,
+ * a line closed by an arc — has to offer; and so are the own ends of a member
+ * that is only part of its entity. A region bounded only by parts of circles
+ * (a lens of two crossing circles) has nothing but their centres, and takes a
+ * circle's frame, as a whole circle does (below).
  *
  * **A whole circle has only its centre**, and it also has its frame, whose
  * three points span the circle's plane: they are used, with the x-ref and
@@ -99,7 +103,7 @@ export function sketchFrameFor(model: Model, loop: Loop, toward: number[]): [str
     return cos;
   };
 
-  if (loop.members.length === 1 && loop.members[0].from === null) return circleFrame(model, loop, facing);
+  if (loop.members.length === 1 && loop.members[0].from === null) return circleFrame(model, loop.members[0].name, facing);
 
   const where = new Map<string, number[]>();
   const at = (p: string): number[] => {
@@ -110,17 +114,28 @@ export function sketchFrameFor(model: Model, loop: Loop, toward: number[]): [str
   const oriented = (a: string, b: string, c: string): [string, string, string] =>
     facing(cross3(sub3(at(b), at(a)), sub3(at(c), at(a)))) > 0 ? [a, b, c] : [a, c, b];
 
+  // A crossing is a vertex of the loop but no point (loops.ts): a plane made
+  // of it would name nothing a frame can hold, so only real points are used.
   const vertices = loop.members.map((m) => m.from!);
+  const real = (p: string) => !isVirtual(model, p);
   const n = vertices.length;
   for (let i = 0; i < n; i++) {
     const [v, next, prev] = [vertices[i], vertices[(i + 1) % n], vertices[(i + n - 1) % n]];
+    if (![v, next, prev].every(real)) continue;
     if (next !== prev && turn(at(v), at(next), at(prev)) > PARALLEL_SINE) return oriented(v, next, prev);
   }
-  const centres = loop.members.flatMap((m) => {
+  // An arc's centre is a point of the loop's plane, and so — for a member that
+  // is only part of its entity — are the entity's own ends and a circle's
+  // centre, wherever the loop leaves it: a region cut off by crossings may
+  // have fewer than three real corners.
+  const extra = loop.members.flatMap((m) => {
     const e = model.entities.get(m.name);
-    return e?.kind === "arc" ? [e.center] : [];
+    if (e?.kind === "arc") return m.span === null ? [e.center] : [e.center, e.start, e.end];
+    if (m.span === null) return [];
+    if (e?.kind === "line") return [...e.refs];
+    return e?.kind === "circle" ? [e.center] : [];
   });
-  const candidates = [...new Set([...vertices, ...centres])];
+  const candidates = [...new Set([...vertices.filter(real), ...extra])];
   for (let i = 0; i < candidates.length; i++) {
     for (let j = i + 1; j < candidates.length; j++) {
       for (let k = j + 1; k < candidates.length; k++) {
@@ -129,13 +144,16 @@ export function sketchFrameFor(model: Model, loop: Loop, toward: number[]): [str
       }
     }
   }
+  // A region bounded by parts of circles alone (a lens) has their frames left,
+  // on the same terms as a whole circle.
+  const ring = loop.members.find((m) => model.entities.get(m.name)?.kind === "circle");
+  if (ring) return circleFrame(model, ring.name, facing);
   throw new Error(`the loop of ${members(loop)} has no three points off one line to make a plane of — `
     + "a plane on it needs a third point: plane(a, b, c) with one of your own");
 }
 
 /** A whole circle's plane: its frame's own three points, turned over if they face away. */
-function circleFrame(model: Model, loop: Loop, facing: (n: number[]) => number): [string, string, string] {
-  const name = loop.members[0].name;
+function circleFrame(model: Model, name: string, facing: (n: number[]) => number): [string, string, string] {
   const circle = model.circular(name);
   const plane = circle.plane;
   if (plane === undefined) throw new Error(`"${name}" names no frame, so it has no plane to sketch on`);

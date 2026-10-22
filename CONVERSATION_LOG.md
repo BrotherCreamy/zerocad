@@ -106,6 +106,61 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### Regions split at crossings and Ts (PR 1): a crossing is a vertex of the question, not of the drawing
+
+The spec (`docs/plans/regions-split.md`) had settled the policy: a T is held,
+so it splits; a crossing is geometry, so it splits for *finding* regions and
+must be materialised before anything keeps it. PR 1 is the finding half. What
+was decided in the code, and what was rejected:
+
+- *Cut the drawing, then run the old face walk.* Every edge is cut at its
+  held points and its crossings into parts, and parts are what the angular
+  order, the bridge removal and the face walk see. The alternative — keep
+  whole edges and teach the walk about crossings — was never attractive: a
+  face walk is only correct on a planar graph, and cutting is what makes it
+  one. It also retires the "a crossing component yields no loops" rule
+  outright rather than leaving it as a special case.
+- *A member is as long as the loop lets it be.* Found by thinking about the
+  refusal, not by a test failing: a rectangle with a point held on one edge
+  for a dimension, or a T whose stem dangles inside, would otherwise be a
+  loop of *portions* — and PR 1 refuses portions, so a rectangle that
+  extruded yesterday would not today. Coalescing consecutive parts of one
+  entity walked one way restores whole members wherever the cut is no corner.
+  Rejected: coalescing only at vertices of degree two in the pruned graph —
+  that keeps a T from the other side as a "corner" of a loop it does not
+  bend, which nobody drawing it would call one.
+- *The key had to be guaranteed differently.* The spec said a crossing's key
+  could never be an entity name because the model reserves the dot. Only the
+  dot is reserved; `l1×l5` is a legal name. A spelling with a dot in it would
+  have been guaranteed and illegible, and changing `claimName` was out of
+  scope (no `model.ts` change in PR 1). So keys are primed past existing names
+  at the time of the question — the invariant consumers need ("is this vertex a
+  point?") holds, and `isVirtual` states it.
+- *Labels in the entity's own direction.* `loops()` first printed a portion's
+  vertices as walked. Running the lens case showed both crescents printing
+  identically — two vertices on a circle bound two arcs, and the walk
+  direction is what said which — and `regionKey` uses the same text, so the
+  hover would not have redrawn between them. Own direction names one arc.
+- *Tangency as a distance.* The old crossing test called two roots closer
+  than the tolerance a tangency. A tangency solved to residual δ has roots
+  √(2rδ) apart — 1.4e-4 for δ = 1e-9 at r = 10, past a tolerance of 5e-5 — so a
+  circle the solver had made tangent to an edge would have cut it into slivers
+  and made the rectangle "split". Measured from touching, it is a tangency.
+  The same reasoning for lines: they cross only if each straddles the other by
+  more than the tolerance, so near-collinear lines cannot cross somewhere
+  arbitrary along their length.
+- *Crossing lines are candidate planes.* Three lines that only cross bound a
+  triangle with no joined corner, and the old candidates (joined corners, arc
+  and circle frames) never offered its plane. The first version tested every
+  pair of lines and built a plane per coplanar pair: measured at 81 ms a call
+  on a hundred separate rectangles, against 2.8 ms before — and `findLoops`
+  runs on every hover move. Swept along x, boxed, and building a plane only for
+  a pair that actually crosses: 3.6 ms.
+- *Refuse in `profileOf`, not in `extrude`.* It is the one door the typed
+  calls and all three tools come through, and it holds the `Loop`s with their
+  spans; `extrude` itself sees only names. A journal's handed-over profile is
+  names and was never split, so a replay is never refused.
+
 ### A refused constructor leaves nothing behind: claim first, and hold the claim
 
 The spec (`docs/plans/no-stranded-points.md`) asked which `claimName` is — a

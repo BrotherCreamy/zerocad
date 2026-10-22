@@ -22,7 +22,7 @@ import { Model } from "../src/model.ts";
 import { coincident, dist, fix, onPlane } from "../src/relations/basic.ts";
 import { parallel } from "../src/relations/geometry.ts";
 import { revolution } from "../src/relations/revolution.ts";
-import { checkRevolve, del, extrude, fillet, revolve, set } from "../src/operations.ts";
+import { checkRevolve, del, extrude, fillet, revolve, revolveProfile, set } from "../src/operations.ts";
 import { open, save } from "../src/persist.ts";
 import { neocadScope } from "../src/replenv.ts";
 import { describePick } from "../src/picking.ts";
@@ -405,8 +405,6 @@ test("refusals name the geometry and leave no trace: an axis leaning out of the 
   const { lines } = polygon(m, t, BLOCK);
   // An axis parallel to the plane, five off it.
   const beside = m.addLine(m.addPoint(t.at(0, 0, 5)).name, m.addPoint(t.at(0, 10, 5)).name).name;
-  // One through the middle of the block.
-  const middle = m.addLine(m.addPoint(t.at(20, -5)).name, m.addPoint(t.at(20, 25)).name).name;
   // A circle whose centre is clear of t.y but whose rim reaches over it.
   const over = ring(m, t, 8, 60, 10);
   // A D: a line at u = 2 closed by the short arc bulging the other way, to u ≈ −2.1.
@@ -419,7 +417,6 @@ test("refusals name the geometry and leave no trace: an axis leaning out of the 
 
   assert.throws(() => revolve(m, lines[0], "t.z"), /the axis t\.z leans 90° out of the plane of the profile l1,l2,l3,l4 \(t's\) — a revolve turns a profile about an axis lying in its own plane/);
   assert.throws(() => revolve(m, lines[0], beside), new RegExp(`the axis ${beside} runs 5 off the plane of the profile l1,l2,l3,l4 \\(t's\\), parallel to it`));
-  assert.throws(() => revolve(m, lines[0], middle), new RegExp(`the profile l1,l2,l3,l4 crosses the axis ${middle} — turned about it, it would pass through itself`));
   assert.throws(() => revolve(m, over, "t.y"), /crosses the axis t\.y/);
   assert.throws(() => revolve(m, chord, "t.y"), /crosses the axis t\.y/);
   assert.throws(() => revolve(m, lines[0], "nope"), /"nope" is not a line or a frame axis/);
@@ -435,6 +432,21 @@ test("refusals name the geometry and leave no trace: an axis leaning out of the 
   assert.equal(m.entities.size, size, "not an entity");
   assert.equal(m.features.size, 0);
   assert.equal(revolve(m, lines[0], "t.y", 1), "e1", "and the next name is the first");
+
+  // A line through the middle of a block, its axis: it cuts the block in two
+  // (loops.ts), so the block is no one region any more, and each half is
+  // bounded by parts of edges — refused by name until split regions revolve.
+  // Handed over whole, as a profile drawn before the line was, the block is
+  // refused for crossing the axis, as it always was.
+  const n = new Model(3);
+  const u = tiltedFrame(n);
+  const block = polygon(n, u, BLOCK).lines;
+  const middle = n.addLine(n.addPoint(u.at(20, -5)).name, n.addPoint(u.at(20, 25)).name).name;
+  assert.throws(() => revolve(n, block[0], middle), /"l1" is in 2 loops/);
+  assert.throws(() => revolve(n, block[1], middle), /this region is bounded by part of l1 \(.*\) — revolving split regions is not built yet/);
+  assert.throws(() => revolveProfile(n, { frame: u.name, loops: [block] }, middle),
+    new RegExp(`the profile l1,l2,l3,l4 crosses the axis ${middle} — turned about it, it would pass through itself`));
+  assert.equal(n.features.size, 0);
 });
 
 test("which loop is exactly extrude's question, asked in revolve's words — and after a revolve the profile is still in one loop", async () => {

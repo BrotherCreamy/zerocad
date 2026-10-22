@@ -1243,9 +1243,10 @@ replacing) the system Node other projects on this machine may depend on.
   **`loops()`** lists them — `loop of l1,a1,l2,l3,l4 in f1, area 1186.265`,
   `…, inside …` for an island — and journals nothing, claims no name, makes no
   undo step. 563 unit tests, 199 e2e.
-  *Known and deliberate:* a component whose joined edges cross reports no
-  loops, and a T or a crossing splits nothing (Onshape splits regions at every
-  intersection); `loops()` says nothing about near-misses.
+  *Known and deliberate:* `loops()` says nothing about near-misses. (Until
+  2026-10-21 a T or a crossing split nothing and a component whose edges
+  crossed reported no loops; both changed — see "Regions split at Ts and
+  crossings" below.)
   *Spec:* [`docs/plans/3d-phase3-loops.md`](docs/plans/3d-phase3-loops.md).
 - **Extrude, the model half** (`extrude` in `src/operations.ts`,
   `src/relations/extrusion.ts` (new), the feature registry in `src/model.ts`,
@@ -1496,6 +1497,39 @@ replacing) the system Node other projects on this machine may depend on.
   made the default and looked at (it is `plane()`); which edge is +x is
   whichever the loop starts at.
   *Spec:* [`docs/plans/sketch-on-face.md`](docs/plans/sketch-on-face.md).
+- **Regions split at Ts and crossings** (`src/loops.ts`, `faces.ts`'s
+  `loopOutlines`, `tools/region.ts`, `sketchface.ts`, `operations.ts`'s
+  `profileOf`) — the first half of `regions-split`. `findLoops` cuts every
+  edge, per plane, at each point a relation holds within it (`on` on a line,
+  `oncircle` on an arc or circle, `mid`'s line form; the point's joined class is
+  the vertex) and at each crossing of two coplanar edges in their interiors
+  (line–line, line–arc, arc–arc, whole circles; closed forms; a tangency — a
+  curve within tolerance of touching — an end resting on an edge, and edges
+  lying along each other are not crossings). A crossing is a **virtual vertex**
+  keyed by the edges through it in creation order, `l1×l5`, numbered
+  `c1×c2#1`/`#2` along the first when they cross twice, primed (′) past any name
+  the model has (`isVirtual`); crossings at one spot are one vertex, and one at
+  a held point is that point. Then the face walk as before. **`LoopMember`**
+  gains `span` — `[start, end]` as fractions of the entity in its own direction
+  (a circle from its frame's +x, past 1 across its seam), null for the whole —
+  and `from`/`to` may be crossings; a member is the longest run of one entity
+  the loop walks, so a cut that is no corner of the loop is not listed.
+  Crossing lines are candidate planes (three lines crossing bound a triangle).
+  `loopAt`, containment and areas use the portions. **`loops()`** prints a
+  portion with its vertices in its entity's own direction —
+  `loop of l1[p1→l1×l5],l5[l1×l5→l3×l5],l3[l3×l5→p4],l4 in f, area 450` — which
+  is also the hover key (`memberLabel`), so the crescents of a lens differ.
+  **The region preview** outlines portions (`loopOutlines` takes members), so
+  the extrude, revolve and sketch tools outline exactly the sub-region under
+  the cursor. **`extrude`/`revolve` refuse a split region by name** (in
+  `profileOf`: *"this region is bounded by part of l1 (from l1×l5 to p5) —
+  extruding split regions is not built yet…"*) until PR 2 can twin portions.
+  `sketchFrameFor` skips crossings, falls back to parted edges' own ends, and
+  gives a lens of circles a circle's frame. 706 unit tests, 258 e2e.
+  *Known and deliberate:* a crossing key is positional and may change under a
+  drag; two held points of different classes on one spot cut once; collinear
+  overlap is not a crossing; a 30 × 30 grid of crossing lines costs 31 ms a
+  hover. *Spec:* [`docs/plans/regions-split.md`](docs/plans/regions-split.md).
 
 
 ## What's next

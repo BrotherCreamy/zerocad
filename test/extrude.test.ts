@@ -452,7 +452,11 @@ test("refusals say why, and leave no trace — not a journal entry, an entity or
 
   assert.throws(() => extrude(m, lines[1], 10), /"l2" is in 2 loops — loop of .* in t, .*; loop of .* in t, .*\. Name the frame/);
   assert.throws(() => extrude(m, polyline[0], 10), /is in no closed loop — loops\(\) lists/);
-  assert.throws(() => extrude(m, tie[0], 10), /is in no closed loop .* do not cross one another/);
+  // The bow-tie is two lobes cut where it crosses, and each is bounded by
+  // parts of the crossing edges: refused by name until split regions extrude.
+  assert.throws(() => extrude(m, tie[0], 10), new RegExp(`"${tie[0]}" is in 2 loops`));
+  assert.throws(() => extrude(m, tie[1], 10),
+    new RegExp(`this region is bounded by part of ${tie[0]} \\(from ${bow[1]} to ${tie[0]}×${tie[2]}\\) — extruding split regions is not built yet`));
   assert.throws(() => extrude(m, "t_o", 10), /"t_o" is not a line, arc or circle/);
   assert.throws(() => extrude(m, "nope", 10), /"nope" is not a line, arc or circle/);
   assert.throws(() => extrude(m, lines[0], 0), /non-zero depth/);

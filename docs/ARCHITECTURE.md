@@ -101,6 +101,19 @@ profile whose corners nothing holds together is not one the next drag will
 leave closed. A loop is a question rather than an entity: it is found afresh
 each time, journals nothing and has no name.
 
+Regions are split as Onshape splits them, by two different arguments that
+leave "joined means held" true. A **T** is held — an end kept on an edge by
+`on`, `oncircle` or `mid`'s line form — so the edge is cut at that point. A
+**crossing** is held by nothing and joins nothing, but which regions a drawing
+bounds is a question about its geometry as it stands, so for *finding* regions
+two coplanar edges that cross are cut at a **virtual vertex**, a vertex no
+entity is, named by the edges through it (`l1×l5`). A loop's members then walk
+*portions* of their entities (`from`/`to` a point or a crossing, and a `span`),
+each as long as the loop lets it be, so a drawing with no Ts or crossings reads
+exactly as it did. What may *keep* a crossing is a feature, never this module:
+it has to materialise it as a point held on both edges — an operation's job,
+and the line between the two layers (`docs/plans/regions-split.md`).
+
 `sketchface.ts` sits beside `loops.ts`: given a loop and the line of sight, the
 three of its points a sketch plane on it is made of — pure, and read by the
 sketch tool and the context menu alike, so the two cannot make different planes

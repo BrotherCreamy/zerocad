@@ -247,22 +247,28 @@ are flagged as such.
 
   Decided while building phase 3, and open to veto:
 
-  - ⚠ **Joined means held, never near** (the spec's rule, recorded here as the
+  - **Joined means held, never near** (the spec's rule, recorded here as the
     register entry it asked for). Two curve ends are joined only when they are
     the same point entity or a `coin` holds them together, directly or through
-    a chain. Ends that merely sit on the same spot are not joined; nor does a
-    **crossing** (edges passing through each other with no end there) or a
-    **T** (an end held *on* an edge by `on`) split anything. *Deviation from
-    Onshape*, which computes regions from every intersection: here a region's
-    boundary is only ever what the drawing was told is connected. The
-    consequence a user will meet: a line drawn across a rectangle from edge to
-    edge (the tool infers `on` at each end) does not cut it in two.
-  - **A component whose joined edges cross reports no loops.** With nothing
-    joining them at the crossing, its faces are not the regions the drawing
-    shows — without this rule a lopsided bow-tie comes back as a "loop" of
-    its net area — and a self-crossing outline is no profile phase 4 could
-    extrude. Loops that overlap *without* being joined are each reported, and
-    neither contains the other.
+    a chain. Ends that merely sit on the same spot are not joined.
+    **Rewritten 2026-10-21 (regions split, PR 1) — a crossing and a T now
+    split regions, as Onshape's do, and the sentence above still holds.** A
+    **T** is held: an end held on an edge by `on`, `oncircle` or the line
+    form of `mid` cuts the edge there, the point's joined class the vertex. A
+    **crossing** joins nothing — no class changes, and a feature that needs
+    it held will *materialise* it as a point held `on` both edges (PR 2) —
+    but the regions of a drawing are a question asked of its geometry as it
+    stands, as `loopAt` always was, so two coplanar edges crossing in their
+    interiors are cut at a *virtual vertex* (`l1×l5`) for finding regions. A
+    line drawn across a rectangle now cuts it in two. The ⚠ is gone: this was
+    the loop policy's one deviation from Onshape. Until PR 2, `extrude` and
+    `revolve` refuse a split region by name. See
+    [`docs/plans/regions-split.md`](docs/plans/regions-split.md).
+  - ~~**A component whose joined edges cross reports no loops.**~~ *Retired
+    with the above (2026-10-21).* Cut at every crossing, no two pieces cross,
+    so the faces are the regions the drawing shows: the lopsided bow-tie this
+    rule existed for is its two lobes (50 and 450), and two rectangles that
+    overlap, joined nowhere, are three regions side by side.
   - **Minimal cycles are faces**, not a shortest-cycle basis: each vertex
     orders its edges by tangent, then curvature (an arc leaving tangent to
     another), then a mirrored index offset (the same line drawn twice), and the
@@ -306,6 +312,9 @@ are flagged as such.
     `loops()` is silent about near-misses (an end not quite joined, a corner
     not quite in plane), and regions from crossings — Onshape's behaviour —
     would need joins this model is never told about; both are left for a spec.
+    *(2026-10-21: regions from crossings are built without joins — a crossing
+    is a virtual vertex for finding regions only; see the rewritten entry
+    above. Near-misses are still silent.)*
 
   ✅ **Phase 4 (extrude), half 1 — the expansion, the record, deletion, the
   file — built** (2026-10-13): [`docs/plans/3d-phase4-extrude.md`](docs/plans/3d-phase4-extrude.md).
@@ -861,7 +870,51 @@ starts.
 - [ ] **Regions under crossings and Ts** — the two ⚠ loop policies (a
       crossing or an `on`-T splits nothing) deviate from Onshape, which
       subdivides regions; extrude is where a user will feel it. Wants a
-      loops.ts extension, not a redesign.
+      loops.ts extension, not a redesign. Spec:
+      [`docs/plans/regions-split.md`](docs/plans/regions-split.md).
+      **PR 1 BUILT (2026-10-21)** — `loops.ts` cuts every edge at held Ts and
+      at crossings (virtual vertices, `l1×l5`), members walk portions (`span`),
+      `loopAt` and the region preview see sub-regions, `loops()` lists them,
+      and `extrude`/`revolve` refuse a split region by name. **PR 2** (features
+      over split regions: materialise, twin portions, journal v8) is next; tick
+      this then. Deviations from the spec, each also in its "PR 1 as built":
+      - ⚠ **A crossing key can collide with a name** — the spec thought the
+        dot reservation prevented it; `×` is a legal name character. A key
+        that is a name gets a prime (′); `isVirtual(model, v)` is the test.
+      - ⚠ **Members are as long as the loop allows**: consecutive parts of one
+        entity walked one way are one member, so a cut that is no corner of
+        the loop is not listed. Without it a dangling T would have made a plain
+        rectangle "split" and unextrudable.
+      - ⚠ **The line form of `mid` holds a point on a line** too (a midpoint
+        snap infers it); the spec named `on` and `oncircle`.
+      - ⚠ **Portions are labelled in their entity's own direction**, not as
+        walked: as walked, the two crescents of a lens had the same label and
+        the hover did not redraw between them.
+      - ⚠ **Tangency is measured as a distance from touching** (a solved
+        tangency's roots are √(2rδ) apart, so the old root-gap test would call
+        it a crossing); lines must straddle each other by more than the
+        tolerance to cross.
+      - **Crossing lines are candidate planes**, so three lines that only cross
+        bound a triangle. Pair searches swept and boxed: 3.6 ms on 400 coplanar
+        lines against 2.8 before; a 30 × 30 grid of crossing lines (841
+        regions) is 31 ms, per hover move.
+      - **`sketchface.ts` skips crossings** when choosing three points (a
+        crossing is no point to hold a frame), falling back to the parted
+        edges' own ends; a lens of circles takes a circle's frame.
+      - **Two older tests used a line through a profile as a revolve axis**;
+        that line now splits the profile, and the tests were reshaped (see the
+        spec).
+      **Found while building, left deliberately:**
+      - A crossing's key is positional (numbered along the first edge) and can
+        change under a drag; it is a question's answer, not a name to keep.
+      - Two held points of different classes on one spot of an edge cut it
+        once, at the first; the second's edges do not meet the first's there.
+      - Edges lying along each other (collinear overlap, two arcs of one
+        circle) are not crossings, and overlap still gives odd faces — as
+        before this package.
+      - `loopOutlines` draws a portion by re-reading the live entity over the
+        span found at hover time, so mid-drag a preview can lag the crossing
+        by one hover move.
 - [ ] **Display depth done right.** The 355° cap limit, hidden edges showing
       through faces, and interpenetrating solids all trace to painter's
       sorting. The honest fix is a real depth pass (BSP split or a WebGL

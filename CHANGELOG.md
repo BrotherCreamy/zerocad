@@ -7,6 +7,40 @@ decisions.
 
 ---
 
+## A line across a rectangle cuts it in two: regions split at crossings and Ts
+
+![A rectangle on a tilted sketch plane, seen square-on, with a vertical line drawn across it that runs past its top and bottom edges to p9 and p8; the extrude tool is armed and the cursor is in the right-hand part, which is filled faint green and outlined in green from where the line crosses the top edge, round the right side, to where it crosses the bottom edge and up the line between them; the left part, and the line's stubs outside the rectangle, stay grey](docs/images/75-the-extrude-preview-stopping-at-a-crossing.png)
+
+Draw a rectangle, draw a line across it, arm `extrude` and hover: the outline
+is the half under the cursor and stops at the line. That is Onshape's
+behaviour, and it was the loop policy's one deviation from it — until now a
+crossing, or a line whose ends the tool had held *on* the edges, split nothing.
+
+```js
+> loops()
+loop of l1[p1→l1×l5],l5[l1×l5→l3×l5],l3[l3×l5→p4],l4 in f, area 450
+loop of l1[l1×l5→p2],l2,l3[p3→l3×l5],l5[l1×l5→l3×l5] in f, area 750
+```
+
+**Joined still means held.** A *T* is held — `on`, `oncircle`, or a midpoint
+snap's `mid` keeps the end on the edge — so the edge is cut there. A *crossing*
+is held by nothing and joins nothing; but which regions a drawing bounds is a
+question about where its edges are now, so for finding regions the edges are
+cut at a **virtual vertex** named by the lines that make it, `l1×l5` (`c1×c2#1`
+and `#2` for two circles, which cross twice). Closed forms throughout: a
+rectangle with two lines across it is four regions, two crossing circles are
+two crescents and a lens, a bow-tie is its two lobes; a tangent circle, a line
+stopping short of an edge and a stray line inside split nothing. A member of a
+loop is now a *portion* of its entity — `l3[l3×l5→p4]`, part of `l3` — and a
+loop with nothing cut reads exactly as before.
+
+**Extruding one is the next package.** A feature has to *keep* a crossing, so
+it will make it a real point held on both lines first; until then `extrude` and
+`revolve` refuse a split region by name — *"this region is bounded by part of
+l1 (from l1×l5 to p5) — extruding split regions is not built yet"* — rather
+than build a solid that is not the region you saw. The preview, `loopAt`,
+`loops()` and sketching on a split face all work now.
+
 ## A refused constructor leaves nothing behind
 
 `line()`, `circle()`, `arc()` and `frame()` make the points they were not

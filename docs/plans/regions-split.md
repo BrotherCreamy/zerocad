@@ -1,6 +1,8 @@
 # Plan: regions under crossings and T-junctions
 
-**Status: queued** (2026-10-21), two PRs. Second of the register's "Next up"
+**Status: PR 1 built** (2026-10-21, branch `claude/regions-split-1`; see
+"PR 1 as built" below for what differs from this text); **PR 2 queued.** Two
+PRs. Second of the register's "Next up"
 queue, and the one ⚠ deviation from Onshape in the loop policy: *"Onshape
 splits regions at every intersection; this model only knows what it was
 told."* The owner's standing rule — tools work like Onshape — decides it:
@@ -38,10 +40,16 @@ changes is the reading of two cases the line was applied to too bluntly:
 - **A member walks a portion of its entity.** `LoopMember` says which: from
   which vertex to which, and (for the arithmetic — area, winding, outline) the
   parameter span on the entity. A vertex is a point entity's name, or a
-  crossing's key — a string that can never be an entity name (the model
-  reserves the dot for axis refs; choose a spelling such as `l1×l2`, document
-  it, and make `describeLoop` print it legibly). `from`/`to` stay strings;
-  add what the portion needs rather than redesigning the type.
+  crossing's key — a string that can never be an entity name (choose a
+  spelling such as `l1×l2`, document it, and make `describeLoop` print it
+  legibly). `from`/`to` stay strings; add what the portion needs rather than
+  redesigning the type. *Corrected while building:* this said "the model
+  reserves the dot for axis refs" as though that kept `l1×l2` from being a
+  name. It does not — only the dot is reserved, and `×` is a legal name
+  character. Since nothing in `model.ts` changes in PR 1, the guarantee is
+  made where the key is: a key that is already a name gets a prime (′) until
+  it is not, so a vertex is a crossing exactly when the model has no point by
+  that name.
 - **Splitting.** Per plane: every held on-point splits its edge; every pair of
   coplanar edges that cross in their interiors (line–line, line–arc, arc–arc,
   and whole circles — closed forms, no sampling; tangency and an end on the
@@ -67,7 +75,74 @@ changes is the reading of two cases the line was applied to too bluntly:
   region is bounded by part of l1 — extruding split regions is not built
   yet"), so PR 1 cannot produce a half-built feature. Test that refusal.
 
+### PR 1 as built (2026-10-21)
+
+Everything above, with these differences — each is also in `TODO.md`'s
+register and the PR:
+
+- **The key** is `l1×l5`: the edges through the crossing in creation order,
+  `×`-joined, numbered `#1`, `#2` along the first-named edge when the same
+  edges cross more than once (`c1×c2#1`), primed past any existing name (see
+  the correction above). Crossings at one spot are one vertex named by all of
+  them (`l5×l6×l7`); a crossing within tolerance of a held point *is* that
+  point (a crossing already materialised by `pt(on(_, "l1"), on(_, "l2"))`).
+- **`LoopMember.span`**: `[start, end]` as fractions of the entity in its own
+  direction (a circle from its frame's +x; the end past 1 across its seam),
+  null for the whole entity — whichever way the loop walks it.
+- **A member is as long as the loop allows** — not in the text above.
+  Consecutive parts of one entity walked the same way are one member, so a cut
+  that is no corner of the loop (a free point held on an edge, a T whose stem
+  goes nowhere, a stub poking out through one edge) is not listed and the loop
+  is whole members. Without it, any such cut would have made a plain
+  rectangle "split", and extrude would have refused it.
+- **Which relations hold a point on which curves:** `on` (`pointOnLine`) on a
+  line, `oncircle` (`onCircle`) on an arc or circle — and the **line form of
+  `mid`** (`midpoint(m, l)`), which a midpoint snap infers; the spec named
+  only the first two. Each cuts only *within* its edge. The point-pair `mid`
+  and `tan` cut nothing; `arcends` are an arc's own ends.
+- **`loops()` and the hover key label a portion in its entity's own
+  direction** (`l3[l3×l5→p4]`), not as walked: two vertices on a circle bound
+  two arcs of it, and the crescents either side of a lens run between the same
+  two crossings — as walked, their labels tied and the hover did not redraw.
+- **Tangency is a distance**: a curve within the length tolerance of touching
+  is tangent. The old test (roots closer than the tolerance) would have read a
+  solved tangency, whose roots are √(2rδ) apart, as a crossing. Two lines
+  cross only when each one's ends straddle the other by more than the
+  tolerance, so lines lying along each other never do.
+- **Planes from crossing lines**: three lines that only cross one another
+  bound a triangle with no joined corner, so a pair of crossing lines is now a
+  candidate plane too. The pair searches are swept and boxed — they run on
+  every hover (measured in the PR: 3.6 ms on 400 coplanar lines, 2.8 before).
+- **`sketchface.ts` changed** (the spec did not mention it): a crossing is a
+  vertex but no point, so the corner search skips it and falls back to the
+  parted entities' own ends; a region bounded by parts of circles alone (a
+  lens) takes a circle's frame, as a whole circle does.
+- **The refusal** lives in `profileOf`, which `extrude(member)`, `revolve(member)`
+  and all three tools pass through; it reads *"this region is bounded by part
+  of l1 (from l1×l5 to p5) — extruding split regions is not built yet. …"*. A
+  journal's handed-over profile (names only) is never split, and is not
+  refused.
+- **Two older tests drew a line through a profile as a revolve axis**; such a
+  line now splits the profile. The unit test moved that case to its own model
+  (refused as split; handed over whole, still refused for crossing the axis),
+  and the tool test's refused axis now leans out of the plane instead.
+
 ## PR 2 — features over split regions
+
+*Found while building PR 1, for whoever builds this:*
+
+- **A crossing's key is not stable** — it is named by position along the
+  first edge, and a drag can change how many crossings there are. Never
+  journal a key: materialise at the call, journal the real points.
+- **A span is a snapshot**, and `loopOutlines` re-reads the live entity over
+  it; good for a preview, wrong for a cap. Caps over portions must be drawn
+  between the materialised points (or the T's own), as twins are.
+- **A T that is no corner of a loop is not in its members** (members are as
+  long as the loop allows). Extruding the region on one side of a T alone is
+  then whole members; extruding both sides is where the T matters.
+- **Remove the refusal** in `profileOf` (and its tests in `extrude.test.ts`,
+  `revolve.test.ts`, `faces.test.ts` and `test/e2e/regions.e2e.ts`, which say
+  "not built yet").
 
 - **Materialise, then expand.** Before twins are made, every virtual vertex of
   the profile becomes a real point held `on` both edges (`oncircle` for

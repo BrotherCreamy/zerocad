@@ -153,6 +153,37 @@ test("a lens of two arcs has only two vertices: an arc's centre is the third poi
   assert.ok(near(zOf(m, got), t.uz));
 });
 
+test("a region cut off by crossings: its crossings are no points, so the plane is made of its real corners and its edges' own ends", async () => {
+  await loadKernel();
+  const m = new Model(3);
+  const t = tiltedFrame(m);
+  const { points } = polygon(m, t, [[0, 0], [40, 0], [40, 30], [0, 30]]);
+  m.addLine(m.addPoint(t.at(-10, 10)).name, m.addPoint(t.at(50, 10)).name);
+  const loops = findLoops(m);
+  assert.equal(loops.length, 2);
+  for (const [loop, toward] of [[loops[0], t.uz], [loops[1], neg(t.uz)]] as const) {
+    const got = sketchFrameFor(m, loop, toward);
+    assert.ok(got.every((p) => m.entities.get(p)?.kind === "point"), `${got}: real points only`);
+    assert.ok(got.every((p) => points.includes(p)), `${got}: the rectangle's own corners`);
+    assert.ok(near(zOf(m, got), toward), "facing whoever looked");
+  }
+  // Below the line the region has two real corners and two crossings; the
+  // corner test skips any corner whose neighbour is a crossing, and the
+  // rectangle's other corners — ends of the edges it runs along — make the third.
+  assert.equal(vertices(loops[0]).filter((v) => m.entities.has(v)).length, 2);
+});
+
+test("a lens of two crossing circles has no point at all but their centres: it takes a circle's frame, as a whole circle does", async () => {
+  await loadKernel();
+  const m = new Model(3);
+  const t = tiltedFrame(m);
+  ring(m, t, 10, 5, 10);
+  ring(m, t, 22, 5, 10);
+  const lens = findLoops(m).find((l) => l.area < 100)!; // the crescents are each over 200
+  assert.deepEqual(sketchFrameFor(m, lens, t.uz), ["t_o", "t_x", "t_y"]);
+  assert.deepEqual(sketchFrameFor(m, lens, neg(t.uz)), ["t_o", "t_y", "t_x"]);
+});
+
 test("refusals, by name: a D on a semicircle has no three points off one line; a circle off its frame's plane; a plane seen edge-on; a 2D drawing", async () => {
   await loadKernel();
   const m = new Model(3);

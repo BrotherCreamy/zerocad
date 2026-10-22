@@ -17,12 +17,12 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { ensureKernelLoaded } from "../src/kernel/problem.ts";
 import { Model } from "../src/model.ts";
-import { coincident } from "../src/relations/basic.ts";
-import { pointOnLine } from "../src/relations/geometry.ts";
+import { coincident, midpoint } from "../src/relations/basic.ts";
+import { onCircle, pointOnLine } from "../src/relations/geometry.ts";
 import { fillet } from "../src/operations.ts";
 import { neocadScope } from "../src/replenv.ts";
 import { save } from "../src/persist.ts";
-import { describeLoop, findLoops, loopAt, type Loop } from "../src/loops.ts";
+import { describeLoop, findLoops, isPortion, isVirtual, loopAt, memberLabel, type Loop } from "../src/loops.ts";
 import { orbitBy, worldToScreen, type View } from "../src/view.ts";
 import { axisFrame, tiltedFrame } from "./frames.ts";
 
@@ -49,7 +49,9 @@ function polygon(m: Model, corners: number[][]): { points: string[]; lines: stri
  * in the order the loop says, an arc sampled finely in its own frame's
  * counter-clockwise sense (or against it, if reversed) — and its shoelace area
  * in the loop's plane. Independent of `loops.ts`: if the members are listed
- * clockwise, this comes out negative.
+ * clockwise, this comes out negative. A member that is part of its entity is
+ * walked over its `span` — fractions of the entity from its own start (a
+ * line's first point, an arc's start, a circle's frame's +x).
  */
 function traced(m: Model, loop: Loop): number {
   const { origin, u, v } = loop.plane;
@@ -57,21 +59,33 @@ function traced(m: Model, loop: Loop): number {
   const pts: number[][] = [];
   for (const mem of loop.members) {
     const e = m.entities.get(mem.name)!;
-    if (e.kind === "line") { pts.push(flat(m.coords(mem.from!))); continue; }
+    const [s0, s1] = mem.span ?? [0, 1];
+    if (e.kind === "line") {
+      const [a, b] = e.refs.map((p) => m.coords(p));
+      const t = mem.reversed ? s1 : s0;
+      pts.push(flat(a.map((x, i) => x + t * (b[i] - x))));
+      continue;
+    }
     if (e.kind !== "arc" && e.kind !== "circle") throw new Error("not a curve");
     const c = flat(m.coords(e.center));
     const r = m.radius(e.name);
     // Which way round the arc's own frame turns, seen in this plane.
-    const own = e.plane === undefined ? 1 : Math.sign(dot(frameZ(m, e.plane), loop.plane.normal));
+    const own = e.plane === undefined ? 1 : Math.sign(dot(frameAxes(m, e.plane).uz, loop.plane.normal));
     const angle = (p: string) => { const q = flat(m.coords(p)); return Math.atan2(q[1] - c[1], q[0] - c[0]); };
     let a0: number, sweep: number;
-    if (e.kind === "circle") { a0 = 0; sweep = 2 * Math.PI * own; }
-    else {
+    if (e.kind === "circle") {
+      // From the circle's own +x: its frame's in 3D, the drawing's x in 2D.
+      const x = e.plane === undefined ? [1, 0, 0] : frameAxes(m, e.plane).ux;
+      a0 = Math.atan2(dot(x, v), dot(x, u));
+      sweep = 2 * Math.PI * own;
+    } else {
       a0 = angle(e.start);
       sweep = own * (angle(e.end) - a0);
       while (sweep < 0) sweep += 2 * Math.PI;
       sweep *= own;
     }
+    a0 += s0 * sweep;
+    sweep *= s1 - s0;
     if (mem.reversed) { a0 += sweep; sweep = -sweep; }
     const n = 4000;
     for (let k = 0; k < n; k++) pts.push([c[0] + r * Math.cos(a0 + (sweep * k) / n), c[1] + r * Math.sin(a0 + (sweep * k) / n)]);
@@ -84,14 +98,14 @@ function traced(m: Model, loop: Loop): number {
   return s / 2;
 }
 
-function frameZ(m: Model, frame: string): number[] {
+function frameAxes(m: Model, frame: string): { ux: number[]; uz: number[] } {
   const f = m.frame(frame);
   const o = m.coords(f.origin), x = sub(m.coords(f.xref), o), y = sub(m.coords(f.yref!), o);
   const ux = x.map((c) => c / Math.hypot(...x));
   const along = dot(y, ux);
   const yy = y.map((c, i) => c - along * ux[i]);
   const uy = yy.map((c) => c / Math.hypot(...yy));
-  return [ux[1] * uy[2] - ux[2] * uy[1], ux[2] * uy[0] - ux[0] * uy[2], ux[0] * uy[1] - ux[1] * uy[0]];
+  return { ux, uz: [ux[1] * uy[2] - ux[2] * uy[1], ux[2] * uy[0] - ux[0] * uy[2], ux[0] * uy[1] - ux[1] * uy[0]] };
 }
 
 /** Each member ends where the next begins — by point entity, the only kind of "where" a join has. */
@@ -192,7 +206,7 @@ test("a whole circle is a loop by itself: area πr², no ends", () => {
   const m = new Model(2);
   const c = m.addCircle(m.addPoint([5, 5]).name, 10).name;
   const [loop] = findLoops(m);
-  assert.deepEqual(loop.members, [{ name: c, reversed: false, from: null, to: null }]);
+  assert.deepEqual(loop.members, [{ name: c, reversed: false, from: null, to: null, span: null }]);
   assert.ok(close(loop.area, 100 * Math.PI), `area ${loop.area}`);
   assert.ok(close(traced(m, loop), 100 * Math.PI, 1e-3));
 
@@ -205,7 +219,7 @@ test("a whole circle is a loop by itself: area πr², no ends", () => {
   const ring = n.addCircle(n.addPoint([30, 0, 0]).name, 4, "under").name;
   const [flipped] = findLoops(n);
   assert.equal(flipped.plane.frame, "f");
-  assert.deepEqual(flipped.members, [{ name: ring, reversed: true, from: null, to: null }]);
+  assert.deepEqual(flipped.members, [{ name: ring, reversed: true, from: null, to: null, span: null }]);
   assert.ok(close(flipped.area, 16 * Math.PI) && close(traced(n, flipped), 16 * Math.PI, 1e-3));
   const view: View = { ox: 400, oy: 300, scale: 2 };
   const found = findLoops(n);
@@ -258,12 +272,23 @@ test("an island touching its outline at a vertex is two loops — the walk round
   assert.equal(loops[1].parent, 0, "touching at a point still counts as inside");
 });
 
-test("two rectangles that overlap, joined nowhere, are two loops and neither contains the other", () => {
+test("two rectangles that overlap, joined nowhere, are three regions cut where their edges cross, and none holds another", () => {
   const m = new Model(2);
-  polygon(m, [[0, 0], [40, 0], [40, 30], [0, 30]]);
-  polygon(m, [[20, 10], [60, 10], [60, 40], [20, 40]]);
+  const a = polygon(m, [[0, 0], [40, 0], [40, 30], [0, 30]]);
+  const b = polygon(m, [[20, 10], [60, 10], [60, 40], [20, 40]]);
   const loops = findLoops(m);
-  assert.equal(loops.length, 2);
+  // Joined nowhere, but crossing at two points: each one's own part and the
+  // overlap, side by side — Onshape's three regions.
+  assert.equal(loops.length, 3, loops.map((l) => describeLoop(l, loops)).join(" | "));
+  assert.deepEqual(loops.map((l) => Math.round(l.area)), [800, 400, 800]);
+  assert.ok(loops.every((l) => close(traced(m, l), l.area, 1e-6)));
+  const overlap = loops[1];
+  const [x1, x2] = [`${a.lines[1]}×${b.lines[0]}`, `${a.lines[2]}×${b.lines[3]}`];
+  assert.deepEqual(overlap.members.map(memberLabel), [
+    `${a.lines[1]}[${x1}→${a.points[2]}]`, `${a.lines[2]}[${a.points[2]}→${x2}]`,
+    `${b.lines[3]}[${x2}→${b.points[0]}]`, `${b.lines[0]}[${b.points[0]}→${x1}]`,
+  ], "the overlap: a corner of each, and the two crossings");
+  assert.ok([x1, x2].every((x) => isVirtual(m, x)) && !isVirtual(m, a.points[2]));
   assert.ok(loops.every((l) => l.parent === null && l.children.length === 0));
 });
 
@@ -305,48 +330,332 @@ test("a coin chain joins: a corner held through a third point is still a corner"
   assert.equal(findLoops(m).length, 1);
 });
 
-test("a T is not a join: a line between two points held on a rectangle's edges does not split it", () => {
-  const m = new Model(2);
-  const { lines } = polygon(m, [[0, 0], [40, 0], [40, 30], [0, 30]]);
-  const p = m.addPoint([20, 0]).name, q = m.addPoint([20, 30]).name;
-  pointOnLine(m, p, lines[0]);
-  pointOnLine(m, q, lines[2]);
-  m.addLine(p, q);
-  const loops = findLoops(m);
-  assert.equal(loops.length, 1, "the rectangle, whole");
-  assert.deepEqual(names(loops[0]), lines);
-});
-
-test("a line hanging off a corner is no part of anything", () => {
+test("a line hanging off a corner is no part of anything — until it crosses an edge, and cuts the rectangle there", () => {
   const m = new Model(2);
   const { lines, points } = polygon(m, [[0, 0], [40, 0], [40, 30], [0, 30]]);
   m.addLine(points[2], m.addPoint([60, 50]).name);
-  // One that hangs *into* the rectangle and out the other side, too: it is on
-  // no cycle, so it crosses nothing that matters.
-  m.addLine(points[0], m.addPoint([70, 20]).name);
-  const loops = findLoops(m);
+  let loops = findLoops(m);
   assert.equal(loops.length, 1);
   assert.deepEqual(names(loops[0]), lines);
+  // One that hangs *into* the rectangle from a corner and out through the far
+  // edge: the part inside joins the corner to the crossing, and the rectangle
+  // is two regions; the stub outside is on no cycle.
+  const into = m.addLine(points[0], m.addPoint([70, 20]).name).name;
+  loops = findLoops(m);
+  assert.equal(loops.length, 2, loops.map((l) => describeLoop(l, loops)).join(" | "));
+  const crossing = 40 * 20 / 70; // where y = 20x/70 meets x = 40
+  assert.ok(close(loops[0].area, 20 * crossing) && close(loops[1].area, 1200 - 20 * crossing));
+  assert.deepEqual(loops[0].members.map(memberLabel), [lines[0], `${lines[1]}[${points[1]}→${lines[1]}×${into}]`, `${into}[${points[0]}→${lines[1]}×${into}]`]);
+});
+
+// --- Ts and crossings: where a region is cut ------------------------------------------
+//
+// The cases `docs/plans/regions-split.md` lists, each drawn twice — in a 2D
+// model, and on a frame tipped and spun off every kernel axis — from the same
+// (u, v) numbers, so one set of closed forms checks both.
+
+/** A drawing surface, and how to draw on it in its own (u, v). */
+interface Sheet {
+  label: string;
+  m: Model;
+  at: (u: number, v: number) => number[];
+  /** A line between two fresh points. */
+  seg: (a: number[], b: number[]) => string;
+  circle: (u: number, v: number, r: number) => string;
+  /** A view the sketch is seen in, for `loopAt` — square-on in 2D, turned for the tilted one. */
+  view: View;
+}
+
+function sheets(): Sheet[] {
+  const make = (label: string, m: Model, at: (u: number, v: number) => number[], frame: string | null, view: View): Sheet => ({
+    label, m, at, view,
+    seg: (a, b) => m.addLine(m.addPoint(at(a[0], a[1])).name, m.addPoint(at(b[0], b[1])).name).name,
+    circle: (u, v, r) => m.addCircle(m.addPoint(at(u, v)).name, r, frame ?? undefined).name,
+  });
+  const tilted = new Model(3);
+  const t = tiltedFrame(tilted);
+  return [
+    make("in 2D", new Model(2), (u, v) => [u, v], null, { ox: 400, oy: 300, scale: 2 }),
+    make("on a tilted plane", tilted, (u, v) => t.at(u, v), t.name, orbitBy({ ox: 400, oy: 300, scale: 3 }, 0.6, -0.4)),
+  ];
+}
+
+const RECT = [[0, 0], [40, 0], [40, 30], [0, 30]];
+const rectOn = (s: Sheet) => polygon(s.m, RECT.map(([u, v]) => s.at(u, v)));
+const spanNear = (got: [number, number] | null, want: [number, number]) =>
+  got !== null && close(got[0], want[0], 1e-9) && close(got[1], want[1], 1e-9);
+/** The loop under the sketch's point (u, v), as an index into `loops`, or −1. */
+const under = (s: Sheet, loops: Loop[], u: number, v: number) =>
+  loops.indexOf(loopAt(s.m, s.view, ...worldToScreen(s.view, s.at(u, v)), loops)!);
+const listing = (loops: Loop[]) => loops.map((l) => describeLoop(l, loops)).join(" | ");
+
+test("a rectangle with one line across it is two regions, cut where the line crosses — and a click picks either", () => {
+  for (const s of sheets()) {
+    const { lines, points } = rectOn(s);
+    const across = s.seg([15, -10], [15, 40]);
+    const loops = findLoops(s.m);
+    const what = `${s.label}: ${listing(loops)}`;
+    assert.equal(loops.length, 2, what);
+    const [x1, x3] = [`${lines[0]}×${across}`, `${lines[2]}×${across}`];
+    assert.deepEqual(loops[0].members.map(memberLabel),
+      [`${lines[0]}[${points[0]}→${x1}]`, `${across}[${x1}→${x3}]`, `${lines[2]}[${x3}→${points[3]}]`, lines[3]], what);
+    assert.deepEqual(loops[1].members.map(memberLabel),
+      [`${lines[0]}[${x1}→${points[1]}]`, lines[1], `${lines[2]}[${points[2]}→${x3}]`, `${across}[${x1}→${x3}]`], what);
+    assert.ok(close(loops[0].area, 450) && close(loops[1].area, 750), what);
+    assert.ok(loops.every((l) => close(traced(s.m, l), l.area, 1e-6)), `${s.label}: walked out of the model, each runs counter-clockwise`);
+    // Spans are fractions of each entity from its own start, whichever way it is walked.
+    const [bottom, stem, topEdge] = loops[0].members;
+    assert.ok(spanNear(bottom.span, [0, 0.375]) && spanNear(stem.span, [0.2, 0.8]) && spanNear(topEdge.span, [0.625, 1]), what);
+    assert.equal(loops[0].members[3].span, null, "the left edge is all of itself");
+    assert.ok(isVirtual(s.m, x1) && isVirtual(s.m, x3) && !isVirtual(s.m, points[0]));
+    assert.ok(isPortion(s.m, bottom) && !isPortion(s.m, loops[0].members[3]));
+    assert.ok(loops.every((l) => l.parent === null), "side by side");
+    assert.equal(under(s, loops, 5, 15), 0, `${s.label}: left of the line`);
+    assert.equal(under(s, loops, 30, 15), 1, `${s.label}: right of it`);
+    assert.equal(under(s, loops, 15, 35), -1, `${s.label}: on the line past the rectangle, inside nothing`);
+  }
+});
+
+test("loops() lists a portion by the vertices it runs between, crossings by the edges that make them", () => {
+  const m = new Model(3);
+  axisFrame(m);
+  polygon(m, RECT.map(([x, y]) => [x, y, 0]));
+  m.addLine(m.addPoint([15, -10, 0]).name, m.addPoint([15, 40, 0]).name);
+  const scope = neocadScope({ model: m }) as Record<string, (...a: unknown[]) => unknown>;
+  assert.deepEqual(scope.loops(), [
+    "loop of l1[p1→l1×l5],l5[l1×l5→l3×l5],l3[l3×l5→p4],l4 in f, area 450",
+    "loop of l1[l1×l5→p2],l2,l3[p3→l3×l5],l5[l1×l5→l3×l5] in f, area 750",
+  ]);
+});
+
+test("two lines crossing across a rectangle make four regions, all meeting at their crossing", () => {
+  for (const s of sheets()) {
+    rectOn(s);
+    const up = s.seg([15, -10], [15, 40]), level = s.seg([-10, 10], [50, 10]);
+    const loops = findLoops(s.m);
+    const what = `${s.label}: ${listing(loops)}`;
+    assert.equal(loops.length, 4, what);
+    assert.deepEqual(loops.map((l) => Math.round(l.area * 1e6) / 1e6), [150, 250, 500, 300], what);
+    assert.ok(loops.every((l) => close(traced(s.m, l), l.area, 1e-6)));
+    const centre = `${up}×${level}`;
+    assert.ok(loops.every((l) => l.members.some((x) => x.from === centre)), `${s.label}: every quarter has the centre as a corner`);
+    for (const [u, v, i] of [[5, 5, 0], [30, 5, 1], [30, 20, 2], [5, 20, 3]]) assert.equal(under(s, loops, u, v), i, `${s.label}: (${u}, ${v})`);
+  }
+});
+
+test("a line held on a rectangle's edges at both ends — a T each side — splits it there, the held points its corners", () => {
+  for (const s of sheets()) {
+    const { lines, points } = rectOn(s);
+    const p = s.m.addPoint(s.at(15, 0)).name, q = s.m.addPoint(s.at(15, 30)).name;
+    pointOnLine(s.m, p, lines[0]);
+    pointOnLine(s.m, q, lines[2]);
+    const stem = s.m.addLine(p, q).name;
+    const loops = findLoops(s.m);
+    const what = `${s.label}: ${listing(loops)}`;
+    assert.deepEqual(loops.map((l) => l.members.map(memberLabel)), [
+      [`${lines[0]}[${points[0]}→${p}]`, stem, `${lines[2]}[${q}→${points[3]}]`, lines[3]],
+      [`${lines[0]}[${p}→${points[1]}]`, lines[1], `${lines[2]}[${points[2]}→${q}]`, stem],
+    ], what);
+    assert.ok(close(loops[0].area, 450) && close(loops[1].area, 750), what);
+    assert.ok(loops.every((l) => l.members.every((x) => !isVirtual(s.m, x.from!) && !isVirtual(s.m, x.to!))), "nothing virtual: a T is held");
+    assert.equal(under(s, loops, 5, 15), 0);
+    assert.equal(under(s, loops, 30, 15), 1);
+  }
+});
+
+test("a T counts through a coin chain: the stem's own ends held to points held on the edges", () => {
+  for (const s of sheets()) {
+    const { lines } = rectOn(s);
+    const [p, q, a, b] = [[15, 0], [15, 30], [15, 0], [15, 30]].map(([u, v]) => s.m.addPoint(s.at(u, v)).name);
+    pointOnLine(s.m, p, lines[0]);
+    pointOnLine(s.m, q, lines[2]);
+    const stem = s.m.addLine(a, b).name;
+    coincident(s.m, a, p);
+    coincident(s.m, b, q);
+    const loops = findLoops(s.m);
+    assert.equal(loops.length, 2, `${s.label}: ${listing(loops)}`);
+    // The edge is cut at the held point, and the stem runs between its own.
+    assert.deepEqual(loops[0].members.slice(0, 2).map((x) => [x.name, x.to]), [[lines[0], p], [stem, b]]);
+    assert.ok(close(loops[0].area, 450) && close(loops[1].area, 750));
+  }
+});
+
+test("a lens of two crossing circles is three regions — two crescents and the lens — each picked by a click", () => {
+  const r = 10, d = 12;
+  const lens = 2 * r * r * Math.acos(d / (2 * r)) - (d / 2) * Math.sqrt(4 * r * r - d * d);
+  const crescent = Math.PI * r * r - lens;
+  for (const s of sheets()) {
+    const c1 = s.circle(20, 15, r), c2 = s.circle(20 + d, 15, r);
+    const loops = findLoops(s.m);
+    const what = `${s.label}: ${listing(loops)}`;
+    assert.equal(loops.length, 3, what);
+    assert.ok(close(loops[0].area, crescent, 1e-9) && close(loops[1].area, lens, 1e-9) && close(loops[2].area, crescent, 1e-9), what);
+    assert.ok(loops.every((l) => close(traced(s.m, l), l.area, 1e-4)));
+    // Crossed twice, so numbered along c1 from its own +x: #1 above, #2 below.
+    const [k1, k2] = [`${c1}×${c2}#1`, `${c1}×${c2}#2`];
+    assert.deepEqual(loops.map((l) => l.members.map(memberLabel)), [
+      [`${c1}[${k1}→${k2}]`, `${c2}[${k1}→${k2}]`],
+      [`${c1}[${k2}→${k1}]`, `${c2}[${k1}→${k2}]`],
+      [`${c1}[${k2}→${k1}]`, `${c2}[${k2}→${k1}]`],
+    ], what);
+    // c1's piece inside c2 runs across c1's seam (its +x): measured past 1.
+    const seam = Math.atan2(8, 6) / (2 * Math.PI);
+    assert.ok(spanNear(loops[1].members[0].span, [1 - seam, 1 + seam]), `${s.label}: ${JSON.stringify(loops[1].members[0].span)}`);
+    assert.ok(loops.every((l) => l.parent === null));
+    assert.equal(under(s, loops, 12, 15), 0, `${s.label}: the left crescent`);
+    assert.equal(under(s, loops, 26, 15), 1, `${s.label}: the lens`);
+    assert.equal(under(s, loops, 40, 15), 2, `${s.label}: the right crescent`);
+  }
+});
+
+test("a circle that only touches an edge splits nothing — nor one a solve left a hair over it; a thousandth over is a crossing", () => {
+  for (const s of sheets()) {
+    const { lines } = rectOn(s);
+    const c = s.circle(20, 20, 10);
+    let loops = findLoops(s.m);
+    assert.deepEqual(loops.map(names), [lines, [c]], `${s.label}: tangent to the top edge — ${listing(loops)}`);
+    assert.equal(loops[1].parent, 0, "touching at a point is still inside");
+  }
+  // A tangency within the length tolerance, as a solve leaves one: a
+  // billionth over. Measured as a distance, not as how far apart the roots
+  // are — those lie √(2rδ) either side of the touch, ~1.4e-4 here, past any
+  // tolerance a length could have.
+  for (const [over, regions] of [[1e-9, 2], [1e-3, 3]] as const) {
+    for (const s of sheets()) {
+      rectOn(s);
+      s.circle(20, 20, 10 + over);
+      const loops = findLoops(s.m);
+      assert.equal(loops.length, regions, `${s.label}, ${over} over: ${listing(loops)}`);
+      assert.ok(loops.every((l) => close(traced(s.m, l), l.area, 1e-3)), "traced samples a whole circle: a thousandth is its resolution");
+    }
+  }
+});
+
+test("two lines whose crossing lies beyond an end split nothing, nor does an end resting on an edge that nothing holds there", () => {
+  for (const s of sheets()) {
+    const { lines } = rectOn(s);
+    s.seg([15, -10], [15, -2]); // pointing at the bottom edge, short of it
+    s.seg([45, 15], [60, 15]); // beside the right edge, pointing away
+    s.seg([25, -10], [25, 0]); // its end exactly on the bottom edge — touching, not held
+    const loops = findLoops(s.m);
+    assert.equal(loops.length, 1, `${s.label}: ${listing(loops)}`);
+    assert.deepEqual(names(loops[0]), lines);
+    assert.ok(loops[0].members.every((x) => x.span === null));
+  }
+});
+
+test("a stray line inside a region splits nothing, and a stub poking out through one edge is on no cycle: the loop is listed whole", () => {
+  for (const s of sheets()) {
+    const { lines } = rectOn(s);
+    s.seg([10, 10], [30, 20]);
+    s.seg([30, 15], [50, 15]); // crosses the right edge once, and goes nowhere
+    const loops = findLoops(s.m);
+    assert.equal(loops.length, 1, `${s.label}: ${listing(loops)}`);
+    assert.deepEqual(loops[0].members.map(memberLabel), lines, "the right edge cut at the crossing, and joined up again");
+    assert.ok(close(loops[0].area, 1200));
+  }
+});
+
+test("a point held on an edge with nothing else there, or a T whose stem goes nowhere, is no corner: the loop is listed whole", () => {
+  for (const s of sheets()) {
+    const { lines } = rectOn(s);
+    const free = s.m.addPoint(s.at(10, 0)).name;
+    pointOnLine(s.m, free, lines[0]);
+    const foot = s.m.addPoint(s.at(20, 30)).name;
+    midpoint(s.m, foot, lines[2]); // the line form: held at the top edge's middle
+    s.m.addLine(foot, s.m.addPoint(s.at(20, 15)).name);
+    const loops = findLoops(s.m);
+    assert.equal(loops.length, 1, `${s.label}: ${listing(loops)}`);
+    assert.deepEqual(loops[0].members.map(memberLabel), lines);
+  }
+});
+
+test("a chord held on a circle cuts it in two; the piece across the circle's seam is measured past 1", () => {
+  const r = 10, a = Math.PI / 3;
+  const segment = (r * r / 2) * (2 * a - Math.sin(2 * a));
+  for (const s of sheets()) {
+    const c = s.circle(20, 15, r);
+    const [p, q] = [a, -a].map((t) => s.m.addPoint(s.at(20 + r * Math.cos(t), 15 + r * Math.sin(t))).name);
+    onCircle(s.m, p, c);
+    onCircle(s.m, q, c);
+    const chord = s.m.addLine(p, q).name;
+    const loops = findLoops(s.m);
+    const what = `${s.label}: ${listing(loops)}`;
+    assert.equal(loops.length, 2, what);
+    assert.deepEqual(loops.map((l) => l.members.map(memberLabel)), [[`${c}[${p}→${q}]`, chord], [`${c}[${q}→${p}]`, chord]], what);
+    assert.ok(close(loops[0].area, Math.PI * r * r - segment, 1e-9) && close(loops[1].area, segment, 1e-9), what);
+    assert.ok(spanNear(loops[1].members[0].span, [5 / 6, 7 / 6]), JSON.stringify(loops[1].members[0].span));
+    assert.ok(loops.every((l) => close(traced(s.m, l), l.area, 1e-4)));
+  }
+});
+
+test("three lines through one point cross at one vertex, named by all three", () => {
+  for (const s of sheets()) {
+    rectOn(s);
+    const [l5, l6, l7] = [s.seg([20, -10], [20, 40]), s.seg([-10, 15], [50, 15]), s.seg([-10, 5], [50, 25])];
+    const loops = findLoops(s.m);
+    const what = `${s.label}: ${listing(loops)}`;
+    assert.equal(loops.length, 6, what);
+    const centre = `${l5}×${l6}×${l7}`;
+    assert.ok(loops.every((l) => l.members.some((x) => x.from === centre)), what);
+    assert.ok(!what.includes(`${l5}×${l6}]`) && !what.includes(`${l5}×${l6}→`), "no vertex of two of them alone");
+    assert.ok(close(loops.reduce((sum, l) => sum + l.area, 0), 1200, 1e-6));
+  }
+});
+
+test("a crossing already materialised — a point held on both lines — is that point, not a second vertex", () => {
+  for (const s of sheets()) {
+    rectOn(s);
+    const up = s.seg([15, -10], [15, 40]), level = s.seg([-10, 10], [50, 10]);
+    const x = s.m.addPoint(s.at(15, 10)).name;
+    pointOnLine(s.m, x, up);
+    pointOnLine(s.m, x, level);
+    const loops = findLoops(s.m);
+    const what = `${s.label}: ${listing(loops)}`;
+    assert.equal(loops.length, 4, what);
+    assert.ok(loops.every((l) => l.members.some((m) => m.from === x)), what);
+    assert.ok(!what.includes(`${up}×${level}`), what);
+  }
+});
+
+test("a crossing's key is never a name the model has: one that is gets a prime", () => {
+  const m = new Model(2);
+  m.addPoint([100, 100], "l1×l5"); // × is a legal name character; only the dot is reserved
+  polygon(m, RECT);
+  m.addLine(m.addPoint([15, -10]).name, m.addPoint([15, 40]).name);
+  const [left] = findLoops(m);
+  assert.equal(left.members[0].to, "l1×l5′");
+  assert.ok(isVirtual(m, "l1×l5′") && !isVirtual(m, "l1×l5"));
+});
+
+test("three lines that only cross one another bound a triangle with no joined corner at all", () => {
+  for (const s of sheets()) {
+    const [a, b, c] = [s.seg([0, 0], [40, 0]), s.seg([5, -5], [25, 30]), s.seg([35, -5], [15, 30])];
+    const loops = findLoops(s.m);
+    const what = `${s.label}: ${listing(loops)}`;
+    assert.equal(loops.length, 1, what);
+    // Corners at x = 5 + 20/7 and 35 − 20/7 on the base, and (20, 21.25).
+    assert.ok(close(loops[0].area, 0.5 * (30 - 40 / 7) * 21.25, 1e-9), what);
+    assert.deepEqual(loops[0].members.map((x) => x.name), [a, c, b]);
+    assert.equal(under(s, loops, 20, 5), 0);
+  }
 });
 
 // --- what is not a loop -------------------------------------------------------------------
 
-test("a self-crossing outline — a bow-tie — is no loop, and neither is a joined pair that overlaps", () => {
+test("a self-crossing outline — a bow-tie — is its two lobes, cut where it crosses", () => {
   // Lopsided on purpose: a symmetric bow-tie's two lobes cancel to no area at
-  // all and would vanish for that reason alone. This one's net area is 400,
-  // and without the crossing rule it came back as a "loop" of that area.
+  // all. Before crossings cut regions this one came back as one "loop" of its
+  // net area, 400, and then as no loop at all; it is two, of 50 and 450.
   const bow = new Model(2);
-  polygon(bow, [[0, 0], [40, 30], [40, 0], [0, 10]]);
-  assert.deepEqual(findLoops(bow), []);
-
-  // A square and a diamond sharing a corner point, their edges crossing: with
-  // nothing joining them where they cross, the faces are not the regions the
-  // drawing shows — the deliberate limit, pinned here so it is a decision.
-  const over = new Model(2);
-  const sq = polygon(over, [[0, 0], [40, 0], [40, 40], [0, 40]]);
-  const [e, f, g] = [[60, 20], [20, 60], [-20, 20]].map((p) => over.addPoint(p).name);
-  over.addLine(sq.points[0], e); over.addLine(e, f); over.addLine(f, g); over.addLine(g, sq.points[0]);
-  assert.deepEqual(findLoops(over), [], "joined at a corner and crossing each other: no loops");
+  const { lines, points } = polygon(bow, [[0, 0], [40, 30], [40, 0], [0, 10]]);
+  const loops = findLoops(bow);
+  assert.equal(loops.length, 2);
+  assert.ok(close(loops[0].area, 50) && close(loops[1].area, 450), loops.map((l) => l.area).join(", "));
+  assert.ok(loops.every((l) => close(traced(bow, l), l.area, 1e-6)));
+  const x = `${lines[0]}×${lines[2]}`;
+  assert.deepEqual(loops[0].members.map(memberLabel), [`${lines[0]}[${points[0]}→${x}]`, `${lines[2]}[${x}→${points[3]}]`, lines[3]]);
+  assert.deepEqual(loops[1].members.map(memberLabel), [`${lines[0]}[${x}→${points[1]}]`, `${lines[2]}[${points[2]}→${x}]`, lines[1]]);
 });
 
 test("a line drawn twice is a sliver, not a loop, and the face beside it is still one loop", () => {
