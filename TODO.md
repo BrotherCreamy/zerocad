@@ -384,8 +384,11 @@ are flagged as such.
     slide along +z as a whole; a `set` stirs it by a few millionths. And a
     tool-drawn sketch is undimensioned, so any solve may wander within its
     freedom (1e-5 seen during a `set`). Tests that claim "nothing else moves"
-    use a fully defined sketch. A feature is expanded once: restructuring its
-    profile afterwards does not regenerate the lid.
+    use a fully defined sketch. *(2026-10-22, feature regeneration: a feature
+    is no longer expanded once.* **A feature's expansion is a function of its
+    profile, and follows it** — a fillet on a profile corner regenerates the lid,
+    keeping every twin and wall whose corner survives, and `regen("e1")` does it
+    for a profile changed by hand. See the queue entry below.)
 
   ✅ **Phase 4, half 2 — faces, the per-face painter's, the click-inside tool —
   built** (2026-10-13). `src/faces.ts` reads a solid's faces off its live
@@ -479,7 +482,9 @@ are flagged as such.
     full revolve takes its record and leaves its `360°` dimension holding
     nothing (the uniform record-only rule). The swept surface never picks;
     there are no seam edges drawn along it, so a revolve's silhouette comes
-    from its shading alone. A revolve, like an extrude, is expanded once.
+    from its shading alone. A revolve, like an extrude, follows its profile:
+    a fillet on it rounds a partial turn's end face, and a whole turn's record
+    *(2026-10-22, feature regeneration — it was expanded once)*.
 
 - **No world frame — coordinate frames are entities** (owner's direction,
   2026-09-01, chosen over "keep the frame but hide it" and "directions stay,
@@ -972,8 +977,75 @@ starts.
       through faces, and interpenetrating solids all trace to painter's
       sorting. The honest fix is a real depth pass (BSP split or a WebGL
       conversion of faces.ts's output). Measure before choosing.
-- [ ] **Feature regeneration** when a profile is restructured after the
-      feature (today: documented no-op).
+- [x] **Feature regeneration — BUILT (2026-10-22).** A profile restructured
+      after its feature used to leave the feature as it was (a documented
+      no-op): fillet an extruded rectangle's corner and the lid stayed
+      four-cornered, its edge over leg two leaning 14.9° where the leg is
+      plumb, every relation satisfied. **A feature's expansion is now a
+      function of its profile, and follows it**: `fillet` regenerates every
+      feature on either leg inside its own call, and `regen("e1")` is the
+      explicit door — a diff and rebuild that keeps every twin and wall whose
+      vertex or member survives. Spec:
+      [`docs/plans/feature-regeneration.md`](docs/plans/feature-regeneration.md);
+      the story is `test/regen.test.ts` and `test/e2e/regen.e2e.ts`;
+      screenshots 78 (before) – 80. Deviations from the spec, each also in its
+      "As built":
+      - ⚠ **The journal carries what was regenerated, resolved.** The spec said
+        the entry stays `fillet(...)` and a replay regenerates "by running the
+        same code". It does run the same diff and rebuild, but a replay runs on
+        seeds, where finding a profile of free lines fails (extrude's measured
+        reason) — so the call writes in what it found: `fillet(l1, l2, r,
+        frame, [["e1", loops], …])`, only when a feature stood on a leg, and
+        `regen("e1", [["e1", loops], …])`. Still one entry, still the call.
+      - ⚠ **Format version 9**, not in the spec: `fillet` now *means* more,
+        and a version-8 build would replay a version-9 fillet without the lid,
+        silently. A version-8 file's fillet with a feature on a leg is
+        translated to regenerate nothing (the empty list) — what its build did;
+        regenerating it would claim auto-names the file's later entries hold.
+      - ⚠ **`fillet` does not refuse when a feature cannot be regenerated** —
+        it has already rounded the sketch, and an operation that refuses after
+        changing things is the one shape `asOperation` forbids. That feature
+        is left as it was (today's behaviour, for that one feature), and
+        `regen("e1")` names why. `regen` itself refuses before changing
+        anything.
+      - **The chain** (not in the spec): a feature whose profile names a twin
+        line a regeneration re-pointed — a solid extruded on the lid — is
+        regenerated next, in the same call.
+      - **A twin arc or circle whose ends or centre change is made again**, not
+        re-pointed: the model has no primitive that re-points an arc, and no
+        operation has needed one. Lines re-point (`retargetLine`), as the spec
+        asked.
+      - **A member in several loops parallel to the frame** takes the loop that
+        keeps most of the old outline (ties refused) — the spec said only "the
+        loop that now contains the feature's member".
+      - **Loops keep the record's order**: an unchanged loop is the record's
+        own; a changed one starts at, and walks the way of, the record's first
+        surviving member (`l1,a1,l2,l3,l4`), so a no-op `regen` changes no
+        pair's position.
+      - **`Model.rewriteFeature`** (new primitive): a record replaced in place,
+        same name and registry position, checked as `addFeature` checks.
+      - *Spec text corrected:* the bug is not "a rectangle over a rounded
+        base" — the lid's corner twin follows the corner to the tangent point,
+        so the lid is a quadrilateral with one leaning edge; and a fillet has
+        no "vanished corner" (the corner survives as leg one's tangent point,
+        its wall with it), so the "relation on a vanished wall" case is tested
+        with `regen` after a line drawn across a plate.
+      **Found while building, left deliberately:**
+      - **`fillet`'s tangent point solves ~2e-3 off its closed form** (32.002
+        for 32 on a 40 × 30 rectangle, radius 8, maxResidual ~1e-7): a point
+        sliding along a tangent line leaves the circle by δ²/2r, so the
+        residual is second order in the slide — a pre-existing property of
+        `tan` + `arcends`, not of regeneration. Tests compare twins with their
+        bases (linear, exact) and absolute positions at 1e-2.
+      - The chain follows re-pointed twin lines only: a hole `regen` adds to a
+        lid does not reach a solid already on that lid until that solid is
+        `regen`'d.
+      - A fillet on a *lid* corner regenerates the features standing on the
+        lid, not the feature that owns it (a lid is not a profile) — and
+        conflicts with that feature's depth, as it always did.
+      - Nothing regenerates on its own after a hand restructuring (a line
+        drawn across, a coin added): that is `regen`'s, by the spec's rule —
+        not on a solve, a drag or a `set`.
 - [ ] **Face-on arcs snap as their whole circle** — parked decision from
       phase 3, measured consequence recorded there.
 - [x] **Saving user-authored tools** — done (2026-09-03), on format version 4

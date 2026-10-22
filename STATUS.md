@@ -1283,9 +1283,10 @@ replacing) the system Node other projects on this machine may depend on.
   the record and nothing else; `deleteEntity`/`deleteRelation` refuse while a
   record names the thing; `deleteFeature` is the journalled primitive. Format
   version unchanged (7). 584 unit tests, 207 e2e.
-  *Known and deliberate:* a feature is expanded once (restructuring its
-  profile later does not regenerate the lid); the lid frame always has its own
-  points; `fillet`'s new points are not held on the sketch, so a `set` can stir
+  *The rule now:* a feature's expansion is a function of its profile and
+  follows it — a fillet on a profile corner regenerates the lid, keeping every
+  twin and wall whose corner survives (see **Feature regeneration** below).
+  *Known and deliberate:* the lid frame always has its own points; `fillet`'s new points are not held on the sketch, so a `set` can stir
   a rounded corner by a few millionths along +z.
   *Spec:* [`docs/plans/3d-phase4-extrude.md`](docs/plans/3d-phase4-extrude.md).
 - **Extrude, the faces and the tool** (`src/faces.ts` (new),
@@ -1565,6 +1566,39 @@ replacing) the system Node other projects on this machine may depend on.
   drawn but is no loop to sketch on; a replay seeds a materialised point at a
   placeholder that the saved values replace. *Spec:*
   [`docs/plans/regions-split.md`](docs/plans/regions-split.md).
+- **Feature regeneration** (`operations.ts`'s `regenerateAfter`,
+  `rebuildFeature`, `refoundProfile`, `regen` (new) and the end of `fillet`;
+  `Model.rewriteFeature` (new); `persist.ts` `VERSION` 9, `regen` in the replay
+  table and `translate`'s version-8 fillet; `replenv.ts`) — **a feature's
+  expansion is a function of its profile, and follows it.** `fillet` ends, inside
+  its own `asOperation`, by regenerating every feature whose profile names either
+  leg, and then every feature whose profile names a twin line one of those
+  re-pointed (a solid on a lid). Each profile is **found again the way the call
+  found it** — the loop containing the record's `member` parallel to its sketch
+  frame, with every loop inside it, crossings materialised (`profileOf`); a member
+  in several such loops takes the one keeping most of the old outline. Then a
+  **diff and rebuild**: per joined class, the old twin and wall where the class
+  survives, new ones where it is new, released by the ordinary cascade where it
+  has gone; per member, the old twin where its ends are the same, a line twin
+  **re-pointed** (`retargetLine`) where an end moved, an arc or circle twin made
+  again where its ends or centre changed, a new twin of its kind for a new
+  member; materialised points no longer on the profile released with their
+  holds; the dimension rebuilt in place (`rebuildRelation` with `REBUILD`), the
+  record rewritten in place under its name, kept loops in the record's own order.
+  **`regen(feature)`** does the same for a profile restructured by hand, refusing
+  a non-feature name or a gone profile before it changes anything. Both journal
+  what they found, resolved: `fillet(l1, l2, r, frame, [[e, loops], …])` (the
+  fifth argument only when a feature stood on a leg) and `regen(e, [[e, loops],
+  …])`; a replay is handed the profiles and finds nothing. A version-8 file's
+  fillet with a feature on a leg is translated to regenerate nothing — what its
+  build did. 787 unit tests, 270 e2e. *Known and deliberate:* a feature whose
+  profile `fillet` leaves unfindable is left as it was (the fillet has already
+  happened; `regen` says why); an arc twin whose ends move is remade, not
+  re-pointed; the chain follows re-pointed twin lines only, so a hole `regen`
+  adds to a lid does not reach a solid on that lid until it is `regen`'d; a
+  fillet on a *lid* corner regenerates what stands on the lid, not the feature
+  that owns it. *Spec:*
+  [`docs/plans/feature-regeneration.md`](docs/plans/feature-regeneration.md).
 
 
 ## What's next
