@@ -3,6 +3,13 @@
 **Status: built** (2026-10-21) — one PR against
 `claude/resume-tasks-o7q02e`, with an empty-canvas hint added to its scope
 after the owner's report; deviations are in `TODO.md`'s Done entry.
+
+**Caveats since overturned** (owner, 2026-10-22; built by
+[`toolbar-icons-docking.md`](toolbar-icons-docking.md)): the constraint below
+that only keeps a panel's *title strip* reachable is now **wholly inside**;
+"no icons in v1" is now **icons, the name as tooltip**; and the toolbar,
+always a column here, now **turns row/column** against the edge it is dragged
+to. The rest of this spec stands.
 Owner's direction, verbatim: *"add the
 buttons. but they should be a moveable toolbar. actually everything should
 be moveable and resizable."* The original brief listed cellwork's icon

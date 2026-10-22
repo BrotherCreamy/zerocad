@@ -1386,9 +1386,10 @@ replacing) the system Node other projects on this machine may depend on.
   `replenv.ts`). **The canvas is the whole window under the header**; the
   toolbar, the log and the command line float over it as **panels** — a title
   strip to drag by, a corner grip to resize by, both with pointer capture.
-  `constrain` keeps a panel's strip reachable (wholly inside top to bottom, at
-  least `KEEP` = 40px of it sideways) and its size between its minimum and the
-  area; the panel last pressed is raised (z-index from 10; the hover tag and
+  `constrain` kept a panel's strip reachable (wholly inside top to bottom, at
+  least `KEEP` = 40px of it sideways) *(since 2026-10-22: the whole panel
+  wholly inside, `KEEP` gone — see "The tool tray" below)* and its size between
+  its minimum and the area; the panel last pressed is raised (z-index from 10; the hover tag and
   menu sit at 50/60). **The header is not a panel** — the one fixed thing.
   **The toolbar** (`Toolbar`) builds one button per `listTools()` entry, in
   registration order, and `syncToolbar` in `main.ts` re-reads the registry and
@@ -1414,7 +1415,8 @@ replacing) the system Node other projects on this machine may depend on.
   *Known and deliberate:* positions are absolute pixels from the top-left (a
   moved panel does not follow a growing window); a viewer-resized toolbar
   scrolls rather than grows when a tool is added; no icons, docking or
-  panel-to-panel snapping. (The toolbar not greying out the curve tools without
+  panel-to-panel snapping *(icons and turning against an edge came with "The
+  tool tray" below; there is still no positional snapping)*. (The toolbar not greying out the curve tools without
   a default frame was a caveat here; it went with the next entry.)
   *Spec:* [`docs/plans/panels.md`](docs/plans/panels.md).
 
@@ -1642,6 +1644,42 @@ replacing) the system Node other projects on this machine may depend on.
   holds it to that; nothing tests a lost context; in a browser with no GPU a
   frame is ~45 ms whichever renderer draws it. *Spec:*
   [`docs/plans/display-depth.md`](docs/plans/display-depth.md).
+
+- **The tool tray: icons, held inside, turning with the edge it meets**
+  (`src/tools/icons.ts` (new), `src/panels.ts`, the toolbar host in
+  `src/main.ts`, `index.html`). **Wholly inside**: `constrain` clamps a panel to
+  `0 ≤ x ≤ area.w − w`, `0 ≤ y ≤ area.h − h` after holding its size between its
+  minimum and the area; only a minimum bigger than the area spills, off the
+  right and bottom. **Icons**: `TOOL_ICONS`, keyed by registered name, holds a
+  16-unit inline SVG per built-in (point, line, rectangle, circle, circle3, arc,
+  arc3, fillet, extrude, revolve, sketch) in one family — 1.5 round strokes in
+  `currentColor`, corner radius 1, no fill but a dot; `genericIcon(name)` is a
+  square with the name's first two letters, escaped; `toolIcon` picks, never
+  guessing (`Object.hasOwn`). The toolbar gets a glyph only through
+  `ToolbarHost.icon`. A button is a 20px square holding the glyph, its `title`
+  `name — arm("name")` or `name — <reason>` when disabled, its `aria-label` the
+  name; armed amber and disabled grey are the button's `color`, so the glyph's.
+  **Turning**: a tray (`Panels`' `trays`, id → button count; the toolbar is the
+  one) has `orient` `column` or `row`; `traySize(n, o)` is one button (28px)
+  thick and `16 + 6 + 22n` long, a row's strip down its left end.
+  `contacts(r, area, others, SNAP)` says which edges are within `SNAP` = 6px of
+  the area's edge or a panel's facing edge that it overlaps along;
+  `orientationFor` is row for a horizontal contact only, column for a vertical
+  only, unchanged for both or neither; `turned` re-sizes to the content and
+  keeps the contacting edge, then constrains. On every move of a strip drag
+  the DOM half calls `turned` and re-bases the drag where it turned; the grip
+  never turns a tray. Stored as `orient` beside the rectangle under
+  `neocad.panels.v2` (v1 not read); `layout()` prints it; `layout("reset")`
+  is a column again. The log and command line never turn. Unit:
+  `test/panels.test.ts`, `test/icons.test.ts` (the table against every tool
+  `main.ts` imports, the family, escaping); browser:
+  `test/e2e/panels.e2e.ts`. 802 unit tests, 286 e2e.
+  *Known and deliberate:* a moved or turned tray keeps its stored size when a
+  tool is defined (it scrolls); the grip overlaps the last button's corner; a
+  glyph, like availability, is keyed by name, so a re-registered `circle`
+  keeps the circle; no positional snapping — a tray pushed past another
+  panel's edge overlaps it. *Spec:*
+  [`docs/plans/toolbar-icons-docking.md`](docs/plans/toolbar-icons-docking.md).
 
 
 ## What's next

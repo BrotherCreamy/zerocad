@@ -106,6 +106,62 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### The tool tray: icons, held inside, turning with the edge it meets
+
+**The owner vetoed three defaults in three lines** — *"I shouldnt be able to
+slide the tooltrays off the edge. they should stay fully within the viewport
+borders"*, *"tools should be icons"*, and *"when I push a vertical tooltray
+against a top or bottom edge, it should become horizontal etc and vice versa.
+that includes pushing it up against a vertical/horizontal edge of another
+tooltray"*. The spec (`docs/plans/toolbar-icons-docking.md`) made each a rule;
+this is those rules, with the decisions the spec left open made as follows.
+
+**Decisions made in the code, and what was rejected:**
+
+- *An icon is a table keyed by name, not a static on the tool class.* The
+  spec offered both. A static is inherited: a command-line tool written as
+  `class extends CircleTool` under a new name would wear the circle, which is
+  the guessing the spec forbids. A name is not inherited, and it is what every
+  other surface keys a tool by — `arm`, and `toolUnavailable` — so a
+  re-registered `circle` keeps the circle's glyph for the same reason it keeps
+  the circle's availability rule. One table also keeps eleven glyphs one
+  visual family, which a unit test holds (one stroke width, `currentColor`, no
+  fill but a dot or the generic glyph's letters).
+- *The snap distance is 6 px, not the spec's "8, say".* The default layout puts
+  the toolbar 8 px off the top and the left. At 8, inclusive, the untouched
+  toolbar dragged sideways along the top would turn into a row on the first
+  pixel — a surprise nobody pushed for. Anything under the margin works; 6
+  leaves room.
+- *A row's strip runs down its left end.* With the strip across the top a row
+  is a strip plus a button, 44 px — a short column lying down rather than a
+  row. Down the left end, a row is one button high, which is what the spec
+  asks. The strip is then too narrow for the word "tools" either way, so it
+  is a grip of dots with "tools" as its title.
+- *Which edge a turn keeps.* The one it is against: the bottom when only the
+  bottom is in contact, else the top; likewise right/left. The other axis keeps
+  its near edge, where the strip and so the pointer was. After a turn the drag
+  is re-based at the pointer, because the new shape measured from the press
+  would jump back to the old shape's anchor.
+- *"Beside" means facing edges.* The tray's bottom against another panel's top
+  (or top against bottom, left against right, right against left), within the
+  snap, overlapping along that edge by more than zero. A tray lying over the
+  log is against nothing of it; touching only at a corner is not overlap.
+- *The tooltip is `name — command`, and `name — reason` when disabled.* The
+  spec's example was one line; the spec's other text said "the command under
+  it" and "the reason, as now". The reason alone would leave a greyed icon
+  that never says which tool it is, so the name leads both.
+- *Glyphs tried and dropped:* a revolve drawn as an axis with a foreshortened
+  elliptical arrow round it read as an anchor at 16 px; it became a profile
+  inside three-quarters of a circle with an arrowhead. Arcs shallower than a
+  half turn read as a bent line (and arc3 with dots as a caret); circle3's dots
+  had to grow to 1.9 units before they read at 1x.
+
+**Found on the way:** the old e2e test "a panel cannot be dragged where its
+strip is out of reach" never moved the panel. The resize test before it left
+the log grown over the command line's strip, so the press went to the log, and
+the assertions (strip inside, 40 px of it on screen) held at the untouched
+default. It now resets the layout first and asserts the panel moved.
+
 ### Display depth: measure the painter's against a depth buffer, then let the buffer draw
 
 The spec (`docs/plans/display-depth.md`) had already chosen WebGL over a BSP

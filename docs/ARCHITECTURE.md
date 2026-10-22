@@ -64,9 +64,9 @@ it only needs to know what the commands are *called*.
 
 `panels.ts` sits beside it, for the same reason and with even less: the panel
 manager and the toolbar import nothing from the model or the tools. The
-toolbar is handed its tool names, armed tool and which tools cannot run by the
-host and hands back a command string; the panel manager is rectangles and
-`localStorage`.
+toolbar is handed its tool names, their glyphs (inline SVG strings, from
+`tools/icons.ts`), armed tool and which tools cannot run by the host and hands
+back a command string; the panel manager is rectangles and `localStorage`.
 
 `facelayer.ts` sits beside `main.ts` as well: the two ways a solid's faces
 become pixels — a WebGL layer with a depth test, and the painter's it falls
@@ -809,8 +809,16 @@ their screen. It lives in `localStorage`, every touch wrapped — a private wind
 throws on the first one — and never reaches the journal, a saved file or the
 undo stack. Only the panels a viewer has touched are stored; the rest follow
 their defaults, and what is drawn is always the stored-or-default rectangle
-passed through `constrain` against the window as it is now. So shrinking the
-window pulls panels in without forgetting where they were put.
+passed through `constrain` against the window as it is now — which holds every
+panel **wholly** inside it. So shrinking the window pulls panels in without
+forgetting where they were put.
+
+**A tray turns with the edge it meets.** The toolbar is a tray: dragged within
+a few pixels of a horizontal edge — the area's top or bottom, or the facing
+edge of a panel it is beside — it becomes a row; of a vertical one, a column;
+of both (a corner), it stays as it is. The rule (`orientationFor`, `turned`) is
+pure arithmetic in `panels.ts`, and the orientation is stored with the
+rectangle, in the same per-viewer layout.
 
 **Gestures never cross**, and it takes both halves: a panel captures the
 pointer on its strip or grip, and the host captures it on every canvas press.

@@ -1,6 +1,9 @@
 # Plan: the tool tray — icons, kept inside, turning with the edge it meets
 
-**Status: queued** (2026-10-22). The owner's direction, verbatim, on the
+**Status: built** (2026-10-22) — one PR against `claude/resume-tasks-o7q02e`
+(branch `claude/toolbar-icons-docking`); deviations are in `TODO.md`'s Done
+entry, and the two that changed what this spec says are corrected in place
+below and marked *(as built)*. The owner's direction, verbatim, on the
 panels package:
 
 > *I shouldnt be able to slide the tooltrays off the edge. they should stay
@@ -34,6 +37,8 @@ button's current colour so the armed amber and the disabled grey apply to the
 glyph exactly as they applied to the label). The icon is the whole button;
 **the tool's name is its tooltip**, with the command under it
 (`circle — arm("circle")`), and for a disabled tool the reason, as now.
+*(As built: `circle — <reason>` — the name still leads, since with an icon
+on its face a reason alone would never say which tool is greyed.)*
 Glyphs: point (a dot), line, rectangle, circle, circle3 (a circle through
 three dots), arc, arc3 (an arc through three dots), fillet (a corner with its
 inside rounded), extrude (a square with a raised face), revolve (a profile
@@ -48,7 +53,9 @@ table keyed by name beside the registry — choose, say why), never guessed.
 ## 3. Turning with the edge it meets
 
 The tray has an **orientation**, column or row. **While it is dragged**, the
-moment it comes within a snap distance (8 px, say) of:
+moment it comes within a snap distance (8 px, say — *as built, 6: the defaults
+sit 8 px off every edge, and at 8 the untouched toolbar dragged along the top
+would turn on its first pixel*) of:
 - the area's **top or bottom edge**, or the **horizontal edge** (top or
   bottom) of another panel it is beside → it becomes a **row**;
 - the area's **left or right edge**, or the **vertical edge** of another
