@@ -24,7 +24,7 @@ import { Panels, Toolbar, browserStorage, defaultLayout } from "./panels.ts";
 import { depth } from "./view.ts";
 import { arcSamples, arcSegments } from "./arcgeom.ts";
 import { curveFrame } from "./curveplane.ts";
-import { faceColour, facesToDraw } from "./faces.ts";
+import { paintFaces } from "./facelayer.ts";
 import type { Entity } from "./model.ts";
 import "./tools/point.ts";
 import "./tools/line.ts";
@@ -247,33 +247,9 @@ async function main() {
     g.restore();
   }
 
-  /**
-   * Every solid's visible faces, already sorted and shaded by faces.ts. Each
-   * is filled even-odd (a cap's holes are its own inner loops) and then
-   * stroked a hair wide in its own colour: neighbouring pieces of a curved
-   * wall share an edge exactly, and anti-aliasing each one against the
-   * background alone leaves a faint seam of background between them.
-   */
+  /** Every solid's visible faces, by the painter's (see facelayer.ts). */
   function renderFaces() {
-    const faces = facesToDraw(model, view);
-    if (!faces.length) return;
-    g.save();
-    g.lineJoin = "round";
-    g.lineWidth = 0.75;
-    for (const face of faces) {
-      g.beginPath();
-      for (const outline of face.outlines) {
-        g.moveTo(...outline[0]);
-        for (const p of outline.slice(1)) g.lineTo(...p);
-        g.closePath();
-      }
-      const colour = faceColour(face.shade);
-      g.fillStyle = colour;
-      g.fill("evenodd");
-      g.strokeStyle = colour;
-      g.stroke();
-    }
-    g.restore();
+    paintFaces(g, model, view);
   }
 
   /**
@@ -803,7 +779,7 @@ async function main() {
   }
 
   function exposeDebugHook() {
-    (window as unknown as { __neocad: unknown }).__neocad = { model, engine, repl }; // debug/automation hook
+    (window as unknown as { __neocad: unknown }).__neocad = { model, engine, repl, render }; // debug/automation hook
   }
   exposeDebugHook();
 

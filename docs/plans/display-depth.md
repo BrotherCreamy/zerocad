@@ -1,6 +1,7 @@
 # Plan: display depth done right
 
-**Status: queued** (2026-10-22). Last of the register's "Next up" queue:
+**Status: measured; building** (2026-10-22). The numbers are below, under
+"Measured — before". Last of the register's "Next up" queue:
 *"The 355° cap limit, hidden edges showing through faces, and interpenetrating
 solids all trace to painter's sorting. The honest fix is a real depth pass
 (BSP split or a WebGL conversion of faces.ts's output). Measure before
@@ -80,6 +81,60 @@ Put the numbers in the CHANGELOG entry and in `docs/ARCHITECTURE.md`'s
 rendering section. If a measurement contradicts the choice above (WebGL
 unavailable in the e2e browser, or slower than the painter's by more than a
 small factor on the stepped block), stop and report rather than shipping.
+
+## Measured — before (2026-10-22)
+
+`npm run measure:depth` (`test/e2e/depth.measure.ts`; `NEOCAD_MEASURE_DIR`
+keeps the numbers and pictures). The depth layer (`src/facelayer.ts`) was
+written first and not yet wired into the app, so this is the painter's as the
+app drew it, against a depth buffer drawing the same faces. Headless Chromium
+141 with SwiftShader WebGL — **WebGL was available** (ANGLE on SwiftShader,
+8-bit stencil, 4× multisampling). App canvas 1100 × 768, 40 seeded random
+orbits a scene. *Wrong* = differs by more than 6 levels and lies further than
+1.5 px from every visible face's outline; *different* counts the band too.
+
+| scene | faces (max) | wrong: mean / worst | views with any | different: mean / worst |
+|---|---|---|---|---|
+| lone box (convex) | 3 | 0 / 0 | 0 of 40 | 2 416 / 3 045 |
+| lone cylinder (convex) | 40 | 0 / 0 | 0 of 40 | 12 806 / 17 407 |
+| 355° revolve with a bore | 1 700 | 20 / 199 | 13 of 40 | 15 740 / 19 047 |
+| two interpenetrating extrudes | 6 | **4 528 / 14 647** | **39 of 40** | 7 718 / 18 193 |
+| stepped block + boss on its wall | 22 | 0 / 0 | 0 of 40 | 2 615 / 3 777 |
+| full turn of a filleted profile | 1 170 | 0 / 0 | 0 of 40 | 24 682 / 34 914 |
+
+- **Where the painter's is right, the depth layer agrees with it**: on both
+  convex solids every differing pixel is on an outline or a seam between two
+  strip pieces (the diff pictures show nothing else) — the painter's own
+  seam, darker by a few levels where two anti-aliased fills meet, which the
+  multisampled depth layer does not have.
+- **Interpenetration is the painter's real failure**: wrong in 39 views of 40,
+  up to 14 647 pixels — whole slabs of one solid painted over the other.
+- **The 355° revolve** is wrong in 13 views of 40, in slivers of wall over the
+  start cap across the gap (worst 199 px); the band hides some of it among the
+  sweep's dense seams, so the count is a floor.
+- **The stepped block with a boss is not wrong** in any of the 40 views: its
+  coplanar faces at the shared line are back to back and one is always
+  culled. The register's guess that it sorted "as interpenetrating solids do"
+  did not show.
+
+**Time per frame** — the app's own frames: the scene built in a fresh app, the
+view turned a little each animation frame and `render()` called, 90 frames;
+"WebGL taken away" is the same app with `getContext("webgl")` answering null.
+Before the depth layer is wired in both are the painter's, so the two columns
+are a control on the noise:
+
+| scene | faces drawn | as the app runs | WebGL taken away |
+|---|---|---|---|
+| stepped block + boss | 22 | 45.6 ms a frame (render 1.16 ms) | 47.3 ms (render 1.31 ms) |
+| full turn, filleted | 650 | 251.2 ms a frame (render 7.33 ms) | 249.3 ms (render 6.39 ms) |
+
+The frame is far longer than `render()`: in a browser with no GPU the 2D
+canvas is rasterised by SwiftShader in the GPU process, and that, not the
+main thread, sets the pace. Timing each renderer on a canvas of its own was
+tried first and dropped — forcing a painted frame to finish needs a read back,
+and Chrome moves a 2D canvas that is read back into CPU memory, which changed
+what was being timed (0.6 ms read-optimised against 12 ms as the app's canvas
+is made, the same 22 faces).
 
 ## Tests
 

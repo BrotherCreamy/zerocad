@@ -1,8 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  MAX_SCALE, MIN_SCALE, assignView, clampScale, panBy,
-  screenToWorld, worldToScreen, zoomAbout, type View,
+  MAX_SCALE, MIN_SCALE, assignView, clampScale, clipMatrix, depth, orbitBy, panBy,
+  screenToWorld, viewAxes, worldToScreen, zoomAbout, type View,
 } from "../src/view.ts";
 
 const v = (): View => ({ ox: 400, oy: 300, scale: 3 });
@@ -81,4 +81,52 @@ test("assignView updates in place, so anything holding the object sees it", () =
   assignView(view, zoomAbout(view, 100, 100, 2));
   assert.equal(held.scale, 6);
   assert.ok(held === view);
+});
+
+// --- the depth layer's projection ------------------------------------------------
+
+/** `m` (column-major) applied to (p, 1). */
+const apply = (m: number[], p: number[]) => [0, 1, 2, 3].map((r) => m[r] * p[0] + m[4 + r] * p[1] + m[8 + r] * p[2] + m[12 + r]);
+
+test("clipMatrix is worldToScreen and depth in clip coordinates — on random views, anchored anywhere", () => {
+  // Seeded, so a failure names a view that can be had again.
+  let s = 7;
+  const rand = () => (s = (s * 16807) % 2147483647) / 2147483647;
+  const [W, H] = [1100, 768];
+  for (let n = 0; n < 200; n++) {
+    const start: View = { ox: rand() * W, oy: rand() * H, scale: 0.05 + rand() * 40, target: [rand() * 50 - 25, rand() * 50 - 25, rand() * 50 - 25] };
+    const view = orbitBy(start, (rand() * 2 - 1) * Math.PI, (rand() * 2 - 1) * Math.PI);
+    const pts = Array.from({ length: 6 }, () => [rand() * 200 - 100, rand() * 200 - 100, rand() * 200 - 100]);
+    const ds = pts.map((p) => depth(view, p));
+    const [far, near] = [Math.min(...ds) - 1, Math.max(...ds) + 1];
+    const anchor = [rand() * 100 - 50, rand() * 100 - 50, rand() * 100 - 50];
+    const m = clipMatrix(view, W, H, [far, near], anchor);
+    for (const p of pts) {
+      const [x, y, z, w] = apply(m, p.map((c, i) => c - anchor[i]));
+      assert.ok(close(w, 1), "orthographic: no perspective divide");
+      const [sx, sy] = worldToScreen(view, p);
+      assert.ok(close((x + 1) * (W / 2), sx, 1e-6), `x: ${(x + 1) * (W / 2)} against ${sx}`);
+      assert.ok(close((1 - y) * (H / 2), sy, 1e-6), `y: ${(1 - y) * (H / 2)} against ${sy}`);
+      assert.ok(close(z, 1 - (2 * (depth(view, p) - far)) / (near - far), 1e-9), `z for depth ${depth(view, p)}`);
+      assert.ok(z > -1 && z < 1, "inside the range, inside the clip volume");
+    }
+  }
+});
+
+test("clipMatrix orders the way the depth test does: of two points on one pixel, the nearer has the smaller z", () => {
+  const view = orbitBy({ ox: 400, oy: 300, scale: 3 }, 0.7, -0.4);
+  const { toward } = viewAxes(view);
+  const m = clipMatrix(view, 800, 600, [-100, 100]);
+  const p = [5, -3, 8];
+  const nearer = p.map((c, i) => c + 10 * toward[i]);
+  const [a, b] = [apply(m, p), apply(m, nearer)];
+  assert.ok(close(a[0], b[0]) && close(a[1], b[1]), "the same pixel");
+  assert.ok(depth(view, nearer) > depth(view, p), "nearer by depth's own sense");
+  assert.ok(b[2] < a[2], "and smaller in the buffer's, which LESS keeps");
+});
+
+test("a view never turned is the 2D transform in clip coordinates too", () => {
+  const m = clipMatrix({ ox: 400, oy: 300, scale: 2 }, 800, 600, [-1, 1]);
+  const [x, y] = apply(m, [100, 50, 0]);
+  assert.deepEqual([(x + 1) * 400, (1 - y) * 300], [600, 200]);
 });

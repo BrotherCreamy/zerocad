@@ -24,6 +24,21 @@ import { chromium, type Browser, type Page } from "playwright";
 export const APP_URL = process.env.NEOCAD_E2E_URL ?? "http://localhost:5173/";
 
 /**
+ * WebGL on a machine with no GPU: SwiftShader, Chromium's software renderer,
+ * asked for by name. A solid's faces are drawn by WebGL with a depth test
+ * (src/facelayer.ts), and where the browser has no WebGL the app quietly falls
+ * back to the painter's — so a suite run without it would test the fallback
+ * and pass. Chromium is retiring the *automatic* fall back to SwiftShader for
+ * WebGL; `--enable-unsafe-swiftshader` is its opt-in for keeping it (the
+ * "unsafe" is about untrusted content on a real browser, not a test page), and
+ * `--use-angle=swiftshader` pins the renderer so the pixels the tests read are
+ * the same on every machine, GPU or none. (Chromium 141 here still fell back
+ * without either; extrude.e2e.ts asserts the depth path is the one in use, so
+ * a browser that stops doing so fails loudly rather than silently.)
+ */
+const SOFTWARE_GL = ["--use-angle=swiftshader", "--enable-unsafe-swiftshader"];
+
+/**
  * Playwright refuses to launch unless the browser build it was compiled
  * against is present, and a machine may well have a different one installed
  * (a preinstalled image, a differently-pinned project). So: try the normal
@@ -32,11 +47,11 @@ export const APP_URL = process.env.NEOCAD_E2E_URL ?? "http://localhost:5173/";
  */
 async function launchBrowser(): Promise<Browser> {
   try {
-    return await chromium.launch();
+    return await chromium.launch({ args: SOFTWARE_GL });
   } catch (firstError) {
     for (const path of discoverChromium()) {
       try {
-        return await chromium.launch({ executablePath: path });
+        return await chromium.launch({ executablePath: path, args: SOFTWARE_GL });
       } catch { /* try the next candidate */ }
     }
     throw new Error(
@@ -152,10 +167,28 @@ export interface ModelSummary {
   view: { ox: number; oy: number; scale: number; right?: number[]; up?: number[]; target?: number[] };
 }
 
-export async function openApp(): Promise<AppContext> {
+export interface OpenOptions {
+  /**
+   * False takes WebGL away from the page before the app loads — every canvas's
+   * `getContext("webgl")` answers null — so the app draws faces the one way it
+   * can without it, by the painter's. The fallback's tests and the depth
+   * measurement use it; nothing in the app knows it was done.
+   */
+  webgl?: boolean;
+}
+
+export async function openApp(options: OpenOptions = {}): Promise<AppContext> {
   await requireServer();
   const browser = await launchBrowser();
   const page = await browser.newPage({ viewport: { width: 1100, height: 800 } });
+  if (options.webgl === false) {
+    await page.addInitScript(() => {
+      const real = HTMLCanvasElement.prototype.getContext;
+      HTMLCanvasElement.prototype.getContext = function (this: HTMLCanvasElement, kind: string, ...rest: unknown[]) {
+        return /webgl/.test(kind) ? null : (real as (...a: unknown[]) => unknown).call(this, kind, ...rest);
+      } as typeof real;
+    });
+  }
   const pageErrors: string[] = [];
   page.on("pageerror", (e) => pageErrors.push(String(e)));
 

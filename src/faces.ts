@@ -580,9 +580,18 @@ export function facesToDraw(model: Model, view: View): DrawnFace[] {
 export const FACE_DARK = [22, 31, 42];
 export const FACE_LIGHT = [66, 88, 108];
 
-/** The fill for a face of this shade — a quarter of the way up even edge-on, so a dark face is still a face. */
-export function faceColour(shade: number): string {
+/**
+ * The fill for a face of this shade, as three bytes — a quarter of the way up
+ * even edge-on, so a dark face is still a face. Whole numbers on purpose: both
+ * renderers write exactly these, so a test can ask a pixel for them.
+ */
+export function faceRGB(shade: number): number[] {
   const t = 0.25 + 0.75 * Math.max(0, Math.min(1, shade));
-  const [r, g, b] = FACE_DARK.map((d, i) => Math.round(d + (FACE_LIGHT[i] - d) * t));
+  return FACE_DARK.map((d, i) => Math.round(d + (FACE_LIGHT[i] - d) * t));
+}
+
+/** `faceRGB` as a canvas fill style. */
+export function faceColour(shade: number): string {
+  const [r, g, b] = faceRGB(shade);
   return `rgb(${r}, ${g}, ${b})`;
 }

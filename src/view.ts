@@ -120,6 +120,43 @@ export function depth(view: View, world: number[]): number {
 }
 
 /**
+ * The view as one 4×4 matrix, for a depth buffer to draw through — column-major,
+ * as WebGL's `uniformMatrix4fv` takes it.
+ *
+ * Applied to `(p − anchor, 1)` it gives exactly what the 2D pass draws with:
+ * clip x and y are `worldToScreen` mapped onto a `width` × `height` canvas's
+ * normalised device coordinates (−1 to 1, y up, so the screen's y flip is
+ * undone), and clip z is `depth` mapped onto −1 (nearest, `depths[1]`) to +1
+ * (farthest, `depths[0]`) — the depth buffer's own sense, the opposite of
+ * `depth`'s. There is nothing in it to keep in step with the camera: it is
+ * `right`, `up`, `toward`, `ox`, `oy` and `scale`, rearranged.
+ *
+ * **The anchor is precision, not geometry.** A GPU works in single precision,
+ * and a world point a thousand units out at a scale of a hundred thousand puts
+ * its pixel past what a float holds to the pixel. Points are handed over
+ * relative to an anchor near what is on screen, computed here in double, so
+ * only the small offsets go through floats.
+ */
+export function clipMatrix(view: View, width: number, height: number, depths: [number, number],
+                           anchor: number[] = [0, 0, 0]): number[] {
+  const { right, up, toward } = viewAxes(view);
+  const a = lift3(anchor);
+  const [far, near] = depths;
+  const sx = (2 * view.scale) / width;
+  const sy = (2 * view.scale) / height;
+  const sz = -2 / (near - far);
+  const rows = [
+    [sx * right[0], sx * right[1], sx * right[2], (2 / width) * (view.ox + view.scale * dot3(a, right)) - 1],
+    [sy * up[0], sy * up[1], sy * up[2], 1 - (2 / height) * (view.oy - view.scale * dot3(a, up))],
+    [sz * toward[0], sz * toward[1], sz * toward[2], 1 + sz * (dot3(a, toward) - far)],
+    [0, 0, 0, 1],
+  ];
+  const m: number[] = [];
+  for (let col = 0; col < 4; col++) for (let row = 0; row < 4; row++) m.push(rows[row][col]);
+  return m;
+}
+
+/**
  * The point at depth zero under a pixel — where the pixel's ray through the
  * scene crosses the camera-parallel plane through the world origin. Every
  * other point under that pixel is this one moved along `toward`.
