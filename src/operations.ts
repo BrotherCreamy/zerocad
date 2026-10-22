@@ -7,16 +7,18 @@
 // while an operation can leave the model malformed.
 
 import {
-  Model, SETTABLE_PROPERTY, parseValueRef, referentOf, valueArgIndex,
-  type Entity,
+  Model, SETTABLE_PROPERTY, memberName, parseValueRef, referentOf, valueArgIndex,
+  type Entity, type Portion, type ProfileMember,
 } from "./model.ts";
 import { dist } from "./relations/basic.ts";
-import { angle, arcEndpoints, radius, tangent } from "./relations/geometry.ts";
+import { angle, arcEndpoints, onCircle, pointOnLine, radius, tangent } from "./relations/geometry.ts";
 import { extrusion } from "./relations/extrusion.ts";
 import { FULL_TURN, axisReader, isFullTurn, revolution, turnPoint } from "./relations/revolution.ts";
-import { sweepsAs } from "./arcgeom.ts";
+import { arcPoint, portionAngles, sweepsAs } from "./arcgeom.ts";
 import { curveFrame, framePlaneAxes } from "./curveplane.ts";
-import { describeLoop, findLoops, isPortion, joinClasses, parallel, type Loop } from "./loops.ts";
+import {
+  describeLoop, findLoops, heldOnCurves, isVirtual, joinClasses, memberLabel, parallel, type Held, type Loop,
+} from "./loops.ts";
 import { cross3, dot3, lift3, sub3 } from "./vec3.ts";
 
 function unit(v: number[]): number[] {
@@ -181,11 +183,21 @@ export const DEFAULT_DEPTH = Model.DEFAULT_RADIUS;
 /**
  * A profile **resolved**: the frame the lid is offset along, and the loops —
  * the one extruded first, then every loop inside it, each as its members in
- * walk order. What `extrude` journals; see there for why.
+ * walk order. A member is a whole entity's name, or a `Portion` of one between
+ * two vertices. What `extrude` journals (with every vertex a real point by
+ * then); see there for why.
+ *
+ * A profile **found** — by `profileOf`, for a typed member or a click — may
+ * run through a crossing, whose vertex is no point but a key (`l1×l5`, see
+ * loops.ts). `crossings` says where each such key is now, which is where the
+ * point that materialises it is seeded. It is never journalled, and nor is a
+ * key: a key names a crossing by its place along an edge, and a drag can
+ * renumber it.
  */
 export interface Profile {
   frame: string;
-  loops: string[][];
+  loops: ProfileMember[][];
+  crossings?: Map<string, number[]>;
 }
 
 /**
@@ -206,6 +218,21 @@ export interface Profile {
  * renderer and for `del`; the faces are drawn from the live geometry and
  * stored nowhere.
  *
+ * **A region split by a crossing or a T extrudes as itself** — Onshape's
+ * rule, and what the preview showed. Its members are *portions*: the part of
+ * an edge between two vertices. A T's vertex is a point already, held on the
+ * edge. A crossing's is not — nothing holds two edges where they cross — so
+ * before anything is twinned, every crossing the profile runs through is
+ * **materialised**: a real point, held `on` each edge the profile bounds there
+ * (`oncircle` on an arc or circle) — the clause idiom `pt(on(_, "l1"), on(_,
+ * "l5"))`, made by the operation and owned by the feature, so `del("e1")`
+ * takes it as it takes a twin. Then a portion of a line twins to a line
+ * between the twins of its ends, and a portion of an arc or circle to an arc
+ * about the twinned centre between them; walls stand at every vertex, as
+ * ever. A second extrude of the region across the line finds that point held
+ * on both edges — a T, now — and twins it without making another: a stepped
+ * block from one sketch.
+ *
  * **Holes come with the loop.** Every loop inside the one extruded is part of
  * the profile — a hole, and inside a hole an island — and gets twins and walls
  * exactly as the outline does. The caps are drawn even-odd, so an island in a
@@ -217,11 +244,11 @@ export interface Profile {
  *
  * **Which loop.** `member` names any line, arc or circle; the loop is the one
  * it is in (`findLoops`). A member in more than one — an edge two faces share,
- * and after an extrude every profile edge, which is also an edge of a wall — is
- * refused with the loops listed, unless `frame` narrows it to the loops
- * parallel to that frame's plane. A member in none is refused with what makes a
- * loop. The extrude tool skips the question: it hands over the loop under the
- * click.
+ * a line across a rectangle, and after an extrude every profile edge, which is
+ * also an edge of a wall — is refused with the loops listed, unless `frame`
+ * narrows it to the loops parallel to that frame's plane. A member in none is
+ * refused with what makes a loop. The extrude tool skips the question: it
+ * hands over the region under the click (`extrudeProfile`).
  *
  * **Which way.** Along `frame`'s +z — the frame given, or else the frame the
  * loop lies in (the default first), or else one parallel to it. A loop in no
@@ -230,36 +257,67 @@ export interface Profile {
  * datum nobody chose. A negative depth extrudes the other way.
  *
  * **Journalled as the call, with the profile resolved** — `extrude("l1", 20,
- * "f1", [["l1","a1","l2","l3","l4"],["c1"]])` — the same rule by which `fix`,
- * `circ` and `fillet` journal the frame they resolved: a saved entry must not
- * change meaning with the drawing it is replayed into. Here that is not
- * hypothetical. Replay runs on *seeds* (nothing is solved until the saved
+ * "f1", [["l1","a1","l2","l3","l4"],["c1"]])`, and over a split region
+ * `[[{"name":"l1","from":"p1","to":"p9"},"l2",…]]` — the same rule by which
+ * `fix`, `circ` and `fillet` journal the frame they resolved: a saved entry
+ * must not change meaning with the drawing it is replayed into. Here that is
+ * not hypothetical. Replay runs on *seeds* (nothing is solved until the saved
  * values are put back), and a profile built from free lines and relations has
  * no loop at all at its seeds — measured: a rectangle of four `ln()`s, coin'd
- * and fixed into place, has one loop solved and none at replay — so re-finding
- * the loop would fail the file and every undo after it. Given `loops`, nothing
- * is looked for: the members are walked by their joins (relations, never
- * positions) and checked closed, and that is all. A user never needs to type
- * them.
+ * and fixed into place, has one loop solved and none at replay — so
+ * re-finding the loop would fail the file and every undo after it. Given
+ * `loops`, nothing is looked for: the members are walked by their joins
+ * (relations, never positions) and checked closed, and that is all. A user
+ * never needs to type them.
+ *
+ * **A vertex the model has no point by is one the call makes** — the rule
+ * loops.ts reads a vertex by (`isVirtual`), carried into the journal. So the
+ * entry names the points its expansion materialised (`p9` above), and a replay,
+ * reaching the entry before `p9` exists, materialises it again under that name,
+ * held on the edges that meet there. It is seeded where those edges' lines
+ * come closest if both are lines, and between them otherwise: a placeholder,
+ * which the saved values put right as they put back every twin. A key is
+ * never a name here: a vertex spelled with `×` that is no point is refused.
  *
  * An operation, refusing before it changes anything (`asOperation` records only
  * on success). 3D only.
  */
 export function extrude(model: Model, member: string, depth?: number | null, frame?: string | null,
-                        loops?: string[][] | null): string {
+                        loops?: ProfileMember[][] | null): string {
   if (model.dim !== 3) throw new Error("extrude needs a 3D model — a 2D drawing has no direction out of its plane");
-  const d = depth ?? DEFAULT_DEPTH;
-  if (typeof d !== "number" || !Number.isFinite(d) || d === 0) {
-    throw new Error(`extrude needs a non-zero depth, got ${JSON.stringify(depth)}`);
-  }
+  const d = extrudeDepth(depth);
   const e = typeof member === "string" ? model.entities.get(member) : undefined;
   if (!e || (e.kind !== "line" && e.kind !== "arc" && e.kind !== "circle")) {
     throw new Error(`${JSON.stringify(member)} is not a line, arc or circle — extrude names a member of the loop to extrude`);
   }
   const profile = loops != null ? givenProfile(model, member, frame, loops, EXTRUDE) : foundProfile(model, member, frame ?? null, EXTRUDE);
-  const plan = planExtrude(model, profile);
-  return model.asOperation("extrude", [member, d, profile.frame, profile.loops],
-    () => extrudeBody(model, member, d, plan));
+  return extruded(model, member, d, profile);
+}
+
+/**
+ * The extrude tool's door: the region it found under a click, crossings and
+ * all, extruded — and journalled exactly as a typed call is.
+ */
+export function extrudeProfile(model: Model, profile: Profile, depth?: number | null): string {
+  if (model.dim !== 3) throw new Error("extrude needs a 3D model — a 2D drawing has no direction out of its plane");
+  return extruded(model, memberName(profile.loops[0][0]), extrudeDepth(depth), profile);
+}
+
+function extrudeDepth(depth: number | null | undefined): number {
+  const d = depth ?? DEFAULT_DEPTH;
+  if (typeof d !== "number" || !Number.isFinite(d) || d === 0) {
+    throw new Error(`extrude needs a non-zero depth, got ${JSON.stringify(depth)}`);
+  }
+  return d;
+}
+
+/** Plans, then expands and journals — the entry read after the body, since it names what the body materialised. */
+function extruded(model: Model, member: string, d: number, profile: Profile): string {
+  const plan = planSweep(model, profile);
+  // The frame's +z when the call was made — where the twins are seeded, and nothing else.
+  const z = framePlaneAxes(model, profile.frame)!.n;
+  return model.asOperation("extrude", () => [member, d, plan.frame, resolvedLoops(plan)],
+    () => extrudeBody(model, member, d, plan, z));
 }
 
 /**
@@ -269,8 +327,6 @@ export function extrude(model: Model, member: string, depth?: number | null, fra
  */
 interface ProfileWords {
   op: "extrude" | "revolve";
-  /** The operation as a gerund, for a sentence about what it cannot do yet. */
-  doing: "extruding" | "revolving";
   /** The call that narrows an ambiguous member to one loop, by its sketch frame. */
   narrowed: (member: string) => string;
   /** Why the operation needs a sketch frame at all. */
@@ -279,14 +335,12 @@ interface ProfileWords {
 
 const EXTRUDE: ProfileWords = {
   op: "extrude",
-  doing: "extruding",
   narrowed: (m) => `extrude(${JSON.stringify(m)}, depth, "f1")`,
   needsFrame: "an extrude runs along a sketch frame's +z",
 };
 
 const REVOLVE: ProfileWords = {
   op: "revolve",
-  doing: "revolving",
   narrowed: (m) => `revolve(${JSON.stringify(m)}, axis, angle, "f1")`,
   needsFrame: "a revolve's end face lies on its sketch frame turned",
 };
@@ -294,35 +348,48 @@ const REVOLVE: ProfileWords = {
 /**
  * The profile for the loop at `index` of `all` (what `findLoops` returned):
  * that loop, every loop inside it, and the frame it is extruded along. What the
- * extrude tool hands to `extrude` for the region under a click. Throws when no
- * frame orients the loop — see `extrude`.
+ * extrude and revolve tools hand on for the region under a click. Throws when
+ * no frame orients the loop — see `extrude`.
  *
- * **And, for now, when the region is split** — any of its loops bounded by
- * part of an entity, or running through a crossing (loops.ts). A profile here
- * is lists of whole member names, and the expansion makes one twin per whole
- * member between twins of its own ends: handed a portion it would twin the
- * whole edge, and a crossing has no point to twin at all. So it is refused, by
- * the member, until features over split regions are built (materialising the
- * crossings and twinning portions — `docs/plans/regions-split.md`, PR 2),
- * rather than producing a solid that is not the region the preview showed.
+ * A member that is part of its entity becomes a `Portion` between the
+ * vertices it runs between, **in the entity's own direction** (loops.ts's
+ * `memberLabel` order), whichever way the loop walks it; and each crossing
+ * among those vertices is placed, from the span the loop found it at, so the
+ * point that materialises it starts exactly there.
  */
 export function profileOf(model: Model, all: Loop[], index: number, frame?: string | null,
                           words: ProfileWords = EXTRUDE): Profile {
-  for (const i of regionOf(all, index)) {
-    const part = all[i].members.find((m) => isPortion(model, m));
-    if (!part) continue;
-    const whole = part.span === null ? "" : "part of ";
-    throw new Error(`this region is bounded by ${whole}${part.name} (from ${part.from} to ${part.to}) — `
-      + `${words.doing} split regions is not built yet. Regions split by a crossing or a T show and can be sketched on; `
-      + `to ${words.op} one today, draw its boundary from whole edges`);
-  }
   const f = frame ?? sketchFrameOf(model, all[index], words);
-  return { frame: f, loops: regionOf(all, index).map((i) => all[i].members.map((m) => m.name)) };
+  const crossings = new Map<string, number[]>();
+  const loops = regionOf(all, index).map((i) => all[i].members.map((m): ProfileMember => {
+    if (m.span === null) return m.name;
+    const [from, to] = m.reversed ? [m.to!, m.from!] : [m.from!, m.to!];
+    [from, to].forEach((v, k) => {
+      if (isVirtual(model, v) && !crossings.has(v)) crossings.set(v, pointAlong(model, m.name, m.span![k]));
+    });
+    return { name: m.name, from, to };
+  }));
+  return { frame: f, loops, crossings };
 }
 
-/** `profileOf`, for a revolve: the same region, and a refusal that says "revolve". */
+/** `profileOf`, for a revolve: the same region, and refusals that say "revolve". */
 export function revolveProfileOf(model: Model, all: Loop[], index: number): Profile {
   return profileOf(model, all, index, null, REVOLVE);
+}
+
+/**
+ * The point a fraction `t` along a line, arc or circle in its own direction —
+ * loops.ts's measure of a span (a circle from its frame's +x, past 1 across
+ * its seam).
+ */
+function pointAlong(model: Model, name: string, t: number): number[] {
+  const e = model.entities.get(name)!;
+  if (e.kind === "line") {
+    const [a, b] = [model.coords(e.refs[0]), model.coords(e.refs[1])];
+    return a.map((x, i) => x + t * (b[i] - x));
+  }
+  const f = curveFrame(model, e)!;
+  return arcPoint(f, t * f.sweep);
 }
 
 /**
@@ -356,7 +423,7 @@ function sketchFrameOf(model: Model, loop: Loop, words: ProfileWords): string {
     const axes = framePlaneAxes(model, f);
     if (axes && parallel(axes.n, loop.plane.normal)) return f;
   }
-  throw new Error(`the loop of ${loop.members.map((m) => m.name).join(",")} lies in no frame's plane, and no frame is `
+  throw new Error(`the loop of ${loop.members.map(memberLabel).join(",")} lies in no frame's plane, and no frame is `
     + `parallel to it — ${words.needsFrame}: make one on its plane (plane(…), or Sketch on this) `
     + `and ${words.op} again`);
 }
@@ -385,49 +452,116 @@ function foundProfile(model: Model, member: string, frame: string | null, words:
   return profileOf(model, all, mine[0], frame, words);
 }
 
-/** A profile handed over whole — the journal's, or the tool's — checked for shape. */
+/** A portion as `loops()` and the hover print it: `l1[p1→p9]`, in the entity's own direction. */
+function memberText(m: ProfileMember): string {
+  return typeof m === "string" ? m : `${m.name}[${m.from}→${m.to}]`;
+}
+
+/**
+ * A profile handed over whole — the journal's, or typed — checked for shape: a
+ * member is a name, or `{name, from, to}` naming two vertices. An entity may
+ * be in a profile as several portions (a band across a circle runs along two
+ * arcs of it), but whole only once, and no portion twice.
+ */
 function givenProfile(model: Model, member: string, frame: string | null | undefined, loops: unknown,
                       words: ProfileWords): Profile {
   if (typeof frame !== "string") throw new Error("a profile given as loops needs the frame it is sketched on");
   model.frame(frame);
+  const isMember = (m: unknown) => typeof m === "string" || (m !== null && typeof m === "object" && !Array.isArray(m)
+    && ["name", "from", "to"].every((k) => typeof (m as Record<string, unknown>)[k] === "string"));
   const ok = Array.isArray(loops) && loops.length > 0
-    && loops.every((l) => Array.isArray(l) && l.length > 0 && l.every((n) => typeof n === "string"));
-  if (!ok) throw new Error(`${words.op}'s loops are lists of member names, the outer loop first`);
-  const given = (loops as string[][]).map((l) => l.slice());
+    && loops.every((l) => Array.isArray(l) && l.length > 0 && l.every(isMember));
+  if (!ok) {
+    throw new Error(`${words.op}'s loops are lists of member names, the outer loop first — or {name, from, to} `
+      + "for the part of a member between two points");
+  }
+  // Copied field by field, so nothing else a hand-written entry carried rides along into the journal.
+  const given = (loops as ProfileMember[][]).map((l) => l.map((m): ProfileMember =>
+    (typeof m === "string" ? m : { name: m.name, from: m.from, to: m.to })));
   const flat = given.flat();
-  if (new Set(flat).size !== flat.length) throw new Error(`a member appears twice in ${words.op}'s loops`);
-  if (!flat.includes(member)) throw new Error(`"${member}" is not in the loops given`);
+  const wholes = flat.filter((m) => typeof m === "string");
+  const parts = flat.filter((m): m is Portion => typeof m !== "string");
+  const texts = parts.map(memberText);
+  if (new Set(wholes).size !== wholes.length || new Set(texts).size !== texts.length
+      || parts.some((p) => wholes.includes(p.name))) {
+    throw new Error(`a member appears twice in ${words.op}'s loops`);
+  }
+  if (!flat.some((m) => memberName(m) === member)) throw new Error(`"${member}" is not in the loops given`);
+  for (const p of parts) {
+    for (const v of [p.from, p.to]) {
+      if (!model.entities.has(v) && v.includes("×")) {
+        throw new Error(`"${v}" is a crossing's key, not a point — a key names a crossing by where it lies along an `
+          + `edge, and a drag can renumber it, so a profile names real points. ${words.op} by a member's name, or `
+          + `click the region with the ${words.op} tool, and the crossing is made a point for you`);
+      }
+    }
+  }
   return { frame, loops: given };
 }
 
-/** One member of a profile loop, walked: its ends in walk order, null for a circle. */
+/** One member of a profile loop, walked. */
 interface Walked {
   name: string;
   kind: "line" | "arc" | "circle";
+  /** Its ends in walk order; null for a whole circle. */
   from: string | null;
   to: string | null;
+  /**
+   * Its ends in the entity's own direction — a whole line's points, a whole
+   * arc's start and end, a portion's `from` and `to` — the direction its twin
+   * is made in. Null for a whole circle.
+   */
+  ends: [string, string] | null;
+  /** Whether it is part of its entity. */
+  part: boolean;
 }
 
-interface ExtrudePlan {
+/** A profile walked by its joins, ready to expand — what extrude and revolve both plan from. */
+interface SweepPlan {
   frame: string;
-  loops: string[][];
+  loops: ProfileMember[][];
   walked: Walked[][];
   classOf: Map<string, number>;
-  /** The frame's +z when the call was made — where the twins are seeded, and nothing else. */
-  z: number[];
+  /** Where a found profile's crossings are now — seeds for the points that materialise them. */
+  crossings: Map<string, number[]> | null;
+  /** The vertices that are no point yet, in walk order, each with the edges the profile bounds there. */
+  toMake: { v: string; edges: string[] }[];
+  /** Each vertex the body materialised, to the point it made — filled by the body, read by the journal. */
+  made: Map<string, string>;
 }
 
 /**
- * Everything an extrude checks before it makes anything: the frame has a +z,
- * and every loop walks closed by its joins. Read off relations and names only —
- * which is what lets a replay, running on seeds, plan exactly what the call did.
+ * Everything an extrude or revolve checks before it makes anything: the frame
+ * has a plane, and every loop walks closed by its joins. Read off relations
+ * and names only — which is what lets a replay, running on seeds, plan exactly
+ * what the call did.
  */
-function planExtrude(model: Model, profile: Profile): ExtrudePlan {
-  const axes = framePlaneAxes(model, profile.frame);
-  if (!axes) throw new Error(`"${profile.frame}" has collapsed — it has no +z to extrude along`);
+function planSweep(model: Model, profile: Profile): SweepPlan {
+  if (!framePlaneAxes(model, profile.frame)) throw new Error(`"${profile.frame}" has collapsed — it has no plane for a profile to lie in`);
   const classOf = joinClasses(model);
-  const walked = profile.loops.map((names) => walkLoop(model, classOf, names));
-  return { frame: profile.frame, loops: profile.loops, walked, classOf, z: axes.n };
+  const held = heldOnCurves(model);
+  const walked = profile.loops.map((members) => walkLoop(model, classOf, held, members));
+  const toMake: { v: string; edges: string[] }[] = [];
+  for (const w of walked.flat()) {
+    for (const v of [w.from, w.to]) {
+      if (v === null || model.entities.has(v) || toMake.some((t) => t.v === v)) continue;
+      const edges = [...new Set(walked.flat().filter((m) => m.ends?.includes(v)).map((m) => m.name))];
+      if (edges.length < 2) {
+        throw new Error(`"${v}" would be made where "${edges[0]}" meets only itself — a crossing is where two edges meet`);
+      }
+      toMake.push({ v, edges });
+    }
+  }
+  return {
+    frame: profile.frame, loops: profile.loops, walked, classOf,
+    crossings: profile.crossings ?? null, toMake, made: new Map(),
+  };
+}
+
+/** The profile as the journal and the record carry it: every vertex a real point, those just made by their new names. */
+function resolvedLoops(plan: SweepPlan): ProfileMember[][] {
+  const real = (v: string) => plan.made.get(v) ?? v;
+  return plan.loops.map((l) => l.map((m) => (typeof m === "string" ? m : { name: m.name, from: real(m.from), to: real(m.to) })));
 }
 
 /**
@@ -436,8 +570,16 @@ function planExtrude(model: Model, profile: Profile): ExtrudePlan {
  * along the first unless its far end does not meet the second. The same walk at
  * the call and at every replay, so the twins come out in the same order under
  * the same names. Refuses a loop that does not close, naming where it breaks.
+ *
+ * A portion's ends are its `from` and `to`, and each must be on its entity *by
+ * a relation*: one of its own ends (or joined to one), or a point held on it
+ * as loops.ts reads a T (`heldOnCurves`). A vertex that is no point yet is one
+ * the call will make, held on the edges that meet there, and is a class of its
+ * own until then.
  */
-function walkLoop(model: Model, classOf: Map<string, number>, names: string[]): Walked[] {
+function walkLoop(model: Model, classOf: Map<string, number>, held: Held[], members: ProfileMember[]): Walked[] {
+  const names = members.map(memberName);
+  const label = members.map(memberText).join(",");
   const entity = (n: string) => {
     const e = model.entities.get(n);
     if (!e || (e.kind !== "line" && e.kind !== "arc" && e.kind !== "circle")) {
@@ -445,48 +587,187 @@ function walkLoop(model: Model, classOf: Map<string, number>, names: string[]): 
     }
     return e;
   };
-  if (names.length === 1) {
-    const e = entity(names[0]);
-    if (e.kind !== "circle") throw new Error(`a loop of one member is a circle — "${names[0]}" is ${e.kind === "arc" ? "an arc" : "a line"}`);
-    return [{ name: e.name, kind: "circle", from: null, to: null }];
-  }
-  const ends = (n: string): [string, string] => {
-    const e = entity(n);
-    if (e.kind === "circle") throw new Error(`a circle is a loop on its own — "${n}" cannot be part of the loop ${names.join(",")}`);
-    return e.kind === "line" ? [e.refs[0], e.refs[1]] : [e.start, e.end];
+  const cls = (p: string) => classKey(classOf, p);
+  const ownEnds = (e: Entity): [string, string] | null =>
+    (e.kind === "line" ? [e.refs[0], e.refs[1]] : e.kind === "arc" ? [e.start, e.end] : null);
+  const onIt = (v: string, e: Entity): boolean => {
+    const kind = model.entities.get(v)?.kind;
+    if (kind === undefined) return true; // made by the call, on the edges that meet there
+    if (kind !== "point") throw new Error(`"${v}" is a ${kind}, not a point — a part of an edge runs between two points`);
+    if (ownEnds(e)?.some((q) => cls(q) === cls(v))) return true;
+    return held.some((h) => h.curve === e.name && cls(h.point) === cls(v));
   };
-  const cls = (p: string) => classOf.get(p);
-  const meets = (p: string, n: string) => ends(n).some((q) => cls(q) === cls(p));
-  const apart = (a: string, b: string) => new Error(`"${a}" and "${b}" do not meet — the loop ${names.join(",")} is not closed`);
-  const kind = (n: string) => entity(n).kind as "line" | "arc";
+  const resolved = members.map((m) => {
+    const e = entity(memberName(m));
+    if (typeof m === "string") return { e, own: ownEnds(e), part: false };
+    if (m.from === m.to) throw new Error(`the part of "${m.name}" from "${m.from}" to itself is no part — name the whole member`);
+    for (const v of [m.from, m.to]) {
+      if (!onIt(v, e)) throw new Error(`"${v}" is not on "${m.name}" — a part of an edge runs between its own points, or points held on it`);
+    }
+    return { e, own: [m.from, m.to] as [string, string], part: true };
+  });
+  if (members.length === 1) {
+    const { e, part } = resolved[0];
+    if (e.kind !== "circle" || part) {
+      throw new Error(`a loop of one member is a circle — "${names[0]}" is ${part ? "part of one" : e.kind === "arc" ? "an arc" : "a line"}`);
+    }
+    return [{ name: e.name, kind: "circle", from: null, to: null, ends: null, part: false }];
+  }
+  const ends = (i: number): [string, string] => {
+    const { e, own } = resolved[i];
+    if (!own) throw new Error(`a circle is a loop on its own — the whole of "${e.name}" cannot be part of the loop ${label} (a part of it can)`);
+    return own;
+  };
+  const meets = (p: string, i: number) => ends(i).some((q) => cls(q) === cls(p));
+  const apart = (a: string, b: string) => new Error(`"${a}" and "${b}" do not meet — the loop ${label} is not closed`);
+  const walk = (i: number, from: string, to: string): Walked =>
+    ({ name: names[i], kind: resolved[i].e.kind as Walked["kind"], from, to, ends: ends(i), part: resolved[i].part });
 
-  const [a0, b0] = ends(names[0]);
-  const back = !meets(b0, names[1]);
-  if (back && !meets(a0, names[1])) throw apart(names[0], names[1]);
-  const out: Walked[] = [{ name: names[0], kind: kind(names[0]), from: back ? b0 : a0, to: back ? a0 : b0 }];
-  for (let i = 1; i < names.length; i++) {
-    const [a, b] = ends(names[i]);
+  const [a0, b0] = ends(0);
+  const back = !meets(b0, 1);
+  if (back && !meets(a0, 1)) throw apart(names[0], names[1]);
+  const out: Walked[] = [walk(0, back ? b0 : a0, back ? a0 : b0)];
+  for (let i = 1; i < members.length; i++) {
+    const [a, b] = ends(i);
     const at = out[i - 1].to!;
-    if (cls(a) === cls(at)) out.push({ name: names[i], kind: kind(names[i]), from: a, to: b });
-    else if (cls(b) === cls(at)) out.push({ name: names[i], kind: kind(names[i]), from: b, to: a });
+    if (cls(a) === cls(at)) out.push(walk(i, a, b));
+    else if (cls(b) === cls(at)) out.push(walk(i, b, a));
     else throw apart(names[i - 1], names[i]);
   }
   if (cls(out[out.length - 1].to!) !== cls(out[0].from!)) throw apart(names[names.length - 1], names[0]);
   return out;
 }
 
+/** A point's joined class — or, for a point no shared end or `coin` joins (one made since the classes were read), itself. */
+function classKey(classOf: Map<string, number>, p: string): number | string {
+  return classOf.get(p) ?? p;
+}
+
 /**
- * The expansion, in an order a replay reproduces name for name: the lid's frame
- * (its three points, then the frame), one twin point per joined class in walk
- * order, the twin members, the walls, the depth, the record.
+ * Makes every vertex of the profile that is no point yet a real one — a
+ * crossing, at the call; at a replay, the point the journal names — held on
+ * each edge the profile bounds there: `on` on a line, `oncircle` on an arc or
+ * circle. In walk order, so a replay makes the same points and relations under
+ * the same names. Everything made goes through `made` (the feature owns it).
+ *
+ * At the call each is auto-named and seeded where the loop found the crossing.
+ * At a replay it takes the journal's name and a placeholder seed (see
+ * `extrude`), which the saved values put right.
  */
-function extrudeBody(model: Model, member: string, depth: number, plan: ExtrudePlan): string {
-  const { frame, walked, classOf, z } = plan;
+function materialise(model: Model, plan: SweepPlan, made: (name: string) => string): void {
+  for (const { v, edges } of plan.toMake) {
+    const seed = plan.crossings?.get(v) ?? placeholderSeed(model, edges);
+    const p = model.addPoint(seed, plan.crossings?.has(v) ? null : v).name;
+    plan.made.set(v, made(p));
+    for (const e of edges) made(model.entities.get(e)!.kind === "line" ? pointOnLine(model, p, e) : onCircle(model, p, e));
+  }
+}
+
+/**
+ * Where a replay seeds a materialised point before the saved values put it
+ * back: where the first two edges' lines come closest, when both are lines,
+ * else halfway between the edges' first points. Nothing reads it but the
+ * solver's starting guess.
+ */
+function placeholderSeed(model: Model, edges: string[]): number[] {
+  const [a, b] = edges.map((n) => model.entities.get(n)!);
+  if (a.kind === "line" && b.kind === "line") {
+    const [p, q] = [model.coords(a.refs[0]), model.coords(b.refs[0])];
+    const [u, v] = [sub3(model.coords(a.refs[1]), p), sub3(model.coords(b.refs[1]), q)];
+    // The closest approach of p + s·u to q + t·v.
+    const w = sub3(p, q);
+    const [uu, uv, vv, uw, vw] = [dot3(u, u), dot3(u, v), dot3(v, v), dot3(u, w), dot3(v, w)];
+    const den = uu * vv - uv * uv;
+    if (den > 1e-12 * uu * vv) {
+      const s = (uv * vw - vv * uw) / den;
+      return p.map((x, i) => x + s * u[i]);
+    }
+  }
+  const first = (e: Entity) => model.coords(model.refsOf(e)[0]);
+  const [x, y] = [first(a), first(b)];
+  return x.map((c, i) => (c + y[i]) / 2);
+}
+
+/**
+ * One twin per joined class, made the first time a point of the class is
+ * asked for, at `place(point)`: an extrude's lid and a revolve's end face both
+ * twin this way, so their corners are joined exactly where the profile's are —
+ * one point where the profile had a shared point or a coin — and the twin
+ * face is itself a loop.
+ */
+function twinner(model: Model, classOf: Map<string, number>, place: (p: string) => number[], made: (n: string) => string) {
+  const byClass = new Map<number | string, { base: string; twin: string }>();
+  const twinOf = (p: string): string => {
+    const k = classKey(classOf, p);
+    let t = byClass.get(k);
+    if (!t) {
+      t = { base: p, twin: made(model.addPoint(place(p)).name) };
+      byClass.set(k, t);
+    }
+    return t.twin;
+  };
+  return { twinOf, byClass };
+}
+
+/** Twins a member's points as the walk meets them — its from, its centre if it has one, its to — so they are named in that order. */
+function twinPoints(model: Model, m: Walked, real: (v: string) => string, twinOf: (p: string) => string): void {
+  const e = model.entities.get(m.name)!;
+  if (e.kind === "circle" && !m.part) { twinOf(e.center); return; }
+  twinOf(real(m.from!));
+  if (e.kind === "arc" || e.kind === "circle") twinOf(e.center);
+  twinOf(real(m.to!));
+}
+
+/**
+ * A member's twin, in the member's own direction, between the twins of its
+ * ends: a line for a line or part of one; an arc about the twinned centre for
+ * an arc, or for part of an arc or circle — the same sense about the same
+ * frame's +z, so the same part; a circle for a whole circle. A curve's twin
+ * lies on `planeFor` its plane.
+ */
+function twinMember(model: Model, m: Walked, real: (v: string) => string, twinOf: (p: string) => string,
+                    planeFor: (p: string | undefined) => string | null | undefined): string {
+  const e = model.entities.get(m.name)!;
+  if (e.kind === "circle" && !m.part) return model.addCircle(twinOf(e.center), model.radius(e.name), planeFor(e.plane)).name;
+  const [a, b] = m.ends!.map((v) => twinOf(real(v)));
+  if (e.kind === "line") return model.addLine(a, b).name;
+  if (e.kind === "arc" || e.kind === "circle") return model.addArc(twinOf(e.center), a, b, model.radius(e.name), planeFor(e.plane)).name;
+  throw new Error(`"${m.name}" is not a line, arc or circle`); // unreachable: walkLoop checked
+}
+
+/**
+ * What a feature's record names as built on: every profile entity once, and
+ * every point a portion runs to that was a point before the call (a T's, or a
+ * crossing another feature made) — so deleting one takes the record, as
+ * deleting a profile member does, and a record never names a point that is
+ * gone.
+ */
+function builtOn(plan: SweepPlan): string[] {
+  const out = new Set<string>();
+  for (const loop of plan.loops) {
+    for (const m of loop) {
+      out.add(memberName(m));
+      if (typeof m !== "string") for (const v of [m.from, m.to]) if (!plan.made.has(v)) out.add(v);
+    }
+  }
+  return [...out];
+}
+
+/**
+ * The expansion, in an order a replay reproduces name for name: the crossings
+ * made points (each with its holds), the lid's frame (its three points, then
+ * the frame), one twin point per joined class in walk order, the twin members,
+ * the walls, the depth, the record.
+ */
+function extrudeBody(model: Model, member: string, depth: number, plan: SweepPlan, z: number[]): string {
+  const { frame, walked, classOf } = plan;
+  const owns: string[] = [];
+  const made = (name: string) => { owns.push(name); return name; };
+  materialise(model, plan, made);
+  const real = (v: string) => plan.made.get(v) ?? v;
   // Seeds only: the depth relation is what holds them, and the solve after the
   // call settles any frame that has turned since the plan was made.
   const lifted = (p: string) => model.coords(p).map((c, i) => c + depth * z[i]);
-  const owns: string[] = [];
-  const made = (name: string) => { owns.push(name); return name; };
 
   // The lid's frame: the sketch frame, moved. Held there by the depth's own
   // pairs — read as a datum, so the lid can never turn the sketch.
@@ -495,51 +776,23 @@ function extrudeBody(model: Model, member: string, depth: number, plan: ExtrudeP
   const [to, tx, ty] = [o, x, y].map((p) => made(model.addPoint(lifted(p)).name));
   const top = made(model.addFrame(to, tx, ty).name);
 
-  // One twin per *joined class*, so the lid's corners are joined exactly where
-  // the profile's are — one point where the profile had a shared point or a
-  // coin — and the top cap is itself a loop.
-  const byClass = new Map<number, { base: string; twin: string }>();
-  const twinOf = (p: string): string => {
-    const k = classOf.get(p)!;
-    let t = byClass.get(k);
-    if (!t) {
-      t = { base: p, twin: made(model.addPoint(lifted(p)).name) };
-      byClass.set(k, t);
-    }
-    return t.twin;
-  };
-  for (const loop of walked) {
-    for (const m of loop) {
-      const e = model.entities.get(m.name)!;
-      if (e.kind === "circle") { twinOf(e.center); continue; }
-      twinOf(m.from!);
-      if (e.kind === "arc") twinOf(e.center);
-      twinOf(m.to!);
-    }
-  }
+  const { twinOf, byClass } = twinner(model, classOf, lifted, made);
+  for (const loop of walked) for (const m of loop) twinPoints(model, m, real, twinOf);
 
-  // Each member's twin, in the member's *own* direction. A curve on the sketch
-  // frame goes on the lid's frame; one on any other frame keeps its own — same
-  // orientation, so the twin arc is the same arc, with no side to decide.
+  // A curve on the sketch frame goes on the lid's frame; one on any other frame
+  // keeps its own — same orientation, so the twin arc is the same arc, with no
+  // side to decide.
   const planeFor = (p: string | undefined) => (p === frame ? top : p);
-  const twins = walked.map((loop) => loop.map((m) => {
-    const e = model.entities.get(m.name)!;
-    if (e.kind === "line") return made(model.addLine(twinOf(e.refs[0]), twinOf(e.refs[1])).name);
-    if (e.kind === "arc") {
-      return made(model.addArc(twinOf(e.center), twinOf(e.start), twinOf(e.end), model.radius(e.name), planeFor(e.plane)).name);
-    }
-    if (e.kind === "circle") return made(model.addCircle(twinOf(e.center), model.radius(e.name), planeFor(e.plane)).name);
-    throw new Error(`"${m.name}" is not a line, arc or circle`); // unreachable: walkLoop checked
-  }));
+  const twins = walked.map((loop) => loop.map((m) => made(twinMember(model, m, real, twinOf, planeFor))));
 
   // A wall at every corner, base to twin — once per joined class, so a corner
   // two loops share has one. A circle has none (see `extrude`).
   const walls: string[] = [];
-  const walled = new Set<number>();
+  const walled = new Set<number | string>();
   for (const loop of walked) {
     for (const m of loop) {
       if (m.from === null) continue;
-      const k = classOf.get(m.from)!;
+      const k = classKey(classOf, real(m.from));
       if (walled.has(k)) continue;
       walled.add(k);
       const { base, twin } = byClass.get(k)!;
@@ -557,8 +810,8 @@ function extrudeBody(model: Model, member: string, depth: number, plan: ExtrudeP
 
   return model.addFeature({
     kind: "extrude", member, frame, top, depth: held,
-    loops: plan.loops.map((l) => l.slice()), twins, walls,
-    names: [...plan.loops.flat(), frame, ...owns], owns,
+    loops: resolvedLoops(plan), twins, walls,
+    names: [...new Set([...builtOn(plan), frame, ...owns])], owns,
   }).name;
 }
 
@@ -589,13 +842,21 @@ function extrudeBody(model: Model, member: string, depth: number, plan: ExtrudeP
  * dimension edit — so a `set` on a full revolve's angle refuses and says so;
  * a partial one `set` to a whole turn refuses too (see `revolution`).
  *
+ * **A split region revolves as itself**, exactly as it extrudes: its crossings
+ * materialised first, as points held on the edges through them and owned by
+ * the feature — a whole turn included, since its surface is swept from the
+ * profile between those points every frame — and, for a partial turn, a twin
+ * per vertex and a twin line or arc per portion on the end face.
+ *
  * **The axis lies in the profile's plane, and the profile on one side of it.**
  * An axis leaning out of the plane, or beside it, does not make a solid of
  * revolution of this profile; a profile crossing the axis would pass through
  * itself as it turned. Both are refused, naming the geometry. **Touching is
  * allowed**: a profile with an edge or a corner on the axis closes the surface
  * there — a semicircle on its diameter turns into a sphere, a right triangle on
- * a leg into a cone. A twin of a point on the axis sits where its base does.
+ * a leg into a cone, and the half of a rectangle on one side of a line across
+ * it, about that line, into a cylinder. A twin of a point on the axis sits
+ * where its base does.
  *
  * **Which loop** — exactly `extrude`'s: the loop `member` is in, every loop
  * inside it riding along as holes (turned, a hole is a tunnel round the axis),
@@ -603,24 +864,22 @@ function extrudeBody(model: Model, member: string, depth: number, plan: ExtrudeP
  * question, handing over the region under its first click.
  *
  * **Journalled as the call, with the profile resolved** —
- * `revolve("l1", "f1.y", 4.712, "f1", [["l1","l2","l3","l4"]])` — for
- * extrude's measured reason (a replay runs on seeds, where a profile of free
- * lines has no loop), and with the axis as the string that names it, which is
- * already resolved: `yaxis()` typed at the call has become `"f1.y"` by the time
- * the call sees it. Given loops a replay only walks them by their joins. The
- * **geometric refusals** — the axis in the plane, the profile on one side — are
- * the call's and the tool's, never a replay's: they read positions, and a
- * replay has only seeds to read.
+ * `revolve("l1", "f1.y", 4.712, "f1", [["l1","l2","l3","l4"]])`, portions and
+ * materialised points as `extrude` journals them — for extrude's measured
+ * reason (a replay runs on seeds, where a profile of free lines has no loop),
+ * and with the axis as the string that names it, which is already resolved:
+ * `yaxis()` typed at the call has become `"f1.y"` by the time the call sees
+ * it. Given loops a replay only walks them by their joins. The **geometric
+ * refusals** — the axis in the plane, the profile on one side — are the call's
+ * and the tool's, never a replay's: they read positions, and a replay has only
+ * seeds to read.
  *
  * An operation, refusing before it changes anything. 3D only.
  */
 export function revolve(model: Model, member: string, axis: string, angle?: number | null, frame?: string | null,
-                        loops?: string[][] | null): string {
+                        loops?: ProfileMember[][] | null): string {
   if (model.dim !== 3) throw new Error("revolve needs a 3D model — a 2D drawing has nothing to turn out of its plane into");
-  const a = angle ?? FULL_TURN;
-  if (typeof a !== "number" || !Number.isFinite(a) || a === 0 || Math.abs(a) > FULL_TURN + 1e-9) {
-    throw new Error(`revolve needs an angle in radians, more than 0 and at most a whole turn (2π), got ${JSON.stringify(angle)}`);
-  }
+  const a = revolveAngle(angle);
   const e = typeof member === "string" ? model.entities.get(member) : undefined;
   if (!e || (e.kind !== "line" && e.kind !== "arc" && e.kind !== "circle")) {
     throw new Error(`${JSON.stringify(member)} is not a line, arc or circle — revolve names a member of the loop to revolve`);
@@ -628,21 +887,35 @@ export function revolve(model: Model, member: string, axis: string, angle?: numb
   axisReader(model, axis); // a name that is not an axis says so before anything is looked for
   const profile = loops != null ? givenProfile(model, member, frame, loops, REVOLVE) : foundProfile(model, member, frame ?? null, REVOLVE);
   if (loops == null) checkRevolve(model, profile, axis);
-  const plan = planSweep(model, profile);
-  return model.asOperation("revolve", [member, axis, a, profile.frame, profile.loops],
-    () => revolveBody(model, member, axis, a, plan));
+  return revolved(model, member, axis, a, profile);
 }
 
 /**
  * The revolve tool's door: a profile it found under a click, refused on the
- * geometry exactly as a typed call is (`checkRevolve`), then revolved with the
- * profile handed over — so the journal entry is the one a typed call makes.
+ * geometry exactly as a typed call is (`checkRevolve`), then revolved — so the
+ * journal entry is the one a typed call makes.
  */
 export function revolveProfile(model: Model, profile: Profile, axis: string, angle?: number | null): string {
   if (model.dim !== 3) throw new Error("revolve needs a 3D model — a 2D drawing has nothing to turn out of its plane into");
+  const a = revolveAngle(angle);
   axisReader(model, axis);
   checkRevolve(model, profile, axis);
-  return revolve(model, profile.loops[0][0], axis, angle, profile.frame, profile.loops);
+  return revolved(model, memberName(profile.loops[0][0]), axis, a, profile);
+}
+
+function revolveAngle(angle: number | null | undefined): number {
+  const a = angle ?? FULL_TURN;
+  if (typeof a !== "number" || !Number.isFinite(a) || a === 0 || Math.abs(a) > FULL_TURN + 1e-9) {
+    throw new Error(`revolve needs an angle in radians, more than 0 and at most a whole turn (2π), got ${JSON.stringify(angle)}`);
+  }
+  return a;
+}
+
+/** Plans, then expands and journals — as `extruded`. */
+function revolved(model: Model, member: string, axis: string, a: number, profile: Profile): string {
+  const plan = planSweep(model, profile);
+  return model.asOperation("revolve", () => [member, axis, a, plan.frame, resolvedLoops(plan)],
+    () => revolveBody(model, member, axis, a, plan));
 }
 
 /**
@@ -657,27 +930,31 @@ const SWEEP_TOL = 1e-6;
  * The geometric refusals: the axis lies in the profile's plane (its direction
  * along it, a point of it on it), and the profile keeps to one side of it
  * (touching allowed). Reads positions, so only a live call asks it — see
- * `revolve`.
+ * `revolve`. A portion is measured over its own part, between where its ends
+ * are now (a crossing's where `profileOf` found it): the half of a split
+ * region that only touches the axis is on one side, though the edges it is
+ * cut from run on across.
  */
 export function checkRevolve(model: Model, profile: Profile, axis: string): void {
   const ax = axisReader(model, axis).read();
   if (ax.dir.every((c) => c === 0)) throw new Error(`the axis ${axis} has collapsed — it has no direction to turn about`);
   const plane = framePlaneAxes(model, profile.frame);
   if (!plane) throw new Error(`"${profile.frame}" has collapsed — it has no plane for a profile to lie in`);
-  const names = profile.loops[0].join(",");
+  const names = profile.loops[0].map(memberText).join(",");
   const lean = Math.abs(dot3(ax.dir, plane.n));
   if (lean > IN_PLANE_SINE) {
     const deg = Math.round((Math.asin(Math.min(1, lean)) * 180) / Math.PI * 1000) / 1000;
     throw new Error(`the axis ${axis} leans ${deg}° out of the plane of the profile ${names} (${profile.frame}'s) — a `
       + "revolve turns a profile about an axis lying in its own plane, or it makes no solid of revolution");
   }
-  const members = profile.loops.flat().map((n) => model.entities.get(n)!);
+  const members = profile.loops.flat();
+  const entities = [...new Set(members.map(memberName))].map((n) => model.entities.get(n)!);
   // The drawing's size, as far as this profile and axis are concerned: how far
   // any of it reaches from the axis's origin, a rim by its radius.
   const reach = (e: Entity) => model.refsOf(e).map((p) => Math.hypot(...sub3(model.coords(p), ax.origin))
     + (e.kind === "circle" || e.kind === "arc" ? model.radius(e.name) : 0));
-  const tol = SWEEP_TOL * Math.max(1, ...members.flatMap(reach));
-  const first = members[0];
+  const tol = SWEEP_TOL * Math.max(1, ...entities.flatMap(reach));
+  const first = entities[0];
   const onProfile = model.coords(first.kind === "line" ? first.refs[0] : model.refsOf(first)[0]);
   const off = Math.abs(dot3(sub3(ax.origin, onProfile), plane.n));
   if (off > tol) {
@@ -686,9 +963,12 @@ export function checkRevolve(model: Model, profile: Profile, axis: string): void
   }
   // Which side of the axis, across the plane: the in-plane direction square to it.
   const w = cross3(plane.n, ax.dir);
+  const at = (v: string) => profile.crossings?.get(v) ?? model.coords(v);
   let lo = Infinity, hi = -Infinity;
-  for (const e of members) {
-    for (const s of sideRange(model, e, ax.origin, w)) { lo = Math.min(lo, s); hi = Math.max(hi, s); }
+  for (const m of members) {
+    const e = model.entities.get(memberName(m))!;
+    const ends = typeof m === "string" ? null : [at(m.from), at(m.to)] as [number[], number[]];
+    for (const s of sideRange(model, e, ax.origin, w, ends)) { lo = Math.min(lo, s); hi = Math.max(hi, s); }
   }
   if (lo < -tol && hi > tol) {
     throw new Error(`the profile ${names} crosses the axis ${axis} — turned about it, it would pass through itself. `
@@ -700,59 +980,52 @@ export function checkRevolve(model: Model, profile: Profile, axis: string): void
  * How far across the axis a member reaches, both ways: its signed distances
  * along `w` from `origin` at its ends and — for an arc or circle — at the
  * extremes of its rim that it actually sweeps through, so a bulge over the axis
- * is caught as surely as a corner.
+ * is caught as surely as a corner. `ends`, for a portion, are where its two
+ * ends are, and only the part between them counts.
  */
-function sideRange(model: Model, e: Entity, origin: number[], w: number[]): number[] {
+function sideRange(model: Model, e: Entity, origin: number[], w: number[], ends: [number[], number[]] | null): number[] {
   const s = (p: number[]) => dot3(sub3(lift3(p), origin), w);
-  if (e.kind === "line") return e.refs.map((p) => s(model.coords(p)));
+  if (e.kind === "line") return (ends ?? e.refs.map((p) => model.coords(p))).map(s);
   const f = curveFrame(model, e);
   if (!f) return model.refsOf(e).map((p) => s(model.coords(p)));
+  const [t0, t1] = ends ? portionAngles(f, ends[0], ends[1]) : [0, f.sweep];
   const [a, b, c] = [f.r * dot3(f.u, w), f.r * dot3(f.v, w), s(f.center)];
   const at = (t: number) => c + a * Math.cos(t) + b * Math.sin(t);
-  const out = [at(0), at(f.sweep)];
+  const out = [at(t0), at(t1)];
   const peak = Math.atan2(b, a);
   for (const t of [peak, peak + Math.PI]) {
-    const tt = ((t % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
-    if (tt <= f.sweep) out.push(at(tt));
+    // The extreme's first turn at or after t0, if the part reaches it.
+    const tt = t0 + ((((t - t0) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI));
+    if (tt <= t1) out.push(at(tt));
   }
   return out;
 }
 
-/** A profile walked by its joins, ready to expand — what extrude and revolve both plan from. */
-interface SweepPlan {
-  frame: string;
-  loops: string[][];
-  walked: Walked[][];
-  classOf: Map<string, number>;
-}
-
-/** Every loop walked closed by its joins — names and relations only, so a replay plans what the call did. */
-function planSweep(model: Model, profile: Profile): SweepPlan {
-  if (!framePlaneAxes(model, profile.frame)) throw new Error(`"${profile.frame}" has collapsed — it has no plane for a profile to lie in`);
-  const classOf = joinClasses(model);
-  const walked = profile.loops.map((names) => walkLoop(model, classOf, names));
-  return { frame: profile.frame, loops: profile.loops, walked, classOf };
-}
-
 /**
- * The expansion, in an order a replay reproduces name for name. A whole turn:
- * the dimension and the record, nothing else. A partial one: the end frames
- * (each a frame's three points turned, then the frame — the sketch frame's
- * first, then any other frame a profile curve is drawn on), one twin point per
- * joined class in walk order, the twin members, the angle, the record.
+ * The expansion, in an order a replay reproduces name for name. First the
+ * crossings made points (each with its holds) — a whole turn's too, see
+ * `revolve`. A whole turn then: the dimension and the record, nothing else. A
+ * partial one: the end frames (each a frame's three points turned, then the
+ * frame — the sketch frame's first, then any other frame a profile curve is
+ * drawn on), one twin point per joined class in walk order, the twin members,
+ * the angle, the record.
  */
 function revolveBody(model: Model, member: string, axis: string, angle: number, plan: SweepPlan): string {
   const { frame, walked, classOf } = plan;
-  const loops = plan.loops.map((l) => l.slice());
+  const owns: string[] = [];
+  const made = (name: string) => { owns.push(name); return name; };
+  materialise(model, plan, made);
+  const real = (v: string) => plan.made.get(v) ?? v;
+  const loops = resolvedLoops(plan);
   const axisOn = referentOf(axis)!;
   // Built on: the profile, its sketch frame and the axis (a profile edge may be the axis — named once).
-  const builtOn = [...new Set([...plan.loops.flat(), frame, axisOn])];
+  const base = [...builtOn(plan), frame, axisOn];
 
   if (isFullTurn(angle)) {
-    const held = revolution(model, axis, angle);
+    const held = made(revolution(model, axis, angle));
     return model.addFeature({
       kind: "revolve", member, frame, axis, angle: held, loops, twins: [], end: null,
-      names: [...builtOn, held], owns: [held],
+      names: [...new Set([...base, ...owns])], owns,
     }).name;
   }
 
@@ -760,8 +1033,6 @@ function revolveBody(model: Model, member: string, axis: string, angle: number, 
   // settles anything that moved since the plan was made.
   const at = axisReader(model, axis).read();
   const turned = (p: string) => turnPoint(model.coords(p), at, angle);
-  const owns: string[] = [];
-  const made = (name: string) => { owns.push(name); return name; };
 
   // The end face's frames: the sketch frame turned — so a sketch on the end
   // face has a plane — and any other frame a profile curve is drawn on, turned
@@ -783,52 +1054,25 @@ function revolveBody(model: Model, member: string, axis: string, angle: number, 
     twinFrame.set(fr, made(model.addFrame(to, tx, ty).name));
   }
 
-  // One twin per joined class, as an extrude's lid has — so the end face's
-  // corners are joined where the profile's are, and the end face is a loop.
-  const byClass = new Map<number, { base: string; twin: string }>();
-  const twinOf = (p: string): string => {
-    const k = classOf.get(p)!;
-    let t = byClass.get(k);
-    if (!t) {
-      t = { base: p, twin: made(model.addPoint(turned(p)).name) };
-      byClass.set(k, t);
-    }
-    return t.twin;
-  };
-  for (const loop of walked) {
-    for (const m of loop) {
-      const e = model.entities.get(m.name)!;
-      if (e.kind === "circle") { twinOf(e.center); continue; }
-      twinOf(m.from!);
-      if (e.kind === "arc") twinOf(e.center);
-      twinOf(m.to!);
-    }
-  }
+  const { twinOf, byClass } = twinner(model, classOf, turned, made);
+  for (const loop of walked) for (const m of loop) twinPoints(model, m, real, twinOf);
 
   // Each member's twin in its own direction, a curve on its plane's turned
   // frame: the same arc, turned, with no side to decide.
   const planeFor = (p: string | undefined) => (p === undefined ? null : twinFrame.get(p)!);
-  const twins = walked.map((loop) => loop.map((m) => {
-    const e = model.entities.get(m.name)!;
-    if (e.kind === "line") return made(model.addLine(twinOf(e.refs[0]), twinOf(e.refs[1])).name);
-    if (e.kind === "arc") {
-      return made(model.addArc(twinOf(e.center), twinOf(e.start), twinOf(e.end), model.radius(e.name), planeFor(e.plane)).name);
-    }
-    if (e.kind === "circle") return made(model.addCircle(twinOf(e.center), model.radius(e.name), planeFor(e.plane)).name);
-    throw new Error(`"${m.name}" is not a line, arc or circle`); // unreachable: walkLoop checked
-  }));
+  const twins = walked.map((loop) => loop.map((m) => made(twinMember(model, m, real, twinOf, planeFor))));
 
   // The angle: corners and centres first (the label sits on the first corner's
   // path), then the curves' radii, then the frames.
   const pairs: string[] = [];
-  for (const { base, twin } of byClass.values()) pairs.push(base, twin);
+  for (const { base: b, twin } of byClass.values()) pairs.push(b, twin);
   walked.forEach((loop, i) => loop.forEach((m, j) => { if (m.kind !== "line") pairs.push(m.name, twins[i][j]); }));
   for (const [fr, tf] of twinFrame) pairs.push(fr, tf);
   const held = made(revolution(model, axis, angle, ...pairs));
 
   return model.addFeature({
     kind: "revolve", member, frame, axis, angle: held, loops, twins, end: twinFrame.get(frame)!,
-    names: [...new Set([...builtOn, ...owns])], owns,
+    names: [...new Set([...base, ...owns])], owns,
   }).name;
 }
 

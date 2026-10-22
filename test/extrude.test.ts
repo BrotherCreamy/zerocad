@@ -452,11 +452,14 @@ test("refusals say why, and leave no trace — not a journal entry, an entity or
 
   assert.throws(() => extrude(m, lines[1], 10), /"l2" is in 2 loops — loop of .* in t, .*; loop of .* in t, .*\. Name the frame/);
   assert.throws(() => extrude(m, polyline[0], 10), /is in no closed loop — loops\(\) lists/);
-  // The bow-tie is two lobes cut where it crosses, and each is bounded by
-  // parts of the crossing edges: refused by name until split regions extrude.
+  // The bow-tie is two lobes cut where it crosses; an edge through the
+  // crossing bounds both (each lobe extrudes — see regionfeatures.test.ts).
   assert.throws(() => extrude(m, tie[0], 10), new RegExp(`"${tie[0]}" is in 2 loops`));
-  assert.throws(() => extrude(m, tie[1], 10),
-    new RegExp(`this region is bounded by part of ${tie[0]} \\(from ${bow[1]} to ${tie[0]}×${tie[2]}\\) — extruding split regions is not built yet`));
+  // A crossing's key handed over as though it were a point: refused, since a
+  // key is a place along an edge that a drag can renumber, never a name to keep.
+  const key = `${tie[0]}×${tie[2]}`;
+  assert.throws(() => extrude(m, tie[1], 10, t.name, [[{ name: tie[0], from: key, to: bow[1] }, tie[1], { name: tie[2], from: bow[2], to: key }]]),
+    new RegExp(`"${key}" is a crossing's key, not a point`));
   assert.throws(() => extrude(m, "t_o", 10), /"t_o" is not a line, arc or circle/);
   assert.throws(() => extrude(m, "nope", 10), /"nope" is not a line, arc or circle/);
   assert.throws(() => extrude(m, lines[0], 0), /non-zero depth/);
@@ -501,6 +504,18 @@ test("a given profile is walked by its joins and refused where it does not close
   assert.throws(() => extrude(m, lines[0], 5, t.name, [lines, lines]), /appears twice/);
   assert.throws(() => extrude(m, lines[0], 5, null, [lines]), /needs the frame/);
   assert.throws(() => extrude(m, lines[0], 5, t.name, "l1" as never), /lists of member names/);
+  assert.throws(() => extrude(m, lines[0], 5, t.name, [[{ name: lines[0] } as never]]), /lists of member names/);
+  // A portion's ends are on it by a relation — its own points, or held there.
+  const [p1, p2, p3] = [m.line(lines[0]).refs[0], m.line(lines[0]).refs[1], m.line(lines[1]).refs[1]];
+  assert.throws(() => extrude(m, lines[0], 5, t.name, [[{ name: lines[0], from: p1, to: p3 }, lines[1], lines[2], lines[3]]]),
+    new RegExp(`"${p3}" is not on "${lines[0]}"`));
+  assert.throws(() => extrude(m, lines[0], 5, t.name, [[{ name: lines[0], from: p1, to: p1 }, lines[1], lines[2], lines[3]]]), /to itself is no part/);
+  assert.throws(() => extrude(m, lines[0], 5, t.name, [[{ name: lines[0], from: p1, to: lines[1] }, lines[1], lines[2], lines[3]]]),
+    /is a line, not a point/);
+  // A point no relation holds there yet, named by a profile whose other ends
+  // it does not join, would be made on one edge only.
+  assert.throws(() => extrude(m, lines[0], 5, t.name, [[{ name: lines[0], from: p1, to: "q9" }, { name: lines[0], from: "q9", to: p2 }, lines[1], lines[2], lines[3]]]),
+    /meets only itself/);
   // Walked backwards is still closed.
   assert.equal(extrude(m, lines[0], 5, t.name, [lines.slice().reverse()]), "e1");
 });

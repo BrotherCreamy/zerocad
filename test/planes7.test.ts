@@ -39,7 +39,7 @@ function frameEntries(name: string, origin: number[], ux: number[], uy: number[]
 
 test("version 7: circles and arcs carry their plane before their name, and a 3D file round-trips", async () => {
   await loadKernel();
-  assert.equal(VERSION, 7);
+  assert.ok(VERSION >= 7, "7 is where planes came in; 8 changed only features' profiles");
   const m = new Model(3);
   const t = tiltedFrame(m);
   m.addPoint(t.at(1, 2), "c");
@@ -47,7 +47,7 @@ test("version 7: circles and arcs carry their plane before their name, and a 3D 
   m.addArc("c", null, null, 3, null, "a");
   const text = save(m);
   const saved = JSON.parse(text);
-  assert.equal(saved.version, 7);
+  assert.equal(saved.version, VERSION);
   assert.deepEqual(saved.journal.find((e: Entry) => e.op === "addCircle").args, ["c", 4, "t", "k"]);
   assert.deepEqual(saved.journal.find((e: Entry) => e.op === "addArc").args, ["c", null, null, 3, "t", "a"]);
   const back = open(text);
@@ -182,7 +182,7 @@ test("a version-7 2D file — null planes — lifts into 3D the same way, its cu
   m2.addPoint([0, 0], "q"); m2.addPoint([30, 0], "r"); m2.addPoint([0, 30], "s");
   m2.addLine("r", "q", "l1"); m2.addLine("q", "s", "l2");
   const text = save(m2);
-  assert.equal(JSON.parse(text).version, 7);
+  assert.equal(JSON.parse(text).version, VERSION);
   const m = open(text, 3);
   const plane = m.circle("k").plane!;
   assert.equal(m.arc("a").plane, plane, "one frame of the translation's own, for every curve in the 2D drawing");

@@ -434,19 +434,19 @@ test("refusals name the geometry and leave no trace: an axis leaning out of the 
   assert.equal(revolve(m, lines[0], "t.y", 1), "e1", "and the next name is the first");
 
   // A line through the middle of a block, its axis: it cuts the block in two
-  // (loops.ts), so the block is no one region any more, and each half is
-  // bounded by parts of edges — refused by name until split regions revolve.
-  // Handed over whole, as a profile drawn before the line was, the block is
-  // refused for crossing the axis, as it always was.
+  // (loops.ts). Handed over whole, as a profile drawn before the line was, the
+  // block is refused for crossing the axis, as it always was; each half only
+  // touches the line it was cut by, and turns about it — measured over its own
+  // parts of the edges, not the whole edges that run on across.
   const n = new Model(3);
   const u = tiltedFrame(n);
   const block = polygon(n, u, BLOCK).lines;
   const middle = n.addLine(n.addPoint(u.at(20, -5)).name, n.addPoint(u.at(20, 25)).name).name;
   assert.throws(() => revolve(n, block[0], middle), /"l1" is in 2 loops/);
-  assert.throws(() => revolve(n, block[1], middle), /this region is bounded by part of l1 \(.*\) — revolving split regions is not built yet/);
   assert.throws(() => revolveProfile(n, { frame: u.name, loops: [block] }, middle),
     new RegExp(`the profile l1,l2,l3,l4 crosses the axis ${middle} — turned about it, it would pass through itself`));
   assert.equal(n.features.size, 0);
+  assert.equal(revolve(n, block[1], middle), "e1");
 });
 
 test("which loop is exactly extrude's question, asked in revolve's words — and after a revolve the profile is still in one loop", async () => {

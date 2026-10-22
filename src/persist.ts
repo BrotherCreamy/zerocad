@@ -27,7 +27,21 @@ import { freshName, planeTranslation } from "./planetranslation.ts";
 
 export const FORMAT = "neocad-model";
 /**
- * 7 since **circles and arcs carry a plane** (3D phase 2): `addCircle(center,
+ * 8 since **a feature's profile may carry portions** (regions split by a
+ * crossing or a T — docs/plans/regions-split.md): an `extrude` or `revolve`
+ * entry's loops, which were lists of member names, may now hold `{name, from,
+ * to}` for the part of a member between two points, and name points the
+ * expansion itself materialised at crossings (see `extrude` in
+ * operations.ts). A bare name still means the whole member. This one *is* a
+ * break, unlike the two notes at the bottom: an existing op's argument changed
+ * shape, and a version-7 build handed the new shape would refuse it with "loops
+ * are lists of member names" at the step — a riddle, where "this file is
+ * version 8" says what is wrong. **A version-7 file reads exactly as it did**:
+ * nothing in it can be a portion, and one that claims to be version 7 while
+ * holding one is a hand edit, refused at its step rather than guessed at
+ * (`translate`, keyed on the version as `addFrame`'s arity is).
+ *
+ * 7 was **circles and arcs carrying a plane** (3D phase 2): `addCircle(center,
  * radius, plane, name)`, `addArc(center, start, end, radius, plane, name)` and,
  * in 3D, `fillet(l1, l2, r, plane)` — the plane a frame's name in a 3D model
  * and null in a 2D one, sitting before the name as every constructor's
@@ -115,7 +129,7 @@ export const FORMAT = "neocad-model";
  * `revolve`, whose end face is ordinary points, curves and frames in `values`,
  * and whose surface is drawn, never saved.
  */
-export const VERSION = 7;
+export const VERSION = 8;
 
 export interface SavedModel {
   format: typeof FORMAT;
@@ -294,6 +308,10 @@ function relationRenamer(model: Model, version: number) {
  * here and is told what it is missing — the same message, at the same step, as
  * before this translation existed.
  *
+ * **An `extrude` or `revolve` from before version 8** has a profile of whole
+ * members, so one carrying a portion is refused at its step (see `VERSION`);
+ * every other one passes through untouched.
+ *
  * **`addFrame` from before version 5** names its frame third, where the name
  * is fourth now (see `VERSION`). Keyed on the file's version rather than on
  * how many arguments the entry happens to have, the way `relationRenamer` is:
@@ -302,6 +320,13 @@ function relationRenamer(model: Model, version: number) {
  * y-ref" — rather than be guessed at.
  */
 function translate(model: Model, entry: JournalEntry, version: number): JournalEntry {
+  if ((entry.op === "extrude" || entry.op === "revolve") && version < 8) {
+    const loops = entry.args[entry.op === "extrude" ? 3 : 4];
+    if (Array.isArray(loops) && loops.some((l) => Array.isArray(l) && l.some((m) => typeof m !== "string"))) {
+      throw new Error(`a version-${version} file's profiles are whole members, named — a part of one ({name, from, to}) `
+        + "is version 8's, so this entry was edited by hand");
+    }
+  }
   if (entry.op === "addFrame" && version < 5) {
     const [origin, xref, name] = entry.args;
     return { op: "addFrame", args: [origin ?? null, xref ?? null, null, name ?? null] };

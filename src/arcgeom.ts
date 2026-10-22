@@ -140,6 +140,32 @@ export function arcSegments(sweep: number, pixelRadius: number): number {
   return Math.min(720, Math.max(8, Math.ceil(sweep / step)));
 }
 
+/**
+ * The angles along `f` of the part of it from `a` to `b`, two points on its
+ * rim, going the way the arc goes — `[t0, t1]` with `t1 > t0`, `t1` past 2π
+ * when the part runs across a circle's seam. What a portion of an arc or circle
+ * is drawn, swept and side-checked over (see `Portion` in model.ts): read off
+ * where its two ends are now, never off a span found earlier, so it is the
+ * part between those points however the geometry has moved.
+ *
+ * An end within a hair of the start reads as the start rather than a whole
+ * turn past it, so a portion that begins at an arc's own start is not taken
+ * to be the long way round.
+ */
+export function portionAngles(f: ArcFrame, a: number[], b: number[]): [number, number] {
+  const tau = Math.PI * 2;
+  const angle = (p: number[]) => {
+    const P = lift3(p);
+    const d = [P[0] - f.center[0], P[1] - f.center[1], P[2] - f.center[2]];
+    const t = Math.atan2(dot3(d, f.v), dot3(d, f.u));
+    return ((t % tau) + tau + 1e-9) % tau - 1e-9;
+  };
+  const t0 = angle(a);
+  let t1 = angle(b);
+  if (t1 <= t0) t1 += tau;
+  return [t0, t1];
+}
+
 /** The arc as points along it, start to end inclusive, evenly spaced in angle. */
 export function arcSamples(f: ArcFrame, segments: number): number[][] {
   const out: number[][] = [];

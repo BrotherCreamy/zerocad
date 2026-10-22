@@ -41,8 +41,12 @@
 // the geometry.** Nothing holds two edges where they pass through each other,
 // so a crossing joins nothing: no class changes, and a profile that must keep
 // it has to *materialise* it — a real point held `on` both edges, which is what
-// `pt(on(_, "l1"), on(_, "l2"))` makes, and which a feature built on a crossing
-// will make for itself. But the regions a drawing bounds are read off where its
+// `pt(on(_, "l1"), on(_, "l2"))` makes, and which an extrude or revolve over a
+// crossing makes for itself before it twins anything (operations.ts), after
+// which that crossing is a held point, a T, to every later question. Never
+// this module: it journals nothing and makes nothing, and a crossing's key is
+// a place along an edge that the next drag can renumber, so no feature may
+// keep one. But the regions a drawing bounds are read off where its
 // edges are now, as the region under a click is, and a crossing bounds regions
 // just as Onshape says. So two coplanar edges that cross in both their
 // interiors — line–line, line–arc, arc–arc and whole circles, each in closed
@@ -721,13 +725,18 @@ const overlaps = (a: Box, b: Box, tol: number): boolean =>
 // --- cutting at Ts and crossings ---------------------------------------------------
 
 /** A point a relation holds on a curve — see the top of the file for which relations those are. */
-interface Held {
+export interface Held {
   point: string;
   curve: string;
 }
 
-/** Every point held on a line, arc or circle, read off the relation registry. */
-function heldOnCurves(model: Model): Held[] {
+/**
+ * Every point held on a line, arc or circle, read off the relation registry —
+ * what cuts an edge at a T here, and what a feature's profile checks a
+ * portion's ends against (operations.ts), so the two cannot disagree about
+ * which points are on which edges.
+ */
+export function heldOnCurves(model: Model): Held[] {
   const out: Held[] = [];
   for (const rel of model.relations.values()) {
     const [point, curve] = rel.args;

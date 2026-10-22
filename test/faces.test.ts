@@ -353,9 +353,9 @@ test("a click on no region is refused out loud and the tool stays armed — and 
   assert.throws(() => new ExtrudeTool(toolCtx(m, ABOVE)).onDown({ world: [80, 80, 0], screen: outside }), /no closed region/);
 });
 
-test("on a split region the extrude tool outlines the half under the cursor, and a click there is refused by name, the tool still armed", async () => {
+test("on a split region the extrude tool outlines the half under the cursor, and a click there extrudes that half — the crossings made points first", async () => {
   await loadKernel();
-  const { m, lines } = split();
+  const { m, lines, across } = split();
   const log: string[] = [];
   const ctx = toolCtx(m, ABOVE, {}, log);
   const tool = new ExtrudeTool(ctx);
@@ -378,10 +378,23 @@ test("on a split region the extrude tool outlines the half under the cursor, and
 
   const journal = m.journal.length;
   tool.onDown({ world: [30, 15, 0], screen: at(30, 15) });
-  assert.match(log.at(-1)!, new RegExp(`^extrude: this region is bounded by part of ${lines[0]} \\(from .*\\) — extruding split regions is not built yet`));
-  assert.equal(ctx.finished, false);
-  assert.equal(m.features.size, 0);
-  assert.equal(m.journal.length, journal, "nothing half-built");
+  assert.deepEqual(log, []);
+  assert.equal(ctx.finished, true);
+  const f = m.featureOf("e1", "extrude");
+  assert.equal(m.journal.length, journal + 1, "one entry: the extrude");
+  // The two crossings became the first two points made, held on the edges
+  // through them; the journal names them, never the keys.
+  const made = f.owns.filter((n) => m.entities.get(n)?.kind === "point").slice(0, 2);
+  const entry = JSON.stringify(m.journal.at(-1));
+  assert.ok(!entry.includes("×"), entry);
+  assert.deepEqual(m.journal.at(-1), {
+    op: "extrude",
+    args: [lines[0], 10, "f", [[{ name: lines[0], from: made[0], to: m.line(lines[0]).refs[1] }, lines[1],
+      { name: lines[2], from: m.line(lines[2]).refs[0], to: made[1] }, { name: across, from: made[0], to: made[1] }]]],
+  });
+  for (const [p, x, y] of [[made[0], 15, 0], [made[1], 15, 30]] as const) {
+    assert.ok(Math.hypot(...m.coords(p).map((c, i) => c - [x, y, 0][i])) < 1e-9, `${p} at the crossing`);
+  }
 });
 
 test("hovering from a crescent to the lens to the other crescent redraws each time: three regions of parts of the same two circles", async () => {
@@ -393,7 +406,7 @@ test("hovering from a crescent to the lens to the other crescent redraws each ti
   assert.equal(ctx.renders, 3);
 });
 
-test("the revolve tool on a split region, the line that splits it the axis: refused by name, the half still chosen", async () => {
+test("the revolve tool on a split region, the line that splits it the axis: the half on one side turns about it", async () => {
   await loadKernel();
   const { m, lines, across } = split();
   const log: string[] = [];
@@ -403,9 +416,11 @@ test("the revolve tool on a split region, the line that splits it the axis: refu
   tool.onDown({ world: [30, 15, 0], screen: at(30, 15) });
   assert.equal(ctx.pick([...at(15, 36)] as [number, number])?.name, across, "the click below lands on the line");
   tool.onDown({ world: [15, 36, 0], screen: at(15, 36) });
-  assert.match(log.at(-1)!, new RegExp(`^revolve: this region is bounded by part of ${lines[0]} \\(from .*\\) — revolving split regions is not built yet`));
-  assert.equal(ctx.finished, false);
-  assert.equal(m.features.size, 0);
+  assert.deepEqual(log, [], "the half only touches the line it was cut by: on one side of it");
+  assert.equal(ctx.finished, true);
+  const f = m.featureOf("e1", "revolve");
+  assert.equal(f.axis, across);
+  assert.deepEqual(f.loops[0].map((x) => (typeof x === "string" ? x : x.name)), [lines[0], lines[1], lines[2], across]);
 });
 
 test("the extrude tool asks the engine for no snap; the tools that place points still do", async () => {
