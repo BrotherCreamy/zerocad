@@ -68,6 +68,12 @@ toolbar is handed its tool names, armed tool and which tools cannot run by the
 host and hands back a command string; the panel manager is rectangles and
 `localStorage`.
 
+`facelayer.ts` sits beside `main.ts` as well: the two ways a solid's faces
+become pixels — a WebGL layer with a depth test, and the painter's it falls
+back to — over what `faces.ts` derives and `view.ts`'s projection. It is the
+only browser code below `main.ts` that holds a GPU context, and the only place
+the fallback is chosen (see "A solid's faces are drawn, never stored").
+
 `toolavail.ts` is the one rule both of those read for *which tools can run
 here* — `toolUnavailable(model, tool)`, the reason or null. The menu imports it
 directly; the toolbar gets it only through `main.ts`'s host, which is what keeps
@@ -580,23 +586,65 @@ one.
 ## A solid's faces are drawn, never stored
 
 An extrude is real geometry — twins, walls, a depth — and its *faces* are what
-the renderer fills between those pieces, read off where they are each frame
+is filled between those pieces, read off where they are each frame
 (`faces.ts`, a pure function of model and view at glyphs.ts's height). So a
-face can never disagree with the edges over it. A cap is every profile loop in
-one path, filled even-odd, which makes a hole empty and an island in a hole
-solid with no triangulation and no nesting rule; a curved wall is one quad per
-drawn segment, so it shades round.
+face can never disagree with the edges over it. A cap is every profile loop as
+one set of outlines, filled even-odd, which makes a hole empty and an island in
+a hole solid with no triangulation and no nesting rule; a curved wall is one
+quad per drawn segment, so it shades round. Each face's outward normal is
+computed from its loop's winding and nesting, faces turned away are culled, and
+the rest shade by the cosine to the line of sight — a headlight, because a
+light fixed anywhere would need a world frame to fix it in.
 
-**Painter's per face, culled, lit from the eye.** Each face's outward normal is
-computed from its loop's winding and nesting, faces turned away are not drawn,
-and the rest sort far to near and shade by the cosine to the line of sight — a
-headlight, because a light fixed anywhere would need a world frame to fix it in.
-A wall sorts by its centroid, a cap by its *nearest* point: nothing of a prism
-is in front of its visible cap's plane, and a centroid key let a grazing cap
-sort behind its own hole's far wall, which then painted over it. The faces go
-down first and every entity draws over them — so the sketch stays legible on a
-solid, at the price of hidden edges showing through — and a face never picks,
-snaps, boxes or wears a glyph: the pieces of a solid are what a hand aims at.
+**Which face is in front is a depth buffer's answer.** `faces.ts` says what
+the faces are; `facelayer.ts` draws them, by WebGL with a depth test, on a
+canvas of their own (`#faces`) under the 2D drawing (`#cv`), through the
+view's own orthographic projection — `clipMatrix` in `view.ts`, which is
+`worldToScreen` and `depth` rearranged into clip coordinates, the depth range
+the visible faces' own each frame, the points handed over relative to an
+anchor near the middle of the screen so single precision costs nothing on
+screen. A face whose one outline is convex — every wall quad and strip piece —
+is its own triangle fan and goes in one batched draw; a cap is filled even-odd
+by the **stencil method**: a fan from the first vertex of each outline inverts
+one stencil bit with no colour written, and the same fans again write colour
+and depth only where the bit is odd, clearing it as they go. No triangulator,
+no dependency, exact for every planar outline `faces.ts` produces.
+
+It replaced a painter's sort over whole faces, and the reason is that no
+order of whole faces can be right for two solids passing through each other,
+or for a sweep that wraps round in front of its own cap: the order needed does
+not exist. Each fix to the sort — a cap keyed by its nearest point, a cap
+lowered under a wall of its own in front of its plane — moved the limit
+without removing it. Measured before choosing (`npm run measure:depth`, 40
+seeded orbits a scene, wrong = a pixel more than 6 levels off and 1.5 px from
+every outline): two interpenetrating extrudes, the painter's wrong in 39 views
+of 40, 4 528 pixels a view on average and 14 647 at worst; a 355° revolve
+wrong in 13 of 40, slivers of wall over its cap; a lone box and a lone
+cylinder wrong in none — where the painter's is right the two agree but for
+anti-aliasing. The app's own frames in headless Chromium with software WebGL:
+45.9 ms by depth against 46.0 by the painter's for a stepped block, 51.2 against
+252.9 for a full turn of a filleted profile — in a browser with no GPU the 2D
+canvas is rasterised by the same software renderer, and 650 anti-aliased paths
+cost it more than a depth test does. (See docs/plans/display-depth.md.)
+
+**The painter's is the fallback, chosen in one place.** `createFaceLayer`
+returns null where the browser has no WebGL (or no stencil buffer, or a driver
+refuses the shaders), and `main.ts` then fills `facesToDraw` — faces far to
+near by centroid, into the 2D canvas before everything else — and nothing else
+anywhere branches on which. Its sort is the plainest, and wrong where any sort
+is, a grazing lid past its own hole's far wall included (the case the deleted
+nearest-point key existed for; a test holds the fallback to it). It exists so
+a browser without WebGL still sees solids, not to be right.
+
+**The entities draw over the faces, hidden ones included** — so the sketch
+stays legible on a solid, at the price of hidden edges showing through — and a
+face never picks, snaps, boxes or wears a glyph: the pieces of a solid are what
+a hand aims at. The faces canvas has `pointer-events: none`; every listener is
+on `#cv`, which is transparent wherever it draws nothing. The e2e suite reads
+either picture, or the composed one from a screenshot, and checks the faces
+against an oracle that casts each pixel's ray at the faces' planes, so the
+renderer is never trusted to grade itself; Chromium is launched with its
+software WebGL asked for by name, and a test fails if the app ever falls back.
 
 **Sketching on a face needs no face to pick.** Every planar face of a solid is
 a closed loop of real entities — a lid its twin loop, a wall the quad of an
@@ -612,20 +660,9 @@ so each piece of the profile is swept round the live axis in steps sized from th
 swept radius — `arcSegments`' quarter-pixel at the farthest point, one count for
 the whole solid so neighbouring rings meet — and each quad's normal is the
 profile's own in-plane normal turned, which is exact for a surface of revolution
-and is why the axis must lie in the profile's plane. Caps only for a partial turn.
-
-**A cap goes before the walls of its own solid in front of its plane.** The
-nearest-point key rests on a prism having nothing in front of its visible cap's
-plane, and a revolve past about 300° does: its last stretch wraps round in front
-of its start cap, and the key painted the cap over it. For a planar face the
-exact order is by side — after what is behind its plane, before what is in front
-— so a cap that an overlapping wall of its own in front of its plane would sort
-before is lowered just under that wall (`orderedFaces`). An extrude never has
-such a wall, so nothing about it changed. It was found by a check of true depths
-at sampled pixels over 192 views a shape, not by a picture: the two shades
-differed by five levels. Within a few degrees of a whole turn, seen nearly along
-the axis, there are walls in front and behind that no one key can sit between —
-there a sort is a sort.
+and is why the axis must lie in the profile's plane. Caps only for a partial
+turn. Every quad is planar, which is all the depth layer needs; the 355° limit
+the painter's sort had here went with the sort.
 
 ## Constraints are drawn, and a drawn constraint is a thing you can click
 

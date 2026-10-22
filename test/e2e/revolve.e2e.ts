@@ -9,15 +9,16 @@
 // before the click that takes it), whether the end face lands where its own
 // coordinates say, whether `set` typed at the command line swings it and
 // relabels it, whether one Ctrl+Z takes the whole feature away, and whether the
-// shaded surface — derived every frame, stored nowhere — draws a pixel of its
-// start cap at the cap's own shade. Positions are checked against the drawing's
-// own coordinates and a rotation about the sketch's +y computed here.
+// shaded surface — derived every frame, stored nowhere — is drawn right: every
+// pixel the face nearest there, its start cap at the cap's own shade.
+// Positions are checked against the drawing's own coordinates and a rotation
+// about the sketch's +y computed here.
 //
 // One app, tests in order: the states are cumulative.
 
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { openApp, type AppContext } from "./harness.ts";
+import { checkPicture, openApp, type AppContext } from "./harness.ts";
 
 let app: AppContext;
 before(async () => { app = await openApp(); });
@@ -76,12 +77,8 @@ async function saved(): Promise<string> {
   return r.value as string;
 }
 
-/** The canvas's own pixel at (sx, sy), as drawn — alpha 0 where nothing was. */
-const pixel = (sx: number, sy: number): Promise<number[]> => app.page.evaluate(([x, y]) => {
-  const cv = document.getElementById("cv") as HTMLCanvasElement;
-  const dpr = devicePixelRatio || 1;
-  return [...cv.getContext("2d")!.getImageData(Math.round(x * dpr), Math.round(y * dpr), 1, 1).data];
-}, [sx, sy]);
+/** The 2D canvas's pixel at (sx, sy): where a tool's preview is drawn. */
+const pixel = (sx: number, sy: number): Promise<number[]> => app.pixel(sx, sy, "drawing");
 
 const green = (px: number[]) => px[1] > 35 && px[1] > px[0] + 15;
 
@@ -206,39 +203,30 @@ test("set the angle from the command line: the end face swings to a half turn, a
   assert.equal(label, "180°");
 });
 
-test("turned, the solid is shaded from its live profile: faces far to near, both caps among them, and a pixel of the start cap at the cap's own shade", async () => {
+test("turned, the solid is shaded from its live profile, by depth: every pixel off an outline is the nearest face's shade, the start cap among them, and a pixel of it clear of every mark", async () => {
   await app.type("lookAt(g); orbit(0.9, 0.3)");
-  const drawn = await app.page.evaluate(async () => {
-    const path = "/src/faces.ts";
-    const { facesToDraw } = await import(path);
-    const { model, engine } = (window as never as { __neocad: { model: unknown; engine: { view: unknown } } }).__neocad;
-    return (facesToDraw(model, engine.view) as { feature: string; kind: string; shade: number; depth: number }[])
-      .map((d) => ({ feature: d.feature, kind: d.kind, shade: d.shade, depth: d.depth }));
-  });
-  const mine = drawn.filter((d) => d.feature === "e2");
-  assert.ok(mine.length > 50, `${mine.length} faces of the revolve`);
-  for (let i = 1; i < drawn.length; i++) assert.ok(drawn[i].depth >= drawn[i - 1].depth, "far to near");
-  const base = mine.find((d) => d.kind === "base");
-  assert.ok(base, "the start cap faces this view");
-  assert.ok(!mine.some((d) => d.kind === "lid"), "a revolve has no lid; its far cap is its end");
+  assert.equal(await app.renderer(), "depth");
+  const pic = await checkPicture(app, 6);
+  assert.ok(pic.onFace > 300, `${pic.onFace} samples on the solids`);
+  assert.deepEqual(pic.wrong, [], "every sample is the face nearest the viewer there");
+  assert.ok(pic.seen.has("e2.base"), `the start cap faces this view: ${[...pic.seen]}`);
+  assert.ok(pic.seen.has("e2.wall"), "and the swept surface");
+  assert.ok(![...pic.seen].some((f) => f === "e2.lid"), "a revolve has no lid; its far cap is its end");
 
   // A pixel of the start cap, clear of every mark (asked of the app's own
-  // hover), is the cap's own fill at the cap's own shade.
-  const want = await app.page.evaluate(async (shade) => {
-    const path = "/src/faces.ts";
-    const { faceColour } = await import(path);
-    return [...(faceColour(shade) as string).match(/\d+/g)!.map(Number), 255];
-  }, base!.shade);
-  let hit: number[] | null = null;
+  // hover), is the cap's own fill in the composed picture too.
+  let hit: [number, number] | null = null;
   for (const [u, v] of [[15, 6], [26, 6], [16, 22], [24, 14], [20, 26], [14, 15]]) {
     const at = await app.screenOf(onG(u, v));
     await moveTo(...at);
     if ((await app.repl("hover()")).value !== null) continue;
-    hit = await pixel(...at);
+    const [{ face, edge }] = await app.nearestFaces([at]);
+    if (face?.feature !== "e2" || face.kind !== "base" || edge <= 2) continue;
+    hit = at;
+    assert.deepEqual(await app.pixel(...at, "screen"), [...face.rgb, 255]);
     break;
   }
   assert.ok(hit, "somewhere on the start cap is clear of the drawing's marks");
-  assert.deepEqual(hit, want);
   await app.page.mouse.move(5, 5);
 });
 

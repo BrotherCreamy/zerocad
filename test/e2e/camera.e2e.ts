@@ -32,15 +32,10 @@ const screenOfPoint = async (name: string) => app.screenOf((await app.model()).p
 
 /** Whether a small patch of the canvas has anything drawn in it (the background is near-black). */
 async function inkAt(x: number, y: number, r = 2): Promise<boolean> {
-  return app.page.evaluate(([px, py, pr]) => {
-    const cv = document.getElementById("cv") as HTMLCanvasElement;
-    const dpr = cv.width / cv.getBoundingClientRect().width;
-    const g = cv.getContext("2d")!;
-    const d = g.getImageData(Math.round((px - pr) * dpr), Math.round((py - pr) * dpr),
-      Math.max(1, Math.round(2 * pr * dpr)), Math.max(1, Math.round(2 * pr * dpr))).data;
-    for (let i = 0; i < d.length; i += 4) if (d[i] + d[i + 1] + d[i + 2] > 240 && d[i + 3] > 0) return true;
-    return false;
-  }, [x, y, r]);
+  const at: [number, number][] = [];
+  for (let py = y - r; py < y + r; py++) for (let px = x - r; px < x + r; px++) at.push([px, py]);
+  // The drawing alone: an edge is ink on the 2D canvas, whatever is under it.
+  return (await app.pixels("drawing", at)).some((d) => d[0] + d[1] + d[2] > 240 && d[3] > 0);
 }
 
 /** A real right-button drag by (dx, dy) pixels, starting somewhere empty. */

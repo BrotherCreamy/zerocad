@@ -3,10 +3,12 @@
 // The faces are display, so the claims worth pinning are the ones a picture
 // would show wrong: which faces are drawn (the culling), which way each one
 // faces (outward, worked out from the box's own centre here, never from the
-// module's arithmetic), the order (a cap after every wall of its own), the
-// shade (the cosine against the line of sight, computed here), and even-odd —
-// an island in a hole is material, the ring around it is not — checked with a
-// point-in-polygon written in this file.
+// module's arithmetic), the shade (the cosine against the line of sight,
+// computed here), and even-odd — an island in a hole is material, the ring
+// around it is not — checked with a point-in-polygon written in this file.
+// Which face is *in front* is a depth buffer's answer, not this module's, and
+// is checked as a picture in a browser (test/e2e/depth.e2e.ts); what is left
+// of order here is the painter's fallback's, by centroid.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -15,7 +17,7 @@ import { ensureKernelLoaded } from "../src/kernel/problem.ts";
 import { Model } from "../src/model.ts";
 import { onPlane } from "../src/relations/basic.ts";
 import { extrude, fillet, revolve } from "../src/operations.ts";
-import { FACE_DARK, FACE_LIGHT, faceColour, facesToDraw, featureFaces, loopOutlines, orderedFaces, type Face } from "../src/faces.ts";
+import { FACE_DARK, FACE_LIGHT, faceColour, faceRGB, facesToDraw, featureFaces, loopOutlines, visibleFaces, type Face } from "../src/faces.ts";
 import { arcSegments } from "../src/arcgeom.ts";
 import { findLoops, loopAt } from "../src/loops.ts";
 import { hitTest } from "../src/picking.ts";
@@ -34,7 +36,6 @@ async function loadKernel() {
 
 const dot = (a: number[], b: number[]) => a.reduce((s, x, i) => s + x * b[i], 0);
 const sub = (a: number[], b: number[]) => a.map((x, i) => x - b[i]);
-const mean = (pts: number[][]) => [0, 1, 2].map((i) => pts.reduce((s, p) => s + p[i], 0) / pts.length);
 
 /** A box on the kernel-aligned frame: 40 × 30, extruded `d` up +z. */
 function box(d = 20, corners: number[][] = [[0, 0, 0], [40, 0, 0], [40, 30, 0], [0, 30, 0]]) {
@@ -91,7 +92,7 @@ test("seen from straight above only the lid is drawn — square on, at full shad
   for (const p of want) assert.ok(drawn[0].outlines[0].some((q) => Math.hypot(q[0] - p[0], q[1] - p[1]) < 1e-9));
 });
 
-test("from a corner, exactly the faces turned toward the viewer, each shaded by its cosine to the line of sight, far to near", async () => {
+test("from a corner, exactly the faces turned toward the viewer, each shaded by its cosine to the line of sight — and the painter's fallback has them far to near by centroid", async () => {
   await loadKernel();
   const { m } = box();
   for (const [yaw, pitch] of [[0.6, 0.5], [-0.9, 0.3], [2.4, -0.7], [0.2, 1.2]]) {
@@ -103,6 +104,7 @@ test("from a corner, exactly the faces turned toward the viewer, each shaded by 
     const drawn = facesToDraw(m, view);
     assert.deepEqual(drawn.map((d) => d.shade).sort(), facing.map((s) => Math.min(1, s)), `${yaw}, ${pitch}`);
     for (let i = 1; i < drawn.length; i++) assert.ok(drawn[i].depth >= drawn[i - 1].depth, "far to near");
+    assert.deepEqual(visibleFaces(m, view).map((f) => f.shade).sort(), facing.map((s) => Math.min(1, s)), "visibleFaces: the same faces, unsorted");
   }
 });
 
@@ -179,30 +181,6 @@ test("a hole's walls face into the hole, an island's out of it — and even-odd 
   assert.equal(drawn[0].outlines.length, 3);
 });
 
-test("a cap is drawn after every wall of its own — a grazing view where its centroid is behind its hole's far wall does not paint the wall over it", async () => {
-  await loadKernel();
-  // A hole near one end of a long, deep solid: from a grazing angle the far
-  // wall of the hole is nearer than the lid's middle.
-  const m = new Model(3);
-  axisFrame(m);
-  const pts = [[0, 0, 0], [120, 0, 0], [120, 30, 0], [0, 30, 0]].map((c) => m.addPoint(c).name);
-  const lines = pts.map((p, i) => m.addLine(p, pts[(i + 1) % 4]).name);
-  m.addCircle(m.addPoint([105, 15, 0]).name, 10, "f");
-  const f = m.featureOf(extrude(m, lines[0], 40), "extrude");
-  let centroidWouldFail = false;
-  for (const [yaw, pitch] of [[1.2, 0.2], [-1.3, 0.25], [1.45, 0.1], [0.4, 0.3]]) {
-    const view = orbitBy(ABOVE, yaw, pitch);
-    const drawn = facesToDraw(m, view);
-    const capAt = drawn.findIndex((d) => d.kind !== "wall");
-    assert.ok(capAt >= 0, "a cap is in view");
-    assert.equal(capAt, drawn.length - 1, `${yaw}, ${pitch}: the cap is the last face drawn`);
-    const cap = featureFaces(m, f, view.scale).find((x) => x.kind === drawn[capAt].kind)!;
-    const walls = featureFaces(m, f, view.scale).filter((x) => x.kind === "wall" && dot(x.normal, viewAxes(view).toward) > 1e-9);
-    if (walls.some((w) => depth(view, w.centroid) > depth(view, cap.centroid))) centroidWouldFail = true;
-  }
-  assert.ok(centroidWouldFail, "and at least one of these views is one a centroid sort gets wrong");
-});
-
 test("a solid that cannot be laid out costs its own faces and nothing else — the render loop never throws", async () => {
   await loadKernel();
   const { m } = box();
@@ -214,8 +192,9 @@ test("a solid that cannot be laid out costs its own faces and nothing else — t
   assert.deepEqual(facesToDraw(m, orbitBy(ABOVE, 0.5, 0.5)), []);
 });
 
-test("the shade runs from a quarter of the way up the surface tones to the top, and nothing outside", () => {
+test("the shade runs from a quarter of the way up the surface tones to the top, and nothing outside — the same bytes for both renderers", () => {
   const rgb = (s: string) => s.match(/\d+/g)!.map(Number);
+  for (let s = -0.5; s <= 1.5; s += 0.05) assert.deepEqual(rgb(faceColour(s)), faceRGB(s), "the painter's fill style is the depth layer's colour");
   assert.deepEqual(rgb(faceColour(1)), FACE_LIGHT);
   assert.deepEqual(rgb(faceColour(0)), FACE_DARK.map((d, i) => Math.round(d + (FACE_LIGHT[i] - d) * 0.25)));
   assert.deepEqual(rgb(faceColour(7)), FACE_LIGHT);
@@ -530,12 +509,14 @@ test("turned a quarter: the start cap faces back against the sweep, the end cap 
   for (const p of lastRing) assert.ok(twins.some((q) => near(p, q, 0)), "the walls meet the end face on its own points");
 });
 
-test("seen from above, the quarter turn shows its start cap square-on, drawn last, and the bore it looks down into — and not its end cap", async () => {
+test("seen from above, the quarter turn shows its start cap square-on and the bore it looks down into — and not its end cap", async () => {
   await loadKernel();
   const { m } = turnedBlock(Math.PI / 2);
   const drawn = facesToDraw(m, ABOVE);
-  assert.equal(drawn.at(-1)!.kind, "base");
-  assert.equal(drawn.at(-1)!.shade, 1);
+  const base = drawn.filter((d) => d.kind === "base");
+  assert.equal(base.length, 1);
+  assert.equal(base[0].shade, 1);
+  assert.ok(drawn.some((d) => d.kind === "wall"), "the bore's walls");
   assert.ok(!drawn.some((d) => d.kind === "end"), "the end cap faces −x, edge-on to this view");
   for (let i = 1; i < drawn.length; i++) assert.ok(drawn[i].depth >= drawn[i - 1].depth, "far to near");
 });
@@ -612,67 +593,6 @@ test("a hole in the profile turns into a tunnel: its walls face into it, and bot
     const core = [(30 * c[0]) / radial(c), 20, (30 * c[2]) / radial(c)];
     assert.ok(dot(w.normal, sub(c, core)) < 0, "into the tunnel");
   }
-});
-
-/**
- * How many sampled pixels have a face painted over one that is nearer there,
- * for faces in draw order — where a cap is one of the two. The true depth at a
- * pixel is read off each face's own plane (screen-linear over a triangle of its
- * outline); samples are each face's middle and points toward its corners.
- */
-function capsPaintedWrong(view: View, faces: { kind: string; outlines: number[][][] }[]): number {
-  const scr = faces.map((f) => f.outlines.map((o) => o.map((w) => worldToScreen(view, w))));
-  const covers = (i: number, p: number[]) => scr[i].reduce((n, o) => n + (material([o.map(([x, y]) => [x, y, 0])], [p[0], p[1]]) ? 1 : 0), 0) % 2 === 1;
-  const depthAt = (i: number, p: number[]) => {
-    const o = faces[i].outlines[0], s = scr[i][0];
-    for (let k = 1; k + 1 < o.length; k++) {
-      const [a, b, c] = [s[0], s[k], s[k + 1]];
-      const det = (b[0] - a[0]) * (c[1] - a[1]) - (c[0] - a[0]) * (b[1] - a[1]);
-      if (Math.abs(det) < 1) continue; // a sliver gives no depth worth trusting
-      const u = ((p[0] - a[0]) * (c[1] - a[1]) - (c[0] - a[0]) * (p[1] - a[1])) / det;
-      const v = ((b[0] - a[0]) * (p[1] - a[1]) - (p[0] - a[0]) * (b[1] - a[1])) / det;
-      const d = [o[0], o[k], o[k + 1]].map((w) => depth(view, w));
-      return d[0] + u * (d[1] - d[0]) + v * (d[2] - d[0]);
-    }
-    return NaN;
-  };
-  let wrong = 0;
-  for (let i = 0; i < faces.length; i++) {
-    const o = scr[i][0];
-    const mid = [o.reduce((s, p) => s + p[0], 0) / o.length, o.reduce((s, p) => s + p[1], 0) / o.length];
-    for (const p of [mid, ...o.map((q) => [mid[0] * 0.6 + q[0] * 0.4, mid[1] * 0.6 + q[1] * 0.4])]) {
-      if (!covers(i, p)) continue;
-      const di = depthAt(i, p);
-      for (let j = i + 1; j < faces.length; j++) {
-        if (faces[i].kind === "wall" && faces[j].kind === "wall") continue;
-        if (!covers(j, p)) continue;
-        if (depthAt(j, p) < di - 1e-6 * Math.max(1, Math.abs(di))) wrong++;
-      }
-    }
-  }
-  return wrong;
-}
-
-test("a revolve past 300° wraps round in front of its own start cap — the cap goes before those walls, where its nearest point alone painted it over them", async () => {
-  await loadKernel();
-  const m = new Model(3);
-  axisFrame(m);
-  const pts = [[10, -15, 0], [40, -15, 0], [40, 15, 0], [10, 15, 0]].map((c) => m.addPoint(c).name);
-  const lines = pts.map((p, i) => m.addLine(p, pts[(i + 1) % 4]).name);
-  m.addCircle(m.addPoint([25, 0, 0]).name, 6, "f");
-  revolve(m, lines[0], "f.y", 5.6); // 321°
-  let nearestWouldFail = false;
-  for (const [yaw, pitch] of [[0, -0.7], [0.26, -0.7], [5.5, 0.7], [1.05, -0.3]]) {
-    const view = orbitBy({ ox: 400, oy: 300, scale: 3 }, yaw, pitch);
-    const ordered = orderedFaces(m, view);
-    assert.equal(capsPaintedWrong(view, ordered), 0, `${yaw}, ${pitch}`);
-    // The same faces with every cap keyed by its nearest point, as an extrude's are.
-    const nearest = ordered
-      .map((f) => ({ ...f, depth: f.kind === "wall" ? f.depth : Math.max(...f.outlines.flat().map((w) => depth(view, w))) }))
-      .sort((a, b) => a.depth - b.depth);
-    if (capsPaintedWrong(view, nearest) > 0) nearestWouldFail = true;
-  }
-  assert.ok(nearestWouldFail, "and at least one of these views is one the nearest-point key alone gets wrong");
 });
 
 // --- the revolve tool -------------------------------------------------------------------

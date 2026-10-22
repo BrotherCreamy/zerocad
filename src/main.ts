@@ -24,7 +24,7 @@ import { Panels, Toolbar, browserStorage, defaultLayout } from "./panels.ts";
 import { depth } from "./view.ts";
 import { arcSamples, arcSegments } from "./arcgeom.ts";
 import { curveFrame } from "./curveplane.ts";
-import { faceColour, facesToDraw } from "./faces.ts";
+import { createFaceLayer, paintFaces } from "./facelayer.ts";
 import type { Entity } from "./model.ts";
 import "./tools/point.ts";
 import "./tools/line.ts";
@@ -42,6 +42,13 @@ const statusEl = document.getElementById("status")!;
 const logEl = document.getElementById("log")!;
 const cv = document.getElementById("cv") as HTMLCanvasElement;
 const g = cv.getContext("2d")!;
+const facesCanvas = document.getElementById("faces") as HTMLCanvasElement;
+/**
+ * How a solid's faces are drawn, chosen once and here only: by a depth buffer
+ * on their own canvas under the drawing, or — where the browser has no WebGL —
+ * by the painter's, into the drawing's own canvas before everything else.
+ */
+const faceLayer = createFaceLayer(facesCanvas);
 const cmdEl = document.getElementById("cmd") as HTMLInputElement;
 const hoverEl = document.getElementById("hovertag")!;
 const menuEl = document.getElementById("ctxmenu")!;
@@ -74,6 +81,12 @@ function sizeCanvas() {
   cv.width = Math.max(1, Math.round(r.width * dpr));
   cv.height = Math.max(1, Math.round(r.height * dpr));
   g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  // The faces' canvas is the drawing's twin, pixel for pixel, or the two
+  // pictures drift apart by a fraction of a pixel at every edge.
+  facesCanvas.style.width = `${r.width}px`;
+  facesCanvas.style.height = `${r.height}px`;
+  facesCanvas.width = cv.width;
+  facesCanvas.height = cv.height;
 }
 
 /**
@@ -132,12 +145,14 @@ async function main() {
     const stroke = (name: string) => (lit.has(name) ? "#e8a33d" : "#afc6d9");
     const weight = (name: string) => (lit.has(name) ? 2.2 : 1.4);
 
-    // A solid's faces first, so everything after is drawn over them: per face,
-    // far to near, back faces culled, lit from the eye (see faces.ts). The
+    // A solid's faces first, so everything after is drawn over them: back
+    // faces culled, lit from the eye (see faces.ts), and which face is in
+    // front answered per pixel by the depth layer under this canvas. The
     // entities — edges, points, glyphs — then go on top, hidden ones included,
     // so the sketch stays legible on a shaded solid and nothing a hand aims at
     // is ever behind a face. Faces are display only: they never pick or snap.
-    renderFaces();
+    if (faceLayer) faceLayer.draw(model, view, r.width, r.height);
+    else paintFaces(g, model, view);
 
     // Painter's order, far to near, one depth per entity, for the wireframe on
     // top. Curves and frames are one pass and points a second on top, as they
@@ -248,41 +263,12 @@ async function main() {
   }
 
   /**
-   * Every solid's visible faces, already sorted and shaded by faces.ts. Each
-   * is filled even-odd (a cap's holes are its own inner loops) and then
-   * stroked a hair wide in its own colour: neighbouring pieces of a curved
-   * wall share an edge exactly, and anti-aliasing each one against the
-   * background alone leaves a faint seam of background between them.
-   */
-  function renderFaces() {
-    const faces = facesToDraw(model, view);
-    if (!faces.length) return;
-    g.save();
-    g.lineJoin = "round";
-    g.lineWidth = 0.75;
-    for (const face of faces) {
-      g.beginPath();
-      for (const outline of face.outlines) {
-        g.moveTo(...outline[0]);
-        for (const p of outline.slice(1)) g.lineTo(...p);
-        g.closePath();
-      }
-      const colour = faceColour(face.shade);
-      g.fillStyle = colour;
-      g.fill("evenodd");
-      g.strokeStyle = colour;
-      g.stroke();
-    }
-    g.restore();
-  }
-
-  /**
    * How near the viewer an entity is, for the painter's sort: a point's own
    * depth, the middle of a line, the centre of a circle or arc, a frame's
    * origin. One number per entity is coarse — a long edge crossing a short one
    * can sort the wrong way at the crossing — and is enough: strokes are never
    * opaque to each other in any way that matters, and the only opaque things,
-   * a solid's faces, are sorted per face and drawn first (see `renderFaces`).
+   * a solid's faces, are drawn first, by depth (see facelayer.ts).
    */
   function entityDepth(e: Entity): number {
     const at = (name: string) => depth(view, model.coords(name));
@@ -803,7 +789,7 @@ async function main() {
   }
 
   function exposeDebugHook() {
-    (window as unknown as { __neocad: unknown }).__neocad = { model, engine, repl }; // debug/automation hook
+    (window as unknown as { __neocad: unknown }).__neocad = { model, engine, repl, render, faces: faceLayer ? "depth" : "painter's" }; // debug/automation hook
   }
   exposeDebugHook();
 

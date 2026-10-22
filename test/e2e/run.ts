@@ -70,7 +70,10 @@ async function main(): Promise<number> {
 
     const tests = spawn(
       process.execPath,
-      ["--experimental-strip-types", "--test", "--test-concurrency=2", "test/e2e/*.e2e.ts"],
+      // Files named on the command line instead of the suite: how the depth
+      // measurement (depth.measure.ts, `npm run measure:depth`) gets the same
+      // private server without being part of every run.
+      ["--experimental-strip-types", "--test", "--test-concurrency=2", ...(process.argv.length > 2 ? process.argv.slice(2) : ["test/e2e/*.e2e.ts"])],
       { cwd: root, stdio: "inherit", env: { ...process.env, NEOCAD_E2E_URL: url } },
     );
     return await new Promise<number>((resolve) => tests.on("exit", (code) => resolve(code ?? 1)));

@@ -397,16 +397,17 @@ are flagged as such.
   fills them before the entities. `arm("extrude", { depth })` outlines the
   region under the cursor and extrudes it on a click (`ToolContext.regionAt`,
   new). Screenshots 60–63; the story is `test/e2e/extrude.e2e.ts`.
+  *(2026-10-22, display depth: faces are drawn by WebGL with a depth test, the
+  sort below kept only as the fallback where there is no WebGL — see the depth
+  rule after phase 5.)*
 
   Decided while building half 2, and open to veto:
 
-  - ⚠ **A cap sorts by its nearest point, a wall by its centroid** — not every
-    face by its centroid as the spec said. Found in a screenshot: seen at a
-    grazing angle, a lid's centroid sorted behind the far wall of its own hole,
-    which then painted over the lid wherever it showed past the opening. For a
-    prism the visible cap has nothing of its own solid in front of its plane,
-    so its nearest point is at least as near as every point of the solid. A
-    unit test fails under the centroid key.
+  - ~~A cap sorts by its nearest point, a wall by its centroid~~ —
+    **replaced by the depth rule** (2026-10-22, below). The grazing lid it
+    fixed is drawn right by the depth layer (`test/e2e/depth.e2e.ts`); the
+    painter's fallback sorts every face by its centroid again and is held to
+    getting that lid wrong.
   - **Back faces are culled** (not in the spec): outward normals are computed
     from each loop's winding and nesting, so a convex solid can never sort
     wrong and a non-convex one has far fewer faces to sort.
@@ -423,8 +424,9 @@ are flagged as such.
   - **`ToolContext.regionAt(screen)`** (new, beside `pick`): the engine answers
     "which region is under this pixel" with `findLoops` + `loopAt`, so a tool
     never needs the camera.
-  - *Found, not fixed:* interpenetrating solids can sort wrong where they cross
-    (a sort is a sort); a face is not a pick target, so a solid's side face is
+  - *Found, not fixed:* ~~interpenetrating solids can sort wrong where they
+    cross~~ — **fixed by the depth rule** (2026-10-22, below; measured wrong in
+    39 of 40 views before); a face is not a pick target, so a solid's side face is
     extruded by clicking inside its loop — and a wall's loop lies in no frame's
     orientation, so that is refused until a frame is made on it.
 
@@ -446,13 +448,10 @@ are flagged as such.
     growing twins inside `set` would be an operation pretending to be a
     dimension edit. Full-to-partial is `del` and a new revolve. A full
     revolve's dimension therefore holds **no blocks** — a label, `360°`.
-  - ⚠ **A cap is lowered under any overlapping wall of its own in front of its
-    plane** — a change to the shared painter's, not in the spec. A sweep past
-    ~300° wraps round in front of its own start cap and the nearest-point key
-    painted the cap over those walls (a sort check: 374 bad samples at 321°;
-    confirmed on the canvas). Plane-side is exact for a planar face; an extrude
-    never has such a wall, so its order is unchanged (its tests pass as they
-    were). Cost in the noise (3–9 ms a frame either way, measured).
+  - ~~A cap is lowered under any overlapping wall of its own in front of its
+    plane~~ — **replaced by the depth rule** (2026-10-22, below): the rule and
+    its code are deleted, and the 321° views it was pinned on are a picture
+    test the depth layer passes (`test/e2e/depth.e2e.ts`).
   - **The relation's pairs can be two frames** (the end frame held at the
     sketch frame turned), which also says which bases are a datum — the axis's
     own points and a twinned frame's — without a second list. Both datum rules
@@ -475,16 +474,32 @@ are flagged as such.
   - **The tool re-chooses on a click inside another region** at its second
     step, rather than refusing — the profile was the thing the user changed
     their mind about.
-  - *Found, not fixed:* a sweep within a few degrees of a whole turn, seen nearly
-    along its axis (355°, pitch ±1.2), can leave a wall over its start cap: a
-    wall in front of the cap sorts below one behind it, both over the cap, and
-    no single key fits both — a true painter's limit. Deleting a piece of a
+  - *Found, not fixed:* ~~a sweep within a few degrees of a whole turn can
+    leave a wall over its cap — a true painter's limit~~ — **fixed by the
+    depth rule** (2026-10-22, below; measured wrong in 13 of 40 views of a 355°
+    revolve before). Deleting a piece of a
     full revolve takes its record and leaves its `360°` dimension holding
     nothing (the uniform record-only rule). The swept surface never picks;
     there are no seam edges drawn along it, so a revolve's silhouette comes
     from its shading alone. A revolve, like an extrude, follows its profile:
     a fillet on it rounds a partial turn's end face, and a whole turn's record
     *(2026-10-22, feature regeneration — it was expanded once)*.
+
+  ✅ **The depth rule — built** (2026-10-22):
+  [`docs/plans/display-depth.md`](docs/plans/display-depth.md). **Which face
+  is in front is answered per pixel by a depth buffer**: `src/facelayer.ts`
+  draws `faces.ts`'s faces by WebGL on `#faces`, a canvas under the 2D drawing,
+  through the view's orthographic projection (`clipMatrix`), caps even-odd by
+  the stencil method, the same flat headlight shades. Interpenetrating solids,
+  a sweep wrapping round in front of its own cap and a lid past its hole's far
+  wall are all simply right; there is no sort and no cap rule. **The painter's
+  stays as the one fallback**, chosen only where `getContext("webgl")` gives
+  nothing, sorting by centroid — wrong where any sort is, and a test says so.
+  Faces still never pick, snap, box or wear a glyph (the faces canvas takes no
+  pointer events), and **hidden edges still show through** — the
+  drawing-over-the-solid rule, kept; dimming them is its own follow-up.
+  Screenshots 81–84; the story is `test/e2e/depth.e2e.ts`, the numbers
+  `npm run measure:depth`.
 
 - **No world frame — coordinate frames are entities** (owner's direction,
   2026-09-01, chosen over "keep the frame but hide it" and "directions stay,
@@ -972,11 +987,46 @@ starts.
         but is no loop to sketch on or extrude from. Onshape merges the bodies;
         this model keeps two solids, and has no booleans.
       - The two steps' coplanar faces at the shared line sort as any
-        interpenetrating solids do (the display-depth item below).
-- [ ] **Display depth done right.** The 355° cap limit, hidden edges showing
-      through faces, and interpenetrating solids all trace to painter's
-      sorting. The honest fix is a real depth pass (BSP split or a WebGL
-      conversion of faces.ts's output). Measure before choosing.
+        interpenetrating solids do (the display-depth item below). *(Measured
+        there: wrong in none of 40 views — the two faces are back to back and
+        one is always culled. Drawn by depth now either way.)*
+- [x] **Display depth done right — BUILT (2026-10-22).** The 355° cap limit
+      and interpenetrating solids traced to painter's sorting; **faces are
+      drawn by WebGL with a depth test now**, on a canvas under the 2D drawing,
+      and the painter's is the fallback where there is no WebGL. Measured
+      before choosing (`npm run measure:depth`, 40 seeded orbits a scene):
+      the painter's wrong in 39 of 40 views of two interpenetrating extrudes
+      (4 528 px mean, 14 647 worst), 13 of 40 of a 355° revolve (199 worst),
+      none of a lone box or cylinder (the two agree there but for
+      anti-aliasing); the app's own frames, depth against painter's, 45.9 /
+      46.0 ms for the stepped block and 51.2 / 252.9 ms for a filleted full
+      turn (headless Chromium, software WebGL). Spec:
+      [`docs/plans/display-depth.md`](docs/plans/display-depth.md) (its "As
+      built" has the detail); the story is `test/e2e/depth.e2e.ts`;
+      screenshots 81–84. Deviations from the spec:
+      - **The depth layer was written before the measurement**, unwired, in
+        the first commit — the spec's "both renderers exist in the tree" was
+        not yet so.
+      - **Time per frame is the app's own frames**, `render()` each animation
+        frame, not each renderer offscreen: forcing a 2D frame to finish needs
+        a read back, and Chrome then moves that canvas into CPU memory, which
+        timed a different canvas (0.6 against 12 ms, same faces).
+      - **The fallback sorts by centroid**: deleting the nearest-point key as
+        the spec asked brings back the grazing-lid error on the fallback only.
+        Kept, documented, and held by a test.
+      - **`regions` and `sketchface` read the drawing, not the faces**: their
+        pixels are a tool's preview, which is on `#cv` (the spec listed them
+        with the face-reading tests; corrected there).
+      - **Walls skip the stencil** — a convex outline is its own fan, batched;
+        only caps take the two stencil passes.
+      **Found while building, left deliberately:**
+      - **Hidden edges show through**, as the spec said: the
+        drawing-over-the-solid rule. Dimming them is still the follow-up.
+      - **The SwiftShader frame floor is ~45 ms** whichever renderer, at the
+        e2e browser's 1100 × 768: rasterising and compositing two canvases in
+        software. Not this package's to fix; a real GPU does not have it.
+      - **No context-loss test**: a lost WebGL context is asked back and the
+        next frame redraws, but nothing exercises it.
 - [x] **Feature regeneration — BUILT (2026-10-22).** A profile restructured
       after its feature used to leave the feature as it was (a documented
       no-op): fillet an extruded rectangle's corner and the lid stayed

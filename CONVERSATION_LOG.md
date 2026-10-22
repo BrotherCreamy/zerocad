@@ -106,6 +106,54 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### Display depth: measure the painter's against a depth buffer, then let the buffer draw
+
+The spec (`docs/plans/display-depth.md`) had already chosen WebGL over a BSP
+split, on the argument that `faces.ts` already produces what a depth buffer
+needs — planar outlines with an outward normal — and asked for the choice to
+be measured before it was shipped, with a stop rule. What happened, and what
+was decided along the way:
+
+- *The depth layer came first, unwired.* "Both renderers exist in the tree"
+  was not yet true, so `src/facelayer.ts` was written with the painter's moved
+  beside it unchanged, and the first commit measured the app's painter's
+  against it without the app using it. That kept the "before" honest: the
+  painter's numbers are of the code that shipped.
+- *What counts as wrong.* Two renderers never agree pixel for pixel at an edge
+  (multisampling against Skia's coverage plus the old hair-wide stroke), so
+  the count excludes a 1.5 px band round every visible outline and anything
+  under 7 levels. The lone box and cylinder are the control — the painter's
+  cannot sort a convex solid wrong — and they come out at zero, so the band
+  hides anti-aliasing and nothing more there. Along a dense sweep it also hides
+  some real error; the 355° number is a floor and is reported as one.
+- *Timing offscreen was tried and dropped.* Forcing a painted 2D frame to
+  finish needs a read back, and Chrome answers repeated read backs by moving
+  the canvas into CPU memory: 0.6 ms a frame then, against 12 ms for the same
+  22 faces on a canvas made the way the app makes it. That number was of a
+  different canvas, so the app's own frames are timed instead, both ways, with
+  WebGL taken away by an init script for the painter's — the fallback's real
+  door, so no switch in the app exists for a test's sake. In a browser with no
+  GPU the 2D canvas is rasterised in software as well, and the depth layer won
+  outright on the strip-heavy scene (51 against 253 ms).
+- *The oracle needed one more edge.* The picture tests cast each pixel's ray at
+  the faces' planes and skip samples near an outline — and the first run failed
+  along the line where one solid passes through another, which no outline
+  draws but which is anti-aliased like any edge. The fix is in the test (skip a
+  sample whose neighbours see a different face), not the renderer.
+- *The fallback's sort.* The spec said to delete the nearest-point key with the
+  cap-lowering rule, and the fallback still needs some key. Centroid is the
+  plainest; it brings back the grazing-lid error the nearest-point key was
+  added for, on the fallback only. Keeping the key for the fallback was the
+  alternative — rejected because the spec asked for it gone and a fallback is
+  for "still shows solids", not "shows them right"; the error is written down
+  and a test holds the fallback to it, so it stays a decision. Measured, the
+  centroid fallback is no worse than the old rules on the register's scenes
+  (it even gets the 355° views right), only on the grazing lid.
+- *Walls skip the stencil.* Every wall quad is convex, and a convex outline is
+  its own triangle fan, so all the walls are one draw call; only caps pay the
+  two stencil passes. The spec described one machinery for both; the picture
+  is the same.
+
 ### Feature regeneration: diff, don't rebuild, and journal what was found
 
 The spec (`docs/plans/feature-regeneration.md`) set the rule — an expansion
