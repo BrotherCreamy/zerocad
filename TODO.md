@@ -833,6 +833,28 @@ are flagged as such.
       the register entry above ("A saved file is data") now states it as
       standing behaviour.
 
+- [ ] **Open, each shipped with a default you can veto** (2026-10-22). Say
+      the word and the default flips; none blocks anything.
+      1. **Clauses: `_` must be written.** `circ(oncircle("p1"))` with the slot
+         inferred is deferred; adding it later breaks nothing. (Register:
+         "An entity defined by any constraint set".)
+      2. **A boss's lid frame copies the sketch frame's points**, so a boss on
+         a face gets a lid frame built from plate corners, floating off the
+         boss. The alternative is a lid frame from the profile's own points,
+         at the cost of a different +x. (Register: sketch on a face.)
+      3. **Deleting a feature takes what it owns, across features**: the first
+         step of a stepped block owns the shared crossing points, so deleting
+         it takes the second step's walls there; `regen` cascades the same
+         way. The alternative is that a surviving feature inherits a shared
+         crossing. (Register: regions split, PR 2.)
+      4. **A clause in the wrong slot is refused only after the entity is
+         made** (`circ(oncircle(_, "p1"))` makes the circle, then `onCircle`
+         refuses). A kind check before anything is made is possible from the
+         slot lists. (Smaller things.)
+      5. **Face-on arcs snap as their whole circle** — the parked phase 3
+         decision, below.
+      6. **Toolbar labels are the tool names, not icons.** (Register: panels.)
+
 ## Next up
 
 Queue for Opus, in order. Each gets a spec in `docs/plans/` before work
