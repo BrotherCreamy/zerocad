@@ -168,12 +168,15 @@ export function outlineDistance(occ: Occlusion, x: number, y: number, reach = 3)
   return d;
 }
 
-/** The face that hides `world`, at its own pixel `at`, by index — or -1 when none does. */
-function hiderOf(occ: Occlusion, world: number[], at: [number, number]): number {
+/**
+ * The face of `faces` that hides `world`, at its own pixel `at` — or null when
+ * none does. `faces` may be any of the frame's faces: an edge passes only the
+ * ones whose boxes meet its own (see `inkRuns`).
+ */
+function hiderOf(occ: Occlusion, faces: readonly Occluder[], world: number[], at: [number, number]): Occluder | null {
   const p = lift3(world);
   const pixel = SLACK_PX / occ.view.scale;
-  for (let i = 0; i < occ.faces.length; i++) {
-    const f = occ.faces[i];
+  for (const f of faces) {
     if (!(f.facing > 0)) continue;
     const [x, y] = at;
     if (x < f.box[0] || x > f.box[2] || y < f.box[1] || y > f.box[3]) continue;
@@ -182,14 +185,14 @@ function hiderOf(occ: Occlusion, world: number[], at: [number, number]): number 
     // is not read as "behind".
     const along = dot3(f.normal, p);
     if (along - f.offset >= -(pixel + 1e-12 * (Math.abs(along) + Math.abs(f.offset)))) continue;
-    if (covers(f, x, y)) return i;
+    if (covers(f, x, y)) return f;
   }
-  return -1;
+  return null;
 }
 
 /** Whether a face is in front of the world point — what dims the ink there. */
 export function hidden(occ: Occlusion, world: number[]): boolean {
-  return hiderOf(occ, world, worldToScreen(occ.view, world)) >= 0;
+  return hiderOf(occ, occ.faces, world, worldToScreen(occ.view, world)) !== null;
 }
 
 /** A stretch of an edge inked one way: its screen polyline, and whether a face is in front of it. */
@@ -212,11 +215,22 @@ export interface Run {
 export function inkRuns(occ: Occlusion, world: number[][], closed = false): Run[] {
   const view = occ.view;
   const screen = world.map((w) => worldToScreen(view, w));
+  // Only faces whose boxes meet the edge's can hide any of it — asked once an
+  // edge, not once a sample: on a full turn of hundreds of strips most of them
+  // are nowhere near any one edge.
+  let [x0, y0, x1, y1] = [Infinity, Infinity, -Infinity, -Infinity];
+  for (const [x, y] of screen) {
+    if (x < x0) x0 = x;
+    if (x > x1) x1 = x;
+    if (y < y0) y0 = y;
+    if (y > y1) y1 = y;
+  }
+  const near = occ.faces.filter((f) => f.facing > 0 && f.box[0] <= x1 && f.box[2] >= x0 && f.box[1] <= y1 && f.box[3] >= y0);
   const runs: Run[] = [];
   let run: Run | null = null;
   let prev: { at: [number, number]; hidden: boolean } | null = null;
   const visit = (w: number[], at: [number, number], vertex: boolean) => {
-    const h = hiderOf(occ, w, at) >= 0;
+    const h = near.length > 0 && hiderOf(occ, near, w, at) !== null;
     if (!run) {
       run = { hidden: h, points: [at] };
       runs.push(run);
