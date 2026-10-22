@@ -21,6 +21,7 @@ import { frameMarker } from "./framemarker.ts";
 import { constrainedBy, type Glyph } from "./glyphs.ts";
 import { getToolCtor, listTools } from "./tools/tool.ts";
 import { Panels, Toolbar, browserStorage, defaultLayout } from "./panels.ts";
+import { toolIcon } from "./tools/icons.ts";
 import { depth } from "./view.ts";
 import { arcSamples, arcSegments } from "./arcgeom.ts";
 import { curveFrame } from "./curveplane.ts";
@@ -59,12 +60,15 @@ const toolbarEl = document.getElementById("toolbar")!;
  * chrome in a heap while the WASM downloads. The toolbar's default height is
  * sized to however many tools are registered *when it is asked* — the built-ins
  * are all registered by the imports above, and one defined later at the command
- * line grows an untouched toolbar through `syncToolbar` below.
+ * line grows an untouched toolbar through `syncToolbar` below. The toolbar is
+ * the one tray: it turns between column and row against the edges it is
+ * dragged to, sized to the same count.
  */
 const panels = new Panels(
   document.getElementById("viewwrap")!,
   (area) => defaultLayout(area, listTools().length),
   browserStorage(),
+  { toolbar: () => listTools().length },
 );
 
 function log(msg: string, cls?: string) {
@@ -607,9 +611,13 @@ async function main() {
    * Availability is the menu's rule too, read through `model` (the binding a
    * file open swaps) on every sync — so a curve tool greys out in the same
    * render that its Circle item would, for the same sentence.
+   *
+   * A glyph is a built-in's own, by name, and every other tool's the generic
+   * one (see tools/icons.ts for why by name).
    */
   const toolbar = new Toolbar(toolbarEl, {
     tools: listTools,
+    icon: toolIcon,
     active: () => engine.active?.name ?? null,
     unavailable: (tool) => toolUnavailable(model, tool),
     run: (command) => void submit(command),
