@@ -161,8 +161,9 @@ export interface AppContext {
   /** One pixel of `pixels`. */
   pixel(sx: number, sy: number, of: Picture): Promise<number[]>;
   /**
-   * Which visible face is nearest the viewer at each pixel — worked out here,
-   * by casting the pixel's ray against every visible face's plane (faces.ts's
+   * Which visible face is nearest the viewer at each pixel — worked out by
+   * src/occlusion.ts, the module the app dims hidden edges with, casting the
+   * pixel's ray against every visible face's plane (faces.ts's
    * faces, read in the world, never through either renderer) — with the fill
    * it should have, and how far the pixel is from the nearest outline of any
    * visible face, where anti-aliasing makes any colour fair. The oracle a
@@ -349,52 +350,25 @@ export async function openApp(options: OpenOptions = {}): Promise<AppContext> {
       return (await (this as AppContext).pixels(of, [[sx, sy]]))[0];
     },
     nearestFaces: (at) => page.evaluate(async (at) => {
-      const [facesPath, viewPath] = ["/src/faces.ts", "/src/view.ts"];
+      // The app's own occlusion module (src/occlusion.ts) — the one place the
+      // question "which face is in front at this pixel" is answered off the
+      // GPU, so the oracle and the app's dimmed hidden edges cannot disagree
+      // about it. It casts the pixel's ray at the faces' planes in the world
+      // (faces.ts's faces, never either renderer's picture).
+      const [facesPath, occlusionPath] = ["/src/faces.ts", "/src/occlusion.ts"];
       const { faceRGB, visibleFaces } = await import(facesPath);
-      const { viewAxes, worldToScreen } = await import(viewPath);
+      const { nearestFace, occlusion, outlineDistance } = await import(occlusionPath);
       const { model, engine } = (window as never as PageGlobals).__neocad;
-      const view = engine.view;
-      const { right, up, toward } = viewAxes(view);
-      const dot = (a: number[], b: number[]) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
-      type F = { feature: string; kind: string; normal: number[]; shade: number; outlines: number[][][] };
-      // Each face's screen box, three pixels wider all round: a pixel outside
-      // it is neither inside the face nor near enough its outline to matter.
-      const faces = (visibleFaces(model, view) as F[]).map((f) => {
-        const screen = f.outlines.map((o) => o.map((w) => worldToScreen(view, w) as [number, number]));
-        const all = screen.flat();
-        const box = [Math.min(...all.map((p) => p[0])) - 3, Math.min(...all.map((p) => p[1])) - 3,
-          Math.max(...all.map((p) => p[0])) + 3, Math.max(...all.map((p) => p[1])) + 3];
-        return { ...f, screen, box };
-      });
-      const inside = (o: [number, number][], x: number, y: number) => {
-        let odd = false;
-        for (let i = 0, j = o.length - 1; i < o.length; j = i++) {
-          const [a, b] = [o[i], o[j]];
-          if ((a[1] > y) !== (b[1] > y) && x < ((b[0] - a[0]) * (y - a[1])) / (b[1] - a[1]) + a[0]) odd = !odd;
-        }
-        return odd;
-      };
-      const toSegment = (p: number[], a: number[], b: number[]) => {
-        const [dx, dy] = [b[0] - a[0], b[1] - a[1]];
-        const len2 = dx * dx + dy * dy;
-        const t = len2 > 0 ? Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / len2)) : 0;
-        return Math.hypot(p[0] - a[0] - t * dx, p[1] - a[1] - t * dy);
-      };
+      type F = { feature: string; kind: string; shade: number };
+      const faces = visibleFaces(model, engine.view) as F[];
+      const occ = occlusion(faces, engine.view);
       return at.map(([x, y]) => {
-        // The pixel's ray: through the depth-zero point under it, along toward.
-        const [a, b] = [(x - view.ox) / view.scale, (view.oy - y) / view.scale];
-        const q = [0, 1, 2].map((i) => a * right[i] + b * up[i]);
-        let best: { f: F; d: number; i: number } | null = null;
-        let edge = 99; // "far from every outline" — JSON has no Infinity
-        for (const [i, f] of faces.entries()) {
-          if (x < f.box[0] || y < f.box[1] || x > f.box[2] || y > f.box[3]) continue;
-          for (const o of f.screen) for (let i = 0; i < o.length; i++) edge = Math.min(edge, toSegment([x, y], o[i], o[(i + 1) % o.length]));
-          if (f.screen.filter((o) => inside(o, x, y)).length % 2 === 0) continue;
-          // Where the ray crosses the face's plane, as a depth (larger nearer).
-          const d = (dot(f.normal, f.outlines[0][0]) - dot(f.normal, q)) / dot(f.normal, toward);
-          if (!best || d > best.d) best = { f, d, i };
-        }
-        return { face: best ? { id: best.i, feature: best.f.feature, kind: best.f.kind, rgb: faceRGB(best.f.shade) } : null, edge };
+        const best = nearestFace(occ, x, y) as { index: number } | null;
+        const f = best ? faces[best.index] : null;
+        // Three pixels out from every face's screen box: further than that
+        // from an outline is "far" (JSON has no Infinity).
+        const edge = Math.min(99, outlineDistance(occ, x, y, 3) as number);
+        return { face: f ? { id: best!.index, feature: f.feature, kind: f.kind, rgb: faceRGB(f.shade) } : null, edge };
       });
     }, at),
     renderer: () => page.evaluate(() => (window as never as PageGlobals).__neocad.faces),
