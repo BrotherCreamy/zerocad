@@ -106,6 +106,48 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### Hidden edges: dim the ink, keep the drawing on top
+
+The spec (`docs/plans/hidden-edges.md`) kept the rule that made a solid
+usable — the drawing over the faces, still the thing a hand aims at — and
+asked only for the hidden part of an edge to change ink. What was decided:
+
+- *Ask on the CPU, not the depth buffer.* The depth layer knows per pixel
+  what is in front, but reading it back stalls the frame and gives a picture,
+  not an answer per edge. The e2e oracle already answered "which face is in
+  front at this pixel" from the faces' planes; it became `src/occlusion.ts`,
+  and the harness imports it. One implementation means the oracle is no
+  longer independent of the app's *dimming* — but the oracle grades the depth
+  layer, which is GPU code that shares nothing with it, and the dimming's own
+  tests choose their hidden points by geometry (an edge on two turned-away
+  faces whose pixel is on the solid), not by asking the module.
+- *"Behind" square to the plane, rejected: along the ray.* The spec said
+  "nearer by more than ε". Along the ray, the same quarter-pixel by which a
+  curve's drawn polyline and its strip's outline disagree is multiplied by
+  1/cos of the grazing angle: at a degree off edge-on it is a dozen pixels, so
+  a strip seen nearly edge-on would hide its own boundary curve. Square to the
+  plane the error is what it is at any angle; for a face that faces the viewer
+  the two measures have the same sign. The price, documented: a sliver face
+  hides only what is well behind it.
+- *The seam half-way between samples, not at a sample.* Free, and halves the
+  slack to 2 px. Bisecting each seam to the true crossing was considered and
+  left: the spec's "sampled, not solved", and 2 px is under the convention's
+  resolution.
+- *A solid ink, rejected: transparency.* Alpha would blend with whichever
+  face is under the edge, which reads well, but then a hidden run and a
+  partly-covered pixel of a full one are the same colour at different alpha
+  and nothing can tell them apart; and two hidden edges crossing double up.
+  The edge's colour 40% of the way from the faces' mid tone keeps amber
+  amber and is one colour anywhere. No dashes, as the spec said.
+- *Pixel-identical, against what?* "The same picture as the previous build's"
+  can only be held by a picture the previous build drew, so the second commit,
+  made before the pass existed, records the plain sketch's drawing canvas and a
+  test that compares it pixel for pixel. It is tied to the e2e browser, which
+  is pinned; re-recording is an explicit act.
+- *Cull by edge as well as by sample.* A full turn has 860 strips facing the
+  viewer and only a handful of edges, so the faces whose boxes miss an edge's
+  are dropped once per edge rather than tested once per sample.
+
 ### Display depth: measure the painter's against a depth buffer, then let the buffer draw
 
 The spec (`docs/plans/display-depth.md`) had already chosen WebGL over a BSP

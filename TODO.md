@@ -416,8 +416,10 @@ are flagged as such.
     colour, or anti-aliasing leaves a seam of background between neighbours
     (measured: 1–3 levels out of ~60 with the stroke, background without).
   - **Faces sit behind every entity, hidden edges included** — the spec's
-    order, so the sketch stays legible; it does make the profile's sketch read
-    through a solid. Dimming hidden edges is a follow-up, not done.
+    order, so the sketch stays legible. *(2026-10-22, hidden edges: the part
+    of an edge behind a face is drawn in a dimmed ink — the hidden-edge rule
+    after the depth rule below — so the profile no longer reads through a
+    solid as if in front of it.)*
   - **`Tool.snaps`** (new, default true): the extrude tool opts out, since a
     snap marker would promise a vertex the click does not go to. Idle clicks
     are unchanged — the click-inside behaviour lives in the tool only.
@@ -496,10 +498,37 @@ are flagged as such.
   stays as the one fallback**, chosen only where `getContext("webgl")` gives
   nothing, sorting by centroid — wrong where any sort is, and a test says so.
   Faces still never pick, snap, box or wear a glyph (the faces canvas takes no
-  pointer events), and **hidden edges still show through** — the
-  drawing-over-the-solid rule, kept; dimming them is its own follow-up.
+  pointer events), and the drawing stays over the solid — its hidden parts
+  dimmed since (the next entry).
   Screenshots 81–84; the story is `test/e2e/depth.e2e.ts`, the numbers
   `npm run measure:depth`.
+
+  ✅ **Hidden edges, dimmed — built** (2026-10-22):
+  [`docs/plans/hidden-edges.md`](docs/plans/hidden-edges.md). **The drawing
+  stays on top of the solid, and what a hand aims at is never behind a face;
+  the part of an edge behind a face is drawn in a dimmed ink.** Every edge,
+  point, name and glyph still draws over the faces and picks, snaps and drags
+  exactly as before; only the ink of an edge's hidden runs changes. Points,
+  names, a frame's letters and glyphs are never dimmed; a frame's arms are
+  edges and dim. Which part is hidden is asked of the faces on the CPU
+  (`src/occlusion.ts` — the same module the e2e oracle grades the depth layer
+  with): a sample is hidden when a visible face covers its pixel and it is
+  more than half a pixel behind that face's plane, **measured square to the
+  plane**, not along the ray, so a face seen nearly edge-on never hides its own
+  boundary. Samples at least every 4 px, seams half-way between disagreeing
+  samples (≤ 2 px from the true crossing). The ink is the edge's colour 40%
+  of the way from the faces' mid tone — no dashes. With no solid nothing is
+  asked and the drawing is pixel for pixel what it was. Same on the painter's
+  fallback. Decided while building it, and open to veto:
+  - **The hidden ink is a solid colour, not transparency**: the same over any
+    face, and a test can ask a pixel for it; amber (hover) stays amber.
+  - **A grazing face hides only what is well behind it** — the price of
+    measuring square to the plane: a face seen within a degree of edge-on, a
+    sliver a few pixels wide, hides a point only once it is more than half a
+    pixel behind its plane, which along the ray can be far behind. Tested.
+  - **An edge on a turned-away face that meets the silhouette keeps a stub of
+    full ink up to 2 px long at its end** — the seam's slack; e.g. the base's
+    back edge at the corner where the right wall turns toward the viewer.
 
 - **No world frame — coordinate frames are entities** (owner's direction,
   2026-09-01, chosen over "keep the frame but hide it" and "directions stay,
@@ -1042,13 +1071,48 @@ starts.
       - **Walls skip the stencil** — a convex outline is its own fan, batched;
         only caps take the two stencil passes.
       **Found while building, left deliberately:**
-      - **Hidden edges show through**, as the spec said: the
-        drawing-over-the-solid rule. Dimming them is still the follow-up.
+      - ~~**Hidden edges show through**, as the spec said: the
+        drawing-over-the-solid rule. Dimming them is still the follow-up.~~
+        **Dimmed since** (hidden edges, the next item): the drawing stays on
+        top, its hidden runs in a dimmed ink.
       - **The SwiftShader frame floor is ~45 ms** whichever renderer, at the
         e2e browser's 1100 × 768: rasterising and compositing two canvases in
         software. Not this package's to fix; a real GPU does not have it.
       - **No context-loss test**: a lost WebGL context is asked back and the
         next frame redraws, but nothing exercises it.
+- [x] **Hidden edges, dimmed — BUILT (2026-10-22).** The follow-up every 3D
+      package deferred. The drawing stays on top of the solid and picks as
+      before; the part of an edge behind a face is stroked in a dimmed ink
+      (the register's hidden-edge rule, after the depth rule). The e2e oracle
+      became `src/occlusion.ts` and the harness imports it. Measured
+      (`npm run measure:hidden`): the pass 1.2 ms a frame on the stepped
+      block, 0.9 on a boss on a plate, 2.3 on a filleted full turn, against
+      the faces' own 0.5 / 0.4 / 3.7 ms; `render()` 1.5 → 2.2, 1.3 → 1.8,
+      4.3 → 7.5 ms; frame intervals unmoved beyond their noise. Spec:
+      [`docs/plans/hidden-edges.md`](docs/plans/hidden-edges.md) (its "As
+      built" has the detail); the story is `test/e2e/hidden.e2e.ts`;
+      screenshots 85–88. 797 unit tests (nine new), 284 e2e (seven new). Deviations from the spec:
+      - **"Behind" is measured square to the face's plane, not along the
+        ray** — along it, a curve's quarter-pixel chord error is magnified by
+        1/cos of the grazing angle and a strip seen edge-on hides its own
+        boundary.
+      - **Seams half-way between disagreeing samples** (≤ 2 px), not at a
+        sample; curves' samples subdivided to ≤ 4 px like lines.
+      - **Per-edge box culling** went in though the full turn was not slow.
+      - **"The boss on a plate" is a new scene**; `appFrames` is shared from
+        `scenes.ts`; frames were measured alternately against the previous
+        build by swapping `main.ts`, the machine being shared.
+      - **Pixel identity is held against a golden** the previous build drew,
+        committed before the pass.
+      **Found while building, left deliberately:**
+      - **A hidden edge ending on the silhouette keeps ≤ 2 px of full ink** at
+        that end — the seam's slack.
+      - **A face within about a degree of edge-on hides only what is well
+        behind it** — the price of measuring square to the plane.
+      - **The golden picture is tied to the e2e browser** (pinned SwiftShader);
+        a Chromium upgrade that changes Skia's rasterising fails that test, and
+        the only honest re-record is from a build known to draw a plain sketch
+        as before.
 - [x] **Feature regeneration — BUILT (2026-10-22).** A profile restructured
       after its feature used to leave the feature as it was (a documented
       no-op): fillet an extruded rectangle's corner and the lid stayed

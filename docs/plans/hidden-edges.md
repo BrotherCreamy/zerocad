@@ -1,6 +1,7 @@
 # Plan: hidden edges, dimmed
 
-**Status: queued** (2026-10-22). The follow-up every 3D package since phase 4
+**Status: built** (2026-10-22) — see "As built" at the end for the numbers
+and for what differs from this text. The follow-up every 3D package since phase 4
 has deferred: *"hidden edges show through faces; dimming them is its own
 follow-up."* Read `CLAUDE.md`, `docs/ARCHITECTURE.md`'s rendering section
 (as rewritten by display depth), `docs/plans/display-depth.md`,
@@ -78,3 +79,64 @@ by the rule; ARCHITECTURE's rendering section; this file marked built.
 Isolated worktree, branch `claude/hidden-edges` off the working-branch tip,
 one PR against `claude/resume-tasks-o7q02e`. Do not merge; the supervising
 session reviews.
+
+## As built (2026-10-22)
+
+Four commits: the frame measurement (the "before"), the plain sketch recorded
+by the build before the pass, the pass, and per-edge culling with the pass's
+own cost measured. Nothing in `faces.ts`, `facelayer.ts`, picking, snapping or
+the tools changed. The numbers are in the CHANGELOG; in short, the pass costs
+1.2 ms a frame on the stepped block and 2.3 ms on the filleted full turn
+against the faces' own 0.5 and 3.7 ms, and the frame interval did not move
+beyond its noise. What differs from the text above:
+
+- **"Nearer by more than ε" is measured square to the face's plane, not along
+  the ray.** The two have the same sign for a face that faces the viewer, but
+  along the ray the quarter-pixel by which a curve's drawn polyline and its
+  strip's outline disagree is multiplied by 1/cos of the grazing angle — at a
+  degree off edge-on, a dozen pixels — so a strip seen nearly edge-on would
+  hide its own boundary. ε is half a pixel of world, square to the plane;
+  tested at about a degree off edge-on and at three zooms. The price: a
+  sliver face hides only what is well behind it.
+- **The seam is half-way between the two samples that disagree**, not at a
+  sample: free, and it halves the slack, to 2 px. The test still asks for
+  "within one sample spacing" (4 px) and checks the half on 40 random lines.
+- **A curve's drawn samples are subdivided too** where they are more than
+  4 px apart on screen (a large arc's quarter-pixel samples can be 20 px
+  apart): one rule for every polyline, so the slack bound is the same for a
+  curve as for a line.
+- **Faces are culled by box per edge as well as per sample**, which the spec
+  offered for the full turn if it was slow. It was not slow (the pass was
+  about 1× the faces' cost there before the cull too); it went in because 238
+  samples × 860 strips of box tests a frame for 2 650 survivors is waste. Its
+  own effect was not separable from the shared machine's noise.
+- **"The boss on a plate" is a new scene** (`boss-plate` in
+  `test/e2e/scenes.ts`, a 60 × 40 × 8 plate with a boss r 10 × 15 on its lid),
+  added last so the depth measurement's seeded views are unchanged; "the
+  stepped block" is the existing `stepped-boss`. `appFrames` moved from
+  `depth.measure.ts` into `scenes.ts` so both measurements time frames the
+  same way.
+- **Frame time was measured alternately** — the build before and this one,
+  three rounds, by swapping `main.ts` (the only file the pass touches in the
+  app) — because the machine was shared and its load ran from 5 to 12; and
+  `render()` alone cannot say which part of it is the pass, so the pass was
+  also timed by itself in the page against the faces' own work.
+- **"Pixel-identical to the previous build's screenshot"** is held against the
+  drawing canvas the previous build drew, recorded in its own commit before
+  the pass existed (`test/e2e/golden/hidden-plain-sketch.png`), compared
+  pixel for pixel, decoded in the page. It is tied to the e2e browser.
+- **The dimmed ink** is the edge's colour 40% of the way from `faceRGB(0.5)`,
+  a solid colour (not transparency: a hidden run must be one colour over any
+  face, and a partly covered pixel of a full stroke must not look like it).
+- **A frame's arrowhead takes the ink its arm reaches the tip in**; its
+  letters, like names, keep their colour.
+- **The e2e tests choose their hidden points by geometry** — an edge both of
+  whose faces are turned away from a camera written down in the test, whose
+  pixel the oracle says is on the solid — never by asking the module that
+  dims them. Some sample points were moved off places where a glyph or a name
+  sits on the edge (a dimension's label, a frame point's name), found by
+  looking; the test comments say where.
+- **Found:** an edge hidden but ending on the silhouette keeps a stub of full
+  ink up to 2 px long at that end (the base's back edge where the right wall
+  turns toward the viewer) — the seam's slack, documented rather than
+  bisected away.
