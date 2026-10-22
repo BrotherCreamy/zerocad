@@ -796,9 +796,20 @@ are flagged as such.
   where the solve status lives. **Layout is per-viewer UI state**: in
   `localStorage`, never in the journal, a saved file or the undo history, so
   two people opening one file keep their own arrangements, and a storage that
-  throws costs the arrangement and nothing else. **Toolbar labels are the tool
-  names, not icons** — the names are what the command line calls the tools,
-  and icons would be a second vocabulary (the owner can veto). A button types
+  throws costs the arrangement and nothing else. **Three defaults this entry
+  shipped with were vetoed by the owner (2026-10-22)**, and the opposite is
+  now the rule: ~~a panel may be parked mostly off an edge~~ — *"I shouldnt be
+  able to slide the tooltrays off the edge. they should stay fully within the
+  viewport borders"*: every panel is held **wholly inside**. ~~Labels are the
+  tool names, not icons~~ — *"tools should be icons"*: each built-in has an
+  inline-SVG glyph, a tool defined at the command line a generic one (a square
+  with its first two letters), and **the name is the tooltip**. ~~A tray is
+  always a column~~ — *"when I push a vertical tooltray against a top or bottom
+  edge, it should become horizontal etc and vice versa. that includes pushing
+  it up against a vertical/horizontal edge of another tooltray"*: the toolbar
+  **turns** row/column live as it is dragged against the area's edges or a
+  panel's facing edge (a corner keeps its way), and the orientation is stored
+  with the layout. A button types
   `arm("name")` through `submit`, the context menu's rule: it can do nothing a
   typed command cannot. An empty model says what to do (owner's report, *"i
   dont see anything in the artifact"*), drawn from the model, never a flag.
@@ -806,7 +817,8 @@ are flagged as such.
   menu, with the model's own reason as its hover text — one rule
   (`src/toolavail.ts`) read by both, so the two can never disagree.
   Spec: [`docs/plans/panels.md`](docs/plans/panels.md),
-  [`docs/plans/toolbar-availability.md`](docs/plans/toolbar-availability.md).
+  [`docs/plans/toolbar-availability.md`](docs/plans/toolbar-availability.md),
+  [`docs/plans/toolbar-icons-docking.md`](docs/plans/toolbar-icons-docking.md).
 - **The command line is curation, not a sandbox.** Typed code runs with the
   app's full authority; the scope exists for legibility and typo-catching,
   and says so honestly rather than claiming to be a security boundary.
@@ -857,6 +869,7 @@ are flagged as such.
          owner (2026-10-22): icons**, with two more directions on the tray
          (fully inside the viewport; turning column/row against the edge it
          meets). Spec: [`docs/plans/toolbar-icons-docking.md`](docs/plans/toolbar-icons-docking.md).
+         **Built** (2026-10-22) — see Done.
 
 ## Next up
 
@@ -1220,6 +1233,25 @@ extended the way `defineTool` extends the tool registry would close it.
       **Fixed** — the rule moved to `src/toolavail.ts`, the menu and the
       toolbar host both read it, and a disabled button carries the reason as
       its hover text. See Done.
+- [ ] **A moved or turned tray does not grow when a tool is defined.** An
+      untouched toolbar is sized from its defaults, so `defineTool` grows it;
+      once the viewer has moved it — or turned it, which sizes it to its
+      content at that moment — its stored rectangle is what is shown, and a
+      new tool's button scrolls into view rather than the tray growing. It
+      was already true of a moved toolbar before trays turned (STATUS said
+      "resized", which was narrower than the code). The fix, when it matters,
+      is storing whether the size was the viewer's (the grip) or the
+      content's (a turn, the defaults) and re-sizing only the latter.
+- [ ] **The resize grip sits over the last button's corner.** On a tray one
+      button thick the 12 px grip covers the bottom-right of the last button
+      (column) or its right end (row); the button's middle is still its own,
+      and was before icons (the labelled column had the same overlap). A
+      tray-specific grip, or a few px of room at the run's end, would clear it.
+- [ ] **A glyph is keyed by name, like availability.** A command-line tool
+      that re-registers `circle` keeps the circle's glyph (and its
+      availability rule, below); one under any new name gets the generic
+      glyph. Deliberate — see `src/tools/icons.ts` for why a static on the
+      class would be worse — and tested.
 - [ ] **The tool-availability rule is keyed by name.** `toolUnavailable`
       greys out whatever is registered as `circle`, `circle3`, `arc`, `arc3`
       or `fillet` — so a tool defined at the command line under one of those
@@ -1260,6 +1292,38 @@ extended the way `defineTool` extends the tool registry would close it.
       to its nearest edge would fix it; not needed until someone resizes often.
 
 ## Done
+
+- [x] **The tool tray: icons, held inside, turning with the edge it meets** —
+      spec: [`docs/plans/toolbar-icons-docking.md`](docs/plans/toolbar-icons-docking.md),
+      now marked built; the owner's three lines and the three vetoes are in the
+      register entry above. `constrain` holds a panel wholly inside (`KEEP`
+      gone); `src/tools/icons.ts` (new) is the glyph table, keyed by registered
+      name, with `genericIcon`/`toolIcon`, reached by the toolbar only through
+      `ToolbarHost.icon`; `orientationFor`, `contacts` and `turned` in
+      `panels.ts` are the turning rule, pure and unit-tested; `Panels` takes a
+      `trays` map (id → button count) and turns those panels live on every
+      move of a drag; the layout key is `neocad.panels.v2`.
+      **Deviations from the spec:**
+      - **The snap distance is 6 px, not "8, say"**: the defaults sit 8 px off
+        every edge, and at 8 the untouched toolbar dragged along the top would
+        turn on its first pixel. The spec text now says 6.
+      - **A disabled button's tooltip is `name — reason`, not the reason alone**
+        ("as now"): with no label on its face, the reason alone never says which
+        tool is greyed. The spec text now says so. The menu's reason string is
+        unchanged and the e2e test still compares the two.
+      - **A row's strip runs down its left end**, so a row is one button high
+        as the spec asks; the strip carries a grip of dots instead of the word
+        "tools" (too narrow for it either way), with "tools" as its title.
+      - **The old e2e test "a panel cannot be dragged where its strip is out of
+        reach" was vacuous** — the log, grown by the test before it, covered the
+        command line's strip, so the drag never moved anything. Rewritten to
+        reset first and assert the panel moved; not a spec deviation, but the
+        spec's "stops flush inside" test would have inherited the same blind
+        spot.
+      Tests: 788 → 802 unit, 277 → 286 e2e. Screenshots 85–87, looked at, at
+      the toolbar's own size and magnified.
+      *Discovered:* a moved or turned tray does not grow when a tool is
+      defined; the grip overlaps the last button's corner (Smaller things).
 
 - [x] **Clauses: an entity defined by any constraint set** — spec:
       [`docs/plans/clauses.md`](docs/plans/clauses.md), now marked built.

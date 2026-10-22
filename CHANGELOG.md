@@ -7,6 +7,75 @@ decisions.
 
 ---
 
+## The tool tray: icons, held inside, turning with the edge it meets
+
+The owner, verbatim, on the panels package:
+
+> *I shouldnt be able to slide the tooltrays off the edge. they should stay
+> fully within the viewport borders*
+> *tools should be icons*
+> *when I push a vertical tooltray against a top or bottom edge, it should
+> become horizontal etc and vice versa. that includes pushing it up against a
+> vertical/horizontal edge of another tooltray*
+
+Three defaults the panels package shipped with a veto, vetoed — all three are
+now the other way round.
+
+![The tool tray at its own size, a column one icon wide: a grip of dots at the top, then a dot, a diagonal line, a rectangle, a circle, a circle with three dots on it, an arc, an arc with three dots, a rounded corner, a box, an arrow turning round a small profile, and a pencil on a plane. The line is outlined and drawn in amber, armed; the five circle and arc tools are dim grey, disabled in a model with no default frame; the rest are the usual pale blue](docs/images/85-the-tool-tray-armed-and-greyed.png)
+
+**Tools are icons.** Every built-in tool has a small inline SVG — one family,
+1.5-unit round strokes, no fill but a dot — drawn in the button's own colour,
+so the armed amber and the disabled grey are the glyph's exactly as they were
+the label's. The tool's name is the tooltip, with what the button does after
+it — `circle — arm("circle")`, or `circle — no default frame — …` when it
+cannot run — and the button still types `arm("circle")` into the log. A tool
+defined at the command line has no icon of its own and none is guessed: it gets
+a square carrying the first two letters of its name. The glyphs are a table
+keyed by the registered name (`src/tools/icons.ts`), not a static on the tool
+class, because a static is inherited — a command-line `class extends
+CircleTool` under a new name would wear the circle.
+
+**Panels stay wholly inside.** `constrain` used to keep only 40 px of a
+panel's strip on screen; now not one pixel of any panel leaves the area, and a
+layout stored in a bigger window is pulled in on load.
+
+| | |
+|---|---|
+| ![The whole window: the tray has become a single row of icons along the top edge of the canvas, its grip of dots at the row's left end, the log and command line at the bottom-left as usual](docs/images/86-the-tray-pushed-to-the-top-is-a-row.png) | ![The tray as a row sitting on the log's top edge, pushed up against it from above, the log and command line below it](docs/images/87-the-tray-pushed-onto-the-log-is-a-row.png) |
+
+**The tray turns with the edge it meets — live, as it is pushed.** Within 6 px
+of the area's top or bottom, or of the facing top or bottom edge of a panel it
+is beside, it becomes a row, one button high; of a side, a column; of both — a
+corner — it keeps the way it runs. It re-sizes to its buttons and keeps the
+edge it is against, so a column pushed down onto the log becomes a row sitting
+on the log, not one floating where the column's top was. The rule is a pure
+function (`orientationFor`, `turned`) with unit tests for every edge, beside
+and not, the corner and "nowhere near"; the orientation is stored with the
+layout, under a new `v2` key (a `v1` layout reads as the defaults). The log
+and the command line keep their shape. The snap distance is 6 px rather than
+the spec's "8, say", because the defaults sit 8 px off every edge and dragging
+the untouched toolbar along the top must not turn it.
+
+```
+> layout()
+toolbar  108,532  264x28  row
+log      8,562  560x150  (default)
+cmd      8,716  560x44  (default)
+```
+
+One e2e test turned out to have been passing without testing anything: the
+"strip out of reach" drag of the command line pressed on the log, which the
+resize test before it had grown over the command line's strip, so nothing
+moved and the assertions held at the default position. It now resets first and
+asserts the panel moved. 802 unit tests (14 new), 286 e2e (9 new).
+
+*Known and deliberate:* a moved or turned tray keeps its size when a tool is
+defined (it scrolls); the resize grip sits over the last button's corner;
+a re-registered `circle` keeps the circle glyph, as it keeps the circle's
+availability; no positional snapping.
+
+---
+
 ## Faces drawn by depth: solids through each other, and a 355° sweep, drawn right
 
 ![Before: two bars on a turned view, a 60 × 20 × 20 bar along x and a 15 × 40 bar on a frame turned 20° driven through it; by the painter's sort the second bar's whole slab is painted over the first, uniform, as if it stood in front of all of it](docs/images/83-before-depth-one-solid-painted-over-the-other.png)
