@@ -7,6 +7,64 @@ decisions.
 
 ---
 
+## Panels push one another, and the grab point slips
+
+The owner, verbatim:
+
+> *shouldn't be able to drag windows over other windows. they should collide
+> and push one another around. not collide like physics, just push. also when
+> i grab a window at a point on that window, then push it up against
+> something, the grab point should kind of slip, so that when i push it back
+> in the opposite direction, it doesnt have to get back to the original slip
+> point*
+
+![The whole window: the tool tray, turned into a row as it met the log, sits flush on the log's top; the log sits flush on the command line; the command line sits on the window's bottom edge. The pointer, below the window, went on well past where the tray stopped](docs/images/92-the-tray-pushes-the-log-and-the-command-line-to-the-bottom-edge.png)
+
+**Panels never overlap.** A dragged panel that meets another pushes it by
+exactly the amount they overlap, and that one pushes what it meets, in a
+chain. Nothing springs back, bounces or slides round a corner; a pushed panel
+stays where it was pushed and is stored there, as if the viewer had dragged
+it. **The window's edge is the one immovable thing**: when the chain is solid
+against it, the dragged panel stops flush against the chain — to the pixel,
+computed rather than searched for (a chain's overshoot grows one for one with
+the mover's travel, so pulling the travel back by it is exact). Resizing by
+the grip pushes the same way and stops the same way; a tray that turns into a
+neighbour pushes it aside, and does not turn if nothing can make room; a
+stored layout, a window too short for the defaults, or a toolbar grown for a
+new tool are all put down clear (`settled`, earlier panels holding their
+places).
+
+**The grab point slips.** Stopped short of the pointer — at the edge, against
+a chain that cannot move, at its minimum size — a panel is held from where it
+is: one move back moves it by that move. Measured in the browser: the tray
+pushed down until the chain reached the bottom edge, then the pointer moved
+10 px up, and the tray moved 10 px up on that very event.
+
+**One resolver** (`pushed` in `src/panels.ts`), pure and unit-tested without a
+DOM: each axis of a pointer move in turn, the larger first, a panel pushed
+along that axis only. Not everything along the larger axis, as the spec had
+it — a drag is never quite straight, and a tray resting on the log dragged
+right with a pixel of downward drift would throw the log sideways by the
+tray's width; per axis it pushes the log down a pixel. What pushes is the
+mover's swept rectangle, not where it lands, because a 2 000-drag random walk
+found a fast flick passing straight through a narrow panel.
+
+![After thirty seeded random drags and resizes in the browser: the tray a long row along the top, the log mid-left, the command line, much enlarged, at the bottom — touching nothing, overlapping nothing](docs/images/93-after-thirty-random-drags-no-panel-over-another.png)
+
+Under the dev server the panels check after every placement that no two
+overlap and report it as a page error if they do, so the e2e suite's "no
+uncaught page errors" covers every gesture it makes. 823 unit tests (12 new,
+among them 2 000 random drags that never leave an overlap or a pixel outside),
+299 e2e (6 new).
+
+*Known and deliberate:* a window too small to hold every panel side by side
+at its size leaves the last one over its neighbour — nothing shrinks a panel
+to make room; a pushed tray does not turn (only the one being dragged does);
+with no motion the tie goes to x, so a toolbar grown onto the log nudges the
+log sideways by the tray's thickness rather than down.
+
+---
+
 ## Hidden edges, dimmed: a shaded solid reads as a solid
 
 ![Before: the stepped block from the front, the right and above, with a boss on its tall step's front wall; every edge in the same full ink, so the base's back edge, the far uprights and the cut line under the block look as near as the edges in front](docs/images/88-before-hidden-edges-stepped-block-all-in-full-ink.png)

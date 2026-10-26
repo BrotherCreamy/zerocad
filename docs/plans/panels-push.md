@@ -1,6 +1,9 @@
 # Plan: panels push one another, and the grab point slips
 
-**Status: queued** (2026-10-26). The owner's direction, verbatim:
+**Status: built** (2026-10-26) — one PR against `claude/resume-tasks-o7q02e`
+(branch `claude/panels-push`); every deviation is in `TODO.md`'s Done entry,
+and the places this text was wrong are corrected below and marked *(as
+built)*. The owner's direction, verbatim:
 
 > *shouldn't be able to drag windows over other windows. they should collide
 > and push one another around. not collide like physics, just push. also when
@@ -41,11 +44,19 @@ re-basing it already does when a tray turns — `test/panels.test.ts` and
   resolved by moving *that* panel along the **dominant axis of `motion`**
   (the axis with the larger component; ties go to x) by exactly the amount
   that separates them, then resolving what it now overlaps, breadth first,
-  never revisiting a panel. If any panel in the chain would leave the area
+  never revisiting a panel. *(As built: each axis of `motion` in turn, the
+  larger first — a tray resting on the log dragged right with a pixel of
+  downward drift would otherwise throw the log sideways by the tray's width;
+  face-on the two agree. A panel is revisited when a longer push reaches it
+  later, or two are left overlapping. What pushes is the mover's swept
+  rectangle, so a fast flick cannot pass through a narrow panel.)* If any
+  panel in the chain would leave the area
   (`constrain` with no give), the push fails and `id` is placed as far along
   `motion` as it can go with the chain still inside — found by the largest
   travel that resolves (a short binary search over the travel is fine; say
-  so in the comment), so the dragged panel stops flush, not short. "Just
+  so in the comment), so the dragged panel stops flush, not short. *(As
+  built: exact, not searched — the overshoot grows one for one with the
+  travel, so the travel pulled back by it is the largest that fits.)* "Just
   push": no velocities, no bounce, no sliding round corners — a panel pushed
   along x never moves in y.
 - **Drag** calls `pushed` on every move with the panel's wanted rectangle
@@ -55,10 +66,16 @@ re-basing it already does when a tray turns — `test/panels.test.ts` and
   movement, so growing into a neighbour pushes it, and stops at the edge.
   **Turning** a tray (`turned`) and a tray growing for a new tool go through
   `pushed` too, with a motion of zero: ties resolve along x, and a panel in
-  the way is pushed rather than covered.
+  the way is pushed rather than covered. *(As built: x away from the mover,
+  then x the other way, then y the same; if none fits, nothing moves and the
+  tray does not turn. The grip slips like the strip.)*
 - **Load and window resize** (`apply`): the stored layout is placed in panel
   order and each panel is `pushed` into a non-overlapping place with zero
-  motion, so a layout from before this rule, or a window shrunk until the
+  motion *(as built: `settled` — each panel landing on an earlier one is
+  pushed out of that one's way, earlier panels holding their places, so a
+  grown toolbar is not knocked off the left edge by the log; a window too
+  small to hold them all side by side leaves the last one over its
+  neighbour, nothing shrunk to make room)*, so a layout from before this rule, or a window shrunk until the
   defaults would overlap, comes up overlap-free. The invariant "no two
   panels overlap" holds after every `apply`, and a debug assertion in
   `place` checks it in tests.
@@ -80,7 +97,9 @@ into a neighbour pushes it; load de-overlaps an overlapping stored layout;
 outside the area; the slip — after a blocked move the returned offset equals
 pointer minus the panel's actual position, so one reversed move moves the
 panel. E2e (`panels.e2e.ts`): drag the tray into the log and watch the log
-move; keep pushing until the log reaches the bottom edge and assert the tray
+move; keep pushing until the log reaches the bottom edge *(as built: the
+command line sits under the log in the default layout, so the log pushes it
+and the chain reaches the bottom edge through it)* and assert the tray
 stops flush against the log; move the pointer back one step and assert the
 tray moved immediately by that step (the slip, measured); drag the log into
 the command line and both move; resize the log into the command line;

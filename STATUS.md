@@ -1711,9 +1711,46 @@ replacing) the system Node other projects on this machine may depend on.
   *Known and deliberate:* a moved or turned tray keeps its stored size when a
   tool is defined (it scrolls); the grip overlaps the last button's corner; a
   glyph, like availability, is keyed by name, so a re-registered `circle`
-  keeps the circle; no positional snapping — a tray pushed past another
-  panel's edge overlaps it. *Spec:*
+  keeps the circle; no positional snapping. ~~A tray pushed past another
+  panel's edge overlaps it~~ — overturned by the owner (2026-10-26), see the
+  next entry: panels push one another and never overlap. *Spec:*
   [`docs/plans/toolbar-icons-docking.md`](docs/plans/toolbar-icons-docking.md).
+
+- **Panels push one another; the grab point slips** (`src/panels.ts`, one
+  line of `src/main.ts`). **No two panels overlap** — during a drag, after a
+  resize, when a tray turns or grows, on load — and **the window's edge is the
+  one immovable thing**. `pushed(id, want, layout, area, minSizes, motion)` is
+  the one resolver: `want` is constrained, then each axis of `motion` in turn,
+  the larger first (ties x), moves the mover along that axis and `shove`s
+  every panel its *swept* rectangle overlaps flush against its leading edge,
+  chained (a panel reached again by a longer push moves again); if a pushed
+  panel would leave the area the travel is pulled back by the overshoot,
+  exactly, so the mover stops flush. With zero motion (a turn, a placement) the
+  mover is put down and what it covers is pushed along x away from it, then x
+  the other way, then y the same; the first sound result wins, else `ok:
+  false` and nothing moves. `settled(layout, order, …)` puts panels down in
+  order, earlier ones holding their places; `apply` runs it every time, and
+  what it moves is not stored. `dragStep(grab, pointer, …)` is one pointer
+  move: the wanted rectangle from the pointer minus the grab, `pushed`, the
+  tray's turn (pushed with zero motion; refused if nothing can make room), then
+  the grab re-based on where the panel is — **the slip**, which also replaced
+  the by-hand re-basing after a turn; the grip slips the same way. At a
+  gesture's end every panel it moved is stored (key still `v2`); an `apply`
+  that arrives mid-gesture waits for the end. `overlapping(layout)` lists
+  overlapping pairs; with `check` on (the dev server, from
+  `import.meta.env.DEV`) the DOM half `reportError`s any after a placement
+  the resolver called sound, which the e2e suite sees as a page error. Unit:
+  `test/panels.test.ts` (12 new, including 2 000 seeded random drags and
+  resizes over three panels asserting no overlap and no pixel outside after
+  every step); browser: `test/e2e/panels.e2e.ts` (6 new: the chain to the
+  bottom edge and the measured slip, log into command line, resize into it,
+  reload and reset, an overlapping stored layout, thirty random drags). 823
+  unit tests, 299 e2e. *Known and deliberate:* a window too small to hold
+  every panel side by side at its size leaves the last placed over its
+  neighbour (nothing shrinks a panel to make room); only the dragged tray
+  turns, a pushed one keeps its way; with zero motion the tie goes to x, so a
+  toolbar grown onto the log nudges the log sideways by the tray's thickness.
+  *Spec:* [`docs/plans/panels-push.md`](docs/plans/panels-push.md).
 
 
 ## What's next
