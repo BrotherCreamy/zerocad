@@ -16,7 +16,7 @@ npm install && npm run build:kernel   # wasm-gen/ is gitignored, regenerate it
 npm run typecheck   # tsc --noEmit
 npm test            # unit, ~1s, no browser
 npm run test:kernel # the Rust crate
-npm run test:e2e    # real browser, real app, ~13s — starts its own dev server
+npm run test:e2e    # real browser, real app, minutes not seconds (~7 min for ~300 tests on a shared 4-core box) — starts its own dev server
 npm run test:all    # all of the above
 npm run dev         # vite on :5173
 ```
