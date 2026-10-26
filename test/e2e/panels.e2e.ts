@@ -289,22 +289,23 @@ test("a panel resizes by its corner grip, no smaller than its minimum", async ()
 });
 
 test("a panel cannot be dragged off an edge by a single pixel", async () => {
-  // The test above left the log grown over the command line's strip; a press
-  // there would take the log, and the command line would pass this by never
-  // moving at all (the old version of this test did exactly that).
+  // From the defaults, with the toolbar parked on the right first: a panel now
+  // pushes what it meets, and this is about the window's edge alone, so the
+  // two drags below are given clear paths — the log's to the top-left corner,
+  // the command line's to the bottom-right.
   await app.type('layout("reset")');
   const cv = await rectOf("#cv");
+  await dragBy(strip("toolbar"), 900, 100);
   const s0 = await rectOf(panel("cmd"));
-  // Flush with the bottom-right corner, then the top-left: every pixel inside.
   // The pointer stays in the window, so every move is one the page is sent;
   // the panel is pushed far past each edge all the same.
   await dragBy(strip("cmd"), 700, cv.y + cv.height - 2 - (s0.y + 8));
   const s = await rectOf(panel("cmd"));
   assert.notDeepEqual(s, s0, "it moved");
   assert.deepEqual([s.x + s.width, s.y + s.height], [cv.x + cv.width, cv.y + cv.height], "flush with the bottom-right");
-  const st = await rectOf(strip("cmd"));
-  await dragBy(strip("cmd"), 2 - (st.x + st.width / 2), 2 - (st.y + st.height / 2));
-  const t = await rectOf(panel("cmd"));
+  const st = await rectOf(strip("log"));
+  await dragBy(strip("log"), 2 - (st.x + st.width / 2), 2 - (st.y + st.height / 2));
+  const t = await rectOf(panel("log"));
   assert.deepEqual([t.x, t.y], [cv.x, cv.y], "flush with the top-left — the header is not covered");
 });
 
@@ -605,6 +606,145 @@ test("the glyph is the button's colour: amber when armed, grey when it cannot ru
   assert.equal(await glyphColour("point"), "rgb(175, 198, 217)", "an idle one is the label colour it replaced");
   await shot("armed-and-disabled");
   await app.page.keyboard.press("Escape");
+});
+
+// --- panels push one another, and the grab point slips -------------------------
+
+const IDS = ["toolbar", "log", "cmd"];
+
+/** Every panel's rectangle relative to the canvas. */
+async function panelsNow(): Promise<Record<string, Box>> {
+  const cv = await rectOf("#cv");
+  const out: Record<string, Box> = {};
+  for (const id of IDS) {
+    const r = await rectOf(panel(id));
+    out[id] = { x: r.x - cv.x, y: r.y - cv.y, width: r.width, height: r.height };
+  }
+  return out;
+}
+
+/** No two panels share any area, and every one is wholly on the canvas. */
+async function assertSound(what: string): Promise<void> {
+  const cv = await rectOf("#cv");
+  const l = await panelsNow();
+  for (const id of IDS) {
+    const r = l[id];
+    assert.ok(r.x >= 0 && r.y >= 0 && r.x + r.width <= cv.width && r.y + r.height <= cv.height,
+      `${what}: ${id} is wholly inside: ${JSON.stringify(r)}`);
+  }
+  for (let i = 0; i < IDS.length; i++) {
+    for (let j = i + 1; j < IDS.length; j++) {
+      const [a, b] = [l[IDS[i]], l[IDS[j]]];
+      const ox = Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x);
+      const oy = Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y);
+      assert.ok(ox <= 0 || oy <= 0, `${what}: ${IDS[i]} and ${IDS[j]} overlap: ${JSON.stringify(l)}`);
+    }
+  }
+}
+
+test("the tray pushes the log, the log the command line, and at the bottom edge the tray stops flush — then slips", async () => {
+  await reloadApp();
+  await app.type('layout("reset")');
+  const cv = await rectOf("#cv");
+  // The log up out of the way first, so there is a push worth watching.
+  await dragBy(strip("log"), 0, -250);
+  const l0 = await panelsNow();
+  assert.ok(l0.log.y > l0.toolbar.y + l0.toolbar.height + 20, "room between the tray and the log");
+
+  const s = await rectOf(strip("toolbar"));
+  let [x, y] = [s.x + s.width / 2, s.y + s.height / 2];
+  await app.page.mouse.move(x, y);
+  await app.page.mouse.down();
+  // Down in 10 px steps, far further than there is room for.
+  const travel = cv.height;
+  for (let d = 0; d < travel; d += 10) await app.page.mouse.move(x, (y += 10));
+  const held = await panelsNow();
+  assert.ok(held.log.y > l0.log.y, `the log was pushed down: ${l0.log.y} → ${held.log.y}`);
+  assert.equal(held.cmd.y + held.cmd.height, cv.height, "the command line, pushed by the log, is on the bottom edge");
+  assert.equal(held.log.y + held.log.height, held.cmd.y, "the log flush on it");
+  assert.equal(held.toolbar.y + held.toolbar.height, held.log.y, "and the tray stopped flush on the log — not short, not over it");
+  await shot("pushed-chain-held");
+
+  // The slip, measured: one step back, and the tray follows at once by that
+  // step — not after the pointer has travelled back to where it first held it.
+  await app.page.mouse.move(x, (y -= 10));
+  const back = await panelsNow();
+  assert.equal(back.toolbar.y, held.toolbar.y - 10, "ten pixels up, the very move after it was stopped");
+  await app.page.mouse.move(x, (y -= 10));
+  assert.equal((await panelsNow()).toolbar.y, held.toolbar.y - 20, "and the next");
+  await app.page.mouse.up();
+  await app.page.waitForTimeout(80);
+
+  const after = await panelsNow();
+  assert.deepEqual([after.log, after.cmd], [held.log, held.cmd], "nothing springs back: the pushed panels stay where they were pushed");
+  await assertSound("after the push");
+  await shot("pushed-chain-released");
+});
+
+test("the log dragged into the command line pushes it, as far as the bottom edge", async () => {
+  await app.type('layout("reset")');
+  const cv = await rectOf("#cv");
+  const l0 = await panelsNow();
+  await dragBy(strip("log"), 0, 100);
+  const l = await panelsNow();
+  assert.ok(l.cmd.y > l0.cmd.y, "the command line moved");
+  assert.equal(l.cmd.y + l.cmd.height, cv.height, "as far as the bottom edge");
+  assert.equal(l.log.y + l.log.height, l.cmd.y, "and the log is flush on it");
+  assert.equal(l.log.y - l0.log.y, (l0.cmd.y - l0.log.y - l0.log.height) + (cv.height - l0.cmd.y - l0.cmd.height),
+    "the log moved by the gap and the command line's room, exactly");
+  assert.deepEqual([l.log.x, l.cmd.x], [l0.log.x, l0.cmd.x], "pushed down, and not a pixel sideways");
+  await assertSound("log into command line");
+});
+
+test("resizing the log into the command line pushes it, and the grip stops at the edge", async () => {
+  await app.type('layout("reset")');
+  const cv = await rectOf("#cv");
+  const l0 = await panelsNow();
+  await dragBy(grip("log"), 0, 100);
+  const l = await panelsNow();
+  assert.equal(l.cmd.y + l.cmd.height, cv.height, "the command line pushed to the bottom edge");
+  assert.equal(l.log.y, l0.log.y, "the log's top stayed");
+  assert.equal(l.log.y + l.log.height, l.cmd.y, "and it grew flush onto the command line, no further");
+  await assertSound("resized into the command line");
+  await shot("resized-into-cmd");
+});
+
+test("a reload keeps the pushed positions, and layout(\"reset\") puts everything back", async () => {
+  const pushedNow = await panelsNow();
+  await reloadApp();
+  assert.deepEqual(await panelsNow(), pushedNow, "the pushed command line is stored like a dragged one");
+  assert.doesNotMatch((await app.repl("layout()")).value as string, /^cmd .*\(default\)$/m, "and is not called default");
+  await app.type('layout("reset")');
+  const d = await panelsNow();
+  assert.equal(d.cmd.y + d.cmd.height, (await rectOf("#cv")).height - 8, "the command line back a margin off the bottom");
+  assert.equal(d.log.y + d.log.height + 4, d.cmd.y, "and the log back above it");
+});
+
+test("a stored layout from before panels pushed comes up with nothing overlapping", async () => {
+  // An arrangement the old rules allowed: the log dropped over the command line
+  // and the toolbar over the log.
+  await app.page.evaluate(() => localStorage.setItem("neocad.panels.v2", JSON.stringify({
+    toolbar: { x: 40, y: 500, w: 28, h: 264, orient: "column" },
+    log: { x: 20, y: 560, w: 560, h: 150 },
+    cmd: { x: 100, y: 600, w: 560, h: 44 },
+  })));
+  await reloadApp();
+  await assertSound("on load");
+  await app.type('layout("reset")');
+});
+
+test("after a scripted run of random drags, no two panels overlap", async () => {
+  await app.type('layout("reset")');
+  let seed = 5;
+  const rand = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648);
+  for (let i = 0; i < 30; i++) {
+    const id = IDS[Math.floor(rand() * IDS.length)];
+    const by = rand() < 0.75 ? strip(id) : grip(id);
+    await dragBy(by, Math.round((rand() - 0.5) * 900), Math.round((rand() - 0.5) * 700), 4 + Math.floor(rand() * 8));
+    await assertSound(`drag ${i} (${by})`);
+  }
+  await shot("after-random-drags");
+  await app.type('layout("reset")');
 });
 
 test("no uncaught page errors", () => {

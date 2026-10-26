@@ -17,7 +17,8 @@
 // storage failure must cost the viewer their arrangement and nothing else.
 //
 // The split follows menu.ts's: the geometry — what a drag or a resize does to a
-// rectangle, what keeps a panel inside the area, which way a tray runs against
+// rectangle, what keeps a panel inside the area, how panels push one another
+// and where a held panel slips under the pointer, which way a tray runs against
 // the edges it meets, what a stored layout parses to — is pure functions over
 // plain numbers, tested without a DOM. The DOM half is thin on purpose.
 //
@@ -59,8 +60,9 @@ function clamp(v: number, lo: number, hi: number): number {
  *
  * Its size is held between its minimum and the area, and **the whole of it is
  * held inside the area** (the owner: *"they should stay fully within the
- * viewport borders"*). A panel may overlap another; it may not hang off an
- * edge, by any amount. Only a panel whose minimum is bigger than the area can
+ * viewport borders"*). It may not hang off an edge, by any amount — and what
+ * it may not do to another panel is `pushed`'s business, below, which starts
+ * from this. Only a panel whose minimum is bigger than the area can
  * spill, and then off the right and bottom only, its strip at the top-left
  * where a pointer can still take it.
  */
@@ -189,6 +191,314 @@ export function turned(
   const x = orient === "column" && c.right && !c.left ? r.x + r.w - s.w : r.x;
   const y = orient === "row" && c.bottom && !c.top ? r.y + r.h - s.h : r.y;
   return { rect: constrain({ x, y, w: s.w, h: s.h }, area, { w: 0, h: 0 }), orient };
+}
+
+// ---- panels push one another ------------------------------------------------
+//
+// The owner: *"shouldn't be able to drag windows over other windows. they
+// should collide and push one another around. not collide like physics, just
+// push."* So two rules hold of every layout this file shows: **no two panels
+// overlap**, and **the window's edge is the one immovable thing**. A panel that
+// meets another moves it by exactly the amount that separates them, that one
+// moves whatever it now meets, and nothing springs back, bounces or slides
+// round a corner. A push that would put any panel of the chain outside the area
+// cannot happen, and the panel doing the pushing stops flush against the chain.
+
+export interface Point { x: number; y: number }
+
+type Axis = "x" | "y";
+
+/**
+ * Below this, two panels touch rather than overlap. Pointer coordinates are
+ * whole pixels in practice, but nothing promises it, and a push computed in
+ * floating point must not read a shared edge as a sliver of overlap.
+ */
+const EPS = 1e-6;
+
+/** Whether two rectangles share any area — a shared edge is not overlap. */
+function overlaps(a: Rect, b: Rect): boolean {
+  return overlap(a.x, a.x + a.w, b.x, b.x + b.w) > EPS && overlap(a.y, a.y + a.h, b.y, b.y + b.h) > EPS;
+}
+
+/**
+ * Every pair of panels in `layout` that overlap, as `[id, id]` — empty for a
+ * layout that keeps the first rule. What the tests assert after every gesture,
+ * and what the DOM half checks after every placement when asked to.
+ */
+export function overlapping(layout: Layout): [string, string][] {
+  const ids = Object.keys(layout);
+  const out: [string, string][] = [];
+  for (let i = 0; i < ids.length; i++) {
+    for (let j = i + 1; j < ids.length; j++) if (overlaps(layout[ids[i]], layout[ids[j]])) out.push([ids[i], ids[j]]);
+  }
+  return out;
+}
+
+const start = (r: Rect, a: Axis) => (a === "x" ? r.x : r.y);
+const span = (r: Rect, a: Axis) => (a === "x" ? r.w : r.h);
+const room = (s: Size, a: Axis) => (a === "x" ? s.w : s.h);
+/** `r` with its interval along `a` replaced — the other axis untouched, which is "just push". */
+function along(r: Placed, a: Axis, pos: number, len: number = span(r, a)): Placed {
+  return a === "x" ? { ...r, x: pos, w: len } : { ...r, y: pos, h: len };
+}
+
+/**
+ * The chain a panel `mover`, now where `layout` has it, pushes along `axis` in
+ * direction `dir`: every panel it overlaps is put flush against its leading
+ * edge, and so on from each panel moved. The mover itself is not moved, and
+ * nothing is held inside the area here — that is the caller's question.
+ *
+ * Not breadth-first-never-revisit: a panel reached early by a short push can be
+ * reached again by a longer one through another panel, and must then move on,
+ * or the two would be left overlapping. Every push is the same way along the
+ * same axis, so positions only ever grow in `dir` and the loop settles; the
+ * guard is for a layout that was not sound to begin with.
+ */
+function shove(layout: Layout, mover: string, axis: Axis, dir: 1 | -1): Layout {
+  const out: Layout = { ...layout };
+  const ids = Object.keys(out);
+  const queue = [mover];
+  for (let guard = 0; queue.length && guard < 64 * ids.length * ids.length; guard++) {
+    const qid = queue.shift()!;
+    const q = out[qid];
+    for (const id of ids) {
+      if (id === mover || id === qid || !overlaps(q, out[id])) continue;
+      const p = out[id];
+      const to = dir > 0 ? start(q, axis) + span(q, axis) : start(q, axis) - span(p, axis);
+      if ((to - start(p, axis)) * dir <= EPS) continue;
+      out[id] = along(p, axis, to);
+      queue.push(id);
+    }
+  }
+  return out;
+}
+
+/** How far past the area's edge in `dir` the furthest panel that `after` moved (and `before` had elsewhere) has gone. */
+function excess(before: Layout, after: Layout, mover: string, axis: Axis, dir: 1 | -1, area: Size): number {
+  let e = 0;
+  for (const id of Object.keys(after)) {
+    if (id === mover || after[id] === before[id]) continue;
+    const r = after[id];
+    e = Math.max(e, dir > 0 ? start(r, axis) + span(r, axis) - room(area, axis) : -start(r, axis));
+  }
+  return e;
+}
+
+/**
+ * One axis of a push: the mover's interval along `axis` goes from `from`'s to
+ * `to`'s, and leads in `dir`. Returns the layout with the mover where it got
+ * to — the whole way, or as far as it can go with the chain inside.
+ *
+ * **Flush, not short, and found exactly.** Every panel the chain moves moves
+ * exactly as far as the mover's leading edge does past the point where the
+ * chain reached it, so how far the chain overshoots the edge grows one for one
+ * with the leading edge's travel. Pulling the travel back by the overshoot is
+ * therefore the largest travel that fits, to the pixel — where a binary search
+ * over the travel would stop a fraction short. The loop re-checks, and goes
+ * round again only if the chain met at the shorter travel is a different one
+ * (it cannot be longer); after a few rounds it gives up and stays put, which
+ * is always sound.
+ */
+function pass(layout: Layout, id: string, to: Rect, axis: Axis, dir: 1 | -1, area: Size): Layout {
+  const from = layout[id];
+  const [p0, l0, p1, l1] = [start(from, axis), span(from, axis), start(to, axis), span(to, axis)];
+  const lead = (p: number, l: number) => (dir > 0 ? p + l : p);
+  const travel = (lead(p1, l1) - lead(p0, l0)) * dir;
+  let s = 1;
+  for (let round = 0; round < 6; round++) {
+    const [p, l] = [p0 + s * (p1 - p0), l0 + s * (l1 - l0)];
+    // What pushes is everything the mover passed over on the way, not only
+    // where it lands: a fast flick that moves a panel further in one event
+    // than the panel in its way is wide would otherwise go straight through it.
+    const lo = Math.min(p0, p);
+    const swept = along(from, axis, lo, Math.max(p0 + l0, p + l) - lo);
+    const out = shove({ ...layout, [id]: swept }, id, axis, dir);
+    out[id] = along(from, axis, p, l);
+    const e = excess(layout, out, id, axis, dir, area);
+    if (e <= EPS) return snapped(layout, out, axis, area);
+    if (travel <= EPS) break;
+    s = Math.max(0, s - e / travel);
+  }
+  return layout;
+}
+
+/**
+ * `after` with every panel it moved that lies outside by no more than float
+ * noise put back on the edge. The pull-back above is exact in arithmetic and
+ * a few ulps out in floating point; a panel 1e-14 px past the top is still
+ * past it.
+ */
+function snapped(before: Layout, after: Layout, axis: Axis, area: Size): Layout {
+  for (const id of Object.keys(after)) {
+    const r = after[id];
+    if (r === before[id]) continue;
+    const hi = room(area, axis) - span(r, axis);
+    const p = start(r, axis);
+    if (p < 0 && p >= -EPS) after[id] = along(r, axis, 0);
+    else if (p > hi && p <= hi + EPS) after[id] = along(r, axis, hi);
+  }
+  return after;
+}
+
+/** The result of `pushed`: every panel's new place, and whether `id` got the whole way. */
+export interface Pushed { layout: Layout; rect: Placed; ok: boolean }
+
+/**
+ * The one resolver every arrangement goes through: panel `id` wants to be at
+ * `want`, the pointer having moved by `motion` since the last step. Returns the
+ * new layout, panels pushed included, and where `id` actually ended up.
+ *
+ * `want` is held inside the area first (`constrain`, with `id`'s minimum from
+ * `minSizes`), so the window edge stops the mover itself exactly as before.
+ *
+ * **With a motion**, each axis of it is taken in turn, the larger first (ties to
+ * x): the mover goes as far along that axis as it wants, and a panel in the way
+ * is pushed along that axis only, by exactly the overlap. Each axis on its own
+ * rather than everything along the larger one, because a drag is never quite
+ * straight: a tray resting on the log's top and dragged right with a pixel of
+ * downward drift must push the log down a pixel, not throw it sideways the
+ * width of the tray. A panel pushed along x still never moves in y.
+ *
+ * **With no motion** — a tray turning, a panel placed on load — the mover is
+ * put down where it wants and what it covers is pushed out of its way: along x
+ * first (the tie), away from the mover, then the other way; then along y the
+ * same. The first that leaves every panel inside and none overlapping wins. If
+ * none does, `ok` is false and nothing moves — the caller decides what an
+ * impossible placement means.
+ */
+export function pushed(
+  id: string, want: Placed, layout: Layout, area: Size, minSizes: Readonly<Record<string, Size>>, motion: Point,
+): Pushed {
+  const from = layout[id];
+  const orient = want.orient ?? from.orient;
+  const to = placed(constrain(want, area, minSizes[id] ?? { w: 0, h: 0 }), orient);
+  if (motion.x === 0 && motion.y === 0) return settle(id, to, layout, area);
+  let out = layout;
+  const axes: Axis[] = Math.abs(motion.x) >= Math.abs(motion.y) ? ["x", "y"] : ["y", "x"];
+  for (const axis of axes) {
+    const m = axis === "x" ? motion.x : motion.y;
+    const cur = out[id];
+    if (start(cur, axis) === start(to, axis) && span(cur, axis) === span(to, axis)) continue;
+    // The way the pointer went; failing that (a pointer still on this axis
+    // while the rectangle changed on it), the way the rectangle did.
+    const dir = (m !== 0 ? Math.sign(m) : Math.sign(start(to, axis) + span(to, axis) - start(cur, axis) - span(cur, axis)) || 1) as 1 | -1;
+    out = pass(out, id, along(cur, axis, start(to, axis), span(to, axis)), axis, dir, area);
+  }
+  const rect = placed(out[id], orient);
+  const ok = Math.abs(rect.x - to.x) <= EPS && Math.abs(rect.y - to.y) <= EPS &&
+    Math.abs(rect.w - to.w) <= EPS && Math.abs(rect.h - to.h) <= EPS;
+  return { layout: { ...out, [id]: rect }, rect, ok };
+}
+
+/** `pushed` with no motion: the mover put down at `to`, what it covers pushed out of the way. */
+function settle(id: string, to: Placed, layout: Layout, area: Size): Pushed {
+  const put = { ...layout, [id]: to };
+  const covered = Object.keys(put).filter((o) => o !== id && overlaps(to, put[o]));
+  if (covered.length === 0) return { layout: put, rect: to, ok: true };
+  for (const axis of ["x", "y"] as const) {
+    // Away from the mover: the side the covered panels' middles are on, summed.
+    const mid = (r: Rect) => start(r, axis) + span(r, axis) / 2;
+    const away = (Math.sign(covered.reduce((s, o) => s + mid(put[o]) - mid(to), 0)) || 1) as 1 | -1;
+    for (const dir of [away, -away as 1 | -1]) {
+      const out = shove(put, id, axis, dir);
+      if (excess(put, out, id, axis, dir, area) <= EPS && overlapping(out).length === 0) {
+        return { layout: out, rect: to, ok: true };
+      }
+    }
+  }
+  return { layout, rect: layout[id], ok: false };
+}
+
+/**
+ * A stored or default layout made sound: panels put down in `order`, each one
+ * that lands on a panel already down being pushed out of that panel's way
+ * (`pushed` with no motion, the earlier panel as the mover). Earlier panels
+ * hold their places, so a toolbar column that grows for a new tool down onto
+ * the log pushes the log out of its way — along x, the tie, by the tray's
+ * thickness — rather than the log knocking the toolbar off the left edge.
+ *
+ * `ok` is false when some panel could not be put clear of the others — a
+ * window too small to hold them all side by side at their sizes. Then it is
+ * left where it asked to be, over its neighbour: nothing here shrinks a panel
+ * to make room, and a panel pushed out of the window would be lost.
+ */
+export function settled(
+  layout: Layout, order: readonly string[], area: Size, minSizes: Readonly<Record<string, Size>>,
+): { layout: Layout; ok: boolean } {
+  let out: Layout = {};
+  let ok = true;
+  for (const id of order) {
+    if (!layout[id]) continue;
+    out = { ...out, [id]: layout[id] };
+    const under = order.find((o) => o !== id && out[o] && overlaps(out[o], out[id]));
+    if (under === undefined) continue;
+    const r = pushed(under, out[under], out, area, minSizes, { x: 0, y: 0 });
+    if (r.ok) out = r.layout;
+    else ok = false;
+  }
+  return { layout: out, ok };
+}
+
+/**
+ * Where on a panel the pointer holds it: the pointer minus the panel's top-left
+ * for a drag by the strip, minus its bottom-right corner for a resize by the
+ * grip.
+ */
+export interface Grab { id: string; kind: "move" | "resize"; dx: number; dy: number }
+
+export function grabbed(id: string, kind: "move" | "resize", pointer: Point, layout: Layout): Grab {
+  const r = layout[id];
+  return kind === "move"
+    ? { id, kind, dx: pointer.x - r.x, dy: pointer.y - r.y }
+    : { id, kind, dx: pointer.x - (r.x + r.w), dy: pointer.y - (r.y + r.h) };
+}
+
+/**
+ * One pointer move of a drag or a resize: where the panel wants to be from the
+ * pointer and the grab, everything `pushed` does about it, the turn if the
+ * panel is a tray (`content` gives its size each way it can run) — and then
+ * **the grab re-based on where the panel actually is**.
+ *
+ * That last is the owner's second line: *"when i grab a window at a point on
+ * that window, then push it up against something, the grab point should kind
+ * of slip, so that when i push it back in the opposite direction, it doesnt
+ * have to get back to the original slip point"*. A panel stopped short of the
+ * pointer — at the window's edge, against a chain that cannot move, at its
+ * minimum size — is now held at a new point, and the next move moves it at
+ * once, from where it is. Unblocked, the re-based grab is the grab it was. A
+ * tray that turns is a new shape under the pointer, re-based the same way
+ * (what `turned`'s caller once did by hand). The grip slips too: a log shrunk
+ * past its minimum grows again the moment the pointer turns back.
+ */
+export function dragStep(
+  grab: Grab, pointer: Point, layout: Layout, area: Size,
+  minSize: (id: string, orient: Orientation | undefined) => Size,
+  content?: (o: Orientation) => Size,
+): { layout: Layout; grab: Grab } {
+  const cur = layout[grab.id];
+  // Where the pointer now puts the corner it holds, against where that corner is.
+  const anchor = grab.kind === "move" ? { x: cur.x, y: cur.y } : { x: cur.x + cur.w, y: cur.y + cur.h };
+  const motion = { x: pointer.x - grab.dx - anchor.x, y: pointer.y - grab.dy - anchor.y };
+  if (motion.x === 0 && motion.y === 0) return { layout, grab };
+  const min = (o: Orientation | undefined) => ({ [grab.id]: minSize(grab.id, o) });
+  // A grip held off the window is a corner the viewer could no longer see,
+  // let alone grab: `resized` stops it at the area's far edges.
+  const asked: Placed = grab.kind === "move"
+    ? { ...cur, x: cur.x + motion.x, y: cur.y + motion.y }
+    : placed(resized(cur, motion.x, motion.y, area, minSize(grab.id, cur.orient)), cur.orient);
+  let r = pushed(grab.id, asked, layout, area, min(cur.orient), motion);
+  if (grab.kind === "move" && content && r.rect.orient) {
+    const others = Object.keys(r.layout).filter((o) => o !== grab.id).map((o) => r.layout[o]);
+    const t = turned(r.rect, r.rect.orient, area, others, content);
+    if (t.orient !== r.rect.orient) {
+      // Turned, the tray is put down in its new shape and what that covers is
+      // pushed out of the way. If nothing can make room, it does not turn.
+      const turnedTo = placed(t.rect, t.orient);
+      const u = pushed(grab.id, turnedTo, r.layout, area, min(t.orient), { x: 0, y: 0 });
+      if (u.ok) r = u;
+    }
+  }
+  return { layout: r.layout, grab: grabbed(grab.id, grab.kind, pointer, r.layout) };
 }
 
 // ---- the default layout -----------------------------------------------------
@@ -351,6 +661,11 @@ function placed(r: Rect, orient: Orientation | undefined): Placed {
  * `trays` names the panels that are trays, each with how many buttons it holds
  * right now: those, and only those, turn between column and row as they are
  * dragged against an edge (`turned`), and size to their buttons when they do.
+ *
+ * Every arrangement goes through `pushed`: a drag, a resize, a turn, and (by
+ * `settled`) every `apply`. So no two panels are ever shown overlapping while
+ * the window has room for them all. `check` asks for that to be verified after
+ * every placement and reported on the page when it fails — for the tests.
  */
 export class Panels {
   private area: HTMLElement;
@@ -363,15 +678,20 @@ export class Panels {
   private shown: Layout = {};
   /** Back to front. The panel last pressed is drawn over the others. */
   private order: string[] = [];
+  private check: boolean;
+  /** A gesture is in progress; `apply` waits for it (`stale`) rather than undo its pushes. */
+  private holding = false;
+  private stale = false;
 
   constructor(
     area: HTMLElement, defaults: (area: Size) => Layout, storage: StorageLike | null,
-    trays: Record<string, () => number> = {},
+    trays: Record<string, () => number> = {}, options: { check?: boolean } = {},
   ) {
     this.area = area;
     this.defaults = defaults;
     this.storage = storage;
     this.trays = trays;
+    this.check = options.check ?? false;
     this.stored = loadLayout(storage);
     for (const el of Array.from(area.querySelectorAll<HTMLElement>(".panel[data-panel]"))) {
       const id = el.dataset.panel!;
@@ -393,16 +713,56 @@ export class Panels {
     return MIN[id] ?? DEFAULT_MIN;
   }
 
-  /** Puts every panel where the layouts say. Cheap; call it whenever a default may have changed. */
+  /** Each panel's minimum as it runs now — what `pushed` holds a mover to. */
+  private mins(layout: Layout): Record<string, Size> {
+    return Object.fromEntries(Object.keys(layout).map((id) => [id, this.min(id, layout[id].orient)]));
+  }
+
+  /**
+   * Puts every panel where the layouts say, clear of one another. Cheap; call
+   * it whenever a default may have changed.
+   *
+   * Each panel's rectangle is the stored-or-default one held inside the area,
+   * then the whole set is `settled` in panel order — so a layout stored before
+   * panels pushed, a window shrunk until the defaults would overlap, or a
+   * toolbar grown for a new tool all come up with no panel over another. What
+   * that moves is not stored: it is this window's answer, and a wider one may
+   * need none of it.
+   */
   apply(): void {
+    // Mid-gesture the gesture owns the layout: putting the panels back where
+    // the stored layout says would throw away the pushes it has made so far.
+    if (this.holding) { this.stale = true; return; }
     const area = this.size();
     const defaults = this.defaults(area);
-    for (const [id, el] of this.els) {
+    const wanted: Layout = {};
+    for (const id of this.els.keys()) {
       const want = this.stored[id] ?? defaults[id] ?? { x: GAP, y: GAP, w: 200, h: 120 };
       // A tray always runs some way; one with nothing stored or defaulted runs
       // the default's way, which is down.
       const orient = id in this.trays ? want.orient ?? "column" : undefined;
-      this.place(id, el, placed(constrain(want, area, this.min(id, orient)), orient));
+      wanted[id] = placed(constrain(want, area, this.min(id, orient)), orient);
+    }
+    const s = settled(wanted, Array.from(this.els.keys()), area, this.mins(wanted));
+    this.show(s.layout, s.ok);
+  }
+
+  /**
+   * Puts each panel where `layout` says. With `check` on (the dev server, and
+   * so every e2e run) a layout with two panels overlapping is reported as an
+   * error on the page — unless the resolver has already said it could find
+   * no other (`sound` false: a window too small to hold them all).
+   */
+  private show(layout: Layout, sound = true): void {
+    for (const [id, r] of Object.entries(layout)) {
+      const el = this.els.get(id);
+      if (el && this.shown[id] !== r) this.place(id, el, r);
+    }
+    if (this.check && sound) {
+      const bad = overlapping(this.shown);
+      // Reported, not thrown: thrown from here it would break the very gesture
+      // that showed it, where the point is to see it and carry on.
+      if (bad.length) reportError(new Error(`panels overlap: ${bad.map((p) => p.join(" and ")).join(", ")} — ${JSON.stringify(this.shown)}`));
     }
   }
 
@@ -485,38 +845,21 @@ export class Panels {
       if (e.button !== 0) return;
       e.preventDefault();
       const el = this.els.get(id)!;
-      const start = this.shown[id];
-      // What the drag is measured from. A tray that turns mid-drag is a new
-      // shape under the pointer, so the drag starts again from where it turned:
-      // measured from the press it would jump back to the old shape's anchor.
-      let base = start;
-      let [x0, y0] = [e.clientX, e.clientY];
+      // The whole layout at the press: a push can move any panel, and each one
+      // this gesture moves is stored at its end like the one held.
+      const start = { ...this.shown };
+      let grab = grabbed(id, kind, { x: e.clientX, y: e.clientY }, this.shown);
       const count = this.trays[id];
+      const content = id in this.trays && kind === "move" ? (o: Orientation) => traySize(count(), o) : undefined;
       handle.setPointerCapture(e.pointerId);
       el.classList.add("held");
+      this.holding = true;
       const move = (ev: PointerEvent) => {
         if (ev.pointerId !== e.pointerId) return;
-        const area = this.size();
-        const [dx, dy] = [ev.clientX - x0, ev.clientY - y0];
-        const min = this.min(id, base.orient);
-        if (kind === "resize") {
-          // A resized tray keeps the way it runs, and scrolls if made short.
-          this.place(id, el, placed(resized(base, dx, dy, area, min), base.orient));
-          return;
-        }
-        const r = moved(base, dx, dy, area, min);
-        if (!count || !base.orient) {
-          this.place(id, el, placed(r, base.orient));
-          return;
-        }
-        // Live, on every move, so the viewer sees it turn as they push.
-        const others = Array.from(this.els.keys()).filter((o) => o !== id).map((o) => this.shown[o]);
-        const t = turned(r, base.orient, area, others, (o) => traySize(count(), o));
-        if (t.orient !== base.orient) {
-          base = placed(t.rect, t.orient);
-          [x0, y0] = [ev.clientX, ev.clientY];
-        }
-        this.place(id, el, placed(t.rect, t.orient));
+        const step = dragStep(grab, { x: ev.clientX, y: ev.clientY }, this.shown, this.size(),
+          (o, orient) => this.min(o, orient), content);
+        grab = step.grab;
+        this.show(step.layout);
       };
       const end = (ev: PointerEvent) => {
         if (ev.pointerId !== e.pointerId) return;
@@ -524,13 +867,20 @@ export class Panels {
         handle.removeEventListener("pointerup", end);
         handle.removeEventListener("pointercancel", end);
         el.classList.remove("held");
+        this.holding = false;
         // A press that never moved is not an arrangement; storing it would turn
         // an untouched panel's following-the-defaults into a fixed position.
-        const now = this.shown[id];
-        if (now.x === start.x && now.y === start.y && now.w === start.w && now.h === start.h &&
-            now.orient === start.orient) return;
-        this.stored[id] = now;
-        saveLayout(this.storage, this.stored);
+        // Nor is a panel the gesture left where it was.
+        let changed = false;
+        for (const [o, now] of Object.entries(this.shown)) {
+          const was = start[o];
+          if (was && now.x === was.x && now.y === was.y && now.w === was.w && now.h === was.h &&
+              now.orient === was.orient) continue;
+          this.stored[o] = now;
+          changed = true;
+        }
+        if (changed) saveLayout(this.storage, this.stored);
+        if (this.stale) { this.stale = false; this.apply(); }
       };
       handle.addEventListener("pointermove", move);
       handle.addEventListener("pointerup", end);
