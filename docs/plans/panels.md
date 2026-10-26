@@ -9,7 +9,11 @@ after the owner's report; deviations are in `TODO.md`'s Done entry.
 that only keeps a panel's *title strip* reachable is now **wholly inside**;
 "no icons in v1" is now **icons, the name as tooltip**; and the toolbar,
 always a column here, now **turns row/column** against the edge it is dragged
-to. The rest of this spec stands.
+to. And (owner, 2026-10-26; built by [`panels-push.md`](panels-push.md))
+panels that float freely over one another are now panels that **never
+overlap**: a dragged one pushes the others, in a chain, the window edge the
+one immovable thing, and a held panel's grab point **slips** when it is
+stopped short. The rest of this spec stands.
 Owner's direction, verbatim: *"add the
 buttons. but they should be a moveable toolbar. actually everything should
 be moveable and resizable."* The original brief listed cellwork's icon

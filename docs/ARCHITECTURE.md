@@ -851,6 +851,21 @@ of both (a corner), it stays as it is. The rule (`orientationFor`, `turned`) is
 pure arithmetic in `panels.ts`, and the orientation is stored with the
 rectangle, in the same per-viewer layout.
 
+**Panels push one another, and never overlap.** Every arrangement — a drag, a
+resize, a turn, every `apply` — goes through one pure resolver, `pushed`: the
+mover goes where it wants along each axis of the pointer's move in turn, and
+whatever its swept rectangle covers is put flush ahead of it along that axis,
+in a chain. The window edge is the one thing that does not move: a chain that
+would cross it pulls the mover's travel back by exactly the overshoot, so the
+mover stops flush. Each axis on its own, rather than everything along the
+larger, because a hand never drags quite straight and a pixel of drift into a
+panel must push it a pixel, not throw it sideways. **The grab slips**: after
+every move the drag's offset is re-based on where the panel ended up, so a
+panel stopped short follows the pointer back at once. Under the dev server the
+DOM half reports any overlap it shows as a page error, which is how the e2e
+suite asserts the invariant over every gesture it makes rather than only the
+ones it measures.
+
 **Gestures never cross**, and it takes both halves: a panel captures the
 pointer on its strip or grip, and the host captures it on every canvas press.
 The engine already captured drags, boxes and pans, but not an armed tool's

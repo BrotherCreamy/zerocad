@@ -2,7 +2,9 @@
 // a resize does to a rectangle, what keeps a panel wholly inside, which way a
 // tray runs against the edges it meets, the defaults, and a stored layout's
 // round trip — including through a storage that throws on every touch, which is
-// what a private window hands the app.
+// what a private window hands the app — and the two rules every arrangement
+// keeps: panels push one another and never overlap, and a held panel's grab
+// point slips when it is stopped short of the pointer.
 //
 // The browser half (pointer capture, gestures not crossing, persistence across
 // a real reload) is test/e2e/panels.e2e.ts.
@@ -12,9 +14,9 @@ import { readFile } from "node:fs/promises";
 import assert from "node:assert/strict";
 import {
   TITLE_H, BUTTON_STEP, TRAY_DEPTH, SNAP, STORAGE_KEY,
-  armCommand, buttonTitle, constrain, contacts, defaultLayout, describeLayout, loadLayout, moved, orientationFor,
-  parseLayout, resized, saveLayout, traySize, turned,
-  type Orientation, type Rect, type Size, type StorageLike,
+  armCommand, buttonTitle, constrain, contacts, defaultLayout, describeLayout, dragStep, grabbed, loadLayout, moved,
+  orientationFor, overlapping, parseLayout, pushed, resized, saveLayout, settled, traySize, turned,
+  type Grab, type Layout, type Orientation, type Point, type Rect, type Size, type StorageLike,
 } from "../src/panels.ts";
 import { neocadScope } from "../src/replenv.ts";
 import { Model } from "../src/model.ts";
@@ -284,6 +286,251 @@ test("a turn is held inside the area, keeping its edge, and no turn changes noth
   assert.equal(long.orient, "row");
   assert.ok(inside(long.rect, { w: 200, h: 700 }));
   assert.equal(long.rect.w, 200);
+});
+
+// --- panels push one another, and the grab point slips -----------------------
+
+const box = (x: number, y: number, w = 100, h = 100): Rect => ({ x, y, w, h });
+const still: Point = { x: 0, y: 0 };
+
+/** `id` dragged by (dx, dy) as one pointer move. */
+function push(layout: Layout, id: string, dx: number, dy: number, a: Size = area) {
+  const r = layout[id];
+  return pushed(id, { ...r, x: r.x + dx, y: r.y + dy }, layout, a, {}, { x: dx, y: dy });
+}
+
+/** Every panel wholly inside `a`, and no two overlapping: the invariant. */
+function sound(layout: Layout, a: Size = area): void {
+  assert.deepEqual(overlapping(layout), [], `no two panels overlap: ${JSON.stringify(layout)}`);
+  for (const [id, r] of Object.entries(layout)) assert.ok(inside(r, a), `${id} is inside: ${JSON.stringify(r)}`);
+}
+
+test("a dragged panel that meets another pushes it, along x and along y, by exactly the overlap", () => {
+  const side = push({ a: box(100, 100), b: box(250, 100) }, "a", 100, 0);
+  assert.deepEqual(side.layout.b, box(300, 100), "pushed right to the mover's edge, flush");
+  assert.deepEqual(side.rect, box(200, 100), "and the mover went where it was dragged");
+  assert.equal(side.ok, true);
+  const down = push({ a: box(100, 100), b: box(100, 250) }, "a", 0, 100);
+  assert.deepEqual(down.layout.b, box(100, 300));
+  // Up against it exactly, nothing moves: touching is not overlap.
+  assert.deepEqual(push({ a: box(100, 100), b: box(250, 100) }, "a", 50, 0).layout.b, box(250, 100));
+  const left = push({ a: box(400, 100), b: box(250, 100) }, "a", -100, 0);
+  assert.deepEqual(left.layout.b, box(200, 100), "and the other way");
+  sound(side.layout); sound(down.layout); sound(left.layout);
+});
+
+test("a chain: the pushed panel pushes the next", () => {
+  const r = push({ a: box(100, 100), b: box(250, 100), c: box(400, 150) }, "a", 200, 0);
+  assert.deepEqual(r.rect, box(300, 100));
+  assert.deepEqual(r.layout.b, box(400, 100));
+  assert.deepEqual(r.layout.c, box(500, 150), "c, reached only through b, pushed along x alone");
+  sound(r.layout);
+  // A panel reached twice: first by the mover itself, a short push, then
+  // through b, which the mover pushed onto it, a longer one. Visited once and
+  // never again, c would be left under b.
+  const twice = push({ a: box(100, 100, 100, 200), b: box(210, 100, 50, 100), c: box(270, 150) }, "a", 150, 0);
+  sound(twice.layout);
+  assert.deepEqual(twice.layout.b, box(350, 100, 50, 100));
+  assert.deepEqual(twice.layout.c, box(400, 150), "flush against b, not against the mover where it was first put");
+});
+
+test("a flick further in one move than a panel is wide still pushes it, rather than passing through", () => {
+  const r = push({ a: box(100, 100), b: box(250, 100, 20, 100) }, "a", 400, 0);
+  assert.deepEqual(r.layout.b, box(600, 100, 20, 100), "flush ahead of where the mover landed");
+  const up = push({ a: box(100, 500), b: box(100, 300, 100, 10) }, "a", 0, -500);
+  assert.deepEqual(up.layout.b, box(100, 0, 100, 10), "and pushed to the top");
+  assert.equal(up.rect.y, 10, "the mover stopped flush under it");
+});
+
+test("a chain blocked at the window edge stops the mover flush against it, to the pixel", () => {
+  // The chain has 100 px of room: it uses all of it, and the mover stops
+  // where the chain is solid against the right edge.
+  const r = push({ a: box(100, 100), b: box(700, 100), c: box(900, 100) }, "a", 700, 0);
+  assert.equal(r.ok, false, "it did not get where it was dragged");
+  assert.deepEqual(r.layout.c, box(900, 100), "the panel on the edge did not move");
+  assert.deepEqual(r.layout.b, box(800, 100), "the one between used its room");
+  assert.equal(r.rect.x + r.rect.w, r.layout.b.x, "and the mover is flush against it");
+  assert.deepEqual(r.rect, box(700, 100), "not a pixel short");
+  sound(r.layout);
+  // A chain with no room at all is left exactly where it was.
+  const tight = { a: box(100, 100), b: box(800, 100), c: box(900, 100) };
+  const t = push(tight, "a", 650, 0);
+  assert.deepEqual([t.layout.b, t.layout.c], [tight.b, tight.c], "the chain is unmoved");
+  assert.deepEqual(t.rect, box(700, 100), "and the mover stops on it");
+  // Upward against the top too, from fractional positions.
+  const u = push({ a: box(10.5, 400.25), b: box(10.5, 150.75) }, "a", 0, -390);
+  assert.deepEqual(u.layout.b, box(10.5, 0));
+  assert.equal(u.rect.y, 100, "flush under b, which is flush with the top");
+});
+
+test("a diagonal drag pushes along the dominant axis only — and a drift on the other pushes by the drift", () => {
+  // Into b's side, mostly rightward: b goes right and not a pixel down.
+  const r = push({ a: box(100, 100), b: box(250, 120) }, "a", 100, 30);
+  assert.deepEqual(r.layout.b, box(300, 120), "pushed along x only");
+  assert.deepEqual(r.rect, box(200, 130), "while the mover went both ways");
+  sound(r.layout);
+  // Resting on b's top and dragged right with two pixels of downward drift:
+  // b is pushed down by the two pixels — not thrown sideways the width of the
+  // mover, which is what pushing everything along the larger axis would do.
+  const resting = push({ a: box(300, 100), b: box(200, 200, 400, 100) }, "a", 20, 2);
+  assert.deepEqual(resting.layout.b, box(200, 202, 400, 100));
+  assert.deepEqual(resting.rect, box(320, 102));
+  // A panel pushed along x never moves in y, over a whole drag of small steps.
+  let l: Layout = { a: box(100, 300), b: box(260, 320) };
+  for (let i = 0; i < 40; i++) l = push(l, "a", 7, i % 3 === 0 ? 1 : 0).layout;
+  assert.ok(l.b.x > 260, "it was pushed");
+  assert.equal(l.b.y, 320);
+  sound(l);
+});
+
+test("a pushed panel stays where it was pushed when the mover goes back", () => {
+  const there = push({ a: box(100, 100), b: box(250, 100) }, "a", 120, 0);
+  const back = push(there.layout, "a", -300, 0);
+  assert.deepEqual(back.layout.b, box(320, 100), "no spring, no pull");
+  assert.deepEqual(back.rect, box(0, 100), "while the mover went back, to the edge");
+});
+
+test("a resize by the grip pushes what it grows into, and stops at the edge", () => {
+  const l: Layout = { a: box(100, 100), b: box(250, 100) };
+  const minSize = () => ({ w: 50, h: 50 });
+  let s = dragStep(grabbed("a", "resize", { x: 200, y: 200 }, l), { x: 300, y: 200 }, l, area, minSize);
+  assert.deepEqual(s.layout.a, box(100, 100, 200, 100), "grown by the grip's travel");
+  assert.deepEqual(s.layout.b, box(300, 100), "and b pushed by it");
+  s = dragStep(s.grab, { x: 1500, y: 200 }, s.layout, area, minSize);
+  assert.deepEqual(s.layout.b, box(900, 100), "b on the right edge");
+  assert.deepEqual(s.layout.a, box(100, 100, 800, 100), "and a grown flush against it, no further");
+  sound(s.layout);
+  // Back: it shrinks at once (the grip slips too), and pulls nothing with it.
+  s = dragStep(s.grab, { x: 1490, y: 200 }, s.layout, area, minSize);
+  assert.deepEqual(s.layout.b, box(900, 100));
+  assert.equal(s.layout.a.w, 790, "ten pixels back, ten pixels narrower");
+});
+
+test("a tray turning into a neighbour pushes it out of the way, along x", () => {
+  // A column dragged up to the top edge turns into a row along it, and the
+  // row, as long as the column was tall, lands on n.
+  const l: Layout = { tray: { ...col(400, 300), orient: "column" }, n: box(440, 0, 200, 100) };
+  const g = grabbed("tray", "move", { x: 414, y: 308 }, l);
+  const s = dragStep(g, { x: 414, y: 0 }, l, area, () => ({ w: 28, h: 28 }), content);
+  assert.equal(s.layout.tray.orient, "row");
+  assert.deepEqual([s.layout.tray.x, s.layout.tray.y], [400, 0]);
+  assert.deepEqual(s.layout.n, box(400 + traySize(10, "row").w, 0, 200, 100), "pushed along x, flush, still on the top");
+  sound(s.layout);
+  // A neighbour that can go neither sideways nor down: the tray does not turn.
+  const walled: Layout = { tray: { ...col(400, 300), orient: "column" }, n: box(440, 0, 560, 700) };
+  const w = dragStep(grabbed("tray", "move", { x: 414, y: 308 }, walled), { x: 414, y: 0 }, walled, area, () => ({ w: 28, h: 28 }), content);
+  assert.equal(w.layout.tray.orient, "column");
+  assert.equal(w.layout.tray.y, 0, "it still went where it was dragged");
+  assert.deepEqual(w.layout.n, walled.n);
+  sound(w.layout);
+});
+
+test("with no motion a panel in the way is pushed along x first, away from the mover — then along y", () => {
+  const r = pushed("a", box(100, 100), { a: box(500, 500), b: box(150, 120) }, area, {}, still);
+  assert.deepEqual(r.layout.b, box(200, 120), "away to the right, where b's middle is");
+  const l = pushed("a", box(100, 100), { a: box(500, 500), b: box(50, 120) }, area, {}, still);
+  assert.deepEqual(l.layout.b, box(0, 120), "away to the left");
+  // No room either way along x: along y instead.
+  const narrow = { w: 220, h: 700 };
+  const y = pushed("a", box(10, 100, 200, 100), { a: box(10, 500, 200, 100), b: box(10, 150, 200, 100) }, narrow, {}, still);
+  assert.deepEqual(y.layout.b, box(10, 200, 200, 100));
+  // No room at all: nothing moves, and the caller is told.
+  const full = pushed("a", box(0, 0, 220, 700), { a: box(0, 0, 10, 10), b: box(10, 150, 200, 100) }, narrow, {}, still);
+  assert.equal(full.ok, false);
+  assert.deepEqual(full.layout, { a: box(0, 0, 10, 10), b: box(10, 150, 200, 100) });
+});
+
+test("load: a stored layout that overlaps comes up clear, earlier panels holding their places", () => {
+  const order = ["toolbar", "log", "cmd"];
+  const stored: Layout = { toolbar: { ...col(8, 8), orient: "column" }, log: box(8, 200, 560, 150), cmd: box(300, 300, 560, 44) };
+  const s = settled(stored, order, area, {});
+  assert.equal(s.ok, true);
+  sound(s.layout);
+  assert.deepEqual(s.layout.toolbar, stored.toolbar, "the first panel is where it asked to be");
+  assert.deepEqual(s.layout.log, box(8 + TRAY_DEPTH, 200, 560, 150), "the log pushed off the toolbar, along x");
+  // An untouched toolbar grown for a new tool, down onto the log: it keeps its
+  // place, and the log makes way, sideways by the tray's thickness.
+  const g = defaultLayout(area, 11);
+  const grown = { ...g, toolbar: { ...g.toolbar, h: g.log.y + 10 - g.toolbar.y } };
+  const gs = settled(grown, order, area, {});
+  sound(gs.layout);
+  assert.deepEqual(gs.layout.toolbar, grown.toolbar);
+  assert.deepEqual(gs.layout.log, { ...g.log, x: g.toolbar.x + g.toolbar.w });
+  assert.deepEqual(gs.layout.cmd, g.cmd, "the command line, clear of both, untouched");
+  // A window shrunk until the defaults themselves would overlap: the toolbar is
+  // taller than the room above the log.
+  const short = { w: 1000, h: 420 };
+  const d = defaultLayout(short, 11);
+  assert.notDeepEqual(overlapping(d), [], "the defaults overlap in a window this short");
+  const t = settled(d, order, short, {});
+  assert.equal(t.ok, true);
+  sound(t.layout, short);
+  // One too small to hold them at all says so, and leaves them as asked.
+  const tiny = { w: 300, h: 200 };
+  const u = settled({ a: box(0, 0, 300, 150), b: box(0, 100, 300, 100) }, ["a", "b"], tiny, {});
+  assert.equal(u.ok, false);
+  assert.deepEqual(u.layout.b, box(0, 100, 300, 100));
+  // A sound layout is left exactly as it is.
+  const fine = defaultLayout(area, 11);
+  assert.deepEqual(settled(fine, order, area, {}).layout, fine);
+});
+
+test("the slip: stopped short, the grab re-bases on where the panel is, so one move back moves it", () => {
+  const l: Layout = { a: box(800, 100) };
+  const g: Grab = grabbed("a", "move", { x: 850, y: 150 }, l);
+  assert.deepEqual([g.dx, g.dy], [50, 50]);
+  const minSize = () => ({ w: 10, h: 10 });
+  const s = dragStep(g, { x: 1050, y: 150 }, l, area, minSize);
+  assert.deepEqual(s.layout.a, box(900, 100), "flush with the right edge");
+  assert.deepEqual([s.grab.dx, s.grab.dy], [1050 - 900, 150 - 100], "the grab is the pointer minus where the panel is");
+  const back = dragStep(s.grab, { x: 1040, y: 150 }, s.layout, area, minSize);
+  assert.deepEqual(back.layout.a, box(890, 100), "ten pixels back, ten pixels moved — not two hundred first");
+  // Unblocked, the grab is untouched.
+  const free = dragStep(g, { x: 700, y: 300 }, l, area, minSize);
+  assert.deepEqual([free.grab.dx, free.grab.dy], [50, 50]);
+  // Against a chain that cannot move, the same.
+  const chain: Layout = { a: box(500, 100), b: box(800, 100), c: box(900, 100) };
+  const c = dragStep(grabbed("a", "move", { x: 550, y: 150 }, chain), { x: 800, y: 150 }, chain, area, minSize);
+  assert.deepEqual(c.layout.a, box(700, 100));
+  assert.equal(c.grab.dx, 800 - 700);
+  assert.deepEqual(dragStep(c.grab, { x: 795, y: 150 }, c.layout, area, minSize).layout.a, box(695, 100));
+});
+
+test("2 000 random drags over three panels never leave an overlap or a pixel outside", () => {
+  let seed = 11;
+  const rand = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648);
+  const a = { w: 1100, h: 760 };
+  let l: Layout = defaultLayout(a, 11);
+  const ids = Object.keys(l);
+  const minSize = (id: string, o: Orientation | undefined) => (id === "toolbar" ? traySize(1, o ?? "column") : { w: 160, h: 44 });
+  const tray = (o: Orientation) => traySize(11, o);
+  let pushes = 0;
+  let turns = 0;
+  let stops = 0;
+  for (let i = 0; i < 2000; i++) {
+    const id = ids[Math.floor(rand() * ids.length)];
+    const kind = rand() < 0.8 ? "move" : "resize";
+    const r = l[id];
+    let p: Point = kind === "move" ? { x: r.x + 5, y: r.y + 5 } : { x: r.x + r.w - 2, y: r.y + r.h - 2 };
+    let g = grabbed(id, kind, p, l);
+    const [tx, ty] = [(rand() - 0.5) * 1400, (rand() - 0.5) * 1000];
+    const steps = 1 + Math.floor(rand() * 12);
+    for (let k = 0; k < steps; k++) {
+      p = { x: p.x + tx / steps + (rand() - 0.5) * 6, y: p.y + ty / steps + (rand() - 0.5) * 6 };
+      const before = l;
+      const s = dragStep(g, p, l, a, minSize, id === "toolbar" ? tray : undefined);
+      if (s.grab.dx !== g.dx || s.grab.dy !== g.dy) stops++;
+      [l, g] = [s.layout, s.grab];
+      if (ids.some((o) => o !== id && l[o] !== before[o])) pushes++;
+      if (l.toolbar.orient !== before.toolbar.orient) turns++;
+      assert.deepEqual(overlapping(l), [], `drag ${i}, step ${k}: ${JSON.stringify(l)}`);
+      for (const o of ids) assert.ok(inside(l[o], a), `drag ${i}, step ${k}: ${o} at ${JSON.stringify(l[o])}`);
+    }
+  }
+  // Not vacuous: the walk really pushed, stopped short and turned, many times.
+  assert.ok(pushes > 200, `${pushes} steps pushed something`);
+  assert.ok(stops > 200, `${stops} steps were stopped short and slipped`);
+  assert.ok(turns > 20, `${turns} steps turned the tray`);
 });
 
 test("layout is a viewport command: it says so with no viewport, and help() lists it", async () => {

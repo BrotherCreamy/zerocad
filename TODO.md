@@ -838,7 +838,19 @@ are flagged as such.
   it up against a vertical/horizontal edge of another tooltray"*: the toolbar
   **turns** row/column live as it is dragged against the area's edges or a
   panel's facing edge (a corner keeps its way), and the orientation is stored
-  with the layout. A button types
+  with the layout. ~~A panel may be pushed over another~~ — overturned by the
+  owner (2026-10-26): *"shouldn't be able to drag windows over other windows.
+  they should collide and push one another around. not collide like physics,
+  just push"*, and *"when i grab a window at a point on that window, then push
+  it up against something, the grab point should kind of slip, so that when i
+  push it back in the opposite direction, it doesnt have to get back to the
+  original slip point"*. Two rules: **panels never overlap** — a dragged,
+  resized, turned or grown panel pushes what it meets, in a chain, by exactly
+  the overlap, and nothing springs back; the window's edge is the one
+  immovable thing, and a panel blocked by a chain against it stops flush —
+  and **the grab point slips**: stopped short of the pointer, the panel is held
+  from where it is, so one move back moves it. One pure resolver, `pushed`,
+  serves every arrangement. A button types
   `arm("name")` through `submit`, the context menu's rule: it can do nothing a
   typed command cannot. An empty model says what to do (owner's report, *"i
   dont see anything in the artifact"*), drawn from the model, never a flag.
@@ -847,7 +859,8 @@ are flagged as such.
   (`src/toolavail.ts`) read by both, so the two can never disagree.
   Spec: [`docs/plans/panels.md`](docs/plans/panels.md),
   [`docs/plans/toolbar-availability.md`](docs/plans/toolbar-availability.md),
-  [`docs/plans/toolbar-icons-docking.md`](docs/plans/toolbar-icons-docking.md).
+  [`docs/plans/toolbar-icons-docking.md`](docs/plans/toolbar-icons-docking.md),
+  [`docs/plans/panels-push.md`](docs/plans/panels-push.md).
 - **The command line is curation, not a sandbox.** Typed code runs with the
   app's full authority; the scope exists for legibility and typo-catching,
   and says so honestly rather than claiming to be a security boundary.
@@ -1354,8 +1367,73 @@ extended the way `defineTool` extends the tool registry would close it.
       panel stays put when the window grows (an untouched one follows its
       default, which is anchored to the bottom edge). Anchoring a moved panel
       to its nearest edge would fix it; not needed until someone resizes often.
+- [ ] **A window too small for every panel leaves one over another.** The
+      resolver pushes and never shrinks, so when the panels at their sizes
+      cannot sit side by side in the area (`settled` returns `ok: false`), the
+      last one placed is left over its neighbour rather than pushed out of the
+      window. Shrinking panels toward their minimums to make room would close
+      it; the e2e window is far from it, and nobody has hit it.
+- [ ] **A pushed tray keeps its way.** Only the dragged tray turns; one pushed
+      flush against an edge by another panel stays a column (or row). Turning a
+      pushed tray would mean a push changing a panel's shape mid-chain, which
+      the resolver's flush arithmetic assumes does not happen.
 
 ## Done
+
+- [x] **Panels push one another, and the grab point slips** — spec:
+      [`docs/plans/panels-push.md`](docs/plans/panels-push.md), now marked
+      built; the owner's words and the two rules are in the register entry
+      above. `pushed`, `settled`, `dragStep`, `grabbed` and `overlapping` in
+      `panels.ts`, pure and unit-tested; the DOM half calls `dragStep` on every
+      move and `settled` on every `apply`, stores every panel a gesture moved,
+      and (dev server only) reports an overlap as a page error.
+      **Deviations from the spec:**
+      - ⚠ **Each axis of the motion is resolved in turn, the larger first —
+        not everything along the dominant axis.** Literally, a tray resting on
+        the log's top dragged right with one pixel of downward drift overlaps
+        the log by a pixel, and "move that panel along the dominant axis by the
+        amount that separates them" throws the log sideways by the tray's
+        width — or, with no room, jams the drag. Per axis, the log is pushed
+        down the pixel. Face-on the two agree: the spec's "diagonal motion
+        pushes along the dominant axis only" test passes as written, and a
+        second test pins the drift case. A panel pushed along x still never
+        moves in y within that axis's pass.
+      - **The flush stop is exact, not a binary search.** A chain's overshoot
+        past the edge grows one for one with the mover's travel, so the travel
+        pulled back by the overshoot is the largest that fits — to the pixel,
+        where a bisection stops a fraction short. Re-checked in a loop in case
+        the shorter travel meets a different chain; gives up to "stay put".
+      - **The chain may revisit a panel.** "Breadth first, never revisiting"
+        leaves a panel the mover reached first by a short push under another
+        panel that then reaches it by a longer one (unit-tested). Pushes are
+        all one way along one axis, so revisiting still terminates.
+      - **What pushes is the mover's swept rectangle**, not its landing place:
+        the random walk found a flick moving further in one event than a
+        narrow panel is wide passing straight through it.
+      - **Zero motion falls back.** The spec gives only "ties resolve along x";
+        built as x away from the mover, x the other way, then y away and y
+        the other way, first sound one wins, else `ok: false` and nothing
+        moves — a turn that cannot make room does not happen.
+      - **Load puts panels down in order with earlier ones holding their
+        places**: each one that lands on an earlier one is pushed out of *its*
+        way (the earlier panel is `pushed`'s mover). With the later one as
+        the mover, a toolbar grown for a new tool would be knocked off the
+        left edge by the log, then thrown to the log's far side.
+      - **The grip slips too**, the same rule; the spec named only the drag.
+      - **The e2e chain test pushes the command line as well as the log**: the
+        default layout has the command line under the log, so "until the log
+        reaches the bottom edge" is "until the command line under it does".
+        The spec text is corrected.
+      - **The register's "overlaps it" caveat was in STATUS, not the
+        register** (STATUS's tool-tray entry); struck there, and the register
+        entry now carries the two rules.
+      - The old e2e "cannot be dragged off an edge" drove the command line to
+        the top-left through the log and toolbar, which now push; it parks the
+        toolbar first and takes the log to the top-left instead.
+      Tests: 811 → 823 unit, 293 → 299 e2e. Screenshots 92–93, looked at.
+      *Discovered:* a window too small to hold every panel side by side leaves
+      the last one over its neighbour — nothing shrinks a panel to make room
+      (Smaller things); a pushed tray does not turn.
 
 - [x] **The tool tray: icons, held inside, turning with the edge it meets** —
       spec: [`docs/plans/toolbar-icons-docking.md`](docs/plans/toolbar-icons-docking.md),

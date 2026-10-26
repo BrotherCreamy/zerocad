@@ -106,6 +106,84 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### Panels push one another: per axis, exact, and the grab slips
+
+**The owner:** *"shouldn't be able to drag windows over other windows. they
+should collide and push one another around. not collide like physics, just
+push. also when i grab a window at a point on that window, then push it up
+against something, the grab point should kind of slip, so that when i push it
+back in the opposite direction, it doesnt have to get back to the original slip
+point"*. The spec (`docs/plans/panels-push.md`) made it one pure resolver,
+`pushed`, through which every arrangement goes.
+
+**Decisions made in the code, and what was rejected:**
+
+- *Each axis of the motion in turn, not everything along the dominant one.*
+  The spec said: resolve an overlap by moving the other panel along the
+  motion's dominant axis by the amount that separates them. Worked through,
+  that breaks on the commonest drag there is. A tray resting on the log (after
+  being pushed onto it, or turned against it) dragged right with one pixel of
+  downward drift overlaps the log by one pixel; along the dominant axis the
+  amount that separates them is the tray's whole overlap in x, so the log
+  jumps sideways hundreds of pixels — or, with no room for that, the chain
+  "fails" and the tray cannot be dragged right at all while the hand drifts.
+  Taking x and y in turn (the larger first, so a near-horizontal flick into a
+  panel's side is resolved in x before the drift is considered) pushes the
+  log down the pixel. Face-on, it is the same result the spec asked for, and
+  its "diagonal motion pushes along the dominant axis only" test passes as
+  written. Rejected also: a minimum-translation push (out along whichever
+  axis separates least), which slides a panel round the mover's corner — the
+  "sliding round corners" the owner's "just push" rules out.
+- *The flush stop is computed, not searched.* Along one axis, every panel the
+  chain moves moves exactly as far as the mover's leading edge does past the
+  point where the chain reached it, so the chain's overshoot past the edge
+  grows one for one with the travel. Pulling the travel back by the
+  overshoot is the largest travel that fits, exactly; a bisection gets within
+  a fraction of a pixel and a test asking for "flush, to the pixel" would
+  need a tolerance. The loop re-checks (a shorter travel can meet a different,
+  shorter chain) and, failing a few rounds, stays put — always sound.
+- *The chain revisits.* "Breadth first, never revisiting" leaves overlap when
+  the mover reaches a panel directly with a short push and another panel it
+  pushed then reaches it further; never revisiting, the two stay on top of
+  each other. A unit test builds exactly that. All pushes in a pass go one
+  way along one axis, so positions only grow and the loop ends.
+- *The swept rectangle pushes.* The 2 000-drag random walk failed on its first
+  run: a single pointer event that moved a panel further than a narrow panel
+  in its way is wide put it on the far side, clear, having pushed nothing.
+  Real mice do that on a fast flick. The mover's interval from where it was to
+  where it lands is what is tested for overlap; it lands where it lands.
+- *Float noise is snapped.* The same walk's second failure was a tray at
+  y = −7e-15 after a pull-back: exact in arithmetic, a few ulps out in floating
+  point. A moved panel within 1e-6 px outside is put on the edge; overlap
+  itself is measured with the same tolerance, so a shared edge is never read
+  as a sliver.
+- *Load: earlier panels hold their places.* Read literally, "each panel is
+  pushed into a non-overlapping place" with that panel as the mover means a
+  toolbar grown for a new tool, placed first, gets shoved by the log placed
+  after it — off the left edge, failing, then to the log's far right. With the
+  earlier panel as the mover, the grown toolbar stays and the log makes way.
+  What `apply` moves is not stored: a wider window may need none of it.
+- *Zero motion tries x away, x back, y away, y back.* The spec said only "ties
+  resolve along x". A turn whose row would cover a panel that cannot go
+  sideways now pushes it down; one that nothing can make room for simply does
+  not turn.
+- *The slip is the grab re-based every move*, as the spec said — and that one
+  rule replaced the special re-basing the drag used to do after a turn. The
+  grip slips the same way, which the spec did not ask for: a log shrunk past
+  its minimum used to need the pointer back past where it stopped before it
+  grew again, the same annoyance the owner described.
+- *The invariant is asserted in the browser over every gesture*, not only the
+  measured ones: under the dev server the DOM half `reportError`s any overlap
+  it shows (unless the resolver said the window cannot hold them), and every
+  e2e file already asserts no uncaught page errors. Reported, not thrown, so a
+  developer who trips it keeps a working page.
+
+**Left in place deliberately:** a window too small to hold the panels side by
+side at their sizes leaves the last one over its neighbour (pushing never
+shrinks); a pushed tray does not turn; with zero motion a toolbar grown onto
+the log nudges the log sideways by the tray's thickness, the x tie, rather
+than down.
+
 ### Hidden edges: dim the ink, keep the drawing on top
 
 The spec (`docs/plans/hidden-edges.md`) kept the rule that made a solid

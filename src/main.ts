@@ -66,12 +66,18 @@ const toolbarEl = document.getElementById("toolbar")!;
  * line grows an untouched toolbar through `syncToolbar` below. The toolbar is
  * the one tray: it turns between column and row against the edges it is
  * dragged to, sized to the same count.
+ *
+ * Under the dev server — which is what every e2e run drives — the panels check
+ * after each placement that no two overlap and report it on the page if they
+ * do, so the e2e suite's "no uncaught page errors" covers every gesture it
+ * makes, not only the ones a test measures. A built page does not pay for it.
  */
 const panels = new Panels(
   document.getElementById("viewwrap")!,
   (area) => defaultLayout(area, listTools().length),
   browserStorage(),
   { toolbar: () => listTools().length },
+  { check: Boolean((import.meta as { env?: { DEV?: boolean } }).env?.DEV) },
 );
 
 function log(msg: string, cls?: string) {
