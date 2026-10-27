@@ -17,9 +17,10 @@
 // storage failure must cost the viewer their arrangement and nothing else.
 //
 // The split follows menu.ts's: the geometry — what a drag or a resize does to a
-// rectangle, what keeps a panel inside the area, how panels push one another
-// and where a held panel slips under the pointer, which way a tray runs against
-// the edges it meets, what a stored layout parses to — is pure functions over
+// rectangle, what keeps a panel inside the area, how panels push one another,
+// which point of a held panel the hand keeps (the one it took — the owner:
+// *"the grasp point should stay the same"*), which way a tray runs against the
+// edges it meets, what a stored layout parses to — is pure functions over
 // plain numbers, tested without a DOM. The DOM half is thin on purpose.
 //
 // This file imports nothing from the model or the tools. The toolbar is given
@@ -442,7 +443,8 @@ export function settled(
 /**
  * Where on a panel the pointer holds it: the pointer minus the panel's top-left
  * for a drag by the strip, minus its bottom-right corner for a resize by the
- * grip.
+ * grip. Taken once, at the press, and held for the whole gesture — see
+ * `dragStep`.
  */
 export interface Grab { id: string; kind: "move" | "resize"; dx: number; dy: number }
 
@@ -454,39 +456,83 @@ export function grabbed(id: string, kind: "move" | "resize", pointer: Point, lay
 }
 
 /**
+ * The grab on a tray that has just turned from `from` to `to`: the same point of
+ * the tray under the hand, as nearly as the new shape allows. The hand holds the
+ * strip, and the strip turns with the tray — across a column's top, down a
+ * row's left end — so the point is carried as how far along the strip it is, a
+ * fraction of the strip's length, and how deep into the strip, which the
+ * strip's thickness (`TITLE_H`, the same both ways) keeps. Not a fresh offset
+ * from the pointer to wherever the turn put the tray: that would be the grab
+ * re-basing, which is exactly what the owner withdrew.
+ */
+export function regrasped(grab: Grab, from: Placed, to: Placed): Grab {
+  const colFrom = from.orient !== "row";
+  const colTo = to.orient !== "row";
+  const along = colFrom ? grab.dx : grab.dy;
+  const depth = colFrom ? grab.dy : grab.dx;
+  const lenFrom = colFrom ? from.w : from.h;
+  const lenTo = colTo ? to.w : to.h;
+  const a = lenFrom > 0 ? (along / lenFrom) * lenTo : 0;
+  const d = clamp(depth, 0, colTo ? to.h : to.w);
+  return colTo ? { ...grab, dx: a, dy: d } : { ...grab, dx: d, dy: a };
+}
+
+/**
  * One pointer move of a drag or a resize: where the panel wants to be from the
- * pointer and the grab, everything `pushed` does about it, the turn if the
- * panel is a tray (`content` gives its size each way it can run) — and then
- * **the grab re-based on where the panel actually is**.
+ * pointer and the grab, everything `pushed` does about it, and the turn if the
+ * panel is a tray (`content` gives its size each way it can run).
  *
- * That last is the owner's second line: *"when i grab a window at a point on
- * that window, then push it up against something, the grab point should kind
- * of slip, so that when i push it back in the opposite direction, it doesnt
- * have to get back to the original slip point"*. A panel stopped short of the
- * pointer — at the window's edge, against a chain that cannot move, at its
- * minimum size — is now held at a new point, and the next move moves it at
- * once, from where it is. Unblocked, the re-based grab is the grab it was. A
- * tray that turns is a new shape under the pointer, re-based the same way
- * (what `turned`'s caller once did by hand). The grip slips too: a log shrunk
- * past its minimum grows again the moment the pointer turns back.
+ * **The grab is fixed at the moment the panel is taken** — the owner: *"actually
+ * the grasp point should stay the same"*, withdrawing the slip he had asked for
+ * the day before. A panel stopped short — at the window's edge, against a
+ * chain that cannot move, a grip at its minimum — stays where it stopped while
+ * the pointer goes on, because every move asks again for the rectangle under
+ * the hand and is refused again. It moves again only when the pointer comes
+ * back past the point where it left the panel behind, and is then once more
+ * exactly under the hand where it was grabbed. So the grab goes back out
+ * untouched, drag and grip alike.
+ *
+ * The one exception is a tray that **turns**: it is a new shape, and the grab
+ * becomes the same point of it (`regrasped`). Where the turn puts the tray is
+ * still `turned`'s business — the edge it met is held — so after a turn against
+ * a bottom or a right edge, the end the strip is not at, the tray lies against
+ * that edge away from the hand until the next move brings it back under it.
  */
 export function dragStep(
   grab: Grab, pointer: Point, layout: Layout, area: Size,
   minSize: (id: string, orient: Orientation | undefined) => Size,
   content?: (o: Orientation) => Size,
 ): { layout: Layout; grab: Grab } {
-  const cur = layout[grab.id];
-  // Where the pointer now puts the corner it holds, against where that corner is.
-  const anchor = grab.kind === "move" ? { x: cur.x, y: cur.y } : { x: cur.x + cur.w, y: cur.y + cur.h };
-  const motion = { x: pointer.x - grab.dx - anchor.x, y: pointer.y - grab.dy - anchor.y };
-  if (motion.x === 0 && motion.y === 0) return { layout, grab };
   const min = (o: Orientation | undefined) => ({ [grab.id]: minSize(grab.id, o) });
-  // A grip held off the window is a corner the viewer could no longer see,
-  // let alone grab: `resized` stops it at the area's far edges.
-  const asked: Placed = grab.kind === "move"
-    ? { ...cur, x: cur.x + motion.x, y: cur.y + motion.y }
-    : placed(resized(cur, motion.x, motion.y, area, minSize(grab.id, cur.orient)), cur.orient);
-  let r = pushed(grab.id, asked, layout, area, min(cur.orient), motion);
+  let out = layout;
+  // `pushed` takes the larger axis of a motion first, so a panel stopped on
+  // that axis by a neighbour it then slides clear of along the other has not
+  // yet tried the first again from where it now is. With the grab fixed that
+  // is a panel short of the hand with nothing stopping it, for one event; a
+  // second round from where it got to takes up the rest. (A slip hid this
+  // too, by forgetting the rest.) Each round can only move the panel further
+  // toward the hand, and a round that moves nothing ends it.
+  for (let round = 0; round < 3; round++) {
+    const cur = out[grab.id];
+    // Where the pointer now puts the corner it holds, against where that corner is.
+    const anchor = grab.kind === "move" ? { x: cur.x, y: cur.y } : { x: cur.x + cur.w, y: cur.y + cur.h };
+    const motion = { x: pointer.x - grab.dx - anchor.x, y: pointer.y - grab.dy - anchor.y };
+    if (motion.x === 0 && motion.y === 0) {
+      if (round === 0) return { layout, grab };
+      break;
+    }
+    // A grip held off the window is a corner the viewer could no longer see,
+    // let alone grab: `resized` stops it at the area's far edges.
+    const asked: Placed = grab.kind === "move"
+      ? { ...cur, x: cur.x + motion.x, y: cur.y + motion.y }
+      : placed(resized(cur, motion.x, motion.y, area, minSize(grab.id, cur.orient)), cur.orient);
+    const r = pushed(grab.id, asked, out, area, min(cur.orient), motion);
+    const still = r.rect.x === cur.x && r.rect.y === cur.y && r.rect.w === cur.w && r.rect.h === cur.h;
+    if (!still) out = r.layout;
+    if (r.ok || still) break;
+  }
+  let r = { layout: out, rect: out[grab.id] };
+  let held = grab;
   if (grab.kind === "move" && content && r.rect.orient) {
     const others = Object.keys(r.layout).filter((o) => o !== grab.id).map((o) => r.layout[o]);
     const t = turned(r.rect, r.rect.orient, area, others, content);
@@ -495,10 +541,24 @@ export function dragStep(
       // pushed out of the way. If nothing can make room, it does not turn.
       const turnedTo = placed(t.rect, t.orient);
       const u = pushed(grab.id, turnedTo, r.layout, area, min(t.orient), { x: 0, y: 0 });
-      if (u.ok) r = u;
+      const g = u.ok ? regrasped(grab, r.rect, u.rect) : grab;
+      // Nor does it turn if, brought back under the hand, the new shape would
+      // turn straight back. With the grab fixed, nothing else stops that: a row
+      // just under the top edge held high on its strip, eased right onto the
+      // right edge, turns into a column, which under the hand pokes over the
+      // top edge, so turns into a row, which under the hand is on the right
+      // edge again — a flip on every move, 225 of them across one measured
+      // drag. The slip used to hide this, by re-basing the grab on wherever the
+      // turn had put the tray.
+      const hand = constrain({ x: pointer.x - g.dx, y: pointer.y - g.dy, w: u.rect.w, h: u.rect.h }, area, { w: 0, h: 0 });
+      const near = Object.keys(u.layout).filter((o) => o !== grab.id).map((o) => u.layout[o]);
+      if (u.ok && orientationFor(hand, t.orient, area, near) === t.orient) {
+        held = g;
+        r = u;
+      }
     }
   }
-  return { layout: r.layout, grab: grabbed(grab.id, grab.kind, pointer, r.layout) };
+  return { layout: r.layout, grab: held };
 }
 
 // ---- the default layout -----------------------------------------------------
@@ -848,7 +908,17 @@ export class Panels {
       // The whole layout at the press: a push can move any panel, and each one
       // this gesture moves is stored at its end like the one held.
       const start = { ...this.shown };
-      let grab = grabbed(id, kind, { x: e.clientX, y: e.clientY }, this.shown);
+      // The pointer in the area's own coordinates, the layout's. With the grab
+      // re-based on every move, window coordinates did no harm — the header's
+      // height cancelled out. Held for the whole gesture, the grab has to be a
+      // point *of the panel*, or a tray that turns (`regrasped`) carries the
+      // header's height along its strip. Measured once: the area does not
+      // move under a held pointer, and measuring it on every move would force
+      // a layout after each `show`.
+      const box = this.area.getBoundingClientRect();
+      const [ox, oy] = [box.left + this.area.clientLeft, box.top + this.area.clientTop];
+      const at = (ev: PointerEvent): Point => ({ x: ev.clientX - ox, y: ev.clientY - oy });
+      let grab = grabbed(id, kind, at(e), this.shown);
       const count = this.trays[id];
       const content = id in this.trays && kind === "move" ? (o: Orientation) => traySize(count(), o) : undefined;
       handle.setPointerCapture(e.pointerId);
@@ -856,7 +926,7 @@ export class Panels {
       this.holding = true;
       const move = (ev: PointerEvent) => {
         if (ev.pointerId !== e.pointerId) return;
-        const step = dragStep(grab, { x: ev.clientX, y: ev.clientY }, this.shown, this.size(),
+        const step = dragStep(grab, at(ev), this.shown, this.size(),
           (o, orient) => this.min(o, orient), content);
         grab = step.grab;
         this.show(step.layout);

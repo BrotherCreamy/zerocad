@@ -848,11 +848,14 @@ are flagged as such.
   resized, turned or grown panel pushes what it meets, in a chain, by exactly
   the overlap, and nothing springs back; the window's edge is the one
   immovable thing, and a panel blocked by a chain against it stops flush —
-  and ~~**the grab point slips**~~ — **reversed by the owner (2026-10-27):
-  *"actually the grasp point should stay the same"*; the grab is fixed where
-  the panel was taken, see the spec's "Reversed" section** — ~~stopped short of the pointer, the panel is held
-  from where it is, so one move back moves it. One pure resolver, `pushed`,
-  serves every arrangement. A button types
+  and ~~the grab point slips~~, reversed by the owner (2026-10-27): *"actually
+  the grasp point should stay the same"*. **The grab is fixed at the moment
+  the panel is taken**: a panel stopped short stays where it stopped while
+  the pointer goes on, and moves again only when the pointer comes back past
+  where it left the panel behind — then exactly under the hand where it was
+  grabbed, drag and grip alike. A tray that turns is a new shape, and the hand
+  keeps the same point of it, the same fraction along its strip. One pure
+  resolver, `pushed`, serves every arrangement. A button types
   `arm("name")` through `submit`, the context menu's rule: it can do nothing a
   typed command cannot. An empty model says what to do (owner's report, *"i
   dont see anything in the artifact"*), drawn from the model, never a flag.
@@ -1245,6 +1248,14 @@ extended the way `defineTool` extends the tool registry would close it.
 
 ## Smaller things
 
+- [ ] **A held panel that slides clear of what stopped it jumps to the
+      hand.** With the grasp point fixed (owner, 2026-10-27), a panel stopped
+      short by a chain and then moved along the other axis past the chain's
+      end catches up the whole lead in one event; likewise a tray turned
+      against a bottom or right edge comes back under the hand on the next
+      move. Both are the rule as asked for. If the owner finds the jump
+      jarring, one way to soften it would be an easing in the DOM half,
+      leaving the pure half saying where the panel belongs. Untried.
 - [x] `docs/plans/` specs that have shipped gain a one-line "shipped" note
       at top rather than being deleted — they are the design record.
 - [x] **A relation added from the command line leaves the header stale.**
@@ -1382,7 +1393,73 @@ extended the way `defineTool` extends the tool registry would close it.
 
 ## Done
 
-- [x] **Panels push one another, and the grab point slips** — spec:
+- [x] **The grasp point stays the same** — the owner, reversing the slip a
+      day after asking for it: *"actually the grasp point should stay the
+      same"*. Spec: the "Reversed by the owner (2026-10-27)" section of
+      [`docs/plans/panels-push.md`](docs/plans/panels-push.md), now marked
+      built. `dragStep` hands back the grab it was given — drag and grip alike
+      — except when a tray turns, where `regrasped` carries the hand's point
+      to the new shape as the same fraction along the strip and the same
+      depth into it. Pushing is untouched.
+      **Deviations from the spec:**
+      - ⚠ **A turn that would turn straight back under the hand does not
+        happen.** Nothing in the spec, and needed: with the grab fixed, a row
+        just under the top edge held high on its strip and eased right onto
+        the right edge turns into a column, which under the hand pokes over
+        the top edge and turns into a row, which under the hand is on the
+        right edge again — measured, 225 flips across one 600-move drag. The
+        slip had hidden it by re-basing on wherever the turn put the tray. Now
+        the turn is refused, the row waits against the right edge, and it
+        turns once the hand itself reaches the corner (one flip; unit-tested).
+      - **Where a turn puts the tray is unchanged** — `turned` still holds the
+        edge it met. So a column eased onto the bottom edge (or a row onto the
+        right) becomes a row lying along that edge, away from the hand, and
+        the next move brings it back under the hand. Released before that
+        move, it stays docked. Rejected: turning it in place round the hand,
+        which `turned`'s own doc comment already rejects ("not a row floating
+        where the column's top was"), breaks two e2e tests that release a
+        one-step turn, and flip-flops in the same corner bands.
+      - **`dragStep` asks `pushed` again, up to three rounds, when a move
+        ends short of the hand.** `pushed` takes the motion's larger axis
+        first, so a panel stopped by a neighbour along that axis and then
+        slid clear of it along the other had not tried again from where it
+        got to — short of the hand with nothing stopping it, for one event.
+        The random walk's new assertion found it on drag 20. The slip had
+        hidden this too, by forgetting the remainder. `pushed` itself, and so
+        the push rule, is unchanged.
+      - **The DOM half now hands `dragStep` the pointer in the canvas area's
+        coordinates**, not the window's. Not in the spec, and the one thing
+        the browser caught: with the grab re-based on every move the header's
+        32 px cancelled out; held for the whole gesture, a turning tray
+        carried them along its strip as if the hand were 32 px further down
+        it, and the e2e turn against the log's right edge was refused. The
+        area's origin is measured once at the press. Eighth entry in
+        ARCHITECTURE's list of bugs only a browser saw; `CLAUDE.md` still
+        says "Seven" — left for the owner, since this package does not edit
+        `CLAUDE.md`.
+      - **"Blocked" in the random walk is worked out from the layout**, not
+        taken from the resolver: a panel short of the hand along an axis must
+        have that face on the area's edge or flush against a chain of panels
+        that ends there (or, a grip shrinking, be at its minimum). The step a
+        tray turns is exempt, per the deviation above.
+      - **The e2e asserts the hand is on the middle of the tray's strip**
+        after stepping back past the lead, as the measure of "under the hand
+        where it was grabbed" — the tray turned into a row on the log on the
+        way down, so it is the row's strip, the column's middle carried over.
+      - **Commits carry the session's own model in the `Co-Authored-By`
+        line**, not the one the package brief named.
+      Tests: 823 → 826 unit (3 new: the fraction along the strip, the
+      bottom-edge turn coming back under the hand, no flip-flop; the slip test
+      inverted and the random walk extended in place), e2e count unchanged
+      (the slip half of the chain test rewritten in place).
+      *Discovered:* a turn at the bottom or right edge leaves the tray away
+      from the hand for one event (above); a panel stopped by a chain and then
+      slid clear of it along the other axis catches up to the hand at once —
+      a jump the size of the lead, the fixed grab working as specified, but a
+      jump all the same (Smaller things, if the owner minds it).
+
+- [x] **Panels push one another, and the grab point slips** (the slip since
+      reversed — entry above) — spec:
       [`docs/plans/panels-push.md`](docs/plans/panels-push.md), now marked
       built; the owner's words and the two rules are in the register entry
       above. `pushed`, `settled`, `dragStep`, `grabbed` and `overlapping` in
@@ -1422,6 +1499,7 @@ extended the way `defineTool` extends the tool registry would close it.
         the mover, a toolbar grown for a new tool would be knocked off the
         left edge by the log, then thrown to the log's far side.
       - **The grip slips too**, the same rule; the spec named only the drag.
+        (Reversed with the drag's, 2026-10-27: the grip is held too.)
       - **The e2e chain test pushes the command line as well as the log**: the
         default layout has the command line under the log, so "until the log
         reaches the bottom edge" is "until the command line under it does".

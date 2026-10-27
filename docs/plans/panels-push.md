@@ -1,9 +1,12 @@
-# Plan: panels push one another, and the grab point slips
+# Plan: panels push one another, and the grasp point stays the same
 
 **Status: built** (2026-10-26) — one PR against `claude/resume-tasks-o7q02e`
 (branch `claude/panels-push`); every deviation is in `TODO.md`'s Done entry,
 and the places this text was wrong are corrected below and marked *(as
-built)*. The owner's direction, verbatim:
+built)*. **Rule 2 below was then reversed by the owner** — *"actually the
+grasp point should stay the same"* — and the reversal is built too (2026-10-27,
+branch `claude/grab-stays`); see the last section. The owner's direction,
+verbatim:
 
 > *shouldn't be able to drag windows over other windows. they should collide
 > and push one another around. not collide like physics, just push. also when
@@ -27,7 +30,9 @@ re-basing it already does when a tray turns — `test/panels.test.ts` and
    put any panel in the chain outside the area, the chain cannot move, and
    the dragged panel **stops** flush against it — the window edge is the one
    immovable thing.
-2. **The grab point slips.** The drag's offset from the pointer to the
+2. ~~**The grab point slips.**~~ *(Withdrawn by the owner, 2026-10-27 —
+   see the last section: the grab is fixed at the moment the panel is
+   taken.)* The drag's offset from the pointer to the
    panel is re-based whenever the panel is stopped short of where the
    pointer asked (blocked at the window edge, or by a chain against it). So
    when the pointer reverses, the panel follows at once, from where it is,
@@ -61,14 +66,16 @@ re-basing it already does when a tray turns — `test/panels.test.ts` and
   along x never moves in y.
 - **Drag** calls `pushed` on every move with the panel's wanted rectangle
   from the pointer and the re-based offset; **after each move, offset :=
-  pointer − where the panel ended up** (the slip). **Resize** by the grip
+  pointer − where the panel ended up** (the slip; *withdrawn 2026-10-27,
+  last section*). **Resize** by the grip
   calls `pushed` with the grown rectangle and a motion equal to the grip's
   movement, so growing into a neighbour pushes it, and stops at the edge.
   **Turning** a tray (`turned`) and a tray growing for a new tool go through
   `pushed` too, with a motion of zero: ties resolve along x, and a panel in
   the way is pushed rather than covered. *(As built: x away from the mover,
   then x the other way, then y the same; if none fits, nothing moves and the
-  tray does not turn. The grip slips like the strip.)*
+  tray does not turn. The grip slips like the strip — withdrawn with the
+  strip's, 2026-10-27.)*
 - **Load and window resize** (`apply`): the stored layout is placed in panel
   order and each panel is `pushed` into a non-overlapping place with zero
   motion *(as built: `settled` — each panel landing on an earlier one is
@@ -118,6 +125,10 @@ session reviews.
 
 ## Reversed by the owner (2026-10-27): the grasp point stays the same
 
+**Status: built** (2026-10-27) — one PR against `claude/resume-tasks-o7q02e`
+(branch `claude/grab-stays`); every deviation is in `TODO.md`'s Done entry
+and marked *(as built)* below.
+
 > *actually the grasp point should stay the same*
 
 Rule 2 above is withdrawn. **The grab is fixed at the moment the panel is
@@ -130,7 +141,19 @@ the same: a resize stopped short resumes only when the pointer returns. The
 one place the grab must change is a tray **turning** under the hand (it is a
 new shape): the hand keeps the *same point of the panel* as nearly as the
 new shape allows — the same fraction along the strip — not a fresh offset.
-Rule 1 (push, never overlap) stands unchanged.
+Rule 1 (push, never overlap) stands unchanged. *(As built: `regrasped` keeps
+the fraction along the strip and the depth into it. Where the turn puts the
+tray is still `turned`'s, the edge it met held, so a tray turned against a
+bottom or right edge lies there away from the hand until the next move. A
+turn that, under the hand, would turn straight back is refused — with the grab
+fixed, a row held high on its strip just under the top, eased onto the right
+edge, otherwise flipped on every move. And a move that ends short of the hand
+with nothing stopping it asks `pushed` again, up to three rounds: `pushed`
+takes the larger axis first, so a panel slid clear of what stopped it along
+the other axis had not yet tried again. And the DOM half hands `dragStep`
+the pointer in the canvas area's coordinates rather than the window's — a
+grab held for the whole gesture has to be a point of the panel, and in window
+coordinates it carried the header's height.)*
 
 Verification: the unit slip test inverts — stopped short by `d`, a move back
 of less than `d` moves nothing, a move back of `d` puts the panel under the

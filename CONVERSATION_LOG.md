@@ -106,6 +106,68 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### The grasp point stays the same — and what the slip had been hiding
+
+**The owner:** *"actually the grasp point should stay the same"* — reversing
+rule 2 of the push package a day after it was built. The spec's "Reversed"
+section in `docs/plans/panels-push.md` made it: the grab fixed at the press,
+never re-based on a stop, drag and grip alike; a tray that turns keeps the
+same point of its strip. The change to `dragStep` is one line — hand back the
+grab it was given. Everything else here is what that line exposed.
+
+**Where the turn puts the tray.** The spec fixes the grab after a turn, not
+the placement, so `turned` still holds the edge the tray met. Against the top
+or left that is where the strip — and the hand — already is. Against the
+bottom or right it is the far end: a column eased onto the bottom edge becomes
+a row lying along it, the hand a column's height above. Under the slip that
+was invisible (the grab re-based onto the row wherever it was); under a fixed
+grab the next move brings the row up under the hand. Considered and rejected:
+turning the tray *in place* round the hand. It is what "the grasp point stays
+the same" most literally pictures, but `turned`'s own doc comment rejects
+exactly that ("not a row floating where the column's top was"), two e2e tests
+release a one-step turn and expect it docked against the edge it met, and it
+flip-flops in the same corner bands as the version built. Released before the
+next move, the tray as built stays docked — which is a reasonable thing for a
+gentle push onto an edge to do.
+
+**The flip-flop.** A fixed grab plus a turn that transposes the grab (a
+column's strip runs across its top, a row's down its left end, the same 28 px
+both ways) is an involution: turn, and under the hand the new shape can sit
+exactly where the old one turned. Measured with a scripted 600-move drag of a
+row just under the top edge, held high on its strip, eased right onto the right
+edge: 225 flips. The slip had broken the symmetry by re-basing. Rejected:
+hysteresis by distance travelled since the last turn (state the pure function
+does not have, and a threshold nobody asked for). Built: a turn is refused when, brought back under the hand, the new shape
+would turn straight back. One more `orientationFor` call, stateless, and the
+drag ends with one turn, at the corner. Over 40 seeds × 2 000 random drags the
+count of a turn immediately undone on the next move is 14, against 23 under
+the slip (and 4 404 turns in all against 5 796). The three looked at are the
+hand crossing a snap band near a corner — a column in the bottom-left corner
+moved two pixels clear of the left edge is a row on the bottom — which is a
+real change of contact, not a flip on every move.
+
+**The second round.** The random walk was asked to assert "under its grab
+point whenever not blocked", and "blocked" had to be something the test could
+check without asking the resolver — so it is worked out from the layout: the
+lagging face is on the area's edge, or flush against a chain of panels that
+ends there, or (a grip shrinking) the panel is at its minimum. It failed on
+drag 20: the tray, moving up-right, was stopped in y by the log's bottom
+*before* its x pass carried it clear of the log, so it ended short of the hand
+with nothing above it. `pushed` takes axes one at a time on purpose (the
+drift case in the entry below), so the fix is in `dragStep`: if the move ended
+short, ask again from where the panel got to, at most three rounds, stopping on
+a round that moves nothing. 40 seeds × 2 000 drags: zero violations.
+
+**Window coordinates.** The unit suite was green; the first browser run failed
+the turn against the log's right edge. The DOM half had always passed
+`clientX/clientY` while the layout is in the area's coordinates, 32 px of
+header lower — harmless while every move re-based the grab, since only
+differences mattered. A held grab is a point *of the panel*, and `regrasped`
+moved those 32 px from the column's "down" to the row's "along". The pointer is
+now converted at the press, with the area's origin measured once (measuring on
+every move would force a layout after each `show`). Eighth on ARCHITECTURE's
+list; `CLAUDE.md`'s copy of the count still says seven, left for the owner.
+
 ### Panels push one another: per axis, exact, and the grab slips
 
 **The owner:** *"shouldn't be able to drag windows over other windows. they

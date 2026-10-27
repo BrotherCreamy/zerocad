@@ -1716,7 +1716,7 @@ replacing) the system Node other projects on this machine may depend on.
   next entry: panels push one another and never overlap. *Spec:*
   [`docs/plans/toolbar-icons-docking.md`](docs/plans/toolbar-icons-docking.md).
 
-- **Panels push one another; the grab point slips** (`src/panels.ts`, one
+- **Panels push one another; the grasp point stays the same** (`src/panels.ts`, one
   line of `src/main.ts`). **No two panels overlap** — during a drag, after a
   resize, when a tray turns or grows, on load — and **the window's edge is the
   one immovable thing**. `pushed(id, want, layout, area, minSizes, motion)` is
@@ -1732,9 +1732,18 @@ replacing) the system Node other projects on this machine may depend on.
   order, earlier ones holding their places; `apply` runs it every time, and
   what it moves is not stored. `dragStep(grab, pointer, …)` is one pointer
   move: the wanted rectangle from the pointer minus the grab, `pushed`, the
-  tray's turn (pushed with zero motion; refused if nothing can make room), then
-  the grab re-based on where the panel is — **the slip**, which also replaced
-  the by-hand re-basing after a turn; the grip slips the same way. At a
+  tray's turn (pushed with zero motion; refused if nothing can make room, or
+  if under the hand the new shape would turn straight back), and the grab
+  handed back as it came: **the grab is fixed at the moment the panel is
+  taken** (the owner, 2026-10-27, reversing the slip he had asked for: *"actually
+  the grasp point should stay the same"*). A panel stopped short stays put
+  while the pointer goes on and moves again only when the pointer comes back
+  past where it left the panel, then exactly under the hand where it was
+  grabbed; the grip the same. A move that ends short of the hand with nothing
+  stopping it (a panel slid clear of what stopped it along the other axis) asks
+  `pushed` again, up to three rounds. A tray that turns is the one change to
+  the grab: `regrasped` keeps the same point of the strip, the same fraction
+  along it. At a
   gesture's end every panel it moved is stored (key still `v2`); an `apply`
   that arrives mid-gesture waits for the end. `overlapping(layout)` lists
   overlapping pairs; with `check` on (the dev server, from
@@ -1743,13 +1752,17 @@ replacing) the system Node other projects on this machine may depend on.
   `test/panels.test.ts` (12 new, including 2 000 seeded random drags and
   resizes over three panels asserting no overlap and no pixel outside after
   every step); browser: `test/e2e/panels.e2e.ts` (6 new: the chain to the
-  bottom edge and the measured slip, log into command line, resize into it,
-  reload and reset, an overlapping stored layout, thirty random drags). 823
-  unit tests, 299 e2e. *Known and deliberate:* a window too small to hold
+  bottom edge and, measured, the tray waiting for the hand to come back
+  (reworked 2026-10-27), log into command line, resize into it,
+  reload and reset, an overlapping stored layout, thirty random drags). 826
+  unit tests (the random walk also asserting the panel under its grab whenever
+  nothing blocks it), 299 e2e. *Known and deliberate:* a window too small to hold
   every panel side by side at its size leaves the last placed over its
   neighbour (nothing shrinks a panel to make room); only the dragged tray
   turns, a pushed one keeps its way; with zero motion the tie goes to x, so a
-  toolbar grown onto the log nudges the log sideways by the tray's thickness.
+  toolbar grown onto the log nudges the log sideways by the tray's thickness;
+  a tray turned against a bottom or right edge lies along it, away from the
+  hand, until the next move brings it back under the hand.
   *Spec:* [`docs/plans/panels-push.md`](docs/plans/panels-push.md).
 
 
