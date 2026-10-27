@@ -115,3 +115,28 @@ it" caveat replaced by the two rules, with his words); STATUS;
 Isolated worktree, branch `claude/panels-push` off the working-branch tip,
 one PR against `claude/resume-tasks-o7q02e`. Do not merge; the supervising
 session reviews.
+
+## Reversed by the owner (2026-10-27): the grasp point stays the same
+
+> *actually the grasp point should stay the same*
+
+Rule 2 above is withdrawn. **The grab is fixed at the moment the panel is
+taken**: the offset from the pointer to the panel never re-bases. A panel
+stopped short (at the window edge, or by a chain against it) stays where it
+stopped while the pointer goes on; it moves again only when the pointer
+comes back past the point where it left the panel behind, and then the
+panel is once more exactly under the hand where it was grabbed. The grip is
+the same: a resize stopped short resumes only when the pointer returns. The
+one place the grab must change is a tray **turning** under the hand (it is a
+new shape): the hand keeps the *same point of the panel* as nearly as the
+new shape allows — the same fraction along the strip — not a fresh offset.
+Rule 1 (push, never overlap) stands unchanged.
+
+Verification: the unit slip test inverts — stopped short by `d`, a move back
+of less than `d` moves nothing, a move back of `d` puts the panel under the
+hand where it was grabbed; the random walk asserts the panel is always under
+its grab point whenever it is not blocked; the e2e measures the same in the
+browser (step back short: no move; step back past: the tray follows). Docs:
+every "slips" sentence in the register, STATUS, ARCHITECTURE, `panels.ts`'s
+header and this file's title replaced by the fixed-grab rule in the owner's
+words; CHANGELOG at the top.

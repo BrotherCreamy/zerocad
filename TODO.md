@@ -848,7 +848,9 @@ are flagged as such.
   resized, turned or grown panel pushes what it meets, in a chain, by exactly
   the overlap, and nothing springs back; the window's edge is the one
   immovable thing, and a panel blocked by a chain against it stops flush —
-  and **the grab point slips**: stopped short of the pointer, the panel is held
+  and ~~**the grab point slips**~~ — **reversed by the owner (2026-10-27):
+  *"actually the grasp point should stay the same"*; the grab is fixed where
+  the panel was taken, see the spec's "Reversed" section** — ~~stopped short of the pointer, the panel is held
   from where it is, so one move back moves it. One pure resolver, `pushed`,
   serves every arrangement. A button types
   `arm("name")` through `submit`, the context menu's rule: it can do nothing a
