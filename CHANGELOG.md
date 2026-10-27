@@ -7,7 +7,67 @@ decisions.
 
 ---
 
+## The grasp point stays the same
+
+The owner, a day after asking for the slip below:
+
+> *actually the grasp point should stay the same*
+
+**The grab is fixed at the moment the panel is taken.** A panel stopped short
+— at the window's edge, against a chain that cannot move, a grip at its
+minimum — stays where it stopped while the pointer goes on. It moves again
+only when the pointer comes back past the point where it left the panel
+behind, and is then exactly under the hand where it was grabbed. Measured in
+the browser: the tray pushed down until the chain reached the bottom edge,
+then the pointer brought back up — ten pixels, and a pixel short of the whole
+lead, and the tray did not move; the whole lead, and the hand was on the
+middle of the tray's strip, where it had pressed; ten pixels more, and the
+tray came up ten. The grip is held the same way. Pushing is untouched.
+
+The one place the grab changes is a **tray that turns**: it is a new shape, so
+the hand keeps the same point of it — the same fraction along the strip, the
+same depth into it (`regrasped`). Where the turn puts the tray is unchanged:
+against the edge it met. So a column eased onto the bottom edge lies down
+along it as a row, away from the hand, and comes back under the hand on the
+next move; released before that move, it stays docked there.
+
+Three things the slip had been hiding, each found by measuring:
+
+- **A tray could flip on every move.** A row just under the top edge, held
+  high on its strip and eased onto the right edge, turned into a column; under
+  the hand that column poked over the top edge and turned into a row; under the
+  hand that row was on the right edge again. 225 flips across one 600-move
+  drag. A turn is now refused when, brought back under the hand, the new shape
+  would turn straight back: the row waits against the right edge and turns
+  once, when the hand reaches the corner.
+- **A panel could be short of the hand with nothing stopping it**, for one
+  event: `pushed` takes the larger axis first, and a panel stopped along it by
+  a neighbour it then slid clear of along the other had not tried again. The
+  2 000-drag random walk, now asserting the panel is under its grab whenever
+  nothing blocks it, found it; `dragStep` asks `pushed` again, up to three
+  rounds.
+- **The grab was in window coordinates**, the layout in the canvas area's.
+  Re-based every move, the header's 32 px cancelled out; held, a turning tray
+  carried them along its strip, and the e2e turn against the log's right edge
+  was refused. Every unit test passed — the pure half has no header. Eighth on
+  ARCHITECTURE's list of bugs only a browser saw.
+
+826 unit tests (3 new: the fraction along the strip, the bottom-edge turn
+coming back under the hand, no flip-flop; the slip test inverted and the
+random walk extended in place), 299 e2e (the chain test's slip half rewritten
+to measure the reverse).
+
+*Known and deliberate:* a panel stopped by a chain and then slid clear of it
+catches up the whole lead in one event, and a tray turned against a bottom or
+right edge is away from the hand until the next move — both the rule as
+asked for, both jumps (TODO, Smaller things).
+
+---
+
 ## Panels push one another, and the grab point slips
+
+*Rule 2 of this entry — the slip — was reversed by the owner the next day:
+see the entry above.*
 
 The owner, verbatim:
 

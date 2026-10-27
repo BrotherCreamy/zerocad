@@ -859,9 +859,12 @@ in a chain. The window edge is the one thing that does not move: a chain that
 would cross it pulls the mover's travel back by exactly the overshoot, so the
 mover stops flush. Each axis on its own, rather than everything along the
 larger, because a hand never drags quite straight and a pixel of drift into a
-panel must push it a pixel, not throw it sideways. **The grab slips**: after
-every move the drag's offset is re-based on where the panel ended up, so a
-panel stopped short follows the pointer back at once. Under the dev server the
+panel must push it a pixel, not throw it sideways. **The grab is fixed at the
+moment the panel is taken** (the owner: *"the grasp point should stay the
+same"*): a panel stopped short stays where it stopped while the pointer goes
+on, and moves again only once the pointer comes back past where it left the
+panel — exactly under the hand where it was grabbed. Only a tray that turns
+changes its grab, to the same point of its new shape. Under the dev server the
 DOM half reports any overlap it shows as a page error, which is how the e2e
 suite asserts the invariant over every gesture it makes rather than only the
 ones it measures.
@@ -1026,7 +1029,7 @@ until the next action went unrecorded.
 
 ## Why there is an end-to-end suite
 
-Seven bugs so far were invisible to the unit tests and obvious within seconds
+Eight bugs so far were invisible to the unit tests and obvious within seconds
 of running the app:
 
 1. a status readout that went stale, so a conflict could be introduced from
@@ -1051,6 +1054,13 @@ of running the app:
    showed past the opening. Every face was the right shape and the right shade;
    only the order was wrong. Found by looking at the extrude package's
    screenshots.
+8. A panel's grab taken in window coordinates while its layout is in the
+   canvas area's. Harmless while the grab was re-based on every move — the
+   header's height cancelled out — and wrong the moment it was held for a
+   whole gesture: a turning tray carried the header's 32 px along its strip,
+   and refused a turn it should have made. Every unit test passed, because
+   the pure half has no header; the e2e turn against the log's right edge
+   failed on the first run.
 
 None of these are mathematics. They are all *assembly*. Hence `npm run
 test:e2e`, and hence the expectation that anything touching the app is checked

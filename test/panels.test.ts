@@ -3,8 +3,8 @@
 // tray runs against the edges it meets, the defaults, and a stored layout's
 // round trip — including through a storage that throws on every touch, which is
 // what a private window hands the app — and the two rules every arrangement
-// keeps: panels push one another and never overlap, and a held panel's grab
-// point slips when it is stopped short of the pointer.
+// keeps: panels push one another and never overlap, and a held panel keeps the
+// point it was taken by — stopped short, it waits for the pointer to come back.
 //
 // The browser half (pointer capture, gestures not crossing, persistence across
 // a real reload) is test/e2e/panels.e2e.ts.
@@ -288,7 +288,7 @@ test("a turn is held inside the area, keeping its edge, and no turn changes noth
   assert.equal(long.rect.w, 200);
 });
 
-// --- panels push one another, and the grab point slips -----------------------
+// --- panels push one another, and the grasp point stays the same -------------
 
 const box = (x: number, y: number, w = 100, h = 100): Rect => ({ x, y, w, h });
 const still: Point = { x: 0, y: 0 };
@@ -400,10 +400,25 @@ test("a resize by the grip pushes what it grows into, and stops at the edge", ()
   assert.deepEqual(s.layout.b, box(900, 100), "b on the right edge");
   assert.deepEqual(s.layout.a, box(100, 100, 800, 100), "and a grown flush against it, no further");
   sound(s.layout);
-  // Back: it shrinks at once (the grip slips too), and pulls nothing with it.
+  // Back: the grip is held where it was taken, like the strip. The corner was
+  // left behind at 900, flush on b, with the pointer at 1500: ten pixels back
+  // is nothing, back to 900 it is under the hand again, and past that it
+  // shrinks, pulling nothing with it.
   s = dragStep(s.grab, { x: 1490, y: 200 }, s.layout, area, minSize);
+  assert.deepEqual(s.layout.a, box(100, 100, 800, 100), "ten pixels back, not a pixel narrower");
+  s = dragStep(s.grab, { x: 900, y: 200 }, s.layout, area, minSize);
+  assert.deepEqual(s.layout.a, box(100, 100, 800, 100), "back where it was left: under the hand, still");
+  s = dragStep(s.grab, { x: 890, y: 200 }, s.layout, area, minSize);
   assert.deepEqual(s.layout.b, box(900, 100));
-  assert.equal(s.layout.a.w, 790, "ten pixels back, ten pixels narrower");
+  assert.equal(s.layout.a.w, 790, "and ten pixels past it, ten pixels narrower");
+  // Shrunk past its minimum, likewise: it grows again only once the pointer is
+  // back at the size it stopped at.
+  s = dragStep(s.grab, { x: 0, y: 200 }, s.layout, area, minSize);
+  assert.equal(s.layout.a.w, 50, "stopped at the minimum");
+  s = dragStep(s.grab, { x: 140, y: 200 }, s.layout, area, minSize);
+  assert.equal(s.layout.a.w, 50, "the pointer still short of the corner: nothing");
+  s = dragStep(s.grab, { x: 160, y: 200 }, s.layout, area, minSize);
+  assert.equal(s.layout.a.w, 60, "past it, growing, the corner under the hand");
 });
 
 test("a tray turning into a neighbour pushes it out of the way, along x", () => {
@@ -475,28 +490,137 @@ test("load: a stored layout that overlaps comes up clear, earlier panels holding
   assert.deepEqual(settled(fine, order, area, {}).layout, fine);
 });
 
-test("the slip: stopped short, the grab re-bases on where the panel is, so one move back moves it", () => {
+test("the grasp point stays the same: stopped short by d, a move back of less than d moves nothing, of d puts it under the hand", () => {
   const l: Layout = { a: box(800, 100) };
   const g: Grab = grabbed("a", "move", { x: 850, y: 150 }, l);
   assert.deepEqual([g.dx, g.dy], [50, 50]);
   const minSize = () => ({ w: 10, h: 10 });
-  const s = dragStep(g, { x: 1050, y: 150 }, l, area, minSize);
+  // The hand asks for x = 1000; the right edge stops the panel at 900: d = 100.
+  let s = dragStep(g, { x: 1050, y: 150 }, l, area, minSize);
   assert.deepEqual(s.layout.a, box(900, 100), "flush with the right edge");
-  assert.deepEqual([s.grab.dx, s.grab.dy], [1050 - 900, 150 - 100], "the grab is the pointer minus where the panel is");
-  const back = dragStep(s.grab, { x: 1040, y: 150 }, s.layout, area, minSize);
-  assert.deepEqual(back.layout.a, box(890, 100), "ten pixels back, ten pixels moved — not two hundred first");
-  // Unblocked, the grab is untouched.
+  assert.deepEqual(s.grab, g, "the grab is the one taken at the press");
+  for (const back of [10, 50, 99]) {
+    const b = dragStep(s.grab, { x: 1050 - back, y: 150 }, s.layout, area, minSize);
+    assert.deepEqual(b.layout.a, box(900, 100), `${back} px back of a 100 px lead moves nothing`);
+    assert.deepEqual(b.grab, g);
+  }
+  s = dragStep(s.grab, { x: 950, y: 150 }, s.layout, area, minSize);
+  assert.deepEqual(s.layout.a, box(900, 100), "d back: where it stopped, which is under the hand again");
+  assert.deepEqual([950 - s.layout.a.x, 150 - s.layout.a.y], [g.dx, g.dy], "at the point it was grabbed by");
+  s = dragStep(s.grab, { x: 940, y: 150 }, s.layout, area, minSize);
+  assert.deepEqual(s.layout.a, box(890, 100), "and past it, it follows, pixel for pixel");
+  // Stopped on one axis, it is not stopped on the other: the hand going down
+  // while still past the edge takes the panel down at once.
+  const d = dragStep(g, { x: 1050, y: 150 }, l, area, minSize);
+  const down = dragStep(d.grab, { x: 1050, y: 250 }, d.layout, area, minSize);
+  assert.deepEqual(down.layout.a, box(900, 200));
+  // Unblocked, the panel is simply under the hand.
   const free = dragStep(g, { x: 700, y: 300 }, l, area, minSize);
-  assert.deepEqual([free.grab.dx, free.grab.dy], [50, 50]);
-  // Against a chain that cannot move, the same.
+  assert.deepEqual(free.layout.a, box(650, 250));
+  assert.deepEqual(free.grab, g);
+  // Against a chain that cannot move, the same: asked for 750, stopped at 700.
   const chain: Layout = { a: box(500, 100), b: box(800, 100), c: box(900, 100) };
-  const c = dragStep(grabbed("a", "move", { x: 550, y: 150 }, chain), { x: 800, y: 150 }, chain, area, minSize);
+  const cg = grabbed("a", "move", { x: 550, y: 150 }, chain);
+  let c = dragStep(cg, { x: 800, y: 150 }, chain, area, minSize);
   assert.deepEqual(c.layout.a, box(700, 100));
-  assert.equal(c.grab.dx, 800 - 700);
-  assert.deepEqual(dragStep(c.grab, { x: 795, y: 150 }, c.layout, area, minSize).layout.a, box(695, 100));
+  assert.deepEqual(c.grab, cg);
+  c = dragStep(c.grab, { x: 760, y: 150 }, c.layout, area, minSize);
+  assert.deepEqual(c.layout.a, box(700, 100), "40 px back of a 50 px lead: nothing");
+  c = dragStep(c.grab, { x: 750, y: 150 }, c.layout, area, minSize);
+  assert.deepEqual(c.layout.a, box(700, 100), "50 px back: under the hand");
+  c = dragStep(c.grab, { x: 745, y: 150 }, c.layout, area, minSize);
+  assert.deepEqual(c.layout.a, box(695, 100));
+  assert.deepEqual([c.layout.b, c.layout.c], [chain.b, chain.c], "and the chain was never moved");
 });
 
-test("2 000 random drags over three panels never leave an overlap or a pixel outside", () => {
+test("a tray that turns keeps the same point of its strip under the hand — the same fraction along it", () => {
+  const l: Layout = { tray: { ...col(400, 300), orient: "column" } };
+  const minSize = () => ({ w: 28, h: 28 });
+  // Held a quarter of the way along the column's strip and half way into it.
+  const g = grabbed("tray", "move", { x: 407, y: 308 }, l);
+  assert.deepEqual([g.dx, g.dy], [7, 8]);
+  const s = dragStep(g, { x: 407, y: 0 }, l, area, minSize, content);
+  const t = s.layout.tray;
+  assert.equal(t.orient, "row", "turned at the top edge");
+  assert.deepEqual([s.grab.dx, s.grab.dy], [8, 7], "down the row's strip a quarter of the way, half way into it");
+  assert.equal(s.grab.dy / t.h, g.dx / l.tray.w, "the same fraction along the strip");
+  assert.ok(s.grab.dx < TITLE_H, "and still on the strip");
+  // The next move puts that point under the hand.
+  const n = dragStep(s.grab, { x: 507, y: 40 }, s.layout, area, minSize, content);
+  assert.deepEqual([n.layout.tray.x, n.layout.tray.y], [507 - 8, 40 - 7]);
+  assert.equal(n.layout.tray.orient, "row");
+  // And back to a column against the left edge: the point comes home.
+  const h = dragStep(n.grab, { x: 0, y: 340 }, n.layout, area, minSize, content);
+  assert.equal(h.layout.tray.orient, "column");
+  assert.deepEqual([h.grab.dx, h.grab.dy], [7, 8], "the grab it was taken with");
+});
+
+test("a column eased onto the bottom edge turns along it, then comes back under the hand", () => {
+  // `turned` holds the edge the tray met, which for a column's bottom is the
+  // end away from the strip, and so from the hand. One move later the fixed
+  // grab has it back under the hand; released before that move, it stays.
+  let l: Layout = { tray: { ...col(400, 300), orient: "column" } };
+  const minSize = () => ({ w: 28, h: 28 });
+  let g = grabbed("tray", "move", { x: 414, y: 308 }, l);
+  let p: Point = { x: 414, y: 308 };
+  while (l.tray.orient === "column") {
+    p = { x: p.x, y: p.y + 1 };
+    const s = dragStep(g, p, l, area, minSize, content);
+    [l, g] = [s.layout, s.grab];
+  }
+  assert.equal(l.tray.h, TRAY_DEPTH);
+  assert.ok(area.h - (l.tray.y + l.tray.h) <= SNAP, "a row along the bottom edge");
+  assert.ok(p.y - l.tray.y < -100, "with the hand far above it");
+  const s = dragStep(g, { x: p.x, y: p.y + 1 }, l, area, minSize, content);
+  assert.equal(s.layout.tray.orient, "row", "it stays a row");
+  assert.deepEqual([s.layout.tray.x, s.layout.tray.y], [p.x - g.dx, p.y + 1 - g.dy], "under the hand");
+});
+
+test("a turn that would turn straight back under the hand does not happen", () => {
+  // A row just under the top edge, held high and right on its strip, eased
+  // right onto the right edge. As a column under the hand it would poke over
+  // the top, and so turn back into a row on the right edge, and so on, a flip
+  // every move. It stays a row until the hand itself is at the corner.
+  let l: Layout = { tray: { x: 500, y: 10, ...traySize(10, "row"), orient: "row" } };
+  const minSize = () => ({ w: 28, h: 28 });
+  let g = grabbed("tray", "move", { x: 514, y: 12 }, l);
+  let flips = 0;
+  for (let x = 515; x <= 1100; x++) {
+    const before = l.tray.orient;
+    const s = dragStep(g, { x, y: 12 }, l, area, minSize, content);
+    [l, g] = [s.layout, s.grab];
+    if (l.tray.orient !== before) flips++;
+    sound(l);
+  }
+  assert.equal(flips, 1, "one turn, not one a move");
+  assert.equal(l.tray.orient, "column");
+  assert.equal(l.tray.x + l.tray.w, area.w, "against the right edge");
+});
+
+/**
+ * Whether `id`'s face leading along `axis` in `dir` cannot move that way: it is
+ * on the area's edge, or flush against a panel beside it on that face which
+ * cannot move that way either. Worked out from the layout alone, so the walk
+ * below does not take the resolver's word for when a panel was stopped.
+ */
+function walled(l: Layout, id: string, axis: "x" | "y", dir: number, a: Size, seen = new Set<string>()): boolean {
+  const r = l[id];
+  const [p, len, room] = axis === "x" ? [r.x, r.w, a.w] : [r.y, r.h, a.h];
+  const face = dir > 0 ? p + len : p;
+  if (Math.abs(face - (dir > 0 ? room : 0)) < 1e-6) return true;
+  seen.add(id);
+  return Object.keys(l).some((o) => {
+    if (seen.has(o)) return false;
+    const q = l[o];
+    const [qp, ql] = axis === "x" ? [q.x, q.w] : [q.y, q.h];
+    const across = axis === "x"
+      ? Math.min(r.y + r.h, q.y + q.h) - Math.max(r.y, q.y)
+      : Math.min(r.x + r.w, q.x + q.w) - Math.max(r.x, q.x);
+    return across > 1e-6 && Math.abs(face - (dir > 0 ? qp : qp + ql)) < 1e-6 && walled(l, o, axis, dir, a, seen);
+  });
+}
+
+test("2 000 random drags over three panels: never an overlap or a pixel outside, and the panel under its grab whenever not blocked", () => {
   let seed = 11;
   const rand = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648);
   const a = { w: 1100, h: 760 };
@@ -507,6 +631,7 @@ test("2 000 random drags over three panels never leave an overlap or a pixel out
   let pushes = 0;
   let turns = 0;
   let stops = 0;
+  let caught = 0;
   for (let i = 0; i < 2000; i++) {
     const id = ids[Math.floor(rand() * ids.length)];
     const kind = rand() < 0.8 ? "move" : "resize";
@@ -515,21 +640,44 @@ test("2 000 random drags over three panels never leave an overlap or a pixel out
     let g = grabbed(id, kind, p, l);
     const [tx, ty] = [(rand() - 0.5) * 1400, (rand() - 0.5) * 1000];
     const steps = 1 + Math.floor(rand() * 12);
+    let lagged = false;
     for (let k = 0; k < steps; k++) {
       p = { x: p.x + tx / steps + (rand() - 0.5) * 6, y: p.y + ty / steps + (rand() - 0.5) * 6 };
       const before = l;
       const s = dragStep(g, p, l, a, minSize, id === "toolbar" ? tray : undefined);
-      if (s.grab.dx !== g.dx || s.grab.dy !== g.dy) stops++;
+      const turned = s.layout[id].orient !== before[id].orient;
+      if (!turned) assert.deepEqual(s.grab, g, `drag ${i}, step ${k}: the grab never changes but in a turn`);
       [l, g] = [s.layout, s.grab];
       if (ids.some((o) => o !== id && l[o] !== before[o])) pushes++;
-      if (l.toolbar.orient !== before.toolbar.orient) turns++;
+      if (turned) turns++;
       assert.deepEqual(overlapping(l), [], `drag ${i}, step ${k}: ${JSON.stringify(l)}`);
       for (const o of ids) assert.ok(inside(l[o], a), `drag ${i}, step ${k}: ${o} at ${JSON.stringify(l[o])}`);
+      // Under the grab, or blocked on every axis it lags along. A turn is
+      // exempt for its one step: `turned` put it against the edge it met.
+      if (turned) continue;
+      const q = l[id];
+      const held = kind === "move" ? { x: q.x, y: q.y } : { x: q.x + q.w, y: q.y + q.h };
+      const lag = { x: p.x - g.dx - held.x, y: p.y - g.dy - held.y };
+      let stopped = false;
+      for (const axis of ["x", "y"] as const) {
+        const d = lag[axis];
+        if (Math.abs(d) < 1e-6) continue;
+        stopped = true;
+        const why = kind === "resize" && d < 0
+          ? (axis === "x" ? q.w : q.h) === (axis === "x" ? minSize(id, q.orient).w : minSize(id, q.orient).h)
+          : walled(l, id, axis, Math.sign(d), a);
+        assert.ok(why, `drag ${i}, step ${k}: ${id} (${kind}) ${d} px short of the hand along ${axis} with nothing stopping it: ${JSON.stringify(l)}`);
+      }
+      if (stopped) stops++;
+      else if (lagged) caught++;
+      lagged = stopped;
     }
   }
-  // Not vacuous: the walk really pushed, stopped short and turned, many times.
+  // Not vacuous: the walk really pushed, stopped short, came back under the
+  // hand after being stopped, and turned, many times.
   assert.ok(pushes > 200, `${pushes} steps pushed something`);
-  assert.ok(stops > 200, `${stops} steps were stopped short and slipped`);
+  assert.ok(stops > 200, `${stops} steps were stopped short of the hand`);
+  assert.ok(caught > 20, `${caught} steps had a stopped panel back under the hand`);
   assert.ok(turns > 20, `${turns} steps turned the tray`);
 });
 

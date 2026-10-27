@@ -608,7 +608,7 @@ test("the glyph is the button's colour: amber when armed, grey when it cannot ru
   await app.page.keyboard.press("Escape");
 });
 
-// --- panels push one another, and the grab point slips -------------------------
+// --- panels push one another, and the grasp point stays the same ---------------
 
 const IDS = ["toolbar", "log", "cmd"];
 
@@ -642,7 +642,7 @@ async function assertSound(what: string): Promise<void> {
   }
 }
 
-test("the tray pushes the log, the log the command line, and at the bottom edge the tray stops flush — then slips", async () => {
+test("the tray pushes the log, the log the command line, and at the bottom edge the tray stops flush — and waits for the hand", async () => {
   await reloadApp();
   await app.type('layout("reset")');
   const cv = await rectOf("#cv");
@@ -665,13 +665,29 @@ test("the tray pushes the log, the log the command line, and at the bottom edge 
   assert.equal(held.toolbar.y + held.toolbar.height, held.log.y, "and the tray stopped flush on the log — not short, not over it");
   await shot("pushed-chain-held");
 
-  // The slip, measured: one step back, and the tray follows at once by that
-  // step — not after the pointer has travelled back to where it first held it.
+  // The grasp point stays the same, measured. The tray turned into a row on
+  // the log on the way down, and the hand holds the same point of it: the
+  // middle of its strip, as it held the middle of the column's. Stopped, the
+  // tray is left behind by `lead`; a step back of less than that moves nothing,
+  // a step back of exactly that has the hand on the middle of the strip again,
+  // and past that the tray follows, pixel for pixel.
+  const middle = async () => { const r = await rectOf(strip("toolbar")); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; };
+  assert.equal((await tray()).orient, "row", "a row against the log's top");
+  const m0 = await middle();
+  assert.equal(m0.x, x, "under the hand across the push");
+  const lead = y - m0.y;
+  assert.ok(lead > 100, `the pointer went on far past the tray: ${lead}px`);
   await app.page.mouse.move(x, (y -= 10));
-  const back = await panelsNow();
-  assert.equal(back.toolbar.y, held.toolbar.y - 10, "ten pixels up, the very move after it was stopped");
+  assert.equal((await panelsNow()).toolbar.y, held.toolbar.y, "ten pixels back of that: not a pixel moved");
+  await app.page.mouse.move(x, (y -= lead - 11));
+  assert.equal((await panelsNow()).toolbar.y, held.toolbar.y, "a pixel short of it: still not");
+  await app.page.mouse.move(x, (y -= 1));
+  assert.equal((await panelsNow()).toolbar.y, held.toolbar.y, "back by exactly the lead: where it stopped…");
+  assert.deepEqual(await middle(), { x, y }, "…and under the hand where it was grabbed");
   await app.page.mouse.move(x, (y -= 10));
-  assert.equal((await panelsNow()).toolbar.y, held.toolbar.y - 20, "and the next");
+  assert.equal((await panelsNow()).toolbar.y, held.toolbar.y - 10, "ten pixels past it, ten pixels up");
+  assert.deepEqual(await middle(), { x, y }, "still under the hand");
+  await shot("pushed-chain-back-under-hand");
   await app.page.mouse.up();
   await app.page.waitForTimeout(80);
 
