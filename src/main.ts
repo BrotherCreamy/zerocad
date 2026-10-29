@@ -647,10 +647,10 @@ async function main() {
    *
    * **The tool stays armed**, as a fresh instance of itself: the gesture was
    * the tool's state, and the state is what went. Someone drawing lines who
-   * undoes the last one wants to draw the next, not to re-arm. The exception is
-   * a tool the restored model cannot run — a curve tool whose frame the undo
-   * took away — which is left disarmed with the toolbar's own reason, rather
-   * than armed in a model where its first click can only fail.
+   * undoes the last one wants to draw the next, not to re-arm. The exception
+   * would be a tool the restored model cannot run (`toolUnavailable`), left
+   * disarmed with the toolbar's own reason; none is today — a curve tool whose
+   * frame the undo took away makes a new one at its next click.
    *
    * Every outcome is said twice: the returned line, for the log, and a brief
    * note beside the status verdict — the empty stack included, which used to

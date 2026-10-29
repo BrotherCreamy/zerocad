@@ -34,7 +34,8 @@
 //
 // In 3D the arc lies in the plane of its three clicks — the sketch's — and is
 // given the default frame's plane (see `ArcEntity`), whose +z it turns about;
-// with no default frame the first click is refused before anything is placed.
+// with no default frame the first click makes one, the working plane it
+// landed on, and the later clicks land on it (`CurvePlane`, in place.ts).
 // The tool works out which of the two arcs between the endpoints holds the
 // waypoint, and orders the endpoints so that is the arc drawn about that +z.
 // Its centre is held on the sketch plane with its endpoints. The preview is
@@ -43,7 +44,7 @@
 
 import { Tool, defineTool, type PointerInfo, type RenderContext } from "./tool.ts";
 import { arcEndpoints } from "../relations/geometry.ts";
-import { curveToolReady, holdOnSketchPlane, placePoint, requirePlanar } from "./place.ts";
+import { CurvePlane, holdOnSketchPlane, placePoint, requirePlanar } from "./place.ts";
 import { circumcircle, PREVIEW_MAX_R } from "./circumcircle.ts";
 import { arcFrame, arcSamples, arcSegments } from "../arcgeom.ts";
 import { sketchSide } from "../curveplane.ts";
@@ -107,10 +108,12 @@ export class Arc3Tool extends Tool {
   /** The endpoint clicks so far, kept whole so each one's snap survives to commit. */
   private ends: PointerInfo[] = [];
   private hover: number[] | null = null;
+  private plane = new CurvePlane(this.ctx, this.name);
 
   onDown(p: PointerInfo): void {
     requirePlanar(this.ctx.model, this.name);
-    if (!this.ends.length && !curveToolReady(this.ctx, this.name)) return;
+    if (this.plane.typing) return; // the plane the first click typed is still going in
+    if (!this.ends.length && !this.plane.begin(p)) return;
     this.hover = p.world;
 
     if (this.ends.length < 2) {
@@ -125,7 +128,7 @@ export class Arc3Tool extends Tool {
       return; // nothing is committed until the third click — see the header
     }
 
-    const [first, second] = this.ends;
+    const [first, second] = this.ends.map((e) => this.plane.settle(e));
     const found = arcThrough(first.world, second.world, p.world, sketchSide(this.ctx.model));
     if (!found) {
       // Refuse rather than build, circle3's shape exactly: three points on one
@@ -178,6 +181,7 @@ export class Arc3Tool extends Tool {
   onCancel(): void {
     this.ends = [];
     this.hover = null;
+    this.plane.cancel();
     this.ctx.requestRender();
   }
 

@@ -13,11 +13,12 @@
 // own plane's +z — the default frame's, which the arc is given (see
 // ../arcgeom.ts and `ArcEntity`): swapping them is free, both arcs between two
 // points being drawable, and only the order says which one is meant. With no
-// default frame there is no plane to give it, and the first click is refused.
+// default frame the centre's click makes one, the working plane it landed on,
+// and the other two land on it (`CurvePlane`, in place.ts).
 
 import { Tool, defineTool, type PointerInfo, type RenderContext } from "./tool.ts";
 import { arcEndpoints } from "../relations/geometry.ts";
-import { curveToolReady, placePoint, requirePlanar } from "./place.ts";
+import { CurvePlane, placePoint, requirePlanar } from "./place.ts";
 import { arcFrame, arcSamples, arcSegments, sweepsAs } from "../arcgeom.ts";
 import { sketchSide } from "../curveplane.ts";
 import { cross3, lift3 } from "../vec3.ts";
@@ -55,12 +56,14 @@ export class ArcTool extends Tool {
   private center: PointerInfo | null = null;
   private start: PointerInfo | null = null;
   private hover: number[] | null = null;
+  private plane = new CurvePlane(this.ctx, this.name);
 
   onDown(p: PointerInfo): void {
     requirePlanar(this.ctx.model, this.name);
+    if (this.plane.typing) return; // the plane the centre's click typed is still going in
 
     if (!this.center) {
-      if (!curveToolReady(this.ctx, this.name)) return;
+      if (!this.plane.begin(p)) return;
       this.center = p;
       this.hover = p.world;
       this.ctx.requestRender();
@@ -77,7 +80,7 @@ export class ArcTool extends Tool {
     }
 
     // Third click: the end of the sweep, and the whole thing commits at once.
-    const centre = this.center, first = this.start;
+    const centre = this.plane.settle(this.center), first = this.start;
     const c = centre.world, s = first.world;
     const r = Math.hypot(...s.map((v, i) => v - c[i]));
     // Normally the end click is pulled onto the rim so nothing jumps on solve.
@@ -114,6 +117,7 @@ export class ArcTool extends Tool {
     this.center = null;
     this.start = null;
     this.hover = null;
+    this.plane.cancel();
     this.ctx.requestRender();
   }
 

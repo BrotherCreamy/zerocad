@@ -921,8 +921,7 @@ export class Model {
    */
   addCircle(center?: string | null, radius?: number | null, plane?: string | null,
             name?: string | null): CircleEntity {
-    if (center != null) this.point(center);
-    if (radius != null && !(radius > 0)) throw new Error("a circle needs a positive radius");
+    this.checkCircle(center, radius);
     const frame = this.curvePlane("circle", plane);
     const [nm, c] = this.claimFirst("c", name, () => center ?? this.withoutRecording(() => this.addPoint()).name);
     const ent: CircleEntity = {
@@ -948,17 +947,8 @@ export class Model {
    */
   addArc(center?: string | null, start?: string | null, end?: string | null,
          radius?: number | null, plane?: string | null, name?: string | null): ArcEntity {
-    if (center != null) this.point(center);
-    if (start != null) this.point(start);
-    if (end != null) this.point(end);
-    if (start != null && start === end) throw new Error("an arc needs two different endpoints");
-    if (radius != null && !(radius > 0)) throw new Error("an arc needs a positive radius");
+    this.checkArc(center, start, end, radius);
     const r = radius ?? Model.DEFAULT_RADIUS;
-    if ((start == null || end == null) && this.dim < 2) {
-      // The quarter-arc seed below needs two independent axes to be
-      // non-degenerate; below 2D there is no second axis to offset along.
-      throw new Error("an auto-seeded arc needs at least 2 dimensions");
-    }
     const frame = this.curvePlane("arc", plane);
     const [nm, [c, s, e]] = this.claimFirst("a", name, () => {
       // Auto pieces seed as a non-degenerate quarter arc around the center.
@@ -977,11 +967,37 @@ export class Model {
   }
 
   /**
+   * The refusals `addCircle` makes about its own arguments, before its plane —
+   * public, with `checkArc`, for `curvePlane`'s reason: the command line makes
+   * a frame for a circle typed with no default, and asks these first so a call
+   * that would be refused leaves no frame behind. Changes nothing.
+   */
+  checkCircle(center?: string | null, radius?: number | null): void {
+    if (center != null) this.point(center);
+    if (radius != null && !(radius > 0)) throw new Error("a circle needs a positive radius");
+  }
+
+  /** `checkCircle` for `addArc`. */
+  checkArc(center?: string | null, start?: string | null, end?: string | null, radius?: number | null): void {
+    if (center != null) this.point(center);
+    if (start != null) this.point(start);
+    if (end != null) this.point(end);
+    if (start != null && start === end) throw new Error("an arc needs two different endpoints");
+    if (radius != null && !(radius > 0)) throw new Error("an arc needs a positive radius");
+    if ((start == null || end == null) && this.dim < 2) {
+      // The quarter-arc seed needs two independent axes to be non-degenerate;
+      // below 2D there is no second axis to offset along.
+      throw new Error("an auto-seeded arc needs at least 2 dimensions");
+    }
+  }
+
+  /**
    * The plane a new circle or arc gets: in 3D the frame named or the default,
    * resolved now (`resolveFrame`, with its standing message); anywhere else
    * none, and an argument naming one is refused rather than ignored. Public so
    * the command line can ask before it makes anything a refused call would
-   * leave behind; it changes nothing.
+   * leave behind; it changes nothing. The "no default frame" here is the guard
+   * under the command layer, which makes a frame first when there is none.
    */
   curvePlane(kind: "circle" | "arc", plane: string | null | undefined): string | null {
     if (this.dim === 3) return this.resolveFrame(plane);

@@ -121,12 +121,57 @@ export function fillet(model: Model, l1Name: string, l2Name: string, r: number, 
  */
 export const IN_PLANE_SINE = 1e-6;
 
-function filletBody(model: Model, l1Name: string, l2Name: string, r: number, frame: string | null): string {
+/**
+ * The command line's question before a typed `fillet` names no plane, and the
+ * fillet tool's before its second click commits: the corner's three points —
+ * the shared one, then each leg's far end — when a 3D model has **no default
+ * frame** for the arc to be given, so the layer above can make one on the
+ * corner first, as a journalled call of its own; or null when the call can be
+ * made as it stands (a 2D model, or a default to resolve). Asked only after
+ * every refusal the fillet makes that needs no frame — the radius, two lines
+ * that meet, legs that are not one line, a radius that fits — so a corner that
+ * is going to be refused makes no frame first (extrude's rule).
+ */
+export function filletNeedsFrame(model: Model, l1Name: string, l2Name: string, r: number): [string, string, string] | null {
+  if (model.dim !== 3 || model.defaultFrame != null) return null;
+  if (!(r > 0)) throw new Error("fillet needs a positive radius");
+  const c = cornerOf(model, l1Name, l2Name);
+  cornerFits(model, c, r);
+  return [c.shared, c.a, c.b];
+}
 
-  const { l1, shared, a, b } = corner(model, l1Name, l2Name);
-  const p = model.coords(shared);
-  const u = unit(model.coords(a).map((c, i) => c - p[i]));
-  const v = unit(model.coords(b).map((c, i) => c - p[i]));
+/** A corner's lines and points, with the unit directions of its legs from the shared point. */
+function cornerOf(model: Model, l1Name: string, l2Name: string) {
+  const c = corner(model, l1Name, l2Name);
+  const p = model.coords(c.shared);
+  const u = unit(model.coords(c.a).map((x, i) => x - p[i]));
+  const v = unit(model.coords(c.b).map((x, i) => x - p[i]));
+  return { ...c, p, u, v };
+}
+
+/**
+ * The interior angle at a corner and how far back each leg is cut for radius
+ * `r` — refusing legs on one line, and a radius the legs are too short for.
+ */
+function cornerFits(model: Model, c: ReturnType<typeof cornerOf>, r: number): { theta: number; backoff: number } {
+  const { p, u, v } = c;
+  const cosTheta = Math.min(1, Math.max(-1, u.reduce((s, ui, i) => s + ui * v[i], 0)));
+  const theta = Math.acos(cosTheta);
+  if (theta < 1e-6 || Math.PI - theta < 1e-6) {
+    throw new Error("cannot fillet a corner whose legs are collinear");
+  }
+  const backoff = r / Math.tan(theta / 2); // corner -> each tangent point
+  const legA = Math.hypot(...model.coords(c.a).map((x, i) => x - p[i]));
+  const legB = Math.hypot(...model.coords(c.b).map((x, i) => x - p[i]));
+  if (backoff > legA || backoff > legB) {
+    throw new Error(`radius ${r} is too large for this corner (needs ${backoff.toFixed(3)} of leg, have ${Math.min(legA, legB).toFixed(3)})`);
+  }
+  return { theta, backoff };
+}
+
+function filletBody(model: Model, l1Name: string, l2Name: string, r: number, frame: string | null): string {
+  const c = cornerOf(model, l1Name, l2Name);
+  const { l1, shared, p, u, v } = c;
   // The side the arc turns about: its plane's +z, or the 2D drawing's.
   const side = frame == null ? [0, 0, 1] : framePlaneAxes(model, frame)?.n;
   if (!side) throw new Error(`"${frame}" has collapsed — it has no plane to round a corner in`);
@@ -141,19 +186,8 @@ function filletBody(model: Model, l1Name: string, l2Name: string, r: number, fra
   }
 
   // The interior angle at the corner decides how far back the legs are cut.
-  const cosTheta = Math.min(1, Math.max(-1, u.reduce((s, ui, i) => s + ui * v[i], 0)));
-  const theta = Math.acos(cosTheta);
-  if (theta < 1e-6 || Math.PI - theta < 1e-6) {
-    throw new Error("cannot fillet a corner whose legs are collinear");
-  }
-
-  const backoff = r / Math.tan(theta / 2); // corner -> each tangent point
+  const { theta, backoff } = cornerFits(model, c, r);
   const toCenter = r / Math.sin(theta / 2); // corner -> arc center
-  const legA = Math.hypot(...model.coords(a).map((c, i) => c - p[i]));
-  const legB = Math.hypot(...model.coords(b).map((c, i) => c - p[i]));
-  if (backoff > legA || backoff > legB) {
-    throw new Error(`radius ${r} is too large for this corner (needs ${backoff.toFixed(3)} of leg, have ${Math.min(legA, legB).toFixed(3)})`);
-  }
 
   const bisector = unit(u.map((ui, i) => ui + v[i]));
   const t1 = p.map((pi, i) => pi + u[i] * backoff);
