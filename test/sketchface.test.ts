@@ -386,7 +386,7 @@ test("the sketch tool: a click on nothing is refused aloud and it stays armed; a
   assert.equal(tool.snaps, false, "it chooses a face, not a place");
 
   tool.onDown(info(worldToScreen(view, t.at(80, -40, 5))));
-  assert.match(log.join("\n"), /^sketch: no face under the click/);
+  assert.match(log.join("\n"), /^sketch: click inside a closed outline — the ones I can see are lit$/);
   assert.equal(ctx.finished, false);
   assert.deepEqual(typed, []);
 

@@ -221,7 +221,7 @@ test("a collinear third click is refused rather than solved", async () => {
   assert.equal(m.activeTool, "circle3", "and the tool stays armed, holding the two good clicks");
   // The refusal reaches the app's own log pane — the tool-voice change moved
   // it there from console.warn, where no user would ever have seen it.
-  assert.match(await app.log(), /circle3: .*lie on one line/,
+  assert.match(await app.log(), /circle3: those three are on one line — click the third off it/,
     "the refusal has to say why, in the pane the user reads");
   assert.equal(warnings.length, 0, "and nothing needs the console any more");
 

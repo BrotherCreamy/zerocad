@@ -31,12 +31,18 @@
 // command line (`ctx.run`), where the log teaches it, and then extrudes along
 // it as a step of its own. The view does not turn: the solid appears where the
 // user was looking.
+//
+// **A miss is guidance.** While it is armed every region it could take is lit
+// faintly (`lightRegions`), and a click in none of them says so in a line —
+// "click inside a closed outline — the ones I can see are lit" — muted, the
+// tool still armed. So is everything else a click can be refused for here:
+// the operation's words, as guidance, never red.
 
 import { Tool, defineTool, type PointerInfo, type RegionHit, type RenderContext } from "./tool.ts";
 import { DEFAULT_DEPTH, extrudeProfile, orientingFrame, profileOf } from "../operations.ts";
 import { describeFeature } from "../picking.ts";
 import { featurePlaneCommand } from "../sketchface.ts";
-import { drawRegion, regionKey, type Region } from "./region.ts";
+import { drawRegion, lightRegions, missedRegion, regionKey, type Region } from "./region.ts";
 
 export class ExtrudeTool extends Tool {
   readonly name = "extrude";
@@ -63,7 +69,7 @@ export class ExtrudeTool extends Tool {
     if (this.typing) return; // the plane it typed is still going in
     const hit = this.ctx.regionAt?.(p.screen) ?? null;
     if (!hit) {
-      this.refuse(new Error("no closed region under the click — click inside a loop (loops() lists them)"));
+      this.refuse(new Error(missedRegion(this.ctx.model)));
       return;
     }
     const ctx = this.ctx;
@@ -107,8 +113,10 @@ export class ExtrudeTool extends Tool {
     try {
       const feature = extrudeProfile(model, profileOf(model, hit.loops, hit.index), this.depth);
       this.under = null;
-      this.ctx.requestSolve();
+      // Finished first, so the solve's redraw is the first without the tool: its
+      // light on every region would otherwise stay on screen over the solid.
       this.ctx.finish();
+      this.ctx.requestSolve();
       this.ctx.log?.(describeFeature(model, model.featureOf(feature)), "done");
     } catch (e) {
       // The tool stays armed, so the next click can be somewhere it can extrude.
@@ -117,13 +125,14 @@ export class ExtrudeTool extends Tool {
   }
 
   /**
-   * Out loud where there is a user to tell — a throw from a pointer handler
+   * Guidance where there is a user to tell — a throw from a pointer handler
    * reaches the page as an uncaught error nobody sees explained — and a throw
    * headless, where a caller is the only one listening (fillet's convention).
    */
   private refuse(e: unknown): void {
+    this.ctx.requestRender();
     if (!this.ctx.log) throw e;
-    this.ctx.log(`extrude: ${e instanceof Error ? e.message : e}`);
+    this.ctx.log(`extrude: ${e instanceof Error ? e.message : e}`, "guide");
   }
 
   onCancel(): void {
@@ -133,11 +142,12 @@ export class ExtrudeTool extends Tool {
   }
 
   /**
-   * The region under the cursor: a faint fill, even-odd so holes stay clear,
-   * and its members outlined in the tool colour — exactly the profile a click
-   * would extrude.
+   * Every region a click could take, lit faintly; and over them the one under
+   * the cursor: a fill, even-odd so holes stay clear, and its members outlined
+   * in the tool colour — exactly the profile a click would extrude.
    */
   render(r: RenderContext): void {
+    lightRegions(this.ctx.model, r, this.under);
     if (this.under) drawRegion(this.ctx.model, r, this.under);
   }
 }

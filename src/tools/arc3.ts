@@ -28,7 +28,7 @@
 // Everything else is circle3's shape: each endpoint click goes through
 // `placePoint` so snapping and inference apply to it, nothing at all is
 // created before the third click so the whole gesture is one undo step, and a
-// degenerate third click is refused through `ctx.log` with the gesture left
+// degenerate third click is answered with guidance through `ctx.log`, the gesture left
 // live rather than committed into a conflict.
 
 //
@@ -136,10 +136,11 @@ export class Arc3Tool extends Tool {
       // CONFLICT header over a drawing that should never have been made.
       // Staying armed on the two endpoint clicks means the obvious next move —
       // aim the waypoint off the line — just works.
-      const why = `${this.name}: those three points lie on one line — no arc passes through them`;
+      // Said as what would work, as guidance: the click missed, nothing is wrong.
+      const why = `${this.name}: those three are on one line — click the third off it`;
       // The log pane where there is one; the console's ear headless, where an
       // advisory (the gesture stays live) does not deserve a throw.
-      if (this.ctx.log) this.ctx.log(why);
+      if (this.ctx.log) this.ctx.log(why, "guide");
       else console.warn(why);
       this.ctx.requestRender();
       return;

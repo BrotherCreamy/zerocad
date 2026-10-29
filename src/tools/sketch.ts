@@ -18,11 +18,14 @@
 // holds what the typed call journals, and it is one undo step, all because it
 // *is* the typed call. The "Sketch on this face" menu item types the same line.
 //
-// A click on no region is refused in the log, as the extrude tool's is, and so
-// is a face no plane can be made of; either way the tool stays armed.
+// While it is armed every face it could take is lit faintly, as the extrude
+// tool lights its regions; a click on none of them is answered with guidance
+// ("click inside a closed outline — the ones I can see are lit"), and so is a
+// face no plane can be made of — muted, never red; either way the tool stays
+// armed.
 
 import { Tool, defineTool, type PointerInfo, type RegionHit, type RenderContext } from "./tool.ts";
-import { drawRegion, regionKey } from "./region.ts";
+import { drawRegion, lightRegions, missedRegion, regionKey } from "./region.ts";
 import { sketchOnFaceCommand } from "../sketchface.ts";
 
 export class SketchTool extends Tool {
@@ -42,11 +45,13 @@ export class SketchTool extends Tool {
   onDown(p: PointerInfo): void {
     const hit = this.ctx.regionAt?.(p.screen) ?? null;
     if (!hit) {
-      this.refuse(new Error("no face under the click — click inside a closed loop: a solid's face, or a sketch's (loops() lists them)"));
+      this.refuse(new Error(missedRegion(this.ctx.model)));
       return;
     }
     if (!this.ctx.run) {
-      this.refuse(new Error("there is no command line here to type plane(…) into"));
+      // Not a miss: a host with no command line. A refusal, and headless it throws.
+      if (!this.ctx.log) throw new Error("there is no command line here to type plane(…) into");
+      this.ctx.log("sketch: there is no command line here to type plane(…) into");
       return;
     }
     let command: string;
@@ -63,10 +68,11 @@ export class SketchTool extends Tool {
     this.ctx.run(command);
   }
 
-  /** Out loud where there is a user to tell, a throw headless — the extrude tool's convention. */
+  /** Guidance where there is a user to tell, a throw headless — the extrude tool's convention. */
   private refuse(e: unknown): void {
+    this.ctx.requestRender();
     if (!this.ctx.log) throw e;
-    this.ctx.log(`sketch: ${e instanceof Error ? e.message : e}`);
+    this.ctx.log(`sketch: ${e instanceof Error ? e.message : e}`, "guide");
   }
 
   onCancel(): void {
@@ -74,8 +80,9 @@ export class SketchTool extends Tool {
     this.ctx.requestRender();
   }
 
-  /** The face under the cursor, exactly as the extrude tool outlines a region. */
+  /** Every face it could take lit, and the one under the cursor outlined — exactly as the extrude tool does regions. */
   render(r: RenderContext): void {
+    lightRegions(this.ctx.model, r, this.under);
     if (this.under) drawRegion(this.ctx.model, r, this.under);
   }
 }

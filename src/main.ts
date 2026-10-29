@@ -47,6 +47,8 @@ const statusEl = document.getElementById("status")!;
 const stepNoteEl = document.getElementById("stepnote")!;
 /** How long "undid" stays beside the verdict: long enough to read, gone before the next thought. */
 const STEP_NOTE_MS = 1600;
+/** How long a tool's guidance stays in that note: a sentence of a dozen words, not a one-word "undid". */
+const GUIDE_NOTE_MS = 5000;
 const logEl = document.getElementById("log")!;
 const cv = document.getElementById("cv") as HTMLCanvasElement;
 const g = cv.getContext("2d")!;
@@ -621,7 +623,13 @@ async function main() {
     if (actionDepth === 0) return false; // defensive: an unbalanced `after` records nothing
     if (--actionDepth > 0) return false;
     if (movedHistory) { movedHistory = false; return false; }
-    return undoStack.pushIfChanged(actionBefore, snapshot());
+    const changed = undoStack.pushIfChanged(actionBefore, snapshot());
+    // A tool's guidance is about the click before this one; once something
+    // has been made it is stale, and a header still saying "click inside a
+    // closed outline" over the solid that click just made would be the
+    // stale-readout bug in a new place.
+    if (changed && stepNoteEl.className === "guide") stepNote("", 0);
+    return changed;
   }
 
   /** Runs `fn` as one undoable step. */
@@ -688,10 +696,11 @@ async function main() {
    * by the next step's note if that comes first.
    */
   let stepNoteTimer: ReturnType<typeof setTimeout> | undefined;
-  function stepNote(text: string) {
+  function stepNote(text: string, ms = STEP_NOTE_MS, cls = "") {
     stepNoteEl.textContent = text;
+    stepNoteEl.className = cls;
     clearTimeout(stepNoteTimer);
-    stepNoteTimer = setTimeout(() => { stepNoteEl.textContent = ""; }, STEP_NOTE_MS);
+    stepNoteTimer = setTimeout(() => { stepNoteEl.textContent = ""; stepNoteEl.className = ""; }, ms);
   }
 
   /**
@@ -745,10 +754,20 @@ async function main() {
     onRenderOnly: render,
     onPick: (pick) => insertName(pick.name),
     onUserAction: (phase) => (phase === "before" ? beginUserAction() : endUserAction()),
-    // A tool refusing a gesture ("those three points lie on one line") is the
-    // user's business, not the console's — same channel an entry's error uses.
-    // What a commit made (`e1  extrude of …`) is an answer, and looks like one.
-    onLog: (line, outcome) => log(line, outcome === "done" ? "out" : "err"),
+    // A tool's line is the user's business, not the console's. What a commit
+    // made (`e1  extrude of …`) is an answer, and looks like one. Guidance — a
+    // click that missed, answered with what would work — is muted in the log
+    // and said in the header's note too, where the eye already is, for long
+    // enough to read a sentence; never red, which is the model's. Anything
+    // else a tool logs is a refusal, in an entry error's red.
+    onLog: (line, outcome) => {
+      if (outcome === "guide") {
+        log(line, "out");
+        stepNote(line, GUIDE_NOTE_MS, "guide");
+        return;
+      }
+      log(line, outcome === "done" ? "out" : "err");
+    },
     // A tool whose commit is a command types it, as the menu does — the sketch
     // tool's `plane(a, b, c)` — so it is logged, recalled and undone as typed.
     // The promise is handed back for the extrude tool, which waits for the

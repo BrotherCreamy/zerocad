@@ -149,7 +149,7 @@ test("the revolve tool: the region is outlined; a click on nothing is refused al
   assert.ok(green(await pixel(...inside)), "the preview's green under the cursor");
 
   await clickAt(...await app.screenOf(onG(80, 50)));
-  assert.match(await app.log(), /revolve: no closed region under the click/);
+  assert.match(await app.log(), /revolve: click inside a closed outline — the ones I can see are lit/);
   assert.equal((await app.model()).activeTool, "revolve");
 
   await clickAt(...inside);
@@ -164,7 +164,7 @@ test("the revolve tool: the region is outlined; a click on nothing is refused al
   // A second click on no axis — empty canvas, in no region — says so, and
   // keeps the profile chosen.
   await clickAt(...await app.screenOf(onG(80, 50)));
-  assert.match(await app.log(), /revolve: no line or frame axis under the click/);
+  assert.match(await app.log(), /revolve: now click a line, or a frame.s arm, to turn it about/);
 
   await clickAt(...await yArm());
   assert.equal((await app.model()).activeTool, null, "two clicks, then the tool is done");

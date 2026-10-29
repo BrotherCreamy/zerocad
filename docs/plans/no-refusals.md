@@ -1,7 +1,41 @@
 # Plan: no refusals — tools find their plane, and a miss is guidance
 
-**Status: queued** (2026-10-29), first package under
-[`effortless.md`](effortless.md). Read `CLAUDE.md`, `effortless.md`,
+**Status: built** (2026-10-29), first package under
+[`effortless.md`](effortless.md) — `CurvePlane` and `clickPlaneCommand` in
+`src/tools/place.ts`, the five curve tools, `filletNeedsFrame` in
+`src/operations.ts`, `cornerPlaneCommand`/`facingPoints` in
+`src/sketchface.ts`, `Model.checkCircle`/`checkArc`, `planeForCurve` and
+`planeForCorner` in `src/replenv.ts`; `toolUnavailable` answering null; the
+`"guide"` outcome of `ToolContext.log` and its note in `src/main.ts`;
+`litRegions`/`drawLit`/`lightRegions`/`missedRegion` in `src/tools/region.ts`,
+`revolveAxes` in `src/tools/revolve.ts`; `test/curvetoolplane.test.ts`,
+`test/guidance.test.ts`, `test/toolavail.test.ts`,
+`test/e2e/firstrun.e2e.ts`. Deviations, each marked ⚠ below where the text
+was written before the code:
+⚠ the line the curve tools type is `plane(pt(x, y, z), null, null, { look:
+false })` — only the origin is a point typed with coordinates; the refs are
+`frame()`'s own seeding along the screen's right and up, which is exactly "a
+span along the screen's axes" and keeps the orientation exact where three
+rounded coordinates would tilt it; the origin is rounded to three decimals for
+the log, and the click is moved onto the frame's plane at commit (under a
+thousandth). ⚠ **The fillet tool's plane is the corner's own three points**,
+`plane(shared, a, b, { look: false })`, not the working plane at the click:
+the arc must lie in the corner's plane, and the plane facing the screen is
+that only until the view turns. ⚠ **Typed `fillet(…)` makes its frame too**
+(on the corner's points), which the text did not ask for, so the typed
+command matches the tool as `circ`/`arc` do. ⚠ Typed `circ()`/`arc()` **say
+in the log** that they made the frame. ⚠ The 3-point tools' sentence is
+"those three are on one line — click the third off it", not "move one": the
+first two clicks are already placed and the third is the one to change.
+⚠ Two more sentences than the list: "no closed outline yet — draw one, then
+click inside it" when there is no loop at all, and the revolve tool's
+"nothing lies in its plane to turn it about — draw a line there" and "‹axis›
+is not in its plane, or crosses it — click a lit one". ⚠ The status note is
+muted by a class (`#stepnote.guide`, one line of header CSS in `index.html`),
+shown 5 s, and cleared as soon as the next undo step is recorded. ⚠ Every
+loop is lit, **hidden faces included** — there is no occlusion test. An
+abandoned curve gesture leaves the plane it typed (one Ctrl+Z, as a typed
+line). Read `CLAUDE.md`, `effortless.md`,
 `extrude-makes-its-plane.md` (as built — the pattern to copy),
 `src/toolavail.ts`, `src/menu.ts`, the curve tools (`circle`, `circle3`,
 `arc`, `arc3`, `fillet` in `src/tools/`), `extrude`, `revolve`, `sketch`,

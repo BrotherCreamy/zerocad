@@ -258,7 +258,7 @@ function toolCtx(m: Model, view: View, options: Record<string, unknown> = {}) {
     },
     pickResult: null as Pick | null,
     pick: () => c.pickResult,
-    logLine(line: string, outcome?: "refused" | "done") { (outcome === "done" ? c.said : c.log).push(line); },
+    logLine(line: string, outcome?: "refused" | "done" | "guide") { (outcome === "done" ? c.said : c.log).push(line); },
     run(command: string) {
       c.typed.push(command);
       const p = repl.eval(command).then((r) => { if (!r.ok) c.log.push(String(r.error?.message)); });
@@ -268,7 +268,7 @@ function toolCtx(m: Model, view: View, options: Record<string, unknown> = {}) {
     act(fn: () => void) { c.acts++; fn(); },
     settled: async () => { while (c.pending.length) await c.pending.shift(); await new Promise((r) => setTimeout(r, 0)); },
   };
-  const ctx = { ...c, log: (line: string, outcome?: "refused" | "done") => c.logLine(line, outcome) };
+  const ctx = { ...c, log: (line: string, outcome?: "refused" | "done" | "guide") => c.logLine(line, outcome) };
   return { ctx: ctx as unknown as ToolContext, c };
 }
 
@@ -348,7 +348,8 @@ test("the revolve tool: a frameless region, then an axis — the plane typed, th
   tool.onDown(info([0, 0]));
   await c.settled();
   assert.deepEqual(c.typed, [], "refused before any plane is typed");
-  assert.match(c.log.join("\n"), /^revolve: the axis .* runs 5 off the plane/);
+  // Not one of the axes it lit: said short, as guidance (guidance.test.ts).
+  assert.match(c.log.join("\n"), new RegExp(`^revolve: ${off} is not in its plane, or crosses it — click a lit one$`));
   assert.deepEqual(frames(m), []);
 
   c.pickResult = { kind: "line", name: axis } as Pick;

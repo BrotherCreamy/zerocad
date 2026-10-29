@@ -328,7 +328,7 @@ test("Arc3Tool: the collinear refusal reaches the log pane when there is one", a
   tool.onDown(raw([10, 0]));
   tool.onDown(raw([25, 0]));
   assert.equal(ctx.lines.length, 1);
-  assert.match(ctx.lines[0], /arc3: .*lie on one line/);
+  assert.match(ctx.lines[0], /^arc3: those three are on one line — click the third off it$/);
 });
 
 test("Arc3Tool: a second click on top of the first is a double-click, not an endpoint", async () => {

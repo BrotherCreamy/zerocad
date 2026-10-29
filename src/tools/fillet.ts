@@ -21,9 +21,16 @@ import { Tool, defineTool, type PointerInfo, type RenderContext } from "./tool.t
 import { fillet, filletNeedsFrame } from "../operations.ts";
 import { cornerPlaneCommand } from "../sketchface.ts";
 import { cross3, lift3 } from "../vec3.ts";
+import type { Model } from "../model.ts";
 
 /** Used when the tool is armed with no radius. */
 export const DEFAULT_RADIUS = 10;
+
+/** Whether two lines share an end — asked by the tool so a miss is said in its words, not the operation's. */
+function sharesCorner(model: Model, a: string, b: string): boolean {
+  const [la, lb] = [model.line(a), model.line(b)];
+  return la.refs.some((p) => lb.refs.includes(p));
+}
 
 export class FilletTool extends Tool {
   readonly name = "fillet";
@@ -38,22 +45,37 @@ export class FilletTool extends Tool {
 
   onDown(p: PointerInfo): void {
     if (this.typing) return; // the plane it typed is still going in
-    const hit = this.ctx.pick?.(p.screen);
+    const hit = this.ctx.pick?.(p.screen) ?? null;
+    const first = this.first;
     // Clicking anything that isn't a line is a miss, not an error: the most
     // likely cause is aiming slightly off, and cancelling the whole gesture
-    // for that would be infuriating.
-    if (!hit || hit.kind !== "line") return;
+    // for that would be infuriating. So the gesture stays where it was, and
+    // the line says what was clicked and what would do.
+    if (!hit || hit.kind !== "line") {
+      const what = hit ? `${hit.name} is a ${hit.kind} — ` : "";
+      this.guide(first ? (hit ? `${what}click a line that meets ${first}` : `now click a line that meets ${first}`)
+        : `${hit ? what : "click a line — "}fillet wants two lines that share a corner`);
+      return;
+    }
 
-    if (!this.first) {
+    if (!first) {
       this.first = hit.name;
       this.ctx.requestRender();
       return;
     }
-    if (hit.name === this.first) return; // the same edge twice is not a corner
+    if (hit.name === first) {
+      this.guide(`that is ${first} again — click the line it shares a corner with`);
+      return;
+    }
 
     const second = hit.name;
-    const first = this.first;
     const ctx = this.ctx;
+    if (!sharesCorner(ctx.model, first, second)) {
+      // Through `refuse`, so headless it still throws, as the operation's own
+      // refusal of the same corner always did.
+      this.refuse(new Error(`${first} and ${second} do not meet — fillet wants two lines that share a corner`));
+      return;
+    }
     let corner: [string, string, string] | null = null;
     if (ctx.run && ctx.act) {
       try {
@@ -107,7 +129,17 @@ export class FilletTool extends Tool {
   private refuse(e: unknown): void {
     this.ctx.requestRender();
     if (!this.ctx.log) throw e;
-    this.ctx.log(`fillet: ${e instanceof Error ? e.message : e}`);
+    this.ctx.log(`fillet: ${e instanceof Error ? e.message : e}`, "guide");
+  }
+
+  /**
+   * One line of guidance for a click that cannot be a corner's — muted, the
+   * gesture as it was. Headless it is only the console's: a miss there was
+   * always silent, and a test driving the tool should not have to catch one.
+   */
+  private guide(why: string): void {
+    this.ctx.requestRender();
+    if (this.ctx.log) this.ctx.log(`fillet: ${why}`, "guide");
   }
 
   onCancel(): void {

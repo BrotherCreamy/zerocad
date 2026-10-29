@@ -113,7 +113,10 @@ test("clicking empty space picks nothing", async () => {
 test("a left-drag on empty space box-selects instead of panning", async () => {
   await app.page.fill("#cmd", "");
   const before = (await app.model()).view;
-  const from = await app.at(500, 400);
+  // Up and left, clear of everything: the middle of the view holds the frame
+  // `circ` made for its plane (no-refusals.md), whose ref points a box there
+  // would catch.
+  const from = await app.at(160, 140);
   await app.page.mouse.move(from.x, from.y);
   await app.page.mouse.down();
   await app.page.mouse.move(from.x + 60, from.y - 30, { steps: 5 });

@@ -1,6 +1,6 @@
 # Plan: the toolbar greys out a tool that cannot run
 
-**Status: built** (2026-10-21) — one PR against `claude/resume-tasks-o7q02e`;
+**Status: built** (2026-10-21); **superseded** (2026-10-29) by [`no-refusals.md`](no-refusals.md) — the curve tools make their plane, so the rule now answers null and nothing greys (the machinery stays) — one PR against `claude/resume-tasks-o7q02e`;
 what it added beyond this text is in `TODO.md`'s Done entry. Follow-up from the panels package
 (`docs/plans/panels.md`), filed on the register by the worker who built it.
 Read `CLAUDE.md`, the panels spec, `src/panels.ts`, `src/menu.ts` (in

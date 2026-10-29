@@ -67,10 +67,11 @@ export class Circle3Tool extends Tool {
       // clicks means the obvious next move (aim the third somewhere else) just
       // works, which is the choice fillet.ts already made for a corner it
       // cannot round.
-      const why = `${this.name}: those three points lie on one line — no circle passes through them`;
+      // Said as what would work, as guidance: the click missed, nothing is wrong.
+      const why = `${this.name}: those three are on one line — click the third off it`;
       // The log pane where there is one; the console's ear headless, where an
       // advisory (the gesture stays live) does not deserve a throw.
-      if (this.ctx.log) this.ctx.log(why);
+      if (this.ctx.log) this.ctx.log(why, "guide");
       else console.warn(why);
       this.ctx.requestRender();
       return;
