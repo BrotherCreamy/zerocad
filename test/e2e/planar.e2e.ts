@@ -80,7 +80,9 @@ test("with no frame, the circle tool refuses out loud, and the menu says why bef
   await app.page.mouse.down({ button: "right" });
   await app.page.mouse.up({ button: "right" });
   await app.page.waitForTimeout(120);
-  const off = await app.page.$$eval("#ctxmenu .item.off", (els) => els.map((el) => el.firstElementChild?.textContent ?? ""));
+  // The tools that are off; Undo and Redo are off or not by the history, not the frame.
+  const off = (await app.page.$$eval("#ctxmenu .item.off", (els) => els.map((el) => el.firstElementChild?.textContent ?? "")))
+    .filter((label) => label !== "Undo" && label !== "Redo");
   assert.deepEqual(off, ["Circle", "3 point circle", "Arc", "3 point arc", "Fillet"], "shown, disabled, with the reason under each");
   await app.page.keyboard.press("Escape");
 });

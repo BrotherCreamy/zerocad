@@ -54,7 +54,10 @@ the snapshot-compare-push policy inside it. No other engine changes.
   `window` — with one carve-out: when the command input holds uncommitted
   text, the browser's own text-editing undo keeps the keystroke. Model undo
   with a half-typed command on screen would be two kinds of confusing; an
-  empty input is the signal the keystroke is for the model.
+  empty input is the signal the keystroke is for the model. *(Retired by the
+  owner, 2026-10-29 — "should work and be bulletproof" — see
+  [`undo-bulletproof.md`](undo-bulletproof.md): the chord is the drawing's
+  everywhere, and the text stays in the box.)*
 
 ## Verification
 

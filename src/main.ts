@@ -11,6 +11,7 @@ import { Model } from "./model.ts";
 import { open as openModelText, save as saveModel, savedTools } from "./persist.ts";
 import { carryIntoSession, toolSources } from "./toolsource.ts";
 import { UndoStack } from "./undo.ts";
+import { historyChord } from "./historykeys.ts";
 import { Repl, fmt } from "./repl.ts";
 import { neocadScope } from "./replenv.ts";
 import { ToolEngine, type View } from "./tools/engine.ts";
@@ -43,6 +44,9 @@ import "./tools/revolve.ts";
 import "./tools/sketch.ts";
 
 const statusEl = document.getElementById("status")!;
+const stepNoteEl = document.getElementById("stepnote")!;
+/** How long "undid" stays beside the verdict: long enough to read, gone before the next thought. */
+const STEP_NOTE_MS = 1600;
 const logEl = document.getElementById("log")!;
 const cv = document.getElementById("cv") as HTMLCanvasElement;
 const g = cv.getContext("2d")!;
@@ -630,15 +634,64 @@ async function main() {
     }
   }
 
+  /**
+   * One move through the history, by whichever door — the chord, the menu's
+   * Undo, or `undo()` typed — so all three do the same thing in the same order.
+   *
+   * **What is on screen is put away first.** The menu closes, because every
+   * command on it names the model about to be replaced. The gesture in
+   * progress is cancelled, as Escape cancels it, because its preview is drawn
+   * from a model that is about to stop existing — and cancelling first is also
+   * what makes a drag interrupted by Ctrl+Z a step of its own that the same
+   * keystroke then takes back, rather than a pull baked into the restored model.
+   *
+   * **The tool stays armed**, as a fresh instance of itself: the gesture was
+   * the tool's state, and the state is what went. Someone drawing lines who
+   * undoes the last one wants to draw the next, not to re-arm. The exception is
+   * a tool the restored model cannot run — a curve tool whose frame the undo
+   * took away — which is left disarmed with the toolbar's own reason, rather
+   * than armed in a model where its first click can only fail.
+   *
+   * Every outcome is said twice: the returned line, for the log, and a brief
+   * note beside the status verdict — the empty stack included, which used to
+   * be a log line nobody looks at and read as the key doing nothing.
+   */
   function step(direction: "undo" | "redo"): string {
+    menu.close();
+    const armed = engine.armed;
+    engine.cancel();
     const target = direction === "undo" ? undoStack.undo(snapshot()) : undoStack.redo(snapshot());
-    if (target === undefined) return `nothing to ${direction}`;
-    // Flagged before the swap, not after: `swapModel` re-enters this file
-    // (it cancels any gesture, which can close a user action), and the flag has
-    // to already be set by the time it does.
-    movedHistory = true;
-    swapModel(openModelText(target, APP_DIM));
-    return `${direction === "undo" ? "undid" : "redid"} — ${undoStack.depth} back, ${undoStack.redoDepth} forward`;
+    if (target !== undefined) {
+      // Flagged before the swap, not after: `swapModel` re-enters this file
+      // (it cancels any gesture, which can close a user action), and the flag has
+      // to already be set by the time it does.
+      movedHistory = true;
+      swapModel(openModelText(target, APP_DIM));
+    }
+    if (armed) {
+      const why = toolUnavailable(model, armed.name);
+      if (why === null) engine.arm(armed.name, armed.options);
+      else log(`${armed.name} disarmed: ${why}`, "out");
+    }
+    render();
+    const said = target === undefined ? `nothing to ${direction}` : direction === "undo" ? "undid" : "redid";
+    stepNote(said);
+    return target === undefined ? said : `${said} — ${undoStack.depth} back, ${undoStack.redoDepth} forward`;
+  }
+
+  /**
+   * The note beside the status verdict that says what the last undo or redo
+   * did. **Beside the verdict, never in place of it**: the verdict is the one
+   * thing the header must not get wrong, and a readout that spent a second and
+   * a half saying "undid" instead of CONFLICT would be the stale-readout bug
+   * this project has already paid for once. Cleared on a timer, and replaced
+   * by the next step's note if that comes first.
+   */
+  let stepNoteTimer: ReturnType<typeof setTimeout> | undefined;
+  function stepNote(text: string) {
+    stepNoteEl.textContent = text;
+    clearTimeout(stepNoteTimer);
+    stepNoteTimer = setTimeout(() => { stepNoteEl.textContent = ""; }, STEP_NOTE_MS);
   }
 
   /**
@@ -706,7 +759,8 @@ async function main() {
       // On empty canvas the menu is also told which region the click is
       // inside, for "Sketch on this face" — asked here, where the camera is,
       // so the menu stays a pure function of what it is handed.
-      menu.show(menuFor(model, pick, pick ? null : engine.regionAt(sx, sy)), sx, sy);
+      const history = { canUndo: undoStack.canUndo, canRedo: undoStack.canRedo };
+      menu.show(menuFor(model, pick, pick ? null : engine.regionAt(sx, sy), history), sx, sy);
     },
   });
 
@@ -941,9 +995,8 @@ async function main() {
    * because keydown bubbles — this widens where the key works and narrows
    * nothing.
    *
-   * No carve-out for text in the input, unlike Ctrl+Z below: Escape has never
-   * meant anything to a text field here, so there is nothing to be ambiguous
-   * with.
+   * No carve-out for text in the input: Escape has never meant anything to a
+   * text field here, so there is nothing to be ambiguous with.
    */
   window.addEventListener("keydown", (e) => {
     if (e.key !== "Escape") return;
@@ -967,9 +1020,9 @@ async function main() {
    * Focusing the input during `keydown` is enough: the character is inserted
    * into whatever holds the focus once the keydown has been dispatched.
    *
-   * Only printable keys without a modifier — Escape, Ctrl+Z and the arrows keep
-   * their own meanings — and never when something editable already has the
-   * focus, which is that thing's keystroke.
+   * Only printable keys without a modifier — Escape and the arrows keep their
+   * own meanings, and Ctrl+Z never gets this far (see below) — and never when
+   * something editable already has the focus, which is that thing's keystroke.
    */
   window.addEventListener("keydown", (e) => {
     if (e.ctrlKey || e.metaKey || e.altKey || e.key.length !== 1) return;
@@ -979,30 +1032,34 @@ async function main() {
   });
 
   /**
-   * Ctrl+Z / Cmd+Z undoes; Ctrl+Shift+Z and Ctrl+Y redo. On `window` rather
-   * than on the canvas, because the keystroke means the same thing wherever the
-   * focus happens to be — and the focus is nearly always the command line,
-   * which is the one place a canvas-scoped binding would never fire.
+   * **Ctrl+Z (Cmd+Z) always undoes the drawing, and Ctrl+Y and Ctrl+Shift+Z
+   * (Cmd+⇧Z) always redo it — wherever the focus is, whatever is on screen.**
+   * The owner's direction, 2026-10-29: "why does ctrl+z and ctrl+y not work?
+   * should work and be bulletproof".
    *
-   * The carve-out: **while the command input holds uncommitted text, Ctrl+Z is
-   * the browser's**, and it edits the text. A half-typed command on screen makes
-   * the keystroke ambiguous in a way nothing can resolve from the outside, and
-   * undoing the model out from under someone mid-sentence is the worse of the
-   * two wrong answers. An empty input is the signal that the keystroke is meant
-   * for the drawing. This is deliberately about the text and not about the
-   * focus: text left sitting in the box is visible, and what is visible is what
-   * a user is reasoning from.
+   * **Capture phase on `window`**, which is the first place a keydown is
+   * dispatched to, ahead of every target and bubble listener in the document —
+   * and `stopPropagation` there, so nothing below it (the command input, a
+   * panel, a button, the menu, whatever is added later) can see the chord,
+   * let alone swallow it. Only these chords are stopped; every other key
+   * carries on to whatever it was going to.
+   *
+   * **No carve-out for text in the command line any more.** There was one: with
+   * uncommitted text in the box, Ctrl+Z was handed to the browser's text undo,
+   * on the theory that undoing the model mid-sentence was the worse mistake.
+   * Measured, it was the one case in which Ctrl+Z "did not work" — the box
+   * emptied and the drawing stayed — and the owner overruled it. So the key is
+   * the drawing's, `preventDefault` stops the browser's text undo (the
+   * keystroke cannot empty the box either), and the half-typed text simply
+   * stays where it was. Anything already submitted is still one ↑ away.
    */
   window.addEventListener("keydown", (e) => {
-    if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
-    const key = e.key.toLowerCase();
-    const undoing = key === "z" && !e.shiftKey;
-    const redoing = (key === "z" && e.shiftKey) || key === "y";
-    if (!undoing && !redoing) return;
-    if (cmdEl.value !== "") return; // the text's undo, not the model's
+    const chord = historyChord(e);
+    if (!chord) return;
     e.preventDefault();
-    log(step(undoing ? "undo" : "redo"), "out");
-  });
+    e.stopPropagation();
+    log(step(chord), "out");
+  }, true);
 
   render();
   statusEl.textContent = "ready — type help(), a tool name, or any expression";

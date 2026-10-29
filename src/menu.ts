@@ -99,11 +99,24 @@ function quoted(name: string): string {
  * (`pick.kind === "relation"`), or empty canvas (`pick === null`) — and, on
  * empty canvas, the closed region the click is inside, if any (the engine's
  * `regionAt`, asked by the host), which is what offers "Sketch on this face".
+ * `history`, when given, adds Undo and Redo at the bottom (see `historyItems`);
+ * left out, the menu is only about the pick, which is what most tests ask.
  *
  * Pure, and deliberately so — it reads the model and returns strings. Nothing
  * here runs a command, touches the DOM or knows a menu can be on screen.
  */
-export function menuFor(model: Model, pick: Pick | null, region: RegionHit | null = null): Menu {
+export function menuFor(
+  model: Model,
+  pick: Pick | null,
+  region: RegionHit | null = null,
+  history: History | null = null,
+): Menu {
+  const menu = menuOf(model, pick, region);
+  if (history) menu.items.push(...historyItems(history));
+  return menu;
+}
+
+function menuOf(model: Model, pick: Pick | null, region: RegionHit | null): Menu {
   if (!pick) return emptyCanvasMenu(model, region);
   if (pick.kind === "relation") {
     return {
@@ -118,6 +131,36 @@ export function menuFor(model: Model, pick: Pick | null, region: RegionHit | nul
     };
   }
   return entityMenu(model, pick);
+}
+
+/**
+ * Which way the undo history can move — the host's to say, since the stack
+ * lives in main.ts and the model knows nothing of it. Passed in rather than
+ * read, so `menuFor` stays a pure function of what it is handed.
+ */
+export interface History {
+  canUndo: boolean;
+  canRedo: boolean;
+}
+
+/**
+ * **Undo and Redo, at the bottom of every menu** — the mouse's way to the one
+ * thing that is otherwise only a chord or a typed `undo()`. Typed, like every
+ * item, so the log shows `undo()` and the step is the same one Ctrl+Z takes.
+ *
+ * At the bottom because they are about the drawing as a whole, not about what
+ * was right-clicked, and the items above them are. Shown disabled rather than
+ * hidden when that side of the stack is empty, for Fix's reason: "why is there
+ * no Undo here" is answered by the item saying there is nothing to undo — the
+ * same words the chord writes in the log.
+ */
+function historyItems(history: History): MenuItem[] {
+  const item = (label: string, can: boolean, command: string, why: string): MenuItem =>
+    ({ label, action: can ? { do: "run", command } : { do: "disabled", why } });
+  return [
+    item("Undo", history.canUndo, "undo()", "nothing to undo"),
+    item("Redo", history.canRedo, "redo()", "nothing to redo"),
+  ];
 }
 
 /**

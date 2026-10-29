@@ -126,7 +126,7 @@ test("the menu's Set value… types the command and leaves the number to the use
   const label = (await glyphs()).find((g) => g.op === "dist")!;
   await rightClick(...label.screen);
 
-  assert.deepEqual(await items(), ["Set value…", "Delete"]);
+  assert.deepEqual(await items(), ["Set value…", "Delete", "Undo", "Redo"]);
   assert.equal((await commands())["Set value…"], 'set("d1.value", ',
     "the item shows exactly what it is about to type, unfinished and all");
 
