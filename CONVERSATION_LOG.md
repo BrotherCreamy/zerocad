@@ -106,6 +106,65 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### The tray is a line, and a grip is a cursor: undoing the wrap cleanly
+
+**The owner**, an hour after the wrap landed: *"you dont need those diag lines
+on every corner. also actually get rid of resizing altogether on the tool
+palette. its just a straight line that fits the number of tools it has in it,
+and can either be vert or horiz"*.
+
+**Deleting the wrap meant deciding what was the wrap's.** `trayFit`,
+`perLine`, `trayDepth`, `dragStep`'s second-ask loop (and the `same` helper
+only it used) and the stylesheet's `flex-wrap` existed for nothing else, and
+went. Two things that came in with the wrap were weighed and kept. The push
+direction in `pushed` — the way the rectangle grows on an axis rather than the
+pointer's sign — was introduced because a wrapped tray's depth grew against
+the pointer; for every gesture left the two are the same, so it could be
+reverted with no change in behaviour. It was kept because it is the better
+statement of the rule (it is the rectangle that covers what must make way)
+and it runs on every move, so it is not idle code; reverting it would be churn
+in the one resolver everything shares. And the grips' triangle clip was
+introduced so that four grips would not eat a 28 px tray; with the tray
+gripless that reason is gone, but the second — a 16 px strip keeps its middle
+to drag by, rather than losing 12 px squares at both ends — still holds for
+the log and the command line, and the spec said nothing else about resizing
+changes.
+
+**Where "no resizing" lives.** The spec asked for `resized` on a tray to be
+refused, but `resized` is geometry on a bare rectangle and has no notion of a
+tray; giving it one would make the pure core know about panel kinds for one
+`if`. `dragStep` is already the one function told a panel is a tray (its
+button count, for turning), so the refusal went there: a resize grab on a tray
+returns the very layout it was handed. The DOM half never makes the grips in
+the first place (`gripCorners`), so the refusal is the second wall, not the
+only one — and the random walk deliberately hands the tray resize grabs to
+prove the second wall holds.
+
+**Why the size is recomputed rather than stored differently.** The stored
+layout is a rectangle per panel under `v2`. A tray's rectangle could have been
+stored without `w`/`h`, but that is a format change for no gain: `arranged`
+simply reads a tray's `x`, `y` and `orient` and takes its size from
+`traySize` of the count it has now. That one rule does three jobs — old
+wrapped layouts come up one line, a tool defined into a moved tray lengthens
+it (closing the caveat the wrap had left about a moved tray not growing), and
+nothing a viewer does can make the two disagree. Pulling the placement out of
+`apply` into a pure `arranged` was so all three are unit tests rather than
+browser ones.
+
+**Rejected: a mark on hover.** The smallest step back from "no visible mark"
+would be drawing the diagonals only while the pointer is on a grip. The owner
+asked for none, the cursor already changes at exactly that moment, and the
+platform's own window corners carry nothing either. Written down in TODO in
+case the grips prove hard to find.
+
+**The pixel test reads the screen, not the stylesheet.** Asserting that the
+computed `background` is `none` would pass with a mark drawn some other way
+(a border, a pseudo-element, an SVG). So the test screenshots each corner of
+the log with the hand on its grip, and held, and again with the grips hidden,
+and requires the two to be identical, decoding the PNG in the page so there
+is no new dependency; and it plants the old lit colour to show the
+comparison sees a mark when there is one.
+
 ### Extrude on a frameless sketch: the layer above makes the plane, and the tool waits for it
 
 **The owner**, with a screenshot of eight identical refusals ("the loop of

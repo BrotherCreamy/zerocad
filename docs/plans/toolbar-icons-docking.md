@@ -71,7 +71,9 @@ the two overlap along that edge. The orientation is stored with the layout
 defaults — per-viewer state, costs nothing). A resized tray (the grip) keeps
 its orientation and scrolls as now. *(Overturned by the owner, 2026-10-29:
 it wraps its buttons into more lines instead — see
-[`panels-corners-wrap.md`](panels-corners-wrap.md).)*
+[`panels-corners-wrap.md`](panels-corners-wrap.md); and overturned again the
+same day: a tray cannot be resized at all, and is always one line of its
+buttons — see [`tray-fixed-line.md`](tray-fixed-line.md).)*
 
 The log and the command line are panels, not trays: they keep their shape.
 Build the rule as a pure function in `panels.ts` (`orientationFor(rect,

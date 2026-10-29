@@ -126,7 +126,8 @@ test/                    node --test, no browser needed (WASM loaded via a byte 
 ## The command line
 
 The command line (a panel at the bottom-left until you move it — every
-piece of chrome can be dragged by its strip and resized by its corner) is a
+piece of chrome can be dragged by its strip, and all but the toolbar — always
+one line of its tools — resized from any corner) is a
 REPL over the app's own command surface, and it is the primary interface —
 not a debug console. `help()` lists everything in scope. The toolbar's
 buttons are shortcuts into it: each is a tool's icon (hover for its name),

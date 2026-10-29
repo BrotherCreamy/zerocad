@@ -3,7 +3,21 @@
 **Status: built** (2026-10-29) — one PR against `claude/resume-tasks-o7q02e`
 (branch `claude/panels-corners-wrap`); every deviation is in `TODO.md`'s Done
 entry, and the places this text was wrong or silent are corrected below and
-marked *(as built)*. The owner's direction, verbatim:
+marked *(as built)*.
+
+**Caveats since overturned** (owner, the same day; built by
+[`tray-fixed-line.md`](tray-fixed-line.md)): *"you dont need those diag lines
+on every corner. also actually get rid of resizing altogether on the tool
+palette. its just a straight line that fits the number of tools it has in it,
+and can either be vert or horiz"*. So §2 is gone entirely — the tray has **no
+grips and no wrap**, `trayFit` / `perLine` / `trayDepth` and the flex-wrap are
+deleted, and the tray is always one line (`traySize`), its stored size
+ignored. §1 stands for the log and the command line, except that the "same
+12 px triangle as today's" is now **drawn as nothing**: the hot-spot and its
+cursor remain, the diagonal marks do not. The rest of this file is the record
+of what was built and then removed.
+
+The owner's direction, verbatim:
 
 > *allow me to rescale the popup windows from any corner. the tool palette
 > should wrap the icons also - i.e. if it is vertical and i decrease vertical

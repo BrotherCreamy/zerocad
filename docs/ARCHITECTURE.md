@@ -859,14 +859,16 @@ of both (a corner), it stays as it is. The rule (`orientationFor`, `turned`) is
 pure arithmetic in `panels.ts`, and the orientation is stored with the
 rectangle, in the same per-viewer layout.
 
-**Any corner resizes, and a tray wraps rather than scrolls.** Every panel has a
-grip on each corner; `resized` moves that corner and its two edges and leaves
-the opposite corner where it was, through the same resolver as everything
-else. A tray's buttons flow and wrap in the way it runs, and its size is split
-between the viewer and the buttons: **the run is the viewer's, the depth is
-the buttons'** (`trayFit`) — exactly as many lines thick as the wrap makes, so
-nothing is ever out of sight and nothing scrolls. The stored layout is still a
-rectangle and an orientation; the wrap is derived from them every time.
+**Any corner resizes — but a tray never does.** The log and the command line
+have a grip on each corner, which draws nothing (the cursor is the
+affordance); `resized` moves that corner and its two edges and leaves the
+opposite corner where it was, through the same resolver as everything else.
+A tray has no grips: **its size is its buttons'**, one line of them
+(`traySize`), and nothing the viewer does sets it — a stored tray keeps its
+position and orientation and has its size recomputed from the count every
+time it is placed (`arranged`), so a tool defined at the command line makes
+it one button longer wherever it is. (For an afternoon a tray could be
+shortened and wrapped its buttons into more lines; the owner reversed it.)
 
 **Panels push one another, and never overlap.** Every arrangement — a drag, a
 resize, a turn, every `apply` — goes through one pure resolver, `pushed`: the
