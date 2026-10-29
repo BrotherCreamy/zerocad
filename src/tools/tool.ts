@@ -93,8 +93,12 @@ export interface ToolContext {
    * at all. Absent headless, like `pick` — the convention there is to fall
    * back to whatever a caller with no user in front of them deserves: rethrow
    * a real refusal, keep the `console.warn` for an advisory.
+   *
+   * `"done"` marks a line that reports what a commit made rather than a
+   * refusal — `e1  extrude of …` — so the host can show it as an answer, not
+   * an error. A line is a refusal unless it says otherwise.
    */
-  log?(line: string): void;
+  log?(line: string, outcome?: "refused" | "done"): void;
   /**
    * Types one line into the command machinery, exactly as if it had been typed
    * at the command line — the context menu's `run`, handed to a tool. For a
@@ -103,8 +107,20 @@ export interface ToolContext {
    * frame, and going through the command line is what makes the log, the
    * journal and the undo step those of the typed call rather than a second
    * answer to what it means. Absent outside an app, like `log`.
+   *
+   * Settles once the line has run — logged, bracketed as its own undo step,
+   * re-solved — for a tool with more to do after it: the extrude tool types
+   * the plane a frameless region needs, then extrudes along it (`act`). A
+   * typed line runs asynchronously, so a tool that went on in the same breath
+   * would land inside the typed line's undo step.
    */
-  run?(command: string): void;
+  run?(command: string): Promise<void> | void;
+  /**
+   * Runs `commit` as one user action of its own — one undo step — for a tool
+   * that commits after a `run` it had to wait for, and so outside the pointer
+   * event that began its gesture. Absent outside an app, like `run`.
+   */
+  act?(commit: () => void): void;
 }
 
 export abstract class Tool {

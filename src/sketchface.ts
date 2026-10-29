@@ -183,3 +183,22 @@ function members(loop: Loop): string {
 export function sketchOnFaceCommand(model: Model, loop: Loop, toward: number[]): string {
   return `plane(${sketchFrameFor(model, loop, toward).map((p) => JSON.stringify(p)).join(", ")})`;
 }
+
+/**
+ * The command the extrude and revolve tools type before their operation, on a
+ * region no frame orients: a frame of `sketchFrameFor`'s three points, so the
+ * feature runs along the sketch's own plane with +z toward the viewer — a
+ * positive depth comes out at whoever clicked.
+ *
+ * `plane(a, b, c, { look: false })` in a model with no default frame, because
+ * this frame is then the plane being sketched on and the tools should draw on
+ * it next — but **without turning the view**: `plane` alone swings the camera
+ * square-on, which in the middle of an extrude is a jolt, and the solid should
+ * appear where the user was looking. `frame(a, b, c)` when there is a default
+ * already: a default that is merely not parallel is still the user's choice,
+ * and is kept. Throws as `sketchFrameFor` does, in its words.
+ */
+export function featurePlaneCommand(model: Model, loop: Loop, toward: number[]): string {
+  const names = sketchFrameFor(model, loop, toward).map((p) => JSON.stringify(p)).join(", ");
+  return model.defaultFrame == null ? `plane(${names}, { look: false })` : `frame(${names})`;
+}

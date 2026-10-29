@@ -271,7 +271,9 @@ function toolCtx(model: Model, view: View, options: Record<string, unknown> = {}
     },
     // The engine's own answer, as the revolve tool's second click asks it.
     pick: ([sx, sy]: [number, number]) => hitTest(model, view, sx, sy),
-    ...(log ? { log: (line: string) => { log.push(line); } } : {}),
+    // Refusals only: a commit's report of what it made (`e1  extrude of …`) is
+    // the extrude and revolve tools' too, and is not what these tests count.
+    ...(log ? { log: (line: string, outcome?: "refused" | "done") => { if (outcome !== "done") log.push(line); } } : {}),
   };
   return c as ToolContext & typeof c;
 }

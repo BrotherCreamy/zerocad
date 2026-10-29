@@ -148,8 +148,8 @@ export class ToolEngine {
   private onRenderOnly: () => void;
   private onPick: (pick: Pick) => void;
   private onUserAction: (phase: "before" | "after") => void;
-  private onLog?: (line: string) => void;
-  private onRun?: (command: string) => void;
+  private onLog?: (line: string, outcome?: "refused" | "done") => void;
+  private onRun?: (command: string) => Promise<void> | void;
   private onContextMenu: (pick: Pick | null, sx: number, sy: number) => void;
   /**
    * Whether a user action is currently open, so that `before` and `after`
@@ -250,9 +250,9 @@ export class ToolEngine {
        */
       onUserAction?: (phase: "before" | "after") => void;
       /** One line to the user in the host's log pane — see ToolContext.log. */
-      onLog?: (line: string) => void;
-      /** One line typed into the host's command machinery — see ToolContext.run. */
-      onRun?: (command: string) => void;
+      onLog?: (line: string, outcome?: "refused" | "done") => void;
+      /** One line typed into the host's command machinery, settling once it has run — see ToolContext.run. */
+      onRun?: (command: string) => Promise<void> | void;
       /**
        * A right press released without moving, with what it landed on (null for
        * empty canvas) and where, in canvas pixels.
@@ -431,6 +431,16 @@ export class ToolEngine {
       regionAt: ([sx, sy]) => this.regionAt(sx, sy),
       log: this.onLog,
       run: this.onRun,
+      // The engine's own bracket, idempotent as ever: the pointer event that
+      // began the gesture has long closed its own by the time this is called.
+      act: (commit) => {
+        this.beginUserAction();
+        try {
+          commit();
+        } finally {
+          this.endUserAction();
+        }
+      },
     };
     this.active = new Ctor(ctx);
   }

@@ -17,13 +17,14 @@ import type { SolveReport } from "./kernel/problem.ts";
 import { Tool, defineTool, listTools, type ToolCtor } from "./tools/tool.ts";
 import * as basic from "./relations/basic.ts";
 import * as geom from "./relations/geometry.ts";
-import { del, extrude, fillet, regen, revolve, set } from "./operations.ts";
+import { del, extrude, extrudeNeedsFrame, fillet, regen, revolve, revolveNeedsFrame, set } from "./operations.ts";
+import { sketchFrameFor } from "./sketchface.ts";
 import { save as saveModel, savedTools } from "./persist.ts";
 import { carryIntoSession, toolSources, type ToolSourceStore } from "./toolsource.ts";
-import { alignView, assignView, orbitBy, panBy, screenToWorld, zoomAbout, type View } from "./view.ts";
+import { alignView, assignView, orbitBy, panBy, screenToWorld, viewAxes, zoomAbout, type View } from "./view.ts";
 import { pointOnWorkingPlane } from "./workplane.ts";
 import { frameBasis } from "./relations/refs.ts";
-import { describeLoop, findLoops } from "./loops.ts";
+import { describeLoop, findLoops, type Loop } from "./loops.ts";
 import { _, checkClauses, checkOrdinary, slots, splitClauses, subjectable, type Clause, type Slot } from "./clauses.ts";
 
 type Bag = Record<string, unknown>;
@@ -331,6 +332,23 @@ export function neocadScope(h: EnvHandles): Bag {
     return `looking at ${name}`;
   }
 
+  /**
+   * The frame a typed `extrude` or `revolve` makes for a loop no frame orients:
+   * three of the loop's own points by `sketchFrameFor`'s rule (a corner and its
+   * neighbours), the default only if there was none, and the view left alone —
+   * what the tools type as `plane(a, b, c, { look: false })` or `frame(a, b,
+   * c)`, made here as the same model calls. +z toward the viewer where there
+   * is one, so a positive depth comes out at them as it does from the tool;
+   * with no view, the loop's own normal (loops.ts's: the side whose largest
+   * component is positive, so up for anything drawn level).
+   */
+  function planeForFeature(loop: Loop): string {
+    const toward = model.dim === 3 && h.view ? viewAxes(h.view).toward : loop.plane.normal;
+    const name = model.addFrame(...sketchFrameFor(model, loop, toward)).name;
+    if (model.defaultFrame == null) model.setDefaultFrame(name);
+    return name;
+  }
+
   const geometry: Bag = {
     // Creation returns the entity's *name*, because that is what every
     // relation takes — `dist(pt(0,0), pt(3,4), 10)` reads straight through.
@@ -417,11 +435,22 @@ export function neocadScope(h: EnvHandles): Bag {
    * `setDefaultFrame` — and never the camera, which no saved drawing
    * remembers. Setting the default is the point of it: a plane you were not
    * then drawing on would be `frame()`.
+   *
+   * `{ look: false }` leaves the view where it is: what the extrude and revolve
+   * tools type when they make the plane a frameless sketch needs, because the
+   * camera swinging square-on at the moment of the click would be a jolt in
+   * the middle of making a solid. Checked before anything is made.
    */
-  geometry.plane = (origin?: string | null, xref?: string | null, yref?: string | null) => {
+  geometry.plane = (origin?: string | null, xref?: string | null, yref?: string | null,
+                    options?: { look?: boolean } | null) => {
+    if (options != null && (typeof options !== "object" || Array.isArray(options)
+        || (options.look !== undefined && typeof options.look !== "boolean"))) {
+      throw new Error(`plane's fourth argument is its options — { look: false } makes the plane without turning the view, `
+        + `got ${JSON.stringify(options)}`);
+    }
     const name = (geometry.frame as (o?: string | null, x?: string | null, y?: string | null) => string)(origin, xref, yref);
     model.setDefaultFrame(name);
-    if (h.view && model.dim === 3) lookAtFrame(name);
+    if (h.view && model.dim === 3 && options?.look !== false) lookAtFrame(name);
     return name;
   };
   geometry.setDefaultFrame = (name: string | null) => {
@@ -487,18 +516,36 @@ export function neocadScope(h: EnvHandles): Bag {
      * several (it is, once it is the edge of a wall too): the one parallel to
      * that frame's plane. `loops` is the profile as the journal carries it
      * resolved, and never needs typing. See operations.ts.
+     *
+     * A loop no frame orients gets one first (`planeForFeature`): a frame of
+     * three of its own points, journalled as its own `addFrame` before the
+     * `extrude` entry that names it — a replay has to find the frame there —
+     * and the default if there was none. The operation itself still refuses a
+     * frameless loop; this is the layer that is meant to have dealt with it.
      */
-    extrude: (member: string, depth?: number | null, frame?: string | null, loops?: ProfileMember[][] | null) =>
-      extrude(model, member, depth ?? null, frame ?? null, loops ?? null),
+    extrude: (member: string, depth?: number | null, frame?: string | null, loops?: ProfileMember[][] | null) => {
+      if (frame == null && loops == null) {
+        const loop = extrudeNeedsFrame(model, member, depth ?? null);
+        if (loop) frame = planeForFeature(loop);
+      }
+      return extrude(model, member, depth ?? null, frame ?? null, loops ?? null);
+    },
     /**
      * Revolves the closed loop a member is in about an axis — `revolve("l1",
      * "f1.y", Math.PI)`, or `yaxis()` for the default frame's — through an angle
      * in radians, a whole turn when left out, and returns the feature's name.
      * The axis is a frame's axis or a line, read and never moved. `frame` and
-     * `loops` are extrude's. See operations.ts.
+     * `loops` are extrude's, and so is the frame made for a loop no frame
+     * orients — after the axis has been checked against the loop's own plane,
+     * so a revolve refused on its geometry makes no frame first.
      */
-    revolve: (member: string, axis: string, angle?: number | null, frame?: string | null, loops?: ProfileMember[][] | null) =>
-      revolve(model, member, axis, angle ?? null, frame ?? null, loops ?? null),
+    revolve: (member: string, axis: string, angle?: number | null, frame?: string | null, loops?: ProfileMember[][] | null) => {
+      if (frame == null && loops == null) {
+        const loop = revolveNeedsFrame(model, member, axis, angle ?? null);
+        if (loop) frame = planeForFeature(loop);
+      }
+      return revolve(model, member, axis, angle ?? null, frame ?? null, loops ?? null);
+    },
     /**
      * Changes a dimension's value — `set("d4.value", 60)` — rebuilding it in
      * place under the same name. See operations.ts for why it is an operation
