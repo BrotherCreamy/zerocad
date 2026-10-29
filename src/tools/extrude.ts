@@ -20,10 +20,22 @@
 // anything has been extruded (every profile edge is also a wall's), and the
 // click has already said which. A region split by a crossing extrudes as the
 // preview outlined it, the crossing made a point by the operation. The journal
-// entry is the same one a typed call makes.
+// entry is the same one a typed call makes, and the log says what it made.
+//
+// **A region no frame orients gets its plane first, typed.** An extrude runs
+// along a frame's +z, and a rectangle drawn in a fresh model has none — the
+// owner's first run, refused eight times. A frame of three of the loop's own
+// points is the sketch's own plane, not a datum nobody chose (it is what
+// "Sketch on this face" makes), so the tool types it — `plane(a, b, c, { look:
+// false })`, or `frame(a, b, c)` beside a default it keeps — through the
+// command line (`ctx.run`), where the log teaches it, and then extrudes along
+// it as a step of its own. The view does not turn: the solid appears where the
+// user was looking.
 
-import { Tool, defineTool, type PointerInfo, type RenderContext } from "./tool.ts";
-import { DEFAULT_DEPTH, extrudeProfile, profileOf } from "../operations.ts";
+import { Tool, defineTool, type PointerInfo, type RegionHit, type RenderContext } from "./tool.ts";
+import { DEFAULT_DEPTH, extrudeProfile, orientingFrame, profileOf } from "../operations.ts";
+import { describeFeature } from "../picking.ts";
+import { featurePlaneCommand } from "../sketchface.ts";
 import { drawRegion, regionKey, type Region } from "./region.ts";
 
 export class ExtrudeTool extends Tool {
@@ -32,6 +44,8 @@ export class ExtrudeTool extends Tool {
   // the click does not go to.
   readonly snaps = false;
   private under: Region | null = null;
+  /** Set between typing a frameless region's plane and extruding along it — which typing, so a cancel can drop it. */
+  private typing: object | null = null;
 
   private get depth(): number {
     const d = this.ctx.options.depth;
@@ -46,19 +60,58 @@ export class ExtrudeTool extends Tool {
   }
 
   onDown(p: PointerInfo): void {
+    if (this.typing) return; // the plane it typed is still going in
     const hit = this.ctx.regionAt?.(p.screen) ?? null;
     if (!hit) {
       this.refuse(new Error("no closed region under the click — click inside a loop (loops() lists them)"));
       return;
     }
+    const ctx = this.ctx;
+    const model = ctx.model;
+    const loop = hit.loops[hit.index];
+    if (orientingFrame(model, loop) !== null || !ctx.run || !ctx.act) {
+      // Headless, with no command line to type the plane into, a frameless
+      // region is refused by the operation, as it always was.
+      this.commit(hit);
+      return;
+    }
+    let command: string;
     try {
-      extrudeProfile(this.ctx.model, profileOf(this.ctx.model, hit.loops, hit.index), this.depth);
+      command = featurePlaneCommand(model, loop, hit.toward);
+    } catch (e) {
+      this.refuse(e);
+      return;
+    }
+    // The plane is typed and then waited for: the line runs asynchronously,
+    // and an extrude made in the same breath would fall inside its undo step,
+    // so one Ctrl+Z would take both. Waiting makes them two steps — the solid,
+    // then the plane — as two typed lines would be.
+    this.under = null;
+    const token = {};
+    this.typing = token;
+    void Promise.resolve(ctx.run(command)).finally(() => {
+      if (this.typing !== token) return; // cancelled while it went in: the plane stays, as typed
+      this.typing = null;
+      ctx.act!(() => this.commit(hit));
+    });
+  }
+
+  /**
+   * The region extruded, along the frame that orients it — which, after a
+   * typed plane, is that plane: it was the only one parallel. Refused, with the
+   * operation's own words, when there is still none (the plane's line failed,
+   * or there was no command line to type it into).
+   */
+  private commit(hit: RegionHit): void {
+    const model = this.ctx.model;
+    try {
+      const feature = extrudeProfile(model, profileOf(model, hit.loops, hit.index), this.depth);
       this.under = null;
       this.ctx.requestSolve();
       this.ctx.finish();
+      this.ctx.log?.(describeFeature(model, model.featureOf(feature)), "done");
     } catch (e) {
-      // No frame orients the loop, most likely. The tool stays armed, so the
-      // next click can be somewhere it can extrude.
+      // The tool stays armed, so the next click can be somewhere it can extrude.
       this.refuse(e);
     }
   }
@@ -75,6 +128,7 @@ export class ExtrudeTool extends Tool {
 
   onCancel(): void {
     this.under = null;
+    this.typing = null;
     this.ctx.requestRender();
   }
 

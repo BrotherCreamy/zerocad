@@ -264,9 +264,15 @@ export interface Profile {
  *
  * **Which way.** Along `frame`'s +z — the frame given, or else the frame the
  * loop lies in (the default first), or else one parallel to it. A loop in no
- * frame's orientation is refused: an extrude reads its direction off a frame,
- * as `fix` reads its coordinates off one, and inventing a frame would be a
- * datum nobody chose. A negative depth extrudes the other way.
+ * frame's orientation is refused *here*: an extrude reads its direction off a
+ * frame, as `fix` reads its coordinates off one, and this layer does not make
+ * one up. The layer above does, and it is no invented datum: the command
+ * line's `extrude` and the extrude tool build a frame from three of the loop's
+ * own points (`sketchFrameFor`, as "Sketch on this face" does) as a journalled
+ * call of its own *before* this one, so a replay finds it — see
+ * `extrudeNeedsFrame`. It is the sketch's own plane, and it follows the sketch.
+ * The refusal stays, as the guard that the layer above did its job. A negative
+ * depth extrudes the other way.
  *
  * **Journalled as the call, with the profile resolved** — `extrude("l1", 20,
  * "f1", [["l1","a1","l2","l3","l4"],["c1"]])`, and over a split region
@@ -298,10 +304,7 @@ export function extrude(model: Model, member: string, depth?: number | null, fra
                         loops?: ProfileMember[][] | null): string {
   if (model.dim !== 3) throw new Error("extrude needs a 3D model — a 2D drawing has no direction out of its plane");
   const d = extrudeDepth(depth);
-  const e = typeof member === "string" ? model.entities.get(member) : undefined;
-  if (!e || (e.kind !== "line" && e.kind !== "arc" && e.kind !== "circle")) {
-    throw new Error(`${JSON.stringify(member)} is not a line, arc or circle — extrude names a member of the loop to extrude`);
-  }
+  checkMember(model, member, "extrude");
   const profile = loops != null ? givenProfile(model, member, frame, loops, EXTRUDE) : foundProfile(model, member, frame ?? null, EXTRUDE);
   return extruded(model, member, d, profile);
 }
@@ -372,6 +375,11 @@ const REVOLVE: ProfileWords = {
 export function profileOf(model: Model, all: Loop[], index: number, frame?: string | null,
                           words: ProfileWords = EXTRUDE): Profile {
   const f = frame ?? sketchFrameOf(model, all[index], words);
+  return { frame: f, ...regionMembers(model, all, index) };
+}
+
+/** `profileOf` without the frame: the region's members, portions resolved, and where its crossings are. */
+function regionMembers(model: Model, all: Loop[], index: number): Pick<Profile, "loops" | "crossings"> {
   const crossings = new Map<string, number[]>();
   const loops = regionOf(all, index).map((i) => all[i].members.map((m): ProfileMember => {
     if (m.span === null) return m.name;
@@ -381,7 +389,7 @@ export function profileOf(model: Model, all: Loop[], index: number, frame?: stri
     });
     return { name: m.name, from, to };
   }));
-  return { frame: f, loops, crossings };
+  return { loops, crossings };
 }
 
 /** `profileOf`, for a revolve: the same region, and refusals that say "revolve". */
@@ -428,13 +436,24 @@ function framesByPreference(model: Model): string[] {
   return d != null && all.includes(d) ? [d, ...all.filter((f) => f !== d)] : all;
 }
 
-/** The frame a loop is extruded along (or revolved in) when none is named. See `extrude`. */
-function sketchFrameOf(model: Model, loop: Loop, words: ProfileWords): string {
+/**
+ * The frame a loop is extruded along (or revolved in) when none is named: the
+ * one it lies in, else the first parallel to it, the default first — or null,
+ * when no frame orients it and the layer above has one to make. See `extrude`.
+ */
+export function orientingFrame(model: Model, loop: Loop): string | null {
   if (loop.plane.frame !== null) return loop.plane.frame;
   for (const f of framesByPreference(model)) {
     const axes = framePlaneAxes(model, f);
     if (axes && parallel(axes.n, loop.plane.normal)) return f;
   }
+  return null;
+}
+
+/** `orientingFrame`, refused aloud when there is none. */
+function sketchFrameOf(model: Model, loop: Loop, words: ProfileWords): string {
+  const f = orientingFrame(model, loop);
+  if (f !== null) return f;
   throw new Error(`the loop of ${loop.members.map(memberLabel).join(",")} lies in no frame's plane, and no frame is `
     + `parallel to it — ${words.needsFrame}: make one on its plane (plane(…), or Sketch on this) `
     + `and ${words.op} again`);
@@ -442,6 +461,12 @@ function sketchFrameOf(model: Model, loop: Loop, words: ProfileWords): string {
 
 /** The loop `member` is in, found — and refused if it is in none, or in several. */
 function foundProfile(model: Model, member: string, frame: string | null, words: ProfileWords): Profile {
+  const { all, index } = foundLoop(model, member, frame, words);
+  return profileOf(model, all, index, frame, words);
+}
+
+/** `foundProfile`'s search, without the profile: the loops there are, and which of them `member` is in. */
+function foundLoop(model: Model, member: string, frame: string | null, words: ProfileWords): { all: Loop[]; index: number } {
   const all = findLoops(model);
   let mine = all.map((_, i) => i).filter((i) => all[i].members.some((m) => m.name === member));
   if (frame !== null) {
@@ -461,7 +486,47 @@ function foundProfile(model: Model, member: string, frame: string | null, words:
       + `(${words.narrowed(member)}), name a member only one of them has, or click inside the `
       + `region with the ${words.op} tool`);
   }
-  return profileOf(model, all, mine[0], frame, words);
+  return { all, index: mine[0] };
+}
+
+/**
+ * The command line's question before a typed `extrude(member, depth)` names no
+ * frame: the loop it would extrude **when no frame orients it** — so the layer
+ * above can make one on it first, as a journalled call of its own — or null,
+ * when the call can be made as it stands. Asked only after every refusal the
+ * call makes that needs no frame (a 2D model, the depth, what the member is, no
+ * loop or several), so a call that is going to be refused makes no frame first.
+ */
+export function extrudeNeedsFrame(model: Model, member: string, depth?: number | null): Loop | null {
+  if (model.dim !== 3) throw new Error("extrude needs a 3D model — a 2D drawing has no direction out of its plane");
+  extrudeDepth(depth);
+  checkMember(model, member, "extrude");
+  const { all, index } = foundLoop(model, member, null, EXTRUDE);
+  return orientingFrame(model, all[index]) === null ? all[index] : null;
+}
+
+/**
+ * `extrudeNeedsFrame` for a typed `revolve(member, axis, angle)` — with the
+ * geometric refusals asked too, of the loop's own plane (`checkRevolveRegion`),
+ * since an axis out of the plane is the likeliest way a revolve is refused and
+ * the frame must not be made for a call that then fails.
+ */
+export function revolveNeedsFrame(model: Model, member: string, axis: string, angle?: number | null): Loop | null {
+  if (model.dim !== 3) throw new Error("revolve needs a 3D model — a 2D drawing has nothing to turn out of its plane into");
+  revolveAngle(angle);
+  checkMember(model, member, "revolve");
+  axisReader(model, axis);
+  const { all, index } = foundLoop(model, member, null, REVOLVE);
+  if (orientingFrame(model, all[index]) !== null) return null;
+  checkRevolveRegion(model, all, index, axis);
+  return all[index];
+}
+
+function checkMember(model: Model, member: string, op: "extrude" | "revolve"): void {
+  const e = typeof member === "string" ? model.entities.get(member) : undefined;
+  if (!e || (e.kind !== "line" && e.kind !== "arc" && e.kind !== "circle")) {
+    throw new Error(`${JSON.stringify(member)} is not a line, arc or circle — ${op} names a member of the loop to ${op}`);
+  }
 }
 
 /** A portion as `loops()` and the hover print it: `l1[p1→p9]`, in the entity's own direction. */
@@ -892,10 +957,7 @@ export function revolve(model: Model, member: string, axis: string, angle?: numb
                         loops?: ProfileMember[][] | null): string {
   if (model.dim !== 3) throw new Error("revolve needs a 3D model — a 2D drawing has nothing to turn out of its plane into");
   const a = revolveAngle(angle);
-  const e = typeof member === "string" ? model.entities.get(member) : undefined;
-  if (!e || (e.kind !== "line" && e.kind !== "arc" && e.kind !== "circle")) {
-    throw new Error(`${JSON.stringify(member)} is not a line, arc or circle — revolve names a member of the loop to revolve`);
-  }
+  checkMember(model, member, "revolve");
   axisReader(model, axis); // a name that is not an axis says so before anything is looked for
   const profile = loops != null ? givenProfile(model, member, frame, loops, REVOLVE) : foundProfile(model, member, frame ?? null, REVOLVE);
   if (loops == null) checkRevolve(model, profile, axis);
@@ -952,11 +1014,32 @@ export function checkRevolve(model: Model, profile: Profile, axis: string): void
   if (ax.dir.every((c) => c === 0)) throw new Error(`the axis ${axis} has collapsed — it has no direction to turn about`);
   const plane = framePlaneAxes(model, profile.frame);
   if (!plane) throw new Error(`"${profile.frame}" has collapsed — it has no plane for a profile to lie in`);
+  checkRevolveIn(model, profile, axis, plane.n, ` (${profile.frame}'s)`);
+}
+
+/**
+ * `checkRevolve` for a region no frame orients yet, asked of the loop's own
+ * plane: what the revolve tool and the command line ask *before* they make the
+ * frame a revolve of it needs, so an axis it refuses leaves no frame behind.
+ * Which way round the loop's normal points does not matter — every question
+ * is about lying in the plane, or keeping to one side of a line in it.
+ */
+export function checkRevolveRegion(model: Model, all: Loop[], index: number, axis: string): void {
+  const ax = axisReader(model, axis).read();
+  if (ax.dir.every((c) => c === 0)) throw new Error(`the axis ${axis} has collapsed — it has no direction to turn about`);
+  checkRevolveIn(model, regionMembers(model, all, index), axis, all[index].plane.normal, "");
+}
+
+/** The two geometric refusals, about a plane of normal `n`; `whose` names it in the message, if anything does. */
+function checkRevolveIn(model: Model, profile: Pick<Profile, "loops" | "crossings">, axis: string, n: number[],
+                        whose: string): void {
+  const ax = axisReader(model, axis).read();
+  const plane = { n };
   const names = profile.loops[0].map(memberText).join(",");
   const lean = Math.abs(dot3(ax.dir, plane.n));
   if (lean > IN_PLANE_SINE) {
     const deg = Math.round((Math.asin(Math.min(1, lean)) * 180) / Math.PI * 1000) / 1000;
-    throw new Error(`the axis ${axis} leans ${deg}° out of the plane of the profile ${names} (${profile.frame}'s) — a `
+    throw new Error(`the axis ${axis} leans ${deg}° out of the plane of the profile ${names}${whose} — a `
       + "revolve turns a profile about an axis lying in its own plane, or it makes no solid of revolution");
   }
   const members = profile.loops.flat();
@@ -970,8 +1053,8 @@ export function checkRevolve(model: Model, profile: Profile, axis: string): void
   const onProfile = model.coords(first.kind === "line" ? first.refs[0] : model.refsOf(first)[0]);
   const off = Math.abs(dot3(sub3(ax.origin, onProfile), plane.n));
   if (off > tol) {
-    throw new Error(`the axis ${axis} runs ${Math.round(off * 1000) / 1000} off the plane of the profile ${names} `
-      + `(${profile.frame}'s), parallel to it — a revolve turns a profile about an axis lying in its own plane`);
+    throw new Error(`the axis ${axis} runs ${Math.round(off * 1000) / 1000} off the plane of the profile ${names}`
+      + `${whose}, parallel to it — a revolve turns a profile about an axis lying in its own plane`);
   }
   // Which side of the axis, across the plane: the in-plane direction square to it.
   const w = cross3(plane.n, ax.dir);

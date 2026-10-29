@@ -747,10 +747,13 @@ async function main() {
     onUserAction: (phase) => (phase === "before" ? beginUserAction() : endUserAction()),
     // A tool refusing a gesture ("those three points lie on one line") is the
     // user's business, not the console's — same channel an entry's error uses.
-    onLog: (line) => log(line, "err"),
+    // What a commit made (`e1  extrude of …`) is an answer, and looks like one.
+    onLog: (line, outcome) => log(line, outcome === "done" ? "out" : "err"),
     // A tool whose commit is a command types it, as the menu does — the sketch
     // tool's `plane(a, b, c)` — so it is logged, recalled and undone as typed.
-    onRun: (command) => void submit(command),
+    // The promise is handed back for the extrude tool, which waits for the
+    // plane it typed to be in before extruding along it.
+    onRun: (command) => submit(command),
     onContextMenu: (pick, sx, sy) => {
       // The tag and the menu would otherwise sit on top of one another, both
       // naming the same thing — and the tag cannot update while the cursor is

@@ -1,6 +1,24 @@
 # Plan: extrude on a frameless sketch makes its own plane
 
-**Status: queued** (2026-10-29). From the owner's screenshot and question
+**Status: built** (2026-10-29) — `orientingFrame`, `extrudeNeedsFrame`,
+`revolveNeedsFrame` and `checkRevolveRegion` in `src/operations.ts`,
+`featurePlaneCommand` in `src/sketchface.ts`, the tools in
+`src/tools/extrude.ts` and `revolve.ts`, `ToolContext.run`/`act`/`log` in
+`src/tools/tool.ts` and `engine.ts`, two lines of `src/main.ts`, `plane`'s
+option and the command-layer `extrude`/`revolve` in `src/replenv.ts`;
+`test/extrudeplane.test.ts` and `test/e2e/extrudeplane.e2e.ts`. Deviations,
+each marked ⚠ where the text below was written before the code (and in the
+register's 3D entry): the tool **waits for the typed plane** and extrudes in
+an undo step of its own (`ToolContext.act`, new; `run` now settles), because a
+typed line runs asynchronously; beside a default it keeps, the tool types
+**`frame(a, b, c)`**, not `plane`; the tools **log what they made** (`e1
+extrude of …`, a new `"done"` outcome of `ToolContext.log`), which is what puts
+`e1` in the log; the command layer **checks every refusal that needs no frame
+before making one** (revolve's geometry against the loop's own plane), so a
+refused call leaves nothing behind; and the headless normal is loops.ts's
+(largest component positive), which is +z only for a loop within 45° of level.
+
+From the owner's screenshot and question
 (*"how does extrude work? i don't really understand this"*): a rectangle
 drawn in a fresh model, `extrude` armed, a click inside, and the log says
 *"the loop of l1,l4,l3,l2 lies in no frame's plane, and no frame is parallel
@@ -39,6 +57,22 @@ clicks extrude, and gets a solid.
   `plane` (or the tool) a way to make the frame and set the default
   *without* turning the view, and use it here — the view stays where the
   user left it. (If `plane` grows an option, say so in `help()`.)
+  ⚠ *As built: `plane(a, b, c, { look: false })`, in `help()`. "Two journal
+  entries" is three where there was no default — `addFrame`,
+  `setDefaultFrame`, `extrude` — and two **undo steps**, the plane's and the
+  solid's. They could not be one breath: the host's `submit` is async (the REPL
+  evaluates in an `AsyncFunction`), so the plane runs synchronously but its
+  undo bracket closes a microtask later, and an extrude made straight after
+  `ctx.run` returned landed inside it — one Ctrl+Z took both, and the log put
+  `f1` after the solid's line (measured: with the extrude made synchronously,
+  the e2e's first Ctrl+Z leaves no plane, and its log assertion fails). So
+  `run` now settles once the line has run, and the tool extrudes in `ctx.act`
+  (new: the engine's own bracket, outside the pointer event). Beside a default it keeps, the tool types `frame(a, b, c)`,
+  since `plane` always sets the default. And the tools now log what they made,
+  `e1  extrude of …` (`describeFeature`, a `"done"` line shown as an answer,
+  not an error) — every commit, not only these, or the log would say `e1` for
+  one click and nothing for the next. Headless, with no `run`, a frameless
+  region is refused by the operation exactly as before.*
 - **The typed commands match.** `extrude("l1", 20)` typed with a frameless
   loop does the same: the operation makes the frame inside its own
   `asOperation`? No — a frame must exist before the extrude entry for a
@@ -48,17 +82,32 @@ clicks extrude, and gets a solid.
   `operations.ts`'s `extrude` keeps refusing a frameless profile — the
   refusal becomes the guard that the layer above did its job, and its text
   can stay.
+  ⚠ *As built, the frame must not be made for a call that is then refused, so
+  the command layer asks first (`extrudeNeedsFrame`, `revolveNeedsFrame`):
+  every refusal that needs no frame — the depth or angle, the member, the
+  axis's name, no loop or several — and, for revolve, the geometric ones
+  (axis in the plane, profile on one side) asked of the loop's own plane
+  (`checkRevolveRegion`; the revolve tool asks it too before typing). Typed, it
+  is one entry and so one undo step, frame and solid together.*
 - **Which three points, which way up**: `sketchFrameFor`'s rule, with
   `toward` = the view's line of sight in the app and the loop's own normal
   (whichever side has a positive component along the kernel's +z, as
   `loops.ts` already picks a normal) at the command line with no view. The
   depth's sign then means what it means today: positive along the frame's
   +z, which in the app is toward the viewer.
+  ⚠ *As built: loops.ts does not pick the +z side — it picks the normal whose
+  **largest** component is positive (`orientPlane`), and that is what is used
+  headless; it is the +z side only for a loop within 45° of level. A sketch
+  standing in the x–z plane extrudes along +y. Tested.*
 - **The default frame**: set to the new frame only when the model had no
   default (the case here). A model with a default frame that is merely not
   parallel keeps its default; the new frame is just the sketch's.
 - **The message**, for the one case left — a loop that no three points can
   make a plane of — keeps `sketchFrameFor`'s own words.
+  ⚠ *As built, one more case left with its words: a loop seen exactly edge-on
+  (cosine below 1e-9), where neither side faces the viewer. `loopAt` never
+  hands the tool one; a typed call in a view that happens to be exactly
+  edge-on is refused, saying to turn the view.*
 
 ## Verification
 

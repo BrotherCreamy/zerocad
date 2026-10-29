@@ -106,6 +106,56 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### Extrude on a frameless sketch: the layer above makes the plane, and the tool waits for it
+
+**The owner**, with a screenshot of eight identical refusals ("the loop of
+l1,l4,l3,l2 lies in no frame's plane …"): *"how does extrude work? i don't
+really understand this"*. The refusal was right by the register's rule (no
+world frame: an extrude reads its direction off a frame, and inventing one
+would be a datum nobody chose) and wrong about what counts as inventing. A
+frame of three of the loop's own points is the one "Sketch on this face" has
+made since 2026-10-21; it is the sketch's plane, it follows the sketch, and it
+journals as an ordinary `frame(a, b, c)`. The rule now says so in its own
+register entry.
+
+**Why not inside the operation.** `extrude` making the frame inside its
+`asOperation` would journal the frame nowhere — the body runs unrecorded, and a
+replay of the `extrude` entry would then name a frame that does not exist yet.
+Making it in `extrude()` but outside `asOperation` would journal in the right
+order and was the smallest diff, but it is an operation deciding to create a
+datum, the thing the rule is about; the spec put it in the layer above, and the
+refusal left below became a guard worth having (a test asserts it still
+stands).
+
+**Why the tool waits, and why that needed a new seam.** The first shape was
+the spec's literal one: type the plane through `ctx.run`, then extrude. The
+plane does run synchronously — the REPL's `AsyncFunction` runs until its first
+`await` — but `submit`'s undo bracket and its log of the answer close a
+microtask later, so an extrude made as `ctx.run` returned landed inside the
+typed line's step: one Ctrl+Z took both, and the log said `e1` before `f1`.
+Measured by making it synchronous and watching the e2e fail there. So `run`
+settles, the tool waits, and `ctx.act` gives it the engine's bracket for the
+commit. Rejected: typing the extrude too (`extrude(member, depth, frame,
+loops)`, the journal's form) — it would have made the log perfectly uniform,
+but a region split by a crossing names points that do not exist until the
+operation materialises them, so the typed form cannot say what the click
+chose; the tool's direct `extrudeProfile` can.
+
+**Why the tools now always say what they made.** The spec's e2e asked for `e1`
+in the log. A line only after a typed plane would make one click talk and the
+next stay silent, so both tools report every commit (`describeFeature`) — as a
+`"done"` line, shown in the answer colour, because `ToolContext.log` had only
+ever carried refusals and the host showed everything it carried as an error.
+
+**Why check before making the frame, rather than take it back.** A typed
+`revolve` with an axis off the plane would otherwise make the frame, be
+refused, and leave it — journalled, in the file, and an undo step for a call
+that failed. Taking it back would have meant `del` and `setDefaultFrame(null)`
+entries for nothing, or editing the journal by hand. Checking first is the
+house pattern (`withClauses` checks every clause before making anything), and
+revolve's geometric refusals do not care which way the plane faces, so they
+can be asked of the loop's own normal before any frame exists.
+
 ### Any corner, and a tray that wraps: whose is each side of a tray
 
 **The owner:** *"allow me to rescale the popup windows from any corner. the

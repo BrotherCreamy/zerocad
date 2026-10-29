@@ -583,6 +583,14 @@ the camera. That is the menu's rule applied to a tool: the log, the recall
 history, the journal and the one undo step are the typed call's because it is
 one.
 
+A typed line runs asynchronously, so `ctx.run` settles once it has run, and a
+tool with more to do after it waits: the extrude and revolve tools type the
+plane a frameless sketch needs (`plane(a, b, c, { look: false })`), then
+commit along it inside `ctx.act`, the engine's own undo bracket — without the
+wait the commit lands inside the typed line's step, and one Ctrl+Z takes both
+(measured). A tool reports what a commit made through `ctx.log(line,
+"done")`, which the host shows as an answer rather than a refusal.
+
 ## A solid's faces are drawn, never stored
 
 An extrude is real geometry — twins, walls, a depth — and its *faces* are what
