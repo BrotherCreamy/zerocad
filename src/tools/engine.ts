@@ -53,6 +53,7 @@ import { boxFrom, selectInBox, type BoxMode } from "../boxselect.ts";
 import { glyphAt, placeGlyphs, type Glyph } from "../glyphs.ts";
 import { findSnap, type Snap } from "../snapping.ts";
 import { findLoops, loopAt } from "../loops.ts";
+import { OptionMemory, declaredOptions, explicitOptions, resolveOptions } from "./options.ts";
 
 export type { View };
 
@@ -265,6 +266,13 @@ export class ToolEngine {
        * assumes.
        */
       onContextMenu?: (pick: Pick | null, sx: number, sy: number) => void;
+      /**
+       * The viewer's last option values, which `arm` fills from and writes to.
+       * Not a callback: per-viewer state the host owns (main.ts hands it one
+       * over `localStorage`), so the engine never touches storage itself. An
+       * engine given none remembers for its own lifetime.
+       */
+      optionMemory?: OptionMemory;
     },
   ) {
     this.model = model;
@@ -278,6 +286,7 @@ export class ToolEngine {
     this.onLog = callbacks.onLog;
     this.onRun = callbacks.onRun;
     this.onContextMenu = callbacks.onContextMenu ?? (() => {});
+    this.optionMemory = callbacks.optionMemory ?? new OptionMemory(null);
     canvas.addEventListener("pointerleave", () => {
       if (this.hover) { this.hover = null; this.onRenderOnly(); }
     });
@@ -392,6 +401,9 @@ export class ToolEngine {
     return loop ? { loops, index: loops.indexOf(loop), toward: viewAxes(this.view).toward } : null;
   }
 
+  /** Where `arm` keeps and finds the last value of each declared option. */
+  private optionMemory: OptionMemory;
+
   /** What `arm` was last called with. Read through `armed`, which checks it is still current. */
   private armedWith: { name: string; options: Record<string, unknown> } | null = null;
 
@@ -412,11 +424,24 @@ export class ToolEngine {
    * Arms `toolName`, cancelling whatever was active. Throws if the name isn't
    * registered. `options` is handed to the tool as `ctx.options`, which is how
    * a tool that needs a parameter up front — a fillet radius, say — gets one.
+   *
+   * For a tool that declares its options they are checked first and filled
+   * (`resolveOptions`: typed, else the last value used, else the default), and
+   * the ones typed are remembered as this viewer's next defaults. A refusal —
+   * an option the tool does not have, a value it cannot take — is thrown
+   * **before** anything is cancelled, so a typo leaves the armed tool, and the
+   * gesture it was in, exactly as they were.
    */
-  arm(toolName: string, options: Record<string, unknown> = {}): void {
-    this.active?.onCancel();
+  arm(toolName: string, given: Record<string, unknown> = {}): void {
     const Ctor = getToolCtor(toolName);
-    if (!Ctor) throw new Error(`no tool "${toolName}"`);
+    if (!Ctor) {
+      this.active?.onCancel();
+      throw new Error(`no tool "${toolName}"`);
+    }
+    const specs = declaredOptions(Ctor, toolName);
+    const options = resolveOptions(toolName, specs, given, this.optionMemory.recall(toolName));
+    this.optionMemory.remember(toolName, explicitOptions(specs, given));
+    this.active?.onCancel();
     this.armedWith = { name: toolName, options };
     const ctx: ToolContext = {
       model: this.model,

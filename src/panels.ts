@@ -1,10 +1,11 @@
 // The app's chrome as floating panels over a full-window canvas: a small panel
 // manager, and the toolbar that is the first panel built for it.
 //
-// A panel is a DOM box with a title strip to drag by and — unless it is a tray,
-// which is always one line of its buttons — a grip on each of its four corners
-// to resize by. Every piece of chrome — the toolbar, the log, the
-// command line — is one, and the canvas underneath is the whole of the area
+// A panel is a DOM box with a title strip to drag by and — unless its size is
+// its content's: a tray, always one line of its buttons, or the options panel,
+// one row per option — a grip on each of its four corners to resize by. Every
+// piece of chrome — the toolbar, the log, the command line, the armed tool's
+// options — is one, and the canvas underneath is the whole of the area
 // below the header, which nothing reflows any more. The header is the one fixed
 // thing: it is the app's title bar, carrying the solve status (and, in the
 // single-file build, the buildstamp), and a title bar that could be dragged
@@ -25,9 +26,10 @@
 // plain numbers, tested without a DOM. The DOM half is thin on purpose.
 //
 // This file imports nothing from the model or the tools. The toolbar is given
-// its tool names, their glyphs, its armed tool and which tools cannot run by
-// its host, and hands back a command string, so it can no more reach the model
-// than the context menu can.
+// its tool names, their glyphs and its armed tool by its host, and the options
+// panel the armed tool's declared options and their values; each hands back a
+// command string, so neither can reach the model any more than the context
+// menu can, nor do anything a typed line could not.
 
 export interface Rect { x: number; y: number; w: number; h: number }
 export interface Size { w: number; h: number }
@@ -97,14 +99,15 @@ const westward = (c: Corner) => c === "nw" || c === "sw";
 const northward = (c: Corner) => c === "nw" || c === "ne";
 
 /**
- * The corners a panel carries a grip on: all four, or for a tray none — the
- * owner: *"actually get rid of resizing altogether on the tool palette"*. A
- * tray's size is its buttons' (`traySize`), so a grip would have nothing to
- * set. A function rather than a check in the DOM half, so that the rule is
- * tested where the rest of the geometry is.
+ * The corners a panel carries a grip on: all four, or for a panel sized by its
+ * content none — a tray (the owner: *"actually get rid of resizing altogether
+ * on the tool palette"*), whose size is its buttons' (`traySize`), and the
+ * options panel, whose size is its rows' (`optionsSize`). A grip on either
+ * would have nothing to set. A function rather than a check in the DOM half,
+ * so that the rule is tested where the rest of the geometry is.
  */
-export function gripCorners(tray: boolean): readonly Corner[] {
-  return tray ? [] : CORNERS;
+export function gripCorners(fixedSize: boolean): readonly Corner[] {
+  return fixedSize ? [] : CORNERS;
 }
 
 /** Where `corner` of `r` is. */
@@ -669,7 +672,9 @@ const DEFAULT_MIN: Size = { w: 80, h: TITLE_H + 20 };
  * line clips it, and one button and the strip are what must be left to take it
  * by.
  */
-export function minSizeOf(id: string, orient: Orientation | undefined, tray: boolean): Size {
+export function minSizeOf(id: string, orient: Orientation | undefined, tray: boolean, fitted?: Size): Size {
+  // A panel sized by its content is that size, or clipped; nothing shrinks it.
+  if (fitted) return fitted;
   if (tray) return traySize(1, orient ?? "column");
   return MIN[id] ?? DEFAULT_MIN;
 }
@@ -687,23 +692,60 @@ export function minSizeOf(id: string, orient: Orientation | undefined, tray: boo
  * that gains a tool is a button longer whether or not the viewer ever moved it,
  * pushing whatever that reaches. The storage key stays v2 — the size is still
  * written with the rectangle, and simply never believed.
+ *
+ * `fitted` is the same rule for a panel that is not a tray but is sized by its
+ * content — the options panel, by its rows: its size is the one given here,
+ * whatever was stored, and only its position is the viewer's.
  */
 export function arranged(
   order: readonly string[], stored: Layout, defaults: Layout,
   trays: Readonly<Record<string, number>>, area: Size,
+  fitted: Readonly<Record<string, Size>> = {},
 ): { layout: Layout; ok: boolean } {
   const wanted: Layout = {};
+  const minOf = (id: string, orient: Orientation | undefined) => minSizeOf(id, orient, id in trays, fitted[id]);
   for (const id of order) {
     const want = stored[id] ?? defaults[id] ?? { x: GAP, y: GAP, w: 200, h: 120 };
     const tray = id in trays;
     // A tray always runs some way; one with nothing stored or defaulted runs
     // the default's way, which is down.
     const orient = tray ? want.orient ?? "column" : undefined;
-    const size = tray ? traySize(trays[id], orient!) : { w: want.w, h: want.h };
-    wanted[id] = placed(constrain({ x: want.x, y: want.y, ...size }, area, minSizeOf(id, orient, tray)), orient);
+    const size = tray ? traySize(trays[id], orient!) : fitted[id] ?? { w: want.w, h: want.h };
+    wanted[id] = placed(constrain({ x: want.x, y: want.y, ...size }, area, minOf(id, orient)), orient);
   }
-  const mins = Object.fromEntries(order.map((id) => [id, minSizeOf(id, wanted[id].orient, id in trays)]));
+  const mins = Object.fromEntries(order.map((id) => [id, minOf(id, wanted[id].orient)]));
   return settled(wanted, order, area, mins);
+}
+
+// ---- the options panel's size and place -------------------------------------
+
+/** One option's row in the options panel: a label, a field and the unit, on one line. */
+export const OPTION_ROW = 22;
+/** The options panel's width: room for a short label, a field of a few digits and a unit. */
+export const OPTIONS_W = 168;
+
+/**
+ * The options panel's size for `rows` options — its strip, 3px of padding top
+ * and bottom, the border, and a row apiece. Like `traySize`, the one thing that
+ * sizes it: it has no grips, and a stored size is never read (`arranged`).
+ */
+export function optionsSize(rows: number): Size {
+  return { w: OPTIONS_W, h: TITLE_H + 8 + rows * OPTION_ROW };
+}
+
+/**
+ * Where a panel of `size` goes by default: beside the tray, on the side of it
+ * the window has room on — right of a column on the left half, left of one on
+ * the right; below a row in the top half, above one in the bottom — lined up
+ * with the tray's near end, a margin off it, and held inside. The options
+ * panel's default, so it comes up where the eye already is, next to the button
+ * that armed the tool, wherever the viewer has put the tray.
+ */
+export function besideTray(tray: Placed, size: Size, area: Size): Rect {
+  const row = tray.orient === "row";
+  const x = row ? tray.x : tray.x + tray.w / 2 <= area.w / 2 ? tray.x + tray.w + GAP : tray.x - GAP - size.w;
+  const y = !row ? tray.y : tray.y + tray.h / 2 <= area.h / 2 ? tray.y + tray.h + GAP : tray.y - GAP - size.h;
+  return constrain({ x, y, ...size }, area, size);
 }
 
 /** The part of `Storage` this file uses — narrow, so a test can hand in a fake. */
@@ -833,16 +875,30 @@ function placed(r: Rect, orient: Orientation | undefined): Placed {
  * their buttons (`traySize`, re-counted on every `apply`), and turn between
  * column and row as they are dragged against an edge (`turned`).
  *
+ * `fitted` names the panels sized by their content that come and go — the
+ * options panel: each has no grips, is exactly the size its `size` answers,
+ * and is hidden while that answers null. Shown, it is placed after every other
+ * panel (so it is the one moved out of the way of a panel already down), at
+ * its stored position or else `beside` the tray it names (`besideTray`).
+ *
  * Every arrangement goes through `pushed`: a drag, a resize, a turn, and (by
  * `settled`) every `apply`. So no two panels are ever shown overlapping while
  * the window has room for them all. `check` asks for that to be verified after
  * every placement and reported on the page when it fails — for the tests.
  */
+export interface Fitted {
+  /** The panel's size now, or null while it is not shown. */
+  size(): Size | null;
+  /** The tray it goes beside when the viewer has not put it anywhere. */
+  beside?: string;
+}
+
 export class Panels {
   private area: HTMLElement;
   private storage: StorageLike | null;
   private defaults: (area: Size) => Layout;
   private trays: Record<string, () => number>;
+  private fitted: Record<string, Fitted>;
   private stored: Layout;
   private els = new Map<string, HTMLElement>();
   /** Where each panel is on screen right now — what a gesture starts from. */
@@ -856,12 +912,13 @@ export class Panels {
 
   constructor(
     area: HTMLElement, defaults: (area: Size) => Layout, storage: StorageLike | null,
-    trays: Record<string, () => number> = {}, options: { check?: boolean } = {},
+    trays: Record<string, () => number> = {}, options: { check?: boolean; fitted?: Record<string, Fitted> } = {},
   ) {
     this.area = area;
     this.defaults = defaults;
     this.storage = storage;
     this.trays = trays;
+    this.fitted = options.fitted ?? {};
     this.check = options.check ?? false;
     this.stored = loadLayout(storage);
     for (const el of Array.from(area.querySelectorAll<HTMLElement>(".panel[data-panel]"))) {
@@ -880,7 +937,7 @@ export class Panels {
   }
 
   private min(id: string, orient: Orientation | undefined): Size {
-    return minSizeOf(id, orient, id in this.trays);
+    return minSizeOf(id, orient, id in this.trays, this.fitted[id]?.size() ?? undefined);
   }
 
   /**
@@ -895,7 +952,29 @@ export class Panels {
     if (this.holding) { this.stale = true; return; }
     const area = this.size();
     const counts = Object.fromEntries(Object.entries(this.trays).map(([id, n]) => [id, n()]));
-    const s = arranged(Array.from(this.els.keys()), this.stored, this.defaults(area), counts, area);
+    const order: string[] = [];
+    const later: string[] = [];
+    const sizes: Record<string, Size> = {};
+    for (const [id, el] of this.els) {
+      const f = this.fitted[id];
+      if (!f) { order.push(id); continue; }
+      const size = f.size();
+      el.hidden = size === null;
+      if (size === null) { delete this.shown[id]; continue; }
+      sizes[id] = size;
+      later.push(id);
+    }
+    const defaults = this.defaults(area);
+    if (later.length) {
+      // Earlier panels hold their places in `settled`, so the tray is where the
+      // panels without the fitted ones put it — which is what "beside" means.
+      const first = arranged(order, this.stored, defaults, counts, area).layout;
+      for (const id of later) {
+        const by = this.fitted[id].beside;
+        defaults[id] = by && first[by] ? besideTray(first[by], sizes[id], area) : { x: GAP, y: GAP, ...sizes[id] };
+      }
+    }
+    const s = arranged([...order, ...later], this.stored, defaults, counts, area, sizes);
     this.show(s.layout, s.ok);
   }
 
@@ -988,7 +1067,7 @@ export class Panels {
     // 12px triangle in its corner (the stylesheet clips it), which leaves a
     // strip its middle. They draw nothing (the owner: *"you dont need those
     // diag lines on every corner"*); the resize cursor is the affordance.
-    const grips = gripCorners(id in this.trays).map((corner) => {
+    const grips = gripCorners(id in this.trays || id in this.fitted).map((corner) => {
       const grip = document.createElement("div");
       grip.className = "pgrip";
       grip.dataset.corner = corner;
@@ -1073,11 +1152,11 @@ export function armCommand(tool: string): string {
 
 /**
  * A button's hover text: the tool's name — the button shows only its glyph, so
- * this is where the name the command line calls it is read — then what the
- * button will do, or, for a tool that cannot run, why not.
+ * this is where the name the command line calls it is read — then the command
+ * it types.
  */
-export function buttonTitle(tool: string, unavailable: string | null): string {
-  return `${tool} — ${unavailable ?? armCommand(tool)}`;
+export function buttonTitle(tool: string): string {
+  return `${tool} — ${armCommand(tool)}`;
 }
 
 /** What the toolbar needs of its host. */
@@ -1092,12 +1171,6 @@ export interface ToolbarHost {
   icon(tool: string): string;
   /** The armed tool's name, or null. */
   active(): string | null;
-  /**
-   * Why `tool` cannot run in the model as it stands, or null when it can —
-   * the rule the context menu reads (`toolUnavailable`), so a button and a
-   * menu item never disagree. Asked on every `sync`, so it must be cheap.
-   */
-  unavailable(tool: string): string | null;
   /** Types one line into the command machinery, as one user action — `submit`. */
   run(command: string): void;
 }
@@ -1116,28 +1189,24 @@ export interface ToolbarHost {
  * vocabulary the command line uses is still one hover away and still what the
  * log shows; the name is the button's accessible name too.
  *
- * **A tool that cannot run is shown disabled, not hidden** — the menu's rule
- * and Fix's reason: a circle button that vanished when the frame did would
- * leave "where did circle go" unanswered, where a greyed one whose hover text
- * is the model's own reason answers it. A disabled button types nothing.
+ * **No button is ever greyed.** One used to be, for a tool the model could not
+ * run, with the reason as its hover text; since every built-in makes what it
+ * needs (docs/plans/no-refusals.md) the rule answers "never", and the wiring
+ * that read it here went with tool-options.md. A tool that one day genuinely
+ * cannot run somewhere refuses its click with guidance, as every tool does.
  */
 export class Toolbar {
   private el: HTMLElement;
   private host: ToolbarHost;
   private names = "";
   private armed: string | null = null;
-  /** Every tool's reason (or "") as last shown, joined — compared, not diffed. */
-  private reasons = "";
 
   constructor(el: HTMLElement, host: ToolbarHost) {
     this.el = el;
     this.host = host;
   }
 
-  /**
-   * Rebuilds if the tool list changed, re-marks the armed button and re-reads
-   * which tools cannot run. Returns whether the list changed.
-   */
+  /** Rebuilds if the tool list changed and re-marks the armed button. Returns whether the list changed. */
   sync(): boolean {
     const tools = this.host.tools();
     const key = tools.join("\n");
@@ -1147,19 +1216,6 @@ export class Toolbar {
       this.el.textContent = "";
       for (const tool of tools) this.el.appendChild(this.button(tool));
       this.armed = null; // the new buttons carry no state; mark them below
-      this.reasons = "";
-    }
-    // Re-read on every call: availability follows the model (a frame made or
-    // deleted), and nothing announces that either.
-    const why = tools.map((t) => this.host.unavailable(t));
-    const reasons = why.map((w) => w ?? "").join("\n");
-    if (rebuilt || reasons !== this.reasons) {
-      this.reasons = reasons;
-      const buttons = Array.from(this.el.querySelectorAll<HTMLButtonElement>("button"));
-      buttons.forEach((b, i) => {
-        b.disabled = why[i] !== null;
-        b.title = buttonTitle(tools[i], why[i]);
-      });
     }
     const active = this.host.active();
     if (rebuilt || active !== this.armed) {
@@ -1179,15 +1235,201 @@ export class Toolbar {
     b.innerHTML = this.host.icon(tool);
     b.dataset.tool = tool;
     b.setAttribute("aria-label", tool);
-    b.title = buttonTitle(tool, null);
+    b.title = buttonTitle(tool);
     b.setAttribute("aria-pressed", "false");
     // Keeps the focus where it was — the command line — so a click on a button
     // is not followed by Enter or Space re-pressing it instead of submitting.
     b.addEventListener("mousedown", (e) => e.preventDefault());
     b.addEventListener("contextmenu", (e) => e.preventDefault());
-    // The guard is for a click dispatched by script; a disabled button gets no
-    // click from a pointer in the first place.
-    b.addEventListener("click", () => { if (!b.disabled) this.host.run(armCommand(tool)); });
+    b.addEventListener("click", () => this.host.run(armCommand(tool)));
     return b;
+  }
+}
+
+// ---- the options panel ------------------------------------------------------
+//
+// The owner (docs/plans/effortless.md): *"if the tool has options, there should
+// also be some kind of e.g. pop-up menu that allows me to set them visually, or
+// it happens in the terminal or whatever."* Both, and they are one thing: while
+// a tool that declares options is armed, a small panel beside the tray shows a
+// row per option, and **editing a field types `arm("extrude", {depth: 25})`**
+// through the host's `run` — `submit`, the toolbar's and the menu's seam — so
+// the log shows it, the recall history has it, and the panel can do nothing a
+// typed line cannot. The fields show whatever the tool is armed with, however
+// it was armed: typed by hand, by a button, or by the panel itself.
+
+/** One declared option as the panel shows it: what it is called, its unit's text, and the armed value. */
+export interface OptionRow { name: string; label: string; unit: string; value: number | boolean }
+
+/** What the options panel needs of its host. */
+export interface OptionsHost {
+  /** The armed tool's registered name and its declared options, or null when none is armed or it declares none. */
+  armed(): { tool: string; rows: OptionRow[] } | null;
+  /** Types one line into the command machinery, as one user action — `submit`. */
+  run(command: string): void;
+}
+
+/**
+ * The line a field types: `arm("extrude", {depth: 25})` — the tool quoted as
+ * JSON, as a button quotes it, and only the option edited. The others need not
+ * be said: each was either never typed, and is filled from its default, or was,
+ * and is remembered, which is exactly what the tool is armed with now.
+ */
+export function optionCommand(tool: string, option: string, value: number | boolean): string {
+  const key = /^[A-Za-z_$][\w$]*$/.test(option) ? option : JSON.stringify(option);
+  return `arm(${JSON.stringify(tool)}, {${key}: ${String(value)}})`;
+}
+
+/** A number as a field shows it: to a millionth, so a whole turn reads 6.283185, not seventeen digits. */
+export function fieldText(v: number): string {
+  return String(Math.round(v * 1e6) / 1e6);
+}
+
+/** What a field's text means: a finite number, or null for anything that is not one (which restores the field). */
+export function parseField(text: string): number | null {
+  const t = text.trim();
+  if (t === "") return null;
+  const n = Number(t);
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * The options panel's DOM: a strip naming the armed tool, and a row per
+ * declared option — the label, a field (a checkbox for a flag) and the unit.
+ * Built from the host when asked, like the toolbar, so a tool defined at the
+ * command line with a `static options` gets its rows with no work of its own.
+ *
+ * **Enter or blur commits; Escape restores.** A commit that would change
+ * nothing types nothing, and text that is not a number puts the field back. A
+ * press anywhere else commits a field left mid-edit *before* that press is
+ * handled, so clicking straight into the drawing after typing 25 extrudes 25
+ * deep, not by the value the tool had a moment earlier. Escape in a field is
+ * the field's — it restores the value and gives the focus back, and does not
+ * also release the tool; a second Escape does that.
+ */
+export class OptionsPanel {
+  private body: HTMLElement;
+  private strip: HTMLElement | null;
+  private host: OptionsHost;
+  /** The tool and its rows' shape as last built, joined — compared, not diffed. */
+  private key = "";
+  private tool = "";
+  private count: number | null = null;
+
+  constructor(panel: HTMLElement, body: HTMLElement, host: OptionsHost) {
+    this.body = body;
+    this.strip = panel.querySelector<HTMLElement>(":scope > .ptitle");
+    this.host = host;
+    // Capture, on the document: ahead of the canvas's own listener, so the
+    // tool the press reaches is the one armed with what the field says.
+    document.addEventListener("pointerdown", (e) => {
+      const at = document.activeElement;
+      if (at instanceof HTMLInputElement && at.type === "text" && this.body.contains(at) && e.target !== at) this.commit(at);
+    }, true);
+  }
+
+  /** The panel's size now, or null while no tool with options is armed — `Fitted.size`. */
+  size(): Size | null {
+    return this.count === null ? null : optionsSize(this.count);
+  }
+
+  /**
+   * Rebuilds if the armed tool or its declared options changed and shows the
+   * values it is armed with. Returns whether the panel's shape changed — shown,
+   * hidden, or another number of rows — so the host can place it again.
+   */
+  sync(): boolean {
+    const a = this.host.armed();
+    const key = a ? [a.tool, ...a.rows.map((r) => `${r.name}\t${typeof r.value}\t${r.label}\t${r.unit}`)].join("\n") : "";
+    const shaped = key !== this.key;
+    if (shaped) {
+      this.key = key;
+      this.tool = a?.tool ?? "";
+      this.count = a ? a.rows.length : null;
+      this.body.textContent = "";
+      if (this.strip) this.strip.textContent = a ? a.tool : "";
+      for (const row of a?.rows ?? []) this.body.appendChild(this.row(row));
+    }
+    if (a) this.fill(a.rows, false);
+    return shaped;
+  }
+
+  private row(r: OptionRow): HTMLElement {
+    const line = document.createElement("label");
+    line.className = "orow";
+    line.title = `${r.label} — ${optionCommand(this.tool, r.name, r.value)}`;
+    const label = document.createElement("span");
+    label.className = "olabel";
+    label.textContent = r.label;
+    const field = document.createElement("input");
+    field.className = "oval";
+    field.dataset.option = r.name;
+    // The tool it was built for, not whichever is armed when it commits.
+    field.dataset.tool = this.tool;
+    field.autocomplete = "off";
+    field.spellcheck = false;
+    const unit = document.createElement("span");
+    unit.className = "ounit";
+    unit.textContent = r.unit;
+    if (typeof r.value === "boolean") {
+      field.type = "checkbox";
+      field.addEventListener("change", () => this.type(field.dataset.tool!, r.name, field.checked));
+    } else {
+      field.type = "text";
+      field.inputMode = "decimal";
+      field.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          this.commit(field);
+        } else if (e.key === "Escape") {
+          // The field's own: it does not also release the tool underneath.
+          e.stopPropagation();
+          field.value = field.dataset.shown ?? "";
+          field.blur();
+        }
+      });
+      field.addEventListener("blur", () => this.commit(field));
+    }
+    line.append(label, field, unit);
+    return line;
+  }
+
+  /** Types the edited field's `arm` line, if it says something new and numeric; else puts it back. */
+  private commit(field: HTMLInputElement): void {
+    const text = field.value.trim();
+    if (text === field.dataset.shown) return;
+    const v = parseField(text);
+    if (v === null) {
+      field.value = field.dataset.shown ?? "";
+      return;
+    }
+    this.type(field.dataset.tool!, field.dataset.option!, v);
+  }
+
+  private type(tool: string, option: string, value: number | boolean): void {
+    this.host.run(optionCommand(tool, option, value));
+    // `arm` runs as the line is typed, so the tool is armed afresh by now — or,
+    // refused, as it was; either way the fields say which, the edited one too.
+    const a = this.host.armed();
+    if (a && a.tool === this.tool) this.fill(a.rows, true);
+  }
+
+  /** Every field to its row's value — except, unless `force`, one being edited. */
+  private fill(rows: OptionRow[], force: boolean): void {
+    const fields = Array.from(this.body.querySelectorAll<HTMLInputElement>("input.oval"));
+    rows.forEach((r, i) => {
+      const field = fields[i];
+      if (!field) return;
+      if (typeof r.value === "boolean") {
+        field.checked = r.value;
+        return;
+      }
+      const text = fieldText(r.value);
+      const editing = document.activeElement === field && field.value !== field.dataset.shown;
+      if (!force && editing) return;
+      field.value = text;
+      field.dataset.shown = text;
+      (field.parentElement as HTMLElement).title = `${r.label} — ${optionCommand(this.tool, r.name, r.value)}`;
+    });
   }
 }

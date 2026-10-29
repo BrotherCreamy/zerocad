@@ -1931,6 +1931,48 @@ replacing) the system Node other projects on this machine may depend on.
   last buttons out of reach; the grip's triangle still takes what it covers.
   *Spec:* [`docs/plans/tray-fixed-line.md`](docs/plans/tray-fixed-line.md).
 
+- **Tool options: declared, visible, remembered** (`src/tools/options.ts`
+  (new); `Tool.options` and `defineTool` in `src/tools/tool.ts`;
+  `ToolEngine.arm`; `extrude`/`revolve`/`fillet`; `OptionsPanel`,
+  `optionsSize`, `besideTray`, `Fitted`, `optionCommand`, `parseField`,
+  `fieldText` and `arranged`'s `fitted` in `src/panels.ts`; the host,
+  `optionMemory` and `syncToolbar` in `src/main.ts`; `tools()`, `help()`,
+  `EnvHandles.optionMemory` in `src/replenv.ts`; `index.html`). The owner's
+  direction, *"if the tool has options, there should also be some kind of
+  e.g. pop-up menu that allows me to set them visually, or it happens in the
+  terminal"*. **Declared:** `static options = { name: { default, unit?,
+  label?, check? } }` — a number or `true`/`false`; `unit` `"length"` (shown
+  as nothing), `"angle"` (radians, shown `rad`) or any text; checked for
+  shape at `defineTool`. Extrude declares `depth` (10, not 0), revolve
+  `angle` (2π, not 0, within a whole turn), fillet `radius` (10, > 0).
+  **Armed:** `ToolEngine.arm` resolves before cancelling anything — typed,
+  else remembered, else the default; an undeclared option, a wrong type or a
+  `check` refusal is one line naming the options (`extrude has no option
+  "dpth" — its options are { depth: 10 }`), the armed tool untouched. A tool
+  that declares nothing gets what it was given, the very object. **Remembered:**
+  `OptionMemory` over `localStorage` key `neocad.toolOptions.v1`, written on
+  every arm that names a declared option, read leniently, every touch
+  wrapped; held in memory too, so a throwing storage remembers for the page.
+  **Listed:** `tools()` gives `extrude  { depth: 10 }`, plus `(default { … })`
+  where a remembered value differs; `help()` under viewport and authoring.
+  **The panel:** `.panel[data-panel="options"]`, hidden until a tool with
+  declared options is armed (read off `engine.armed`, the registered name);
+  its strip names the tool; a row is label, field (a checkbox for a flag) and
+  unit, 22 px; the panel is `optionsSize(rows)`, no grips, placed last by
+  `apply` (so it is what moves out of the way) at its stored position or
+  `besideTray` — the tray's free side, from where the tray is shown. A field
+  commits on Enter, blur, or a press anywhere else (capture phase, before the
+  canvas has the press), typing `arm("tool", {option: value})` through
+  `submit`; Escape restores and keeps the tool; non-numbers restore. **The
+  toolbar's greyed state is removed** (`ToolbarHost.unavailable`, the
+  disabled buttons, the reason in `buttonTitle`, the CSS); `toolUnavailable`
+  stays for the menu and `step`. Unit: `test/tooloptions.test.ts` (13),
+  `test/panels.test.ts` (5 new); browser: `test/e2e/tooloptions.e2e.ts` (10).
+  884 unit tests, 340 e2e. *Known and deliberate:* remembered on arm, not
+  on use; no command to forget; a field edit mid-gesture drops the gesture;
+  angles in radians; a refused edit is red in the log, like any typed line.
+  *Spec:* [`docs/plans/tool-options.md`](docs/plans/tool-options.md).
+
 
 ## What's next
 

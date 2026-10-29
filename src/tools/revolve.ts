@@ -28,6 +28,7 @@
 // passed the refusals that do not need the frame.
 
 import { Tool, defineTool, type PointerInfo, type RegionHit, type RenderContext } from "./tool.ts";
+import type { OptionSpecs } from "./options.ts";
 import type { Model } from "../model.ts";
 import { checkRevolveRegion, orientingFrame, revolveProfile, revolveProfileOf } from "../operations.ts";
 import { describeFeature, type Pick } from "../picking.ts";
@@ -62,6 +63,13 @@ export function revolveAxes(model: Model, region: Region): string[] {
 }
 
 export class RevolveTool extends Tool {
+  // Radians, as everywhere a revolve takes an angle; the operation's own range.
+  static readonly options: OptionSpecs = {
+    angle: {
+      default: FULL_TURN, unit: "angle",
+      check: (v) => (v === 0 || Math.abs(v as number) > FULL_TURN ? "must be within a whole turn (±6.283185) and not 0" : null),
+    },
+  };
   readonly name = "revolve";
   // It chooses a region and then an axis, not places: a snap marker would
   // promise a vertex the click does not go to.
@@ -77,6 +85,7 @@ export class RevolveTool extends Tool {
   /** After it: the axis under the cursor, as `revolve` takes one. */
   private axisUnder: string | null = null;
 
+  /** Armed, the angle is always here and checked; the fallback is for a tool driven with no engine. */
   private get angle(): number {
     const a = this.ctx.options.angle;
     return typeof a === "number" && Number.isFinite(a) && a !== 0 && Math.abs(a) <= FULL_TURN ? a : FULL_TURN;

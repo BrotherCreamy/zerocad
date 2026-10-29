@@ -1,6 +1,7 @@
-// Whether a tool can run in the model as it stands — the one rule both the
-// context menu and the toolbar read, so the two surfaces that offer tools can
-// never disagree about which of them are usable.
+// Whether a tool can run in the model as it stands — the rule the context menu
+// reads, and an undo's re-arm (`step` in main.ts). The toolbar read it too
+// until docs/plans/tool-options.md removed its greyed state: with the answer
+// always "no reason", a disabled button was a state nobody could reach.
 //
 // **Today the answer is never "no".** It used to be: in a 3D model with no
 // default frame the five curve tools (circle, circle3, arc, arc3, fillet) were
@@ -12,11 +13,11 @@
 // effortless.md) is that a tool does the obvious thing with defaults and
 // refuses only where no default is honest.
 //
-// The file stays, answering null, because it is still the *one* place the
-// question is asked: a tool that one day genuinely cannot run somewhere is
-// greyed on the menu and the toolbar alike by changing this function, with
-// the greyed button, its hover reason and the menu's disabled item all still
-// wired to it. Deleting it would leave two surfaces to agree again by hand.
+// The file stays, answering null, because the menu's disabled item is still
+// wired to it and an undo still asks it before re-arming. A tool that one day
+// genuinely cannot run somewhere should first answer its click with guidance,
+// as every tool does (effortless.md, rule 2); greying it on the menu is this
+// function's to decide, and the toolbar would need its wiring back.
 //
 // It imports nothing but the model's type, and runs nothing that changes it.
 

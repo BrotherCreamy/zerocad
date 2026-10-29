@@ -1,8 +1,36 @@
 # Plan: tool options — declared, visible, remembered
 
-**Status: queued** (2026-10-29), second package under
-[`effortless.md`](effortless.md); starts after `tray-fixed-line.md` and
-`no-refusals.md` merge. Read `CLAUDE.md`, `effortless.md`,
+**Status: built** (2026-10-29), second package under
+[`effortless.md`](effortless.md) — `src/tools/options.ts` (new: `OptionSpec`,
+`declaredOptions`, `resolveOptions`, `explicitOptions`, `OptionMemory` under
+`neocad.toolOptions.v1`); `Tool.options` and `defineTool`'s check in
+`src/tools/tool.ts`; `ToolEngine.arm` in `src/tools/engine.ts`; the
+declarations on `extrude`, `revolve` and `fillet`; `optionsSize`,
+`besideTray`, `Fitted`, `optionCommand`, `parseField`, `fieldText` and
+`OptionsPanel` in `src/panels.ts`; the host, `optionMemory` and `syncToolbar`
+in `src/main.ts`; `tools()`, `help()` and `EnvHandles.optionMemory` in
+`src/replenv.ts`; the panel's markup and CSS in `index.html`;
+`test/tooloptions.test.ts`, new tests in `test/panels.test.ts`,
+`test/e2e/tooloptions.e2e.ts`. The toolbar's dead greyed-button wiring is
+removed (`ToolbarHost.unavailable`, `buttonTitle`'s reason, the disabled
+state and its CSS); `toolUnavailable` stays for `menu.ts` and `main.ts`'s
+`step`, which still ask it. Deviations, each marked ⚠ below where the text
+was written before the code: ⚠ **validation lives in `ToolEngine.arm`**, not
+in the `arm` command, because the bare-name shortcut (`extrude` typed) and
+an undo's re-arm reach the engine without passing through it; ⚠ a
+declaration may carry a **`check`** (why a value of the right type will not
+do), so `depth: 0`, a revolve angle past a whole turn and a radius ≤ 0 are
+refused by name where the tools used to fall back to their defaults in
+silence; ⚠ a malformed declaration is refused **at `defineTool`**; ⚠ a
+refused `arm` **leaves the armed tool as it was** (it used to cancel first);
+⚠ a value is remembered **when the tool is armed with it**, not when a
+feature is made; ⚠ the panel types **only the option edited**; ⚠ a press
+anywhere outside a field being edited **commits it before the press is
+handled** (blur alone fires after the canvas has had the click); ⚠ Escape in
+the field restores and **does not also release the tool**; ⚠ an angle reads
+in radians (`rad`), a length with no unit; ⚠ the strip names the tool;
+⚠ `tools()` lists a tool with options as `extrude  { depth: 10 }`, so the
+toolbar e2e reads the first word. Read `CLAUDE.md`, `effortless.md`,
 `src/tools/tool.ts` (`Tool`, `defineTool`, `ToolContext.options`,
 `listTools`), the three tools that read options today (`extrude` depth,
 `revolve` angle, `fillet` radius), `src/panels.ts` (as built after
@@ -17,11 +45,20 @@
   allowed in the shape. `arm(name, opts)` validates against the declaration
   (an unknown option or a wrong type is a one-line refusal naming the
   options the tool has) and fills defaults. `tools()` / `help()` list each
-  tool's options with their defaults.
+  tool's options with their defaults. *(As built: in `ToolEngine.arm`, which
+  every way of arming reaches; a declaration may also carry `check`, and a
+  malformed one is refused at `defineTool`. `tools()` shows what `arm` would
+  use now, and the declared defaults after it where a remembered value
+  differs.)*
 - **Remembered values**: the last value used for an option in this session
   is the default next time the tool is armed (Onshape remembers the last
   extrude depth). Per viewer, not per file: kept with the layout in
-  `localStorage` under its own key, never in the journal or a file.
+  `localStorage` under its own key, never in the journal or a file. *(As
+  built: remembered when the tool is armed with it, typed or by the panel —
+  arming is the one moment every way of choosing goes through. "In this
+  session" was looser than meant: it outlives a reload, as the verification
+  below asks ("reload, still 25"); only a throwing storage limits it to the
+  page's lifetime.)*
 - **The options panel**: when a tool with options is armed, a small panel
   (an ordinary panel in `panels.ts`: movable, pushes, fixed grab, no
   resize) appears beside the tray with one row per option — the label, a
@@ -29,7 +66,10 @@
   a field re-arms the tool with the new value by **typing**
   `arm("extrude", {depth: 25})` through `submit`, so the log shows it and
   the terminal and the panel are one mechanism. Enter or blur commits;
-  Escape in the field restores. The panel's position is per-viewer like
+  Escape in the field restores. *(As built: a press elsewhere commits first,
+  so a click straight into the drawing uses the new value; Escape in the
+  field is the field's and leaves the tool armed; text that is not a number
+  puts the field back and types nothing.)* The panel's position is per-viewer like
   every panel's; its default is next to the tray on the tray's free side.
 - **Everything typed still works**: `arm("extrude", {depth: 25})` by hand
   shows in the panel; a tool defined at the command line with a `static

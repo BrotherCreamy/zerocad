@@ -39,12 +39,18 @@
 // the operation's words, as guidance, never red.
 
 import { Tool, defineTool, type PointerInfo, type RegionHit, type RenderContext } from "./tool.ts";
+import type { OptionSpecs } from "./options.ts";
 import { DEFAULT_DEPTH, extrudeProfile, orientingFrame, profileOf } from "../operations.ts";
 import { describeFeature } from "../picking.ts";
 import { featurePlaneCommand } from "../sketchface.ts";
 import { drawRegion, lightRegions, missedRegion, regionKey, type Region } from "./region.ts";
 
 export class ExtrudeTool extends Tool {
+  // Negative is allowed — the other way along +z, as the typed call takes it;
+  // zero is no solid at all.
+  static readonly options: OptionSpecs = {
+    depth: { default: DEFAULT_DEPTH, unit: "length", check: (v) => (v === 0 ? "cannot be 0" : null) },
+  };
   readonly name = "extrude";
   // It chooses a region, not a place: a snap marker would promise a vertex
   // the click does not go to.
@@ -53,6 +59,7 @@ export class ExtrudeTool extends Tool {
   /** Set between typing a frameless region's plane and extruding along it — which typing, so a cancel can drop it. */
   private typing: object | null = null;
 
+  /** Armed, the depth is always here and checked; the fallback is for a tool driven with no engine. */
   private get depth(): number {
     const d = this.ctx.options.depth;
     return typeof d === "number" && Number.isFinite(d) && d !== 0 ? d : DEFAULT_DEPTH;

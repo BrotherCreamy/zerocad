@@ -14,7 +14,8 @@ import { Dual } from "./kernel/dual.ts";
 import { Model, type Entity, type ProfileMember } from "./model.ts";
 import { describeFeature, describeRelation } from "./picking.ts";
 import type { SolveReport } from "./kernel/problem.ts";
-import { Tool, defineTool, listTools, type ToolCtor } from "./tools/tool.ts";
+import { Tool, defineTool, getToolCtor, listTools, type ToolCtor } from "./tools/tool.ts";
+import { OptionMemory, declaredOptions, defaultsOf, describeValues, resolveOptions } from "./tools/options.ts";
 import * as basic from "./relations/basic.ts";
 import * as geom from "./relations/geometry.ts";
 import {
@@ -122,6 +123,12 @@ export interface EnvHandles {
    * which is why it is a host handle — the model never hears of it.
    */
   layout?: (command?: string) => string;
+  /**
+   * The viewer's last value of each tool option — the same memory the host's
+   * tool engine arms from, so `tools()` lists what `arm` would use. Per-viewer
+   * state, like the layout; a scope with none keeps its own for its lifetime.
+   */
+  optionMemory?: OptionMemory;
 }
 
 /**
@@ -172,6 +179,7 @@ function describe(e: Entity, model: Model): string {
 export function neocadScope(h: EnvHandles): Bag {
   const model = h.model;
   const sources = h.toolSources ?? toolSources;
+  const memory = h.optionMemory ?? new OptionMemory(null);
 
   /**
    * The relation vocabulary, short name and long, each with where `_` may
@@ -746,11 +754,23 @@ export function neocadScope(h: EnvHandles): Bag {
      * you cannot arm it" is precisely the state the user needs told; leaving
      * it out of the listing would make the notice `open()` printed look like a
      * message about nothing.
+     *
+     * A tool that declares options is listed with them as `arm` would fill
+     * them now — `extrude  { depth: 10 }` — and, where a remembered value
+     * differs, the declared defaults after: the line says both what you will
+     * get and what you would type to have the default back.
      */
     tools: () => {
       const active = listTools();
       return [
-        ...active,
+        ...active.map((name) => {
+          const specs = declaredOptions(getToolCtor(name), name);
+          if (Object.keys(specs).length === 0) return name;
+          const now = resolveOptions(name, specs, {}, memory.recall(name));
+          const declared = describeValues(specs, defaultsOf(specs));
+          const shown = describeValues(specs, now);
+          return shown === declared ? `${name}  ${shown}` : `${name}  ${shown}  (default ${declared})`;
+        }),
         ...sources.names()
           .filter((name) => !active.includes(name))
           .map((name) => `${name} (source only — toolSource(${JSON.stringify(name)}) to see it)`),
@@ -975,6 +995,15 @@ function help(scope: Bag): string {
     "           pan, zoom, lookAt) are not, so Ctrl+Z after an orbit undoes",
     "           the last edit, not the turn.",
     "viewport   arm(tool, opts)  cancel()  zoom(f)  pan(dx,dy)  refresh()",
+    "           A tool's options are declared, and tools() lists them with",
+    '           what arm would use now: extrude  { depth: 10 }. arm("extrude",',
+    "           { depth: 25 }) sets one; one the tool does not have is refused,",
+    "           naming those it does. Armed, a tool with options shows them in",
+    "           a small panel beside the tray: edit a field (Enter, or click",
+    '           away; Escape puts it back) and it types arm("extrude", {depth:',
+    "           25}) here. The last value you armed a tool with is remembered",
+    "           as its default — in this browser, like the layout, never in a",
+    "           file; type the default to have it back.",
     "           orbit(yaw, pitch)  — turn the drawing, radians, like a right-drag",
     "           lookAt(frame?)     — a frame's plane square-on, +x right, +y up",
     '           layout()  layout("reset") — where the panels are; put them back.',
@@ -988,6 +1017,11 @@ function help(scope: Bag): string {
     "           each in one plane: ends join only at a shared point or a coin,",
     "           never by sitting on the same spot. Read-only; named by members.",
     "authoring  Tool  defineTool(name, ctor)  toolSource(name)  Dual",
+    '           static options = { depth: { default: 10, unit: "length" } } on',
+    "           a tool class declares what it can be armed with (a number, or",
+    "           true/false; unit \"length\", \"angle\" in radians, or any text;",
+    "           label?, check?) — and it gets arm's checks, the panel and the",
+    "           remembered values with no more work.",
     "",
     "A bare assignment persists between entries (box = class extends Tool {…});",
     "a const/let/class declaration does not.",

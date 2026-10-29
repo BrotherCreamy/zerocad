@@ -21,7 +21,8 @@ import { toolUnavailable } from "./toolavail.ts";
 import { FRAME_ARM_PX, frameMarker } from "./framemarker.ts";
 import { constrainedBy, type Glyph } from "./glyphs.ts";
 import { getToolCtor, listTools } from "./tools/tool.ts";
-import { Panels, Toolbar, browserStorage, defaultLayout } from "./panels.ts";
+import { OptionsPanel, Panels, Toolbar, browserStorage, defaultLayout, type Size } from "./panels.ts";
+import { OptionMemory, declaredOptions, unitSymbol, type OptionValue } from "./tools/options.ts";
 import { toolIcon } from "./tools/icons.ts";
 import { depth } from "./view.ts";
 import { arcSamples, arcSegments } from "./arcgeom.ts";
@@ -63,6 +64,22 @@ const cmdEl = document.getElementById("cmd") as HTMLInputElement;
 const hoverEl = document.getElementById("hovertag")!;
 const menuEl = document.getElementById("ctxmenu")!;
 const toolbarEl = document.getElementById("toolbar")!;
+const optionsPanelEl = document.querySelector<HTMLElement>('.panel[data-panel="options"]')!;
+const optionsEl = document.getElementById("options")!;
+
+/**
+ * The options panel's size, once there is an options panel to ask — it is
+ * built with the tool engine, after the kernel loads, and until then nothing is
+ * armed, so there is nothing to show.
+ */
+let optionsShown: () => Size | null = () => null;
+
+/**
+ * The viewer's last value of every tool option, over the same storage as their
+ * layout but under its own key (tools/options.ts). Made here, once, and handed
+ * to both the engine that arms from it and the command scope that lists it.
+ */
+const optionMemory = new OptionMemory(browserStorage());
 
 /**
  * The panels are placed before the kernel loads, so the page never shows the
@@ -71,7 +88,9 @@ const toolbarEl = document.getElementById("toolbar")!;
  * built-ins are all registered by the imports above, and one defined later at
  * the command line lengthens it, moved or not, through `syncToolbar` below. It
  * turns between column and row against the edges it is dragged to, and has no
- * grips.
+ * grips. The options panel is the one that comes and goes: shown, sized by its
+ * rows, while a tool that declares options is armed, beside the toolbar unless
+ * the viewer has put it somewhere.
  *
  * Under the dev server — which is what every e2e run drives — the panels check
  * after each placement that no two overlap and report it on the page if they
@@ -83,7 +102,10 @@ const panels = new Panels(
   (area) => defaultLayout(area, listTools().length),
   browserStorage(),
   { toolbar: () => listTools().length },
-  { check: Boolean((import.meta as { env?: { DEV?: boolean } }).env?.DEV) },
+  {
+    check: Boolean((import.meta as { env?: { DEV?: boolean } }).env?.DEV),
+    fitted: { options: { size: () => optionsShown(), beside: "toolbar" } },
+  },
 );
 
 function log(msg: string, cls?: string) {
@@ -228,14 +250,17 @@ async function main() {
   }
 
   /**
-   * Brings the toolbar up to date with the registry and the armed tool. Neither
-   * announces a change — the registry is a plain map, and a tool finishing its
-   * gesture simply clears `engine.active` — so this is called from everywhere a
-   * change can have just happened: every redraw, every canvas press and
-   * release, every entry, Escape. It does DOM work only when something differs.
+   * Brings the toolbar and the options panel up to date with the registry and
+   * the armed tool. Neither announces a change — the registry is a plain map,
+   * and a tool finishing its gesture simply clears `engine.active` — so this is
+   * called from everywhere a change can have just happened: every redraw, every
+   * canvas press and release, every entry, Escape. It does DOM work only when
+   * something differs, and places the panels again only when one changed shape
+   * (a button more, the options panel shown or gone).
    */
   function syncToolbar() {
-    if (toolbar.sync()) panels.apply();
+    const rebuilt = toolbar.sync();
+    if (optionsPanel.sync() || rebuilt) panels.apply();
   }
 
   /**
@@ -657,7 +682,7 @@ async function main() {
    * the tool's state, and the state is what went. Someone drawing lines who
    * undoes the last one wants to draw the next, not to re-arm. The exception
    * would be a tool the restored model cannot run (`toolUnavailable`), left
-   * disarmed with the toolbar's own reason; none is today — a curve tool whose
+   * disarmed with the rule's reason; none is today — a curve tool whose
    * frame the undo took away makes a new one at its next click.
    *
    * Every outcome is said twice: the returned line, for the log, and a brief
@@ -734,9 +759,9 @@ async function main() {
    * recall history has it, and arming by button is in every respect arming by
    * typing — journal and undo included, which for `arm` is nothing at all.
    *
-   * Availability is the menu's rule too, read through `model` (the binding a
-   * file open swaps) on every sync — so a curve tool greys out in the same
-   * render that its Circle item would, for the same sentence.
+   * No button is greyed: every tool makes what it needs and answers a click it
+   * cannot use with guidance, so the toolbar no longer asks `toolUnavailable`
+   * (the menu and `step` still do, and it answers null).
    *
    * A glyph is a built-in's own, by name, and every other tool's the generic
    * one (see tools/icons.ts for why by name).
@@ -745,9 +770,30 @@ async function main() {
     tools: listTools,
     icon: toolIcon,
     active: () => engine.active?.name ?? null,
-    unavailable: (tool) => toolUnavailable(model, tool),
     run: (command) => void submit(command),
   });
+
+  /**
+   * The options panel, through the same seam: a field edited types
+   * `arm("extrude", {depth: 25})` into `submit`. Its rows are read off the
+   * armed tool's declaration by its registered name (`engine.armed`, which a
+   * tool defined at the command line may not share with its `name`), and its
+   * values are what the tool is armed with — so `arm` typed by hand shows here
+   * just as an edit made here shows in the log.
+   */
+  const optionsPanel = new OptionsPanel(optionsPanelEl, optionsEl, {
+    armed: () => {
+      const a = engine.armed;
+      if (!a) return null;
+      const specs = declaredOptions(getToolCtor(a.name), a.name);
+      const rows = Object.entries(specs).map(([name, s]) => ({
+        name, label: s.label ?? name, unit: unitSymbol(s.unit), value: a.options[name] as OptionValue,
+      }));
+      return rows.length ? { tool: a.name, rows } : null;
+    },
+    run: (command) => void submit(command),
+  });
+  optionsShown = () => optionsPanel.size();
 
   const engine = new ToolEngine(model, cv, view, {
     onSolveRender: solveAndRender,
@@ -773,6 +819,7 @@ async function main() {
     // The promise is handed back for the extrude tool, which waits for the
     // plane it typed to be in before extruding along it.
     onRun: (command) => submit(command),
+    optionMemory,
     onContextMenu: (pick, sx, sy) => {
       // The tag and the menu would otherwise sit on top of one another, both
       // naming the same thing — and the tag cannot update while the cursor is
@@ -839,6 +886,7 @@ async function main() {
       // The tool-voice channel, for `open()` mentioning what a file carries.
       log: (line: string) => log(line, "out"),
       toolSources,
+      optionMemory,
       // Measured fresh on every ask, not cached: the window can be resized at
       // any time, and a size read once at startup would put "the middle of the
       // view" somewhere that is no longer the middle of what is on screen.

@@ -18,6 +18,7 @@
 // the extrude tool's pattern exactly.
 
 import { Tool, defineTool, type PointerInfo, type RenderContext } from "./tool.ts";
+import type { OptionSpecs } from "./options.ts";
 import { fillet, filletNeedsFrame } from "../operations.ts";
 import { cornerPlaneCommand } from "../sketchface.ts";
 import { cross3, lift3 } from "../vec3.ts";
@@ -33,11 +34,15 @@ function sharesCorner(model: Model, a: string, b: string): boolean {
 }
 
 export class FilletTool extends Tool {
+  static readonly options: OptionSpecs = {
+    radius: { default: DEFAULT_RADIUS, unit: "length", check: (v) => ((v as number) > 0 ? null : "must be more than 0") },
+  };
   readonly name = "fillet";
   private first: string | null = null;
   /** Set between typing a corner's plane and rounding along it — which typing, so a cancel can drop it. */
   private typing: object | null = null;
 
+  /** Armed, the radius is always here and checked; the fallback is for a tool driven with no engine. */
   private get radius(): number {
     const r = this.ctx.options.radius;
     return typeof r === "number" && r > 0 ? r : DEFAULT_RADIUS;
