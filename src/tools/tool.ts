@@ -96,9 +96,16 @@ export interface ToolContext {
    *
    * `"done"` marks a line that reports what a commit made rather than a
    * refusal — `e1  extrude of …` — so the host can show it as an answer, not
-   * an error. A line is a refusal unless it says otherwise.
+   * an error. `"guide"` marks **guidance**: a click that cannot do the thing,
+   * answered with what would ("click inside a closed outline — the ones I can
+   * see are lit"), the tool still armed. The host shows it muted, in the log
+   * and the header's note, never red — red is for the model's own
+   * contradictions, and a click that missed is not one (docs/plans/
+   * effortless.md, rule 2). Every built-in tool's refusal about a click is
+   * guidance; a line is a refusal unless it says otherwise, so a tool written
+   * at the command line that logs a bare line still reads as one.
    */
-  log?(line: string, outcome?: "refused" | "done"): void;
+  log?(line: string, outcome?: "refused" | "done" | "guide"): void;
   /**
    * Types one line into the command machinery, exactly as if it had been typed
    * at the command line — the context menu's `run`, handed to a tool. For a

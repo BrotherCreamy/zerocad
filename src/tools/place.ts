@@ -46,6 +46,7 @@ import { coincident, midpoint, onPlane } from "../relations/basic.ts";
 import { onCircle, pointOnLine } from "../relations/geometry.ts";
 import { framePlane } from "../workplane.ts";
 import { liesOn } from "../view.ts";
+import { cross3, dot3, lift3, sub3 } from "../vec3.ts";
 
 /**
  * Creates the point a click asked for and applies whatever constraint the
@@ -79,24 +80,137 @@ export function requirePlanar(model: Model, tool: string): void {
 }
 
 /**
- * Whether a tool that builds a circle or an arc may start a gesture: in a 3D
- * model only with a default frame, because the shape will be given that
- * frame's plane (see `CircleEntity`) and with no frame there is none to give.
- * Asked on the first click, so a gesture that cannot end is refused before
- * anything is placed — out loud, through `ctx.log`, in the model's own
- * standing words, the way `fix` refuses at the command line. Headless, with no
- * pane to tell, it throws. A 2D model always may: its circles need no plane.
+ * Three decimals, the menu's and the hover tag's precision: a plane's origin
+ * typed into the log is read by a person, and `pt(512.3456789012345, …)` would
+ * teach the command less well than `pt(512.346, …)` for a difference no zoom
+ * shows. Negative zero is written as zero.
  */
-export function curveToolReady(ctx: ToolContext, tool: string): boolean {
-  if (ctx.model.dim !== 3) return true;
-  try {
-    ctx.model.resolveFrame();
+function num(v: number): string {
+  const r = Math.round(v * 1000) / 1000;
+  return String(r === 0 ? 0 : r);
+}
+
+/**
+ * The line a curve tool types when its first click lands in a 3D model with
+ * no default frame: `plane(pt(x, y, z), null, null, { look: false })` — a
+ * frame whose origin is the click and whose refs `frame()` seeds a span along
+ * the screen's right and up (the kernel's x and y in a view never turned), so
+ * its plane is the working plane the click already landed on: the one facing
+ * the viewer. Made the default, as `plane` does, and the view left alone.
+ *
+ * The origin is rounded (see `num`), which moves the plane a fraction of a
+ * thousandth along its normal in a turned view; the refs are seeded by the
+ * command layer from the exact screen axes, so its orientation is exact.
+ */
+export function clickPlaneCommand(at: number[]): string {
+  return `plane(pt(${at.map(num).join(", ")}), null, null, { look: false })`;
+}
+
+/**
+ * The plane a curve tool's gesture stands on. A circle or an arc in a 3D model
+ * is given the default frame's plane (see `CircleEntity`), and **with no
+ * default frame the tool makes one** at its first click, rather than refusing:
+ * nobody should have to know what a frame is to draw a circle. It types
+ * `clickPlaneCommand` through the command line (`ctx.run`) — so the log shows
+ * the line, and the journal and the undo step are those of the typed call —
+ * and the gesture carries on. This is not a world datum: it is the working
+ * plane at the click, seeded as a typed `frame()` is, and exists because the
+ * click asked for a plane (the register's no-world-frame entry).
+ *
+ * The typed line runs asynchronously, so a commit that arrives before it has
+ * settled is held until it has, and then made as a step of its own (`act`) —
+ * otherwise it would land inside the plane's undo step. In practice the line
+ * has gone in long before a drag ends or a second click comes.
+ *
+ * Headless, with no command line to type into, there is no plane to make, and
+ * the first click is refused in the model's own words — through `ctx.log`
+ * where there is one, thrown where there is not: the model's "no default
+ * frame" stays the guard under the command layer.
+ */
+export class CurvePlane {
+  private ctx: ToolContext;
+  private tool: string;
+  /** The typed plane, while it is still going in. */
+  private pending: Promise<void> | null = null;
+  /** Which gesture the pending plane belongs to, so a cancel can let it go. */
+  private token: object | null = null;
+  /** The click the plane was made at — taken on the screen-facing plane, before the frame's existed. */
+  private madeAt: PointerInfo | null = null;
+
+  constructor(ctx: ToolContext, tool: string) {
+    this.ctx = ctx;
+    this.tool = tool;
+  }
+
+  /**
+   * Asked on a gesture's first click. True when it may go on — on the default
+   * frame, or on the plane just typed — and false when it was refused.
+   */
+  begin(p: PointerInfo): boolean {
+    const ctx = this.ctx;
+    this.madeAt = null;
+    if (ctx.model.dim !== 3) return true;
+    try {
+      ctx.model.resolveFrame();
+      return true;
+    } catch (e) {
+      if (!ctx.run || !ctx.act) {
+        const why = `${this.tool}: ${e instanceof Error ? e.message : e}`;
+        if (!ctx.log) throw new Error(why);
+        ctx.log(why);
+        return false;
+      }
+    }
+    const token = {};
+    this.token = token;
+    this.madeAt = p;
+    this.pending = Promise.resolve(ctx.run(clickPlaneCommand(p.world))).finally(() => {
+      if (this.token === token) this.pending = null;
+    });
     return true;
-  } catch (e) {
-    const why = `${tool}: ${e instanceof Error ? e.message : e}`;
-    if (!ctx.log) throw new Error(why);
-    ctx.log(why);
-    return false;
+  }
+
+  /** Whether the plane typed for this gesture is still going in. */
+  get typing(): boolean {
+    return this.pending !== null;
+  }
+
+  /**
+   * `info` as the commit should read it: the click the plane was made at moved
+   * onto that plane, which the rounded origin can have put a fraction of a
+   * thousandth off the one the click landed on — so the point is on the sketch
+   * and `holdOnSketchPlane` holds it there. Every later click landed on the
+   * frame's plane already, and a snapped one is where it was aimed.
+   */
+  settle(info: PointerInfo): PointerInfo {
+    if (info !== this.madeAt || info.snap) return info;
+    const plane = framePlane(this.ctx.model);
+    if (!plane) return info;
+    const n = cross3(plane.u, plane.v);
+    const len = Math.hypot(...n);
+    if (!(len > 0)) return info;
+    const w = lift3(info.world);
+    const off = dot3(sub3(w, lift3(plane.origin)), n) / (len * len);
+    return { ...info, world: w.map((c, i) => c - off * n[i]) };
+  }
+
+  /** Runs `commit` now — or, while the plane is still going in, once it is, as a step of its own. */
+  commit(commit: () => void): void {
+    if (!this.pending) {
+      commit();
+      return;
+    }
+    const token = this.token;
+    void this.pending.then(() => {
+      if (this.token === token) this.ctx.act!(commit);
+    });
+  }
+
+  /** The gesture was abandoned: a plane still going in stays, as typed, and nothing waits on it. */
+  cancel(): void {
+    this.token = null;
+    this.pending = null;
+    this.madeAt = null;
   }
 }
 

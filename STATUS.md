@@ -1449,7 +1449,9 @@ replacing) the system Node other projects on this machine may depend on.
   a default frame was a caveat here; it went with the next entry.)
   *Spec:* [`docs/plans/panels.md`](docs/plans/panels.md).
 
-- **The toolbar greys out a tool that cannot run** (`src/toolavail.ts` (new),
+- ~~**The toolbar greys out a tool that cannot run**~~ *(superseded by "No
+  refusals" below: the rule now answers null and nothing greys; the machinery
+  is kept)* (`src/toolavail.ts` (new),
   `src/menu.ts`, `src/panels.ts`, `src/main.ts`, `index.html`). One rule,
   `toolUnavailable(model, tool)`: in a 3D model with no default frame the five
   curve tools (`CURVE_TOOLS`: circle, circle3, arc, arc3, fillet) answer
@@ -1820,6 +1822,44 @@ replacing) the system Node other projects on this machine may depend on.
   sketch's +x is whichever edge `sketchFrameFor` starts at; headless with no
   `run` the tools still refuse.
   *Spec:* [`docs/plans/extrude-makes-its-plane.md`](docs/plans/extrude-makes-its-plane.md).
+- **No refusals: the curve tools make their plane, a miss is guidance, and
+  what would work is lit** (`CurvePlane`/`clickPlaneCommand` in
+  `src/tools/place.ts`; `circle`, `circle3`, `arc`, `arc3`, `fillet` in
+  `src/tools/`; `filletNeedsFrame` in `src/operations.ts`;
+  `cornerPlaneCommand`/`facingPoints` in `src/sketchface.ts`;
+  `Model.checkCircle`/`checkArc`; `planeForCurve`/`planeForCorner` and help in
+  `src/replenv.ts`; `src/toolavail.ts`; `ToolContext.log`'s `"guide"`;
+  `litRegions`/`drawLit`/`lightRegions`/`missedRegion`/`edgeOn` in
+  `src/tools/region.ts`; `revolveAxes` in `src/tools/revolve.ts`; `main.ts`'s
+  `onLog`/`stepNote`/`endUserAction`; one line of header CSS in `index.html`).
+  **The curve tools in a 3D model with no default frame make it** at their
+  first click — `plane(pt(x, y, z), null, null, { look: false })`, typed
+  through `ctx.run`: the click as origin, refs along the screen axes as
+  `frame()` seeds, the default, the view unturned; later clicks land on it; a
+  commit that beats the typed line waits and is its own step (`ctx.act`). The
+  fillet tool types a plane of the corner's own points, +z toward the viewer,
+  after every frameless refusal. Typed `circ()`/`arc()` make `plane()` at the
+  view centre first (their own refusals asked first, one entry, said in the
+  log); typed `fillet` makes a frame on the corner. `toolUnavailable` answers
+  null always, so nothing greys on the menu or the toolbar. Headless with no
+  `run` the tools still refuse in the model's words, and the model's "no
+  default frame" stands under all of it. **Every click refusal is guidance**:
+  one short sentence of what would work, `ctx.log(line, "guide")`, shown in
+  the log's muted `out` and in `#stepnote.guide` for 5 s (cleared by the next
+  recorded step), the tool still armed; red is left to the model. **While
+  extrude, revolve or sketch is armed every loop's region is lit** faintly
+  (even-odd, so a hole is clear in its outline's region and lit as its own;
+  loops thinner on screen than they are long skipped); **revolve, holding a
+  profile, lights every line and frame arm `checkRevolveRegion` accepts**.
+  Unit: `test/curvetoolplane.test.ts` (12), `test/guidance.test.ts` (7),
+  `test/toolavail.test.ts` (rewritten, 4); browser:
+  `test/e2e/firstrun.e2e.ts` (8: the first run, pointer only, no red line at
+  the end), the greyed-toolbar section of `panels.e2e.ts` rewritten, the
+  refusal assertions of the tool e2e files updated. 868 unit tests, 330
+  e2e. *Known and deliberate:* hidden faces lit too; an abandoned curve gesture
+  keeps its plane; the made frame's ref points show; the operation's longer
+  words still reach some guidance lines.
+  *Spec:* [`docs/plans/no-refusals.md`](docs/plans/no-refusals.md).
 
 - **Panels resize from any corner; the tray's buttons wrap** (`src/panels.ts`,
   `index.html`). *(The wrap, and with it every tray grip and every function

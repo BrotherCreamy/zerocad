@@ -525,10 +525,15 @@ test("storage that throws costs the arrangement and nothing else", async () => {
   }
 });
 
-// --- a tool that cannot run ----------------------------------------------------
+// --- no tool is greyed ----------------------------------------------------------
+//
+// The curve tools used to be greyed in a 3D model with no default frame, with
+// the model's "no default frame" as their hover text. They make their plane at
+// the click now (docs/plans/no-refusals.md), so the rule answers "never" and
+// nothing greys — the machinery stays, wired to `toolUnavailable`, for a tool
+// that one day genuinely cannot run.
 
 const CURVES = ["circle", "circle3", "arc", "arc3", "fillet"];
-const STANDING = "no default frame — frame() then setDefaultFrame(), or say which frame";
 
 /** Each button's tool, whether it is disabled, and its hover text. */
 const buttonStates = () => app.page.$$eval("#toolbar button", (els) =>
@@ -536,79 +541,51 @@ const buttonStates = () => app.page.$$eval("#toolbar button", (els) =>
 
 const disabledTools = async () => (await buttonStates()).filter((b) => b.off).map((b) => b.tool);
 
-test("in a fresh 3D app the curve tools are greyed, with the model's reason as their hover text", async () => {
+test("in a fresh 3D app no button is greyed: the curve tools are there, enabled, their hover the command they type", async () => {
   await reloadApp(); // a fresh model: 3D, and no frame at all
   assert.equal((await app.model()).size, 0);
   const states = await buttonStates();
+  for (const c of CURVES) assert.ok(states.some((b) => b.tool === c), `${c} is on the toolbar`);
   for (const b of states) {
-    if (CURVES.includes(b.tool)) {
-      assert.ok(b.off, `${b.tool} is disabled`);
-      assert.equal(b.title, `${b.tool} — ${STANDING}`, `${b.tool}'s hover is its name and the reason, not the command`);
-    } else {
-      assert.ok(!b.off, `${b.tool} is enabled`);
-      assert.equal(b.title, `${b.tool} — arm("${b.tool}")`);
-    }
+    assert.ok(!b.off, `${b.tool} is enabled`);
+    assert.equal(b.title, `${b.tool} — arm("${b.tool}")`);
   }
-  assert.deepEqual(states.filter((b) => b.off).map((b) => b.tool), CURVES, "shown, not hidden: all five are still there");
-  await shot("curves-disabled");
+  await shot("curves-enabled");
 });
 
-test("a disabled button arms nothing and logs nothing — a real click on it", async () => {
-  const logBefore = await app.log();
+test("a real click on the circle button in a frameless model arms it, as any other button does", async () => {
   const b = await rectOf('#toolbar button[data-tool="circle"]');
   await app.page.mouse.click(b.x + b.width / 2, b.y + b.height / 2);
   await app.page.waitForTimeout(80);
-  assert.equal(await armed(), null);
-  assert.deepEqual((await app.log()).slice(logBefore.length), "", "not a line in the log");
-  assert.deepEqual(await pressed(), []);
+  assert.equal(await armed(), "circle");
+  assert.deepEqual(await pressed(), ["circle"]);
+  assert.match(await app.log(), /armed: circle/);
+  await app.page.keyboard.press("Escape");
 });
 
-test("the context menu and the toolbar give the same reason", async () => {
+test("the context menu greys no tool either", async () => {
   const at = await app.at(700, 300);
   await app.page.mouse.click(at.x, at.y, { button: "right" });
   await app.page.waitForTimeout(120);
-  // The tools' reasons; Undo and Redo carry their own, about the history.
+  // Undo and Redo carry their own reasons, about the history; no tool has one.
   const why = (await app.page.$$eval("#ctxmenu .why", (els) => els.map((el) => el.textContent)))
     .filter((t) => !/^nothing to (undo|redo)$/.test(t ?? ""));
   await app.page.keyboard.press("Escape");
-  assert.equal(why.length, CURVES.length, "one reason per disabled menu item");
-  // A button's hover leads with its name, the face being an icon; the reason after it is the menu's.
-  const titles = (await buttonStates()).filter((b) => b.off).map((b) => b.title!.slice(`${b.tool} — `.length));
-  assert.equal(titles.length, CURVES.length);
-  for (const t of [...why, ...titles]) assert.equal(t, STANDING);
+  assert.deepEqual(why, []);
 });
 
-test("a default frame enables them on the next render, and deleting it disables them again", async () => {
+test("a default frame coming and going changes nothing on the toolbar; an armed arc stays armed and amber", async () => {
   await app.type("setDefaultFrame(frame())");
-  assert.deepEqual(await disabledTools(), [], "nothing but the command was needed");
-  for (const b of await buttonStates()) assert.equal(b.title, `${b.tool} — arm("${b.tool}")`);
-
-  await app.page.click('#toolbar button[data-tool="circle"]');
-  assert.equal(await armed(), "circle", "and an enabled curve button arms as any other does");
-  await app.page.keyboard.press("Escape");
-
-  const f = (await app.repl("defaultFrame()")).value as string;
-  await app.type(`del(${JSON.stringify(f)})`);
-  assert.equal((await app.repl("defaultFrame()")).value, null);
-  assert.deepEqual(await disabledTools(), CURVES);
-});
-
-test("an armed tool whose frame goes away is greyed, not amber — and arm() itself is unchanged", async () => {
-  await app.type("setDefaultFrame(frame())");
+  assert.deepEqual(await disabledTools(), []);
   await app.type('arm("arc")');
   assert.deepEqual(await pressed(), ["arc"]);
   const f = (await app.repl("defaultFrame()")).value as string;
   await app.type(`del(${JSON.stringify(f)})`);
-  // `arm` is untouched by this package: the tool stays armed and its click is
-  // refused in the log, as typing arm("arc") with no frame always was.
-  assert.equal(await armed(), "arc");
-  const look = await app.page.$eval('#toolbar button[data-tool="arc"]', (el) => {
-    const cs = getComputedStyle(el);
-    return { off: (el as HTMLButtonElement).disabled, color: cs.color, border: cs.borderColor };
-  });
-  assert.ok(look.off);
-  assert.equal(look.color, "rgb(70, 88, 106)", "the menu's .item.off grey, not the armed amber");
-  assert.doesNotMatch(look.border, /232, 163, 61/, "and no amber edge");
+  assert.equal((await app.repl("defaultFrame()")).value, null);
+  assert.equal(await armed(), "arc", "still armed: its next click makes the plane");
+  assert.deepEqual(await disabledTools(), []);
+  const look = await app.page.$eval('#toolbar button[data-tool="arc"]', (el) => getComputedStyle(el).borderColor);
+  assert.match(look, /232, 163, 61/, "the armed amber edge");
   await app.page.keyboard.press("Escape");
 });
 
@@ -618,13 +595,12 @@ const glyphColour = (tool: string) => app.page.$eval(`#toolbar button[data-tool=
   return cs.stroke !== "none" ? cs.stroke : cs.fill;
 });
 
-test("the glyph is the button's colour: amber when armed, grey when it cannot run", async () => {
-  // Still no default frame (the test above deleted it): the curves are disabled.
+test("the glyph is the button's colour: amber when armed, the label colour otherwise — a curve tool included", async () => {
   await app.type('arm("line")');
   assert.equal(await glyphColour("line"), "rgb(232, 163, 61)", "the armed glyph is the amber");
-  assert.equal(await glyphColour("circle"), "rgb(70, 88, 106)", "a disabled glyph is the menu's grey");
+  assert.equal(await glyphColour("circle"), "rgb(175, 198, 217)", "a curve tool's idle glyph, with no frame, is the label colour");
   assert.equal(await glyphColour("point"), "rgb(175, 198, 217)", "an idle one is the label colour it replaced");
-  await shot("armed-and-disabled");
+  await shot("armed-and-idle");
   await app.page.keyboard.press("Escape");
 });
 

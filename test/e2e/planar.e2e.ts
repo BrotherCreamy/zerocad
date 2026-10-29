@@ -66,25 +66,38 @@ const circleOf = (name: string) => app.repl(`(() => { const c = model.circle(${J
   `return { center: model.coords(c.center), r: model.radius(c.name), plane: c.plane }; })()`)
   .then((r) => r.value as { center: number[]; r: number; plane: string });
 
-// --- no plane, no circle --------------------------------------------------------
+// --- no frame: the circle makes its plane -----------------------------------------
 
-test("with no frame, the circle tool refuses out loud, and the menu says why before you try", async () => {
+test("with no frame, the circle tool makes the plane its press landed on and draws on it; the menu greys nothing; two Ctrl+Z put it all back", async () => {
+  const empty = (await app.repl("save()")).value as string;
   await app.type("circle");
-  await clickAt(300, 200);
-  assert.match(await app.log(), /circle: no default frame — frame\(\) then setDefaultFrame\(\), or say which frame/);
-  assert.equal((await app.model()).size, 0, "nothing was placed on the way to the refusal");
-  await app.type("cancel()");
+  await leftDrag([300, 200], [330, 200]);
+  const log = await app.log();
+  assert.match(log, /> plane\(pt\(-?[\d.]+, -?[\d.]+, 0\), null, null, \{ look: false \}\)/, "the plane, typed");
+  assert.doesNotMatch(log, /no default frame/);
+  const m = await app.model();
+  assert.equal(m.byKind.circle, 1, "a circle");
+  assert.equal((await circleOf(m.circles[0].name)).plane, (await app.repl("defaultFrame()")).value, "on the plane made for it");
+  assert.equal(await app.status(), "SOLVED");
 
   const at = await app.at(500, 300);
   await app.page.mouse.move(at.x, at.y);
   await app.page.mouse.down({ button: "right" });
   await app.page.mouse.up({ button: "right" });
   await app.page.waitForTimeout(120);
-  // The tools that are off; Undo and Redo are off or not by the history, not the frame.
+  // Undo and Redo are off or not by the history; no tool is off at all.
   const off = (await app.page.$$eval("#ctxmenu .item.off", (els) => els.map((el) => el.firstElementChild?.textContent ?? "")))
     .filter((label) => label !== "Undo" && label !== "Redo");
-  assert.deepEqual(off, ["Circle", "3 point circle", "Arc", "3 point arc", "Fillet"], "shown, disabled, with the reason under each");
+  assert.deepEqual(off, [], "nothing greyed");
   await app.page.keyboard.press("Escape");
+
+  // The circle, then the plane: two steps, as two typed lines would be.
+  for (const _ of [0, 1]) {
+    await app.page.fill("#cmd", "");
+    await app.page.keyboard.press("Control+z");
+    await app.page.waitForTimeout(200);
+  }
+  assert.equal((await app.repl("save()")).value, empty, "back to the empty model, so f1 below is the first frame again");
 });
 
 // --- a circle on a tilted plane --------------------------------------------------

@@ -167,7 +167,7 @@ test("the extrude tool: the region under the cursor is outlined; a click on noth
 
   // A click where there is no region says so, and the tool stays armed.
   await clickAt(...await app.screenOf(onG(95, 25)));
-  assert.match(await app.log(), /extrude: no closed region under the click/);
+  assert.match(await app.log(), /extrude: click inside a closed outline — the ones I can see are lit/);
   assert.equal((await app.model()).activeTool, "extrude");
   assert.deepEqual(await features(), []);
 

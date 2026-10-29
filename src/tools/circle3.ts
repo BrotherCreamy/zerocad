@@ -21,7 +21,8 @@
 //
 // In 3D the circle through three clicks lies in their plane — the sketch's —
 // and is given the default frame's plane (see `CircleEntity`); with no default
-// frame the first click is refused before anything is placed. Its centre is
+// frame the first click makes one, the working plane it landed on, and the
+// later clicks land on it (`CurvePlane`, in place.ts). Its centre is
 // held on the sketch plane with the rim points (see place.ts). The preview is
 // computed in the world, as the commit is, and drawn as the renderer will draw
 // the result — sampled in its plane and projected, an ellipse seen at an angle
@@ -30,7 +31,7 @@
 
 import { Tool, defineTool, type PointerInfo, type RenderContext } from "./tool.ts";
 import { onCircle } from "../relations/geometry.ts";
-import { curveToolReady, holdOnSketchPlane, placePoint, requirePlanar } from "./place.ts";
+import { CurvePlane, holdOnSketchPlane, placePoint, requirePlanar } from "./place.ts";
 // The closed form and its collinearity threshold left this file when the
 // 3-point *arc* tool needed the same two, and needed them to agree — see the
 // header of circumcircle.ts.
@@ -42,10 +43,12 @@ export class Circle3Tool extends Tool {
   /** The clicks so far, kept whole so each one's snap survives to commit. */
   private clicks: PointerInfo[] = [];
   private hover: number[] | null = null;
+  private plane = new CurvePlane(this.ctx, this.name);
 
   onDown(p: PointerInfo): void {
     requirePlanar(this.ctx.model, this.name);
-    if (!this.clicks.length && !curveToolReady(this.ctx, this.name)) return;
+    if (this.plane.typing) return; // the plane the first click typed is still going in
+    if (!this.clicks.length && !this.plane.begin(p)) return;
     this.hover = p.world;
 
     if (this.clicks.length < 2) {
@@ -54,7 +57,7 @@ export class Circle3Tool extends Tool {
       return; // nothing is committed until the third click — see the header
     }
 
-    const [first, second] = this.clicks;
+    const [first, second] = this.clicks.map((c) => this.plane.settle(c));
     const found = circumcircle(first.world, second.world, p.world);
     if (!found) {
       // Refuse rather than build. Three `onCircle`s on three collinear points
@@ -64,10 +67,11 @@ export class Circle3Tool extends Tool {
       // clicks means the obvious next move (aim the third somewhere else) just
       // works, which is the choice fillet.ts already made for a corner it
       // cannot round.
-      const why = `${this.name}: those three points lie on one line — no circle passes through them`;
+      // Said as what would work, as guidance: the click missed, nothing is wrong.
+      const why = `${this.name}: those three are on one line — click the third off it`;
       // The log pane where there is one; the console's ear headless, where an
       // advisory (the gesture stays live) does not deserve a throw.
-      if (this.ctx.log) this.ctx.log(why);
+      if (this.ctx.log) this.ctx.log(why, "guide");
       else console.warn(why);
       this.ctx.requestRender();
       return;
@@ -106,6 +110,7 @@ export class Circle3Tool extends Tool {
   onCancel(): void {
     this.clicks = [];
     this.hover = null;
+    this.plane.cancel();
     this.ctx.requestRender();
   }
 

@@ -204,12 +204,12 @@ function setValueItem(model: Model, name: string): MenuItem[] {
  * would move every bare `xaxis()` in the drawing. Neither case ever creates a frame the user
  * did not ask for, which is the rule the no-world-frame decision turns on.
  *
- * A tool that cannot run here — a curve tool in a 3D model with no default
- * frame — is **shown and disabled, not hidden**, for Fix's reason: the absence
- * of a frame is exactly what a user needs told, and an item that simply
- * vanished would leave "where did Circle go" unanswered. Which tools those are
- * is `toolUnavailable`'s to say, not this menu's: the toolbar reads the same
- * rule, so the two places that offer tools cannot disagree.
+ * A tool that cannot run here would be **shown and disabled, not hidden**, for
+ * Fix's reason: an item that simply vanished would leave "where did it go"
+ * unanswered. Which tools those are is `toolUnavailable`'s to say, not this
+ * menu's — the toolbar reads the same rule, so the two places that offer tools
+ * cannot disagree — and today it names none: the curve tools that used to be
+ * greyed here without a default frame now make their plane at the click.
  */
 function emptyCanvasMenu(model: Model, region: RegionHit | null): Menu {
   const hasFrame = [...model.entities.values()].some((e) => e.kind === "frame");

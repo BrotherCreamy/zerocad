@@ -99,7 +99,9 @@ test("placing at a projection infers nothing about the point it borrowed — onl
 
 // --- the curve tools need a plane -------------------------------------------------
 
-test("in 3D with no default frame, the circle and arc tools refuse the first click and place nothing", () => {
+// With a command line they make the plane instead (test/curvetoolplane.test.ts);
+// this is the guard under it, where there is none to type into.
+test("headless in 3D with no default frame and no command line, the circle and arc tools refuse the first click and place nothing", () => {
   for (const Tool of [CircleTool, Circle3Tool, ArcTool, Arc3Tool]) {
     const m = new Model(3);
     const logged: string[] = [];
@@ -189,19 +191,14 @@ test("a frame's menu offers Sketch on this: the default, then look at it — typ
   assert.ok(viewAxes(view).right.every((x, i) => close(x, t.ux[i], 1e-12)));
 });
 
-test("on empty canvas in 3D with no default frame, the curve tools are shown disabled with the reason", () => {
+test("on empty canvas in 3D with no default frame, the curve tools are offered like any other — they make their plane", () => {
   const m = new Model(3);
   const menu = menuFor(m, null);
-  for (const label of ["Circle", "3 point circle", "Arc", "3 point arc", "Fillet"]) {
-    const it = menu.items.find((i) => i.label === label)!;
-    assert.equal(it.action.do, "disabled", label);
-    assert.match((it.action as { why: string }).why, /no default frame/);
-  }
-  for (const label of ["Point", "Line", "Rectangle"]) {
-    assert.equal(menu.items.find((i) => i.label === label)!.action.do, "run", `${label} needs no plane`);
+  for (const label of ["Circle", "3 point circle", "Arc", "3 point arc", "Fillet", "Point", "Line", "Rectangle"]) {
+    assert.equal(menu.items.find((i) => i.label === label)!.action.do, "run", label);
   }
   tiltedFrame(m);
-  assert.equal(menuFor(m, null).items.find((i) => i.label === "Circle")!.action.do, "run", "a default frame enables them");
+  assert.equal(menuFor(m, null).items.find((i) => i.label === "Circle")!.action.do, "run", "and with a default frame");
   assert.equal(menuFor(new Model(2), null).items.find((i) => i.label === "Circle")!.action.do, "run",
     "and a 2D model never needed one");
 });

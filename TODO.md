@@ -31,6 +31,11 @@ otherwise.
   a panel *and* typeable, and the panel types the command; the pointer
   layer never needs the terminal. Every package is judged by it from here.
   First packages: `no-refusals.md`, `tool-options.md`.
+  ✅ **`no-refusals.md` built** (2026-10-29): the curve tools and `circ`/`arc`/
+  `fillet` typed make their plane; every click refusal is a muted `"guide"`
+  line (log and header note), the tool still armed; the regions extrude,
+  revolve and sketch could take are lit while armed, and revolve's candidate
+  axes once it has a profile. Deviations in the spec's status line.
 
 The guiding rule, set by the owner: **tools work like Onshape/SolidWorks, so
 people arrive already knowing how to use them.** Deviations from that rule
@@ -569,6 +574,20 @@ are flagged as such.
   ordinary journalled `frame(a, b, c)`, it moves with the sketch as a datum, and
   it is deleted like any other. What stays ruled out is a frame on no
   geometry anyone drew.
+  **A frame a tool makes for its own click is the working plane, not a world
+  datum** (2026-10-29, [`no-refusals.md`](docs/plans/no-refusals.md)): a
+  circle or arc tool clicked in a 3D model with no default frame types
+  `plane(pt(click), null, null, { look: false })` — the plane facing the
+  viewer through the click, the one the click already landed on, seeded as a
+  typed `frame()` seeds in that view — and the fillet tool a plane of the
+  corner's own points; typed `circ()`/`arc()` make `plane()` at the view
+  centre. Each is an ordinary journalled frame that exists because a click (or
+  a call) asked for a plane where there was none, made the default only when
+  there was none, and deleted like any other; nothing is made by asking
+  (`toolUnavailable` answers null and creates nothing). The model's "no
+  default frame" refusal stays as the guard under the command layer, and
+  `fix`/`xaxis()` still refuse without a default — they name a frame, they
+  do not need a plane to draw on.
   ✅ **Built, both halves** — model and relations, then the command surface,
   the drawn marker, picking/dragging/boxing, and the end-to-end story.
   *Spec:* [`docs/plans/coordinate-frames.md`](docs/plans/coordinate-frames.md).
@@ -901,9 +920,14 @@ are flagged as such.
   `arm("name")` through `submit`, the context menu's rule: it can do nothing a
   typed command cannot. An empty model says what to do (owner's report, *"i
   dont see anything in the artifact"*), drawn from the model, never a flag.
-  **A tool that cannot run is greyed, not hidden**, on the toolbar as on the
-  menu, with the model's own reason as its hover text — one rule
-  (`src/toolavail.ts`) read by both, so the two can never disagree.
+  ~~**A tool that cannot run is greyed, not hidden**, on the toolbar as on the
+  menu, with the model's own reason as its hover text~~ — struck by the
+  owner's "effortless" direction (2026-10-29, [`no-refusals.md`](docs/plans/no-refusals.md)):
+  the only tools it ever greyed, the curve tools without a default frame, now
+  make their plane, so **nothing is greyed**. The one rule
+  (`src/toolavail.ts`) stays, answering null, read by both surfaces, so a
+  tool that one day genuinely cannot run greys on both at once; the greyed
+  button's machinery in `panels.ts` stays wired to it, unused.
   Spec: [`docs/plans/panels.md`](docs/plans/panels.md),
   [`docs/plans/toolbar-availability.md`](docs/plans/toolbar-availability.md),
   [`docs/plans/toolbar-icons-docking.md`](docs/plans/toolbar-icons-docking.md),
@@ -1308,6 +1332,34 @@ extended the way `defineTool` extends the tool registry would close it.
 
 ## Smaller things
 
+- [ ] **Found while building `no-refusals.md`** (each deliberate unless it
+      says otherwise):
+      - **Hidden faces are lit too.** The extrude/sketch tools light every
+        loop `findLoops` sees; a box's far walls and base are lit through
+        its lid, faintly. An occlusion test (occlusion.ts already has one)
+        would light only the faces a click could actually land on.
+      - **An abandoned curve gesture keeps its typed plane.** The plane is
+        made at the first click so later clicks land on it across an orbit;
+        Escape after that click leaves the frame (one Ctrl+Z, as a typed
+        line would). A circle press with no drag likewise.
+      - **The frame a curve tool makes shows its refs as points** beside the
+        circle (`frame()`'s seeding: two free points a span along the screen
+        axes). Honest — they are the frame's datum points — but clutter for
+        a newcomer who never asked for a frame. The same for a typed `circ()`
+        in a fresh model: three points and a marker appear at the view
+        centre (picking.e2e.ts's box select had to move out of their way).
+      - **The fillet tool still logs nothing on success**, where extrude and
+        revolve log what they made (`"done"`).
+      - **`main.ts`'s toolbar-host comment** still says a curve tool greys
+        out; left because another package is editing next to it.
+      - **Fillet lights nothing.** Revolve lights its candidate axes; fillet
+        could light the lines that share a corner with the first one chosen.
+      - **The operation's own words still reach a guidance line** where the
+        tool cannot say it shorter: fillet's "radius 10 is too large for this
+        corner (needs …)", extrude's "the loop … is edge-on to the view …",
+        a profile no plane can be made of. Muted, but longer than ~12 words.
+      - **Guidance repeats.** Five misses are five log lines; the header note
+        shows only the last.
 - [ ] **A held panel that slides clear of what stopped it jumps to the
       hand.** With the grasp point fixed (owner, 2026-10-27), a panel stopped
       short by a chain and then moved along the other axis past the chain's
@@ -1436,7 +1488,9 @@ extended the way `defineTool` extends the tool registry would close it.
       availability rule, below); one under any new name gets the generic
       glyph. Deliberate — see `src/tools/icons.ts` for why a static on the
       class would be worse — and tested.
-- [ ] **The tool-availability rule is keyed by name.** `toolUnavailable`
+- [x] ~~**The tool-availability rule is keyed by name.**~~ Moot since
+      `no-refusals.md`: the rule greys nothing, by name or otherwise. Kept
+      below as it was, for when a rule comes back. `toolUnavailable`
       greys out whatever is registered as `circle`, `circle3`, `arc`, `arc3`
       or `fillet` — so a tool defined at the command line under one of those
       names (`defineTool("circle", …)`, replacing the built-in) is greyed

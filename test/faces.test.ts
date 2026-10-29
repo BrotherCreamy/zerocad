@@ -273,7 +273,7 @@ function toolCtx(model: Model, view: View, options: Record<string, unknown> = {}
     pick: ([sx, sy]: [number, number]) => hitTest(model, view, sx, sy),
     // Refusals only: a commit's report of what it made (`e1  extrude of …`) is
     // the extrude and revolve tools' too, and is not what these tests count.
-    ...(log ? { log: (line: string, outcome?: "refused" | "done") => { if (outcome !== "done") log.push(line); } } : {}),
+    ...(log ? { log: (line: string, outcome?: "refused" | "done" | "guide") => { if (outcome !== "done") log.push(line); } } : {}),
   };
   return c as ToolContext & typeof c;
 }
@@ -328,10 +328,10 @@ test("a click on no region is refused out loud and the tool stays armed — and 
   const tool = new ExtrudeTool(ctx);
   const outside = worldToScreen(ABOVE, [80, 80, 0]);
   tool.onDown({ world: [80, 80, 0], screen: outside });
-  assert.match(lines[0], /^extrude: no closed region under the click/);
+  assert.match(lines[0], /^extrude: click inside a closed outline — the ones I can see are lit$/);
   assert.equal(ctx.finished, false);
   assert.equal(m.features.size, 0);
-  assert.throws(() => new ExtrudeTool(toolCtx(m, ABOVE)).onDown({ world: [80, 80, 0], screen: outside }), /no closed region/);
+  assert.throws(() => new ExtrudeTool(toolCtx(m, ABOVE)).onDown({ world: [80, 80, 0], screen: outside }), /click inside a closed outline/);
 });
 
 test("on a split region the extrude tool outlines the half under the cursor, and a click there extrudes that half — the crossings made points first", async () => {
@@ -347,10 +347,15 @@ test("on a split region the extrude tool outlines the half under the cursor, and
   tool.onMove({ world: [30, 15, 0], screen: at(30, 15) });
   assert.equal(ctx.renders, 2, "across the line is another region");
   // What the preview draws: the right half's corners and nothing of the left.
-  const drawn: number[][] = [];
+  // The preview is the last save()…restore() block; the one before it lights
+  // every region faintly (guidance.test.ts), both halves included.
+  let drawn: number[][] = [];
   const g = new Proxy({}, {
-    get: (_t, k) => (typeof k === "string" && /Style|lineWidth/.test(k) ? undefined
-      : (...a: unknown[]) => { if (k === "moveTo" || k === "lineTo") drawn.push(a as number[]); }),
+    get: (_t, k) => (typeof k === "string" && /Style|lineWidth|lineCap/.test(k) ? undefined
+      : (...a: unknown[]) => {
+        if (k === "save") drawn = [];
+        if (k === "moveTo" || k === "lineTo") drawn.push(a as number[]);
+      }),
     set: () => true,
   }) as unknown as CanvasRenderingContext2D;
   tool.render({ g, worldToScreen: (w) => worldToScreen(ABOVE, w), scale: ABOVE.scale });
@@ -417,9 +422,14 @@ test("its preview fills the region even-odd and strokes it", async () => {
   const ctx = toolCtx(m, ABOVE);
   const tool = new ExtrudeTool(ctx);
   tool.onMove({ world: [5, 5, 0], screen: worldToScreen(ABOVE, [5, 5, 0]) });
-  const calls: string[] = [];
+  // The hover preview is the last save()…restore() block, after the faint
+  // light on every region (guidance.test.ts).
+  let calls: string[] = [];
   const g = new Proxy({}, {
-    get: (_t, k) => (k === "fillStyle" || k === "strokeStyle" || k === "lineWidth" ? undefined : (...a: unknown[]) => { calls.push(`${String(k)}(${a.filter((x) => typeof x === "string").join(",")})`); }),
+    get: (_t, k) => (k === "fillStyle" || k === "strokeStyle" || k === "lineWidth" ? undefined : (...a: unknown[]) => {
+      if (k === "save") calls = [];
+      calls.push(`${String(k)}(${a.filter((x) => typeof x === "string").join(",")})`);
+    }),
     set: () => true,
   }) as unknown as CanvasRenderingContext2D;
   tool.render({ g, worldToScreen: (w) => worldToScreen(ABOVE, w), scale: ABOVE.scale });
@@ -647,10 +657,10 @@ test("the second click: nothing there is refused aloud, another region is taken 
   const at = (x: number, y: number) => worldToScreen(ABOVE, [x, y, 0]);
 
   tool.onDown({ world: [80, 80, 0], screen: at(80, 80) });
-  assert.match(log.at(-1)!, /^revolve: no closed region under the click/);
+  assert.match(log.at(-1)!, /^revolve: click inside a closed outline — the ones I can see are lit$/);
   tool.onDown({ world: [15, 5, 0], screen: at(15, 5) });
   tool.onDown({ world: [80, 80, 0], screen: at(80, 80) });
-  assert.match(log.at(-1)!, /^revolve: no line or frame axis under the click/);
+  assert.match(log.at(-1)!, /^revolve: now click a line, or a frame.s arm, to turn it about$/);
   // Inside the other block: that is the profile now — and back inside the
   // first, that again. Neither is a refusal.
   tool.onDown({ world: [15, 50, 0], screen: at(15, 50) });
@@ -658,7 +668,7 @@ test("the second click: nothing there is refused aloud, another region is taken 
   assert.equal(log.length, 2, "re-choosing a region is not a refusal");
   // That line as the axis: refused, and the block stays chosen.
   tool.onDown({ world: [20, 25, 0], screen: at(20, 25) });
-  assert.match(log.at(-1)!, new RegExp(`^revolve: the axis ${across} leans 36.87° out of the plane of the profile l1,l2,l3,l4`));
+  assert.match(log.at(-1)!, new RegExp(`^revolve: ${across} is not in its plane, or crosses it — click a lit one$`));
   assert.equal(ctx.finished, false);
   // Hovering a line now shows it as the axis, dashed.
   tool.onMove({ world: [-5, 50, 0], screen: at(-5, 50) });
@@ -681,5 +691,5 @@ test("a click on no region, headless, throws — the extrude tool's convention",
   const m = new Model(3);
   axisFrame(m);
   assert.throws(() => new RevolveTool(toolCtx(m, ABOVE)).onDown({ world: [80, 80, 0], screen: worldToScreen(ABOVE, [80, 80, 0]) }),
-    /no closed region/);
+    /no closed outline yet/);
 });

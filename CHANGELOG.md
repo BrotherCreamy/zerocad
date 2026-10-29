@@ -7,6 +7,78 @@ decisions.
 
 ---
 
+## No refusals: the curve tools make their plane, and a miss is guidance
+
+The owner's standing direction (2026-10-29):
+
+> *make the whole thing more intuitive. i should be able to very simply
+> extrude etc, not get a bunch of errors. and same with every other tool.
+> things should be as easy as every other cad tool makes them, by using
+> defaults etc, but then I should be able to customise everything also if I
+> want. […] don't be throwing errors at the user for no reason. keep the user
+> on track. it should be effortless to pick up but then insanely powerful*
+
+**Nobody has to know what a frame is to draw a circle.** In a fresh 3D model
+the circle, 3-point circle, arc, 3-point arc and fillet buttons used to be
+greyed, with "no default frame — frame() then setDefaultFrame(), or say which
+frame" as their hover text — the first thing a newcomer met after a
+rectangle. Now they work. The circle and arc tools' first click types the
+plane it already landed on, and the gesture carries on over it:
+
+```
+> plane(pt(3.333, -5.333, 0), null, null, { look: false })
+f1
+```
+
+— the click as its origin, the refs seeded along the screen's right and up as
+a typed `frame()` seeds them, made the default, the view left alone. The
+fillet tool makes its corner's plane from the corner's own three points
+(`plane("p2", "p3", "p1", { look: false })`), once the corner has passed every
+refusal that needs no frame. Typed, `circ()` and `arc()` do the same at the
+view centre and say so (`circ: no default frame, so f1 was made at the view
+centre, facing you`), and `fillet("l1", "l2", 5)` on the corner's points —
+one entry, one undo step. Nothing is greyed on the toolbar or the menu any
+more: `toolUnavailable` answers "never", and stays as the one rule both read.
+The model's own "no default frame" is still the guard underneath.
+
+**A miss is guidance.** Every refusal a tool makes about a click now says, in
+one short line, what would work, leaves the tool armed, and is shown muted —
+in the log and in the header beside the verdict — never red, which is kept
+for the model's own contradictions:
+
+| | before | after |
+|---|---|---|
+| extrude, no region | no closed region under the click — click inside a loop (loops() lists them) | click inside a closed outline — the ones I can see are lit |
+| revolve, no region | no closed region under the click — click inside a loop (loops() lists them), then on the axis | the same as extrude |
+| revolve, no axis | no line or frame axis under the click — click a line, or an arm of a frame's marker, to turn the profile about | now click a line, or a frame's arm, to turn it about |
+| revolve, wrong axis | the axis l7 leans 36.87° out of the plane of the profile … | l7 is not in its plane, or crosses it — click a lit one |
+| sketch, no face | no face under the click — click inside a closed loop: a solid's face, or a sketch's (loops() lists them) | click inside a closed outline — the ones I can see are lit |
+| circle3 / arc3, one line | those three points lie on one line — no circle passes through them | those three are on one line — click the third off it |
+| fillet, lines that do not meet | "l1" and "l3" do not meet at a shared point | l1 and l3 do not meet — fillet wants two lines that share a corner |
+| fillet, a miss or the wrong kind | (silence) | click a line — fillet wants two lines that share a corner · c1 is a circle — … · now click a line that meets l1 · that is l1 again — click the line it shares a corner with |
+| circle / arc tools, no frame | no default frame — frame() then setDefaultFrame(), or say which frame | (no refusal: the plane is made) |
+
+**And it shows where.** While extrude, revolve or sketch is armed, every
+closed region it could take is lit faintly in the hover's green — the
+outline around its hole, the hole as a region of its own — and the one under
+the cursor brightens as before. Once revolve has its profile, every line and
+frame arm it could turn about (in its plane, the profile to one side) is lit.
+
+**The first run, as a test.** `test/e2e/firstrun.e2e.ts` is a fresh model and
+a mouse, nothing typed: rectangle; circle inside it (the plane line in the
+log, no greyed button, no red); extrude clicked outside every region (the
+guidance, the regions lit — read off the pixels), then inside (the solid);
+fillet on a corner; a right-drag orbit; revolve with a miss, a profile, a miss
+for the axis (the axes lit) and a lid edge; sketch on the lid. At the end the
+log holds no red line. 868 unit tests (was 852), 330 e2e (was 323).
+
+*Deliberately left:* hidden faces are lit too (no occlusion test); an
+abandoned curve gesture keeps the plane it typed (one Ctrl+Z); the frame a
+curve tool makes shows its two ref points as ordinary points beside the
+circle. *Spec:* [`docs/plans/no-refusals.md`](docs/plans/no-refusals.md).
+
+---
+
 ## The tool tray is one line, and the grips draw nothing
 
 The owner:

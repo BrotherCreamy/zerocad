@@ -28,13 +28,14 @@
 // Everything else is circle3's shape: each endpoint click goes through
 // `placePoint` so snapping and inference apply to it, nothing at all is
 // created before the third click so the whole gesture is one undo step, and a
-// degenerate third click is refused through `ctx.log` with the gesture left
+// degenerate third click is answered with guidance through `ctx.log`, the gesture left
 // live rather than committed into a conflict.
 
 //
 // In 3D the arc lies in the plane of its three clicks — the sketch's — and is
 // given the default frame's plane (see `ArcEntity`), whose +z it turns about;
-// with no default frame the first click is refused before anything is placed.
+// with no default frame the first click makes one, the working plane it
+// landed on, and the later clicks land on it (`CurvePlane`, in place.ts).
 // The tool works out which of the two arcs between the endpoints holds the
 // waypoint, and orders the endpoints so that is the arc drawn about that +z.
 // Its centre is held on the sketch plane with its endpoints. The preview is
@@ -43,7 +44,7 @@
 
 import { Tool, defineTool, type PointerInfo, type RenderContext } from "./tool.ts";
 import { arcEndpoints } from "../relations/geometry.ts";
-import { curveToolReady, holdOnSketchPlane, placePoint, requirePlanar } from "./place.ts";
+import { CurvePlane, holdOnSketchPlane, placePoint, requirePlanar } from "./place.ts";
 import { circumcircle, PREVIEW_MAX_R } from "./circumcircle.ts";
 import { arcFrame, arcSamples, arcSegments } from "../arcgeom.ts";
 import { sketchSide } from "../curveplane.ts";
@@ -107,10 +108,12 @@ export class Arc3Tool extends Tool {
   /** The endpoint clicks so far, kept whole so each one's snap survives to commit. */
   private ends: PointerInfo[] = [];
   private hover: number[] | null = null;
+  private plane = new CurvePlane(this.ctx, this.name);
 
   onDown(p: PointerInfo): void {
     requirePlanar(this.ctx.model, this.name);
-    if (!this.ends.length && !curveToolReady(this.ctx, this.name)) return;
+    if (this.plane.typing) return; // the plane the first click typed is still going in
+    if (!this.ends.length && !this.plane.begin(p)) return;
     this.hover = p.world;
 
     if (this.ends.length < 2) {
@@ -125,7 +128,7 @@ export class Arc3Tool extends Tool {
       return; // nothing is committed until the third click — see the header
     }
 
-    const [first, second] = this.ends;
+    const [first, second] = this.ends.map((e) => this.plane.settle(e));
     const found = arcThrough(first.world, second.world, p.world, sketchSide(this.ctx.model));
     if (!found) {
       // Refuse rather than build, circle3's shape exactly: three points on one
@@ -133,10 +136,11 @@ export class Arc3Tool extends Tool {
       // CONFLICT header over a drawing that should never have been made.
       // Staying armed on the two endpoint clicks means the obvious next move —
       // aim the waypoint off the line — just works.
-      const why = `${this.name}: those three points lie on one line — no arc passes through them`;
+      // Said as what would work, as guidance: the click missed, nothing is wrong.
+      const why = `${this.name}: those three are on one line — click the third off it`;
       // The log pane where there is one; the console's ear headless, where an
       // advisory (the gesture stays live) does not deserve a throw.
-      if (this.ctx.log) this.ctx.log(why);
+      if (this.ctx.log) this.ctx.log(why, "guide");
       else console.warn(why);
       this.ctx.requestRender();
       return;
@@ -178,6 +182,7 @@ export class Arc3Tool extends Tool {
   onCancel(): void {
     this.ends = [];
     this.hover = null;
+    this.plane.cancel();
     this.ctx.requestRender();
   }
 

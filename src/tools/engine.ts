@@ -148,7 +148,7 @@ export class ToolEngine {
   private onRenderOnly: () => void;
   private onPick: (pick: Pick) => void;
   private onUserAction: (phase: "before" | "after") => void;
-  private onLog?: (line: string, outcome?: "refused" | "done") => void;
+  private onLog?: (line: string, outcome?: "refused" | "done" | "guide") => void;
   private onRun?: (command: string) => Promise<void> | void;
   private onContextMenu: (pick: Pick | null, sx: number, sy: number) => void;
   /**
@@ -250,7 +250,7 @@ export class ToolEngine {
        */
       onUserAction?: (phase: "before" | "after") => void;
       /** One line to the user in the host's log pane — see ToolContext.log. */
-      onLog?: (line: string, outcome?: "refused" | "done") => void;
+      onLog?: (line: string, outcome?: "refused" | "done" | "guide") => void;
       /** One line typed into the host's command machinery, settling once it has run — see ToolContext.run. */
       onRun?: (command: string) => Promise<void> | void;
       /**

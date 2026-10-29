@@ -17,8 +17,11 @@ import type { SolveReport } from "./kernel/problem.ts";
 import { Tool, defineTool, listTools, type ToolCtor } from "./tools/tool.ts";
 import * as basic from "./relations/basic.ts";
 import * as geom from "./relations/geometry.ts";
-import { del, extrude, extrudeNeedsFrame, fillet, regen, revolve, revolveNeedsFrame, set } from "./operations.ts";
-import { sketchFrameFor } from "./sketchface.ts";
+import {
+  del, extrude, extrudeNeedsFrame, fillet, filletNeedsFrame, regen, revolve, revolveNeedsFrame, set,
+} from "./operations.ts";
+import { facingPoints, sketchFrameFor } from "./sketchface.ts";
+import { cross3, lift3, sub3 } from "./vec3.ts";
 import { save as saveModel, savedTools } from "./persist.ts";
 import { carryIntoSession, toolSources, type ToolSourceStore } from "./toolsource.ts";
 import { alignView, assignView, orbitBy, panBy, screenToWorld, viewAxes, zoomAbout, type View } from "./view.ts";
@@ -28,6 +31,8 @@ import { describeLoop, findLoops, type Loop } from "./loops.ts";
 import { _, checkClauses, checkOrdinary, slots, splitClauses, subjectable, type Clause, type Slot } from "./clauses.ts";
 
 type Bag = Record<string, unknown>;
+type PlaneCall = (origin?: string | null, xref?: string | null, yref?: string | null,
+  options?: { look?: boolean } | null) => string;
 
 export interface EnvHandles {
   model: Model;
@@ -349,6 +354,50 @@ export function neocadScope(h: EnvHandles): Bag {
     return name;
   }
 
+  /**
+   * The frame a typed `circ()` or `arc()` makes in a 3D model with no default
+   * frame and no plane named — the curve tools' rule at the command line:
+   * nobody should have to know what a frame is to draw a circle. It is
+   * `plane()` with nothing given, `{ look: false }`: a frame seeded at the
+   * middle of the view on the working plane, its refs along the screen's right
+   * and up, exactly as a typed `frame()` seeds — the plane facing the viewer —
+   * made the default, the view left where it is. Its model calls are journalled
+   * before the circle's, so a replay finds the frame there, and the whole line
+   * is one entry and so one undo step. Asked only after the call's own
+   * refusals (`check`), so a circle that would be refused makes no frame.
+   * Headless there is no view, and the frame is the model's own seed: at the
+   * origin, along the kernel's x and y.
+   *
+   * Said in the log, where there is one: the answer to the line is the
+   * circle's name, and a frame nobody named appearing beside it unannounced
+   * would be the surprise this exists to remove.
+   */
+  function planeForCurve(who: string, plane: string | null | undefined, check: () => void): void {
+    if (model.dim !== 3 || plane != null || model.defaultFrame != null) return;
+    check();
+    const made = (geometry.plane as PlaneCall)(null, null, null, { look: false });
+    h.log?.(`${who}: no default frame, so ${made} was made at the view centre, facing you`);
+  }
+
+  /**
+   * `planeForCurve` for a typed `fillet` on a corner with no default frame to
+   * give its arc: a frame of the corner's own three points (`filletNeedsFrame`
+   * — asked after every refusal that needs no frame), the default, +z toward
+   * the viewer where there is one; headless, the side of the corner's normal
+   * whose largest component is positive (loops.ts's rule, so up for a corner
+   * drawn level). The fillet tool types the same frame as `plane(…)`.
+   */
+  function planeForCorner(corner: [string, string, string]): string {
+    const [o, a, b] = corner.map((p) => lift3(model.coords(p)));
+    const n = cross3(sub3(a, o), sub3(b, o));
+    const big = n.reduce((k, c, i) => (Math.abs(c) > Math.abs(n[k]) ? i : k), 0);
+    const toward = h.view ? viewAxes(h.view).toward : n[big] < 0 ? n.map((c) => -c) : n;
+    const name = model.addFrame(...facingPoints(model, corner, toward)).name;
+    model.setDefaultFrame(name);
+    h.log?.(`fillet: no default frame, so ${name} was made on the corner, facing you`);
+    return name;
+  }
+
   const geometry: Bag = {
     // Creation returns the entity's *name*, because that is what every
     // relation takes — `dist(pt(0,0), pt(3,4), 10)` reads straight through.
@@ -375,16 +424,19 @@ export function neocadScope(h: EnvHandles): Bag {
     }),
     ln: withClauses("ln", (a?: string | null, b?: string | null) =>
       model.addLine(a ?? (b == null ? anchor() : null), b ?? null).name),
-    // In 3D a circle or arc takes a plane — a frame, or the default. It is
-    // resolved here *before* the view-centre anchor is made, so a refusal ("no
-    // default frame", or a plane named in 2D) leaves no stray point behind,
-    // and resolved again by the model itself, which is what journals it.
+    // In 3D a circle or arc takes a plane — a frame, or the default — and with
+    // neither it makes one first (`planeForCurve`). It is resolved here
+    // *before* the view-centre anchor is made, so a refusal (a plane named in
+    // 2D) leaves no stray point behind, and resolved again by the model
+    // itself, which is what journals it.
     circ: withClauses("circ", (center?: string | null, r?: number | null, plane?: string | null) => {
+      planeForCurve("circ", plane, () => model.checkCircle(center, r));
       model.curvePlane("circle", plane);
       return model.addCircle(center ?? anchor(), r ?? null, plane ?? null).name;
     }),
     arc: withClauses("arc", (center?: string | null, start?: string | null, end?: string | null, r?: number | null,
           plane?: string | null) => {
+      planeForCurve("arc", plane, () => model.checkArc(center, start, end, r));
       model.curvePlane("arc", plane);
       return model.addArc(center ?? anchor(), start ?? null, end ?? null, r ?? null, plane ?? null).name;
     }),
@@ -501,8 +553,17 @@ export function neocadScope(h: EnvHandles): Bag {
      * regenerated, profiles resolved — and never needs typing. See
      * operations.ts.
      */
-    fillet: (l1: string, l2: string, r: number, plane?: string | null, regenerated?: unknown) =>
-      fillet(model, l1, l2, r, plane, regenerated),
+    //
+    // A corner with no default frame for its arc gets one first, on its own
+    // points (`planeForCorner`), journalled before the fillet entry that names
+    // it; one line, one undo step.
+    fillet: (l1: string, l2: string, r: number, plane?: string | null, regenerated?: unknown) => {
+      if (plane == null && regenerated == null) {
+        const corner = filletNeedsFrame(model, l1, l2, r);
+        if (corner) plane = planeForCorner(corner);
+      }
+      return fillet(model, l1, l2, r, plane, regenerated);
+    },
     /**
      * Brings a feature back into step with its profile as it is now —
      * `regen("e1")` — keeping every twin and wall whose vertex or member is
@@ -832,8 +893,12 @@ function help(scope: Bag): string {
     "           every argument is optional: what you leave out is created free",
     "           near the middle of the view, for your relations to define.",
     "           In 3D a circle or arc lies in a plane — a frame, or the default",
-    "           one; with neither it says so. Its rim is parallel to the frame",
-    "           through its own centre, which the plane does not pin.",
+    "           one. Its rim is parallel to the frame through its own centre,",
+    "           which the plane does not pin. With neither, one is made first:",
+    "           typed, plane() at the view centre, facing you, the default now",
+    "           (the log says so); the circle and arc tools type",
+    "           plane(pt(x, y, z), null, null, { look: false }) at the click,",
+    "           and the fillet tool and fillet() make one on the corner's points.",
     "frames     frame(origin, xref)  setDefaultFrame(name)  defaultFrame()",
     "           plane(origin?, xref?, yref?) — a frame, made the default and",
     "           looked at square-on: \"start sketching here\" in one call.",
@@ -843,7 +908,8 @@ function help(scope: Bag): string {
     "           face's own points, +z toward you, so out of a solid.",
     "           xaxis(frame?)  yaxis(frame?)  — a frame's axis, by name",
     "           there is no world frame: fix and the axes are relative to one,",
-    "           and say so if you have made none. There is no hor/ver either:",
+    "           and say so if you have made none (a tool that needs a plane",
+    "           makes the one under its click). There is no hor/ver either:",
     '           par(l, yaxis()) is vertical, par(l, xaxis()) is level, and',
     '           par/perp/ang take any axis by name — par("l1", "f2.x").',
     "           A frame draws as an axes marker at its origin, brighter when it",

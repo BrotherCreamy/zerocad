@@ -202,3 +202,29 @@ export function featurePlaneCommand(model: Model, loop: Loop, toward: number[]):
   const names = sketchFrameFor(model, loop, toward).map((p) => JSON.stringify(p)).join(", ");
   return model.defaultFrame == null ? `plane(${names}, { look: false })` : `frame(${names})`;
 }
+
+/**
+ * Three points of a plane — origin, x-ref, y-ref — ordered so the frame they
+ * make has its +z on the side of `toward`: the last two swapped if not, as
+ * `sketchFrameFor` orders a face's. A plane seen exactly edge-on has no side
+ * facing anyone and keeps the order it was given: the frame is the same plane
+ * either way, and only which side is +z is left to chance.
+ */
+export function facingPoints(model: Model, [a, b, c]: [string, string, string], toward: number[]): [string, string, string] {
+  const [pa, pb, pc] = [a, b, c].map((p) => lift3(model.coords(p)));
+  return dot3(cross3(sub3(pb, pa), sub3(pc, pa)), toward) < 0 ? [a, c, b] : [a, b, c];
+}
+
+/**
+ * The command the fillet tool types before rounding a corner in a model with
+ * no default frame: `plane(shared, a, b, { look: false })` — the corner's own
+ * three points (`filletNeedsFrame`), +z toward the viewer, the view left alone.
+ * The corner's points rather than a frame seeded at the click, as the circle
+ * tool's is, because the arc must lie in the corner's plane, and the plane
+ * facing the screen is that only while the view has not turned since the
+ * corner was drawn. Like a face's plane, a frame of the corner's points then
+ * follows the corner.
+ */
+export function cornerPlaneCommand(model: Model, corner: [string, string, string], toward: number[]): string {
+  return `plane(${facingPoints(model, corner, toward).map((p) => JSON.stringify(p)).join(", ")}, { look: false })`;
+}

@@ -10,10 +10,15 @@
 // second chooses the axis — a line, or an arm of a frame's marker, which picking
 // reports with the arm it was (`Pick.axis`) — shown as a dashed line through the
 // profile while the cursor is over one. A click inside another region instead
-// changes the profile. Refusals go to the log and leave the tool where it was:
-// no region under the first click, nothing that is an axis under the second,
-// or an axis `revolve` refuses (out of the profile's plane, crossed by the
-// profile), after which another axis can be clicked.
+// changes the profile.
+//
+// **A miss is guidance, and what would work is lit.** Before the first click
+// every region the tool could take is lit faintly (`lightRegions`, as the
+// extrude tool does); once a profile is chosen, every line and frame arm it
+// could turn about is (`revolveAxes`: lying in its plane, the profile to one
+// side of it). A click on nothing, or on an axis that would not do, says in a
+// line what would and leaves the tool where it was, in the muted guidance
+// style — never red.
 //
 // It hands `revolve` the profile it found, resolved, through `revolveProfile`,
 // which makes the same geometric refusals a typed call makes — so the journal
@@ -23,11 +28,38 @@
 // passed the refusals that do not need the frame.
 
 import { Tool, defineTool, type PointerInfo, type RegionHit, type RenderContext } from "./tool.ts";
+import type { Model } from "../model.ts";
 import { checkRevolveRegion, orientingFrame, revolveProfile, revolveProfileOf } from "../operations.ts";
 import { describeFeature, type Pick } from "../picking.ts";
 import { featurePlaneCommand } from "../sketchface.ts";
 import { FULL_TURN, axisReader } from "../relations/revolution.ts";
-import { REGION_GREEN, drawRegion, regionKey, type Region } from "./region.ts";
+import { FRAME_ARM_PX } from "../framemarker.ts";
+import { LIT_STROKE, REGION_GREEN, drawRegion, lightRegions, missedRegion, regionKey, type Region } from "./region.ts";
+
+/**
+ * The axes a revolve of `region` could turn about: every line, and every arm
+ * of every frame, that lies in the region's plane with the region to one side
+ * of it — `checkRevolveRegion`'s own question, asked of each, so what is lit is
+ * exactly what a click would be let revolve about. In creation order, a
+ * frame's arms x, y, then z. Pure: model and region in, axis names out.
+ */
+export function revolveAxes(model: Model, region: Region): string[] {
+  const found: string[] = [];
+  for (const e of model.entities.values()) {
+    const axes = e.kind === "line" ? [e.name]
+      : e.kind === "frame" ? (model.dim === 3 ? ["x", "y", "z"] : ["x", "y"]).map((a) => `${e.name}.${a}`)
+      : [];
+    for (const axis of axes) {
+      try {
+        checkRevolveRegion(model, region.loops, region.index, axis);
+        found.push(axis);
+      } catch {
+        // Not one it could turn about: left dark.
+      }
+    }
+  }
+  return found;
+}
 
 export class RevolveTool extends Tool {
   readonly name = "revolve";
@@ -36,6 +68,8 @@ export class RevolveTool extends Tool {
   readonly snaps = false;
   /** The profile, once the first click has chosen it — with the side it was seen from, for a plane made on it. */
   private region: RegionHit | null = null;
+  /** The axes the chosen profile could turn about, lit while the tool waits for one. */
+  private axes: string[] = [];
   /** Set between typing a frameless profile's plane and revolving along it — see the extrude tool's. */
   private typing: object | null = null;
   /** Before the first click: the region under the cursor. */
@@ -70,28 +104,35 @@ export class RevolveTool extends Tool {
     this.ctx.requestRender();
   }
 
+  /** Chooses `hit` as the profile, and finds what it could turn about. */
+  private choose(hit: RegionHit): void {
+    this.region = hit;
+    this.axes = revolveAxes(this.ctx.model, hit);
+    this.under = null;
+    this.ctx.requestRender();
+  }
+
   onDown(p: PointerInfo): void {
     if (this.typing) return; // the plane it typed is still going in
     if (!this.region) {
       const hit = this.ctx.regionAt?.(p.screen) ?? null;
       if (!hit) {
-        this.refuse(new Error("no closed region under the click — click inside a loop (loops() lists them), then on the axis"));
+        this.guide(missedRegion(this.ctx.model));
         return;
       }
-      this.region = hit;
-      this.under = null;
-      this.ctx.requestRender();
+      this.choose(hit);
       return;
     }
     const axis = RevolveTool.axisOf(this.ctx.pick?.(p.screen));
     if (!axis) {
       const other = this.ctx.regionAt?.(p.screen) ?? null;
       if (other) {
-        this.region = other; // a second region clicked: that is the profile now
-        this.ctx.requestRender();
+        this.choose(other); // a second region clicked: that is the profile now
         return;
       }
-      this.refuse(new Error("no line or frame axis under the click — click a line, or an arm of a frame's marker, to turn the profile about"));
+      this.guide(this.axes.length
+        ? "now click a line, or a frame's arm, to turn it about"
+        : "nothing lies in its plane to turn it about — draw a line there");
       return;
     }
     const ctx = this.ctx;
@@ -109,7 +150,7 @@ export class RevolveTool extends Tool {
       checkRevolveRegion(ctx.model, region.loops, region.index, axis);
       command = featurePlaneCommand(ctx.model, loop, region.toward);
     } catch (e) {
-      this.refuse(e);
+      this.refuse(axis, e);
       return;
     }
     const token = {};
@@ -129,25 +170,47 @@ export class RevolveTool extends Tool {
       const profile = revolveProfileOf(model, region.loops, region.index);
       const feature = revolveProfile(model, profile, axis, this.angle);
       this.region = null;
+      this.axes = [];
       this.axisUnder = null;
-      this.ctx.requestSolve();
+      // Finished first, so the solve's redraw is the first without the tool: its
+      // light on every region would otherwise stay on screen over the solid.
       this.ctx.finish();
+      this.ctx.requestSolve();
       this.ctx.log?.(describeFeature(model, model.featureOf(feature)), "done");
     } catch (e) {
       // The axis out of the profile's plane, or the profile across it, most
       // likely. The profile stays chosen, so the next click can be another axis.
-      this.refuse(e);
+      this.refuse(axis, e);
     }
   }
 
-  /** Out loud where there is a user to tell, a throw headless — the extrude and fillet tools' convention. */
-  private refuse(e: unknown): void {
+  /**
+   * An axis the revolve will not turn about. Said short when it is one the
+   * tool did not light — the lit ones are the answer — and in the operation's
+   * own words otherwise, which are then about something the light could not
+   * know (a profile no plane can be made of).
+   */
+  private refuse(axis: string, e: unknown): void {
     if (!this.ctx.log) throw e;
-    this.ctx.log(`revolve: ${e instanceof Error ? e.message : e}`);
+    this.guide(this.axes.includes(axis)
+      ? (e instanceof Error ? e.message : String(e))
+      : `${axis} is not in its plane, or crosses it — click a lit one`);
+  }
+
+  /**
+   * One line of guidance: the tool stays armed, the sentence says what would
+   * work, and the host shows it muted — never red, which is the model's. A
+   * throw headless, where a caller is the only one listening.
+   */
+  private guide(why: string): void {
+    this.ctx.requestRender();
+    if (!this.ctx.log) throw new Error(why);
+    this.ctx.log(`revolve: ${why}`, "guide");
   }
 
   onCancel(): void {
     this.region = null;
+    this.axes = [];
     this.under = null;
     this.axisUnder = null;
     this.typing = null;
@@ -155,17 +218,54 @@ export class RevolveTool extends Tool {
   }
 
   /**
-   * The region — under the cursor, or chosen — filled faintly even-odd and
-   * outlined, exactly the profile a revolve would take; and once it is chosen,
-   * the axis under the cursor as a dashed line running the length of the
-   * profile and a little past it, so what it would turn about is plain before
-   * the click.
+   * Before the first click, every region it could take lit faintly and the
+   * one under the cursor outlined, exactly the profile a revolve would take;
+   * once one is chosen, it a shade stronger, every axis it could turn about
+   * lit, and the axis under the cursor as a dashed line running the length of
+   * the profile and a little past it, so what it would turn about is plain
+   * before the click.
    */
   render(r: RenderContext): void {
-    const u = this.region ?? this.under;
-    if (!u) return;
-    const outlines = drawRegion(this.ctx.model, r, u, this.region ? "40" : "2e");
-    if (outlines && this.region && this.axisUnder) this.renderAxis(r, outlines);
+    if (!this.region) {
+      lightRegions(this.ctx.model, r, this.under);
+      if (this.under) drawRegion(this.ctx.model, r, this.under);
+      return;
+    }
+    const outlines = drawRegion(this.ctx.model, r, this.region, "40");
+    this.renderAxes(r);
+    if (outlines && this.axisUnder) this.renderAxis(r, outlines);
+  }
+
+  /**
+   * The candidate axes, lit: a line along its own length, a frame's arm along
+   * the length its marker draws it — the arm a click would take.
+   */
+  private renderAxes(r: RenderContext): void {
+    const model = this.ctx.model;
+    r.g.save();
+    r.g.strokeStyle = `${REGION_GREEN}${LIT_STROKE}`;
+    r.g.lineWidth = 5;
+    r.g.lineCap = "round";
+    for (const axis of this.axes) {
+      let ends: [number[], number[]];
+      try {
+        if (model.entities.get(axis)?.kind === "line") {
+          const l = model.line(axis);
+          ends = [model.coords(l.refs[0]), model.coords(l.refs[1])];
+        } else {
+          const ax = axisReader(model, axis).read();
+          const len = FRAME_ARM_PX / r.scale;
+          ends = [ax.origin, ax.origin.map((o, i) => o + len * ax.dir[i])];
+        }
+      } catch {
+        continue; // gone or collapsed since it was found: nothing to light
+      }
+      r.g.beginPath();
+      r.g.moveTo(...r.worldToScreen(ends[0]));
+      r.g.lineTo(...r.worldToScreen(ends[1]));
+      r.g.stroke();
+    }
+    r.g.restore();
   }
 
   private renderAxis(r: RenderContext, outlines: number[][][]): void {

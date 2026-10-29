@@ -298,7 +298,7 @@ test("a collinear third click is refused rather than solved", async () => {
   const m = await app.model();
   assert.equal(m.size, FIXTURE_ENTITIES, "nothing may be built for an arc that cannot exist");
   assert.equal(m.activeTool, "arc3", "and the tool stays armed, holding the two endpoints");
-  assert.match(await app.log(), /arc3: .*lie on one line/,
+  assert.match(await app.log(), /arc3: those three are on one line — click the third off it/,
     "the refusal has to say why, in the pane the user reads");
   assert.equal(warnings.length, 0, "and nothing needs the console");
 

@@ -10,15 +10,15 @@
 // or a tangency. Pinning it here would make every drawn circle rigid.
 //
 // In 3D the circle lies on the sketch: it is given the default frame's plane
-// (see `CircleEntity`), so the tool refuses on its first click when there is
-// no default frame — before anything is placed — rather than drawing a circle
-// the model cannot hold. The radius is the distance from centre to rim in the
-// working plane, and the preview is drawn the way the committed circle will
-// be: sampled in that plane and projected, an ellipse on a plane seen at an
-// angle.
+// (see `CircleEntity`), and with no default frame the press makes one — the
+// working plane it landed on, typed as `plane(pt(…), null, null, { look:
+// false })` (see `CurvePlane` in place.ts) — and the drag carries on over it.
+// The radius is the distance from centre to rim in the working plane, and the
+// preview is drawn the way the committed circle will be: sampled in that plane
+// and projected, an ellipse on a plane seen at an angle.
 
 import { Tool, defineTool, type PointerInfo, type RenderContext } from "./tool.ts";
-import { curveToolReady, placePoint, requirePlanar } from "./place.ts";
+import { CurvePlane, placePoint, requirePlanar } from "./place.ts";
 import { arcSamples, arcSegments, circleFrame } from "../arcgeom.ts";
 
 export class CircleTool extends Tool {
@@ -26,10 +26,11 @@ export class CircleTool extends Tool {
   /** The whole press, so the centre's snap survives to commit — see place.ts. */
   private from: PointerInfo | null = null;
   private rim: number[] | null = null;
+  private plane = new CurvePlane(this.ctx, this.name);
 
   onDown(p: PointerInfo): void {
     requirePlanar(this.ctx.model, this.name);
-    if (!curveToolReady(this.ctx, this.name)) return;
+    if (!this.plane.begin(p)) return;
     this.from = p;
     this.rim = p.world;
     this.ctx.requestRender();
@@ -43,30 +44,32 @@ export class CircleTool extends Tool {
 
   onUp(p: PointerInfo): void {
     if (!this.from) return;
-    const from = this.from;
-    const c = from.world;
+    const pressed = this.from;
     this.from = null;
     this.rim = null;
 
-    const r = Math.hypot(...p.world.map((v, i) => v - c[i]));
+    const r = Math.hypot(...p.world.map((v, i) => v - pressed.world[i]));
     if (r < 1e-6) {
       this.ctx.requestRender();
       return; // a click with no drag — no radius to speak of
     }
 
-    const m = this.ctx.model;
-    // Only the centre is a point the user placed; the rim is a radius, not an
-    // entity, so there is nothing there to infer a constraint about.
-    const ctr = placePoint(this.ctx, from);
-    m.addCircle(ctr, r);
+    this.plane.commit(() => {
+      const m = this.ctx.model;
+      // Only the centre is a point the user placed; the rim is a radius, not an
+      // entity, so there is nothing there to infer a constraint about.
+      const ctr = placePoint(this.ctx, this.plane.settle(pressed));
+      m.addCircle(ctr, r);
 
-    this.ctx.requestSolve();
-    this.ctx.finish();
+      this.ctx.requestSolve();
+      this.ctx.finish();
+    });
   }
 
   onCancel(): void {
     this.from = null;
     this.rim = null;
+    this.plane.cancel();
     this.ctx.requestRender();
   }
 

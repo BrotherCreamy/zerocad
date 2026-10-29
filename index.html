@@ -14,6 +14,9 @@
     /* What the last undo or redo did, beside the verdict rather than over it
        (see stepNote in main.ts). Amber, the colour of what just happened. */
     #stepnote{font-size:11px;color:#e8a33d}
+    /* A tool's guidance there: the log's muted answer colour — not amber,
+       which is what just happened, and never the red of a contradiction. */
+    #stepnote.guide{color:#8fa7bb}
     canvas{display:block;width:100%;height:100%;background:#0a0e13;cursor:crosshair}
     #log{padding:4px 10px 6px;font-size:11px;color:#7a8b9b;white-space:pre-wrap;overflow-y:auto}
     #cmdrow{display:flex;align-items:center;gap:8px;padding:0 16px 0 10px;overflow:hidden}

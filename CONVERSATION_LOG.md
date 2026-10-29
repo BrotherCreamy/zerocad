@@ -106,6 +106,71 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### No refusals: the curve tools make their plane, and a miss is guidance
+
+**The owner's direction** (docs/plans/effortless.md): *"don't be throwing
+errors at the user for no reason. keep the user on track."* The first package
+under it took the extrude package's pattern — the layer above makes what the
+operation needs, typed so the log teaches it — to the curve tools, and turned
+every click refusal into a muted line of what would work.
+
+**Which plane a circle tool makes.** The working plane the click already
+landed on: with no default frame that is the camera-parallel plane through
+the orbit target, and the click is on it by construction. The tool types
+`plane(pt(click), null, null, { look: false })` and lets `frame()` seed the
+refs along the screen axes. *Rejected:* typing three `pt(…)`s with
+coordinates, as the spec's words suggested — rounded for the log, three
+points tilt the plane by up to ~5e-5 rad, and the fillet's in-plane check is
+1e-6; only the origin is rounded (under a thousandth along the normal), and
+the first click is projected onto the frame's plane at commit so
+`holdOnSketchPlane` holds it. *Rejected:* full-precision literals, which put
+`pt(512.3456789012345, …)` in the log the newcomer is meant to learn from.
+
+**When.** At the first click, not at commit. Making it at commit would mean
+an abandoned gesture leaves nothing behind — but every click of a three-click
+gesture would land on the camera plane *of its own moment*, and an orbit
+between clicks (a right-drag mid-gesture is a supported thing) would put them
+on different planes. The cost kept: Escape after the first click leaves the
+typed plane, one Ctrl+Z away, as any typed line would.
+
+**The fillet is different.** The arc must lie in the *corner's* plane (the
+operation refuses a corner out of its frame's orientation to 1e-6), and the
+screen-facing plane is that only until the view turns. So the fillet tool
+types a plane of the corner's own three points, +z toward the viewer — the
+extrude package's frame-of-the-sketch's-points, which the register already
+says is not a world datum — and only after every refusal that needs no frame
+(`filletNeedsFrame`), so a corner that will be refused makes nothing. Typed
+`fillet` does the same, which the spec did not ask for; leaving the typed
+command refusing what the tool does would have been the inconsistency the
+extrude package had already ruled out.
+
+**What stays red.** Nothing a built-in tool says about a click. The rule I
+drew: a refusal about where the user clicked, or what they clicked, is
+guidance; red is the solver's CONFLICT and a typed entry's error. The
+operation's own words, where a tool cannot say it shorter (a radius too large
+for the corner), are passed on as guidance too — they are still about the
+click. A tool written at the command line that calls `ctx.log(line)` with no
+outcome still gets red: that default keeps meaning "refused" so nothing
+authored before this changes colour under its author.
+
+**The light.** Every loop's region, faint, even-odd, so the outline around a
+hole leaves it clear and the hole is lit as a region of its own — each click
+target lit exactly once. Loops thinner on screen than they are long are
+skipped, or a box seen from above would have its walls painted as green edges.
+*Not done:* occlusion. Hidden faces are lit through the lid. It reads as
+busy on a solid seen at an angle, not wrong, and occlusion.ts could fix it.
+The revolve tool's axes are lit by asking `checkRevolveRegion` of every line
+and frame arm, once per profile chosen — what is lit is exactly what a click
+would be let use, so the guidance for a dark one can be short ("click a lit
+one").
+
+**Found by looking.** The first screenshot after the solid showed its edges
+still green: the extrude tool solved (and redrew) before it finished, so the
+last frame drawn still had the armed tool's light in it. Finished first now.
+The second showed the header still saying "click inside a closed outline"
+over the solid that click had made: a guidance note is cleared when the next
+undo step is recorded.
+
 ### The tray is a line, and a grip is a cursor: undoing the wrap cleanly
 
 **The owner**, an hour after the wrap landed: *"you dont need those diag lines
