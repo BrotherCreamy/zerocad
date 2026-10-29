@@ -7,6 +7,77 @@ decisions.
 
 ---
 
+## Extrude on a frameless sketch makes its own plane
+
+The owner, with a screenshot of a rectangle drawn in a fresh model, the
+extrude tool armed, and the log saying, once per click, eight times:
+
+> the loop of l1,l4,l3,l2 lies in no frame's plane, and no frame is parallel
+> to it — an extrude runs along a sketch frame's +z: make one on its plane
+> (plane(…), or Sketch on this) and extrude again
+
+> *how does extrude work? i don't really understand this*
+
+He never got a solid. The refusal was asking him to do by hand something the
+app already knows how to do: "Sketch on this face" makes a frame of three of a
+loop's own points, +z toward the viewer. **That frame is not the world datum
+the "no world frame" rule forbids** — it is the sketch's own plane, an ordinary
+journalled `frame(a, b, c)` that follows the sketch — so now the layer above
+the operation makes it and carries on.
+
+**The tool types it.** A click inside a region no frame lies in or along types
+`plane("p2", "p1", "p3", { look: false })` through the command line — so the
+log shows it and the user learns the word — waits for it, then extrudes along
+it as an undo step of its own and says what it made. The owner's sequence now
+logs:
+
+```
+> plane("p2", "p1", "p3", { look: false })
+f1
+e1  extrude of l1,l4,l3,l2, depth d1 = 10 along f1, lid f2
+```
+
+and a solid appears where he was looking: **the view does not turn**
+(`plane`'s new `{ look: false }`; plain `plane()` still turns square-on). Two
+Ctrl+Z bring the rectangle back exactly as drawn, frameless — the solid, then
+the plane. A model that already has a default frame keeps it (the tool types
+`frame(a, b, c)` instead); only a model with none gets the new one as its
+default. The revolve tool does the same once an axis is clicked, and only after
+the axis passes the checks that need no frame, so a refused axis types nothing.
+
+**Typed, the same.** `extrude("l1", 20)` on such a loop makes the frame itself
+— journalled `addFrame`, `setDefaultFrame` (if there was none), then the
+`extrude` entry naming it, so a replay finds it — with +z toward the viewer in
+the app and along the loop's own normal headless. A call that will be refused
+(a zero depth, an axis off the plane) is refused before any frame is made.
+`operations.ts`'s `extrude` still refuses a frameless loop: that refusal is now
+the guard that the layer above did its job.
+
+*Why the tool waits* (measured): a typed line runs asynchronously, and an
+extrude made the moment `ctx.run` returned fell inside the typed line's undo
+step — one Ctrl+Z took both, and the log put `f1` after the solid. So
+`ToolContext.run` now settles once the line has run, and a new
+`ToolContext.act` brackets the commit that follows as its own step.
+`ToolContext.log` gained a `"done"` outcome, shown as an answer rather than an
+error, which both tools now use on every commit.
+
+844 unit tests (12 new in `test/extrudeplane.test.ts`: the typed call's
+journal, replay byte-identity, a non-parallel default kept, a parallel frame
+used as before, the sign headless and from both sides in a view, refusals
+leaving nothing, revolve and its refusal, `plane`'s option, both tools, the
+headless guard), 318 e2e (4 new in `test/e2e/extrudeplane.e2e.ts`: the owner's
+sequence exactly, the two undos, the typed call and its file round trip, and a
+turned view).
+
+*Known and deliberate:* typed, frame and solid are one undo step (one line
+typed); by the tool, two. The sketch's +x is whichever edge `sketchFrameFor`
+starts at — in the owner's rectangle `f1` points left — which shows only in the
+frame's marker, since the view is not turned to it. Headless, with no command
+line, the tool still refuses.
+*Spec:* [`docs/plans/extrude-makes-its-plane.md`](docs/plans/extrude-makes-its-plane.md).
+
+---
+
 ## Undo and redo, bulletproof
 
 The owner:

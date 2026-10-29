@@ -1345,7 +1345,9 @@ replacing) the system Node other projects on this machine may depend on.
   solids can sort wrong where they cross *(fixed 2026-10-22: faces are drawn
   by depth — see "Faces drawn by depth" below; the sort described here is now
   only the fallback's, by centroid)*; faces never pick, snap, box or wear a
-  glyph; a solid's side face extrudes only once a frame is made on its plane.
+  glyph; a solid's side face extrudes only once a frame is made on its plane
+  *(since 2026-10-29 the tool makes that frame itself — see "Extrude on a
+  frameless sketch" below)*.
 - **Revolve** (`revolve` and `revolveProfile`/`checkRevolve` in
   `src/operations.ts`, `src/relations/revolution.ts` (new), `RevolveFeature` in
   `src/model.ts`, `revolveFaces` and `orderedFaces` in `src/faces.ts`,
@@ -1785,6 +1787,32 @@ replacing) the system Node other projects on this machine may depend on.
   a tray turned against a bottom or right edge lies along it, away from the
   hand, until the next move brings it back under the hand.
   *Spec:* [`docs/plans/panels-push.md`](docs/plans/panels-push.md).
+- **Extrude on a frameless sketch makes its own plane** (`orientingFrame`,
+  `extrudeNeedsFrame`, `revolveNeedsFrame`, `checkRevolveRegion` in
+  `src/operations.ts`; `featurePlaneCommand` in `src/sketchface.ts`;
+  `src/tools/extrude.ts`, `revolve.ts`; `ToolContext.run`/`act`/`log` in
+  `tools/tool.ts` and `engine.ts`; `main.ts`'s `onRun`/`onLog`; `replenv.ts`'s
+  `plane`, `extrude`, `revolve` and help). A loop no frame lies in or along —
+  a rectangle drawn in a fresh model — is no longer refused by the tools or the
+  typed calls: they make a frame of three of its own points first
+  (`sketchFrameFor`: a corner and its neighbours, +z toward the viewer, or the
+  loop's own normal headless) as its own journalled call, the default only if
+  there was none. **The tools type it** — `plane(a, b, c, { look: false })`, or
+  `frame(a, b, c)` beside a default they keep — through `ctx.run`, which now
+  settles once the line has run; then commit along it in `ctx.act` (new), so
+  it is a second undo step; and log what they made (`e1  extrude of …`,
+  `ToolContext.log`'s new `"done"` outcome, shown as an answer). **Typed**,
+  `extrude`/`revolve` check every refusal that needs no frame first (revolve's
+  geometry against the loop's own plane), then `addFrame` (+ `setDefaultFrame`)
+  and the operation, one undo step. `plane(…, { look: false })` makes the frame
+  and default without turning the view. `operations.ts`'s `extrude`/`revolve`
+  still refuse a frameless loop — the guard. Unit: `test/extrudeplane.test.ts`
+  (12); browser: `test/e2e/extrudeplane.e2e.ts` (4: the owner's sequence, two
+  undos to the frameless rectangle, typed, a turned view). 844 unit tests, 318
+  e2e. *Known and deliberate:* typed is one undo step, the tool two; the
+  sketch's +x is whichever edge `sketchFrameFor` starts at; headless with no
+  `run` the tools still refuse.
+  *Spec:* [`docs/plans/extrude-makes-its-plane.md`](docs/plans/extrude-makes-its-plane.md).
 
 
 ## What's next

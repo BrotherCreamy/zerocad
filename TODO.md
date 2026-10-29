@@ -379,6 +379,14 @@ are flagged as such.
     the loop parallel to that frame. A loop in no frame's orientation is refused
     (an extrude reads its direction off a frame; inventing one would be a datum
     nobody chose). A negative depth extrudes the other way; zero is refused.
+    **↻ Revisited 2026-10-29** ([`extrude-makes-its-plane.md`](docs/plans/extrude-makes-its-plane.md)):
+    the owner's first run was this refusal, eight times. A frame of three of
+    the loop's *own* points is no invented datum — it is the sketch's plane,
+    what "Sketch on this face" makes — so the layer above the operation makes
+    it, as its own journalled call before the `extrude` entry: the tools type
+    `plane(a, b, c, { look: false })` (or `frame(a, b, c)` beside a default),
+    the typed `extrude`/`revolve` make the same model calls. The operation's
+    refusal stays, as the guard.
   - *Found, not fixed:* **`fillet` leaves its tangent point and centre off the
     sketch's `onPlane`** — held only on the rim's plane, so a rounded corner can
     slide along +z as a whole; a `set` stirs it by a few millionths. And a
@@ -430,7 +438,9 @@ are flagged as such.
     cross~~ — **fixed by the depth rule** (2026-10-22, below; measured wrong in
     39 of 40 views before); a face is not a pick target, so a solid's side face is
     extruded by clicking inside its loop — and a wall's loop lies in no frame's
-    orientation, so that is refused until a frame is made on it.
+    orientation, so that is refused until a frame is made on it. *(2026-10-29:
+    no longer refused — the tool makes the frame on the wall's own points first,
+    +z out of the solid; see the Done entry "Extrude on a frameless sketch".)*
 
   ✅ **Phase 5 (revolve) — built** (2026-10-13), one PR in two reviewable
   commits (model half, then display and tool):
@@ -543,6 +553,14 @@ are flagged as such.
   inference works only while a default frame is set. **Old saved files
   carrying frameless `hor`/`ver`/`fix` will not open** — accepted pre-release,
   said in the CHANGELOG. Format version is now 2.
+  **A frame made from a sketch's own points is not a world frame**
+  (2026-10-29, [`extrude-makes-its-plane.md`](docs/plans/extrude-makes-its-plane.md)):
+  an extrude or revolve of a loop no frame orients makes one from three of the
+  loop's points (`sketchFrameFor`'s rule) and carries on, and sets it the
+  default only when there was none. Nothing about it is privileged: it is an
+  ordinary journalled `frame(a, b, c)`, it moves with the sketch as a datum, and
+  it is deleted like any other. What stays ruled out is a frame on no
+  geometry anyone drew.
   ✅ **Built, both halves** — model and relations, then the command surface,
   the drawn marker, picking/dragging/boxing, and the end-to-end story.
   *Spec:* [`docs/plans/coordinate-frames.md`](docs/plans/coordinate-frames.md).
@@ -1408,6 +1426,60 @@ extended the way `defineTool` extends the tool registry would close it.
       the resolver's flush arithmetic assumes does not happen.
 
 ## Done
+
+- [x] **Extrude on a frameless sketch makes its own plane** — the owner,
+      with a screenshot of the log saying *"the loop of l1,l4,l3,l2 lies in no
+      frame's plane, and no frame is parallel to it …"* eight times: *"how
+      does extrude work? i don't really understand this"*. Spec:
+      [`docs/plans/extrude-makes-its-plane.md`](docs/plans/extrude-makes-its-plane.md),
+      marked built. A rectangle drawn in a fresh model, the extrude tool, one
+      click inside: the tool types `plane(a, b, c, { look: false })` on three
+      of the rectangle's corners (`sketchFrameFor`'s rule, +z toward the
+      viewer), waits for it, and extrudes along it; the log reads the plane
+      line, `f1`, then `e1  extrude of …`; the view does not turn; two Ctrl+Z
+      bring the rectangle back frameless. Typed, `extrude("l1", 20)` makes the
+      same frame itself (`addFrame`, `setDefaultFrame` if there was none, then
+      `extrude`). Revolve likewise. `operations.ts` still refuses a frameless
+      loop, as the guard.
+      **Deviations from the spec:**
+      - ⚠ **The tool waits for its plane.** A typed line runs asynchronously
+        (`submit` awaits the REPL), so an extrude made as soon as `ctx.run`
+        returned fell inside the typed line's undo bracket — one Ctrl+Z took
+        both, and the log put `f1` after the solid (measured, by making it
+        synchronous: the e2e fails exactly there). `ToolContext.run` now
+        settles once the line has run, and the tool commits in
+        `ToolContext.act` (new), the engine's own bracket.
+      - ⚠ **Beside a default it keeps, the tool types `frame(a, b, c)`**, since
+        `plane` always sets the default.
+      - ⚠ **The tools log what they made** (`describeFeature`, shown as an
+        answer: `ToolContext.log`'s new `"done"` outcome) — on every commit,
+        not only after a plane, or one click would say `e1` and the next
+        nothing. That is how `e1` gets into the log. It is also the first
+        answer-not-error line a tool can say, which the STATUS "what's next"
+        note about a tool saying something asked for.
+      - ⚠ **A refused call makes no frame.** The command layer checks every
+        refusal that needs no frame first (`extrudeNeedsFrame`,
+        `revolveNeedsFrame`), revolve's geometry against the loop's own plane
+        (`checkRevolveRegion`, which the revolve tool asks too before typing).
+      - ⚠ **The headless normal is loops.ts's** — largest component positive,
+        not "+z": a sketch standing in the x–z plane extrudes along +y. The
+        spec's text corrected.
+      **Left in place deliberately:**
+      - **Typed, frame and solid are one undo step; by the tool, two.** One
+        typed line is one step (the host's rule); the tool types one line and
+        then commits, which is two things done. The owner's sequence asked for
+        two.
+      - **The sketch's +x is whichever edge `sketchFrameFor` starts at**, so in
+        the owner's rectangle `f1`'s x-arrow points left and its y down (seen
+        in the screenshot). Square to the sketch, never tipped; the view is not
+        turned to it, so it shows only in the marker.
+      - **Headless, with no command line, the extrude tool still refuses** a
+        frameless region (the sketch tool's convention), rather than making the
+        frame itself — a test driving a tool has no `run` to type into.
+      - **A plane typed for a commit that then fails stays**, as typed, in its
+        own undo step: the tool checks everything it can first (the depth is
+        always valid; revolve's axis is checked), so this needs the operation
+        to refuse something the checks did not foresee.
 
 - [x] **Undo and redo, bulletproof** — the owner: *"why does ctrl+z and
       ctrl+y not work? should work and be bulletproof"*. Spec:
