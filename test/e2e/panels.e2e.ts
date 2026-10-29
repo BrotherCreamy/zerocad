@@ -131,7 +131,8 @@ test("the canvas is the whole window under the header, and the chrome floats ove
 // --- the toolbar ---------------------------------------------------------------
 
 test("the toolbar has a button per registered tool: its icon, with its name as the tooltip", async () => {
-  const tools = (await app.repl("tools()")).value as string[];
+  // A tool with options is listed with them (`extrude  { depth: 10 }`); its name is the first word.
+  const tools = ((await app.repl("tools()")).value as string[]).map((t) => t.split(" ")[0]);
   const buttons = await app.page.$$eval("#toolbar button", (els) =>
     els.map((el) => ({
       tool: (el as HTMLElement).dataset.tool,
@@ -530,8 +531,8 @@ test("storage that throws costs the arrangement and nothing else", async () => {
 // The curve tools used to be greyed in a 3D model with no default frame, with
 // the model's "no default frame" as their hover text. They make their plane at
 // the click now (docs/plans/no-refusals.md), so the rule answers "never" and
-// nothing greys — the machinery stays, wired to `toolUnavailable`, for a tool
-// that one day genuinely cannot run.
+// nothing greys — and since docs/plans/tool-options.md the toolbar's greyed
+// state is gone outright, so these check it stays that way.
 
 const CURVES = ["circle", "circle3", "arc", "arc3", "fillet"];
 

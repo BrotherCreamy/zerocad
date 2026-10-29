@@ -12,6 +12,7 @@ import type { Loop } from "../loops.ts";
 import type { Pick } from "../picking.ts";
 import type { Snap } from "../snapping.ts";
 import type { Plane } from "../view.ts";
+import { declaredOptions, type OptionSpecs } from "./options.ts";
 
 export interface PointerInfo {
   world: number[]; // world-space coordinates, length = model.dim
@@ -72,7 +73,10 @@ export interface ToolContext {
   /**
    * Whatever the tool was armed with: `arm("fillet", { radius: 8 })`. A tool
    * that needs a number before it can do anything (a fillet radius, a fixed
-   * circle size) reads it here rather than inventing a way to be told.
+   * circle size) reads it here rather than inventing a way to be told. For a
+   * tool that declares its options (`Tool.options`) every declared one is
+   * here, filled from the default or the last value used, and checked; for
+   * one that declares none, exactly what `arm` was given.
    */
   options: Record<string, unknown>;
   /**
@@ -131,6 +135,19 @@ export interface ToolContext {
 }
 
 export abstract class Tool {
+  /**
+   * The options the tool can be armed with, declared:
+   * `static options = { depth: { default: 10, unit: "length" } }` (see
+   * ./options.ts). Declared rather than read ad hoc, because the declaration
+   * is what everything else is built from — `arm`'s refusals and defaults, the
+   * last value remembered, `tools()` and `help()`, and the options panel. A
+   * tool defined at the command line with one gets all of that. Optional: a
+   * tool that declares none is armed with whatever it is given, as before.
+   * A static, so inherited — a tool written as `class extends ExtrudeTool`
+   * takes a depth too, which (unlike an icon, see icons.ts) is right: it is
+   * armed the way its parent is.
+   */
+  static readonly options?: OptionSpecs;
   abstract readonly name: string;
   /**
    * Whether the engine pulls this tool's cursor onto nearby geometry and draws
@@ -156,7 +173,13 @@ export type ToolCtor = new (ctx: ToolContext) => Tool;
 
 const registry = new Map<string, ToolCtor>();
 
+/**
+ * Registers `ctor` under `name`. A malformed `static options` is refused here,
+ * before anything is registered, so the line that defined the tool is the one
+ * that says what is wrong with it — not the first `arm`.
+ */
 export function defineTool(name: string, ctor: ToolCtor): void {
+  declaredOptions(ctor, name);
   registry.set(name, ctor);
 }
 

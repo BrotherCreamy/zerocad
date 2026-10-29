@@ -101,10 +101,22 @@
     #toolbar button svg{flex:none;display:block}
     #toolbar button:hover{background:#20303f;color:#d5e1ec}
     #toolbar button[aria-pressed="true"]{color:#e8a33d;border-color:#e8a33d80;background:#e8a33d18}
-    /* A tool that cannot run: the menu's .item.off — muted, no hover lift, and
-       never amber, even if it was armed before the frame it needed went away.
-       After the pressed rule, which it ties on specificity and must beat. */
-    #toolbar button:disabled,#toolbar button:disabled:hover{color:#46586a;background:transparent;border-color:transparent}
+    /* A panel that comes and goes (the options panel) is hidden by the
+       attribute, which .panel's display:flex would otherwise beat. */
+    .panel[hidden]{display:none}
+    /* The armed tool's options, one 22px row each (OPTION_ROW in panels.ts,
+       which sizes the panel to match: strip, 3px padding, border, rows). The
+       strip names the tool. A row is the label, a field and the unit — the
+       field in the command line's ink on the log's ground, amber while it has
+       the focus, the colour of the armed tool. */
+    #options{padding:3px 6px;overflow:hidden}
+    #options .orow{display:flex;align-items:center;gap:6px;height:22px;font-size:11px;color:#8fa7bb}
+    #options .olabel{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    #options .oval{flex:none;width:64px;height:18px;padding:0 5px;font-family:inherit;font-size:11px;color:#d5e1ec;
+      background:#0a0e13;border:1px solid #223041;border-radius:3px;outline:none;text-align:right}
+    #options .oval[type="checkbox"]{width:14px;height:14px;margin:0 25px 0 25px;accent-color:#e8a33d}
+    #options .oval:focus{border-color:#e8a33d80;color:#e8a33d}
+    #options .ounit{flex:none;min-width:24px;white-space:nowrap;color:#46586a}
   </style>
 </head>
 <body>
@@ -124,6 +136,10 @@
       <div class="panel" data-panel="log">
         <div class="ptitle">log</div>
         <div id="log" class="pbody"></div>
+      </div>
+      <div class="panel" data-panel="options" hidden>
+        <div class="ptitle">options</div>
+        <div id="options" class="pbody"></div>
       </div>
       <div class="panel" data-panel="cmd">
         <div class="ptitle">command</div>

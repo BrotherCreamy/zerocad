@@ -1,8 +1,9 @@
-// The one rule the context menu and the toolbar both read: which tools cannot
-// run in the model as it stands, and why. It answers "never" now — the curve
-// tools that used to be greyed in a 3D model with no default frame make their
-// plane at the click (test/curvetoolplane.test.ts) — and stays the one place
-// the question is asked, so a future rule lands on both surfaces at once.
+// The rule the context menu reads: which tools cannot run in the model as it
+// stands, and why. It answers "never" now — the curve tools that used to be
+// greyed in a 3D model with no default frame make their plane at the click
+// (test/curvetoolplane.test.ts). The toolbar stopped asking it when its
+// greyed-button wiring was removed (docs/plans/tool-options.md); the menu and
+// an undo's re-arm still do.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -50,7 +51,7 @@ test("a fresh 3D model's menu offers every tool, disabled none — the greyed cu
   }
 });
 
-test("panels.ts still imports nothing: the toolbar learns availability only from its host", async () => {
+test("panels.ts still imports nothing: the toolbar and the options panel learn everything from their hosts", async () => {
   const src = await readFile(new URL("../src/panels.ts", import.meta.url), "utf8");
   assert.deepEqual(src.match(/^import .*$/gm) ?? [], []);
 });

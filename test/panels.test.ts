@@ -15,8 +15,10 @@ import { readFile } from "node:fs/promises";
 import assert from "node:assert/strict";
 import {
   TITLE_H, BUTTON_STEP, TRAY_DEPTH, SNAP, STORAGE_KEY, CORNERS,
-  armCommand, arranged, buttonTitle, constrain, contacts, cornerOf, defaultLayout, describeLayout, dragStep, grabbed, gripCorners,
-  loadLayout, moved, orientationFor, overlapping, parseLayout, pushed, resized, saveLayout, settled, traySize, turned,
+  OPTION_ROW, OPTIONS_W,
+  armCommand, arranged, besideTray, buttonTitle, constrain, contacts, cornerOf, defaultLayout, describeLayout, dragStep, grabbed, gripCorners,
+  fieldText, loadLayout, moved, optionCommand, optionsSize, orientationFor, overlapping, parseField, parseLayout, pushed,
+  resized, saveLayout, settled, traySize, turned,
   type Corner, type Grab, type Layout, type Orientation, type Placed, type Point, type Rect, type Size, type StorageLike,
 } from "../src/panels.ts";
 import { neocadScope } from "../src/replenv.ts";
@@ -172,9 +174,8 @@ test("a button's command is arm() with the name quoted as JSON", () => {
   assert.equal(armCommand('odd"name'), 'arm("odd\\"name")');
 });
 
-test("a button's hover text is the tool's name, then its command or why it cannot run", () => {
-  assert.equal(buttonTitle("circle", null), 'circle — arm("circle")');
-  assert.equal(buttonTitle("circle", "no default frame"), "circle — no default frame");
+test("a button's hover text is the tool's name, then its command — no button carries a reason it cannot run any more", () => {
+  assert.equal(buttonTitle("circle"), 'circle — arm("circle")');
 });
 
 // --- trays: the way they run -------------------------------------------------
@@ -864,4 +865,60 @@ test("layout is a viewport command: it says so with no viewport, and help() list
   const hosted = neocadScope({ model: new Model(3), layout: (c) => { asked = c; return "ok"; } });
   assert.equal((hosted.layout as (c?: string) => string)("reset"), "ok");
   assert.equal(asked, "reset", "the argument goes to the host untouched");
+});
+
+// --- the options panel -----------------------------------------------------------
+
+test("a field types arm with the tool quoted and only the option edited: the spec's line exactly", () => {
+  assert.equal(optionCommand("extrude", "depth", 25), 'arm("extrude", {depth: 25})');
+  assert.equal(optionCommand("revolve", "angle", -3.5), 'arm("revolve", {angle: -3.5})');
+  assert.equal(optionCommand("gear", "flip", true), 'arm("gear", {flip: true})');
+  assert.equal(optionCommand('odd"tool', "two words", 1), 'arm("odd\\"tool", {"two words": 1})');
+  // Typed at full precision, so what the field said is what the tool gets.
+  assert.equal(optionCommand("extrude", "depth", 0.1 + 0.2), 'arm("extrude", {depth: 0.30000000000000004})');
+});
+
+test("a field reads a number or nothing, and shows one to a millionth", () => {
+  assert.equal(parseField(" 25 "), 25);
+  assert.equal(parseField("-4.5"), -4.5);
+  assert.equal(parseField("2.5e1"), 25);
+  for (const t of ["", "  ", "deep", "1,5", "Infinity", "NaN"]) assert.equal(parseField(t), null, JSON.stringify(t));
+  assert.equal(fieldText(2 * Math.PI), "6.283185");
+  assert.equal(fieldText(25), "25");
+});
+
+test("the options panel is sized by its rows alone, and has no grips", () => {
+  assert.deepEqual(optionsSize(1), { w: OPTIONS_W, h: TITLE_H + 8 + OPTION_ROW });
+  assert.deepEqual(optionsSize(3), { w: OPTIONS_W, h: TITLE_H + 8 + 3 * OPTION_ROW });
+  assert.deepEqual(gripCorners(true), [], "a panel sized by its content: none");
+});
+
+test("by default it goes beside the tray, on the side the window has room on", () => {
+  const s = optionsSize(1);
+  const col: Placed = { x: 8, y: 8, ...traySize(12, "column"), orient: "column" };
+  assert.deepEqual(besideTray(col, s, area), { x: 8 + TRAY_DEPTH + 8, y: 8, ...s }, "right of a column on the left");
+  const right: Placed = { ...col, x: area.w - TRAY_DEPTH - 8 };
+  assert.deepEqual(besideTray(right, s, area), { x: right.x - 8 - s.w, y: 8, ...s }, "left of one on the right");
+  const top: Placed = { x: 200, y: 0, ...traySize(12, "row"), orient: "row" };
+  assert.deepEqual(besideTray(top, s, area), { x: 200, y: TRAY_DEPTH + 8, ...s }, "below a row along the top");
+  const bottom: Placed = { ...top, y: area.h - TRAY_DEPTH };
+  assert.deepEqual(besideTray(bottom, s, area), { x: 200, y: bottom.y - 8 - s.h, ...s }, "above one along the bottom");
+  const corner: Placed = { x: area.w - 300, y: 0, ...traySize(12, "row"), orient: "row" };
+  const r = besideTray(corner, s, area);
+  assert.ok(r.x + r.w <= area.w && r.y >= 0, "and always wholly inside");
+});
+
+test("arranged gives a fitted panel the size it is told, whatever was stored, and the position the viewer left", () => {
+  const order = ["toolbar", "log", "cmd", "options"];
+  const defaults: Layout = { ...defaultLayout(area, 10), options: { x: 44, y: 8, ...optionsSize(1) } };
+  const fitted = { options: optionsSize(2) };
+  const r = arranged(order, { options: { x: 400, y: 300, w: 900, h: 5 } }, defaults, { toolbar: 10 }, area, fitted);
+  assert.deepEqual(r.layout.options, { x: 400, y: 300, ...optionsSize(2) });
+  const d = arranged(order, {}, defaults, { toolbar: 10 }, area, { options: optionsSize(1) });
+  assert.deepEqual(d.layout.options, defaults.options, "untouched, the default");
+  // Put down last, it is the one moved out of the way of a panel already down.
+  const onLog = arranged(order, { options: { x: defaults.log.x + 20, y: defaults.log.y + 20, w: 0, h: 0 } }, defaults, { toolbar: 10 }, area, fitted);
+  assert.deepEqual(onLog.layout.log, defaults.log, "the log holds its place");
+  assert.ok(onLog.ok);
+  sound(onLog.layout);
 });

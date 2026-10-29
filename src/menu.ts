@@ -207,9 +207,10 @@ function setValueItem(model: Model, name: string): MenuItem[] {
  * A tool that cannot run here would be **shown and disabled, not hidden**, for
  * Fix's reason: an item that simply vanished would leave "where did it go"
  * unanswered. Which tools those are is `toolUnavailable`'s to say, not this
- * menu's — the toolbar reads the same rule, so the two places that offer tools
- * cannot disagree — and today it names none: the curve tools that used to be
- * greyed here without a default frame now make their plane at the click.
+ * menu's — and today it names none: the curve tools that used to be greyed
+ * here without a default frame now make their plane at the click. (The
+ * toolbar used to read the same rule; with nothing ever greyed it stopped
+ * asking, docs/plans/tool-options.md.)
  */
 function emptyCanvasMenu(model: Model, region: RegionHit | null): Menu {
   const hasFrame = [...model.entities.values()].some((e) => e.kind === "frame");

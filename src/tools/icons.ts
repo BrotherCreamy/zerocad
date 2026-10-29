@@ -14,7 +14,7 @@
 // width, one corner radius, no fills but a dot.
 //
 // Every glyph draws in `currentColor`, so the button's colour — the armed amber,
-// the disabled grey — is the glyph's colour, exactly as it was the label's.
+// the hover lift — is the glyph's colour, exactly as it was the label's.
 //
 // This file knows nothing of the model; it is strings. The toolbar (../panels.ts)
 // never imports it: its host asks `toolIcon` and hands the string over.
