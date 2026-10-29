@@ -1,7 +1,7 @@
 // The panel manager's arithmetic and its storage, without a DOM: what a drag or
 // a resize from any corner does to a rectangle, what keeps a panel wholly
-// inside, which way a tray runs against the edges it meets and how its buttons
-// wrap when it is made shorter, the defaults, and a stored layout's
+// inside, which way a tray runs against the edges it meets and that it is
+// always one line of its buttons, never resized, the defaults, and a stored layout's
 // round trip — including through a storage that throws on every touch, which is
 // what a private window hands the app — and the two rules every arrangement
 // keeps: panels push one another and never overlap, and a held panel keeps the
@@ -15,8 +15,8 @@ import { readFile } from "node:fs/promises";
 import assert from "node:assert/strict";
 import {
   TITLE_H, BUTTON_STEP, TRAY_DEPTH, SNAP, STORAGE_KEY, CORNERS,
-  armCommand, buttonTitle, constrain, contacts, cornerOf, defaultLayout, describeLayout, dragStep, grabbed, loadLayout, moved,
-  orientationFor, overlapping, parseLayout, perLine, pushed, resized, saveLayout, settled, trayDepth, trayFit, traySize, turned,
+  armCommand, arranged, buttonTitle, constrain, contacts, cornerOf, defaultLayout, describeLayout, dragStep, grabbed, gripCorners,
+  loadLayout, moved, orientationFor, overlapping, parseLayout, pushed, resized, saveLayout, settled, traySize, turned,
   type Corner, type Grab, type Layout, type Orientation, type Placed, type Point, type Rect, type Size, type StorageLike,
 } from "../src/panels.ts";
 import { neocadScope } from "../src/replenv.ts";
@@ -282,7 +282,7 @@ test("a turn is held inside the area, keeping its edge, and no turn changes noth
   // Nothing turns it: the very rectangle it was given.
   const r = col(300, 200);
   assert.equal(turned(r, "column", area, [], content).rect, r);
-  // Content longer than the area: shrunk to it, and the tray scrolls.
+  // Content longer than the area: shrunk to it, the buttons past its edge clipped.
   const long = turned(col(50, 0), "column", { w: 200, h: 700 }, [], (o) => traySize(30, o));
   assert.equal(long.orient, "row");
   assert.ok(inside(long.rect, { w: 200, h: 700 }));
@@ -671,113 +671,67 @@ test("a resize from any corner pushes the neighbour it grows into, and a chain a
   }
 });
 
-test("a tray made shorter than its buttons need wraps into a second line, then a third — as deep as its lines, no deeper", () => {
-  const one = traySize(10, "column");
-  const fit = (h: number) => trayFit({ x: 100, y: 100, w: TRAY_DEPTH, h, orient: "column" }, 10, area);
-  assert.deepEqual(fit(one.h), { x: 100, y: 100, ...one, orient: "column" }, "a tray its own length: one line, as it was");
-  assert.deepEqual([fit(one.h - 1).w, fit(one.h - 1).h], [TRAY_DEPTH + BUTTON_STEP, one.h - 1], "a pixel short: a second column");
-  assert.equal(perLine(one.h - 1), 9);
-  assert.equal(fit(traySize(5, "column").h).w, TRAY_DEPTH + BUTTON_STEP, "five to a line: still two");
-  assert.equal(fit(traySize(4, "column").h).w, TRAY_DEPTH + 2 * BUTTON_STEP, "four to a line: three columns");
-  assert.equal(trayDepth(3), TRAY_DEPTH + 2 * BUTTON_STEP);
-  // A row made narrower: rows, the same arithmetic the other way.
-  const r = trayFit({ x: 100, y: 100, w: traySize(6, "row").w, h: TRAY_DEPTH, orient: "row" }, 10, area);
-  assert.deepEqual([r.w, r.h], [traySize(6, "row").w, TRAY_DEPTH + BUTTON_STEP], "two rows");
-  // Held between one button to a line and one line of them all.
-  assert.deepEqual([fit(5000).w, fit(5000).h], [one.w, one.h], "no longer than one line: a strip of nothing is not a tray");
-  assert.deepEqual([fit(0).h, fit(0).w], [traySize(1, "column").h, trayDepth(10)], "no shorter than one button, ten lines of it");
-  // A depth asked of it is not the viewer's: it is the lines', whatever was asked.
-  assert.equal(trayFit({ x: 100, y: 100, w: 300, h: one.h, orient: "column" }, 10, area).w, TRAY_DEPTH);
-  // And a tray fitted is fitted: asking again changes nothing, from any corner.
-  for (let h = 30; h < 300; h += 7) {
-    for (const c of CORNERS) {
-      const f = trayFit({ x: 400, y: 100, w: 28, h, orient: "column" }, 10, area, c);
-      assert.deepEqual(trayFit(f, 10, area, c), f, `h ${h} from ${c}`);
+// --- a tray is one line: no grips, its size its buttons' ----------------------
+
+test("a tray has no grips, and a resize grab on one moves nothing, from any corner, anywhere", () => {
+  assert.deepEqual(gripCorners(true), [], "a tray: none");
+  assert.deepEqual(gripCorners(false), CORNERS, "any other panel: all four");
+  const minSize = (_: string, o: Orientation | undefined) => traySize(1, o ?? "column");
+  const l: Layout = { tray: { x: 100, y: 100, ...traySize(10, "column"), orient: "column" }, b: box(140, 100, 100, 300) };
+  for (const c of CORNERS) {
+    const at = cornerOf(l.tray, c);
+    const g = grabbed("tray", "resize", at, l, c);
+    for (const to of [{ x: at.x, y: at.y - 100 }, { x: at.x + 300, y: at.y + 300 }, { x: -500, y: -500 }]) {
+      const s = dragStep(g, to, l, area, minSize, 10);
+      assert.equal(s.layout, l, `${c} to ${JSON.stringify(to)}: the very layout it was handed`);
+      assert.equal(s.grab, g);
     }
   }
-});
-
-test("a tray wrapped from a west or north corner grows its new line that way, the opposite corner fixed", () => {
-  const col: Placed = { x: 300, y: 100, w: TRAY_DEPTH, h: traySize(5, "column").h, orient: "column" };
-  const nw = trayFit(col, 10, area, "nw");
-  assert.deepEqual([nw.x + nw.w, nw.y + nw.h], [col.x + col.w, col.y + col.h], "the south-east corner held");
-  assert.equal(nw.w, trayDepth(2), "the second column out to the west");
-  const se = trayFit(col, 10, area, "se");
-  assert.deepEqual([se.x, se.y], [col.x, col.y], "from the south-east, the north-west held");
-  const row: Placed = { x: 300, y: 300, w: traySize(5, "row").w, h: TRAY_DEPTH, orient: "row" };
-  const ne = trayFit(row, 10, area, "ne");
-  assert.deepEqual([ne.x, ne.y + ne.h], [row.x, row.y + row.h], "a row from its north-east: the south-west held, the new row above");
-});
-
-test("a tray with no room for another line keeps the lines that fit, its run lengthened to hold the buttons in them", () => {
-  // A column 40px off the right edge, made as short as it goes from its
-  // south-east corner: there is room for one line only, so it stays one.
-  const col: Placed = { x: area.w - 40, y: 100, w: TRAY_DEPTH, h: 44, orient: "column" };
-  assert.deepEqual(trayFit(col, 10, area, "se"), { ...col, h: traySize(10, "column").h });
-  // Room for exactly two lines: ten buttons in two lines of five.
-  const two = trayFit({ ...col, x: area.w - trayDepth(2) }, 10, area, "se");
-  assert.deepEqual([two.w, two.h], [trayDepth(2), traySize(5, "column").h]);
-  // `room` says it outright, whatever the area.
-  const capped = trayFit({ ...col, x: 100 }, 10, area, "se", trayDepth(3) + 5);
-  assert.deepEqual([capped.w, capped.h], [trayDepth(3), traySize(4, "column").h], "three lines, four to a line");
-});
-
-test("a tray's grip: shrunk from its bottom-right it wraps, and the new column pushes what is beside it", () => {
-  const minSize = (_: string, o: Orientation | undefined) => traySize(1, o ?? "column");
-  const one = traySize(10, "column");
-  const l: Layout = { tray: { x: 100, y: 100, ...one, orient: "column" }, b: box(140, 100, 100, 300) };
+  // The same grab without a button count — any panel but a tray — resizes:
+  // what refuses it is being a tray, not the grab.
   const at = cornerOf(l.tray, "se");
-  const g = grabbed("tray", "resize", at, l, "se");
-  let s = dragStep(g, { x: at.x, y: at.y - 100 }, l, area, minSize, 10);
-  assert.equal(s.layout.tray.h, one.h - 100, "as short as the hand made it");
-  assert.equal(s.layout.tray.w, trayDepth(2), "two columns");
-  assert.deepEqual([s.layout.tray.x, s.layout.tray.y], [100, 100], "the north-west corner fixed");
-  assert.equal(s.layout.b.x, 100 + trayDepth(2), "b pushed flush off the new column");
-  sound(s.layout);
-  // All the way up: one button to a line, ten columns, b pushed along with them.
-  s = dragStep(s.grab, { x: at.x, y: 0 }, s.layout, area, minSize, 10);
-  assert.deepEqual([s.layout.tray.w, s.layout.tray.h], [trayDepth(10), traySize(1, "column").h]);
-  assert.equal(s.layout.b.x, 100 + trayDepth(10));
-  sound(s.layout);
-  // And back down past one line's length: one column again, no longer than its
-  // buttons, b left where it was pushed.
-  s = dragStep(s.grab, { x: at.x, y: 2000 }, s.layout, area, minSize, 10);
-  assert.deepEqual([s.layout.tray.w, s.layout.tray.h], [one.w, one.h]);
-  assert.equal(s.layout.b.x, 100 + trayDepth(10), "nothing springs back");
+  const s = dragStep(grabbed("tray", "resize", at, l, "se"), { x: at.x, y: at.y - 100 }, l, area, minSize);
+  assert.equal(s.layout.tray.h, l.tray.h - 100);
 });
 
-test("a tray against a wall cannot wrap toward it, and stops; from the other corner it wraps the other way", () => {
-  const minSize = (_: string, o: Orientation | undefined) => traySize(1, o ?? "column");
-  const one = traySize(10, "column");
-  // The tray flush on b, and b flush on the right edge: no room east at all.
-  const l: Layout = { tray: { x: 872, y: 100, ...one, orient: "column" }, b: box(900, 100, 100, 300) };
-  const se = cornerOf(l.tray, "se");
-  const s = dragStep(grabbed("tray", "resize", se, l, "se"), { x: se.x, y: se.y - 100 }, l, area, minSize, 10);
-  assert.deepEqual(s.layout, l, "it cannot be made shorter: the second column has nowhere to go");
-  // From its south-west corner the second column goes west, into the room there.
-  const sw = cornerOf(l.tray, "sw");
-  const w = dragStep(grabbed("tray", "resize", sw, l, "sw"), { x: sw.x, y: sw.y - 100 }, l, area, minSize, 10);
-  assert.deepEqual(w.layout.tray, { x: 900 - trayDepth(2), y: 100, w: trayDepth(2), h: one.h - 100, orient: "column" });
-  assert.deepEqual(w.layout.b, l.b);
-  sound(w.layout);
-  // Partway: a chain with 30px of room takes one more line (22px) and no
-  // more, and the run stops where that one line holds every button.
-  const c: Layout = { tray: { x: 842, y: 100, ...one, orient: "column" }, b: box(870, 100, 100, 300) };
-  const at = cornerOf(c.tray, "se");
-  const p = dragStep(grabbed("tray", "resize", at, c, "se"), { x: at.x, y: 0 }, c, area, minSize, 10);
-  assert.deepEqual([p.layout.tray.w, p.layout.tray.h], [trayDepth(2), traySize(5, "column").h], "two columns of five");
-  assert.equal(p.layout.b.x, 842 + trayDepth(2));
-  sound(p.layout);
+test("a tray's size is traySize's alone: a stored size is ignored, its place and its way kept", () => {
+  const order = ["toolbar", "log", "cmd"];
+  const defaults = defaultLayout(area, 10);
+  const trays = { toolbar: 10 };
+  // Stored as the wrap left it — three columns, shortened — it comes up one column where it was.
+  const wrapped = arranged(order, { toolbar: { x: 300, y: 100, w: TRAY_DEPTH + 2 * BUTTON_STEP, h: 110, orient: "column" } }, defaults, trays, area);
+  assert.deepEqual(wrapped.layout.toolbar, { x: 300, y: 100, ...traySize(10, "column"), orient: "column" });
+  // A row stored far too big: one row.
+  const big = arranged(order, { toolbar: { x: 300, y: 0, w: 900, h: 400, orient: "row" } }, defaults, trays, area);
+  assert.deepEqual(big.layout.toolbar, { x: 300, y: 0, ...traySize(10, "row"), orient: "row" });
+  // No orientation stored: a column, as by default.
+  assert.equal(arranged(order, { toolbar: { x: 300, y: 100, w: 5, h: 5 } }, defaults, trays, area).layout.toolbar.orient, "column");
+  // The log keeps the size it was stored at: only a tray's size is not the viewer's.
+  const log = { x: 400, y: 200, w: 333, h: 222 };
+  assert.deepEqual(arranged(order, { log }, defaults, trays, area).layout.log, log);
+  // Untouched, the default — which is traySize's too.
+  assert.deepEqual(arranged(order, {}, defaults, trays, area).layout.toolbar, defaults.toolbar);
 });
 
-test("a wrapped tray turns into one line the other way", () => {
-  const minSize = (_: string, o: Orientation | undefined) => traySize(1, o ?? "column");
-  const l: Layout = { tray: trayFit({ x: 400, y: 300, w: 0, h: traySize(4, "column").h, orient: "column" }, 10, area) };
-  assert.equal(l.tray.w, trayDepth(3), "three columns to start with");
-  const g = grabbed("tray", "move", { x: 414, y: 308 }, l);
-  const s = dragStep(g, { x: 414, y: 0 }, l, area, minSize, 10);
-  assert.equal(s.layout.tray.orient, "row");
-  assert.deepEqual([s.layout.tray.w, s.layout.tray.h], [traySize(10, "row").w, TRAY_DEPTH], "one row of all ten");
+test("a tray grows by one button per tool, moved or not, and pushes the neighbour it grows into", () => {
+  const order = ["toolbar", "log", "cmd"];
+  const defaults = defaultLayout(area, 10);
+  // A row moved onto the top, with the log flush against its right end.
+  const row: Placed = { x: 100, y: 0, ...traySize(10, "row"), orient: "row" };
+  const stored: Layout = { toolbar: row, log: { x: row.x + row.w, y: 0, w: 300, h: 150 } };
+  assert.deepEqual(arranged(order, stored, defaults, { toolbar: 10 }, area).layout.toolbar, row);
+  const eleven = arranged(order, stored, defaults, { toolbar: 11 }, area);
+  assert.deepEqual(eleven.layout.toolbar, { ...row, w: row.w + BUTTON_STEP }, "a button longer, not a second line");
+  assert.equal(eleven.layout.log.x, row.x + row.w + BUTTON_STEP, "the log pushed along by exactly the button");
+  assert.equal(eleven.layout.log.y, 0, "and not a pixel the other way");
+  assert.ok(eleven.ok);
+  sound(eleven.layout);
+});
+
+test("a tray too long for the window is clipped at the window's edge, and still wholly inside", () => {
+  const short = { w: 600, h: 150 };
+  const r = arranged(["toolbar"], { toolbar: { x: 10, y: 40, w: 0, h: 0, orient: "column" } }, {}, { toolbar: 10 }, short);
+  assert.deepEqual(r.layout.toolbar, { x: 10, y: 0, w: TRAY_DEPTH, h: short.h, orient: "column" });
 });
 
 /**
@@ -806,11 +760,7 @@ function room(l: Layout, id: string, axis: "x" | "y", dir: number, a: Size): num
 }
 const walled = (l: Layout, id: string, axis: "x" | "y", dir: number, a: Size) => room(l, id, axis, dir, a) <= 1e-6;
 
-/** A tray's run and depth, whichever way it runs. */
-const runOf = (r: Placed) => (r.orient === "row" ? r.w : r.h);
-const depthOf = (r: Placed) => (r.orient === "row" ? r.h : r.w);
-
-test("2 000 random drags by strips and corners over three panels: never an overlap, a pixel outside or a panel below its minimum, and the panel under its grab whenever not blocked", () => {
+test("2 000 random drags by strips and corners over three panels: never an overlap, a pixel outside or a panel below its minimum, the tray never resized, and the panel under its grab whenever not blocked", () => {
   let seed = 11;
   const rand = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648);
   const a = { w: 1100, h: 760 };
@@ -822,7 +772,7 @@ test("2 000 random drags by strips and corners over three panels: never an overl
   let turns = 0;
   let stops = 0;
   let caught = 0;
-  let wraps = 0;
+  let refused = 0;
   const byCorner: Record<string, number> = { nw: 0, ne: 0, sw: 0, se: 0 };
   for (let i = 0; i < 2000; i++) {
     const id = ids[Math.floor(rand() * ids.length)];
@@ -842,6 +792,13 @@ test("2 000 random drags by strips and corners over three panels: never an overl
       p = { x: p.x + tx / steps + (rand() - 0.5) * 6, y: p.y + ty / steps + (rand() - 0.5) * 6 };
       const before = l;
       const s = dragStep(g, p, l, a, minSize, id === "toolbar" ? BUTTONS : undefined);
+      // A tray has no grips, so no hand can do this; the walk does it anyway,
+      // and nothing at all may move.
+      if (id === "toolbar" && kind === "resize") {
+        assert.equal(s.layout, before, `drag ${i}, step ${k}: a tray resized`);
+        refused++;
+        continue;
+      }
       const turned = s.layout[id].orient !== before[id].orient;
       if (!turned) assert.deepEqual(s.grab, g, `drag ${i}, step ${k}: the grab never changes but in a turn`);
       [l, g] = [s.layout, s.grab];
@@ -854,12 +811,11 @@ test("2 000 random drags by strips and corners over three panels: never an overl
         const m = minSize(o, l[o].orient);
         assert.ok(l[o].w >= m.w - 1e-9 && l[o].h >= m.h - 1e-9, `drag ${i}, step ${k}: ${o} below its minimum: ${JSON.stringify(l[o])}`);
       }
-      // The tray is always wrapped exactly: as deep as its lines, no more, no
-      // fewer, and never longer than one line of them.
+      // The tray is one line of its buttons the way it runs, exactly, always:
+      // traySize is the only thing that ever sized it.
       const t = l.toolbar;
-      assert.ok(Math.abs(depthOf(t) - trayDepth(Math.ceil(BUTTONS / perLine(runOf(t))))) < 1e-6, `drag ${i}, step ${k}: the tray's depth is its lines: ${JSON.stringify(t)}`);
-      assert.ok(runOf(t) <= runOf({ ...traySize(BUTTONS, t.orient!), x: 0, y: 0, orient: t.orient }) + 1e-9, `drag ${i}, step ${k}: no longer than one line`);
-      if (depthOf(t) > TRAY_DEPTH) wraps++;
+      const line = traySize(BUTTONS, t.orient!);
+      assert.deepEqual([t.w, t.h], [line.w, line.h], `drag ${i}, step ${k}: the tray is one line: ${JSON.stringify(t)}`);
       // Under the grab, or blocked on every axis it lags along. A turn is
       // exempt for its one step: `turned` put it against the edge it met.
       if (turned) continue;
@@ -879,22 +835,7 @@ test("2 000 random drags by strips and corners over three panels: never an overl
           const grows = near ? d < 0 : d > 0;
           const len = axis === "x" ? q.w : q.h;
           const least = axis === "x" ? minSize(id, q.orient).w : minSize(id, q.orient).h;
-          const isTray = id === "toolbar";
-          const runAxis = isTray && (q.orient === "row" ? "x" : "y") === axis;
-          if (isTray && !runAxis) why = true; // the depth is the buttons', wherever the hand is
-          else if (grows) {
-            why = walled(l, id, axis, Math.sign(d), a) ||
-              (runAxis && Math.abs(len - runOf({ ...traySize(BUTTONS, q.orient!), x: 0, y: 0, orient: q.orient })) < 1e-6);
-          } else if (!runAxis) why = Math.abs(len - least) < 1e-6;
-          else {
-            // A tray's run going in, one button fewer to a line, wraps into
-            // more lines, which must have room on the side the depth grows
-            // to; with one button to a line, it cannot go in at all.
-            const depthAxis = axis === "x" ? "y" : "x";
-            const away = (depthAxis === "x" ? corner.endsWith("w") : corner.startsWith("n")) ? -1 : 1;
-            const fewer = perLine(len) - 1;
-            why = fewer < 1 || trayDepth(Math.ceil(BUTTONS / fewer)) - depthOf(q) > room(l, id, depthAxis, away, a) + 1e-6;
-          }
+          why = grows ? walled(l, id, axis, Math.sign(d), a) : Math.abs(len - least) < 1e-6;
         }
         assert.ok(why, `drag ${i}, step ${k}: ${id} (${kind} ${corner}) ${d} px short of the hand along ${axis} with nothing stopping it: ${JSON.stringify(l)}`);
       }
@@ -904,13 +845,13 @@ test("2 000 random drags by strips and corners over three panels: never an overl
     }
   }
   // Not vacuous: the walk really pushed, stopped short, came back under the
-  // hand after being stopped, turned, wrapped, and resized from every corner,
-  // many times.
+  // hand after being stopped, turned, refused a tray's resize, and resized the
+  // others from every corner, many times.
   assert.ok(pushes > 200, `${pushes} steps pushed something`);
   assert.ok(stops > 200, `${stops} steps were stopped short of the hand`);
   assert.ok(caught > 20, `${caught} steps had a stopped panel back under the hand`);
   assert.ok(turns > 20, `${turns} steps turned the tray`);
-  assert.ok(wraps > 200, `${wraps} steps had the tray wrapped`);
+  assert.ok(refused > 200, `${refused} steps refused to resize the tray`);
   for (const [c, n] of Object.entries(byCorner)) assert.ok(n > 100, `${n} steps resized from the ${c} corner`);
 });
 
