@@ -69,7 +69,9 @@ means the tray's edge is within the snap distance of that panel's edge and
 the two overlap along that edge. The orientation is stored with the layout
 (the storage key becomes `v2`; an old `v1` layout reads as nothing, i.e. the
 defaults — per-viewer state, costs nothing). A resized tray (the grip) keeps
-its orientation and scrolls as now.
+its orientation and scrolls as now. *(Overturned by the owner, 2026-10-29:
+it wraps its buttons into more lines instead — see
+[`panels-corners-wrap.md`](panels-corners-wrap.md).)*
 
 The log and the command line are panels, not trays: they keep their shape.
 Build the rule as a pure function in `panels.ts` (`orientationFor(rect,

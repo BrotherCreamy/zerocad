@@ -106,6 +106,75 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### Any corner, and a tray that wraps: whose is each side of a tray
+
+**The owner:** *"allow me to rescale the popup windows from any corner. the
+tool palette should wrap the icons also - i.e. if it is vertical and i
+decrease vertical size, it should create a second column."*
+
+The corners were mechanical: `resized` takes which corner, and the grab, the
+pushes, the flush stop and the storage all come for free because every grip
+goes through the one `dragStep` → `pushed` path. Two things in the resolver
+only showed up once an edge could grow to the west or north. The push
+direction was the pointer's sign, which is the rectangle's growth direction
+for every drag and every south-east resize there had ever been; for a tray
+whose depth is not the pointer's (below), it is not: a column shortened from
+its north-west corner with the hand drifting right gains a line to the west,
+and pushing the pointer's way would throw what that line covers across to the
+east side. (Found by reading `pushed` before the first run, not by a test.)
+And the flush pull-back interpolated position and length together, which is
+exact for a south-east grip (its position does not move) and 3·10⁻¹⁴ px into
+the neighbour for a north-west one — that one the new per-corner unit test
+caught. Both were fixed in place rather than special-cased for the
+new grips, so the rule reads the same for every axis and every corner.
+
+**The wrap needed a decision the spec did not make: which of a tray's two
+sides is the viewer's.** The spec said the wrap is "the panel's content box
+deciding" — CSS flex-wrap in the stored rectangle. But a corner moves both
+edges, and the owner's own example — a column made shorter — does not make it
+wider; flex-wrap in that box puts the second column outside it, which is the
+scrollbar back or buttons lost. Three ways out were weighed:
+
+- *Both sides the viewer's, the depth floored at what the lines need.* The
+  depth grows by itself when the column is shortened, but never shrinks back
+  when it is lengthened (the floor is the current width), so a column dragged
+  short and back keeps an empty second column until the viewer narrows it by
+  hand. Rejected for the asymmetry.
+- *The depth the viewer's and the run derived* (drag a column wider and it
+  gets shorter). Inverts the owner's sentence: he shortens, it wraps.
+- *The run the viewer's and the depth derived* — taken. Shorter wraps, longer
+  unwraps, symmetric, and every button is always shown. The cost is that a
+  column's corner dragged sideways does nothing; written down in TODO as a
+  limitation rather than hidden.
+
+Capping the run at one line followed: a column taller than its buttons would
+be a strip of nothing, and with the depth derived there is no other way for
+empty space to appear. The cap also makes a stored run from a session with
+more tools (a command-line tool, gone on reload) come back tight.
+
+**When the depth cannot grow by a whole line.** `pushed` resolves each axis on
+its own and will happily stop the depth part of a line deep against a chain —
+which would clip a column. The fix is a second ask: take the lines the depth
+reached and the shortest run that holds every button in them, or, if the run
+was the axis that got cut, the lines that run needs; and if that comes back
+cut too, stay put. A closed form rather than a search, for the same reason
+`pass` is exact: a search stops a fraction short, and a fraction short of a
+line boundary is a different number of lines.
+
+**Rejected: remembering whether a moved tray was "full".** A moved one-line
+tray that gains a command-line tool now wraps that one button into a second
+line instead of growing a button longer. Keeping the last button count in the
+DOM half and growing a tray that was exactly one line long would fix it, but
+it is a heuristic standing in for the fact the layout does not store (whose
+the length was), the spec kept the stored shape unchanged, and wrapping is
+already strictly better than the scroll it replaces. It stays in TODO with the
+real fix named.
+
+**The grips are clipped to triangles** because four 12 px squares on a 28 px
+tray leave its strip a 4 px slot and take most of the lower half of the corner
+buttons. `clip-path` clips hit-testing as well as painting, and mirrors with
+the element's transform, so one rule draws and shapes all four.
+
 ### Undo, bulletproof: the chord is the drawing's, and the text stays put
 
 **The owner:** *"why does ctrl+z and ctrl+y not work? should work and be

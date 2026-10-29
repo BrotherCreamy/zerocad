@@ -1436,8 +1436,10 @@ replacing) the system Node other projects on this machine may depend on.
   `test/e2e/emptyhint.e2e.ts`; the harness's `at()` refuses a point under a
   panel. 645 unit tests, 237 e2e.
   *Known and deliberate:* positions are absolute pixels from the top-left (a
-  moved panel does not follow a growing window); a viewer-resized toolbar
-  scrolls rather than grows when a tool is added; no icons, docking or
+  moved panel does not follow a growing window); ~~a viewer-resized toolbar
+  scrolls rather than grows when a tool is added~~ — overturned by the owner
+  (2026-10-29), see "Panels resize from any corner" below: the tray's buttons
+  wrap into more lines and nothing scrolls; no icons, docking or
   panel-to-panel snapping *(icons and turning against an edge came with "The
   tool tray" below; there is still no positional snapping)*. (The toolbar not greying out the curve tools without
   a default frame was a caveat here; it went with the next entry.)
@@ -1730,7 +1732,9 @@ replacing) the system Node other projects on this machine may depend on.
   `main.ts` imports, the family, escaping); browser:
   `test/e2e/panels.e2e.ts`. 802 unit tests, 286 e2e.
   *Known and deliberate:* a moved or turned tray keeps its stored size when a
-  tool is defined (it scrolls); the grip overlaps the last button's corner; a
+  tool is defined ~~(it scrolls)~~ *(it wraps, since 2026-10-29)*; ~~the grip
+  overlaps the last button's corner~~ *(the four grips are clipped to their
+  corner triangles, since 2026-10-29)*; a
   glyph, like availability, is keyed by name, so a re-registered `circle`
   keeps the circle; no positional snapping. ~~A tray pushed past another
   panel's edge overlaps it~~ — overturned by the owner (2026-10-26), see the
@@ -1785,6 +1789,40 @@ replacing) the system Node other projects on this machine may depend on.
   a tray turned against a bottom or right edge lies along it, away from the
   hand, until the next move brings it back under the hand.
   *Spec:* [`docs/plans/panels-push.md`](docs/plans/panels-push.md).
+
+- **Panels resize from any corner; the tray's buttons wrap** (`src/panels.ts`,
+  `index.html`). The owner (2026-10-29): *"allow me to rescale the popup
+  windows from any corner. the tool palette should wrap the icons also - i.e.
+  if it is vertical and i decrease vertical size, it should create a second
+  column."* **Four grips per panel**, made by the DOM half (`.pgrip
+  [data-corner]`, `CORNERS`), each a 12 px square clipped to the triangle in its
+  corner, the cursor of its diagonal. `resized(start, dx, dy, area, min,
+  corner)`: that corner and its two edges follow the pointer, the opposite
+  corner fixed, the moving edges stopped at the area's edges and the minimum;
+  `grabbed(…, corner)` holds the grab as an offset from that corner, fixed for
+  the gesture; `cornerOf(r, corner)`. **The wrap:** `trayFit(r, buttons, area,
+  corner, room?)` keeps the run as asked (between `traySize(1)` and
+  `traySize(n)`, one line), and makes the depth exactly `trayDepth(lines)` for
+  the lines `perLine(run)` wraps into — the arithmetic of the stylesheet's
+  `flex-wrap`, so every button is shown and `#toolbar` is `overflow: hidden`.
+  Lines that would not fit in `room` (default: the area on the side the depth
+  grows) are capped and the run lengthened to hold the buttons in them.
+  `dragStep(…, buttons?)` (was `content?`) fits a tray's resize, and when a
+  chain stops the depth part of a line deep asks again for the tray that fits
+  what it got (or stays put). `apply` fits every tray to its current count, so
+  a tool defined into a shortened tray wraps. `traySize` is now "the size a
+  tray wants for n buttons in one line" — the defaults and a turn. In
+  `pushed`, the push direction along an axis is the way the rectangle grows
+  (not the pointer's sign) and `pass` pulls back the leading edge with the
+  trailing edge exact. Storage unchanged (`v2`). Unit: `test/panels.test.ts`
+  (8 new, and the 2 000-step walk extended to random corners, minimums and the
+  tray's depth); browser: `test/e2e/panels.e2e.ts` (5 new; the random-drag run
+  takes all four grips). 840 unit tests, 319 e2e. *Known and deliberate:* a
+  tray's depth is not the viewer's (a sideways drag of a column's corner moves
+  nothing); a tray is never longer than one line; a moved one-line tray that
+  gains a tool wraps it into a new line rather than growing; a grip's
+  triangle takes the corner of whatever it covers, a sliver of the log's label
+  included. *Spec:* [`docs/plans/panels-corners-wrap.md`](docs/plans/panels-corners-wrap.md).
 
 
 ## What's next

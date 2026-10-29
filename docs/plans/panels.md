@@ -13,8 +13,12 @@ to. And (owner, 2026-10-26; built by [`panels-push.md`](panels-push.md))
 panels that float freely over one another are now panels that **never
 overlap**: a dragged one pushes the others, in a chain, the window edge the
 one immovable thing; and (owner, 2026-10-27) a held panel's **grasp point
-stays the same** — stopped short, it waits for the pointer to come back. The
-rest of this spec stands.
+stays the same** — stopped short, it waits for the pointer to come back.
+And (owner, 2026-10-29; built by
+[`panels-corners-wrap.md`](panels-corners-wrap.md)) the one **corner grip** is
+now **four, one per corner**, the opposite corner fixed; and the toolbar,
+which scrolled when made shorter than its buttons, now **wraps them** into
+more columns (or rows), the scrollbar retired. The rest of this spec stands.
 Owner's direction, verbatim: *"add the
 buttons. but they should be a moveable toolbar. actually everything should
 be moveable and resizable."* The original brief listed cellwork's icon
