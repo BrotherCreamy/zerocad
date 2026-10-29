@@ -106,6 +106,63 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### Tool options: declared, visible, remembered
+
+**The owner's direction** (docs/plans/effortless.md): *"if the tool has
+options, there should also be some kind of e.g. pop-up menu that allows me to
+set them visually, or it happens in the terminal or whatever."* The second
+package under it made the two one mechanism: the panel types `arm`.
+
+**Where the checking lives.** The spec put it in `arm(name, opts)`; the
+command is only one way in. A bare tool name typed at the command line, and
+an undo re-arming the tool it interrupted, call `ToolEngine.arm` directly. So
+the declaration is resolved there, once, and the command only forwards.
+*Rejected:* validating in the command and filling defaults in the tool —
+two places to agree on what a tool's options are.
+
+**When a value is remembered.** At arm time. The panel types `arm`, a hand
+types `arm`, a button types `arm`; arming is the one moment every way of
+choosing a value passes through. Remembering when a feature is made would be
+closer to Onshape, but would need each tool to report "I used depth 25" — a
+second channel for the same fact, and one a tool defined at the command line
+would have to know about. The visible difference (arm with 25, change your
+mind, the next arm still says 25) is written down in TODO.md.
+
+**Why a press commits.** "Enter or blur commits" sounds complete, but blur
+fires on `mousedown`, after the canvas's `pointerdown` has already been
+handed to the tool — armed with the old value. Type 25, click inside the
+rectangle, get a 10-deep solid: the precise bug the panel exists to prevent.
+A capture-phase `pointerdown` on the document commits a field mid-edit before
+anything else hears the press; blur still commits for everything else (Tab,
+the window losing focus).
+
+**A refused arm changes nothing.** The engine used to cancel the armed tool
+and then look the new one up. Checking options first, and cancelling only
+once the arm will happen, means a typo (`dpth`) leaves the tool and its
+gesture where they were — the effortless rule applied to the command line.
+An unknown tool name still cancels, as before, since nothing armed survives
+that line's meaning either way.
+
+**`check`, beyond the spec.** Every built-in used to swap an impossible value
+(depth 0, radius −1) for its default without saying so: a value typed and
+ignored, which is the opposite of the owner's "customise everything". A
+declaration can now say why a value of the right type will not do, and the
+refusal names it. *Rejected:* min/max fields — a revolve angle is ±2π but not
+0, and a depth is anything but 0; a function says both.
+
+**The panel's size is its content's.** Like the tray: no grips, size from
+`optionsSize(rows)`, a stored size never read. It is placed last, so that
+when it appears over something the viewer has put down, it is the one that
+moves. Its default is computed from where the tray is *shown* (`besideTray`),
+which needs the tray's arranged place first — `apply` arranges without it,
+then with it; `settled` keeps earlier panels' places, so the two agree.
+
+**The greyed buttons.** `toolUnavailable` has answered null since
+no-refusals, and that package kept the toolbar's disabled state wired to it,
+idle. Removed here: an idle code path that renders a state nobody can reach
+is a test nobody can write. The menu and `step` still ask the rule; it is
+one function and cheap to keep.
+
 ### No refusals: the curve tools make their plane, and a miss is guidance
 
 **The owner's direction** (docs/plans/effortless.md): *"don't be throwing

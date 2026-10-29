@@ -7,6 +7,74 @@ decisions.
 
 ---
 
+## Tool options: declared, visible, remembered
+
+The owner's standing direction (2026-10-29):
+
+> *things should be as easy as every other cad tool makes them, by using
+> defaults etc, but then I should be able to customise everything also if I
+> want. if the tool has options, there should also be some kind of e.g.
+> pop-up menu that allows me to set them visually, or it happens in the
+> terminal or whatever.*
+
+**Both, and they are one thing.** Arm extrude — its button, or `extrude`, or
+`arm("extrude")` — and a small panel appears beside the tray: the tool's name
+on its strip and one row, `depth  [10]`. Type 25 in the field and press Enter
+(or click away), and the log shows what the panel did:
+
+```
+> arm("extrude", {depth: 25})
+armed: extrude
+```
+
+— the panel **types** the command through the command line, so it can do
+nothing a typed line cannot, and `arm("extrude", { depth: 40 })` typed by hand
+shows 40 in the field. Escape in the field puts the value back (and leaves the
+tool armed; a second Escape releases it). The next click extrudes 25 deep; the
+tool releases, and the panel goes with it. Arm it again and it says 25: **the
+last value is the next default**, as Onshape remembers the last extrude
+depth — the viewer's, like their panel layout, in `localStorage` under its own
+key (`neocad.toolOptions.v1`), never in the journal or a file. A reload keeps
+it.
+
+**A tool declares its options**, and everything else is built from the
+declaration: `static options = { depth: { default: 10, unit: "length" } }` on
+the class (extrude's depth, revolve's angle in radians, fillet's radius).
+`arm` fills what was left out (typed, else remembered, else the default) and
+refuses, in one line naming what the tool has, what it does not:
+
+```
+> arm("extrude", { dpth: 3 })
+Error: extrude has no option "dpth" — its options are { depth: 10 }
+```
+
+— leaving the armed tool exactly as it was. `tools()` lists each tool's
+options as `arm` would use them now (`extrude  { depth: 25 }  (default { depth:
+10 })`), and `help()` says how. **A tool defined at the command line with a
+`static options` gets all of it** — the checks, the memory, the panel, a
+checkbox for a `true`/`false` option — by declaring it; one that declares
+nothing gets no panel and is armed as it always was.
+
+The panel is an ordinary panel: dragged by its strip, it pushes and is pushed
+like any other, keeps the grab it was taken by, and its place is the viewer's
+across a reload (`layout("reset")` puts it back beside the tray). It has no
+grips — like the tray, its size is its content's (`optionsSize`).
+
+**And the toolbar's greyed buttons are gone outright.** `toolUnavailable` has
+answered "never" since the last package; the wiring that read it in
+`panels.ts` (`ToolbarHost.unavailable`, the disabled state, the reason in the
+hover text, its CSS) is removed. The rule stays for the context menu and an
+undo's re-arm, which still ask it.
+
+884 unit tests (was 866), e2e 340 (was 330). *Deliberately left:* the
+remembered value is set when a tool is armed with it, not when a feature is
+made; there is no command to forget it (type the default); editing a field
+mid-gesture re-arms the tool and so drops the gesture (a fillet's first line,
+a revolve's profile); an angle shows in radians (`rad`), a length with no
+unit. *Spec:* [`docs/plans/tool-options.md`](docs/plans/tool-options.md).
+
+---
+
 ## No refusals: the curve tools make their plane, and a miss is guidance
 
 The owner's standing direction (2026-10-29):

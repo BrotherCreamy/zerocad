@@ -555,7 +555,8 @@ tool typed at the command line uses — there is no separate plugin surface,
 and if there ever is, something has gone wrong.
 
 A tool receives a `ToolContext` (the model, plus `requestRender`,
-`requestSolve` and `finish`) and no ambient globals. It stays armed until it
+`requestSolve` and `finish`, and `options` — what it was armed with, every
+declared option filled and checked) and no ambient globals. It stays armed until it
 calls `ctx.finish()`, which is why a three-click arc tool needed no engine
 change: "multi-stage" is just "finishes later".
 
@@ -842,6 +843,24 @@ types `arm("name")` through `submit`, for every reason in the section above,
 and it is built from the tool registry when drawn rather than from a list kept
 beside it — so the extensibility claim ("tools are not privileged") reaches the
 toolbar too: a tool defined at the command line has a button.
+
+**A tool's options panel is the same rule again.** A tool declares what it can
+be armed with (`static options`, `src/tools/options.ts`), and the declaration
+is the one source: `ToolEngine.arm` checks and fills from it, `tools()` lists
+it, and while the tool is armed a small panel beside the tray is built from
+it — a field edited there types `arm("extrude", {depth: 25})` through
+`submit`, so the panel can do nothing a typed line cannot, and a line typed by
+hand shows in the fields. The values a viewer last armed with are remembered
+as their defaults, per viewer, beside the layout and under their own key, for
+the reason layout is: a preferred depth is a fact about the person, not the
+drawing. The panel comes and goes with the tool, so it is the one panel
+`Panels` hides; sized by its rows as the tray is by its buttons, it has no
+grips, and it is placed after every other panel so that it is the one moved
+out of the way.
+
+No button is greyed. One used to be, for a tool the model could not run;
+since every tool makes what it needs and answers a click it cannot use with
+guidance, the toolbar no longer asks `toolUnavailable` at all.
 
 **Layout is not model state.** Where a viewer keeps their log is a fact about
 their screen. It lives in `localStorage`, every touch wrapped — a private window

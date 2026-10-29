@@ -36,6 +36,21 @@ otherwise.
   line (log and header note), the tool still armed; the regions extrude,
   revolve and sketch could take are lit while armed, and revolve's candidate
   axes once it has a profile. Deviations in the spec's status line.
+  ✅ **`tool-options.md` built** (2026-10-29). **Options are declared**: a
+  tool class's `static options = { depth: { default: 10, unit: "length" } }`
+  (`src/tools/options.ts`) is the one source — `arm` (in `ToolEngine.arm`,
+  which every way of arming reaches) fills what was left out and refuses an
+  unknown option, a wrong type or a value the declaration's `check` refuses,
+  in one line naming the options the tool has, before cancelling anything;
+  `tools()` and `help()` list them; the options panel is built from them; a
+  tool defined at the command line with a `static options` gets all of it.
+  **Remembered values are viewer state**: the last value a tool was armed
+  with is its next default, in `localStorage` under `neocad.toolOptions.v1`,
+  every touch wrapped — never in the journal, a file or the undo history.
+  **The options panel types**: an ordinary panel (movable, pushing, fixed
+  grab, no grips, sized by its rows), beside the tray while a tool with
+  options is armed, a field edit typing `arm("extrude", {depth: 25})`
+  through `submit`. Deviations in the spec's status line and Done.
 
 The guiding rule, set by the owner: **tools work like Onshape/SolidWorks, so
 people arrive already knowing how to use them.** Deviations from that rule
@@ -925,9 +940,14 @@ are flagged as such.
   owner's "effortless" direction (2026-10-29, [`no-refusals.md`](docs/plans/no-refusals.md)):
   the only tools it ever greyed, the curve tools without a default frame, now
   make their plane, so **nothing is greyed**. The one rule
-  (`src/toolavail.ts`) stays, answering null, read by both surfaces, so a
-  tool that one day genuinely cannot run greys on both at once; the greyed
-  button's machinery in `panels.ts` stays wired to it, unused.
+  (`src/toolavail.ts`) stays, answering null, read by the menu and an undo's
+  re-arm; ~~the greyed button's machinery in `panels.ts` stays wired to it,
+  unused~~ — removed by `tool-options.md`: the toolbar no longer asks it, and
+  a tool that one day cannot run somewhere answers its click with guidance.
+  **The options panel** is the one panel that comes and goes: shown beside the
+  tray while a tool that declares options is armed, sized by its rows (no
+  grips), placed after every other panel, its position the viewer's like the
+  rest; a field edited types `arm(…)` through `submit`.
   Spec: [`docs/plans/panels.md`](docs/plans/panels.md),
   [`docs/plans/toolbar-availability.md`](docs/plans/toolbar-availability.md),
   [`docs/plans/toolbar-icons-docking.md`](docs/plans/toolbar-icons-docking.md),
@@ -1332,6 +1352,31 @@ extended the way `defineTool` extends the tool registry would close it.
 
 ## Smaller things
 
+- [ ] **Found while building `tool-options.md`** (each deliberate unless it
+      says otherwise):
+      - **No command forgets a remembered value.** Typing the default back
+        (`arm("extrude", { depth: 10 })`) is the way; `layout("reset")` puts
+        the panels back but leaves the values. A `resetOptions()` or a
+        per-row "default" affordance would be small.
+      - **Remembered on arm, not on use.** Arming with 25 and releasing the
+        tool without extruding still makes 25 the next default. Onshape
+        remembers what a feature was made with; the difference shows only
+        when someone arms, changes their mind, and leaves.
+      - **Editing a field mid-gesture drops the gesture.** The edit re-arms
+        the tool (it types `arm`), and arming cancels: a fillet's first line,
+        a revolve's chosen profile. Carrying the gesture across a re-arm of
+        the same tool would need the engine to update `ctx.options` in place.
+      - **An angle reads in radians** (`rad`, a whole turn 6.283185), as
+        `revolve` and `set` take it; the dimension labels read degrees. The
+        open degree-input question in "Decisions needed" covers this too.
+      - **A tool armed with options it does not declare gets no panel** —
+        `arm("point", { radius: 4 })` still hands them over unread, as before.
+      - **A refused panel edit is red.** Typing 0 into the depth field types
+        `arm("extrude", {depth: 0})`, which is refused like any typed line,
+        in the log's red, and the field goes back to the armed value. The
+        panel could check before typing, but then it would be a second
+        answer to what `arm` accepts.
+
 - [ ] **Found while building `no-refusals.md`** (each deliberate unless it
       says otherwise):
       - **Hidden faces are lit too.** The extrude/sketch tools light every
@@ -1350,8 +1395,8 @@ extended the way `defineTool` extends the tool registry would close it.
         centre (picking.e2e.ts's box select had to move out of their way).
       - **The fillet tool still logs nothing on success**, where extrude and
         revolve log what they made (`"done"`).
-      - **`main.ts`'s toolbar-host comment** still says a curve tool greys
-        out; left because another package is editing next to it.
+      - ~~**`main.ts`'s toolbar-host comment** still says a curve tool greys
+        out~~ — rewritten by `tool-options.md`, which removed the wiring too.
       - **Fillet lights nothing.** Revolve lights its candidate axes; fillet
         could light the lines that share a corner with the first one chosen.
       - **The operation's own words still reach a guidance line** where the
@@ -1540,6 +1585,63 @@ extended the way `defineTool` extends the tool registry would close it.
       the resolver's flush arithmetic assumes does not happen.
 
 ## Done
+
+- [x] **Tool options: declared, visible, remembered** — the owner's
+      standing direction (docs/plans/effortless.md): *"if the tool has
+      options, there should also be some kind of e.g. pop-up menu that allows
+      me to set them visually, or it happens in the terminal or whatever"*.
+      Spec: [`docs/plans/tool-options.md`](docs/plans/tool-options.md), marked
+      built. `src/tools/options.ts` (new); `Tool.options`, `defineTool`'s
+      check; `ToolEngine.arm`; extrude/revolve/fillet declare `depth`,
+      `angle`, `radius`; `OptionsPanel`, `optionsSize`, `besideTray`, `Fitted`
+      and the fitted path through `arranged`/`apply` in `src/panels.ts`; the
+      host in `src/main.ts`; `tools()`/`help()`. The toolbar's greyed-button
+      wiring removed: `ToolbarHost.unavailable`, `buttonTitle`'s reason, the
+      disabled state, `#toolbar button:disabled`. `toolUnavailable` itself
+      kept — `menu.ts`'s empty-canvas items and `main.ts`'s `step` (an undo's
+      re-arm) still ask it. 884 unit tests (866 before), 340 e2e (330
+      before; `test/e2e/tooloptions.e2e.ts`, 10).
+      **Deviations from the spec:**
+      - ⚠ **Validation is in `ToolEngine.arm`, not the `arm` command.** The
+        bare-name shortcut (`extrude` typed), a toolbar button and an undo's
+        re-arm all reach the engine; only some pass through the command. One
+        place, so every way of arming is checked and filled alike.
+      - ⚠ **A declaration may carry `check`**, beyond the type: `depth: 0`, a
+        revolve `angle` of 0 or past a whole turn and a `radius` ≤ 0 are
+        refused by name. The tools used to swap such a value for their default
+        in silence — exactly the "errors for no reason" inverse: a value
+        typed and ignored.
+      - ⚠ **A malformed `static options` is refused at `defineTool`**, so the
+        line that defined the tool says what is wrong; nothing is registered.
+      - ⚠ **A refused `arm` leaves the armed tool and its gesture as they
+        were.** It used to cancel first and then look; a typo in an option
+        now costs nothing. (An unknown tool name still cancels, as before.)
+      - ⚠ **Remembered at arm time**, typed or by the panel — not when a
+        feature is made (see Smaller things). And the spec's "in this
+        session" was looser than its own verification ("reload, still 25"):
+        it persists across reloads.
+      - ⚠ **The panel types only the option edited**: the others are already
+        what `arm` would fill (default, or remembered because they were
+        typed), so `arm("extrude", {depth: 25})` is the whole truth.
+      - ⚠ **A press outside a field being edited commits it first.** "Enter
+        or blur commits" — but blur fires on `mousedown`, after the canvas's
+        `pointerdown` has already handed the click to the tool armed with the
+        old value. A capture-phase `pointerdown` on the document commits the
+        field before anything else hears the press.
+      - ⚠ **Escape in a field restores and does not release the tool**; the
+        next Escape does.
+      - ⚠ **Units:** a length shows no unit (the drawing's units have no
+        name), an angle `rad`; any other declared text as written.
+      - ⚠ **`tools()`'s lines changed** for a tool with options —
+        `extrude  { depth: 10 }`, and `(default { … })` after a remembered
+        value — so `panels.e2e.ts`'s "a button per registered tool" reads the
+        first word.
+      - **The strip names the armed tool**, and a row's hover text is the
+        line it would type.
+      - **`besideTray` reads the tray where it is shown**, so a tray turned
+        into a row along the top puts the panel under it, and one on the
+        right puts it to the left.
+      **Left in place deliberately:** listed under Smaller things.
 
 - [x] **The tool tray is one line, and the grips draw nothing** — the owner:
       *"you dont need those diag lines on every corner. also actually get rid

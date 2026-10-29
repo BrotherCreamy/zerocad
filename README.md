@@ -131,7 +131,13 @@ one line of its tools — resized from any corner) is a
 REPL over the app's own command surface, and it is the primary interface —
 not a debug console. `help()` lists everything in scope. The toolbar's
 buttons are shortcuts into it: each is a tool's icon (hover for its name),
-types `arm("name")`, and the log shows it.
+types `arm("name")`, and the log shows it. A tool with options — extrude's
+depth, revolve's angle, fillet's radius — shows them in a small panel beside
+the toolbar while it is armed; editing a field types
+`arm("extrude", {depth: 25})` into the same command line, and the last value
+you used is the default next time (per browser, never in a file). `tools()`
+lists every tool's options, and a tool you define with a
+`static options = { … }` gets the panel too.
 
 ```js
 a = pt(0, 0); b = pt(80, 0)        // entities; each returns its name
