@@ -1440,8 +1440,10 @@ replacing) the system Node other projects on this machine may depend on.
   *Known and deliberate:* positions are absolute pixels from the top-left (a
   moved panel does not follow a growing window); ~~a viewer-resized toolbar
   scrolls rather than grows when a tool is added~~ — overturned by the owner
-  (2026-10-29), see "Panels resize from any corner" below: the tray's buttons
-  wrap into more lines and nothing scrolls; no icons, docking or
+  (2026-10-29), see "Panels resize from any corner" below: ~~the tray's
+  buttons wrap into more lines and nothing scrolls~~ — and then, the same day,
+  "The tool tray is one line" below: the tray is never resized, and grows a
+  button for every tool whether or not it was moved; no icons, docking or
   panel-to-panel snapping *(icons and turning against an edge came with "The
   tool tray" below; there is still no positional snapping)*. (The toolbar not greying out the curve tools without
   a default frame was a caveat here; it went with the next entry.)
@@ -1733,10 +1735,11 @@ replacing) the system Node other projects on this machine may depend on.
   `test/panels.test.ts`, `test/icons.test.ts` (the table against every tool
   `main.ts` imports, the family, escaping); browser:
   `test/e2e/panels.e2e.ts`. 802 unit tests, 286 e2e.
-  *Known and deliberate:* a moved or turned tray keeps its stored size when a
-  tool is defined ~~(it scrolls)~~ *(it wraps, since 2026-10-29)*; ~~the grip
-  overlaps the last button's corner~~ *(the four grips are clipped to their
-  corner triangles, since 2026-10-29)*; a
+  *Known and deliberate:* ~~a moved or turned tray keeps its stored size when a
+  tool is defined (it scrolls) (it wraps, since 2026-10-29)~~ *(since
+  2026-10-29, "The tool tray is one line" below: its stored size is never read,
+  and it grows a button)*; ~~the grip overlaps the last button's corner~~ *(a
+  tray has no grips, since 2026-10-29)*; a
   glyph, like availability, is keyed by name, so a re-registered `circle`
   keeps the circle; no positional snapping. ~~A tray pushed past another
   panel's edge overlaps it~~ — overturned by the owner (2026-10-26), see the
@@ -1819,7 +1822,11 @@ replacing) the system Node other projects on this machine may depend on.
   *Spec:* [`docs/plans/extrude-makes-its-plane.md`](docs/plans/extrude-makes-its-plane.md).
 
 - **Panels resize from any corner; the tray's buttons wrap** (`src/panels.ts`,
-  `index.html`). The owner (2026-10-29): *"allow me to rescale the popup
+  `index.html`). *(The wrap, and with it every tray grip and every function
+  named below that fitted a tray — `trayFit`, `perLine`, `trayDepth` — was
+  removed the same day by the owner's reversal; see "The tool tray is one
+  line" below. The grips on the log and the command line, `resized`,
+  `grabbed` and `cornerOf` stand, drawn as nothing.)* The owner (2026-10-29): *"allow me to rescale the popup
   windows from any corner. the tool palette should wrap the icons also - i.e.
   if it is vertical and i decrease vertical size, it should create a second
   column."* **Four grips per panel**, made by the DOM half (`.pgrip
@@ -1851,6 +1858,38 @@ replacing) the system Node other projects on this machine may depend on.
   gains a tool wraps it into a new line rather than growing; a grip's
   triangle takes the corner of whatever it covers, a sliver of the log's label
   included. *Spec:* [`docs/plans/panels-corners-wrap.md`](docs/plans/panels-corners-wrap.md).
+
+- **The tool tray is one line, and the grips draw nothing** (`src/panels.ts`,
+  `src/main.ts`, `index.html`). The owner (2026-10-29): *"you dont need those
+  diag lines on every corner. also actually get rid of resizing altogether on
+  the tool palette. its just a straight line that fits the number of tools it
+  has in it, and can either be vert or horiz"*. **Grips:** the log and the
+  command line keep `.pgrip[data-corner]` on all four corners, still the 12 px
+  square clipped to its corner's triangle with its diagonal's cursor, and
+  resize exactly as before — but with no background idle, hovered or held: the
+  cursor is the affordance. **The tray:** `gripCorners(tray)` is `[]` for a
+  tray and `CORNERS` otherwise, and the DOM half makes only those; `dragStep`
+  returns a resize grab on a tray (one it is given a button count for)
+  untouched. Its size is only ever `traySize(n, orient)` — one line, 28 px
+  thick, `16 + 6 + 22n` long. Placement is the pure `arranged(order, stored,
+  defaults, trays, area)` (what `apply` was): each panel's stored-or-default
+  rectangle held inside, except that a tray keeps only its stored position
+  and orientation and takes `traySize` of its current count, then
+  `settled` — so a tool defined at the command line lengthens a moved tray by
+  one button and pushes whatever that reaches, and a layout stored while the
+  tray could wrap comes up one line. `minSizeOf(id, orient, tray)` is the
+  minimums, a tray's one button (what is left of a tray clipped by a window
+  shorter than it). `#toolbar` is a single flex line, `overflow: hidden` for
+  that clip. Storage unchanged (`v2`; a tray's size is written and never
+  read). Unit: `test/panels.test.ts` (4 new; the wrap's 6 deleted; the walk
+  asserts the tray is `traySize` on every step and that its resize grabs move
+  nothing); browser: `test/e2e/panels.e2e.ts` (4 new, the wrap's 4 deleted:
+  the log's corners pixel for pixel against the grips hidden, hovered and
+  held; no tray grips; a stored size ignored; a moved row lengthened by a
+  tool, pushing the log). 850 unit tests. *Known and deliberate:* a grip is
+  found by its cursor alone; a tray longer than the window is clipped, its
+  last buttons out of reach; the grip's triangle still takes what it covers.
+  *Spec:* [`docs/plans/tray-fixed-line.md`](docs/plans/tray-fixed-line.md).
 
 
 ## What's next

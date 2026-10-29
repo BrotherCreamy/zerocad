@@ -17,8 +17,12 @@ stays the same** — stopped short, it waits for the pointer to come back.
 And (owner, 2026-10-29; built by
 [`panels-corners-wrap.md`](panels-corners-wrap.md)) the one **corner grip** is
 now **four, one per corner**, the opposite corner fixed; and the toolbar,
-which scrolled when made shorter than its buttons, now **wraps them** into
-more columns (or rows), the scrollbar retired. The rest of this spec stands.
+which scrolled when made shorter than its buttons, now ~~**wraps them** into
+more columns (or rows), the scrollbar retired~~ — and then (owner, the same
+day; built by [`tray-fixed-line.md`](tray-fixed-line.md)) **cannot be resized
+at all**: it is exactly one line of its buttons, a button longer for each tool
+defined, with no grips; and the grips the other panels keep **draw nothing**,
+the resize cursor their only mark. The rest of this spec stands.
 Owner's direction, verbatim: *"add the
 buttons. but they should be a moveable toolbar. actually everything should
 be moveable and resizable."* The original brief listed cellwork's icon

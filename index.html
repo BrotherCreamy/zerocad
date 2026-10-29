@@ -61,21 +61,21 @@
       border-radius:3px 3px 0 0;cursor:grab;user-select:none;touch-action:none}
     .panel.held>.ptitle{cursor:grabbing;color:#7a8b9b}
     .panel>.pbody{flex:1;min-height:0}
-    /* A grip on each corner, made by panels.ts: a 12px square clipped to the
-       triangle in its corner, so that it takes only the corner — a strip keeps
-       its middle, a tray's corner button all but its tip. The south-east one
-       is drawn as the one grip always was; the other three are it mirrored
-       into their corners (the clip mirrors with it). */
-    .panel>.pgrip{position:absolute;width:12px;height:12px;touch-action:none;clip-path:polygon(100% 0,100% 100%,0 100%);
-      background:linear-gradient(135deg,transparent 0 55%,#2c3d4f 55% 62%,transparent 62% 74%,#2c3d4f 74% 81%,transparent 81%)}
-    .panel>.pgrip:hover,.panel.held>.pgrip.held{background:linear-gradient(135deg,transparent 0 55%,#46586a 55% 62%,transparent 62% 74%,#46586a 74% 81%,transparent 81%)}
+    /* A grip on each corner of a panel that resizes — the log and the command
+       line; a tray has none — made by panels.ts: a 12px square clipped to the
+       triangle in its corner, so that it takes only the corner and a strip
+       keeps its middle. It draws nothing (the owner: "you dont need those diag
+       lines on every corner"): the cursor of its diagonal is the whole of the
+       affordance. The clip is written for the south-east and mirrored into the
+       other three corners by the transforms. */
+    .panel>.pgrip{position:absolute;width:12px;height:12px;touch-action:none;clip-path:polygon(100% 0,100% 100%,0 100%)}
     .panel>.pgrip[data-corner="se"]{right:0;bottom:0;cursor:nwse-resize}
     .panel>.pgrip[data-corner="nw"]{left:0;top:0;cursor:nwse-resize;transform:scale(-1,-1)}
     .panel>.pgrip[data-corner="ne"]{right:0;top:0;cursor:nesw-resize;transform:scaleY(-1)}
     .panel>.pgrip[data-corner="sw"]{left:0;bottom:0;cursor:nesw-resize;transform:scaleX(-1)}
     /* A tray — the toolbar — runs as a column or a row (data-orient, set from
-       panels.ts, which sizes it to match: one 20px button thick, or as many
-       lines thick as its buttons wrap into). A row's strip
+       panels.ts, which sizes it to match: one 20px button thick, and as long
+       as its buttons). A row's strip
        is down its left end, so the row is one button high. The strip is too
        narrow for a word either way, so it is a grip of dots; its title names it. */
     .panel[data-orient="row"]{flex-direction:row}
@@ -86,11 +86,12 @@
     .panel[data-orient="row"]>.ptitle{border-bottom:none;border-right:1px solid #223041;border-radius:3px 0 0 3px}
     /* The toolbar: one square button per registered tool, its face the tool's
        icon in currentColor — so the colours below are the glyph's. The amber is
-       the armed tool's and nothing else's. The buttons wrap in the way the tray
-       runs: a column made shorter gains a second column, a row made narrower a
-       second row. panels.ts sizes the tray to exactly the lines this wrap makes
-       (trayFit), so nothing is ever out of sight and there is no scrollbar. */
-    #toolbar{display:flex;flex-direction:column;flex-wrap:wrap;align-content:flex-start;gap:2px;padding:3px;overflow:hidden}
+       the armed tool's and nothing else's. One line of them, the way the tray
+       runs, and panels.ts sizes the tray to exactly that line (traySize). The
+       overflow is hidden for the one case where the line does not fit — a
+       window shorter than it — so the buttons past the edge are clipped there
+       rather than drawn over the window's edge. */
+    #toolbar{display:flex;flex-direction:column;gap:2px;padding:3px;overflow:hidden}
     .panel[data-orient="row"]>#toolbar{flex-direction:row}
     #toolbar button{flex:none;width:20px;height:20px;padding:0;display:flex;align-items:center;justify-content:center;
       font-family:inherit;color:#afc6d9;background:transparent;border:1px solid transparent;border-radius:3px;cursor:default}

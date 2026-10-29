@@ -849,7 +849,8 @@ are flagged as such.
   each a panel over a full-window canvas, dragged by a title strip and resized
   ~~by a corner grip~~ — the owner (2026-10-29): *"allow me to rescale the
   popup windows from any corner"* — **from any of its four corners**, the
-  opposite corner fixed. **The header is the one fixed thing** — the title bar,
+  opposite corner fixed (all but the tray, which is never resized — below).
+  **The header is the one fixed thing** — the title bar,
   where the solve status lives. **Layout is per-viewer UI state**: in
   `localStorage`, never in the journal, a saved file or the undo history, so
   two people opening one file keep their own arrangements, and a storage that
@@ -884,11 +885,19 @@ are flagged as such.
   grabbed, drag and grip alike. A tray that turns is a new shape, and the hand
   keeps the same point of it, the same fraction along its strip. One pure
   resolver, `pushed`, serves every arrangement. ~~A resized tray scrolls~~ —
-  *"the tool palette should wrap the icons also - i.e. if it is vertical and i
-  decrease vertical size, it should create a second column"* (2026-10-29):
-  **the tray's buttons wrap** in the way it runs, **the run the viewer's and
-  the depth the buttons'**, so every button is always shown and there is no
-  scrollbar; a turn or a fresh tray is one line. A button types
+  ~~*"the tool palette should wrap the icons also - i.e. if it is vertical and
+  i decrease vertical size, it should create a second column"* (2026-10-29):
+  the tray's buttons wrap in the way it runs, the run the viewer's and the
+  depth the buttons'~~ — reversed by the owner the same day: *"actually get rid
+  of resizing altogether on the tool palette. its just a straight line that
+  fits the number of tools it has in it, and can either be vert or horiz"*.
+  **A tray has no grips and is never resized**: it is exactly one line of its
+  buttons (`traySize`), a column or a row, a button longer for every tool
+  defined — moved or not, a stored size never read — and turned by dragging it
+  against an edge. ~~The grips are drawn as diagonal marks~~ — *"you dont need
+  those diag lines on every corner"*: **a grip draws nothing**; the log's and
+  the command line's four are invisible corner hot-spots whose resize cursor
+  is the affordance. A button types
   `arm("name")` through `submit`, the context menu's rule: it can do nothing a
   typed command cannot. An empty model says what to do (owner's report, *"i
   dont see anything in the artifact"*), drawn from the model, never a flag.
@@ -899,7 +908,8 @@ are flagged as such.
   [`docs/plans/toolbar-availability.md`](docs/plans/toolbar-availability.md),
   [`docs/plans/toolbar-icons-docking.md`](docs/plans/toolbar-icons-docking.md),
   [`docs/plans/panels-push.md`](docs/plans/panels-push.md),
-  [`docs/plans/panels-corners-wrap.md`](docs/plans/panels-corners-wrap.md).
+  [`docs/plans/panels-corners-wrap.md`](docs/plans/panels-corners-wrap.md),
+  [`docs/plans/tray-fixed-line.md`](docs/plans/tray-fixed-line.md).
 - **Ctrl+Z is the drawing's, everywhere** (owner's direction, 2026-10-29:
   *"why does ctrl+z and ctrl+y not work? should work and be bulletproof"*).
   Ctrl+Z / Cmd+Z always undoes the model and Ctrl+Y / Ctrl+Shift+Z / Cmd+⇧Z
@@ -1373,7 +1383,7 @@ extended the way `defineTool` extends the tool registry would close it.
       **Fixed** — the rule moved to `src/toolavail.ts`, the menu and the
       toolbar host both read it, and a disabled button carries the reason as
       its hover text. See Done.
-- [ ] **A moved or turned tray wraps a new tool rather than growing.** An
+- [x] **A moved or turned tray wraps a new tool rather than growing.** An
       untouched toolbar is sized from its defaults, so `defineTool` grows it;
       once the viewer has moved it — or turned it, which sizes it to its
       content at that moment — its stored rectangle is what is shown. ~~A new
@@ -1384,6 +1394,11 @@ extended the way `defineTool` extends the tool registry would close it.
       length was the viewer's (a grip) or the content's (a turn, the defaults)
       and re-sizing only the latter; the wrap spec kept the stored shape
       unchanged, so it was not done there.
+      **Fixed** (2026-10-29, tray-fixed-line): a tray's length is never the
+      viewer's any more, so there is nothing to tell apart — `arranged` ignores
+      a stored tray size and re-sizes from the count on every `apply`, and a
+      moved row gains a button's length, pushing what it reaches (unit and
+      e2e).
 - [x] **The resize grip sits over the last button's corner.** On a tray one
       button thick the 12 px grip covers the bottom-right of the last button
       (column) or its right end (row); the button's middle is still its own,
@@ -1392,22 +1407,30 @@ extended the way `defineTool` extends the tool registry would close it.
       **Fixed in passing** (2026-10-29, panels-corners-wrap): the four grips
       are clipped to the triangle in their corners, which over a corner
       button is a 4 px tip of its (rounded) corner.
-- [ ] **A tray's grip cannot set its depth.** The depth is the buttons'
-      (`trayFit`), so dragging a column's corner sideways, or a row's up and
-      down, moves nothing; the run decides how many lines there are. The
-      alternative — both dimensions the viewer's — leaves either empty lines
-      or buttons out of sight, which is what the owner asked to be rid of.
-      Revisit if the owner wants to drag a column wider into two columns.
-- [ ] **A tray against a wall cannot wrap toward it.** Shortened from the
-      corner on the side of an edge (or of a chain against one) with no room
-      for another line, it stops, as at a minimum; the corner on the other
-      side wraps it the other way. A tray that could slide away from the wall
-      to make room would be a resize that moves the opposite corner, which
-      the owner's "from any corner" rules out.
+- [x] ~~**A tray's grip cannot set its depth.**~~ Moot (2026-10-29,
+      tray-fixed-line): a tray has no grips and no wrap — *"get rid of resizing
+      altogether on the tool palette"*.
+- [x] ~~**A tray against a wall cannot wrap toward it.**~~ Moot, the same
+      way: nothing wraps.
 - [ ] **A grip's triangle takes the corner of whatever it covers** — the first
       pixels of the log's "log" label, the corners of a strip. The strip keeps
-      its middle (a 28 px column's strip is grabbable across its middle 20 px
-      at half height), and nothing has been hard to grab in the e2e runs.
+      its middle, and nothing has been hard to grab in the e2e runs. Since
+      2026-10-29 the grip draws nothing, so this is a corner whose cursor
+      changes before anything there is seen to; and since the tray has no
+      grips, only the log's and the command line's corners have one.
+- [ ] **A grip is found by its cursor alone** (the owner: *"you dont need
+      those diag lines on every corner"*). Nothing marks a corner as
+      resizable until the pointer is on it — the owner's call, and the
+      platform's own window corners work the same way. If it proves
+      undiscoverable, a mark on hover only would be the smallest step back;
+      not done, since he asked for none.
+- [ ] **A tray longer than the window is clipped at its edge.** `constrain`
+      holds it inside, shrunk to the window, and `#toolbar`'s
+      `overflow: hidden` cuts off the buttons past the edge, which are out of
+      reach until the window is taller (or the tray is turned the other way).
+      Eleven tools need 264 px; a window that short is not one anyone draws in,
+      so the spec said not to design for it, and nothing is. Unit-tested (the
+      clip, still wholly inside).
 - [ ] **A glyph is keyed by name, like availability.** A command-line tool
       that re-registers `circle` keeps the circle's glyph (and its
       availability rule, below); one under any new name gets the generic
@@ -1463,6 +1486,58 @@ extended the way `defineTool` extends the tool registry would close it.
       the resolver's flush arithmetic assumes does not happen.
 
 ## Done
+
+- [x] **The tool tray is one line, and the grips draw nothing** — the owner:
+      *"you dont need those diag lines on every corner. also actually get rid
+      of resizing altogether on the tool palette. its just a straight line
+      that fits the number of tools it has in it, and can either be vert or
+      horiz"*. Spec: [`docs/plans/tray-fixed-line.md`](docs/plans/tray-fixed-line.md),
+      marked built. `.pgrip` has no background in any state (the held grip's
+      `held` class went with it); `gripCorners(tray)` gives a tray none;
+      `dragStep` returns a tray's resize grab untouched; `traySize` is the only
+      size a tray has; `arranged` (pure, extracted from `apply`) keeps a stored
+      tray's position and orientation and recomputes its size from the count;
+      `trayFit` / `perLine` / `trayDepth`, `dragStep`'s wrap-refit loop and
+      `same`, and `#toolbar`'s `flex-wrap` deleted. 850 unit tests (852
+      before), e2e unchanged in number.
+      **Deviations from the spec:**
+      - ⚠ **The refusal is in `dragStep`, not `resized`.** The spec asks for
+        "`resized` on it is refused or a no-op by construction", but `resized`
+        is arithmetic on a bare rectangle and does not know what a tray is;
+        `dragStep` is the one step every gesture goes through and is the only
+        thing told a panel is a tray (its button count). So that is where a
+        tray's resize grab comes back with nothing moved, and the DOM half
+        never makes the grips to start one (`gripCorners`). Spec text
+        corrected, marked *(as built)*.
+      - ⚠ **New pure exports: `gripCorners`, `arranged`, `minSizeOf`.** So that
+        "the tray has no grips" and "a stored size is ignored" are unit tests
+        without a DOM, as the file's header promises, rather than e2e only.
+        `apply` is now `arranged` plus `show`.
+      - **The random walk still tries to resize the tray** — and asserts that
+        nothing at all moves (1 675 refused steps at seed 11), rather than
+        simply never trying. The spec said the walk "no longer resizes trays";
+        this proves it rather than assuming it.
+      - **The pixel check is against the same corner with the grips hidden**,
+        not against one ground colour: the clip holds the border, the rounded
+        corner, the strip and sometimes the log's text, so "the panel's
+        ground" is read as the panel without its grip, pixel for pixel, hovered
+        and held. A planted mark is shown to be seen, so it is not vacuous.
+      - **The grip keeps its triangle clip.** "An invisible 12 px corner
+        hot-spot" — the hot-spot is still the triangle in the corner, as built
+        by the corners package, so a strip keeps its middle; only the drawing
+        went ("nothing else about resizing changes").
+      - **`pushed` still pushes the way a rectangle grows**, not the pointer's
+        sign. That rule came in with the wrap (only a wrapped tray's depth grew
+        against the pointer), but it is not idle wrap machinery: it runs on
+        every move, agrees with the pointer for every gesture there now is, and
+        is the better definition. Kept, its comment rewritten to say so.
+      - **`toolbar-icons-docking.md` also annotated** (its "overturned: it
+        wraps" note now points on to this spec), beside the two the spec named;
+        and `docs/ARCHITECTURE.md`'s "a tray wraps rather than scrolls"
+        paragraph rewritten.
+      **Left in place deliberately:** a grip is found by its cursor alone; a
+      tray too long for the window is clipped (both in Smaller things); the
+      stored tray rectangle still carries a size, never read, under `v2`.
 
 - [x] **Extrude on a frameless sketch makes its own plane** — the owner,
       with a screenshot of the log saying *"the loop of l1,l4,l3,l2 lies in no

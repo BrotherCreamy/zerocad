@@ -1,6 +1,9 @@
 # Plan: no grip marks, and a tool palette that is just a line
 
-**Status: queued** (2026-10-29). The owner, verbatim:
+**Status: built** (2026-10-29) — one PR against `claude/resume-tasks-o7q02e`
+(branch `claude/tray-fixed-line`); every deviation is in `TODO.md`'s Done
+entry, and the one place this text was wrong about the code is corrected below
+and marked *(as built)*. The owner, verbatim:
 
 > *you dont need those diag lines on every corner. also actually get rid of
 > resizing altogether on the tool palette. its just a straight line that fits
@@ -36,7 +39,11 @@ neighbour, a dragged tray pushes and turns.
 ## Verification
 
 Unit: the tray has no grips and `resized` on it is refused or a no-op by
-construction; `traySize` is the only source of its size; a stored size is
+construction *(as built: `resized` is arithmetic on a bare rectangle and does
+not know what a tray is, so the refusal is in `dragStep`, the one step every
+gesture takes and the only one told a panel is a tray — a resize grab on a
+tray comes back with nothing moved — and `gripCorners(true)` is empty, so the
+DOM half never makes a grip to start one)*; `traySize` is the only source of its size; a stored size is
 ignored; the random walk no longer resizes trays and still holds its
 invariants. E2e: no `.pgrip` under the tray; the log's grips carry no visible
 mark (read the pixels of a corner against the panel's ground) but still

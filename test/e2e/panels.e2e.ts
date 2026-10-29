@@ -21,10 +21,12 @@
 // And the tray's own rules, from the owner's three lines: a panel stays wholly
 // inside; a button is an icon whose name is its tooltip; the tray turns into a
 // row against a top or bottom edge and a column against a side, live, as it is
-// pushed. And from the owner's next two: a panel resizes from any of its four
-// corners, the opposite one fixed; the tray's buttons wrap into more columns
-// (or rows) as it is made shorter, never a scrollbar. Set NEOCAD_E2E_SHOTS to a
-// directory to keep pictures of it at its own size — and look at them.
+// pushed. And from the owner's next ones: the log and the command line resize
+// from any of their four corners, the opposite one fixed, by grips that draw
+// nothing — the cursor is the affordance; the tray has no grips at all, and is
+// exactly one line of its buttons, a button longer for every tool defined. Set
+// NEOCAD_E2E_SHOTS to a directory to keep pictures of it at its own size — and
+// look at them.
 
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
@@ -210,10 +212,11 @@ test("a tool defined at the command line gets a button, which arms it", async ()
   }));
   assert.deepEqual(look, { glyph: "generic", letters: "st", hint: 'stamp — arm("stamp")' });
 
-  // An untouched toolbar grows to hold it, rather than hiding it below the fold.
+  // The toolbar grows to hold it, rather than hiding it below the fold: by one
+  // button exactly, still one column.
   const after = await rectOf(panel("toolbar"));
   const last = await rectOf('#toolbar button[data-tool="stamp"]');
-  assert.ok(after.height > before.height, "the toolbar grew");
+  assert.deepEqual([after.width, after.height - before.height], [before.width, 22], "a button longer, and no wider");
   assert.ok(last.y + last.height <= after.y + after.height, "and the new button is inside it, visible");
 
   await app.page.click('#toolbar button[data-tool="stamp"]');
@@ -772,46 +775,62 @@ test("after a scripted run of random drags, no two panels overlap", async () => 
   const rand = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648);
   for (let i = 0; i < 30; i++) {
     const id = IDS[Math.floor(rand() * IDS.length)];
-    // A strip, or any of the four grips.
-    const by = rand() < 0.6 ? strip(id) : grip(id, CORNERS[Math.floor(rand() * 4)]);
+    // A strip, or any of the four grips — which the tray has none of, so it
+    // is only ever dragged.
+    const byGrip = rand() < 0.4;
+    const corner = CORNERS[Math.floor(rand() * 4)];
+    const by = byGrip && id !== "toolbar" ? grip(id, corner) : strip(id);
     await dragBy(by, Math.round((rand() - 0.5) * 900), Math.round((rand() - 0.5) * 700), 4 + Math.floor(rand() * 8));
     await assertSound(`drag ${i} (${by})`);
-    // No panel below its minimum, and the tray wrapped whole whatever was done to it.
+    // No panel below its minimum, and the tray one whole line whatever was done.
     const l = await panelsNow();
     assert.ok(l.log.width >= 160 && l.log.height >= 46 && l.cmd.width >= 160 && l.cmd.height >= 44, `drag ${i}: ${JSON.stringify(l)}`);
-    assert.ok(Math.min(l.toolbar.width, l.toolbar.height) >= DEPTH && Math.max(l.toolbar.width, l.toolbar.height) >= 16 + 6 + 22, `drag ${i}: the tray ${JSON.stringify(l.toolbar)}`);
-    const g = await buttonGrid();
-    assert.ok(g.whole && !g.scrolls, `drag ${i} (${by}): every button shown, nothing to scroll`);
+    const t = await tray();
+    assert.deepEqual(t.orient === "row" ? [t.w, t.h, t.rows] : [t.h, t.w, t.rows], t.orient === "row" ? [RUN, DEPTH, 1] : [RUN, DEPTH, TOOLS],
+      `drag ${i}: the tray one line: ${JSON.stringify(t)}`);
+    assert.ok((await buttonsShown()).every(Boolean), `drag ${i} (${by}): every button shown`);
   }
   await shot("after-random-drags");
   await app.type('layout("reset")');
 });
 
-// --- any corner, and a tray that wraps ------------------------------------------
+// --- any corner, by grips that draw nothing; a tray that is one line ----------
 
 /** `corner` of a box. */
 const at = (b: Box, c: Corner) => ({ x: c.endsWith("w") ? b.x : b.x + b.width, y: c.startsWith("n") ? b.y : b.y + b.height });
 const opposite = (c: Corner): Corner => (({ nw: "se", ne: "sw", sw: "ne", se: "nw" }) as const)[c];
 
-/**
- * The tray's buttons, where they are: each one's column and row as the
- * distinct x and y positions it sits on, and whether every button lies wholly
- * inside the tray's body with nothing to scroll.
- */
-async function buttonGrid(): Promise<{ xs: number[]; ys: number[]; at: [number, number][]; whole: boolean; scrolls: boolean; overflow: string }> {
+/** For each of the tray's buttons, whether it lies wholly inside the tray's body. */
+async function buttonsShown(): Promise<boolean[]> {
   return app.page.$eval("#toolbar", (body) => {
     const box = body.getBoundingClientRect();
-    const rects = Array.from(body.querySelectorAll("button")).map((b) => b.getBoundingClientRect());
-    const xs = [...new Set(rects.map((r) => Math.round(r.x)))].sort((a, b) => a - b);
-    const ys = [...new Set(rects.map((r) => Math.round(r.y)))].sort((a, b) => a - b);
-    return {
-      xs, ys,
-      at: rects.map((r) => [xs.indexOf(Math.round(r.x)), ys.indexOf(Math.round(r.y))] as [number, number]),
-      whole: rects.every((r) => r.x >= box.x && r.y >= box.y && r.x + r.width <= box.x + box.width && r.y + r.height <= box.y + box.height),
-      scrolls: body.scrollHeight > body.clientHeight || body.scrollWidth > body.clientWidth,
-      overflow: getComputedStyle(body).overflow,
-    };
+    return Array.from(body.querySelectorAll("button")).map((b) => {
+      const r = b.getBoundingClientRect();
+      return r.x >= box.x && r.y >= box.y && r.x + r.width <= box.x + box.width && r.y + r.height <= box.y + box.height;
+    });
   });
+}
+
+/**
+ * Every pixel of `clip` as the screen shows it, RGBA, row by row. Decoded by
+ * the page itself — the screenshot drawn into a canvas and read back — so the
+ * suite needs no PNG library to read a picture.
+ */
+async function pixels(clip: Box): Promise<number[][]> {
+  const png = await app.page.screenshot({ clip });
+  return app.page.evaluate(async (b64) => {
+    const img = new Image();
+    img.src = `data:image/png;base64,${b64}`;
+    await img.decode();
+    const c = document.createElement("canvas");
+    [c.width, c.height] = [img.width, img.height];
+    const g = c.getContext("2d")!;
+    g.drawImage(img, 0, 0);
+    const d = g.getImageData(0, 0, c.width, c.height).data;
+    const out: number[][] = [];
+    for (let i = 0; i < d.length; i += 4) out.push([d[i], d[i + 1], d[i + 2], d[i + 3]]);
+    return out;
+  }, png.toString("base64"));
 }
 
 test("the log resizes from each of its four corners, and the opposite corner does not move", async () => {
@@ -839,92 +858,120 @@ test("the log resizes from each of its four corners, and the opposite corner doe
   await assertSound("after resizing from every corner");
 });
 
-test("a column made shorter from its bottom-right corner wraps into a second column, with no scrollbar", async () => {
+test("the log's grips draw nothing: with the hand on one, held or not, its corner is the panel's own pixels", async () => {
+  // The log where the test above left it, in the open: nothing over its corners.
+  const hide = (on: boolean) => app.page.evaluate((h) => {
+    for (const g of Array.from(document.querySelectorAll<HTMLElement>(".pgrip"))) g.style.visibility = h ? "hidden" : "";
+  }, on);
+  // The grip's square and a few pixels round it — the border, the rounded corner, the ground.
+  const around = async (c: Corner): Promise<Box> => {
+    const g = await rectOf(grip("log", c));
+    return { x: g.x - 4, y: g.y - 4, width: g.width + 8, height: g.height + 8 };
+  };
+  for (const c of CORNERS) {
+    const p = await pressPoint(grip("log", c));
+    await app.page.mouse.move(p.x, p.y);
+    // The hand is on the grip — the cursor says so, and is all that says so.
+    const under = await app.page.evaluate(({ x, y }) => {
+      const el = document.elementFromPoint(x, y) as HTMLElement;
+      return { corner: el.dataset.corner, cursor: getComputedStyle(el).cursor };
+    }, p);
+    assert.deepEqual(under, { corner: c, cursor: c === "nw" || c === "se" ? "nwse-resize" : "nesw-resize" }, `${c}: on the grip`);
+    const clip = await around(c);
+    const shown = await pixels(clip);
+    await hide(true);
+    const bare = await pixels(clip);
+    await hide(false);
+    assert.deepEqual(shown, bare, `${c}: hovered, not a pixel differs from the panel with no grip there`);
+  }
+  // Held: the grip pressed used to be drawn lit.
+  const p = await pressPoint(grip("log", "se"));
+  await app.page.mouse.move(p.x, p.y);
+  await app.page.mouse.down();
+  const clip = await around("se");
+  const held = await pixels(clip);
+  await hide(true);
+  const bare = await pixels(clip);
+  await hide(false); // before the release, so the held grip gets its pointerup
+  await app.page.mouse.up();
+  assert.deepEqual(held, bare, "held, not a pixel differs either");
+  // And the comparison can see a mark when there is one: the old lit grip's colour, put back.
+  const lit = await app.page.addStyleTag({ content: '.panel>.pgrip[data-corner="se"]{background:#46586a}' });
+  assert.notDeepEqual(await pixels(clip), bare, "a grip that draws is seen");
+  await lit.evaluate((el) => (el as Element).remove());
+  assert.deepEqual(await pixels(clip), bare, "and the page is as it was");
+  if (SHOTS) {
+    // The log's bottom-right, with the hand on its grip, to look at.
+    const log = await rectOf(panel("log"));
+    await app.page.mouse.move(p.x, p.y);
+    await app.page.screenshot({ path: join(SHOTS, "panels-log-corner.png"), clip: { x: log.x + log.width - 90, y: log.y + log.height - 50, width: 110, height: 70 } });
+    await app.page.screenshot({ path: join(SHOTS, "panels-log-corner-nw.png"), clip: { x: log.x - 20, y: log.y - 20, width: 110, height: 70 } });
+  }
+});
+
+test("the tray has no grips: a press at any of its corners is a drag or a button, never a resize", async () => {
   await app.type('layout("reset")');
+  assert.equal(await app.page.$$eval(`${panel("toolbar")} .pgrip`, (els) => els.length), 0, "no .pgrip under the tray");
+  assert.equal(await app.page.$$eval(`${panel("log")} > .pgrip`, (els) => els.length), 4, "the log has its four");
+  assert.equal(await app.page.$$eval(`${panel("cmd")} > .pgrip`, (els) => els.length), 4, "the command line its four");
+  const t = await rectOf(panel("toolbar"));
+  const cornerPoint = (c: Corner) => ({ x: c.endsWith("w") ? t.x + 3 : t.x + t.width - 3, y: c.startsWith("n") ? t.y + 3 : t.y + t.height - 3 });
+  for (const c of CORNERS) {
+    const cur = await app.page.evaluate(({ x, y }) => getComputedStyle(document.elementFromPoint(x, y)!).cursor, cornerPoint(c));
+    assert.doesNotMatch(cur, /resize/, `${c}: the cursor there is ${cur}`);
+  }
+  // The top corners are the strip's: dragged from one, the tray moves, the same size.
   const t0 = await tray();
-  assert.equal(t0.rows, TOOLS, "one button a line to start with");
-  // 60px shorter: room for eight to a column, so the last three go to a second.
-  await dragBy(grip("toolbar", "se"), 0, -60);
-  const t = await tray();
-  assert.equal(t.orient, "column", "a resize never turns it");
-  assert.deepEqual([t.x, t.y, t.h], [t0.x, t0.y, t0.h - 60], "as short as the hand made it, its top-left where it was");
-  assert.equal(t.w, DEPTH + 22, "and as wide as two columns of buttons, exactly");
-  const g = await buttonGrid();
-  assert.equal(g.xs.length, 2, `two columns: ${JSON.stringify(g.xs)}`);
-  assert.equal(g.xs[1] - g.xs[0], 22, "a button's step apart");
-  assert.deepEqual(g.at, Array.from({ length: TOOLS }, (_, i) => [i < 8 ? 0 : 1, i % 8]),
-    "down the first column, then on down the second, in registration order");
-  assert.ok(g.whole, "every button inside the tray");
-  assert.equal(g.scrolls, false, "nothing to scroll");
-  assert.equal(g.overflow, "hidden", "and no scrollbar to do it with");
-  await shot("wrapped-column");
-  // As short as it goes: one button to a column.
-  await dragBy(grip("toolbar", "se"), 0, -2000);
-  const least = await tray();
-  assert.equal(least.h, 16 + 6 + 22, "one button long");
-  assert.equal((await buttonGrid()).xs.length, TOOLS, "every button its own column");
-  assert.ok((await buttonGrid()).whole);
-  await assertSound("a tray wrapped as far as it goes");
-});
-
-test("a row made narrower from its right wraps into a second row", async () => {
+  const q = cornerPoint("ne");
+  await app.page.mouse.move(q.x, q.y);
+  await app.page.mouse.down();
+  await app.page.mouse.move(q.x + 60, q.y + 40, { steps: 6 });
+  await app.page.mouse.up();
+  await app.page.waitForTimeout(80);
+  const t1 = await tray();
+  assert.deepEqual([t1.x, t1.y, t1.w, t1.h, t1.orient], [t0.x + 60, t0.y + 40, DEPTH, RUN, "column"], "moved by the hand, not resized");
   await app.type('layout("reset")');
-  await dragBy(strip("toolbar"), 300, -3000); // a row along the top
-  const t0 = await tray();
-  assert.deepEqual([t0.orient, t0.w, t0.h], ["row", RUN, DEPTH]);
-  // 100px narrower: six to a row, the last five on a second row.
-  await dragBy(grip("toolbar", "se"), -100, 0);
-  const t = await tray();
-  assert.equal(t.orient, "row");
-  assert.deepEqual([t.x, t.y, t.w], [t0.x, t0.y, t0.w - 100], "as narrow as the hand made it, the top-left where it was");
-  assert.equal(t.h, DEPTH + 22, "and two rows deep");
-  const g = await buttonGrid();
-  assert.equal(g.ys.length, 2, `two rows: ${JSON.stringify(g.ys)}`);
-  assert.deepEqual(g.at, Array.from({ length: TOOLS }, (_, i) => [i % 6, i < 6 ? 0 : 1]), "along the first row, then the second");
-  assert.ok(g.whole);
-  assert.equal(g.scrolls, false);
-  await shot("wrapped-row");
 });
 
-test("a wrapped tray turns into one line the other way", async () => {
-  // The two-row row above, dragged against the left edge.
-  await dragBy(strip("toolbar"), -3000, 200);
-  const t = await tray();
-  assert.equal(t.orient, "column");
-  assert.deepEqual([t.w, t.h], [DEPTH, RUN], "one column, as long as its buttons");
-  assert.equal(t.rows, TOOLS, "one button a line");
-  assert.equal((await buttonGrid()).xs.length, 1);
-  // And a wrapped column turned against the top comes up one row.
-  await dragBy(grip("toolbar", "se"), 0, -100);
-  assert.equal((await buttonGrid()).xs.length, 2, "wrapped again first");
-  await dragBy(strip("toolbar"), 300, -3000);
-  const r = await tray();
-  assert.deepEqual([r.orient, r.w, r.h, r.rows], ["row", RUN, DEPTH, 1]);
-  await assertSound("after turning a wrapped tray");
+test("a stored tray size is ignored on load: one line where it was, the way it ran", async () => {
+  // A column stored as the wrap left it: three columns wide and shortened.
+  await app.page.evaluate(() => localStorage.setItem("neocad.panels.v2", JSON.stringify({
+    toolbar: { x: 300, y: 100, w: 72, h: 110, orient: "column" },
+  })));
+  await reloadApp();
+  assert.deepEqual(await tray(), { x: 300, y: 100, w: DEPTH, h: RUN, orient: "column", rows: TOOLS });
+  assert.ok((await buttonsShown()).every(Boolean), "every button shown");
+  await shot("stored-size-ignored");
+  // And a row stored far too long comes up as long as its buttons.
+  await app.page.evaluate(() => localStorage.setItem("neocad.panels.v2", JSON.stringify({
+    toolbar: { x: 300, y: 0, w: 700, h: 90, orient: "row" },
+  })));
+  await reloadApp();
+  assert.deepEqual(await tray(), { x: 300, y: 0, w: RUN, h: DEPTH, orient: "row", rows: 1 });
+  await assertSound("a stored size ignored");
 });
 
-test("a tool defined at the command line takes its place in the wrap: every button shown, no scrollbar", async () => {
-  await app.type('layout("reset")');
-  // Four to a column: 4, 4 and 3.
-  await dragBy(grip("toolbar", "se"), 0, -(RUN - (16 + 6 + 4 * 22) - 4));
-  assert.equal((await buttonGrid()).xs.length, 3);
-  const w0 = (await tray()).w;
+test("a tool defined at the command line lengthens a moved row by one button, pushing the log it grows into", async () => {
+  // A row along the top with the log flush against its right end.
+  await app.page.evaluate((run) => localStorage.setItem("neocad.panels.v2", JSON.stringify({
+    toolbar: { x: 100, y: 0, w: run, h: 28, orient: "row" },
+    log: { x: 100 + run, y: 0, w: 300, h: 150 },
+  })), RUN);
+  await reloadApp();
+  assert.deepEqual(await tray(), { x: 100, y: 0, w: RUN, h: DEPTH, orient: "row", rows: 1 });
+  const cv = await rectOf("#cv");
+  const log0 = await rectOf(panel("log"));
+  assert.equal(log0.x - cv.x, 100 + RUN, "the log flush on the row's end");
   await app.type('defineTool("ink", class extends Tool { name = "ink"; onDown() { this.ctx.finish(); } })');
-  let g = await buttonGrid();
-  assert.deepEqual(g.at[TOOLS], [2, 3], "the new button fills the third column's last place");
-  assert.equal((await tray()).w, w0, "which needed no more room");
-  await app.type('defineTool("dab", class extends Tool { name = "dab"; onDown() { this.ctx.finish(); } })');
-  g = await buttonGrid();
-  assert.equal(g.xs.length, 4, "the next one wraps into a fourth column");
-  assert.equal((await tray()).w, w0 + 22, "and the tray widens to hold it");
-  assert.ok(g.whole, "every button inside the tray");
-  assert.equal(g.scrolls, false, "nothing to scroll");
-  const look = await app.page.$eval('#toolbar button[data-tool="dab"]', (el) => el.querySelector(":scope > svg")?.getAttribute("data-glyph"));
-  assert.equal(look, "generic");
-  await shot("wrapped-with-new-tools");
-  await assertSound("after the tray widened for a tool");
-  await reloadApp(); // drops ink and dab: the tests below count the built-ins
-  assert.equal((await buttonGrid()).whole, true, "and on reload, the stored size wraps the same way");
+  const t = await tray();
+  assert.deepEqual([t.x, t.y, t.w, t.h, t.rows], [100, 0, RUN + 22, DEPTH, 1], "a button longer, still one row");
+  assert.ok((await buttonsShown()).every(Boolean), "every button shown, the new one included");
+  const log = await rectOf(panel("log"));
+  assert.deepEqual([log.x - cv.x, log.y, log.width], [100 + RUN + 22, log0.y, log0.width], "the log pushed along by the button, and only along");
+  await assertSound("the row grown for a tool");
+  await shot("row-grown-for-a-tool");
+  await reloadApp(); // drops ink
+  assert.deepEqual([(await tray()).w, (await rectOf(panel("log"))).x - cv.x], [RUN, 100 + RUN], "and back, the push never stored");
   await app.type('layout("reset")');
 });
 

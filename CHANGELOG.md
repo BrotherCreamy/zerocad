@@ -7,6 +7,63 @@ decisions.
 
 ---
 
+## The tool tray is one line, and the grips draw nothing
+
+The owner:
+
+> *you dont need those diag lines on every corner. also actually get rid of
+> resizing altogether on the tool palette. its just a straight line that fits
+> the number of tools it has in it, and can either be vert or horiz*
+
+**The grips draw nothing.** The log and the command line keep their four
+corner grips, and everything about resizing from them is as it was — the
+opposite corner fixed, pushing, stopping flush, the fixed grab. But the
+diagonal marks are gone, idle, hovered and held: a grip is an invisible
+12 px corner hot-spot (still clipped to the triangle in its corner, so a strip
+keeps its middle) whose resize cursor is the whole affordance. The held
+grip's own `held` class went with its lit drawing.
+
+**The tray is a line.** It has no grips — `gripCorners(true)` is empty — and
+`dragStep` hands a tray's resize grab back with nothing moved, so not even a
+scripted grab can resize one. Its size has one source, `traySize(buttons,
+orient)`: one button thick, as long as its buttons, a column or a row, turned
+by dragging it against an edge as before. `trayFit`, `perLine`, `trayDepth`,
+the wrap-refit loop in `dragStep` and the stylesheet's `flex-wrap` are
+deleted. Placement moved into a pure `arranged(order, stored, defaults, trays,
+area)`, which keeps a tray's stored position and orientation and **ignores its
+stored size**: a layout saved while the tray could be shortened and wrapped
+comes up as one line where it was, under the same `v2` key (the size is still
+written, and never believed). And because the size is always recomputed, **a
+tool defined at the command line makes the tray one button longer whether or
+not the viewer ever moved it**, pushing whatever it grows into — which
+retires the old "a moved tray wraps (or scrolled) a new tool rather than
+growing" caveat. A tray too long for the window is clipped at the window's
+edge (`overflow: hidden`), still wholly inside; a window that short is not one
+anyone draws in, so nothing cleverer is done.
+
+850 unit tests (852 before: the six wrap tests deleted, four new — no grips
+and a resize grab refused from every corner; a stored size ignored, position
+and way kept, the log's stored size still believed; a moved row growing a
+button per tool and pushing the log by exactly that; a tray clipped by a short
+window — and the 2 000-step walk now hands the tray resize grabs and asserts
+nothing moves, and that the tray is exactly `traySize` on every step). E2e
+unchanged in number (four wrap tests out, four in): the log's corners read
+pixel for pixel with the hand on each grip, and held, against the same corner
+with the grips hidden — and the comparison shown to see a mark by putting one
+back; no `.pgrip` under the tray, no resize cursor at its corners, and a press
+on its top corner a drag; a stored wrapped size coming up one line; a tool
+defined into a moved row lengthening it by one button and pushing the log;
+the untouched column's growth now measured as exactly one button; the random
+run drags the tray only by its strip and checks it is one line after every
+drag.
+
+*Known and deliberate:* the grips are found by the cursor alone — there is no
+mark to see before the pointer is there; the grip's triangle still takes the
+corner of what it covers (now invisibly); a tray longer than the window is
+clipped, its last buttons out of reach until the window is taller; `pushed`
+keeps pushing the way a rectangle grows rather than the pointer's sign, though
+only the wrapped tray ever made the two differ.
+
 ## Extrude on a frameless sketch makes its own plane
 
 The owner, with a screenshot of a rectangle drawn in a fresh model, the

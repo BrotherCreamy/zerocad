@@ -64,12 +64,12 @@ const toolbarEl = document.getElementById("toolbar")!;
 
 /**
  * The panels are placed before the kernel loads, so the page never shows the
- * chrome in a heap while the WASM downloads. The toolbar's default height is
- * sized to however many tools are registered *when it is asked* — the built-ins
- * are all registered by the imports above, and one defined later at the command
- * line grows an untouched toolbar through `syncToolbar` below. The toolbar is
- * the one tray: it turns between column and row against the edges it is
- * dragged to, sized to the same count.
+ * chrome in a heap while the WASM downloads. The toolbar is the one tray: always
+ * one line of however many tools are registered *when it is asked* — the
+ * built-ins are all registered by the imports above, and one defined later at
+ * the command line lengthens it, moved or not, through `syncToolbar` below. It
+ * turns between column and row against the edges it is dragged to, and has no
+ * grips.
  *
  * Under the dev server — which is what every e2e run drives — the panels check
  * after each placement that no two overlap and report it on the page if they
