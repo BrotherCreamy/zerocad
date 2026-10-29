@@ -1,13 +1,13 @@
 // The app's chrome as floating panels over a full-window canvas: a small panel
 // manager, and the toolbar that is the first panel built for it.
 //
-// A panel is a DOM box with a title strip to drag by and a corner grip to
-// resize by. Every piece of chrome — the toolbar, the log, the command line — is
-// one, and the canvas underneath is the whole of the area below the header,
-// which nothing reflows any more. The header is the one fixed thing: it is the
-// app's title bar, carrying the solve status (and, in the single-file build, the
-// buildstamp), and a title bar that could be dragged away would leave nowhere to
-// read either.
+// A panel is a DOM box with a title strip to drag by and a grip on each of its
+// four corners to resize by. Every piece of chrome — the toolbar, the log, the
+// command line — is one, and the canvas underneath is the whole of the area
+// below the header, which nothing reflows any more. The header is the one fixed
+// thing: it is the app's title bar, carrying the solve status (and, in the
+// single-file build, the buildstamp), and a title bar that could be dragged
+// away would leave nowhere to read either.
 //
 // **Layout is per-viewer state, not model state.** Where a viewer has put their
 // log is a fact about their screen, not about the drawing: it is not journalled,
@@ -30,6 +30,15 @@
 
 export interface Rect { x: number; y: number; w: number; h: number }
 export interface Size { w: number; h: number }
+export interface Point { x: number; y: number }
+
+/**
+ * Below this, two panels touch rather than overlap, and a length is whole.
+ * Pointer coordinates are whole pixels in practice, but nothing promises it,
+ * and a push computed in floating point must not read a shared edge as a
+ * sliver of overlap, nor a tray's run as a hair short of its last button.
+ */
+const EPS = 1e-6;
 
 /**
  * Which way a tray runs. A tray is a panel of buttons — the toolbar is the one
@@ -79,15 +88,40 @@ export function moved(start: Rect, dx: number, dy: number, area: Size, min: Size
 }
 
 /**
- * The size a resize by (dx, dy) from `start` gives a panel: the grip follows
- * the pointer, no smaller than the minimum and no further than the area's far
- * edges — a grip dragged off the window would be a corner the viewer can no
- * longer see, let alone grab again.
+ * A panel's corners, by the compass: the one a grip sits on, and so the one a
+ * resize by that grip moves. The corner opposite is the one that stays put.
  */
-export function resized(start: Rect, dx: number, dy: number, area: Size, min: Size): Rect {
-  const w = clamp(start.w + dx, min.w, area.w - Math.max(0, start.x));
-  const h = clamp(start.h + dy, min.h, area.h - Math.max(0, start.y));
-  return constrain({ ...start, w, h }, area, min);
+export type Corner = "nw" | "ne" | "sw" | "se";
+export const CORNERS: readonly Corner[] = ["nw", "ne", "sw", "se"];
+const westward = (c: Corner) => c === "nw" || c === "sw";
+const northward = (c: Corner) => c === "nw" || c === "ne";
+
+/** Where `corner` of `r` is. */
+export function cornerOf(r: Rect, corner: Corner): Point {
+  return { x: westward(corner) ? r.x : r.x + r.w, y: northward(corner) ? r.y : r.y + r.h };
+}
+
+/**
+ * The rectangle a resize by (dx, dy) from `start` gives a panel held by its
+ * `corner` grip (the owner: *"allow me to rescale the popup windows from any
+ * corner"*): that corner follows the pointer, and with it its two edges, while
+ * the corner opposite stays exactly where it was. No smaller than the minimum,
+ * and no further than the area's edges on the corner's side — a grip dragged
+ * off the window would be a corner the viewer can no longer see, let alone
+ * grab again.
+ */
+export function resized(start: Rect, dx: number, dy: number, area: Size, min: Size, corner: Corner = "se"): Rect {
+  // One axis at a time, the same rule each way: the moving edge goes no further
+  // than the area's edge on its side, nor nearer the fixed edge than the minimum.
+  const span = (p: number, len: number, d: number, room: number, least: number, near: boolean): [number, number] => {
+    if (!near) return [p, clamp(len + d, least, room - Math.max(0, p))];
+    const far = p + len;
+    const to = clamp(p + d, 0, far - least);
+    return [to, far - to];
+  };
+  const [x, w] = span(start.x, start.w, dx, area.w, min.w, westward(corner));
+  const [y, h] = span(start.y, start.h, dy, area.h, min.h, northward(corner));
+  return constrain({ x, y, w, h }, area, min);
 }
 
 // ---- trays: turning with the edge they meet ---------------------------------
@@ -100,15 +134,71 @@ export const BUTTON_STEP = BUTTON + 2;
 export const TRAY_DEPTH = BUTTON + 6 + 2;
 
 /**
- * The size of a tray of `buttons` buttons running `orient`: one button thick,
- * and along its run the strip, the padding and every button. A column's strip
- * is across its top; a row's down its left end — so that a row is one button
- * high, which is what makes it a row against a top or bottom edge rather than
- * a short column lying down.
+ * The size a tray of `buttons` buttons running `orient` *wants*: all of them in
+ * one line — one button thick, and along its run the strip, the padding and
+ * every button. A column's strip is across its top; a row's down its left end —
+ * so that a row is one button high, which is what makes it a row against a top
+ * or bottom edge rather than a short column lying down. What a fresh tray is,
+ * and what a tray turns into; one the viewer has made shorter keeps the length
+ * they gave it and wraps (`trayFit`).
  */
 export function traySize(buttons: number, orient: Orientation): Size {
   const run = TITLE_H + 6 + buttons * BUTTON_STEP;
   return orient === "column" ? { w: TRAY_DEPTH, h: run } : { w: run, h: TRAY_DEPTH };
+}
+
+/** How many buttons one line of a tray holds, the run being `run` long: at least one. */
+export function perLine(run: number): number {
+  return Math.max(1, Math.floor((run - TITLE_H - 6) / BUTTON_STEP + EPS));
+}
+
+/** A tray's thickness across its run with its buttons in `lines` lines. */
+export function trayDepth(lines: number): number {
+  return TRAY_DEPTH + (Math.max(1, lines) - 1) * BUTTON_STEP;
+}
+
+/**
+ * The rectangle a tray of `buttons` buttons takes, given the one asked of it —
+ * by a resize from `corner`, or by the layout. The owner: *"the tool palette
+ * should wrap the icons also - i.e. if it is vertical and i decrease vertical
+ * size, it should create a second column."*
+ *
+ * **The run is the viewer's; the depth is the buttons'.** The length along the
+ * run is kept as asked, held between one button and one line of all of them —
+ * a tray longer than its buttons would be a strip of nothing. The buttons wrap
+ * at that length (CSS flex-wrap in the run's direction, which this arithmetic
+ * matches to the pixel), and the depth is exactly the lines that takes, so
+ * every button is always shown and nothing ever needs to scroll. Only the run:
+ * a corner moves both edges, but a tray whose depth were the viewer's too
+ * would show either empty lines or buttons out of sight.
+ *
+ * The corner opposite `corner` stays put, as for any resize, so a tray wrapped
+ * from a west corner grows its new line out to the west. `room` caps the depth
+ * (by default, the area on the side it grows into): when the lines would not
+ * fit, there are as many as do and the run is lengthened to hold the buttons in
+ * them — the run's floor rising, as a minimum would.
+ */
+export function trayFit(r: Placed, buttons: number, area: Size, corner: Corner = "se", room?: number): Placed {
+  const orient = r.orient ?? "column";
+  const col = orient === "column";
+  const lengthOf = (s: Size) => (col ? s.h : s.w);
+  let run = clamp(col ? r.h : r.w, lengthOf(traySize(1, orient)), lengthOf(traySize(buttons, orient)));
+  const n = Math.max(1, buttons);
+  const fromFar = col ? westward(corner) : northward(corner);
+  const space = room ?? (col ? (fromFar ? r.x + r.w : area.w - r.x) : (fromFar ? r.y + r.h : area.h - r.y));
+  const most = Math.max(1, Math.floor((space - TRAY_DEPTH) / BUTTON_STEP + EPS) + 1);
+  let lines = Math.ceil(n / perLine(run));
+  if (lines > most) {
+    run = Math.max(run, TITLE_H + 6 + Math.ceil(n / most) * BUTTON_STEP);
+    lines = Math.ceil(n / perLine(run));
+  }
+  const depth = trayDepth(lines);
+  const [w, h] = col ? [depth, run] : [run, depth];
+  return {
+    x: westward(corner) ? r.x + r.w - w : r.x,
+    y: northward(corner) ? r.y + r.h - h : r.y,
+    w, h, orient,
+  };
 }
 
 /**
@@ -175,7 +265,8 @@ export function orientationFor(
  * a row floating where the column's top was — then is held inside the area.
  * Otherwise `r` comes back untouched.
  *
- * Content bigger than the area is shrunk to it and scrolls, as any panel is.
+ * Content bigger than the area is shrunk to it, as any panel is — and a tray
+ * shrunk along its run wraps (`trayFit`, which the caller applies).
  */
 export function turned(
   r: Rect, current: Orientation, area: Size, others: readonly Rect[],
@@ -205,16 +296,7 @@ export function turned(
 // round a corner. A push that would put any panel of the chain outside the area
 // cannot happen, and the panel doing the pushing stops flush against the chain.
 
-export interface Point { x: number; y: number }
-
 type Axis = "x" | "y";
-
-/**
- * Below this, two panels touch rather than overlap. Pointer coordinates are
- * whole pixels in practice, but nothing promises it, and a push computed in
- * floating point must not read a shared edge as a sliver of overlap.
- */
-const EPS = 1e-6;
 
 /** Whether two rectangles share any area — a shared edge is not overlap. */
 function overlaps(a: Rect, b: Rect): boolean {
@@ -304,10 +386,18 @@ function pass(layout: Layout, id: string, to: Rect, axis: Axis, dir: 1 | -1, are
   const from = layout[id];
   const [p0, l0, p1, l1] = [start(from, axis), span(from, axis), start(to, axis), span(to, axis)];
   const lead = (p: number, l: number) => (dir > 0 ? p + l : p);
-  const travel = (lead(p1, l1) - lead(p0, l0)) * dir;
-  let s = 1;
+  const trail = (p: number, l: number) => (dir > 0 ? p : p + l);
+  const [a0, a1, t0, t1] = [lead(p0, l0), lead(p1, l1), trail(p0, l0), trail(p1, l1)];
+  const travel = (a1 - a0) * dir;
+  // The leading edge is what is pulled back, and the rest is put round it: a
+  // drag keeps its length exactly, and a resize — west and north grips as much
+  // as east and south — keeps its trailing edge exactly, so a mover stopped on
+  // a chain is flush with it to the bit, not a few ulps into it.
+  let a = a1;
   for (let round = 0; round < 6; round++) {
-    const [p, l] = [p0 + s * (p1 - p0), l0 + s * (l1 - l0)];
+    const s = travel > EPS ? ((a - a0) * dir) / travel : 1;
+    const t = l1 === l0 ? a - dir * l0 : t0 + s * (t1 - t0);
+    const [p, l] = a === a1 ? [p1, l1] : l1 === l0 ? [dir > 0 ? t : a, l0] : dir > 0 ? [t, a - t] : [a, t - a];
     // What pushes is everything the mover passed over on the way, not only
     // where it lands: a fast flick that moves a panel further in one event
     // than the panel in its way is wide would otherwise go straight through it.
@@ -318,7 +408,7 @@ function pass(layout: Layout, id: string, to: Rect, axis: Axis, dir: 1 | -1, are
     const e = excess(layout, out, id, axis, dir, area);
     if (e <= EPS) return snapped(layout, out, axis, area);
     if (travel <= EPS) break;
-    s = Math.max(0, s - e / travel);
+    a = (a - dir * e - a0) * dir > 0 ? a - dir * e : a0;
   }
   return layout;
 }
@@ -380,9 +470,15 @@ export function pushed(
     const m = axis === "x" ? motion.x : motion.y;
     const cur = out[id];
     if (start(cur, axis) === start(to, axis) && span(cur, axis) === span(to, axis)) continue;
-    // The way the pointer went; failing that (a pointer still on this axis
-    // while the rectangle changed on it), the way the rectangle did.
-    const dir = (m !== 0 ? Math.sign(m) : Math.sign(start(to, axis) + span(to, axis) - start(cur, axis) - span(cur, axis)) || 1) as 1 | -1;
+    // The way the rectangle grows on this axis — its far edge going on, or its
+    // near edge going back — which for a drag is the pointer's way. Not the
+    // pointer's for a resize: a tray's depth is its buttons' (`trayFit`), and a
+    // column made shorter from its north-west corner, the pointer going down
+    // and right, gains a line out to the west. Pushing the pointer's way, what
+    // that line covered would be thrown across to the tray's east side.
+    const far = start(to, axis) + span(to, axis) - start(cur, axis) - span(cur, axis);
+    const near = start(to, axis) - start(cur, axis);
+    const dir = (far > EPS ? 1 : near < -EPS ? -1 : Math.sign(m) || 1) as 1 | -1;
     out = pass(out, id, along(cur, axis, start(to, axis), span(to, axis)), axis, dir, area);
   }
   const rect = placed(out[id], orient);
@@ -442,17 +538,17 @@ export function settled(
 
 /**
  * Where on a panel the pointer holds it: the pointer minus the panel's top-left
- * for a drag by the strip, minus its bottom-right corner for a resize by the
- * grip. Taken once, at the press, and held for the whole gesture — see
- * `dragStep`.
+ * for a drag by the strip, minus the grip's corner for a resize by one of the
+ * four grips (`corner`, the south-east when none is said). Taken once, at the
+ * press, and held for the whole gesture — see `dragStep`.
  */
-export interface Grab { id: string; kind: "move" | "resize"; dx: number; dy: number }
+export interface Grab { id: string; kind: "move" | "resize"; corner?: Corner; dx: number; dy: number }
 
-export function grabbed(id: string, kind: "move" | "resize", pointer: Point, layout: Layout): Grab {
+export function grabbed(id: string, kind: "move" | "resize", pointer: Point, layout: Layout, corner: Corner = "se"): Grab {
   const r = layout[id];
-  return kind === "move"
-    ? { id, kind, dx: pointer.x - r.x, dy: pointer.y - r.y }
-    : { id, kind, dx: pointer.x - (r.x + r.w), dy: pointer.y - (r.y + r.h) };
+  if (kind === "move") return { id, kind, dx: pointer.x - r.x, dy: pointer.y - r.y };
+  const c = cornerOf(r, corner);
+  return { id, kind, corner, dx: pointer.x - c.x, dy: pointer.y - c.y };
 }
 
 /**
@@ -479,8 +575,9 @@ export function regrasped(grab: Grab, from: Placed, to: Placed): Grab {
 
 /**
  * One pointer move of a drag or a resize: where the panel wants to be from the
- * pointer and the grab, everything `pushed` does about it, and the turn if the
- * panel is a tray (`content` gives its size each way it can run).
+ * pointer and the grab, everything `pushed` does about it, and — if the panel
+ * is a tray of `buttons` buttons — the turn a drag can make and the wrap a
+ * resize makes (`trayFit`).
  *
  * **The grab is fixed at the moment the panel is taken** — the owner: *"actually
  * the grasp point should stay the same"*, withdrawing the slip he had asked for
@@ -490,20 +587,26 @@ export function regrasped(grab: Grab, from: Placed, to: Placed): Grab {
  * the hand and is refused again. It moves again only when the pointer comes
  * back past the point where it left the panel behind, and is then once more
  * exactly under the hand where it was grabbed. So the grab goes back out
- * untouched, drag and grip alike.
+ * untouched, drag and every grip alike.
  *
  * The one exception is a tray that **turns**: it is a new shape, and the grab
  * becomes the same point of it (`regrasped`). Where the turn puts the tray is
  * still `turned`'s business — the edge it met is held — so after a turn against
  * a bottom or a right edge, the end the strip is not at, the tray lies against
  * that edge away from the hand until the next move brings it back under it.
+ * And a tray's grip follows the hand along the tray's run only: the depth
+ * across it is the buttons' (`trayFit`), so on that axis the corner is where
+ * the lines put it, wherever the hand is.
  */
 export function dragStep(
   grab: Grab, pointer: Point, layout: Layout, area: Size,
   minSize: (id: string, orient: Orientation | undefined) => Size,
-  content?: (o: Orientation) => Size,
+  buttons?: number,
 ): { layout: Layout; grab: Grab } {
   const min = (o: Orientation | undefined) => ({ [grab.id]: minSize(grab.id, o) });
+  const corner = grab.corner ?? "se";
+  const fit = (r: Placed, room?: number): Placed =>
+    (buttons === undefined ? r : trayFit(r, buttons, area, corner, room));
   let out = layout;
   // `pushed` takes the larger axis of a motion first, so a panel stopped on
   // that axis by a neighbour it then slides clear of along the other has not
@@ -515,31 +618,51 @@ export function dragStep(
   for (let round = 0; round < 3; round++) {
     const cur = out[grab.id];
     // Where the pointer now puts the corner it holds, against where that corner is.
-    const anchor = grab.kind === "move" ? { x: cur.x, y: cur.y } : { x: cur.x + cur.w, y: cur.y + cur.h };
+    const anchor = grab.kind === "move" ? { x: cur.x, y: cur.y } : cornerOf(cur, corner);
     const motion = { x: pointer.x - grab.dx - anchor.x, y: pointer.y - grab.dy - anchor.y };
     if (motion.x === 0 && motion.y === 0) {
       if (round === 0) return { layout, grab };
       break;
     }
-    // A grip held off the window is a corner the viewer could no longer see,
-    // let alone grab: `resized` stops it at the area's far edges.
-    const asked: Placed = grab.kind === "move"
-      ? { ...cur, x: cur.x + motion.x, y: cur.y + motion.y }
-      : placed(resized(cur, motion.x, motion.y, area, minSize(grab.id, cur.orient)), cur.orient);
-    const r = pushed(grab.id, asked, out, area, min(cur.orient), motion);
+    const from = out;
+    const push = (want: Placed) => pushed(grab.id, want, from, area, min(cur.orient), motion);
+    let r: Pushed;
+    if (grab.kind === "move") r = push({ ...cur, x: cur.x + motion.x, y: cur.y + motion.y });
+    else {
+      // A grip held off the window is a corner the viewer could no longer see,
+      // let alone grab: `resized` stops it at the area's edges.
+      const asked = fit(placed(resized(cur, motion.x, motion.y, area, minSize(grab.id, cur.orient), corner), cur.orient));
+      r = push(asked);
+      // A tray must come out wrapped exactly, or a button is lost off its far
+      // side. `pushed` holds each axis on its own, and against a chain it stops
+      // an axis part way: a depth part of a line deep, or a run whose wrap wants
+      // more lines than the depth it was given. So ask again for the tray that
+      // fits what was got — as many lines as the depth reached, the run
+      // lengthened to hold the buttons in them; or the lines the run reached
+      // needs — and if that too comes back cut, stay put.
+      if (buttons !== undefined) {
+        const deep = (q: Rect) => (cur.orient === "row" ? q.h : q.w);
+        for (let again = 0; !same(fit(r.rect), r.rect); again++) {
+          if (again === 3) { r = { layout: from, rect: cur, ok: false }; break; }
+          const got = r.rect;
+          r = push(deep(got) < deep(asked) - EPS ? fit(got, deep(got)) : fit(got));
+        }
+      }
+    }
     const still = r.rect.x === cur.x && r.rect.y === cur.y && r.rect.w === cur.w && r.rect.h === cur.h;
     if (!still) out = r.layout;
     if (r.ok || still) break;
   }
   let r = { layout: out, rect: out[grab.id] };
   let held = grab;
-  if (grab.kind === "move" && content && r.rect.orient) {
+  if (grab.kind === "move" && buttons !== undefined && r.rect.orient) {
     const others = Object.keys(r.layout).filter((o) => o !== grab.id).map((o) => r.layout[o]);
-    const t = turned(r.rect, r.rect.orient, area, others, content);
+    const t = turned(r.rect, r.rect.orient, area, others, (o) => traySize(buttons, o));
     if (t.orient !== r.rect.orient) {
-      // Turned, the tray is put down in its new shape and what that covers is
-      // pushed out of the way. If nothing can make room, it does not turn.
-      const turnedTo = placed(t.rect, t.orient);
+      // Turned, the tray is put down in its new shape — one line, or wrapped
+      // where the area is too short for one — and what that covers is pushed
+      // out of the way. If nothing can make room, it does not turn.
+      const turnedTo = placed(constrain(fit(placed(t.rect, t.orient)), area, { w: 0, h: 0 }), t.orient);
       const u = pushed(grab.id, turnedTo, r.layout, area, min(t.orient), { x: 0, y: 0 });
       const g = u.ok ? regrasped(grab, r.rect, u.rect) : grab;
       // Nor does it turn if, brought back under the hand, the new shape would
@@ -559,6 +682,12 @@ export function dragStep(
     }
   }
   return { layout: r.layout, grab: held };
+}
+
+/** Two rectangles the same to within float noise. */
+function same(a: Rect, b: Rect): boolean {
+  return Math.abs(a.x - b.x) <= EPS && Math.abs(a.y - b.y) <= EPS &&
+    Math.abs(a.w - b.w) <= EPS && Math.abs(a.h - b.h) <= EPS;
 }
 
 // ---- the default layout -----------------------------------------------------
@@ -720,7 +849,8 @@ function placed(r: Rect, orient: Orientation | undefined): Placed {
  *
  * `trays` names the panels that are trays, each with how many buttons it holds
  * right now: those, and only those, turn between column and row as they are
- * dragged against an edge (`turned`), and size to their buttons when they do.
+ * dragged against an edge (`turned`), sized to one line of their buttons when
+ * they do, and wrap them into more lines when made shorter (`trayFit`).
  *
  * Every arrangement goes through `pushed`: a drag, a resize, a turn, and (by
  * `settled`) every `apply`. So no two panels are ever shown overlapping while
@@ -782,10 +912,11 @@ export class Panels {
    * Puts every panel where the layouts say, clear of one another. Cheap; call
    * it whenever a default may have changed.
    *
-   * Each panel's rectangle is the stored-or-default one held inside the area,
-   * then the whole set is `settled` in panel order — so a layout stored before
-   * panels pushed, a window shrunk until the defaults would overlap, or a
-   * toolbar grown for a new tool all come up with no panel over another. What
+   * Each panel's rectangle is the stored-or-default one held inside the area —
+   * a tray's wrapped to the buttons it has (`trayFit`) — then the whole set is
+   * `settled` in panel order — so a layout stored before panels pushed, a
+   * window shrunk until the defaults would overlap, or a toolbar grown for a
+   * new tool all come up with no panel over another. What
    * that moves is not stored: it is this window's answer, and a wider one may
    * need none of it.
    */
@@ -801,7 +932,11 @@ export class Panels {
       // A tray always runs some way; one with nothing stored or defaulted runs
       // the default's way, which is down.
       const orient = id in this.trays ? want.orient ?? "column" : undefined;
-      wanted[id] = placed(constrain(want, area, this.min(id, orient)), orient);
+      const held = placed(constrain(want, area, this.min(id, orient)), orient);
+      // A tray is wrapped to its buttons as they are now: a tool defined since
+      // the viewer shortened it, or a window too short for its one line, is
+      // another line rather than a button out of sight.
+      wanted[id] = id in this.trays ? placed(constrain(trayFit(held, this.trays[id](), area), area, this.min(id, orient)), orient) : held;
     }
     const s = settled(wanted, Array.from(this.els.keys()), area, this.mins(wanted));
     this.show(s.layout, s.ok);
@@ -871,10 +1006,10 @@ export class Panels {
   }
 
   /**
-   * The two gestures: drag by the strip, resize by the grip. Both capture the
-   * pointer on the element pressed, so every move and the release come back
-   * here wherever the pointer wanders — over the canvas included, which never
-   * hears about it. That, and the canvas capturing its own presses (see
+   * The two gestures: drag by the strip, resize by any of the four grips.
+   * Both capture the pointer on the element pressed, so every move and the
+   * release come back here wherever the pointer wanders — over the canvas
+   * included, which never hears about it. That, and the canvas capturing its own presses (see
    * main.ts), is the whole of "panel gestures and canvas gestures never cross".
    */
   private wire(id: string, el: HTMLElement): void {
@@ -884,19 +1019,31 @@ export class Panels {
     // the command line is nearly always the element that holds the focus.
     el.addEventListener("pointerdown", () => this.raise(id), true);
     const strip = el.querySelector<HTMLElement>(":scope > .ptitle");
-    const grip = el.querySelector<HTMLElement>(":scope > .pgrip");
     if (strip) {
       // A tray's strip is sized by `place`, which knows which way it runs.
       if (!(id in this.trays)) strip.style.height = `${TITLE_H}px`;
       this.gesture(id, strip, "move");
     }
-    if (grip) this.gesture(id, grip, "resize");
+    // Every panel has the four, made here rather than written out in the page:
+    // that a panel resizes from any corner is the panel manager's rule, not
+    // something each panel's markup could forget. Last in the panel, so they
+    // are over its content — each only a 12px triangle in its corner (the
+    // stylesheet clips it), which leaves a strip its middle and a tray's corner
+    // buttons all but the very tip.
+    const grips = CORNERS.map((corner) => {
+      const grip = document.createElement("div");
+      grip.className = "pgrip";
+      grip.dataset.corner = corner;
+      el.appendChild(grip);
+      this.gesture(id, grip, "resize", corner);
+      return grip;
+    });
     // The browser's own menu is not wanted on chrome that has no text to copy;
     // it is left alone on the log and the input, which do.
-    for (const part of [strip, grip]) part?.addEventListener("contextmenu", (e) => e.preventDefault());
+    for (const part of [strip, ...grips]) part?.addEventListener("contextmenu", (e) => e.preventDefault());
   }
 
-  private gesture(id: string, handle: HTMLElement, kind: "move" | "resize"): void {
+  private gesture(id: string, handle: HTMLElement, kind: "move" | "resize", corner: Corner = "se"): void {
     // `mousedown`, not `pointerdown`, is the event whose default moves focus and
     // starts a text selection. Prevented, a drag leaves the command line holding
     // the focus it had, so typing after rearranging still types.
@@ -918,16 +1065,18 @@ export class Panels {
       const box = this.area.getBoundingClientRect();
       const [ox, oy] = [box.left + this.area.clientLeft, box.top + this.area.clientTop];
       const at = (ev: PointerEvent): Point => ({ x: ev.clientX - ox, y: ev.clientY - oy });
-      let grab = grabbed(id, kind, at(e), this.shown);
-      const count = this.trays[id];
-      const content = id in this.trays && kind === "move" ? (o: Orientation) => traySize(count(), o) : undefined;
+      let grab = grabbed(id, kind, at(e), this.shown, corner);
+      // Counted at the press: nothing defines a tool while a pointer is held on a panel.
+      const buttons = id in this.trays ? this.trays[id]() : undefined;
       handle.setPointerCapture(e.pointerId);
       el.classList.add("held");
+      // Which grip, too: the one held is drawn lit, the other three not.
+      handle.classList.add("held");
       this.holding = true;
       const move = (ev: PointerEvent) => {
         if (ev.pointerId !== e.pointerId) return;
         const step = dragStep(grab, at(ev), this.shown, this.size(),
-          (o, orient) => this.min(o, orient), content);
+          (o, orient) => this.min(o, orient), buttons);
         grab = step.grab;
         this.show(step.layout);
       };
@@ -937,6 +1086,7 @@ export class Panels {
         handle.removeEventListener("pointerup", end);
         handle.removeEventListener("pointercancel", end);
         el.classList.remove("held");
+        handle.classList.remove("held");
         this.holding = false;
         // A press that never moved is not an arrangement; storing it would turn
         // an untouched panel's following-the-defaults into a fixed position.
