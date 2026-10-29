@@ -579,3 +579,19 @@ test("a datum that is also ordinary geometry still obeys its constraints", async
   assert.ok(Math.abs(away - 1) < 1e-6, `the dimension should still hold exactly; it reads ${away}`);
   assert.ok(x[1] < 40, `and the point is not simply where the cursor asked: ${x}`);
 });
+
+test("armed reports what arm was given while the tool is armed, and nothing once it is not", async () => {
+  const { engine } = await setup();
+  // Read through a function: TypeScript would otherwise keep the first
+  // assertion's narrowing to null across the calls that change the answer.
+  const armed = () => engine.armed;
+  assert.equal(armed(), null);
+  const options = { radius: 4 };
+  engine.arm("point", options);
+  // The very options object, so a re-arm (an undo keeps the tool) hands the
+  // fresh instance exactly what the first one had.
+  assert.deepEqual(armed(), { name: "point", options });
+  assert.equal(armed()?.options, options);
+  engine.cancel();
+  assert.equal(armed(), null, "a cancelled tool is not armed, whatever it was armed with");
+});

@@ -256,3 +256,35 @@ test("no menu item does anything but type — nothing here journals an op of its
   assert.equal(model.journal.length, before);
   assert.ok(!model.journal.some((e) => /menu/i.test(e.op)), "the menu is not a journalled operation");
 });
+
+test("Undo and Redo sit at the bottom of every menu, disabled with the reason when there is nothing that way", async () => {
+  await loadKernel();
+  const model = new Model(2);
+  axisFrame(model);
+  const p = model.addPoint([1, 2]).name;
+  const q = model.addPoint([5, 2]).name;
+  const l = model.addLine(p, q).name;
+  const d = model.relation("dist", [p, q, 4], () => {});
+  const glyph: Pick = { name: d, kind: "relation", distance: 0 };
+
+  for (const pick of [null, pickOf(model, p), pickOf(model, l), glyph]) {
+    const where = pick?.kind ?? "empty canvas";
+    const both = menuFor(model, pick, null, { canUndo: true, canRedo: true });
+    assert.deepEqual(labels(both).slice(-2), ["Undo", "Redo"], `at the bottom of the ${where} menu`);
+    // Typed, like every item: the step is the one `undo()` takes.
+    assert.equal(commandFor(both, "Undo"), "undo()");
+    assert.equal(commandFor(both, "Redo"), "redo()");
+
+    const neither = menuFor(model, pick, null, { canUndo: false, canRedo: false });
+    assert.deepEqual(item(neither, "Undo").action, { do: "disabled", why: "nothing to undo" });
+    assert.deepEqual(item(neither, "Redo").action, { do: "disabled", why: "nothing to redo" });
+
+    const back = menuFor(model, pick, null, { canUndo: true, canRedo: false });
+    assert.equal(commandFor(back, "Undo"), "undo()");
+    assert.equal(item(back, "Redo").action.do, "disabled");
+
+    // With no history handed in, the menu is only about the pick — which is
+    // what every other test in this file is asserting on.
+    assert.ok(!labels(menuFor(model, pick)).includes("Undo"), where);
+  }
+});

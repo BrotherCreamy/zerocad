@@ -392,6 +392,22 @@ export class ToolEngine {
     return loop ? { loops, index: loops.indexOf(loop), toward: viewAxes(this.view).toward } : null;
   }
 
+  /** What `arm` was last called with. Read through `armed`, which checks it is still current. */
+  private armedWith: { name: string; options: Record<string, unknown> } | null = null;
+
+  /**
+   * The name and options the armed tool was armed with, or null when nothing is
+   * armed — exactly what `arm` needs to arm it afresh. That is its one use: an
+   * undo abandons the gesture in progress but keeps the tool (see main.ts's
+   * `step`), and the gesture's state lives in the tool instance, so "keep the
+   * tool, drop the gesture" is a new instance of the same tool. The registered
+   * name rather than `active.name`, because a tool defined at the command line
+   * may call itself anything.
+   */
+  get armed(): { name: string; options: Record<string, unknown> } | null {
+    return this.active ? this.armedWith : null;
+  }
+
   /**
    * Arms `toolName`, cancelling whatever was active. Throws if the name isn't
    * registered. `options` is handed to the tool as `ctx.options`, which is how
@@ -401,6 +417,7 @@ export class ToolEngine {
     this.active?.onCancel();
     const Ctor = getToolCtor(toolName);
     if (!Ctor) throw new Error(`no tool "${toolName}"`);
+    this.armedWith = { name: toolName, options };
     const ctx: ToolContext = {
       model: this.model,
       options,

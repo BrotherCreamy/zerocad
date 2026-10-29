@@ -866,6 +866,22 @@ are flagged as such.
   [`docs/plans/toolbar-availability.md`](docs/plans/toolbar-availability.md),
   [`docs/plans/toolbar-icons-docking.md`](docs/plans/toolbar-icons-docking.md),
   [`docs/plans/panels-push.md`](docs/plans/panels-push.md).
+- **Ctrl+Z is the drawing's, everywhere** (owner's direction, 2026-10-29:
+  *"why does ctrl+z and ctrl+y not work? should work and be bulletproof"*).
+  Ctrl+Z / Cmd+Z always undoes the model and Ctrl+Y / Ctrl+Shift+Z / Cmd+⇧Z
+  always redo it, whatever holds the focus and whatever is on screen: one
+  capture-phase listener on `window` that stops those chords and nothing
+  else. ~~While the command input holds uncommitted text, Ctrl+Z is the
+  browser's text undo~~ — the undo package's carve-out, measured as the one
+  case in which the key "did not work" (the box emptied, the drawing stayed),
+  and retired: **the drawing undoes and the half-typed text stays in the
+  box**, the browser's text undo prevented. A half-typed command is not
+  otherwise protected; anything submitted is one ↑ away. An undo closes the
+  menu and cancels the gesture in progress first, keeps the armed tool armed,
+  and always answers — the log, and a note beside the status verdict, the
+  empty stack included. Undo and Redo end every context menu. Layout and the
+  camera are not steps, and `help()` says so.
+  Spec: [`docs/plans/undo-bulletproof.md`](docs/plans/undo-bulletproof.md).
 - **The command line is curation, not a sandbox.** Typed code runs with the
   app's full authority; the scope exists for legibility and typo-catching,
   and says so honestly rather than claiming to be a security boundary.
@@ -1392,6 +1408,72 @@ extended the way `defineTool` extends the tool registry would close it.
       the resolver's flush arithmetic assumes does not happen.
 
 ## Done
+
+- [x] **Undo and redo, bulletproof** — the owner: *"why does ctrl+z and
+      ctrl+y not work? should work and be bulletproof"*. Spec:
+      [`docs/plans/undo-bulletproof.md`](docs/plans/undo-bulletproof.md), now
+      marked built. The chord listener is one capture-phase listener on
+      `window` that `preventDefault`s and `stopPropagation`s the undo and redo
+      chords only; the matcher is `src/historykeys.ts`. The text carve-out is
+      gone — the box keeps its text, the drawing undoes. `step` (every door:
+      chord, menu, typed) closes the menu, cancels the gesture, moves, re-arms
+      the tool, and notes the outcome beside the verdict. Undo / Redo at the
+      bottom of every context menu; `help()` says layout and camera are not
+      steps.
+      **Deviations from the spec:**
+      - ⚠ **The spec was wrong about the line tool.** Its matrix expected "the
+        point it placed" on the first click to be undone; the line tool's
+        first click places nothing (`src/tools/line.ts`: an abandoned chain
+        leaves no stray point). The cell checks what does happen — the preview
+        goes, the step *before* the gesture undoes, the next two clicks make a
+        line between them — and a **mid-chain** cell was added, where the
+        committed segment is what undoes. Spec text corrected, marked *(as
+        built)*.
+      - ⚠ **The note is beside the verdict, not in place of it.** The spec
+        said the status readout "briefly shows" undid / redid / nothing to
+        undo. It does — in a new `#stepnote` in the header next to `#status`,
+        cleared after 1.6 s. Writing it into `#status` would hide SOLVED /
+        CONFLICT on a timer (the stale-readout family, ARCHITECTURE's first
+        browser-only bug) and every e2e test reading `#status` right after a
+        Ctrl+Z would have had to wait it out.
+      - **`code` is a fallback, not an alternative.** Accepted only when `key`
+        is not a Latin letter: on QWERTZ the Z key reports `code: "KeyY"`, so
+        accepting both outright would make one keystroke undo and redo.
+      - **The tool is re-armed as a fresh instance** with its original
+        options (the engine grew a read-only `armed`), and **left disarmed**
+        with the toolbar's reason in the log when the restored model cannot
+        run it (a curve tool whose default frame was undone). The spec said
+        only "the tool stays armed". Before this package an undo disarmed the
+        tool as a side-effect of `swapModel`.
+      - **Mid-drag cell added**, and a behaviour change with it: cancelling
+        the drag first settles it into a step, so Ctrl+Z mid-drag takes back
+        the drag. The old code undid the step *before* the drag and pushed the
+        dragged state onto redo.
+      - **Undo / Redo are on the constraint glyph's menu too** — the third
+        menu `menuFor` builds. `menuFor` takes the stack's two booleans as an
+        optional fourth argument, so it stays pure and existing call sites
+        and tests are unchanged.
+      - **`e2e` helpers that cleared `#cmd` "because the model owns Ctrl+Z only
+        with the box empty"** (contextmenu, deletion, glyphs, intersection,
+        undo) no longer clear it; the comment was the carve-out. Other tests
+        that clear the box before Ctrl+Z without saying why were left alone.
+      - **Six existing e2e assertions on exact menu contents were updated**
+        (contextmenu ×4, setvalue, and the disabled-item counts in panels and
+        planar), since every real menu now ends Undo, Redo. Where a test
+        counts *disabled* items to ask about tools or Fix, the history items
+        are filtered out: whether they are off depends on the stack, not on
+        what the test is about.
+      - **The Cyrillic cell dispatches a synthetic event**; every other cell
+        uses the real keyboard. No test machine can switch layouts.
+      - **Commits carry the session's own model in the `Co-Authored-By`
+        line**, not the one the package brief named — the same call the
+        previous package made.
+      Tests: 826 → 832 unit (4 chord matcher, 1 menu, 1 engine), 299 → 314
+      e2e (15 in `test/e2e/undokeys.e2e.ts`; `undo.e2e.ts`'s carve-out test
+      inverted in place). The new matrix run against the old code fails 10 of
+      15 cells, the text-in-the-box cell on the drawing not moving.
+      *Discovered, left alone:* no browser-only bug this time — the count in
+      ARCHITECTURE stays at eight.
 
 - [x] **The grasp point stays the same** — the owner, reversing the slip a
       day after asking for it: *"actually the grasp point should stay the
@@ -1998,8 +2080,10 @@ extended the way `defineTool` extends the tool registry would close it.
       saved, so a reopened file starts with an empty stack; restoring replays
       the whole model, so undo costs what opening the file costs (fine at
       present sizes — measure before optimising); a view change is not undoable,
-      the view not being part of the model; and while the command input holds
-      uncommitted text Ctrl+Z belongs to the browser's text undo, not the model.
+      the view not being part of the model; and ~~while the command input
+      holds uncommitted text Ctrl+Z belongs to the browser's text undo, not the
+      model~~ — retired by the owner, 2026-10-29 (see "Undo and redo,
+      bulletproof" above and the register entry).
 - [x] **Dragging geometry** — with nothing armed, press a point and pull; the
       model follows the cursor while every constraint holds. `Problem.solve()`
       takes `extra?: ResidualBlock[]`, temporary residuals evaluated for one

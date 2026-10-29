@@ -55,9 +55,8 @@ async function moveTo(world: number[], dx = 0, dy = 0) {
 const rels = async () => (await app.repl("rels()")).value as string[];
 const relsNaming = async (n: string) => (await app.repl(`rels(${JSON.stringify(n)})`)).value as string[];
 
-/** Ctrl+Z with the command input empty — the state in which the model owns it. */
+/** Ctrl+Z, from wherever the focus happens to be — the model owns it everywhere. */
 async function undoKey(): Promise<void> {
-  await app.page.fill("#cmd", "");
   await app.page.keyboard.press("Control+z");
   await app.page.waitForTimeout(250);
 }

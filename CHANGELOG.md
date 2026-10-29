@@ -7,6 +7,59 @@ decisions.
 
 ---
 
+## Undo and redo, bulletproof
+
+The owner:
+
+> *why does ctrl+z and ctrl+y not work? should work and be bulletproof*
+
+Measured before anything changed, in headless Chromium: Ctrl+Z and Ctrl+Y
+undid and redid the model with the focus on the empty command line, on the
+body after a canvas click and after a toolbar click, and Cmd+Z and
+Ctrl+Shift+Z did too. **One case failed by design — text left in the command
+box.** The undo package's carve-out handed Ctrl+Z to the browser's text undo,
+which emptied the box and left the drawing alone, and that reads as "does not
+work". Run against the old code, the new matrix below fails 10 of its 15
+cells; the text cell fails exactly there, on the drawing not moving.
+
+**Now Ctrl+Z (Cmd+Z) always undoes the drawing and Ctrl+Y and Ctrl+Shift+Z
+(Cmd+⇧Z) always redo it, wherever the focus is.** The carve-out is retired:
+the drawing undoes and the half-typed text stays in the box, every character
+of it, because the browser's text undo is prevented. The listener runs in the
+capture phase on `window`, the first place a keydown arrives, and stops the
+undo and redo chords there and nothing else, so no input, panel, button or menu
+can swallow them. `e.key` is matched case-insensitively, and `e.code` is the
+fallback where the layout gives no Latin letter (Cyrillic, Greek) — not
+accepted outright, because on QWERTZ the Z key reports `code: "KeyY"` and would
+have been undo and redo at once (`src/historykeys.ts`, unit-tested).
+
+An undo now **puts away what is on screen first**: the context menu closes,
+and a gesture in progress is cancelled as Escape cancels it — so a line tool's
+rubber band goes, and a drag interrupted by Ctrl+Z settles into a step that
+the same keystroke takes back. **The tool stays armed**, re-armed fresh with
+its options (it used to be disarmed as a side-effect), unless the restored
+model cannot run it, in which case the log says why. **Every step answers**:
+the log line, and a note beside the status verdict — "undid", "redid",
+"nothing to undo" — for 1.6 s, beside it rather than over it so the verdict is
+never hidden. **A mouse path:** every context menu ends with Undo and Redo,
+which type `undo()` / `redo()` and are disabled with "nothing to undo" /
+"nothing to redo". `help()` says under undo that panel layout and the camera
+are not steps, which is the other way this reads as broken.
+
+832 unit tests (6 new: the chord matcher's four, the menu's Undo/Redo, the
+engine's `armed`), 314 e2e (15 new in `test/e2e/undokeys.e2e.ts`: the empty
+input, text in the input, the body, a focused toolbar button, after a panel
+drag, with the menu open, the line tool mid-gesture and mid-chain, mid-drag,
+Ctrl+Y / Ctrl+Shift+Z / Meta+Z / Meta+Shift+Z / Meta+Y, a dispatched Cyrillic
+Ctrl+я, the empty-stack message, both menus' items; the carve-out test in
+`undo.e2e.ts` inverted, and six exact-menu assertions elsewhere taught that
+every menu now ends Undo, Redo).
+
+*Known and deliberate:* a half-typed command is not protected — it stays in
+the box while the drawing undoes, and anything submitted is one ↑ away; the
+layout fallback is checked with a dispatched event, since no test machine can
+switch keyboard layout; a held Ctrl+Z repeats, one step per repeat.
+
 ## The grasp point stays the same
 
 The owner, a day after asking for the slip below:

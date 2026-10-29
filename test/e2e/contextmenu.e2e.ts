@@ -80,7 +80,6 @@ async function screenOf(name: string): Promise<[number, number]> {
 }
 
 async function undoKey(): Promise<void> {
-  await app.page.fill("#cmd", ""); // the model owns Ctrl+Z only with the box empty
   await app.page.keyboard.press("Control+z");
   await app.page.waitForTimeout(220);
 }
@@ -99,8 +98,10 @@ test("the empty-canvas menu arms a tool, and the log shows the command it typed"
   await rightClick(520, 160);
   assert.ok(await menuOpen(), "a right press released where it landed opens the menu");
   assert.equal(await header(), "", "there is nothing to name on empty canvas");
+  // Undo and Redo end every menu (see undokeys.e2e.ts for what they do).
   assert.deepEqual(await items(), [
     "Point", "Line", "Rectangle", "Circle", "3 point circle", "Arc", "3 point arc", "Fillet", "Frame",
+    "Undo", "Redo",
   ]);
   // The commands are on the menu, not hidden behind it: this is a shortcut to
   // the command line rather than a fourth way to edit the drawing.
@@ -130,7 +131,7 @@ test("Dimension on an edge holds it at the length it already has", async () => {
   await rightClick((ax + bx) / 2, (ay + by) / 2);
 
   assert.match(await header(), new RegExp(`^${l.name}\\b`), "the menu names what it is about");
-  assert.deepEqual(await items(), ["Insert name", "Delete", "Dimension"]);
+  assert.deepEqual(await items(), ["Insert name", "Delete", "Dimension", "Undo", "Redo"]);
   const command = (await commands()).Dimension;
   assert.match(command, /^dist\("p\d+", "p\d+", [\d.]+\)$/, `Dimension typed ${command}`);
   const asked = Number(/, ([\d.]+)\)$/.exec(command)![1]);
@@ -189,7 +190,7 @@ test("Delete on a constraint glyph removes that relation", async () => {
   // A `dist` is a dimension, so it has a value to set as well as a relation to
   // delete. A constraint glyph gets Delete alone — that pair is covered in the
   // unit suite, and the Set value… item is exercised in its own test below.
-  assert.deepEqual(await items(), ["Set value…", "Delete"]);
+  assert.deepEqual(await items(), ["Set value…", "Delete", "Undo", "Redo"]);
   assert.equal((await commands()).Delete, `del("${name}")`);
 
   await choose("Delete");
@@ -202,7 +203,7 @@ test("Delete on a constraint glyph removes that relation", async () => {
 test("Fix is disabled with the standing message when there is no default frame", async () => {
   const [sx, sy] = await screenOf("p1");
   await rightClick(sx, sy);
-  assert.deepEqual(await items(), ["Insert name", "Delete", "Fix"], "a point has no natural dimension");
+  assert.deepEqual(await items(), ["Insert name", "Delete", "Fix", "Undo", "Redo"], "a point has no natural dimension");
   // Three frame coordinates: the app is 3D, and so is the fixture frame.
   assert.match((await commands()).Fix, /^fix\("p1", \[-?[\d.]+, -?[\d.]+, -?[\d.]+\]\)$/,
     "with a frame set, Fix is a command like any other");
@@ -211,7 +212,10 @@ test("Fix is disabled with the standing message when there is no default frame",
   await app.type("setDefaultFrame(null)");
 
   await rightClick(sx, sy);
-  const off = await app.page.$$eval("#ctxmenu .item.off", (els) => els.map((e) => e.textContent ?? ""));
+  // Redo is off too here, for its own reason (nothing has been undone); the
+  // question is about Fix.
+  const off = (await app.page.$$eval("#ctxmenu .item.off", (els) => els.map((e) => e.textContent ?? "")))
+    .filter((label) => label !== "Undo" && label !== "Redo");
   assert.equal(off.length, 1, "Fix is shown and disabled, not quietly dropped");
   assert.match(off[0], /^Fix/);
   const why = await app.page.$eval("#ctxmenu .why", (el) => el.textContent ?? "");

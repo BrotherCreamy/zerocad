@@ -28,7 +28,6 @@ async function saved(): Promise<string> {
 }
 
 async function undoKey(): Promise<void> {
-  await app.page.fill("#cmd", ""); // the model owns Ctrl+Z only with the box empty
   await app.page.keyboard.press("Control+z");
   await app.page.waitForTimeout(220);
 }

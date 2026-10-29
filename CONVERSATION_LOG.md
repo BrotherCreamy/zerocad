@@ -106,6 +106,72 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### Undo, bulletproof: the chord is the drawing's, and the text stays put
+
+**The owner:** *"why does ctrl+z and ctrl+y not work? should work and be
+bulletproof"*. Measured by the supervising session before the spec was
+written: in headless Chromium the keys worked from every focus position but
+one — text left in the command box, where the undo package's carve-out handed
+Ctrl+Z to the browser's text undo, which emptied the box and left the drawing
+alone. That carve-out was the decision the undo log entry below says "took the
+longest to settle for how small it is", and it was wrong in the way that
+matters most: it made the key look broken. Its reasoning — that undoing the
+drawing mid-sentence is the worse of two wrong answers — had a premise nobody
+tested, that the text undo was the *right* answer for someone with text in
+the box. What someone pressing Ctrl+Z in a CAD tool means is the drawing.
+
+**Why the text is kept rather than cleared or left to the browser.**
+`preventDefault` on the chord means the browser's text undo never runs, so the
+box keeps exactly what was in it. Clearing it would have been the opposite
+mistake (destroying a half-written command to make room for an undo nobody
+asked to make room for), and letting the browser have the keystroke *as well*
+would have done two things with one press. Anything already submitted is still
+one ↑ away, which is why a half-typed command is not otherwise protected.
+
+**`code` only as a fallback.** The spec said accept `e.code` beside `e.key`.
+Taken literally that is a bug on German keyboards: QWERTZ puts the key printed
+Z at a US Y's position, so its event says `key: "z"`, `code: "KeyY"`, and a
+matcher accepting either would read it as undo and redo at once. `code` is the
+answer only where the layout produced no Latin letter at all (Cyrillic,
+Greek), which is the case the spec was reaching for. The matcher is a pure
+function in its own file so the unit suite can feed it layouts no test machine
+has.
+
+**The note beside the verdict, not over it.** The spec asked for the status
+readout to say "undid" briefly. Writing it into `#status` was rejected: for a
+second and a half the header would not be saying SOLVED or CONFLICT, and a
+readout that hides the verdict on a timer is the stale-readout bug by design —
+the first browser-only bug in ARCHITECTURE's list was a stale status line. It
+also would have made every e2e test that reads `#status` straight after a
+Ctrl+Z wait out the timer. So the note is its own element beside the verdict,
+in the header, and `#status` is untouched.
+
+**The tool stays armed, as a new instance.** Before this, an undo disarmed
+whatever was armed, as a side-effect of `swapModel` cancelling the gesture.
+The spec wants the gesture gone and the tool kept, and the gesture *is* the
+tool instance's state (the line tool's pending click, its chain anchor), so
+"keep the tool, drop the gesture" is a fresh `arm` with the same name and
+options after the swap. The engine grew a read-only `armed` for that. The one
+case it does not re-arm is a tool the restored model cannot run (a curve tool
+whose default frame was just undone): arming it would put a tool on the
+toolbar's greyed button whose first click can only fail, so it is left
+disarmed with the toolbar's own reason in the log.
+
+**The spec's line-tool cell was wrong about the code.** It expected the point
+placed by the line tool's first click to be undone; the first click places
+nothing (the line tool commits both ends on the second click, so an abandoned
+chain leaves no stray point). The test checks what actually happens — the
+preview goes, the step *before* the gesture undoes, and the next two clicks
+make a line between them rather than from the abandoned first click — and a
+mid-chain cell was added for the case the spec was reaching for, where a
+committed segment is what undoes. A mid-drag cell too: cancelling a drag first
+settles it into a step, so the one keystroke takes the drag back, and the rest
+of the held gesture moves nothing.
+
+**Rejected: a separate undo for layout and camera.** The spec is explicit that
+they are not steps; `help()` now says so, because an orbit followed by a
+Ctrl+Z that undoes an edit is the other way this reads as broken.
+
 ### The grasp point stays the same — and what the slip had been hiding
 
 **The owner:** *"actually the grasp point should stay the same"* — reversing

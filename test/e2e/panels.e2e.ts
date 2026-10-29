@@ -549,7 +549,9 @@ test("the context menu and the toolbar give the same reason", async () => {
   const at = await app.at(700, 300);
   await app.page.mouse.click(at.x, at.y, { button: "right" });
   await app.page.waitForTimeout(120);
-  const why = await app.page.$$eval("#ctxmenu .why", (els) => els.map((el) => el.textContent));
+  // The tools' reasons; Undo and Redo carry their own, about the history.
+  const why = (await app.page.$$eval("#ctxmenu .why", (els) => els.map((el) => el.textContent)))
+    .filter((t) => !/^nothing to (undo|redo)$/.test(t ?? ""));
   await app.page.keyboard.press("Escape");
   assert.equal(why.length, CURVES.length, "one reason per disabled menu item");
   // A button's hover leads with its name, the face being an icon; the reason after it is the menu's.

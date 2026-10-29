@@ -423,7 +423,9 @@ replacing) the system Node other projects on this machine may depend on.
 - **Undo/redo** (`src/undo.ts`, policy in `src/main.ts`) — Ctrl+Z / Cmd+Z
   undoes, Ctrl+Shift+Z and Ctrl+Y redo, and `undo()` / `redo()` are ordinary
   commands over the same host handles, so the keystroke and the command cannot
-  drift apart.
+  drift apart. The context menu's **Undo** and **Redo** (the bottom two items
+  on every menu, disabled with "nothing to undo" / "nothing to redo") type
+  those commands, so there are three doors and one step function behind them.
   The mechanism is a **stack of whole-model snapshots**, and the snapshot format
   is the text `save()` writes — which already carries the journal *and* the
   solved coordinates, already restores through `open()`, and compares for
@@ -447,14 +449,30 @@ replacing) the system Node other projects on this machine may depend on.
   gesture can end (released, cancelled with Escape, or abandoned because the
   model was swapped out mid-gesture). An unpaired `before` would strand the
   host's bracket silently, so `test/engine.test.ts` covers all three exits.
-  **The carve-out:** while the command input holds uncommitted text, Ctrl+Z is
-  the browser's and edits the text. A half-typed command makes the keystroke
-  ambiguous, and an empty input is the signal that it is meant for the model.
+  **The chord is the drawing's, everywhere** (owner, 2026-10-29: *"should work
+  and be bulletproof"*). One capture-phase listener on `window` —
+  the first thing any keydown reaches — matches the chord
+  (`src/historykeys.ts`: `key` case-insensitively, `code` when the layout
+  gives no Latin letter) and calls `preventDefault` and `stopPropagation` for
+  those chords only, so no input, panel, button or menu below can see or
+  swallow them. ~~While the command input holds uncommitted text, Ctrl+Z is
+  the browser's~~ — retired: the drawing undoes and the half-typed text stays
+  in the box, untouched, since the browser's text undo is prevented. A step
+  closes the menu and cancels the gesture in progress first (a drag so
+  cancelled settles into a step, which the same keystroke then undoes), and
+  **the armed tool stays armed** as a fresh instance — unless the restored
+  model cannot run it, when it is disarmed with the toolbar's reason in the
+  log. Every step answers twice: its log line, and a note beside the status
+  verdict (`#stepnote`: "undid", "redid", "nothing to undo") for 1.6 s — beside
+  it, never over it, so the verdict cannot go stale behind it.
   Deliberate limitations: history is **per-session and not saved** — a reopened
   file starts with an empty stack; restoring is a full replay, so undo costs
   what opening the file costs (fine at present sizes, and the first thing to
   measure if it ever is not); and there is **no undo of a view change**, since
-  the view is not part of the model.
+  the view is not part of the model — nor of panel layout, which is the
+  viewer's. `help()` says both under undo, since "Ctrl+Z after an orbit does
+  nothing" is the other way this reads as broken. A key-repeat of a held
+  Ctrl+Z steps once per repeat, as in every editor.
 
 - **Constraint glyphs on the canvas** (`src/glyphs.ts`, drawn by `main.ts`,
   hit-tested by `ToolEngine.pickAt`) — one small boxed mark per relation,
@@ -972,7 +990,10 @@ replacing) the system Node other projects on this machine may depend on.
   *Fix* on a point. On a constraint glyph: the relation's description as the
   header, and *Delete*. On empty canvas: the eight tool arms, plus *Frame*
   (`setDefaultFrame(frame())` when the drawing has no frame at all, `frame()`
-  once it has one). Each row shows the command beside its label.
+  once it has one). Every menu ends with *Undo* and *Redo* (`undo()`,
+  `redo()`), disabled with "nothing to undo" / "nothing to redo" — the host
+  hands `menuFor` the stack's two booleans, so the menu stays pure. Each row
+  shows the command beside its label.
   **The seam is `submit`** — the very function the Enter key calls, handed to
   the menu as an explicit `run` hook. Logging, the recall history, the one
   undo bracket and the re-solve all live there and nowhere else, so an item

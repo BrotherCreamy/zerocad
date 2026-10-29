@@ -38,11 +38,11 @@ async function saved(): Promise<string> {
 }
 
 /**
- * Presses a shortcut with the command input empty, which is the state in which
- * the model owns Ctrl+Z (see the carve-out test at the bottom).
+ * Presses a shortcut from wherever the focus is. There is no state the input
+ * has to be in first — the chord is the drawing's everywhere; the matrix of
+ * where "everywhere" has been checked is test/e2e/undokeys.e2e.ts.
  */
 async function key(combo: string): Promise<void> {
-  await app.page.fill("#cmd", "");
   await app.page.keyboard.press(combo);
   await app.page.waitForTimeout(220);
 }
@@ -172,21 +172,22 @@ test("an entry that changes nothing is not a step", async () => {
   assert.equal(await saved(), here, "and forward again, still one step");
 });
 
-test("with text in the command line, Ctrl+Z belongs to the text", async () => {
+test("with text in the command line, Ctrl+Z still undoes the drawing and the text stays", async () => {
+  // This was the one case that failed by design — the carve-out handed the key
+  // to the box's own undo, which emptied it and left the model alone — and
+  // the owner retired it: "should work and be bulletproof".
   const here = await saved();
   // A half-typed command, exactly as picking two entities leaves one.
-  await app.page.fill("#cmd", 'dist("p1", "p2"');
-  await app.page.keyboard.press("Control+z");
-  await app.page.waitForTimeout(200);
-
-  assert.equal(await saved(), here, "the model did not move under the half-typed command");
-
-  // And with the box empty again it is the model's once more.
-  await app.page.fill("#cmd", "");
+  const half = 'dist("p1", "p2"';
+  await app.page.fill("#cmd", half);
   await undoKey();
-  assert.notEqual(await saved(), here);
+  assert.notEqual(await saved(), here, "the drawing undid under the half-typed command");
+  assert.equal(await app.page.inputValue("#cmd"), half, "and the box kept every character of it");
+
   await redoKey();
-  assert.equal(await saved(), here);
+  assert.equal(await saved(), here, "redo too");
+  assert.equal(await app.page.inputValue("#cmd"), half);
+  await app.page.fill("#cmd", "");
 });
 
 test("undo() typed at the command line is the same thing as the keystroke", async () => {
