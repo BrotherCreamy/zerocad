@@ -1,6 +1,9 @@
 # Plan: resize from any corner, and a tray that wraps
 
-**Status: queued** (2026-10-29). The owner's direction, verbatim:
+**Status: built** (2026-10-29) — one PR against `claude/resume-tasks-o7q02e`
+(branch `claude/panels-corners-wrap`); every deviation is in `TODO.md`'s Done
+entry, and the places this text was wrong or silent are corrected below and
+marked *(as built)*. The owner's direction, verbatim:
 
 > *allow me to rescale the popup windows from any corner. the tool palette
 > should wrap the icons also - i.e. if it is vertical and i decrease vertical
@@ -24,7 +27,9 @@ drops below its minimum, growing into a neighbour pushes it, a resize
 stopped by a chain against the window edge stops flush, and the layout is
 stored. Make `resized` take which corner, as a pure function, and test each
 corner against each edge and against a neighbour. A tray's grips resize the
-tray like any panel; turning still happens only on a strip drag.
+tray like any panel; turning still happens only on a strip drag. *(As built:
+like any panel along the tray's run; across it, the depth is the buttons' —
+see §2 — so a column's corner dragged sideways moves nothing.)*
 
 ## 2. The tray wraps
 
@@ -40,6 +45,19 @@ way. Scrolling goes: a tray can always wrap to fit, so the scrollbar is
 retired. A turned tray (column ↔ row) re-sizes to one line in the new
 direction as now. Layout storage is unchanged (`v2`: rectangle and
 orientation; the wrap is derived).
+
+*(As built: "the panel's content box deciding" cannot be the whole rule — a
+corner moves both edges, and a column made shorter but no wider would wrap its
+second column out of sight. So `trayFit(r, buttons, area, corner, room?)` keeps
+the **run as the viewer left it** — between one button and one line of all of
+them; a tray is never longer than its buttons — and makes the **depth exactly
+the lines** the stylesheet's flex-wrap makes at that run, which the arithmetic
+matches to the pixel. The opposite corner stays put, so a tray wrapped from a
+west or north corner grows its new line that way. Where there is no room for
+another line — the window edge, or a chain against it — the tray keeps the
+lines that fit and the shortening stops, as at a minimum. `apply` fits too, so
+a tool defined into a shortened tray, or a window too short for one line,
+wraps.)*
 
 ## Verification
 
@@ -57,7 +75,9 @@ with no scrollbar; LOOK at the screenshots of the wrapped tray at both
 orientations. Full `npm run test:all`. Docs per `CLAUDE.md`: CHANGELOG at
 the top quoting the owner; the register's panels entry (the "scrolls rather
 than grows" caveat replaced); STATUS; `docs/plans/panels.md` caveats; this
-file marked built.
+file marked built. *(As built: the caveat was in STATUS's panels entry, not
+the register's; it is replaced there, and the register entry gained the two
+new rules in the owner's words.)*
 
 ## Delivery
 

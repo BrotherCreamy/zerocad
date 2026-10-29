@@ -7,6 +7,81 @@ decisions.
 
 ---
 
+## Panels resize from any corner, and the tray wraps
+
+The owner:
+
+> *allow me to rescale the popup windows from any corner. the tool palette
+> should wrap the icons also - i.e. if it is vertical and i decrease vertical
+> size, it should create a second column.*
+
+**Every panel has four grips**, one per corner, each the 12 px triangle the
+one bottom-right grip was, with the cursor of its diagonal (`nwse-resize`,
+`nesw-resize`). Dragging one moves that corner and its two edges; the
+opposite corner stays put. Everything true of the one grip is true of all
+four, because all four go through the same `dragStep` → `pushed` path:
+the panel never leaves the area or drops below its minimum, growing into a
+neighbour pushes it, a chain against the window edge stops the resize flush,
+the grab stays fixed (now as an offset from the grip's own corner), and the
+layout is stored. `resized(start, dx, dy, area, min, corner)` is the pure
+function, the south-east still the default. The grips are made by
+`panels.ts` rather than written into `index.html`, and each is **clipped to
+the triangle in its corner**, so a strip keeps its middle to drag by and a
+tray's corner buttons lose only their very tips — which closes the old
+"the grip sits over the last button's corner" caveat.
+
+**The tray's buttons wrap.** They flow in the way the tray runs (CSS
+flex-wrap): a column made shorter gains a second column, then a third; a row
+made narrower, a second row. `trayFit` is the rule, pure and matched to the
+CSS to the pixel: **the run is the viewer's, the depth is the buttons'** — the
+length along the run is kept as the hand left it, between one button and one
+line of them all, and the depth is exactly the lines that wraps into. So no
+button is ever out of sight and **the scrollbar is retired** (`overflow:
+hidden`). A tray whose lines would not fit — against the window edge, or a
+chain that cannot move — keeps the lines that do, and the hand is stopped as
+at a minimum; from the opposite corner the new line grows the other way.
+`traySize(n, o)` is now "the size a tray wants for n buttons in one line",
+used for a turn and the defaults; a turned tray comes up one line, as before.
+`apply` fits too, so **a tool defined at the command line takes its place in
+the wrap** — another line if the last is full — instead of scrolling into
+view, and a window too short for the tray's one line wraps it. Storage is
+unchanged: `v2`, rectangle and orientation, the wrap derived.
+
+Two things only a west or north grip exposed, fixed in `pushed`: the way a
+panel pushes along an axis is now the way its rectangle grows there, not the
+pointer's sign (a tray shortened from its north-west corner, the pointer going
+down and right, gains a column out to the *west*, and pushing the pointer's
+way would have thrown what it covered across to the east side); and the
+pull-back to flush is done on the leading edge with the trailing edge kept
+exact, so a panel grown west into a blocked chain stops flush to the bit
+rather than 3·10⁻¹⁴ px into its neighbour.
+
+840 unit tests (8 new: `resized` from each corner against the minimum and the
+area's edges; each corner pushing a neighbour along each axis, stopping flush
+on a chain at the window edge and waiting for the hand; `trayFit`'s wrap, its
+caps, its idempotence and its west/north growth; a tray's grip wrapping and
+pushing, blocked by a wall, and partway; a wrapped tray turning to one line;
+and the 2 000-step random walk now dragging random corners as well as strips,
+asserting no overlap, no pixel outside, no panel below its minimum, the tray
+always exactly as deep as its lines, and the panel under its grab whenever
+nothing stops it), 319 e2e (5 new: the log from each of its four corners, the
+opposite corner measured still; a column shortened from its bottom-right into
+two columns, by button position, then into one button a column; a row
+narrowed from its right into two rows; a wrapped row and a wrapped column
+turned, each coming up one line; two tools defined into a wrapped tray, the
+second widening it by a column, every button inside and nothing to scroll —
+and the random-drag run now takes all four grips and checks the tray whole
+after every drag).
+
+*Known and deliberate:* a tray's grip cannot set the depth — dragging a
+column's corner sideways moves nothing, the lines decide it; a tray cannot be
+made longer than one line of its buttons; a moved one-line tray that gains a
+tool wraps that button into a second line rather than growing a button longer
+(the layout does not record whether its length was the viewer's or the
+defaults', and the spec keeps the stored shape unchanged); a grip's triangle
+takes the corner of whatever is under it, the first few pixels of the log's
+"log" label included.
+
 ## Undo and redo, bulletproof
 
 The owner:

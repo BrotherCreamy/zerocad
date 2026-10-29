@@ -851,6 +851,15 @@ of both (a corner), it stays as it is. The rule (`orientationFor`, `turned`) is
 pure arithmetic in `panels.ts`, and the orientation is stored with the
 rectangle, in the same per-viewer layout.
 
+**Any corner resizes, and a tray wraps rather than scrolls.** Every panel has a
+grip on each corner; `resized` moves that corner and its two edges and leaves
+the opposite corner where it was, through the same resolver as everything
+else. A tray's buttons flow and wrap in the way it runs, and its size is split
+between the viewer and the buttons: **the run is the viewer's, the depth is
+the buttons'** (`trayFit`) — exactly as many lines thick as the wrap makes, so
+nothing is ever out of sight and nothing scrolls. The stored layout is still a
+rectangle and an orientation; the wrap is derived from them every time.
+
 **Panels push one another, and never overlap.** Every arrangement — a drag, a
 resize, a turn, every `apply` — goes through one pure resolver, `pushed`: the
 mover goes where it wants along each axis of the pointer's move in turn, and
@@ -870,7 +879,7 @@ suite asserts the invariant over every gesture it makes rather than only the
 ones it measures.
 
 **Gestures never cross**, and it takes both halves: a panel captures the
-pointer on its strip or grip, and the host captures it on every canvas press.
+pointer on its strip or grips, and the host captures it on every canvas press.
 The engine already captured drags, boxes and pans, but not an armed tool's
 gesture — harmless while the chrome sat beside the canvas, and a rectangle that
 never finished once a panel could sit on top of it. The capture lives in
