@@ -24,6 +24,14 @@ otherwise.
 
 ## Decisions made so far — veto here if any are wrong
 
+- **Effortless to pick up, then insanely powerful** (owner's direction,
+  2026-10-29, verbatim in [`docs/plans/effortless.md`](docs/plans/effortless.md)):
+  a tool does the obvious thing with defaults and says what it chose; a
+  refusal about a click is guidance, never red; every option is visible in
+  a panel *and* typeable, and the panel types the command; the pointer
+  layer never needs the terminal. Every package is judged by it from here.
+  First packages: `no-refusals.md`, `tool-options.md`.
+
 The guiding rule, set by the owner: **tools work like Onshape/SolidWorks, so
 people arrive already knowing how to use them.** Deviations from that rule
 are flagged as such.
