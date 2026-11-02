@@ -138,7 +138,6 @@ export class ArcTool extends Tool {
 
     r.g.save();
     r.g.strokeStyle = "#e8a33d";
-    r.g.setLineDash([4, 3]);
     r.g.lineWidth = 1.3;
 
     if (!this.start) {

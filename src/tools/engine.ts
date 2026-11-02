@@ -822,7 +822,13 @@ export class ToolEngine {
     this.renderBox();
     if (!this.active) return;
     const r: RenderContext = { g: this.g, worldToScreen: (w) => this.worldToScreen(w), scale: this.view.scale };
+    // A tool starts on a solid line. Dashes mean selection (the crossing box
+    // below), so a shape being drawn must never inherit them from whatever the
+    // context drew last; a tool that wants a dashed guide sets one itself.
+    this.g.save();
+    this.g.setLineDash([]);
     this.active.render(r);
+    this.g.restore();
     this.renderSnapMarker();
   }
 

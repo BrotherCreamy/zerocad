@@ -143,7 +143,6 @@ export class Circle3Tool extends Tool {
       // what the next click will build is worse than no preview.
       if (f && radius < PREVIEW_MAX_R) {
         const pts = arcSamples(f, arcSegments(f.sweep, radius)).map((w) => r.worldToScreen(w));
-        r.g.setLineDash([4, 3]);
         r.g.beginPath();
         r.g.moveTo(...pts[0]);
         for (const q of pts.slice(1)) r.g.lineTo(...q);

@@ -122,7 +122,6 @@ export class RectangleTool extends Tool {
     const corners: [number, number][] = [this.from.world, b, this.current, d].map((w) => r.worldToScreen(w));
     r.g.save();
     r.g.strokeStyle = "#e8a33d";
-    r.g.setLineDash([4, 3]);
     r.g.lineWidth = 1.3;
     r.g.beginPath();
     r.g.moveTo(...corners[0]);

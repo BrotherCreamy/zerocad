@@ -259,8 +259,10 @@ export class LineTool extends Tool {
       r.g.globalAlpha = 1;
     }
 
+    // Solid, like every shape being drawn: dashes mean selection (the crossing
+    // box), and a shape under the hand must not read as one.
     r.g.strokeStyle = "#e8a33d";
-    r.g.setLineDash([4, 3]);
+    r.g.setLineDash([]);
     r.g.lineWidth = 1.3;
     r.g.beginPath();
     r.g.moveTo(ax, ay);

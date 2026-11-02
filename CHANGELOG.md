@@ -7,6 +7,17 @@ decisions.
 
 ---
 
+## A shape being drawn is a solid line, not a dashed one
+
+The owner: *"when you drag out a shape, it should not be a dashed line (dashed
+means selection)"*. The line, rectangle, circle, arc, circle3 and arc3 previews
+were dashed, the same mark as the crossing selection box. They are now solid,
+in the same amber. The engine resets the dash state before every tool's
+render, so a preview can never inherit a dash from whatever the canvas drew
+last. Dashes stay where they mean something other than a shape: the crossing
+box (selection), the projected-snap ghost marker, the line tool's faint
+inference guide, revolve's lit axis, and dimension witness lines.
+
 ## Tool options: declared, visible, remembered
 
 The owner's standing direction (2026-10-29):

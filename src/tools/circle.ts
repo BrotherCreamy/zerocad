@@ -86,7 +86,6 @@ export class CircleTool extends Tool {
     const pts = arcSamples(f, arcSegments(f.sweep, radius * r.scale)).map((w) => r.worldToScreen(w));
     r.g.save();
     r.g.strokeStyle = "#e8a33d";
-    r.g.setLineDash([4, 3]);
     r.g.lineWidth = 1.3;
     r.g.beginPath();
     r.g.moveTo(...pts[0]);

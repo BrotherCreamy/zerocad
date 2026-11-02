@@ -221,7 +221,6 @@ export class Arc3Tool extends Tool {
         // Sampled in the world and projected, exactly as main.ts draws the
         // committed arc — so the preview is that arc, at any angle of view.
         const pts = arcSamples(f, arcSegments(f.sweep, rad)).map((w) => r.worldToScreen(w));
-        r.g.setLineDash([4, 3]);
         r.g.beginPath();
         r.g.moveTo(...pts[0]);
         for (const pt of pts.slice(1)) r.g.lineTo(...pt);
