@@ -288,3 +288,24 @@ test("Undo and Redo sit at the bottom of every menu, disabled with the reason wh
     assert.ok(!labels(menuFor(model, pick)).includes("Undo"), where);
   }
 });
+
+test("the View row: on empty canvas, given the mode, one item of three choices — each typing its view(), the one in force marked — and on nothing else", async () => {
+  await loadKernel();
+  const model = new Model(3);
+  axisFrame(model);
+  const p = model.addPoint([1, 2, 0]).name;
+  for (const mode of ["shaded", "hidden", "wire"] as const) {
+    const menu = menuFor(model, null, null, { canUndo: false, canRedo: false }, mode);
+    const view = item(menu, "View");
+    assert.equal(view.action.do, "choose");
+    const choices = view.action.do === "choose" ? view.action.choices : [];
+    assert.deepEqual(choices.map((c) => [c.label, c.command]), [
+      ["Shaded", 'view("shaded")'], ["Hidden", 'view("hidden")'], ["Wire", 'view("wire")'],
+    ]);
+    assert.deepEqual(choices.filter((c) => c.current).map((c) => c.command), [`view("${mode}")`], `${mode} is the one marked`);
+    // Above Undo and Redo, which stay at the bottom of every menu.
+    assert.deepEqual(labels(menu).slice(-3), ["View", "Undo", "Redo"]);
+  }
+  assert.ok(!labels(menuFor(model, pickOf(model, p), null, null, "shaded")).includes("View"), "not on an entity's menu");
+  assert.ok(!labels(menuFor(model, null)).includes("View"), "not when the host says nothing of a mode");
+});

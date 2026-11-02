@@ -3,15 +3,19 @@
 //
 // The depth layer (facelayer.ts) answers "which face is in front" for every
 // pixel, but it answers on the GPU, into a picture, and nothing on the 2D
-// canvas can read that back without stalling the frame. The drawing — edges,
-// points, glyphs — stays on top of the faces, because what a hand aims at must
-// never be behind one; what this module decides is only the *ink* of an edge:
-// full where nothing is in front of it, dimmed where a face is, the way a
-// drafting convention draws a hidden line. A pure function of the faces and
-// the view, as faces.ts is, so it is tested in Node — and it is also the e2e
-// suite's oracle for the depth layer's picture (`nearestFace`,
-// `outlineDistance`), so the app and the test that grades the renderer ask
-// one implementation the same question.
+// canvas can read that back without stalling the frame. So the 2D drawing —
+// edges, points, names, glyphs, frame markers — asks here instead, and what it
+// does with the answer is the view mode's (viewmode.ts). **Shaded**, the
+// default, a solid is opaque — the owner: "when you extrude a solid, it should
+// look like a solid" / "It should be opaque" — so what is behind a face is not
+// drawn, and the pick, the snapper and box select ask the *same* `Occlusion`
+// (`inSight`) so nothing invisible is ever under the hand. **Hidden** draws
+// it all and dims the ink of what is behind, the way a drafting convention
+// draws a hidden line (`inkRuns`, `hiddenInk`), with everything still
+// aimable. A pure function of the faces and the view, as faces.ts is, so it is
+// tested in Node — and it is also the e2e suite's oracle for the depth layer's
+// picture (`nearestFace`, `outlineDistance`), so the app and the test that
+// grades the renderer ask one implementation the same question.
 //
 // **The method** is the oracle's, lifted: every visible face's outlines
 // projected once a frame with their screen box, so most (face, point) pairs
@@ -190,9 +194,35 @@ function hiderOf(occ: Occlusion, faces: readonly Occluder[], world: number[], at
   return null;
 }
 
-/** Whether a face is in front of the world point — what dims the ink there. */
+/** Whether a face is in front of the world point — what dims the ink there, or hides it in a shaded view. */
 export function hidden(occ: Occlusion, world: number[]): boolean {
   return hiderOf(occ, occ.faces, world, worldToScreen(occ.view, world)) !== null;
+}
+
+/**
+ * Whether the world point can be seen, and so drawn and aimed at — the one
+ * question the draw pass, `hitTest`, the snapper and box select all ask of a
+ * shaded view, with the same `Occlusion`. Null is "nothing hides anything":
+ * no solid, or a mode in which faces are not opaque.
+ *
+ * A point on the surface is in sight: an edge of a face lies in that face's
+ * plane, and `SLACK_PX` square to it is what tells "on" from "behind" (see the
+ * header), so a box's near corners and edges are drawn and picked while its
+ * far ones are not.
+ */
+export function inSight(occ: Occlusion | null, world: number[]): boolean {
+  return !occ || !hidden(occ, world);
+}
+
+/**
+ * The parts of a polyline that can be seen, as screen polylines — `inkRuns`
+ * with the hidden runs dropped. What box select tests a partly hidden edge
+ * against, so a box catches an edge by its visible part only. With no
+ * occlusion, the whole polyline.
+ */
+export function visibleRuns(occ: Occlusion | null, view: View, world: number[][], closed = false): [number, number][][] {
+  if (!occ) return [world.map((w) => worldToScreen(view, w))];
+  return inkRuns(occ, world, closed).filter((r) => !r.hidden).map((r) => r.points);
 }
 
 /** A stretch of an edge inked one way: its screen polyline, and whether a face is in front of it. */

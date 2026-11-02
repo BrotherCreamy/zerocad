@@ -29,8 +29,10 @@
 
 import type { AxisName, Entity, FeatureEntry, Model, ProfileMember, RelationEntry } from "./model.ts";
 import { screenAngle, withinSweep } from "./intersect.ts";
-import { frameArms, frameMarker } from "./framemarker.ts";
+import { FRAME_ARM_PX, frameArms, frameMarker } from "./framemarker.ts";
 import { nearestOnPolyline, screenCurve, screenOf as projectPoint } from "./projection.ts";
+import { inSight, type Occlusion } from "./occlusion.ts";
+import { frameBasis } from "./relations/refs.ts";
 import type { View } from "./view.ts";
 
 /**
@@ -71,13 +73,21 @@ function dist(ax: number, ay: number, bx: number, by: number): number {
  *
  * Picking is against the drawing *as projected* — what the viewport is already
  * showing — so in a 3D model it is the same screen-space question it always
- * was, asked of each entity's shape on screen (see projection.ts). Depth plays
- * no part: a point behind a line is as pickable as one in front of it, which
- * is what a wireframe looks like and the only reading under which everything
- * drawn can be clicked.
+ * was, asked of each entity's shape on screen (see projection.ts). Among
+ * strokes depth plays no part: a point behind a line is as pickable as one in
+ * front of it, which is what a wireframe looks like.
+ *
+ * **A solid is another matter.** `occ`, when given, is the frame's answer to
+ * "what is behind a face" (occlusion.ts) — the very one the draw pass used, so
+ * what was not drawn cannot be picked: a point behind a visible face is
+ * skipped, and an edge, rim or frame arm is near the cursor only where the
+ * place on it nearest the cursor is in sight. Given in a shaded view; null (a
+ * plain sketch, or the hidden and wire modes) picks everything, as it always
+ * did. Faces themselves still never pick.
  */
-export function hitTest(model: Model, view: View, sx: number, sy: number): Pick | null {
+export function hitTest(model: Model, view: View, sx: number, sy: number, occ: Occlusion | null = null): Pick | null {
   const screenOf = (name: string) => projectPoint(model, view, name);
+  const seen = (world: number[]) => inSight(occ, world);
 
   // Tier 1: points.
   let best: Pick | null = null;
@@ -85,7 +95,9 @@ export function hitTest(model: Model, view: View, sx: number, sy: number): Pick 
     if (e.kind !== "point") continue;
     const [px, py] = screenOf(e.name);
     const d = dist(sx, sy, px, py);
-    if (d < PICK_POINT && (!best || d < best.distance)) best = { name: e.name, kind: "point", distance: d };
+    if (d < PICK_POINT && (!best || d < best.distance) && seen(model.coords(e.name))) {
+      best = { name: e.name, kind: "point", distance: d };
+    }
   }
   if (best) return best;
 
@@ -95,7 +107,8 @@ export function hitTest(model: Model, view: View, sx: number, sy: number): Pick 
   // piece of it is.
   for (const e of model.entities.values()) {
     if (e.kind !== "circle" && e.kind !== "arc") continue;
-    const shape = screenCurve(model, view, e, PICK_CURVE)!.curve;
+    const screen = screenCurve(model, view, e, PICK_CURVE)!;
+    const shape = screen.curve;
     let d: number;
     if (shape.kind === "polyline") {
       d = nearestOnPolyline(shape.pts, [sx, sy])?.d ?? Infinity;
@@ -111,6 +124,7 @@ export function hitTest(model: Model, view: View, sx: number, sy: number): Pick 
       continue;
     }
     if (d >= PICK_CURVE || (best && d >= best.distance)) continue;
+    if (occ && !seen(screen.lift([sx, sy]))) continue;
     best = { name: e.name, kind: e.kind, distance: d };
   }
   if (best) return best;
@@ -127,31 +141,49 @@ export function hitTest(model: Model, view: View, sx: number, sy: number): Pick 
   // on the point the marker is drawn from, and dragging that turns the frame.
   for (const e of model.entities.values()) {
     if (e.kind !== "line") continue;
-    const d = toSegment(sx, sy, screenOf(e.refs[0]), screenOf(e.refs[1]));
-    if (d !== null && d < PICK_LINE && (!best || d < best.distance)) {
-      best = { name: e.name, kind: "line", distance: d };
+    const near = toSegment(sx, sy, screenOf(e.refs[0]), screenOf(e.refs[1]));
+    if (!near || near.d >= PICK_LINE || (best && near.d >= best.distance)) continue;
+    if (occ) {
+      // Orthographic projection is affine, so the fraction along the segment
+      // on screen is the fraction along the edge in the world.
+      const [A, B] = [model.coords(e.refs[0]), model.coords(e.refs[1])];
+      if (!seen(A.map((a, i) => a + near.t * (B[i] - a)))) continue;
     }
+    best = { name: e.name, kind: "line", distance: near.d };
   }
   for (const e of model.entities.values()) {
     if (e.kind !== "frame") continue;
     const marker = frameMarker(model, view, e.name);
     if (!marker) continue; // collapsed: nothing drawn, so nothing to hit
+    // A marker hidden at its origin is not drawn at all (main.ts), so none of
+    // it picks; otherwise an arm is its axis out of the origin for as far as
+    // its fixed pixel length reaches (framemarker.ts), which says where in the
+    // world the place under the cursor is.
+    const basis = occ ? frameBasis(model, e.name)() : null;
+    if (basis && !seen(basis.origin)) continue;
+    const axes = basis ? [basis.ux, basis.uy, basis.uz ?? []] : [];
     frameArms(marker).forEach(([a, b], arm) => {
-      const d = toSegment(sx, sy, a, b);
-      if (d !== null && d < PICK_LINE && (!best || d < best.distance)) {
-        best = { name: e.name, kind: "frame", distance: d, axis: (["x", "y", "z"] as const)[arm] };
+      const near = toSegment(sx, sy, a, b);
+      if (!near || near.d >= PICK_LINE || (best && near.d >= best.distance)) return;
+      if (basis) {
+        const reach = (near.t * FRAME_ARM_PX) / view.scale;
+        if (!seen(basis.origin.map((c, i) => c + (axes[arm][i] ?? 0) * reach))) return;
       }
+      best = { name: e.name, kind: "frame", distance: near.d, axis: (["x", "y", "z"] as const)[arm] };
     });
   }
   return best;
 }
 
-/** Distance from (sx, sy) to the segment a–b, or null if the segment is a dot. */
-function toSegment(sx: number, sy: number, [ax, ay]: [number, number], [bx, by]: [number, number]): number | null {
+/**
+ * Distance from (sx, sy) to the segment a–b, and how far along it the nearest
+ * place is (0 at a, 1 at b) — or null if the segment is a dot.
+ */
+function toSegment(sx: number, sy: number, [ax, ay]: [number, number], [bx, by]: [number, number]): { d: number; t: number } | null {
   const len = dist(ax, ay, bx, by);
   if (len < 1e-6) return null;
   const t = Math.max(0, Math.min(1, ((sx - ax) * (bx - ax) + (sy - ay) * (by - ay)) / (len * len)));
-  return dist(sx, sy, ax + t * (bx - ax), ay + t * (by - ay));
+  return { d: dist(sx, sy, ax + t * (bx - ax), ay + t * (by - ay)), t };
 }
 
 /**

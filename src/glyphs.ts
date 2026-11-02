@@ -45,6 +45,7 @@ import { viewAxes, worldToScreen, type View } from "./view.ts";
 import { dot3, lift3, sub3 } from "./vec3.ts";
 import { curvePlaneOf } from "./curveplane.ts";
 import { axisReader, turnPoint } from "./relations/revolution.ts";
+import { inSight, type Occlusion } from "./occlusion.ts";
 
 /** How far a glyph sits from its anchor, in screen pixels. */
 export const GLYPH_OFFSET = 15;
@@ -545,8 +546,16 @@ export function constrainedBy(model: Model, relationName: string): string[] {
  * over. This runs inside the render loop, and the one thing a render loop must
  * never do is take the app down — a constraint naming an entity that is somehow
  * gone should cost its own glyph and nothing else.
+ *
+ * `occ`, when given, is what a solid hides this frame (occlusion.ts — the
+ * answer the draw pass and the pick share): a glyph whose anchor is behind a
+ * visible face is left out, so it is neither drawn nor clicked, and a
+ * dimension's label takes its witness and dimension lines with it. Asked of
+ * the anchor, the place in the drawing a mark is about, rather than of the
+ * box, which floats a fixed number of pixels off it and is in front of
+ * nothing. Null — no solid, or the hidden and wire modes — places every glyph.
  */
-export function placeGlyphs(model: Model, view: View): Glyph[] {
+export function placeGlyphs(model: Model, view: View, occ: Occlusion | null = null): Glyph[] {
   const out: Glyph[] = [];
   /**
    * How far along each anchor's row is already spoken for — the right-hand edge
@@ -576,6 +585,7 @@ export function placeGlyphs(model: Model, view: View): Glyph[] {
       : GLYPH_HALF_W;
     const highlights = constrainedBy(model, r.name);
     for (const a of anchors) {
+      if (!inSight(occ, a.world)) continue;
       const anchor = worldToScreen(view, a.world);
       // Rounded to the pixel, and keyed by direction too: two glyphs nudged
       // opposite ways from one spot are not in each other's way and should not

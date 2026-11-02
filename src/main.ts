@@ -28,8 +28,9 @@ import { depth } from "./view.ts";
 import { arcSamples, arcSegments } from "./arcgeom.ts";
 import { curveFrame } from "./curveplane.ts";
 import { createFaceLayer, paintFaces } from "./facelayer.ts";
-import { visibleFaces } from "./faces.ts";
-import { hiddenInk, inkRuns, occlusion, type Occlusion } from "./occlusion.ts";
+import { SOLID_EDGE, visibleFaces } from "./faces.ts";
+import { hiddenInk, inSight, inkRuns, occlusion, type Occlusion } from "./occlusion.ts";
+import { drawsFaces, isViewMode, opaque, recallViewMode, rememberViewMode, viewModeError, type ViewMode } from "./viewmode.ts";
 import { frameBasis } from "./relations/refs.ts";
 import type { Entity } from "./model.ts";
 import "./tools/point.ts";
@@ -80,6 +81,13 @@ let optionsShown: () => Size | null = () => null;
  * to both the engine that arms from it and the command scope that lists it.
  */
 const optionMemory = new OptionMemory(browserStorage());
+
+/**
+ * How solids are shown — opaque, see-through or not at all (viewmode.ts). The
+ * viewer's, like the layout: read from this browser's storage once, written
+ * back on every change, and never journalled, saved or undone.
+ */
+let viewMode: ViewMode = recallViewMode(browserStorage());
 
 /**
  * The panels are placed before the kernel loads, so the page never shows the
@@ -137,6 +145,14 @@ function sizeCanvas() {
  */
 const APP_DIM = 3;
 
+/**
+ * The rim under a light mark where faces are drawn: the background's own
+ * colour (index.html's #0a0e13), so it is invisible anywhere but over a solid,
+ * and this many pixels wide either side of the mark.
+ */
+const CASING = "#0a0e13";
+const CASING_PX = 1.25;
+
 async function main() {
   statusEl.textContent = "loading kernel…";
   await ensureKernelLoaded();
@@ -172,8 +188,7 @@ async function main() {
     //
     // The cost of that decision is that an empty model is a black rectangle,
     // which the owner opened cold and read as broken. So an empty model says
-    // what to do — see `emptyHint`.
-    if (model.entities.size === 0) emptyHint(r.width, r.height);
+    // what to do — see `emptyHint`, drawn at the end of the pass.
 
     // What the cursor is over lights up — and hovering a *constraint* lights up
     // everything that constraint is about. That spread is the payoff of drawing
@@ -183,26 +198,42 @@ async function main() {
     const lit = new Set<string>(
       hov ? (hov.kind === "relation" ? constrainedBy(model, hov.name) : [hov.name]) : [],
     );
-    const stroke = (name: string) => (lit.has(name) ? "#e8a33d" : "#afc6d9");
-    const weight = (name: string) => (lit.has(name) ? 2.2 : 1.4);
 
     // A solid's faces first, so everything after is drawn over them: back
     // faces culled, lit from the eye (see faces.ts), and which face is in
-    // front answered per pixel by the depth layer under this canvas. The
-    // entities — edges, points, glyphs — then go on top, hidden ones included,
-    // so the sketch stays legible on a shaded solid and nothing a hand aims at
-    // is ever behind a face; a hidden edge is told apart by its ink alone.
-    // Faces are display only: they never pick or snap.
-    if (faceLayer) faceLayer.draw(model, view, r.width, r.height);
-    else paintFaces(g, model, view);
+    // front answered per pixel by the depth layer under this canvas — unless
+    // the viewer asked for a wireframe. Faces are display only: they never
+    // pick or snap.
+    const faced = drawsFaces(viewMode);
+    if (faceLayer) {
+      if (faced) faceLayer.draw(model, view, r.width, r.height);
+      else faceLayer.clear();
+    } else if (faced) {
+      paintFaces(g, model, view);
+    }
 
     // What of the drawing is behind a face — asked of the same faces on the
-    // CPU (occlusion.ts), whichever renderer drew them, so an edge's hidden
-    // stretches can be inked dimmed. The drawing still goes on top of the
-    // faces and still picks as before; only the ink changes. No solid, no
-    // question: a plain sketch draws exactly as it always has, at no cost.
-    const faces = model.features.size ? visibleFaces(model, view) : [];
+    // CPU (occlusion.ts), whichever renderer drew them. **Shaded, a solid is
+    // opaque** (the owner: "It should be opaque"): what is behind a face is not
+    // drawn, and the engine is handed the same answer so it is not picked,
+    // snapped to or boxed either — one answer a frame, for the eye and the
+    // hand. In the hidden mode it is drawn, in a dimmed ink, and everything
+    // stays aimable. No solid (or no faces), no question: a plain sketch draws
+    // exactly as it always has, at no cost.
+    const faces = faced && model.features.size ? visibleFaces(model, view) : [];
     occluded = faces.length ? occlusion(faces, view) : null;
+    hides = occluded && opaque(viewMode) ? occluded : null;
+    engine.occlusion = hides;
+
+    // A solid's own edges — its profile, the lid's twins, the walls — in a
+    // dark ink over the light faces, as Onshape draws a part. Only where faces
+    // are drawn: in a wireframe that ink would be lost on the background. A
+    // profile member that is only a *portion* of its entity (a line a crossing
+    // split) keeps its sketch colour, because the rest of that line is not on
+    // the solid.
+    const solid = occluded ? solidEdges() : new Set<string>();
+    const stroke = (name: string) => (lit.has(name) ? "#e8a33d" : solid.has(name) ? SOLID_EDGE : "#afc6d9");
+    const weight = (name: string) => (lit.has(name) ? 2.2 : 1.4);
 
     // Painter's order, far to near, one depth per entity, for the wireframe on
     // top. Curves and frames are one pass and points a second on top, as they
@@ -211,8 +242,56 @@ async function main() {
     const byDepth = <T extends Entity>(es: T[]) =>
       es.map((e) => ({ e, d: entityDepth(e) })).sort((a, b) => a.d - b.d).map((x) => x.e);
     const all = [...model.entities.values()];
+    const edges = byDepth(all.filter((x) => x.kind !== "point"));
+    const points = byDepth(all.filter((x) => x.kind === "point"));
 
-    for (const e of byDepth(all.filter((x) => x.kind !== "point"))) {
+    // Where faces are drawn, a light mark over a light face needs a dark rim
+    // to be read — a sketch on a lid, a point's name on a wall. So the pass is
+    // run twice: first every mark's casing, a little wider than it, in the
+    // background's own colour (and so invisible off the solid), then every
+    // mark itself. Casings first, all of them, so one never cuts into a mark
+    // already drawn where two cross. A plain sketch has no faces and skips the
+    // casing pass: it draws exactly what it always drew.
+    if (occluded) {
+      casing = true;
+      try {
+        entityPass(edges, points, stroke, weight, lit);
+      } finally {
+        casing = false;
+      }
+    }
+    entityPass(edges, points, stroke, weight, lit);
+
+    // After the entities so a mark is never hidden by the drawing it describes,
+    // and before the tool overlay so a gesture in progress stays on top of
+    // everything — the geometry being placed is what the eye should be on.
+    // The glyphs are the engine's, placed with the occlusion handed to it
+    // above, so a mark behind a solid is gone from the picture and the pick
+    // alike.
+    renderGlyphs(hov?.kind === "relation" ? hov.name : null);
+
+    // The empty-canvas hint goes the moment anything exists, and also while a
+    // gesture is drawing a preview into a model that has nothing in it yet —
+    // the hint sat under a rectangle being dragged out. Whether a preview is on
+    // screen is asked of the overlay itself rather than of any tool's state, so
+    // every tool, built in or typed, is covered without saying anything.
+    if (model.entities.size === 0) {
+      if (!drewAnything(() => engine.renderOverlay())) emptyHint(r.width, r.height);
+    } else {
+      engine.renderOverlay();
+    }
+    syncToolbar();
+  }
+
+  /**
+   * The entities, far to near: edges, curves and frames, then the points and
+   * their names on top. Run once as the casing pass (`casing` set) and once
+   * as itself — the same code both times, so a casing is exactly the shape of
+   * the mark it rims.
+   */
+  function entityPass(edges: Entity[], points: Entity[], stroke: (name: string) => string,
+                      weight: (name: string) => number, lit: Set<string>) {
+    for (const e of edges) {
       g.lineWidth = weight(e.name);
       if (e.kind === "line") {
         strokeEdge([model.coords(e.refs[0]), model.coords(e.refs[1])], false, stroke(e.name));
@@ -234,19 +313,85 @@ async function main() {
     }
 
     g.font = "11px monospace";
-    for (const e of byDepth(all.filter((x) => x.kind === "point"))) {
-      const [sx, sy] = engine.worldToScreen(model.coords(e.name));
-      g.fillStyle = stroke(e.name);
-      g.beginPath(); g.arc(sx, sy, lit.has(e.name) ? 5 : 3.5, 0, Math.PI * 2); g.fill();
-      g.fillText(e.name, sx + 6, sy - 6);
+    for (const e of points) {
+      const world = model.coords(e.name);
+      // Behind a face in a shaded view: not drawn, dot and name together —
+      // and not pickable either, by the same answer (picking.ts).
+      if (!inSight(hides, world)) continue;
+      const [sx, sy] = engine.worldToScreen(world);
+      const r = lit.has(e.name) ? 5 : 3.5;
+      if (casing) {
+        g.fillStyle = CASING;
+        g.beginPath(); g.arc(sx, sy, r + CASING_PX, 0, Math.PI * 2); g.fill();
+        label(e.name, sx + 6, sy - 6);
+        continue;
+      }
+      // A point keeps its sketch colour on a solid: it is a target, not an
+      // outline, and its casing carries it over a light face.
+      g.fillStyle = lit.has(e.name) ? "#e8a33d" : "#afc6d9";
+      g.beginPath(); g.arc(sx, sy, r, 0, Math.PI * 2); g.fill();
+      label(e.name, sx + 6, sy - 6);
     }
+  }
 
-    // After the entities so a mark is never hidden by the drawing it describes,
-    // and before the tool overlay so a gesture in progress stays on top of
-    // everything — the geometry being placed is what the eye should be on.
-    renderGlyphs(hov?.kind === "relation" ? hov.name : null);
-    engine.renderOverlay();
-    syncToolbar();
+  /**
+   * Text in the entity pass: filled, or — in the casing pass — stroked a few
+   * pixels wide in the casing colour, the rim a label needs over a light face.
+   */
+  function label(text: string, x: number, y: number) {
+    if (!casing) {
+      g.fillText(text, x, y);
+      return;
+    }
+    g.save();
+    g.strokeStyle = CASING;
+    g.lineWidth = 2 * CASING_PX + 0.5;
+    g.lineJoin = "round";
+    g.strokeText(text, x, y);
+    g.restore();
+  }
+
+  /**
+   * Whether `draw` put anything on the drawing canvas — counted at the
+   * context's own drawing calls while it runs, which is the one place every
+   * preview, snap marker and selection box has to pass. Only ever asked of an
+   * empty model, so a drawing in progress pays nothing for it.
+   */
+  function drewAnything(draw: () => void): boolean {
+    const calls = ["stroke", "fill", "fillText", "strokeText", "fillRect", "strokeRect", "drawImage"] as const;
+    let drawn = 0;
+    const ctx = g as unknown as Record<string, unknown>;
+    for (const name of calls) {
+      const real = CanvasRenderingContext2D.prototype[name] as (...a: unknown[]) => unknown;
+      ctx[name] = function (this: CanvasRenderingContext2D, ...args: unknown[]) {
+        drawn++;
+        return real.apply(this, args);
+      };
+    }
+    try {
+      draw();
+    } finally {
+      // The instance's own properties go, and the prototype's methods are
+      // what the context answers with again.
+      for (const name of calls) delete ctx[name];
+    }
+    return drawn > 0;
+  }
+
+  /**
+   * The names a solid is made of as edges: every whole profile member, every
+   * twin, every wall line — the outline of the body, drawn in its own ink. A
+   * profile member that is a portion of a longer entity is left out, since
+   * most of that entity may lie off the solid.
+   */
+  function solidEdges(): Set<string> {
+    const out = new Set<string>();
+    for (const f of model.features.values()) {
+      for (const loop of f.loops) for (const m of loop) if (typeof m === "string") out.add(m);
+      for (const loop of f.twins) for (const t of loop) out.add(t);
+      if (f.kind === "extrude") for (const w of f.walls) out.add(w);
+    }
+    return out;
   }
 
   /**
@@ -273,8 +418,10 @@ async function main() {
    * included, takes it away. Muted, in the status line's colours: it is the
    * page explaining itself, and should stop being noticed once read.
    *
-   * Drawn first, so a tool's preview, should one be armed before anything
-   * exists, goes over it rather than under it.
+   * Not drawn at all while a tool's preview is on screen in an empty model
+   * (see `render`): words under a rectangle being dragged out are in the way
+   * of the one thing the eye should be on, and the gesture already answers
+   * the question they ask.
    */
   function emptyHint(width: number, height: number) {
     const lines: [string, string, string][] = [
@@ -309,42 +456,68 @@ async function main() {
    * what it was. Set by `render` before the entity pass, read by `strokeEdge`.
    */
   let occluded: Occlusion | null = null;
+  /**
+   * The same, when the faces are opaque — a shaded view — and null otherwise:
+   * what hides things from the drawing, and (handed to the engine) from the
+   * pick, the snapper and box select.
+   */
+  let hides: Occlusion | null = null;
+  /** Set while the entity pass is drawing casings rather than marks — see `render`. */
+  let casing = false;
 
   /**
    * An edge — a polyline in the world: a line's two ends, a curve's drawn
    * samples, a frame's arm — stroked in `colour` where nothing is in front of
-   * it and in its hidden ink where a face is (occlusion.ts), at the context's
-   * current width. Returns the ink its last point was drawn in, for whatever
-   * is drawn at that end (a frame's arrowhead).
+   * it, at the context's current width. Where a face is in front, a shaded
+   * view draws nothing and the hidden mode draws it in its hidden ink
+   * (occlusion.ts). Returns the ink its last point was drawn in, for whatever
+   * is drawn at that end (a frame's arrowhead) — null when that end is not
+   * drawn at all.
    *
    * An edge all in one ink is the path the entity pass always drew, the same
    * calls in the same order: a circle's last sample is its first, and closing
    * the path joins them as a corner like any other rather than leaving two
    * butt ends. Only an edge a face cuts is drawn as runs.
    */
-  function strokeEdge(world: number[][], closed: boolean, colour: string): string {
+  function strokeEdge(world: number[][], closed: boolean, colour: string): string | null {
     const runs = occluded ? inkRuns(occluded, world, closed) : null;
-    if (!runs || runs.length === 1) {
-      const ink = runs && runs[0].hidden ? hiddenInk(colour) : colour;
-      const pts = world.map((w) => engine.worldToScreen(w));
-      g.strokeStyle = ink;
-      g.beginPath();
-      g.moveTo(...pts[0]);
-      for (const pt of pts.slice(1)) g.lineTo(...pt);
-      if (closed) g.closePath();
-      g.stroke();
+    // The casing pass rims what is drawn in full ink and nothing else: a
+    // solid's own dark edge needs no rim on its light faces, and a hidden run
+    // (the hidden mode) is meant to be faint.
+    const width = g.lineWidth;
+    const rim = casing && colour !== SOLID_EDGE;
+    const inkOf = (hidden: boolean) => (casing ? CASING : hidden ? hiddenInk(colour) : colour);
+    const skip = (hidden: boolean) => (hides !== null && hidden) || (casing && (hidden || !rim));
+    if (casing) g.lineWidth = width + 2 * CASING_PX;
+    try {
+      if (!runs || runs.length === 1) {
+        const hidden = runs !== null && runs[0].hidden;
+        if (hides && hidden) return null;
+        if (skip(hidden)) return casing && hidden ? null : inkOf(hidden);
+        const pts = world.map((w) => engine.worldToScreen(w));
+        g.strokeStyle = inkOf(hidden);
+        g.beginPath();
+        g.moveTo(...pts[0]);
+        for (const pt of pts.slice(1)) g.lineTo(...pt);
+        if (closed) g.closePath();
+        g.stroke();
+        return inkOf(hidden);
+      }
+      let ink: string | null = colour;
+      for (const run of runs) {
+        if (hides && run.hidden) { ink = null; continue; }
+        ink = casing && run.hidden ? null : inkOf(run.hidden);
+        if (skip(run.hidden)) continue;
+        g.strokeStyle = inkOf(run.hidden);
+        g.beginPath();
+        g.moveTo(...run.points[0]);
+        for (const pt of run.points.slice(1)) g.lineTo(...pt);
+        g.stroke();
+      }
       return ink;
+    } finally {
+      g.lineWidth = width;
     }
-    let ink = colour;
-    for (const run of runs) {
-      ink = run.hidden ? hiddenInk(colour) : colour;
-      g.strokeStyle = ink;
-      g.beginPath();
-      g.moveTo(...run.points[0]);
-      for (const pt of run.points.slice(1)) g.lineTo(...pt);
-      g.stroke();
-    }
-    return ink;
   }
 
   /**
@@ -393,6 +566,9 @@ async function main() {
     // its axis from the origin for as far as its fixed pixel length reaches
     // (framemarker.ts), so its screen tip is exactly the marker's.
     const basis = frameBasis(model, name)();
+    // Behind a solid at its origin, in a shaded view, the marker is not drawn
+    // at all — the place it stands for is out of sight, and picking agrees.
+    if (!inSight(hides, basis.origin)) return;
     const reach = FRAME_ARM_PX / view.scale;
     const armEnd = (u: number[]) => basis.origin.map((c, i) => c + (u[i] ?? 0) * reach);
     const isDefault = model.defaultFrame === name;
@@ -410,15 +586,19 @@ async function main() {
       if (!(len > 0.5)) {
         // Pointing at the viewer: a dot of an arm. The letter alone, just off
         // the origin, still says the axis is there and which way it faces.
-        g.fillText(letter, marker.origin[0] + 4, marker.origin[1] + 12);
+        label(letter, marker.origin[0] + 4, marker.origin[1] + 12);
         continue;
       }
       const [ux, uy] = [dx / len, dy / len];
       if (occluded) {
         // With a solid about, an arm is an edge like any other — dimmed where
-        // a face is in front of it — and its head takes the ink the arm
-        // reached its tip in. The letters are labels and keep their colour.
-        g.strokeStyle = strokeEdge([basis.origin, armEnd(axis)], false, colour);
+        // a face is in front of it, or (shaded) not drawn there — and its head
+        // takes the ink the arm reached its tip in. A tip out of sight takes
+        // its head and letter with it; the letters are otherwise labels and
+        // keep their colour.
+        const ink = strokeEdge([basis.origin, armEnd(axis)], false, colour);
+        if (ink === null) continue;
+        g.strokeStyle = ink;
         g.beginPath();
       } else {
         g.beginPath();
@@ -432,8 +612,12 @@ async function main() {
         g.moveTo(tip[0], tip[1]);
         g.lineTo(tip[0] - Math.cos(a) * 6, tip[1] - Math.sin(a) * 6);
       }
+      // The casing pass rims the head as `strokeEdge` rimmed the arm.
+      const width = g.lineWidth;
+      if (casing) g.lineWidth = width + 2 * CASING_PX;
       g.stroke();
-      g.fillText(letter, tip[0] + ux * 8 - 3, tip[1] + uy * 8 + 3.5);
+      g.lineWidth = width;
+      label(letter, tip[0] + ux * 8 - 3, tip[1] + uy * 8 + 3.5);
     }
     g.font = "11px monospace";
     // Away from both arms, not at a fixed corner: the arms turn with the frame,
@@ -443,7 +627,7 @@ async function main() {
     const bx = (marker.x[0] + marker.y[0]) / 2 - marker.origin[0];
     const by = (marker.x[1] + marker.y[1]) / 2 - marker.origin[1];
     const bl = Math.hypot(bx, by) || 1;
-    g.fillText(name, marker.origin[0] - (bx / bl) * 14 - 3, marker.origin[1] - (by / bl) * 14 + 4);
+    label(name, marker.origin[0] - (bx / bl) * 14 - 3, marker.origin[1] - (by / bl) * 14 + 4);
     g.restore();
   }
 
@@ -829,7 +1013,7 @@ async function main() {
       // inside, for "Sketch on this face" — asked here, where the camera is,
       // so the menu stays a pure function of what it is handed.
       const history = { canUndo: undoStack.canUndo, canRedo: undoStack.canRedo };
-      menu.show(menuFor(model, pick, pick ? null : engine.regionAt(sx, sy), history), sx, sy);
+      menu.show(menuFor(model, pick, pick ? null : engine.regionAt(sx, sy), history, viewMode), sx, sy);
     },
   });
 
@@ -912,6 +1096,21 @@ async function main() {
         return engine.glyphsOn;
       },
       cancel: () => engine.cancel(),
+      // How solids are shown. Typed through `submit` like everything, and so
+      // bracketed as a user action that records nothing: the model is
+      // untouched, as for the layout and the camera.
+      viewMode: (mode?: string) => {
+        if (mode === undefined) return viewMode;
+        if (!isViewMode(mode)) throw viewModeError(mode);
+        viewMode = mode;
+        rememberViewMode(browserStorage(), mode);
+        // A hover on something the new mode hides would leave it lit, and its
+        // tag up, with nothing on screen under the cursor.
+        engine.hover = null;
+        hoverEl.hidden = true;
+        render();
+        return viewMode;
+      },
       refresh: () => { solveAndRender(); },
       // The chrome's arrangement. Typed through `submit` like everything else,
       // and so bracketed as a user action — which records nothing, because the

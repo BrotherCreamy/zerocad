@@ -487,21 +487,36 @@ export function facesToDraw(model: Model, view: View): DrawnFace[] {
 }
 
 /**
- * The surface tones a face is filled with, darkest (edge-on) to lightest
- * (square to the viewer): the slate the app's panels and borders are already
- * made of, kept well below the edges' `#afc6d9` and the labels' `#cfe0ee` so
- * the drawing stays the foreground on a shaded solid.
+ * The surface tones a face is filled with, edge-on to square to the viewer: a
+ * body tone from a mid slate to a light grey-blue, well clear of the
+ * near-black background (#0a0e13) at both ends — the owner: "when you extrude
+ * a solid, it should look like a solid". The faces used to be the panels' own
+ * dark slate, kept under the edges' ink so the drawing read on top, which is
+ * what made a solid read as tinted glass. Measured against the background
+ * (WCAG contrast): 2.6:1 edge-on, 12.4:1 square-on, 5–9:1 for the faces of a
+ * box seen from a corner — and those faces against each other 1.3–1.8:1,
+ * where the old range gave 1.1–1.3:1 (CHANGELOG, 2026-11-02).
  */
-export const FACE_DARK = [22, 31, 42];
-export const FACE_LIGHT = [66, 88, 108];
+export const FACE_DARK = [72, 86, 102];
+export const FACE_LIGHT = [196, 208, 222];
 
 /**
- * The fill for a face of this shade, as three bytes — a quarter of the way up
- * even edge-on, so a dark face is still a face. Whole numbers on purpose: both
- * renderers write exactly these, so a test can ask a pixel for them.
+ * The ink a solid's own edges are drawn in over its faces — its profile, the
+ * lid's twins, the walls — as Onshape draws a part's edges dark on a light
+ * body, so the shape reads even where two faces shade alike. Chosen with the
+ * face tones: 4:1 or better against every face of the corner view above.
+ */
+export const SOLID_EDGE = "#1b2530";
+
+/**
+ * The fill for a face of this shade, as three bytes — straight along the range,
+ * so the whole of it goes to telling one plane from the next; the dark end is
+ * itself well off the background, so an edge-on face is still a face. Whole
+ * numbers on purpose: both renderers write exactly these, so a test can ask a
+ * pixel for them.
  */
 export function faceRGB(shade: number): number[] {
-  const t = 0.25 + 0.75 * Math.max(0, Math.min(1, shade));
+  const t = Math.max(0, Math.min(1, shade));
   return FACE_DARK.map((d, i) => Math.round(d + (FACE_LIGHT[i] - d) * t));
 }
 

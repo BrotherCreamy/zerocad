@@ -17,7 +17,7 @@ import { ensureKernelLoaded } from "../src/kernel/problem.ts";
 import { Model } from "../src/model.ts";
 import { onPlane } from "../src/relations/basic.ts";
 import { extrude, fillet, revolve } from "../src/operations.ts";
-import { FACE_DARK, FACE_LIGHT, faceColour, faceRGB, facesToDraw, featureFaces, loopOutlines, visibleFaces, type Face } from "../src/faces.ts";
+import { FACE_DARK, FACE_LIGHT, SOLID_EDGE, faceColour, faceRGB, facesToDraw, featureFaces, loopOutlines, visibleFaces, type Face } from "../src/faces.ts";
 import { arcSegments } from "../src/arcgeom.ts";
 import { findLoops, loopAt } from "../src/loops.ts";
 import { hitTest } from "../src/picking.ts";
@@ -192,13 +192,42 @@ test("a solid that cannot be laid out costs its own faces and nothing else — t
   assert.deepEqual(facesToDraw(m, orbitBy(ABOVE, 0.5, 0.5)), []);
 });
 
-test("the shade runs from a quarter of the way up the surface tones to the top, and nothing outside — the same bytes for both renderers", () => {
+test("the shade runs the whole of the body tones, edge-on to square-on, and nothing outside — the same bytes for both renderers", () => {
   const rgb = (s: string) => s.match(/\d+/g)!.map(Number);
   for (let s = -0.5; s <= 1.5; s += 0.05) assert.deepEqual(rgb(faceColour(s)), faceRGB(s), "the painter's fill style is the depth layer's colour");
   assert.deepEqual(rgb(faceColour(1)), FACE_LIGHT);
-  assert.deepEqual(rgb(faceColour(0)), FACE_DARK.map((d, i) => Math.round(d + (FACE_LIGHT[i] - d) * 0.25)));
+  assert.deepEqual(rgb(faceColour(0)), FACE_DARK);
+  assert.deepEqual(rgb(faceColour(-3)), FACE_DARK);
   assert.deepEqual(rgb(faceColour(7)), FACE_LIGHT);
   for (let s = 0; s < 1; s += 0.1) assert.ok(rgb(faceColour(s))[0] <= rgb(faceColour(s + 0.1))[0]);
+});
+
+/** WCAG's relative luminance and contrast ratio — the measure the face tones were chosen by. */
+function contrast(a: number[], b: number[]): number {
+  const lum = (c: number[]) => {
+    const [r, g, bl] = c.map((v) => { const s = v / 255; return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4; });
+    return 0.2126 * r + 0.7152 * g + 0.0722 * bl;
+  };
+  const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x);
+  return (hi + 0.05) / (lo + 0.05);
+}
+
+test("a solid looks like a solid: its faces are well off the background, a box's three faces seen from a corner are told apart, and its dark edges read on every one", () => {
+  const BACKGROUND = [10, 14, 19]; // index.html's #0a0e13
+  const edge = [1, 3, 5].map((i) => parseInt(SOLID_EDGE.slice(i, i + 2), 16));
+  // The corner view the hidden-edge e2e tests use, (1, −2, 1.5): the lid, the
+  // front wall and the right wall each face it at their own cosine.
+  const n = Math.hypot(1, 2, 1.5);
+  const box = [1.5 / n, 2 / n, 1 / n].map(faceRGB);
+  for (const f of box) {
+    assert.ok(contrast(f, BACKGROUND) >= 4.5, `a face ${f} against the background: ${contrast(f, BACKGROUND).toFixed(2)}:1`);
+    assert.ok(contrast(f, edge) >= 4, `the solid's edge on ${f}: ${contrast(f, edge).toFixed(2)}:1`);
+  }
+  for (let i = 0; i < 3; i++) for (let j = i + 1; j < 3; j++) {
+    assert.ok(contrast(box[i], box[j]) >= 1.3, `adjacent faces ${box[i]} and ${box[j]}: ${contrast(box[i], box[j]).toFixed(2)}:1`);
+  }
+  // Even edge-on a face is a face, not a hole in the background.
+  assert.ok(contrast(faceRGB(0), BACKGROUND) >= 2.5, `edge-on: ${contrast(faceRGB(0), BACKGROUND).toFixed(2)}:1`);
 });
 
 test("loopOutlines walks a loop closed whatever direction its members run", async () => {

@@ -52,6 +52,7 @@ import { hitTest, type Pick } from "../picking.ts";
 import { boxFrom, selectInBox, type BoxMode } from "../boxselect.ts";
 import { glyphAt, placeGlyphs, type Glyph } from "../glyphs.ts";
 import { findSnap, type Snap } from "../snapping.ts";
+import type { Occlusion } from "../occlusion.ts";
 import { findLoops, loopAt } from "../loops.ts";
 import { OptionMemory, declaredOptions, explicitOptions, resolveOptions } from "./options.ts";
 
@@ -227,6 +228,17 @@ export class ToolEngine {
    * announces itself, and a switch you have to know to flick cannot do that.
    */
   glyphsOn = true;
+  /**
+   * What the solids hide, as the last frame drew it — set by the host's draw
+   * pass in a shaded view, null otherwise (no solid; the hidden and wire
+   * modes). Every question this engine asks about what is under the cursor —
+   * a pick, a snap, a box, the glyphs — is asked with it, so nothing the frame
+   * did not draw is ever under the hand. One answer per frame rather than one
+   * per pointer event: a pick between two frames is a pick of what is on
+   * screen, which is the last frame, and every change to the model or the
+   * camera redraws before the next event can arrive.
+   */
+  occlusion: Occlusion | null = null;
 
   constructor(
     model: Model,
@@ -352,7 +364,7 @@ export class ToolEngine {
    * relation, which is nothing next to the solve that just ran.
    */
   glyphs(): Glyph[] {
-    return this.glyphsOn ? placeGlyphs(this.model, this.view) : [];
+    return this.glyphsOn ? placeGlyphs(this.model, this.view, this.occlusion) : [];
   }
 
   /**
@@ -370,7 +382,7 @@ export class ToolEngine {
   pickAt(sx: number, sy: number): Pick | null {
     const gl = glyphAt(this.glyphs(), sx, sy);
     if (gl) return { name: gl.relation, kind: "relation", distance: 0 };
-    return hitTest(this.model, this.view, sx, sy);
+    return hitTest(this.model, this.view, sx, sy, this.occlusion);
   }
 
   /** Canvas-local pixels for a pointer or wheel event. */
@@ -452,7 +464,7 @@ export class ToolEngine {
         this.active = null;
         this.snap = null;
       },
-      pick: ([sx, sy]) => hitTest(this.model, this.view, sx, sy),
+      pick: ([sx, sy]) => hitTest(this.model, this.view, sx, sy, this.occlusion),
       regionAt: ([sx, sy]) => this.regionAt(sx, sy),
       log: this.onLog,
       run: this.onRun,
@@ -596,7 +608,7 @@ export class ToolEngine {
       // A tool that chooses regions rather than places points opts out
       // (`Tool.snaps`), and gets neither the pull nor the marker.
       this.snap = this.snapping && this.active.snaps
-        ? findSnap(this.model, this.view, sx, sy, framePlane(this.model)) : null;
+        ? findSnap(this.model, this.view, sx, sy, framePlane(this.model), this.occlusion) : null;
       // The plane is reported even when a snap moved the point off it: it is
       // what the gesture is being drawn on, and a tool laying out a shape from
       // a snapped corner still lays it out along that plane's axes.
@@ -689,7 +701,7 @@ export class ToolEngine {
         // selecting means and one place that implements it. An empty box picks
         // nothing and therefore inserts nothing.
         const { rect, mode } = boxFrom(box.ax, box.ay, box.bx, box.by);
-        for (const name of selectInBox(this.model, this.view, rect, mode)) {
+        for (const name of selectInBox(this.model, this.view, rect, mode, this.occlusion)) {
           const entity = this.model.entities.get(name)!;
           this.onPick({ name, kind: entity.kind, distance: 0 });
         }

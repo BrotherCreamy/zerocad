@@ -124,6 +124,13 @@ export interface EnvHandles {
    */
   layout?: (command?: string) => string;
   /**
+   * How solids are shown — `"shaded"`, `"hidden"` or `"wire"` (viewmode.ts):
+   * given nothing, reports the mode; given one, switches to it and reports it;
+   * given anything else, throws the guidance. Per-viewer UI state like the
+   * layout, so a host handle the model never hears of.
+   */
+  viewMode?: (mode?: string) => string;
+  /**
    * The viewer's last value of each tool option — the same memory the host's
    * tool engine arms from, so `tools()` lists what `arm` would use. Per-viewer
    * state, like the layout; a scope with none keeps its own for its lifetime.
@@ -840,9 +847,23 @@ export function neocadScope(h: EnvHandles): Bag {
       return h.layout(command);
     },
 
+    /**
+     * How solids are shown: `view("shaded")`, the default, opaque — nothing
+     * behind a face drawn or aimable; `view("hidden")`, see-through, what is
+     * behind dimmed and everything pickable; `view("wire")`, no faces.
+     * `view()` says which. The viewer's, like the camera: never journalled,
+     * never in a file, never an undo step.
+     */
+    view: (mode?: string) => {
+      if (!h.viewMode) throw new Error("no viewport in this environment");
+      return h.viewMode(mode);
+    },
     // Viewport control as an ordinary command, per the brief's goal of having
-    // the whole interface drivable the same way a tool is authored.
-    view: h.view,
+    // the whole interface drivable the same way a tool is authored. The camera
+    // object itself is `camera` — it was `view` until `view()` became the
+    // command that says how solids are shown, which is the name a user reaches
+    // for and the one the owner's spec gives it.
+    camera: h.view,
     // About where the world origin is drawn, as it always was — through the
     // camera's own zoom, so the orbit target stays on its pixel.
     zoom: (factor: number) => {
@@ -1006,6 +1027,14 @@ function help(scope: Bag): string {
     "           file; type the default to have it back.",
     "           orbit(yaw, pitch)  — turn the drawing, radians, like a right-drag",
     "           lookAt(frame?)     — a frame's plane square-on, +x right, +y up",
+    '           view("shaded")  view("hidden")  view("wire")  view() — how',
+    "           solids are shown. Shaded, the default, is opaque: nothing",
+    "           behind a face is drawn, picked, snapped to or boxed — turn the",
+    "           view to see it. Hidden draws it dimmed and keeps it all",
+    "           pickable; wire draws no faces. Also the View row of the",
+    "           right-click menu on empty canvas. Yours, in this browser, like",
+    "           the layout: never in a file, never an undo step. The camera",
+    "           object itself is camera (it was view).",
     '           layout()  layout("reset") — where the panels are; put them back.',
     "           Drag a panel by its strip, resize it by its corner; the",
     "           arrangement is yours, in this browser, and never in a file.",

@@ -72,6 +72,8 @@ export interface FaceLayer {
    * gave it; the projection maps onto all of it).
    */
   draw(model: Model, view: View, width: number, height: number): void;
+  /** No faces at all: what a wireframe view (`view("wire")`) shows under the drawing. */
+  clear(): void;
 }
 
 const VERTEX = `
@@ -169,17 +171,26 @@ export function createFaceLayer(canvas: HTMLCanvasElement): FaceLayer | null {
   canvas.addEventListener("webglcontextlost", (e) => e.preventDefault());
   canvas.addEventListener("webglcontextrestored", () => { setUp(); });
 
+  /** Everything back to empty — transparent, far, stencil zero — whatever the last frame left set. */
+  const clearAll = () => {
+    gl.viewport(0, 0, canvas.width, canvas.height);
+    gl.clearColor(0, 0, 0, 0);
+    gl.clearDepth(1);
+    gl.clearStencil(0);
+    gl.stencilMask(0xff);
+    gl.depthMask(true);
+    gl.colorMask(true, true, true, true);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT);
+  };
+
   return {
+    clear() {
+      if (gl.isContextLost()) return;
+      clearAll();
+    },
     draw(model, view, width, height) {
       if (gl.isContextLost() || !program) return;
-      gl.viewport(0, 0, canvas.width, canvas.height);
-      gl.clearColor(0, 0, 0, 0);
-      gl.clearDepth(1);
-      gl.clearStencil(0);
-      gl.stencilMask(0xff);
-      gl.depthMask(true);
-      gl.colorMask(true, true, true, true);
-      gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT);
+      clearAll();
 
       const faces = visibleFaces(model, view);
       if (!faces.length) return;

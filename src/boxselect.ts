@@ -35,6 +35,11 @@ import type { Entity, Model } from "./model.ts";
 import { intersect, withinSweep, type Curve, type Pt } from "./intersect.ts";
 import { frameArms, frameMarker } from "./framemarker.ts";
 import { screenCurve, screenOf as projectPoint } from "./projection.ts";
+import { inSight, visibleRuns, type Occlusion } from "./occlusion.ts";
+import { arcSamples, arcSegments } from "./arcgeom.ts";
+import { curveFrame } from "./curveplane.ts";
+import { frameBasis } from "./relations/refs.ts";
+import { FRAME_ARM_PX } from "./framemarker.ts";
 import type { View } from "./view.ts";
 
 /** Which of the two selections the drag direction asked for. */
@@ -82,15 +87,59 @@ export function boxFrom(ax: number, ay: number, bx: number, by: number): { rect:
  * them. That is deliberate — a constraint glyph is UI, and a box that filled
  * the command line with a dozen `r`-names nobody asked for would be noise. The
  * flow for relations stays hover-and-click, which is aimed and one at a time.
+ *
+ * **`occ`, when given, is what a solid hides this frame** (occlusion.ts), the
+ * same answer the draw pass and the pick use, and a box selects only what is
+ * drawn: a point behind a visible face is not in any box, and an edge is
+ * caught by its visible part alone — a crossing box must touch some of that,
+ * and a window must contain the whole edge *and* see some of it, so an edge
+ * wholly hidden is never selected however large the box. Null (no solid, or
+ * the hidden and wire modes) selects as it always did.
  */
-export function selectInBox(model: Model, view: View, rect: ScreenRect, mode: BoxMode): string[] {
+export function selectInBox(model: Model, view: View, rect: ScreenRect, mode: BoxMode, occ: Occlusion | null = null): string[] {
   const screenOf = (name: string): Pt => projectPoint(model, view, name);
   const test = mode === "window" ? contains : touches;
   const out: string[] = [];
   for (const e of model.entities.values()) {
-    if (test(model, view, e, rect, screenOf)) out.push(e.name);
+    if (!test(model, view, e, rect, screenOf)) continue;
+    if (occ && !seenInBox(model, view, e, rect, mode, occ)) continue;
+    out.push(e.name);
   }
   return out;
+}
+
+/**
+ * The visible part of an entity the box test already passed: in a window, any
+ * of it seen at all; in a crossing, some seen part touching the box. A point
+ * is seen or not; a frame's marker is drawn by its origin (main.ts), and its
+ * arms are edges.
+ */
+function seenInBox(model: Model, view: View, e: Entity, rect: ScreenRect, mode: BoxMode, occ: Occlusion): boolean {
+  if (e.kind === "point") return inSight(occ, model.coords(e.name));
+  if (e.kind === "frame" && !inSight(occ, frameBasis(model, e.name)().origin)) return false;
+  const runs = worldPaths(model, view, e).flatMap((p) => visibleRuns(occ, view, p.world, p.closed));
+  if (mode === "window") return runs.length > 0;
+  return runs.some((run) => (run.length === 1 ? rectContainsPoint(rect, run[0]) : rectTouchesPolyline(rect, run)));
+}
+
+/**
+ * An entity as the polylines in the world it is drawn as — a line's two ends,
+ * a curve's drawn samples, a frame's arms out to their pixel length — the same
+ * ones main.ts strokes, so the parts a box sees are the parts on screen.
+ */
+function worldPaths(model: Model, view: View, e: Entity): { world: number[][]; closed: boolean }[] {
+  if (e.kind === "line") return [{ world: [model.coords(e.refs[0]), model.coords(e.refs[1])], closed: false }];
+  if (e.kind === "circle" || e.kind === "arc") {
+    const f = curveFrame(model, e);
+    return f ? [{ world: arcSamples(f, arcSegments(f.sweep, f.r * view.scale)), closed: e.kind === "circle" }] : [];
+  }
+  if (e.kind === "frame") {
+    const b = frameBasis(model, e.name)();
+    const reach = FRAME_ARM_PX / view.scale;
+    return [b.ux, b.uy, b.uz].filter((u): u is number[] => !!u && u.some((c) => c !== 0))
+      .map((u) => ({ world: [b.origin, b.origin.map((c, i) => c + (u[i] ?? 0) * reach)], closed: false }));
+  }
+  return [];
 }
 
 /** Is the whole of `e` inside `rect`? */
