@@ -124,7 +124,7 @@ test("the fillet tool rounds a corner from two clicks", async () => {
   await app.page.waitForTimeout(250);
   const after = await app.model();
   assert.equal(after.byKind.arc, (before.byKind.arc ?? 0) + 1, "Enter rounds the corner");
-  assert.equal(after.activeTool, "fillet", "and the tool stays armed for the next");
+  assert.equal(after.activeTool, null, "and the confirm releases the tool, as Onshape's ✓ closes its dialog");
   await app.page.keyboard.press("Escape");
   assert.equal(await app.status(), "SOLVED");
 
