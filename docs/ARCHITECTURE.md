@@ -707,7 +707,7 @@ so a face seen nearly edge-on would hide its own boundary. Runs of samples with
 one answer are stroked in full or hidden ink, the seam half-way between the two
 samples that disagree — within 2 px of the true crossing, which is the
 convention's resolution anyway. The hidden ink is the edge's colour 40% of the
-way from the faces' mid tone, a solid colour (the same over any face, and amber
+way from the faces' darkest tone (their middle until the body went light, 2026-11-02), a solid colour (the same over any face, and amber
 stays amber when lit); no dashes, which at this stroke width are noise on a
 curved sweep. With no solid nothing is asked and the old stroke calls run as
 they were, pixel for pixel (a test holds it to a picture the build before drew).

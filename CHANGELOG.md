@@ -7,6 +7,126 @@ decisions.
 
 ---
 
+## A solid looks like a solid: opaque, by default
+
+The owner, two messages in a row:
+
+> *when you extrude a solid, it should look like a solid*
+> *It should be opaque*
+
+A solid was dark faces, close to the background, under a drawing that put
+every edge, point, name and glyph on top of them — the hidden-edge pass
+dimmed the edges behind a face, but they, and everything else behind it,
+still showed through and could still be clicked. It read as tinted glass.
+
+**Shaded, the default, a solid is opaque.** Whatever is behind a visible
+face — an edge or the part of one, a point and its name, a glyph, a
+dimension's label and its witness lines, a frame's marker — is not drawn,
+and cannot be picked, hovered, snapped to, dragged or caught by a selection
+box. What is on the solid's own visible faces and edges, or in front of it,
+is drawn and aimed at exactly as before. Turn the view and what was behind
+comes round into sight. Faces themselves still never pick.
+
+**One answer for the eye and the hand.** `occlusion.ts` already answered "is
+this world point behind a visible face" for the hidden-edge pass;
+`inSight(occ, world)` is the same question asked of a point, a glyph's
+anchor, a frame's origin, and the place on an edge nearest the cursor. The
+draw pass builds the frame's `Occlusion` once and hands the same object to
+the tool engine, whose every pick, snap, box and glyph placement asks it —
+so nothing that was not drawn can be under the hand, and a pick between two
+frames is a pick of what is on screen. "On the surface is not behind" is the
+hidden-edge pass's half-pixel square to the plane, so a box's near corners
+and edges are drawn and picked and its far ones are not.
+
+**Three view modes**, for when you want to see through:
+
+```
+> view("hidden")     the hidden-edge look: behind a face drawn dimmed, and everything pickable
+> view("wire")       no faces at all
+> view("shaded")     the default: opaque
+> view()             says which
+```
+
+— and the same three as a **View** row on the empty-canvas right-click menu,
+the current one marked, each typing its `view(…)` into the log like every
+menu item. The mode is the viewer's, like the camera and the panel layout:
+in this browser's `localStorage` (`neocad.viewMode.v1`), never in the
+journal, a saved file or the undo history — Ctrl+Z after switching undoes
+the last edit, not the switch. `view` was the camera object in the command
+scope; it is now the command, and the camera is `camera`.
+
+**It looks like a solid.** The body is a light tone, a mid slate edge-on to a
+light grey-blue square-on (`FACE_DARK [72, 86, 102]`, `FACE_LIGHT
+[196, 208, 222]`), and the headlight shade now runs the whole of that range
+rather than the top three-quarters of it. A solid's own edges — its profile,
+the lid's twins, the walls — are drawn in a dark outline ink over the faces
+(`SOLID_EDGE #1b2530`), as Onshape draws a part. Sketch geometry keeps its
+sketch colours, and every light mark drawn where faces are shown — a line, a
+point, a name, a frame's arms and letters — gets a casing in the
+background's own colour, drawn for every mark before any mark, so a sketch
+on a lid and a name on a wall stay legible and the casing is invisible off
+the solid. A plain sketch has no faces and skips the casing pass: it is
+still pixel for pixel the build before's picture.
+
+Measured — WCAG contrast, the box seen from a corner (1, −2, 1.5), against the
+background `#0a0e13`. *After* is read off the composed screenshot in the e2e
+browser (`opaque.e2e.ts`, and it matches what `faces.test.ts` computes from
+the constants to the byte); *before* is computed from the old constants:
+
+| | before | after |
+|---|---|---|
+| lid | 1.96:1 | 6.75:1 |
+| front wall | 2.22:1 | 8.87:1 |
+| right wall | 1.74:1 | 5.01:1 |
+| lid / front, lid / right, front / right | 1.13, 1.13, 1.28 | 1.31, 1.35, 1.77 |
+| a face edge-on; square-on | 1.38; 2.62 | 2.58; 12.37 |
+| the solid's edge ink on the lid, front, right | — | 5.4, 7.1, 4.0 |
+| the sketch's ink `#afc6d9` on the lid, front, right | 5.6, 5.0, 6.3 | 1.6, 1.2, 2.2 — hence the casing |
+
+**The hidden mode's ink** now takes an edge toward the faces' darkest tone
+rather than their middle: with the light body the middle sat within a few
+levels of a non-default frame's grey, and a hidden frame arm dimmed to itself
+(found by the hidden-edge e2e test). Hidden lines over the light body are a
+mid-dark slate now, the solid's dark edges lighter, sketch lines darker.
+
+**Cost**, `npm run measure:hidden` on this build and on the build before,
+back to back on the same (heavily shared: frames ran 90–120 ms against the
+45 ms recorded in October) machine — `render()`'s own share, median of three
+runs of 90 frames: stepped block 4.41 → 4.78 ms, boss on a plate 2.39 →
+3.25 ms, filleted full turn 14.23 → 14.23 ms. The frame intervals
+(110.7 → 99.7, 100.7 → 88.8, 122.8 → 119.5 ms) moved by less than their own
+run-to-run spread. The casing pass samples each edge a second time, which is
+most of the difference on the small scenes.
+
+**The empty-canvas hint** now also goes while a tool's preview is on screen
+in an empty model — it sat under a rectangle being dragged out. Whether a
+preview is on screen is asked of the overlay's own canvas calls, not of any
+tool's state, so a tool typed at the command line is covered too.
+
+![Before: a 40 × 30 × 20 box seen from the front, the right and above, with a small rectangle sketched on its lid. The faces are a dark slate barely off the background, and every edge, point and name behind the box — the far bottom corner p4, the back edges, a frame under it — is drawn on top: it reads as tinted glass](docs/images/94-before-opaque-a-box-reads-as-glass.png)
+![After, shaded (the default): the same view. The faces are a light grey-blue body, the lid, front and right walls each their own tone, the solid's edges a dark outline. Nothing behind it is drawn: no p4, no back edges; the frame under the box shows only where it hangs below the box's outline. The rectangle on the lid and the names on the walls read clearly, each light mark on a thin dark rim](docs/images/95-the-box-opaque-shaded.png)
+![After, view("hidden"): the same, with the far corner p4 and the back and far edges drawn in a mid-dark slate through the body — the hidden-edge look, and all of it pickable](docs/images/96-the-same-box-view-hidden.png)
+![After, view("wire"): no faces at all; every edge and point in the sketch's own colours](docs/images/97-the-same-box-view-wire.png)
+
+Tests: `test/opaque.test.ts` (new) — occlusion for a point, a label's anchor
+and a frame's origin; `hitTest`, `findSnap` (a hidden vertex's projection
+included) and `selectInBox` skipping the far corner of a box and keeping a
+point on its near face's edge; an edge picking only where its nearest place
+is in sight; a frame under the box not picking by its arm; the glyphs; the
+modes' rules and their storage. `faces.test.ts` holds the contrast;
+`menu.test.ts` the View row; `repl.test.ts` `view()` and `camera`.
+`test/e2e/opaque.e2e.ts` (new) — the box from a corner: the far corner's
+dot, name and the edge behind not drawn shaded, drawn hidden, faces gone in
+wire; a real click where the hidden corner projects not picking it shaded
+and picking it hidden; the contrast read off the screenshot; the mode
+surviving a reload and absent from the saved file and the undo history; the
+menu row; the hint gone during a rectangle drag. The hidden-edge e2e tests
+now say `view("hidden")`, which is what they test, and expect the solid's
+own edges in its ink; `regen.e2e.ts`'s fillet, which clicks a base corner now
+behind the lid, switches to the hidden view first. 884 → 897 unit tests,
+340 → 347 e2e, all passing; typecheck clean. Spec, with every deviation:
+[`docs/plans/opaque-solids.md`](docs/plans/opaque-solids.md).
+
 ## A shape being drawn is a solid line, not a dashed one
 
 The owner: *"when you drag out a shape, it should not be a dashed line (dashed

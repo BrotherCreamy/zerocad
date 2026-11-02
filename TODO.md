@@ -608,7 +608,7 @@ are flagged as such.
     may be off the solid. Points keep their sketch colour on a solid: they are
     targets, not outline.
   - **The hidden mode draws the solid's edges dark too**, its hidden runs
-    taken toward the faces' mid tone like every hidden run (so a dark edge
+    taken toward the faces' darkest tone like every hidden run — moved from their middle, which sat on a frame's grey — (so a dark edge
     behind goes lighter, a light one darker) — "today's look" with today's
     light faces would have put light edges on light faces.
   - **A frame's marker hides by its origin**, and an arm whose tip is hidden
@@ -1303,6 +1303,41 @@ starts.
         a Chromium upgrade that changes Skia's rasterising fails that test, and
         the only honest re-record is from a build known to draw a plain sketch
         as before.
+- [x] **A solid is opaque — BUILT (2026-11-02).** The owner: *"when you
+      extrude a solid, it should look like a solid"* / *"It should be
+      opaque"*. Shaded, the default, nothing behind a visible face is drawn,
+      picked, hovered, dragged, snapped to or boxed; `view("hidden")` is the
+      hidden-edge look, `view("wire")` no faces; the mode is viewer state;
+      the body is light, its own edges dark. One `Occlusion` a frame answers
+      the picture and the hand. Measured (WCAG, box from a corner, off the
+      composed screenshot): faces 5.0–8.9:1 against the background (were
+      1.7–2.2), 1.31–1.77:1 against each other (were 1.13–1.28). Spec:
+      [`docs/plans/opaque-solids.md`](docs/plans/opaque-solids.md) (its "As
+      built" has the detail); the story is `test/e2e/opaque.e2e.ts`;
+      screenshots 94–97. 897 unit tests (13 new), 347 e2e (7 new).
+      Deviations from the spec:
+      - ⚠ **`view` is the command; the camera object is `camera`** (it was
+        `view` in the scope).
+      - ⚠ **A casing under light marks where faces are drawn** — not asked
+        for; the sketch's ink on the light body measured 1.2–2.2:1.
+      - ⚠ **Hidden ink mixes toward the faces' dark end**, not their middle,
+        which with the light body sat on a frame's grey.
+      - **The hidden mode draws the solid's edges dark too**; portions of
+        longer lines and points keep sketch colours.
+      - **`regen.e2e.ts` switches to the hidden view** before its fillet
+        clicks a base corner now behind the lid.
+      **Found while building, left deliberately:**
+      - **`regionAt` does not consult occlusion**: a click inside a loop finds
+        its region whatever is in front of or behind it. The tools that ask it
+        (extrude, revolve, sketch) belong to the feature-dialog package; if a
+        loop wholly behind a solid should not be clickable, that is where.
+      - **The casing pass samples every edge a second time** (`inkRuns` is
+        not cached between the passes). Not measured separately from the
+        frame; the frame interval in the e2e browser is dominated by
+        SwiftShader compositing.
+      - **The regen fillet story now needs a mode switch** to reach a base
+        corner from the view it was written for — the honest consequence of
+        opacity; a user would orbit or switch.
 - [x] **Feature regeneration — BUILT (2026-10-22).** A profile restructured
       after its feature used to leave the feature as it was (a documented
       no-op): fillet an extruded rectangle's corner and the lid stayed

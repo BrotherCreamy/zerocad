@@ -1341,7 +1341,7 @@ replacing) the system Node other projects on this machine may depend on.
   210 e2e.
   *Known and deliberate:* the drawing stays over the faces, hidden edges
   included *(their hidden runs dimmed since 2026-10-22 — see "Hidden edges,
-  dimmed" below)*; interpenetrating
+  dimmed" below; and since 2026-11-02 a shaded solid is opaque — what is behind it is neither drawn nor aimable, see "A solid is opaque" below)*; interpenetrating
   solids can sort wrong where they cross *(fixed 2026-10-22: faces are drawn
   by depth — see "Faces drawn by depth" below; the sort described here is now
   only the fallback's, by centroid)*; faces never pick, snap, box or wear a
@@ -1678,7 +1678,7 @@ replacing) the system Node other projects on this machine may depend on.
 
 - **Hidden edges, dimmed** (`src/occlusion.ts` (new), `strokeEdge` and
   `drawFrame` in `src/main.ts`; `nearestFaces` in `test/e2e/harness.ts` now
-  imports the module). The drawing stays on top of the faces and picks, snaps
+  imports the module). *(Since 2026-11-02 this is `view("hidden")`; the default is opaque — see "A solid is opaque" below.)* The drawing stays on top of the faces and picks, snaps
   and drags as before; **the part of an edge behind a face is stroked in a
   dimmed ink**. `occlusion(faces, view)` projects every visible face once a
   frame with its screen box and plane; `hidden(occ, world)` asks whether a face
@@ -1688,7 +1688,7 @@ replacing) the system Node other projects on this machine may depend on.
   vertices and at least every `SAMPLE_PX` (4 px) between, first dropping the
   faces whose boxes miss the edge's, and returns runs of screen points, the
   seam half-way between disagreeing samples; `hiddenInk(css)` is the colour
-  `HIDDEN_KEEP` (40%) of the way from `faceRGB(0.5)`. `nearestFace` and
+  `HIDDEN_KEEP` (40%) of the way from `faceRGB(0.5)` (from `faceRGB(0)` since 2026-11-02). `nearestFace` and
   `outlineDistance` are the e2e oracle's two questions. `main.ts` asks only
   when the model has a feature with a visible face; an edge all one ink is
   stroked by the old calls. Frames' arms are edges; points, names, letters
@@ -1972,6 +1972,36 @@ replacing) the system Node other projects on this machine may depend on.
   on use; no command to forget; a field edit mid-gesture drops the gesture;
   angles in radians; a refused edit is red in the log, like any typed line.
   *Spec:* [`docs/plans/tool-options.md`](docs/plans/tool-options.md).
+
+- **A solid is opaque; view modes** (`src/viewmode.ts` (new); `inSight` and
+  `visibleRuns` in `src/occlusion.ts`; an `occ` argument to `hitTest`,
+  `findSnap`, `selectInBox` and `placeGlyphs`; `engine.occlusion`; the draw
+  pass, `view()` and the menu's View row in `main.ts`, `replenv.ts`,
+  `menu.ts`; the body tones and `SOLID_EDGE` in `faces.ts`; `clear()` on the
+  face layer). The owner: *"when you extrude a solid, it should look like a
+  solid"* / *"It should be opaque"*. **Shaded, the default: nothing behind a
+  visible face is drawn or aimable** — edges and parts of edges, points and
+  their names, glyphs (by anchor), frame markers (by origin); faces still
+  never pick. `render` builds one `Occlusion` a frame, draws with it and hands
+  it to the engine, so the pick, the hover, a drag, the snapper, box select
+  and the glyphs answer from the same frame as the picture. **`view("hidden")`**
+  is the hidden-edge look (behind dimmed, all aimable); **`view("wire")`** no
+  faces; `view()` reports. The mode is viewer state — `localStorage`
+  (`neocad.viewMode.v1`), never the journal, a file or the undo history — on
+  the empty-canvas menu as a View row and in `help()`. **`view` was the camera
+  object in the scope; the camera is `camera` now.** The body runs mid slate to
+  light grey-blue over the whole headlight range; a solid's own edges are in
+  `SOLID_EDGE` wherever faces are drawn; light marks get a casing in the
+  background colour where faces are drawn; hidden ink mixes toward the faces'
+  dark end. The empty-canvas hint also goes while a preview is on screen.
+  Unit: `test/opaque.test.ts` (10, new), plus `faces.test.ts`,
+  `occlusion.test.ts`, `menu.test.ts`, `repl.test.ts`; browser:
+  `test/e2e/opaque.e2e.ts` (7, new); `hidden.e2e.ts` now runs in the hidden
+  view. 897 unit tests, 347 e2e. *Known and deliberate:* `regionAt` (a click
+  inside a loop) does not consult occlusion; the casing pass runs the edge
+  sampling twice; a profile member that is a portion of a longer line keeps
+  its sketch colour on a solid. *Spec:*
+  [`docs/plans/opaque-solids.md`](docs/plans/opaque-solids.md).
 
 
 ## What's next
