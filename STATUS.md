@@ -1972,6 +1972,53 @@ replacing) the system Node other projects on this machine may depend on.
   on use; no command to forget; a field edit mid-gesture drops the gesture;
   angles in radians; a refused edit is red in the log, like any typed line.
   *Spec:* [`docs/plans/tool-options.md`](docs/plans/tool-options.md).
+  *(Since `feature-dialog.md`: a field edit keeps a feature tool's picks —
+  re-arming the armed tool retunes it.)*
+
+- **Feature tools: pick, preview, confirm** (`src/tools/feature.ts`,
+  `src/tools/selection.ts`, `src/featurepreview.ts` (all new); the extrude,
+  revolve, fillet and sketch tools; `regionNaming` in `src/operations.ts`,
+  `loopAround` in `src/loops.ts`; `Tool`'s optional hooks and
+  `ToolContext.preselected`/`trial`/`perform`/`preview` in `src/tools/tool.ts`;
+  `ToolEngine.selected`/`confirm`/`escape`/`dialog`/`trial` and `arm`'s retune;
+  `OptionsPanel`'s ✓ ✗ row; `perform`, Enter and Escape in `src/main.ts`). The
+  owner: *"just click on the region or select the loop and hit the tickbox or
+  enter or something"*. **Pick:** a click inside a region toggles it into the
+  selection (`RegionSelection`, kept by the point picked at, `RegionHit.at`,
+  found again by `loopAround`), several allowed, drawn a shade stronger than
+  the lit candidates; revolve then a line or frame arm as the axis (another
+  replaces it; only axes every picked region can turn about are lit and
+  taken); fillet two lines that share a corner, or a click on the point
+  where exactly two lines end. **Preview:** the confirm's own steps run on a
+  copy (`previewSteps`: `save` → `open` → a `Repl` over `neocadScope` of the
+  copy → solve), the copy's new features' visible faces filled in their solid
+  shade at 0.55 alpha, far to near, and its new entities stroked in the tools'
+  green; asked again only when the picks, the values (the armed options with
+  the field's mid-edit trial over them) or the model's shape change; a refused
+  step is said once as guidance and turns ✓ off. **Confirm:** ✓ (the options
+  panel's new row), Enter with the command line empty or the focus on no text
+  field, Enter in a panel field (commits the field, then confirms), or a
+  second click on the last pick. The steps — per region its plane where none
+  orients it (`featurePlaneCommand`) and the shortest typed call naming it
+  (`regionNaming`: a member only it has, then one narrowed by its frame, then
+  the resolved profile) — are typed through `submit` inside one bracket the
+  host holds open (`perform`), one undo step, the first refusal stopping the
+  rest; each new feature is then reported (`e1  extrude of …`). The tool stays
+  armed with nothing picked. **Cancel:** ✗ or Escape drops picks and preview
+  (`Tool.clear`); with nothing picked Escape releases the tool. **Preselection:**
+  with nothing armed, a release that never moved and picked no entity selects
+  the region under it (shift: adds or drops; none there: clears) —
+  `ToolEngine.selected`, drawn like a pick, handed to the next tool armed
+  (`ToolContext.preselected`, `Tool.onArmed`) and then spent; sketch armed on
+  one types its plane at once. Headless (no `perform`) a confirm makes the
+  same operation calls directly (`runDirect`). Unit:
+  `test/featuredialog.test.ts` (12) and the tool tests moved to confirm;
+  browser: `test/e2e/featuredialog.e2e.ts` (11), and every tool e2e moved to
+  the new flow (`confirmAndRelease`). *Known and deliberate* (TODO.md, Smaller
+  things): a region through an unmarked crossing with every member shared is
+  built by calling the operation, not typed; the preview copies the whole
+  model; it is not depth-tested against built solids; preselection is regions
+  only. *Spec:* [`docs/plans/feature-dialog.md`](docs/plans/feature-dialog.md).
 
 
 ## What's next

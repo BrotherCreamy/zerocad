@@ -1,41 +1,43 @@
-// Click inside a closed region, then on the axis to turn it about, and revolve
-// it.
+// Click inside closed regions, then on the axis to turn them about; see the
+// solids, and confirm.
 //
-// The extrude tool's sibling and the fillet tool's shape: a two-click gesture,
-// armed with the one number the clicks cannot supply —
-// `arm("revolve", { angle: 3 * Math.PI / 2 })`, radians as everywhere a revolve
-// takes an angle, a whole turn when left out. The first click chooses the
-// profile exactly as the extrude tool does (`regionAt`: the innermost loop under
-// the click, with every loop inside it), outlined while the cursor moves; the
-// second chooses the axis — a line, or an arm of a frame's marker, which picking
-// reports with the arm it was (`Pick.axis`) — shown as a dashed line through the
-// profile while the cursor is over one. A click inside another region instead
-// changes the profile.
+// The extrude tool's sibling (see there, and feature.ts): armed with the one
+// number the clicks cannot supply — `arm("revolve", { angle: 3 * Math.PI / 2
+// })`, radians as everywhere a revolve takes an angle, a whole turn when left
+// out — it takes regions first, toggled in as the extrude tool takes them
+// (several may be turned about one axis), then the axis: a line, or an arm of
+// a frame's marker, which picking reports with the arm it was (`Pick.axis`).
+// Clicking another axis replaces it; clicking a region adds or drops it. Once
+// there is a region and an axis the solids are drawn as they will be built,
+// translucent, following the angle as it is typed; ✓, Enter, or a second click
+// on whatever was picked last — the region or the axis — builds them, one undo
+// step. ✗ or Escape drops the picks and keeps the tool armed.
 //
 // **A miss is guidance, and what would work is lit.** Before the first click
-// every region the tool could take is lit faintly (`lightRegions`, as the
-// extrude tool does); once a profile is chosen, every line and frame arm it
-// could turn about is (`revolveAxes`: lying in its plane, the profile to one
-// side of it). A click on nothing, or on an axis that would not do, says in a
-// line what would and leaves the tool where it was, in the muted guidance
-// style — never red.
+// every region the tool could take is lit faintly (`lightRegions`); once there
+// is a profile, every line and frame arm all the picked regions could turn
+// about is too (`revolveAxes`: lying in each one's plane, each to one side of
+// it). A click on nothing, or on an axis that would not do, says in a line
+// what would and leaves the tool where it was, in the muted guidance style.
 //
-// It hands `revolve` the profile it found, resolved, through `revolveProfile`,
-// which makes the same geometric refusals a typed call makes — so the journal
-// entry is the one a typed call writes, and the tool cannot revolve anything
-// the command line would not. A profile no frame orients gets its plane typed
-// first, exactly as the extrude tool does it (see there), once the axis has
-// passed the refusals that do not need the frame.
+// **What it builds is typed**, a line per region — `revolve("c2", "l7")`, by
+// the same shortest naming the extrude tool types (`regionNaming`), the angle
+// said only when it is not a whole turn — after the region's plane, typed
+// first where no frame orients it, once the axis has passed the refusals that
+// do not need the frame. The command line's own revolve then makes the same
+// geometric refusals a typed call makes, so the tool cannot revolve anything
+// the command line would not.
 
-import { Tool, defineTool, type PointerInfo, type RegionHit, type RenderContext } from "./tool.ts";
+import { defineTool, type FeatureStep, type PointerInfo, type RegionHit, type RenderContext } from "./tool.ts";
 import type { OptionSpecs } from "./options.ts";
 import type { Model } from "../model.ts";
-import { checkRevolveRegion, orientingFrame, revolveProfile, revolveProfileOf } from "../operations.ts";
-import { describeFeature, type Pick } from "../picking.ts";
-import { featurePlaneCommand } from "../sketchface.ts";
+import { checkRevolveRegion, regionNaming, revolve, revolveProfile, revolveProfileOf } from "../operations.ts";
+import type { Pick } from "../picking.ts";
 import { FULL_TURN, axisReader } from "../relations/revolution.ts";
 import { FRAME_ARM_PX } from "../framemarker.ts";
 import { LIT_STROKE, REGION_GREEN, drawRegion, lightRegions, missedRegion, regionKey, type Region } from "./region.ts";
+import { FeatureTool, callText, foundRegion, planeStep } from "./feature.ts";
+import { RegionSelection } from "./selection.ts";
 
 /**
  * The axes a revolve of `region` could turn about: every line, and every arm
@@ -62,7 +64,30 @@ export function revolveAxes(model: Model, region: Region): string[] {
   return found;
 }
 
-export class RevolveTool extends Tool {
+/**
+ * The steps that revolve `region` about `axis` through `angle`: the axis
+ * checked against the loop's own plane (so a refused revolve makes no plane),
+ * the plane if it needs one, then the shortest typed call that names it.
+ */
+export function revolveSteps(region: RegionHit, axis: string, angle: number, typed: boolean): FeatureStep[] {
+  return [(m) => {
+    const r = foundRegion(m, region);
+    checkRevolveRegion(m, r.loops, r.index, axis);
+    return null;
+  }, planeStep(region, typed), (m): ReturnType<FeatureStep> => {
+    const r = foundRegion(m, region);
+    const n = regionNaming(m, r.loops, r.index);
+    if (!n) return { call: () => { revolveProfile(m, revolveProfileOf(m, r.loops, r.index), axis, angle); } };
+    const args: unknown[] = [n.member, axis];
+    const more = n.frame !== null || n.loops !== null;
+    if (more || angle !== FULL_TURN) args.push(angle);
+    if (more) args.push(n.frame);
+    if (n.loops !== null) args.push(n.loops);
+    return { text: callText("revolve", args), direct: () => revolve(m, n.member, axis, angle, n.frame, n.loops) };
+  }];
+}
+
+export class RevolveTool extends FeatureTool {
   // Radians, as everywhere a revolve takes an angle; the operation's own range.
   static readonly options: OptionSpecs = {
     angle: {
@@ -71,23 +96,24 @@ export class RevolveTool extends Tool {
     },
   };
   readonly name = "revolve";
-  // It chooses a region and then an axis, not places: a snap marker would
-  // promise a vertex the click does not go to.
-  readonly snaps = false;
-  /** The profile, once the first click has chosen it — with the side it was seen from, for a plane made on it. */
-  private region: RegionHit | null = null;
-  /** The axes the chosen profile could turn about, lit while the tool waits for one. */
+  /** The profiles picked, in the order picked. */
+  readonly picks = new RegionSelection();
+  /** The axis, once one is picked, as `revolve` takes one. */
+  axis: string | null = null;
+  /** Which was picked last — what a second click on confirms. */
+  private lastPicked: "region" | "axis" | null = null;
+  /** The axes every picked profile could turn about, lit while the tool waits for one. */
   private axes: string[] = [];
-  /** Set between typing a frameless profile's plane and revolving along it — see the extrude tool's. */
-  private typing: object | null = null;
-  /** Before the first click: the region under the cursor. */
+  /** What `axes` was found for. */
+  private axesFor = "";
+  /** The region under the cursor. */
   private under: Region | null = null;
-  /** After it: the axis under the cursor, as `revolve` takes one. */
+  /** The axis under the cursor, once there is a profile. */
   private axisUnder: string | null = null;
 
   /** Armed, the angle is always here and checked; the fallback is for a tool driven with no engine. */
-  private get angle(): number {
-    const a = this.ctx.options.angle;
+  private angleOf(values: Record<string, unknown>): number {
+    const a = values.angle;
     return typeof a === "number" && Number.isFinite(a) && a !== 0 && Math.abs(a) <= FULL_TURN ? a : FULL_TURN;
   }
 
@@ -99,150 +125,137 @@ export class RevolveTool extends Tool {
     return null;
   }
 
-  onMove(p: PointerInfo): void {
-    if (!this.region) {
-      const next = this.ctx.regionAt?.(p.screen) ?? null;
-      const changed = regionKey(next) !== regionKey(this.under);
-      this.under = next;
-      if (changed) this.ctx.requestRender();
-      return;
+  /** The axes every picked profile could turn about, found again when the picks or the model change. */
+  private candidates(): string[] {
+    const m = this.ctx.model;
+    const key = `${this.picks.key()}\n${m.journal.length}:${m.entities.size}`;
+    if (key !== this.axesFor) {
+      this.axesFor = key;
+      const regions = this.picks.refresh(m);
+      this.axes = regions.length
+        ? regions.map((r) => revolveAxes(m, r)).reduce((all, these) => all.filter((a) => these.includes(a)))
+        : [];
     }
-    const axis = RevolveTool.axisOf(this.ctx.pick?.(p.screen));
-    if (axis === this.axisUnder) return;
-    this.axisUnder = axis;
-    this.ctx.requestRender();
+    return this.axes;
   }
 
-  /** Chooses `hit` as the profile, and finds what it could turn about. */
-  private choose(hit: RegionHit): void {
-    this.region = hit;
-    this.axes = revolveAxes(this.ctx.model, hit);
+  onArmed(): void {
+    const given = this.ctx.preselected ?? [];
+    if (given.length) {
+      this.picks.adopt(given);
+      this.lastPicked = "region";
+      this.ctx.requestRender();
+    }
+  }
+
+  protected plan(values: Record<string, unknown>): FeatureStep[] | null {
+    if (!this.picks.size || this.axis === null) return null;
+    const angle = this.angleOf(values);
+    const typed = !!this.ctx.perform;
+    const axis = this.axis;
+    return this.picks.regions.flatMap((r) => revolveSteps(r, axis, angle, typed));
+  }
+
+  protected picksKey(): string {
+    return `${this.picks.key()}@${this.axis ?? ""}`;
+  }
+
+  protected dropPicks(): boolean {
+    const had = this.picks.size > 0 || this.axis !== null;
+    this.picks.clear();
+    this.axis = null;
+    this.lastPicked = null;
     this.under = null;
-    this.ctx.requestRender();
+    this.axisUnder = null;
+    return had;
+  }
+
+  protected wanting(): string | null {
+    if (!this.picks.size) return this.axis === null ? null : missedRegion(this.ctx.model);
+    return this.candidates().length
+      ? "now click a line, or a frame's arm, to turn it about"
+      : "nothing lies in its plane to turn it about — draw a line there";
+  }
+
+  onMove(p: PointerInfo): void {
+    if (this.picks.size) {
+      const axis = RevolveTool.axisOf(this.ctx.pick?.(p.screen));
+      if (axis !== this.axisUnder) {
+        this.axisUnder = axis;
+        this.ctx.requestRender();
+      }
+      if (axis) {
+        if (this.under) { this.under = null; this.ctx.requestRender(); }
+        return;
+      }
+    }
+    const next = this.ctx.regionAt?.(p.screen) ?? null;
+    const changed = regionKey(next) !== regionKey(this.under);
+    this.under = next;
+    if (changed) this.ctx.requestRender();
   }
 
   onDown(p: PointerInfo): void {
-    if (this.typing) return; // the plane it typed is still going in
-    if (!this.region) {
-      const hit = this.ctx.regionAt?.(p.screen) ?? null;
-      if (!hit) {
-        this.guide(missedRegion(this.ctx.model));
-        return;
-      }
-      this.choose(hit);
-      return;
-    }
-    const axis = RevolveTool.axisOf(this.ctx.pick?.(p.screen));
-    if (!axis) {
-      const other = this.ctx.regionAt?.(p.screen) ?? null;
-      if (other) {
-        this.choose(other); // a second region clicked: that is the profile now
-        return;
-      }
-      this.guide(this.axes.length
-        ? "now click a line, or a frame's arm, to turn it about"
-        : "nothing lies in its plane to turn it about — draw a line there");
-      return;
-    }
     const ctx = this.ctx;
-    const region = this.region;
-    const loop = region.loops[region.index];
-    if (orientingFrame(ctx.model, loop) !== null || !ctx.run || !ctx.act) {
-      this.commit(region, axis);
+    // With a profile picked a line is an axis before it is a region's edge:
+    // the click that lands on one is aiming at it.
+    const axis = this.picks.size ? RevolveTool.axisOf(ctx.pick?.(p.screen)) : null;
+    if (axis) {
+      if (axis === this.axis && this.lastPicked === "axis") {
+        this.confirm();
+        return;
+      }
+      if (!this.candidates().includes(axis)) {
+        this.guide(`${axis} is not in its plane, or crosses it — click a lit one`);
+        return;
+      }
+      this.axis = axis;
+      this.lastPicked = "axis";
+      ctx.requestRender();
       return;
     }
-    // A frameless region: its plane typed first, as the extrude tool does —
-    // but only once the axis has passed the geometric refusals, asked of the
-    // loop's own plane, so an axis the revolve would refuse makes no plane.
-    let command: string;
-    try {
-      checkRevolveRegion(ctx.model, region.loops, region.index, axis);
-      command = featurePlaneCommand(ctx.model, loop, region.toward);
-    } catch (e) {
-      this.refuse(axis, e);
+    const hit = ctx.regionAt?.(p.screen) ?? null;
+    if (!hit) {
+      this.guide(this.picks.size ? (this.wanting() ?? missedRegion(ctx.model)) : missedRegion(ctx.model));
       return;
     }
-    const token = {};
-    this.typing = token;
-    this.axisUnder = null;
-    void Promise.resolve(ctx.run(command)).finally(() => {
-      if (this.typing !== token) return; // cancelled while it went in: the plane stays, as typed
-      this.typing = null;
-      ctx.act!(() => this.commit(region, axis));
-    });
-  }
-
-  /** The profile revolved about `axis` — along the plane just typed, if it needed one. See the extrude tool's. */
-  private commit(region: RegionHit, axis: string): void {
-    const model = this.ctx.model;
-    try {
-      const profile = revolveProfileOf(model, region.loops, region.index);
-      const feature = revolveProfile(model, profile, axis, this.angle);
-      this.region = null;
-      this.axes = [];
-      this.axisUnder = null;
-      // Finished first, so the solve's redraw is the first without the tool: its
-      // light on every region would otherwise stay on screen over the solid.
-      this.ctx.finish();
-      this.ctx.requestSolve();
-      this.ctx.log?.(describeFeature(model, model.featureOf(feature)), "done");
-    } catch (e) {
-      // The axis out of the profile's plane, or the profile across it, most
-      // likely. The profile stays chosen, so the next click can be another axis.
-      this.refuse(axis, e);
+    const was = this.picks.toggle(ctx.model, hit);
+    if (was === "again") {
+      // The quick path once there is an axis to confirm about; before there
+      // is, a confirm could only say "pick an axis", and the click means what
+      // a click on a picked region means anywhere else: drop it.
+      if (this.axis !== null) {
+        this.confirm();
+        return;
+      }
+      this.picks.flip(ctx.model, hit);
     }
+    this.lastPicked = this.picks.size ? "region" : null;
+    // A region that cannot turn about the axis already picked: the axis goes,
+    // and the light shows which ones the selection as it is now can.
+    if (this.axis !== null && !this.candidates().includes(this.axis)) this.axis = null;
+    ctx.requestRender();
   }
 
   /**
-   * An axis the revolve will not turn about. Said short when it is one the
-   * tool did not light — the lit ones are the answer — and in the operation's
-   * own words otherwise, which are then about something the light could not
-   * know (a profile no plane can be made of).
-   */
-  private refuse(axis: string, e: unknown): void {
-    if (!this.ctx.log) throw e;
-    this.guide(this.axes.includes(axis)
-      ? (e instanceof Error ? e.message : String(e))
-      : `${axis} is not in its plane, or crosses it — click a lit one`);
-  }
-
-  /**
-   * One line of guidance: the tool stays armed, the sentence says what would
-   * work, and the host shows it muted — never red, which is the model's. A
-   * throw headless, where a caller is the only one listening.
-   */
-  private guide(why: string): void {
-    this.ctx.requestRender();
-    if (!this.ctx.log) throw new Error(why);
-    this.ctx.log(`revolve: ${why}`, "guide");
-  }
-
-  onCancel(): void {
-    this.region = null;
-    this.axes = [];
-    this.under = null;
-    this.axisUnder = null;
-    this.typing = null;
-    this.ctx.requestRender();
-  }
-
-  /**
-   * Before the first click, every region it could take lit faintly and the
-   * one under the cursor outlined, exactly the profile a revolve would take;
-   * once one is chosen, it a shade stronger, every axis it could turn about
-   * lit, and the axis under the cursor as a dashed line running the length of
-   * the profile and a little past it, so what it would turn about is plain
-   * before the click.
+   * Every region it could take lit faintly, the picked ones a shade stronger,
+   * the one under the cursor outlined; with a profile, every axis the picks
+   * could turn about lit, the one picked as a dashed line running the length
+   * of the profiles and a little past them, the one under the cursor likewise
+   * and thinner; and over all of it the solids a confirm would build.
    */
   render(r: RenderContext): void {
-    if (!this.region) {
-      lightRegions(this.ctx.model, r, this.under);
-      if (this.under) drawRegion(this.ctx.model, r, this.under);
-      return;
+    const model = this.ctx.model;
+    lightRegions(model, r, this.under);
+    const outlines: number[][][] = [];
+    for (const picked of this.picks.refresh(model)) outlines.push(...(drawRegion(model, r, picked, "40") ?? []));
+    if (this.under) drawRegion(model, r, this.under);
+    if (this.picks.size) {
+      this.renderAxes(r);
+      if (outlines.length && this.axis) this.renderAxis(r, outlines, this.axis, 2.4);
+      if (outlines.length && this.axisUnder && this.axisUnder !== this.axis) this.renderAxis(r, outlines, this.axisUnder, 1.4);
     }
-    const outlines = drawRegion(this.ctx.model, r, this.region, "40");
-    this.renderAxes(r);
-    if (outlines && this.axisUnder) this.renderAxis(r, outlines);
+    this.renderPreview(r);
   }
 
   /**
@@ -255,7 +268,7 @@ export class RevolveTool extends Tool {
     r.g.strokeStyle = `${REGION_GREEN}${LIT_STROKE}`;
     r.g.lineWidth = 5;
     r.g.lineCap = "round";
-    for (const axis of this.axes) {
+    for (const axis of this.candidates()) {
       let ends: [number[], number[]];
       try {
         if (model.entities.get(axis)?.kind === "line") {
@@ -277,15 +290,15 @@ export class RevolveTool extends Tool {
     r.g.restore();
   }
 
-  private renderAxis(r: RenderContext, outlines: number[][][]): void {
+  private renderAxis(r: RenderContext, outlines: number[][][], axis: string, width: number): void {
     let ax;
     try {
-      ax = axisReader(this.ctx.model, this.axisUnder!).read();
+      ax = axisReader(this.ctx.model, axis).read();
     } catch {
       return;
     }
     if (ax.dir.every((c) => c === 0)) return;
-    // Along the axis, as far as the profile reaches and a fifth again each way.
+    // Along the axis, as far as the profiles reach and a fifth again each way.
     const along = outlines.flat().map((w) => w.reduce((s, c, i) => s + (c - ax.origin[i]) * ax.dir[i], 0));
     const [lo, hi] = [Math.min(0, ...along), Math.max(0, ...along)];
     const pad = Math.max(1, (hi - lo) * 0.2);
@@ -296,7 +309,7 @@ export class RevolveTool extends Tool {
     r.g.moveTo(...at(lo - pad));
     r.g.lineTo(...at(hi + pad));
     r.g.setLineDash([8, 5]);
-    r.g.lineWidth = 2;
+    r.g.lineWidth = width;
     r.g.stroke();
     r.g.restore();
   }

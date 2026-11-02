@@ -7,6 +7,64 @@ decisions.
 
 ---
 
+## Feature tools pick, preview, and confirm — like every other CAD tool
+
+The owner (2026-11-02):
+
+> *also, extrude and other tools should work like they do in other cad
+> software. just click on the region or select the loop and hit the tickbox
+> or enter or something*
+
+**Extrude, revolve and fillet no longer build on the click that picks.** Arm
+extrude and the options panel now carries **✓ and ✗** under the depth. A
+click inside a region **toggles** it into the selection — several may be
+picked, each a shade stronger than the faint light on every region a click
+could take — and the solids they would make are drawn **as they will be
+built**, translucent in the solid look with their new edges in the tools'
+green. Type 25 in the depth field and the lids move up as you type. **✓,
+Enter, or a second click on the region picked last** builds them all — one
+undo step for the whole selection, planes included — and the tool stays
+armed with nothing picked, ready for the next. **✗ or Escape** drops the
+selection; a second Escape releases the tool. Revolve takes regions, then a
+line or a frame's arm as the axis (clicking another replaces it), and
+previews the turned solid; fillet takes two lines that share a corner — or a
+click on the corner's point, for both — and previews the arc and the trimmed
+legs.
+
+**Select the loop, then hit extrude.** With nothing armed, a click inside a
+region now selects it (shift-click adds or drops one, a click on empty canvas
+clears); arming extrude, revolve or sketch starts from that selection, and
+sketch — which has nothing to preview — sketches on a preselected face at
+once. A click on an entity still names it in the command line, a drag on
+empty canvas still boxes, and the right button still opens the menu.
+
+**What ✓ does is typed**, and the log shows every line:
+
+```
+> arm("extrude", {depth: 25})
+armed: extrude
+> plane("p2", "p1", "p3", { look: false })
+f1
+> extrude("l1", 25)
+e1
+> extrude("l5", 25)
+e2
+e1  extrude of l1,l4,l3,l2, depth d1 = 25 along f1, lid f2
+e2  extrude of l5,l8,l7,l6, depth d2 = 25 along f1, lid f3
+```
+
+— the shortest call that names each region (`regionNaming`), the same line a
+user could have typed, through the command line, so the journal holds what
+the typed calls hold. The typed commands themselves are unchanged:
+`extrude("l1", 20)` still builds at once. **The preview is that commit, run
+on a copy** — the model saved and opened again, the same lines typed into a
+command line over the copy, solved — so it is the geometry ✓ builds, not a
+picture of it (`src/featurepreview.ts`).
+
+One region cannot be typed: a region bounded by a crossing no point marks
+yet, every member of it shared. That one is built by calling the operation, as
+the tool always did — the same journal entry, reported as `e1  extrude of …`.
+
 ## A shape being drawn is a solid line, not a dashed one
 
 The owner: *"when you drag out a shape, it should not be a dashed line (dashed

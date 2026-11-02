@@ -29,6 +29,7 @@ import { Circle3Tool } from "../src/tools/circle3.ts";
 import { ArcTool } from "../src/tools/arc.ts";
 import { Arc3Tool } from "../src/tools/arc3.ts";
 import { FilletTool } from "../src/tools/fillet.ts";
+import { featureHost } from "./featurectx.ts";
 import type { Pick } from "../src/picking.ts";
 import type { PointerInfo, ToolContext } from "../src/tools/tool.ts";
 
@@ -72,13 +73,15 @@ function toolCtx(m: Model, view: View) {
     act(fn: () => void) { c.acts++; fn(); },
     settled: async () => { while (c.pending.length) await c.pending.shift(); await new Promise((r) => setTimeout(r, 0)); },
   };
-  const ctx = { ...c, log: (line: string) => { c.log.push(line); } };
+  // A feature's confirm, as the host types it: every line into the same scope, one user action.
+  const host = featureHost(m, repl);
+  const ctx = { ...c, log: (line: string) => { c.log.push(line); }, perform: host.perform };
   /** A click at a screen pixel, read where the engine would read it. */
   const at = (sx: number, sy: number): PointerInfo => {
     const { world, plane } = pointOnWorkingPlane(m, view, sx, sy);
     return { world, plane, screen: [sx, sy] };
   };
-  return { ctx: ctx as unknown as ToolContext, c, at, repl };
+  return { ctx: ctx as unknown as ToolContext, c, at, repl, host };
 }
 
 // --- the line the tools type ------------------------------------------------------
@@ -199,22 +202,25 @@ function rectangle(m: Model): { points: string[]; lines: string[] } {
   return { points, lines };
 }
 
-test("the fillet tool on a frameless corner types a plane of the corner's own points, +z toward the viewer, then rounds it as a step of its own", async () => {
+test("the fillet tool on a frameless corner, confirmed, types a plane of the corner's own points, +z toward the viewer, then the fillet — one user action", async () => {
   await loadKernel();
   const m = new Model(3);
   const { points, lines } = rectangle(m);
   const view = flatView();
-  const { ctx, c, at } = toolCtx(m, view);
+  const { ctx, c, at, host } = toolCtx(m, view);
   const tool = new FilletTool(ctx);
   c.pickResult = { name: lines[0], kind: "line", distance: 0 };
   tool.onDown(at(410, 300));
   c.pickResult = { name: lines[1], kind: "line", distance: 0 };
   tool.onDown(at(480, 280));
-  await c.settled();
+  assert.deepEqual(host.typed, [], "picking types nothing");
+  tool.confirm();
+  await host.settled();
   // The shared point, then the legs' far ends — turned over so (b − a) × (c − a) faces the viewer.
-  assert.deepEqual(c.typed, [`plane("${points[1]}", "${points[2]}", "${points[0]}", { look: false })`]);
-  assert.equal(c.acts, 1);
-  assert.equal(c.finished, true, `${c.log}`);
+  assert.deepEqual(host.typed, [`plane("${points[1]}", "${points[2]}", "${points[0]}", { look: false })`,
+    `fillet("${lines[0]}", "${lines[1]}", 10)`]);
+  assert.equal(host.performs, 1, "one user action");
+  assert.equal(c.finished, false, `the tool stays armed: ${c.log}`);
   const f = m.defaultFrame!;
   assert.ok(near(frameBasis(m, f)().uz!, [0, 0, 1]), "+z toward the viewer");
   const [arc] = [...m.entities.values()].filter((e) => e.kind === "arc");
@@ -228,17 +234,18 @@ test("a corner the fillet would refuse types no plane first", async () => {
   const { lines } = rectangle(m);
   assert.throws(() => filletNeedsFrame(m, lines[0], lines[1], 500), /too large/);
   assert.throws(() => filletNeedsFrame(m, lines[0], lines[2], 5), /do not meet/);
-  const { ctx, c, at } = toolCtx(m, flatView());
+  const { ctx, c, at, host } = toolCtx(m, flatView());
   ctx.options.radius = 500;
   const tool = new FilletTool(ctx);
   c.pickResult = { name: lines[0], kind: "line", distance: 0 };
   tool.onDown(at(410, 300));
   c.pickResult = { name: lines[1], kind: "line", distance: 0 };
   tool.onDown(at(480, 280));
-  await c.settled();
-  assert.deepEqual(c.typed, [], "nothing typed");
+  tool.confirm();
+  await host.settled();
+  assert.deepEqual(host.typed, [], "nothing typed");
   assert.deepEqual(frames(m), []);
-  assert.match(c.log.join("\n"), /too large/);
+  assert.match(host.refused.join("\n"), /too large/);
 });
 
 // --- the command line -------------------------------------------------------------

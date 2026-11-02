@@ -1,10 +1,11 @@
 // The owner's first run, in a browser: a rectangle drawn in a fresh model, the
-// extrude tool, one click inside — which used to answer "the loop of
-// l1,l4,l3,l2 lies in no frame's plane …" as often as he clicked, and now makes
-// a solid. The tool types the plane the sketch needs first, `plane(a, b, c, {
-// look: false })`, so the log shows it and then `e1`; the view stays where it
-// was; and the two are two undo steps, the solid and then the plane, so two
-// Ctrl+Z bring back the frameless rectangle exactly. Then the same from the
+// extrude tool, a click inside — which used to answer "the loop of
+// l1,l4,l3,l2 lies in no frame's plane …" as often as he clicked, and now picks
+// the region, and Enter makes a solid (docs/plans/feature-dialog.md). The tool
+// types the plane the sketch needs first, `plane(a, b, c, { look: false })`,
+// then `extrude("l1", 10)`, so the log shows both and then `e1`; the view stays
+// where it was; and the two are one undo step — the whole confirm is one user
+// action — so one Ctrl+Z brings back the frameless rectangle exactly. Then the same from the
 // command line, `extrude("l1", 15)`, one step; and once more with the tool
 // from a turned view, where a positive depth must come toward the viewer.
 //
@@ -16,7 +17,7 @@ import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { openApp, type AppContext } from "./harness.ts";
+import { openApp, type AppContext, confirmAndRelease } from "./harness.ts";
 
 let app: AppContext;
 before(async () => { app = await openApp(); });
@@ -137,12 +138,15 @@ test("the owner's sequence: a rectangle in a fresh model, the extrude tool, a cl
   const view = (await app.model()).view;
   const from = await logLength();
   await clickAt(...INSIDE);
+  assert.deepEqual(await features(), [], "a click picks");
+  await key("Enter");
 
   const lines = await logSince(from);
   assert.ok(!lines.some((l) => /lies in no frame's plane/.test(l)), `no refusal: ${lines.join(" | ")}`);
   const typed = lines.filter((l) => l.startsWith("> "));
-  assert.equal(typed.length, 1, `one line typed: ${lines.join(" | ")}`);
+  assert.equal(typed.length, 2, `two lines typed: ${lines.join(" | ")}`);
   assert.match(typed[0], /^> plane\("p\d+", "p\d+", "p\d+", \{ look: false \}\)$/);
+  assert.match(typed[1], /^> extrude\("l\d+", 10\)$/);
   const made = await defaultFrame();
   assert.ok(made, "the plane is the default now");
   assert.equal(lines[lines.indexOf(typed[0]) + 1], made, "and the log answers with its name");
@@ -156,7 +160,8 @@ test("the owner's sequence: a rectangle in a fresh model, the extrude tool, a cl
   const z = await lidAlong(e1);
   assert.ok(dot(z, await toward()) > 0.99, `+z toward the viewer: ${z}`);
   assert.deepEqual((await app.model()).view, view, "the view did not turn");
-  assert.equal((await app.model()).activeTool, null, "one click, then the tool is done");
+  assert.equal((await app.model()).activeTool, "extrude", "built, and the tool stays armed");
+  await key("Escape");
   assert.equal(await app.status(), "SOLVED");
   // Its sketch plane is three of the rectangle's own corners: no point was made for it.
   const m = await app.model();
@@ -167,13 +172,10 @@ test("the owner's sequence: a rectangle in a fresh model, the extrude tool, a cl
   await shot("2-solid");
 });
 
-test("two Ctrl+Z bring the rectangle back frameless: the solid first, then the plane", async () => {
+test("one Ctrl+Z brings the rectangle back frameless: the solid and the plane made for it were one confirm", async () => {
   await key("Control+z");
-  assert.deepEqual(await features(), [], "the first takes the solid");
-  assert.ok(await defaultFrame(), "and leaves the plane");
-  assert.equal((await app.model()).byKind.frame, 1);
-  await key("Control+z");
-  assert.equal(await saved(), rectangleFile, "the second takes the plane: the rectangle exactly as drawn");
+  assert.deepEqual(await features(), [], "it takes the solid");
+  assert.equal(await saved(), rectangleFile, "and the plane: the rectangle exactly as drawn");
   assert.equal(await defaultFrame(), null);
   assert.equal((await app.model()).byKind.frame ?? 0, 0);
   await shot("3-undone");
@@ -211,6 +213,7 @@ test("from a turned view, the tool's solid comes toward the viewer, and the view
   const centre = (await app.model()).points;
   const mid = Object.values(centre).reduce((s, p) => s.map((v, i) => v + p[i] / 4), [0, 0, 0]);
   await clickAt(...await app.screenOf(mid));
+  await confirmAndRelease(app);
   const [e1] = await features();
   assert.equal(e1?.name, "e1");
   const z = await lidAlong(e1);

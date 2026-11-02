@@ -1261,12 +1261,33 @@ export class Toolbar {
 /** One declared option as the panel shows it: what it is called, its unit's text, and the armed value. */
 export interface OptionRow { name: string; label: string; unit: string; value: number | boolean }
 
+/**
+ * A feature tool's ✓ and ✗, as the panel shows them: whether ✓ would do
+ * anything now. Its own shape rather than the tools' — this file knows nothing
+ * of tools — which the host fills from the engine.
+ */
+export interface DialogState { ready: boolean }
+
 /** What the options panel needs of its host. */
 export interface OptionsHost {
-  /** The armed tool's registered name and its declared options, or null when none is armed or it declares none. */
-  armed(): { tool: string; rows: OptionRow[] } | null;
-  /** Types one line into the command machinery, as one user action — `submit`. */
-  run(command: string): void;
+  /**
+   * The armed tool's registered name and its declared options — and, for a
+   * tool that makes a feature, the state of its ✓ — or null when none is armed
+   * or it has neither options nor a ✓.
+   */
+  armed(): { tool: string; rows: OptionRow[]; dialog?: DialogState | null } | null;
+  /** Types one line into the command machinery, as one user action — `submit`. Settles once it has run. */
+  run(command: string): Promise<unknown> | void;
+  /** ✓ — what Enter does. */
+  confirm?(): void;
+  /** ✗ — what Escape does. */
+  cancel?(): void;
+  /**
+   * A field's text as it is typed, before it commits: the number it reads, or
+   * null for text that is not one (the armed value stands) — so a feature's
+   * preview can follow the typing without a line typed per keystroke.
+   */
+  trial?(option: string, value: number | null): void;
 }
 
 /**
@@ -1315,6 +1336,8 @@ export class OptionsPanel {
   private key = "";
   private tool = "";
   private count: number | null = null;
+  /** The ✓ button, while the armed tool has one. */
+  private ok: HTMLButtonElement | null = null;
 
   constructor(panel: HTMLElement, body: HTMLElement, host: OptionsHost) {
     this.body = body;
@@ -1324,7 +1347,7 @@ export class OptionsPanel {
     // tool the press reaches is the one armed with what the field says.
     document.addEventListener("pointerdown", (e) => {
       const at = document.activeElement;
-      if (at instanceof HTMLInputElement && at.type === "text" && this.body.contains(at) && e.target !== at) this.commit(at);
+      if (at instanceof HTMLInputElement && at.type === "text" && this.body.contains(at) && e.target !== at) void this.commit(at);
     }, true);
   }
 
@@ -1340,18 +1363,49 @@ export class OptionsPanel {
    */
   sync(): boolean {
     const a = this.host.armed();
-    const key = a ? [a.tool, ...a.rows.map((r) => `${r.name}\t${typeof r.value}\t${r.label}\t${r.unit}`)].join("\n") : "";
+    const key = a
+      ? [a.tool, a.dialog ? "dialog" : "", ...a.rows.map((r) => `${r.name}\t${typeof r.value}\t${r.label}\t${r.unit}`)].join("\n")
+      : "";
     const shaped = key !== this.key;
     if (shaped) {
       this.key = key;
       this.tool = a?.tool ?? "";
-      this.count = a ? a.rows.length : null;
+      this.count = a ? a.rows.length + (a.dialog ? 1 : 0) : null;
       this.body.textContent = "";
+      this.ok = null;
       if (this.strip) this.strip.textContent = a ? a.tool : "";
       for (const row of a?.rows ?? []) this.body.appendChild(this.row(row));
+      if (a?.dialog) this.body.appendChild(this.actions());
     }
     if (a) this.fill(a.rows, false);
+    if (this.ok && a?.dialog) this.ok.disabled = !a.dialog.ready;
     return shaped;
+  }
+
+  /**
+   * The feature's ✓ and ✗, a row of their own under the options — Onshape's
+   * feature dialog, in this panel's size. ✓ is disabled until the picks are
+   * enough to build something. A press keeps the focus where it was (the
+   * command line, nearly always), so typing after a ✗ still types; a field
+   * left mid-edit is committed before the press is handled, by the same
+   * capture every press elsewhere gets — so ✓ after typing 25 builds 25 deep.
+   */
+  private actions(): HTMLElement {
+    const line = document.createElement("div");
+    line.className = "orow oact";
+    const button = (cls: string, text: string, title: string, act: () => void) => {
+      const b = document.createElement("button");
+      b.className = cls;
+      b.type = "button";
+      b.textContent = text;
+      b.title = title;
+      b.addEventListener("mousedown", (e) => e.preventDefault());
+      b.addEventListener("click", act);
+      return b;
+    };
+    this.ok = button("ok", "✓", "confirm — Enter", () => this.host.confirm?.());
+    line.append(this.ok, button("no", "✗", "cancel — Escape", () => this.host.cancel?.()));
+    return line;
   }
 
   private row(r: OptionRow): HTMLElement {
@@ -1379,39 +1433,50 @@ export class OptionsPanel {
       field.inputMode = "decimal";
       field.addEventListener("keydown", (e) => {
         if (e.key === "Enter") {
+          // The field, then the feature: one key, both done. The feature's
+          // confirm waits for the field's line to have run, so it builds with
+          // the value just typed.
           e.preventDefault();
-          this.commit(field);
+          void Promise.resolve(this.commit(field)).then(() => this.host.confirm?.());
         } else if (e.key === "Escape") {
-          // The field's own: it does not also release the tool underneath.
+          // The field's own: it does not also release the tool underneath, nor
+          // drop a feature's picks.
           e.stopPropagation();
           field.value = field.dataset.shown ?? "";
+          this.host.trial?.(r.name, null);
           field.blur();
         }
       });
-      field.addEventListener("blur", () => this.commit(field));
+      field.addEventListener("input", () => this.host.trial?.(r.name, parseField(field.value)));
+      field.addEventListener("blur", () => { void this.commit(field); });
     }
     line.append(label, field, unit);
     return line;
   }
 
-  /** Types the edited field's `arm` line, if it says something new and numeric; else puts it back. */
-  private commit(field: HTMLInputElement): void {
+  /**
+   * Types the edited field's `arm` line, if it says something new and numeric;
+   * else puts it back. Settles once the line has run.
+   */
+  private commit(field: HTMLInputElement): Promise<unknown> | void {
     const text = field.value.trim();
     if (text === field.dataset.shown) return;
     const v = parseField(text);
     if (v === null) {
       field.value = field.dataset.shown ?? "";
+      this.host.trial?.(field.dataset.option!, null);
       return;
     }
-    this.type(field.dataset.tool!, field.dataset.option!, v);
+    return this.type(field.dataset.tool!, field.dataset.option!, v);
   }
 
-  private type(tool: string, option: string, value: number | boolean): void {
-    this.host.run(optionCommand(tool, option, value));
+  private type(tool: string, option: string, value: number | boolean): Promise<unknown> | void {
+    const ran = this.host.run(optionCommand(tool, option, value));
     // `arm` runs as the line is typed, so the tool is armed afresh by now — or,
     // refused, as it was; either way the fields say which, the edited one too.
     const a = this.host.armed();
     if (a && a.tool === this.tool) this.fill(a.rows, true);
+    return ran;
   }
 
   /** Every field to its row's value — except, unless `force`, one being edited. */

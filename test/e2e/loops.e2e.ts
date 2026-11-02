@@ -16,7 +16,7 @@
 
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { openApp, type AppContext } from "./harness.ts";
+import { openApp, type AppContext, confirmAndRelease } from "./harness.ts";
 
 let app: AppContext;
 before(async () => { app = await openApp(); });
@@ -110,10 +110,11 @@ test("on a tilted sketch: a rectangle from the tool, one corner filleted with th
   rectangle = m.lines.map((l) => l.name);
   assert.equal(rectangle.length, 4);
 
-  // The fillet tool: two clicks, on the bottom edge and the right one.
+  // The fillet tool: two clicks, on the bottom edge and the right one, and Enter.
   await app.type('arm("fillet", { radius: 8 })');
   await clickAt(...await app.screenOf(onG(50, 10)));
   await clickAt(...await app.screenOf(onG(70, 25)));
+  await confirmAndRelease(app);
   m = await app.model();
   assert.equal(m.arcs.length, 1, "the corner was rounded");
   arc = m.arcs[0].name;

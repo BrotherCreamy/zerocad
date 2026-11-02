@@ -106,6 +106,83 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### Feature tools: pick, preview, confirm
+
+**The owner** (2026-11-02): *"extrude and other tools should work like they
+do in other cad software. just click on the region or select the loop and hit
+the tickbox or enter or something"*. Spec: `docs/plans/feature-dialog.md`.
+
+**How the preview is made — the clone, not a plan function.** The spec
+offered a throwaway clone or "a pure plan function the operation already has
+— `planExtrude` is one". There is no `planExtrude`; the nearest thing,
+`planSweep`, walks a profile's joins and computes no geometry. Where a lid
+goes is the expansion itself (twins seeded along the frame, a depth
+dimension solved), and a second function saying where a lid goes would be a
+second account of it — the approximation the spec forbade. So the preview is
+the commit, run on a copy: `save` and `open` (the round trip every undo step
+already makes), the tool's lines typed into a `Repl` over `neocadScope` of the
+copy — the same command layer, the same frame-making and refusals — solved,
+and the copy's new features and entities drawn. *Rejected:* computing faces
+from the profile and the depth directly — fast, and wrong the first time a
+regenerated lid or a crossing materialised differently from the guess.
+*Cost, measured* in the app (headless Chromium on the shared 4-core box, a
+model of 97 entities — six rectangles, three extruded — previewing a fourth):
+24 ms the first time, then 6.5–10 ms for each of nine more. The copy is
+rebuilt only when the picks, the values or the model change (a key over the
+picks, the values, the journal's length and the entity count), never per
+frame, so a keystroke in the depth field costs one of those.
+
+**What a confirm types.** The brief was journal-as-the-call: the confirm types
+what the typed commands type, through `submit`. A region is not a member, so
+the tool asks `regionNaming` for the shortest typed call that names that very
+loop — `extrude("l1", 25)` when one of its whole members is in no other loop,
+`extrude("l9", 25, "f2")` when that is true only among loops parallel to its
+frame (a lid's edges are walls' too), the resolved profile as the journal
+carries it when every member is shared in its own plane. Each asks the
+question `foundLoop` asks, over the same loops, so the typed line cannot find
+a different region. **The one gap:** a region bounded by a crossing no point
+marks yet, every member of it shared (two halves of a rectangle split by a
+line drawn across it, never joined). A typed profile names points, and a
+crossing is a key until an extrude makes it a point; the operation refuses
+keys on purpose (a drag renumbers them). So that region alone is extruded by
+calling `extrudeProfile` as the tool always did — the same journal entry, and
+`e1  extrude of …` in the log, but no `> extrude(…)` line. *Rejected:* a new
+typed form for regions (the spec says the typed commands do not change), and
+typing `pt(on(_, "l1"), on(_, "l5"))` first to materialise the crossing (a
+different journal, a point the feature would not own).
+
+**One undo step for the selection, planes included.** The extrude tool used to
+type a frameless region's plane and then extrude in a step of its own — two
+Ctrl+Z, because `submit` closes its bracket a microtask later than it runs.
+The host's `perform` now opens one bracket and awaits each line's `submit`
+inside it, so the nested brackets record nothing and the outer one records
+everything: the plane and every solid, one step. `extrudeplane.e2e.ts`'s "two
+Ctrl+Z" became one.
+
+**A region is kept by a point inside it.** A pick keeps `RegionHit.at`, where
+the click met the loop's plane, and is found again as `loopAround` that point
+in the drawing as it stands. Keys were tried first and fail in exactly the
+multi-region case the spec asks for: extruding one half of a split rectangle
+makes its crossings points, which relabels the other half's members, and a
+key no longer finds it. A point inside it does.
+
+**Re-arming keeps the picks.** The panel's field types `arm("extrude", {depth:
+25})`, and `arm` used to make a new tool instance — which would drop the
+selection the depth was being typed for. Arming the tool already armed now
+retunes it in place (`Tool.retune`) when it has the hook; every other tool
+starts over as before. Typing in a field shows the preview the value *as
+typed* (`ToolContext.trial`, checked against the declaration, never typed or
+remembered), so the lid moves with the keystrokes; Enter commits the field
+and then confirms.
+
+**The quick path versus toggling.** A click on a picked region drops it —
+except the one picked last, whose second click confirms (the spec's
+click-click). Revolve with no axis yet has nothing to confirm, so there the
+second click drops the region, as a toggle would. The fillet tool keeps a
+corner it cannot round (radius too large) picked, with the preview refused
+in the operation's words and ✓ off — the next move is as likely a smaller
+radius as another line.
+
 ### Tool options: declared, visible, remembered
 
 **The owner's direction** (docs/plans/effortless.md): *"if the tool has

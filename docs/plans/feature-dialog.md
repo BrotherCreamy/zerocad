@@ -1,6 +1,40 @@
 # Plan: feature tools pick, preview, and confirm — like every other CAD tool
 
-**Status: queued** (2026-11-02). The owner, verbatim:
+**Status: built** (2026-11-02) — `src/tools/feature.ts` (new: `FeatureTool`,
+`runSteps`, `runDirect`, `planeStep`, `foundRegion`, `callText`,
+`drawPreview`), `src/tools/selection.ts` (new: `RegionSelection`, `refind`),
+`src/featurepreview.ts` (new: `previewSteps`), `regionNaming` in
+`src/operations.ts`, `loopAround` in `src/loops.ts`; the extrude, revolve,
+fillet and sketch tools; `Tool`'s optional hooks (`onArmed`, `retune`,
+`retry`, `confirm`, `clear`, `dialog`) and `ToolContext.preselected`,
+`trial`, `perform`, `preview`, `RegionHit.at` and `RenderContext.toward` in
+`src/tools/tool.ts`; `ToolEngine.selected`, `confirm`, `escape`, `dialog`,
+`trial` and `arm`'s retune in `src/tools/engine.ts`; `OptionsPanel`'s ✓ ✗ row,
+trial input and Enter-then-confirm in `src/panels.ts`; `perform`, `submit`'s
+answer, the Enter and Escape keys and the panel's host in `src/main.ts`;
+`test/featuredialog.test.ts`, `test/featurectx.ts`,
+`test/e2e/featuredialog.e2e.ts`, `confirmAndRelease` in the harness.
+Deviations, each marked ⚠ below where the text was written before the code:
+⚠ **there is no `planExtrude`** — the preview is the throwaway clone, the
+commit's own lines run on a copy by the same command line (see 3.);
+⚠ **one region is not typed**: a region bounded by a crossing no point marks
+yet, every member shared, is built by calling `extrudeProfile` (or
+`revolveProfile`), which journals the same entry — no typed line can name it,
+and the typed commands were not to change; ⚠ **a confirm's planes and solids
+are one undo step** (the extrude tool used to make the plane a step of its
+own); ⚠ **re-arming the armed tool keeps its picks** (`retune`) — the field
+types `arm`, which used to start the tool over; ⚠ **the preview follows the
+field as it is typed** (a trial value, never typed or remembered) — what
+"typing 25 in the depth field moves the lid" needed; ⚠ **revolve with no axis
+yet**: the second click on the last region drops it (nothing to confirm);
+⚠ **fillet keeps a corner it cannot round picked**, the preview refused in
+the operation's words and ✓ off, so a smaller radius can fix it; ⚠ the
+**region picked is kept by a point inside it** (`RegionHit.at`,
+`loopAround`), not a key — a neighbour's extrude relabels a split region's
+members; ⚠ **with nothing armed a plain click selects only that region**, a
+shift-click adds or drops one, Escape clears; ⚠ a feature tool's first click
+on a frameless sketch no longer types anything — the plane is typed at the
+confirm. The owner, verbatim:
 
 > *also, extrude and other tools should work like they do in other cad
 > software. just click on the region or select the loop and hit the tickbox
@@ -39,11 +73,22 @@ signatures and journal entries), and the e2e tests for those tools.
    derive it from the same expansion the operation will run, without
    journalling (state how: a throwaway model clone, or a pure "plan" function
    the operation already has — `planExtrude` is one).
+   ⚠ *As built: the clone. There is no `planExtrude`; `planSweep` walks a
+   profile's joins and computes no geometry, and where a lid goes is the
+   expansion itself. So `previewSteps` saves and opens the model (undo's own
+   round trip), types the commit's lines into a `Repl` over `neocadScope` of
+   the copy, solves it, and the tool draws the copy's new features and
+   entities. Asked again only when the picks, the values or the model change.*
 4. **Confirm**: ✓, Enter, or a second click on the last-picked region (the
    quick path: click, click). Commits **one undo step** for the whole
    selection — several regions extrude as one action (one `extrude` call per
    region if the operation takes one profile, all inside one user action;
-   say which), and the log shows each typed line. The tool stays armed with
+   say which), and the log shows each typed line.
+   ⚠ *As built: one `extrude` call per region (the operation takes one
+   profile), each the shortest typed call that names that loop
+   (`regionNaming`), preceded by the region's plane where none orients it —
+   all typed through `submit` inside one bracket the host holds open across
+   them (`ToolContext.perform`), so the planes are in the same undo step.* The tool stays armed with
    an empty selection, ready for the next.
 5. **Cancel**: ✗ or Escape clears the selection and the preview (the tool
    stays armed; a second Escape releases it, as now).

@@ -18,7 +18,7 @@ import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { openApp, type AppContext } from "./harness.ts";
+import { openApp, type AppContext, confirmAndRelease } from "./harness.ts";
 
 let app: AppContext;
 before(async () => { app = await openApp(); });
@@ -167,6 +167,7 @@ test("plane(), a rectangle, an extrude: a plate", async () => {
   await leftDrag(await app.screenOf([-W, -H, 0]), await app.screenOf([W, H, 0]));
   await app.type(`arm("extrude", { depth: ${DEPTH} })`);
   await clickAt(...await app.screenOf([0, 0, 0]));
+  await confirmAndRelease(app);
   const [plate] = await features();
   assert.equal(plate.name, "e1");
   assert.equal(await app.status(), "SOLVED");
@@ -243,6 +244,7 @@ test("a circle drawn on the wall lands on it, and extruded a positive depth stan
 
   await app.type('arm("extrude", { depth: 14 })');
   await clickAt(...await app.screenOf(NEAR_WALL));
+  await confirmAndRelease(app);
   const all = await features();
   assert.equal(all.length, 2);
   const g = all[1];
@@ -297,6 +299,7 @@ test("the same by the context menu, on the right wall: Sketch on this face types
   await leftDrag(c, await app.screenOf([RIGHT_WALL[0], RIGHT_WALL[1] + 7, RIGHT_WALL[2]]));
   await app.type('arm("extrude", { depth: 10 })');
   await clickAt(...c);
+  await confirmAndRelease(app);
   const all = await features();
   assert.equal(all.length, 3);
   const m = await app.model();

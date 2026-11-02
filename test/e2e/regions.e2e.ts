@@ -23,7 +23,7 @@ import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { openApp, type AppContext } from "./harness.ts";
+import { openApp, type AppContext, confirmAndRelease } from "./harness.ts";
 
 let app: AppContext;
 before(async () => { app = await openApp(); });
@@ -190,6 +190,7 @@ test("a click in the right half extrudes that half — its walls stop at the lin
   beforeSteps = await saved();
   await app.type('arm("extrude", { depth: 20 })');
   await clickAt(...await app.screenOf(onG(60, 25)));
+  await confirmAndRelease(app);
   const log = await app.log();
   assert.doesNotMatch(log, /extrude: /, "nothing refused");
   const [f] = await features();
@@ -218,6 +219,7 @@ test("a click in the right half extrudes that half — its walls stop at the lin
 test("the left half, armed shallower: a second step from the same sketch, standing on the first one's crossings", async () => {
   await app.type('arm("extrude", { depth: 10 })');
   await clickAt(...await app.screenOf(onG(37, 25)));
+  await confirmAndRelease(app);
   const all = await features();
   assert.equal(all.length, 2, (await app.log()).split("\n").slice(-3).join(" | "));
   const g = all[1];
@@ -298,6 +300,15 @@ test("a lens: two crossing circles from the circle tool, the lens between them e
 
   await app.type('arm("extrude", { depth: 15 })');
   await clickAt(...await app.screenOf(onG(97, 25)));
+  // The one region no typed line can name — bounded by two crossings no point
+  // marks yet, every member shared — so the confirm builds it by calling the
+  // operation (feature-dialog.md's deviation): no `> extrude(` line for it.
+  const lines = () => app.page.$$eval("#log > div", (els) => els.map((el) => el.textContent ?? ""));
+  const from = (await lines()).length;
+  await confirmAndRelease(app);
+  const said = (await lines()).slice(from);
+  assert.ok(!said.some((l) => l.startsWith("> extrude(")), said.join(" | "));
+  assert.ok(said.some((l) => /^e3 {2}extrude of /.test(l)), `reported as it was made: ${said.join(" | ")}`);
   const all = await features();
   assert.equal(all.length, 3, (await app.log()).split("\n").slice(-3).join(" | "));
   const lens = all[2];

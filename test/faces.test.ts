@@ -19,11 +19,12 @@ import { onPlane } from "../src/relations/basic.ts";
 import { extrude, fillet, revolve } from "../src/operations.ts";
 import { FACE_DARK, FACE_LIGHT, faceColour, faceRGB, facesToDraw, featureFaces, loopOutlines, visibleFaces, type Face } from "../src/faces.ts";
 import { arcSegments } from "../src/arcgeom.ts";
-import { findLoops, loopAt } from "../src/loops.ts";
+import { findLoops } from "../src/loops.ts";
 import { hitTest } from "../src/picking.ts";
 import { FRAME_ARM_PX } from "../src/framemarker.ts";
 import { depth, orbitBy, viewAxes, worldToScreen, type View } from "../src/view.ts";
 import { ExtrudeTool } from "../src/tools/extrude.ts";
+import { regionAtFor } from "./featurectx.ts";
 import { RevolveTool } from "../src/tools/revolve.ts";
 import { RectangleTool } from "../src/tools/rectangle.ts";
 import type { ToolContext } from "../src/tools/tool.ts";
@@ -264,11 +265,7 @@ function toolCtx(model: Model, view: View, options: Record<string, unknown> = {}
     requestRender() { c.renders++; },
     requestSolve() { c.solves++; model.solve(); },
     finish() { c.finished = true; },
-    regionAt: ([sx, sy]: [number, number]) => {
-      const loops = findLoops(model);
-      const loop = loopAt(model, view, sx, sy, loops);
-      return loop ? { loops, index: loops.indexOf(loop), toward: viewAxes(view).toward } : null;
-    },
+    regionAt: regionAtFor(model, view),
     // The engine's own answer, as the revolve tool's second click asks it.
     pick: ([sx, sy]: [number, number]) => hitTest(model, view, sx, sy),
     // Refusals only: a commit's report of what it made (`e1  extrude of …`) is
@@ -288,7 +285,7 @@ function ringed(): { m: Model; lines: string[]; hole: string; island: string } {
   return { m, lines, hole: m.addCircle(c, 15, "f").name, island: m.addCircle(c, 5, "f").name };
 }
 
-test("the extrude tool: hovering inside outlines the region, a click there extrudes it with its holes, and the journal says what a typed call would", async () => {
+test("the extrude tool: hovering inside outlines the region, a click there picks it, a confirm extrudes it with its holes, and the journal says what a typed call would", async () => {
   await loadKernel();
   const { m, lines, hole, island } = ringed();
   const ctx = toolCtx(m, ABOVE, { depth: 12 });
@@ -301,7 +298,11 @@ test("the extrude tool: hovering inside outlines the region, a click there extru
   assert.equal(ctx.renders, 1, "and the same region again asks for nothing");
 
   tool.onDown({ world: [5, 5, 0], screen: at(5, 5) });
-  assert.equal(ctx.finished, true);
+  assert.equal(m.features.size, 0, "a click picks");
+  assert.equal(tool.picks.size, 1);
+  assert.equal(tool.confirm(), true);
+  assert.equal(ctx.finished, false, "the tool stays armed");
+  assert.equal(tool.picks.size, 0, "with nothing picked");
   assert.equal(ctx.solves, 1);
   const f = m.featureOf("e1", "extrude");
   assert.deepEqual(f.loops, [lines, [hole], [island]], "between the outline and the hole: the outline, with its hole and the hole's island");
@@ -313,7 +314,9 @@ test("a click on the island takes the island; a click in the ring takes the hole
   for (const [x, want] of [[31, "island"], [40, "hole"]] as const) {
     const r = ringed();
     const ctx = toolCtx(r.m, ABOVE);
-    new ExtrudeTool(ctx).onDown({ world: [x, 25, 0], screen: worldToScreen(ABOVE, [x, 25, 0]) });
+    const tool = new ExtrudeTool(ctx);
+    tool.onDown({ world: [x, 25, 0], screen: worldToScreen(ABOVE, [x, 25, 0]) });
+    tool.onDown({ world: [x, 25, 0], screen: worldToScreen(ABOVE, [x, 25, 0]) }); // again: the quick path
     const f = r.m.featureOf("e1", "extrude");
     assert.deepEqual(f.loops, want === "island" ? [[r.island]] : [[r.hole], [r.island]]);
     assert.equal(r.m.relationOf(f.depth).args[1], 10, "no depth armed: the default");
@@ -334,7 +337,7 @@ test("a click on no region is refused out loud and the tool stays armed — and 
   assert.throws(() => new ExtrudeTool(toolCtx(m, ABOVE)).onDown({ world: [80, 80, 0], screen: outside }), /click inside a closed outline/);
 });
 
-test("on a split region the extrude tool outlines the half under the cursor, and a click there extrudes that half — the crossings made points first", async () => {
+test("on a split region the extrude tool outlines the half under the cursor, and a click and a confirm extrude that half — the crossings made points first", async () => {
   await loadKernel();
   const { m, lines, across } = split();
   const log: string[] = [];
@@ -364,8 +367,8 @@ test("on a split region the extrude tool outlines the half under the cursor, and
 
   const journal = m.journal.length;
   tool.onDown({ world: [30, 15, 0], screen: at(30, 15) });
+  tool.confirm();
   assert.deepEqual(log, []);
-  assert.equal(ctx.finished, true);
   const f = m.featureOf("e1", "extrude");
   assert.equal(m.journal.length, journal + 1, "one entry: the extrude");
   // The two crossings became the first two points made, held on the edges
@@ -373,9 +376,11 @@ test("on a split region the extrude tool outlines the half under the cursor, and
   const made = f.owns.filter((n) => m.entities.get(n)?.kind === "point").slice(0, 2);
   const entry = JSON.stringify(m.journal.at(-1));
   assert.ok(!entry.includes("×"), entry);
+  // Named by the one member only this half has, whole — the right edge —
+  // which is the shortest call a user could have typed for it.
   assert.deepEqual(m.journal.at(-1), {
     op: "extrude",
-    args: [lines[0], 10, "f", [[{ name: lines[0], from: made[0], to: m.line(lines[0]).refs[1] }, lines[1],
+    args: [lines[1], 10, "f", [[{ name: lines[0], from: made[0], to: m.line(lines[0]).refs[1] }, lines[1],
       { name: lines[2], from: m.line(lines[2]).refs[0], to: made[1] }, { name: across, from: made[0], to: made[1] }]]],
   });
   for (const [p, x, y] of [[made[0], 15, 0], [made[1], 15, 30]] as const) {
@@ -403,7 +408,8 @@ test("the revolve tool on a split region, the line that splits it the axis: the 
   assert.equal(ctx.pick([...at(15, 36)] as [number, number])?.name, across, "the click below lands on the line");
   tool.onDown({ world: [15, 36, 0], screen: at(15, 36) });
   assert.deepEqual(log, [], "the half only touches the line it was cut by: on one side of it");
-  assert.equal(ctx.finished, true);
+  assert.equal(tool.axis, across);
+  tool.confirm();
   const f = m.featureOf("e1", "revolve");
   assert.equal(f.axis, across);
   assert.deepEqual(f.loops[0].map((x) => (typeof x === "string" ? x : x.name)), [lines[0], lines[1], lines[2], across]);
@@ -633,12 +639,15 @@ test("the revolve tool: a click inside a region, then on a frame's +y arm — re
   assert.equal(m.features.size, 0);
   assert.deepEqual(hitTest(m, ABOVE, ...yArm()), { name: "f", kind: "frame", distance: 0, axis: "y" });
   tool.onDown({ world: [0, 0, 0], screen: yArm() });
-  assert.equal(ctx.finished, true);
+  assert.equal(tool.axis, "f.y", "the axis, picked");
+  assert.equal(m.features.size, 0, "and nothing built yet");
+  tool.confirm();
+  assert.equal(ctx.finished, false, "the tool stays armed");
   assert.equal(ctx.solves, 1);
   assert.deepEqual(m.journal.at(-1), { op: "revolve", args: [lines[0], "f.y", 1.5, "f", [lines]] });
 });
 
-test("the second click: nothing there is refused aloud, another region is taken instead, an axis revolve refuses is logged and the profile kept — then a line does it", async () => {
+test("after the profile: nothing there is refused aloud, another region is toggled in and out, an axis revolve refuses is logged and the profile kept — then a line does it", async () => {
   await loadKernel();
   const m = new Model(3);
   axisFrame(m);
@@ -661,11 +670,13 @@ test("the second click: nothing there is refused aloud, another region is taken 
   tool.onDown({ world: [15, 5, 0], screen: at(15, 5) });
   tool.onDown({ world: [80, 80, 0], screen: at(80, 80) });
   assert.match(log.at(-1)!, /^revolve: now click a line, or a frame.s arm, to turn it about$/);
-  // Inside the other block: that is the profile now — and back inside the
-  // first, that again. Neither is a refusal.
+  // Inside the other block: picked as well — and inside it again, with no
+  // axis yet to confirm about, dropped. Neither is a refusal.
   tool.onDown({ world: [15, 50, 0], screen: at(15, 50) });
-  tool.onDown({ world: [15, 5, 0], screen: at(15, 5) });
-  assert.equal(log.length, 2, "re-choosing a region is not a refusal");
+  assert.equal(tool.picks.size, 2);
+  tool.onDown({ world: [15, 50, 0], screen: at(15, 50) });
+  assert.equal(tool.picks.size, 1);
+  assert.equal(log.length, 2, "toggling a region is not a refusal");
   // That line as the axis: refused, and the block stays chosen.
   tool.onDown({ world: [20, 25, 0], screen: at(20, 25) });
   assert.match(log.at(-1)!, new RegExp(`^revolve: ${across} is not in its plane, or crosses it — click a lit one$`));
@@ -680,7 +691,7 @@ test("the second click: nothing there is refused aloud, another region is taken 
   tool.render({ g, worldToScreen: (w) => worldToScreen(ABOVE, w), scale: ABOVE.scale });
   assert.ok(calls.includes("setLineDash"), "the axis, dashed");
   tool.onDown({ world: [-5, 50, 0], screen: at(-5, 50) });
-  assert.equal(ctx.finished, true);
+  tool.confirm();
   const f = m.featureOf("e1", "revolve");
   assert.deepEqual([f.axis, f.loops], [beside, [lines]]);
   assert.ok(others.every((l) => !f.names.includes(l)));

@@ -1,68 +1,105 @@
-// Click inside a closed region, and extrude it.
+// Click inside closed regions, see the solids, and confirm.
 //
-// The Onshape gesture, and the first click-inside behaviour in the app. It
-// lives here and only here: with nothing armed, a click inside a region still
-// picks nothing and a press there still starts a selection box, exactly as it
-// did — the region is something this tool asks about, not something the
-// canvas learned to select.
+// Onshape's extrude: armed — from the toolbar, typed, or with regions already
+// selected on the canvas, which it starts from — it lights every region a click
+// could take and outlines the one under the cursor (the loop and every loop
+// inside it, the very profile a click would take, holes left clear). A click
+// **toggles** a region into the selection; several may be selected. The solids
+// they would make are drawn as they will be built, translucent, and follow the
+// depth as it changes — in the options panel, as it is typed. ✓, Enter, or a
+// second click on the region picked last builds them all as one undo step and
+// leaves the tool armed with nothing picked; ✗ or Escape drops the selection
+// (see feature.ts for the shared machinery). The region is what `loopAt`
+// finds: the innermost loop the click is inside, then the nearest — so a
+// click on an island takes the island, a click between it and the outline
+// takes the outline with its hole, and a click on a solid's lid takes the lid.
 //
-// Armed with its depth — `arm("extrude", { depth: 20 })`, the fillet tool's
-// convention for a number the gesture cannot supply — it outlines the region
-// under the cursor as it moves (the loop and every loop inside it, the very
-// profile a click would take, holes left clear), and one click there commits.
-// The region is what `loopAt` finds: the innermost loop the click is inside,
-// then the nearest — so a click on an island takes the island, a click between
-// it and the outline takes the outline with its hole, and a click on a solid's
-// lid takes the lid's own loop.
-//
-// It hands `extrude` the region it found (`extrudeProfile`), rather than a
-// member name to look the loop up by: a member is in several loops once
-// anything has been extruded (every profile edge is also a wall's), and the
-// click has already said which. A region split by a crossing extrudes as the
-// preview outlined it, the crossing made a point by the operation. The journal
-// entry is the same one a typed call makes, and the log says what it made.
+// **What it builds is typed**, a line per region: `extrude("l1", 25)`, the
+// shortest call that names that region (`regionNaming`) — with the frame that
+// narrows it when every member is shared with another plane's loop (a lid's
+// edges are walls' too), and the profile resolved when every member is shared
+// in its own plane (one half of a split rectangle). A region running through a
+// crossing no point marks yet, every member shared, is the one thing no typed
+// line can name — a typed profile names points, and a crossing is not one
+// until an extrude makes it one — so that region alone is extruded by calling
+// the operation, which journals the same entry and the log reports as
+// `e1  extrude of …`.
 //
 // **A region no frame orients gets its plane first, typed.** An extrude runs
 // along a frame's +z, and a rectangle drawn in a fresh model has none — the
 // owner's first run, refused eight times. A frame of three of the loop's own
 // points is the sketch's own plane, not a datum nobody chose (it is what
-// "Sketch on this face" makes), so the tool types it — `plane(a, b, c, { look:
-// false })`, or `frame(a, b, c)` beside a default it keeps — through the
-// command line (`ctx.run`), where the log teaches it, and then extrudes along
-// it as a step of its own. The view does not turn: the solid appears where the
-// user was looking.
+// "Sketch on this face" makes), so the confirm types it — `plane(a, b, c, {
+// look: false })`, or `frame(a, b, c)` beside a default it keeps — ahead of the
+// region's extrude, in the same user action. The view does not turn.
 //
-// **A miss is guidance.** While it is armed every region it could take is lit
-// faintly (`lightRegions`), and a click in none of them says so in a line —
-// "click inside a closed outline — the ones I can see are lit" — muted, the
-// tool still armed. So is everything else a click can be refused for here:
-// the operation's words, as guidance, never red.
+// **A miss is guidance.** A click in no region says so in a line — "click
+// inside a closed outline — the ones I can see are lit" — muted, the tool still
+// armed.
 
-import { Tool, defineTool, type PointerInfo, type RegionHit, type RenderContext } from "./tool.ts";
+import { defineTool, type FeatureStep, type PointerInfo, type RegionHit, type RenderContext } from "./tool.ts";
 import type { OptionSpecs } from "./options.ts";
-import { DEFAULT_DEPTH, extrudeProfile, orientingFrame, profileOf } from "../operations.ts";
-import { describeFeature } from "../picking.ts";
-import { featurePlaneCommand } from "../sketchface.ts";
+import { DEFAULT_DEPTH, extrude, extrudeProfile, profileOf, regionNaming } from "../operations.ts";
 import { drawRegion, lightRegions, missedRegion, regionKey, type Region } from "./region.ts";
+import { FeatureTool, callText, foundRegion, planeStep } from "./feature.ts";
+import { RegionSelection } from "./selection.ts";
 
-export class ExtrudeTool extends Tool {
+/** The steps that extrude `region` `depth` deep: its plane if it needs one, then the shortest typed call that names it. */
+export function extrudeSteps(region: RegionHit, depth: number, typed: boolean): FeatureStep[] {
+  return [planeStep(region, typed), (m): ReturnType<FeatureStep> => {
+    const r = foundRegion(m, region);
+    const n = regionNaming(m, r.loops, r.index);
+    if (!n) return { call: () => { extrudeProfile(m, profileOf(m, r.loops, r.index), depth); } };
+    const args: unknown[] = [n.member, depth];
+    if (n.frame !== null || n.loops !== null) args.push(n.frame);
+    if (n.loops !== null) args.push(n.loops);
+    return { text: callText("extrude", args), direct: () => extrude(m, n.member, depth, n.frame, n.loops) };
+  }];
+}
+
+export class ExtrudeTool extends FeatureTool {
   // Negative is allowed — the other way along +z, as the typed call takes it;
   // zero is no solid at all.
   static readonly options: OptionSpecs = {
     depth: { default: DEFAULT_DEPTH, unit: "length", check: (v) => (v === 0 ? "cannot be 0" : null) },
   };
   readonly name = "extrude";
-  // It chooses a region, not a place: a snap marker would promise a vertex
-  // the click does not go to.
-  readonly snaps = false;
   private under: Region | null = null;
-  /** Set between typing a frameless region's plane and extruding along it — which typing, so a cancel can drop it. */
-  private typing: object | null = null;
+  /** The regions picked, in the order picked. */
+  readonly picks = new RegionSelection();
 
   /** Armed, the depth is always here and checked; the fallback is for a tool driven with no engine. */
-  private get depth(): number {
-    const d = this.ctx.options.depth;
+  private depthOf(values: Record<string, unknown>): number {
+    const d = values.depth;
     return typeof d === "number" && Number.isFinite(d) && d !== 0 ? d : DEFAULT_DEPTH;
+  }
+
+  onArmed(): void {
+    const given = this.ctx.preselected ?? [];
+    if (given.length) {
+      this.picks.adopt(given);
+      this.ctx.requestRender();
+    }
+  }
+
+  protected plan(values: Record<string, unknown>): FeatureStep[] | null {
+    if (!this.picks.size) return null;
+    const depth = this.depthOf(values);
+    const typed = !!this.ctx.perform;
+    return this.picks.regions.flatMap((r) => extrudeSteps(r, depth, typed));
+  }
+
+  protected picksKey(): string {
+    return this.picks.key();
+  }
+
+  protected dropPicks(): boolean {
+    this.under = null;
+    return this.picks.clear();
+  }
+
+  protected wanting(): string | null {
+    return null; // nothing picked is the only way to be short of an extrude
   }
 
   onMove(p: PointerInfo): void {
@@ -73,89 +110,29 @@ export class ExtrudeTool extends Tool {
   }
 
   onDown(p: PointerInfo): void {
-    if (this.typing) return; // the plane it typed is still going in
     const hit = this.ctx.regionAt?.(p.screen) ?? null;
     if (!hit) {
-      this.refuse(new Error(missedRegion(this.ctx.model)));
+      this.guide(missedRegion(this.ctx.model));
       return;
     }
-    const ctx = this.ctx;
-    const model = ctx.model;
-    const loop = hit.loops[hit.index];
-    if (orientingFrame(model, loop) !== null || !ctx.run || !ctx.act) {
-      // Headless, with no command line to type the plane into, a frameless
-      // region is refused by the operation, as it always was.
-      this.commit(hit);
+    if (this.picks.toggle(this.ctx.model, hit) === "again") {
+      this.confirm();
       return;
     }
-    let command: string;
-    try {
-      command = featurePlaneCommand(model, loop, hit.toward);
-    } catch (e) {
-      this.refuse(e);
-      return;
-    }
-    // The plane is typed and then waited for: the line runs asynchronously,
-    // and an extrude made in the same breath would fall inside its undo step,
-    // so one Ctrl+Z would take both. Waiting makes them two steps — the solid,
-    // then the plane — as two typed lines would be.
-    this.under = null;
-    const token = {};
-    this.typing = token;
-    void Promise.resolve(ctx.run(command)).finally(() => {
-      if (this.typing !== token) return; // cancelled while it went in: the plane stays, as typed
-      this.typing = null;
-      ctx.act!(() => this.commit(hit));
-    });
-  }
-
-  /**
-   * The region extruded, along the frame that orients it — which, after a
-   * typed plane, is that plane: it was the only one parallel. Refused, with the
-   * operation's own words, when there is still none (the plane's line failed,
-   * or there was no command line to type it into).
-   */
-  private commit(hit: RegionHit): void {
-    const model = this.ctx.model;
-    try {
-      const feature = extrudeProfile(model, profileOf(model, hit.loops, hit.index), this.depth);
-      this.under = null;
-      // Finished first, so the solve's redraw is the first without the tool: its
-      // light on every region would otherwise stay on screen over the solid.
-      this.ctx.finish();
-      this.ctx.requestSolve();
-      this.ctx.log?.(describeFeature(model, model.featureOf(feature)), "done");
-    } catch (e) {
-      // The tool stays armed, so the next click can be somewhere it can extrude.
-      this.refuse(e);
-    }
-  }
-
-  /**
-   * Guidance where there is a user to tell — a throw from a pointer handler
-   * reaches the page as an uncaught error nobody sees explained — and a throw
-   * headless, where a caller is the only one listening (fillet's convention).
-   */
-  private refuse(e: unknown): void {
-    this.ctx.requestRender();
-    if (!this.ctx.log) throw e;
-    this.ctx.log(`extrude: ${e instanceof Error ? e.message : e}`, "guide");
-  }
-
-  onCancel(): void {
-    this.under = null;
-    this.typing = null;
     this.ctx.requestRender();
   }
 
   /**
-   * Every region a click could take, lit faintly; and over them the one under
-   * the cursor: a fill, even-odd so holes stay clear, and its members outlined
-   * in the tool colour — exactly the profile a click would extrude.
+   * Every region a click could take, lit faintly; the picked ones a shade
+   * stronger; the one under the cursor outlined — exactly the profile a click
+   * would take; and over all of it the solids a confirm would build.
    */
   render(r: RenderContext): void {
-    lightRegions(this.ctx.model, r, this.under);
-    if (this.under) drawRegion(this.ctx.model, r, this.under);
+    const model = this.ctx.model;
+    lightRegions(model, r, this.under);
+    for (const picked of this.picks.refresh(model)) drawRegion(model, r, picked, "40");
+    if (this.under) drawRegion(model, r, this.under);
+    this.renderPreview(r);
   }
 }
 

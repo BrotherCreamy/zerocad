@@ -27,6 +27,7 @@
 import { Tool, defineTool, type PointerInfo, type RegionHit, type RenderContext } from "./tool.ts";
 import { drawRegion, lightRegions, missedRegion, regionKey } from "./region.ts";
 import { sketchOnFaceCommand } from "../sketchface.ts";
+import { refind } from "./selection.ts";
 
 export class SketchTool extends Tool {
   readonly name = "sketch";
@@ -42,12 +43,38 @@ export class SketchTool extends Tool {
     if (changed) this.ctx.requestRender();
   }
 
+  /**
+   * Armed with a face already selected on the canvas, it sketches on that face
+   * at once — select the face, then hit sketch — since there is nothing to
+   * preview or confirm: the click it would wait for has been made. After the
+   * line that armed it has run, not inside it: the plane is typed as a line
+   * of its own, as a click would type it.
+   */
+  onArmed(): void {
+    const given = this.ctx.preselected?.[0];
+    if (!given) return;
+    // A task, not a microtask: the arming line's own answer ("armed: sketch")
+    // is logged a few microtasks after it ran, and the plane belongs after it.
+    setTimeout(() => {
+      try {
+        const hit = refind(this.ctx.model, given);
+        if (hit) this.sketchOn(hit);
+      } catch {
+        // Headless, with nobody to tell: the face stays unsketched, the tool armed.
+      }
+    }, 0);
+  }
+
   onDown(p: PointerInfo): void {
     const hit = this.ctx.regionAt?.(p.screen) ?? null;
     if (!hit) {
       this.refuse(new Error(missedRegion(this.ctx.model)));
       return;
     }
+    this.sketchOn(hit);
+  }
+
+  private sketchOn(hit: RegionHit): void {
     if (!this.ctx.run) {
       // Not a miss: a host with no command line. A refusal, and headless it throws.
       if (!this.ctx.log) throw new Error("there is no command line here to type plane(…) into");

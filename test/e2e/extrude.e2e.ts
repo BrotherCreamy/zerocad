@@ -18,7 +18,7 @@
 
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { checkPicture, openApp, type AppContext } from "./harness.ts";
+import { checkPicture, openApp, type AppContext, confirmAndRelease } from "./harness.ts";
 
 let app: AppContext;
 before(async () => { app = await openApp(); });
@@ -141,6 +141,7 @@ test("on a tilted sketch: a rectangle, a filleted corner and a hole from the too
   await app.type('arm("fillet", { radius: 8 })');
   await clickAt(...await app.screenOf(onG(50, 10)));
   await clickAt(...await app.screenOf(onG(70, 25)));
+  await confirmAndRelease(app);
   await app.type("circle");
   const c = await app.screenOf(onG(48, 25));
   await leftDrag(c, [c[0] - 9 * (await app.model()).view.scale, c[1]]);
@@ -172,7 +173,10 @@ test("the extrude tool: the region under the cursor is outlined; a click on noth
   assert.deepEqual(await features(), []);
 
   await clickAt(...inside);
-  assert.equal((await app.model()).activeTool, null, "one click, then the tool is done");
+  assert.deepEqual(await features(), [], "a click picks: nothing built yet");
+  await key("Enter");
+  assert.equal((await app.model()).activeTool, "extrude", "built on Enter, and the tool stays armed");
+  await key("Escape");
   assert.equal(await app.status(), "SOLVED");
   const [f] = await features();
   assert.equal(f.name, "e1");
@@ -258,6 +262,7 @@ test("a circle sketched on the lid, on the lid's own frame, extrudes again by a 
 
   await app.type('arm("extrude", { depth: 10 })');
   await clickAt(...await app.screenOf(onG(60.5, 33.5, 35)));
+  await confirmAndRelease(app);
   const all = await features();
   assert.equal(all.length, 2);
   const g = all[1];

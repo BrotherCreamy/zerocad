@@ -40,6 +40,13 @@ export interface RenderContext {
   g: CanvasRenderingContext2D;
   worldToScreen(world: number[]): [number, number];
   /**
+   * The line of sight, pointing back out of the screen at the viewer, in world
+   * terms — which side of a face is the one seen. A preview of a solid culls
+   * and shades its faces by it as the solids themselves are. Absent from a
+   * context made by hand; a tool that needs it falls back to +z.
+   */
+  toward?: number[];
+  /**
    * Pixels per world unit — how finely a preview has to sample a curve to be
    * the curve the renderer will draw (see `arcSegments`). A circle previews as
    * the committed one is drawn: sampled in its plane and projected, so a
@@ -63,6 +70,13 @@ export interface RegionHit {
   loops: Loop[];
   index: number;
   toward: number[];
+  /**
+   * Where the click met the region's plane, in the world: a point inside it.
+   * What a region chosen earlier is found again by once the drawing has
+   * changed (`loopAround`) — its loops' indices are this moment's, and a
+   * neighbour's extrude can relabel its members, but the point stays inside.
+   */
+  at: number[];
 }
 
 export interface ToolContext {
@@ -132,7 +146,70 @@ export interface ToolContext {
    * event that began its gesture. Absent outside an app, like `run`.
    */
   act?(commit: () => void): void;
+  /**
+   * The regions the user selected before arming this tool — a click inside a
+   * region with nothing armed (see the engine) — handed over once, at arming.
+   * Select the loop, then hit extrude: the owner's own words. A tool that
+   * takes regions starts with these; one that does not ignores them. Empty
+   * when nothing was selected.
+   */
+  preselected?: RegionHit[];
+  /**
+   * Values typed into the options panel and not yet committed — the depth
+   * field reading 25 while the tool is still armed with 10. A feature tool
+   * previews with them laid over `options`, so the lid moves as the number is
+   * typed; nothing is typed or remembered until the field commits (which
+   * re-arms the tool, and clears these). Always checked against the
+   * declaration first: a value it refuses never gets here.
+   */
+  trial?: Record<string, unknown>;
+  /**
+   * Runs a feature's commit — the lines it types (`FeatureStep`, see
+   * feature.ts), each asked of the model as the lines before it left it — as
+   * **one user action**: every line through the command machinery, as typed,
+   * so the log shows each and the journal holds what the typed calls hold,
+   * and one undo step for the lot. Settles true once every line has run,
+   * false at the first that was refused (the rest are not typed). Absent
+   * outside an app; a tool then makes the same calls itself.
+   */
+  perform?(steps: FeatureStep[]): Promise<boolean>;
+  /**
+   * The same steps run on a **throwaway copy** of the model, by the same
+   * command machinery, journalled nowhere — what a feature tool draws as its
+   * preview, so the preview is the geometry the commit will build and not a
+   * picture of it. Absent outside an app: no preview.
+   */
+  preview?(steps: FeatureStep[]): Promise<FeaturePreview>;
 }
+
+/**
+ * One line of a feature's commit, asked of the model as it stands when it is
+ * reached — so a second region is named in a drawing the first one's extrude
+ * has already changed, and a plane typed by one step is there for the next.
+ * Answers what to type (`text`), with `direct`, the operation it stands for,
+ * for a host with no command line; or a `call` for the one thing no typed
+ * line can say (a region bounded by a crossing no point marks yet, every
+ * member of it shared — see extrude.ts), made directly and answered with the
+ * line the log shows; or null, for nothing to do here.
+ */
+export type FeatureStep = (model: Model) => FeatureLine | FeatureCall | null;
+export interface FeatureLine { text: string; direct?: () => unknown }
+export interface FeatureCall { call: () => void }
+
+/** What a preview built, on its copy of the model. */
+export interface FeaturePreview {
+  /** The copy, after the steps, solved. Null when a step was refused. */
+  model: Model | null;
+  /** The features on the copy that the original does not have. */
+  features: string[];
+  /** The entities likewise — a fillet's arc, a wall at a new tangent point. */
+  entities: string[];
+  /** Why a step was refused, in its own words; null when none was. */
+  error: string | null;
+}
+
+/** What the options panel shows of a tool that commits a feature: whether ✓ would do anything now. */
+export interface FeatureDialog { ready: boolean }
 
 export abstract class Tool {
   /**
@@ -167,6 +244,34 @@ export abstract class Tool {
   onUp(_p: PointerInfo): void {}
   onCancel(): void {}
   render(_r: RenderContext): void {}
+
+  // The feature dialog's hooks — pick, preview, confirm (docs/plans/
+  // feature-dialog.md). Optional, so every tool that is not a feature, and
+  // every tool written at the command line before they existed, is exactly
+  // what it was; see feature.ts for the tools that have them.
+
+  /** Called once the tool is armed and in place — where a preselection is taken up. */
+  onArmed?(): void;
+  /**
+   * The tool is being re-armed with new options (`ctx.options` already
+   * replaced) — the options panel's field committed, or `arm` typed again.
+   * A tool with this keeps its gesture, its selection and its preview, and
+   * the engine does not start it over: the depth changes under a selection
+   * the user has already made.
+   */
+  retune?(): void;
+  /** `ctx.trial` changed: the panel's field is mid-edit. Preview with it. */
+  retry?(): void;
+  /** ✓ or Enter. Answers whether there was anything to confirm. */
+  confirm?(): boolean;
+  /**
+   * ✗ or Escape: drop the selection and the preview, and stay armed. Answers
+   * false when there was nothing to drop, so the engine releases the tool
+   * instead — a second Escape, as before.
+   */
+  clear?(): boolean;
+  /** Whether this tool shows ✓ and ✗, and whether ✓ would do anything now. Absent for a tool that is not a feature. */
+  dialog?(): FeatureDialog;
 }
 
 export type ToolCtor = new (ctx: ToolContext) => Tool;

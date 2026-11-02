@@ -1,28 +1,37 @@
-// Click two lines that meet, and round the corner between them.
+// Click two lines that meet — or the corner they meet at — see the arc, and
+// confirm.
 //
 // This is the first tool built on picking, and it is the case that motivated
 // picking in the first place: `fillet` the operation has existed for a while
 // and was perfectly usable from the command line, but only if you already knew
 // the two edges by name. Pointing at them is how anyone would rather do it.
 //
-// The tool is a two-click gesture with no drag, and it takes its radius from
-// `arm("fillet", { radius: 8 })` — a tool that needs a number before it can do
-// anything asks for it at arm time rather than inventing a way to be told.
+// A feature tool (see feature.ts): it takes its radius from `arm("fillet", {
+// radius: 8 })` or the options panel, and two lines that share a corner —
+// clicked one after the other, or both at once by a click on the corner's
+// point. With two the rounded corner is drawn as it will be built (the arc,
+// and everything a regenerated lid gains with it), following the radius as it
+// is typed; ✓, Enter, or a second click on the line picked last (or the corner
+// again) rounds it, one undo step. Clicking a picked line drops it; ✗ or Escape
+// drops both and keeps the tool armed. What it types is the typed call,
+// `fillet("l2", "l3", 10)`.
 //
 // **A corner in a model with no default frame gets its plane first, typed.**
 // The arc a fillet makes is given a frame's plane in 3D (see `ArcEntity`), and
 // a rectangle drawn in a fresh model has none. So, once the corner has passed
-// every refusal that needs no frame (`filletNeedsFrame`), the tool types
+// every refusal that needs no frame (`filletNeedsFrame`), the confirm types
 // `plane(shared, a, b, { look: false })` on the corner's own three points
-// (`cornerPlaneCommand`) and rounds the corner along it as a step of its own —
-// the extrude tool's pattern exactly.
+// (`cornerPlaneCommand`) ahead of the fillet — the extrude tool's pattern
+// exactly, in the same user action.
 
-import { Tool, defineTool, type PointerInfo, type RenderContext } from "./tool.ts";
+import { defineTool, type FeatureStep, type PointerInfo, type RenderContext } from "./tool.ts";
 import type { OptionSpecs } from "./options.ts";
 import { fillet, filletNeedsFrame } from "../operations.ts";
 import { cornerPlaneCommand } from "../sketchface.ts";
 import { cross3, lift3 } from "../vec3.ts";
 import type { Model } from "../model.ts";
+import { FeatureTool, callText } from "./feature.ts";
+import { REGION_GREEN } from "./region.ts";
 
 /** Used when the tool is armed with no radius. */
 export const DEFAULT_RADIUS = 10;
@@ -33,142 +42,156 @@ function sharesCorner(model: Model, a: string, b: string): boolean {
   return la.refs.some((p) => lb.refs.includes(p));
 }
 
-export class FilletTool extends Tool {
+/** The two lines that end at `point`, when exactly two do — a corner a click on its point takes whole. */
+export function cornerAt(model: Model, point: string): [string, string] | null {
+  const lines = [...model.entities.values()].filter((e) => e.kind === "line" && e.refs.includes(point)).map((e) => e.name);
+  return lines.length === 2 ? [lines[0], lines[1]] : null;
+}
+
+/** The steps that round the corner of `a` and `b` at `radius`: its plane if the model has no default frame, then the typed call. */
+export function filletSteps(a: string, b: string, radius: number, toward: number[], typed: boolean): FeatureStep[] {
+  return [(m) => {
+    if (!typed) return null;
+    const corner = filletNeedsFrame(m, a, b, radius);
+    return corner ? { text: cornerPlaneCommand(m, corner, toward) } : null;
+  }, (m) => ({ text: callText("fillet", [a, b, radius]), direct: () => fillet(m, a, b, radius) })];
+}
+
+export class FilletTool extends FeatureTool {
   static readonly options: OptionSpecs = {
     radius: { default: DEFAULT_RADIUS, unit: "length", check: (v) => ((v as number) > 0 ? null : "must be more than 0") },
   };
   readonly name = "fillet";
-  private first: string | null = null;
-  /** Set between typing a corner's plane and rounding along it — which typing, so a cancel can drop it. */
-  private typing: object | null = null;
+  // Its picks are lines, and a corner's point: a snap marker would only echo the pick.
+  readonly snaps = false;
+  /** The lines picked, in the order picked. */
+  lines: string[] = [];
+  /** Whether the last pick was a corner's point — which a second click on the same corner confirms. */
+  private byCorner: string | null = null;
+  /** Which way is toward whoever picked — the side a plane made for the corner faces. */
+  private toward: number[] = [0, 0, 1];
 
   /** Armed, the radius is always here and checked; the fallback is for a tool driven with no engine. */
-  private get radius(): number {
-    const r = this.ctx.options.radius;
+  private radiusOf(values: Record<string, unknown>): number {
+    const r = values.radius;
     return typeof r === "number" && r > 0 ? r : DEFAULT_RADIUS;
   }
 
+  protected plan(values: Record<string, unknown>): FeatureStep[] | null {
+    if (this.lines.length !== 2) return null;
+    const [a, b] = this.lines;
+    return filletSteps(a, b, this.radiusOf(values), this.toward, !!this.ctx.perform);
+  }
+
+  protected picksKey(): string {
+    return this.lines.join(",");
+  }
+
+  protected dropPicks(): boolean {
+    const had = this.lines.length > 0;
+    this.lines = [];
+    this.byCorner = null;
+    return had;
+  }
+
+  protected wanting(): string | null {
+    return this.lines.length ? `now click a line that meets ${this.lines[0]}` : null;
+  }
+
   onDown(p: PointerInfo): void {
-    if (this.typing) return; // the plane it typed is still going in
+    const model = this.ctx.model;
+    // +z toward whoever clicked: the plane the click was read on faces them.
+    if (p.plane) this.toward = cross3(lift3(p.plane.u), lift3(p.plane.v));
     const hit = this.ctx.pick?.(p.screen) ?? null;
-    const first = this.first;
+    const corner = hit?.kind === "point" ? cornerAt(model, hit.name) : null;
+    if (corner) {
+      if (this.byCorner === hit!.name && this.lines.length === 2) {
+        this.confirm();
+        return;
+      }
+      this.pickPair(corner, hit!.name);
+      return;
+    }
     // Clicking anything that isn't a line is a miss, not an error: the most
     // likely cause is aiming slightly off, and cancelling the whole gesture
-    // for that would be infuriating. So the gesture stays where it was, and
-    // the line says what was clicked and what would do.
+    // for that would be infuriating. So the picks stay as they were, and the
+    // line says what was clicked and what would do.
     if (!hit || hit.kind !== "line") {
       const what = hit ? `${hit.name} is a ${hit.kind} — ` : "";
+      const first = this.lines[0];
       this.guide(first ? (hit ? `${what}click a line that meets ${first}` : `now click a line that meets ${first}`)
         : `${hit ? what : "click a line — "}fillet wants two lines that share a corner`);
       return;
     }
-
-    if (!first) {
-      this.first = hit.name;
-      this.ctx.requestRender();
+    const line = hit.name;
+    const at = this.lines.indexOf(line);
+    if (at !== -1) {
+      // The last one picked, picked again, is the quick path; the other is dropped.
+      if (at === this.lines.length - 1 && this.lines.length === 2 && this.byCorner === null) this.confirm();
+      else if (at === this.lines.length - 1 && this.lines.length === 1) this.guide(`that is ${line} again — click the line it shares a corner with`);
+      else {
+        this.lines.splice(at, 1);
+        this.byCorner = null;
+        this.ctx.requestRender();
+      }
       return;
     }
-    if (hit.name === first) {
-      this.guide(`that is ${first} again — click the line it shares a corner with`);
+    if (this.lines.length === 2) {
+      this.guide(`${this.lines.join(" and ")} are picked — ✓ or Enter rounds them; click one to drop it`);
       return;
     }
-
-    const second = hit.name;
-    const ctx = this.ctx;
-    if (!sharesCorner(ctx.model, first, second)) {
+    if (this.lines.length === 1 && !sharesCorner(model, this.lines[0], line)) {
       // Through `refuse`, so headless it still throws, as the operation's own
       // refusal of the same corner always did.
-      this.refuse(new Error(`${first} and ${second} do not meet — fillet wants two lines that share a corner`));
+      this.refuse(new Error(`${this.lines[0]} and ${line} do not meet — fillet wants two lines that share a corner`));
       return;
     }
-    let corner: [string, string, string] | null = null;
-    if (ctx.run && ctx.act) {
-      try {
-        corner = filletNeedsFrame(ctx.model, first, second, this.radius);
-      } catch (e) {
-        this.refuse(e);
-        return;
-      }
-    }
-    if (!corner) {
-      // A default frame to resolve, a 2D model — or headless, where a
-      // frameless corner is refused by the operation, as it always was.
-      this.commit(first, second);
-      return;
-    }
-    // +z toward whoever clicked: the plane the click was read on faces them.
-    const toward = p.plane ? cross3(lift3(p.plane.u), lift3(p.plane.v)) : [0, 0, 1];
-    const command = cornerPlaneCommand(ctx.model, corner, toward);
-    this.first = null;
-    const token = {};
-    this.typing = token;
-    void Promise.resolve(ctx.run!(command)).finally(() => {
-      if (this.typing !== token) return; // cancelled while it went in: the plane stays, as typed
-      this.typing = null;
-      ctx.act!(() => this.commit(first, second));
-    });
+    // A corner it cannot round — collinear legs, a radius too large for them —
+    // is still picked: the preview is refused in the operation's words, ✓
+    // stays off, and the obvious next move is as likely a smaller radius in
+    // the panel as another line, which a pick dropped here would rule out.
+    this.lines.push(line);
+    this.byCorner = null;
+    this.ctx.requestRender();
   }
 
-  /** Rounds the corner — refused, and the first edge kept, when `fillet` cannot. */
-  private commit(first: string, second: string): void {
-    try {
-      fillet(this.ctx.model, first, second, this.radius);
-      this.first = null;
-      this.ctx.requestSolve();
-      this.ctx.finish();
-    } catch (e) {
-      this.first = first;
-      this.refuse(e);
-    }
+  /** Both lines of a corner, picked by its point. */
+  private pickPair(pair: [string, string], point: string): void {
+    this.lines = [...pair];
+    this.byCorner = point;
+    this.ctx.requestRender();
   }
 
   /**
-   * fillet refuses corners it cannot round — collinear legs, a radius too
-   * large for them. Re-armed on the first edge rather than dropping the
-   * gesture, so the obvious next move (pick a different second edge) works.
-   * Out loud where there is a user to tell: a throw from a pointer handler
-   * reaches the page as an uncaught error nobody sees explained. Headless
-   * there is no pane and a caller, so it stays a throw there — which is also
-   * what keeps unit tests honest.
+   * A click that cannot be a corner's, said — muted, the picks as they were.
+   * Headless it is only the console's: a miss there was always silent, and a
+   * test driving the tool should not have to catch one.
    */
-  private refuse(e: unknown): void {
+  protected guide(why: string): void {
     this.ctx.requestRender();
-    if (!this.ctx.log) throw e;
-    this.ctx.log(`fillet: ${e instanceof Error ? e.message : e}`, "guide");
+    this.ctx.log?.(`fillet: ${why}`, "guide");
   }
 
-  /**
-   * One line of guidance for a click that cannot be a corner's — muted, the
-   * gesture as it was. Headless it is only the console's: a miss there was
-   * always silent, and a test driving the tool should not have to catch one.
-   */
-  private guide(why: string): void {
-    this.ctx.requestRender();
-    if (this.ctx.log) this.ctx.log(`fillet: ${why}`, "guide");
-  }
-
-  onCancel(): void {
-    this.first = null;
-    this.typing = null;
-    this.ctx.requestRender();
-  }
-
-  /** Marks the edge already chosen, so it's clear the tool is half-way through. */
+  /** The picked lines marked, so it's clear the tool is half-way through; then the rounded corner a confirm would make. */
   render(r: RenderContext): void {
-    if (!this.first) return;
-    const m = this.ctx.model;
-    if (!m.entities.has(this.first)) return;
-    const line = m.line(this.first);
-    const [ax, ay] = r.worldToScreen(m.coords(line.refs[0]));
-    const [bx, by] = r.worldToScreen(m.coords(line.refs[1]));
-    r.g.save();
-    r.g.strokeStyle = "#55c07a";
-    r.g.lineWidth = 3;
-    r.g.beginPath();
-    r.g.moveTo(ax, ay);
-    r.g.lineTo(bx, by);
-    r.g.stroke();
-    r.g.restore();
+    // From the preview's copy once there is one: the legs as the fillet
+    // leaves them, ending at the arc's tangent points.
+    const m = this.previewed()?.model ?? this.ctx.model;
+    for (const name of this.lines) {
+      if (!m.entities.has(name)) continue;
+      const line = m.line(name);
+      const [ax, ay] = r.worldToScreen(m.coords(line.refs[0]));
+      const [bx, by] = r.worldToScreen(m.coords(line.refs[1]));
+      r.g.save();
+      r.g.strokeStyle = REGION_GREEN;
+      r.g.lineWidth = 3;
+      r.g.beginPath();
+      r.g.moveTo(ax, ay);
+      r.g.lineTo(bx, by);
+      r.g.stroke();
+      r.g.restore();
+    }
+    this.renderPreview(r);
   }
 }
 

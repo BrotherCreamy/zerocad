@@ -18,7 +18,7 @@
 
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { checkPicture, openApp, type AppContext } from "./harness.ts";
+import { checkPicture, openApp, type AppContext, confirmAndRelease } from "./harness.ts";
 
 let app: AppContext;
 before(async () => { app = await openApp(); });
@@ -128,6 +128,7 @@ test("on a tilted sketch: a plate drawn and extruded by the tools, and beside it
   await leftDrag(await app.screenOf(onG(-50, -45)), await app.screenOf(onG(50, -12)));
   await app.type('arm("extrude", { depth: 8 })');
   await clickAt(...await app.screenOf(onG(0, -30)));
+  await confirmAndRelease(app);
   assert.deepEqual((await features()).map((f) => f.name), ["e1"]);
 
   await app.type("rectangle");
@@ -135,6 +136,7 @@ test("on a tilted sketch: a plate drawn and extruded by the tools, and beside it
   await app.type('arm("fillet", { radius: 7 })');
   await clickAt(...await app.screenOf(onG(30, 12)));
   await clickAt(...await app.screenOf(onG(20, 30)));
+  await confirmAndRelease(app);
   const m = await app.model();
   assert.equal(m.arcs.length, 1, "the corner is rounded");
   assert.ok(Math.abs(m.radii[m.arcs[0].name] - 7) < 1e-6);
@@ -142,7 +144,7 @@ test("on a tilted sketch: a plate drawn and extruded by the tools, and beside it
   beforeRevolve = await saved();
 });
 
-test("the revolve tool: the region is outlined; a click on nothing is refused aloud; a click inside chooses it; the axis under the cursor is shown dashed; a click on the frame's +y arm revolves it", async () => {
+test("the revolve tool: the region is outlined; a click on nothing is refused aloud; a click inside chooses it; the axis under the cursor is shown dashed; a click on the frame's +y arm picks it; Enter revolves it", async () => {
   await app.type(`arm("revolve", { angle: 3 * Math.PI / 2 })`);
   const inside = await app.screenOf(onG(18, 12));
   await moveTo(...inside);
@@ -167,7 +169,10 @@ test("the revolve tool: the region is outlined; a click on nothing is refused al
   assert.match(await app.log(), /revolve: now click a line, or a frame.s arm, to turn it about/);
 
   await clickAt(...await yArm());
-  assert.equal((await app.model()).activeTool, null, "two clicks, then the tool is done");
+  assert.equal((await features()).length, 1, "the axis picked, nothing built yet");
+  await key("Enter");
+  assert.equal((await app.model()).activeTool, "revolve", "built on Enter, the tool still armed");
+  await key("Escape");
   assert.equal(await app.status(), "SOLVED");
   const f = (await features())[1];
   assert.equal(f.kind, "revolve");
