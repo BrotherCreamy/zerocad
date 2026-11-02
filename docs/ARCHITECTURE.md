@@ -645,14 +645,54 @@ is, a grazing lid past its own hole's far wall included (the case the deleted
 nearest-point key existed for; a test holds the fallback to it). It exists so
 a browser without WebGL still sees solids, not to be right.
 
-**The entities draw over the faces, hidden ones included, and the part of an
-edge behind a face is drawn in a dimmed ink** — the drafting convention for a
-hidden line, so a shaded solid reads as a solid and the sketch under it stays
-legible. Only the ink changes: every edge, point, name and glyph is still drawn
-on top and still picks, snaps and drags as before, and a face never picks,
-snaps, boxes or wears a glyph: the pieces of a solid are what a hand aims at.
+**A solid is opaque: what is behind a visible face is neither drawn nor aimed
+at.** The owner (2026-11-02): *"when you extrude a solid, it should look like a
+solid"* / *"It should be opaque"*. The entities are still drawn on the 2D canvas
+over the faces, but in the default **shaded** view every part of the drawing
+behind a visible face — an edge or the part of one, a point and its name, a
+glyph (asked at its anchor, so a dimension's label goes with its witness
+lines), a frame's marker (asked at its origin) — is left out, and the same
+answer is what `hitTest`, `findSnap`, `selectInBox` and `placeGlyphs` are
+handed, so it cannot be picked, hovered, dragged, snapped to or boxed either.
+**One `Occlusion` a frame, for the eye and the hand**: `render` builds it from
+the faces it drew and sets it on the tool engine (`engine.occlusion`), and every
+question the engine asks about the cursor passes it on. A pick between two
+frames therefore uses the last frame's — what is on screen — and since every
+change to the model or the camera redraws before the next pointer event,
+there is no other staleness to handle. A face still never picks: the pieces
+of a solid are what a hand aims at. On the surface is not behind: the
+square-to-the-plane half pixel below decides it, so a box's near edges and
+corners draw and pick while its far ones do not.
+
+**The view mode is the viewer's** (`viewmode.ts`): `view("shaded")`, the
+default; `view("hidden")`, the hidden-edge look below — everything drawn, the
+part of an edge behind a face in a dimmed ink, and everything aimable;
+`view("wire")`, no faces (the depth layer cleared, `occluded` null, every
+mark in its sketch colour). In `localStorage` under `neocad.viewMode.v1`, like
+the layout and the tool options, never in the journal, a file or the undo
+history; offered as a View row on the empty-canvas menu and in `help()`.
+
+**The body is light and its edges dark.** Faces run from a mid slate edge-on
+to a light grey-blue square-on, the headlight's cosine spread over the whole
+range (WCAG 5–9:1 against the background for a box seen from a corner, 1.3–1.8:1
+face against face; measured in the CHANGELOG). A solid's own edges — its whole
+profile members, the lid's twins, the walls — are drawn in `SOLID_EDGE`, a dark
+ink, wherever faces are drawn; a profile member that is only a portion of a
+longer line keeps its sketch colour, since most of that line may be off the
+solid. Light marks over light faces would vanish, so where faces are drawn the
+entity pass runs twice: first every mark's **casing** — the same strokes a
+little wider, dots a little larger and names stroked, in the background's own
+colour, invisible off the solid — then every mark itself; casings first, all
+of them, so one never cuts a mark already drawn where two cross. A plain
+sketch has no faces, skips the casing pass, and draws pixel for pixel as it
+did (the hidden-edge package's golden picture holds it).
+
+**In the hidden mode, the part of an edge behind a face is drawn in a dimmed
+ink** — the drafting convention for a hidden line. Only the ink changes: every
+edge, point, name and glyph is drawn on top and picks, snaps and drags.
 Points, names, a frame's letters and glyphs are never dimmed (a dimmed name is
 unreadable, a point is a target); a frame's arms are edges and dim like edges.
+Hidden runs get no casing: they are meant to be faint.
 
 *Which part is hidden is asked of the faces on the CPU* (`occlusion.ts`), not
 read back from the depth buffer, which would stall the frame. Each visible

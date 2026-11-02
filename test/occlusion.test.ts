@@ -20,7 +20,7 @@ import { onPlane } from "../src/relations/basic.ts";
 import { extrude } from "../src/operations.ts";
 import { SOLID_EDGE, faceRGB, visibleFaces } from "../src/faces.ts";
 import {
-  HIDDEN_KEEP, SAMPLE_PX, SLACK_PX, covers, hidden, hiddenInk, inkRuns, nearestFace, occlusion, outlineDistance,
+  HIDDEN_GROUND, HIDDEN_KEEP, SAMPLE_PX, SLACK_PX, covers, hidden, hiddenInk, inkRuns, nearestFace, occlusion, outlineDistance,
 } from "../src/occlusion.ts";
 import { worldToScreen, type View } from "../src/view.ts";
 import { axisFrame } from "./frames.ts";
@@ -244,8 +244,8 @@ test("the oracle's two questions: the face nearest the viewer at a pixel, and ho
   assert.equal(outlineDistance(occ, 5, 5), Infinity, "beyond the reach of every face");
 });
 
-test("hidden ink keeps an edge's own hue and takes it toward the faces' ground: plain stays blue-grey, amber stays amber, the solid's dark edge goes lighter", () => {
-  const ground = faceRGB(0.5);
+test("hidden ink keeps an edge's own hue and takes it toward the faces' shadow end: plain stays blue-grey, amber stays amber, the solid's dark edge goes lighter", () => {
+  const ground = HIDDEN_GROUND;
   const parse = (css: string) => css.match(/\d+/g)!.map(Number);
   const hex = (css: string) => [1, 3, 5].map((i) => parseInt(css.slice(i, i + 2), 16));
   for (const css of ["#afc6d9", "#e8a33d", "#c9dcec", "#7b93a8", SOLID_EDGE]) {

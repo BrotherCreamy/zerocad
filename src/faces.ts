@@ -49,9 +49,10 @@
 // faces could (measured: docs/plans/display-depth.md).
 //
 // **Faces are display only.** They never pick, snap, box or wear a glyph —
-// the entities do all of that, as before, and are drawn *over* the faces so
-// the sketch stays legible on a shaded solid, hidden edges included. A click
-// on a face is a click on whatever entity is near it, or on nothing.
+// the entities do all of that, drawn *over* the faces — but a face is opaque
+// to them: in the default shaded view what is behind one is neither drawn nor
+// aimed at (occlusion.ts, viewmode.ts). A click on a face is a click on
+// whatever visible entity is near it, or on nothing.
 //
 // **A revolve's faces are the same machinery with more of them derived** (see
 // `revolveFaces`). Its surface is not finitely many entities, so there is no

@@ -298,21 +298,28 @@ export function inkRuns(occ: Occlusion, world: number[][], closed = false): Run[
 }
 
 /**
- * The ink of an edge behind a face: its own colour taken most of the way down
- * to the faces' ground — the middle of their tones — so it reads as "behind"
- * whatever it was: a plain edge goes grey-blue, a lit (amber) one stays amber,
- * only duller. A solid colour rather than transparency, so a hidden run is the
- * same ink over any face and a test can ask a pixel for it.
+ * The ink of an edge behind a face (the hidden mode): its own colour taken
+ * most of the way to the faces' ground — the shadow end of their tones — so it
+ * reads as "behind" whatever it was: every hidden line converges on one
+ * mid-dark slate over the light body, keeping enough of its hue that a lit
+ * (amber) one stays amber, only duller; the solid's dark edge goes lighter, a
+ * light sketch line darker. A solid colour rather than transparency, so a
+ * hidden run is the same ink over any face and a test can ask a pixel for it.
+ *
+ * The ground was the faces' middle tone while the faces were dark. With the
+ * light body (faces.ts, 2026-11-02) that middle sat on top of the grey a
+ * non-default frame is drawn in, and its arm dimmed to within a few levels of
+ * itself; the shadow end is well clear of every ink the drawing uses.
  */
 export function hiddenInk(css: string): string {
   const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(css);
   if (!m) return css;
-  const rgb = [m[1], m[2], m[3]].map((h, i) => Math.round(HIDDEN_KEEP * parseInt(h, 16) + (1 - HIDDEN_KEEP) * GROUND[i]));
+  const rgb = [m[1], m[2], m[3]].map((h, i) => Math.round(HIDDEN_KEEP * parseInt(h, 16) + (1 - HIDDEN_KEEP) * HIDDEN_GROUND[i]));
   return `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`;
 }
 
 /** How much of its own colour a hidden edge keeps; the rest is the faces' ground. */
 export const HIDDEN_KEEP = 0.4;
 
-/** The faces' ground: the fill of a face seen half-on, the middle of their tones. */
-const GROUND = faceRGB(0.5);
+/** What a hidden edge is taken toward: the faces' darkest tone, a face seen edge-on. */
+export const HIDDEN_GROUND = faceRGB(0);
