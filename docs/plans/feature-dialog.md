@@ -134,3 +134,11 @@ merge; the supervising session reviews. Another package (`opaque-solids.md`)
 runs at the same time and owns the drawing pass's occlusion, picking,
 snapping, face colours and view modes; call `hitTest` as it stands and stay
 out of those.
+
+## Changed after merge (2026-11-02): a confirm releases the tool
+
+Step 4 said the tool stays armed with an empty selection. In the browser,
+with opaque solids merged, that left every face of the new solid lit as a
+candidate region, so a finished solid looked like a preview. A confirm now
+releases the tool, as Onshape's ✓ closes its dialog. Cancel (✗, Escape)
+still keeps it armed.

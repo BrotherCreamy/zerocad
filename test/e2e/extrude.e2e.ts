@@ -175,7 +175,7 @@ test("the extrude tool: the region under the cursor is outlined; a click on noth
   await clickAt(...inside);
   assert.deepEqual(await features(), [], "a click picks: nothing built yet");
   await key("Enter");
-  assert.equal((await app.model()).activeTool, "extrude", "built on Enter, and the tool stays armed");
+  assert.equal((await app.model()).activeTool, null, "built on Enter, and the tool released");
   await key("Escape");
   assert.equal(await app.status(), "SOLVED");
   const [f] = await features();

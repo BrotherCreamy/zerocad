@@ -202,7 +202,7 @@ export abstract class FeatureTool extends Tool {
    * ✓, Enter, or the second click. Not enough picked says what is missing; a
    * preview that was refused says why, and builds nothing; otherwise the lines
    * are typed as one user action, and once they are in, the picks go and the
-   * tool waits for the next. Answers false only when nothing was picked at
+   * tool is released. Answers false only when nothing was picked at
    * all, so an Enter then is the host's to keep.
    */
   confirm(): boolean {
@@ -250,11 +250,19 @@ export abstract class FeatureTool extends Tool {
     return true;
   }
 
-  /** After a commit: nothing picked, nothing previewed, the tool still armed. */
+  /**
+   * After a commit: nothing picked, nothing previewed, and **the tool
+   * released**, as Onshape's ✓ closes its feature dialog. Kept armed, the tool
+   * lit every region it could take next, and every face of the solid it had
+   * just built is one, so a finished solid glowed like the preview it
+   * replaced (seen in the browser after the opaque-solids merge). A refused
+   * confirm never gets here: its picks stay for the next click.
+   */
   private done(): void {
     this.dropPicks();
     this.shown = null;
     this.asked = this.shownFor = this.told = "";
+    this.ctx.finish();
   }
 
   clear(): boolean {

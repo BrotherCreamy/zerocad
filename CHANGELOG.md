@@ -7,6 +7,19 @@ decisions.
 
 ---
 
+## A confirmed feature releases its tool, so the solid looks like a solid
+
+Found in the browser after merging opaque solids and pick-preview-confirm:
+after Enter built two boxes, the extrude tool stayed armed, and an armed
+extrude lights every region it could take next. Every face of the solids it
+had just built is such a region, so the finished solids glowed green like the
+preview they replaced, which is exactly what the owner had asked against
+(*"when you extrude a solid, it should look like a solid"*). A confirm now
+releases the tool, as Onshape's ✓ closes its feature dialog; the options
+panel goes with it. Escape and ✗ still cancel and keep the tool armed, and a
+refused confirm keeps its picks. Five unit and five e2e assertions that
+stated the old rule now state this one.
+
 ## A solid looks like a solid: opaque, by default
 
 The owner, two messages in a row:

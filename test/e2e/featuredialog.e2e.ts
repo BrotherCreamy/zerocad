@@ -9,7 +9,7 @@
 // faces picture, since nothing is built), type 25 in the depth field and see
 // the preview's lid move, press Enter — two solids, one undo step, one Ctrl+Z
 // takes both; ✓ does the same; Escape drops the picks with nothing built and
-// the tool still armed; click, click; a region preselected with nothing armed,
+// the tool released; click, click; a region preselected with nothing armed,
 // then the toolbar's extrude, then ✓; revolve with a region, an axis, its
 // preview and Enter; fillet's two lines, the arc previewed, ✓; and with
 // nothing armed a click on a line still names it, a drag on empty canvas still
@@ -185,8 +185,9 @@ test("typing 25 in the depth field moves the previewed lids; Enter in the field 
   assert.deepEqual((await logLines()).filter((l) => l.cls === "err"), [], "nothing red");
   const m = await app.model();
   assert.equal(m.journalOps.filter((o) => o === "extrude").length, 2, "two solids");
-  assert.equal(m.activeTool, "extrude", "the tool stays armed");
-  assert.equal((await okButton()).disabled, true, "with nothing picked");
+  // Released, as Onshape's ✓ closes its dialog: kept armed, the tool lit every
+  // face of the solid it had just built as a region it could take next.
+  assert.equal(m.activeTool, null, "a confirm releases the tool");
   await park();
   assert.ok(await built(lift(base1, 25)), "the first lid, built at 25");
   assert.ok(await built(lift(base2, 25)), "the second");
@@ -197,10 +198,11 @@ test("typing 25 in the depth field moves the previewed lids; Enter in the field 
   const after = await app.model();
   assert.equal(after.journalOps.filter((o) => o === "extrude").length, 0, "one Ctrl+Z takes both solids");
   assert.equal(after.byKind.frame ?? 0, 0, "and the plane made for them");
-  assert.equal(after.activeTool, "extrude", "the tool still armed");
+  assert.equal(after.activeTool, null, "and the tool stays released");
 });
 
 test("✓ does the same: two picks, the button, two solids — and one Ctrl+Z", async () => {
+  await press("extrude");
   await clickAt(...await inside(base1));
   await clickAt(...await inside(base2));
   const ok = await okButton();
@@ -213,6 +215,7 @@ test("✓ does the same: two picks, the button, two solids — and one Ctrl+Z", 
 });
 
 test("Escape drops the picks and the preview, nothing built, the tool armed; a second Escape releases it", async () => {
+  await press("extrude");
   await clickAt(...await inside(base1));
   await park();
   assert.ok(await previewed(lift(base1, 25)));

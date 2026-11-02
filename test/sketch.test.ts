@@ -305,7 +305,7 @@ function pickingCtx(model: Model) {
 }
 const screenAt = (world: number[]): [number, number] => worldToScreen(view, world);
 
-test("FilletTool: clicking two edges picks the corner, and a confirm rounds it — the tool still armed for the next", async () => {
+test("FilletTool: clicking two edges picks the corner, and a confirm rounds it and releases the tool", async () => {
   await loadKernel();
   const model = new Model(2);
   rightCorner(model); // a(0,20) — p(0,0) — b(20,0), edges l1 and l2
@@ -320,7 +320,7 @@ test("FilletTool: clicking two edges picks the corner, and a confirm rounds it �
   assert.equal(tool.dialog().ready, true, "and ✓ would round it");
 
   assert.equal(tool.confirm(), true);
-  assert.equal(ctx.finished, false, "the tool stays armed");
+  assert.equal(ctx.finished, true, "a confirm releases the tool, as Onshape's ✓ closes its dialog");
   assert.deepEqual(tool.lines, [], "with nothing picked");
   const arcs = [...model.entities.values()].filter((e) => e.kind === "arc");
   assert.equal(arcs.length, 1);

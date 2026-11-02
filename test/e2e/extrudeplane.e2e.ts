@@ -160,7 +160,7 @@ test("the owner's sequence: a rectangle in a fresh model, the extrude tool, a cl
   const z = await lidAlong(e1);
   assert.ok(dot(z, await toward()) > 0.99, `+z toward the viewer: ${z}`);
   assert.deepEqual((await app.model()).view, view, "the view did not turn");
-  assert.equal((await app.model()).activeTool, "extrude", "built, and the tool stays armed");
+  assert.equal((await app.model()).activeTool, null, "built, and the tool released");
   await key("Escape");
   assert.equal(await app.status(), "SOLVED");
   // Its sketch plane is three of the rectangle's own corners: no point was made for it.

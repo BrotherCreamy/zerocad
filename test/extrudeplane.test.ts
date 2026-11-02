@@ -284,7 +284,7 @@ test("the extrude tool on a frameless rectangle, confirmed, types plane(a, b, c,
   await c.settled();
   assert.deepEqual(c.typed, [command, 'extrude("l1", 20)'], "the plane, then the extrude, typed");
   assert.equal(c.host.performs, 1, "as one user action");
-  assert.equal(c.finished, false, "the tool stays armed");
+  assert.equal(c.finished, true, "a confirm releases the tool, as Onshape's ✓ closes its dialog");
   assert.deepEqual(c.log, [], "nothing refused");
   assert.match(c.said.join("\n"), /^e1 {2}extrude of /, "the log says what it made");
   const f = m.featureOf("e1", "extrude");

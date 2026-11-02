@@ -145,11 +145,9 @@ test("25 typed in the field and Enter: the log shows the arm line it typed, and 
   assert.ok(Math.abs((await zExtent()) - 25) < 1e-6, `25 deep: ${await zExtent()}`);
 });
 
-test("the extrude done, the tool stays armed; Escape releases it and the panel goes; re-armed, 25 is remembered", async () => {
-  assert.equal((await app.model()).activeTool, "extrude", "armed for the next");
-  await app.page.keyboard.press("Escape");
-  await app.page.waitForTimeout(80);
-  assert.equal((await app.model()).activeTool, null);
+test("the extrude done, the tool is released and the panel goes; re-armed, 25 is remembered", async () => {
+  // A confirm releases the tool, as Onshape's ✓ closes its dialog.
+  assert.equal((await app.model()).activeTool, null, "released by the confirm");
   assert.equal(await visible(), false, "gone with the tool");
   await press("extrude");
   assert.equal(await visible(), true);

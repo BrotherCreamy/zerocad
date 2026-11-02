@@ -330,7 +330,7 @@ test("the extrude tool: hovering inside outlines the region, a click there picks
   assert.equal(m.features.size, 0, "a click picks");
   assert.equal(tool.picks.size, 1);
   assert.equal(tool.confirm(), true);
-  assert.equal(ctx.finished, false, "the tool stays armed");
+  assert.equal(ctx.finished, true, "a confirm releases the tool, as Onshape's ✓ closes its dialog");
   assert.equal(tool.picks.size, 0, "with nothing picked");
   assert.equal(ctx.solves, 1);
   const f = m.featureOf("e1", "extrude");
@@ -671,7 +671,7 @@ test("the revolve tool: a click inside a region, then on a frame's +y arm — re
   assert.equal(tool.axis, "f.y", "the axis, picked");
   assert.equal(m.features.size, 0, "and nothing built yet");
   tool.confirm();
-  assert.equal(ctx.finished, false, "the tool stays armed");
+  assert.equal(ctx.finished, true, "a confirm releases the tool, as Onshape's ✓ closes its dialog");
   assert.equal(ctx.solves, 1);
   assert.deepEqual(m.journal.at(-1), { op: "revolve", args: [lines[0], "f.y", 1.5, "f", [lines]] });
 });

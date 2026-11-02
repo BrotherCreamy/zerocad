@@ -220,7 +220,7 @@ test("the fillet tool on a frameless corner, confirmed, types a plane of the cor
   assert.deepEqual(host.typed, [`plane("${points[1]}", "${points[2]}", "${points[0]}", { look: false })`,
     `fillet("${lines[0]}", "${lines[1]}", 10)`]);
   assert.equal(host.performs, 1, "one user action");
-  assert.equal(c.finished, false, `the tool stays armed: ${c.log}`);
+  assert.equal(c.finished, true, `a confirm releases the tool: ${c.log}`);
   const f = m.defaultFrame!;
   assert.ok(near(frameBasis(m, f)().uz!, [0, 0, 1]), "+z toward the viewer");
   const [arc] = [...m.entities.values()].filter((e) => e.kind === "arc");
