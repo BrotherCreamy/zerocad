@@ -13,14 +13,15 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { ensureKernelLoaded } from "../src/kernel/problem.ts";
 import { Model } from "../src/model.ts";
-import { findLoops, loopAt } from "../src/loops.ts";
+import { findLoops } from "../src/loops.ts";
 import { hitTest } from "../src/picking.ts";
-import { viewAxes, worldToScreen, type View } from "../src/view.ts";
+import { worldToScreen, type View } from "../src/view.ts";
 import { edgeOn, litRegions, missedRegion, regionKey } from "../src/tools/region.ts";
 import { ExtrudeTool } from "../src/tools/extrude.ts";
 import { RevolveTool, revolveAxes } from "../src/tools/revolve.ts";
 import { SketchTool } from "../src/tools/sketch.ts";
 import { FilletTool } from "../src/tools/fillet.ts";
+import { regionAtFor } from "./featurectx.ts";
 import { Circle3Tool } from "../src/tools/circle3.ts";
 import { Arc3Tool } from "../src/tools/arc3.ts";
 import type { Pick } from "../src/picking.ts";
@@ -42,11 +43,7 @@ function toolCtx(model: Model, view: View, options: Record<string, unknown> = {}
     requestRender() {},
     requestSolve() { model.solve(); },
     finish() { c.finished = true; },
-    regionAt: ([sx, sy]: [number, number]) => {
-      const loops = findLoops(model);
-      const loop = loopAt(model, view, sx, sy, loops);
-      return loop ? { loops, index: loops.indexOf(loop), toward: viewAxes(view).toward } : null;
-    },
+    regionAt: regionAtFor(model, view),
     pick: ([sx, sy]: [number, number]) => (c.pickResult !== undefined ? c.pickResult : hitTest(model, view, sx, sy)),
     log(line: string, outcome?: "refused" | "done" | "guide") { c.said.push({ line, outcome }); },
   };
@@ -177,7 +174,9 @@ test("fillet: nothing, the wrong kind, the same line, lines that do not meet —
   ]);
   assert.ok(ctx.said.every((s) => s.outcome === "guide"));
   click({ name: lines[1], kind: "line", distance: 0 });
-  assert.equal(ctx.finished, true, "and the first line was kept throughout: the corner rounds");
+  tool.confirm();
+  assert.equal([...m.entities.values()].filter((e) => e.kind === "arc").length, 1,
+    "and the first line was kept throughout: the corner rounds");
 });
 
 test("the 3-point tools, three clicks on one line: guidance, the first two kept", async () => {

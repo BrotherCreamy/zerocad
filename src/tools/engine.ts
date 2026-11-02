@@ -43,7 +43,10 @@
 
 import type { Model } from "../model.ts";
 import type { ResidualBlock } from "../kernel/problem.ts";
-import { getToolCtor, type Tool, type ToolContext, type PointerInfo, type RegionHit, type RenderContext } from "./tool.ts";
+import {
+  getToolCtor, type FeatureDialog, type FeaturePreview, type FeatureStep, type Tool, type ToolContext, type PointerInfo, type RegionHit,
+  type RenderContext,
+} from "./tool.ts";
 import {
   assignView, orbitBy, panBy, screenToPlane, screenToWorld, viewAxes, worldToScreen, zoomAbout, type Plane, type View,
 } from "../view.ts";
@@ -54,6 +57,8 @@ import { glyphAt, placeGlyphs, type Glyph } from "../glyphs.ts";
 import { findSnap, type Snap } from "../snapping.ts";
 import { findLoops, loopAt } from "../loops.ts";
 import { OptionMemory, declaredOptions, explicitOptions, resolveOptions } from "./options.ts";
+import { RegionSelection } from "./selection.ts";
+import { drawRegion } from "./region.ts";
 
 export type { View };
 
@@ -151,6 +156,17 @@ export class ToolEngine {
   private onUserAction: (phase: "before" | "after") => void;
   private onLog?: (line: string, outcome?: "refused" | "done" | "guide") => void;
   private onRun?: (command: string) => Promise<void> | void;
+  private onPerform?: (steps: FeatureStep[]) => Promise<boolean>;
+  private onPreview?: (steps: FeatureStep[]) => Promise<FeaturePreview>;
+  /**
+   * The regions selected with nothing armed — a click inside one selects it,
+   * a shift-click adds or drops one, a click on empty canvas clears them — and
+   * handed to the next tool armed (`ToolContext.preselected`): select the loop,
+   * then hit extrude. Only a press that never moved and landed on no entity
+   * reaches it, so a drag still drags, a box still boxes, an entity clicked
+   * still goes to the command line, and the right button still opens the menu.
+   */
+  readonly selected = new RegionSelection();
   private onContextMenu: (pick: Pick | null, sx: number, sy: number) => void;
   /**
    * Whether a user action is currently open, so that `before` and `after`
@@ -254,6 +270,10 @@ export class ToolEngine {
       onLog?: (line: string, outcome?: "refused" | "done" | "guide") => void;
       /** One line typed into the host's command machinery, settling once it has run — see ToolContext.run. */
       onRun?: (command: string) => Promise<void> | void;
+      /** A feature's lines typed as one user action — see ToolContext.perform. */
+      onPerform?: (steps: FeatureStep[]) => Promise<boolean>;
+      /** The same lines run on a throwaway copy of the model — see ToolContext.preview. */
+      onPreview?: (steps: FeatureStep[]) => Promise<FeaturePreview>;
       /**
        * A right press released without moving, with what it landed on (null for
        * empty canvas) and where, in canvas pixels.
@@ -285,6 +305,8 @@ export class ToolEngine {
     this.onUserAction = callbacks.onUserAction ?? (() => {});
     this.onLog = callbacks.onLog;
     this.onRun = callbacks.onRun;
+    this.onPerform = callbacks.onPerform;
+    this.onPreview = callbacks.onPreview;
     this.onContextMenu = callbacks.onContextMenu ?? (() => {});
     this.optionMemory = callbacks.optionMemory ?? new OptionMemory(null);
     canvas.addEventListener("pointerleave", () => {
@@ -398,7 +420,10 @@ export class ToolEngine {
   regionAt(sx: number, sy: number): RegionHit | null {
     const loops = findLoops(this.model);
     const loop = loopAt(this.model, this.view, sx, sy, loops);
-    return loop ? { loops, index: loops.indexOf(loop), toward: viewAxes(this.view).toward } : null;
+    if (!loop) return null;
+    const { origin, u, v } = loop.plane;
+    const at = screenToPlane(this.view, sx, sy, { origin, u, v });
+    return at ? { loops, index: loops.indexOf(loop), toward: viewAxes(this.view).toward, at } : null;
   }
 
   /** Where `arm` keeps and finds the last value of each declared option. */
@@ -441,11 +466,27 @@ export class ToolEngine {
     const specs = declaredOptions(Ctor, toolName);
     const options = resolveOptions(toolName, specs, given, this.optionMemory.recall(toolName));
     this.optionMemory.remember(toolName, explicitOptions(specs, given));
+    // The tool already armed, armed again — the options panel's field
+    // committed, or `arm` typed with a new depth — keeps what it has picked if
+    // it can (`retune`): the depth changes under a selection already made.
+    const same = this.active && this.armedWith?.name === toolName && this.active.retune;
+    if (same) {
+      this.armedWith = { name: toolName, options };
+      this.active!.ctx.options = options;
+      this.active!.ctx.trial = {};
+      this.active!.retune!();
+      return;
+    }
     this.active?.onCancel();
     this.armedWith = { name: toolName, options };
+    // Spent once taken: a selection carried into one tool is not carried on into the next.
+    const preselected = [...this.selected.refresh(this.model)];
+    this.selected.clear();
     const ctx: ToolContext = {
       model: this.model,
       options,
+      preselected,
+      trial: {},
       requestRender: () => this.onRenderOnly(),
       requestSolve: () => this.onSolveRender(),
       finish: () => {
@@ -466,8 +507,67 @@ export class ToolEngine {
           this.endUserAction();
         }
       },
+      perform: this.onPerform,
+      preview: this.onPreview,
     };
-    this.active = new Ctor(ctx);
+    const tool = new Ctor(ctx);
+    this.active = tool;
+    tool.onArmed?.();
+  }
+
+  /**
+   * ✓ or Enter: the armed tool's confirm, if it has one. Answers whether it
+   * was taken — false with nothing armed, a tool that is not a feature, or a
+   * feature with nothing picked — so the host can leave the key to whatever
+   * else it means.
+   */
+  confirm(): boolean {
+    return this.active?.confirm?.() ?? false;
+  }
+
+  /**
+   * Escape, or ✗: **a feature's picks go first**, and the tool stays armed;
+   * a second press, with nothing picked, releases it as Escape always did.
+   * With nothing armed it drops the canvas's selection. Answers what it did,
+   * for the log.
+   */
+  escape(): "cleared" | "cancelled" {
+    if (this.active?.clear?.()) {
+      this.onRenderOnly();
+      return "cleared";
+    }
+    this.cancel();
+    return "cancelled";
+  }
+
+  /** What the options panel shows of the armed tool's ✓ and ✗ — null for a tool that is not a feature. */
+  dialog(): FeatureDialog | null {
+    return this.active?.dialog?.() ?? null;
+  }
+
+  /**
+   * The options panel's field mid-edit: `option` reads `value` for the
+   * preview, not yet typed — or, with null, reads the armed value again (the
+   * field restored). A value the declaration refuses is left out, so a field
+   * on its way through "0" to "0.5" keeps the last preview it could build.
+   */
+  trial(option: string, value: number | boolean | null): void {
+    const tool = this.active;
+    const armed = this.armedWith;
+    if (!tool?.retry || !armed) return;
+    const next = { ...(tool.ctx.trial ?? {}) };
+    if (value === null) delete next[option];
+    else {
+      try {
+        const Ctor = getToolCtor(armed.name)!;
+        resolveOptions(armed.name, declaredOptions(Ctor, armed.name), { [option]: value }, {});
+      } catch {
+        return;
+      }
+      next[option] = value;
+    }
+    tool.ctx.trial = next;
+    tool.retry();
   }
 
   /**
@@ -497,6 +597,10 @@ export class ToolEngine {
   cancel(): void {
     this.active?.onCancel();
     this.active = null;
+    // The canvas's selection goes with it: Escape with nothing armed means
+    // "put down what I picked up", and a model swapped out from under a
+    // selection leaves it naming loops that are not there.
+    this.selected.clear();
     const wasDragging = this.idle?.moved === true && this.idle.drag !== null
       && this.idle.drag.names.every((n) => this.model.entities.has(n));
     this.idle = null;
@@ -683,6 +787,7 @@ export class ToolEngine {
       if (!moved) {
         const pick = this.pickAt(sx, sy);
         if (pick) this.onPick(pick);
+        else this.preselect(sx, sy, e.shiftKey);
       } else if (box) {
         // A box is a multi-click: every name it caught goes down the same path
         // a single click's name does, so there is one story about what
@@ -704,6 +809,27 @@ export class ToolEngine {
       // pick or a pan, neither of which ever opened an action.
       this.endUserAction();
     }
+  }
+
+  /**
+   * A click with nothing armed that landed on no entity: inside a region, it
+   * selects that region alone — or, shifted, adds or drops it; on empty canvas,
+   * it clears the selection. See `selected`.
+   */
+  private preselect(sx: number, sy: number, shift: boolean): void {
+    let hit: RegionHit | null = null;
+    try {
+      hit = this.regionAt(sx, sy);
+    } catch {
+      hit = null; // a drawing whose loops cannot be found has none to select
+    }
+    if (!hit) {
+      if (this.selected.clear()) this.onRenderOnly();
+      return;
+    }
+    if (shift) this.selected.flip(this.model, hit);
+    else this.selected.only(hit);
+    this.onRenderOnly();
   }
 
   /**
@@ -820,8 +946,15 @@ export class ToolEngine {
    */
   renderOverlay(): void {
     this.renderBox();
-    if (!this.active) return;
-    const r: RenderContext = { g: this.g, worldToScreen: (w) => this.worldToScreen(w), scale: this.view.scale };
+    const r: RenderContext = {
+      g: this.g, worldToScreen: (w) => this.worldToScreen(w), scale: this.view.scale, toward: viewAxes(this.view).toward,
+    };
+    if (!this.active) {
+      // The canvas's selection, in the green a feature tool picks in, a shade
+      // stronger than its hover — the same "picked" a tool armed from it shows.
+      if (this.selected.size) for (const region of this.selected.refresh(this.model)) drawRegion(this.model, r, region, "40");
+      return;
+    }
     // A tool starts on a solid line. Dashes mean selection (the crossing box
     // below), so a shape being drawn must never inherit them from whatever the
     // context drew last; a tool that wants a dashed guide sets one itself.

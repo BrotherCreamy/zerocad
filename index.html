@@ -117,6 +117,15 @@
     #options .oval[type="checkbox"]{width:14px;height:14px;margin:0 25px 0 25px;accent-color:#e8a33d}
     #options .oval:focus{border-color:#e8a33d80;color:#e8a33d}
     #options .ounit{flex:none;min-width:24px;white-space:nowrap;color:#46586a}
+    /* A feature's ✓ and ✗, under its options: ✓ in the tools' green, dim and
+       inert until the picks are enough, ✗ in the panel's ink. */
+    #options .oact{justify-content:flex-end;gap:4px}
+    #options .oact button{flex:none;width:28px;height:18px;padding:0;font-family:inherit;font-size:12px;line-height:16px;
+      background:transparent;border:1px solid #223041;border-radius:3px;cursor:default;color:#8fa7bb}
+    #options .oact button.ok{color:#55c07a;border-color:#55c07a80}
+    #options .oact button.ok:hover:not(:disabled){background:#55c07a22}
+    #options .oact button.no:hover{background:#20303f;color:#d5e1ec}
+    #options .oact button:disabled{color:#2f4050;border-color:#1a2633}
   </style>
 </head>
 <body>

@@ -502,13 +502,7 @@ function foundProfile(model: Model, member: string, frame: string | null, words:
 /** `foundProfile`'s search, without the profile: the loops there are, and which of them `member` is in. */
 function foundLoop(model: Model, member: string, frame: string | null, words: ProfileWords): { all: Loop[]; index: number } {
   const all = findLoops(model);
-  let mine = all.map((_, i) => i).filter((i) => all[i].members.some((m) => m.name === member));
-  if (frame !== null) {
-    model.frame(frame);
-    const axes = framePlaneAxes(model, frame);
-    if (!axes) throw new Error(`"${frame}" has collapsed — it has no plane for a profile to lie in`);
-    mine = mine.filter((i) => parallel(all[i].plane.normal, axes.n));
-  }
+  const mine = loopsWith(model, all, member, frame);
   if (mine.length === 0) {
     const where = frame === null ? "" : ` parallel to ${frame}`;
     throw new Error(`"${member}" is in no closed loop${where} — loops() lists the loops there are. A loop's ends join `
@@ -521,6 +515,55 @@ function foundLoop(model: Model, member: string, frame: string | null, words: Pr
       + `region with the ${words.op} tool`);
   }
   return { all, index: mine[0] };
+}
+
+/** The loops of `all` that `member` is in — parallel to `frame`'s plane, if one is named. `foundLoop`'s search, and `regionNaming`'s. */
+function loopsWith(model: Model, all: Loop[], member: string, frame: string | null): number[] {
+  const mine = all.map((_, i) => i).filter((i) => all[i].members.some((m) => m.name === member));
+  if (frame === null) return mine;
+  model.frame(frame);
+  const axes = framePlaneAxes(model, frame);
+  if (!axes) throw new Error(`"${frame}" has collapsed — it has no plane for a profile to lie in`);
+  return mine.filter((i) => parallel(all[i].plane.normal, axes.n));
+}
+
+/**
+ * The shortest typed call that means the region at `index` of `all` (what
+ * `findLoops` returned) — what the feature tools type on a confirm, so the log
+ * shows a line a user could have written and the journal holds what that line
+ * journals. In order of preference:
+ *
+ * - a member only this loop has: `extrude("l1", 20)` — the form `help()`
+ *   teaches, and a plain rectangle's every time;
+ * - a member only this loop has among those parallel to the frame that
+ *   orients it: `extrude("l9", 20, "f2")` — a lid, whose edges are walls' too;
+ * - the profile resolved, as the journal carries it: `extrude("l1", 20, "f1",
+ *   [["l1", {"name": "l5", "from": "p3", "to": "p9"}, …]])` — a region every
+ *   member of which is shared with a neighbour.
+ *
+ * Each is the region the typed call would find — the same loop, so the same
+ * holes with it — because each asks `foundLoop`'s own question of the same
+ * loops. Null when none can be typed: no frame orients the loop (the tool types
+ * the plane first, so only a host with no command line meets this), or the
+ * profile runs through a crossing no point marks yet, which a typed profile
+ * cannot name (a key is not a point, see `givenProfile`) — the tool then calls
+ * the operation itself, which materialises the crossing as a short form would.
+ */
+export function regionNaming(model: Model, all: Loop[], index: number):
+    { member: string; frame: string | null; loops: ProfileMember[][] | null } | null {
+  const own = all[index];
+  const wholes = [...new Set(own.members.filter((m) => m.span === null).map((m) => m.name))];
+  const only = (member: string, frame: string | null) => {
+    const found = loopsWith(model, all, member, frame);
+    return found.length === 1 && found[0] === index;
+  };
+  for (const m of wholes) if (only(m, null)) return { member: m, frame: null, loops: null };
+  const frame = orientingFrame(model, own);
+  if (frame === null) return null;
+  for (const m of wholes) if (only(m, frame)) return { member: m, frame, loops: null };
+  const profile = profileOf(model, all, index, frame);
+  if (profile.crossings?.size) return null;
+  return { member: memberName(profile.loops[0][0]), frame, loops: profile.loops };
 }
 
 /**

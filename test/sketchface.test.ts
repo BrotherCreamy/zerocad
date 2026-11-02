@@ -24,6 +24,7 @@ import { Repl } from "../src/repl.ts";
 import { menuFor } from "../src/menu.ts";
 import { sketchFrameFor, sketchOnFaceCommand } from "../src/sketchface.ts";
 import { SketchTool } from "../src/tools/sketch.ts";
+import { regionAtFor } from "./featurectx.ts";
 import type { ToolContext } from "../src/tools/tool.ts";
 import { alignView, orbitBy, viewAxes, worldToScreen, type View } from "../src/view.ts";
 import { tiltedFrame, type TiltedFrame } from "./frames.ts";
@@ -361,11 +362,7 @@ function toolCtx(m: Model, view: View, log: string[], typed: string[]) {
     requestRender() { c.renders++; },
     requestSolve() { m.solve(); },
     finish() { c.finished = true; },
-    regionAt: ([sx, sy]: [number, number]) => {
-      const loops = findLoops(m);
-      const loop = loopAt(m, view, sx, sy, loops);
-      return loop ? { loops, index: loops.indexOf(loop), toward: viewAxes(view).toward } : null;
-    },
+    regionAt: regionAtFor(m, view),
     log: (line: string) => { log.push(line); },
     run: (command: string) => { typed.push(command); pending.push(repl.eval(command)); },
     settled: () => Promise.all(pending),
@@ -421,7 +418,7 @@ test("the menu: Sketch on this face only inside a region, typing the tool's own 
   const view = viewFrom(neg(t.uy), t.ux, wall);
   const loops = findLoops(m);
   const loop = loopAt(m, view, ...worldToScreen(view, wall), loops)!;
-  const region = { loops, index: loops.indexOf(loop), toward: viewAxes(view).toward };
+  const region = { loops, index: loops.indexOf(loop), toward: viewAxes(view).toward, at: wall };
   const item = menuFor(m, null, region).items.find((i) => i.label === "Sketch on this face");
   assert.deepEqual(item?.action, { do: "run", command: sketchOnFaceCommand(m, loop, region.toward) });
   assert.ok(!menuFor(m, null).items.some((i) => i.label === "Sketch on this face"), "not outside a region");
@@ -436,7 +433,7 @@ test("the menu: Sketch on this face only inside a region, typing the tool's own 
   n.addArc(c, s, e, null, u.name);
   n.addLine(e, s);
   const dl = findLoops(n);
-  const off = menuFor(n, null, { loops: dl, index: 0, toward: u.uz }).items.at(-1)!;
+  const off = menuFor(n, null, { loops: dl, index: 0, toward: u.uz, at: u.at(5, 1) }).items.at(-1)!;
   assert.equal(off.label, "Sketch on this face");
   assert.equal(off.action.do, "disabled");
   assert.match((off.action as { why: string }).why, /no three points off one line/);
@@ -446,5 +443,5 @@ test("the menu: Sketch on this face only inside a region, typing the tool's own 
   const pts = [[0, 0], [10, 0], [10, 10]].map((p) => flat.addPoint(p).name);
   pts.forEach((p, i) => flat.addLine(p, pts[(i + 1) % 3]));
   const tl = findLoops(flat);
-  assert.ok(!menuFor(flat, null, { loops: tl, index: 0, toward: [0, 0, 1] }).items.some((i) => i.label === "Sketch on this face"));
+  assert.ok(!menuFor(flat, null, { loops: tl, index: 0, toward: [0, 0, 1], at: [5, 1] }).items.some((i) => i.label === "Sketch on this face"));
 });

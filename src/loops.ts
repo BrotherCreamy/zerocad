@@ -1401,3 +1401,28 @@ export function describeLoop(loop: Loop, all: Loop[]): string {
   const within = loop.parent === null ? "" : `, inside ${names(all[loop.parent])}`;
   return `loop of ${names(loop)}${where}, area ${round(loop.area)}${within}`;
 }
+
+/**
+ * The loop a world point lies inside, or null: the innermost coplanar loop
+ * whose outline holds `world` — `loopAt`'s question asked of a point rather
+ * than a pixel. What a region picked earlier is found again by after the
+ * drawing has changed under it: a feature tool keeps where each region was
+ * clicked (`RegionHit.at`), and a loop found afresh has new indices, and after
+ * a neighbour's extrude made its crossings points, new member labels too — a
+ * key cannot follow that, a point inside it can. Coplanar to a millionth of
+ * the loop's own size, so a lid straight above is not the same region.
+ */
+export function loopAround(model: Model, world: number[], loops: Loop[] = findLoops(model)): Loop | null {
+  const hits: number[] = [];
+  loops.forEach((loop, i) => {
+    const off = Math.abs(dot3(sub3(lift3(world), loop.plane.origin), loop.plane.normal));
+    if (off > 1e-6 * Math.max(1, Math.sqrt(Math.abs(loop.area)))) return;
+    if (inside(outlineOf(model, loop), toPlane(loop.plane, world))) hits.push(i);
+  });
+  const holdsAHit = (i: number) => hits.some((h) => {
+    for (let p = loops[h].parent; p !== null; p = loops[p].parent) if (p === i) return true;
+    return false;
+  });
+  const left = hits.filter((h) => !holdsAHit(h)).sort((a, b) => loops[a].area - loops[b].area || a - b);
+  return left.length ? loops[left[0]] : null;
+}

@@ -23,12 +23,13 @@ import { ensureKernelLoaded } from "../src/kernel/problem.ts";
 import { Model } from "../src/model.ts";
 import { frameBasis } from "../src/relations/refs.ts";
 import { extrude, revolve } from "../src/operations.ts";
-import { findLoops, loopAt } from "../src/loops.ts";
+import { findLoops } from "../src/loops.ts";
 import { open, save } from "../src/persist.ts";
 import { neocadScope } from "../src/replenv.ts";
 import { Repl } from "../src/repl.ts";
 import { featurePlaneCommand, sketchFrameFor } from "../src/sketchface.ts";
 import { ExtrudeTool } from "../src/tools/extrude.ts";
+import { featureHost, regionAtFor } from "./featurectx.ts";
 import { RevolveTool } from "../src/tools/revolve.ts";
 import type { Pick } from "../src/picking.ts";
 import type { ToolContext } from "../src/tools/tool.ts";
@@ -240,33 +241,24 @@ test("plane(a, b, c, { look: false }) makes the frame and the default without tu
 
 /**
  * A tool's context with the engine's regionAt and pick answered from `view`,
- * `run` typed into a real scope (resolving once the line has run, as the host's
- * submit does) and `act` recording the steps it was asked to bracket.
+ * and a feature's confirm typed into a real scope as the host types it
+ * (`featureHost`): every line in order, one user action.
  */
 function toolCtx(m: Model, view: View, options: Record<string, unknown> = {}) {
   const repl = new Repl(neocadScope({ model: m, view }));
+  const host = featureHost(m, repl, view);
   const c = {
-    model: m, options, finished: false, log: [] as string[], said: [] as string[], typed: [] as string[], acts: 0,
-    pending: [] as Promise<unknown>[],
+    model: m, options, finished: false, log: [] as string[], said: [] as string[], typed: host.typed,
     requestRender() {},
     requestSolve() { m.solve(); },
     finish() { c.finished = true; },
-    regionAt: ([sx, sy]: [number, number]) => {
-      const loops = findLoops(m);
-      const loop = loopAt(m, view, sx, sy, loops);
-      return loop ? { loops, index: loops.indexOf(loop), toward: viewAxes(view).toward } : null;
-    },
+    regionAt: regionAtFor(m, view),
     pickResult: null as Pick | null,
     pick: () => c.pickResult,
     logLine(line: string, outcome?: "refused" | "done" | "guide") { (outcome === "done" ? c.said : c.log).push(line); },
-    run(command: string) {
-      c.typed.push(command);
-      const p = repl.eval(command).then((r) => { if (!r.ok) c.log.push(String(r.error?.message)); });
-      c.pending.push(p);
-      return p;
-    },
-    act(fn: () => void) { c.acts++; fn(); },
-    settled: async () => { while (c.pending.length) await c.pending.shift(); await new Promise((r) => setTimeout(r, 0)); },
+    perform: host.perform,
+    settled: () => host.settled(),
+    host,
   };
   const ctx = { ...c, log: (line: string, outcome?: "refused" | "done" | "guide") => c.logLine(line, outcome) };
   return { ctx: ctx as unknown as ToolContext, c };
@@ -274,7 +266,7 @@ function toolCtx(m: Model, view: View, options: Record<string, unknown> = {}) {
 
 const info = (screen: [number, number]) => ({ world: [0, 0, 0], screen });
 
-test("the extrude tool on a frameless rectangle types plane(a, b, c, { look: false }), then extrudes in a step of its own along it — the view unturned", async () => {
+test("the extrude tool on a frameless rectangle, confirmed, types plane(a, b, c, { look: false }), then the extrude along it — one user action, the view unturned", async () => {
   await loadKernel();
   const m = new Model(3);
   rectangle(m);
@@ -287,10 +279,12 @@ test("the extrude tool on a frameless rectangle types plane(a, b, c, { look: fal
 
   const tool = new ExtrudeTool(ctx);
   tool.onDown(info(worldToScreen(view, [20, 15, 0])));
+  assert.deepEqual(c.typed, [], "a click picks, and types nothing");
+  assert.equal(tool.confirm(), true);
   await c.settled();
-  assert.deepEqual(c.typed, [command], "the plane, typed");
-  assert.equal(c.acts, 1, "the extrude bracketed as its own step");
-  assert.equal(c.finished, true);
+  assert.deepEqual(c.typed, [command, 'extrude("l1", 20)'], "the plane, then the extrude, typed");
+  assert.equal(c.host.performs, 1, "as one user action");
+  assert.equal(c.finished, false, "the tool stays armed");
   assert.deepEqual(c.log, [], "nothing refused");
   assert.match(c.said.join("\n"), /^e1 {2}extrude of /, "the log says what it made");
   const f = m.featureOf("e1", "extrude");
@@ -311,10 +305,13 @@ test("with a default frame that is not parallel, the tool types frame(a, b, c) a
   rectangle(m);
   const view = viewFromSide(-1);
   const { ctx, c } = toolCtx(m, view, { depth: 6 });
-  new ExtrudeTool(ctx).onDown(info(worldToScreen(view, [20, 15, 0])));
+  const tool = new ExtrudeTool(ctx);
+  tool.onDown(info(worldToScreen(view, [20, 15, 0])));
+  tool.confirm();
   await c.settled();
-  assert.equal(c.typed.length, 1);
+  assert.equal(c.typed.length, 2);
   assert.match(c.typed[0], /^frame\("p\d+", "p\d+", "p\d+"\)$/);
+  assert.match(c.typed[1], /^extrude\("l\d+", 6\)$/);
   assert.equal(m.defaultFrame, g);
   assert.equal(m.solve().solved, true);
   lidAlong(m, "e1", [0, 0, -6]);
@@ -326,13 +323,15 @@ test("headless, with no command line, the extrude tool refuses a frameless regio
   rectangle(m);
   const view = viewFromSide(1);
   const { ctx } = toolCtx(m, view);
-  const bare = { ...ctx, run: undefined, act: undefined, log: undefined } as unknown as ToolContext;
+  const bare = { ...ctx, perform: undefined, log: undefined } as unknown as ToolContext;
   const before = m.journal.length;
-  assert.throws(() => new ExtrudeTool(bare).onDown(info(worldToScreen(view, [20, 15, 0]))), /lies in no frame's plane/);
+  const tool = new ExtrudeTool(bare);
+  tool.onDown(info(worldToScreen(view, [20, 15, 0])));
+  assert.throws(() => tool.confirm(), /lies in no frame's plane/);
   assert.equal(m.journal.length, before);
 });
 
-test("the revolve tool: a frameless region, then an axis — the plane typed, then the revolve; an axis it refuses types nothing", async () => {
+test("the revolve tool: a frameless region, then an axis, confirmed — the plane typed, then the revolve; an axis it refuses is not picked", async () => {
   await loadKernel();
   const m = new Model(3);
   rectangle(m, 10, 0, 10, 10);
@@ -346,18 +345,22 @@ test("the revolve tool: a frameless region, then an axis — the plane typed, th
 
   c.pickResult = { kind: "line", name: off } as Pick;
   tool.onDown(info([0, 0]));
+  assert.equal(tool.axis, null, "not picked");
+  assert.equal(tool.confirm(), true, "a confirm then says what is missing");
   await c.settled();
-  assert.deepEqual(c.typed, [], "refused before any plane is typed");
+  assert.deepEqual(c.typed, [], "and types nothing");
   // Not one of the axes it lit: said short, as guidance (guidance.test.ts).
-  assert.match(c.log.join("\n"), new RegExp(`^revolve: ${off} is not in its plane, or crosses it — click a lit one$`));
+  assert.match(c.log[0], new RegExp(`^revolve: ${off} is not in its plane, or crosses it — click a lit one$`));
   assert.deepEqual(frames(m), []);
 
   c.pickResult = { kind: "line", name: axis } as Pick;
   tool.onDown(info([0, 0]));
+  assert.equal(tool.axis, axis);
+  tool.onDown(info([0, 0])); // the axis again: the quick path
   await c.settled();
-  assert.equal(c.typed.length, 1);
+  assert.equal(c.typed.length, 2);
   assert.match(c.typed[0], /^plane\(.*\{ look: false \}\)$/);
-  assert.equal(c.finished, true);
+  assert.equal(c.typed[1], `revolve("l1", "${axis}", ${Math.PI})`);
   assert.match(c.said.join("\n"), /^e1 {2}revolve of /);
   assert.equal(m.featureOf("e1", "revolve").frame, m.defaultFrame);
 });

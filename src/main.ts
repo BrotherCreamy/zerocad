@@ -15,6 +15,9 @@ import { historyChord } from "./historykeys.ts";
 import { Repl, fmt } from "./repl.ts";
 import { neocadScope } from "./replenv.ts";
 import { ToolEngine, type View } from "./tools/engine.ts";
+import { runSteps } from "./tools/feature.ts";
+import type { FeatureStep } from "./tools/tool.ts";
+import { previewSteps } from "./featurepreview.ts";
 import { describePick, type Pick } from "./picking.ts";
 import { ContextMenu, menuFor } from "./menu.ts";
 import { toolUnavailable } from "./toolavail.ts";
@@ -136,6 +139,14 @@ function sizeCanvas() {
  * is lifted into 3D (see persist.ts) rather than swapping the app into 2D.
  */
 const APP_DIM = 3;
+
+/**
+ * What `submit` settles with for an entry that was refused — said already, in
+ * red, by the time anyone reads it. A marker rather than the refusal's text, so
+ * the one place that reads it (a feature's confirm, stopping at the first
+ * refused line) cannot say it a second time.
+ */
+const TYPED_REFUSAL = "refused as typed";
 
 async function main() {
   statusEl.textContent = "loading kernel…";
@@ -781,6 +792,12 @@ async function main() {
    * values are what the tool is armed with — so `arm` typed by hand shows here
    * just as an edit made here shows in the log.
    */
+  //
+  // A feature tool's panel carries ✓ and ✗ too, learning whether ✓ would do
+  // anything from the engine (`dialog`), and pressing them is Enter and
+  // Escape: the same `confirm` and `escape` the keys reach. A field mid-edit
+  // is shown to the tool as a trial value, so the preview follows the typing;
+  // its line is typed only when the field commits.
   const optionsPanel = new OptionsPanel(optionsPanelEl, optionsEl, {
     armed: () => {
       const a = engine.armed;
@@ -789,9 +806,16 @@ async function main() {
       const rows = Object.entries(specs).map(([name, s]) => ({
         name, label: s.label ?? name, unit: unitSymbol(s.unit), value: a.options[name] as OptionValue,
       }));
-      return rows.length ? { tool: a.name, rows } : null;
+      const dialog = engine.dialog();
+      return rows.length || dialog ? { tool: a.name, rows, dialog } : null;
     },
-    run: (command) => void submit(command),
+    run: (command) => submit(command),
+    confirm: () => {
+      engine.confirm();
+      syncToolbar();
+    },
+    cancel: () => escape(),
+    trial: (option, value) => engine.trial(option, value),
   });
   optionsShown = () => optionsPanel.size();
 
@@ -818,7 +842,17 @@ async function main() {
     // tool's `plane(a, b, c)` — so it is logged, recalled and undone as typed.
     // The promise is handed back for the extrude tool, which waits for the
     // plane it typed to be in before extruding along it.
-    onRun: (command) => submit(command),
+    onRun: async (command) => { await submit(command); },
+    // A feature's confirm: every line it types, as typed — logged, recalled,
+    // refused in red if the command line refuses it — inside **one** user
+    // action, so one Ctrl+Z takes the whole selection's solids and the planes
+    // made for them. The lines are awaited one by one, the bracket held open
+    // across them (each `submit`'s own bracket is nested, and records nothing),
+    // and the first refusal stops the rest: they were planned on it.
+    onPerform: (steps) => perform(steps),
+    // The same lines, on a copy (see featurepreview.ts) — with this view, so a
+    // plane made for the preview faces the way the commit's will.
+    onPreview: (steps) => previewSteps(model, view, steps),
     optionMemory,
     onContextMenu: (pick, sx, sy) => {
       // The tag and the menu would otherwise sit on top of one another, both
@@ -992,7 +1026,28 @@ async function main() {
   const history: string[] = [];
   let historyAt = 0;
 
-  async function submit(src: string) {
+  /** A feature's lines, typed as one user action — see `onPerform`. Settles whether every line ran. */
+  async function perform(steps: FeatureStep[]): Promise<boolean> {
+    beginUserAction();
+    let refused: string | null = null;
+    try {
+      refused = await runSteps(model, steps, (line) => submit(line.text));
+    } finally {
+      endUserAction();
+    }
+    // A step refused before it was typed (a region rubbed out under the
+    // selection) was never logged by `submit`: said here, as the tool's.
+    if (refused !== null && refused !== TYPED_REFUSAL) log(refused, "err");
+    solveAndRender();
+    return refused === null;
+  }
+
+  /**
+   * One entry, typed. Settles with null once it has run, or — for `perform`,
+   * which must stop at the first refusal — `TYPED_REFUSAL` when it was refused,
+   * which it has already said in red by then.
+   */
+  async function submit(src: string): Promise<string | null> {
     log(`> ${src}`, "in");
     history.push(src);
     historyAt = history.length;
@@ -1005,9 +1060,11 @@ async function main() {
         log(`armed: ${src}`, "out");
       } catch (err) {
         log(String(err instanceof Error ? err.message : err), "err");
+        syncToolbar();
+        return TYPED_REFUSAL;
       }
       syncToolbar();
-      return;
+      return null;
     }
 
     // One entry is one undo step — if it changed anything. The comparison is
@@ -1016,8 +1073,10 @@ async function main() {
     // points is deliberately one step too, because one thing was typed.
     beginUserAction();
     let changed = false;
+    let ok = true;
     try {
       const result = await repl.eval(src);
+      ok = result.ok;
       for (const line of result.output) log(line, "out");
       if (!result.ok) log(`${result.error!.name}: ${result.error!.message}`, "err");
       else if (result.value !== undefined) log(fmt(result.value), "out");
@@ -1038,6 +1097,7 @@ async function main() {
     // the specs that still type one were left alone.
     if (changed) solveAndRender();
     else render();
+    return ok ? null : TYPED_REFUSAL;
   }
 
   cmdEl.addEventListener("keydown", (e) => {
@@ -1052,9 +1112,40 @@ async function main() {
     } else if (e.key === "Enter") {
       const src = cmdEl.value.trim();
       cmdEl.value = "";
+      // An empty line is the feature's: Enter confirms what is picked, as it
+      // does with the focus anywhere else. With text, the text is the entry.
       if (src) void submit(src);
+      else if (engine.confirm()) syncToolbar();
     }
   });
+
+  /**
+   * **Enter confirms the armed feature** — the owner's "hit the tickbox or
+   * enter" — wherever the focus is, but for something that takes typing
+   * (a text field's Enter is its own; the options panel's commits the field
+   * and then confirms, see panels.ts; the command line's is above) and a
+   * button, whose Enter presses it. Pressing a toolbar button by Enter would
+   * arm the tool afresh and drop what was picked, so it is prevented when a
+   * feature takes the key.
+   */
+  window.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter" || e.ctrlKey || e.metaKey || e.altKey) return;
+    const at = document.activeElement as HTMLElement | null;
+    if (at && (at.isContentEditable || at instanceof HTMLInputElement || at instanceof HTMLTextAreaElement)) return;
+    if (!engine.confirm()) return;
+    e.preventDefault();
+    syncToolbar();
+  });
+
+  /**
+   * Escape, and the panel's ✗: a feature's picks first (the tool stays
+   * armed), then the tool — see `ToolEngine.escape`.
+   */
+  function escape() {
+    const did = engine.escape();
+    syncToolbar();
+    log(did === "cleared" ? "selection cleared" : "cancelled", "out");
+  }
 
   /**
    * Escape abandons whatever gesture is in progress. **On `window`, not on the
@@ -1078,9 +1169,7 @@ async function main() {
       log("menu closed", "out");
       return;
     }
-    engine.cancel();
-    syncToolbar();
-    log("cancelled", "out");
+    escape();
   });
 
   /**
