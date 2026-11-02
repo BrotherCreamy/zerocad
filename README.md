@@ -115,10 +115,13 @@ src/tools/circle3.ts      three clicks, a circle through all three
 src/tools/arc.ts          center, radius, sweep — a three-click gesture
 src/tools/arc3.ts         two endpoints, then a point the arc passes through
 src/tools/circumcircle.ts the closed form those two share
-src/tools/extrude.ts      click inside a region; it is extruded
-src/tools/revolve.ts      click inside a region, then on an axis; it is revolved
+src/tools/extrude.ts      click inside regions, see the solids, ✓; they are extruded
+src/tools/revolve.ts      click inside regions, then on an axis, ✓; they are revolved
+src/tools/feature.ts      pick → preview → confirm, shared by the feature tools
+src/tools/selection.ts    which regions are picked, kept by a point inside each
 src/tools/sketch.ts       click inside a face; plane(a, b, c) on its own points is typed
 src/tools/region.ts       the click-inside tools' shared region preview
+src/featurepreview.ts     a feature's commit, run on a throwaway copy: its preview
 src/main.ts              browser entry point (canvas render loop + the REPL)
 test/                    node --test, no browser needed (WASM loaded via a byte buffer)
 ```
@@ -138,6 +141,18 @@ the toolbar while it is armed; editing a field types
 you used is the default next time (per browser, never in a file). `tools()`
 lists every tool's options, and a tool you define with a
 `static options = { … }` gets the panel too.
+
+The feature tools — extrude, revolve, fillet — work as in any other CAD
+program: **pick, preview, confirm.** Click inside regions to toggle them into
+the selection (revolve then takes a line or a frame's arm as the axis; fillet
+takes two lines that share a corner, or the corner's point); the result is
+drawn as it will be built, translucent, and follows the panel's value as you
+type it; **✓, Enter, or a second click on what you picked last** builds it, as
+one undo step, and the tool stays armed for the next. **✗ or Escape** drops
+the selection. With nothing armed, a click inside a region selects it (shift
+adds), and arming extrude, revolve or sketch starts from that selection. What
+✓ builds is typed into the command line — `extrude("l1", 25)`, one line a
+region — so the log shows it, and the typed commands still build at once.
 
 ```js
 a = pt(0, 0); b = pt(80, 0)        // entities; each returns its name

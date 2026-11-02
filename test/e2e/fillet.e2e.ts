@@ -117,10 +117,15 @@ test("the fillet tool rounds a corner from two clicks", async () => {
   const second = await midOf(fresh[1]);
   await app.page.mouse.click(second.x, second.y);
   await app.page.waitForTimeout(250);
+  assert.equal((await app.model()).byKind.arc, before.byKind.arc, "two clicks pick the corner, and build nothing yet");
 
+  await app.page.fill("#cmd", "");
+  await app.page.keyboard.press("Enter");
+  await app.page.waitForTimeout(250);
   const after = await app.model();
-  assert.equal(after.byKind.arc, (before.byKind.arc ?? 0) + 1, "the corner was rounded");
-  assert.equal(after.activeTool, null, "and the tool stood down");
+  assert.equal(after.byKind.arc, (before.byKind.arc ?? 0) + 1, "Enter rounds the corner");
+  assert.equal(after.activeTool, "fillet", "and the tool stays armed for the next");
+  await app.page.keyboard.press("Escape");
   assert.equal(await app.status(), "SOLVED");
 
   const arc = after.arcs[after.arcs.length - 1];
@@ -128,7 +133,7 @@ test("the fillet tool rounds a corner from two clicks", async () => {
     `the arm-time radius was used, got ${after.radii[arc.name]}`);
 });
 
-test("clicking a point with the fillet tool armed is a miss, not a crash", async () => {
+test("clicking a point with the fillet tool armed picks its corner, if it is one, and builds nothing — not a crash", async () => {
   await app.type('arm("fillet", { radius: 6 })');
   const m = await app.model();
   const name = Object.keys(m.points)[0];

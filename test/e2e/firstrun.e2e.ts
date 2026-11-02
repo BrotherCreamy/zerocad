@@ -6,11 +6,14 @@
 // The rectangle tool draws; the circle tool draws a circle inside it, making
 // the plane it needs (the plane line appears in the log, no greyed button, no
 // red); the extrude tool, clicked outside every region, says where to click and
-// lights the regions it could take — read off the pixels — and a click inside
-// makes the solid; the fillet tool rounds a corner; the revolve tool misses,
-// is told, then hits; the sketch tool starts a sketch on the lid. Every tool is
-// armed by its toolbar button, every gesture is a mouse, and at the end the
-// log holds no red line.
+// lights the regions it could take — read off the pixels — a click inside picks
+// the region and previews the solid, and the ✓ builds it; the fillet tool picks
+// a corner's two lines and Enter rounds it; the revolve tool misses, is told,
+// picks a profile and an axis, and Enter turns it; and the lid, clicked with
+// nothing armed, is selected, so the sketch tool's button starts a sketch on it
+// at once. Every tool is armed by its toolbar button, every gesture is a mouse
+// or the Enter key, and at the end the log holds no red line — pick, preview,
+// confirm (docs/plans/feature-dialog.md).
 //
 // Set NEOCAD_E2E_SHOTS to a directory to keep the screenshots; look at them.
 //
@@ -41,8 +44,12 @@ async function shot(name: string, hover?: [number, number]): Promise<void> {
   await app.page.screenshot({ path: join(SHOTS, `firstrun-${name}.png`) });
 }
 
-/** Arms a tool the way a newcomer does: its toolbar button, clicked. */
-async function press(tool: string): Promise<void> {
+/**
+ * Arms a tool the way a newcomer does: its toolbar button, clicked. `stays`
+ * false for a tool that may be done with its gesture by the time the button
+ * is up (sketch, armed on a face already selected).
+ */
+async function press(tool: string, stays = true): Promise<void> {
   const b = await app.page.$eval(`#toolbar button[data-tool="${tool}"]`, (el) => {
     const r = el.getBoundingClientRect();
     return { x: r.x + r.width / 2, y: r.y + r.height / 2, off: (el as HTMLButtonElement).disabled };
@@ -50,7 +57,7 @@ async function press(tool: string): Promise<void> {
   assert.equal(b.off, false, `${tool}'s button is not greyed`);
   await app.page.mouse.click(b.x, b.y);
   await app.page.waitForTimeout(80);
-  assert.equal((await app.model()).activeTool, tool, `${tool} armed by its button`);
+  if (stays) assert.equal((await app.model()).activeTool, tool, `${tool} armed by its button`);
 }
 
 async function leftDrag(a: [number, number], b: [number, number]): Promise<void> {
@@ -128,7 +135,7 @@ test("the circle tool draws a circle inside it, typing the plane it needs: the l
   await shot("2-circle");
 });
 
-test("the extrude tool: a click outside every region says where to click and lights the regions; a click inside makes the solid", async () => {
+test("the extrude tool: a click outside every region says where to click and lights the regions; a click inside picks and previews; ✓ makes the solid", async () => {
   await press("extrude");
   // Lit as soon as it is armed: inside the rectangle and inside the circle,
   // and nothing outside them.
@@ -147,14 +154,23 @@ test("the extrude tool: a click outside every region says where to click and lig
   await shot("3-extrude-miss");
 
   await clickAt(480, 455);
+  assert.equal((await app.model()).journalOps.includes("extrude"), false, "a click picks: nothing built");
+  await shot("4-extrude-previewed", OUTSIDE);
+  const ok = await app.page.$eval("#options .oact button.ok", (el) => {
+    const r = el.getBoundingClientRect();
+    return { x: r.x + r.width / 2, y: r.y + r.height / 2, off: (el as HTMLButtonElement).disabled };
+  });
+  assert.equal(ok.off, false, "the ✓ is lit");
+  await app.page.mouse.click(ok.x, ok.y);
+  await app.page.waitForTimeout(300);
   const last = (await logLines()).at(-1)!;
   assert.match(last.text, /^e1 {2}extrude of /);
   assert.equal(last.cls, "out");
   assert.equal(await app.status(), "SOLVED");
-  await shot("4-solid");
+  await shot("5-solid");
 });
 
-test("the fillet tool rounds a corner of the base, and the lid with it", async () => {
+test("the fillet tool picks a corner of the base, and Enter rounds it, and the lid with it", async () => {
   await press("fillet");
   const m = await app.model();
   // The base's right edge and bottom edge, clicked near the corner they share
@@ -163,14 +179,18 @@ test("the fillet tool rounds a corner of the base, and the lid with it", async (
   const [[x0, y0], [x1, y1]] = RECT;
   await clickAt(x1, y0 + (y1 - y0) * 0.7);
   await clickAt(x0 + (x1 - x0) * 0.7, y1);
+  assert.equal((await app.model()).byKind.arc ?? 0, 0, "picked, not yet rounded");
+  await shot("6-fillet-previewed", OUTSIDE);
+  await app.page.keyboard.press("Enter");
+  await app.page.waitForTimeout(300);
   const after = await app.model();
   assert.equal(after.byKind.arc, 2, "the arc, and its twin on the lid");
   assert.equal(after.byKind.line, m.byKind.line + 1, "one line more: the lid's wall at the new tangent point");
   assert.equal(await app.status(), "SOLVED");
-  await shot("5-fillet");
+  await shot("7-fillet");
 });
 
-test("turned by a right-drag, the revolve tool: a miss says so; a click inside the hole's lid circle chooses it; a miss says what to click and lights the axes; a lid edge revolves it", async () => {
+test("turned by a right-drag, the revolve tool: a miss says so; a click inside the hole's lid circle chooses it; a miss says what to click and lights the axes; a lid edge is the axis, and Enter revolves it", async () => {
   // Orbit with the mouse, so the lid's edges and the base's are apart on screen.
   const from = await app.at(760, 420), to = await app.at(860, 350);
   await app.page.mouse.move(from.x, from.y);
@@ -203,17 +223,22 @@ test("turned by a right-drag, the revolve tool: a miss says so; a click inside t
   const mid: [number, number] = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
   const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
   const off: [number, number] = [Math.round(mid[0] - ((b[1] - a[1]) / len) * 2), Math.round(mid[1] + ((b[0] - a[0]) / len) * 2)];
-  await shot("6-revolve-axes", OUTSIDE);
+  await shot("8-revolve-axes", OUTSIDE);
   assert.ok(await lit(...off), `the lid edge ${edge.name} is lit as an axis: ${await app.pixel(off[0] + 0.5, off[1] + 0.5, "drawing")} at ${off}`);
   await clickAt(Math.round(mid[0]), Math.round(mid[1]));
+  await shot("9-revolve-previewed", OUTSIDE);
+  await app.page.keyboard.press("Enter");
+  await app.page.waitForTimeout(300);
   const last = (await logLines()).at(-1)!;
   assert.match(last.text, /^e2 {2}revolve of /, `revolved: ${last.text}`);
   assert.equal(await app.status(), "SOLVED");
-  await shot("7-revolved");
+  await shot("10-revolved");
 });
 
-test("the sketch tool on the lid starts a sketch there: plane(a, b, c) typed, the default now", async () => {
-  await press("sketch");
+test("the lid clicked with nothing armed is selected, and the sketch tool's button starts a sketch on it: plane(a, b, c) typed, the default now", async () => {
+  await app.page.keyboard.press("Escape"); // the revolve tool, put down
+  await app.page.waitForTimeout(100);
+  assert.equal((await app.model()).activeTool, null);
   const before = await defaultFrame();
   const m = await app.model();
   const top = Math.max(...Object.values(m.points).map((p) => p[2]));
@@ -221,16 +246,37 @@ test("the sketch tool on the lid starts a sketch there: plane(a, b, c) typed, th
   // way along the diagonal from the base's top-left corner, lifted to the lid.
   const corners = Object.values(m.points).filter((p) => Math.abs(p[2] - top) < 1e-6);
   const xs = corners.map((p) => p[0]), ys = corners.map((p) => p[1]);
-  const at = [Math.min(...xs) + (Math.max(...xs) - Math.min(...xs)) * 0.15, Math.max(...ys) - (Math.max(...ys) - Math.min(...ys)) * 0.15, top];
+  // With nothing armed a click on an edge names the edge — and the base's edges
+  // are drawn through the lid — so the spot is one where nothing picks and the
+  // region under it is the lid's: asked of the app's own pick and region.
+  const spots = [0.15, 0.25, 0.35, 0.2, 0.3].flatMap((u) => [0.15, 0.25, 0.35, 0.2].map((v) =>
+    [Math.min(...xs) + (Math.max(...xs) - Math.min(...xs)) * u, Math.max(...ys) - (Math.max(...ys) - Math.min(...ys)) * v, top]));
+  let at: number[] | null = null;
+  for (const spot of spots) {
+    const [x, y] = (await app.screenOf(spot)).map(Math.round);
+    const clear = await app.page.evaluate(([x, y, top]) => {
+      const { engine, model } = (window as never as { __neocad: {
+        engine: { pickAt(x: number, y: number): unknown; regionAt(x: number, y: number): { loops: { members: { name: string }[]; plane: { origin: number[] } }[]; index: number } | null };
+        model: { coords(n: string): number[] };
+      } }).__neocad;
+      const r = engine.regionAt(x, y);
+      return engine.pickAt(x, y) === null && r !== null && Math.abs(r.loops[r.index].plane.origin[2] - top) < 1e-6;
+    }, [x, y, top]);
+    if (clear) { at = spot; break; }
+  }
+  assert.ok(at, "somewhere on the lid picks nothing");
   const from = (await logLines()).length;
   const [sx, sy] = await app.screenOf(at);
   await clickAt(Math.round(sx), Math.round(sy));
-  const typed = (await logLines()).slice(from).filter((l) => l.text.startsWith("> "));
+  await shot("11-lid-selected", OUTSIDE);
+  await press("sketch", false);
+  await app.page.waitForTimeout(250);
+  const typed = (await logLines()).slice(from).filter((l) => l.text.startsWith("> ") && !l.text.startsWith("> arm("));
   assert.equal(typed.length, 1, `one line: ${typed.map((l) => l.text)}`);
   assert.match(typed[0].text, /^> plane\("p\d+", "p\d+", "p\d+"\)$/);
   const now = await defaultFrame();
   assert.ok(now && now !== before, "a new default frame, on the lid");
-  await shot("8-sketch-on-lid");
+  await shot("12-sketch-on-lid");
 });
 
 test("and at the end the log holds no red line", async () => {

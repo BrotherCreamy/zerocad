@@ -52,6 +52,28 @@ otherwise.
   options is armed, a field edit typing `arm("extrude", {depth: 25})`
   through `submit`. Deviations in the spec's status line and Done.
 
+- **Features are pick → preview → confirm** (owner, 2026-11-02: *"extrude and
+  other tools should work like they do in other cad software. just click on
+  the region or select the loop and hit the tickbox or enter or something"*;
+  [`docs/plans/feature-dialog.md`](docs/plans/feature-dialog.md), built). A
+  feature tool (`FeatureTool`, `src/tools/feature.ts`) never builds on the
+  click that picks: clicks toggle regions in (several), revolve then takes an
+  axis, fillet two lines or a corner's point; the result is previewed as it
+  will be built and follows the options panel as it is typed; **✓, Enter, or a
+  second click on the last pick** confirms, as **one undo step** for the whole
+  selection, the planes it needed included; **✗ or Escape** drops the picks
+  and keeps the tool (a second Escape releases it). **A confirm is typed** —
+  per region the shortest call that names it (`regionNaming`), through
+  `submit` — so the journal holds what the typed calls hold; the typed
+  commands themselves still build at once. **The preview is the commit on a
+  copy** (`src/featurepreview.ts`): never a second account of the geometry.
+  **Preselection**: with nothing armed a click inside a region selects it
+  (shift adds or drops, empty canvas or Escape clears), and arming extrude,
+  revolve or sketch starts from it — sketch sketching on it at once. A click on
+  an entity, a drag, and the right button are unchanged. **The quick path**:
+  click, click. Re-arming the armed tool (the panel's field typing `arm`)
+  keeps its picks.
+
 The guiding rule, set by the owner: **tools work like Onshape/SolidWorks, so
 people arrive already knowing how to use them.** Deviations from that rule
 are flagged as such.
@@ -1352,6 +1374,41 @@ extended the way `defineTool` extends the tool registry would close it.
 
 ## Smaller things
 
+- [ ] **Found while building `feature-dialog.md`** (each deliberate unless it
+      says otherwise):
+      - **A region bounded by a crossing no point marks, every member of it
+        shared, is not typed.** The confirm calls `extrudeProfile` /
+        `revolveProfile` for it — the same journal entry, reported as
+        `e1  extrude of …`, but no `> extrude(…)` line in the log. No typed
+        line can name it: a typed profile names points and a crossing is a
+        key until an extrude makes it one (the lens of two circles, both
+        halves of a rectangle with a line drawn across it before either is
+        extruded). Closing it needs a typed form for "the region at this
+        point", which the spec ruled out by keeping the typed commands as
+        they are. Tested (`regions.e2e.ts`'s lens).
+      - **The preview rebuilds the whole model** (`save`, `open`, the lines,
+        a solve) each time the picks, the values or the model change — never
+        per frame. Measured at 6.5–10 ms for a 97-entity model (24 ms the
+        first time); it grows with the journal, so a model of thousands of
+        entities would feel it on every keystroke in the depth field. A cheaper copy (cloning the problem's variables rather than
+        replaying the journal) is the fix if it ever shows.
+      - **The preview is drawn over the drawing, not depth-tested against the
+        solids already there**: a lid previewed behind an existing solid shows
+        through it. Its faces are sorted far to near among themselves. The
+        opaque-solids package owns occlusion; the preview should follow it.
+      - **Enter confirms only with the command line empty** (or the focus on
+        no text field): text there is an entry, and wins.
+      - **Preselection is regions only.** A click on an entity with nothing
+        armed still drops its name into the command line, as it always did;
+        an entity selection for fillet (select two lines, then hit fillet) is
+        not built.
+      - **The fillet preview shows the arc, the trimmed legs and whatever is
+        new** (the lid's twin arc, its new wall) — not the regenerated lid's
+        faces, which belong to a feature that already exists.
+      - **A preview refused (a radius too large for the corner, an axis that
+        crosses the profile) is said once as guidance** and ✓ stays off; the
+        picks stay, so the value can be changed instead.
+
 - [ ] **Found while building `tool-options.md`** (each deliberate unless it
       says otherwise):
       - **No command forgets a remembered value.** Typing the default back
@@ -1585,6 +1642,55 @@ extended the way `defineTool` extends the tool registry would close it.
       the resolver's flush arithmetic assumes does not happen.
 
 ## Done
+
+- [x] **Feature tools pick, preview, and confirm** — the owner: *"extrude
+      and other tools should work like they do in other cad software. just
+      click on the region or select the loop and hit the tickbox or enter or
+      something"*. Spec: [`docs/plans/feature-dialog.md`](docs/plans/feature-dialog.md),
+      marked built. `src/tools/feature.ts`, `src/tools/selection.ts`,
+      `src/featurepreview.ts` (new); extrude, revolve, fillet and sketch;
+      `regionNaming` (operations), `loopAround` (loops); the engine's
+      `selected`/`confirm`/`escape`/`dialog`/`trial` and `arm`'s retune; the
+      options panel's ✓ ✗ row; `perform`, Enter and Escape in `main.ts`;
+      `help()`. 898 unit tests (884 before; `test/featuredialog.test.ts`, 12),
+      351 e2e (340 before; `test/e2e/featuredialog.e2e.ts`, 11), every tool
+      e2e and the first-run script moved to the new flow.
+      **Deviations from the spec:**
+      - ⚠ **The spec was wrong about the code: there is no `planExtrude`.**
+        `planSweep` walks a profile's joins and computes no geometry. The
+        preview is the throwaway clone — the confirm's own lines typed into a
+        command line over a `save`/`open` copy, solved — so it is the commit's
+        geometry by construction (unit-tested equal within a millionth for
+        extrude, revolve, fillet and a frameless sketch).
+      - ⚠ **One kind of region is built without a typed line**: bounded by a
+        crossing no point marks, every member shared (the lens of two
+        circles). It calls `extrudeProfile`/`revolveProfile`, the same entry
+        a typed call journals. No typed line can name it without a new typed
+        form, and the typed commands were not to change.
+      - ⚠ **The planes a confirm types are in its one undo step.** Before,
+        the extrude tool's plane was a step of its own; `extrudeplane.e2e.ts`
+        now undoes both with one Ctrl+Z.
+      - ⚠ **Re-arming the armed tool keeps its picks** (`Tool.retune`): the
+        panel types `arm`, and `arm` used to start the tool over.
+      - ⚠ **The preview follows the field as it is typed** (a trial value,
+        checked against the declaration, never typed or remembered); the line
+        is typed when the field commits. "Typing 25 moves the lid" needed it.
+      - ⚠ **A pick is kept by a point inside it**, found again by
+        `loopAround`, not by its loop's key: a neighbour's extrude relabels a
+        split region's members.
+      - ⚠ **Revolve with no axis yet**: the second click on the last region
+        drops it, since there is nothing to confirm.
+      - ⚠ **Fillet keeps an unroundable corner picked** (preview refused in
+        the operation's words, ✓ off) instead of dropping the second line, so
+        a smaller radius can be typed; a click on a corner's point takes both
+        lines.
+      - ⚠ **Preselection: a plain click selects only that region**, shift adds
+        or drops; Escape with nothing armed clears it too. Arming any tool
+        spends it.
+      - ⚠ **Sketch on a preselected face** types its plane on the next task
+        after the arming line, so the log reads `armed: sketch` first.
+      - ⚠ **The first click on a frameless sketch types nothing**: the plane
+        is typed at the confirm, with the extrude.
 
 - [x] **Tool options: declared, visible, remembered** — the owner's
       standing direction (docs/plans/effortless.md): *"if the tool has

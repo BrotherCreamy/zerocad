@@ -515,3 +515,18 @@ export function distanceToLine(p: number[], a: number[], b: number[]): number {
   const along = w.reduce((s, wi, i) => s + wi * u[i], 0) / len;
   return Math.hypot(...w.map((wi, i) => wi - (along * u[i]) / len));
 }
+
+/**
+ * A feature tool's picks confirmed and the tool put down: Enter with the
+ * command line empty (✓'s key — docs/plans/feature-dialog.md), then Escape,
+ * which with nothing left picked releases the tool. For a test written when a
+ * feature was built by the click that picked it and the tool was done
+ * afterwards; a test about the dialog presses the keys itself.
+ */
+export async function confirmAndRelease(app: AppContext): Promise<void> {
+  await app.page.fill("#cmd", "");
+  await app.page.keyboard.press("Enter");
+  await app.page.waitForTimeout(250);
+  await app.page.keyboard.press("Escape");
+  await app.page.waitForTimeout(120);
+}

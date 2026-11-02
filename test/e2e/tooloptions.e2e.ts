@@ -104,7 +104,7 @@ test("nothing armed, no options panel; the rectangle tool, which has none, shows
   assert.equal((await app.model()).byKind.line, 4);
 });
 
-test("arming extrude by its button shows the options panel beside the tray: depth, 10, no grips", async () => {
+test("arming extrude by its button shows the options panel beside the tray: depth, 10, ✓ and ✗, no grips", async () => {
   await press("extrude");
   assert.equal(await visible(), true);
   assert.equal(await strip(), "extrude", "the strip names the tool");
@@ -115,7 +115,8 @@ test("arming extrude by its button shows the options panel beside the tray: dept
   const op = await rectOf(PANEL);
   assert.equal(op.x, tb.x + tb.width + 8, "beside the column, a margin off it, on its free side");
   assert.equal(op.y, tb.y, "lined up with its top");
-  assert.equal(op.height, 16 + 8 + 22, "one row: strip, padding, border, a row");
+  assert.equal(op.height, 16 + 8 + 2 * 22, "strip, padding, border, the depth's row and the ✓ ✗ row");
+  assert.deepEqual(await app.page.$$eval(`${PANEL} .oact button`, (els) => els.map((el) => el.textContent)), ["✓", "✗"]);
   assert.equal(await app.page.$$eval(`${PANEL} > .pgrip`, (els) => els.length), 0, "not resizable");
   await shot("armed");
 });
@@ -136,11 +137,18 @@ test("25 typed in the field and Enter: the log shows the arm line it typed, and 
   await shot("typed");
 
   await clickAt(...INSIDE);
+  await app.page.fill("#cmd", "");
+  await app.page.keyboard.press("Enter");
+  await app.page.waitForTimeout(250);
   assert.ok((await logLines()).some((l) => /^> plane\(/.test(l.text)), "the frameless rectangle got its plane, typed");
+  assert.ok((await logLines()).some((l) => /^> extrude\("l\d+", 25\)$/.test(l.text)), "and the extrude, 25 deep");
   assert.ok(Math.abs((await zExtent()) - 25) < 1e-6, `25 deep: ${await zExtent()}`);
 });
 
-test("the extrude done, the tool is released and the panel goes; re-armed, 25 is remembered", async () => {
+test("the extrude done, the tool stays armed; Escape releases it and the panel goes; re-armed, 25 is remembered", async () => {
+  assert.equal((await app.model()).activeTool, "extrude", "armed for the next");
+  await app.page.keyboard.press("Escape");
+  await app.page.waitForTimeout(80);
   assert.equal((await app.model()).activeTool, null);
   assert.equal(await visible(), false, "gone with the tool");
   await press("extrude");

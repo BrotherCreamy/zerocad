@@ -20,7 +20,7 @@ import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { openApp, type AppContext } from "./harness.ts";
+import { openApp, type AppContext, confirmAndRelease } from "./harness.ts";
 
 let app: AppContext;
 before(async () => { app = await openApp(); });
@@ -120,7 +120,7 @@ let outline: string[] = [];
 let corner = { legOne: "", legTwo: "", at: "" };
 let beforeFillet = "";
 
-test("a rectangle from the tool on a tilted sketch, extruded by a click inside it", async () => {
+test("a rectangle from the tool on a tilted sketch, extruded by a click inside it and Enter", async () => {
   const at = (p: number[]) => `pt(${p.join(", ")})`;
   await app.type(`go = ${at(G_O)}; gx = ${at(onG(20, 0))}; gy = ${at(onG(0, 20))}; g = plane(go, gx, gy)`);
   await app.type("rectangle");
@@ -130,6 +130,7 @@ test("a rectangle from the tool on a tilted sketch, extruded by a click inside i
   assert.equal(outline.length, 4);
   await app.type('arm("extrude", { depth: 20 })');
   await clickAt(...await app.screenOf(onG(50, 25)));
+  await confirmAndRelease(app);
   const [f] = await features();
   assert.equal(f.name, "e1");
   assert.equal(f.walls.length, 4);
@@ -164,6 +165,8 @@ test("the fillet tool rounds a base corner — and the lid is rounded exactly as
   await clickAt(...await onEdge(corner.legOne, 0.4));
   await clickAt(...await onEdge(corner.legTwo, 0.4));
   await app.page.mouse.move(5, 5);
+  await shot("fillet-previewed");
+  await confirmAndRelease(app);
   await shot("filleted");
   assert.equal(await app.status(), "SOLVED");
   const m = await app.model();
