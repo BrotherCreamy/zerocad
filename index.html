@@ -42,6 +42,16 @@
     #ctxmenu .item:hover .cmd{color:#8fa7bb}
     #ctxmenu .item.off,#ctxmenu .item.off:hover{color:#46586a;background:transparent}
     #ctxmenu .why{padding:0 10px 4px;color:#7a8b9b;font-size:10px;white-space:nowrap}
+    /* A row of choices (View: Shaded Hidden Wire): each word its own target,
+       the one in force underlined in the hover colour. */
+    #ctxmenu .row{display:flex;justify-content:space-between;gap:12px;padding:3px 10px;
+      white-space:nowrap;cursor:default;border-top:1px solid #223041;margin-top:3px}
+    #ctxmenu .row .choices{display:flex;gap:2px}
+    #ctxmenu .row>span:first-child{color:#7a8b9b}
+    #ctxmenu .row .choice{padding:0 6px;color:#d5e1ec;border-radius:2px}
+    #ctxmenu .row .choice:hover{background:#20303f;color:#e8a33d}
+    #ctxmenu .row .choice.on{color:#e8a33d;text-decoration:underline;text-underline-offset:3px}
+    #ctxmenu .row .cmd{color:#46586a}
     /* The canvas is the whole of the area under the header, and the chrome
        floats over it as panels (see src/panels.ts) — so nothing reflows the
        drawing when the log fills. Panels stack from z-index 10; the hover tag

@@ -18,9 +18,9 @@ import { ensureKernelLoaded } from "../src/kernel/problem.ts";
 import { Model } from "../src/model.ts";
 import { onPlane } from "../src/relations/basic.ts";
 import { extrude } from "../src/operations.ts";
-import { faceRGB, visibleFaces } from "../src/faces.ts";
+import { SOLID_EDGE, faceRGB, visibleFaces } from "../src/faces.ts";
 import {
-  HIDDEN_KEEP, SAMPLE_PX, SLACK_PX, covers, hidden, hiddenInk, inkRuns, nearestFace, occlusion, outlineDistance,
+  HIDDEN_GROUND, HIDDEN_KEEP, SAMPLE_PX, SLACK_PX, covers, hidden, hiddenInk, inkRuns, nearestFace, occlusion, outlineDistance,
 } from "../src/occlusion.ts";
 import { worldToScreen, type View } from "../src/view.ts";
 import { axisFrame } from "./frames.ts";
@@ -244,16 +244,21 @@ test("the oracle's two questions: the face nearest the viewer at a pixel, and ho
   assert.equal(outlineDistance(occ, 5, 5), Infinity, "beyond the reach of every face");
 });
 
-test("hidden ink keeps an edge's own hue and takes it down toward the faces' ground: plain stays blue-grey, amber stays amber", () => {
-  const ground = faceRGB(0.5);
+test("hidden ink keeps an edge's own hue and takes it toward the faces' shadow end: plain stays blue-grey, amber stays amber, the solid's dark edge goes lighter", () => {
+  const ground = HIDDEN_GROUND;
   const parse = (css: string) => css.match(/\d+/g)!.map(Number);
-  for (const [hex, rgb] of [["#afc6d9", [175, 198, 217]], ["#e8a33d", [232, 163, 61]], ["#c9dcec", [201, 220, 236]], ["#7b93a8", [123, 147, 168]]] as [string, number[]][]) {
-    const dim = parse(hiddenInk(hex));
-    assert.deepEqual(dim, rgb.map((c, i) => Math.round(HIDDEN_KEEP * c + (1 - HIDDEN_KEEP) * ground[i])), hex);
+  const hex = (css: string) => [1, 3, 5].map((i) => parseInt(css.slice(i, i + 2), 16));
+  for (const css of ["#afc6d9", "#e8a33d", "#c9dcec", "#7b93a8", SOLID_EDGE]) {
+    const rgb = hex(css);
+    const dim = parse(hiddenInk(css));
+    assert.deepEqual(dim, rgb.map((c, i) => Math.round(HIDDEN_KEEP * c + (1 - HIDDEN_KEEP) * ground[i])), css);
     const order = (v: number[]) => [0, 1, 2].sort((i, j) => v[j] - v[i]).join();
-    assert.equal(order(dim), order(rgb), `${hex}: the same channels lead, so the same hue family`);
-    const lum = (v: number[]) => v[0] * 0.3 + v[1] * 0.59 + v[2] * 0.11;
-    assert.ok(lum(dim) < lum(rgb) && lum(dim) > lum(ground), `${hex}: between the edge and the faces`);
+    assert.equal(order(dim), order(rgb), `${css}: the same channels lead, so the same hue family`);
+    // Toward the faces from either side: the faces are a light body now, so a
+    // light sketch ink is taken down to them and the solid's dark edge up.
+    for (let i = 0; i < 3; i++) {
+      assert.ok(Math.min(rgb[i], ground[i]) - 0.5 <= dim[i] && dim[i] <= Math.max(rgb[i], ground[i]) + 0.5, `${css}: channel ${i} between the edge and the faces`);
+    }
   }
   assert.equal(hiddenInk("rebeccapurple"), "rebeccapurple", "a colour it cannot read is left alone");
 });

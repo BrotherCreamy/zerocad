@@ -129,6 +129,33 @@ export async function look(app: AppContext, yaw: number, pitch: number, fill = 0
   }, [yaw, pitch, fill, ...shift]);
 }
 
+/** Points the app's camera along −`toward`, +z as near up as it goes, fitting the scene as `look` does, and redraws. */
+export async function lookAlong(app: AppContext, toward: number[], fill = 0.3, shift: [number, number] = [100, -60]): Promise<void> {
+  await app.page.evaluate(async ([toward, fill, dx, dy]) => {
+    const viewPath = "/src/view.ts";
+    const { assignView } = await import(viewPath);
+    const hook = (window as never as { __neocad: {
+      model: { entities: Map<string, { kind: string; name: string }>; coords(n: string): number[] };
+      engine: { view: unknown }; render(): void;
+    } }).__neocad;
+    const unit = (v: number[]) => { const l = Math.hypot(...v); return v.map((x) => x / l); };
+    const cross = (a: number[], b: number[]) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+    const dot = (a: number[], b: number[]) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+    const t = unit(toward);
+    const right = unit(cross([0, 0, 1], t));
+    const up = cross(t, right);
+    const cv = document.getElementById("cv") as HTMLCanvasElement;
+    const W = cv.getBoundingClientRect().width, H = cv.getBoundingClientRect().height;
+    const pts = [...hook.model.entities.values()].filter((e) => e.kind === "point").map((e) => hook.model.coords(e.name));
+    const c = [0, 1, 2].map((i) => (Math.min(...pts.map((p) => p[i])) + Math.max(...pts.map((p) => p[i]))) / 2);
+    const r = Math.max(...pts.map((p) => Math.hypot(p[0] - c[0], p[1] - c[1], p[2] - c[2])));
+    const scale = (fill * Math.min(W, H)) / r;
+    // The scene's middle on the canvas's, moved by the shift.
+    assignView(hook.engine.view, { scale, right, up, target: c, ox: W / 2 + dx - dot(c, right) * scale, oy: H / 2 + dy + dot(c, up) * scale });
+    hook.render();
+  }, [toward, fill, ...shift] as [number[], number, number, number]);
+}
+
 /**
  * The app's own frames, timed: `renderer` is what the app says it drew faces
  * with, `submit` the milliseconds `render()` holds the main thread, `frame` the

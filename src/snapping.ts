@@ -17,6 +17,7 @@ import type { Model } from "./model.ts";
 import { intersect, type Pt } from "./intersect.ts";
 import { nearestOnPolyline, screenCurve, screenOf as projectPoint, type ScreenCurve } from "./projection.ts";
 import { liesOn, worldToScreen, type Plane, type View } from "./view.ts";
+import { inSight, type Occlusion } from "./occlusion.ts";
 import { cross3, dot3, lift3, unit3 } from "./vec3.ts";
 
 /**
@@ -109,12 +110,21 @@ function dist(ax: number, ay: number, bx: number, by: number): number {
  *
  * Without a sketch plane (no default frame, or a 2D model) everything is
  * offered as itself, as it always was, and nothing is ever projected.
+ *
+ * **`occ`, when given, is the frame's answer to what a solid hides**
+ * (occlusion.ts) — the one the draw pass and `hitTest` use — and nothing it
+ * hides is offered: not a point, a crossing, a midpoint or a place along a
+ * curve behind a visible face, and not a projection of a vertex that cannot be
+ * seen. A snap is a place the hand was aiming at, and nobody aims at what is
+ * not drawn. Null (no solid, or the hidden and wire modes) offers everything.
  */
-export function findSnap(model: Model, view: View, sx: number, sy: number, sketch?: Plane | null): Snap | null {
+export function findSnap(model: Model, view: View, sx: number, sy: number, sketch?: Plane | null,
+                         occ: Occlusion | null = null): Snap | null {
   const screenOf = (name: string) => projectPoint(model, view, name);
   const make = (screen: Pt, world: number[], kind: SnapKind, ...targets: string[]): Snap =>
     ({ screen, world, kind, targets });
-  const onSketch = (world: number[]) => !sketch || liesOn(sketch, world);
+  // On the sketch, and in sight: every tier's place must be both to be offered as itself.
+  const onSketch = (world: number[]) => (!sketch || liesOn(sketch, world)) && inSight(occ, world);
 
   // Tier 1: an existing point. Exact, and almost always what was meant.
   let best: { snap: Snap; d: number } | null = null;
@@ -177,11 +187,11 @@ export function findSnap(model: Model, view: View, sx: number, sy: number, sketc
     for (const e of model.entities.values()) {
       if (e.kind !== "point") continue;
       const world = model.coords(e.name);
-      if (onSketch(world) || !foot) continue;
+      if (onSketch(world) || !foot || !inSight(occ, world)) continue;
       const at = foot(world).slice(0, model.dim);
       const p = worldToScreen(view, at);
       const d = dist(sx, sy, p[0], p[1]);
-      if (d < SNAP_POINT && (!best || d < best.d)) best = { snap: make(p, at, "projected", e.name), d };
+      if (d < SNAP_POINT && (!best || d < best.d) && inSight(occ, at)) best = { snap: make(p, at, "projected", e.name), d };
     }
     if (best) return best.snap;
   }

@@ -151,6 +151,34 @@ test("viewport control is an ordinary command", async () => {
   assert.deepEqual(armed, ["point"]);
 });
 
+test("view() reports and switches how solids are shown through the host, refuses a mode that is not one, and the camera is camera", async () => {
+  const model = new Model(2);
+  axisFrame(model);
+  let mode = "shaded";
+  const view = { ox: 0, oy: 0, scale: 3 };
+  const repl = new Repl(neocadScope({
+    model,
+    view,
+    viewMode: (m?: string) => {
+      if (m === undefined) return mode;
+      if (!["shaded", "hidden", "wire"].includes(m)) throw new Error(`view() takes "shaded", "hidden", "wire" — not ${m}`);
+      return (mode = m);
+    },
+  }));
+  assert.equal((await run(repl, "view()")).value, "shaded");
+  assert.equal((await run(repl, 'view("wire")')).value, "wire");
+  assert.equal(mode, "wire");
+  const bad = await repl.eval('view("glass")');
+  assert.equal(bad.ok, false);
+  assert.match(bad.error!.message, /"shaded", "hidden", "wire"/);
+  assert.equal(mode, "wire", "a refusal changes nothing");
+  assert.equal(model.journal.some((j) => /view/i.test(j.op)), false, "never journalled");
+  assert.equal((await run(repl, "camera.scale")).value, 3, "the camera object, under its own name");
+  const none = await new Repl(neocadScope({ model })).eval('view("wire")');
+  assert.equal(none.ok, false);
+  assert.match(none.error!.message, /no viewport/);
+});
+
 test("solve() goes through the host's solve path, so the viewport cannot go stale", async () => {
   await loadKernel();
   const model = new Model(2);

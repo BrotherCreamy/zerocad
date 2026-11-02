@@ -1,8 +1,10 @@
 // Hidden edges, dimmed, in a browser (docs/plans/hidden-edges.md).
 //
-// The rule: the drawing stays on top of the solid and still picks, snaps and
-// drags as before; only the *ink* of the part of an edge behind a face changes,
-// to a dimmed one. Points, names and glyphs are never dimmed.
+// The rule, now the hidden view's (`view("hidden")`; the default view is
+// opaque since docs/plans/opaque-solids.md): the drawing stays on top of the
+// solid and still picks, snaps and drags; only the *ink* of the part of an
+// edge behind a face changes, to a dimmed one. Points, names and glyphs are
+// never dimmed.
 //
 // A plain sketch, with no solid, must draw exactly as it did before the pass
 // existed — not "about the same": the pass is off when there are no faces. That
@@ -17,7 +19,7 @@ import assert from "node:assert/strict";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { axisFrame, openApp, type AppContext } from "./harness.ts";
-import { HELPERS, build, look, scene } from "./scenes.ts";
+import { HELPERS, build, look, lookAlong, scene } from "./scenes.ts";
 
 const SHOTS = process.env.NEOCAD_E2E_SHOTS;
 const GOLDEN = new URL("./golden/hidden-plain-sketch.png", import.meta.url).pathname;
@@ -93,6 +95,13 @@ test("a sketch with no solid draws pixel for pixel what the previous build drew"
 });
 
 // --- solids ----------------------------------------------------------------------
+//
+// Every solid here is looked at in `view("hidden")` — since opaque solids
+// (docs/plans/opaque-solids.md) the default view does not draw what is behind
+// a face at all; this file is about the mode that draws it dimmed. The solid's
+// own edges (whole profile members, twins, walls) are in its dark ink, and a
+// profile member that is a *portion* of a longer line keeps the sketch's
+// colour, so each sample below says which it is.
 
 /**
  * From the front, the right and above — a camera written down rather than
@@ -103,31 +112,12 @@ test("a sketch with no solid draws pixel for pixel what the previous build drew"
  */
 const CORNER = [1, -2, 1.5];
 
-/** Points the app's camera along −`toward`, +z as near up as it goes, fitting the scene as `look` does, and redraws. */
-async function lookAlong(app: AppContext, toward: number[], fill = 0.3, shift: [number, number] = [100, -60]): Promise<void> {
-  await app.page.evaluate(async ([toward, fill, dx, dy]) => {
-    const viewPath = "/src/view.ts";
-    const { assignView } = await import(viewPath);
-    const hook = (window as never as { __neocad: {
-      model: { entities: Map<string, { kind: string; name: string }>; coords(n: string): number[] };
-      engine: { view: unknown }; render(): void;
-    } }).__neocad;
-    const unit = (v: number[]) => { const l = Math.hypot(...v); return v.map((x) => x / l); };
-    const cross = (a: number[], b: number[]) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
-    const dot = (a: number[], b: number[]) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
-    const t = unit(toward);
-    const right = unit(cross([0, 0, 1], t));
-    const up = cross(t, right);
-    const cv = document.getElementById("cv") as HTMLCanvasElement;
-    const W = cv.getBoundingClientRect().width, H = cv.getBoundingClientRect().height;
-    const pts = [...hook.model.entities.values()].filter((e) => e.kind === "point").map((e) => hook.model.coords(e.name));
-    const c = [0, 1, 2].map((i) => (Math.min(...pts.map((p) => p[i])) + Math.max(...pts.map((p) => p[i]))) / 2);
-    const r = Math.max(...pts.map((p) => Math.hypot(p[0] - c[0], p[1] - c[1], p[2] - c[2])));
-    const scale = (fill * Math.min(W, H)) / r;
-    // The scene's middle on the canvas's, moved by the shift.
-    assignView(hook.engine.view, { scale, right, up, target: c, ox: W / 2 + dx - dot(c, right) * scale, oy: H / 2 + dy + dot(c, up) * scale });
-    hook.render();
-  }, [toward, fill, ...shift] as [number[], number, number, number]);
+/** A fresh app in the hidden view, which is what this file tests. */
+async function hiddenApp(options: { webgl?: boolean } = {}): Promise<AppContext> {
+  const app = await openApp(options);
+  opened.push(app);
+  assert.equal((await app.repl('view("hidden")')).value, "hidden");
+  return app;
 }
 
 /** A point along a–b, `t` of the way. */
@@ -155,15 +145,37 @@ async function patch(app: AppContext, world: number[]): Promise<number[][]> {
   return app.pixels("drawing", at);
 }
 
+/** main.ts's casing: the background's colour, under every light mark drawn in full where faces are. */
+const CASING = [10, 14, 19];
+
 /**
  * The ink an edge is drawn in where it passes `world`, read off the drawing
- * canvas: of the pixels within two of its own, the most opaque — the 2D canvas
- * hands colour back unpremultiplied, so a stroke's pixel is the stroke's
- * colour however much of it the stroke covers, and the most covered is the
- * least rounded.
+ * canvas: of the pixels within two of its own, the most opaque that is not a
+ * casing — the 2D canvas hands colour back unpremultiplied, so a stroke's
+ * pixel over nothing is the stroke's colour however much of it the stroke
+ * covers. Right for a stroke drawn over nothing: a hidden run (never cased) or
+ * the solid's dark edge (never cased).
  */
 async function inkAt(app: AppContext, world: number[]): Promise<number[]> {
-  return (await patch(app, world)).reduce((best, p) => (p[3] > best[3] ? p : best));
+  return (await patch(app, world)).filter((p) => far(p, CASING) > 6)
+    .reduce((best, p) => (p[3] > best[3] ? p : best), [0, 0, 0, 0]);
+}
+
+/**
+ * Whether a light mark is drawn in full `ink` near `world`, over its casing: a
+ * pixel there is the ink laid over the casing by how much the stroke covers
+ * it, so some pixel must sit on the line from the casing to the ink, most of
+ * the way to the ink.
+ */
+async function casedInk(app: AppContext, world: number[], ink: number[]): Promise<boolean> {
+  const d = [0, 1, 2].map((i) => ink[i] - CASING[i]);
+  const dd = d.reduce((s, v) => s + v * v, 0);
+  return (await patch(app, world)).some((p) => {
+    if (p[3] < 200) return false;
+    const a = [0, 1, 2].reduce((s, i) => s + (p[i] - CASING[i]) * d[i], 0) / dd;
+    const off = Math.max(...[0, 1, 2].map((i) => Math.abs(p[i] - CASING[i] - a * d[i])));
+    return a > 0.6 && off <= 6;
+  });
 }
 
 /** Whether a face of a solid is drawn at `world`'s pixel — so a point on turned-away faces there is behind the solid. */
@@ -179,26 +191,37 @@ const OTHER_FRAME = "#7b93a8";
 /** framemarker.ts's arm length, which the test's sample positions depend on. */
 const FRAME_ARM_PX = 36;
 
-test("the stepped block from a corner: its far edges are in the dimmed ink, its near ones in full, and a point behind it keeps its full dot", async () => {
-  const app = await fresh();
+/** The app's solid edge ink, read from the module that defines it. */
+const solidInk = async (app: AppContext): Promise<string> => app.page.evaluate(async () => {
+  const path = "/src/faces.ts";
+  return (await import(path)).SOLID_EDGE as string;
+});
+
+test("the stepped block from a corner, hidden view: its far edges are in the dimmed ink, its near ones in full, and a point behind it keeps its full dot", async () => {
+  const app = await hiddenApp();
   await build(app, scene("stepped-boss").source);
   await lookAlong(app, CORNER);
   await shot(app, "stepped-block");
-  const [dim, full] = [await dimmed(app, PLAIN_EDGE), rgbOf(PLAIN_EDGE)];
-  assert.ok(far(dim, full) > 40, `the dimmed ink rgb(${dim}) is not the full rgb(${full})`);
+  const SOLID = await solidInk(app);
+  const [dimSolid, fullSolid] = [await dimmed(app, SOLID), rgbOf(SOLID)];
+  const dimPlain = await dimmed(app, PLAIN_EDGE);
+  assert.ok(far(dimSolid, fullSolid) > 25, `the dimmed solid ink rgb(${dimSolid}) is not the full rgb(${fullSolid})`);
+  assert.ok(far(dimPlain, rgbOf(PLAIN_EDGE)) > 40, `the dimmed sketch ink rgb(${dimPlain}) is not the full one`);
   // Behind: the base's back edge (base and back wall turned away), under both
-  // steps, and the low step's back-left upright (back and left walls away).
-  for (const p of [[8, 30, 0], [30, 30, 0], [0, 30, 5]]) {
+  // steps — a portion of the rectangle's back line, which the cut at x = 15
+  // split, so in the sketch's colour — and the low step's back-left upright
+  // (back and left walls away), a wall, in the solid's.
+  for (const [p, dim] of [[[8, 30, 0], dimPlain], [[30, 30, 0], dimPlain], [[0, 30, 5], dimSolid]] as [number[], number[]][]) {
     assert.ok(await onSolid(app, p), `${p} is on the solid's picture`);
     const ink = await inkAt(app, p);
     assert.ok(far(ink, dim) <= 3 && ink[3] > 150, `${p}: dimmed rgb(${dim}), got ${ink}`);
   }
   // In front: the tall step's lid along its back edge (lid toward, back away:
-  // the silhouette), its right edge, and the upright where its front and right
-  // walls meet.
+  // the silhouette) and its right edge — twins — and the upright where its
+  // front and right walls meet, a wall: all the solid's own, in its dark ink.
   for (const p of [[37, 30, 20], [40, 15, 20], [40, 0, 17]]) {
     const ink = await inkAt(app, p);
-    assert.ok(far(ink, full) <= 3 && ink[3] > 150, `${p}: full rgb(${full}), got ${ink}`);
+    assert.ok(far(ink, fullSolid) <= 3 && ink[3] > 150, `${p}: full rgb(${fullSolid}), got ${ink}`);
   }
   // A point is never dimmed: the far bottom corner, on three turned-away
   // faces, has its dot in full ink.
@@ -206,12 +229,12 @@ test("the stepped block from a corner: its far edges are in the dimmed ink, its 
   assert.deepEqual(p4, [0, 30, 0]);
   assert.ok(await onSolid(app, p4), "p4 is behind the solid");
   const [sx, sy] = await app.screenOf(p4);
-  assert.deepEqual(await app.pixel(Math.floor(sx) + 0.5, Math.floor(sy) + 0.5, "drawing"), [...full, 255], "p4's dot, full ink");
+  assert.deepEqual(await app.pixel(Math.floor(sx) + 0.5, Math.floor(sy) + 0.5, "drawing"), [...rgbOf(PLAIN_EDGE), 255], "p4's dot, full ink");
   assert.deepEqual(app.pageErrors, []);
 });
 
-test("a frame's arm behind a face dims like an edge; one above the solid does not", async () => {
-  const app = await fresh();
+test("hidden view: a frame's arm behind a face dims like an edge; one above the solid does not", async () => {
+  const app = await hiddenApp();
   await build(app, `${scene("box").source};
     model.addFrame(P([20,15,30]), P([21,15,30]), P([20,16,30]), "g");
     model.addFrame(P([20,15,-10]), P([21,15,-10]), P([20,16,-10]), "k")`);
@@ -224,19 +247,20 @@ test("a frame's arm behind a face dims like an edge; one above the solid does no
   const scale = (await app.model()).view.scale;
   const out = 0.6 * (FRAME_ARM_PX / scale);
   assert.ok(await onSolid(app, [20 + out, 15, -10]), "k's +x arm is on the box's picture");
-  const above = await inkAt(app, [20 + out, 15, 30]);
-  assert.ok(far(above, rgbOf(OTHER_FRAME)) <= 3, `g's +x arm: full, got ${above}`);
+  assert.ok(await casedInk(app, [20 + out, 15, 30], rgbOf(OTHER_FRAME)), "g's +x arm: full, over its casing");
   const under = await inkAt(app, [20 + out, 15, -10]);
   const dim = await dimmed(app, OTHER_FRAME);
+  assert.ok(far(dim, rgbOf(OTHER_FRAME)) > 25, `the dimmed frame ink rgb(${dim}) is not the full one`);
   assert.ok(far(under, dim) <= 3, `k's +x arm, under the box: dimmed rgb(${dim}), got ${under}`);
 });
 
-test("a line from in front of the block to under it: lit, amber in front and dimmed amber behind — and it picks where it is dimmed", async () => {
-  const app = await fresh();
+test("hidden view: a line from in front of the block to under it: lit, amber in front and dimmed amber behind — and it picks where it is dimmed", async () => {
+  const app = await hiddenApp();
   await build(app, scene("stepped-boss").source);
   await lookAlong(app, CORNER);
   // The line the block was cut along: x = 15 on the base's plane, from y = −10
-  // in front of the block to y = 40 behind it.
+  // in front of the block to y = 40 behind it. A portion of it bounds each
+  // step, so it keeps the sketch's colour.
   const m = await app.model();
   const cut = m.lines.find((l) => {
     const [a, b] = l.refs.map((n) => m.points[n]);
@@ -249,7 +273,7 @@ test("a line from in front of the block to under it: lit, amber in front and dim
   const under = along(a, b, 0.75);
   assert.ok(await onSolid(app, under), "three-quarters along, it is under the block");
   assert.ok(far(await inkAt(app, under), await dimmed(app, PLAIN_EDGE)) <= 3, "unlit, dimmed under the block");
-  // Picking does not know about ink: the dimmed part picks the line.
+  // The hidden view keeps everything aimable: the dimmed part picks the line.
   const [ux, uy] = await app.screenOf(under);
   const picked = await app.page.evaluate(([x, y]) => (window as never as {
     __neocad: { engine: { pickAt(x: number, y: number): { name: string } | null } };
@@ -261,8 +285,7 @@ test("a line from in front of the block to under it: lit, amber in front and dim
   await app.page.mouse.move(pt.x, pt.y);
   await app.page.waitForTimeout(150);
   assert.equal((await app.repl("hover()")).value, cut!.name, "hovering it");
-  const lit = await inkAt(app, along(a, b, 0.05));
-  assert.ok(far(lit, rgbOf(AMBER)) <= 3, `in front: amber, got ${lit}`);
+  assert.ok(await casedInk(app, along(a, b, 0.05), rgbOf(AMBER)), "in front: amber, over its casing");
   const dimAmber = await dimmed(app, AMBER);
   const litUnder = await inkAt(app, along(a, b, 0.7));
   assert.ok(far(litUnder, dimAmber) <= 3, `under: dimmed amber rgb(${dimAmber}), got ${litUnder}`);
@@ -270,12 +293,15 @@ test("a line from in front of the block to under it: lit, amber in front and dim
   await shot(app, "stepped-block-lit");
 });
 
-test("the boss on a plate: the far side of the boss's foot is dimmed behind the boss, its near side and its top are not, and the plate's far edge is dimmed", async () => {
-  const app = await fresh();
+test("hidden view, the boss on a plate: the far side of the boss's foot is dimmed behind the boss, its near side and its top are not, and the plate's far edge is dimmed", async () => {
+  const app = await hiddenApp();
   await build(app, scene("boss-plate").source);
   await lookAlong(app, CORNER);
   await shot(app, "boss-plate");
-  const [dim, full] = [await dimmed(app, PLAIN_EDGE), rgbOf(PLAIN_EDGE)];
+  // Every edge sampled is the solids' own — the boss's profile circle and its
+  // twin, the plate's profile — so in the solid's ink.
+  const SOLID = await solidInk(app);
+  const [dim, full] = [await dimmed(app, SOLID), rgbOf(SOLID)];
   // The boss: r 10 about (30, 20), standing on the plate's lid at z = 8, 15
   // high. Points of its circles `deg` round from straight away from the
   // viewer — not straight away, where its height's label sits.
@@ -293,20 +319,19 @@ test("the boss on a plate: the far side of the boss's foot is dimmed behind the 
   assert.ok(far(await inkAt(app, [50, 40, 0]), dim) <= 3, "the plate's back-bottom edge");
 });
 
-test("with WebGL taken away the painter's fallback dims the same edges: it is the same 2D pass", async () => {
-  const app = await openApp({ webgl: false });
-  opened.push(app);
+test("with WebGL taken away the painter's fallback dims the same edges in the hidden view: it is the same 2D pass", async () => {
+  const app = await hiddenApp({ webgl: false });
   assert.equal(await app.renderer(), "painter's");
   await build(app, scene("stepped-boss").source);
   await lookAlong(app, CORNER);
-  const [dim, full] = [await dimmed(app, PLAIN_EDGE), rgbOf(PLAIN_EDGE)];
+  const [dim, full] = [await dimmed(app, PLAIN_EDGE), rgbOf(await solidInk(app))];
   // The faces are in the same canvas here, so a stroke's pixels are its ink
   // mixed with a face's fill: the pixel nearest the ink is the one to ask.
   const nearest = async (p: number[], ink: number[]) =>
     (await patch(app, p)).reduce((best, q) => (far(q, ink) < far(best, ink) ? q : best));
   for (const p of [[8, 30, 0], [30, 30, 0]]) {
     const got = await nearest(p, dim);
-    assert.ok(far(got, dim) <= 12 && far(got, dim) < far(got, full), `${p}: dimmed, got ${got}`);
+    assert.ok(far(got, dim) <= 12 && far(got, dim) < far(got, rgbOf(PLAIN_EDGE)), `${p}: dimmed, got ${got}`);
   }
   const got = await nearest([37, 30, 20], full);
   assert.ok(far(got, full) <= 12, `the tall step's lid edge: full, got ${got}`);

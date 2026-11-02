@@ -106,6 +106,60 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### Opaque solids: one answer for the eye and the hand
+
+**The owner**, two messages in a row: *"when you extrude a solid, it should
+look like a solid"* / *"It should be opaque"*. The hidden-edge package had
+kept the drawing on top of the faces on purpose — "what a hand aims at is
+never behind a face" — and dimmed only the ink. The owner's reading of the
+result was glass, and under "tools work like Onshape" a part is opaque: what
+is behind it is not seen and not aimed at.
+
+**Why the pick asks the same `Occlusion` the draw pass built, rather than
+asking afresh.** The danger in hiding something from the eye is a second,
+slightly different answer about what the hand can reach: a point not drawn
+but pickable is a trap, and one drawn but unreachable is a bug report. So
+`render` builds the frame's `Occlusion` once, draws with it and sets it on the
+engine, and `hitTest`, `findSnap`, `selectInBox` and `placeGlyphs` each take
+it as an argument and ask `inSight` — the hidden-edge test, square to the
+plane, applied to one point. Rejected: recomputing per pointer event (a pick
+could then disagree with a picture drawn a frame earlier, and it costs the
+faces' derivation on every move); and reading the depth buffer back (a stall,
+and the depth layer is not the only renderer — the painter's fallback has no
+buffer). Staleness: the engine's copy is the last frame's, which is what is on
+screen, and every change to the model or camera redraws before the next event.
+
+**Where on an edge.** An edge is pickable at the cursor when the place on it
+nearest the cursor is in sight — one sample, the one a hand is at. Rejected:
+"pickable if any of it is visible", which picks an edge by the hidden part
+under the cursor because a different part is visible somewhere else. A box,
+which is about extent rather than a place, takes the visible runs instead.
+
+**`view` changed its meaning.** It was the camera object in the command
+scope; the spec names the mode command `view(…)`. Nothing in the suite or the
+docs typed `view.` at the command line, so the camera moved to `camera` rather
+than inventing `viewMode()` or `shading()` for the thing a user will reach
+for by the obvious name.
+
+**The casing, which the spec did not ask for.** The lighter body was the
+spec's, and measured right (5–9:1 against the background). But the sketch's
+light ink on it measured 1.2–2.2:1, and the first screenshot showed what
+that means: a rectangle sketched on a lid barely there, `p1` on the front wall
+unreadable. Options considered: darken the sketch ink over faces (rejected:
+the spec keeps sketch colours, and the same line would change colour as it
+crossed a silhouette), keep the faces darker (rejected: that is the glass
+again), or a rim. The rim is the background's own colour, so off the solid it
+is not there at all, and drawn for every mark before any mark so two crossing
+lines do not cut into each other. A plain sketch never runs it, which is what
+keeps the hidden-edge package's golden picture pixel-identical.
+
+**The hint during a gesture** is decided by whether the overlay drew
+anything — counted at the 2D context's drawing calls while `renderOverlay`
+runs, in an empty model only. Rejected: asking the tool (no tool says whether
+it has a gesture; teaching every tool to say so is the tools package's
+territory and would miss tools typed at the command line), and tracking
+presses in the host (a line tool previews between clicks with no button held).
+
 ### Feature tools: pick, preview, confirm
 
 **The owner** (2026-11-02): *"extrude and other tools should work like they

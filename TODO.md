@@ -477,7 +477,9 @@ are flagged as such.
     order, so the sketch stays legible. *(2026-10-22, hidden edges: the part
     of an edge behind a face is drawn in a dimmed ink — the hidden-edge rule
     after the depth rule below — so the profile no longer reads through a
-    solid as if in front of it.)*
+    solid as if in front of it. 2026-11-02, opaque solids: shaded, the part
+    behind a face is not drawn at all, and not aimable; the dimmed look is
+    `view("hidden")`.)*
   - **`Tool.snaps`** (new, default true): the extrude tool opts out, since a
     snap marker would promise a vertex the click does not go to. Idle clicks
     are unchanged — the click-inside behaviour lives in the tool only.
@@ -564,9 +566,11 @@ are flagged as such.
   `npm run measure:depth`.
 
   ✅ **Hidden edges, dimmed — built** (2026-10-22):
-  [`docs/plans/hidden-edges.md`](docs/plans/hidden-edges.md). **The drawing
+  [`docs/plans/hidden-edges.md`](docs/plans/hidden-edges.md). ~~**The drawing
   stays on top of the solid, and what a hand aims at is never behind a face;
-  the part of an edge behind a face is drawn in a dimmed ink.** Every edge,
+  the part of an edge behind a face is drawn in a dimmed ink.**~~ **Replaced
+  by the opaque rule** (2026-11-02, the next entry): this is now what
+  `view("hidden")` draws, not the default. As built then: every edge,
   point, name and glyph still draws over the faces and picks, snaps and drags
   exactly as before; only the ink of an edge's hidden runs changes. Points,
   names, a frame's letters and glyphs are never dimmed; a frame's arms are
@@ -589,6 +593,54 @@ are flagged as such.
   - **An edge on a turned-away face that meets the silhouette keeps a stub of
     full ink up to 2 px long at its end** — the seam's slack; e.g. the base's
     back edge at the corner where the right wall turns toward the viewer.
+
+  ✅ **A solid is opaque — built** (2026-11-02):
+  [`docs/plans/opaque-solids.md`](docs/plans/opaque-solids.md). The owner, two
+  messages in a row: *"when you extrude a solid, it should look like a solid"*
+  / *"It should be opaque"*. **Shaded, the default: what is behind a visible
+  face is not drawn and cannot be picked, hovered, dragged, snapped to or
+  boxed** — an edge or the part of one, a point and its name, a glyph (at its
+  anchor; a dimension's witness lines go with its label), a frame's marker (at
+  its origin). Faces still never pick. What is on the solid's visible faces
+  and edges, or in front, is drawn and aimed at as before; turn the view to
+  reach what was behind. **One `Occlusion` a frame** answers the draw pass and
+  the engine's pick, snap, box and glyphs alike (`inSight` in `occlusion.ts`;
+  `engine.occlusion`, set by `render`) — a pick between frames uses the last
+  frame's, which is what is on screen. **View modes are viewer state**, like
+  the camera and the layout: `view("shaded" | "hidden" | "wire")`, `view()`
+  says which; `localStorage` (`neocad.viewMode.v1`), never the journal, a
+  file or an undo step; a View row on the empty-canvas menu and in `help()`.
+  `hidden` is the hidden-edge pass above, `wire` draws no faces. **It looks
+  like a solid**: a light body tone (mid slate to light grey-blue), the
+  headlight over the whole range, the solid's own edges in a dark ink.
+  Decided while building it, and open to veto:
+  - ⚠ **`view` is the command now; the camera object is `camera`.** `view`
+    was the camera in the command scope (nothing typed it); the spec names
+    the command `view(…)`, and one name cannot be both.
+  - ⚠ **Light marks get a casing where faces are drawn** (not in the spec): a
+    rim in the background's colour under every light line, dot, name and
+    frame arm, drawn for all marks before any mark. Without it the sketch's
+    `#afc6d9` on the new light faces measured 1.2–2.2:1 — a sketch on a lid
+    and a name on a wall were nearly invisible. A plain sketch (no faces)
+    skips it and is pixel-identical.
+  - **The dark edge ink is for a solid's own edges only where faces are
+    drawn**: in wire it would vanish on the background, so wire is sketch
+    colours throughout. A profile member that is a *portion* of a longer line
+    (a region split by a crossing) keeps its sketch colour — most of that line
+    may be off the solid. Points keep their sketch colour on a solid: they are
+    targets, not outline.
+  - **The hidden mode draws the solid's edges dark too**, its hidden runs
+    taken toward the faces' darkest tone like every hidden run — moved from their middle, which sat on a frame's grey — (so a dark edge
+    behind goes lighter, a light one darker) — "today's look" with today's
+    light faces would have put light edges on light faces.
+  - **A frame's marker hides by its origin**, and an arm whose tip is hidden
+    loses its head and letter; the rest of the arm is an edge.
+  - **An edge picks where the place on it nearest the cursor is in sight**,
+    so an edge half behind a box picks along its visible half only; a box
+    takes an edge by its visible runs (`visibleRuns`) — a window needs the
+    whole edge inside and some of it seen.
+  - **A snap to a vertex's projection is refused when the vertex is hidden**,
+    and when the projection itself is.
 
 - **No world frame — coordinate frames are entities** (owner's direction,
   2026-09-01, chosen over "keep the frame but hide it" and "directions stay,
@@ -1273,6 +1325,41 @@ starts.
         a Chromium upgrade that changes Skia's rasterising fails that test, and
         the only honest re-record is from a build known to draw a plain sketch
         as before.
+- [x] **A solid is opaque — BUILT (2026-11-02).** The owner: *"when you
+      extrude a solid, it should look like a solid"* / *"It should be
+      opaque"*. Shaded, the default, nothing behind a visible face is drawn,
+      picked, hovered, dragged, snapped to or boxed; `view("hidden")` is the
+      hidden-edge look, `view("wire")` no faces; the mode is viewer state;
+      the body is light, its own edges dark. One `Occlusion` a frame answers
+      the picture and the hand. Measured (WCAG, box from a corner, off the
+      composed screenshot): faces 5.0–8.9:1 against the background (were
+      1.7–2.2), 1.31–1.77:1 against each other (were 1.13–1.28). Spec:
+      [`docs/plans/opaque-solids.md`](docs/plans/opaque-solids.md) (its "As
+      built" has the detail); the story is `test/e2e/opaque.e2e.ts`;
+      screenshots 94–97. 897 unit tests (13 new), 347 e2e (7 new).
+      Deviations from the spec:
+      - ⚠ **`view` is the command; the camera object is `camera`** (it was
+        `view` in the scope).
+      - ⚠ **A casing under light marks where faces are drawn** — not asked
+        for; the sketch's ink on the light body measured 1.2–2.2:1.
+      - ⚠ **Hidden ink mixes toward the faces' dark end**, not their middle,
+        which with the light body sat on a frame's grey.
+      - **The hidden mode draws the solid's edges dark too**; portions of
+        longer lines and points keep sketch colours.
+      - **`regen.e2e.ts` switches to the hidden view** before its fillet
+        clicks a base corner now behind the lid.
+      **Found while building, left deliberately:**
+      - **`regionAt` does not consult occlusion**: a click inside a loop finds
+        its region whatever is in front of or behind it. The tools that ask it
+        (extrude, revolve, sketch) belong to the feature-dialog package; if a
+        loop wholly behind a solid should not be clickable, that is where.
+      - **The casing pass samples every edge a second time** (`inkRuns` is
+        not cached between the passes). Not measured separately from the
+        frame; the frame interval in the e2e browser is dominated by
+        SwiftShader compositing.
+      - **The regen fillet story now needs a mode switch** to reach a base
+        corner from the view it was written for — the honest consequence of
+        opacity; a user would orbit or switch.
 - [x] **Feature regeneration — BUILT (2026-10-22).** A profile restructured
       after its feature used to leave the feature as it was (a documented
       no-op): fillet an extruded rectangle's corner and the lid stayed

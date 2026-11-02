@@ -1,6 +1,8 @@
 # Plan: a solid looks like a solid — opaque, by default
 
-**Status: queued** (2026-11-02). The owner, verbatim, two messages in a row:
+**Status: built** (2026-11-02) — see "As built" at the end for the numbers
+and for every place the build differs from this text. The owner, verbatim,
+two messages in a row:
 
 > *when you extrude a solid, it should look like a solid*
 > *It should be opaque*
@@ -93,3 +95,81 @@ one PR against `claude/resume-tasks-o7q02e`. Do not merge; the supervising
 session reviews. Another package (`feature-dialog.md`) runs at the same time
 and owns the tools, the options panel and the Enter/Escape keys; stay out of
 `src/tools/` except where picking is called, and out of `src/panels.ts`.
+
+## As built (2026-11-02)
+
+Branch `claude/opaque-solids`. In `src/tools/` only `engine.ts` changed, and
+only where it picks: an `occlusion` field passed to `hitTest`, `findSnap`,
+`selectInBox` and `placeGlyphs`. Nothing in `panels.ts`, the tools, or the
+Enter/Escape handlers.
+
+**Measured.** WCAG contrast, the box seen from (1, −2, 1.5), read off the
+composed screenshot in the e2e browser (`opaque.e2e.ts`; the same numbers
+`faces.test.ts` computes from the constants), against the background
+`#0a0e13`:
+
+| | before (computed) | after (measured) |
+|---|---|---|
+| lid | 1.96:1 | 6.75:1 (`141,154,169`) |
+| front wall | 2.22:1 | 8.87:1 (`164,177,191`) |
+| right wall | 1.74:1 | 5.01:1 (`118,131,147`) |
+| lid / front, lid / right, front / right | 1.13, 1.13, 1.28 | 1.31, 1.35, 1.77 |
+| edge-on, square-on | 1.38, 2.62 | 2.58, 12.37 |
+| solid edge ink `#1b2530` on the three faces | — | 5.4, 7.1, 4.0 |
+| sketch ink `#afc6d9` on the three faces | 5.6, 5.0, 6.3 | 1.6, 1.2, 2.2 — hence the casing |
+
+**What differs from the text above, and why:**
+
+- ⚠ **`view` was already taken**: it was the camera object in the command
+  scope (`view: h.view`). The spec's `view("shaded")` is the command now, and
+  the camera is `camera`. Nothing in the suite, the docs or `help()` typed
+  `view.` at the command line.
+- ⚠ **A casing under light marks, not in the spec.** The spec keeps sketch
+  colours on a solid; on the new light body they measured 1.2–2.2:1 and the
+  first screenshot showed a sketch on a lid barely there and a name on a wall
+  unreadable. Where faces are drawn the entity pass runs twice — every mark's
+  casing first (the background's colour, a little wider: invisible off the
+  solid), then every mark — so sketch colours stay and stay legible. A plain
+  sketch skips it (the hidden-edge golden is still pixel-identical).
+- ⚠ **The hidden ink's ground moved** from the faces' middle tone to their
+  darkest (`HIDDEN_GROUND = faceRGB(0)`). With the light body the middle tone
+  was within a few levels of a non-default frame's grey, and a hidden frame
+  arm dimmed to itself; found by the hidden-edge e2e test.
+- **The hidden mode draws the solid's edges dark too** — "today's look" with
+  today's light faces would put light edges on light faces. Its hidden runs
+  are its edges' inks taken toward the ground, as before.
+- **Which edges are "the solid's own"**: whole profile members, twins and
+  extrude walls. A profile member that is a *portion* of a longer line (a
+  region split by a crossing) keeps its sketch colour, since most of that
+  line may be off the solid; points keep theirs (targets, not outline).
+- **A frame's marker is hidden by its origin** as the spec says, and also
+  loses an arm's head and letter when that arm's tip is hidden; the rest of
+  the arm is an edge, its hidden part not drawn.
+- **Where an edge picks**: at the place on it nearest the cursor, if that is
+  in sight. Box select takes an edge by its visible runs (`visibleRuns`): a
+  crossing box must touch a visible run, a window must contain the whole edge
+  and see some of it.
+- **A projected snap** (a vertex off the sketch plane) is refused when the
+  vertex is hidden, and when its foot on the plane is.
+- **The hint** is hidden when the overlay draws anything in an empty model —
+  counted at the 2D context's drawing calls while `renderOverlay` runs — so
+  a selection box on an empty canvas hides it too.
+- **Staleness**: `render` sets `engine.occlusion`; a pick between frames uses
+  the last frame's, which is what is on screen, and every change to the model
+  or camera redraws before the next pointer event. A tool's own `ctx.pick`
+  uses the same.
+- **The fillet e2e in `regen.e2e.ts`** aims at a base corner that is now
+  behind the lid; it types `view("hidden")` first, as a user would.
+
+**Left deliberately:**
+
+- Region picking (`regionAt`, the extrude/revolve/sketch tools' click inside
+  a loop) does not consult occlusion: a click inside a lid's loop finds the
+  lid's region whatever lies behind it, and a loop wholly behind a solid can
+  still be the region under a click. Faces are not the drawing; the regions
+  are a separate question, and the feature-dialog package owns those tools.
+- The casing is drawn under hover-lit (amber) marks too, and under a frame's
+  letters and name; it is not drawn under glyph boxes (which have their own
+  fill) or dimension witness lines (already dark).
+- The casing pass runs `inkRuns` a second time for every edge; not cached.
+

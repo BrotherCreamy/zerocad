@@ -245,6 +245,12 @@ on different buttons from tool use, so the left button always belongs to
 whichever tool is armed — you can start a rectangle, turn the view to see
 where it is going, and finish it without the tool noticing.
 
+**A solid is opaque.** What is behind one is not drawn and cannot be clicked,
+snapped to or boxed — turn the view to reach it. `view("hidden")` shows it
+dimmed and makes it all aimable again, `view("wire")` draws no faces, and
+`view("shaded")` is the default (also the View row of the right-click menu on
+empty canvas). The mode is yours, in this browser, never in a file.
+
 **A click lands on the default frame's plane** — set a frame as the default and
 every tool draws on it, holding what it draws there with `onplane` — or, with
 no default frame, on the plane facing you through the middle of the window. So

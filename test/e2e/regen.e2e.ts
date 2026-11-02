@@ -160,6 +160,11 @@ test("a rectangle from the tool on a tilted sketch, extruded by a click inside i
 let afterFillet = "";
 
 test("the fillet tool rounds a base corner — and the lid is rounded exactly as the base is", async () => {
+  // The base corner is behind the solid from this side, and a solid is
+  // opaque (docs/plans/opaque-solids.md): aiming at it through the lid is
+  // what the hidden view is for. A viewer's setting — not in the journal,
+  // which the next assertion counts.
+  await app.type('view("hidden")');
   const journal = (await app.model()).journalOps.length;
   await app.type('arm("fillet", { radius: 8 })');
   await clickAt(...await onEdge(corner.legOne, 0.4));

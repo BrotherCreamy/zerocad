@@ -27,6 +27,7 @@ import { frameBasis } from "./relations/refs.ts";
 import { toolUnavailable } from "./toolavail.ts";
 import { sketchOnFaceCommand } from "./sketchface.ts";
 import type { RegionHit } from "./tools/tool.ts";
+import { VIEW_MODES, type ViewMode } from "./viewmode.ts";
 
 /**
  * What clicking an item does.
@@ -44,7 +45,19 @@ export type MenuAction =
   | { do: "run"; command: string }
   | { do: "insert"; name: string }
   | { do: "type"; text: string }
-  | { do: "disabled"; why: string };
+  | { do: "disabled"; why: string }
+  | { do: "choose"; choices: MenuChoice[] };
+
+/**
+ * One of a row of choices — the View row's three modes. Each types its own
+ * command, like any item; `current` marks the one in force, so the row says
+ * what the view is as well as how to change it.
+ */
+export interface MenuChoice {
+  label: string;
+  command: string;
+  current: boolean;
+}
 
 export interface MenuItem {
   label: string;
@@ -101,6 +114,9 @@ function quoted(name: string): string {
  * `regionAt`, asked by the host), which is what offers "Sketch on this face".
  * `history`, when given, adds Undo and Redo at the bottom (see `historyItems`);
  * left out, the menu is only about the pick, which is what most tests ask.
+ * `viewMode`, when given, adds the View row to the empty-canvas menu (see
+ * `viewItem`) — the host's to say, like the history, since how solids are
+ * shown is the viewer's and not the model's.
  *
  * Pure, and deliberately so — it reads the model and returns strings. Nothing
  * here runs a command, touches the DOM or knows a menu can be on screen.
@@ -110,10 +126,33 @@ export function menuFor(
   pick: Pick | null,
   region: RegionHit | null = null,
   history: History | null = null,
+  viewMode: ViewMode | null = null,
 ): Menu {
   const menu = menuOf(model, pick, region);
+  if (!pick && viewMode) menu.items.push(viewItem(viewMode));
   if (history) menu.items.push(...historyItems(history));
   return menu;
+}
+
+/**
+ * **View: Shaded · Hidden · Wire**, on empty canvas — the three ways of
+ * showing solids (viewmode.ts) as one row, the one in force marked, each a
+ * shortcut to the `view()` it types. On empty canvas only, beside the other
+ * things that are about the drawing as a whole, because none of them is about
+ * what a right-click on an entity landed on.
+ */
+function viewItem(current: ViewMode): MenuItem {
+  return {
+    label: "View",
+    action: {
+      do: "choose",
+      choices: VIEW_MODES.map((m) => ({
+        label: m[0].toUpperCase() + m.slice(1),
+        command: `view(${quoted(m)})`,
+        current: m === current,
+      })),
+    },
+  };
 }
 
 function menuOf(model: Model, pick: Pick | null, region: RegionHit | null): Menu {
@@ -384,6 +423,7 @@ function hintFor(action: MenuAction): string {
     case "type": return action.text;
     case "insert": return `"${action.name}"`;
     case "disabled": return "";
+    case "choose": return action.choices.find((c) => c.current)?.command ?? "";
   }
 }
 
@@ -488,6 +528,35 @@ export class ContextMenu {
       wrap.appendChild(row);
       wrap.appendChild(why);
       return wrap;
+    }
+
+    if (item.action.do === "choose") {
+      // A row of its own: the label, then each choice as a clickable word,
+      // the current one marked. Hovering a choice shows the command it types
+      // in the row's hint, as every other item shows its own.
+      row.className = "row";
+      const choices = document.createElement("span");
+      choices.className = "choices";
+      const hint = document.createElement("span");
+      hint.className = "cmd";
+      const current = item.action.choices.find((c) => c.current);
+      hint.textContent = current?.command ?? "";
+      for (const choice of item.action.choices) {
+        const el = document.createElement("span");
+        el.className = choice.current ? "choice on" : "choice";
+        el.textContent = choice.label;
+        el.dataset.command = choice.command;
+        el.addEventListener("pointerenter", () => { hint.textContent = choice.command; });
+        el.addEventListener("pointerleave", () => { hint.textContent = current?.command ?? ""; });
+        el.addEventListener("click", () => {
+          this.close();
+          this.host.run(choice.command);
+        });
+        choices.appendChild(el);
+      }
+      row.appendChild(choices);
+      row.appendChild(hint);
+      return row;
     }
 
     row.className = "item";
