@@ -106,6 +106,53 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### A lid frame shares the lid's own points
+
+**The owner**, on a screenshot of doubled point labels on an extruded plate:
+*"i'm getting a lot of overlapping points. why is this happening?"*, and, told
+why, *"of course it should."* A frameless sketch's frame is three of the
+outline's corners, and the lid frame made three points of its own over them,
+which landed on three lid corners. Measured on his plate: 17 points, three
+pairs. Now the lid frame takes those twins: 14 points, no pairs.
+
+**Why the twins are made before the frame now.** The frame has to know which
+of its points are twins, so it comes after them. That reorders the names, so
+it is a format break (10) even though no entry changed shape.
+
+**Why the old expansion is written into the old entry.** *Rejected:*
+re-expanding old files the new way. Every auto-name after the first extrude
+would shift. Measured: the owner's plate saved by a version-9 build, with a
+`dist` on a later point, fails at that step (`"p16" is not a point`).
+*Rejected:* choosing by the file's version at replay alone. A reopened old file
+saves as version 10, so after one save it would mean the new expansion. So
+`translate` writes `9` into the entry, as the version-8 fillet translation
+writes its empty list, and the `9` stays. *Rejected:* marking only extrudes
+whose frame stood on the profile. A later `regen` can bring a sketch-frame
+point into the profile, and the two expansions differ there. So the record
+carries `expansion` too, and regeneration rebuilds a version-9 feature the
+version-9 way.
+
+**Why revolve keeps its frame pair.** The `revolution` relation reads a base
+as a datum when it is a point of a frame named in a frame pair. That is what
+keeps the end face from turning the sketch frame. Spelling out only the end
+frame's own points as point pairs would have lost that for a shared corner.
+So the frame pair stays, and the relation skips any of its points a corner
+pair already holds. Without the skip, that would be a second identical block,
+a redundant equation.
+
+**Sharing reads joins, never positions.** A replay runs on seeds, where
+positions mean nothing, and the expansion must make the same names there. So
+a sketch-frame point on a corner's spot but not joined to it still gets its
+own lid point. This is documented, and a test fixture was moved off the
+tilted frame's origin because of it.
+
+**What the browser found.** The e2e of the owner's sequence showed one doubled
+label left, on the *sketch*. The line tool, closing the triangle back onto its
+first point, makes a point of its own and `coin`s it, which is the snap rule
+for every existing point. It is not the lid's problem, since the lid has one
+twin per joined class, and it is likely part of what the owner saw. It is
+left for its own package and asserted exactly in the e2e.
+
 ### Opaque solids: one answer for the eye and the hand
 
 **The owner**, two messages in a row: *"when you extrude a solid, it should
