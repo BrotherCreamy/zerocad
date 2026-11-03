@@ -1307,10 +1307,12 @@ replacing) the system Node other projects on this machine may depend on.
   *The rule now:* a feature's expansion is a function of its profile and
   follows it — a fillet on a profile corner regenerates the lid, keeping every
   twin and wall whose corner survives (see **Feature regeneration** below).
-  *The lid frame now* stands on the lid's own corners wherever the sketch
-  frame stands on the profile's, and has points of its own only elsewhere (see
-  **A feature's frames share its own points** below; `rels()` on a frameless
-  rectangle says 4 pairs). *Known and deliberate:* `fillet`'s new points are not held on the sketch, so a `set` can stir
+  *The lid frame now* is gone: a new extrude makes none, a twin curve names the
+  sketch frame, and the record has no `top` (see **An extrude makes no lid
+  frame** below; `rels()` on any rectangle says 4 pairs, and `ls()` drops
+  `, lid f2`). Format 10's lid frame, on the lid's own corners where it could
+  be (**A feature's frames share its own points** below), is what a version-10
+  file still replays with. *Known and deliberate:* `fillet`'s new points are not held on the sketch, so a `set` can stir
   a rounded corner by a few millionths along +z.
   *Spec:* [`docs/plans/3d-phase4-extrude.md`](docs/plans/3d-phase4-extrude.md).
 - **Extrude, the faces and the tool** (`src/faces.ts` (new),
@@ -2118,7 +2120,10 @@ replacing) the system Node other projects on this machine may depend on.
   leaves its end frame's origin and y-ref on the sketch frame's; deleting a lid
   corner the lid frame stands on takes the lid frame with it (and what is drawn
   on it); a boss's lid frame on a face still floats (the face frame's points
-  are the plate's, not the boss's). *Spec:*
+  are the plate's, not the boss's). *Since format 11* an extrude makes no lid
+  frame at all, which settles the two of those that were an extrude's (see
+  **An extrude makes no lid frame** below); a revolve's end frames are as
+  described here. *Spec:*
   [`docs/plans/lid-frame-shares-points.md`](docs/plans/lid-frame-shares-points.md).
 
 - **Quiet geometry** (`src/quiet.ts` (new); `Face.edges` and `SOLID_EDGE_PX`
@@ -2148,10 +2153,51 @@ replacing) the system Node other projects on this machine may depend on.
   `hidden.e2e.ts` (the golden now held in the hidden view, unchanged).
   965 unit tests, 395 e2e, after merging groups and the lid frame fix. *Known and deliberate:* no silhouette lines on curved
   walls, no line where two solids interpenetrate; a lid frame's own points
-  (where the sketch frame stands off the profile) are drawn, ending nothing;
-  frame markers stay, so their letters sit at a corner a frame stands on.
+  (where the sketch frame stands off the profile) are drawn, ending nothing
+  (since format 11 only an old file's extrude has a lid frame; a partial
+  revolve's end frame can still have points of its own); frame markers stay,
+  so their letters sit at a corner a frame stands on.
   *Spec:* [`docs/plans/quiet-geometry.md`](docs/plans/quiet-geometry.md).
 
+- **An extrude makes no lid frame** (`Expansion`/`EXPANSION`, `extrudeBody`,
+  `rebuildFeature` in `src/operations.ts`; `ExtrudeFeature.top` optional in
+  `src/model.ts`; `MadePlane`/`FacePlane`/`facePlaneArgs` and `circleFrame` in
+  `src/sketchface.ts`; `frameOnFace` in `src/replenv.ts`; `describeFeature` in
+  `src/picking.ts`; `VERSION` 11 and `translate` in `src/persist.ts`). The
+  owner's report again — *"i'm getting a lot of overlapping points. why is this
+  happening?"* — in the case sharing could not fix: two rectangles extruded at
+  once share the first one's sketch frame, so the second lid frame made three
+  points of its own on the first lid's corners (19 points, three pairs, three
+  frames; now 16, none, one). **A new extrude makes no frame**: a twin curve on
+  the sketch frame names the sketch frame (a translation keeps an orientation),
+  a twin of a curve on any other frame keeps it, and the depth holds corners,
+  centres and radii only. The record's `top` is absent; `ls()` drops
+  `, lid fN`. A stacked extrude on a lid is oriented by the sketch frame, which
+  the lid is parallel to. **Sketch on a circle's lid** (a whole circle off its
+  frame's plane, which every twin circle now is) types a plane made through the
+  circle's own centre, its x-ref and y-ref new points on the rim along the
+  frame's axes, each held `oncircle` — so the plane follows the top when the
+  depth is `set` — seeded with every digit so no free radius gives way; only a
+  circle whose frame has collapsed is refused. **A revolve is unchanged** (its
+  end face is turned and needs its end frames): `EXPANSION` is per op,
+  `{ extrude: 11, revolve: 10 }`. **Format 11**: every `extrude` from a file of
+  version ≤ 10 without an expansion is given one by `translate` — `10` from a
+  version-10 file, `9` from older — so its lid frame is made again under the
+  names the file's later entries hold, and regenerated the old way; the mark is
+  saved with it. Unit: `test/nolidframe.test.ts` (7, new), a made-plane test
+  in `sketchface`, the lid-frame cases in `lidframe` now asking for expansion
+  `10`, counts and twin planes in `extrude`, `regen`, `regionfeatures`,
+  `quiet`, version pins in `app3d`, `dimensions`, `frames`. Browser:
+  `test/e2e/nolidframe.e2e.ts` (3, new); `extrude`, `extrudeplane`,
+  `lidframe`, `quiet`, `regen`, `sketchface` read without `top`; `hidden`'s two
+  sketch-ink probes ask that the ink is drawn, not that it out-inks the solid
+  edge under it (an anti-aliasing coin toss that flipped); version pins
+  in `camera`, `planar`, `regen`, `lidframe`. 973 unit tests, 398 e2e. *Known
+  and deliberate:* a plane made on a circle's top has two rim points of its
+  own, drawn (they end no line) with their `oncircle` glyphs; deleting the
+  cylinder takes the frame (its origin is the twin centre) and leaves those two
+  points, as deleting any frame leaves its points. *Spec:*
+  [`docs/plans/no-lid-frame.md`](docs/plans/no-lid-frame.md).
 
 ## What's next
 

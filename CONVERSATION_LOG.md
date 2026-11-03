@@ -106,6 +106,56 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### An extrude makes no lid frame
+
+**The report** was the one that started the last package — *"i'm getting a
+lot of overlapping points. why is this happening?"* — still true after it in
+the commonest multi-region case: two rectangles extruded at once. They share
+the first rectangle's sketch frame, which for the second solid stands off its
+profile, so sharing had nothing of the second solid's to share, and its lid
+frame laid three points on the *first* solid's lid corners. Measured in a unit
+test with version 10's expansion asked for by name: 19 points, three pairs, all
+three the second lid frame's own on a first-lid corner. Now 16 and none.
+
+**Why remove the frame rather than share harder.** *Rejected:* letting a lid
+frame stand on another feature's twins. The two solids' depths are separate
+dimensions; a frame point shared across them would be held by both, and the
+first `set` would pull one solid's corner to the other's height. *Rejected:*
+choosing a lid frame from the profile's own points (the open default "a boss's
+lid frame floats" offered this). It keeps a datum nothing needs and a +x
+nobody chose. The lid frame's one job was a plane for a sketch on the cap, and
+sketch-on-face builds that plane from the cap. What still read it was a twin
+curve's `plane` and the depth's pairs. A curve's frame is an orientation, not a
+place (`CircleEntity`), and a translation keeps every orientation, so the sketch
+frame serves.
+
+**Why the circle's lid gets a plane made, and why on the rim.** With no lid
+frame, a cylinder's top has one point of its own, its centre, and its circle's
+frame lies at the base. The spec said: a point at the centre typed with
+`pt(...)` and the refs seeded along the frame's axes, as the curve tools make
+their plane. *Rejected as written:* a new point at the centre lands exactly on
+the top's twin centre, which is a doubled point, the thing this package
+removes. So the origin is the twin centre itself. *Rejected:* free `pt(...)`
+refs. A frame is a datum, so nothing ever moves its points. `set` the
+cylinder's depth and the origin rises while the refs stay put, which tips the
+plane by atan(Δ/r). The refs are held `oncircle` the top's rim instead, the one
+thing that moves with the face: the plane follows the lid exactly, and the hold
+has no tangential pull, so +x does not drift. *Measured, then fixed:* seeded to
+three decimals, as the curve tools type an origin, the holds pulled the refs
+back onto the rim, and the cylinder's free radius gave way by 5e-5. Seeded with
+every digit, it does not move.
+
+**Why the expansion is per operation now.** A revolve keeps its end frames:
+its end face is turned, so its curves need a turned orientation, which only a
+frame of its own gives. So `EXPANSION` is `{ extrude: 11, revolve: 10 }`.
+`expansionOf` refuses an `11` on a revolve, so the number always means one
+expansion.
+
+**Why the old files are marked, again.** This is the lid-frame-shares-points
+pattern, one value later: a version-10 extrude gets `10` at translation, a
+version-9 one `9`. Choosing by the file's version at replay would forget the
+choice the first time the file is saved as 11.
+
 ### Quiet geometry: what the drawing leaves out until the hand is on it
 
 **The owner**: *"I think points ought to disappear when they are the endpoint

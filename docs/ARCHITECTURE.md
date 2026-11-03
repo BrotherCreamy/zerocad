@@ -275,7 +275,7 @@ operation. Everything in `relations/` is not.
 
 **A feature is a third registry, and it holds neither structure nor
 equations.** `extrude` expands a loop into ordinary entities — twin points and
-members, wall lines, a lid frame — held by one ordinary relation, the
+members, wall lines (and, in an old file, a lid frame) — held by one ordinary relation, the
 `extrusion` dimension. What none of that can say is *these pieces are one
 solid*, and that is the whole of a feature record (`e1`, in `model.features`,
 sharing the namespace so `del("e1")` means one thing): which profile it was
