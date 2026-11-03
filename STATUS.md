@@ -2146,7 +2146,7 @@ replacing) the system Node other projects on this machine may depend on.
   `test/quiet.test.ts` (12, new), `faces.test.ts` (+5); browser:
   `test/e2e/quiet.e2e.ts` (10, new), a shaded-against-hidden test in
   `hidden.e2e.ts` (the golden now held in the hidden view, unchanged).
-  COUNTS_PLACEHOLDER *Known and deliberate:* no silhouette lines on curved
+  965 unit tests, 395 e2e, after merging groups and the lid frame fix. *Known and deliberate:* no silhouette lines on curved
   walls, no line where two solids interpenetrate; a lid frame's own points
   (where the sketch frame stands off the profile) are drawn, ending nothing;
   frame markers stay, so their letters sit at a corner a frame stands on.

@@ -154,8 +154,11 @@ are two more reveals; `ls()` and `members()` in `src/replenv.ts`. Nothing in
   included; so is an extrude's wall line, as its wall entity always was.
 - Frame markers, their letters and names stay drawn, lid frames included.
 
-**Counts.** Unit 911 → 927; e2e 358 → 367, all passing (the full e2e run took
-13 minutes on a box shared with two other workers). The tests hold the edge
+**Counts.** As first built: unit 911 → 927, e2e 358 → 367. Merged with groups
+and the shared lid frame (working branch at 2ecdf80, whose suites this
+package adds 17 unit and 11 e2e tests to): **965 unit, 395 e2e**, all passing
+under `npm run test:all` (the e2e run took 10 minutes on a box shared with
+other workers). The tests hold the edge
 line's darkest pixel at least two thirds of the way from the lid's fill to
 `SOLID_EDGE` — a 1.2 px line anti-aliased across two pixels reaches its full
 ink in neither.
