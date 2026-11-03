@@ -354,7 +354,7 @@ export function memberName(m: ProfileMember): string {
  * thing — `e1`, `e2`, … — so it can be listed, drawn and deleted as one.
  *
  * Everything an extrude *is* lives in the ordinary registries: its twin points,
- * lines, arcs and circles and its top frame are entities, and the depth that
+ * lines, arcs and circles are entities (and an old file's lid frame), and the depth that
  * holds them is a relation (`d`-named — see `DIMENSION_OPS`). The record adds
  * no geometry and no equation. What it adds is the one fact neither registry
  * can hold: *these pieces are one solid, on that profile*. The faces a solid is
@@ -389,8 +389,14 @@ export interface ExtrudeFeature {
   member: string;
   /** The frame whose +z the lid is offset along: the profile's sketch frame. */
   frame: string;
-  /** The lid's own frame: `frame` moved by the depth, so a sketch on the cap has a plane. */
-  top: string;
+  /**
+   * An old file's lid frame — `frame` moved by the depth — made by expansions 9
+   * and 10 and by nothing since (docs/plans/no-lid-frame.md): a translated frame
+   * keeps its orientation, so a twin curve names `frame` itself, and a sketch
+   * on the cap builds its plane from the cap (sketchface.ts). Absent for a
+   * feature of today's expansion, and every reader says what it does then.
+   */
+  top?: string;
   /** The `extrusion` dimension holding the lid — what `set("dN.value", …)` edits. */
   depth: string;
   /**
@@ -408,7 +414,7 @@ export interface ExtrudeFeature {
   twins: string[][];
   /** The wall lines, one per profile vertex, base to twin. */
   walls: string[];
-  /** Which expansion made it — whether `top` stands on the lid's own corners. See `Expansion`. */
+  /** Which expansion made it — whether there is a `top`, and whether it stands on the lid's own corners. See `Expansion`. */
   expansion: Expansion;
   /** Everything the record refers to. See above. */
   names: string[];
@@ -464,13 +470,16 @@ export interface RevolveFeature {
 export type FeatureEntry = ExtrudeFeature | RevolveFeature;
 
 /**
- * Which expansion of an extrude or revolve call a feature was made by: `10`,
- * today's, whose frames reuse the twins of the profile's vertices they copy;
- * `9`, a file of format 9 or below's, whose frames have points all their own.
+ * Which expansion of an extrude or revolve call a feature was made by: `11`,
+ * today's extrude, which makes no lid frame at all; `10`, today's revolve and a
+ * format-10 file's extrude, whose frames reuse the twins of the profile's
+ * vertices they copy; `9`, a file of format 9 or below's, whose frames have
+ * points all their own. A revolve is never `11`: its end face is turned, so its
+ * curves need a turned frame, and it keeps one.
  * Here rather than beside `EXPANSION` in operations.ts because the record
  * carries it, so regeneration rebuilds a feature the way it was made.
  */
-export type Expansion = 9 | 10;
+export type Expansion = 9 | 10 | 11;
 
 /**
  * A **group**: a named set of entities and relations — `g1`, `g2`, … or a

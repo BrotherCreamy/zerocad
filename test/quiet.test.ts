@@ -126,13 +126,22 @@ test("a lid's corners are quiet for the reason a sketch's are — they end lines
   const quiet = quietEntities(m, { shaded: true, faced: new Set([f.name]) });
   const lidCorners = f.walls.map((w) => m.line(w).refs[1]);
   for (const p of lidCorners) assert.ok(quiet.has(p), `${p}, a lid corner`);
-  // Nothing is treated differently because a feature made it: the lid frame's
-  // reference points (where the build still makes its own) end no line, so
-  // they are isolated points and drawn.
-  const ends = new Set([...m.entities.values()].flatMap((e) => (e.kind === "line" ? e.refs : [])));
-  const loose = f.owns.filter((n) => m.entities.get(n)?.kind === "point" && !ends.has(n));
-  for (const p of loose) assert.ok(!quiet.has(p), `${p}: made by e1, but an end of nothing`);
-  assert.ok(!quiet.has(f.top), "the lid's frame is drawn — frames are never quiet");
+  // Today's extrude makes no point that ends nothing: no lid frame, so nothing
+  // drawn over the sketch frame's points (docs/plans/no-lid-frame.md).
+  const ends = (n: Model) => new Set([...n.entities.values()].flatMap((e) => (e.kind === "line" ? e.refs : [])));
+  const loose = (n: Model, owns: string[]) => owns.filter((p) => n.entities.get(p)?.kind === "point" && !ends(n).has(p));
+  assert.deepEqual(loose(m, f.owns), []);
+  assert.ok(!f.owns.some((n) => m.entities.get(n)?.kind === "frame"));
+
+  // Nothing is treated differently because a feature made it: a version-10
+  // file's lid frame over a floating sketch frame has reference points that
+  // end no line, so they are isolated points and drawn, and the frame too.
+  const s = sketch();
+  const old = s.m.featureOf(extrude(s.m, s.lines[0], 20, null, null, 10), "extrude");
+  const oldQuiet = quietEntities(s.m, { shaded: true, faced: new Set([old.name]) });
+  assert.equal(loose(s.m, old.owns).length, 3, "the old lid frame's three");
+  for (const p of loose(s.m, old.owns)) assert.ok(!oldQuiet.has(p), `${p}: made by e1, but an end of nothing`);
+  assert.ok(!oldQuiet.has(old.top!), "the lid's frame is drawn — frames are never quiet");
 });
 
 test("a profile member that is only part of a longer line is not quiet: most of that line may be off the solid", async () => {

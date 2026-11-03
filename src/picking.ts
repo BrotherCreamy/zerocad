@@ -249,7 +249,8 @@ export function describeFeature(model: Model, f: FeatureEntry): string {
   }
   const r = model.relations.get(f.depth);
   const value = r && typeof r.args[1] === "number" ? ` = ${round(r.args[1])}` : "";
-  return `${f.name}  extrude of ${profile}, depth ${f.depth}${value} along ${f.frame}, lid ${f.top}`;
+  // Only an old file's extrude has a lid frame to name (see `Expansion`).
+  return `${f.name}  extrude of ${profile}, depth ${f.depth}${value} along ${f.frame}${f.top === undefined ? "" : `, lid ${f.top}`}`;
 }
 
 /**

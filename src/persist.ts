@@ -29,7 +29,27 @@ import { freshName, planeTranslation } from "./planetranslation.ts";
 
 export const FORMAT = "neocad-model";
 /**
- * 10 since **a frame a feature makes shares the feature's own points**
+ * 11 since **an extrude makes no lid frame** (docs/plans/no-lid-frame.md). It
+ * made one "so a sketch on the cap has a plane", which sketch-on-face now
+ * builds from the cap itself; a twin curve on the sketch frame names the sketch
+ * frame, a translation turning nothing. Version 10's lid frame shared the
+ * lid's corners where the sketch frame stood on the profile, but two
+ * rectangles extruded at once share one sketch frame, and the second solid's
+ * lid frame still laid three points on the first's lid corners — the owner's
+ * *"i'm getting a lot of overlapping points"* again. No entry changed shape;
+ * the expansion makes fewer points, so a version-10 build replaying a
+ * version-11 extrude would hand out names every later entry disagrees with.
+ * A revolve's end frames are unchanged: its end face is turned, and a curve on
+ * it needs a turned frame.
+ *
+ * Going the other way **a version-10 file opens exactly as it was**:
+ * `translate` writes `10` into every extrude from before 11 that carries no
+ * expansion yet (a version-9 file's get `9`, as before), so its lid frame is
+ * made again under the names the file's later entries hold, regenerates as it
+ * did, and stays marked when the file is saved again. Kept rather than
+ * migrated, for version 10's own reason below.
+ *
+ * 10 was **a frame a feature makes shares the feature's own points**
  * (docs/plans/lid-frame-shares-points.md). An extrude's lid frame, and a
  * partial revolve's end frames, used to make three points of their own; on a
  * frameless sketch, whose frame is three of the outline's corners, those
@@ -177,7 +197,7 @@ export const FORMAT = "neocad-model";
  * at that step, as it refuses the rest). The registry and the hidden set are
  * rebuilt by replay, never saved.
  */
-export const VERSION = 10;
+export const VERSION = 11;
 
 export interface SavedModel {
   format: typeof FORMAT;
@@ -373,12 +393,15 @@ function relationRenamer(model: Model, version: number) {
  * here and is told what it is missing — the same message, at the same step, as
  * before this translation existed.
  *
- * **An `extrude` from before version 10**, and a partial `revolve`, made its
- * lid (end) frames with points all their own, so it is given the expansion
- * `9`, which makes them so again (see `VERSION`). Every such entry, not only
- * the ones whose frame stood on the profile: a `regen` later in the file can
- * bring a sketch-frame point into the profile, and the two expansions part
- * there too. A whole turn makes no frame and passes through untouched.
+ * **An `extrude` from before version 11** made a lid frame, so it is given the
+ * expansion that makes it again (see `VERSION`): `10` from a version-10 file,
+ * whose lid frame stood on the lid's corners where it could, and `9` from
+ * before that, whose lid frame had points all its own — as is a partial
+ * `revolve` from before version 10, its end frames likewise. Every such entry,
+ * not only the ones whose frame stood on the profile: a `regen` later in the
+ * file can bring a sketch-frame point into the profile, and the expansions part
+ * there too. A whole turn makes no frame and passes through untouched, and a
+ * version-10 revolve is today's.
  *
  * **A `fillet` from before version 9** regenerated nothing, so one whose leg a
  * feature's profile names is given the empty list of regenerated features —
@@ -410,8 +433,8 @@ function translate(model: Model, entry: JournalEntry, version: number): JournalE
         + "is version 8's, so this entry was edited by hand");
     }
   }
-  if (entry.op === "extrude" && version < 10 && entry.args.length === 4) {
-    return { op: "extrude", args: [...entry.args, 9] };
+  if (entry.op === "extrude" && version < 11 && entry.args.length === 4) {
+    return { op: "extrude", args: [...entry.args, version < 10 ? 9 : 10] };
   }
   // A whole turn makes no frame, so it has no expansion to choose between.
   if (entry.op === "revolve" && version < 10 && entry.args.length === 5
