@@ -96,6 +96,14 @@ export interface Glyph {
   /** True for the dimensioned relations, which draw their value, not a mark. */
   isLabel: boolean;
   /**
+   * The entities its anchor is on — the point it sits beside, the edge or rim
+   * it is nudged off, the two points of a segment it is placed on. What a glyph
+   * follows when geometry is quiet (quiet.ts): a mark on a quiet corner or a
+   * solid's quiet edge is quiet with it; one anchored between two things (an
+   * angle's corner, a tangency's touch) is drawn while either is.
+   */
+  about: string[];
+  /**
    * For a `dist` label, the two points it measures between, in the same
    * pixels — what the witness and dimension lines are drawn from. Absent for
    * everything else, which is how the renderer knows there is nothing to draw.
@@ -240,6 +248,8 @@ interface Anchor {
   dir: [number, number];
   /** The span a dimension line should reach across, in world coordinates. */
   ends?: [number[], number[]];
+  /** The entities it is on — see `Glyph.about`. */
+  about: string[];
 }
 
 const DIAG = Math.SQRT1_2;
@@ -273,7 +283,7 @@ function perp(d: [number, number]): [number, number] {
 }
 
 function atPoint(model: Model, name: string): Anchor {
-  return { world: model.coords(name), dir: DOWN_RIGHT };
+  return { world: model.coords(name), dir: DOWN_RIGHT, about: [name] };
 }
 
 /** Midway between two points, nudged off to one side of the segment. */
@@ -283,12 +293,13 @@ function atSegmentMid(model: Model, view: View, aName: string, bName: string): A
     world: a.map((ai, i) => (ai + b[i]) / 2),
     dir: perp(dirBetween(view, a, b)),
     ends: [a, b],
+    about: [aName, bName],
   };
 }
 
 function atLineMid(model: Model, view: View, lineName: string): Anchor {
   const l = model.line(lineName);
-  return atSegmentMid(model, view, l.refs[0], l.refs[1]);
+  return { ...atSegmentMid(model, view, l.refs[0], l.refs[1]), about: [lineName] };
 }
 
 /**
@@ -323,6 +334,7 @@ function atRim(model: Model, view: View, circleName: string, theta: number): Anc
   return {
     world: [0, 1, 2].map((i) => ctr[i] + r * (p * u[i] + q * v[i])),
     dir: [cos, -sin],
+    about: [circleName],
   };
 }
 
@@ -347,7 +359,7 @@ function atNearestRim(model: Model, view: View, lineName: string, circleName: st
   if (!(len > 1e-12)) return atRim(model, view, circleName, 0);
   const r = model.radius(circleName);
   const world = ctr.map((ci, i) => ci + (r * out[i]) / len);
-  return { world, dir: dirBetween(view, ctr, world) };
+  return { world, dir: dirBetween(view, ctr, world), about: [lineName, circleName] };
 }
 
 /**
@@ -365,7 +377,7 @@ function atVertex(model: Model, view: View, l1Name: string, l2Name: string): Anc
   const shared = l1.refs.find((r) => l2.refs.includes(r));
   if (shared === undefined) {
     const a = atLineMid(model, view, l1Name).world, b = atLineMid(model, view, l2Name).world;
-    return { world: a.map((ai, i) => (ai + b[i]) / 2), dir: DOWN_RIGHT };
+    return { world: a.map((ai, i) => (ai + b[i]) / 2), dir: DOWN_RIGHT, about: [l1Name, l2Name] };
   }
   const v = model.coords(shared);
   const away = (l: { refs: [string, string] }) =>
@@ -378,7 +390,7 @@ function atVertex(model: Model, view: View, l1Name: string, l2Name: string): Anc
   const dir: [number, number] = bis > 1e-9
     ? [(ax + bx) / bis, (ay + by) / bis]
     : perp([ax, ay]);
-  return { world: v, dir };
+  return { world: v, dir, about: [l1Name, l2Name] };
 }
 
 /**
@@ -395,7 +407,7 @@ function atRevolution(model: Model, view: View, axis: string, angle: unknown, fi
     const world = turnPoint(p, ax, angle / 2);
     const v = sub3(lift3(world), ax.origin);
     const foot = ax.origin.map((o, i) => o + dot3(v, ax.dir) * ax.dir[i]);
-    return { world, dir: dirBetween(view, foot, world) };
+    return { world, dir: dirBetween(view, foot, world), about: [first] };
   }
   const ref = parseAxisRef(axis);
   if (ref) return atPoint(model, model.frame(ref.frame).origin);
@@ -614,6 +626,7 @@ export function placeGlyphs(model: Model, view: View, occ: Occlusion | null = nu
         halfW,
         halfH: GLYPH_HALF_H,
         isLabel: label !== null,
+        about: a.about,
         ...(label !== null && a.ends
           ? { ends: a.ends.map((w) => worldToScreen(view, w)) as [[number, number], [number, number]] }
           : {}),

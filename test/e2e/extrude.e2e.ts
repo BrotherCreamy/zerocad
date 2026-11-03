@@ -193,7 +193,9 @@ test("the extrude tool: the region under the cursor is outlined; a click on noth
   assert.equal(last!.op, "extrude");
   assert.deepEqual(last!.args.slice(1, 3), [20, "f1"]);
   const ls = (await app.repl("ls()")).value as string[];
-  assert.match(ls.at(-1)!, /^e1  extrude of .* \+ 2 inside, depth d\d+ = 20 along f1, lid f2$/);
+  // The feature's line, then what it made as a count under it (quiet-geometry.md).
+  assert.match(ls.at(-2)!, /^e1  extrude of .* \+ 2 inside, depth d\d+ = 20 along f1, lid f2$/);
+  assert.match(ls.at(-1)!, /^    \d+ made — members\("e1"\) lists them$/);
 });
 
 test("one Ctrl+Z takes the whole feature away, and Ctrl+Shift+Z puts it back", async () => {

@@ -243,6 +243,14 @@ export class ToolEngine {
    */
   hover: Pick | null = null;
   /**
+   * What the cursor is over while a tool is armed — which `hover` stops being
+   * the moment one is (see `dispatch`). Never highlighted, and nothing but the
+   * host's drawing reads it: it is what reveals quiet geometry under an armed
+   * tool's cursor (quiet.ts), so a corner the fillet tool is aimed at, which no
+   * snap marker shows, is drawn while the cursor is on it.
+   */
+  armedUnder: Pick | null = null;
+  /**
    * Where the cursor is being treated as being, while a tool is drawing.
    * Null when nothing is near enough to snap to, or when no tool is armed —
    * snapping is for placing geometry, not for looking around.
@@ -345,7 +353,7 @@ export class ToolEngine {
     this.onContextMenu = callbacks.onContextMenu ?? (() => {});
     this.optionMemory = callbacks.optionMemory ?? new OptionMemory(null);
     canvas.addEventListener("pointerleave", () => {
-      if (this.hover) { this.hover = null; this.onRenderOnly(); }
+      if (this.hover || this.armedUnder) { this.hover = null; this.armedUnder = null; this.onRenderOnly(); }
     });
     canvas.addEventListener("pointerdown", (e) => this.dispatch("down", e));
     canvas.addEventListener("pointermove", (e) => this.dispatch("move", e));
@@ -428,6 +436,15 @@ export class ToolEngine {
     const gl = glyphAt(this.glyphs(), sx, sy);
     if (gl) return { name: gl.relation, kind: "relation", distance: 0 };
     return hitTest(this.model, this.view, sx, sy, this.occlusion);
+  }
+
+  /**
+   * The points a drag is moving right now — empty until the press has moved
+   * past the drag threshold, and when the press grabbed nothing. What reveals
+   * a quiet corner while it is dragged (quiet.ts): the hover is gone by then.
+   */
+  get dragging(): string[] {
+    return this.idle?.moved && this.idle.drag ? this.idle.drag.names : [];
   }
 
   /** Canvas-local pixels for a pointer or wheel event. */
@@ -732,8 +749,10 @@ export class ToolEngine {
     // than going stale behind the gesture.
     if (this.active) {
       if (this.hover) { this.hover = null; this.onRenderOnly(); }
-    } else if (kind === "move" && e.buttons === 0) {
-      this.updateHover(sx, sy);
+      if (kind === "move") this.armedUnder = this.pickAt(sx, sy);
+    } else {
+      this.armedUnder = null;
+      if (kind === "move" && e.buttons === 0) this.updateHover(sx, sy);
     }
 
     if (this.active) {

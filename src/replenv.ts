@@ -796,11 +796,25 @@ export function neocadScope(h: EnvHandles): Bag {
     // Entities, then features — `e1  extrude of …`, `e2  revolve of …` —
     // since a feature is a named thing `del` takes as surely as an entity, then
     // groups with their members. Whatever is hidden says so.
+    //
+    // **A feature's output is a count under its line**, not a line per twin:
+    // a box is a profile of four lines and seventeen things the extrude made,
+    // and listing those seventeen buried the four the user drew. They stay
+    // named entities (the register: a relation on a lid corner holds *that*
+    // point), so `members("e1")` lists them — the count is of exactly what it
+    // lists, the depth dimension included.
     ls: () => {
       const mark = (name: string, line: string) => (model.hidden.has(name) ? `${line}  (hidden)` : line);
+      const made = new Set<string>();
+      for (const f of model.features.values()) for (const n of f.owns) made.add(n);
       return [
-        ...[...model.entities.values()].map((e) => mark(e.name, describe(e, model))),
-        ...[...model.features.values()].map((f) => mark(f.name, describeFeature(model, f))),
+        ...[...model.entities.values()].filter((e) => !made.has(e.name)).map((e) => mark(e.name, describe(e, model))),
+        ...[...model.features.values()].flatMap((f) => {
+          const own = model.membersOf(f.name) ?? [];
+          const hid = own.filter((n) => model.hidden.has(n)).length;
+          const count = `    ${own.length} made${hid ? `, ${hid} hidden` : ""} — members(${JSON.stringify(f.name)}) lists them`;
+          return [mark(f.name, describeFeature(model, f)), ...(own.length ? [count] : [])];
+        }),
         ...[...model.groups.values()].map((g) => `${g.name}  group of ${g.members.join(" ")}`),
       ];
     },

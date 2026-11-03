@@ -35,6 +35,7 @@ import { createFaceLayer, paintFaces } from "./facelayer.ts";
 import { SOLID_EDGE, visibleFaces } from "./faces.ts";
 import { hiddenInk, inSight, inkRuns, occlusion, type Occlusion } from "./occlusion.ts";
 import { drawsFaces, isViewMode, opaque, recallViewMode, rememberViewMode, viewModeError, type ViewMode } from "./viewmode.ts";
+import { entityDrawn, glyphDrawn, quietEntities, revealed, solidEdges } from "./quiet.ts";
 import { frameBasis } from "./relations/refs.ts";
 import type { Entity } from "./model.ts";
 import "./tools/point.ts";
@@ -247,10 +248,28 @@ async function main() {
     // profile member that is only a *portion* of its entity (a line a crossing
     // split) keeps its sketch colour, because the rest of that line is not on
     // the solid.
-    const solid = occluded ? solidEdges() : new Set<string>();
+    // A hidden feature has no faces, so no body for these to be the edges of.
+    const bodies = new Set([...model.features.keys()].filter((n) => !model.hidden.has(n)));
+    const solid = occluded ? solidEdges(model, bodies) : new Set<string>();
     const stroke = (name: string) => (lit.has(name) ? "#e8a33d" : chosen.has(name) ? SELECTION
       : solid.has(name) ? SOLID_EDGE : "#afc6d9");
     const weight = (name: string) => (lit.has(name) ? 2.2 : chosen.has(name) ? 2.6 : 1.4);
+
+    // **Quiet geometry** (quiet.ts; the owner: points "disappear when they are
+    // the endpoint of a line or a corner (except when you hover over them)",
+    // lines "when they form the edge of a solid"). Shaded only: in it a
+    // corner is not drawn, and a solid's own edges are left to the fine line
+    // the face layer drew with the faces — until the hand is on them. Quiet is
+    // not hidden: none of this reaches the pick, so a quiet corner is still
+    // hovered, snapped to and dragged, and drawn while it is.
+    quiet = quietEntities(model, { shaded: opaque(viewMode), faced: new Set(faces.map((f) => f.feature)) });
+    shown = revealed(model, [
+      ...lit,
+      ...chosen,
+      ...(engine.snap?.targets ?? []),
+      ...(engine.armedUnder ? [engine.armedUnder.name] : []),
+      ...engine.dragging,
+    ]);
 
     // Painter's order, far to near, one depth per entity, for the wireframe on
     // top. Curves and frames are one pass and points a second on top, as they
@@ -259,8 +278,10 @@ async function main() {
     const byDepth = <T extends Entity>(es: T[]) =>
       es.map((e) => ({ e, d: entityDepth(e) })).sort((a, b) => a.d - b.d).map((x) => x.e);
     // What is hidden is not drawn, and nothing else about it changes: it is
-    // still solved, and the engine is told nothing — it asks the model.
-    const all = [...model.entities.values()].filter((e) => !model.hidden.has(e.name));
+    // still solved, and the engine is told nothing — it asks the model. And
+    // hidden outranks revealed (quiet.ts): a reveal brings back what is quiet,
+    // never what the user hid.
+    const all = [...model.entities.values()].filter((e) => entityDrawn(model, e.name, quiet, shown));
     const edges = byDepth(all.filter((x) => x.kind !== "point"));
     const points = byDepth(all.filter((x) => x.kind === "point"));
 
@@ -398,23 +419,6 @@ async function main() {
   }
 
   /**
-   * The names a solid is made of as edges: every whole profile member, every
-   * twin, every wall line — the outline of the body, drawn in its own ink. A
-   * profile member that is a portion of a longer entity is left out, since
-   * most of that entity may lie off the solid.
-   */
-  function solidEdges(): Set<string> {
-    const out = new Set<string>();
-    for (const f of model.features.values()) {
-      if (model.hidden.has(f.name)) continue; // no faces, so no body for these to be the edges of
-      for (const loop of f.loops) for (const m of loop) if (typeof m === "string") out.add(m);
-      for (const loop of f.twins) for (const t of loop) out.add(t);
-      if (f.kind === "extrude") for (const w of f.walls) out.add(w);
-    }
-    return out;
-  }
-
-  /**
    * Brings the toolbar and the options panel up to date with the registry and
    * the armed tool. Neither announces a change — the registry is a plain map,
    * and a tool finishing its gesture simply clears `engine.active` — so this is
@@ -484,6 +488,9 @@ async function main() {
   let hides: Occlusion | null = null;
   /** Set while the entity pass is drawing casings rather than marks — see `render`. */
   let casing = false;
+  /** This frame's quiet entities, and what of the drawing is revealed — set by `render` (quiet.ts). */
+  let quiet: ReadonlySet<string> = new Set();
+  let shown: ReadonlySet<string> = new Set();
 
   /**
    * An edge — a polyline in the world: a line's two ends, a curve's drawn
@@ -658,7 +665,11 @@ async function main() {
    * annotation layer rather than as geometry.
    */
   function renderGlyphs(hoveredRelation: string | null, chosen: Set<string>) {
-    const marks = engine.glyphs();
+    // A glyph follows its anchor: one on a quiet corner or a solid's quiet
+    // edge is drawn when that is (quiet.ts) — or when it is itself selected.
+    // Only the drawing leaves it out: the engine still picks it, as it still
+    // picks the corner.
+    const marks = engine.glyphs().filter((m) => chosen.has(m.relation) || glyphDrawn(m, quiet, shown, hoveredRelation));
     if (!marks.length) return;
     g.save();
     g.font = "12px ui-monospace, Menlo, monospace";

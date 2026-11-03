@@ -647,14 +647,18 @@ test("the command line: revolve returns the feature, ls() lists it in degrees, r
   assert.equal(rev(lines[0], yaxis(), QUARTER), "e1");
   const f = m.featureOf("e1", "revolve");
   const ls = (scope.ls as () => string[])();
-  assert.equal(ls.at(-1), "e1  revolve of l1,l2,l3,l4, angle d1 = 90° about t.y, end f1");
+  // The feature's line, then what it made as a count under it (quiet-geometry.md).
+  assert.equal(ls.at(-2), "e1  revolve of l1,l2,l3,l4, angle d1 = 90° about t.y, end f1");
+  assert.match(ls.at(-1)!, /^    \d+ made — members\("e1"\) lists them$/);
   const corner = m.line(f.twins[0][0]).refs[0];
   assert.deepEqual((scope.rels as (n?: string) => string[])(corner), [`d1  revolution ${QUARTER} (90°) about t.y, 5 pairs`]);
   assert.equal(describePick(m, { name: "d1", kind: "relation", distance: 0 }), `d1  revolution ${QUARTER} (90°) about t.y, 5 pairs  ·  e1`);
   assert.match(describePick(m, { name: f.twins[0][2], kind: "line", distance: 0 }), /·\s+e1$/);
   // A full turn says so, everywhere.
   rev(lines[0], "t.y");
-  assert.equal((scope.ls as () => string[])().at(-1), "e2  revolve of l1,l2,l3,l4, angle d2 = 360° about t.y, a full turn");
+  const ls2 = (scope.ls as () => string[])();
+  assert.equal(ls2.at(-2), "e2  revolve of l1,l2,l3,l4, angle d2 = 360° about t.y, a full turn");
+  assert.equal(ls2.at(-1), `    1 made — members("e2") lists them`, "a full turn makes only its dimension");
   assert.deepEqual((scope.rels as (n?: string) => string[])().at(-1), `d2  revolution ${2 * Math.PI} (360°) about t.y, a full turn`);
   assert.match((scope.help as () => string)(), /revolve\(member, axis, angle\?, frame\?\)/);
 });

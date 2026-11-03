@@ -184,7 +184,9 @@ test("the revolve tool: the region is outlined; a click on nothing is refused al
   assert.equal(last!.op, "revolve");
   assert.deepEqual(last!.args.slice(1, 4), ["f1.y", 1.5 * Math.PI, "f1"]);
   const ls = (await app.repl("ls()")).value as string[];
-  assert.match(ls.at(-1)!, /^e2  revolve of .*, angle d\d+ = 270° about f1\.y, end f\d+$/);
+  // The feature's line, then what it made as a count under it (quiet-geometry.md).
+  assert.match(ls.at(-2)!, /^e2  revolve of .*, angle d\d+ = 270° about f1\.y, end f\d+$/);
+  assert.match(ls.at(-1)!, /^    \d+ made — members\("e2"\) lists them$/);
 });
 
 test("one Ctrl+Z takes the whole revolve away, and Ctrl+Shift+Z puts it back", async () => {

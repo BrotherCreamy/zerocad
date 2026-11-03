@@ -2121,6 +2121,37 @@ replacing) the system Node other projects on this machine may depend on.
   are the plate's, not the boss's). *Spec:*
   [`docs/plans/lid-frame-shares-points.md`](docs/plans/lid-frame-shares-points.md).
 
+- **Quiet geometry** (`src/quiet.ts` (new); `Face.edges` and `SOLID_EDGE_PX`
+  in `src/faces.ts`; the edge line in both renderers in `src/facelayer.ts`;
+  `Glyph.about` in `src/glyphs.ts`; `engine.armedUnder` and
+  `engine.dragging`; the draw pass in `main.ts`; `ls()` and `members()` in
+  `replenv.ts`). The owner: points *"disappear when they are the endpoint of
+  a line or a corner (except when you hover over them)"*, lines *"when they
+  form the edge of a solid"*. **Shaded only:** an end of a line or arc that is
+  no centre is not drawn, dot or name, and a solid's whole profile members,
+  twins and walls are not drawn as sketch geometry while it has faces on
+  screen — until revealed: hovered (or lit by a hovered glyph), selected (the
+  groups selection, drawn violet), the snap's target, under an armed tool's
+  cursor, or dragged; a revealed line or arc brings its ends. **Hidden
+  outranks revealed** (`entityDrawn`). Glyphs follow their anchors;
+  dimensions always drawn. **Quiet is not hidden** — the pick, snap, box and
+  drag are untouched, quiet glyphs included. **By geometric role only**: a
+  lid's corner and a sketch's are one case (the spec's feature-made rule was
+  dropped at the supervisor's direction). The face layer draws a fine
+  `SOLID_EDGE` line, 1.2 px, along every face's edges — caps, wall sides at
+  vertices, a sweep's rims and vertex circles, never a seam — as depth-tested
+  quads, or by the painter's after each fill. `ls()` folds a feature's output
+  into `    14 made — members("e1") lists them` (the groups package's
+  `members`, counted exactly). Hidden and wire draw everything. Unit:
+  `test/quiet.test.ts` (12, new), `faces.test.ts` (+5); browser:
+  `test/e2e/quiet.e2e.ts` (10, new), a shaded-against-hidden test in
+  `hidden.e2e.ts` (the golden now held in the hidden view, unchanged).
+  965 unit tests, 395 e2e, after merging groups and the lid frame fix. *Known and deliberate:* no silhouette lines on curved
+  walls, no line where two solids interpenetrate; a lid frame's own points
+  (where the sketch frame stands off the profile) are drawn, ending nothing;
+  frame markers stay, so their letters sit at a corner a frame stands on.
+  *Spec:* [`docs/plans/quiet-geometry.md`](docs/plans/quiet-geometry.md).
+
 
 ## What's next
 

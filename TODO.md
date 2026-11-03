@@ -36,6 +36,21 @@ otherwise.
   crossing, as regions-split does). Held in reserve, not planned: a lid point
   as a computed value of its base and the depth rather than a solved
   variable, if the entity count ever hurts.
+  ✅ **`quiet-geometry.md` built** (2026-11-03). **The quiet rule**: in the
+  shaded view an end of a line or arc (no centre) is not drawn, and a solid's
+  whole profile members, twins and walls are left to the face layer's fine
+  `SOLID_EDGE` line while it has faces on screen — each drawn again while
+  hovered, lit by a hovered glyph, selected, snapped to, under an armed tool's
+  cursor or dragged, a line with its ends; glyphs follow their anchors,
+  dimensions always drawn; hidden and wire draw everything. **Quiet is not
+  hidden**: nothing of it reaches the pick, snap, box or drag (quiet glyphs
+  included — see the spec's As built). **Decided by geometric role alone**
+  (the owner's *"why is a 3D corner any different from a 2D corner"*, at the
+  supervisor's direction mid-build): nothing is quiet because a feature made
+  it, so the spec's "a feature's own names show on hover only" was dropped.
+  **Generated geometry stays named** and `ls()` shows it as a count under the
+  feature's line, `members("e1")` to expand. Deviations in the spec's As
+  built and below (Smaller things).
 - **Flat relational direct CAD: no hierarchy** (the owner's statement of the
   project's concept, 2026-11-03, verbatim): *"the concept of this project is
   flat relational direct cad. there is no hierarchy. a sketch entity exists in
@@ -1555,6 +1570,32 @@ the same shape as "tools are not privileged", and a menu that could be
 extended the way `defineTool` extends the tool registry would close it.
 
 ## Smaller things
+
+- [ ] **Found while building `quiet-geometry.md`** (each deliberate unless it
+      says otherwise; the spec's As built has the reasoning):
+      - **Hidden outranks revealed** (`entityDrawn`): a reveal brings back
+        what is quiet, never what the user hid. Nothing hidden picks, so the
+        case is a selection, snap or drag made before a `hide`.
+      - **A lid frame's own points are drawn** where the sketch frame stands
+        off the profile (a fixture frame, a `plane()` elsewhere): they end no
+        line, and nothing is quiet because a feature made it. A sketched
+        outline's lid frame stands on its corner twins
+        (`lid-frame-shares-points.md`), and its lid is clean — checked by the
+        plate test, which no longer skips any corner for a loose point.
+      - **A frame marker drawn from a corner** keeps its arms, letters and
+        name there: frame markers stay. The plate test reads no dot or name at
+        the two corners a frame stands on.
+      - **A quiet glyph is still picked** (and drawn while hovered): reached
+        from its line, it would otherwise be unreachable (5 px pick, box 7 px
+        out). It is an invisible target until hovered, like a quiet corner.
+      - **No silhouette lines** on curved walls (a cylinder's sides, a hole's
+        wall seen obliquely), and **no line where two solids interpenetrate**:
+        neither is any face's side. Shading carries both today.
+      - **The face line is drawn in the hidden view too**, under the entity
+        pass's own dark ink on the same edges: harmless, not needed.
+      - **`engine.armedUnder` is a second `pickAt` per pointer move** while a
+        tool is armed (the snap is the first). Not measured; it is the same
+        work the unarmed hover does.
 
 - [ ] **Found while building groups, phase 1** (`docs/plans/groups.md`; each
       deliberate unless it says otherwise):

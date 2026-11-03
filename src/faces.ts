@@ -54,6 +54,13 @@
 // aimed at (occlusion.ts, viewmode.ts). A click on a face is a click on
 // whatever visible entity is near it, or on nothing.
 //
+// **A face says which of its sides are the solid's edges** (`Face.edges`): a
+// cap's outlines all round, a wall's base and twin sides and its side at a
+// profile vertex, a sweep's rims and its vertices' circles — never a seam
+// between two pieces of one round surface. The face layer draws a fine dark
+// line along them, as part of the solid, which is what outlines a body whose
+// own edges the shaded view leaves quiet (quiet.ts).
+//
 // **A revolve's faces are the same machinery with more of them derived** (see
 // `revolveFaces`). Its surface is not finitely many entities, so there is no
 // twin to draw a wall between: each piece of the profile is swept round the
@@ -85,6 +92,18 @@ export interface Face {
   normal: number[];
   /** Where it is: the mean of its outline's points (a cap's, the outer loop's) — what the painter's fallback sorts by. */
   centroid: number[];
+  /**
+   * The parts of its outline that are **edges of the solid**, as open world
+   * polylines — what the face layer draws its fine edge line along. A cap's
+   * outlines are edges all the way round; a wall piece's are its base and twin
+   * sides, and a side across the wall only at a profile vertex. The seams
+   * between the pieces a curved wall or a sweep is drawn in are not edges:
+   * they are where one flat piece of a round surface meets the next, and a
+   * line there would draw the tessellation, not the solid. Nor is the line a
+   * whole circle's wall would close on, or a full turn's profile: neither
+   * has a vertex, so there is no edge for the line to be at.
+   */
+  edges: number[][][];
 }
 
 /** A face as the painter's fallback fills it this frame. */
@@ -93,6 +112,8 @@ export interface DrawnFace {
   kind: Face["kind"];
   /** Screen outlines, one subpath each, filled even-odd. */
   outlines: [number, number][][];
+  /** Its `edges` on screen, stroked over its fill in the solid's edge ink. */
+  edges: [number, number][][];
   /** Lambert's cosine against the line of sight: 0 edge-on, 1 square to the viewer. */
   shade: number;
   /** Its centroid's depth, larger nearer — what the painter's sorts by; the list is ascending. */
@@ -169,6 +190,18 @@ function joined(paths: number[][][], flips: boolean[]): number[][] {
   // A closed walk ends where it began; the path closes itself.
   if (out.length > 1 && gap(out[0], out[out.length - 1]) < 1e-12) out.pop();
   return out;
+}
+
+/** An outline as a path that goes all the way round: its first point again at the end. */
+const closedPath = (o: number[][]) => (o.length ? [...o, o[0]] : o);
+
+/**
+ * Whether a profile member has vertices at its ends — every member but a whole
+ * circle, which closes on itself with no corner, so its wall has no wall line
+ * and its sweep no edge but its rims.
+ */
+function hasVertices(model: Model, m: ProfileMember): boolean {
+  return !(typeof m === "string" && model.entities.get(m)?.kind === "circle");
 }
 
 const mean = (pts: number[][]) => [0, 1, 2].map((i) => pts.reduce((s, p) => s + p[i], 0) / pts.length);
@@ -322,8 +355,8 @@ function extrudeFaces(model: Model, f: Extract<FeatureEntry, { kind: "extrude" }
   const [baseMid, lidMid] = [mean(baseOutlines[0]), mean(lidOutlines[0])];
   const up = dot3(sub3(lidMid, baseMid), z) < 0 ? -1 : 1;
   const faces: Face[] = [
-    { feature: f.name, kind: "base", outlines: baseOutlines, normal: z.map((c) => -up * c), centroid: baseMid },
-    { feature: f.name, kind: "lid", outlines: lidOutlines, normal: z.map((c) => up * c), centroid: lidMid },
+    { feature: f.name, kind: "base", outlines: baseOutlines, normal: z.map((c) => -up * c), centroid: baseMid, edges: baseOutlines.map(closedPath) },
+    { feature: f.name, kind: "lid", outlines: lidOutlines, normal: z.map((c) => up * c), centroid: lidMid, edges: lidOutlines.map(closedPath) },
   ];
 
   const signs = outwardSigns(baseOutlines, axes);
@@ -331,11 +364,18 @@ function extrudeFaces(model: Model, f: Extract<FeatureEntry, { kind: "extrude" }
     const flip = flips[i][j];
     const b = flip ? path.slice().reverse() : path;
     const t = flip ? lid[i][j].slice().reverse() : lid[i][j];
+    const cornered = hasVertices(model, f.loops[i][j]);
+    const last = b.length - 1;
     for (let k = 0; k + 1 < b.length; k++) {
       const quad = [b[k], b[k + 1], t[k + 1], t[k]];
       const n = unit3(cross3(sub3(b[k + 1], b[k]), z));
       if (!n) continue; // a piece of no length faces nowhere
-      faces.push({ feature: f.name, kind: "wall", outlines: [quad], normal: n.map((c) => signs[i] * c), centroid: mean(quad) });
+      // The wall line at a profile vertex is an edge; a seam between two
+      // pieces of one curved wall is not.
+      const edges = [[b[k], b[k + 1]], [t[k], t[k + 1]]];
+      if (cornered && k === 0) edges.push([b[0], t[0]]);
+      if (cornered && k + 1 === last) edges.push([b[last], t[last]]);
+      faces.push({ feature: f.name, kind: "wall", outlines: [quad], normal: n.map((c) => signs[i] * c), centroid: mean(quad), edges });
     }
   }));
   return faces;
@@ -411,8 +451,8 @@ function revolveFaces(model: Model, f: Extract<FeatureEntry, { kind: "revolve" }
     if (!t0) return [];
     const ahead = t0.map((c) => Math.sign(theta) * c);
     const endOutlines = paths.twin!.map((p, i) => joined(p, flips[i]));
-    faces.push({ feature: f.name, kind: "base", outlines, normal: ahead.map((c) => -c), centroid: mean(outlines[0]) });
-    faces.push({ feature: f.name, kind: "end", outlines: endOutlines, normal: apply(turns[steps], ahead), centroid: mean(endOutlines[0]) });
+    faces.push({ feature: f.name, kind: "base", outlines, normal: ahead.map((c) => -c), centroid: mean(outlines[0]), edges: outlines.map(closedPath) });
+    faces.push({ feature: f.name, kind: "end", outlines: endOutlines, normal: apply(turns[steps], ahead), centroid: mean(endOutlines[0]), edges: endOutlines.map(closedPath) });
   }
 
   paths.base.forEach((loop, i) => loop.forEach((path, j) => {
@@ -422,13 +462,24 @@ function revolveFaces(model: Model, f: Extract<FeatureEntry, { kind: "revolve" }
     const t = tw && flip ? tw.slice().reverse() : tw;
     // The member's rings: each step's turn of it, the last the end face's own twin.
     const rings = turns.map((m, s) => (s === steps && t ? t : b.map((p) => place(m, p))));
+    const cornered = hasVertices(model, f.loops[i][j]);
+    const last = b.length - 1;
     for (let q = 0; q + 1 < b.length; q++) {
       const n = unit3(cross3(sub3(b[q + 1], b[q]), plane.n));
       if (!n || (onAxis(b[q]) && onAxis(b[q + 1]))) continue; // no length, or on the axis: it sweeps nothing
       const out = n.map((c) => signs[i] * c);
       for (let s = 0; s < steps; s++) {
         const quad = [rings[s][q], rings[s][q + 1], rings[s + 1][q + 1], rings[s + 1][q]];
-        faces.push({ feature: f.name, kind: "wall", outlines: [quad], normal: apply(middles[s], out), centroid: mean(quad) });
+        // A vertex's sweep is an edge — the circle a box's corner turns
+        // through is where two of the revolve's surfaces meet — and so are the
+        // caps' outlines; a seam between two steps, or two pieces of a curve,
+        // is the tessellation and is not.
+        const edges: number[][][] = [];
+        if (partial && s === 0) edges.push([rings[0][q], rings[0][q + 1]]);
+        if (partial && s === steps - 1) edges.push([rings[steps][q], rings[steps][q + 1]]);
+        if (cornered && q === 0 && !onAxis(b[0])) edges.push([rings[s][0], rings[s + 1][0]]);
+        if (cornered && q + 1 === last && !onAxis(b[last])) edges.push([rings[s][last], rings[s + 1][last]]);
+        faces.push({ feature: f.name, kind: "wall", outlines: [quad], normal: apply(middles[s], out), centroid: mean(quad), edges });
       }
     }
   }));
@@ -485,6 +536,7 @@ export function facesToDraw(model: Model, view: View): DrawnFace[] {
       feature: face.feature,
       kind: face.kind,
       outlines: face.outlines.map((o) => o.map((w) => worldToScreen(view, w))),
+      edges: face.edges.map((e) => e.map((w) => worldToScreen(view, w))),
       shade: face.shade,
       depth,
     }));
@@ -509,8 +561,21 @@ export const FACE_LIGHT = [196, 208, 222];
  * lid's twins, the walls — as Onshape draws a part's edges dark on a light
  * body, so the shape reads even where two faces shade alike. Chosen with the
  * face tones: 4:1 or better against every face of the corner view above.
+ *
+ * Drawn by the face layer, as part of the solid, along every face's `edges`
+ * (facelayer.ts) — the solid's edges are quiet sketch geometry in the shaded
+ * view (quiet.ts), so this line is what outlines the body there; the entity
+ * pass inks an edge in it too where it draws one (the hidden view, or an edge
+ * revealed but not lit).
  */
 export const SOLID_EDGE = "#1b2530";
+
+/**
+ * How wide the face layer draws that line, in CSS pixels: fine — an outline of
+ * the body, a little under the 1.4 px the entity pass strokes sketch geometry
+ * at, so a hovered edge drawn over it covers it whole.
+ */
+export const SOLID_EDGE_PX = 1.2;
 
 /**
  * The fill for a face of this shade, as three bytes — straight along the range,

@@ -106,6 +106,80 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### Quiet geometry: what the drawing leaves out until the hand is on it
+
+**The owner**: *"I think points ought to disappear when they are the endpoint
+of a line or a corner (except when you hover over them), and lines ought to
+disappear when they form the edge of a solid (except when you hover over
+them)."* And mid-build, on whether a solid's own pieces should be quieter
+than a sketch's: *"why is a 3D corner any different from a 2D corner"*.
+
+**Why quiet is a drawing rule and nothing else.** The tempting
+implementation is `hide`: leave the corner out of the model's visible set
+and let the pick follow. That is the opposite of what was asked — "except
+when you hover over them" needs the corner to be under the hand while it is
+not drawn. So `quiet.ts` is consulted by `render` alone; `hitTest`,
+`findSnap`, `selectInBox` and the drag never hear of it. That is also why
+opaque-solids' "nothing invisible is under the hand" does not stretch to
+this: a quiet corner is not invisible, it is waiting for the cursor.
+
+**Why quiet glyphs still pick.** The spec has a glyph show "when its anchor
+is hovered or selected", which read alone makes a quiet glyph unpickable.
+Measured against the code it is unreachable that way: a line picks 5 px
+out (`PICK_LINE`) and a mark's box starts `GLYPH_OFFSET − GLYPH_HALF_H` = 7
+px out, so moving from the line to its `//` crosses two pixels where nothing
+is hovered, the mark goes quiet, and it is not there to arrive at. Rejected:
+a sticky reveal (the mark stays drawn a while after the line loses the
+hover) — a timer in a pure rule, and a mark that vanishes if you are slow.
+Chosen: a quiet glyph picks as a quiet corner does, and a hovered glyph is
+drawn; hovering it also lights its lines, so the anchor shows too.
+
+**Why the face layer's edges are face boundaries, not entities.** The
+obvious source for "the solid's fine edge line" is the entities the entity
+pass inked dark — profile, twins, walls. Two things went wrong with it on
+paper: a revolve has no entity at the circle a corner sweeps (so a revolved
+block would have no rims), and a whole circle's hole has no wall line, which
+is right, but its faces' outlines close on a seam that a naive "stroke every
+outline" draws. So each face says which of its own sides are edges
+(`Face.edges`), from structure — a cap's outlines, a wall's base and twin,
+a side only at a profile vertex — and the face layer draws exactly those.
+Rejected: a dihedral-angle threshold over the tessellation, which depends on
+how finely a curve is sampled at this zoom and would draw seams on a coarse
+small circle.
+
+**Why quads, not `gl.LINES`.** WebGL's line width is whatever the driver
+allows, in device pixels, usually exactly one; a 1.2 px line at a device
+pixel ratio of 2 would be 0.5 CSS px. The edge is a quad square to the line
+of sight, offset in that plane only, so it keeps its own depth; faces are
+drawn with a polygon offset of a pixel's slope more than the half-width so
+the edge they bound wins the depth test, and an edge behind another face
+loses it by far more than that.
+
+**Centres win over ends.** A point that is both a circle's centre and a
+line's end stays drawn: the spec keeps centres, and a circle whose centre
+went quiet would have no mark at its middle at all.
+
+**The selection is the groups package's.** Built against a stub while the
+two packages ran side by side, and integrated after both merged: the
+selection the draw pass already prunes each frame is one more reveal, and a
+selected glyph is drawn as a hovered one is. **Hidden outranks revealed**
+(`entityDrawn`): `hide` takes a thing out of sight on purpose, and a reveal
+is about what the hand is on, so a stale snap or a selection made before the
+`hide` must not bring it back. Hiding a solid's sketch is the case that shows
+why the edge line belongs to the faces: the base's lines are hidden and the
+base is still outlined.
+
+**One `members`.** The groups package's reads a feature as a read-only group
+of what it made — its depth dimension included — so `ls()`'s count is of
+exactly that list, rather than of the entities only as this package first
+counted.
+
+**The register's "feature's own entities quiet by name" item was dropped**,
+at the supervising session's direction on the owner's reasoning above. With
+the lid frame now on the lid's own corners (`lid-frame-shares-points.md`)
+that leaves a sketched outline's lid clean; a lid frame over a sketch frame
+that stands off the profile still has points of its own, and they are drawn.
+
 ### Groups, phase 1: a selection, sets that own nothing, and visibility
 
 **The owner**: *"the concept of this project is flat relational direct cad.

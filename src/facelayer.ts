@@ -29,11 +29,22 @@
 // not gone; the depth layer's multisampling has none). Its sort is the plain
 // one, and wrong where any sort is; see `facesToDraw`.
 //
+// **Both draw the solid's edges with it**: a fine dark line (`SOLID_EDGE`,
+// `SOLID_EDGE_PX`) along every visible face's `edges`, as part of the solid —
+// so a box reads as a box where two faces shade alike, now that the shaded
+// view leaves a solid's own edges quiet in the sketch drawing (quiet.ts). The
+// depth layer draws each edge as a thin quad square to the line of sight (GL's
+// own lines are one device pixel, or whatever width the driver allows),
+// depth-tested against faces pushed back by a polygon offset, so an edge on a
+// face is in front of it and an edge behind another face is not drawn; the
+// painter's strokes a face's edges right after filling it, so a nearer face
+// painted later covers them.
+//
 // Neither ever picks: the depth canvas takes no pointer events, and the
 // painter's draws into a canvas whose listeners ask the entities, not this.
 
 import type { Model } from "./model.ts";
-import { faceColour, faceRGB, facesToDraw, visibleFaces } from "./faces.ts";
+import { SOLID_EDGE, SOLID_EDGE_PX, faceColour, faceRGB, facesToDraw, visibleFaces } from "./faces.ts";
 import { clipMatrix, viewAxes, type View } from "./view.ts";
 import { cross3, dot3, sub3 } from "./vec3.ts";
 
@@ -60,6 +71,17 @@ export function paintFaces(g: CanvasRenderingContext2D, model: Model, view: View
     g.fill("evenodd");
     g.strokeStyle = colour;
     g.stroke();
+    if (face.edges.length) {
+      g.beginPath();
+      for (const edge of face.edges) {
+        g.moveTo(...edge[0]);
+        for (const p of edge.slice(1)) g.lineTo(...p);
+      }
+      g.strokeStyle = SOLID_EDGE;
+      g.lineWidth = SOLID_EDGE_PX;
+      g.stroke();
+      g.lineWidth = 0.75;
+    }
   }
   g.restore();
 }
@@ -95,6 +117,9 @@ void main() {
 
 /** Floats per vertex: a position relative to the frame's anchor, and a colour. */
 const STRIDE = 6;
+
+/** `SOLID_EDGE` as the shader takes a colour. */
+const EDGE_RGB = [1, 3, 5].map((i) => parseInt(SOLID_EDGE.slice(i, i + 2), 16) / 255);
 
 /**
  * Whether a planar outline is convex and goes round once — so that a fan from
@@ -228,7 +253,28 @@ export function createFaceLayer(canvas: HTMLCanvasElement): FaceLayer | null {
           caps.push({ data });
         }
       }
-      const all = new Float32Array(batch.length + caps.reduce((n, c) => n + c.data.length, 0));
+      // The edges: each segment a quad in the plane square to the line of
+      // sight, `SOLID_EDGE_PX` wide on screen and running on half that past
+      // each end so neighbouring segments close their joints. Offset within
+      // that plane only, so every corner keeps its segment's depth.
+      const edges: number[] = [];
+      const half = SOLID_EDGE_PX / 2 / view.scale;
+      const put = (p: number[]) => edges.push(p[0] - anchor[0], p[1] - anchor[1], p[2] - anchor[2], EDGE_RGB[0], EDGE_RGB[1], EDGE_RGB[2]);
+      for (const f of faces) for (const path of f.edges) for (let k = 0; k + 1 < path.length; k++) {
+        const [p, q] = [path[k], path[k + 1]];
+        const d = sub3(q, p);
+        const [dx, dy] = [dot3(d, right), dot3(d, up)];
+        const len = Math.hypot(dx, dy);
+        if (!(len > 1e-12)) continue; // seen end-on: nothing of it to draw but a dot its neighbours already end at
+        const [ux, uy] = [dx / len, dy / len];
+        const along = [0, 1, 2].map((i) => (ux * right[i] + uy * up[i]) * half);
+        const across = [0, 1, 2].map((i) => (-uy * right[i] + ux * up[i]) * half);
+        const corner = (o: number[], sa: number, sc: number) => o.map((c, i) => c + sa * along[i] + sc * across[i]);
+        const [a0, a1, b0, b1] = [corner(p, -1, -1), corner(p, -1, 1), corner(q, 1, -1), corner(q, 1, 1)];
+        for (const v of [a0, b0, b1, a0, b1, a1]) put(v);
+      }
+
+      const all = new Float32Array(batch.length + caps.reduce((n, c) => n + c.data.length, 0) + edges.length);
       all.set(batch, 0);
       const runs: [number, number][] = [];
       let at = batch.length;
@@ -237,6 +283,8 @@ export function createFaceLayer(canvas: HTMLCanvasElement): FaceLayer | null {
         runs.push([at / STRIDE, c.data.length / STRIDE]);
         at += c.data.length;
       }
+      all.set(edges, at);
+      const edgeRun: [number, number] = [at / STRIDE, edges.length / STRIDE];
 
       gl.useProgram(program);
       gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
@@ -252,6 +300,13 @@ export function createFaceLayer(canvas: HTMLCanvasElement): FaceLayer | null {
       gl.disable(gl.CULL_FACE); // culling is faces.ts's, by the outward normal; a fan's winding means nothing
       gl.disable(gl.BLEND);
       gl.disable(gl.STENCIL_TEST);
+      // Faces a little back from where they are, by their own slope, so the
+      // edges they bound — which lie in them, and reach half a line's width
+      // across them — pass the depth test against them: enough slope for that
+      // half-width in device pixels, and one more. A face in front of an edge
+      // by more than that still hides it.
+      gl.enable(gl.POLYGON_OFFSET_FILL);
+      gl.polygonOffset(1 + (SOLID_EDGE_PX / 2) * (canvas.width / Math.max(1, width)), 2);
       if (batch.length) gl.drawArrays(gl.TRIANGLES, 0, batch.length / STRIDE);
 
       gl.enable(gl.STENCIL_TEST);
@@ -276,6 +331,17 @@ export function createFaceLayer(canvas: HTMLCanvasElement): FaceLayer | null {
         gl.drawArrays(gl.TRIANGLES, first, count);
       }
       gl.disable(gl.STENCIL_TEST);
+      gl.disable(gl.POLYGON_OFFSET_FILL);
+
+      // The edges over them, where nothing nearer is. They write no depth:
+      // two edges crossing should both draw.
+      if (edgeRun[1]) {
+        gl.depthFunc(gl.LEQUAL);
+        gl.depthMask(false);
+        gl.drawArrays(gl.TRIANGLES, edgeRun[0], edgeRun[1]);
+        gl.depthMask(true);
+        gl.depthFunc(gl.LESS);
+      }
     },
   };
 }

@@ -91,6 +91,11 @@ view, cursor or rectangle) answering one question — what is under it, where
 should it be pulled to, what marks should the drawing be wearing, what does
 this rectangle catch. None of them draws anything or holds any state, which is
 what lets all four be tested without a canvas.
+`quiet.ts` is beside them and smaller still — which entities the shaded view
+leaves undrawn until the hand is on them — a pure function of the model and
+what the draw pass hands it (the view mode, the solids on screen, what is
+revealed); it is asked by the drawing alone, never by
+the four above, which is what keeps quiet from becoming hidden.
 
 `boxselect.ts` is a separate file from `picking.ts` rather than another
 function in it because the two answer differently-shaped questions. Picking is
@@ -730,7 +735,9 @@ to a light grey-blue square-on, the headlight's cosine spread over the whole
 range (WCAG 5–9:1 against the background for a box seen from a corner, 1.3–1.8:1
 face against face; measured in the CHANGELOG). A solid's own edges — its whole
 profile members, the lid's twins, the walls — are drawn in `SOLID_EDGE`, a dark
-ink, wherever faces are drawn; a profile member that is only a portion of a
+ink, wherever faces are drawn: by the face layer, as part of the solid, and in
+the hidden view by the entity pass as well (in the shaded view the entity pass
+leaves them quiet — below); a profile member that is only a portion of a
 longer line keeps its sketch colour, since most of that line may be off the
 solid. Light marks over light faces would vanish, so where faces are drawn the
 entity pass runs twice: first every mark's **casing** — the same strokes a
@@ -739,6 +746,39 @@ colour, invisible off the solid — then every mark itself; casings first, all
 of them, so one never cuts a mark already drawn where two cross. A plain
 sketch has no faces, skips the casing pass, and draws pixel for pixel as it
 did (the hidden-edge package's golden picture holds it).
+
+**Quiet geometry: corners and a solid's edges are drawn when the hand is on
+them** (`quiet.ts`). The owner: points *"disappear when they are the endpoint
+of a line or a corner (except when you hover over them)"*, lines *"when they
+form the edge of a solid"*. In the shaded view `render` asks `quietEntities`
+for this frame's quiet set — every end of a line or arc that is no circle's or
+arc's centre, and every whole profile member, twin and wall of a feature with
+faces on screen — and `revealed` for what is drawn regardless: the hover and
+what a hovered glyph lights, the selection (drawn in its violet),
+the snap's targets, what is under an armed tool's cursor (`engine.armedUnder`)
+and what a drag is moving (`engine.dragging`), each line or arc among them with
+its ends. The entity pass draws only what is not hidden and is not quiet or
+is revealed (`entityDrawn`: hidden outranks revealed), and a
+glyph follows its anchor (`Glyph.about`, `glyphDrawn`); a dimension is always
+drawn. **Decided by geometric role, never by what made a thing** — a lid's
+corner and a sketch's are one case. **Quiet is not hidden**: nothing of it
+reaches `hitTest`, `findSnap`, `selectInBox` or the drag, so a quiet corner is
+hovered, snapped to and dragged as a drawn one is — and so is a quiet glyph,
+because a line picks 5 px out and a glyph's box starts 7 px out, and a glyph
+that could not be hovered while quiet could never be reached from its line.
+The hidden and wire views draw everything. **The solid's edges are the face
+layer's** (`Face.edges`): every face says which of its sides are edges of the
+solid — a cap's outlines, a wall's base and twin and its sides at profile
+vertices, a sweep's rims and the circles its vertices turn through, never a
+seam between two pieces of one round surface — and both renderers draw a fine
+`SOLID_EDGE` line along them as part of the solid: the depth layer as thin
+quads square to the line of sight (`SOLID_EDGE_PX` wide on screen, whatever
+the driver's line width), depth-tested with `LEQUAL` against faces drawn with a
+polygon offset of one pixel's slope more than the half-width, so an edge on a
+face wins and an edge behind one does not; the painter's as a stroke after each
+fill, so a nearer face painted later covers it. A solid that cannot be laid out
+has no faces, no face line, and its edges are drawn by the entity pass as
+before.
 
 **In the hidden mode, the part of an edge behind a face is drawn in a dimmed
 ink** — the drafting convention for a hidden line. Only the ink changes: every
