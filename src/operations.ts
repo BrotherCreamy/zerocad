@@ -8,7 +8,7 @@
 
 import {
   Model, SETTABLE_PROPERTY, memberName, parseValueRef, referentOf, valueArgIndex,
-  type Entity, type FeatureEntry, type Portion, type ProfileMember,
+  type Entity, type Expansion, type FeatureEntry, type Portion, type ProfileMember,
 } from "./model.ts";
 import { dist } from "./relations/basic.ts";
 import { angle, arcEndpoints, onCircle, pointOnLine, radius, tangent } from "./relations/geometry.ts";
@@ -255,7 +255,9 @@ export interface Profile {
  * the lid; for every member a twin member between the twins (an arc's or
  * circle's on the lid's own frame, so a sketch on the top cap means what it
  * says); for every corner a wall line from base to twin; one frame for the lid,
- * the sketch frame moved by the depth; and **one dimension** — an `extrusion`,
+ * the sketch frame moved by the depth — standing on the lid's own corners
+ * wherever the sketch frame stands on the profile's (see `frameOver`); and
+ * **one dimension** — an `extrusion`,
  * `d`-named — holding every twin at its base plus the depth along the frame's
  * +z. So `set("d9.value", 40)` re-solves the solid like any dimension, and the
  * twins and walls are ordinary entities: draggable, constrainable,
@@ -331,16 +333,59 @@ export interface Profile {
  * which the saved values put right as they put back every twin. A key is
  * never a name here: a vertex spelled with `×` that is no point is refused.
  *
+ * **`expansion` is for a replay, and only an old file's.** `9` re-expands the
+ * call as a build of format 9 or below did — the lid frame with three points
+ * of its own even where a lid corner already stands — because the names a
+ * later entry of that file holds were handed out by that expansion (see
+ * `Expansion`). A typed call never passes it, and a new file never journals it.
+ *
  * An operation, refusing before it changes anything (`asOperation` records only
  * on success). 3D only.
  */
 export function extrude(model: Model, member: string, depth?: number | null, frame?: string | null,
-                        loops?: ProfileMember[][] | null): string {
+                        loops?: ProfileMember[][] | null, expansion?: number | null): string {
   if (model.dim !== 3) throw new Error("extrude needs a 3D model — a 2D drawing has no direction out of its plane");
   const d = extrudeDepth(depth);
+  const x = expansionOf(expansion, "extrude");
   checkMember(model, member, "extrude");
   const profile = loops != null ? givenProfile(model, member, frame, loops, EXTRUDE) : foundProfile(model, member, frame ?? null, EXTRUDE);
-  return extruded(model, member, d, profile);
+  return extruded(model, member, d, profile, x);
+}
+
+/**
+ * Which expansion a feature was made by — and so which a replay must make it
+ * by again, since the auto-names every later entry holds were handed out by it.
+ *
+ * - **10**, today's: a frame the feature makes (an extrude's lid, a revolve's
+ *   end frames) **reuses the twin of every point of the frame it copies that is
+ *   a profile vertex**, and makes a point of its own only for one that is not
+ *   (`frameOver`). The owner, on a frameless plate whose lid frame had laid
+ *   three points on three lid corners: *"i'm getting a lot of overlapping
+ *   points. why is this happening?"* — and, told the fix, *"of course it
+ *   should."*
+ * - **9**, files of format 9 and below: every such frame has three points of
+ *   its own, made before the twins. Kept rather than translated away because
+ *   the two expansions make different numbers of points in a different order:
+ *   a version-9 file re-expanded today would hand every point after its first
+ *   extrude another name, and its later entries — a `dist` on `p14`, a
+ *   `deleteEntity("p20")` — would land on the wrong points or on none.
+ *   persist.ts writes the `9` into such an entry on the way in, so the file
+ *   goes on saying which expansion it means after it is saved again.
+ *
+ * Today's is what every call makes, and what an entry with no expansion means.
+ */
+export const EXPANSION: Expansion = 10;
+
+function expansionOf(x: number | null | undefined, op: string): Expansion {
+  if (x == null || x === EXPANSION) return EXPANSION;
+  if (x === 9) return 9;
+  throw new Error(`${op}'s expansion is 9 (a file of version 9 or below, whose frames had points of their own) or `
+    + `left out — got ${JSON.stringify(x)}`);
+}
+
+/** The journal's tail for an expansion: nothing for today's, so a new entry is the call as it always was. */
+function expansionArgs(x: Expansion): number[] {
+  return x === EXPANSION ? [] : [x];
 }
 
 /**
@@ -349,7 +394,7 @@ export function extrude(model: Model, member: string, depth?: number | null, fra
  */
 export function extrudeProfile(model: Model, profile: Profile, depth?: number | null): string {
   if (model.dim !== 3) throw new Error("extrude needs a 3D model — a 2D drawing has no direction out of its plane");
-  return extruded(model, memberName(profile.loops[0][0]), extrudeDepth(depth), profile);
+  return extruded(model, memberName(profile.loops[0][0]), extrudeDepth(depth), profile, EXPANSION);
 }
 
 function extrudeDepth(depth: number | null | undefined): number {
@@ -361,12 +406,12 @@ function extrudeDepth(depth: number | null | undefined): number {
 }
 
 /** Plans, then expands and journals — the entry read after the body, since it names what the body materialised. */
-function extruded(model: Model, member: string, d: number, profile: Profile): string {
+function extruded(model: Model, member: string, d: number, profile: Profile, x: Expansion): string {
   const plan = planSweep(model, profile);
   // The frame's +z when the call was made — where the twins are seeded, and nothing else.
   const z = framePlaneAxes(model, profile.frame)!.n;
-  return model.asOperation("extrude", () => [member, d, plan.frame, resolvedLoops(plan)],
-    () => extrudeBody(model, member, d, plan, z));
+  return model.asOperation("extrude", () => [member, d, plan.frame, resolvedLoops(plan), ...expansionArgs(x)],
+    () => extrudeBody(model, member, d, plan, z, x));
 }
 
 /**
@@ -863,6 +908,37 @@ function twinner(model: Model, classOf: Map<string, number>, place: (p: string) 
   return { twinOf, byClass };
 }
 
+/**
+ * The frame an expansion makes over `base` — an extrude's lid, a revolve's end
+ * frame — its points at `place` of `base`'s. **A point of `base` that is a
+ * profile vertex stands on that vertex's twin** (`shared`, the twinner's
+ * classes), because the twin is already there: a frame of three of the
+ * profile's corners, as a frameless sketch's is, would otherwise lay three
+ * points of its own exactly on three of the lid's, held there by the depth —
+ * doubled labels, and three places that are each two points. Any other point
+ * of `base` (a frame floating off the profile, a user's `plane()` elsewhere)
+ * gets one of the frame's own, as before.
+ *
+ * Returns the frame and, as base/twin pairs, only the points it made: a shared
+ * point's pair is already its corner's, and a dimension holds each place once.
+ * A version-9 expansion calls this before there are any twins, so nothing is
+ * shared — which is exactly what it did then.
+ */
+function frameOver(model: Model, base: string, classOf: Map<string, number>,
+                   shared: Map<number | string, { base: string; twin: string }>,
+                   place: (p: string) => number[], made: (n: string) => string): { frame: string; own: string[] } {
+  const f = model.frame(base);
+  const own: string[] = [];
+  const [o, x, y] = [f.origin, f.xref, f.yref!].map((p) => {
+    const t = shared.get(classKey(classOf, p));
+    if (t) return t.twin;
+    const q = made(model.addPoint(place(p)).name);
+    own.push(p, q);
+    return q;
+  });
+  return { frame: made(model.addFrame(o, x, y).name), own };
+}
+
 /** Twins a member's points as the walk meets them — its from, its centre if it has one, its to — so they are named in that order. */
 function twinPoints(model: Model, m: Walked, real: (v: string) => string, twinOf: (p: string) => string): void {
   const e = model.entities.get(m.name)!;
@@ -909,11 +985,13 @@ function builtOn(plan: SweepPlan): string[] {
 
 /**
  * The expansion, in an order a replay reproduces name for name: the crossings
- * made points (each with its holds), the lid's frame (its three points, then
- * the frame), one twin point per joined class in walk order, the twin members,
- * the walls, the depth, the record.
+ * made points (each with its holds), one twin point per joined class in walk
+ * order, the lid's frame (a point of its own for each sketch-frame point that
+ * is no profile vertex, then the frame — `frameOver`), the twin members, the
+ * walls, the depth, the record. A version-9 expansion makes the lid frame
+ * before the twins, all three of its points its own, as it did (`Expansion`).
  */
-function extrudeBody(model: Model, member: string, depth: number, plan: SweepPlan, z: number[]): string {
+function extrudeBody(model: Model, member: string, depth: number, plan: SweepPlan, z: number[], x: Expansion): string {
   const { frame, walked, classOf } = plan;
   const owns: string[] = [];
   const made = (name: string) => { owns.push(name); return name; };
@@ -923,15 +1001,12 @@ function extrudeBody(model: Model, member: string, depth: number, plan: SweepPla
   // call settles any frame that has turned since the plan was made.
   const lifted = (p: string) => model.coords(p).map((c, i) => c + depth * z[i]);
 
-  // The lid's frame: the sketch frame, moved. Held there by the depth's own
-  // pairs — read as a datum, so the lid can never turn the sketch.
-  const f = model.frame(frame);
-  const [o, x, y] = [f.origin, f.xref, f.yref!];
-  const [to, tx, ty] = [o, x, y].map((p) => made(model.addPoint(lifted(p)).name));
-  const top = made(model.addFrame(to, tx, ty).name);
-
+  // The lid's frame: the sketch frame, moved. Its own points are held there by
+  // the depth's pairs — read as a datum, so the lid can never turn the sketch.
+  const before = x === 9 ? frameOver(model, frame, classOf, new Map(), lifted, made) : null;
   const { twinOf, byClass } = twinner(model, classOf, lifted, made);
   for (const loop of walked) for (const m of loop) twinPoints(model, m, real, twinOf);
+  const { frame: top, own } = before ?? frameOver(model, frame, classOf, byClass, lifted, made);
 
   // A curve on the sketch frame goes on the lid's frame; one on any other frame
   // keeps its own — same orientation, so the twin arc is the same arc, with no
@@ -955,15 +1030,15 @@ function extrudeBody(model: Model, member: string, depth: number, plan: SweepPla
   }
 
   // The depth: corners and centres first (the label sits on the first wall),
-  // then the curves' radii, then the lid frame.
+  // then the curves' radii, then the lid frame's own points.
   const pairs: string[] = [];
   for (const { base, twin } of byClass.values()) pairs.push(base, twin);
   walked.forEach((loop, i) => loop.forEach((m, j) => { if (m.kind !== "line") pairs.push(m.name, twins[i][j]); }));
-  pairs.push(o, to, x, tx, y, ty);
+  pairs.push(...own);
   const held = made(extrusion(model, frame, depth, ...pairs));
 
   return model.addFeature({
-    kind: "extrude", member, frame, top, depth: held,
+    kind: "extrude", member, frame, top, depth: held, expansion: x,
     loops: resolvedLoops(plan), twins, walls,
     names: [...new Set([...builtOn(plan), frame, ...owns])], owns,
   }).name;
@@ -1028,17 +1103,21 @@ function extrudeBody(model: Model, member: string, depth: number, plan: SweepPla
  * and the tool's, never a replay's: they read positions, and a replay has only
  * seeds to read.
  *
+ * **`expansion`** is extrude's: `9` for an entry from a file of version 9 or
+ * below, whose end frames had three points of their own (see `Expansion`).
+ *
  * An operation, refusing before it changes anything. 3D only.
  */
 export function revolve(model: Model, member: string, axis: string, angle?: number | null, frame?: string | null,
-                        loops?: ProfileMember[][] | null): string {
+                        loops?: ProfileMember[][] | null, expansion?: number | null): string {
   if (model.dim !== 3) throw new Error("revolve needs a 3D model — a 2D drawing has nothing to turn out of its plane into");
   const a = revolveAngle(angle);
+  const x = expansionOf(expansion, "revolve");
   checkMember(model, member, "revolve");
   axisReader(model, axis); // a name that is not an axis says so before anything is looked for
   const profile = loops != null ? givenProfile(model, member, frame, loops, REVOLVE) : foundProfile(model, member, frame ?? null, REVOLVE);
   if (loops == null) checkRevolve(model, profile, axis);
-  return revolved(model, member, axis, a, profile);
+  return revolved(model, member, axis, a, profile, x);
 }
 
 /**
@@ -1051,7 +1130,7 @@ export function revolveProfile(model: Model, profile: Profile, axis: string, ang
   const a = revolveAngle(angle);
   axisReader(model, axis);
   checkRevolve(model, profile, axis);
-  return revolved(model, memberName(profile.loops[0][0]), axis, a, profile);
+  return revolved(model, memberName(profile.loops[0][0]), axis, a, profile, EXPANSION);
 }
 
 function revolveAngle(angle: number | null | undefined): number {
@@ -1063,10 +1142,10 @@ function revolveAngle(angle: number | null | undefined): number {
 }
 
 /** Plans, then expands and journals — as `extruded`. */
-function revolved(model: Model, member: string, axis: string, a: number, profile: Profile): string {
+function revolved(model: Model, member: string, axis: string, a: number, profile: Profile, x: Expansion): string {
   const plan = planSweep(model, profile);
-  return model.asOperation("revolve", () => [member, axis, a, plan.frame, resolvedLoops(plan)],
-    () => revolveBody(model, member, axis, a, plan));
+  return model.asOperation("revolve", () => [member, axis, a, plan.frame, resolvedLoops(plan), ...expansionArgs(x)],
+    () => revolveBody(model, member, axis, a, plan, x));
 }
 
 /**
@@ -1177,12 +1256,14 @@ function sideRange(model: Model, e: Entity, origin: number[], w: number[], ends:
  * The expansion, in an order a replay reproduces name for name. First the
  * crossings made points (each with its holds) — a whole turn's too, see
  * `revolve`. A whole turn then: the dimension and the record, nothing else. A
- * partial one: the end frames (each a frame's three points turned, then the
- * frame — the sketch frame's first, then any other frame a profile curve is
- * drawn on), one twin point per joined class in walk order, the twin members,
- * the angle, the record.
+ * partial one: one twin point per joined class in walk order, the end frames
+ * (each a point of its own for each of its frame's points that is no profile
+ * vertex, then the frame — `frameOver` — the sketch frame's first, then any
+ * other frame a profile curve is drawn on), the twin members, the angle, the
+ * record. A version-9 expansion makes the end frames before the twins, every
+ * point their own, as it did (`Expansion`).
  */
-function revolveBody(model: Model, member: string, axis: string, angle: number, plan: SweepPlan): string {
+function revolveBody(model: Model, member: string, axis: string, angle: number, plan: SweepPlan, x: Expansion): string {
   const { frame, walked, classOf } = plan;
   const owns: string[] = [];
   const made = (name: string) => { owns.push(name); return name; };
@@ -1196,7 +1277,7 @@ function revolveBody(model: Model, member: string, axis: string, angle: number, 
   if (isFullTurn(angle)) {
     const held = made(revolution(model, axis, angle));
     return model.addFeature({
-      kind: "revolve", member, frame, axis, angle: held, loops, twins: [], end: null,
+      kind: "revolve", member, frame, axis, angle: held, loops, twins: [], end: null, expansion: x,
       names: [...new Set([...base, ...owns])], owns,
     }).name;
   }
@@ -1210,24 +1291,18 @@ function revolveBody(model: Model, member: string, axis: string, angle: number, 
   // face has a plane — and any other frame a profile curve is drawn on, turned
   // too, so each twin curve lies in its base's plane turned. (A translated
   // frame keeps its orientation, which is why an extrude's off-sketch curves
-  // keep their own; a turned one does not.) Chosen by name, never by which way
-  // a frame faces, so a replay on seeds makes the same ones.
-  const frames = [frame];
-  for (const loop of walked) {
-    for (const m of loop) {
-      const p = model.planeOf(model.entities.get(m.name)!);
-      if (p !== undefined && !frames.includes(p)) frames.push(p);
-    }
-  }
+  // keep their own; a turned one does not.) Each stands on the end face's own
+  // corners wherever its frame stands on the profile's.
   const twinFrame = new Map<string, string>();
-  for (const fr of frames) {
-    const f = model.frame(fr);
-    const [to, tx, ty] = [f.origin, f.xref, f.yref!].map((p) => made(model.addPoint(turned(p)).name));
-    twinFrame.set(fr, made(model.addFrame(to, tx, ty).name));
-  }
-
+  const endFrames = (shared: Map<number | string, { base: string; twin: string }>) => {
+    for (const fr of sweptFrames(model, frame, walked)) {
+      twinFrame.set(fr, frameOver(model, fr, classOf, shared, turned, made).frame);
+    }
+  };
+  if (x === 9) endFrames(new Map());
   const { twinOf, byClass } = twinner(model, classOf, turned, made);
   for (const loop of walked) for (const m of loop) twinPoints(model, m, real, twinOf);
+  if (x !== 9) endFrames(byClass);
 
   // Each member's twin in its own direction, a curve on its plane's turned
   // frame: the same arc, turned, with no side to decide.
@@ -1235,7 +1310,9 @@ function revolveBody(model: Model, member: string, axis: string, angle: number, 
   const twins = walked.map((loop) => loop.map((m) => made(twinMember(model, m, real, twinOf, planeFor))));
 
   // The angle: corners and centres first (the label sits on the first corner's
-  // path), then the curves' radii, then the frames.
+  // path), then the curves' radii, then the frames — as frames, which is what
+  // tells the relation their bases are a datum; it holds a frame's point only
+  // where no corner pair already does (see `revolution`).
   const pairs: string[] = [];
   for (const { base: b, twin } of byClass.values()) pairs.push(b, twin);
   walked.forEach((loop, i) => loop.forEach((m, j) => { if (m.kind !== "line") pairs.push(m.name, twins[i][j]); }));
@@ -1243,9 +1320,25 @@ function revolveBody(model: Model, member: string, axis: string, angle: number, 
   const held = made(revolution(model, axis, angle, ...pairs));
 
   return model.addFeature({
-    kind: "revolve", member, frame, axis, angle: held, loops, twins, end: twinFrame.get(frame)!,
+    kind: "revolve", member, frame, axis, angle: held, loops, twins, end: twinFrame.get(frame)!, expansion: x,
     names: [...new Set([...base, ...owns])], owns,
   }).name;
+}
+
+/**
+ * The frames a partial revolve's end face turns, by name and in order: the
+ * sketch frame, then each other frame a profile curve is drawn on. Never by
+ * which way a frame faces, so a replay on seeds makes the same ones.
+ */
+function sweptFrames(model: Model, frame: string, walked: Walked[][]): string[] {
+  const frames = [frame];
+  for (const loop of walked) {
+    for (const m of loop) {
+      const p = model.planeOf(model.entities.get(m.name)!);
+      if (p !== undefined && !frames.includes(p)) frames.push(p);
+    }
+  }
+  return frames;
 }
 
 // --- regeneration -----------------------------------------------------------
@@ -1451,7 +1544,13 @@ function alignedTo(loop: ProfileMember[], old: ProfileMember[][]): ProfileMember
  * - The dimension keeps its name and value and is rebuilt in place to hold
  *   exactly the new twins — `set`'s `REBUILD` path. The lid frame (a revolve's
  *   end frames) keeps its name and points; an end frame no curve needs any
- *   more goes, and one a new curve needs is made.
+ *   more goes, and one a new curve needs is made. A frame point that is a
+ *   corner's twin is owned once, as the twin; one whose corner has left the
+ *   profile stays, held as the frame's own; and a sketch-frame point the
+ *   profile now runs through takes the frame point already over it as its twin
+ *   — the expansion's rule (`frameOver`), so regenerating never lays a second
+ *   point where the frame has one. A version-9 feature is rebuilt as version 9
+ *   built it, its frames' points their own (`Expansion`).
  * - The record is rewritten in place (`rewriteFeature`), under the same name.
  *
  * What has gone goes **last, by the ordinary cascade** (`delOne`), once nothing
@@ -1497,10 +1596,20 @@ function rebuildFeature(model: Model, f: FeatureEntry, plan: SweepPlan): { loops
   let end: string | null = null;
 
   if (twinned) {
+    // Whether the feature's frames stand on its twins (see `Expansion`). A
+    // version-9 feature is rebuilt the version-9 way, so a replay of its
+    // file's `regen` or `fillet` makes the names that file's later entries hold.
+    const shares = f.expansion !== 9;
+
     // The old expansion, read back off the dimension: one twin per joined
-    // class (its point pairs, less the lid frame's own), and for a revolve the
-    // end frame of each frame a curve was drawn on.
-    const lidFrame = new Set(f.kind === "extrude" ? model.refsOf(model.frame(f.top)) : []);
+    // class, and for a revolve the end frame of each frame a curve was drawn
+    // on. A version-9 lid frame's own pairs are not twins — its points are
+    // always its own. Today's lid frame is in the pairs once a point, as the
+    // corner it stands on or as a point of its own over a sketch-frame point
+    // that is no vertex; read as a twin either way, so a sketch-frame point the
+    // profile now runs through takes the lid point already over it, rather
+    // than a second point in the same place.
+    const lidFrame = new Set(f.kind === "extrude" && !shares ? model.refsOf(model.frame(f.top)) : []);
     const oldClass = new Map<number | string, { base: string; twin: string }>();
     const oldFrames = new Map<string, string>();
     const was = dim.args.slice(2) as string[];
@@ -1511,50 +1620,21 @@ function rebuildFeature(model: Model, f: FeatureEntry, plan: SweepPlan): { loops
         if (!oldClass.has(k)) oldClass.set(k, { base: b, twin: t });
       } else if (kindOf(b) === "frame") oldFrames.set(b, t);
     }
-
-    // Where a new twin goes — its base moved by the depth, or turned through
-    // the angle, as the dimension holds it now — and which frame a curve's
-    // twin lies on.
-    let place: (p: string) => number[];
-    let planeFor: (p: string | undefined) => string | null | undefined;
-    if (f.kind === "extrude") {
-      const z = framePlaneAxes(model, frame)!.n;
-      place = (p) => model.coords(p).map((c, i) => c + value * z[i]);
-      owns.push(...model.refsOf(model.frame(f.top)), f.top);
-      planeFor = (p) => (p === frame ? f.top : p);
-      const [b, t] = [model.frame(frame), model.frame(f.top)];
-      framePairs.push(b.origin, t.origin, b.xref, t.xref, b.yref!, t.yref!);
-    } else {
-      const at = axisReader(model, f.axis).read();
-      place = (p) => turnPoint(model.coords(p), at, value);
-      // The end frames in revolveBody's order — the sketch frame's, then each
-      // frame a profile curve is drawn on — the old one wherever there was one.
-      const frames = [frame];
-      for (const loop of walked) {
-        for (const m of loop) {
-          const p = model.planeOf(model.entities.get(m.name)!);
-          if (p !== undefined && !frames.includes(p)) frames.push(p);
-        }
+    // An end frame's points the same way, after every corner's, so a corner
+    // keeps its own twin.
+    if (shares) {
+      for (const [fr, tf] of oldFrames) {
+        const tp = model.refsOf(model.frame(tf));
+        model.refsOf(model.frame(fr)).forEach((p, k) => {
+          const c = classKey(classOf, p);
+          if (!oldClass.has(c)) oldClass.set(c, { base: p, twin: tp[k] });
+        });
       }
-      const twinFrame = new Map<string, string>();
-      for (const fr of frames) {
-        const old = oldFrames.get(fr);
-        if (old !== undefined) {
-          owns.push(...model.refsOf(model.frame(old)), old);
-          twinFrame.set(fr, old);
-        } else {
-          const b = model.frame(fr);
-          const [to, tx, ty] = [b.origin, b.xref, b.yref!].map((p) => made(model.addPoint(place(p)).name));
-          twinFrame.set(fr, made(model.addFrame(to, tx, ty).name));
-        }
-      }
-      end = twinFrame.get(frame)!;
-      planeFor = (p) => (p === undefined ? null : twinFrame.get(p)!);
-      for (const [fr, tf] of twinFrame) framePairs.push(fr, tf);
     }
 
     // One twin per joined class, in walk order: the old one where the class
     // survives, else a new one where the expansion would put it.
+    let place: (p: string) => number[];
     const byClass = new Map<number | string, { base: string; twin: string }>();
     const twinOf = (p: string): string => {
       const k = classKey(classOf, p);
@@ -1566,7 +1646,57 @@ function rebuildFeature(model: Model, f: FeatureEntry, plan: SweepPlan): { loops
       }
       return t.twin;
     };
-    for (const loop of walked) for (const m of loop) twinPoints(model, m, real, twinOf);
+    const owned = (n: string) => { if (!owns.includes(n)) owns.push(n); };
+
+    // Where a new twin goes — its base moved by the depth, or turned through
+    // the angle, as the dimension holds it now — and which frame a curve's
+    // twin lies on. The frames are owned (and a new end frame made) where the
+    // expansion makes them: before the twins in a version-9 feature, after
+    // them in today's, which is also when it is known which of their points
+    // are twins.
+    let planeFor: (p: string | undefined) => string | null | undefined;
+    if (f.kind === "extrude") {
+      const z = framePlaneAxes(model, frame)!.n;
+      place = (p) => model.coords(p).map((c, i) => c + value * z[i]);
+      const top = f.top;
+      planeFor = (p) => (p === frame ? top : p);
+      const lid = () => {
+        for (const p of model.refsOf(model.frame(top))) owned(p);
+        owns.push(top);
+      };
+      if (!shares) lid();
+      for (const loop of walked) for (const m of loop) twinPoints(model, m, real, twinOf);
+      if (shares) lid();
+      // A lid point that is no corner's twin now — over a sketch-frame point
+      // that is no vertex, or one that has left the profile — is held as the
+      // lid frame's own.
+      const corner = new Set([...byClass.values()].map((t) => t.twin));
+      const [b, t] = [model.refsOf(model.frame(frame)), model.refsOf(model.frame(top))];
+      b.forEach((p, k) => { if (!corner.has(t[k])) framePairs.push(p, t[k]); });
+    } else {
+      const at = axisReader(model, f.axis).read();
+      place = (p) => turnPoint(model.coords(p), at, value);
+      // The end frames in revolveBody's order, the old one wherever there was one.
+      const twinFrame = new Map<string, string>();
+      const endFrames = (shared: Map<number | string, { base: string; twin: string }>) => {
+        for (const fr of sweptFrames(model, frame, walked)) {
+          const old = oldFrames.get(fr);
+          if (old !== undefined) {
+            for (const p of model.refsOf(model.frame(old))) owned(p);
+            owns.push(old);
+            twinFrame.set(fr, old);
+          } else {
+            twinFrame.set(fr, frameOver(model, fr, classOf, shared, place, made).frame);
+          }
+        }
+      };
+      if (!shares) endFrames(new Map());
+      for (const loop of walked) for (const m of loop) twinPoints(model, m, real, twinOf);
+      if (shares) endFrames(byClass);
+      end = twinFrame.get(frame)!;
+      planeFor = (p) => (p === undefined ? null : twinFrame.get(p)!);
+      for (const [fr, tf] of twinFrame) framePairs.push(fr, tf);
+    }
 
     // Each member's twin: the old one, matched by entity and then by ends —
     // kept as it is, or re-pointed where it is a line — else a new one.
@@ -1643,9 +1773,13 @@ function rebuildFeature(model: Model, f: FeatureEntry, plan: SweepPlan): { loops
   const on = [...builtOn(plan), frame, ...(f.kind === "revolve" ? [referentOf(f.axis)!] : [])];
   const names = [...new Set([...on, ...owns])];
   if (f.kind === "extrude") {
-    model.rewriteFeature(f.name, { kind: "extrude", member: f.member, frame, top: f.top, depth: f.depth, loops, twins, walls, names, owns });
+    model.rewriteFeature(f.name, {
+      kind: "extrude", member: f.member, frame, top: f.top, depth: f.depth, loops, twins, walls, expansion: f.expansion, names, owns,
+    });
   } else {
-    model.rewriteFeature(f.name, { kind: "revolve", member: f.member, frame, axis: f.axis, angle: f.angle, loops, twins, end, names, owns });
+    model.rewriteFeature(f.name, {
+      kind: "revolve", member: f.member, frame, axis: f.axis, angle: f.angle, loops, twins, end, expansion: f.expansion, names, owns,
+    });
   }
 
   // What has gone, last: nothing of the feature names it now, so the ordinary
