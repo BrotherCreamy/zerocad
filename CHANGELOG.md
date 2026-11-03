@@ -7,6 +7,75 @@ decisions.
 
 ---
 
+## Quiet geometry: corners and a solid's edges show when the hand is on them
+
+The owner:
+
+> *I think points ought to disappear when they are the endpoint of a line or
+> a corner (except when you hover over them), and lines ought to disappear
+> when they form the edge of a solid (except when you hover over them).*
+
+A rectangle was four dots and four names on top of four lines; an extruded
+box was eight corners labelled and twelve edges inked over the faces. In the
+default shaded view that noise is gone:
+
+- **A point that ends a line or an arc — a corner — is not drawn**, dot or
+  name, until the cursor is over it, it is selected, it is the armed tool's
+  snap target (or under an armed tool's cursor: the fillet tool aims at
+  corners and shows no snap marker), or it is being dragged. Circle and arc
+  centres, isolated points and frames stay as they were.
+- **A solid's own edges** — whole profile members, twins, walls — **are not
+  drawn as sketch geometry while the solid has faces on screen.** The face
+  layer draws a fine dark line (`SOLID_EDGE`, 1.2 px) along every face's
+  edges instead, as part of the solid: by the depth layer as thin quads
+  square to the line of sight, depth-tested against faces pushed back by a
+  polygon offset; by the painter's fallback as a stroke after each fill. Hover
+  an edge and it is drawn lit, with its ends.
+- **Glyphs follow their anchors**: a `//` on a profile line, a `▱` on a
+  corner, is quiet with what it is on and drawn with it. **Dimensions stay** —
+  the depth's `20` is there throughout.
+- **Quiet is not hidden.** Nothing of this reaches the pick, the snapper, box
+  select or the drag: a quiet corner is hovered, clicked, snapped to and
+  dragged as before. A quiet glyph is still picked too — a line picks 5 px
+  out and a glyph's box starts 7 px out, so one that could not be hovered
+  while quiet could never be reached from its line.
+- **`view("hidden")` and `view("wire")` draw everything**, as before.
+
+**Decided by geometric role alone.** The spec also made a feature's own
+entities quiet by name; the supervising session dropped that mid-build on the
+owner's reasoning — *"why is a 3D corner any different from a 2D corner"*. A
+lid's corner is quiet because it ends lines, as a sketch's is; the lid
+frame's three reference points end nothing and are drawn, as any isolated
+point is (until `lid-frame-shares-points.md` puts the lid frame on the lid's
+own corners).
+
+**`ls()` lists a feature's output as a count under its line** —
+`    16 made — members("e1") lists them` — rather than a line per twin, and
+`members("e1")` lists them, as `ls()` used to. They are still named entities:
+a relation on a lid corner holds that point.
+
+**The face layer's edges are the solid's face boundaries, not the entities
+that happen to exist**: a cap's outlines, a wall's base and twin sides and its
+side at a profile vertex, a sweep's rims and the circles its vertices sweep —
+so a revolved block now shows the circles its corners turn through, which no
+entity draws, and a hole's wall has no seam line where a whole circle closes.
+
+**The plain-sketch golden picture is unchanged.** It was recorded in the
+default view, which is now the one that leaves corners out; it is held in
+`view("hidden")` instead — which draws everything, as the build before did —
+and still matches to the pixel, and a new test holds the shaded picture to
+differ from it only inside the quiet corners' dots, names and the marks
+anchored on them (and to differ at every one of them).
+
+Unit: `test/quiet.test.ts` (11, new), `faces.test.ts` (5 more, the edges),
+the `ls()` lines in `extrude.test.ts` and `revolve.test.ts` — 911 → 927.
+Browser: `test/e2e/quiet.e2e.ts` (8, new: the rectangle and its hovered
+corner, a drag, a snap, the extruded box and its hovered edge, the `//` mark
+and the depth's value, the hidden and wire views, the plate with a hole, the
+painter's fallback), the shaded-against-hidden test in `hidden.e2e.ts`, and
+`opaque.e2e.ts` reading the edge ink off the faces' picture — 358 → 367.
+Spec: [`docs/plans/quiet-geometry.md`](docs/plans/quiet-geometry.md).
+
 ## A confirmed feature releases its tool, so the solid looks like a solid
 
 Found in the browser after merging opaque solids and pick-preview-confirm:

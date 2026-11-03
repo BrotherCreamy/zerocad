@@ -1,6 +1,8 @@
 # Plan: quiet geometry — corners and solid edges show on hover
 
-**Status: queued** (2026-11-03). The owner, verbatim:
+**Status: built** (2026-11-03) — see "As built" at the end for every place
+the build differs from this text, including one scope change the supervising
+session directed mid-build (struck through below). The owner, verbatim:
 
 > *I think points ought to disappear when they are the endpoint of a line or
 > a corner (except when you hover over them), and lines ought to disappear
@@ -45,9 +47,16 @@ corners should be named entities (the answer recorded on the register: yes —
 they are the persistent names that make relations on a solid survive
 regeneration — but quiet): `ls()` lists a feature's output under its feature
 line as a count with `members("e1")` to expand, rather than one line per
-twin; names of a feature's own entities show on hover or selection only (the
-rule above already does this for ends and corners; it covers a wall's
-midpoint label and the like).
+twin. ~~Names of a feature's own entities show on hover or selection only
+(the rule above already does this for ends and corners; it covers a wall's
+midpoint label and the like).~~
+
+**Dropped mid-build, at the supervising session's direction**, from the
+owner's latest reasoning — *"why is a 3D corner any different from a 2D
+corner"*: nothing is treated differently because a feature made it. Quiet is
+decided purely by geometric role — an end of a line or arc, a corner shared
+by edges, an edge bounding a visible face — the same rule for a sketch corner
+and a lid corner. The `ls()` change stays: that is grouping, not visibility.
 
 ## Verification
 
@@ -73,3 +82,75 @@ session reviews. The groups package is concurrently adding the selection
 highlight and hidden entities to the same drawing pass: keep your change to
 the visibility rule and the face layer's edge line, and expect to merge with
 its selection state ("selected" in the rule above is its selection).
+
+## As built (2026-11-03)
+
+Branch `claude/quiet-geometry`. The rule is `src/quiet.ts` (pure, at
+glyphs.ts's height); the draw pass in `src/main.ts` asks it once a frame;
+`Face.edges` in `src/faces.ts` and both renderers in `src/facelayer.ts` draw
+the solid's fine edge line; `Glyph.about` in `src/glyphs.ts` is what a glyph
+follows; `engine.armedUnder` and `engine.dragging` in `src/tools/engine.ts`
+are two more reveals; `ls()` and `members()` in `src/replenv.ts`. Nothing in
+`src/operations.ts`, `hitTest`, `findSnap` or `selectInBox` changed.
+
+**What differs from the text above, and why:**
+
+- ⚠ **Supervisor-directed: nothing is quiet because a feature made it**
+  (struck through above). Quiet is geometric role only. A lid frame's three
+  reference points end no line, so they are drawn as any isolated point is —
+  visible clutter on the lid until `lid-frame-shares-points.md` puts the lid
+  frame on the lid's own corners (which are ends, so quiet).
+- ⚠ **A quiet glyph is still picked, and drawn while it is hovered.** The
+  text has a glyph show "when its anchor is hovered or selected"; alone, that
+  makes it unreachable: a line picks 5 px out (`PICK_LINE`) and a mark's box
+  starts `GLYPH_OFFSET − GLYPH_HALF_H` = 7 px out, so the cursor crosses two
+  pixels where nothing is hovered, the mark goes quiet, and there is nothing
+  to arrive at. So it picks as a quiet corner does ("quiet is not hidden"),
+  and hovering it lights its lines too.
+- **What is under an armed tool's cursor reveals too** (`engine.armedUnder`),
+  beyond the snap target: hover stops while a tool is armed, and the fillet
+  tool, which aims at corners, opts out of snapping, so without it a corner
+  the fillet tool is aimed at would never show.
+- **A centre wins over an end**: a point that is a circle's or arc's centre
+  and also a line's end is drawn. The text keeps centres; a circle whose
+  centre went quiet would have no mark at its middle.
+- **The face layer's edges are face boundaries, not the solid's entities.**
+  Each face says which of its sides are edges (`Face.edges`): a cap's
+  outlines, a wall's base and twin sides and its side at a profile vertex, a
+  sweep's rims and the circles its vertices sweep. So a revolved block shows
+  the circles its corners turn through (no entity draws those), and a hole's
+  wall has no seam where a whole circle closes. A full turn's profile draws
+  no line (it is a seam, not an edge), and its members are quiet as a
+  solid's edges.
+- **The edge line is 1.2 px of `SOLID_EDGE`** (`SOLID_EDGE_PX`): thin quads
+  square to the line of sight in the depth layer (GL's line width is the
+  driver's), with a polygon offset on the faces; a stroke after each fill in
+  the painter's. In the hidden view it is drawn too, under the entity pass's
+  own dark ink on the same edges.
+- **`members("e1")` takes a feature name only** and returns `ls()`-style
+  lines for the entities the feature made (the dimension is already on the
+  feature's line). The groups package's `members(g)` should absorb it.
+- **The plain-sketch golden is unchanged.** The text expected to update it;
+  it was recorded in the default view, which is now the one that leaves
+  corners out, so the golden test types `view("hidden")` first — which draws
+  everything, as before — and still matches to the pixel, and a new test
+  holds the shaded picture to differ from it only inside the quiet corners'
+  dots, names and anchored marks, and at every one of them.
+- **"Selected" is a stub.** `selectedNames()` in `main.ts` returns nothing
+  until the groups package brings the selection; the unit tests feed
+  `revealed` a selected name like any other reveal.
+
+**Left deliberately:**
+
+- Silhouettes of curved walls (a cylinder's sides, a hole's inner wall seen
+  obliquely) get no edge line; shading carries them. Nor does the line where
+  two solids pass through each other — it is no face's side.
+- A revolve's vertex circles are drawn at every profile vertex, tangent joins
+  included; so is an extrude's wall line, as its wall entity always was.
+- Frame markers, their letters and names stay drawn, lid frames included.
+
+**Counts.** Unit 911 → 927; e2e 358 → 367, all passing (the full e2e run took
+13 minutes on a box shared with two other workers). The tests hold the edge
+line's darkest pixel at least two thirds of the way from the lid's fill to
+`SOLID_EDGE` — a 1.2 px line anti-aliased across two pixels reaches its full
+ink in neither.
