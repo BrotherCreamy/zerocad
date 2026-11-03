@@ -408,6 +408,8 @@ export interface ExtrudeFeature {
   twins: string[][];
   /** The wall lines, one per profile vertex, base to twin. */
   walls: string[];
+  /** Which expansion made it — whether `top` stands on the lid's own corners. See `Expansion`. */
+  expansion: Expansion;
   /** Everything the record refers to. See above. */
   names: string[];
   /** The part of `names` the feature made, which deleting it takes. */
@@ -450,6 +452,8 @@ export interface RevolveFeature {
   twins: string[][];
   /** Partial only: the end face's frame — the sketch frame turned through the angle. Null for a full turn. */
   end: string | null;
+  /** Which expansion made it — whether its end frames stand on the end face's own corners. See `Expansion`. */
+  expansion: Expansion;
   /** Everything the record refers to. See `ExtrudeFeature`. */
   names: string[];
   /** The part of `names` the feature made, which deleting it takes. */
@@ -458,6 +462,15 @@ export interface RevolveFeature {
 
 /** Every kind of feature there is. */
 export type FeatureEntry = ExtrudeFeature | RevolveFeature;
+
+/**
+ * Which expansion of an extrude or revolve call a feature was made by: `10`,
+ * today's, whose frames reuse the twins of the profile's vertices they copy;
+ * `9`, a file of format 9 or below's, whose frames have points all their own.
+ * Here rather than beside `EXPANSION` in operations.ts because the record
+ * carries it, so regeneration rebuilds a feature the way it was made.
+ */
+export type Expansion = 9 | 10;
 
 /**
  * A feature's record as an operation hands it over — everything but the name

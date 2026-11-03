@@ -440,7 +440,17 @@ are flagged as such.
   - **A curve on the sketch frame twins onto the lid frame; one on any other
     frame keeps its own** (same orientation, so the same arc). Choosing by name
     rather than by which way a frame faces is what keeps a replay on seeds from
-    deciding it differently. The lid frame always has its own three points.
+    deciding it differently.
+  - **A frame a feature makes reuses the points the feature already makes
+    there** (replaced 2026-11-03; it said "the lid frame always has its own
+    three points"). The owner, on doubled point labels on an extruded plate:
+    *"i'm getting a lot of overlapping points. why is this happening?"* — and,
+    told why and what the fix would be, *"of course it should."* A lid frame
+    point (a partial revolve's end-frame point) over a sketch-frame point that
+    is a profile vertex — by join, never by position — is that vertex's twin;
+    any other is the frame's own. The depth holds each place once. Format 10;
+    files of 9 and below keep their old expansion (see the queue entry
+    "A lid frame shares the lid's own points").
   - **No format bump** (version stays 7): two new ops, no changed meaning; an
     older build refuses a newer file at the step, by op name — the deletion
     ops' precedent. *(Version 8 came with regions split PR 2, 2026-10-22, when
@@ -1122,6 +1132,61 @@ are flagged as such.
 Queue for Opus, in order. Each gets a spec in `docs/plans/` before work
 starts.
 
+- [x] **A lid frame shares the lid's own points — BUILT (2026-11-03).** The
+      owner: *"i'm getting a lot of overlapping points. why is this
+      happening?"* / *"of course it should."* An extrude's lid frame and a
+      partial revolve's end frames take the twin of every point of the frame
+      they copy that is a profile vertex; the depth (angle) holds each place
+      once; regeneration and `del` own a shared point once, as a twin. The
+      owner's plate: 17 points with three pairs on one spot, now 14 and none.
+      Format 10; a version-9 file replays with the old expansion. Spec:
+      [`docs/plans/lid-frame-shares-points.md`](docs/plans/lid-frame-shares-points.md).
+      Deviations from the spec:
+      - ⚠ **"…and its extrude counterpart"** of `twinFrame`: there is none. An
+        extrude never twins a curve's other frame (a translated frame keeps its
+        orientation, so an off-sketch curve's twin stays on its own frame).
+        Only the lid frame and revolve's end frames make frames; the spec text
+        is corrected.
+      - ⚠ **The old expansion is said in the entry**, not chosen from the file's
+        version at replay: `translate` writes `9` into every extrude and partial
+        revolve from before 10 (`extrude(…, loops, 9)`), because a reopened old
+        file is saved as version 10 and must still mean the old expansion. The
+        fillet-8 pattern, one argument later. A whole turn makes no frame and is
+        left alone. The record carries `expansion` so regeneration rebuilds the
+        old way too.
+      - ⚠ **Every** pre-10 extrude is marked, not only those whose frame stood
+        on the profile: a later `regen` can bring a sketch-frame point into the
+        profile, and the two expansions differ there.
+      - ⚠ **The revolve's end frame stays a frame pair** in the angle's
+        arguments, and the `revolution` relation skips any of its points a
+        corner pair already holds — spelling out only the made points as point
+        pairs would have stopped the sketch frame's points being read as a
+        datum.
+      - ⚠ **Regeneration merges the other way too** (not asked, follows from
+        the rule): a sketch-frame point the profile comes to run through takes
+        the lid point already above it as its twin.
+      - ⚠ **The e2e asserts one doubled label left on the sketch** — see below.
+      **Found while building, left deliberately:**
+      - **The line tool's closing click doubles a point** (not this package's):
+        a click snapped onto an existing point makes a point of its own there
+        and `coin`s it, the chain's own first point included, so a triangle
+        drawn with the line tool is four points, two of them one corner, and
+        shows two names there (`test/e2e/lidframe.e2e.ts`'s first screenshot).
+        The lid has one twin for it (per joined class). Likely part of what the
+        owner saw; the remedy is the line tool reusing the point it snaps to
+        when closing its own chain — a tool change, its own package.
+      - **A sketch-frame point on a corner's spot but not joined to it** gets
+        its own lid point, on top of the corner's twin: the rule reads joins,
+        because a replay on seeds cannot read positions.
+      - **A revolve about the sketch frame's own axis** leaves the end frame's
+        origin and y-ref (on the axis) on the sketch frame's own points — not
+        points the feature made, so outside the rule.
+      - **Deleting a lid corner the lid frame stands on takes the lid frame**
+        and whatever is drawn on it, as deleting any frame's point does; before,
+        the lid frame had its own points and survived.
+      - **A boss's lid frame on a face still floats** (open default 2 above): the
+        face frame is the plate's corners, which are no vertices of the boss.
+
 - [x] **Sketch on a solid's face — BUILT (2026-10-21).** The one-model design
       made it one step: `arm("sketch")` and a click inside a face, or
       right-click → **Sketch on this face**, types `plane(a, b, c)` on three of
@@ -1172,7 +1237,9 @@ starts.
         points out past the plate's corner, in empty space, `depth` off the
         wall (visible in the poster). Correct, and cluttered; the remedy would
         be extrude choosing its lid frame from the profile rather than twinning
-        the sketch frame — an extrude change, not this package's.
+        the sketch frame — an extrude change, not this package's. (Still so
+        after the lid frame learned to share the lid's points, 2026-11-03: the
+        face frame's points are the plate's corners, no vertices of the boss.)
       - **The menu item and the tool make the frame default and look at it,
         always** (`plane()`'s contract). Sketching on a face you only meant to
         measure against means `frame(a, b, c)` typed.

@@ -7,6 +7,69 @@ decisions.
 
 ---
 
+## A feature's frames stand on its own points: no doubled labels on a lid
+
+The owner, on a screenshot of an extruded plate with its point names printed
+over each other:
+
+> *i'm getting a lot of overlapping points. why is this happening?*
+
+and, told why and what the fix would be:
+
+> *of course it should.*
+
+**Why it happened.** An extrude's lid frame (the sketch frame moved by the
+depth, so a sketch on the cap has a plane) always made three points of its
+own. Since a frameless sketch's frame is three of the outline's own corners
+(`extrude-makes-its-plane`), those three landed exactly on three lid corner
+twins, held there by the depth: measured on the owner's plate with a
+triangular hole, **17 points, three pairs on one spot each** (`p8 = p11`,
+`p9 = p12`, `p10 = p14`). A partial revolve's end frames did the same.
+
+**The rule now: a frame a feature makes reuses an entity the feature already
+makes at the same place.** For each of the sketch frame's three points: if it
+is a profile vertex, the lid frame takes that vertex's twin; if not (a frame
+floating off the profile, a user's `plane()` elsewhere) it makes its own point
+as before. The same for every revolve end frame. The depth (or angle) holds
+each place once. The same plate is now **14 points, no two on one spot**, in
+the unit test and in the browser (`test/lidframe.test.ts`,
+`test/e2e/lidframe.e2e.ts`).
+
+- **The revolution relation** takes an end frame as a frame pair, which is how
+  it knows the sketch frame's points are a datum. It now skips a frame point a
+  corner pair already holds, instead of adding a second, redundant block: four
+  blocks for a rectangle's end face, not seven.
+- **Regeneration follows the rule.** A shared lid point is owned once, as a
+  twin. If its corner later leaves the profile (a line drawn across, then
+  `regen`), the point stays as the lid frame's own, held by its own pair, and
+  only the wall goes. If a sketch-frame point comes into the profile, it takes
+  the lid point already above it as its twin instead of getting a second one.
+- **Deletion:** `del("e1")` takes each shared point once. Deleting a lid
+  corner that the lid frame stands on now also takes the lid frame and
+  whatever is drawn on it, as deleting any frame's point does.
+
+**Format version 10.** No entry changed shape, but the expansion makes fewer
+points in a different order. **Old files open exactly as they were**: every
+`extrude`, and every partial `revolve`, from a file of version 9 or below is
+given the expansion `9` on the way in (a sixth/seventh argument), which
+rebuilds its frames with points of their own, under the names the file's
+later entries hold, and regenerates it the old way. The `9` stays in the
+entry when the file is saved again. Without it, measured: the owner's plate
+saved by a version-9 build, with a `dist` drawn on a later point, fails to
+reopen at that step (`"p16" is not a point`). A new file's entry is the call
+as it always was.
+
+**Found and left, in `TODO.md`:** the line tool, closing a chain back onto its
+first point, makes a point of its own there and joins it with a coin, so a
+triangle drawn with it shows two names at one corner of the *sketch* (seen in
+the e2e's first screenshot; the lid has one twin there). Also left: a
+sketch-frame point on the same spot as a corner but not joined to it still
+gets its own lid point, because the rule reads joins, never positions; and a
+revolve about the sketch frame's own axis puts its end frame's origin and
+y-ref on the sketch frame's, which the feature did not make.
+
+12 new unit tests (923 in all, from 911) and 3 new e2e (361, from 358); `npm run test:all` green.
+
 ## A confirmed feature releases its tool, so the solid looks like a solid
 
 Found in the browser after merging opaque solids and pick-preview-confirm:

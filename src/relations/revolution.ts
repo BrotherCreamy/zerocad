@@ -124,7 +124,13 @@ export function turnPoint(p: number[], axis: AxisValue, angle: number): number[]
  * - **two frames** — the end face's own frame held at the sketch frame turned:
  *   three residuals for each of the twin's origin, x-ref and y-ref. A frame
  *   rather than its points spelled out as pairs, because it says which bases are
- *   a datum (below) without a second list to keep in step.
+ *   a datum (below) without a second list to keep in step. **A twin frame's
+ *   point that a point pair already holds is not held again**: an end frame
+ *   stands on the end face's own corners wherever its frame stands on the
+ *   profile's (`frameOver` in operations.ts), and a second block holding the
+ *   same point at the same place would be a redundant equation, reported as
+ *   one. A frame of points all its own — every frame before format 10 — is held
+ *   whole, exactly as it was.
  *
  * **The axis is a datum, read and never pushed** — the spec's line, and the rule
  * every relation written against a frame keeps. It reaches the residual as
@@ -200,6 +206,11 @@ export function revolution(model: Model, axis: string, angle: number, ...pairs: 
         model.addResidual([...model.point(b).varIndices, ...tv], (l) => turned((k) => l[k], l, 3), `revolution(${b},${t})`);
       }
     };
+    // Which twins a point pair holds, so a frame pair can leave those to it.
+    const held = new Set<string>();
+    for (let i = 0; i < pairs.length; i += 2) {
+      if (model.entities.get(pairs[i])?.kind === "point") held.add(pairs[i + 1]);
+    }
     for (let i = 0; i < pairs.length; i += 2) {
       const [b, t] = [pairs[i], pairs[i + 1]];
       const be = model.entities.get(b), te = model.entities.get(t);
@@ -210,7 +221,11 @@ export function revolution(model: Model, axis: string, angle: number, ...pairs: 
       } else if (be?.kind === "frame" && te?.kind === "frame") {
         const [bp, tp] = [model.refsOf(be), model.refsOf(te)];
         if (bp.length !== tp.length) throw new Error(`"${b}" and "${t}" are not frames of one kind`);
-        bp.forEach((p, k) => holdPoint(p, tp[k]));
+        bp.forEach((p, k) => {
+          if (held.has(tp[k])) return;
+          held.add(tp[k]);
+          holdPoint(p, tp[k]);
+        });
       } else {
         throw new Error(`"${b}" and "${t}" are not a pair a revolution can hold — two points, two circles or arcs, or two frames`);
       }

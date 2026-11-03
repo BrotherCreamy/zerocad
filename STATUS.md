@@ -1276,7 +1276,7 @@ replacing) the system Node other projects on this machine may depend on.
   refusing none, or several (listed; `frame` narrows to the loop parallel to
   it), or a loop no frame orients — and expands it, with every loop inside it,
   into: a **lid frame** (the sketch frame's three points lifted by the depth,
-  then the frame); one **twin point per joined class** of the profile's points
+  then the frame — as built then; see the note below); one **twin point per joined class** of the profile's points
   (corners and centres, joined by `loops.ts`'s own `joinClasses`); a **twin
   member** per member in its own direction (a curve on the sketch frame onto
   the lid frame, any other keeps its own); a **wall line** per corner class,
@@ -1307,7 +1307,10 @@ replacing) the system Node other projects on this machine may depend on.
   *The rule now:* a feature's expansion is a function of its profile and
   follows it — a fillet on a profile corner regenerates the lid, keeping every
   twin and wall whose corner survives (see **Feature regeneration** below).
-  *Known and deliberate:* the lid frame always has its own points; `fillet`'s new points are not held on the sketch, so a `set` can stir
+  *The lid frame now* stands on the lid's own corners wherever the sketch
+  frame stands on the profile's, and has points of its own only elsewhere (see
+  **A feature's frames share its own points** below; `rels()` on a frameless
+  rectangle says 4 pairs). *Known and deliberate:* `fillet`'s new points are not held on the sketch, so a `set` can stir
   a rounded corner by a few millionths along +z.
   *Spec:* [`docs/plans/3d-phase4-extrude.md`](docs/plans/3d-phase4-extrude.md).
 - **Extrude, the faces and the tool** (`src/faces.ts` (new),
@@ -2049,6 +2052,40 @@ replacing) the system Node other projects on this machine may depend on.
   sampling twice; a profile member that is a portion of a longer line keeps
   its sketch colour on a solid. *Spec:*
   [`docs/plans/opaque-solids.md`](docs/plans/opaque-solids.md).
+
+- **A feature's frames share its own points** (`frameOver`, `sweptFrames`,
+  `Expansion`/`EXPANSION`, `extrudeBody`, `revolveBody` and `rebuildFeature` in
+  `src/operations.ts`; the frame-pair dedupe in `src/relations/revolution.ts`;
+  `expansion` on both feature records in `src/model.ts`; `persist.ts`'s
+  `VERSION` 10 and `translate`). The owner, on doubled labels on an extruded
+  plate: *"i'm getting a lot of overlapping points. why is this happening?"* /
+  *"of course it should."* **A lid frame, and each partial revolve's end
+  frame, takes the twin of every point of the frame it copies that is a profile
+  vertex** (by joined class, never by position), and makes a point of its own
+  only for one that is not; the twins are made first now, then the frame. The
+  depth holds each place once: an extrude passes only the frame's own points as
+  pairs; the revolution relation keeps the frame pair (it is what marks the
+  sketch frame's points a datum) and skips any point a corner pair holds. The
+  owner's frameless plate with a triangular hole: 17 points with three pairs on
+  one spot before, 14 and none after. **Regeneration** owns a shared point once,
+  as a twin; keeps a lid point whose corner has left the profile, held as the
+  frame's own; and hands a sketch-frame point that comes into the profile the
+  lid point already over it. **Format version 10**: every `extrude` and partial
+  `revolve` from a file of version ≤ 9 is given the expansion `9` by
+  `translate`, which rebuilds its frames with their own points first, as that
+  build did, and regenerates it the old way; the `9` stays in the entry on
+  re-save. A new entry is the call as it always was. Unit:
+  `test/lidframe.test.ts` (12, new); version pins in `app3d`, `dimensions`,
+  `frames`; the old-file fixtures in `regen` and `regionfeatures` now built with
+  the old expansion. Browser: `test/e2e/lidframe.e2e.ts` (3, new); version pins
+  in `camera`, `planar`, `regen`. 923 unit tests, 361 e2e. *Known and
+  deliberate:* a sketch-frame point on a corner's spot but not joined to it
+  still gets its own lid point; a revolve about the sketch frame's own axis
+  leaves its end frame's origin and y-ref on the sketch frame's; deleting a lid
+  corner the lid frame stands on takes the lid frame with it (and what is drawn
+  on it); a boss's lid frame on a face still floats (the face frame's points
+  are the plate's, not the boss's). *Spec:*
+  [`docs/plans/lid-frame-shares-points.md`](docs/plans/lid-frame-shares-points.md).
 
 
 ## What's next

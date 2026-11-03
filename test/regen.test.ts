@@ -444,20 +444,27 @@ test("undo of the fillet is one step and brings the four-cornered lid back", asy
 test("a version-8 file's fillet after an extrude opens as it was — regenerating nothing — and re-saves with that said; a fillet no feature stood on passes untouched", async () => {
   await loadKernel();
   const { m, lines } = rectangle();
-  extrude(m, lines[0], 20);
+  // Expanded as a version-8 build expanded it: the lid frame's points its own.
+  extrude(m, lines[0], 20, null, null, 9);
   m.solve();
   fillet(m, lines[0], lines[1], 8, null, []);
   // Drawn after the fillet, so the file names a point the regeneration would claim.
   const later = m.addPoint([60, 60, 0]).name;
   m.solve();
-  // What a version-8 build wrote: the four arguments, and nothing regenerated.
+  // What a version-8 build wrote: the four arguments, and nothing regenerated —
+  // and an extrude that says nothing of its expansion, there being only one.
   const v8 = JSON.parse(save(m));
   v8.version = 8;
   const entry = v8.journal.find((e: { op: string }) => e.op === "fillet");
   entry.args = entry.args.slice(0, 4);
-  // Why the translation is needed: read without it, the fillet regenerates on
+  const ex = v8.journal.find((e: { op: string }) => e.op === "extrude");
+  const marked = ex.args;
+  ex.args = marked.slice(0, 4);
+  // Why the translation is needed: read without it (the extrude still given
+  // its old expansion, so only the fillet differs), the fillet regenerates on
   // replay, claims the next auto-names, and the point drawn after it fails.
-  assert.throws(() => open(JSON.stringify({ ...v8, version: VERSION })), new RegExp(`\"${later}\" already exists`));
+  const untranslated = { ...v8, version: VERSION, journal: v8.journal.map((e: { op: string }) => (e === ex ? { ...ex, args: marked } : e)) };
+  assert.throws(() => open(JSON.stringify(untranslated)), new RegExp(`\"${later}\" already exists`));
   const opened = open(JSON.stringify(v8));
   assert.deepEqual(opened.featureOf("e1"), m.featureOf("e1"), "the square lid, as the old build left it");
   assert.deepEqual(allNames(opened), allNames(m));
