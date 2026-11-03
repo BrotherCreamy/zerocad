@@ -24,6 +24,18 @@ otherwise.
 
 ## Decisions made so far — veto here if any are wrong
 
+- **Generated geometry stays named, but quiet** (2026-11-03, from the owner
+  asking whether every generated edge and corner should be a named entity):
+  yes. A lid corner being a real point is this design's answer to the
+  topological naming problem — a relation on it holds *that* point, and
+  regeneration keeps its identity — and it is what lets a sketch point and a
+  solid's corner be related at all. What it costs is noise, so generated
+  geometry is quiet: corners and solid edges show on hover
+  ([`docs/plans/quiet-geometry.md`](docs/plans/quiet-geometry.md)). Lazy
+  materialisation stays for what is fully determined by named entities (a
+  crossing, as regions-split does). Held in reserve, not planned: a lid point
+  as a computed value of its base and the depth rather than a solved
+  variable, if the entity count ever hurts.
 - **Flat relational direct CAD: no hierarchy** (the owner's statement of the
   project's concept, 2026-11-03, verbatim): *"the concept of this project is
   flat relational direct cad. there is no hierarchy. a sketch entity exists in
