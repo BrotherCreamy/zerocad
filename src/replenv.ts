@@ -188,6 +188,17 @@ export function neocadScope(h: EnvHandles): Bag {
   const sources = h.toolSources ?? toolSources;
   const memory = h.optionMemory ?? new OptionMemory(null);
 
+  /** The entities a feature made, in the order it made them. */
+  const featureMembers = (name: string): string[] => {
+    const f = typeof name === "string" ? model.features.get(name) : undefined;
+    if (!f) {
+      const known = [...model.features.keys()];
+      throw new Error(`${JSON.stringify(name)} is not a feature — members names one`
+        + (known.length ? ` (${known.join(", ")})` : "; there are none yet"));
+    }
+    return f.owns.filter((n) => model.entities.has(n));
+  };
+
   /**
    * The relation vocabulary, short name and long, each with where `_` may
    * stand (see clauses.ts). A slot marked `#` takes a number, so `_` there is
@@ -787,10 +798,29 @@ export function neocadScope(h: EnvHandles): Bag {
     solve: () => (h.solve ? h.solve() : model.solve()),
     // Entities, then features — `e1  extrude of …`, `e2  revolve of …` —
     // since a feature is a named thing `del` takes as surely as an entity.
-    ls: () => [
-      ...[...model.entities.values()].map((e) => describe(e, model)),
-      ...[...model.features.values()].map((f) => describeFeature(model, f)),
-    ],
+    //
+    // **A feature's output is a count under its line**, not a line per twin:
+    // a box is a profile of four lines and seventeen things the extrude made,
+    // and listing those seventeen buried the four the user drew. They stay
+    // named entities (the register: a relation on a lid corner holds *that*
+    // point), so `members("e1")` lists them, line for line as this used to.
+    ls: () => {
+      const made = new Set<string>();
+      for (const f of model.features.values()) for (const n of f.owns) made.add(n);
+      return [
+        ...[...model.entities.values()].filter((e) => !made.has(e.name)).map((e) => describe(e, model)),
+        ...[...model.features.values()].flatMap((f) => {
+          const n = featureMembers(f.name).length;
+          return [describeFeature(model, f), ...(n ? [`    ${n} made — members(${JSON.stringify(f.name)}) lists them`] : [])];
+        }),
+      ];
+    },
+    /**
+     * What a feature made, one line each, as `ls()` lists an entity — the
+     * lines `ls()` folds into a count under the feature. The entities only:
+     * the dimension it made is already on the feature's own line.
+     */
+    members: (name: string) => featureMembers(name).map((n) => describe(model.entities.get(n)!, model)),
     /**
      * The constraints, by name — all of them, or (given a name) just the ones
      * that mention it. This is the other half of what makes an inferred
@@ -1052,6 +1082,7 @@ function help(scope: Bag): string {
     "           right-drag orbits, middle-drag pans, the wheel zooms; a click",
     "           lands on the default frame's plane (or the one facing you)",
     "inspect    ls()  rels(name?)  coords(name)  solve()  tools()  hover()",
+    '           members("e1") — what a feature made; ls() counts it under e1.',
     "           snapping(on)  glyphs(on)  model",
     "           loops() — the closed loops of lines and arcs (and whole circles),",
     "           each in one plane: ends join only at a shared point or a coin,",

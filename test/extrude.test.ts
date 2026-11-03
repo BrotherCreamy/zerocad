@@ -598,7 +598,10 @@ test("the command line: extrude returns the feature, ls() lists it, rels() and t
   assert.equal(ex(lines[0], 20), "e1");
   const f = m.featureOf("e1", "extrude");
   const ls = (scope.ls as () => string[])();
-  assert.equal(ls.at(-1), "e1  extrude of l1,l2,l3,l4, depth d1 = 20 along t, lid f1");
+  // The feature's line, then what it made as a count under it (quiet-geometry.md): seven
+  // points, the lid frame, eight lines.
+  assert.equal(ls.at(-2), "e1  extrude of l1,l2,l3,l4, depth d1 = 20 along t, lid f1");
+  assert.equal(ls.at(-1), `    16 made — members("e1") lists them`);
   // A lid corner is held by the depth and nothing else.
   const corner = m.line(f.walls[0]).refs[1];
   assert.deepEqual((scope.rels as (n?: string) => string[])(corner), ["d1  extrusion 20 along t.z, 7 pairs"]);
