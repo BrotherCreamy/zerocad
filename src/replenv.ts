@@ -41,6 +41,13 @@ export interface EnvHandles {
   arm?: (toolName: string, options?: Record<string, unknown>) => void;
   /** The name of whatever the cursor is currently over, if anything. */
   pick?: () => string | null;
+  /**
+   * The canvas's selection: given nothing, the names selected; given names,
+   * exactly those selected (already checked), and then the names. UI state the
+   * model never hears of — not journalled, not in a file, not an undo step —
+   * which is why it is a host handle, like the layout.
+   */
+  selection?: (names?: readonly string[]) => string[];
   /** Turns cursor snapping on or off; reports the current state when given nothing. */
   snapping?: (on?: boolean) => boolean;
   /**
@@ -821,6 +828,21 @@ export function neocadScope(h: EnvHandles): Bag {
     },
     cancel: () => { h.cancel?.(); return "cancelled"; },
     hover: () => h.pick?.() ?? null,
+    /**
+     * The canvas's selection — what a click, a shift-click or a box picked with
+     * the command line empty. `sel()` lists it; `select("l1", "l2")` sets it
+     * and `select()` clears it. Not an edit: never journalled, never in a file,
+     * never an undo step. (Regions picked on the canvas are part of it too, and
+     * are not names; `sel()` lists the names.)
+     */
+    sel: () => {
+      if (!h.selection) throw new Error("no viewport in this environment");
+      return h.selection();
+    },
+    select: (...names: unknown[]) => {
+      if (!h.selection) throw new Error("no viewport in this environment");
+      return h.selection(selectable(names));
+    },
     snapping: (on?: boolean) => {
       if (!h.snapping) throw new Error("no viewport in this environment");
       return h.snapping(on);
@@ -921,6 +943,18 @@ export function neocadScope(h: EnvHandles): Bag {
       return applyClauses("constrain", name, given as Clause[], false);
     },
   };
+
+  /**
+   * The names `select` was given, checked before the selection changes: each
+   * an entity or a relation the model holds.
+   */
+  function selectable(names: unknown[]): string[] {
+    for (const n of names) {
+      if (typeof n !== "string") throw new Error(`select takes names, and ${JSON.stringify(n) ?? String(n)} is not one`);
+      if (!model.entities.has(n) && !model.relations.has(n)) throw new Error(`select: "${n}" is not an entity or a relation`);
+    }
+    return names as string[];
+  }
 
   const scope: Bag = { ...relations, ...geometry, ...operations, ...persistence, ...clauses, ...commands };
   scope.help = () => help(scope);
@@ -1051,6 +1085,14 @@ function help(scope: Bag): string {
     "           arrangement is yours, in this browser, and never in a file.",
     "           right-drag orbits, middle-drag pans, the wheel zooms; a click",
     "           lands on the default frame's plane (or the one facing you)",
+    "selection  click selects (the command line empty), shift-click adds or",
+    "           drops, a box selects what it catches (shift adds), a click on",
+    "           empty canvas or Escape clears; it is drawn in violet. With text",
+    "           in the command line a click inserts the name instead, as ever.",
+    '           sel()  select("l1", "l2")  select() — list, set, clear. Yours,',
+    "           not the drawing's: never journalled, never an undo step. The",
+    "           right-click menu acts on it (Delete); the Delete key types",
+    '           del("l1", "l2") for it.',
     "inspect    ls()  rels(name?)  coords(name)  solve()  tools()  hover()",
     "           snapping(on)  glyphs(on)  model",
     "           loops() — the closed loops of lines and arcs (and whole circles),",

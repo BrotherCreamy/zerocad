@@ -1,5 +1,13 @@
-// Which regions are selected — the feature tools' picks, and the canvas's
-// preselection with nothing armed.
+// What is selected — the canvas's selection with nothing armed (entities,
+// relations and regions: `Selection`), and the feature tools' picks of regions
+// (`RegionSelection`).
+//
+// **There was no entity selection until groups needed one** (docs/plans/
+// groups.md): a click put a name in the command line and that was all. A
+// click still does that while a command is being written — text in the
+// command line is the signal, the same one the undo carve-out read — and
+// otherwise selects, as every CAD tool's click does, so a set can be grouped,
+// deleted or hidden in one gesture.
 //
 // Onshape's selection, as far as regions go: a click inside a region toggles it
 // into a feature's selection, several may be selected, and a second click on
@@ -124,5 +132,84 @@ export class RegionSelection {
   /** Takes over `regions` (a preselection), as picked in that order. */
   adopt(regions: readonly RegionHit[]): void {
     this.picked = [...regions];
+  }
+}
+
+/**
+ * The selection's colour: a violet — not the hover's amber, not an armed
+ * tool's green, not either box's blue or green — chosen to read on a solid's
+ * light faces (with the casing every light mark gets there, main.ts) and on
+ * the dark ground alike. Entities, glyphs and preselected regions all wear
+ * it: one selection, one highlight family.
+ */
+export const SELECTION = "#c46cff";
+
+/**
+ * **The canvas's selection**: the entities and relations picked with nothing
+ * armed, in the order picked — and the regions, which are the same selection
+ * for regions (`regions`), kept by a point inside each for the reason at the
+ * top of this file.
+ *
+ * UI state and nothing more: never journalled, never in a file, never an undo
+ * step. What it holds is names, so a name that stops answering leaves it the
+ * next time it is asked (`prune`).
+ */
+export class Selection {
+  private picked: string[] = [];
+  readonly regions = new RegionSelection();
+
+  /** The names, in the order picked. */
+  get names(): readonly string[] {
+    return this.picked;
+  }
+
+  get size(): number {
+    return this.picked.length + this.regions.size;
+  }
+
+  has(name: string): boolean {
+    return this.picked.includes(name);
+  }
+
+  /** A plain click: this and nothing else — no region either. */
+  only(name: string): void {
+    this.picked = [name];
+    this.regions.clear();
+  }
+
+  /** A shift-click: in if it was out, out if it was in. Regions are left alone. */
+  toggle(name: string): void {
+    const at = this.picked.indexOf(name);
+    if (at === -1) this.picked.push(name);
+    else this.picked.splice(at, 1);
+  }
+
+  /** A shift-box: every name not already selected, at the end. */
+  add(names: readonly string[]): void {
+    for (const n of names) if (!this.picked.includes(n)) this.picked.push(n);
+  }
+
+  /** A plain box, or `select(...)` typed: exactly these, no region. */
+  set(names: readonly string[]): void {
+    this.picked = [...new Set(names)];
+    this.regions.clear();
+  }
+
+  /** Drops everything, answering whether there was anything to drop. */
+  clear(): boolean {
+    const had = this.size > 0;
+    this.picked = [];
+    this.regions.clear();
+    return had;
+  }
+
+  /**
+   * The names that still answer, with the rest dropped. Asked every frame by
+   * whatever draws the selection, so a deleted entity leaves the selection as
+   * it leaves the screen.
+   */
+  prune(model: Model): readonly string[] {
+    this.picked = this.picked.filter((n) => model.has(n));
+    return this.picked;
   }
 }

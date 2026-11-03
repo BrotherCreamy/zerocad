@@ -161,9 +161,11 @@ export function missedRegion(model: Model): string {
  * drawn (world coordinates), or null when there was nothing to draw — a drawing
  * that moved under the hover, which the next move asks about again. `fill` is
  * the tint's alpha, as two hex digits: a chosen region is drawn a shade
- * stronger than one merely under the cursor.
+ * stronger than one merely under the cursor. `colour` is the tools' green
+ * unless the caller is drawing the canvas's selection, which has its own.
  */
-export function drawRegion(model: Model, r: RenderContext, region: Region, fill = "2e"): number[][][] | null {
+export function drawRegion(model: Model, r: RenderContext, region: Region, fill = "2e",
+                           colour = REGION_GREEN): number[][][] | null {
   let outlines: number[][][];
   try {
     outlines = loopOutlines(model, regionOf(region.loops, region.index).map((i) => region.loops[i].members), r.scale);
@@ -179,9 +181,9 @@ export function drawRegion(model: Model, r: RenderContext, region: Region, fill 
     for (const q of pts.slice(1)) r.g.lineTo(...q);
     r.g.closePath();
   }
-  r.g.fillStyle = `${REGION_GREEN}${fill}`;
+  r.g.fillStyle = `${colour}${fill}`;
   r.g.fill("evenodd");
-  r.g.strokeStyle = REGION_GREEN;
+  r.g.strokeStyle = colour;
   r.g.lineWidth = 2.4;
   r.g.stroke();
   r.g.restore();

@@ -153,7 +153,7 @@ test("the marker is pickable, and the tag says whether it is the default", async
   await app.page.mouse.down();
   await app.page.mouse.up();
   await app.page.waitForTimeout(120);
-  assert.equal(await cmd(), '"f1"', "clicking it drops its name in the command line, like any other entity");
+  assert.deepEqual(await app.selection(), ["f1"], "clicking it selects it, like any other entity");
 
   await app.page.fill("#cmd", "");
   await app.type('setDefaultFrame("f1")');
@@ -360,7 +360,8 @@ test("a box catches the frame by its marker, and del takes the frame's relations
   await app.page.mouse.move(to.x, to.y, { steps: 6 });
   await app.page.mouse.up();
   await app.page.waitForTimeout(150);
-  assert.match(await cmd(), /"f1"/, `a box over the marker selects the frame: got ${await cmd()}`);
+  const boxed = await app.selection();
+  assert.ok(boxed.includes("f1"), `a box over the marker selects the frame: got ${boxed.join(" ")}`);
 
   await app.page.fill("#cmd", "");
   const removed = await app.repl('del("f1")');

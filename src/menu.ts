@@ -116,7 +116,10 @@ function quoted(name: string): string {
  * left out, the menu is only about the pick, which is what most tests ask.
  * `viewMode`, when given, adds the View row to the empty-canvas menu (see
  * `viewItem`) — the host's to say, like the history, since how solids are
- * shown is the viewer's and not the model's.
+ * shown is the viewer's and not the model's. `selection` is the canvas's
+ * selection (the engine's, UI state the model never hears of), which the menu
+ * acts on when the right-click landed on part of it or on empty canvas — see
+ * `selectionItems`.
  *
  * Pure, and deliberately so — it reads the model and returns strings. Nothing
  * here runs a command, touches the DOM or knows a menu can be on screen.
@@ -127,11 +130,36 @@ export function menuFor(
   region: RegionHit | null = null,
   history: History | null = null,
   viewMode: ViewMode | null = null,
+  selection: readonly string[] = [],
 ): Menu {
-  const menu = menuOf(model, pick, region);
+  const menu = menuOf(model, pick, region, selection);
   if (!pick && viewMode) menu.items.push(viewItem(viewMode));
   if (history) menu.items.push(...historyItems(history));
   return menu;
+}
+
+/** How many selected names a menu's header spells out before it counts the rest. */
+const SELECTION_HEAD = 6;
+
+/**
+ * **The selection's items**, each typing its command over every selected
+ * name — `del("l1", "l2")`. On the menu when the right-click landed on
+ * something selected, or on empty canvas with anything selected; never for a
+ * right-click on something *not* selected, which is about that thing alone, as
+ * it always was.
+ */
+function selectionItems(selection: readonly string[]): MenuItem[] {
+  const args = selection.map(quoted).join(", ");
+  return [
+    { label: "Delete", action: { do: "run", command: `del(${args})` } },
+  ];
+}
+
+/** The selection named for a menu's header: every name, or the first few and a count. */
+function selectionHeader(selection: readonly string[]): string {
+  const shown = selection.slice(0, SELECTION_HEAD);
+  const more = selection.length - shown.length;
+  return `${selection.length} selected  ${shown.join(" ")}${more ? ` +${more}` : ""}`;
 }
 
 /**
@@ -155,21 +183,39 @@ function viewItem(current: ViewMode): MenuItem {
   };
 }
 
-function menuOf(model: Model, pick: Pick | null, region: RegionHit | null): Menu {
-  if (!pick) return emptyCanvasMenu(model, region);
-  if (pick.kind === "relation") {
-    return {
-      // The same sentence the hover tag writes for a glyph — `d1  dist p1 p2 50`
-      // — because the menu is answering the question the tag just asked, and two
-      // spellings of one relation would be two things to keep in step.
-      header: describePick(model, pick),
-      items: [
-        ...setValueItem(model, pick.name),
-        { label: "Delete", action: { do: "run", command: `del(${quoted(pick.name)})` } },
-      ],
-    };
+function menuOf(model: Model, pick: Pick | null, region: RegionHit | null, selection: readonly string[]): Menu {
+  const onSelection = selection.length > 0 && (pick === null || selection.includes(pick.name));
+  if (!pick) {
+    const menu = emptyCanvasMenu(model, region);
+    if (!onSelection) return menu;
+    return { header: selectionHeader(selection), items: [...selectionItems(selection), ...menu.items] };
   }
-  return entityMenu(model, pick);
+  // Several selected, one of them right-clicked: the menu is about the set.
+  if (onSelection && selection.length > 1) {
+    return { header: selectionHeader(selection), items: selectionItems(selection) };
+  }
+  const menu = pick.kind === "relation" ? relationMenu(model, pick) : entityMenu(model, pick);
+  // The one thing selected is the thing clicked: its own menu, whose Delete
+  // is already the selection's, with the rest of the selection's items.
+  if (onSelection) {
+    const extra = selectionItems(selection).filter((i) => i.label !== "Delete");
+    const at = menu.items.findIndex((i) => i.label === "Delete") + 1;
+    menu.items.splice(at, 0, ...extra);
+  }
+  return menu;
+}
+
+function relationMenu(model: Model, pick: Pick): Menu {
+  return {
+    // The same sentence the hover tag writes for a glyph — `d1  dist p1 p2 50`
+    // — because the menu is answering the question the tag just asked, and two
+    // spellings of one relation would be two things to keep in step.
+    header: describePick(model, pick),
+    items: [
+      ...setValueItem(model, pick.name),
+      { label: "Delete", action: { do: "run", command: `del(${quoted(pick.name)})` } },
+    ],
+  };
 }
 
 /**

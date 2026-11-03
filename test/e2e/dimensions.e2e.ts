@@ -147,13 +147,17 @@ test("the browser's monospace is the width glyphs.ts assumes it is", async () =>
     `GLYPH_CHAR_W is 7.2 but the browser draws ${advance.toFixed(3)}px per character`);
 });
 
-test("clicking a dimension drops its relation's name in, like every other glyph", async () => {
+test("clicking a dimension selects it, or drops its relation's name into a command, like every other glyph", async () => {
   await app.page.fill("#cmd", "");
   const bottom = (await glyphs()).find((g) => g.symbol === "110")!;
   await clickAt(...bottom.screen);
-  assert.equal(await app.page.inputValue("#cmd"), `"${bottom.relation}"`,
-    "no second selection model, and deliberately no editing yet");
+  assert.deepEqual(await app.selection(), [bottom.relation], "no second selection model");
+  await app.page.fill("#cmd", "del(");
+  await clickAt(...bottom.screen);
+  assert.equal(await app.page.inputValue("#cmd"), `del("${bottom.relation}"`,
+    "and deliberately no editing on the click");
   await app.page.fill("#cmd", "");
+  await app.repl("select()");
 });
 
 test("a dist label draws witness lines across what it measures", async () => {

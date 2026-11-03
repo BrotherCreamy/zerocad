@@ -15,6 +15,7 @@ import { historyChord } from "./historykeys.ts";
 import { Repl, fmt } from "./repl.ts";
 import { neocadScope } from "./replenv.ts";
 import { ToolEngine, type View } from "./tools/engine.ts";
+import { SELECTION } from "./tools/selection.ts";
 import { runSteps } from "./tools/feature.ts";
 import type { FeatureStep } from "./tools/tool.ts";
 import { previewSteps } from "./featurepreview.ts";
@@ -209,6 +210,10 @@ async function main() {
     const lit = new Set<string>(
       hov ? (hov.kind === "relation" ? constrainedBy(model, hov.name) : [hov.name]) : [],
     );
+    // The selection, in its own colour (tools/selection.ts) — under the hover's
+    // amber, which is about where the hand is now. Pruned here, once a frame,
+    // so a name deleted since it was picked has left it before it is drawn.
+    const chosen = new Set(engine.selection.prune(model));
 
     // A solid's faces first, so everything after is drawn over them: back
     // faces culled, lit from the eye (see faces.ts), and which face is in
@@ -243,8 +248,9 @@ async function main() {
     // split) keeps its sketch colour, because the rest of that line is not on
     // the solid.
     const solid = occluded ? solidEdges() : new Set<string>();
-    const stroke = (name: string) => (lit.has(name) ? "#e8a33d" : solid.has(name) ? SOLID_EDGE : "#afc6d9");
-    const weight = (name: string) => (lit.has(name) ? 2.2 : 1.4);
+    const stroke = (name: string) => (lit.has(name) ? "#e8a33d" : chosen.has(name) ? SELECTION
+      : solid.has(name) ? SOLID_EDGE : "#afc6d9");
+    const weight = (name: string) => (lit.has(name) ? 2.2 : chosen.has(name) ? 2.6 : 1.4);
 
     // Painter's order, far to near, one depth per entity, for the wireframe on
     // top. Curves and frames are one pass and points a second on top, as they
@@ -266,12 +272,12 @@ async function main() {
     if (occluded) {
       casing = true;
       try {
-        entityPass(edges, points, stroke, weight, lit);
+        entityPass(edges, points, stroke, weight, lit, chosen);
       } finally {
         casing = false;
       }
     }
-    entityPass(edges, points, stroke, weight, lit);
+    entityPass(edges, points, stroke, weight, lit, chosen);
 
     // After the entities so a mark is never hidden by the drawing it describes,
     // and before the tool overlay so a gesture in progress stays on top of
@@ -279,7 +285,7 @@ async function main() {
     // The glyphs are the engine's, placed with the occlusion handed to it
     // above, so a mark behind a solid is gone from the picture and the pick
     // alike.
-    renderGlyphs(hov?.kind === "relation" ? hov.name : null);
+    renderGlyphs(hov?.kind === "relation" ? hov.name : null, chosen);
 
     // The empty-canvas hint goes the moment anything exists, and also while a
     // gesture is drawing a preview into a model that has nothing in it yet —
@@ -301,7 +307,7 @@ async function main() {
    * the mark it rims.
    */
   function entityPass(edges: Entity[], points: Entity[], stroke: (name: string) => string,
-                      weight: (name: string) => number, lit: Set<string>) {
+                      weight: (name: string) => number, lit: Set<string>, chosen: Set<string>) {
     for (const e of edges) {
       g.lineWidth = weight(e.name);
       if (e.kind === "line") {
@@ -319,7 +325,7 @@ async function main() {
         const f = curveFrame(model, e);
         if (f) strokeEdge(arcSamples(f, arcSegments(f.sweep, f.r * view.scale)), e.kind === "circle", stroke(e.name));
       } else if (e.kind === "frame") {
-        drawFrame(e.name, lit.has(e.name));
+        drawFrame(e.name, lit.has(e.name), chosen.has(e.name));
       }
     }
 
@@ -330,7 +336,7 @@ async function main() {
       // and not pickable either, by the same answer (picking.ts).
       if (!inSight(hides, world)) continue;
       const [sx, sy] = engine.worldToScreen(world);
-      const r = lit.has(e.name) ? 5 : 3.5;
+      const r = lit.has(e.name) || chosen.has(e.name) ? 5 : 3.5;
       if (casing) {
         g.fillStyle = CASING;
         g.beginPath(); g.arc(sx, sy, r + CASING_PX, 0, Math.PI * 2); g.fill();
@@ -339,7 +345,7 @@ async function main() {
       }
       // A point keeps its sketch colour on a solid: it is a target, not an
       // outline, and its casing carries it over a light face.
-      g.fillStyle = lit.has(e.name) ? "#e8a33d" : "#afc6d9";
+      g.fillStyle = lit.has(e.name) ? "#e8a33d" : chosen.has(e.name) ? SELECTION : "#afc6d9";
       g.beginPath(); g.arc(sx, sy, r, 0, Math.PI * 2); g.fill();
       label(e.name, sx + 6, sy - 6);
     }
@@ -570,7 +576,7 @@ async function main() {
    * frame is a thing in the drawing that can be clicked, dragged and deleted,
    * not a note about one.
    */
-  function drawFrame(name: string, lit: boolean) {
+  function drawFrame(name: string, lit: boolean, chosen = false) {
     const marker = frameMarker(model, view, name);
     if (!marker) return; // collapsed onto its own origin: no axes to draw
     // The arms in the world, for asking what is in front of them: an arm is
@@ -583,11 +589,11 @@ async function main() {
     const reach = FRAME_ARM_PX / view.scale;
     const armEnd = (u: number[]) => basis.origin.map((c, i) => c + (u[i] ?? 0) * reach);
     const isDefault = model.defaultFrame === name;
-    const colour = lit ? "#e8a33d" : isDefault ? "#c9dcec" : "#7b93a8";
+    const colour = lit ? "#e8a33d" : chosen ? SELECTION : isDefault ? "#c9dcec" : "#7b93a8";
     g.save();
     g.strokeStyle = colour;
     g.fillStyle = colour;
-    g.lineWidth = lit ? 2.2 : isDefault ? 1.6 : 1.2;
+    g.lineWidth = lit || chosen ? 2.2 : isDefault ? 1.6 : 1.2;
     g.font = "10px ui-monospace, Menlo, monospace";
     const arms: [[number, number], string, number[]][] = [[marker.x, "x", basis.ux], [marker.y, "y", basis.uy]];
     if (marker.z && basis.uz) arms.push([marker.z, "z", basis.uz]);
@@ -648,7 +654,7 @@ async function main() {
    * of these per constraint and a drawing has many, so they have to read as an
    * annotation layer rather than as geometry.
    */
-  function renderGlyphs(hoveredRelation: string | null) {
+  function renderGlyphs(hoveredRelation: string | null, chosen: Set<string>) {
     const marks = engine.glyphs();
     if (!marks.length) return;
     g.save();
@@ -658,18 +664,21 @@ async function main() {
     for (const mark of marks) if (mark.ends) dimensionLines(mark, mark.relation === hoveredRelation);
     for (const mark of marks) {
       const on = mark.relation === hoveredRelation;
+      // A selected constraint is its box in the selection's colour, a little
+      // heavier: the mark is the whole of what a relation looks like.
+      const picked = !on && chosen.has(mark.relation);
       const [x, y] = mark.screen;
       roundedBox(x - mark.halfW, y - mark.halfH, mark.halfW * 2, mark.halfH * 2, 3);
       g.fillStyle = on ? "#20303f" : "#0e141bee";
       g.fill();
-      g.strokeStyle = on ? "#e8a33d" : "#2c3d4f";
-      g.lineWidth = 1;
+      g.strokeStyle = on ? "#e8a33d" : picked ? SELECTION : "#2c3d4f";
+      g.lineWidth = picked ? 1.6 : 1;
       g.stroke();
       // A dimension is brighter than an annotation on purpose: it states
       // something the user asked for, where `∥` states something they may only
       // have implied. Onshape draws its dimensions the same way — a value
       // reads as part of the drawing, an inferred mark as a note about it.
-      g.fillStyle = on ? "#e8a33d" : mark.isLabel ? "#cfe0ee" : "#8fa7bb";
+      g.fillStyle = on ? "#e8a33d" : picked ? SELECTION : mark.isLabel ? "#cfe0ee" : "#8fa7bb";
       // Nudged down a hair: several of these marks (— ∥ ⊥ ∴) sit high in their
       // em box, and centring by metrics leaves them looking as though they are
       // escaping upward out of the box.
@@ -746,10 +755,13 @@ async function main() {
   }
 
   /**
-   * Clicking geometry drops its *name* into the command line rather than
-   * accumulating a selection somewhere. cellwork's idea, and it fits here even
-   * better: every relation takes entity names, so clicking two lines writes
-   * most of `fillet(` for you. Nothing to clear, nothing to get out of sync.
+   * Clicking geometry **while a command is being written** drops its *name*
+   * into the command line. cellwork's idea, and it fits here even better:
+   * every relation takes entity names, so clicking two lines after `fillet(`
+   * writes most of the call for you. With the command line empty a click
+   * selects instead (the engine's `selection`) — a selection is what grouping,
+   * hiding and deleting a set in one gesture need, and what every CAD tool's
+   * click does; the text in the line is the signal, and it is on screen.
    */
   function insertName(name: string) {
     const v = cmdEl.value;
@@ -1006,7 +1018,11 @@ async function main() {
   const engine = new ToolEngine(model, cv, view, {
     onSolveRender: solveAndRender,
     onRenderOnly: render,
+    // With text in the command line a click is an argument to the call being
+    // written, as it always was; with none, a click selects (the engine's
+    // `selection`). The text is the signal, and it is on screen.
     onPick: (pick) => insertName(pick.name),
+    composing: () => cmdEl.value.trim() !== "",
     onUserAction: (phase) => (phase === "before" ? beginUserAction() : endUserAction()),
     // A tool's line is the user's business, not the console's. What a commit
     // made (`e1  extrude of …`) is an answer, and looks like one. Guidance — a
@@ -1047,7 +1063,8 @@ async function main() {
       // inside, for "Sketch on this face" — asked here, where the camera is,
       // so the menu stays a pure function of what it is handed.
       const history = { canUndo: undoStack.canUndo, canRedo: undoStack.canRedo };
-      menu.show(menuFor(model, pick, pick ? null : engine.regionAt(sx, sy), history, viewMode), sx, sy);
+      const selected = engine.selection.prune(model);
+      menu.show(menuFor(model, pick, pick ? null : engine.regionAt(sx, sy), history, viewMode, selected), sx, sy);
     },
   });
 
@@ -1114,6 +1131,12 @@ async function main() {
       },
       arm: (name: string, options?: Record<string, unknown>) => engine.arm(name, options),
       pick: () => engine.hover?.name ?? null,
+      // The canvas's selection, for `sel()` and `select(...)`: UI state, so
+      // typed through `submit` it brackets an action that records nothing.
+      selection: (names?: readonly string[]) => {
+        if (names !== undefined) engine.select(names);
+        return [...engine.selection.prune(model)];
+      },
       snapping: (on?: boolean) => {
         if (on !== undefined) engine.snapping = on;
         return engine.snapping;
@@ -1369,6 +1392,27 @@ async function main() {
       return;
     }
     escape();
+  });
+
+  /**
+   * **Delete deletes the selection**, typed: `del("l1", "l2")` through
+   * `submit`, as the menu's Delete types it — logged, recalled, one undo step.
+   * Never while a text field has the focus, empty or not: the key is the
+   * field's there, and a command line just emptied by the same key would be
+   * one keystroke from deleting geometry nobody meant to touch. A click on the
+   * canvas — which is how a selection is made — takes the focus off the
+   * command line (a canvas is not focusable), so the key is the drawing's
+   * exactly when the hand has just been on it. Only Delete, for the same
+   * reason: Backspace is what empties a line.
+   */
+  window.addEventListener("keydown", (e) => {
+    if (e.key !== "Delete" || e.ctrlKey || e.metaKey || e.altKey) return;
+    const at = document.activeElement as HTMLElement | null;
+    if (at && (at.isContentEditable || at instanceof HTMLInputElement || at instanceof HTMLTextAreaElement)) return;
+    const names = engine.selection.prune(model);
+    if (!names.length || engine.active) return;
+    e.preventDefault();
+    void submit(`del(${names.map((n) => JSON.stringify(n)).join(", ")})`);
   });
 
   /**

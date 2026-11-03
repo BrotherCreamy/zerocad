@@ -1,8 +1,9 @@
 // Picking and hover, driven by a real cursor.
 //
-// The design being tested is cellwork's, and it is not the obvious one: there
-// is no selection set. Clicking geometry drops its name into the command line
-// and that is all. So these check the command input, not some selection state.
+// Two rules, told apart by the command line. With text in it — a call being
+// written — clicking geometry drops its name in, cellwork's design. With it
+// empty a click selects (docs/plans/groups.md), which these read with sel().
+// Both are checked: the second is the new one, the first must not have gone.
 
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
@@ -64,18 +65,37 @@ test("hovering an edge names it and gives its length", async () => {
   assert.match(tag!, /len 80/);
 });
 
-test("clicking geometry drops its name into the command line", async () => {
+test("with the command line empty, clicking geometry selects it, and shift-clicking adds", async () => {
   await app.page.fill("#cmd", "");
   const p = await screenOf("p1");
   await app.page.mouse.click(p.x, p.y);
   await app.page.waitForTimeout(120);
-  assert.equal(await cmd(), '"p1"');
+  assert.deepEqual(await app.selection(), ["p1"]);
+  assert.equal(await cmd(), "", "nothing was inserted");
 
-  // A second pick appends, so picking two things writes most of a call.
+  const q = await screenOf("p3");
+  await app.page.keyboard.down("Shift");
+  await app.page.mouse.click(q.x, q.y);
+  await app.page.keyboard.up("Shift");
+  await app.page.waitForTimeout(120);
+  assert.deepEqual(await app.selection(), ["p1", "p3"]);
+  await app.page.mouse.click(q.x, q.y);
+  await app.page.waitForTimeout(120);
+  assert.deepEqual(await app.selection(), ["p3"], "a plain click replaces");
+});
+
+test("with text in the command line, clicking geometry drops its name in — and a second pick appends", async () => {
+  await app.page.fill("#cmd", "x = [");
+  const p = await screenOf("p1");
+  await app.page.mouse.click(p.x, p.y);
+  await app.page.waitForTimeout(120);
+  assert.equal(await cmd(), 'x = ["p1"');
   const q = await screenOf("p3");
   await app.page.mouse.click(q.x, q.y);
   await app.page.waitForTimeout(120);
-  assert.equal(await cmd(), '"p1", "p3"');
+  assert.equal(await cmd(), 'x = ["p1", "p3"');
+  assert.deepEqual(await app.selection(), ["p3"], "and the selection was left as it was");
+  await app.page.fill("#cmd", "");
 });
 
 test("a picked name is usable straight away", async () => {
@@ -96,12 +116,13 @@ test("a picked name is usable straight away", async () => {
   assert.ok(Math.abs(Math.hypot(p3[0] - p1[0], p3[1] - p1[1]) - 120) < 1e-6, "the constraint applied");
 });
 
-test("clicking empty space picks nothing", async () => {
+test("clicking empty space picks nothing, and clears the selection", async () => {
   await app.page.fill("#cmd", "");
   const p = await screenOf("p1");
   await app.page.mouse.click(p.x + 200, p.y + 150);
   await app.page.waitForTimeout(120);
   assert.equal(await cmd(), "");
+  assert.deepEqual(await app.selection(), []);
 });
 
 // This one used to assert the opposite — that a left-drag on empty canvas

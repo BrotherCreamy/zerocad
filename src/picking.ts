@@ -1,13 +1,13 @@
 // What is under the cursor.
 //
-// Ported from cellwork, whose answer to "how do you select things" is worth
-// restating because it is not the obvious one: **there is no selection set.**
-// Clicking geometry drops its *name* into the command line. The viewport is a
-// selection portal, not a place where state accumulates — so there is nothing
-// to get out of sync, nothing to clear, and no second way to refer to an
-// entity. It suits this codebase even better than it suited cellwork, because
-// every relation here already takes entity names as strings: click two lines
-// and `fillet(` is most of the way written.
+// Ported from cellwork, whose answer to "how do you select things" was **no
+// selection set**: clicking geometry dropped its *name* into the command line,
+// and every relation here takes names, so clicking two lines after `fillet(`
+// writes most of the call. That still holds while a command is being written.
+// With the command line empty a click now selects (tools/selection.ts), which
+// grouping needed — a set picked in one gesture — and which every CAD tool
+// does. Either way a pick is a *name*: this file answers which one, and the
+// engine decides where it goes.
 //
 // Hit-testing is in *screen* space, not world space, so the pick tolerance is
 // a constant number of pixels however far the view is zoomed — which is what
