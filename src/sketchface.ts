@@ -12,9 +12,10 @@
 // And **a frame built from three of the loop's own points is the sketch
 // plane**: `plane(a, b, c)` — origin, x-ref, y-ref — journals as the ordinary
 // call it is, needs no new entity kind, and *follows the solid* because its
-// points are the solid's: set the depth and the lid's frame rises with the lid,
-// read as a datum like every frame. Nothing about the face is stored; the
-// journal carries three point names.
+// points are the solid's: set the depth and the frame on the lid rises with
+// the lid, read as a datum like every frame. (A circle's lid has only its
+// centre, and gets a plane made through it — `MadePlane`.) Nothing about the
+// face is stored; the journal carries the names of three points.
 //
 // **Orientation is the whole trick: +z toward the viewer.** A sketch plane on a
 // solid's face must have its +z pointing *out* of the solid, so a positive
@@ -55,10 +56,53 @@ function turn(a: number[], b: number[], c: number[]): number {
 }
 
 /**
+ * A sketch plane on a face that has no three points of its own to make it of —
+ * a whole circle off its frame's plane, as every extruded circle's lid is — to
+ * be **made**: its origin the circle's own centre (a point of the face, which
+ * follows the lid), its x-ref and y-ref new points seeded on the rim at `refs`,
+ * along the circle frame's axes, each held there by `oncircle(_, on)`. On the
+ * rim rather than anywhere else in the plane because the rim is what moves with
+ * the face: set the depth and the circle rises, the two points with it, so the
+ * plane stays the lid's — where two free points would stay behind and tip it.
+ */
+export interface MadePlane {
+  origin: string;
+  on: string;
+  refs: [number[], number[]];
+}
+
+/** What a sketch plane on a face is: three of its points by name, or one to make (`MadePlane`). */
+export type FacePlane = [string, string, string] | MadePlane;
+
+/**
+ * The plane `sketchFrameFor` found, as the arguments `plane(…)` or `frame(…)`
+ * takes: three names, or the centre and two `pt(…)`s held on the rim — the
+ * clause idiom, so the line in the log is the whole of what was made, and the
+ * journal and the undo step are the typed call's.
+ */
+export function facePlaneArgs(p: FacePlane): string {
+  if (Array.isArray(p)) return p.map((n) => JSON.stringify(n)).join(", ");
+  const held = `oncircle(_, ${JSON.stringify(p.on)})`;
+  return [JSON.stringify(p.origin), ...p.refs.map((at) => `pt(${at.map(num).join(", ")}, ${held})`)].join(", ");
+}
+
+/**
+ * Every digit, unlike the curve tools' three-decimal origin: a rim point seeded
+ * a rounding off the rim is pulled back by its hold, and the circle's own
+ * radius — free, in a sketch nobody dimensioned — gives way by part of it
+ * (measured: 5e-5 on a radius of 6). Seeded exactly, the hold has nothing to
+ * correct and sketching on the lid leaves the cylinder as it was.
+ */
+function num(v: number): string {
+  return String(v === 0 ? 0 : v);
+}
+
+/**
  * The three points — origin, x-ref, y-ref — of a sketch plane on `loop`, its
  * +z on the side of `toward`, the direction out of the screen at whoever is
  * looking (`viewAxes(view).toward`): what `plane(a, b, c)` takes to start a
- * sketch on that face.
+ * sketch on that face — or, for a whole circle whose frame's plane is not its
+ * own, the plane to make (`MadePlane`).
  *
  * The loop's own vertices are preferred, in loop order, and **a corner with its
  * two neighbours** first: the first vertex that is not on a straight run is
@@ -79,18 +123,20 @@ function turn(a: number[], b: number[], c: number[]): number {
  * circle's frame, as a whole circle does (below).
  *
  * **A whole circle has only its centre**, and it also has its frame, whose
- * three points span the circle's plane: they are used, with the x-ref and
- * y-ref swapped when the frame's +z faces away — so a lid that is a circle
- * still gets a plane facing out. That needs the frame's plane to *be* the
- * circle's, and a circle is held only parallel to its frame (the frame is an
- * orientation, not a constraint); one lying off it is refused rather than
- * given a plane beside its face. A frame without a y-ref cannot be turned over
- * that way, and is refused by name.
+ * three points span the circle's plane when the circle lies on it: they are
+ * used, with the x-ref and y-ref swapped when the frame's +z faces away — so a
+ * circle drawn on its sketch gets a plane facing out. But a circle is held
+ * only parallel to its frame (the frame is an orientation, not a constraint),
+ * and every extruded circle's lid lies off its frame since an extrude makes no
+ * lid frame (docs/plans/no-lid-frame.md). Such a circle gets a plane **made**
+ * for it (`MadePlane`): the frame's orientation, turned over likewise, through
+ * the circle's own centre. Only a circle with no orientation to give — no
+ * frame, or one collapsed onto itself — is refused.
  *
  * Throws, with the reason, in a model without 3D frames, for a loop seen
  * exactly edge-on, and when no three of the loop's points are off one line.
  */
-export function sketchFrameFor(model: Model, loop: Loop, toward: number[]): [string, string, string] {
+export function sketchFrameFor(model: Model, loop: Loop, toward: number[]): FacePlane {
   if (model.dim !== 3) {
     throw new Error("a sketch plane on a face is a 3D frame — a 2D drawing is one plane already");
   }
@@ -152,23 +198,29 @@ export function sketchFrameFor(model: Model, loop: Loop, toward: number[]): [str
     + "a plane on it needs a third point: plane(a, b, c) with one of your own");
 }
 
-/** A whole circle's plane: its frame's own three points, turned over if they face away. */
-function circleFrame(model: Model, name: string, facing: (n: number[]) => number): [string, string, string] {
+/**
+ * A whole circle's plane: its frame's own three points where the circle lies
+ * on the frame, else one made through its centre (`MadePlane`) — either way
+ * turned over if it would face away.
+ */
+function circleFrame(model: Model, name: string, facing: (n: number[]) => number): FacePlane {
   const circle = model.circular(name);
   const plane = circle.plane;
   if (plane === undefined) throw new Error(`"${name}" names no frame, so it has no plane to sketch on`);
   const f = model.frame(plane);
-  if (f.yref === undefined) {
-    throw new Error(`"${name}"'s frame "${plane}" has no y-ref, so it cannot be turned to face you — `
+  const { origin, ux, uy, uz } = frameBasis(model, plane)();
+  if (!uz || [ux, uy].some((a) => a.every((c) => c === 0))) {
+    throw new Error(`"${name}"'s frame "${plane}" has collapsed, so it gives the circle no orientation to sketch in — `
       + "plane(a, b, c) with points of your own");
   }
-  const { origin, ux, uy, uz } = frameBasis(model, plane)();
+  const up = facing(uz) > 0;
   const centre = lift3(model.coords(circle.center));
-  if (!uz || !liesOn({ origin: lift3(origin), u: lift3(ux), v: lift3(uy) }, centre)) {
-    throw new Error(`"${name}" lies parallel to its frame "${plane}" but off its plane, so "${plane}"'s points `
-      + "are not on the face — plane(a, b, c) with points of your own on it");
+  if (f.yref !== undefined && liesOn({ origin: lift3(origin), u: lift3(ux), v: lift3(uy) }, centre)) {
+    return up ? [f.origin, f.xref, f.yref] : [f.origin, f.yref, f.xref];
   }
-  return facing(uz) > 0 ? [f.origin, f.xref, f.yref] : [f.origin, f.yref, f.xref];
+  const r = model.radius(name);
+  const [a, b] = (up ? [ux, uy] : [uy, ux]).map(lift3);
+  return { origin: circle.center, on: name, refs: [a, b].map((d) => centre.map((c, i) => c + r * d[i])) as [number[], number[]] };
 }
 
 function members(loop: Loop): string {
@@ -181,7 +233,7 @@ function members(loop: Loop): string {
  * cannot make different planes of one face. Throws as `sketchFrameFor` does.
  */
 export function sketchOnFaceCommand(model: Model, loop: Loop, toward: number[]): string {
-  return `plane(${sketchFrameFor(model, loop, toward).map((p) => JSON.stringify(p)).join(", ")})`;
+  return `plane(${facePlaneArgs(sketchFrameFor(model, loop, toward))})`;
 }
 
 /**
@@ -199,7 +251,7 @@ export function sketchOnFaceCommand(model: Model, loop: Loop, toward: number[]):
  * and is kept. Throws as `sketchFrameFor` does, in its words.
  */
 export function featurePlaneCommand(model: Model, loop: Loop, toward: number[]): string {
-  const names = sketchFrameFor(model, loop, toward).map((p) => JSON.stringify(p)).join(", ");
+  const names = facePlaneArgs(sketchFrameFor(model, loop, toward));
   return model.defaultFrame == null ? `plane(${names}, { look: false })` : `frame(${names})`;
 }
 

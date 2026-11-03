@@ -254,10 +254,10 @@ export interface Profile {
  * **An expansion into real geometry**, which is the one-model decision paying
  * out: nothing here is a mesh. For every corner of the profile a twin point on
  * the lid; for every member a twin member between the twins (an arc's or
- * circle's on the lid's own frame, so a sketch on the top cap means what it
- * says); for every corner a wall line from base to twin; one frame for the lid,
- * the sketch frame moved by the depth — standing on the lid's own corners
- * wherever the sketch frame stands on the profile's (see `frameOver`); and
+ * circle's on the frame its base is on — the sketch frame, for a curve drawn
+ * on the sketch, since a translation turns nothing and a curve's frame is an
+ * orientation, not a place); for every corner a wall line from base to twin;
+ * **no frame** (see `Expansion` for why there was one and why it went); and
  * **one dimension** — an `extrusion`,
  * `d`-named — holding every twin at its base plus the depth along the frame's
  * +z. So `set("d9.value", 40)` re-solves the solid like any dimension, and the
@@ -335,10 +335,11 @@ export interface Profile {
  * never a name here: a vertex spelled with `×` that is no point is refused.
  *
  * **`expansion` is for a replay, and only an old file's.** `9` re-expands the
- * call as a build of format 9 or below did — the lid frame with three points
- * of its own even where a lid corner already stands — because the names a
- * later entry of that file holds were handed out by that expansion (see
- * `Expansion`). A typed call never passes it, and a new file never journals it.
+ * call as a build of format 9 or below did — a lid frame with three points of
+ * its own even where a lid corner already stands — and `10` as format 10 did,
+ * a lid frame standing on the lid's corners, because the names a later entry
+ * of that file holds were handed out by that expansion (see `Expansion`). A
+ * typed call never passes it, and a new file never journals it.
  *
  * An operation, refusing before it changes anything (`asOperation` records only
  * on success). 3D only.
@@ -357,36 +358,50 @@ export function extrude(model: Model, member: string, depth?: number | null, fra
  * Which expansion a feature was made by — and so which a replay must make it
  * by again, since the auto-names every later entry holds were handed out by it.
  *
- * - **10**, today's: a frame the feature makes (an extrude's lid, a revolve's
- *   end frames) **reuses the twin of every point of the frame it copies that is
- *   a profile vertex**, and makes a point of its own only for one that is not
- *   (`frameOver`). The owner, on a frameless plate whose lid frame had laid
- *   three points on three lid corners: *"i'm getting a lot of overlapping
- *   points. why is this happening?"* — and, told the fix, *"of course it
- *   should."*
+ * - **11**, today's extrude: **no lid frame**. One was made "so a sketch on the
+ *   cap has a plane", and sketch-on-face builds that plane from the cap itself
+ *   now (sketchface.ts). What still read it — a twin curve's frame, and the
+ *   depth's pairs — needs none: an extrude translates without turning, and a
+ *   curve's frame is an orientation (`CircleEntity`), so a twin curve names the
+ *   sketch frame itself. What the lid frame still did was double points. Two
+ *   rectangles extruded at once share the first one's sketch frame, which for
+ *   the second stands off its profile, so the second lid frame laid three
+ *   points of its own on the *first* lid's corners — the owner's *"i'm getting
+ *   a lot of overlapping points. why is this happening?"* once more
+ *   (docs/plans/no-lid-frame.md).
+ * - **10**, today's revolve, and a format-10 file's extrude: a frame the
+ *   feature makes (an extrude's lid, a revolve's end frames) **reuses the twin
+ *   of every point of the frame it copies that is a profile vertex**, and makes
+ *   a point of its own only for one that is not (`frameOver`). A revolve keeps
+ *   its end frames: its end face is turned, so a curve on it needs a turned
+ *   orientation, which only a frame of its own gives it.
  * - **9**, files of format 9 and below: every such frame has three points of
- *   its own, made before the twins. Kept rather than translated away because
- *   the two expansions make different numbers of points in a different order:
- *   a version-9 file re-expanded today would hand every point after its first
- *   extrude another name, and its later entries — a `dist` on `p14`, a
- *   `deleteEntity("p20")` — would land on the wrong points or on none.
- *   persist.ts writes the `9` into such an entry on the way in, so the file
- *   goes on saying which expansion it means after it is saved again.
+ *   its own, made before the twins.
+ *
+ * The old ones are kept rather than translated away because each makes a
+ * different number of points in a different order: an old file re-expanded
+ * today would hand every point after its first extrude another name, and its
+ * later entries — a `dist` on `p14`, a `deleteEntity("p20")` — would land on
+ * the wrong points or on none. persist.ts writes the old expansion into such an
+ * entry on the way in, so the file goes on saying which expansion it means
+ * after it is saved again.
  *
  * Today's is what every call makes, and what an entry with no expansion means.
  */
-export const EXPANSION: Expansion = 10;
+export const EXPANSION: Readonly<Record<"extrude" | "revolve", Expansion>> = { extrude: 11, revolve: 10 };
 
-function expansionOf(x: number | null | undefined, op: string): Expansion {
-  if (x == null || x === EXPANSION) return EXPANSION;
-  if (x === 9) return 9;
-  throw new Error(`${op}'s expansion is 9 (a file of version 9 or below, whose frames had points of their own) or `
-    + `left out — got ${JSON.stringify(x)}`);
+function expansionOf(x: number | null | undefined, op: "extrude" | "revolve"): Expansion {
+  if (x == null || x === EXPANSION[op]) return EXPANSION[op];
+  if (x === 9 || (op === "extrude" && x === 10)) return x;
+  const old = op === "extrude"
+    ? "9 or 10 (a file of version 9 or 10, whose lid frame had points of its own or stood on the lid's)"
+    : "9 (a file of version 9 or below, whose end frames had points of their own)";
+  throw new Error(`${op}'s expansion is ${old} or left out — got ${JSON.stringify(x)}`);
 }
 
 /** The journal's tail for an expansion: nothing for today's, so a new entry is the call as it always was. */
-function expansionArgs(x: Expansion): number[] {
-  return x === EXPANSION ? [] : [x];
+function expansionArgs(x: Expansion, op: "extrude" | "revolve"): number[] {
+  return x === EXPANSION[op] ? [] : [x];
 }
 
 /**
@@ -395,7 +410,7 @@ function expansionArgs(x: Expansion): number[] {
  */
 export function extrudeProfile(model: Model, profile: Profile, depth?: number | null): string {
   if (model.dim !== 3) throw new Error("extrude needs a 3D model — a 2D drawing has no direction out of its plane");
-  return extruded(model, memberName(profile.loops[0][0]), extrudeDepth(depth), profile, EXPANSION);
+  return extruded(model, memberName(profile.loops[0][0]), extrudeDepth(depth), profile, EXPANSION.extrude);
 }
 
 function extrudeDepth(depth: number | null | undefined): number {
@@ -411,7 +426,7 @@ function extruded(model: Model, member: string, d: number, profile: Profile, x: 
   const plan = planSweep(model, profile);
   // The frame's +z when the call was made — where the twins are seeded, and nothing else.
   const z = framePlaneAxes(model, profile.frame)!.n;
-  return model.asOperation("extrude", () => [member, d, plan.frame, resolvedLoops(plan), ...expansionArgs(x)],
+  return model.asOperation("extrude", () => [member, d, plan.frame, resolvedLoops(plan), ...expansionArgs(x, "extrude")],
     () => extrudeBody(model, member, d, plan, z, x));
 }
 
@@ -987,10 +1002,10 @@ function builtOn(plan: SweepPlan): string[] {
 /**
  * The expansion, in an order a replay reproduces name for name: the crossings
  * made points (each with its holds), one twin point per joined class in walk
- * order, the lid's frame (a point of its own for each sketch-frame point that
- * is no profile vertex, then the frame — `frameOver`), the twin members, the
- * walls, the depth, the record. A version-9 expansion makes the lid frame
- * before the twins, all three of its points its own, as it did (`Expansion`).
+ * order, the twin members, the walls, the depth, the record. An old file's
+ * expansion also makes the lid frame it made (`Expansion`): version 10's after
+ * the twins, standing on them where it can (`frameOver`); version 9's before
+ * them, all three of its points its own.
  */
 function extrudeBody(model: Model, member: string, depth: number, plan: SweepPlan, z: number[], x: Expansion): string {
   const { frame, walked, classOf } = plan;
@@ -1002,17 +1017,19 @@ function extrudeBody(model: Model, member: string, depth: number, plan: SweepPla
   // call settles any frame that has turned since the plan was made.
   const lifted = (p: string) => model.coords(p).map((c, i) => c + depth * z[i]);
 
-  // The lid's frame: the sketch frame, moved. Its own points are held there by
-  // the depth's pairs — read as a datum, so the lid can never turn the sketch.
+  // An old file's lid frame: the sketch frame, moved. Its own points are held
+  // there by the depth's pairs — read as a datum, so the lid can never turn the
+  // sketch.
   const before = x === 9 ? frameOver(model, frame, classOf, new Map(), lifted, made) : null;
   const { twinOf, byClass } = twinner(model, classOf, lifted, made);
   for (const loop of walked) for (const m of loop) twinPoints(model, m, real, twinOf);
-  const { frame: top, own } = before ?? frameOver(model, frame, classOf, byClass, lifted, made);
+  const lid = before ?? (x === 10 ? frameOver(model, frame, classOf, byClass, lifted, made) : null);
+  const top = lid?.frame;
 
-  // A curve on the sketch frame goes on the lid's frame; one on any other frame
-  // keeps its own — same orientation, so the twin arc is the same arc, with no
-  // side to decide.
-  const planeFor = (p: string | undefined) => (p === frame ? top : p);
+  // A twin curve keeps its base's frame: a translation turns nothing, so it is
+  // the same orientation and the same arc, with no side to decide. Only an old
+  // file's curve on the sketch frame goes on its lid frame, as it did.
+  const planeFor = (p: string | undefined) => (top !== undefined && p === frame ? top : p);
   const twins = walked.map((loop) => loop.map((m) => made(twinMember(model, m, real, twinOf, planeFor))));
 
   // A wall at every corner, base to twin — once per joined class, so a corner
@@ -1031,15 +1048,15 @@ function extrudeBody(model: Model, member: string, depth: number, plan: SweepPla
   }
 
   // The depth: corners and centres first (the label sits on the first wall),
-  // then the curves' radii, then the lid frame's own points.
+  // then the curves' radii, then an old lid frame's own points.
   const pairs: string[] = [];
   for (const { base, twin } of byClass.values()) pairs.push(base, twin);
   walked.forEach((loop, i) => loop.forEach((m, j) => { if (m.kind !== "line") pairs.push(m.name, twins[i][j]); }));
-  pairs.push(...own);
+  pairs.push(...(lid?.own ?? []));
   const held = made(extrusion(model, frame, depth, ...pairs));
 
   return model.addFeature({
-    kind: "extrude", member, frame, top, depth: held, expansion: x,
+    kind: "extrude", member, frame, ...(top === undefined ? {} : { top }), depth: held, expansion: x,
     loops: resolvedLoops(plan), twins, walls,
     names: [...new Set([...builtOn(plan), frame, ...owns])], owns,
   }).name;
@@ -1131,7 +1148,7 @@ export function revolveProfile(model: Model, profile: Profile, axis: string, ang
   const a = revolveAngle(angle);
   axisReader(model, axis);
   checkRevolve(model, profile, axis);
-  return revolved(model, memberName(profile.loops[0][0]), axis, a, profile, EXPANSION);
+  return revolved(model, memberName(profile.loops[0][0]), axis, a, profile, EXPANSION.revolve);
 }
 
 function revolveAngle(angle: number | null | undefined): number {
@@ -1145,7 +1162,7 @@ function revolveAngle(angle: number | null | undefined): number {
 /** Plans, then expands and journals — as `extruded`. */
 function revolved(model: Model, member: string, axis: string, a: number, profile: Profile, x: Expansion): string {
   const plan = planSweep(model, profile);
-  return model.asOperation("revolve", () => [member, axis, a, plan.frame, resolvedLoops(plan), ...expansionArgs(x)],
+  return model.asOperation("revolve", () => [member, axis, a, plan.frame, resolvedLoops(plan), ...expansionArgs(x, "revolve")],
     () => revolveBody(model, member, axis, a, plan, x));
 }
 
@@ -1543,15 +1560,16 @@ function alignedTo(loop: ProfileMember[], old: ProfileMember[][]): ProfileMember
  *   does; one the feature made that the profile no longer runs through is
  *   released with its holds.
  * - The dimension keeps its name and value and is rebuilt in place to hold
- *   exactly the new twins — `set`'s `REBUILD` path. The lid frame (a revolve's
- *   end frames) keeps its name and points; an end frame no curve needs any
- *   more goes, and one a new curve needs is made. A frame point that is a
- *   corner's twin is owned once, as the twin; one whose corner has left the
- *   profile stays, held as the frame's own; and a sketch-frame point the
- *   profile now runs through takes the frame point already over it as its twin
- *   — the expansion's rule (`frameOver`), so regenerating never lays a second
- *   point where the frame has one. A version-9 feature is rebuilt as version 9
- *   built it, its frames' points their own (`Expansion`).
+ *   exactly the new twins — `set`'s `REBUILD` path. Today's extrude has no
+ *   frame to keep. A revolve's end frames (and an old file's lid frame) keep
+ *   their names and points; an end frame no curve needs any more goes, and one
+ *   a new curve needs is made. A frame point that is a corner's twin is owned
+ *   once, as the twin; one whose corner has left the profile stays, held as the
+ *   frame's own; and a sketch-frame point the profile now runs through takes
+ *   the frame point already over it as its twin — the expansion's rule
+ *   (`frameOver`), so regenerating never lays a second point where the frame
+ *   has one. A version-9 feature is rebuilt as version 9 built it, its frames'
+ *   points their own (`Expansion`).
  * - The record is rewritten in place (`rewriteFeature`), under the same name.
  *
  * What has gone goes **last, by the ordinary cascade** (`delOne`), once nothing
@@ -1605,12 +1623,12 @@ function rebuildFeature(model: Model, f: FeatureEntry, plan: SweepPlan): { loops
     // The old expansion, read back off the dimension: one twin per joined
     // class, and for a revolve the end frame of each frame a curve was drawn
     // on. A version-9 lid frame's own pairs are not twins — its points are
-    // always its own. Today's lid frame is in the pairs once a point, as the
-    // corner it stands on or as a point of its own over a sketch-frame point
-    // that is no vertex; read as a twin either way, so a sketch-frame point the
-    // profile now runs through takes the lid point already over it, rather
-    // than a second point in the same place.
-    const lidFrame = new Set(f.kind === "extrude" && !shares ? model.refsOf(model.frame(f.top)) : []);
+    // always its own. A version-10 lid frame is in the pairs once a point, as
+    // the corner it stands on or as a point of its own over a sketch-frame
+    // point that is no vertex; read as a twin either way, so a sketch-frame
+    // point the profile now runs through takes the lid point already over it,
+    // rather than a second point in the same place. Today's has no lid frame.
+    const lidFrame = new Set(f.kind === "extrude" && !shares && f.top !== undefined ? model.refsOf(model.frame(f.top)) : []);
     const oldClass = new Map<number | string, { base: string; twin: string }>();
     const oldFrames = new Map<string, string>();
     const was = dim.args.slice(2) as string[];
@@ -1659,9 +1677,12 @@ function rebuildFeature(model: Model, f: FeatureEntry, plan: SweepPlan): { loops
     if (f.kind === "extrude") {
       const z = framePlaneAxes(model, frame)!.n;
       place = (p) => model.coords(p).map((c, i) => c + value * z[i]);
+      // Today's extrude has no lid frame, and a twin curve keeps its base's
+      // frame; an old file's lid frame is kept as that file made it.
       const top = f.top;
-      planeFor = (p) => (p === frame ? top : p);
+      planeFor = (p) => (top !== undefined && p === frame ? top : p);
       const lid = () => {
+        if (top === undefined) return;
         for (const p of model.refsOf(model.frame(top))) owned(p);
         owns.push(top);
       };
@@ -1671,9 +1692,11 @@ function rebuildFeature(model: Model, f: FeatureEntry, plan: SweepPlan): { loops
       // A lid point that is no corner's twin now — over a sketch-frame point
       // that is no vertex, or one that has left the profile — is held as the
       // lid frame's own.
-      const corner = new Set([...byClass.values()].map((t) => t.twin));
-      const [b, t] = [model.refsOf(model.frame(frame)), model.refsOf(model.frame(top))];
-      b.forEach((p, k) => { if (!corner.has(t[k])) framePairs.push(p, t[k]); });
+      if (top !== undefined) {
+        const corner = new Set([...byClass.values()].map((t) => t.twin));
+        const [b, t] = [model.refsOf(model.frame(frame)), model.refsOf(model.frame(top))];
+        b.forEach((p, k) => { if (!corner.has(t[k])) framePairs.push(p, t[k]); });
+      }
     } else {
       const at = axisReader(model, f.axis).read();
       place = (p) => turnPoint(model.coords(p), at, value);
@@ -1775,7 +1798,8 @@ function rebuildFeature(model: Model, f: FeatureEntry, plan: SweepPlan): { loops
   const names = [...new Set([...on, ...owns])];
   if (f.kind === "extrude") {
     model.rewriteFeature(f.name, {
-      kind: "extrude", member: f.member, frame, top: f.top, depth: f.depth, loops, twins, walls, expansion: f.expansion, names, owns,
+      kind: "extrude", member: f.member, frame, ...(f.top === undefined ? {} : { top: f.top }), depth: f.depth,
+      loops, twins, walls, expansion: f.expansion, names, owns,
     });
   } else {
     model.rewriteFeature(f.name, {
@@ -2020,7 +2044,7 @@ export function del(model: Model, ...names: string[]): string[] {
  *   and the depth are ordinary geometry and relations and stay as they are,
  *   drawn without faces; undo is the confirmation if that was not the intent.
  * - `del("e1")` takes the record **and what the feature made** — its twins,
- *   walls, top frame and depth, with whatever needs those — and never the
+ *   walls, depth (and an old file's lid frame), with whatever needs those — and never the
  *   profile it was built on, which was the user's sketch before the feature
  *   existed. Onshape's rule: deleting an extrude keeps its sketch.
  */

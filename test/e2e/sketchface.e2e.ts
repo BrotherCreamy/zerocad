@@ -136,10 +136,10 @@ const zOf = (frame: string): Promise<number[]> => app.page.evaluate(async (f) =>
   return frameBasis((window as never as { __neocad: { model: unknown } }).__neocad.model, f)().uz as number[];
 }, frame);
 
-interface SeenFeature { name: string; top: string; depth: string; pairs: [string, string][] }
+interface SeenFeature { name: string; top?: string; depth: string; pairs: [string, string][] }
 const features = (): Promise<SeenFeature[]> => app.page.evaluate(() => {
   const { model } = (window as never as { __neocad: { model: {
-    features: Map<string, { name: string; top: string; depth: string }>;
+    features: Map<string, { name: string; top?: string; depth: string }>;
     relations: Map<string, { args: unknown[] }>;
   } } }).__neocad;
   return [...model.features.values()].map((f) => {
@@ -253,19 +253,15 @@ test("a circle drawn on the wall lands on it, and extruded a positive depth stan
   const offset = sub(m2.points[twin], m2.points[boss.center]);
   assert.ok(dist3(offset, [0, -14, 0]) < 1e-6, `the boss's lid centre is its centre moved 14 out along −y: ${offset}`);
   // The outward-boss assertion: the boss's lid sits farther from the plate's
-  // centroid than the wall does — its centre straight-line, and its lid frame
-  // measured along the wall's outward normal. (The frame's origin is a twin of
-  // a plate *corner*, which is farther from the centroid than the wall's middle
-  // whichever way the boss went; only its distance across the wall's plane
-  // tells out from in.)
+  // centroid than the wall does — its centre straight-line, and measured along
+  // the wall's outward normal, which is what tells out from in. (This used to
+  // be read off the boss's lid frame; an extrude makes none now —
+  // docs/plans/no-lid-frame.md.)
   assert.ok(dist3(m2.points[twin], CENTROID) > dist3(NEAR_WALL, CENTROID) + 13.9, "the boss's lid centre is outside the plate");
-  const lidOrigin = await app.page.evaluate((top) => {
-    const { model } = (window as never as { __neocad: { model: { frame(n: string): { origin: string }; coords(n: string): number[] } } }).__neocad;
-    return model.coords(model.frame(top).origin);
-  }, g.top);
-  assert.ok(Math.abs(lidOrigin[1] - (-H - 14)) < 1e-6, `the lid frame is on the lid plane: ${lidOrigin}`);
+  assert.ok(Math.abs(m2.points[twin][1] - (-H - 14)) < 1e-6, `the boss's lid centre is on its lid plane: ${m2.points[twin]}`);
   const out = [0, -1, 0];
-  assert.ok(dot(sub(lidOrigin, CENTROID), out) > dot(sub(NEAR_WALL, CENTROID), out) + 13.9, `lid frame ${lidOrigin} outside the plate`);
+  assert.ok(dot(sub(m2.points[twin], CENTROID), out) > dot(sub(NEAR_WALL, CENTROID), out) + 13.9, `lid centre ${m2.points[twin]} outside the plate`);
+  assert.equal(g.top, undefined, "and no lid frame");
   assert.equal(await app.status(), "SOLVED");
   await app.type("lookAt(\"f1\"); orbit(-0.6, -1.0); zoom(1.8)");
   await centreOn(CENTROID);

@@ -19,8 +19,8 @@
 // asked whether a solid's corners should be treated differently: "why is a 3D
 // corner any different from a 2D corner". A lid's corner and a sketch's corner
 // are both ends of lines, and both are quiet for that reason and no other; a
-// point a feature made that is no end (a lid frame's reference point) is drawn
-// as any isolated point is.
+// point a feature made that is no end (a revolve's end-frame reference point,
+// an old file's lid frame's) is drawn as any isolated point is.
 //
 // - A **point** is quiet when it is an end of a line or an arc — a corner is
 //   two ends at one point. A circle's or arc's centre stays drawn even when a

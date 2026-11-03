@@ -360,8 +360,8 @@ test("view(\"hidden\") draws everything: every corner's dot and the solid's edge
 test("the owner's plate with a hole reads as a clean solid: no dots, no names, the edges the face layer's", async () => {
   const app = await fresh();
   // Sketched as the tools sketch a frameless outline: the plane made on three
-  // of its own corners, so the lid frame stands on the lid's corner twins
-  // (lid-frame-shares-points.md) and nothing but the corners is at a corner.
+  // of its own corners, and no lid frame (no-lid-frame.md), so nothing but the
+  // corners is at a corner.
   const src = `P = (c) => model.addPoint(c).name;
     ps = [[0,0,0],[60,0,0],[60,40,0],[0,40,0]].map(P);
     fr = plane(ps[0], ps[1], ps[3], { look: false });
@@ -383,14 +383,15 @@ test("the owner's plate with a hole reads as a clean solid: no dots, no names, t
   assert.equal(corners.length, 8, "the plate's eight corners");
   const loose = Object.entries(m.points).filter(([n]) => !ends.has(n));
   assert.deepEqual(loose.map(([, c]) => [c[0], c[1]]), [[30, 20], [30, 20]], `only the centres end nothing: ${JSON.stringify(loose)}`);
-  // Where a frame stands on a corner (the sketch's, and the lid's above it),
-  // its marker is drawn from that corner — frame markers stay — and its arms,
-  // letters and name lie where a dot and a name would be read, so neither is
-  // asked of those two corners.
+  // Where a frame stands on a corner (the sketch's — there is no lid frame
+  // above it any more), its marker is drawn from that corner — frame markers
+  // stay — and its arms, letters and name lie where a dot and a name would be
+  // read, so neither is asked of that corner.
   const origins = await app.page.evaluate(() => [...(window as never as {
     __neocad: { model: { entities: Map<string, { kind: string; origin?: string }> } };
   }).__neocad.model.entities.values()].filter((e) => e.kind === "frame").map((e) => e.origin!));
-  assert.equal(origins.filter((o) => ends.has(o)).length, 2, "the sketch frame and the lid frame each on a corner");
+  assert.equal(origins.length, 1, "the sketch frame, and no lid frame");
+  assert.equal(origins.filter((o) => ends.has(o)).length, 1, "the sketch frame on a corner");
   let dots = 0, names = 0;
   for (const [n, c] of corners) {
     const at = await app.screenOf(c);

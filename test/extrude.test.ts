@@ -46,7 +46,7 @@ const W = 40, H = 30;
 
 // --- the expansion -----------------------------------------------------------
 
-test("a rectangle: four twins, four twin edges, four walls, a lid frame, one depth, one feature", async () => {
+test("a rectangle: four twins, four twin edges, four walls, one depth, one feature — and no frame", async () => {
   await loadKernel();
   const m = new Model(3);
   const t = tiltedFrame(m);
@@ -57,8 +57,9 @@ test("a rectangle: four twins, four twin edges, four walls, a lid frame, one dep
   assert.equal(extrude(m, lines[0], 20), "e1");
   const f = m.featureOf("e1", "extrude");
   const kinds = (names: string[]) => names.map((n) => m.entities.get(n)?.kind ?? (m.relations.has(n) ? "relation" : "?"));
-  // Three lid-frame points and four corner twins; four twin edges and four walls.
-  assert.equal(m.entities.size - before, 3 + 1 + 4 + 4 + 4);
+  // Four corner twins, four twin edges and four walls — and no lid frame, so no
+  // point that is no corner (docs/plans/no-lid-frame.md).
+  assert.equal(m.entities.size - before, 4 + 4 + 4);
   assert.equal(m.relations.size - relsBefore, 1, "one relation: the depth");
   assert.equal(f.depth, "d1", "a dimension, d-named");
   assert.equal(m.relationOf("d1").op, "extrusion");
@@ -67,7 +68,9 @@ test("a rectangle: four twins, four twin edges, four walls, a lid frame, one dep
   assert.deepEqual(kinds(f.twins[0]), ["line", "line", "line", "line"]);
   assert.equal(f.walls.length, 4);
   assert.deepEqual(kinds(f.walls), ["line", "line", "line", "line"]);
-  assert.equal(m.entities.get(f.top)?.kind, "frame");
+  assert.equal(f.top, undefined, "today's extrude makes no lid frame");
+  assert.ok(!f.owns.some((n) => m.entities.get(n)?.kind === "frame"));
+  assert.ok(!("top" in f), "nor a key for one");
   assert.equal(f.frame, t.name);
   // The record names the profile and its frame and owns none of them.
   for (const n of [...lines, t.name]) {
@@ -78,7 +81,7 @@ test("a rectangle: four twins, four twin edges, four walls, a lid frame, one dep
   // Every twin is its base plus 20 along the frame's +z — the frame read here,
   // not through the relation.
   const bases = baseOf(m, "d1");
-  assert.equal(bases.size, 4 + 3, "four corners and the three lid-frame points");
+  assert.equal(bases.size, 4, "the four corners, and nothing over the sketch frame");
   for (const [twin, base] of bases) assert.ok(near(m.coords(twin), m.coords(base).map((c, i) => c + 20 * t.uz[i])), twin);
   for (const p of points) assert.ok([...bases.values()].includes(p), `${p} has a twin`);
   // Each wall runs from a corner to its own twin.
@@ -99,7 +102,7 @@ test("a rectangle: four twins, four twin edges, four walls, a lid frame, one dep
   assert.deepEqual(m.journal.at(-1), { op: "extrude", args: [lines[0], 20, t.name, [lines]] });
 });
 
-test("the lid is a loop of its own, in the lid frame, with the profile's area — the twins are joined where the corners were", async () => {
+test("the lid is a loop of its own, parallel to the sketch frame, with the profile's area — the twins are joined where the corners were", async () => {
   await loadKernel();
   const m = new Model(3);
   const t = tiltedFrame(m);
@@ -108,7 +111,10 @@ test("the lid is a loop of its own, in the lid frame, with the profile's area �
   const all = findLoops(m);
   const lid = all.find((l) => l.members.every((mm) => f.twins[0].includes(mm.name)));
   assert.ok(lid, "the top cap is a loop");
-  assert.equal(lid!.plane.frame, f.top);
+  // In no frame's plane now — nothing stands on the lid — but square to the
+  // sketch frame's +z, which is the frame an extrude on it is oriented by.
+  assert.equal(lid!.plane.frame, null);
+  assert.ok(Math.abs(Math.abs(dot(lid!.plane.normal, t.uz)) - 1) < 1e-9);
   assert.ok(Math.abs(lid!.area - W * H) < 1e-9, `area ${lid!.area}`);
   // A box's six faces: two caps and four walls.
   assert.equal(all.length, 6);
@@ -129,13 +135,13 @@ test("corners joined by coin, as the line tool joins them, get one twin each —
   lines.forEach((l, i) => coincident(m, l.refs[1], lines[(i + 1) % 4].refs[0]));
   const f = m.featureOf(extrude(m, lines[0].name, 20), "extrude");
   assert.equal(f.walls.length, 4, "a wall per corner, not per point");
-  assert.equal(baseOf(m, f.depth).size, 4 + 3);
+  assert.equal(baseOf(m, f.depth).size, 4);
   // So the lid's corners are shared points and the lid is a loop.
-  assert.ok(findLoops(m).some((l) => l.plane.frame === f.top));
+  assert.ok(findLoops(m).some((l) => l.members.every((mm) => f.twins[0].includes(mm.name))));
   assert.equal(m.solve().solved, true);
 });
 
-test("a filleted loop: the arc's twin is on the lid frame, the same arc, the same radius — and its centre has a twin but no wall", async () => {
+test("a filleted loop: the arc's twin names the sketch frame, the same arc, the same radius — and its centre has a twin but no wall", async () => {
   await loadKernel();
   const m = new Model(3);
   const t = tiltedFrame(m);
@@ -146,13 +152,15 @@ test("a filleted loop: the arc's twin is on the lid frame, the same arc, the sam
 
   const f = m.featureOf(extrude(m, lines[2], 15), "extrude");
   assert.deepEqual(f.loops, [[lines[0], arc, lines[1], lines[2], lines[3]]]);
-  // Five corners and the centre, three lid-frame points; four twin lines, the
-  // twin arc, five walls; the lid frame.
-  assert.equal(m.entities.size - before, 6 + 3 + 4 + 1 + 5 + 1);
+  // Five corners and the centre; four twin lines, the twin arc, five walls.
+  assert.equal(m.entities.size - before, 6 + 4 + 1 + 5);
   assert.equal(f.walls.length, 5);
   const twinArc = m.arc(f.twins[0][1]);
   const base = m.arc(arc);
-  assert.equal(twinArc.plane, f.top, "on the lid frame, so a sketch on the cap means what it says");
+  // The sketch frame itself: a translation turns nothing, and a curve's frame
+  // is its orientation — so it is the same arc, about the same +z.
+  assert.equal(twinArc.plane, t.name);
+  assert.equal(base.plane, t.name);
   assert.ok(Math.abs(m.radius(twinArc.name) - m.radius(arc)) < 1e-12);
   const bases = baseOf(m, f.depth);
   assert.equal(bases.get(twinArc.center), base.center);
@@ -182,10 +190,12 @@ test("a circle is a tube: two rims, two centres, no walls — the cylinder is dr
   const f = m.featureOf(extrude(m, c, 12), "extrude");
   assert.deepEqual(f.loops, [[c]]);
   assert.deepEqual(f.walls, []);
-  // One centre twin and the lid frame's three points; the twin circle; the frame.
-  assert.equal(m.entities.size - before, 1 + 3 + 1 + 1);
+  // One centre twin and the twin circle, and nothing else.
+  assert.equal(m.entities.size - before, 1 + 1);
   const twin = m.circle(f.twins[0][0]);
-  assert.equal(twin.plane, f.top);
+  assert.equal(twin.plane, t.name, "the sketch frame: an orientation, not a place");
+  assert.deepEqual(baseOf(m, f.depth), new Map([[twin.center, m.circle(c).center], [twin.name, c]]),
+    "the centre's pair and the radius's, and no frame's");
   assert.ok(near(m.coords(twin.center), m.coords(m.circle(c).center).map((x, i) => x + 12 * t.uz[i])));
   // Set the base radius and the twin follows: the radius pair holds it.
   m.problem.setVar(m.circle(c).radiusVar, 9);
@@ -299,32 +309,35 @@ test("the twins are ordinary geometry: a diagonal held to 50 and the depth set, 
   assert.ok(Math.abs(m.coords(twinOf.get(p[0])!)[2] - 30) < 1e-9, "and the lid is at the new depth");
 });
 
-test("the lid frame is held to the sketch frame as a datum: moving the sketch frame carries the lid, the lid never turns the sketch", async () => {
+test("the sketch frame is the depth's datum: pulling a lid corner never turns the sketch frame, and turning the frame carries the lid", async () => {
   await loadKernel();
   const m = new Model(3);
   const t = tiltedFrame(m);
   const { lines } = polygon(m, t, [[0, 0], [W, 0], [W, H], [0, H]]);
   const f = m.featureOf(extrude(m, lines[0], 20), "extrude");
-  const top = m.frame(f.top);
+  const bases = baseOf(m, f.depth);
+  const [corner, base] = [...bases][0];
 
-  // Pull the lid frame's origin away and solve: the sketch frame does not move.
+  // Pull a lid corner away and solve: the sketch frame does not move at all,
+  // and the corner goes back over its base.
   const frameWas = ["t_o", "t_x", "t_y"].map((n) => m.coords(n));
-  m.setCoords(top.origin, m.coords(top.origin).map((c) => c + 7));
+  m.setCoords(corner, m.coords(corner).map((c) => c + 7));
   assert.equal(m.solve().solved, true);
   ["t_o", "t_x", "t_y"].forEach((n, i) => assert.ok(near(m.coords(n), frameWas[i], 0), `${n} did not move at all`));
-  assert.ok(near(m.coords(top.origin), m.coords("t_o").map((c, i) => c + 20 * t.uz[i])), "and the lid frame went back");
+  assert.ok(near(m.coords(corner), m.coords(base).map((c, i) => c + 20 * t.uz[i]), 1e-6), "and the corner went back");
 
-  // Move the sketch frame: the lid frame follows within the same solve.
-  for (const n of ["t_o", "t_x", "t_y"]) m.setCoords(n, m.coords(n).map((c, i) => c + [3, -2, 5][i]));
+  // Turn the sketch frame (its y-ref swung about its x axis): the lid follows
+  // within the same solve, every twin its base plus 20 along the *new* +z.
+  m.setCoords("t_y", m.coords("t_y").map((c, i) => c + 4 * t.uz[i]));
   assert.equal(m.solve().solved, true);
-  for (const [n, tn] of [["t_o", top.origin], ["t_x", top.xref], ["t_y", top.yref!]]) {
-    assert.ok(near(m.coords(tn), m.coords(n).map((c, i) => c + 20 * t.uz[i])), tn);
-  }
+  const z = (await import("../src/curveplane.ts")).framePlaneAxes(m, t.name)!.n;
+  assert.ok(Math.abs(dot(z, t.uz)) < 1 - 1e-3, "the frame did turn");
+  for (const [tw, b] of bases) assert.ok(near(m.coords(tw), m.coords(b).map((c, i) => c + 20 * z[i]), 1e-6), tw);
 });
 
 // --- deletion ------------------------------------------------------------------
 
-test('del("e1") takes the lid, the walls, the lid frame and the depth, and leaves the sketch exactly as it was', async () => {
+test('del("e1") takes the lid, the walls and the depth, and leaves the sketch exactly as it was', async () => {
   await loadKernel();
   const m = new Model(3);
   const t = tiltedFrame(m);
@@ -411,23 +424,26 @@ test("a sketch on the lid goes with the feature; a second extrude on the lid los
   const t = tiltedFrame(m);
   const { lines } = polygon(m, t, [[0, 0], [W, 0], [W, H], [0, H]]);
   const f = m.featureOf(extrude(m, lines[0], 20), "extrude");
-  // A circle sketched on the cap, on the lid frame.
-  const c = m.addPoint(m.coords(m.frame(f.top).origin).map((x, i) => x + 10 * t.ux[i] + 10 * t.uy[i])).name;
-  onPlane(m, c, f.top);
-  const cap = m.addCircle(c, 3, f.top).name;
-  // A second extrude, on the lid's own loop — named through the lid frame,
+  // A circle sketched on the cap, on a plane of three lid corners — what
+  // "Sketch on this face" makes (sketchface.ts) — its centre held on it.
+  const [a, b, , d] = f.twins[0].map((tw) => m.line(tw).refs[0]);
+  const cap = m.addFrame(a, b, d).name;
+  const c = m.addPoint(m.coords(a).map((x, i) => x + 10 * t.ux[i] + 10 * t.uy[i])).name;
+  onPlane(m, c, cap);
+  const ring1 = m.addCircle(c, 3, cap).name;
+  // A second extrude, on the lid's own loop — named through the cap's plane,
   // since every lid edge is also the edge of a wall.
   assert.throws(() => extrude(m, f.twins[0][0], 10), /is in 2 loops/);
-  const g = m.featureOf(extrude(m, f.twins[0][0], 10, f.top), "extrude");
+  const g = m.featureOf(extrude(m, f.twins[0][0], 10, cap), "extrude");
   assert.deepEqual(g.loops[0].slice().sort(), f.twins[0].slice().sort());
 
   const removed = del(m, f.name);
-  assert.ok(removed.includes(cap), "the circle on the lid frame needs the frame");
+  assert.ok(removed.includes(cap), "the cap's plane stood on the lid's corners, and needs them");
+  assert.ok(removed.includes(ring1), "so the circle on it goes too");
   assert.ok(removed.includes(g.name), "the second extrude's profile was the first's lid");
   // Its walls stood on the first lid's corners and need them; its own lid does not.
   assert.ok(removed.includes(g.walls[0]));
   assert.ok(!removed.includes(g.twins[0][0]), "but the second lid is its own, and stays");
-  assert.ok(!removed.includes(g.top));
   assert.equal(m.features.size, 0);
   for (const l of lines) assert.ok(m.entities.has(l));
 });
@@ -533,12 +549,13 @@ test("save, open, save is byte-identical with an extrude, a set and a deletion i
   const f = m.featureOf(extrude(m, lines[0], 20), "extrude");
   set(m, `${f.depth}.value`, 32);
   m.solve();
-  const g = m.featureOf(extrude(m, f.twins[0][0], 8, f.top), "extrude");
+  // Narrowed to the lid by the sketch frame: the lid is parallel to it, the walls are not.
+  const g = m.featureOf(extrude(m, f.twins[0][0], 8, t.name), "extrude");
   m.solve();
   del(m, g.name);
   m.solve();
   // And a deletion that takes only a record.
-  const h = m.featureOf(extrude(m, f.twins[0][2], 4, f.top), "extrude");
+  const h = m.featureOf(extrude(m, f.twins[0][2], 4, t.name), "extrude");
   del(m, h.walls[0]);
   m.solve();
 
@@ -599,19 +616,18 @@ test("the command line: extrude returns the feature, ls() lists it, rels() and t
   const f = m.featureOf("e1", "extrude");
   const ls = (scope.ls as () => string[])();
   // The feature's line, then what it made as a count under it (quiet-geometry.md):
-  // four corner twins, eight lines, the depth, and the lid frame with three
-  // points of its own (this sketch frame stands off the profile, so the lid
-  // frame has no corner twins to share).
-  assert.equal(ls.at(-2), "e1  extrude of l1,l2,l3,l4, depth d1 = 20 along t, lid f1");
-  assert.equal(ls.at(-1), `    17 made — members("e1") lists them`);
+  // four corner twins, eight lines and the depth — no lid frame, so nothing
+  // over this sketch frame's points, which stand off the profile.
+  assert.equal(ls.at(-2), "e1  extrude of l1,l2,l3,l4, depth d1 = 20 along t");
+  assert.equal(ls.at(-1), `    13 made — members("e1") lists them`);
   // A lid corner is held by the depth and nothing else.
   const corner = m.line(f.walls[0]).refs[1];
-  assert.deepEqual((scope.rels as (n?: string) => string[])(corner), ["d1  extrusion 20 along t.z, 7 pairs"]);
-  assert.equal(describePick(m, { name: "d1", kind: "relation", distance: 0 }), "d1  extrusion 20 along t.z, 7 pairs  ·  e1");
+  assert.deepEqual((scope.rels as (n?: string) => string[])(corner), ["d1  extrusion 20 along t.z, 4 pairs"]);
+  assert.equal(describePick(m, { name: "d1", kind: "relation", distance: 0 }), "d1  extrusion 20 along t.z, 4 pairs  ·  e1");
   assert.match(describePick(m, { name: f.walls[0], kind: "line", distance: 0 }), /·\s+e1$/);
   assert.match((scope.help as () => string)(), /extrude\(member, depth\?, frame\?\)/);
   // No depth: the seed every free entity gets.
-  const g = m.featureOf(ex(f.twins[0][0], undefined, f.top), "extrude");
+  const g = m.featureOf(ex(f.twins[0][0], undefined, t.name), "extrude");
   assert.equal(m.relationOf(g.depth).args[1], DEFAULT_DEPTH);
   assert.equal(DEFAULT_DEPTH, Model.DEFAULT_RADIUS);
 });

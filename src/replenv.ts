@@ -21,7 +21,7 @@ import * as geom from "./relations/geometry.ts";
 import {
   del, extrude, extrudeNeedsFrame, fillet, filletNeedsFrame, regen, revolve, revolveNeedsFrame, set,
 } from "./operations.ts";
-import { facingPoints, sketchFrameFor } from "./sketchface.ts";
+import { facingPoints, sketchFrameFor, type FacePlane } from "./sketchface.ts";
 import { cross3, lift3, sub3 } from "./vec3.ts";
 import { save as saveModel, savedTools } from "./persist.ts";
 import { carryIntoSession, toolSources, type ToolSourceStore } from "./toolsource.ts";
@@ -372,9 +372,25 @@ export function neocadScope(h: EnvHandles): Bag {
    */
   function planeForFeature(loop: Loop): string {
     const toward = model.dim === 3 && h.view ? viewAxes(h.view).toward : loop.plane.normal;
-    const name = model.addFrame(...sketchFrameFor(model, loop, toward)).name;
+    const name = frameOnFace(sketchFrameFor(model, loop, toward));
     if (model.defaultFrame == null) model.setDefaultFrame(name);
     return name;
+  }
+
+  /**
+   * The frame of a face's plane, as the model calls the typed
+   * `plane(…)`/`frame(…)` line makes: of three of its points, or — a circle off
+   * its frame's plane — of its centre and two points held on its rim
+   * (`MadePlane`), in the order the clause idiom applies them.
+   */
+  function frameOnFace(p: FacePlane): string {
+    if (Array.isArray(p)) return model.addFrame(...p).name;
+    const [x, y] = p.refs.map((at) => {
+      const q = model.addPoint(at).name;
+      geom.onCircle(model, q, p.on);
+      return q;
+    });
+    return model.addFrame(p.origin, x, y).name;
   }
 
   /**

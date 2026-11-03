@@ -16,6 +16,13 @@
 //
 // The old expansion is still the one a version-9 file replays with, so its
 // names do not shift; the last third of the file is that.
+//
+// **Since format 11 an extrude makes no lid frame at all**
+// (docs/plans/no-lid-frame.md, tested in nolidframe.test.ts). Version 10's
+// shared lid frame is what a version-10 file still replays with, so the extrude
+// cases here ask for it by name — the expansion `10` persist.ts writes into
+// such a file's entries — and go on proving it. A revolve's end frames are
+// today's, and are asked for as they always were.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -101,10 +108,13 @@ async function typed(m: Model, line: string): Promise<unknown> {
 
 // --- the expansion ---------------------------------------------------------------
 
-test("the owner's plate with a hole, extruded frameless: 14 points, none on another — the lid frame stands on three lid corners", async () => {
+test("the owner's plate with a hole, extruded frameless the version-10 way: 14 points, none on another — the lid frame stands on three lid corners", async () => {
   await loadKernel();
   const { m, rect, outline } = ownersPlate();
-  assert.equal(await typed(m, `extrude("${outline[0]}", 10)`), "e1");
+  // The frame the typed call makes for it (three of the outline's corners), then the old expansion.
+  m.addFrame(rect[0], rect[1], rect[3], "f1");
+  m.setDefaultFrame("f1");
+  assert.equal(extrude(m, outline[0], 10, "f1", null, 10), "e1");
   assert.equal(m.solve().solved, true);
   const f = m.featureOf("e1", "extrude");
   const sketch = m.frame(f.frame);
@@ -116,7 +126,7 @@ test("the owner's plate with a hole, extruded frameless: 14 points, none on anot
   assert.deepEqual(coincident(m), []);
   // The lid frame's points are the twins over the sketch frame's.
   const bases = baseOf(m, f.depth);
-  const lid = m.frame(f.top);
+  const lid = m.frame(f.top!);
   assert.deepEqual([lid.origin, lid.xref, lid.yref].map((p) => bases.get(p!)), [sketch.origin, sketch.xref, sketch.yref]);
   for (const p of [lid.origin, lid.xref, lid.yref]) assert.ok(f.twins.flat().some((tw) => m.line(tw).refs.includes(p!)), `${p} is a lid corner`);
   // The depth holds seven places, once each.
@@ -124,8 +134,8 @@ test("the owner's plate with a hole, extruded frameless: 14 points, none on anot
   heldOnce(m, f.depth);
   // Owned once: a shared point is a twin, and only that.
   assert.equal(new Set(f.owns).size, f.owns.length);
-  // The journal is the call, as it always was.
-  assert.equal((m.journal.at(-1)!.args as unknown[]).length, 4);
+  // The journal is the call, with the old expansion said in it (today's says nothing).
+  assert.deepEqual((m.journal.at(-1)!.args as unknown[]).slice(4), [10]);
 
   // And it is still the lid: set moves it, the frame with it.
   set(m, `${f.depth}.value`, 25);
@@ -134,7 +144,7 @@ test("the owner's plate with a hole, extruded frameless: 14 points, none on anot
   assert.deepEqual(coincident(m), []);
 });
 
-test("a lid frame over a sketch frame floating off the profile still makes its own three points — and over one that stands partly on it, only the ones it must", async () => {
+test("a version-10 lid frame over a sketch frame floating off the profile still makes its own three points — and over one that stands partly on it, only the ones it must", async () => {
   await loadKernel();
   const m = new Model(3);
   const t = tiltedFrame(m);
@@ -143,10 +153,10 @@ test("a lid frame over a sketch frame floating off the profile still makes its o
   // a replay must — and its lid point would sit on the corner's twin.
   const { lines } = polygon(m, t, [[5, 5], [45, 5], [45, 35], [5, 35]]);
   const before = m.entities.size;
-  const f = m.featureOf(extrude(m, lines[0], 20), "extrude");
+  const f = m.featureOf(extrude(m, lines[0], 20, null, null, 10), "extrude");
   // Three frame points, the frame, four twins, four twin edges, four walls: as it always was.
   assert.equal(m.entities.size - before, 3 + 1 + 4 + 4 + 4);
-  const lid = m.frame(f.top);
+  const lid = m.frame(f.top!);
   for (const p of [lid.origin, lid.xref, lid.yref!]) assert.ok(f.owns.includes(p));
   const bases = baseOf(m, f.depth);
   assert.deepEqual([lid.origin, lid.xref, lid.yref].map((p) => bases.get(p!)), [`${t.name}_o`, `${t.name}_x`, `${t.name}_y`]);
@@ -162,9 +172,9 @@ test("a lid frame over a sketch frame floating off the profile still makes its o
   onPlane(m2, off, t2.name);
   const half = m2.addFrame(p2.points[0], p2.points[1], off).name;
   const ents = m2.entities.size;
-  const g = m2.featureOf(extrude(m2, p2.lines[0], 20, half), "extrude");
+  const g = m2.featureOf(extrude(m2, p2.lines[0], 20, half, null, 10), "extrude");
   assert.equal(m2.entities.size - ents, 1 + 1 + 4 + 4 + 4, "one frame point, the frame, the twins, edges and walls");
-  const gl = m2.frame(g.top);
+  const gl = m2.frame(g.top!);
   const gb = baseOf(m2, g.depth);
   assert.deepEqual([gl.origin, gl.xref, gl.yref].map((p) => gb.get(p!)), [p2.points[0], p2.points[1], off]);
   assert.equal(gb.size, 4 + 1);
@@ -244,11 +254,11 @@ function heldRectangle() {
   return { m, t, ps, lines, own };
 }
 
-test("a fillet after the extrude regenerates with the lid frame still on its corners: no two points on one spot, every place held once", async () => {
+test("a fillet after a version-10 extrude regenerates with the lid frame still on its corners: no two points on one spot, every place held once", async () => {
   await loadKernel();
   const { m, t, ps, lines, own } = heldRectangle();
-  const f0 = m.featureOf(extrude(m, lines[0], 20, own), "extrude");
-  const lid = m.frame(f0.top);
+  const f0 = m.featureOf(extrude(m, lines[0], 20, own, null, 10), "extrude");
+  const lid = m.frame(f0.top!);
   assert.deepEqual(coincident(m), []);
 
   // The corner at (40, 0) is the sketch frame's x-ref, and so its twin the lid frame's.
@@ -256,7 +266,7 @@ test("a fillet after the extrude regenerates with the lid frame still on its cor
   assert.equal(m.solve().solved, true);
   const f = m.featureOf("e1", "extrude") as ExtrudeFeature;
   assert.equal(f.loops[0].length, 5, "rounded");
-  assert.equal(m.frame(f.top).xref, lid.xref, "the lid frame keeps its points");
+  assert.equal(m.frame(f.top!).xref, lid.xref, "the lid frame keeps its points");
   const bases = baseOf(m, f.depth);
   assert.equal(bases.get(lid.xref), ps[1], "still the twin of the corner, now leg one's tangent point");
   assert.deepEqual(coincident(m), []);
@@ -271,12 +281,12 @@ test("a fillet after the extrude regenerates with the lid frame still on its cor
   assert.deepEqual(allNames(m), names);
 });
 
-test("a corner the lid frame stands on leaves the profile: its twin stays as the lid frame's own point, held by its own pair — its wall goes", async () => {
+test("a corner a version-10 lid frame stands on leaves the profile: its twin stays as the lid frame's own point, held by its own pair — its wall goes", async () => {
   await loadKernel();
   const { m, t, ps, lines, own } = heldRectangle();
   for (const p of ps) fix(m, p, [...[[0, 0], [40, 0], [40, 30], [0, 30]][ps.indexOf(p)], 0] as number[], t.name);
-  const f0 = m.featureOf(extrude(m, lines[3], 10, own), "extrude");
-  const lidX = m.frame(f0.top).xref;
+  const f0 = m.featureOf(extrude(m, lines[3], 10, own, null, 10), "extrude");
+  const lidX = m.frame(f0.top!).xref;
   const wallX = f0.walls.find((w) => m.line(w).refs[0] === ps[1])!;
   // A line across at u = 15: the left half is the profile now, and (40, 0) is not in it.
   const ends = [t.at(15, -10), t.at(15, 40)].map((w) => m.addPoint(w).name);
@@ -288,7 +298,7 @@ test("a corner the lid frame stands on leaves the profile: its twin stays as the
   assert.equal(m.solve().solved, true);
   const f = m.featureOf("e1", "extrude") as ExtrudeFeature;
   assert.ok(m.entities.has(lidX), "the lid frame's point survives its corner");
-  assert.equal(m.frame(f.top).xref, lidX);
+  assert.equal(m.frame(f.top!).xref, lidX);
   assert.ok(f.owns.includes(lidX));
   assert.ok(!m.entities.has(wallX), "the corner's wall is gone");
   assert.equal(f.walls.length, 4);
@@ -299,7 +309,7 @@ test("a corner the lid frame stands on leaves the profile: its twin stays as the
   heldOnce(m, f.depth);
 });
 
-test("a sketch-frame point the profile comes to run through takes the lid point already over it — regenerating lays no second point there", async () => {
+test("a sketch-frame point the profile comes to run through takes the version-10 lid point already over it — regenerating lays no second point there", async () => {
   await loadKernel();
   const m = new Model(3);
   const t = tiltedFrame(m);
@@ -312,8 +322,8 @@ test("a sketch-frame point the profile comes to run through takes the lid point 
   fix(m, x, [15, 0, 0], t.name);
   const fr = m.addFrame(ps[0], x, ps[3]).name;
   assert.equal(m.solve().solved, true);
-  const f0 = m.featureOf(extrude(m, lines[3], 10, fr), "extrude");
-  const lidX = m.frame(f0.top).xref;
+  const f0 = m.featureOf(extrude(m, lines[3], 10, fr, null, 10), "extrude");
+  const lidX = m.frame(f0.top!).xref;
   assert.ok(!f0.twins.flat().some((tw) => m.line(tw).refs.includes(lidX)), "over no corner yet: the lid frame's own");
   assert.equal(baseOf(m, f0.depth).get(lidX), x);
 
@@ -350,24 +360,50 @@ test('del("e1") takes exactly what it made — the twins its frame stands on onc
 
 // --- the file ---------------------------------------------------------------------
 
-test("a version-10 file round-trips: the same names, the same shared lid, byte-identical twice over — and its extrude entry is the call", async () => {
-  await loadKernel();
-  const { m } = ownersPlate();
-  await typed(m, `extrude("l1", 10)`);
+/**
+ * What a version-10 build wrote for a plate whose sketch frame floats off it
+ * (the case where its lid frame made three points of its own): the extrude,
+ * then a point drawn after and a relation on a lid-frame point. Built with the
+ * expansion `10`, which a version-10 entry does not say, so it is struck.
+ */
+function version10File() {
+  const m = new Model(3);
+  const t = tiltedFrame(m);
+  const { lines } = polygon(m, t, [[5, 5], [45, 5], [45, 35], [5, 35]]);
+  extrude(m, lines[0], 20, t.name, null, 10);
   m.solve();
+  const lidO = m.frame(m.featureOf("e1", "extrude").top!).origin;
   const later = m.addPoint([80, 80, 0]).name;
-  dist(m, later, m.frame(m.featureOf("e1", "extrude").top).origin, 50);
+  dist(m, later, lidO, 50);
   assert.equal(m.solve().solved, true);
-  const once = save(m);
-  assert.equal(JSON.parse(once).version, 10);
-  assert.equal(JSON.parse(once).journal.find((e: { op: string }) => e.op === "extrude").args.length, 4, "nothing new in the entry");
-  const back = open(once);
-  assert.equal(save(back), once, "byte-identical");
-  assert.equal(save(open(save(back))), once, "and again");
-  assert.deepEqual(allNames(back), allNames(m));
-  assert.deepEqual(back.featureOf("e1"), m.featureOf("e1"));
-  assert.equal(back.solve().solved, true);
-  assert.deepEqual(coincident(back), []);
+  const saved = JSON.parse(save(m));
+  for (const e of saved.journal) if (e.op === "extrude") e.args = e.args.slice(0, 4);
+  saved.version = 10;
+  return { m, saved, later, lidO };
+}
+
+test("a version-10 file reopens with its lid frame and the same names, the expansion said in the entry from then on — byte-identical twice over", async () => {
+  await loadKernel();
+  const { m, saved, later, lidO } = version10File();
+  const opened = open(JSON.stringify(saved));
+  assert.deepEqual(allNames(opened), allNames(m), "no name shifted");
+  assert.deepEqual(opened.featureOf("e1"), m.featureOf("e1"), "the record the old build made, lid frame and all");
+  assert.equal(opened.featureOf("e1").expansion, 10);
+  assert.deepEqual(opened.relationsNaming(later).map((r) => r.args), [[later, lidO, 50]]);
+  assert.equal(opened.solve().solved, true);
+  assert.deepEqual(coincident(opened), []);
+
+  const resaved = save(opened);
+  assert.equal(JSON.parse(resaved).version, VERSION);
+  assert.deepEqual(JSON.parse(resaved).journal.find((e: { op: string }) => e.op === "extrude").args.slice(4), [10],
+    "the expansion written in, so the file keeps meaning it");
+  assert.equal(save(open(resaved)), resaved, "byte-identical from here on");
+  assert.equal(save(open(save(open(resaved)))), resaved);
+
+  // Why it is kept: read as today's expansion the extrude makes four entities
+  // fewer, so the point drawn after it takes another name and the relation on
+  // the lid frame's origin names a point that is never made.
+  assert.throws(() => open(JSON.stringify({ ...saved, version: VERSION })), /is not a point/);
 });
 
 /**
@@ -412,9 +448,9 @@ test("a version-9 file with an extrude and a relation on a later-named point reo
   assert.equal(save(open(resaved)), resaved, "byte-identical from here on");
   assert.equal(save(open(save(open(resaved)))), resaved);
 
-  // Why it is kept: the same entries read as today's expansion make three
-  // points fewer, so the relation drawn after the extrude names a point that
-  // is never made, and the file fails at that step.
+  // Why it is kept: the same entries read as today's expansion make no lid
+  // frame, so the relation drawn after the extrude names a point that is never
+  // made, and the file fails at that step.
   assert.throws(() => open(JSON.stringify({ ...saved, version: VERSION })), /step 19, dist\("p18", "p16", 50\): "p16" is not a point/);
 });
 
@@ -462,16 +498,20 @@ test("a version-9 regeneration replays the old way too: a fillet after an old ex
   assert.equal(opened.solve().solved, true);
 });
 
-test("an expansion other than 9 or today's is refused, naming what it is for", async () => {
+test("an expansion other than an old file's or today's is refused, naming what it is for", async () => {
   await loadKernel();
   const m = new Model(3);
   const t = tiltedFrame(m);
   const { lines } = polygon(m, t, [[0, 0], [40, 0], [40, 30], [0, 30]]);
-  assert.throws(() => extrude(m, lines[0], 20, null, null, 7), /extrude's expansion is 9 \(a file of version 9 or below/);
-  assert.throws(() => revolve(m, lines[0], `${t.name}.y`, 1, null, null, 8), /revolve's expansion is 9/);
+  assert.throws(() => extrude(m, lines[0], 20, null, null, 7), /extrude's expansion is 9 or 10 \(a file of version 9 or 10/);
+  assert.throws(() => extrude(m, lines[0], 20, null, null, 12), /extrude's expansion is 9 or 10/);
+  assert.throws(() => revolve(m, lines[0], `${t.name}.y`, 1, null, null, 8), /revolve's expansion is 9 \(/);
+  // A revolve has no expansion 11: its end frames are today's, and stay.
+  assert.throws(() => revolve(m, lines[0], `${t.name}.y`, 1, null, null, 11), /revolve's expansion is 9 \(/);
   assert.equal(m.features.size, 0);
-  assert.equal(extrude(m, lines[0], 20, null, null, 10), "e1", "today's, said out loud, is today's");
+  assert.equal(extrude(m, lines[0], 20, null, null, 11), "e1", "today's, said out loud, is today's");
   assert.equal((m.journal.at(-1)!.args as unknown[]).length, 4);
+  assert.equal(m.featureOf("e1").expansion, 11);
 });
 
 export type { TiltedFrame };

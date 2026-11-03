@@ -101,7 +101,7 @@ test("the bug, measured: a fillet that regenerates nothing leaves the lid four-c
 
 // --- fillet regenerates --------------------------------------------------------
 
-test("fillet after extrude regenerates: five corner twins and the centre's, a twin arc on the lid frame, five walls, the depth holding them all — the record rewritten, the name kept", async () => {
+test("fillet after extrude regenerates: five corner twins and the centre's, a twin arc on the sketch frame, five walls, the depth holding them all — the record rewritten, the name kept", async () => {
   await loadKernel();
   const { m, t, points, lines } = rectangle();
   const e1 = m.featureOf(extrude(m, lines[0], 20), "extrude");
@@ -121,24 +121,26 @@ test("fillet after extrude regenerates: five corner twins and the centre's, a tw
   assert.equal(m.features.size, 1);
   const f = m.featureOf("e1", "extrude");
   assert.equal(f.depth, e1.depth, "the same dimension");
-  assert.equal(f.top, e1.top, "the same lid frame");
+  assert.equal(f.top, undefined, "still no lid frame (docs/plans/no-lid-frame.md)");
+  assert.ok(!f.owns.some((n) => m.entities.get(n)?.kind === "frame"), "nor any frame made by regenerating");
   assert.deepEqual(f.loops, [[lines[0], arc, lines[1], lines[2], lines[3]]], "the arc between the legs, in the record's own order");
   assert.deepEqual(f.twins[0].map((n) => m.entities.get(n)?.kind), ["line", "arc", "line", "line", "line"]);
   assert.deepEqual([f.twins[0][0], ...f.twins[0].slice(2)], keptTwins, "every twin edge kept, under its name");
   assert.equal(f.walls.length, 5);
   for (const w of keptWalls) assert.ok(f.walls.includes(w), `${w} kept`);
-  // The dimension holds exactly the new twins: five corners and the centre, the
-  // arc's radius, the lid frame's three points.
+  // The dimension holds exactly the new twins: five corners and the centre, and
+  // the arc's radius — no frame's pairs.
   const pairs = baseOf(m, f.depth);
-  assert.equal(pairs.size, 5 + 1 + 1 + 3);
+  assert.equal(pairs.size, 5 + 1 + 1);
   for (const p of [...points, t2, ab.center]) assert.ok([...pairs.values()].includes(p), `${p} has a twin`);
   points.forEach((p, i) => assert.equal(twinOver(m, f.depth, p), keptCorners[i], `${p} keeps its twin`));
   assert.equal(m.relationOf(f.depth).args[1], 20, "the same value");
 
   // The twin arc: about the centre's twin, between the twins of the arc's own
-  // ends, on the lid frame, the same radius.
+  // ends, on the sketch frame (an orientation, which a translation keeps), the
+  // same radius.
   const ta = m.arc(f.twins[0][1]);
-  assert.equal(ta.plane, f.top);
+  assert.equal(ta.plane, t.name);
   assert.equal(ta.center, twinOver(m, f.depth, ab.center));
   assert.equal(ta.start, twinOver(m, f.depth, ab.start));
   assert.equal(ta.end, twinOver(m, f.depth, ab.end));
@@ -157,7 +159,7 @@ test("fillet after extrude regenerates: five corner twins and the centre's, a tw
   // The lid is a loop with the base's area: the rectangle less the corner the
   // arc cut off, r² − πr²/4.
   const lid = findLoops(m).find((l) => l.members.some((mm) => mm.name === ta.name));
-  assert.ok(lid && lid.plane.frame === f.top);
+  assert.ok(lid && lid.plane.frame === null, "in no frame's plane: nothing stands on the lid");
   assert.ok(Math.abs(lid!.area - (1200 - 64 + 16 * Math.PI)) < 0.1, `lid area ${lid!.area}`);
 
   // One journal entry, the call, with what it regenerated resolved.
@@ -207,7 +209,7 @@ test("a solid standing on the lid follows too: filleting the base re-points the 
   const e1 = m.featureOf(extrude(m, lines[0], 20), "extrude");
   m.solve();
   // The whole lid extruded again, 5 more: its profile is e1's twin edges.
-  const e2 = m.featureOf(extrude(m, e1.twins[0][0], 5, e1.top), "extrude");
+  const e2 = m.featureOf(extrude(m, e1.twins[0][0], 5, t.name), "extrude");
   m.solve();
   fillet(m, lines[0], lines[1], 8);
   const regenerated = (m.journal.at(-1)!.args[4] as [string, unknown][]).map(([n]) => n);
@@ -219,7 +221,7 @@ test("a solid standing on the lid follows too: filleting the base re-points the 
   assert.equal(m.entities.get(f2.twins[0][f2.loops[0].indexOf(f1.twins[0][1])])?.kind, "arc");
   assert.equal(m.solve().solved, true);
   lidAt(m, t, f1.depth, 20);
-  // e2's frame is e1's lid frame, whose +z is the sketch's.
+  // e2 is oriented by the sketch frame too, the frame its profile is parallel to.
   lidAt(m, t, f2.depth, 5);
   assert.equal(e2.name, f2.name);
 });
@@ -231,7 +233,7 @@ test("set on the depth after the fillet carries the rounded lid: every twin, the
   fillet(m, lines[0], lines[1], 8);
   m.solve();
   const f = m.featureOf("e1", "extrude");
-  assert.equal(baseOf(m, f.depth).size, 5 + 1 + 1 + 3, "the depth holds the rounded lid");
+  assert.equal(baseOf(m, f.depth).size, 5 + 1 + 1, "the depth holds the rounded lid");
   set(m, `${f.depth}.value`, 35);
   assert.equal(m.solve().solved, true);
   lidAt(m, t, f.depth, 35);
@@ -398,10 +400,10 @@ test("regen after a line is drawn across: the crossings made points, the corners
 
 test("save, open, save is byte-identical with a fillet after an extrude, a set, a regen and a deletion in the history — the same names come back", async () => {
   await loadKernel();
-  const { m, lines } = rectangle();
+  const { m, t, lines } = rectangle();
   const e1 = m.featureOf(extrude(m, lines[0], 20), "extrude");
   m.solve();
-  const boss = m.featureOf(extrude(m, e1.twins[0][2], 4, e1.top), "extrude");
+  const boss = m.featureOf(extrude(m, e1.twins[0][2], 4, t.name), "extrude");
   m.solve();
   fillet(m, lines[0], lines[1], 8);
   m.solve();

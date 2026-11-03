@@ -449,30 +449,40 @@ are flagged as such.
     corners), and keeps its own lid.
   - **Twins per joined class**, by loops.ts's own definition: corners joined by
     `coin` (as the line tool joins them) get one twin and one wall, so the lid's
-    corners are shared points and **the top cap is itself a loop** (in the lid
-    frame, with the profile's area) — extrudable again, by `frame` or by click.
+    corners are shared points and **the top cap is itself a loop** (with the
+    profile's area; parallel to the sketch frame, and in no frame's plane since
+    an extrude makes no lid frame) — extrudable again, by `frame` or by click.
   - **The depth holds radii too**: one residual per curve pair, `r_twin −
     r_base`, in the same `extrusion`, so a twin circle (which has no ends to be
     held by) keeps its base's size and `set` touches one relation. An addition
     to the spec's "three components per pair", not a change to it.
   - **The sketch frame is a datum to the depth**: its +z, and any pair whose
-    base is one of its points (the lid frame's), are read as plain numbers. The
+    base is one of its points (an old file's lid frame's), are read as plain numbers. The
     profile's points are variables — so the lid can push the base, which is the
     point (the negotiation demo is a unit test).
-  - **A curve on the sketch frame twins onto the lid frame; one on any other
-    frame keeps its own** (same orientation, so the same arc). Choosing by name
-    rather than by which way a frame faces is what keeps a replay on seeds from
-    deciding it differently.
-  - **A frame a feature makes reuses the points the feature already makes
-    there** (replaced 2026-11-03; it said "the lid frame always has its own
-    three points"). The owner, on doubled point labels on an extruded plate:
-    *"i'm getting a lot of overlapping points. why is this happening?"* — and,
-    told why and what the fix would be, *"of course it should."* A lid frame
-    point (a partial revolve's end-frame point) over a sketch-frame point that
-    is a profile vertex — by join, never by position — is that vertex's twin;
-    any other is the frame's own. The depth holds each place once. Format 10;
-    files of 9 and below keep their old expansion (see the queue entry
-    "A lid frame shares the lid's own points").
+  - **A twin curve keeps its base's frame — the sketch frame's, for a curve
+    on the sketch** (replaced 2026-11-03; it said "a curve on the sketch frame
+    twins onto the lid frame"). A curve's frame is an orientation, not a place,
+    and an extrude translates without turning, so the same frame gives the same
+    arc with no side to decide. Choosing by name rather than by which way a
+    frame faces is still what keeps a replay on seeds from deciding it
+    differently.
+  - **An extrude makes no lid frame** (replaced 2026-11-03, twice: it said "the
+    lid frame always has its own three points", then "a frame a feature makes
+    reuses the points the feature already makes there"). The owner, on doubled
+    point labels: *"i'm getting a lot of overlapping points. why is this
+    happening?"* Sharing the lid's corners fixed a plate, but not two rectangles
+    extruded at once: they share the first one's sketch frame, so the second
+    lid frame laid three points on the *first* lid's corners. The lid frame
+    was made "so a sketch on the cap has a plane", which sketch-on-face builds
+    from the cap itself, and nothing else needed it; it was a derived datum on
+    every solid, and fewer made datums is the flat model's direction. A circle's
+    top, which has no three points of its own, gets a sketch plane made through
+    its centre and held on its rim. **A partial revolve keeps its end frames**
+    (its end face is turned, and its curves need a turned orientation), each
+    standing on the end face's corners where its frame stands on the profile's.
+    Format 11; files of 10 and below keep their old expansion (see the queue
+    entry "An extrude makes no lid frame").
   - **No format bump** (version stays 7): two new ops, no changed meaning; an
     older build refuses a newer file at the step, by op name — the deletion
     ops' precedent. *(Version 8 came with regions split PR 2, 2026-10-22, when
@@ -1128,10 +1138,11 @@ are flagged as such.
       1. **Clauses: `_` must be written.** `circ(oncircle("p1"))` with the slot
          inferred is deferred; adding it later breaks nothing. (Register:
          "An entity defined by any constraint set".)
-      2. **A boss's lid frame copies the sketch frame's points**, so a boss on
+      2. ~~**A boss's lid frame copies the sketch frame's points**, so a boss on
          a face gets a lid frame built from plate corners, floating off the
-         boss. The alternative is a lid frame from the profile's own points,
-         at the cost of a different +x. (Register: sketch on a face.)
+         boss.~~ **Moot (2026-11-03):** an extrude makes no lid frame
+         ([`docs/plans/no-lid-frame.md`](docs/plans/no-lid-frame.md)), so a
+         boss has nothing floating off it. (Register: sketch on a face.)
       3. **Deleting a feature takes what it owns, across features**: the first
          step of a stepped block owns the shared crossing points, so deleting
          it takes the second step's walls there; `regen` cascades the same
@@ -1153,6 +1164,57 @@ are flagged as such.
 
 Queue for Opus, in order. Each gets a spec in `docs/plans/` before work
 starts.
+
+- [x] **An extrude makes no lid frame — BUILT (2026-11-03).** The owner's
+      *"i'm getting a lot of overlapping points. why is this happening?"*, in
+      the case sharing could not fix: two rectangles extruded at once share the
+      first one's sketch frame, so the second lid frame laid three points on
+      the first lid's corners (19 points, three pairs, three frames; now 16,
+      none, one). A twin curve on the sketch frame names the sketch frame; the
+      depth holds corners, centres and radii; the record's `top` is absent; a
+      circle's top gets a sketch plane made through its centre. A revolve keeps
+      its end frames. Format 11; a version-10 file's extrudes are marked `10`.
+      Spec: [`docs/plans/no-lid-frame.md`](docs/plans/no-lid-frame.md).
+      Deviations from the spec:
+      - ⚠ **The circle's plane has no new point at its centre.** The spec said
+        "a point at the centre typed with `pt(...)`"; that point would lie
+        exactly on the top's twin centre, a doubled point. The origin is the
+        twin centre itself.
+      - ⚠ **Its x-ref and y-ref are held on the rim** (`pt(…, oncircle(_,
+        "cN"))`), not left free as the curve tools' refs are. A frame is a
+        datum, so free refs never move: `set` the depth and the origin rises
+        while the refs stay, which tips the plane. On the rim they rise with the
+        top.
+      - ⚠ **Seeded with every digit**, not the curve tools' three decimals:
+        rounded, the holds pulled the refs onto the rim and the cylinder's free
+        radius gave way by 5e-5 (measured).
+      - ⚠ **`EXPANSION` is per op** (`{ extrude: 11, revolve: 10 }`), and a
+        revolve refuses `11`: the spec left revolve unchanged, and one number
+        meaning two expansions would not say which one a file means.
+      - ⚠ **The refusal kept** is a circle whose frame has collapsed. The old
+        "frame has no y-ref" refusal is gone: every 3D frame has a +z, and a
+        made plane needs nothing more.
+      **Found while building, left deliberately:**
+      - **A plane made on a circle's top has two rim points of its own**, drawn
+        (they end no line) with their `oncircle` glyphs. Deleting the cylinder
+        takes the frame, since its origin is the twin centre, and leaves those
+        two points, as deleting any frame leaves its points.
+      - **A lid is in no frame's plane** now (`loops()` says `in the plane
+        facing (…)`), until something is sketched on it; a stacked extrude is
+        oriented by the sketch frame, which the lid is parallel to.
+      - **Old open default 2 ("a boss's lid frame floats off the boss") is
+        moot**: a boss makes no lid frame.
+      - **`hidden.e2e.ts`'s stepped-block probe flipped** on anti-aliasing:
+        the base's back line is both a sketch portion and the base cap's edge,
+        so the dimmed sketch stroke and the dimmed solid line overlap there, and
+        the probe took the most opaque pixel of the two. With the lids' frames
+        gone the sketch stroke's core measured alpha 251 instead of 255 and the
+        solid's 255 won. The probe now asks that the sketch's dimmed ink is
+        drawn there. Why the stroke's anti-aliasing moved is not pinned down; a
+        lid's loop plane is no longer a frame's (its u/v axes come from its
+        first line), which changes the cap's triangulation and so the
+        occlusion runs. That is the likely cause, but it is not measured.
+
 
 - [x] **A lid frame shares the lid's own points — BUILT (2026-11-03).** The
       owner: *"i'm getting a lot of overlapping points. why is this
@@ -1247,7 +1309,9 @@ starts.
         vertices, then arc centres (a lens has two vertices).
       - ⚠ **A whole circle lying off its own frame's plane is refused** (a
         circle is held parallel to its frame, not on it, so the frame's points
-        would not be on the face).
+        would not be on the face). *Superseded 2026-11-03* (no-lid-frame): every
+        extruded circle's top is such a circle now, and it gets a plane made
+        through its centre, its refs held on its rim.
       - ⚠ **The outward-boss assertion** measures the boss's lid frame across
         the wall's plane: its origin twins a plate *corner*, farther from the
         centroid than the wall's middle whichever way the boss goes, so the
@@ -1261,7 +1325,8 @@ starts.
         be extrude choosing its lid frame from the profile rather than twinning
         the sketch frame — an extrude change, not this package's. (Still so
         after the lid frame learned to share the lid's points, 2026-11-03: the
-        face frame's points are the plate's corners, no vertices of the boss.)
+        face frame's points are the plate's corners, no vertices of the boss.
+        Gone the same day: an extrude makes no lid frame.)
       - **The menu item and the tool make the frame default and look at it,
         always** (`plane()`'s contract). Sketching on a face you only meant to
         measure against means `frame(a, b, c)` typed.

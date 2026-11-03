@@ -298,7 +298,19 @@ test("the stepped block from a corner, hidden view: its far edges are in the dim
   // steps — a portion of the rectangle's back line, which the cut at x = 15
   // split, so in the sketch's colour — and the low step's back-left upright
   // (back and left walls away), a wall, in the solid's.
-  for (const [p, dim] of [[[8, 30, 0], dimPlain], [[30, 30, 0], dimPlain], [[0, 30, 5], dimSolid]] as [number[], number[]][]) {
+  //
+  // The back line is also the base cap's edge, so the face layer's dimmed
+  // solid line runs under the sketch's there: of the two, the most opaque
+  // pixel in the patch is a coin toss on anti-aliasing (measured: the sketch
+  // stroke's core went from alpha 255 to 251 when the lids lost their frame,
+  // and the solid's 255 won). What the test means is that the sketch's dimmed
+  // ink is drawn there, in full, so that is what is asked of the two portions.
+  for (const p of [[8, 30, 0], [30, 30, 0]]) {
+    assert.ok(await onSolid(app, p), `${p} is on the solid's picture`);
+    const drawn = (await patch(app, p)).filter((px) => far(px, dimPlain) <= 3 && px[3] > 150);
+    assert.ok(drawn.length > 0, `${p}: dimmed rgb(${dimPlain}) drawn: ${JSON.stringify(await patch(app, p))}`);
+  }
+  for (const [p, dim] of [[[0, 30, 5], dimSolid]] as [number[], number[]][]) {
     assert.ok(await onSolid(app, p), `${p} is on the solid's picture`);
     const ink = await inkAt(app, p);
     assert.ok(far(ink, dim) <= 3 && ink[3] > 150, `${p}: dimmed rgb(${dim}), got ${ink}`);

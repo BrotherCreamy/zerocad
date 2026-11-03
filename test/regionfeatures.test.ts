@@ -100,9 +100,9 @@ test("the stepped block: each half of one sketch extruded to its own depth — t
   assert.deepEqual(m.relationOf(e1.owns[4]).args, [x2, across]);
   assert.deepEqual(m.relationOf(e1.owns[5]).args, [x2, l3]);
   assert.ok(near(m.coords(x1), t.at(15, 0)) && near(m.coords(x2), t.at(15, 30)), "seeded at the crossings");
-  // Four twins, four twin lines, four walls, the lid frame's three points and
-  // the frame, two crossings and their four holds, one depth.
-  assert.equal(m.entities.size - before.entities, 2 + 3 + 1 + 4 + 4 + 4);
+  // Four twins, four twin lines, four walls, two crossings and their four
+  // holds, one depth — and no lid frame.
+  assert.equal(m.entities.size - before.entities, 2 + 4 + 4 + 4);
   assert.equal(m.relations.size - before.relations, 4 + 1);
   assert.deepEqual(e1.twins[0].map((n) => m.entities.get(n)?.kind), ["line", "line", "line", "line"]);
   assert.equal(e1.walls.length, 4);
@@ -207,7 +207,7 @@ test("the hover tag and ls() name the portions by their points, as loops() now d
   const [x1, x2] = materialised(m, "e1");
   const ls = (scope.ls as () => string[])();
   assert.ok(ls.includes(`e1  extrude of ${lines[0]}[${points[0]}→${x1}],${across}[${x1}→${x2}],${lines[2]}[${x2}→${points[3]}],${lines[3]}, `
-    + "depth d1 = 10 along t, lid f1"), ls.join("\n"));
+    + "depth d1 = 10 along t"), ls.join("\n"));
   assert.match(describePick(m, { name: x1, kind: "point", distance: 0 }), /·\s+e1 e2$/);
   assert.match(describePick(m, { name: m.relationsNaming(x1)[0].name, kind: "relation", distance: 0 }), /·\s+e1$/);
   // loops() reads the sketch's halves through the same points now.
@@ -225,7 +225,7 @@ test("save, open, save is byte-identical with the stepped block, a set and a del
   set(m, `${e1.depth}.value`, 14);
   m.solve();
   // A third, deleted: its own lid's region, later gone.
-  const e3 = m.featureOf(extrude(m, e1.twins[0][0], 3, e1.top), "extrude");
+  const e3 = m.featureOf(extrude(m, e1.twins[0][0], 3, "t"), "extrude");
   del(m, e3.name);
   m.solve();
 
@@ -290,10 +290,11 @@ test("a lens of two crossing circles extrudes: two crossings held on both rims, 
   // The crossings at (26, 15 ± 8), on both rims.
   const at = [x1, x2].map((x) => local(t, m.coords(x)).map((c) => Math.round(c * 1e9) / 1e9 + 0)).sort((a, b) => a[1] - b[1]);
   assert.deepEqual(at, [[26, 7, 0], [26, 23, 0]]);
-  // Each twin arc: radius 10, its ends the twins of a base arc's ends, on the lid.
+  // Each twin arc: radius 10, its ends the twins of a base arc's ends, on the
+  // lid — oriented by the sketch frame, as its base circle is.
   for (const arc of f.twins[0]) {
     const a = m.entities.get(arc)!;
-    assert.ok(a.kind === "arc" && a.plane === f.top);
+    assert.ok(a.kind === "arc" && a.plane === t.name);
     assert.ok(Math.abs(m.radius(arc) - 10) < 1e-9);
     for (const p of [a.start, a.end]) assert.ok(Math.abs(local(t, m.coords(p))[2] - 12) < 1e-9);
   }

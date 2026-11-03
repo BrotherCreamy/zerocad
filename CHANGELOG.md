@@ -7,6 +7,70 @@ decisions.
 
 ---
 
+## An extrude makes no lid frame
+
+The owner's report, the one that started the last package:
+
+> *i'm getting a lot of overlapping points. why is this happening?*
+
+It was still true after that package in the commonest multi-region case:
+**two rectangles, the extrude tool, a click in each, Enter.** Both solids share
+the first rectangle's sketch frame, three of *its* corners. For the second
+solid that frame stands off its profile, so the second lid frame made three
+points of its own, the sketch frame's moved by the depth. They landed exactly
+on the **first** solid's lid corners, and each was drawn, since a frame's point
+ends no line. That was 19 points, three pairs on one spot, and three frames.
+**Now it is 16 points, none on another, and one frame: the sketch's.**
+
+The lid frame was made *"so a sketch on the cap has a plane"*, and
+sketch-on-face has built that plane from the cap's own points since it
+shipped. Two things still read the lid frame: a twin curve's frame and the
+depth's pairs. A curve's frame is an orientation, not a place, and an extrude
+translates without turning. So:
+
+- **A twin circle or arc of a curve on the sketch frame names the sketch frame
+  itself.** It is the same curve lifted, drawn and solved as before. A twin of
+  a curve on any other frame keeps that frame, as it always did.
+- **The depth holds the corners, the centres and the radii**, and nothing over
+  the sketch frame's points. `rels()` on a rectangle says `4 pairs`.
+- **The record has no `top`** for a new extrude, and `ls()` no longer ends a
+  feature's line with `, lid f2`.
+- **Sketching on a cylinder's top works.** A circle's lid has only one point of
+  its own, its centre, and its circle's frame is the sketch's, down at the
+  base. The sketch tool and *Sketch on this face* used to refuse it. They now
+  type a plane through the top's own centre, with two points seeded on the rim
+  along the circle frame's axes and held there:
+  `plane("p18", pt(75, 4.666666666666664, 20, oncircle(_, "c2")), pt(90, -10.333333333333336, 20, oncircle(_, "c2")))`.
+  The points go on the rim because the rim moves with the face: `set` the
+  cylinder's depth and the plane rises with the top, still square. The only
+  circle still refused is one whose frame has collapsed and gives no
+  orientation at all.
+- **A second extrude on a lid** is oriented by the sketch frame now, which the
+  lid is parallel to.
+
+**A revolve is unchanged.** Its end face is turned, so a curve on it needs a
+turned orientation, which only an end frame of its own can give. Its end frames
+already stand on the end face's corners.
+
+**Format 11.** No entry changed shape (the call is the same), but the expansion
+makes fewer points, so every name after an extrude differs. A version-10 file
+opens exactly as it was: `translate` writes `10` into each of its extrudes
+(`extrude(…, loops, 10)`; a version-9 file's still get `9`). That makes the lid
+frame again under the names the file's later entries hold, regenerates it the
+old way, and stays in the entry when the file is saved again. Save, open, save
+is byte-identical for old files and new.
+
+`test/nolidframe.test.ts` (7 new) and `test/e2e/nolidframe.e2e.ts` (3 new). The
+lid-frame tests now ask for version 10's expansion by name. 973 unit tests,
+398 e2e.
+
+![Two boxes extruded together from one sketch, seen from above and in front: one frame marker, the sketch's, at the left box's base corner; no point and no marker on either lid](docs/images/98-two-boxes-extruded-together-one-frame-no-point-on-a-lid.png)
+![A cylinder beside a box, with a smaller boss standing on its top: the plane the sketch tool made there has its two rim points, p19 and p20, each with its on-circle glyph](docs/images/99-a-boss-sketched-on-a-cylinders-top.png)
+
+Spec: [`docs/plans/no-lid-frame.md`](docs/plans/no-lid-frame.md).
+
+---
+
 ## Quiet geometry: corners and a solid's edges show when the hand is on them
 
 The owner:

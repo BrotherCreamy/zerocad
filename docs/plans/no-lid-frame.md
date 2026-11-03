@@ -1,6 +1,20 @@
 # Plan: an extrude makes no lid frame
 
-**Status: queued** (2026-11-03). Follow-up to the owner's report of
+**Status: built** (2026-11-03, branch `claude/no-lid-frame`): `Expansion`
+(now `9 | 10 | 11`), the per-op `EXPANSION`, `extrudeBody` and
+`rebuildFeature` in `src/operations.ts`; `ExtrudeFeature.top` optional in
+`src/model.ts`; `MadePlane`, `FacePlane`, `facePlaneArgs` and `circleFrame` in
+`src/sketchface.ts`; `frameOnFace` in `src/replenv.ts`; `describeFeature` in
+`src/picking.ts`; `VERSION` 11 and `translate` in `src/persist.ts`;
+`test/nolidframe.test.ts` and `test/e2e/nolidframe.e2e.ts`. Measured after: the
+two rectangles are 16 points, none on another, one frame (19, three pairs and
+three frames before). Deviations, each marked ⚠ below and listed in `TODO.md`'s
+queue entry: the circle's plane has its origin on the twin centre, not a new
+point; its refs are held on the rim and seeded with every digit; `EXPANSION` is
+per operation; and one `hidden.e2e.ts` probe was loosened after it flipped on
+anti-aliasing.
+
+**Status when written: queued** (2026-11-03). Follow-up to the owner's report of
 overlapping points (*"i'm getting a lot of overlapping points. why is this
 happening?"* — *"of course it should"*) after `lid-frame-shares-points.md`:
 that package made the lid frame reuse the lid's corner twins when the sketch
@@ -44,12 +58,34 @@ the sketch frame stands on the profile.
   at the centre typed with `pt(...)`, x-ref and y-ref seeded along the circle
   frame's axes, exactly as the curve tools make their plane — instead of
   refusing. Keep the refusal only where no orientation exists at all.
+  ⚠ *As built:* `plane("pC", pt(…, oncircle(_, "cN")), pt(…, oncircle(_,
+  "cN")))`. The origin is **the circle's own centre**, not a new point: one
+  typed at the centre would lie exactly on the twin centre, which is a doubled
+  point. The refs are **held on the rim**: a frame is a datum, so free refs
+  never move, and when the depth is `set` the origin would rise without them
+  and tip the plane. On the rim they rise with the top. They are **seeded with
+  every digit**: seeded to three decimals as the curve tools type an origin,
+  the holds pulled them back onto the rim and the cylinder's free radius gave
+  way by 5e-5 (measured). `sketchFrameFor` returns the plane to make
+  (`MadePlane`) alongside the three-names case. The only refusal left is a
+  circle whose frame has collapsed; the old "no y-ref" refusal went, since
+  every 3D frame has a +z.
+- ⚠ *As built, not in the design:* **`EXPANSION` is per operation**,
+  `{ extrude: 11, revolve: 10 }`, and a revolve refuses an expansion of `11`.
+  A revolve is unchanged, and one number standing for two expansions would not
+  say which one a file means.
 - **Format 11.** Files of version 10 and below replay with the lid frame (the
   entry-marker pattern `lid-frame-shares-points` used: mark old extrude
   entries at translation so regeneration rebuilds them their way). Double-save
   byte-identity for old and new files.
 
 ## Verification
+
+⚠ *As found:* `hidden.e2e.ts`'s stepped-block probe of the base's back line
+read the most opaque pixel near it, where a sketch portion's dimmed stroke and
+the base cap's dimmed solid line overlap. The sketch stroke's core went from
+alpha 255 to 251 and the solid's won. The probe now asks that the sketch ink is
+drawn there (see TODO.md).
 
 Unit: a new extrude makes no frame; twin circles name the sketch frame and
 draw and solve as before; depth `set` moves the lid exactly; regeneration

@@ -40,9 +40,9 @@ import { frameBasis } from "./refs.ts";
  * written against a frame keeps (see `frameBasis`). Its +z reaches the
  * residual as plain numbers, so the solver cannot satisfy a stretched lid by
  * turning the sketch plane. And a `base` that is one of the frame's own points
- * — the top frame's pairs, whose bases are the sketch frame's origin and refs —
- * is read as plain numbers too, so the top frame follows the sketch frame and
- * can never drag it.
+ * — an old file's lid-frame pairs, whose bases are the sketch frame's origin
+ * and refs (today's extrude makes no lid frame) — is read as plain numbers
+ * too, so that lid frame follows the sketch frame and can never drag it.
  *
  * 3D only: in 2D there is no direction out of the plane to offset along.
  * Refuses a depth of zero (a lid on its base is no solid) and anything not a

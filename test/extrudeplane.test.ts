@@ -79,6 +79,7 @@ test("typed extrude on a frameless rectangle makes a frame of three of its point
   assert.throws(() => extrude(m, lines[0], 20), /lies in no frame's plane, and no frame is parallel to it/);
 
   const expected = sketchFrameFor(m, loop, loop.plane.normal);
+  assert.ok(Array.isArray(expected), "a rectangle's own three corners");
   const before = m.journal.length;
   const repl = new Repl(neocadScope({ model: m }));
   const r = await repl.eval(`extrude("${lines[0]}", 20)`);
