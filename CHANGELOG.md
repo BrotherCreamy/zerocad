@@ -7,6 +7,82 @@ decisions.
 
 ---
 
+## Groups, hide and show — and the selection they need
+
+The owner, verbatim:
+
+> *the concept of this project is flat relational direct cad. there is no
+> hierarchy. a sketch entity exists in the same logical space as a solid
+> entity. and entities can be grouped. think about this grouping, and
+> implement also*
+
+Phase 1 of [`docs/plans/groups.md`](docs/plans/groups.md).
+
+**A click selects.** There was no entity selection: a click put a name in
+the command line and a box put every name it caught there. Now, with nothing
+armed and **the command line empty**, a click on an entity or a constraint
+glyph selects it, shift toggles it, a box (window or crossing) selects what
+it catches (shift adds), and a click on empty canvas or Escape clears. Region
+preselection is the same selection, for regions. **With text in the command
+line a click still inserts the name** — the user is writing a call and
+pointing at its arguments — so `dist(` then two clicks is what it always was.
+The selection is drawn in its own violet (`SELECTION #c46cff`, in
+`tools/selection.ts`): not the hover's amber, not an armed tool's green, not
+either box's colours; heavier than a plain edge, rimmed on a solid's light
+faces by the casing every light mark gets there, and checked by eye on both
+the faces and the ground. `sel()` lists it, `select("l1", "g1")` sets it (a
+group or feature selects its members, what is hidden is left out and said),
+`select()` clears it. **UI state**: never journalled, never in a file, never
+an undo step — Ctrl+Z after selecting undoes the last edit.
+
+**The menu and the Delete key act on it.** A right-click on something
+selected, or on empty canvas with something selected, offers *Group*,
+*Delete* and *Hide* over the whole selection; a right-click on an entity in
+a group offers *Select g1* for each (and *Select e1* for the feature that
+made it); empty canvas offers *Show all* while anything is hidden. The
+Delete key types `del(…)` for the selection. Every one of them is typed
+through `submit`, so the log shows it and Ctrl+Z takes it back.
+
+**Groups are sets, never containers.**
+
+```
+> group("l1", "l2", "l3", "l4")         g1
+> group("g1", "c1", { name: "plate" })  plate   — g1's members now: a union, not a link
+> addTo("g1", "l5")    removeFrom("g1", "l5")    ungroup("g1")   (or del("g1"))
+> members("plate")     groups("l1")     groups()     ls()
+```
+
+A group owns nothing: deleting it deletes the grouping, never a member.
+Membership overlaps; a group never holds a group — naming one, or a feature,
+adds its current members, flattened then, and the log says so. A feature is a
+read-only group: `members("e1")` is what the extrude made, `select("e1")` and
+`hide("e1")` work, `addTo("e1", …)` refuses with the reason. Deleting a member
+takes it out of every group (journalled as `removeFrom` in the deletion's
+expansion), and a group left empty goes too — `del` returns it among the names
+it took. The hover tag ends `· g1 g2`.
+
+**Hide and show.** `hide(...names)` and `show(...names)` (groups and features
+expand): a hidden entity is not drawn, not picked, not snapped to, not boxed —
+and still solved. A hidden feature's faces are not drawn; a constraint's mark
+on something hidden is not drawn either, except a feature's own dimension,
+which goes with its feature. `show()` shows everything. Visibility is the
+document's: journalled, saved, undone.
+
+Six new ops — `group`, `addTo`, `removeFrom`, `ungroup`, `hide`, `show` — in
+both `replenv.ts` and `persist.ts`'s replay table, **no format bump**: no
+existing op changed, and an older build refuses a newer file's new op by name
+at its step (the precedent extrude set). Groups and the hidden set are
+rebuilt by replay; a file with groups and hidden things in its history
+round-trips byte for byte.
+
+Unit: `test/groups.test.ts` (new), `test/selection.test.ts` (new), and the
+engine and feature-dialog tests, whose click is now composing a command or
+selecting. Browser: `test/e2e/groups.e2e.ts` and `test/e2e/selection.e2e.ts`
+(new); `picking`, `boxselect`, `drag`, `edgedrag`, `frames`, `glyphs`,
+`opaque` and `featuredialog` read the selection where they read the command
+line, and each keeps a case that writes a command first. 936 unit tests (911
+before), 381 e2e (358 before); `npm run test:all` green.
+
 ## A feature's frames stand on its own points: no doubled labels on a lid
 
 The owner, on a screenshot of an extruded plate with its point names printed

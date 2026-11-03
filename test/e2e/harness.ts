@@ -2,7 +2,7 @@
 // against a real dev server.
 //
 // These exist because a good deal of what this project does is only wrong
-// once it is assembled. Eight bugs so far were invisible to the unit tests and
+// once it is assembled. Nine bugs so far were invisible to the unit tests and
 // obvious within seconds of running the thing: a status readout that went
 // stale, a fillet that satisfied every constraint to six decimal places while
 // drawing a broken rectangle, an auto-naming loop that hung the tab, and a
@@ -132,6 +132,11 @@ export interface AppContext {
   repl(source: string): Promise<{ ok: boolean; value: unknown; error?: string }>;
   /** A summary of the model, safe to send across the page boundary. */
   model(): Promise<ModelSummary>;
+  /**
+   * The canvas's selection, as `sel()` lists it — what a click picks with the
+   * command line empty (with text in it, a click inserts the name instead).
+   */
+  selection(): Promise<string[]>;
   /**
    * Where a world point is drawn right now, in canvas pixels — through the
    * app's own camera, so a test can aim at geometry however the view has been
@@ -279,6 +284,12 @@ export async function openApp(options: OpenOptions = {}): Promise<AppContext> {
         const r = await (window as never as PageGlobals).__neocad.repl.eval(src);
         return { ok: r.ok, value: r.value, error: r.error?.message };
       }, source);
+    },
+    async selection() {
+      return page.evaluate(async () => {
+        const r = await (window as never as PageGlobals).__neocad.repl.eval("sel()");
+        return r.value as string[];
+      });
     },
     async model() {
       return page.evaluate(() => {

@@ -20,6 +20,7 @@ import {
   describeLoop, findLoops, heldOnCurves, isVirtual, joinClasses, memberLabel, parallel, type Held, type Loop,
 } from "./loops.ts";
 import { cross3, dot3, lift3, sub3 } from "./vec3.ts";
+import { ungroup } from "./groups.ts";
 
 function unit(v: number[]): number[] {
   const len = Math.hypot(...v);
@@ -1976,6 +1977,10 @@ export function set(model: Model, path: string, value: number): string {
  * nothing rather than half the batch — and a name an earlier cascade already
  * took is skipped silently: handing over a point and the line that depends on
  * it is the normal shape of a box-selected batch, not a mistake.
+ *
+ * **A group named is ungrouped** — the grouping goes, its members stay, since
+ * a group owns nothing (groups.ts). And a group the cascade empties goes with
+ * its last member (`Model.deleteEntity`), so it is among the names returned.
  */
 export function del(model: Model, ...names: string[]): string[] {
   if (names.length === 0) throw new Error("del needs at least one name");
@@ -1984,7 +1989,7 @@ export function del(model: Model, ...names: string[]): string[] {
   // (Undo would recover it, but an error that edits is still an error that
   // edits.)
   for (const n of names) {
-    if (!model.has(n)) throw new Error(`"${n}" is not an entity or a relation (or a feature)`);
+    if (!model.has(n)) throw new Error(`"${n}" is not an entity or a relation (or a feature, or a group)`);
   }
   const removed: string[] = [];
   for (const n of names) {
@@ -1992,7 +1997,14 @@ export function del(model: Model, ...names: string[]): string[] {
     // select hands over a point *and* the line on it, and deleting the point
     // deletes the line. Already-gone is the cascade working, not an error.
     if (!model.has(n)) continue;
+    if (model.groups.has(n)) {
+      ungroup(model, n);
+      removed.push(n);
+      continue;
+    }
+    const groups = [...model.groups.keys()];
     removed.push(...delOne(model, n));
+    for (const g of groups) if (!model.groups.has(g)) removed.push(g);
   }
   return removed;
 }

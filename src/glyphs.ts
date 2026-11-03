@@ -570,6 +570,7 @@ export function placeGlyphs(model: Model, view: View, occ: Occlusion | null = nu
   const taken = new Map<string, number>();
 
   for (const r of model.relations.values()) {
+    if (!shownGlyph(model, r.name)) continue;
     let anchors: Anchor[];
     try {
       anchors = anchorsFor(model, view, r);
@@ -633,6 +634,20 @@ export function placeGlyphs(model: Model, view: View, occ: Occlusion | null = nu
  * out of snapping for the opposite reason: they are UI, not geometry, and
  * nothing should ever be placed at one.
  */
+/**
+ * Whether a relation's mark is drawn, as far as hiding goes: not when the
+ * relation is hidden, nor when anything it constrains is — a `∥` on a line
+ * that is not drawn would be a note about nothing. A feature's own dimension
+ * (an extrude's depth) is the exception: it is the solid's, and goes when the
+ * feature is hidden (its depth is among what `hide("e1")` hides), not when its
+ * sketch is.
+ */
+export function shownGlyph(model: Model, relation: string): boolean {
+  if (model.hidden.has(relation)) return false;
+  if (model.featuresNaming(relation).length) return true;
+  return !constrainedBy(model, relation).some((n) => model.hidden.has(n));
+}
+
 export function glyphAt(glyphs: Glyph[], sx: number, sy: number): Glyph | null {
   let best: Glyph | null = null;
   let bestD = Infinity;

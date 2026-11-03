@@ -126,7 +126,8 @@ test("a press that does not move is still a pick, not a drag", async () => {
   await app.page.mouse.up();
   await app.page.waitForTimeout(150);
 
-  assert.equal(await cmd(), '"p3"', "the name still drops into the command line");
+  assert.deepEqual(await app.selection(), ["p3"], "the point is selected — the command line being empty");
+  assert.equal(await cmd(), "", "and nothing was inserted");
   const after = (await app.model()).points.p3;
   assert.ok(Math.abs(after[0] - before[0]) < 1e-9 && Math.abs(after[1] - before[1]) < 1e-9,
     `a click moved the point from ${before} to ${after}`);

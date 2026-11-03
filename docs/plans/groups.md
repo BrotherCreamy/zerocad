@@ -1,6 +1,22 @@
 # Plan: groups — named sets in a flat model, and the selection they need
 
-**Status: queued** (2026-11-03). The owner, verbatim:
+**Status: phase 1 built** (2026-11-03) — `src/groups.ts` (new: `group`,
+`addTo`, `removeFrom`, `ungroup`, `members`, `groupsOf`, `hide`, `show`);
+`GroupEntry`, `groups`, `hidden`, `expand`, `membersOf` and the group
+primitives in `src/model.ts`, whose `deleteEntity`/`deleteRelation` journal a
+`removeFrom` for each group a name leaves; `Selection` and `SELECTION`
+(`#c46cff`, a violet) in `src/tools/selection.ts`; the engine's `selection`,
+`composing` and `select`; the menu's Group/Delete/Hide, Select g1 and Show
+all; the Delete key; hidden left out of the pick, the snapper, the box, the
+glyphs, the faces, the draw pass and region clicks. Phase 2 is not started.
+Deviations, each also in TODO.md's Done entry: the Delete key is never taken
+from a focused text field (empty or not); `removeFrom` that empties a group
+removes it; the menu offers *Select e1* too; a feature's members are what it
+made (`owns`); `select()` leaves hidden names out and says so; a plain empty
+box clears the selection. The spec's account of the code needed no
+correction.
+
+The owner, verbatim:
 
 > *the concept of this project is flat relational direct cad. there is no
 > hierarchy. a sketch entity exists in the same logical space as a solid
@@ -33,7 +49,7 @@ once it is extruded"), deleting a set, and — the second phase — holding a se
 of the model's relations keep acting on it. That last is what makes a group
 part of the constraint model rather than a filing system.
 
-## Phase 1 — the selection, groups, hide and show
+## Phase 1 — the selection, groups, hide and show ✅ built
 
 ### The selection
 

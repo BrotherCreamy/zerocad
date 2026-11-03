@@ -23,6 +23,7 @@ import * as basic from "./relations/basic.ts";
 import * as geom from "./relations/geometry.ts";
 import { isFullTurn } from "./relations/revolution.ts";
 import { extrude, featuresOnProfile, fillet, regen, revolve, set } from "./operations.ts";
+import * as grouping from "./groups.ts";
 import type { ToolSource } from "./toolsource.ts";
 import { freshName, planeTranslation } from "./planetranslation.ts";
 
@@ -168,6 +169,13 @@ export const FORMAT = "neocad-model";
  * **Nor did revolve** (3D phase 5), for the same reasons: one new op,
  * `revolve`, whose end face is ordinary points, curves and frames in `values`,
  * and whose surface is drawn, never saved.
+ *
+ * **Nor did groups and visibility** (docs/plans/groups.md): six new ops —
+ * `group`, `addTo`, `removeFrom`, `ungroup`, `hide`, `show` — and no existing
+ * op's arguments or meaning changed (a deletion's expansion may now carry a
+ * `removeFrom` before its `deleteEntity`, which an older build refuses by name
+ * at that step, as it refuses the rest). The registry and the hidden set are
+ * rebuilt by replay, never saved.
  */
 export const VERSION = 10;
 
@@ -270,6 +278,18 @@ function replayTable(model: Model): Map<string, (...args: unknown[]) => unknown>
     // `set` is journalled as the one call the user made, like every operation,
     // so replaying it re-runs the edit rather than the dimension it rebuilt.
     set: rel(set),
+
+    // Groups (see groups.ts). `group` and `addTo` are journalled with their
+    // members resolved — the union as it was — and `removeFrom` is also what a
+    // deletion's expansion writes for each group its name leaves.
+    group: rel(grouping.group),
+    addTo: rel(grouping.addTo),
+    removeFrom: rel(grouping.removeFrom),
+    ungroup: rel(grouping.ungroup),
+    // Visibility is the document's: journalled as typed, and what a name stood
+    // for at that step is what it stands for when the step is replayed.
+    hide: rel(grouping.hide),
+    show: rel(grouping.show),
   }));
 }
 

@@ -58,8 +58,8 @@ import { findSnap, type Snap } from "../snapping.ts";
 import type { Occlusion } from "../occlusion.ts";
 import { findLoops, loopAt } from "../loops.ts";
 import { OptionMemory, declaredOptions, explicitOptions, resolveOptions } from "./options.ts";
-import { RegionSelection } from "./selection.ts";
-import { drawRegion } from "./region.ts";
+import { SELECTION, Selection, type RegionSelection } from "./selection.ts";
+import { drawRegion, hiddenLoop } from "./region.ts";
 
 export type { View };
 
@@ -154,20 +154,32 @@ export class ToolEngine {
   private onSolveRender: () => void;
   private onRenderOnly: () => void;
   private onPick: (pick: Pick) => void;
+  private composing: () => boolean;
   private onUserAction: (phase: "before" | "after") => void;
   private onLog?: (line: string, outcome?: "refused" | "done" | "guide") => void;
   private onRun?: (command: string) => Promise<void> | void;
   private onPerform?: (steps: FeatureStep[]) => Promise<boolean>;
   private onPreview?: (steps: FeatureStep[]) => Promise<FeaturePreview>;
   /**
-   * The regions selected with nothing armed — a click inside one selects it,
-   * a shift-click adds or drops one, a click on empty canvas clears them — and
-   * handed to the next tool armed (`ToolContext.preselected`): select the loop,
-   * then hit extrude. Only a press that never moved and landed on no entity
-   * reaches it, so a drag still drags, a box still boxes, an entity clicked
-   * still goes to the command line, and the right button still opens the menu.
+   * **The canvas's selection**, with nothing armed: a click on an entity or a
+   * glyph replaces it with that one, shift toggles it, a box selects what it
+   * catches (shift adding), a click inside a region selects the region (shift
+   * adds or drops one), and a click on empty canvas or Escape clears it — all
+   * of it only while no command is being written (`composing`): with text in
+   * the command line a click puts the name there instead, as it always did.
+   * UI state, never journalled (see `Selection`).
+   *
+   * The regions in it are handed to the next tool armed
+   * (`ToolContext.preselected`): select the loop, then hit extrude. Arming
+   * spends the whole selection, names too: what a tool does next is about its
+   * own picks.
    */
-  readonly selected = new RegionSelection();
+  readonly selection = new Selection();
+
+  /** The selection's regions — the feature tools' preselection, under the name it had before names joined it. */
+  get selected(): RegionSelection {
+    return this.selection.regions;
+  }
   private onContextMenu: (pick: Pick | null, sx: number, sy: number) => void;
   /**
    * Whether a user action is currently open, so that `before` and `after`
@@ -263,8 +275,18 @@ export class ToolEngine {
     callbacks: {
       onSolveRender: () => void;
       onRenderOnly: () => void;
-      /** An entity was clicked with no tool armed. */
+      /**
+       * An entity was clicked, or boxed, with no tool armed **while a command
+       * is being written** (`composing`) — the host puts its name in the
+       * command line. Otherwise a click selects, and this is not called.
+       */
       onPick?: (pick: Pick) => void;
+      /**
+       * Whether a command is being written — text in the command line. The
+       * host's to say, since the engine has never heard of a command line;
+       * absent means no, and every click selects.
+       */
+      composing?: () => boolean;
       /**
        * Brackets one thing the user did with the pointer — a click handed to an
        * armed tool, or a drag from the moment it starts moving to the solve
@@ -314,6 +336,7 @@ export class ToolEngine {
     this.onSolveRender = callbacks.onSolveRender;
     this.onRenderOnly = callbacks.onRenderOnly;
     this.onPick = callbacks.onPick ?? (() => {});
+    this.composing = callbacks.composing ?? (() => false);
     this.onUserAction = callbacks.onUserAction ?? (() => {});
     this.onLog = callbacks.onLog;
     this.onRun = callbacks.onRun;
@@ -432,7 +455,11 @@ export class ToolEngine {
   regionAt(sx: number, sy: number): RegionHit | null {
     const loops = findLoops(this.model);
     const loop = loopAt(this.model, this.view, sx, sy, loops);
-    if (!loop) return null;
+    // A region bounded by anything hidden is not on screen to click inside.
+    // The innermost loop under the cursor decides, as it always has: one
+    // further out is not offered in its place (a hidden hole is not a hole
+    // the click fell through).
+    if (!loop || hiddenLoop(this.model, loop)) return null;
     const { origin, u, v } = loop.plane;
     const at = screenToPlane(this.view, sx, sy, { origin, u, v });
     return at ? { loops, index: loops.indexOf(loop), toward: viewAxes(this.view).toward, at } : null;
@@ -493,7 +520,7 @@ export class ToolEngine {
     this.armedWith = { name: toolName, options };
     // Spent once taken: a selection carried into one tool is not carried on into the next.
     const preselected = [...this.selected.refresh(this.model)];
-    this.selected.clear();
+    this.selection.clear();
     const ctx: ToolContext = {
       model: this.model,
       options,
@@ -548,8 +575,19 @@ export class ToolEngine {
       this.onRenderOnly();
       return "cleared";
     }
+    const had = !this.active && this.selection.size > 0;
     this.cancel();
-    return "cancelled";
+    return had ? "cleared" : "cancelled";
+  }
+
+  /**
+   * `select(...)` typed: exactly these names, already checked by the caller
+   * (the command surface expands groups and features and drops what is
+   * hidden), and nothing else — no region.
+   */
+  select(names: readonly string[]): void {
+    this.selection.set(names);
+    this.onRenderOnly();
   }
 
   /** What the options panel shows of the armed tool's ✓ and ✗ — null for a tool that is not a feature. */
@@ -611,8 +649,8 @@ export class ToolEngine {
     this.active = null;
     // The canvas's selection goes with it: Escape with nothing armed means
     // "put down what I picked up", and a model swapped out from under a
-    // selection leaves it naming loops that are not there.
-    this.selected.clear();
+    // selection leaves it naming loops and entities that are not there.
+    this.selection.clear();
     const wasDragging = this.idle?.moved === true && this.idle.drag !== null
       && this.idle.drag.names.every((n) => this.model.entities.has(n));
     this.idle = null;
@@ -798,17 +836,27 @@ export class ToolEngine {
       this.box = null;
       if (!moved) {
         const pick = this.pickAt(sx, sy);
-        if (pick) this.onPick(pick);
+        if (pick && this.composing()) this.onPick(pick);
+        else if (pick) this.pickInto(pick.name, e.shiftKey);
         else this.preselect(sx, sy, e.shiftKey);
       } else if (box) {
         // A box is a multi-click: every name it caught goes down the same path
-        // a single click's name does, so there is one story about what
-        // selecting means and one place that implements it. An empty box picks
-        // nothing and therefore inserts nothing.
+        // a single click's name does — into the command line while a command
+        // is being written, into the selection otherwise — so there is one
+        // story about what selecting means. An empty box picks nothing, and a
+        // plain one that caught nothing empties the selection, as a click on
+        // empty canvas does.
         const { rect, mode } = boxFrom(box.ax, box.ay, box.bx, box.by);
-        for (const name of selectInBox(this.model, this.view, rect, mode, this.occlusion)) {
-          const entity = this.model.entities.get(name)!;
-          this.onPick({ name, kind: entity.kind, distance: 0 });
+        const caught = selectInBox(this.model, this.view, rect, mode, this.occlusion);
+        if (this.composing()) {
+          for (const name of caught) {
+            const entity = this.model.entities.get(name)!;
+            this.onPick({ name, kind: entity.kind, distance: 0 });
+          }
+        } else if (e.shiftKey) {
+          this.selection.add(caught);
+        } else {
+          this.selection.set(caught);
         }
         this.onRenderOnly(); // the box is gone; the canvas has to stop drawing it
       } else if (drag) {
@@ -823,10 +871,18 @@ export class ToolEngine {
     }
   }
 
+  /** A click with nothing armed on an entity or a glyph, while no command is being written: see `selection`. */
+  private pickInto(name: string, shift: boolean): void {
+    if (shift) this.selection.toggle(name);
+    else this.selection.only(name);
+    this.onRenderOnly();
+  }
+
   /**
    * A click with nothing armed that landed on no entity: inside a region, it
-   * selects that region alone — or, shifted, adds or drops it; on empty canvas,
-   * it clears the selection. See `selected`.
+   * selects that region alone — or, shifted, adds or drops it, the names
+   * selected staying; on empty canvas, it clears the selection. See
+   * `selection`.
    */
   private preselect(sx: number, sy: number, shift: boolean): void {
     let hit: RegionHit | null = null;
@@ -836,11 +892,14 @@ export class ToolEngine {
       hit = null; // a drawing whose loops cannot be found has none to select
     }
     if (!hit) {
-      if (this.selected.clear()) this.onRenderOnly();
+      if (this.selection.clear()) this.onRenderOnly();
       return;
     }
     if (shift) this.selected.flip(this.model, hit);
-    else this.selected.only(hit);
+    else {
+      this.selection.set([]);
+      this.selected.only(hit);
+    }
     this.onRenderOnly();
   }
 
@@ -962,9 +1021,12 @@ export class ToolEngine {
       g: this.g, worldToScreen: (w) => this.worldToScreen(w), scale: this.view.scale, toward: viewAxes(this.view).toward,
     };
     if (!this.active) {
-      // The canvas's selection, in the green a feature tool picks in, a shade
-      // stronger than its hover — the same "picked" a tool armed from it shows.
-      if (this.selected.size) for (const region of this.selected.refresh(this.model)) drawRegion(this.model, r, region, "40");
+      // The canvas's selected regions, in the selection's own colour — the
+      // entities beside them wear it too (main.ts) — and not in an armed
+      // tool's green: a tool armed from them shows them in its green, picked.
+      if (this.selected.size) {
+        for (const region of this.selected.refresh(this.model)) drawRegion(this.model, r, region, "40", SELECTION);
+      }
       return;
     }
     // A tool starts on a solid line. Dashes mean selection (the crossing box
