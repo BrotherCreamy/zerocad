@@ -24,6 +24,15 @@ otherwise.
 
 ## Decisions made so far — veto here if any are wrong
 
+- **Flat relational direct CAD: no hierarchy** (the owner's statement of the
+  project's concept, 2026-11-03, verbatim): *"the concept of this project is
+  flat relational direct cad. there is no hierarchy. a sketch entity exists in
+  the same logical space as a solid entity. and entities can be grouped."*
+  Read as rules: nothing owns a sketch or a solid; a feature's output is
+  ordinary entities beside the sketch; **a group is a named, overlapping set
+  that owns nothing and never nests**; a feature name works as a read-only
+  group. Design: [`docs/plans/groups.md`](docs/plans/groups.md).
+
 - **Effortless to pick up, then insanely powerful** (owner's direction,
   2026-10-29, verbatim in [`docs/plans/effortless.md`](docs/plans/effortless.md)):
   a tool does the obvious thing with defaults and says what it chose; a
