@@ -502,6 +502,9 @@ export function visibleFaces(model: Model, view: View): VisibleFace[] {
   const { toward } = viewAxes(view);
   const out: VisibleFace[] = [];
   for (const f of model.features.values()) {
+    // A hidden feature has no faces on screen — and so hides nothing behind
+    // them either, since occlusion is asked of these same faces.
+    if (model.hidden.has(f.name)) continue;
     let faces: Face[];
     try {
       faces = featureFaces(model, f, view.scale);

@@ -656,7 +656,9 @@ test("the command line: revolve returns the feature, ls() lists it in degrees, r
   assert.match(describePick(m, { name: f.twins[0][2], kind: "line", distance: 0 }), /·\s+e1$/);
   // A full turn says so, everywhere.
   rev(lines[0], "t.y");
-  assert.equal((scope.ls as () => string[])().at(-1), "e2  revolve of l1,l2,l3,l4, angle d2 = 360° about t.y, a full turn");
+  const ls2 = (scope.ls as () => string[])();
+  assert.equal(ls2.at(-2), "e2  revolve of l1,l2,l3,l4, angle d2 = 360° about t.y, a full turn");
+  assert.equal(ls2.at(-1), `    1 made — members("e2") lists them`, "a full turn makes only its dimension");
   assert.deepEqual((scope.rels as (n?: string) => string[])().at(-1), `d2  revolution ${2 * Math.PI} (360°) about t.y, a full turn`);
   assert.match((scope.help as () => string)(), /revolve\(member, axis, angle\?, frame\?\)/);
 });

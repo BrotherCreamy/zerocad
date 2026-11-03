@@ -21,13 +21,36 @@
 import { Model, type JournalEntry } from "./model.ts";
 import * as basic from "./relations/basic.ts";
 import * as geom from "./relations/geometry.ts";
+import { isFullTurn } from "./relations/revolution.ts";
 import { extrude, featuresOnProfile, fillet, regen, revolve, set } from "./operations.ts";
+import * as grouping from "./groups.ts";
 import type { ToolSource } from "./toolsource.ts";
 import { freshName, planeTranslation } from "./planetranslation.ts";
 
 export const FORMAT = "neocad-model";
 /**
- * 9 since **a feature regenerates when its profile is restructured**
+ * 10 since **a frame a feature makes shares the feature's own points**
+ * (docs/plans/lid-frame-shares-points.md). An extrude's lid frame, and a
+ * partial revolve's end frames, used to make three points of their own; on a
+ * frameless sketch, whose frame is three of the outline's corners, those
+ * landed exactly on three lid corners — the owner's plate, 17 points with three
+ * pairs on one spot each. Now a frame point over a profile vertex is that
+ * vertex's twin. No entry changed shape: the call is the same, the code is
+ * what changed. But the expansion makes fewer points, in a different order,
+ * so a version-9 build replaying a version-10 extrude would hand out names
+ * every later entry disagrees with — "this file is version 10" says what is
+ * wrong.
+ *
+ * Going the other way **a version-9 file opens exactly as it was**: `translate`
+ * writes `9` into every extrude and partial revolve from before 10 — the
+ * expansion that build made (`Expansion` in operations.ts) — so its frames get
+ * their own points again, under the names the file's later entries hold, and
+ * the feature regenerates the old way too. The `9` stays in the entry when the
+ * file is saved again, so the reopened file keeps meaning what it meant. Kept
+ * rather than migrated: re-expanding an old extrude the new way would shift
+ * every auto-name after it.
+ *
+ * 9 was **a feature regenerates when its profile is restructured**
  * (docs/plans/feature-regeneration.md): `fillet` now ends by bringing every
  * feature standing on either leg back into step with the rounded profile, and
  * when there was such a feature its entry carries a fifth argument — the
@@ -146,8 +169,15 @@ export const FORMAT = "neocad-model";
  * **Nor did revolve** (3D phase 5), for the same reasons: one new op,
  * `revolve`, whose end face is ordinary points, curves and frames in `values`,
  * and whose surface is drawn, never saved.
+ *
+ * **Nor did groups and visibility** (docs/plans/groups.md): six new ops —
+ * `group`, `addTo`, `removeFrom`, `ungroup`, `hide`, `show` — and no existing
+ * op's arguments or meaning changed (a deletion's expansion may now carry a
+ * `removeFrom` before its `deleteEntity`, which an older build refuses by name
+ * at that step, as it refuses the rest). The registry and the hidden set are
+ * rebuilt by replay, never saved.
  */
-export const VERSION = 9;
+export const VERSION = 10;
 
 export interface SavedModel {
   format: typeof FORMAT;
@@ -248,6 +278,18 @@ function replayTable(model: Model): Map<string, (...args: unknown[]) => unknown>
     // `set` is journalled as the one call the user made, like every operation,
     // so replaying it re-runs the edit rather than the dimension it rebuilt.
     set: rel(set),
+
+    // Groups (see groups.ts). `group` and `addTo` are journalled with their
+    // members resolved — the union as it was — and `removeFrom` is also what a
+    // deletion's expansion writes for each group its name leaves.
+    group: rel(grouping.group),
+    addTo: rel(grouping.addTo),
+    removeFrom: rel(grouping.removeFrom),
+    ungroup: rel(grouping.ungroup),
+    // Visibility is the document's: journalled as typed, and what a name stood
+    // for at that step is what it stands for when the step is replayed.
+    hide: rel(grouping.hide),
+    show: rel(grouping.show),
   }));
 }
 
@@ -331,6 +373,13 @@ function relationRenamer(model: Model, version: number) {
  * here and is told what it is missing — the same message, at the same step, as
  * before this translation existed.
  *
+ * **An `extrude` from before version 10**, and a partial `revolve`, made its
+ * lid (end) frames with points all their own, so it is given the expansion
+ * `9`, which makes them so again (see `VERSION`). Every such entry, not only
+ * the ones whose frame stood on the profile: a `regen` later in the file can
+ * bring a sketch-frame point into the profile, and the two expansions part
+ * there too. A whole turn makes no frame and passes through untouched.
+ *
  * **A `fillet` from before version 9** regenerated nothing, so one whose leg a
  * feature's profile names is given the empty list of regenerated features —
  * exactly what the build that wrote it did (see `VERSION`). Every other fillet
@@ -360,6 +409,14 @@ function translate(model: Model, entry: JournalEntry, version: number): JournalE
       throw new Error(`a version-${version} file's profiles are whole members, named — a part of one ({name, from, to}) `
         + "is version 8's, so this entry was edited by hand");
     }
+  }
+  if (entry.op === "extrude" && version < 10 && entry.args.length === 4) {
+    return { op: "extrude", args: [...entry.args, 9] };
+  }
+  // A whole turn makes no frame, so it has no expansion to choose between.
+  if (entry.op === "revolve" && version < 10 && entry.args.length === 5
+      && !(typeof entry.args[2] === "number" && isFullTurn(entry.args[2]))) {
+    return { op: "revolve", args: [...entry.args, 9] };
   }
   if (entry.op === "addFrame" && version < 5) {
     const [origin, xref, name] = entry.args;

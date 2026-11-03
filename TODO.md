@@ -59,6 +59,13 @@ otherwise.
   ordinary entities beside the sketch; **a group is a named, overlapping set
   that owns nothing and never nests**; a feature name works as a read-only
   group. Design: [`docs/plans/groups.md`](docs/plans/groups.md).
+  ✅ **Phase 1 built** (2026-11-03): the selection (a click with the command
+  line empty selects, with text it inserts; shift, box, Escape; `sel()`/
+  `select()`; violet; the menu's Group/Delete/Hide and Select g1; the Delete
+  key), groups (`group`, `addTo`, `removeFrom`, `ungroup`/`del`, `members`,
+  `groups`, flattening, overlap, read-only features, the cascade), and
+  `hide`/`show`. Deviations in the spec's status line and under Done. Phase 2
+  (rigid groups) is next and needs its own spec.
 
 - **Effortless to pick up, then insanely powerful** (owner's direction,
   2026-10-29, verbatim in [`docs/plans/effortless.md`](docs/plans/effortless.md)):
@@ -455,7 +462,17 @@ are flagged as such.
   - **A curve on the sketch frame twins onto the lid frame; one on any other
     frame keeps its own** (same orientation, so the same arc). Choosing by name
     rather than by which way a frame faces is what keeps a replay on seeds from
-    deciding it differently. The lid frame always has its own three points.
+    deciding it differently.
+  - **A frame a feature makes reuses the points the feature already makes
+    there** (replaced 2026-11-03; it said "the lid frame always has its own
+    three points"). The owner, on doubled point labels on an extruded plate:
+    *"i'm getting a lot of overlapping points. why is this happening?"* — and,
+    told why and what the fix would be, *"of course it should."* A lid frame
+    point (a partial revolve's end-frame point) over a sketch-frame point that
+    is a profile vertex — by join, never by position — is that vertex's twin;
+    any other is the frame's own. The depth holds each place once. Format 10;
+    files of 9 and below keep their old expansion (see the queue entry
+    "A lid frame shares the lid's own points").
   - **No format bump** (version stays 7): two new ops, no changed meaning; an
     older build refuses a newer file at the step, by op name — the deletion
     ops' precedent. *(Version 8 came with regions split PR 2, 2026-10-22, when
@@ -1137,6 +1154,61 @@ are flagged as such.
 Queue for Opus, in order. Each gets a spec in `docs/plans/` before work
 starts.
 
+- [x] **A lid frame shares the lid's own points — BUILT (2026-11-03).** The
+      owner: *"i'm getting a lot of overlapping points. why is this
+      happening?"* / *"of course it should."* An extrude's lid frame and a
+      partial revolve's end frames take the twin of every point of the frame
+      they copy that is a profile vertex; the depth (angle) holds each place
+      once; regeneration and `del` own a shared point once, as a twin. The
+      owner's plate: 17 points with three pairs on one spot, now 14 and none.
+      Format 10; a version-9 file replays with the old expansion. Spec:
+      [`docs/plans/lid-frame-shares-points.md`](docs/plans/lid-frame-shares-points.md).
+      Deviations from the spec:
+      - ⚠ **"…and its extrude counterpart"** of `twinFrame`: there is none. An
+        extrude never twins a curve's other frame (a translated frame keeps its
+        orientation, so an off-sketch curve's twin stays on its own frame).
+        Only the lid frame and revolve's end frames make frames; the spec text
+        is corrected.
+      - ⚠ **The old expansion is said in the entry**, not chosen from the file's
+        version at replay: `translate` writes `9` into every extrude and partial
+        revolve from before 10 (`extrude(…, loops, 9)`), because a reopened old
+        file is saved as version 10 and must still mean the old expansion. The
+        fillet-8 pattern, one argument later. A whole turn makes no frame and is
+        left alone. The record carries `expansion` so regeneration rebuilds the
+        old way too.
+      - ⚠ **Every** pre-10 extrude is marked, not only those whose frame stood
+        on the profile: a later `regen` can bring a sketch-frame point into the
+        profile, and the two expansions differ there.
+      - ⚠ **The revolve's end frame stays a frame pair** in the angle's
+        arguments, and the `revolution` relation skips any of its points a
+        corner pair already holds — spelling out only the made points as point
+        pairs would have stopped the sketch frame's points being read as a
+        datum.
+      - ⚠ **Regeneration merges the other way too** (not asked, follows from
+        the rule): a sketch-frame point the profile comes to run through takes
+        the lid point already above it as its twin.
+      - ⚠ **The e2e asserts one doubled label left on the sketch** — see below.
+      **Found while building, left deliberately:**
+      - **The line tool's closing click doubles a point** (not this package's):
+        a click snapped onto an existing point makes a point of its own there
+        and `coin`s it, the chain's own first point included, so a triangle
+        drawn with the line tool is four points, two of them one corner, and
+        shows two names there (`test/e2e/lidframe.e2e.ts`'s first screenshot).
+        The lid has one twin for it (per joined class). Likely part of what the
+        owner saw; the remedy is the line tool reusing the point it snaps to
+        when closing its own chain — a tool change, its own package.
+      - **A sketch-frame point on a corner's spot but not joined to it** gets
+        its own lid point, on top of the corner's twin: the rule reads joins,
+        because a replay on seeds cannot read positions.
+      - **A revolve about the sketch frame's own axis** leaves the end frame's
+        origin and y-ref (on the axis) on the sketch frame's own points — not
+        points the feature made, so outside the rule.
+      - **Deleting a lid corner the lid frame stands on takes the lid frame**
+        and whatever is drawn on it, as deleting any frame's point does; before,
+        the lid frame had its own points and survived.
+      - **A boss's lid frame on a face still floats** (open default 2 above): the
+        face frame is the plate's corners, which are no vertices of the boss.
+
 - [x] **Sketch on a solid's face — BUILT (2026-10-21).** The one-model design
       made it one step: `arm("sketch")` and a click inside a face, or
       right-click → **Sketch on this face**, types `plane(a, b, c)` on three of
@@ -1187,7 +1259,9 @@ starts.
         points out past the plate's corner, in empty space, `depth` off the
         wall (visible in the poster). Correct, and cluttered; the remedy would
         be extrude choosing its lid frame from the profile rather than twinning
-        the sketch frame — an extrude change, not this package's.
+        the sketch frame — an extrude change, not this package's. (Still so
+        after the lid frame learned to share the lid's points, 2026-11-03: the
+        face frame's points are the plate's corners, no vertices of the boss.)
       - **The menu item and the tool make the frame default and look at it,
         always** (`plane()`'s contract). Sketching on a face you only meant to
         measure against means `frame(a, b, c)` typed.
@@ -1499,16 +1573,18 @@ extended the way `defineTool` extends the tool registry would close it.
 
 - [ ] **Found while building `quiet-geometry.md`** (each deliberate unless it
       says otherwise; the spec's As built has the reasoning):
-      - **The selection is a stub.** `selectedNames()` in `main.ts` returns
-        nothing; the groups package's selection plugs in there, and its
-        selected things are then drawn however quiet.
-      - **`members()` takes a feature name only.** The groups package's
-        `members(g)` should absorb it (two `members` keys in the scope fail
-        the typecheck, so the merge cannot miss it).
-      - **A lid frame's three reference points are drawn**, cluttering the
-        lid: they end no line, and nothing is quiet because a feature made it.
-        `lid-frame-shares-points.md` puts the frame on the lid's own corners,
-        which are quiet — check the lid after that lands.
+      - **Hidden outranks revealed** (`entityDrawn`): a reveal brings back
+        what is quiet, never what the user hid. Nothing hidden picks, so the
+        case is a selection, snap or drag made before a `hide`.
+      - **A lid frame's own points are drawn** where the sketch frame stands
+        off the profile (a fixture frame, a `plane()` elsewhere): they end no
+        line, and nothing is quiet because a feature made it. A sketched
+        outline's lid frame stands on its corner twins
+        (`lid-frame-shares-points.md`), and its lid is clean — checked by the
+        plate test, which no longer skips any corner for a loose point.
+      - **A frame marker drawn from a corner** keeps its arms, letters and
+        name there: frame markers stay. The plate test reads no dot or name at
+        the two corners a frame stands on.
       - **A quiet glyph is still picked** (and drawn while hovered): reached
         from its line, it would otherwise be unreachable (5 px pick, box 7 px
         out). It is an invisible target until hovered, like a quiet corner.
@@ -1520,6 +1596,44 @@ extended the way `defineTool` extends the tool registry would close it.
       - **`engine.armedUnder` is a second `pickAt` per pointer move** while a
         tool is armed (the snap is the first). Not measured; it is the same
         work the unarmed hover does.
+
+- [ ] **Found while building groups, phase 1** (`docs/plans/groups.md`; each
+      deliberate unless it says otherwise):
+      - **Hiding a solid's sketch takes the solid's base edges with it.** The
+        profile lines *are* the solid's bottom outline — the flat model's
+        point — so with the sketch hidden the faces stand without their dark
+        edge along the base (look at `groups-3-sketch-hidden.png` from the
+        e2e). Onshape draws a part's edges apart from its sketch; here they
+        are one entity. Drawing a hidden profile member as a solid edge while
+        its feature is shown would be the fix, if the owner wants it.
+      - **`hide("e1")` flattens at the call**, like every set argument: a twin
+        a later regeneration makes (a fillet on the profile) is not hidden.
+        The faces follow the feature's name, so they stay hidden; only the new
+        edge shows. `hide("e1")` again picks it up.
+      - **A region bounded by anything hidden is not offered** — not lit by a
+        click-inside tool, not clickable (`regionAt`), even when a visible loop
+        further out holds the click. The innermost loop decides, as always.
+      - **A constraint's mark is not drawn when anything it constrains is
+        hidden**, except a feature's own dimension (an extrude's depth), which
+        is the solid's and goes with `hide("e1")`.
+      - **`sel()` lists names**; regions selected on the canvas are part of the
+        selection (one highlight, one clear) but are not named, so
+        `select(...sel())` drops them.
+      - **Arming any tool spends the whole selection**, names as well as
+        regions (it used to spend only regions, because there were only
+        regions). A tool that could start from selected lines — the fillet —
+        is a later package.
+      - **A drag moves the entity grabbed, not the selection.** Rigid groups
+        (phase 2) are how a set moves as one, and are a relation, not a drag.
+      - **The Delete key is never taken from a focused text field, even an
+        empty command line** — found when Playwright's `fill("")` sent a Delete
+        to an empty line and deleted a test's geometry. A click on the canvas
+        blurs the line, so the key is the drawing's exactly when the hand was
+        just there; a selection made by typing `select()` is deleted by typing
+        `del(...)`, or by clicking the canvas first.
+      - **Group names share the namespace**, so a group cannot be called `p1`
+        while there is a `p1`, and `has("g1")` is true — `del("g1")` meant
+        nothing before, so nothing that worked changed meaning.
 
 - [ ] **Found while building `feature-dialog.md`** (each deliberate unless it
       says otherwise):
@@ -1789,6 +1903,40 @@ extended the way `defineTool` extends the tool registry would close it.
       the resolver's flush arithmetic assumes does not happen.
 
 ## Done
+
+- [x] **Groups, phase 1 — the selection, groups, hide and show** — the owner:
+      *"the concept of this project is flat relational direct cad. there is no
+      hierarchy. a sketch entity exists in the same logical space as a solid
+      entity. and entities can be grouped. think about this grouping, and
+      implement also"*. Spec: [`docs/plans/groups.md`](docs/plans/groups.md),
+      phase 1 marked built. `src/groups.ts` (new: the operations);
+      `GroupEntry`, `groups`, `hidden`, `expand`, `membersOf`, the group
+      primitives and the cascade's `leaveGroups` in `model.ts`; `Selection`
+      and `SELECTION` in `tools/selection.ts`; the engine's `selection`,
+      `composing`, `select`; the menu's selection items, Select g1, Show all;
+      `del` of a group; hidden left out of `hitTest`, `findSnap`,
+      `selectInBox`, `placeGlyphs` (`shownGlyph`), `visibleFaces`, the draw
+      pass and `regionAt`/`lightRegions`; the hover tag's `· g1`; `ls()`;
+      `help()`; six ops in `replenv.ts` and `persist.ts`, no format bump.
+      936 unit tests (911 before; `test/groups.test.ts` 15,
+      `test/selection.test.ts` 10), 381 e2e (358 before; `groups.e2e.ts` 12,
+      `selection.e2e.ts` 9, two new cases in `picking` and `boxselect`).
+      **Deviations from the spec:**
+      - ⚠ **The Delete key works only with no text field focused** — not
+        "with the command line empty" — for the reason under Smaller things.
+      - ⚠ **`removeFrom` that empties a group removes it**, as the cascade
+        does: one rule, a group is never empty.
+      - ⚠ **The menu also offers *Select e1*** on a piece a feature made, a
+        feature being a read-only group; the spec named groups only.
+      - ⚠ **A feature's members are what it made** (`owns`), never its
+        profile — "what the extrude made", read literally; the hover tag's
+        `· e1` still names the feature on its profile too, as before.
+      - ⚠ **`select()` leaves hidden names out and says so** in the log,
+        rather than refusing.
+      - ⚠ **A plain box that catches nothing clears the selection**, as a
+        click on empty canvas does; the spec did not say.
+      - **The spec was right about the code** — every seam it named was where
+        it said — so its text is unchanged apart from the status line.
 
 - [x] **Feature tools pick, preview, and confirm** — the owner: *"extrude
       and other tools should work like they do in other cad software. just

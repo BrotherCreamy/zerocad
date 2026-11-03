@@ -1276,7 +1276,7 @@ replacing) the system Node other projects on this machine may depend on.
   refusing none, or several (listed; `frame` narrows to the loop parallel to
   it), or a loop no frame orients — and expands it, with every loop inside it,
   into: a **lid frame** (the sketch frame's three points lifted by the depth,
-  then the frame); one **twin point per joined class** of the profile's points
+  then the frame — as built then; see the note below); one **twin point per joined class** of the profile's points
   (corners and centres, joined by `loops.ts`'s own `joinClasses`); a **twin
   member** per member in its own direction (a curve on the sketch frame onto
   the lid frame, any other keeps its own); a **wall line** per corner class,
@@ -1307,7 +1307,10 @@ replacing) the system Node other projects on this machine may depend on.
   *The rule now:* a feature's expansion is a function of its profile and
   follows it — a fillet on a profile corner regenerates the lid, keeping every
   twin and wall whose corner survives (see **Feature regeneration** below).
-  *Known and deliberate:* the lid frame always has its own points; `fillet`'s new points are not held on the sketch, so a `set` can stir
+  *The lid frame now* stands on the lid's own corners wherever the sketch
+  frame stands on the profile's, and has points of its own only elsewhere (see
+  **A feature's frames share its own points** below; `rels()` on a frameless
+  rectangle says 4 pairs). *Known and deliberate:* `fillet`'s new points are not held on the sketch, so a `set` can stir
   a rounded corner by a few millionths along +z.
   *Spec:* [`docs/plans/3d-phase4-extrude.md`](docs/plans/3d-phase4-extrude.md).
 - **Extrude, the faces and the tool** (`src/faces.ts` (new),
@@ -2050,6 +2053,74 @@ replacing) the system Node other projects on this machine may depend on.
   its sketch colour on a solid. *Spec:*
   [`docs/plans/opaque-solids.md`](docs/plans/opaque-solids.md).
 
+- **The selection, groups, hide and show** (`src/groups.ts` (new); `GroupEntry`,
+  `groups`, `hidden`, `expand`, `membersOf`, `addGroup`/`addMembers`/
+  `removeMembers`/`deleteGroup` and the cascade's `leaveGroups` in
+  `src/model.ts`; `Selection` and `SELECTION` in `src/tools/selection.ts`; the
+  engine's `selection`, `composing`, `select`; `menu.ts`'s selection items,
+  Select g1 and Show all; the Delete key, the highlight and the `selection`
+  handle in `main.ts`; `sel`/`select`/`group`/`addTo`/`removeFrom`/`ungroup`/
+  `members`/`groups`/`hide`/`show`, `ls()` and `help()` in `replenv.ts`; six
+  ops in `persist.ts`). The owner: *"flat relational direct cad. there is no
+  hierarchy … and entities can be grouped"*. **A click selects** with the
+  command line empty (shift toggles, a box selects, shift-box adds, empty
+  canvas or Escape clears), drawn in violet `#c46cff`; **with text in the line
+  it inserts the name**, as it always did. Region preselection is the same
+  selection. UI state: not journalled, saved or undone. **A group is a set**:
+  owns nothing, overlaps, never nests (a group or feature named is flattened to
+  its members then, and the log says so), never empty; a feature is a
+  read-only group of what it made. Deleting a member journals a `removeFrom`
+  per group before the primitive; an emptied group goes and `del` returns it.
+  The hover tag ends `· g1 g2`. **Hidden** (`hide`/`show`, groups and features
+  expanded) is not drawn, picked, snapped to, boxed or glyphed, is still
+  solved; a hidden feature's faces are not drawn; journalled, saved, undone.
+  No format bump. Unit: `test/groups.test.ts` (15), `test/selection.test.ts`
+  (10), and the engine and feature-dialog tests; browser:
+  `test/e2e/groups.e2e.ts` (12), `test/e2e/selection.e2e.ts` (9), and the
+  picking, box, drag, edge-drag, frames, glyphs, dimensions, opaque and
+  feature-dialog e2e read the selection where they read the command line.
+  *Known and deliberate* (TODO.md, Smaller things): hiding a solid's sketch
+  hides the solid's base edges (they are the same lines); `hide("e1")`
+  flattens at the call; a region bounded by anything hidden is not offered;
+  `sel()` lists names, not regions; arming a tool spends the whole
+  selection; a drag moves the grabbed entity, not the selection; the Delete
+  key is never a focused text field's. Phase 2, rigid groups, is not started.
+  *Spec:* [`docs/plans/groups.md`](docs/plans/groups.md).
+
+- **A feature's frames share its own points** (`frameOver`, `sweptFrames`,
+  `Expansion`/`EXPANSION`, `extrudeBody`, `revolveBody` and `rebuildFeature` in
+  `src/operations.ts`; the frame-pair dedupe in `src/relations/revolution.ts`;
+  `expansion` on both feature records in `src/model.ts`; `persist.ts`'s
+  `VERSION` 10 and `translate`). The owner, on doubled labels on an extruded
+  plate: *"i'm getting a lot of overlapping points. why is this happening?"* /
+  *"of course it should."* **A lid frame, and each partial revolve's end
+  frame, takes the twin of every point of the frame it copies that is a profile
+  vertex** (by joined class, never by position), and makes a point of its own
+  only for one that is not; the twins are made first now, then the frame. The
+  depth holds each place once: an extrude passes only the frame's own points as
+  pairs; the revolution relation keeps the frame pair (it is what marks the
+  sketch frame's points a datum) and skips any point a corner pair holds. The
+  owner's frameless plate with a triangular hole: 17 points with three pairs on
+  one spot before, 14 and none after. **Regeneration** owns a shared point once,
+  as a twin; keeps a lid point whose corner has left the profile, held as the
+  frame's own; and hands a sketch-frame point that comes into the profile the
+  lid point already over it. **Format version 10**: every `extrude` and partial
+  `revolve` from a file of version ≤ 9 is given the expansion `9` by
+  `translate`, which rebuilds its frames with their own points first, as that
+  build did, and regenerates it the old way; the `9` stays in the entry on
+  re-save. A new entry is the call as it always was. Unit:
+  `test/lidframe.test.ts` (12, new); version pins in `app3d`, `dimensions`,
+  `frames`; the old-file fixtures in `regen` and `regionfeatures` now built with
+  the old expansion. Browser: `test/e2e/lidframe.e2e.ts` (3, new); version pins
+  in `camera`, `planar`, `regen`. 923 unit tests, 361 e2e. *Known and
+  deliberate:* a sketch-frame point on a corner's spot but not joined to it
+  still gets its own lid point; a revolve about the sketch frame's own axis
+  leaves its end frame's origin and y-ref on the sketch frame's; deleting a lid
+  corner the lid frame stands on takes the lid frame with it (and what is drawn
+  on it); a boss's lid frame on a face still floats (the face frame's points
+  are the plate's, not the boss's). *Spec:*
+  [`docs/plans/lid-frame-shares-points.md`](docs/plans/lid-frame-shares-points.md).
+
 - **Quiet geometry** (`src/quiet.ts` (new); `Face.edges` and `SOLID_EDGE_PX`
   in `src/faces.ts`; the edge line in both renderers in `src/facelayer.ts`;
   `Glyph.about` in `src/glyphs.ts`; `engine.armedUnder` and
@@ -2059,9 +2130,10 @@ replacing) the system Node other projects on this machine may depend on.
   form the edge of a solid"*. **Shaded only:** an end of a line or arc that is
   no centre is not drawn, dot or name, and a solid's whole profile members,
   twins and walls are not drawn as sketch geometry while it has faces on
-  screen — until revealed: hovered (or lit by a hovered glyph), selected (a
-  stub until groups), the snap's target, under an armed tool's cursor, or
-  dragged; a revealed line or arc brings its ends. Glyphs follow their anchors;
+  screen — until revealed: hovered (or lit by a hovered glyph), selected (the
+  groups selection, drawn violet), the snap's target, under an armed tool's
+  cursor, or dragged; a revealed line or arc brings its ends. **Hidden
+  outranks revealed** (`entityDrawn`). Glyphs follow their anchors;
   dimensions always drawn. **Quiet is not hidden** — the pick, snap, box and
   drag are untouched, quiet glyphs included. **By geometric role only**: a
   lid's corner and a sketch's are one case (the spec's feature-made rule was
@@ -2069,13 +2141,15 @@ replacing) the system Node other projects on this machine may depend on.
   `SOLID_EDGE` line, 1.2 px, along every face's edges — caps, wall sides at
   vertices, a sweep's rims and vertex circles, never a seam — as depth-tested
   quads, or by the painter's after each fill. `ls()` folds a feature's output
-  into `    16 made — members("e1") lists them`. Hidden and wire draw
-  everything. Unit: `test/quiet.test.ts` (11, new), `faces.test.ts` (+5);
-  browser: `test/e2e/quiet.e2e.ts` (8, new), a shaded-against-hidden test in
+  into `    14 made — members("e1") lists them` (the groups package's
+  `members`, counted exactly). Hidden and wire draw everything. Unit:
+  `test/quiet.test.ts` (12, new), `faces.test.ts` (+5); browser:
+  `test/e2e/quiet.e2e.ts` (10, new), a shaded-against-hidden test in
   `hidden.e2e.ts` (the golden now held in the hidden view, unchanged).
-  927 unit tests, 367 e2e. *Known and deliberate:* no silhouette lines on
-  curved walls, no line where two solids interpenetrate; a lid frame's
-  reference points are drawn (they end nothing); frame markers stay.
+  COUNTS_PLACEHOLDER *Known and deliberate:* no silhouette lines on curved
+  walls, no line where two solids interpenetrate; a lid frame's own points
+  (where the sketch frame stands off the profile) are drawn, ending nothing;
+  frame markers stay, so their letters sit at a corner a frame stands on.
   *Spec:* [`docs/plans/quiet-geometry.md`](docs/plans/quiet-geometry.md).
 
 

@@ -146,8 +146,10 @@ test("with nothing armed a click inside a region selects it, shift adds, empty c
   click([0, 40, 0]);
   assert.equal(e.selected.size, 0, "empty canvas clears");
   click([-20, 0, 0]);
-  assert.deepEqual(picked, ["l2"], "a click on an edge still picks the edge");
-  assert.equal(e.selected.size, 0, "and selects no region");
+  assert.deepEqual(picked, [], "a click on an edge with no command being written inserts nothing");
+  assert.deepEqual(e.selection.names, ["l2"], "it selects the edge");
+  assert.equal(e.selected.size, 0, "and no region");
+  click([0, 40, 0]);
 
   click([-35, 0, 0]);
   click([35, 0, 0], true);

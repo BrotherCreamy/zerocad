@@ -179,7 +179,7 @@ test("a press on an edge that does not move is still a pick", async () => {
   await app.page.mouse.up();
   await app.page.waitForTimeout(150);
 
-  assert.equal(await cmd(), '"l1"', "the edge's name still drops into the command line");
+  assert.deepEqual(await app.selection(), ["l1"], "the edge is selected — the command line being empty");
   const m = await app.model();
   for (const name of ["p1", "p2"]) {
     assert.ok(Math.hypot(m.points[name][0] - before.points[name][0],

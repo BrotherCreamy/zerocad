@@ -177,15 +177,15 @@ test("a click where the hidden corner projects does not pick it in a shaded view
     await app.page.mouse.move(at.x - 40, at.y - 40);
     await app.page.mouse.click(at.x, at.y);
     await app.page.waitForTimeout(120);
-    return app.page.inputValue("#cmd");
+    return app.selection();
   };
-  assert.ok(!(await clickPicks()).includes(`"${corner}"`), "shaded: the click does not put the corner's name in the command line");
+  assert.ok(!(await clickPicks()).includes(corner), "shaded: the click does not select the corner");
   // Nor does hovering there light it.
   await app.page.mouse.move(at.x + 1, at.y + 1);
   await app.page.waitForTimeout(100);
   assert.notEqual((await app.repl("hover()")).value, corner, "shaded: hovering there is not hovering it");
   await app.repl('view("hidden")');
-  assert.equal(await clickPicks(), `"${corner}"`, "hidden: the same click picks it");
+  assert.deepEqual(await clickPicks(), [corner], "hidden: the same click selects it");
 });
 
 /** WCAG's relative luminance and contrast ratio. */

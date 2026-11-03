@@ -77,6 +77,10 @@ async function setup() {
     onSolveRender: () => { counts.solves++; model.solve(); },
     onRenderOnly: () => { counts.renders++; },
     onPick: () => { counts.picks++; },
+    // These fixtures are about the gesture — click or drag, box or pan — so
+    // they write a command: a pick is then an insertion, counted here. What a
+    // click does with the command line empty (it selects) is tested below.
+    composing: () => true,
     onUserAction: (phase) => { actions.push(`${phase}@${counts.solves}`); },
     onContextMenu: (pick, sx, sy) => { menus.push({ name: pick?.name ?? null, at: [sx, sy] }); },
   });
@@ -386,6 +390,10 @@ async function shapes() {
     onSolveRender: () => { counts.solves++; model.solve(); },
     onRenderOnly: () => { counts.renders++; },
     onPick: () => { counts.picks++; },
+    // These fixtures are about the gesture — click or drag, box or pan — so
+    // they write a command: a pick is then an insertion, counted here. What a
+    // click does with the command line empty (it selects) is tested below.
+    composing: () => true,
     onUserAction: (phase) => { actions.push(`${phase}@${counts.solves}`); },
   });
   return { model, engine, fire, counts, actions };

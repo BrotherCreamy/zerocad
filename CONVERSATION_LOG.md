@@ -159,16 +159,132 @@ loses it by far more than that.
 line's end stays drawn: the spec keeps centres, and a circle whose centre
 went quiet would have no mark at its middle at all.
 
-**The selection is an input, not built here.** The groups package brings
-the entity selection; `selectedNames()` in `main.ts` is empty until then
-and is the one place it plugs in. The unit tests feed `revealed` a selected
-name like any other reveal.
+**The selection is the groups package's.** Built against a stub while the
+two packages ran side by side, and integrated after both merged: the
+selection the draw pass already prunes each frame is one more reveal, and a
+selected glyph is drawn as a hovered one is. **Hidden outranks revealed**
+(`entityDrawn`): `hide` takes a thing out of sight on purpose, and a reveal
+is about what the hand is on, so a stale snap or a selection made before the
+`hide` must not bring it back. Hiding a solid's sketch is the case that shows
+why the edge line belongs to the faces: the base's lines are hidden and the
+base is still outlined.
+
+**One `members`.** The groups package's reads a feature as a read-only group
+of what it made — its depth dimension included — so `ls()`'s count is of
+exactly that list, rather than of the entities only as this package first
+counted.
 
 **The register's "feature's own entities quiet by name" item was dropped**,
-at the supervising session's direction on the owner's reasoning above: a
-lid's three frame points end no line and are drawn, as any isolated point
-is. They clutter the lid until `lid-frame-shares-points.md` builds the lid
-frame on the lid's own corners, which are ends and so quiet.
+at the supervising session's direction on the owner's reasoning above. With
+the lid frame now on the lid's own corners (`lid-frame-shares-points.md`)
+that leaves a sketched outline's lid clean; a lid frame over a sketch frame
+that stands off the profile still has points of its own, and they are drawn.
+
+### Groups, phase 1: a selection, sets that own nothing, and visibility
+
+**The owner**: *"the concept of this project is flat relational direct cad.
+there is no hierarchy. a sketch entity exists in the same logical space as a
+solid entity. and entities can be grouped. think about this grouping, and
+implement also"*. The design (docs/plans/groups.md) was settled before the
+build; what follows is the reasoning the build added.
+
+**Why the command line's text is the switch between selecting and naming.**
+Cellwork's click-to-name is the right gesture while a call is being written —
+`dist(` then two clicks — and the wrong one for "group these", which needs a
+set held somewhere. Rejected: a modifier for naming (Alt-click), which makes
+the long-standing gesture a chord and is invisible; and a mode toggle, which is
+state the user has to remember. The text is already on screen, and the undo
+carve-out had used the same signal. Every test that read the command line after
+a plain click now reads the selection, and each keeps a case that writes a
+command first, so both halves are pinned.
+
+**Why the selection is engine state with a host handle, not model state.** It
+is the viewer's — never journalled, never undone, like the camera and the
+layout — and the engine already held the region preselection, which the spec
+asked to be "the same selection". So `Selection` holds names and the
+`RegionSelection`, one clear, one highlight family. The host decides nothing
+but whether a command is being written (`composing`), which is the one fact
+only it can see.
+
+**Why the cascade lives in the primitives.** `del` is not the only thing that
+deletes: a fillet's regeneration removes twins inside an operation, and a
+hand-edited file can say `deleteEntity`. Had group membership been tidied in
+`del`, either would leave a group naming nothing. In `deleteEntity` and
+`deleteRelation` — beside the default frame's clearing, which set the
+precedent — it cannot be missed, and recording `removeFrom` there keeps a
+deletion's expansion a complete account. Inside an operation recording is off
+and the replay of the operation makes the same removal, so nothing doubles.
+
+**Why a group is never empty.** The spec said the cascade takes a group it
+empties. `removeFrom` emptying one by hand is the same state, and two rules
+for one state is how they drift; so one invariant, in `removeMembers`.
+
+**Why `hide` journals as typed and `group` journals resolved.** A group *is*
+the union at that moment, and the file should state the union: the members a
+`group("g1", "l5")` resolved to are its meaning. A `hide("g1")` means "what g1
+is now", and replay reaches that step with g1 exactly as it was — so the short
+form is as exact, and reads as what was typed.
+
+**Why the Delete key is refused to a focused text field even when it is
+empty.** The first e2e run deleted half a test's drawing: Playwright's
+`fill("")` sends a Delete to an already empty command line, and the key handler
+took it. The hand does the same — empty the line, press Delete once more — and
+that should never delete geometry. A click on the canvas blurs the line, so the
+key is the drawing's exactly when the hand was just on the drawing.
+
+**What hiding a solid's sketch costs, and why it was left.** The profile
+lines are the solid's base edges — the flat model's own point — so hiding the
+sketch takes the solid's bottom outline with it. Onshape keeps the two apart;
+here they are one entity. Drawing a hidden profile member as a solid edge while
+its feature is shown is a small, separable change, written down in TODO.md for
+the owner to want or not.
+
+### A lid frame shares the lid's own points
+
+**The owner**, on a screenshot of doubled point labels on an extruded plate:
+*"i'm getting a lot of overlapping points. why is this happening?"*, and, told
+why, *"of course it should."* A frameless sketch's frame is three of the
+outline's corners, and the lid frame made three points of its own over them,
+which landed on three lid corners. Measured on his plate: 17 points, three
+pairs. Now the lid frame takes those twins: 14 points, no pairs.
+
+**Why the twins are made before the frame now.** The frame has to know which
+of its points are twins, so it comes after them. That reorders the names, so
+it is a format break (10) even though no entry changed shape.
+
+**Why the old expansion is written into the old entry.** *Rejected:*
+re-expanding old files the new way. Every auto-name after the first extrude
+would shift. Measured: the owner's plate saved by a version-9 build, with a
+`dist` on a later point, fails at that step (`"p16" is not a point`).
+*Rejected:* choosing by the file's version at replay alone. A reopened old file
+saves as version 10, so after one save it would mean the new expansion. So
+`translate` writes `9` into the entry, as the version-8 fillet translation
+writes its empty list, and the `9` stays. *Rejected:* marking only extrudes
+whose frame stood on the profile. A later `regen` can bring a sketch-frame
+point into the profile, and the two expansions differ there. So the record
+carries `expansion` too, and regeneration rebuilds a version-9 feature the
+version-9 way.
+
+**Why revolve keeps its frame pair.** The `revolution` relation reads a base
+as a datum when it is a point of a frame named in a frame pair. That is what
+keeps the end face from turning the sketch frame. Spelling out only the end
+frame's own points as point pairs would have lost that for a shared corner.
+So the frame pair stays, and the relation skips any of its points a corner
+pair already holds. Without the skip, that would be a second identical block,
+a redundant equation.
+
+**Sharing reads joins, never positions.** A replay runs on seeds, where
+positions mean nothing, and the expansion must make the same names there. So
+a sketch-frame point on a corner's spot but not joined to it still gets its
+own lid point. This is documented, and a test fixture was moved off the
+tilted frame's origin because of it.
+
+**What the browser found.** The e2e of the owner's sequence showed one doubled
+label left, on the *sketch*. The line tool, closing the triangle back onto its
+first point, makes a point of its own and `coin`s it, which is the snap rule
+for every existing point. It is not the lid's problem, since the lid has one
+twin per joined class, and it is likely part of what the owner saw. It is
+left for its own package and asserted exactly in the e2e.
 
 ### Opaque solids: one answer for the eye and the hand
 

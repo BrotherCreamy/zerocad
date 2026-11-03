@@ -359,12 +359,15 @@ test("view(\"hidden\") draws everything: every corner's dot and the solid's edge
 
 test("the owner's plate with a hole reads as a clean solid: no dots, no names, the edges the face layer's", async () => {
   const app = await fresh();
-  await axisFrame(app);
+  // Sketched as the tools sketch a frameless outline: the plane made on three
+  // of its own corners, so the lid frame stands on the lid's corner twins
+  // (lid-frame-shares-points.md) and nothing but the corners is at a corner.
   const src = `P = (c) => model.addPoint(c).name;
     ps = [[0,0,0],[60,0,0],[60,40,0],[0,40,0]].map(P);
+    fr = plane(ps[0], ps[1], ps[3], { look: false });
     ls = ps.map((p, i) => model.addLine(p, ps[(i + 1) % 4]).name);
-    for (const p of ps) onplane(p, "f");
-    c = P([30,20,0]); onplane(c, "f"); model.addCircle(c, 9, "f");
+    onplane(ps[2], fr);
+    c = P([30,20,0]); onplane(c, fr); model.addCircle(c, 9, fr);
     extrude(ls[0], 10); solve(); refresh(); "plate"`;
   const r = await app.repl(src);
   assert.equal(r.ok, true, r.error ?? "");
@@ -372,22 +375,26 @@ test("the owner's plate with a hole reads as a clean solid: no dots, no names, t
   await away(app);
   await shot(app, "plate-with-hole");
   const m = await app.model();
-  // Every corner, base and lid: no dot and no name in the point's ink — read
-  // at every point that ends a line, except where a point that ends nothing
-  // stands on the same spot. The lid's frame is made on three points of its
-  // own, the first of them on the lid corner over the profile's first corner,
-  // and a point that is no end is drawn, whoever made it (the owner: "why is
-  // a 3D corner any different from a 2D corner").
+  // Every corner, base and lid: no dot and no name in the point's ink. The
+  // only points that end no line are the two circles' centres — no frame
+  // point of its own stands on a corner any more.
   const ends = new Set(m.lines.flatMap((l) => l.refs));
-  const loose = Object.entries(m.points).filter(([n]) => !ends.has(n)).map(([, c]) => c);
-  const corners = Object.entries(m.points).filter(([n, c]) => ends.has(n)
-    && !loose.some((o) => Math.hypot(o[0] - c[0], o[1] - c[1], o[2] - c[2]) < 2));
-  // Eight corners, less the two a frame's origin stands on: the default
-  // frame's at the plate's first corner, the lid frame's above it.
-  assert.equal(corners.length, 6, `the plate's corners clear of a loose point`);
+  const corners = Object.entries(m.points).filter(([n]) => ends.has(n));
+  assert.equal(corners.length, 8, "the plate's eight corners");
+  const loose = Object.entries(m.points).filter(([n]) => !ends.has(n));
+  assert.deepEqual(loose.map(([, c]) => [c[0], c[1]]), [[30, 20], [30, 20]], `only the centres end nothing: ${JSON.stringify(loose)}`);
+  // Where a frame stands on a corner (the sketch's, and the lid's above it),
+  // its marker is drawn from that corner — frame markers stay — and its arms,
+  // letters and name lie where a dot and a name would be read, so neither is
+  // asked of those two corners.
+  const origins = await app.page.evaluate(() => [...(window as never as {
+    __neocad: { model: { entities: Map<string, { kind: string; origin?: string }> } };
+  }).__neocad.model.entities.values()].filter((e) => e.kind === "frame").map((e) => e.origin!));
+  assert.equal(origins.filter((o) => ends.has(o)).length, 2, "the sketch frame and the lid frame each on a corner");
   let dots = 0, names = 0;
-  for (const [, c] of corners) {
+  for (const [n, c] of corners) {
     const at = await app.screenOf(c);
+    if (origins.includes(n)) continue;
     dots += await dotAt(app, at, PLAIN);
     names += await nameAt(app, at, PLAIN);
   }
@@ -428,6 +435,83 @@ test("with no WebGL the painter's fallback draws the same fine edge line, into t
     assert.ok(face?.kind === "lid", `a few pixels up from the edge is the lid (${face?.kind})`);
     const toward = [0, 1, 2].reduce((s, i) => s + (face!.rgb[i] - darkest[i]), 0) / [0, 1, 2].reduce((s, i) => s + (face!.rgb[i] - solid[i]), 0);
     assert.ok(toward > 0.66, `the painter's edge line at ${t}: ${darkest}, ${Math.round(toward * 100)}% of the way from ${face!.rgb} to ${solid}`);
+  }
+  assert.deepEqual(app.pageErrors, []);
+});
+
+/** Whether a drawing pixel is in the selection's violet (tools/selection.ts's `SELECTION`), over nothing or its casing. */
+const VIOLET = [196, 108, 255];
+
+test("a selected quiet corner, and a selected solid edge, are drawn — in the selection's colour — until the selection is cleared", async () => {
+  const app = await fresh();
+  const { corners } = await drawRectangle(app);
+  const c = corners[2];
+  const at = await screenOfPoint(app, c);
+  assert.equal(await dotAt(app, at, PLAIN) + await dotAt(app, at, VIOLET), 0, "quiet at rest");
+  await app.repl(`select("${c}")`);
+  await away(app);
+  await shot(app, "selected-corner");
+  assert.equal(await dotAt(app, at, VIOLET), 3, "selected, its dot is drawn, violet");
+  assert.ok(await nameAt(app, at, VIOLET) > 4, "and its name");
+  await app.repl("select()");
+  await away(app);
+  assert.equal(await dotAt(app, at, VIOLET) + await dotAt(app, at, PLAIN), 0, "cleared, quiet again");
+
+  // Extruded: a selected edge of the solid is drawn over the face line, violet, with its ends.
+  const e = await app.repl(`extrude("l1", 20)`);
+  assert.equal(e.ok, true, e.error ?? "");
+  await lookAlong(app, [1, -2, 1.5]);
+  await away(app);
+  const edge = await lidFront(app);
+  const g = await lineGeometry(app, edge);
+  const [x, y] = (await app.screenOf(g.a.map((v, i) => v + 0.6 * (g.b[i] - v)))).map(Math.floor) as [number, number];
+  assert.equal((await box(app, x - 1, y - 1, x + 1, y + 1)).filter((p) => p[3] > 0).length, 0, "quiet before it is selected");
+  await app.repl(`select("${edge}")`);
+  await away(app);
+  await shot(app, "selected-edge");
+  assert.ok((await box(app, x - 1, y - 1, x + 1, y + 1)).filter((p) => inked(p, VIOLET)).length > 0, "selected: drawn violet");
+  const m = await app.model();
+  for (const end of g.refs) {
+    const [ex, ey] = await app.screenOf(m.points[end]);
+    assert.ok((await box(app, ex - 3, ey - 3, ex + 3, ey + 3)).filter((p) => inked(p, PLAIN)).length > 6, `with its end ${end}`);
+  }
+  assert.deepEqual(app.pageErrors, []);
+});
+
+test("hiding the sketch of an extruded rectangle leaves the base outlined: the face layer's line is the solid's, not the sketch's", async () => {
+  const app = await fresh();
+  const { corners, lines } = await extruded(app);
+  const solid = await app.page.evaluate(async () => {
+    const path = "/src/faces.ts";
+    const { SOLID_EDGE } = await import(path);
+    return [1, 3, 5].map((i) => parseInt((SOLID_EDGE as string).slice(i, i + 2), 16));
+  });
+  const grouped = await app.repl(`group(${[...lines, ...corners].map((n) => JSON.stringify(n)).join(", ")})`);
+  assert.equal(grouped.ok, true, grouped.error ?? "");
+  const hidden = await app.repl(`hide(${JSON.stringify(grouped.value)})`);
+  assert.equal(hidden.ok, true, hidden.error ?? "");
+  await away(app);
+  await shot(app, "sketch-hidden");
+  // The base's front edge — the profile's bottom line, now hidden — seen
+  // along the bottom of the front wall from here.
+  const base = await lineGeometry(app, lines[0]);
+  assert.ok(base.a[1] === -20 && base.b[1] === -20 && base.a[2] === 0, "the profile's front line");
+  for (const t of [0.3, 0.7]) {
+    const w = base.a.map((v, i) => v + t * (base.b[i] - v));
+    const [x, y] = (await app.screenOf(w)).map(Math.floor) as [number, number];
+    assert.equal((await box(app, x - 1, y - 1, x + 1, y + 1)).filter((p) => p[3] > 0).length, 0, `the sketch's line is not drawn at ${t}`);
+    const under: [number, number][] = [];
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) under.push([x + dx + 0.5, y + dy + 0.5]);
+    const darkest = (await app.pixels("faces", under)).reduce((best, p) => (p[0] + p[1] + p[2] < best[0] + best[1] + best[2] ? p : best));
+    const [{ face }] = await app.nearestFaces([[x + 0.5, y - 5.5]]);
+    assert.ok(face?.kind === "wall", `above the base's front edge is the front wall (${face?.kind})`);
+    const toward = [0, 1, 2].reduce((s, i) => s + (face!.rgb[i] - darkest[i]), 0) / [0, 1, 2].reduce((s, i) => s + (face!.rgb[i] - solid[i]), 0);
+    assert.ok(toward > 0.66, `the base edge is still outlined at ${t}: ${darkest}, ${Math.round(toward * 100)}% of the way from ${face!.rgb} to ${solid}`);
+    // Hidden is not quiet: the cursor on it finds no line to light.
+    await hoverAt(app, [x, y]);
+    assert.notEqual((await app.repl("hover()")).value, lines[0], "a hidden line is not hovered");
+    assert.equal((await box(app, x - 1, y - 1, x + 1, y + 1)).filter((p) => inked(p, LIT)).length, 0, "nor drawn lit");
+    await away(app);
   }
   assert.deepEqual(app.pageErrors, []);
 });

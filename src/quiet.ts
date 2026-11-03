@@ -109,9 +109,20 @@ export function revealed(model: Model, names: Iterable<string>): Set<string> {
   return out;
 }
 
-/** Whether an entity is drawn this frame: not quiet, or revealed. */
+/** Whether an entity is drawn this frame, as far as quiet goes: not quiet, or revealed. */
 export function drawn(name: string, quiet: ReadonlySet<string>, shown: ReadonlySet<string>): boolean {
   return !quiet.has(name) || shown.has(name);
+}
+
+/**
+ * Whether the entity pass draws an entity this frame: not hidden (`hide`,
+ * groups.ts), and then `drawn`. **Hidden outranks revealed** — a reveal brings
+ * back what is quiet, never what the user hid. Nothing hidden picks, so it is
+ * never hovered; but a selection, a snap or a drag made before the `hide` must
+ * not bring it back for a frame either.
+ */
+export function entityDrawn(model: Model, name: string, quiet: ReadonlySet<string>, shown: ReadonlySet<string>): boolean {
+  return !model.hidden.has(name) && drawn(name, quiet, shown);
 }
 
 /** What the glyph rule needs of a glyph — glyphs.ts's `Glyph` has it. */

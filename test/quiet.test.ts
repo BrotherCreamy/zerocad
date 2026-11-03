@@ -20,7 +20,8 @@ import { placeGlyphs } from "../src/glyphs.ts";
 import { visibleFaces } from "../src/faces.ts";
 import { orbitBy, type View } from "../src/view.ts";
 import { neocadScope } from "../src/replenv.ts";
-import { drawn, glyphDrawn, quietEntities, revealed } from "../src/quiet.ts";
+import { drawn, entityDrawn, glyphDrawn, quietEntities, revealed } from "../src/quiet.ts";
+import { hide } from "../src/groups.ts";
 import { tiltedFrame } from "./frames.ts";
 import { polygon, ring } from "./profiles.ts";
 
@@ -222,9 +223,31 @@ test("ls() lists a feature's output as a count under its line, and members() exp
   for (const n of [...lines, ...points]) assert.ok(ls.some((l) => l.startsWith(`${n} `)), `${n}, the user's, is`);
   const at = ls.findIndex((l) => l.startsWith(`${f.name}  extrude of`));
   assert.ok(at >= 0, ls.join("\n"));
-  assert.equal(ls[at + 1], `    ${made.length} made — members("${f.name}") lists them`);
+  // The count is of exactly what members() lists — the groups package's, which
+  // reads a feature as a read-only group of what it made, its depth included.
   const members = (scope.members as (n: string) => string[])(f.name);
-  assert.deepEqual(members.map((l) => l.split(" ")[0]), made, "the made entities, in the order made");
-  assert.ok(members[0].includes("point") || members[0].includes("frame"), "described as ls describes them");
-  assert.throws(() => (scope.members as (n: string) => string[])(lines[0]), /is not a feature — members names one \(e1\)/);
+  assert.deepEqual(members, f.owns, "what the feature made, in the order made");
+  assert.ok(members.includes(f.depth), "its dimension with it");
+  assert.equal(ls[at + 1], `    ${members.length} made — members("${f.name}") lists them`);
+  // Hidden pieces are still counted, and the count says how many.
+  (scope.hide as (...n: string[]) => string[])(f.walls[0]);
+  const after = (scope.ls as () => string[])();
+  assert.equal(after[after.findIndex((l) => l.startsWith(`${f.name}  extrude of`)) + 1],
+    `    ${members.length} made, 1 hidden — members("${f.name}") lists them`);
+});
+
+test("hidden outranks revealed: a hidden corner or edge stays undrawn however it is revealed, and what is not hidden is untouched", async () => {
+  await loadKernel();
+  const { m, f, points } = box();
+  const quiet = quietEntities(m, { shaded: true, faced: new Set([f.name]) });
+  const [corner, wall] = [points[1], f.walls[1]];
+  const everything = revealed(m, [corner, wall]);
+  assert.equal(entityDrawn(m, corner, quiet, everything), true, "revealed, and not hidden: drawn");
+  hide(m, corner, wall);
+  assert.equal(entityDrawn(m, corner, quiet, everything), false, "hidden: not drawn though selected, snapped to or dragged");
+  assert.equal(entityDrawn(m, wall, quiet, everything), false, "nor a hidden edge");
+  const other = points[2];
+  assert.equal(entityDrawn(m, other, quiet, revealed(m, [other])), true, "a neighbour is still revealed as before");
+  // In the hidden view nothing is quiet, and a hidden thing is still not drawn.
+  assert.equal(entityDrawn(m, corner, quietEntities(m, { shaded: false, faced: new Set() }), new Set()), false);
 });

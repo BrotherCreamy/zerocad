@@ -92,6 +92,7 @@ src/relations/refs.ts    lazy variable lists, and a frame's basis as re-read val
 src/relations/basic.ts   dist / fix (frame-relative) / coincident / midpoint — all dimension-generic
 src/relations/geometry.ts par / perp / ang (any of which takes a frame axis) / on / eq / rad / oncircle / conc / eqrad / tan / sym
 src/operations.ts        operations, which change structure rather than add equations: fillet, extrude, revolve, del, set
+src/groups.ts            groups (named sets that own nothing and never nest) and hide/show, as operations
 src/relations/extrusion.ts the one dimension an extrude's lid is held by: twin = base + depth·ẑ
 src/relations/revolution.ts the one dimension a revolve's end face is held by: twin = base turned about the axis
 src/persist.ts           save/open — a file is the model's journal, replayed
@@ -118,7 +119,7 @@ src/tools/circumcircle.ts the closed form those two share
 src/tools/extrude.ts      click inside regions, see the solids, ✓; they are extruded
 src/tools/revolve.ts      click inside regions, then on an axis, ✓; they are revolved
 src/tools/feature.ts      pick → preview → confirm, shared by the feature tools
-src/tools/selection.ts    which regions are picked, kept by a point inside each
+src/tools/selection.ts    the canvas's selection (names and regions), and a feature tool's picked regions
 src/tools/sketch.ts       click inside a face; plane(a, b, c) on its own points is typed
 src/tools/region.ts       the click-inside tools' shared region preview
 src/featurepreview.ts     a feature's commit, run on a throwaway copy: its preview
@@ -267,6 +268,27 @@ constraint types `del("r5")`, *Set value…* on a dimension types
 arms a tool. Each item shows the command beside its label, and the log
 records what it typed, so the menu teaches the command line rather than
 replacing it.
+
+**A click selects; with a command half-typed it names.** With the command
+line empty a click on an entity or a constraint mark selects it (shift adds or
+drops, a box selects what it catches, empty canvas or Escape clears), drawn in
+violet; with text in the line — `dist(` — the click drops the name in instead.
+The menu then acts on the selection — *Group*, *Delete*, *Hide* — and the
+Delete key deletes it, each typing its command. `sel()` lists it,
+`select("l1", "g1")` sets it; it is yours, never journalled.
+
+**The model is flat, and things can be grouped.** A group is a named set — it
+owns nothing, a thing can be in any number, and a group never holds a group
+(naming one adds its members as they are). A feature is a read-only group of
+what it made. Hiding is part of the drawing, and hidden is still solved:
+
+```js
+group("l1", "l2", "l3", "l4")      // g1
+group("g1", "c1", { name: "plate" }) // g1's members now, and c1: a union, not a link
+members("plate"); groups("l1")     // what is in it; what it is in
+hide("g1"); show(); hide("e1")     // the sketch gone from view, the solid kept; a solid hidden
+ungroup("plate")                   // or del("plate"): the grouping goes, never a member
+```
 
 **Dimensions are named `d1`, `d2`, …** — `dist`, `rad` and `ang`, the
 relations that carry a number — while every other constraint is `r1`, `r2`, ….

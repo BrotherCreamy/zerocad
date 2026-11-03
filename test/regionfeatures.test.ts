@@ -248,12 +248,17 @@ test("a version-7 file reads as it always did; one claiming 7 with a portion in 
   const m = new Model(3);
   const t = tiltedFrame(m);
   const { lines } = polygon(m, t, [[0, 0], [40, 0], [40, 30], [0, 30]]);
-  extrude(m, lines[0], 10);
+  // As a version-7 build expanded it, its lid frame's points its own — which
+  // the entry it wrote does not say, there being only the one expansion then.
+  extrude(m, lines[0], 10, null, null, 9);
   m.solve();
-  const v7 = { ...JSON.parse(save(m)), version: 7 };
+  const now = JSON.parse(save(m));
+  const unmarked = now.journal.map((e: { op: string; args: unknown[] }) => (e.op === "extrude" ? { ...e, args: e.args.slice(0, 4) } : e));
+  const v7 = { ...now, version: 7, journal: unmarked };
   const reopened = open(JSON.stringify(v7));
   assert.deepEqual(reopened.featureOf("e1").loops, [lines]);
-  assert.equal(save(reopened), JSON.stringify({ ...v7, version: VERSION }, null, 2), "re-saved current, every entry as it was");
+  assert.equal(save(reopened), JSON.stringify({ ...now, version: VERSION }, null, 2),
+    "re-saved current, every entry as it was but the extrude's expansion, now said");
 
   const split = plate();
   extrude(split.m, split.lines[3], 10);

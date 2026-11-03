@@ -13,7 +13,7 @@
 // reason: an exact point beats a crossing beats a derived midpoint beats a
 // point that merely lies somewhere along a curve.
 
-import type { Model } from "./model.ts";
+import type { Entity, Model } from "./model.ts";
 import { intersect, type Pt } from "./intersect.ts";
 import { nearestOnPolyline, screenCurve, screenOf as projectPoint, type ScreenCurve } from "./projection.ts";
 import { liesOn, worldToScreen, type Plane, type View } from "./view.ts";
@@ -120,6 +120,9 @@ function dist(ax: number, ay: number, bx: number, by: number): number {
  */
 export function findSnap(model: Model, view: View, sx: number, sy: number, sketch?: Plane | null,
                          occ: Occlusion | null = null): Snap | null {
+  // What is hidden is not on screen, so nothing about it is offered — not a
+  // point, a crossing, a midpoint, a projection or a place along it.
+  const shown = [...model.entities.values()].filter((e) => !model.hidden.has(e.name));
   const screenOf = (name: string) => projectPoint(model, view, name);
   const make = (screen: Pt, world: number[], kind: SnapKind, ...targets: string[]): Snap =>
     ({ screen, world, kind, targets });
@@ -128,7 +131,7 @@ export function findSnap(model: Model, view: View, sx: number, sy: number, sketc
 
   // Tier 1: an existing point. Exact, and almost always what was meant.
   let best: { snap: Snap; d: number } | null = null;
-  for (const e of model.entities.values()) {
+  for (const e of shown) {
     if (e.kind !== "point") continue;
     const p = screenOf(e.name);
     const d = dist(sx, sy, p[0], p[1]);
@@ -147,7 +150,7 @@ export function findSnap(model: Model, view: View, sx: number, sy: number, sketc
   // in one sketch plane always agree, a circle's planar rim as much as a line —
   // at any angle of view, which a circle drawn as a sphere's silhouette could
   // not manage.
-  const near = curvesNear(model, view, sx, sy, SNAP_INTERSECTION);
+  const near = curvesNear(model, view, sx, sy, SNAP_INTERSECTION, shown);
   const sameWithin = SAME_PLACE_PX / view.scale;
   for (let i = 0; i < near.length; i++) {
     for (let j = i + 1; j < near.length; j++) {
@@ -166,7 +169,7 @@ export function findSnap(model: Model, view: View, sx: number, sy: number, sketc
 
   // Tier 3: the middle of an edge — whose projection is the projection of its
   // middle, orthographic projection being affine.
-  for (const e of model.entities.values()) {
+  for (const e of shown) {
     if (e.kind !== "line") continue;
     const a = screenOf(e.refs[0]);
     const b = screenOf(e.refs[1]);
@@ -184,7 +187,7 @@ export function findSnap(model: Model, view: View, sx: number, sy: number, sketc
   // that infers nothing. See the note above.
   if (sketch) {
     const foot = footOnPlane(sketch);
-    for (const e of model.entities.values()) {
+    for (const e of shown) {
       if (e.kind !== "point") continue;
       const world = model.coords(e.name);
       if (onSketch(world) || !foot || !inSight(occ, world)) continue;
@@ -197,7 +200,7 @@ export function findSnap(model: Model, view: View, sx: number, sy: number, sketc
   }
 
   // Tier 5: somewhere along a curve — the nearest point on it.
-  for (const e of model.entities.values()) {
+  for (const e of shown) {
     const shape = screenCurve(model, view, e, SNAP_INTERSECTION);
     const at = shape && nearestOnCurve(shape, sx, sy);
     if (shape && at && at.d < SNAP_CURVE && (!best || at.d < best.d)) {
@@ -275,9 +278,10 @@ function curvesNear(
   sx: number,
   sy: number,
   tol: number,
+  among: Iterable<Entity> = model.entities.values(),
 ): { name: string; shape: ScreenCurve }[] {
   const out: { name: string; shape: ScreenCurve }[] = [];
-  for (const e of model.entities.values()) {
+  for (const e of among) {
     const shape = screenCurve(model, view, e, SNAP_INTERSECTION);
     const at = shape && nearestOnCurve(shape, sx, sy);
     if (shape && at && at.d < tol) out.push({ name: e.name, shape });

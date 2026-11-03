@@ -408,6 +408,8 @@ export interface ExtrudeFeature {
   twins: string[][];
   /** The wall lines, one per profile vertex, base to twin. */
   walls: string[];
+  /** Which expansion made it — whether `top` stands on the lid's own corners. See `Expansion`. */
+  expansion: Expansion;
   /** Everything the record refers to. See above. */
   names: string[];
   /** The part of `names` the feature made, which deleting it takes. */
@@ -450,6 +452,8 @@ export interface RevolveFeature {
   twins: string[][];
   /** Partial only: the end face's frame — the sketch frame turned through the angle. Null for a full turn. */
   end: string | null;
+  /** Which expansion made it — whether its end frames stand on the end face's own corners. See `Expansion`. */
+  expansion: Expansion;
   /** Everything the record refers to. See `ExtrudeFeature`. */
   names: string[];
   /** The part of `names` the feature made, which deleting it takes. */
@@ -458,6 +462,41 @@ export interface RevolveFeature {
 
 /** Every kind of feature there is. */
 export type FeatureEntry = ExtrudeFeature | RevolveFeature;
+
+/**
+ * Which expansion of an extrude or revolve call a feature was made by: `10`,
+ * today's, whose frames reuse the twins of the profile's vertices they copy;
+ * `9`, a file of format 9 or below's, whose frames have points all their own.
+ * Here rather than beside `EXPANSION` in operations.ts because the record
+ * carries it, so regeneration rebuilds a feature the way it was made.
+ */
+export type Expansion = 9 | 10;
+
+/**
+ * A **group**: a named set of entities and relations — `g1`, `g2`, … or a
+ * name of the user's — and nothing more (docs/plans/groups.md).
+ *
+ * The owner's concept is flat relational direct CAD: "there is no hierarchy …
+ * and entities can be grouped". So a group is a set and never a container. It
+ * **owns nothing**: deleting it deletes the grouping, never a member, and
+ * deleting a member takes it out of every group it is in (a group left empty
+ * goes too — a group is never empty). **Membership overlaps and never nests**:
+ * an entity may be in any number of groups, and a group never holds a group or
+ * a feature — naming one where members are wanted adds its members as they
+ * are then (`expand`), a union and not a link, because a link would be a tree.
+ *
+ * A **feature is a group already** — `e1` names what the extrude made — so a
+ * feature's name is read as a set wherever a group's is (`membersOf`), and is
+ * read-only as one: its members follow its profile.
+ *
+ * Structure, so it lives here; every edit to it is an operation (groups.ts),
+ * journalled as the call, and the registry is rebuilt by replay, never saved.
+ */
+export interface GroupEntry {
+  name: string;
+  /** Entity and relation names, in the order they joined. */
+  members: string[];
+}
 
 /**
  * A feature's record as an operation hands it over — everything but the name
@@ -475,6 +514,17 @@ export class Model {
   relations = new Map<string, RelationEntry>();
   /** Named features — `e1`, `e2`, … — in the order they were made. See `FeatureEntry`. */
   features = new Map<string, FeatureEntry>();
+  /** Named groups — `g1`, `g2`, … — in the order they were made. See `GroupEntry`. */
+  groups = new Map<string, GroupEntry>();
+  /**
+   * What is hidden: entity, relation and feature names. A hidden entity is not
+   * drawn, picked, snapped to or boxed — and is **still solved**: nothing below
+   * the drawing ever reads this, the kernel least of all. A hidden feature's
+   * faces are not drawn; a hidden relation's glyph is not. Part of the document,
+   * as visibility is in every CAD tool: changed only by `hide` and `show`
+   * (groups.ts), journalled, saved by replay and undone like any edit.
+   */
+  hidden = new Set<string>();
   /**
    * Which frame `fix`, `onPlane` and the `xaxis()`/`yaxis()`/`zaxis()` helpers
    * mean when they are not told which. Null in a new model, and stays null
@@ -551,13 +601,13 @@ export class Model {
   }
 
   /**
-   * Whether anything already answers to `name`. Entities, relations and
-   * features share one namespace on purpose: `del("r3")` has to mean one thing,
-   * and a model holding both a point and a relation called `r3` would make it
-   * mean two.
+   * Whether anything already answers to `name`. Entities, relations, features
+   * and groups share one namespace on purpose: `del("r3")` has to mean one
+   * thing, and a model holding both a point and a relation called `r3` would
+   * make it mean two.
    */
   has(name: string): boolean {
-    return this.entities.has(name) || this.relations.has(name) || this.features.has(name);
+    return this.entities.has(name) || this.relations.has(name) || this.features.has(name) || this.groups.has(name);
   }
 
   private autoName(prefix: string): string {
@@ -1349,6 +1399,7 @@ export class Model {
     // same discipline the deletion itself follows, so reopening a file gets
     // the pointer the deletion left rather than one recomputed later.
     if (this.defaultFrame === name) this.setDefaultFrame(null);
+    this.leaveGroups(name);
     this.entities.delete(name);
     this.record("deleteEntity", [name]);
   }
@@ -1364,6 +1415,7 @@ export class Model {
     if (featured.length) {
       throw new Error(`"${name}" is still part of ${featured.map((f) => f.name).join(", ")}`);
     }
+    this.leaveGroups(name);
     for (const h of r.blocks) this.problem.removeBlock(h);
     this.relations.delete(name);
     this.record("deleteRelation", [name]);
@@ -1379,7 +1431,119 @@ export class Model {
   deleteFeature(name: string): void {
     this.featureOf(name);
     this.features.delete(name);
+    this.hidden.delete(name);
     this.record("deleteFeature", [name]);
+  }
+
+  // ---- groups and visibility ---------------------------------------------
+
+  /** The group called `name`. */
+  groupOf(name: string): GroupEntry {
+    const g = this.groups.get(name);
+    if (!g) throw new Error(`"${name}" is not a group`);
+    return g;
+  }
+
+  /** Every group `name` is a member of, in creation order. */
+  groupsHolding(name: string): GroupEntry[] {
+    return [...this.groups.values()].filter((g) => g.members.includes(name));
+  }
+
+  /**
+   * What a group or a feature names, read as a set: a group's members, or what
+   * a feature made (its `owns` — never the profile it stands on, which was the
+   * user's sketch first). Null for anything else.
+   */
+  membersOf(name: string): readonly string[] | null {
+    const g = this.groups.get(name);
+    if (g) return g.members;
+    const f = this.features.get(name);
+    return f ? f.owns : null;
+  }
+
+  /**
+   * Names as a flat set of entities and relations, in order and without
+   * repeats: a group or a feature stands for its members **now** (the union
+   * the owner's no-hierarchy rule asks for — a group never holds a group),
+   * everything else for itself. `withFeatures` keeps a feature's own name too,
+   * for `hide`, where a feature's faces go with it. Refuses a name that is
+   * none of those, before anything is changed, with `who` in the message.
+   */
+  expand(names: readonly string[], who: string, withFeatures = false): string[] {
+    const out = new Set<string>();
+    for (const n of names) {
+      const set = this.membersOf(n);
+      if (set) {
+        if (withFeatures && this.features.has(n)) out.add(n);
+        for (const m of set) out.add(m);
+      } else if (this.entities.has(n) || this.relations.has(n)) {
+        out.add(n);
+      } else {
+        throw new Error(`${who}: "${n}" is not an entity, a relation, a group or a feature`);
+      }
+    }
+    return [...out];
+  }
+
+  /**
+   * Registers a group of `members` — entities and relations, already flattened
+   * (`expand`) — under `name` or a fresh `gN`. Journals nothing: the operation
+   * that calls it is the entry (groups.ts).
+   */
+  addGroup(members: readonly string[], name?: string | null): GroupEntry {
+    this.checkMembers(members);
+    if (!members.length) throw new Error("a group needs at least one member");
+    const nm = this.claimName("g", name ?? undefined);
+    const entry: GroupEntry = { name: nm, members: [...new Set(members)] };
+    this.groups.set(nm, entry);
+    return entry;
+  }
+
+  /** Adds members to a group, skipping any already in it. Journals nothing. */
+  addMembers(group: string, members: readonly string[]): void {
+    const g = this.groupOf(group);
+    this.checkMembers(members);
+    for (const m of members) if (!g.members.includes(m)) g.members.push(m);
+  }
+
+  /**
+   * Takes members out of a group — and the group with them when none are left,
+   * since a group is never empty. Journals nothing.
+   */
+  removeMembers(group: string, members: readonly string[]): void {
+    const g = this.groupOf(group);
+    g.members = g.members.filter((m) => !members.includes(m));
+    if (!g.members.length) this.groups.delete(group);
+  }
+
+  /** Removes a group, and only the group: it owns nothing. Journals nothing. */
+  deleteGroup(name: string): void {
+    this.groupOf(name);
+    this.groups.delete(name);
+  }
+
+  /** A group holds entities and relations — never a group, never a feature: that would be a tree. */
+  private checkMembers(members: readonly string[]): void {
+    for (const m of members) {
+      if (!this.entities.has(m) && !this.relations.has(m)) {
+        throw new Error(`a group holds entities and relations, and "${m}" is neither`);
+      }
+    }
+  }
+
+  /**
+   * What a deletion does to the groups and the visibility of what it deletes:
+   * it leaves every group it was in — journalled, as `removeFrom`, the way the
+   * default frame's clearing is journalled — and a group it leaves empty goes
+   * with it. Its hidden flag simply goes: a name that is not there has no
+   * visibility for a replay to disagree about.
+   */
+  private leaveGroups(name: string): void {
+    for (const g of this.groupsHolding(name)) {
+      this.record("removeFrom", [g.name, name]);
+      this.removeMembers(g.name, [name]);
+    }
+    this.hidden.delete(name);
   }
 
   solve(): SolveReport {

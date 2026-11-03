@@ -206,13 +206,17 @@ test("hovering an edge's glyph lights up that edge", async () => {
     "hovering the mark should light the edge it is about, along its whole length");
 });
 
-test("clicking a glyph drops its name into the command line", async () => {
+test("clicking a glyph selects it, and with a command being written drops its name into it", async () => {
   await app.page.fill("#cmd", "");
   const coin = await coinGlyph();
   await clickAt(...coin.screen);
-  assert.equal(await app.page.inputValue("#cmd"), '"r8"',
+  assert.deepEqual(await app.selection(), ["r8"],
     "exactly what clicking geometry does — there is no second selection model");
+  await app.page.fill("#cmd", "del(");
+  await clickAt(...coin.screen);
+  assert.equal(await app.page.inputValue("#cmd"), 'del("r8"', "with text in the line, the name is an argument");
   await app.page.fill("#cmd", "");
+  await app.repl("select()");
 });
 
 test("deleting the relation takes its mark off the canvas, and undo brings it back", async () => {
@@ -246,8 +250,8 @@ test("a glyph outranks a point sitting right on top of it", async () => {
 
   await app.page.fill("#cmd", "");
   await clickAt(...coin.screen);
-  assert.equal(await app.page.inputValue("#cmd"), '"r8"', "and a real click agrees");
-  await app.page.fill("#cmd", "");
+  assert.deepEqual(await app.selection(), ["r8"], "and a real click agrees");
+  await app.repl("select()");
 });
 
 test("glyphs(false) empties the layer and hands the click back to the geometry", async () => {
@@ -260,8 +264,8 @@ test("glyphs(false) empties the layer and hands the click back to the geometry",
 
   await app.page.fill("#cmd", "");
   await clickAt(...coin.screen);
-  assert.equal(await app.page.inputValue("#cmd"), `"${at!.name}"`);
-  await app.page.fill("#cmd", "");
+  assert.deepEqual(await app.selection(), [at!.name]);
+  await app.repl("select()");
 
   // Nothing amber is left on the canvas from a glyph that is no longer drawn.
   await hoverAt(...coin.screen);

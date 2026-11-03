@@ -44,15 +44,24 @@ default shaded view that noise is gone:
 **Decided by geometric role alone.** The spec also made a feature's own
 entities quiet by name; the supervising session dropped that mid-build on the
 owner's reasoning — *"why is a 3D corner any different from a 2D corner"*. A
-lid's corner is quiet because it ends lines, as a sketch's is; the lid
-frame's three reference points end nothing and are drawn, as any isolated
-point is (until `lid-frame-shares-points.md` puts the lid frame on the lid's
-own corners).
+lid's corner is quiet because it ends lines, as a sketch's is. With the lid
+frame now standing on the lid's own corner twins (below), a sketched outline's
+lid has no other point on a corner; where a sketch frame stands off the
+profile the lid frame still makes points of its own, which end nothing and
+are drawn, as any isolated point is.
+
+**Selected is drawn, hidden is not.** A selected quiet corner or edge (the
+groups package's selection, `select(...)`, a click) is drawn in the
+selection's violet; a hidden one stays undrawn however it is revealed —
+hidden outranks revealed. Hiding a solid's sketch hides its base lines, and
+the face layer's line still outlines the base: it is the solid's, not the
+sketch's.
 
 **`ls()` lists a feature's output as a count under its line** —
-`    16 made — members("e1") lists them` — rather than a line per twin, and
-`members("e1")` lists them, as `ls()` used to. They are still named entities:
-a relation on a lid corner holds that point.
+`    14 made — members("e1") lists them` for a sketched rectangle — rather
+than a line per twin, `, 2 hidden` when some are, and the groups package's
+`members("e1")` lists exactly what is counted, the depth dimension included.
+They are still named entities: a relation on a lid corner holds that point.
 
 **The face layer's edges are the solid's face boundaries, not the entities
 that happen to exist**: a cap's outlines, a wall's base and twin sides and its
@@ -67,14 +76,155 @@ and still matches to the pixel, and a new test holds the shaded picture to
 differ from it only inside the quiet corners' dots, names and the marks
 anchored on them (and to differ at every one of them).
 
-Unit: `test/quiet.test.ts` (11, new), `faces.test.ts` (5 more, the edges),
-the `ls()` lines in `extrude.test.ts` and `revolve.test.ts` — 911 → 927.
-Browser: `test/e2e/quiet.e2e.ts` (8, new: the rectangle and its hovered
-corner, a drag, a snap, the extruded box and its hovered edge, the `//` mark
-and the depth's value, the hidden and wire views, the plate with a hole, the
-painter's fallback), the shaded-against-hidden test in `hidden.e2e.ts`, and
-`opaque.e2e.ts` reading the edge ink off the faces' picture — 358 → 367.
+Unit: `test/quiet.test.ts` (12, new), `faces.test.ts` (5 more, the edges),
+the `ls()` lines in `extrude.test.ts` and `revolve.test.ts`. Browser:
+`test/e2e/quiet.e2e.ts` (10, new: the rectangle and its hovered corner, a
+drag, a snap, the extruded box and its hovered edge, the `//` mark and the
+depth's value, the hidden and wire views, the plate with a hole, the
+painter's fallback, a selected corner and edge, the hidden sketch), the
+shaded-against-hidden test in `hidden.e2e.ts`, and `opaque.e2e.ts` reading
+the edge ink off the faces' picture. Counts after merging groups and the lid
+frame fix are in STATUS.
 Spec: [`docs/plans/quiet-geometry.md`](docs/plans/quiet-geometry.md).
+
+## Groups, hide and show — and the selection they need
+
+The owner, verbatim:
+
+> *the concept of this project is flat relational direct cad. there is no
+> hierarchy. a sketch entity exists in the same logical space as a solid
+> entity. and entities can be grouped. think about this grouping, and
+> implement also*
+
+Phase 1 of [`docs/plans/groups.md`](docs/plans/groups.md).
+
+**A click selects.** There was no entity selection: a click put a name in
+the command line and a box put every name it caught there. Now, with nothing
+armed and **the command line empty**, a click on an entity or a constraint
+glyph selects it, shift toggles it, a box (window or crossing) selects what
+it catches (shift adds), and a click on empty canvas or Escape clears. Region
+preselection is the same selection, for regions. **With text in the command
+line a click still inserts the name** — the user is writing a call and
+pointing at its arguments — so `dist(` then two clicks is what it always was.
+The selection is drawn in its own violet (`SELECTION #c46cff`, in
+`tools/selection.ts`): not the hover's amber, not an armed tool's green, not
+either box's colours; heavier than a plain edge, rimmed on a solid's light
+faces by the casing every light mark gets there, and checked by eye on both
+the faces and the ground. `sel()` lists it, `select("l1", "g1")` sets it (a
+group or feature selects its members, what is hidden is left out and said),
+`select()` clears it. **UI state**: never journalled, never in a file, never
+an undo step — Ctrl+Z after selecting undoes the last edit.
+
+**The menu and the Delete key act on it.** A right-click on something
+selected, or on empty canvas with something selected, offers *Group*,
+*Delete* and *Hide* over the whole selection; a right-click on an entity in
+a group offers *Select g1* for each (and *Select e1* for the feature that
+made it); empty canvas offers *Show all* while anything is hidden. The
+Delete key types `del(…)` for the selection. Every one of them is typed
+through `submit`, so the log shows it and Ctrl+Z takes it back.
+
+**Groups are sets, never containers.**
+
+```
+> group("l1", "l2", "l3", "l4")         g1
+> group("g1", "c1", { name: "plate" })  plate   — g1's members now: a union, not a link
+> addTo("g1", "l5")    removeFrom("g1", "l5")    ungroup("g1")   (or del("g1"))
+> members("plate")     groups("l1")     groups()     ls()
+```
+
+A group owns nothing: deleting it deletes the grouping, never a member.
+Membership overlaps; a group never holds a group — naming one, or a feature,
+adds its current members, flattened then, and the log says so. A feature is a
+read-only group: `members("e1")` is what the extrude made, `select("e1")` and
+`hide("e1")` work, `addTo("e1", …)` refuses with the reason. Deleting a member
+takes it out of every group (journalled as `removeFrom` in the deletion's
+expansion), and a group left empty goes too — `del` returns it among the names
+it took. The hover tag ends `· g1 g2`.
+
+**Hide and show.** `hide(...names)` and `show(...names)` (groups and features
+expand): a hidden entity is not drawn, not picked, not snapped to, not boxed —
+and still solved. A hidden feature's faces are not drawn; a constraint's mark
+on something hidden is not drawn either, except a feature's own dimension,
+which goes with its feature. `show()` shows everything. Visibility is the
+document's: journalled, saved, undone.
+
+Six new ops — `group`, `addTo`, `removeFrom`, `ungroup`, `hide`, `show` — in
+both `replenv.ts` and `persist.ts`'s replay table, **no format bump**: no
+existing op changed, and an older build refuses a newer file's new op by name
+at its step (the precedent extrude set). Groups and the hidden set are
+rebuilt by replay; a file with groups and hidden things in its history
+round-trips byte for byte.
+
+Unit: `test/groups.test.ts` (new), `test/selection.test.ts` (new), and the
+engine and feature-dialog tests, whose click is now composing a command or
+selecting. Browser: `test/e2e/groups.e2e.ts` and `test/e2e/selection.e2e.ts`
+(new); `picking`, `boxselect`, `drag`, `edgedrag`, `frames`, `glyphs`,
+`opaque` and `featuredialog` read the selection where they read the command
+line, and each keeps a case that writes a command first. 936 unit tests (911
+before), 381 e2e (358 before); `npm run test:all` green.
+
+## A feature's frames stand on its own points: no doubled labels on a lid
+
+The owner, on a screenshot of an extruded plate with its point names printed
+over each other:
+
+> *i'm getting a lot of overlapping points. why is this happening?*
+
+and, told why and what the fix would be:
+
+> *of course it should.*
+
+**Why it happened.** An extrude's lid frame (the sketch frame moved by the
+depth, so a sketch on the cap has a plane) always made three points of its
+own. Since a frameless sketch's frame is three of the outline's own corners
+(`extrude-makes-its-plane`), those three landed exactly on three lid corner
+twins, held there by the depth: measured on the owner's plate with a
+triangular hole, **17 points, three pairs on one spot each** (`p8 = p11`,
+`p9 = p12`, `p10 = p14`). A partial revolve's end frames did the same.
+
+**The rule now: a frame a feature makes reuses an entity the feature already
+makes at the same place.** For each of the sketch frame's three points: if it
+is a profile vertex, the lid frame takes that vertex's twin; if not (a frame
+floating off the profile, a user's `plane()` elsewhere) it makes its own point
+as before. The same for every revolve end frame. The depth (or angle) holds
+each place once. The same plate is now **14 points, no two on one spot**, in
+the unit test and in the browser (`test/lidframe.test.ts`,
+`test/e2e/lidframe.e2e.ts`).
+
+- **The revolution relation** takes an end frame as a frame pair, which is how
+  it knows the sketch frame's points are a datum. It now skips a frame point a
+  corner pair already holds, instead of adding a second, redundant block: four
+  blocks for a rectangle's end face, not seven.
+- **Regeneration follows the rule.** A shared lid point is owned once, as a
+  twin. If its corner later leaves the profile (a line drawn across, then
+  `regen`), the point stays as the lid frame's own, held by its own pair, and
+  only the wall goes. If a sketch-frame point comes into the profile, it takes
+  the lid point already above it as its twin instead of getting a second one.
+- **Deletion:** `del("e1")` takes each shared point once. Deleting a lid
+  corner that the lid frame stands on now also takes the lid frame and
+  whatever is drawn on it, as deleting any frame's point does.
+
+**Format version 10.** No entry changed shape, but the expansion makes fewer
+points in a different order. **Old files open exactly as they were**: every
+`extrude`, and every partial `revolve`, from a file of version 9 or below is
+given the expansion `9` on the way in (a sixth/seventh argument), which
+rebuilds its frames with points of their own, under the names the file's
+later entries hold, and regenerates it the old way. The `9` stays in the
+entry when the file is saved again. Without it, measured: the owner's plate
+saved by a version-9 build, with a `dist` drawn on a later point, fails to
+reopen at that step (`"p16" is not a point`). A new file's entry is the call
+as it always was.
+
+**Found and left, in `TODO.md`:** the line tool, closing a chain back onto its
+first point, makes a point of its own there and joins it with a coin, so a
+triangle drawn with it shows two names at one corner of the *sketch* (seen in
+the e2e's first screenshot; the lid has one twin there). Also left: a
+sketch-frame point on the same spot as a corner but not joined to it still
+gets its own lid point, because the rule reads joins, never positions; and a
+revolve about the sketch frame's own axis puts its end frame's origin and
+y-ref on the sketch frame's, which the feature did not make.
+
+12 new unit tests (923 in all, from 911) and 3 new e2e (361, from 358); `npm run test:all` green.
 
 ## A confirmed feature releases its tool, so the solid looks like a solid
 

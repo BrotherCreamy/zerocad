@@ -30,6 +30,7 @@ import { pointOnWorkingPlane } from "./workplane.ts";
 import { frameBasis } from "./relations/refs.ts";
 import { describeLoop, findLoops, type Loop } from "./loops.ts";
 import { _, checkClauses, checkOrdinary, slots, splitClauses, subjectable, type Clause, type Slot } from "./clauses.ts";
+import { addTo, group as groupOp, groupsOf, hide, members, removeFrom, show, ungroup } from "./groups.ts";
 
 type Bag = Record<string, unknown>;
 type PlaneCall = (origin?: string | null, xref?: string | null, yref?: string | null,
@@ -41,6 +42,13 @@ export interface EnvHandles {
   arm?: (toolName: string, options?: Record<string, unknown>) => void;
   /** The name of whatever the cursor is currently over, if anything. */
   pick?: () => string | null;
+  /**
+   * The canvas's selection: given nothing, the names selected; given names,
+   * exactly those selected (already checked), and then the names. UI state the
+   * model never hears of — not journalled, not in a file, not an undo step —
+   * which is why it is a host handle, like the layout.
+   */
+  selection?: (names?: readonly string[]) => string[];
   /** Turns cursor snapping on or off; reports the current state when given nothing. */
   snapping?: (on?: boolean) => boolean;
   /**
@@ -187,17 +195,6 @@ export function neocadScope(h: EnvHandles): Bag {
   const model = h.model;
   const sources = h.toolSources ?? toolSources;
   const memory = h.optionMemory ?? new OptionMemory(null);
-
-  /** The entities a feature made, in the order it made them. */
-  const featureMembers = (name: string): string[] => {
-    const f = typeof name === "string" ? model.features.get(name) : undefined;
-    if (!f) {
-      const known = [...model.features.keys()];
-      throw new Error(`${JSON.stringify(name)} is not a feature — members names one`
-        + (known.length ? ` (${known.join(", ")})` : "; there are none yet"));
-    }
-    return f.owns.filter((n) => model.entities.has(n));
-  };
 
   /**
    * The relation vocabulary, short name and long, each with where `_` may
@@ -797,30 +794,30 @@ export function neocadScope(h: EnvHandles): Bag {
 
     solve: () => (h.solve ? h.solve() : model.solve()),
     // Entities, then features — `e1  extrude of …`, `e2  revolve of …` —
-    // since a feature is a named thing `del` takes as surely as an entity.
+    // since a feature is a named thing `del` takes as surely as an entity, then
+    // groups with their members. Whatever is hidden says so.
     //
     // **A feature's output is a count under its line**, not a line per twin:
     // a box is a profile of four lines and seventeen things the extrude made,
     // and listing those seventeen buried the four the user drew. They stay
     // named entities (the register: a relation on a lid corner holds *that*
-    // point), so `members("e1")` lists them, line for line as this used to.
+    // point), so `members("e1")` lists them — the count is of exactly what it
+    // lists, the depth dimension included.
     ls: () => {
+      const mark = (name: string, line: string) => (model.hidden.has(name) ? `${line}  (hidden)` : line);
       const made = new Set<string>();
       for (const f of model.features.values()) for (const n of f.owns) made.add(n);
       return [
-        ...[...model.entities.values()].filter((e) => !made.has(e.name)).map((e) => describe(e, model)),
+        ...[...model.entities.values()].filter((e) => !made.has(e.name)).map((e) => mark(e.name, describe(e, model))),
         ...[...model.features.values()].flatMap((f) => {
-          const n = featureMembers(f.name).length;
-          return [describeFeature(model, f), ...(n ? [`    ${n} made — members(${JSON.stringify(f.name)}) lists them`] : [])];
+          const own = model.membersOf(f.name) ?? [];
+          const hid = own.filter((n) => model.hidden.has(n)).length;
+          const count = `    ${own.length} made${hid ? `, ${hid} hidden` : ""} — members(${JSON.stringify(f.name)}) lists them`;
+          return [mark(f.name, describeFeature(model, f)), ...(own.length ? [count] : [])];
         }),
+        ...[...model.groups.values()].map((g) => `${g.name}  group of ${g.members.join(" ")}`),
       ];
     },
-    /**
-     * What a feature made, one line each, as `ls()` lists an entity — the
-     * lines `ls()` folds into a count under the feature. The entities only:
-     * the dimension it made is already on the feature's own line.
-     */
-    members: (name: string) => featureMembers(name).map((n) => describe(model.entities.get(n)!, model)),
     /**
      * The constraints, by name — all of them, or (given a name) just the ones
      * that mention it. This is the other half of what makes an inferred
@@ -851,6 +848,21 @@ export function neocadScope(h: EnvHandles): Bag {
     },
     cancel: () => { h.cancel?.(); return "cancelled"; },
     hover: () => h.pick?.() ?? null,
+    /**
+     * The canvas's selection — what a click, a shift-click or a box picked with
+     * the command line empty. `sel()` lists it; `select("l1", "l2")` sets it
+     * and `select()` clears it. Not an edit: never journalled, never in a file,
+     * never an undo step. (Regions picked on the canvas are part of it too, and
+     * are not names; `sel()` lists the names.)
+     */
+    sel: () => {
+      if (!h.selection) throw new Error("no viewport in this environment");
+      return h.selection();
+    },
+    select: (...names: unknown[]) => {
+      if (!h.selection) throw new Error("no viewport in this environment");
+      return h.selection(selectable(names));
+    },
     snapping: (on?: boolean) => {
       if (!h.snapping) throw new Error("no viewport in this environment");
       return h.snapping(on);
@@ -952,7 +964,58 @@ export function neocadScope(h: EnvHandles): Bag {
     },
   };
 
-  const scope: Bag = { ...relations, ...geometry, ...operations, ...persistence, ...clauses, ...commands };
+  /**
+   * The names `select` was given, checked before the selection changes — each
+   * an entity, a relation, a group or a feature, the last two standing for
+   * their members — with what is hidden left out, and said: a hidden entity
+   * is not on screen to be selected.
+   */
+  function selectable(names: unknown[]): string[] {
+    for (const n of names) {
+      if (typeof n !== "string") throw new Error(`select takes names, and ${JSON.stringify(n) ?? String(n)} is not one`);
+    }
+    const all = model.expand(names as string[], "select");
+    const hidden = all.filter((n) => model.hidden.has(n));
+    if (hidden.length) h.log?.(`${hidden.join(" ")} ${hidden.length === 1 ? "is" : "are"} hidden, so not selected — show() first`);
+    return all.filter((n) => !model.hidden.has(n));
+  }
+
+  /**
+   * Groups, hide and show (groups.ts). A group or a feature named where a set
+   * is wanted stands for its members as they are now, and the log says so — a
+   * union, not a link — because a reader expecting a nested group would
+   * otherwise find out only when the two drifted apart.
+   */
+  const flattenedNote = (given: unknown[]) => {
+    const sets = given.filter((n): n is string => typeof n === "string" && model.membersOf(n) !== null);
+    for (const s of sets) {
+      h.log?.(`${s} added as its members now (${model.membersOf(s)!.length}) — a union, not a link: a group never holds a group`);
+    }
+  };
+  const grouping: Bag = {
+    group: (...args: unknown[]) => {
+      const name = groupOp(model, ...args);
+      flattenedNote(args);
+      return name;
+    },
+    addTo: (g: unknown, ...names: unknown[]) => {
+      const left = addTo(model, g, ...names);
+      flattenedNote(names);
+      return left;
+    },
+    removeFrom: (g: unknown, ...names: unknown[]) => {
+      const left = removeFrom(model, g, ...names);
+      if (!left.length) h.log?.(`${String(g)} is empty, so it is gone — a group is never empty`);
+      return left;
+    },
+    ungroup: (g: unknown) => ungroup(model, g),
+    members: (name: unknown) => members(model, name),
+    groups: (name?: unknown) => groupsOf(model, name),
+    hide: (...names: unknown[]) => hide(model, ...names),
+    show: (...names: unknown[]) => show(model, ...names),
+  };
+
+  const scope: Bag = { ...relations, ...geometry, ...operations, ...grouping, ...persistence, ...clauses, ...commands };
   scope.help = () => help(scope);
   return scope;
 }
@@ -1081,8 +1144,33 @@ function help(scope: Bag): string {
     "           arrangement is yours, in this browser, and never in a file.",
     "           right-drag orbits, middle-drag pans, the wheel zooms; a click",
     "           lands on the default frame's plane (or the one facing you)",
+    "selection  click selects (the command line empty), shift-click adds or",
+    "           drops, a box selects what it catches (shift adds), a click on",
+    "           empty canvas or Escape clears; it is drawn in violet. With text",
+    "           in the command line a click inserts the name instead, as ever.",
+    '           sel()  select("l1", "g1")  select() — list, set (a group or',
+    "           feature selects its members), clear. Yours,",
+    "           not the drawing's: never journalled, never an undo step. The",
+    "           right-click menu acts on it (Group, Delete, Hide, and Select g1",
+    "           on a member of g1); the Delete key types",
+    '           del("l1", "l2") for it.',
+    "groups     group(...names, { name? }) — a named set: g1, g2, … or yours.",
+    "           A set, not a container: it owns nothing (ungroup(g) or del(g)",
+    "           removes the grouping, never a member), an entity may be in any",
+    "           number, and a group never holds a group — name one (or a",
+    "           feature) and its members now are added: a union, not a link.",
+    "           addTo(g, ...names)  removeFrom(g, ...names)  members(g)",
+    "           groups(name) — the groups it is in; groups() — them all.",
+    "           Deleting a member takes it out of its groups; an emptied group",
+    '           goes. A feature is a read-only group: members("e1") is what it',
+    '           made, select("e1") and hide("e1") work, addTo("e1", …) refuses.',
+    "           The hover tag ends with · g1 g2; ls() lists the groups.",
+    "visibility hide(...names)  show(...names)  show() — groups and features",
+    "           expand. Hidden is not drawn, picked, snapped to or boxed, and is",
+    "           still solved; a hidden feature's faces go too. Part of the",
+    "           drawing: journalled, saved, undone. The menu's Hide and, on",
+    "           empty canvas, Show all type them.",
     "inspect    ls()  rels(name?)  coords(name)  solve()  tools()  hover()",
-    '           members("e1") — what a feature made; ls() counts it under e1.',
     "           snapping(on)  glyphs(on)  model",
     "           loops() — the closed loops of lines and arcs (and whole circles),",
     "           each in one plane: ends join only at a shared point or a coin,",

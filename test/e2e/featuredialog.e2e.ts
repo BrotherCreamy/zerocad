@@ -268,14 +268,13 @@ test("with nothing armed a click inside a region selects it — lit — then the
   await key("Escape");
 });
 
-test("with nothing armed a click on a line still names it, a click on empty canvas clears a selection, a drag still boxes, a right-click still opens the menu", async () => {
+test("with nothing armed a click on a line selects it, a click on empty canvas clears a selection, a drag still boxes, a right-click still opens the menu", async () => {
   const m = await app.model();
   const edge = m.lines[0];
   const [a, b] = await Promise.all(edge.refs.map((p) => app.screenOf(m.points[p])));
   await app.page.fill("#cmd", "");
   await clickAt(Math.round((a[0] + b[0]) / 2), Math.round((a[1] + b[1]) / 2));
-  assert.match(await app.page.inputValue("#cmd"), new RegExp(`"${edge.name}"`), "the click on a line names it");
-  await app.page.fill("#cmd", "");
+  assert.deepEqual(await app.selection(), [edge.name], "the click on a line selects it");
 
   await clickAt(...await inside(base1));
   await clickAt(...PARK);
@@ -283,11 +282,10 @@ test("with nothing armed a click on a line still names it, a click on empty canv
   assert.equal((await okButton()).disabled, true, "the click on empty canvas cleared the selection");
   await key("Escape");
 
-  // A box from empty canvas over the left rectangle names every entity it holds.
+  // A box from empty canvas over the left rectangle selects every entity it holds.
   await leftDrag([340, 300], [500, 460]);
-  assert.ok((await app.page.inputValue("#cmd")).includes(`"${edge.name}"`) || (await app.page.inputValue("#cmd")).length > 0,
-    "the box selected");
-  await app.page.fill("#cmd", "");
+  assert.ok((await app.selection()).length > 0, "the box selected");
+  await app.repl("select()");
 
   const r = await app.at(...PARK);
   await app.page.mouse.click(r.x, r.y, { button: "right" });

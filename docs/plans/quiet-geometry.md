@@ -96,10 +96,11 @@ are two more reveals; `ls()` and `members()` in `src/replenv.ts`. Nothing in
 **What differs from the text above, and why:**
 
 - ⚠ **Supervisor-directed: nothing is quiet because a feature made it**
-  (struck through above). Quiet is geometric role only. A lid frame's three
-  reference points end no line, so they are drawn as any isolated point is —
-  visible clutter on the lid until `lid-frame-shares-points.md` puts the lid
-  frame on the lid's own corners (which are ends, so quiet).
+  (struck through above). Quiet is geometric role only. Since
+  `lid-frame-shares-points.md` merged, a sketched outline's lid frame stands on
+  its corner twins and the lid is clean; where the sketch frame stands off
+  the profile the lid frame's own points end nothing and are drawn, as any
+  isolated point is.
 - ⚠ **A quiet glyph is still picked, and drawn while it is hovered.** The
   text has a glyph show "when its anchor is hovered or selected"; alone, that
   makes it unreachable: a line picks 5 px out (`PICK_LINE`) and a mark's box
@@ -127,18 +128,22 @@ are two more reveals; `ls()` and `members()` in `src/replenv.ts`. Nothing in
   driver's), with a polygon offset on the faces; a stroke after each fill in
   the painter's. In the hidden view it is drawn too, under the entity pass's
   own dark ink on the same edges.
-- **`members("e1")` takes a feature name only** and returns `ls()`-style
-  lines for the entities the feature made (the dimension is already on the
-  feature's line). The groups package's `members(g)` should absorb it.
+- **One `members`, the groups package's**, which reads a feature as a
+  read-only group of what it made, its dimension included; `ls()`'s count is
+  of exactly that list, with `, N hidden` when some are. (Built first with a
+  `members` of its own for features; dropped at integration.)
 - **The plain-sketch golden is unchanged.** The text expected to update it;
   it was recorded in the default view, which is now the one that leaves
   corners out, so the golden test types `view("hidden")` first — which draws
   everything, as before — and still matches to the pixel, and a new test
   holds the shaded picture to differ from it only inside the quiet corners'
   dots, names and anchored marks, and at every one of them.
-- **"Selected" is a stub.** `selectedNames()` in `main.ts` returns nothing
-  until the groups package brings the selection; the unit tests feed
-  `revealed` a selected name like any other reveal.
+- **"Selected" is the groups package's selection**, integrated after both
+  merged (built against a stub): a selected quiet thing is drawn in the
+  selection's violet, and a selected glyph is drawn. **Hidden outranks
+  revealed** (`entityDrawn` in quiet.ts) — not in the text, which predates
+  `hide`. Hiding a solid's sketch leaves its base outlined by the face layer
+  (tested and looked at).
 
 **Left deliberately:**
 

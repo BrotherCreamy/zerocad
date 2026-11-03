@@ -3,9 +3,10 @@
 // The unit suite checks the predicates — what a rectangle contains and what it
 // touches. What only a browser can answer is whether the *gesture* works: that
 // a left-drag on empty canvas draws a box rather than panning, that the
-// direction of the drag chooses the mode, that the names come out in the
-// command line exactly as clicks do, and that the three other things the left
-// button already meant still mean them.
+// direction of the drag chooses the mode, that the names are selected exactly
+// as clicks select them (or, with a command being written, inserted exactly as
+// clicks insert them), and that the three other things the left button already
+// meant still mean them.
 //
 // Canvas coordinates are kept well above the bottom edge on purpose: the log
 // pane grows as these tests type into it and takes height from the canvas.
@@ -83,16 +84,17 @@ test("a left-drag on empty canvas draws a box instead of panning", async () => {
     "the view must not have moved — this gesture used to pan and now does not");
 });
 
-test("a window box inserts exactly what it fully contained", async () => {
+test("a window box selects exactly what it fully contained", async () => {
   await app.page.fill("#cmd", "");
   // A box around the rectangle only. Left→right.
   const [x1, y1] = await screenOf("p1"); // world (-60,-20), the far corner
   const [x3, y3] = await screenOf("p3"); // world (-20, 20), the near one
   await dragBox(Math.min(x1, x3) - 25, Math.min(y1, y3) - 25, Math.max(x1, x3) + 25, Math.max(y1, y3) + 25);
 
-  const names = (await cmd()).split(", ").map((s) => s.replace(/"/g, ""));
+  const names = await app.selection();
   assert.deepEqual(names, ["p1", "p2", "p3", "p4", "l1", "l2", "l3", "l4"],
-    "the four corners and four edges of the rectangle, quoted and comma-separated");
+    "the four corners and four edges of the rectangle");
+  assert.equal(await cmd(), "", "selected, with the command line empty — not inserted");
   assert.equal(names.includes("p5"), false, "the far point is nowhere near the box");
   assert.equal(names.includes("l5"), false,
     "and the edge reaching out to it is only clipped, so a window box leaves it");
@@ -111,7 +113,7 @@ test("a crossing box the other way picks up the edge the window box excluded", a
   );
 
   assert.equal(mid.mode, "crossing", "right→left is a crossing box");
-  const names = (await cmd()).split(", ").map((s) => s.replace(/"/g, ""));
+  const names = await app.selection();
   assert.ok(names.includes("l5"), `the clipped edge came along: ${names.join(" ")}`);
   assert.equal(names.includes("p5"), false, "but its far endpoint is still outside the box");
   assert.deepEqual(names, ["p1", "p2", "p3", "p4", "l1", "l2", "l3", "l4", "l5"]);
@@ -127,11 +129,23 @@ test("the two boxes are drawn differently, and the drawing says which is which",
   assert.deepEqual(seen, ["window", "crossing"]);
 });
 
-test("an empty box inserts nothing at all", async () => {
+test("an empty box inserts nothing at all, and empties the selection", async () => {
   await app.page.fill("#cmd", "");
   // Far to the right of everything, and clear of p5.
   await dragBox(600, 60, 780, 180);
   assert.equal(await cmd(), "");
+  assert.deepEqual(await app.selection(), []);
+});
+
+test("a shift-box adds to the selection", async () => {
+  await app.page.fill("#cmd", "");
+  await app.repl('select("p1")');
+  const [x5, y5] = await screenOf("p5");
+  await app.page.keyboard.down("Shift");
+  await dragBox(x5 - 30, y5 - 30, x5 + 30, y5 + 30);
+  await app.page.keyboard.up("Shift");
+  assert.deepEqual(await app.selection(), ["p1", "p5"]);
+  await app.repl("select()");
 });
 
 test("a box appends to what is already typed, exactly as clicks do", async () => {
@@ -161,6 +175,7 @@ test("Escape cancels the box, and the release does not belatedly select", async 
   await app.page.mouse.up();
   await app.page.waitForTimeout(150);
   assert.equal(await cmd(), "", "and the release inserted nothing");
+  assert.deepEqual(await app.selection(), [], "nor selected anything");
 });
 
 test("a press on a point still drags it rather than boxing", async () => {
@@ -245,16 +260,16 @@ test("a box does not select constraint glyphs", async () => {
   const [x3, y3] = await screenOf("p3");
   await dragBox(Math.max(x1, x3) + 40, Math.max(y1, y3) + 40, Math.min(x1, x3) - 40, Math.min(y1, y3) - 40);
 
-  const names = (await cmd()).split(", ").map((s) => s.replace(/"/g, ""));
+  const names = await app.selection();
   assert.equal(names.some((n) => /^r\d+$/.test(n)), false,
     `a relation name got in: ${names.join(" ")}`);
 });
 
-test("a box selects what a click would, so the names are usable straight away", async () => {
-  await app.page.fill("#cmd", "");
+test("a box inserts what a click would, so the names are usable straight away", async () => {
+  await app.page.fill("#cmd", "x = [");
   const [x5, y5] = await screenOf("p5");
   await dragBox(x5 - 40, y5 - 40, x5 + 40, y5 + 40);
-  const picked = await cmd();
+  const picked = (await cmd()).slice("x = [".length);
   await app.page.fill("#cmd", `coords(${picked})`);
   await app.page.press("#cmd", "Enter");
   await app.page.waitForTimeout(200);
