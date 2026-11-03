@@ -98,14 +98,14 @@ const around = (cu: number, cv: number, r: number) =>
   [135, 45, 225, 315, 180, 90, 270, 0].map((deg) => onG(cu + r * Math.cos((deg * Math.PI) / 180), cv + r * Math.sin((deg * Math.PI) / 180), 35));
 
 interface SeenFeature {
-  name: string; loops: string[][]; twins: string[][]; walls: string[]; top: string; depth: string; owns: string[];
+  name: string; loops: string[][]; twins: string[][]; walls: string[]; top?: string; depth: string; owns: string[];
   pairs: [string, string][]; value: number;
 }
 
 /** The app's features, with each depth's base/twin pairs read off its relation. */
 const features = (): Promise<SeenFeature[]> => app.page.evaluate(() => {
   const { model } = (window as never as { __neocad: { model: {
-    features: Map<string, { name: string; loops: string[][]; twins: string[][]; walls: string[]; top: string; depth: string; owns: string[] }>;
+    features: Map<string, { name: string; loops: string[][]; twins: string[][]; walls: string[]; top?: string; depth: string; owns: string[] }>;
     relations: Map<string, { args: unknown[] }>;
   } } }).__neocad;
   return [...model.features.values()].map((f) => {
@@ -194,7 +194,8 @@ test("the extrude tool: the region under the cursor is outlined; a click on noth
   assert.deepEqual(last!.args.slice(1, 3), [20, "f1"]);
   const ls = (await app.repl("ls()")).value as string[];
   // The feature's line, then what it made as a count under it (quiet-geometry.md).
-  assert.match(ls.at(-2)!, /^e1  extrude of .* \+ 2 inside, depth d\d+ = 20 along f1, lid f2$/);
+  // No lid frame to name (docs/plans/no-lid-frame.md).
+  assert.match(ls.at(-2)!, /^e1  extrude of .* \+ 2 inside, depth d\d+ = 20 along f1$/);
   assert.match(ls.at(-1)!, /^    \d+ made — members\("e1"\) lists them$/);
 });
 
@@ -225,8 +226,8 @@ test("set the depth from the command line: the lid moves to 35, the walls stretc
 });
 
 test("looking straight down the lid, the pixels are even-odd: the cap is filled, the hole's ring shows straight through, the island is solid — and none of it picks", async () => {
-  const [f] = await features();
-  await app.type(`lookAt("${f.top}"); zoom(1.6)`);
+  // Square to the sketch frame, which the lid is parallel to: there is no lid frame.
+  await app.type(`lookAt("f1"); zoom(1.6)`);
   const fill = await squareOnFill();
   const probes: [string, number[][], "face" | "empty"][] = [
     ["the cap, between the outline and the hole", [onG(36, 34, 35), onG(40, 15, 35), onG(64, 35, 35), onG(35, 20, 35)], "face"],
@@ -251,9 +252,15 @@ test("looking straight down the lid, the pixels are even-odd: the cap is filled,
   assert.equal((await features()).length, 1);
 });
 
-test("a circle sketched on the lid, on the lid's own frame, extrudes again by a click inside it: a boss", async () => {
-  const [f] = await features();
-  await app.type(`setDefaultFrame("${f.top}")`);
+test("a circle sketched on the lid, on a plane the sketch tool makes of the lid's corners, extrudes again by a click inside it: a boss", async () => {
+  // The sketch tool on the cap, between the outline and the hole: it types
+  // plane(a, b, c) of three lid corners, which is the lid's plane wherever the
+  // lid goes (there is no lid frame to set as the default any more).
+  await app.type("sketch");
+  await clickAt(...await app.screenOf(onG(36, 34, 35)));
+  const typed = (await app.log()).split("\n").reverse().find((l) => l.includes("plane("));
+  assert.match(typed ?? "", /plane\("p\d+", "p\d+", "p\d+"\)/, `the sketch tool's line: ${typed}`);
+  await app.type("zoom(1)");
   await app.type("circle");
   const c = await app.screenOf(onG(60, 33, 35));
   await leftDrag(c, [c[0] - 3 * (await app.model()).view.scale, c[1]]);
@@ -330,9 +337,9 @@ test('del("e2", "e1") takes both solids and leaves the sketch — the same entit
   const now = JSON.parse(await saved());
   const was = JSON.parse(beforeExtrude);
   // The sketch's entities, and nothing of either solid — except the centre of
-  // the circle drawn on the lid. The circle went with the lid frame it was
-  // drawn on, which it cannot be without; its centre is a point the circle
-  // tool placed, and deleting a circle never takes its points.
+  // the circle drawn on the lid. The circle went with the plane it was drawn
+  // on, which stood on the lid's corners and went with them; its centre is a
+  // point the circle tool placed, and deleting a circle never takes its points.
   const after = await app.model();
   assert.ok(!after.circles.some((c) => c.center === bossCentre), "the lid's circle is gone");
   assert.deepEqual(Object.keys(now.values.points).sort(), [...Object.keys(was.values.points), bossCentre].sort());

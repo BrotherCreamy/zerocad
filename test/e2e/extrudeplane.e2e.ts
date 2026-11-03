@@ -150,7 +150,7 @@ test("the owner's sequence: a rectangle in a fresh model, the extrude tool, a cl
   const made = await defaultFrame();
   assert.ok(made, "the plane is the default now");
   assert.equal(lines[lines.indexOf(typed[0]) + 1], made, "and the log answers with its name");
-  assert.match(lines.at(-1)!, new RegExp(`^e1  extrude of l\\d+,l\\d+,l\\d+,l\\d+, depth d\\d+ = \\d+ along ${made}, lid f\\d+$`),
+  assert.match(lines.at(-1)!, new RegExp(`^e1  extrude of l\\d+,l\\d+,l\\d+,l\\d+, depth d\\d+ = \\d+ along ${made}$`),
     "then says what the click made");
   assert.equal((await logLines()).at(-1)!.cls, "out", "as an answer, not an error");
 

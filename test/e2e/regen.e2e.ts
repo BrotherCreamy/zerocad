@@ -74,14 +74,14 @@ async function saved(): Promise<string> {
 }
 
 interface SeenFeature {
-  name: string; loops: string[][]; twins: string[][]; walls: string[]; top: string; depth: string; owns: string[];
+  name: string; loops: string[][]; twins: string[][]; walls: string[]; top?: string; depth: string; owns: string[];
   pairs: [string, string][]; value: number;
 }
 
 /** The app's features, with each depth's base/twin pairs read off its relation. */
 const features = (): Promise<SeenFeature[]> => app.page.evaluate(() => {
   const { model } = (window as never as { __neocad: { model: {
-    features: Map<string, { name: string; loops: string[][]; twins: string[][]; walls: string[]; top: string; depth: string; owns: string[] }>;
+    features: Map<string, { name: string; loops: string[][]; twins: string[][]; walls: string[]; top?: string; depth: string; owns: string[] }>;
     relations: Map<string, { args: unknown[] }>;
   } } }).__neocad;
   return [...model.features.values()].map((f) => {
@@ -183,7 +183,7 @@ test("the fillet tool rounds a base corner — and the lid is rounded exactly as
   assert.equal(f.loops[0].length, 5, "the profile runs round the arc");
   assert.equal(f.walls.length, 5, "a wall at the new tangent point too");
   await lidAt(f, 20);
-  // The twin arc: on the lid frame, about the centre's twin, the base arc's radius.
+  // The twin arc: on the sketch frame (no lid frame), about the centre's twin, the base arc's radius.
   const [base, twin] = [m.arcs[0], m.arcs[1]];
   const pairOf = (b: string) => f.pairs.find(([x]) => x === b)?.[1];
   assert.equal(twin.center, pairOf(base.center));
@@ -240,7 +240,7 @@ test("one Ctrl+Z takes the fillet away and brings the four-cornered lid back; Ct
 
 test("save and open: the same file back, byte for byte, the lid still rounded — and regen on it changes nothing", async () => {
   const file = await saved();
-  assert.equal(JSON.parse(file).version, 10);
+  assert.equal(JSON.parse(file).version, 11);
   await app.type(`open(${JSON.stringify(file)})`);
   assert.equal(await app.status(), "SOLVED");
   assert.equal(await saved(), file);
