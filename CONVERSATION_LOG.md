@@ -106,6 +106,65 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### Groups, phase 1: a selection, sets that own nothing, and visibility
+
+**The owner**: *"the concept of this project is flat relational direct cad.
+there is no hierarchy. a sketch entity exists in the same logical space as a
+solid entity. and entities can be grouped. think about this grouping, and
+implement also"*. The design (docs/plans/groups.md) was settled before the
+build; what follows is the reasoning the build added.
+
+**Why the command line's text is the switch between selecting and naming.**
+Cellwork's click-to-name is the right gesture while a call is being written —
+`dist(` then two clicks — and the wrong one for "group these", which needs a
+set held somewhere. Rejected: a modifier for naming (Alt-click), which makes
+the long-standing gesture a chord and is invisible; and a mode toggle, which is
+state the user has to remember. The text is already on screen, and the undo
+carve-out had used the same signal. Every test that read the command line after
+a plain click now reads the selection, and each keeps a case that writes a
+command first, so both halves are pinned.
+
+**Why the selection is engine state with a host handle, not model state.** It
+is the viewer's — never journalled, never undone, like the camera and the
+layout — and the engine already held the region preselection, which the spec
+asked to be "the same selection". So `Selection` holds names and the
+`RegionSelection`, one clear, one highlight family. The host decides nothing
+but whether a command is being written (`composing`), which is the one fact
+only it can see.
+
+**Why the cascade lives in the primitives.** `del` is not the only thing that
+deletes: a fillet's regeneration removes twins inside an operation, and a
+hand-edited file can say `deleteEntity`. Had group membership been tidied in
+`del`, either would leave a group naming nothing. In `deleteEntity` and
+`deleteRelation` — beside the default frame's clearing, which set the
+precedent — it cannot be missed, and recording `removeFrom` there keeps a
+deletion's expansion a complete account. Inside an operation recording is off
+and the replay of the operation makes the same removal, so nothing doubles.
+
+**Why a group is never empty.** The spec said the cascade takes a group it
+empties. `removeFrom` emptying one by hand is the same state, and two rules
+for one state is how they drift; so one invariant, in `removeMembers`.
+
+**Why `hide` journals as typed and `group` journals resolved.** A group *is*
+the union at that moment, and the file should state the union: the members a
+`group("g1", "l5")` resolved to are its meaning. A `hide("g1")` means "what g1
+is now", and replay reaches that step with g1 exactly as it was — so the short
+form is as exact, and reads as what was typed.
+
+**Why the Delete key is refused to a focused text field even when it is
+empty.** The first e2e run deleted half a test's drawing: Playwright's
+`fill("")` sends a Delete to an already empty command line, and the key handler
+took it. The hand does the same — empty the line, press Delete once more — and
+that should never delete geometry. A click on the canvas blurs the line, so the
+key is the drawing's exactly when the hand was just on the drawing.
+
+**What hiding a solid's sketch costs, and why it was left.** The profile
+lines are the solid's base edges — the flat model's own point — so hiding the
+sketch takes the solid's bottom outline with it. Onshape keeps the two apart;
+here they are one entity. Drawing a hidden profile member as a solid edge while
+its feature is shown is a small, separable change, written down in TODO.md for
+the owner to want or not.
+
 ### Opaque solids: one answer for the eye and the hand
 
 **The owner**, two messages in a row: *"when you extrude a solid, it should

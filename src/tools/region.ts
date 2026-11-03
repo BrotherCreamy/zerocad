@@ -135,7 +135,15 @@ export function lightRegions(model: Model, r: RenderContext, hovered: Region | n
   } catch {
     return;
   }
-  drawLit(model, r, litRegions(loops, hovered));
+  drawLit(model, r, litRegions(loops, hovered).filter((g) => !hiddenLoop(model, loops[g.index])));
+}
+
+/**
+ * Whether any member of a loop is hidden — and so the region it bounds is not
+ * on screen to be lit or clicked inside (the engine's `regionAt` asks too).
+ */
+export function hiddenLoop(model: Model, loop: Loop): boolean {
+  return loop.members.some((m) => model.hidden.has(m.name));
 }
 
 /**

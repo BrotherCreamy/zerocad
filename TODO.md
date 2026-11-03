@@ -32,6 +32,13 @@ otherwise.
   ordinary entities beside the sketch; **a group is a named, overlapping set
   that owns nothing and never nests**; a feature name works as a read-only
   group. Design: [`docs/plans/groups.md`](docs/plans/groups.md).
+  ✅ **Phase 1 built** (2026-11-03): the selection (a click with the command
+  line empty selects, with text it inserts; shift, box, Escape; `sel()`/
+  `select()`; violet; the menu's Group/Delete/Hide and Select g1; the Delete
+  key), groups (`group`, `addTo`, `removeFrom`, `ungroup`/`del`, `members`,
+  `groups`, flattening, overlap, read-only features, the cascade), and
+  `hide`/`show`. Deviations in the spec's status line and under Done. Phase 2
+  (rigid groups) is next and needs its own spec.
 
 - **Effortless to pick up, then insanely powerful** (owner's direction,
   2026-10-29, verbatim in [`docs/plans/effortless.md`](docs/plans/effortless.md)):
@@ -1470,6 +1477,44 @@ extended the way `defineTool` extends the tool registry would close it.
 
 ## Smaller things
 
+- [ ] **Found while building groups, phase 1** (`docs/plans/groups.md`; each
+      deliberate unless it says otherwise):
+      - **Hiding a solid's sketch takes the solid's base edges with it.** The
+        profile lines *are* the solid's bottom outline — the flat model's
+        point — so with the sketch hidden the faces stand without their dark
+        edge along the base (look at `groups-3-sketch-hidden.png` from the
+        e2e). Onshape draws a part's edges apart from its sketch; here they
+        are one entity. Drawing a hidden profile member as a solid edge while
+        its feature is shown would be the fix, if the owner wants it.
+      - **`hide("e1")` flattens at the call**, like every set argument: a twin
+        a later regeneration makes (a fillet on the profile) is not hidden.
+        The faces follow the feature's name, so they stay hidden; only the new
+        edge shows. `hide("e1")` again picks it up.
+      - **A region bounded by anything hidden is not offered** — not lit by a
+        click-inside tool, not clickable (`regionAt`), even when a visible loop
+        further out holds the click. The innermost loop decides, as always.
+      - **A constraint's mark is not drawn when anything it constrains is
+        hidden**, except a feature's own dimension (an extrude's depth), which
+        is the solid's and goes with `hide("e1")`.
+      - **`sel()` lists names**; regions selected on the canvas are part of the
+        selection (one highlight, one clear) but are not named, so
+        `select(...sel())` drops them.
+      - **Arming any tool spends the whole selection**, names as well as
+        regions (it used to spend only regions, because there were only
+        regions). A tool that could start from selected lines — the fillet —
+        is a later package.
+      - **A drag moves the entity grabbed, not the selection.** Rigid groups
+        (phase 2) are how a set moves as one, and are a relation, not a drag.
+      - **The Delete key is never taken from a focused text field, even an
+        empty command line** — found when Playwright's `fill("")` sent a Delete
+        to an empty line and deleted a test's geometry. A click on the canvas
+        blurs the line, so the key is the drawing's exactly when the hand was
+        just there; a selection made by typing `select()` is deleted by typing
+        `del(...)`, or by clicking the canvas first.
+      - **Group names share the namespace**, so a group cannot be called `p1`
+        while there is a `p1`, and `has("g1")` is true — `del("g1")` meant
+        nothing before, so nothing that worked changed meaning.
+
 - [ ] **Found while building `feature-dialog.md`** (each deliberate unless it
       says otherwise):
       - **A region bounded by a crossing no point marks, every member of it
@@ -1738,6 +1783,40 @@ extended the way `defineTool` extends the tool registry would close it.
       the resolver's flush arithmetic assumes does not happen.
 
 ## Done
+
+- [x] **Groups, phase 1 — the selection, groups, hide and show** — the owner:
+      *"the concept of this project is flat relational direct cad. there is no
+      hierarchy. a sketch entity exists in the same logical space as a solid
+      entity. and entities can be grouped. think about this grouping, and
+      implement also"*. Spec: [`docs/plans/groups.md`](docs/plans/groups.md),
+      phase 1 marked built. `src/groups.ts` (new: the operations);
+      `GroupEntry`, `groups`, `hidden`, `expand`, `membersOf`, the group
+      primitives and the cascade's `leaveGroups` in `model.ts`; `Selection`
+      and `SELECTION` in `tools/selection.ts`; the engine's `selection`,
+      `composing`, `select`; the menu's selection items, Select g1, Show all;
+      `del` of a group; hidden left out of `hitTest`, `findSnap`,
+      `selectInBox`, `placeGlyphs` (`shownGlyph`), `visibleFaces`, the draw
+      pass and `regionAt`/`lightRegions`; the hover tag's `· g1`; `ls()`;
+      `help()`; six ops in `replenv.ts` and `persist.ts`, no format bump.
+      936 unit tests (911 before; `test/groups.test.ts` 15,
+      `test/selection.test.ts` 10), 381 e2e (358 before; `groups.e2e.ts` 12,
+      `selection.e2e.ts` 9, two new cases in `picking` and `boxselect`).
+      **Deviations from the spec:**
+      - ⚠ **The Delete key works only with no text field focused** — not
+        "with the command line empty" — for the reason under Smaller things.
+      - ⚠ **`removeFrom` that empties a group removes it**, as the cascade
+        does: one rule, a group is never empty.
+      - ⚠ **The menu also offers *Select e1*** on a piece a feature made, a
+        feature being a read-only group; the spec named groups only.
+      - ⚠ **A feature's members are what it made** (`owns`), never its
+        profile — "what the extrude made", read literally; the hover tag's
+        `· e1` still names the feature on its profile too, as before.
+      - ⚠ **`select()` leaves hidden names out and says so** in the log,
+        rather than refusing.
+      - ⚠ **A plain box that catches nothing clears the selection**, as a
+        click on empty canvas does; the spec did not say.
+      - **The spec was right about the code** — every seam it named was where
+        it said — so its text is unchanged apart from the status line.
 
 - [x] **Feature tools pick, preview, and confirm** — the owner: *"extrude
       and other tools should work like they do in other cad software. just

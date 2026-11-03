@@ -151,8 +151,8 @@ export const SELECTION = "#c46cff";
  * top of this file.
  *
  * UI state and nothing more: never journalled, never in a file, never an undo
- * step. What it holds is names, so a name that stops answering leaves it the
- * next time it is asked (`prune`).
+ * step. What it holds is names, so a name that stops answering — deleted, or
+ * hidden — leaves it the next time it is asked (`prune`).
  */
 export class Selection {
   private picked: string[] = [];
@@ -204,12 +204,12 @@ export class Selection {
   }
 
   /**
-   * The names that still answer, with the rest dropped. Asked every frame by
-   * whatever draws the selection, so a deleted entity leaves the selection as
-   * it leaves the screen.
+   * The names that still answer — not deleted, not hidden — with the rest
+   * dropped. Asked every frame by whatever draws the selection, so a hidden
+   * entity leaves the selection as it leaves the screen.
    */
   prune(model: Model): readonly string[] {
-    this.picked = this.picked.filter((n) => model.has(n));
+    this.picked = this.picked.filter((n) => model.has(n) && !model.hidden.has(n));
     return this.picked;
   }
 }

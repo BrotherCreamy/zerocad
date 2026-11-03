@@ -56,6 +56,11 @@ ignorant of persistence, and `persist.ts` stays ignorant of the session — and
 what it keeps is session state, not model state. See "A file carries its tools'
 source" below.
 
+`groups.ts` sits in the operations row beside `operations.ts`: the edits to
+the model's groups and its hidden set, journalled as operations (see "A group
+is a set" below). `operations.ts`'s `del` calls its `ungroup`; it imports only
+the model.
+
 `menu.ts` sits *beside* `main.ts` rather than under it: it is browser-layer
 code that reads the model and returns command strings, and it runs none of
 them. It is above `replenv.ts` in spirit — everything it produces is text for
@@ -362,6 +367,54 @@ means remapping every captured index list inside every closure — real work
 with real risk — and a save/reopen does not shed the leak either, because
 replay re-runs the same creates and the same deletes. Both facts are pinned by
 tests rather than left to be rediscovered.
+
+## A group is a set, and the model stays flat
+
+The owner's statement of the concept: *"flat relational direct cad. there is
+no hierarchy. a sketch entity exists in the same logical space as a solid
+entity. and entities can be grouped."* Nothing owns a sketch or a solid — a
+feature's twins and walls are ordinary entities beside the sketch — so a group
+could not be a container without undoing that. It is a **set**
+(`GroupEntry` in `model.ts`): a name and a list of entity and relation names.
+
+- **It owns nothing.** `ungroup(g)` (and `del(g)`) removes the grouping and no
+  member; deleting a member takes it out of every group, and a group left empty
+  goes too. The second half is done *in the primitives* (`deleteEntity`,
+  `deleteRelation`), for the default frame's reason: a regeneration that
+  deletes a twin, or a hand-edited file's `deleteEntity`, must not leave a
+  group naming nothing. Each group a name leaves is journalled as a
+  `removeFrom` just before the primitive, so a deletion's expansion still says
+  everything it did.
+- **It never nests.** A group or a feature named where members are wanted is
+  flattened to its members *then* (`Model.expand`) — a union, not a link, and
+  the log says so. A link would be a tree; the journal records the members
+  resolved, so a file says what the union was.
+- **A feature is a read-only group.** `membersOf("e1")` is the feature's
+  `owns` — what it made — so a feature selects, hides and lists as a group
+  does, and refuses `addTo`/`removeFrom`/`ungroup`, since its members follow
+  its profile.
+
+The registry is **structure**, so it lives in the model, and every edit is an
+**operation** (`groups.ts`, `asOperation`), replayed by `persist.ts`'s table;
+nothing below the model learns of it, and the solver never does.
+
+**Visibility is the document's** (`Model.hidden`), as in every CAD tool:
+`hide` and `show` are journalled, saved and undone. A hidden entity is not
+drawn, picked, snapped to or boxed — each of those asks `model.hidden`, the
+same one question, so the eye and the hand cannot disagree — and it is still
+solved, because nothing below the drawing reads it. A hidden feature's faces
+are not drawn (and so hide nothing behind them); a constraint's mark on
+something hidden is not drawn either, except a feature's own dimension, which
+is the solid's.
+
+**The selection is the viewer's** — `Selection` in `tools/selection.ts`, held
+by the engine, never journalled, never in a file, never an undo step. It is
+needed because a set wants to be picked in one gesture, and it is told apart
+from cellwork's click-to-name by **the command line's text**: with text in it a
+click is an argument to the call being written and inserts the name, as it
+always did; with none a click selects. Region preselection is the same
+selection, for regions. The menu and the Delete key act on it by typing, like
+every menu item.
 
 ## Relations follow their entities, not their indices
 
@@ -1107,7 +1160,7 @@ until the next action went unrecorded.
 
 ## Why there is an end-to-end suite
 
-Eight bugs so far were invisible to the unit tests and obvious within seconds
+Nine bugs so far were invisible to the unit tests and obvious within seconds
 of running the app:
 
 1. a status readout that went stale, so a conflict could be introduced from
@@ -1139,6 +1192,11 @@ of running the app:
    and refused a turn it should have made. Every unit test passed, because
    the pure half has no header; the e2e turn against the log's right edge
    failed on the first run.
+9. The Delete key deleting the selection from an *empty* command line. The
+   unit suite has no keyboard; the first e2e run had Playwright's `fill("")`
+   — which sends a Delete to a line already empty — delete half of each
+   test's drawing, and the hand does the same: empty the line, press Delete
+   once more. The key is now never a focused text field's to give away.
 
 None of these are mathematics. They are all *assembly*. Hence `npm run
 test:e2e`, and hence the expectation that anything touching the app is checked

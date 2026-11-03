@@ -101,6 +101,8 @@ export function selectInBox(model: Model, view: View, rect: ScreenRect, mode: Bo
   const test = mode === "window" ? contains : touches;
   const out: string[] = [];
   for (const e of model.entities.values()) {
+    // Hidden is not drawn, so no box holds it — however large.
+    if (model.hidden.has(e.name)) continue;
     if (!test(model, view, e, rect, screenOf)) continue;
     if (occ && !seenInBox(model, view, e, rect, mode, occ)) continue;
     out.push(e.name);

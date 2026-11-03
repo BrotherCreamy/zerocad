@@ -142,17 +142,32 @@ export function menuFor(
 const SELECTION_HEAD = 6;
 
 /**
- * **The selection's items**, each typing its command over every selected
- * name — `del("l1", "l2")`. On the menu when the right-click landed on
- * something selected, or on empty canvas with anything selected; never for a
- * right-click on something *not* selected, which is about that thing alone, as
- * it always was.
+ * **The selection's items** — Group, Delete, Hide — each typing its command
+ * over every selected name: `group("l1", "l2")`, `del(…)`, `hide(…)`. On the
+ * menu when the right-click landed on something selected, or on empty canvas
+ * with anything selected; never for a right-click on something *not*
+ * selected, which is about that thing alone, as it always was.
  */
 function selectionItems(selection: readonly string[]): MenuItem[] {
   const args = selection.map(quoted).join(", ");
   return [
+    { label: "Group", action: { do: "run", command: `group(${args})` } },
     { label: "Delete", action: { do: "run", command: `del(${args})` } },
+    { label: "Hide", action: { do: "run", command: `hide(${args})` } },
   ];
+}
+
+/**
+ * **Select g1**, for each group the thing right-clicked is in — and each
+ * feature that made it, a feature being a read-only group: the way from one
+ * member to the whole set, typed as `select("g1")`.
+ */
+function selectGroupItems(model: Model, name: string): MenuItem[] {
+  const sets = [
+    ...model.groupsHolding(name).map((g) => g.name),
+    ...[...model.features.values()].filter((f) => f.owns.includes(name)).map((f) => f.name),
+  ];
+  return sets.map((s) => ({ label: `Select ${s}`, action: { do: "run", command: `select(${quoted(s)})` } }));
 }
 
 /** The selection named for a menu's header: every name, or the first few and a count. */
@@ -190,11 +205,13 @@ function menuOf(model: Model, pick: Pick | null, region: RegionHit | null, selec
     if (!onSelection) return menu;
     return { header: selectionHeader(selection), items: [...selectionItems(selection), ...menu.items] };
   }
-  // Several selected, one of them right-clicked: the menu is about the set.
+  // Several selected, one of them right-clicked: the menu is about the set —
+  // and about the sets the one clicked is in, the way to select one of those.
   if (onSelection && selection.length > 1) {
-    return { header: selectionHeader(selection), items: selectionItems(selection) };
+    return { header: selectionHeader(selection), items: [...selectionItems(selection), ...selectGroupItems(model, pick.name)] };
   }
   const menu = pick.kind === "relation" ? relationMenu(model, pick) : entityMenu(model, pick);
+  menu.items.push(...selectGroupItems(model, pick.name));
   // The one thing selected is the thing clicked: its own menu, whose Delete
   // is already the selection's, with the rest of the selection's items.
   if (onSelection) {
@@ -311,6 +328,9 @@ function emptyCanvasMenu(model: Model, region: RegionHit | null): Menu {
         action: { do: "run", command: hasFrame ? "frame()" : "setDefaultFrame(frame())" },
       },
       ...sketchOnFaceItem(model, region),
+      // Only while something is hidden: the way back from Hide, where there
+      // is nothing on screen left to right-click.
+      ...(model.hidden.size ? [{ label: "Show all", action: { do: "run", command: "show()" } } as MenuItem] : []),
     ],
   };
 }

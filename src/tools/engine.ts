@@ -59,7 +59,7 @@ import type { Occlusion } from "../occlusion.ts";
 import { findLoops, loopAt } from "../loops.ts";
 import { OptionMemory, declaredOptions, explicitOptions, resolveOptions } from "./options.ts";
 import { SELECTION, Selection, type RegionSelection } from "./selection.ts";
-import { drawRegion } from "./region.ts";
+import { drawRegion, hiddenLoop } from "./region.ts";
 
 export type { View };
 
@@ -455,7 +455,11 @@ export class ToolEngine {
   regionAt(sx: number, sy: number): RegionHit | null {
     const loops = findLoops(this.model);
     const loop = loopAt(this.model, this.view, sx, sy, loops);
-    if (!loop) return null;
+    // A region bounded by anything hidden is not on screen to click inside.
+    // The innermost loop under the cursor decides, as it always has: one
+    // further out is not offered in its place (a hidden hole is not a hole
+    // the click fell through).
+    if (!loop || hiddenLoop(this.model, loop)) return null;
     const { origin, u, v } = loop.plane;
     const at = screenToPlane(this.view, sx, sy, { origin, u, v });
     return at ? { loops, index: loops.indexOf(loop), toward: viewAxes(this.view).toward, at } : null;

@@ -84,14 +84,18 @@ function dist(ax: number, ay: number, bx: number, by: number): number {
  * place on it nearest the cursor is in sight. Given in a shaded view; null (a
  * plain sketch, or the hidden and wire modes) picks everything, as it always
  * did. Faces themselves still never pick.
+ *
+ * **What is hidden (`Model.hidden`) never picks**: it is not drawn, and a
+ * click on what is not there must not find it.
  */
 export function hitTest(model: Model, view: View, sx: number, sy: number, occ: Occlusion | null = null): Pick | null {
   const screenOf = (name: string) => projectPoint(model, view, name);
   const seen = (world: number[]) => inSight(occ, world);
+  const shown = [...model.entities.values()].filter((e) => !model.hidden.has(e.name));
 
   // Tier 1: points.
   let best: Pick | null = null;
-  for (const e of model.entities.values()) {
+  for (const e of shown) {
     if (e.kind !== "point") continue;
     const [px, py] = screenOf(e.name);
     const d = dist(sx, sy, px, py);
@@ -105,7 +109,7 @@ export function hitTest(model: Model, view: View, sx: number, sy: number, occ: O
   // has to be within its own sweep, or every arc would pick as a whole circle.
   // An arc seen obliquely is a polyline on screen, and is near wherever any
   // piece of it is.
-  for (const e of model.entities.values()) {
+  for (const e of shown) {
     if (e.kind !== "circle" && e.kind !== "arc") continue;
     const screen = screenCurve(model, view, e, PICK_CURVE)!;
     const shape = screen.curve;
@@ -139,7 +143,7 @@ export function hitTest(model: Model, view: View, sx: number, sy: number, occ: O
   // not actually nearer. Its origin *point* still wins outright from tier 1,
   // which is the right answer — a click on the corner of the marker is a click
   // on the point the marker is drawn from, and dragging that turns the frame.
-  for (const e of model.entities.values()) {
+  for (const e of shown) {
     if (e.kind !== "line") continue;
     const near = toSegment(sx, sy, screenOf(e.refs[0]), screenOf(e.refs[1]));
     if (!near || near.d >= PICK_LINE || (best && near.d >= best.distance)) continue;
@@ -151,7 +155,7 @@ export function hitTest(model: Model, view: View, sx: number, sy: number, occ: O
     }
     best = { name: e.name, kind: "line", distance: near.d };
   }
-  for (const e of model.entities.values()) {
+  for (const e of shown) {
     if (e.kind !== "frame") continue;
     const marker = frameMarker(model, view, e.name);
     if (!marker) continue; // collapsed: nothing drawn, so nothing to hit
@@ -205,10 +209,21 @@ function toSegment(sx: number, sy: number, [ax, ay]: [number, number], [bx, by]:
 export function describePick(model: Model, pick: Pick): string {
   if (pick.kind === "relation") {
     const r = model.relations.get(pick.name);
-    return r ? `${describeRelation(r)}${featureTag(model, pick.name)}` : pick.name;
+    return r ? `${describeRelation(r)}${featureTag(model, pick.name)}${groupTag(model, pick.name)}` : pick.name;
   }
   const n = (v: number) => (Math.round(v * 1000) / 1000).toString();
-  return `${describeGeometry(model, pick.name, pick.kind, n)}${relationTag(model, pick.name)}${featureTag(model, pick.name)}`;
+  return `${describeGeometry(model, pick.name, pick.kind, n)}${relationTag(model, pick.name)}`
+    + `${featureTag(model, pick.name)}${groupTag(model, pick.name)}`;
+}
+
+/**
+ * The groups a thing is in, for the very end of the hover tag — `· g1 g2`,
+ * the way a feature's piece ends `· e1`: the sets it belongs to, said where
+ * the eye already is. `members("g1")` and `select("g1")` take it from there.
+ */
+function groupTag(model: Model, name: string): string {
+  const gs = model.groupsHolding(name);
+  return gs.length ? `  ·  ${gs.map((g) => g.name).join(" ")}` : "";
 }
 
 /**

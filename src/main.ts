@@ -258,7 +258,9 @@ async function main() {
     // not be painted over by an edge running behind them.
     const byDepth = <T extends Entity>(es: T[]) =>
       es.map((e) => ({ e, d: entityDepth(e) })).sort((a, b) => a.d - b.d).map((x) => x.e);
-    const all = [...model.entities.values()];
+    // What is hidden is not drawn, and nothing else about it changes: it is
+    // still solved, and the engine is told nothing — it asks the model.
+    const all = [...model.entities.values()].filter((e) => !model.hidden.has(e.name));
     const edges = byDepth(all.filter((x) => x.kind !== "point"));
     const points = byDepth(all.filter((x) => x.kind === "point"));
 
@@ -404,6 +406,7 @@ async function main() {
   function solidEdges(): Set<string> {
     const out = new Set<string>();
     for (const f of model.features.values()) {
+      if (model.hidden.has(f.name)) continue; // no faces, so no body for these to be the edges of
       for (const loop of f.loops) for (const m of loop) if (typeof m === "string") out.add(m);
       for (const loop of f.twins) for (const t of loop) out.add(t);
       if (f.kind === "extrude") for (const w of f.walls) out.add(w);

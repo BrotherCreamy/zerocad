@@ -202,7 +202,8 @@ test("the menu acts on the selection when the right-click lands on part of it, o
 test("the one thing selected, right-clicked, is its own menu", async () => {
   const { m, l1 } = await drawing();
   const menu = menuFor(m, pickOf(m, l1), null, null, null, [l1]);
-  assert.deepEqual(labels(menu).slice(0, 3), ["Insert name", "Delete", "Dimension"]);
+  assert.deepEqual(labels(menu).slice(0, 2), ["Insert name", "Delete"]);
+  assert.ok(labels(menu).includes("Dimension"), "its own items stay");
   assert.equal(command(menu, "Delete"), `del("${l1}")`);
 });
 

@@ -2050,6 +2050,40 @@ replacing) the system Node other projects on this machine may depend on.
   its sketch colour on a solid. *Spec:*
   [`docs/plans/opaque-solids.md`](docs/plans/opaque-solids.md).
 
+- **The selection, groups, hide and show** (`src/groups.ts` (new); `GroupEntry`,
+  `groups`, `hidden`, `expand`, `membersOf`, `addGroup`/`addMembers`/
+  `removeMembers`/`deleteGroup` and the cascade's `leaveGroups` in
+  `src/model.ts`; `Selection` and `SELECTION` in `src/tools/selection.ts`; the
+  engine's `selection`, `composing`, `select`; `menu.ts`'s selection items,
+  Select g1 and Show all; the Delete key, the highlight and the `selection`
+  handle in `main.ts`; `sel`/`select`/`group`/`addTo`/`removeFrom`/`ungroup`/
+  `members`/`groups`/`hide`/`show`, `ls()` and `help()` in `replenv.ts`; six
+  ops in `persist.ts`). The owner: *"flat relational direct cad. there is no
+  hierarchy … and entities can be grouped"*. **A click selects** with the
+  command line empty (shift toggles, a box selects, shift-box adds, empty
+  canvas or Escape clears), drawn in violet `#c46cff`; **with text in the line
+  it inserts the name**, as it always did. Region preselection is the same
+  selection. UI state: not journalled, saved or undone. **A group is a set**:
+  owns nothing, overlaps, never nests (a group or feature named is flattened to
+  its members then, and the log says so), never empty; a feature is a
+  read-only group of what it made. Deleting a member journals a `removeFrom`
+  per group before the primitive; an emptied group goes and `del` returns it.
+  The hover tag ends `· g1 g2`. **Hidden** (`hide`/`show`, groups and features
+  expanded) is not drawn, picked, snapped to, boxed or glyphed, is still
+  solved; a hidden feature's faces are not drawn; journalled, saved, undone.
+  No format bump. Unit: `test/groups.test.ts` (15), `test/selection.test.ts`
+  (10), and the engine and feature-dialog tests; browser:
+  `test/e2e/groups.e2e.ts` (12), `test/e2e/selection.e2e.ts` (9), and the
+  picking, box, drag, edge-drag, frames, glyphs, dimensions, opaque and
+  feature-dialog e2e read the selection where they read the command line.
+  *Known and deliberate* (TODO.md, Smaller things): hiding a solid's sketch
+  hides the solid's base edges (they are the same lines); `hide("e1")`
+  flattens at the call; a region bounded by anything hidden is not offered;
+  `sel()` lists names, not regions; arming a tool spends the whole
+  selection; a drag moves the grabbed entity, not the selection; the Delete
+  key is never a focused text field's. Phase 2, rigid groups, is not started.
+  *Spec:* [`docs/plans/groups.md`](docs/plans/groups.md).
+
 
 ## What's next
 
