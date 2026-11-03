@@ -733,3 +733,111 @@ test("a click on no region, headless, throws — the extrude tool's convention",
   assert.throws(() => new RevolveTool(toolCtx(m, ABOVE)).onDown({ world: [80, 80, 0], screen: worldToScreen(ABOVE, [80, 80, 0]) }),
     /no closed outline yet/);
 });
+
+// --- the solid's edges, as the face layer draws them ----------------------------
+
+/** Every edge segment of a feature's faces, as unordered pairs of world points rounded to a key. */
+function edgeSegments(faces: Face[]): Set<string> {
+  const key = (p: number[]) => p.map((x) => (Math.round(x * 1e6) / 1e6 + 0).toFixed(6)).join(",");
+  const out = new Set<string>();
+  for (const f of faces) for (const path of f.edges) for (let k = 0; k + 1 < path.length; k++) {
+    out.add([key(path[k]), key(path[k + 1])].sort().join(" "));
+  }
+  return out;
+}
+const segmentKey = (a: number[], b: number[]) =>
+  [a, b].map((p) => p.map((x) => (Math.round(x * 1e6) / 1e6 + 0).toFixed(6)).join(",")).sort().join(" ");
+
+test("a box's edges are its twelve: every face's sides, and nothing a quad's diagonal or a seam could add", async () => {
+  await loadKernel();
+  const { m, lines, f } = box();
+  const faces = featureFaces(m, f, 4);
+  const want = new Set<string>();
+  for (const l of [...lines, ...f.twins.flat(), ...f.walls]) {
+    const [a, b] = m.line(l).refs.map((p) => m.coords(p));
+    want.add(segmentKey(a, b));
+  }
+  assert.equal(want.size, 12);
+  assert.deepEqual([...edgeSegments(faces)].sort(), [...want].sort());
+  // Each face carries its own sides: a cap all four of its outline's, a wall its four.
+  for (const face of faces) {
+    const n = face.edges.reduce((s, p) => s + p.length - 1, 0);
+    assert.equal(n, 4, `${face.kind}: four sides`);
+  }
+});
+
+test("a hole's wall has no line across it — a whole circle has no vertex — and its rims are edges, piece by piece", async () => {
+  await loadKernel();
+  const m = new Model(3);
+  axisFrame(m);
+  const pts = [[0, 0, 0], [40, 0, 0], [40, 30, 0], [0, 30, 0]].map((c) => m.addPoint(c).name);
+  const lines = pts.map((p, i) => m.addLine(p, pts[(i + 1) % pts.length]).name);
+  for (const p of pts) onPlane(m, p, "f");
+  const c = m.addPoint([20, 15, 0]).name;
+  onPlane(m, c, "f");
+  m.addCircle(c, 6, "f");
+  const f = m.featureOf(extrude(m, lines[0], 10), "extrude");
+  const faces = featureFaces(m, f, 4);
+  const hole = faces.filter((x) => x.kind === "wall" && Math.hypot(x.centroid[0] - 20, x.centroid[1] - 15) < 7);
+  assert.ok(hole.length > 8, "the hole's wall is a strip");
+  for (const piece of hole) {
+    assert.equal(piece.edges.length, 2, "its rim on the base and on the lid, no side");
+    for (const path of piece.edges) assert.ok(Math.abs(path[0][2] - path[1][2]) < 1e-9, "each along a rim, at one height");
+  }
+  // The plate's walls keep theirs at the corners.
+  const sides = faces.filter((x) => x.kind === "wall" && !hole.includes(x));
+  assert.equal(sides.length, 4);
+  for (const s of sides) assert.equal(s.edges.length, 4);
+});
+
+test("a full turn draws no line where the profile was — it has no seam — but the circles its corners sweep are edges", async () => {
+  await loadKernel();
+  const m = new Model(3);
+  axisFrame(m);
+  // A block beside +y, turned all the way round it: a washer.
+  const pts = [[10, 0, 0], [20, 0, 0], [20, 8, 0], [10, 8, 0]].map((c) => m.addPoint(c).name);
+  const lines = pts.map((p, i) => m.addLine(p, pts[(i + 1) % pts.length]).name);
+  for (const p of pts) onPlane(m, p, "f");
+  const f = m.featureOf(revolve(m, lines[0], "f.y", 2 * Math.PI), "revolve");
+  const faces = featureFaces(m, f, 4);
+  assert.ok(faces.every((x) => x.kind === "wall"));
+  const fromAxis = (p: number[]) => Math.hypot(p[0], p[2]);
+  for (const face of faces) for (const path of face.edges) {
+    const [a, b] = path;
+    // Along a corner's circle: the same height and the same distance from the axis at both ends.
+    assert.ok(Math.abs(a[1] - b[1]) < 1e-9 && Math.abs(fromAxis(a) - fromAxis(b)) < 1e-9, "on a swept circle, not across the profile");
+    assert.ok([0, 8].includes(Math.round(a[1])) && [10, 20].includes(Math.round(fromAxis(a))), "a corner's circle");
+  }
+  const total = faces.reduce((s, x) => s + x.edges.length, 0);
+  assert.ok(total > 0);
+  // Four corners, each swept by both of the walls that meet there.
+  const steps = faces.length / 4;
+  assert.equal(total, 4 * 2 * steps);
+});
+
+test("a quarter turn's caps are edges all round, as an extrude's are", async () => {
+  await loadKernel();
+  const m = new Model(3);
+  axisFrame(m);
+  const pts = [[10, 0, 0], [20, 0, 0], [20, 8, 0], [10, 8, 0]].map((c) => m.addPoint(c).name);
+  const lines = pts.map((p, i) => m.addLine(p, pts[(i + 1) % pts.length]).name);
+  for (const p of pts) onPlane(m, p, "f");
+  const f = m.featureOf(revolve(m, lines[0], "f.y", Math.PI / 2), "revolve");
+  const faces = featureFaces(m, f, 4);
+  for (const cap of faces.filter((x) => x.kind !== "wall")) {
+    assert.equal(cap.edges.length, 1);
+    const path = cap.edges[0];
+    assert.equal(path.length, cap.outlines[0].length + 1, "the outline, closed");
+    assert.deepEqual(path[0], path[path.length - 1]);
+  }
+});
+
+test("the painter's fallback carries each face's edges on screen, for it to stroke after the fill", async () => {
+  await loadKernel();
+  const { m } = box();
+  const view = orbitBy(ABOVE, 0.6, 0.5);
+  const drawn = facesToDraw(m, view);
+  const world = visibleFaces(m, view);
+  assert.equal(drawn.reduce((s, d) => s + d.edges.length, 0), world.reduce((s, f) => s + f.edges.length, 0));
+  for (const d of drawn) for (const e of d.edges) for (const p of e) assert.ok(p.every(Number.isFinite));
+});
