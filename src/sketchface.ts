@@ -14,8 +14,8 @@
 // call it is, needs no new entity kind, and *follows the solid* because its
 // points are the solid's: set the depth and the frame on the lid rises with
 // the lid, read as a datum like every frame. (A circle's lid has only its
-// centre, and gets a plane made through it — `MadePlane`.) Nothing about the face is stored; the
-// journal carries three point names.
+// centre, and gets a plane made through it — `MadePlane`.) Nothing about the
+// face is stored; the journal carries the names of three points.
 //
 // **Orientation is the whole trick: +z toward the viewer.** A sketch plane on a
 // solid's face must have its +z pointing *out* of the solid, so a positive
