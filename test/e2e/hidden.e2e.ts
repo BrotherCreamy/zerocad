@@ -12,6 +12,12 @@
 // (`golden/hidden-plain-sketch.png`, recorded from the commit before this
 // package with NEOCAD_E2E_GOLDEN_RECORD set; see `plainSketch`).
 //
+// Since quiet geometry (docs/plans/quiet-geometry.md) the shaded view leaves a
+// sketch's corners undrawn until the cursor is on them, so the picture is held
+// in the hidden view, which draws everything as the build before did — the
+// golden picture is unchanged, and still matches to the pixel — and the shaded
+// one is held to differ from it only where the quiet rule says it must.
+//
 // Set NEOCAD_E2E_SHOTS to a directory to keep the screenshots; look at them.
 
 import { test, after } from "node:test";
@@ -53,14 +59,95 @@ const PLAIN = `ls = poly([[0,0,0],[40,0,0],[40,30,0],[0,30,0]], "f");
 const drawingPNG = async (app: AppContext): Promise<Buffer> => Buffer.from(
   (await app.page.$eval("#cv", (el) => (el as HTMLCanvasElement).toDataURL("image/png"))).split(",")[1], "base64");
 
-test("a sketch with no solid draws pixel for pixel what the previous build drew", async () => {
-  const app = await fresh();
+/** The plain sketch, built and turned as the golden picture was. */
+async function plainSketch(app: AppContext): Promise<void> {
   await axisFrame(app, [-20, 45]);
   for (const src of [HELPERS, PLAIN]) {
     const r = await app.repl(src);
     assert.equal(r.ok, true, `${src}\n→ ${r.error}`);
   }
   await look(app, 0.5, 0.4, 0.3, [140, -50]);
+}
+
+/** Two PNGs decoded in the page, and every pixel at which they differ. */
+async function differing(app: AppContext, a: Buffer, b: Buffer): Promise<{ size: string; at: [number, number][]; inked: number; scale: number }> {
+  return app.page.evaluate(async ([now, then]) => {
+    const decode = async (b64: string) => {
+      const img = new Image();
+      img.src = `data:image/png;base64,${b64}`;
+      await img.decode();
+      const c = document.createElement("canvas");
+      [c.width, c.height] = [img.width, img.height];
+      const g = c.getContext("2d", { willReadFrequently: true })!;
+      g.drawImage(img, 0, 0);
+      return g.getImageData(0, 0, img.width, img.height);
+    };
+    const [x, y] = [await decode(now), await decode(then)];
+    const scale = x.width / (document.getElementById("cv") as HTMLCanvasElement).getBoundingClientRect().width;
+    if (x.width !== y.width || x.height !== y.height) return { size: `${x.width}×${x.height} against ${y.width}×${y.height}`, at: [], inked: 0, scale };
+    const at: [number, number][] = [];
+    let inked = 0;
+    for (let k = 0; k < x.data.length; k += 4) {
+      if (y.data[k + 3] > 0) inked++;
+      if ([0, 1, 2, 3].some((i) => x.data[k + i] !== y.data[k + i])) at.push([((k / 4) % x.width) / scale, Math.floor(k / 4 / x.width) / scale]);
+    }
+    return { size: "", at, inked, scale };
+  }, [a.toString("base64"), b.toString("base64")]);
+}
+
+test("shaded, the plain sketch differs from the hidden view's picture only at its quiet corners — each one's dot, name and the marks anchored on it", async () => {
+  const app = await fresh();
+  await plainSketch(app);
+  assert.equal((await app.repl('view("hidden")')).value, "hidden");
+  const all = await drawingPNG(app);
+  assert.equal((await app.repl('view("shaded")')).value, "shaded");
+  const quiet = await drawingPNG(app);
+  await shot(app, "plain-sketch-shaded");
+  const diff = await differing(app, quiet, all);
+  assert.equal(diff.size, "");
+  // Where the rule says the picture changes, worked out here from the model:
+  // every point that ends a line or an arc and is no centre — its dot (3.5 px)
+  // and its name (6 px right, baseline 6 px up, 11 px monospace) — and every
+  // glyph whose anchor is on such points alone, its box. A pixel of anti-
+  // aliasing round each.
+  const places = await app.page.evaluate(() => {
+    const { model, engine } = (window as never as { __neocad: {
+      model: { entities: Map<string, { kind: string; name: string; refs?: string[]; start?: string; end?: string; center?: string }>; coords(n: string): number[] };
+      engine: { worldToScreen(w: number[]): [number, number]; glyphs(): { screen: [number, number]; halfW: number; halfH: number; about: string[] }[] };
+    } }).__neocad;
+    const ends = new Set<string>();
+    const centres = new Set<string>();
+    for (const e of model.entities.values()) {
+      if (e.kind === "line") e.refs!.forEach((p) => ends.add(p));
+      if (e.kind === "arc") [e.start!, e.end!].forEach((p) => ends.add(p));
+      if (e.center) centres.add(e.center);
+    }
+    for (const c of centres) ends.delete(c);
+    const boxes: [number, number, number, number][] = [];
+    for (const p of ends) {
+      const [x, y] = engine.worldToScreen(model.coords(p));
+      boxes.push([x - 5, y - 5, x + 5, y + 5], [x + 5, y - 16, x + 7 + 7 * p.length, y - 3]);
+    }
+    for (const g of engine.glyphs()) {
+      if (g.about.length && g.about.every((n) => ends.has(n))) {
+        boxes.push([g.screen[0] - g.halfW - 1.5, g.screen[1] - g.halfH - 1.5, g.screen[0] + g.halfW + 1.5, g.screen[1] + g.halfH + 1.5]);
+      }
+    }
+    return { boxes, ends: [...ends].map((p) => engine.worldToScreen(model.coords(p))) };
+  });
+  const outside = diff.at.filter(([x, y]) => !places.boxes.some(([x0, y0, x1, y1]) => x >= x0 && x <= x1 && y >= y0 && y <= y1));
+  assert.deepEqual(outside.slice(0, 10), [], `${outside.length} pixels changed away from every quiet corner`);
+  // And every quiet corner did change: its dot is gone.
+  assert.ok(places.ends.length >= 6, "four corners and an arc's two ends");
+  for (const [x, y] of places.ends) {
+    assert.ok(diff.at.some(([px, py]) => Math.hypot(px - x, py - y) < 3), `the dot at ${Math.round(x)}, ${Math.round(y)} went`);
+  }
+});
+
+test("a sketch with no solid draws pixel for pixel what the previous build drew — in the hidden view, which draws everything", async () => {
+  const app = await fresh();
+  await plainSketch(app);
+  assert.equal((await app.repl('view("hidden")')).value, "hidden");
   const png = await drawingPNG(app);
   await shot(app, "plain-sketch");
   if (process.env.NEOCAD_E2E_GOLDEN_RECORD) {

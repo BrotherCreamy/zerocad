@@ -127,10 +127,20 @@ test("shaded, by default: the far corner's point, its name and the edge behind t
   const seen = await app.pixel(edgeAt[0] + 0.5, edgeAt[1] + 0.5, "screen");
   assert.ok(lid && far(seen, lid.rgb) <= 3, `on screen it is the face in front: ${seen} against ${lid?.rgb}`);
   // The near faces' own edges are drawn, in the solid's dark ink: the lid's
-  // front edge, shared by the lid and the front wall.
+  // front edge, shared by the lid and the front wall. Since quiet geometry
+  // (quiet-geometry.md) the face layer draws it, as part of the solid, and
+  // the sketch drawing leaves it alone until it is hovered — so it is read
+  // off the faces' picture, the darkest pixel a 1.2 px line can cover taken
+  // at least two thirds of the way from the lid's fill to the ink.
   const front = (await app.screenOf([20, 0, 20])).map(Math.floor) as [number, number];
-  const ink = (await patch(app, front, 2)).reduce((best, p) => (p[3] > best[3] ? p : best));
-  assert.ok(far(ink, solid) <= 3 && ink[3] > 150, `the lid's front edge in the solid's ink ${solid}: ${ink}`);
+  assert.equal((await patch(app, front, 1)).filter((p) => p[3] > 0).length, 0, "the sketch draws nothing over it");
+  const under: [number, number][] = [];
+  for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) under.push([front[0] + dx + 0.5, front[1] + dy + 0.5]);
+  const ink = (await app.pixels("faces", under)).reduce((best, p) => (p[0] + p[1] + p[2] < best[0] + best[1] + best[2] ? p : best));
+  const [{ face: lidFill }] = await app.nearestFaces([[front[0] + 0.5, front[1] - 5.5]]);
+  assert.ok(lidFill?.kind === "lid", `a few pixels up from the front edge is the lid (${lidFill?.kind})`);
+  const toward = [0, 1, 2].reduce((s, i) => s + (lidFill!.rgb[i] - ink[i]), 0) / [0, 1, 2].reduce((s, i) => s + (lidFill!.rgb[i] - solid[i]), 0);
+  assert.ok(toward > 0.66 && ink[3] > 150, `the lid's front edge in the solid's ink ${solid}: ${ink}, ${Math.round(toward * 100)}% of the way`);
 
   // Hidden: the dot and its name are back, in the point's own ink, and the
   // edge in the dimmed solid ink.
