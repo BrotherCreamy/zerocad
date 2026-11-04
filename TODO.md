@@ -1333,6 +1333,13 @@ starts.
       worker deletes only caches under its own prefix. The release that
       renames it should delete `neocad-` caches too, or every phone that had
       the old app keeps one stale cache forever.
+- [ ] **A tap right after a flick may not click.** Chromium suppresses a tap
+      that follows a fling within ~150 ms (the tap that stops a fling is not a
+      click); a one-finger drag lifted mid-motion is a fling to it, so a strip
+      tap 80 ms later was lost in emulation (`touch.e2e.ts`, measured, and the
+      test now rests the finger before lifting, as a hand placing a corner
+      does). iOS has its own rule for the same thing; check on the device
+      whether a quick Undo after a flicked drag is ever swallowed.
 - [ ] **Try the hosted build on the owner's iPhone**: the CHANGELOG entry's
       list. Only Chromium's emulation has run it so far.
 - [ ] **Landscape phone layout**: the default panels overlap the tray's edge

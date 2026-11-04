@@ -200,6 +200,15 @@ test("a tool armed: one finger's drag draws a rectangle, with the lifted mark ab
   const disc = (await app.pixels("drawing", [[bx + 0.5, by - 56 + 0.5]]))[0];
   assert.ok(disc[3] > 150, `the lifted mark is drawn above the finger: ${disc}`);
   await shot(app, "drawing");
+  // The finger rests on the corner before it lifts, as a hand placing a
+  // corner does. Lifted mid-glide, the drag is a fling to Chromium, and a tap
+  // that follows a fling within ~150 ms is suppressed as the tap that stopped
+  // it — no click (measured: a strip tap 80 ms after a moving lift was lost
+  // every time, after a 120 ms rest never). The test passed on a loaded
+  // machine only because the load stretched that gap.
+  await app.page.waitForTimeout(120);
+  await f.move([bx, by]);
+  await app.page.waitForTimeout(120);
   await f.up();
   const m = await app.model();
   assert.equal(m.size, before + 8, "four corners and four sides");
