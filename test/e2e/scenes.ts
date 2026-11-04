@@ -52,12 +52,15 @@ export const SCENES: Scene[] = [
   },
   {
     name: "interpenetrating",
+    // Two bodies, as the name says: driven into the bar, the second would add
+    // to it by default (docs/plans/solids-kernel.md) and be one solid with no
+    // interpenetration left to draw.
     what: "two interpenetrating extrudes: a 60 × 20 × 20 bar, and a 15 × 40 bar on a frame turned 20° driven 45 through it",
     source: `a = poly([[0,0,0],[60,0,0],[60,20,0],[0,20,0]], "f"); extrude(a[0], 20);
       t = 20 * Math.PI / 180; X = [Math.cos(t), Math.sin(t), 0]; O = [20, -12, 0];
       at = (u, v) => [O[0] + u * X[0], O[1] + u * X[1], v];
       model.addFrame(P(at(0, 0)), P(at(1, 0)), P(at(0, 1)), "g");
-      b = poly([at(0,-10), at(15,-10), at(15,30), at(0,30)], "g"); extrude(b[0], -45, "g")`,
+      b = poly([at(0,-10), at(15,-10), at(15,30), at(0,30)], "g"); extrude(b[0], -45, "g", { mode: "new" })`,
   },
   {
     name: "stepped-boss",

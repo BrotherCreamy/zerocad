@@ -550,6 +550,12 @@ async function main() {
         casing = false;
       }
     }
+    // The hidden view draws a solid's own edges in this pass, the runs behind a
+    // face dimmed, which an extrude's are through its twins. A kernel body's
+    // twins are quiet (quiet.ts), so its own edges are drawn here instead, the
+    // same way: in the solid's ink, through the same occlusion. Before the
+    // entities, so a point's dot is over them.
+    if (occluded && !opaque(viewMode)) hiddenKernelEdges();
     entityPass(edges, points, stroke, weight, lit, chosen);
 
     // After the entities so a mark is never hidden by the drawing it describes,
@@ -588,6 +594,26 @@ async function main() {
     solidSaid = said;
     for (const line of lines) if (!old.has(line)) log(`solid: ${line}`, "guide");
     if (lines.length) stepNote(`solid: ${lines[0]}`, GUIDE_NOTE_MS, "guide");
+  }
+
+  /** The kernel's edges in the hidden view: full where seen, dimmed behind a face, as `strokeEdge` draws any solid edge. */
+  function hiddenKernelEdges() {
+    const width = g.lineWidth;
+    g.lineWidth = 1.4;
+    try {
+      for (const v of solidBodies.views()) {
+        if (model.hidden.has(v.name)) continue;
+        const s = v.result.solid!;
+        for (const line of s.lines) {
+          if (s.edges[line.edge]?.name.endsWith(":seam")) continue;
+          const pts: number[][] = [];
+          for (let i = 0; i < line.points.length / 3; i++) pts.push([line.points[i * 3], line.points[i * 3 + 1], line.points[i * 3 + 2]]);
+          if (pts.length > 1) strokeEdge(pts, false, SOLID_EDGE);
+        }
+      }
+    } finally {
+      g.lineWidth = width;
+    }
   }
 
   /** The kernel's edges in the wireframe view, where there are no faces to draw them with. */

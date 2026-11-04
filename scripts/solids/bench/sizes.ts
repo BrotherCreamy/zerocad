@@ -1,7 +1,7 @@
 // Raw, gzip -9 and brotli -11 sizes of each file given — what a PWA would
 // download and cache. Reads bytes; runs nothing.
 //
-//   node --experimental-strip-types spikes/solid-kernel/bench/sizes.ts <file>...
+//   node --experimental-strip-types scripts/solids/bench/sizes.ts <file>...
 
 import { readFileSync } from "node:fs";
 import { basename } from "node:path";

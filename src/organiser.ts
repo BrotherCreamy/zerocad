@@ -59,8 +59,13 @@ export interface OrganiserSection {
   id: string;
   title: string;
   rows: OrganiserRow[];
-  /** What it says with no rows: the way to make one. */
-  empty: string;
+  /**
+   * What it says with no rows: the way to make one — or null, for a section
+   * not shown at all until it has a row. Bodies: with no feature, Features
+   * already says how to make one, and the line said twice pushed Groups out
+   * of a phone's pane (found by organiser.e2e.ts under iPhone 13).
+   */
+  empty: string | null;
 }
 
 function quoted(name: string): string {
@@ -125,7 +130,7 @@ export function organiserSections(model: Model, selection: readonly string[] = [
     };
   });
   return [
-    { id: "bodies", title: "Bodies", rows: bodies, empty: "none — an extrude or a revolve makes one" },
+    { id: "bodies", title: "Bodies", rows: bodies, empty: null },
     { id: "groups", title: "Groups", rows: groups, empty: "none — ＋ makes one, open to draw into" },
     { id: "features", title: "Features", rows: features, empty: "none — an extrude or a revolve makes one" },
   ];
@@ -275,7 +280,7 @@ export class Organiser {
     if (key === this.shown) return false;
     this.shown = key;
     this.body.textContent = "";
-    for (const s of sections) this.body.appendChild(this.sectionEl(s));
+    for (const s of sections) if (s.rows.length || s.empty !== null) this.body.appendChild(this.sectionEl(s));
     return true;
   }
 
@@ -290,7 +295,7 @@ export class Organiser {
     if (!s.rows.length) {
       const none = document.createElement("div");
       none.className = "onone";
-      none.textContent = s.empty;
+      none.textContent = s.empty ?? "";
       el.appendChild(none);
     }
     for (const r of s.rows) el.appendChild(this.rowEl(r));

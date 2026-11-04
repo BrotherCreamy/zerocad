@@ -1,7 +1,7 @@
 // Which operation keeps heap? Each one alone, 50 rounds after 5 to warm up,
 // then each part rebuilt 20 times. Prints bytes kept per round.
 //
-//   node --experimental-strip-types spikes/solid-kernel/bench/leak.ts <dir holding smlib.mjs>
+//   node --experimental-strip-types scripts/solids/bench/leak.ts <dir holding smlib.mjs>
 
 import { pathToFileURL } from "node:url";
 import { PARTS } from "../../../test/solids/parts.ts";

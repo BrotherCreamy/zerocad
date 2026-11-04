@@ -1,6 +1,6 @@
 // Run every measurement in Node against a built SMLib module and print JSON.
 //
-//   node --experimental-strip-types spikes/solid-kernel/bench/node.ts <dir holding smlib.mjs>
+//   node --experimental-strip-types scripts/solids/bench/node.ts <dir holding smlib.mjs>
 
 import { pathToFileURL } from "node:url";
 import { heapOverRebuilds, identity, rebuildAll, runAll } from "../../../test/solids/bench.ts";

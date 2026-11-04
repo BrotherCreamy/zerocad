@@ -361,6 +361,9 @@ test("the pane's sections: a group row is its name, count, eye and open marker; 
   hide(m, "e1");
   assert.equal(organiserSections(m)[2].rows[0].eyeCommand, 'show("e1")');
   assert.deepEqual(organiserSections(new Model(2)).map((s) => s.rows.length), [0, 0, 0]);
+  // With no body, Bodies is not shown at all: Features already says how to
+  // make one, and the line twice pushed Groups out of a phone's pane.
+  assert.deepEqual(organiserSections(new Model(2)).map((s) => s.empty === null), [true, false, false]);
 });
 
 test("the ＋ types a group of the selection, or with nothing selected a new empty group opened at once", () => {

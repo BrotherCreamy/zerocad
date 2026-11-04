@@ -1,9 +1,9 @@
 // Run the measurements in headless Chromium, the kernel in a module Worker —
 // the arrangement the app would use — and print JSON.
 //
-//   node --experimental-strip-types spikes/solid-kernel/bench/chromium.ts <dir holding smlib.mjs>
+//   node --experimental-strip-types scripts/solids/bench/chromium.ts src/solids/smlib-gen
 //
-// A tiny static server serves the spike's TypeScript with its types stripped
+// A tiny static server serves the repo's TypeScript with its types stripped
 // (Node's own `stripTypeScriptTypes`, the same transform the unit tests run
 // under — so no bundler and no dependency) and the built module beside it.
 
@@ -15,7 +15,9 @@ import { fileURLToPath } from "node:url";
 import { launchBrowser } from "../../../test/e2e/harness.ts";
 
 const build = resolve(process.argv[2] ?? process.env.SMLIB_DIR ?? "");
-const spike = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+// The repository's root, served at /spike/: the bench's Worker imports the
+// parts and the adapter from test/ and src/, where the spike's own were moved.
+const spike = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 
 const TYPES: Record<string, string> = { ".mjs": "text/javascript", ".js": "text/javascript", ".ts": "text/javascript",
   ".wasm": "application/wasm", ".html": "text/html" };
@@ -58,7 +60,7 @@ const out = await page.evaluate(async (n) => {
   });
   const spawn = async () => {
     const t0 = performance.now();
-    const w = new Worker("/spike/src/worker.ts", { type: "module" });
+    const w = new Worker("/spike/scripts/solids/bench/worker.ts", { type: "module" });
     const r = await call(w, { module: "/smlib/smlib.mjs" });
     return { w, coldMs: performance.now() - t0, init: r.result as { initMs: number; reserved: number } };
   };
