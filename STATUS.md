@@ -2260,7 +2260,7 @@ replacing) the system Node other projects on this machine may depend on.
   selected. `construction(...names)` / `construction(...names, false)`; groups
   and features expand at the call and the journal names the curves changed;
   points, frames and relations passed over; a no-op journals nothing; one undo
-  step; no format bump. **A solid's profile member is refused** by name, and
+  step; no format bump. **A solid's outline member is refused** by name, and
   extrude/revolve refuse a construction member by name. **Drawn thin (0.9px)
   in a muted teal `#679b91`, never dashed**, with a hairline casing on faces.
   The hover tag says `construction`; `ls()` `(construction)`; the menu has
@@ -2269,11 +2269,40 @@ replacing) the system Node other projects on this machine may depend on.
   two construction legs is construction. Unit: `test/construction.test.ts`
   (19, new), `menu.test.ts`; browser: `test/e2e/construction.e2e.ts` (7, new),
   `contextmenu.e2e.ts`, `tooloptions.e2e.ts`. 992 unit tests, 405 e2e.
-  *Known and deliberate* (TODO.md, Smaller things): a profile member is
-  refused rather than regenerated, and clearing the flag needs `regen`, until
-  features follow their regions; a regenerated twin is real; typed
+  *Known and deliberate* (TODO.md, Smaller things): an outline member is
+  refused (a hole's fills the hole, and clearing the flag adds none — see
+  explicit regions, below); a regenerated twin is real; typed
   constructors take no flag; a tool's preview is not muted. *Spec:*
   [`docs/plans/construction.md`](docs/plans/construction.md).
+
+- **A feature's region is explicit** (`featureRegion`, `refoundProfile`,
+  `hole`, `unhole`, `holesGoing`, `within`, `profileOfLoops` in
+  `src/operations.ts`; `insideLoop` in `src/loops.ts`; `hole`/`unhole`/`edit`
+  in `src/replenv.ts`; the replay table in `src/persist.ts`; *Add as hole to
+  e1* / *Remove hole from e1* / *Edit e1* in `src/menu.ts`; `src/tools/edit.ts`
+  (new); `RegionSelection.toggleHole` in `src/tools/selection.ts`; the faces'
+  `skip`). The owner: *"there should be some kind of relationship between the
+  loops > region > extrude"*; *"I don't think coplanarity should be used as an
+  automatic basis for deciding which entities to include in a region."* **The
+  record is the membership**: a feature's loops are its outline and the holes
+  confirmed. Regeneration (`regen`, a fillet) re-finds each recorded hole by
+  its own members and adds none; a recorded hole whose loop has gone is
+  filled, and `regen` says so. `hole("e1", "c1")` / `unhole("e1", "c1")` are
+  operations, one undo step, journalled with what they rebuilt; refusals say
+  what would work; revolve takes them the same way. **A hole's loop going —
+  its circle deleted, a member made construction — fills the hole**; the solid
+  stays. The creating click proposes every loop inside, and a click on a
+  proposed hole takes it out (extrude and revolve). *Edit e1* (`edit("e1")`)
+  opens the dialog on a feature: loops inside the outline toggle, the depth or
+  angle in the panel, ✓ types `hole`/`unhole`/`set` as one action, the solid
+  steps aside for the preview. No format bump; an older file opens to its own
+  solids (tested with one written by the build before). Unit:
+  `test/explicitregions.test.ts` (17, new); browser:
+  `test/e2e/explicitregions.e2e.ts` (4, new). 1018 unit tests, 418 e2e. *Known and
+  deliberate* (TODO.md, Smaller things): an island whose hole `regen` dropped
+  becomes a hole by even-odd; a tie refuses; fillet's fill is unsaid; a hole's
+  twin deleted still takes the record. *Spec:*
+  [`docs/plans/explicit-regions.md`](docs/plans/explicit-regions.md).
 
 ## What's next
 

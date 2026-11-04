@@ -7,6 +7,78 @@ decisions.
 
 ---
 
+## A feature's region is explicit: its outline and the holes you said
+
+The owner, on how a later hole joins an extrude without a timeline:
+
+> *there should be some kind of relationship between the loops > region > extrude*
+
+and then:
+
+> *I don't think coplanarity should be used as an automatic basis for deciding
+> which entities to include in a region.*
+
+Asked whether click-to-pick should keep proposing the loops it sees inside:
+*"do what you think is best"*. It keeps proposing them, and nothing joins
+afterwards unless you say so.
+
+Measured first: a circle drawn inside an extruded rectangle was a hole the next
+time anything regenerated the extrude — `regen("e1")`, or a fillet on one of
+its corners — because `refoundProfile` took every loop inside the outline. Now:
+
+- **The record is the membership.** A feature's `loops` are its outline and
+  the loops the user confirmed. **Regeneration re-walks each recorded hole by
+  its own members and adds none**; a loop inside the outline that the record
+  does not name is left out, in the preview and the solid. A recorded hole
+  whose loop has gone is filled, and the log says so (`e1: hole l9–l12 is gone,
+  filled`); the outline's going is still a refusal.
+- **`hole("e1", "c1")` cuts the loop `c1` is in through `e1`; `unhole("e1",
+  "c1")` fills it** (and any island recorded inside it). Operations, one undo
+  step each, journalled with what they rebuilt resolved, as `regen` is;
+  registered in `replenv.ts` and `persist.ts`. Refusals say what would work:
+  `c1 is not inside e1's outline l1–l4 — move it in, or extrude it on its own`,
+  `c1 is already a hole of e1`, a member of the outline, in no loop, in a loop
+  not parallel to the sketch frame; `unhole` of a loop that is no hole names the
+  holes there are. A revolve takes both the same way — a hole turned is a
+  tunnel.
+- **A hole's loop going fills the hole, and never takes the solid**:
+  `del("c1")` on a hole's circle (or a corner of a square hole) used to take
+  `e1`'s record — the solid lost its faces; now it is journalled as the
+  `unhole` it is, then the deletion. **Making a hole's member construction fills
+  it the same way** (the decision this package was left: it is the same as the
+  loop going away); an outline member is still refused. **Clearing the flag adds
+  no hole** — `hole` does.
+- **The menu**: *Add as hole to e1* on a closed loop's member inside a
+  feature's outline, *Remove hole from e1* on a hole's, *Edit e1* on anything
+  of a feature and on a solid's face — each typing its call.
+- **Edit e1** (`edit("e1")`) opens the feature dialog on the feature: its
+  region lit as recorded, every other loop inside outlined as available, its
+  depth (or angle) in the panel. A click on a loop inside toggles it; ✓ types
+  `hole`/`unhole` per toggle and `set` for the value as **one user action**;
+  ✗ leaves it as it was. The preview is the edit run on a copy, and the solid
+  as it is steps aside while it is up, so a hole being cut shows. The clicks
+  are read on the sketch plane, so it works shaded, under the lid.
+- **The creating dialog**: a click proposes the region with every loop inside,
+  as before; **a click on one of its holes now takes that hole out of the
+  proposal** (and back in), and ✓ types the loops outright —
+  `extrude("l13", 10, "f", [["l13","l16","l15","l14"]])`. A click on a solid
+  island is still a region of its own. Extrude and revolve both.
+- **No format bump**: a file never re-finds a profile — its `extrude`, `regen`
+  and `fillet` entries carry their loops — so a file saved by the build before
+  opens to the solids it was saved with. Proved with one written by that build
+  (`test/fixtures/pre-explicit-regions.neocad.json`), whose regen and fillet
+  took two circles in as holes that this build would not.
+
+Unit: `test/explicitregions.test.ts` (17, new), `construction.test.ts` (the
+regen-brings-the-hole test inverted, quoting the owner; a hole's member made
+construction fills it), `sketchface.test.ts` (a face's menu has *Edit e1*);
+browser: `test/e2e/explicitregions.e2e.ts` (4, new), `construction.e2e.ts`
+(*Add as hole* instead of `regen`). 1018 unit tests (1000 before), 418 e2e (414 before). Spec:
+[`docs/plans/explicit-regions.md`](docs/plans/explicit-regions.md), marked
+built, with its deviations.
+
+---
+
 ## An installable app, and a page that never scrolls or zooms
 
 The owner:
@@ -96,6 +168,8 @@ a left mouse button would, and two fingers do nothing. 981 unit tests (973
 before; `test/pwa.test.ts` 8), 407 e2e (398 before; `test/e2e/pwa.e2e.ts` 9).
 Spec: [`docs/plans/pwa-pages.md`](docs/plans/pwa-pages.md), with its
 deviations under *As built*.
+
+---
 
 ## Construction geometry
 

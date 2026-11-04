@@ -106,6 +106,81 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### Explicit regions: a feature keeps the holes you said
+
+**What was wrong.** A feature already recorded its loops — the outline, then
+every loop inside it — and the journal carried them resolved, so a file never
+re-inferred anything. The inference was in one place, regeneration:
+`refoundProfile` found the outline and then took every loop inside it. So a
+circle drawn inside an extruded outline yesterday became a hole the moment
+anything regenerated the extrude — a `regen`, a fillet on a corner — because
+it was coplanar and inside. The owner: *"there should be some kind of
+relationship between the loops > region > extrude"*, and then *"I don't think
+coplanarity should be used as an automatic basis for deciding which entities
+to include in a region."*
+
+**Rejected: live binding — the region follows whatever is inside the
+outline.** It was the design under discussion when construction geometry was
+specced (construction.md calls it "region binding"), and it is what
+regeneration already half did: a feature would always be its outline with
+every loop now inside it, so drawing a circle in a plate would cut a hole as
+soon as anything noticed. It is tidy — there is nothing to record, and nothing
+to keep in step — and it is what the owner turned down, for a reason a flat
+model makes sharp: with no sketch container, *everything* on that plane is
+"inside" — a reference circle, the outline of the next feature, a sketch for a
+boss that happens to sit within the plate. Construction flags were the escape
+hatch for that design; the owner's second remark removed the need for an
+escape. Under live binding a solid would also change shape on an edit that
+never named it, which is the "a relation changing under you" kind of surprise
+the rest of this codebase is built to avoid (a journal entry never changes
+meaning with the drawing it is replayed into).
+
+**What replaced it: the record is the membership.** `featureRegion` finds the
+outline as before, then each recorded hole by its own members — the loop
+keeping most of them, inside the outline — and nothing else. Adding and
+removing are calls, `hole` and `unhole`, because a membership change is a
+structural change a user makes, and the journal should say so in their words.
+The menu and the edit dialog type those calls; the menu *proposes* from
+containment (that is a suggestion clicked, not an inclusion).
+
+**Why click-to-pick still proposes the loops inside.** The owner left it to
+us. The proposal is shown — the preview is what ✓ builds — and confirmed by a
+click, so it is the user saying it, not the drawing; and every other CAD tool
+does it, so a plate with a hole is one click. What changed is that the
+proposal can be edited before ✓ (a click on a hole takes it out) and that
+nothing joins after.
+
+**Why a hole whose loop goes is filled, never refused.** Deleting a hole's
+circle used to take the feature's record — the solid lost its faces, its lid
+and walls left standing as bare geometry. A missing hole is not a missing
+solid: the region is still well defined, it just has one hole fewer. So `del`
+fills it (journalled as the `unhole` it implies, then the deletion's
+primitives, so replay does exactly that), and regeneration fills a recorded
+hole whose loop has gone and says so. The outline is different: without it
+there is no region, so its going is still a refusal, or a deletion.
+
+**Why flagging a hole's member construction fills the hole.** Construction
+geometry forms no regions, so flagging a hole's circle is, as far as regions
+go, the same event as deleting it; refusing (construction.md's interim rule)
+would have kept a user from ever demoting a hole's outline to reference
+geometry. *Rejected:* keeping the refusal for holes too, for symmetry with the
+outline — the asymmetry is real (a region survives losing a hole, not its
+outline). Clearing the flag, the other way, adds nothing: that would be live
+binding by the back door.
+
+**Rejected: `hole` and `unhole` editing the record without regenerating.**
+Simpler, but then a profile changed since (a fillet, a line across) would be
+re-found by the next `regen` and not by `hole`, and the two would answer
+differently about the same feature. `hole` is `regen` with one loop more.
+
+**Found by the older-file test.** The fixture — written by the build before —
+has a revolve whose half-turned end face lies on the plate's plane, over part
+of it. `findLoops`' containment tree gives a loop its *smallest* container, so
+the end face, not the plate, was a recorded hole's parent, and the hole read
+as outside its own outline and was dropped. "Inside" is now asked of the
+geometry (`within`: a descendant, or every member's midpoint inside the
+outline) — the tree was a proxy that a flat model's overlapping loops break.
+
 ### An installable app, and a page that never moves
 
 **What the owner asked for** was GitHub hosting, a PWA, and a page that
@@ -147,6 +222,7 @@ could ever be under the notch.
 **What is left for an iPhone.** Safari's own behaviour (the gesture events,
 the rubber band, the callout, standalone launch) is exactly what Chromium
 cannot show. The CHANGELOG lists what to try.
+
 
 ### Construction geometry
 
