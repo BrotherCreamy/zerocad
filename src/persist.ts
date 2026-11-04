@@ -243,6 +243,11 @@ export interface SavedModel {
  * a lookup for "constructor" or "toString" from Object.prototype, so a file
  * naming one of those would sail past a `table[op]` check and get something
  * called. A Map has no prototype chain to walk.
+ *
+ * Not here, on purpose: the document's commands — `newFile`, `openFile`,
+ * `saveFile`, `shareFile` (docs/plans/files.md) — and `download`. They act
+ * on the document, never in it, and journal nothing, so a file has nothing
+ * of theirs to replay.
  */
 function replayTable(model: Model): Map<string, (...args: unknown[]) => unknown> {
   const m = model as unknown as Record<string, (...a: unknown[]) => unknown>;

@@ -40,7 +40,12 @@ this document are consequences of it.
 the plane a pixel lands on — used by the tool engine and the renderer, and
 depending on nothing but `vec3.ts`, plain three-vectors that import nothing.
 `undo.ts` sits beside it for the same reason — a stack of snapshots, generic
-over what a snapshot is, importing nothing at all. `arcgeom.ts` is the same
+over what a snapshot is, importing nothing at all. `files.ts` is the same
+kind again: the document's name and dirty flag (a comparison against the
+snapshot at the last open or save), which way a save or share goes for what
+the platform offers, and the autosave, all over strings and injected stores.
+Its browser half, `filehost.ts`, is host-level — pickers, the share sheet,
+drops, IndexedDB — and only `main.ts` constructs it. `arcgeom.ts` is the same
 kind of file: which way round an arc goes about a given side, and a whole
 circle laid out in a given plane, over plain numbers. `curveplane.ts` is the
 one that asks the model *which* numbers — a circle's or arc's plane read off

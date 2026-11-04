@@ -1,6 +1,8 @@
 # Plan: files — open, save, share and keep, on an iPhone and on a desktop
 
-**Status: queued** (2026-11-04). The owner: *"think about file system access
+**Status: built** (2026-11-04), on `claude/files`; see *As built* at the
+end for what the platforms really allow (several claims below are corrected
+there) and every deviation. The owner: *"think about file system access
 etc. I want to be able to open files on my phone, share files etc. Should
 also work for desktop."*
 
@@ -105,3 +107,153 @@ cannot do; README's phone section (how to open and share on an iPhone,
 where files go); the register (autosave on by default, saving on a phone is
 the share sheet, the shortcuts) as vetoable; STATUS; `help()`; the spec
 marked built.
+
+## As built
+
+What was built, by file: `src/files.ts` (new; pure, imports nothing — the
+name and dirty flag, the file's name and type, the save/share/open routes,
+`fileChord`, and the `Autosave`); `src/filehost.ts` (new; the DOM half — the
+four commands over the pickers, the input, the share sheet and a download,
+drag and drop with its hint, the launch queue, the hidden-flush, and the
+IndexedDB store); `src/replenv.ts` (`newFile`, `openFile`, `saveFile`,
+`shareFile` and `help()`; `download()` is named for the document);
+`src/main.ts` (the restore before the first model, `files`, the host's
+`document()` as `files.document()`, Ctrl+S / Ctrl+O, the autosave told of
+every change); `scripts/pwa-shell.ts` (`file_handlers`). Tests:
+`test/files.test.ts` (14), one more in `test/pwa.test.ts`,
+`test/e2e/files.e2e.ts` (12), the fixture `test/fixtures/bracket.zerocad.json`.
+
+**The seam with the menu package.** The menu's File items type `newFile()`,
+`openFile()`, `saveFile()`, `shareFile()` through `submit`, exactly as named.
+Its name line reads the host's `document(): { name, dirty }` — in `main.ts`
+that is `files!.document()` (pass `document: () => files!.document()` to the
+menu); it is also the `document` host handle in `EnvHandles`.
+
+### What the platforms allow — checked, and where this spec was wrong
+
+Sources: MDN's browser-compat-data 8.1.8 (2026-11-02); Chromium's source
+(`chrome/browser/webshare/share_service_impl.cc`,
+`third_party/blink/renderer/modules/webshare/`, the manifest parser);
+developer.chrome.com's File System Access and File Handling articles;
+web.dev's Web Share article; Apple's Safari 15 release notes; WebKit's
+storage-policy and ITP posts; WebKit bugs 34442 and 209407.
+
+- **Confirmed: iOS has no File System Access pickers** (`showOpenFilePicker`
+  and `showSaveFilePicker`: Safari and iOS "false"). WebKit's file system is
+  only the origin-private one, which a person cannot see.
+- **Confirmed: an iOS web app cannot register for files or receive shares**
+  (`file_handlers` and `share_target`: Safari and iOS "false").
+- **Web Share with files on iOS: 15, per Apple** — Safari 15's release notes
+  list file sharing (Web Share Level 2) as new. MDN's data says 14; Apple's
+  own notes win.
+- **Corrected: desktop Safari can share files too** (Safari 14/15), and so
+  can Chromium on Windows and ChromeOS (89) and on macOS (128). The spec said
+  desktop Safari has only the input and a download. `shareFile()` uses the
+  sheet wherever it takes the file. Firefox has Web Share only behind a flag.
+- **Corrected: Chromium refuses a `.json` file in a share.** `canShare({ files
+  })` says yes to any file (Blink checks no type), and `share()` then rejects
+  with NotAllowedError, "Permission denied": `.json` and `application/json`
+  are not on Chromium's permitted list (audio, images, PDF, video, and
+  `.txt`/`.csv`/`.css`/`.html` text). So "share when `canShare` says yes,
+  else download" is not enough: a share refused for any reason but the
+  person's cancel downloads instead, and says so.
+- **Corrected: the pickers are on Android Chrome too** (132), not desktop
+  only; `file_handlers` and `launchQueue` are desktop only (102).
+- **Qualified: "write in place, no dialog".** A handle from the save picker
+  is writable at once. One from the open picker (or a drop, or the launch
+  queue, or restored from storage) is read-only until the person allows
+  writing: Chromium asks once, at the first save. Every save after is silent.
+- **Not verifiable: a download in a home-screen app "lands in a preview".**
+  WebKit bug 209407 says `<a download>` from a home-screen app silently did
+  nothing until it was fixed in or before iOS 14.3; nothing documents what it
+  does now. Under a finger Save never downloads where the sheet takes files,
+  so this only matters as a fallback. On the owner's list.
+- **`accept`: `.json,application/json`.** iOS turns `accept` into its own file
+  types and greys out what does not match; WebKit bug 34442 reports (iOS 14.5)
+  that `.json` in the list narrows the picker to `.json` files exactly, and
+  that an extension iOS does not know is not matched. A `.zerocad.json` file
+  is a `.json` file to it, so this should offer it; not tried on a device.
+  `.zerocad.json` itself is deliberately not in the list.
+- **Added: Safari's seven-day cap.** Outside the home-screen app, Safari
+  deletes a site's script-written storage (IndexedDB included) after seven
+  days of Safari use without visiting it; a home-screen app keeps its own
+  count of days of *its* use. So the autosave is safest in the installed app,
+  and a file saved to Files is the real keeping. Whether the home-screen app's
+  storage is separate from Safari's is not documented; on the owner's list.
+
+### The autosave's storage: IndexedDB
+
+- **Local storage is a few megabytes an origin, and this origin is not
+  ours alone**: `brothercreamy.github.io` is every site the account
+  publishes, so the room left is unknowable. IndexedDB's quota is a share of
+  the disk (WebKit: up to 60 % for a browser app, the same for a home-screen
+  app).
+- Local storage writes **synchronously on the main thread**, and the
+  autosave writes the whole drawing after every change.
+- IndexedDB **keeps a Chromium file handle** (they are structured-cloneable),
+  so a Save after a restart still writes back to the file it came from.
+- Restoring "before the first render" is still true: `main()` already awaits
+  the kernel, and awaits the read after it; the first model the app makes is
+  the restored one.
+- One record under one key in database `neocad.autosave.v1` (the internal
+  code name, like the other storage keys): `{ format: "zerocad-autosave",
+  version: 1, name, dirty, text, at, handle? }`, `text` exactly what `save()`
+  writes. Written 500 ms after the last change, at once on `visibilitychange`
+  to hidden and on `pagehide`, and at once after an open, a save or a new.
+- When installed (standalone), it asks `navigator.storage.persist()`: WebKit
+  grants it by heuristics a home-screen app meets, Chromium for an installed
+  app; in a tab Firefox would put up a prompt, so not there.
+
+### Deviations
+
+- **`document()` is a host function, not a command.** In the command scope
+  `document` would read as the page's `document`, which the scope
+  deliberately never offers (`test/repl.test.ts` checks it does not resolve,
+  and caught this). The menu reads it from the host, as specified.
+- **The unsaved-changes question comes after the file is chosen** for Open
+  (and for a drop or a launch), not before the picker. A picker needs the
+  press that asked for it — the browser's transient activation, about five
+  seconds in Chromium and Firefox — and a `confirm` answered slowly would
+  spend it, so the picker would silently never open. Nothing is lost before
+  the question, which then names the file. `newFile()` asks first, as
+  specified. `confirm` is used.
+- **Save through the share sheet only under a finger.** Desktop Safari can
+  share files, but its sheet has no "save" (Mail, Messages, AirDrop, Notes),
+  so a mouse's Save there downloads to Downloads, a real file. Under a finger
+  where the sheet will not take the file, Save downloads.
+- **`file_handlers` claims `.json`, not `.zerocad.json`.** The OS keeps the
+  association, by the extension after the last dot; whether a two-part one
+  registers anywhere is undocumented and nothing here can install an app to
+  try. ZeroCAD is offered under "Open with" for JSON files; a JSON file that
+  is not a drawing is refused with the reason.
+- **A completed share is a save.** iOS does not say which target the person
+  chose, so when `saveFile()` went through the sheet, any completed share —
+  Save to Files, AirDrop, Messages — clears dirty; a dismissed sheet does
+  not. `shareFile()` (a copy) never clears it. A download is taken as saved
+  too, the app having no way to know more.
+- **Restored dirty stays dirty** until the next open, save or new: the record
+  holds one drawing, not also the one it was dirty against.
+- **A refused restore pauses autosave** for the session — nothing is written
+  over the kept copy until `newFile()` or an open replaces it — so work drawn
+  meanwhile is not autosaved. The log says both.
+
+Additions: a dropped file's Chromium handle is kept, so Save writes back to
+it; the handle survives a restart in the autosave; the drop hint is drawn on a
+ground of its own (the empty-canvas hint sits in the same middle); Ctrl+S /
+Ctrl+O are ignored mid-composition and on key repeat; a refused handle write
+(permission denied, file gone) falls back to the save picker; `download()`
+names its file for the document. The e2e suites that reload expecting a first
+start (panels, tool options, tool source, touch, opaque) now empty the
+autosave first (`forgetAutosave` in the harness).
+
+### Limitations left in place, deliberately
+
+- **One autosave slot per device.** Two windows of the app both write it;
+  the last one changed is what the next start restores.
+- **Undo across an open or a new restores the drawing, not the name** (or
+  the handle): the document is then dirty against the file it names.
+- **Whether a write started on `visibilitychange` finishes before iOS
+  suspends the app** cannot be known from here; the 500 ms debounce after
+  every change is the main protection, the hidden-flush a second one.
+- **Everything is Chromium's emulation.** What only an iPhone can show is
+  in the CHANGELOG entry, for the owner to try.

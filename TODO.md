@@ -37,6 +37,20 @@ otherwise.
   [`chrome-logo-scale.md`](docs/plans/chrome-logo-scale.md),
   [`files.md`](docs/plans/files.md).
 
+- **Files: autosave is on by default; saving on a phone is the share
+  sheet; Ctrl+S and Ctrl+O are the app's** (docs/plans/files.md, built
+  2026-11-04). The drawing, its name and whether it is saved are kept on the
+  device (IndexedDB) after every change and restored at start; `newFile()`
+  replaces it. Under a finger `saveFile()` opens the share sheet — *Save to
+  Files* is the save, there being no other way for a web app on iOS to put a
+  file where a person finds it — and a completed share counts as saved.
+  Chrome and Edge save back into the file in place; Firefox and desktop
+  Safari download. Ctrl/⌘+S types `saveFile()` and Ctrl/⌘+O `openFile()`,
+  the browser's Save Page and Open File prevented, wherever the focus is.
+  Open asks about unsaved changes after the file is chosen, not before the
+  picker. The installed desktop app is offered for `.json` files, not only
+  `.zerocad.json`. Veto any.
+
 - **The app is ZeroCAD; NeoCAD stays the internal code name** (the owner
   named the project and its public repository `zerocad`, 2026-11-04). What a
   person sees says ZeroCAD. Identifiers, the saved-file format tag
@@ -1261,6 +1275,19 @@ are flagged as such.
 Queue for Opus, in order. Each gets a spec in `docs/plans/` before work
 starts.
 
+- [x] **Files — open, save, share, drop, autosave — BUILT (2026-11-04).**
+      The owner: *"I want to be able to open files on my phone, share files
+      etc. Should also work for desktop."* `newFile()`, `openFile()`,
+      `saveFile()`, `shareFile()` and the host's `document()` (the seam the
+      app menu types and reads); Ctrl/⌘+S and Ctrl/⌘+O; drop to open; an
+      installed desktop app's `file_handlers`; autosave to IndexedDB,
+      restored at start. Spec: [`docs/plans/files.md`](docs/plans/files.md),
+      marked built, with the platform claims it corrected and every
+      deviation: `document()` is the host's, not a command; Open's
+      unsaved-changes question comes after the file is chosen; the share
+      sheet is the save under a finger only; `file_handlers` claims `.json`.
+      **Not tried on iOS** — the CHANGELOG lists what the owner should try.
+
 - [x] **The app under fingers — BUILT (2026-11-04).** The owner: *"it should
       work on a multi-touch device. Specifically I have an iPhone."* One touch
       recogniser (`src/tools/gestures.ts`) feeding the engine's mouse paths:
@@ -1839,6 +1866,32 @@ the same shape as "tools are not privileged", and a menu that could be
 extended the way `defineTool` extends the tool registry would close it.
 
 ## Smaller things
+
+- [ ] **Found while building `files.md`** (each deliberate, documented and,
+      where it can be, tested):
+      - **The owner's iPhone list** (CHANGELOG, the files entry): the Files
+        picker offering a `.zerocad.json`, Save to Files writing one file,
+        AirDrop/Messages, a drawing back after the app is closed, Safari and
+        home-screen storage apart or not, the dirty question in the
+        home-screen app, a dismissed sheet.
+      - **One autosave slot per device**: two windows both write it and the
+        last change wins. A per-window slot would need a way to choose
+        between them at start; not worth it until someone has two windows.
+      - **Undo across an open or a new restores the drawing, not the name or
+        the handle.** The document is then dirty against the file it names,
+        which is honest; making the name an undo step would mean the undo
+        stack holding more than the model.
+      - **A refused restore (a newer build's drawing) pauses autosave for the
+        session**, so that copy is not overwritten; work drawn meanwhile is
+        not autosaved until `newFile()` or an open. Said in the log.
+      - **`saveFile()` holds `submit`'s undo bracket open while it awaits a
+        picker or the sheet.** Both are modal, so no pointer edit can land
+        inside it; if a browser ever made one non-modal, an edit made during
+        it would join that bracket's step.
+      - **When the app menu lands**, its host object takes
+        `document: () => files!.document()` in `main.ts`.
+      - **Not done: `share_target`** (receiving shares) on Android Chrome,
+        which has it — the owner's devices are an iPhone and a desktop.
 
 - [ ] **Found while building `explicit-regions.md`** (each deliberate,
       documented and, where it can be, tested):

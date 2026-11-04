@@ -106,6 +106,59 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### Files: what each platform really allows, and three decisions it forced
+
+The owner asked to open and share files on his iPhone and on a desktop. The
+spec set out what each platform allows and asked for every claim to be
+checked; most held, and the ones that did not changed the code, not only the
+notes.
+
+**Chromium will not share a `.json` file, and does not say so up front.**
+`canShare({ files })` in Blink checks only that there is something to share;
+the type check is in the browser process, against a fixed list (audio,
+images, PDF, video, plain text, CSV, CSS, HTML) that has no JSON. So
+"share when `canShare` says yes, else download" would have shown a Windows
+or Mac Chrome user a "Permission denied" for every share. Any refusal that is
+not the person's cancel now downloads, and says so. Rejected: sharing as
+`text/plain` with a `.txt` name — it would pass, and arrive as a file that
+no longer opens as a drawing anywhere that goes by extension.
+
+**The unsaved-changes question moved to after the choice.** Asking before the
+picker, as the spec had it, puts a `confirm` between the press and the
+picker; pickers need the press's transient activation, which in Chromium and
+Firefox is a few seconds, so a person who read the question carefully would
+get a picker that silently never opened. Asking after the file is chosen
+loses nothing (nothing has been replaced yet) and the question can name the
+file. `newFile()` has no picker, so it asks first.
+
+**Saving through the share sheet is a finger's only.** On an iPhone the
+sheet's Save to Files is the only save there is. Desktop Safari can share
+files too — the spec said it could not — but its sheet is Mail, Messages,
+AirDrop and Notes, so a desktop Safari user pressing Save would never get a
+file. There a download is the save; `shareFile()` still uses the sheet.
+
+**IndexedDB for the autosave, not local storage.** Local storage's few
+megabytes are per origin, and the origin, `brothercreamy.github.io`, is
+every site the account publishes; it is synchronous on the main thread, and
+the autosave writes the whole drawing after every change. IndexedDB costs an
+await at start, which `main()` already has for the kernel, and it can store
+a Chromium file handle, so a restart does not forget which file Save writes
+to.
+
+**`document()` is not a command.** It was, briefly, and the repl's own test
+that `document` does not resolve in the scope failed — rightly: the command
+line deliberately cannot reach the page, and a `document` there would read as
+the page's. The menu reads it from the host, which is what the seam asked
+for.
+
+**A drawing that will not restore is kept, at a cost.** If the stored drawing
+is from a newer build, starting empty and autosaving over it would destroy
+the only copy. So autosave pauses until the person replaces the document on
+purpose; the cost is that work drawn in that session is not autosaved, and
+the log says so. Moving the refused copy aside and carrying on was
+considered and rejected: the newer build would then restore the older
+session's drawing and leave its own unreachable.
+
 ### 0.1.0: a public home, a new name, and what the rename leaves alone
 
 **The move.** The owner wanted the app hosted and installable, which on the

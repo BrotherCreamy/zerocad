@@ -2350,6 +2350,54 @@ replacing) the system Node other projects on this machine may depend on.
   becomes a hole by even-odd; a tie refuses; fillet's fill is unsaid; a hole's
   twin deleted still takes the record. *Spec:*
   [`docs/plans/explicit-regions.md`](docs/plans/explicit-regions.md).
+- **Files — open, save, share, drop, and an autosave** (`src/files.ts`,
+  `src/filehost.ts` (both new); `replenv.ts`, `main.ts`, `pwa-shell.ts`).
+  - **The document**: a name (*Untitled*, or the file's less
+    `.zerocad.json`) and a dirty flag that is a comparison, not a flag —
+    `DocumentState` keeps the undo snapshot (`save(model, false)`) from the
+    last open, save or new, and dirty is "the snapshot now differs". The
+    host's `document(): { name, dirty }` (`files.document()` in `main.ts`) is
+    what the app menu's name line reads; it is not a command (in the scope
+    `document` would read as the page's).
+  - **Commands** `newFile()`, `openFile()`, `saveFile()`, `shareFile()`, in
+    `replenv.ts` and `help()`, over host handles; none journals, none is in
+    persist's replay table. **Ctrl+S / Ctrl+O** type the first two through
+    `submit` (capture phase, default prevented, not mid-composition or on
+    repeat; `fileChord`). `download()` is named for the document.
+  - **Routes** (`saveRoute`, `shareRoute`, `openRoute`, pure): save goes to
+    a held handle, else the save picker (whose handle is kept), else the
+    share sheet under a finger where it takes the file, else a download;
+    share goes to the sheet where `canShare` says yes, and a share refused
+    for anything but a cancel (Chromium refuses `.json`) downloads; open is
+    the picker where there is one, else an in-page file input
+    (`.json,application/json`). A cancelled picker or sheet is said as
+    cancelled, never as an error. New asks before discarding unsaved changes;
+    Open asks after the file is chosen (a picker needs the press's transient
+    activation, which a slow `confirm` would spend). Open and New are one
+    undo step each, through `open`'s path (tool sources carried as text).
+  - **Drop**: a file over the window shows `#drophint` (made by
+    `filehost.ts`, no `index.html` change); dropped, it opens, its Chromium
+    handle kept. The window takes every file drag, so a stray drop never
+    navigates the browser away from the drawing. **Installed desktop app**:
+    `file_handlers` (`.json`, `application/json`, action `./`) and a
+    `launchQueue` consumer.
+  - **Autosave** (`Autosave`, IndexedDB `neocad.autosave.v1`, one record):
+    500 ms after the last change, at once when hidden (`visibilitychange`,
+    `pagehide`) and after an open, save or new; restored before the first
+    model is made. A stored drawing that will not open is kept and autosave
+    *held* until `newFile()` or an open; storage that refuses is *off*, said
+    once. `navigator.storage.persist()` when installed. The record keeps a
+    Chromium handle, so Save after a restart writes back to the same file.
+  - Tests: `test/files.test.ts` (14), `test/pwa.test.ts` (+1),
+    `test/e2e/files.e2e.ts` (12 — desktop and iPhone 13, the platform played
+    by stubbing or deleting the pickers and the share sheet before load). The
+    harness gained `init` (an init script) and `forgetAutosave`; five suites
+    that reload for a first start now call the latter. 1071 unit tests, 447
+    e2e. *Known and deliberate*: one autosave slot per device (two windows,
+    last change wins); undo across an open restores the drawing, not the
+    name; a refused restore pauses autosave for the session; nothing tried
+    on iOS itself (CHANGELOG lists what to try). *Spec:*
+    [`docs/plans/files.md`](docs/plans/files.md).
 
 ## What's next
 
