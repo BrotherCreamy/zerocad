@@ -25,7 +25,9 @@ import { toolUnavailable } from "./toolavail.ts";
 import { FRAME_ARM_PX, frameMarker } from "./framemarker.ts";
 import { constrainedBy, type Glyph } from "./glyphs.ts";
 import { getToolCtor, listTools } from "./tools/tool.ts";
-import { OptionsPanel, Panels, Toolbar, browserStorage, defaultLayout, type Size } from "./panels.ts";
+import {
+  ACTIONS, ActionStrip, COARSE, FINE, OptionsPanel, Panels, Toolbar, browserStorage, defaultLayout, type Size,
+} from "./panels.ts";
 import { OptionMemory, declaredOptions, unitSymbol, type OptionValue } from "./tools/options.ts";
 import { toolIcon } from "./tools/icons.ts";
 import { depth } from "./view.ts";
@@ -75,6 +77,27 @@ const optionsPanelEl = document.querySelector<HTMLElement>('.panel[data-panel="o
 const optionsEl = document.getElementById("options")!;
 
 /**
+ * **Whether the chrome is a finger's** (docs/plans/touch.md): the primary
+ * pointer is coarse — a phone, a tablet. Read once, from the media query the
+ * stylesheet sizes its targets by, so the panels' arithmetic and the CSS they
+ * are drawn with cannot disagree. It sets sizes and defaults only: what a
+ * pointer *does* is decided per event, by its `pointerType` (tools/engine.ts),
+ * so a mouse plugged into a tablet is still a mouse.
+ */
+const coarse = typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
+const metrics = coarse ? COARSE : FINE;
+
+/**
+ * The action strip — Undo, Redo, Delete, Cancel — is a finger's Ctrl+Z, Ctrl+Y,
+ * Delete and Escape. A mouse has the keys and the menu's Undo/Redo, so the
+ * strip is taken out of the page before the panels are placed, rather than
+ * shown to a desktop that would only have to make room for it.
+ */
+const actionsPanelEl = document.querySelector<HTMLElement>('.panel[data-panel="actions"]');
+if (!coarse) actionsPanelEl?.remove();
+const actionsEl = coarse ? document.getElementById("actions") : null;
+
+/**
  * The options panel's size, once there is an options panel to ask — it is
  * built with the tool engine, after the kernel loads, and until then nothing is
  * armed, so there is nothing to show.
@@ -87,6 +110,16 @@ let optionsShown: () => Size | null = () => null;
  * to both the engine that arms from it and the command scope that lists it.
  */
 const optionMemory = new OptionMemory(browserStorage());
+
+/**
+ * What the last press anywhere was made with — `"mouse"`, `"pen"` or
+ * `"touch"` — for the one decision that happens after the press has been
+ * handled: whether a name a click put in the command line also focuses it
+ * (see `insertName`). Captured on `window` so a press that something else
+ * swallows is still counted.
+ */
+let lastPointer = "mouse";
+window.addEventListener("pointerdown", (e) => { lastPointer = e.pointerType; }, true);
 
 /**
  * How solids are shown — opaque, see-through or not at all (viewmode.ts). The
@@ -113,12 +146,13 @@ let viewMode: ViewMode = recallViewMode(browserStorage());
  */
 const panels = new Panels(
   document.getElementById("viewwrap")!,
-  (area) => defaultLayout(area, listTools().length),
+  (area) => defaultLayout(area, listTools().length, metrics),
   browserStorage(),
-  { toolbar: () => listTools().length },
+  { toolbar: () => listTools().length, ...(actionsEl ? { actions: () => ACTIONS.length } : {}) },
   {
     check: Boolean((import.meta as { env?: { DEV?: boolean } }).env?.DEV),
     fitted: { options: { size: () => optionsShown(), beside: "toolbar" } },
+    metrics,
   },
 );
 
@@ -449,6 +483,7 @@ async function main() {
   function syncToolbar() {
     const rebuilt = toolbar.sync();
     if (optionsPanel.sync() || rebuilt) panels.apply();
+    actionStrip?.sync();
   }
 
   /**
@@ -469,7 +504,9 @@ async function main() {
   function emptyHint(width: number, height: number) {
     const lines: [string, string, string][] = [
       ["13px", "#7a8b9b", "Nothing drawn yet."],
-      ["12px", "#56697b", "Pick a tool from the toolbar, right-click for the menu, or type help() in the command line."],
+      ["12px", "#56697b", coarse
+        ? "Pick a tool from the toolbar, long-press for the menu, or type help() in the command line."
+        : "Pick a tool from the toolbar, right-click for the menu, or type help() in the command line."],
     ];
     g.save();
     g.textAlign = "center";
@@ -806,7 +843,10 @@ async function main() {
     // rather than something that still needs punctuating by hand.
     const needsComma = /[\w"\]]\s*$/.test(v);
     cmdEl.value = v + (needsComma ? ", " : "") + `"${name}"`;
-    cmdEl.focus();
+    // Not under a finger: focusing the line raises iOS's keyboard over the
+    // drawing the next name is to be tapped from. The name is in the line;
+    // a tap on the line brings the keyboard back, as any field's does.
+    if (lastPointer !== "touch") cmdEl.focus();
     log(`${name} → command line`, "out");
   }
 
@@ -1048,7 +1088,7 @@ async function main() {
     },
     cancel: () => escape(),
     trial: (option, value) => engine.trial(option, value),
-  });
+  }, metrics);
   optionsShown = () => optionsPanel.size();
 
   const engine = new ToolEngine(model, cv, view, {
@@ -1102,7 +1142,28 @@ async function main() {
       const selected = engine.selection.prune(model);
       menu.show(menuFor(model, pick, pick ? null : engine.regionAt(sx, sy), history, viewMode, selected), sx, sy);
     },
+    // A finger's long-press opened the menu and then dragged on: that is the
+    // box, and the menu is not what the hand is doing any more.
+    onContextMenuWithdrawn: () => { menu.close(); },
   });
+
+  /**
+   * The action strip, through the same seam as the toolbar and the menu: each
+   * button types its line into `submit` — `undo()`, `redo()`, the Delete key's
+   * `del(...)`, `cancel()` — so the log shows it and it is in every respect
+   * the typed command. Only under a finger (see `coarse`).
+   */
+  const actionStrip = actionsEl
+    ? new ActionStrip(actionsEl, {
+      state: () => ({
+        canUndo: undoStack.canUndo,
+        canRedo: undoStack.canRedo,
+        selected: engine.selection.prune(model),
+        armed: engine.active !== null,
+      }),
+      run: (command) => void submit(command),
+    })
+    : null;
 
   /**
    * **A press on the canvas keeps the canvas for the whole gesture.** The engine
@@ -1121,12 +1182,25 @@ async function main() {
    */
   cv.addEventListener("pointerdown", (e) => {
     if (!cv.hasPointerCapture(e.pointerId)) cv.setPointerCapture(e.pointerId);
+    // **A finger on the drawing puts the keyboard away.** iOS leaves a field
+    // focused — and its keyboard over half the drawing — when the tap lands on
+    // something that is not focusable, which a canvas is not; a mouse's press
+    // blurs it anyway. A field mid-edit commits on blur, as it always has.
+    if (e.pointerType === "touch") {
+      const at = document.activeElement;
+      if (at instanceof HTMLInputElement || at instanceof HTMLTextAreaElement) at.blur();
+      tag(e);
+    }
     syncToolbar();
   });
-  cv.addEventListener("pointerup", syncToolbar);
+  cv.addEventListener("pointerup", (e) => {
+    if (e.pointerType === "touch") hoverEl.hidden = true;
+    syncToolbar();
+  });
 
   // The hover tag follows the cursor and names whatever is under it.
-  cv.addEventListener("pointermove", (e) => {
+  cv.addEventListener("pointermove", (e) => tag(e));
+  function tag(e: PointerEvent) {
     const pick = engine.hover;
     // No tag while a tool is armed: the snap marker is saying the useful thing
     // by then, and a tag left over from before the gesture would follow the
@@ -1139,10 +1213,19 @@ async function main() {
     }
     const rect = cv.getBoundingClientRect();
     hoverEl.hidden = false;
-    hoverEl.style.left = `${e.clientX - rect.left + 12}px`;
-    hoverEl.style.top = `${e.clientY - rect.top + 12}px`;
     hoverEl.textContent = describePick(model, pick);
-  });
+    // Under a finger the tag goes above it — down and to the right is under
+    // the hand — and is held inside the canvas, a phone being narrow.
+    const [x, y] = [e.clientX - rect.left, e.clientY - rect.top];
+    if (e.pointerType === "touch") {
+      const w = hoverEl.offsetWidth;
+      hoverEl.style.left = `${Math.max(4, Math.min(rect.width - w - 4, x - w / 2))}px`;
+      hoverEl.style.top = `${Math.max(4, y - 44 - hoverEl.offsetHeight)}px`;
+    } else {
+      hoverEl.style.left = `${x + 12}px`;
+      hoverEl.style.top = `${y + 12}px`;
+    }
+  }
   cv.addEventListener("pointerleave", () => { hoverEl.hidden = true; });
 
   function handles() {
@@ -1502,7 +1585,10 @@ async function main() {
   render();
   statusEl.textContent = "ready — type help(), a tool name, or any expression";
   log("type help() for the command surface");
-  cmdEl.focus();
+  // **The keyboard stays away until asked for.** A focused field on iOS is a
+  // keyboard over the drawing (raised by the next tap, if not by this), so
+  // under a finger the command line waits to be tapped, as any field does.
+  if (!coarse) cmdEl.focus();
 }
 
 // Before the kernel loads, so a pinch during the wait cannot zoom the page

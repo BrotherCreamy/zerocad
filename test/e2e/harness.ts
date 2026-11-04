@@ -2,7 +2,7 @@
 // against a real dev server.
 //
 // These exist because a good deal of what this project does is only wrong
-// once it is assembled. Nine bugs so far were invisible to the unit tests and
+// once it is assembled. Ten bugs so far were invisible to the unit tests and
 // obvious within seconds of running the thing: a status readout that went
 // stale, a fillet that satisfied every constraint to six decimal places while
 // drawing a broken rectangle, an auto-naming loop that hung the tab, and a
@@ -14,7 +14,7 @@
 
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { chromium, type Browser, type Page } from "playwright";
+import { chromium, devices, type Browser, type Page } from "playwright";
 
 /**
  * Where the app under test lives. run.ts sets this to the private server it
@@ -224,12 +224,48 @@ export interface OpenOptions {
    * measurement use it; nothing in the app knows it was done.
    */
   webgl?: boolean;
+  /**
+   * A phone to be, by Playwright's device name — `"iPhone 13"` or `"iPhone 13
+   * landscape"`: its viewport, scale, `isMobile` and `hasTouch` (so the page's
+   * `(pointer: coarse)` matches and taps are touch pointers), on Chromium,
+   * which is the browser this machine has. Not Safari: what only WebKit does
+   * is the owner's to try on the device (CHANGELOG, the touch entry).
+   */
+  device?: "iPhone 13" | "iPhone 13 landscape";
 }
 
 export async function openApp(options: OpenOptions = {}): Promise<AppContext> {
   await requireServer();
   const browser = await launchBrowser();
-  const page = await browser.newPage({ viewport: { width: 1100, height: 800 } });
+  let page: Page;
+  if (options.device) {
+    // The descriptor names WebKit as its browser; everything else in it is
+    // what Chromium emulates.
+    const { defaultBrowserType: _webkit, ...phone } = devices[options.device];
+    page = await (await browser.newContext(phone)).newPage();
+    // A phone lays a page out 980 px wide unless the page asks for the
+    // device's width. The PWA package (docs/plans/pwa-pages.md) owns the
+    // page's head and adds the real meta; until then the suite asks for the
+    // same thing, so these tests see the phone's own width either way. Put in
+    // the moment <head> exists — the app's module runs before
+    // DOMContentLoaded and measures the page — and first in it, so a page's
+    // own viewport meta, parsed after, is the one that counts (the last wins).
+    await page.addInitScript(() => {
+      const add = () => {
+        if (!document.head) return false;
+        const meta = document.createElement("meta");
+        meta.name = "viewport";
+        meta.content = "width=device-width, initial-scale=1";
+        document.head.prepend(meta);
+        return true;
+      };
+      if (add()) return;
+      const watch = new MutationObserver(() => { if (add()) watch.disconnect(); });
+      watch.observe(document, { childList: true, subtree: true });
+    });
+  } else {
+    page = await browser.newPage({ viewport: { width: 1100, height: 800 } });
+  }
   if (options.webgl === false) {
     await page.addInitScript(() => {
       const real = HTMLCanvasElement.prototype.getContext;

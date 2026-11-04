@@ -126,20 +126,23 @@
     .panel.held[data-orient]>.ptitle,.panel[data-orient]>.ptitle:hover{
       background:#0b1016 radial-gradient(circle,#46586a 0.8px,transparent 1.2px) center/4px 4px}
     .panel[data-orient="row"]>.ptitle{border-bottom:none;border-right:1px solid #223041;border-radius:3px 0 0 3px}
-    /* The toolbar: one square button per registered tool, its face the tool's
-       icon in currentColor — so the colours below are the glyph's. The amber is
-       the armed tool's and nothing else's. One line of them, the way the tray
-       runs, and panels.ts sizes the tray to exactly that line (traySize). The
-       overflow is hidden for the one case where the line does not fit — a
-       window shorter than it — so the buttons past the edge are clipped there
-       rather than drawn over the window's edge. */
-    #toolbar{display:flex;flex-direction:column;gap:2px;padding:3px;overflow:hidden}
-    .panel[data-orient="row"]>#toolbar{flex-direction:row}
-    #toolbar button{flex:none;width:20px;height:20px;padding:0;display:flex;align-items:center;justify-content:center;
+    /* A tray's buttons — the toolbar's, one square per registered tool, its
+       face the tool's icon in currentColor, so the colours below are the
+       glyph's; and the action strip's (touch only). The amber is the armed
+       tool's and nothing else's. One line of them, the way the tray runs, and
+       panels.ts sizes the tray to exactly that line (traySize). The overflow is
+       hidden for the one case where the line does not fit — a window shorter
+       than it — so the buttons past the edge are clipped there rather than
+       drawn over the window's edge. */
+    .tray{display:flex;flex-direction:column;gap:2px;padding:3px;overflow:hidden}
+    .panel[data-orient="row"]>.tray{flex-direction:row}
+    .tray button{flex:none;width:20px;height:20px;padding:0;display:flex;align-items:center;justify-content:center;
       font-family:inherit;color:#afc6d9;background:transparent;border:1px solid transparent;border-radius:3px;cursor:default}
-    #toolbar button svg{flex:none;display:block}
-    #toolbar button:hover{background:#20303f;color:#d5e1ec}
-    #toolbar button[aria-pressed="true"]{color:#e8a33d;border-color:#e8a33d80;background:#e8a33d18}
+    .tray button svg{flex:none;display:block}
+    .tray button:hover{background:#20303f;color:#d5e1ec}
+    .tray button[aria-pressed="true"]{color:#e8a33d;border-color:#e8a33d80;background:#e8a33d18}
+    /* An action that would do nothing now (nothing to undo, nothing selected). */
+    .tray button:disabled,.tray button:disabled:hover{color:#2f4050;background:transparent}
     /* A panel that comes and goes (the options panel) is hidden by the
        attribute, which .panel's display:flex would otherwise beat. */
     .panel[hidden]{display:none}
@@ -165,6 +168,32 @@
     #options .oact button.ok:hover:not(:disabled){background:#55c07a22}
     #options .oact button.no:hover{background:#20303f;color:#d5e1ec}
     #options .oact button:disabled{color:#2f4050;border-color:#1a2633}
+    /* Under a finger (docs/plans/touch.md): every target at least 44 px —
+       Apple's 44 pt, a CSS pixel being a point on an iPhone. The panels' own
+       arithmetic takes the same numbers from panels.ts's COARSE, chosen from
+       this same query, so a strip or a row here is the height its panel was
+       sized for. Fields at 16px type, below which iOS zooms the page into any
+       field it focuses. Hover colours are left as they are: a finger has no
+       hover, and a colour that sticks after a tap is iOS's, not ours. */
+    @media (pointer: coarse){
+      .panel>.ptitle{font-size:12px}
+      .tray{gap:2px;padding:3px}
+      .tray button{width:44px;height:44px;border-radius:6px}
+      .tray button svg{width:24px;height:24px}
+      .panel>.pgrip{width:44px;height:44px}
+      #cmd{font-size:16px}
+      #cmdhint{display:none}
+      #log{font-size:12px;line-height:16px;padding:0 10px;border-block:5px solid transparent}
+      #options .orow{height:44px;font-size:13px}
+      #options .oval{width:88px;height:36px;font-size:16px}
+      #options .oval[type="checkbox"]{width:28px;height:28px;margin:0 30px}
+      #options .oact button{width:44px;height:44px;font-size:18px;line-height:42px}
+      #ctxmenu{font-size:14px}
+      #ctxmenu .head{padding:8px 14px}
+      #ctxmenu .item{min-height:44px;align-items:center;padding:0 14px}
+      #ctxmenu .row{min-height:44px;align-items:center;padding:0 14px}
+      #ctxmenu .row .choice{display:inline-flex;align-items:center;min-height:44px;min-width:44px;padding:0 8px;justify-content:center}
+    }
   </style>
 </head>
 <body>
@@ -179,7 +208,7 @@
       <canvas id="cv"></canvas>
       <div class="panel" data-panel="toolbar">
         <div class="ptitle" title="tools"></div>
-        <div id="toolbar" class="pbody"></div>
+        <div id="toolbar" class="pbody tray"></div>
       </div>
       <div class="panel" data-panel="log">
         <div class="ptitle">log</div>
@@ -188,6 +217,12 @@
       <div class="panel" data-panel="options" hidden>
         <div class="ptitle">options</div>
         <div id="options" class="pbody"></div>
+      </div>
+      <!-- Undo, Redo, Delete, Cancel: a finger's keys. main.ts takes it out of
+           the page where the pointer is fine — a mouse has the keys. -->
+      <div class="panel" data-panel="actions">
+        <div class="ptitle" title="actions"></div>
+        <div id="actions" class="pbody tray"></div>
       </div>
       <div class="panel" data-panel="cmd">
         <div class="ptitle">command</div>

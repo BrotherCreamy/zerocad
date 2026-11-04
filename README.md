@@ -109,6 +109,7 @@ src/faces.ts             a solid's faces from its live geometry (a revolve's swe
 src/undo.ts              a stack of whole-model snapshots; imports nothing
 src/tools/tool.ts         abstract class Tool + defineTool registry
 src/tools/engine.ts       wires real DOM pointer events to the armed tool
+src/tools/gestures.ts     what a finger means (tap, drag, long-press, box, pinch), decided before the engine sees it
 src/tools/point.ts        the trivial example tool
 src/tools/rectangle.ts    the concrete example the Tool API was designed around
 src/tools/circle.ts       drag from center to rim
@@ -368,7 +369,7 @@ is evaluated. Note that a bare assignment (`box = ...`) persists between
 entries while a `const`/`let`/`class` declaration does not — a
 consequence of how the scope is built, described in `src/repl.ts`.
 
-## On a phone
+## On a phone or a tablet
 
 The app is hosted at **https://brothercreamy.github.io/zerocad/**, a static
 site with no server behind it. Once it has been opened, it works offline. On
@@ -381,11 +382,29 @@ an iPhone:
 
 A new version is picked up the next time the app is started after being
 closed from the app switcher, never while it is open. The page never scrolls
-or zooms under a finger. The finger gestures on the drawing are in progress
-(`docs/plans/touch.md`).
+or zooms under a finger.
 
 The site is `npm run build:pwa`'s `dist-pwa/` folder, published by
 `.github/workflows/pages.yml` (see `docs/plans/pwa-pages.md`).
+
+Under fingers (built for an iPhone; tested in Chromium's iPhone
+emulation, since only the device runs iOS Safari):
+
+- **tap** — a click: picks a tool, places a point, selects. Once something is
+  selected a tap toggles, and a tap on empty canvas clears.
+- **one finger** — a tool's own drag (a rectangle, a circle), or a drag of the
+  point or edge it lands on; on empty canvas with nothing armed it **turns the
+  drawing**.
+- **two fingers** — pan and pinch-zoom, together.
+- **hold** (half a second) — the menu, at the finger; **hold, then drag** — a
+  selection box.
+- A second finger drops a shape half-drawn; a third drops everything.
+- While a finger is down with a tool armed, the place it will land on — and
+  what it snaps to — is drawn above the fingertip.
+- **Undo, Redo, Delete, Cancel** are the strip beside the tray. The keyboard
+  waits for a tap on the command line.
+
+A mouse plugged into the same device is still a mouse.
 
 ## Building and running
 

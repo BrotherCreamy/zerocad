@@ -119,7 +119,10 @@ function dist(ax: number, ay: number, bx: number, by: number): number {
  * not drawn. Null (no solid, or the hidden and wire modes) offers everything.
  */
 export function findSnap(model: Model, view: View, sx: number, sy: number, sketch?: Plane | null,
-                         occ: Occlusion | null = null): Snap | null {
+                         occ: Occlusion | null = null, reach = 1): Snap | null {
+  // A finger's tolerances or a mouse's (picking.ts's TOUCH_REACH): every tier
+  // scaled together, so a vertex still out-ranks the edge it ends.
+  const [rPoint, rCross, rMid, rCurve] = [SNAP_POINT, SNAP_INTERSECTION, SNAP_MIDPOINT, SNAP_CURVE].map((r) => r * reach);
   // What is hidden is not on screen, so nothing about it is offered — not a
   // point, a crossing, a midpoint, a projection or a place along it.
   const shown = [...model.entities.values()].filter((e) => !model.hidden.has(e.name));
@@ -136,7 +139,7 @@ export function findSnap(model: Model, view: View, sx: number, sy: number, sketc
     const p = screenOf(e.name);
     const d = dist(sx, sy, p[0], p[1]);
     const world = model.coords(e.name);
-    if (d < SNAP_POINT && (!best || d < best.d) && onSketch(world)) best = { snap: make(p, world, "point", e.name), d };
+    if (d < rPoint && (!best || d < best.d) && onSketch(world)) best = { snap: make(p, world, "point", e.name), d };
   }
   if (best) return best.snap;
 
@@ -150,13 +153,13 @@ export function findSnap(model: Model, view: View, sx: number, sy: number, sketc
   // in one sketch plane always agree, a circle's planar rim as much as a line —
   // at any angle of view, which a circle drawn as a sphere's silhouette could
   // not manage.
-  const near = curvesNear(model, view, sx, sy, SNAP_INTERSECTION, shown);
+  const near = curvesNear(model, view, sx, sy, rCross, shown);
   const sameWithin = SAME_PLACE_PX / view.scale;
   for (let i = 0; i < near.length; i++) {
     for (let j = i + 1; j < near.length; j++) {
       for (const at of intersect(near[i].shape.curve, near[j].shape.curve)) {
         const d = dist(sx, sy, at[0], at[1]);
-        if (d >= SNAP_INTERSECTION || (best && d >= best.d)) continue;
+        if (d >= rCross || (best && d >= best.d)) continue;
         const p = near[i].shape.lift(at), q = near[j].shape.lift(at);
         if (Math.hypot(...p.map((v, k) => v - q[k])) > sameWithin) continue;
         const world = p.map((v, k) => (v + q[k]) / 2);
@@ -175,7 +178,7 @@ export function findSnap(model: Model, view: View, sx: number, sy: number, sketc
     const b = screenOf(e.refs[1]);
     const mid: Pt = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
     const d = dist(sx, sy, mid[0], mid[1]);
-    if (d < SNAP_MIDPOINT && (!best || d < best.d)) {
+    if (d < rMid && (!best || d < best.d)) {
       const A = model.coords(e.refs[0]), B = model.coords(e.refs[1]);
       const world = A.map((v, k) => (v + B[k]) / 2);
       if (onSketch(world)) best = { snap: make(mid, world, "midpoint", e.name), d };
@@ -194,16 +197,16 @@ export function findSnap(model: Model, view: View, sx: number, sy: number, sketc
       const at = foot(world).slice(0, model.dim);
       const p = worldToScreen(view, at);
       const d = dist(sx, sy, p[0], p[1]);
-      if (d < SNAP_POINT && (!best || d < best.d) && inSight(occ, at)) best = { snap: make(p, at, "projected", e.name), d };
+      if (d < rPoint && (!best || d < best.d) && inSight(occ, at)) best = { snap: make(p, at, "projected", e.name), d };
     }
     if (best) return best.snap;
   }
 
   // Tier 5: somewhere along a curve — the nearest point on it.
   for (const e of shown) {
-    const shape = screenCurve(model, view, e, SNAP_INTERSECTION);
+    const shape = screenCurve(model, view, e, rCross);
     const at = shape && nearestOnCurve(shape, sx, sy);
-    if (shape && at && at.d < SNAP_CURVE && (!best || at.d < best.d)) {
+    if (shape && at && at.d < rCurve && (!best || at.d < best.d)) {
       const world = shape.lift(at.on);
       if (onSketch(world)) best = { snap: make(at.on, world, "curve", e.name), d: at.d };
     }

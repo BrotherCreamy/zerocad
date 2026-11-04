@@ -40,6 +40,21 @@
 // on. Middle-drag is untouched and never opens anything — one button that is
 // unambiguously "move the view" is worth keeping, and it is the button Onshape
 // pans with.
+//
+// **A finger is none of those buttons** (docs/plans/touch.md; the owner: *"it
+// should work on a multi-touch device. Specifically I have an iPhone."*). A
+// touch pointer goes to the recogniser in ./gestures.ts, which holds it until
+// it has done something — moved, lifted, held still, been joined — and hands
+// back a tap, a drag, a long-press, a box or a pinch. Those are fed down the
+// same paths a mouse uses: a tap is a click, a drag is the left button's drag
+// (a tool's own gesture, or moving the geometry under it), a long-press is the
+// right-click menu, a long-press-then-drag is the box, and two fingers pan and
+// zoom about their centroid at once. One finger on empty canvas with nothing
+// armed **orbits** — it is the only hand there is, and turning the drawing is
+// what a finger on nothing most often means; the box, which the mouse's left
+// button gets on empty canvas, moves behind the long-press. The split is made
+// on `pointerType` and nothing else, so a mouse on the same device is still a
+// mouse, and a pen, which aims as finely as one, is treated as one too.
 
 import type { Model } from "../model.ts";
 import type { ResidualBlock } from "../kernel/problem.ts";
@@ -51,15 +66,16 @@ import {
   assignView, orbitBy, panBy, screenToPlane, screenToWorld, viewAxes, worldToScreen, zoomAbout, type Plane, type View,
 } from "../view.ts";
 import { framePlane, pointOnWorkingPlane } from "../workplane.ts";
-import { hitTest, type Pick } from "../picking.ts";
+import { TOUCH_REACH, hitTest, type Pick } from "../picking.ts";
 import { boxFrom, selectInBox, type BoxMode } from "../boxselect.ts";
 import { glyphAt, placeGlyphs, type Glyph } from "../glyphs.ts";
-import { findSnap, type Snap } from "../snapping.ts";
+import { describeSnap, findSnap, type Snap, type SnapKind } from "../snapping.ts";
 import type { Occlusion } from "../occlusion.ts";
 import { findLoops, loopAt } from "../loops.ts";
 import { OptionMemory, declaredOptions, explicitOptions, resolveOptions } from "./options.ts";
 import { SELECTION, Selection, type RegionSelection } from "./selection.ts";
 import { drawRegion, hiddenLoop } from "./region.ts";
+import { Gestures, type Clock, type GestureSink } from "./gestures.ts";
 
 export type { View };
 
@@ -81,6 +97,14 @@ const DRAG_THRESHOLD = 3;
  * hard to hold.
  */
 export const ORBIT_PER_PIXEL = Math.PI / 360;
+
+/**
+ * How far above the finger the lifted copy of the active point is drawn, in
+ * CSS pixels. A fingertip covers about 44 px of an iPhone's glass (Apple's
+ * target size), centred on the contact: half of that, the lifted mark's own
+ * ring and a gap clear of the nail.
+ */
+export const LIFT = 56;
 
 /**
  * How hard a drag pulls the grabbed point toward the cursor, relative to a
@@ -181,6 +205,7 @@ export class ToolEngine {
     return this.selection.regions;
   }
   private onContextMenu: (pick: Pick | null, sx: number, sy: number) => void;
+  private onContextMenuWithdrawn: () => void;
   /**
    * Whether a user action is currently open, so that `before` and `after`
    * always arrive in pairs. The engine owns the balancing rather than leaving
@@ -227,6 +252,11 @@ export class ToolEngine {
     id: number; sx: number; sy: number; x0: number; y0: number; moved: boolean;
     drag: { names: string[]; origins: number[][]; grab: number[]; plane?: Plane } | null;
     empty: boolean;
+    /**
+     * What a press on empty canvas that moves becomes: the mouse's box, or a
+     * finger's orbit (a pan in 2D) — a finger's box being its long-press-drag.
+     */
+    onEmpty: "box" | "orbit";
   } | null = null;
   /**
    * The selection box being dragged, in canvas pixels: `a` is where the press
@@ -258,6 +288,27 @@ export class ToolEngine {
   snap: Snap | null = null;
   /** Set false to place coordinates exactly where the cursor is. */
   snapping = true;
+  /**
+   * How far the hand reaches — every pick and snap radius is scaled by it:
+   * 1 for a mouse or a pen, `TOUCH_REACH` for a finger. Set by each pointer
+   * event, so a question asked between events (the menu's pick, a tool's
+   * `ctx.pick`) is asked with the reach of the hand last on the canvas.
+   */
+  reach = 1;
+  /**
+   * Where a finger is on the canvas while it is down, in canvas pixels — null
+   * with no finger down. What the lifted mark is drawn above while a tool is
+   * armed (`renderLift`), and what the host's hover tag is placed above.
+   */
+  contact: [number, number] | null = null;
+  /** The recogniser every touch pointer goes through (gestures.ts). */
+  private gestures: Gestures;
+  /**
+   * The armed tool a finger's drag delivered its press to — so the drag's
+   * moves and release go to that tool, and a second finger knows there is a
+   * tool gesture to drop. Null otherwise.
+   */
+  private touchTool: Tool | null = null;
   /**
    * Whether the constraint glyphs are drawn and pickable. On by default, as in
    * an Onshape sketch: the feature exists so a constraint nobody typed
@@ -329,6 +380,15 @@ export class ToolEngine {
        */
       onContextMenu?: (pick: Pick | null, sx: number, sy: number) => void;
       /**
+       * The press that asked for a menu moved on instead: a finger held still
+       * until `onContextMenu`, then dragged — which is the box (gestures.ts).
+       * The menu it opened is no longer what the hand is doing; a host with a
+       * menu closes it. Never called for a mouse, whose menu opens on release.
+       */
+      onContextMenuWithdrawn?: () => void;
+      /** Time for the touch recogniser — a test's fake; the real clock otherwise. */
+      clock?: Clock;
+      /**
        * The viewer's last option values, which `arm` fills from and writes to.
        * Not a callback: per-viewer state the host owns (main.ts hands it one
        * over `localStorage`), so the engine never touches storage itself. An
@@ -351,7 +411,23 @@ export class ToolEngine {
     this.onPerform = callbacks.onPerform;
     this.onPreview = callbacks.onPreview;
     this.onContextMenu = callbacks.onContextMenu ?? (() => {});
+    this.onContextMenuWithdrawn = callbacks.onContextMenuWithdrawn ?? (() => {});
     this.optionMemory = callbacks.optionMemory ?? new OptionMemory(null);
+    this.gestures = new Gestures(this.touchSink(), callbacks.clock);
+    // The canvas's touches are the recogniser's, all of them: left to the
+    // browser, a second finger is a page zoom, and both pointers are cancelled
+    // out from under the gesture (measured: Chromium's iPhone emulation sends
+    // pointercancel on the first pinch move). Said here, beside the listeners
+    // that depend on it, rather than left for a stylesheet to remember.
+    if (canvas.style) canvas.style.touchAction = "none";
+    // ...and so are the mouse events and the click a browser makes up after a
+    // touch, which would be a second, mouse-shaped reading of the same finger.
+    // Measured: the click after a long-press is hit-tested where the finger
+    // lifted, which is now on the menu that long-press opened, and it ran the
+    // menu's first item. Cancelling `touchend` is the one way to stop it
+    // (a pointer event cannot cancel a click); the recogniser has already had
+    // the pointerup by then, and nothing on the canvas listens for clicks.
+    canvas.addEventListener("touchend", (e) => { if (e.cancelable) e.preventDefault(); });
     canvas.addEventListener("pointerleave", () => {
       if (this.hover || this.armedUnder) { this.hover = null; this.armedUnder = null; this.onRenderOnly(); }
     });
@@ -433,9 +509,12 @@ export class ToolEngine {
    * and nothing should ever be *placed* at one.
    */
   pickAt(sx: number, sy: number): Pick | null {
+    // A glyph's box is not widened for a finger: it sits a few pixels off the
+    // line it marks, and a box grown to a fingertip would cover that line and
+    // take every tap aimed at it.
     const gl = glyphAt(this.glyphs(), sx, sy);
     if (gl) return { name: gl.relation, kind: "relation", distance: 0 };
-    return hitTest(this.model, this.view, sx, sy, this.occlusion);
+    return hitTest(this.model, this.view, sx, sy, this.occlusion, this.reach);
   }
 
   /**
@@ -549,7 +628,7 @@ export class ToolEngine {
         this.active = null;
         this.snap = null;
       },
-      pick: ([sx, sy]) => hitTest(this.model, this.view, sx, sy, this.occlusion),
+      pick: ([sx, sy]) => hitTest(this.model, this.view, sx, sy, this.occlusion, this.reach),
       regionAt: ([sx, sy]) => this.regionAt(sx, sy),
       log: this.onLog,
       run: this.onRun,
@@ -673,12 +752,25 @@ export class ToolEngine {
     this.idle = null;
     this.box = null;
     this.snap = null;
+    // Fingers still down when everything is dropped are spent until they lift:
+    // the gesture they were making is gone, and their next move must not
+    // start another.
+    this.gestures.reset();
+    this.touchTool = null;
+    this.contact = null;
     if (wasDragging) this.onSolveRender();
     else this.onRenderOnly();
     this.endUserAction();
   }
 
   private dispatch(kind: "down" | "move" | "up", e: PointerEvent): void {
+    // A finger: the recogniser decides what it is (see the top of this file).
+    if (e.pointerType === "touch") {
+      this.reach = TOUCH_REACH;
+      this.finger(kind, e);
+      return;
+    }
+    this.reach = 1;
     const [sx, sy] = this.local(e);
 
     // Navigation first, and on its own buttons — a pan in the middle of a
@@ -757,49 +849,7 @@ export class ToolEngine {
 
     if (this.active) {
       if (kind === "down" && e.button !== 0) return; // the left button is the tool's
-
-      // The tool is handed a *snapped* world coordinate, and the snap that
-      // produced it. A tool that only reads `world` behaves exactly as it did
-      // before — it is about its own gesture, not about how precise the cursor
-      // is. A tool that places points reads `snap` too, and applies the
-      // constraint the user was aiming for (see place.ts). Inference is
-      // downstream of snapping, so `snapping(false)` turns off both.
-      // Only places on the sketch plane are offered while there is one — see
-      // findSnap for the stack of geometry a square-on view hides behind it.
-      // A tool that chooses regions rather than places points opts out
-      // (`Tool.snaps`), and gets neither the pull nor the marker.
-      this.snap = this.snapping && this.active.snaps
-        ? findSnap(this.model, this.view, sx, sy, framePlane(this.model), this.occlusion) : null;
-      // The plane is reported even when a snap moved the point off it: it is
-      // what the gesture is being drawn on, and a tool laying out a shape from
-      // a snapped corner still lays it out along that plane's axes.
-      const at = this.pointAt(sx, sy);
-      const world = this.snap ? this.snap.world : at.world;
-      const info: PointerInfo = {
-        world,
-        screen: [sx, sy],
-        ...(this.snap ? { snap: this.snap } : {}),
-        ...(at.plane ? { plane: at.plane } : {}),
-      };
-
-      // A press or a release is one thing the user did; a move is part of one.
-      // Which of down and up actually commits geometry differs by tool — the
-      // rectangle builds nothing until it is released, the line and the fillet
-      // commit on the click — so both are bracketed and the host is left to
-      // notice that one of them changed nothing.
-      const tool = this.active;
-      if (kind === "move") {
-        tool.onMove(info);
-        this.onRenderOnly(); // so the snap marker follows
-        return;
-      }
-      this.beginUserAction();
-      try {
-        if (kind === "down") tool.onDown(info);
-        else tool.onUp(info);
-      } finally {
-        this.endUserAction();
-      }
+      this.toolEvent(kind, sx, sy);
       return;
     }
     this.snap = null;
@@ -808,86 +858,299 @@ export class ToolEngine {
     // a selection box if it grabbed nothing, pans if it grabbed a glyph, and
     // picks if it never moved at all.
     if (kind === "down" && e.button === 0) {
-      // A press that landed on a glyph grabs nothing *and* is not empty
-      // canvas, which is the same statement as the glyph being the top pick
-      // tier: it must not be possible to aim at a mark and start either
-      // dragging the geometry behind it or a box over it.
-      const under = this.pickAt(sx, sy);
-      const { world: grab, plane } = this.pointAt(sx, sy);
-      const names = under ? dragGoverns(this.model, under) : [];
-      const drag = names.length
-        ? { names, origins: names.map((n) => this.model.coords(n).slice(0, grab.length)), grab, ...(plane ? { plane } : {}) }
-        : null;
-      this.idle = { id: e.pointerId, sx, sy, x0: sx, y0: sy, moved: false, drag, empty: under === null };
+      this.idlePress(sx, sy, e.pointerId, "box");
       this.canvas.setPointerCapture?.(e.pointerId);
       return;
     }
     if (!this.idle || e.pointerId !== this.idle.id) return;
-    if (kind === "move") {
-      if (!this.idle.moved && Math.hypot(sx - this.idle.x0, sy - this.idle.y0) > DRAG_THRESHOLD) {
-        this.idle.moved = true;
-        // The highlight belongs to looking around, and the drag has taken over.
-        if (this.hover) this.hover = null;
-      }
-      if (this.idle.moved) {
-        // The action opens on the first frame that actually moves geometry, and
-        // before that frame is solved — the state to go back to is the one the
-        // drag started from, not the one it is already a pixel into. Neither a
-        // pan nor a selection box opens one: the view is not the model, and
-        // selecting is not editing.
-        if (this.idle.drag) { this.beginUserAction(); this.dragTo(sx, sy); }
-        else if (this.idle.empty) this.box = { ax: this.idle.x0, ay: this.idle.y0, bx: sx, by: sy };
-        else assignView(this.view, panBy(this.view, sx - this.idle.sx, sy - this.idle.sy));
-        this.onRenderOnly();
-      }
-      // `dragTo` clears `idle` if the model was swapped out mid-gesture, so this
-      // is not the redundant check it looks like — without it that swap ends in
-      // a TypeError on the next pointer move.
-      if (this.idle) {
-        this.idle.sx = sx;
-        this.idle.sy = sy;
-      }
-    } else {
+    if (kind === "move") this.idleMove(sx, sy);
+    else {
       this.canvas.releasePointerCapture?.(e.pointerId);
-      const { moved, drag } = this.idle;
-      const box = this.box;
-      this.idle = null;
-      this.box = null;
-      if (!moved) {
-        const pick = this.pickAt(sx, sy);
-        if (pick && this.composing()) this.onPick(pick);
-        else if (pick) this.pickInto(pick.name, e.shiftKey);
-        else this.preselect(sx, sy, e.shiftKey);
-      } else if (box) {
-        // A box is a multi-click: every name it caught goes down the same path
-        // a single click's name does — into the command line while a command
-        // is being written, into the selection otherwise — so there is one
-        // story about what selecting means. An empty box picks nothing, and a
-        // plain one that caught nothing empties the selection, as a click on
-        // empty canvas does.
-        const { rect, mode } = boxFrom(box.ax, box.ay, box.bx, box.by);
-        const caught = selectInBox(this.model, this.view, rect, mode, this.occlusion);
-        if (this.composing()) {
-          for (const name of caught) {
-            const entity = this.model.entities.get(name)!;
-            this.onPick({ name, kind: entity.kind, distance: 0 });
-          }
-        } else if (e.shiftKey) {
-          this.selection.add(caught);
-        } else {
-          this.selection.set(caught);
-        }
-        this.onRenderOnly(); // the box is gone; the canvas has to stop drawing it
-      } else if (drag) {
-        // One ordinary solve, through the host's solve path, so the status
-        // line reports the settled model rather than a frame of a gesture.
-        this.onSolveRender();
-      }
-      // After the settling solve, so a host taking a snapshot here gets the
-      // model as it will stay rather than a frame of the gesture. A no-op for a
-      // pick or a pan, neither of which ever opened an action.
+      this.idleRelease(sx, sy, e.shiftKey);
+    }
+  }
+
+  /**
+   * One pointer event for the armed tool: snapped, bracketed, delivered. The
+   * mouse's left button and a finger's tap or drag both come here, so a tool
+   * cannot tell which hand it is under — only the snap's reach differs.
+   */
+  private toolEvent(kind: "down" | "move" | "up", sx: number, sy: number): void {
+    const tool = this.active!;
+    // The tool is handed a *snapped* world coordinate, and the snap that
+    // produced it. A tool that only reads `world` behaves exactly as it did
+    // before — it is about its own gesture, not about how precise the cursor
+    // is. A tool that places points reads `snap` too, and applies the
+    // constraint the user was aiming for (see place.ts). Inference is
+    // downstream of snapping, so `snapping(false)` turns off both.
+    // Only places on the sketch plane are offered while there is one — see
+    // findSnap for the stack of geometry a square-on view hides behind it.
+    // A tool that chooses regions rather than places points opts out
+    // (`Tool.snaps`), and gets neither the pull nor the marker.
+    this.snap = this.snapping && tool.snaps
+      ? findSnap(this.model, this.view, sx, sy, framePlane(this.model), this.occlusion, this.reach) : null;
+    // The plane is reported even when a snap moved the point off it: it is
+    // what the gesture is being drawn on, and a tool laying out a shape from
+    // a snapped corner still lays it out along that plane's axes.
+    const at = this.pointAt(sx, sy);
+    const world = this.snap ? this.snap.world : at.world;
+    const info: PointerInfo = {
+      world,
+      screen: [sx, sy],
+      ...(this.snap ? { snap: this.snap } : {}),
+      ...(at.plane ? { plane: at.plane } : {}),
+    };
+
+    // A press or a release is one thing the user did; a move is part of one.
+    // Which of down and up actually commits geometry differs by tool — the
+    // rectangle builds nothing until it is released, the line and the fillet
+    // commit on the click — so both are bracketed and the host is left to
+    // notice that one of them changed nothing.
+    if (kind === "move") {
+      tool.onMove(info);
+      this.onRenderOnly(); // so the snap marker follows
+      return;
+    }
+    this.beginUserAction();
+    try {
+      if (kind === "down") tool.onDown(info);
+      else tool.onUp(info);
+    } finally {
       this.endUserAction();
     }
+  }
+
+  /**
+   * A press with nothing armed: what it landed on, and the plan for dragging
+   * it, taken now (see `idle`). `onEmpty` is what a press on nothing becomes
+   * if it moves — the mouse's box, or a finger's orbit.
+   */
+  private idlePress(sx: number, sy: number, id: number, onEmpty: "box" | "orbit"): void {
+    // A press that landed on a glyph grabs nothing *and* is not empty
+    // canvas, which is the same statement as the glyph being the top pick
+    // tier: it must not be possible to aim at a mark and start either
+    // dragging the geometry behind it or a box over it.
+    const under = this.pickAt(sx, sy);
+    const { world: grab, plane } = this.pointAt(sx, sy);
+    const names = under ? dragGoverns(this.model, under) : [];
+    const drag = names.length
+      ? { names, origins: names.map((n) => this.model.coords(n).slice(0, grab.length)), grab, ...(plane ? { plane } : {}) }
+      : null;
+    this.idle = { id, sx, sy, x0: sx, y0: sy, moved: false, drag, empty: under === null, onEmpty };
+  }
+
+  /** A move of the press `idlePress` took: past the threshold, a drag, a box, an orbit or a pan. */
+  private idleMove(sx: number, sy: number): void {
+    const idle = this.idle!;
+    if (!idle.moved && Math.hypot(sx - idle.x0, sy - idle.y0) > DRAG_THRESHOLD) {
+      idle.moved = true;
+      // The highlight belongs to looking around, and the drag has taken over.
+      if (this.hover) this.hover = null;
+    }
+    if (idle.moved) {
+      // The action opens on the first frame that actually moves geometry, and
+      // before that frame is solved — the state to go back to is the one the
+      // drag started from, not the one it is already a pixel into. Neither a
+      // pan nor a selection box opens one: the view is not the model, and
+      // selecting is not editing.
+      if (idle.drag) { this.beginUserAction(); this.dragTo(sx, sy); }
+      else if (idle.empty && idle.onEmpty === "box") this.box = { ax: idle.x0, ay: idle.y0, bx: sx, by: sy };
+      else if (idle.empty && this.model.dim === 3) {
+        // A finger on nothing turns the drawing, at the right-drag's rate.
+        assignView(this.view, orbitBy(this.view, (sx - idle.sx) * ORBIT_PER_PIXEL, (sy - idle.sy) * ORBIT_PER_PIXEL));
+      } else assignView(this.view, panBy(this.view, sx - idle.sx, sy - idle.sy));
+      this.onRenderOnly();
+    }
+    // `dragTo` clears `idle` if the model was swapped out mid-gesture, so this
+    // is not the redundant check it looks like — without it that swap ends in
+    // a TypeError on the next pointer move.
+    if (this.idle) {
+      this.idle.sx = sx;
+      this.idle.sy = sy;
+    }
+  }
+
+  /**
+   * The release of the press `idlePress` took: a pick if it never moved, the
+   * box's catch, or the drag's settling solve. `add` is what shift means — a
+   * click toggles, a box adds — and a finger's box always has it.
+   */
+  private idleRelease(sx: number, sy: number, add: boolean): void {
+    const { moved, drag } = this.idle!;
+    const box = this.box;
+    this.idle = null;
+    this.box = null;
+    if (!moved) {
+      const pick = this.pickAt(sx, sy);
+      if (pick && this.composing()) this.onPick(pick);
+      else if (pick) this.pickInto(pick.name, add);
+      else this.preselect(sx, sy, add);
+    } else if (box) {
+      // A box is a multi-click: every name it caught goes down the same path
+      // a single click's name does — into the command line while a command
+      // is being written, into the selection otherwise — so there is one
+      // story about what selecting means. An empty box picks nothing, and a
+      // plain one that caught nothing empties the selection, as a click on
+      // empty canvas does.
+      const { rect, mode } = boxFrom(box.ax, box.ay, box.bx, box.by);
+      const caught = selectInBox(this.model, this.view, rect, mode, this.occlusion);
+      if (this.composing()) {
+        for (const name of caught) {
+          const entity = this.model.entities.get(name)!;
+          this.onPick({ name, kind: entity.kind, distance: 0 });
+        }
+      } else if (add) {
+        this.selection.add(caught);
+      } else {
+        this.selection.set(caught);
+      }
+      this.onRenderOnly(); // the box is gone; the canvas has to stop drawing it
+    } else if (drag) {
+      // One ordinary solve, through the host's solve path, so the status
+      // line reports the settled model rather than a frame of a gesture.
+      this.onSolveRender();
+    }
+    // After the settling solve, so a host taking a snapshot here gets the
+    // model as it will stay rather than a frame of the gesture. A no-op for a
+    // pick or a pan, neither of which ever opened an action.
+    this.endUserAction();
+  }
+
+  /** A touch pointer's event, to the recogniser — whose answers arrive at `touchSink`. */
+  private finger(kind: "down" | "move" | "up", e: PointerEvent): void {
+    const [sx, sy] = this.local(e);
+    if (kind === "down") {
+      // Each finger keeps the canvas for as long as it is down, wherever it
+      // wanders — over a panel included.
+      this.canvas.setPointerCapture?.(e.pointerId);
+      this.gestures.down(e.pointerId, sx, sy);
+    } else if (kind === "move") this.gestures.move(e.pointerId, sx, sy);
+    else if (e.type === "pointercancel") this.gestures.cancel(e.pointerId);
+    else this.gestures.up(e.pointerId, sx, sy);
+  }
+
+  /**
+   * What each recognised gesture does — the finger column of the spec's
+   * table, fed down the mouse's paths.
+   */
+  private touchSink(): GestureSink {
+    /** What is under the finger: quiet geometry revealed as a hover reveals it, or the armed tool's snap and preview. */
+    const look = (x: number, y: number) => {
+      this.contact = [x, y];
+      if (this.active) {
+        this.armedUnder = this.pickAt(x, y);
+        this.toolEvent("move", x, y); // the snap marker and the preview, to the finger
+      } else {
+        this.hover = this.pickAt(x, y);
+        this.onRenderOnly();
+      }
+    };
+    /** No finger on the glass any more: what it revealed goes, the selection stays. */
+    const lift = () => {
+      this.contact = null;
+      this.hover = null;
+      this.armedUnder = null;
+      if (this.active) this.snap = null;
+      this.onRenderOnly();
+    };
+    return {
+      press: look,
+      tap: (x, y) => {
+        if (this.active) {
+          // A click: the press and the release, in the one place. A tool that
+          // finished on the press (a point) is not handed a release it would
+          // read as the start of something else.
+          const tool = this.active;
+          this.toolEvent("down", x, y);
+          if (this.active === tool) this.toolEvent("up", x, y);
+          return;
+        }
+        // **A tap toggles once something is selected** — there is no shift on
+        // glass, and a selection made one tap at a time has to be able to
+        // grow. A tap on empty canvas clears it, as a click does.
+        const pick = this.pickAt(x, y);
+        const add = this.selection.size > 0;
+        if (pick && this.composing()) this.onPick(pick);
+        else if (pick) this.pickInto(pick.name, add);
+        else this.preselect(x, y, add);
+      },
+      dragStart: (x0, y0) => {
+        this.hover = null;
+        if (this.active) {
+          // The tool's press lands only now, where the finger first touched —
+          // held back while the finger was undecided, so a pinch that began
+          // with one finger never handed the tool a press to drop.
+          this.touchTool = this.active;
+          this.toolEvent("down", x0, y0);
+        } else this.idlePress(x0, y0, -1, "orbit");
+      },
+      drag: (x, y) => {
+        if (this.touchTool) {
+          if (this.active !== this.touchTool) return; // it finished on the press
+          this.contact = [x, y];
+          this.armedUnder = this.pickAt(x, y);
+          this.toolEvent("move", x, y);
+        } else if (this.idle) this.idleMove(x, y);
+      },
+      dragEnd: (x, y) => {
+        const tool = this.touchTool;
+        this.touchTool = null;
+        if (tool) {
+          if (this.active === tool) this.toolEvent("up", x, y);
+        } else if (this.idle) this.idleRelease(x, y, false);
+      },
+      longPress: (x, y) => {
+        const pick = this.pickAt(x, y);
+        // The menu is about to open over the finger: what the finger revealed,
+        // and a tool's mark under it, would be stale behind it.
+        this.contact = null;
+        this.hover = null;
+        this.armedUnder = null;
+        if (this.active) this.snap = null;
+        this.onRenderOnly();
+        this.onContextMenu(pick, x, y);
+      },
+      boxStart: (x0, y0) => {
+        // A box selects, and an armed tool is choosing for itself — the mouse
+        // has no box under a tool either. The menu goes; the finger is done
+        // until it lifts.
+        this.onContextMenuWithdrawn();
+        if (this.active) return;
+        this.idle = { id: -1, sx: x0, sy: y0, x0, y0, moved: false, drag: null, empty: true, onEmpty: "box" };
+      },
+      box: (x, y) => { if (this.idle) this.idleMove(x, y); },
+      // A finger's box adds, as a tap toggles: the selection grows by gesture
+      // and a tap on empty canvas is what empties it.
+      boxEnd: (x, y) => { if (this.idle) this.idleRelease(x, y, true); },
+      pinch: (dx, dy, factor, cx, cy) => {
+        assignView(this.view, zoomAbout(panBy(this.view, dx, dy), cx, cy, factor));
+        this.onRenderOnly();
+      },
+      abandon: () => {
+        // **A second finger drops what the first was doing** — a half-drawn
+        // rectangle is not committed. The tool stays armed, afresh, as an undo
+        // leaves it (`arm` again: a feature tool `retune`s and keeps its picks,
+        // any other is a new instance with no gesture in it). What a tool
+        // already committed on the press — a line's second click — stays
+        // committed, as it would under a mouse; Undo takes it back.
+        const tool = this.touchTool;
+        this.touchTool = null;
+        const armed = this.armed;
+        if (tool && this.active === tool && armed) this.arm(armed.name, armed.options);
+        if (this.idle) {
+          // A drag is settled rather than dropped, for `cancel`'s reasons; a
+          // box and an orbit are simply over.
+          const settle = this.idle.moved && this.idle.drag !== null
+            && this.idle.drag.names.every((n) => this.model.entities.has(n));
+          this.idle = null;
+          this.box = null;
+          if (settle) this.onSolveRender();
+          this.endUserAction();
+        }
+        lift();
+      },
+      end: lift,
+    };
   }
 
   /** A click with nothing armed on an entity or a glyph, while no command is being written: see `selection`. */
@@ -1056,6 +1319,7 @@ export class ToolEngine {
     this.active.render(r);
     this.g.restore();
     this.renderSnapMarker();
+    if (this.contact) this.renderLift();
   }
 
   /**
@@ -1126,21 +1390,98 @@ export class ToolEngine {
       g.restore();
       return;
     }
-    if (this.snap.kind === "point") {
-      g.rect(x - 5, y - 5, 10, 10); // a square: an exact, existing point
-    } else if (this.snap.kind === "intersection") {
-      // An x: two curves crossing, drawn as the thing itself.
-      g.moveTo(x - 5, y - 5); g.lineTo(x + 5, y + 5);
-      g.moveTo(x + 5, y - 5); g.lineTo(x - 5, y + 5);
-    } else if (this.snap.kind === "midpoint") {
-      g.moveTo(x, y - 6); // a triangle: derived, but still an exact position
-      g.lineTo(x + 6, y + 5);
-      g.lineTo(x - 6, y + 5);
-      g.closePath();
-    } else {
-      g.arc(x, y, 5, 0, Math.PI * 2); // a circle: somewhere along a curve
-    }
+    traceMark(g, this.snap.kind, x, y);
     g.stroke();
     g.restore();
+  }
+
+  /**
+   * **The active point, lifted clear of the finger.** Under a finger the snap
+   * marker and the tool's point are exactly where the fingertip is, and so are
+   * the one thing on screen the hand hides. So while a finger is down with a
+   * tool armed, a copy of the mark — the snap's shape and what it caught, or a
+   * cross where nothing was caught — is drawn `LIFT` pixels above the point on
+   * a dark disc, with a dotted leader down to where the point really is (below
+   * it instead, where there is no room above).
+   *
+   * A lifted mark rather than a loupe, deliberately. A loupe magnifies the
+   * picture, and the picture here is two canvases — the faces in WebGL, which
+   * keeps no copy of its last frame to read back, under the drawing — so a
+   * loupe would either show the sketch without the solid or cost a second
+   * render of the faces on every move. And what the hand needs under a finger
+   * is not a bigger picture but the answer to *where will it land, and on
+   * what*: the mark's shape says which kind of place, the label names it, and
+   * the leader says where.
+   */
+  private renderLift(): void {
+    if (!this.active) return;
+    const [cx, cy] = this.contact!;
+    const [px, py] = this.snap ? this.snap.screen : [cx, cy];
+    const above = py - LIFT >= 16;
+    const [lx, ly] = [px, above ? py - LIFT : py + LIFT];
+    const g = this.g;
+    g.save();
+    g.strokeStyle = "#55c07a";
+    g.lineWidth = 1;
+    g.globalAlpha = 0.7;
+    g.setLineDash([2, 3]);
+    g.beginPath();
+    g.moveTo(px, py);
+    g.lineTo(lx, above ? ly + 13 : ly - 13);
+    g.stroke();
+    g.globalAlpha = 1;
+    g.setLineDash([]);
+    g.fillStyle = "#0a0e13d9";
+    g.beginPath();
+    g.arc(lx, ly, 13, 0, Math.PI * 2);
+    g.fill();
+    g.strokeStyle = "#223041";
+    g.stroke();
+    g.strokeStyle = "#55c07a";
+    g.lineWidth = 1.6;
+    g.beginPath();
+    if (this.snap) {
+      if (this.snap.kind === "projected") g.setLineDash([2.5, 2]);
+      traceMark(g, this.snap.kind, lx, ly);
+    } else {
+      g.moveTo(lx - 6, ly); g.lineTo(lx + 6, ly);
+      g.moveTo(lx, ly - 6); g.lineTo(lx, ly + 6);
+    }
+    g.stroke();
+    if (this.snap) {
+      g.setLineDash([]);
+      g.font = '11px "IBM Plex Mono", ui-monospace, Menlo, monospace';
+      g.fillStyle = "#55c07a";
+      g.textBaseline = "middle";
+      const text = describeSnap(this.snap);
+      // Right of the disc, or left of it where the right would run off.
+      const right = lx + 17 + g.measureText(text).width <= this.canvas.getBoundingClientRect().width - 4;
+      g.textAlign = right ? "left" : "right";
+      g.fillText(text, right ? lx + 17 : lx - 17, ly);
+    }
+    g.restore();
+  }
+}
+
+/**
+ * The path of a snap marker's shape at (x, y): a square for an existing point
+ * (and for a projected one, which the caller dashes), an x where two curves
+ * cross, a triangle for a midpoint, a circle along a curve. Traced, not
+ * stroked, so the marker and its lifted copy share one drawing of each kind.
+ */
+function traceMark(g: CanvasRenderingContext2D, kind: SnapKind, x: number, y: number): void {
+  if (kind === "point" || kind === "projected") {
+    g.rect(x - 5, y - 5, 10, 10); // a square: an exact, existing point
+  } else if (kind === "intersection") {
+    // An x: two curves crossing, drawn as the thing itself.
+    g.moveTo(x - 5, y - 5); g.lineTo(x + 5, y + 5);
+    g.moveTo(x + 5, y - 5); g.lineTo(x - 5, y + 5);
+  } else if (kind === "midpoint") {
+    g.moveTo(x, y - 6); // a triangle: derived, but still an exact position
+    g.lineTo(x + 6, y + 5);
+    g.lineTo(x - 6, y + 5);
+    g.closePath();
+  } else {
+    g.arc(x, y, 5, 0, Math.PI * 2); // a circle: somewhere along a curve
   }
 }

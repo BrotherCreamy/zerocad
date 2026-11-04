@@ -631,6 +631,17 @@ change: "multi-stage" is just "finishes later".
 The engine keeps navigation and tool use on separate mouse buttons, so a
 gesture can be panned through without the tool ever seeing it.
 
+**A finger has no buttons**, so a touch pointer goes through a recogniser
+first (`tools/gestures.ts`): pure, below the engine, knowing nothing but
+pointer ids, pixels and a clock. It holds a touch until it has moved, lifted,
+held still or been joined, then names the gesture, and the engine sends that
+down the mouse's own paths. A tool therefore sees a finger's tap as a click
+and a finger's drag as a left drag, and never learns that touch exists. The
+one thing a finger changes below the engine is reach: `hitTest` and
+`findSnap` take a `reach` factor (`TOUCH_REACH` for a finger) that scales
+every tier together. The branch is made on each event's `pointerType`, never
+on what the device is; only the chrome's sizes follow `(pointer: coarse)`.
+
 Screen-space questions are the engine's to answer, never the tool's: `pick`
 says what entity is under a pixel — and, for a frame, which arm of its marker,
 so the revolve tool turns a click into `"f1.y"` — and `regionAt` which closed
@@ -1210,7 +1221,7 @@ until the next action went unrecorded.
 
 ## Why there is an end-to-end suite
 
-Nine bugs so far were invisible to the unit tests and obvious within seconds
+Ten bugs so far were invisible to the unit tests and obvious within seconds
 of running the app:
 
 1. a status readout that went stale, so a conflict could be introduced from
@@ -1247,6 +1258,13 @@ of running the app:
    — which sends a Delete to a line already empty — delete half of each
    test's drawing, and the hand does the same: empty the line, press Delete
    once more. The key is now never a focused text field's to give away.
+10. A long-press that opened the context menu and then, on the lift, pressed
+   the menu's first item. The browser makes up a click after a touch and
+   hit-tests it where the finger lifts, which is on the menu that had just
+   opened under it. The unit suite has no browser to make up clicks; the
+   first iPhone-emulation run found it, and only with a tool armed, where the
+   menu happened to open under the finger. The engine now cancels the
+   canvas's `touchend`, the one way to stop that click.
 
 None of these are mathematics. They are all *assembly*. Hence `npm run
 test:e2e`, and hence the expectation that anything touching the app is checked

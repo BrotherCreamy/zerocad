@@ -24,6 +24,25 @@ otherwise.
 
 ## Decisions made so far — veto here if any are wrong
 
+- **The finger mapping** (2026-11-04, the owner: *"it should work on a
+  multi-touch device. Specifically I have an iPhone."*) — veto any row. A tap
+  is a click; one finger drags what it lands on (a tool's shape, a point, an
+  edge) or, on empty canvas with nothing armed, **orbits** (a pan in 2D); two
+  fingers pan by their centroid and zoom about it at once (twist ignored); a
+  long-press (500 ms, still) is the right-click menu, and a long-press then
+  drag is the box; a tap toggles once something is selected and a tap on
+  empty canvas clears; a second finger drops a one-finger gesture (a
+  half-drawn shape is not built), a third drops everything until the hand is
+  off. A finger down reveals quiet geometry as hover does. Undo, Redo, Delete
+  and Cancel are an **action strip** (a tray, shown only under a coarse
+  pointer; each button types `undo()`, `redo()`, `del(...)`, `cancel()`).
+  Numbers, each a constant: tap 8 px / 350 ms, long-press 500 ms, a finger
+  reaches 2.75× a mouse (a point is a 44 pt target), the lifted mark 56 px
+  above the finger. **Behaviour follows each event's `pointerType`**, never a
+  device guess; only the chrome's *sizes and defaults* follow `(pointer:
+  coarse)`, read once at load. Cancel types `cancel()` (tool and selection
+  together) rather than Escape's one step at a time, because a feature's
+  picks already have ✗. Spec: [`docs/plans/touch.md`](docs/plans/touch.md).
 - **Hosted on GitHub Pages as an installable PWA, from a public repository
   of its own** (the owner, 2026-11-04, verbatim: *"please make this available
   via GitHub hosting, and it should be a PWA, non-scrolling/non-zooming, to
@@ -1201,6 +1220,61 @@ are flagged as such.
 Queue for Opus, in order. Each gets a spec in `docs/plans/` before work
 starts.
 
+- [x] **The app under fingers — BUILT (2026-11-04).** The owner: *"it should
+      work on a multi-touch device. Specifically I have an iPhone."* One touch
+      recogniser (`src/tools/gestures.ts`) feeding the engine's mouse paths:
+      tap, one-finger drag (a tool's gesture, a drag of what it lands on, or an
+      orbit on empty canvas), two-finger pan and pinch about the centroid,
+      long-press for the menu, long-press-drag for the box, a second finger
+      dropping a draw, a third dropping everything; tap-to-toggle selection;
+      finger-down reveal; coarse pick and snap radii (×2.75) with the active
+      point lifted 56 px above the finger; the action strip (Undo, Redo,
+      Delete, Cancel); 44 px targets under `(pointer: coarse)`; the keyboard
+      kept away; a phone's default layout both ways up. **Not tried on iOS
+      Safari** — this machine has only Chromium; CHANGELOG lists what the owner
+      should try first. Spec: [`docs/plans/touch.md`](docs/plans/touch.md).
+      Deviations from the spec:
+      - ⚠ **Portrait's tray is a column down the left**, not a row along the
+        bottom: eleven 44 px buttons are 556 px of row on a 390 px phone. The
+        landscape tray is the row.
+      - ⚠ **The options panel has a phone default of its own in portrait** —
+        above the action strip, right of the tray — because beside a column
+        on the left it hung over the middle of the drawing (measured: it
+        covered the rectangle an extrude test aimed at).
+      - ⚠ **Cancel types `cancel()`**, not Escape's step-at-a-time: the strip
+        has to type a command, there is no typed Escape, and a feature's picks
+        have ✗ for the one step.
+      - ⚠ **A finger's box adds to the selection** (as shift-box does): there
+        is no shift on glass, and a tap on empty canvas is what clears.
+      - ⚠ **The action strip is shown only under a coarse pointer**: a
+        desktop has the keys, and showing it would have changed the mouse's
+        layout.
+      - ⚠ **The canvas's `touchend` is cancelled** (in the engine): the
+        browser's compatibility click after a long touch landed on the menu
+        the long-press had just opened, and ran its first item. Cancelling
+        `touchend` is the only way to stop a touch's click. It overlaps the
+        PWA package's gesture listeners only in effect, not in code.
+      - ⚠ **The engine sets the canvas's `touch-action: none` itself** — the
+        PWA package's stylesheet will say the same; without it a pinch is the
+        page's zoom and the pointers are cancelled (measured in emulation).
+      **Found while building, left deliberately:**
+      - **Glyph boxes are not widened** for a finger: a glyph sits ~7 px off its
+        line, and a fingertip-sized box would take the taps aimed at the line.
+        Below 44 pt (about 18×16).
+      - **The context menu is wider than a phone's room** either side of most
+        fingers; menu.ts holds it inside the window, so it can sit under the
+        finger (the lift no longer presses it).
+      - **Landscape in Safari is cramped**: 342 px of viewport, 88 of it the
+        command line (its 44 px strip and 44 px row).
+      - **A tool's press-commit survives a dropped gesture** (a line's second
+        click is committed on the press), as under a mouse; Undo takes it back.
+      - **Chrome sizes are chosen at load** from `(pointer: coarse)`; plugging a
+        mouse into an iPad keeps the large targets until reload (the mouse
+        still behaves as a mouse).
+      - **Until the PWA package lands there is no viewport meta**, so a real
+        iPhone lays the page out 980 px wide. Under device emulation the e2e
+        harness puts one first in `<head>`; a page's own, parsed after it, is
+        the one that counts.
 - [x] **An installable app on GitHub Pages — BUILT (2026-11-04).** The owner
       asked for GitHub hosting, a PWA, and a page that neither scrolls nor
       zooms, for his iPhone. `npm run build:pwa` → `dist-pwa/` (the

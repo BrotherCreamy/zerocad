@@ -106,6 +106,88 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### The app under fingers
+
+**The ask**, verbatim: *"it should work on a multi-touch device. Specifically I
+have an iPhone. Think about how best to do that."* The spec
+(`docs/plans/touch.md`) gave the finger mapping after Onshape and Shapr3D. The
+choices below are the ones the mapping left open.
+
+**One recogniser, in front of the engine, rather than touch branches through
+it.** A mouse press means something the moment it lands, because its button
+says what it is. A finger's press means nothing until it has moved, lifted,
+held still or been joined. So `gestures.ts` holds every touch until it has
+decided, then hands the engine a tap, a drag, a long-press, a box or a pinch.
+The engine sends each one down a path the mouse already used: `toolEvent`,
+`idlePress`/`idleMove`/`idleRelease`, `onContextMenu`, the view functions.
+*Rejected:* synthesising mouse-shaped events (buttons bitmasks) and replaying
+them into the old `dispatch`. That would have needed a fake right button for
+the menu and a fake middle button for the pan, and a tool armed would still
+have had its press delivered on landing. A tool's press is the reason for
+holding: the line, point and fillet tools commit on the press, and the second
+finger of a pinch lands a few tens of milliseconds after the first.
+Delivered on landing, every pinch would have started with a stray point. Held
+until the finger moves past 8 px (then delivered where it *landed*) or lifts,
+a pinch never reaches the tool at all. The recogniser is pure, with an
+injected clock, so the long-press is a timer and the tests drive it with a
+fake. A finger held perfectly still sends no events, so "on the next event"
+could not have been the check.
+
+**The second finger drops a draw by re-arming the tool**, `arm(name,
+options)`, exactly as undo does. *Rejected:* calling `onCancel` and keeping
+the instance. `onCancel` has always meant "you are being disarmed", and
+nothing promises a tool is usable after it. Re-arming is also right for the
+feature tools: `arm` on the tool already armed `retune`s, so an extrude keeps
+its picks.
+
+**Orbit on one finger, box behind the long-press.** On a phone the one-finger
+drag is the gesture people make most, and on empty canvas in a 3D CAD app it
+means "turn it". The box is rarer and deliberate, which suits a gesture with a
+wait in it. A box by finger *adds*, as shift-box does, because a selection
+built tap by tap must be able to grow, and a tap on empty canvas is the clear.
+
+**The lifted mark, not a loupe.** The spec offered either. A loupe magnifies a
+picture, and this picture is two canvases. The faces are WebGL with
+`preserveDrawingBuffer` off, so there is no frame to copy back, and a loupe
+would either show the sketch without its solid or re-render the faces on
+every move. What a hand under a finger needs is where the point will land and
+on what. A copy of the snap's own mark and its name, 56 px up with a leader
+down, says exactly that, and costs a few strokes.
+
+**Radii by one factor.** 2.75 = 22/8: a point's 8 px pick radius becomes half
+of Apple's 44 pt target. Every tier is scaled together, rather than each radius
+being tuned, so the tier order (point over curve over line) survives. Glyphs
+were left alone. Widening a box that sits 7 px off its line would have made the
+line untappable.
+
+**The click after a long touch.** Found in the browser, not designed: the
+compatibility click a browser makes after a touch is hit-tested where the
+finger lifts, and the menu the long-press had just opened was there. Pointer
+events cannot cancel a click; `touchend.preventDefault()` can, so the engine
+cancels every canvas `touchend`. Nothing on the canvas listened for clicks,
+and the explicit blur in `main.ts` replaces the focus change the
+compatibility `mousedown` used to make.
+
+**Sizes from `(pointer: coarse)`, behaviour from `pointerType`.** The rule was
+"never a device guess". A media query is the one signal there is before any
+pointer has arrived (the first layout, whether to focus the command line at
+start), and it is the one the stylesheet sizes by, so the panels' arithmetic
+(`COARSE`) and the CSS cannot disagree. What a press *does* is decided per
+event. A mouse on an iPad is a mouse with big buttons.
+
+**Portrait's tray is a column.** Eleven 44 px buttons are 556 px, and the
+phone is 390. The owner retired wrapping (*"its just a straight line"*), and a
+row that fits would need buttons of about 30 px, well under the target. The
+column fits, with the command
+line and the log right of it, the strip under a thumb at the bottom right, and
+the options panel just above the strip. Beside the column it hung over the
+middle of the drawing.
+
+**Shown only under a coarse pointer: the action strip.** A desktop has Ctrl+Z,
+Delete, Escape and the menu's Undo/Redo. Adding a panel there would have
+changed the mouse's layout, and the brief was that mouse and keyboard stay as
+they were.
+
 ### An installable app, and a page that never moves
 
 **What the owner asked for** was GitHub hosting, a PWA, and a page that

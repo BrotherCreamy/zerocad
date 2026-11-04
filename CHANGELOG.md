@@ -7,6 +7,133 @@ decisions.
 
 ---
 
+## The app under fingers: an iPhone first
+
+The owner, verbatim:
+
+> *it should work on a multi-touch device. Specifically I have an iPhone.
+> Think about how best to do that.*
+
+The app was built for a mouse and a keyboard. Right-drag orbits, middle-drag
+pans, the wheel zooms, a right-release opens the menu, hover reveals quiet
+geometry, shift adds to a selection, and Enter, Escape, Delete and Ctrl+Z are
+keys. None of that exists on glass. Now each of them has a finger, after
+Onshape and Shapr3D on iPhone:
+
+| Mouse / keyboard | Finger |
+|---|---|
+| left click | **tap**: lifted within 8 px and 350 ms |
+| left drag with a tool armed | **one-finger drag**: the tool's own gesture |
+| left drag on geometry | **one-finger drag** on it: moves it |
+| left drag on empty canvas (box) | **long-press, then drag** |
+| right drag (orbit) | **one-finger drag on empty canvas**, nothing armed (a pan in 2D) |
+| middle drag and wheel | **two fingers**: the centroid pans and the spread zooms about it, both at once |
+| right-click menu | **long-press** (500 ms, still): the menu at the finger |
+| shift-click | **a tap toggles** once something is selected; a tap on empty canvas clears |
+| hover | **a finger down** reveals what is under it; lifting ends it, except for what is selected |
+| Enter / Escape | the options panel's ✓ / ✗, as before |
+| Ctrl+Z / Ctrl+Y / Delete / Escape | **the action strip**: Undo, Redo, Delete, Cancel |
+
+Twist is ignored. A second finger arriving during a one-finger gesture drops it
+(a half-drawn rectangle is not built) and becomes the pan and zoom. A third
+finger drops everything until the hand is off the glass. A mouse on the same
+device is still a mouse: the split is made on each event's `pointerType`.
+
+- **One recogniser** (`src/tools/gestures.ts`): pointer ids, pixels and a
+  clock in; tap, drag, long-press, box, pinch and abandon out. It holds a
+  touch until it has done something, then the engine feeds the answer down the
+  mouse's paths. A tool sees the same `onDown`/`onMove`/`onUp` from a finger as
+  from a mouse. Its press is held until the finger moves or lifts, so a pinch
+  that starts with one finger never hands a tool a press it has to take back.
+- **A finger reaches further.** Every pick and snap radius is multiplied by
+  2.75, which makes a point exactly Apple's 44 pt target. One factor for all
+  tiers, so a corner still wins over the edge it ends. Glyph boxes are not
+  widened: they sit beside their lines and would swallow taps aimed at them.
+- **The point you are placing is drawn above your finger.** With a tool armed,
+  a dark disc 56 px above the contact carries the snap's own mark and what it
+  caught (`p3`, `mid l1`, `on c2`), or a cross where nothing was caught, with a
+  dotted leader down to the real place. This is not a loupe. A loupe would have
+  to copy two canvases, one of them WebGL with no copy of its last frame. And
+  the question under a finger is "where will it land, and on what", not "show
+  me more".
+- **The action strip**: Undo, Redo, Delete selection, Cancel, a tray like the
+  toolbar that is moved and turned the same way. Each button types its line
+  (`undo()`, `redo()`, `del("l1")`, `cancel()`) and is disabled when it would
+  do nothing. Shown only where the primary pointer is coarse.
+- **44 px targets** under `(pointer: coarse)`: tray and strip buttons, every
+  panel's strip, the grips, option rows, fields, ✓/✗, and menu items. The
+  panels' arithmetic takes the same numbers from one `COARSE` metrics value,
+  picked from the same media query. Fields use 16 px type, below which iOS
+  zooms into a field it focuses.
+- **The keyboard stays away.** On a touch device the command line is not
+  focused on start. A finger on the drawing blurs whatever field holds the
+  focus (iOS otherwise leaves its keyboard up). A name a tap puts in the line
+  does not refocus it. Tapping the line brings the keyboard, as any field does.
+- **A phone's defaults.** Portrait: the command line at the top, the tray a
+  column down the left, a one-line log under the command line, the strip at
+  the bottom right, and the options panel just above the strip. Landscape:
+  the tray a row along the bottom, the command line top left, the strip and a
+  one-line log top right. Per-viewer layout and pushing are unchanged.
+- **Found and fixed on the way:** the browser's compatibility click after a
+  long touch is hit-tested where the finger lifts. That is on the menu the
+  long-press just opened, so it ran the menu's first item. The engine now
+  cancels the canvas's `touchend`, which stops that click and the
+  compatibility mouse events; nothing on the canvas listened for them.
+
+**This machine cannot run iOS Safari.** Every test here is Chromium emulating
+an iPhone 13 (its viewport, its 3× screen, `isMobile`, `hasTouch`), with real
+multi-touch dispatched through CDP. **What to try on the iPhone**, in this order:
+
+1. **Open it and tap a tool** (rectangle). The keyboard must not come up.
+   Drag one finger across the drawing. A rectangle should follow, with a small
+   disc above your fingertip showing where the corner is. Lift, and it is built.
+2. **Undo it with the strip** (bottom right, ↶), then **Redo** (↷).
+3. **Two fingers**: spread to zoom and move together to pan. The page itself
+   must not zoom or scroll. That part is the PWA package's; if the page zooms,
+   say which one did.
+4. **One finger on empty canvas** should turn the drawing.
+5. **Tap a line**, then another: both are selected. Tap the bin to delete
+   them, and tap empty canvas to clear a selection.
+6. **Hold a finger still** on a line for half a second. The menu should open
+   and stay open when you lift. Does iOS put its own callout or text-selection
+   loupe on top? That would be the PWA package's `-webkit-touch-callout`.
+7. **Hold, then drag**: a selection box.
+8. **Extrude by finger**: draw a rectangle, tap the cube, tap inside the
+   rectangle, then tap ✓ (above the strip).
+9. **Start a rectangle and put a second finger down** mid-drag. The rectangle
+   should vanish and the view zoom instead.
+10. **Tap the command line** (top). The keyboard comes up. Type `help()` and
+    press return. Tap the drawing, and the keyboard should go away.
+11. **Turn the phone.** The layout should rearrange (tray along the bottom).
+12. Anything that feels too small, too slow (the long-press is 500 ms, a tap
+    350 ms) or too eager (a finger reaches 22 px to a point, 27 to snap):
+    those are single numbers, say which.
+
+**Left as they are, deliberately:**
+
+- **Portrait's tray is a column**, not the spec's row: eleven 44 px buttons
+  are 556 px, and the phone is 390 wide. It fits down the left.
+- **Landscape is cramped** in Safari, which leaves 342 px of height. The
+  command line's strip and row take 88 of it. Installed as an app, the
+  height is larger.
+- **The menu is wider than a phone's room** on either side of most fingers,
+  so it is held inside the window and may sit under the finger. The lift no
+  longer presses it.
+- **A constraint glyph is still its drawn size** (about 18×16 px) under a
+  finger, for the reason above.
+- **What a tool committed on its press stays committed** when a second finger
+  drops the gesture, as with a mouse (a line's second click). Undo takes it
+  back.
+- **The chrome's sizes are chosen once, at load**, from `(pointer: coarse)`.
+  A mouse plugged into an iPad keeps the large targets until a reload, and
+  still behaves as a mouse.
+
+Spec: [`docs/plans/touch.md`](docs/plans/touch.md).
+
+![An iPhone in portrait: the command line across the top, a one-line log under it, the tool tray down the left with the rectangle armed, a rectangle being dragged out with a disc above the finger carrying a cross and a dotted leader down to the corner, and Undo, Redo, Delete, Cancel at the bottom right](docs/images/100-touch-portrait-drawing-with-the-lifted-mark.png)
+![The same phone with the extrude tool armed: the rectangle's region lit green, the extrude options (depth 10, ✓ and ✗) just above the action strip](docs/images/101-touch-portrait-extrude-by-finger.png)
+![The phone in landscape: the command line top left, the action strip and a one-line log top right, the tray a row along the bottom, the extrude options above it at the left](docs/images/102-touch-landscape.png)
+
 ## An installable app, and a page that never scrolls or zooms
 
 The owner:

@@ -2275,6 +2275,48 @@ replacing) the system Node other projects on this machine may depend on.
   constructors take no flag; a tool's preview is not muted. *Spec:*
   [`docs/plans/construction.md`](docs/plans/construction.md).
 
+- **The app under fingers** (`src/tools/gestures.ts` (new); the touch paths,
+  `reach`, `contact`, `renderLift` and `onContextMenuWithdrawn` in
+  `src/tools/engine.ts`; `TOUCH_REACH` and a `reach` argument in
+  `src/picking.ts` and `src/snapping.ts`; `Metrics`/`FINE`/`COARSE`,
+  `touchLayout`, `inCorner` and `ActionStrip` in `src/panels.ts`; the `.tray`
+  rules, the actions panel and the `(pointer: coarse)` block in `index.html`;
+  `coarse`, the strip, the tag above a finger and the keyboard rules in
+  `src/main.ts`; the touch section of `help()`). The owner: *"it should work on
+  a multi-touch device. Specifically I have an iPhone."* **One recogniser**,
+  pure, with an injected clock, decides tap (8 px, 350 ms), drag, long-press
+  (500 ms), long-press-drag, pinch, abandon (a second finger) and spent (a
+  third), and the engine feeds each down the mouse's paths. A tool's press is
+  held until the finger moves or lifts, so a pinch never reaches it. A second
+  finger mid-draw re-arms the tool. One finger on empty canvas orbits (pans in
+  2D). A tap toggles once something is selected, and a finger's box adds. A
+  finger down reveals as a hover does. **Every pick and snap radius ×2.75**
+  under a finger (a point is a 44 pt target); glyphs keep their size. With a
+  tool armed, the active point is drawn **56 px above the finger** on a disc,
+  with the snap's mark and name and a leader. The canvas takes
+  `touch-action: none`, and its `touchend` is cancelled so a long-press's
+  compatibility click cannot press the menu it opened. **The action strip**
+  (Undo, Redo, Delete, Cancel) is a tray, typing `undo()`, `redo()`,
+  `del(...)` and `cancel()`, and disabled when idle. It is shown only under
+  `(pointer: coarse)`. Under that query every target is **44 px** (tray
+  buttons, strips, grips, option rows and ✓/✗, menu items), and the panels'
+  arithmetic takes the same numbers from `COARSE`. The phone's defaults:
+  portrait has the command line on top, the tray a column at the left, a
+  one-line log, the strip bottom right and the options panel above it;
+  landscape has the tray a row along the bottom with the strip and log top
+  right. **The keyboard stays away**: no focus at start under a coarse
+  pointer, a finger on the drawing blurs the field, and a tapped name does not
+  refocus the line. Unit: `test/gestures.test.ts` (15), `test/touch.test.ts`
+  (16), `test/touchlayout.test.ts` (7), all new. Browser:
+  `test/e2e/touch.e2e.ts` (17, new) in iPhone 13 emulation with CDP
+  multi-touch (`test/e2e/fingers.ts`, and `openApp({ device })` in the
+  harness). 1011 unit tests, 415 e2e. **Not run on iOS Safari** (only Chromium
+  here). *Known and deliberate:* the portrait tray is a column (eleven 44 px
+  buttons do not fit 390 px); glyph boxes are not widened; the menu can sit
+  under the finger on a narrow phone; landscape in Safari is cramped; sizes are
+  chosen at load; a tool's press-commit survives a dropped gesture.
+  *Spec:* [`docs/plans/touch.md`](docs/plans/touch.md).
+
 ## What's next
 
 The working list lives in [`TODO.md`](TODO.md), so it has one home rather

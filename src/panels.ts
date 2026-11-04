@@ -63,6 +63,38 @@ export type Layout = Record<string, Placed>;
  */
 export const TITLE_H = 16;
 
+/**
+ * Every size the chrome is built from, in one value — so that a finger's
+ * chrome is the mouse's with other numbers, and no rule below has two
+ * versions. `FINE` is the mouse's, what every exported constant here is;
+ * `COARSE` is a finger's (docs/plans/touch.md): **44 px targets**, Apple's
+ * 44 pt minimum on an iPhone, where a CSS pixel is a point — for a tray's
+ * buttons and its strip, every panel's strip, an option's row (its field and
+ * ✓/✗), and one line of the command line. The stylesheet's `(pointer: coarse)`
+ * block is the same numbers for what CSS draws (grips, menu items, the fields
+ * themselves); the host picks one value at load from the same media query, so
+ * the two cannot disagree.
+ */
+export interface Metrics {
+  /** A strip's thickness: across a panel's top, down a row tray's left end. */
+  title: number;
+  /** A tray button's side. */
+  button: number;
+  /** One option's row in the options panel. */
+  optionRow: number;
+  /** The options panel's width. */
+  optionsW: number;
+  /** The command line's one row of input, under its strip. */
+  line: number;
+  /** The log's least height under its strip: a line of it, or so. */
+  logLine: number;
+  /** Whether this is a finger's chrome — which also lays out a phone's defaults (`defaultLayout`). */
+  coarse: boolean;
+}
+
+export const FINE: Metrics = { title: 16, button: 20, optionRow: 22, optionsW: 168, line: 28, logLine: 30, coarse: false };
+export const COARSE: Metrics = { title: 44, button: 44, optionRow: 44, optionsW: 230, line: 44, logLine: 28, coarse: true };
+
 function clamp(v: number, lo: number, hi: number): number {
   return Math.min(Math.max(v, lo), Math.max(lo, hi));
 }
@@ -162,9 +194,10 @@ export const TRAY_DEPTH = BUTTON + 6 + 2;
  * line, which clips it at the window's edge (`constrain`) — not a window
  * anyone draws in, so not designed for beyond staying inside.
  */
-export function traySize(buttons: number, orient: Orientation): Size {
-  const run = TITLE_H + 6 + buttons * BUTTON_STEP;
-  return orient === "column" ? { w: TRAY_DEPTH, h: run } : { w: run, h: TRAY_DEPTH };
+export function traySize(buttons: number, orient: Orientation, m: Metrics = FINE): Size {
+  const run = m.title + 6 + buttons * (m.button + 2);
+  const depth = m.button + 6 + 2;
+  return orient === "column" ? { w: depth, h: run } : { w: run, h: depth };
 }
 
 /**
@@ -566,7 +599,7 @@ export function regrasped(grab: Grab, from: Placed, to: Placed): Grab {
 export function dragStep(
   grab: Grab, pointer: Point, layout: Layout, area: Size,
   minSize: (id: string, orient: Orientation | undefined) => Size,
-  buttons?: number,
+  buttons?: number, m: Metrics = FINE,
 ): { layout: Layout; grab: Grab } {
   if (buttons !== undefined && grab.kind === "resize") return { layout, grab };
   const min = (o: Orientation | undefined) => ({ [grab.id]: minSize(grab.id, o) });
@@ -603,7 +636,7 @@ export function dragStep(
   let held = grab;
   if (grab.kind === "move" && buttons !== undefined && r.rect.orient) {
     const others = Object.keys(r.layout).filter((o) => o !== grab.id).map((o) => r.layout[o]);
-    const t = turned(r.rect, r.rect.orient, area, others, (o) => traySize(buttons, o));
+    const t = turned(r.rect, r.rect.orient, area, others, (o) => traySize(buttons, o, m));
     if (t.orient !== r.rect.orient) {
       // Turned, the tray is put down in its new shape — its one line the other
       // way — and what that covers is pushed out of the way. If nothing can
@@ -649,7 +682,8 @@ const BOTTOM_W = 560;
  * there. The bottom pair is anchored to the area's bottom edge, so an
  * untouched layout follows the window as it is resized.
  */
-export function defaultLayout(area: Size, tools: number): Layout {
+export function defaultLayout(area: Size, tools: number, m: Metrics = FINE): Layout {
+  if (m.coarse) return touchLayout(area, tools, m);
   const w = Math.min(BOTTOM_W, area.w - 2 * GAP);
   const cmdY = area.h - GAP - CMD_H;
   return {
@@ -659,12 +693,66 @@ export function defaultLayout(area: Size, tools: number): Layout {
   };
 }
 
-/** What each panel will not shrink below. */
-const MIN: Record<string, Size> = {
-  log: { w: 160, h: TITLE_H + 30 },
-  cmd: { w: 160, h: CMD_H },
-};
-const DEFAULT_MIN: Size = { w: 80, h: TITLE_H + 20 };
+/**
+ * Where each panel goes on a fresh screen under a finger (docs/plans/touch.md)
+ * — a phone's, in either orientation, at 44 px targets. The command line is at
+ * the top in both: it is where iOS puts the keyboard's field, and a line typed
+ * at the bottom would sit under the keyboard it raised. The log is **one line**
+ * beside it, enlarged by its grips. The action strip (Undo, Redo, Delete,
+ * Cancel) is a row of its own.
+ *
+ * **Landscape** (wider than tall): the tray is a row along the bottom, the
+ * action strip at the top right with the one-line log under it.
+ *
+ * **Portrait**: the tray is a **column down the left**, not the spec's row
+ * along the bottom — eleven buttons at 44 px are 556 px of row, and a phone is
+ * 390 wide; one line of them fits only the tall way. The command line and the
+ * log go right of it, the action strip along the bottom at the right, where a
+ * thumb is.
+ *
+ * Positions only, like every default: the viewer moves anything, and what they
+ * move is theirs. Safe areas are the area's business — `area` is the space
+ * the page leaves the panels.
+ */
+function touchLayout(area: Size, tools: number, m: Metrics): Layout {
+  const cmdH = m.title + m.line;
+  const logH = m.title + m.logLine;
+  const act = traySize(ACTIONS.length, "row", m);
+  if (area.w >= area.h) {
+    const bar = traySize(tools, "row", m);
+    const right = area.w - GAP - act.w;
+    return {
+      cmd: { x: GAP, y: GAP, w: right - 2 * GAP, h: cmdH },
+      actions: { x: right, y: GAP, ...act, orient: "row" },
+      log: { x: right, y: GAP + act.h + GAP, w: act.w, h: logH },
+      toolbar: { x: GAP, y: area.h - GAP - bar.h, ...bar, orient: "row" },
+    };
+  }
+  const bar = traySize(tools, "column", m);
+  const left = GAP + bar.w + GAP;
+  const w = area.w - left - GAP;
+  const below = GAP + cmdH + GAP + logH + GAP;
+  const actY = area.h - GAP - act.h;
+  return {
+    toolbar: { x: GAP, y: GAP, ...bar, orient: "column" },
+    cmd: { x: left, y: GAP, w, h: cmdH },
+    log: { x: left, y: GAP + cmdH + GAP, w, h: logH },
+    actions: { x: area.w - GAP - act.w, y: actY, ...act, orient: "row" },
+    // Beside a column on the left the options panel would hang in the middle
+    // of a phone's drawing (measured: it covered the rectangle the extrude was
+    // aimed at). So it gets the space right of the tray and between the log
+    // and the strip, and sits in that box's bottom-right corner — just above
+    // the strip, its ✓ under the same thumb (`inCorner`).
+    options: { x: left, y: below, w, h: actY - GAP - below },
+  };
+}
+
+/** What each panel will not shrink below — a strip and a line of it. */
+function minOfPanel(id: string, m: Metrics): Size {
+  if (id === "log") return { w: 160, h: m.title + m.logLine };
+  if (id === "cmd") return { w: 160, h: m.title + m.line };
+  return { w: 80, h: m.title + 20 };
+}
 
 /**
  * What panel `id` will not shrink below. A tray's is one button, either way it
@@ -672,11 +760,11 @@ const DEFAULT_MIN: Size = { w: 80, h: TITLE_H + 20 };
  * line clips it, and one button and the strip are what must be left to take it
  * by.
  */
-export function minSizeOf(id: string, orient: Orientation | undefined, tray: boolean, fitted?: Size): Size {
+export function minSizeOf(id: string, orient: Orientation | undefined, tray: boolean, fitted?: Size, m: Metrics = FINE): Size {
   // A panel sized by its content is that size, or clipped; nothing shrinks it.
   if (fitted) return fitted;
-  if (tray) return traySize(1, orient ?? "column");
-  return MIN[id] ?? DEFAULT_MIN;
+  if (tray) return traySize(1, orient ?? "column", m);
+  return minOfPanel(id, m);
 }
 
 /**
@@ -700,17 +788,17 @@ export function minSizeOf(id: string, orient: Orientation | undefined, tray: boo
 export function arranged(
   order: readonly string[], stored: Layout, defaults: Layout,
   trays: Readonly<Record<string, number>>, area: Size,
-  fitted: Readonly<Record<string, Size>> = {},
+  fitted: Readonly<Record<string, Size>> = {}, m: Metrics = FINE,
 ): { layout: Layout; ok: boolean } {
   const wanted: Layout = {};
-  const minOf = (id: string, orient: Orientation | undefined) => minSizeOf(id, orient, id in trays, fitted[id]);
+  const minOf = (id: string, orient: Orientation | undefined) => minSizeOf(id, orient, id in trays, fitted[id], m);
   for (const id of order) {
     const want = stored[id] ?? defaults[id] ?? { x: GAP, y: GAP, w: 200, h: 120 };
     const tray = id in trays;
     // A tray always runs some way; one with nothing stored or defaulted runs
     // the default's way, which is down.
     const orient = tray ? want.orient ?? "column" : undefined;
-    const size = tray ? traySize(trays[id], orient!) : fitted[id] ?? { w: want.w, h: want.h };
+    const size = tray ? traySize(trays[id], orient!, m) : fitted[id] ?? { w: want.w, h: want.h };
     wanted[id] = placed(constrain({ x: want.x, y: want.y, ...size }, area, minOf(id, orient)), orient);
   }
   const mins = Object.fromEntries(order.map((id) => [id, minOf(id, wanted[id].orient)]));
@@ -729,8 +817,8 @@ export const OPTIONS_W = 168;
  * and bottom, the border, and a row apiece. Like `traySize`, the one thing that
  * sizes it: it has no grips, and a stored size is never read (`arranged`).
  */
-export function optionsSize(rows: number): Size {
-  return { w: OPTIONS_W, h: TITLE_H + 8 + rows * OPTION_ROW };
+export function optionsSize(rows: number, m: Metrics = FINE): Size {
+  return { w: m.optionsW, h: m.title + 8 + rows * m.optionRow };
 }
 
 /**
@@ -741,6 +829,15 @@ export function optionsSize(rows: number): Size {
  * panel's default, so it comes up where the eye already is, next to the button
  * that armed the tool, wherever the viewer has put the tray.
  */
+/**
+ * Where a panel of `size` goes when the defaults name a box for it rather
+ * than a tray to go beside: flush in the box's bottom-right corner, held
+ * inside the area. A phone's options panel, above the action strip.
+ */
+export function inCorner(box: Rect, size: Size, area: Size): Rect {
+  return constrain({ x: box.x + box.w - size.w, y: box.y + box.h - size.h, ...size }, area, size);
+}
+
 export function besideTray(tray: Placed, size: Size, area: Size): Rect {
   const row = tray.orient === "row";
   const x = row ? tray.x : tray.x + tray.w / 2 <= area.w / 2 ? tray.x + tray.w + GAP : tray.x - GAP - size.w;
@@ -909,11 +1006,15 @@ export class Panels {
   /** A gesture is in progress; `apply` waits for it (`stale`) rather than undo its pushes. */
   private holding = false;
   private stale = false;
+  /** The chrome's sizes: the mouse's, or a finger's (see `Metrics`). */
+  private m: Metrics;
 
   constructor(
     area: HTMLElement, defaults: (area: Size) => Layout, storage: StorageLike | null,
-    trays: Record<string, () => number> = {}, options: { check?: boolean; fitted?: Record<string, Fitted> } = {},
+    trays: Record<string, () => number> = {},
+    options: { check?: boolean; fitted?: Record<string, Fitted>; metrics?: Metrics } = {},
   ) {
+    this.m = options.metrics ?? FINE;
     this.area = area;
     this.defaults = defaults;
     this.storage = storage;
@@ -937,7 +1038,7 @@ export class Panels {
   }
 
   private min(id: string, orient: Orientation | undefined): Size {
-    return minSizeOf(id, orient, id in this.trays, this.fitted[id]?.size() ?? undefined);
+    return minSizeOf(id, orient, id in this.trays, this.fitted[id]?.size() ?? undefined, this.m);
   }
 
   /**
@@ -968,13 +1069,15 @@ export class Panels {
     if (later.length) {
       // Earlier panels hold their places in `settled`, so the tray is where the
       // panels without the fitted ones put it — which is what "beside" means.
-      const first = arranged(order, this.stored, defaults, counts, area).layout;
+      const first = arranged(order, this.stored, defaults, counts, area, {}, this.m).layout;
       for (const id of later) {
         const by = this.fitted[id].beside;
-        defaults[id] = by && first[by] ? besideTray(first[by], sizes[id], area) : { x: GAP, y: GAP, ...sizes[id] };
+        const box = defaults[id];
+        defaults[id] = box ? inCorner(box, sizes[id], area)
+          : by && first[by] ? besideTray(first[by], sizes[id], area) : { x: GAP, y: GAP, ...sizes[id] };
       }
     }
-    const s = arranged([...order, ...later], this.stored, defaults, counts, area, sizes);
+    const s = arranged([...order, ...later], this.stored, defaults, counts, area, sizes, this.m);
     this.show(s.layout, s.ok);
   }
 
@@ -1009,8 +1112,8 @@ export class Panels {
       el.dataset.orient = r.orient;
       const strip = el.querySelector<HTMLElement>(":scope > .ptitle");
       if (strip) {
-        strip.style.height = r.orient === "column" ? `${TITLE_H}px` : "";
-        strip.style.width = r.orient === "row" ? `${TITLE_H}px` : "";
+        strip.style.height = r.orient === "column" ? `${this.m.title}px` : "";
+        strip.style.width = r.orient === "row" ? `${this.m.title}px` : "";
       }
     }
   }
@@ -1057,7 +1160,7 @@ export class Panels {
     const strip = el.querySelector<HTMLElement>(":scope > .ptitle");
     if (strip) {
       // A tray's strip is sized by `place`, which knows which way it runs.
-      if (!(id in this.trays)) strip.style.height = `${TITLE_H}px`;
+      if (!(id in this.trays)) strip.style.height = `${this.m.title}px`;
       this.gesture(id, strip, "move");
     }
     // Every panel but a tray has the four, made here rather than written out in
@@ -1111,7 +1214,7 @@ export class Panels {
       const move = (ev: PointerEvent) => {
         if (ev.pointerId !== e.pointerId) return;
         const step = dragStep(grab, at(ev), this.shown, this.size(),
-          (o, orient) => this.min(o, orient), buttons);
+          (o, orient) => this.min(o, orient), buttons, this.m);
         grab = step.grab;
         this.show(step.layout);
       };
@@ -1338,8 +1441,10 @@ export class OptionsPanel {
   private count: number | null = null;
   /** The ✓ button, while the armed tool has one. */
   private ok: HTMLButtonElement | null = null;
+  private m: Metrics;
 
-  constructor(panel: HTMLElement, body: HTMLElement, host: OptionsHost) {
+  constructor(panel: HTMLElement, body: HTMLElement, host: OptionsHost, metrics: Metrics = FINE) {
+    this.m = metrics;
     this.body = body;
     this.strip = panel.querySelector<HTMLElement>(":scope > .ptitle");
     this.host = host;
@@ -1353,7 +1458,7 @@ export class OptionsPanel {
 
   /** The panel's size now, or null while no tool with options is armed — `Fitted.size`. */
   size(): Size | null {
-    return this.count === null ? null : optionsSize(this.count);
+    return this.count === null ? null : optionsSize(this.count, this.m);
   }
 
   /**
@@ -1496,5 +1601,118 @@ export class OptionsPanel {
       field.dataset.shown = text;
       (field.parentElement as HTMLElement).title = `${r.label} — ${optionCommand(this.tool, r.name, r.value)}`;
     });
+  }
+}
+
+// ---- the action strip -------------------------------------------------------
+//
+// A finger has no Ctrl+Z, no Delete and no Escape (docs/plans/touch.md): the
+// action strip is those four keys as buttons — **Undo, Redo, Delete, Cancel** —
+// a tray like the toolbar, moved and turned the same way. Like every other
+// piece of chrome it can only type: each button types its line through the
+// host's `run` (`submit`), so the log shows `undo()` or `del("l1", "l2")` and
+// the strip can do nothing a typed line could not. Shown where the primary
+// pointer is coarse (the host decides, from the same media query the
+// stylesheet sizes by); a mouse has the keys.
+
+/** The strip's buttons, in order. */
+export type Action = "undo" | "redo" | "delete" | "cancel";
+export const ACTIONS: readonly Action[] = ["undo", "redo", "delete", "cancel"];
+
+/** What the strip needs to know to say what each button would type. */
+export interface ActionState {
+  canUndo: boolean;
+  canRedo: boolean;
+  /** The canvas's selected names, as `sel()` lists them. */
+  selected: readonly string[];
+  /** Whether a tool is armed. */
+  armed: boolean;
+}
+
+/**
+ * The line `action` types now, or null when it would do nothing — and the
+ * button is then disabled, rather than typing a line that only says so.
+ * **Delete is the Delete key exactly**: the selection's names quoted as JSON,
+ * and nothing while a tool is armed. **Cancel is `cancel()`**: the tool and
+ * the selection put down together — Escape's one-step-at-a-time (a feature's
+ * picks first) is the options panel's ✗, which a feature always shows.
+ */
+export function actionCommand(action: Action, state: ActionState): string | null {
+  switch (action) {
+    case "undo": return state.canUndo ? "undo()" : null;
+    case "redo": return state.canRedo ? "redo()" : null;
+    case "delete":
+      return state.selected.length && !state.armed ? `del(${state.selected.map((n) => JSON.stringify(n)).join(", ")})` : null;
+    case "cancel": return state.armed || state.selected.length ? "cancel()" : null;
+  }
+}
+
+const ACTION_LABELS: Readonly<Record<Action, string>> = {
+  undo: "Undo", redo: "Redo", delete: "Delete selection", cancel: "Cancel",
+};
+
+/** The toolbar's glyph family (tools/icons.ts): a 16-unit box, 1.5-unit round strokes, nothing filled. */
+function actionGlyph(name: Action, body: string): string {
+  return `<svg class="ico" data-glyph="${name}" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" ` +
+    `fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">${body}</svg>`;
+}
+
+const ACTION_ICONS: Readonly<Record<Action, string>> = {
+  undo: actionGlyph("undo", `<path d="M5.5 3.5 2.5 6.5l3 3"/><path d="M2.5 6.5H10a3.5 3.5 0 0 1 0 7H7"/>`),
+  redo: actionGlyph("redo", `<path d="M10.5 3.5l3 3-3 3"/><path d="M13.5 6.5H6a3.5 3.5 0 0 0 0 7h3"/>`),
+  delete: actionGlyph("delete", `<path d="M2.5 4.5h11"/><path d="M6.5 4.5V2.5h3v2"/><path d="M4 4.5l.8 9h6.4l.8-9"/>`),
+  cancel: actionGlyph("cancel", `<path d="M4 4l8 8M12 4l-8 8"/>`),
+};
+
+/** What the action strip needs of its host. */
+export interface ActionHost {
+  state(): ActionState;
+  /** Types one line into the command machinery, as one user action — `submit`. */
+  run(command: string): void;
+}
+
+/**
+ * The strip's buttons, one per `ACTIONS`, each disabled while it would do
+ * nothing. The host calls `sync` whenever the history, the selection or the
+ * armed tool may have changed — the toolbar's `sync` is called from the same
+ * places — and it touches the DOM only for a button whose state changed.
+ */
+export class ActionStrip {
+  private buttons = new Map<Action, HTMLButtonElement>();
+  private host: ActionHost;
+
+  constructor(el: HTMLElement, host: ActionHost) {
+    this.host = host;
+    for (const action of ACTIONS) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.innerHTML = ACTION_ICONS[action];
+      b.dataset.action = action;
+      b.setAttribute("aria-label", ACTION_LABELS[action]);
+      b.title = ACTION_LABELS[action];
+      // The focus stays where it was: a tap here must not raise a keyboard
+      // that a tap on the command line had put away, nor take it from a field.
+      b.addEventListener("mousedown", (e) => e.preventDefault());
+      b.addEventListener("contextmenu", (e) => e.preventDefault());
+      b.addEventListener("click", () => {
+        // Asked again at the press, not read off the button: the state may
+        // have moved since the last sync.
+        const command = actionCommand(action, this.host.state());
+        if (command) this.host.run(command);
+      });
+      el.appendChild(b);
+      this.buttons.set(action, b);
+    }
+  }
+
+  sync(): void {
+    const state = this.host.state();
+    for (const [action, b] of this.buttons) {
+      const command = actionCommand(action, state);
+      const off = command === null;
+      if (b.disabled !== off) b.disabled = off;
+      const title = command ? `${ACTION_LABELS[action]} — ${command}` : ACTION_LABELS[action];
+      if (b.title !== title) b.title = title;
+    }
   }
 }
