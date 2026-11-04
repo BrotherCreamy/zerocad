@@ -24,6 +24,21 @@ otherwise.
 
 ## Decisions made so far — veto here if any are wrong
 
+- **Tooltips on every control, long-press on touch; frames drawn in RGB**
+  (the owner, 2026-11-04: *"when I hover over tools, I should see a
+  tooltip"*; *"a frame should be coloured or something so I can tell the
+  orientation. use rgb colours like solidworks"*). Spec:
+  [`tooltips-rgb-frames.md`](docs/plans/tooltips-rgb-frames.md).
+- **Under discussion with the owner (2026-11-04), not yet decided:** "region"
+  retired in favour of **Face** (a bounded piece of one surface), **Surface**
+  (faces joined edge to edge) and **Solid** (a closed surface), each a typed
+  object that enforces its rules, generic groups kept only for organising;
+  **circles that carry their own orientation**, so no frame is made
+  automatically, with one origin always present; **one circle tool and one
+  arc tool**, the method read from the gesture (*"why are there multiple
+  circle tools and arc tools? they all achieve the same thing. surely just one
+  tool, but different ways to set constraints"*).
+
 - **A new version is offered, not imposed: "Update ready — tap to reload"**
   beside the logo (the owner, 2026-11-04, asking whether the pages update on
   the fly). The tap autosaves, then reloads into the new version; until it,
