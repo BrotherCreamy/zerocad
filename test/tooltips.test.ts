@@ -6,7 +6,8 @@
 // What a tooltip says and where it goes are pure functions, so they are pinned
 // here: every built-in tool says what it does, the text for a tool, an action
 // and a key, the placement inside the window — a mouse's beside a column and
-// below anything else, a finger's above the finger and clear of it — and the
+// below anything else, a finger's above the finger and clear of it, and a
+// tray's never over the tray (docs/plans/everything-fits.md) — and the
 // summaries reaching `tools()` and `help()`. The frame's inks are checked
 // against the hidden view's dimming. How it looks and when it shows is the
 // browser's (test/e2e/tooltips.e2e.ts).
@@ -169,19 +170,13 @@ test("a mouse's tooltip: beside a column of buttons (on the roomier side), below
   assert.equal(r.x, WINDOW.w - MARGIN - TIP.w, "slid in from the right edge");
 });
 
-test("a finger's tooltip: above the finger and clear of it — beside it under a top edge — and never off the window", () => {
-  const button = { x: 4, y: 300, w: 26, h: 26 };
-  const finger = { x: 17, y: 313 };
-  const p = tipPlacement(button, TIP, WINDOW, { finger, along: "column" });
+test("a finger's tooltip on a control of its own: above the finger and clear of it, and never off the window", () => {
+  const button = { x: 120, y: 300, w: 26, h: 26 };
+  const finger = { x: 133, y: 313 };
+  const p = tipPlacement(button, TIP, WINDOW, { finger });
   assert.equal(p.side, "above");
   assert.ok(p.y + TIP.h <= finger.y - FINGER_CLEAR, "its bottom clear above the fingertip");
   assert.ok(inside(p));
-  // A strip along the top: no room above, so beside — on the roomier side, clear of the finger.
-  const top = { x: 300, y: 4, w: 26, h: 26 };
-  const f2 = { x: 313, y: 17 };
-  const q = tipPlacement(top, TIP, WINDOW, { finger: f2, along: "row" });
-  assert.equal(q.side, "left");
-  assert.ok(q.x + TIP.w <= f2.x - FINGER_CLEAR && inside(q), JSON.stringify(q));
   // Inside a safe area: the bounds are the window less its insets.
   const safe: Box = { x: 0, y: 47, w: 390, h: 844 - 47 - 34 };
   const atTop = { x: 4, y: 60, w: 26, h: 26 };
@@ -190,6 +185,38 @@ test("a finger's tooltip: above the finger and clear of it — beside it under a
   // A window smaller than the tooltip: clamped in from the top-left, rather than lost.
   const tiny = tipPlacement(button, { w: 500, h: 900 }, WINDOW);
   assert.deepEqual([tiny.x, tiny.y], [MARGIN, MARGIN]);
+});
+
+// docs/plans/everything-fits.md: "a held tooltip never covers the control's
+// own neighbours". It used to go above the finger in a column too — over the
+// buttons above the one held.
+test("a finger's tooltip in a tray never covers the tray: beside a column, on the drawing's side; above or below a row; clear of the finger", () => {
+  // A column of two lines down the left edge, the finger on the first line's fifth button.
+  const tray = { x: 8, y: 52, w: 78, h: 335 };
+  const button = { x: 12, y: 52 + 25 + 4 * 44, w: 26, h: 26 };
+  const finger = { x: 25, y: button.y + 13 };
+  const p = tipPlacement(button, TIP, WINDOW, { finger, along: "column", line: tray });
+  assert.equal(p.side, "right", "the drawing's side");
+  assert.ok(!overlaps(p, tray), `clear of every line of the tray: ${JSON.stringify(p)}`);
+  assert.ok(p.x >= finger.x + FINGER_CLEAR && inside(p));
+  // The same column on the right edge: its tip on the left.
+  const rightTray = { ...tray, x: WINDOW.w - 8 - tray.w };
+  const q = tipPlacement({ ...button, x: rightTray.x + 4 }, TIP, WINDOW, { finger: { ...finger, x: rightTray.x + 17 }, along: "column", line: rightTray });
+  assert.equal(q.side, "left");
+  assert.ok(!overlaps(q, rightTray));
+  // A row of two lines along the bottom: above it — not over the line above the button held.
+  const row = { x: 8, y: WINDOW.h - 78, w: 335, h: 78 };
+  const low = { x: 8 + 25 + 3 * 44, y: WINDOW.h - 30, w: 26, h: 26 };
+  const r = tipPlacement(low, TIP, WINDOW, { finger: { x: low.x + 13, y: low.y + 13 }, along: "row", line: row });
+  assert.equal(r.side, "above");
+  assert.ok(!overlaps(r, row) && r.y + TIP.h <= low.y + 13 - FINGER_CLEAR);
+  // The action strip at the top right, under the logo's row: no room above, so below — never over the strip.
+  const strip = { x: WINDOW.w - 8 - 203, y: 52, w: 203, h: 34 };
+  const undo = { x: strip.x + 25, y: 56, w: 26, h: 26 };
+  const f2 = { x: undo.x + 13, y: undo.y + 13 };
+  const t = tipPlacement(undo, TIP, WINDOW, { finger: f2, along: "row", line: strip });
+  assert.equal(t.side, "below");
+  assert.ok(!overlaps(t, strip) && t.y >= f2.y + FINGER_CLEAR && inside(t), JSON.stringify(t));
 });
 
 test("a finger's hold is the canvas recogniser's: the same time and the same slop", () => {

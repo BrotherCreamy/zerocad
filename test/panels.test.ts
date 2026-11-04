@@ -731,10 +731,13 @@ test("a tray grows by one button per tool, moved or not, and pushes the neighbou
   sound(eleven.layout);
 });
 
-test("a tray too long for the window is clipped at the window's edge, and still wholly inside", () => {
+// It used to be clipped at the window's edge (tray-fixed-line.md); where the
+// line does not fit it now takes more lines (docs/plans/everything-fits.md).
+test("a tray too long for the window wraps onto more lines, and is wholly inside", () => {
   const short = { w: 600, h: 150 };
   const r = arranged(["toolbar"], { toolbar: { x: 10, y: 40, w: 0, h: 0, orient: "column" } }, {}, { toolbar: 10 }, short);
-  assert.deepEqual(r.layout.toolbar, { x: 10, y: 0, w: TRAY_DEPTH, h: short.h, orient: "column" });
+  // 110 px of room (150 less the logo's 32 and a margin): four buttons a line, so three lines.
+  assert.deepEqual(r.layout.toolbar, { x: 10, y: 40, w: TRAY_DEPTH + 2 * BUTTON_STEP, h: 16 + 6 + 4 * BUTTON_STEP, orient: "column" });
 });
 
 /**

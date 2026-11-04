@@ -84,22 +84,35 @@ type Side = "above" | "below" | "left" | "right";
 
 /**
  * Where a tooltip of `size` goes for a control at `anchor`, inside `bounds`
- * (the window less its safe-area insets), in the same coordinates:
+ * (the window less its safe-area insets), in the same coordinates.
  *
- * - **Under a finger** (`finger` the touch point): above it, the way iOS puts
- *   its callouts — the hand is below the fingertip — and clear of it by
- *   `FINGER_CLEAR`; where there is no room above (a strip along the top), to
- *   the side with more room, still clear of it; under it last.
- * - **A mouse over a control in a column** (a tray down an edge): beside the
- *   column, on the side with more room, so it never covers the buttons the
- *   pointer is about to run along. Anywhere else: below, as native tooltips
- *   are, then above.
+ * **A control in a tray never has its tip over its neighbours**
+ * (docs/plans/everything-fits.md): the tip goes outside the whole line of
+ * controls (`line`, the tray's box — every line of it, where it wrapped), not
+ * only outside the control —
  *
- * The first side that fits whole wins, slid along that side to stay inside;
- * if none fits (a window smaller than the tip), the first is clamped in.
+ * - **a column** (a tray down an edge): beside it, on the side with more room,
+ *   which for a tray docked to an edge is the drawing's; then below or above.
+ * - **a row**: under a finger above it — the way iOS puts its callouts, the
+ *   hand being below the fingertip — then below it (a strip along the top,
+ *   with no room above); under a mouse below it, as native tooltips are,
+ *   then above; then beside it.
+ *
+ * **A control on its own** (`along` null): under a finger above it, then to
+ * the side with more room, then under it; under a mouse below, then above.
+ *
+ * Under a finger every side keeps `FINGER_CLEAR` from the touch point too. The
+ * first side that fits whole wins, slid along that side to stay inside; if
+ * none fits (a window smaller than the tip), the first is clamped in.
  */
-export function tipPlacement(anchor: Box, size: Size, bounds: Box, opts: { finger?: At | null; along?: Along } = {}): At & { side: Side } {
+export function tipPlacement(
+  anchor: Box, size: Size, bounds: Box, opts: { finger?: At | null; along?: Along; line?: Box | null } = {},
+): At & { side: Side } {
   const f = opts.finger ?? null;
+  // What the tip keeps off: the tray's whole box for a control in one, so it
+  // is beside or past the line — the control's own for one on its own. The
+  // slide along a side still centres on the control.
+  const off = opts.along && opts.line ? opts.line : anchor;
   const [left, top] = [bounds.x + MARGIN, bounds.y + MARGIN];
   const [right, bottom] = [bounds.x + bounds.w - MARGIN, bounds.y + bounds.h - MARGIN];
   const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
@@ -108,15 +121,16 @@ export function tipPlacement(anchor: Box, size: Size, bounds: Box, opts: { finge
   const cx = f ? f.x : anchor.x + anchor.w / 2;
   const cy = anchor.y + anchor.h / 2;
   const at: Record<Side, () => At> = {
-    above: () => ({ x: slideX(cx - size.w / 2), y: Math.min(anchor.y, f ? f.y - FINGER_CLEAR : Infinity) - GAP - size.h }),
-    below: () => ({ x: slideX(cx - size.w / 2), y: Math.max(anchor.y + anchor.h, f ? f.y + FINGER_CLEAR : -Infinity) + GAP }),
-    right: () => ({ x: Math.max(anchor.x + anchor.w, f ? f.x + FINGER_CLEAR : -Infinity) + GAP, y: slideY(cy - size.h / 2) }),
-    left: () => ({ x: Math.min(anchor.x, f ? f.x - FINGER_CLEAR : Infinity) - GAP - size.w, y: slideY(cy - size.h / 2) }),
+    above: () => ({ x: slideX(cx - size.w / 2), y: Math.min(off.y, f ? f.y - FINGER_CLEAR : Infinity) - GAP - size.h }),
+    below: () => ({ x: slideX(cx - size.w / 2), y: Math.max(off.y + off.h, f ? f.y + FINGER_CLEAR : -Infinity) + GAP }),
+    right: () => ({ x: Math.max(off.x + off.w, f ? f.x + FINGER_CLEAR : -Infinity) + GAP, y: slideY(cy - size.h / 2) }),
+    left: () => ({ x: Math.min(off.x, f ? f.x - FINGER_CLEAR : Infinity) - GAP - size.w, y: slideY(cy - size.h / 2) }),
   };
   // The side with more room first, of the two beside the control.
-  const sides: Side[] = anchor.x - bounds.x >= bounds.x + bounds.w - (anchor.x + anchor.w) ? ["left", "right"] : ["right", "left"];
-  const order: Side[] = f ? ["above", ...sides, "below"]
-    : opts.along === "column" ? [...sides, "below", "above"]
+  const sides: Side[] = off.x - bounds.x >= bounds.x + bounds.w - (off.x + off.w) ? ["left", "right"] : ["right", "left"];
+  const order: Side[] = opts.along === "column" ? [...sides, "below", "above"]
+    : opts.along === "row" ? (f ? ["above", "below", ...sides] : ["below", "above", ...sides])
+    : f ? ["above", ...sides, "below"]
     : ["below", "above", ...sides];
   const fits = (p: At) => p.x >= left - 0.5 && p.y >= top - 0.5 && p.x + size.w <= right + 0.5 && p.y + size.h <= bottom + 0.5;
   for (const side of order) {
@@ -133,6 +147,8 @@ export type TipSource = () => Tip | null;
 export interface AttachOptions {
   /** Which way the control's line runs, asked at each showing (a tray turns). */
   along?: () => Along;
+  /** The element holding the control's whole line — the tray — whose box the tip keeps off. */
+  line?: () => Element | null;
   /**
    * False where a finger's hold already means something on this control — an
    * organiser row's long-press is its menu — so only a mouse shows the tip.
@@ -157,7 +173,7 @@ export function giveTip(control: HTMLElement, tip: TipSource, attach: AttachTip 
   if (t) control.title = tipText(t);
 }
 
-interface Entry { tip: TipSource; along?: () => Along; hold: boolean }
+interface Entry { tip: TipSource; along?: () => Along; line?: () => Element | null; hold: boolean }
 
 /**
  * The one tooltip element, and every control attached to it. Listening is
@@ -214,7 +230,7 @@ export class Tooltips {
 
   /** Gives `control` its tooltip — the `AttachTip` every host is handed. */
   readonly attach: AttachTip = (control, tip, options = {}) => {
-    this.controls.set(control, { tip, along: options.along, hold: options.hold ?? true });
+    this.controls.set(control, { tip, along: options.along, line: options.line, hold: options.hold ?? true });
     // One tooltip at a time: the native one goes.
     control.removeAttribute("title");
     control.dataset.tip = "";
@@ -322,8 +338,9 @@ export class Tooltips {
     c.setAttribute("aria-describedby", this.el.id);
     const r = c.getBoundingClientRect();
     const size = { w: this.el.offsetWidth, h: this.el.offsetHeight };
+    const l = entry!.line?.()?.getBoundingClientRect() ?? null;
     const p = tipPlacement({ x: r.x, y: r.y, w: r.width, h: r.height }, size, this.bounds(),
-      { finger, along: entry!.along?.() ?? null });
+      { finger, along: entry!.along?.() ?? null, line: l ? { x: l.x, y: l.y, w: l.width, h: l.height } : null });
     this.el.style.left = `${Math.round(p.x)}px`;
     this.el.style.top = `${Math.round(p.y)}px`;
     this.el.dataset.side = p.side;
