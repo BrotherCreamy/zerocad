@@ -2,7 +2,7 @@
 // manager, and the toolbar that is the first panel built for it.
 //
 // A panel is a DOM box with a title strip to drag by and — unless its size is
-// its content's: a tray, always one line of its buttons, or the options panel,
+// its content's: a tray, a line of its buttons (two where one will not fit), or the options panel,
 // one row per option — a grip on each of its four corners to resize by. Every
 // piece of chrome — the toolbar, the log, the command line, the armed tool's
 // options — is one, and the canvas underneath is the whole window, which
@@ -1422,7 +1422,7 @@ export function parseStored(text: string | null): Stored {
     const at = e.at === undefined ? null : parseRecorded(e.at);
     const entry: StoredPanel = {};
     if (at) entry.at = at;
-    // `false` is a pane shown that starts hidden on this device (`hiddenAtFirst`).
+    // `false` was a pane shown that started hidden on this device; every pane starts shown now, so it reads as shown.
     if (typeof e.hidden === "boolean") entry.hidden = e.hidden;
     if (entry.at || entry.hidden !== undefined) out[id] = entry;
   }
@@ -1675,8 +1675,8 @@ function placed(r: Rect, orient: Orientation | undefined, lines?: number): Place
  * and docked to like any panel.
  *
  * `trays` names the panels that are trays, each with how many buttons it holds
- * right now: those, and only those, have no grips, are always one line of
- * their buttons (`traySize`, re-counted on every `apply`), and turn between
+ * right now: those, and only those, have no grips, are a line of
+ * their buttons, wrapped where one does not fit (`traySize`, re-counted on every `apply`), and turn between
  * column and row as they are dragged against an edge (`turned`).
  *
  * `fitted` names the panels sized by their content that come and go — the
@@ -1811,7 +1811,7 @@ export class Panels {
 
   /**
    * Puts every panel where the layouts say, clear of one another (`arranged`),
-   * each tray one line of the buttons it has now and each stored panel docked
+   * each tray the lines of the buttons it has now and each stored panel docked
    * as it was (`relaid`). Cheap; call it whenever a default, a tray's count,
    * the insets or the interface size may have changed. What it moves is not
    * stored: it is this window's answer, and a wider one may need none of it.

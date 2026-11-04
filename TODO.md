@@ -24,6 +24,29 @@ otherwise.
 
 ## Decisions made so far — veto here if any are wrong
 
+- **Everything fits, enforced; the tray wraps where a line will not fit;
+  the organiser shown on a phone** (the owner, 2026-11-04: *"Second row....
+  everything has to fit"*; *"show from start"*). Spec:
+  [`everything-fits.md`](docs/plans/everything-fits.md), **built**. This
+  **revises `tray-fixed-line.md`**: a tray is one line where one fits the
+  room along it (the area's, less the logo's corner) and takes a second — a
+  third — where it does not, a whole button pitch apart; it never scrolls or
+  hides a tool, and a rotation wraps it where it used to turn it. **On every
+  iPhone from the SE to the Pro Max** (`test/devices.ts`), both ways up,
+  installed and in Safari, at the device's 100 %, the default panes overlap
+  nothing and none enters the corner's box (the logo and the status's room
+  beside it); a layout the resolver cannot find is an error on the page in
+  development and a console warning in a built page, never drawn silently.
+  It holds to 120 % on every phone, 160 % on most; the options panel is what
+  stops it first. Vetoable, as built: the phone's new places — portrait, the
+  strip and a strip-wide log under the logo's row with **the organiser
+  beside them** in the top third; landscape, the strip, the log and the
+  organiser down the right edge, the command line in the top row beyond the
+  corner, the **tray two rows** along the bottom left (the default asks for
+  the lines that fit left of that column, and a tray the viewer moves keeps
+  what it asked for until it turns); the status wraps in the room the panes
+  leave it; a held tooltip keeps off the whole tray.
+
 - **Tooltips on every control, long-press on touch; frames drawn in RGB**
   (the owner, 2026-11-04: *"when I hover over tools, I should see a
   tooltip"*; *"a frame should be coloured or something so I can tell the
@@ -111,8 +134,10 @@ otherwise.
     empty": `group()` makes one, and a group whose last member goes stays
     until `ungroup`. Format version 12; a version-11 file has each silent
     emptying `ungroup` written in on the way in.
-  - **The pane starts hidden on a phone** (one tick in the app menu's Panes),
-    shown on a tablet and a desktop — a desktop's in the bottom-right corner.
+  - ~~**The pane starts hidden on a phone** (one tick in the app menu's
+    Panes)~~ — the owner (2026-11-04): *"show from start"*: shown everywhere
+    from the start (`everything-fits.md`), a desktop's in the bottom-right
+    corner.
 - **The app menu is a dropdown under the logo** with an interface-size spin
   box (`− 80% +`), a show/hide row per pane, and the File items; **a pane's
   docking (to an edge, or against another pane) survives rotation** (the
@@ -1269,10 +1294,12 @@ are flagged as such.
   depth the buttons'~~ — reversed by the owner the same day: *"actually get rid
   of resizing altogether on the tool palette. its just a straight line that
   fits the number of tools it has in it, and can either be vert or horiz"*.
-  **A tray has no grips and is never resized**: it is exactly one line of its
-  buttons (`traySize`), a column or a row, a button longer for every tool
-  defined — moved or not, a stored size never read — and turned by dragging it
-  against an edge. ~~The grips are drawn as diagonal marks~~ — *"you dont need
+  **A tray has no grips and is never resized**: it is ~~exactly one line of its
+  buttons~~ one line of its buttons where one fits, and two or three where it
+  does not (the owner, 2026-11-04: *"Second row.... everything has to fit"*,
+  `everything-fits.md`) (`traySize`), a column or a row, a button longer for
+  every tool defined — moved or not, a stored size never read — and turned by
+  dragging it against an edge. ~~The grips are drawn as diagonal marks~~ — *"you dont need
   those diag lines on every corner"*: **a grip draws nothing**; the log's and
   the command line's four are invisible corner hot-spots whose resize cursor
   is the affordance. A button types
@@ -1492,10 +1519,11 @@ starts.
       whether a quick Undo after a flicked drag is ever swallowed.
 - [ ] **Try the hosted build on the owner's iPhone**: the CHANGELOG entry's
       list. Only Chromium's emulation has run it so far.
-- [ ] **Landscape phone layout**: the default panels overlap the tray's edge
+- [x] **Landscape phone layout**: the default panels overlap the tray's edge
       and the empty-canvas hint at 844×390 (seen in `pwa.e2e.ts`'s
       screenshot). This is the touch package's (`touch.md`, layout on small
-      screens). Nothing sits under the notch.
+      screens). Nothing sits under the notch. **Done by `everything-fits.md`**:
+      the defaults overlap nothing on every phone, tested over a device table.
 
 - [x] **An extrude makes no lid frame — BUILT (2026-11-03).** The owner's
       *"i'm getting a lot of overlapping points. why is this happening?"*, in
@@ -1968,15 +1996,47 @@ extended the way `defineTool` extends the tool registry would close it.
 
 ## Smaller things
 
-- **A tooltip under a finger at the top-right action strip** (portrait) has
+- ~~**A tooltip under a finger at the top-right action strip** (portrait) has
   room neither above nor beside and goes below the finger, partly under the
-  hand while held (docs/plans/tooltips-rgb-frames.md, limitations). A
-  narrower tooltip there, or the strip's tips placed by the strip, would fix
-  it; it lingers 1.5 s after the lift meanwhile.
+  hand while held~~ — a held tip now keeps off the whole tray
+  (`everything-fits.md`): below the strip there, never over its buttons. It
+  is still partly under the hand while held, and lingers 1.5 s after.
 - **Try the tooltip's hold on an iPhone**: whether iOS sends a click after a
   long touch on a button (swallowed if so) and keeps its callout away.
 - **Tool summaries say "click"** under a finger too; if the owner wants
   "tap" on a phone, a summary could be two words chosen by pointer.
+
+- [ ] **Found while building `everything-fits.md`** (each deliberate,
+      documented in the spec's *As built*):
+      - **The SE's organiser is small**: 78 px installed, its least (73) in
+        Safari, where it lies over the top of the drawing's middle — the
+        screen is too narrow for it beside the strip. A wider phone gets
+        121–171 px across and 150–254 down.
+      - **The options panel is what stops the fit** at larger interface
+        sizes: the SE in Safari to 120 % in portrait, most 390–402 pt phones
+        installed to 150 % with a tool armed. A narrower options panel under
+        a finger would move the limit.
+      - **The corner's room in landscape is ~150 px**: a long status wraps
+        onto three or four lines over the drawing until it fades; a pane the
+        viewer drags beside the logo clips it.
+      - **A tray the viewer moves keeps its second line** (the landscape
+        default's ask) until it turns, so a two-row tray moved to portrait
+        stays two rows even where one would fit.
+      - **A tray docked to a landscape phone's right edge** meets the
+        default right-hand column; the resolver pushes the column (and
+        whatever rests on it) out of its way — sound, but a pane docked
+        against the tray there can lose its place.
+      - **The owner's iPhone list**: the second row in landscape; the
+        organiser beside the strip in portrait; the status never over a pane;
+        Safari's real page sizes on iOS 26 against Playwright's table.
+      - **`touch.e2e.ts`'s quiet-corner test fails with `NEOCAD_E2E_SHOTS`
+        set, under load** — on the commit before this branch too (measured:
+        run beside `fits.e2e.ts` with pictures on, it failed on both; with
+        pictures off it passes on this branch, and the full suite is green).
+        Most likely the screenshot it takes while the first finger is held
+        stretches the hold past the long-press, so the later tap closes a
+        menu instead of selecting. Not changed here: it is the test's, and
+        only with pictures on.
 
 - [ ] **Found while building `organiser.md`** (each deliberate, written down
       so it is a decision and not a rediscovery):
@@ -1987,14 +2047,16 @@ extended the way `defineTool` extends the tool registry would close it.
     (regions, chains, solids) are not sections yet.
   - The pane re-reads the model every redraw and rebuilds only on a change,
     compared as JSON — not measured past tens of groups.
-  - `● g1` beside the status never fades; in a phone's landscape layout it
-    lies over the left end of the command line's strip.
+  - `● g1` beside the status never fades; ~~in a phone's landscape layout it
+    lies over the left end of the command line's strip~~ — the corner keeps
+    clear of every pane now (`everything-fits.md`).
   - Whether iOS keeps its own long-press callout off a row is only an
     iPhone's to show (`-webkit-touch-callout: none` is set).
 - [ ] **Found while building `select-hand.md`** (each documented in the
       spec's *As built*):
-      - **Thirteen buttons do not fit beside a pane across a landscape
-        iPhone.** A 599 px line (a finger's 44 px pitch) turned to a row on
+      - ~~**Thirteen buttons do not fit beside a pane across a landscape
+        iPhone.**~~ **Fixed by `everything-fits.md`**: the line wraps instead
+        of turning, so a column stays a column of two or three. A 599 px line (a finger's 44 px pitch) turned to a row on
         the right edge leaves 151 px of a 750 px area, less than a log's
         least width (160): docked so, the log overlaps the row by 9 px and
         nothing reports it (the resolver says no layout exists, which turns
@@ -2025,14 +2087,13 @@ extended the way `defineTool` extends the tool registry would close it.
         command line's field. Revisit if it bites.
       - **The tablet factor (1.15) and its 600 px boundary** are reasoned,
         not measured on an iPad.
-      - **The status sits over the command line's strip in landscape** until
-        it fades (3 s); a conflict stays over it. A status that moved out of
-        the way of panels would be the next step.
-      - **A pane docked against a tray that turned in a rotation** keeps its
-        side against it and is held overlapping it by a pixel at least — it
-        can end up hanging off the tray's corner (the rotation e2e's
-        landscape picture). A rule for re-aligning along a turned tray is
-        not designed.
+      - ~~**The status sits over the command line's strip in landscape**~~ —
+        fixed by `everything-fits.md`: the corner wraps in the room the panes
+        leave it.
+      - ~~**A pane docked against a tray that turned in a rotation** can end
+        up hanging off the tray's corner~~ — fixed by `everything-fits.md`: a
+        tray wraps rather than turns in a rotation, and a pane beside it lies
+        wholly along it.
 
 - [ ] **Found while building `files.md`** (each deliberate, documented and,
       where it can be, tested):
@@ -2447,6 +2508,41 @@ extended the way `defineTool` extends the tool registry would close it.
       the resolver's flush arithmetic assumes does not happen.
 
 ## Done
+
+- [x] **Everything fits: a second toolbar row, the organiser shown, nothing
+      over anything** (2026-11-04). The owner: *"Second row.... everything
+      has to fit"*; *"show from start"*. Spec:
+      [`docs/plans/everything-fits.md`](docs/plans/everything-fits.md), marked
+      built, every deviation and where the guarantee stops in its *As built*.
+      `src/panels.ts` (`trayLines`, `traySize`'s room and floor, `trayRoom`,
+      `linesOf`, `Placed.lines`, `cornerBox`, `cornerRoom`, `layoutProblem`,
+      `fittedAt`, `touchLayout`, `relaid`, `Panels`' `onShow` and its report;
+      `hiddenAtFirst` removed); `src/tooltip.ts` (`line`); `src/main.ts`
+      (the corner from the layout); `index.html` (the tray a grid, the corner
+      clipped). `test/devices.ts` (the device table, every number sourced),
+      `test/fits.test.ts` (34), `test/e2e/fits.e2e.ts` (7). Unit 1134 →
+      1170, e2e 493 → 500, `npm run test:all` green.
+      **Deviations, in short**: a tray's lines are a floor it asks for
+      (`Placed.lines`) as well as what the room forces — the landscape
+      default asks for two, where one fits the bottom edge but not beside
+      the right-hand column; the room is the area's less the logo's corner,
+      the same wherever the tray is; "the logo's row" is the corner's box
+      (the logo and 120 px of status at 100 %) — in landscape the command
+      line and the strip share the row beyond it; the phone defaults moved
+      (portrait: strip and a strip-wide log under the row, the organiser
+      beside them in the top third, or under the log where it is too
+      narrow; landscape: a right-hand column of strip, log and organiser,
+      the command line top, the tray two rows bottom left); a tray wraps in
+      a rotation where it turned; a pane beside a tray is pulled wholly
+      along it, even one the viewer left partly past its end; a held tip
+      keeps off the whole tray (a mouse's beside a column is 4 px further
+      out); `layout()` says `×2`; the resolver's failure warns in a built
+      page too; `hiddenAtFirst` removed; the docking e2e stores a layout
+      rather than dragging one, and docks to the left edge; fixtures changed
+      in `touch.e2e.ts`, `organiser.e2e.ts`, `selecthand.e2e.ts`,
+      `touchlayout.test.ts`, `chrome.test.ts`, `panels.test.ts`,
+      `tooltips.test.ts` (each listed in the spec). The README's phone
+      pictures regenerated from `chrome.e2e.ts`'s.
 
 - [x] **Tooltips on every control; frames in RGB** (2026-11-04). The owner:
       *"when I hover over tools, I should see a tooltip"*; *"a frame should be

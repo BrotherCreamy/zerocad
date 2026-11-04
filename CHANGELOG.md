@@ -7,6 +7,66 @@ decisions.
 
 ---
 
+## Everything fits: a second toolbar row, the organiser shown, and nothing over anything
+
+The owner, asked whether a landscape phone's toolbar should wrap or fold:
+
+> *Second row.... everything has to fit*
+
+and whether the organiser should show from the start on a phone:
+
+> *show from start*
+
+Spec: [`docs/plans/everything-fits.md`](docs/plans/everything-fits.md),
+built, every deviation in its *As built* and in TODO.md's Done entry. This
+**reverses `tray-fixed-line.md`'s one-line rule** where a line does not fit.
+
+- **The tray wraps** where its line does not fit the room along it — the
+  area's, less the logo's corner: a second line, a third if the interface
+  size makes even two too long, the buttons in order, line by line, a whole
+  button pitch apart (44 px under a finger, so the hit boxes meet across
+  lines as along them). Never scrolled, never a tool hidden. A rotation that
+  makes a line too long wraps it where it used to turn it, and a pane docked
+  beside it keeps lying along it. `layout()` says `row ×2`.
+- **Everything fits, enforced.** On every iPhone from the SE (375 × 667) to
+  the Pro Max (440 × 956) — seven screen sizes, `test/devices.ts`, every
+  number's source in it — both ways up, installed and in Safari, at the
+  device's 100 %, the default panes overlap nothing and none enters the
+  corner (the logo and the status beside it). A layout the resolver cannot
+  find is now an error on the page in development (every e2e test trips it)
+  and a warning in a built page, never drawn silently. At larger interface
+  sizes it holds to 120 % on every phone and to 160 % on most; the options
+  panel is what stops it first.
+- **A phone's new defaults.** Portrait: the strip and a one-line log under the
+  logo's row, **the organiser beside them**, right of the tray, above the
+  drawing's middle. Landscape: the strip, the log and the organiser down the
+  right edge, the command line in the top row beyond the corner, and **the
+  tray two rows** along the bottom left (one on a Pro Max, which has the
+  room).
+- **The organiser is shown from the start** everywhere; the app menu still
+  hides it.
+- **The corner never sits on a pane**: the status, the step note, the open
+  group and *Update ready* wrap inside the room the panes leave them, so the
+  status no longer lies over the command line's strip in landscape.
+- **A held tooltip never covers its neighbours**: it goes beside a column,
+  above or below a row — outside the whole tray, every line of it — and
+  clear of the finger; the action strip's case included.
+- Tests: unit `test/fits.test.ts` (34: wrapping at every interface size, the
+  fit rule over every phone and orientation, the limits, the resolver's
+  report, the corner's room) and fixes in four suites; e2e
+  `test/e2e/fits.e2e.ts` (7: every phone both ways installed and in Safari
+  with real insets, an iPhone 13 at 130 %, the landscape tray's two rows on
+  an iPhone 13 and an SE, held tooltips covering no neighbour, docking
+  through a rotation that wraps the tray). Unit 1134 → 1170, e2e
+  493 → 500.
+- Pictures looked at: every phone and orientation in the table, installed
+  and in Safari, an iPhone 13 at 130 % both ways, held tooltips on an iPhone
+  13 and an SE, the docked tray before and after the rotation.
+- **Not tried on an iPhone**: Safari's page sizes are Playwright's
+  measurements, the SE's estimated.
+
+---
+
 ## Tooltips on every control; frames in RGB
 
 The owner, after trying the hosted app:

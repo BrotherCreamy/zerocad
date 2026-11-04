@@ -106,6 +106,44 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### Everything fits: where the second row comes from, and what "the logo's row" is
+
+The owner chose a second row over a fold, and the organiser shown from the
+start. Three decisions were not in his answers.
+
+**What a tray's room is.** "One line when it fits along its edge" could mean
+the free stretch of the edge it lies on, which is what a landscape default
+wants — the tray shares the bottom with a column of panes. But that room
+changes as the tray is dragged past other panes, so a tray would wrap and
+unwrap on the way, which reads as the pushing rules breaking. So the room is
+the area's alone (less the logo's corner), and a default may ask for more
+lines than the room forces (`Placed.lines`): the landscape default asks for
+the lines that fit beside its column. A tray the viewer moves keeps what it
+asked for until it turns; forgetting it at release would unwrap the row on
+the next layout and push its neighbours across the screen.
+
+**Why a right-hand column in landscape.** A landscape phone is short. The
+old layout put the command line across the top beside the logo and the tray
+along the whole bottom, which left the organiser 150 px under the log and
+the status over the command line's strip. Putting the strip, the log and the
+organiser down the right edge gives the organiser the height, and the tray
+two rows of seven on the left — the owner's second row, arrived at because
+the line does not fit beside the column, not because a rule says "two".
+
+**What "the logo's row" means.** Kept wholly empty, landscape loses 44 px it
+does not have; so the region no default pane enters is the corner's box —
+the logo and 120 px (at 100 %) for the status — and the status wraps inside
+whatever room the panes leave it. In portrait the defaults leave the whole
+row empty anyway. Rejected: making the corner a fixed panel the others are
+pushed out of, which would stop a tray turning against the top edge on a
+desktop, and the desktop is to stay as it is.
+
+**Rejected: keeping the organiser over the middle.** Its old phone place,
+under the log at the right edge, lay over the touch suite's rectangle — the
+reason it started hidden. Shown from the start, it has to live in the top
+third (portrait) or the right-hand column (landscape); at 40 % of the height
+it still covered a corner the suite draws, measured, so it is a third.
+
 ### Tooltips and RGB frames: what a hold means, and which red
 
 The owner asked for a tooltip on hover and for frames coloured like

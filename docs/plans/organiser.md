@@ -130,7 +130,9 @@ Deviations and additions — each a decision, vetoable:
   vocabulary what the old one meant — the `horizontal` → `parallel`
   precedent. A marker would carry the old meaning forward in every re-save.
   The version is what keys it, so the bump is needed either way.
-- **On a phone the organiser starts hidden** (`Panels`' new `hiddenAtFirst`,
+- ~~**On a phone the organiser starts hidden**~~ — reversed by the owner
+  (2026-11-04, *"show from start"*; `everything-fits.md`, which removed
+  `hiddenAtFirst` and gave it a place in both orientations). (`Panels`' new `hiddenAtFirst`,
   and a stored `hidden: false` once the viewer ticks it in Panes): the
   phone's drawing is mostly covered already, and a pane always over its
   right half covered what the touch suite draws. Shown, it sits **under the

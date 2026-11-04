@@ -135,8 +135,8 @@ test/                    node --test, no browser needed (WASM loaded via a byte 
 ## The command line
 
 The command line (a panel at the bottom-left until you move it — every
-piece of chrome can be dragged by its strip, and all but the toolbar — always
-one line of its tools — resized from any corner) is a
+piece of chrome can be dragged by its strip, and all but the toolbar — one
+line of its tools, or two where one will not fit — resized from any corner) is a
 REPL over the app's own command surface, and it is the primary interface —
 not a debug console. `help()` lists everything in scope. The toolbar's
 buttons are shortcuts into it: each is a tool's icon, types `arm("name")`,
@@ -326,8 +326,8 @@ extrude's twins — and the status says `● g1`), and a right-click or a
 long-press has *Rename…*, *Add selection*, *Remove selection*, *Open* or
 *Close*, and *Ungroup* (*Edit* and *Delete* for a feature). The **＋** groups
 the selection, or with nothing selected opens a new empty group. Every control
-types its command into the log. On a phone the pane starts hidden: tick it in
-the logo's menu, under Panes.
+types its command into the log. It is there from the start, on a phone too;
+the logo's menu hides it, under Panes.
 
 **Dimensions are named `d1`, `d2`, …** — `dist`, `rad` and `ang`, the
 relations that carry a number — while every other constraint is `r1`, `r2`, ….
@@ -460,9 +460,14 @@ drawn, every button answers a finger over 44 points, and how near a point a
 finger must land to pick it never changes. A pane pushed against an edge, or
 against another pane, stays against it when the phone turns.
 
-![ZeroCAD on an iPhone 13, portrait: the logo and the status top-left, the tools down the left, the action strip and the log at the top right, the command line docked to the bottom](docs/screenshots/phone-portrait.png)
+![ZeroCAD on an iPhone 13, portrait: the logo and the status top-left, the tools down the left, the organiser beside the action strip and the log, the command line docked to the bottom](docs/screenshots/phone-portrait.png)
 
-![The same in landscape: the tools a row docked along the bottom, the command line along the top](docs/screenshots/phone-landscape.png)
+![The same in landscape: the tools two rows along the bottom, the command line along the top, the action strip, the log and the organiser down the right](docs/screenshots/phone-landscape.png)
+
+Nothing is ever drawn over anything else: on every iPhone from the SE to the
+Pro Max, either way up, the panes start clear of one another and of the
+status beside the logo, and the toolbar takes a second row where one will
+not fit.
 
 **If the top of the installed app is blurred** (iOS 26 draws a blur over
 apps installed by 0.1.0): remove the ZeroCAD icon from the home screen and

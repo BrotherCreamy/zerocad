@@ -272,8 +272,8 @@ let viewMode: ViewMode = recallViewMode(browserStorage());
 
 /**
  * The panels are placed before the kernel loads, so the page never shows the
- * chrome in a heap while the WASM downloads. The toolbar is the one tray: always
- * one line of however many tools are registered *when it is asked* — the
+ * chrome in a heap while the WASM downloads. The toolbar is the one tray: a line
+ * (or two, where one will not fit) of however many tools are registered *when it is asked* — the
  * built-ins are all registered by the imports above, and one defined later at
  * the command line lengthens it, moved or not, through `syncToolbar` below. It
  * turns between column and row against the edges it is dragged to, and has no
