@@ -110,10 +110,15 @@ test("portrait: the phone's defaults — command line docked to the bottom, the 
   for (const [id, r] of Object.entries(out)) {
     assert.ok(r.x >= 0 && r.y >= 0 && r.x + r.w <= area.w && r.y + r.h <= area.h, `${id} wholly inside: ${JSON.stringify(r)}`);
   }
-  assert.deepEqual([out.cmd.x, out.cmd.w, out.cmd.y + out.cmd.h], [0, area.w, area.h], "the command line docked to the bottom, edge to edge");
+  // Docked to the bottom. Edge to edge in the installed app; here, in Safari's
+  // shorter page (390 × 664), the column of thirteen — Select and the Hand
+  // with the eleven tools — runs below where the line would start, so the
+  // line starts right of it (touchlayout.test.ts has both cases).
+  assert.deepEqual([out.cmd.x + out.cmd.w, out.cmd.y + out.cmd.h], [area.w, area.h], "the command line docked to the bottom and the right");
+  assert.ok(out.cmd.x === 0 || out.cmd.x >= out.toolbar.x + out.toolbar.w, `edge to edge, or beside the column: ${JSON.stringify(out.cmd)}`);
   const logo = await app.page.$eval("#logo", (el) => (el as HTMLElement).offsetTop + (el as HTMLElement).offsetHeight);
   assert.ok(out.toolbar.x <= 8 && out.toolbar.h > out.toolbar.w && out.toolbar.y >= logo, "the tray is a column down the left, under the logo");
-  assert.equal(await app.page.$$eval("#toolbar button", (bs) => bs.length), 11);
+  assert.equal(await app.page.$$eval("#toolbar button", (bs) => bs.length), 13, "Select, the Hand and the eleven tools");
   assert.ok(out.actions.y <= 8 && out.actions.x + out.actions.w >= area.w - 8 && out.actions.w > out.actions.h, "the strip is a row at the top right");
   assert.ok(out.log.h <= 72, `the log is one line: ${out.log.h}px`);
   const lines = await app.page.$eval("#log", (el) => Math.round(el.clientHeight / parseFloat(getComputedStyle(el).lineHeight)));

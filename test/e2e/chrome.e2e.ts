@@ -500,28 +500,38 @@ test("a pane hidden from the menu is gone, stays gone through a reload, and come
 test("a tray docked to the right edge and a pane against it stay so through portrait → landscape → portrait; a floating pane stays inside", async () => {
   const p = await phone();
   try {
-    // The toolbar down a little (clear of the command line), then right
-    // until the edge stops it.
-    await dragStrip(p, "toolbar", 0, 100);
-    await dragStrip(p, "toolbar", 400, 0);
-    // The log narrowed, brought down beside the toolbar, and pushed right
-    // until the toolbar stops it.
+    // **The tray here is the action strip**, where it was the toolbar until
+    // Select and the Hand (docs/plans/select-hand.md): thirteen buttons at a
+    // finger's 44 px pitch are a 599 px line, which in landscape turns to a
+    // row along the right edge and leaves 151 px of a 750 px area beside it —
+    // less than a log's least width of 160, so no pane fits against it there.
+    // The strip is four buttons whatever the toolbar holds.
+    //
+    // The log narrowed first, out of the way of the column the strip turns
+    // into; the strip right until the edge stops it, and against that edge it
+    // turns, a column; the log brought down beside it, and pushed right until
+    // the strip stops it.
     const se = await boxOf(p.page, `${panel("log")} > .pgrip[data-corner="se"]`);
     await fingerDrag(p.cdp, [se.right - 4, se.bottom - 4], [se.right - 4 - 250, se.bottom - 4], 12);
     await p.page.waitForTimeout(120);
-    await dragStrip(p, "log", 0, 280);
+    await dragStrip(p, "actions", 400, 0);
+    await dragStrip(p, "log", 0, 60);
     await dragStrip(p, "log", 300, 0);
-    // The action strip, floating: off every edge and every panel.
-    await dragStrip(p, "actions", -80, 110);
+    // The command line, floating: narrowed, and lifted off every edge and every panel.
+    const ne = await boxOf(p.page, `${panel("cmd")} > .pgrip[data-corner="ne"]`);
+    await fingerDrag(p.cdp, [ne.right - 4, ne.y + 4], [ne.right - 4 - 150, ne.y + 4], 12);
+    await p.page.waitForTimeout(120);
+    await dragStrip(p, "cmd", 60, -150);
     const check = async (orientation: Orientation) => {
       const size = SIZE[orientation];
       const ins = INSETS[orientation];
-      const [tb, log, act] = [await boxOf(p.page, panel("toolbar")), await boxOf(p.page, panel("log")), await boxOf(p.page, panel("actions"))];
-      assert.equal(tb.right, size.width, `${orientation}: the toolbar against the right edge — reaching under the inset to the glass`);
-      assert.equal(log.right, tb.x, `${orientation}: the log against the toolbar's left`);
+      const [tb, log, line] = [await boxOf(p.page, panel("actions")), await boxOf(p.page, panel("log")), await boxOf(p.page, panel("cmd"))];
+      assert.equal(tb.right, size.width, `${orientation}: the strip against the right edge — reaching under the inset to the glass`);
+      assert.ok(tb.h > tb.w, `${orientation}: a column, turned by the edge`);
+      assert.equal(log.right, tb.x, `${orientation}: the log against the strip's left ${JSON.stringify({ tb, log, line })}`);
       assert.ok(log.bottom > tb.y && log.y < tb.bottom, `${orientation}: beside it, not off its end`);
-      assert.ok(act.x >= ins.left && act.y >= ins.top && act.right <= size.width - ins.right && act.bottom <= size.height - ins.bottom,
-        `${orientation}: the floating strip inside the safe area ${JSON.stringify(act)}`);
+      assert.ok(line.x >= ins.left && line.y >= ins.top && line.right <= size.width - ins.right && line.bottom <= size.height - ins.bottom,
+        `${orientation}: the floating command line inside the safe area ${JSON.stringify(line)}`);
       assert.deepEqual(errors, [], "and no two panels overlapped on the way");
     };
     await check("portrait");

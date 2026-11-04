@@ -189,7 +189,7 @@ test("Escape and a finished gesture both clear the pressed button", async () => 
   assert.deepEqual(await pressed(), ["rectangle"]);
   await app.page.keyboard.press("Escape");
   await app.page.waitForTimeout(50);
-  assert.deepEqual(await pressed(), [], "Escape disarms, and the button lets go");
+  assert.deepEqual(await pressed(), ["select"], "Escape disarms, the button lets go, and Select is lit — no tool");
 
   await app.page.click('#toolbar button[data-tool="point"]');
   assert.deepEqual(await pressed(), ["point"]);
@@ -197,7 +197,7 @@ test("Escape and a finished gesture both clear the pressed button", async () => 
   await app.page.mouse.click(at.x, at.y);
   await app.page.waitForTimeout(80);
   assert.equal(await armed(), null, "the point tool finishes on its click");
-  assert.deepEqual(await pressed(), [], "and its button lets go with it");
+  assert.deepEqual(await pressed(), ["select"], "and its button lets go with it, to Select");
 });
 
 test("a tool defined at the command line gets a button, which arms it", async () => {
@@ -400,7 +400,9 @@ async function tray(): Promise<{ x: number; y: number; w: number; h: number; ori
   return { x: r.x - cv.x, y: r.y - cv.y, w: r.width, h: r.height, orient, rows };
 }
 
-const TOOLS = 11; // the built-ins, after the reload that dropped "stamp"
+// The built-ins after the reload that dropped "stamp": Select and the Hand
+// (docs/plans/select-hand.md) and the eleven drawing tools.
+const TOOLS = 13;
 const RUN = 16 + 6 + TOOLS * 22; // strip, padding, a 22px step per button
 const DEPTH = 28; // one button thick
 /** The default tray's top: under the logo's 32 px box, a margin off it. */
@@ -649,8 +651,10 @@ test("the tray pushes the log, the log the command line, and at the bottom edge 
   await reloadApp();
   await app.type('layout("reset")');
   const cv = await rectOf("#cv");
-  // The log up out of the way first, so there is a push worth watching.
-  await dragBy(strip("log"), 0, -250);
+  // The log up out of the way first, so there is a push worth watching — 200
+  // px, not the 250 it was before Select and the Hand made the column two
+  // buttons (44 px) longer and the log would have landed on it.
+  await dragBy(strip("log"), 0, -200);
   const l0 = await panelsNow();
   assert.ok(l0.log.y > l0.toolbar.y + l0.toolbar.height + 20, "room between the tray and the log");
 

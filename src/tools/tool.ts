@@ -299,6 +299,28 @@ export abstract class Tool {
 
 export type ToolCtor = new (ctx: ToolContext) => Tool;
 
+/**
+ * **Select and the Hand** (docs/plans/select-hand.md; the owner: *"there is no
+ * hand/selction tool. would be nice since a lot of people are used to that"*)
+ * — the toolbar's first two buttons, armed by name like any tool, and not
+ * classes in the registry. `arm("select")` means **no tool**: the state a
+ * click selects in, which existed long before it had a button. `arm("hand")`
+ * makes a left-drag or a one-finger drag pan from wherever it lands. Both are
+ * the engine's own (engine.ts), because what they change is how the engine
+ * reads a press, not what a tool does with one — a Tool is handed world
+ * coordinates and has no camera to pan, and the Hand's tap must still reach
+ * the selection, which is the engine's.
+ */
+export const SELECT = "select";
+export const HAND = "hand";
+/** The two, in the toolbar's order. Reserved: `defineTool` refuses either name. */
+export const ENGINE_TOOLS: readonly string[] = [SELECT, HAND];
+
+/** What the toolbar shows, in its order: Select, the Hand, then every listed tool. */
+export function toolbarTools(): string[] {
+  return [...ENGINE_TOOLS, ...listTools()];
+}
+
 const registry = new Map<string, ToolCtor>();
 /** Tools armed only on something — never from the toolbar, so never on it. */
 const unlisted = new Set<string>();
@@ -313,6 +335,11 @@ const unlisted = new Set<string>();
  * handed. It is armed by name all the same.
  */
 export function defineTool(name: string, ctor: ToolCtor, { listed = true }: { listed?: boolean } = {}): void {
+  // A class registered as "hand" would never be armed — the engine answers
+  // the name itself — so it is refused where it is written, not lost.
+  if (ENGINE_TOOLS.includes(name)) {
+    throw new Error(`"${name}" is the toolbar's own (Select puts the tool down, the Hand pans) — name the tool something else`);
+  }
   declaredOptions(ctor, name);
   registry.set(name, ctor);
   if (listed) unlisted.delete(name);
