@@ -16,6 +16,13 @@ etc).
   on every push to the working branch. Called NeoCAD until 0.1.0; the
   internal code name stays in identifiers, the file format tag and storage
   keys (see TODO.md's register).
+- **A solid-kernel spike, not part of the app** (`spikes/solid-kernel/`;
+  findings in docs/plans/solid-kernel-spike.md). It holds a recipe that
+  builds NVIDIA's SMLib to wasm from source, a kernel-neutral TypeScript
+  contract with an SMLib adapter and a Worker, eleven test parts checked
+  against closed forms, the face and edge naming scheme, and benchmarks for
+  Node and headless Chromium. Nothing under `src/` imports it, and the
+  kernel build is never committed.
 - **No title bar** (docs/plans/chrome-logo-scale.md, built). The drawing is
   the whole window; the logo (`src/logo.ts`, also the home-screen icon's
   source) sits top-left inside the safe area as the one panel nothing moves,

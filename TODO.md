@@ -74,6 +74,36 @@ otherwise.
   ([`solid-kernel-spike.md`](docs/plans/solid-kernel-spike.md)). After it:
   extrude/revolve as add, cut or new body; fillet and chamfer solid edges;
   shell, mirror, patterns; sketch on any face.
+  - **Spiked (2026-11-04): SMLib — vetoable.** Built from NVIDIA's source by
+    our own recipe (`spikes/solid-kernel/smlib/build.sh`, pinned commit,
+    Emscripten 4.0.15). It is 1.16 MB brotli, needs no wasm exception
+    handling, and is Apache-2.0 throughout. All eleven test parts are valid
+    and exact, coplanar cases included, and every face and edge name
+    survived a rebuild with every dimension changed. It runs in a Worker;
+    rebuilding all eleven parts takes a median of 181 ms. **Vetoable
+    choices inside it:**
+    - `-O2` over `-Oz` (0.2 MB more to download for 45 % more speed);
+    - naming by *feature, role and profile member* tags that the kernel
+      carries, rather than geometric matching after each rebuild;
+    - an extrude's twins and walls becoming *derived* from the kernel once
+      booleans exist, rather than staying relational entities.
+
+    Not run: OpenCascade (a policy refusal; sizes and documentation only).
+    Not tried: iOS.
+
+  Found by the spike, still to do:
+  - [ ] Report the `SmApiFilletEdges` leak upstream: about 154 kB per call on
+    a rounded outline's lid (`bench/leak.ts`). Recycle the Worker until it
+    is fixed.
+  - [ ] Fuzz SMLib on random profiles and booleans before the product depends
+    on it. `KNOWN_ISSUES.md` lists open shell, stitch and tessellation bugs
+    that our parts did not hit.
+  - [ ] The STEP exporter must recognise analytic surfaces: SMLib returns an
+    extruded arc as a B-spline and every revolve face as a surface of
+    revolution. The glue must also export knots, edge curves and p-curves.
+  - [ ] Spec the integration: `solids.ts` feature nodes, the Worker client,
+    names for faces and edges, and the migration of twins and walls. See the
+    Findings' architecture sketch.
 
 - **STEP export** (the owner, 2026-11-04: *"also, please add step export"*):
   exact B-rep, one body per feature, hand-written with no dependency,

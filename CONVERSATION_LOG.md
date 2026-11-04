@@ -106,6 +106,76 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### The solid-kernel spike: why SMLib, and why the others lost
+
+The owner can make nothing but extrusions because nothing joins or cuts
+solids. The spec ranked the options SMLib, then OpenCascade, then our own,
+and asked for numbers. The reasoning that was not obvious:
+
+**Build it, don't borrow it.** A community wasm build of SMLib exists, but a
+kernel we cannot rebuild is one we cannot patch, and the first thing the
+spike found (a fillet that leaks) is the kind of thing we will need to patch
+or bisect. Upstream's build system (premake plus Packman, NVIDIA's package
+server) fetches TBB and OpenUSD, and the geometry uses neither. So the recipe
+compiles the two source directories directly. It got three things wrong on
+the way, each of which looked like it should work:
+- SMLib *throws* (only `bad_alloc`, from its allocator), so `-fno-exceptions`
+  will not compile;
+- both directories have a `StdAfx.h`, and the wrong one compiles silently for
+  all but one file;
+- success is status 1000.
+
+**Why exceptions matter for the phone.** The build keeps Emscripten's default
+of *throws abort, nothing catches*. That is only correct because SMLib catches
+nothing, which was checked with grep rather than assumed. It also means the
+module needs no wasm exception-handling proposal, which an OpenCascade build
+does need, and which older iOS Safari lacks.
+
+**Identity is the question that could have sunk it.** A relational model
+holds names: a sketch on `F3.lid`, a constraint to `F3.m2|F3.lid`. The first
+design considered was matching faces geometrically after each rebuild
+(nearest centroid, same surface kind). *Rejected:* it guesses, and it guesses
+wrong when a dimension moves a face past another. The kernel's own history is
+better. SMLib's form of history is *attributes that propagate on split and
+merge*, so a tag set once at the sweep is carried by the kernel. The
+measurements show where that is not the whole answer:
+- a merged face keeps one tag, so the other feature's face name disappears;
+- a shell copies a tag onto both walls, so the caller has to say which wall
+  is the offset;
+- a fillet's new faces have no tag, and are named by the faces they blend.
+
+Those are rules the naming layer above the kernel owns, so they do not count
+against the kernel.
+
+**The tags are found from geometry, never from the kernel's face order.**
+Which member a wall came from is asked of where the wall is. *Rejected:*
+trusting `GetFaces()` order, which nothing documents as stable.
+
+**Why the losers lost.**
+- **OpenCascade** is the more complete kernel (STEP, loft, draft) and the
+  more proven one. But it is 4.3 times the download (5.0 MB against 1.16 MB
+  brotli), it needs wasm exception handling, and LGPL-2.1 makes us ship it in
+  a form the user can relink. It also could not be run here: the session's
+  policy refused to execute a prebuilt package, and that was not worked
+  around. So "lost" means "not needed, given that SMLib passed everything we
+  asked", not "measured worse". If SMLib fails a larger corpus, OpenCascade
+  is the fallback, and the kernel-neutral contract (`src/kernel.ts`) is
+  written so that it can be measured on the same parts.
+- **Our own kernel** was never in contention once SMLib passed both coplanar
+  cases. Robust booleans and blends are where every kernel spent its decades.
+- **The Rust kernels** (truck and others) would sit nicely in our crate, but
+  their robustness claims are self-reported, and they were not built: the
+  first candidate passed, and the spec ranked them below OpenCascade.
+
+**What was deliberately left.** These are documented in the Findings rather
+than fixed:
+- the leak, which is upstream's and pinned by a test;
+- arc walls and revolve faces coming back as general NURBS or surfaces of
+  revolution rather than cylinders, cones and tori (the STEP exporter's
+  problem to recognise);
+- the cost of tagging by area and interior point, which a product would take
+  from the sweep's own face lists.
+
 ### STEP export: a validator that could not fail, and what replaced it
 
 The owner asked for STEP export. The spec's hard line was that a file that

@@ -7,6 +7,58 @@ decisions.
 
 ---
 
+## The solid-kernel spike: SMLib, measured — go
+
+The owner:
+
+> *consider using an open source nurbs engine, or the nvidia one so you can
+> do real solving. if its possible with what we are trying to achieve then
+> use it, otherwise start dev on your own engine*
+
+> *I find it impossible to make anything beyond an extruded shape. fix this
+> so I can create complex parts*
+
+Spec: [`docs/plans/solid-kernel-spike.md`](docs/plans/solid-kernel-spike.md),
+with its *Findings* appended. **The recommendation is NVIDIA's SMLib**, built
+to wasm by us and run in a Worker. Nothing in the app changed; the spike
+lives in `spikes/solid-kernel/`, which the app does not import.
+
+- **Built from NVIDIA's source** (usd-brep at
+  `3fd5b9548d19aa8c12c29bc9637a96d42a06f8a5`) with Emscripten 4.0.15. The
+  build needs neither upstream's build system nor TBB nor OpenUSD, takes
+  about 15 minutes on 4 cores, and the recipe is
+  `spikes/solid-kernel/smlib/build.sh`.
+- **Size**: 4.36 MB raw, **1.16 MB brotli** (`-O2`); `-Oz` is 0.95 MB but
+  45 % slower. An OpenCascade build is 5.0 MB brotli. The SMLib build uses
+  **no wasm exception handling**; OpenCascade's needs it.
+- **Eleven test parts, all exact.** These are the spec's six (a plate with a
+  pocket and two holes, two overlapping extrudes unioned, a filleted outline
+  with its top edges filleted, a revolve with a cone and a torus face, a boss
+  on a face, a cut flush with a face) plus a shell, a chamfer, two boxes
+  sharing a face, a face split by a cut, and a tilted profile.
+  - Every one is a manifold solid that passes the kernel's own consistency
+    checks.
+  - Each volume is within 2·10⁻¹⁰ of an independent closed form, and each
+    bounding box within 3·10⁻¹³ mm.
+- **Identity across rebuilds: yes.** Faces are tagged by *feature, role and
+  profile member* right after each sweep. SMLib's attribute propagation
+  carries the tags through booleans, fillets and shells. After every
+  dimension of every part changed, every face and edge name was found again.
+  The exceptions, now documented:
+  - a coplanar merge keeps only one of the two faces' names;
+  - a shell's offset faces need retagging by the caller.
+- **Speed**: rebuilding all eleven parts takes a median of **181 ms** in a
+  Chromium Worker and 193 ms in Node. A fresh Worker answers in 184–299 ms.
+- **Memory**: one leak was found. Filleting a rounded outline's lid keeps
+  about 154 kB per call inside SMLib; no other operation keeps more than
+  41 bytes. A fresh Worker starts back at 32 MB, so recycling bounds it.
+- **Not run: OpenCascade.** The session's policy refused to execute the
+  prebuilt npm package, so OpenCascade's side of the comparison is its sizes
+  and its documentation. **Not tested: iOS**, as there was no device.
+- Tests: 29 in `spikes/solid-kernel/test/`. Nine check the closed forms
+  against shapes of known volume; twenty run against a build and skip,
+  saying so, without one. The app's suite is unchanged.
+
 ## STEP export: exact solids out to every other CAD tool
 
 The owner:
