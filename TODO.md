@@ -24,6 +24,19 @@ otherwise.
 
 ## Decisions made so far — veto here if any are wrong
 
+- **No title bar; a tiny logo over the drawing opens the app menu; the
+  interface has a size setting; panels dock to the very edge; files open,
+  save and share on a phone and a desktop** (the owner, 2026-11-04, after
+  trying 0.1.0 on his iPhone, verbatim: *"rather than say zerocad, it should
+  be a tiny logo in the top left corner, that is overlaid over the viewport
+  … There should be no title bar"*; *"the interface elements are huge on my
+  screen. there should be a settings menu that allows the user to change the
+  zoom level of the interface"*; *"Please allow it to be dragged right to the
+  bottom"*; *"I want to be able to open files on my phone, share files etc.
+  Should also work for desktop."*). Specs:
+  [`chrome-logo-scale.md`](docs/plans/chrome-logo-scale.md),
+  [`files.md`](docs/plans/files.md).
+
 - **The app is ZeroCAD; NeoCAD stays the internal code name** (the owner
   named the project and its public repository `zerocad`, 2026-11-04). What a
   person sees says ZeroCAD. Identifiers, the saved-file format tag
