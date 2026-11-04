@@ -24,6 +24,17 @@ otherwise.
 
 ## Decisions made so far — veto here if any are wrong
 
+- **A real solid kernel, chosen by measurement** (the owner, 2026-11-04:
+  *"consider using an open source nurbs engine, or the nvidia one so you can
+  do real solving … otherwise start dev on your own engine"*; *"I find it
+  impossible to make anything beyond an extruded shape"*). The cause of the
+  second is the missing booleans. Order of preference: NVIDIA's SMLib
+  (Apache-2.0, ~1.2 MB in the browser), then OpenCascade, then our own as a
+  last resort; a spike decides with numbers
+  ([`solid-kernel-spike.md`](docs/plans/solid-kernel-spike.md)). After it:
+  extrude/revolve as add, cut or new body; fillet and chamfer solid edges;
+  shell, mirror, patterns; sketch on any face.
+
 - **STEP export** (the owner, 2026-11-04: *"also, please add step export"*):
   exact B-rep, one body per feature, hand-written with no dependency,
   validated against OpenCascade outside the repo. Spec:
