@@ -212,7 +212,7 @@ test('del("e1") takes exactly what it made — twins, walls, depth, no frame —
   assert.equal(m.solve().solved, true);
 });
 
-test("a new file says nothing new: the extrude entry is the call, the version is 11, and save, open, save is byte-identical", async () => {
+test("a new file says nothing new: the extrude entry is the call, the version is 11 or later, and save, open, save is byte-identical", async () => {
   await loadKernel();
   const { m, left, right } = twoRectangles();
   await typed(m, `extrude("${left[0]}", 10)`);
@@ -221,7 +221,7 @@ test("a new file says nothing new: the extrude entry is the call, the version is
   m.solve();
   const once = save(m);
   assert.equal(JSON.parse(once).version, VERSION);
-  assert.equal(VERSION, 11);
+  assert.ok(VERSION >= 11, "11 is where the lid frame went; 12 changed only groups");
   for (const e of JSON.parse(once).journal.filter((j: { op: string }) => j.op === "extrude")) {
     assert.equal(e.args.length, 4, "member, depth, frame, profile — no expansion");
   }

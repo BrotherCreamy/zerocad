@@ -181,7 +181,7 @@ test("orbited: no two points on one spot — no lid frame, the sketch frame's co
 
 test("save and open: the same names, still no point on another", async () => {
   const before = (await app.repl("save()")).value as string;
-  assert.equal(JSON.parse(before).version, 11);
+  assert.equal(JSON.parse(before).version, 12);
   const r = await app.repl(`open(${JSON.stringify(before)})`);
   assert.equal(r.ok, true, r.error ?? "");
   await app.page.waitForTimeout(200);

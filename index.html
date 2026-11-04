@@ -59,6 +59,10 @@
     /* A tool's guidance there: the log's muted answer colour — not amber,
        which is what just happened, and never the red of a contradiction. */
     #stepnote.guide{color:#8fa7bb}
+    /* The open group (docs/plans/organiser.md): what is drawn joins it, so it
+       is said for as long as it is open — it never fades, being a state and
+       not news. Amber, the organiser's open marker's colour. */
+    #opengroup{color:#e8a33d}
     /* The logo (src/logo.ts), top-left over the drawing, inside the safe area
        — placed and sized by src/panels.ts, for which it is the one panel that
        never moves. A button: it opens the app menu. No ground of its own; the
@@ -206,6 +210,36 @@
     /* A panel that comes and goes (the options panel) is hidden by the
        attribute, which .panel's display:flex would otherwise beat. */
     .panel[hidden]{display:none}
+    /* The organiser (src/organiser.ts): a section a title and its rows, a row
+       its open marker, name, count and eye. Drawn at the interface size; a
+       row lit violet, the selection's colour, while its members are selected,
+       and the open group's marker amber. The ＋ in the strip makes a group. */
+    /* Over the north-east grip, which would otherwise take its press: the
+       corner keeps the rest of its triangle to resize by. */
+    .panel>.ptitle .padd{position:relative;z-index:1;margin-left:auto;margin-right:-5px;padding:0 5px;height:100%;display:flex;align-items:center;
+      border:none;background:transparent;color:#8fa7bb;font-family:inherit;font-size:calc(13px * var(--ui));line-height:1;cursor:default}
+    .panel>.ptitle .padd:hover{color:#e8a33d}
+    #organiser{overflow-y:auto;overflow-x:hidden;padding:1px 0 4px;font-size:calc(11px * var(--ui));color:#8fa7bb;touch-action:pan-y;
+      -webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+    #organiser .ohead{padding:calc(4px * var(--ui)) 8px calc(1px * var(--ui));font-size:calc(9px * var(--ui));letter-spacing:.07em;
+      text-transform:uppercase;color:#46586a}
+    #organiser .onone{padding:0 8px calc(3px * var(--ui));font-size:calc(10px * var(--ui));color:#46586a}
+    #organiser .orow{display:flex;align-items:center;gap:calc(4px * var(--ui));height:calc(20px * var(--ui));padding:0 4px;cursor:default}
+    #organiser .orow:hover{background:#16212c}
+    #organiser .orow.on{background:#c46cff1f}
+    #organiser .orow.on .oname{color:#dcb6ff}
+    #organiser .oname{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#d5e1ec}
+    #organiser .odetail{flex:none;color:#46586a}
+    #organiser .ocount{flex:none;min-width:calc(14px * var(--ui));text-align:right;color:#7a8b9b;font-variant-numeric:tabular-nums}
+    #organiser button,#organiser .slot{flex:none;display:flex;align-items:center;justify-content:center;width:calc(16px * var(--ui));
+      height:calc(16px * var(--ui));padding:0;margin:0;border:none;border-radius:3px;background:transparent;color:#7a8b9b;
+      font-family:inherit;font-size:calc(10px * var(--ui));line-height:1;cursor:default}
+    #organiser button svg{display:block;width:calc(13px * var(--ui));height:calc(13px * var(--ui))}
+    #organiser button:hover:not(:disabled){background:#20303f;color:#d5e1ec}
+    #organiser button:disabled{color:#2f4050}
+    #organiser .oopen{color:#46586a}
+    #organiser .orow[data-open] .oopen,#organiser .orow[data-open] .oopen:hover{color:#e8a33d}
+    #organiser .oeye[data-eye="hidden"]{color:#46586a}
     /* The armed tool's options, one 22px row each (OPTION_ROW in panels.ts,
        which sizes the panel to match: strip, 3px padding, border, rows). The
        strip names the tool. A row is the label, a field and the unit — the
@@ -257,6 +291,12 @@
       #cmdhint{display:none}
       #log{line-height:1.4;padding:0 10px}
       #options .oval[type="text"]{font-size:max(16px, calc(11px * var(--ui)))}
+      /* The organiser: a row a target tall, its marker, its eye and the strip's
+         ＋ each answering over 44 however small they are drawn. */
+      #organiser .orow{height:auto;min-height:44px}
+      #organiser button,.panel>.ptitle .padd{position:relative}
+      #organiser button::before,.panel>.ptitle .padd::before{content:"";position:absolute;left:50%;top:50%;
+        width:max(100%,44px);height:max(100%,44px);transform:translate(-50%,-50%)}
       :is(#ctxmenu,#appmenu) .head{padding:calc(6px * var(--ui)) 14px}
       #appmenu .head{padding:calc(6px * var(--ui)) 14px calc(2px * var(--ui))}
       :is(#ctxmenu,#appmenu) .item{min-height:44px;align-items:center;padding:0 14px}
@@ -286,6 +326,7 @@
       <div id="corner">
         <span id="status" aria-live="polite">loading kernel…</span>
         <span id="stepnote" aria-live="polite"></span>
+        <span id="opengroup" aria-live="polite"></span>
       </div>
       <!-- data-label is what the app menu's Panes calls each panel; a new
            panel needs nothing more to be listed there. -->
@@ -296,6 +337,12 @@
       <div class="panel" data-panel="log" data-label="Log">
         <div class="ptitle">log</div>
         <div id="log" class="pbody"></div>
+      </div>
+      <!-- The organiser (src/organiser.ts): the groups and the features. Its
+           ＋ is in the strip, and its press never starts a drag. -->
+      <div class="panel" data-panel="organiser" data-label="Organiser">
+        <div class="ptitle">organiser<button class="padd" type="button" title="＋ a group of the selection — or, with nothing selected, a new empty group, open" aria-label="new group">＋</button></div>
+        <div id="organiser" class="pbody"></div>
       </div>
       <div class="panel" data-panel="options" data-label="Tool options" hidden>
         <div class="ptitle">options</div>

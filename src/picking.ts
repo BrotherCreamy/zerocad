@@ -242,10 +242,12 @@ export function describePick(model: Model, pick: Pick): string {
  * The groups a thing is in, for the very end of the hover tag — `· g1 g2`,
  * the way a feature's piece ends `· e1`: the sets it belongs to, said where
  * the eye already is. `members("g1")` and `select("g1")` take it from there.
+ * The open group says so — `· g1 (open)` — which is how new geometry's tag
+ * says where it went (docs/plans/organiser.md).
  */
 function groupTag(model: Model, name: string): string {
   const gs = model.groupsHolding(name);
-  return gs.length ? `  ·  ${gs.map((g) => g.name).join(" ")}` : "";
+  return gs.length ? `  ·  ${gs.map((g) => (g.name === model.openGroup ? `${g.name} (open)` : g.name)).join(" ")}` : "";
 }
 
 /**

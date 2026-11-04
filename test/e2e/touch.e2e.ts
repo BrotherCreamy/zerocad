@@ -415,7 +415,7 @@ test("every target is hit over at least 44 px, however small it is drawn: tray a
     };
     for (const b of Array.from(document.querySelectorAll(".tray button"))) check(`button ${(b as HTMLElement).dataset.tool ?? (b as HTMLElement).dataset.action}`, b);
     for (const s of Array.from(document.querySelectorAll(".panel:not([hidden])>.ptitle"))) check(`strip of ${(s.parentElement as HTMLElement).dataset.panel}`, s);
-    for (const g of Array.from(document.querySelectorAll(".panel>.pgrip"))) check(`grip ${(g as HTMLElement).dataset.corner}`, g);
+    for (const g of Array.from(document.querySelectorAll(".panel:not([hidden])>.pgrip"))) check(`grip ${(g as HTMLElement).dataset.corner}`, g);
     for (const r of Array.from(document.querySelectorAll("#options .orow"))) check("option row", r, false, true);
     for (const b of Array.from(document.querySelectorAll("#options .oact button"))) check("✓/✗", b);
     for (const i of Array.from(document.querySelectorAll("#ctxmenu .item, #ctxmenu .choice"))) check(`menu ${i.textContent}`, i, false, true);

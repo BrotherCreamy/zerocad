@@ -32,10 +32,11 @@ import {
   type Insets, type Metrics, type Size,
 } from "./panels.ts";
 import {
-  clampScale, deviceScale, formFactor, formatScale, recallScale, rememberScale, textFactor, type Device,
+  FORM_FACTOR, clampScale, deviceScale, formFactor, formatScale, recallScale, rememberScale, textFactor, type Device,
 } from "./uiscale.ts";
 import { GUIDE_NOTE_MS, STEP_NOTE_MS, StatusLine } from "./statusline.ts";
 import { AppMenu, UNTITLED } from "./appmenu.ts";
+import { Organiser, organiserSections, rowMenu } from "./organiser.ts";
 import { logoSvg } from "./logo.ts";
 import { OptionMemory, declaredOptions, unitSymbol, type OptionValue } from "./tools/options.ts";
 import { toolIcon } from "./tools/icons.ts";
@@ -82,6 +83,7 @@ const faceLayer = createFaceLayer(facesCanvas);
 const cmdEl = document.getElementById("cmd") as HTMLInputElement;
 const hoverEl = document.getElementById("hovertag")!;
 const menuEl = document.getElementById("ctxmenu")!;
+const openGroupEl = document.getElementById("opengroup")!;
 const toolbarEl = document.getElementById("toolbar")!;
 const optionsPanelEl = document.querySelector<HTMLElement>('.panel[data-panel="options"]')!;
 const optionsEl = document.getElementById("options")!;
@@ -255,6 +257,10 @@ const panels = new Panels(
     // against it, and the way into the app menu is never under anything.
     fixed: { logo: { el: logoEl, size: () => logoBox(metrics) } },
     insets,
+    // A phone's drawing has no room to spare for a list it may never need:
+    // there the organiser starts hidden, one tick in the app menu's Panes
+    // away (docs/plans/organiser.md, As built). A tablet and a desktop show it.
+    hiddenAtFirst: coarse && formFactor(device) === FORM_FACTOR.phone ? ["organiser"] : [],
   },
 );
 // The insets change without the window resizing — a rotation does both, but
@@ -338,6 +344,8 @@ async function main() {
   const autosave = new Autosave(indexedDbStore(), { log: (line) => log(line, "out") });
   const restored = await autosave.restore((r) => openModelText(r.text, APP_DIM));
   let model = restored?.value ?? new Model(APP_DIM);
+  /** The organiser pane, once it is built below; the drawing pass syncs it (`syncOrganiser`). */
+  let organiser: Organiser | null = null;
   if (restored) {
     const r = restored.record;
     log(`restored ${r.name}${r.dirty ? " (unsaved changes)" : ""} — autosaved on this device`, "out");
@@ -494,6 +502,26 @@ async function main() {
       engine.renderOverlay();
     }
     syncToolbar();
+    syncOrganiser();
+  }
+
+  /**
+   * The organiser's rows, and the open group beside the status — after every
+   * redraw, which every edit, selection and undo ends in. The pane rebuilds
+   * only when what it shows differs, so a drag's frames cost a comparison.
+   */
+  function syncOrganiser() {
+    organiser?.sync();
+    // Short — the marker and the name, the pane's own — because it never
+    // fades, and beside the status it lies over whatever is in the logo's row:
+    // a phone's action strip in portrait, its command line's strip in
+    // landscape. Spelt out in its title.
+    const open = model.openGroup;
+    const said = open === null ? "" : `● ${open}`;
+    if (openGroupEl.textContent !== said) {
+      openGroupEl.textContent = said;
+      openGroupEl.title = open === null ? "" : `drawing into ${open} — what is made joins it; closegroup() ends it`;
+    }
   }
 
   /**
@@ -1290,6 +1318,28 @@ async function main() {
       run: (command) => void submit(command),
     })
     : null;
+
+  /**
+   * The organiser (docs/plans/organiser.md), through the same seam as the
+   * menu and the toolbar: every control types its line into `submit` — a
+   * row's `select("g1")`, the eye's `hide("g1")`, the ＋'s
+   * `opengroup(group())` — and a row's menu is the context menu's own element,
+   * so it closes, and is closed, as that one is.
+   */
+  const organiserEl = document.getElementById("organiser");
+  if (organiserEl) {
+    organiser = new Organiser(organiserEl, document.querySelector<HTMLElement>('.panel[data-panel="organiser"] .padd'), {
+      sections: () => organiserSections(model, engine.selection.prune(model)),
+      selection: () => engine.selection.prune(model),
+      menu: (name) => rowMenu(model, name, engine.selection.prune(model)),
+      showMenu: (m, x, y) => {
+        hoverEl.hidden = true;
+        const wrap = menuEl.parentElement!.getBoundingClientRect();
+        menu.show(m, x - wrap.left, y - wrap.top);
+      },
+      run: (command) => void submit(command),
+    });
+  }
 
   /**
    * **A press on the canvas keeps the canvas for the whole gesture.** The engine

@@ -766,6 +766,11 @@ export function dragStep(
 const GAP = 8;
 const LOG_H = 150;
 const BOTTOM_W = 560;
+/** The organiser's (docs/plans/organiser.md) default size at 100 % — a mouse's, and a finger's width. */
+const ORGANISER_W = 190;
+const ORGANISER_H = 260;
+const ORGANISER_TOUCH_W = 120;
+const ORGANISER_TOUCH_H = 170;
 
 /**
  * Where each panel goes on a fresh screen, for an area of `area` and a toolbar
@@ -791,7 +796,17 @@ export function defaultLayout(area: Size, tools: number, m: Metrics = FINE): Lay
     toolbar: { x: GAP, y: top, ...traySize(tools, "column", m), orient: "column" },
     log: { x: GAP, y: cmdY - GAP / 2 - logH, w, h: logH },
     cmd: { x: GAP, y: cmdY, w, h: cmdH },
+    // Bottom right, level with the log and the command line: the corner
+    // nothing else defaults to, clear of the drawing's middle and of the tray
+    // wherever along the top it is pushed.
+    organiser: organiserAt(area, Math.round(ORGANISER_W * m.scale), Math.round(ORGANISER_H * m.scale),
+      Math.max(top, area.h - GAP - Math.round(ORGANISER_H * m.scale)), area.h - GAP),
   };
+}
+
+/** The organiser against the area's right edge from `top`, held above `bottom`. */
+function organiserAt(area: Size, w: number, h: number, top: number, bottom: number): Rect {
+  return { x: area.w - GAP - w, y: top, w, h: Math.max(0, Math.min(h, bottom - top)) };
 }
 
 /**
@@ -832,6 +847,8 @@ function touchLayout(area: Size, tools: number, m: Metrics): Layout {
       actions: { x: right, y: GAP, ...act, orient: "row" },
       log: { x: right, y: GAP + act.h + GAP, w: act.w, h: logH },
       toolbar: { x: GAP, y: area.h - bar.h, ...bar, orient: "row" },
+      // Under the log, as wide as the strip, down to the tray's row.
+      organiser: organiserAt(area, act.w, Math.round(ORGANISER_TOUCH_H * m.scale), GAP + act.h + GAP + logH + GAP, area.h - bar.h - GAP),
     };
   }
   const bar = traySize(tools, "column", m);
@@ -855,6 +872,9 @@ function touchLayout(area: Size, tools: number, m: Metrics): Layout {
     // the command line, and sits in that box's bottom-right corner — just
     // above the line, its ✓ under the same thumb (`inCorner`).
     options: { x: left, y: below, w, h: cmdY - GAP - below },
+    // Under the log at the right edge, the top of that same box: the options
+    // panel sits in its bottom corner, so the two share it without meeting.
+    organiser: organiserAt(area, Math.round(ORGANISER_TOUCH_W * m.scale), Math.round(ORGANISER_TOUCH_H * m.scale), below, cmdY - GAP),
   };
 }
 
@@ -862,6 +882,7 @@ function touchLayout(area: Size, tools: number, m: Metrics): Layout {
 function minOfPanel(id: string, m: Metrics): Size {
   if (id === "log") return { w: 160, h: m.title + m.logLine };
   if (id === "cmd") return { w: 160, h: m.title + m.line };
+  if (id === "organiser") return { w: 110, h: m.title + Math.round(40 * m.scale) };
   return { w: 80, h: m.title + 20 };
 }
 
@@ -1241,8 +1262,9 @@ export function parseStored(text: string | null): Stored {
     const at = e.at === undefined ? null : parseRecorded(e.at);
     const entry: StoredPanel = {};
     if (at) entry.at = at;
-    if (e.hidden === true) entry.hidden = true;
-    if (entry.at || entry.hidden) out[id] = entry;
+    // `false` is a pane shown that starts hidden on this device (`hiddenAtFirst`).
+    if (typeof e.hidden === "boolean") entry.hidden = e.hidden;
+    if (entry.at || entry.hidden !== undefined) out[id] = entry;
   }
   return out;
 }
@@ -1503,6 +1525,8 @@ export class Panels {
   private fitted: Record<string, Fitted>;
   private fixed: Record<string, Fixed>;
   private insets: () => Insets;
+  /** The panels that start hidden until the viewer shows them — the organiser on a phone. */
+  private hiddenAtFirst: Set<string>;
   private stored: Stored;
   /** A v2 layout read at load, migrated against the first area there is. */
   private legacy: Layout | null;
@@ -1525,9 +1549,10 @@ export class Panels {
     trays: Record<string, () => number> = {},
     options: {
       check?: boolean; fitted?: Record<string, Fitted>; metrics?: Metrics;
-      fixed?: Record<string, Fixed>; insets?: () => Insets;
+      fixed?: Record<string, Fixed>; insets?: () => Insets; hiddenAtFirst?: readonly string[];
     } = {},
   ) {
+    this.hiddenAtFirst = new Set(options.hiddenAtFirst ?? []);
     this.m = options.metrics ?? FINE;
     this.area = area;
     this.defaults = defaults;
@@ -1565,9 +1590,9 @@ export class Panels {
     return Object.fromEntries(Object.entries(this.fixed).map(([id, f]) => [id, { x: 0, y: 0, ...f.size(), fixed: true }]));
   }
 
-  /** Whether the viewer has hidden `id`. */
+  /** Whether the viewer has hidden `id` — or, having said nothing, whether it starts hidden here. */
   private hiddenByViewer(id: string): boolean {
-    return this.stored[id]?.hidden === true;
+    return this.stored[id]?.hidden ?? this.hiddenAtFirst.has(id);
   }
 
   /**
@@ -1742,9 +1767,10 @@ export class Panels {
       throw new Error(`there is no "${id}" pane — the panes are ${[...this.els.keys()].map((k) => JSON.stringify(k)).join(", ")}`);
     }
     const entry = { ...this.stored[id] };
-    if (shown) delete entry.hidden;
-    else entry.hidden = true;
-    if (entry.at || entry.hidden) this.stored[id] = entry;
+    // A pane that starts hidden keeps being shown only by saying so.
+    if (shown && !this.hiddenAtFirst.has(id)) delete entry.hidden;
+    else entry.hidden = !shown;
+    if (entry.at || entry.hidden !== undefined) this.stored[id] = entry;
     else delete this.stored[id];
     saveStored(this.storage, this.stored);
     if (shown) this.raise(id);
@@ -1762,7 +1788,7 @@ export class Panels {
   report(): string {
     const at = Object.fromEntries(Object.entries(this.stored).filter(([, e]) => e.at).map(([id, e]) => [id, e.at!]));
     const panels = Object.fromEntries(Object.entries(this.shown).filter(([, r]) => !r.fixed));
-    const hidden = Object.keys(this.stored).filter((id) => this.stored[id].hidden);
+    const hidden = [...this.els.keys()].filter((id) => this.hiddenByViewer(id));
     const area = this.size();
     const i = this.inset;
     // The window and the insets as the page measured them: on a phone this is

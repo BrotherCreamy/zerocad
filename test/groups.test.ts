@@ -4,8 +4,9 @@
 // and entities can be grouped". So these hold a group to being a **set**: it
 // owns nothing, membership overlaps, a group never holds a group (naming one
 // adds its members, a union and not a link), and a feature is a read-only
-// group. Deleting a member takes it out of its groups and an emptied group
-// goes, journalled as part of the deletion's expansion. Hidden is not drawn,
+// group. Deleting a member takes it out of its groups, journalled as part of
+// the deletion's expansion — and an emptied group stays, empty, since
+// docs/plans/organiser.md (a group made to be drawn into starts empty). Hidden is not drawn,
 // picked, snapped or boxed — and still solved. All of it journalled, saved and
 // replayed byte for byte.
 
@@ -79,11 +80,11 @@ test("group names a set — g1, g2, or a name given — and owns nothing", async
   assert.throws(() => group(m, "l1", { name: "g1" }), /already exists/, "the model's name rules: unique");
   assert.throws(() => group(m, "l1", { name: "a.b" }), /cannot contain a dot/, "and no dot");
   assert.throws(() => group(m, "l1", "nope"), /"nope" is not an entity, a relation, a group or a feature/);
-  assert.throws(() => group(m), /at least one name/);
   assert.equal(m.groups.size, 2, "a refused group made nothing");
   assert.equal(group(m, "l4"), "g2", "and claimed no name");
+  assert.equal(group(m), "g3", "an empty group is a group (organiser.md: one made to draw into starts empty)");
   // Journalled with its members resolved and its name.
-  assert.deepEqual(m.journal.at(-1), { op: "group", args: ["l4", { name: "g2" }] });
+  assert.deepEqual(m.journal.at(-2), { op: "group", args: ["l4", { name: "g2" }] });
 });
 
 test("naming a group flattens it, there and then: a union, not a link — a group never holds a group", async () => {
@@ -97,7 +98,7 @@ test("naming a group flattens it, there and then: a union, not a link — a grou
   assert.throws(() => m.addGroup(["g1"]), /holds entities and relations/, "not even through the primitive");
 });
 
-test("addTo and removeFrom: flattened, checked first, a no-op journals nothing, and an emptied group goes", async () => {
+test("addTo and removeFrom: flattened, checked first, a no-op journals nothing, and an emptied group stays", async () => {
   const m = await sketch();
   const r = parallel(m, "l1", "f.x");
   group(m, "l1");
@@ -109,8 +110,8 @@ test("addTo and removeFrom: flattened, checked first, a no-op journals nothing, 
   assert.deepEqual(members(m, "g1"), ["l1", "l2", r], "refused before anything changed");
   assert.deepEqual(removeFrom(m, "g1", "l2"), ["l1", r]);
   assert.deepEqual(removeFrom(m, "g1", "l1", r), [], "emptied");
-  assert.equal(m.groups.has("g1"), false, "a group is never empty");
-  assert.throws(() => addTo(m, "g1", "l1"), /"g1" is not a group/);
+  assert.equal(m.groups.has("g1"), true, "a group may be empty (organiser.md reversed groups.md here)");
+  assert.deepEqual(addTo(m, "g1", "l1"), ["l1"], "and filled again");
 });
 
 test("ungroup and del(g) take the grouping and never a member", async () => {
@@ -138,14 +139,14 @@ test("a feature is a read-only group: read as one anywhere, edited as one nowher
 
 // --- the deletion cascade -----------------------------------------------------
 
-test("deleting a member takes it out of its groups, an emptied group goes, and the journal says so", async () => {
+test("deleting a member takes it out of its groups, an emptied group stays, and the journal says so", async () => {
   const m = await sketch();
   group(m, "l1", "l2");
   group(m, "l5");
-  // p5 takes l5 with it, which empties g2.
+  // p5 takes l5 with it, which empties g2 — and g2 stays.
   const removed = del(m, "p5");
-  assert.deepEqual(removed, ["l5", "p5", "g2"], "the emptied group is among what went");
-  assert.equal(m.groups.has("g2"), false);
+  assert.deepEqual(removed, ["l5", "p5"], "the emptied group is not among what went");
+  assert.deepEqual(members(m, "g2"), []);
   del(m, "l1");
   assert.deepEqual(members(m, "g1"), ["l2"]);
   // The expansion: each group a name leaves is a `removeFrom` before the
@@ -167,7 +168,7 @@ test("deleting a relation leaves its groups too; deleting a feature leaves what 
   const f = m.featureOf("e1");
   group(m, "e1");
   del(m, "e1");
-  assert.equal(m.groups.has("g1"), false, "everything in it went with the solid");
+  assert.deepEqual(members(m, "g1"), [], "everything in it went with the solid, and the grouping stays");
   assert.ok(ops(m).includes("removeFrom"));
   assert.equal(m.hidden.size, 0);
   assert.ok(!f.owns.some((n) => m.has(n)));
@@ -318,7 +319,7 @@ test("the command surface: ls lists groups and what is hidden; select expands a 
   assert.deepEqual(await run('members("g2")'), ["l1", "l2", "l3"]);
   assert.deepEqual(await run('groups("l1")'), ["g1", "g2"]);
   assert.deepEqual(await run('removeFrom("g1", "l1", "l2")'), []);
-  assert.match(said.at(-1)!, /g1 is empty, so it is gone/);
+  assert.match(said.at(-1)!, /g1 is empty now — ungroup\("g1"\) removes it/);
   assert.deepEqual(await run("show()"), ["l2"]);
 });
 
