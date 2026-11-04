@@ -24,6 +24,19 @@ otherwise.
 
 ## Decisions made so far — veto here if any are wrong
 
+- **Construction geometry is a per-entity flag** (the owner, 2026-11-04,
+  verbatim): *"construction geometry should be a per entity flag. at least
+  based on the name "construction geometry" it implies per entity"*. Geometry
+  flagged construction forms no regions and is otherwise an ordinary entity.
+  Drawn thin and muted, never dashed (dashes mean selection). Spec:
+  [`docs/plans/construction.md`](docs/plans/construction.md).
+- **No sketch object** (2026-11-04, the owner: *"there is no such thing as a
+  "sketch" per se"*): what lies on a plane is the "sketch"; every job a sketch
+  container does in hierarchical CAD has a flat answer (the working plane,
+  coplanarity for regions, groups for a named set, one solve, construction
+  flags). The cost — everything coplanar shares one space — is answered by
+  construction flags, another plane, or (held in reserve) a feature bound to
+  one group's regions.
 - **Generated geometry stays named, but quiet** (2026-11-03, from the owner
   asking whether every generated edge and corner should be a named entity):
   yes. A lid corner being a real point is this design's answer to the
