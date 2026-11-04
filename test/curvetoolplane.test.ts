@@ -1,35 +1,33 @@
-// The curve tools and the typed curve commands make their plane.
+// The curve tools and the typed curve commands make no frame
+// (docs/plans/frameless-curves.md). The owner, twice: *"why when I create
+// something, why does it first create a frame? … can I not just create a
+// circle or whatever in space?"*
 //
-// A fresh 3D model has no default frame, and a circle or an arc in 3D is given
-// one's plane (see `CircleEntity`). These used to be greyed out on the toolbar
-// and the menu until a frame existed — the first thing a newcomer met after a
-// rectangle. Now, as extrude does for a frameless sketch, the tool makes the
-// plane the click already lands on — `plane(pt(…), null, null, { look: false
-// })`, typed so the log teaches it — and carries on; the fillet tool makes its
-// corner's; and `circ()`, `arc()` and `fillet(…)` typed do the same at the
-// command line in one entry, so one undo step. The model's own "no default
-// frame" refusal stays as the guard under them, and is tested to stand.
+// A circle or arc carries its own normal. A tool's circle lies where the click
+// is — on the plane being sketched on, else a solid's face under the cursor,
+// else the origin's ground — and is held there by two ordinary relations it can
+// see and delete: `onplane` on its centre and `par` on its normal. These used
+// to type `plane(pt(…), null, null, { look: false })` first, in a fresh model,
+// and a fillet a plane of its corner's points; nothing is typed now, and a
+// fresh document drawn in gets one circle and nothing else.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { ensureKernelLoaded } from "../src/kernel/problem.ts";
 import { Model } from "../src/model.ts";
-import { frameBasis } from "../src/relations/refs.ts";
-import { filletNeedsFrame } from "../src/operations.ts";
+import { extrude, del, set } from "../src/operations.ts";
 import { open, save } from "../src/persist.ts";
 import { neocadScope } from "../src/replenv.ts";
 import { Repl } from "../src/repl.ts";
-import { UndoStack } from "../src/undo.ts";
-import { pointOnWorkingPlane, framePlane } from "../src/workplane.ts";
-import { liesOn, orbitBy, viewAxes, worldToScreen, type View } from "../src/view.ts";
-import { clickPlaneCommand } from "../src/tools/place.ts";
+import { pointOnWorkingPlane } from "../src/workplane.ts";
+import { orbitBy, screenToPlane, worldToScreen, type View } from "../src/view.ts";
 import { CircleTool } from "../src/tools/circle.ts";
 import { Circle3Tool } from "../src/tools/circle3.ts";
 import { ArcTool } from "../src/tools/arc.ts";
 import { Arc3Tool } from "../src/tools/arc3.ts";
 import { FilletTool } from "../src/tools/fillet.ts";
-import { featureHost } from "./featurectx.ts";
+import { featureHost, regionAtFor } from "./featurectx.ts";
 import type { Pick } from "../src/picking.ts";
 import type { PointerInfo, ToolContext } from "../src/tools/tool.ts";
 
@@ -42,6 +40,8 @@ const dot = (a: number[], b: number[]) => a.reduce((s, x, i) => s + x * b[i], 0)
 const sub = (a: number[], b: number[]) => a.map((x, i) => x - b[i]);
 const near = (a: number[], b: number[], tol = 1e-9) => Math.hypot(...sub(a, b)) <= tol;
 const frames = (m: Model) => [...m.entities.values()].filter((e) => e.kind === "frame").map((e) => e.name);
+const kinds = (m: Model) => [...m.entities.values()].map((e) => e.kind);
+const relationsOf = (m: Model) => [...m.relations.values()].map((r) => [r.op, r.args]);
 
 /** A view never turned, its middle at (400, 300) on screen, 2 px a unit. */
 function flatView(): View {
@@ -49,16 +49,16 @@ function flatView(): View {
 }
 
 /**
- * A tool's context with `run` typed into a real scope (settling once the line
- * has run, as the host's submit does), `act` counting the steps it bracketed,
- * and clicks read on the working plane through `view`, as the engine reads
- * them.
+ * A tool's context: a real command scope for `run` (which nothing should
+ * call now), clicks read on the working plane through `view` as the engine
+ * reads them, the region under a pixel as the engine finds it, and a pixel
+ * read on any plane as the engine's `planeAt` does.
  */
 function toolCtx(m: Model, view: View) {
   const repl = new Repl(neocadScope({ model: m, view, viewSize: () => [800, 600] }));
   const c = {
     model: m, options: {} as Record<string, unknown>, finished: false,
-    log: [] as string[], typed: [] as string[], acts: 0, pending: [] as Promise<unknown>[],
+    log: [] as string[], typed: [] as string[],
     pickResult: null as Pick | null,
     requestRender() {},
     requestSolve() { m.solve(); },
@@ -66,17 +66,14 @@ function toolCtx(m: Model, view: View) {
     pick: () => c.pickResult,
     run(command: string) {
       c.typed.push(command);
-      const p = repl.eval(command).then((r) => { if (!r.ok) c.log.push(String(r.error?.message)); });
-      c.pending.push(p);
-      return p;
+      return repl.eval(command).then(() => {});
     },
-    act(fn: () => void) { c.acts++; fn(); },
-    settled: async () => { while (c.pending.length) await c.pending.shift(); await new Promise((r) => setTimeout(r, 0)); },
+    act(fn: () => void) { fn(); },
+    regionAt: regionAtFor(m, view),
+    planeAt: ([sx, sy]: [number, number], plane: { origin: number[]; u: number[]; v: number[] }) => screenToPlane(view, sx, sy, plane),
   };
-  // A feature's confirm, as the host types it: every line into the same scope, one user action.
   const host = featureHost(m, repl);
   const ctx = { ...c, log: (line: string) => { c.log.push(line); }, perform: host.perform };
-  /** A click at a screen pixel, read where the engine would read it. */
   const at = (sx: number, sy: number): PointerInfo => {
     const { world, plane } = pointOnWorkingPlane(m, view, sx, sy);
     return { world, plane, screen: [sx, sy] };
@@ -84,245 +81,222 @@ function toolCtx(m: Model, view: View) {
   return { ctx: ctx as unknown as ToolContext, c, at, repl, host };
 }
 
-// --- the line the tools type ------------------------------------------------------
+// --- a fresh document --------------------------------------------------------------
 
-test("the line a curve tool types: the click, to three decimals, refs left to frame()'s seeding, the view left alone", () => {
-  assert.equal(clickPlaneCommand([12.34567, -7, 0]), "plane(pt(12.346, -7, 0), null, null, { look: false })");
-  assert.equal(clickPlaneCommand([-0.0001, 1e-12, 3.5]), "plane(pt(0, 0, 3.5), null, null, { look: false })",
-    "negative zero is written as zero");
-});
-
-// --- the tools --------------------------------------------------------------------
-
-test("the circle tool in a fresh 3D model types the plane the press landed on, then draws on it — no refusal, the view unturned", async () => {
+test("the circle tool in a fresh document makes one circle and no frame — on the origin's ground, held by relations it can see", async () => {
   await loadKernel();
   const m = new Model(3);
   const view = flatView();
-  const seen = JSON.stringify(view);
   const { ctx, c, at } = toolCtx(m, view);
   const tool = new CircleTool(ctx);
-  const press = at(431, 287);
-  tool.onDown(press);
-  await c.settled();
-  assert.deepEqual(c.typed, [clickPlaneCommand(press.world)], "one line, typed");
-  assert.deepEqual(c.log, [], "nothing refused");
-  const f = m.defaultFrame!;
-  assert.deepEqual(frames(m), [f], "the plane is the default");
-  assert.ok(near(frameBasis(m, f)().uz!, [0, 0, 1]), "facing the viewer of a view never turned");
-  assert.ok(near(frameBasis(m, f)().origin, press.world, 1e-3), "its origin at the click");
-
+  tool.onDown(at(431, 287));
   tool.onMove(at(451, 287));
   tool.onUp(at(451, 287));
   assert.equal(c.finished, true);
-  assert.equal(c.acts, 0, "the plane was in before the release, so the circle is the release's own step");
-  const [circle] = [...m.entities.values()].filter((e) => e.kind === "circle");
-  assert.equal(m.circle(circle.name).plane, f, "given the plane just made");
-  assert.ok(Math.abs(m.radius(circle.name) - 10) < 1e-9, "20 px at 2 px a unit");
-  assert.ok(liesOn(framePlane(m)!, m.coords(m.circle(circle.name).center)), "its centre on the sketch");
+  assert.deepEqual(c.typed, [], "nothing typed first");
+  assert.deepEqual(c.log, [], "nothing refused");
+  assert.deepEqual(kinds(m), ["point", "circle"], "one circle and its centre — no frame");
+  assert.deepEqual(frames(m), []);
+  const circle = [...m.entities.values()].find((e) => e.kind === "circle")!.name;
+  const centre = m.circle(circle).center;
+  assert.deepEqual(m.normalOf(circle), [0, 0, 1], "facing up, off the origin's x–y plane");
+  assert.ok(Math.abs(m.coords(centre)[2]) < 1e-12, "its centre on the ground");
+  assert.ok(Math.abs(m.radius(circle) - 10) < 1e-9, "20 px at 2 px a unit");
+  assert.deepEqual(relationsOf(m), [["onPlane", [centre, "origin"]], ["parallel", [circle, "origin.z"]]],
+    "its centre on the origin's plane and its normal par to the origin's +z");
   assert.equal(m.solve().solved, true);
-  assert.equal(JSON.stringify(view), seen, "the view did not turn");
-  assert.deepEqual(m.journal.map((j) => j.op).slice(0, 3), ["addPoint", "addFrame", "setDefaultFrame"],
-    "the frame's entries come first, so a replay finds it");
   const file = save(m);
   assert.equal(save(open(file)), file, "and the file reopens to itself");
 });
 
-test("a release that comes before the typed plane has gone in waits for it, and is a step of its own", async () => {
+test("deleting a drawn circle's par lets it turn in space; constrained to a line instead, it follows the line", async () => {
   await loadKernel();
   const m = new Model(3);
-  const { ctx, c, at } = toolCtx(m, flatView());
+  const { ctx, at } = toolCtx(m, flatView());
   const tool = new CircleTool(ctx);
   tool.onDown(at(400, 300));
-  tool.onUp(at(420, 300)); // in the same breath: the typed line has not run yet
-  assert.equal([...m.entities.values()].some((e) => e.kind === "circle"), false, "held, not made inside the plane's step");
-  await c.settled();
-  assert.equal(c.acts, 1, "made once the plane was in, bracketed by itself");
-  assert.equal([...m.entities.values()].filter((e) => e.kind === "circle").length, 1);
+  tool.onUp(at(420, 300));
+  const circle = [...m.entities.values()].find((e) => e.kind === "circle")!.name;
+  const par = [...m.relations.values()].find((r) => r.op === "parallel")!.name;
+  del(m, par);
+  // A line standing up through the centre, and the circle told to face along it.
+  const s = neocadScope({ model: m }) as Record<string, (...a: unknown[]) => unknown>;
+  const ends = [s.pt(0, 0, 0) as string, s.pt(0, 6, 8) as string];
+  ends.forEach((p, i) => s.fix(p, [[0, 0, 0], [0, 6, 8]][i]));
+  const axis = s.ln(...ends) as string;
+  s.par(circle, axis);
   assert.equal(m.solve().solved, true);
+  assert.ok(Math.abs(Math.abs(dot(m.normalOf(circle), [0, 0.6, 0.8])) - 1) < 1e-9, `facing along the line: ${m.normalOf(circle)}`);
 });
 
-test("in a turned view the 3-point circle's plane faces the viewer, and all three rim points and the centre lie on it", async () => {
+test("in a turned view the clicks still land on the ground: the 3-point circle lies in the origin's plane, all three rim points and the centre", async () => {
   await loadKernel();
   const m = new Model(3);
-  const view = orbitBy(flatView(), 0.7, -0.4);
+  const view = orbitBy(flatView(), 0.5, -0.4);
   const { ctx, c, at } = toolCtx(m, view);
   const tool = new Circle3Tool(ctx);
   tool.onDown(at(380, 290));
-  await c.settled();
-  tool.onDown(at(440, 300));
-  tool.onDown(at(410, 340));
-  assert.equal(c.finished, true, `${c.log}`);
-  const f = m.defaultFrame!;
-  const uz = frameBasis(m, f)().uz!;
-  assert.ok(dot(uz, viewAxes(view).toward) > 1 - 1e-12, `+z toward the viewer: ${uz}`);
-  const plane = framePlane(m)!;
-  const [circle] = [...m.entities.values()].filter((e) => e.kind === "circle");
-  for (const p of [...m.relationsNaming(circle.name).map((r) => r.args[0] as string), m.circle(circle.name).center]) {
-    assert.ok(liesOn(plane, m.coords(p)), `${p} on the sketch`);
-  }
+  tool.onDown(at(430, 280));
+  tool.onDown(at(410, 330));
+  assert.deepEqual(c.typed, []);
+  assert.deepEqual(frames(m), []);
+  const circle = [...m.entities.values()].find((e) => e.kind === "circle")!.name;
   assert.equal(m.solve().solved, true);
+  for (const p of [...m.entities.values()].filter((e) => e.kind === "point")) {
+    assert.ok(Math.abs(m.coords(p.name)[2]) < 1e-9, `${p.name} on the ground`);
+  }
+  assert.deepEqual(m.normalOf(circle), [0, 0, 1]);
 });
 
-test("the centre-point arc and the 3-point arc make their plane at the first click too", async () => {
+test("the centre-point arc and the 3-point arc make no frame either: each faces the ground and is held there", async () => {
   await loadKernel();
   for (const Tool of [ArcTool, Arc3Tool]) {
     const m = new Model(3);
     const { ctx, c, at } = toolCtx(m, flatView());
     const tool = new Tool(ctx);
-    tool.onDown(at(400, 300));
-    await c.settled();
-    assert.equal(c.typed.length, 1, tool.name);
-    if (Tool === ArcTool) { tool.onDown(at(440, 300)); tool.onDown(at(400, 340)); }
-    else { tool.onDown(at(440, 300)); tool.onDown(at(420, 280)); }
-    assert.equal(c.finished, true, `${tool.name}: ${c.log}`);
-    const [arc] = [...m.entities.values()].filter((e) => e.kind === "arc");
-    assert.equal(m.arc(arc.name).plane, m.defaultFrame, tool.name);
-    assert.equal(m.solve().solved, true, tool.name);
+    for (const [x, y] of [[400, 300], [440, 300], [400, 260]]) tool.onDown(at(x, y));
+    assert.deepEqual(c.typed, [], Tool.name);
+    assert.deepEqual(frames(m), [], Tool.name);
+    const arc = [...m.entities.values()].find((e) => e.kind === "arc")!.name;
+    assert.deepEqual(m.normalOf(arc), [0, 0, 1]);
+    assert.ok(relationsOf(m).some(([op, args]) => op === "parallel" && JSON.stringify(args) === JSON.stringify([arc, "origin.z"])), Tool.name);
+    assert.equal(m.solve().solved, true);
   }
 });
 
-test("headless, with no command line to type into, the curve tools refuse the first click in the model's words and place nothing", () => {
-  for (const Tool of [CircleTool, Circle3Tool, ArcTool, Arc3Tool]) {
-    const m = new Model(3);
-    const logged: string[] = [];
-    const bare = { model: m, options: {}, requestRender() {}, requestSolve() {}, finish() {}, log: (l: string) => { logged.push(l); } };
-    const tool = new Tool(bare as unknown as ToolContext);
-    const click: PointerInfo = { world: [1, 2, 0], screen: [0, 0] };
-    tool.onDown(click);
-    tool.onUp(click);
-    assert.equal(m.entities.size, 0, `${tool.name} placed nothing`);
-    assert.match(logged[0] ?? "", new RegExp(`^${tool.name}: no default frame`), `${tool.name}: ${logged}`);
-  }
-});
-
-/** A rectangle of free points and lines, level at z = 0 — what the rectangle tool draws in a model with no frame. */
-function rectangle(m: Model): { points: string[]; lines: string[] } {
-  const points = [[0, 0], [40, 0], [40, 30], [0, 30]].map(([x, y]) => m.addPoint([x, y, 0]).name);
-  const lines = points.map((p, i) => m.addLine(p, points[(i + 1) % 4]).name);
-  return { points, lines };
-}
-
-test("the fillet tool on a frameless corner, confirmed, types a plane of the corner's own points, +z toward the viewer, then the fillet — one user action", async () => {
+test("headless, with no command line at all, the curve tools draw as they do in the app — there is nothing to type", async () => {
   await loadKernel();
   const m = new Model(3);
-  const { points, lines } = rectangle(m);
+  const at = (x: number, y: number): PointerInfo => ({ world: [x, y, 0], screen: [0, 0] });
+  const ctx = { model: m, options: {}, requestRender() {}, requestSolve() {}, finish() {} } as unknown as ToolContext;
+  const tool = new CircleTool(ctx);
+  tool.onDown(at(0, 0));
+  tool.onUp(at(5, 0));
+  assert.deepEqual(kinds(m), ["point", "circle"]);
+});
+
+// --- on a solid's face -------------------------------------------------------------
+
+/** A 40 × 30 × 10 block extruded off the ground in a fresh document, seen from above. */
+async function block() {
+  const m = new Model(3);
+  const s = neocadScope({ model: m }) as Record<string, (...a: unknown[]) => unknown>;
+  const pts = [[0, 0], [40, 0], [40, 30], [0, 30]].map(([x, y]) => s.pt(x, y, 0) as string);
+  const ls = pts.map((p, i) => s.ln(p, pts[(i + 1) % 4]) as string);
+  const e = extrude(m, ls[0], 10);
+  assert.equal(m.solve().solved, true);
+  return { m, e };
+}
+
+test("a circle drawn over a solid's top face lies on the face — held to the face's own points, and following it", async () => {
+  await loadKernel();
+  const { m, e } = await block();
   const view = flatView();
-  const { ctx, c, at, host } = toolCtx(m, view);
+  const { ctx, at } = toolCtx(m, view);
+  const tool = new CircleTool(ctx);
+  // Over the middle of the top, as seen from above.
+  const [sx, sy] = worldToScreen(view, [20, 15, 10]);
+  tool.onDown(at(sx, sy));
+  tool.onUp(at(sx + 10, sy));
+  assert.deepEqual(frames(m), [], "no frame for the face either");
+  const circle = [...m.entities.values()].find((x) => x.kind === "circle")!.name;
+  const centre = m.circle(circle).center;
+  assert.ok(near(m.coords(centre), [20, 15, 10], 1e-6), `on the top, not the ground: ${m.coords(centre)}`);
+  const held = [...m.relations.values()].filter((r) => r.args.includes(centre) || r.args.includes(circle));
+  const face = held.find((r) => r.op === "onPlane")!.args[1] as string;
+  assert.equal(face.split(".").length, 3, `held on three of the face's points: ${face}`);
+  assert.ok(held.some((r) => r.op === "parallel" && r.args[1] === face), "its normal par to the face's");
+  assert.ok(Math.abs(dot(m.normalOf(circle), [0, 0, 1]) - 1) < 1e-9, "facing out of the top");
+  // Set the depth: the circle rides with the lid, wherever the solve puts it.
+  set(m, `${m.featureOf(e, "extrude").depth}.value`, 25);
+  assert.equal(m.solve().solved, true);
+  const lidZ = m.coords(m.line(m.featureOf(e, "extrude").twins[0][0]).refs[0])[2];
+  const baseZ = m.coords(m.line(m.featureOf(e, "extrude").loops[0][0] as string).refs[0])[2];
+  assert.ok(Math.abs(lidZ - baseZ - 25) < 1e-6, "the depth holds");
+  assert.ok(Math.abs(m.coords(centre)[2] - lidZ) < 1e-6, `followed the lid: ${m.coords(centre)} at ${lidZ}`);
+});
+
+test("a circle over a plain sketch region lies on the ground — only a solid's face is a place a click lands on", async () => {
+  await loadKernel();
+  const m = new Model(3);
+  const s = neocadScope({ model: m }) as Record<string, (...a: unknown[]) => unknown>;
+  const pts = [[0, 0], [40, 0], [40, 30], [0, 30]].map(([x, y]) => s.pt(x, y, 0) as string);
+  pts.forEach((p, i) => s.ln(p, pts[(i + 1) % 4]));
+  const view = flatView();
+  const { ctx, at } = toolCtx(m, view);
+  const tool = new CircleTool(ctx);
+  const [sx, sy] = worldToScreen(view, [20, 15, 0]);
+  tool.onDown(at(sx, sy));
+  tool.onUp(at(sx + 10, sy));
+  assert.ok(relationsOf(m).some(([op, args]) => op === "onPlane" && (args as unknown[])[1] === "origin"));
+});
+
+test("with the work plane set to a face, every click lands on it — what sketch on face is for", async () => {
+  await loadKernel();
+  const { m, e } = await block();
+  const f = m.featureOf(e, "extrude");
+  // The lid's own corners, as sketch on face would name them.
+  const [a, b] = m.line(f.twins[0][0]).refs;
+  const d = m.line(f.twins[0][3]).refs[0];
+  m.setWorkPlane(`${a}.${b}.${d}`);
+  const view = orbitBy(flatView(), 0.3, 0.2);
+  const { ctx, at } = toolCtx(m, view);
+  const tool = new CircleTool(ctx);
+  tool.onDown(at(400, 300));
+  tool.onUp(at(420, 300));
+  const circle = [...m.entities.values()].find((x) => x.kind === "circle")!.name;
+  assert.ok(Math.abs(m.coords(m.circle(circle).center)[2] - 10) < 1e-6, "on the lid's plane");
+  assert.ok(relationsOf(m).some(([op, args]) => op === "parallel" && (args as unknown[])[1] === `${a}.${b}.${d}`));
+});
+
+// --- the fillet --------------------------------------------------------------------
+
+test("the fillet tool on a frameless corner types the fillet and nothing before it — no frame", async () => {
+  await loadKernel();
+  const m = new Model(3);
+  const s = neocadScope({ model: m }) as Record<string, (...a: unknown[]) => unknown>;
+  const k = s.pt(0, 0, 0) as string;
+  const l1 = s.ln(s.pt(30, 0, 0), k) as string;
+  const l2 = s.ln(k, s.pt(0, 30, 0)) as string;
+  const { ctx, host } = toolCtx(m, flatView());
   const tool = new FilletTool(ctx);
-  c.pickResult = { name: lines[0], kind: "line", distance: 0 };
-  tool.onDown(at(410, 300));
-  c.pickResult = { name: lines[1], kind: "line", distance: 0 };
-  tool.onDown(at(480, 280));
-  assert.deepEqual(host.typed, [], "picking types nothing");
-  tool.confirm();
+  (tool as unknown as { lines: string[] }).lines = [l1, l2];
+  (tool as unknown as { confirm(): void }).confirm();
   await host.settled();
-  // The shared point, then the legs' far ends — turned over so (b − a) × (c − a) faces the viewer.
-  assert.deepEqual(host.typed, [`plane("${points[1]}", "${points[2]}", "${points[0]}", { look: false })`,
-    `fillet("${lines[0]}", "${lines[1]}", 10)`]);
-  assert.equal(host.performs, 1, "one user action");
-  assert.equal(c.finished, true, `a confirm releases the tool: ${c.log}`);
-  const f = m.defaultFrame!;
-  assert.ok(near(frameBasis(m, f)().uz!, [0, 0, 1]), "+z toward the viewer");
-  const [arc] = [...m.entities.values()].filter((e) => e.kind === "arc");
-  assert.equal(m.arc(arc.name).plane, f);
-  assert.equal(m.solve().solved, true);
-});
-
-test("a corner the fillet would refuse types no plane first", async () => {
-  await loadKernel();
-  const m = new Model(3);
-  const { lines } = rectangle(m);
-  assert.throws(() => filletNeedsFrame(m, lines[0], lines[1], 500), /too large/);
-  assert.throws(() => filletNeedsFrame(m, lines[0], lines[2], 5), /do not meet/);
-  const { ctx, c, at, host } = toolCtx(m, flatView());
-  ctx.options.radius = 500;
-  const tool = new FilletTool(ctx);
-  c.pickResult = { name: lines[0], kind: "line", distance: 0 };
-  tool.onDown(at(410, 300));
-  c.pickResult = { name: lines[1], kind: "line", distance: 0 };
-  tool.onDown(at(480, 280));
-  tool.confirm();
-  await host.settled();
-  assert.deepEqual(host.typed, [], "nothing typed");
+  assert.deepEqual(host.typed, [`fillet("${l1}", "${l2}", 10)`]);
   assert.deepEqual(frames(m), []);
-  assert.match(host.refused.join("\n"), /too large/);
+  const arc = [...m.entities.values()].find((x) => x.kind === "arc")!.name;
+  assert.ok(Math.abs(Math.abs(m.normalOf(arc)[2]) - 1) < 1e-12, "facing its corner's plane");
 });
 
-// --- the command line -------------------------------------------------------------
+// --- typed ---------------------------------------------------------------------------
 
-/** One entry as the host runs it: snapshot, evaluate, push the step if it changed anything. */
-async function entry(repl: Repl, m: Model, undo: UndoStack<string>, src: string) {
-  const before = save(m, false);
-  const r = await repl.eval(src);
-  undo.pushIfChanged(before, save(m, false));
-  return r;
-}
-
-test("typed circ() with no default frame makes one at the view centre, facing the viewer, and says so — one entry, one undo step", async () => {
-  await loadKernel();
-  const m = new Model(3);
-  const view = orbitBy(flatView(), 0.5, 0.3);
-  const said: string[] = [];
-  const repl = new Repl(neocadScope({ model: m, view, viewSize: () => [800, 600], log: (l) => { said.push(l); } }));
-  const undo = new UndoStack<string>();
-  const empty = save(m, false);
-  const r = await entry(repl, m, undo, "circ()");
-  assert.equal(r.ok, true, r.error?.message ?? "");
-  const f = m.defaultFrame!;
-  assert.ok(f, "made, and the default");
-  assert.ok(dot(frameBasis(m, f)().uz!, viewAxes(view).toward) > 1 - 1e-12, "facing the viewer");
-  assert.ok(near(worldToScreen(view, frameBasis(m, f)().origin), [400, 300], 1e-6), "at the middle of the view");
-  assert.equal(m.circle(r.value as string).plane, f);
-  assert.match(said.join("\n"), new RegExp(`^circ: no default frame, so ${f} was made at the view centre, facing you$`));
-  const ops = m.journal.map((j) => j.op);
-  assert.ok(ops.indexOf("setDefaultFrame") < ops.indexOf("addCircle"), "the frame is journalled first");
-  assert.equal(undo.depth, 1, "one step");
-  assert.equal(undo.undo(save(m, false)), empty, "and undoing it takes frame and circle together");
-});
-
-test("typed arc() does the same; headless the frame is the model's own seed, at the origin along x and y", async () => {
+test("typed circ() and arc() make no frame and hold nothing — free, facing the drawing plane; a plane named holds them to it", async () => {
   await loadKernel();
   const m = new Model(3);
   const repl = new Repl(neocadScope({ model: m }));
-  const r = await repl.eval("arc()");
-  assert.equal(r.ok, true, r.error?.message ?? "");
-  const f = m.defaultFrame!;
-  const b = frameBasis(m, f)();
-  assert.ok(near(b.origin, [0, 0, 0]) && near(b.uz!, [0, 0, 1]));
-  assert.equal(m.arc(r.value as string).plane, f);
-  assert.equal(m.solve().solved, true);
-});
-
-test("a typed circle that is refused makes no frame; one with a frame named, or a default, makes none either", async () => {
-  await loadKernel();
-  const m = new Model(3);
-  const repl = new Repl(neocadScope({ model: m }));
-  assert.equal((await repl.eval("circ(null, -2)")).ok, false);
-  assert.equal((await repl.eval('arc("nope")')).ok, false);
-  assert.equal((await repl.eval('arc(null, "p9", "p9")')).ok, false);
-  assert.deepEqual(frames(m), [], "nothing made on the way to a refusal");
-  assert.equal(m.entities.size, 0);
-  await repl.eval("circ()");
-  await repl.eval("circ()");
-  assert.equal(frames(m).length, 1, "the second circle uses the first one's frame");
-  // The model's own refusal still stands underneath, for anything that skips the command layer.
-  assert.throws(() => new Model(3).addCircle(), /no default frame/);
-});
-
-test("typed fillet on a frameless corner makes a frame of the corner's points first — and refused, makes none", async () => {
-  await loadKernel();
-  const m = new Model(3);
-  const { points, lines } = rectangle(m);
-  const repl = new Repl(neocadScope({ model: m }));
-  assert.equal((await repl.eval(`fillet("${lines[0]}", "${lines[1]}", 500)`)).ok, false);
+  assert.equal((await repl.eval("circ()")).ok, true);
+  assert.equal((await repl.eval("arc()")).ok, true);
   assert.deepEqual(frames(m), []);
-  const r = await repl.eval(`fillet("${lines[0]}", "${lines[1]}", 5)`);
-  assert.equal(r.ok, true, r.error?.message ?? "");
-  const f = m.defaultFrame!;
-  assert.deepEqual([m.frame(f).origin], [points[1]], "on the corner's own shared point");
-  assert.ok(near(frameBasis(m, f)().uz!, [0, 0, 1]), "headless: up, for a corner drawn level");
-  assert.equal(m.arc(r.value as string).plane, f);
-  assert.equal(m.solve().solved, true);
-  const file = save(m);
-  assert.equal(save(open(file)), file, "and it replays to itself");
+  assert.equal(m.relations.size, 0, "an argument is never a constraint, and none was given");
+  assert.deepEqual(m.journal.map((j) => j.op), ["addCircle", "addArc"], "one entry each");
+  // A plane named: seeded facing it, and held by a par.
+  const r = await repl.eval('circ(null, 3, "origin")');
+  assert.equal(r.ok, true);
+  assert.deepEqual(relationsOf(m), [["parallel", [r.value, "origin.z"]]]);
+  // Three numbers are a seed and nothing more.
+  const t = await repl.eval("circ(null, 3, [0, 1, 0])");
+  assert.deepEqual(m.normalOf(t.value as string), [0, 1, 0]);
+  assert.equal(m.relations.size, 1);
+});
+
+test("typed fillet on a frameless corner makes no frame: one entry, the call", async () => {
+  await loadKernel();
+  const m = new Model(3);
+  const repl = new Repl(neocadScope({ model: m }));
+  await repl.eval("k = pt(0, 0, 0); l1 = ln(pt(30, 0, 0), k); l2 = ln(k, pt(0, 30, 0))");
+  const before = m.journal.length;
+  assert.equal((await repl.eval('fillet("l1", "l2", 5)')).ok, true);
+  assert.deepEqual(m.journal.slice(before).map((j) => [j.op, j.args]), [["fillet", ["l1", "l2", 5]]]);
+  assert.deepEqual(frames(m), []);
 });

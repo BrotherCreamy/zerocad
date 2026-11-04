@@ -9,14 +9,16 @@
 // revolve's end face and a plain sketch loop are all sketched on alike. With
 // nothing armed, a click there still picks nothing.
 //
-// **The commit is `plane(a, b, c)`, typed.** Three of the loop's own points,
-// ordered so the plane's +z faces the viewer — out of a solid, see
-// ../sketchface.ts — make the frame; `plane` makes it the default and looks at
-// it square-on. The tool hands that line to the command machinery (`ctx.run`)
-// rather than calling the model, because the camera is not the model's and
-// `plane` already knows how to turn it: so the log shows the call, the journal
-// holds what the typed call journals, and it is one undo step, all because it
-// *is* the typed call. The "Sketch on this face" menu item types the same line.
+// **The commit is `workplane("a.b.c")`, typed.** Three of the loop's own
+// points, ordered so the plane's normal faces the viewer — out of a solid, see
+// ../sketchface.ts — or a round face's own circle; `workplane` sets the work
+// plane to it, makes nothing (docs/plans/frameless-curves.md — it used to type
+// `plane(a, b, c)`, a frame), and looks at it square-on. The tool hands that
+// line to the command machinery (`ctx.run`) rather than calling the model,
+// because the camera is not the model's and `workplane` already knows how to
+// turn it: so the log shows the call, the journal holds what the typed call
+// journals, and it is one undo step, all because it *is* the typed call. The
+// "Sketch on this face" menu item types the same line.
 //
 // While it is armed every face it could take is lit faintly, as the extrude
 // tool lights its regions; a click on none of them is answered with guidance

@@ -16,19 +16,13 @@
 // drops both and keeps the tool armed. What it types is the typed call,
 // `fillet("l2", "l3", 10)`.
 //
-// **A corner in a model with no default frame gets its plane first, typed.**
-// The arc a fillet makes is given a frame's plane in 3D (see `ArcEntity`), and
-// a rectangle drawn in a fresh model has none. So, once the corner has passed
-// every refusal that needs no frame (`filletNeedsFrame`), the confirm types
-// `plane(shared, a, b, { look: false })` on the corner's own three points
-// (`cornerPlaneCommand`) ahead of the fillet — the extrude tool's pattern
-// exactly, in the same user action.
+// **No frame is made for the arc.** It carries its own normal and its two
+// tangents hold it in the corner (docs/plans/frameless-curves.md); it used to
+// need a frame's plane, and a fillet in a fresh model typed one first.
 
 import { defineTool, type FeatureStep, type PointerInfo, type RenderContext } from "./tool.ts";
 import type { OptionSpecs } from "./options.ts";
-import { fillet, filletNeedsFrame } from "../operations.ts";
-import { cornerPlaneCommand } from "../sketchface.ts";
-import { cross3, lift3 } from "../vec3.ts";
+import { fillet } from "../operations.ts";
 import type { Model } from "../model.ts";
 import { FeatureTool, callText } from "./feature.ts";
 import { REGION_GREEN } from "./region.ts";
@@ -48,13 +42,9 @@ export function cornerAt(model: Model, point: string): [string, string] | null {
   return lines.length === 2 ? [lines[0], lines[1]] : null;
 }
 
-/** The steps that round the corner of `a` and `b` at `radius`: its plane if the model has no default frame, then the typed call. */
-export function filletSteps(a: string, b: string, radius: number, toward: number[], typed: boolean): FeatureStep[] {
-  return [(m) => {
-    if (!typed) return null;
-    const corner = filletNeedsFrame(m, a, b, radius);
-    return corner ? { text: cornerPlaneCommand(m, corner, toward) } : null;
-  }, (m) => ({ text: callText("fillet", [a, b, radius]), direct: () => fillet(m, a, b, radius) })];
+/** The step that rounds the corner of `a` and `b` at `radius`: the typed call. */
+export function filletSteps(a: string, b: string, radius: number): FeatureStep[] {
+  return [(m) => ({ text: callText("fillet", [a, b, radius]), direct: () => fillet(m, a, b, radius) })];
 }
 
 export class FilletTool extends FeatureTool {
@@ -69,8 +59,6 @@ export class FilletTool extends FeatureTool {
   lines: string[] = [];
   /** Whether the last pick was a corner's point — which a second click on the same corner confirms. */
   private byCorner: string | null = null;
-  /** Which way is toward whoever picked — the side a plane made for the corner faces. */
-  private toward: number[] = [0, 0, 1];
 
   /** Armed, the radius is always here and checked; the fallback is for a tool driven with no engine. */
   private radiusOf(values: Record<string, unknown>): number {
@@ -81,7 +69,7 @@ export class FilletTool extends FeatureTool {
   protected plan(values: Record<string, unknown>): FeatureStep[] | null {
     if (this.lines.length !== 2) return null;
     const [a, b] = this.lines;
-    return filletSteps(a, b, this.radiusOf(values), this.toward, !!this.ctx.perform);
+    return filletSteps(a, b, this.radiusOf(values));
   }
 
   protected picksKey(): string {
@@ -101,8 +89,6 @@ export class FilletTool extends FeatureTool {
 
   onDown(p: PointerInfo): void {
     const model = this.ctx.model;
-    // +z toward whoever clicked: the plane the click was read on faces them.
-    if (p.plane) this.toward = cross3(lift3(p.plane.u), lift3(p.plane.v));
     const hit = this.ctx.pick?.(p.screen) ?? null;
     const corner = hit?.kind === "point" ? cornerAt(model, hit.name) : null;
     if (corner) {

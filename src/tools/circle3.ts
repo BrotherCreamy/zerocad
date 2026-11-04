@@ -19,11 +19,12 @@
 // the entire gesture a single undo step — circle, rim points and relations go
 // back together or not at all.
 //
-// In 3D the circle through three clicks lies in their plane — the sketch's —
-// and is given the default frame's plane (see `CircleEntity`); with no default
-// frame the first click makes one, the working plane it landed on, and the
-// later clicks land on it (`CurvePlane`, in place.ts). Its centre is
-// held on the sketch plane with the rim points (see place.ts). The preview is
+// In 3D the circle through three clicks lies in their plane — the one its
+// first click chose (`CurvePlane`, in place.ts: the work plane or default
+// frame, else the solid face under it, else the ground) — and carries its own
+// normal facing it (see `CircleEntity`), held by a `par`; the later clicks
+// land on the same plane, and nothing makes a frame. Its centre is held on
+// that plane with the rim points (see place.ts). The preview is
 // computed in the world, as the commit is, and drawn as the renderer will draw
 // the result — sampled in its plane and projected, an ellipse seen at an angle
 // — because the circle through three *projected* points is not the projection
@@ -31,7 +32,7 @@
 
 import { Tool, defineTool, type PointerInfo, type RenderContext } from "./tool.ts";
 import { onCircle } from "../relations/geometry.ts";
-import { CurvePlane, DRAWING_OPTIONS, asArmed, holdOnSketchPlane, placePoint, requirePlanar } from "./place.ts";
+import { CurvePlane, DRAWING_OPTIONS, asArmed, placePoint, requirePlanar } from "./place.ts";
 import type { OptionSpecs } from "./options.ts";
 // The closed form and its collinearity threshold left this file when the
 // 3-point *arc* tool needed the same two, and needed them to agree — see the
@@ -50,8 +51,8 @@ export class Circle3Tool extends Tool {
 
   onDown(p: PointerInfo): void {
     requirePlanar(this.ctx.model, this.name);
-    if (this.plane.typing) return; // the plane the first click typed is still going in
     if (!this.clicks.length && !this.plane.begin(p)) return;
+    p = this.plane.settle(p);
     this.hover = p.world;
 
     if (this.clicks.length < 2) {
@@ -60,7 +61,7 @@ export class Circle3Tool extends Tool {
       return; // nothing is committed until the third click — see the header
     }
 
-    const [first, second] = this.clicks.map((c) => this.plane.settle(c));
+    const [first, second] = this.clicks;
     const found = circumcircle(first.world, second.world, p.world);
     if (!found) {
       // Refuse rather than build. Three `onCircle`s on three collinear points
@@ -86,7 +87,7 @@ export class Circle3Tool extends Tool {
     const m = this.ctx.model;
     // The three rim points first, so their auto-names come before the circle's
     // own centre and a replay hands out the same ones.
-    const rim = [first, second, p].map((info) => placePoint(this.ctx, info));
+    const rim = [first, second, p].map((info) => placePoint(this.ctx, info, undefined, this.plane.plane));
     // A *free* circle: nothing about its centre or radius is asserted here.
     // The three relations below are its entire definition, which is what lets
     // it follow the rim points afterwards instead of merely having matched
@@ -95,9 +96,9 @@ export class Circle3Tool extends Tool {
     // than at the library defaults matters, because a circle seeded at radius
     // 10 with its centre at the origin gives the solver a first step chosen by
     // where the world happens to start rather than by where the drawing is.
-    const circle = m.addCircle(null, found.radius);
+    const circle = m.addCircle(null, found.radius, this.plane.normal());
     m.setCoords(circle.center, found.center);
-    holdOnSketchPlane(m, circle.center);
+    this.plane.hold(circle.name, circle.center);
     for (const name of rim) onCircle(m, name, circle.name);
     asArmed(this.ctx, circle.name);
 
@@ -107,7 +108,7 @@ export class Circle3Tool extends Tool {
 
   onMove(p: PointerInfo): void {
     if (!this.clicks.length) return;
-    this.hover = p.world;
+    this.hover = this.plane.settle({ ...p, snap: undefined }).world;
     this.ctx.requestRender();
   }
 

@@ -15,14 +15,15 @@ import { readFile } from "node:fs/promises";
 import { ensureKernelLoaded } from "../src/kernel/problem.ts";
 import { Model } from "../src/model.ts";
 import { onPlane } from "../src/relations/basic.ts";
-import { frameBasis } from "../src/relations/refs.ts";
+import { parallel } from "../src/relations/geometry.ts";
+import { frameBasis, planeBasis } from "../src/relations/refs.ts";
 import { del, extrude } from "../src/operations.ts";
 import { findLoops, loopAt, type Loop } from "../src/loops.ts";
 import { open, save } from "../src/persist.ts";
 import { neocadScope } from "../src/replenv.ts";
 import { Repl } from "../src/repl.ts";
 import { menuFor } from "../src/menu.ts";
-import { facePlaneArgs, sketchFrameFor as facePlane, sketchOnFaceCommand, type FacePlane, type MadePlane } from "../src/sketchface.ts";
+import { sketchFrameFor as facePlane, sketchOnFaceCommand } from "../src/sketchface.ts";
 import { SketchTool } from "../src/tools/sketch.ts";
 import { regionAtFor } from "./featurectx.ts";
 import type { ToolContext } from "../src/tools/tool.ts";
@@ -44,31 +45,21 @@ const cross = (a: number[], b: number[]) => [a[1] * b[2] - a[2] * b[1], a[2] * b
 const vertices = (l: Loop) => l.members.map((m) => m.from!);
 
 /**
- * The +z of the frame a face's plane would make — built (a made plane's two
- * rim points with it), read through `frameBasis`, and taken away again.
+ * The normal of a face's plane — three of its points, read as the plane
+ * reference "a.b.c" is (`planeBasis`), or a circle's own (docs/plans/
+ * frameless-curves.md: sketch on face names the face, and makes nothing).
  */
-function zOf(m: Model, p: FacePlane | string[]): number[] {
-  const made = Array.isArray(p) ? [] : p.refs.map((at) => m.addPoint(at).name);
-  const [a, b, c] = Array.isArray(p) ? p : [p.origin, ...made];
-  const f = m.addFrame(a, b, c).name;
-  const { uz } = frameBasis(m, f)();
-  m.deleteEntity(f);
-  for (const q of made) m.deleteEntity(q);
-  return uz!;
+function zOf(m: Model, p: string | string[]): number[] {
+  const ref = Array.isArray(p) ? p.join(".") : p;
+  return planeBasis(m, ref)().n;
 }
 
 /** `sketchFrameFor` where the face has three points of its own to give — every face here but a circle's lid. */
 function sketchFrameFor(m: Model, loop: Loop, toward: number[]): [string, string, string] {
   const p = facePlane(m, loop, toward);
-  assert.ok(Array.isArray(p), `three of the face's own points, not a plane to make: ${JSON.stringify(p)}`);
-  return p;
-}
-
-/** `sketchFrameFor` where the plane is one to make: a circle off its frame's plane. */
-function madePlane(m: Model, loop: Loop, toward: number[]): MadePlane {
-  const p = facePlane(m, loop, toward);
-  assert.ok(!Array.isArray(p), `a plane to make, not three names: ${p}`);
-  return p;
+  const pts = p.split(".");
+  assert.equal(pts.length, 3, `three of the face's own points, not a circle's plane: ${p}`);
+  return pts as [string, string, string];
 }
 
 /** A view looking at `n`'s side of a plane through `at`: toward the viewer is +n, then turned a little off square. */
@@ -107,7 +98,7 @@ test("a tilted square: its first corner and the corners either side, in loop ord
   const oblique = t.uz.map((z, i) => Math.cos(1.4) * z + Math.sin(1.4) * t.ux[i]);
   assert.ok(dot(zOf(m, sketchFrameFor(m, loop, oblique)), oblique) > 0);
   assert.ok(dot(zOf(m, sketchFrameFor(m, loop, neg(oblique))), neg(oblique)) > 0);
-  assert.equal(sketchOnFaceCommand(m, loop, t.uz), `plane(${front.map((p) => JSON.stringify(p)).join(", ")})`);
+  assert.equal(sketchOnFaceCommand(m, loop, t.uz), `workplane(${JSON.stringify(front.join("."))})`);
 });
 
 test("a rectangle whose first three vertices are on one line — an edge drawn as two lines through a midpoint — skips past the middle one", async () => {
@@ -146,41 +137,25 @@ test("a loop that starts at a point partway along an edge skips it: no corner th
   }
 });
 
-test("a whole circle: its frame's own three points, the x-ref and y-ref swapped when the frame faces away", async () => {
+test("a whole circle's face is the circle itself — its own plane, whichever side it is seen from, and nothing made", async () => {
   await loadKernel();
+  // A whole circle used to take its frame's three points, or have a plane made
+  // through its centre with two points held on its rim. It carries its own
+  // normal now, so its plane is itself (docs/plans/frameless-curves.md).
   const m = new Model(3);
   const t = tiltedFrame(m);
-  ring(m, t, 10, 5, 4);
+  const c = ring(m, t, 10, 5, 4);
   const [loop] = findLoops(m);
-  assert.deepEqual(sketchFrameFor(m, loop, t.uz), ["t_o", "t_x", "t_y"]);
-  assert.deepEqual(sketchFrameFor(m, loop, neg(t.uz)), ["t_o", "t_y", "t_x"]);
-  assert.ok(near(zOf(m, ["t_o", "t_y", "t_x"]), neg(t.uz)), "turned over, it faces −z");
-});
-
-test("a whole circle off its frame's plane — every extruded circle's lid — gets a plane made: its own centre, two rim points along the frame's axes, turned over seen from below", async () => {
-  await loadKernel();
-  // Was refused: a circle is held only parallel to its frame, so the frame's
-  // points are not on its face. Since an extrude makes no lid frame
-  // (docs/plans/no-lid-frame.md) that is every cylinder's top.
-  const m = new Model(3);
-  const t = tiltedFrame(m);
-  const centre = m.addPoint(t.at(5, 5, 3)).name;
-  const lifted = m.addCircle(centre, 2, t.name).name;
-  const [loop] = findLoops(m);
-  const up = madePlane(m, loop, t.uz);
-  assert.equal(up.origin, centre);
-  assert.equal(up.on, lifted);
-  const c = m.coords(centre);
-  assert.ok(near(up.refs[0], c.map((x, i) => x + 2 * t.ux[i])) && near(up.refs[1], c.map((x, i) => x + 2 * t.uy[i])),
-    "on the rim, along the frame's +x and +y");
-  assert.ok(near(zOf(m, up), t.uz));
-  const down = madePlane(m, loop, neg(t.uz));
-  assert.deepEqual(down.refs, [up.refs[1], up.refs[0]], "the two swapped");
-  assert.ok(near(zOf(m, down), neg(t.uz)));
-  // Typed as the clause idiom, every digit, so the line is the whole of what is made.
-  const args = facePlaneArgs(up);
-  assert.equal(args, `"${centre}", pt(${up.refs[0].join(", ")}, oncircle(_, "${lifted}")), pt(${up.refs[1].join(", ")}, oncircle(_, "${lifted}"))`);
-  assert.equal(sketchOnFaceCommand(m, loop, t.uz), `plane(${args})`);
+  const ents = m.entities.size;
+  assert.equal(facePlane(m, loop, t.uz), c);
+  assert.equal(facePlane(m, loop, neg(t.uz)), c, "a circle cannot be turned over as three points can");
+  assert.ok(near(zOf(m, c), t.uz));
+  assert.equal(m.entities.size, ents, "nothing made");
+  assert.equal(sketchOnFaceCommand(m, loop, t.uz), `workplane(${JSON.stringify(c)})`);
+  // Off its sketch's plane — every extruded circle's lid — it is still itself.
+  const lifted = m.addCircle(m.addPoint(t.at(30, 5, 3)).name, 2, t.name).name;
+  const lid = findLoops(m).find((l) => l.members[0].name === lifted)!;
+  assert.equal(facePlane(m, lid, t.uz), lifted);
 });
 
 test("a lens of two arcs has only two vertices: an arc's centre is the third point", async () => {
@@ -220,18 +195,19 @@ test("a region cut off by crossings: its crossings are no points, so the plane i
   assert.equal(vertices(loops[0]).filter((v) => m.entities.has(v)).length, 2);
 });
 
-test("a lens of two crossing circles has no point at all but their centres: it takes a circle's frame, as a whole circle does", async () => {
+test("a lens of two crossing circles has no point at all but their centres: it takes a circle's own plane, as a whole circle does", async () => {
   await loadKernel();
   const m = new Model(3);
   const t = tiltedFrame(m);
   ring(m, t, 10, 5, 10);
   ring(m, t, 22, 5, 10);
   const lens = findLoops(m).find((l) => l.area < 100)!; // the crescents are each over 200
-  assert.deepEqual(sketchFrameFor(m, lens, t.uz), ["t_o", "t_x", "t_y"]);
-  assert.deepEqual(sketchFrameFor(m, lens, neg(t.uz)), ["t_o", "t_y", "t_x"]);
+  const got = facePlane(m, lens, t.uz);
+  assert.equal(m.entities.get(got)?.kind, "circle", `a circle's own plane: ${got}`);
+  assert.ok(near(zOf(m, got), t.uz));
 });
 
-test("refusals, by name: a D on a semicircle has no three points off one line; a circle whose frame has collapsed; a plane seen edge-on; a 2D drawing", async () => {
+test("refusals, by name: a D on a semicircle has no three points off one line; a plane seen edge-on; a 2D drawing", async () => {
   await loadKernel();
   const m = new Model(3);
   const t = tiltedFrame(m);
@@ -243,13 +219,8 @@ test("refusals, by name: a D on a semicircle has no three points off one line; a
   assert.deepEqual(d.members.map((x) => x.name).sort(), [arc, line].sort());
   assert.throws(() => sketchFrameFor(m, d, t.uz), new RegExp(`loop of .*${line}.* has no three points off one line`));
 
-  // A circle whose frame has collapsed has no orientation left to give.
-  const n = new Model(3);
-  const u = tiltedFrame(n);
-  const flat = n.addCircle(n.addPoint(u.at(5, 5)).name, 2, u.name).name;
-  const [ring1] = findLoops(n);
-  n.setCoords("t_x", n.coords("t_o"));
-  assert.throws(() => facePlane(n, ring1, u.uz), new RegExp(`"${flat}"'s frame "t" has collapsed, so it gives the circle no orientation`));
+  // (A circle whose frame had collapsed used to be refused here: a circle
+  // carries its own normal now, and has no frame to collapse.)
 
   // Edge-on: neither side faces the viewer.
   const q = new Model(3);
@@ -325,46 +296,49 @@ test("the Onshape sequence: a circle sketched on a wall and extruded a positive 
   const loop = clicked(m, view, wall);
   const [a, b, c] = sketchFrameFor(m, loop, viewAxes(view).toward);
 
-  // What the tool types, typed: a frame on the wall's own points, the default.
+  // What the tool types, typed: the work plane set to the wall's own points.
+  // No frame is made (docs/plans/frameless-curves.md).
   const scope = neocadScope({ model: m }) as Record<string, (...x: unknown[]) => unknown>;
-  const f = scope.plane(a, b, c) as string;
-  assert.equal(m.defaultFrame, f);
+  const ref = `${a}.${b}.${c}`;
+  assert.equal(scope.workplane(ref), ref);
+  assert.equal(m.drawingPlane(), ref);
+  assert.deepEqual([...m.entities.values()].filter((x) => x.kind === "frame").map((x) => x.name), [t.name], "only the sketch's own");
   const centre = m.addPoint(wall).name;
-  onPlane(m, centre, f);
-  const boss = m.addCircle(centre, 4, f).name;
+  onPlane(m, centre, ref);
+  const boss = m.addCircle(centre, 4).name; // seeded facing the work plane
+  parallel(m, boss, ref);
   const e = extrude(m, boss, 6);
   m.solve();
   const g = m.featureOf(e, "extrude");
+  assert.equal(g.frame, ref, "along the wall it was sketched on");
   const twinOf = new Map([...baseOf(m, g.depth)].map(([twin, base]) => [base, twin]));
   const lidCentre = m.coords(twinOf.get(centre)!);
   assert.ok(near(lidCentre, wall.map((w, i) => w - 6 * t.uy[i]), 1e-6), `the boss's lid is 6 out from the wall, along −y: ${lidCentre}`);
   // The outward-boss assertion the spec names: the new lid sits farther from
   // the plate's centroid than the wall does.
-  const fromCentroid = (p: number[]) => Math.hypot(...sub(p, centroid));
+  const fromCentroid = (q: number[]) => Math.hypot(...sub(q, centroid));
   assert.ok(fromCentroid(lidCentre) > fromCentroid(wall) + 5.9, `${fromCentroid(lidCentre)} beyond ${fromCentroid(wall)}`);
-  // The boss's rim names the wall's frame — an orientation, not a place — and
-  // stands on its lid plane, outside the plate.
+  // The boss's rim faces as its base does, and there is no lid frame.
   const rim = m.circle(g.twins[0][0]);
-  assert.equal(rim.plane, f);
+  assert.ok(near(m.normalOf(rim.name), m.normalOf(boss), 1e-9));
   assert.equal(g.top, undefined, "and there is no lid frame to stand there");
 
-  // The frame follows the solid — it is the plate's own points, read as a
+  // The plane follows the solid — it is the plate's own points, read as a
   // datum — so the plate growing leaves it on the same wall, facing out.
   scope.set(`${m.featureOf("e1", "extrude").depth}.value`, 25);
   m.solve();
-  assert.ok(near(frameBasis(m, f)().uz!, neg(t.uy), 1e-9), "still facing out after the plate grew");
+  assert.ok(near(zOf(m, ref), neg(t.uy), 1e-9), "still facing out after the plate grew");
 
-  // Deleting the frame takes what was drawn on it and the boss's record, and
-  // nothing of the plate.
-  const plateOwns = [...m.featureOf("e1", "extrude").owns];
-  del(m, f);
-  assert.ok(!m.entities.has(boss), "the circle drawn on the frame went with it");
-  assert.ok(!m.features.has(e), "the boss's record names the frame, so it went too");
-  assert.ok(m.features.has("e1"));
-  assert.ok(plateOwns.every((n) => m.has(n)), "every piece of the plate stayed");
+  // Deleting the plate takes the boss's record (it stands on the wall's
+  // points) and the relations holding the circle there — never the circle.
+  del(m, "e1");
+  assert.ok(m.entities.has(boss), "the circle stays: it stands on no frame");
+  assert.ok(!m.features.has(e), "the boss's record names the wall's points, so it went");
+  assert.equal(m.workPlane, null, "and the work plane, which named them, is cleared — journalled");
+  assert.deepEqual(m.journal.filter((j) => j.op === "setWorkPlane").map((j) => j.args), [[ref], [null]]);
 });
 
-test("a circle's lid and base, each from its own outside, get planes facing out — the swap is what makes the base face down", async () => {
+test("a circle's lid and base, each from its own outside: their own planes, the circles' normals — a curve drawn there is turned to face the viewer", async () => {
   await loadKernel();
   const m = new Model(3);
   const t = tiltedFrame(m);
@@ -376,31 +350,36 @@ test("a circle's lid and base, each from its own outside, get planes facing out 
     const view = viewFrom(toward, t.ux, world);
     const loop = clicked(m, view, world);
     assert.equal(loop.members.length, 1, `${what}: a whole circle`);
-    const z = zOf(m, facePlane(m, loop, viewAxes(view).toward));
-    assert.ok(dot(z, sub(world, centroid)) > 0, `${what}: out of the cylinder`);
+    const plane = facePlane(m, loop, viewAxes(view).toward);
+    assert.equal(m.entities.get(plane)?.kind, "circle", `${what}: the circle itself`);
+    // A circle cannot be turned over: the base's faces up, into the cylinder.
+    // What faces out is decided where it matters — the curve drawn on it
+    // (tools/place.ts) — and the lid's points out by its own.
+    if (what === "lid") assert.ok(dot(zOf(m, plane), sub(world, centroid)) > 0, `${what}: out of the cylinder`);
   }
   assert.ok(m.features.has(e));
 });
 
 // --- the journal, the tool and the menu ------------------------------------------
 
-test("plane(a, b, c) on a face journals what any typed plane() does, and the file reopens byte for byte", async () => {
+test("workplane(\"a.b.c\") on a face journals one entry, names the face and makes nothing — and the file reopens byte for byte", async () => {
   await loadKernel();
   const { m, t } = plate();
   const view = viewFrom(neg(t.uy), t.ux, t.at(20, 0, 5));
   const loop = clicked(m, view, t.at(20, 0, 5));
   const command = sketchOnFaceCommand(m, loop, viewAxes(view).toward);
   const before = m.journal.length;
+  const ents = m.entities.size;
   const repl = new Repl(neocadScope({ model: m }));
   const r = await repl.eval(command);
   assert.equal(r.ok, true, String(r.error));
   const [a, b, c] = sketchFrameFor(m, loop, viewAxes(view).toward);
-  assert.deepEqual(m.journal.slice(before).map((j) => [j.op, j.args]), [
-    ["addFrame", [a, b, c, r.value]],
-    ["setDefaultFrame", [r.value]],
-  ], "a frame and the default — nothing about faces");
+  assert.deepEqual(m.journal.slice(before).map((j) => [j.op, j.args]), [["setWorkPlane", [`${a}.${b}.${c}`]]],
+    "the work plane, by the face's own points — no frame");
+  assert.equal(m.entities.size, ents);
   const file = save(m);
   assert.equal(save(open(file)), file);
+  assert.equal(open(file).workPlane, `${a}.${b}.${c}`);
 });
 
 /** The tool's context, with the engine's regionAt answered from `view` and run typed into a real scope. */
@@ -422,7 +401,7 @@ function toolCtx(m: Model, view: View, log: string[], typed: string[]) {
 
 const info = (screen: [number, number]) => ({ world: [0, 0, 0], screen });
 
-test("the sketch tool: a click on nothing is refused aloud and it stays armed; a click inside a wall types plane(a, b, c) and finishes", async () => {
+test("the sketch tool: a click on nothing is refused aloud and it stays armed; a click inside a wall types workplane(\"a.b.c\") and finishes", async () => {
   await loadKernel();
   const { m, t, centroid } = plate();
   const wall = t.at(20, 0, 5);
@@ -443,9 +422,9 @@ test("the sketch tool: a click on nothing is refused aloud and it stays armed; a
   await ctx.settled();
   assert.equal(ctx.finished, true);
   assert.equal(typed.length, 1);
-  assert.match(typed[0], /^plane\("p\d+", "p\d+", "p\d+"\)$/);
-  const f = m.defaultFrame!;
-  const z = frameBasis(m, f)().uz!;
+  assert.match(typed[0], /^workplane\("p\d+\.p\d+\.p\d+"\)$/);
+  assert.equal(m.defaultFrame, t.name, "no frame made, so the default is as it was");
+  const z = zOf(m, m.workPlane!);
   assert.ok(dot(z, sub(wall, centroid)) > 0, "facing out of the plate");
 });
 

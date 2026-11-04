@@ -10,18 +10,17 @@
 // renders with. In 3D it is counter-clockwise seen from the front of the
 // working plane (see PointerInfo.plane), and the endpoints are stored in
 // whichever order makes that the arc drawn counter-clockwise about the arc's
-// own plane's +z — the default frame's, which the arc is given (see
-// ../arcgeom.ts and `ArcEntity`): swapping them is free, both arcs between two
-// points being drawable, and only the order says which one is meant. With no
-// default frame the centre's click makes one, the working plane it landed on,
-// and the other two land on it (`CurvePlane`, in place.ts).
+// own normal — the plane's the centre's click stood on, which the arc is
+// seeded with and held to (see ../arcgeom.ts, `ArcEntity` and `CurvePlane` in
+// place.ts): swapping them is free, both arcs between two points being
+// drawable, and only the order says which one is meant. Nothing makes a frame
+// for it; the other two clicks land on the centre's plane.
 
 import { Tool, defineTool, type PointerInfo, type RenderContext } from "./tool.ts";
 import { arcEndpoints } from "../relations/geometry.ts";
 import { CurvePlane, DRAWING_OPTIONS, asArmed, placePoint, requirePlanar } from "./place.ts";
 import type { OptionSpecs } from "./options.ts";
 import { arcFrame, arcSamples, arcSegments, sweepsAs } from "../arcgeom.ts";
-import { sketchSide } from "../curveplane.ts";
 import { cross3, lift3 } from "../vec3.ts";
 import type { Plane } from "../view.ts";
 
@@ -63,16 +62,16 @@ export class ArcTool extends Tool {
 
   onDown(p: PointerInfo): void {
     requirePlanar(this.ctx.model, this.name);
-    if (this.plane.typing) return; // the plane the centre's click typed is still going in
 
     if (!this.center) {
       if (!this.plane.begin(p)) return;
-      this.center = p;
-      this.hover = p.world;
+      this.center = this.plane.settle(p);
+      this.hover = this.center.world;
       this.ctx.requestRender();
       return;
     }
 
+    p = this.plane.settle(p);
     if (!this.start) {
       const at = this.center.world;
       if (Math.hypot(...p.world.map((v, i) => v - at[i])) < 1e-6) return; // no radius yet
@@ -83,7 +82,7 @@ export class ArcTool extends Tool {
     }
 
     // Third click: the end of the sweep, and the whole thing commits at once.
-    const centre = this.plane.settle(this.center), first = this.start;
+    const centre = this.center, first = this.start;
     const c = centre.world, s = first.world;
     const r = Math.hypot(...s.map((v, i) => v - c[i]));
     // Normally the end click is pulled onto the rim so nothing jumps on solve.
@@ -97,14 +96,17 @@ export class ArcTool extends Tool {
     this.hover = null;
 
     const m = this.ctx.model;
-    const ctr = placePoint(this.ctx, centre);
-    const sp = placePoint(this.ctx, first);
-    const ep = placePoint(this.ctx, end);
+    const on = this.plane.plane;
+    const ctr = placePoint(this.ctx, centre, undefined, on);
+    const sp = placePoint(this.ctx, first, undefined, on);
+    const ep = placePoint(this.ctx, end, undefined, on);
     // Placed in click order, so the auto-names follow the clicks; *stored* in
     // the order that draws the arc the user swept.
-    const [startName, endName] = stored(c, sp, ep, first.world, end.world, facing(first.plane), sketchSide(m));
-    const arc = m.addArc(ctr, startName, endName, r);
+    const normal = this.plane.normal();
+    const [startName, endName] = stored(c, sp, ep, first.world, end.world, facing(first.plane), normal ?? [0, 0, 1]);
+    const arc = m.addArc(ctr, startName, endName, r, normal);
     arcEndpoints(m, arc.name);
+    this.plane.hold(arc.name, ctr);
     asArmed(this.ctx, arc.name);
 
     this.ctx.requestSolve();
@@ -113,7 +115,7 @@ export class ArcTool extends Tool {
 
   onMove(p: PointerInfo): void {
     if (!this.center) return;
-    this.hover = p.world;
+    this.hover = this.plane.settle({ ...p, snap: undefined }).world;
     this.ctx.requestRender();
   }
 
@@ -168,7 +170,7 @@ export class ArcTool extends Tool {
       const s = this.start.world;
       const rad = Math.hypot(...s.map((v, i) => v - c[i]));
       const e = ontoRim(this.hover, c, rad);
-      const side = sketchSide(this.ctx.model);
+      const side = this.plane.normal() ?? [0, 0, 1];
       const [a, b] = stored(c, s, e, s, e, front, side);
       const f = arcFrame(c, a, b, rad, side);
       if (f) stroke(arcSamples(f, arcSegments(f.sweep, rad * r.scale)));

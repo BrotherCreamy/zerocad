@@ -9,13 +9,14 @@
 // solver leaves it alone) but is still free to be driven later by a `rad`
 // or a tangency. Pinning it here would make every drawn circle rigid.
 //
-// In 3D the circle lies on the sketch: it is given the default frame's plane
-// (see `CircleEntity`), and with no default frame the press makes one — the
-// working plane it landed on, typed as `plane(pt(…), null, null, { look:
-// false })` (see `CurvePlane` in place.ts) — and the drag carries on over it.
-// The radius is the distance from centre to rim in the working plane, and the
-// preview is drawn the way the committed circle will be: sampled in that plane
-// and projected, an ellipse on a plane seen at an angle.
+// In 3D the circle lies where the press is: on the plane being sketched on,
+// else the solid's face under the cursor, else the origin's ground — and is
+// held there by two relations it can see, `onplane` on its centre and `par` on
+// its own normal (`CurvePlane` in place.ts). Nothing makes a frame for it:
+// a fresh document drawn in gets one circle and nothing else. The radius is
+// the distance from centre to rim in that plane, and the preview is drawn the
+// way the committed circle will be: sampled in that plane and projected, an
+// ellipse on a plane seen at an angle.
 
 import { Tool, defineTool, type PointerInfo, type RenderContext } from "./tool.ts";
 import { CurvePlane, DRAWING_OPTIONS, asArmed, placePoint, requirePlanar } from "./place.ts";
@@ -34,14 +35,14 @@ export class CircleTool extends Tool {
   onDown(p: PointerInfo): void {
     requirePlanar(this.ctx.model, this.name);
     if (!this.plane.begin(p)) return;
-    this.from = p;
-    this.rim = p.world;
+    this.from = this.plane.settle(p);
+    this.rim = this.from.world;
     this.ctx.requestRender();
   }
 
   onMove(p: PointerInfo): void {
     if (!this.from) return;
-    this.rim = p.world;
+    this.rim = this.plane.settle({ ...p, snap: undefined }).world;
     this.ctx.requestRender();
   }
 
@@ -51,7 +52,8 @@ export class CircleTool extends Tool {
     this.from = null;
     this.rim = null;
 
-    const r = Math.hypot(...p.world.map((v, i) => v - pressed.world[i]));
+    const rim = this.plane.settle({ ...p, snap: undefined }).world;
+    const r = Math.hypot(...rim.map((v, i) => v - pressed.world[i]));
     if (r < 1e-6) {
       this.ctx.requestRender();
       return; // a click with no drag — no radius to speak of
@@ -61,8 +63,10 @@ export class CircleTool extends Tool {
       const m = this.ctx.model;
       // Only the centre is a point the user placed; the rim is a radius, not an
       // entity, so there is nothing there to infer a constraint about.
-      const ctr = placePoint(this.ctx, this.plane.settle(pressed));
-      asArmed(this.ctx, m.addCircle(ctr, r).name);
+      const ctr = placePoint(this.ctx, pressed, undefined, this.plane.plane);
+      const circle = m.addCircle(ctr, r, this.plane.normal()).name;
+      this.plane.hold(circle, ctr);
+      asArmed(this.ctx, circle);
 
       this.ctx.requestSolve();
       this.ctx.finish();

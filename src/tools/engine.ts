@@ -5,10 +5,11 @@
 // shape cellwork's pointer tools already used.
 //
 // **In a 3D model a pixel is a ray, and it lands on the working plane** — the
-// default frame's plane, or the camera-parallel plane through the orbit target
-// when there is no default frame (see ../workplane.ts). Every world coordinate
-// a tool is handed, and every offset a drag moves by, is read on that plane,
-// which is why the tools did not have to learn what a camera is.
+// work plane or the default frame's plane, or the origin's x–y plane when the
+// user has chosen neither (see ../workplane.ts). Every world coordinate a tool
+// is handed is read on that plane, which is why the tools did not have to
+// learn what a camera is; a drag moves in the chosen plane, or the one facing
+// the viewer (`dragPointAt`).
 //
 // Navigation and tool use are kept on separate buttons, Onshape-style: the
 // left button belongs to whichever tool is armed and nothing else, while the
@@ -74,9 +75,9 @@ import {
   type RenderContext,
 } from "./tool.ts";
 import {
-  assignView, orbitBy, panBy, screenToPlane, screenToWorld, uiOf, viewAxes, worldToScreen, zoomAbout, type Plane, type View,
+  assignView, cameraPlane, orbitBy, panBy, screenToPlane, screenToWorld, uiOf, viewAxes, worldToScreen, zoomAbout, type Plane, type View,
 } from "../view.ts";
-import { framePlane, pointOnWorkingPlane } from "../workplane.ts";
+import { pointOnWorkingPlane, sketchPlane } from "../workplane.ts";
 import { TOUCH_REACH, hitTest, type Pick } from "../picking.ts";
 import { boxFrom, selectInBox, type BoxMode } from "../boxselect.ts";
 import { glyphAt, placeGlyphs, type Glyph } from "../glyphs.ts";
@@ -522,6 +523,23 @@ export class ToolEngine {
   private pointAt(sx: number, sy: number): { world: number[]; plane?: Plane } {
     if (this.model.dim !== 3) return { world: screenToWorld(this.view, sx, sy) };
     return pointOnWorkingPlane(this.model, this.view, sx, sy);
+  }
+
+  /**
+   * Where a drag's press is read, and the plane the drag then moves in: the
+   * plane the user chose to sketch on (`sketchPlane`), else the one facing
+   * the viewer — not the origin's, which is where a click *lands* with no plane
+   * chosen (../workplane.ts). A drag is a hand moving something it sees, and
+   * pinning it to the ground in a turned view would leave a lid's corner
+   * immovable along the one direction the user is looking at it in.
+   */
+  private dragPointAt(sx: number, sy: number): { world: number[]; plane?: Plane } {
+    if (this.model.dim !== 3) return { world: screenToWorld(this.view, sx, sy) };
+    const chosen = sketchPlane(this.model);
+    const on = chosen && screenToPlane(this.view, sx, sy, chosen);
+    if (on && chosen) return { world: on, plane: chosen };
+    const facing = cameraPlane(this.view);
+    return { world: screenToPlane(this.view, sx, sy, facing)!, plane: facing };
   }
 
   /**
@@ -1011,7 +1029,7 @@ export class ToolEngine {
     // A tool that chooses regions rather than places points opts out
     // (`Tool.snaps`), and gets neither the pull nor the marker.
     this.snap = this.snapping && tool.snaps
-      ? findSnap(this.model, this.view, sx, sy, framePlane(this.model), this.occlusion, this.reach) : null;
+      ? findSnap(this.model, this.view, sx, sy, sketchPlane(this.model), this.occlusion, this.reach) : null;
     // The plane is reported even when a snap moved the point off it: it is
     // what the gesture is being drawn on, and a tool laying out a shape from
     // a snapped corner still lays it out along that plane's axes.
@@ -1060,7 +1078,7 @@ export class ToolEngine {
     // tier: it must not be possible to aim at a mark and start either
     // dragging the geometry behind it or a box over it.
     const under = this.pickAt(sx, sy);
-    const { world: grab, plane } = this.pointAt(sx, sy);
+    const { world: grab, plane } = this.dragPointAt(sx, sy);
     const names = under ? dragGoverns(this.model, under) : [];
     const drag = names.length
       ? { names, origins: names.map((n) => this.model.coords(n).slice(0, grab.length)), grab, ...(plane ? { plane } : {}) }
