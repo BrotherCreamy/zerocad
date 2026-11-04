@@ -110,7 +110,7 @@
        the logo, in sections — each headed in the head's muted ink, ruled off
        from the one before. It scrolls when a landscape phone is too short
        for it. */
-    #appmenu{z-index:61;overflow-y:auto;background:#0e141b;min-width:calc(220px * var(--ui));padding:0 0 3px}
+    #appmenu{z-index:61;overflow-y:auto;background:#0e141b;min-width:calc(220px * var(--ui));max-width:calc(100vw - 16px);padding:0 0 3px}
     #appmenu .sect+.sect{border-top:1px solid #223041}
     #appmenu .head{border-bottom:none;margin:0;padding:6px 10px 2px;text-transform:uppercase;letter-spacing:.06em;font-size:calc(9.5px * var(--ui))}
     #appmenu .docname{padding:2px 10px 3px;color:#d5e1ec}
@@ -251,10 +251,11 @@
       /* A strip is drawn its own thickness and grabbed over 44: its hit box
          reaches outward, over the drawing, never into the panel's content. */
       .panel>.ptitle{position:relative}
-      .panel>.ptitle::before{content:"";position:absolute;left:0;right:0;bottom:0;height:max(100%,44px)}
-      .panel[data-orient="row"]>.ptitle::before{left:auto;top:0;height:auto;width:max(100%,44px)}
+      .panel>.ptitle::before{content:"";position:absolute;left:50%;bottom:0;width:max(100%,44px);height:max(100%,44px);transform:translateX(-50%)}
+      .panel[data-orient="row"]>.ptitle::before{left:auto;right:0;bottom:auto;top:50%;transform:translateY(-50%)}
       #cmd{font-size:max(16px, calc(13px * var(--ui)))}
       #cmdhint{display:none}
+      #log{line-height:1.4;padding:0 10px}
       #options .oval[type="text"]{font-size:max(16px, calc(11px * var(--ui)))}
       :is(#ctxmenu,#appmenu) .head{padding:calc(6px * var(--ui)) 14px}
       #appmenu .head{padding:calc(6px * var(--ui)) 14px calc(2px * var(--ui))}
@@ -262,6 +263,10 @@
       #ctxmenu .row{min-height:44px;align-items:center;padding:0 14px}
       :is(#ctxmenu,#appmenu) .choice{display:inline-flex;align-items:center;min-height:44px;min-width:44px;padding:0 8px;justify-content:center}
       #appmenu .docname,#appmenu .about{padding:2px 14px 4px}
+      /* A phone has no room for the command beside each item, and no hover to
+         read it by: the log shows what each one typed. An item that is off
+         keeps its reason. */
+      #appmenu .item:not(.off) .cmd{display:none}
       /* − and + drawn at the menu's size, hit at a finger's: the buttons are
          44 px whatever the interface size; only their faces scale. */
       #appmenu .srow{padding:0 6px 4px}

@@ -92,7 +92,7 @@ async function settled(want: (m: Awaited<ReturnType<AppContext["model"]>>) => bo
   }
 }
 
-test("portrait: the phone's defaults — command line on top, the tray down the left, a one-line log, the strip at the bottom", async () => {
+test("portrait: the phone's defaults — command line docked to the bottom, the tray down the left under the logo, the strip top right, a one-line log", async () => {
   await fresh();
   const rects = await app.page.evaluate(() => {
     const out: Record<string, { x: number; y: number; w: number; h: number }> = {};
@@ -109,10 +109,11 @@ test("portrait: the phone's defaults — command line on top, the tray down the 
   for (const [id, r] of Object.entries(out)) {
     assert.ok(r.x >= 0 && r.y >= 0 && r.x + r.w <= area.w && r.y + r.h <= area.h, `${id} wholly inside: ${JSON.stringify(r)}`);
   }
-  assert.ok(out.cmd.y <= 8, "the command line is at the top");
-  assert.ok(out.toolbar.x <= 8 && out.toolbar.h > out.toolbar.w, "the tray is a column down the left");
+  assert.deepEqual([out.cmd.x, out.cmd.w, out.cmd.y + out.cmd.h], [0, area.w, area.h], "the command line docked to the bottom, edge to edge");
+  const logo = await app.page.$eval("#logo", (el) => (el as HTMLElement).offsetTop + (el as HTMLElement).offsetHeight);
+  assert.ok(out.toolbar.x <= 8 && out.toolbar.h > out.toolbar.w && out.toolbar.y >= logo, "the tray is a column down the left, under the logo");
   assert.equal(await app.page.$$eval("#toolbar button", (bs) => bs.length), 11);
-  assert.ok(out.actions.y + out.actions.h >= area.h - 8 && out.actions.w > out.actions.h, "the strip is a row along the bottom");
+  assert.ok(out.actions.y <= 8 && out.actions.x + out.actions.w >= area.w - 8 && out.actions.w > out.actions.h, "the strip is a row at the top right");
   assert.ok(out.log.h <= 72, `the log is one line: ${out.log.h}px`);
   const lines = await app.page.$eval("#log", (el) => Math.round(el.clientHeight / parseFloat(getComputedStyle(el).lineHeight)));
   assert.ok(lines <= 2, `and shows one line of itself: ${lines}`);
@@ -308,9 +309,9 @@ test("a long-press opens the menu at the finger, for what it landed on", async (
   const away = await app.page.evaluate(() => {
     const cv = document.getElementById("cv")!;
     const c = cv.getBoundingClientRect();
-    const bare = (x: number, y: number) => [[0, 0], [-14, 0], [14, 0], [0, -14], [0, 14]]
+    const bare = (x: number, y: number) => [[0, 0], [-12, 0], [12, 0], [0, -12], [0, 12]]
       .every(([dx, dy]) => document.elementFromPoint(c.x + x + dx, c.y + y + dy) === cv);
-    for (let y = 30; y < c.height - 30; y += 20) for (let x = 30; x < c.width - 30; x += 20) if (bare(x, y)) return [x, y] as [number, number];
+    for (let y = 30; y < c.height - 30; y += 10) for (let x = 30; x < c.width - 30; x += 10) if (bare(x, y)) return [x, y] as [number, number];
     return null;
   });
   assert.ok(away, "somewhere off the menu to tap");
@@ -393,7 +394,7 @@ test("the extrude dialog end to end by finger: the button, a tap inside, ✓", a
   assert.match(await app.log(), /> extrude\(/);
 });
 
-test("every target is at least 44 px: tray and strip buttons, strips, grips, option fields and ✓/✗, menu items", async () => {
+test("every target is hit over at least 44 px, however small it is drawn: tray and strip buttons, strips, grips, option rows and ✓/✗, menu items", async () => {
   await fresh();
   await app.type('arm("extrude")');
   await app.page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
@@ -401,9 +402,14 @@ test("every target is at least 44 px: tray and strip buttons, strips, grips, opt
   await f.hold(x, y, 700);
   const small = await app.page.evaluate(() => {
     const out: string[] = [];
+    // A target's hit box: its own box, or the ::before that overhangs it
+    // (index.html) — whichever is bigger along each axis.
     const check = (what: string, el: Element, w = true, h = true) => {
       const r = el.getBoundingClientRect();
-      if ((w && r.width < 44) || (h && r.height < 44)) out.push(`${what} ${Math.round(r.width)}x${Math.round(r.height)}`);
+      const before = getComputedStyle(el, "::before");
+      const hw = Math.max(r.width, before.content === "none" ? 0 : parseFloat(before.width) || 0);
+      const hh = Math.max(r.height, before.content === "none" ? 0 : parseFloat(before.height) || 0);
+      if ((w && hw < 44) || (h && hh < 44)) out.push(`${what} ${Math.round(hw)}x${Math.round(hh)}`);
     };
     for (const b of Array.from(document.querySelectorAll(".tray button"))) check(`button ${(b as HTMLElement).dataset.tool ?? (b as HTMLElement).dataset.action}`, b);
     for (const s of Array.from(document.querySelectorAll(".panel:not([hidden])>.ptitle"))) check(`strip of ${(s.parentElement as HTMLElement).dataset.panel}`, s);

@@ -1140,6 +1140,10 @@ export function relaid(
         const [np, nl] = done.get(n)!;
         return [clamp(np + off, np - len + 1, np + nl - 1), len];
       }
+      // In the same room it was put in, exactly where it was put — though its
+      // size may have changed since (a tray re-measured for a new tool).
+      if (Math.abs(room(rec.area, axis) - roomNow) <= EPS) return [clamp(start(rec, axis), 0, roomNow - len), len];
+      // In another, the same share of the free room it had then.
       const free = room(rec.area, axis) - span(rec, axis);
       const share = free > EPS ? clamp(start(rec, axis) / free, 0, 1) : 0;
       return [share * Math.max(0, roomNow - len), len];

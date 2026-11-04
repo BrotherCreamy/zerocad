@@ -232,6 +232,12 @@ export interface OpenOptions {
    * is the owner's to try on the device (CHANGELOG, the touch entry).
    */
   device?: "iPhone 13" | "iPhone 13 landscape";
+  /**
+   * A desktop window of another size than the suite's 1100×800. The golden
+   * picture (hidden.e2e.ts) was recorded on a 1100×768 canvas — the 800 window
+   * less the title bar there was then — and asks for that canvas again.
+   */
+  viewport?: { width: number; height: number };
 }
 
 export async function openApp(options: OpenOptions = {}): Promise<AppContext> {
@@ -264,7 +270,7 @@ export async function openApp(options: OpenOptions = {}): Promise<AppContext> {
       watch.observe(document, { childList: true, subtree: true });
     });
   } else {
-    page = await browser.newPage({ viewport: { width: 1100, height: 800 } });
+    page = await browser.newPage({ viewport: options.viewport ?? { width: 1100, height: 800 } });
   }
   if (options.webgl === false) {
     await page.addInitScript(() => {

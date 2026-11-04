@@ -333,6 +333,7 @@ export class AppMenu {
     hint.className = "cmd";
     hint.textContent = command;
     row.append(l, hint);
+    row.title = command;
     if (act) row.addEventListener("click", act);
     return row;
   }

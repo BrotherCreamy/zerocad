@@ -106,11 +106,11 @@ async function reloadApp(): Promise<void> {
 
 // --- the layout ----------------------------------------------------------------
 
-test("the canvas is the whole window under the header, and the chrome floats over it", async () => {
+test("the canvas is the whole window — there is no header — and the chrome floats over it", async () => {
   const cv = await rectOf("#cv");
-  const header = await rectOf("header");
+  assert.equal(await app.page.$$eval("header", (h) => h.length), 0, "no title bar");
   assert.equal(cv.width, 1100, "the full width");
-  assert.equal(cv.y, header.height, "from the bottom of the header…");
+  assert.equal(cv.y, 0, "from the top of the window…");
   assert.equal(cv.y + cv.height, 800, "…to the bottom of the window");
 
   for (const id of ["toolbar", "log", "cmd"]) {
@@ -325,7 +325,10 @@ test("a panel cannot be dragged off an edge by a single pixel", async () => {
   const st = await rectOf(strip("log"));
   await dragBy(strip("log"), 2 - (st.x + st.width / 2), 2 - (st.y + st.height / 2));
   const t = await rectOf(panel("log"));
-  assert.deepEqual([t.x, t.y], [cv.x, cv.y], "flush with the top-left — the header is not covered");
+  // The corner is the logo's, which nothing moves: the log stops flush
+  // against it, on the left edge, as it would against the window's edge.
+  const logo = await rectOf("#logo");
+  assert.deepEqual([t.x, t.y], [cv.x, logo.y + logo.height], "flush with the left edge, and stopped under the logo — it is not covered");
 });
 
 test("the arrangement survives a reload, and layout(\"reset\") forgets it", async () => {
@@ -399,17 +402,19 @@ async function tray(): Promise<{ x: number; y: number; w: number; h: number; ori
 const TOOLS = 11; // the built-ins, after the reload that dropped "stamp"
 const RUN = 16 + 6 + TOOLS * 22; // strip, padding, a 22px step per button
 const DEPTH = 28; // one button thick
+/** The default tray's top: under the logo's 32 px box, a margin off it. */
+const TOP = 32 + 8;
 
 test("dragged past the right edge, the tray stops flush inside it, still a column", async () => {
   await reloadApp();
   await app.type('layout("reset")');
   const cv = await rectOf("#cv");
-  assert.deepEqual(await tray(), { x: 8, y: 8, w: DEPTH, h: RUN, orient: "column", rows: TOOLS }, "the default: a column");
+  assert.deepEqual(await tray(), { x: 8, y: TOP, w: DEPTH, h: RUN, orient: "column", rows: TOOLS }, "the default: a column, under the logo");
   await dragBy(strip("toolbar"), 3000, 100);
   const t = await tray();
   assert.equal(t.x + t.w, cv.width, "flush with the right edge, not a pixel past");
   assert.equal(t.orient, "column", "a side edge makes a column, which it already was");
-  assert.equal(t.y, 108, "and nothing else about it changed");
+  assert.equal(t.y, TOP + 100, "and nothing else about it changed");
 });
 
 test("pushed against the top edge it turns into a row — live, before the release — flush with the top", async () => {
@@ -480,7 +485,7 @@ test("layout(\"reset\") puts back the column", async () => {
   await dragBy(strip("toolbar"), -200, -3000); // a row along the top again, first
   assert.equal((await tray()).orient, "row");
   await app.type('layout("reset")');
-  assert.deepEqual(await tray(), { x: 8, y: 8, w: DEPTH, h: RUN, orient: "column", rows: TOOLS });
+  assert.deepEqual(await tray(), { x: 8, y: TOP, w: DEPTH, h: RUN, orient: "column", rows: TOOLS });
   await reloadApp();
   assert.equal((await tray()).orient, "column", "and it stays reset");
 });
@@ -736,6 +741,8 @@ test("a reload keeps the pushed positions, and layout(\"reset\") puts everything
 test("a stored layout from before panels pushed comes up with nothing overlapping", async () => {
   // An arrangement the old rules allowed: the log dropped over the command line
   // and the toolbar over the log.
+  // Stored as 0.1.0 stored it (v2), with no v3 to win over it: migrated on load.
+  await app.page.evaluate(() => localStorage.removeItem("neocad.panels.v3"));
   await app.page.evaluate(() => localStorage.setItem("neocad.panels.v2", JSON.stringify({
     toolbar: { x: 40, y: 500, w: 28, h: 264, orient: "column" },
     log: { x: 20, y: 560, w: 560, h: 150 },
@@ -912,6 +919,8 @@ test("the tray has no grips: a press at any of its corners is a drag or a button
 
 test("a stored tray size is ignored on load: one line where it was, the way it ran", async () => {
   // A column stored as the wrap left it: three columns wide and shortened.
+  // Stored as 0.1.0 stored it (v2), with no v3 to win over it: migrated on load.
+  await app.page.evaluate(() => localStorage.removeItem("neocad.panels.v3"));
   await app.page.evaluate(() => localStorage.setItem("neocad.panels.v2", JSON.stringify({
     toolbar: { x: 300, y: 100, w: 72, h: 110, orient: "column" },
   })));
@@ -920,6 +929,8 @@ test("a stored tray size is ignored on load: one line where it was, the way it r
   assert.ok((await buttonsShown()).every(Boolean), "every button shown");
   await shot("stored-size-ignored");
   // And a row stored far too long comes up as long as its buttons.
+  // Stored as 0.1.0 stored it (v2), with no v3 to win over it: migrated on load.
+  await app.page.evaluate(() => localStorage.removeItem("neocad.panels.v3"));
   await app.page.evaluate(() => localStorage.setItem("neocad.panels.v2", JSON.stringify({
     toolbar: { x: 300, y: 0, w: 700, h: 90, orient: "row" },
   })));
@@ -930,6 +941,7 @@ test("a stored tray size is ignored on load: one line where it was, the way it r
 
 test("a tool defined at the command line lengthens a moved row by one button, pushing the log it grows into", async () => {
   // A row along the top with the log flush against its right end.
+  await app.page.evaluate(() => localStorage.removeItem("neocad.panels.v3"));
   await app.page.evaluate((run) => localStorage.setItem("neocad.panels.v2", JSON.stringify({
     toolbar: { x: 100, y: 0, w: run, h: 28, orient: "row" },
     log: { x: 100 + run, y: 0, w: 300, h: 150 },

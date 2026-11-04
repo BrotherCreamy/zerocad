@@ -145,7 +145,11 @@ test("shaded, the plain sketch differs from the hidden view's picture only at it
 });
 
 test("a sketch with no solid draws pixel for pixel what the previous build drew — in the hidden view, which draws everything", async () => {
-  const app = await fresh();
+  // The canvas the picture was recorded on: 1100×768, which was the suite's
+  // window less the title bar there was then. There is no title bar now, so
+  // the window is asked for at that size — the drawing is what is compared.
+  const app = await openApp({ viewport: { width: 1100, height: 768 } });
+  opened.push(app);
   await plainSketch(app);
   assert.equal((await app.repl('view("hidden")')).value, "hidden");
   const png = await drawingPNG(app);

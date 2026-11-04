@@ -302,6 +302,14 @@ test("a tray whose line no longer fits along its edge turns, and keeps the edge"
   assert.equal(out.toolbar.x, 0, "and the left");
 });
 
+test("floating in the same area it was put in, a pane stays exactly put even when its size changed", () => {
+  // A v2 tray stored three columns wide: re-measured to one line, its corner stays.
+  const shown: Layout = { toolbar: { x: 300, y: 100, w: 72, h: 110, orient: "column" } };
+  const recs = { toolbar: recorded("toolbar", shown, PORTRAIT, 1) };
+  const out = relaid(recs, {}, PORTRAIT, 1, (_id, o) => traySize(11, o ?? "column"), minOf);
+  assert.deepEqual([out.toolbar.x, out.toolbar.y], [300, 100]);
+});
+
 test("a side against a pane that is gone is against nothing", () => {
   const shown: Layout = { toolbar: { x: 0, y: 0, w: 38, h: 300, orient: "column" }, log: { x: 38, y: 100, w: 160, h: 60 } };
   const recs = { log: recorded("log", shown, PORTRAIT, 1) };
