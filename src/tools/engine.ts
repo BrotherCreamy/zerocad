@@ -75,7 +75,7 @@ import {
   type RenderContext,
 } from "./tool.ts";
 import {
-  assignView, cameraPlane, orbitBy, panBy, screenToPlane, screenToWorld, uiOf, viewAxes, worldToScreen, zoomAbout, type Plane, type View,
+  assignView, cameraPlane, depth, orbitBy, panBy, screenToPlane, screenToWorld, uiOf, viewAxes, worldToScreen, zoomAbout, type Plane, type View,
 } from "../view.ts";
 import { pointOnWorkingPlane, sketchPlane } from "../workplane.ts";
 import { TOUCH_REACH, hitTest, type Pick } from "../picking.ts";
@@ -83,7 +83,7 @@ import { boxFrom, selectInBox, type BoxMode } from "../boxselect.ts";
 import { glyphAt, placeGlyphs, type Glyph } from "../glyphs.ts";
 import { describeSnap, findSnap, type Snap, type SnapKind } from "../snapping.ts";
 import type { Occlusion } from "../occlusion.ts";
-import { findLoops, loopAt } from "../loops.ts";
+import { findLoops, loopAround, loopAt } from "../loops.ts";
 import { OptionMemory, declaredOptions, explicitOptions, resolveOptions } from "./options.ts";
 import { SELECTION, Selection, type RegionSelection } from "./selection.ts";
 import { drawRegion, hiddenLoop } from "./region.ts";
@@ -609,7 +609,23 @@ export class ToolEngine {
    */
   regionAt(sx: number, sy: number): RegionHit | null {
     const loops = findLoops(this.model);
-    const loop = loopAt(this.model, this.view, sx, sy, loops);
+    let loop = loopAt(this.model, this.view, sx, sy, loops);
+    // A body the solid kernel built has faces no loop of entities bounds — a
+    // pocket's floor, a lid with a hole cut through it — and loses faces a
+    // loop still does (a hole's mouth is a circle on the lid, with no lid
+    // there). So the kernel's face under the pixel decides where it is
+    // nearer: a flat one is the loop its point lies inside, on its plane (the
+    // feature's own lid, wall or profile — the plane follows the solid,
+    // because its points are the feature's), and a curved one is no region.
+    const solid = this.solidFaceAt?.(sx, sy) ?? null;
+    if (solid) {
+      const at = loop ? screenToPlane(this.view, sx, sy, loop.plane) : null;
+      const nearer = at !== null && depth(this.view, at) > solid.depth + 1e-6 * Math.max(1, Math.abs(solid.depth));
+      if (!nearer) {
+        if (!solid.planar) return null;
+        loop = loopAround(this.model, solid.at, loops);
+      }
+    }
     // A region bounded by anything hidden is not on screen to click inside.
     // The innermost loop under the cursor decides, as it always has: one
     // further out is not offered in its place (a hidden hole is not a hole
@@ -619,6 +635,14 @@ export class ToolEngine {
     const at = screenToPlane(this.view, sx, sy, { origin, u, v });
     return at ? { loops, index: loops.indexOf(loop), toward: viewAxes(this.view).toward, at } : null;
   }
+
+  /**
+   * The nearest face of a body the solid kernel built, under a pixel — set by
+   * the host (main.ts, bodies.ts), null where there is no kernel. Asked by
+   * `regionAt` alone: the engine knows a hit's depth, flatness and point, and
+   * nothing of the kernel.
+   */
+  solidFaceAt: ((sx: number, sy: number) => { at: number[]; depth: number; planar: boolean } | null) | null = null;
 
   /** Where `arm` keeps and finds the last value of each declared option. */
   private optionMemory: OptionMemory;

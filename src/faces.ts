@@ -519,6 +519,16 @@ function revolveFaces(model: Model, f: Extract<FeatureEntry, { kind: "revolve" }
   return faces;
 }
 
+/**
+ * Faces drawn in place of some features' own: a solid kernel's body
+ * (bodies.ts), which is the boolean of its features and no longer any of
+ * them alone. The faces are in the world, as `featureFaces` gives them.
+ */
+export interface SolidFaces {
+  faces: readonly Face[];
+  replaces: ReadonlySet<string>;
+}
+
 /** A face that faces the viewer, in the world, with its headlight shade. */
 export interface VisibleFace extends Face {
   /** Lambert's cosine against the line of sight: 0 edge-on, 1 square to the viewer. */
@@ -533,13 +543,20 @@ export interface VisibleFace extends Face {
  * someone else's to draw just now — the edit dialog's preview stands in for the
  * feature it edits — and which so hide nothing either.
  */
-export function visibleFaces(model: Model, view: View, skip: ReadonlySet<string> = new Set()): VisibleFace[] {
+export function visibleFaces(model: Model, view: View, skip: ReadonlySet<string> = new Set(),
+                             solid: SolidFaces | null = null): VisibleFace[] {
   const { toward } = viewAxes(view);
   const out: VisibleFace[] = [];
+  // A body the solid kernel built (bodies.ts) stands in for its features: its
+  // faces are the kernel's triangles, culled and lit exactly as these are.
+  for (const face of solid?.faces ?? []) {
+    const shade = dot3(face.normal, toward);
+    if (shade > 1e-9) out.push({ ...face, shade: Math.min(1, shade) });
+  }
   for (const f of model.features.values()) {
     // A hidden feature has no faces on screen — and so hides nothing behind
     // them either, since occlusion is asked of these same faces.
-    if (model.hidden.has(f.name) || skip.has(f.name)) continue;
+    if (model.hidden.has(f.name) || skip.has(f.name) || solid?.replaces.has(f.name)) continue;
     let faces: Face[];
     try {
       faces = featureFaces(model, f, view.scale);
@@ -563,8 +580,9 @@ export function visibleFaces(model: Model, view: View, skip: ReadonlySet<string>
  * The depth layer is right in all three; this exists so a browser without
  * WebGL still sees solids.
  */
-export function facesToDraw(model: Model, view: View, skip: ReadonlySet<string> = new Set()): DrawnFace[] {
-  return visibleFaces(model, view, skip)
+export function facesToDraw(model: Model, view: View, skip: ReadonlySet<string> = new Set(),
+                            solid: SolidFaces | null = null): DrawnFace[] {
+  return visibleFaces(model, view, skip, solid)
     .map((face) => ({ face, depth: depth(view, face.centroid) }))
     .sort((a, b) => a.depth - b.depth)
     .map(({ face, depth }) => ({

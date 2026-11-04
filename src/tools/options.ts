@@ -24,8 +24,12 @@
 //
 // Nothing here knows what a model is; it is about tools, and plain values.
 
-/** What an option holds. Numbers first — every built-in's is one; a flag is allowed in the shape. */
-export type OptionValue = number | boolean;
+/**
+ * What an option holds. Numbers first — most built-ins' are; a flag is allowed
+ * in the shape; and a word from a fixed list (`choices`), which the panel shows
+ * as a row of buttons — an extrude's mode (docs/plans/solids-kernel.md).
+ */
+export type OptionValue = number | boolean | string;
 
 /** One declared option. */
 export interface OptionSpec {
@@ -45,15 +49,29 @@ export interface OptionSpec {
    * "extrude's depth …", so it reads in the refusal.
    */
   check?: (value: OptionValue) => string | null;
+  /**
+   * The words a text option may be — required when its default is text, and
+   * the default among them. The panel shows a button per word but the first,
+   * which is the default's "none of these": pressing the button already down
+   * goes back to it (an extrude's `auto`, which lets the call decide).
+   */
+  choices?: readonly string[];
+  /**
+   * False: never the next default. A value the viewer chose for one feature
+   * that would be wrong for the next — a cut — starts from the declared
+   * default at every arm, whatever the last one was.
+   */
+  remember?: boolean;
 }
 
 export type OptionSpecs = Readonly<Record<string, OptionSpec>>;
 
-const kindOf = (v: OptionValue): "number" | "boolean" => (typeof v === "number" ? "number" : "boolean");
+const kindOf = (v: OptionValue): "number" | "boolean" | "string" =>
+  (typeof v === "number" ? "number" : typeof v === "string" ? "string" : "boolean");
 
-/** A value as `arm` would be typed with it: numbers rounded for reading, flags as written. */
+/** A value as `arm` would be typed with it: numbers rounded for reading, flags as written, words quoted. */
 export function formatValue(v: OptionValue): string {
-  return typeof v === "number" ? String(Math.round(v * 1e6) / 1e6) : String(v);
+  return typeof v === "number" ? String(Math.round(v * 1e6) / 1e6) : typeof v === "string" ? JSON.stringify(v) : String(v);
 }
 
 /** A key as an object literal takes it: bare when it can be, quoted otherwise. */
@@ -65,7 +83,7 @@ export function formatKey(name: string): string {
 export function describeValues(specs: OptionSpecs, values: Readonly<Record<string, unknown>>): string {
   const parts = Object.keys(specs).map((k) => {
     const v = values[k];
-    return `${formatKey(k)}: ${typeof v === "number" || typeof v === "boolean" ? formatValue(v) : String(v)}`;
+    return `${formatKey(k)}: ${typeof v === "number" || typeof v === "boolean" || typeof v === "string" ? formatValue(v) : String(v)}`;
   });
   return parts.length ? `{ ${parts.join(", ")} }` : "{}";
 }
@@ -91,8 +109,11 @@ export function declaredOptions(ctor: unknown, tool = "the tool"): OptionSpecs {
   for (const [name, spec] of Object.entries(raw as Record<string, unknown>)) {
     const s = spec as Partial<OptionSpec> | null;
     const d = s?.default;
-    if (!s || typeof s !== "object" || !((typeof d === "number" && Number.isFinite(d)) || typeof d === "boolean")) {
-      throw new Error(`${tool}'s option ${name} needs a default that is a number or true/false, ${shape}`);
+    if (!s || typeof s !== "object" || !((typeof d === "number" && Number.isFinite(d)) || typeof d === "boolean" || typeof d === "string")) {
+      throw new Error(`${tool}'s option ${name} needs a default that is a number, true/false or a word, ${shape}`);
+    }
+    if (typeof d === "string" && !(Array.isArray(s.choices) && s.choices.every((c) => typeof c === "string") && s.choices.includes(d))) {
+      throw new Error(`${tool}'s option ${name} is a word, so it needs a default among its choices: { default: "${d}", choices: ["${d}", …] }`);
     }
     if (s.unit !== undefined && typeof s.unit !== "string") throw new Error(`${tool}'s option ${name}: unit is text`);
     if (s.label !== undefined && typeof s.label !== "string") throw new Error(`${tool}'s option ${name}: label is text`);
@@ -108,6 +129,9 @@ function fault(spec: OptionSpec, v: unknown): string | null {
     return `is a number, not ${typeof v === "string" ? JSON.stringify(v) : String(v)}`;
   }
   if (kind === "boolean" && typeof v !== "boolean") return `is true or false, not ${typeof v === "string" ? JSON.stringify(v) : String(v)}`;
+  if (kind === "string" && !(typeof v === "string" && (spec.choices ?? []).includes(v))) {
+    return `is one of ${(spec.choices ?? []).map((c) => JSON.stringify(c)).join(", ")}, not ${typeof v === "string" ? JSON.stringify(v) : String(v)}`;
+  }
   return spec.check?.(v as OptionValue) ?? null;
 }
 
@@ -143,7 +167,7 @@ export function resolveOptions(
   const out: Record<string, unknown> = {};
   for (const k of names) {
     if (Object.hasOwn(g, k)) out[k] = g[k];
-    else if (Object.hasOwn(remembered, k) && fault(specs[k], remembered[k]) === null) out[k] = remembered[k];
+    else if (specs[k].remember !== false && Object.hasOwn(remembered, k) && fault(specs[k], remembered[k]) === null) out[k] = remembered[k];
     else out[k] = specs[k].default;
   }
   return out;
@@ -154,7 +178,9 @@ export function explicitOptions(specs: OptionSpecs, given: unknown): Record<stri
   if (!given || typeof given !== "object") return {};
   const out: Record<string, OptionValue> = {};
   for (const [k, v] of Object.entries(given as Record<string, unknown>)) {
-    if (Object.hasOwn(specs, k) && (typeof v === "number" || typeof v === "boolean")) out[k] = v;
+    // A word is never remembered: the one there is, an extrude's mode, is
+    // `remember: false` anyway, and the stored values stay numbers and flags.
+    if (Object.hasOwn(specs, k) && specs[k].remember !== false && (typeof v === "number" || typeof v === "boolean")) out[k] = v;
   }
   return out;
 }

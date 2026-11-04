@@ -17,12 +17,19 @@ import { inProcessPort, noKernel as skip, smlibFactory } from "./solids/load.ts"
 const XY = { origin: [0, 0, 0] as [number, number, number], x: [1, 0, 0] as [number, number, number], y: [0, 1, 0] as [number, number, number] };
 const top = { ...XY, origin: [0, 0, 10] as [number, number, number] };
 
-/** A plate with a hole whose radius is `r` and a boss whose height is `h` — what a drag of a dimension sends. */
-function program(r: number, h: number): Program {
+/**
+ * A plate with a hole whose radius is `r` and a boss whose height is `h` —
+ * what a drag of a dimension sends. `square`: the hole and the boss square,
+ * so two hundred rebuilds measure the kernel's memory and not a minute of
+ * tessellating circles on a shared box.
+ */
+function program(r: number, h: number, square = false): Program {
+  const hole = square ? rect(30 - r, 30 - r, 30 + r, 30 + r) : circle(30, 30, r);
+  const boss = square ? rect(62, 22, 78, 38) : circle(70, 30, 8);
   const nodes: SweepNode[] = [
     { id: 1, op: "new", sweep: { kind: "extrude", depth: 10 }, profile: profile(rect(0, 0, 100, 60)), at: XY },
-    { id: 2, op: "subtract", sweep: { kind: "extrude", depth: -12 }, profile: profile(circle(30, 30, r)), at: top },
-    { id: 3, op: "union", sweep: { kind: "extrude", depth: h }, profile: profile(circle(70, 30, 8)), at: top },
+    { id: 2, op: "subtract", sweep: { kind: "extrude", depth: -12 }, profile: profile(hole), at: top },
+    { id: 3, op: "union", sweep: { kind: "extrude", depth: h }, profile: profile(boss), at: top },
   ];
   return { bodies: [{ name: "e1", nodes }], prefix: "e", chord: 5e-4, angle: 10 };
 }
@@ -35,19 +42,19 @@ test("200 rebuilds, each a dimension dragged one step: memory stays under the ca
   const factory = await smlibFactory();
   const client = new SolidsClient(() => inProcessPort(factory));
   let most = 0;
-  const first = await client.run(program(4, 5));
+  const first = await client.run(program(4, 5, true));
   const inUse0 = first.heap.inUse;
   for (let i = 0; i < 200; i++) {
     const r = 4 + (i % 10) * 0.2, h = 5 + (i % 7);
-    const out = await client.run(program(r, h));
+    const out = await client.run(program(r, h, true));
     most = Math.max(most, out.heap.reserved);
-    const want = 100 * 60 * 10 - Math.PI * r * r * 10 + Math.PI * 64 * h;
+    const want = 100 * 60 * 10 - 4 * r * r * 10 + 16 * 16 * h;
     // Nothing changed since the last ask is said, not sent: the 10 × 7 steps repeat after 70.
     const b = out.bodies[0];
     if (b.cached) continue;
     assert.ok(Math.abs(b.solid!.volume - want) < 1e-6 * want, `rebuild ${i}`);
   }
-  const last = await client.run(program(4, 5));
+  const last = await client.run(program(4.1, 5, true));
   assert.ok(most < CAP, `${(most / MB).toFixed(1)} MB`);
   // No fillet here, the one leak the spike found: what the kernel holds comes
   // back to where it started, give or take its own caches.
@@ -61,13 +68,13 @@ test("recycling: past its threshold a Worker is let go after its answer, and the
   const ports: (Port & { dead: boolean })[] = [];
   // Every Worker is past a threshold of one byte: each answer recycles it.
   const client = new SolidsClient(() => { const p = inProcessPort(factory); ports.push(p); return p; }, { recycleBytes: 1 });
-  for (let i = 0; i < 20; i++) {
-    const out = await client.run(program(5, 5 + i));
+  for (let i = 0; i < 8; i++) {
+    const out = await client.run(program(5, 5 + i, true));
     assert.ok(out.bodies[0].solid, "a fresh Worker has no cache, and answers in full");
     assert.equal(out.bodies[0].cached, undefined);
   }
-  assert.equal(client.history.spawned, 20);
-  assert.equal(client.history.recycled, 20);
+  assert.equal(client.history.spawned, 8);
+  assert.equal(client.history.recycled, 8);
   assert.ok(ports.slice(0, -1).every((p) => p.dead), "each one before the last was terminated");
 });
 

@@ -46,6 +46,8 @@ import { depth, uiOf } from "./view.ts";
 import { arcSamples, arcSegments } from "./arcgeom.ts";
 import { curveFrame } from "./curveplane.ts";
 import { createFaceLayer, paintFaces } from "./facelayer.ts";
+import { Bodies } from "./bodies.ts";
+import { solidsClient } from "./solidshost.ts";
 import { SOLID_EDGE, visibleFaces } from "./faces.ts";
 import { hiddenInk, inSight, inkRuns, occlusion, type Occlusion } from "./occlusion.ts";
 import { VIEW_MODES, drawsFaces, isViewMode, opaque, recallViewMode, rememberViewMode, viewModeError, type ViewMode } from "./viewmode.ts";
@@ -401,6 +403,14 @@ async function main() {
   }
   const view: View = { ox: 0, oy: 0, scale: 3, ui: metrics.scale };
   sizeCanvas();
+
+  // The solid kernel (docs/plans/solids-kernel.md): bodies of two or more
+  // features — a boss added, a hole cut — are the kernel's, in a Worker that
+  // is started the first time one needs it. Its answers arrive later and
+  // redraw; until then the last good body stands (bodies.ts).
+  const solidBodies = new Bodies(solidsClient(), () => render());
+  /** The kernel's report as last said, so a line is logged once and not every frame. */
+  let solidSaid = "";
   const r0 = cv.getBoundingClientRect();
   view.ox = r0.width / 2;
   view.oy = r0.height / 2;
@@ -444,12 +454,20 @@ async function main() {
     // A feature an armed tool draws itself, as it will be (the edit dialog's
     // preview), is left out here, and hides nothing behind it while it is.
     const replaced = new Set(engine.active?.replaces?.() ?? []);
+    // The kernel's bodies, in place of their features' own faces: read the
+    // program off the model (sent only when it changed) and take the last
+    // good answer.
+    solidBodies.sync(model);
+    const kernelSolid = solidBodies.drawn();
+    sayKernel();
     if (faceLayer) {
-      if (faced) faceLayer.draw(model, view, r.width, r.height, replaced);
+      if (faced) faceLayer.draw(model, view, r.width, r.height, replaced, kernelSolid);
       else faceLayer.clear();
     } else if (faced) {
-      paintFaces(g, model, view, replaced);
+      paintFaces(g, model, view, replaced, kernelSolid);
     }
+    // A wireframe has no faces to carry the kernel's edges: drawn here, in the sketch's ink.
+    if (!faced) wireKernelEdges();
 
     // What of the drawing is behind a face — asked of the same faces on the
     // CPU (occlusion.ts), whichever renderer drew them. **Shaded, a solid is
@@ -459,7 +477,7 @@ async function main() {
     // hand. In the hidden mode it is drawn, in a dimmed ink, and everything
     // stays aimable. No solid (or no faces), no question: a plain sketch draws
     // exactly as it always has, at no cost.
-    const faces = faced && model.features.size ? visibleFaces(model, view, replaced) : [];
+    const faces = faced && model.features.size ? visibleFaces(model, view, replaced, kernelSolid) : [];
     occluded = faces.length ? occlusion(faces, view) : null;
     hides = occluded && opaque(viewMode) ? occluded : null;
     engine.occlusion = hides;
@@ -491,7 +509,10 @@ async function main() {
     // the face layer drew with the faces — until the hand is on them. Quiet is
     // not hidden: none of this reaches the pick, so a quiet corner is still
     // hovered, snapped to and dragged, and drawn while it is.
-    quiet = quietEntities(model, { shaded: opaque(viewMode), faced: new Set(faces.map((f) => f.feature)) });
+    const kernelFeatures = solidBodies.kernelFeatures();
+    quiet = quietEntities(model, {
+      shaded: opaque(viewMode), faced: new Set([...faces.map((f) => f.feature), ...kernelFeatures]), kernel: kernelFeatures,
+    });
     shown = revealed(model, [
       ...lit,
       ...chosen,
@@ -551,6 +572,44 @@ async function main() {
     }
     syncToolbar();
     syncOrganiser();
+  }
+
+  /**
+   * What the kernel has to say — a cut that removed nothing, a boolean it
+   * refused, a sketch on a face that is gone, the kernel not there — logged
+   * once when it changes, and the first line beside the verdict as guidance:
+   * never in place of the verdict, which is the solver's.
+   */
+  function sayKernel() {
+    const { lines } = solidBodies.report();
+    const said = lines.join("\n");
+    if (said === solidSaid) return;
+    const old = new Set(solidSaid.split("\n"));
+    solidSaid = said;
+    for (const line of lines) if (!old.has(line)) log(`solid: ${line}`, "guide");
+    if (lines.length) stepNote(`solid: ${lines[0]}`, GUIDE_NOTE_MS, "guide");
+  }
+
+  /** The kernel's edges in the wireframe view, where there are no faces to draw them with. */
+  function wireKernelEdges() {
+    g.save();
+    g.strokeStyle = "#afc6d9";
+    g.lineWidth = 1.4;
+    for (const v of solidBodies.views()) {
+      if (model.hidden.has(v.name)) continue;
+      const s = v.result.solid!;
+      for (const line of s.lines) {
+        if (s.edges[line.edge]?.name.endsWith(":seam")) continue;
+        g.beginPath();
+        for (let i = 0; i < line.points.length / 3; i++) {
+          const [x, y] = engine.worldToScreen([line.points[i * 3], line.points[i * 3 + 1], line.points[i * 3 + 2]]);
+          if (i === 0) g.moveTo(x, y);
+          else g.lineTo(x, y);
+        }
+        g.stroke();
+      }
+    }
+    g.restore();
   }
 
   /**
@@ -1324,6 +1383,7 @@ async function main() {
       const specs = declaredOptions(getToolCtor(a.name), a.name);
       const rows = Object.entries(specs).map(([name, s]) => ({
         name, label: s.label ?? name, unit: unitSymbol(s.unit), value: a.options[name] as OptionValue,
+        ...(s.choices ? { choices: s.choices } : {}),
       }));
       const dialog = engine.dialog();
       return rows.length || dialog ? { tool: a.name, rows, dialog } : null;
@@ -1394,6 +1454,9 @@ async function main() {
     // box, and the menu is not what the hand is doing any more.
     onContextMenuWithdrawn: () => { menu.close(); },
   });
+  // A kernel body's faces are no loop of entities: sketch on face, and a
+  // click inside a region, ask the kernel's picture what is under the pixel.
+  engine.solidFaceAt = (sx, sy) => solidBodies.faceAt(view, sx, sy, model.hidden);
 
   /**
    * The action strip, through the same seam as the toolbar and the menu: each
@@ -1736,7 +1799,7 @@ async function main() {
   }
 
   function exposeDebugHook() {
-    (window as unknown as { __neocad: unknown }).__neocad = { model, engine, repl, render, files, faces: faceLayer ? "depth" : "painter's" }; // debug/automation hook
+    (window as unknown as { __neocad: unknown }).__neocad = { model, engine, repl, render, files, faces: faceLayer ? "depth" : "painter's", bodies: solidBodies }; // debug/automation hook
   }
   exposeDebugHook();
 

@@ -225,7 +225,15 @@ export interface FeaturePreview {
 }
 
 /** What the options panel shows of a tool that commits a feature: whether ✓ would do anything now. */
-export interface FeatureDialog { ready: boolean }
+export interface FeatureDialog {
+  ready: boolean;
+  /**
+   * A word option left at its default, and what the default comes to for what
+   * is picked — an extrude's `mode: "auto"` adding to the body its solid
+   * touches — with a choice worth offering (Cut, when it runs into a body).
+   */
+  choice?: { option: string; resolved: string | null; offer: string | null } | null;
+}
 
 export abstract class Tool {
   /**

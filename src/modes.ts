@@ -196,6 +196,23 @@ function probes(model: Model, f: FeatureEntry): { behind: number[][]; ahead: num
   return { behind: offs.filter((q) => !solid(q)), ahead: offs.filter((q) => solid(q)) };
 }
 
+/** A world point strictly inside a feature's profile, on its sketch plane — null for a profile with no inside. */
+export function interiorPoint(model: Model, f: FeatureEntry): number[] | null {
+  const { at, profile } = kernelSweep(model, f);
+  const pts = profile.loops.flat().flatMap((m) => memberPoints(m, 16));
+  const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
+  const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+  for (const N of [3, 9, 27]) {
+    for (let i = 0; i < N; i++) {
+      for (let j = 0; j < N; j++) {
+        const p: V2 = [x0 + ((i + 0.5) / N) * (x1 - x0), y0 + ((j + 0.5) / N) * (y1 - y0)];
+        if (insideProfile(profile, p)) return [0, 1, 2].map((k) => at.origin[k] + p[0] * at.x[k] + p[1] * at.y[k]);
+      }
+    }
+  }
+  return null;
+}
+
 export interface ModeChoice {
   mode: FeatureMode;
   /** The body's first feature, for anything but new. */

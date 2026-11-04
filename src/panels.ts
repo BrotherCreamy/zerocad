@@ -2276,14 +2276,30 @@ export class Toolbar {
 // it was armed: typed by hand, by a button, or by the panel itself.
 
 /** One declared option as the panel shows it: what it is called, its unit's text, and the armed value. */
-export interface OptionRow { name: string; label: string; unit: string; value: number | boolean }
+export interface OptionRow {
+  name: string;
+  label: string;
+  unit: string;
+  value: number | boolean | string;
+  /** A word option's words: a button each but the first, the default's "none of these". */
+  choices?: readonly string[];
+}
 
 /**
  * A feature tool's ✓ and ✗, as the panel shows them: whether ✓ would do
  * anything now. Its own shape rather than the tools' — this file knows nothing
  * of tools — which the host fills from the engine.
  */
-export interface DialogState { ready: boolean }
+export interface DialogState {
+  ready: boolean;
+  /**
+   * For a word option left at its default (an extrude's `mode: "auto"`): what
+   * the default comes to for what is picked — shown as that button dimly
+   * down — and a choice worth offering, outlined (Cut, when the solid runs
+   * into a body). Null or absent: nothing to show.
+   */
+  choice?: { option: string; resolved: string | null; offer: string | null } | null;
+}
 
 /** What the options panel needs of its host. */
 export interface OptionsHost {
@@ -2315,9 +2331,14 @@ export interface OptionsHost {
  * be said: each was either never typed, and is filled from its default, or was,
  * and is remembered, which is exactly what the tool is armed with now.
  */
-export function optionCommand(tool: string, option: string, value: number | boolean): string {
+export function optionCommand(tool: string, option: string, value: number | boolean | string): string {
   const key = /^[A-Za-z_$][\w$]*$/.test(option) ? option : JSON.stringify(option);
-  return `arm(${JSON.stringify(tool)}, {${key}: ${String(value)}})`;
+  return `arm(${JSON.stringify(tool)}, {${key}: ${typeof value === "string" ? JSON.stringify(value) : String(value)}})`;
+}
+
+/** A word option's button text: its word, capitalised, and `intersect` as the sign for it. */
+export function choiceText(word: string): string {
+  return word === "intersect" ? "∩" : word.charAt(0).toUpperCase() + word.slice(1);
 }
 
 /** A number as a field shows it: to a millionth, so a whole turn reads 6.283185, not seventeen digits. */
@@ -2403,7 +2424,7 @@ export class OptionsPanel {
       for (const row of a?.rows ?? []) this.body.appendChild(this.row(row));
       if (a?.dialog) this.body.appendChild(this.actions());
     }
-    if (a) this.fill(a.rows, false);
+    if (a) this.fill(a.rows, false, a.dialog?.choice ?? null);
     if (this.ok && a?.dialog) this.ok.disabled = !a.dialog.ready;
     return shaped;
   }
@@ -2443,7 +2464,42 @@ export class OptionsPanel {
     return line;
   }
 
+  /**
+   * A word option's row: a button per word but the first (the default, which
+   * is "none of these"). A press types `arm(tool, { mode: "cut" })`; a press
+   * on the button already down types the default back. The buttons never
+   * take the focus, so typing after one still types.
+   */
+  private choiceRow(r: OptionRow): HTMLElement {
+    const line = document.createElement("div");
+    line.className = "orow ochoice";
+    line.dataset.option = r.name;
+    line.title = `${r.label} — ${optionCommand(this.tool, r.name, r.value)}`;
+    const label = document.createElement("span");
+    label.className = "olabel";
+    label.textContent = r.label;
+    line.append(label);
+    const tool = this.tool;
+    const [none, ...words] = r.choices ?? [];
+    for (const word of words) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "ochoose";
+      b.dataset.choice = word;
+      b.textContent = choiceText(word);
+      b.setAttribute("aria-label", `${r.label}: ${word}`);
+      b.addEventListener("mousedown", (e) => e.preventDefault());
+      b.addEventListener("click", () => {
+        const now = this.host.armed()?.rows.find((x) => x.name === r.name)?.value;
+        void this.type(tool, r.name, now === word ? none : word);
+      });
+      line.append(b);
+    }
+    return line;
+  }
+
   private row(r: OptionRow): HTMLElement {
+    if (r.choices) return this.choiceRow(r);
     const line = document.createElement("label");
     line.className = "orow";
     line.title = `${r.label} — ${optionCommand(this.tool, r.name, r.value)}`;
@@ -2505,26 +2561,40 @@ export class OptionsPanel {
     return this.type(field.dataset.tool!, field.dataset.option!, v);
   }
 
-  private type(tool: string, option: string, value: number | boolean): Promise<unknown> | void {
+  private type(tool: string, option: string, value: number | boolean | string): Promise<unknown> | void {
     const ran = this.host.run(optionCommand(tool, option, value));
     // `arm` runs as the line is typed, so the tool is armed afresh by now — or,
     // refused, as it was; either way the fields say which, the edited one too.
     const a = this.host.armed();
-    if (a && a.tool === this.tool) this.fill(a.rows, true);
+    if (a && a.tool === this.tool) this.fill(a.rows, true, a.dialog?.choice ?? null);
     return ran;
   }
 
   /** Every field to its row's value — except, unless `force`, one being edited. */
-  private fill(rows: OptionRow[], force: boolean): void {
+  private fill(rows: OptionRow[], force: boolean, choice: DialogState["choice"] = null): void {
     const fields = Array.from(this.body.querySelectorAll<HTMLInputElement>("input.oval"));
-    rows.forEach((r, i) => {
-      const field = fields[i];
+    let next = 0;
+    rows.forEach((r) => {
+      if (r.choices) {
+        const line = this.body.querySelector<HTMLElement>(`.ochoice[data-option="${r.name}"]`);
+        if (!line) return;
+        const hint = choice?.option === r.name && r.value === r.choices[0] ? choice : null;
+        for (const b of Array.from(line.querySelectorAll<HTMLButtonElement>("button.ochoose"))) {
+          const word = b.dataset.choice!;
+          b.setAttribute("aria-pressed", String(r.value === word));
+          b.classList.toggle("resolved", hint?.resolved === word);
+          b.classList.toggle("offer", hint?.offer === word);
+        }
+        line.title = `${r.label} — ${optionCommand(this.tool, r.name, r.value)}`;
+        return;
+      }
+      const field = fields[next++];
       if (!field) return;
       if (typeof r.value === "boolean") {
         field.checked = r.value;
         return;
       }
-      const text = fieldText(r.value);
+      const text = typeof r.value === "number" ? fieldText(r.value) : r.value;
       const editing = document.activeElement === field && field.value !== field.dataset.shown;
       if (!force && editing) return;
       field.value = text;

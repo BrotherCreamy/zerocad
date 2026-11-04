@@ -44,7 +44,7 @@
 // painter's draws into a canvas whose listeners ask the entities, not this.
 
 import type { Model } from "./model.ts";
-import { SOLID_EDGE, SOLID_EDGE_PX, faceColour, faceRGB, facesToDraw, visibleFaces } from "./faces.ts";
+import { SOLID_EDGE, SOLID_EDGE_PX, faceColour, faceRGB, facesToDraw, visibleFaces, type SolidFaces } from "./faces.ts";
 import { clipMatrix, viewAxes, type View } from "./view.ts";
 import { cross3, dot3, sub3 } from "./vec3.ts";
 
@@ -54,8 +54,8 @@ import { cross3, dot3, sub3 } from "./vec3.ts";
  * WebGL.
  */
 export function paintFaces(g: CanvasRenderingContext2D, model: Model, view: View,
-                           skip: ReadonlySet<string> = new Set()): void {
-  const faces = facesToDraw(model, view, skip);
+                           skip: ReadonlySet<string> = new Set(), solid: SolidFaces | null = null): void {
+  const faces = facesToDraw(model, view, skip, solid);
   if (!faces.length) return;
   g.save();
   g.lineJoin = "round";
@@ -95,7 +95,7 @@ export interface FaceLayer {
    * gave it; the projection maps onto all of it). `skip`: features left
    * undrawn (see `visibleFaces`).
    */
-  draw(model: Model, view: View, width: number, height: number, skip?: ReadonlySet<string>): void;
+  draw(model: Model, view: View, width: number, height: number, skip?: ReadonlySet<string>, solid?: SolidFaces | null): void;
   /** No faces at all: what a wireframe view (`view("wire")`) shows under the drawing. */
   clear(): void;
 }
@@ -215,11 +215,11 @@ export function createFaceLayer(canvas: HTMLCanvasElement): FaceLayer | null {
       if (gl.isContextLost()) return;
       clearAll();
     },
-    draw(model, view, width, height, skip) {
+    draw(model, view, width, height, skip, solid) {
       if (gl.isContextLost() || !program) return;
       clearAll();
 
-      const faces = visibleFaces(model, view, skip);
+      const faces = visibleFaces(model, view, skip, solid ?? null);
       if (!faces.length) return;
 
       // The depth range is the faces' own, each frame, with a margin so the

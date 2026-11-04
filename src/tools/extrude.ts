@@ -60,7 +60,8 @@ import type { OptionSpecs } from "./options.ts";
 import { DEFAULT_DEPTH, extrude, extrudeProfile, orientingPlane, profileOf, profileOfLoops, regionNaming, regionOf } from "../operations.ts";
 import { memberName } from "../model.ts";
 import { drawRegion, lightRegions, missedRegion, outlineLoops, regionKey, type Region } from "./region.ts";
-import { FeatureTool, callText, foundRegion } from "./feature.ts";
+import { FeatureTool, MODE_OPTION, callText, foundRegion, modeOptions } from "./feature.ts";
+import type { FeatureOptions } from "../operations.ts";
 import { RegionSelection, leftOut } from "./selection.ts";
 
 /**
@@ -69,26 +70,31 @@ import { RegionSelection, leftOut } from "./selection.ts";
  * proposal (`without`, points inside them), the call that names its loops
  * outright, `extrude("l1", 10, "f1", [[…], […]])`, which takes exactly those.
  */
-export function extrudeSteps(region: RegionHit, depth: number, typed: boolean, without: readonly number[][] = []): FeatureStep[] {
+export function extrudeSteps(region: RegionHit, depth: number, typed: boolean, without: readonly number[][] = [],
+                             options: FeatureOptions | null = null): FeatureStep[] {
+  // The mode, when one was chosen: typed last, as the call takes it.
+  const tail = options ? [options] : [];
   return [(m): ReturnType<FeatureStep> => {
     const r = foundRegion(m, region);
     const out = leftOut(m, r, without);
     if (out.size) {
       const p = profileOfLoops(m, r.loops, regionOf(r.loops, r.index).filter((i) => !out.has(i)),
         orientingPlane(m, r.loops[r.index], region.toward));
-      if (p.crossings?.size) return { call: () => { extrudeProfile(m, p, depth); } };
+      if (p.crossings?.size) return { call: () => { extrudeProfile(m, p, depth, options ?? {}); } };
       const member = memberName(p.loops[0][0]);
       return {
-        text: callText("extrude", [member, depth, p.frame, p.loops]),
-        direct: () => extrude(m, member, depth, p.frame, p.loops),
+        text: callText("extrude", [member, depth, p.frame, p.loops, ...tail]),
+        direct: () => extrude(m, member, depth, p.frame, p.loops, ...tail),
       };
     }
     const n = regionNaming(m, r.loops, r.index, region.toward);
-    if (!n) return { call: () => { extrudeProfile(m, profileOf(m, r.loops, r.index, orientingPlane(m, r.loops[r.index], region.toward)), depth); } };
+    if (!n) {
+      return { call: () => { extrudeProfile(m, profileOf(m, r.loops, r.index, orientingPlane(m, r.loops[r.index], region.toward)), depth, options ?? {}); } };
+    }
     const args: unknown[] = [n.member, depth];
     if (n.frame !== null || n.loops !== null) args.push(n.frame);
     if (n.loops !== null) args.push(n.loops);
-    return { text: callText("extrude", args), direct: () => extrude(m, n.member, depth, n.frame, n.loops) };
+    return { text: callText("extrude", [...args, ...tail]), direct: () => extrude(m, n.member, depth, n.frame, n.loops, null, ...tail) };
   }];
 }
 
@@ -97,6 +103,7 @@ export class ExtrudeTool extends FeatureTool {
   // zero is no solid at all.
   static readonly options: OptionSpecs = {
     depth: { default: DEFAULT_DEPTH, unit: "length", check: (v) => (v === 0 ? "cannot be 0" : null) },
+    mode: MODE_OPTION,
   };
   static readonly summary = "Pulls a closed shape into a solid: click inside it, then ✓";
   readonly name = "extrude";
@@ -122,7 +129,8 @@ export class ExtrudeTool extends FeatureTool {
     if (!this.picks.size) return null;
     const depth = this.depthOf(values);
     const typed = !!this.ctx.perform;
-    return this.picks.regions.flatMap((r, i) => extrudeSteps(r, depth, typed, this.picks.without(i)));
+    const options = modeOptions(values);
+    return this.picks.regions.flatMap((r, i) => extrudeSteps(r, depth, typed, this.picks.without(i), options));
   }
 
   protected picksKey(): string {

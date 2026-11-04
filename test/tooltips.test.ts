@@ -83,7 +83,7 @@ test("tools() ends each line with what the tool does, and help() lists the toolb
   const listed = (await repl.eval("tools()")).value as string[];
   assert.ok(listed.includes(`select  — ${toolSummary("select")}`), listed.join("\n"));
   assert.ok(listed.includes("rectangle  { construction: false }  — Draws a rectangle: drag from corner to corner"), listed.join("\n"));
-  assert.ok(listed.includes(`extrude  { depth: 10 }  — ${toolSummary("extrude")}`));
+  assert.ok(listed.includes(`extrude  { depth: 10, mode: "auto" }  — ${toolSummary("extrude")}`));
   assert.ok(listed.includes("t_bare"), "a tool with no summary is its bare line");
   const help = (await repl.eval("help()")).value as string;
   for (const name of ["select", "hand", "rectangle", "extrude"]) {

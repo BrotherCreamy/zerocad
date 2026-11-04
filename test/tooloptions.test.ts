@@ -51,11 +51,13 @@ const EXTRUDE = () => declaredOptions(getToolCtor("extrude"));
 
 test("the three built-ins that take a number declare it, with the default they always used", () => {
   const ex = EXTRUDE();
-  assert.deepEqual(Object.keys(ex), ["depth"]);
+  assert.deepEqual(Object.keys(ex), ["depth", "mode"], "and what the solid does to a body (docs/plans/solids-kernel.md)");
+  assert.equal(ex.mode.default, "auto");
+  assert.equal(ex.mode.remember, false, "a cut chosen once is not the next feature's");
   assert.equal(ex.depth.default, 10);
   assert.equal(ex.depth.unit, "length");
   const rv = declaredOptions(getToolCtor("revolve"));
-  assert.deepEqual(Object.keys(rv), ["angle"]);
+  assert.deepEqual(Object.keys(rv), ["angle", "mode"]);
   assert.equal(rv.angle.default, 2 * Math.PI, "a whole turn, in radians");
   assert.equal(rv.angle.unit, "angle");
   const fl = declaredOptions(getToolCtor("fillet"));
@@ -67,7 +69,7 @@ test("the three built-ins that take a number declare it, with the default they a
 test("a malformed declaration is refused at defineTool, by name, and nothing is registered", () => {
   // As a tool typed at the command line declares it: plain JavaScript, no types to catch it.
   const bad = (options: unknown) => class extends Tool { readonly name = "bad"; static options = options as OptionSpecs; };
-  assert.throws(() => defineTool("t_bad1", bad({ size: { unit: "length" } })), /t_bad1's option size needs a default that is a number or true\/false/);
+  assert.throws(() => defineTool("t_bad1", bad({ size: { unit: "length" } })), /t_bad1's option size needs a default that is a number, true\/false or a word/);
   assert.throws(() => defineTool("t_bad2", bad({ size: { default: "5" } })), /needs a default/);
   assert.throws(() => defineTool("t_bad3", bad({ size: { default: NaN } })), /needs a default/);
   assert.throws(() => defineTool("t_bad4", bad([1, 2])), /static options must be an object/);
@@ -81,14 +83,14 @@ test("a malformed declaration is refused at defineTool, by name, and nothing is 
 
 test("arm fills every declared option: typed, else remembered, else the default", () => {
   const specs = EXTRUDE();
-  assert.deepEqual(resolveOptions("extrude", specs, undefined), { depth: 10 });
-  assert.deepEqual(resolveOptions("extrude", specs, {}), { depth: 10 });
-  assert.deepEqual(resolveOptions("extrude", specs, { depth: 25 }), { depth: 25 });
-  assert.deepEqual(resolveOptions("extrude", specs, {}, { depth: 25 }), { depth: 25 }, "remembered");
-  assert.deepEqual(resolveOptions("extrude", specs, { depth: -4 }, { depth: 25 }), { depth: -4 }, "typed beats remembered");
+  assert.deepEqual(resolveOptions("extrude", specs, undefined), { depth: 10, mode: "auto" });
+  assert.deepEqual(resolveOptions("extrude", specs, {}), { depth: 10, mode: "auto" });
+  assert.deepEqual(resolveOptions("extrude", specs, { depth: 25 }), { depth: 25, mode: "auto" });
+  assert.deepEqual(resolveOptions("extrude", specs, {}, { depth: 25 }), { depth: 25, mode: "auto" }, "remembered");
+  assert.deepEqual(resolveOptions("extrude", specs, { depth: -4 }, { depth: 25 }), { depth: -4, mode: "auto" }, "typed beats remembered");
   // A remembered value that would not pass now is passed over, not refused: nobody typed it.
-  assert.deepEqual(resolveOptions("extrude", specs, {}, { depth: 0 }), { depth: 10 });
-  assert.deepEqual(resolveOptions("extrude", specs, {}, { depth: "deep" }), { depth: 10 });
+  assert.deepEqual(resolveOptions("extrude", specs, {}, { depth: 0 }), { depth: 10, mode: "auto" });
+  assert.deepEqual(resolveOptions("extrude", specs, {}, { depth: "deep" }), { depth: 10, mode: "auto" });
   const two: OptionSpecs = { size: { default: 5 }, flip: { default: false } };
   assert.deepEqual(resolveOptions("t", two, { flip: true }), { size: 5, flip: true }, "a flag fills like a number");
 });
@@ -99,11 +101,12 @@ test("arm refuses, in one line naming the options the tool has: an unknown optio
     try { resolveOptions("extrude", specs, given); } catch (e) { return (e as Error).message; }
     return null;
   };
-  assert.equal(refusal({ dpth: 25 }), 'extrude has no option "dpth" — its options are { depth: 10 }');
-  assert.equal(refusal({ depth: "25" }), 'extrude\'s depth is a number, not "25" — its options are { depth: 10 }');
-  assert.equal(refusal({ depth: Infinity }), "extrude's depth is a number, not Infinity — its options are { depth: 10 }");
-  assert.equal(refusal({ depth: 0 }), "extrude's depth cannot be 0 — its options are { depth: 10 }");
-  assert.match(refusal(25)!, /^extrude's options are named: arm\("extrude", \{ depth: 10 \}\)/);
+  assert.equal(refusal({ dpth: 25 }), 'extrude has no option "dpth" — its options are { depth: 10, mode: "auto" }');
+  assert.equal(refusal({ depth: "25" }), 'extrude\'s depth is a number, not "25" — its options are { depth: 10, mode: "auto" }');
+  assert.equal(refusal({ depth: Infinity }), "extrude's depth is a number, not Infinity — its options are { depth: 10, mode: \"auto\" }");
+  assert.equal(refusal({ depth: 0 }), "extrude's depth cannot be 0 — its options are { depth: 10, mode: \"auto\" }");
+  assert.match(refusal(25)!, /^extrude's options are named: arm\("extrude", \{ depth: 10, mode: "auto" \}\)/);
+  assert.equal(refusal({ mode: "drill" }), 'extrude\'s mode is one of "auto", "new", "add", "cut", "intersect", not "drill" — its options are { depth: 10, mode: "auto" }');
   for (const r of [refusal({ dpth: 1 }), refusal({ depth: "x" }), refusal(25)]) assert.doesNotMatch(r!, /\n/, "one line");
   const flag: OptionSpecs = { flip: { default: false } };
   assert.throws(() => resolveOptions("t", flag, { flip: 1 }), /t's flip is true or false, not 1 — its options are \{ flip: false \}/);
@@ -130,7 +133,7 @@ test("the panel's unit text: nothing for a length, rad for an angle, anything el
   assert.equal(unitSymbol(undefined), "");
   assert.equal(unitSymbol("angle"), "rad");
   assert.equal(unitSymbol("teeth"), "teeth");
-  assert.equal(describeValues(declaredOptions(getToolCtor("revolve")), { angle: 2 * Math.PI }), "{ angle: 6.283185 }");
+  assert.equal(describeValues(declaredOptions(getToolCtor("revolve")), { angle: 2 * Math.PI, mode: "auto" }), '{ angle: 6.283185, mode: "auto" }');
 });
 
 // --- remembered values ------------------------------------------------------------
@@ -196,24 +199,29 @@ test("the engine arms with every option filled, remembers what was typed, and a 
   const storage = memoryStorage();
   const e = engine(new OptionMemory(storage));
   e.arm("extrude");
-  assert.deepEqual(e.armed, { name: "extrude", options: { depth: 10 } });
-  assert.deepEqual((e.active as unknown as { ctx: { options: unknown } }).ctx.options, { depth: 10 }, "the tool reads them filled");
+  assert.deepEqual(e.armed, { name: "extrude", options: { depth: 10, mode: "auto" } });
+  assert.deepEqual((e.active as unknown as { ctx: { options: unknown } }).ctx.options, { depth: 10, mode: "auto" }, "the tool reads them filled");
   e.arm("extrude", { depth: 25 });
   e.cancel();
   e.arm("extrude");
-  assert.deepEqual(e.armed?.options, { depth: 25 }, "re-armed, the last value is the default");
+  assert.deepEqual(e.armed?.options, { depth: 25, mode: "auto" }, "re-armed, the last value is the default");
+  // A mode is never the next default: a cut chosen once is not the next feature's.
+  e.arm("extrude", { mode: "cut" });
+  e.cancel();
+  e.arm("extrude");
+  assert.deepEqual(e.armed?.options, { depth: 25, mode: "auto" }, "the mode starts from auto again");
   assert.deepEqual(engine(new OptionMemory(storage)).armed, null);
   const reloaded = engine(new OptionMemory(storage));
   reloaded.arm("extrude");
-  assert.deepEqual(reloaded.armed?.options, { depth: 25 }, "and after a reload");
+  assert.deepEqual(reloaded.armed?.options, { depth: 25, mode: "auto" }, "and after a reload");
 
   const before = e.active;
-  assert.throws(() => e.arm("extrude", { dpth: 30 }), /extrude has no option "dpth" — its options are \{ depth: 10 \}/);
+  assert.throws(() => e.arm("extrude", { dpth: 30 }), /extrude has no option "dpth" — its options are \{ depth: 10, mode: "auto" \}/);
   assert.equal(e.active, before, "the same tool, still armed — a typo does not disarm it");
-  assert.deepEqual(e.armed?.options, { depth: 25 });
+  assert.deepEqual(e.armed?.options, { depth: 25, mode: "auto" });
   assert.throws(() => e.arm("extrude", { depth: 0 }), /cannot be 0/);
   e.arm("extrude");
-  assert.deepEqual(e.armed?.options, { depth: 25 }, "a refused value is not remembered");
+  assert.deepEqual(e.armed?.options, { depth: 25, mode: "auto" }, "a refused value is not remembered");
 });
 
 test("a tool defined at the command line with a static options gets all of it by declaring it", async () => {
@@ -245,8 +253,8 @@ test("tools() lists each tool's options with what arm would use, and help() says
   const listed = (await repl.eval("tools()")).value as string[];
   // Each line then says what the tool does (its `static summary`, after a dash).
   const line = (start: string) => listed.find((l) => l === start || l.startsWith(`${start}  — `));
-  assert.ok(line("extrude  { depth: 10 }"), listed.join("\n"));
-  assert.ok(line("revolve  { angle: 6.283185 }"));
+  assert.ok(line('extrude  { depth: 10, mode: "auto" }'), listed.join("\n"));
+  assert.ok(line('revolve  { angle: 6.283185, mode: "auto" }'));
   assert.ok(line("fillet  { radius: 10 }"));
   assert.ok(line("point"), "a tool with none is its bare name");
   const help = (await repl.eval("help()")).value as string;
