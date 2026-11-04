@@ -109,6 +109,7 @@ src/faces.ts             a solid's faces from its live geometry (a revolve's swe
 src/undo.ts              a stack of whole-model snapshots; imports nothing
 src/tools/tool.ts         abstract class Tool + defineTool registry
 src/tools/engine.ts       wires real DOM pointer events to the armed tool
+src/tools/gestures.ts     what a finger means (tap, drag, long-press, box, pinch), decided before the engine sees it
 src/tools/point.ts        the trivial example tool
 src/tools/rectangle.ts    the concrete example the Tool API was designed around
 src/tools/circle.ts       drag from center to rim
@@ -367,6 +368,27 @@ Then type `box` and drag one out. A bare tool name arms it; anything else
 is evaluated. Note that a bare assignment (`box = ...`) persists between
 entries while a `const`/`let`/`class` declaration does not — a
 consequence of how the scope is built, described in `src/repl.ts`.
+
+## On a phone or a tablet
+
+The same app, under fingers (built for an iPhone; tested in Chromium's iPhone
+emulation, since only the device runs iOS Safari):
+
+- **tap** — a click: picks a tool, places a point, selects. Once something is
+  selected a tap toggles, and a tap on empty canvas clears.
+- **one finger** — a tool's own drag (a rectangle, a circle), or a drag of the
+  point or edge it lands on; on empty canvas with nothing armed it **turns the
+  drawing**.
+- **two fingers** — pan and pinch-zoom, together.
+- **hold** (half a second) — the menu, at the finger; **hold, then drag** — a
+  selection box.
+- A second finger drops a shape half-drawn; a third drops everything.
+- While a finger is down with a tool armed, the place it will land on — and
+  what it snaps to — is drawn above the fingertip.
+- **Undo, Redo, Delete, Cancel** are the strip beside the tray. The keyboard
+  waits for a tap on the command line.
+
+A mouse plugged into the same device is still a mouse.
 
 ## Building and running
 

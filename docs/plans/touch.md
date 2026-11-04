@@ -1,6 +1,7 @@
 # Plan: the app under fingers — an iPhone first
 
-**Status: queued** (2026-11-04). The owner, verbatim: *"it should work on a
+**Status: built** (2026-11-04, branch `claude/touch`; see *As built* at the
+end, which lists every deviation). The owner, verbatim: *"it should work on a
 multi-touch device. Specifically I have an iPhone. Think about how best to do
 that."* Sibling of [`pwa-pages.md`](pwa-pages.md), which owns the document
 head, viewport and no-scroll/no-zoom rules. Read `CLAUDE.md`,
@@ -60,10 +61,13 @@ paths branch on `pointerType`, never on a device guess.
   over the drawing); tapping it focuses it, as any field. Printable-key
   routing to the command line applies to a hardware keyboard only.
 - **Layout on a phone** (portrait ~390×844, landscape): defaults that fit —
-  the tray as a row along the bottom above the home indicator, the action
-  strip beside it, the log collapsed to a one-line panel the user can enlarge,
-  the command line at the top; per-viewer layout and pushing unchanged. Safe
-  areas from `pwa-pages`.
+  the log collapsed to a one-line panel the user can enlarge, the command line
+  at the top; per-viewer layout and pushing unchanged. Safe areas from
+  `pwa-pages`. *Corrected as built:* this said "the tray as a row along the
+  bottom above the home indicator, the action strip beside it", which fits
+  **landscape only** — eleven tools at 44 px are a 556 px row, and the phone
+  is 390 wide in portrait, where the tray is a column down the left and the
+  strip a row at the bottom right.
 - **Quiet geometry**: a finger down reveals what is under and near it, as
   hover does; lifting ends it, except for what is selected.
 
@@ -93,3 +97,45 @@ against `claude/resume-tasks-o7q02e`, in two reviewable commits (the gesture
 recogniser and the action strip; then coarse sizing, layout and the keyboard).
 Do not merge; the supervising session reviews. Stay out of the document head
 and the no-scroll CSS (`pwa-pages` owns them).
+
+## As built (2026-11-04)
+
+Branch `claude/touch`. What differs from the text above, and why. The text
+above was corrected where it was wrong about the code (the portrait tray).
+
+- **The recogniser** is `src/tools/gestures.ts`: pure, an injected clock, no
+  DOM. The engine routes every `pointerType === "touch"` event to it and feeds
+  its gestures down the mouse's paths (`toolEvent`, `idlePress`/`idleMove`/
+  `idleRelease`, `onContextMenu`, the view). **A tool's press is held** until
+  the finger moves past the slop (and is then delivered where it landed) or
+  lifts, so a pinch that starts as one finger never reaches the tool. A second
+  finger mid-draw **re-arms the tool** (`arm` again, as undo does: a feature
+  `retune`s and keeps its picks). A long-press that then moves withdraws the
+  menu (`onContextMenuWithdrawn`) and boxes. A finger's box adds, as shift-box
+  does.
+- **Radii: one factor, `TOUCH_REACH` = 22/8 = 2.75**, on every pick and snap
+  tier. A point is then a 44 pt target. Glyph boxes are not widened: they
+  would cover the line they sit 7 px from.
+- **Lifted mark, not a loupe.** The faces are WebGL with no copy of the last
+  frame to magnify. A disc 56 px above the active point carries the snap's
+  mark and name (or a cross), with a dotted leader down to the place.
+- **Portrait: the tray is a column down the left, not a row along the
+  bottom.** Eleven 44 px buttons are 556 px and the phone is 390 wide. The
+  options panel has a portrait default above the action strip: beside the
+  column it hung over the middle of the drawing. Landscape is as specced.
+- **The action strip is a tray**, shown only under `(pointer: coarse)`. Its
+  Cancel types `cancel()` (tool and selection together), since there is no
+  typed Escape and a feature has ✗ for the step-at-a-time.
+- **Sizes**: one `Metrics` value (`FINE`, `COARSE`) threaded through
+  panels.ts's pure functions, picked once at load from `(pointer: coarse)`,
+  the stylesheet's own query.
+- **Two listeners the PWA package might have expected to own**, both on the
+  canvas and both pointer handling: `touch-action: none`, which the engine
+  sets, and a cancelled `touchend`, which stops the compatibility click. That
+  click landed on the menu a long-press had just opened, and ran its first
+  item.
+- Tests: `test/gestures.test.ts` (15), `test/touch.test.ts` (16),
+  `test/touchlayout.test.ts` (7), `test/e2e/touch.e2e.ts` (17), with iPhone 13
+  emulation in the harness (`openApp({ device })`) and CDP multi-touch
+  (`test/e2e/fingers.ts`). **Not run on iOS Safari**; the CHANGELOG lists what
+  to try on the device.

@@ -139,6 +139,32 @@
     #options .oact button.ok:hover:not(:disabled){background:#55c07a22}
     #options .oact button.no:hover{background:#20303f;color:#d5e1ec}
     #options .oact button:disabled{color:#2f4050;border-color:#1a2633}
+    /* Under a finger (docs/plans/touch.md): every target at least 44 px —
+       Apple's 44 pt, a CSS pixel being a point on an iPhone. The panels' own
+       arithmetic takes the same numbers from panels.ts's COARSE, chosen from
+       this same query, so a strip or a row here is the height its panel was
+       sized for. Fields at 16px type, below which iOS zooms the page into any
+       field it focuses. Hover colours are left as they are: a finger has no
+       hover, and a colour that sticks after a tap is iOS's, not ours. */
+    @media (pointer: coarse){
+      .panel>.ptitle{font-size:12px}
+      .tray{gap:2px;padding:3px}
+      .tray button{width:44px;height:44px;border-radius:6px}
+      .tray button svg{width:24px;height:24px}
+      .panel>.pgrip{width:44px;height:44px}
+      #cmd{font-size:16px}
+      #cmdhint{display:none}
+      #log{font-size:12px;line-height:16px;padding:0 10px;border-block:5px solid transparent}
+      #options .orow{height:44px;font-size:13px}
+      #options .oval{width:88px;height:36px;font-size:16px}
+      #options .oval[type="checkbox"]{width:28px;height:28px;margin:0 30px}
+      #options .oact button{width:44px;height:44px;font-size:18px;line-height:42px}
+      #ctxmenu{font-size:14px}
+      #ctxmenu .head{padding:8px 14px}
+      #ctxmenu .item{min-height:44px;align-items:center;padding:0 14px}
+      #ctxmenu .row{min-height:44px;align-items:center;padding:0 14px}
+      #ctxmenu .row .choice{display:inline-flex;align-items:center;min-height:44px;min-width:44px;padding:0 8px;justify-content:center}
+    }
   </style>
 </head>
 <body>

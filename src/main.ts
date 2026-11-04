@@ -25,7 +25,9 @@ import { toolUnavailable } from "./toolavail.ts";
 import { FRAME_ARM_PX, frameMarker } from "./framemarker.ts";
 import { constrainedBy, type Glyph } from "./glyphs.ts";
 import { getToolCtor, listTools } from "./tools/tool.ts";
-import { ACTIONS, ActionStrip, OptionsPanel, Panels, Toolbar, browserStorage, defaultLayout, type Size } from "./panels.ts";
+import {
+  ACTIONS, ActionStrip, COARSE, FINE, OptionsPanel, Panels, Toolbar, browserStorage, defaultLayout, type Size,
+} from "./panels.ts";
 import { OptionMemory, declaredOptions, unitSymbol, type OptionValue } from "./tools/options.ts";
 import { toolIcon } from "./tools/icons.ts";
 import { depth } from "./view.ts";
@@ -76,11 +78,13 @@ const optionsEl = document.getElementById("options")!;
 /**
  * **Whether the chrome is a finger's** (docs/plans/touch.md): the primary
  * pointer is coarse — a phone, a tablet. Read once, from the media query the
- * stylesheet sizes its targets by. It decides what chrome is shown only: what
- * a pointer *does* is decided per event, by its `pointerType`
- * (tools/engine.ts), so a mouse plugged into a tablet is still a mouse.
+ * stylesheet sizes its targets by, so the panels' arithmetic and the CSS they
+ * are drawn with cannot disagree. It sets sizes and defaults only: what a
+ * pointer *does* is decided per event, by its `pointerType` (tools/engine.ts),
+ * so a mouse plugged into a tablet is still a mouse.
  */
 const coarse = typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
+const metrics = coarse ? COARSE : FINE;
 
 /**
  * The action strip — Undo, Redo, Delete, Cancel — is a finger's Ctrl+Z, Ctrl+Y,
@@ -107,6 +111,16 @@ let optionsShown: () => Size | null = () => null;
 const optionMemory = new OptionMemory(browserStorage());
 
 /**
+ * What the last press anywhere was made with — `"mouse"`, `"pen"` or
+ * `"touch"` — for the one decision that happens after the press has been
+ * handled: whether a name a click put in the command line also focuses it
+ * (see `insertName`). Captured on `window` so a press that something else
+ * swallows is still counted.
+ */
+let lastPointer = "mouse";
+window.addEventListener("pointerdown", (e) => { lastPointer = e.pointerType; }, true);
+
+/**
  * How solids are shown — opaque, see-through or not at all (viewmode.ts). The
  * viewer's, like the layout: read from this browser's storage once, written
  * back on every change, and never journalled, saved or undone.
@@ -131,12 +145,13 @@ let viewMode: ViewMode = recallViewMode(browserStorage());
  */
 const panels = new Panels(
   document.getElementById("viewwrap")!,
-  (area) => defaultLayout(area, listTools().length),
+  (area) => defaultLayout(area, listTools().length, metrics),
   browserStorage(),
   { toolbar: () => listTools().length, ...(actionsEl ? { actions: () => ACTIONS.length } : {}) },
   {
     check: Boolean((import.meta as { env?: { DEV?: boolean } }).env?.DEV),
     fitted: { options: { size: () => optionsShown(), beside: "toolbar" } },
+    metrics,
   },
 );
 
@@ -470,7 +485,9 @@ async function main() {
   function emptyHint(width: number, height: number) {
     const lines: [string, string, string][] = [
       ["13px", "#7a8b9b", "Nothing drawn yet."],
-      ["12px", "#56697b", "Pick a tool from the toolbar, right-click for the menu, or type help() in the command line."],
+      ["12px", "#56697b", coarse
+        ? "Pick a tool from the toolbar, long-press for the menu, or type help() in the command line."
+        : "Pick a tool from the toolbar, right-click for the menu, or type help() in the command line."],
     ];
     g.save();
     g.textAlign = "center";
@@ -804,7 +821,10 @@ async function main() {
     // rather than something that still needs punctuating by hand.
     const needsComma = /[\w"\]]\s*$/.test(v);
     cmdEl.value = v + (needsComma ? ", " : "") + `"${name}"`;
-    cmdEl.focus();
+    // Not under a finger: focusing the line raises iOS's keyboard over the
+    // drawing the next name is to be tapped from. The name is in the line;
+    // a tap on the line brings the keyboard back, as any field's does.
+    if (lastPointer !== "touch") cmdEl.focus();
     log(`${name} → command line`, "out");
   }
 
@@ -1046,7 +1066,7 @@ async function main() {
     },
     cancel: () => escape(),
     trial: (option, value) => engine.trial(option, value),
-  });
+  }, metrics);
   optionsShown = () => optionsPanel.size();
 
   const engine = new ToolEngine(model, cv, view, {
@@ -1140,7 +1160,15 @@ async function main() {
    */
   cv.addEventListener("pointerdown", (e) => {
     if (!cv.hasPointerCapture(e.pointerId)) cv.setPointerCapture(e.pointerId);
-    if (e.pointerType === "touch") tag(e);
+    // **A finger on the drawing puts the keyboard away.** iOS leaves a field
+    // focused — and its keyboard over half the drawing — when the tap lands on
+    // something that is not focusable, which a canvas is not; a mouse's press
+    // blurs it anyway. A field mid-edit commits on blur, as it always has.
+    if (e.pointerType === "touch") {
+      const at = document.activeElement;
+      if (at instanceof HTMLInputElement || at instanceof HTMLTextAreaElement) at.blur();
+      tag(e);
+    }
     syncToolbar();
   });
   cv.addEventListener("pointerup", (e) => {
@@ -1148,8 +1176,7 @@ async function main() {
     syncToolbar();
   });
 
-  // The hover tag follows the cursor and names whatever is under it — and a
-  // finger, which has no hover, while it is down.
+  // The hover tag follows the cursor and names whatever is under it.
   cv.addEventListener("pointermove", (e) => tag(e));
   function tag(e: PointerEvent) {
     const pick = engine.hover;
@@ -1536,7 +1563,10 @@ async function main() {
   render();
   statusEl.textContent = "ready — type help(), a tool name, or any expression";
   log("type help() for the command surface");
-  cmdEl.focus();
+  // **The keyboard stays away until asked for.** A focused field on iOS is a
+  // keyboard over the drawing (raised by the next tap, if not by this), so
+  // under a finger the command line waits to be tapped, as any field does.
+  if (!coarse) cmdEl.focus();
 }
 
 main().catch((e) => {
