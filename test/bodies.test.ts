@@ -181,9 +181,15 @@ test("an old file opens to the same solids: no feature has a mode, no body is th
     const m = open(await readFile(new URL(`./fixtures/${f}.neocad.json`, import.meta.url), "utf8"));
     assert.ok([...m.features.values()].every((x) => x.mode === undefined), f);
     assert.deepEqual(programOf(m).program.bodies, [], `${f}: every body is one feature, drawn as it always was`);
-    const bodies = new Bodies(null, () => {});
+    // A client that would start a Worker: none is started. It once was, on
+    // every page load, for an empty program — 4 MB compiled for nothing.
+    let spawned = 0;
+    const client = new SolidsClient(() => { spawned++; throw new Error("no Worker wanted here"); });
+    const bodies = new Bodies(client, () => {});
+    bodies.sync(m);
     bodies.sync(m);
     assert.deepEqual(bodies.drawn().replaces.size, 0);
+    assert.equal(spawned, 0, `${f}: no Worker started`);
   }
 });
 

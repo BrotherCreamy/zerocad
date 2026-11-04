@@ -295,6 +295,15 @@ export class Bodies {
     const text = JSON.stringify(p.program);
     if (text === this.sent) return;
     this.sent = text;
+    // Nothing for the kernel to build — no body of two features: no Worker is
+    // started for it. It was, on every page load, an empty program sent and
+    // 4 MB of wasm fetched and compiled for nothing, which the spec's "loaded
+    // only when a body needs it" never meant. Whatever an earlier program left
+    // is let go here rather than by an answer.
+    if (p.program.bodies.length === 0 && !this.inflight) {
+      this.take(p, { bodies: [], heap: { inUse: 0, reserved: 0 } });
+      return;
+    }
     if (!this.client) return;
     if (this.inflight) {
       this.waiting = p;

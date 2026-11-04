@@ -107,7 +107,12 @@ tests:
 - the hidden view drew none of a kernel body's edges behind its faces, and
   now dims them as it does an extrude's;
 - an empty Bodies section pushed Groups out of an iPhone's pane, so it is now
-  shown only once there is a body.
+  shown only once there is a body;
+- every page load started the kernel's Worker and compiled its 4 MB for an
+  empty program. It now starts only when a body has two features. With that
+  fixed, a touch test that had lost a tap in three full runs out of three
+  passed. The tap was lost only under the full suite's load, so the link
+  between the two is inferred, not proven.
 
 ## One circle tool and one arc tool — the gesture chooses the method
 

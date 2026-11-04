@@ -117,7 +117,9 @@ marked ⚠; each ⚠ is also in TODO.md.
     GitHub's four cores, and the warm one 16 s after a 20 s cache restore.
   - **Shipping.** The PWA carries `solids/worker.js`, `smlib.wasm` and
     `LICENSE` as files of their own, which the service worker caches; the
-    Worker starts the first time a body needs it. The single file inlines
+    Worker starts the first time a body has two features. It once started on
+    every page load, for an empty program; that was found by the e2e suite
+    and fixed. The single file inlines
     all three.
   - **Licence.** About names SMLib, its owner and its licence, and links to
     the licence text.

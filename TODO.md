@@ -2744,6 +2744,14 @@ extended the way `defineTool` extends the tool registry would close it.
         twins.
       - An empty Bodies section pushed Groups out of an iPhone's pane. It is
         now shown only once there is a body.
+      - Every page load started the kernel's Worker for an empty program. It
+        now starts only when a body has two features (`bodies.test.ts`
+        asserts no Worker for old files).
+        - With this fixed, `touch.e2e.ts`'s "a finger down on a quiet corner"
+          passed a full run. Before the fix it had lost its tap in three full
+          runs out of three, and only under the full suite's load.
+        - [ ] The link is inferred, not proven. If that tap is lost again,
+          suspect input delivered late under CPU load, not the app.
 
 - [x] **One circle tool and one arc tool, the gesture choosing the method**
       (2026-11-04). The owner: *"why are there multiple circle tools and arc
