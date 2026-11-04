@@ -8,8 +8,9 @@
 
 import {
   Model, ORIGIN, SETTABLE_PROPERTY, memberName, parseValueRef, referentOf, referentsOf, valueArgIndex,
-  type Entity, type Expansion, type FeatureEntry, type Portion, type ProfileMember,
+  FEATURE_MODES, type Entity, type Expansion, type FeatureEntry, type FeatureMode, type Portion, type ProfileMember,
 } from "./model.ts";
+import { defaultMode, resolveMode } from "./modes.ts";
 import { dist } from "./relations/basic.ts";
 import { angle, arcEndpoints, onCircle, pointOnLine, radius, tangent } from "./relations/geometry.ts";
 import { extrusion } from "./relations/extrusion.ts";
@@ -343,14 +344,107 @@ export interface Profile {
  * An operation, refusing before it changes anything (`asOperation` records only
  * on success). 3D only.
  */
-export function extrude(model: Model, member: string, depth?: number | null, frame?: string | null,
-                        loops?: ProfileMember[][] | null, expansion?: number | null): string {
+export function extrude(model: Model, member: string, ...rest: unknown[]): string {
   if (model.dim !== 3) throw new Error("extrude needs a 3D model — a 2D drawing has no direction out of its plane");
+  const { args, options } = peelOptions(rest, "extrude", 4);
+  const [depth, frame, loops, expansion] = args as [number | null | undefined, string | null | undefined,
+    ProfileMember[][] | null | undefined, number | null | undefined];
   const d = extrudeDepth(depth);
   const x = expansionOf(expansion, "extrude");
   checkMember(model, member, "extrude");
+  checkOptions(model, options, "extrude");
   const profile = loops != null ? givenProfile(model, member, frame, loops, EXTRUDE) : foundProfile(model, member, frame ?? null, EXTRUDE);
-  return extruded(model, member, d, profile, x);
+  return extruded(model, member, d, profile, x, options);
+}
+
+/**
+ * What a feature call says about the body it makes or changes
+ * (docs/plans/solids-kernel.md): `{ mode: "cut" }`, `{ mode: "add", into:
+ * "e1" }`. Typed as the call's last argument wherever it stands —
+ * `extrude("l1", 10, { mode: "cut" })` — and journalled resolved, the mode
+ * and the body both, like the frame and the loops.
+ */
+export interface FeatureOptions {
+  mode?: FeatureMode;
+  into?: string;
+}
+
+/**
+ * A feature call's arguments with its options taken off the end: the first
+ * plain object among them, which must be the last thing given. At most
+ * `positional` arguments before it.
+ */
+export function peelOptions(rest: readonly unknown[], op: string, positional: number): { args: unknown[]; options: FeatureOptions } {
+  let end = rest.length;
+  while (end > 0 && rest[end - 1] === undefined) end--;
+  const at = rest.findIndex((a) => a !== null && typeof a === "object" && !Array.isArray(a));
+  if (at < 0) {
+    if (end > positional) throw new Error(`${op} takes at most ${positional} arguments after the member, then its options — got ${end}`);
+    return { args: rest.slice(0, end), options: {} };
+  }
+  if (at !== end - 1) throw new Error(`${op}'s options — { mode: "cut" } — come last`);
+  const raw = rest[at] as Record<string, unknown>;
+  for (const k of Object.keys(raw)) {
+    if (k !== "mode" && k !== "into") throw new Error(`${op} has no option ${JSON.stringify(k)} — its options are { mode, into }`);
+  }
+  const options: FeatureOptions = {};
+  if (raw.mode !== undefined && raw.mode !== null) {
+    if (typeof raw.mode !== "string" || !(FEATURE_MODES as readonly string[]).includes(raw.mode)) {
+      throw new Error(`${op}'s mode is one of ${FEATURE_MODES.map((m) => JSON.stringify(m)).join(", ")} — not ${JSON.stringify(raw.mode)}`);
+    }
+    options.mode = raw.mode as FeatureMode;
+  }
+  if (raw.into !== undefined && raw.into !== null) {
+    if (typeof raw.into !== "string") throw new Error(`${op}'s into names a feature of the body — "e1" — not ${JSON.stringify(raw.into)}`);
+    options.into = raw.into;
+  }
+  return { args: rest.slice(0, Math.min(at, positional)), options };
+}
+
+/** The refusals options can have before anything is made: a body that is no feature, a new body told one. */
+function checkOptions(model: Model, o: FeatureOptions, op: string): void {
+  if (o.into === undefined) return;
+  if (o.mode === "new") throw new Error(`${op}'s mode "new" makes a body of its own — it has no "into"`);
+  if (!model.features.has(o.into)) throw new Error(`${op}'s into names a feature of the body it changes — "${o.into}" is not a feature`);
+}
+
+/**
+ * The mode the record gets, once the feature is made (so its solid can be
+ * probed): what the options said, the body resolved; or, said nothing, the
+ * default — add to a body it touches, else new (modes.ts). Never throws: the
+ * body has run, and an operation refuses only before it changes anything. A
+ * cut or intersect that touches no body is kept, with no body — the
+ * evaluation leaves it out and says so — rather than refused after the fact.
+ *
+ * **A replay decides nothing** (`live` false): its entry carries the mode
+ * resolved, or carries none and means new — as an entry from before modes
+ * does. So what is journalled is the options for anything but a new body,
+ * and nothing for a new one: a new file's new bodies journal exactly what an
+ * old file's did. Returns what to journal.
+ */
+function chooseMode(model: Model, name: string, o: FeatureOptions, op: string, live: boolean): FeatureOptions[] {
+  const f = model.featureOf(name);
+  let choice: FeatureOptions;
+  if (o.mode === undefined && !live) choice = { mode: "new" };
+  else {
+    try {
+      choice = o.mode === undefined ? defaultMode(model, f) : resolveMode(model, f, o.mode, o.into, op);
+    } catch {
+      choice = { mode: o.mode };
+    }
+  }
+  const mode = choice.mode ?? "new";
+  // A new body's record carries no mode, exactly as an old file's does: one
+  // record, one meaning, however it was made.
+  if (mode === "new") {
+    delete f.mode;
+    delete f.into;
+    return [];
+  }
+  f.mode = mode;
+  if (choice.into === undefined) delete f.into;
+  else f.into = choice.into;
+  return [{ mode, ...(choice.into === undefined ? {} : { into: choice.into }) }];
 }
 
 /**
@@ -407,9 +501,10 @@ function expansionArgs(x: Expansion, op: "extrude" | "revolve"): number[] {
  * The extrude tool's door: the region it found under a click, crossings and
  * all, extruded — and journalled exactly as a typed call is.
  */
-export function extrudeProfile(model: Model, profile: Profile, depth?: number | null): string {
+export function extrudeProfile(model: Model, profile: Profile, depth?: number | null, options: FeatureOptions = {}): string {
   if (model.dim !== 3) throw new Error("extrude needs a 3D model — a 2D drawing has no direction out of its plane");
-  return extruded(model, memberName(profile.loops[0][0]), extrudeDepth(depth), profile, EXPANSION.extrude);
+  checkOptions(model, options, "extrude");
+  return extruded(model, memberName(profile.loops[0][0]), extrudeDepth(depth), profile, EXPANSION.extrude, options);
 }
 
 function extrudeDepth(depth: number | null | undefined): number {
@@ -421,12 +516,20 @@ function extrudeDepth(depth: number | null | undefined): number {
 }
 
 /** Plans, then expands and journals — the entry read after the body, since it names what the body materialised. */
-function extruded(model: Model, member: string, d: number, profile: Profile, x: Expansion): string {
+function extruded(model: Model, member: string, d: number, profile: Profile, x: Expansion, options: FeatureOptions): string {
   const plan = planSweep(model, profile);
   // The frame's +z when the call was made — where the twins are seeded, and nothing else.
   const z = planeAxes(model, profile.frame)!.n;
-  return model.asOperation("extrude", () => [member, d, plan.frame, resolvedLoops(plan), ...expansionArgs(x, "extrude")],
-    () => extrudeBody(model, member, d, plan, z, x));
+  const live = model.journalling;
+  let chosen: FeatureOptions[] = [];
+  // Options after the expansion: written out when there are options, so they do not land in its place.
+  const tail = () => (chosen.length ? [x === EXPANSION.extrude ? null : x, ...chosen] : expansionArgs(x, "extrude"));
+  return model.asOperation("extrude", () => [member, d, plan.frame, resolvedLoops(plan), ...tail()],
+    () => {
+      const name = extrudeBody(model, member, d, plan, z, x);
+      chosen = chooseMode(model, name, options, "extrude", live);
+      return name;
+    });
 }
 
 /**
@@ -1181,16 +1284,19 @@ function extrudeBody(model: Model, member: string, depth: number, plan: SweepPla
  *
  * An operation, refusing before it changes anything. 3D only.
  */
-export function revolve(model: Model, member: string, axis: string, angle?: number | null, frame?: string | null,
-                        loops?: ProfileMember[][] | null, expansion?: number | null, swept?: unknown): string {
+export function revolve(model: Model, member: string, axis: string, ...rest: unknown[]): string {
   if (model.dim !== 3) throw new Error("revolve needs a 3D model — a 2D drawing has nothing to turn out of its plane into");
+  const { args, options } = peelOptions(rest, "revolve", 5);
+  const [angle, frame, loops, expansion, swept] = args as [number | null | undefined, string | null | undefined,
+    ProfileMember[][] | null | undefined, number | null | undefined, unknown];
   const a = revolveAngle(angle);
   const x = expansionOf(expansion, "revolve");
   checkMember(model, member, "revolve");
   axisReader(model, axis); // a name that is not an axis says so before anything is looked for
+  checkOptions(model, options, "revolve");
   const profile = loops != null ? givenProfile(model, member, frame, loops, REVOLVE) : foundProfile(model, member, frame ?? null, REVOLVE);
   if (loops == null) checkRevolve(model, profile, axis);
-  return revolved(model, member, axis, a, profile, x, isFullTurn(a) ? [] : sweptFrames(model, profile.frame, x, swept));
+  return revolved(model, member, axis, a, profile, x, isFullTurn(a) ? [] : sweptFrames(model, profile.frame, x, swept), options);
 }
 
 /**
@@ -1198,12 +1304,13 @@ export function revolve(model: Model, member: string, axis: string, angle?: numb
  * geometry exactly as a typed call is (`checkRevolve`), then revolved — so the
  * journal entry is the one a typed call makes.
  */
-export function revolveProfile(model: Model, profile: Profile, axis: string, angle?: number | null): string {
+export function revolveProfile(model: Model, profile: Profile, axis: string, angle?: number | null, options: FeatureOptions = {}): string {
   if (model.dim !== 3) throw new Error("revolve needs a 3D model — a 2D drawing has nothing to turn out of its plane into");
   const a = revolveAngle(angle);
   axisReader(model, axis);
+  checkOptions(model, options, "revolve");
   checkRevolve(model, profile, axis);
-  return revolved(model, memberName(profile.loops[0][0]), axis, a, profile, EXPANSION.revolve, []);
+  return revolved(model, memberName(profile.loops[0][0]), axis, a, profile, EXPANSION.revolve, [], options);
 }
 
 function revolveAngle(angle: number | null | undefined): number {
@@ -1216,13 +1323,24 @@ function revolveAngle(angle: number | null | undefined): number {
 
 /** Plans, then expands and journals — as `extruded`. */
 function revolved(model: Model, member: string, axis: string, a: number, profile: Profile, x: Expansion,
-                  swept: string[]): string {
+                  swept: string[], options: FeatureOptions): string {
   const plan = { ...planSweep(model, profile), swept };
   // An old revolve's turned frames ride in its entry only where they are more
-  // than its sketch frame, so an old entry re-saves as it came in.
+  // than its sketch frame, so an old entry re-saves as it came in. Options,
+  // when there are any, come after both, the two written out (null for
+  // none) so neither lands in the other's place.
   const tail = swept.length > 1 ? [swept] : [];
-  return model.asOperation("revolve", () => [member, axis, a, plan.frame, resolvedLoops(plan), ...expansionArgs(x, "revolve"), ...tail],
-    () => revolveBody(model, member, axis, a, plan, x));
+  const live = model.journalling;
+  let chosen: FeatureOptions[] = [];
+  const end = () => (chosen.length
+    ? [x === EXPANSION.revolve ? null : x, tail.length ? tail[0] : null, ...chosen]
+    : [...expansionArgs(x, "revolve"), ...tail]);
+  return model.asOperation("revolve", () => [member, axis, a, plan.frame, resolvedLoops(plan), ...end()],
+  () => {
+    const name = revolveBody(model, member, axis, a, plan, x);
+    chosen = chooseMode(model, name, options, "revolve", live);
+    return name;
+  });
 }
 
 /**
@@ -1964,12 +2082,12 @@ function rebuildBody(model: Model, f: FeatureEntry, plan: SweepPlan): { loops: P
   if (f.kind === "extrude") {
     model.rewriteFeature(f.name, {
       kind: "extrude", member: f.member, frame, ...(f.top === undefined ? {} : { top: f.top }), depth: f.depth,
-      loops, twins, walls, expansion: f.expansion, names, owns,
+      loops, twins, walls, expansion: f.expansion, ...modeFields(f), names, owns,
     });
   } else {
     model.rewriteFeature(f.name, {
       kind: "revolve", member: f.member, frame, axis: f.axis, angle: f.angle, loops, twins, end, expansion: f.expansion,
-      ...(f.swept ? { swept: f.swept } : {}), names, owns,
+      ...(f.swept ? { swept: f.swept } : {}), ...modeFields(f), names, owns,
     });
   }
 
@@ -1978,6 +2096,11 @@ function rebuildBody(model: Model, f: FeatureEntry, plan: SweepPlan): { loops: P
   const keep = new Set(owns);
   for (const n of f.owns) if (!keep.has(n) && model.has(n)) delOne(model, n);
   return { loops: resolvedLoops(plan), touched };
+}
+
+/** A record's mode and body, carried through a rewrite: a regenerated cut is still a cut of the same body. */
+function modeFields(f: FeatureEntry): Pick<FeatureEntry, "mode" | "into"> {
+  return { ...(f.mode === undefined ? {} : { mode: f.mode }), ...(f.into === undefined ? {} : { into: f.into }) };
 }
 
 /**

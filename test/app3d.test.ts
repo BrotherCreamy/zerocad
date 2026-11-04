@@ -382,7 +382,7 @@ test("a lifted file re-saves as a 3D file of the current version that reopens to
   const text = save(m);
   const saved = JSON.parse(text);
   assert.equal(saved.version, VERSION);
-  assert.equal(saved.version, 13);
+  assert.equal(saved.version, 14);
   assert.equal(saved.dim, 3);
   assert.equal(save(open(text, 3)), text, "stable from here on");
   assert.equal(save(open(text)), text, "and a 3D file opens as itself without being asked");

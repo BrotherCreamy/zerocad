@@ -44,6 +44,8 @@ import { portionAngles } from "./arcgeom.ts";
 import { curveFrame, featurePlane } from "./curveplane.ts";
 import { axisReader, isFullTurn, turnMatrix } from "./relations/revolution.ts";
 import { cross3, dot3, lift3, sub3, unit3 } from "./vec3.ts";
+import type { Member, Placement as KernelPlacement, Profile as KernelProfile } from "./solids/kernel.ts";
+import type { Sweep } from "./solids/evaluate.ts";
 
 // ---- what a solid is made of ----------------------------------------------------
 
@@ -779,6 +781,74 @@ function extent(pieces: Piece[], reach: (p: number[], dir: number[]) => number):
     }
   }
   return [lo, hi];
+}
+
+// ---- for the solid kernel ------------------------------------------------------------
+
+/**
+ * A feature's sweep as the solid kernel takes it (src/solids/): its profile as
+ * plain curves in its own plane, where that plane is, and the depth or the axis
+ * and angle — every number read from the live, solved geometry through the
+ * same accessors the exact B-rep above reads (`featurePlane`, `curveFrame`,
+ * `portionAngles`), so the kernel's solid and this file's are of one profile.
+ *
+ * **Member i of the kernel's profile is member i of the record's loops**,
+ * flattened loop by loop: a whole circle is one `circle` (not this file's two
+ * halves — the kernel needs no seam rule), an arc or a portion of a curve one
+ * `arc`, a line or a portion of one a `line`. The kernel names a wall by that
+ * index (naming.ts), so `e3.m2` is the face swept from the record's third
+ * member, wherever the loops put it.
+ *
+ * The plane's local +z is the way an extrude grows for a positive depth (the
+ * sketch plane's normal), so the kernel's lid is at z = depth exactly as the
+ * extrusion dimension holds the twins. A revolve turns the positive way about
+ * its axis taken with the angle's sign, as `revolveBodies` does.
+ */
+export function kernelSweep(model: Model, f: FeatureEntry): { at: KernelPlacement; profile: KernelProfile; sweep: Sweep } {
+  const plane = featurePlane(model, f);
+  const n = plane ? unit3(plane.n) : null;
+  const x = plane && n ? unit3(sub3(plane.u, n.map((c) => c * dot3(plane.u, n)))) : null;
+  if (!n || !x) throw new Error("its sketch plane has collapsed");
+  const y = cross3(n, x);
+  const first = f.loops[0]?.[0];
+  if (first === undefined) throw new Error("its profile is empty");
+  const origin = piecesOf(model, first)[0].a;
+  const local = (p: number[]): [number, number] => { const d = sub3(p, origin); return [dot3(d, x), dot3(d, y)]; };
+  const angle = (w: number[]) => (Math.atan2(dot3(w, y), dot3(w, x)) * 180) / Math.PI;
+  const member = (m: ProfileMember): Member => {
+    const pieces = piecesOf(model, m);
+    const p = pieces[0];
+    if (p.kind === "line") return { kind: "line", from: local(p.a), to: local(p.b) };
+    const centre = local(p.c);
+    const sweep = pieces.reduce((s, q) => s + (q.kind === "arc" ? q.t1 - q.t0 : 0), 0);
+    if (sweep >= TAU - 1e-9) return { kind: "circle", centre, radius: p.r };
+    // Counter-clockwise about the plane's +z: the arc's own way if its normal
+    // agrees, else from its end back to its start.
+    const ccw = dot3(cross3(p.u, p.v), n) > 0;
+    const from = sub3(ccw ? onArc(p, p.t0) : onArc(p, p.t1), p.c);
+    const start = angle(from);
+    return { kind: "arc", centre, radius: p.r, start, end: start + (sweep * 180) / Math.PI };
+  };
+  const profile: KernelProfile = { loops: f.loops.map((loop) => loop.map(member)) };
+  const at: KernelPlacement = { origin: [origin[0], origin[1], origin[2]], x: [x[0], x[1], x[2]], y: [y[0], y[1], y[2]] };
+  if (f.kind === "extrude") {
+    const depth = model.relations.get(f.depth)?.args[1];
+    if (typeof depth !== "number" || !Number.isFinite(depth) || depth === 0) throw new Error("it has no depth");
+    return { at, profile, sweep: { kind: "extrude", depth } };
+  }
+  const theta = model.relations.get(f.angle)?.args[1];
+  if (typeof theta !== "number" || !Number.isFinite(theta) || theta === 0) throw new Error("it has no angle");
+  const axis = axisReader(model, f.axis).read();
+  const k = unit3(axis.dir.map((c) => Math.sign(theta) * c));
+  if (!k) throw new Error("its axis has no direction");
+  const O = lift3(axis.origin);
+  return {
+    at, profile,
+    sweep: {
+      kind: "revolve", point: local(O), dir: [dot3(k, x), dot3(k, y)],
+      degrees: isFullTurn(theta) ? 360 : (Math.abs(theta) * 180) / Math.PI,
+    },
+  };
 }
 
 // ---- for the wireframe -------------------------------------------------------------

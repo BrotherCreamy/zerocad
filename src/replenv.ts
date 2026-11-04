@@ -19,7 +19,7 @@ import { OptionMemory, declaredOptions, defaultsOf, describeValues, resolveOptio
 import * as basic from "./relations/basic.ts";
 import * as geom from "./relations/geometry.ts";
 import {
-  construction, del, extrude, fillet, hole, loopOfMember, orientingPlane, regen, revolve, set, unhole,
+  construction, del, extrude, fillet, hole, loopOfMember, orientingPlane, peelOptions, regen, revolve, set, unhole,
 } from "./operations.ts";
 import { planeAxes } from "./curveplane.ts";
 import { save as saveModel, savedTools } from "./persist.ts";
@@ -650,10 +650,17 @@ export function neocadScope(h: EnvHandles): Bag {
      * `frame` is any plane (a frame, a curve, `"p1.p2.p3"`); a loop no frame
      * orients runs along its own plane — three of its points, facing you — and
      * **no frame is made for it** (`planeForFeature`, `orientingPlane`).
+     *
+     * Options come last, wherever that is: `extrude("c1", -10, { mode:
+     * "cut" })` cuts a hole in the body the circle is on; `{ mode: "add",
+     * into: "e1" }` names the body. Left out, the mode is add when the solid
+     * touches or overlaps a body and new otherwise (docs/plans/solids-kernel.md).
      */
-    extrude: (member: string, depth?: number | null, frame?: string | null, loops?: ProfileMember[][] | null) => {
-      if (frame == null && loops == null) frame = planeForFeature(member, "extrude");
-      return extrude(model, member, depth ?? null, frame ?? null, loops ?? null);
+    extrude: (member: string, ...rest: unknown[]) => {
+      const { args, options } = peelOptions(rest, "extrude", 3);
+      const [depth, given, loops] = args as [number | null | undefined, string | null | undefined, ProfileMember[][] | null | undefined];
+      const frame = given == null && loops == null ? planeForFeature(member, "extrude") : given;
+      return extrude(model, member, depth ?? null, frame ?? null, loops ?? null, null, options);
     },
     /**
      * Revolves the closed loop a member is in about an axis — `revolve("l1",
@@ -662,9 +669,11 @@ export function neocadScope(h: EnvHandles): Bag {
      * The axis is a frame's axis or a line, read and never moved. `frame` and
      * `loops` are extrude's, and so is the plane of a loop no frame orients.
      */
-    revolve: (member: string, axis: string, angle?: number | null, frame?: string | null, loops?: ProfileMember[][] | null) => {
-      if (frame == null && loops == null) frame = planeForFeature(member, "revolve");
-      return revolve(model, member, axis, angle ?? null, frame ?? null, loops ?? null);
+    revolve: (member: string, axis: string, ...rest: unknown[]) => {
+      const { args, options } = peelOptions(rest, "revolve", 3);
+      const [angle, given, loops] = args as [number | null | undefined, string | null | undefined, ProfileMember[][] | null | undefined];
+      const frame = given == null && loops == null ? planeForFeature(member, "revolve") : given;
+      return revolve(model, member, axis, angle ?? null, frame ?? null, loops ?? null, null, null, options);
     },
     /**
      * Changes a dimension's value — `set("d4.value", 60)` — rebuilding it in

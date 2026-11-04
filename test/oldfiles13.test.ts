@@ -100,9 +100,9 @@ for (const [name, lifted] of [["curves-v12", false], ["features-v12", false], ["
     sameGeometry(m, want, 1e-6, "regenerated");
 
     const once = save(m);
-    assert.equal(JSON.parse(once).version, 13);
+    assert.equal(JSON.parse(once).version, 14);
     const back = open(once);
-    assert.equal(save(back), once, "re-saves stably as format 13");
+    assert.equal(save(back), once, "re-saves stably as the current format");
     sameGeometry(back, want, 1e-6, "reopened");
   });
 }
@@ -126,14 +126,14 @@ test("an old file's curve follows its frame: turn the frame, and the circle turn
   assert.ok(gone.includes(r.name) && !gone.includes("c2"));
 });
 
-test("a fresh document's file is format 13, its curves frameless, and it round-trips", async () => {
+test("a fresh document's file is the current format (14), its curves frameless, and it round-trips", async () => {
   await loadKernel();
   const { Model } = await import("../src/model.ts");
   const m = new Model(3);
   m.addCircle(m.addPoint([1, 2, 0]).name, 4);
   const text = save(m);
   const saved = JSON.parse(text);
-  assert.equal(saved.version, 13);
+  assert.equal(saved.version, 14);
   assert.deepEqual(saved.journal[1], { op: "addCircle", args: ["p1", 4, null, "c1"] });
   assert.deepEqual(saved.values.normals, { c1: [0, 0, 1] });
   assert.equal(save(open(text)), text);
