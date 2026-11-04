@@ -106,6 +106,65 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### No title bar: what "huge" was, where the 60 pt went, and a blur nobody documents
+
+The owner tried 0.1.0 on his iPhone: no title bar, a tiny logo that opens
+settings, an interface "huge" on his screen, and a command line that would not
+go to the bottom. Three amendments followed the same day (a dropdown with a
+spin box and pane boxes; docking kept through a rotation; each device's own
+100 %), and the manager added the status bar's blur.
+
+**The 60 pt.** Chromium's emulation, with iOS's real insets set through CDP,
+showed only 34 of it — `#viewwrap` was inset from the home indicator, so a
+panel stopped at that inset's edge. The rest only WebKit does, so it was read
+off the owner's screenshot: it is a 440×956 pt phone with a 62 pt top inset,
+and the empty-canvas hint (centred on the canvas, so a ruler) puts the
+canvas's bottom at 860 pt. `#app`, at `100dvh`, was the screen less the top
+inset. Fixed at the cause — `#app` by its four edges — and the drawing now
+runs under both insets, a panel touching one reaching under it with its
+content padded clear, as iOS's toolbars do. Rejected: keeping the drawing
+inset and only letting the command line overhang; every panel touching an
+edge has the same problem, and the rule is one function (`bleed`) that the
+push geometry never sees.
+
+**"Huge" was drawn size equal to hit size.** The first build shrank a
+finger's chrome to 70 % — 31 px buttons — which the owner's next message
+undid: work it out per device and call that 100 %. The real fault was that a
+finger's controls were *drawn* at their 44 px target. Now they are drawn at
+the interface size and answer a press over 44 px (a `::before` round each
+face, rows a target tall). One cost was not avoidable: a tray's buttons must
+be a target apart for their hit boxes not to overlap, so the slim column is
+as long as the old one. Shorter would have meant two buttons claiming the
+same touch. And a strip's hit box has to reach somewhere: outward, over the
+drawing, because inward it would take the log's scrolling and the command
+line's field. That reach was then measured taking a drag that began on the
+status, so the portrait log moved down.
+
+**Each device's 100 %** is form factor × text size. 1.3 for a phone is
+Apple's own ratio — 17 pt body text on iOS, 13 on macOS. The amendment said
+to read Dynamic Type through `-apple-system-body` "in Safari"; WebKit's bug
+tracker shows macOS Safari has the keyword at a fixed 13 px and WebKit
+declining to change it, so it is read only under a coarse pointer — otherwise
+every Mac would shrink by a quarter. The fallback reads `font-size: medium`,
+because the page's root font is the stylesheet's 13 px, not the person's.
+
+**Docking.** Pixel positions cannot survive a rotation, so a moved pane is
+stored as what each side rests against, recorded when a gesture ends and
+re-laid on every resize. Re-recording on resize was rejected: a rotation that
+pushed a pane off its edge would then forget the edge, and turning the phone
+back would not restore it.
+
+**The blur.** The owner: *"in PWA mode on iPhone, there is some blending at
+the top of the screen which is annoying."* Several projects report the same
+since iOS 26.1: a home-screen app whose status bar is `black-translucent`
+gets Liquid Glass's scroll-edge blur over its top; a Glide community thread
+calls it a regression. **Apple has published nothing about it**, and nothing
+here could run iOS 26, so this is the consensus fix, not a verified one: the
+style is `default`, the page starts below a solid bar in `theme-color` (now
+the drawing's ground), and there is nothing beneath it to blur. iOS reads the
+style when the app is added, so the owner has to re-add the icon. The
+top-edge `bleed` stays for Safari, which still has a top inset.
+
 ### Files: what each platform really allows, and three decisions it forced
 
 The owner asked to open and share files on his iPhone and on a desktop. The

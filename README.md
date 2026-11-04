@@ -416,8 +416,30 @@ emulation, since only the device runs iOS Safari):
 - A second finger drops a shape half-drawn; a third drops everything.
 - While a finger is down with a tool armed, the place it will land on — and
   what it snaps to — is drawn above the fingertip.
-- **Undo, Redo, Delete, Cancel** are the strip beside the tray. The keyboard
-  waits for a tap on the command line.
+- **Undo, Redo, Delete, Cancel** are the strip at the top right. The keyboard
+  waits for a tap on the command line, which is docked to the bottom.
+
+There is no title bar. **The logo** in the top-left corner opens the app
+menu: the file's name and *New*, *Open…*, *Save*, *Share…*; the interface
+size, `− 100% +`; a box for each pane, to show or hide it; how solids are
+shown; and the build. Every item types its command in the log, as every
+button does (`ui({ scale: 0.9 })`, `ui({ hide: "log" })`).
+
+**100 % is worked out for each device**: on a phone the chrome is drawn 1.3×
+a desktop's, and follows the iPhone's own text size (Settings → Display &
+Brightness → Text Size); the spin box scales that. However small it is
+drawn, every button answers a finger over 44 points, and how near a point a
+finger must land to pick it never changes. A pane pushed against an edge, or
+against another pane, stays against it when the phone turns.
+
+![ZeroCAD on an iPhone 13, portrait: the logo and the status top-left, the tools down the left, the action strip and the log at the top right, the command line docked to the bottom](docs/screenshots/phone-portrait.png)
+
+![The same in landscape: the tools a row docked along the bottom, the command line along the top](docs/screenshots/phone-landscape.png)
+
+**If the top of the installed app is blurred** (iOS 26 draws a blur over
+apps installed by 0.1.0): remove the ZeroCAD icon from the home screen and
+add it again from Safari. iOS reads the status bar's style when the app is
+added, and the app now asks for a solid one.
 
 A mouse plugged into the same device is still a mouse.
 

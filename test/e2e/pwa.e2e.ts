@@ -194,7 +194,7 @@ test("the manifest, as an installer reads it: standalone, and every icon it and 
   for (const { sizes, got } of found.icons) assert.equal(`${got[0]}x${got[1]}`, sizes, got[2]);
   assert.deepEqual(found.apple.slice(0, 2), [180, 180]);
   assert.equal(found.metas["apple-mobile-web-app-capable"], "yes");
-  assert.equal(found.metas["apple-mobile-web-app-status-bar-style"], "black-translucent");
+  assert.equal(found.metas["apple-mobile-web-app-status-bar-style"], "default");
   assert.match(found.metas.viewport, /user-scalable=no/);
   assert.deepEqual(hosted.served.misses, []);
 });

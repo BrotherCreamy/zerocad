@@ -7,6 +7,121 @@ decisions.
 
 ---
 
+## No title bar: a logo over the drawing, each device's own interface size, panels to the very edge
+
+The owner tried 0.1.0 on his iPhone and sent two screenshots:
+
+> *rather than say zerocad, it should be a tiny logo in the top left corner,
+> that is overlaid over the viewport. Be creative with the logo, but keep it
+> simple. There should be no title bar.*
+>
+> *the interface elements are huge on my screen. there should be a settings
+> menu that allows the user to change the zoom level of the interface (ie size
+> of tool panes and other elements eg labels and icons which display in the
+> viewport. Maybe if you click on the logo, that brings up settings.*
+>
+> *see in the portrait screenshot, the command bar is not at the bottom. That
+> is as far as I can drag it down. Please allow it to be dragged right to the
+> bottom.*
+
+and then, the same day:
+
+> *Clicking on the logo should bring up a dropdown menu, and that menu should
+> include a zoom level little spin box like  - 80% +, a show hide for the
+> panes, and file open etc etc*
+>
+> *Also, if I push a toolbar right to one side, or up against another
+> toolbar, that setting should persist if I change from landscape to portrait
+> or vice versa*
+>
+> *is there any way you can figure out what interface scale to use for each
+> device, so everything is appropriately sized? (and make that 100% zoom)*
+
+Spec: [`docs/plans/chrome-logo-scale.md`](docs/plans/chrome-logo-scale.md),
+built, with its three amendments and the deviations in its *As built*.
+
+- **No title bar.** The drawing is the whole window, under the status bar and
+  the home indicator too, and the chrome floats over it.
+- **The logo** (`src/logo.ts`): a zero drawn the way the app draws — an amber
+  circle crossed by a construction line with a point at each end, reading as
+  "0" and "∅" — with the app's own casing round every stroke so it reads over
+  a light solid. Top-left, inside the safe area, 20 px on a desktop and 26 on
+  a phone. **The home-screen icons are regenerated from it** (`npm run
+  build:icons` now writes `public/icons/icon.svg` from the same markup), so
+  the icon and the logo are one mark; a unit test fails if they drift.
+- **The status beside it**: `ready`, `SOLVED` and a note fade after a few
+  seconds; a conflict or an error stays until the next action replaces it
+  (`src/statusline.ts`). Only the picture fades — the text stays for anything
+  that reads it. Nothing in the corner takes a press but the logo.
+- **The logo opens the app menu** (`src/appmenu.ts`), a dropdown in the
+  context menu's family, every control typing its command through `submit`:
+  **File** (`Untitled`, then `newFile()`, `openFile()`, `saveFile()`,
+  `shareFile()` — the files package's commands; until one exists its item is
+  off and says so), **Interface size** (`− 100% +`, 10 % a press, the number
+  back to 100 %, typing `ui({ scale: 0.9 })`), **Panes** (a box per panel the
+  page has — built from the panels, so a new one is listed with no edit —
+  typing `ui({ hide: "log" })`), **View** (`view(...)`), **About** (the build,
+  and the source). Escape or a tap outside closes it, and the tap that closes
+  it does not also draw.
+- **Each device's own 100 %.** The interface size is the device's — form
+  factor × the person's text size: 1 under a mouse (the desktop look,
+  unchanged), 1.3 on a phone (iOS's 17 pt body text against macOS's 13), 1.15
+  on a tablet (a short side of 600 CSS px or more); times Dynamic Type
+  (`-apple-system-body` over 17) under a finger in Safari, or the browser's
+  default font size over 16 — times the viewer's multiplier, the spin box,
+  which is all that is stored (per device, never in a file). On an iPhone 13
+  a tool button is drawn **26 px** where 0.1.0 drew 44, a strip 21 where it
+  was 44, the tray 34 thick where it was 52.
+- **Drawn small, hit at 44.** "Huge" was every control under a finger being
+  drawn at its 44 px hit size. They are drawn at the interface size now, and
+  under a coarse pointer answer a press over at least 44 px however small they
+  are drawn: a tray's buttons are a target apart, each with an invisible hit
+  box round its face; a strip is grabbed over 44 reaching outward; rows are a
+  target tall; the spin box's − and + are 44 square. How far from a point a
+  finger may land and still pick it is unchanged at any size.
+- **What the size scales**: the panels and their type, the command line and
+  the log, the menus and the hover tag — and in the drawing the constraint
+  glyphs (and their hit boxes, which are their drawn boxes), dimension labels,
+  point dots and names, frame markers, the snap marker and the lifted mark.
+  `ui()` says what is in force, and why 100 % is what it is on this device.
+- **Panels to the very edge.** The ~60 pt gap under the command line had two
+  causes, both fixed: `#app` was `100dvh`, which an iOS home-screen app with a
+  translucent status bar reads as the screen less the status bar (his
+  screenshot: the drawing ends 96 pt above the glass on a phone whose insets
+  are 62 and 34); and the drawing was inset from the home indicator, so a
+  panel could only reach that inset's edge. Now the panels' area is the safe
+  area, and **a panel touching an inset edge reaches under it and pads its
+  content clear** — iOS's toolbar: the command line docks flush to the glass,
+  its line above the home indicator. Likewise at the top and at a landscape
+  notch's side. The phone's portrait default has the command line docked to
+  the bottom.
+- **Docking survives a rotation.** A panel the viewer has put somewhere is
+  stored as what each of its sides rests against — the area's edge, another
+  panel, or nothing — with its rectangle. Turned, the window lays it out
+  again by that: a tray against the right edge stays against the right edge,
+  a pane against the toolbar stays against it, a floating one keeps its share
+  of the room, and a tray whose line no longer fits along its edge turns,
+  keeping the edge. Layouts stored by 0.1.0 are migrated, not dropped.
+- **The logo is in the layout as the one panel nothing moves**: a panel pushed
+  into the corner stops against it, as at the window's edge.
+- **No blur over the top of the installed app.** The owner: *"in PWA mode on
+  iPhone, there is some blending at the top of the screen which is annoying.
+  Any way to get rid of that?"* Since iOS 26, iOS draws Liquid Glass's
+  scroll-edge blur over the top of a home-screen app whose status bar is
+  `black-translucent` (reported by several projects; Apple has said
+  nothing). The style is `default` now: the app starts below a solid status
+  bar in the drawing's own colour. **iOS reads this when the app is added to
+  the home screen — remove the ZeroCAD icon and add it again** (Safari →
+  Share → Add to Home Screen) to lose the blur.
+- `layout()` now also says the window's size and the insets the page
+  measured — on a phone, the one place to read what iOS reported.
+
+Tests: unit 1056 → 1094 (the files package's among them; this package's
+`test/chrome.test.ts` is 21), e2e 435 → 463 (`test/e2e/chrome.e2e.ts` 16),
+and the suites that asserted the header now assert what replaced it.
+
+---
+
 ## Files: open, save and share on an iPhone and a desktop, and a drawing that survives the app being closed
 
 The owner, after trying 0.1.0 on his iPhone:

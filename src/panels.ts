@@ -1049,7 +1049,7 @@ export function recorded(id: string, layout: Layout, area: Size, scale: number):
  * their defaults — which a recorded panel may rest against. `sizeOf` answers a
  * panel's size when its content fixes it (a tray's line, which way it runs)
  * and null for one the viewer sizes, whose recorded size is scaled with the
- * interface: a command line made 60 px tall at 100 % is 42 at 70 %.
+ * interface: a command line made 60 px tall at 1 is 78 at 1.3.
  *
  * Axis by axis, the same rule each way:
  *

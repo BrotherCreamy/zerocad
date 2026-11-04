@@ -24,6 +24,25 @@ otherwise.
 
 ## Decisions made so far — veto here if any are wrong
 
+- **Each device has its own 100 %, and a finger's controls are drawn small
+  and hit at 44** (the owner, 2026-11-04: *"is there any way you can figure
+  out what interface scale to use for each device, so everything is
+  appropriately sized? (and make that 100% zoom)"*). 100 % is form factor ×
+  the person's text size — 1 under a mouse, 1.3 on a phone, 1.15 on a tablet
+  (a short side of 600 CSS px or more), times Dynamic Type under a finger or
+  the browser's font size; only the viewer's multiplier (the spin box) is
+  stored, per device, never in a file. Under a coarse pointer every control
+  answers a press over at least 44 px however small it is drawn; **reach to
+  pick and snap is never scaled**. Built:
+  [`chrome-logo-scale.md`](docs/plans/chrome-logo-scale.md).
+- **No title bar; the logo is the one panel nothing moves, and opens the app
+  menu; panels dock to the very edge, reaching under an inset they touch;
+  a moved pane is stored as what it rests against, so docking survives a
+  rotation; the installed app's status bar is `default`** (not
+  `black-translucent`, which iOS 26 blurs over). Built, with every deviation
+  in the spec's *As built*:
+  [`chrome-logo-scale.md`](docs/plans/chrome-logo-scale.md).
+
 - **Select and Hand tools head the toolbar** (the owner, 2026-11-04: *"there
   is no hand/selction tool. would be nice since a lot of people are used to
   that"*). Select is the "no tool" state made visible (`arm("select")`), lit
@@ -1892,6 +1911,30 @@ extended the way `defineTool` extends the tool registry would close it.
 
 ## Smaller things
 
+- [ ] **Found while building `chrome-logo-scale.md`** (each deliberate and
+      documented in the spec's *As built*):
+      - **The owner's iPhone list**: the drawing to the glass with nothing
+        under the status bar blurred (after removing the icon and adding it
+        again — iOS reads the status bar style when the app is added); the
+        command line docked to the bottom, and the keyboard it raises not
+        covering it (iOS should scroll the field into view; if not, drag it
+        to the top); the interface's 100 % at his Dynamic Type setting;
+        `layout()`'s window and insets read off the phone.
+      - **A strip's 44 px hit box reaches up over the drawing** (~23 px at a
+        phone's 100 %): a tap on geometry just above a panel's strip moves
+        the panel. Into the panel would steal the log's scrolling and the
+        command line's field. Revisit if it bites.
+      - **The tablet factor (1.15) and its 600 px boundary** are reasoned,
+        not measured on an iPad.
+      - **The status sits over the command line's strip in landscape** until
+        it fades (3 s); a conflict stays over it. A status that moved out of
+        the way of panels would be the next step.
+      - **A pane docked against a tray that turned in a rotation** keeps its
+        side against it and is held overlapping it by a pixel at least — it
+        can end up hanging off the tray's corner (the rotation e2e's
+        landscape picture). A rule for re-aligning along a turned tray is
+        not designed.
+
 - [ ] **Found while building `files.md`** (each deliberate, documented and,
       where it can be, tested):
       - **The owner's iPhone list** (CHANGELOG, the files entry): the Files
@@ -2305,6 +2348,29 @@ extended the way `defineTool` extends the tool registry would close it.
       the resolver's flush arithmetic assumes does not happen.
 
 ## Done
+
+- [x] **No title bar: a logo over the drawing, each device's own interface
+      size, panels to the very edge, docking through a rotation**
+      (2026-11-04). The owner, from his iPhone, and three amendments (the
+      dropdown and its spin box, panes shown and hidden, docking kept
+      through a rotation, each device's 100 %) and the manager's status-bar
+      item. Spec: [`docs/plans/chrome-logo-scale.md`](docs/plans/chrome-logo-scale.md),
+      marked built, every deviation in its *As built*. `src/logo.ts`,
+      `src/uiscale.ts`, `src/statusline.ts`, `src/appmenu.ts` (new);
+      `panels.ts`'s `touchMetrics`, `bleed`, the fixed logo, `dockingOf`/
+      `recorded`/`relaid`, storage v3 with the v2 migration, `setMetrics`/
+      `panes`/`setShown`; `View.ui`; `ui()` in `replenv.ts` (not journalled,
+      so nothing in `persist.ts`); `index.html`'s page, logo and hit areas;
+      `scripts/icons.ts` writing `icon.svg` from the logo; the status bar
+      `default`. 1094 unit (1056 before, the files package's among them;
+      `test/chrome.test.ts` 21), 463 e2e (435 before; `chrome.e2e.ts` 16).
+      **Deviations, in short** (in full in the spec): a tray's buttons are a
+      44 px target apart, so the column is slim but as long as before; a
+      strip's 44 px hit box reaches out over the drawing; fields keep 16 px
+      type under a finger; phone menus drop the command hints; the logo is a
+      fixed panel in the layout; a tray that no longer fits its edge after a
+      rotation turns, keeping the edge; `-apple-system-body` is read only
+      under a coarse pointer (macOS has it at 13 px).
 
 - [x] **A feature's region is explicit — an outline and the holes you said**
       (2026-11-04). The owner: *"there should be some kind of relationship

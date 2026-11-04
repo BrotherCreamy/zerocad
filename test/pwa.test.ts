@@ -59,10 +59,11 @@ test("the manifest: standalone, any orientation, the app's colours, and every UR
   assert.equal(m.id, "./");
   assert.equal(m.background_color, BACKGROUND);
   assert.equal(m.theme_color, THEME);
-  // The colours are the app's own: the body's ground and the panels'.
+  // The colours are the app's own: the body's ground, which the system bars take too.
   const index = readFileSync(new URL("../index.html", import.meta.url), "utf8");
   assert.match(index, new RegExp(`html,body\\{[^}]*background:${BACKGROUND}`));
-  assert.match(index, new RegExp(`\\.panel\\{[^}]*background:${THEME}`));
+  // The status bar's band is the drawing's ground: no title bar sits between them.
+  assert.equal(THEME, BACKGROUND);
   const urls = [m.start_url, m.scope, m.id, ...(m.icons as { src: string }[]).map((i) => i.src)] as string[];
   for (const url of urls) assert.ok(isRelative(url), `${url} is relative`);
   // JSON round trip: what is written is what was checked.
@@ -195,7 +196,8 @@ test("the head: the iOS metas, the manifest and the icons, all relative, and the
   for (const needle of [
     '<meta name="apple-mobile-web-app-capable" content="yes">',
     '<meta name="mobile-web-app-capable" content="yes">',
-    '<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">',
+    // Not black-translucent: iOS 26 blurs the top of a translucent app (pwa-shell.ts).
+    '<meta name="apple-mobile-web-app-status-bar-style" content="default">',
     '<meta name="apple-mobile-web-app-title" content="ZeroCAD">',
     `<meta name="theme-color" content="${THEME}">`,
     '<link rel="manifest" href="manifest.webmanifest">',

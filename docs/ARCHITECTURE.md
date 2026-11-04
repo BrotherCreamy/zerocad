@@ -991,11 +991,27 @@ that.
 
 ## The chrome floats, and its layout is the viewer's
 
-The canvas is the whole window under the header, and the toolbar, the log and
-the command line are panels over it (`panels.ts`). Nothing in the page reflows
-the drawing any more — the log used to, taking height from the canvas as it
-filled, which moved "the middle of the view" under every command that seeds
-there. The header is the one thing that does not move: it is the title bar.
+The canvas is the whole window — there is no title bar
+(docs/plans/chrome-logo-scale.md) — and the toolbar, the log and the command
+line are panels over it (`panels.ts`). Nothing in the page reflows the drawing
+any more — the log used to, taking height from the canvas as it filled, which
+moved "the middle of the view" under every command that seeds there. The logo
+in the top-left corner is the one thing that does not move: it is in the
+layout as a fixed panel, so pushes stop against it, and it opens the app menu
+(`appmenu.ts`), which like every menu only types.
+
+**The layout's area is the safe area**, and a panel touching an inset edge is
+*drawn* reaching under it with its content padded (`bleed`) — drawing only,
+so no rule of pushing or turning knows insets exist. **A moved panel is
+stored as what its sides rest against** (`dockingOf`), and re-laid by that in
+whatever area there is (`relaid`): a rotation keeps docking, not pixels.
+
+**One interface size, read in one place** (`main.ts`'s `uiScale`, the
+device's 100 % from `uiscale.ts` times the viewer's multiplier): the panels'
+`Metrics`, the stylesheet's custom properties, and `View.ui`, which everything
+drawn in the viewport for a person to read is multiplied by. A finger's
+controls are drawn at that size and hit at 44 px (`touchMetrics`, index.html's
+`::before`s); picking's reach is never scaled.
 
 **A toolbar button is a context-menu item with a fixed place on screen.** It
 types `arm("name")` through `submit`, for every reason in the section above,
