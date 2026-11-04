@@ -2482,7 +2482,7 @@ extended the way `defineTool` extends the tool registry would close it.
       repo): fourteen parts, every solid valid and closed in a normal read and
       in a strict one without shape healing, volumes within 5e-15 and boxes
       within 1e-7 mm of ZeroCAD's (`test/fixtures/step/validated.json`).
-      Unit 1144 (1134 before; `test/step.test.ts` 10), e2e E2E_AFTER (E2E_BEFORE
+      Unit 1144 (1134 before; `test/step.test.ts` 10), e2e 497 (493
       before; `test/e2e/step.e2e.ts` 4), `npm run test:all` green.
       **Deviations, in short**: an island in a hole is a second body (`e1.2`);
       a full revolve's "seams" are ordinary shared edges; a full revolve of a

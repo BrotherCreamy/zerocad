@@ -52,7 +52,7 @@ deviation in its *As built* and in TODO.md's Done entry.
   when (`test/fixtures/step/validated.json`).
 - **Tests**: unit 1144 (1134 before; `test/step.test.ts` 10, with a Part 21
   reader of its own checking references, types, loops, edge use, genus and
-  vertices on their curves and surfaces); e2e E2E_AFTER (E2E_BEFORE before;
+  vertices on their curves and surfaces); e2e 497 (493 before;
   `test/e2e/step.e2e.ts` 4 — the menu's download, a typed name and curves,
   the iPhone share sheet, and no solid).
 
