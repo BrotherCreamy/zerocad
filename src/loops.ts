@@ -130,6 +130,14 @@
 // loop seen so nearly edge-on that it is less than `EDGE_ON_PX` thick on
 // screen offers no inside, and is skipped.
 //
+// **Construction geometry is not there at all.** A line, arc or circle flagged
+// construction (`Model.setConstruction`; the owner: *"construction geometry
+// should be a per entity flag"*) is no edge of any loop: it bounds no region,
+// a point held on it cuts nothing, and where it crosses a real edge there is no
+// crossing — a construction line across a rectangle leaves one region, a
+// construction circle inside it no hole. It is an ordinary entity everywhere
+// else (solved, picked, snapped to); only this question leaves it out.
+//
 // Loops live in a 2D or a 3D model; anything else has no planes to put them in.
 
 import type { Model } from "./model.ts";
@@ -308,6 +316,10 @@ function collect(model: Model, classOf: Map<string, number>): { edges: Edge[]; c
   let order = 0;
   for (const e of model.entities.values()) {
     order++;
+    // Construction geometry is left out here, at the one door every edge
+    // comes in by, so it bounds nothing, cuts nothing and crosses nothing —
+    // and every consumer of regions follows without being told.
+    if (model.isConstruction(e.name)) continue;
     if (e.kind === "line") {
       const at: [number, number] = [classOf.get(e.refs[0])!, classOf.get(e.refs[1])!];
       if (at[0] !== at[1]) edges.push({ name: e.name, kind: "line", order, ends: [e.refs[0], e.refs[1]], at });

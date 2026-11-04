@@ -2199,6 +2199,41 @@ replacing) the system Node other projects on this machine may depend on.
   points, as deleting any frame leaves its points. *Spec:*
   [`docs/plans/no-lid-frame.md`](docs/plans/no-lid-frame.md).
 
+- **Construction geometry** (`construction?: true` on `LineEntity`,
+  `CircleEntity`, `ArcEntity` and `isConstruction`/`setConstruction` in
+  `src/model.ts`; `construction`, `checkMember`/`givenProfile`'s refusals and
+  fillet's arc in `src/operations.ts`; `collect` in `src/loops.ts`; the op,
+  `ls()` and `help()` in `src/replenv.ts`; the replay table in
+  `src/persist.ts`; `CONSTRUCTION`/`CONSTRUCTION_PX`/`CONSTRUCTION_CASING_PX`
+  and `strokeEdge`'s casing in `src/main.ts`; `describePick` in
+  `src/picking.ts`; `constructionItems` in `src/menu.ts`; `DRAWING_OPTIONS` and
+  `asArmed` in `src/tools/place.ts`, declared by line, rectangle, circle,
+  circle3, arc and arc3). The owner: *"construction geometry should be a per
+  entity flag"*; *"if it is a group based inherited thing, then geometry could
+  be both construction geometry and not construction geometry
+  simultaneously"*. **A flag on the entity** — never in a set, never a
+  group's — that **forms no regions**: loops.ts leaves it out at the one door
+  edges come in by, so it bounds, cuts and crosses nothing, and extrude,
+  revolve, sketch on a face, the region lighting and `loops()` follow.
+  Otherwise ordinary: constrained, solved, picked, snapped to, quiet, hovered,
+  selected. `construction(...names)` / `construction(...names, false)`; groups
+  and features expand at the call and the journal names the curves changed;
+  points, frames and relations passed over; a no-op journals nothing; one undo
+  step; no format bump. **A solid's profile member is refused** by name, and
+  extrude/revolve refuse a construction member by name. **Drawn thin (0.9px)
+  in a muted teal `#679b91`, never dashed**, with a hairline casing on faces.
+  The hover tag says `construction`; `ls()` `(construction)`; the menu has
+  *Construction* / *Not construction* for an entity or a selection's curves;
+  the drawing tools' options panel has a `construction` checkbox. A fillet of
+  two construction legs is construction. Unit: `test/construction.test.ts`
+  (19, new), `menu.test.ts`; browser: `test/e2e/construction.e2e.ts` (7, new),
+  `contextmenu.e2e.ts`, `tooloptions.e2e.ts`. 992 unit tests, 405 e2e.
+  *Known and deliberate* (TODO.md, Smaller things): a profile member is
+  refused rather than regenerated, and clearing the flag needs `regen`, until
+  features follow their regions; a regenerated twin is real; typed
+  constructors take no flag; a tool's preview is not muted. *Spec:*
+  [`docs/plans/construction.md`](docs/plans/construction.md).
+
 ## What's next
 
 The working list lives in [`TODO.md`](TODO.md), so it has one home rather

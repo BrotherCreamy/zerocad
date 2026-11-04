@@ -7,6 +7,59 @@ decisions.
 
 ---
 
+## Construction geometry
+
+The owner:
+
+> *construction geometry should be a per entity flag. at least based on the
+> name "construction geometry" it implies per entity*
+
+and, after the spec was written:
+
+> *if it is a group based inherited thing, then geometry could be both
+> construction geometry and not construction geometry simultaneously*
+
+With no sketch containers, every closed loop on a plane forms regions, so a
+reference circle drawn inside an outline became a hole in it. Now a line, arc
+or circle can be **construction geometry**: it forms no regions — it bounds,
+splits and crosses nothing, so a construction circle inside a rectangle is no
+hole and a construction line across it no split — and is otherwise an ordinary
+entity: constrained, solved, picked, snapped to, hovered, selected.
+
+- **`construction(...names)` sets it, `construction(...names, false)` clears
+  it.** One word with a value, because the flag is one. Journalled, saved,
+  one undo step each; no format bump (one new op).
+- **The flag is on the entity**, never a group's. `construction("g1")` flags
+  each of g1's members *now* and is journalled as the curves it changed
+  (`construction("l1", "l2")`), so a line added to g1 later is not
+  construction and a line taken out stays it. A feature named flags the curves
+  it made. Points, frames and relations among the names are passed over.
+- **A solid's profile member is refused**, by name: `"l1" is part of e1's
+  profile — a solid's profile cannot stop being a boundary under it`. And
+  `extrude` of a construction member says it is construction, rather than "in
+  no closed loop". A circle made construction *before* the extrude leaves no
+  hole; made real again, `regen("e1")` brings the hole.
+- **The look: thin (0.9px) and a muted teal of its own, never dashed** — a
+  dash means selection here. On a solid it keeps only a hairline of casing,
+  so it stays thin over the light faces. The hover tag says `construction`;
+  `ls()` says `(construction)`.
+- **Pointer paths**: the right-click menu on a line, arc or circle, or on a
+  selection, offers *Construction* / *Not construction*, typing the command.
+  The six drawing tools (line, rectangle, circle, 3 point circle, arc, 3 point
+  arc) declare a `construction` option, so armed they show a checkbox in the
+  options panel — `arm("circle", { construction: true })` — remembered like
+  any option.
+- A fillet of two construction legs makes a construction arc.
+
+Unit: `test/construction.test.ts` (19, new) and `menu.test.ts`; browser:
+`test/e2e/construction.e2e.ts` (7, new), `contextmenu.e2e.ts` and
+`tooloptions.e2e.ts` (a drawing tool has an options panel now). 992 unit tests
+(973 before), 405 e2e (398 before). Spec:
+[`docs/plans/construction.md`](docs/plans/construction.md), marked built, with
+its deviations.
+
+---
+
 ## An extrude makes no lid frame
 
 The owner's report, the one that started the last package:

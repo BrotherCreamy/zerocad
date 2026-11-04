@@ -166,6 +166,17 @@ const TYPED_REFUSAL = "refused as typed";
 const CASING = "#0a0e13";
 const CASING_PX = 1.25;
 
+/**
+ * Construction geometry's ink and width (docs/plans/construction.md): a muted
+ * teal, a hue no other mark uses — not the sketch's grey-blue dimmed, which
+ * would read as the hidden view's ink — and under a pixel wide, against the
+ * sketch's 1.4. Drawn solid, never dashed: a dash means selection here.
+ */
+const CONSTRUCTION = "#679b91";
+const CONSTRUCTION_PX = 0.9;
+/** Its casing over a face, each side: a hairline, not `CASING_PX` — see `strokeEdge`. */
+const CONSTRUCTION_CASING_PX = 0.5;
+
 async function main() {
   statusEl.textContent = "loading kernel…";
   await ensureKernelLoaded();
@@ -251,9 +262,16 @@ async function main() {
     // A hidden feature has no faces, so no body for these to be the edges of.
     const bodies = new Set([...model.features.keys()].filter((n) => !model.hidden.has(n)));
     const solid = occluded ? solidEdges(model, bodies) : new Set<string>();
+    // **Construction geometry** is thin and in a muted ink of its own — never
+    // dashed, because a dash here means selection (the owner's rule: a shape
+    // being drawn is a solid line). Hover and selection outrank it exactly as
+    // they outrank every other ink, so a construction circle lights and selects
+    // like any circle; it outranks a solid's edge colour, since a feature's
+    // twin flagged construction should look it.
     const stroke = (name: string) => (lit.has(name) ? "#e8a33d" : chosen.has(name) ? SELECTION
-      : solid.has(name) ? SOLID_EDGE : "#afc6d9");
-    const weight = (name: string) => (lit.has(name) ? 2.2 : chosen.has(name) ? 2.6 : 1.4);
+      : model.isConstruction(name) ? CONSTRUCTION : solid.has(name) ? SOLID_EDGE : "#afc6d9");
+    const weight = (name: string) => (lit.has(name) ? 2.2 : chosen.has(name) ? 2.6
+      : model.isConstruction(name) ? CONSTRUCTION_PX : 1.4);
 
     // **Quiet geometry** (quiet.ts; the owner: points "disappear when they are
     // the endpoint of a line or a corner (except when you hover over them)",
@@ -515,7 +533,10 @@ async function main() {
     const rim = casing && colour !== SOLID_EDGE;
     const inkOf = (hidden: boolean) => (casing ? CASING : hidden ? hiddenInk(colour) : colour);
     const skip = (hidden: boolean) => (hides !== null && hidden) || (casing && (hidden || !rim));
-    if (casing) g.lineWidth = width + 2 * CASING_PX;
+    // Construction ink is mid-dark already, so it needs only a hairline of rim
+    // to part it from a face of its own shade; a full rim would draw it on a
+    // solid as a heavy dark line, which is the opposite of thin and muted.
+    if (casing) g.lineWidth = width + 2 * (colour === CONSTRUCTION ? CONSTRUCTION_CASING_PX : CASING_PX);
     try {
       if (!runs || runs.length === 1) {
         const hidden = runs !== null && runs[0].hidden;

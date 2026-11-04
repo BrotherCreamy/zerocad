@@ -50,7 +50,8 @@
 import { Tool, defineTool, type PointerInfo, type RenderContext } from "./tool.ts";
 import { parallel } from "../relations/geometry.ts";
 import { frameBasis } from "../relations/refs.ts";
-import { placePoint } from "./place.ts";
+import { DRAWING_OPTIONS, asArmed, placePoint } from "./place.ts";
+import type { OptionSpecs } from "./options.ts";
 
 /** How near an axis the preview has to be, in degrees, to be pulled onto it. */
 export const AXIS_DEGREES = 3;
@@ -96,6 +97,7 @@ interface Aim {
 }
 
 export class LineTool extends Tool {
+  static readonly options: OptionSpecs = DRAWING_OPTIONS;
   readonly name = "line";
   /** The first click of a fresh chain — kept whole, so its snap survives to commit. */
   private pending: PointerInfo | null = null;
@@ -131,6 +133,7 @@ export class LineTool extends Tool {
     // to the default: `resolveFrame` would throw without one, and a tool must
     // not turn a drawing gesture into an error message.
     if (m.defaultFrame && aim.axis) parallel(m, line.name, `${m.defaultFrame}.${aim.axis}`);
+    asArmed(this.ctx, line.name);
 
     // The committed end becomes the next segment's start: the same entity.
     this.pending = null;

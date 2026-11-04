@@ -210,6 +210,10 @@ function filletBody(model: Model, l1Name: string, l2Name: string, r: number, fra
   const [start, end] = sweepsAs(ctr, t1, t2, short, side) ? [shared, t2p.name] : [t2p.name, shared];
 
   const arc = model.addArc(ctrp.name, start, end, r, frame);
+  // A rounded construction corner is construction too: a real arc between two
+  // construction legs would be a stray edge drawn as if it were the outline.
+  // Only when both are — with one real leg there is no saying which it is.
+  if (model.isConstruction(l1.name) && model.isConstruction(l2Name)) model.setConstruction(arc.name, true);
   radius(model, arc.name, r);
   arcEndpoints(model, arc.name);
   tangent(model, l1.name, arc.name);
@@ -665,6 +669,15 @@ function checkMember(model: Model, member: string, op: "extrude" | "revolve"): v
   if (!e || (e.kind !== "line" && e.kind !== "arc" && e.kind !== "circle")) {
     throw new Error(`${JSON.stringify(member)} is not a line, arc or circle — ${op} names a member of the loop to ${op}`);
   }
+  // Said by name rather than left to "in no closed loop", which would send the
+  // reader looking for a gap in the outline that is not there.
+  if (model.isConstruction(member)) throw new Error(constructionBoundsNothing(member, op));
+}
+
+/** Why a construction entity cannot be a profile's member, and the way out. */
+function constructionBoundsNothing(name: string, op: string): string {
+  return `"${name}" is construction geometry, which bounds no region — construction(${JSON.stringify(name)}, false) `
+    + `makes it a boundary ${op} can use`;
 }
 
 /** A portion as `loops()` and the hover print it: `l1[p1→p9]`, in the entity's own direction. */
@@ -702,6 +715,12 @@ function givenProfile(model: Model, member: string, frame: string | null | undef
     throw new Error(`a member appears twice in ${words.op}'s loops`);
   }
   if (!flat.some((m) => memberName(m) === member)) throw new Error(`"${member}" is not in the loops given`);
+  // A profile handed over whole is walked by its joins and never asks
+  // findLoops, so it has to be told what findLoops would have left out. A
+  // replay meets this only if the file was edited: the flag cannot be set on a
+  // profile member (`construction`), so a journal never flags one first.
+  const flagged = flat.map(memberName).find((n) => model.isConstruction(n));
+  if (flagged !== undefined) throw new Error(constructionBoundsNothing(flagged, words.op));
   for (const p of parts) {
     for (const v of [p.from, p.to]) {
       if (!model.entities.has(v) && v.includes("×")) {
@@ -1855,6 +1874,73 @@ export function regen(model: Model, feature: string, regenerated?: unknown): str
   return model.asOperation("regen", () => [feature, out], () => {
     out = regenerateFound(model, [feature], plan);
     return feature;
+  });
+}
+
+// --- construction geometry --------------------------------------------------
+
+/** Whether `name` is something that can carry the construction flag: a line, arc or circle. */
+function takesConstruction(model: Model, name: string): boolean {
+  const k = model.entities.get(name)?.kind;
+  return k === "line" || k === "arc" || k === "circle";
+}
+
+/**
+ * `construction(...names)` flags lines, arcs and circles as **construction
+ * geometry** — still constrained, solved, picked and snapped to, but forming no
+ * regions (loops.ts) — and `construction(...names, false)` clears it. One word
+ * with a value rather than a pair of words (`real(…)`), because the flag is a
+ * value: it is what a drawing tool's `construction` option sets, and
+ * `{ construction: false }` and `construction("c1", false)` should read alike.
+ *
+ * **Groups and features expand at the call, and the journal says what they
+ * expanded to.** The owner, on why it is per entity: *"if it is a group based
+ * inherited thing, then geometry could be both construction geometry and not
+ * construction geometry simultaneously"*. So `construction("g1")` flags each
+ * of g1's members now, and nothing g1 does later — gaining a line, losing one —
+ * changes any entity's flag; the entry is `construction("l1", "l2", …)`, the
+ * curves whose flag changed, so a replay cannot read the group any other way.
+ * Points, frames and relations among the names (a box-selected batch, a
+ * group's corners) are passed over — they bound nothing, so they have no flag
+ * — and only a call that names no line, arc or circle at all is refused.
+ *
+ * **A feature's profile member is refused**, by name: the solid stands on that
+ * boundary, and a boundary flagged construction under it would be a feature
+ * whose profile no longer exists. (Once features follow their regions, this
+ * becomes a regeneration; for now, refuse.) Clearing never meets that.
+ *
+ * A call that changes nothing journals nothing, so it is no undo step — `hide`'s
+ * rule. Returns the names whose flag changed.
+ */
+export function construction(model: Model, ...args: unknown[]): string[] {
+  const on = typeof args.at(-1) === "boolean" ? (args.pop() as boolean) : true;
+  for (const a of args) {
+    if (typeof a !== "string") {
+      throw new Error(`construction takes names, then true or false — and ${JSON.stringify(a) ?? String(a)} is neither`);
+    }
+  }
+  const given = args as string[];
+  if (!given.length) throw new Error("construction needs a name — of a line, arc or circle, a group or a feature");
+  const curves = model.expand(given, "construction").filter((n) => takesConstruction(model, n));
+  if (!curves.length) {
+    const list = given.map((n) => `"${n}"`).join(", ");
+    throw new Error(`${list} ${given.length === 1 ? "has" : "have"} no line, arc or circle in ${given.length === 1 ? "it" : "them"} — `
+      + "only they bound regions, so only they can be construction");
+  }
+  const changed = curves.filter((n) => model.isConstruction(n) !== on);
+  if (!changed.length) return [];
+  if (on) {
+    const standing = featuresOnProfile(model, changed);
+    if (standing.length) {
+      const f = standing[0];
+      const held = changed.filter((n) => f.loops.some((l) => l.some((m) => memberName(m) === n)));
+      throw new Error(`"${held[0]}" is part of ${f.name}'s profile — a solid's profile cannot stop being a boundary under it. `
+        + `del("${f.name}") keeps the sketch and removes the solid; then it can be construction`);
+    }
+  }
+  return model.asOperation("construction", on ? changed : [...changed, false], () => {
+    for (const n of changed) model.setConstruction(n, on);
+    return changed;
   });
 }
 

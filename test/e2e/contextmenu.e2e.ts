@@ -131,7 +131,7 @@ test("Dimension on an edge holds it at the length it already has", async () => {
   await rightClick((ax + bx) / 2, (ay + by) / 2);
 
   assert.match(await header(), new RegExp(`^${l.name}\\b`), "the menu names what it is about");
-  assert.deepEqual(await items(), ["Insert name", "Delete", "Dimension", "Undo", "Redo"]);
+  assert.deepEqual(await items(), ["Insert name", "Delete", "Dimension", "Construction", "Undo", "Redo"]);
   const command = (await commands()).Dimension;
   assert.match(command, /^dist\("p\d+", "p\d+", [\d.]+\)$/, `Dimension typed ${command}`);
   const asked = Number(/, ([\d.]+)\)$/.exec(command)![1]);

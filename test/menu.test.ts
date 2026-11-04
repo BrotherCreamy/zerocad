@@ -50,7 +50,7 @@ const commandFor = (m: Menu, label: string): string => {
   return a.do === "run" ? a.command : "";
 };
 
-test("a line's menu names it, and offers insert, delete and a dimension", async () => {
+test("a line's menu names it, and offers insert, delete, a dimension and construction", async () => {
   await loadKernel();
   const model = new Model(2);
   const a = model.addPoint([0, 0]).name;
@@ -59,7 +59,7 @@ test("a line's menu names it, and offers insert, delete and a dimension", async 
 
   const menu = menuFor(model, pickOf(model, l));
   assert.match(menu.header!, new RegExp(`^${l}\\b`));
-  assert.deepEqual(labels(menu), ["Insert name", "Delete", "Dimension"]);
+  assert.deepEqual(labels(menu), ["Insert name", "Delete", "Dimension", "Construction"]);
   assert.deepEqual(item(menu, "Insert name").action, { do: "insert", name: l });
   assert.equal(commandFor(menu, "Delete"), `del("${l}")`);
   // 3-4-5: the dimension is the length as it stands, between the endpoints by

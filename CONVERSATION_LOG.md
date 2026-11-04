@@ -106,6 +106,54 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### Construction geometry
+
+**Why a flag on the entity, and why the journal resolves groups.** The owner
+decided it was per entity — *"at least based on the name "construction
+geometry" it implies per entity"* — and then said why it could not be a
+group's: *"if it is a group based inherited thing, then geometry could be both
+construction geometry and not construction geometry simultaneously"* (a line in
+two groups, one construction and one not). So the flag is a field on the line,
+arc or circle, not a `Set` beside the model the way `hidden` is: it goes with
+the entity when it is deleted with no cleanup to forget, and stays with a line
+an operation re-points. *Rejected:* journalling it as typed, `hide`'s rule.
+That would have been correct — replay re-expands `g1` at the same step — but
+the entry would then say "g1", which is exactly the reading the owner ruled
+out; `construction("l1", "l2")` says which entities, and a file reader never
+has to know what g1 was.
+
+**Why one spelling.** *Rejected:* `real(...)` beside `construction(...)`. The
+flag is a value; the tools' option is `{ construction: false }`; the menu's two
+items type the same word with and without `false`. Two words would also have
+needed two replay entries for one fact.
+
+**Why pass over points.** A box-selected batch or a group carries corners with
+its edges, and refusing the whole call for them would be the "errors for no
+reason" `effortless.md` rules out. A point has no regions to form, so there is
+nothing for a flag on it to mean. Only a call with no curve in it at all is
+refused, and the command line names a point or frame typed outright.
+
+**Where loops ignore it.** At `collect`, the single place every edge enters
+`findLoops`: nothing downstream (cuts, crossings, planes, containment) can see
+an edge that never came in, so "bounds nothing, splits nothing, crosses
+nothing" is one line rather than a rule each step must remember. The one path
+that does not go through `findLoops` — a profile handed over whole, which is
+walked by its joins — is told separately (`givenProfile`).
+
+**The look on a solid.** The first picture had the construction line over the
+lid drawn as a heavy dark stripe: the entity pass rims every light mark with
+1.25px of casing a side so it reads over a light face, and a 0.9px teal core
+inside 3.4px of near-black reads as a dark line, not a thin muted one. The
+teal is mid-dark already, so its casing is a hairline (0.5px); looked at
+enlarged, it is a thin teal line on the face with an edge parting it.
+*Rejected:* no casing at all — the faces' shade runs down to a mid slate,
+where a teal of similar value would vanish.
+
+**The fillet arc.** Not in the spec. Filleting two construction lines drew a
+real arc between them — an outline-coloured stray edge — so the arc takes the
+flag when both legs have it, inside `fillet`'s own operation, so replay makes
+the same.
+
 ### An extrude makes no lid frame
 
 **The report** was the one that started the last package — *"i'm getting a

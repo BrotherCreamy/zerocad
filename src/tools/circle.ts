@@ -18,10 +18,12 @@
 // and projected, an ellipse on a plane seen at an angle.
 
 import { Tool, defineTool, type PointerInfo, type RenderContext } from "./tool.ts";
-import { CurvePlane, placePoint, requirePlanar } from "./place.ts";
+import { CurvePlane, DRAWING_OPTIONS, asArmed, placePoint, requirePlanar } from "./place.ts";
+import type { OptionSpecs } from "./options.ts";
 import { arcSamples, arcSegments, circleFrame } from "../arcgeom.ts";
 
 export class CircleTool extends Tool {
+  static readonly options: OptionSpecs = DRAWING_OPTIONS;
   readonly name = "circle";
   /** The whole press, so the centre's snap survives to commit — see place.ts. */
   private from: PointerInfo | null = null;
@@ -59,7 +61,7 @@ export class CircleTool extends Tool {
       // Only the centre is a point the user placed; the rim is a radius, not an
       // entity, so there is nothing there to infer a constraint about.
       const ctr = placePoint(this.ctx, this.plane.settle(pressed));
-      m.addCircle(ctr, r);
+      asArmed(this.ctx, m.addCircle(ctr, r).name);
 
       this.ctx.requestSolve();
       this.ctx.finish();

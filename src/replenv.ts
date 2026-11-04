@@ -19,7 +19,7 @@ import { OptionMemory, declaredOptions, defaultsOf, describeValues, resolveOptio
 import * as basic from "./relations/basic.ts";
 import * as geom from "./relations/geometry.ts";
 import {
-  del, extrude, extrudeNeedsFrame, fillet, filletNeedsFrame, regen, revolve, revolveNeedsFrame, set,
+  construction, del, extrude, extrudeNeedsFrame, fillet, filletNeedsFrame, regen, revolve, revolveNeedsFrame, set,
 } from "./operations.ts";
 import { facingPoints, sketchFrameFor, type FacePlane } from "./sketchface.ts";
 import { cross3, lift3, sub3 } from "./vec3.ts";
@@ -820,7 +820,10 @@ export function neocadScope(h: EnvHandles): Bag {
     // point), so `members("e1")` lists them — the count is of exactly what it
     // lists, the depth dimension included.
     ls: () => {
-      const mark = (name: string, line: string) => (model.hidden.has(name) ? `${line}  (hidden)` : line);
+      const mark = (name: string, line: string) => {
+        const said = model.isConstruction(name) ? `${line}  (construction)` : line;
+        return model.hidden.has(name) ? `${said}  (hidden)` : said;
+      };
       const made = new Set<string>();
       for (const f of model.features.values()) for (const n of f.owns) made.add(n);
       return [
@@ -1029,6 +1032,24 @@ export function neocadScope(h: EnvHandles): Bag {
     groups: (name?: unknown) => groupsOf(model, name),
     hide: (...names: unknown[]) => hide(model, ...names),
     show: (...names: unknown[]) => show(model, ...names),
+    /**
+     * Construction geometry (operations.ts): `construction(...names)` sets the
+     * flag, `construction(...names, false)` clears it. A point or a frame
+     * named outright is passed over and the log says so; one a group brought
+     * in is passed over quietly, since a group's corners are not a mistake.
+     */
+    construction: (...args: unknown[]) => {
+      const changed = construction(model, ...args);
+      const named = args.filter((a): a is string => typeof a === "string" && model.entities.has(a));
+      const over = named.filter((n) => {
+        const k = model.entities.get(n)!.kind;
+        return k !== "line" && k !== "arc" && k !== "circle";
+      });
+      if (over.length) {
+        h.log?.(`${over.join(" ")} passed over — only lines, arcs and circles bound regions, so only they take the flag`);
+      }
+      return changed;
+    },
   };
 
   const scope: Bag = { ...relations, ...geometry, ...operations, ...grouping, ...persistence, ...clauses, ...commands };
@@ -1186,6 +1207,17 @@ function help(scope: Bag): string {
     "           still solved; a hidden feature's faces go too. Part of the",
     "           drawing: journalled, saved, undone. The menu's Hide and, on",
     "           empty canvas, Show all type them.",
+    'construction  construction(...names)  construction(...names, false) —',
+    "           construction geometry forms no regions: it bounds, splits and",
+    "           crosses nothing, so a circle inside an outline is no hole and a",
+    "           line across it no split. Otherwise ordinary: constrained,",
+    "           solved, picked, snapped to; drawn thin and muted. A flag on each",
+    "           line, arc or circle (points have none): a group or feature named",
+    "           flags its members now, and later changes to the group change",
+    "           no flag. Journalled, saved, undone. A solid's profile member is",
+    "           refused. The menu's Construction / Not construction type it;",
+    '           the drawing tools take it too: arm("circle", { construction: true }).',
+    "           The hover tag says construction; ls() (construction).",
     "inspect    ls()  rels(name?)  coords(name)  solve()  tools()  hover()",
     "           snapping(on)  glyphs(on)  model",
     "           loops() — the closed loops of lines and arcs (and whole circles),",

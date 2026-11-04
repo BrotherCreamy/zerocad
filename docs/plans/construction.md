@@ -1,6 +1,43 @@
 # Plan: construction geometry — a per-entity flag
 
-**Status: queued** (2026-11-04). The owner's decision, verbatim:
+**Status: built** (2026-11-04) — the flag on `LineEntity`/`CircleEntity`/
+`ArcEntity` with `isConstruction`/`setConstruction` in `src/model.ts`; the
+`construction` operation in `src/operations.ts` (and `checkMember`'s and
+`givenProfile`'s refusals, fillet's arc); `collect` in `src/loops.ts`; the op
+in `src/replenv.ts` and `src/persist.ts`'s table (no format bump); the look in
+`src/main.ts`; the hover tag in `src/picking.ts`; the menu items in
+`src/menu.ts`; `DRAWING_OPTIONS`/`asArmed` in `src/tools/place.ts` and the six
+drawing tools. Deviations, each also in TODO.md's Done entry:
+
+1. **Journalled resolved, not as typed.** `hide` journals what was typed and
+   lets replay re-expand; `construction` journals the curves whose flag it
+   changed — `construction("g1")` is written `construction("l1", "l2")`. The
+   owner, after this spec: *"if it is a group based inherited thing, then
+   geometry could be both construction geometry and not construction geometry
+   simultaneously"* — so the entry says which entities, and no reading of g1
+   at any later step can enter into it. (The *Design* bullet below said "as
+   `hide` does"; it expands as `hide` does, and journals differently.)
+2. **One spelling, `construction(...names, false)`**, not `real(...)`: the flag
+   is a value, and the tools' option is `{ construction: false }`.
+3. **Points, frames and relations among the names are passed over**, not
+   refused (a box-selected batch, a group's corners); only a call naming no
+   line, arc or circle is refused, and the command line logs a point or frame
+   named outright as passed over. The menu types the curves only.
+4. **A fillet of two construction legs makes a construction arc** (one real
+   leg: a real arc). Not in the spec; without it a rounded construction corner
+   drew a real arc between two construction lines.
+5. **extrude/revolve refuse a construction member by name** (typed, or in a
+   profile handed over whole), rather than "in no closed loop".
+6. **The casing over a face is a hairline** (0.5px a side, against 1.25): the
+   full rim drew a construction line on a solid as a heavy dark line.
+7. **The e2e makes the circle not construction in `view("hidden")`**: once the
+   rectangle is extruded the circle is under the opaque lid, where shaded
+   picks nothing (opaque-solids.md), so its menu cannot be reached there.
+8. **Every drawing tool now shows the options panel** (a `construction`
+   checkbox, no ✓ ✗) — a direct consequence of the spec's option, and
+   `tooloptions.e2e.ts`'s "a tool with no options" became the point tool.
+
+The owner's decision, verbatim:
 *"construction geometry should be a per entity flag. at least based on the
 name "construction geometry" it implies per entity"*.
 
@@ -52,7 +89,8 @@ expanding; loops ignoring construction entities (a construction circle inside
 a rectangle leaves one region; a construction line across it leaves one); a
 feature's profile member refused; snapping and picking unchanged. E2e: draw a
 rectangle and a circle inside, make the circle construction from its menu,
-extrude the rectangle — no hole; make it not construction — `regen("e1")`
+extrude the rectangle — no hole; make it not construction (from its menu in
+`view("hidden")`: the circle is under the opaque lid) — `regen("e1")`
 gives the hole (until region binding makes that automatic); draw a circle with
 the circle tool's `construction` option on; the look on the dark ground and
 on a solid — thin, muted, not dashed; LOOK at the screenshots. Full

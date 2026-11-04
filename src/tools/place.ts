@@ -40,7 +40,9 @@
 // geometry off it, and the snap wins (it is what was aimed at).
 
 import type { PointerInfo, ToolContext } from "./tool.ts";
+import type { OptionSpecs } from "./options.ts";
 import type { Model } from "../model.ts";
+import { construction } from "../operations.ts";
 import type { Snap } from "../snapping.ts";
 import { coincident, midpoint, onPlane } from "../relations/basic.ts";
 import { onCircle, pointOnLine } from "../relations/geometry.ts";
@@ -212,6 +214,27 @@ export class CurvePlane {
     this.pending = null;
     this.madeAt = null;
   }
+}
+
+/**
+ * What every drawing tool can be armed with: `construction`, so a circle can
+ * be drawn as construction geometry from the start (docs/plans/
+ * construction.md) — and, being a declared option, it is in the options panel
+ * as a checkbox, typed as `arm("circle", { construction: true })` and
+ * remembered like any option. One declaration, shared, so the six tools cannot
+ * come to spell it six ways.
+ */
+export const DRAWING_OPTIONS: OptionSpecs = {
+  construction: { default: false },
+};
+
+/**
+ * Flags what a drawing tool just made as construction, if it was armed so — the
+ * same `construction` operation a typed call runs, so the journal holds the same
+ * entry the menu's Construction would have made, right after the shape.
+ */
+export function asArmed(ctx: ToolContext, ...curves: string[]): void {
+  if (ctx.options.construction === true) construction(ctx.model, ...curves);
 }
 
 /**

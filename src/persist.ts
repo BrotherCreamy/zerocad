@@ -22,7 +22,7 @@ import { Model, type JournalEntry } from "./model.ts";
 import * as basic from "./relations/basic.ts";
 import * as geom from "./relations/geometry.ts";
 import { isFullTurn } from "./relations/revolution.ts";
-import { extrude, featuresOnProfile, fillet, regen, revolve, set } from "./operations.ts";
+import { construction, extrude, featuresOnProfile, fillet, regen, revolve, set } from "./operations.ts";
 import * as grouping from "./groups.ts";
 import type { ToolSource } from "./toolsource.ts";
 import { freshName, planeTranslation } from "./planetranslation.ts";
@@ -196,6 +196,11 @@ export const FORMAT = "neocad-model";
  * `removeFrom` before its `deleteEntity`, which an older build refuses by name
  * at that step, as it refuses the rest). The registry and the hidden set are
  * rebuilt by replay, never saved.
+ *
+ * **Nor did construction geometry** (docs/plans/construction.md): one new op,
+ * `construction`, journalled with the curves it flagged resolved; the flag is
+ * on the entity and rebuilt by replay, never saved, so `values` is untouched
+ * and an older build refuses the step by name.
  */
 export const VERSION = 11;
 
@@ -310,6 +315,10 @@ function replayTable(model: Model): Map<string, (...args: unknown[]) => unknown>
     // for at that step is what it stands for when the step is replayed.
     hide: rel(grouping.hide),
     show: rel(grouping.show),
+    // Construction geometry (see operations.ts): journalled with the curves
+    // it changed resolved, never the group or feature typed, so a replay flags
+    // exactly the entities the call did.
+    construction: rel(construction),
   }));
 }
 
