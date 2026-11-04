@@ -3,6 +3,7 @@
 // measured. Each is REPL source, typed into a fresh app.
 
 import assert from "node:assert/strict";
+import { existsSync } from "node:fs";
 import { axisFrame, type AppContext } from "./harness.ts";
 
 export interface Scene {
@@ -95,6 +96,8 @@ export function scene(name: string): Scene {
   return found;
 }
 
+const KERNEL_BUILT = existsSync(new URL("../../src/solids/smlib-gen/smlib.mjs", import.meta.url));
+
 /** Builds a scene in the app on the suite's kernel-aligned default frame `f`, solved and drawn. */
 export async function build(app: AppContext, source: string): Promise<void> {
   await axisFrame(app);
@@ -103,6 +106,15 @@ export async function build(app: AppContext, source: string): Promise<void> {
     assert.equal(r.ok, true, `${src}\n→ ${r.error}`);
   }
   assert.ok((await app.repl("model.features.size")).value as number > 0, "a solid was built");
+  // A boss on a body adds to it (docs/plans/solids-kernel.md), and the body is
+  // then the solid kernel's, which answers from its Worker a moment later —
+  // the first time, after the Worker has started. The picture is asked of
+  // once it has. (With no kernel build there is no answer to wait for: the
+  // body is drawn as its features, and the tests that need it say so.)
+  if (KERNEL_BUILT) await app.page.waitForFunction(() => {
+    const b = (window as never as { __neocad: { bodies?: { settled: boolean } } }).__neocad.bodies;
+    return !b || b.settled;
+  }, undefined, { timeout: 20_000 });
 }
 
 /**
