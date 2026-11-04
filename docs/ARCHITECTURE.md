@@ -914,6 +914,95 @@ and is why the axis must lie in the profile's plane. Caps only for a partial
 turn. Every quad is planar, which is all the depth layer needs; the 355° limit
 the painter's sort had here went with the sort.
 
+## A body is a chain, and the kernel builds only what a boolean made
+
+ZeroCAD's equations live in the solver. Its solids are built by a second
+kernel, NVIDIA's SMLib, compiled to wasm from pinned source by
+`scripts/solids/build.sh` and run in a Worker
+(docs/plans/solids-kernel.md). The two kernels never meet. The relational
+model holds what a user means: a profile, a depth, an axis, a work plane. The
+solid kernel is handed numbers derived from it and hands back faces, edges and
+triangles.
+
+**The layer rule's kernel edge holds for this kernel too.** `src/solids/`
+(the contract `kernel.ts`, the SMLib adapter, `evaluate.ts`, `naming.ts`,
+`profile.ts`, the Worker's `serve.ts` and the page's `client.ts`) knows
+planes, profiles as 2D numbers, sweeps, booleans and tags. It has no point,
+entity or name of the model. The page side sits above the model:
+- `modes.ts` says which features make which bodies, and what a new feature
+  does by default;
+- `bodies.ts` reads the program off the model, sends it, and turns the answer
+  into faces to draw and faces to pick;
+- `kernelbrep.ts` turns the kernel's topology into the exporter's B-rep.
+
+`main.ts` constructs the client (`solidshost.ts` says where the Worker and the
+wasm are in each build).
+
+**A body is its chain**: a feature of mode `new` starts one, and each later
+feature whose `into` names that body adds to it, cuts from it or intersects
+it, in the order the features were made. That order is a dependency order,
+because a feature can only name a body that existed when it was made. So
+there is no timeline to keep and nothing to reorder. A feature with no mode
+(every feature in every file older than format 14) is a body of its own,
+which is what it always was.
+
+**The default is decided once, at the call, and journalled resolved.** A
+solid that touches or overlaps a body adds to it; one that touches nothing is
+new; Cut is never a default. Whether a solid touches a body is a closed-form
+question (`insideBody`: a point's foot in the profile, its height within the
+depth, union and cut in chain order). So the default needs no kernel, and a
+replay reads no geometry: `Model.journalling` is false while a file is being
+replayed, and the call takes the mode it was given. Moving a profile off its
+body later does not quietly change what it does.
+
+**Only a boolean goes to the kernel.** A body of one feature is drawn as it
+always was, by `faces.ts`, live at every frame, so old files draw pixel for
+pixel as they did, a drag has no lag, and the app is whole before the kernel
+loads. A body of two or more features is built by the kernel:
+- **Asynchronous and cached.** `Bodies.sync` sends the program when it
+  differs from the last one sent, with one request in flight and the newest
+  waiting. The evaluator caches each node by the hash of every node up to it,
+  so a change to the last feature rebuilds only that feature.
+- **Never a broken picture.** Until the answer arrives the last good body is
+  drawn. A refusal keeps the last good body and says why in the log.
+- **Drawn and picked as faces.ts faces.** The kernel's triangles become
+  faces.ts `Face`s, each carrying its face's name and its edges' segments. So
+  the face layer, the painter's fallback, the occlusion answer and the quiet
+  set take a kernel body exactly as they take an extrude, and nothing below
+  `main.ts` knows which kernel built what it draws.
+
+**Names are the kernel's history, not a geometric guess.** Right after each
+sweep, each face is tagged `feature·1000 + role` (base, lid, or profile member
+*i*). SMLib carries the tag onto every piece of a face that survives a
+boolean. A face is named by its tag (`e3.lid`); the pieces of a split face
+share that name and are told apart by their neighbours. An edge is named by
+its two faces (`e1.m1|e2.m0`), and a seam by its one face (`e2.m0:seam`).
+Measured through topology changes (`test/solidsidentity.test.ts`):
+- a pocket that breaks through loses exactly its floor and the floor's edges,
+  and gets them back when it is made shallow again;
+- a hole dragged out through a wall splits the wall into two pieces with one
+  name;
+- a sketch on a face that is gone stays where it was, and the log says the
+  face is gone.
+
+**What is relational and what is derived.**
+- **Relational:** the profile, the depth and angle dimensions, the axis, the
+  work plane, the mode, and an extrude's twins and walls. The twins stay solved
+  entities, so a constraint to a lid's edge, in an old file or a new one,
+  still holds.
+- **Derived, every rebuild, never saved:** the body's faces, edges, volume
+  and STEP topology.
+
+In a kernel body the twins are quiet in every view (`quiet.ts`). The kernel
+draws what the body is; the twins are what the dimensions hold. Deriving the
+twins from the kernel, as the spike suggested, would have cost every old
+constraint on a lid and made the first drag wait for the Worker.
+
+**The Worker can die, hang or leak, and the app may not.** `SolidsClient`
+replaces it on a crash (an abort in SMLib is fatal to its module), on 30 s
+without an answer, and past 256 MB (the fillet leak the spike measured). The
+next request starts a fresh one, and the log says each time.
+
 ## Constraints are drawn, and a drawn constraint is a thing you can click
 
 Every relation wears a small mark beside the geometry it constrains. The tiers
@@ -1293,7 +1382,7 @@ until the next action went unrecorded.
 
 ## Why there is an end-to-end suite
 
-Fourteen bugs so far were invisible to the unit tests and obvious within seconds
+Seventeen bugs so far were invisible to the unit tests and obvious within seconds
 of running the app:
 
 1. a status readout that went stale, so a conflict could be introduced from
@@ -1358,6 +1447,24 @@ of running the app:
    layouts it had been given; the e2e suites that hold a finger on a real
    tray failed the first time the tray changed. A column's tip is now
    narrowed to the room beside it.
+15. The organiser's body row losing its name on a phone. The row put the
+   body's name and then its whole chain in a pane a phone makes narrow: first
+   cut to `e…`, then, with the chain shortened, `−e2 +e3 3` with no `e1` at
+   all, because the name was the part allowed to shrink. The unit test read
+   the full text and passed. Found by looking at the iPhone screenshots of
+   solids-kernel.md, twice; the name now keeps its width and the chain gives
+   way to an ellipsis, and the phone suite asserts the name is whole.
+16. The hidden view drawing nothing of a kernel body behind its faces. An
+   extrude's hidden edges are its twins, dimmed where a face covers them; a
+   kernel body's twins are quiet, and its own edges went only to the face
+   layer, which depth-tests them away. Every unit test passed, the solids
+   suites too; the hidden view's old pixel tests failed the first time the
+   whole suite ran, because the boss on their stepped block and on their
+   plate now adds into it by default, making a kernel body.
+17. The organiser's empty Bodies section, saying again what Features says,
+   pushing Groups out of an iPhone's pane, so a tap on a group landed on
+   nothing. The organiser suite's phone test failed; Bodies is now shown
+   once there is a body.
 
 None of these are mathematics. They are all *assembly*. Hence `npm run
 test:e2e`, and hence the expectation that anything touching the app is checked

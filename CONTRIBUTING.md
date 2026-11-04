@@ -5,8 +5,18 @@
 ```sh
 npm install
 npm run build:kernel    # cargo -> wasm-pack -> src/kernel/wasm-gen/ (gitignored)
+npm run build:solids    # NVIDIA SMLib from pinned source -> src/solids/smlib-gen/ (gitignored)
 npm run dev             # vite, on :5173
 ```
+
+`build:solids` (`scripts/solids/build.sh`) is the solid kernel. It fetches
+usd-brep and Emscripten at the commits it pins into `.solids-cache/` and
+compiles SMLib to wasm: about 15 minutes on four cores cold, and about a minute and a half warm, which only relinks.
+`SMLIB_SRC`, `EMSDK` and `SOLIDS_OBJ` point it at a checkout you already have.
+Without it the app still runs: bodies with a boolean are drawn as their
+features, cuts left out, the log says why, and the kernel's tests skip and
+say so. Never commit its output, and never vendor a prebuilt kernel; the
+point of the recipe is that we can rebuild, patch and bisect it.
 
 Two things about the toolchain that will otherwise cost you an afternoon:
 
@@ -30,7 +40,7 @@ without a second download.
 
 ```sh
 npm run typecheck   # tsc --noEmit
-npm test            # unit — the mathematics. Fast, no browser.
+npm test            # unit — the mathematics. No browser; ~30 s with the solid kernel built.
 npm run test:kernel # the Rust crate's own tests
 npm run test:e2e    # end-to-end — a real browser driving the real app
 npm run test:all    # all of the above
@@ -50,7 +60,7 @@ never registered on the dev server, which would otherwise serve yesterday's
 code from its cache.
 
 **Run the e2e suite for anything that touches the app**, not just when it
-feels risky. Fourteen bugs so far (the count is kept honest in docs/ARCHITECTURE.md) passed the entire unit suite and were obvious
+feels risky. Seventeen bugs so far (the count is kept honest in docs/ARCHITECTURE.md) passed the entire unit suite and were obvious
 within seconds of opening the page — the list is in
 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). The unit tests cover the
 mathematics; they cannot see a stale readout or an event that never fires.

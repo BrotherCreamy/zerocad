@@ -16,13 +16,44 @@ etc).
   on every push to the working branch. Called NeoCAD until 0.1.0; the
   internal code name stays in identifiers, the file format tag and storage
   keys (see TODO.md's register).
-- **A solid-kernel spike, not part of the app** (`spikes/solid-kernel/`;
-  findings in docs/plans/solid-kernel-spike.md). It holds a recipe that
-  builds NVIDIA's SMLib to wasm from source, a kernel-neutral TypeScript
-  contract with an SMLib adapter and a Worker, eleven test parts checked
-  against closed forms, the face and edge naming scheme, and benchmarks for
-  Node and headless Chromium. Nothing under `src/` imports it, and the
-  kernel build is never committed.
+- **Solids on SMLib: bodies that add, cut and intersect**
+  (docs/plans/solids-kernel.md, built). NVIDIA's SMLib is built from pinned
+  source (`npm run build:solids` runs `scripts/solids/build.sh`, output in the
+  gitignored `src/solids/smlib-gen/`). It runs in a Worker behind
+  `src/solids/client.ts`, which replaces it on a crash, after 30 s without an
+  answer, or past 256 MB.
+  - **Modes.** `extrude` and `revolve` take `{ mode: "new" | "add" | "cut" |
+    "intersect", into }`; the tools have a mode row (New Add Cut ∩).
+    - The default, decided at the call and journalled resolved
+      (`src/modes.ts`), is Add when the solid touches or overlaps a body, and
+      New otherwise.
+    - Cut is offered, never defaulted.
+    - Format 14; `new` is journalled as nothing, so a file with no boolean is
+      unchanged.
+  - **Bodies.** A body is its chain in creation order, named by its first
+    feature, and listed in the organiser's Bodies section (`src/bodies.ts`).
+    - A body of one feature is drawn by `faces.ts` as before.
+    - A body of two or more is the kernel's: its tessellation becomes
+      `faces.ts` faces with names and edges attached. It is picked from the
+      kernel's triangles, and sketch on face works on any planar face.
+    - The last good body is drawn until each answer arrives, and refusals and
+      vanished faces are said in the log.
+  - **Names.** Faces are named by the tag the kernel carries (`e3.lid`,
+    `e2.m0`) and edges by their two faces (`src/solids/naming.ts`); they are
+    measured stable through topology changes (`test/solidsidentity.test.ts`).
+  - **What stays relational.** The twins stay solved entities, the skeleton
+    the dimensions hold, and are quiet in a kernel body.
+  - **STEP.** `exportStep` writes a kernel body as one solid
+    (`src/kernelbrep.ts`). Its surfaces are analytic by tag, with B-splines
+    elsewhere. Four boolean parts were read back by OpenCascade
+    (`test/fixtures/step-kernel/validated.json`).
+  - **Packaging.** The PWA carries the kernel as cached files of its own, the
+    single file carries it inline, and About carries its Apache-2.0 notice.
+  - **CI.** The Pages workflow and the `solids` workflow build the kernel,
+    cached by the recipe's hash. A cold build takes 6 m 51 s.
+  - **Known gaps** are in TODO.md's Done entry. Among them: kernel edges are
+    not yet hover or constraint targets, and a full revolve drilled through
+    its seam fails OpenCascade's strict read.
 - **No title bar** (docs/plans/chrome-logo-scale.md, built). The drawing is
   the whole window; the logo (`src/logo.ts`, also the home-screen icon's
   source) sits top-left inside the safe area as the one panel nothing moves,

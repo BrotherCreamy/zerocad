@@ -17,7 +17,9 @@ arc tools with Onshape-style constraint inference; a fillet; extrude —
 a closed loop, holes and all, expanded into a real lid of twins and walls held
 by one depth dimension, drawn shaded; and revolve — a loop turned about a frame
 axis or a line in its plane, its surface drawn from the live profile and, for a
-partial turn, its end face real geometry held by one angle dimension — with
+partial turn, its end face real geometry held by one angle dimension; either
+of which adds to a body, cuts from it, intersects it or starts one, the bodies
+built by NVIDIA's SMLib in a Worker — with
 sketching on a solid's face, a click inside it, to stack the next one on — and
 no frame made for any of it unless you ask for one) is the
 **first standard library** built on that kernel, not the kernel's whole
@@ -109,6 +111,12 @@ src/workplane.ts         what a click lands on in 3D: the work plane, the defaul
 src/loops.ts             closed loops (joined by shared point or coin, never proximity), and which one a click is in
 src/sketchface.ts        the three points of a face a sketch plane on it is made of, +z toward you
 src/faces.ts             a solid's faces from its live geometry (a revolve's swept): culled, sorted per face, lit from the eye
+src/modes.ts             which features make which body, and what a new one does by default (Add on a body, else New)
+src/bodies.ts            the bodies the kernel builds: the program sent, the last good answer drawn and picked
+src/kernelbrep.ts        a kernel body's topology as the STEP exporter's B-rep
+src/solidshost.ts        where the kernel's Worker, wasm and licence are in each build
+src/solids/              the solid kernel's side, numbers only: contract, SMLib adapter, evaluation, naming, Worker, client
+scripts/solids/          the pinned SMLib recipe (build.sh), its C glue, the Worker's entry, benches
 src/undo.ts              a stack of whole-model snapshots; imports nothing
 src/files.ts             the document: name, dirty, which way a save or share goes, the autosave; imports nothing
 src/filehost.ts          the document's commands over the browser's pickers, share sheet, downloads, drops and IndexedDB
@@ -196,7 +204,21 @@ loops()                            // its closed loops — the profiles an extru
 extrude("l1", 20)                  // a solid of the loop l1 is in: e1, its depth a dimension
 hole("e1", "c1")                   // the loop c1 is in, cut through e1; unhole("e1", "c1") fills it
 revolve("l5", yaxis(), Math.PI)    // another, turned half way about the default frame's +y
+extrude("c2", -5, { mode: "cut" }) // a circle drawn on e1's top, cut 5 deep: a hole, and e1 one body still
 ```
+
+**Bodies.** An extrude or revolve that touches or overlaps a body **adds** to
+it; one that touches nothing is a **new** body. **Cut** and **∩** (intersect)
+are chosen, in the dialog's mode row (New Add Cut ∩) or typed:
+`{ mode: "cut" }`, with `into: "e1"` to name the body. Left alone, the row
+lights what the solid will do. When the solid runs into a body, Cut is
+outlined and the log says so. A body is its first feature and everything
+added to it, cut from it or intersected with it. The organiser lists Bodies:
+hiding one hides it, and hiding a later feature leaves it out of its body.
+Bodies with a boolean are built by the solid kernel (NVIDIA's SMLib, Apache-2.0,
+built from source and run in a Worker). The last good body stays on screen
+until the kernel answers, and a refusal is said in the log. Sketch on face works
+on any flat face of a body, the floor of a pocket included.
 
 **Every constructor argument is optional**, because none of them was ever a
 constraint — `circ(centre, r)` only *seeds* a radius, it does not pin one. So
@@ -532,27 +554,31 @@ on a desktop it downloads. `exportStep("bracket")` names the file, and
 `exportStep({ curves: true })` adds the sketch curves no solid is made of.
 What the receiving tool gets:
 
-- **One body per extrude or revolve**, named `e1`, `e2`, … — there are no
-  booleans in ZeroCAD yet, so two solids that overlap arrive as two bodies
-  that overlap; combine them there if you need one. (A profile with a solid
-  island inside a hole is two bodies, `e1` and `e1.2`.)
+- **One solid per body**, named for its first feature, `e1`, `e2`, … — a
+  plate with a hole cut and a boss added is one solid. Two bodies that
+  overlap (two New features) arrive as two solids that overlap. (A profile
+  with a solid island inside a hole is two bodies, `e1` and `e1.2`.)
 - **Exact geometry, not a mesh**: planes, cylinders, cones, spheres, tori and
   surfaces of revolution, bounded by lines and circles, so a hole is a
   cylinder another tool can dimension and fillet. A full circle arrives as
-  two half circles, and a full revolve as two half turns.
+  two half circles, and a full revolve as two half turns. Where two features
+  meet in a curve no line or circle is — a boss on a cylinder — the edge is
+  the kernel's B-spline.
 - **Hidden solids are left out** (the log names them), **construction
   geometry is never exported**, and with no solid at all it says so and
   writes nothing. The sketch, the dimensions and the relations do not travel
   — STEP carries the shape, not how it was made.
 
 Every test part is read back by OpenCascade, valid and closed with its
-volume and extent matching ZeroCAD's (`test/fixtures/step/validated.json`).
+volume and extent matching ZeroCAD's (`test/fixtures/step/validated.json`,
+and for bodies with booleans `test/fixtures/step-kernel/validated.json`).
 
 ## Building and running
 
 ```sh
 npm install
 npm run build:kernel   # cargo -> wasm-pack, produces src/kernel/wasm-gen/ (gitignored, regenerated)
+npm run build:solids   # NVIDIA SMLib from pinned source -> src/solids/smlib-gen/ (gitignored; ~15 min cold, cached in .solids-cache/)
 npm test               # unit tests — the mathematics, no browser needed
 npm run test:e2e       # end-to-end — a real browser driving the real app
 npm run test:all       # both, plus typecheck and the Rust crate's own tests

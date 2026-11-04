@@ -13,8 +13,9 @@ what's below. [`TODO.md`](TODO.md) is what's next.
 
 ```sh
 npm install && npm run build:kernel   # wasm-gen/ is gitignored, regenerate it
+npm run build:solids  # the SMLib solid kernel, from pinned source; ~15 min cold, cached
 npm run typecheck   # tsc --noEmit
-npm test            # unit, ~1s, no browser
+npm test            # unit, ~30s with the solid kernel built, no browser
 npm run test:kernel # the Rust crate
 npm run test:e2e    # real browser, real app, minutes not seconds (~7 min for ~300 tests on a shared 4-core box) — starts its own dev server
 npm run test:all    # all of the above
@@ -63,7 +64,7 @@ under-constrain, an operation can leave the model malformed.
 
 ## Verification
 
-**Run `npm run test:e2e` for anything that touches the app.** Fourteen bugs so far (the count is kept honest in docs/ARCHITECTURE.md)
+**Run `npm run test:e2e` for anything that touches the app.** Seventeen bugs so far (the count is kept honest in docs/ARCHITECTURE.md)
 passed the entire unit suite and were obvious within seconds in a browser: a
 stale status readout, a fillet that satisfied every constraint to six decimals
 while drawing a broken rectangle, an auto-naming loop that hung the tab, and a

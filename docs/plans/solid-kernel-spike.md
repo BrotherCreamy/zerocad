@@ -1,7 +1,12 @@
 # Plan: a real solid kernel — the SMLib spike (go / no-go, with measurements)
 
 **Status: spiked** (2026-11-04) — **recommendation: SMLib**; see *Findings*
-at the end. The owner: *"consider using an open source
+at the end. **Shipped** by [`solids-kernel.md`](solids-kernel.md): the spike's
+directory is retired. Its recipe and glue are `scripts/solids/build.sh` and
+`glue.cpp` (`npm run build:solids`, which takes no arguments and fetches its own
+pinned sources into `.solids-cache/`), its benches `scripts/solids/bench/`,
+its contract, adapter and naming `src/solids/`, and its parts and helpers
+`test/solids/`. Paths below are the spike's, as it was. The owner: *"consider using an open source
 nurbs engine, or the nvidia one so you can do real solving. if its possible
 with what we are trying to achieve then use it, otherwise start dev on your
 own engine"* — and *"I find it impossible to make anything beyond an extruded
