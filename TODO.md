@@ -31,8 +31,27 @@ otherwise.
   from bodies. And, in parallel,
   [`one-circle-one-arc.md`](docs/plans/one-circle-one-arc.md) — one Circle and
   one Arc tool, the gesture choosing the method, tangent on existing
-  geometry, lockable; `circle3`/`arc3` stay as typed names.
+  geometry, lockable; `circle3`/`arc3` stay as typed names. **Built** (see
+  its register entry below and the Done entry).
 
+- **One circle tool and one arc tool, the gesture choosing the method**
+  (the owner, 2026-11-04: *"why are there multiple circle tools and arc
+  tools? … surely just one tool, but different ways to set constraints"*).
+  Spec: [`one-circle-one-arc.md`](docs/plans/one-circle-one-arc.md), **built**.
+  Open to veto, as built:
+  - **circle**: a drag is a centre and a radius, and three clicks are a
+    circle through them; a click along a line or circle is a tangency, and a
+    drag let go on a point passes through it.
+  - **arc**: drag end to end then click the bulge, or click the centre (a
+    press that does not move) and then both ends. The arc snaps tangent off a
+    line's or arc's end.
+  - The options panel's drop-down shows the method read and locks it, and
+    the lock is remembered. Each lock is the old tool; `tangent` is new on
+    both.
+  - `circle3` and `arc3` are typed aliases, and their lock is **not**
+    remembered.
+  - `tan` takes two circles, with the side journalled.
+  - The toolbar has 11 buttons, and the menu has one Circle and one Arc.
 - **A circle is just a circle: curves carry their own normal, one origin is
   always there, nothing makes a frame unless asked, sketch on face sets the
   work plane** (the owner, 2026-11-04: *"why everything need frame? why can
@@ -151,7 +170,7 @@ otherwise.
   ([`everything-fits.md`](docs/plans/everything-fits.md)).
 - **Taken as agreed, not yet answered in words:** one circle tool and one arc
   tool, the method read from the gesture (the owner's own suggestion), after
-  `frameless-curves.md`; then faces, surfaces and solids as typed objects
+  `frameless-curves.md` — **built**, see its entry above; then faces, surfaces and solids as typed objects
   that enforce their rules, with "region" retired into "face". Veto here.
 
 - **A new version is offered, not imposed: "Update ready — tap to reload"**
@@ -1292,10 +1311,11 @@ are flagged as such.
   numbers). `snapping(false)` turns off snapping *and* inference, like
   Onshape's inferencing toggle. Inference never merges points — two points,
   one ordinary constraint.
-- **Arc tools**: `arc` is Onshape's *center point arc* (click centre, start,
-  end); `arc3` is its *3 point arc* (click the two **endpoints**, then a point
-  the arc passes through — Onshape's order, not start-waypoint-end). The
-  waypoint is not kept as geometry, so `arc3` leaves the arc's bulge free.
+- **Arc tools** — **↳ now one arc tool** (`one-circle-one-arc.md`): a first
+  click is the centre-point arc (centre, start, end) and a first drag is
+  the 3-point arc (the two ends, then the bulge). `arc3` typed locks it to
+  3 points, whose click order is still Onshape's: end, end, waypoint. The
+  waypoint is not kept as geometry, so the bulge stays free.
 - **Fillet** takes its radius when armed — `arm("fillet", { radius: 8 })`,
   default 10 — and reuses the shared corner as a tangent point so nothing is
   orphaned. (That was originally because there was no delete; it is still the
@@ -2085,6 +2105,22 @@ extended the way `defineTool` extends the tool registry would close it.
 
 ## Smaller things
 
+- **A tray docked to the left edge, rotated so that it wraps into two lines
+  too tall to start under the logo's corner, is set beside the corner (x 91 on
+  an iPhone 13) instead of under it.** Found by `fits.e2e.ts` once the
+  toolbar had eleven buttons: thirteen wrapped into three short lines that
+  fitted under the corner. Nothing overlaps, and the pane docked to the tray
+  still lies along it. The test now pads the toolbar back to thirteen so it
+  keeps testing the docking it was written for. The resolver (`panels.ts`)
+  could move the tray down under the corner rather than across. Left for a
+  layout package, because the solids-kernel worker is in that area and this
+  package was told to keep `panels.ts` edits small.
+- **The side of a two-circle `tan` is a word** (`"outside"`/`"inside"`) among
+  the relation's args, so an entity *named* `outside` or `inside` would look
+  like it is named by that relation (`relationsNaming`). Deliberate for now
+  (readable in a file and in `rels()`). A number, or an args convention that
+  marks non-names, would close it.
+
 - **STEP: what only the owner can try** (docs/plans/step-export.md) — that an
   iPhone's share sheet takes a `model/step` file for Save to Files and
   AirDrop, and that SolidWorks, Fusion and Onshape open the fixtures in
@@ -2622,6 +2658,42 @@ extended the way `defineTool` extends the tool registry would close it.
       the resolver's flush arithmetic assumes does not happen.
 
 ## Done
+
+- [x] **One circle tool and one arc tool, the gesture choosing the method**
+      (2026-11-04). The owner: *"why are there multiple circle tools and arc
+      tools? they all achieve the same thing. surely just one tool, but
+      different ways to set constraints."* Spec:
+      [`docs/plans/one-circle-one-arc.md`](docs/plans/one-circle-one-arc.md),
+      marked built, every deviation in its *As built*. `src/tools/circle.ts`
+      and `src/tools/arc.ts` are rewritten, and `src/tools/curvemethod.ts` is
+      new; `circle3.ts` and `arc3.ts` are deleted. Also: `TOOL_ALIASES`/
+      `Tool.read` in `tool.ts`, the alias in `ToolEngine.arm`, `choices` in
+      `options.ts`, a choice row in `OptionsPanel`, two-circle `tan`, its
+      glyph, `roomBeside` in `tooltip.ts`, and a few lines in `main.ts`.
+      Unit 1219 (1199 before), e2e 521 (509 before), `npm run test:all`
+      green.
+      **Deviations, in short**:
+      - "Hold still" is a press that does not move, not a timed hold,
+        because a held finger is the menu.
+      - A drag let go on a point passes through it.
+      - The method shows inside the drop-down: a label did not fit.
+      - The arc's centre method reads `centre · ends`.
+      - The circle's tangent lock takes only curves; the arc's tangent lock
+        is Onshape's tangent arc.
+      - The alias's lock is not remembered.
+      - `tan` between two circles is the existing relation extended; no new
+        op.
+      - The 3-point menu items were removed.
+      - Changing the lock mid-gesture starts the gesture again.
+      - The tool is named `circle`/`arc` when armed by an alias.
+      - The layout arithmetic in `touchlayout`/`chrome.test` stays at 13
+        buttons; `fits.test` uses the app's 11.
+      - `fits.e2e`'s docking-through-a-rotation test defines two tools to get
+        back to its thirteen.
+      **Found**: an eleven-button column on a phone runs the full screen
+      height, so a tooltip with no room above or below it was clamped over
+      the column. It is now narrowed to fit beside the column (fixed, and
+      tested both ways).
 
 - [x] **STEP export** (2026-11-04). The owner: *"also, please add step
       export"*. Spec: [`docs/plans/step-export.md`](docs/plans/step-export.md),

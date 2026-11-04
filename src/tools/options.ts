@@ -25,9 +25,8 @@
 // Nothing here knows what a model is; it is about tools, and plain values.
 
 /**
- * What an option holds. Numbers first — most built-ins' are; a flag is allowed
- * in the shape; and a word from a fixed list (`choices`), which the panel shows
- * as a row of buttons — an extrude's mode (docs/plans/solids-kernel.md).
+ * What an option holds: a number, a flag, or one of a declared set of words —
+ * a *choice*, like the curve tools' `method` (docs/plans/one-circle-one-arc.md).
  */
 export type OptionValue = number | boolean | string;
 
@@ -50,12 +49,22 @@ export interface OptionSpec {
    */
   check?: (value: OptionValue) => string | null;
   /**
-   * The words a text option may be — required when its default is text, and
-   * the default among them. The panel shows a button per word but the first,
-   * which is the default's "none of these": pressing the button already down
-   * goes back to it (an extrude's `auto`, which lets the call decide).
+   * For a choice — an option whose default is a string — the words it may be,
+   * each with what the panel shows for it: `{ auto: "auto", "3pt": "3 points" }`.
+   * In the order the panel lists them. Required of a choice and refused on
+   * anything else: a string option with no list would be free text, and a
+   * typo in it would be a value nothing reads.
    */
-  choices?: readonly string[];
+  choices?: Readonly<Record<string, string>>;
+  /**
+   * A choice drawn as a row of buttons, one per word but the first (the
+   * default, which is "none of these": pressing the button already down goes
+   * back to it), rather than a drop-down. For a few short words a finger
+   * should reach in one tap — an extrude's mode, New Add Cut ∩
+   * (docs/plans/solids-kernel.md) — where the curve tools' longer methods
+   * need a drop-down's width.
+   */
+  buttons?: boolean;
   /**
    * False: never the next default. A value the viewer chose for one feature
    * that would be wrong for the next — a cut — starts from the declared
@@ -66,12 +75,17 @@ export interface OptionSpec {
 
 export type OptionSpecs = Readonly<Record<string, OptionSpec>>;
 
-const kindOf = (v: OptionValue): "number" | "boolean" | "string" =>
-  (typeof v === "number" ? "number" : typeof v === "string" ? "string" : "boolean");
+const kindOf = (v: OptionValue): "number" | "boolean" | "choice" =>
+  (typeof v === "number" ? "number" : typeof v === "boolean" ? "boolean" : "choice");
+
+/** Whether `v` is a value an option can hold at all. */
+export const isOptionValue = (v: unknown): v is OptionValue =>
+  (typeof v === "number" && Number.isFinite(v)) || typeof v === "boolean" || typeof v === "string";
 
 /** A value as `arm` would be typed with it: numbers rounded for reading, flags as written, words quoted. */
 export function formatValue(v: OptionValue): string {
-  return typeof v === "number" ? String(Math.round(v * 1e6) / 1e6) : typeof v === "string" ? JSON.stringify(v) : String(v);
+  if (typeof v === "string") return JSON.stringify(v);
+  return typeof v === "number" ? String(Math.round(v * 1e6) / 1e6) : String(v);
 }
 
 /** A key as an object literal takes it: bare when it can be, quoted otherwise. */
@@ -83,7 +97,7 @@ export function formatKey(name: string): string {
 export function describeValues(specs: OptionSpecs, values: Readonly<Record<string, unknown>>): string {
   const parts = Object.keys(specs).map((k) => {
     const v = values[k];
-    return `${formatKey(k)}: ${typeof v === "number" || typeof v === "boolean" || typeof v === "string" ? formatValue(v) : String(v)}`;
+    return `${formatKey(k)}: ${isOptionValue(v) ? formatValue(v) : String(v)}`;
   });
   return parts.length ? `{ ${parts.join(", ")} }` : "{}";
 }
@@ -102,18 +116,23 @@ export function defaultsOf(specs: OptionSpecs): Record<string, OptionValue> {
 export function declaredOptions(ctor: unknown, tool = "the tool"): OptionSpecs {
   const raw = (ctor as { options?: unknown } | null)?.options;
   if (raw === undefined || raw === null) return {};
-  const shape = "{ name: { default: 10, unit?: \"length\", label?: \"…\" } }";
+  const shape = "{ name: { default: 10, unit?: \"length\", label?: \"…\" } } — or a choice, { default: \"a\", choices: { a: \"…\", b: \"…\" } }";
   if (typeof raw !== "object" || Array.isArray(raw)) {
     throw new Error(`${tool}'s static options must be an object, ${shape}`);
   }
   for (const [name, spec] of Object.entries(raw as Record<string, unknown>)) {
     const s = spec as Partial<OptionSpec> | null;
     const d = s?.default;
-    if (!s || typeof s !== "object" || !((typeof d === "number" && Number.isFinite(d)) || typeof d === "boolean" || typeof d === "string")) {
-      throw new Error(`${tool}'s option ${name} needs a default that is a number, true/false or a word, ${shape}`);
+    if (!s || typeof s !== "object" || !isOptionValue(d)) {
+      throw new Error(`${tool}'s option ${name} needs a default that is a number, true/false or a choice, ${shape}`);
     }
-    if (typeof d === "string" && !(Array.isArray(s.choices) && s.choices.every((c) => typeof c === "string") && s.choices.includes(d))) {
-      throw new Error(`${tool}'s option ${name} is a word, so it needs a default among its choices: { default: "${d}", choices: ["${d}", …] }`);
+    if (typeof d === "string" || s.choices !== undefined) {
+      const c = s.choices as unknown;
+      if (typeof d !== "string") throw new Error(`${tool}'s option ${name}: choices are for an option whose default is one of them`);
+      if (!c || typeof c !== "object" || Array.isArray(c) || !Object.values(c).every((t) => typeof t === "string")) {
+        throw new Error(`${tool}'s option ${name} is a choice, and needs its choices: { ${JSON.stringify(d)}: "what the panel shows", … }`);
+      }
+      if (!Object.hasOwn(c, d)) throw new Error(`${tool}'s option ${name}: its default ${JSON.stringify(d)} is not one of its choices`);
     }
     if (s.unit !== undefined && typeof s.unit !== "string") throw new Error(`${tool}'s option ${name}: unit is text`);
     if (s.label !== undefined && typeof s.label !== "string") throw new Error(`${tool}'s option ${name}: label is text`);
@@ -129,8 +148,9 @@ function fault(spec: OptionSpec, v: unknown): string | null {
     return `is a number, not ${typeof v === "string" ? JSON.stringify(v) : String(v)}`;
   }
   if (kind === "boolean" && typeof v !== "boolean") return `is true or false, not ${typeof v === "string" ? JSON.stringify(v) : String(v)}`;
-  if (kind === "string" && !(typeof v === "string" && (spec.choices ?? []).includes(v))) {
-    return `is one of ${(spec.choices ?? []).map((c) => JSON.stringify(c)).join(", ")}, not ${typeof v === "string" ? JSON.stringify(v) : String(v)}`;
+  if (kind === "choice" && !(typeof v === "string" && Object.hasOwn(spec.choices ?? {}, v))) {
+    const words = Object.keys(spec.choices ?? {}).map((w) => JSON.stringify(w)).join(", ");
+    return `is one of ${words}, not ${typeof v === "string" ? JSON.stringify(v) : String(v)}`;
   }
   return spec.check?.(v as OptionValue) ?? null;
 }
@@ -178,9 +198,7 @@ export function explicitOptions(specs: OptionSpecs, given: unknown): Record<stri
   if (!given || typeof given !== "object") return {};
   const out: Record<string, OptionValue> = {};
   for (const [k, v] of Object.entries(given as Record<string, unknown>)) {
-    // A word is never remembered: the one there is, an extrude's mode, is
-    // `remember: false` anyway, and the stored values stay numbers and flags.
-    if (Object.hasOwn(specs, k) && specs[k].remember !== false && (typeof v === "number" || typeof v === "boolean")) out[k] = v;
+    if (Object.hasOwn(specs, k) && specs[k].remember !== false && isOptionValue(v)) out[k] = v;
   }
   return out;
 }
@@ -213,7 +231,12 @@ export const OPTIONS_KEY = "neocad.toolOptions.v1";
 
 type Remembered = Record<string, Record<string, OptionValue>>;
 
-/** Stored values, read leniently: anything not a finite number or a flag, under a tool, is dropped alone. */
+/**
+ * Stored values, read leniently: anything not a finite number, a flag or a
+ * word, under a tool, is dropped alone. (A word that is no longer one of its
+ * option's choices is dropped later, by `resolveOptions`, as any remembered
+ * value that would not pass now is.)
+ */
 export function parseRemembered(text: string | null): Remembered {
   if (!text) return {};
   let raw: unknown;
@@ -228,7 +251,7 @@ export function parseRemembered(text: string | null): Remembered {
     if (!values || typeof values !== "object" || Array.isArray(values)) continue;
     const kept: Record<string, OptionValue> = {};
     for (const [k, v] of Object.entries(values as Record<string, unknown>)) {
-      if ((typeof v === "number" && Number.isFinite(v)) || typeof v === "boolean") kept[k] = v;
+      if (isOptionValue(v)) kept[k] = v;
     }
     out[tool] = kept;
   }

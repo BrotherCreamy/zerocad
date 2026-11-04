@@ -71,7 +71,7 @@
 import type { Model } from "../model.ts";
 import type { ResidualBlock } from "../kernel/problem.ts";
 import {
-  HAND, SELECT, getToolCtor, type FeatureDialog, type FeaturePreview, type FeatureStep, type Tool, type ToolContext, type PointerInfo, type RegionHit,
+  HAND, SELECT, getToolCtor, toolAlias, type FeatureDialog, type FeaturePreview, type FeatureStep, type Tool, type ToolContext, type PointerInfo, type RegionHit,
   type RenderContext,
 } from "./tool.ts";
 import {
@@ -685,6 +685,18 @@ export class ToolEngine {
       this.putDown(toolName === HAND);
       return;
     }
+    // `circle3`, `arc3`: the one tool, locked — read here, where every way of
+    // arming arrives (the typed `arm`, the bare name, an undo's re-arm), so the
+    // tool armed, the options remembered and the panel are the one tool's.
+    // The lock an alias brings is not remembered, only what was typed with it:
+    // `circle3` once must not leave the Circle button's drag drawing nothing
+    // for good. A lock picked in the panel, or typed, is remembered as usual.
+    const alias = toolAlias(toolName);
+    const typed = given;
+    if (alias) {
+      toolName = alias.tool;
+      given = { ...(given && typeof given === "object" ? given : {}), ...alias.options };
+    }
     const Ctor = getToolCtor(toolName);
     if (!Ctor) {
       this.active?.onCancel();
@@ -692,7 +704,7 @@ export class ToolEngine {
     }
     const specs = declaredOptions(Ctor, toolName);
     const options = resolveOptions(toolName, specs, given, this.optionMemory.recall(toolName));
-    this.optionMemory.remember(toolName, explicitOptions(specs, given));
+    this.optionMemory.remember(toolName, explicitOptions(specs, typed));
     // The tool already armed, armed again — the options panel's field
     // committed, or `arm` typed with a new depth — keeps what it has picked if
     // it can (`retune`): the depth changes under a selection already made. Not

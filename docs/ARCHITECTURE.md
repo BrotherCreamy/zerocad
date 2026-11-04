@@ -1293,7 +1293,7 @@ until the next action went unrecorded.
 
 ## Why there is an end-to-end suite
 
-Twelve bugs so far were invisible to the unit tests and obvious within seconds
+Fourteen bugs so far were invisible to the unit tests and obvious within seconds
 of running the app:
 
 1. a status readout that went stale, so a conflict could be introduced from
@@ -1347,6 +1347,17 @@ of running the app:
    label, which a fresh view puts at the middle. Nothing was wrong by any
    number; it was found by looking at the fresh-document screenshot of
    frameless-curves.md. The words now sit below the middle.
+13. The curve tools' method, shown as a label beside its drop-down, cut to
+   "centre …" in the options panel. The text was right and every test
+   passed; it was found by looking at the first screenshot of
+   one-circle-one-arc.md, and it is why the reading is shown inside the
+   drop-down.
+14. A phone's tooltip clamped back over the toolbar it belongs to, once that
+   toolbar was eleven buttons, one column the full height of an iPhone's
+   screen with no room above or below it. Placement was unit-tested for the
+   layouts it had been given; the e2e suites that hold a finger on a real
+   tray failed the first time the tray changed. A column's tip is now
+   narrowed to the room beside it.
 
 None of these are mathematics. They are all *assembly*. Hence `npm run
 test:e2e`, and hence the expectation that anything touching the app is checked

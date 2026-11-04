@@ -69,8 +69,10 @@ test("the three built-ins that take a number declare it, with the default they a
 test("a malformed declaration is refused at defineTool, by name, and nothing is registered", () => {
   // As a tool typed at the command line declares it: plain JavaScript, no types to catch it.
   const bad = (options: unknown) => class extends Tool { readonly name = "bad"; static options = options as OptionSpecs; };
-  assert.throws(() => defineTool("t_bad1", bad({ size: { unit: "length" } })), /t_bad1's option size needs a default that is a number, true\/false or a word/);
-  assert.throws(() => defineTool("t_bad2", bad({ size: { default: "5" } })), /needs a default/);
+  assert.throws(() => defineTool("t_bad1", bad({ size: { unit: "length" } })), /t_bad1's option size needs a default that is a number, true\/false or a choice/);
+  // A word is a choice now (docs/plans/one-circle-one-arc.md) — and a choice
+  // with no list of what it may be is refused, by name, as a bad default was.
+  assert.throws(() => defineTool("t_bad2", bad({ size: { default: "5" } })), /is a choice, and needs its choices/);
   assert.throws(() => defineTool("t_bad3", bad({ size: { default: NaN } })), /needs a default/);
   assert.throws(() => defineTool("t_bad4", bad([1, 2])), /static options must be an object/);
   assert.throws(() => defineTool("t_bad5", bad({ size: { default: 1, unit: 3 } })), /unit is text/);
@@ -169,7 +171,9 @@ test("stored values are read leniently: not JSON is nothing, a bad value costs o
   assert.deepEqual(parseRemembered("not json"), {});
   assert.deepEqual(parseRemembered("[1,2]"), {});
   assert.deepEqual(parseRemembered(JSON.stringify({ extrude: { depth: 25, junk: "x", inf: null }, revolve: 3, fillet: { radius: true } })),
-    { extrude: { depth: 25 }, fillet: { radius: true } });
+    // A word is kept — it may be a choice's (a curve tool's method) — and
+    // judged against the declaration only when the tool is armed.
+    { extrude: { depth: 25, junk: "x" }, fillet: { radius: true } });
   const storage = memoryStorage();
   storage.setItem(OPTIONS_KEY, "{oops");
   assert.deepEqual(new OptionMemory(storage).recall("extrude"), {});

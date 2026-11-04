@@ -9,7 +9,13 @@ import {
   touchMetrics, traySize, type Layout, type Size,
 } from "../src/panels.ts";
 
-/** The toolbar's buttons as the app has them: Select, the Hand and the eleven tools. */
+/**
+ * Thirteen buttons: the toolbar as it was until the 3-point circle and arc
+ * folded into one tool each (docs/plans/one-circle-one-arc.md) — it has eleven
+ * now. These layouts are kept at thirteen, the longer tray, because the
+ * arithmetic is the claim; test/fits.test.ts holds the app's own eleven to
+ * fitting every iPhone, and test/e2e/touch.e2e.ts looks at the real thing.
+ */
 const TOOLS = 13;
 /**
  * The area the panels get on an iPhone 13 at home-screen size: the screen less

@@ -19,7 +19,8 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { ensureKernelLoaded } from "../src/kernel/problem.ts";
 import { Model } from "../src/model.ts";
-import { Arc3Tool, arcThrough } from "../src/tools/arc3.ts";
+import { Arc3Tool } from "./lockedtools.ts";
+import { arcThrough } from "../src/tools/arc.ts";
 import { circumcircle } from "../src/tools/circumcircle.ts";
 import { screenAngle, withinSweep } from "../src/intersect.ts";
 import { fix } from "../src/relations/basic.ts";
@@ -328,7 +329,7 @@ test("Arc3Tool: the collinear refusal reaches the log pane when there is one", a
   tool.onDown(raw([10, 0]));
   tool.onDown(raw([25, 0]));
   assert.equal(ctx.lines.length, 1);
-  assert.match(ctx.lines[0], /^arc3: those three are on one line — click the third off it$/);
+  assert.match(ctx.lines[0], /^arc: those three are on one line — click the third off it$/);
 });
 
 test("Arc3Tool: a second click on top of the first is a double-click, not an endpoint", async () => {

@@ -292,6 +292,15 @@ export abstract class Tool {
   /** Called once the tool is armed and in place — where a preselection is taken up. */
   onArmed?(): void;
   /**
+   * What the gesture so far has been read as, for a choice option left to
+   * read it — the circle tool's `method: "auto"` reading a drag as `centre`
+   * and three clicks as `3pt` (docs/plans/one-circle-one-arc.md). Keyed by the
+   * option, each value one of its declared choices; an option absent until the
+   * gesture has said. The options panel shows it beside the choice, which the
+   * user can then lock. Optional: a tool that reads nothing has nothing to say.
+   */
+  read?(): Readonly<Record<string, string>>;
+  /**
    * The tool is being re-armed with new options (`ctx.options` already
    * replaced) — the options panel's field committed, or `arm` typed again.
    * A tool with this keeps its gesture, its selection and its preview, and
@@ -369,6 +378,44 @@ function ownSummary(ctor: ToolCtor): string | null {
 /** What the toolbar shows, in its order: Select, the Hand, then every listed tool. */
 export function toolbarTools(): string[] {
   return [...ENGINE_TOOLS, ...listTools()];
+}
+
+/**
+ * Names that arm a registered tool already set one way: `circle3` is the circle
+ * tool locked to three points, `arc3` the arc tool likewise. They were tools of
+ * their own until the owner asked *"why are there multiple circle tools and arc
+ * tools? … surely just one tool, but different ways to set constraints"*
+ * (docs/plans/one-circle-one-arc.md); they stay as typed names so old habits
+ * and scripts keep working. `arm` reads one as the tool it names with these
+ * options laid over whatever was given — so `arm("circle3")` *is*
+ * `arm("circle", { method: "3pt" })`, logged, remembered and undone as that.
+ * Not on the toolbar, not in the menu: one button each is the point.
+ *
+ * A tool registered under one of these names (`defineTool("circle3", …)` at
+ * the command line) is that tool, and the alias steps aside.
+ */
+export const TOOL_ALIASES: Readonly<Record<string, { tool: string; options: Readonly<Record<string, unknown>>; says: string }>> = {
+  circle3: { tool: "circle", options: { method: "3pt" }, says: "the circle tool, locked to 3 points" },
+  arc3: { tool: "arc", options: { method: "3pt" }, says: "the arc tool, locked to 3 points" },
+};
+
+/** The alias `name` is, when no tool is registered under it — else null. */
+export function toolAlias(name: string): (typeof TOOL_ALIASES)[string] | null {
+  return !registry.has(name) && Object.hasOwn(TOOL_ALIASES, name) ? TOOL_ALIASES[name] : null;
+}
+
+/** The `arm` line an alias stands for — `arm("circle", {method: "3pt"})` — or null for a name that is not one. */
+export function aliasCommand(name: string): string | null {
+  const alias = toolAlias(name);
+  if (!alias) return null;
+  const options = Object.entries(alias.options).map(([k, v]) => `${k}: ${JSON.stringify(v)}`).join(", ");
+  return `arm(${JSON.stringify(alias.tool)}, {${options}})`;
+}
+
+/** What `arm(name)` answers: `armed: circle`, and for an alias what it armed. */
+export function armedLine(name: string): string {
+  const alias = toolAlias(name);
+  return alias ? `armed: ${name} — ${alias.says}, ${aliasCommand(name)}` : `armed: ${name}`;
 }
 
 const registry = new Map<string, ToolCtor>();

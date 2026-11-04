@@ -17,7 +17,7 @@ import { ENGINE_TOOLS, listTools } from "../src/tools/tool.ts";
 async function registerBuiltIns(): Promise<string[]> {
   const main = await readFile(new URL("../src/main.ts", import.meta.url), "utf8");
   const files = [...main.matchAll(/^import "\.\/(tools\/[a-z0-9]+\.ts)";$/gm)].map((m) => m[1]);
-  assert.ok(files.length >= 11, `main.ts's tool imports: ${files.join(", ")}`);
+  assert.ok(files.length >= 9, `main.ts's tool imports: ${files.join(", ")}`);
   for (const f of files) await import(new URL(`../src/${f}`, import.meta.url).href);
   // Select and the Hand are built in too — the engine's, not the registry's.
   return [...ENGINE_TOOLS, ...listTools()];

@@ -292,7 +292,7 @@ test("a version-6 file with arcs opens with their planes resolved — by normal,
   const wallZ = [0, -Math.sin(1.1), Math.cos(1.1)];
   assert.ok(parallelTo((await circleOf("high")).normal, wallZ), "and faces it");
   const saved = JSON.parse((await app.repl("save()")).value as string);
-  assert.equal(saved.version, 13); // the current version
+  assert.equal(saved.version, 14); // the current version
   const high = saved.journal.find((e: { op: string; args: unknown[] }) => e.op === "addArc" && e.args[5] === "high").args;
   assert.deepEqual(high.slice(0, 4), ["c2", "s2", "e2", 20]);
   assert.ok(parallelTo(high[4] as number[], wallZ), `its normal's seed is the wall's +z: ${high[4]}`);

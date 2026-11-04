@@ -2275,14 +2275,19 @@ export class Toolbar {
 // typed line cannot. The fields show whatever the tool is armed with, however
 // it was armed: typed by hand, by a button, or by the panel itself.
 
-/** One declared option as the panel shows it: what it is called, its unit's text, and the armed value. */
+/**
+ * One declared option as the panel shows it: what it is called, its unit's
+ * text, and the armed value. A choice (`method`) carries its words, each with
+ * what the panel shows for it, and what the gesture has read it as so far —
+ * the panel's words for that, or null — so the row can say `3 points` beside
+ * `auto` and the user can lock it.
+ */
 export interface OptionRow {
-  name: string;
-  label: string;
-  unit: string;
-  value: number | boolean | string;
-  /** A word option's words: a button each but the first, the default's "none of these". */
-  choices?: readonly string[];
+  name: string; label: string; unit: string; value: number | boolean | string;
+  choices?: readonly (readonly [string, string])[];
+  read?: string | null;
+  /** A choice drawn as buttons, one per word but the first, rather than a drop-down (an extrude's mode). */
+  buttons?: boolean;
 }
 
 /**
@@ -2334,11 +2339,6 @@ export interface OptionsHost {
 export function optionCommand(tool: string, option: string, value: number | boolean | string): string {
   const key = /^[A-Za-z_$][\w$]*$/.test(option) ? option : JSON.stringify(option);
   return `arm(${JSON.stringify(tool)}, {${key}: ${typeof value === "string" ? JSON.stringify(value) : String(value)}})`;
-}
-
-/** A word option's button text: its word, capitalised, and `intersect` as the sign for it. */
-export function choiceText(word: string): string {
-  return word === "intersect" ? "∩" : word.charAt(0).toUpperCase() + word.slice(1);
 }
 
 /** A number as a field shows it: to a millionth, so a whole turn reads 6.283185, not seventeen digits. */
@@ -2411,7 +2411,7 @@ export class OptionsPanel {
   sync(): boolean {
     const a = this.host.armed();
     const key = a
-      ? [a.tool, a.dialog ? "dialog" : "", ...a.rows.map((r) => `${r.name}\t${typeof r.value}\t${r.label}\t${r.unit}`)].join("\n")
+      ? [a.tool, a.dialog ? "dialog" : "", ...a.rows.map((r) => `${r.name}\t${typeof r.value}\t${r.label}\t${r.unit}\t${r.choices?.flat().join("\t") ?? ""}`)].join("\n")
       : "";
     const shaped = key !== this.key;
     if (shaped) {
@@ -2465,10 +2465,11 @@ export class OptionsPanel {
   }
 
   /**
-   * A word option's row: a button per word but the first (the default, which
-   * is "none of these"). A press types `arm(tool, { mode: "cut" })`; a press
-   * on the button already down types the default back. The buttons never
-   * take the focus, so typing after one still types.
+   * A choice drawn as buttons (`buttons: true`): a button per word but the
+   * first (the default, which is "none of these"). A press types
+   * `arm(tool, { mode: "cut" })`; a press on the button already down types the
+   * default back. The buttons never take the focus, so typing after one still
+   * types.
    */
   private choiceRow(r: OptionRow): HTMLElement {
     const line = document.createElement("div");
@@ -2480,13 +2481,13 @@ export class OptionsPanel {
     label.textContent = r.label;
     line.append(label);
     const tool = this.tool;
-    const [none, ...words] = r.choices ?? [];
-    for (const word of words) {
+    const [[none], ...words] = r.choices ?? [["", ""]];
+    for (const [word, text] of words) {
       const b = document.createElement("button");
       b.type = "button";
       b.className = "ochoose";
       b.dataset.choice = word;
-      b.textContent = choiceText(word);
+      b.textContent = text;
       b.setAttribute("aria-label", `${r.label}: ${word}`);
       b.addEventListener("mousedown", (e) => e.preventDefault());
       b.addEventListener("click", () => {
@@ -2499,7 +2500,7 @@ export class OptionsPanel {
   }
 
   private row(r: OptionRow): HTMLElement {
-    if (r.choices) return this.choiceRow(r);
+    if (r.choices && r.buttons) return this.choiceRow(r);
     const line = document.createElement("label");
     line.className = "orow";
     line.title = `${r.label} — ${optionCommand(this.tool, r.name, r.value)}`;
@@ -2513,6 +2514,39 @@ export class OptionsPanel {
     field.dataset.tool = this.tool;
     field.autocomplete = "off";
     field.spellcheck = false;
+    if (r.choices) {
+      // A choice: a drop-down of its words, the whole row wide — a choice's words
+      // are longer than a number, and a label beside them left neither room
+      // (looked at: "centre · radius" cut to "centre …", and "auto: centre ·
+      // radius" cut too). Its name is its accessible label and its tooltip's.
+      // Picking one types the arm line, as a field does.
+      //
+      // First, an option the list does not show: what the gesture has been read
+      // as, shown in the box while the choice is left to read it — so the box
+      // says "3 points", lit, and the list under it is still only the locks.
+      // Its value is the default's, so picking from the list never mistakes it
+      // for one.
+      line.classList.add("ochoice");
+      const pick = document.createElement("select");
+      pick.className = "oval";
+      pick.dataset.option = r.name;
+      pick.dataset.tool = this.tool;
+      pick.setAttribute("aria-label", r.label);
+      const reading = document.createElement("option");
+      reading.value = r.choices[0]?.[0] ?? "";
+      reading.hidden = true;
+      reading.dataset.read = "";
+      pick.append(reading);
+      for (const [value, text] of r.choices) {
+        const o = document.createElement("option");
+        o.value = value;
+        o.textContent = text;
+        pick.append(o);
+      }
+      pick.addEventListener("change", () => this.type(pick.dataset.tool!, r.name, pick.value));
+      line.append(pick);
+      return line;
+    }
     const unit = document.createElement("span");
     unit.className = "ounit";
     unit.textContent = r.unit;
@@ -2572,13 +2606,14 @@ export class OptionsPanel {
 
   /** Every field to its row's value — except, unless `force`, one being edited. */
   private fill(rows: OptionRow[], force: boolean, choice: DialogState["choice"] = null): void {
-    const fields = Array.from(this.body.querySelectorAll<HTMLInputElement>("input.oval"));
+    const fields = Array.from(this.body.querySelectorAll<HTMLInputElement | HTMLSelectElement>(".oval"));
+    // A row of buttons has no field, so fields are counted, not indexed by row.
     let next = 0;
     rows.forEach((r) => {
-      if (r.choices) {
+      if (r.choices && r.buttons) {
         const line = this.body.querySelector<HTMLElement>(`.ochoice[data-option="${r.name}"]`);
         if (!line) return;
-        const hint = choice?.option === r.name && r.value === r.choices[0] ? choice : null;
+        const hint = choice?.option === r.name && r.value === r.choices[0]?.[0] ? choice : null;
         for (const b of Array.from(line.querySelectorAll<HTMLButtonElement>("button.ochoose"))) {
           const word = b.dataset.choice!;
           b.setAttribute("aria-pressed", String(r.value === word));
@@ -2590,11 +2625,26 @@ export class OptionsPanel {
       }
       const field = fields[next++];
       if (!field) return;
+      if (field instanceof HTMLSelectElement) {
+        // What the gesture was read as, in the hidden first option, lit, while
+        // the choice is left to read it (it only ever is at its first word,
+        // `auto`); the word chosen otherwise — a lock, or nothing read yet.
+        const read = r.read ?? null;
+        const options = Array.from(field.options);
+        const shown = read !== null ? 0 : options.findIndex((o, k) => k > 0 && o.value === String(r.value));
+        if (read !== null) options[0].textContent = read;
+        if (field.selectedIndex !== shown) field.selectedIndex = shown;
+        field.classList.toggle("oread", read !== null);
+        (field.parentElement as HTMLElement).title = read
+          ? `${r.label}: read as ${read} — pick it to lock it`
+          : `${r.label} — ${optionCommand(this.tool, r.name, r.value)}`;
+        return;
+      }
       if (typeof r.value === "boolean") {
         field.checked = r.value;
         return;
       }
-      const text = typeof r.value === "number" ? fieldText(r.value) : r.value;
+      const text = fieldText(r.value as number);
       const editing = document.activeElement === field && field.value !== field.dataset.shown;
       if (!force && editing) return;
       field.value = text;

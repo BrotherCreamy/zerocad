@@ -16,7 +16,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { ENGINE_TOOLS, ENGINE_SUMMARIES, Tool, defineTool, listTools, toolSummary } from "../src/tools/tool.ts";
-import { HOLD_MS, HOLD_SLOP, FINGER_CLEAR, GAP, MARGIN, tipPlacement, tipText, type Box } from "../src/tooltip.ts";
+import { HOLD_MS, HOLD_SLOP, FINGER_CLEAR, GAP, MARGIN, MIN_TIP_W, roomBeside, tipPlacement, tipText, type Box } from "../src/tooltip.ts";
 import { actionKey, actionTip, displayName, stripTip, toolTip, type ActionState } from "../src/panels.ts";
 import { addTip, eyeTip, openTip, type OrganiserRow } from "../src/organiser.ts";
 import { spinTip } from "../src/appmenu.ts";
@@ -33,7 +33,7 @@ import { OptionMemory } from "../src/tools/options.ts";
 async function builtIns(): Promise<string[]> {
   const main = await readFile(new URL("../src/main.ts", import.meta.url), "utf8");
   const files = [...main.matchAll(/^import "\.\/(tools\/[a-z0-9]+\.ts)";$/gm)].map((m) => m[1]);
-  assert.ok(files.length >= 12, `main.ts's tool imports: ${files.join(", ")}`);
+  assert.ok(files.length >= 10, `main.ts's tool imports: ${files.join(", ")}`);
   for (const f of files) await import(new URL(`../src/${f}`, import.meta.url).href);
   // The edit dialogs are unlisted — never on the toolbar — and are tools all the same.
   return [...ENGINE_TOOLS, ...listTools(), "edit extrude", "edit revolve"];
@@ -255,4 +255,25 @@ test("a frame's inks: x red, y green, z blue — each led by its own channel, an
   // Each reads on the dark ground: 4.5 : 1 at least.
   const ground = (0.05 + lum("#0a0e13"));
   for (const axis of ["x", "y", "z"] as const) assert.ok((lum(AXIS_INKS[axis]) + 0.05) / ground >= 4.5, axis);
+});
+
+// Found when the tray became eleven buttons (docs/plans/one-circle-one-arc.md):
+// on an iPhone SE a single column runs the screen's height, a tip wider than the
+// room beside it fitted no side, and the fallback clamped it back over the column.
+// The host narrows a column's tip to `roomBeside` first, so it wraps beside it.
+test("a tip too wide for the room beside a column is given exactly that room, and then fits beside it", () => {
+  const phone = { x: 0, y: 0, w: 375, h: 667 };
+  const tray = { x: 8, y: 52, w: 34, h: 560 };
+  const button = { x: 12, y: 52 + 25 + 4 * 44, w: 26, h: 26 };
+  const finger = { x: 25, y: button.y + 13 };
+  const over = (p: { x: number; y: number }, w: number, h: number) =>
+    p.x < tray.x + tray.w && tray.x < p.x + w && p.y < tray.y + tray.h && tray.y < p.y + h;
+  const room = roomBeside(tray, phone, finger);
+  assert.equal(room, 375 - MARGIN - (finger.x + FINGER_CLEAR + GAP), "right of the finger's clearance, the wider side");
+  const wide = tipPlacement(button, { w: 338, h: 60 }, phone, { finger, along: "column", line: tray });
+  assert.ok(over(wide, 338, 60), "at its own width it lands on the tray — the case being fixed");
+  const narrowed = tipPlacement(button, { w: room, h: 90 }, phone, { finger, along: "column", line: tray });
+  assert.equal(narrowed.side, "right");
+  assert.ok(!over(narrowed, room, 90) && narrowed.x >= finger.x + FINGER_CLEAR);
+  assert.ok(room >= MIN_TIP_W);
 });

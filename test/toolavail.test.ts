@@ -18,7 +18,7 @@ async function loadKernel() {
   await ensureKernelLoaded(await readFile(new URL("../src/kernel/wasm-gen/neocad_kernel_bg.wasm", import.meta.url)));
 }
 
-const TOOLS = ["point", "line", "rectangle", "circle", "circle3", "arc", "arc3", "fillet", "extrude", "revolve", "sketch"];
+const TOOLS = ["point", "line", "rectangle", "circle", "arc", "fillet", "extrude", "revolve", "sketch"];
 
 test("no tool is unavailable in any model: 2D or 3D, a default frame or none", async () => {
   await loadKernel();
@@ -45,7 +45,7 @@ test("a fresh 3D model's menu offers every tool, disabled none — the greyed cu
   const model = new Model(3);
   const menu = menuFor(model, null);
   assert.deepEqual(menu.items.filter((i) => i.action.do === "disabled").map((i) => i.label), []);
-  for (const label of ["Circle", "3 point circle", "Arc", "3 point arc", "Fillet"]) {
+  for (const label of ["Circle", "Arc", "Fillet"]) {
     const item = menu.items.find((i) => i.label === label);
     assert.ok(item && item.action.do === "run", label);
   }

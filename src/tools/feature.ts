@@ -43,7 +43,7 @@ import type { FeatureOptions } from "../operations.ts";
  * starts from: a cut chosen for one hole is not the next feature's.
  */
 export const MODE_OPTION = {
-  default: "auto", choices: ["auto", "new", "add", "cut", "intersect"], remember: false,
+  default: "auto", choices: { auto: "auto", new: "New", add: "Add", cut: "Cut", intersect: "∩" }, buttons: true, remember: false,
 } as const;
 
 /** A tool's mode option as a call's options: nothing for `auto`, which leaves the call to decide. */
