@@ -489,7 +489,8 @@ test("load: a stored layout that overlaps comes up clear, earlier panels holding
   assert.deepEqual(u.layout.b, box(0, 100, 300, 100));
   // A sound layout is left exactly as it is.
   const fine = defaultLayout(area, 11);
-  assert.deepEqual(settled(fine, order, area, {}).layout, fine);
+  const all = [...order, "organiser"];
+  assert.deepEqual(settled(fine, all, area, {}).layout, fine);
 });
 
 test("the grasp point stays the same: stopped short by d, a move back of less than d moves nothing, of d puts it under the hand", () => {

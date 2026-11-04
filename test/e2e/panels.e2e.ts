@@ -314,6 +314,8 @@ test("a panel cannot be dragged off an edge by a single pixel", async () => {
   // two drags below are given clear paths — the log's to the top-left corner,
   // the command line's to the bottom-right.
   await app.type('layout("reset")');
+  // The organiser defaults to the bottom-right corner this drag is aimed at.
+  await app.type('ui({ hide: "organiser" })');
   const cv = await rectOf("#cv");
   await dragBy(strip("toolbar"), 900, 100);
   const s0 = await rectOf(panel("cmd"));
@@ -330,6 +332,7 @@ test("a panel cannot be dragged off an edge by a single pixel", async () => {
   // against it, on the left edge, as it would against the window's edge.
   const logo = await rectOf("#logo");
   assert.deepEqual([t.x, t.y], [cv.x, logo.y + logo.height], "flush with the left edge, and stopped under the logo — it is not covered");
+  await app.type('ui({ show: "organiser" })');
 });
 
 test("the arrangement survives a reload, and layout(\"reset\") forgets it", async () => {

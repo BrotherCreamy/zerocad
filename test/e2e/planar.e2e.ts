@@ -277,7 +277,7 @@ test("a version-6 file with arcs opens with their planes resolved — by normal,
   assert.deepEqual(planes, ["floor", "wall", "floor"],
     "the arc on the wall is given the wall, though the floor was the default");
   const saved = JSON.parse((await app.repl("save()")).value as string);
-  assert.equal(saved.version, 11); // the current version
+  assert.equal(saved.version, 12); // the current version
   assert.deepEqual(saved.journal.find((e: { op: string; args: unknown[] }) => e.op === "addArc" && e.args[5] === "high").args,
     ["c2", "s2", "e2", 20, "wall", "high"]);
 });

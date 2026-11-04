@@ -494,8 +494,10 @@ export type Expansion = 9 | 10 | 11;
  * The owner's concept is flat relational direct CAD: "there is no hierarchy …
  * and entities can be grouped". So a group is a set and never a container. It
  * **owns nothing**: deleting it deletes the grouping, never a member, and
- * deleting a member takes it out of every group it is in (a group left empty
- * goes too — a group is never empty). **Membership overlaps and never nests**:
+ * deleting a member takes it out of every group it is in. **A group may be
+ * empty** (docs/plans/organiser.md, reversing groups.md's "a group is never
+ * empty"): one made to be drawn into starts with nothing, and a group whose
+ * last member goes stays until `ungroup`. **Membership overlaps and never nests**:
  * an entity may be in any number of groups, and a group never holds a group or
  * a feature — naming one where members are wanted adds its members as they
  * are then (`expand`), a union and not a link, because a link would be a tree.
@@ -506,6 +508,8 @@ export type Expansion = 9 | 10 | 11;
  *
  * Structure, so it lives here; every edit to it is an operation (groups.ts),
  * journalled as the call, and the registry is rebuilt by replay, never saved.
+ * One group at a time may be **open** — `Model.openGroup`, which every entity
+ * made joins.
  */
 export interface GroupEntry {
   name: string;
@@ -540,6 +544,21 @@ export class Model {
    * (groups.ts), journalled, saved by replay and undone like any edit.
    */
   hidden = new Set<string>();
+  /**
+   * The **open group**, if any: every entity made while it is open joins it —
+   * a point, a line and the endpoints it made, a fillet's arc, an extrude's
+   * twins — in the constructor that made it (`place`), so the joining is part
+   * of that entry and needs none of its own (docs/plans/organiser.md; the
+   * owner: *"create a new group and "open" the group, which means any
+   * entities which get created become a part of that group"*). Document
+   * state, like `hidden`: set only by `opengroup`/`closegroup` (groups.ts),
+   * journalled, so a replay opens it at the same step and the same entities
+   * join the same group — nothing re-infers the membership afterwards.
+   * Relations made do not join: a group of what was drawn is entities.
+   */
+  openGroup: string | null = null;
+  /** Set while an operation makes entities that must not join the open group (`withoutOpenGroup`). */
+  private joining = true;
   /**
    * Which frame `fix`, `onPlane` and the `xaxis()`/`yaxis()`/`zaxis()` helpers
    * mean when they are not told which. Null in a new model, and stays null
@@ -602,6 +621,32 @@ export class Model {
     // knows before it has made them.
     this.record(op, typeof args === "function" ? args() : args);
     return result;
+  }
+
+  /**
+   * Puts a new entity in the registry — and in the open group, if one is open.
+   * The one door every constructor goes through, so no way of making an
+   * entity can forget the open group.
+   */
+  private place(ent: Entity): void {
+    this.entities.set(ent.name, ent);
+    if (this.joining && this.openGroup !== null) this.groups.get(this.openGroup)?.members.push(ent.name);
+  }
+
+  /**
+   * Runs `body` with the open group shut to it: what it makes joins nothing.
+   * For a feature's regeneration, whose new pieces join the groups the
+   * feature's pieces were in rather than whatever happens to be open
+   * (operations.ts, `rebuildFeature`).
+   */
+  withoutOpenGroup<T>(body: () => T): T {
+    const prev = this.joining;
+    this.joining = false;
+    try {
+      return body();
+    } finally {
+      this.joining = prev;
+    }
   }
 
   /** Runs `body` without journalling anything it does. Used by replay. */
@@ -896,7 +941,7 @@ export class Model {
     const seed = coords ?? new Array<number>(this.dim).fill(0);
     const varIndices = seed.map((c) => this.problem.addVar(c));
     const ent: PointEntity = { kind: "point", name: nm, varIndices };
-    this.entities.set(nm, ent);
+    this.place(ent);
     this.record("addPoint", [coords ?? null, nm]);
     return ent;
   }
@@ -962,7 +1007,7 @@ export class Model {
       return [a!, b!];
     });
     const ent: LineEntity = { kind: "line", name: nm, refs: [a, b] };
-    this.entities.set(nm, ent);
+    this.place(ent);
     this.record("addLine", [aGiven ?? null, bGiven ?? null, nm]);
     return ent;
   }
@@ -994,7 +1039,7 @@ export class Model {
       radiusVar: this.problem.addVar(radius ?? Model.DEFAULT_RADIUS),
     };
     if (frame != null) ent.plane = frame;
-    this.entities.set(nm, ent);
+    this.place(ent);
     this.record("addCircle", [center ?? null, radius ?? null, frame, nm]);
     return ent;
   }
@@ -1026,7 +1071,7 @@ export class Model {
     });
     const ent: ArcEntity = { kind: "arc", name: nm, center: c, start: s, end: e, radiusVar: this.problem.addVar(r) };
     if (frame != null) ent.plane = frame;
-    this.entities.set(nm, ent);
+    this.place(ent);
     this.record("addArc", [center ?? null, start ?? null, end ?? null, radius ?? null, frame, nm]);
     return ent;
   }
@@ -1175,7 +1220,7 @@ export class Model {
 
     const ent: FrameEntity = { kind: "frame", name: nm, origin: o, xref: x };
     if (y != null) ent.yref = y;
-    this.entities.set(nm, ent);
+    this.place(ent);
     this.record("addFrame", [origin ?? null, xref ?? null, yref ?? null, nm]);
     return ent;
   }
@@ -1541,7 +1586,6 @@ export class Model {
    */
   addGroup(members: readonly string[], name?: string | null): GroupEntry {
     this.checkMembers(members);
-    if (!members.length) throw new Error("a group needs at least one member");
     const nm = this.claimName("g", name ?? undefined);
     const entry: GroupEntry = { name: nm, members: [...new Set(members)] };
     this.groups.set(nm, entry);
@@ -1556,19 +1600,54 @@ export class Model {
   }
 
   /**
-   * Takes members out of a group — and the group with them when none are left,
-   * since a group is never empty. Journals nothing.
+   * Takes members out of a group, which stays when none are left — a group
+   * may be empty (`GroupEntry`). Journals nothing.
    */
   removeMembers(group: string, members: readonly string[]): void {
     const g = this.groupOf(group);
     g.members = g.members.filter((m) => !members.includes(m));
-    if (!g.members.length) this.groups.delete(group);
   }
 
-  /** Removes a group, and only the group: it owns nothing. Journals nothing. */
+  /**
+   * Removes a group, and only the group: it owns nothing. An open group that
+   * goes is closed, in the primitive, so a replay of the `ungroup` closes it
+   * too. Journals nothing.
+   */
   deleteGroup(name: string): void {
     this.groupOf(name);
     this.groups.delete(name);
+    if (this.openGroup === name) this.openGroup = null;
+  }
+
+  /**
+   * Opens group `name` — or, given null, closes whatever is open. Journals
+   * nothing: `opengroup`/`closegroup` (groups.ts) are the entries.
+   */
+  setOpenGroup(name: string | null): void {
+    if (name !== null) this.groupOf(name);
+    this.openGroup = name;
+  }
+
+  /**
+   * Gives group `from` the name `to`, by the model's name rules (unique, no
+   * dot; a `gN` moves the counter past it), keeping its place in the
+   * registry's order and its being open. Only a group's name can change: an
+   * entity's or a relation's is written into every entry that names it, and a
+   * group's only into the entries after this one. Journals nothing.
+   */
+  renameGroup(from: string, to: string): void {
+    this.groupOf(from);
+    if (from === to) return;
+    const nm = this.claimName("g", to);
+    const order = [...this.groups.entries()];
+    this.groups.clear();
+    for (const [k, v] of order) {
+      if (k === from) {
+        v.name = nm;
+        this.groups.set(nm, v);
+      } else this.groups.set(k, v);
+    }
+    if (this.openGroup === from) this.openGroup = nm;
   }
 
   /** A group holds entities and relations — never a group, never a feature: that would be a tree. */
@@ -1583,8 +1662,8 @@ export class Model {
   /**
    * What a deletion does to the groups and the visibility of what it deletes:
    * it leaves every group it was in — journalled, as `removeFrom`, the way the
-   * default frame's clearing is journalled — and a group it leaves empty goes
-   * with it. Its hidden flag simply goes: a name that is not there has no
+   * default frame's clearing is journalled — and a group it leaves empty
+   * stays, empty. Its hidden flag simply goes: a name that is not there has no
    * visibility for a replay to disagree about.
    */
   private leaveGroups(name: string): void {

@@ -154,7 +154,7 @@ test("two rectangles, the extrude tool, a click in each, Enter: two solids on on
 test("save and open: the same names, still one frame and no point on another — and the extrude entries are the calls", async () => {
   const before = (await app.repl("save()")).value as string;
   const file = JSON.parse(before);
-  assert.equal(file.version, 11);
+  assert.equal(file.version, 12);
   for (const e of file.journal.filter((j: { op: string }) => j.op === "extrude")) assert.equal(e.args.length, 4);
   const r = await app.repl(`open(${JSON.stringify(before)})`);
   assert.equal(r.ok, true, r.error ?? "");

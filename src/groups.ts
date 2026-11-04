@@ -20,6 +20,14 @@
 // and `show` are journalled, saved and undone. A hidden entity is not drawn,
 // picked, snapped to or boxed — and is still solved; the solver has never
 // heard of it (see `Model.hidden`).
+//
+// **One group may be open** (docs/plans/organiser.md): `opengroup("g1")`, and
+// every entity made until `closegroup()` joins g1 — journalled document state,
+// like visibility, so a replay opens it at the same step and the same entities
+// join (see `Model.openGroup`). Which is also why **a group may be empty**: a
+// group made to be drawn into starts with nothing. That reverses groups.md's
+// "a group is never empty"; an old file that relied on an emptied group going
+// is translated on the way in (persist.ts).
 
 import type { Model } from "./model.ts";
 
@@ -58,13 +66,13 @@ function editable(model: Model, g: unknown, who: string) {
  * groups and features flattened to their members now. Returns its name: `g1`,
  * `g2`, … or the one given, which follows the model's name rules (unique, no
  * dot). Journalled with its members resolved and its name, so the file says
- * what the union was.
+ * what the union was. `group()` is an empty one — what the organiser's ＋
+ * opens to draw into, `opengroup(group())`.
  */
 export function group(model: Model, ...args: unknown[]): string {
   const opts = args.length && isOptions(args.at(-1)) ? (args.pop() as GroupOptions) : {};
   if (opts.name != null && typeof opts.name !== "string") throw new Error("a group's name is text");
   const members = model.expand(namesOf("group", args), "group");
-  if (!members.length) throw new Error("group needs at least one name — of an entity, a relation, a group or a feature");
   let made = "";
   return model.asOperation("group", () => [...members, { name: made }], () => {
     made = model.addGroup(members, opts.name ?? null).name;
@@ -93,9 +101,8 @@ export function addTo(model: Model, g: unknown, ...names: unknown[]): string[] {
 /**
  * `removeFrom(g, ...names)` — the named things out of a group (a group or
  * feature named is its members). Every name must be in the group, checked
- * before anything changes. **A group is never empty**: one emptied goes, the
- * way a deletion's cascade takes a group it emptied. Returns the members left
- * — none, when the group went.
+ * before anything changes. A group emptied stays, empty, until `ungroup` —
+ * and so does one a deletion's cascade empties. Returns the members left.
  */
 export function removeFrom(model: Model, g: unknown, ...names: unknown[]): string[] {
   const entry = editable(model, g, "removeFrom");
@@ -105,7 +112,7 @@ export function removeFrom(model: Model, g: unknown, ...names: unknown[]): strin
   if (stray.length) throw new Error(`${stray.map((s) => `"${s}"`).join(", ")} ${stray.length === 1 ? "is" : "are"} not in ${entry.name}`);
   return model.asOperation("removeFrom", [entry.name, ...members], () => {
     model.removeMembers(entry.name, members);
-    return model.groups.has(entry.name) ? [...entry.members] : [];
+    return [...entry.members];
   });
 }
 
@@ -124,6 +131,60 @@ export function ungroup(model: Model, g: unknown): string[] {
     const had = [...entry.members];
     model.deleteGroup(entry.name);
     return had;
+  });
+}
+
+/**
+ * `opengroup(g)` — what is made from now on joins g: every entity, by a tool,
+ * a typed constructor or an operation, in the entry that made it. One group is
+ * open at a time, so opening another closes the first; opening the one that is
+ * open changes nothing and journals nothing. A feature is refused — its
+ * members follow its profile. Journalled as the call: document state, saved
+ * and undone like visibility. Escape does not close it; it is not a tool.
+ * Returns the group's name.
+ */
+export function opengroup(model: Model, g?: unknown): string {
+  if (g === undefined || g === null) throw new Error("opengroup takes the name of a group — opengroup(group()) opens a new one");
+  const entry = editable(model, g, "opengroup");
+  if (model.openGroup === entry.name) return entry.name;
+  return model.asOperation("opengroup", [entry.name], () => {
+    model.setOpenGroup(entry.name);
+    return entry.name;
+  });
+}
+
+/**
+ * `closegroup()` — nothing made joins a group any more. Returns the group it
+ * closed, or null when none was open — which changes nothing and journals
+ * nothing.
+ */
+export function closegroup(model: Model): string | null {
+  const was = model.openGroup;
+  if (was === null) return null;
+  return model.asOperation("closegroup", [], () => {
+    model.setOpenGroup(null);
+    return was;
+  });
+}
+
+/**
+ * `rename(g, name)` — a group's new name, by the model's name rules (unique,
+ * no dot). Only a group: an entity's or a relation's name is written into
+ * every entry that uses it, a feature's is `eN`. The group keeps its members,
+ * its place in the list and its being open. Journalled as the call; renaming
+ * to the name it has journals nothing. Returns the new name.
+ */
+export function rename(model: Model, g: unknown, name: unknown): string {
+  if (typeof g === "string" && !model.groups.has(g) && !model.features.has(g) && model.has(g)) {
+    throw new Error(`"${g}" is not a group — only a group can be renamed: an entity's or a relation's name is in every line that uses it`);
+  }
+  const entry = editable(model, g, "rename");
+  if (typeof name !== "string" || !name) throw new Error("rename takes the group's new name, as text");
+  if (name === entry.name) return name;
+  const from = entry.name;
+  return model.asOperation("rename", [from, name], () => {
+    model.renameGroup(from, name);
+    return name;
   });
 }
 

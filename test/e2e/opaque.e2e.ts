@@ -209,7 +209,8 @@ test("the faces' contrast, read off the composed picture: each face well off the
     const [x, y] = await app.screenOf([...w]);
     at.push([x + 0.5, y + 0.5]);
   }
-  at.push([900.5, 560.5]);
+  // Clear of the organiser's corner too, and of its shadow.
+  at.push([150.5, 500.5]);
   const px = await app.pixels("screen", at);
   const [lid, front, right, ground] = px;
   const oracle = await app.nearestFaces(at.slice(0, 3));

@@ -29,7 +29,31 @@ import { freshName, planeTranslation } from "./planetranslation.ts";
 
 export const FORMAT = "neocad-model";
 /**
- * 11 since **an extrude makes no lid frame** (docs/plans/no-lid-frame.md). It
+ * 12 since **a group may be empty** (docs/plans/organiser.md). A group made to
+ * be drawn into starts with nothing, so a group whose last member leaves — by
+ * `removeFrom`, or by a deletion's cascade, which writes a `removeFrom` for
+ * each group the name leaves — now stays, where version 11's went silently
+ * with it. No entry changed shape; what changed is what an emptying
+ * `removeFrom` *means*. A version-11 build replaying a version-12 file whose
+ * group was emptied and then filled again, or opened, would say `"g1" is not a
+ * group` at a step that names a group the file plainly has — the misreading a
+ * version is for. Three new ops come with it — `opengroup`, `closegroup`,
+ * `rename` — which alone would not have bumped it (an older build refuses them
+ * by name, the groups precedent below), and `group()` with no names, which an
+ * older build refuses at its step.
+ *
+ * Going the other way **a version-11 file opens exactly as it was**: each
+ * `removeFrom` that empties a group is followed, on the way in, by the
+ * `ungroup` that build did without saying (`fromSaved`) — so a later entry
+ * that reused the name, a `group(…, { name: "g1" })` or an entity explicitly
+ * called that, finds it free, as it did. Translated rather than marked, unlike
+ * an old extrude's expansion: an `ungroup` makes no names, so writing it in
+ * shifts nothing after it, and the re-saved file says in today's vocabulary
+ * what the old one meant. The repository's own files — the fixtures, the
+ * goldens — carry no group at all; only a file saved by the groups build
+ * (2026-11-03) and then edited so could have relied on it.
+ *
+ * 11 was **an extrude makes no lid frame** (docs/plans/no-lid-frame.md). It
  * made one "so a sketch on the cap has a plane", which sketch-on-face now
  * builds from the cap itself; a twin curve on the sketch frame names the sketch
  * frame, a translation turning nothing. Version 10's lid frame shared the
@@ -210,7 +234,7 @@ export const FORMAT = "neocad-model";
  * with, so an older file replays to exactly the solids it was saved with
  * (`test/explicitregions.test.ts` opens one written by the build before).
  */
-export const VERSION = 11;
+export const VERSION = 12;
 
 export interface SavedModel {
   format: typeof FORMAT;
@@ -330,6 +354,13 @@ function replayTable(model: Model): Map<string, (...args: unknown[]) => unknown>
     addTo: rel(grouping.addTo),
     removeFrom: rel(grouping.removeFrom),
     ungroup: rel(grouping.ungroup),
+    // The open group (docs/plans/organiser.md): document state, journalled as
+    // typed, so a replay opens it at the step it was opened at and every
+    // constructor after joins it exactly as it did — the membership is made
+    // again, never stored or re-inferred. `rename` renames a group in place.
+    opengroup: rel(grouping.opengroup),
+    closegroup: rel(grouping.closegroup),
+    rename: rel(grouping.rename),
     // Visibility is the document's: journalled as typed, and what a name stood
     // for at that step is what it stands for when the step is replayed.
     hide: rel(grouping.hide),
@@ -549,6 +580,16 @@ function lift2D(model: Model, entry: JournalEntry, names: Set<string>, lifted: M
   }
 }
 
+/**
+ * The group an old file's `removeFrom` just emptied — which a build before
+ * version 12 removed with its last member — or null. See `VERSION`.
+ */
+function emptiedBefore12(model: Model, step: JournalEntry, version: number): string | null {
+  if (version >= 12 || step.op !== "removeFrom") return null;
+  const g = step.args[0];
+  return typeof g === "string" && model.groups.get(g)?.members.length === 0 ? g : null;
+}
+
 /** Every string anywhere in a journal's arguments — a superset of the names it uses. */
 function namesIn(journal: JournalEntry[]): Set<string> {
   const out = new Set<string>();
@@ -696,6 +737,17 @@ export function fromSaved(saved: SavedModel, dim?: number): Model {
             throw where(e);
           }
           replayed.push({ op: step.op, args: step.args });
+          // A version-11 group went with its last member; today's stays. The
+          // `ungroup` that build did silently, written in (see `VERSION`).
+          const emptied = emptiedBefore12(model, step, saved.version);
+          if (emptied !== null) {
+            try {
+              table.get("ungroup")!(emptied);
+            } catch (e) {
+              throw where(e);
+            }
+            replayed.push({ op: "ungroup", args: [emptied] });
+          }
         }
       }
       // After the step, so the relations it created are named while the order

@@ -1705,6 +1705,24 @@ function alignedTo(loop: ProfileMember[], old: ProfileMember[][]): ProfileMember
  * profile, which the hook regenerates next.
  */
 function rebuildFeature(model: Model, f: FeatureEntry, plan: SweepPlan): { loops: ProfileMember[][]; touched: string[] } {
+  // **The groups a regeneration's new pieces join** (docs/plans/organiser.md):
+  // every group that held all the entities the feature had made — so a group
+  // that held the whole solid still does — and not the open group. A fillet
+  // drawn into the sketch's group regenerates the lid, and the lid's new arc
+  // is the solid's, not the sketch's; the open group is what the person is
+  // drawing, and a regeneration is not drawing. Read before the rebuild, as
+  // the groups stood; deterministic, so a replay makes the same members.
+  const made = f.owns.filter((n) => model.entities.has(n));
+  const holding = made.length ? [...model.groups.values()].filter((g) => made.every((n) => g.members.includes(n))).map((g) => g.name) : [];
+  const before = new Set(model.entities.keys());
+  const out = model.withoutOpenGroup(() => rebuildBody(model, f, plan));
+  const fresh = [...model.entities.keys()].filter((n) => !before.has(n));
+  for (const g of holding) if (model.groups.has(g) && fresh.length) model.addMembers(g, fresh);
+  return out;
+}
+
+/** `rebuildFeature`'s body: the rebuild itself, which knows nothing of groups. */
+function rebuildBody(model: Model, f: FeatureEntry, plan: SweepPlan): { loops: ProfileMember[][]; touched: string[] } {
   const { frame, walked, classOf } = plan;
   const dimName = f.kind === "extrude" ? f.depth : f.angle;
   const dim = model.relationOf(dimName);
@@ -2450,8 +2468,8 @@ export function set(model: Model, path: string, value: number): string {
  * it is the normal shape of a box-selected batch, not a mistake.
  *
  * **A group named is ungrouped** — the grouping goes, its members stay, since
- * a group owns nothing (groups.ts). And a group the cascade empties goes with
- * its last member (`Model.deleteEntity`), so it is among the names returned.
+ * a group owns nothing (groups.ts). A group the cascade empties stays, empty
+ * (docs/plans/organiser.md), so it is not among the names returned.
  */
 export function del(model: Model, ...names: string[]): string[] {
   if (names.length === 0) throw new Error("del needs at least one name");
@@ -2473,9 +2491,7 @@ export function del(model: Model, ...names: string[]): string[] {
       removed.push(n);
       continue;
     }
-    const groups = [...model.groups.keys()];
     removed.push(...delOne(model, n));
-    for (const g of groups) if (!model.groups.has(g)) removed.push(g);
   }
   return removed;
 }

@@ -45,7 +45,7 @@ for (const m of [COARSE, PHONE]) {
 
   test(`portrait at ${at}: the command line docked to the bottom, the tray a column under the logo, the strip top-right, a one-line log`, () => {
     const d = defaultLayout(PORTRAIT, TOOLS, m);
-    assert.deepEqual(Object.keys(d).sort(), ["actions", "cmd", "log", "options", "toolbar"]);
+    assert.deepEqual(Object.keys(d).sort(), ["actions", "cmd", "log", "options", "organiser", "toolbar"]);
     const { options, ...panels } = d;
     assert.deepEqual(inside(panels, PORTRAIT), []);
     assert.deepEqual(overlapping({ ...panels, ...logo }), [], "clear of one another and of the logo");
@@ -59,11 +59,18 @@ for (const m of [COARSE, PHONE]) {
     assert.ok(d.log.y > d.actions.y + d.actions.h && d.log.x > d.toolbar.x + d.toolbar.w, "the log under it, right of the tray");
     // The options panel's box: right of the tray, between the log and the command line.
     assert.ok(options.y >= d.log.y + d.log.h && options.y + options.h <= d.cmd.y && options.x >= d.log.x);
+    // The organiser (shown once the viewer ticks it — a phone starts it
+    // hidden): the top of that same box, against the right edge.
+    assert.equal(d.organiser.x + d.organiser.w, PORTRAIT.w - 8);
+    assert.equal(d.organiser.y, options.y);
+    assert.ok(d.organiser.y + d.organiser.h < d.cmd.y);
   });
 
   test(`landscape at ${at}: the tray a row docked to the bottom, the command line top, right of the logo, the strip and the log top-right`, () => {
     const d = defaultLayout(LANDSCAPE, TOOLS, m);
-    assert.deepEqual(Object.keys(d).sort(), ["actions", "cmd", "log", "toolbar"]);
+    assert.deepEqual(Object.keys(d).sort(), ["actions", "cmd", "log", "organiser", "toolbar"]);
+    assert.equal(d.organiser.x + d.organiser.w, LANDSCAPE.w - 8, "the organiser at the right edge");
+    assert.ok(d.organiser.y > d.log.y + d.log.h && d.organiser.y + d.organiser.h <= d.toolbar.y, "under the log, over the tray");
     assert.deepEqual(inside(d, LANDSCAPE), []);
     assert.deepEqual(overlapping({ ...d, ...logo }), []);
     assert.equal(d.toolbar.orient, "row");

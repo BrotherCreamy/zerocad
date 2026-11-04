@@ -31,7 +31,9 @@ import { pointOnWorkingPlane } from "./workplane.ts";
 import { frameBasis } from "./relations/refs.ts";
 import { describeLoop, findLoops, type Loop } from "./loops.ts";
 import { _, checkClauses, checkOrdinary, slots, splitClauses, subjectable, type Clause, type Slot } from "./clauses.ts";
-import { addTo, group as groupOp, groupsOf, hide, members, removeFrom, show, ungroup } from "./groups.ts";
+import {
+  addTo, closegroup, group as groupOp, groupsOf, hide, members, opengroup, removeFrom, rename, show, ungroup,
+} from "./groups.ts";
 
 type Bag = Record<string, unknown>;
 type PlaneCall = (origin?: string | null, xref?: string | null, yref?: string | null,
@@ -907,7 +909,8 @@ export function neocadScope(h: EnvHandles): Bag {
           const count = `    ${own.length} made${hid ? `, ${hid} hidden` : ""} — members(${JSON.stringify(f.name)}) lists them`;
           return [mark(f.name, describeFeature(model, f)), ...(own.length ? [count] : [])];
         }),
-        ...[...model.groups.values()].map((g) => `${g.name}  group of ${g.members.join(" ")}`),
+        ...[...model.groups.values()].map((g) => `${g.name}  group of ${g.members.length ? g.members.join(" ") : "nothing yet"}`
+          + (model.openGroup === g.name ? "  (open — new geometry joins it)" : "")),
       ];
     },
     /**
@@ -1128,10 +1131,13 @@ export function neocadScope(h: EnvHandles): Bag {
     },
     removeFrom: (g: unknown, ...names: unknown[]) => {
       const left = removeFrom(model, g, ...names);
-      if (!left.length) h.log?.(`${String(g)} is empty, so it is gone — a group is never empty`);
+      if (!left.length) h.log?.(`${String(g)} is empty now — ungroup(${JSON.stringify(g)}) removes it`);
       return left;
     },
     ungroup: (g: unknown) => ungroup(model, g),
+    opengroup: (g?: unknown) => opengroup(model, g),
+    closegroup: () => closegroup(model),
+    rename: (g: unknown, name: unknown) => rename(model, g, name),
     members: (name: unknown) => members(model, name),
     groups: (name?: unknown) => groupsOf(model, name),
     hide: (...names: unknown[]) => hide(model, ...names),
@@ -1356,10 +1362,23 @@ function help(scope: Bag): string {
     "           feature) and its members now are added: a union, not a link.",
     "           addTo(g, ...names)  removeFrom(g, ...names)  members(g)",
     "           groups(name) — the groups it is in; groups() — them all.",
-    "           Deleting a member takes it out of its groups; an emptied group",
-    '           goes. A feature is a read-only group: members("e1") is what it',
+    "           Deleting a member takes it out of its groups; a group may be",
+    "           empty, and stays until ungroup(g). rename(g, name) renames one.",
+    '           A feature is a read-only group: members("e1") is what it',
     '           made, select("e1") and hide("e1") work, addTo("e1", …) refuses.',
     "           The hover tag ends with · g1 g2; ls() lists the groups.",
+    '           opengroup("g1") — everything made from now on joins g1: drawn,',
+    "           typed, a fillet's arc, an extrude's twins; closegroup() ends it.",
+    "           One at a time; journalled, saved, undone; Escape leaves it open.",
+    "           opengroup(group()) is a new empty group, open. A feature's",
+    "           regenerated pieces join the groups that held all it made.",
+    "organiser  the Organiser pane: Groups and Features, a row each — tap",
+    "           selects it (select), the eye hides and shows, ● opens or closes",
+    "           a group; right-click or a long-press for Rename, Add or Remove",
+    "           selection, Open/Close, Ungroup (Edit and Delete for a feature).",
+    "           ＋ groups the selection, or with nothing selected types",
+    "           opengroup(group()). Every control types its command; the app",
+    "           menu's Panes shows and hides the pane.",
     "visibility hide(...names)  show(...names)  show() — groups and features",
     "           expand. Hidden is not drawn, picked, snapped to or boxed, and is",
     "           still solved; a hidden feature's faces go too. Part of the",
