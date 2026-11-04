@@ -59,6 +59,13 @@
     /* A tool's guidance there: the log's muted answer colour — not amber,
        which is what just happened, and never the red of a contradiction. */
     #stepnote.guide{color:#8fa7bb}
+    /* "Update ready": the one thing in the corner that takes a tap, so it
+       takes pointer events where nothing else there does; amber, the colour of
+       something to act on, and on the status's own opaque pill. */
+    #update{pointer-events:auto;font:inherit;color:#0a0e13;background:#e8a33d;border:none;border-radius:3px;
+      padding:1px 7px;cursor:pointer;touch-action:manipulation}
+    #update[hidden]{display:none}
+    #update:disabled{opacity:.7;cursor:default}
     /* The logo (src/logo.ts), top-left over the drawing, inside the safe area
        — placed and sized by src/panels.ts, for which it is the one panel that
        never moves. A button: it opens the app menu. No ground of its own; the
@@ -286,6 +293,8 @@
       <div id="corner">
         <span id="status" aria-live="polite">loading kernel…</span>
         <span id="stepnote" aria-live="polite"></span>
+        <!-- A new version, offered (src/update.ts): hidden until one waits. -->
+        <button id="update" type="button" hidden>Update ready — tap to reload</button>
       </div>
       <!-- data-label is what the app menu's Panes calls each panel; a new
            panel needs nothing more to be listed there. -->

@@ -395,8 +395,10 @@ an iPhone:
    then **Add**.
 3. Start it from the new icon. It opens full screen, with no Safari bars.
 
-A new version is picked up the next time the app is started after being
-closed from the app switcher, never while it is open. The page never scrolls
+A new version never replaces the app while it is open. When one has
+downloaded, **Update ready — tap to reload** appears beside the logo; a tap
+saves the drawing and reloads into the new version with it. Ignored, the next
+start gets the update anyway. The page never scrolls
 or zooms under a finger.
 
 The site is `npm run build:pwa`'s `dist-pwa/` folder, published by

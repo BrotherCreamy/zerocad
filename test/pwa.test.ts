@@ -4,6 +4,7 @@
 // page-lock listeners. The e2e suite (test/e2e/pwa.e2e.ts) runs the real
 // build from a sub-path in a browser; this is the part that needs none.
 
+import { UPDATE_NOW } from "../src/update.ts";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -120,6 +121,7 @@ test("the cache is named for the build stamp: a new stamp, a new cache; the same
  */
 async function runWorker(stamp: string, existing: string[]) {
   const listeners = new Map<string, (e: unknown) => void>();
+  const skipped = { n: 0 };
   const opened: string[] = [];
   const deleted: string[] = [];
   const added: string[] = [];
@@ -137,7 +139,8 @@ async function runWorker(stamp: string, existing: string[]) {
   const self = {
     location: new URL("https://example.test/zerocad/sw.js"),
     addEventListener: (type: string, fn: (e: unknown) => void) => listeners.set(type, fn),
-    skipWaiting: () => assert.fail("a new version never takes over the open app"),
+    // Counted, not refused: the one call allowed is the asked-for one (a message).
+    skipWaiting: () => { skipped.n++; },
     clients: { claim: () => assert.fail("a new version never takes over the open app") },
   };
   const caches = {
@@ -164,18 +167,28 @@ async function runWorker(stamp: string, existing: string[]) {
     await Promise.all(waits);
     return answer;
   };
-  return { listeners, opened, deleted, added, fetched, fire };
+  return { listeners, opened, deleted, added, fetched, fire, skipped };
 }
 
 test("the worker: install fills the stamp's cache with the shell, activate deletes only this app's older caches", async () => {
   const w = await runWorker("abc · 2026-11-04", ["neocad-old-build", "zerocad-old-build", "zerocad-abc-2026-11-04", "another-site-v3"]);
-  assert.deepEqual([...w.listeners.keys()].sort(), ["activate", "fetch", "install"]);
+  assert.deepEqual([...w.listeners.keys()].sort(), ["activate", "fetch", "install", "message"]);
   await w.fire("install");
   assert.deepEqual(w.opened, ["zerocad-abc-2026-11-04"]);
   assert.deepEqual(w.added, shellFiles().map((p) => new URL(p, "https://example.test/zerocad/sw.js").href));
   assert.ok(w.added.includes("https://example.test/zerocad/"), "the app itself, at the address it is started from");
   await w.fire("activate");
   assert.deepEqual(w.deleted.sort(), ["neocad-old-build", "zerocad-old-build"], "its own old caches, under the old name too, and no other site's");
+  assert.equal(w.skipped.n, 0, "installing and activating never take over the open app");
+});
+
+test("the worker: a waiting version takes over only when asked — the app's Update ready tap, and nothing else", async () => {
+  const w = await runWorker("abc", []);
+  await w.fire("message", { data: "something else" });
+  await w.fire("message", { data: { type: "zerocad:update-now" } });
+  assert.equal(w.skipped.n, 0, "only the exact message is consent");
+  await w.fire("message", { data: UPDATE_NOW });
+  assert.equal(w.skipped.n, 1);
 });
 
 test("the worker: cache first, a navigation anywhere in scope is the app, and what is not cached goes to the network", async () => {

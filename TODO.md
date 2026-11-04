@@ -24,6 +24,11 @@ otherwise.
 
 ## Decisions made so far — veto here if any are wrong
 
+- **A new version is offered, not imposed: "Update ready — tap to reload"**
+  beside the logo (the owner, 2026-11-04, asking whether the pages update on
+  the fly). The tap autosaves, then reloads into the new version; until it,
+  the open app is untouched, and the next start still updates.
+
 - **Each device has its own 100 %, and a finger's controls are drawn small
   and hit at 44** (the owner, 2026-11-04: *"is there any way you can figure
   out what interface scale to use for each device, so everything is

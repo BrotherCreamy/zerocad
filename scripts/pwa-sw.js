@@ -6,11 +6,16 @@
 // Cache first: the page is the whole app (the kernel rides inside it as
 // base64), so once it is cached the app starts with no network at all.
 //
-// **No skipWaiting, no clients.claim, no reload.** A new worker installs
-// beside the old one, fills its own cache and then waits; the open app keeps
-// running on the old one's cache, untouched. The browser activates the new
-// worker once no window of the app is left open, so the new version is what
-// the next start gets — never a page swapped under a hand that is drawing.
+// **Never on its own: no skipWaiting, no clients.claim, no reload.** A new
+// worker installs beside the old one, fills its own cache and then waits; the
+// open app keeps running on the old one's cache, untouched. The browser
+// activates the new worker once no window of the app is left open, so the new
+// version is what the next start gets — never a page swapped under a hand
+// that is drawing. **The one exception is asked for**: the app shows "Update
+// ready" (src/update.ts), and a tap on it — after the drawing is autosaved —
+// posts "zerocad:update-now", which is the only thing that makes a waiting worker
+// skip its wait. The owner found "close it from the app switcher, maybe
+// twice" too much to ask; a tap is the same consent, given in place.
 //
 // Every relative URL here resolves against this script's own, which is in the
 // app's folder (/zerocad/sw.js on Pages): "./" is the app.
@@ -52,4 +57,10 @@ self.addEventListener("fetch", (event) => {
       return hit ?? fetch(request);
     }),
   );
+});
+
+// Asked for, by a tap on the app's "Update ready" (see the top of the file).
+// Any other message is not ours and changes nothing.
+self.addEventListener("message", (event) => {
+  if (event.data === "zerocad:update-now") self.skipWaiting();
 });

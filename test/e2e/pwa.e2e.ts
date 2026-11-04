@@ -219,6 +219,39 @@ test("offline after the first load — the network gone and the server stopped �
   await context.close();
 });
 
+test("Update ready: a waiting version is offered beside the status, and a tap reloads into it with the drawing kept", async () => {
+  const dir = join(work, "offer");
+  buildPwa(dir, "e2e-before");
+  const served = await serve(dir);
+  const context = await browser.newContext();
+  try {
+    const page = await context.newPage();
+    await page.goto(served.url, { waitUntil: "load" });
+    await ready(page);
+    await activeWorker(page);
+    await page.reload({ waitUntil: "load" });
+    await ready(page);
+    assert.equal(await page.$eval("#update", (el) => (el as HTMLElement).hidden), true, "nothing to offer yet");
+    await type(page, "pt(5,5)");
+
+    buildPwa(dir, "e2e-after");
+    await page.evaluate(async () => { await (await navigator.serviceWorker.getRegistration())!.update(); });
+    await page.waitForFunction(() => !(document.getElementById("update") as HTMLElement).hidden, null, { timeout: 15_000 });
+    assert.equal(await stampOf(page), "build e2e-before", "offered, not imposed: the open app is still the old one");
+
+    await Promise.all([page.waitForNavigation({ waitUntil: "load", timeout: 15_000 }), page.click("#update")]);
+    await ready(page);
+    assert.equal(await stampOf(page), "build e2e-after", "the tap is the new version");
+    const kept = await page.evaluate(() =>
+      (window as unknown as { __neocad: { model: { entities: Map<string, unknown> } } }).__neocad.model.entities.has("p1"));
+    assert.ok(kept, "the drawing came back from the autosave");
+    assert.equal(await page.$eval("#update", (el) => (el as HTMLElement).hidden), true, "and there is nothing left to offer");
+  } finally {
+    await context.close();
+    await served.close();
+  }
+});
+
 test("a new deploy waits while the app is open — never swapped under the hand — and is what the next start gets", async () => {
   const dir = join(work, "update");
   buildPwa(dir, "e2e-old");

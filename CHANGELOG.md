@@ -7,6 +7,31 @@ decisions.
 
 ---
 
+## Update ready — tap to reload
+
+The owner asked whether the site updates on the fly. It does — every merged
+change is live within a couple of minutes — but the installed app took a
+new version only on its next start, and on an iPhone that meant closing it
+from the app switcher, sometimes twice.
+
+Now a new version that has downloaded in the background is **offered**:
+*Update ready — tap to reload* appears beside the logo. A tap autosaves the
+drawing, asks the waiting service worker to take over, and reloads; the
+drawing comes back from the autosave. Nothing changes until the tap, so a
+version is still never swapped under a hand that is drawing, and an app left
+open asks for updates when it comes back to the front and every half hour.
+
+- `src/update.ts` (new): watches the registration, shows the notice, and
+  reloads only for a takeover this window asked for.
+- `scripts/pwa-sw.js`: one new rule — the message `zerocad:update-now`, and
+  nothing else, makes a waiting worker skip its wait.
+- Tests: the worker skips its wait for that message only, and never on
+  install or activate; end to end, an old build open, a new one deployed, the
+  notice shown, the open app still old, the tap reloading into the new build
+  with the drawing kept.
+
+---
+
 ## No title bar: a logo over the drawing, each device's own interface size, panels to the very edge
 
 The owner tried 0.1.0 on his iPhone and sent two screenshots:

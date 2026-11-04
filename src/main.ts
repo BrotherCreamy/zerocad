@@ -14,6 +14,7 @@ import { UndoStack } from "./undo.ts";
 import { historyChord } from "./historykeys.ts";
 import { Autosave, fileChord } from "./files.ts";
 import { Files, indexedDbStore } from "./filehost.ts";
+import { watchForUpdates } from "./update.ts";
 import { Repl, fmt } from "./repl.ts";
 import { neocadScope } from "./replenv.ts";
 import { ToolEngine, type View } from "./tools/engine.ts";
@@ -1472,6 +1473,10 @@ async function main() {
     autosave,
     restored: restored?.record ?? null,
   });
+
+  // A new version waiting is offered beside the status, never imposed: a tap
+  // saves the drawing, then reloads into it (src/update.ts).
+  watchForUpdates({ button: document.getElementById("update") as HTMLButtonElement, flush: () => files!.flush() });
 
   const repl = new Repl(neocadScope(handles()));
 
