@@ -218,10 +218,9 @@ const tooltip = tooltips.attach;
  * The keys that do what a button does, for its tooltip: the Hand is Space
  * held (and Select, with a tool armed, is Escape); the action strip's are
  * `actionKey`'s, ⌘ on Apple's systems — an iPad's keyboard included — and
- * Ctrl elsewhere.
+ * Ctrl elsewhere. Asked of the platform and of the user agent too, where a
+ * browser reports a generic platform (and an emulated iPhone keeps its host's).
  */
-// The platform first; the user agent too, where a browser reports a generic
-// platform (and an emulated iPhone keeps its host's).
 const apple = /Mac|iPhone|iPad|iPod/.test(navigator.platform ?? "") || /iPhone|iPad|iPod|Macintosh/.test(navigator.userAgent);
 const TOOL_KEYS: Readonly<Record<string, string>> = { [HAND]: "hold Space", [SELECT]: "Esc" };
 

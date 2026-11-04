@@ -34,6 +34,22 @@ etc).
   migrated) as what each side rests against, and re-laid by that in any area
   (`relaid`), so a rotation keeps it. The installed app's status bar is
   `default` (iOS 26 blurs a translucent one).
+- **Tooltips on every control; frames in RGB**
+  (docs/plans/tooltips-rgb-frames.md, built). `src/tooltip.ts` is one
+  tooltip element for every icon or short-word control — the toolbar, the
+  action strip, the options panel's ✓ ✗, the spin box, the organiser's ＋,
+  eyes and markers, every panel's strip, the logo — saying the name, what it
+  does (`tipText`), the command it types and its key; after 400 ms of a
+  mouse's hover (at once from one control to the next), or a finger's 500 ms
+  hold, whose lift then presses nothing. Placed by `tipPlacement`: beside a
+  column, below anything else, above a finger and clear of it, inside the
+  safe area. Each piece of chrome is handed `tooltips.attach` by `main.ts`
+  and knows nothing more; without it a control keeps a `title`. The words are
+  the tools' own `static summary` (`toolSummary`, never inherited; Select's
+  and the Hand's in `ENGINE_SUMMARIES`), read by the tooltip, `tools()` and
+  `help()`. A frame's arms are drawn in `AXIS_INKS` — x `#ee6040`, y
+  `#60d658`, z `#5b9cff` — lettered in the same ink, amber when lit, violet
+  when selected; the default frame is heavier.
 - **Select and the Hand head the toolbar** (docs/plans/select-hand.md,
   built). Select (`arm("select")`) is "no tool", lit whenever nothing is
   armed; pressing it puts the armed tool down and keeps the selection. The

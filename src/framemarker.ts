@@ -72,7 +72,7 @@ export function frameArmPx(view: View): number {
  * (`hiddenInk`, 40 % of the colour on the faces' shadow tone): each keeps its
  * leading channel — a dull brick, a dull green, a slate blue — so a hidden
  * arm is still its axis, only further away. The red leans a little to
- * vermilion for that: a red with as much blue as green dims to a mauve.
+ * vermilion for that: a red with as much blue as green dims toward pink.
  *
  * **Red–green colour blindness** (about one man in twelve): the red and the
  * green are set apart in lightness as well as hue (relative luminance 0.27

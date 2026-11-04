@@ -106,6 +106,44 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### Tooltips and RGB frames: what a hold means, and which red
+
+The owner asked for a tooltip on hover and for frames coloured like
+SolidWorks'. Neither needed new machinery; three things needed a decision.
+
+**A hold under a finger.** A phone has no hover, so the tooltip comes from a
+hold — the canvas recogniser's 500 ms, so a hold means one thing everywhere.
+The question was what the lift after it does. If it pressed the button, a
+person who held a button to find out what it does would have done it; so the
+click after a hold that showed the tip is swallowed, and a tap — which
+nothing here times — presses as it always did. The organiser already had a
+hold on its rows (the row's menu), and its eye sits inside a row, so a hold
+on a row's button is now the button's tooltip and not the row's menu: one
+hold, one answer. The rows keep a tooltip for the mouse only.
+
+**Where the words live.** The spec said each tool declares a summary; the
+open question was how. A `static summary` is the shape `static options`
+already has and a command-line tool can write. But the icons were put in a
+table by name because a static is inherited, and a `class extends CircleTool`
+registered as "stamp" saying it draws a circle is the same guess; so the
+summary is read from the class's own property only. *Rejected:* a table like
+the icons' — a tool defined at the command line could not then declare one.
+`panels.ts` stays ignorant of the tools: `main.ts` hands it `toolSummary`.
+The tooltip module is the one thing it imports, and the test that held it to
+no imports holds `tooltip.ts` to none instead.
+
+**Which red.** The pure primaries fail on this ground: pure blue is 2.3 : 1
+on `#0a0e13`. Lightened inks read, but the hidden view dims an edge by mixing
+it toward the faces' slate shadow, which has more blue than green; a red
+whose green and blue are level comes out pinkish. So the red leans to
+vermilion (`#ee6040`) and keeps its channel order dimmed. The green is far
+lighter than the red (luminance 0.51 against 0.27), which is what a red–green
+colour-blind eye has left to tell them by, with the letters. The default
+frame used to be the lighter grey; with the inks saying which axis is which,
+it is told by weight. *Rejected:* a hue-preserving dim for the arms alone —
+the hidden view's rule is one ink per depth for every edge, and the measured
+inks already keep their hue under it.
+
 ### The organiser: what an open group is, and the two places it was not obvious
 
 The owner asked for a pane and for groups that can be "opened" so that what is
