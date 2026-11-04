@@ -1,6 +1,9 @@
 // Format version 7, and the translation that gives files from before it the
-// plane every 3D circle and arc now carries — the rule written out at the top
-// of src/planetranslation.ts, one claim per test.
+// plane every 3D circle and arc carried — the rule written out at the top of
+// src/planetranslation.ts, one claim per test — read through format 13, which
+// turns each frame a curve was given into the curve's own normal and a `par`
+// holding it to that frame (docs/plans/frameless-curves.md): `followed` reads
+// which frame that is.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -22,6 +25,12 @@ const dot = (a: number[], b: number[]) => a.reduce((s, x, i) => s + x * b[i], 0)
 const sub = (a: number[], b: number[]) => a.map((x, i) => x - b[i]);
 const close = (a: number, b: number, tol = 1e-9) => Math.abs(a - b) <= tol;
 
+/** The frame a curve follows: the one its `par(curve, "f.z")` names — what a frame it was given in an old file became. */
+function followed(m: Model, curve: string): string | undefined {
+  const r = [...m.relations.values()].find((x) => x.op === "parallel" && x.args[0] === curve && String(x.args[1]).endsWith(".z"));
+  return r === undefined ? undefined : String(r.args[1]).slice(0, -2);
+}
+
 type Entry = { op: string; args: unknown[] };
 const file = (version: number, dim: number, journal: Entry[], points: Record<string, number[]> = {}) =>
   JSON.stringify({ format: FORMAT, version, dim, journal, values: { points, radii: {} } });
@@ -37,9 +46,9 @@ function frameEntries(name: string, origin: number[], ux: number[], uy: number[]
   ];
 }
 
-test("version 7: circles and arcs carry their plane before their name, and a 3D file round-trips", async () => {
+test("version 13: circles and arcs carry their own normal before their name, and a 3D file round-trips", async () => {
   await loadKernel();
-  assert.ok(VERSION >= 7, "7 is where planes came in; 8 changed only features' profiles");
+  assert.ok(VERSION >= 13, "7 is where planes came in; 13 where they became the curve's own normal");
   const m = new Model(3);
   const t = tiltedFrame(m);
   m.addPoint(t.at(1, 2), "c");
@@ -48,11 +57,13 @@ test("version 7: circles and arcs carry their plane before their name, and a 3D 
   const text = save(m);
   const saved = JSON.parse(text);
   assert.equal(saved.version, VERSION);
-  assert.deepEqual(saved.journal.find((e: Entry) => e.op === "addCircle").args, ["c", 4, "t", "k"]);
-  assert.deepEqual(saved.journal.find((e: Entry) => e.op === "addArc").args, ["c", null, null, 3, "t", "a"]);
+  // The seed is the drawing plane's — the default frame's, here — and the
+  // entry says null, as it was called: the replay seeds the same way.
+  assert.deepEqual(saved.journal.find((e: Entry) => e.op === "addCircle").args, ["c", 4, null, "k"]);
+  assert.deepEqual(saved.journal.find((e: Entry) => e.op === "addArc").args, ["c", null, null, 3, null, "a"]);
+  assert.ok(saved.values.normals.k && saved.values.normals.a, "the normals are saved values, as radii are");
   const back = open(text);
-  assert.equal(back.circle("k").plane, "t");
-  assert.equal(back.arc("a").plane, "t");
+  for (const n of ["k", "a"]) assert.ok(Math.abs(dot(back.normalOf(n), m.normalOf(n)) - 1) < 1e-12, n);
   assert.equal(save(back), text, "stable");
 });
 
@@ -63,7 +74,7 @@ test("a 2D file from before 7 opens into 2D with null planes, name where the nam
     { op: "addCircle", args: ["c", 5, "k"] },
     { op: "addArc", args: ["c", null, null, 5, "a"] },
   ]));
-  assert.equal(m.circle("k").plane, undefined);
+  assert.equal(m.circle("k").normal, undefined);
   assert.deepEqual(m.journal[1], { op: "addCircle", args: ["c", 5, null, "k"] });
   assert.deepEqual(m.journal[2], { op: "addArc", args: ["c", null, null, 5, null, "a"] });
   const again = save(m);
@@ -79,8 +90,9 @@ test("a v6 3D circle takes the default frame at its step", async () => {
     { op: "addPoint", args: [[3, 0, 50], "c"] },
     { op: "addCircle", args: ["c", 5, "k"] },
   ]));
-  assert.equal(m.circle("k").plane, "f2");
-  assert.deepEqual(m.journal.find((e) => e.op === "addCircle")!.args, ["c", 5, "f2", "k"]);
+  assert.equal(followed(m, "k"), "f2");
+  // f2's +z is +x × +z = −y: the seed the entry now carries.
+  assert.deepEqual(m.journal.find((e) => e.op === "addCircle")!.args, ["c", 5, [0, -1, 0], "k"]);
 });
 
 test("a v6 3D arc takes the frame whose +z is nearest its own normal — not the default", async () => {
@@ -96,8 +108,9 @@ test("a v6 3D arc takes the frame whose +z is nearest its own normal — not the
     { op: "addPoint", args: [wallY.map((x) => 8 * x), "e"] },
     { op: "addArc", args: ["c", "s", "e", 8, "a"] },
   ]));
-  assert.equal(m.arc("a").plane, "wall", "the arc lies in the wall's plane, and is given it");
-  assert.equal(m.journal.find((e) => e.op === "addArc")!.args[4], "wall");
+  assert.equal(followed(m, "a"), "wall", "the arc lies in the wall's plane, and is given it");
+  const n = m.journal.find((e) => e.op === "addArc")!.args[4] as number[];
+  assert.ok(close(Math.abs(dot(n, [0, -Math.sin(t), Math.cos(t)])), 1), "seeded facing the wall");
   // And it is the arc v6 drew: the quarter from s to e.
   const f = curveFrame(m, m.arc("a"))!;
   assert.ok(close(f.sweep, Math.PI / 2), `swept ${f.sweep}`);
@@ -123,7 +136,7 @@ test("a v6 arc reads its plane from the saved coordinates, not the replay's seed
     { op: "addArc", args: [null, "s", "e", 10, "a"] },
     { op: "setCoords", args: ["p1", on(0, 0)] },
   ], { s: on(10, 0), e: on(0, 10), p1: on(0, 0) }));
-  assert.equal(m2.arc("a").plane, "tip");
+  assert.equal(followed(m2, "a"), "tip");
   assert.ok(close(curveFrame(m2, m2.arc("a"))!.sweep, Math.PI / 2));
 });
 
@@ -144,31 +157,30 @@ test("a v6 arc whose frame faces the other way from the kernel's +z is swapped e
   const mid = arcPoint(f, f.sweep / 2);
   assert.ok(close(mid[0], 10 * Math.SQRT1_2) && close(mid[1], 10 * Math.SQRT1_2), `through ${mid}`);
   assert.equal(m.arc("a").start, "e", "stored the other way round about the frame's +z");
-  assert.deepEqual(m.journal.find((e) => e.op === "addArc")!.args, ["c", "e", "s", 10, "down", "a"],
+  assert.deepEqual(m.journal.find((e) => e.op === "addArc")!.args, ["c", "e", "s", 10, [0, 0, -1], "a"],
     "and so it re-saves");
+  assert.equal(followed(m, "a"), "down");
   const text = save(m);
   assert.ok(close(curveFrame(open(text), open(text).arc("a"))!.sweep, Math.PI / 2), "and reopens the same");
 });
 
-test("a file with no frame at all gets one of the translation's own, in the curve's plane, on its centre", async () => {
+test("a file with no frame at all takes the origin's plane — no frame of the translation's own any more", async () => {
   await loadKernel();
-  // A 2D drawing with a circle and no frame, opened into the 3D app.
+  // A 2D drawing with a circle and no frame, opened into the 3D app. This
+  // translation used to make a frame called `plane` for it, in the kernel's
+  // x–y plane on its centre; that plane is the origin's, which is always there
+  // (docs/plans/frameless-curves.md), so nothing is made.
   const m = open(file(5, 2, [
     { op: "addPoint", args: [[40, 30], "c"] },
     { op: "addCircle", args: ["c", 12, "k"] },
-    { op: "addPoint", args: [[0, 0], "plane"] }, // a name the translation must not take
+    { op: "addPoint", args: [[0, 0], "plane"] }, // a name the translation once had to step round
   ]), 3);
-  const made = m.circle("k").plane!;
-  assert.equal(made, "plane2", "never a name the file uses");
-  const fr = m.frame(made);
-  assert.deepEqual(m.coords(fr.origin), [40, 30, 0], "its origin on the circle's centre");
+  assert.equal(followed(m, "k"), "origin");
+  assert.equal([...m.entities.values()].filter((e) => e.kind === "frame").length, 0, "no frame made");
   assert.deepEqual(curveFrame(m, m.circle("k"))!.normal, [0, 0, 1], "in the kernel's x–y plane, where every 2D drawing lived");
-  const ops = m.journal.map((e) => e.op);
-  assert.deepEqual(ops.slice(0, 6), ["addPoint", "addPoint", "addPoint", "addPoint", "addFrame", "addCircle"],
-    "made just before the circle that needs it");
   assert.equal(m.solve().solved, true);
   const text = save(m);
-  assert.equal(save(open(text)), text, "an ordinary frame from then on: it re-saves and reopens");
+  assert.equal(save(open(text)), text, "it re-saves and reopens");
 });
 
 test("a version-7 2D file — null planes — lifts into 3D the same way, its curves given a plane", async () => {
@@ -184,13 +196,11 @@ test("a version-7 2D file — null planes — lifts into 3D the same way, its cu
   const text = save(m2);
   assert.equal(JSON.parse(text).version, VERSION);
   const m = open(text, 3);
-  const plane = m.circle("k").plane!;
-  assert.equal(m.arc("a").plane, plane, "one frame of the translation's own, for every curve in the 2D drawing");
-  assert.deepEqual(m.coords(m.frame(plane).origin), [40, 30, 0]);
+  assert.equal(followed(m, "k"), "origin");
+  assert.equal(followed(m, "a"), "origin", "the origin's plane, for every curve in the 2D drawing");
   assert.equal(m.solve().solved, true);
-  // And a fillet typed into the lifted drawing finds that plane to round in.
-  m.setDefaultFrame(plane);
-  assert.equal(m.arc(fillet(m, "l1", "l2", 5)).plane, plane);
+  // And a fillet typed into the lifted drawing rounds in its plane.
+  assert.deepEqual(m.normalOf(fillet(m, "l1", "l2", 5)), [0, 0, 1]);
 });
 
 test("an arc in a plane no frame shares gets a translation frame in that plane", async () => {
@@ -205,7 +215,7 @@ test("an arc in a plane no frame shares gets a translation frame in that plane",
     { op: "addPoint", args: [v.map((x, i) => 6 * x + [0, 0, 5][i]), "e"] },
     { op: "addArc", args: ["c", "s", "e", 6, "a"] },
   ]));
-  const plane = m.arc("a").plane!;
+  const plane = followed(m, "a")!;
   assert.notEqual(plane, "flat", "the default does not fit, and is not forced on it");
   const n = curveFrame(m, m.arc("a"))!.normal;
   const want = [0, -Math.sin(t), Math.cos(t)]; // x × v, on the kernel's +z side
@@ -230,7 +240,7 @@ test("a frame the file later deletes is no candidate — the deletion would be r
     { op: "setDefaultFrame", args: [null] },
     { op: "deleteEntity", args: ["gone"] },
   ]));
-  assert.equal(m.circle("k").plane, "kept");
+  assert.equal(followed(m, "k"), "kept");
   assert.equal(m.entities.has("gone"), false, "and the deletion went through");
 });
 
@@ -250,9 +260,11 @@ test("a v6 fillet is given the frame its corner lies in", async () => {
     { op: "addLine", args: ["k", "b", "l2"] },
     { op: "fillet", args: ["l1", "l2", 6] },
   ]));
-  assert.deepEqual(m.journal.find((e) => e.op === "fillet")!.args, ["l1", "l2", 6, "tip"]);
+  const side = m.journal.find((e) => e.op === "fillet")!.args[3] as number[];
+  assert.ok(close(dot(side, [0, -Math.sin(t), Math.cos(t)]), 1), "tip's +z, as the side its arc faces");
   assert.equal(m.solve().solved, true);
   const arc = [...m.entities.values()].find((e) => e.kind === "arc")!;
+  assert.equal(followed(m, arc.name), "tip");
   const c = m.coords((arc as { center: string }).center);
   assert.ok(Math.hypot(...sub(c, at(6, 6))) < 1e-6, `centre ${c}`);
   const f = curveFrame(m, arc)!;
