@@ -139,7 +139,12 @@ one line of its tools — resized from any corner) is a
 REPL over the app's own command surface, and it is the primary interface —
 not a debug console. `help()` lists everything in scope. The toolbar's
 buttons are shortcuts into it: each is a tool's icon (hover for its name),
-types `arm("name")`, and the log shows it. A tool with options — extrude's
+types `arm("name")`, and the log shows it. The first two are **Select** — the
+arrow, lit whenever no tool is armed, which puts the armed tool down and
+keeps what is selected — and **the Hand**, with which a left-drag (or one
+finger) pans from wherever it starts, over geometry too, while a click still
+selects. Holding **Space** is a hand for as long as it is held, over
+whatever tool is armed. A tool with options — extrude's
 depth, revolve's angle, fillet's radius — shows them in a small panel beside
 the toolbar while it is armed; editing a field types
 `arm("extrude", {depth: 25})` into the same command line, and the last value
@@ -253,7 +258,8 @@ ordinary lines in `par` still move each other; that asymmetry is what makes a
 frame a datum.
 
 The viewport works the way Onshape's does: **right-drag orbits**, middle-drag
-pans, the wheel zooms about the cursor. The camera is orthographic and starts
+pans, the wheel zooms about the cursor — and a left-drag pans too with the
+Hand armed or Space held. The camera is orthographic and starts
 square-on — the drawing in the plane z = 0, exactly as a 2D sketcher shows it
 — and `orbit(yaw, pitch)`, `pan(dx, dy)`, `zoom(f)` and `lookAt(frame?)` do the
 same from the command line (`lookAt` puts a frame's plane square to the screen,
@@ -411,6 +417,9 @@ emulation, since only the device runs iOS Safari):
   point or edge it lands on; on empty canvas with nothing armed it **turns the
   drawing**.
 - **two fingers** — pan and pinch-zoom, together.
+- **the Hand** (second on the toolbar) — one finger pans instead, from
+  anywhere, over geometry too; a tap still selects. **Select** (the arrow,
+  first) puts any tool down; it is lit whenever none is armed.
 - **hold** (half a second) — the menu, at the finger; **hold, then drag** — a
   selection box.
 - A second finger drops a shape half-drawn; a third drops everything.

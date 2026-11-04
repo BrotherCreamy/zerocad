@@ -34,6 +34,15 @@ etc).
   migrated) as what each side rests against, and re-laid by that in any area
   (`relaid`), so a rotation keeps it. The installed app's status bar is
   `default` (iOS 26 blurs a translucent one).
+- **Select and the Hand head the toolbar** (docs/plans/select-hand.md,
+  built). Select (`arm("select")`) is "no tool", lit whenever nothing is
+  armed; pressing it puts the armed tool down and keeps the selection. The
+  Hand (`arm("hand")`) makes a left-drag or one finger pan from wherever it
+  starts, moving nothing, a still press still picking; Space held is a Hand
+  over the armed tool (`ToolEngine.hold`). Both are the engine's
+  (`tool.ts`'s `ENGINE_TOOLS`, `toolbarTools()`), not registry classes, and
+  `defineTool` refuses their names; `ToolEngine.lit` is the button the
+  toolbar lights.
 - **`kernel-rs/`** — Rust crate, compiles to WASM via `npm run build:kernel`.
   Exposes one function: `solve_step(rows, cols, vals, r, n, lambda) -> dx`,
   a matrix-free conjugate-gradient solve of the damped normal equations

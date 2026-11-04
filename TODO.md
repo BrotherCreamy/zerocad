@@ -47,8 +47,15 @@ otherwise.
   is no hand/selction tool. would be nice since a lot of people are used to
   that"*). Select is the "no tool" state made visible (`arm("select")`), lit
   whenever nothing is armed; the Hand pans from anywhere with one finger or a
-  left-drag; Space is a temporary hand on a desktop. Spec:
-  [`select-hand.md`](docs/plans/select-hand.md), after the chrome package.
+  left-drag; Space is a temporary hand on a desktop. **Built** — veto any:
+  Select and the Hand are the engine's, not registry tools (`defineTool`
+  refuses the names); pressing Select, or arming the Hand, keeps the
+  selection, where Escape and `cancel()` drop it with the tool or the Hand;
+  Space is an overlay on the armed tool, which never goes anywhere, and is
+  skipped while any field or button has the focus; a still click under Space
+  reaches no one; the Hand survives an undo; bare `select` arms Select (it
+  printed the `select(...)` function); an open-hand cursor. Spec, with every
+  deviation in its *As built*: [`select-hand.md`](docs/plans/select-hand.md).
 
 - **The organisation method: the groups that exist, plus an open group, in
   an organiser pane** (the owner, 2026-11-04: *"the group view or whatever
@@ -1911,6 +1918,25 @@ extended the way `defineTool` extends the tool registry would close it.
 
 ## Smaller things
 
+- [ ] **Found while building `select-hand.md`** (each documented in the
+      spec's *As built*):
+      - **Thirteen buttons do not fit beside a pane across a landscape
+        iPhone.** A 599 px line (a finger's 44 px pitch) turned to a row on
+        the right edge leaves 151 px of a 750 px area, less than a log's
+        least width (160): docked so, the log overlaps the row by 9 px and
+        nothing reports it (the resolver says no layout exists, which turns
+        the dev build's overlap check off). Every new built-in tool makes
+        this worse. A fold or a second line is the owner's call — he vetoed
+        wrapping (`tray-fixed-line.md`); a shorter least width for the log
+        would only move the edge.
+      - **In Safari's page a phone's portrait column runs past where an
+        edge-to-edge command line starts**; the default now starts the line
+        right of the column there. The installed app is unchanged. Worth
+        the owner's eye in Safari, not installed.
+      - **The owner's iPhone list**: the Hand with one finger over a line
+        (the drawing goes with the finger, the line does not move); Select
+        lit after a finished point and after the strip's Cancel.
+
 - [ ] **Found while building `chrome-logo-scale.md`** (each deliberate and
       documented in the spec's *As built*):
       - **The owner's iPhone list**: the drawing to the glass with nothing
@@ -2348,6 +2374,26 @@ extended the way `defineTool` extends the tool registry would close it.
       the resolver's flush arithmetic assumes does not happen.
 
 ## Done
+
+- [x] **Select and Hand tools, first on the toolbar; Space a temporary
+      hand** (2026-11-04). The owner: *"there is no hand/selction tool.
+      would be nice since a lot of people are used to that"*. Spec:
+      [`docs/plans/select-hand.md`](docs/plans/select-hand.md), marked built,
+      every deviation in its *As built*. `tool.ts`'s `SELECT`/`HAND`/
+      `toolbarTools()`; the engine's `putDown`, `hold`, `lit`, the Hand's
+      press (mouse and finger) and its cursor; two glyphs in `icons.ts`;
+      Space, the toolbar's list and lit button, the Hand through an undo in
+      `main.ts`; `ActionState.hand` and the phone's portrait default in
+      `panels.ts`; `tools()` and `help()`. Unit 1104 (1094 before;
+      `test/selecthand.test.ts` 9, `touchlayout.test.ts` +1); e2e 471 (463
+      before; `selecthand.e2e.ts` 8). **Deviations, in short**: the two are
+      the engine's, not registry tools; Space overlays the armed tool rather
+      than disarming it, and is skipped for any focused field or button, not
+      only the command line; Select and the Hand keep the selection; the Hand
+      survives an undo; a grab cursor; bare `select` arms Select; in Safari's
+      shorter page the portrait command line starts right of the column;
+      `chrome.e2e.ts`'s rotation test docks the action strip, since a
+      13-button row and a log no longer fit across a landscape iPhone.
 
 - [x] **No title bar: a logo over the drawing, each device's own interface
       size, panels to the very edge, docking through a rotation**
