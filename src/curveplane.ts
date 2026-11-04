@@ -17,7 +17,7 @@
 // every relation and every drawing of a rim agree on what "the plane's
 // normal" is.
 
-import { spanOf, type Entity, type Model } from "./model.ts";
+import { spanOf, type Entity, type FeatureEntry, type Model } from "./model.ts";
 import { frameBasis, planeBasis } from "./relations/refs.ts";
 import { arcFrame, circleFrame, type ArcFrame } from "./arcgeom.ts";
 import { lift3 } from "./vec3.ts";
@@ -56,6 +56,20 @@ export function planeAxes(model: Model, ref: string): (CurvePlane & { origin: nu
   const { origin, u, v, n } = planeBasis(model, ref)();
   if (n.every((c) => c === 0) || u.every((c) => c === 0)) return null;
   return { origin, u, v, n };
+}
+
+/**
+ * The plane a feature's profile is sketched in — an extrude's lid is offset
+ * along its normal, a revolve's axis lies in it — or null for a collapsed one.
+ * Any plane reference the feature names (a frame, a curve's own plane, three
+ * points: `planeAxes`), asked here rather than of the reference so the STEP
+ * exporter (step.ts, solids.ts) reads a feature's plane the way it reads a
+ * curve's, and a change to where that orientation lives changes this accessor
+ * and not the exporter.
+ */
+export function featurePlane(model: Model, feature: FeatureEntry): CurvePlane | null {
+  const p = planeAxes(model, feature.frame);
+  return p ? { u: p.u, v: p.v, n: p.n } : null;
 }
 
 /**

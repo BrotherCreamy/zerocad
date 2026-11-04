@@ -78,7 +78,16 @@ otherwise.
 - **STEP export** (the owner, 2026-11-04: *"also, please add step export"*):
   exact B-rep, one body per feature, hand-written with no dependency,
   validated against OpenCascade outside the repo. Spec:
-  [`step-export.md`](docs/plans/step-export.md).
+  [`step-export.md`](docs/plans/step-export.md), **built**. Vetoable, as
+  built: **AP214**, not AP242 (the same solid entities; every AP242 reader
+  reads AP214 and many AP214 readers read nothing newer); **one body per
+  feature**, named for it — and an island in a hole a body of its own,
+  `e1.2`; **hidden solids left out** (and named in the log), **construction
+  never exported**; a full circle written as **two half circles** and a full
+  revolve as two half turns, so no face has a seam; a full revolve of a
+  hole a **cavity** (`BREP_WITH_VOIDS`); millimetres assumed; no pcurves;
+  the export is a **download on a desktop** and the **share sheet under a
+  finger**, `model/step`; with no solid, a refusal and no file.
 
 - **Tooltips on every control, long-press on touch; frames drawn in RGB**
   (the owner, 2026-11-04: *"when I hover over tools, I should see a
@@ -2037,6 +2046,15 @@ extended the way `defineTool` extends the tool registry would close it.
 
 ## Smaller things
 
+- **STEP: what only the owner can try** (docs/plans/step-export.md) — that an
+  iPhone's share sheet takes a `model/step` file for Save to Files and
+  AirDrop, and that SolidWorks, Fusion and Onshape open the fixtures in
+  `test/fixtures/step/` as OpenCascade does.
+- **STEP, next if wanted**: pcurves (a read without a reader's pcurve step
+  would then pass too), colours, one body for overlapping features once
+  there are booleans; the shapes not yet tried — a hole touching its outline
+  at a point, an arc tangent to the axis in the middle of its sweep.
+
 - **`par` started from exactly a right angle does not move** (found building
   frameless curves): a wedge is at its maximum at 90°, so its gradient there
   is zero, and a ground circle told `par(c, "origin.x")` sits still while
@@ -2566,6 +2584,31 @@ extended the way `defineTool` extends the tool registry would close it.
 
 ## Done
 
+- [x] **STEP export** (2026-11-04). The owner: *"also, please add step
+      export"*. Spec: [`docs/plans/step-export.md`](docs/plans/step-export.md),
+      marked built, with the validation table and every deviation in its *As
+      built*. `src/solids.ts` and `src/step.ts` (new); `featurePlane` in
+      `curveplane.ts`; `exportRoute` in `files.ts`; `Files.exportFile` in
+      `filehost.ts`; `exportStep` and the `exportFile` handle in
+      `replenv.ts`, and `help()`; *Export STEP…* in `appmenu.ts`; one line in
+      `main.ts`. Validated by OpenCascade 8.0.1 (cadquery-ocp, outside the
+      repo): fourteen parts, every solid valid and closed in a normal read and
+      in a strict one without shape healing, volumes within 5e-15 and boxes
+      within 1e-7 mm of ZeroCAD's (`test/fixtures/step/validated.json`).
+      Unit 1144 (1134 before; `test/step.test.ts` 10), e2e 497 (493
+      before; `test/e2e/step.e2e.ts` 4), `npm run test:all` green.
+      **Deviations, in short**: an island in a hole is a second body (`e1.2`);
+      a full revolve's "seams" are ordinary shared edges; a full revolve of a
+      hole is a `BREP_WITH_VOIDS`; the representation is an
+      `ADVANCED_BREP_SHAPE_REPRESENTATION` (a `SHAPE_REPRESENTATION` subtype);
+      the lid and end face are the dimensions' definition, not the twins; six
+      parts beyond the spec's eight and a second, strict read; the fixture test
+      compares entity census, not bytes; no solid is a refusal; the desktop
+      downloads without asking where. **Found**: OpenCascade's ordinary read
+      heals a face turned over, a solid inside out, a reversed edge and a
+      vertex 0.01 mm off into valid solids of the right volume — a check that
+      only reads a file the usual way cannot fail on those, which is why the
+      strict read exists.
 - [x] **A circle is just a circle: curves carry their own normal, one origin,
       nothing makes a frame unless asked** (2026-11-04). The owner: *"why
       everything need frame? why can not just put circle right there?"* Spec:

@@ -1,0 +1,434 @@
+{
+ "kernel": "Open CASCADE Technology 8.0.1, through cadquery-ocp 8.0.1.1.0 (OCP) from PyPI, on Python 3.11 \u2014 in a scratch directory, never a dependency of this repo",
+ "date": "2026-11-04",
+ "read": "Each fixture read twice. (1) STEPControl_Reader as any application reads a STEP file: ReadFile, the model's global and per-entity check (readerFails, readerWarnings), TransferRoots with OpenCascade's standard shape healing, then per solid BRepCheck_Analyzer, every shell closed, no free edges, a point far outside classified OUT, GProp volume and a tight Bnd_Box (AddOptimal, no triangulation, no tolerance) -> valid, volume, box. (2) strict: each MANIFOLD_SOLID_BREP / BREP_WITH_VOIDS translated straight from its entities by StepToTopoDS_Builder with none of that healing, then only what a file without pcurves leaves a reader to do (ShapeFix_Wire FixEdgeCurves, FixShifted, FixDegenerated; BRepLib SameParameter \u2014 nothing that moves a vertex, reverses an edge or face, or reorders a loop), then the same checks plus every vertex and edge tolerance still the file's 1e-7 -> strict, strictVolume. The healed read alone passes broken files: with one face's same_sense flipped, the whole solid inside out, one oriented edge reversed or a vertex moved 0.01 mm it still reports a valid solid of the right volume. The strict read rejects all four (and an open shell), which is why it is here.",
+ "tolerance": {
+  "volume": "relative 1e-9 (agreement found: 5e-15 or better)",
+  "box": "1e-6 mm (agreement found: 1e-7 or better)"
+ },
+ "parts": {
+  "box": {
+   "what": "a box",
+   "bodies": 1,
+   "valid": true,
+   "strict": true,
+   "volume": 7999.999999999998,
+   "strictVolume": 7999.999999999998,
+   "box": [
+    [
+     0.0,
+     0.0,
+     0.0
+    ],
+    [
+     40.0,
+     20.0,
+     10.0
+    ]
+   ],
+   "shells": [
+    1
+   ],
+   "surfaces": {
+    "plane": 6
+   },
+   "looseEdges": 0,
+   "readerFails": 0,
+   "readerWarnings": 0
+  },
+  "plate-hole": {
+   "what": "a plate with a round hole",
+   "bodies": 1,
+   "valid": true,
+   "strict": true,
+   "volume": 13193.628421021518,
+   "strictVolume": 13193.628421021518,
+   "box": [
+    [
+     0.0,
+     0.0,
+     0.0
+    ],
+    [
+     60.0,
+     40.0,
+     6.0
+    ]
+   ],
+   "shells": [
+    1
+   ],
+   "surfaces": {
+    "plane": 6,
+    "cylinder": 2
+   },
+   "looseEdges": 0,
+   "readerFails": 0,
+   "readerWarnings": 0
+  },
+  "fillet": {
+   "what": "an outline with a fillet (an arc wall)",
+   "bodies": 1,
+   "valid": true,
+   "strict": true,
+   "volume": 17835.185789489242,
+   "strictVolume": 17835.185789489242,
+   "box": [
+    [
+     0.0,
+     0.0,
+     0.0
+    ],
+    [
+     50.0,
+     30.0,
+     12.0
+    ]
+   ],
+   "shells": [
+    1
+   ],
+   "surfaces": {
+    "plane": 6,
+    "cylinder": 1
+   },
+   "looseEdges": 0,
+   "readerFails": 0,
+   "readerWarnings": 0
+  },
+  "cylinder": {
+   "what": "a cylinder (a circle profile)",
+   "bodies": 1,
+   "valid": true,
+   "strict": true,
+   "volume": 7853.981633974483,
+   "strictVolume": 7853.981633974483,
+   "box": [
+    [
+     -10.0,
+     -10.0,
+     0.0
+    ],
+    [
+     10.0,
+     10.0,
+     25.0
+    ]
+   ],
+   "shells": [
+    1
+   ],
+   "surfaces": {
+    "plane": 2,
+    "cylinder": 2
+   },
+   "looseEdges": 0,
+   "readerFails": 0,
+   "readerWarnings": 0
+  },
+  "partial-revolve": {
+   "what": "a partial revolve (end caps)",
+   "bodies": 1,
+   "valid": true,
+   "strict": true,
+   "volume": 12566.37061435917,
+   "strictVolume": 12566.37061435917,
+   "box": [
+    [
+     6.123233995736765e-16,
+     0.0,
+     -30.0
+    ],
+    [
+     30.0,
+     20.0,
+     0.0
+    ]
+   ],
+   "shells": [
+    1
+   ],
+   "surfaces": {
+    "cylinder": 2,
+    "plane": 4
+   },
+   "looseEdges": 0,
+   "readerFails": 0,
+   "readerWarnings": 0
+  },
+  "cone-torus": {
+   "what": "a full revolve with a line crossing the axis (a cone) and an arc (a torus)",
+   "bodies": 1,
+   "valid": true,
+   "strict": true,
+   "volume": 1051.1897080995914,
+   "strictVolume": 1051.1897080995914,
+   "box": [
+    [
+     -10.0,
+     0.0,
+     -10.0
+    ],
+    [
+     10.0,
+     6.0,
+     10.0
+    ]
+   ],
+   "shells": [
+    1
+   ],
+   "surfaces": {
+    "cylinder": 2,
+    "plane": 4,
+    "torus": 2,
+    "cone": 2
+   },
+   "looseEdges": 0,
+   "readerFails": 0,
+   "readerWarnings": 0
+  },
+  "two-bodies": {
+   "what": "two separate bodies",
+   "bodies": 2,
+   "valid": true,
+   "strict": true,
+   "volume": 5696.4600329384875,
+   "strictVolume": 5696.4600329384875,
+   "box": [
+    [
+     0.0,
+     0.0,
+     0.0
+    ],
+    [
+     56.0,
+     20.0,
+     15.0
+    ]
+   ],
+   "shells": [
+    1,
+    1
+   ],
+   "surfaces": {
+    "plane": 8,
+    "cylinder": 2
+   },
+   "looseEdges": 0,
+   "readerFails": 0,
+   "readerWarnings": 0
+  },
+  "tilted": {
+   "what": "a tilted profile on a non-axis plane",
+   "bodies": 1,
+   "valid": true,
+   "strict": true,
+   "volume": 4171.681469282041,
+   "strictVolume": 4171.68146928204,
+   "box": [
+    [
+     -0.9568715340009586,
+     -7.7469102668911,
+     2.0
+    ],
+    [
+     34.638791290886665,
+     22.77187637477135,
+     21.003091243029726
+    ]
+   ],
+   "shells": [
+    1
+   ],
+   "surfaces": {
+    "plane": 6,
+    "cylinder": 2
+   },
+   "looseEdges": 0,
+   "readerFails": 0,
+   "readerWarnings": 0
+  },
+  "sphere": {
+   "what": "a sphere (a semicircle on the axis, turned whole)",
+   "bodies": 1,
+   "valid": true,
+   "strict": true,
+   "volume": 4188.790204786375,
+   "strictVolume": 4188.790204786375,
+   "box": [
+    [
+     -10.0,
+     -10.0,
+     -10.0
+    ],
+    [
+     10.0,
+     10.0,
+     10.0
+    ]
+   ],
+   "shells": [
+    1
+   ],
+   "surfaces": {
+    "sphere": 2
+   },
+   "looseEdges": 0,
+   "readerFails": 0,
+   "readerWarnings": 0
+  },
+  "spindle": {
+   "what": "an arc whose circle crosses the axis, turned whole (a surface of revolution)",
+   "bodies": 1,
+   "valid": true,
+   "strict": true,
+   "volume": 1615.390201112294,
+   "strictVolume": 1615.390201112294,
+   "box": [
+    [
+     -8.0,
+     -6.0,
+     -8.0
+    ],
+    [
+     8.0,
+     6.0,
+     8.0
+    ]
+   ],
+   "shells": [
+    1
+   ],
+   "surfaces": {
+    "cylinder": 2,
+    "revolution": 2
+   },
+   "looseEdges": 0,
+   "readerFails": 0,
+   "readerWarnings": 0
+  },
+  "cavity": {
+   "what": "a full revolve of a profile with a hole (a void)",
+   "bodies": 1,
+   "valid": true,
+   "strict": true,
+   "volume": 43948.93564073948,
+   "strictVolume": 43948.93564073948,
+   "box": [
+    [
+     -30.0,
+     0.0,
+     -30.0
+    ],
+    [
+     30.0,
+     20.0,
+     30.0
+    ]
+   ],
+   "shells": [
+    2
+   ],
+   "surfaces": {
+    "cylinder": 4,
+    "plane": 4,
+    "torus": 4
+   },
+   "looseEdges": 0,
+   "readerFails": 0,
+   "readerWarnings": 0
+  },
+  "island": {
+   "what": "an island inside a hole (one feature, two bodies)",
+   "bodies": 2,
+   "valid": true,
+   "strict": true,
+   "volume": 12722.12434196915,
+   "strictVolume": 12722.12434196915,
+   "box": [
+    [
+     0.0,
+     0.0,
+     0.0
+    ],
+    [
+     60.0,
+     60.0,
+     5.0
+    ]
+   ],
+   "shells": [
+    1,
+    1
+   ],
+   "surfaces": {
+    "plane": 8,
+    "cylinder": 4
+   },
+   "looseEdges": 0,
+   "readerFails": 0,
+   "readerWarnings": 0
+  },
+  "tilted-revolve": {
+   "what": "a filleted profile turned 270\u00b0 on a tilted plane",
+   "bodies": 1,
+   "valid": true,
+   "strict": true,
+   "volume": 36655.71358668423,
+   "strictVolume": 36655.71358668423,
+   "box": [
+    [
+     -28.080562701805267,
+     -24.29212300965362,
+     -20.945265618534645
+    ],
+    [
+     32.63182982008655,
+     29.89622678158118,
+     35.37526011615539
+    ]
+   ],
+   "shells": [
+    1
+   ],
+   "surfaces": {
+    "cylinder": 2,
+    "plane": 4,
+    "torus": 1
+   },
+   "looseEdges": 0,
+   "readerFails": 0,
+   "readerWarnings": 0
+  },
+  "wireframe": {
+   "what": "loose sketch curves (curves: true) beside a box; a hidden solid and a construction line left out",
+   "bodies": 1,
+   "valid": true,
+   "strict": true,
+   "volume": 7999.999999999998,
+   "strictVolume": 7999.999999999998,
+   "box": [
+    [
+     0.0,
+     0.0,
+     0.0
+    ],
+    [
+     40.0,
+     20.0,
+     10.0
+    ]
+   ],
+   "shells": [
+    1
+   ],
+   "surfaces": {
+    "plane": 6
+   },
+   "looseEdges": 3,
+   "readerFails": 0,
+   "readerWarnings": 0
+  }
+ }
+}

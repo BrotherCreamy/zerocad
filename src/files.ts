@@ -154,6 +154,18 @@ export function shareRoute(c: Capabilities): "share" | "download" {
   return c.shareFiles ? "share" : "download";
 }
 
+/**
+ * How an export (`exportStep()`) hands its file over: the share sheet under a
+ * finger where it takes the file — on an iPhone, *Save to Files* or AirDrop is
+ * how a file leaves the app — and a download everywhere else, saveRoute's rule
+ * without the handle or the picker. An export is a copy for another tool, not
+ * the document: there is no file of it to write back into, and a desktop's
+ * Downloads is where a person looks for one.
+ */
+export function exportRoute(c: Capabilities): "share" | "download" {
+  return c.phone && c.shareFiles ? "share" : "download";
+}
+
 /** How `openFile()` asks for a file: the picker (whose handle a save writes back to), else the file input. */
 export function openRoute(c: Capabilities): "picker" | "input" {
   return c.openPicker ? "picker" : "input";

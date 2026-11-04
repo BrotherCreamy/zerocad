@@ -6,7 +6,7 @@
 //
 // A dropdown under the logo, in the context menu's family (same ground,
 // border and type), in sections: **File** — the document's name and an
-// unsaved dot, then New, Open…, Save, Share…; **Interface size** — the spin
+// unsaved dot, then New, Open…, Save, Share…, Export STEP…; **Interface size** — the spin
 // box; **Panes** — a checkbox per panel the panel manager has; **View** —
 // Shaded / Hidden / Wire; **About** — the build and the source.
 //
@@ -35,6 +35,8 @@ export const FILE_ITEMS: readonly FileItem[] = [
   { label: "Open…", command: "openFile()" },
   { label: "Save", command: "saveFile()" },
   { label: "Share…", command: "shareFile()" },
+  // A copy for another CAD tool, not the document (docs/plans/step-export.md).
+  { label: "Export STEP…", command: "exportStep()" },
 ];
 
 /** The function a command calls: `newFile()` → `newFile`. */
@@ -204,7 +206,7 @@ export class AppMenu {
     const h = this.host;
     this.el.textContent = "";
 
-    // File: the name line, then the four commands.
+    // File: the name line, then the document's commands and the export.
     const doc = h.document();
     const file = this.section("File");
     const name = document.createElement("div");

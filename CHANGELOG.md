@@ -7,6 +7,61 @@ decisions.
 
 ---
 
+## STEP export: exact solids out to every other CAD tool
+
+The owner:
+
+> *also, please add step export*
+
+Spec: [`docs/plans/step-export.md`](docs/plans/step-export.md), built, every
+deviation in its *As built* and in TODO.md's Done entry.
+
+- **`exportStep()`** — the app menu's **Export STEP…** — writes the shown
+  solids as `<name>.step`: the share sheet on a phone (Save to Files,
+  AirDrop), a download on a desktop, `model/step`. `exportStep("bracket")`
+  names it; `exportStep({ curves: true })` adds the sketch curves no solid is
+  made of, as wireframe. With no solid it says so and writes nothing; a
+  hidden solid is left out and named in the log. It journals nothing, like
+  `saveFile()`.
+- **Exact B-rep, not a mesh** (`src/solids.ts`): an extrude's caps and line
+  walls on planes, its arc and circle walls on cylinders; a revolve's faces
+  on planes, cylinders, cones, spheres, tori or — for an arc whose circle
+  reaches the axis — a surface of revolution, with end caps for a partial
+  turn and a cavity (`BREP_WITH_VOIDS`) for a hole turned a whole turn. Every
+  vertex and edge once, every edge used by two faces in opposite senses,
+  every face's sense read off its geometry. A circle is two half circles and
+  a full revolve two half turns, so no face needs a seam.
+- **AP214**, hand-written in `src/step.ts`: one product, millimetres and
+  radians with a 1e-7 mm uncertainty, one `MANIFOLD_SOLID_BREP` per feature
+  named for it (`e1`, `e2`; an island in a hole is a body of its own, `e1.2`).
+  AP214 rather than AP242 because every reader that takes AP242 takes AP214,
+  and many that take AP214 take nothing newer; the solid entities are the same.
+- **Validated by a real kernel**: OpenCascade 8.0.1 (cadquery-ocp from PyPI,
+  in a scratch directory, never a dependency here) read all fourteen test
+  parts back — the spec's eight (a box, a plate with a round hole, a
+  fillet, a cylinder, a partial revolve, a full revolve with a cone and a
+  torus, two bodies, a tilted profile) and six more (a sphere, an arc whose
+  circle crosses the axis — the surface of revolution — a cavity, an island,
+  a filleted 270° revolve on a tilted plane, the wireframe). Every solid
+  valid and closed, its volume within 5e-15 of ZeroCAD's and its
+  extent within 1e-7 mm, read twice: as an application reads it, and again
+  with OpenCascade's shape healing left out, because the healed read was
+  shown to pass files broken on purpose (a face turned over, a solid inside
+  out, an edge reversed, a vertex moved 0.01 mm) and the strict read rejects
+  every one. The files are committed as fixtures with what read them and
+  when (`test/fixtures/step/validated.json`).
+- **Tests**: unit 1144 (1134 before; `test/step.test.ts` 10, with a Part 21
+  reader of its own checking references, types, loops, edge use, genus and
+  vertices on their curves and surfaces); e2e 497 (493 before;
+  `test/e2e/step.e2e.ts` 4 — the menu's download, a typed name and curves,
+  the iPhone share sheet, and no solid).
+
+**What only the owner can check**: that the share sheet on a real iPhone
+takes a `model/step` file for Save to Files and AirDrop (Chromium's own
+share refuses `.step` as it refuses `.json`, and a download is what it gets
+instead), and that SolidWorks, Fusion or Onshape open the file as OpenCascade
+does.
+
 ## A circle is just a circle: curves carry their own normal, one origin, no frame made for you
 
 The owner, twice:
