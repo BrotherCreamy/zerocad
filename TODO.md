@@ -36,15 +36,19 @@ otherwise.
   own `static summary`, which `tools()` and `help()` read too. Frames: x
   `#ee6040`, y `#60d658`, z `#5b9cff`, letters kept, lit and selected still
   win, the default heavier rather than lighter.
-- **Under discussion with the owner (2026-11-04), not yet decided:** "region"
-  retired in favour of **Face** (a bounded piece of one surface), **Surface**
-  (faces joined edge to edge) and **Solid** (a closed surface), each a typed
-  object that enforces its rules, generic groups kept only for organising;
-  **circles that carry their own orientation**, so no frame is made
-  automatically, with one origin always present; **one circle tool and one
-  arc tool**, the method read from the gesture (*"why are there multiple
-  circle tools and arc tools? they all achieve the same thing. surely just one
-  tool, but different ways to set constraints"*).
+- **Decided by the owner (2026-11-04):** generic groups stay *"for now"*; a
+  circle needs no frame (*"why everything need frame? why can not just put
+  circle right there?"*) — curves carry their own orientation, one origin is
+  always present, and nothing makes a frame unless asked
+  ([`frameless-curves.md`](docs/plans/frameless-curves.md)); the organiser
+  shows from the start on a phone, and the toolbar wraps to a second row —
+  *"Second row.... everything has to fit"*, which **reverses
+  `tray-fixed-line.md`'s one-line rule** where a line does not fit
+  ([`everything-fits.md`](docs/plans/everything-fits.md)).
+- **Taken as agreed, not yet answered in words:** one circle tool and one arc
+  tool, the method read from the gesture (the owner's own suggestion), after
+  `frameless-curves.md`; then faces, surfaces and solids as typed objects
+  that enforce their rules, with "region" retired into "face". Veto here.
 
 - **A new version is offered, not imposed: "Update ready — tap to reload"**
   beside the logo (the owner, 2026-11-04, asking whether the pages update on
