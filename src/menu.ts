@@ -82,10 +82,10 @@ const TOOL_ITEMS: [label: string, tool: string][] = [
   ["Point", "point"],
   ["Line", "line"],
   ["Rectangle", "rectangle"],
+  // One circle and one arc: the gesture says which way (docs/plans/
+  // one-circle-one-arc.md), and `circle3`/`arc3` are typed names, not tools.
   ["Circle", "circle"],
-  ["3 point circle", "circle3"],
   ["Arc", "arc"],
-  ["3 point arc", "arc3"],
   ["Fillet", "fillet"],
 ];
 

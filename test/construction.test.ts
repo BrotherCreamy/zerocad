@@ -32,8 +32,6 @@ import { CircleTool } from "../src/tools/circle.ts";
 import { RectangleTool } from "../src/tools/rectangle.ts";
 import "../src/tools/line.ts";
 import "../src/tools/arc.ts";
-import "../src/tools/arc3.ts";
-import "../src/tools/circle3.ts";
 import { worldToScreen, type View } from "../src/view.ts";
 import { axisFrame, tiltedFrame } from "./frames.ts";
 import { polygon, ring } from "./profiles.ts";
@@ -373,8 +371,8 @@ function fakeCtx(model: Model, options: Record<string, unknown>): ToolContext {
 }
 
 test("every drawing tool declares a construction option, false unless asked", () => {
-  for (const tool of ["line", "rectangle", "circle", "circle3", "arc", "arc3"]) {
-    assert.deepEqual(declaredOptions(getToolCtor(tool), tool), { construction: { default: false } }, tool);
+  for (const tool of ["line", "rectangle", "circle", "arc"]) {
+    assert.deepEqual(declaredOptions(getToolCtor(tool), tool).construction, { default: false }, tool);
   }
   assert.deepEqual(declaredOptions(getToolCtor("point")), {}, "a point takes no flag, so its tool has no option");
 });

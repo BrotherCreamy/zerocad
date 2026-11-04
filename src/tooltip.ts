@@ -141,6 +141,20 @@ export function tipPlacement(
   return { x: slideX(p.x), y: slideY(p.y), side: order[0] };
 }
 
+/** The narrowest a tip is made to fit beside a column; below it, the tip keeps its width and the usual fallback. */
+export const MIN_TIP_W = 120;
+
+/**
+ * The width a tip has beside a column `line` — on its wider side, inside
+ * `bounds` less the margin, the gap off the line, and under a finger the
+ * finger's clearance too: what `tipPlacement`'s left and right sides need.
+ */
+export function roomBeside(line: Box, bounds: Box, finger: At | null = null): number {
+  const right = bounds.x + bounds.w - MARGIN - (Math.max(line.x + line.w, finger ? finger.x + FINGER_CLEAR : -Infinity) + GAP);
+  const left = Math.min(line.x, finger ? finger.x - FINGER_CLEAR : Infinity) - GAP - (bounds.x + MARGIN);
+  return Math.max(right, left);
+}
+
 /** Answers a control's tip when it is about to be shown — asked then, so it says what the control would do now. */
 export type TipSource = () => Tip | null;
 
@@ -337,8 +351,17 @@ export class Tooltips {
     this.shown = c;
     c.setAttribute("aria-describedby", this.el.id);
     const r = c.getBoundingClientRect();
-    const size = { w: this.el.offsetWidth, h: this.el.offsetHeight };
     const l = entry!.line?.()?.getBoundingClientRect() ?? null;
+    // A column's tip goes beside it; where the wider side is narrower than the
+    // tip, the tip is narrowed to it, to wrap, rather than clamped back over
+    // the column. Seen on an iPhone SE once the tray was eleven buttons, one
+    // column the screen's height: no room above or below it either.
+    this.el.style.maxWidth = "";
+    if (l && entry!.along?.() === "column") {
+      const room = roomBeside({ x: l.x, y: l.y, w: l.width, h: l.height }, this.bounds(), finger);
+      if (room < this.el.offsetWidth && room >= MIN_TIP_W) this.el.style.maxWidth = `${Math.floor(room)}px`;
+    }
+    const size = { w: this.el.offsetWidth, h: this.el.offsetHeight };
     const p = tipPlacement({ x: r.x, y: r.y, w: r.width, h: r.height }, size, this.bounds(),
       { finger, along: entry!.along?.() ?? null, line: l ? { x: l.x, y: l.y, w: l.width, h: l.height } : null });
     this.el.style.left = `${Math.round(p.x)}px`;

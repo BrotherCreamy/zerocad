@@ -133,7 +133,9 @@ test("the canvas is the whole window — there is no header — and the chrome f
 
 test("the toolbar has a button per registered tool: its icon, with a tooltip and its name as its accessible name", async () => {
   // A tool with options is listed with them (`extrude  { depth: 10 }`); its name is the first word.
-  const tools = ((await app.repl("tools()")).value as string[]).map((t) => t.split(" ")[0]);
+  // The old names circle3 and arc3 are listed after the tools as what they arm, not as tools.
+  const tools = ((await app.repl("tools()")).value as string[]).map((t) => t.split(" ")[0])
+    .filter((t) => t !== "circle3" && t !== "arc3");
   const buttons = await app.page.$$eval("#toolbar button", (els) =>
     els.map((el) => ({
       tool: (el as HTMLElement).dataset.tool,
@@ -405,8 +407,9 @@ async function tray(): Promise<{ x: number; y: number; w: number; h: number; ori
 }
 
 // The built-ins after the reload that dropped "stamp": Select and the Hand
-// (docs/plans/select-hand.md) and the eleven drawing tools.
-const TOOLS = 13;
+// (docs/plans/select-hand.md) and the nine drawing tools — one circle and one
+// arc since docs/plans/one-circle-one-arc.md.
+const TOOLS = 11;
 const RUN = 16 + 6 + TOOLS * 22; // strip, padding, a 22px step per button
 const DEPTH = 28; // one button thick
 /** The default tray's top: under the logo's 32 px box, a margin off it. */
@@ -546,7 +549,9 @@ test("storage that throws costs the arrangement and nothing else", async () => {
 // nothing greys — and since docs/plans/tool-options.md the toolbar's greyed
 // state is gone outright, so these check it stays that way.
 
-const CURVES = ["circle", "circle3", "arc", "arc3", "fillet"];
+// One circle and one arc (docs/plans/one-circle-one-arc.md): circle3 and arc3
+// are typed names now, with no buttons of their own.
+const CURVES = ["circle", "arc", "fillet"];
 
 /** Each button's tool, whether it is disabled, and its hover text. */
 const buttonStates = () => app.page.$$eval("#toolbar button", (els) =>

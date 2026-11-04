@@ -260,11 +260,26 @@ export function equalRadius(model: Model, c1: string, c2: string): string {
 }
 
 /**
- * A line touches a circle exactly once: the perpendicular distance from the
+ * Tangency: a line touches a circle, or two circles touch.
+ *
+ * **A line and a circle** (either order): the perpendicular distance from the
  * center to the infinite line equals the radius. That distance is the wedge
- * norm over the direction length — |(ctr-a) ^ u| / |u| — which is smooth
- * here because a tangent line never passes *through* the center (the wedge
- * only vanishes when the distance is 0, and the radius is positive).
+ * norm over the direction length — |(ctr-a) ^ u| / |u| — which is smooth here
+ * because a tangent line never passes *through* the center (the wedge only
+ * vanishes when the distance is 0, and the radius is positive).
+ *
+ * **Two circles** (or arcs, or one of each — `model.circular` reads both): the
+ * distance between the centres is the sum of the radii when they touch from
+ * outside, the difference when one is inside the other. Which of the two is
+ * part of what was meant, so it is part of the relation — `side`, `"outside"`
+ * or `"inside"` — and when it is left out it is read off the drawing as it
+ * stands, whichever the two are nearer, and **journalled as read**: a file
+ * replays the side that was chosen, not a fresh guess at a moment the values
+ * may not yet be what they were. Both are distances minus distances, linear in
+ * the radii and never a square; the difference is taken whole (|r₁ − r₂|), so
+ * "inside" does not need to know which circle is the bigger, and is only
+ * unsmooth where the two radii are equal — concentric equal circles, where an
+ * inside tangency has no meaning to be smooth about.
  *
  * **In 3D a tangent line lies in the circle's plane.** It touches the rim at
  * one point and runs along the rim's own direction there, both of which are in
@@ -272,28 +287,76 @@ export function equalRadius(model: Model, c1: string, c2: string): string {
  * ends on the plane through the centre square to the circle's own normal
  * (declared, as for `onCircle`, so a free circle turns with its tangents — a
  * fillet's arc follows its corner this way and needs no plane given). Without it the distance block alone would
- * describe a line tangent to a *sphere*, free to swing round the centre. In 2D
- * that block is trivially zero and is not emitted; the 2D relation is the one
- * block it always was. The line is still read lazily, so the plane block
- * follows an edge a fillet re-points.
+ * describe a line tangent to a *sphere*, free to swing round the centre. **Two
+ * tangent circles likewise share a plane**: the second's centre on the first's
+ * plane, and their normals parallel (the wedge of the two unit normals, as
+ * `par` says it) — without which two touching circles could be any two rings
+ * that meet at a point, crossed like a gyroscope's. In 2D the plane block is
+ * trivially zero and is not emitted; the 2D relation is the one block it always
+ * was. The line is still read lazily, so the plane block follows an edge a
+ * fillet re-points.
  */
-export function tangent(model: Model, lineName: string, circleName: string): string {
-  return model.relation("tangent", [lineName, circleName], () => {
+export function tangent(model: Model, a: string, b: string, side?: string | null): string {
+  const kind = (n: string) => model.entities.get(n)?.kind;
+  const isCurve = (n: string) => kind(n) === "circle" || kind(n) === "arc";
+  if (isCurve(a) && isCurve(b)) return tangentCircles(model, a, b, side);
+  if (side != null) throw new Error(`tan takes a side ("outside" or "inside") only between two circles — ${a} and ${b} are not both`);
+  // The line first or second, as typed: `tan("c1", "l1")` is the same relation,
+  // journalled as it was called.
+  const [lineName, circleName] = kind(a) === "line" || !isCurve(a) ? [a, b] : [b, a];
+  return model.relation("tangent", [a, b], () => {
     const c = model.circular(circleName);
     const center = model.point(c.center);
     const dim = model.dim;
     model.addResidual(joinVars(lineVars(model, lineName), center.varIndices, [c.radiusVar]), (l) => {
-      const [a, b, ctr] = chunk(l, dim, 3);
-      const u = vecSub(b, a);
-      return [wedgeNorm(vecSub(ctr, a), u).div(norm(u)).sub(l[3 * dim])];
-    }, `tan(${lineName},${circleName})`);
+      const [p, q, ctr] = chunk(l, dim, 3);
+      const u = vecSub(q, p);
+      return [wedgeNorm(vecSub(ctr, p), u).div(norm(u)).sub(l[3 * dim])];
+    }, `tan(${a},${b})`);
     const normal = curveNormal(model, circleName);
     if (normal) {
       model.addResidual(joinVars(lineVars(model, lineName), center.varIndices, normal), (l) => {
-        const [a, b, ctr, raw] = chunk(l, dim, 4);
+        const [p, q, ctr, raw] = chunk(l, dim, 4);
         const n = unitDuals(raw);
-        return [offRim(a, ctr, n), offRim(b, ctr, n)];
-      }, `tan(${lineName},${circleName})|plane`);
+        return [offRim(p, ctr, n), offRim(q, ctr, n)];
+      }, `tan(${a},${b})|plane`);
+    }
+  });
+}
+
+/** The sides two circles can touch on. */
+const SIDES = ["outside", "inside"] as const;
+
+function tangentCircles(model: Model, a: string, b: string, given?: string | null): string {
+  if (a === b) throw new Error(`tan needs two circles: ${a} twice is one`);
+  const ca = model.circular(a), cb = model.circular(b);
+  let side = given;
+  if (side == null) {
+    // Read off the drawing: whichever way of touching it is nearer now.
+    const d = Math.hypot(...model.coords(ca.center).map((v, i) => v - model.coords(cb.center)[i]));
+    const ra = model.radius(a), rb = model.radius(b);
+    side = Math.abs(d - (ra + rb)) <= Math.abs(d - Math.abs(ra - rb)) ? "outside" : "inside";
+  }
+  if (!(SIDES as readonly string[]).includes(side)) {
+    throw new Error(`tan's side between two circles is "outside" or "inside", not ${JSON.stringify(side)}`);
+  }
+  const inside = side === "inside";
+  return model.relation("tangent", [a, b, side], () => {
+    const pa = model.point(ca.center), pb = model.point(cb.center);
+    const dim = model.dim;
+    model.addResidual([...pa.varIndices, ...pb.varIndices, ca.radiusVar, cb.radiusVar], (l) => {
+      const [p, q] = chunk(l, dim, 2);
+      const d = norm(vecSub(p, q));
+      const ra = l[2 * dim], rb = l[2 * dim + 1];
+      return [inside ? d.sub(ra.sub(rb).abs()) : d.sub(ra.add(rb))];
+    }, `tan(${a},${b})`);
+    const na = curveNormal(model, a), nb = curveNormal(model, b);
+    if (na && nb) {
+      model.addResidual(joinVars(pa.varIndices, pb.varIndices, na, nb), (l) => {
+        const [p, q, rawA, rawB] = chunk(l, dim, 4);
+        const ua = unitDuals(rawA), ub = unitDuals(rawB);
+        return [offRim(q, p, ua), ...wedge(ua, ub)];
+      }, `tan(${a},${b})|plane`);
     }
   });
 }

@@ -14,7 +14,7 @@ import { Dual } from "./kernel/dual.ts";
 import { Model, type Entity, type ProfileMember } from "./model.ts";
 import { describeFeature, describeRelation } from "./picking.ts";
 import type { SolveReport } from "./kernel/problem.ts";
-import { ENGINE_TOOLS, Tool, defineTool, getToolCtor, listTools, toolSummary, toolbarTools, type ToolCtor } from "./tools/tool.ts";
+import { ENGINE_TOOLS, Tool, defineTool, getToolCtor, listTools, aliasCommand, armedLine, TOOL_ALIASES, toolAlias, toolSummary, toolbarTools, type ToolCtor } from "./tools/tool.ts";
 import { OptionMemory, declaredOptions, defaultsOf, describeValues, resolveOptions } from "./tools/options.ts";
 import * as basic from "./relations/basic.ts";
 import * as geom from "./relations/geometry.ts";
@@ -879,6 +879,10 @@ export function neocadScope(h: EnvHandles): Bag {
           const shown = describeValues(specs, now);
           return said(name, shown === declared ? `${name}  ${shown}` : `${name}  ${shown}  (default ${declared})`);
         }),
+        // The old names, said as what they arm now: a line each, after the tools,
+        // so `circle3` is still findable and never mistaken for a tool of its own.
+        ...Object.keys(TOOL_ALIASES).filter((name) => toolAlias(name))
+          .map((name) => `${name}  — ${TOOL_ALIASES[name].says}: ${aliasCommand(name)}`),
         ...sources.names()
           .filter((name) => !active.includes(name))
           .map((name) => `${name} (source only — toolSource(${JSON.stringify(name)}) to see it)`),
@@ -941,7 +945,7 @@ export function neocadScope(h: EnvHandles): Bag {
     arm: (name: string, options?: Record<string, unknown>) => {
       if (!h.arm) throw new Error("no viewport in this environment");
       h.arm(name, options);
-      return `armed: ${name}`;
+      return armedLine(name);
     },
     /**
      * Opens the feature dialog on a feature that exists — `edit("e1")`, what
@@ -1186,6 +1190,15 @@ function help(scope: Bag): string {
     "           where you click — on the plane you sketch on, else a solid's face",
     "           under the cursor, else the ground — and hold what they draw with",
     "           onplane on its centre and par on its normal, both deletable.",
+    "           One circle tool and one arc tool; the gesture says how. Circle:",
+    "           drag out from the centre (a click, then a drag: the click is the",
+    "           centre), or click three points on it; a click along a line or",
+    "           circle touches it (tan). Arc: drag end to end, then click its",
+    "           bulge — near the smooth way on from a line's end it snaps",
+    "           tangent — or click its centre, then both ends. The options panel",
+    '           shows what it read, and locks it: arm("circle", { method: "3pt" }).',
+    "           circle3 and arc3 typed arm that lock (not remembered). tan takes",
+    '           two circles too: tan("c1", "c2"), outside or inside as drawn.',
     "frames     origin — always there: a fixed point and three axes, drawn in",
     '           RGB, never solved or deleted. "origin.x" … "origin.z", fix and',
     "           onplane take it by name, and it is what they mean when no frame",

@@ -367,6 +367,25 @@ function atNearestRim(model: Model, view: View, lineName: string, circleName: st
 }
 
 /**
+ * Where two circles touch, or are trying to: on the first one's rim, on the
+ * line through both centres — toward the second's centre when that is outside
+ * the first, away from it when the second circle holds the first. Like
+ * `atNearestRim`, a solve in progress can put the centres together, and then
+ * the direction is arbitrary rather than NaN.
+ */
+function atTouch(model: Model, view: View, aName: string, bName: string): Anchor {
+  const ca = model.coords(model.circular(aName).center), cb = model.coords(model.circular(bName).center);
+  const out = cb.map((v, i) => v - ca[i]);
+  const len = Math.hypot(...out);
+  if (!(len > 1e-12)) return { ...atRim(model, view, aName, 0), about: [aName, bName] };
+  const ra = model.radius(aName), rb = model.radius(bName);
+  // The second circle round the first: they touch on the far side from its centre.
+  const sign = rb > ra && len < rb ? -1 : 1;
+  const world = ca.map((ci, i) => ci + (sign * ra * out[i]) / len);
+  return { world, dir: dirBetween(view, ca, world), about: [aName, bName] };
+}
+
+/**
  * Where an angle's value goes: at the corner the two lines make, nudged along
  * the bisector into the wedge between them — which is where a draughtsman
  * writes it and where Onshape puts it.
@@ -512,8 +531,14 @@ function anchorsFor(model: Model, view: View, r: RelationEntry): Anchor[] {
       return [atPoint(model, model.circular(str(args[0])).center)];
     case "radius":
       return [atRim(model, view, str(args[0]), Math.PI / 4)];
-    case "tangent":
-      return [atNearestRim(model, view, str(args[0]), str(args[1]))];
+    case "tangent": {
+      // A line and a circle, either way round as typed — or two circles,
+      // marked where they touch (docs/plans/one-circle-one-arc.md).
+      const [a, b] = [str(args[0]), str(args[1])];
+      const line = model.entities.get(a)?.kind === "line" ? a : model.entities.get(b)?.kind === "line" ? b : null;
+      if (line) return [atNearestRim(model, view, line, line === a ? b : a)];
+      return [atTouch(model, view, a, b)];
+    }
     case "symmetric":
       return [atPoint(model, str(args[0])), atPoint(model, str(args[1]))];
     case "arcEndpoints": {

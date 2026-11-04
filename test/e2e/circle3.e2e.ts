@@ -1,4 +1,7 @@
-// The 3-point circle tool, driven by a real mouse in a real browser.
+// The 3-point circle, driven by a real mouse in a real browser. Since
+// docs/plans/one-circle-one-arc.md it is the one circle tool locked to three
+// points — `circle3` typed arms exactly that — and every claim below is kept,
+// of it; the tool armed is named `circle`.
 //
 // The unit suite already proves the closed form and the composition. What only
 // this can answer is the part between the click and the drawing: whether the
@@ -98,12 +101,12 @@ test("three clicks on empty canvas draw the circle through all three", async () 
   await click(240, 200);
   let m = await app.model();
   assert.equal(m.size, FIXTURE_ENTITIES, "the first click commits nothing");
-  assert.equal(m.activeTool, "circle3", "and the tool stays armed — the gesture spans three clicks");
+  assert.equal(m.activeTool, "circle", "and the tool stays armed — the gesture spans three clicks");
 
   await click(420, 180);
   m = await app.model();
   assert.equal(m.size, FIXTURE_ENTITIES, "nor does the second");
-  assert.equal(m.activeTool, "circle3");
+  assert.equal(m.activeTool, "circle");
 
   // The dashed circumcircle through the two clicks and the cursor. The patch
   // checked is the top of that rim — worked out here in screen pixels from the
@@ -218,10 +221,10 @@ test("a collinear third click is refused rather than solved", async () => {
 
   const m = await app.model();
   assert.equal(m.size, FIXTURE_ENTITIES, "nothing may be built for a circle that cannot exist");
-  assert.equal(m.activeTool, "circle3", "and the tool stays armed, holding the two good clicks");
+  assert.equal(m.activeTool, "circle", "and the tool stays armed, holding the two good clicks");
   // The refusal reaches the app's own log pane — the tool-voice change moved
   // it there from console.warn, where no user would ever have seen it.
-  assert.match(await app.log(), /circle3: those three are on one line — click the third off it/,
+  assert.match(await app.log(), /circle: those three are on one line — click the third off it/,
     "the refusal has to say why, in the pane the user reads");
   assert.equal(warnings.length, 0, "and nothing needs the console any more");
 

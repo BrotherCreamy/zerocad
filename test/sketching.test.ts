@@ -15,9 +15,9 @@ import { alignView, orbitBy, viewAxes, worldToScreen, type View } from "../src/v
 import { neocadScope } from "../src/replenv.ts";
 import { menuFor } from "../src/menu.ts";
 import { CircleTool } from "../src/tools/circle.ts";
-import { Circle3Tool } from "../src/tools/circle3.ts";
+import { Circle3Tool } from "./lockedtools.ts";
 import { ArcTool } from "../src/tools/arc.ts";
-import { Arc3Tool } from "../src/tools/arc3.ts";
+import { Arc3Tool } from "./lockedtools.ts";
 import type { PointerInfo, ToolContext } from "../src/tools/tool.ts";
 import { tiltedFrame } from "./frames.ts";
 
@@ -199,7 +199,7 @@ test("a frame's menu offers Sketch on this: the default, then look at it — typ
 test("on empty canvas in 3D with no default frame, the curve tools are offered like any other — they need no plane made", () => {
   const m = new Model(3);
   const menu = menuFor(m, null);
-  for (const label of ["Circle", "3 point circle", "Arc", "3 point arc", "Fillet", "Point", "Line", "Rectangle"]) {
+  for (const label of ["Circle", "Arc", "Fillet", "Point", "Line", "Rectangle"]) {
     assert.equal(menu.items.find((i) => i.label === label)!.action.do, "run", label);
   }
   tiltedFrame(m);

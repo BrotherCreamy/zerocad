@@ -1,4 +1,7 @@
-// The 3-point arc tool, driven by a real mouse in a real browser.
+// The 3-point arc, driven by a real mouse in a real browser. Since
+// docs/plans/one-circle-one-arc.md it is the one arc tool locked to three
+// points — `arc3` typed arms exactly that — and every claim below is kept, of
+// it; the tool armed is named `arc`.
 //
 // The unit suite already proves the sweep choice and the composition. What
 // only this can answer is the part between the click and the drawing: whether
@@ -132,12 +135,12 @@ test("three clicks draw the arc through the two ends and the waypoint", async ()
   await click(240, 300); // endpoint
   let m = await app.model();
   assert.equal(m.size, FIXTURE_ENTITIES, "the first click commits nothing");
-  assert.equal(m.activeTool, "arc3", "and the tool stays armed — the gesture spans three clicks");
+  assert.equal(m.activeTool, "arc", "and the tool stays armed — the gesture spans three clicks");
 
   await click(460, 300); // the other endpoint
   m = await app.model();
   assert.equal(m.size, FIXTURE_ENTITIES, "nor does the second");
-  assert.equal(m.activeTool, "arc3");
+  assert.equal(m.activeTool, "arc");
 
   // The dashed arc through the two clicks and the cursor, bulging *upward*
   // because the cursor is above the chord. Screen y grows downward, so the top
@@ -299,8 +302,8 @@ test("a collinear third click is refused rather than solved", async () => {
 
   const m = await app.model();
   assert.equal(m.size, FIXTURE_ENTITIES, "nothing may be built for an arc that cannot exist");
-  assert.equal(m.activeTool, "arc3", "and the tool stays armed, holding the two endpoints");
-  assert.match(await app.log(), /arc3: those three are on one line — click the third off it/,
+  assert.equal(m.activeTool, "arc", "and the tool stays armed, holding the two endpoints");
+  assert.match(await app.log(), /arc: those three are on one line — click the third off it/,
     "the refusal has to say why, in the pane the user reads");
   assert.equal(warnings.length, 0, "and nothing needs the console");
 

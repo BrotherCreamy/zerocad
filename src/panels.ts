@@ -2275,8 +2275,18 @@ export class Toolbar {
 // typed line cannot. The fields show whatever the tool is armed with, however
 // it was armed: typed by hand, by a button, or by the panel itself.
 
-/** One declared option as the panel shows it: what it is called, its unit's text, and the armed value. */
-export interface OptionRow { name: string; label: string; unit: string; value: number | boolean }
+/**
+ * One declared option as the panel shows it: what it is called, its unit's
+ * text, and the armed value. A choice (`method`) carries its words, each with
+ * what the panel shows for it, and what the gesture has read it as so far —
+ * the panel's words for that, or null — so the row can say `3 points` beside
+ * `auto` and the user can lock it.
+ */
+export interface OptionRow {
+  name: string; label: string; unit: string; value: number | boolean | string;
+  choices?: readonly (readonly [string, string])[];
+  read?: string | null;
+}
 
 /**
  * A feature tool's ✓ and ✗, as the panel shows them: whether ✓ would do
@@ -2315,9 +2325,9 @@ export interface OptionsHost {
  * be said: each was either never typed, and is filled from its default, or was,
  * and is remembered, which is exactly what the tool is armed with now.
  */
-export function optionCommand(tool: string, option: string, value: number | boolean): string {
+export function optionCommand(tool: string, option: string, value: number | boolean | string): string {
   const key = /^[A-Za-z_$][\w$]*$/.test(option) ? option : JSON.stringify(option);
-  return `arm(${JSON.stringify(tool)}, {${key}: ${String(value)}})`;
+  return `arm(${JSON.stringify(tool)}, {${key}: ${typeof value === "string" ? JSON.stringify(value) : String(value)}})`;
 }
 
 /** A number as a field shows it: to a millionth, so a whole turn reads 6.283185, not seventeen digits. */
@@ -2390,7 +2400,7 @@ export class OptionsPanel {
   sync(): boolean {
     const a = this.host.armed();
     const key = a
-      ? [a.tool, a.dialog ? "dialog" : "", ...a.rows.map((r) => `${r.name}\t${typeof r.value}\t${r.label}\t${r.unit}`)].join("\n")
+      ? [a.tool, a.dialog ? "dialog" : "", ...a.rows.map((r) => `${r.name}\t${typeof r.value}\t${r.label}\t${r.unit}\t${r.choices?.flat().join("\t") ?? ""}`)].join("\n")
       : "";
     const shaped = key !== this.key;
     if (shaped) {
@@ -2457,6 +2467,39 @@ export class OptionsPanel {
     field.dataset.tool = this.tool;
     field.autocomplete = "off";
     field.spellcheck = false;
+    if (r.choices) {
+      // A choice: a drop-down of its words, the whole row wide — a choice's words
+      // are longer than a number, and a label beside them left neither room
+      // (looked at: "centre · radius" cut to "centre …", and "auto: centre ·
+      // radius" cut too). Its name is its accessible label and its tooltip's.
+      // Picking one types the arm line, as a field does.
+      //
+      // First, an option the list does not show: what the gesture has been read
+      // as, shown in the box while the choice is left to read it — so the box
+      // says "3 points", lit, and the list under it is still only the locks.
+      // Its value is the default's, so picking from the list never mistakes it
+      // for one.
+      line.classList.add("ochoice");
+      const pick = document.createElement("select");
+      pick.className = "oval";
+      pick.dataset.option = r.name;
+      pick.dataset.tool = this.tool;
+      pick.setAttribute("aria-label", r.label);
+      const reading = document.createElement("option");
+      reading.value = r.choices[0]?.[0] ?? "";
+      reading.hidden = true;
+      reading.dataset.read = "";
+      pick.append(reading);
+      for (const [value, text] of r.choices) {
+        const o = document.createElement("option");
+        o.value = value;
+        o.textContent = text;
+        pick.append(o);
+      }
+      pick.addEventListener("change", () => this.type(pick.dataset.tool!, r.name, pick.value));
+      line.append(pick);
+      return line;
+    }
     const unit = document.createElement("span");
     unit.className = "ounit";
     unit.textContent = r.unit;
@@ -2505,7 +2548,7 @@ export class OptionsPanel {
     return this.type(field.dataset.tool!, field.dataset.option!, v);
   }
 
-  private type(tool: string, option: string, value: number | boolean): Promise<unknown> | void {
+  private type(tool: string, option: string, value: number | boolean | string): Promise<unknown> | void {
     const ran = this.host.run(optionCommand(tool, option, value));
     // `arm` runs as the line is typed, so the tool is armed afresh by now — or,
     // refused, as it was; either way the fields say which, the edited one too.
@@ -2516,15 +2559,30 @@ export class OptionsPanel {
 
   /** Every field to its row's value — except, unless `force`, one being edited. */
   private fill(rows: OptionRow[], force: boolean): void {
-    const fields = Array.from(this.body.querySelectorAll<HTMLInputElement>("input.oval"));
+    const fields = Array.from(this.body.querySelectorAll<HTMLInputElement | HTMLSelectElement>(".oval"));
     rows.forEach((r, i) => {
       const field = fields[i];
       if (!field) return;
+      if (field instanceof HTMLSelectElement) {
+        // What the gesture was read as, in the hidden first option, lit, while
+        // the choice is left to read it (it only ever is at its first word,
+        // `auto`); the word chosen otherwise — a lock, or nothing read yet.
+        const read = r.read ?? null;
+        const options = Array.from(field.options);
+        const shown = read !== null ? 0 : options.findIndex((o, k) => k > 0 && o.value === String(r.value));
+        if (read !== null) options[0].textContent = read;
+        if (field.selectedIndex !== shown) field.selectedIndex = shown;
+        field.classList.toggle("oread", read !== null);
+        (field.parentElement as HTMLElement).title = read
+          ? `${r.label}: read as ${read} — pick it to lock it`
+          : `${r.label} — ${optionCommand(this.tool, r.name, r.value)}`;
+        return;
+      }
       if (typeof r.value === "boolean") {
         field.checked = r.value;
         return;
       }
-      const text = fieldText(r.value);
+      const text = fieldText(r.value as number);
       const editing = document.activeElement === field && field.value !== field.dataset.shown;
       if (!force && editing) return;
       field.value = text;
