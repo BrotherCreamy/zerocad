@@ -30,5 +30,7 @@ _sm_edge_points
 _sm_edge_runs
 _sm_heap_in_use
 _sm_live_breps
+_sm_topology
+_sm_topology_data
 _malloc
 _free

@@ -10,3 +10,8 @@ src/kernel/wasm-gen/
 .claude/worktrees/
 dist-single/
 dist-pwa/
+
+# The solid kernel (npm run build:solids): its build output, and the pinned
+# sources, toolchain and objects it caches.
+src/solids/smlib-gen/
+.solids-cache/

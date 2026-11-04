@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
-// A C ABI over NVIDIA's SM_API for the solid-kernel spike — the whole surface
-// the TypeScript side (../src/smlib.ts) calls, and nothing else is exported.
+// A C ABI over NVIDIA's SM_API — the whole surface the TypeScript side
+// (src/solids/smlib.ts) calls, and nothing else is exported.
 //
 // Why a hand-written C layer and not embind: every call is numbers in and
 // numbers out (handles, coordinates, indices), so a C ABI costs nothing to
@@ -29,6 +29,9 @@
 #include <SmCone.h>
 #include <SmCylinder.h>
 #include <SmEdge.h>
+#include <SmEdgeuse.h>
+#include <SmFaceuse.h>
+#include <SmLoopuse.h>
 #include <SmFace.h>
 #include <SmLine.h>
 #include <SmPlane.h>
@@ -56,6 +59,7 @@ std::vector<float> g_meshPos;          // last tessellation: xyz per vertex
 std::vector<unsigned> g_meshTri;       // i0 i1 i2 face, per triangle
 std::vector<float> g_edgePts;          // last boundary sampling: xyz per point
 std::vector<unsigned> g_edgeRuns;      // edge index, point count, per edge
+std::vector<double> g_topo;            // last topology export (sm_topology)
 
 // SMLib's success is 1000 (SM_SUCCESS), not 0; the C ABI says 0.
 int st(SmApiStatus s) { return s == SM_SUCCESS ? 0 : (int)s; }
@@ -486,6 +490,136 @@ API int sm_edge_polylines(int h, double angleDeg) {
 
 API const float* sm_edge_points() { return g_edgePts.data(); }
 API const unsigned* sm_edge_runs() { return g_edgeRuns.data(); }
+
+
+// ---- exact topology, for STEP ---------------------------------------------
+//
+// Every SMLib curve and surface is a B-spline (SmLine, SmCircle, SmPlane,
+// SmCylinder, … all derive from SmBSplineCurve or SmBSplineSurface), so one
+// NURBS spelling carries every one of them exactly; the kind code says which
+// analytic thing it also is, for a writer that would rather say "circle".
+// The TypeScript side (src/solids/smlib.ts, `topology`) reads it in order.
+
+namespace {
+
+void putNurbsCurve(const SmCurve* c) {
+  const SmBSplineCurve* b = dynamic_cast<const SmBSplineCurve*>(c);
+  // 1 line, 2 circle, 3 any other B-spline, 0 not a B-spline (nothing follows).
+  int kind = !b ? 0 : dynamic_cast<const SmLine*>(c) ? 1 : dynamic_cast<const SmCircle*>(c) ? 2 : 3;
+  g_topo.push_back(kind);
+  if (!b) return;
+  SmTArray<double> knots;
+  SmTArray<ULONG> mult;
+  b->GetKnots(knots, &mult);
+  SmTArray<SmPoint3d> cps;
+  SmTArray<double> w;
+  b->GetControlPolygon(cps, w);
+  g_topo.push_back((double)b->GetDegree());
+  g_topo.push_back((double)knots.GetSize());
+  for (ULONG i = 0; i < knots.GetSize(); i++) g_topo.push_back(knots[i]);
+  for (ULONG i = 0; i < knots.GetSize(); i++) g_topo.push_back((double)(i < mult.GetSize() ? mult[i] : 1));
+  g_topo.push_back((double)cps.GetSize());
+  g_topo.push_back(w.GetSize() ? 1 : 0);
+  for (ULONG i = 0; i < cps.GetSize(); i++) {
+    g_topo.push_back(cps[i].x); g_topo.push_back(cps[i].y); g_topo.push_back(cps[i].z);
+    g_topo.push_back(w.GetSize() ? w[i] : 1.0);
+  }
+}
+
+void putKnots(const SmBSplineSurface* s, SmSurfParamType dir) {
+  SmTArray<double> knots;
+  SmTArray<ULONG> mult;
+  s->GetKnots(dir, knots, &mult);
+  g_topo.push_back((double)knots.GetSize());
+  for (ULONG i = 0; i < knots.GetSize(); i++) g_topo.push_back(knots[i]);
+  for (ULONG i = 0; i < knots.GetSize(); i++) g_topo.push_back((double)(i < mult.GetSize() ? mult[i] : 1));
+}
+
+void putNurbsSurface(const SmSurface* srf) {
+  const SmBSplineSurface* s = dynamic_cast<const SmBSplineSurface*>(srf);
+  if (!s) { g_topo.push_back(0); return; }
+  ULONG nu = 0, nv = 0;
+  SmTArray<SmPoint3d> cps;
+  SmTArray<double> w;
+  if (s->GetControlPointNet(nu, nv, cps, w) != SM_SUCCESS) { g_topo.push_back(0); return; }
+  g_topo.push_back(1);
+  g_topo.push_back((double)s->GetDegree(SM_SP_U));
+  g_topo.push_back((double)s->GetDegree(SM_SP_V));
+  putKnots(s, SM_SP_U);
+  putKnots(s, SM_SP_V);
+  g_topo.push_back((double)nu);
+  g_topo.push_back((double)nv);
+  g_topo.push_back(w.GetSize() ? 1 : 0);
+  // SMLib's net, in its own order (u slowest: index = iu * nv + iv).
+  for (ULONG k = 0; k < nu * nv; k++) {
+    g_topo.push_back(cps[k].x); g_topo.push_back(cps[k].y); g_topo.push_back(cps[k].z);
+    g_topo.push_back(w.GetSize() ? w[k] : 1.0);
+  }
+}
+
+}  // namespace
+
+// The whole B-rep as numbers: vertices, edges (two vertex indices, the
+// parameter range used, the curve), faces (tag, surface kind, the surface,
+// then loops of edge uses from the face's primary faceuse — the one whose
+// normal is the surface's — each use an edge index and whether it runs the
+// edge's own way). Returns the number of doubles; read with sm_topology_data.
+API int sm_topology(int h) {
+  SmBrep* b = get(h);
+  if (!b) return -1;
+  g_topo.clear();
+  SmTArray<SmVertex*> vs;
+  b->GetVertices(vs);
+  SmTArray<SmEdge*> es;
+  edges(b, es);
+  SmTArray<SmFace*> fs;
+  faces(b, fs);
+  std::unordered_map<const SmVertex*, int> vi;
+  std::unordered_map<const SmEdge*, int> ei;
+  for (ULONG i = 0; i < vs.GetSize(); i++) vi[vs[i]] = (int)i;
+  for (ULONG i = 0; i < es.GetSize(); i++) ei[es[i]] = (int)i;
+  g_topo.push_back((double)vs.GetSize());
+  g_topo.push_back((double)es.GetSize());
+  g_topo.push_back((double)fs.GetSize());
+  for (ULONG i = 0; i < vs.GetSize(); i++) {
+    SmPoint3d p = vs[i]->GetPoint();
+    g_topo.push_back(p.x); g_topo.push_back(p.y); g_topo.push_back(p.z);
+  }
+  for (ULONG i = 0; i < es.GetSize(); i++) {
+    SmVertex *v0 = nullptr, *v1 = nullptr;
+    es[i]->GetVertices(v0, v1);
+    g_topo.push_back(v0 && vi.count(v0) ? vi[v0] : -1);
+    g_topo.push_back(v1 && vi.count(v1) ? vi[v1] : -1);
+    double lo = 0, hi = 0;
+    SmApiEdgeParameterRange(es[i], lo, hi);
+    g_topo.push_back(lo); g_topo.push_back(hi);
+    putNurbsCurve(es[i]->GetCurve());
+  }
+  for (ULONG i = 0; i < fs.GetSize(); i++) {
+    g_topo.push_back((double)tagOf(fs[i]));
+    double a, c;
+    g_topo.push_back(kindOf(fs[i]->GetSurface(), a, c));
+    putNurbsSurface(fs[i]->GetSurface());
+    SmFaceuse *fu = nullptr, *fu2 = nullptr;
+    fs[i]->GetFaceuses(fu, fu2);
+    SmTArray<SmLoopuse*> lus;
+    if (fu) fu->GetLoopuses(lus);
+    g_topo.push_back((double)lus.GetSize());
+    for (ULONG k = 0; k < lus.GetSize(); k++) {
+      SmTArray<SmEdgeuse*> eus;
+      lus[k]->GetEdgeuses(eus);
+      g_topo.push_back((double)eus.GetSize());
+      for (ULONG j = 0; j < eus.GetSize(); j++) {
+        const SmEdge* e = eus[j]->GetEdge();
+        g_topo.push_back(e && ei.count(e) ? ei[e] : -1);
+        g_topo.push_back(eus[j]->GetOrientation() == SM_OT_SAME ? 1 : 0);
+      }
+    }
+  }
+  return (int)g_topo.size();
+}
+
+API const double* sm_topology_data() { return g_topo.data(); }
 
 // ---- memory -----------------------------------------------------------------
 
