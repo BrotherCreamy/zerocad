@@ -139,7 +139,7 @@ test("25 typed in the field and Enter: the log shows the arm line it typed, and 
   assert.equal(await field("depth"), "25");
   assert.equal((await app.model()).activeTool, "extrude", "still armed");
   const listed = (await app.repl("tools()")).value as string[];
-  assert.deepEqual(listed.filter((t) => t.startsWith("extrude")), ["extrude  { depth: 25 }  (default { depth: 10 })"],
+  assert.deepEqual(listed.filter((t) => t.startsWith("extrude")).map((t) => t.replace(/  — .*$/, "")), ["extrude  { depth: 25 }  (default { depth: 10 })"],
     "tools() lists what arm would use now");
   await shot("typed");
 

@@ -46,6 +46,7 @@ function otherCorners(a: number[], c: number[], plane?: Plane): [number[], numbe
 
 export class RectangleTool extends Tool {
   static readonly options: OptionSpecs = DRAWING_OPTIONS;
+  static readonly summary = "Draws a rectangle: drag from corner to corner";
   readonly name = "rectangle";
   /**
    * The whole of the first press, not only its coordinate: the corner is not

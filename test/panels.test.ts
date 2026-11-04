@@ -16,7 +16,7 @@ import assert from "node:assert/strict";
 import {
   TITLE_H, BUTTON_STEP, TRAY_DEPTH, SNAP, STORAGE_KEY, CORNERS,
   OPTION_ROW, OPTIONS_W,
-  armCommand, arranged, besideTray, buttonTitle, constrain, contacts, cornerOf, defaultLayout, describeLayout, dragStep, grabbed, gripCorners,
+  armCommand, arranged, besideTray, toolTip, constrain, contacts, cornerOf, defaultLayout, describeLayout, dragStep, grabbed, gripCorners,
   fieldText, loadLayout, moved, optionCommand, optionsSize, orientationFor, overlapping, parseField, parseLayout, pushed,
   resized, saveLayout, settled, traySize, turned,
   type Corner, type Grab, type Layout, type Orientation, type Placed, type Point, type Rect, type Size, type StorageLike,
@@ -174,8 +174,9 @@ test("a button's command is arm() with the name quoted as JSON", () => {
   assert.equal(armCommand('odd"name'), 'arm("odd\\"name")');
 });
 
-test("a button's hover text is the tool's name, then its command — no button carries a reason it cannot run any more", () => {
-  assert.equal(buttonTitle("circle"), 'circle — arm("circle")');
+test("a button's tooltip is the tool's name, then what it does, then its command — no button carries a reason it cannot run any more", () => {
+  assert.deepEqual(toolTip("circle"), { name: "Circle", summary: null, command: 'arm("circle")', key: null });
+  assert.equal(toolTip("circle", "Draws a circle").off, undefined, "never off");
 });
 
 // --- trays: the way they run -------------------------------------------------

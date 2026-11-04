@@ -97,6 +97,7 @@ export class ExtrudeTool extends FeatureTool {
   static readonly options: OptionSpecs = {
     depth: { default: DEFAULT_DEPTH, unit: "length", check: (v) => (v === 0 ? "cannot be 0" : null) },
   };
+  static readonly summary = "Pulls a closed shape into a solid: click inside it, then ✓";
   readonly name = "extrude";
   private under: Region | null = null;
   /** The regions picked, in the order picked. */

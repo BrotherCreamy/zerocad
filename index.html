@@ -92,6 +92,23 @@
     #log .out{color:#8fa7bb}
     #hovertag{position:absolute;pointer-events:none;font-family:inherit;font-size:calc(11px * var(--ui));color:#e8a33d;
       background:#0e141bdd;border:1px solid #223041;padding:2px 6px;border-radius:3px;white-space:nowrap;z-index:50}
+    /* The tooltip (src/tooltip.ts), in the hover tag's family too: its ground,
+       border and corner, at the interface size. The name in the drawing's
+       light ink with the key beside it, what the control does in the log's,
+       the command it types in the hover tag's amber — the ink every typed
+       name is in. Opaque, not the tag's see-through ground: it is read as
+       a paragraph, over panels full of text. Over everything, menus included, and never in the way:
+       it takes no pointer events. Wrapped at a width, held inside the window. */
+    #tooltip{position:fixed;left:0;top:0;pointer-events:none;z-index:70;box-sizing:border-box;font-family:inherit;
+      font-size:calc(11px * var(--ui));line-height:1.35;color:#8fa7bb;background:#0e141b;border:1px solid #223041;
+      border-radius:3px;padding:3px 7px 4px;max-width:min(calc(260px * var(--ui)), calc(100vw - 8px));box-shadow:0 4px 14px #0008}
+    #tooltip[hidden]{display:none}
+    #tooltip .tname{display:flex;align-items:baseline;justify-content:space-between;gap:12px;color:#d5e1ec;white-space:nowrap}
+    #tooltip .tkey{color:#7a8b9b;font-size:calc(10px * var(--ui));border:1px solid #2c3d4f;border-radius:2px;padding:0 3px}
+    #tooltip .tcmd{color:#e8a33d;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    #tooltip .toff{color:#7a8b9b;font-style:italic}
+    /* A control a finger holds for its tooltip: no callout, no selection. */
+    [data-tip]{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
     /* The context menu, in the hover tag's family: same ground, same border,
        same corner. It is the other thing that appears at the cursor over the
        drawing, so the two ought to look like one idea. */
@@ -372,6 +389,8 @@
         </div>
       </div>
       <div id="hovertag" hidden></div>
+      <!-- The tooltip every icon and short word in the chrome shares (src/tooltip.ts). -->
+      <div id="tooltip" role="tooltip" hidden></div>
       <div id="ctxmenu" hidden></div>
       <div id="appmenu" role="menu" hidden></div>
     </div>

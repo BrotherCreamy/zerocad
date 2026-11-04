@@ -41,7 +41,8 @@ const lit = (app: AppContext) => app.page.$$eval("#toolbar button[aria-pressed=t
 const buttons = (app: AppContext) => app.page.$$eval("#toolbar button", (els) => els.map((el) => ({
   tool: (el as HTMLElement).dataset.tool,
   glyph: el.querySelector(":scope > svg")?.getAttribute("data-glyph") ?? null,
-  hint: el.getAttribute("title"),
+  // The tooltip, not a native title (docs/plans/tooltips-rgb-frames.md).
+  hint: el.hasAttribute("data-tip") && !el.hasAttribute("title"),
 })));
 
 /** A fresh page, a parked sketch frame, and a 50×30 rectangle round the middle of the view (p1…p4, l1…l4). */
@@ -98,7 +99,7 @@ test("desktop: Select and the Hand head the toolbar, each its own glyph and the 
   assert.equal(bs.length, 13, "two more than the eleven tools");
   assert.deepEqual(bs.slice(0, 3).map((b) => b.tool), ["select", "hand", "point"], "first, then the tools as they were");
   assert.deepEqual(bs.slice(0, 2).map((b) => [b.glyph, b.hint]),
-    [["select", 'select — arm("select")'], ["hand", 'hand — arm("hand")']]);
+    [["select", true], ["hand", true]]);
   assert.deepEqual(await lit(desk), ["select"], "nothing armed: Select is lit");
   await shot(desk, "desktop");
 

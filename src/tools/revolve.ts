@@ -112,6 +112,7 @@ export class RevolveTool extends FeatureTool {
       check: (v) => (v === 0 || Math.abs(v as number) > FULL_TURN ? "must be within a whole turn (±6.283185) and not 0" : null),
     },
   };
+  static readonly summary = "Spins a closed shape into a solid: click it, then the axis, then ✓";
   readonly name = "revolve";
   /** The profiles picked, in the order picked. */
   readonly picks = new RegionSelection();

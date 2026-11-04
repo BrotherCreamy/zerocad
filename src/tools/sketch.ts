@@ -30,6 +30,7 @@ import { sketchOnFaceCommand } from "../sketchface.ts";
 import { refind } from "./selection.ts";
 
 export class SketchTool extends Tool {
+  static readonly summary = "Starts a sketch on a face: click inside the face";
   readonly name = "sketch";
   // It chooses a face, not a place: a snap marker would promise a vertex the
   // click does not go to.

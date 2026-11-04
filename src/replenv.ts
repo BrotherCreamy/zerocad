@@ -14,7 +14,7 @@ import { Dual } from "./kernel/dual.ts";
 import { Model, type Entity, type ProfileMember } from "./model.ts";
 import { describeFeature, describeRelation } from "./picking.ts";
 import type { SolveReport } from "./kernel/problem.ts";
-import { ENGINE_TOOLS, Tool, defineTool, getToolCtor, listTools, type ToolCtor } from "./tools/tool.ts";
+import { ENGINE_TOOLS, Tool, defineTool, getToolCtor, listTools, toolSummary, toolbarTools, type ToolCtor } from "./tools/tool.ts";
 import { OptionMemory, declaredOptions, defaultsOf, describeValues, resolveOptions } from "./tools/options.ts";
 import * as basic from "./relations/basic.ts";
 import * as geom from "./relations/geometry.ts";
@@ -867,15 +867,22 @@ export function neocadScope(h: EnvHandles): Bag {
      */
     tools: () => {
       const active = listTools();
+      // Each line ends with what the tool does — its `static summary`, the
+      // words its tooltip shows — after a dash, so a line still starts with
+      // what you would type (docs/plans/tooltips-rgb-frames.md).
+      const said = (name: string, line: string) => {
+        const summary = toolSummary(name);
+        return summary ? `${line}  — ${summary}` : line;
+      };
       return [
-        ...ENGINE_TOOLS,
+        ...ENGINE_TOOLS.map((name) => said(name, name)),
         ...active.map((name) => {
           const specs = declaredOptions(getToolCtor(name), name);
-          if (Object.keys(specs).length === 0) return name;
+          if (Object.keys(specs).length === 0) return said(name, name);
           const now = resolveOptions(name, specs, {}, memory.recall(name));
           const declared = describeValues(specs, defaultsOf(specs));
           const shown = describeValues(specs, now);
-          return shown === declared ? `${name}  ${shown}` : `${name}  ${shown}  (default ${declared})`;
+          return said(name, shown === declared ? `${name}  ${shown}` : `${name}  ${shown}  (default ${declared})`);
         }),
         ...sources.names()
           .filter((name) => !active.includes(name))
@@ -1193,8 +1200,9 @@ function help(scope: Bag): string {
     "           makes the one under its click). There is no hor/ver either:",
     '           par(l, yaxis()) is vertical, par(l, xaxis()) is level, and',
     '           par/perp/ang take any axis by name — par("l1", "f2.x").',
-    "           A frame draws as an axes marker at its origin, brighter when it",
-    "           is the default; drag the marker to move it, or its x-ref to turn",
+    "           A frame draws as an axes marker at its origin, in SolidWorks'",
+    "           colours — x red, y green, z blue, each lettered — heavier when",
+    "           it is the default; drag the marker to move it, or its x-ref to turn",
     "           it and everything levelled against it. The line tool infers an",
     "           axis par only against the default.",
     "           The app is 3D: frame(origin, xref, yref) is a plane (the y-ref",
@@ -1282,6 +1290,15 @@ function help(scope: Bag): string {
     "           the drawing has steps — panel layout and the camera (orbit,",
     "           pan, zoom, lookAt) are not, so Ctrl+Z after an orbit undoes",
     "           the last edit, not the turn.",
+    "tools      the toolbar, in its order — what each button's tooltip says:",
+    // Read off the tools themselves (`static summary`), so a tool defined at
+    // the command line with one is listed here as the built-ins are.
+    ...toolbarTools().map((name) => `           ${name.padEnd(10)} ${toolSummary(name) ?? "(no summary)"}`),
+    "           Hover a button (a mouse) or hold it (a finger) for its tooltip:",
+    "           its name, what it does, the line it types and its key. Held,",
+    "           lifting does not press it; a tap does. Every icon and short",
+    "           word in the chrome has one: the action strip, the organiser's",
+    "           ＋ and eyes, the spin box, a panel's strip, the logo.",
     "viewport   arm(tool, opts)  cancel()  zoom(f)  pan(dx,dy)  refresh()",
     '           arm("select") puts the armed tool down and keeps the',
     "           selection — no tool, which is what a click selects in; its",
@@ -1407,6 +1424,9 @@ function help(scope: Bag): string {
     "           true/false; unit \"length\", \"angle\" in radians, or any text;",
     "           label?, check?) — and it gets arm's checks, the panel and the",
     "           remembered values with no more work.",
+    '           static summary = "Stamps a point where you click" says what it',
+    "           does, in one line: its tooltip, tools() and help() show it.",
+    "           Not inherited — a class extending a built-in says its own.",
     "",
     "A bare assignment persists between entries (box = class extends Tool {…});",
     "a const/let/class declaration does not.",

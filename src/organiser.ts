@@ -25,6 +25,7 @@
 
 import type { Model } from "./model.ts";
 import type { Menu, MenuItem } from "./menu.ts";
+import { giveTip, type AttachTip, type Tip } from "./tooltip.ts";
 
 /**
  * What a row's eye shows: everything in it drawn, everything hidden, some of
@@ -178,6 +179,33 @@ export interface OrganiserHost {
   showMenu(menu: Menu, x: number, y: number): void;
   /** Types one line into the command machinery, as one user action — `submit`. */
   run(command: string): void;
+  /** Gives the ＋, the eyes, the markers and the rows their tooltips (tooltip.ts); without it, each has a `title`. */
+  tooltip?: AttachTip;
+}
+
+/** The ＋'s tooltip: what it would type with this selection. */
+export function addTip(selection: readonly string[]): Tip {
+  return {
+    name: "New group",
+    summary: selection.length ? "Groups what is selected"
+      : "Makes an empty group and opens it, so what you draw next joins it",
+    command: addCommand(selection),
+  };
+}
+
+/** An eye's tooltip, by what it shows now. */
+export function eyeTip(r: OrganiserRow): Tip {
+  if (r.eyeCommand === null) return { name: r.name, summary: "Shows or hides it", off: `${r.name} is empty — nothing to hide` };
+  return r.eye === "shown"
+    ? { name: `Hide ${r.name}`, summary: "Stops drawing it; it is kept, and still solved", command: r.eyeCommand }
+    : { name: `Show ${r.name}`, summary: r.eye === "partial" ? "Draws all of it again — some is hidden" : "Draws it again", command: r.eyeCommand };
+}
+
+/** A group's open marker's tooltip. */
+export function openTip(r: OrganiserRow): Tip {
+  return r.open
+    ? { name: `Close ${r.name}`, summary: `${r.name} is open: what you draw joins it — this stops that`, command: r.openCommand }
+    : { name: `Open ${r.name}`, summary: `What you draw next joins ${r.name}`, command: r.openCommand };
 }
 
 /** How long a finger holds a row before its menu opens — iOS's own long-press, about. */
@@ -215,6 +243,7 @@ export class Organiser {
       // is its own. (The strip's mousedown still keeps the command line's focus.)
       add.addEventListener("pointerdown", (e) => e.stopPropagation());
       add.addEventListener("click", () => this.host.run(addCommand(this.host.selection())));
+      giveTip(add, () => addTip(this.host.selection()), this.host.tooltip);
     }
     body.addEventListener("contextmenu", (e) => e.preventDefault());
     this.sync();
@@ -254,14 +283,15 @@ export class Organiser {
     row.className = r.selected ? "orow on" : "orow";
     row.dataset.name = r.name;
     if (r.open) row.dataset.open = "";
-    row.title = r.tapCommand;
+    // A mouse's only: a finger's hold on a row is its menu, which says more.
+    giveTip(row, () => ({ name: r.name, summary: "Selects it — right-click for its menu", command: r.tapCommand }),
+      this.host.tooltip, { hold: false });
 
     // The open marker first, a radio's place: one group at a time is open. A
     // feature cannot be opened — its members follow its profile — and keeps
     // the slot empty so the names line up.
     if (r.openCommand !== null) {
-      row.appendChild(this.button("oopen", r.open ? "●" : "○", r.openCommand,
-        r.open ? `${r.name} is open — what is drawn joins it; ${r.openCommand} closes it` : `${r.openCommand} — what is drawn next joins ${r.name}`));
+      row.appendChild(this.button("oopen", r.open ? "●" : "○", r.openCommand, () => openTip(r)));
     } else {
       const slot = document.createElement("span");
       slot.className = "oopen slot";
@@ -281,7 +311,7 @@ export class Organiser {
     count.className = "ocount";
     count.textContent = String(r.count);
     row.appendChild(count);
-    const eye = this.button("oeye", "", r.eyeCommand, r.eyeCommand ?? `${r.name} is empty — nothing to hide`);
+    const eye = this.button("oeye", "", r.eyeCommand, () => eyeTip(r));
     eye.innerHTML = EYES[r.eye];
     eye.dataset.eye = r.eye;
     row.appendChild(eye);
@@ -299,12 +329,13 @@ export class Organiser {
     return row;
   }
 
-  private button(cls: string, text: string, command: string | null, title: string): HTMLButtonElement {
+  private button(cls: string, text: string, command: string | null, tip: () => Tip): HTMLButtonElement {
     const b = document.createElement("button");
     b.type = "button";
     b.className = cls;
     b.textContent = text;
-    b.title = title;
+    b.setAttribute("aria-label", tip().name);
+    giveTip(b, tip, this.host.tooltip);
     if (command === null) b.disabled = true;
     else b.dataset.command = command;
     b.addEventListener("click", (e) => {
@@ -325,6 +356,9 @@ export class Organiser {
       // own release makes, and must not swallow the next tap's as well.
       this.swallow = false;
       if (e.pointerType !== "touch") return;
+      // A hold on the row's marker or eye is that button's — its tooltip —
+      // not the row's menu: one hold, one answer.
+      if (e.target instanceof Element && e.target.closest("button")) return;
       const [x0, y0] = [e.clientX, e.clientY];
       const timer = setTimeout(() => {
         done();

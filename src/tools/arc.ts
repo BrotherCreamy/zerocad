@@ -53,6 +53,7 @@ function stored<T>(c: number[], s: T, e: T, sw: number[], ew: number[], front: n
 
 export class ArcTool extends Tool {
   static readonly options: OptionSpecs = DRAWING_OPTIONS;
+  static readonly summary = "Draws an arc: click the centre, then where it starts and ends";
   readonly name = "arc";
   /** The three clicks, kept whole so each one's snap survives to commit. */
   private center: PointerInfo | null = null;
