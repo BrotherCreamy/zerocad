@@ -106,6 +106,28 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### 0.1.0: a public home, a new name, and what the rename leaves alone
+
+**The move.** The owner wanted the app hosted and installable, which on the
+free plan means a public repository, and asked that nothing public carry his
+personal identity. The history was therefore carried into a fresh public
+repository, `BrotherCreamy/zerocad`, with author identities rewritten to
+noreply addresses; every branch's files were checked identical apart from two
+lines that had named him, and the rewrite is deterministic, so later syncs
+arrive as ordinary pushes. Rejected: making this repository public after a
+rewrite — GitHub keeps every pull request's commits reachable whatever the
+branches say, and only GitHub Support can purge them.
+
+**The rename.** The owner chose ZeroCAD from several rounds of names (three
+meanings, all true: residuals driven to zero, zero install, zero hierarchy).
+Everything a person sees was renamed. The internal code name was kept where a
+rename has a cost and no visible benefit: the saved-file tag `"neocad-model"`
+(every file saved so far would stop opening), the browser-storage keys (every
+saved layout and remembered option would be lost), and identifiers in the
+code. The one place the old name had to be handled, not just kept, is the
+offline cache: a service worker deletes only caches under its own prefix, so
+the renamed worker deletes `neocad-` caches as well as its own old ones.
+
 ### Explicit regions: a feature keeps the holes you said
 
 **What was wrong.** A feature already recorded its loops — the outline, then

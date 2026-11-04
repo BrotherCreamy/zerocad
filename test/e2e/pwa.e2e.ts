@@ -140,7 +140,7 @@ test("served from /zerocad/, the hosted build loads, solves and registers its wo
 
   await page.goto(served.url, { waitUntil: "load" });
   await ready(page);
-  assert.equal(await page.title(), "NeoCAD");
+  assert.equal(await page.title(), "ZeroCAD");
   assert.equal(await stampOf(page), "build e2e-first");
 
   await type(page, 'pt(0,0); pt(10,0); dist("p1","p2",45)');
@@ -155,7 +155,7 @@ test("served from /zerocad/, the hosted build loads, solves and registers its wo
   const worker = await activeWorker(page);
   assert.equal(worker.scope, served.url, "the worker's scope is the sub-path, not the origin");
   assert.equal(worker.script, `${served.url}sw.js`);
-  assert.deepEqual(await cacheKeys(page), ["neocad-e2e-first"]);
+  assert.deepEqual(await cacheKeys(page), ["zerocad-e2e-first"]);
 
   assert.deepEqual(served.misses, [], "every request found its file");
   for (const path of served.requests) assert.ok(path.startsWith(BASE), `${path} is under ${BASE}`);
@@ -248,7 +248,7 @@ test("a new deploy waits while the app is open — never swapped under the hand 
         await new Promise((r) => waiting.addEventListener("statechange", () => waiting.state === "installed" && r(null)));
       }
     });
-    assert.deepEqual((await cacheKeys(page)).sort(), ["neocad-e2e-new", "neocad-e2e-old"], "the new version's cache filled beside the old");
+    assert.deepEqual((await cacheKeys(page)).sort(), ["zerocad-e2e-new", "zerocad-e2e-old"], "the new version's cache filled beside the old");
     assert.ok(await page.evaluate(() => (window as unknown as { untouched?: boolean }).untouched), "the open app was not reloaded");
     assert.equal(await stampOf(page), "build e2e-old");
     // A second window while the first is open still gets the version in use.
@@ -272,7 +272,7 @@ test("a new deploy waits while the app is open — never swapped under the hand 
       stamp = await stampOf(next);
       if (stamp === "build e2e-new") {
         await activeWorker(next);
-        assert.deepEqual(await cacheKeys(next), ["neocad-e2e-new"], "the old version's cache is gone");
+        assert.deepEqual(await cacheKeys(next), ["zerocad-e2e-new"], "the old version's cache is gone");
       }
       await next.close();
     }

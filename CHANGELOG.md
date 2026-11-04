@@ -1,9 +1,45 @@
-# NeoCAD — changelog
+# ZeroCAD — changelog
 
 What has actually been built, **newest first**. `TODO.md` is what's next;
 `STATUS.md` is the itemised account of what exists and why it's shaped the
 way it is; `CONVERSATION_LOG.md` is the longer narrative behind the
 decisions.
+
+---
+
+## ZeroCAD 0.1.0 — the first version, and a new name
+
+The owner named the project **ZeroCAD** and asked for *"the first version of
+the app"* before the next round of design. This is it, at
+**https://brothercreamy.github.io/zerocad/**: installable on an iPhone
+(Safari → Share → Add to Home Screen), usable by finger, offline once opened,
+and the same app on a desktop with a mouse.
+
+What 0.1.0 is, in one breath: points, lines, rectangles, circles and arcs on
+coordinate frames, held by relations a least-squares solver satisfies as you
+drag; dimensions you can edit; fillets; extrudes and revolves made by picking a
+region and confirming; holes added on purpose (`hole`, *Add as hole*,
+*Edit e1*) and never by being coplanar; construction geometry; opaque solids
+with hidden and wireframe views; groups; undo and redo of everything; a
+command line that can define new tools and relations while the app runs; and
+files that save and open.
+
+The rename, and what it deliberately leaves alone:
+
+- **Renamed — everything a person sees:** the window title and the header's
+  mark, the home-screen name and the manifest, the README and the logs'
+  titles, the kernel's description, the package (`zerocad@0.1.0`), and a
+  download's default name (`sketch.zerocad.json`).
+- **The offline cache is renamed too, and the old one is cleared.** The
+  service worker's caches are `zerocad-…` now, and it deletes `neocad-…`
+  caches as well, so a phone that installed the app under its old name is
+  left with no stale copy.
+- **Kept — the internal code name.** Identifiers (`neocadScope`,
+  `window.__neocad`, the `neocad-kernel` crate and its `neocad_kernel` files),
+  the saved-file format tag `"neocad-model"`, and the browser-storage keys for
+  panels, options and the view mode. Renaming the format tag would make every
+  saved file unreadable, and renaming the storage keys would lose every saved
+  layout; nobody using the app ever sees these names.
 
 ---
 

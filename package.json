@@ -1,6 +1,6 @@
 {
-  "name": "neocad",
-  "version": "0.0.1",
+  "name": "zerocad",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "description": "A general nonlinear constraint solver (Rust/WASM kernel, AD-based Jacobians) with a runtime-extensible TypeScript tool/relation-authoring layer. 2D CAD sketch is the first standard library built on it.",

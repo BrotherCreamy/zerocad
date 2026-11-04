@@ -1,4 +1,4 @@
-# NeoCAD — status
+# ZeroCAD — status
 
 A general nonlinear least-squares solver (Rust/WASM kernel, automatic
 differentiation for exact sparse Jacobians) with a runtime-extensible
@@ -10,6 +10,12 @@ etc).
 
 ## What's working right now
 
+- **Version 0.1.0, hosted** at https://brothercreamy.github.io/zerocad/ — an
+  installable app (manifest, icons, an offline cache) published from the
+  public repository `BrotherCreamy/zerocad` by `.github/workflows/pages.yml`
+  on every push to the working branch. Called NeoCAD until 0.1.0; the
+  internal code name stays in identifiers, the file format tag and storage
+  keys (see TODO.md's register).
 - **`kernel-rs/`** — Rust crate, compiles to WASM via `npm run build:kernel`.
   Exposes one function: `solve_step(rows, cols, vals, r, n, lambda) -> dx`,
   a matrix-free conjugate-gradient solve of the damped normal equations

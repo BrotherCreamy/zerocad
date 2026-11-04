@@ -1,4 +1,4 @@
-// NeoCAD's service worker, written by hand (docs/plans/pwa-pages.md). The
+// ZeroCAD's service worker, written by hand (docs/plans/pwa-pages.md). The
 // build (scripts/pwa-shell.ts) fills in the two names below; nothing else
 // about it changes between builds, so a new deploy is a new worker exactly
 // when the build stamp — and so the cache's name — has changed.
@@ -30,9 +30,12 @@ self.addEventListener("install", (event) => {
 self.addEventListener("activate", (event) => {
   // Only caches of this app: the origin's caches are shared with every other
   // site the account publishes, and theirs are not ours to delete.
+  // `neocad-` too: the app was NeoCAD until 0.1.0, and a phone that installed
+  // it then holds a cache under that name which nothing else would delete.
+  // Keep this in step with CACHE_PREFIX in scripts/pwa-shell.ts.
   event.waitUntil(
     caches.keys().then((keys) =>
-      Promise.all(keys.filter((key) => key.startsWith("neocad-") && key !== CACHE).map((key) => caches.delete(key))),
+      Promise.all(keys.filter((key) => (key.startsWith("zerocad-") || key.startsWith("neocad-")) && key !== CACHE).map((key) => caches.delete(key))),
     ),
   );
 });

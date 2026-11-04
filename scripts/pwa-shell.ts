@@ -49,8 +49,8 @@ export function rasters(): { src: string; size: number; rounded: boolean }[] {
 
 export function manifest(): Record<string, unknown> {
   return {
-    name: "NeoCAD",
-    short_name: "NeoCAD",
+    name: "ZeroCAD",
+    short_name: "ZeroCAD",
     description: "Relational CAD on a nonlinear least-squares solver, entirely in the browser.",
     // The manifest's own folder: under /zerocad/ that is /zerocad/, and the
     // same file served anywhere else still means "here".
@@ -71,7 +71,7 @@ export function manifest(): Record<string, unknown> {
  * brothercreamy.github.io — so the prefix is what lets a new worker delete
  * only its own old caches.
  */
-export const CACHE_PREFIX = "neocad-";
+export const CACHE_PREFIX = "zerocad-";
 export function cacheName(stamp: string): string {
   const slug = stamp.trim().replace(/[^A-Za-z0-9.]+/g, "-").replace(/^-|-$/g, "");
   if (!slug) throw new Error("a service worker's cache needs a build stamp to be named for");
@@ -114,7 +114,7 @@ export function pwaHead(): string {
     // Translucent: the app draws under the status bar, and the header's own
     // padding (env(safe-area-inset-top), index.html) keeps its text clear.
     `<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">`,
-    `<meta name="apple-mobile-web-app-title" content="NeoCAD">`,
+    `<meta name="apple-mobile-web-app-title" content="ZeroCAD">`,
     `<link rel="manifest" href="manifest.webmanifest">`,
     `<link rel="icon" type="image/svg+xml" href="${ICON_SVG}">`,
     `<link rel="apple-touch-icon" sizes="180x180" href="${APPLE_TOUCH_ICON.src}">`,

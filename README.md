@@ -1,4 +1,4 @@
-# NeoCAD
+# ZeroCAD
 
 A general nonlinear least-squares constraint solver — Rust compiled to
 WebAssembly for the numerical kernel, TypeScript for automatic
@@ -27,7 +27,7 @@ This project is the successor to [`cellwork`](https://github.com/BrotherCreamy/c
 prototype that proved out the CAD interaction ideas (keyboard-first
 commands, live constraint solving, hover snaps, a fillet tool) but with a
 hand-rolled dense Gaussian-elimination solver and no extensibility story.
-NeoCAD is a from-scratch rewrite around a real kernel, built so that
+ZeroCAD (called NeoCAD until 0.1.0) is a from-scratch rewrite around a real kernel, built so that
 **new tools and relations can be authored live, in the same language the
 app itself is written in** — a rectangle tool, for instance, is nothing
 more than a class with `onDown`/`onMove`/`onUp`/`render` methods and one

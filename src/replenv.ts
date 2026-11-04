@@ -739,7 +739,7 @@ export function neocadScope(h: EnvHandles): Bag {
       // REPL, a test — the return value is the only channel there is.
       return h.log ? "opened" : ["opened", ...notices].join("\n");
     },
-    download: (filename = "sketch.neocad.json") => {
+    download: (filename = "sketch.zerocad.json") => {
       if (!h.download) throw new Error("no download in this environment");
       h.download(saveModel(model, true, sources.all()), filename);
       return filename;

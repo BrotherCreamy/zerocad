@@ -48,7 +48,7 @@ function cornerAlpha(bytes: Buffer): number {
 
 test("the manifest: standalone, any orientation, the app's colours, and every URL relative so it works under /zerocad/", () => {
   const m = manifest();
-  assert.equal(m.name, "NeoCAD");
+  assert.equal(m.name, "ZeroCAD");
   assert.equal(typeof m.short_name, "string");
   assert.ok((m.short_name as string).length <= 12, "a short name fits under a home-screen icon");
   assert.equal(m.display, "standalone");
@@ -89,7 +89,7 @@ test("every icon the manifest and the head name is committed, a PNG of the size 
 
 test("the cache is named for the build stamp: a new stamp, a new cache; the same stamp, the same one", () => {
   const a = cacheName("1a2b3c4 · 2026-11-04");
-  assert.equal(a, "neocad-1a2b3c4-2026-11-04");
+  assert.equal(a, "zerocad-1a2b3c4-2026-11-04");
   assert.equal(cacheName("1a2b3c4 · 2026-11-04"), a);
   assert.notEqual(cacheName("5d6e7f8 · 2026-11-04"), a);
   assert.notEqual(cacheName("1a2b3c4 · 2026-11-05"), a);
@@ -99,7 +99,7 @@ test("the cache is named for the build stamp: a new stamp, a new cache; the same
   // nowhere else, so the browser sees a new worker exactly when the stamp moved.
   const [one, two] = [serviceWorker("abc · 2026-11-04"), serviceWorker("def · 2026-11-04")];
   assert.notEqual(one, two);
-  assert.equal(one.replace("neocad-abc-2026-11-04", "X"), two.replace("neocad-def-2026-11-04", "X"));
+  assert.equal(one.replace("zerocad-abc-2026-11-04", "X"), two.replace("zerocad-def-2026-11-04", "X"));
   assert.doesNotMatch(one, /__NEOCAD_/);
 });
 
@@ -157,14 +157,14 @@ async function runWorker(stamp: string, existing: string[]) {
 }
 
 test("the worker: install fills the stamp's cache with the shell, activate deletes only this app's older caches", async () => {
-  const w = await runWorker("abc · 2026-11-04", ["neocad-old-build", "neocad-abc-2026-11-04", "another-site-v3"]);
+  const w = await runWorker("abc · 2026-11-04", ["neocad-old-build", "zerocad-old-build", "zerocad-abc-2026-11-04", "another-site-v3"]);
   assert.deepEqual([...w.listeners.keys()].sort(), ["activate", "fetch", "install"]);
   await w.fire("install");
-  assert.deepEqual(w.opened, ["neocad-abc-2026-11-04"]);
+  assert.deepEqual(w.opened, ["zerocad-abc-2026-11-04"]);
   assert.deepEqual(w.added, shellFiles().map((p) => new URL(p, "https://example.test/zerocad/sw.js").href));
   assert.ok(w.added.includes("https://example.test/zerocad/"), "the app itself, at the address it is started from");
   await w.fire("activate");
-  assert.deepEqual(w.deleted, ["neocad-old-build"], "its own old cache, and no other site's");
+  assert.deepEqual(w.deleted.sort(), ["neocad-old-build", "zerocad-old-build"], "its own old caches, under the old name too, and no other site's");
 });
 
 test("the worker: cache first, a navigation anywhere in scope is the app, and what is not cached goes to the network", async () => {
@@ -186,7 +186,7 @@ test("the head: the iOS metas, the manifest and the icons, all relative, and the
     '<meta name="apple-mobile-web-app-capable" content="yes">',
     '<meta name="mobile-web-app-capable" content="yes">',
     '<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">',
-    '<meta name="apple-mobile-web-app-title" content="NeoCAD">',
+    '<meta name="apple-mobile-web-app-title" content="ZeroCAD">',
     `<meta name="theme-color" content="${THEME}">`,
     '<link rel="manifest" href="manifest.webmanifest">',
     `<link rel="apple-touch-icon" sizes="180x180" href="${APPLE_TOUCH_ICON.src}">`,

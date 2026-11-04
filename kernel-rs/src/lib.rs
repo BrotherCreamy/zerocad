@@ -1,4 +1,4 @@
-//! NeoCAD numerical kernel.
+//! ZeroCAD numerical kernel.
 //!
 //! This crate is deliberately dumb about geometry: it knows "variables" and
 //! "residuals" and nothing else. Points, lines, distances, robot joints —

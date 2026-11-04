@@ -1,4 +1,4 @@
-# NeoCAD — todo
+# ZeroCAD — todo
 
 The working list, and the project's decision register. `STATUS.md` describes
 what exists; `CHANGELOG.md` is what already happened, newest first.
@@ -23,6 +23,15 @@ otherwise.
   (same URL each time).
 
 ## Decisions made so far — veto here if any are wrong
+
+- **The app is ZeroCAD; NeoCAD stays the internal code name** (the owner
+  named the project and its public repository `zerocad`, 2026-11-04). What a
+  person sees says ZeroCAD. Identifiers, the saved-file format tag
+  `"neocad-model"` and the browser-storage keys keep the old name, because
+  renaming them would make saved files and saved layouts unreadable for no
+  visible gain. The public repository is `BrotherCreamy/zerocad`, its history
+  carried over whole with author identities rewritten to noreply addresses;
+  this repository stays private as the archive it came from.
 
 - **A region's membership is its outline plus the loops confirmed as holes,
   never re-inferred from coplanarity; click-to-pick proposes the loops inside**
@@ -1328,7 +1337,7 @@ starts.
       - The workflow runs `npm ci` before the kernel, uses the runner's
         rustup, and fetches wasm-pack's installer from its current home
         (`wasm-bindgen.github.io`). **It has never run.**
-- [ ] **Rename the worker's cache prefix with the app** (`CACHE_PREFIX` in
+- [x] **Rename the worker's cache prefix with the app** — done in 0.1.0: `zerocad-`, and `neocad-` caches are deleted too (`CACHE_PREFIX` in
       `scripts/pwa-shell.ts`, and the literal in `scripts/pwa-sw.js`). A
       worker deletes only caches under its own prefix. The release that
       renames it should delete `neocad-` caches too, or every phone that had
