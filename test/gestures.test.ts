@@ -6,7 +6,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { Gestures, LONG_PRESS_MS, TAP_MS, TAP_SLOP, type Clock, type GestureSink } from "../src/tools/gestures.ts";
+import { Gestures, LATE_MS, LONG_PRESS_MS, TAP_MS, TAP_SLOP, type Clock, type GestureSink } from "../src/tools/gestures.ts";
 
 /** A clock that moves only when told, firing what falls due on the way. */
 class FakeClock implements Clock {
@@ -28,6 +28,13 @@ class FakeClock implements Clock {
       due.fn();
     }
     this.t = until;
+  }
+  /** A busy page: time passes and nothing runs — no timer fires until the page is free. */
+  block(ms: number): void { this.t += ms; }
+  /** The page free again, one task at a time: only the earliest timer already due runs. */
+  fireOnce(): void {
+    const due = this.timers.filter((x) => x.live && x.at <= this.t).sort((a, b) => a.at - b.at)[0];
+    if (due) { due.live = false; due.fn(); }
   }
 }
 
@@ -234,3 +241,45 @@ test("a finger the recogniser never saw go down — one another handler took —
   g.cancel(7);
   assert.deepEqual(calls, []);
 });
+
+// A busy page (a heavy solve, a big file opening) must not turn a quick tap
+// into something else. Measured in the browser first: a 40 ms tap made while
+// the page was blocked 700 ms at touchdown selected nothing (touch.e2e.ts).
+
+test("a tap is timed by the finger, not the page: lifted at 40 ms, handled at 600, it is a tap", () => {
+  const { g, clock, calls } = setup();
+  g.down(1, 10, 10, 0);
+  clock.block(600);
+  g.up(1, 10, 10, 40);
+  assert.ok(calls.includes("tap 10,10"), calls.join(" | "));
+  assert.ok(!calls.some((c) => c.startsWith("longPress")));
+});
+
+test("a long-press timer that fires late yields once, so a lift waiting in the queue lands first and is a tap", () => {
+  const { g, clock, calls } = setup();
+  g.down(1, 10, 10, 0);
+  clock.block(LONG_PRESS_MS + LATE_MS + 150);
+  clock.fireOnce(); // the late timer: it must not decide yet
+  assert.ok(!calls.some((c) => c.startsWith("longPress")), "not held on a late timer's say-so");
+  g.up(1, 10, 10, 40); // the lift the busy page had queued
+  clock.advance(0);
+  assert.ok(calls.includes("tap 10,10"), calls.join(" | "));
+  assert.ok(!calls.some((c) => c.startsWith("longPress")));
+});
+
+test("a late timer with no lift waiting still makes a long-press, one yield later", () => {
+  const { g, clock, calls } = setup();
+  g.down(1, 10, 10, 0);
+  clock.block(LONG_PRESS_MS + LATE_MS + 150);
+  clock.fireOnce();
+  clock.advance(0);
+  assert.ok(calls.includes("longPress 10,10"), calls.join(" | "));
+});
+
+test("on time, a held finger is a long-press exactly as before", () => {
+  const { g, clock, calls } = setup();
+  g.down(1, 10, 10, 0);
+  clock.advance(LONG_PRESS_MS);
+  assert.ok(calls.includes("longPress 10,10"), calls.join(" | "));
+});
+

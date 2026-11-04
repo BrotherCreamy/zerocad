@@ -164,6 +164,46 @@ test("a tap selects, a tap on another adds it, a tap on a selected one drops it,
   assert.deepEqual(await app.selection(), ["p3"]);
 });
 
+test("a quick tap while the page is busy is still a tap: blocked 700 ms at touchdown, it selects", async () => {
+  await fresh();
+  const [x, y] = await onCanvas([25, -15, 0]);
+  // A heavy solve's worth of a busy page, starting the moment the finger lands.
+  await app.page.evaluate(() => {
+    document.getElementById("cv")!.addEventListener("pointerdown", () => {
+      const t = performance.now();
+      while (performance.now() - t < 700) { /* busy */ }
+    }, { once: true });
+  });
+  // A real finger's lift is stamped by the OS when it happens, and queues
+  // behind the busy page. The fingers helper cannot say that — CDP waits for
+  // each touch to be handled before it returns, so a lift sent after it is a
+  // 700 ms press — so this sends the two touches without waiting, the lift
+  // stamped 40 ms after the landing, as a phone's would be. Before the
+  // recogniser read the events' own timestamps, and before a late long-press
+  // timer yielded to queued input, this tap was lost (gestures.ts, LATE_MS).
+  const cdp = await app.page.context().newCDPSession(app.page);
+  const box = await app.page.$eval("#cv", (el) => { const r = el.getBoundingClientRect(); return { x: r.x, y: r.y }; });
+  const point = [{ x: box.x + x, y: box.y + y, id: 0, radiusX: 8, radiusY: 8, force: 1 }];
+  const t0 = Date.now() / 1000;
+  const landed = cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: point, timestamp: t0 });
+  await new Promise((r) => setTimeout(r, 40));
+  const lifted = cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [], timestamp: t0 + 0.04 });
+  await Promise.all([landed, lifted]);
+  const deadline = Date.now() + 3000;
+  let sel: string[] = [];
+  while (Date.now() < deadline) {
+    sel = await app.selection();
+    if (sel.length) break;
+    await app.page.waitForTimeout(50);
+  }
+  assert.deepEqual(sel, ["p2"], "the tap selected what it landed on");
+  assert.equal(await app.page.evaluate(() => {
+    const m = document.getElementById("ctxmenu");
+    return m !== null && !m.hidden && getComputedStyle(m).display !== "none";
+  }), false, "and opened no menu: it was not a long-press");
+  await cdp.detach();
+});
+
 test("a finger down on a quiet corner reveals it, as a hover does; lifting ends it", async () => {
   await fresh();
   // Shaded, a corner of a rectangle is quiet: not drawn until the hand is on it.

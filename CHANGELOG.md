@@ -7,6 +7,32 @@ decisions.
 
 ---
 
+## A quick tap on a busy page is still a tap
+
+Two workers reported touch tests that failed only while the machine was
+loaded. The cause was real and would reach a phone: the finger recogniser
+timed a tap by when the page *handled* the touch, not when it *happened*.
+While the page is busy — a heavy solve, a big file opening — a 40 ms tap
+was measured as however long the page was busy, and the long-press timer,
+running late, could decide "held" before the queued lift was even read.
+
+- **Taps are timed by the events' own timestamps** (`gestures.ts`'s `down`
+  and `up` take the event time; `engine.ts`'s `eventTime` checks it is in the
+  clock's timebase and falls back to the clock where it is not).
+- **A long-press timer that fires late yields once** (`LATE_MS`), so a lift
+  waiting in the queue lands first; with none waiting, the long-press follows
+  one tick later, as before.
+- Proved both ways: a new `touch.e2e.ts` test lands a finger on a page that
+  then blocks for 700 ms and lifts it 40 ms later, stamped as a phone's OS
+  would — it fails without the fix and passes with it. Four unit tests pin
+  the timing rules with a clock that can be blocked. The first version of the
+  browser test was wrong and is worth recording: CDP waits for each touch to
+  be handled before it returns, so a lift sent after a blocked landing is a
+  700 ms press, not a quick tap. The test now sends both touches without
+  waiting, with the lift's real timestamp.
+
+---
+
 ## The organiser: groups you can see, open, and draw into
 
 The owner:

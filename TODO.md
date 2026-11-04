@@ -1453,6 +1453,10 @@ starts.
       worker deletes only caches under its own prefix. The release that
       renames it should delete `neocad-` caches too, or every phone that had
       the old app keeps one stale cache forever.
+- [x] **A quick tap on a busy page was lost** — fixed: taps are timed by the
+      events' timestamps, and a late long-press timer yields to queued input
+      (`gestures.ts`, `LATE_MS`; see the CHANGELOG). This was the cause behind
+      the touch tests two workers saw fail only under load.
 - [ ] **A tap right after a flick may not click.** Chromium suppresses a tap
       that follows a fling within ~150 ms (the tap that stops a fling is not a
       click); a one-finger drag lifted mid-motion is a fling to it, so a strip

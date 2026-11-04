@@ -1160,10 +1160,10 @@ export class ToolEngine {
       // Each finger keeps the canvas for as long as it is down, wherever it
       // wanders — over a panel included.
       this.canvas.setPointerCapture?.(e.pointerId);
-      this.gestures.down(e.pointerId, sx, sy);
+      this.gestures.down(e.pointerId, sx, sy, eventTime(e));
     } else if (kind === "move") this.gestures.move(e.pointerId, sx, sy);
     else if (e.type === "pointercancel") this.gestures.cancel(e.pointerId);
-    else this.gestures.up(e.pointerId, sx, sy);
+    else this.gestures.up(e.pointerId, sx, sy, eventTime(e));
   }
 
   /**
@@ -1633,4 +1633,15 @@ function traceMark(g: CanvasRenderingContext2D, kind: SnapKind, x: number, y: nu
   } else {
     g.arc(x, y, a, 0, Math.PI * 2); // a circle: somewhere along a curve
   }
+}
+
+/**
+ * When a pointer event happened, in `performance.now()`'s timebase — the
+ * recogniser's clock — or undefined where the browser's timestamp is not that
+ * (an old engine's epoch milliseconds, or none), so the recogniser falls back
+ * to the time it handles the event. See gestures.ts's `LATE_MS`.
+ */
+export function eventTime(e: { timeStamp: number }): number | undefined {
+  const t = e.timeStamp;
+  return Number.isFinite(t) && t > 0 && t <= performance.now() + 1 ? t : undefined;
 }

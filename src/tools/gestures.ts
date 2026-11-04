@@ -48,6 +48,16 @@ export const TAP_MS = 350;
 /** Held still this long, a finger asks for the menu — iOS's own long-press interval. */
 export const LONG_PRESS_MS = 500;
 
+/**
+ * A long-press timer firing this much past its time means the page was busy
+ * (a heavy solve, a big file opening) — and a lift that happened meanwhile may
+ * be waiting in the queue behind it. So a late timer does not decide; it
+ * yields once, letting queued input land first. Measured: a 40 ms tap made
+ * while the page was blocked for 700 ms at touchdown was read as a held press,
+ * and the tap was lost (`touch.e2e.ts`).
+ */
+export const LATE_MS = 50;
+
 /** Time, for the recogniser: what it is now, and a callback later that can be called off. */
 export interface Clock {
   now(): number;
@@ -124,13 +134,20 @@ export class Gestures {
     return this.fingers.size;
   }
 
-  down(id: number, x: number, y: number): void {
+  /**
+   * `at` is when the finger actually landed — the event's own timestamp, in
+   * the clock's timebase — rather than when the page got round to it: on a
+   * busy page the two differ by however long it was busy, and a tap is a
+   * question about the finger, not about the page. Without one, the clock.
+   */
+  down(id: number, x: number, y: number, at?: number): void {
     if (this.fingers.has(id)) return;
     this.fingers.set(id, { x, y });
     const n = this.fingers.size;
     if (n === 1 && this.phase.kind === "idle") {
-      const t0 = this.clock.now();
-      const stop = this.clock.after(LONG_PRESS_MS, () => this.held(id));
+      const t0 = at ?? this.clock.now();
+      const due = this.clock.now() + LONG_PRESS_MS;
+      const stop = this.clock.after(LONG_PRESS_MS, () => this.ripe(id, due));
       this.phase = { kind: "pending", id, x0: x, y0: y, t0, stop };
       this.sink.press(x, y);
       return;
@@ -191,13 +208,14 @@ export class Gestures {
     }
   }
 
-  up(id: number, x: number, y: number): void {
+  /** `at` as for `down`: when the finger lifted, so a tap is timed by the finger's clock. */
+  up(id: number, x: number, y: number, at?: number): void {
     if (!this.fingers.has(id)) return;
     this.fingers.delete(id);
     const p = this.phase;
     if (p.kind === "pending") {
       p.stop();
-      if (this.clock.now() - p.t0 <= TAP_MS) this.sink.tap(p.x0, p.y0);
+      if ((at ?? this.clock.now()) - p.t0 <= TAP_MS) this.sink.tap(p.x0, p.y0);
       this.phase = { kind: "idle" };
     } else if (p.kind === "drag") {
       this.sink.dragEnd(x, y);
@@ -255,6 +273,14 @@ export class Gestures {
     }
     this.phase = { kind: "idle" };
     this.sink.end();
+  }
+
+  /** The long-press timer: on time, the press is held; late, see `LATE_MS` — yield once, then decide. */
+  private ripe(id: number, due: number): void {
+    const p = this.phase;
+    if (p.kind !== "pending" || p.id !== id) return;
+    if (this.clock.now() - due <= LATE_MS) { this.held(id); return; }
+    p.stop = this.clock.after(0, () => this.held(id));
   }
 
   private held(id: number): void {
