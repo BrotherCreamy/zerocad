@@ -24,6 +24,24 @@ otherwise.
 
 ## Decisions made so far — veto here if any are wrong
 
+- **The organisation method: the groups that exist, plus an open group, in
+  an organiser pane** (the owner, 2026-11-04: *"the group view or whatever
+  organisation method you decided on. There needs to be a pane for that"*,
+  and earlier *"create a new group and "open" the group, which means any
+  entities which get created become a part of that group"*). Groups stay
+  overlapping sets that imply nothing; `opengroup`/`closegroup` is journalled
+  document state; a group may be empty. Typed objects that enforce rules
+  (regions, chains, solids) are the next design conversation and would arrive
+  as sections of the same pane. Spec:
+  [`organiser.md`](docs/plans/organiser.md), after the chrome package merges.
+- **The app menu is a dropdown under the logo** with an interface-size spin
+  box (`− 80% +`), a show/hide row per pane, and the File items; **a pane's
+  docking (to an edge, or against another pane) survives rotation** (the
+  owner, 2026-11-04, verbatim: *"if I push a toolbar right to one side, or up
+  against another toolbar, that setting should persist if I change from
+  landscape to portrait or vice versa"*). Folded into
+  [`chrome-logo-scale.md`](docs/plans/chrome-logo-scale.md).
+
 - **No title bar; a tiny logo over the drawing opens the app menu; the
   interface has a size setting; panels dock to the very edge; files open,
   save and share on a phone and a desktop** (the owner, 2026-11-04, after
