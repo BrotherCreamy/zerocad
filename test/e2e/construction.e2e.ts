@@ -1,8 +1,9 @@
 // Construction geometry driven the way a user drives it (docs/plans/
 // construction.md): a rectangle and a circle inside it, the circle made
 // construction from its own right-click menu, the rectangle extruded — no
-// hole — then the circle made not construction and `regen("e1")` giving the
-// hole; a circle drawn with the circle tool's `construction` box ticked; and
+// hole — then the circle made not construction, which adds no hole by itself
+// or by `regen("e1")`, and its menu's *Add as hole to e1* cutting it; a
+// circle drawn with the circle tool's `construction` box ticked; and
 // the look, on the dark ground and over a solid's light faces: thin, muted, a
 // solid line, never dashed (a dash means selection here).
 //
@@ -138,7 +139,7 @@ test("extrude the rectangle: no hole where the construction circle is", async ()
   assert.equal(px[3], 255, `the lid is whole over the circle's centre: ${px}`);
 });
 
-test("made not construction from its menu (in the hidden view, where it can be reached), regen(\"e1\") gives the hole", async () => {
+test("made not construction from its menu (in the hidden view, where it can be reached): no hole by itself, nor by regen — Add as hole to e1 cuts it", async () => {
   // Shaded, the solid is opaque and the circle under its lid cannot be
   // clicked; the hidden view draws it dimmed and keeps it pickable.
   await app.type('view("hidden")');
@@ -146,10 +147,13 @@ test("made not construction from its menu (in the hidden view, where it can be r
   const typed = await choose("Not construction");
   assert.equal(typed, `construction("${circle}", false)`);
   assert.equal(await isConstruction(circle), false);
-  assert.equal(await profileLoops(), 1, "the solid does not change by itself (until features follow their regions)");
-  await app.type('view("shaded")');
+  assert.equal(await profileLoops(), 1, "the solid does not change by itself");
   await app.type('regen("e1")');
-  assert.equal(await profileLoops(), 2, "regenerated, the circle is a hole");
+  assert.equal(await profileLoops(), 1, "nor does regen: inside is not membership (docs/plans/explicit-regions.md)");
+  await press(...RIM, "right");
+  assert.equal(await choose("Add as hole to e1"), `hole("e1", "${circle}")`);
+  assert.equal(await profileLoops(), 2, "said to be a hole, it is one");
+  await app.type('view("shaded")');
   const px = await app.pixel(CENTRE[0] + 0.5, CENTRE[1] + 0.5, "faces");
   assert.equal(px[3], 0, `straight down the hole there is no face: ${px}`);
 });

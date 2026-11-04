@@ -105,6 +105,20 @@ export interface ToolContext {
    */
   regionAt?(screen: [number, number]): RegionHit | null;
   /**
+   * Where a screen point's line of sight meets the plane through `origin`
+   * spanned by `u` and `v`, or null when it runs along it — for a tool that
+   * works in one known plane whatever is in front of it: the edit dialog
+   * toggles a loop on a feature's sketch plane under its own lid. Absent
+   * outside a viewport, like `pick`.
+   */
+  planeAt?(screen: [number, number], plane: { origin: number[]; u: number[]; v: number[] }): number[] | null;
+  /**
+   * The one thing the tool was armed to work on, when it was armed on one —
+   * the feature the edit dialog edits (`edit("e1")`). Not an option: options
+   * are values a viewer remembers, and a name is not one of those.
+   */
+  target?: string;
+  /**
    * One line to the user, in the app's log pane. This is how a tool refuses a
    * gesture out loud: a `throw` from a pointer handler reaches the page as an
    * uncaught error nobody sees explained, and `console.warn` reaches nobody
@@ -272,20 +286,35 @@ export abstract class Tool {
   clear?(): boolean;
   /** Whether this tool shows ✓ and ✗, and whether ✓ would do anything now. Absent for a tool that is not a feature. */
   dialog?(): FeatureDialog;
+  /**
+   * Features whose faces the host leaves undrawn while this tool is armed,
+   * because the tool draws them itself, as they will be — the edit dialog's
+   * preview of the feature it edits. Without it the solid as it is would sit
+   * opaque over the preview, and a hole being cut would never show.
+   */
+  replaces?(): readonly string[];
 }
 
 export type ToolCtor = new (ctx: ToolContext) => Tool;
 
 const registry = new Map<string, ToolCtor>();
+/** Tools armed only on something — never from the toolbar, so never on it. */
+const unlisted = new Set<string>();
 
 /**
  * Registers `ctor` under `name`. A malformed `static options` is refused here,
  * before anything is registered, so the line that defined the tool is the one
  * that says what is wrong with it — not the first `arm`.
+ *
+ * `listed: false` keeps it off the toolbar and out of `tools()`: a dialog
+ * armed on a thing (the edit dialog, `edit("e1")`) is no tool to pick up empty
+ * handed. It is armed by name all the same.
  */
-export function defineTool(name: string, ctor: ToolCtor): void {
+export function defineTool(name: string, ctor: ToolCtor, { listed = true }: { listed?: boolean } = {}): void {
   declaredOptions(ctor, name);
   registry.set(name, ctor);
+  if (listed) unlisted.delete(name);
+  else unlisted.add(name);
 }
 
 export function getToolCtor(name: string): ToolCtor | undefined {
@@ -293,5 +322,5 @@ export function getToolCtor(name: string): ToolCtor | undefined {
 }
 
 export function listTools(): string[] {
-  return [...registry.keys()];
+  return [...registry.keys()].filter((n) => !unlisted.has(n));
 }

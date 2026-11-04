@@ -31,13 +31,18 @@
 import { defineTool, type FeatureStep, type PointerInfo, type RegionHit, type RenderContext } from "./tool.ts";
 import type { OptionSpecs } from "./options.ts";
 import type { Model } from "../model.ts";
-import { checkRevolveRegion, regionNaming, revolve, revolveProfile, revolveProfileOf } from "../operations.ts";
+import {
+  checkRevolveRegion, profileOfLoops, regionNaming, regionOf, revolve, revolveProfile, revolveProfileOf,
+} from "../operations.ts";
+import { memberName } from "../model.ts";
 import type { Pick } from "../picking.ts";
 import { FULL_TURN, axisReader } from "../relations/revolution.ts";
 import { FRAME_ARM_PX } from "../framemarker.ts";
-import { LIT_STROKE, REGION_GREEN, drawRegion, lightRegions, missedRegion, regionKey, type Region } from "./region.ts";
+import {
+  LIT_STROKE, REGION_GREEN, drawRegion, lightRegions, missedRegion, outlineLoops, regionKey, type Region,
+} from "./region.ts";
 import { FeatureTool, callText, foundRegion, planeStep } from "./feature.ts";
-import { RegionSelection } from "./selection.ts";
+import { RegionSelection, leftOut } from "./selection.ts";
 
 /**
  * The axes a revolve of `region` could turn about: every line, and every arm
@@ -69,13 +74,25 @@ export function revolveAxes(model: Model, region: Region): string[] {
  * checked against the loop's own plane (so a refused revolve makes no plane),
  * the plane if it needs one, then the shortest typed call that names it.
  */
-export function revolveSteps(region: RegionHit, axis: string, angle: number, typed: boolean): FeatureStep[] {
+export function revolveSteps(region: RegionHit, axis: string, angle: number, typed: boolean,
+                             without: readonly number[][] = []): FeatureStep[] {
   return [(m) => {
     const r = foundRegion(m, region);
     checkRevolveRegion(m, r.loops, r.index, axis);
     return null;
   }, planeStep(region, typed), (m): ReturnType<FeatureStep> => {
     const r = foundRegion(m, region);
+    // Holes clicked out of the proposal: the loops named outright, as the extrude tool does.
+    const out = leftOut(m, r, without);
+    if (out.size) {
+      const p = profileOfLoops(m, r.loops, regionOf(r.loops, r.index).filter((i) => !out.has(i)));
+      if (p.crossings?.size) return { call: () => { revolveProfile(m, p, axis, angle); } };
+      const member = memberName(p.loops[0][0]);
+      return {
+        text: callText("revolve", [member, axis, angle, p.frame, p.loops]),
+        direct: () => revolve(m, member, axis, angle, p.frame, p.loops),
+      };
+    }
     const n = regionNaming(m, r.loops, r.index);
     if (!n) return { call: () => { revolveProfile(m, revolveProfileOf(m, r.loops, r.index), axis, angle); } };
     const args: unknown[] = [n.member, axis];
@@ -153,7 +170,7 @@ export class RevolveTool extends FeatureTool {
     const angle = this.angleOf(values);
     const typed = !!this.ctx.perform;
     const axis = this.axis;
-    return this.picks.regions.flatMap((r) => revolveSteps(r, axis, angle, typed));
+    return this.picks.regions.flatMap((r, i) => revolveSteps(r, axis, angle, typed, this.picks.without(i)));
   }
 
   protected picksKey(): string {
@@ -219,6 +236,12 @@ export class RevolveTool extends FeatureTool {
       this.guide(this.picks.size ? (this.wanting() ?? missedRegion(ctx.model)) : missedRegion(ctx.model));
       return;
     }
+    // A hole of a picked region toggles out of its proposal, as in extrude.ts.
+    if (this.picks.toggleHole(ctx.model, hit) !== null) {
+      this.lastPicked = "region";
+      ctx.requestRender();
+      return;
+    }
     const was = this.picks.toggle(ctx.model, hit);
     if (was === "again") {
       // The quick path once there is an axis to confirm about; before there
@@ -248,7 +271,11 @@ export class RevolveTool extends FeatureTool {
     const model = this.ctx.model;
     lightRegions(model, r, this.under);
     const outlines: number[][][] = [];
-    for (const picked of this.picks.refresh(model)) outlines.push(...(drawRegion(model, r, picked, "40") ?? []));
+    this.picks.refresh(model).forEach((picked, i) => {
+      const out = leftOut(model, picked, this.picks.without(i));
+      outlines.push(...(drawRegion(model, r, picked, "40", undefined, out) ?? []));
+      outlineLoops(model, r, picked.loops, [...out]);
+    });
     if (this.under) drawRegion(model, r, this.under);
     if (this.picks.size) {
       this.renderAxes(r);

@@ -486,18 +486,18 @@ export class ToolEngine {
   private optionMemory: OptionMemory;
 
   /** What `arm` was last called with. Read through `armed`, which checks it is still current. */
-  private armedWith: { name: string; options: Record<string, unknown> } | null = null;
+  private armedWith: { name: string; options: Record<string, unknown>; target?: string } | null = null;
 
   /**
-   * The name and options the armed tool was armed with, or null when nothing is
-   * armed — exactly what `arm` needs to arm it afresh. That is its one use: an
-   * undo abandons the gesture in progress but keeps the tool (see main.ts's
-   * `step`), and the gesture's state lives in the tool instance, so "keep the
-   * tool, drop the gesture" is a new instance of the same tool. The registered
-   * name rather than `active.name`, because a tool defined at the command line
-   * may call itself anything.
+   * The name, options and target the armed tool was armed with, or null when
+   * nothing is armed — exactly what `arm` needs to arm it afresh. That is its
+   * one use: an undo abandons the gesture in progress but keeps the tool (see
+   * main.ts's `step`), and the gesture's state lives in the tool instance, so
+   * "keep the tool, drop the gesture" is a new instance of the same tool. The
+   * registered name rather than `active.name`, because a tool defined at the
+   * command line may call itself anything.
    */
-  get armed(): { name: string; options: Record<string, unknown> } | null {
+  get armed(): { name: string; options: Record<string, unknown>; target?: string } | null {
     return this.active ? this.armedWith : null;
   }
 
@@ -512,8 +512,11 @@ export class ToolEngine {
    * an option the tool does not have, a value it cannot take — is thrown
    * **before** anything is cancelled, so a typo leaves the armed tool, and the
    * gesture it was in, exactly as they were.
+   *
+   * `target` is the one thing a tool armed on a thing works on (`ctx.target`):
+   * the feature `edit("e1")` opens the dialog on.
    */
-  arm(toolName: string, given: Record<string, unknown> = {}): void {
+  arm(toolName: string, given: Record<string, unknown> = {}, target?: string): void {
     const Ctor = getToolCtor(toolName);
     if (!Ctor) {
       this.active?.onCancel();
@@ -524,17 +527,21 @@ export class ToolEngine {
     this.optionMemory.remember(toolName, explicitOptions(specs, given));
     // The tool already armed, armed again — the options panel's field
     // committed, or `arm` typed with a new depth — keeps what it has picked if
-    // it can (`retune`): the depth changes under a selection already made.
-    const same = this.active && this.armedWith?.name === toolName && this.active.retune;
+    // it can (`retune`): the depth changes under a selection already made. Not
+    // when it is armed on something else: `edit("e2")` while editing e1 is a
+    // different dialog. A field's `arm` names no target and keeps the one there.
+    const keep = target ?? this.armedWith?.target;
+    const same = this.active && this.armedWith?.name === toolName && this.active.retune
+      && keep === this.armedWith?.target;
     if (same) {
-      this.armedWith = { name: toolName, options };
+      this.armedWith = { name: toolName, options, ...(keep === undefined ? {} : { target: keep }) };
       this.active!.ctx.options = options;
       this.active!.ctx.trial = {};
       this.active!.retune!();
       return;
     }
     this.active?.onCancel();
-    this.armedWith = { name: toolName, options };
+    this.armedWith = { name: toolName, options, ...(target === undefined ? {} : { target }) };
     // Spent once taken: a selection carried into one tool is not carried on into the next.
     const preselected = [...this.selected.refresh(this.model)];
     this.selection.clear();
@@ -543,6 +550,8 @@ export class ToolEngine {
       options,
       preselected,
       trial: {},
+      ...(target === undefined ? {} : { target }),
+      planeAt: ([sx, sy], plane) => screenToPlane(this.view, sx, sy, plane),
       requestRender: () => this.onRenderOnly(),
       requestSolve: () => this.onSolveRender(),
       finish: () => {
