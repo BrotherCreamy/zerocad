@@ -106,6 +106,48 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### An installable app, and a page that never moves
+
+**What the owner asked for** was GitHub hosting, a PWA, and a page that
+neither scrolls nor zooms, for his iPhone. Partway through, the hosting target
+moved: the site is to be served from a public repository of its own,
+`BrotherCreamy/zerocad`, so nothing was published from here.
+
+**Why the worker never takes over.** *Rejected:* `skipWaiting` with a reload
+on `controllerchange`. That is the usual "update now" recipe, and it swaps the
+page under a hand that is mid-drag, losing whatever is not saved. The app's
+state is the model in the page, so a reload is a loss, not a refresh. The
+browser's own rule (a new worker activates once no window of the old one is
+open) gives "the next start" for free. The test proves it in both directions:
+the open window stays on the old version, and so does a second window opened
+meanwhile.
+
+**Why the cache prefix matters more than it looks.** Caches belong to the
+origin. Every Pages site of one account is `<account>.github.io`, so a worker
+that deleted "every cache but mine" would delete the other sites' caches.
+
+**Why the no-zoom rules are in `index.html`, not only in the hosted build.**
+The dev server and the single-file artifact are where the app is tried before
+it is deployed. A phone rule that only the deploy has would be checked only
+on the deploy. Only what needs a served folder (the manifest, the worker) is
+the hosted build's. *Rejected:* registering the worker from `main.ts`. On the
+dev server it would cache the code under development and serve it after an
+edit.
+
+**Why the negative checks have controls.** "The page did not zoom" passes
+just as well when the gesture never reached the page. On the control page,
+CDP's `synthesizePinchGesture` zoomed nothing, which would have made every
+pinch test vacuous. Two raw touch points do zoom it, so those are what the
+tests use. For the same reason, the "as iOS" test strips the viewport's limits
+and pinches twice: with the page lock's listeners dropped (it zooms) and with
+them in (it does not). Chromium reports zero safe-area insets for an iPhone,
+so the notch test sets iOS's real insets through CDP. Without that, nothing
+could ever be under the notch.
+
+**What is left for an iPhone.** Safari's own behaviour (the gesture events,
+the rubber band, the callout, standalone launch) is exactly what Chromium
+cannot show. The CHANGELOG lists what to try.
+
 ### An extrude makes no lid frame
 
 **The report** was the one that started the last package — *"i'm getting a

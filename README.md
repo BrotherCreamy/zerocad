@@ -368,6 +368,25 @@ is evaluated. Note that a bare assignment (`box = ...`) persists between
 entries while a `const`/`let`/`class` declaration does not — a
 consequence of how the scope is built, described in `src/repl.ts`.
 
+## On a phone
+
+The app is hosted at **https://brothercreamy.github.io/zerocad/**, a static
+site with no server behind it. Once it has been opened, it works offline. On
+an iPhone:
+
+1. Open that address in **Safari**. The home-screen install is Safari's.
+2. Tap **Share** (the square with the arrow), then **Add to Home Screen**,
+   then **Add**.
+3. Start it from the new icon. It opens full screen, with no Safari bars.
+
+A new version is picked up the next time the app is started after being
+closed from the app switcher, never while it is open. The page never scrolls
+or zooms under a finger. The finger gestures on the drawing are in progress
+(`docs/plans/touch.md`).
+
+The site is `npm run build:pwa`'s `dist-pwa/` folder, published by
+`.github/workflows/pages.yml` (see `docs/plans/pwa-pages.md`).
+
 ## Building and running
 
 ```sh
@@ -377,6 +396,9 @@ npm test               # unit tests — the mathematics, no browser needed
 npm run test:e2e       # end-to-end — a real browser driving the real app
 npm run test:all       # both, plus typecheck and the Rust crate's own tests
 npm run dev            # Vite dev server
+npm run build:single   # the whole app as one HTML file, dist-single/neocad.html
+npm run build:pwa      # the hosted site, dist-pwa/ (needs the kernel built)
+npm run build:icons    # re-rasterise public/icons/*.png from icon.svg (only when the mark changes)
 ```
 
 Rust must be installed via the official script at rustup.rs, **not**
