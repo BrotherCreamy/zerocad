@@ -36,7 +36,11 @@
 // its tool names, their glyphs and its armed tool by its host, and the options
 // panel the armed tool's declared options and their values; each hands back a
 // command string, so neither can reach the model any more than the context
-// menu can, nor do anything a typed line could not.
+// menu can, nor do anything a typed line could not. The tools' descriptions
+// for their tooltips are handed in the same way (`ToolbarHost.summary`), and
+// the tooltip itself (tooltip.ts) is handed in as a function to attach one.
+
+import { giveTip, type AttachTip, type Tip } from "./tooltip.ts";
 
 export interface Rect { x: number; y: number; w: number; h: number }
 export interface Size { w: number; h: number }
@@ -1525,6 +1529,19 @@ export interface Fixed {
   size(): Size;
 }
 
+/**
+ * A panel's strip's tooltip: the pane's name, and what dragging it does. No
+ * command: a strip types nothing — where the panels are is the viewer's, never
+ * a line in the log.
+ */
+export function stripTip(label: string, tray: boolean): Tip {
+  return {
+    name: label,
+    summary: tray ? "Drag to move it; against an edge it turns to fit and stays there"
+      : "Drag to move it; pushed against an edge or a pane, it stays there",
+  };
+}
+
 /** One panel as the app menu lists it: its id, the name it shows, and whether it is shown. */
 export interface Pane { id: string; label: string; shown: boolean }
 
@@ -1554,6 +1571,8 @@ export class Panels {
   private m: Metrics;
   /** The insets the last `apply` laid out against — a gesture's pointer is offset by them. */
   private inset: Insets = NO_INSETS;
+  /** Gives each panel's strip its tooltip, where the host has them. */
+  private tooltip: AttachTip | undefined;
 
   constructor(
     area: HTMLElement, defaults: (area: Size) => Layout, storage: StorageLike | null,
@@ -1561,8 +1580,10 @@ export class Panels {
     options: {
       check?: boolean; fitted?: Record<string, Fitted>; metrics?: Metrics;
       fixed?: Record<string, Fixed>; insets?: () => Insets; hiddenAtFirst?: readonly string[];
+      tooltip?: AttachTip;
     } = {},
   ) {
+    this.tooltip = options.tooltip;
     this.hiddenAtFirst = new Set(options.hiddenAtFirst ?? []);
     this.m = options.metrics ?? FINE;
     this.area = area;
@@ -1851,6 +1872,10 @@ export class Panels {
       // A tray's strip is sized by `place`, which knows which way it runs.
       if (!(id in this.trays)) strip.style.height = `${this.m.title}px`;
       this.gesture(id, strip, "move");
+      // The strip is a control too — a word, or a tray's grip of dots — and
+      // says what it is and what it does (`stripTip`), held as any is.
+      const label = el.dataset.label || strip.title || id;
+      if (this.tooltip) this.tooltip(strip, () => stripTip(label, id in this.trays));
     }
     // Every panel but a tray has the four, made here rather than written out in
     // the page: that a panel resizes from any corner, and a tray from none, is
@@ -1933,13 +1958,19 @@ export function armCommand(tool: string): string {
   return `arm(${JSON.stringify(tool)})`;
 }
 
+/** A name as a tooltip heads with it: its first letter a capital — `Rectangle`, `Circle3`. */
+export function displayName(name: string): string {
+  return name ? name[0].toUpperCase() + name.slice(1) : name;
+}
+
 /**
- * A button's hover text: the tool's name — the button shows only its glyph, so
- * this is where the name the command line calls it is read — then the command
- * it types.
+ * A tool button's tooltip: the tool's name — the button shows only its glyph,
+ * so this is where the name is read, and the command after it says it the way
+ * the command line does — what it does (its `static summary`, or nothing for a
+ * tool that declares none), and its key where it has one.
  */
-export function buttonTitle(tool: string): string {
-  return `${tool} — ${armCommand(tool)}`;
+export function toolTip(tool: string, summary: string | null = null, key: string | null = null): Tip {
+  return { name: displayName(tool), summary, command: armCommand(tool), key };
 }
 
 /** What the toolbar needs of its host. */
@@ -1956,6 +1987,12 @@ export interface ToolbarHost {
   active(): string | null;
   /** Types one line into the command machinery, as one user action — `submit`. */
   run(command: string): void;
+  /** What the tool does, in one line — its `static summary` (`toolSummary`) — or null for one that declares none. */
+  summary?(tool: string): string | null;
+  /** The key that does what the button does, where one does: `hold Space` for the Hand. */
+  key?(tool: string): string | null;
+  /** Gives a button its tooltip (tooltip.ts); without it, a button's tip is its `title`. */
+  tooltip?: AttachTip;
 }
 
 /**
@@ -1968,9 +2005,11 @@ export interface ToolbarHost {
  * **A button types `arm("name")`** through the host's `run`, the context menu's
  * seam, so the log shows what the button did and a user learns the command by
  * clicking. **Its face is the tool's icon** (the owner: *"tools should be
- * icons"*) and its hover text is the name with the command after it, so the
- * vocabulary the command line uses is still one hover away and still what the
- * log shows; the name is the button's accessible name too.
+ * icons"*) and its tooltip is the name, what the tool does and the command it
+ * types (the owner: *"when I hover over tools, I should see a tooltip"*), so
+ * the vocabulary the command line uses is still one hover — or, under a
+ * finger, one hold — away and still what the log shows; the name is the
+ * button's accessible name too.
  *
  * **No button is ever greyed.** One used to be, for a tool the model could not
  * run, with the reason as its hover text; since every built-in makes what it
@@ -2018,7 +2057,13 @@ export class Toolbar {
     b.innerHTML = this.host.icon(tool);
     b.dataset.tool = tool;
     b.setAttribute("aria-label", tool);
-    b.title = buttonTitle(tool);
+    // Asked when it shows, not now: a tool redefined at the command line
+    // with a summary says it the next time, with no rebuild.
+    giveTip(b, () => toolTip(tool, this.host.summary?.(tool) ?? null, this.host.key?.(tool) ?? null), this.host.tooltip, {
+      // Beside the tray when it is a column, so the tip never covers the
+      // buttons the pointer is about to run down.
+      along: () => (this.el.closest<HTMLElement>(".panel")?.dataset.orient as "column" | "row" | undefined) ?? null,
+    });
     b.setAttribute("aria-pressed", "false");
     // Keeps the focus where it was — the command line — so a click on a button
     // is not followed by Enter or Space re-pressing it instead of submitting.
@@ -2071,6 +2116,8 @@ export interface OptionsHost {
    * preview can follow the typing without a line typed per keystroke.
    */
   trial?(option: string, value: number | null): void;
+  /** Gives ✓ and ✗ their tooltips (tooltip.ts); without it, each has a `title`. */
+  tooltip?: AttachTip;
 }
 
 /**
@@ -2183,18 +2230,27 @@ export class OptionsPanel {
   private actions(): HTMLElement {
     const line = document.createElement("div");
     line.className = "orow oact";
-    const button = (cls: string, text: string, title: string, act: () => void) => {
+    const button = (cls: string, text: string, tip: () => Tip, act: () => void) => {
       const b = document.createElement("button");
       b.className = cls;
       b.type = "button";
       b.textContent = text;
-      b.title = title;
+      b.setAttribute("aria-label", tip().name);
+      giveTip(b, tip, this.host.tooltip);
       b.addEventListener("mousedown", (e) => e.preventDefault());
       b.addEventListener("click", act);
       return b;
     };
-    this.ok = button("ok", "✓", "confirm — Enter", () => this.host.confirm?.());
-    line.append(this.ok, button("no", "✗", "cancel — Escape", () => this.host.cancel?.()));
+    // Neither types a line of its own: ✓ is Enter and ✗ is Escape, which the
+    // feature's lines are typed by, so the tip names the key, not a command.
+    const ok = button("ok", "✓", () => ({
+      name: "Confirm", key: "Enter", summary: "Builds what the preview shows; the tool stays armed",
+      off: this.ok?.disabled ? "pick what to build first" : null,
+    }), () => this.host.confirm?.());
+    this.ok = ok;
+    line.append(ok, button("no", "✗", () => ({
+      name: "Cancel", key: "Esc", summary: "Drops what is picked; a second Esc puts the tool down",
+    }), () => this.host.cancel?.()));
     return line;
   }
 
@@ -2339,6 +2395,48 @@ const ACTION_LABELS: Readonly<Record<Action, string>> = {
   undo: "Undo", redo: "Redo", delete: "Delete selection", cancel: "Cancel",
 };
 
+/** What each does, in the words its tooltip says it in. */
+const ACTION_SUMMARIES: Readonly<Record<Action, string>> = {
+  undo: "Takes back the last change to the drawing",
+  redo: "Puts back the change you last took back",
+  delete: "Deletes what is selected",
+  cancel: "Puts the tool down and clears the selection",
+};
+
+/** Why `action` would do nothing in `state` — what its tooltip says where the command would be. */
+function actionOff(action: Action, state: ActionState): string {
+  switch (action) {
+    case "undo": return "nothing to undo";
+    case "redo": return "nothing to redo";
+    case "delete": return state.armed ? "put the tool down first — Delete is for the selection" : "select something first";
+    case "cancel": return "nothing to cancel";
+  }
+}
+
+/**
+ * An action's tooltip: its name, what it does, and the line it would type now
+ * (`del("l1", "l2")` names the selection) — or, while it would do nothing,
+ * why — with the key that does the same (`actionKey`).
+ */
+export function actionTip(action: Action, state: ActionState, key: string | null = null): Tip {
+  const command = actionCommand(action, state);
+  return { name: ACTION_LABELS[action], summary: ACTION_SUMMARIES[action], command, off: command ? null : actionOff(action, state), key };
+}
+
+/**
+ * The key each action is on a keyboard (main.ts's bindings): ⌘ on Apple's
+ * systems, Ctrl elsewhere — an iPad with a keyboard has them too. Cancel is
+ * Escape's nearest: Escape drops a feature's picks first, Cancel both at once.
+ */
+export function actionKey(action: Action, apple: boolean): string {
+  switch (action) {
+    case "undo": return apple ? "⌘Z" : "Ctrl+Z";
+    case "redo": return apple ? "⇧⌘Z" : "Ctrl+Y";
+    case "delete": return "Delete";
+    case "cancel": return "Esc";
+  }
+}
+
 /** The toolbar's glyph family (tools/icons.ts): a 16-unit box, 1.5-unit round strokes, nothing filled. */
 function actionGlyph(name: Action, body: string): string {
   return `<svg class="ico" data-glyph="${name}" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" ` +
@@ -2357,6 +2455,10 @@ export interface ActionHost {
   state(): ActionState;
   /** Types one line into the command machinery, as one user action — `submit`. */
   run(command: string): void;
+  /** The key each button is on a keyboard — `actionKey`. */
+  key?(action: Action): string | null;
+  /** Gives a button its tooltip (tooltip.ts); without it, each has a `title`. */
+  tooltip?: AttachTip;
 }
 
 /**
@@ -2377,7 +2479,14 @@ export class ActionStrip {
       b.innerHTML = ACTION_ICONS[action];
       b.dataset.action = action;
       b.setAttribute("aria-label", ACTION_LABELS[action]);
-      b.title = ACTION_LABELS[action];
+      // Asked as it shows, so it names what the button would type then.
+      if (host.tooltip) {
+        host.tooltip(b, () => actionTip(action, this.host.state(), this.host.key?.(action) ?? null), {
+          along: () => (el.closest<HTMLElement>(".panel")?.dataset.orient as "column" | "row" | undefined) ?? null,
+        });
+      } else {
+        b.title = ACTION_LABELS[action];
+      }
       // The focus stays where it was: a tap here must not raise a keyboard
       // that a tap on the command line had put away, nor take it from a field.
       b.addEventListener("mousedown", (e) => e.preventDefault());
@@ -2399,6 +2508,8 @@ export class ActionStrip {
       const command = actionCommand(action, state);
       const off = command === null;
       if (b.disabled !== off) b.disabled = off;
+      // With a tooltip it is read when shown; the title is only the fallback.
+      if (this.host.tooltip) continue;
       const title = command ? `${ACTION_LABELS[action]} — ${command}` : ACTION_LABELS[action];
       if (b.title !== title) b.title = title;
     }

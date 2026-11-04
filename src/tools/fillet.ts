@@ -61,6 +61,7 @@ export class FilletTool extends FeatureTool {
   static readonly options: OptionSpecs = {
     radius: { default: DEFAULT_RADIUS, unit: "length", check: (v) => ((v as number) > 0 ? null : "must be more than 0") },
   };
+  static readonly summary = "Rounds a corner: click two lines that meet, or their corner";
   readonly name = "fillet";
   // Its picks are lines, and a corner's point: a snap marker would only echo the pick.
   readonly snaps = false;

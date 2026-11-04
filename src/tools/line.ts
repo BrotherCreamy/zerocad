@@ -98,6 +98,7 @@ interface Aim {
 
 export class LineTool extends Tool {
   static readonly options: OptionSpecs = DRAWING_OPTIONS;
+  static readonly summary = "Draws lines: click the start, then the end of each in turn";
   readonly name = "line";
   /** The first click of a fresh chain — kept whole, so its snap survives to commit. */
   private pending: PointerInfo | null = null;

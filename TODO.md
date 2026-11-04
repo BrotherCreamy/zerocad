@@ -28,7 +28,14 @@ otherwise.
   (the owner, 2026-11-04: *"when I hover over tools, I should see a
   tooltip"*; *"a frame should be coloured or something so I can tell the
   orientation. use rgb colours like solidworks"*). Spec:
-  [`tooltips-rgb-frames.md`](docs/plans/tooltips-rgb-frames.md).
+  [`tooltips-rgb-frames.md`](docs/plans/tooltips-rgb-frames.md), **built**.
+  Vetoable, as built: every icon or short-word control has one tooltip —
+  name, what it does, the command it types, its key — after 400 ms under a
+  mouse (at once moving to the next), and by a 500 ms hold under a finger,
+  after which the lift does not press it; each tool says what it does in its
+  own `static summary`, which `tools()` and `help()` read too. Frames: x
+  `#ee6040`, y `#60d658`, z `#5b9cff`, letters kept, lit and selected still
+  win, the default heavier rather than lighter.
 - **Under discussion with the owner (2026-11-04), not yet decided:** "region"
   retired in favour of **Face** (a bounded piece of one surface), **Surface**
   (faces joined edge to edge) and **Solid** (a closed surface), each a typed
@@ -1957,6 +1964,16 @@ extended the way `defineTool` extends the tool registry would close it.
 
 ## Smaller things
 
+- **A tooltip under a finger at the top-right action strip** (portrait) has
+  room neither above nor beside and goes below the finger, partly under the
+  hand while held (docs/plans/tooltips-rgb-frames.md, limitations). A
+  narrower tooltip there, or the strip's tips placed by the strip, would fix
+  it; it lingers 1.5 s after the lift meanwhile.
+- **Try the tooltip's hold on an iPhone**: whether iOS sends a click after a
+  long touch on a button (swallowed if so) and keeps its callout away.
+- **Tool summaries say "click"** under a finger too; if the owner wants
+  "tap" on a phone, a summary could be two words chosen by pointer.
+
 - [ ] **Found while building `organiser.md`** (each deliberate, written down
       so it is a decision and not a rediscovery):
   - A group holding *most* of a solid gets none of a regeneration's new
@@ -2426,6 +2443,30 @@ extended the way `defineTool` extends the tool registry would close it.
       the resolver's flush arithmetic assumes does not happen.
 
 ## Done
+
+- [x] **Tooltips on every control; frames in RGB** (2026-11-04). The owner:
+      *"when I hover over tools, I should see a tooltip"*; *"a frame should be
+      coloured or something so I can tell the orientation. use rgb colours
+      like solidworks."* Spec:
+      [`docs/plans/tooltips-rgb-frames.md`](docs/plans/tooltips-rgb-frames.md),
+      marked built, every deviation in its *As built*. `src/tooltip.ts` (new);
+      `Tool.summary`, `ENGINE_SUMMARIES` and `toolSummary` in `tool.ts`, a
+      summary on each built-in; `toolTip`/`actionTip`/`actionKey`/`stripTip`
+      in `panels.ts`; `addTip`/`eyeTip`/`openTip` in `organiser.ts`;
+      `spinTip` in `appmenu.ts`; `AXIS_INKS` in `framemarker.ts`; `drawFrame`
+      and the wiring in `main.ts`; `tools()` and `help()`. Unit 1134 (1124
+      before; `test/tooltips.test.ts` 10), e2e 493 (483 before;
+      `tooltips.e2e.ts` 10), `npm run test:all` green. **Deviations, in
+      short**: tooltips on more controls than listed (✓ ✗, the open markers,
+      the organiser's rows by mouse only, the logo, every strip); names
+      capitalised; keys ⌘ on Apple's systems, Esc for Select and Cancel; a
+      control that would do nothing says why; a finger's tip lingers 1.5 s;
+      keyboard focus shows it; the summary is never inherited; `tools()`
+      lines end `  — <summary>` (four exact-match assertions updated);
+      `help()` has a tools section; `panels.ts` imports `tooltip.ts` (the
+      no-import test now allows that one, and holds `tooltip.ts` to none); a
+      frame's name is one neutral ink, the default bold with 2 px arms; the
+      golden picture re-recorded (346 pixels, all in the marker).
 
 - [x] **The organiser: groups you can see, open, and draw into** (2026-11-04).
       The owner: *"there needs to be a group pane I think, and the ability to

@@ -106,6 +106,7 @@ export function arcThrough(a: number[], b: number[], w: number[], side: number[]
 
 export class Arc3Tool extends Tool {
   static readonly options: OptionSpecs = DRAWING_OPTIONS;
+  static readonly summary = "Draws an arc: click both ends, then a point it passes through";
   readonly name = "arc3";
   /** The endpoint clicks so far, kept whole so each one's snap survives to commit. */
   private ends: PointerInfo[] = [];

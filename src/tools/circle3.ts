@@ -41,6 +41,7 @@ import { arcSamples, arcSegments } from "../arcgeom.ts";
 
 export class Circle3Tool extends Tool {
   static readonly options: OptionSpecs = DRAWING_OPTIONS;
+  static readonly summary = "Draws a circle through three points you click";
   readonly name = "circle3";
   /** The clicks so far, kept whole so each one's snap survives to commit. */
   private clicks: PointerInfo[] = [];

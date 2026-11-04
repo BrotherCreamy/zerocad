@@ -277,8 +277,11 @@ async function onSolid(app: AppContext, world: number[]): Promise<boolean> {
 
 const PLAIN_EDGE = "#afc6d9";
 const AMBER = "#e8a33d";
-/** A frame that is not the default one. */
-const OTHER_FRAME = "#7b93a8";
+/**
+ * A frame's +x arm, which is what the frame test samples: red, every frame's
+ * alike (docs/plans/tooltips-rgb-frames.md) — the default is told by weight.
+ */
+const X_ARM = "#ee6040";
 /** framemarker.ts's arm length, which the test's sample positions depend on. */
 const FRAME_ARM_PX = 36;
 
@@ -344,16 +347,15 @@ test("hidden view: a frame's arm behind a face dims like an edge; one above the 
   await lookAlong(app, CORNER);
   await shot(app, "frames");
   // g floats over the box's lid; k sits under its base, where the box covers
-  // it from this side. Neither is the default frame, so both are drawn in the
-  // same colour; their +x arms, sampled most of the way out (clear of the
-  // names beside their origins).
+  // it from this side. Every frame's +x arm is drawn in the same red; theirs
+  // are sampled most of the way out (clear of the names beside their origins).
   const scale = (await app.model()).view.scale;
   const out = 0.6 * (FRAME_ARM_PX / scale);
   assert.ok(await onSolid(app, [20 + out, 15, -10]), "k's +x arm is on the box's picture");
-  assert.ok(await casedInk(app, [20 + out, 15, 30], rgbOf(OTHER_FRAME)), "g's +x arm: full, over its casing");
+  assert.ok(await casedInk(app, [20 + out, 15, 30], rgbOf(X_ARM)), "g's +x arm: full, over its casing");
   const under = await inkAt(app, [20 + out, 15, -10]);
-  const dim = await dimmed(app, OTHER_FRAME);
-  assert.ok(far(dim, rgbOf(OTHER_FRAME)) > 25, `the dimmed frame ink rgb(${dim}) is not the full one`);
+  const dim = await dimmed(app, X_ARM);
+  assert.ok(far(dim, rgbOf(X_ARM)) > 25, `the dimmed frame ink rgb(${dim}) is not the full one`);
   assert.ok(far(under, dim) <= 3, `k's +x arm, under the box: dimmed rgb(${dim}), got ${under}`);
 });
 

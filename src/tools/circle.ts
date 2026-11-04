@@ -24,6 +24,7 @@ import { arcSamples, arcSegments, circleFrame } from "../arcgeom.ts";
 
 export class CircleTool extends Tool {
   static readonly options: OptionSpecs = DRAWING_OPTIONS;
+  static readonly summary = "Draws a circle: drag from the centre out to the rim";
   readonly name = "circle";
   /** The whole press, so the centre's snap survives to commit — see place.ts. */
   private from: PointerInfo | null = null;

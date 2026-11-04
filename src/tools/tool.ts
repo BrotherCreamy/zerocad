@@ -241,6 +241,21 @@ export abstract class Tool {
    * armed the way its parent is.
    */
   static readonly options?: OptionSpecs;
+  /**
+   * What the tool does, in one line of a person's words: `static summary =
+   * "Draws a rectangle: drag from corner to corner"`. The one place it is
+   * written — the toolbar's tooltip, `tools()` and `help()` all read it
+   * (`toolSummary`), so they cannot drift apart (docs/plans/
+   * tooltips-rgb-frames.md). Optional: a tool defined at the command line
+   * without one is shown by its name.
+   *
+   * **Read only from the class itself, never inherited** — the icon's reason
+   * (icons.ts): `class extends CircleTool` registered as "stamp" would
+   * otherwise describe itself as drawing a circle. Unlike `options`, which a
+   * subclass is armed with exactly as its parent is, a description is of the
+   * one tool.
+   */
+  static readonly summary?: string;
   abstract readonly name: string;
   /**
    * Whether the engine pulls this tool's cursor onto nearby geometry and draws
@@ -316,6 +331,33 @@ export const HAND = "hand";
 /** The two, in the toolbar's order. Reserved: `defineTool` refuses either name. */
 export const ENGINE_TOOLS: readonly string[] = [SELECT, HAND];
 
+/**
+ * What Select and the Hand do, in the words the other tools' `static summary`
+ * is in — here, because neither is a class with a static to carry one.
+ */
+export const ENGINE_SUMMARIES: Readonly<Record<string, string>> = {
+  [SELECT]: "Picks things: click one, or drag across empty space to box several",
+  [HAND]: "Pans the view: drag from anywhere, over the drawing too",
+};
+
+/**
+ * A tool's one-line description — Select's and the Hand's, or a registered
+ * tool's own `static summary` — or null for a tool that declares none (or no
+ * tool at all), which is then shown by its name alone.
+ */
+export function toolSummary(name: string): string | null {
+  if (Object.hasOwn(ENGINE_SUMMARIES, name)) return ENGINE_SUMMARIES[name];
+  const ctor = registry.get(name);
+  return ctor ? ownSummary(ctor) : null;
+}
+
+/** The class's own `summary`, not one it inherits — see `Tool.summary`. */
+function ownSummary(ctor: ToolCtor): string | null {
+  if (!Object.hasOwn(ctor, "summary")) return null;
+  const s = (ctor as unknown as { summary?: unknown }).summary;
+  return typeof s === "string" && s.trim() ? s.trim() : null;
+}
+
 /** What the toolbar shows, in its order: Select, the Hand, then every listed tool. */
 export function toolbarTools(): string[] {
   return [...ENGINE_TOOLS, ...listTools()];
@@ -341,6 +383,14 @@ export function defineTool(name: string, ctor: ToolCtor, { listed = true }: { li
     throw new Error(`"${name}" is the toolbar's own (Select puts the tool down, the Hand pans) — name the tool something else`);
   }
   declaredOptions(ctor, name);
+  // Refused where it is written, as a malformed `options` is: a summary that
+  // is not text would otherwise vanish from every tooltip without a word.
+  if (Object.hasOwn(ctor, "summary")) {
+    const s = (ctor as unknown as { summary?: unknown }).summary;
+    if (s !== undefined && typeof s !== "string") {
+      throw new Error(`${name}'s static summary must be one line of text, like "Draws a rectangle: drag from corner to corner"`);
+    }
+  }
   registry.set(name, ctor);
   if (listed) unlisted.delete(name);
   else unlisted.add(name);

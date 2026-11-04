@@ -216,6 +216,7 @@ export class EditExtrudeTool extends EditTool {
   static readonly options: OptionSpecs = {
     depth: { default: DEFAULT_DEPTH, unit: "length", check: (v) => (v === 0 ? "cannot be 0" : null) },
   };
+  static readonly summary = "Changes an extrude: click holes in or out, or change the depth";
   readonly name = "edit extrude";
   protected readonly option = "depth";
 }
@@ -227,6 +228,7 @@ export class EditRevolveTool extends EditTool {
       check: (v) => (v === 0 || Math.abs(v as number) > FULL_TURN ? "must be within a whole turn (±6.283185) and not 0" : null),
     },
   };
+  static readonly summary = "Changes a revolve: click holes in or out, or change the angle";
   readonly name = "edit revolve";
   protected readonly option = "angle";
 }

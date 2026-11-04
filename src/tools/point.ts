@@ -10,6 +10,7 @@ import { Tool, defineTool, type PointerInfo } from "./tool.ts";
 import { placePoint } from "./place.ts";
 
 export class PointTool extends Tool {
+  static readonly summary = "Places a point where you click";
   readonly name = "point";
 
   onDown(p: PointerInfo): void {

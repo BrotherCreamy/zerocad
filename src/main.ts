@@ -25,13 +25,14 @@ import { previewSteps } from "./featurepreview.ts";
 import { describePick, type Pick } from "./picking.ts";
 import { ContextMenu, menuFor } from "./menu.ts";
 import { toolUnavailable } from "./toolavail.ts";
-import { frameArmPx, frameMarker } from "./framemarker.ts";
+import { AXIS_INKS, frameArmPx, frameMarker } from "./framemarker.ts";
 import { constrainedBy, type Glyph } from "./glyphs.ts";
-import { ENGINE_TOOLS, HAND, getToolCtor, toolbarTools } from "./tools/tool.ts";
+import { ENGINE_TOOLS, HAND, SELECT, getToolCtor, toolSummary, toolbarTools } from "./tools/tool.ts";
 import {
-  ACTIONS, ActionStrip, FINE, OptionsPanel, Panels, Toolbar, browserStorage, defaultLayout, logoBox, scaledMetrics, touchMetrics,
+  ACTIONS, ActionStrip, FINE, OptionsPanel, Panels, Toolbar, actionKey, browserStorage, defaultLayout, logoBox, scaledMetrics, touchMetrics,
   type Insets, type Metrics, type Size,
 } from "./panels.ts";
+import { Tooltips } from "./tooltip.ts";
 import {
   FORM_FACTOR, clampScale, deviceScale, formFactor, formatScale, recallScale, rememberScale, textFactor, type Device,
 } from "./uiscale.ts";
@@ -195,6 +196,37 @@ const actionsPanelEl = document.querySelector<HTMLElement>('.panel[data-panel="a
 if (!coarse) actionsPanelEl?.remove();
 const actionsEl = coarse ? document.getElementById("actions") : null;
 
+/**
+ * **One tooltip for every control that is an icon or a short word**
+ * (tooltip.ts; the owner: *"when I hover over tools, I should see a
+ * tooltip"*): after a short hover under a mouse, by a hold under a finger.
+ * Made before the panels, whose strips are controls too, and handed to each
+ * piece of chrome as the function that attaches one — none of them knows the
+ * tooltip exists beyond that. Kept inside the window less its safe-area
+ * insets, so never under a notch or the home indicator.
+ */
+const tooltips = new Tooltips(document.getElementById("tooltip")!, {
+  bounds: () => {
+    const i = insets();
+    const [w, h] = [document.documentElement.clientWidth, document.documentElement.clientHeight];
+    return { x: i.left, y: i.top, w: Math.max(0, w - i.left - i.right), h: Math.max(0, h - i.top - i.bottom) };
+  },
+});
+const tooltip = tooltips.attach;
+
+/**
+ * The keys that do what a button does, for its tooltip: the Hand is Space
+ * held (and Select, with a tool armed, is Escape); the action strip's are
+ * `actionKey`'s, ⌘ on Apple's systems — an iPad's keyboard included — and
+ * Ctrl elsewhere. Asked of the platform and of the user agent too, where a
+ * browser reports a generic platform (and an emulated iPhone keeps its host's).
+ */
+const apple = /Mac|iPhone|iPad|iPod/.test(navigator.platform ?? "") || /iPhone|iPad|iPod|Macintosh/.test(navigator.userAgent);
+const TOOL_KEYS: Readonly<Record<string, string>> = { [HAND]: "hold Space", [SELECT]: "Esc" };
+
+/** The logo's: no command, it opens the menu. */
+tooltip(logoEl, () => ({ name: "ZeroCAD", summary: "Opens the menu: files, interface size, panes and view" }));
+
 /** What `ui()` says when it is given something it does not take. */
 const UI_USAGE = 'ui() takes { scale: 0.8 } (0.6 to 1.6, or "default"), { hide: "log" } or { show: "log" } (a pane or a list of them); ui() says what is in force';
 
@@ -262,6 +294,7 @@ const panels = new Panels(
     // there the organiser starts hidden, one tick in the app menu's Panes
     // away (docs/plans/organiser.md, As built). A tablet and a desktop show it.
     hiddenAtFirst: coarse && formFactor(device) === FORM_FACTOR.phone ? ["organiser"] : [],
+    tooltip,
   },
 );
 // The insets change without the window resizing — a rotation does both, but
@@ -313,6 +346,13 @@ const TYPED_REFUSAL = "refused as typed";
  */
 const CASING = "#0a0e13";
 const CASING_PX = 1.25;
+
+/**
+ * A frame's name beside its marker: the grey-blue every frame's arms were
+ * drawn in before they were coloured (the default's lighter shade), now the
+ * name's alone — the arms say which axis is which (`AXIS_INKS`).
+ */
+const FRAME_NAME_INK = "#9fb4c7";
 
 /**
  * Construction geometry's ink and width (docs/plans/construction.md): a muted
@@ -781,11 +821,20 @@ async function main() {
    * +z for a 3D frame — lettered, with the frame's name beside it the way a
    * point's name sits beside the point.
    *
-   * **The default frame is drawn brighter**, because that difference is the
-   * whole of what the pointer means: a bare `hor` is level with *that* frame
-   * and not with any other one on the canvas. It is the only ambient state in
-   * the app that changes what a typed word does, so it had better be visible
-   * without asking.
+   * **Each arm in its axis's colour, as SolidWorks draws a triad** — x red, y
+   * green, z blue, its letter in the same ink (`AXIS_INKS`; the owner: *"a
+   * frame should be coloured or something so I can tell the orientation. use
+   * rgb colours like solidworks"*). The letters stay: a red–green colour-blind
+   * eye reads the two arms by lightness and by letter. **Lit and selected
+   * still win** — hovered, the whole marker is amber, selected the
+   * selection's violet — so state reads at a glance over the hues.
+   *
+   * **The default frame is drawn heavier** — thicker arms, bold letters and
+   * name — because that difference is the whole of what the pointer means: a
+   * typed `par(l, xaxis())` is level with *that* frame and not with any other
+   * one on the canvas. It is the only ambient state in the app that changes
+   * what a typed word does, so it had better be visible without asking. By
+   * weight, not by ink: the inks now say which axis is which.
    *
    * Arms are a fixed pixel length when they lie flat to the screen, and
    * foreshorten as the frame turns away (see framemarker.ts) — the refs'
@@ -810,15 +859,18 @@ async function main() {
     const k = uiOf(view);
     const armEnd = (u: number[]) => basis.origin.map((c, i) => c + (u[i] ?? 0) * reach);
     const isDefault = model.defaultFrame === name;
-    const colour = lit ? "#e8a33d" : chosen ? SELECTION : isDefault ? "#c9dcec" : "#7b93a8";
+    // One ink for the whole marker while it is lit or selected; else each arm its axis's.
+    const state = lit ? "#e8a33d" : chosen ? SELECTION : null;
+    const weight = isDefault ? "bold " : "";
     g.save();
-    g.strokeStyle = colour;
-    g.fillStyle = colour;
-    g.lineWidth = lit || chosen ? 2.2 : isDefault ? 1.6 : 1.2;
-    g.font = `${10 * k}px ui-monospace, Menlo, monospace`;
-    const arms: [[number, number], string, number[]][] = [[marker.x, "x", basis.ux], [marker.y, "y", basis.uy]];
+    g.lineWidth = lit || chosen ? (isDefault ? 2.6 : 2.2) : isDefault ? 2 : 1.2;
+    g.font = `${weight}${10 * k}px ui-monospace, Menlo, monospace`;
+    const arms: [[number, number], "x" | "y" | "z", number[]][] = [[marker.x, "x", basis.ux], [marker.y, "y", basis.uy]];
     if (marker.z && basis.uz) arms.push([marker.z, "z", basis.uz]);
     for (const [tip, letter, axis] of arms) {
+      const colour = state ?? AXIS_INKS[letter];
+      g.strokeStyle = colour;
+      g.fillStyle = colour;
       const [dx, dy] = [tip[0] - marker.origin[0], tip[1] - marker.origin[1]];
       const len = Math.hypot(dx, dy);
       if (!(len > 0.5)) {
@@ -857,7 +909,9 @@ async function main() {
       g.lineWidth = width;
       label(letter, tip[0] + (ux * 8 - 3) * k, tip[1] + (uy * 8 + 3.5) * k);
     }
-    g.font = `${11 * k}px monospace`;
+    // The name in the old frame ink, one for every frame — the default's in bold.
+    g.fillStyle = state ?? FRAME_NAME_INK;
+    g.font = `${weight}${11 * k}px monospace`;
     // Away from both arms, not at a fixed corner: the arms turn with the frame,
     // and a label pinned below-right would sit on top of one of them as soon as
     // the frame was tilted — which is the case this package is about. Opposite
@@ -1217,6 +1271,11 @@ async function main() {
     icon: toolIcon,
     active: () => engine.lit,
     run: (command) => void submit(command),
+    // Each tool's own words (`static summary`), handed in: the toolbar knows
+    // nothing of the tools.
+    summary: toolSummary,
+    key: (tool) => TOOL_KEYS[tool] ?? null,
+    tooltip,
   });
 
   /**
@@ -1251,6 +1310,7 @@ async function main() {
     },
     cancel: () => escape(),
     trial: (option, value) => engine.trial(option, value),
+    tooltip,
   }, metrics);
   optionsShown = () => optionsPanel.size();
 
@@ -1326,6 +1386,8 @@ async function main() {
         hand: engine.hand,
       }),
       run: (command) => void submit(command),
+      key: (action) => actionKey(action, apple),
+      tooltip,
     })
     : null;
 
@@ -1348,6 +1410,7 @@ async function main() {
         menu.show(m, x - wrap.left, y - wrap.top);
       },
       run: (command) => void submit(command),
+      tooltip,
     });
   }
 
@@ -1621,6 +1684,7 @@ async function main() {
     viewModes: VIEW_MODES,
     stamp: document.getElementById("buildstamp"),
     repository: "https://github.com/BrotherCreamy/zerocad",
+    tooltip,
   });
 
   /**

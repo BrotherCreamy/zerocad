@@ -57,6 +57,36 @@ export function frameArmPx(view: View): number {
   return FRAME_ARM_PX * uiOf(view);
 }
 
+/**
+ * **The arms' inks: x red, y green, z blue**, as SolidWorks draws its triad
+ * (docs/plans/tooltips-rgb-frames.md; the owner: *"use rgb colours like
+ * solidworks"*). Here, beside the marker's geometry, so the drawing and a test
+ * that samples its pixels read one table.
+ *
+ * Chosen to read in three places, and measured in each (CHANGELOG has the
+ * numbers): **on the dark ground** (#0a0e13) — none is the pure primary,
+ * whose blue is too dark to see there (a contrast of 2.3 : 1) and whose red
+ * is harsh; these are lightened to 5.9–10.4 : 1. **Over a light solid**,
+ * where the casing pass rims each in the ground's dark, so the hue sits on a
+ * dark line as on the ground. **In the hidden view's dimmed ink**
+ * (`hiddenInk`, 40 % of the colour on the faces' shadow tone): each keeps its
+ * leading channel — a dull brick, a dull green, a slate blue — so a hidden
+ * arm is still its axis, only further away. The red leans a little to
+ * vermilion for that: a red with as much blue as green dims toward pink.
+ *
+ * **Red–green colour blindness** (about one man in twelve): the red and the
+ * green are set apart in lightness as well as hue (relative luminance 0.27
+ * against 0.51), and every arm keeps its letter, so x and y never depend on
+ * hue alone. Distinct from every other ink the drawing uses: the lit amber
+ * (#e8a33d), the selection's violet, construction's muted teal, the regions'
+ * green (#55c07a, bluer and darker than the y arm).
+ */
+export const AXIS_INKS: Readonly<Record<"x" | "y" | "z", string>> = {
+  x: "#ee6040",
+  y: "#60d658",
+  z: "#5b9cff",
+};
+
 /** A frame's marker in screen space: where it sits and where each arm ends. */
 export interface FrameMarker {
   origin: Pt;

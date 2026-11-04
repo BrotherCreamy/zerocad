@@ -24,6 +24,7 @@
 // and the settings, and takes back command strings.
 
 import { UI_MAX, UI_MIN, formatScale, stepScale } from "./uiscale.ts";
+import { giveTip, type AttachTip, type Tip } from "./tooltip.ts";
 
 /** A File item: what it is called and the command it types. */
 export interface FileItem { label: string; command: string }
@@ -71,6 +72,23 @@ export function spinCommands(scale: number): { down: string | null; up: string |
   };
 }
 
+/**
+ * A spin box button's tooltip: − and + say what they step to, or that the
+ * end of the range is reached; the number says it puts the size back.
+ */
+export function spinTip(part: "dec" | "val" | "inc", scale: number, command: string | null): Tip {
+  if (part === "val") {
+    return { name: `Interface size ${formatScale(scale)}`, summary: "Back to 100 %, this device's own size", command };
+  }
+  const down = part === "dec";
+  return {
+    name: down ? "Smaller" : "Larger",
+    summary: `${down ? "Shrinks" : "Grows"} the panels, type and marks by 10 %`,
+    command,
+    off: command ? null : `already the ${down ? "smallest" : "largest"}, ${formatScale(down ? UI_MIN : UI_MAX)}`,
+  };
+}
+
 /** One pane as the Panes section lists it — `Panels.panes()`. */
 export interface PaneState { id: string; label: string; shown: boolean }
 
@@ -98,6 +116,8 @@ export interface AppMenuHost {
   stamp: HTMLElement | null;
   /** Where the source is. */
   repository: string;
+  /** Gives the spin box's buttons their tooltips (tooltip.ts); without it, each has a `title`. */
+  tooltip?: AttachTip;
 }
 
 /**
@@ -226,7 +246,7 @@ export class AppMenu {
       b.type = "button";
       b.className = cls;
       b.setAttribute("aria-label", label);
-      b.title = command ? `${label} — ${command}` : label;
+      giveTip(b, () => spinTip(cls as "dec" | "val" | "inc", scale, command), h.tooltip);
       // The face is drawn small; the button around it is the hit area, which
       // the stylesheet holds at a finger's 44 px under a finger.
       const span = document.createElement("span");

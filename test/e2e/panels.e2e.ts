@@ -131,14 +131,14 @@ test("the canvas is the whole window — there is no header — and the chrome f
 
 // --- the toolbar ---------------------------------------------------------------
 
-test("the toolbar has a button per registered tool: its icon, with its name as the tooltip", async () => {
+test("the toolbar has a button per registered tool: its icon, with a tooltip and its name as its accessible name", async () => {
   // A tool with options is listed with them (`extrude  { depth: 10 }`); its name is the first word.
   const tools = ((await app.repl("tools()")).value as string[]).map((t) => t.split(" ")[0]);
   const buttons = await app.page.$$eval("#toolbar button", (els) =>
     els.map((el) => ({
       tool: (el as HTMLElement).dataset.tool,
       name: el.getAttribute("aria-label"),
-      hint: el.getAttribute("title"),
+      hint: el.hasAttribute("data-tip") && !el.hasAttribute("title"),
       glyph: el.querySelector(":scope > svg")?.getAttribute("data-glyph") ?? null,
       text: el.textContent,
       box: (() => { const r = el.getBoundingClientRect(); return [r.width, r.height]; })(),
@@ -148,7 +148,8 @@ test("the toolbar has a button per registered tool: its icon, with its name as t
   for (const b of buttons) {
     assert.equal(b.glyph, b.tool, `${b.tool}: its own glyph — every one here is a built-in`);
     assert.equal(b.text, "", "and no words on its face");
-    assert.equal(b.hint, `${b.tool} — arm("${b.tool}")`, "the hover is the name, then the command the button types");
+    // Its tooltip says the name, what it does and the command (tooltips.e2e.ts); no native title beside it.
+    assert.equal(b.hint, true, "a tooltip, and no native title");
     assert.equal(b.name, b.tool, "and the name is its accessible name");
     assert.deepEqual(b.box, [20, 20], "a square button");
   }
@@ -210,9 +211,9 @@ test("a tool defined at the command line gets a button, which arms it", async ()
   const look = await app.page.$eval('#toolbar button[data-tool="stamp"]', (el) => ({
     glyph: el.querySelector(":scope > svg")?.getAttribute("data-glyph"),
     letters: el.querySelector(":scope > svg text")?.textContent,
-    hint: el.getAttribute("title"),
+    hint: el.hasAttribute("data-tip") && !el.hasAttribute("title"),
   }));
-  assert.deepEqual(look, { glyph: "generic", letters: "st", hint: 'stamp — arm("stamp")' });
+  assert.deepEqual(look, { glyph: "generic", letters: "st", hint: true });
 
   // The toolbar grows to hold it, rather than hiding it below the fold: by one
   // button exactly, still one column.
@@ -560,7 +561,7 @@ test("in a fresh 3D app no button is greyed: the curve tools are there, enabled,
   for (const c of CURVES) assert.ok(states.some((b) => b.tool === c), `${c} is on the toolbar`);
   for (const b of states) {
     assert.ok(!b.off, `${b.tool} is enabled`);
-    assert.equal(b.title, `${b.tool} — arm("${b.tool}")`);
+    assert.equal(b.title, null, "a tooltip, not a title");
   }
   await shot("curves-enabled");
 });

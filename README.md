@@ -139,8 +139,11 @@ piece of chrome can be dragged by its strip, and all but the toolbar — always
 one line of its tools — resized from any corner) is a
 REPL over the app's own command surface, and it is the primary interface —
 not a debug console. `help()` lists everything in scope. The toolbar's
-buttons are shortcuts into it: each is a tool's icon (hover for its name),
-types `arm("name")`, and the log shows it. The first two are **Select** — the
+buttons are shortcuts into it: each is a tool's icon, types `arm("name")`,
+and the log shows it. Hover one — or, on a phone, hold it — for its
+**tooltip**: the tool's name, what it does, and the command it types (a hold
+shows it without pressing the button; a tap presses it). Every icon in the
+chrome has one. The first two are **Select** — the
 arrow, lit whenever no tool is armed, which puts the armed tool down and
 keeps what is selected — and **the Hand**, with which a left-drag (or one
 finger) pans from wherever it starts, over geometry too, while a click still
@@ -235,7 +238,8 @@ thing you make: `frame()` is an origin point plus a point fixing +x — two
 ordinary, draggable, constrainable points — and `setDefaultFrame(name)` says
 which one is meant when none is named. With no frame at all they refuse, and
 say what to do about it. A frame draws as a small axes marker at its origin,
-brighter when it is the default; drag the marker to move it, or its x-ref to
+in SolidWorks' colours — **x red, y green, z blue**, each lettered — and
+heavier when it is the default; drag the marker to move it, or its x-ref to
 turn it, and everything levelled or fixed against it follows.
 
 **There is no `hor` or `ver` either**, and for the same reason one step

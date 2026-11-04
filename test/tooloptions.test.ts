@@ -243,10 +243,12 @@ test("tools() lists each tool's options with what arm would use, and help() says
   await loadKernel();
   const repl = new Repl(neocadScope({ model: new Model(3), optionMemory: new OptionMemory(null) }));
   const listed = (await repl.eval("tools()")).value as string[];
-  assert.ok(listed.includes("extrude  { depth: 10 }"), listed.join("\n"));
-  assert.ok(listed.includes("revolve  { angle: 6.283185 }"));
-  assert.ok(listed.includes("fillet  { radius: 10 }"));
-  assert.ok(listed.includes("point"), "a tool with none is its bare name");
+  // Each line then says what the tool does (its `static summary`, after a dash).
+  const line = (start: string) => listed.find((l) => l === start || l.startsWith(`${start}  — `));
+  assert.ok(line("extrude  { depth: 10 }"), listed.join("\n"));
+  assert.ok(line("revolve  { angle: 6.283185 }"));
+  assert.ok(line("fillet  { radius: 10 }"));
+  assert.ok(line("point"), "a tool with none is its bare name");
   const help = (await repl.eval("help()")).value as string;
   assert.match(help, /static options = \{ depth: \{ default: 10, unit: "length" \} \}/);
   assert.match(help, /tools\(\) lists them/);

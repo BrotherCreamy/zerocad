@@ -7,6 +7,57 @@ decisions.
 
 ---
 
+## Tooltips on every control; frames in RGB
+
+The owner, after trying the hosted app:
+
+> *when I hover over tools, I should see a tooltip*
+
+> *a frame should be coloured or something so I can tell the orientation.
+> use rgb colours like solidworks.*
+
+Spec: [`docs/plans/tooltips-rgb-frames.md`](docs/plans/tooltips-rgb-frames.md),
+built, every deviation in its *As built* and in TODO.md's Done entry.
+
+- **One tooltip** (`src/tooltip.ts`) for every control that is an icon or a
+  short word — the toolbar, the action strip, the options panel's ✓ and ✗,
+  the spin box, the organiser's ＋, eyes and open markers, every panel's
+  strip, the logo. It shows **the name, a line saying what it does, and the
+  command it types**, with its key where there is one (`hold Space` for the
+  Hand, `⌘Z`/`Ctrl+Z`, `Delete`, `Esc`); a control that would do nothing
+  says why. In the hover tag's family, at the interface size, inside the
+  safe area. The native titles are gone where it is, so two never show.
+- **A mouse** sees it after 400 ms, and at once moving from one control to
+  the next; it goes on leave and on any press. **A finger** holds the control
+  for the recogniser's 500 ms: the tooltip shows above the finger, clear of
+  it, and lifting then does **not** press the control; a tap presses it as
+  before. Measured in the e2e: 300–500 ms after the pointer arrives, the next
+  button under 100 ms.
+- **The words live with the tools**: a `static summary` on each built-in
+  ("Draws a rectangle: drag from corner to corner"), read by the tooltip,
+  `tools()` (each line now ends `  — <summary>`) and `help()` (a new *tools*
+  section). A tool defined at the command line may declare one; it is not
+  inherited.
+- **Frames in RGB**: x `#ee6040`, y `#60d658`, z `#5b9cff`, each letter in
+  its arm's ink. Not the pure primaries — pure blue is 2.3 : 1 on the dark
+  ground; these are 5.9–10.4 : 1 — and each keeps its hue in the hidden
+  view's dimmed ink. Red and green differ in lightness as well as hue (0.27
+  against 0.51) and keep their letters, for red–green colour blindness.
+  Hovered, the marker is all amber; selected, violet. **The default frame is
+  heavier** (2 px arms, bold letters and name), no longer lighter.
+- Tests: 10 unit (`test/tooltips.test.ts`), 10 e2e (`tooltips.e2e.ts`: hover
+  timing and text, leave, the next button at once, a press arming as before,
+  every control without a title, a phone's hold that does not arm and a tap
+  that does, the action strip's, a frame's arm pixels red, green and blue and
+  amber when hovered). The golden picture is re-recorded: 346 pixels, all in
+  the frame marker. Unit 1124 → 1134, e2e 483 → 493.
+- **Not tried on iOS Safari**: whether it sends a click after a long touch
+  (swallowed if it does). Pictures looked at: a tooltip on a desktop and on
+  an iPhone 13 both ways up at 70 % and 130 %, a frame on the ground, lit,
+  over a solid and in the hidden view.
+
+---
+
 ## A quick tap on a busy page is still a tap
 
 Two workers reported touch tests that failed only while the machine was
