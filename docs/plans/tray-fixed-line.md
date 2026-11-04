@@ -9,6 +9,10 @@ and marked *(as built)*. The owner, verbatim:
 > resizing altogether on the tool palette. its just a straight line that fits
 > the number of tools it has in it, and can either be vert or horiz*
 
+**Revised by `everything-fits.md` (2026-11-04)**: where a line does not
+fit, the tray now takes a second (the owner: *"Second row.... everything has
+to fit"*), and a tray too long for the window is wrapped, not clipped.
+
 This reverses part of `docs/plans/panels-corners-wrap.md` (as built, an hour
 old): the tray no longer resizes or wraps. Read `CLAUDE.md`, that spec and
 `toolbar-icons-docking.md`, `src/panels.ts` (the grips, `resized`, `trayFit`,

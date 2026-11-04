@@ -248,7 +248,9 @@ test("iPhone: Select is lit at start, and one finger on empty canvas orbits with
   await shot(phone, "portrait");
 
   const v0 = (await phone.model()).view;
-  const from = await onCanvas(phone, [60, 60, 0]);
+  // Below the log, which since docs/plans/everything-fits.md is the strip's
+  // width at the top right, under the logo's row, rather than the screen's.
+  const from = await onCanvas(phone, [60, 40, 0]);
   await slide(from, [from[0] + 40, from[1] + 30]);
   const v1 = (await phone.model()).view;
   assert.notDeepEqual([v1.right, v1.up], [v0.right, v0.up], "without the Hand one finger turns the drawing");

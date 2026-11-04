@@ -5,8 +5,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  ACTIONS, COARSE, FINE, actionCommand, arranged, defaultLayout, inCorner, logoBox, optionsSize, overlapping, touchMetrics,
-  traySize, type Layout, type Size,
+  ACTIONS, COARSE, FINE, actionCommand, arranged, cornerBox, defaultLayout, inCorner, linesOf, logoBox, optionsSize, overlapping,
+  touchMetrics, traySize, type Layout, type Size,
 } from "../src/panels.ts";
 
 /** The toolbar's buttons as the app has them: Select, the Hand and the eleven tools. */
@@ -43,7 +43,7 @@ for (const m of [COARSE, PHONE]) {
   const at = `${Math.round(m.scale * 100)} %`;
   const logo = { logo: { x: 0, y: 0, ...logoBox(m), fixed: true } };
 
-  test(`portrait at ${at}: the command line docked to the bottom, the tray a column under the logo, the strip top-right, a one-line log`, () => {
+  test(`portrait at ${at}: the command line docked to the bottom, the tray a column under the logo, the strip top-right under the logo's row, a one-line log, the organiser beside them`, () => {
     const d = defaultLayout(PORTRAIT, TOOLS, m);
     assert.deepEqual(Object.keys(d).sort(), ["actions", "cmd", "log", "options", "organiser", "toolbar"]);
     const { options, ...panels } = d;
@@ -55,28 +55,31 @@ for (const m of [COARSE, PHONE]) {
     assert.equal(d.log.h, m.title + m.logLine);
     assert.equal(d.actions.orient, "row");
     assert.equal(d.actions.x + d.actions.w, PORTRAIT.w - 8);
-    assert.equal(d.actions.y, 8, "the strip at the top right");
+    assert.equal(d.actions.y, logoBox(m).h + 8, "the strip at the top right, under the logo's row");
+    for (const [id, r] of Object.entries(panels)) assert.ok(r.y >= logoBox(m).h, `${id} is out of the logo's row`);
     assert.ok(d.log.y > d.actions.y + d.actions.h && d.log.x > d.toolbar.x + d.toolbar.w, "the log under it, right of the tray");
-    // The options panel's box: right of the tray, between the log and the command line.
-    assert.ok(options.y >= d.log.y + d.log.h && options.y + options.h <= d.cmd.y && options.x >= d.log.x);
-    // The organiser (shown once the viewer ticks it — a phone starts it
-    // hidden): the top of that same box, against the right edge.
-    assert.equal(d.organiser.x + d.organiser.w, PORTRAIT.w - 8);
-    assert.equal(d.organiser.y, options.y);
-    assert.ok(d.organiser.y + d.organiser.h < d.cmd.y);
+    // The organiser, shown from the start (the owner: "show from start"):
+    // right of the tray, beside the strip and the log, and above the drawing's middle.
+    assert.ok(d.organiser.x >= d.toolbar.x + d.toolbar.w && d.organiser.x + d.organiser.w <= d.actions.x);
+    assert.ok(d.organiser.y + d.organiser.h <= Math.max(PORTRAIT.h * 0.4, d.log.y + d.log.h), "above the middle");
+    // The options panel's box: right of the tray, between them and the command line.
+    assert.ok(options.y >= d.organiser.y + d.organiser.h && options.y + options.h <= d.cmd.y && options.x >= d.toolbar.x + d.toolbar.w);
   });
 
-  test(`landscape at ${at}: the tray a row docked to the bottom, the command line top, right of the logo, the strip and the log top-right`, () => {
+  test(`landscape at ${at}: the tray two rows docked to the bottom, the strip, the log and the organiser down the right, the command line in the top row beyond the corner`, () => {
     const d = defaultLayout(LANDSCAPE, TOOLS, m);
     assert.deepEqual(Object.keys(d).sort(), ["actions", "cmd", "log", "organiser", "toolbar"]);
-    assert.equal(d.organiser.x + d.organiser.w, LANDSCAPE.w - 8, "the organiser at the right edge");
-    assert.ok(d.organiser.y > d.log.y + d.log.h && d.organiser.y + d.organiser.h <= d.toolbar.y, "under the log, over the tray");
     assert.deepEqual(inside(d, LANDSCAPE), []);
     assert.deepEqual(overlapping({ ...d, ...logo }), []);
     assert.equal(d.toolbar.orient, "row");
     assert.equal(d.toolbar.y + d.toolbar.h, LANDSCAPE.h, "on the bottom edge");
-    assert.ok(d.cmd.y === 8 && d.cmd.x >= logoBox(m).w && d.actions.y === 8 && d.actions.x > d.cmd.x + d.cmd.w);
+    assert.equal(linesOf(d.toolbar, m), 2, "two rows: thirteen at a finger's pitch do not fit beside the column");
+    assert.ok(d.toolbar.x + d.toolbar.w <= d.organiser.x - 8, "left of the column");
+    const corner = cornerBox(m);
+    assert.ok(d.cmd.y === 8 && d.cmd.x >= corner.w + 8 && d.actions.y === 8 && d.actions.x > d.cmd.x + d.cmd.w, "the row beyond the corner");
     assert.ok(d.log.x === d.actions.x && d.log.y > d.actions.y + d.actions.h);
+    assert.equal(d.organiser.x + d.organiser.w, LANDSCAPE.w - 8, "the organiser at the right edge");
+    assert.ok(d.organiser.y > d.log.y + d.log.h && d.organiser.y + d.organiser.h <= LANDSCAPE.h - 8, "under the log, to the bottom margin");
   });
 }
 

@@ -231,23 +231,28 @@ test("no uncaught page errors (desktop)", () => {
 // --- under a finger, both orientations ------------------------------------------
 
 for (const device of ["iPhone 13", "iPhone 13 landscape"] as const) {
-  test(`${device}: hidden at first, shown from the app menu it fits; ＋ is a finger's target, a tap selects, a long-press opens the row's menu`, async () => {
+  // It started hidden on a phone until docs/plans/everything-fits.md — the
+  // owner: "show from start".
+  test(`${device}: shown from the start, it fits, and the app menu hides and shows it; ＋ is a finger's target, a tap selects, a long-press opens the row's menu`, async () => {
     const p = await openApp({ device });
     try {
       await axisFrame(p, [-150, -110]);
       const vp = p.page.viewportSize()!;
-      assert.equal(await p.page.$eval(PANE, (el) => (el as HTMLElement).hidden), true, "a phone's drawing first");
+      assert.equal(await p.page.$eval(PANE, (el) => (el as HTMLElement).hidden), false, "shown from the start");
       const [lx, ly] = await centre(p, "#logo");
-      await p.page.touchscreen.tap(lx, ly);
-      await p.page.waitForTimeout(200);
-      // In landscape the menu is taller than the screen and scrolls.
-      await p.page.$eval('#appmenu .item.check[data-pane="organiser"]', (el) => el.scrollIntoView({ block: "center" }));
-      const [bx, by] = await centre(p, '#appmenu .item.check[data-pane="organiser"]');
-      await p.page.touchscreen.tap(bx, by);
-      await p.page.waitForTimeout(200);
-      assert.equal(await lastTyped(p), 'ui({ show: "organiser" })');
-      await p.page.keyboard.press("Escape");
-      await p.page.waitForTimeout(150);
+      for (const [command, hidden] of [['ui({ hide: "organiser" })', true], ['ui({ show: "organiser" })', false]] as const) {
+        await p.page.touchscreen.tap(lx, ly);
+        await p.page.waitForTimeout(200);
+        // In landscape the menu is taller than the screen and scrolls.
+        await p.page.$eval('#appmenu .item.check[data-pane="organiser"]', (el) => el.scrollIntoView({ block: "center" }));
+        const [bx, by] = await centre(p, '#appmenu .item.check[data-pane="organiser"]');
+        await p.page.touchscreen.tap(bx, by);
+        await p.page.waitForTimeout(200);
+        assert.equal(await lastTyped(p), command);
+        await p.page.keyboard.press("Escape");
+        await p.page.waitForTimeout(150);
+        assert.equal(await p.page.$eval(PANE, (el) => (el as HTMLElement).hidden), hidden, command);
+      }
       const box = await p.page.$eval(PANE, (el) => {
         const r = el.getBoundingClientRect();
         return { x: r.x, y: r.y, right: r.right, bottom: r.bottom, hidden: (el as HTMLElement).hidden };

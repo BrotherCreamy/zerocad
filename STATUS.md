@@ -34,6 +34,19 @@ etc).
   migrated) as what each side rests against, and re-laid by that in any area
   (`relaid`), so a rotation keeps it. The installed app's status bar is
   `default` (iOS 26 blurs a translucent one).
+- **Everything fits** (docs/plans/everything-fits.md, built). A tray is one
+  line where one fits the room along it (`trayRoom`: the area's, less the
+  logo's corner) and wraps onto two or three where it does not
+  (`trayLines`/`traySize`, a floor of lines in `Placed.lines`, the stylesheet
+  a grid of `--per` buttons); a rotation wraps it rather than turning it,
+  and a pane beside it stays along it (`relaid`). The phone's defaults
+  (`touchLayout`) overlap nothing on every iPhone in `test/devices.ts`, both
+  ways up, installed and in Safari, and keep out of the corner's box
+  (`cornerBox`); the status wraps in the room the panes leave it
+  (`cornerRoom`); a layout the resolver cannot find is reported
+  (`layoutProblem`), an error in development. The organiser is shown from
+  the start everywhere. A held tooltip keeps off its whole tray
+  (`tipPlacement`'s `line`).
 - **Tooltips on every control; frames in RGB**
   (docs/plans/tooltips-rgb-frames.md, built). `src/tooltip.ts` is one
   tooltip element for every icon or short-word control — the toolbar, the
@@ -2456,8 +2469,9 @@ replacing) the system Node other projects on this machine may depend on.
   long-press the row's menu (*Rename…*, *Add selection*, *Remove selection*,
   *Open*/*Close*, *Ungroup*; *Edit e1*, *Delete*); the ＋ groups the selection
   or types `opengroup(group())`. A panel like the others, in the app menu's
-  Panes untouched; bottom-right on a desktop, hidden at first on a phone and
-  under the log at the right edge when shown. **The open group**: every
+  Panes untouched; bottom-right on a desktop; on a phone ~~hidden at first~~
+  shown from the start (everything-fits.md), beside the strip and the log in
+  portrait and under them down the right edge in landscape. **The open group**: every
   entity made while it is open joins it in the constructor that made it
   (`place`, the one door), so a replay reproduces it; relations do not join;
   journalled, saved, undone; `● g1` beside the status, `· g1 (open)` on the

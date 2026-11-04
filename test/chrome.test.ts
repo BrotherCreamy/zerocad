@@ -11,7 +11,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
   COARSE, FINE, NO_INSETS, STORAGE_KEY, LAYOUT_KEY, TOUCH_TARGET, arranged, bleed, defaultLayout, dockingOf, logoBox,
-  loadStored, overlapping, pushed, recorded, relaid, saveStored, scaledMetrics, touchMetrics, traySize,
+  linesOf, loadStored, overlapping, pushed, recorded, relaid, saveStored, scaledMetrics, touchMetrics, traySize, trayRoom,
   type Layout, type Metrics, type Recorded, type Size, type StorageLike,
 } from "../src/panels.ts";
 import {
@@ -291,15 +291,38 @@ test("resting on another pane's top with its sides free, a pane stays the same d
   assert.equal(out.log.x - out.toolbar.x, 50, "the same 50 px along it");
 });
 
-test("a tray whose line no longer fits along its edge turns, and keeps the edge", () => {
+// It used to turn — a row stood up as a column on the same edge — which on a
+// landscape phone made a 599 px row along the right edge and left no room
+// beside it for a log (docs/plans/everything-fits.md).
+test("a tray whose line no longer fits along its edge wraps onto a second line, keeping the way it runs and the edge", () => {
   const m = touchMetrics(1.6);
   const row = traySize(11, "row", m);
   const shown: Layout = { toolbar: { x: 0, y: LANDSCAPE.h - row.h, ...row, orient: "row" } };
   const recs = { toolbar: recorded("toolbar", shown, { w: 800, h: LANDSCAPE.h }, 1) };
-  const out = relaid(recs, {}, PORTRAIT, 1, (_id, o) => traySize(11, o ?? "row", m), minOf);
-  assert.equal(out.toolbar.orient, "column", `${row.w} px of row does not fit 390 px across`);
+  const out = relaid(recs, {}, PORTRAIT, 1, (_id, o, lines) => traySize(11, o ?? "row", m, trayRoom(PORTRAIT, o ?? "row", m), lines), minOf);
+  assert.equal(out.toolbar.orient, "row", `${row.w} px of row does not fit 390 px across, and it stays a row`);
+  assert.equal(linesOf(out.toolbar, m), 2, "on two lines");
+  assert.ok(out.toolbar.w <= trayRoom(PORTRAIT, "row", m));
   assert.equal(out.toolbar.y + out.toolbar.h, PORTRAIT.h, "still on the bottom edge");
   assert.equal(out.toolbar.x, 0, "and the left");
+});
+
+test("a pane beside a tray that wraps in a rotation, and so gets shorter, lies along it still — not off its end", () => {
+  // A log against a column's right side, two thirds of the way down it.
+  const m = touchMetrics(1.3);
+  const col = traySize(13, "column", m);
+  const shown: Layout = {
+    toolbar: { x: 0, y: 60, ...col, orient: "column" },
+    log: { x: col.w, y: 60 + 400, w: 200, h: 60 },
+  };
+  const tall = { w: 390, h: 760 };
+  const recs = { toolbar: recorded("toolbar", shown, tall, 1.3), log: recorded("log", shown, tall, 1.3) };
+  const out = relaid(recs, {}, LANDSCAPE, 1.3, (id, o, lines) => (id === "toolbar"
+    ? traySize(13, o ?? "column", m, trayRoom(LANDSCAPE, o ?? "column", m), lines) : null), minOf);
+  assert.ok(linesOf(out.toolbar, m) >= 2, "the column wrapped");
+  assert.equal(out.log.x, out.toolbar.x + out.toolbar.w, "still against its side");
+  assert.ok(out.log.y >= out.toolbar.y && out.log.y + out.log.h <= out.toolbar.y + out.toolbar.h,
+    `wholly along it: ${JSON.stringify(out)}`);
 });
 
 test("floating in the same area it was put in, a pane stays exactly put even when its size changed", () => {

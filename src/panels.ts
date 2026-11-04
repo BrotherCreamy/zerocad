@@ -2,7 +2,7 @@
 // manager, and the toolbar that is the first panel built for it.
 //
 // A panel is a DOM box with a title strip to drag by and — unless its size is
-// its content's: a tray, always one line of its buttons, or the options panel,
+// its content's: a tray, a line of its buttons (two where one will not fit), or the options panel,
 // one row per option — a grip on each of its four corners to resize by. Every
 // piece of chrome — the toolbar, the log, the command line, the armed tool's
 // options — is one, and the canvas underneath is the whole window, which
@@ -64,8 +64,16 @@ export type Orientation = "column" | "row";
  * A panel's rectangle, and for a tray the way it runs. `fixed` marks the one
  * thing in a layout that nothing moves — the logo: a push that reaches it
  * stops flush against it, exactly as a push that reaches the area's edge does.
+ *
+ * `lines`, on a tray, is the fewest lines it asks for (absent: one). It is a
+ * floor, not the count: a tray takes as many more as it needs to fit along the
+ * area (`traySize`), so a floor of one is "one line wherever one fits". Only a
+ * default asks for more — a landscape phone's, which leaves the right edge's
+ * column its whole height (`touchLayout`) — and a tray moved by the viewer
+ * keeps what it asked for until it turns, when it is a new shape and asks for
+ * its fewest again.
  */
-export interface Placed extends Rect { orient?: Orientation; fixed?: boolean }
+export interface Placed extends Rect { orient?: Orientation; fixed?: boolean; lines?: number }
 
 /** Placements by panel id. A panel absent from it is where the defaults put it. */
 export type Layout = Record<string, Placed>;
@@ -193,6 +201,27 @@ function clamp(v: number, lo: number, hi: number): number {
 }
 
 /**
+ * The room the corner has — the status, the step note, the open group and
+ * *Update ready*, beside the logo (main.ts) — in `layout`, in the area's
+ * coordinates: from the logo's right, along the logo's row, to the first
+ * panel in that row, and down to the first panel under that stretch, each
+ * short by a margin. The defaults leave the logo's row empty (`touchLayout`),
+ * so there it is the whole row; a pane the viewer drags into the row stops
+ * the corner's text short of it, wrapping, so **the corner never lies over a
+ * pane** (docs/plans/everything-fits.md) — it used to sit over the command
+ * line's strip in landscape.
+ */
+export function cornerRoom(layout: Layout, area: Size, logo: Size, margin = 4): Rect {
+  const x0 = logo.w;
+  const panes = Object.values(layout).filter((r) => !r.fixed);
+  const inRow = panes.filter((r) => r.y < logo.h && r.x + r.w > x0);
+  const x1 = Math.min(area.w, ...inRow.map((r) => r.x));
+  const under = panes.filter((r) => r.x < x1 && r.x + r.w > x0);
+  const y1 = Math.min(area.h, ...under.map((r) => r.y));
+  return { x: x0, y: 0, w: Math.max(0, x1 - x0 - margin), h: Math.max(0, y1 - margin) };
+}
+
+/**
  * The rectangle a panel is actually shown at, given the one wanted for it.
  *
  * Its size is held between its minimum and the area, and **the whole of it is
@@ -273,24 +302,68 @@ export const BUTTON_STEP = BUTTON + 2;
 export const TRAY_DEPTH = BUTTON + 6 + 2;
 
 /**
+ * How many lines a tray of `buttons` running `orient` takes in `room` pixels
+ * along its run: the fewest, from `least`, whose line fits — the owner, asked
+ * whether a landscape phone's toolbar should wrap or fold: *"Second row....
+ * everything has to fit"*. Never more than one line per button, so a room too
+ * short even for one button's line is a line per button, clipped.
+ */
+export function trayLines(buttons: number, orient: Orientation, m: Metrics = FINE, room = Infinity, least = 1): number {
+  const n = Math.max(1, buttons);
+  const run = (per: number) => m.title + 6 + per * (m.button + m.gap);
+  let lines = Math.min(n, Math.max(1, Math.round(least) || 1));
+  while (lines < n && run(Math.ceil(n / lines)) > room) lines++;
+  return lines;
+}
+
+/**
  * The size of a tray of `buttons` buttons running `orient` — and the one thing
  * that sizes a tray (the owner: *"its just a straight line that fits the number
- * of tools it has in it, and can either be vert or horiz"*). One line: one
+ * of tools it has in it, and can either be vert or horiz"*). A line is one
  * button thick, and along its run the strip, the padding and every button. A
  * column's strip is across its top; a row's down its left end — so that a row
  * is one button high, which is what makes it a row against a top or bottom
  * edge rather than a short column lying down.
  *
- * Nothing the viewer does sets it: a tray has no grips (`gripCorners`), a turn
- * re-sizes it to this the other way, and a stored size is never read
- * (`arranged`). The one thing that cuts it short is a window shorter than the
- * line, which clips it at the window's edge (`constrain`) — not a window
- * anyone draws in, so not designed for beyond staying inside.
+ * **Where one line does not fit in `room`, a second** (and a third, if the
+ * interface size makes even two too long): `trayLines`, from `least`. This
+ * reverses tray-fixed-line.md's "one line, clipped" exactly where the line did
+ * not fit (docs/plans/everything-fits.md). The buttons keep their order,
+ * filling line by line — a column's first line top to bottom, then the next
+ * to its right; a row's left to right, then the next below — and the lines
+ * are a whole button pitch apart, so under a finger a button's 44 px hit box
+ * meets the next line's without overlapping it, as it meets the next button's
+ * along the line. It never scrolls and never hides a tool.
+ *
+ * Nothing the viewer does sets it beyond that: a tray has no grips
+ * (`gripCorners`), a turn re-sizes it to this the other way, and a stored size
+ * is never read (`arranged`). The room is the area's, less the logo's corner
+ * (`trayRoom`), so a tray wraps only where the window is too short for it.
  */
-export function traySize(buttons: number, orient: Orientation, m: Metrics = FINE): Size {
-  const run = m.title + 6 + buttons * (m.button + m.gap);
-  const depth = m.button + 6 + 2;
+export function traySize(buttons: number, orient: Orientation, m: Metrics = FINE, room = Infinity, least = 1): Size {
+  const lines = trayLines(buttons, orient, m, room, least);
+  const per = Math.ceil(Math.max(0, buttons) / lines);
+  const run = m.title + 6 + per * (m.button + m.gap);
+  const depth = m.button + 6 + 2 + (lines - 1) * (m.button + m.gap);
   return orient === "column" ? { w: depth, h: run } : { w: run, h: depth };
+}
+
+/**
+ * The room a tray running `orient` has along its run in `area`: the area's
+ * length that way less the logo's box and a margin — the logo holds the
+ * top-left corner, so a line along the top or down the left must start past
+ * it, and the same room everywhere keeps a tray's size a function of the area
+ * alone, so a drag along an edge never wraps and unwraps it on the way.
+ */
+export function trayRoom(area: Size, orient: Orientation, m: Metrics = FINE): number {
+  const logo = logoBox(m);
+  return orient === "row" ? area.w - logo.w - GAP : area.h - logo.h - GAP;
+}
+
+/** How many lines a tray placed at `r` is showing — read off its depth, for `layout()` and the stylesheet. */
+export function linesOf(r: Placed, m: Metrics = FINE): number {
+  const depth = r.orient === "row" ? r.h : r.w;
+  return Math.max(1, Math.round((depth - (m.button + 8)) / (m.button + m.gap)) + 1);
 }
 
 /**
@@ -563,7 +636,9 @@ export function pushed(
   const orient = want.orient ?? from.orient;
   // A fixed panel pushing what was put down on it (`settled`) stays fixed.
   const keep = (r: Placed): Placed => (from.fixed ? { ...r, fixed: true } : r);
-  const to = keep(placed(constrain(want, area, minSizes[id] ?? { w: 0, h: 0 }), orient));
+  // A tray's floor of lines goes with it wherever it is put: a move is the
+  // same shape, a turn hands in none (`dragStep`), which is its fewest.
+  const to = keep(placed(constrain(want, area, minSizes[id] ?? { w: 0, h: 0 }), orient, want.lines));
   if (motion.x === 0 && motion.y === 0) return settle(id, to, layout, area);
   let out = layout;
   const axes: Axis[] = Math.abs(motion.x) >= Math.abs(motion.y) ? ["x", "y"] : ["y", "x"];
@@ -581,7 +656,7 @@ export function pushed(
     const dir = (far > EPS ? 1 : near < -EPS ? -1 : Math.sign(m) || 1) as 1 | -1;
     out = pass(out, id, along(cur, axis, start(to, axis), span(to, axis)), axis, dir, area);
   }
-  const rect = keep(placed(out[id], orient));
+  const rect = keep(placed(out[id], orient, to.lines));
   const ok = Math.abs(rect.x - to.x) <= EPS && Math.abs(rect.y - to.y) <= EPS &&
     Math.abs(rect.w - to.w) <= EPS && Math.abs(rect.h - to.h) <= EPS;
   return { layout: { ...out, [id]: rect }, rect, ok };
@@ -738,7 +813,8 @@ export function dragStep(
   let held = grab;
   if (grab.kind === "move" && buttons !== undefined && r.rect.orient) {
     const others = Object.keys(r.layout).filter((o) => o !== grab.id).map((o) => r.layout[o]);
-    const t = turned(r.rect, r.rect.orient, area, others, (o) => traySize(buttons, o, m));
+    // Turned, it is a new shape: its fewest lines along the area the other way.
+    const t = turned(r.rect, r.rect.orient, area, others, (o) => traySize(buttons, o, m, trayRoom(area, o, m)));
     if (t.orient !== r.rect.orient) {
       // Turned, the tray is put down in its new shape — its one line the other
       // way — and what that covers is pushed out of the way. If nothing can
@@ -770,11 +846,18 @@ export function dragStep(
 const GAP = 8;
 const LOG_H = 150;
 const BOTTOM_W = 560;
-/** The organiser's (docs/plans/organiser.md) default size at 100 % — a mouse's, and a finger's width. */
+/** The organiser's (docs/plans/organiser.md) default size at 100 %: the most it is given anywhere. */
 const ORGANISER_W = 190;
 const ORGANISER_H = 260;
-const ORGANISER_TOUCH_W = 120;
-const ORGANISER_TOUCH_H = 170;
+/**
+ * In portrait on a phone the organiser keeps above this share of the area's
+ * height, its top third: a drawing starts in the middle of the window, and a
+ * pane over the middle covered what the touch suite draws (organiser.md; and
+ * measured again here, at 40 % it lay over a rectangle's top-left corner).
+ */
+const UPPER = 1 / 3;
+/** The status's least room beside the logo, at 100 %: a dozen and a half characters a line, wrapped. */
+const CORNER_W = 120;
 
 /**
  * Where each panel goes on a fresh screen, for an area of `area` and a toolbar
@@ -797,7 +880,7 @@ export function defaultLayout(area: Size, tools: number, m: Metrics = FINE): Lay
   const logH = Math.round(LOG_H * m.scale);
   const cmdY = area.h - GAP - cmdH;
   return {
-    toolbar: { x: GAP, y: top, ...traySize(tools, "column", m), orient: "column" },
+    toolbar: { x: GAP, y: top, ...traySize(tools, "column", m, trayRoom(area, "column", m)), orient: "column" },
     log: { x: GAP, y: cmdY - GAP / 2 - logH, w, h: logH },
     cmd: { x: GAP, y: cmdY, w, h: cmdH },
     // Bottom right, level with the log and the command line: the corner
@@ -815,81 +898,140 @@ function organiserAt(area: Size, w: number, h: number, top: number, bottom: numb
 
 /**
  * Where each panel goes on a fresh screen under a finger (docs/plans/touch.md)
- * — a phone's, in either orientation, at the interface size `m` carries. The
- * logo has the top-left corner in both; nothing default touches it.
+ * — a phone's, in either orientation, at the interface size `m` carries.
+ *
+ * **Everything fits** (the owner: *"everything has to fit"*;
+ * docs/plans/everything-fits.md): on every iPhone from the SE to the Pro Max,
+ * both ways up, installed and in Safari, at the device's 100 %, these panes
+ * overlap nothing — no pane over another, and **none in the logo's row**, the
+ * band across the top as tall as the logo's box, which belongs to the logo and
+ * the status beside it (main.ts's corner), so the status never lies over a
+ * pane. A pane with a strip across its top sits a little lower still
+ * (`stripTop`): a strip's hit box reaches up over the drawing to a whole
+ * target (index.html), and it must not take a drag that starts on the status.
+ * The device table this is tested over is `test/devices.ts`.
  *
  * **Portrait**: the command line **docked to the bottom**, edge to edge — the
  * owner: *"Please allow it to be dragged right to the bottom"*; touching the
  * bottom, it reaches under the home indicator with its line above it (`bleed`),
- * iOS's own toolbar. (It was at the top, on the theory that a line typed at
- * the bottom sits under the keyboard it raises; iOS scrolls a focused field
- * into view, and the owner had dragged it to the bottom himself — see the
- * spec's limitations.) The tray a **column down the left**, under the logo —
- * thirteen buttons are too long a row for a phone's width — and where the
- * column is too long to end above the line (Safari's page, its bars taking a
- * hundred points the installed app has), the line starts right of it. The action strip at
- * the top right, where the owner put it in his own screenshot, and the
- * one-line log under it, right of the tray.
+ * iOS's own toolbar. The tray a **column down the left**, under the logo,
+ * wrapping onto a second line where the screen is too short for one (an SE in
+ * Safari); where the column runs down past the line's top, the line starts
+ * right of it. Under the logo's row, the action strip at the top right (where
+ * the owner put it in his own screenshot) with the one-line log under it, and
+ * **the organiser beside them** on the left, right of the tray — shown from
+ * the start (the owner: *"show from start"*), and held above the drawing's
+ * middle (`UPPER`), which is where a drawing starts. Where the screen is too
+ * narrow for it beside the strip, it goes under the log instead. The options
+ * panel's box is what is left between them and the command line.
  *
- * **Landscape** (wider than tall): the tray a row docked to the bottom, the
- * command line along the top right of the logo, the action strip at the top
- * right with the one-line log under it.
+ * **Landscape** (wider than tall): a column down the right edge — the action
+ * strip, the one-line log, and the organiser down to the bottom — and left of
+ * it the command line under the logo's row and the tray a row docked to the
+ * bottom. The tray's room is what the column leaves, so on most phones it is
+ * **two rows** (the owner's *"Second row"*): a 13-button line is 599 px, and
+ * the column is 203.
+ *
+ * At a larger interface size the same holds as far as the screen allows: a tray
+ * takes another line, the organiser shrinks to its least, then the log is the
+ * last thing in its column; past that the resolver finds no layout and says so
+ * (`layoutProblem`) — see the spec's *As built* for where on each phone.
  *
  * Positions only, like every default: the viewer moves anything, and what they
  * move is theirs. Safe areas are the area's business — `area` is the space
  * inside them.
  */
+/**
+ * The corner's box: the logo, and beside it the room the status is given in
+ * every default layout — the region of the logo's row no default pane enters
+ * (docs/plans/everything-fits.md). In portrait the defaults leave the whole
+ * row empty; in landscape, where height is short, the command line and the
+ * strip share the row beyond this. The status wraps inside whatever room the
+ * panes leave it (`cornerRoom`), which is at least this.
+ */
+export function cornerBox(m: Metrics): Rect {
+  const logo = logoBox(m);
+  return { x: 0, y: 0, w: logo.w + Math.round(CORNER_W * m.scale), h: logo.h };
+}
+
 function touchLayout(area: Size, tools: number, m: Metrics): Layout {
   const cmdH = m.title + m.line;
   const logH = m.title + m.logLine;
-  const act = traySize(ACTIONS.length, "row", m);
   const logo = logoBox(m);
+  // A strip's hit box reaches this far up past the strip's top (index.html's
+  // `::before`, a whole target tall from the strip's bottom).
+  const lift = Math.max(0, m.hit - m.title);
+  const top = logo.h + GAP;
+  const stripTop = logo.h + lift + GAP / 2;
+  const orgMin = minOfPanel("organiser", m);
+  const logMin = minOfPanel("log", m);
+  const orgW = Math.round(ORGANISER_W * m.scale);
+  const orgH = Math.round(ORGANISER_H * m.scale);
+  const act = traySize(ACTIONS.length, "row", m, trayRoom(area, "row", m));
+  const actions: Placed = { x: area.w - GAP - act.w, y: top, ...act, orient: "row" };
+  // Under the strip, its own strip's hit box clear of the strip's buttons.
+  const logY = top + act.h + Math.max(GAP, lift + GAP / 2);
   if (area.w >= area.h) {
-    const bar = traySize(tools, "row", m);
-    const right = area.w - GAP - act.w;
-    const left = logo.w + GAP;
+    // Height is what a landscape phone has least of, so the top row is used:
+    // the corner's box stays the corner's, and the command line and the strip
+    // share the row beyond it.
+    const colW = Math.max(act.w, logMin.w);
+    const colX = area.w - GAP - colW;
+    const room = colX - 2 * GAP;
+    const lines = trayLines(tools, "row", m, room);
+    const bar = traySize(tools, "row", m, room);
+    const rowY = GAP;
+    const cmdX = cornerBox(m).w + GAP;
+    // Where the row beyond the corner is too short for a command line, it
+    // goes under the row instead.
+    const cmd = colX - GAP - cmdX >= minOfPanel("cmd", m).w
+      ? { x: cmdX, y: rowY, w: colX - GAP - cmdX, h: cmdH }
+      : { x: GAP, y: stripTop, w: colX - 2 * GAP, h: cmdH };
+    const logRow = rowY + act.h + Math.max(GAP, lift + GAP / 2);
+    const orgY = logRow + logH + GAP;
     return {
-      cmd: { x: left, y: GAP, w: right - GAP - left, h: cmdH },
-      actions: { x: right, y: GAP, ...act, orient: "row" },
-      log: { x: right, y: GAP + act.h + GAP, w: act.w, h: logH },
-      toolbar: { x: GAP, y: area.h - bar.h, ...bar, orient: "row" },
-      // Under the log, as wide as the strip, down to the tray's row.
-      organiser: organiserAt(area, act.w, Math.round(ORGANISER_TOUCH_H * m.scale), GAP + act.h + GAP + logH + GAP, area.h - bar.h - GAP),
+      cmd,
+      actions: { ...actions, x: colX + colW - act.w, y: rowY },
+      log: { x: colX, y: logRow, w: colW, h: logH },
+      // The rest of the column, down to the bottom margin.
+      organiser: { x: colX, y: orgY, w: colW, h: Math.max(orgMin.h, Math.min(orgH, area.h - GAP - orgY)) },
+      toolbar: { x: GAP, y: area.h - bar.h, ...bar, orient: "row", ...(lines > 1 ? { lines } : {}) },
     };
   }
-  const bar = traySize(tools, "column", m);
+  const bar = traySize(tools, "column", m, trayRoom(area, "column", m));
   const left = GAP + bar.w + GAP;
-  const w = area.w - left - GAP;
-  // Under the strip, and low enough that its strip's hit box — which reaches
-  // up over the drawing to a whole target (index.html) — stays out of the
-  // logo's row: the status is there, and a drag that starts on it must reach
-  // the drawing (measured: at the strip's own margin it took the press).
-  const logY = Math.max(GAP + act.h + GAP, logo.h + Math.max(0, m.hit - m.title) + GAP / 2);
   const cmdY = area.h - cmdH;
-  const below = logY + logH + GAP;
-  const top = logo.h + GAP;
   // Edge to edge where the column ends above it, which it does in the
   // installed app; where it would run down onto it, the line starts right of
-  // the tray instead, still docked to the bottom and the right edge. Measured
-  // in Chromium's iPhone 13 (390 × 664, Safari's page with its bars): Select
-  // and the Hand made the column 44 px longer than the room above the line,
-  // and the two were laid one over the other — a window too small for the
-  // resolver to part them, so nothing said so either.
+  // the tray instead, still docked to the bottom and the right edge.
   const clear = top + bar.h <= cmdY;
+  const upper = Math.round(area.h * UPPER);
+  const besideW = Math.min(orgW, actions.x - GAP - left);
+  let log: Rect;
+  let organiser: Rect;
+  if (besideW >= orgMin.w && act.w >= logMin.w) {
+    log = { x: actions.x, y: logY, w: act.w, h: logH };
+    const h = Math.max(orgMin.h, Math.min(orgH, Math.max(logY + logH, upper) - stripTop));
+    organiser = { x: actions.x - GAP - besideW, y: stripTop, w: besideW, h };
+  } else {
+    log = { x: left, y: logY, w: area.w - GAP - left, h: logH };
+    const y = logY + logH + GAP;
+    const w = Math.max(orgMin.w, Math.min(orgW, area.w - GAP - left));
+    organiser = { x: area.w - GAP - w, y, w, h: Math.max(orgMin.h, Math.min(orgH, upper - y)) };
+  }
+  const below = Math.max(log.y + log.h, organiser.y + organiser.h) + GAP;
   return {
     toolbar: { x: GAP, y: top, ...bar, orient: "column" },
-    actions: { x: area.w - GAP - act.w, y: GAP, ...act, orient: "row" },
-    log: { x: left, y: logY, w, h: logH },
+    actions,
+    log,
+    organiser,
     cmd: clear ? { x: 0, y: cmdY, w: area.w, h: cmdH } : { x: left, y: cmdY, w: area.w - left, h: cmdH },
     // Beside a column on the left the options panel would hang in the middle
     // of a phone's drawing (measured: it covered the rectangle the extrude was
-    // aimed at). So it gets the space right of the tray, between the log and
-    // the command line, and sits in that box's bottom-right corner — just
-    // above the line, its ✓ under the same thumb (`inCorner`).
-    options: { x: left, y: below, w, h: cmdY - GAP - below },
-    // Under the log at the right edge, the top of that same box: the options
-    // panel sits in its bottom corner, so the two share it without meeting.
-    organiser: organiserAt(area, Math.round(ORGANISER_TOUCH_W * m.scale), Math.round(ORGANISER_TOUCH_H * m.scale), below, cmdY - GAP),
+    // aimed at). So it gets the space right of the tray, between the panes at
+    // the top and the command line, and sits in that box's bottom-right
+    // corner — just above the line, its ✓ under the same thumb (`inCorner`).
+    options: { x: left, y: below, w: area.w - GAP - left, h: Math.max(0, cmdY - GAP - below) },
   };
 }
 
@@ -921,12 +1063,12 @@ export function minSizeOf(id: string, orient: Orientation | undefined, tray: boo
  * overlap, or a tray grown for a new tool all come up with no panel over
  * another. `trays` is how many buttons each tray holds now.
  *
- * **A tray's size is never read from either.** Its position and the way it runs
- * are kept, and its size is `traySize` of the buttons it has: so a tray stored
- * when it could be resized and wrapped comes up one line where it was, and one
- * that gains a tool is a button longer whether or not the viewer ever moved it,
- * pushing whatever that reaches. The storage key stays v2 — the size is still
- * written with the rectangle, and simply never believed.
+ * **A tray's size is never read from either.** Its position, the way it runs
+ * and the lines it asks for are kept, and its size is `traySize` of the
+ * buttons it has in the area's room: so one that gains a tool is a button
+ * longer whether or not the viewer ever moved it, pushing whatever that
+ * reaches, and one whose line no longer fits takes a second. The size is
+ * still written with the rectangle, and simply never believed.
  *
  * `fitted` is the same rule for a panel that is not a tray but is sized by its
  * content — the options panel, by its rows: its size is the one given here,
@@ -950,8 +1092,8 @@ export function arranged(
     // A tray always runs some way; one with nothing stored or defaulted runs
     // the default's way, which is down.
     const orient = tray ? want.orient ?? "column" : undefined;
-    const size = tray ? traySize(trays[id], orient!, m) : fitted[id] ?? { w: want.w, h: want.h };
-    wanted[id] = placed(constrain({ x: want.x, y: want.y, ...size }, area, minOf(id, orient)), orient);
+    const size = tray ? traySize(trays[id], orient!, m, trayRoom(area, orient!, m), want.lines) : fitted[id] ?? { w: want.w, h: want.h };
+    wanted[id] = placed(constrain({ x: want.x, y: want.y, ...size }, area, minOf(id, orient)), orient, tray ? want.lines : undefined);
   }
   const all = [...Object.keys(fixed), ...order.filter((id) => !(id in fixed))];
   const mins = Object.fromEntries(all.map((id) => [id, id in fixed ? { w: fixed[id].w, h: fixed[id].h } : minOf(id, wanted[id].orient)]));
@@ -1064,7 +1206,7 @@ export interface Recorded extends Placed {
 export function recorded(id: string, layout: Layout, area: Size, scale: number): Recorded {
   const r = layout[id];
   const dock = dockingOf(id, layout, area);
-  const rec: Recorded = { ...placed(r, r.orient), area: { w: area.w, h: area.h }, scale, dock };
+  const rec: Recorded = { ...placed(r, r.orient, r.lines), area: { w: area.w, h: area.h }, scale, dock };
   const panelOf = (...v: (Against | undefined)[]) => v.find((a) => a !== undefined && a !== "edge" && layout[a]);
   if (!dock.left && !dock.right) {
     const n = panelOf(dock.top, dock.bottom);
@@ -1096,8 +1238,10 @@ export function recorded(id: string, layout: Layout, area: Size, scale: number):
  *   spans a landscape one too; a tray, whose length is its buttons', keeps the
  *   near side.
  * - **Against nothing on this axis, but resting on a panel across it**: the
- *   same distance along that panel as before (`ox`/`oy`), held so the two
- *   still overlap — a log on the toolbar's top stays on the toolbar.
+ *   same distance along that panel as before (`ox`/`oy`), held so that it
+ *   still lies along it — a log on the toolbar's top stays on the toolbar,
+ *   and a pane beside a tray that wrapped in the rotation, and so got
+ *   shorter, slides back along it rather than hanging off its end.
  * - **Against nothing at all**: the same share of the free room as before —
  *   halfway across a portrait phone is halfway across a landscape one.
  *
@@ -1107,14 +1251,17 @@ export function recorded(id: string, layout: Layout, area: Size, scale: number):
  * goes first, by those, and the other follows it. A side against a panel that
  * is gone — hidden, or never there — counts as against nothing.
  *
- * A tray whose line no longer fits along its run — a row along the bottom of a
- * landscape phone, stood up — turns, keeping its edges: it is a column against
- * the same bottom edge. Nothing here holds a panel inside the area or keeps
- * panels apart; that is `arranged`'s, which this feeds.
+ * A tray whose line no longer fits along its run — a column down a portrait
+ * phone, laid on its side — **wraps**, keeping the way it runs and its edges:
+ * `sizeOf` answers the tray's size in this area, its lines included. (It used
+ * to turn, which made a 599 px row along a landscape phone's right edge and
+ * left no room beside it for a log; docs/plans/everything-fits.md.) Nothing
+ * here holds a panel inside the area or keeps panels apart; that is
+ * `arranged`'s, which this feeds.
  */
 export function relaid(
   recs: Readonly<Record<string, Recorded>>, base: Layout, area: Size, scale: number,
-  sizeOf: (id: string, orient: Orientation | undefined) => Size | null,
+  sizeOf: (id: string, orient: Orientation | undefined, lines?: number) => Size | null,
   minOf: (id: string, orient: Orientation | undefined) => Size,
 ): Layout {
   const ids = Object.keys(recs);
@@ -1123,14 +1270,8 @@ export function relaid(
   const stretchy = new Set<string>();
   for (const id of ids) {
     const rec = recs[id];
-    let orient = rec.orient;
-    let s = sizeOf(id, orient);
-    if (s && orient) {
-      const long = orient === "row" ? s.w > area.w : s.h > area.h;
-      const other: Orientation = orient === "row" ? "column" : "row";
-      const t = sizeOf(id, other);
-      if (long && t && (other === "row" ? t.w <= area.w : t.h <= area.h)) [orient, s] = [other, t];
-    }
+    const orient = rec.orient;
+    let s = sizeOf(id, orient, rec.lines);
     if (!s) {
       stretchy.add(id);
       const k = scale / (rec.scale > 0 ? rec.scale : 1);
@@ -1178,7 +1319,10 @@ export function relaid(
       const off = offset(id);
       if (n !== undefined && off !== undefined && done.has(n)) {
         const [np, nl] = done.get(n)!;
-        return [clamp(np + off, np - len + 1, np + nl - 1), len];
+        // Wholly along it where it is the shorter, else covering it: a
+        // neighbour that got shorter (a tray that wrapped) is not left with a
+        // pane hanging off its corner by a pixel of overlap.
+        return [len <= nl ? clamp(np + off, np, np + nl - len) : clamp(np + off, np + nl - len, np), len];
       }
       // In the same room it was put in, exactly where it was put — though its
       // size may have changed since (a tray re-measured for a new tool).
@@ -1210,7 +1354,7 @@ export function relaid(
   for (const id of ids) {
     const [x, w] = xs.get(id)!;
     const [y, h] = ys.get(id)!;
-    out[id] = placed({ x, y, w, h }, orients[id]);
+    out[id] = placed({ x, y, w, h }, orients[id], recs[id].lines);
   }
   return out;
 }
@@ -1254,6 +1398,7 @@ function parseRecorded(v: unknown): Recorded | null {
   for (const side of SIDES) if (typeof raw[side] === "string") dock[side] = raw[side] as string;
   const out: Recorded = { x: v.x, y: v.y, w: v.w, h: v.h, area: { w: r.area.w, h: r.area.h }, scale, dock };
   if (r.orient === "row" || r.orient === "column") out.orient = r.orient;
+  if (out.orient && typeof r.lines === "number" && Number.isInteger(r.lines) && r.lines > 1) out.lines = r.lines;
   if (typeof r.ox === "number" && Number.isFinite(r.ox)) out.ox = r.ox;
   if (typeof r.oy === "number" && Number.isFinite(r.oy)) out.oy = r.oy;
   return out;
@@ -1277,7 +1422,7 @@ export function parseStored(text: string | null): Stored {
     const at = e.at === undefined ? null : parseRecorded(e.at);
     const entry: StoredPanel = {};
     if (at) entry.at = at;
-    // `false` is a pane shown that starts hidden on this device (`hiddenAtFirst`).
+    // `false` was a pane shown that started hidden on this device; every pane starts shown now, so it reads as shown.
     if (typeof e.hidden === "boolean") entry.hidden = e.hidden;
     if (entry.at || entry.hidden !== undefined) out[id] = entry;
   }
@@ -1365,6 +1510,19 @@ export function besideTray(tray: Placed, size: Size, area: Size): Rect {
   const x = row ? tray.x : tray.x + tray.w / 2 <= area.w / 2 ? tray.x + tray.w + GAP : tray.x - GAP - size.w;
   const y = !row ? tray.y : tray.y + tray.h / 2 <= area.h / 2 ? tray.y + tray.h + GAP : tray.y - GAP - size.h;
   return constrain({ x, y, ...size }, area, size);
+}
+
+/**
+ * Where a fitted panel of `size` (the options panel) goes by default: in the
+ * corner of the box the defaults name for it (`inCorner`), else beside the
+ * tray it belongs to as that tray was laid out (`besideTray`), else the area's
+ * top-left. What `Panels.apply` does, as a function, so a test lays out what
+ * the page does.
+ */
+export function fittedAt(box: Rect | undefined, tray: Placed | undefined, size: Size, area: Size): Rect {
+  if (box) return inCorner(box, size, area);
+  if (tray) return besideTray(tray, size, area);
+  return { x: GAP, y: GAP, ...size };
 }
 
 /** The part of `Storage` this file uses — narrow, so a test can hand in a fake. */
@@ -1459,13 +1617,31 @@ export function browserStorage(): StorageLike | null {
 
 /**
  * What `layout()` says: each panel's rectangle as it stands, a tray's way of
- * running, and whether it was moved.
+ * running — `row ×2` for one wrapped onto a second line — and whether it was
+ * moved.
  */
-export function describeLayout(shown: Layout, stored: Layout): string {
-  return Object.entries(shown).map(([id, r]) =>
-    `${id.padEnd(8)} ${Math.round(r.x)},${Math.round(r.y)}  ${Math.round(r.w)}x${Math.round(r.h)}` +
-    (r.orient ? `  ${r.orient}` : "") + (id in stored ? "" : "  (default)"),
-  ).join("\n");
+export function describeLayout(shown: Layout, stored: Layout, m: Metrics = FINE): string {
+  return Object.entries(shown).map(([id, r]) => {
+    const lines = r.orient ? linesOf(r, m) : 1;
+    return `${id.padEnd(8)} ${Math.round(r.x)},${Math.round(r.y)}  ${Math.round(r.w)}x${Math.round(r.h)}` +
+      (r.orient ? `  ${r.orient}${lines > 1 ? ` ×${lines}` : ""}` : "") + (id in stored ? "" : "  (default)");
+  }).join("\n");
+}
+
+/**
+ * Whether a layout `show` is about to draw breaks the rule — and if so, what to
+ * say: two panels over one another, or (`ok` false) the resolver having found
+ * no layout at all, which is the same thing about to happen. Null for a sound
+ * layout. The owner: *"everything has to fit"* — so a layout that does not is
+ * never drawn silently (docs/plans/everything-fits.md); pure, so the rule is
+ * tested where the rest of the geometry is.
+ */
+export function layoutProblem(layout: Layout, ok: boolean, area: Size): string | null {
+  const bad = overlapping(layout);
+  if (ok && bad.length === 0) return null;
+  const where = `in ${Math.round(area.w)}x${Math.round(area.h)}: ${JSON.stringify(layout)}`;
+  if (!ok) return `panels: no layout fits${bad.length ? ` (${bad.map((p) => p.join(" over ")).join(", ")})` : ""} ${where}`;
+  return `panels overlap: ${bad.map((p) => p.join(" and ")).join(", ")} ${where}`;
 }
 
 // ---- the DOM half -----------------------------------------------------------
@@ -1473,9 +1649,10 @@ export function describeLayout(shown: Layout, stored: Layout): string {
 /** The lowest panel's z-index; index.html puts the hover tag and menu well above any stack. */
 const PANEL_Z = 10;
 
-/** `r` running `orient` — or, for a panel that is not a tray, just `r`. */
-function placed(r: Rect, orient: Orientation | undefined): Placed {
-  return orient ? { x: r.x, y: r.y, w: r.w, h: r.h, orient } : { x: r.x, y: r.y, w: r.w, h: r.h };
+/** `r` running `orient`, asking for at least `lines` — or, for a panel that is not a tray, just `r`. */
+function placed(r: Rect, orient: Orientation | undefined, lines?: number): Placed {
+  if (!orient) return { x: r.x, y: r.y, w: r.w, h: r.h };
+  return lines !== undefined && lines > 1 ? { x: r.x, y: r.y, w: r.w, h: r.h, orient, lines } : { x: r.x, y: r.y, w: r.w, h: r.h, orient };
 }
 
 /**
@@ -1498,8 +1675,8 @@ function placed(r: Rect, orient: Orientation | undefined): Placed {
  * and docked to like any panel.
  *
  * `trays` names the panels that are trays, each with how many buttons it holds
- * right now: those, and only those, have no grips, are always one line of
- * their buttons (`traySize`, re-counted on every `apply`), and turn between
+ * right now: those, and only those, have no grips, are a line of
+ * their buttons, wrapped where one does not fit (`traySize`, re-counted on every `apply`), and turn between
  * column and row as they are dragged against an edge (`turned`).
  *
  * `fitted` names the panels sized by their content that come and go — the
@@ -1553,8 +1730,8 @@ export class Panels {
   private fitted: Record<string, Fitted>;
   private fixed: Record<string, Fixed>;
   private insets: () => Insets;
-  /** The panels that start hidden until the viewer shows them — the organiser on a phone. */
-  private hiddenAtFirst: Set<string>;
+  /** Told the layout after every placement — the corner's text keeps clear of it. */
+  private onShow: ((layout: Layout, area: Size, insets: Insets) => void) | undefined;
   private stored: Stored;
   /** A v2 layout read at load, migrated against the first area there is. */
   private legacy: Layout | null;
@@ -1579,12 +1756,12 @@ export class Panels {
     trays: Record<string, () => number> = {},
     options: {
       check?: boolean; fitted?: Record<string, Fitted>; metrics?: Metrics;
-      fixed?: Record<string, Fixed>; insets?: () => Insets; hiddenAtFirst?: readonly string[];
-      tooltip?: AttachTip;
+      fixed?: Record<string, Fixed>; insets?: () => Insets;
+      tooltip?: AttachTip; onShow?: (layout: Layout, area: Size, insets: Insets) => void;
     } = {},
   ) {
     this.tooltip = options.tooltip;
-    this.hiddenAtFirst = new Set(options.hiddenAtFirst ?? []);
+    this.onShow = options.onShow;
     this.m = options.metrics ?? FINE;
     this.area = area;
     this.defaults = defaults;
@@ -1622,14 +1799,19 @@ export class Panels {
     return Object.fromEntries(Object.entries(this.fixed).map(([id, f]) => [id, { x: 0, y: 0, ...f.size(), fixed: true }]));
   }
 
-  /** Whether the viewer has hidden `id` — or, having said nothing, whether it starts hidden here. */
+  /**
+   * Whether the viewer has hidden `id`. Every pane starts shown — the
+   * organiser on a phone too (the owner: *"show from start"*; it used to
+   * start hidden there, docs/plans/organiser.md), in a place the defaults keep
+   * for it in both orientations.
+   */
   private hiddenByViewer(id: string): boolean {
-    return this.stored[id]?.hidden ?? this.hiddenAtFirst.has(id);
+    return this.stored[id]?.hidden ?? false;
   }
 
   /**
    * Puts every panel where the layouts say, clear of one another (`arranged`),
-   * each tray one line of the buttons it has now and each stored panel docked
+   * each tray the lines of the buttons it has now and each stored panel docked
    * as it was (`relaid`). Cheap; call it whenever a default, a tray's count,
    * the insets or the interface size may have changed. What it moves is not
    * stored: it is this window's answer, and a wider one may need none of it.
@@ -1666,8 +1848,8 @@ export class Panels {
     const defaults = this.defaults(area);
     const recs: Record<string, Recorded> = {};
     for (const id of [...order, ...later]) if (this.stored[id]?.at) recs[id] = this.stored[id].at!;
-    const sizeOf = (id: string, orient: Orientation | undefined): Size | null =>
-      id in counts ? traySize(counts[id], orient ?? "column", this.m) : sizes[id] ?? null;
+    const sizeOf = (id: string, orient: Orientation | undefined, lines?: number): Size | null =>
+      id in counts ? traySize(counts[id], orient ?? "column", this.m, trayRoom(area, orient ?? "column", this.m), lines) : sizes[id] ?? null;
     const minOf = (id: string, orient: Orientation | undefined) => this.min(id, orient);
     const relay = (base: Layout) => relaid(recs, base, area, this.m.scale, sizeOf, minOf);
     const unstored = (ids: string[], from: Layout) =>
@@ -1677,12 +1859,7 @@ export class Panels {
       // panels without the fitted ones put it — which is what "beside" means.
       const base0 = { ...fixed, ...unstored(order, defaults) };
       const first = arranged(order, relay(base0), defaults, counts, area, {}, this.m, fixed).layout;
-      for (const id of later) {
-        const by = this.fitted[id].beside;
-        const box = defaults[id];
-        defaults[id] = box ? inCorner(box, sizes[id], area)
-          : by && first[by] ? besideTray(first[by], sizes[id], area) : { x: GAP, y: GAP, ...sizes[id] };
-      }
+      for (const id of later) defaults[id] = fittedAt(defaults[id], first[this.fitted[id].beside ?? ""], sizes[id], area);
     }
     const all = [...order, ...later];
     const wanted = relay({ ...fixed, ...unstored(all, defaults) });
@@ -1691,10 +1868,12 @@ export class Panels {
   }
 
   /**
-   * Puts each panel where `layout` says. With `check` on (the dev server, and
-   * so every e2e run) a layout with two panels overlapping is reported as an
-   * error on the page — unless the resolver has already said it could find
-   * no other (`sound` false: a window too small to hold them all).
+   * Puts each panel where `layout` says. A layout with two panels overlapping,
+   * or one the resolver could not find (`sound` false: a window too small to
+   * hold them all at their least), is never drawn silently (`layoutProblem`):
+   * with `check` on (the dev server, and so every e2e run) it is reported as an
+   * error on the page, which every e2e test's "no page errors" trips; in a
+   * built page, a warning in the console.
    */
   private show(layout: Layout, sound = true): void {
     for (const [id, r] of Object.entries(layout)) {
@@ -1702,12 +1881,12 @@ export class Panels {
       const el = this.els.get(id);
       if (el && this.shown[id] !== r) this.place(id, el, r);
     }
-    if (this.check && sound) {
-      const bad = overlapping(this.shown);
-      // Reported, not thrown: thrown from here it would break the very gesture
-      // that showed it, where the point is to see it and carry on.
-      if (bad.length) reportError(new Error(`panels overlap: ${bad.map((p) => p.join(" and ")).join(", ")} — ${JSON.stringify(this.shown)}`));
-    }
+    const problem = layoutProblem(this.shown, sound, this.size());
+    // Reported, not thrown: thrown from here it would break the very gesture
+    // that showed it, where the point is to see it and carry on.
+    if (problem && this.check) reportError(new Error(problem));
+    else if (problem) console.warn(problem);
+    this.onShow?.(this.shown, this.size(), this.inset);
   }
 
   private placeFixed(id: string, r: Placed): void {
@@ -1739,6 +1918,14 @@ export class Panels {
     else delete el.dataset.bleed;
     const strip = el.querySelector<HTMLElement>(":scope > .ptitle");
     if (r.orient && el.dataset.orient !== r.orient) el.dataset.orient = r.orient;
+    if (r.orient) {
+      // How many buttons a line holds, for the stylesheet's grid: read off the
+      // run, which `traySize` made a whole number of them.
+      const run = r.orient === "row" ? r.w : r.h;
+      const per = Math.max(1, Math.round((run - this.m.title - 6) / (this.m.button + this.m.gap)));
+      el.querySelector<HTMLElement>(":scope > .tray")?.style.setProperty("--per", String(per));
+      el.dataset.lines = String(linesOf(r, this.m));
+    }
     if (strip && r.orient) {
       // The stylesheet turns the body and moves the strip on the attribute;
       // the strip's thickness is set here, from the metrics, as for every strip.
@@ -1799,9 +1986,8 @@ export class Panels {
       throw new Error(`there is no "${id}" pane — the panes are ${[...this.els.keys()].map((k) => JSON.stringify(k)).join(", ")}`);
     }
     const entry = { ...this.stored[id] };
-    // A pane that starts hidden keeps being shown only by saying so.
-    if (shown && !this.hiddenAtFirst.has(id)) delete entry.hidden;
-    else entry.hidden = !shown;
+    if (shown) delete entry.hidden;
+    else entry.hidden = true;
     if (entry.at || entry.hidden !== undefined) this.stored[id] = entry;
     else delete this.stored[id];
     saveStored(this.storage, this.stored);
@@ -1827,7 +2013,7 @@ export class Panels {
     // the one place to read what iOS actually reported.
     const where = `window ${this.area.clientWidth}x${this.area.clientHeight}, insets ${i.top} ${i.right} ${i.bottom} ${i.left}` +
       ` (top right bottom left), panels' area ${Math.round(area.w)}x${Math.round(area.h)}`;
-    return [describeLayout(panels, at), ...(hidden.length ? [`hidden   ${hidden.join(", ")}`] : []), where].join("\n");
+    return [describeLayout(panels, at, this.m), ...(hidden.length ? [`hidden   ${hidden.join(", ")}`] : []), where].join("\n");
   }
 
   /**
@@ -2063,6 +2249,9 @@ export class Toolbar {
       // Beside the tray when it is a column, so the tip never covers the
       // buttons the pointer is about to run down.
       along: () => (this.el.closest<HTMLElement>(".panel")?.dataset.orient as "column" | "row" | undefined) ?? null,
+      // Beside or past the whole tray, every line of it, so a held tip never
+      // covers the next button — on this line or the next.
+      line: () => this.el,
     });
     b.setAttribute("aria-pressed", "false");
     // Keeps the focus where it was — the command line — so a click on a button
@@ -2483,6 +2672,7 @@ export class ActionStrip {
       if (host.tooltip) {
         host.tooltip(b, () => actionTip(action, this.host.state(), this.host.key?.(action) ?? null), {
           along: () => (el.closest<HTMLElement>(".panel")?.dataset.orient as "column" | "row" | undefined) ?? null,
+          line: () => el,
         });
       } else {
         b.title = ACTION_LABELS[action];

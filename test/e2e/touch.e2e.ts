@@ -93,7 +93,7 @@ async function settled(want: (m: Awaited<ReturnType<AppContext["model"]>>) => bo
   }
 }
 
-test("portrait: the phone's defaults — command line docked to the bottom, the tray down the left under the logo, the strip top right, a one-line log", async () => {
+test("portrait: the phone's defaults — command line docked to the bottom, the tray down the left under the logo, the strip top right under the logo's row, a one-line log, the organiser", async () => {
   await fresh();
   const rects = await app.page.evaluate(() => {
     const out: Record<string, { x: number; y: number; w: number; h: number }> = {};
@@ -106,7 +106,8 @@ test("portrait: the phone's defaults — command line docked to the bottom, the 
   });
   assert.equal(rects.width, 390, "laid out at the phone's own width");
   const { out, area } = rects;
-  assert.deepEqual(Object.keys(out).sort(), ["actions", "cmd", "log", "toolbar"]);
+  // The organiser shown from the start (docs/plans/everything-fits.md; the owner: "show from start").
+  assert.deepEqual(Object.keys(out).sort(), ["actions", "cmd", "log", "organiser", "toolbar"]);
   for (const [id, r] of Object.entries(out)) {
     assert.ok(r.x >= 0 && r.y >= 0 && r.x + r.w <= area.w && r.y + r.h <= area.h, `${id} wholly inside: ${JSON.stringify(r)}`);
   }
@@ -119,7 +120,9 @@ test("portrait: the phone's defaults — command line docked to the bottom, the 
   const logo = await app.page.$eval("#logo", (el) => (el as HTMLElement).offsetTop + (el as HTMLElement).offsetHeight);
   assert.ok(out.toolbar.x <= 8 && out.toolbar.h > out.toolbar.w && out.toolbar.y >= logo, "the tray is a column down the left, under the logo");
   assert.equal(await app.page.$$eval("#toolbar button", (bs) => bs.length), 13, "Select, the Hand and the eleven tools");
-  assert.ok(out.actions.y <= 8 && out.actions.x + out.actions.w >= area.w - 8 && out.actions.w > out.actions.h, "the strip is a row at the top right");
+  // Under the logo's row, which is the status's (it used to be at y 8, under the status's text).
+  assert.ok(out.actions.y >= logo && out.actions.y <= logo + 8 && out.actions.x + out.actions.w >= area.w - 8 && out.actions.w > out.actions.h,
+    `the strip is a row at the top right, under the logo's row: ${JSON.stringify(out.actions)}`);
   assert.ok(out.log.h <= 72, `the log is one line: ${out.log.h}px`);
   const lines = await app.page.$eval("#log", (el) => Math.round(el.clientHeight / parseFloat(getComputedStyle(el).lineHeight)));
   assert.ok(lines <= 2, `and shows one line of itself: ${lines}`);

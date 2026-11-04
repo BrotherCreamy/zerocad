@@ -29,12 +29,12 @@ import { AXIS_INKS, frameArmPx, frameMarker } from "./framemarker.ts";
 import { constrainedBy, type Glyph } from "./glyphs.ts";
 import { ENGINE_TOOLS, HAND, SELECT, getToolCtor, toolSummary, toolbarTools } from "./tools/tool.ts";
 import {
-  ACTIONS, ActionStrip, FINE, OptionsPanel, Panels, Toolbar, actionKey, browserStorage, defaultLayout, logoBox, scaledMetrics, touchMetrics,
-  type Insets, type Metrics, type Size,
+  ACTIONS, ActionStrip, FINE, OptionsPanel, Panels, Toolbar, actionKey, browserStorage, cornerRoom, defaultLayout, logoBox, scaledMetrics,
+  touchMetrics, type Insets, type Layout, type Metrics, type Size,
 } from "./panels.ts";
 import { Tooltips } from "./tooltip.ts";
 import {
-  FORM_FACTOR, clampScale, deviceScale, formFactor, formatScale, recallScale, rememberScale, textFactor, type Device,
+  clampScale, deviceScale, formFactor, formatScale, recallScale, rememberScale, textFactor, type Device,
 } from "./uiscale.ts";
 import { GUIDE_NOTE_MS, STEP_NOTE_MS, StatusLine } from "./statusline.ts";
 import { AppMenu, UNTITLED } from "./appmenu.ts";
@@ -175,14 +175,23 @@ function applyChrome(): void {
   placeCorner();
 }
 
-/** The status, just right of the logo, in the logo's row. */
+/**
+ * The status, just right of the logo, in the logo's row — and never over a
+ * pane (docs/plans/everything-fits.md): it wraps within the room the layout
+ * leaves it (`cornerRoom`), which is the whole row while the panes are where
+ * the defaults put them, and stops short of one the viewer has dragged into
+ * the row. Placed again after every placement of the panels.
+ */
+let cornerLayout: { layout: Layout; area: Size } | null = null;
 function placeCorner(): void {
   const i = insets();
   const box = logoBox(metrics);
+  const room = cornerLayout ? cornerRoom(cornerLayout.layout, cornerLayout.area, box) : null;
   cornerEl.style.left = `${i.left + box.w}px`;
   cornerEl.style.top = `${i.top}px`;
-  cornerEl.style.minHeight = `${box.h}px`;
-  cornerEl.style.maxWidth = `calc(100% - ${i.left + i.right + box.w + 8}px)`;
+  cornerEl.style.minHeight = `${Math.min(box.h, room?.h ?? box.h)}px`;
+  cornerEl.style.maxWidth = room ? `${room.w}px` : `calc(100% - ${i.left + i.right + box.w + 8}px)`;
+  cornerEl.style.maxHeight = room ? `${room.h}px` : "";
 }
 applyChrome();
 
@@ -263,8 +272,8 @@ let viewMode: ViewMode = recallViewMode(browserStorage());
 
 /**
  * The panels are placed before the kernel loads, so the page never shows the
- * chrome in a heap while the WASM downloads. The toolbar is the one tray: always
- * one line of however many tools are registered *when it is asked* — the
+ * chrome in a heap while the WASM downloads. The toolbar is the one tray: a line
+ * (or two, where one will not fit) of however many tools are registered *when it is asked* — the
  * built-ins are all registered by the imports above, and one defined later at
  * the command line lengthens it, moved or not, through `syncToolbar` below. It
  * turns between column and row against the edges it is dragged to, and has no
@@ -290,11 +299,9 @@ const panels = new Panels(
     // against it, and the way into the app menu is never under anything.
     fixed: { logo: { el: logoEl, size: () => logoBox(metrics) } },
     insets,
-    // A phone's drawing has no room to spare for a list it may never need:
-    // there the organiser starts hidden, one tick in the app menu's Panes
-    // away (docs/plans/organiser.md, As built). A tablet and a desktop show it.
-    hiddenAtFirst: coarse && formFactor(device) === FORM_FACTOR.phone ? ["organiser"] : [],
     tooltip,
+    // The corner keeps clear of wherever the panes now are.
+    onShow: (layout, area) => { cornerLayout = { layout, area }; placeCorner(); },
   },
 );
 // The insets change without the window resizing — a rotation does both, but
