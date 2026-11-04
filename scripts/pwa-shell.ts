@@ -4,7 +4,7 @@
 // all of it without bundling anything — docs/plans/pwa-pages.md.
 //
 // **Every URL here is relative.** The site is served from a sub-path
-// (https://brothercreamy.github.io/neocad/), so a leading "/" would point at
+// (https://brothercreamy.github.io/zerocad/), so a leading "/" would point at
 // the account's root, where nothing of this app is. A relative URL in the
 // manifest resolves against the manifest's own URL, and one in the page or
 // the service worker against theirs, and all three live in the same folder.
@@ -52,7 +52,7 @@ export function manifest(): Record<string, unknown> {
     name: "NeoCAD",
     short_name: "NeoCAD",
     description: "Relational CAD on a nonlinear least-squares solver, entirely in the browser.",
-    // The manifest's own folder: under /neocad/ that is /neocad/, and the
+    // The manifest's own folder: under /zerocad/ that is /zerocad/, and the
     // same file served anywhere else still means "here".
     id: "./",
     start_url: "./",

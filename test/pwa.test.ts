@@ -46,7 +46,7 @@ function cornerAlpha(bytes: Buffer): number {
   throw new Error(`a PNG of colour type ${colourType}, which this reader does not know`);
 }
 
-test("the manifest: standalone, any orientation, the app's colours, and every URL relative so it works under /neocad/", () => {
+test("the manifest: standalone, any orientation, the app's colours, and every URL relative so it works under /zerocad/", () => {
   const m = manifest();
   assert.equal(m.name, "NeoCAD");
   assert.equal(typeof m.short_name, "string");
@@ -112,19 +112,19 @@ async function runWorker(stamp: string, existing: string[]) {
   const opened: string[] = [];
   const deleted: string[] = [];
   const added: string[] = [];
-  const stored = new Map<string, string>([["https://example.test/neocad/", "the app"]]);
+  const stored = new Map<string, string>([["https://example.test/zerocad/", "the app"]]);
   const cache = {
     addAll: async (reqs: { url: string; cache: string }[]) => {
       for (const r of reqs) assert.equal(r.cache, "reload", "past the HTTP cache");
       added.push(...reqs.map((r) => r.url));
     },
     match: async (req: { url: string } | string) => {
-      const url = typeof req === "string" ? new URL(req, "https://example.test/neocad/sw.js").href : req.url.split("?")[0];
+      const url = typeof req === "string" ? new URL(req, "https://example.test/zerocad/sw.js").href : req.url.split("?")[0];
       return stored.get(url);
     },
   };
   const self = {
-    location: new URL("https://example.test/neocad/sw.js"),
+    location: new URL("https://example.test/zerocad/sw.js"),
     addEventListener: (type: string, fn: (e: unknown) => void) => listeners.set(type, fn),
     skipWaiting: () => assert.fail("a new version never takes over the open app"),
     clients: { claim: () => assert.fail("a new version never takes over the open app") },
@@ -161,8 +161,8 @@ test("the worker: install fills the stamp's cache with the shell, activate delet
   assert.deepEqual([...w.listeners.keys()].sort(), ["activate", "fetch", "install"]);
   await w.fire("install");
   assert.deepEqual(w.opened, ["neocad-abc-2026-11-04"]);
-  assert.deepEqual(w.added, shellFiles().map((p) => new URL(p, "https://example.test/neocad/sw.js").href));
-  assert.ok(w.added.includes("https://example.test/neocad/"), "the app itself, at the address it is started from");
+  assert.deepEqual(w.added, shellFiles().map((p) => new URL(p, "https://example.test/zerocad/sw.js").href));
+  assert.ok(w.added.includes("https://example.test/zerocad/"), "the app itself, at the address it is started from");
   await w.fire("activate");
   assert.deepEqual(w.deleted, ["neocad-old-build"], "its own old cache, and no other site's");
 });
@@ -170,14 +170,14 @@ test("the worker: install fills the stamp's cache with the shell, activate delet
 test("the worker: cache first, a navigation anywhere in scope is the app, and what is not cached goes to the network", async () => {
   const w = await runWorker("abc", []);
   const get = (url: string, mode = "no-cors") => w.fire("fetch", { request: { url, method: "GET", mode } });
-  assert.equal(await get("https://example.test/neocad/"), "the app");
-  assert.equal(await get("https://example.test/neocad/?source=homescreen", "navigate"), "the app");
-  assert.equal(await get("https://example.test/neocad/index.html", "navigate"), "the app");
+  assert.equal(await get("https://example.test/zerocad/"), "the app");
+  assert.equal(await get("https://example.test/zerocad/?source=homescreen", "navigate"), "the app");
+  assert.equal(await get("https://example.test/zerocad/index.html", "navigate"), "the app");
   assert.deepEqual(w.fetched, []);
-  assert.equal(await get("https://example.test/neocad/elsewhere.png"), "from the network");
+  assert.equal(await get("https://example.test/zerocad/elsewhere.png"), "from the network");
   // Another origin, or anything but a GET, is not the worker's business.
   assert.equal(await get("https://elsewhere.test/x"), undefined);
-  assert.equal(await w.fire("fetch", { request: { url: "https://example.test/neocad/", method: "POST", mode: "cors" } }), undefined);
+  assert.equal(await w.fire("fetch", { request: { url: "https://example.test/zerocad/", method: "POST", mode: "cors" } }), undefined);
 });
 
 test("the head: the iOS metas, the manifest and the icons, all relative, and the worker registered from here only", () => {

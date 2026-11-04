@@ -2,7 +2,7 @@
 // (docs/plans/pwa-pages.md).
 //
 // The build is run here, into a private folder, and served from a sub-path —
-// /neocad/, as GitHub Pages serves this repository — by a static server that
+// /zerocad/, as GitHub Pages serves the public repository the site is published from — by a static server that
 // answers nothing outside it, so a URL that escapes the sub-path fails here
 // as it would on Pages. With Pages' own ten-minute HTTP cache on every file,
 // so a worker that fills its cache through the HTTP cache is caught too.
@@ -31,7 +31,7 @@ import { devices, type Browser, type BrowserContext, type CDPSession, type Page 
 import { APP_URL, launchBrowser } from "./harness.ts";
 
 const root = new URL("../..", import.meta.url).pathname;
-const BASE = "/neocad/";
+const BASE = "/zerocad/";
 const SHOTS = process.env.NEOCAD_E2E_SHOTS;
 
 /** The hosted build, into `out`, under a stamp of the test's choosing — which names the worker's cache. */
@@ -50,7 +50,7 @@ const TYPES: Record<string, string> = {
 
 interface Served { url: string; requests: string[]; misses: string[]; close(): Promise<void> }
 
-/** `dir` at /neocad/ on a free port, the way Pages serves the gh-pages branch. */
+/** `dir` at /zerocad/ on a free port, the way Pages serves the gh-pages branch. */
 function serve(dir: string): Promise<Served> {
   const requests: string[] = [];
   const misses: string[] = [];
@@ -128,7 +128,7 @@ after(async () => {
 
 let hosted: { context: BrowserContext; page: Page; served: Served; errors: string[] };
 
-test("served from /neocad/, the hosted build loads, solves and registers its worker; nothing is asked for outside the sub-path", async () => {
+test("served from /zerocad/, the hosted build loads, solves and registers its worker; nothing is asked for outside the sub-path", async () => {
   const dir = join(work, "a");
   buildPwa(dir, "e2e-first");
   const served = await serve(dir);
@@ -229,6 +229,11 @@ test("a new deploy waits while the app is open — never swapped under the hand 
     await page.goto(served.url, { waitUntil: "load" });
     await ready(page);
     await activeWorker(page);
+    // The very first visit is not the worker's (nothing claims it), so the
+    // app as it is used from then on — a start the worker serves — is a reload.
+    await page.reload({ waitUntil: "load" });
+    await ready(page);
+    assert.ok(await page.evaluate(() => navigator.serviceWorker.controller !== null), "served by the worker");
     assert.equal(await stampOf(page), "build e2e-old");
     await type(page, "pt(5,5)");
     await page.evaluate(() => { (window as unknown as { untouched: boolean }).untouched = true; });

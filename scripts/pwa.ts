@@ -1,6 +1,6 @@
 // The hosted build: the single-file app as an installable PWA, in a folder
 // that is served as it is (docs/plans/pwa-pages.md). GitHub Pages publishes
-// it from the gh-pages branch (.github/workflows/pages.yml).
+// it from a gh-pages branch (.github/workflows/pages.yml).
 //
 // Usage: npm run build:pwa   ->  dist-pwa/
 //        node --experimental-strip-types scripts/pwa.ts --out DIR [--stamp TEXT]

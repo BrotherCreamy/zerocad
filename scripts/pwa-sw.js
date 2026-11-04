@@ -13,7 +13,7 @@
 // the next start gets — never a page swapped under a hand that is drawing.
 //
 // Every relative URL here resolves against this script's own, which is in the
-// app's folder (/neocad/sw.js on Pages): "./" is the app.
+// app's folder (/zerocad/sw.js on Pages): "./" is the app.
 
 const CACHE = "__NEOCAD_CACHE__";
 const SHELL = __NEOCAD_SHELL__;
