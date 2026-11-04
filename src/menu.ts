@@ -27,6 +27,8 @@ import { frameBasis } from "./relations/refs.ts";
 import { toolUnavailable } from "./toolavail.ts";
 import { sketchOnFaceCommand } from "./sketchface.ts";
 import type { RegionHit } from "./tools/tool.ts";
+import { findLoops, type Loop } from "./loops.ts";
+import { featureRegion, holeIndex, holeLoop, type FeatureRegion } from "./operations.ts";
 import { VIEW_MODES, type ViewMode } from "./viewmode.ts";
 
 /**
@@ -232,7 +234,10 @@ function menuOf(model: Model, pick: Pick | null, region: RegionHit | null, selec
   // Several selected, one of them right-clicked: the menu is about the set —
   // and about the sets the one clicked is in, the way to select one of those.
   if (onSelection && selection.length > 1) {
-    return { header: selectionHeader(selection), items: [...selectionItems(model, selection), ...selectGroupItems(model, pick.name)] };
+    return {
+      header: selectionHeader(selection),
+      items: [...selectionItems(model, selection), ...selectGroupItems(model, pick.name), ...editItems(model, selection)],
+    };
   }
   const menu = pick.kind === "relation" ? relationMenu(model, pick) : entityMenu(model, pick);
   menu.items.push(...selectGroupItems(model, pick.name));
@@ -353,6 +358,7 @@ function emptyCanvasMenu(model: Model, region: RegionHit | null): Menu {
         action: { do: "run", command: hasFrame ? "frame()" : "setDefaultFrame(frame())" },
       },
       ...sketchOnFaceItem(model, region),
+      ...faceEditItems(model, region),
       // Only while something is hidden: the way back from Hide, where there
       // is nothing on screen left to right-click.
       ...(model.hidden.size ? [{ label: "Show all", action: { do: "run", command: "show()" } } as MenuItem] : []),
@@ -393,7 +399,81 @@ function entityMenu(model: Model, pick: Pick): Menu {
   if (pick.kind === "point") items.push(fixItem(model, pick.name));
   if (pick.kind === "frame") items.push(sketchOnItem(model, pick.name));
   items.push(...constructionItems(model, [pick.name]));
+  items.push(...holeItems(model, pick.name), ...editItems(model, [pick.name]));
   return { header: describePick(model, pick), items };
+}
+
+/**
+ * **Add as hole to e1** on a member of a closed loop that lies inside a
+ * feature's outline and is not a hole of it yet — one item per such feature —
+ * and **Remove hole from e1** on a member of one of its holes. The menu
+ * proposes from containment, which is a suggestion the user clicks and never
+ * an inclusion (docs/plans/explicit-regions.md): the item types `hole("e1",
+ * "c1")`, and only that call adds anything. Asked of each feature with the
+ * operation's own question (`holeLoop`, `holeIndex`), so the menu offers
+ * exactly what the call would take.
+ */
+function holeItems(model: Model, name: string): MenuItem[] {
+  const k = model.entities.get(name)?.kind;
+  if ((k !== "line" && k !== "arc" && k !== "circle") || model.isConstruction(name) || !model.features.size) return [];
+  let all: Loop[];
+  try {
+    all = findLoops(model);
+  } catch {
+    return [];
+  }
+  if (!all.some((l) => l.members.some((m) => m.name === name))) return [];
+  const add: MenuItem[] = [];
+  const remove: MenuItem[] = [];
+  for (const f of model.features.values()) {
+    let r: FeatureRegion;
+    try {
+      r = featureRegion(model, f, all);
+    } catch {
+      continue;
+    }
+    const call = `(${quoted(f.name)}, ${quoted(name)})`;
+    try {
+      holeLoop(model, f, name, r);
+      add.push({ label: `Add as hole to ${f.name}`, action: { do: "run", command: `hole${call}` } });
+      continue;
+    } catch {
+      // not a loop it could cut
+    }
+    try {
+      const at = r.holes[holeIndex(model, f, name, r) - 1];
+      if (at !== null && r.all[at].members.some((m) => m.name === name)) {
+        remove.push({ label: `Remove hole from ${f.name}`, action: { do: "run", command: `unhole${call}` } });
+      }
+    } catch {
+      // no hole of this one
+    }
+  }
+  return [...add, ...remove];
+}
+
+/**
+ * **Edit e1**, typing `edit("e1")` — the feature dialog opened on a feature
+ * (tools/edit.ts) — on anything a feature made or stands on, and on a set of
+ * names every one of which is that feature's (`select("e1")` selects what it
+ * made). One item per feature.
+ */
+function editItems(model: Model, names: readonly string[]): MenuItem[] {
+  if (!names.length) return [];
+  return [...model.features.values()]
+    .filter((f) => names.every((n) => f.names.includes(n)))
+    .map((f) => ({ label: `Edit ${f.name}`, action: { do: "run", command: `edit(${quoted(f.name)})` } }));
+}
+
+/**
+ * **Edit e1** on empty canvas inside a region that is a face of a feature —
+ * every member of the loop is something the feature names: its lid, a wall,
+ * its base — which is what right-clicking a solid's face lands on, since faces
+ * never pick.
+ */
+function faceEditItems(model: Model, region: RegionHit | null): MenuItem[] {
+  if (!region) return [];
+  return editItems(model, [...new Set(region.loops[region.index].members.map((m) => m.name))]);
 }
 
 /**

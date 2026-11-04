@@ -58,6 +58,34 @@ export function litRegions(loops: Loop[], hovered: Region | null): Region[] {
 }
 
 /**
+ * Loops outlined and nothing more, faintly unless told otherwise — what the
+ * dialogs draw a loop with that a click could take into the region or out of
+ * it: available, not chosen.
+ */
+export function outlineLoops(model: Model, r: RenderContext, loops: Loop[], indices: readonly number[],
+                             stroke = `${REGION_GREEN}${LIT_STROKE}`, width = 1.6): void {
+  if (!indices.length) return;
+  let outlines: number[][][];
+  try {
+    outlines = loopOutlines(model, indices.map((i) => loops[i].members), r.scale);
+  } catch {
+    return;
+  }
+  r.g.save();
+  r.g.strokeStyle = stroke;
+  r.g.lineWidth = width;
+  r.g.beginPath();
+  for (const o of outlines) {
+    const pts = o.map((w) => r.worldToScreen(w));
+    r.g.moveTo(...pts[0]);
+    for (const q of pts.slice(1)) r.g.lineTo(...q);
+    r.g.closePath();
+  }
+  r.g.stroke();
+  r.g.restore();
+}
+
+/**
  * Whether an outline, as drawn on screen, is too thin to light: a loop seen
  * edge-on (a wall of a solid looked at square from above) projects to a line,
  * and lighting it would only paint its edges green. Thin means its area is
@@ -171,12 +199,24 @@ export function missedRegion(model: Model): string {
  * the tint's alpha, as two hex digits: a chosen region is drawn a shade
  * stronger than one merely under the cursor. `colour` is the tools' green
  * unless the caller is drawing the canvas's selection, which has its own.
+ * `skip` is loops of the region to leave out — holes a creating dialog was
+ * told to fill, which then draw filled.
  */
 export function drawRegion(model: Model, r: RenderContext, region: Region, fill = "2e",
-                           colour = REGION_GREEN): number[][][] | null {
+                           colour = REGION_GREEN, skip: ReadonlySet<number> = new Set()): number[][][] | null {
+  return drawLoops(model, r, region.loops, regionOf(region.loops, region.index).filter((i) => !skip.has(i)), fill, colour);
+}
+
+/**
+ * `drawRegion` for loops chosen one by one — `indices` into `loops`, the
+ * outline first: a feature's region as its record says (the edit dialog),
+ * where containment is not membership.
+ */
+export function drawLoops(model: Model, r: RenderContext, loops: Loop[], indices: readonly number[], fill = "2e",
+                          colour = REGION_GREEN): number[][][] | null {
   let outlines: number[][][];
   try {
-    outlines = loopOutlines(model, regionOf(region.loops, region.index).map((i) => region.loops[i].members), r.scale);
+    outlines = loopOutlines(model, indices.map((i) => loops[i].members), r.scale);
   } catch {
     return null;
   }

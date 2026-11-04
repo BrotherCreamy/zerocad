@@ -16,7 +16,7 @@ import { readFile } from "node:fs/promises";
 import { ensureKernelLoaded } from "../src/kernel/problem.ts";
 import { Model } from "../src/model.ts";
 import { pointOnLine } from "../src/relations/geometry.ts";
-import { construction, del, extrude, fillet, regen } from "../src/operations.ts";
+import { construction, del, extrude, fillet, hole, regen } from "../src/operations.ts";
 import { addTo, group, removeFrom } from "../src/groups.ts";
 import { open, save } from "../src/persist.ts";
 import { findLoops } from "../src/loops.ts";
@@ -227,17 +227,41 @@ test("a construction outline is no loop at all; in 3D on a tilted plane as in 2D
 
 // --- features ----------------------------------------------------------------------
 
-test("a feature's profile member is refused by name, before anything changes", async () => {
+test("a feature's outline member is refused by name, before anything changes", async () => {
   const { m, lines, c } = await solidSketch();
   const e = extrude(m, lines[0], 20);
   assert.equal(m.featureOf(e).loops.length, 2, "the ring is a hole");
   const n = m.journal.length;
-  assert.throws(() => construction(m, lines[1]), new RegExp(`"${lines[1]}" is part of ${e}'s profile — a solid's profile cannot stop being a boundary`));
-  assert.throws(() => construction(m, c), new RegExp(`is part of ${e}'s profile`), "a hole's member too");
+  assert.throws(() => construction(m, lines[1]), new RegExp(`"${lines[1]}" is part of ${e}'s outline — a solid's outline cannot stop being a boundary`));
   group(m, lines[2], c);
-  assert.throws(() => construction(m, "g1"), /is part of e1's profile/);
+  assert.throws(() => construction(m, "g1"), /is part of e1's outline/, "a group with an outline member in it, hole and all");
   assert.equal(m.journal.length, n + 1, "only the group went in");
   assert.ok([...lines, c].every((x) => !m.isConstruction(x)), "and nothing was flagged");
+  assert.equal(m.featureOf(e).loops.length, 2, "the hole is still there");
+});
+
+// The decision (docs/plans/explicit-regions.md): a flagged circle bounds
+// nothing, so the hole's loop has gone — the same as deleting the circle,
+// which fills the hole. Refusing would have kept the flag from ever reaching a
+// recorded hole; regenerating is what the construction spec asked for.
+test("a hole's member made construction fills the hole: journalled as the unhole it is, then the flag — one call, one undo step, the file agrees", async () => {
+  const { m, lines, c } = await solidSketch();
+  const e = extrude(m, lines[0], 20);
+  const twin = m.featureOf(e).twins[1][0];
+  const n = m.journal.length;
+  assert.deepEqual(construction(m, c), [c]);
+  assert.equal(m.isConstruction(c), true);
+  assert.deepEqual(m.featureOf(e).loops, [lines], "filled: the outline alone");
+  assert.ok(!m.entities.has(twin), "the hole's twin went with it");
+  assert.deepEqual(m.journal.slice(n).map((j) => j.op), ["unhole", "construction"]);
+  assert.deepEqual(m.journal[n].args, [e, c, [[e, [lines]]]]);
+  const reopened = open(save(m));
+  assert.deepEqual(reopened.featureOf(e).loops, [lines]);
+  assert.equal(reopened.isConstruction(c), true);
+  assert.equal(save(reopened), save(m), "byte for byte");
+  // And back: clearing the flag adds no hole (hole() does — see below).
+  construction(m, c, false);
+  assert.deepEqual(m.featureOf(e).loops, [lines]);
 });
 
 test("extrude refuses a construction member by name, typed or with its loops given", async () => {
@@ -250,15 +274,21 @@ test("extrude refuses a construction member by name, typed or with its loops giv
     "a profile handed over whole is told what findLoops would leave out");
 });
 
-test("extruded over a construction circle there is no hole; cleared, regen brings the hole", async () => {
+// The owner: "I don't think coplanarity should be used as an automatic basis
+// for deciding which entities to include in a region." This was "cleared,
+// regen brings the hole" — the circle joined the region because it was inside
+// it. Inverted: clearing the flag joins nothing, nor does regen; hole() does.
+test("extruded over a construction circle there is no hole; cleared, neither the flag nor regen adds one — hole() does", async () => {
   const { m, lines, c } = await solidSketch();
   construction(m, c);
   const e = extrude(m, lines[0], 20);
   assert.equal(m.featureOf(e).loops.length, 1, "no hole");
   construction(m, c, false);
-  assert.equal(m.featureOf(e).loops.length, 1, "clearing it changes no solid by itself (until features follow their regions)");
+  assert.equal(m.featureOf(e).loops.length, 1, "clearing it changes no solid");
   regen(m, e);
-  assert.equal(m.featureOf(e).loops.length, 2, "regen finds the hole");
+  assert.equal(m.featureOf(e).loops.length, 1, "nor does regen: the circle is inside, and that is not membership");
+  hole(m, e, c);
+  assert.deepEqual(m.featureOf(e).loops, [lines, [c]], "said to be a hole, it is one");
   const reopened = open(save(m));
   assert.equal(reopened.featureOf(e).loops.length, 2, "and the file agrees");
 });

@@ -53,8 +53,9 @@ import { cross3, dot3, sub3 } from "./vec3.ts";
  * already transformed to CSS pixels. What draws solids where there is no
  * WebGL.
  */
-export function paintFaces(g: CanvasRenderingContext2D, model: Model, view: View): void {
-  const faces = facesToDraw(model, view);
+export function paintFaces(g: CanvasRenderingContext2D, model: Model, view: View,
+                           skip: ReadonlySet<string> = new Set()): void {
+  const faces = facesToDraw(model, view, skip);
   if (!faces.length) return;
   g.save();
   g.lineJoin = "round";
@@ -91,9 +92,10 @@ export interface FaceLayer {
   /**
    * Every visible face of every solid, through `view`, onto a canvas whose CSS
    * box is `width` × `height` (its backing store is whatever size the host
-   * gave it; the projection maps onto all of it).
+   * gave it; the projection maps onto all of it). `skip`: features left
+   * undrawn (see `visibleFaces`).
    */
-  draw(model: Model, view: View, width: number, height: number): void;
+  draw(model: Model, view: View, width: number, height: number, skip?: ReadonlySet<string>): void;
   /** No faces at all: what a wireframe view (`view("wire")`) shows under the drawing. */
   clear(): void;
 }
@@ -213,11 +215,11 @@ export function createFaceLayer(canvas: HTMLCanvasElement): FaceLayer | null {
       if (gl.isContextLost()) return;
       clearAll();
     },
-    draw(model, view, width, height) {
+    draw(model, view, width, height, skip) {
       if (gl.isContextLost() || !program) return;
       clearAll();
 
-      const faces = visibleFaces(model, view);
+      const faces = visibleFaces(model, view, skip);
       if (!faces.length) return;
 
       // The depth range is the faces' own, each frame, with a margin so the

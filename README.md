@@ -122,6 +122,7 @@ src/tools/revolve.ts      click inside regions, then on an axis, ✓; they are r
 src/tools/feature.ts      pick → preview → confirm, shared by the feature tools
 src/tools/selection.ts    the canvas's selection (names and regions), and a feature tool's picked regions
 src/tools/sketch.ts       click inside a face; plane(a, b, c) on its own points is typed
+src/tools/edit.ts         Edit e1: the feature dialog on a feature that exists — holes toggled, the depth changed
 src/tools/region.ts       the click-inside tools' shared region preview
 src/featurepreview.ts     a feature's commit, run on a throwaway copy: its preview
 src/main.ts              browser entry point (canvas render loop + the REPL)
@@ -156,6 +157,17 @@ adds), and arming extrude, revolve or sketch starts from that selection. What
 ✓ builds is typed into the command line — `extrude("l1", 25)`, one line a
 region — so the log shows it, and the typed commands still build at once.
 
+**A solid's region is its outline and the holes you said.** The click (or
+`extrude("l1", 20)`) proposes the loop with every loop inside it as holes; in
+the dialog a click on one of those holes takes it out of the proposal, and the
+preview fills it. After that, nothing joins a region by being drawn inside it:
+a circle drawn in an extruded outline is no hole until `hole("e1", "c1")` (or
+its right-click menu's *Add as hole to e1*) cuts it, and `regen` never adds
+one. `unhole("e1", "c1")` (*Remove hole from e1*) fills it; deleting the
+circle, or making it construction, does too, and the solid stays. *Edit e1*
+on a solid's face opens the dialog on it: click loops inside the outline to
+toggle them, change the depth, ✓ — one undo step.
+
 ```js
 a = pt(0, 0); b = pt(80, 0)        // entities; each returns its name
 setDefaultFrame(frame())           // something to be level with, and fixed to
@@ -170,6 +182,7 @@ zoom(1.5); pan(0, -20)             // the viewport is just more commands
 ls()                               // what's in the model
 loops()                            // its closed loops — the profiles an extrude or a revolve will take
 extrude("l1", 20)                  // a solid of the loop l1 is in: e1, its depth a dimension
+hole("e1", "c1")                   // the loop c1 is in, cut through e1; unhole("e1", "c1") fills it
 revolve("l5", yaxis(), Math.PI)    // another, turned half way about the default frame's +y
 ```
 

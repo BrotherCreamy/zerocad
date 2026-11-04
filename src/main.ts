@@ -52,6 +52,7 @@ import "./tools/fillet.ts";
 import "./tools/extrude.ts";
 import "./tools/revolve.ts";
 import "./tools/sketch.ts";
+import "./tools/edit.ts";
 
 const statusEl = document.getElementById("status")!;
 const stepNoteEl = document.getElementById("stepnote")!;
@@ -268,11 +269,14 @@ async function main() {
     // the viewer asked for a wireframe. Faces are display only: they never
     // pick or snap.
     const faced = drawsFaces(viewMode);
+    // A feature an armed tool draws itself, as it will be (the edit dialog's
+    // preview), is left out here, and hides nothing behind it while it is.
+    const replaced = new Set(engine.active?.replaces?.() ?? []);
     if (faceLayer) {
-      if (faced) faceLayer.draw(model, view, r.width, r.height);
+      if (faced) faceLayer.draw(model, view, r.width, r.height, replaced);
       else faceLayer.clear();
     } else if (faced) {
-      paintFaces(g, model, view);
+      paintFaces(g, model, view, replaced);
     }
 
     // What of the drawing is behind a face — asked of the same faces on the
@@ -283,7 +287,7 @@ async function main() {
     // hand. In the hidden mode it is drawn, in a dimmed ink, and everything
     // stays aimable. No solid (or no faces), no question: a plain sketch draws
     // exactly as it always has, at no cost.
-    const faces = faced && model.features.size ? visibleFaces(model, view) : [];
+    const faces = faced && model.features.size ? visibleFaces(model, view, replaced) : [];
     occluded = faces.length ? occlusion(faces, view) : null;
     hides = occluded && opaque(viewMode) ? occluded : null;
     engine.occlusion = hides;
@@ -986,7 +990,7 @@ async function main() {
     }
     if (armed) {
       const why = toolUnavailable(model, armed.name);
-      if (why === null) engine.arm(armed.name, armed.options);
+      if (why === null) engine.arm(armed.name, armed.options, armed.target);
       else log(`${armed.name} disarmed: ${why}`, "out");
     }
     render();
@@ -1248,7 +1252,7 @@ async function main() {
         const r = cv.getBoundingClientRect();
         return [r.width, r.height];
       },
-      arm: (name: string, options?: Record<string, unknown>) => engine.arm(name, options),
+      arm: (name: string, options?: Record<string, unknown>, target?: string) => engine.arm(name, options, target),
       pick: () => engine.hover?.name ?? null,
       // The canvas's selection, for `sel()` and `select(...)`: UI state, so
       // typed through `submit` it brackets an action that records nothing.

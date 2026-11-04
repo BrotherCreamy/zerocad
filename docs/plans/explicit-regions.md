@@ -1,6 +1,38 @@
 # Plan: a feature's region is explicit — an outline and the holes you said
 
-**Status: queued** (2026-11-04). The owner, on how a later hole joins an
+**Status: built** (2026-11-04) — `featureRegion`, `refoundProfile`, `hole`,
+`unhole`, `holeLoop`/`holeIndex`/`holeNaming`/`unholeNaming`, `holesGoing`
+(`del`'s and `construction`'s), `within`, `depthBelow`, `profileOfLoops`,
+`loopLabel` in `src/operations.ts`; `insideLoop` in `src/loops.ts`;
+`hole`/`unhole`/`edit` and `regen`'s notes in `src/replenv.ts`; `hole`/`unhole`
+in `src/persist.ts`'s table (no format bump); *Add as hole to e1*, *Remove
+hole from e1*, *Edit e1* in `src/menu.ts`; `src/tools/edit.ts` (new);
+`RegionSelection.toggleHole`/`without` and `leftOut` in
+`src/tools/selection.ts`, used by the extrude and revolve tools;
+`ToolContext.target`/`planeAt`, `Tool.replaces`, `defineTool(…, { listed:
+false })` in `src/tools/tool.ts`; `engine.arm`'s target; a `skip` set through
+`visibleFaces`/`facesToDraw`/`paintFaces`/the face layer; tests
+`test/explicitregions.test.ts`, `test/e2e/explicitregions.e2e.ts`, the fixture
+`test/fixtures/pre-explicit-regions.neocad.json`. Deviations, each also in
+TODO.md's Done entry: ⚠ the journal's list is `regen`'s shape, `hole("e1",
+"c1", [["e1", loops], …])`; ⚠ `hole`/`unhole` regenerate as `regen` does, so a
+gone hole is filled on the way; ⚠ `unhole` takes the recorded islands inside
+the hole too; ⚠ `del` journals the `unhole` it implies, then its primitives;
+⚠ a hole's member made construction fills the hole (the decision, in the
+register, vetoable), an outline member is still refused; ⚠ `edit` journals
+nothing, like `arm`, so it is not in the replay table; ⚠ two unlisted dialogs,
+`edit extrude` and `edit revolve`, with the feature as the tool's target; ⚠ the
+edit dialog's second click is a click on the region itself, its clicks are
+read on the sketch plane, and ✓ with nothing changed closes it; ⚠ the solid
+steps aside for its edit preview; ⚠ revolve's creating dialog toggles holes
+too; ⚠ "inside the outline" is asked of the geometry, not only the containment
+tree (found by the older-file test). The rule chosen for a click inside a
+hole is in `extrude.ts`'s top comment and `help()`. Nothing this spec said of
+the code was wrong: the `del` cascade it asked to check took the feature's
+record when a hole's circle was deleted — the solid lost its faces — and now
+fills the hole.
+
+*Queued text, as written* (2026-11-04). The owner, on how a later hole joins an
 extrude without a timeline: *"there should be some kind of relationship
 between the loops > region > extrude"*, and then *"I don't think coplanarity
 should be used as an automatic basis for deciding which entities to include in

@@ -25,6 +25,24 @@
 // the operation, which journals the same entry and the log reports as
 // `e1  extrude of …`.
 //
+// **A click proposes the loops inside; a click on one of them takes it out.**
+// A region's membership is what the user confirmed (docs/plans/explicit-
+// regions.md; the owner: *"I don't think coplanarity should be used as an
+// automatic basis for deciding which entities to include in a region"*, and on
+// the proposal, *"do what you think is best"*). So the click between the
+// holes and the outline proposes the outline with every loop inside it, as it
+// always did — that is the proposal, and the preview shows it — and the
+// record keeps exactly what ✓ built: nothing drawn inside later joins it. Once
+// a region is picked, **a click on one of its holes** (a loop an odd number of
+// loops down, so empty by even-odd), **or anywhere inside a hole already taken
+// out, toggles that hole out of the proposal and back in**; the preview fills
+// it, and ✓ types the loops outright — `extrude("l1", 10, "f1", [[…]])` —
+// since the short form would take them all. **A click on an island that is
+// solid** (an even number of loops down) **is still a region of its own**, a
+// second solid, as it always was. Before anything is picked a click inside a
+// hole picks the hole's own region, as ever. Later, `hole`/`unhole` and the
+// edit dialog (edit.ts) change what a feature's region holds.
+//
 // **A region no frame orients gets its plane first, typed.** An extrude runs
 // along a frame's +z, and a rectangle drawn in a fresh model has none — the
 // owner's first run, refused eight times. A frame of three of the loop's own
@@ -39,15 +57,31 @@
 
 import { defineTool, type FeatureStep, type PointerInfo, type RegionHit, type RenderContext } from "./tool.ts";
 import type { OptionSpecs } from "./options.ts";
-import { DEFAULT_DEPTH, extrude, extrudeProfile, profileOf, regionNaming } from "../operations.ts";
-import { drawRegion, lightRegions, missedRegion, regionKey, type Region } from "./region.ts";
+import { DEFAULT_DEPTH, extrude, extrudeProfile, profileOf, profileOfLoops, regionNaming, regionOf } from "../operations.ts";
+import { memberName } from "../model.ts";
+import { drawRegion, lightRegions, missedRegion, outlineLoops, regionKey, type Region } from "./region.ts";
 import { FeatureTool, callText, foundRegion, planeStep } from "./feature.ts";
-import { RegionSelection } from "./selection.ts";
+import { RegionSelection, leftOut } from "./selection.ts";
 
-/** The steps that extrude `region` `depth` deep: its plane if it needs one, then the shortest typed call that names it. */
-export function extrudeSteps(region: RegionHit, depth: number, typed: boolean): FeatureStep[] {
+/**
+ * The steps that extrude `region` `depth` deep: its plane if it needs one, then
+ * the shortest typed call that names it — or, with holes clicked out of the
+ * proposal (`without`, points inside them), the call that names its loops
+ * outright, `extrude("l1", 10, "f1", [[…], […]])`, which takes exactly those.
+ */
+export function extrudeSteps(region: RegionHit, depth: number, typed: boolean, without: readonly number[][] = []): FeatureStep[] {
   return [planeStep(region, typed), (m): ReturnType<FeatureStep> => {
     const r = foundRegion(m, region);
+    const out = leftOut(m, r, without);
+    if (out.size) {
+      const p = profileOfLoops(m, r.loops, regionOf(r.loops, r.index).filter((i) => !out.has(i)));
+      if (p.crossings?.size) return { call: () => { extrudeProfile(m, p, depth); } };
+      const member = memberName(p.loops[0][0]);
+      return {
+        text: callText("extrude", [member, depth, p.frame, p.loops]),
+        direct: () => extrude(m, member, depth, p.frame, p.loops),
+      };
+    }
     const n = regionNaming(m, r.loops, r.index);
     if (!n) return { call: () => { extrudeProfile(m, profileOf(m, r.loops, r.index), depth); } };
     const args: unknown[] = [n.member, depth];
@@ -86,7 +120,7 @@ export class ExtrudeTool extends FeatureTool {
     if (!this.picks.size) return null;
     const depth = this.depthOf(values);
     const typed = !!this.ctx.perform;
-    return this.picks.regions.flatMap((r) => extrudeSteps(r, depth, typed));
+    return this.picks.regions.flatMap((r, i) => extrudeSteps(r, depth, typed, this.picks.without(i)));
   }
 
   protected picksKey(): string {
@@ -115,6 +149,12 @@ export class ExtrudeTool extends FeatureTool {
       this.guide(missedRegion(this.ctx.model));
       return;
     }
+    // A hole of a picked region toggles out of its proposal (and back) before
+    // it can be a region of its own — see the top of this file.
+    if (this.picks.toggleHole(this.ctx.model, hit) !== null) {
+      this.ctx.requestRender();
+      return;
+    }
     if (this.picks.toggle(this.ctx.model, hit) === "again") {
       this.confirm();
       return;
@@ -130,7 +170,12 @@ export class ExtrudeTool extends FeatureTool {
   render(r: RenderContext): void {
     const model = this.ctx.model;
     lightRegions(model, r, this.under);
-    for (const picked of this.picks.refresh(model)) drawRegion(model, r, picked, "40");
+    this.picks.refresh(model).forEach((picked, i) => {
+      const out = leftOut(model, picked, this.picks.without(i));
+      drawRegion(model, r, picked, "40", undefined, out);
+      // A hole clicked out stays outlined, so it can be clicked back in.
+      outlineLoops(model, r, picked.loops, [...out]);
+    });
     if (this.under) drawRegion(model, r, this.under);
     this.renderPreview(r);
   }

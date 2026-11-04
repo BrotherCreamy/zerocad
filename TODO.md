@@ -24,6 +24,25 @@ otherwise.
 
 ## Decisions made so far — veto here if any are wrong
 
+- **A region's membership is its outline plus the loops confirmed as holes,
+  never re-inferred from coplanarity; click-to-pick proposes the loops inside**
+  (2026-11-04; **vetoable**). The owner, verbatim: *"there should be some kind
+  of relationship between the loops > region > extrude"*, then *"I don't think
+  coplanarity should be used as an automatic basis for deciding which entities
+  to include in a region"*; on the proposal, *"do what you think is best"*.
+  As built: a feature's record is the membership; `regen` and a fillet re-find
+  each recorded hole by its own members and add none; `hole("e1", "c1")` /
+  `unhole("e1", "c1")` (the menu's *Add as hole to e1* / *Remove hole from
+  e1*, and the *Edit e1* dialog) are the only ways in and out; a hole whose
+  loop goes — deleted, or a member made construction — is filled and the
+  solid stays. The creating click proposes every loop inside, and a click on
+  a proposed hole takes it out. *Rejected:* live binding — the region follows
+  whatever is inside the outline (CONVERSATION_LOG). Spec:
+  [`docs/plans/explicit-regions.md`](docs/plans/explicit-regions.md), built.
+  **Also decided here, vetoable:** flagging a recorded hole's member as
+  construction **fills that hole** (journalled as the `unhole` it is), where
+  construction.md had refused it — the loop has gone either way, and `del`
+  of the circle does the same.
 - **The finger mapping** (2026-11-04, the owner: *"it should work on a
   multi-touch device. Specifically I have an iPhone."*) — veto any row. A tap
   is a click; one finger drags what it lands on (a tool's shape, a point, an
@@ -1792,15 +1811,47 @@ extended the way `defineTool` extends the tool registry would close it.
 
 ## Smaller things
 
+- [ ] **Found while building `explicit-regions.md`** (each deliberate,
+      documented and, where it can be, tested):
+      - **"Inside the outline" is geometric, not only the containment tree**
+        (`within` in operations.ts, `insideLoop` in loops.ts). The tree keeps
+        a loop's smallest container, so in the fixture a revolve's end face
+        overlapping the plate was a recorded hole's parent and the hole read
+        as outside its own outline. Found by the older-file test, fixed.
+      - **An island whose hole's loop has gone becomes a hole by even-odd**
+        when `regen` drops the hole (its own loop still kept). `unhole`, `del`
+        and a construction flag drop the islands inside a hole with it; a
+        regeneration cannot tell what was inside a loop that is no longer
+        there. `unhole` the island.
+      - **A tie** — two loops inside the outline keeping as much of a recorded
+        hole (a line drawn across a hole circle) — refuses the regeneration,
+        as the outline's tie does. `unhole` and `hole` again.
+      - **A fillet's regeneration fills a gone hole silently**: the note
+        (`e1: hole c1 is gone, filled`) is printed by `regen`, `hole` and
+        `unhole`; fillet's line says nothing of it.
+      - **Deleting a hole's twin or wall** (something the feature made, on
+        the lid) still takes the record, as deleting anything a feature made
+        always has; deleting the hole's own sketch circle or corner fills it.
+      - **The edit dialog's value is remembered** like any tool option, under
+        `edit extrude` / `edit revolve` — harmless, since `edit("e1")` always
+        arms with the feature's own value.
+      - **Hovering a picked region's hole in the creating dialog outlines the
+        hole's own region**, as if a click would pick it; the click toggles it.
+      - **The creating dialog still lights loops under a solid's lid** as
+        candidates (`regionAt` does not consult occlusion — construction.md's
+        note).
+
 - [ ] **Found while building `construction.md`** (each deliberate, documented
       and, where it can be, tested):
-      - **A profile member cannot be made construction** — refused by name,
-        "for now", per the spec. Once features follow their regions
-        (region binding), flagging one should regenerate the feature without
-        it instead.
-      - **Clearing the flag regenerates nothing by itself**: a circle made
-        real inside an extruded outline is a hole only after `regen("e1")`
-        (tested). Same cause, same future fix.
+      - ~~**A profile member cannot be made construction**~~ — **revisited
+        by explicit-regions (2026-11-04):** a *hole's* member made
+        construction fills the hole (the loop has gone, as a deletion does);
+        an *outline* member is still refused, because the outline's going is
+        a deletion. Tested.
+      - ~~**Clearing the flag regenerates nothing by itself**~~ — **and now
+        it never will**: under explicit membership a circle made real inside
+        an extruded outline joins nothing, `regen` included; `hole("e1",
+        "c1")` (or *Add as hole to e1*) adds it. Tested, unit and e2e.
       - **`construction("e1")` flags the twins and walls the feature made
         *then*.** A later regeneration keeps the twins whose vertex survives
         (flag and all) and makes any new one real.
@@ -2147,6 +2198,64 @@ extended the way `defineTool` extends the tool registry would close it.
       the resolver's flush arithmetic assumes does not happen.
 
 ## Done
+
+- [x] **A feature's region is explicit — an outline and the holes you said**
+      (2026-11-04). The owner: *"there should be some kind of relationship
+      between the loops > region > extrude"*; *"I don't think coplanarity
+      should be used as an automatic basis for deciding which entities to
+      include in a region"*. Spec:
+      [`docs/plans/explicit-regions.md`](docs/plans/explicit-regions.md),
+      marked built. `featureRegion`, `refoundProfile`, `hole`, `unhole`,
+      `holesGoing` (del and construction), `within`, `profileOfLoops`,
+      `depthBelow`, `loopLabel` in `operations.ts`; `insideLoop` in
+      `loops.ts`; `hole`/`unhole`/`edit` and the regen notes in `replenv.ts`;
+      `hole`/`unhole` in `persist.ts`'s table (no format bump); the menu's
+      *Add as hole* / *Remove hole* / *Edit e1*; `src/tools/edit.ts` (new);
+      `RegionSelection.toggleHole`/`without`, `leftOut`; the extrude and
+      revolve tools' toggle; `ToolContext.target`/`planeAt`,
+      `Tool.replaces`, `defineTool(…, { listed: false })`, `engine.arm`'s
+      target; the faces' `skip`. 1018 unit tests (1000 before; `test/explicitregions.test.ts` 17), 418 e2e (414 before; `explicitregions.e2e.ts` 4). **Deviations from the spec:**
+      - ⚠ **The journal's list is `regen`'s shape**: `hole("e1", "c1",
+        [["e1", loops], …])` — feature and loops pairs — not the bare loops
+        list the spec's example shows, so a chained regeneration rides in the
+        same entry exactly as it does in `regen`'s.
+      - ⚠ **`hole` and `unhole` regenerate as `regen` does** (the outline
+        re-found, the holes by their members) and then add or take the one
+        loop, so a recorded hole since gone is filled on the way and said.
+      - ⚠ **`unhole` takes the recorded islands inside the hole too** — with
+        the hole filled, even-odd would have made them holes.
+      - ⚠ **`del` of a hole's member is journalled as `unhole(…)` then the
+        deletion's primitives** (the deletion is still its expansion); a
+        hole's corner point, which takes its wall, fills it too.
+      - ⚠ **A hole's member made construction fills the hole** — the decision
+        the brief left open, in the register (vetoable). The outline's
+        refusal now says *outline*, not *profile*.
+      - ⚠ **`edit` is a command and not an operation**, like `arm`: it
+        journals nothing, so it is in `replenv.ts` and not in the replay
+        table; what it types (`hole`, `unhole`, `set`) is in both.
+      - ⚠ **Two dialogs, `edit extrude` and `edit revolve`**, unlisted (off the
+        toolbar, out of `tools()`), because a tool's options are declared per
+        class and the panel's value is a depth for one, an angle for the
+        other. The feature is the tool's **target** (`engine.arm(name,
+        options, target)`, kept across an undo's re-arm), not an option:
+        options are numbers and flags a viewer remembers.
+      - ⚠ **In the edit dialog the "second click" is a click on the region
+        itself** (outside every inner loop); a click on an inner loop toggles
+        it. ✓ with nothing changed closes the dialog. The clicks are read on
+        the feature's sketch plane (`ToolContext.planeAt`), under the lid —
+        `regionAt` answers with the lid in front.
+      - ⚠ **The solid steps aside for its edit preview** (`Tool.replaces`, a
+        `skip` set through `visibleFaces`, `facesToDraw`, `paintFaces` and the
+        face layer): drawn under the preview, the solid as it is hid a hole
+        being cut.
+      - ⚠ **Revolve's creating dialog toggles holes too**, by the same
+        selection.
+      - ⚠ **The e2e opens the circle's menu in `view("hidden")`**: under the
+        opaque lid it cannot be picked shaded (construction.e2e.ts does the
+        same).
+      - Spec text corrected: none of its claims about the code were wrong;
+        the `del` cascade it asked to check took the whole record (the solid
+        lost its faces), as it suspected, and now fills the hole.
 
 - [x] **Construction geometry — a per-entity flag** — the owner: *"construction
       geometry should be a per entity flag. at least based on the name

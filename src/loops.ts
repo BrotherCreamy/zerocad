@@ -1438,3 +1438,16 @@ export function loopAround(model: Model, world: number[], loops: Loop[] = findLo
   const left = hits.filter((h) => !holdsAHit(h)).sort((a, b) => loops[a].area - loops[b].area || a - b);
   return left.length ? loops[left[0]] : null;
 }
+
+/**
+ * Whether a world point lies inside `loop` — in its plane, to `loopAround`'s
+ * tolerance, and within its outline by winding. `loopAround`'s test for one
+ * loop, which the containment tree cannot always answer: a loop inside an
+ * outline that a third loop overlaps has that third loop, not the outline, as
+ * its smallest container, or none at all (operations.ts's `featureRegion`).
+ */
+export function insideLoop(model: Model, loop: Loop, world: number[]): boolean {
+  const off = Math.abs(dot3(sub3(lift3(world), loop.plane.origin), loop.plane.normal));
+  if (off > 1e-6 * Math.max(1, Math.sqrt(Math.abs(loop.area)))) return false;
+  return inside(outlineOf(model, loop), toPlane(loop.plane, world));
+}

@@ -17,7 +17,7 @@ import { FULL_TURN, axisReader, isFullTurn, revolution, turnPoint } from "./rela
 import { arcPoint, portionAngles, sweepsAs } from "./arcgeom.ts";
 import { curveFrame, framePlaneAxes } from "./curveplane.ts";
 import {
-  describeLoop, findLoops, heldOnCurves, isVirtual, joinClasses, memberLabel, parallel, type Held, type Loop,
+  describeLoop, findLoops, heldOnCurves, insideLoop, isVirtual, joinClasses, memberLabel, parallel, type Held, type Loop,
 } from "./loops.ts";
 import { cross3, dot3, lift3, sub3 } from "./vec3.ts";
 import { ungroup } from "./groups.ts";
@@ -473,14 +473,26 @@ const REVOLVE: ProfileWords = {
  */
 export function profileOf(model: Model, all: Loop[], index: number, frame?: string | null,
                           words: ProfileWords = EXTRUDE): Profile {
-  const f = frame ?? sketchFrameOf(model, all[index], words);
-  return { frame: f, ...regionMembers(model, all, index) };
+  return profileOfLoops(model, all, regionOf(all, index), frame, words);
 }
 
-/** `profileOf` without the frame: the region's members, portions resolved, and where its crossings are. */
-function regionMembers(model: Model, all: Loop[], index: number): Pick<Profile, "loops" | "crossings"> {
+/**
+ * `profileOf` for loops chosen one by one — `indices` into `all`, the outline
+ * first — rather than for a loop and everything inside it: what a region is
+ * once its membership is the record's and not containment's (`featureRegion`),
+ * and what the creating dialog builds once a hole has been clicked out of the
+ * proposal. The frame is the outline's when none is named.
+ */
+export function profileOfLoops(model: Model, all: Loop[], indices: readonly number[], frame?: string | null,
+                               words: ProfileWords = EXTRUDE): Profile {
+  const f = frame ?? sketchFrameOf(model, all[indices[0]], words);
+  return { frame: f, ...regionMembers(model, all, indices) };
+}
+
+/** `profileOf` without the frame: the loops' members, portions resolved, and where their crossings are. */
+function regionMembers(model: Model, all: Loop[], indices: readonly number[]): Pick<Profile, "loops" | "crossings"> {
   const crossings = new Map<string, number[]>();
-  const loops = regionOf(all, index).map((i) => all[i].members.map((m): ProfileMember => {
+  const loops = indices.map((i) => all[i].members.map((m): ProfileMember => {
     if (m.span === null) return m.name;
     const [from, to] = m.reversed ? [m.to!, m.from!] : [m.from!, m.to!];
     [from, to].forEach((v, k) => {
@@ -526,6 +538,17 @@ export function regionOf(all: Loop[], index: number): number[] {
     queue.push(...all[i].children);
   }
   return [index, ...inner.sort((a, b) => a - b)];
+}
+
+/**
+ * How many loops down from `outer` the loop `inner` lies — 1 for a child, 2
+ * for a child's child — or 0 when it is not inside `outer` at all (itself
+ * included). Odd is a hole of `outer`'s region by even-odd, even an island.
+ */
+export function depthBelow(all: Loop[], inner: number, outer: number): number {
+  let d = 0;
+  for (let p: number | null = inner; p !== null; p = all[p].parent, d++) if (p === outer) return d;
+  return 0;
 }
 
 /** The frames to try, the default first and then in creation order — loops.ts's preference. */
@@ -1220,7 +1243,7 @@ export function checkRevolve(model: Model, profile: Profile, axis: string): void
 export function checkRevolveRegion(model: Model, all: Loop[], index: number, axis: string): void {
   const ax = axisReader(model, axis).read();
   if (ax.dir.every((c) => c === 0)) throw new Error(`the axis ${axis} has collapsed — it has no direction to turn about`);
-  checkRevolveIn(model, regionMembers(model, all, index), axis, all[index].plane.normal, "");
+  checkRevolveIn(model, regionMembers(model, all, regionOf(all, index)), axis, all[index].plane.normal, "");
 }
 
 /** The two geometric refusals, about a plane of normal `n`; `whose` names it in the message, if anything does. */
@@ -1447,7 +1470,7 @@ function regenerateGiven(model: Model, given: Regenerated[]): void {
  * `first`, when given, is the first feature's plan, already made — `regen`
  * makes it before anything changes, so its refusal is a refusal.
  */
-function regenerateFound(model: Model, start: string[], first: SweepPlan | null): Regenerated[] {
+function regenerateFound(model: Model, start: string[], first: SweepPlan | null, notes: string[] = []): Regenerated[] {
   const out: Regenerated[] = [];
   const queue = [...start];
   const seen = new Set<string>();
@@ -1461,7 +1484,7 @@ function regenerateFound(model: Model, start: string[], first: SweepPlan | null)
     if (first !== null && name === start[0]) plan = first;
     else {
       try {
-        plan = planRegen(model, f, refoundProfile(model, f));
+        plan = planRegen(model, f, refoundProfile(model, f, notes));
       } catch {
         continue; // left as it was — see `regenerateAfter`
       }
@@ -1474,21 +1497,36 @@ function regenerateFound(model: Model, start: string[], first: SweepPlan | null)
 }
 
 /**
- * A feature's profile **found again, the way the call found it**: the loop
- * that now contains its `member`, parallel to its sketch frame, and every loop
- * inside it — portions and crossings exactly as a fresh call resolves them
- * (`profileOf`). Refuses by name when there is no such loop: a feature whose
- * profile is gone is a deletion, not a regeneration. A member in several such
- * loops (a line across the region, an edge two regions share) takes the one
- * that keeps the most of the outline the feature was built on, and refuses a
- * tie. A revolve is asked its geometric questions again (`checkRevolve`): this
- * is a call, and reads positions as one.
+ * Where a feature's region is in the drawing as it stands — **its membership
+ * read off the record, never off containment.** The owner: *"I don't think
+ * coplanarity should be used as an automatic basis for deciding which entities
+ * to include in a region."* So:
+ *
+ * - `outline` is the loop that now contains the feature's `member`, parallel to
+ *   its sketch frame. A member in several such loops (a line across the region,
+ *   an edge two regions share) takes the one that keeps the most of the outline
+ *   the feature was built on, and a tie is refused. No such loop refuses by
+ *   name: a feature whose outline is gone is a deletion, not a regeneration.
+ * - `holes[k]` is where the record's inner loop `k + 1` is now: **the loop
+ *   inside that outline keeping the most of that hole's own recorded members**
+ *   — found by its joins, as the outline is — or null when no loop inside the
+ *   outline keeps any of them (its circle deleted, a line of it removed, moved
+ *   out). Each found loop answers for one recorded loop at most, in record
+ *   order; a tie is refused, as the outline's is.
+ *
+ * A loop inside the outline that the record does not name is in neither list:
+ * it is not part of the region, however it got there. `all` is `findLoops`'s
+ * answer, which a caller that has one passes so the indices agree.
  */
-function refoundProfile(model: Model, f: FeatureEntry): Profile {
-  const words = f.kind === "extrude" ? EXTRUDE : REVOLVE;
+export interface FeatureRegion {
+  all: Loop[];
+  outline: number;
+  holes: (number | null)[];
+}
+
+export function featureRegion(model: Model, f: FeatureEntry, all: Loop[] = findLoops(model)): FeatureRegion {
   const axes = framePlaneAxes(model, f.frame);
   if (!axes) throw new Error(`"${f.frame}" has collapsed — ${f.name}'s profile has no plane to be found in`);
-  const all = findLoops(model);
   const mine = all.map((_, i) => i)
     .filter((i) => parallel(all[i].plane.normal, axes.n) && all[i].members.some((m) => m.name === f.member));
   if (mine.length === 0) {
@@ -1508,8 +1546,72 @@ function refoundProfile(model: Model, f: FeatureEntry): Profile {
     }
     pick = best[0];
   }
-  const profile = profileOf(model, all, pick, f.frame, words);
+  const inner = all.map((_, i) => i).filter((i) => within(model, all, i, pick));
+  const claimed = new Set<number>();
+  const holes = f.loops.slice(1).map((rec): number | null => {
+    const names = new Set(rec.map(memberName));
+    const kept = (i: number) => all[i].members.filter((m) => names.has(m.name)).length;
+    const scored = inner.filter((i) => !claimed.has(i) && kept(i) > 0);
+    if (!scored.length) return null;
+    const most = Math.max(...scored.map(kept));
+    const best = scored.filter((i) => kept(i) === most);
+    if (best.length > 1) {
+      throw new Error(`${f.name}'s hole ${loopLabel(rec)} is in ${best.length} loops that keep as much of it — `
+        + `${best.map((i) => describeLoop(all[i], all)).join("; ")} — and ${f.name} cannot tell which is its hole now`);
+    }
+    claimed.add(best[0]);
+    return best[0];
+  });
+  return { all, outline: pick, holes };
+}
+
+/**
+ * Whether the loop at `inner` lies inside the loop at `outer` (and is not it):
+ * a descendant in the containment tree, or else every member's midpoint inside
+ * `outer`'s outline in its plane. The second, because the tree keeps only the
+ * smallest container — a circle in a plate that a revolve's end face overlaps
+ * has the end face for its parent, or nothing where their edges cross — and a
+ * hole is inside its outline whatever else is drawn on the plane.
+ */
+export function within(model: Model, all: Loop[], inner: number, outer: number): boolean {
+  if (inner === outer) return false;
+  if (depthBelow(all, inner, outer) > 0) return true;
+  if (!parallel(all[inner].plane.normal, all[outer].plane.normal)) return false;
+  return all[inner].members.every((m) =>
+    insideLoop(model, all[outer], pointAlong(model, m.name, m.span ? (m.span[0] + m.span[1]) / 2 : 0.5)));
+}
+
+/**
+ * A loop named for a sentence: its one member (`c1`), or its first and last
+ * as walked (`l1–l4`) — enough to find it on the drawing, short enough to
+ * read in a refusal.
+ */
+export function loopLabel(loop: readonly ProfileMember[]): string {
+  const names = loop.map(memberText);
+  if (names.length === 1) return names[0];
+  if (names.length === 2) return names.join(",");
+  return `${names[0]}–${names[names.length - 1]}`;
+}
+
+/**
+ * A feature's profile **found again**: its outline as the call found it, and
+ * each recorded hole by its own members — never every loop inside the outline
+ * (`featureRegion`). A recorded hole whose loop is gone is **dropped** — the
+ * hole is filled, which is what the loop's going means — and said in `notes`
+ * (`e1: hole c1 is gone, filled`), for the line the command prints. The
+ * outline's going is a refusal, as ever. A revolve is asked its geometric
+ * questions again (`checkRevolve`): this is a call, and reads positions as one.
+ */
+function refoundProfile(model: Model, f: FeatureEntry, notes: string[] = []): Profile {
+  const words = f.kind === "extrude" ? EXTRUDE : REVOLVE;
+  const r = featureRegion(model, f);
+  const kept = r.holes.filter((i): i is number => i !== null);
+  const profile = profileOfLoops(model, r.all, [r.outline, ...kept], f.frame, words);
   if (f.kind === "revolve") checkRevolve(model, profile, f.axis);
+  // Said only once the profile stands: a refusal after this would be the line, not these.
+  f.loops.slice(1).forEach((rec, k) => {
+    if (r.holes[k] === null) notes.push(`${f.name}: hole ${loopLabel(rec)} is gone, filled`);
+  });
   return profile;
 }
 
@@ -1841,14 +1943,19 @@ function rebuildFeature(model: Model, f: FeatureEntry, plan: SweepPlan): { loops
  *
  * `fillet` does this by itself, for every feature on a leg it rounds (see
  * `regenerateAfter`). This is the explicit door, for a profile restructured
- * any other way: a line drawn across a region after it was extruded, a hole
- * drawn inside it, an end re-pointed at the command line. Not on a solve, a
- * drag or a `set`: those move geometry and restructure nothing, and a
- * feature's faces are read off live geometry already. On an untouched feature
- * it changes nothing — the same twins, walls and names — and journals once.
+ * any other way: a line drawn across a region after it was extruded, an end
+ * re-pointed at the command line. Not on a solve, a drag or a `set`: those
+ * move geometry and restructure nothing, and a feature's faces are read off
+ * live geometry already. On an untouched feature it changes nothing — the same
+ * twins, walls and names — and journals once.
+ *
+ * **It adds no hole.** A circle drawn inside an extruded outline is not part
+ * of the region until `hole("e1", "c1")` says so (`featureRegion`); a recorded
+ * hole whose loop has gone is filled, and `notes` — the command line's, never
+ * the journal's — says so: `e1: hole c1 is gone, filled`.
  *
  * Refuses a name that is no feature, and a feature whose profile is gone (see
- * `refoundProfile`), before it changes anything. A feature built on this one
+ * `featureRegion`), before it changes anything. A feature built on this one
  * whose profile can no longer be found is left as it was, as `fillet` leaves
  * one.
  *
@@ -1857,24 +1964,269 @@ function rebuildFeature(model: Model, f: FeatureEntry, plan: SweepPlan): { loops
  * its profile — `extrude`'s rule, for `extrude`'s reason. A replay handed the
  * list walks those profiles by their joins and looks for nothing.
  */
-export function regen(model: Model, feature: string, regenerated?: unknown): string {
-  if (typeof feature !== "string" || !model.features.has(feature)) {
-    const kind = typeof feature !== "string" ? null
-      : model.entities.get(feature)?.kind ?? (model.relations.has(feature) ? "relation" : null);
-    const what = kind === null ? "is not a feature" : `is a ${kind}, not a feature`;
-    throw new Error(`${JSON.stringify(feature)} ${what} — regen takes a feature's name, as ls() lists them (e1, e2, …)`);
-  }
+export function regen(model: Model, feature: string, regenerated?: unknown, notes: string[] = []): string {
+  checkFeatureName(model, feature, "regen");
   if (regenerated != null) {
     const given = givenRegenerated(regenerated, "regen");
     return model.asOperation("regen", [feature, given], () => { regenerateGiven(model, given); return feature; });
   }
   const f = model.featureOf(feature);
-  const plan = planRegen(model, f, refoundProfile(model, f));
+  const plan = planRegen(model, f, refoundProfile(model, f, notes));
   let out: Regenerated[] = [];
   return model.asOperation("regen", () => [feature, out], () => {
-    out = regenerateFound(model, [feature], plan);
+    out = regenerateFound(model, [feature], plan, notes);
     return feature;
   });
+}
+
+/** A name that is a feature, or the refusal that says what it is instead. */
+function checkFeatureName(model: Model, feature: unknown, op: string): asserts feature is string {
+  if (typeof feature === "string" && model.features.has(feature)) return;
+  const kind = typeof feature !== "string" ? null
+    : model.entities.get(feature)?.kind ?? (model.relations.has(feature) ? "relation" : null);
+  const what = kind === null ? "is not a feature" : `is a ${kind}, not a feature`;
+  throw new Error(`${JSON.stringify(feature)} ${what} — ${op} takes a feature's name, as ls() lists them (e1, e2, …)`);
+}
+
+// --- a region's membership: hole and unhole -------------------------------------
+
+/**
+ * The loop of `all` that `hole(f, member)` would add — the loop `member` is in,
+ * parallel to `f`'s sketch frame, inside its outline, and not a hole of it
+ * already — or the refusal that says what would work. Asks nothing of the
+ * model but loops: the menu asks it of every feature to offer *Add as hole*.
+ */
+export function holeLoop(model: Model, f: FeatureEntry, member: string, r: FeatureRegion): number {
+  const e = typeof member === "string" ? model.entities.get(member) : undefined;
+  if (!e || (e.kind !== "line" && e.kind !== "arc" && e.kind !== "circle")) {
+    throw new Error(`${JSON.stringify(member)} is not a line, arc or circle — hole names a member of the loop to cut through ${f.name}`);
+  }
+  if (model.isConstruction(member)) throw new Error(constructionBoundsNothing(member, "hole"));
+  const { all, outline } = r;
+  const outlineText = loopLabel(f.loops[0]);
+  const withIt = all.map((_, i) => i).filter((i) => all[i].members.some((m) => m.name === member));
+  if (!withIt.length) {
+    throw new Error(`${member} is in no closed loop — loops() lists the loops there are. A loop's ends join only at a `
+      + "shared point or a coin (never by touching), and lie in one plane");
+  }
+  const n = framePlaneAxes(model, f.frame)!.n;
+  const level = withIt.filter((i) => parallel(all[i].plane.normal, n));
+  if (!level.length) {
+    throw new Error(`${member}'s loop is not parallel to ${f.name}'s sketch frame ${f.frame} — a hole lies in the plane `
+      + `of the outline it is cut through: draw it on ${f.frame}, or extrude it on its own`);
+  }
+  const others = level.filter((i) => i !== outline);
+  if (!others.length) throw new Error(`${member} is part of ${f.name}'s outline ${outlineText} — a hole is a loop inside it`);
+  const inside = others.filter((i) => within(model, all, i, outline));
+  if (!inside.length) {
+    throw new Error(`${member} is not inside ${f.name}'s outline ${outlineText} — move it in, or extrude it on its own`);
+  }
+  const fresh = inside.filter((i) => !r.holes.includes(i));
+  if (!fresh.length) throw new Error(`${member} is already a hole of ${f.name}`);
+  if (fresh.length > 1) {
+    throw new Error(`${member} is in ${fresh.length} loops inside ${f.name}'s outline — `
+      + `${fresh.map((i) => describeLoop(all[i], all)).join("; ")}. Name a member only one of them has`);
+  }
+  return fresh[0];
+}
+
+/**
+ * Which of `f`'s recorded inner loops `unhole(f, member)` would take out, as an
+ * index into `f.loops` (1 or more) — the hole whose loop `member` is in now,
+ * or whose record names it — or the refusal, which says which holes there are.
+ */
+export function holeIndex(model: Model, f: FeatureEntry, member: string, r: FeatureRegion): number {
+  for (let k = 1; k < f.loops.length; k++) {
+    const at = r.holes[k - 1];
+    if (at !== null && r.all[at].members.some((m) => m.name === member)) return k;
+  }
+  for (let k = 1; k < f.loops.length; k++) if (f.loops[k].some((m) => memberName(m) === member)) return k;
+  const holes = f.loops.slice(1).map(loopLabel);
+  throw new Error(`${JSON.stringify(member) ?? String(member)} is not a hole of ${f.name} — `
+    + (holes.length ? `its ${holes.length === 1 ? "hole is" : "holes are"} ${holes.join(", ")}` : `${f.name} has no holes`));
+}
+
+/**
+ * The shortest member to type `hole(f, member)` with for the loop at `index`:
+ * one whose loop `holeLoop` finds to be that very loop — a whole member if one
+ * will do, the loop's own first member otherwise. Null when no member names it
+ * alone (what the edit dialog then says rather than types).
+ */
+export function holeNaming(model: Model, f: FeatureEntry, r: FeatureRegion, index: number): string | null {
+  const names = [...new Set(r.all[index].members.map((m) => m.name))];
+  for (const n of names) {
+    try {
+      if (holeLoop(model, f, n, r) === index) return n;
+    } catch {
+      // not this one
+    }
+  }
+  return null;
+}
+
+/** `holeNaming` for `unhole`: a member that names the recorded hole `k` (an index into `f.loops`). */
+export function unholeNaming(model: Model, f: FeatureEntry, r: FeatureRegion, k: number): string | null {
+  const at = r.holes[k - 1];
+  const names = [...new Set([...(at === null ? [] : r.all[at].members.map((m) => m.name)), ...f.loops[k].map(memberName)])];
+  for (const n of names) {
+    try {
+      if (holeIndex(model, f, n, r) === k) return n;
+    } catch {
+      // not this one
+    }
+  }
+  return null;
+}
+
+/**
+ * **Cuts the loop `member` is in through the feature** — `hole("e1", "c1")` —
+ * adding it to the record, and regenerating: a twin and walls for it as the
+ * expansion makes them, everything else kept. Returns the feature's name.
+ *
+ * The record is the region's membership (`featureRegion`): its outline, then
+ * the loops the user confirmed — at the creating click, which proposes every
+ * loop inside, or here. Nothing else adds to it: not drawing a circle inside,
+ * not `regen`, not clearing a construction flag. A loop inside a hole is an
+ * island, and even-odd makes it solid, so `hole` on a circle inside a hole is
+ * how an island is put back. A revolve takes it the same way: turned, a hole
+ * is a tunnel round the axis.
+ *
+ * Refuses, saying what would work, a member that is no line, arc or circle,
+ * construction, in no closed loop, in a loop not parallel to the feature's
+ * sketch frame, part of the outline, not inside it ("move it in, or extrude it
+ * on its own"), or already a hole — before anything changes.
+ *
+ * An operation: it re-points a feature's structure. **Journalled as the call
+ * with what it rebuilt resolved**, as `regen` is — `hole("e1", "c1", [["e1",
+ * [[…], […]]]])` — and for `regen`'s reason: a replay handed the list walks
+ * the profiles by their joins and finds nothing. It regenerates as `regen`
+ * does, so a recorded hole since gone is filled on the way (`notes`).
+ */
+export function hole(model: Model, feature: string, member: string, regenerated?: unknown, notes: string[] = []): string {
+  return membership(model, "hole", feature, member, regenerated, notes);
+}
+
+/**
+ * **Fills a hole** — `unhole("e1", "c1")`: the recorded inner loop `member` is
+ * in (or that names it) taken out of the record, and every recorded loop inside
+ * it with it, since an island has no hole to be an island in once the hole is
+ * filled. Then a regeneration, as `hole`'s. Refuses a member that is no hole of
+ * the feature, naming the holes it has. Journalled as `hole` is.
+ */
+export function unhole(model: Model, feature: string, member: string, regenerated?: unknown, notes: string[] = []): string {
+  return membership(model, "unhole", feature, member, regenerated, notes);
+}
+
+function membership(model: Model, op: "hole" | "unhole", feature: string, member: string,
+                    regenerated: unknown, notes: string[]): string {
+  checkFeatureName(model, feature, op);
+  if (regenerated != null) {
+    const given = givenRegenerated(regenerated, op);
+    return model.asOperation(op, [feature, member, given], () => { regenerateGiven(model, given); return feature; });
+  }
+  const f = model.featureOf(feature);
+  const r = featureRegion(model, f);
+  const said: string[] = [];
+  let loops: number[];
+  if (op === "hole") {
+    const add = holeLoop(model, f, member, r);
+    loops = [r.outline, ...r.holes.filter((i): i is number => i !== null), add];
+  } else {
+    const k = holeIndex(model, f, member, r);
+    const at = r.holes[k - 1];
+    loops = [r.outline, ...r.holes.filter((i, j): i is number => i !== null && j !== k - 1
+      && (at === null || depthBelow(r.all, i, at) === 0))];
+  }
+  f.loops.slice(1).forEach((rec, k) => {
+    if (r.holes[k] === null) said.push(`${f.name}: hole ${loopLabel(rec)} is gone, filled`);
+  });
+  const profile = profileOfLoops(model, r.all, loops, f.frame, f.kind === "extrude" ? EXTRUDE : REVOLVE);
+  if (f.kind === "revolve") checkRevolve(model, profile, f.axis);
+  const plan = planRegen(model, f, profile);
+  let out: Regenerated[] = [];
+  const done = model.asOperation(op, () => [feature, member, out], () => {
+    out = regenerateFound(model, [feature], plan, said);
+    return feature;
+  });
+  notes.push(...said);
+  return done;
+}
+
+/**
+ * **A recorded hole's loop going away fills the hole**, whichever way it goes:
+ * its circle deleted (`del`), or one of its members made construction
+ * (`construction`), which is the same thing as far as regions go. Each feature
+ * that names one of `names` only in its holes — never its outline, never
+ * anything it made, never its frame — has those holes taken out of its record,
+ * every recorded loop inside them with them, and is rebuilt from the record
+ * that is left. A feature that names one elsewhere is left to the caller: the
+ * cascade takes its record, as deleting an outline member always has.
+ *
+ * The record's own loops are rebuilt, not loops found again: this is the
+ * hole's going, not a regeneration. Each feature's rebuild is an `unhole`
+ * entry in the journal — `unhole("e1", "c1", [["e1", loops]])`, the hole named
+ * by its first member — journalled before what the caller journals next, so a
+ * replay fills the hole and then deletes or flags as the call did. Planned in
+ * full first and only then run, so a caller that must refuse before it changes
+ * anything can. Returns, per feature, a function that runs it and answers the
+ * names its rebuild removed.
+ */
+function holesGoing(model: Model, names: ReadonlySet<string>, flagging: boolean): (() => string[])[] {
+  const loopNames = (l: ProfileMember[]) => l.flatMap((m) => (typeof m === "string" ? [m] : [m.name, m.from, m.to]));
+  const runs: (() => string[])[] = [];
+  for (const f of model.features.values()) {
+    const hit = f.names.filter((n) => names.has(n));
+    if (!hit.length) continue;
+    const holed = f.loops.map((_, i) => i).filter((i) => i > 0 && loopNames(f.loops[i]).some((n) => names.has(n)));
+    if (!holed.length) continue;
+    // What the holes' own expansion is — their twins, and the walls standing
+    // at their corners — goes with them anyway, so a deletion reaching it (a
+    // hole's corner takes its wall) is still only the hole going.
+    const corners = (l: ProfileMember[]) => l.flatMap((m) => {
+      const e = model.entities.get(memberName(m));
+      return e?.kind === "line" ? [...e.refs] : e?.kind === "arc" ? [e.start, e.end] : [];
+    });
+    const kept = f.loops.filter((_, i) => !holed.includes(i));
+    const keptCorners = new Set(kept.flatMap(corners));
+    const holeCorners = new Set(holed.flatMap((i) => corners(f.loops[i])).filter((p) => !keptCorners.has(p)));
+    const holeMade = new Set([
+      ...holed.flatMap((i) => f.twins[i] ?? []),
+      ...(f.kind === "extrude" ? f.walls.filter((w) => holeCorners.has(model.line(w).refs[0])) : []),
+    ]);
+    const holeNames = new Set([...holed.flatMap((i) => loopNames(f.loops[i])), ...holeMade]);
+    const elsewhere = new Set([
+      ...kept.flatMap(loopNames),
+      f.frame, ...(f.kind === "revolve" ? [referentOf(f.axis)!] : []),
+      // A flag never reaches what the feature made (construction refuses an
+      // owned twin of a profile no more than it does any curve); a deletion does.
+      ...(flagging ? [] : f.owns.filter((n) => !holeMade.has(n))),
+    ]);
+    if (hit.some((n) => elsewhere.has(n) || !holeNames.has(n))) continue;
+    // The loops inside a hole going go with it — read off the drawing while
+    // the hole is still in it. A region that cannot be read leaves them.
+    const drop = new Set(holed);
+    try {
+      const r = featureRegion(model, f);
+      for (let k = 1; k < f.loops.length; k++) {
+        const at = r.holes[k - 1];
+        if (at === null) continue;
+        if (holed.some((h) => r.holes[h - 1] !== null && depthBelow(r.all, at, r.holes[h - 1]!) > 0)) drop.add(k);
+      }
+    } catch {
+      // only the holes named
+    }
+    const left = f.loops.filter((_, i) => !drop.has(i));
+    const plan = planSweep(model, givenProfile(model, f.member, f.frame, left, f.kind === "extrude" ? EXTRUDE : REVOLVE));
+    const name = f.name;
+    const first = memberName(f.loops[holed[0]][0]);
+    runs.push(() => {
+      const had = [...model.featureOf(name).owns];
+      model.asOperation("unhole", () => [name, first, [[name, resolvedLoops(plan)]]],
+        () => rebuildFeature(model, model.featureOf(name), plan));
+      return had.filter((n) => !model.has(n));
+    });
+  }
+  return runs;
 }
 
 // --- construction geometry --------------------------------------------------
@@ -1904,10 +2256,17 @@ function takesConstruction(model: Model, name: string): boolean {
  * group's corners) are passed over — they bound nothing, so they have no flag
  * — and only a call that names no line, arc or circle at all is refused.
  *
- * **A feature's profile member is refused**, by name: the solid stands on that
- * boundary, and a boundary flagged construction under it would be a feature
- * whose profile no longer exists. (Once features follow their regions, this
- * becomes a regeneration; for now, refuse.) Clearing never meets that.
+ * **A feature's outline member is refused**, by name: the solid stands on that
+ * boundary, and an outline flagged construction under it would be a feature
+ * whose profile no longer exists — a deletion, as the outline's going is to
+ * `regen`. **A hole's member fills the hole**: flagged, it bounds nothing, so
+ * the hole's loop has gone, and a hole whose loop goes is filled however it
+ * went (`holesGoing`, as `del` of the circle does). The fill is journalled as
+ * the `unhole` it is, before this call's own entry, inside the same call and so
+ * the same undo step. **Clearing adds no hole**: a circle made real inside an
+ * outline is not part of the region until `hole("e1", "c1")` says so — the
+ * owner's *"I don't think coplanarity should be used as an automatic basis for
+ * deciding which entities to include in a region."*
  *
  * A call that changes nothing journals nothing, so it is no undo step — `hide`'s
  * rule. Returns the names whose flag changed.
@@ -1929,15 +2288,17 @@ export function construction(model: Model, ...args: unknown[]): string[] {
   }
   const changed = curves.filter((n) => model.isConstruction(n) !== on);
   if (!changed.length) return [];
+  let fills: (() => string[])[] = [];
   if (on) {
-    const standing = featuresOnProfile(model, changed);
-    if (standing.length) {
-      const f = standing[0];
-      const held = changed.filter((n) => f.loops.some((l) => l.some((m) => memberName(m) === n)));
-      throw new Error(`"${held[0]}" is part of ${f.name}'s profile — a solid's profile cannot stop being a boundary under it. `
+    for (const f of featuresOnProfile(model, changed)) {
+      const held = changed.filter((n) => f.loops[0].some((m) => memberName(m) === n));
+      if (!held.length) continue;
+      throw new Error(`"${held[0]}" is part of ${f.name}'s outline — a solid's outline cannot stop being a boundary under it. `
         + `del("${f.name}") keeps the sketch and removes the solid; then it can be construction`);
     }
+    fills = holesGoing(model, new Set(changed), true);
   }
+  for (const fill of fills) fill();
   return model.asOperation("construction", on ? changed : [...changed, false], () => {
     for (const n of changed) model.setConstruction(n, on);
     return changed;
@@ -2135,6 +2496,18 @@ export function del(model: Model, ...names: string[]): string[] {
  *   existed. Onshape's rule: deleting an extrude keeps its sketch.
  */
 function delOne(model: Model, name: string): string[] {
+  // A hole's circle deleted fills the hole; it never takes the solid. Done
+  // first, so the record that is left names none of what goes next.
+  const filled: string[] = [];
+  if (!model.features.has(name)) {
+    const going = model.entities.has(name) ? entityClosure(model, [name]) : new Set<string>();
+    for (const run of holesGoing(model, going, false)) filled.push(...run());
+  }
+  return model.has(name) ? [...filled, ...cascade(model, name)] : filled;
+}
+
+/** `delOne` once any hole it fills is filled: the inward rule, for records, relations and entities. */
+function cascade(model: Model, name: string): string[] {
   const feature = model.features.get(name);
   const owned = (pred: (n: string) => boolean) => (feature ? feature.owns.filter(pred) : []);
   const seeds = feature ? owned((n) => model.entities.has(n)) : model.entities.has(name) ? [name] : [];

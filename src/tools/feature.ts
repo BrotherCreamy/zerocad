@@ -315,7 +315,16 @@ export abstract class FeatureTool extends Tool {
   /** The preview, if one is up — the subclass's `render` calls this last, over its picks. */
   protected renderPreview(r: RenderContext): void {
     this.refreshPreview();
-    if (this.shown) drawPreview(r, this.shown);
+    if (this.shown) drawPreview(r, this.shown, this.previewFeatures(this.shown));
+  }
+
+  /**
+   * Which of the copy's features the preview draws: the new ones — what a
+   * creating confirm adds. The edit dialog draws the one it edits, which the
+   * original has too.
+   */
+  protected previewFeatures(p: FeaturePreview): readonly string[] {
+    return p.features;
   }
 }
 
@@ -326,13 +335,13 @@ export abstract class FeatureTool extends Tool {
  * through; and the copy's new edges (a lid's, a wall's, a fillet's arc) over
  * them in the tools' green, which is what says "this is what ✓ builds".
  */
-export function drawPreview(r: RenderContext, p: FeaturePreview): void {
+export function drawPreview(r: RenderContext, p: FeaturePreview, features: readonly string[] = p.features): void {
   const model = p.model;
   if (!model) return;
   const toward = r.toward ?? [0, 0, 1];
   const dot = (a: number[], b: number[]) => a.reduce((s, x, i) => s + x * (b[i] ?? 0), 0);
   const faces: { face: Face; shade: number; depth: number }[] = [];
-  for (const name of p.features) {
+  for (const name of features) {
     let found: Face[];
     try {
       found = featureFaces(model, model.featureOf(name), r.scale);

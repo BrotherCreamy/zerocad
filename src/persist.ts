@@ -22,7 +22,7 @@ import { Model, type JournalEntry } from "./model.ts";
 import * as basic from "./relations/basic.ts";
 import * as geom from "./relations/geometry.ts";
 import { isFullTurn } from "./relations/revolution.ts";
-import { construction, extrude, featuresOnProfile, fillet, regen, revolve, set } from "./operations.ts";
+import { construction, extrude, featuresOnProfile, fillet, hole, regen, revolve, set, unhole } from "./operations.ts";
 import * as grouping from "./groups.ts";
 import type { ToolSource } from "./toolsource.ts";
 import { freshName, planeTranslation } from "./planetranslation.ts";
@@ -201,6 +201,14 @@ export const FORMAT = "neocad-model";
  * `construction`, journalled with the curves it flagged resolved; the flag is
  * on the entity and rebuilt by replay, never saved, so `values` is untouched
  * and an older build refuses the step by name.
+ *
+ * **Nor did explicit regions** (docs/plans/explicit-regions.md): two new ops,
+ * `hole` and `unhole`, journalled with what they rebuilt resolved. What changed
+ * is how a *live* `regen` or `fillet` finds a profile — the recorded holes by
+ * their members, never every loop inside — and a file never re-finds one: its
+ * `extrude`, `regen` and `fillet` entries all carry the loops they were built
+ * with, so an older file replays to exactly the solids it was saved with
+ * (`test/explicitregions.test.ts` opens one written by the build before).
  */
 export const VERSION = 11;
 
@@ -300,6 +308,12 @@ function replayTable(model: Model): Map<string, (...args: unknown[]) => unknown>
     // profiles it is handed and looks for nothing among the seeds. `fillet`'s
     // own regeneration rides in its entry, the same way.
     regen: rel(regen),
+    // A region's membership changed by name (docs/plans/explicit-regions.md),
+    // journalled as `regen` is: the call, and the profiles it rebuilt resolved.
+    // `unhole` is also what a deletion's or a flag's expansion writes when the
+    // loop of a recorded hole goes, ahead of the deletion or the flag itself.
+    hole: rel(hole),
+    unhole: rel(unhole),
     // `set` is journalled as the one call the user made, like every operation,
     // so replaying it re-runs the edit rather than the dimension it rebuilt.
     set: rel(set),

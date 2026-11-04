@@ -28,6 +28,7 @@ import type { Model } from "../model.ts";
 import { findLoops, loopAround, type Loop } from "../loops.ts";
 import type { RegionHit } from "./tool.ts";
 import { regionKey } from "./region.ts";
+import { depthBelow, regionOf } from "../operations.ts";
 
 /**
  * `region` found again in the drawing as it stands — the loop around the point
@@ -43,13 +44,43 @@ export function refind(model: Model, region: RegionHit, loops: Loop[] = findLoop
 /** What a click inside a region did to a selection. */
 export type Toggled = "added" | "dropped" | "again";
 
+/** What a click on a hole of a picked region did to that region's proposal. */
+export type HoleToggled = "out" | "in";
+
+/**
+ * The loops of `region` a creating dialog leaves out — each loop around one of
+ * `without` that lies inside the region, and every loop inside that — as
+ * indices into `region.loops`. Kept by points for the reason picks are.
+ */
+export function leftOut(model: Model, region: RegionHit, without: readonly number[][]): Set<number> {
+  const out = new Set<number>();
+  for (const at of without) {
+    const loop = loopAround(model, at, region.loops);
+    if (!loop) continue;
+    const i = region.loops.indexOf(loop);
+    if (depthBelow(region.loops, i, region.index) === 0) continue;
+    for (const j of regionOf(region.loops, i)) out.add(j);
+  }
+  return out;
+}
+
 /**
  * An ordered set of regions, in the order they were picked — which is the order
  * a confirm builds them in, so the log reads as the clicks did. Pure: every
  * question about the drawing is asked of the loops it is handed.
+ *
+ * **Each pick proposes its loop and every loop inside it** — the holes a click
+ * between them and the outline means, as ever — and a click on one of those
+ * holes, or inside one already left out, takes it out of the proposal or puts
+ * it back (`toggleHole`), rather than picking the hole as a region of its own.
+ * A click on an island that is solid (a loop an even number of loops down) is
+ * still a region of its own, as it always was. Which loops are left out is
+ * kept per pick, by a point inside each (`without`).
  */
 export class RegionSelection {
   private picked: RegionHit[] = [];
+  /** Per pick, a point inside each loop left out of its proposal. */
+  private holes: number[][][] = [];
 
   /** The regions, in the order picked. */
   get regions(): readonly RegionHit[] {
@@ -70,7 +101,46 @@ export class RegionSelection {
    * preview keyed by it. Points, not loops, for the reason at the top.
    */
   key(): string {
-    return this.picked.map((r) => r.at.map((c) => c.toFixed(6)).join(",")).join("|");
+    const at = (p: number[]) => p.map((c) => c.toFixed(6)).join(",");
+    return this.picked.map((r, i) => [at(r.at), ...this.holes[i].map(at)].join("-")).join("|");
+  }
+
+  /** Where each loop left out of pick `i`'s proposal was clicked. */
+  without(i: number): readonly number[][] {
+    return this.holes[i] ?? [];
+  }
+
+  /**
+   * A creating dialog's click inside `hit`, asked before `toggle`: when the
+   * loop under it is a hole of a picked region — an odd number of loops down —
+   * it is taken out of that region's proposal (`"out"`); when it is inside a
+   * loop already taken out, that loop is put back (`"in"`); otherwise null, and
+   * the click is the region's own (an island that is solid, or anywhere else).
+   * The pick it belongs to is the innermost one it is inside.
+   */
+  toggleHole(model: Model, hit: RegionHit): HoleToggled | null {
+    const loops = hit.loops;
+    let best = -1, depth = Infinity, found: RegionHit | null = null;
+    this.picked.forEach((p, k) => {
+      const r = refind(model, p, loops);
+      if (!r) return;
+      const d = depthBelow(loops, hit.index, r.index);
+      if (d > 0 && d < depth) [best, depth, found] = [k, d, r];
+    });
+    if (best < 0 || !found) return null;
+    const ex = this.holes[best];
+    for (let j = 0; j < ex.length; j++) {
+      const loop = loopAround(model, ex[j], loops);
+      if (!loop) continue;
+      const i = loops.indexOf(loop);
+      if (i === hit.index || depthBelow(loops, hit.index, i) > 0) {
+        ex.splice(j, 1);
+        return "in";
+      }
+    }
+    if (depth % 2 === 0) return null;
+    ex.push(hit.at);
+    return "out";
   }
 
   /** Which of the picks `hit` is — compared as regions found in `hit`'s own loops — or -1. */
@@ -88,10 +158,12 @@ export class RegionSelection {
     const at = this.indexOf(model, hit);
     if (at === -1) {
       this.picked.push(hit);
+      this.holes.push([]);
       return "added";
     }
     if (at === this.picked.length - 1) return "again";
     this.picked.splice(at, 1);
+    this.holes.splice(at, 1);
     return "dropped";
   }
 
@@ -100,21 +172,25 @@ export class RegionSelection {
     const at = this.indexOf(model, hit);
     if (at === -1) {
       this.picked.push(hit);
+      this.holes.push([]);
       return "added";
     }
     this.picked.splice(at, 1);
+    this.holes.splice(at, 1);
     return "dropped";
   }
 
   /** The canvas's plain click: this region and no other. */
   only(hit: RegionHit): void {
     this.picked = [hit];
+    this.holes = [[]];
   }
 
   /** Drops every pick, answering whether there was one to drop. */
   clear(): boolean {
     const had = this.picked.length > 0;
     this.picked = [];
+    this.holes = [];
     return had;
   }
 
@@ -126,12 +202,14 @@ export class RegionSelection {
   refresh(model: Model, loops: Loop[] = findLoops(model)): RegionHit[] {
     const found = this.picked.map((r) => refind(model, r, loops));
     this.picked = this.picked.filter((_, i) => found[i] !== null);
+    this.holes = this.holes.filter((_, i) => found[i] !== null);
     return found.filter((r): r is RegionHit => r !== null);
   }
 
   /** Takes over `regions` (a preselection), as picked in that order. */
   adopt(regions: readonly RegionHit[]): void {
     this.picked = [...regions];
+    this.holes = regions.map(() => []);
   }
 }
 

@@ -19,7 +19,7 @@ import { OptionMemory, declaredOptions, defaultsOf, describeValues, resolveOptio
 import * as basic from "./relations/basic.ts";
 import * as geom from "./relations/geometry.ts";
 import {
-  construction, del, extrude, extrudeNeedsFrame, fillet, filletNeedsFrame, regen, revolve, revolveNeedsFrame, set,
+  construction, del, extrude, extrudeNeedsFrame, fillet, filletNeedsFrame, hole, regen, revolve, revolveNeedsFrame, set, unhole,
 } from "./operations.ts";
 import { facingPoints, sketchFrameFor, type FacePlane } from "./sketchface.ts";
 import { cross3, lift3, sub3 } from "./vec3.ts";
@@ -38,8 +38,13 @@ type PlaneCall = (origin?: string | null, xref?: string | null, yref?: string | 
 
 export interface EnvHandles {
   model: Model;
-  /** Arms a registered tool by name, optionally with arm-time options. */
-  arm?: (toolName: string, options?: Record<string, unknown>) => void;
+  /**
+   * Arms a registered tool by name, optionally with arm-time options — and,
+   * for a tool that works on one thing (the edit dialog, on a feature), what
+   * that thing is: not an option, since options are numbers and flags a viewer
+   * remembers, and a feature's name is neither.
+   */
+  arm?: (toolName: string, options?: Record<string, unknown>, target?: string) => void;
   /** The name of whatever the cursor is currently over, if anything. */
   pick?: () => string | null;
   /**
@@ -584,6 +589,15 @@ export function neocadScope(h: EnvHandles): Bag {
 
   // Operations change the model's structure rather than only adding
   // equations — see operations.ts for why that is worth keeping separate.
+  // What a regeneration noticed on the way — a recorded hole whose loop has
+  // gone, filled — said in the log after the call returns its feature, so a
+  // script reading the return value gets the name it always got.
+  const said = (call: (notes: string[]) => string): string => {
+    const notes: string[] = [];
+    const out = call(notes);
+    for (const n of notes) h.log?.(n);
+    return out;
+  };
   const operations: Bag = {
     /**
      * Rounds the corner two lines meet at, and regenerates every feature
@@ -607,9 +621,20 @@ export function neocadScope(h: EnvHandles): Bag {
      * Brings a feature back into step with its profile as it is now —
      * `regen("e1")` — keeping every twin and wall whose vertex or member is
      * still there, and returns its name. For a profile restructured by hand;
-     * `fillet` does it by itself. See operations.ts.
+     * `fillet` does it by itself. It adds no hole; a recorded hole whose loop
+     * has gone is filled, and the log says so. See operations.ts.
      */
-    regen: (feature: string, regenerated?: unknown) => regen(model, feature, regenerated),
+    regen: (feature: string, regenerated?: unknown) => said((notes) => regen(model, feature, regenerated, notes)),
+    /**
+     * Cuts the loop a member is in through a feature — `hole("e1", "c1")` —
+     * or fills one of its holes — `unhole("e1", "c1")`. A region is its
+     * outline and the holes you confirmed; nothing joins it by being drawn
+     * inside. `regenerated` is the journal's, and never needs typing.
+     */
+    hole: (feature: string, member: string, regenerated?: unknown) =>
+      said((notes) => hole(model, feature, member, regenerated, notes)),
+    unhole: (feature: string, member: string, regenerated?: unknown) =>
+      said((notes) => unhole(model, feature, member, regenerated, notes)),
     /**
      * Extrudes the closed loop a member is in — `extrude("l1", 20)` — and
      * returns the feature's name. `frame` picks the loop when the member is in
@@ -864,6 +889,24 @@ export function neocadScope(h: EnvHandles): Bag {
       if (!h.arm) throw new Error("no viewport in this environment");
       h.arm(name, options);
       return `armed: ${name}`;
+    },
+    /**
+     * Opens the feature dialog on a feature that exists — `edit("e1")`, what
+     * the menu's *Edit e1* types: its region lit, its depth (or angle) in the
+     * options panel, every loop inside its outline shown, a click on one
+     * toggling it in or out of the holes. ✓ types `hole`/`unhole` and `set`
+     * as one undo step; ✗ leaves it as it was. Not an edit itself, as `arm`
+     * is not: it journals nothing.
+     */
+    edit: (feature: unknown) => {
+      if (typeof feature !== "string" || !model.features.has(feature)) {
+        throw new Error(`${JSON.stringify(feature) ?? String(feature)} is not a feature — edit takes a feature's name, as ls() lists them (e1, e2, …)`);
+      }
+      if (!h.arm) throw new Error("no viewport in this environment");
+      const f = model.featureOf(feature);
+      const value = model.relationOf(f.kind === "extrude" ? f.depth : f.angle).args[1] as number;
+      h.arm(`edit ${f.kind}`, { [f.kind === "extrude" ? "depth" : "angle"]: value }, feature);
+      return `editing ${feature}`;
     },
     cancel: () => { h.cancel?.(); return "cancelled"; },
     hover: () => h.pick?.() ?? null,
@@ -1122,8 +1165,19 @@ function help(scope: Bag): string {
     "           plane(a, b, c, { look: false }) — or frame(a, b, c) beside a",
     "           default it keeps — and then extrudes; typed, extrude makes the",
     "           same frame itself. Revolve does the same.",
+    "           A region is its outline and the holes you confirmed: the click",
+    "           (or a typed extrude) proposes every loop inside; in the dialog a",
+    "           click on a hole takes it out of the proposal (and back), a click",
+    "           on a solid island is a region of its own. Nothing joins later",
+    '           by being drawn inside: hole("e1", "c1") cuts the loop c1 is in',
+    '           through e1, unhole("e1", "c1") fills it (and its islands) —',
+    "           the menu's Add as hole to e1 / Remove hole from e1. Deleting a",
+    "           hole's circle, or making it construction, fills the hole.",
+    '           edit("e1") — the menu\'s Edit e1 on a face — opens the dialog on',
+    "           e1: click loops inside the outline to toggle them, change the",
+    "           depth, ✓ types hole/unhole and set as one undo step.",
     '           del("e1") removes the solid and keeps its sketch; deleting any',
-    "           piece of it takes only the feature's record (its faces).",
+    "           other piece of it takes only the feature's record (its faces).",
     "           revolve(member, axis, angle?, frame?) — the same loop turned",
     '           about an axis in its plane ("f1.y", yaxis(), or a line), angle',
     "           in radians, a whole turn when left out. A partial revolve has a",
@@ -1136,7 +1190,8 @@ function help(scope: Bag): string {
     "           or revolved sketch and the lid (or end face) is rounded too,",
     "           keeping every twin and wall whose corner is still there.",
     '           regen("e1") does the same for a profile you changed by hand —',
-    "           a line drawn across it, a hole drawn in it.",
+    "           a line drawn across it. Neither adds a hole; a recorded hole",
+    "           whose loop has gone is filled, and the log says so.",
     "files      save()  open(text)  download(name)  openFile()  journal()",
     "           a file carries the source of tools you defined here, as text:",
     "           open() never runs it, toolSource(name) prints it, and pasting",
@@ -1223,8 +1278,9 @@ function help(scope: Bag): string {
     "           solved, picked, snapped to; drawn thin and muted. A flag on each",
     "           line, arc or circle (points have none): a group or feature named",
     "           flags its members now, and later changes to the group change",
-    "           no flag. Journalled, saved, undone. A solid's profile member is",
-    "           refused. The menu's Construction / Not construction type it;",
+    "           no flag. Journalled, saved, undone. A solid's outline member is",
+    "           refused; a hole's member fills the hole; clearing a flag adds",
+    "           no hole (hole() does). The menu's Construction / Not construction type it;",
     '           the drawing tools take it too: arm("circle", { construction: true }).',
     "           The hover tag says construction; ls() (construction).",
     "inspect    ls()  rels(name?)  coords(name)  solve()  tools()  hover()",

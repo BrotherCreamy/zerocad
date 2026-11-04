@@ -496,15 +496,17 @@ export interface VisibleFace extends Face {
  * Every face of every solid that faces the viewer, in the world, each with its
  * headlight shade — in no particular order, because nothing that draws them by
  * depth needs one. A face whose outward normal points away from the viewer is
- * behind its own solid and is left out.
+ * behind its own solid and is left out. `skip` names features whose faces are
+ * someone else's to draw just now — the edit dialog's preview stands in for the
+ * feature it edits — and which so hide nothing either.
  */
-export function visibleFaces(model: Model, view: View): VisibleFace[] {
+export function visibleFaces(model: Model, view: View, skip: ReadonlySet<string> = new Set()): VisibleFace[] {
   const { toward } = viewAxes(view);
   const out: VisibleFace[] = [];
   for (const f of model.features.values()) {
     // A hidden feature has no faces on screen — and so hides nothing behind
     // them either, since occlusion is asked of these same faces.
-    if (model.hidden.has(f.name)) continue;
+    if (model.hidden.has(f.name) || skip.has(f.name)) continue;
     let faces: Face[];
     try {
       faces = featureFaces(model, f, view.scale);
@@ -528,8 +530,8 @@ export function visibleFaces(model: Model, view: View): VisibleFace[] {
  * The depth layer is right in all three; this exists so a browser without
  * WebGL still sees solids.
  */
-export function facesToDraw(model: Model, view: View): DrawnFace[] {
-  return visibleFaces(model, view)
+export function facesToDraw(model: Model, view: View, skip: ReadonlySet<string> = new Set()): DrawnFace[] {
+  return visibleFaces(model, view, skip)
     .map((face) => ({ face, depth: depth(view, face.centroid) }))
     .sort((a, b) => a.depth - b.depth)
     .map(({ face, depth }) => ({

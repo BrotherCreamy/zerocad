@@ -473,8 +473,11 @@ test("the menu: Sketch on this face only inside a region, typing the tool's own 
   assert.deepEqual(item?.action, { do: "run", command: sketchOnFaceCommand(m, loop, region.toward) });
   assert.ok(!menuFor(m, null).items.some((i) => i.label === "Sketch on this face"), "not outside a region");
   assert.ok(!menuFor(m, null, null).items.some((i) => i.label === "Sketch on this face"));
-  // The rest of the empty-canvas menu is unchanged by it.
-  assert.deepEqual(menuFor(m, null, region).items.slice(0, -1), menuFor(m, null).items);
+  // The rest of the empty-canvas menu is unchanged by it — but for Edit e1,
+  // since a wall is a face of a feature (docs/plans/explicit-regions.md).
+  const onFace = menuFor(m, null, region).items;
+  assert.equal(onFace.at(-1)?.label, "Edit e1");
+  assert.deepEqual(onFace.slice(0, -2), menuFor(m, null).items);
 
   // A D on a semicircle: shown, disabled, with the helper's own reason.
   const n = new Model(3);
