@@ -16,7 +16,7 @@ import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { openApp, axisFrame, PARKED, type AppContext } from "./harness.ts";
+import { openApp, axisFrame, PARKED, type AppContext, forgetAutosave } from "./harness.ts";
 import { fingers, type Fingers } from "./fingers.ts";
 
 const SHOTS = process.env.NEOCAD_E2E_SHOTS;
@@ -36,6 +36,7 @@ async function fresh(): Promise<void> {
   // The viewer's own state — layout, view mode, remembered options — lives
   // in this browser's storage and would carry from one test into the next.
   await app.page.evaluate(() => localStorage.clear());
+  await forgetAutosave(app.page); // a reload here means the app's first start
   await app.page.reload({ waitUntil: "networkidle" });
   await app.page.waitForFunction(() => document.getElementById("status")?.textContent?.includes("ready"), null, { timeout: 20_000 });
   await axisFrame(app, PARKED);
@@ -123,6 +124,7 @@ test("portrait: the phone's defaults — command line docked to the bottom, the 
 
 test("the keyboard stays away: the command line is not focused on start, nor after a tap — a tap on it focuses it", async () => {
   await app.page.evaluate(() => localStorage.clear());
+  await forgetAutosave(app.page); // a reload here means the app's first start
   await app.page.reload({ waitUntil: "networkidle" });
   await app.page.waitForFunction(() => document.getElementById("status")?.textContent?.includes("ready"), null, { timeout: 20_000 });
   assert.notEqual(await focused(), "cmd", "not focused on start");

@@ -12,6 +12,8 @@ import { open as openModelText, save as saveModel, savedTools } from "./persist.
 import { carryIntoSession, toolSources } from "./toolsource.ts";
 import { UndoStack } from "./undo.ts";
 import { historyChord } from "./historykeys.ts";
+import { Autosave, fileChord } from "./files.ts";
+import { Files, indexedDbStore } from "./filehost.ts";
 import { Repl, fmt } from "./repl.ts";
 import { neocadScope } from "./replenv.ts";
 import { ToolEngine, type View } from "./tools/engine.ts";
@@ -33,7 +35,7 @@ import {
   clampScale, deviceScale, formFactor, formatScale, recallScale, rememberScale, textFactor, type Device,
 } from "./uiscale.ts";
 import { GUIDE_NOTE_MS, STEP_NOTE_MS, StatusLine } from "./statusline.ts";
-import { AppMenu, UNTITLED, type DocumentState } from "./appmenu.ts";
+import { AppMenu, UNTITLED } from "./appmenu.ts";
 import { logoSvg } from "./logo.ts";
 import { OptionMemory, declaredOptions, unitSymbol, type OptionValue } from "./tools/options.ts";
 import { toolIcon } from "./tools/icons.ts";
@@ -190,13 +192,6 @@ const actionsPanelEl = document.querySelector<HTMLElement>('.panel[data-panel="a
 if (!coarse) actionsPanelEl?.remove();
 const actionsEl = coarse ? document.getElementById("actions") : null;
 
-/**
- * The document the app menu's File section names: its name and whether it has
- * unsaved changes. Untitled and clean until the files package
- * (docs/plans/files.md) supplies the real one — this binding is the seam.
- */
-let currentDocument: () => DocumentState = () => UNTITLED;
-
 /** What `ui()` says when it is given something it does not take. */
 const UI_USAGE = 'ui() takes { scale: 0.8 } (0.6 to 1.6, or "default"), { hide: "log" } or { show: "log" } (a pane or a list of them); ui() says what is in force';
 
@@ -336,7 +331,18 @@ async function main() {
   // camera starts square-on, looking down −z with +x right and +y up, so until
   // something turns it the app looks and behaves exactly as the 2D one did,
   // with every point at z = 0.
-  let model = new Model(APP_DIM);
+  //
+  // **Or the drawing the autosave kept** (docs/plans/files.md): an iPhone
+  // throws a backgrounded app away without warning, so the last document is
+  // read back here, before anything is drawn — the first picture is it.
+  const autosave = new Autosave(indexedDbStore(), { log: (line) => log(line, "out") });
+  const restored = await autosave.restore((r) => openModelText(r.text, APP_DIM));
+  let model = restored?.value ?? new Model(APP_DIM);
+  if (restored) {
+    const r = restored.record;
+    log(`restored ${r.name}${r.dirty ? " (unsaved changes)" : ""} — autosaved on this device`, "out");
+    for (const line of carryIntoSession(savedTools(r.text), toolSources)) log(line, "out");
+  }
   const view: View = { ox: 0, oy: 0, scale: 3, ui: metrics.scale };
   sizeCanvas();
   const r0 = cv.getBoundingClientRect();
@@ -1016,6 +1022,8 @@ async function main() {
 
   const undoStack = new UndoStack<string>();
   const snapshot = () => saveModel(model, false);
+  /** The document — its name, dirty flag and commands (filehost.ts); made once `handles` exists, below. */
+  let files: Files | undefined;
 
   let actionDepth = 0;
   let actionBefore = "";
@@ -1052,6 +1060,8 @@ async function main() {
     if (--actionDepth > 0) return false;
     if (movedHistory) { movedHistory = false; return false; }
     const changed = undoStack.pushIfChanged(actionBefore, snapshot());
+    // Every edit, however it was made, is a change the autosave hears of.
+    if (changed) files?.changed();
     // A tool's guidance is about the click before this one; once something
     // has been made it is stale, and a header still saying "click inside a
     // closed outline" over the solid that click just made would be the
@@ -1431,30 +1441,37 @@ async function main() {
         link.click();
         URL.revokeObjectURL(url);
       },
-      openFile: () => {
-        const input = document.createElement("input");
-        input.type = "file";
-        input.accept = ".json,application/json";
-        input.addEventListener("change", async () => {
-          const file = input.files?.[0];
-          if (!file) return;
-          try {
-            const text = await file.text();
-            asUserAction(() => swapModel(openModelText(text, APP_DIM)));
-            log(`opened ${file.name}`, "out");
-            // The picker is the other door to the same act, so it says the
-            // same thing about tools the file carries — through the same
-            // function `open()` uses, or the two would drift into two answers
-            // to what opening a file means. Nothing here evaluates anything.
-            for (const line of carryIntoSession(savedTools(text), toolSources)) log(line, "out");
-          } catch (err) {
-            log(`${err instanceof Error ? err.message : err}`, "err");
-          }
-        });
-        input.click();
-      },
+      // The document's commands, and the name line the app menu reads.
+      newFile: () => files!.newFile(),
+      openFile: () => files!.openFile(),
+      saveFile: () => files!.saveFile(),
+      shareFile: () => files!.shareFile(),
+      document: () => files!.document(),
     };
   }
+
+  /**
+   * The document (docs/plans/files.md). `document()` is the host function the
+   * app menu reads for its name line; the four commands are typed through
+   * `submit` like every menu item.
+   */
+  files = new Files({
+    text: () => saveModel(model, true, toolSources.all()),
+    snapshot,
+    // A file from any door — the input, a picker, a drop, the desktop — is
+    // opened the way `open()` opens one: one undo step, and what the file
+    // carries said through the same function, or the doors would drift into
+    // different answers to what opening a file means. Nothing is evaluated.
+    open: (text) => {
+      asUserAction(() => swapModel(openModelText(text, APP_DIM)));
+      for (const line of carryIntoSession(savedTools(text), toolSources)) log(line, "out");
+    },
+    fresh: () => asUserAction(() => swapModel(new Model(APP_DIM))),
+    log: (line, cls) => log(line, cls ?? "out"),
+    phone: coarse,
+    autosave,
+    restored: restored?.record ?? null,
+  });
 
   const repl = new Repl(neocadScope(handles()));
 
@@ -1530,7 +1547,9 @@ async function main() {
    */
   const appMenu = new AppMenu(document.getElementById("appmenu")!, logoEl, {
     run: (command) => submit(command),
-    document: () => currentDocument(),
+    // The files package's host function (docs/plans/files.md): the name and
+    // the unsaved dot. Untitled and clean only before it exists.
+    document: () => files?.document() ?? UNTITLED,
     defined: (name) => typeof repl.scope[name] === "function",
     scale: () => uiScale,
     panes: () => panels.panes(),
@@ -1558,10 +1577,12 @@ async function main() {
     repl.define(neocadScope(handles()));
     exposeDebugHook();
     solveAndRender();
+    // Undo, redo, an open and a new all arrive here: the autosave hears of each.
+    files?.changed();
   }
 
   function exposeDebugHook() {
-    (window as unknown as { __neocad: unknown }).__neocad = { model, engine, repl, render, faces: faceLayer ? "depth" : "painter's" }; // debug/automation hook
+    (window as unknown as { __neocad: unknown }).__neocad = { model, engine, repl, render, files, faces: faceLayer ? "depth" : "painter's" }; // debug/automation hook
   }
   exposeDebugHook();
 
@@ -1782,6 +1803,26 @@ async function main() {
     e.stopPropagation();
     log(step(chord), "out");
   }, true);
+
+  /**
+   * **Ctrl+S (⌘S) types `saveFile()` and Ctrl+O (⌘O) types `openFile()`**,
+   * the browser's Save Page and Open File prevented — through `submit`, so
+   * the log shows the command and a menu item, the key and typing are one
+   * act. Wherever the focus is, as Ctrl+Z is: neither key means anything to
+   * a text field, and what is half-typed in the command line stays. Not
+   * while an input method is composing (see `fileChord`), whose key it is.
+   * Capture phase, as the history chord, so nothing below can swallow it.
+   */
+  window.addEventListener("keydown", (e) => {
+    const chord = fileChord(e);
+    if (!chord) return;
+    e.preventDefault();
+    e.stopPropagation();
+    void submit(chord === "save" ? "saveFile()" : "openFile()");
+  }, true);
+
+  // Drops, the desktop's launch queue and the autosave's hidden-flush.
+  files.install();
 
   render();
   statusLine.show("ready", "ready — type help(), a tool name, or any expression");

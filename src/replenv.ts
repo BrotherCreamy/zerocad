@@ -24,6 +24,7 @@ import {
 import { facingPoints, sketchFrameFor, type FacePlane } from "./sketchface.ts";
 import { cross3, lift3, sub3 } from "./vec3.ts";
 import { save as saveModel, savedTools } from "./persist.ts";
+import { fileNameFor } from "./files.ts";
 import { carryIntoSession, toolSources, type ToolSourceStore } from "./toolsource.ts";
 import { alignView, assignView, orbitBy, panBy, screenToWorld, viewAxes, zoomAbout, type View } from "./view.ts";
 import { pointOnWorkingPlane } from "./workplane.ts";
@@ -82,8 +83,22 @@ export interface EnvHandles {
   redo?: () => string;
   /** Hands the saved file to the user as a download. Browser only. */
   download?: (json: string, filename: string) => void;
-  /** Prompts for a file and opens it. Browser only. */
-  openFile?: () => void;
+  /**
+   * The document's commands (docs/plans/files.md, src/filehost.ts): a fresh
+   * document, a file asked for and opened, the document saved (in place, by
+   * a picker, through the share sheet or as a download) and shared. Browser
+   * only — the host owns the pickers, the sheet and which file the document
+   * is. `openFile` returns at once; the file arrives in an event.
+   */
+  newFile?: () => string;
+  openFile?: () => string;
+  saveFile?: () => Promise<string>;
+  shareFile?: () => Promise<string>;
+  /**
+   * The document's name and whether it has unsaved changes — what the app
+   * menu shows, and what `download()` names its file for.
+   */
+  document?: () => { name: string; dirty: boolean };
   /**
    * The host's own solve path, if it has one. `solve()` prefers this over
    * calling model.solve() directly so that a solve typed at the command line
@@ -746,15 +761,36 @@ export function neocadScope(h: EnvHandles): Bag {
       // REPL, a test — the return value is the only channel there is.
       return h.log ? "opened" : ["opened", ...notices].join("\n");
     },
-    download: (filename = "sketch.zerocad.json") => {
+    // Named for the document when there is one, as saveFile() names its file.
+    download: (filename = h.document ? fileNameFor(h.document().name) : "sketch.zerocad.json") => {
       if (!h.download) throw new Error("no download in this environment");
       h.download(saveModel(model, true, sources.all()), filename);
       return filename;
     },
+    // The document's commands — what the app menu's File items and Ctrl+S /
+    // Ctrl+O type. (The menu's name line reads the host's `document()`
+    // directly; it is not a command here, where `document` would read as the
+    // page's, which the command line deliberately cannot reach.) **None of them journals anything, so none is in
+    // persist.ts's replay table**: they act on the document — which file it
+    // is, whether it is saved, whose share sheet it goes to — and never in
+    // it, so a file has nothing of theirs to replay (as it has nothing of
+    // `download`'s). Opening and starting afresh replace the model through the
+    // host, as `open` does, each one undo step there.
+    newFile: () => {
+      if (!h.newFile) throw new Error("no document in this environment");
+      return h.newFile();
+    },
     openFile: () => {
       if (!h.openFile) throw new Error("no file picker in this environment");
-      h.openFile();
-      return "choose a file…";
+      return h.openFile();
+    },
+    saveFile: () => {
+      if (!h.saveFile) throw new Error("no file to save to in this environment — save() gives the text");
+      return h.saveFile();
+    },
+    shareFile: () => {
+      if (!h.shareFile) throw new Error("no share sheet in this environment — save() gives the text");
+      return h.shareFile();
     },
     journal: () => model.journal.map((e) => `${e.op}(${e.args.map((a) => JSON.stringify(a)).join(", ")})`),
     // The same thing Ctrl+Z does, and not a parallel implementation of it: both
@@ -1212,7 +1248,19 @@ function help(scope: Bag): string {
     '           regen("e1") does the same for a profile you changed by hand —',
     "           a line drawn across it. Neither adds a hole; a recorded hole",
     "           whose loop has gone is filled, and the log says so.",
-    "files      save()  open(text)  download(name)  openFile()  journal()",
+    "files      newFile()  openFile()  saveFile()  shareFile()",
+    "           The document has a name (Untitled until opened or saved), and",
+    "           the app menu shows it and whether it is unsaved. saveFile()",
+    "           writes back to the file it came from where the browser can",
+    "           (Chrome, Edge), else asks where; on an iPhone it is the share",
+    "           sheet — Save to Files — and elsewhere a download. shareFile()",
+    "           hands a copy to the share sheet (AirDrop, Messages, Mail), or",
+    "           downloads it. ctrl+s and ctrl+o type saveFile() and openFile();",
+    "           a file dropped on the window opens. New and Open ask first when",
+    "           there are unsaved changes, and each is one undo step. The",
+    "           drawing is autosaved on this device and is there when the app",
+    "           starts again. Files are <name>.zerocad.json.",
+    "           save()  open(text)  download(name)  journal() — the text itself.",
     "           a file carries the source of tools you defined here, as text:",
     "           open() never runs it, toolSource(name) prints it, and pasting",
     "           it back is an ordinary entry — the paste is the consent.",

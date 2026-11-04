@@ -13,6 +13,7 @@ import {
   cacheName, manifest, pwaDocument, pwaHead, rasters, serviceWorker, shellFiles,
 } from "../scripts/pwa-shell.ts";
 import { GESTURE_EVENTS, lockPage } from "../src/pagelock.ts";
+import { FILE_SUFFIX } from "../src/files.ts";
 
 const publicFile = (src: string) => new URL(`../public/${src}`, import.meta.url);
 
@@ -66,6 +67,15 @@ test("the manifest: standalone, any orientation, the app's colours, and every UR
   for (const url of urls) assert.ok(isRelative(url), `${url} is relative`);
   // JSON round trip: what is written is what was checked.
   assert.deepEqual(JSON.parse(JSON.stringify(m)), m);
+});
+
+test("the manifest offers the installed desktop app for drawings: .json, application/json, opened at the app itself", () => {
+  const m = manifest();
+  assert.deepEqual(m.file_handlers, [{ action: "./", accept: { "application/json": [".json"] } }]);
+  const [handler] = m.file_handlers as { action: string }[];
+  assert.ok(isRelative(handler.action), "inside the scope under /zerocad/");
+  // The extension it claims is the one every file this app writes ends in.
+  assert.ok(FILE_SUFFIX.endsWith(".json"));
 });
 
 test("every icon the manifest and the head name is committed, a PNG of the size it claims", () => {

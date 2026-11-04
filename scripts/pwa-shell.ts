@@ -62,8 +62,25 @@ export function manifest(): Record<string, unknown> {
     background_color: BACKGROUND,
     theme_color: THEME,
     icons: ICONS,
+    file_handlers: FILE_HANDLERS,
   };
 }
+
+/**
+ * The files an installed desktop app offers to open (Chromium 102+, desktop
+ * only; docs/plans/files.md). The file arrives in `launchQueue`
+ * (src/filehost.ts). iOS and every other browser ignore the member.
+ *
+ * **`.json`, not `.zerocad.json`.** The operating system keeps the
+ * association, and a file's extension there is what follows its last dot
+ * (Windows' associations are keyed so); whether Chromium registers a
+ * two-part extension in a way any desktop honours is not documented and
+ * could not be tried here, as no app can be installed in the test browser.
+ * `.json` certainly works. So the app is offered for JSON files — an "Open
+ * with" entry, never the default unless a person makes it so — and a JSON
+ * file that is not a drawing is refused with the reason, as any open is.
+ */
+export const FILE_HANDLERS = [{ action: "./", accept: { "application/json": [".json"] } }];
 
 /**
  * The service worker's cache, named for the build. Caches belong to the

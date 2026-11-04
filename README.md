@@ -107,6 +107,8 @@ src/loops.ts             closed loops (joined by shared point or coin, never pro
 src/sketchface.ts        the three points of a face a sketch plane on it is made of, +z toward you
 src/faces.ts             a solid's faces from its live geometry (a revolve's swept): culled, sorted per face, lit from the eye
 src/undo.ts              a stack of whole-model snapshots; imports nothing
+src/files.ts             the document: name, dirty, which way a save or share goes, the autosave; imports nothing
+src/filehost.ts          the document's commands over the browser's pickers, share sheet, downloads, drops and IndexedDB
 src/tools/tool.ts         abstract class Tool + defineTool registry
 src/tools/engine.ts       wires real DOM pointer events to the armed tool
 src/tools/gestures.ts     what a finger means (tap, drag, long-press, box, pinch), decided before the engine sees it
@@ -418,6 +420,32 @@ emulation, since only the device runs iOS Safari):
   waits for a tap on the command line.
 
 A mouse plugged into the same device is still a mouse.
+
+**Files on an iPhone.** A drawing is a `<name>.zerocad.json` file.
+
+- **Open** — `openFile()` (the app menu's *Open…*): the Files picker opens on
+  iCloud Drive, On My iPhone or any provider app; choose the file.
+- **Save** — `saveFile()`: the share sheet opens. Choose **Save to Files**
+  and pick a folder; Files asks before replacing a file of the same name.
+  This is the only way an iPhone lets a web app save a file, and every save
+  is a new copy — it cannot write back into the file it opened.
+- **Share** — `shareFile()`: the same sheet, for AirDrop, Messages or Mail.
+- **Autosave** keeps the drawing on the phone after every change, so closing
+  the app — or iOS closing it in the background — loses nothing; it is back
+  when the app starts. `newFile()` starts afresh. Files you saved are the
+  copies that last: Safari (not the home-screen app) deletes a site's stored
+  data after seven days of using Safari without opening it.
+- An iPhone cannot open a file *into* ZeroCAD from Files, Mail or Messages,
+  and ZeroCAD cannot appear in another app's share sheet: iOS gives web apps
+  neither. Open files from inside the app.
+
+**Files on a desktop.** In Chrome or Edge, `saveFile()` (Ctrl+S, ⌘S) asks
+where once and then saves back into that file; a file opened with
+`openFile()` (Ctrl+O, ⌘O) or dropped on the window is saved back into too,
+after Chrome asks once for permission to write it. Installed as an app,
+ZeroCAD appears in the desktop's *Open with* for `.json` files. In Firefox
+and Safari, open is the file picker and save a download; Safari's
+`shareFile()` is its share sheet. The autosave works everywhere.
 
 ## Building and running
 

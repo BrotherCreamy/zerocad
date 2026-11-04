@@ -18,7 +18,7 @@ import assert from "node:assert/strict";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { devices, type Browser, type BrowserContext, type CDPSession, type Page } from "playwright";
-import { APP_URL, launchBrowser } from "./harness.ts";
+import { APP_URL, forgetAutosave, launchBrowser } from "./harness.ts";
 
 const SHOTS = process.env.NEOCAD_E2E_SHOTS;
 const INSETS = {
@@ -241,27 +241,30 @@ test("the logo opens the app menu; Escape closes it; a tap outside closes it and
   }
 });
 
-test("File: Open… types openFile(); New, Save and Share are off with their reason until their commands exist, then type them", async () => {
+test("File: the four items type the files package's commands; one whose command is gone is off with its reason; the name line is the document's", async () => {
   const page = await desktop();
   try {
     await page.click("#logo");
-    const off = await page.$$eval("#appmenu .item.off", (els) => els.map((e) => [(e as HTMLElement).dataset.command, (e as HTMLElement).dataset.why]));
-    assert.deepEqual(off.map((o) => o[0]), ["newFile()", "saveFile()", "shareFile()"]);
-    for (const [command, why] of off) assert.match(why!, new RegExp(`^${command!.replace(/[()]/g, "\\$&")} is not in this build yet`));
-    page.once("filechooser", () => {});
-    await page.click('#appmenu .item[data-command="openFile()"]');
-    await page.waitForTimeout(200);
-    assert.match(await log(page), /> openFile\(\)/, "Open… typed its command through the command line");
-    assert.equal(await page.$eval("#appmenu", (m) => (m as HTMLElement).hidden), true, "and closed the menu");
-    // The files package's commands, stood in for at the command line: the items come alive.
-    await repl(page, 'newFile = () => "a new file"; saveFile = () => "saved"');
-    await page.click("#logo");
+    const items = await page.$$eval("#appmenu .sect[data-section=File] .item", (els) =>
+      els.map((e) => [(e as HTMLElement).dataset.command, e.classList.contains("off")]));
+    assert.deepEqual(items, [["newFile()", false], ["openFile()", false], ["saveFile()", false], ["shareFile()", false]],
+      "all four, on: the files package defines them");
+    assert.equal(await page.$eval("#appmenu .docname", (e) => e.textContent ?? ""), "Untitled", "a fresh document, clean");
+    // New types newFile() through the command line, as every item types.
     await page.click('#appmenu .item[data-command="newFile()"]');
     await page.waitForTimeout(200);
-    assert.match(await log(page), /> newFile\(\)\s*a new file/);
+    assert.match(await log(page), /> newFile\(\)/);
+    assert.equal(await page.$eval("#appmenu", (m) => (m as HTMLElement).hidden), true, "and closed the menu");
+    // An edit makes the document dirty: the name line says so.
+    await repl(page, "pt(1, 2)");
     await page.click("#logo");
-    assert.equal(await page.$eval('#appmenu .item[data-command="saveFile()"]', (e) => e.classList.contains("off")), false);
-    assert.match(await page.$eval("#appmenu .docname", (e) => e.textContent ?? ""), /^Untitled$/, "the name line, clean");
+    assert.equal(await page.$$eval("#appmenu .docname .dirty", (d) => d.length), 1, "the unsaved dot");
+    await page.keyboard.press("Escape");
+    // A command the scope no longer has: its item is off, and says why.
+    await repl(page, "shareFile = undefined");
+    await page.click("#logo");
+    const off = await page.$eval('#appmenu .item[data-command="shareFile()"]', (e) => [e.classList.contains("off"), (e as HTMLElement).dataset.why]);
+    assert.deepEqual(off, [true, "shareFile() is not in this build yet"]);
   } finally {
     await page.close();
   }
@@ -355,6 +358,7 @@ test("ui({ scale }) changes a tool button's size, a glyph's drawn size and a dim
     assert.ok(Math.abs(at15.label.halfW - at1.label.halfW * 1.5) < 1e-9);
     assert.match(at15.label.font, /^18px /, "the dimension label's type");
     assert.equal((await repl(page, "journal()")).value?.toString().includes("ui("), false, "nothing journalled");
+    await forgetAutosave(page);
     await page.reload({ waitUntil: "networkidle" });
     await ready(page);
     assert.equal(await page.$eval("#toolbar button", (b) => (b as HTMLElement).offsetWidth), 30, "kept, on this device");
@@ -477,6 +481,7 @@ test("a pane hidden from the menu is gone, stays gone through a reload, and come
     assert.equal(await page.$eval(panel("log"), (el) => (el as HTMLElement).hidden), true);
     assert.match(await log(page), /> ui\(\{ hide: "log" \}\)/);
     assert.equal(await page.$eval("#appmenu", (m) => (m as HTMLElement).hidden), false, "the menu stays open for the next");
+    await forgetAutosave(page);
     await page.reload({ waitUntil: "networkidle" });
     await ready(page);
     assert.equal(await page.$eval(panel("log"), (el) => (el as HTMLElement).hidden), true, "kept, on this device");
@@ -528,6 +533,7 @@ test("a tray docked to the right edge and a pane against it stay so through port
     await check("portrait");
     // And through a reload in landscape: it is what was stored, not what was on screen.
     await rotate(p, "landscape");
+    await forgetAutosave(p.page);
     await p.page.reload({ waitUntil: "networkidle" });
     await ready(p.page);
     await p.page.waitForTimeout(200);

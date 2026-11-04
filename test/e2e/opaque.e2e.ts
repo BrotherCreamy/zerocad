@@ -21,7 +21,7 @@ import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { openApp, type AppContext } from "./harness.ts";
+import { openApp, type AppContext, forgetAutosave } from "./harness.ts";
 import { build, lookAlong, scene } from "./scenes.ts";
 
 const SHOTS = process.env.NEOCAD_E2E_SHOTS;
@@ -248,6 +248,7 @@ test("the mode is the viewer's: it survives a reload, and is in neither a saved 
   assert.ok(!/wire|shaded|viewMode/.test(saved), "the saved file does not mention the mode");
   assert.ok(!(await app.model()).journalOps.some((op) => /view/i.test(op)), "nor does the journal");
   // A reload: the same browser, the mode read back from its storage.
+  await forgetAutosave(app.page); // a reload here means the app's first start
   await app.page.reload({ waitUntil: "networkidle" });
   await app.page.waitForFunction(() => document.getElementById("status")?.textContent?.includes("ready"), null, { timeout: 20_000 });
   assert.equal((await app.repl("view()")).value, "wire", "after a reload");
