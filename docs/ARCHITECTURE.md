@@ -412,6 +412,16 @@ are not drawn (and so hide nothing behind them); a constraint's mark on
 something hidden is not drawn either, except a feature's own dimension, which
 is the solid's.
 
+**Construction geometry is a flag on the entity** (`construction?: true` on a
+line, arc or circle; `Model.isConstruction`), never a set and never a group's:
+the owner ruled out geometry that is "both construction geometry and not
+construction geometry simultaneously". Only one question reads it — which
+regions there are — and `loops.ts` answers it by leaving construction edges
+out where edges come in, so every consumer of regions follows. Everything else
+(solve, pick, snap, quiet) treats it as any entity; the drawing gives it a thin
+muted ink. Setting it is an operation (`construction` in `operations.ts`),
+journalled with the curves it changed, so a group named is resolved at the call.
+
 **The selection is the viewer's** — `Selection` in `tools/selection.ts`, held
 by the engine, never journalled, never in a file, never an undo step. It is
 needed because a set wants to be picked in one gesture, and it is told apart

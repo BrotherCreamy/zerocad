@@ -28,7 +28,12 @@ otherwise.
   verbatim): *"construction geometry should be a per entity flag. at least
   based on the name "construction geometry" it implies per entity"*. Geometry
   flagged construction forms no regions and is otherwise an ordinary entity.
-  Drawn thin and muted, never dashed (dashes mean selection). Spec:
+  Drawn thin and muted, never dashed (dashes mean selection). And, after the
+  spec (verbatim): *"if it is a group based inherited thing, then geometry
+  could be both construction geometry and not construction geometry
+  simultaneously"* — so it is **never a group property**: `construction("g1")`
+  sets it on each member at that moment, and later membership changes never
+  alter it (hide/show's rule). Built; spec:
   [`docs/plans/construction.md`](docs/plans/construction.md).
 - **No sketch object** (2026-11-04, the owner: *"there is no such thing as a
   "sketch" per se"*): what lies on a plane is the "sketch"; every job a sketch
@@ -1649,6 +1654,29 @@ extended the way `defineTool` extends the tool registry would close it.
 
 ## Smaller things
 
+- [ ] **Found while building `construction.md`** (each deliberate, documented
+      and, where it can be, tested):
+      - **A profile member cannot be made construction** — refused by name,
+        "for now", per the spec. Once features follow their regions
+        (region binding), flagging one should regenerate the feature without
+        it instead.
+      - **Clearing the flag regenerates nothing by itself**: a circle made
+        real inside an extruded outline is a hole only after `regen("e1")`
+        (tested). Same cause, same future fix.
+      - **`construction("e1")` flags the twins and walls the feature made
+        *then*.** A later regeneration keeps the twins whose vertex survives
+        (flag and all) and makes any new one real.
+      - **A fillet with one construction leg makes a real arc**; with two,
+        a construction one (tested).
+      - **The typed constructors take no flag** (`circ`, `ln`, …): type
+        `construction(c)` after, or arm a tool with the option.
+      - **A tool's preview is drawn in the armed amber** whether or not the
+        `construction` box is ticked; only the committed shape is muted.
+      - **A drawing tool's options panel now always shows** (one checkbox),
+        where before only feature tools had one.
+      - **Construction geometry is quiet as any entity is**: a construction
+        line's ends are quiet corners in the shaded view, like any line's.
+
 - [ ] **Found while building `quiet-geometry.md`** (each deliberate unless it
       says otherwise; the spec's As built has the reasoning):
       - **Hidden outranks revealed** (`entityDrawn`): a reveal brings back
@@ -1981,6 +2009,39 @@ extended the way `defineTool` extends the tool registry would close it.
       the resolver's flush arithmetic assumes does not happen.
 
 ## Done
+
+- [x] **Construction geometry — a per-entity flag** — the owner: *"construction
+      geometry should be a per entity flag. at least based on the name
+      "construction geometry" it implies per entity"*, and *"if it is a group
+      based inherited thing, then geometry could be both construction geometry
+      and not construction geometry simultaneously"*. Spec:
+      [`docs/plans/construction.md`](docs/plans/construction.md), marked
+      built. `construction?: true` on lines, arcs and circles with
+      `isConstruction`/`setConstruction` in `model.ts`; the `construction`
+      operation in `operations.ts`; `collect` in `loops.ts` leaves them out;
+      the op in `replenv.ts` and `persist.ts` (no format bump); `ls()`'s
+      `(construction)`; `help()`; the hover tag; *Construction* / *Not
+      construction* on the menu (an entity, a selection's curves); thin muted
+      teal in `main.ts`; `DRAWING_OPTIONS` on the six drawing tools. 992 unit
+      tests (973 before; `test/construction.test.ts` 19), 405 e2e (398
+      before; `construction.e2e.ts` 7). **Deviations from the spec:**
+      - ⚠ **Journalled with the curves it changed resolved**, not as typed as
+        `hide` is — the owner's second remark: the entry names entities, so
+        no later reading of a group can enter into it.
+      - ⚠ **`construction(...names, false)`** chosen over `real(...)`: the
+        flag is a value, as the tools' `{ construction: false }` is.
+      - ⚠ **Points, frames and relations are passed over**, not refused; only a
+        call with no curve in it is refused. The log names a point or frame
+        typed outright.
+      - ⚠ **A fillet of two construction legs makes a construction arc.**
+      - ⚠ **extrude/revolve refuse a construction member by name.**
+      - ⚠ **A hairline casing (0.5px) on faces**, not the full 1.25px.
+      - ⚠ **The e2e reaches the circle under the lid in `view("hidden")`**:
+        shaded is opaque and picks nothing behind a face; the spec's text was
+        fixed to say so.
+      - ⚠ **Every drawing tool shows the options panel now**;
+        `tooloptions.e2e.ts`'s tool-with-no-options became `point`, and
+        `contextmenu.e2e.ts`'s edge menu gained *Construction*.
 
 - [x] **Groups, phase 1 — the selection, groups, hide and show** — the owner:
       *"the concept of this project is flat relational direct cad. there is no
