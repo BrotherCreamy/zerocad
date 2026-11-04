@@ -37,7 +37,17 @@ npm run test:all    # all of the above
 ```
 
 `npm run test:e2e` starts and stops its own dev server, or reuses one you
-already have running.
+already have running. `test/e2e/pwa.e2e.ts` also runs `build:pwa` into a
+temporary folder and serves it under a sub-path itself, so the hosted build
+is tested on every run with nothing left in `dist-pwa/`.
+
+**Anything for a phone goes in the app, not only in the hosted build.** The
+viewport, the fixed page, the safe areas and `src/pagelock.ts` are in
+`index.html` and `main.ts`, so the dev server and the single-file artifact
+behave as the installed app does. Only the manifest, the icons' links and the
+service worker are the hosted build's (`scripts/pwa-shell.ts`). A worker is
+never registered on the dev server, which would otherwise serve yesterday's
+code from its cache.
 
 **Run the e2e suite for anything that touches the app**, not just when it
 feels risky. Nine bugs so far (the count is kept honest in docs/ARCHITECTURE.md) passed the entire unit suite and were obvious

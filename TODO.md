@@ -24,6 +24,24 @@ otherwise.
 
 ## Decisions made so far — veto here if any are wrong
 
+- **Hosted on GitHub Pages as an installable PWA, from a public repository
+  of its own** (the owner, 2026-11-04, verbatim: *"please make this available
+  via GitHub hosting, and it should be a PWA, non-scrolling/non-zooming, to
+  enable use on a multi-touch device … Specifically I have an iPhone."*). The
+  owner was told two facts: GitHub Pages from a private repository needs a
+  paid plan, and **a Pages site is public** whatever the repository's
+  visibility. Since then, the manager's direction is that the owner's
+  repository goes back to private and the site is served from a new public
+  repository, `BrotherCreamy/zerocad`, at
+  `https://brothercreamy.github.io/zerocad/`. **Every URL in the build is
+  relative**, so the repository's name is all that sets the address.
+  **Pages must be switched on once by the owner** (Settings → Pages → Deploy
+  from a branch → `gh-pages`, root); nothing here can change repository
+  settings. **The page never scrolls or zooms, in every build**, not only the
+  hosted one. **A new version applies on the next start, never under the
+  hand.** ✅ **`pwa-pages.md` built** (2026-11-04); its deviations are under
+  Next up below and in the spec's *As built*.
+
 - **Construction geometry is a per-entity flag** (the owner, 2026-11-04,
   verbatim): *"construction geometry should be a per entity flag. at least
   based on the name "construction geometry" it implies per entity"*. Geometry
@@ -1182,6 +1200,52 @@ are flagged as such.
 
 Queue for Opus, in order. Each gets a spec in `docs/plans/` before work
 starts.
+
+- [x] **An installable app on GitHub Pages — BUILT (2026-11-04).** The owner
+      asked for GitHub hosting, a PWA, and a page that neither scrolls nor
+      zooms, for his iPhone. `npm run build:pwa` → `dist-pwa/` (the
+      single-file app with the PWA head, the manifest, the committed icons, a
+      hand-written worker keyed by the build stamp, `.nojekyll`);
+      `src/pagelock.ts` and `index.html`'s viewport, fixed page and safe areas
+      in every build; `.github/workflows/pages.yml`. Spec:
+      [`docs/plans/pwa-pages.md`](docs/plans/pwa-pages.md). Deviations from
+      the spec:
+      - ⚠ **The hosting target moved**, at the manager's direction: the site
+        is to be served from `BrotherCreamy/zerocad`, not from this
+        repository, and **nothing was pushed to any `gh-pages`**, including
+        the spec's fallback. The workflow is in the PR and is
+        repository-neutral. The e2e sub-path is `/zerocad/`.
+      - ⚠ **The safe areas are tested through CDP's
+        `Emulation.setSafeAreaInsetsOverride`.** Chromium's iPhone 13
+        descriptor has zero insets, so without the override "nothing under the
+        notch" could not fail.
+      - **Controls for every negative check.** The same CDP touches scroll and
+        zoom an ordinary page, and with the viewport's limits stripped the
+        pinch zooms the app once the page lock's listeners are dropped. CDP's
+        `synthesizePinchGesture` zoomed nothing even on the control, so the
+        pinch is two raw touch points.
+      - `touch-action: manipulation` is on `html, body`, which holds over all
+        the chrome because a touch's action is the intersection over its
+        ancestors. Inputs stay selectable as well as the command line and the
+        log, because iOS will not edit a field under `user-select: none`.
+      - Additions: `format-detection: telephone=no`, no tap highlight,
+        `text-size-adjust: 100%`, an SVG favicon, the manifest's `id`, an
+        automated manifest-and-icons check (the spec said by hand), and an e2e
+        update test (a new build waits, then is the next start).
+      - The workflow runs `npm ci` before the kernel, uses the runner's
+        rustup, and fetches wasm-pack's installer from its current home
+        (`wasm-bindgen.github.io`). **It has never run.**
+- [ ] **Rename the worker's cache prefix with the app** (`CACHE_PREFIX` in
+      `scripts/pwa-shell.ts`, and the literal in `scripts/pwa-sw.js`). A
+      worker deletes only caches under its own prefix. The release that
+      renames it should delete `neocad-` caches too, or every phone that had
+      the old app keeps one stale cache forever.
+- [ ] **Try the hosted build on the owner's iPhone**: the CHANGELOG entry's
+      list. Only Chromium's emulation has run it so far.
+- [ ] **Landscape phone layout**: the default panels overlap the tray's edge
+      and the empty-canvas hint at 844×390 (seen in `pwa.e2e.ts`'s
+      screenshot). This is the touch package's (`touch.md`, layout on small
+      screens). Nothing sits under the notch.
 
 - [x] **An extrude makes no lid frame — BUILT (2026-11-03).** The owner's
       *"i'm getting a lot of overlapping points. why is this happening?"*, in

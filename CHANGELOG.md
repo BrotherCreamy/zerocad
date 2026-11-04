@@ -7,6 +7,96 @@ decisions.
 
 ---
 
+## An installable app, and a page that never scrolls or zooms
+
+The owner:
+
+> *please make this available via GitHub hosting, and it should be a PWA,
+> non-scrolling/non-zooming, to enable use on a multi-touch device …
+> Specifically I have an iPhone.*
+
+**`npm run build:pwa` makes `dist-pwa/`, a folder that is the whole site.** It
+holds:
+
+- the single-file app as `index.html`, wrapped in a full document with the
+  head a home screen reads. The kernel still rides inside it, so the app needs
+  no other request;
+- `manifest.webmanifest`: standalone, any orientation, the app's dark ground
+  and header colours;
+- the icons, rasterised once from one SVG mark (`public/icons/icon.svg`, a
+  right triangle and its incircle in the app's inks) by `npm run build:icons`
+  and committed;
+- a hand-written service worker, and `.nojekyll`.
+
+**Every URL in it is relative**, so it works under any sub-path. It is to be
+served from a public repository, `BrotherCreamy/zerocad`, at
+**https://brothercreamy.github.io/zerocad/**. `.github/workflows/pages.yml`
+builds it on every push to the working branch and replaces the running
+repository's `gh-pages` branch with it, pushing with the job's own token.
+Nothing has been published yet. Publishing is the manager's step, and so is
+turning on Pages (Settings → Pages → Deploy from a branch → `gh-pages`, root).
+
+**It works offline after the first visit.** The worker keeps the page, the
+manifest and the icons in a cache named for the build stamp. A new deploy
+installs beside the open app and waits, so it never reloads the page while
+someone is drawing. The next start gets the new version, and the old cache is
+deleted. On an iPhone, "the next start" means after the app is closed from
+the app switcher.
+
+**The page itself never moves, in every build**: the dev server and the
+single-file artifact too, not only the hosted one.
+
+- The viewport is `user-scalable=no` and covers the notch.
+- The page is fixed to the screen, with nothing to scroll and no rubber band.
+- The app sits inside the safe areas. The header's text is clear of the status
+  bar, and the drawing and every panel are clear of the notch and the home
+  indicator. The header's ground runs up under the translucent status bar.
+- iOS Safari ignores `user-scalable=no`, so `src/pagelock.ts` also cancels
+  WebKit's pinch events and any touchmove with two fingers down.
+- The canvas takes every touch itself (`touch-action: none`). The chrome may
+  pan but never double-tap zoom.
+- A long press raises no callout. Nothing is selectable except the command
+  line, the log and the fields.
+
+**Tested in Chromium's iPhone 13 emulation, which is not an iPhone.** The real
+device is iOS Safari, and this machine cannot run it. In the emulation:
+
+- the hosted build, served from `/zerocad/`, loads, solves and registers its
+  worker, and asks for nothing outside the sub-path;
+- with the network off and the server stopped, it still starts, solves and
+  draws;
+- a new build waits, and is what the next start gets;
+- a wheel, a swipe on the chrome, and a pinch on the header or the canvas all
+  leave the page at scroll 0 and scale 1.
+
+Each "does not move" check has a control, in which the same touches do scroll
+or zoom an ordinary page. With the viewport's limits stripped, as iOS strips
+them, the pinch is refused only while the page lock is in. The safe areas are
+iOS's own insets, set through CDP, in portrait and landscape.
+`NEOCAD_E2E_SHOTS=dir npm run test:e2e` writes `pwa-iphone13-portrait.png` and
+`-landscape.png`, plus `-safe` copies with the notch's and home indicator's
+bands tinted.
+
+**On the iPhone, try this:**
+
+1. Open the URL in Safari, tap Share, then **Add to Home Screen**.
+2. Start it from the icon. It should open with no Safari bars, and the status
+   bar should sit over the dark header.
+3. Pinch on the header and on the drawing. Neither should zoom the page.
+4. Swipe down on the header. Nothing should bounce.
+5. Long-press the drawing. No callout should appear.
+6. Turn the phone. Nothing should sit under the notch.
+7. Turn on Airplane Mode, close the app from the switcher, and start it again.
+   It should still work.
+
+**Known:** in landscape, the default panels overlap the tray's edge and the
+empty-canvas hint. Layout on a small screen is the touch package's, and so are
+the finger gestures. Until that package lands, a finger on the canvas acts as
+a left mouse button would, and two fingers do nothing. 981 unit tests (973
+before; `test/pwa.test.ts` 8), 407 e2e (398 before; `test/e2e/pwa.e2e.ts` 9).
+Spec: [`docs/plans/pwa-pages.md`](docs/plans/pwa-pages.md), with its
+deviations under *As built*.
+
 ## Construction geometry
 
 The owner:

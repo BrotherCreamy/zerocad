@@ -1,0 +1,77 @@
+# Publishes the hosted build (npm run build:pwa -> dist-pwa/) as the whole of
+# the gh-pages branch of whichever repository runs it. GitHub Pages serves
+# that at https://<owner>.github.io/<repository>/ once the owner has set
+# Settings -> Pages -> Source to "Deploy from a branch", gh-pages, / (root);
+# the build's URLs are all relative, so the repository's name is the only
+# thing that decides the address. docs/plans/pwa-pages.md.
+#
+# No third-party action: the two used are GitHub's own (checkout, setup-node),
+# the kernel's toolchain comes from rustup (preinstalled on the runner) and
+# wasm-pack's official installer, and the publish is a plain git push with the
+# job's own token.
+
+name: pages
+
+on:
+  push:
+    branches: [claude/resume-tasks-o7q02e]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# One publish at a time, and a newer push supersedes one still building: the
+# branch is replaced wholesale, so only the last build matters.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    # Only a public repository publishes: Pages on the free plan serves only
+    # public ones, and the private archive this history was moved from would
+    # otherwise spend Actions minutes building a site nobody can switch on.
+    if: ${{ !github.event.repository.private }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Rust for wasm32, and wasm-pack
+        run: |
+          rustup toolchain install stable --profile minimal --target wasm32-unknown-unknown
+          rustup default stable
+          curl -sSf https://wasm-bindgen.github.io/wasm-pack/installer/init.sh | sh
+
+      - run: npm ci
+
+      # The release kernel runs wasm-opt, which wasm-pack fetches (binaryen)
+      # on first use. If that download fails, the dev kernel is a working,
+      # larger kernel — better a site than none — and the log says so.
+      - name: Kernel
+        run: |
+          if ! npm run build:kernel; then
+            echo "::warning title=Kernel built without wasm-opt::binaryen could not be fetched; published the dev kernel (larger, same behaviour)"
+            npm run build:kernel:dev
+          fi
+
+      - run: npm run build:pwa
+
+      # dist-pwa/ becomes the only content of gh-pages: a fresh one-commit
+      # branch each time, force-pushed, so nothing a previous build left is
+      # ever served and the branch never grows a history of bundles.
+      - name: Publish to gh-pages
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd dist-pwa
+          git init -q -b gh-pages
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "Publish ${GITHUB_SHA::7} from ${GITHUB_REF_NAME}"
+          git push -f "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.git" gh-pages

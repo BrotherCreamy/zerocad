@@ -1,0 +1,52 @@
+// NeoCAD's service worker, written by hand (docs/plans/pwa-pages.md). The
+// build (scripts/pwa-shell.ts) fills in the two names below; nothing else
+// about it changes between builds, so a new deploy is a new worker exactly
+// when the build stamp — and so the cache's name — has changed.
+//
+// Cache first: the page is the whole app (the kernel rides inside it as
+// base64), so once it is cached the app starts with no network at all.
+//
+// **No skipWaiting, no clients.claim, no reload.** A new worker installs
+// beside the old one, fills its own cache and then waits; the open app keeps
+// running on the old one's cache, untouched. The browser activates the new
+// worker once no window of the app is left open, so the new version is what
+// the next start gets — never a page swapped under a hand that is drawing.
+//
+// Every relative URL here resolves against this script's own, which is in the
+// app's folder (/zerocad/sw.js on Pages): "./" is the app.
+
+const CACHE = "__NEOCAD_CACHE__";
+const SHELL = __NEOCAD_SHELL__;
+
+self.addEventListener("install", (event) => {
+  // "reload": past the HTTP cache, which on Pages holds a file for ten
+  // minutes — without it a new worker could fill its new cache with the
+  // previous deploy's page.
+  event.waitUntil(
+    caches.open(CACHE).then((cache) => cache.addAll(SHELL.map((path) => new Request(path, { cache: "reload" })))),
+  );
+});
+
+self.addEventListener("activate", (event) => {
+  // Only caches of this app: the origin's caches are shared with every other
+  // site the account publishes, and theirs are not ours to delete.
+  event.waitUntil(
+    caches.keys().then((keys) =>
+      Promise.all(keys.filter((key) => key.startsWith("neocad-") && key !== CACHE).map((key) => caches.delete(key))),
+    ),
+  );
+});
+
+self.addEventListener("fetch", (event) => {
+  const request = event.request;
+  if (request.method !== "GET" || new URL(request.url).origin !== self.location.origin) return;
+  event.respondWith(
+    caches.open(CACHE).then(async (cache) => {
+      // A navigation is the app whatever its address (index.html, a query
+      // string a launcher added): the one page there is.
+      const hit = (await cache.match(request, { ignoreSearch: true })) ??
+        (request.mode === "navigate" ? await cache.match("./") : undefined);
+      return hit ?? fetch(request);
+    }),
+  );
+});

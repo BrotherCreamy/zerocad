@@ -2198,6 +2198,47 @@ replacing) the system Node other projects on this machine may depend on.
   cylinder takes the frame (its origin is the twin centre) and leaves those two
   points, as deleting any frame leaves its points. *Spec:*
   [`docs/plans/no-lid-frame.md`](docs/plans/no-lid-frame.md).
+- **The hosted PWA, and a page that never scrolls or zooms** (`scripts/pwa.ts`,
+  `scripts/pwa-shell.ts`, `scripts/pwa-sw.js`, `scripts/icons.ts`,
+  `public/icons/`, `src/pagelock.ts` (all new); `scripts/singlefile.mjs` now
+  exports `singleFile()`; `index.html`'s head and first rules;
+  `.github/workflows/pages.yml`).
+  - **The build.** `npm run build:pwa` writes `dist-pwa/` (gitignored):
+    `index.html` (the single-file app in a full document with the PWA head),
+    `manifest.webmanifest`, `sw.js`, `icons/`, `.nojekyll`. Every URL in it is
+    relative. The target is `https://brothercreamy.github.io/zerocad/`, served
+    from the public repository `BrotherCreamy/zerocad`. The workflow publishes
+    the folder as the whole of the running repository's `gh-pages` branch.
+    Nothing has been published from here.
+  - **The worker** (hand-written, no dependency) precaches the shell under
+    `neocad-<stamp>` and serves cache first. A navigation anywhere in scope is
+    the app. It deletes only `neocad-` caches other than its own, because the
+    origin's caches are shared by every site the account publishes. There is
+    no `skipWaiting`, `clients.claim` or reload: a new version is the next
+    start's. It is registered from the hosted build's head only, never from
+    `index.html`.
+  - **Every build** carries the viewport (`user-scalable=no`,
+    `viewport-fit=cover`) and `format-detection`; `singlefile.mjs` copies each
+    `<meta name>` from `index.html`. The page is fixed (`position: fixed;
+    inset: 0; overflow: hidden; overscroll-behavior: none`), the app is
+    `100dvh`, and the safe areas pad the header and inset `#viewwrap`, which
+    keeps every panel clear. `touch-action` is `manipulation` on the page and
+    `none` on `#cv`. Selection and the callout are off except on `#cmd`,
+    `#log` and inputs. `lockPage(document)` cancels `gesture*` and
+    multi-finger `touchmove`, non-passive.
+  - **Tests.** `test/pwa.test.ts` (8): the manifest, the icons' sizes and
+    corner alpha, the cache's name, the worker run against a stand-in scope,
+    the head, `index.html`'s rules, and the page lock. `test/e2e/pwa.e2e.ts`
+    (9): the sub-path, the manifest as an installer reads it, offline, a
+    waiting update, controls for the touch drivers, no scroll or zoom on the
+    dev server and the hosted build, the pinch with the viewport's limits
+    stripped (with and without the lock), and the safe areas in portrait and
+    landscape through CDP's inset override. 981 unit tests, 407 e2e.
+  - *Known and deliberate:* only Chromium's emulation has been tried, never
+    iOS Safari. On iOS, a new version waits until the app is closed from the
+    switcher. The cache prefix must change with care when the app is renamed:
+    delete both prefixes for one release. *Spec:*
+    [`docs/plans/pwa-pages.md`](docs/plans/pwa-pages.md).
 
 - **Construction geometry** (`construction?: true` on `LineEntity`,
   `CircleEntity`, `ArcEntity` and `isConstruction`/`setConstruction` in
