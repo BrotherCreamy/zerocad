@@ -165,6 +165,15 @@ export class CurvePlane {
   }
 
   /**
+   * The same plane as a place — a point on it and two directions in it — or
+   * null in 2D: what the curve tools lay their closed forms out on
+   * (curvemethod.ts's `Sheet`) and ask whether a curve lies in.
+   */
+  get surface(): Plane | null {
+    return this.on;
+  }
+
+  /**
    * The normal a curve drawn on the plane is seeded with — the plane's own,
    * which for a face is the side facing the viewer — or null in 2D. A seed:
    * `hold` is what keeps it.
@@ -238,8 +247,8 @@ export function normalRef(model: Model, ref: string): string {
  * be drawn as construction geometry from the start (docs/plans/
  * construction.md) — and, being a declared option, it is in the options panel
  * as a checkbox, typed as `arm("circle", { construction: true })` and
- * remembered like any option. One declaration, shared, so the six tools cannot
- * come to spell it six ways.
+ * remembered like any option. One declaration, shared, so the drawing tools cannot
+ * come to spell it several ways.
  */
 export const DRAWING_OPTIONS: OptionSpecs = {
   construction: { default: false },

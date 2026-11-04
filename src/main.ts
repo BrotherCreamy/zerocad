@@ -27,7 +27,7 @@ import { ContextMenu, menuFor } from "./menu.ts";
 import { toolUnavailable } from "./toolavail.ts";
 import { AXIS_INKS, frameArmPx, frameMarker } from "./framemarker.ts";
 import { constrainedBy, type Glyph } from "./glyphs.ts";
-import { ENGINE_TOOLS, HAND, SELECT, getToolCtor, toolSummary, toolbarTools } from "./tools/tool.ts";
+import { ENGINE_TOOLS, HAND, SELECT, armedLine, getToolCtor, toolAlias, toolSummary, toolbarTools } from "./tools/tool.ts";
 import {
   ACTIONS, ActionStrip, FINE, OptionsPanel, Panels, Toolbar, actionKey, browserStorage, cornerRoom, defaultLayout, logoBox, scaledMetrics,
   touchMetrics, type Insets, type Layout, type Metrics, type Size,
@@ -57,9 +57,7 @@ import "./tools/point.ts";
 import "./tools/line.ts";
 import "./tools/rectangle.ts";
 import "./tools/circle.ts";
-import "./tools/circle3.ts";
 import "./tools/arc.ts";
-import "./tools/arc3.ts";
 import "./tools/fillet.ts";
 import "./tools/extrude.ts";
 import "./tools/revolve.ts";
@@ -1322,8 +1320,12 @@ async function main() {
       const a = engine.armed;
       if (!a) return null;
       const specs = declaredOptions(getToolCtor(a.name), a.name);
+      // A choice also shows what the gesture has read it as (`Tool.read`), so
+      // the method the circle tool took a drag for is on the screen to lock.
+      const read = engine.active?.read?.() ?? {};
       const rows = Object.entries(specs).map(([name, s]) => ({
         name, label: s.label ?? name, unit: unitSymbol(s.unit), value: a.options[name] as OptionValue,
+        ...(s.choices ? { choices: Object.entries(s.choices), read: s.choices[read[name]] ?? null } : {}),
       }));
       const dialog = engine.dialog();
       return rows.length || dialog ? { tool: a.name, rows, dialog } : null;
@@ -1771,10 +1773,10 @@ async function main() {
 
     // A bare tool name arms it — the one shortcut, and only when the whole
     // entry is an identifier that is actually a registered tool.
-    if (/^[A-Za-z_$][\w$]*$/.test(src) && (getToolCtor(src) || ENGINE_TOOLS.includes(src))) {
+    if (/^[A-Za-z_$][\w$]*$/.test(src) && (getToolCtor(src) || ENGINE_TOOLS.includes(src) || toolAlias(src))) {
       try {
         engine.arm(src);
-        log(`armed: ${src}`, "out");
+        log(armedLine(src), "out");
       } catch (err) {
         log(String(err instanceof Error ? err.message : err), "err");
         syncToolbar();

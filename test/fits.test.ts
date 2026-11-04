@@ -19,7 +19,8 @@ import {
 } from "../src/panels.ts";
 import { IPHONES, areaOf, everyWay, windowOf } from "./devices.ts";
 
-const TOOLS = 13;
+// Select, the Hand and the nine tools (one circle, one arc: docs/plans/one-circle-one-arc.md).
+const TOOLS = 11;
 /** The spin box's steps, 60 % to 160 % (uiscale.ts). */
 const STEPS = [0.6, 0.7, 0.8, 0.9, 1, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6];
 
@@ -89,8 +90,8 @@ test("traySize wraps by the room along it: one line where one fits, then two, th
         if (coarse) assert.ok(depth(two) - depth(one) >= TOUCH_TARGET, `${at}: the lines' hit boxes do not overlap`);
         assert.equal(trayLines(TOOLS, orient, m, run(two) - 1), 3, `${at}: three, where two are too long`);
         assert.equal(linesOf({ x: 0, y: 0, ...two, orient }, m), 2, `${at}: and read back off its depth`);
-        // Same order, line by line: seven then six.
-        assert.equal(run(two), m.title + 6 + 7 * (m.button + m.gap));
+        // Same order, line by line: six then five.
+        assert.equal(run(two), m.title + 6 + Math.ceil(TOOLS / 2) * (m.button + m.gap));
       }
     }
   }

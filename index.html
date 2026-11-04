@@ -286,6 +286,11 @@
     #options .oval[type="checkbox"]{width:calc(14px * var(--ui));height:calc(14px * var(--ui));margin:0 calc(25px * var(--ui));accent-color:#e8a33d}
     #options .oval:focus{border-color:#e8a33d80;color:#e8a33d}
     #options .ounit{flex:none;min-width:calc(24px * var(--ui));white-space:nowrap;color:#46586a}
+    /* A choice (the curve tools' method): its drop-down the row's width, and —
+       while the gesture has been read — what it was read as, in the preview's
+       amber, the tool's own voice. */
+    #options .ochoice .oval{flex:1;min-width:0;width:auto;padding:0 2px;text-align:left}
+    #options .ochoice .oval.oread{color:#e8a33d}
     /* A feature's ✓ and ✗, under its options: ✓ in the tools' green, dim and
        inert until the picks are enough, ✗ in the panel's ink. */
     #options .oact{justify-content:flex-end;gap:4px}
@@ -323,7 +328,7 @@
       #cmd{font-size:max(16px, calc(13px * var(--ui)))}
       #cmdhint{display:none}
       #log{line-height:1.4;padding:0 10px}
-      #options .oval[type="text"]{font-size:max(16px, calc(11px * var(--ui)))}
+      #options .oval[type="text"],#options select.oval{font-size:max(16px, calc(11px * var(--ui)))}
       /* The organiser: a row a target tall, its marker, its eye and the strip's
          ＋ each answering over 44 however small they are drawn. */
       #organiser .orow{height:auto;min-height:44px}

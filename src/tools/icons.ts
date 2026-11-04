@@ -48,13 +48,10 @@ export const TOOL_ICONS: Readonly<Record<string, string>> = {
   line: svg("line", `<path d="M3 13 13 3"/>`),
   rectangle: svg("rectangle", `<rect x="2.5" y="4" width="11" height="8" rx="1"/>`),
   circle: svg("circle", `<circle cx="8" cy="8" r="5.5"/>`),
-  // The three dots at the circle's 90°, 210° and 330°: spread round it, so the
-  // glyph says "through three points" rather than "a circle with a mark on it".
-  circle3: svg("circle3", `<circle cx="8" cy="8" r="5.25"/>${dot(8, 2.75)}${dot(3.45, 10.63)}${dot(12.55, 10.63)}`),
   // Half a turn, opening downward: anything shallower reads at 16 px as a bent
-  // line, or (with arc3's dots on it) as a caret.
+  // line. (The 3-point circle's and arc's dotted glyphs went with their buttons:
+  // one circle tool and one arc tool, docs/plans/one-circle-one-arc.md.)
   arc: svg("arc", `<path d="M2.5 12A5.5 5.5 0 0 1 13.5 12"/>`),
-  arc3: svg("arc3", `<path d="M2.5 12A5.5 5.5 0 0 1 13.5 12"/>${dot(2.5, 12)}${dot(8, 6.5)}${dot(13.5, 12)}`),
   // Two edges meeting at a corner, the corner itself replaced by a quarter
   // circle on its inside — what a fillet does to the corner it is given.
   fillet: svg("fillet", `<path d="M3 13.5V8.5A5.5 5.5 0 0 1 8.5 3H13.5"/>`),

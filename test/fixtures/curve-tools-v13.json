@@ -1,0 +1,295 @@
+{
+  "view": {
+    "ox": 400,
+    "oy": 300,
+    "scale": 4
+  },
+  "gestures": {
+    "circle drag": {
+      "tool": "circle",
+      "steps": [
+        [
+          "down",
+          404,
+          292
+        ],
+        [
+          "move",
+          416,
+          292
+        ],
+        [
+          "up",
+          436,
+          292
+        ]
+      ]
+    },
+    "circle3 clicks": {
+      "tool": "circle3",
+      "steps": [
+        [
+          "down",
+          400,
+          300
+        ],
+        [
+          "up",
+          400,
+          300
+        ],
+        [
+          "down",
+          464,
+          300
+        ],
+        [
+          "up",
+          464,
+          300
+        ],
+        [
+          "down",
+          400,
+          252
+        ],
+        [
+          "up",
+          400,
+          252
+        ]
+      ]
+    },
+    "circle3 through a point and on a line": {
+      "tool": "circle3",
+      "base": true,
+      "steps": [
+        [
+          "down",
+          520,
+          180
+        ],
+        [
+          "up",
+          520,
+          180
+        ],
+        [
+          "down",
+          480,
+          380
+        ],
+        [
+          "up",
+          480,
+          380
+        ],
+        [
+          "down",
+          360,
+          260
+        ],
+        [
+          "up",
+          360,
+          260
+        ]
+      ]
+    },
+    "arc clicks": {
+      "tool": "arc",
+      "steps": [
+        [
+          "down",
+          400,
+          300
+        ],
+        [
+          "up",
+          400,
+          300
+        ],
+        [
+          "down",
+          440,
+          300
+        ],
+        [
+          "up",
+          440,
+          300
+        ],
+        [
+          "down",
+          400,
+          244
+        ],
+        [
+          "up",
+          400,
+          244
+        ]
+      ]
+    },
+    "arc from a point": {
+      "tool": "arc",
+      "base": true,
+      "steps": [
+        [
+          "down",
+          400,
+          300
+        ],
+        [
+          "up",
+          400,
+          300
+        ],
+        [
+          "down",
+          520,
+          180
+        ],
+        [
+          "up",
+          520,
+          180
+        ],
+        [
+          "down",
+          320,
+          280
+        ],
+        [
+          "up",
+          320,
+          280
+        ]
+      ]
+    },
+    "arc3 above": {
+      "tool": "arc3",
+      "steps": [
+        [
+          "down",
+          400,
+          300
+        ],
+        [
+          "up",
+          400,
+          300
+        ],
+        [
+          "down",
+          480,
+          300
+        ],
+        [
+          "up",
+          480,
+          300
+        ],
+        [
+          "down",
+          440,
+          276
+        ],
+        [
+          "up",
+          440,
+          276
+        ]
+      ]
+    },
+    "arc3 below": {
+      "tool": "arc3",
+      "steps": [
+        [
+          "down",
+          400,
+          300
+        ],
+        [
+          "up",
+          400,
+          300
+        ],
+        [
+          "down",
+          480,
+          300
+        ],
+        [
+          "up",
+          480,
+          300
+        ],
+        [
+          "down",
+          440,
+          324
+        ],
+        [
+          "up",
+          440,
+          324
+        ]
+      ]
+    },
+    "arc3 from a point": {
+      "tool": "arc3",
+      "base": true,
+      "steps": [
+        [
+          "down",
+          520,
+          180
+        ],
+        [
+          "up",
+          520,
+          180
+        ],
+        [
+          "down",
+          360,
+          300
+        ],
+        [
+          "up",
+          360,
+          300
+        ],
+        [
+          "down",
+          420,
+          200
+        ],
+        [
+          "up",
+          420,
+          200
+        ]
+      ]
+    }
+  },
+  "files": {
+    "2D circle drag": "{\n  \"format\": \"neocad-model\",\n  \"version\": 13,\n  \"dim\": 2,\n  \"journal\": [\n    {\n      \"op\": \"addPoint\",\n      \"args\": [\n        [\n          1,\n          2\n        ],\n        \"p1\"\n      ]\n    },\n    {\n      \"op\": \"addCircle\",\n      \"args\": [\n        \"p1\",\n        8,\n        null,\n        \"c1\"\n      ]\n    }\n  ],\n  \"values\": {\n    \"points\": {\n      \"p1\": [\n        1,\n        2\n      ]\n    },\n    \"radii\": {\n      \"c1\": 8\n    }\n  }\n}",
+    "2D circle3 clicks": "{\n  \"format\": \"neocad-model\",\n  \"version\": 13,\n  \"dim\": 2,\n  \"journal\": [\n    {\n      \"op\": \"addPoint\",\n      \"args\": [\n        [\n          0,\n          0\n        ],\n        \"p1\"\n      ]\n    },\n    {\n      \"op\": \"addPoint\",\n      \"args\": [\n        [\n          16,\n          0\n        ],\n        \"p2\"\n      ]\n    },\n    {\n      \"op\": \"addPoint\",\n      \"args\": [\n        [\n          0,\n          12\n        ],\n        \"p3\"\n      ]\n    },\n    {\n      \"op\": \"addCircle\",\n      \"args\": [\n        null,\n        10,\n        null,\n        \"c1\"\n      ]\n    },\n    {\n      \"op\": \"setCoords\",\n      \"args\": [\n        \"p4\",\n        [\n          8,\n          6\n        ]\n      ]\n    },\n    {\n      \"op\": \"onCircle\",\n      \"args\": [\n        \"p1\",\n        \"c1\"\n      ]\n    },\n    {\n      \"op\": \"onCircle\",\n      \"args\": [\n        \"p2\",\n        \"c1\"\n      ]\n    },\n    {\n      \"op\": \"onCircle\",\n      \"args\": [\n        \"p3\",\n        \"c1\"\n      ]\n    }\n  ],\n  \"values\": {\n    \"points\": {\n      \"p1\": [\n        0,\n        0\n      ],\n      \"p2\": [\n        16,\n        0\n      ],\n      \"p3\": [\n        0,\n        12\n      ],\n      \"p4\": [\n        8,\n        6\n      ]\n    },\n    \"radii\": {\n      \"c1\": 10\n    }\n  }\n}",
+    "2D circle3 through a point and on a line": "{\n  \"format\": \"neocad-model\",\n  \"version\": 13,\n  \"dim\": 2,\n  \"journal\": [\n    {\n      \"op\": \"addPoint\",\n      \"args\": [\n        [\n          -40,\n          -20\n        ],\n        \"p1\"\n      ]\n    },\n    {\n      \"op\": \"addPoint\",\n      \"args\": [\n        [\n          40,\n          -20\n        ],\n        \"p2\"\n      ]\n    },\n    {\n      \"op\": \"addLine\",\n      \"args\": [\n        \"p1\",\n        \"p2\",\n        \"l1\"\n      ]\n    },\n    {\n      \"op\": \"addPoint\",\n      \"args\": [\n        [\n          30,\n          30\n        ],\n        \"p3\"\n      ]\n    },\n    {\n      \"op\": \"addPoint\",\n      \"args\": [\n        [\n          30,\n          30\n        ],\n        \"p4\"\n      ]\n    },\n    {\n      \"op\": \"coincident\",\n      \"args\": [\n        \"p4\",\n        \"p3\"\n      ]\n    },\n    {\n      \"op\": \"addPoint\",\n      \"args\": [\n        [\n          20,\n          -20\n        ],\n        \"p5\"\n      ]\n    },\n    {\n      \"op\": \"pointOnLine\",\n      \"args\": [\n        \"p5\",\n        \"l1\"\n      ]\n    },\n    {\n      \"op\": \"addPoint\",\n      \"args\": [\n        [\n          -10,\n          10\n        ],\n        \"p6\"\n      ]\n    },\n    {\n      \"op\": \"addCircle\",\n      \"args\": [\n        null,\n        26.874192494328497,\n        null,\n        \"c1\"\n      ]\n    },\n    {\n      \"op\": \"setCoords\",\n      \"args\": [\n        \"p7\",\n        [\n          16.666666666666664,\n          6.666666666666668\n        ]\n      ]\n    },\n    {\n      \"op\": \"onCircle\",\n      \"args\": [\n        \"p4\",\n        \"c1\"\n      ]\n    },\n    {\n      \"op\": \"onCircle\",\n      \"args\": [\n        \"p5\",\n        \"c1\"\n      ]\n    },\n    {\n      \"op\": \"onCircle\",\n      \"args\": [\n        \"p6\",\n        \"c1\"\n      ]\n    }\n  ],\n  \"values\": {\n    \"points\": {\n      \"p1\": [\n        -40,\n        -20\n      ],\n      \"p2\": [\n        40,\n        -20\n      ],\n      \"p3\": [\n        30,\n        30\n      ],\n      \"p4\": [\n        30,\n        30\n      ],\n      \"p5\": [\n        20,\n        -20\n      ],\n      \"p6\": [\n        -10,\n        10\n      ],\n      \"p7\": [\n        16.666666666666664,\n        6.666666666666668\n      ]\n    },\n    \"radii\": {\n      \"c1\": 26.874192494328497\n    }\n  }\n}",
+    "2D arc clicks": "{\n  \"format\": \"neocad-model\",\n  \"version\": 13,\n  \"dim\": 2,\n  \"journal\": [\n    {\n      \"op\": \"addPoint\",\n      \"args\": [\n        [\n          0,\n          0\n        ],\n        \"p1\"\n      ]\n    },\n    {\n      \"op\": \"addPoint\",\n      \"args\": [\n        [\n          10,\n          0\n        ],\n        \"p2\"\n      ]\n    },\n    {\n      \"op\": \"addPoint\",\n      \"args\": [\n        [\n          0,\n          10\n        ],\n        \"p3\"\n      ]\n    },\n    {\n      \"op\": \"addArc\",\n      \"args\": [\n        \"p1\",\n        \"p2\",\n        \"p3\",\n        10,\n        null,\n        \"a1\"\n      ]\n    },\n    {\n      \"op\": \"arcEndpoints\",\n      \"args\": [\n        \"a1\"\n      ]\n    }\n  ],\n  \"values\": {\n    \"points\": {\n      \"p1\": [\n        0,\n        0\n      ],\n      \"p2\": [\n        10,\n        0\n      ],\n      \"p3\": [\n        0,\n        10\n      ]\n    },\n    \"radii\": {\n      \"a1\": 10\n    }\n  }\n}",
+    "2D arc from a point": "{\n  \"format\": \"neocad-model\",\n  \"version\": 13,\n  \"dim\": 2,\n  \"journal\": [\n    {\n      \"op\": \"addPoint\",\n      \"args\": [\n        [\n          -40,\n          -20\n        ],\n        \"p1\"\n      ]\n    },\n    {\n      \"op\": \"addPoint\",\n      \"args\": [\n        [\n          40,\n          -20\n        ],\n        \"p2\"\n      ]\n    },\n    {\n      \"op\": \"addLine\",\n      \"args\": [\n        \"p1\",\n        \"p2\",\n        \"l1\"\n      ]\n    },\n    {\n      \"op\": \"addPoint\",\n      \"args\": [\n        [\n          30,\n          30\n        ],\n        \"p3\"\n      ]\n    },\n    {\n      \"op\": \"addPoint\",\n      \"args\": [\n        [\n          0,\n          0\n        ],\n        \"p4\"\n      ]\n    },\n    {\n      \"op\": \"addPoint\",\n      \"args\": [\n        [\n          30,\n          30\n        ],\n        \"p5\"\n      ]\n    },\n    {\n      \"op\": \"coincident\",\n      \"args\": [\n        \"p5\",\n        \"p3\"\n      ]\n    },\n    {\n      \"op\": \"addPoint\",\n      \"args\": [\n        [\n          -41.159660434202124,\n          10.289915108550531\n        ],\n        \"p6\"\n      ]\n    },\n    {\n      \"op\": \"addArc\",\n      \"args\": [\n        \"p4\",\n        \"p5\",\n        \"p6\",\n        42.42640687119285,\n        null,\n        \"a1\"\n      ]\n    },\n    {\n      \"op\": \"arcEndpoints\",\n      \"args\": [\n        \"a1\"\n      ]\n    }\n  ],\n  \"values\": {\n    \"points\": {\n      \"p1\": [\n        -40,\n        -20\n      ],\n      \"p2\": [\n        40,\n        -20\n      ],\n      \"p3\": [\n        30,\n        30\n      ],\n      \"p4\": [\n        0,\n        0\n      ],\n      \"p5\": [\n        30,\n        30\n      ],\n      \"p6\": [\n        -41.159660434202124,\n        10.289915108550531\n      ]\n    },\n    \"radii\": {\n      \"a1\": 42.42640687119285\n    }\n  }\n}",
+    "2D arc3 above": "{\n  \"format\": \"neocad-model\",\n  \"version\": 13,\n  \"dim\": 2,\n  \"journal\": [\n    {\n      \"op\": \"addPoint\",\n      \"args\": [\n        [\n          0,\n          0\n        ],\n        \"p1\"\n      ]\n    },\n    {\n      \"op\": \"addPoint\",\n      \"args\": [\n        [\n          20,\n          0\n        ],\n        \"p2\"\n      ]\n    },\n    {\n      \"op\": \"addArc\",\n      \"args\": [\n        null,\n        \"p2\",\n        \"p1\",\n        11.333333333333332,\n        null,\n        \"a1\"\n      ]\n    },\n    {\n      \"op\": \"setCoords\",\n      \"args\": [\n        \"p3\",\n        [\n          10,\n          -5.333333333333333\n        ]\n      ]\n    },\n    {\n      \"op\": \"arcEndpoints\",\n      \"args\": [\n        \"a1\"\n      ]\n    }\n  ],\n  \"values\": {\n    \"points\": {\n      \"p1\": [\n        0,\n        0\n      ],\n      \"p2\": [\n        20,\n        0\n      ],\n      \"p3\": [\n        10,\n        -5.333333333333333\n      ]\n    },\n    \"radii\": {\n      \"a1\": 11.333333333333332\n    }\n  }\n}",
+    "2D arc3 below": "{\n  \"format\": \"neocad-model\",\n  \"version\": 13,\n  \"dim\": 2,\n  \"journal\": [\n    {\n      \"op\": \"addPoint\",\n      \"args\": [\n        [\n          0,\n          0\n        ],\n        \"p1\"\n      ]\n    },\n    {\n      \"op\": \"addPoint\",\n      \"args\": [\n        [\n          20,\n          0\n        ],\n        \"p2\"\n      ]\n    },\n    {\n      \"op\": \"addArc\",\n      \"args\": [\n        null,\n        \"p1\",\n        \"p2\",\n        11.333333333333332,\n        null,\n        \"a1\"\n      ]\n    },\n    {\n      \"op\": \"setCoords\",\n      \"args\": [\n        \"p3\",\n        [\n          10,\n          5.333333333333333\n        ]\n      ]\n    },\n    {\n      \"op\": \"arcEndpoints\",\n      \"args\": [\n        \"a1\"\n      ]\n    }\n  ],\n  \"values\": {\n    \"points\": {\n      \"p1\": [\n        0,\n        0\n      ],\n      \"p2\": [\n        20,\n        0\n      ],\n      \"p3\": [\n        10,\n        5.333333333333333\n      ]\n    },\n    \"radii\": {\n      \"a1\": 11.333333333333332\n    }\n  }\n}",
+    "2D arc3 from a point": "{\n  \"format\": \"neocad-model\",\n  \"version\": 13,\n  \"dim\": 2,\n  \"journal\": [\n    {\n      \"op\": \"addPoint\",\n      \"args\": [\n        [\n          -40,\n          -20\n        ],\n        \"p1\"\n      ]\n    },\n    {\n      \"op\": \"addPoint\",\n      \"args\": [\n        [\n          40,\n          -20\n        ],\n        \"p2\"\n      ]\n    },\n    {\n      \"op\": \"addLine\",\n      \"args\": [\n        \"p1\",\n        \"p2\",\n        \"l1\"\n      ]\n    },\n    {\n      \"op\": \"addPoint\",\n      \"args\": [\n        [\n          30,\n          30\n        ],\n        \"p3\"\n      ]\n    },\n    {\n      \"op\": \"addPoint\",\n      \"args\": [\n        [\n          30,\n          30\n        ],\n        \"p4\"\n      ]\n    },\n    {\n      \"op\": \"coincident\",\n      \"args\": [\n        \"p4\",\n        \"p3\"\n      ]\n    },\n    {\n      \"op\": \"addPoint\",\n      \"args\": [\n        [\n          -10,\n          0\n        ],\n        \"p5\"\n      ]\n    },\n    {\n      \"op\": \"addArc\",\n      \"args\": [\n        null,\n        \"p4\",\n        \"p5\",\n        33.78651988026933,\n        null,\n        \"a1\"\n      ]\n    },\n    {\n      \"op\": \"setCoords\",\n      \"args\": [\n        \"p6\",\n        [\n          23.636363636363637,\n          -3.18181818181818\n        ]\n      ]\n    },\n    {\n      \"op\": \"arcEndpoints\",\n      \"args\": [\n        \"a1\"\n      ]\n    }\n  ],\n  \"values\": {\n    \"points\": {\n      \"p1\": [\n        -40,\n        -20\n      ],\n      \"p2\": [\n        40,\n        -20\n      ],\n      \"p3\": [\n        30,\n        30\n      ],\n      \"p4\": [\n        30,\n        30\n      ],\n      \"p5\": [\n        -10,\n        0\n      ],\n      \"p6\": [\n        23.636363636363637,\n        -3.18181818181818\n      ]\n    },\n    \"radii\": {\n      \"a1\": 33.78651988026933\n    }\n  }\n}",
+    "3D circle drag": "{\n  \"format\": \"neocad-model\",\n  \"version\": 13,\n  \"dim\": 3,\n  \"journal\": [\n    {\n      \"op\": \"addPoint\",\n      \"args\": [\n        [\n          1,\n          2,\n          0\n        ],\n        \"p1\"\n      ]\n    },\n    {\n      \"op\": \"onPlane\",\n      \"args\": [\n        \"p1\",\n        \"origin\"\n      ]\n    },\n    {\n      \"op\": \"addCircle\",\n      \"args\": [\n        \"p1\",\n        8,\n        [\n          0,\n          0,\n          1\n        ],\n        \"c1\"\n      ]\n    },\n    {\n      \"op\": \"parallel\",\n      \"args\": [\n        \"c1\",\n        \"origin.z\"\n      ]\n    }\n  ],\n  \"values\": {\n    \"points\": {\n      \"p1\": [\n        1,\n        2,\n        0\n      ]\n    },\n    \"radii\": {\n      \"c1\": 8\n    },\n    \"normals\": {\n      \"c1\": [\n        0,\n        0,\n        1\n      ]\n    }\n  }\n}",
+    "3D circle3 clicks": "{\n  \"format\": \"neocad-model\",\n  \"version\": 13,\n  \"dim\": 3,\n  \"journal\": [\n    {\n      \"op\": \"addPoint\",\n      \"args\": [\n        [\n          0,\n          0,\n          0\n        ],\n        \"p1\"\n      ]\n    },\n    {\n      \"op\": \"onPlane\",\n      \"args\": [\n        \"p1\",\n        \"origin\"\n      ]\n    },\n    {\n      \"op\": \"addPoint\",\n      \"args\": [\n        [\n          16,\n          0,\n          0\n        ],\n        \"p2\"\n      ]\n    },\n    {\n      \"op\": \"onPlane\",\n      \"args\": [\n        \"p2\",\n        \"origin\"\n      ]\n    },\n    {\n      \"op\": \"addPoint\",\n      \"args\": [\n        [\n          0,\n          12,\n          0\n        ],\n        \"p3\"\n      ]\n    },\n    {\n      \"op\": \"onPlane\",\n      \"args\": [\n        \"p3\",\n        \"origin\"\n      ]\n    },\n    {\n      \"op\": \"addCircle\",\n      \"args\": [\n        null,\n        10,\n        [\n          0,\n          0,\n          1\n        ],\n        \"c1\"\n      ]\n    },\n    {\n      \"op\": \"setCoords\",\n      \"args\": [\n        \"p4\",\n        [\n          8,\n          6,\n          0\n        ]\n      ]\n    },\n    {\n      \"op\": \"onPlane\",\n      \"args\": [\n        \"p4\",\n        \"origin\"\n      ]\n    },\n    {\n      \"op\": \"parallel\",\n      \"args\": [\n        \"c1\",\n        \"origin.z\"\n      ]\n    },\n    {\n      \"op\": \"onCircle\",\n      \"args\": [\n        \"p1\",\n        \"c1\"\n      ]\n    },\n    {\n      \"op\": \"onCircle\",\n      \"args\": [\n        \"p2\",\n        \"c1\"\n      ]\n    },\n    {\n      \"op\": \"onCircle\",\n      \"args\": [\n        \"p3\",\n        \"c1\"\n      ]\n    }\n  ],\n  \"values\": {\n    \"points\": {\n      \"p1\": [\n        0,\n        0,\n        0\n      ],\n      \"p2\": [\n        16,\n        0,\n        0\n      ],\n      \"p3\": [\n        0,\n        12,\n        0\n      ],\n      \"p4\": [\n        8,\n        6,\n        0\n      ]\n    },\n    \"radii\": {\n      \"c1\": 10\n    },\n    \"normals\": {\n      \"c1\": [\n        0,\n        0,\n        1\n      ]\n    }\n  }\n}",
+    "3D circle3 through a point and on a line": "{\n  \"format\": \"neocad-model\",\n  \"version\": 13,\n  \"dim\": 3,\n  \"journal\": [\n    {\n      \"op\": \"addPoint\",\n      \"args\": [\n        [\n          -40,\n          -20,\n          0\n        ],\n        \"p1\"\n      ]\n    },\n    {\n      \"op\": \"addPoint\",\n      \"args\": [\n        [\n          40,\n          -20,\n          0\n        ],\n        \"p2\"\n      ]\n    },\n    {\n      \"op\": \"addLine\",\n      \"args\": [\n        \"p1\",\n        \"p2\",\n        \"l1\"\n      ]\n    },\n    {\n      \"op\": \"addPoint\",\n      \"args\": [\n        [\n          30,\n          30,\n          0\n        ],\n        \"p3\"\n      ]\n    },\n    {\n      \"op\": \"addPoint\",\n      \"args\": [\n        [\n          30,\n          30,\n          0\n        ],\n        \"p4\"\n      ]\n    },\n    {\n      \"op\": \"coincident\",\n      \"args\": [\n        \"p4\",\n        \"p3\"\n      ]\n    },\n    {\n      \"op\": \"addPoint\",\n      \"args\": [\n        [\n          20,\n          -20,\n          0\n        ],\n        \"p5\"\n      ]\n    },\n    {\n      \"op\": \"pointOnLine\",\n      \"args\": [\n        \"p5\",\n        \"l1\"\n      ]\n    },\n    {\n      \"op\": \"onPlane\",\n      \"args\": [\n        \"p5\",\n        \"origin\"\n      ]\n    },\n    {\n      \"op\": \"addPoint\",\n      \"args\": [\n        [\n          -10,\n          10,\n          0\n        ],\n        \"p6\"\n      ]\n    },\n    {\n      \"op\": \"onPlane\",\n      \"args\": [\n        \"p6\",\n        \"origin\"\n      ]\n    },\n    {\n      \"op\": \"addCircle\",\n      \"args\": [\n        null,\n        26.874192494328497,\n        [\n          0,\n          0,\n          1\n        ],\n        \"c1\"\n      ]\n    },\n    {\n      \"op\": \"setCoords\",\n      \"args\": [\n        \"p7\",\n        [\n          16.666666666666664,\n          6.666666666666668,\n          0\n        ]\n      ]\n    },\n    {\n      \"op\": \"onPlane\",\n      \"args\": [\n        \"p7\",\n        \"origin\"\n      ]\n    },\n    {\n      \"op\": \"parallel\",\n      \"args\": [\n        \"c1\",\n        \"origin.z\"\n      ]\n    },\n    {\n      \"op\": \"onCircle\",\n      \"args\": [\n        \"p4\",\n        \"c1\"\n      ]\n    },\n    {\n      \"op\": \"onCircle\",\n      \"args\": [\n        \"p5\",\n        \"c1\"\n      ]\n    },\n    {\n      \"op\": \"onCircle\",\n      \"args\": [\n        \"p6\",\n        \"c1\"\n      ]\n    }\n  ],\n  \"values\": {\n    \"points\": {\n      \"p1\": [\n        -40,\n        -20,\n        0\n      ],\n      \"p2\": [\n        40,\n        -20,\n        0\n      ],\n      \"p3\": [\n        30,\n        30,\n        0\n      ],\n      \"p4\": [\n        30,\n        30,\n        0\n      ],\n      \"p5\": [\n        20,\n        -20,\n        0\n      ],\n      \"p6\": [\n        -10,\n        10,\n        0\n      ],\n      \"p7\": [\n        16.666666666666664,\n        6.666666666666668,\n        0\n      ]\n    },\n    \"radii\": {\n      \"c1\": 26.874192494328497\n    },\n    \"normals\": {\n      \"c1\": [\n        0,\n        0,\n        1\n      ]\n    }\n  }\n}",
+    "3D arc clicks": "{\n  \"format\": \"neocad-model\",\n  \"version\": 13,\n  \"dim\": 3,\n  \"journal\": [\n    {\n      \"op\": \"addPoint\",\n      \"args\": [\n        [\n          0,\n          0,\n          0\n        ],\n        \"p1\"\n      ]\n    },\n    {\n      \"op\": \"onPlane\",\n      \"args\": [\n        \"p1\",\n        \"origin\"\n      ]\n    },\n    {\n      \"op\": \"addPoint\",\n      \"args\": [\n        [\n          10,\n          0,\n          0\n        ],\n        \"p2\"\n      ]\n    },\n    {\n      \"op\": \"onPlane\",\n      \"args\": [\n        \"p2\",\n        \"origin\"\n      ]\n    },\n    {\n      \"op\": \"addPoint\",\n      \"args\": [\n        [\n          0,\n          10,\n          0\n        ],\n        \"p3\"\n      ]\n    },\n    {\n      \"op\": \"onPlane\",\n      \"args\": [\n        \"p3\",\n        \"origin\"\n      ]\n    },\n    {\n      \"op\": \"addArc\",\n      \"args\": [\n        \"p1\",\n        \"p2\",\n        \"p3\",\n        10,\n        [\n          0,\n          0,\n          1\n        ],\n        \"a1\"\n      ]\n    },\n    {\n      \"op\": \"arcEndpoints\",\n      \"args\": [\n        \"a1\"\n      ]\n    },\n    {\n      \"op\": \"parallel\",\n      \"args\": [\n        \"a1\",\n        \"origin.z\"\n      ]\n    }\n  ],\n  \"values\": {\n    \"points\": {\n      \"p1\": [\n        0,\n        0,\n        0\n      ],\n      \"p2\": [\n        10,\n        0,\n        0\n      ],\n      \"p3\": [\n        0,\n        10,\n        0\n      ]\n    },\n    \"radii\": {\n      \"a1\": 10\n    },\n    \"normals\": {\n      \"a1\": [\n        0,\n        0,\n        1\n      ]\n    }\n  }\n}",
+    "3D arc from a point": "{\n  \"format\": \"neocad-model\",\n  \"version\": 13,\n  \"dim\": 3,\n  \"journal\": [\n    {\n      \"op\": \"addPoint\",\n      \"args\": [\n        [\n          -40,\n          -20,\n          0\n        ],\n        \"p1\"\n      ]\n    },\n    {\n      \"op\": \"addPoint\",\n      \"args\": [\n        [\n          40,\n          -20,\n          0\n        ],\n        \"p2\"\n      ]\n    },\n    {\n      \"op\": \"addLine\",\n      \"args\": [\n        \"p1\",\n        \"p2\",\n        \"l1\"\n      ]\n    },\n    {\n      \"op\": \"addPoint\",\n      \"args\": [\n        [\n          30,\n          30,\n          0\n        ],\n        \"p3\"\n      ]\n    },\n    {\n      \"op\": \"addPoint\",\n      \"args\": [\n        [\n          0,\n          0,\n          0\n        ],\n        \"p4\"\n      ]\n    },\n    {\n      \"op\": \"onPlane\",\n      \"args\": [\n        \"p4\",\n        \"origin\"\n      ]\n    },\n    {\n      \"op\": \"addPoint\",\n      \"args\": [\n        [\n          30,\n          30,\n          0\n        ],\n        \"p5\"\n      ]\n    },\n    {\n      \"op\": \"coincident\",\n      \"args\": [\n        \"p5\",\n        \"p3\"\n      ]\n    },\n    {\n      \"op\": \"addPoint\",\n      \"args\": [\n        [\n          -41.159660434202124,\n          10.289915108550531,\n          0\n        ],\n        \"p6\"\n      ]\n    },\n    {\n      \"op\": \"onPlane\",\n      \"args\": [\n        \"p6\",\n        \"origin\"\n      ]\n    },\n    {\n      \"op\": \"addArc\",\n      \"args\": [\n        \"p4\",\n        \"p5\",\n        \"p6\",\n        42.42640687119285,\n        [\n          0,\n          0,\n          1\n        ],\n        \"a1\"\n      ]\n    },\n    {\n      \"op\": \"arcEndpoints\",\n      \"args\": [\n        \"a1\"\n      ]\n    },\n    {\n      \"op\": \"parallel\",\n      \"args\": [\n        \"a1\",\n        \"origin.z\"\n      ]\n    }\n  ],\n  \"values\": {\n    \"points\": {\n      \"p1\": [\n        -40,\n        -20,\n        0\n      ],\n      \"p2\": [\n        40,\n        -20,\n        0\n      ],\n      \"p3\": [\n        30,\n        30,\n        0\n      ],\n      \"p4\": [\n        0,\n        0,\n        0\n      ],\n      \"p5\": [\n        30,\n        30,\n        0\n      ],\n      \"p6\": [\n        -41.159660434202124,\n        10.289915108550531,\n        0\n      ]\n    },\n    \"radii\": {\n      \"a1\": 42.42640687119285\n    },\n    \"normals\": {\n      \"a1\": [\n        0,\n        0,\n        1\n      ]\n    }\n  }\n}",
+    "3D arc3 above": "{\n  \"format\": \"neocad-model\",\n  \"version\": 13,\n  \"dim\": 3,\n  \"journal\": [\n    {\n      \"op\": \"addPoint\",\n      \"args\": [\n        [\n          0,\n          0,\n          0\n        ],\n        \"p1\"\n      ]\n    },\n    {\n      \"op\": \"onPlane\",\n      \"args\": [\n        \"p1\",\n        \"origin\"\n      ]\n    },\n    {\n      \"op\": \"addPoint\",\n      \"args\": [\n        [\n          20,\n          0,\n          0\n        ],\n        \"p2\"\n      ]\n    },\n    {\n      \"op\": \"onPlane\",\n      \"args\": [\n        \"p2\",\n        \"origin\"\n      ]\n    },\n    {\n      \"op\": \"addArc\",\n      \"args\": [\n        null,\n        \"p2\",\n        \"p1\",\n        11.333333333333336,\n        [\n          0,\n          0,\n          1\n        ],\n        \"a1\"\n      ]\n    },\n    {\n      \"op\": \"setCoords\",\n      \"args\": [\n        \"p3\",\n        [\n          10,\n          -5.333333333333336,\n          0\n        ]\n      ]\n    },\n    {\n      \"op\": \"onPlane\",\n      \"args\": [\n        \"p3\",\n        \"origin\"\n      ]\n    },\n    {\n      \"op\": \"parallel\",\n      \"args\": [\n        \"a1\",\n        \"origin.z\"\n      ]\n    },\n    {\n      \"op\": \"arcEndpoints\",\n      \"args\": [\n        \"a1\"\n      ]\n    }\n  ],\n  \"values\": {\n    \"points\": {\n      \"p1\": [\n        0,\n        0,\n        0\n      ],\n      \"p2\": [\n        20,\n        0,\n        0\n      ],\n      \"p3\": [\n        10,\n        -5.333333333333336,\n        0\n      ]\n    },\n    \"radii\": {\n      \"a1\": 11.333333333333336\n    },\n    \"normals\": {\n      \"a1\": [\n        0,\n        0,\n        1\n      ]\n    }\n  }\n}",
+    "3D arc3 below": "{\n  \"format\": \"neocad-model\",\n  \"version\": 13,\n  \"dim\": 3,\n  \"journal\": [\n    {\n      \"op\": \"addPoint\",\n      \"args\": [\n        [\n          0,\n          0,\n          0\n        ],\n        \"p1\"\n      ]\n    },\n    {\n      \"op\": \"onPlane\",\n      \"args\": [\n        \"p1\",\n        \"origin\"\n      ]\n    },\n    {\n      \"op\": \"addPoint\",\n      \"args\": [\n        [\n          20,\n          0,\n          0\n        ],\n        \"p2\"\n      ]\n    },\n    {\n      \"op\": \"onPlane\",\n      \"args\": [\n        \"p2\",\n        \"origin\"\n      ]\n    },\n    {\n      \"op\": \"addArc\",\n      \"args\": [\n        null,\n        \"p1\",\n        \"p2\",\n        11.333333333333336,\n        [\n          0,\n          0,\n          1\n        ],\n        \"a1\"\n      ]\n    },\n    {\n      \"op\": \"setCoords\",\n      \"args\": [\n        \"p3\",\n        [\n          10,\n          5.333333333333336,\n          0\n        ]\n      ]\n    },\n    {\n      \"op\": \"onPlane\",\n      \"args\": [\n        \"p3\",\n        \"origin\"\n      ]\n    },\n    {\n      \"op\": \"parallel\",\n      \"args\": [\n        \"a1\",\n        \"origin.z\"\n      ]\n    },\n    {\n      \"op\": \"arcEndpoints\",\n      \"args\": [\n        \"a1\"\n      ]\n    }\n  ],\n  \"values\": {\n    \"points\": {\n      \"p1\": [\n        0,\n        0,\n        0\n      ],\n      \"p2\": [\n        20,\n        0,\n        0\n      ],\n      \"p3\": [\n        10,\n        5.333333333333336,\n        0\n      ]\n    },\n    \"radii\": {\n      \"a1\": 11.333333333333336\n    },\n    \"normals\": {\n      \"a1\": [\n        0,\n        0,\n        1\n      ]\n    }\n  }\n}",
+    "3D arc3 from a point": "{\n  \"format\": \"neocad-model\",\n  \"version\": 13,\n  \"dim\": 3,\n  \"journal\": [\n    {\n      \"op\": \"addPoint\",\n      \"args\": [\n        [\n          -40,\n          -20,\n          0\n        ],\n        \"p1\"\n      ]\n    },\n    {\n      \"op\": \"addPoint\",\n      \"args\": [\n        [\n          40,\n          -20,\n          0\n        ],\n        \"p2\"\n      ]\n    },\n    {\n      \"op\": \"addLine\",\n      \"args\": [\n        \"p1\",\n        \"p2\",\n        \"l1\"\n      ]\n    },\n    {\n      \"op\": \"addPoint\",\n      \"args\": [\n        [\n          30,\n          30,\n          0\n        ],\n        \"p3\"\n      ]\n    },\n    {\n      \"op\": \"addPoint\",\n      \"args\": [\n        [\n          30,\n          30,\n          0\n        ],\n        \"p4\"\n      ]\n    },\n    {\n      \"op\": \"coincident\",\n      \"args\": [\n        \"p4\",\n        \"p3\"\n      ]\n    },\n    {\n      \"op\": \"addPoint\",\n      \"args\": [\n        [\n          -10,\n          0,\n          0\n        ],\n        \"p5\"\n      ]\n    },\n    {\n      \"op\": \"onPlane\",\n      \"args\": [\n        \"p5\",\n        \"origin\"\n      ]\n    },\n    {\n      \"op\": \"addArc\",\n      \"args\": [\n        null,\n        \"p4\",\n        \"p5\",\n        33.78651988026933,\n        [\n          0,\n          0,\n          1\n        ],\n        \"a1\"\n      ]\n    },\n    {\n      \"op\": \"setCoords\",\n      \"args\": [\n        \"p6\",\n        [\n          23.636363636363637,\n          -3.18181818181818,\n          0\n        ]\n      ]\n    },\n    {\n      \"op\": \"onPlane\",\n      \"args\": [\n        \"p6\",\n        \"origin\"\n      ]\n    },\n    {\n      \"op\": \"parallel\",\n      \"args\": [\n        \"a1\",\n        \"origin.z\"\n      ]\n    },\n    {\n      \"op\": \"arcEndpoints\",\n      \"args\": [\n        \"a1\"\n      ]\n    }\n  ],\n  \"values\": {\n    \"points\": {\n      \"p1\": [\n        -40,\n        -20,\n        0\n      ],\n      \"p2\": [\n        40,\n        -20,\n        0\n      ],\n      \"p3\": [\n        30,\n        30,\n        0\n      ],\n      \"p4\": [\n        30,\n        30,\n        0\n      ],\n      \"p5\": [\n        -10,\n        0,\n        0\n      ],\n      \"p6\": [\n        23.636363636363637,\n        -3.18181818181818,\n        0\n      ]\n    },\n    \"radii\": {\n      \"a1\": 33.78651988026933\n    },\n    \"normals\": {\n      \"a1\": [\n        0,\n        0,\n        1\n      ]\n    }\n  }\n}"
+  }
+}

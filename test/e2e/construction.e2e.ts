@@ -183,7 +183,8 @@ test("the circle tool's construction box: ticked, it types arm(…, {constructio
   assert.equal(m.journalOps.at(-1), "construction", "journalled straight after the circle");
   await app.type("cancel()");
   const listed = (await value("tools()")) as string[];
-  assert.ok(listed.some((l) => l.startsWith("circle  { construction: true }  (default { construction: false })  — ")), "remembered like any option");
+  assert.ok(listed.some((l) => l.startsWith('circle  { construction: true, method: "auto" }  (default { construction: false, method: "auto" })  — ')),
+    "remembered like any option");
   await app.type('arm("circle", { construction: false })');
   await app.type("cancel()");
 });

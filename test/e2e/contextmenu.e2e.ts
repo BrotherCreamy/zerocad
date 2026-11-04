@@ -100,7 +100,8 @@ test("the empty-canvas menu arms a tool, and the log shows the command it typed"
   assert.equal(await header(), "", "there is nothing to name on empty canvas");
   // Undo and Redo end every menu (see undokeys.e2e.ts for what they do).
   assert.deepEqual(await items(), [
-    "Point", "Line", "Rectangle", "Circle", "3 point circle", "Arc", "3 point arc", "Fillet", "Frame",
+    // One circle and one arc (docs/plans/one-circle-one-arc.md).
+    "Point", "Line", "Rectangle", "Circle", "Arc", "Fillet", "Frame",
     "Undo", "Redo",
   ]);
   // The commands are on the menu, not hidden behind it: this is a shortcut to

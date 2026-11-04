@@ -117,11 +117,10 @@ src/tools/engine.ts       wires real DOM pointer events to the armed tool
 src/tools/gestures.ts     what a finger means (tap, drag, long-press, box, pinch), decided before the engine sees it
 src/tools/point.ts        the trivial example tool
 src/tools/rectangle.ts    the concrete example the Tool API was designed around
-src/tools/circle.ts       drag from center to rim
-src/tools/circle3.ts      three clicks, a circle through all three
-src/tools/arc.ts          center, radius, sweep — a three-click gesture
-src/tools/arc3.ts         two endpoints, then a point the arc passes through
-src/tools/circumcircle.ts the closed form those two share
+src/tools/circle.ts       the one circle tool: a drag is centre and radius, three clicks a circle through them, a click on an edge a tangency
+src/tools/arc.ts          the one arc tool: drag end to end then click the bulge, or click the centre then both ends; tangent off a line's end
+src/tools/curvemethod.ts  what those two share: the method option, press-or-drag, what a click touched, the tangent closed forms
+src/tools/circumcircle.ts the circle through three points, and when there is none
 src/tools/extrude.ts      click inside regions, see the solids, ✓; they are extruded
 src/tools/revolve.ts      click inside regions, then on an axis, ✓; they are revolved
 src/tools/feature.ts      pick → preview → confirm, shared by the feature tools
@@ -296,6 +295,18 @@ which it is free to turn. `pt(x, y)` is `pt(x, y, 0)`, and `fix(p, [x, y])`
 is a position on the frame's plane. A 2D file from before 3D opens lifted
 into z = 0; a file from before curves carried their own normal opens with
 each curve following the frame it named, by a `par`.
+
+**One circle tool and one arc tool; the gesture says which constraints the
+clicks make** (the owner: *"surely just one tool, but different ways to set
+constraints"*). With the circle, a press and drag is a centre and a radius
+and three clicks are a circle through them. A click *along* a line or circle,
+where a rim point would go, makes the circle tangent to it instead. With the
+arc, drag from end to end and then click the bulge. Or click its centre
+first, then both ends. Dragged from a line's end, the arc snaps to the
+tangent one when the bulge comes near it. While you draw, the options panel
+shows the method it read (`centre · radius`, `3 points`, `tangent`), and you
+can lock it there: `arm("circle", { method: "3pt" })`. `circle3` and `arc3`
+still arm that lock when typed.
 
 **Right-click without moving opens a menu** for whatever is under the
 cursor — an entity, a constraint mark, or empty canvas. Everything on it

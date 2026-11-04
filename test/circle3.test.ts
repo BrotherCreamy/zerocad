@@ -20,7 +20,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { ensureKernelLoaded } from "../src/kernel/problem.ts";
 import { Model } from "../src/model.ts";
-import { Circle3Tool } from "../src/tools/circle3.ts";
+import { Circle3Tool } from "./lockedtools.ts";
 import { circumcircle, COLLINEAR_EPS } from "../src/tools/circumcircle.ts";
 import { fix } from "../src/relations/basic.ts";
 import { findSnap } from "../src/snapping.ts";
@@ -333,5 +333,5 @@ test("Circle3Tool: the collinear refusal reaches the log pane when there is one"
   tool.onDown(raw([10, 0]));
   tool.onDown(raw([25, 0]));
   assert.equal(ctx.lines.length, 1);
-  assert.match(ctx.lines[0], /^circle3: those three are on one line — click the third off it$/);
+  assert.match(ctx.lines[0], /^circle: those three are on one line — click the third off it$/);
 });
