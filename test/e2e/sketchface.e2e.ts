@@ -6,10 +6,12 @@
 // for the sketch; and the file round trip with both in its history.
 //
 // What only the assembled app can say: that the click goes through the
-// command line — logged as the typed `plane(…)`, one undo step, the camera
-// turned square to the wall — that the circle tool then draws *on the wall*
-// (the working plane follows the new default for free), and that the picture
-// is a boss on the side of a plate. Set NEOCAD_E2E_SHOTS to a directory to
+// command line — logged as the typed `workplane("a.b.c")`, one undo step, the
+// camera turned square to the wall — that the circle tool then draws *on the
+// wall* (the working plane follows the work plane for free), and that the
+// picture is a boss on the side of a plate. Since docs/plans/frameless-curves.md
+// the sketch sets the work plane to three of the wall's own points and makes
+// no frame; it used to type `plane(a, b, c)`, a new default frame on them. Set NEOCAD_E2E_SHOTS to a directory to
 // keep the screenshots; look at them.
 //
 // One app, tests in order: the states are cumulative.
@@ -130,11 +132,13 @@ const toward = (): Promise<number[]> => app.page.evaluate(async () => {
   const { viewAxes } = await import(path);
   return viewAxes((window as never as { __neocad: { engine: { view: unknown } } }).__neocad.engine.view).toward as number[];
 });
-const zOf = (frame: string): Promise<number[]> => app.page.evaluate(async (f) => {
+/** A plane reference's unit normal — a frame's +z, or three points' (p2 − p1) × (p3 − p1) — read from the modules the app runs. */
+const zOf = (plane: string): Promise<number[]> => app.page.evaluate(async (f) => {
   const path = "/src/relations/refs.ts";
-  const { frameBasis } = await import(path);
-  return frameBasis((window as never as { __neocad: { model: unknown } }).__neocad.model, f)().uz as number[];
-}, frame);
+  const { planeBasis } = await import(path);
+  return planeBasis((window as never as { __neocad: { model: unknown } }).__neocad.model, f)().n as number[];
+}, plane);
+const workPlane = async (): Promise<string | null> => (await app.repl("model.workPlane")).value as string | null;
 
 interface SeenFeature { name: string; top?: string; depth: string; pairs: [string, string][] }
 const features = (): Promise<SeenFeature[]> => app.page.evaluate(() => {
@@ -159,7 +163,7 @@ const NEAR_WALL = [0, -H, DEPTH / 2];
 const RIGHT_WALL = [W, 0, DEPTH / 2];
 
 let plateFile = "";
-let wallFrame = "";
+let wallPlane = "";
 
 test("plane(), a rectangle, an extrude: a plate", async () => {
   await app.type("plane()");
@@ -178,7 +182,7 @@ test("plane(), a rectangle, an extrude: a plate", async () => {
   plateFile = await saved();
 });
 
-test("turned so the near wall faces the camera, the sketch tool outlines it, refuses a click on nothing, and a click inside types plane(a, b, c)", async () => {
+test("turned so the near wall faces the camera, the sketch tool outlines it, refuses a click on nothing, and a click inside types workplane(a.b.c)", async () => {
   await app.type("orbit(-0.5, -1.05); zoom(1.3)");
   const seen = await toward();
   assert.ok(dot(seen, [0, -1, 0]) > 0.3, `the near wall faces the camera: toward ${seen}`);
@@ -203,20 +207,21 @@ test("turned so the near wall faces the camera, the sketch tool outlines it, ref
   await clickAt(...wall);
   assert.equal((await app.model()).activeTool, null, "one click, then the tool is done");
   const log = await app.log();
-  const typed = log.match(/> (plane\("p\d+", "p\d+", "p\d+"\))/g);
+  const typed = log.match(/> (workplane\("p\d+\.p\d+\.p\d+"\))/g);
   assert.ok(typed && typed.length === 1, `the log shows the typed call: ${log.slice(-300)}`);
-  assert.equal((await app.model()).byKind.frame, frames + 1);
-  wallFrame = (await defaultFrame())!;
-  assert.ok(log.trimEnd().endsWith(`)${wallFrame}`), "and its answer, the new frame's name");
+  assert.equal((await app.model()).byKind.frame, frames, "no frame made");
+  assert.equal(await defaultFrame(), "f1", "and the default left alone");
+  wallPlane = (await workPlane())!;
+  assert.ok(log.trimEnd().endsWith(`)${wallPlane}`), "and its answer, the plane things are drawn on now");
 
-  // The plane's +z is out of the plate, and the camera is square to it.
-  const z = await zOf(wallFrame);
+  // The plane's normal is out of the plate, and the camera is square to it.
+  const z = await zOf(wallPlane);
   assert.ok(dist3(z, [0, -1, 0]) < 1e-9, `+z out of the near wall: ${z}`);
   assert.ok(dist3(await toward(), z) < 1e-9, "looking at it square-on");
   // And level: the x-ref is the origin's neighbour along an edge of the wall,
   // so the wall's edge from one to the other is horizontal on screen. (The
   // first cut put +x along the wall's diagonal, and the wall came up tipped.)
-  const [a, b] = [...typed![0].matchAll(/"(p\d+)"/g)].map((x) => x[1]);
+  const [a, b] = wallPlane.split(".");
   const pts = (await app.model()).points;
   const [sa, sb] = [await app.screenOf(pts[a]), await app.screenOf(pts[b])];
   assert.ok(Math.abs(sa[1] - sb[1]) < 1e-6, `the wall's edge ${a}–${b} is level: ${sa} ${sb}`);
@@ -225,7 +230,7 @@ test("turned so the near wall faces the camera, the sketch tool outlines it, ref
   // One undo step, and back again.
   const after = await saved();
   await key("Control+z");
-  assert.equal(await saved(), before, "one Ctrl+Z takes the sketch plane away, default and all");
+  assert.equal(await saved(), before, "one Ctrl+Z takes the work plane away");
   await key("Control+Shift+z");
   assert.equal(await saved(), after);
   await shot("2-on-the-wall");
@@ -268,7 +273,7 @@ test("a circle drawn on the wall lands on it, and extruded a positive depth stan
   await shot("3-boss");
 });
 
-test("the same by the context menu, on the right wall: Sketch on this face types plane(…) for it, and a second boss stands off that side", async () => {
+test("the same by the context menu, on the right wall: Sketch on this face types workplane(…) for it, and a second boss stands off that side", async () => {
   // Turned so the right wall faces the camera too.
   await app.type("lookAt(\"f1\"); orbit(-1.2, -0.9)");
   await centreOn(CENTROID);
@@ -278,12 +283,12 @@ test("the same by the context menu, on the right wall: Sketch on this face types
   await rightClick(...at);
   const items = await menuItems();
   const cmd = items["Sketch on this face"];
-  assert.match(cmd ?? "", /^plane\("p\d+", "p\d+", "p\d+"\)$/, `the item and what it types: ${JSON.stringify(items)}`);
+  assert.match(cmd ?? "", /^workplane\("p\d+\.p\d+\.p\d+"\)$/, `the item and what it types: ${JSON.stringify(items)}`);
   await choose("Sketch on this face");
-  assert.match(await app.log(), new RegExp(`> ${cmd.replace(/[()]/g, "\\$&")}`), "logged as typed");
-  const f = (await defaultFrame())!;
-  assert.notEqual(f, wallFrame);
-  assert.ok(dist3(await zOf(f), [1, 0, 0]) < 1e-9, "+z out of the right wall");
+  assert.match(await app.log(), new RegExp(`> ${cmd.replace(/[().]/g, "\\$&")}`), "logged as typed");
+  const f = (await workPlane())!;
+  assert.notEqual(f, wallPlane);
+  assert.ok(dist3(await zOf(f), [1, 0, 0]) < 1e-9, "its normal out of the right wall");
 
   // Off the plate, on empty canvas, there is no such item.
   await rightClick(...await emptySpot());
@@ -309,14 +314,14 @@ test("the same by the context menu, on the right wall: Sketch on this face types
   await shot("4-two-bosses");
 });
 
-test("the sketch planes follow the plate: set its depth and both walls' frames stay on their walls, facing out", async () => {
+test("the sketch planes follow the plate: set its depth and both walls' planes stay on their walls, facing out", async () => {
   const [plate] = await features();
   await app.type(`set("${plate.depth}.value", 30)`);
   assert.equal(await app.status(), "SOLVED");
-  assert.ok(dist3(await zOf(wallFrame), [0, -1, 0]) < 1e-9);
+  assert.ok(dist3(await zOf(wallPlane), [0, -1, 0]) < 1e-9);
   const m = await app.model();
   const [, , third] = await features();
-  // The second boss's centre was held on the right wall's frame; the wall grew.
+  // The second boss's centre was held on the right wall's points; the wall grew.
   assert.ok(third.pairs.length > 0);
   for (const p of Object.values(m.points)) assert.ok(p.every(Number.isFinite));
 });

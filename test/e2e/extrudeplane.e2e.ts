@@ -1,13 +1,14 @@
 // The owner's first run, in a browser: a rectangle drawn in a fresh model, the
 // extrude tool, a click inside — which used to answer "the loop of
 // l1,l4,l3,l2 lies in no frame's plane …" as often as he clicked, and now picks
-// the region, and Enter makes a solid (docs/plans/feature-dialog.md). The tool
-// types the plane the sketch needs first, `plane(a, b, c, { look: false })`,
-// then `extrude("l1", 10)`, so the log shows both and then `e1`; the view stays
-// where it was; and the two are one undo step — the whole confirm is one user
-// action — so one Ctrl+Z brings back the frameless rectangle exactly. Then the same from the
-// command line, `extrude("l1", 15)`, one step; and once more with the tool
-// from a turned view, where a positive depth must come toward the viewer.
+// the region, and Enter makes a solid (docs/plans/feature-dialog.md). The
+// rectangle lies on the origin's ground, so the tool types `extrude("l1", 10)`
+// alone — it used to type a `plane(a, b, c, { look: false })` of three corners
+// first, and since docs/plans/frameless-curves.md nothing makes a frame — and
+// the log shows it and then `e1`; the view stays where it was; one Ctrl+Z
+// brings back the frameless rectangle exactly. Then the same from the command
+// line, `extrude("l1", 15)`, one step; and once more with the tool from a
+// turned view, where a positive depth must come toward the viewer.
 //
 // Set NEOCAD_E2E_SHOTS to a directory to keep the screenshots; look at them.
 //
@@ -143,65 +144,63 @@ test("the owner's sequence: a rectangle in a fresh model, the extrude tool, a cl
 
   const lines = await logSince(from);
   assert.ok(!lines.some((l) => /lies in no frame's plane/.test(l)), `no refusal: ${lines.join(" | ")}`);
+  // One line, and no plane before it: the rectangle lies on the origin's
+  // ground, so it runs along the origin's +z and nothing is made for it
+  // (docs/plans/frameless-curves.md — this used to type a
+  // plane(a, b, c, { look: false }) of three corners first).
   const typed = lines.filter((l) => l.startsWith("> "));
-  assert.equal(typed.length, 2, `two lines typed: ${lines.join(" | ")}`);
-  assert.match(typed[0], /^> plane\("p\d+", "p\d+", "p\d+", \{ look: false \}\)$/);
-  assert.match(typed[1], /^> extrude\("l\d+", 10\)$/);
-  const made = await defaultFrame();
-  assert.ok(made, "the plane is the default now");
-  assert.equal(lines[lines.indexOf(typed[0]) + 1], made, "and the log answers with its name");
-  assert.match(lines.at(-1)!, new RegExp(`^e1  extrude of l\\d+,l\\d+,l\\d+,l\\d+, depth d\\d+ = \\d+ along ${made}$`),
+  assert.equal(typed.length, 1, `one line typed: ${lines.join(" | ")}`);
+  assert.match(typed[0], /^> extrude\("l\d+", 10\)$/);
+  assert.equal(await defaultFrame(), null, "no default was made");
+  assert.match(lines.at(-1)!, /^e1  extrude of l\d+,l\d+,l\d+,l\d+, depth d\d+ = \d+ along origin$/,
     "then says what the click made");
   assert.equal((await logLines()).at(-1)!.cls, "out", "as an answer, not an error");
 
   const [e1] = await features();
   assert.equal(e1?.name, "e1", "a solid");
-  assert.equal(e1.frame, made);
+  assert.equal(e1.frame, "origin");
   const z = await lidAlong(e1);
   assert.ok(dot(z, await toward()) > 0.99, `+z toward the viewer: ${z}`);
   assert.deepEqual((await app.model()).view, view, "the view did not turn");
   assert.equal((await app.model()).activeTool, null, "built, and the tool released");
   await key("Escape");
   assert.equal(await app.status(), "SOLVED");
-  // Its sketch plane is three of the rectangle's own corners: no point was made for it.
-  const m = await app.model();
-  const [a, b, c] = [...typed[0].matchAll(/"(p\d+)"/g)].map((x) => x[1]);
-  const corners = new Set(drawn.lines.flatMap((l) => l.refs));
-  assert.ok([a, b, c].every((p) => corners.has(p)), `${a} ${b} ${c} are corners of the rectangle`);
-  assert.equal(m.byKind.frame, 1, "the sketch plane, and no lid frame");
+  assert.equal((await app.model()).byKind.frame ?? 0, 0, "no frame at all: no sketch plane, no lid frame");
   await shot("2-solid");
 });
 
-test("one Ctrl+Z brings the rectangle back frameless: the solid and the plane made for it were one confirm", async () => {
+test("one Ctrl+Z brings the rectangle back: the solid was one confirm", async () => {
   await key("Control+z");
   assert.deepEqual(await features(), [], "it takes the solid");
-  assert.equal(await saved(), rectangleFile, "and the plane: the rectangle exactly as drawn");
+  assert.equal(await saved(), rectangleFile, "the rectangle exactly as drawn");
   assert.equal(await defaultFrame(), null);
   assert.equal((await app.model()).byKind.frame ?? 0, 0);
   await shot("3-undone");
 });
 
-test("typed, extrude(\"l1\", 15) does the same as one step: the frame from the loop's points, then the solid toward the viewer", async () => {
+test("typed, extrude(\"l1\", 15) does the same as one step: along the origin, no frame made, the solid toward the viewer", async () => {
   const view = (await app.model()).view;
   await app.type('extrude("l1", 15)');
   const log = await app.log();
   assert.ok(log.trimEnd().endsWith("e1"), `answered e1: ${log.slice(-200)}`);
   const [e1] = await features();
   assert.equal(e1.value, 15);
-  assert.equal(e1.frame, await defaultFrame(), "made the default, as there was none");
+  assert.equal(e1.frame, "origin", "the ground the rectangle lies on");
+  assert.equal(await defaultFrame(), null, "and no default made");
+  assert.equal((await app.model()).byKind.frame ?? 0, 0);
   const z = await lidAlong(e1);
   assert.ok(dot(z, await toward()) > 0.99, `+z toward the viewer: ${z}`);
   assert.deepEqual((await app.model()).view, view, "the view did not turn");
   assert.equal(await app.status(), "SOLVED");
-  // The file reopens to the same thing: the frame's entry is there before the extrude's that names it.
+  // The file reopens to the same thing.
   const file = await saved();
   await app.type(`open(${JSON.stringify(file)})`);
   assert.equal(await app.status(), "SOLVED");
   assert.equal(await saved(), file, "byte-identical after a round trip");
   // Opening the same file changed nothing, so it is no undo step: one Ctrl+Z
-  // is the typed line, and it takes the extrude and its frame together.
+  // is the typed line, and it takes the extrude.
   await key("Control+z");
-  assert.equal(await saved(), rectangleFile, "one step took the extrude and its frame together");
+  assert.equal(await saved(), rectangleFile, "one step took the extrude");
 });
 
 test("from a turned view, the tool's solid comes toward the viewer, and the view stays turned exactly as it was", async () => {

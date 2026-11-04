@@ -85,7 +85,9 @@ test("three actions, three undos, and each lands exactly where it was", async ()
   assert.deepEqual(m1.byKind, { ...FRAME, point: 4 + FRAME.point, line: 4 }, "the rectangle was drawn");
 
   // 2. A command entry: filleting a corner, which is structural surgery.
-  await app.type('fillet("l1", "l2", 8, "f")');
+  // No plane argument: a fillet's arc follows its corner and needs no frame
+  // (docs/plans/frameless-curves.md; this named the fixture frame, "f").
+  await app.type('fillet("l1", "l2", 8)');
   filleted = await saved();
   const m2 = await app.model();
   assert.equal(m2.byKind.arc, 1, "the fillet added its arc");

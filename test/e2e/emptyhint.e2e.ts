@@ -24,7 +24,9 @@ after(async () => { await app.close(); });
 async function inkInHintBand(dx = -300, width = 600): Promise<number> {
   const [w, h] = await app.page.$eval("#cv", (el) => [el.clientWidth, el.clientHeight]);
   const at: [number, number][] = [];
-  for (let y = Math.round(h / 2 - 30); y < Math.round(h / 2 + 30); y++) {
+  // Centred 64 px below the middle (main.ts's HINT_DROP), clear of the origin's
+  // marker, which a fresh view draws at the middle (docs/plans/frameless-curves.md).
+  for (let y = Math.round(h / 2 + 64 - 30); y < Math.round(h / 2 + 64 + 30); y++) {
     for (let x = Math.round(w / 2 + dx); x < Math.round(w / 2 + dx) + width; x++) at.push([x, y]);
   }
   // The hint is written on the 2D canvas; its ink is anything not transparent there.

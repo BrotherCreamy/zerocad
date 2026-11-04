@@ -6,11 +6,15 @@
 // frame stands off its profile, and a version-10 lid frame made three points
 // of its own on the *first* solid's lid corners, each drawn, since a lid-frame
 // point ends no line. *"i'm getting a lot of overlapping points. why is this
-// happening?"* Now: no point on another, and no frame but the sketch's.
+// happening?"* Now: no point on another, and — since
+// docs/plans/frameless-curves.md, the rectangles lying on the origin's ground
+// — no frame at all (it was the sketch frame alone).
 //
 // Then a cylinder's top, which has no three points of its own: the sketch
-// tool clicked on it types a plane made through its centre, held on its rim,
-// and a circle drawn there extrudes into a boss standing on the top.
+// tool clicked on it sets the work plane to the top's own rim — the circle's
+// own plane, no frame made (it used to type a frame through its centre, held
+// on its rim) — and a circle drawn there extrudes into a boss standing on the
+// top.
 //
 // Set NEOCAD_E2E_SHOTS to a directory to keep the screenshots, and look at
 // them: no frame marker on either lid, no stray points.
@@ -106,7 +110,7 @@ const frames = (): Promise<{ name: string; origin: number[]; z: number[] }[]> =>
     .map((e) => ({ name: e.name, origin: model.coords(e.origin!), z: frameBasis(model, e.name)().uz }));
 });
 
-test("two rectangles, the extrude tool, a click in each, Enter: two solids on one sketch frame, no lid frame, no point on another", async () => {
+test("two rectangles, the extrude tool, a click in each, Enter: two solids along the origin, no frame, no point on another", async () => {
   assert.equal((await app.model()).byKind.frame ?? 0, 0, "a fresh model has no frame");
   await app.type("rectangle");
   await leftDrag([300, 300], [460, 440]);
@@ -124,11 +128,9 @@ test("two rectangles, the extrude tool, a click in each, Enter: two solids on on
   const all = await features();
   assert.equal(all.length, 2, "two solids");
   assert.equal(await app.status(), "SOLVED");
-  assert.equal(all[0].frame, all[1].frame, "on one sketch frame — the first rectangle's corners");
+  for (const f of all) assert.equal(f.frame, "origin", `${f.name} runs along the origin's +z`);
   for (const f of all) assert.equal(f.top, null, `${f.name} has no lid frame`);
-  const fs = await frames();
-  assert.deepEqual(fs.map((f) => f.name), [all[0].frame], "the only frame is the sketch's");
-  assert.ok(Math.abs(fs[0].origin[2]) < 1e-9, "and it stands on the base, not on a lid");
+  assert.deepEqual((await frames()).map((f) => f.name), [], "and there is no frame at all");
 
   const m = await app.model();
   assert.equal(m.byKind.point, 8 + 8, "eight corners and eight twins: was 19, three on the first lid's corners");
@@ -151,17 +153,17 @@ test("two rectangles, the extrude tool, a click in each, Enter: two solids on on
   assert.ok(closest > 1, `no two points drawn on one pixel: closest ${closest.toFixed(2)} px`);
 });
 
-test("save and open: the same names, still one frame and no point on another — and the extrude entries are the calls", async () => {
+test("save and open: the same names, still no frame and no point on another — and the extrude entries are the calls", async () => {
   const before = (await app.repl("save()")).value as string;
   const file = JSON.parse(before);
-  assert.equal(file.version, 12);
+  assert.equal(file.version, 13);
   for (const e of file.journal.filter((j: { op: string }) => j.op === "extrude")) assert.equal(e.args.length, 4);
   const r = await app.repl(`open(${JSON.stringify(before)})`);
   assert.equal(r.ok, true, r.error ?? "");
   await app.page.waitForTimeout(200);
   assert.equal((await app.repl("save()")).value, before, "byte-identical");
   assert.deepEqual(await coincident(), []);
-  assert.equal((await frames()).length, 1);
+  assert.equal((await frames()).length, 0);
 });
 
 /** Pans `world` to a little right of the canvas's middle, clear of the panels. */
@@ -172,7 +174,7 @@ async function centreOn(world: number[]): Promise<void> {
   await app.page.waitForTimeout(150);
 }
 
-test("a cylinder's top, sketched on with the sketch tool: a plane made through its centre and held on its rim, facing out; a circle on it extrudes into a boss on the top", async () => {
+test("a cylinder's top, sketched on with the sketch tool: the work plane is the top's own rim, no frame made; a circle on it extrudes into a boss on the top", async () => {
   // A circle beside the boxes, on the same sketch, extruded 20 — typed, since
   // the point is what the sketch tool does on its top.
   const pts = Object.values((await app.model()).points);
@@ -194,22 +196,21 @@ test("a cylinder's top, sketched on with the sketch tool: a plane made through i
   // The top facing the camera (the boxes' view is turned up toward it), the
   // sketch tool clicked on it, off its centre point.
   await centreOn(m1.points[top]);
-  const framesBefore = (await frames()).length;
   await app.type("sketch");
   await clickAt(...await app.screenOf(m1.points[top].map((c, i) => c + (i === 0 ? 6 : 0))));
   const log = await app.log();
-  const typed = log.match(/> plane\("(p\d+)", pt\([^)]*, oncircle\(_, "(c\d+)"\)\), pt\([^)]*, oncircle\(_, "c\d+"\)\)\)/);
-  assert.ok(typed, `the sketch tool typed a plane made on the top: ${log.slice(-400)}`);
-  assert.equal(typed[1], top, "through the top's own centre");
-  assert.equal(typed[2], rim, "held on the top's rim");
-  const fs = await frames();
-  assert.equal(fs.length, framesBefore + 1, "one frame made");
-  const made = fs.at(-1)!;
-  assert.equal((await app.repl("defaultFrame()")).value, made.name, "and it is the default: the next drawing goes on the top");
-  assert.ok(Math.abs(dot(made.z, up) - 20) < 1e-6, `+z straight out of the top: ${made.z}`);
-  assert.deepEqual(await coincident(), [], "no point on another — the plane's origin is the top's own centre");
+  const typed = log.match(/> workplane\("(c\d+)"\)/);
+  assert.ok(typed, `the sketch tool set the work plane to the top: ${log.slice(-400)}`);
+  assert.equal(typed[1], rim, "the top's own rim — its own plane, through the top's centre");
+  assert.equal((await frames()).length, 0, "no frame made");
+  assert.equal((await app.repl("defaultFrame()")).value, null);
+  assert.equal((await app.repl("model.workPlane")).value, rim, "the next drawing goes on the top");
+  const normal = (await app.repl(`model.normalOf("${rim}")`)).value as number[];
+  assert.ok(Math.abs(dot(normal, up) - 20) < 1e-6, `facing straight out of the top: ${normal}`);
+  assert.deepEqual(await coincident(), [], "no point on another");
   assert.equal(await app.status(), "SOLVED");
   await shot("3-cylinder-sketch-plane");
+  const made = { z: normal };
 
   // A circle on the top, extruded: a boss standing on it.
   await app.type("circle");
@@ -233,14 +234,14 @@ test("a cylinder's top, sketched on with the sketch tool: a plane made through i
   await shot("4-boss-on-cylinder");
 
   // The plane is the top's, not the place the top was: set the cylinder's
-  // depth and the frame rises with it, square as ever.
+  // depth and the boss rises with it, square as ever.
   const depth = await app.page.evaluate(() => (window as never as { __neocad: { model: { features: Map<string, { depth: string }> } } })
     .__neocad.model.features.get("e3")!.depth);
   await app.type(`set("${depth}.value", 30)`);
   assert.equal(await app.status(), "SOLVED");
-  const moved = (await frames()).find((f) => f.name === made.name)!;
   const m4 = await app.model();
-  assert.ok(Math.hypot(...sub(moved.origin, m4.points[top])) < 1e-9, "the frame's origin is the risen top's centre");
-  assert.ok(Math.abs(dot(moved.z, up) - 20) < 1e-6, "still facing straight out");
+  assert.ok(Math.abs(dot(sub(m4.points[boss.center], m4.points[top]), made.z)) < 1e-6, "the boss's base is on the risen top");
+  const turned = (await app.repl(`model.normalOf("${rim}")`)).value as number[];
+  assert.ok(Math.abs(dot(turned, up) - 20) < 1e-6, "still facing straight out");
   assert.ok(Math.abs(dot(sub(m4.points[top], m4.points[centre]), up) / 20 - 30) < 1e-6, "and the top is 30 up");
 });

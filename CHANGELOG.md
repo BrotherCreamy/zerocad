@@ -7,6 +7,70 @@ decisions.
 
 ---
 
+## A circle is just a circle: curves carry their own normal, one origin, no frame made for you
+
+The owner, twice:
+
+> *why when I create something, why does it first create a frame? do I need
+> to create a frame? can I not just create a circle or whatever in space?*
+
+> *why everything need frame? why can not just put circle right there?*
+
+Spec: [`docs/plans/frameless-curves.md`](docs/plans/frameless-curves.md),
+built, every deviation in its *As built* and in TODO.md's Done entry.
+
+- **A circle or an arc carries its own normal** — three solver variables,
+  like its radius, read normalised (`unitDuals` in `relations/refs.ts`) so
+  only their direction means anything. No normalisation residual: every
+  residual that reads the normal is scale-free, so its length is a gauge the
+  damped solve leaves where it was seeded. An arc's sweep is about its own
+  normal; `curveplane.ts` answers from the curve and asks no frame. A 2D
+  model's curves have the trivial normal and no variables for it.
+- **One origin, always there**: `origin`, a fixed built-in frame — the
+  kernel's own axes, never solved, never deleted, never journalled, drawn in
+  RGB from the start. `origin.x`/`.y`/`.z` work wherever a frame axis does;
+  `fix`, `onplane`, `xaxis()` mean it when no frame is named and none is the
+  default. A fresh document is still empty: the origin is no entity.
+- **Nothing makes a frame unless asked.** The curve tools draw on the plane
+  you sketch on, else **the face under the cursor**, else the ground, and
+  hold what they draw with an `onplane` on its centre and a `par` on its
+  normal — ordinary relations you can see, hover and delete; delete the
+  `par` and the circle is free to turn. Extrude and revolve run along a
+  profile's own plane (the ground's, a frame's, or three of its corners);
+  fillet needs no frame; a revolve makes no end frames (expansion 11).
+- **Sketch on face sets the work plane** — `workplane("p1.p2.p3")`, three of
+  the face's own points, journalled, a reference to the face and not a new
+  entity; it follows the solid when the solid changes. `workplane()` says
+  which plane things are drawn on, `workplane(null)` clears it. A plane
+  reference is anywhere a plane is taken: a frame, a curve, or three points.
+- **Old files open to the same geometry** (format 13): each curve that named
+  a frame gets that frame's normal and a `par(curve, "f.z")` at the end of
+  the journal, so it still follows the frame; every frame a file made is
+  kept. Proved by fixtures written by the format-12 build
+  (`test/oldfiles13.test.ts`): every point, radius, normal and sweep the
+  same, solved, regenerated and re-saved without moving.
+- **Revises** `coordinate-frames.md`'s "there is no world frame" (there is
+  now exactly one, fixed) and `extrude-makes-its-plane.md` (no plane is
+  made). Both vetoable in the register.
+- **What a fresh document looks like**: the origin's triad at the middle,
+  unlabelled until hovered (its name would print over the first corner
+  drawn there), and the empty-canvas words moved 64 px below it so the two
+  do not overlap. The golden picture is re-recorded: 160 pixels, all in the
+  origin's triad.
+- **Existing e2e suites**: their claims kept, their expectations changed
+  where a frame used to be made for them (the typed `plane(…)` lines, frame
+  counts, `workplane` for sketch on face, version 13, a revolve's
+  "partial"); the setup changed in two places only — `intersection.e2e.ts`
+  no longer parks a frame to give its circle a plane, and `undo.e2e.ts`'s
+  typed fillet no longer names one.
+- Tests: unit 1134 → 1153 (`test/frameless.test.ts`,
+  `test/oldfiles13.test.ts`, and the curve-tool and extrude-plane suites
+  rewritten), e2e 493 → 498 (`frameless.e2e.ts`). Pictures
+  looked at: a fresh document, a circle on the ground, one on a box's lid,
+  one on a work plane set by sketch on face.
+
+---
+
 ## Tooltips on every control; frames in RGB
 
 The owner, after trying the hosted app:

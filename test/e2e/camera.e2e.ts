@@ -293,11 +293,15 @@ test("v4 and v5 2D files open lifted: depth zero, a y-ref per frame, the same me
     assert.equal(m.byKind.arc, 1, "the fillet re-expanded in 3D");
   }
   const saved = JSON.parse((await app.repl("save()")).value as string);
-  assert.equal(saved.version, 12); // the current version
+  assert.equal(saved.version, 13); // the current version
   assert.equal(saved.dim, 3, "and saves back as what it now is");
-  // The fillet's arc was given the plane of the frame the 2D drawing was in —
-  // the only one it had — and its entry says so.
-  assert.deepEqual(saved.journal.find((e: { op: string }) => e.op === "fillet").args, ["l1", "l2", 8, "base"]);
+  // The fillet's arc was given the side of the frame the 2D drawing was in —
+  // the only one it had, whose +z is the lifted kernel's — and its entry says
+  // so. It used to name the frame; a fillet needs none now, only which way its
+  // arc faces (docs/plans/frameless-curves.md).
+  const args = saved.journal.find((e: { op: string }) => e.op === "fillet").args;
+  assert.deepEqual(args.slice(0, 3), ["l1", "l2", 8]);
+  assert.ok(Math.hypot(args[3][0], args[3][1], args[3][2] - 1) < 1e-9, `facing +z: ${JSON.stringify(args)}`);
 });
 
 test("sketching square-on, a vertex seen through the sketch is not snapped to; one on it is", async () => {

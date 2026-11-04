@@ -147,7 +147,9 @@ test("25 typed in the field and Enter: the log shows the arm line it typed, and 
   await app.page.fill("#cmd", "");
   await app.page.keyboard.press("Enter");
   await app.page.waitForTimeout(250);
-  assert.ok((await logLines()).some((l) => /^> plane\(/.test(l.text)), "the frameless rectangle got its plane, typed");
+  // No plane typed first: the rectangle lies on the origin's ground and runs
+  // along its +z (docs/plans/frameless-curves.md; it used to get a plane()).
+  assert.ok(!(await logLines()).some((l) => /^> plane\(/.test(l.text)), "the frameless rectangle needed no plane");
   assert.ok((await logLines()).some((l) => /^> extrude\("l\d+", 25\)$/.test(l.text)), "and the extrude, 25 deep");
   assert.ok(Math.abs((await zExtent()) - 25) < 1e-6, `25 deep: ${await zExtent()}`);
 });

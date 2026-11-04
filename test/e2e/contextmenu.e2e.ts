@@ -200,7 +200,7 @@ test("Delete on a constraint glyph removes that relation", async () => {
   assert.equal(await app.status(), "SOLVED");
 });
 
-test("Fix is disabled with the standing message when there is no default frame", async () => {
+test("with no default frame, Fix is in the origin's coordinates — and choosing it makes no frame", async () => {
   const [sx, sy] = await screenOf("p1");
   await rightClick(sx, sy);
   assert.deepEqual(await items(), ["Insert name", "Delete", "Fix", "Undo", "Redo"], "a point has no natural dimension");
@@ -211,24 +211,29 @@ test("Fix is disabled with the standing message when there is no default frame",
   await app.page.keyboard.press("Escape");
   await app.type("setDefaultFrame(null)");
 
+  // This used to be shown disabled, "no default frame — frame() then
+  // setDefaultFrame()". Every document has the origin now
+  // (docs/plans/frameless-curves.md), and fix with no frame named and no
+  // default means it — so the item is a command like any other, in the
+  // origin's coordinates (which are the kernel's: p1's own numbers).
   await rightClick(sx, sy);
-  // Redo is off too here, for its own reason (nothing has been undone); the
-  // question is about Fix.
   const off = (await app.page.$$eval("#ctxmenu .item.off", (els) => els.map((e) => e.textContent ?? "")))
     .filter((label) => label !== "Undo" && label !== "Redo");
-  assert.equal(off.length, 1, "Fix is shown and disabled, not quietly dropped");
-  assert.match(off[0], /^Fix/);
-  const why = await app.page.$eval("#ctxmenu .why", (el) => el.textContent ?? "");
-  assert.match(why, /no default frame — frame\(\) then setDefaultFrame\(\)/);
-
-  // Never silently create one: the disabled item is the whole point.
-  const before = (await app.model()).size;
-  await app.page.$eval("#ctxmenu .item.off", (el) => (el as HTMLElement).click());
-  await app.page.waitForTimeout(150);
-  assert.equal((await app.model()).size, before, "clicking a disabled item does nothing at all");
-  assert.equal((await app.repl("defaultFrame()")).value, null);
-
+  assert.deepEqual(off, [], "Fix is not disabled");
+  const p1 = (await app.model()).points.p1;
+  const typed = (await commands()).Fix;
+  const at = JSON.parse(typed.replace(/^fix\("p1", /, "").replace(/\)$/, "")) as number[];
+  assert.ok(at.length === 3 && at.every((x, i) => Math.abs(x - p1[i]) < 1e-3), `${typed} is p1 where it is: ${p1}`);
   await app.page.keyboard.press("Escape");
+
+  // Still never silently create a frame: choosing it fixes the point, nothing more.
+  const before = (await app.model()).byKind.frame;
+  await rightClick(sx, sy);
+  await choose("Fix");
+  assert.equal((await app.model()).byKind.frame, before, "no frame made");
+  assert.equal((await app.repl("defaultFrame()")).value, null);
+  assert.deepEqual((await app.repl("model.journal.at(-1)")).value, { op: "fix", args: ["p1", at, "origin"] }, "fixed in the origin");
+  await app.type("undo()");
   await app.type('setDefaultFrame("f")');
 });
 

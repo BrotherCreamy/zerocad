@@ -106,6 +106,76 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### Frameless curves: what a normal is, where the origin lives, and what a click lands on
+
+The owner asked twice why drawing a circle made a frame. The answer had been
+"a 3D circle needs an orientation, and the orientation was a frame". The
+change gives a curve its own and makes one origin always present; four
+decisions needed reasons.
+
+**The normal is three variables read normalised.** The spec offered a unit
+vector held by a normalisation residual, or two angles. *Rejected, the
+residual*: it is an equation the entity carries, and this codebase keeps
+equations in relations, where they can be seen and deleted — a hidden
+`|n| − 1` would be the only one. *Rejected, the angles*: a circle facing
+straight up, the commonest one, sits at their pole, where the azimuth's
+gradient vanishes. Reading the three numbers through `v/|v|` makes every
+residual scale-free, so the length has exactly zero gradient: nothing can
+shrink a normal to satisfy a relation (the 14 % a raw frame arm once lost),
+and the damped solve leaves the length where it was seeded. The cost is one
+null direction of the Jacobian per curve, which the LM damping handles as it
+handles every unconstrained direction.
+
+**The origin is built in, not journalled.** A journalled origin would have to
+be written into every old file on open and could be deleted, undone or
+renamed. Built in, it is the kernel's axes given a name: `Model.has` claims
+the name, `frameBasis` returns a constant, and nothing in a file mentions it
+unless a relation is written against it. The one wrinkle is an old file that
+already called something `origin`; it is renamed `origin2` on open rather
+than refused or confused. *Rejected*: making the origin the default frame —
+then `setDefaultFrame(null)` would mean something new, and the default
+frame's heavier marker would be on every document.
+
+**The hold is two relations, and the ground holds only curves.** A curve drawn
+on a plane gets `onPlane` on its centre and `par` on its normal, so "just put
+the circle there" is exactly what is in the relation list. Points the other
+tools place on the bare ground stay unheld, as they were when no frame was
+the default: holding a fresh rectangle's corners on the ground would make
+every fresh sketch a constrained one and change what dragging does.
+*Rejected*: not holding a ground circle at all — the spec asks for the
+relations, and a circle that drifts off the ground the first time something
+pulls its rim is a worse surprise than a `par` you can delete.
+
+**Chosen planes win over the face under the cursor.** With a work plane set
+(or a default frame), the curve tools draw on it even over a solid's face;
+only with no plane chosen does the face under the first click decide. A
+sketch on a face that the next click silently abandoned for a neighbouring
+face would be the bug. A face is three of its own points (`sketchFrameFor`'s
+choice, facing the viewer), so the curve follows the solid when it changes,
+and the cascade clears it when the solid goes.
+
+**Old files keep their frames and gain pars at the end.** A curve that named a
+frame keeps the frame's normal, sign and all (an arc's sweep depends on it),
+and a `par(curve, "f.z")` is appended after the whole journal rather than
+beside the curve, so no relation already in the file is renamed (`r7` stays
+`r7`). Fixtures written by the format-12 build, not assertions about the
+translation, are the proof. A lifted 2D file used to get a frame called
+`plane` for its circles; the origin is that plane, so that frame is no longer
+made — the one place an old file opens with fewer entities than it did.
+
+**Extrude from a curve's plane that faces away.** A circle's plane cannot be
+turned over, so sketching on a cylinder's base gives a work plane facing into
+the solid; `orientingPlane` then takes the loop's own plane facing the
+viewer, so a positive depth still comes out at you.
+
+**The origin's label and the empty-canvas words.** Both were found by looking
+at the fresh-document picture, not by a number: the words ran across the
+triad and its "origin" label. The label is drawn now only when the origin is
+lit or selected — a triad at zero says what it is, and the label also printed
+over the first corner drawn at the origin — and the words moved below the
+middle. *Rejected*: moving the fresh view so the origin is off-centre, which
+would have shifted every e2e test's screen arithmetic for a cosmetic reason.
+
 ### Tooltips and RGB frames: what a hold means, and which red
 
 The owner asked for a tooltip on hover and for frames coloured like

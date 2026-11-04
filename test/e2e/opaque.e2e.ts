@@ -279,7 +279,8 @@ test("the empty-canvas hint is gone while a rectangle is being dragged out, and 
   const app = await fresh();
   const [w, h] = await app.page.$eval("#cv", (el) => [el.clientWidth, el.clientHeight]);
   const band: [number, number][] = [];
-  for (let y = Math.round(h / 2 - 30); y < Math.round(h / 2 + 30); y += 2) {
+  // Where the hint is: 64 px below the middle, clear of the origin's marker (main.ts's HINT_DROP).
+  for (let y = Math.round(h / 2 + 64 - 30); y < Math.round(h / 2 + 64 + 30); y += 2) {
     for (let x = Math.round(w / 2 - 300); x < Math.round(w / 2 + 300); x += 2) band.push([x, y]);
   }
   const inkInBand = async () => (await app.pixels("drawing", band)).filter((d) => d[3] > 0).length;

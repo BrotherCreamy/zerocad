@@ -163,9 +163,11 @@ test("three clicks draw the arc through the two ends and the waypoint", async ()
   assert.equal(m.activeTool, null, "the gesture completed and the tool stood down");
   assert.equal(await app.status(), "SOLVED");
   // After the sketch frame's own entries: each placed point held on the sketch
-  // plane, and the arc's centre with them.
+  // plane, and the arc's centre with them — and the arc's own normal held to
+  // the frame's +z by a `par`, since an arc carries its own normal and names no
+  // frame (docs/plans/frameless-curves.md).
   assert.deepEqual(m.journalOps.slice(FIXTURE_JOURNAL),
-    ["addPoint", "onPlane", "addPoint", "onPlane", "addArc", "setCoords", "onPlane", "arcEndpoints"],
+    ["addPoint", "onPlane", "addPoint", "onPlane", "addArc", "setCoords", "onPlane", "parallel", "arcEndpoints"],
     "no new journal op was needed, which is what makes this a composition");
 
   // The exact claim: the arc is seeded at the circumcircle of the two points

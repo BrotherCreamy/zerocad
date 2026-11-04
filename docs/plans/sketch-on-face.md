@@ -1,5 +1,10 @@
 # Plan: sketch on a solid's face
 
+> **Revised 2026-11-04 by [`frameless-curves.md`](frameless-curves.md)**: the
+> sketch tool and the menu item type `workplane("a.b.c")` — the work plane set
+> to the same three points, journalled, no frame made — where they typed
+> `plane(a, b, c)`.
+
 **Status: built** (2026-10-21) — `src/sketchface.ts`, `src/tools/sketch.ts`,
 the menu item, `test/sketchface.test.ts` and `test/e2e/sketchface.e2e.ts`.
 Deviations, each marked ⚠ where the text below was written before the code
