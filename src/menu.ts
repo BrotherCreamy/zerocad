@@ -143,18 +143,42 @@ const SELECTION_HEAD = 6;
 
 /**
  * **The selection's items** — Group, Delete, Hide — each typing its command
- * over every selected name: `group("l1", "l2")`, `del(…)`, `hide(…)`. On the
- * menu when the right-click landed on something selected, or on empty canvas
+ * over every selected name: `group("l1", "l2")`, `del(…)`, `hide(…)` — then
+ * Construction / Not construction over its curves. On the menu when the right-click landed on something selected, or on empty canvas
  * with anything selected; never for a right-click on something *not*
  * selected, which is about that thing alone, as it always was.
  */
-function selectionItems(selection: readonly string[]): MenuItem[] {
+function selectionItems(model: Model, selection: readonly string[]): MenuItem[] {
   const args = selection.map(quoted).join(", ");
   return [
     { label: "Group", action: { do: "run", command: `group(${args})` } },
     { label: "Delete", action: { do: "run", command: `del(${args})` } },
     { label: "Hide", action: { do: "run", command: `hide(${args})` } },
+    ...constructionItems(model, selection),
   ];
+}
+
+/**
+ * **Construction** and **Not construction** over the lines, arcs and circles
+ * among `names` — whichever would change something, both for a mix. Typed
+ * over the curves only, so the log line names what it flags and not the
+ * corners a box caught with them (which `construction` would pass over).
+ */
+function constructionItems(model: Model, names: readonly string[]): MenuItem[] {
+  const curves = names.filter((n) => {
+    const k = model.entities.get(n)?.kind;
+    return k === "line" || k === "arc" || k === "circle";
+  });
+  if (!curves.length) return [];
+  const args = curves.map(quoted).join(", ");
+  const items: MenuItem[] = [];
+  if (curves.some((n) => !model.isConstruction(n))) {
+    items.push({ label: "Construction", action: { do: "run", command: `construction(${args})` } });
+  }
+  if (curves.some((n) => model.isConstruction(n))) {
+    items.push({ label: "Not construction", action: { do: "run", command: `construction(${args}, false)` } });
+  }
+  return items;
 }
 
 /**
@@ -203,19 +227,20 @@ function menuOf(model: Model, pick: Pick | null, region: RegionHit | null, selec
   if (!pick) {
     const menu = emptyCanvasMenu(model, region);
     if (!onSelection) return menu;
-    return { header: selectionHeader(selection), items: [...selectionItems(selection), ...menu.items] };
+    return { header: selectionHeader(selection), items: [...selectionItems(model, selection), ...menu.items] };
   }
   // Several selected, one of them right-clicked: the menu is about the set —
   // and about the sets the one clicked is in, the way to select one of those.
   if (onSelection && selection.length > 1) {
-    return { header: selectionHeader(selection), items: [...selectionItems(selection), ...selectGroupItems(model, pick.name)] };
+    return { header: selectionHeader(selection), items: [...selectionItems(model, selection), ...selectGroupItems(model, pick.name)] };
   }
   const menu = pick.kind === "relation" ? relationMenu(model, pick) : entityMenu(model, pick);
   menu.items.push(...selectGroupItems(model, pick.name));
   // The one thing selected is the thing clicked: its own menu, whose Delete
   // is already the selection's, with the rest of the selection's items.
   if (onSelection) {
-    const extra = selectionItems(selection).filter((i) => i.label !== "Delete");
+    const own = new Set(menu.items.map((i) => i.label));
+    const extra = selectionItems(model, selection).filter((i) => !own.has(i.label));
     const at = menu.items.findIndex((i) => i.label === "Delete") + 1;
     menu.items.splice(at, 0, ...extra);
   }
@@ -367,6 +392,7 @@ function entityMenu(model: Model, pick: Pick): Menu {
   if (dim) items.push({ label: "Dimension", action: { do: "run", command: dim } });
   if (pick.kind === "point") items.push(fixItem(model, pick.name));
   if (pick.kind === "frame") items.push(sketchOnItem(model, pick.name));
+  items.push(...constructionItems(model, [pick.name]));
   return { header: describePick(model, pick), items };
 }
 

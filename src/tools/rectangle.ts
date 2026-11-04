@@ -27,7 +27,8 @@
 
 import { Tool, defineTool, type PointerInfo, type RenderContext } from "./tool.ts";
 import { parallel, perpendicular } from "../relations/geometry.ts";
-import { holdOnSketchPlane, placePoint, requirePlanar } from "./place.ts";
+import { DRAWING_OPTIONS, asArmed, holdOnSketchPlane, placePoint, requirePlanar } from "./place.ts";
+import type { OptionSpecs } from "./options.ts";
 import type { Plane } from "../view.ts";
 
 /**
@@ -44,6 +45,7 @@ function otherCorners(a: number[], c: number[], plane?: Plane): [number[], numbe
 }
 
 export class RectangleTool extends Tool {
+  static readonly options: OptionSpecs = DRAWING_OPTIONS;
   readonly name = "rectangle";
   /**
    * The whole of the first press, not only its coordinate: the corner is not
@@ -105,6 +107,7 @@ export class RectangleTool extends Tool {
     parallel(m, ab.name, cd.name);
     parallel(m, bc.name, da.name);
     perpendicular(m, ab.name, bc.name);
+    asArmed(this.ctx, ab.name, bc.name, cd.name, da.name);
 
     this.ctx.requestSolve();
     this.ctx.finish();

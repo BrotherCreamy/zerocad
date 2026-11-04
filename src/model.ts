@@ -24,6 +24,8 @@ export interface LineEntity {
   kind: "line";
   name: string;
   refs: [string, string]; // two point names — purely referential, owns no variables
+  /** Construction geometry: forms no regions. Absent when not. See `Model.setConstruction`. */
+  construction?: true;
 }
 
 /**
@@ -62,6 +64,8 @@ export interface CircleEntity {
   radiusVar: number; // the one variable a circle owns
   /** 3D only: the frame whose x–y plane the rim is parallel to. Absent in 2D. */
   plane?: string;
+  /** Construction geometry: forms no regions. Absent when not. See `Model.setConstruction`. */
+  construction?: true;
 }
 
 /**
@@ -88,6 +92,8 @@ export interface ArcEntity {
   radiusVar: number;
   /** 3D only: the frame whose x–y plane the arc is parallel to, and whose +z it turns about. */
   plane?: string;
+  /** Construction geometry: forms no regions. Absent when not. See `Model.setConstruction`. */
+  construction?: true;
 }
 
 /**
@@ -1442,6 +1448,40 @@ export class Model {
     this.features.delete(name);
     this.hidden.delete(name);
     this.record("deleteFeature", [name]);
+  }
+
+  // ---- construction geometry ---------------------------------------------
+
+  /**
+   * Whether `name` is **construction geometry**: a line, arc or circle that
+   * forms no regions (loops.ts leaves it out) and is in every other way an
+   * ordinary entity — constrained, solved, picked, snapped to, drawn (thin and
+   * muted, never dashed). False for anything else, a name that is not there
+   * included: a point or a frame bounds nothing, so it has no flag to carry.
+   */
+  isConstruction(name: string): boolean {
+    const e = this.entities.get(name);
+    return e !== undefined && (e.kind === "line" || e.kind === "arc" || e.kind === "circle") && e.construction === true;
+  }
+
+  /**
+   * Sets or clears the flag on one line, arc or circle. **On the entity, not in
+   * a set beside it** — the owner: *"construction geometry should be a per
+   * entity flag"* — so it goes with the entity when it is deleted, stays with a
+   * line an operation re-points, and can never be a group's property: a group
+   * is only ever expanded into the entities this is called on, at the moment of
+   * the call (operations.ts's `construction`). Absent rather than false when
+   * cleared, so an entity that was never flagged and one flagged and cleared
+   * are the same object. A primitive: journals nothing, and refuses nothing a
+   * feature could object to — the operation asks that first.
+   */
+  setConstruction(name: string, on: boolean): void {
+    const e = this.entities.get(name);
+    if (!e || (e.kind !== "line" && e.kind !== "arc" && e.kind !== "circle")) {
+      throw new Error(`"${name}" is not a line, arc or circle — only they bound regions, so only they can be construction`);
+    }
+    if (on) e.construction = true;
+    else delete e.construction;
   }
 
   // ---- groups and visibility ---------------------------------------------

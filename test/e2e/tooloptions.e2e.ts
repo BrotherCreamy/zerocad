@@ -91,10 +91,16 @@ async function reloadApp(): Promise<void> {
 const RECT: [[number, number], [number, number]] = [[460, 320], [660, 480]];
 const INSIDE: [number, number] = [560, 400];
 
-test("nothing armed, no options panel; the rectangle tool, which has none, shows none either", async () => {
+test("nothing armed, no options panel; the point tool, which has none, shows none either", async () => {
   assert.equal(await visible(), false);
-  await press("rectangle");
+  await press("point");
   assert.equal(await visible(), false, "a tool without options gets no panel");
+  // A drawing tool has one since construction geometry (docs/plans/
+  // construction.md): a checkbox, off, and no ✓ ✗ — it is not a feature.
+  await press("rectangle");
+  assert.equal(await visible(), true);
+  assert.equal(await app.page.isChecked(FIELD("construction")), false);
+  assert.equal(await app.page.$$eval(`${PANEL} .oact button`, (els) => els.length), 0, "no ✓ ✗ for a drawing tool");
   const p = await app.at(...RECT[0]), q = await app.at(...RECT[1]);
   await app.page.mouse.move(p.x, p.y);
   await app.page.mouse.down();
@@ -217,7 +223,7 @@ test("a tool defined at the command line with a static options gets the panel, a
   assert.equal((await logLines()).find((l) => l.text === '> arm("gear", {flip: true})')?.cls, "in", "the checkbox types too");
   assert.equal(await app.page.isChecked(FIELD("flip")), true);
   await shot("gear");
-  await app.type('arm("line")');
+  await app.type('arm("point")');
   assert.equal(await visible(), false, "a tool with none, none");
   await app.type("cancel()");
 });

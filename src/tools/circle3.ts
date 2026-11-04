@@ -31,7 +31,8 @@
 
 import { Tool, defineTool, type PointerInfo, type RenderContext } from "./tool.ts";
 import { onCircle } from "../relations/geometry.ts";
-import { CurvePlane, holdOnSketchPlane, placePoint, requirePlanar } from "./place.ts";
+import { CurvePlane, DRAWING_OPTIONS, asArmed, holdOnSketchPlane, placePoint, requirePlanar } from "./place.ts";
+import type { OptionSpecs } from "./options.ts";
 // The closed form and its collinearity threshold left this file when the
 // 3-point *arc* tool needed the same two, and needed them to agree — see the
 // header of circumcircle.ts.
@@ -39,6 +40,7 @@ import { circumcircle, circumFrame, PREVIEW_MAX_R } from "./circumcircle.ts";
 import { arcSamples, arcSegments } from "../arcgeom.ts";
 
 export class Circle3Tool extends Tool {
+  static readonly options: OptionSpecs = DRAWING_OPTIONS;
   readonly name = "circle3";
   /** The clicks so far, kept whole so each one's snap survives to commit. */
   private clicks: PointerInfo[] = [];
@@ -96,6 +98,7 @@ export class Circle3Tool extends Tool {
     m.setCoords(circle.center, found.center);
     holdOnSketchPlane(m, circle.center);
     for (const name of rim) onCircle(m, name, circle.name);
+    asArmed(this.ctx, circle.name);
 
     this.ctx.requestSolve();
     this.ctx.finish();

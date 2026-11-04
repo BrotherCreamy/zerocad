@@ -212,7 +212,11 @@ export function describePick(model: Model, pick: Pick): string {
     return r ? `${describeRelation(r)}${featureTag(model, pick.name)}${groupTag(model, pick.name)}` : pick.name;
   }
   const n = (v: number) => (Math.round(v * 1000) / 1000).toString();
-  return `${describeGeometry(model, pick.name, pick.kind, n)}${relationTag(model, pick.name)}`
+  // Construction is said right after the geometry, as part of what the thing
+  // is: thin and muted on screen is a look, and a look can be mistaken for a
+  // hidden line or a far one; the word cannot.
+  const kind = model.isConstruction(pick.name) ? "  construction" : "";
+  return `${describeGeometry(model, pick.name, pick.kind, n)}${kind}${relationTag(model, pick.name)}`
     + `${featureTag(model, pick.name)}${groupTag(model, pick.name)}`;
 }
 

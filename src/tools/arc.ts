@@ -18,7 +18,8 @@
 
 import { Tool, defineTool, type PointerInfo, type RenderContext } from "./tool.ts";
 import { arcEndpoints } from "../relations/geometry.ts";
-import { CurvePlane, placePoint, requirePlanar } from "./place.ts";
+import { CurvePlane, DRAWING_OPTIONS, asArmed, placePoint, requirePlanar } from "./place.ts";
+import type { OptionSpecs } from "./options.ts";
 import { arcFrame, arcSamples, arcSegments, sweepsAs } from "../arcgeom.ts";
 import { sketchSide } from "../curveplane.ts";
 import { cross3, lift3 } from "../vec3.ts";
@@ -51,6 +52,7 @@ function stored<T>(c: number[], s: T, e: T, sw: number[], ew: number[], front: n
 }
 
 export class ArcTool extends Tool {
+  static readonly options: OptionSpecs = DRAWING_OPTIONS;
   readonly name = "arc";
   /** The three clicks, kept whole so each one's snap survives to commit. */
   private center: PointerInfo | null = null;
@@ -102,6 +104,7 @@ export class ArcTool extends Tool {
     const [startName, endName] = stored(c, sp, ep, first.world, end.world, facing(first.plane), sketchSide(m));
     const arc = m.addArc(ctr, startName, endName, r);
     arcEndpoints(m, arc.name);
+    asArmed(this.ctx, arc.name);
 
     this.ctx.requestSolve();
     this.ctx.finish();

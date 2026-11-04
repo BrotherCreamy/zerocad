@@ -44,7 +44,8 @@
 
 import { Tool, defineTool, type PointerInfo, type RenderContext } from "./tool.ts";
 import { arcEndpoints } from "../relations/geometry.ts";
-import { CurvePlane, holdOnSketchPlane, placePoint, requirePlanar } from "./place.ts";
+import { CurvePlane, DRAWING_OPTIONS, asArmed, holdOnSketchPlane, placePoint, requirePlanar } from "./place.ts";
+import type { OptionSpecs } from "./options.ts";
 import { circumcircle, PREVIEW_MAX_R } from "./circumcircle.ts";
 import { arcFrame, arcSamples, arcSegments } from "../arcgeom.ts";
 import { sketchSide } from "../curveplane.ts";
@@ -104,6 +105,7 @@ export function arcThrough(a: number[], b: number[], w: number[], side: number[]
 }
 
 export class Arc3Tool extends Tool {
+  static readonly options: OptionSpecs = DRAWING_OPTIONS;
   readonly name = "arc3";
   /** The endpoint clicks so far, kept whole so each one's snap survives to commit. */
   private ends: PointerInfo[] = [];
@@ -168,6 +170,7 @@ export class Arc3Tool extends Tool {
     m.setCoords(arc.center, found.center);
     holdOnSketchPlane(m, arc.center);
     arcEndpoints(m, arc.name);
+    asArmed(this.ctx, arc.name);
 
     this.ctx.requestSolve();
     this.ctx.finish();
