@@ -26,10 +26,12 @@ import { frameArmPx, frameMarker } from "./framemarker.ts";
 import { constrainedBy, type Glyph } from "./glyphs.ts";
 import { getToolCtor, listTools } from "./tools/tool.ts";
 import {
-  ACTIONS, ActionStrip, COARSE, FINE, OptionsPanel, Panels, Toolbar, browserStorage, defaultLayout, logoBox, scaledMetrics,
+  ACTIONS, ActionStrip, FINE, OptionsPanel, Panels, Toolbar, browserStorage, defaultLayout, logoBox, scaledMetrics, touchMetrics,
   type Insets, type Metrics, type Size,
 } from "./panels.ts";
-import { clampScale, defaultScale, formatScale, recallScale, rememberScale } from "./uiscale.ts";
+import {
+  clampScale, deviceScale, formFactor, formatScale, recallScale, rememberScale, textFactor, type Device,
+} from "./uiscale.ts";
 import { GUIDE_NOTE_MS, STEP_NOTE_MS, StatusLine } from "./statusline.ts";
 import { AppMenu, UNTITLED, type DocumentState } from "./appmenu.ts";
 import { logoSvg } from "./logo.ts";
@@ -93,16 +95,47 @@ const optionsEl = document.getElementById("options")!;
 const coarse = typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
 
 /**
+ * What the page can tell about the device (uiscale.ts's `Device`): the
+ * pointer, the screen's short side, and the text size its person chose — iOS's
+ * Dynamic Type through `font: -apple-system-body` where Safari has it, else the
+ * browser's default font size, read off `font-size: medium` (the root's own
+ * size is the stylesheet's 13 px, not the person's). Measured once, at load: a
+ * changed text size is picked up by the next start.
+ */
+function measureDevice(): Device {
+  const probe = document.createElement("span");
+  probe.style.cssText = "position:absolute;visibility:hidden;font-size:medium";
+  document.body.appendChild(probe);
+  const defaultFont = parseFloat(getComputedStyle(probe).fontSize) || 16;
+  let appleBody: number | null = null;
+  // Feature-detected rather than sniffed: where the keyword is not a font,
+  // the declaration is dropped and the probe would read back `medium`.
+  if (typeof CSS !== "undefined" && CSS.supports?.("font", "-apple-system-body")) {
+    probe.style.font = "-apple-system-body";
+    appleBody = parseFloat(getComputedStyle(probe).fontSize) || null;
+  }
+  probe.remove();
+  const shortSide = Math.min(screen.width, screen.height) || Math.min(innerWidth, innerHeight);
+  return { coarse, shortSide, appleBody, defaultFont };
+}
+const device = measureDevice();
+
+/**
  * **The interface size** — the one factor everything drawn for a person to
- * read or hit is multiplied by (uiscale.ts). Read here, once, from this
- * device's storage or its default (100 % under a mouse, 70 % under a finger),
- * and handed from here to everything that draws: the panels' metrics, the
- * stylesheet's custom properties, the logo, and the view (`view.ui`), which the
- * glyphs, labels, points, frame markers and snap marker are drawn from. Set by
+ * read is multiplied by (uiscale.ts): **this device's 100 %**, worked out from
+ * `device` (1 under a mouse; 1.3 on a phone under a finger, 1.15 on a tablet;
+ * times the person's text size), **times the viewer's multiplier**, the spin
+ * box's `− 100% +`, which is all that is stored. Handed from here to
+ * everything that draws: the panels' metrics, the stylesheet's custom
+ * properties, the logo, and the view (`view.ui`), which the glyphs, labels,
+ * points, frame markers and snap marker are drawn from. Set by
  * `ui({ scale })` alone, through `setScale`.
  */
-let uiScale = recallScale(browserStorage()) ?? defaultScale(coarse);
-let metrics: Metrics = scaledMetrics(coarse ? COARSE : FINE, uiScale);
+const deviceUi = deviceScale(device);
+let uiScale = recallScale(browserStorage()) ?? 1;
+const drawnScale = () => Math.round(deviceUi * uiScale * 1000) / 1000;
+const metricsAt = (k: number): Metrics => (coarse ? touchMetrics(k) : scaledMetrics(FINE, k));
+let metrics: Metrics = metricsAt(drawnScale());
 
 const logoEl = document.getElementById("logo")!;
 const cornerEl = document.getElementById("corner")!;
@@ -125,7 +158,8 @@ function insets(): Insets {
  */
 function applyChrome(): void {
   const root = document.documentElement.style;
-  root.setProperty("--ui", String(uiScale));
+  root.setProperty("--ui", String(metrics.scale));
+  root.setProperty("--gap", `${metrics.gap}px`);
   root.setProperty("--title", `${metrics.title}px`);
   root.setProperty("--button", `${metrics.button}px`);
   root.setProperty("--icon", `${metrics.icon}px`);
@@ -303,7 +337,7 @@ async function main() {
   // something turns it the app looks and behaves exactly as the 2D one did,
   // with every point at z = 0.
   let model = new Model(APP_DIM);
-  const view: View = { ox: 0, oy: 0, scale: 3, ui: uiScale };
+  const view: View = { ox: 0, oy: 0, scale: 3, ui: metrics.scale };
   sizeCanvas();
   const r0 = cv.getBoundingClientRect();
   view.ox = r0.width / 2;
@@ -1463,7 +1497,11 @@ async function main() {
   function describeUi(): string {
     const panes = panels.panes();
     const hidden = panes.filter((p) => !p.shown).map((p) => p.id);
-    return `interface ${formatScale(uiScale)} (this device's default ${formatScale(defaultScale(coarse))})` +
+    // The device's 100 % said in its parts, so a person can see why their
+    // phone draws what it draws: the form factor and the text size.
+    const why = `100% here is ${deviceUi}× a desktop's: ${coarse ? (formFactor(device) === 1.3 ? "a phone" : "a tablet") : "a mouse"} ` +
+      `${formFactor(device)}, text size ${textFactor(device).toFixed(2)}`;
+    return `interface ${formatScale(uiScale)} (${why})` +
       `; panes ${panes.map((p) => p.id).join(", ")}` + (hidden.length ? `; hidden ${hidden.join(", ")}` : "; all shown");
   }
 
@@ -1475,9 +1513,9 @@ async function main() {
    */
   function setScale(s: number | null): void {
     rememberScale(browserStorage(), s);
-    uiScale = s ?? defaultScale(coarse);
-    metrics = scaledMetrics(coarse ? COARSE : FINE, uiScale);
-    view.ui = uiScale;
+    uiScale = s ?? 1;
+    metrics = metricsAt(drawnScale());
+    view.ui = metrics.scale;
     applyChrome();
     optionsPanel.setMetrics(metrics);
     panels.setMetrics(metrics);
@@ -1495,7 +1533,6 @@ async function main() {
     document: () => currentDocument(),
     defined: (name) => typeof repl.scope[name] === "function",
     scale: () => uiScale,
-    defaultScale: () => defaultScale(coarse),
     panes: () => panels.panes(),
     viewMode: () => viewMode,
     viewModes: VIEW_MODES,

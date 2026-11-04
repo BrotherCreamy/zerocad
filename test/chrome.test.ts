@@ -10,12 +10,13 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
-  COARSE, FINE, NO_INSETS, STORAGE_KEY, LAYOUT_KEY, arranged, bleed, defaultLayout, dockingOf, logoBox, loadStored,
-  overlapping, pushed, recorded, relaid, saveStored, scaledMetrics, traySize,
+  COARSE, FINE, NO_INSETS, STORAGE_KEY, LAYOUT_KEY, TOUCH_TARGET, arranged, bleed, defaultLayout, dockingOf, logoBox,
+  loadStored, overlapping, pushed, recorded, relaid, saveStored, scaledMetrics, touchMetrics, traySize,
   type Layout, type Metrics, type Recorded, type Size, type StorageLike,
 } from "../src/panels.ts";
 import {
-  UI_MAX, UI_MIN, UI_SCALE_KEY, clampScale, defaultScale, formatScale, recallScale, rememberScale, stepScale,
+  FORM_FACTOR, TABLET_SHORT_SIDE, TEXT_MAX, TEXT_MIN, UI_MAX, UI_MIN, UI_SCALE_KEY, clampScale, deviceScale, formFactor,
+  formatScale, recallScale, rememberScale, stepScale, textFactor, type Device,
 } from "../src/uiscale.ts";
 import { GUIDE_NOTE_MS, STATUS_FADE_MS, STEP_NOTE_MS, StatusLine, statusFade, type TextLike } from "../src/statusline.ts";
 import { FILE_ITEMS, UNTITLED, fileItemOff, paneCommand, scaleCommand, spinCommands } from "../src/appmenu.ts";
@@ -35,31 +36,81 @@ function memory(): { storage: StorageLike; store: Map<string, string> } {
 
 // ---- the interface size -----------------------------------------------------
 
-test("the metrics scale: every size field multiplied and rounded, the flags kept, the factor clamped", () => {
-  const m = scaledMetrics(COARSE, 0.7);
-  for (const k of Object.keys(COARSE) as (keyof Metrics)[]) {
-    if (k === "coarse") assert.equal(m.coarse, true);
-    else if (k === "scale") assert.equal(m.scale, 0.7);
-    else assert.equal(m[k], Math.round((COARSE[k] as number) * 0.7), `${k}`);
+test("the metrics scale: every size field multiplied and rounded, the flags kept, the factor held to a sane range", () => {
+  const m = scaledMetrics(FINE, 1.3);
+  for (const k of Object.keys(FINE) as (keyof Metrics)[]) {
+    if (k === "coarse") assert.equal(m.coarse, false);
+    else if (k === "scale") assert.equal(m.scale, 1.3);
+    else if (k === "hit") assert.equal(m.hit, 0, "a mouse's controls are hit where they are drawn");
+    else assert.equal(m[k], Math.round((FINE[k] as number) * 1.3), `${k}`);
   }
-  assert.equal(m.button, 31, "a finger's tool button at the default is 31 px, not 44");
-  assert.deepEqual(scaledMetrics(FINE, 1), FINE, "100 % is the mouse's look exactly");
-  assert.equal(scaledMetrics(FINE, 9).scale, UI_MAX, "held to the range");
-  assert.equal(scaledMetrics(FINE, 0.01).scale, UI_MIN);
+  assert.deepEqual(scaledMetrics(FINE, 1), FINE, "100 % on a desktop is the look the app has always had");
+  assert.equal(scaledMetrics(FINE, 9).scale, 3, "held to the range");
+  assert.equal(scaledMetrics(FINE, 0.01).scale, 0.4);
   assert.equal(scaledMetrics(FINE, Number.NaN).scale, 1, "and nonsense is 100 %");
-  assert.deepEqual(traySize(3, "column", scaledMetrics(FINE, 1.5)), { w: 30 + 8, h: 24 + 6 + 3 * 32 });
+  assert.deepEqual(traySize(3, "column", scaledMetrics(FINE, 1.5)), { w: 30 + 8, h: 24 + 6 + 3 * (30 + 3) });
 });
 
-test("the scale's defaults per pointer, its ladder, and how it reads", () => {
-  assert.equal(defaultScale(false), 1, "a mouse: today's look, unchanged");
-  assert.equal(defaultScale(true), 0.7, "a finger: 31 px buttons");
+test("a finger's metrics: drawn at the size, hit at 44 — the tray's pitch a whole target, rows and the command line a target tall", () => {
+  const m = touchMetrics(1.3);
+  assert.deepEqual(COARSE, m, "COARSE is a phone's 100 %");
+  assert.equal(m.button, 26, "a tool button drawn at 1.3 × the desktop's 20");
+  assert.equal(m.icon, 21);
+  assert.equal(m.title, 21, "a strip drawn 21 thick, not 44");
+  assert.equal(m.button + m.gap, TOUCH_TARGET, "each button's pitch along the tray is a whole target");
+  assert.equal(m.hit, TOUCH_TARGET);
+  assert.equal(m.grip, TOUCH_TARGET, "a grip draws nothing: its size is its hit size");
+  assert.equal(m.optionRow, TOUCH_TARGET);
+  assert.equal(m.line, TOUCH_TARGET);
+  assert.equal(m.coarse, true);
+  // Big enough that the drawn button is its own target: no gap added past the mouse's.
+  const big = touchMetrics(2.5);
+  assert.equal(big.button, 50);
+  assert.equal(big.gap, Math.round(2 * 2.5));
+  // 11 tools: a slim column, 34 thick — the 0.1.0 one was 52.
+  assert.deepEqual(traySize(11, "column", m), { w: 34, h: 21 + 6 + 11 * 44 });
+});
+
+test("the device's 100 %: form factor × preferred text size, per pointer and screen", () => {
+  const phone: Device = { coarse: true, shortSide: 390, appleBody: null, defaultFont: 16 };
+  assert.equal(formFactor({ coarse: false, shortSide: 390 }), FORM_FACTOR.fine, "a mouse is a desktop, whatever its screen");
+  assert.equal(formFactor(phone), FORM_FACTOR.phone);
+  assert.equal(formFactor({ coarse: true, shortSide: 440 }), 1.3, "the largest iPhone is a phone");
+  assert.equal(formFactor({ coarse: true, shortSide: TABLET_SHORT_SIDE - 1 }), 1.3);
+  assert.equal(formFactor({ coarse: true, shortSide: TABLET_SHORT_SIDE }), FORM_FACTOR.tablet);
+  assert.equal(formFactor({ coarse: true, shortSide: 744 }), 1.15, "the smallest iPad is a tablet");
+  assert.ok(FORM_FACTOR.fine < FORM_FACTOR.tablet && FORM_FACTOR.tablet < FORM_FACTOR.phone);
+  // A desktop at the browser's default: today's look, exactly.
+  assert.equal(deviceScale({ coarse: false, shortSide: 900, appleBody: null, defaultFont: 16 }), 1);
+  // A Mac's Safari has -apple-system-body at a fixed 13 px: it is not read under a mouse.
+  assert.equal(deviceScale({ coarse: false, shortSide: 900, appleBody: 13, defaultFont: 16 }), 1);
+  // A desktop whose person set their browser's text larger.
+  assert.equal(deviceScale({ coarse: false, shortSide: 900, appleBody: null, defaultFont: 20 }), 1.25);
+  // A phone, emulated (no -apple-system-body) or real at the default Dynamic Type.
+  assert.equal(deviceScale(phone), 1.3);
+  assert.equal(deviceScale({ ...phone, appleBody: 17 }), 1.3);
+  // Dynamic Type one step up (19 px body) and down (15 px).
+  assert.equal(textFactor({ ...phone, appleBody: 19 }), 19 / 17);
+  assert.equal(deviceScale({ ...phone, appleBody: 19 }), Math.round(1.3 * (19 / 17) * 100) / 100);
+  assert.equal(deviceScale({ ...phone, appleBody: 15 }), Math.round(1.3 * (15 / 17) * 100) / 100);
+  // Where Safari has it, Dynamic Type wins over the browser's font size.
+  assert.equal(textFactor({ ...phone, appleBody: 17, defaultFont: 20 }), 1);
+  // The accessibility sizes (up to 53 px) are held: past it the chrome would not fit a phone.
+  assert.equal(textFactor({ ...phone, appleBody: 53 }), TEXT_MAX);
+  assert.equal(textFactor({ ...phone, appleBody: 8 }), TEXT_MIN);
+  assert.equal(textFactor({ ...phone, appleBody: null, defaultFont: 0 }), 1, "nothing measured is the default");
+  // A tablet.
+  assert.equal(deviceScale({ coarse: true, shortSide: 820, appleBody: 17, defaultFont: 16 }), 1.15);
+});
+
+test("the viewer's multiplier: its ladder, and how it reads", () => {
   assert.equal(clampScale(0.8000001), 0.8);
   assert.equal(clampScale(3), UI_MAX);
   assert.equal(clampScale(0.2), UI_MIN);
   assert.equal(clampScale("0.8"), null);
   assert.equal(clampScale(Infinity), null);
-  assert.equal(stepScale(0.7, 1), 0.8);
-  assert.equal(stepScale(0.7, -1), 0.6);
+  assert.equal(stepScale(1, 1), 1.1);
+  assert.equal(stepScale(1, -1), 0.9);
   assert.equal(stepScale(0.75, 1), 0.8, "off the ladder, + goes to the next step up");
   assert.equal(stepScale(0.75, -1), 0.7);
   assert.equal(stepScale(1.6, 1), 1.6, "and the ends hold");
@@ -72,7 +123,7 @@ test("the scale is stored per device, and forgetting it is the device's default"
   const { storage, store } = memory();
   assert.equal(recallScale(storage), null, "nothing chosen: the default, which is not stored");
   assert.equal(rememberScale(storage, 0.8), true);
-  assert.equal(store.get(UI_SCALE_KEY), "0.8");
+  assert.equal(store.get(UI_SCALE_KEY), "0.8", "only the viewer's multiplier, never the device's size");
   assert.equal(recallScale(storage), 0.8);
   store.set(UI_SCALE_KEY, "9");
   assert.equal(recallScale(storage), UI_MAX, "a stored value out of range is held to it");
@@ -80,6 +131,9 @@ test("the scale is stored per device, and forgetting it is the device's default"
   assert.equal(recallScale(storage), null, "and one that is not a number is nothing");
   rememberScale(storage, null);
   assert.equal(store.has(UI_SCALE_KEY), false, "the default removes the key");
+  rememberScale(storage, 0.8);
+  rememberScale(storage, 1);
+  assert.equal(store.has(UI_SCALE_KEY), false, "and so does 100 %, which is the default");
   const hostile = { getItem: () => { throw new Error("SecurityError"); }, setItem: () => { throw new Error("x"); }, removeItem: () => { throw new Error("x"); } };
   assert.equal(recallScale(hostile), null);
   assert.equal(rememberScale(hostile, 0.8), false);
@@ -89,7 +143,7 @@ test("the scale is stored per device, and forgetting it is the device's default"
 test("the spin box types ui({ scale }), 10 % a press; the number types the default; the ends are off", () => {
   assert.equal(scaleCommand(0.8), "ui({ scale: 0.8 })");
   assert.equal(scaleCommand("default"), 'ui({ scale: "default" })');
-  assert.deepEqual(spinCommands(0.7), { down: "ui({ scale: 0.6 })", up: "ui({ scale: 0.8 })" });
+  assert.deepEqual(spinCommands(1), { down: "ui({ scale: 0.9 })", up: "ui({ scale: 1.1 })" });
   assert.deepEqual(spinCommands(UI_MIN), { down: null, up: "ui({ scale: 0.7 })" });
   assert.deepEqual(spinCommands(UI_MAX), { down: "ui({ scale: 1.5 })", up: null });
 });
@@ -97,11 +151,11 @@ test("the spin box types ui({ scale }), 10 % a press; the number types the defau
 // ---- the logo, the one fixed thing ------------------------------------------
 
 test("the logo's box: the mark and a margin, never under a finger's 44 px", () => {
-  assert.deepEqual(logoBox(FINE), { w: 36, h: 36 });
-  const phone = scaledMetrics(COARSE, 0.7);
-  assert.equal(phone.logo, 24, "the mark at a phone's default is 24 px — the spec's 22–28");
-  assert.deepEqual(logoBox(phone), { w: 44, h: 44 });
-  assert.deepEqual(logoBox(scaledMetrics(COARSE, 1.6)), { w: 54 + 20, h: 54 + 20 });
+  assert.equal(FINE.logo, 20);
+  assert.deepEqual(logoBox(FINE), { w: 32, h: 32 });
+  assert.equal(COARSE.logo, 26, "the mark at a phone's 100 % is 26 px — the spec's 22–28");
+  assert.deepEqual(logoBox(COARSE), { w: 44, h: 44 });
+  assert.deepEqual(logoBox(touchMetrics(2)), { w: 40 + 24, h: 40 + 24 });
 });
 
 test("a push stops at the logo: it is in the layout, and nothing moves it", () => {
@@ -152,7 +206,7 @@ test("a panel touching an inset edge reaches under the inset and pads by it; els
 });
 
 test("the phone's portrait default docks the command line to the bottom, edge to edge", () => {
-  const m = scaledMetrics(COARSE, 0.7);
+  const m = COARSE;
   const d = defaultLayout(AREA, 11, m);
   assert.deepEqual(d.cmd, { x: 0, y: AREA.h - (m.title + m.line), w: AREA.w, h: m.title + m.line });
   assert.deepEqual(dockingOf("cmd", d, AREA), { left: "edge", right: "edge", bottom: "edge" });
@@ -184,11 +238,11 @@ test("what a side rests against: the area's edge first, then a panel it is flush
 
 /** Sizes as the panel manager has them: the tray its line, the others the viewer's. */
 const sizeOf = (id: string, orient: "row" | "column" | undefined) =>
-  id === "toolbar" ? traySize(11, orient ?? "column", scaledMetrics(COARSE, 0.7)) : null;
+  id === "toolbar" ? traySize(11, orient ?? "column", COARSE) : null;
 const minOf = () => ({ w: 80, h: 40 });
 
 test("a tray docked right and a pane against it stay so through portrait → landscape → portrait; a floating pane keeps its share and stays inside", () => {
-  const bar = traySize(11, "column", scaledMetrics(COARSE, 0.7));
+  const bar = traySize(11, "column", COARSE);
   const shown: Layout = {
     toolbar: { x: PORTRAIT.w - bar.w, y: 200, ...bar, orient: "column" },
     log: { x: PORTRAIT.w - bar.w - 160, y: 260, w: 160, h: 60 },
@@ -200,7 +254,7 @@ test("a tray docked right and a pane against it stay so through portrait → lan
   assert.equal(recs.log.dock.right, "toolbar");
   for (const area of [LANDSCAPE, PORTRAIT, LANDSCAPE]) {
     const out = relaid(recs, {}, area, 0.7, sizeOf, minOf);
-    const r = arranged(["toolbar", "log", "float"], out, {}, { toolbar: 11 }, area, {}, scaledMetrics(COARSE, 0.7));
+    const r = arranged(["toolbar", "log", "float"], out, {}, { toolbar: 11 }, area, {}, COARSE);
     const l = r.layout;
     assert.equal(l.toolbar.x + l.toolbar.w, area.w, `the tray against the right edge in ${area.w}×${area.h}`);
     assert.equal(l.log.x + l.log.w, l.toolbar.x, "and the log against the tray's left");
@@ -238,12 +292,12 @@ test("resting on another pane's top with its sides free, a pane stays the same d
 });
 
 test("a tray whose line no longer fits along its edge turns, and keeps the edge", () => {
-  const m = scaledMetrics(COARSE, 1);
+  const m = touchMetrics(1.6);
   const row = traySize(11, "row", m);
   const shown: Layout = { toolbar: { x: 0, y: LANDSCAPE.h - row.h, ...row, orient: "row" } };
   const recs = { toolbar: recorded("toolbar", shown, { w: 800, h: LANDSCAPE.h }, 1) };
   const out = relaid(recs, {}, PORTRAIT, 1, (_id, o) => traySize(11, o ?? "row", m), minOf);
-  assert.equal(out.toolbar.orient, "column", "556 px of row does not fit 390 px across");
+  assert.equal(out.toolbar.orient, "column", `${row.w} px of row does not fit 390 px across`);
   assert.equal(out.toolbar.y + out.toolbar.h, PORTRAIT.h, "still on the bottom edge");
   assert.equal(out.toolbar.x, 0, "and the left");
 });

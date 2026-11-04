@@ -87,9 +87,8 @@ export interface AppMenuHost {
   document(): DocumentState;
   /** Whether the command line's scope has a function of this name. */
   defined(name: string): boolean;
-  /** The interface size now, and this device's default. */
+  /** The viewer's multiplier on this device's own 100 % (uiscale.ts) — what the spin box shows. */
   scale(): number;
-  defaultScale(): number;
   /** Every pane the panel manager has, in its order. */
   panes(): PaneState[];
   /** How solids are shown now, and the modes there are, as `view()` names them. */
@@ -202,18 +201,21 @@ export class AppMenu {
     file.appendChild(name);
     for (const item of FILE_ITEMS) {
       const off = fileItemOff(item, (n) => h.defined(n));
-      const row = this.item(item.label, item.command, off === null ? () => this.type(item.command, false) : null);
+      // Off, the reason is said where the command would be — on the item's
+      // own line, so four of them do not double the menu's height on a
+      // landscape phone — and in full as its title.
+      const row = this.item(item.label, off === null ? item.command : "not in this build yet",
+        off === null ? () => this.type(item.command, false) : null);
       row.dataset.command = item.command;
-      file.appendChild(row);
       if (off !== null) {
-        const why = document.createElement("div");
-        why.className = "why";
-        why.textContent = off;
-        file.appendChild(why);
+        row.dataset.why = off;
+        row.title = off;
       }
+      file.appendChild(row);
     }
 
-    // Interface size: − 80% +. The number resets to the device's default.
+    // Interface size: − 80% +, a multiplier on this device's own 100 %. The
+    // number puts it back to 100 %.
     const scale = h.scale();
     const size = this.section("Interface size");
     const spin = document.createElement("div");
@@ -242,7 +244,7 @@ export class AppMenu {
     const reset = scaleCommand("default");
     spin.append(
       button("dec", "−", "smaller", down),
-      button("val", formatScale(scale), `back to this device's ${formatScale(h.defaultScale())}`, reset),
+      button("val", formatScale(scale), "back to 100 %, this device's own size", reset),
       button("inc", "+", "larger", up),
     );
     const sizeRow = document.createElement("div");

@@ -38,8 +38,6 @@
 // command string, so neither can reach the model any more than the context
 // menu can, nor do anything a typed line could not.
 
-import { clampScale } from "./uiscale.ts";
-
 export interface Rect { x: number; y: number; w: number; h: number }
 export interface Size { w: number; h: number }
 export interface Point { x: number; y: number }
@@ -79,23 +77,25 @@ export const TITLE_H = 16;
 /**
  * Every size the chrome is built from, in one value — so that a finger's
  * chrome is the mouse's with other numbers, and no rule below has two
- * versions. `FINE` is the mouse's, what every exported constant here is;
- * `COARSE` is a finger's (docs/plans/touch.md): **44 px targets**, Apple's
- * 44 pt minimum on an iPhone, where a CSS pixel is a point — for a tray's
- * buttons and its strip, every panel's strip, an option's row (its field and
- * ✓/✗), and one line of the command line. The stylesheet's `(pointer: coarse)`
- * block is the same numbers for what CSS draws (grips, menu items, the fields
- * themselves); the host picks one value at load from the same media query, so
- * the two cannot disagree.
+ * versions. `FINE` is the mouse's at 100 %, what every exported constant here
+ * is. A finger's is `touchMetrics`: **drawn at the interface size, hit at 44**
+ * (docs/plans/chrome-logo-scale.md). The two are apart on purpose — a finger's
+ * chrome used to be *drawn* at Apple's 44 pt target, which is what the owner
+ * called huge; now a button is drawn at the device's size and a press lands on
+ * it over 44 px however small it is drawn. The stylesheet draws from the same
+ * numbers (the host sets them as custom properties), so the two cannot
+ * disagree.
  */
 export interface Metrics {
-  /** A strip's thickness: across a panel's top, down a row tray's left end. */
+  /** A strip's thickness, drawn: across a panel's top, down a row tray's left end. */
   title: number;
-  /** A tray button's side. */
+  /** A tray button's side, drawn. */
   button: number;
+  /** Between two tray buttons — under a finger, what makes their pitch a whole hit target. */
+  gap: number;
   /** The glyph inside a tray button. */
   icon: number;
-  /** A corner grip's side. */
+  /** A corner grip's side (grips draw nothing, so this is their hit size). */
   grip: number;
   /** The logo's mark, square. */
   logo: number;
@@ -107,53 +107,80 @@ export interface Metrics {
   line: number;
   /** The log's least height under its strip: a line of it, or so. */
   logLine: number;
+  /** The least a control answers a press over, in each direction: 44 under a finger, 0 (its drawn box) under a mouse. */
+  hit: number;
   /** Whether this is a finger's chrome — which also lays out a phone's defaults (`defaultLayout`). */
   coarse: boolean;
   /**
-   * The interface size these were scaled by (uiscale.ts): 1 for `FINE` and
-   * `COARSE` themselves. Carried so a size the viewer set — a command line
-   * made taller — can be scaled with the rest (`relaid`).
+   * The interface size these were scaled by — the device's 100 % times the
+   * viewer's multiplier (uiscale.ts); 1 for `FINE` itself. Carried so a size
+   * the viewer set — a command line made taller — scales with the rest
+   * (`relaid`).
    */
   scale: number;
 }
 
 export const FINE: Metrics = {
-  title: 16, button: 20, icon: 16, grip: 12, logo: 24, optionRow: 22, optionsW: 168, line: 28, logLine: 30, coarse: false, scale: 1,
-};
-/**
- * A finger's, at 100 %. The logo's mark is 34 here so that at a phone's
- * default 70 % (uiscale.ts) it is 24 px, the spec's "about 22–28".
- */
-export const COARSE: Metrics = {
-  title: 44, button: 44, icon: 24, grip: 44, logo: 34, optionRow: 44, optionsW: 230, line: 44, logLine: 28, coarse: true, scale: 1,
+  title: 16, button: 20, gap: 2, icon: 16, grip: 12, logo: 20, optionRow: 22, optionsW: 168, line: 28, logLine: 30,
+  hit: 0, coarse: false, scale: 1,
 };
 
+/** Apple's minimum target, 44 pt — a CSS pixel is a point on an iPhone. What a finger's controls are hit at. */
+export const TOUCH_TARGET = 44;
+
+/** The interface size is held to this, all factors multiplied: past it nothing fits the screen it is for. */
+const SCALE_MIN = 0.4;
+const SCALE_MAX = 3;
+
 /**
- * `base` at interface size `s` (the owner: *"the interface elements are huge
- * on my screen"*): every size multiplied and rounded to the pixel, so a strip
- * and the row it is drawn in agree to the pixel; the factor held to
- * [UI_MIN, UI_MAX], and anything that is not a number taken as 100 %. The one
- * place a panel's arithmetic learns the size — the stylesheet takes the same
- * numbers from the host, as custom properties.
+ * `base` at interface size `s`: every size multiplied and rounded to the
+ * pixel, so a strip and the row it is drawn in agree to the pixel; held to
+ * [0.4, 3], and anything that is not a positive number taken as 1. The one
+ * place a panel's arithmetic learns the size.
  */
 export function scaledMetrics(base: Metrics, s: number): Metrics {
-  const k = clampScale(s) ?? 1;
+  const k = Number.isFinite(s) && s > 0 ? Math.min(SCALE_MAX, Math.max(SCALE_MIN, s)) : 1;
   const r = (v: number) => Math.round(v * k);
   return {
-    title: r(base.title), button: r(base.button), icon: r(base.icon), grip: r(base.grip), logo: r(base.logo),
+    title: r(base.title), button: r(base.button), gap: r(base.gap), icon: r(base.icon), grip: r(base.grip), logo: r(base.logo),
     optionRow: r(base.optionRow), optionsW: r(base.optionsW), line: r(base.line), logLine: r(base.logLine),
-    coarse: base.coarse, scale: k,
+    hit: base.hit, coarse: base.coarse, scale: k,
   };
 }
 
 /**
+ * A finger's metrics at interface size `s` (a phone's 100 % is 1.3,
+ * uiscale.ts): the mouse's, scaled — and then each control made to answer a
+ * press over `TOUCH_TARGET` without being drawn any bigger. A tray's buttons
+ * are spaced so that each one's pitch along the tray is a whole target (its
+ * hit box, index.html's `::before`, overhangs its face across the tray too);
+ * an option's row and the command line's are a target tall, their fields
+ * drawn at the size inside; a grip, which draws nothing, is a target square.
+ */
+export function touchMetrics(s: number): Metrics {
+  const m = scaledMetrics(FINE, s);
+  return {
+    ...m,
+    gap: Math.max(m.gap, TOUCH_TARGET - m.button),
+    grip: TOUCH_TARGET,
+    optionRow: Math.max(m.optionRow, TOUCH_TARGET),
+    line: Math.max(m.line, TOUCH_TARGET),
+    hit: TOUCH_TARGET,
+    coarse: true,
+  };
+}
+
+/** A finger's metrics at a phone's 100 % — what the tests and the defaults' docs call a phone. */
+export const COARSE: Metrics = touchMetrics(1.3);
+
+/**
  * The logo's box in the top-left corner of the area: the mark and a margin
- * round it — and under a finger never less than 44 px, Apple's target, which
- * is the one size here the interface does not shrink below: the logo is the
- * way into the menu that changes the size, and it must stay easy to hit.
+ * round it — and never less than a target (`m.hit`), which is the one size
+ * here the interface does not shrink below: the logo is the way into the menu
+ * that changes the size, and it must stay easy to hit.
  */
 export function logoBox(m: Metrics): Size {
-  const side = Math.max(m.coarse ? 44 : 0, m.logo + 2 * Math.round(6 * m.scale));
+  const side = Math.max(m.hit, m.logo + 2 * Math.round(6 * m.scale));
   return { w: side, h: side };
 }
 
@@ -257,7 +284,7 @@ export const TRAY_DEPTH = BUTTON + 6 + 2;
  * anyone draws in, so not designed for beyond staying inside.
  */
 export function traySize(buttons: number, orient: Orientation, m: Metrics = FINE): Size {
-  const run = m.title + 6 + buttons * (m.button + 2);
+  const run = m.title + 6 + buttons * (m.button + m.gap);
   const depth = m.button + 6 + 2;
   return orient === "column" ? { w: depth, h: run } : { w: run, h: depth };
 }

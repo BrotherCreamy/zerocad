@@ -102,10 +102,34 @@ package owns the menu; that one owns the commands.** The seam is below.
   marker and the lifted mark. One factor, read in one place; find every
   hard-coded size and route it through it. It is **per device**, in local
   storage beside the view mode, never in the document.
-  - **Defaults**: 100 % under a mouse (today's look, unchanged). Under a
-    finger, today's 44 px chrome is what the owner calls huge: default to a
-    size where a tool button is about 32 px and LOOK at it against his
-    screenshots; say what you chose and why.
+  - **Defaults** **(amended again, 2026-11-04)** — the owner: *"is there any
+    way you can figure out what interface scale to use for each device, so
+    everything is appropriately sized? (and make that 100% zoom)"*. This
+    replaces "default a finger to about 32 px buttons":
+    - **Drawn size is decoupled from hit size.** "Huge" was every control
+      under a finger being *drawn* at its 44 px hit size. Controls are drawn
+      at the interface size and, on a coarse pointer, answer a press over at
+      least 44 CSS px however small they are drawn (an invisible `::before`,
+      a row a target tall, a tray's button pitch a whole target) — the spin
+      box's − and + included.
+    - **100 % is computed per device**, and the spin box shows 100 % at that
+      size; what is stored is only the viewer's multiplier, so a change in the
+      OS text size still comes through. Device scale = form factor ×
+      preferred text size. Form factor: a fine pointer 1.0 (today's desktop
+      look); a coarse pointer on a phone 1.3 (iOS body text is 17 pt against
+      macOS's 13 pt); on a tablet 1.15, between them — phone below a 600 CSS
+      px short side, tablet from it. Preferred text size: under a coarse
+      pointer where `font: -apple-system-body` applies (Safari, which follows
+      Dynamic Type), its size ÷ 17; elsewhere the browser's default font
+      size (`font-size: medium`) ÷ 16; held to 0.8–1.5.
+    - **Correction to the amendment as given**: it said "in Safari, measure
+      `-apple-system-body`". macOS Safari has the keyword too, at a fixed
+      13 px (WebKit bugs 215279 and 230348: 13 px on macOS, 17 px on iOS at
+      the default Dynamic Type; WebKit closed the second as intended,
+      "matches platform conventions on macOS"), so dividing by 17 there would
+      shrink every Mac by a quarter. It is read under a coarse pointer only.
+      And the root's font size is the stylesheet's 13 px, not the person's,
+      so the fallback reads `font-size: medium`.
   - **Reach stays a finger's.** Pick and snap radii (`TOUCH_REACH`) are about
     the finger, not the picture: scaling the interface down must not make
     things harder to hit. Glyph hit boxes follow their drawn size, as now.
@@ -152,7 +176,11 @@ landscape screenshots at three sizes and compare them with the owner's.
 hidden from the menu is gone, survives a reload, and comes back where it was;
 dock a pane to an edge and another against it in portrait, rotate to
 landscape and back, and both relations hold each time, a floating pane
-inside — with screenshots of each orientation.
+inside — with screenshots of each orientation. **(amended again)** Unit tests
+of the device-scale computation for each form factor and text-size case; an
+e2e at iPhone 13 emulation that the spin box reads 100 %, a tool button draws
+at about 1.3 × the desktop's size and its hit area is at least 44 px; the same
+at a desktop, where today's look is unchanged.
 
 ## Docs
 

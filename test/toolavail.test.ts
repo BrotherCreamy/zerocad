@@ -51,11 +51,7 @@ test("a fresh 3D model's menu offers every tool, disabled none — the greyed cu
   }
 });
 
-test("panels.ts still imports nothing but a leaf: the toolbar and the options panel learn everything from their hosts", async () => {
+test("panels.ts still imports nothing: the toolbar and the options panel learn everything from their hosts", async () => {
   const src = await readFile(new URL("../src/panels.ts", import.meta.url), "utf8");
-  // The one import is the interface size's clamp (uiscale.ts), which itself
-  // imports nothing — so nothing of the model or the tools can arrive by it.
-  assert.deepEqual(src.match(/^import .*$/gm) ?? [], ['import { clampScale } from "./uiscale.ts";']);
-  const leaf = await readFile(new URL("../src/uiscale.ts", import.meta.url), "utf8");
-  assert.deepEqual(leaf.match(/^import .*$/gm) ?? [], []);
+  assert.deepEqual(src.match(/^import .*$/gm) ?? [], []);
 });

@@ -5,7 +5,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  ACTIONS, COARSE, FINE, actionCommand, arranged, defaultLayout, inCorner, logoBox, optionsSize, overlapping, scaledMetrics,
+  ACTIONS, COARSE, FINE, actionCommand, arranged, defaultLayout, inCorner, logoBox, optionsSize, overlapping, touchMetrics,
   traySize, type Layout, type Size,
 } from "../src/panels.ts";
 
@@ -18,8 +18,8 @@ const TOOLS = 11;
  */
 const PORTRAIT: Size = { w: 390, h: 844 - 47 - 34 };
 const LANDSCAPE: Size = { w: 844 - 2 * 47, h: 390 - 21 };
-/** A phone's chrome at its default 70 %. */
-const PHONE = scaledMetrics(COARSE, 0.7);
+/** A finger's chrome at 1 × a desktop's — a phone at its smallest (60 % of its 1.3, near enough). */
+const PHONE = touchMetrics(1);
 
 function inside(layout: Layout, area: Size): string[] {
   return Object.entries(layout).filter(([, r]) => r.x < 0 || r.y < 0 || r.x + r.w > area.w || r.y + r.h > area.h)
@@ -33,10 +33,10 @@ test("the mouse's sizes are what they were: FINE is every exported constant, and
   assert.deepEqual(defaultLayout({ w: 1100, h: 760 }, TOOLS), defaultLayout({ w: 1100, h: 760 }, TOOLS, FINE));
 });
 
-test("a finger's tray: 44 px buttons and a 44 px strip, one line, either way", () => {
-  assert.deepEqual(traySize(4, "row", COARSE), { w: 44 + 6 + 4 * 46, h: 52 });
-  assert.deepEqual(traySize(TOOLS, "column", COARSE), { w: 52, h: 44 + 6 + TOOLS * 46 });
-  assert.equal(optionsSize(2, COARSE).h, 44 + 8 + 2 * 44, "an option's row is a target tall");
+test("a finger's tray at a phone's 100 %: 26 px buttons a 44 px target apart, a 21 px strip, one line, either way", () => {
+  assert.deepEqual(traySize(4, "row", COARSE), { w: 21 + 6 + 4 * 44, h: 34 });
+  assert.deepEqual(traySize(TOOLS, "column", COARSE), { w: 34, h: 21 + 6 + TOOLS * 44 });
+  assert.equal(optionsSize(2, COARSE).h, 21 + 8 + 2 * 44, "an option's row is a target tall");
 });
 
 for (const m of [COARSE, PHONE]) {

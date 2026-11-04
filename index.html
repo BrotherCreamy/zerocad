@@ -27,7 +27,7 @@
        sized for. Everything else drawn for a person to read or hit is
        multiplied by --ui below. The defaults are a mouse's 100 %, so the page
        before main.ts runs is what it always was. */
-    :root{--ui:1;--title:16px;--button:20px;--icon:16px;--grip:12px;--orow:22px}
+    :root{--ui:1;--title:16px;--button:20px;--gap:2px;--icon:16px;--grip:12px;--orow:22px}
     html,body{position:fixed;inset:0;overflow:hidden;overscroll-behavior:none;margin:0;background:#0a0e13;color:#d5e1ec;font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace;font-size:13px;
       touch-action:manipulation;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent;-webkit-text-size-adjust:100%;text-size-adjust:100%}
     #cmd,#log,input{-webkit-user-select:text;user-select:text;-webkit-touch-callout:default}
@@ -194,7 +194,7 @@
        hidden for the one case where the line does not fit — a window shorter
        than it — so the buttons past the edge are clipped there rather than
        drawn over the window's edge. */
-    .tray{display:flex;flex-direction:column;gap:2px;padding:3px;overflow:hidden}
+    .tray{display:flex;flex-direction:column;gap:var(--gap);padding:3px;overflow:hidden}
     .panel[data-orient="row"]>.tray{flex-direction:row}
     .tray button{flex:none;width:var(--button);height:var(--button);padding:0;display:flex;align-items:center;justify-content:center;
       font-family:inherit;color:#afc6d9;background:transparent;border:1px solid transparent;border-radius:3px;cursor:default}
@@ -228,40 +228,44 @@
     #options .oact button.ok:hover:not(:disabled){background:#55c07a22}
     #options .oact button.no:hover{background:#20303f;color:#d5e1ec}
     #options .oact button:disabled{color:#2f4050;border-color:#1a2633}
-    /* Under a finger (docs/plans/touch.md). At 100 % every target is 44 px —
-       Apple's 44 pt, a CSS pixel being a point on an iPhone — and the
-       interface size scales them with the rest (the owner found 44 huge; a
-       phone starts at 70 %, src/uiscale.ts). The panels' own sizes (strips,
-       buttons, grips, option rows) come from panels.ts's COARSE through the
-       custom properties above; these are the rest, in the same proportion.
-       **Fields stay at 16 px type at any size**: below it iOS zooms the page
+    /* **Under a finger: drawn at the interface size, hit at 44 px**
+       (docs/plans/chrome-logo-scale.md). Everything above is already drawn at
+       the device's own size (--ui: 1.3 on a phone — src/uiscale.ts); what a
+       finger needs on top is a target of Apple's 44 pt, a CSS pixel being a
+       point on an iPhone, and it gets it here **without anything being drawn
+       bigger**: an invisible ::before round a small face, a row that is a
+       target tall with its text drawn at the size. (They used to be one
+       size — drawn at 44 — which is what the owner called huge.) A tray's
+       buttons are spaced by panels.ts so that each one's pitch is a whole
+       target, and their hit boxes overhang the tray's edges a little.
+       **Fields stay at 16 px type at least**: below it iOS zooms the page
        into any field it focuses, and a zoomed page is the one thing the page
        lock cannot undo. Hover colours are left as they are: a finger has no
        hover, and a colour that sticks after a tap is iOS's, not ours. */
     @media (pointer: coarse){
-      .panel>.ptitle{font-size:calc(12px * var(--ui))}
-      .tray{gap:2px;padding:3px}
-      .tray button{border-radius:6px}
-      #cmd{font-size:max(16px, calc(16px * var(--ui)))}
+      .tray{overflow:visible}
+      .tray button{position:relative;border-radius:5px}
+      .tray button::before,#options .oact button::before{content:"";position:absolute;left:50%;top:50%;
+        width:max(100%,44px);height:max(100%,44px);transform:translate(-50%,-50%)}
+      #options .oact button{position:relative}
+      /* A strip is drawn its own thickness and grabbed over 44: its hit box
+         reaches outward, over the drawing, never into the panel's content. */
+      .panel>.ptitle{position:relative}
+      .panel>.ptitle::before{content:"";position:absolute;left:0;right:0;bottom:0;height:max(100%,44px)}
+      .panel[data-orient="row"]>.ptitle::before{left:auto;top:0;height:auto;width:max(100%,44px)}
+      #cmd{font-size:max(16px, calc(13px * var(--ui)))}
       #cmdhint{display:none}
-      #log{font-size:calc(12px * var(--ui));line-height:calc(16px * var(--ui));padding:0 10px;border-block:calc(5px * var(--ui)) solid transparent}
-      #options .orow{font-size:calc(13px * var(--ui))}
-      #options .oval{width:calc(88px * var(--ui));height:calc(36px * var(--ui));font-size:16px}
-      #options .oval[type="checkbox"]{width:calc(28px * var(--ui));height:calc(28px * var(--ui));margin:0 calc(30px * var(--ui))}
-      #options .oact button{width:var(--orow);height:var(--orow);font-size:calc(18px * var(--ui));line-height:calc(var(--orow) - 2px)}
-      #ctxmenu,#appmenu{font-size:calc(14px * var(--ui))}
-      :is(#ctxmenu,#appmenu) .head{padding:calc(8px * var(--ui)) 14px}
-      #appmenu .head{padding:calc(8px * var(--ui)) 14px calc(2px * var(--ui))}
-      :is(#ctxmenu,#appmenu) .item{min-height:calc(44px * var(--ui));align-items:center;padding:0 14px}
-      #ctxmenu .row{min-height:calc(44px * var(--ui));align-items:center;padding:0 14px}
-      :is(#ctxmenu,#appmenu) .choice{display:inline-flex;align-items:center;min-height:calc(44px * var(--ui));min-width:calc(44px * var(--ui));padding:0 8px;justify-content:center}
+      #options .oval[type="text"]{font-size:max(16px, calc(11px * var(--ui)))}
+      :is(#ctxmenu,#appmenu) .head{padding:calc(6px * var(--ui)) 14px}
+      #appmenu .head{padding:calc(6px * var(--ui)) 14px calc(2px * var(--ui))}
+      :is(#ctxmenu,#appmenu) .item{min-height:44px;align-items:center;padding:0 14px}
+      #ctxmenu .row{min-height:44px;align-items:center;padding:0 14px}
+      :is(#ctxmenu,#appmenu) .choice{display:inline-flex;align-items:center;min-height:44px;min-width:44px;padding:0 8px;justify-content:center}
       #appmenu .docname,#appmenu .about{padding:2px 14px 4px}
-      #appmenu .item.check input{width:calc(22px * var(--ui));height:calc(22px * var(--ui))}
       /* − and + drawn at the menu's size, hit at a finger's: the buttons are
          44 px whatever the interface size; only their faces scale. */
       #appmenu .srow{padding:0 6px 4px}
-      #appmenu .spin button{min-width:44px;height:44px;font-size:calc(18px * var(--ui))}
-      #appmenu .spin button.val{min-width:calc(64px * var(--ui));font-size:calc(15px * var(--ui))}
+      #appmenu .spin button{min-width:44px;height:44px}
     }
   </style>
 </head>
