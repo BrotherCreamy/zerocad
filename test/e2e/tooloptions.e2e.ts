@@ -18,7 +18,7 @@ import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { openApp, type AppContext } from "./harness.ts";
+import { openApp, type AppContext, forgetAutosave } from "./harness.ts";
 
 let app: AppContext;
 before(async () => { app = await openApp(); });
@@ -84,6 +84,7 @@ async function zExtent(): Promise<number> {
 }
 
 async function reloadApp(): Promise<void> {
+  await forgetAutosave(app.page); // a reload here means the app's first start
   await app.page.reload({ waitUntil: "networkidle" });
   await app.page.waitForFunction(() => document.getElementById("status")?.textContent?.includes("ready"));
 }

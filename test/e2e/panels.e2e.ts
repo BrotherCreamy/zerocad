@@ -32,7 +32,7 @@ import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { openApp, axisFrame, type AppContext } from "./harness.ts";
+import { openApp, axisFrame, type AppContext, forgetAutosave } from "./harness.ts";
 
 let app: AppContext;
 before(async () => {
@@ -100,6 +100,7 @@ const pressed = () => app.page.$$eval("#toolbar button[aria-pressed=true]", (els
 const cmd = () => app.page.inputValue("#cmd");
 
 async function reloadApp(): Promise<void> {
+  await forgetAutosave(app.page); // a reload here means the app's first start
   await app.page.reload({ waitUntil: "networkidle" });
   await app.page.waitForFunction(() => document.getElementById("status")?.textContent?.includes("ready"));
 }
