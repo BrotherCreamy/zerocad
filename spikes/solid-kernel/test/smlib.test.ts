@@ -56,6 +56,32 @@ test("tessellation: every triangle names a face, and every face has triangles", 
   K.free(s);
 });
 
+test("edge polylines: every edge sampled once, a circle's ends meeting, a line's at its vertices", { skip }, async () => {
+  const K = await k();
+  const s = K.extrude(profile(rect(0, 0, 10, 10), circle(5, 5, 2)), 4);
+  const edges = K.edges(s);
+  const lines = K.edgePolylines(s, 10);
+  assert.deepEqual(lines.map((l) => l.edge).sort((a, b) => a - b), edges.map((_, i) => i));
+  for (const { edge, points } of lines) {
+    const n = points.length / 3;
+    assert.ok(n >= 2);
+    const first = [points[0], points[1], points[2]], last = [points[n * 3 - 3], points[n * 3 - 2], points[n * 3 - 1]];
+    const e = edges[edge];
+    for (let i = 0; i < 3; i++) {
+      assert.ok(Math.abs(first[i] - e.start[i]) < 1e-4 || Math.abs(first[i] - e.end[i]) < 1e-4, `edge ${edge} starts off its vertex`);
+      assert.ok(Math.abs(last[i] - e.end[i]) < 1e-4 || Math.abs(last[i] - e.start[i]) < 1e-4, `edge ${edge} ends off its vertex`);
+    }
+  }
+  K.free(s);
+});
+
+test("a chamfer's distance is the setback along each face", { skip }, async () => {
+  // SmApiFilletEdges with the linear cross-section: measured against both
+  // readings, it is the setback (the part's closed form), not the width across.
+  const r = runPart(await k(), PARTS.find((p) => p.name === "chamfer-top-edges")!);
+  assert.ok(r.volumeError! < 1e-12);
+});
+
 test("a tag set on a face is read back, and survives a copy", { skip }, async () => {
   const K = await k();
   const p = profile(rect(0, 0, 10, 10));

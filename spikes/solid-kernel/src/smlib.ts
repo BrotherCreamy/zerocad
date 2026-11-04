@@ -45,6 +45,9 @@ export interface SmModule {
   _sm_mesh_positions(): number;
   _sm_mesh_vertex_count(): number;
   _sm_mesh_triangles(): number;
+  _sm_edge_polylines(h: number, angle: number): number;
+  _sm_edge_points(): number;
+  _sm_edge_runs(): number;
   _sm_heap_in_use(): number;
 }
 
@@ -224,6 +227,25 @@ export class SmlibKernel implements SolidKernel {
       faceOf[i] = raw[i * 4 + 3];
     }
     return { positions: pos, triangles, faceOf };
+  }
+
+  /** Every edge sampled as a polyline, by edge index — what drawing and picking a solid's edges need. */
+  edgePolylines(s: Solid, angleDeg: number): { edge: number; points: Float32Array }[] {
+    const m = this.m;
+    const n = m._sm_edge_polylines(s, angleDeg);
+    if (n < 0) throw new KernelError("edge polylines", -n - 1);
+    const runs = new Uint32Array(m.HEAPU8.buffer, m._sm_edge_runs(), n * 2).slice();
+    let total = 0;
+    for (let i = 0; i < n; i++) total += runs[i * 2 + 1];
+    const pts = new Float32Array(m.HEAPU8.buffer, m._sm_edge_points(), total * 3).slice();
+    const out: { edge: number; points: Float32Array }[] = [];
+    let at = 0;
+    for (let i = 0; i < n; i++) {
+      const c = runs[i * 2 + 1];
+      out.push({ edge: runs[i * 2], points: pts.subarray(at * 3, (at + c) * 3) });
+      at += c;
+    }
+    return out;
   }
 
   heapInUse(): number { return this.m._sm_heap_in_use(); }

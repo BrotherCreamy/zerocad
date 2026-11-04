@@ -13,7 +13,8 @@ and is never committed.
   (`src/profiles.ts`); `src/naming.ts` — the identity-across-rebuild scheme;
   `src/bench.ts` — the measurements; `src/worker.ts` — the kernel in a Worker.
 - `bench/node.ts`, `bench/chromium.ts` — run them in Node and in headless
-  Chromium (a module Worker); `bench/sizes.ts` — raw/gzip/brotli sizes.
+  Chromium (a module Worker); `bench/sizes.ts` — raw/gzip/brotli sizes;
+  `bench/leak.ts` — heap kept per operation and per part.
 - `test/` — the spike's own tests: `node --experimental-strip-types --test
   spikes/solid-kernel/test/*.test.ts`. The kernel tests skip, saying so,
   unless `SMLIB_DIR` names a build.
