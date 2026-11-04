@@ -140,6 +140,14 @@ test("on an iPhone: a circle on the side, ✓ with the default — a boss added;
   assert.deepEqual(b.features, ["e1", "e2", "e3"]);
   assert.ok(b.valid);
   await type('lookAt("f1"); orbit(-0.6, -1.0)');
+  // The organiser's body row in a phone's narrow pane: its name whole, the
+  // chain after it giving way (looked at: it once read "−e2 +e3 3", no e1).
+  const row = await app.page.$eval('#organiser .osect[data-section="bodies"] .orow', (el) => {
+    const name = el.querySelector(".oname") as HTMLElement;
+    const r = name.getBoundingClientRect(), pane = el.getBoundingClientRect();
+    return { text: name.textContent, clipped: name.scrollWidth > name.clientWidth + 1, inside: r.left >= pane.left && r.right <= pane.right };
+  });
+  assert.deepEqual(row, { text: "e1", clipped: false, inside: true }, "the body's name shown whole");
   await shot("3-boss");
   const before = b.volume;
   await type('set("d1.value", 12)');
