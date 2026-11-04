@@ -24,6 +24,15 @@ otherwise.
 
 ## Decisions made so far — veto here if any are wrong
 
+- **Next, specced 2026-11-04:** [`solids-kernel.md`](docs/plans/solids-kernel.md)
+  — SMLib ships; extrude and revolve add to, cut from or start a body (Add
+  by default where a profile lies on or overlaps a body, as in Onshape);
+  bodies in the organiser; sketch on any face, a boolean's included; STEP
+  from bodies. And, in parallel,
+  [`one-circle-one-arc.md`](docs/plans/one-circle-one-arc.md) — one Circle and
+  one Arc tool, the gesture choosing the method, tangent on existing
+  geometry, lockable; `circle3`/`arc3` stay as typed names.
+
 - **A circle is just a circle: curves carry their own normal, one origin is
   always there, nothing makes a frame unless asked, sketch on face sets the
   work plane** (the owner, 2026-11-04: *"why everything need frame? why can
