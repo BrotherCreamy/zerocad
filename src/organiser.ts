@@ -110,14 +110,15 @@ export function organiserSections(model: Model, selection: readonly string[] = [
   });
   // A body is the result of its chain (modes.ts), named by its first feature:
   // hiding it is hiding that feature, which hides the body whole. Its detail
-  // is the chain, each later feature signed by what it does — e1 +e3 −e2.
+  // is the rest of the chain, each feature signed by what it does — +e3 −e2
+  // after the name e1 (a phone's narrow pane cut "e1 e1 +e3 −e2" to "e…").
   const sign: Record<string, string> = { add: "+", cut: "−", intersect: "∩", new: "" };
   const bodies: OrganiserRow[] = chainsOf(model, { hidden: true }).bodies.map((c) => {
     const first = c.features[0];
     const members = c.features.flatMap((f) => f.owns);
     const eye: Eye = model.hidden.has(first.name) ? "hidden" : "shown";
     return {
-      name: c.name, detail: c.features.map((f, i) => (i === 0 ? f.name : `${sign[modeOf(f)]}${f.name}`)).join(" "),
+      name: c.name, detail: c.features.slice(1).map((f) => `${sign[modeOf(f)]}${f.name}`).join(" "),
       count: c.features.length, eye, eyeCommand: eyeCommand(first.name, eye),
       tapCommand: `select(${c.features.map((f) => quoted(f.name)).join(", ")})`,
       selected: lit(members.filter((n) => !model.hidden.has(n))), open: null, openCommand: null,

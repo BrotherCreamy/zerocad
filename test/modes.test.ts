@@ -92,7 +92,7 @@ test("a boss on a side face adds; the chains follow the order features were made
   assert.ok(inside(p.t.at(50, -4, T / 2)), "the boss is");
   // The organiser's Bodies: one, named by its first feature, its chain signed.
   const [bodies, , features] = organiserSections(m);
-  assert.deepEqual(bodies.rows.map((r) => [r.name, r.detail, r.count, r.eyeCommand]), [[p.feature, `${p.feature} +${e2} −${e3}`, 3, `hide("${p.feature}")`]]);
+  assert.deepEqual(bodies.rows.map((r) => [r.name, r.detail, r.count, r.eyeCommand]), [[p.feature, `+${e2} −${e3}`, 3, `hide("${p.feature}")`]]);
   assert.deepEqual(features.rows.map((r) => r.detail), ["extrude", "extrude · add", "extrude · cut"]);
 });
 

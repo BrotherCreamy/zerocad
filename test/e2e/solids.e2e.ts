@@ -230,4 +230,12 @@ test("save, open: the same body; STEP exports it and reads back as one solid", {
   assert.equal((text.match(/MANIFOLD_SOLID_BREP/g) ?? []).length, 1, "one solid: the body, not three features");
   assert.ok((text.match(/ADVANCED_FACE/g) ?? []).length >= 9);
   assert.deepEqual(app.pageErrors, []);
+  // The kernel's costs in this browser, for the record (docs/plans/solids-kernel.md): not asserted, said.
+  const t = await app.page.evaluate(() => {
+    const b = (window as never as { __neocad: { bodies: { loadMs: number; history: { roundTrip: number; kernel: number }[] } } }).__neocad.bodies;
+    return { load: b.loadMs, answers: b.history };
+  });
+  const trips = t.answers.map((a) => a.roundTrip).sort((x, y) => x - y);
+  console.log(`# solids timing: worker load ${t.load.toFixed(0)} ms; ${trips.length} answers, round trip median ${trips[trips.length >> 1]?.toFixed(0)} ms, `
+    + `max ${trips.at(-1)?.toFixed(0)} ms; kernel ${t.answers.map((a) => a.kernel.toFixed(0)).join(" ")}`);
 });

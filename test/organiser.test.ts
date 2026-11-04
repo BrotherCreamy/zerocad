@@ -355,7 +355,7 @@ test("the pane's sections: a group row is its name, count, eye and open marker; 
   assert.equal(organiserSections(m, [lines[0], lines[1]])[1].rows[0].selected, true);
   assert.equal(features.title, "Features");
   // The body e1 makes, alone (docs/plans/solids-kernel.md): its eye the feature's.
-  assert.deepEqual(bodies.rows.map((r) => [r.name, r.detail, r.count, r.eye, r.eyeCommand]), [["e1", "e1", 1, "shown", 'hide("e1")']]);
+  assert.deepEqual(bodies.rows.map((r) => [r.name, r.detail, r.count, r.eye, r.eyeCommand]), [["e1", "", 1, "shown", 'hide("e1")']]);
   const e1 = features.rows[0];
   assert.deepEqual([e1.name, e1.detail, e1.count, e1.eye, e1.open, e1.eyeCommand], ["e1", "extrude", m.featureOf("e1").owns.length, "shown", null, 'hide("e1")']);
   hide(m, "e1");

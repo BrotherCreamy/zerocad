@@ -105,6 +105,8 @@ export interface SolidKernel {
   volume(s: Solid): number;
   bbox(s: Solid): [V3, V3];
   validity(s: Solid): Validity;
+  /** Just the manifold test of `validity` — cheap, where the consistency checks are not. */
+  manifold(s: Solid): boolean;
   faces(s: Solid): FaceInfo[];
   edges(s: Solid): EdgeInfo[];
   tagFace(s: Solid, face: number, tag: number): void;

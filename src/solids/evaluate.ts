@@ -243,9 +243,11 @@ export class Evaluator {
       return null;
     }
     // A profile that is no closed region sweeps to a sheet, not a solid —
-    // measured: a lone line extrudes to one face, volume 0, not manifold.
-    // (A volume the kernel could not integrate, NaN, is no evidence either way: the manifold test decides.)
-    if (k.volume(tool) <= 0 || !k.validity(tool).manifold) {
+    // measured: a lone line extrudes to one face, volume 0, not manifold. The
+    // manifold test alone says so, and costs nothing beside a volume's
+    // integral, which was most of a rebuild's time (measured: 142 ms of 245
+    // for the owner's part in Node, asked four times a node).
+    if (!k.manifold(tool)) {
       k.free(tool);
       c.failed.push({ node: index, id: n.id, why: `its ${n.sweep.kind} is not a solid — its profile does not close` });
       return null;
@@ -255,18 +257,22 @@ export class Evaluator {
       if (before !== null) k.free(tool);
       return before === null ? tool : null;
     }
-    const was = k.volume(before);
     const a = k.copy(before);
     try {
       const out = k.boolean(n.op, a, tool);
-      const now = k.volume(out);
-      if (now <= 0) {
+      const faces = k.faces(out);
+      if (faces.length === 0) {
         // Nothing left: an intersect that misses, a cut that takes everything.
         k.free(out);
         c.failed.push({ node: index, id: n.id, why: n.op === "intersect" ? "it does not overlap the body, so nothing would be left" : "nothing of the body would be left" });
         return null;
       }
-      if (Math.abs(now - was) <= 1e-9 * Math.max(1, Math.abs(was))) c.idle.push({ node: index, id: n.id });
+      // Changed nothing: no face of the result is the tool's — a cut that
+      // reaches no material, an add wholly inside, an intersect wholly around.
+      // Asked of the tags, which the kernel carries onto every piece of a face
+      // that survives, rather than of two volumes' integrals.
+      const ours = faces.some((f) => f.tag >= 0 && Math.floor(f.tag / 1000) === n.id);
+      if (!ours) c.idle.push({ node: index, id: n.id });
       return out;
     } catch (e) {
       // On failure both operands are still the module's (glue.cpp's

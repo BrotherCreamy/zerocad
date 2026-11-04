@@ -269,6 +269,13 @@ export class Bodies {
   private model: Model | null = null;
   /** Milliseconds the last answer took, round trip, and the kernel's own share. */
   timing = { roundTrip: 0, kernel: 0 };
+  /** Every answer's round trip, for a measurement to read (the e2e suite logs them). */
+  readonly history: { roundTrip: number; kernel: number }[] = [];
+
+  /** Milliseconds from starting the kernel's Worker to its module being ready, the last time one started. */
+  get loadMs(): number {
+    return this.client?.loadMs ?? 0;
+  }
   /** How many answers have arrived — what a test waits on. */
   answers = 0;
 
@@ -311,6 +318,7 @@ export class Bodies {
       const r: ProgramResult = await this.client!.run(p.program);
       this.failure = null;
       this.timing = { roundTrip: performance.now() - t0, kernel: r.bodies.reduce((s, b) => s + b.ms, 0) };
+      this.history.push(this.timing);
       this.take(p, r);
     } catch (e) {
       // The client restarted its Worker, or there is none: the last good bodies

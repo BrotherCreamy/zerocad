@@ -158,6 +158,10 @@ export class SmlibKernel implements SolidKernel {
     });
   }
 
+  manifold(s: Solid): boolean {
+    return this.m._sm_is_manifold(s) === 1;
+  }
+
   validity(s: Solid): Validity {
     return { manifold: this.m._sm_is_manifold(s) === 1, failures: this.m._sm_check(s) };
   }
