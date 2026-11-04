@@ -291,10 +291,10 @@ test("a lens of two crossing circles extrudes: two crossings held on both rims, 
   const at = [x1, x2].map((x) => local(t, m.coords(x)).map((c) => Math.round(c * 1e9) / 1e9 + 0)).sort((a, b) => a[1] - b[1]);
   assert.deepEqual(at, [[26, 7, 0], [26, 23, 0]]);
   // Each twin arc: radius 10, its ends the twins of a base arc's ends, on the
-  // lid — oriented by the sketch frame, as its base circle is.
+  // lid — facing the sketch frame's +z, as its base circle does.
   for (const arc of f.twins[0]) {
     const a = m.entities.get(arc)!;
-    assert.ok(a.kind === "arc" && a.plane === t.name);
+    assert.ok(a.kind === "arc" && Math.abs(m.normalOf(arc).reduce((x, v, i) => x + v * t.uz[i], 0) - 1) < 1e-9);
     assert.ok(Math.abs(m.radius(arc) - 10) < 1e-9);
     for (const p of [a.start, a.end]) assert.ok(Math.abs(local(t, m.coords(p))[2] - 12) < 1e-9);
   }

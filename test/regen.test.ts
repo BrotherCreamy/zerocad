@@ -137,10 +137,10 @@ test("fillet after extrude regenerates: five corner twins and the centre's, a tw
   assert.equal(m.relationOf(f.depth).args[1], 20, "the same value");
 
   // The twin arc: about the centre's twin, between the twins of the arc's own
-  // ends, on the sketch frame (an orientation, which a translation keeps), the
-  // same radius.
+  // ends, facing as the base arc does (an orientation, which a translation
+  // keeps), the same radius.
   const ta = m.arc(f.twins[0][1]);
-  assert.equal(ta.plane, t.name);
+  assert.ok(near(m.normalOf(ta.name), m.normalOf(arc), 1e-9));
   assert.equal(ta.center, twinOver(m, f.depth, ab.center));
   assert.equal(ta.start, twinOver(m, f.depth, ab.start));
   assert.equal(ta.end, twinOver(m, f.depth, ab.end));
@@ -163,7 +163,7 @@ test("fillet after extrude regenerates: five corner twins and the centre's, a tw
   assert.ok(Math.abs(lid!.area - (1200 - 64 + 16 * Math.PI)) < 0.1, `lid area ${lid!.area}`);
 
   // One journal entry, the call, with what it regenerated resolved.
-  assert.deepEqual(m.journal.at(-1), { op: "fillet", args: [lines[0], lines[1], 8, t.name, [["e1", f.loops]]] });
+  assert.deepEqual(m.journal.at(-1), { op: "fillet", args: [lines[0], lines[1], 8, null, [["e1", f.loops]]] }, "no side: the arc needs none");
   assert.equal(m.journal.filter((e) => e.op === "fillet").length, 1);
 });
 
@@ -269,9 +269,13 @@ test("a partial revolve regenerates likewise: a twin arc on the end frame, the n
   assert.deepEqual(f.twins[0].map((n) => m.entities.get(n)?.kind), ["line", "arc", "line", "line", "line"]);
   assert.deepEqual([f.twins[0][0], ...f.twins[0].slice(2)], keptTwins);
   const ta = m.arc(f.twins[0][1]);
-  assert.equal(ta.plane, f.end);
-  // Five corners and the centre, the arc's radius, the frame pair.
-  assert.equal(baseOf(m, f.angle).size, 5 + 1 + 1 + 1);
+  const k = t.uy, n = m.normalOf(arc);
+  const kn = k.reduce((x, v, i) => x + v * n[i], 0);
+  const kxn = [k[1] * n[2] - k[2] * n[1], k[2] * n[0] - k[0] * n[2], k[0] * n[1] - k[1] * n[0]];
+  const turnedN = n.map((v, i) => v * Math.cos(quarter) + kxn[i] * Math.sin(quarter) + k[i] * kn * (1 - Math.cos(quarter)));
+  assert.ok(near(m.normalOf(ta.name), turnedN, 1e-8), "facing as its base does, turned");
+  // Five corners and the centre, the arc's radius — and no frame pair.
+  assert.equal(baseOf(m, f.angle).size, 5 + 1 + 1);
   assert.equal(m.solve().solved, true);
   for (const [twin, base] of baseOf(m, f.angle)) {
     if (m.entities.get(twin)?.kind !== "point") continue;

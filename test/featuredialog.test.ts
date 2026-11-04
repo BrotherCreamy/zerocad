@@ -187,7 +187,7 @@ test("sketch armed with a face preselected sketches on it at once — typing the
   assert.deepEqual(typed, [], "not inside the line that armed it");
   await new Promise((r) => setTimeout(r, 0));
   assert.equal(typed.length, 1);
-  assert.match(typed[0], /^plane\("p\d+", "p\d+", "p\d+"\)$/);
+  assert.match(typed[0], /^workplane\("p\d+\.p\d+\.p\d+"\)$/, "the work plane set to the face — no frame made");
   assert.equal(e.active, null, "and the sketch tool is done");
 });
 
@@ -258,11 +258,11 @@ test("revolve: the preview is the committed geometry, about the line beside it, 
 
 test("fillet: the preview is the committed geometry — the arc and the trimmed legs", async () => {
   await loadKernel();
-  const preview = await previewEqualsCommit(() => filletSteps("l5", "l6", 4, [0, 0, 1], true));
+  const preview = await previewEqualsCommit(() => filletSteps("l5", "l6", 4));
   assert.equal([...preview.entities.values()].filter((e) => e.kind === "arc").length, 1);
 });
 
-test("a frameless sketch: the preview types the plane too, and still equals the commit", async () => {
+test("a frameless sketch: the preview makes no plane, and still equals the commit", async () => {
   await loadKernel();
   const frameless = async () => {
     const m = new Model(3);
@@ -272,13 +272,14 @@ test("a frameless sketch: the preview types the plane too, and still equals the 
     return { m, repl };
   };
   const preview = await previewEqualsCommit((m) => extrudeSteps(hitAt(m, [10, 10, 0]), 8, true), frameless);
-  assert.equal(preview.defaultFrame, "f1", "the plane made in the copy");
+  assert.equal(preview.defaultFrame, null, "no plane made in the copy");
+  assert.equal([...preview.entities.values()].filter((e) => e.kind === "frame").length, 0, "nor any frame");
 });
 
 test("a refused step previews nothing and says why", async () => {
   await loadKernel();
   const { m } = await twoRectangles();
-  const p = await previewSteps(m, ABOVE, filletSteps("l5", "l6", 500, [0, 0, 1], true));
+  const p = await previewSteps(m, ABOVE, filletSteps("l5", "l6", 500));
   assert.equal(p.model, null);
   assert.match(p.error!, /too large/);
 });

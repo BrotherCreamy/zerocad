@@ -21,8 +21,9 @@
 // (docs/plans/no-lid-frame.md, tested in nolidframe.test.ts). Version 10's
 // shared lid frame is what a version-10 file still replays with, so the extrude
 // cases here ask for it by name — the expansion `10` persist.ts writes into
-// such a file's entries — and go on proving it. A revolve's end frames are
-// today's, and are asked for as they always were.
+// such a file's entries — and go on proving it. A revolve's end frames were
+// today's until format 13 (docs/plans/frameless-curves.md: a turned twin curve
+// carries its own normal now), and are asked for by their expansion, `10`.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -86,8 +87,10 @@ function heldOnce(m: Model, dimension: string): void {
       assert.equal(args.filter((a, k) => k % 2 === 1 && a === args[i + 1]).length, 1, `${args[i + 1]} in one pair`);
     }
   }
+  // A curve pair is two blocks: its radius, and — since curves carry their own
+  // normal (format 13) — its normal, held at its base's.
   const radii = args.filter((a, k) => k % 2 === 0 && ["arc", "circle"].includes(m.entities.get(a)!.kind)).length;
-  assert.equal(m.relationOf(dimension).blocks.length, twins.length + radii, "one block a point, one a rim");
+  assert.equal(m.relationOf(dimension).blocks.length, twins.length + 2 * radii, "one block a point, two a rim");
 }
 
 /** The owner's plate: a 60 × 40 rectangle with a triangle inside, free points level at z = 0, nothing else. */
@@ -192,7 +195,7 @@ test("a partial revolve's end frame stands on the end twins: no point of its own
   // The frame a frameless sketch is given: three of its own corners.
   const own = m.addFrame(corners[0], corners[1], corners[3]).name;
   const ents = m.entities.size;
-  const f = m.featureOf(revolve(m, lines[0], `${t.name}.y`, Math.PI / 2, own), "revolve") as RevolveFeature;
+  const f = m.featureOf(revolve(m, lines[0], `${t.name}.y`, Math.PI / 2, own, null, 10), "revolve") as RevolveFeature;
   // Four twins, four twin edges and the end frame: was three more points.
   assert.equal(m.entities.size - ents, 4 + 4 + 1);
   const end = m.frame(f.end!);
@@ -222,7 +225,7 @@ test("a partial revolve's end frame stands on the end twins: no point of its own
   const n = new Model(3);
   const u = tiltedFrame(n);
   const q = polygon(n, u, [[10, 0], [30, 0], [30, 20], [10, 20]]);
-  const g = n.featureOf(revolve(n, q.lines[0], `${u.name}.y`, Math.PI / 2), "revolve") as RevolveFeature;
+  const g = n.featureOf(revolve(n, q.lines[0], `${u.name}.y`, Math.PI / 2, null, null, 10), "revolve") as RevolveFeature;
   assert.equal(n.relationOf(g.angle).blocks.length, 4 + 3);
   assert.equal(n.solve().solved, true);
   assert.deepEqual(coincident(n), []);
@@ -353,7 +356,10 @@ test('del("e1") takes exactly what it made — the twins its frame stands on onc
   const removed = del(m, "e1");
   assert.equal(removed.length, new Set(removed).size);
   assert.deepEqual(new Set(removed), new Set(["e1", ...f.owns]), "the record and what it owns, each once");
-  assert.deepEqual([...m.entities.keys()], [...entities, f.frame], "the sketch, and the frame the typed call made for it");
+  // A frameless sketch runs along the origin's +z, and no frame is made for it
+  // (docs/plans/frameless-curves.md): the sketch is all that is left.
+  assert.equal(f.frame, "origin");
+  assert.deepEqual([...m.entities.keys()], entities, "the sketch, and nothing the call made");
   assert.deepEqual([...m.relations.keys()], relations);
   assert.equal(m.solve().solved, true);
 });
@@ -505,10 +511,13 @@ test("an expansion other than an old file's or today's is refused, naming what i
   const { lines } = polygon(m, t, [[0, 0], [40, 0], [40, 30], [0, 30]]);
   assert.throws(() => extrude(m, lines[0], 20, null, null, 7), /extrude's expansion is 9 or 10 \(a file of version 9 or 10/);
   assert.throws(() => extrude(m, lines[0], 20, null, null, 12), /extrude's expansion is 9 or 10/);
-  assert.throws(() => revolve(m, lines[0], `${t.name}.y`, 1, null, null, 8), /revolve's expansion is 9 \(/);
-  // A revolve has no expansion 11: its end frames are today's, and stay.
-  assert.throws(() => revolve(m, lines[0], `${t.name}.y`, 1, null, null, 11), /revolve's expansion is 9 \(/);
+  assert.throws(() => revolve(m, lines[0], `${t.name}.y`, 1, null, null, 8), /revolve's expansion is 9 or 10 \(/);
   assert.equal(m.features.size, 0);
+  // Since format 13 a revolve's 11 is today's too: it makes no end frame.
+  const n = new Model(3);
+  const u = tiltedFrame(n);
+  const q = polygon(n, u, [[10, 0], [40, 0], [40, 30], [10, 30]]);
+  assert.equal(n.featureOf(revolve(n, q.lines[0], `${u.name}.y`, 1, null, null, 11), "revolve").end, null);
   assert.equal(extrude(m, lines[0], 20, null, null, 11), "e1", "today's, said out loud, is today's");
   assert.equal((m.journal.at(-1)!.args as unknown[]).length, 4);
   assert.equal(m.featureOf("e1").expansion, 11);
