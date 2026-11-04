@@ -106,6 +106,42 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### Select and the Hand: a state given a button, and a press read differently
+
+The owner: *"there is no hand/selction tool. would be nice since a lot of
+people are used to that"*. Neither is new behaviour so much as a name for
+something: "nothing armed" always was selection, and panning always existed
+on the middle button and two fingers. The design question was where each
+lives.
+
+**Not as registry tools.** The first idea was `defineTool("hand", HandTool)`,
+so the button would come for free. Rejected: a Tool is handed world
+coordinates and no camera, so it cannot pan without a new door in
+`ToolContext`; and the Hand's tap has to select, which is the engine's
+selection, reached only on the no-tool path. A HandTool would have needed
+both doors opened, for one tool. So the engine answers `arm("select")` and
+`arm("hand")` itself (`putDown`), `listTools()` is unchanged, the toolbar
+asks `toolbarTools()`, and `defineTool` refuses the two names — a class
+registered as "hand" could never be armed, and should not be accepted
+silently. `ToolEngine.lit` is one answer to "which button", read by the
+toolbar, so Select being lit and `engine.active === null` cannot disagree.
+
+**Space as an overlay, not a disarm.** The obvious reading of "released, the
+previous tool is back" is: remember the tool, arm the Hand, re-arm the tool
+on release. Rejected: a tool put down and armed again is a fresh instance,
+and a fresh instance has no gesture — a rectangle's first corner and an
+extrude's picks would both be gone. `hold(true)` instead only changes how the next press is read;
+the tool never leaves, so there is nothing to bring back.
+
+**What the extra buttons cost on a phone.** Two more at a finger's 44 px
+pitch are 88 px of column. The screenshot (looked at, not measured — the
+numbers said nothing, because a window too small for the resolver switches
+the overlap check off) showed the column drawn over an edge-to-edge command
+line in Safari's 664 px page. Fixed at the default: the line starts right
+of the column where the column would reach it. In landscape a 13-button row
+on the right edge leaves less than a log's least width beside it; that is
+left as a limitation, since the owner vetoed wrapping the tray.
+
 ### No title bar: what "huge" was, where the 60 pt went, and a blur nobody documents
 
 The owner tried 0.1.0 on his iPhone: no title bar, a tiny logo that opens

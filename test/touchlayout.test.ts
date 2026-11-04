@@ -9,8 +9,8 @@ import {
   traySize, type Layout, type Size,
 } from "../src/panels.ts";
 
-/** Eleven built-in tools, as the app registers them. */
-const TOOLS = 11;
+/** The toolbar's buttons as the app has them: Select, the Hand and the eleven tools. */
+const TOOLS = 13;
 /**
  * The area the panels get on an iPhone 13 at home-screen size: the screen less
  * the safe-area insets (portrait 47 top, 34 bottom; landscape 47 each side,
@@ -72,6 +72,28 @@ for (const m of [COARSE, PHONE]) {
     assert.ok(d.log.x === d.actions.x && d.log.y > d.actions.y + d.actions.h);
   });
 }
+
+test("portrait in Safari's shorter page: a column too long to end above the command line has the line start right of it", () => {
+  // iPhone 13 in Safari, as Chromium emulates it: 390 × 664, its bars taking
+  // what the installed app has. Measured: with Select and the Hand the column
+  // ran 44 px down onto an edge-to-edge line, and the two were drawn one over
+  // the other.
+  const safari: Size = { w: 390, h: 664 };
+  for (const m of [COARSE, PHONE]) {
+    const d = defaultLayout(safari, TOOLS, m);
+    const tall = d.toolbar.y + d.toolbar.h > safari.h - (m.title + m.line);
+    const { options, ...panels } = d;
+    assert.deepEqual(inside(panels, safari), []);
+    assert.deepEqual(overlapping({ ...panels, logo: { x: 0, y: 0, ...logoBox(m), fixed: true } }), [], `clear at ${m.scale}`);
+    assert.equal(d.cmd.y + d.cmd.h, safari.h, "still docked to the bottom");
+    assert.equal(d.cmd.x + d.cmd.w, safari.w, "and to the right edge");
+    if (tall) assert.ok(d.cmd.x >= d.toolbar.x + d.toolbar.w, "beside the column");
+    else assert.equal(d.cmd.x, 0, "edge to edge where the column ends above it");
+    assert.ok(options.y + options.h <= d.cmd.y);
+  }
+  assert.ok(defaultLayout(safari, TOOLS, COARSE).cmd.x > 0, "at a phone's 100 % it is beside");
+  assert.equal(defaultLayout(safari, 11, COARSE).cmd.x, 0, "where eleven buttons were edge to edge, as they always were");
+});
 
 test("arranged at a finger's sizes keeps the phone's defaults clear of one another, the strip a tray", () => {
   for (const [area, m] of [[PORTRAIT, COARSE], [LANDSCAPE, COARSE], [PORTRAIT, PHONE], [LANDSCAPE, PHONE]] as const) {

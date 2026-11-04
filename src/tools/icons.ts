@@ -1,5 +1,6 @@
-// The toolbar's glyphs: one small inline SVG per built-in tool, and the generic
-// one every other tool gets.
+// The toolbar's glyphs: one small inline SVG per built-in tool — Select and the
+// Hand included, which are the engine's rather than the registry's — and the
+// generic one every other tool gets.
 //
 // **A table keyed by the registered name, beside the registry — not a static on
 // the tool class.** Three reasons. A static is inherited, so a tool defined at
@@ -9,7 +10,7 @@
 // command line arms it by name, and `toolUnavailable` (../toolavail.ts) decides
 // availability by name — so a re-registered `defineTool("circle", …)` keeps the
 // circle's glyph for the same reason it keeps the circle's availability rule:
-// it is what `arm("circle")` arms. And the eleven glyphs are one visual family,
+// it is what `arm("circle")` arms. And the glyphs are one visual family,
 // which is easiest to keep one family when they sit in one table: one stroke
 // width, one corner radius, no fills but a dot.
 //
@@ -34,6 +35,15 @@ const dot = (x: number, y: number, r = 1.9) => `<circle cx="${x}" cy="${y}" r="$
  * nothing registers, fails it.
  */
 export const TOOL_ICONS: Readonly<Record<string, string>> = {
+  // Select and the Hand (tool.ts's ENGINE_TOOLS): the pointer arrow and an
+  // open hand, the two every drawing program puts first. Outlines like the
+  // rest — a filled arrow was the obvious choice and would be the family's
+  // only solid shape, as heavy as every other glyph together at 16 px.
+  select: svg("select", `<path d="M3.5 2v11l2.9-2.6 2 4.2 1.9-.9-2-4.1 3.9-.2z"/>`),
+  // Three fingers and a thumb: a fourth finger at 16 px merged with its
+  // neighbours into a mitten (tried, and looked at at 1× and 3×).
+  hand: svg("hand", `<path d="M6 8V3.5a1.25 1.25 0 0 1 2.5 0V7.5"/><path d="M8.5 7.5V2.75a1.25 1.25 0 0 1 2.5 0V8"/>` +
+    `<path d="M11 8V4.25a1.25 1.25 0 0 1 2.5 0V10a4.5 4.5 0 0 1-4.5 4.5H8.4a3.6 3.6 0 0 1-2.7-1.2L2.5 9.8a1.2 1.2 0 0 1 1.8-1.6L6 9.8"/>`),
   point: svg("point", dot(8, 8, 2.6)),
   line: svg("line", `<path d="M3 13 13 3"/>`),
   rectangle: svg("rectangle", `<rect x="2.5" y="4" width="11" height="8" rx="1"/>`),

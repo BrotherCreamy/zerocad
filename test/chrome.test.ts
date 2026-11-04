@@ -207,12 +207,12 @@ test("a panel touching an inset edge reaches under the inset and pads by it; els
 
 test("the phone's portrait default docks the command line to the bottom, edge to edge", () => {
   const m = COARSE;
-  const d = defaultLayout(AREA, 11, m);
+  const d = defaultLayout(AREA, 13, m); // Select, the Hand and the eleven tools
   assert.deepEqual(d.cmd, { x: 0, y: AREA.h - (m.title + m.line), w: AREA.w, h: m.title + m.line });
   assert.deepEqual(dockingOf("cmd", d, AREA), { left: "edge", right: "edge", bottom: "edge" });
   const logo = logoBox(m);
   assert.ok(d.toolbar.y >= logo.h, "the tray starts under the logo");
-  const r = arranged(Object.keys(d).filter((k) => k !== "options"), {}, d, { toolbar: 11, actions: 4 }, AREA, {}, m,
+  const r = arranged(Object.keys(d).filter((k) => k !== "options"), {}, d, { toolbar: 13, actions: 4 }, AREA, {}, m,
     { logo: { x: 0, y: 0, ...logo, fixed: true } });
   assert.ok(r.ok);
   assert.deepEqual(overlapping(r.layout), []);

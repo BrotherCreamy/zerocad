@@ -7,7 +7,7 @@ import { test } from "node:test";
 import { readFile } from "node:fs/promises";
 import assert from "node:assert/strict";
 import { TOOL_ICONS, genericIcon, toolIcon } from "../src/tools/icons.ts";
-import { listTools } from "../src/tools/tool.ts";
+import { ENGINE_TOOLS, listTools } from "../src/tools/tool.ts";
 
 /**
  * The built-ins are whatever main.ts imports from tools/ for its side effect of
@@ -19,7 +19,8 @@ async function registerBuiltIns(): Promise<string[]> {
   const files = [...main.matchAll(/^import "\.\/(tools\/[a-z0-9]+\.ts)";$/gm)].map((m) => m[1]);
   assert.ok(files.length >= 11, `main.ts's tool imports: ${files.join(", ")}`);
   for (const f of files) await import(new URL(`../src/${f}`, import.meta.url).href);
-  return listTools();
+  // Select and the Hand are built in too — the engine's, not the registry's.
+  return [...ENGINE_TOOLS, ...listTools()];
 }
 
 test("every built-in tool has a glyph of its own, and the table names nothing that is not one", async () => {

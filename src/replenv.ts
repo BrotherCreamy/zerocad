@@ -14,7 +14,7 @@ import { Dual } from "./kernel/dual.ts";
 import { Model, type Entity, type ProfileMember } from "./model.ts";
 import { describeFeature, describeRelation } from "./picking.ts";
 import type { SolveReport } from "./kernel/problem.ts";
-import { Tool, defineTool, getToolCtor, listTools, type ToolCtor } from "./tools/tool.ts";
+import { ENGINE_TOOLS, Tool, defineTool, getToolCtor, listTools, type ToolCtor } from "./tools/tool.ts";
 import { OptionMemory, declaredOptions, defaultsOf, describeValues, resolveOptions } from "./tools/options.ts";
 import * as basic from "./relations/basic.ts";
 import * as geom from "./relations/geometry.ts";
@@ -858,10 +858,15 @@ export function neocadScope(h: EnvHandles): Bag {
      * them now — `extrude  { depth: 10 }` — and, where a remembered value
      * differs, the declared defaults after: the line says both what you will
      * get and what you would type to have the default back.
+     *
+     * Select and the Hand head it, as they head the toolbar: `arm` takes them
+     * by those names, and a list of what `arm` takes that left them out would
+     * be a second answer to what the tools are.
      */
     tools: () => {
       const active = listTools();
       return [
+        ...ENGINE_TOOLS,
         ...active.map((name) => {
           const specs = declaredOptions(getToolCtor(name), name);
           if (Object.keys(specs).length === 0) return name;
@@ -1272,6 +1277,14 @@ function help(scope: Bag): string {
     "           pan, zoom, lookAt) are not, so Ctrl+Z after an orbit undoes",
     "           the last edit, not the turn.",
     "viewport   arm(tool, opts)  cancel()  zoom(f)  pan(dx,dy)  refresh()",
+    '           arm("select") puts the armed tool down and keeps the',
+    "           selection — no tool, which is what a click selects in; its",
+    '           arrow heads the toolbar, lit whenever nothing is armed. arm(',
+    '           "hand"), the hand beside it, makes a left-drag or one finger',
+    "           pan from anywhere, over geometry too, moving nothing; a click",
+    "           or a tap still selects, the wheel and a pinch still zoom.",
+    "           Holding Space is a hand for as long as it is held, over",
+    "           whatever is armed (not while the command line has the focus).",
     "           A tool's options are declared, and tools() lists them with",
     '           what arm would use now: extrude  { depth: 10 }. arm("extrude",',
     "           { depth: 25 }) sets one; one the tool does not have is refused,",
@@ -1319,7 +1332,7 @@ function help(scope: Bag): string {
     "           lands on the default frame's plane (or the one facing you)",
     "touch      a tap is a click; one finger drags what it lands on — a tool's",
     "           shape, a point, an edge — or, on empty canvas with nothing armed,",
-    "           turns the drawing; two fingers pan and pinch-zoom together; a",
+    "           turns the drawing (with the hand armed it pans, from anywhere); two fingers pan and pinch-zoom together; a",
     "           long-press is the menu, and long-press then drag is the box. A",
     "           tap toggles once something is selected; a tap on empty canvas",
     "           clears. A second finger drops a shape half-drawn, a third drops",

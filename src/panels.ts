@@ -806,7 +806,9 @@ export function defaultLayout(area: Size, tools: number, m: Metrics = FINE): Lay
  * the bottom sits under the keyboard it raises; iOS scrolls a focused field
  * into view, and the owner had dragged it to the bottom himself — see the
  * spec's limitations.) The tray a **column down the left**, under the logo —
- * eleven buttons are too long a row for a phone's width. The action strip at
+ * thirteen buttons are too long a row for a phone's width — and where the
+ * column is too long to end above the line (Safari's page, its bars taking a
+ * hundred points the installed app has), the line starts right of it. The action strip at
  * the top right, where the owner put it in his own screenshot, and the
  * one-line log under it, right of the tray.
  *
@@ -844,11 +846,20 @@ function touchLayout(area: Size, tools: number, m: Metrics): Layout {
   const logY = Math.max(GAP + act.h + GAP, logo.h + Math.max(0, m.hit - m.title) + GAP / 2);
   const cmdY = area.h - cmdH;
   const below = logY + logH + GAP;
+  const top = logo.h + GAP;
+  // Edge to edge where the column ends above it, which it does in the
+  // installed app; where it would run down onto it, the line starts right of
+  // the tray instead, still docked to the bottom and the right edge. Measured
+  // in Chromium's iPhone 13 (390 × 664, Safari's page with its bars): Select
+  // and the Hand made the column 44 px longer than the room above the line,
+  // and the two were laid one over the other — a window too small for the
+  // resolver to part them, so nothing said so either.
+  const clear = top + bar.h <= cmdY;
   return {
-    toolbar: { x: GAP, y: logo.h + GAP, ...bar, orient: "column" },
+    toolbar: { x: GAP, y: top, ...bar, orient: "column" },
     actions: { x: area.w - GAP - act.w, y: GAP, ...act, orient: "row" },
     log: { x: left, y: logY, w, h: logH },
-    cmd: { x: 0, y: cmdY, w: area.w, h: cmdH },
+    cmd: clear ? { x: 0, y: cmdY, w: area.w, h: cmdH } : { x: left, y: cmdY, w: area.w - left, h: cmdH },
     // Beside a column on the left the options panel would hang in the middle
     // of a phone's drawing (measured: it covered the rectangle the extrude was
     // aimed at). So it gets the space right of the tray, between the log and
@@ -1907,7 +1918,7 @@ export function buttonTitle(tool: string): string {
 
 /** What the toolbar needs of its host. */
 export interface ToolbarHost {
-  /** Every registered tool, in registration order — `listTools()`. */
+  /** Select, the Hand, then every registered tool in registration order — `toolbarTools()`. */
   tools(): string[];
   /**
    * The tool's glyph, as an inline SVG string drawn in `currentColor`: a
@@ -1915,7 +1926,7 @@ export interface ToolbarHost {
    * per button, when the buttons are built.
    */
   icon(tool: string): string;
-  /** The armed tool's name, or null. */
+  /** The button to light: the armed tool's name, `"hand"`, or `"select"` with nothing armed — `engine.lit`. */
   active(): string | null;
   /** Types one line into the command machinery, as one user action — `submit`. */
   run(command: string): void;
@@ -2275,15 +2286,18 @@ export interface ActionState {
   selected: readonly string[];
   /** Whether a tool is armed. */
   armed: boolean;
+  /** Whether the Hand is armed — which Cancel puts down, and Delete does not mind. */
+  hand?: boolean;
 }
 
 /**
  * The line `action` types now, or null when it would do nothing — and the
  * button is then disabled, rather than typing a line that only says so.
  * **Delete is the Delete key exactly**: the selection's names quoted as JSON,
- * and nothing while a tool is armed. **Cancel is `cancel()`**: the tool and
- * the selection put down together — Escape's one-step-at-a-time (a feature's
- * picks first) is the options panel's ✗, which a feature always shows.
+ * and nothing while a tool is armed. **Cancel is `cancel()`**: the tool (or
+ * the Hand) and the selection put down together — Escape's one-step-at-a-time
+ * (a feature's picks first) is the options panel's ✗, which a feature always
+ * shows.
  */
 export function actionCommand(action: Action, state: ActionState): string | null {
   switch (action) {
@@ -2291,7 +2305,7 @@ export function actionCommand(action: Action, state: ActionState): string | null
     case "redo": return state.canRedo ? "redo()" : null;
     case "delete":
       return state.selected.length && !state.armed ? `del(${state.selected.map((n) => JSON.stringify(n)).join(", ")})` : null;
-    case "cancel": return state.armed || state.selected.length ? "cancel()" : null;
+    case "cancel": return state.armed || state.hand || state.selected.length ? "cancel()" : null;
   }
 }
 

@@ -27,7 +27,7 @@ import { ContextMenu, menuFor } from "./menu.ts";
 import { toolUnavailable } from "./toolavail.ts";
 import { frameArmPx, frameMarker } from "./framemarker.ts";
 import { constrainedBy, type Glyph } from "./glyphs.ts";
-import { getToolCtor, listTools } from "./tools/tool.ts";
+import { ENGINE_TOOLS, HAND, getToolCtor, toolbarTools } from "./tools/tool.ts";
 import {
   ACTIONS, ActionStrip, FINE, OptionsPanel, Panels, Toolbar, browserStorage, defaultLayout, logoBox, scaledMetrics, touchMetrics,
   type Insets, type Metrics, type Size,
@@ -245,9 +245,9 @@ let viewMode: ViewMode = recallViewMode(browserStorage());
  */
 const panels = new Panels(
   document.getElementById("viewwrap")!,
-  (area) => defaultLayout(area, listTools().length, metrics),
+  (area) => defaultLayout(area, toolbarTools().length, metrics),
   browserStorage(),
-  { toolbar: () => listTools().length, ...(actionsEl ? { actions: () => ACTIONS.length } : {}) },
+  { toolbar: () => toolbarTools().length, ...(actionsEl ? { actions: () => ACTIONS.length } : {}) },
   {
     check: Boolean((import.meta as { env?: { DEV?: boolean } }).env?.DEV),
     fitted: { options: { size: () => optionsShown(), beside: "toolbar" } },
@@ -1106,6 +1106,9 @@ async function main() {
   function step(direction: "undo" | "redo"): string {
     menu.close();
     const armed = engine.armed;
+    // The Hand is kept through an undo as a tool is: someone looking round
+    // the drawing who undoes wants to go on looking.
+    const hand = engine.hand;
     engine.cancel();
     const target = direction === "undo" ? undoStack.undo(snapshot()) : undoStack.redo(snapshot());
     if (target !== undefined) {
@@ -1120,6 +1123,7 @@ async function main() {
       if (why === null) engine.arm(armed.name, armed.options, armed.target);
       else log(`${armed.name} disarmed: ${why}`, "out");
     }
+    if (hand) engine.arm(HAND);
     render();
     const said = target === undefined ? `nothing to ${direction}` : direction === "undo" ? "undid" : "redid";
     stepNote(said);
@@ -1177,9 +1181,13 @@ async function main() {
    * one (see tools/icons.ts for why by name).
    */
   const toolbar = new Toolbar(toolbarEl, {
-    tools: listTools,
+    // Select and the Hand first (docs/plans/select-hand.md): a button each,
+    // typing `arm("select")` and `arm("hand")` like every other, and the lit
+    // one is the engine's answer to what is in the hand — Select whenever
+    // nothing is armed.
+    tools: toolbarTools,
     icon: toolIcon,
-    active: () => engine.active?.name ?? null,
+    active: () => engine.lit,
     run: (command) => void submit(command),
   });
 
@@ -1287,6 +1295,7 @@ async function main() {
         canRedo: undoStack.canRedo,
         selected: engine.selection.prune(model),
         armed: engine.active !== null,
+        hand: engine.hand,
       }),
       run: (command) => void submit(command),
     })
@@ -1622,7 +1631,7 @@ async function main() {
 
     // A bare tool name arms it — the one shortcut, and only when the whole
     // entry is an identifier that is actually a registered tool.
-    if (/^[A-Za-z_$][\w$]*$/.test(src) && getToolCtor(src)) {
+    if (/^[A-Za-z_$][\w$]*$/.test(src) && (getToolCtor(src) || ENGINE_TOOLS.includes(src))) {
       try {
         engine.arm(src);
         log(`armed: ${src}`, "out");
@@ -1762,6 +1771,32 @@ async function main() {
   });
 
   /**
+   * **Holding Space is a temporary Hand** (docs/plans/select-hand.md): while
+   * it is down a left-drag pans from anywhere, over whatever is armed, and
+   * when it comes up the tool that was armed is lit again — it never went
+   * anywhere (`ToolEngine.hold`). The convention of every drawing program
+   * that has a hand. **Not while something takes typing or pressing has the
+   * focus** — the command line above all, whose Space is a space, and a
+   * focused button, whose Space presses it. On a desktop the line has the
+   * focus at start and after a button; a press on the canvas takes it away,
+   * which is when the hand is on the drawing anyway. Nothing is typed: Space
+   * is a way of holding the pointer, as the middle button is, and the view is
+   * not the model.
+   */
+  const takesKeys = (at: Element | null) => at instanceof HTMLElement && (at.isContentEditable
+    || at instanceof HTMLInputElement || at instanceof HTMLTextAreaElement
+    || at instanceof HTMLSelectElement || at instanceof HTMLButtonElement);
+  window.addEventListener("keydown", (e) => {
+    if (e.key !== " " || e.ctrlKey || e.metaKey || e.altKey || takesKeys(document.activeElement)) return;
+    e.preventDefault(); // nor a scroll, nor a click on whatever the page thinks is focused
+    if (engine.hold(true)) syncToolbar();
+  });
+  // Let go wherever the focus has gone since, and when the window loses the
+  // key-up altogether (switched away mid-hold), so the Hand never sticks.
+  window.addEventListener("keyup", (e) => { if (e.key === " " && engine.hold(false)) syncToolbar(); });
+  window.addEventListener("blur", () => { if (engine.hold(false)) syncToolbar(); });
+
+  /**
    * **Typing with nothing editable focused types into the command line.** A
    * press on the canvas, the toolbar or a panel's strip leaves the focus on the
    * body or where it was, and the first keystroke after it should not vanish.
@@ -1774,6 +1809,9 @@ async function main() {
    */
   window.addEventListener("keydown", (e) => {
     if (e.ctrlKey || e.metaKey || e.altKey || e.key.length !== 1) return;
+    // Space with nothing editable focused is the temporary Hand (below), not
+    // the first character of a line: a command never starts with one.
+    if (e.key === " ") return;
     const at = document.activeElement as HTMLElement | null;
     if (at && (at.isContentEditable || at instanceof HTMLInputElement || at instanceof HTMLTextAreaElement)) return;
     cmdEl.focus();

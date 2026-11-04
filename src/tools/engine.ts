@@ -55,11 +55,22 @@
 // button gets on empty canvas, moves behind the long-press. The split is made
 // on `pointerType` and nothing else, so a mouse on the same device is still a
 // mouse, and a pen, which aims as finely as one, is treated as one too.
+//
+// **Select and the Hand** head the toolbar (docs/plans/select-hand.md; the
+// owner: *"there is no hand/selction tool. would be nice since a lot of people
+// are used to that"*). Select is not a mode: it is "nothing armed" given a
+// button, so everything above is what it does. The Hand is one change to how a
+// press is read: armed, **a left press or a one-finger drag pans from wherever
+// it lands**, geometry included, and moves nothing; a press that does not move
+// still picks, so a tap still selects, and the wheel, a pinch and the other
+// buttons are as they were. **Holding Space** is a temporary Hand over
+// whatever is armed (`hold`): the tool stays armed, untouched, under it, and
+// is simply back when Space is let go — nothing was put down to come back.
 
 import type { Model } from "../model.ts";
 import type { ResidualBlock } from "../kernel/problem.ts";
 import {
-  getToolCtor, type FeatureDialog, type FeaturePreview, type FeatureStep, type Tool, type ToolContext, type PointerInfo, type RegionHit,
+  HAND, SELECT, getToolCtor, type FeatureDialog, type FeaturePreview, type FeatureStep, type Tool, type ToolContext, type PointerInfo, type RegionHit,
   type RenderContext,
 } from "./tool.ts";
 import {
@@ -257,6 +268,11 @@ export class ToolEngine {
      * finger's orbit (a pan in 2D) — a finger's box being its long-press-drag.
      */
     onEmpty: "box" | "orbit";
+    /**
+     * The Hand's press: it pans wherever it landed and grabs nothing — `drag`
+     * is null and `empty` is not consulted. Still, it picks, as any press does.
+     */
+    grab: boolean;
   } | null = null;
   /**
    * The selection box being dragged, in canvas pixels: `a` is where the press
@@ -301,6 +317,31 @@ export class ToolEngine {
    * armed (`renderLift`), and what the host's hover tag is placed above.
    */
   contact: [number, number] | null = null;
+  /**
+   * The Hand, armed — `arm("hand")`. Not an `active` tool: with the Hand armed
+   * nothing is armed as far as the selection, Delete and a tap are concerned;
+   * only a press that moves is read differently (see the top of this file).
+   * `arm` of anything, `arm("select")` and `cancel` put it down.
+   */
+  hand = false;
+  /** Space held: a temporary Hand over whatever is armed, gone when Space is let go (`hold`). */
+  private holding = false;
+
+  /** Whether a press pans wherever it lands: the Hand armed, or Space held. */
+  get handOn(): boolean {
+    return this.hand || this.holding;
+  }
+
+  /**
+   * What the toolbar lights: the Hand while a press would pan, the armed tool
+   * by the name it was armed under, or Select — which *is* nothing armed, so
+   * the button, `arm("select")` and this read one state and cannot disagree.
+   */
+  get lit(): string {
+    if (this.handOn) return HAND;
+    return this.armed?.name ?? SELECT;
+  }
+
   /** The recogniser every touch pointer goes through (gestures.ts). */
   private gestures: Gestures;
   /**
@@ -596,6 +637,12 @@ export class ToolEngine {
    * the feature `edit("e1")` opens the dialog on.
    */
   arm(toolName: string, given: Record<string, unknown> = {}, target?: string): void {
+    if (toolName === SELECT || toolName === HAND) {
+      // Refused before anything is put down, as a typo in a tool's options is.
+      if (Object.keys(given ?? {}).length) throw new Error(`${toolName} takes no options`);
+      this.putDown(toolName === HAND);
+      return;
+    }
     const Ctor = getToolCtor(toolName);
     if (!Ctor) {
       this.active?.onCancel();
@@ -620,6 +667,9 @@ export class ToolEngine {
       return;
     }
     this.active?.onCancel();
+    // A tool taken up puts the Hand down: one thing in the hand at a time.
+    this.hand = false;
+    this.cursor();
     this.armedWith = { name: toolName, options, ...(target === undefined ? {} : { target }) };
     // Spent once taken: a selection carried into one tool is not carried on into the next.
     const preselected = [...this.selected.refresh(this.model)];
@@ -660,6 +710,49 @@ export class ToolEngine {
   }
 
   /**
+   * `arm("select")` and `arm("hand")`: the armed tool put down — its gesture
+   * and a feature's picks with it, as Escape drops them — and, for the Hand,
+   * the Hand taken up. **The selection is left alone**, unlike `cancel`: the
+   * Select button is "stop drawing", not "forget what I picked", and the Hand
+   * is for looking at what is selected from another side.
+   */
+  private putDown(hand: boolean): void {
+    this.active?.onCancel();
+    this.active = null;
+    this.snap = null;
+    this.armedUnder = null;
+    this.touchTool = null;
+    this.hand = hand;
+    this.cursor();
+    this.onRenderOnly();
+  }
+
+  /**
+   * Space down (`true`) or up: the temporary Hand. Nothing armed is touched —
+   * a half-drawn rectangle or a half-picked extrude is exactly where it was
+   * when Space comes up. Only a press made while it is held pans; one already
+   * under way is the gesture it began as, and a pan begun under it runs to its
+   * release even if Space is let go first. Answers whether anything changed,
+   * so the host re-lights the toolbar only then (a held key repeats).
+   */
+  hold(on: boolean): boolean {
+    if (this.holding === on) return false;
+    this.holding = on;
+    this.cursor();
+    return true;
+  }
+
+  /**
+   * The canvas's cursor: an open hand while a press would pan, a closed one
+   * while it is panning, and otherwise whatever the page says. The engine's to
+   * set, beside `touch-action`, because only it knows which press pans.
+   */
+  private cursor(): void {
+    if (!this.canvas.style) return;
+    this.canvas.style.cursor = this.idle?.grab ? "grabbing" : this.handOn ? "grab" : "";
+  }
+
+  /**
    * ✓ or Enter: the armed tool's confirm, if it has one. Answers whether it
    * was taken — false with nothing armed, a tool that is not a feature, or a
    * feature with nothing picked — so the host can leave the key to whatever
@@ -680,7 +773,7 @@ export class ToolEngine {
       this.onRenderOnly();
       return "cleared";
     }
-    const had = !this.active && this.selection.size > 0;
+    const had = !this.active && !this.hand && this.selection.size > 0;
     this.cancel();
     return had ? "cleared" : "cancelled";
   }
@@ -752,6 +845,9 @@ export class ToolEngine {
   cancel(): void {
     this.active?.onCancel();
     this.active = null;
+    // The Hand is put down too: Escape, `cancel()` and the strip's Cancel all
+    // leave Select lit, whatever was in the hand.
+    this.hand = false;
     // The canvas's selection goes with it: Escape with nothing armed means
     // "put down what I picked up", and a model swapped out from under a
     // selection leaves it naming loops and entities that are not there.
@@ -767,6 +863,7 @@ export class ToolEngine {
     this.gestures.reset();
     this.touchTool = null;
     this.contact = null;
+    this.cursor();
     if (wasDragging) this.onSolveRender();
     else this.onRenderOnly();
     this.endUserAction();
@@ -856,6 +953,23 @@ export class ToolEngine {
       if (kind === "move" && e.buttons === 0) this.updateHover(sx, sy);
     }
 
+    // The Hand's left press — armed, or Space held over a tool — is taken
+    // before the armed tool can see it, and its moves and release follow it
+    // here whether or not the Hand is still on: the press decided.
+    if (kind === "down" && e.button === 0 && this.handOn) {
+      this.idlePress(sx, sy, e.pointerId, "box", true);
+      this.canvas.setPointerCapture?.(e.pointerId);
+      return;
+    }
+    if (this.idle?.grab && e.pointerId === this.idle.id) {
+      if (kind === "move") this.idleMove(sx, sy);
+      else {
+        this.canvas.releasePointerCapture?.(e.pointerId);
+        this.idleRelease(sx, sy, e.shiftKey);
+      }
+      return;
+    }
+
     if (this.active) {
       if (kind === "down" && e.button !== 0) return; // the left button is the tool's
       this.toolEvent(kind, sx, sy);
@@ -932,9 +1046,15 @@ export class ToolEngine {
   /**
    * A press with nothing armed: what it landed on, and the plan for dragging
    * it, taken now (see `idle`). `onEmpty` is what a press on nothing becomes
-   * if it moves — the mouse's box, or a finger's orbit.
+   * if it moves — the mouse's box, or a finger's orbit. `hand` is the Hand's
+   * press, which pans if it moves whatever it landed on, and so plans no drag.
    */
-  private idlePress(sx: number, sy: number, id: number, onEmpty: "box" | "orbit"): void {
+  private idlePress(sx: number, sy: number, id: number, onEmpty: "box" | "orbit", hand = false): void {
+    if (hand) {
+      this.idle = { id, sx, sy, x0: sx, y0: sy, moved: false, drag: null, empty: false, onEmpty, grab: true };
+      this.cursor();
+      return;
+    }
     // A press that landed on a glyph grabs nothing *and* is not empty
     // canvas, which is the same statement as the glyph being the top pick
     // tier: it must not be possible to aim at a mark and start either
@@ -945,7 +1065,7 @@ export class ToolEngine {
     const drag = names.length
       ? { names, origins: names.map((n) => this.model.coords(n).slice(0, grab.length)), grab, ...(plane ? { plane } : {}) }
       : null;
-    this.idle = { id, sx, sy, x0: sx, y0: sy, moved: false, drag, empty: under === null, onEmpty };
+    this.idle = { id, sx, sy, x0: sx, y0: sy, moved: false, drag, empty: under === null, onEmpty, grab: false };
   }
 
   /** A move of the press `idlePress` took: past the threshold, a drag, a box, an orbit or a pan. */
@@ -962,7 +1082,10 @@ export class ToolEngine {
       // drag started from, not the one it is already a pixel into. Neither a
       // pan nor a selection box opens one: the view is not the model, and
       // selecting is not editing.
-      if (idle.drag) { this.beginUserAction(); this.dragTo(sx, sy); }
+      // The Hand pans from anywhere, in 2D and 3D alike: what is under the
+      // press stays under the pointer, and nothing is moved or turned.
+      if (idle.grab) assignView(this.view, panBy(this.view, sx - idle.sx, sy - idle.sy));
+      else if (idle.drag) { this.beginUserAction(); this.dragTo(sx, sy); }
       else if (idle.empty && idle.onEmpty === "box") this.box = { ax: idle.x0, ay: idle.y0, bx: sx, by: sy };
       else if (idle.empty && this.model.dim === 3) {
         // A finger on nothing turns the drawing, at the right-drag's rate.
@@ -985,10 +1108,15 @@ export class ToolEngine {
    * click toggles, a box adds — and a finger's box always has it.
    */
   private idleRelease(sx: number, sy: number, add: boolean): void {
-    const { moved, drag } = this.idle!;
+    const { moved, drag, grab } = this.idle!;
     const box = this.box;
     this.idle = null;
     this.box = null;
+    if (grab) this.cursor();
+    // A still press under Space belongs to no one: the tool under the
+    // temporary Hand is not handed a click it never saw the press of, and a
+    // selection is no business of a tool's gesture.
+    if (!moved && grab && this.active) return;
     if (!moved) {
       const pick = this.pickAt(sx, sy);
       if (pick && this.composing()) this.onPick(pick);
@@ -1085,7 +1213,9 @@ export class ToolEngine {
       },
       dragStart: (x0, y0) => {
         this.hover = null;
-        if (this.active) {
+        // The Hand: one finger pans from wherever it lands, as two do.
+        if (this.handOn) this.idlePress(x0, y0, -1, "orbit", true);
+        else if (this.active) {
           // The tool's press lands only now, where the finger first touched —
           // held back while the finger was undecided, so a pinch that began
           // with one finger never handed the tool a press to drop.
@@ -1125,7 +1255,7 @@ export class ToolEngine {
         // until it lifts.
         this.onContextMenuWithdrawn();
         if (this.active) return;
-        this.idle = { id: -1, sx: x0, sy: y0, x0, y0, moved: false, drag: null, empty: true, onEmpty: "box" };
+        this.idle = { id: -1, sx: x0, sy: y0, x0, y0, moved: false, drag: null, empty: true, onEmpty: "box", grab: false };
       },
       box: (x, y) => { if (this.idle) this.idleMove(x, y); },
       // A finger's box adds, as a tap toggles: the selection grows by gesture
@@ -1153,6 +1283,7 @@ export class ToolEngine {
             && this.idle.drag.names.every((n) => this.model.entities.has(n));
           this.idle = null;
           this.box = null;
+          this.cursor();
           if (settle) this.onSolveRender();
           this.endUserAction();
         }

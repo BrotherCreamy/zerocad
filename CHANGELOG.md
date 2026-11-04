@@ -7,6 +7,41 @@ decisions.
 
 ---
 
+## Select and Hand tools, first on the toolbar; Space is a temporary hand
+
+The owner:
+
+> *there is no hand/selction tool. would be nice since a lot of people are
+> used to that*
+
+Spec: [`docs/plans/select-hand.md`](docs/plans/select-hand.md), built, with
+every deviation in its *As built*.
+
+- **Select**, an arrow, is the toolbar's first button and is **lit whenever
+  no tool is armed** — which is what selecting always was; now it says so.
+  Pressing it types `arm("select")`: the armed tool is put down (a feature
+  dialog's picks with it) and **the selection is kept**. Escape, `cancel()`
+  and the action strip's Cancel light it again too.
+- **The Hand**, second, types `arm("hand")`. Armed, **a left-drag or one
+  finger pans from wherever it starts** — over a line or a point too, and
+  nothing moves; a click or a tap still selects; the wheel and a pinch still
+  zoom. It stays armed until another tool is chosen. The cursor is an open
+  hand, closed while panning.
+- **Holding Space** (on a desktop) is a hand for as long as it is held, over
+  whatever is armed: a half-drawn rectangle is still there when it comes up,
+  and the rectangle's button is lit again. Not while the command line — or
+  any field — has the focus, where Space is a space.
+- `tools()` lists both first, `hand` and `select` typed bare arm them,
+  `help()` says all of it, and `defineTool` refuses the two names.
+- **On a phone in portrait in Safari** (a shorter page than the installed
+  app's), the toolbar's column, two buttons longer, would have run down onto
+  the command line; there the command line now starts right of the column,
+  still along the bottom. The installed app is as before.
+- Tests: `test/selecthand.test.ts` (9) and `test/e2e/selecthand.e2e.ts` (8,
+  mouse and iPhone 13); the toolbar suites updated for thirteen buttons.
+  **Not tried on an iPhone**: worth trying the Hand with one finger over the
+  drawing, and that Select lights after a finished point.
+
 ## Update ready — tap to reload
 
 The owner asked whether the site updates on the fly. It does — every merged
