@@ -4,9 +4,9 @@
 //   node --experimental-strip-types spikes/solid-kernel/bench/leak.ts <dir holding smlib.mjs>
 
 import { pathToFileURL } from "node:url";
-import { PARTS } from "../src/parts.ts";
-import { circle, profile, rect } from "../src/profiles.ts";
-import { SmlibKernel, type SmModule } from "../src/smlib.ts";
+import { PARTS } from "../../../test/solids/parts.ts";
+import { circle, profile, rect } from "../../../test/solids/profiles.ts";
+import { SmlibKernel, type SmModule } from "../../../src/solids/smlib.ts";
 
 const dir = process.argv[2] ?? process.env.SMLIB_DIR;
 const factory = (await import(pathToFileURL(`${dir}/smlib.mjs`).href)).default as () => Promise<SmModule>;

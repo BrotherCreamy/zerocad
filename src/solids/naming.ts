@@ -1,21 +1,32 @@
-// Identity across rebuilds — the experiment that decides whether a relational
-// model can sit on a kernel.
+// Identity across rebuilds: what a face or an edge of a solid is called, so a
+// pick, a hover and a sketch on a face refer to the same one after the solid
+// is rebuilt (docs/plans/solids-kernel.md; the spike measured it).
 //
 // A sketch on a face, or a constraint to a solid's edge, holds a *name*. When
 // the part is rebuilt after a dimension changes, every face and edge is new
 // kernel topology; the name must find the one that plays the same part.
 //
-// The scheme tested (the generating feature and profile member, as the spec
-// proposes): right after a sweep, each face is tagged with
+// The scheme (the generating feature and profile member): right after a sweep, each face is tagged with
 // `feature·1000 + role`, where role 0 is the base cap, 1 the lid or end cap,
 // and 2 + i the face swept from profile member i (members numbered loop by
-// loop). Whether a later boolean or fillet keeps those tags on what survives
-// of each face is the kernel's attribute propagation, and is what is measured.
+// loop). A later boolean keeps those tags on whatever survives of each face —
+// the kernel's attribute propagation, SmAttribute.h §5 — so a face's name is
+// its tag's: `e1.lid`, `e3.m0`. A face a boolean **splits** is several faces
+// with one tag, and they keep the one name: a reference to `e1.m1` means every
+// piece of it, which is what survives a hole dragged across the wall (each
+// piece is told apart by its neighbours, `piece`, for whoever needs one; that
+// part of a name does not survive a change of topology, and is never stored).
 // A face a fillet or chamfer *makes* has no tag; it is named by the faces it
-// blends. An edge is named by its two faces.
+// blends. An edge is named by its two faces' names.
+//
+// Measured through changes of topology (test/solidsidentity.test.ts): a pocket
+// deepened until it breaks through loses its floor, `e2.lid`, and nothing
+// else; a hole dragged out through a wall splits that wall into two pieces
+// that still answer to its name. What vanished is reported as vanished,
+// never re-attached to a neighbour.
 
 import type { Placement, Profile, Solid, SolidKernel, V2, V3 } from "./kernel.ts";
-import { distanceTo } from "./profiles.ts";
+import { distanceTo } from "./profile.ts";
 
 const ROLE_BASE = 0, ROLE_LID = 1, ROLE_MEMBER = 2;
 
@@ -70,7 +81,12 @@ export function tagRevolve(k: SolidKernel, s: Solid, feature: number, profile: P
     // Turn the point back into the profile's half-plane, keeping its distance from the axis.
     const r = Math.hypot(across, rel[2]);
     const p2: V2 = [point[0] + u[0] * along + n[0] * r * side, point[1] + u[1] * along + n[1] * r * side];
-    const angle = Math.atan2(rel[2], across * side) * 180 / Math.PI;
+    // The kernel turns right-handed about +dir, which carries the profile's
+    // side of the axis (side·n̂) toward z = side (dir × side·n̂ = side·ẑ): so
+    // the angle reached is atan2(z·side, across·side). Reading it without the
+    // side mirrored a profile on the axis's other side, and its end cap was
+    // named for a member (found writing modes.ts's insideness).
+    const angle = Math.atan2(rel[2] * side, across * side) * 180 / Math.PI;
     let role = ROLE_MEMBER + nearestMember(profile, p2);
     if (degrees < 360 && f.kind === "plane") {
       // A planar cap of a partial turn lies at angle 0 or `degrees`.
@@ -105,7 +121,12 @@ export function tagOffsets(k: SolidKernel, before: Solid, after: Solid, tol = 1e
 }
 
 export interface Names {
+  /** Each face's tag, -1 for none. */
+  tags: number[];
+  /** Each face's name: its tag's (`e1.lid`), or `blend(…)` for an untagged one. Shared by the pieces of a split face. */
   faces: string[];
+  /** Each face's name with its neighbours, where it is one piece of several (`e1.lid[e1.m0,e2.m1]`); else its name. */
+  pieces: string[];
   edges: string[];
   /** Faces with no tag after the operations. */
   untagged: number;
@@ -115,12 +136,20 @@ export interface Names {
   ambiguous: number;
 }
 
-function tagName(t: number): string {
-  if (t < 0) return "?";
+/** A tag's feature number and its role's name: `base`, `lid`, `m3` (the face swept from member 3), primed for an offset. */
+export function tagParts(t: number): { feature: number; role: string; member: number | null } {
   const f = Math.floor(t / 1000), r0 = t % 1000;
   const r = r0 % ROLE_OFFSET;
-  const role = r === ROLE_BASE ? "base" : r === ROLE_LID ? "lid" : `m${r - ROLE_MEMBER}`;
-  return `F${f}.${role}${r0 >= ROLE_OFFSET ? "'" : ""}`;
+  const member = r >= ROLE_MEMBER ? r - ROLE_MEMBER : null;
+  const role = r === ROLE_BASE ? "base" : r === ROLE_LID ? "lid" : `m${member}`;
+  return { feature: f, role: `${role}${r0 >= ROLE_OFFSET ? "'" : ""}`, member };
+}
+
+/** A tag's name: the feature's (`prefix` and its number) and the role, `e1.lid`. */
+export function tagName(t: number, prefix = "F"): string {
+  if (t < 0) return "?";
+  const { feature, role } = tagParts(t);
+  return `${prefix}${feature}.${role}`;
 }
 
 /**
@@ -128,34 +157,43 @@ function tagName(t: number): string {
  * a face split into pieces by its tag and its neighbours' tags, an untagged
  * one (a fillet's) by the faces it touches, an edge by its two faces.
  */
-export function nameAll(k: SolidKernel, s: Solid): Names {
-  const faces = k.faces(s);
-  const edges = k.edges(s);
+export function nameAll(k: SolidKernel, s: Solid, prefix = "F"): Names {
+  return namesOf(k.faces(s), k.edges(s), prefix);
+}
+
+/** `nameAll` over faces and edges already asked for. */
+export function namesOf(faces: readonly { tag: number }[], edges: readonly { faces: [number, number] }[], prefix = "F"): Names {
   const neighbours: Set<number>[] = faces.map(() => new Set());
   for (const e of edges) {
     const [a, b] = e.faces;
     if (a >= 0 && b >= 0 && a !== b) { neighbours[a].add(b); neighbours[b].add(a); }
   }
-  const base = faces.map((f) => tagName(f.tag));
+  const base = faces.map((f) => tagName(f.tag, prefix));
   const count = new Map<string, number>();
   for (const n of base) count.set(n, (count.get(n) ?? 0) + 1);
   const untagged = faces.filter((f) => f.tag < 0).length;
   const shared = faces.filter((f, i) => f.tag >= 0 && (count.get(base[i]) ?? 0) > 1).length;
   const ring = (i: number) => [...neighbours[i]].map((j) => base[j]).filter((n) => n !== "?").sort();
-  const names = faces.map((f, i) => {
-    if (f.tag < 0) return `blend(${[...new Set(ring(i))].join(",")})`;
-    if ((count.get(base[i]) ?? 0) > 1) return `${base[i]}[${[...new Set(ring(i))].join(",")}]`;
-    return base[i];
+  const names = faces.map((f, i) => (f.tag < 0 ? `blend(${[...new Set(ring(i))].join(",")})` : base[i]));
+  const pieces = faces.map((f, i) => {
+    if (f.tag >= 0 && (count.get(base[i]) ?? 0) > 1) return `${base[i]}[${[...new Set(ring(i))].join(",")}]`;
+    return names[i];
   });
   const final = new Map<string, number>();
-  for (const n of names) final.set(n, (final.get(n) ?? 0) + 1);
-  const ambiguous = names.filter((n) => (final.get(n) ?? 0) > 1).length;
-  const edgeNames = edges.map((e) => e.faces.filter((j) => j >= 0).map((j) => names[j]).sort().join("|"));
-  return { faces: names, edges: edgeNames, untagged, shared, ambiguous };
+  for (const n of pieces) final.set(n, (final.get(n) ?? 0) + 1);
+  const ambiguous = pieces.filter((n) => (final.get(n) ?? 0) > 1).length;
+  // An edge with one face is the seam a closed surface is cut along (a whole
+  // cylinder's): no edge of the solid's shape, and named so — it comes and
+  // goes with the surface's closedness, and nothing should hold on to it.
+  const edgeNames = edges.map((e) => {
+    const on = e.faces.filter((j) => j >= 0);
+    return on.length === 1 || (on.length === 2 && on[0] === on[1]) ? `${names[on[0]]}:seam` : on.map((j) => names[j]).sort().join("|");
+  });
+  return { tags: faces.map((f) => f.tag), faces: names, pieces, edges: edgeNames, untagged, shared, ambiguous };
 }
 
 /** Edge indices whose name is in `wanted` — how a feature names the edges it fillets, rebuild after rebuild. */
-export function edgesNamed(k: SolidKernel, s: Solid, wanted: (name: string, index: number) => boolean): number[] {
-  const { edges } = nameAll(k, s);
+export function edgesNamed(k: SolidKernel, s: Solid, wanted: (name: string, index: number) => boolean, prefix = "F"): number[] {
+  const { edges } = nameAll(k, s, prefix);
   return edges.flatMap((n, i) => (wanted(n, i) ? [i] : []));
 }

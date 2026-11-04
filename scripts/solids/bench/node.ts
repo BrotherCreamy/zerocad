@@ -3,9 +3,9 @@
 //   node --experimental-strip-types spikes/solid-kernel/bench/node.ts <dir holding smlib.mjs>
 
 import { pathToFileURL } from "node:url";
-import { heapOverRebuilds, identity, rebuildAll, runAll } from "../src/bench.ts";
-import { PARTS } from "../src/parts.ts";
-import { SmlibKernel, type SmModule } from "../src/smlib.ts";
+import { heapOverRebuilds, identity, rebuildAll, runAll } from "../../../test/solids/bench.ts";
+import { PARTS } from "../../../test/solids/parts.ts";
+import { SmlibKernel, type SmModule } from "../../../src/solids/smlib.ts";
 
 const dir = process.argv[2] ?? process.env.SMLIB_DIR;
 if (!dir) throw new Error("usage: node.ts <dir holding smlib.mjs>");

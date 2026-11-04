@@ -1,13 +1,14 @@
-// SolidKernel over our own Emscripten build of NVIDIA's SMLib (../smlib/).
+// SolidKernel over our own Emscripten build of NVIDIA's SMLib
+// (scripts/solids/: the recipe and glue.cpp, our C ABI over SM_API).
 //
 // The module is handed in rather than imported, so the same adapter runs in
-// Node (the tests, the benchmark) and in a Worker (worker.ts) — the module
-// factory is the one thing that differs between them.
+// Node (the tests) and in a Worker (worker.ts) — the module factory is the one
+// thing that differs between them.
 
 import {
   KernelError, XY,
   type BooleanOp, type EdgeInfo, type FaceInfo, type Member, type Mesh, type Placement, type Profile,
-  type Solid, type SolidKernel, type SurfaceKind, type V2, type V3, type Validity,
+  type NurbsCurve, type NurbsSurface, type Solid, type SolidKernel, type SurfaceKind, type Topology, type V2, type V3, type Validity,
 } from "./kernel.ts";
 
 /** The exports glue.cpp makes, as Emscripten hands them over. */
@@ -49,6 +50,8 @@ export interface SmModule {
   _sm_edge_points(): number;
   _sm_edge_runs(): number;
   _sm_heap_in_use(): number;
+  _sm_topology(h: number): number;
+  _sm_topology_data(): number;
 }
 
 const KINDS: SurfaceKind[] = ["other", "plane", "cylinder", "cone", "sphere", "torus", "revolution", "bspline"];
@@ -246,6 +249,62 @@ export class SmlibKernel implements SolidKernel {
       at += c;
     }
     return out;
+  }
+
+  topology(s: Solid): Topology {
+    const n = this.m._sm_topology(s);
+    if (n < 0) throw new KernelError("topology", -n);
+    const d = new Float64Array(this.m.HEAPF64.buffer, this.m._sm_topology_data(), n).slice();
+    let at = 0;
+    const next = () => d[at++];
+    const take = (k: number) => { const out = Array.from(d.subarray(at, at + k)); at += k; return out; };
+    const [nv, ne, nf] = [next(), next(), next()];
+    const vertices: V3[] = [];
+    for (let i = 0; i < nv; i++) vertices.push(take(3) as V3);
+    const knots = (): [number[], number[]] => { const k = next(); return [take(k), take(k)]; };
+    const curve = (): NurbsCurve | null => {
+      const kind = next();
+      if (kind === 0) return null;
+      const degree = next();
+      const [ks, mults] = knots();
+      const np = next();
+      const rational = next() === 1;
+      const points: number[][] = [];
+      for (let i = 0; i < np; i++) points.push(take(4));
+      return { kind: kind === 1 ? "line" : kind === 2 ? "circle" : "bspline", degree, knots: ks, mults, rational, points };
+    };
+    const surface = (): NurbsSurface | null => {
+      if (next() === 0) return null;
+      const degree: [number, number] = [next(), next()];
+      const [ku, mu] = knots();
+      const [kv, mv] = knots();
+      const count: [number, number] = [next(), next()];
+      const rational = next() === 1;
+      const points: number[][] = [];
+      for (let i = 0; i < count[0] * count[1]; i++) points.push(take(4));
+      return { degree, knots: [ku, kv], mults: [mu, mv], count, rational, points };
+    };
+    const edges: Topology["edges"] = [];
+    for (let i = 0; i < ne; i++) {
+      const [start, end, lo, hi] = take(4);
+      edges.push({ start, end, range: [lo, hi], curve: curve() });
+    }
+    const faces: Topology["faces"] = [];
+    for (let i = 0; i < nf; i++) {
+      const tag = next();
+      const kind = KINDS[next()] ?? "other";
+      const srf = surface();
+      const loops: Topology["faces"][number]["loops"] = [];
+      const nl = next();
+      for (let k = 0; k < nl; k++) {
+        const nu = next();
+        const uses = [];
+        for (let j = 0; j < nu; j++) uses.push({ edge: next(), forward: next() === 1 });
+        loops.push(uses);
+      }
+      faces.push({ tag, kind, surface: srf, loops });
+    }
+    return { vertices, edges, faces };
   }
 
   heapInUse(): number { return this.m._sm_heap_in_use(); }

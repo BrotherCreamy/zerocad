@@ -4,8 +4,8 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { circle, distanceTo, loopArea, profile, profileArea, rect, revolvedVolume, roundedRect } from "../src/profiles.ts";
-import { PARTS } from "../src/parts.ts";
+import { circle, distanceTo, loopArea, profile, profileArea, rect, revolvedVolume, roundedRect } from "./solids/profiles.ts";
+import { PARTS } from "./solids/parts.ts";
 
 const near = (a: number, b: number, tol = 1e-9) => assert.ok(Math.abs(a - b) <= tol * Math.max(1, Math.abs(b)), `${a} vs ${b}`);
 

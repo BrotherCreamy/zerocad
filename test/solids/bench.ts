@@ -1,8 +1,8 @@
 // The measurements, kernel-neutral: run in Node by bench/node.ts and in a
 // Worker by worker.ts, so the two environments run the same code.
 
-import type { Solid, SolidKernel, V3 } from "./kernel.ts";
-import { nameAll } from "./naming.ts";
+import type { Solid, SolidKernel, V3 } from "../../src/solids/kernel.ts";
+import { nameAll } from "../../src/solids/naming.ts";
 import { PARTS, type Dims, type Part } from "./parts.ts";
 
 export interface PartReport {

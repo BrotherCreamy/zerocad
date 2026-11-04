@@ -7,9 +7,9 @@
 // with handles in replies; the measurements are enough to show the cost of
 // the hop and of the kernel behind it.
 
-import { heapOverRebuilds, identity, rebuildAll, runAll } from "./bench.ts";
-import { PARTS } from "./parts.ts";
-import { SmlibKernel, type SmModule } from "./smlib.ts";
+import { heapOverRebuilds, identity, rebuildAll, runAll } from "../../../test/solids/bench.ts";
+import { PARTS } from "../../../test/solids/parts.ts";
+import { SmlibKernel, type SmModule } from "../../../src/solids/smlib.ts";
 
 let kernel: SmlibKernel | null = null;
 

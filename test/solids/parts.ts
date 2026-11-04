@@ -5,8 +5,8 @@
 // Every part takes its dimensions as data, so the identity experiment can
 // rebuild it with different numbers and compare names.
 
-import { XY, type Placement, type Solid, type SolidKernel, type V3 } from "./kernel.ts";
-import { edgesNamed, tagExtrude, tagOffsets, tagRevolve } from "./naming.ts";
+import { XY, type Placement, type Solid, type SolidKernel, type V3 } from "../../src/solids/kernel.ts";
+import { edgesNamed, tagExtrude, tagOffsets, tagRevolve } from "../../src/solids/naming.ts";
 import { circle, profile, profileArea, rect, revolvedVolume, roundedRect } from "./profiles.ts";
 
 export type Dims = Record<string, number>;

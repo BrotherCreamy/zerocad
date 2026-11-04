@@ -1,30 +1,15 @@
-// The spike's API against a real SMLib build. Needs SMLIB_DIR (a directory
-// holding the smlib.mjs and smlib.wasm that ../smlib/build.sh makes); without
-// it every test here skips and says why — the build is minutes of C++ and
-// is not committed.
+// The kernel contract against the real SMLib build (src/solids/smlib-gen/, or
+// SMLIB_DIR); without one every test here skips and says why — the build is
+// minutes of C++ and is not committed (npm run build:solids).
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
-import { pathToFileURL } from "node:url";
-import { identity, runPart } from "../src/bench.ts";
-import { XY } from "../src/kernel.ts";
-import { nameAll, tagExtrude } from "../src/naming.ts";
-import { PARTS } from "../src/parts.ts";
-import { circle, profile, rect } from "../src/profiles.ts";
-import { SmlibKernel, type SmModule } from "../src/smlib.ts";
-
-const dir = process.env.SMLIB_DIR;
-const skip = !dir || !existsSync(`${dir}/smlib.mjs`) ? "SMLIB_DIR does not name an SMLib build" : false;
-
-let kernel: SmlibKernel | null = null;
-async function k(): Promise<SmlibKernel> {
-  if (!kernel) {
-    const factory = (await import(pathToFileURL(`${dir}/smlib.mjs`).href)).default as () => Promise<SmModule>;
-    kernel = new SmlibKernel(await factory());
-  }
-  return kernel;
-}
+import { identity, runPart } from "./solids/bench.ts";
+import { XY } from "../src/solids/kernel.ts";
+import { nameAll, tagExtrude } from "../src/solids/naming.ts";
+import { PARTS } from "./solids/parts.ts";
+import { circle, profile, rect } from "./solids/profiles.ts";
+import { kernel as k, noKernel as skip } from "./solids/load.ts";
 
 /**
  * The one part whose build does not give back all it takes: filleting the

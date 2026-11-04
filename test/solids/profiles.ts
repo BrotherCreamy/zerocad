@@ -1,7 +1,9 @@
 // Profile builders and the independent arithmetic the test parts are checked
 // against — closed forms over the profile, never a kernel's answer.
 
-import type { Member, Profile, V2 } from "./kernel.ts";
+import type { Member, Profile, V2 } from "../../src/solids/kernel.ts";
+import { distanceTo } from "../../src/solids/profile.ts";
+export { distanceTo };
 
 /** A counter-clockwise rectangle. */
 export function rect(x0: number, y0: number, x1: number, y1: number): Member[] {
@@ -80,22 +82,4 @@ export function memberLength(m: Member): number {
   if (m.kind === "line") return Math.hypot(m.to[0] - m.from[0], m.to[1] - m.from[1]);
   if (m.kind === "circle") return 2 * Math.PI * m.radius;
   return rad(m.end - m.start) * m.radius;
-}
-
-/** Distance from a point in the profile's plane to a member. */
-export function distanceTo(m: Member, p: V2): number {
-  if (m.kind === "line") {
-    const [ax, ay] = m.from, [bx, by] = m.to;
-    const dx = bx - ax, dy = by - ay;
-    const t = Math.max(0, Math.min(1, ((p[0] - ax) * dx + (p[1] - ay) * dy) / (dx * dx + dy * dy)));
-    return Math.hypot(p[0] - ax - t * dx, p[1] - ay - t * dy);
-  }
-  const d = Math.hypot(p[0] - m.centre[0], p[1] - m.centre[1]);
-  if (m.kind === "circle") return Math.abs(d - m.radius);
-  let a = (Math.atan2(p[1] - m.centre[1], p[0] - m.centre[0]) * 180) / Math.PI;
-  while (a < m.start) a += 360;
-  if (a <= m.end) return Math.abs(d - m.radius);
-  const end = (t: number): V2 => [m.centre[0] + m.radius * Math.cos(rad(t)), m.centre[1] + m.radius * Math.sin(rad(t))];
-  const [s, e] = [end(m.start), end(m.end)];
-  return Math.min(Math.hypot(p[0] - s[0], p[1] - s[1]), Math.hypot(p[0] - e[0], p[1] - e[1]));
 }

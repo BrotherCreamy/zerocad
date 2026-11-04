@@ -1,13 +1,14 @@
-// What ZeroCAD would ask of a solid kernel — the spike's whole contract.
+// What ZeroCAD asks of a solid kernel — the whole contract
+// (docs/plans/solids-kernel.md; the spike that chose SMLib wrote it first).
 //
-// Kernel-neutral on purpose: the test parts (parts.ts), the identity
-// experiment (naming.ts) and the benchmarks are written once against this and
-// run on any kernel that implements it, so a comparison measures the kernels
-// and not two different harnesses.
+// Kernel-neutral on purpose: the evaluator (evaluate.ts), the naming
+// (naming.ts), the tests and the benchmarks are written once against this, so
+// another kernel would be one more file like smlib.ts and nothing else.
 //
 // The layer rule's kernel edge applies here as it does to src/kernel/: this
 // knows planar profiles, frames and solids, and nothing of a ZeroCAD point,
 // entity or name. A profile is numbers; a tag is a number the caller chooses.
+// Nothing under src/solids/ imports anything above it.
 
 export type V2 = [number, number];
 export type V3 = [number, number, number];
@@ -110,11 +111,60 @@ export interface SolidKernel {
   /** Distance from a point to a (trimmed) face. */
   distanceToFace(s: Solid, face: number, p: V3): number;
   tessellate(s: Solid, chord: number, angleDeg: number): Mesh;
+  /** Every edge sampled as a polyline, by edge index — what drawing and picking a solid's edges need. */
+  edgePolylines(s: Solid, angleDeg: number): { edge: number; points: Float32Array }[];
+  /** The exact boundary, for STEP. */
+  topology(s: Solid): Topology;
 
   /** Bytes the kernel's allocator has handed out and not had back. */
   heapInUse(): number;
   /** Bytes of linear memory the module holds — what never shrinks. */
   heapReserved(): number;
+}
+
+/** A curve exactly, as NURBS — every SMLib curve is one; `kind` says which analytic curve it also is. */
+export interface NurbsCurve {
+  kind: "line" | "circle" | "bspline";
+  degree: number;
+  /** Unique knots, ascending, and how many times each repeats. */
+  knots: number[];
+  mults: number[];
+  rational: boolean;
+  /** Euclidean control points, each [x, y, z, weight]. */
+  points: number[][];
+}
+
+/** A surface exactly, as NURBS, control points u-major (index iu·nv + iv). */
+export interface NurbsSurface {
+  degree: [number, number];
+  knots: [number[], number[]];
+  mults: [number[], number[]];
+  count: [number, number];
+  rational: boolean;
+  points: number[][];
+}
+
+/** One use of an edge by a face's loop: the edge, and whether the loop runs it its own way. */
+export interface EdgeUse {
+  edge: number;
+  forward: boolean;
+}
+
+/**
+ * A solid's exact boundary, for an exporter: what STEP needs and a mesh
+ * cannot say. Indices are into these arrays, which are in the kernel's own
+ * face and edge order (the same as `faces` and `edges`).
+ */
+export interface Topology {
+  vertices: V3[];
+  edges: { start: number; end: number; range: [number, number]; curve: NurbsCurve | null }[];
+  faces: {
+    tag: number;
+    kind: SurfaceKind;
+    surface: NurbsSurface | null;
+    /** The face's loops, each walked counter-clockwise about the surface's own normal for the outer one (the primary faceuse's). */
+    loops: EdgeUse[][];
+  }[];
 }
 
 /** A failure a kernel reports, rather than throws from inside wasm. */
