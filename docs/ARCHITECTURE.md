@@ -49,7 +49,7 @@ drops, IndexedDB — and only `main.ts` constructs it. `arcgeom.ts` is the same
 kind of file: which way round an arc goes about a given side, and a whole
 circle laid out in a given plane, over plain numbers. `curveplane.ts` is the
 one that asks the model *which* numbers — a circle's or arc's plane read off
-its frame through `frameBasis`, so it sits above the relations like
+its own centre and normal, and a frame's through `frameBasis`, so it sits above the relations like
 `workplane.ts` — and the renderer, the drawing-question modules, the glyphs,
 the arc tools and `fillet` all ask it (see "In 3D a pixel is a ray" below).
 
@@ -158,7 +158,7 @@ oblique arc is drawn. `framemarker.ts` reads a frame's axes through
 `frameBasis`, the same function every relation written against the frame
 reads, so the marker can never show a +y the constraints do not mean.
 
-`workplane.ts` sits above the relations (it reads a frame's basis) and below the
+`workplane.ts` sits above the relations (it reads a plane reference's basis — a frame's, a curve's or three points') and below the
 tools and the command surface, which both need its one answer: the plane a
 click lands on in a 3D model.
 
@@ -464,17 +464,29 @@ changing shape:
 Prefer the line form for anything that is a property of an edge. The built-in
 tools use it.
 
-## There is no world frame, and a frame is a datum
+## One fixed origin, and every other frame is a datum
 
 The kernel keeps a flat vector of numbers and those numbers have to live
-somewhere, but that substrate is a **gauge, not a frame**: nothing in the
-user-facing vocabulary may reference it. `fix` is relative to a `Frame` — an
-origin point plus a point fixing +x, purely referential the way a `Line` is —
-and refuses to run when none is named and no default is set. Everything else
-in the vocabulary (`dist`, `par`, `perp`, `ang`, `tan`, `on`, …) is intrinsic:
-a claim about geometry relative to other geometry. A drawing with no frame
-simply floats: the damped solve leaves unconstrained directions where they
-were seeded, so nothing needs anchoring for the mathematics to work.
+somewhere. That substrate was a **gauge, not a frame**, and for a long time
+nothing in the user-facing vocabulary could reference it: a document started
+with no frame, `fix` refused without one, and a tool that needed a plane made
+a frame of its own. The owner asked twice why drawing a circle made a frame
+(docs/plans/frameless-curves.md), and the answer is now **one origin**: a
+built-in frame called `origin` — the kernel's own axes, drawn in RGB like any
+frame, referable wherever a frame is (`"origin.x"`, `onplane(p, "origin")`),
+**never solved, never deleted, never journalled**. It is part of every model
+that can hold a frame, as the kernel's axes are, so a new document and an old
+file agree about it without a replay step. It is not an entity: a fresh
+document is still empty, `Model.has("origin")` answers so nothing can be made
+under its name, and `frameBasis` hands back a constant basis for it.
+
+What survives of the old decision is the part that mattered: **nothing else
+makes a frame unless asked.** `fix`, `onplane` and `xaxis()` mean the default
+frame when there is one, else the origin. `fix` is still a position *in a
+frame's coordinates*. Everything else in the vocabulary (`dist`, `par`, `perp`,
+`ang`, `tan`, `on`, …) is intrinsic: a claim about geometry relative to other
+geometry. A drawing nothing anchors still floats: the damped solve leaves
+unconstrained directions where they were seeded.
 
 **There is no `hor`/`ver` either, and that is the same decision one step
 further.** Those words name a privileged pair of directions whether or not a
@@ -551,14 +563,22 @@ absent: a sketcher draws in parallel projection, and a pick radius in pixels
 means the same thing at every depth only under one.
 
 **A click needs a surface, and it is the working plane** (`workplane.ts`): the
-default frame's plane when there is one — set a frame as the default and every
-tool draws on it, which is the sketch flow — else the plane facing the viewer
-through the orbit target. The engine reads every pointer event there and
+plane you chose to sketch on — the **work plane** (`workplane(ref)`, which
+sketch on face sets to three of the face's own points, journalled document
+state and no entity), else the default frame's — else the origin's ground
+plane, else the plane facing the viewer through the orbit target when the
+ground is seen edge-on. The engine reads every pointer event there and
 reports which plane it was (`PointerInfo.plane`), and a drag moves what it
 grabbed parallel to the plane its press landed on, fixed for the gesture.
-`placePoint` holds a point it places on the default frame's plane with
-`onPlane` — only where a snap has not already pinned it, and only when it is
-actually on the plane.
+`placePoint` holds a point it places on a plane you *chose* with `onPlane` —
+only where a snap has not already pinned it, and only when it is actually on
+the plane; the ground holds nothing, so a rectangle drawn in a fresh document
+is as free as it always was. **The curve tools ask one question more**
+(`CurvePlane` in `tools/place.ts`): with no plane chosen, the first click on
+a solid's face draws on that face — the plane of three of its own points,
+facing the viewer, which follows the solid when it changes — and whatever
+plane the curve is drawn on, it is held there by an `onPlane` on its centre
+and a `par` on its normal.
 
 **Picking, snapping and box select stay in screen space**; what changed is what
 each entity looks like there and which world point a pixel on it *is*
@@ -579,38 +599,60 @@ have. It ranks below every place really on the sketch and above a bare curve,
 and its marker is drawn hollow and dashed, with a leader back to its source, so
 it does not look like a snap that means something. Points only, so far.
 
-**A circle or arc lies in a plane, and the plane is a frame** (`CircleEntity`).
-In 3D a circle without one would be a sphere — which is what phase 1 had, drawn
-as a silhouette that never foreshortened — so a 3D circle or arc names a frame,
-resolved like `fix`'s (the default at call time, journalled resolved, the
-standing message with none), and a 2D one refuses the argument. **The frame is
-an orientation, not a constraint**: the rim is the circle through the
-circle's *own* centre parallel to the frame's x–y plane, and nothing pins the
-centre to the frame. That is the free-entities rule — an argument is never a
-constraint — and it is what lets a circle be dragged off its sketch with its
-rim carried along, parallel, rather than snapping back to a plane nobody asked
-it to be held on. A tool that draws on a sketch holds the centre there with an
-`onPlane` of its own, which can be seen, hovered and deleted.
+**A circle or arc carries its own normal** (`CircleEntity`,
+docs/plans/frameless-curves.md). In 3D a circle without an orientation would
+be a sphere — which is what phase 1 had — and phase 2 took the orientation
+from a frame the curve named. That made every curve need a frame, so the tools
+made one at every first click, and the owner asked twice why drawing a circle
+made a frame. Now a 3D circle or arc owns **three normal variables**, solved
+like its radius, and every residual reads them **normalised** (`unitDuals` in
+`relations/refs.ts`): only their direction means anything, their length is a
+gauge. There is no normalisation residual — that would be an equation the
+entity carried, and equations live in relations — and nothing can shrink the
+normal to satisfy a relation, because every reading is scale-free and the
+gradient along the normal is exactly zero. Two angles were the alternative and
+were rejected: they have a pole where the gradient of one vanishes, and a
+circle facing straight up — the commonest one — would sit on it. A 2D model's
+curves have the trivial normal and no variables for it.
 
-The relations that read the *rim* read the plane: `onCircle` in 3D is two
+**The normal is an orientation, not a constraint**, as the frame was: the rim
+is the circle through the curve's own centre square to its normal, nothing
+pins the centre anywhere, and nothing holds the normal either. A tool that
+draws on a plane holds what it draws there with two ordinary relations — an
+`onPlane` on the centre and a `par(curve, plane's normal)` — which can be
+seen, hovered and deleted; delete the `par` and the circle is free to turn,
+`par("c1", "l1")` stands it square to a line. `par`, `perp` and `ang` read a
+curve as its normal (`directionOf`), and the normal is *geometry*, declared by
+every block that reads it, so a free circle turns to meet what it is held to.
+
+The relations that read the *rim* read the normal: `onCircle` in 3D is two
 blocks, the distance and the point's offset off the rim's plane, and `tangent`
-holds the line's ends on that plane; the frame's +z reaches them as a datum
-(`rimNormal`), read and never pushed. In 2D those blocks would be trivially
-zero, and they are **not emitted** — a 2D relation is the blocks it always was.
+holds the line's ends on that plane; both declare the normal's variables. In
+2D those blocks would be trivially zero, and they are **not emitted** — a 2D
+relation is the blocks it always was.
 
-An arc's plane also says which way round it goes: counter-clockwise about the
-frame's +z. Before arcs carried a plane that side came from the kernel's axes
-(+z, then +y, then +x) — the gauge showing through, which drew an arc turned
-through the vertical as its complement. The rule survives only in the
-translation of files written under it (`planetranslation.ts`), which swaps an
-arc's ends where the two disagree so the file opens as the drawing it was.
+An arc goes counter-clockwise about its own normal, from its start, so it
+needs no reference axis. Before arcs carried a plane that side came from the
+kernel's axes (+z, then +y, then +x) — the gauge showing through. The rule
+survives only in the translation of files written under it
+(`planetranslation.ts`), which swaps an arc's ends where the two disagree so
+the file opens as the drawing it was.
 
 `curveplane.ts` is the one place a rim is located — `curveFrame` lays any
-circle or arc out for `arcgeom.ts`'s machinery — and everything that draws,
-picks, snaps, boxes or labels a rim asks it. Seen face-on a rim is still the
-exact screen circle or arc it always was (so a 2D drawing is hit by the old
-arithmetic); seen obliquely it is a closed quarter-pixel polyline on its
-ellipse, lifted back to the true rim by angle.
+circle or arc out for `arcgeom.ts`'s machinery, from the curve alone — and
+everything that draws, picks, snaps, boxes or labels a rim asks it. Seen
+face-on a rim is still the exact screen circle or arc it always was; seen
+obliquely it is a closed quarter-pixel polyline on its ellipse, lifted back to
+the true rim by angle.
+
+**A plane reference** is what `onplane`, `par`, `workplane`, `lookAt` and a
+feature's plane take: a frame's name (its x–y plane), a circle's or arc's
+name (its own plane), or three point names `"p1.p2.p3"` (the plane through
+them, normal (p2 − p1) × (p3 − p1)). `planeBasis` reads any of them as a
+datum, as `frameBasis` reads a frame: plain numbers, so a point is pulled to
+a face and never the face to the point. `referentsOf` is what the deletion
+cascade, `argRefersTo` and the glyphs read a reference's names through, so
+deleting one of the three points takes what stood on them.
 
 **A 2D file opens lifted** (`persist.ts`, keyed on the file's `dim`): every
 coordinate gains a zero, and every frame the y-ref a 3D frame cannot be without
@@ -1242,7 +1284,7 @@ until the next action went unrecorded.
 
 ## Why there is an end-to-end suite
 
-Ten bugs so far were invisible to the unit tests and obvious within seconds
+Twelve bugs so far were invisible to the unit tests and obvious within seconds
 of running the app:
 
 1. a status readout that went stale, so a conflict could be introduced from
@@ -1286,6 +1328,16 @@ of running the app:
    first iPhone-emulation run found it, and only with a tool armed, where the
    menu happened to open under the finger. The engine now cancels the
    canvas's `touchend`, the one way to stop that click.
+11. The origin's triad, drawn after every frame, covering a user's frame made
+   at the same spot with the same axes — `frame()` in a fresh view lands
+   exactly there — so hovering that frame lit it amber underneath an
+   unchanged red, green and blue. Picking was right and every unit test
+   passed; the tooltips suite's pixel reading of a lit arm failed. The origin
+   is drawn first now, under everything.
+12. The empty-canvas words written straight across the origin's triad and its
+   label, which a fresh view puts at the middle. Nothing was wrong by any
+   number; it was found by looking at the fresh-document screenshot of
+   frameless-curves.md. The words now sit below the middle.
 
 None of these are mathematics. They are all *assembly*. Hence `npm run
 test:e2e`, and hence the expectation that anything touching the app is checked

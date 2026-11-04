@@ -14,7 +14,7 @@
 // the exact offset, and the exact frame coordinate.
 //
 // These tests share one app and run in order, because the interesting states
-// are cumulative — a fresh model has no frame, and that is itself the first
+// are cumulative — a fresh model has no frame but the origin, and that is the first
 // thing to check.
 
 import { test, before, after } from "node:test";
@@ -78,16 +78,19 @@ const modPi = (d: number) => {
   return Math.min(x, Math.PI - x);
 };
 
-test("with no frame at all, an axis reference says exactly what to do about it", async () => {
+test("with no frame of your own, an axis reference is the origin's, and fix is in its coordinates", async () => {
+  // This used to be refused with "no default frame — frame() then
+  // setDefaultFrame()". Every document has the origin now
+  // (docs/plans/frameless-curves.md), and a bare axis means it — resolved at
+  // call time and journalled resolved, so the entry names it.
   await app.type("pt(-140,-70); pt(-80,-68)");
   await app.type('ln("p1","p2")');
   await app.type('par("l1", xaxis())');
-
-  const log = await app.log();
-  assert.match(log, /no default frame — frame\(\) then setDefaultFrame\(\), or say which frame/,
-    "the refusal is the fix, spelled out, not a stack trace");
-  const m = await app.model();
-  assert.equal(m.journalOps.includes("parallel"), false, "and nothing was added on the way out");
+  let m = await app.model();
+  assert.equal(await app.status(), "SOLVED");
+  assert.deepEqual((await app.repl("model.journal.at(-1)")).value, { op: "parallel", args: ["l1", "origin.x"] });
+  assert.ok(Math.abs(m.points.p1[1] - m.points.p2[1]) < 1e-6, `level with the origin's x: ${m.points.p1} ${m.points.p2}`);
+  assert.equal(m.byKind.frame ?? 0, 0, "and no frame was made for it");
 
   // And the words that used to say this are gone rather than deprecated, so a
   // hand reaching for them gets the standing unknown-name message.
@@ -95,7 +98,8 @@ test("with no frame at all, an axis reference says exactly what to do about it",
   assert.match(await app.log(), /no such name: hor/);
 
   await app.type('fix("p1",[0,0])');
-  assert.match(await app.log(), /no default frame/, "fix refuses the same way, for the same reason");
+  m = await app.model();
+  assert.ok(Math.hypot(...m.points.p1) < 1e-6, `fix in the origin's coordinates puts p1 on it: ${m.points.p1}`);
 
   // Out of the way of everything below.
   await app.type('del("p1","p2")');
@@ -375,10 +379,13 @@ test("a box catches the frame by its marker, and del takes the frame's relations
   const m = await app.model();
   assert.ok(m.points[frame.originName], "its points are ordinary points and stay — the line rules");
   assert.ok(m.points[frame.xrefName]);
-  // And the vocabulary that needed it says so again, rather than silently
-  // meaning something else.
+  // And the vocabulary that needed it falls back to the origin, which is
+  // always there and can never go (docs/plans/frameless-curves.md — this used
+  // to refuse, "no default frame"): resolved now and journalled resolved, so
+  // the entry says so.
   await app.type(`par("${m.lines[0].name}", xaxis())`);
-  assert.match(await app.log(), /no default frame/);
+  const ops = (await app.repl("model.journal.at(-1)")).value as { op: string; args: unknown[] };
+  assert.deepEqual(ops, { op: "parallel", args: [m.lines[0].name, "origin.x"] });
 });
 
 test("no uncaught page errors", () => {

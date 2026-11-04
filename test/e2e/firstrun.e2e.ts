@@ -3,8 +3,8 @@
 // to very simply extrude etc, not get a bunch of errors. and same with every
 // other tool", docs/plans/effortless.md) as one test.
 //
-// The rectangle tool draws; the circle tool draws a circle inside it, making
-// the plane it needs (the plane line appears in the log, no greyed button, no
+// The rectangle tool draws; the circle tool draws a circle inside it, on the
+// ground, making no frame for it (docs/plans/frameless-curves.md; no greyed button, no
 // red); the extrude tool, clicked outside every region, says where to click and
 // lights the regions it could take — read off the pixels — a click inside picks
 // the region and previews the solid, and the ✓ builds it; the fillet tool picks
@@ -119,18 +119,20 @@ test("the rectangle tool draws a rectangle", async () => {
   await shot("1-rectangle");
 });
 
-test("the circle tool draws a circle inside it, typing the plane it needs: the line in the log, nothing red", async () => {
+test("the circle tool draws a circle inside it, on the ground, making nothing for it: nothing typed, nothing red", async () => {
   await press("circle");
   const from = (await logLines()).length;
   await leftDrag(CENTRE, [CENTRE[0] + 30, CENTRE[1]]);
   const lines = (await logLines()).slice(from);
-  assert.ok(lines.some((l) => /^> plane\(pt\(-?[\d.]+, -?[\d.]+, 0\), null, null, \{ look: false \}\)$/.test(l.text)),
-    `the plane, typed: ${lines.map((l) => l.text).join(" | ")}`);
+  // It used to type plane(pt(…), null, null, { look: false }) first, a frame
+  // at the click; a circle now carries its own normal and lies on the
+  // origin's ground (docs/plans/frameless-curves.md).
+  assert.ok(!lines.some((l) => /^> (plane|frame)\(/.test(l.text)), `no plane typed: ${lines.map((l) => l.text).join(" | ")}`);
   assert.deepEqual(lines.filter((l) => l.cls === "err"), [], "nothing red");
   const m = await app.model();
   assert.equal(m.byKind.circle, 1);
-  assert.equal(m.byKind.frame, 1);
-  assert.ok(await defaultFrame(), "the plane is the default now");
+  assert.equal(m.byKind.frame ?? 0, 0, "no frame");
+  assert.equal(await defaultFrame(), null, "and no default");
   assert.equal(await app.status(), "SOLVED");
   await shot("2-circle");
 });
@@ -150,7 +152,7 @@ test("the extrude tool: a click outside every region says where to click and lig
   await clickAt(...OUTSIDE);
   await guided(/^extrude: click inside a closed outline — the ones I can see are lit$/);
   assert.equal((await app.model()).activeTool, "extrude", "the tool stays armed");
-  assert.equal((await app.model()).byKind.frame, 1, "and nothing was made");
+  assert.equal((await app.model()).byKind.frame ?? 0, 0, "and nothing was made");
   await shot("3-extrude-miss");
 
   await clickAt(480, 455);
@@ -235,7 +237,7 @@ test("turned by a right-drag, the revolve tool: a miss says so; a click inside t
   await shot("10-revolved");
 });
 
-test("the lid clicked with nothing armed is selected, and the sketch tool's button starts a sketch on it: plane(a, b, c) typed, the default now", async () => {
+test("the lid clicked with nothing armed is selected, and the sketch tool's button starts a sketch on it: workplane(a.b.c) typed, no frame made", async () => {
   await app.page.keyboard.press("Escape"); // the revolve tool, put down
   await app.page.waitForTimeout(100);
   assert.equal((await app.model()).activeTool, null);
@@ -273,9 +275,15 @@ test("the lid clicked with nothing armed is selected, and the sketch tool's butt
   await app.page.waitForTimeout(250);
   const typed = (await logLines()).slice(from).filter((l) => l.text.startsWith("> ") && !l.text.startsWith("> arm("));
   assert.equal(typed.length, 1, `one line: ${typed.map((l) => l.text)}`);
-  assert.match(typed[0].text, /^> plane\("p\d+", "p\d+", "p\d+"\)$/);
-  const now = await defaultFrame();
-  assert.ok(now && now !== before, "a new default frame, on the lid");
+  // The work plane, set to three of the lid's points — no frame made, so the
+  // default is what it was (docs/plans/frameless-curves.md; this used to type
+  // plane(a, b, c), a new default frame on them).
+  assert.match(typed[0].text, /^> workplane\("p\d+\.p\d+\.p\d+"\)$/);
+  assert.equal(await defaultFrame(), before, "the default untouched");
+  assert.equal((await app.model()).byKind.frame ?? 0, 0, "and still no frame");
+  const plane = (await app.repl("model.workPlane")).value as string;
+  const lid = plane.split(".").map((p) => (m.points[p] ?? [0, 0, NaN])[2]);
+  assert.ok(lid.every((z) => Math.abs(z - top) < 1e-6), `the work plane is on the lid: ${plane} at z ${lid}`);
   await shot("12-sketch-on-lid");
 });
 

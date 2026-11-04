@@ -29,41 +29,35 @@ export interface LineEntity {
 }
 
 /**
- * A circle: a center point, one variable of its own (the radius) and — in a 3D
- * model — the **plane** it lies in, as a reference to a frame.
+ * A circle: a center point, one variable for its radius and — in a 3D model —
+ * three more for its **normal**, the direction its plane faces.
  *
- * In 2D every circle lies in the one plane there is, so it has no `plane` and
- * refuses one. In 3D a circle without a plane would be a sphere, and spheres
- * are not what a sketcher draws, so a 3D circle always carries one: the frame
- * named, or the default frame resolved **at call time and journalled
- * resolved** (`fix`'s rule), and no frame at all is refused with the standing
- * message.
+ * In 2D every circle lies in the one plane there is, so it has no normal and
+ * refuses one. In 3D a circle without an orientation would be a sphere, so a
+ * 3D circle carries its own: three solver variables, like its radius, read as
+ * a **direction** — normalised wherever it is read (`curveNormal` in
+ * relations/refs.ts) — so their length is a gauge nothing pushes and no
+ * residual holds (docs/plans/frameless-curves.md). It used to name a frame
+ * instead, and every circle drawn in a fresh document made one; the owner:
+ * *"why everything need frame? why can not just put circle right there?"*
  *
- * **What the plane means — and what it does not.** The frame is read for its
- * *orientation* and nothing else. The circle's rim is the circle of radius r
- * in the plane **through the circle's own centre, parallel to the frame's x–y
- * plane**. The centre is *not* held on the frame's plane: a constructor never
- * constrains (the free-entities rule — an argument is never a constraint), so
- * a circle whose centre is dragged off the frame's surface carries its rim with
- * it, parallel, rather than being pulled back. A tool that draws a circle *on*
- * a sketch holds its centre there with an ordinary `onPlane`, which can be
- * read, hovered and deleted like any other relation. The plane orients the
- * drawing (the rim projects as the ellipse it is), the picking and snapping,
- * and the relations that read the rim — `onCircle` and `tangent` in 3D are
- * claims about this planar rim, not about a sphere.
- *
- * Like a line's points the frame is a *reference*: deleting the frame takes
- * the circle with it, because the circle cannot be without one (see
- * `Model.dependents`). It is not a variable the circle owns — a frame is a
- * datum, read and never pushed (see `frameBasis`).
+ * **What holds it there is relations, never the entity.** A constructor never
+ * constrains (the free-entities rule), so a circle's normal is a seed — the
+ * drawing plane's, when nothing is said — and a tool that draws a circle on a
+ * plane holds it there with two ordinary relations it can see, hover and
+ * delete: `onplane` on its centre and `par` between its normal and the plane's.
+ * Delete the `par` and the circle is free to turn; constrain its normal to a
+ * line instead (`par("c1", "l1")`) and it follows the line. The relations that
+ * read the rim — `onCircle` and `tangent` in 3D — read this normal as the
+ * variables it is, so a free circle turns to meet them.
  */
 export interface CircleEntity {
   kind: "circle";
   name: string;
   center: string; // a point name
-  radiusVar: number; // the one variable a circle owns
-  /** 3D only: the frame whose x–y plane the rim is parallel to. Absent in 2D. */
-  plane?: string;
+  radiusVar: number;
+  /** 3D only: the normal's three variables — a direction, read normalised. Absent in 2D. */
+  normal?: number[];
   /** Construction geometry: forms no regions. Absent when not. See `Model.setConstruction`. */
   construction?: true;
 }
@@ -76,12 +70,13 @@ export interface CircleEntity {
  * the same reason a Line implies no relation of its own. Tools that create
  * arcs are expected to apply it (see relations/geometry.ts).
  *
- * In 3D an arc carries a plane exactly as a circle does — same resolution,
- * same refusal, same reading — and the frame's +z is also what says which of
- * the two arcs between its endpoints it is: the sweep runs counter-clockwise
- * from `start` to `end` about that +z (see arcgeom.ts). Before arcs carried a
- * plane that side came from the kernel's axes, which was the gauge showing
- * through; files from then are translated on the way in (see persist.ts).
+ * In 3D an arc carries its own normal exactly as a circle does, and the normal
+ * is also what says which of the two arcs between its endpoints it is: the
+ * sweep runs counter-clockwise from `start` to `end` about it (see arcgeom.ts),
+ * so it needs no reference axis — it is measured from its own start. Before
+ * arcs carried an orientation that side came from the kernel's axes, which was
+ * the gauge showing through; files from then are translated on the way in
+ * (see persist.ts).
  */
 export interface ArcEntity {
   kind: "arc";
@@ -90,8 +85,8 @@ export interface ArcEntity {
   start: string;
   end: string;
   radiusVar: number;
-  /** 3D only: the frame whose x–y plane the arc is parallel to, and whose +z it turns about. */
-  plane?: string;
+  /** 3D only: the normal's three variables, which the sweep is counter-clockwise about. Absent in 2D. */
+  normal?: number[];
   /** Construction geometry: forms no regions. Absent when not. See `Model.setConstruction`. */
   construction?: true;
 }
@@ -100,10 +95,11 @@ export interface ArcEntity {
  * A coordinate frame: an origin point plus a point fixing the +x direction —
  * and, in a 3D model, a third point fixing which way +y goes.
  *
- * There is no built-in world frame in this model, and that absence is the
- * point — an origin nobody made tempts every drawing into being related to
- * it. A frame exists only because a user made one, and `fix` — and every
- * reference to an axis — means nothing until one does.
+ * There is one built-in frame, the **origin** (`ORIGIN`), which is no entity:
+ * a fixed datum every model has, and what `fix` and the axis helpers mean when
+ * nothing else is said. Every other frame exists only because a user made one —
+ * nothing makes a frame unless asked (docs/plans/frameless-curves.md; a circle
+ * carries its own normal and needs none).
  *
  * Like a line, a frame is purely *referential*: it owns no variables, and its
  * points are ordinary points that can be dragged, dimensioned and constrained
@@ -174,6 +170,8 @@ export type AxisName = "x" | "y" | "z";
 export function parseAxisRef(ref: string): { frame: string; axis: AxisName } | null {
   const dot = ref.indexOf(".");
   if (dot < 0) return null;
+  // Two dots is a plane through three points (`parsePointTriple`), not an axis.
+  if (parsePointTriple(ref)) return null;
   const frame = ref.slice(0, dot);
   const axis = ref.slice(dot + 1);
   if (axis !== "x" && axis !== "y" && axis !== "z") {
@@ -286,18 +284,90 @@ export function referentOf(arg: unknown): string | null {
   return dot < 0 ? arg : arg.slice(0, dot);
 }
 
-/** Whether one recorded argument refers to the entity called `name`. */
-export function argRefersTo(arg: unknown, name: string): boolean {
-  return referentOf(arg) === name;
+/**
+ * Every entity a recorded argument is about — `referentOf`'s one, or for a
+ * plane through three points (`"p1.p2.p3"`) all three. What the deletion
+ * cascade and the hover read, so a relation held to a face's plane goes with
+ * any of the face's points. Total and non-throwing, as `referentOf` is.
+ */
+export function referentsOf(arg: unknown): string[] {
+  const pts = typeof arg === "string" ? parsePointTriple(arg) : null;
+  if (pts) return pts;
+  const one = referentOf(arg);
+  return one === null ? [] : [one];
 }
 
-/** Circles and arcs share a center + radius (+ plane, in 3D); relations that only need those treat them alike. */
+/** Whether one recorded argument refers to the entity called `name`. */
+export function argRefersTo(arg: unknown, name: string): boolean {
+  return referentsOf(arg).includes(name);
+}
+
+/**
+ * The three point names of a plane reference written `"p1.p2.p3"`, or null for
+ * any other string — exactly two dots and three non-empty names. See
+ * `Model.planeKind`. An axis reference has one dot, so the two cannot be
+ * confused, and `claimName` refuses a dot in any name.
+ */
+export function parsePointTriple(ref: unknown): [string, string, string] | null {
+  if (typeof ref !== "string") return null;
+  const parts = ref.split(".");
+  return parts.length === 3 && parts.every((x) => x.length > 0) ? [parts[0], parts[1], parts[2]] : null;
+}
+
+/**
+ * The name of the **origin**: the one fixed datum every model that can hold a
+ * frame has — a point and three axes, the kernel's own — referable wherever a
+ * frame is (`"origin"`, `"origin.x"`, `fix(p, at, "origin")`), and what `fix`,
+ * `onplane` and the axis helpers mean when no frame is named and none is the
+ * default (docs/plans/frameless-curves.md).
+ *
+ * **Built in, not journalled.** It is part of every model as the kernel's axes
+ * are, so a new document and an old file agree about it without a replay step,
+ * and nothing can delete it, move it or solve it. That revises
+ * coordinate-frames.md's "there is no world frame": the owner asked twice why
+ * drawing a circle made a frame, and one origin that is simply there is a
+ * smaller surprise than a frame made at every click. What stays of that
+ * decision is that nothing *else* makes a frame unless asked.
+ */
+export const ORIGIN = "origin";
+
+/** A unit vector of plain numbers, or null for one too short to have a direction. */
+function unitOrNull(v: number[]): number[] | null {
+  const len = Math.hypot(...v);
+  return len > 1e-12 ? v.map((x) => x / len) : null;
+}
+
+/** A unit vector of plain numbers — the kernel's +z for one with no direction, the floor a drawing needs. */
+export function unitOf(v: number[]): number[] {
+  return unitOrNull(v) ?? [0, 0, 1];
+}
+
+function cross(a: number[], b: number[]): number[] {
+  return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+}
+
+/**
+ * Two unit directions spanning the plane square to the unit normal `n`,
+ * right-handed about it — the first as near the kernel's x as it can be, so a
+ * level plane's are x and y exactly. How a curve's plane is laid out when only
+ * its normal says where it is: a free arc's auto-seeded ends, a circle drawn.
+ */
+export function spanOf(n: number[]): [number[], number[]] {
+  for (const k of [[1, 0, 0], [0, 1, 0]]) {
+    const along = k[0] * n[0] + k[1] * n[1] + k[2] * n[2];
+    const u = unitOrNull([k[0] - along * n[0], k[1] - along * n[1], k[2] - along * n[2]]);
+    if (u) return [u, cross(n, u)];
+  }
+  return [[1, 0, 0], [0, 1, 0]];
+}
+
+/** Circles and arcs share a center + radius (+ normal, in 3D); relations that only need those treat them alike. */
 export interface CircularRef {
   name: string;
   center: string;
   radiusVar: number;
-  /** The frame the rim is parallel to, in a 3D model. See `CircleEntity`. */
-  plane?: string;
+  /** The normal's variables, in a 3D model. See `CircleEntity`. */
+  normal?: number[];
 }
 
 /** One recorded step in how a model was built. See `journal` below. */
@@ -462,8 +532,15 @@ export interface RevolveFeature {
   loops: ProfileMember[][];
   /** Partial only: each base member's twin on the end face, parallel to `loops`. Empty for a full turn. */
   twins: string[][];
-  /** Partial only: the end face's frame — the sketch frame turned through the angle. Null for a full turn. */
+  /**
+   * An old file's partial revolve only: the end face's frame — the sketch frame
+   * turned through the angle. Null for a full turn, and for every revolve of
+   * today's expansion, which turns no frame (a twin curve carries its own
+   * normal). Whether a revolve is partial is whether it has `twins`.
+   */
   end: string | null;
+  /** An old file's partial revolve only: the frames it turned for its end face, its sketch frame first. */
+  swept?: string[];
   /** Which expansion made it — whether its end frames stand on the end face's own corners. See `Expansion`. */
   expansion: Expansion;
   /** Everything the record refers to. See `ExtrudeFeature`. */
@@ -477,11 +554,12 @@ export type FeatureEntry = ExtrudeFeature | RevolveFeature;
 
 /**
  * Which expansion of an extrude or revolve call a feature was made by: `11`,
- * today's extrude, which makes no lid frame at all; `10`, today's revolve and a
- * format-10 file's extrude, whose frames reuse the twins of the profile's
- * vertices they copy; `9`, a file of format 9 or below's, whose frames have
- * points all their own. A revolve is never `11`: its end face is turned, so its
- * curves need a turned frame, and it keeps one.
+ * today's, which makes no frame at all — an extrude no lid frame, and a revolve
+ * (since format 13, docs/plans/frameless-curves.md) no end frames, its turned
+ * twin curves carrying their own normals; `10`, a format-10-to-12 file's
+ * revolve and a format-10 file's extrude, whose frames reuse the twins of the
+ * profile's vertices they copy; `9`, a file of format 9 or below's, whose
+ * frames have points all their own.
  * Here rather than beside `EXPANSION` in operations.ts because the record
  * carries it, so regeneration rebuilds a feature the way it was made.
  */
@@ -561,10 +639,18 @@ export class Model {
   private joining = true;
   /**
    * Which frame `fix`, `onPlane` and the `xaxis()`/`yaxis()`/`zaxis()` helpers
-   * mean when they are not told which. Null in a new model, and stays null
-   * until someone makes a frame and says so — see `setDefaultFrame`.
+   * mean when they are not told which — the origin while this is null, which
+   * it is in a new model and stays until someone makes a frame and says so
+   * (`setDefaultFrame`).
    */
   defaultFrame: string | null = null;
+  /**
+   * The **work plane**, when one is set apart from the default frame: a plane
+   * reference (`planeKind`) — in practice a face's three points, set by
+   * sketch on face. What is drawn next lies on it (`drawingPlane`). Null in a
+   * new model; cleared by `setDefaultFrame`, and by deleting anything it names.
+   */
+  workPlane: string | null = null;
   private counters = new Map<string, number>();
   /**
    * The name a constructor has claimed for an entity it has not put in
@@ -667,7 +753,27 @@ export class Model {
    * make it mean two.
    */
   has(name: string): boolean {
-    return this.entities.has(name) || this.relations.has(name) || this.features.has(name) || this.groups.has(name);
+    // The origin answers too, so nothing can be made under its name.
+    return (name === ORIGIN && framesExistIn(this.dim))
+      || this.entities.has(name) || this.relations.has(name) || this.features.has(name) || this.groups.has(name);
+  }
+
+  /** Whether `name` is a frame: one a user made, or the origin. */
+  isFrame(name: string): boolean {
+    if (name === ORIGIN) return framesExistIn(this.dim);
+    return this.entities.get(name)?.kind === "frame";
+  }
+
+  /** Refuses anything that is not a frame — the origin included as one, unlike `frame()`, which hands back an entity. */
+  requireFrame(name: string): void {
+    if (name === ORIGIN && framesExistIn(this.dim)) return;
+    this.frame(name);
+  }
+
+  /** Every frame there is, the origin first. What picking, drawing and the planes ask after. */
+  frameNames(): string[] {
+    const made = [...this.entities.values()].filter((e) => e.kind === "frame").map((e) => e.name);
+    return framesExistIn(this.dim) ? [ORIGIN, ...made] : made;
   }
 
   private autoName(prefix: string): string {
@@ -1013,74 +1119,73 @@ export class Model {
   }
 
   /**
-   * A circle about `center` — and, in a 3D model, in `plane`'s orientation.
-   * See `CircleEntity` for what the plane means and does not.
+   * A circle about `center` — and, in a 3D model, facing `normal`. See
+   * `CircleEntity` for what the normal is and what holds it (relations, never
+   * this).
    *
-   * `plane` follows `fix`'s rule exactly: the frame named, or the default
-   * frame resolved **now** and journalled resolved, so a saved entry cannot
-   * change meaning when the default moves afterwards; with neither, the
-   * standing message. A 2D model refuses the argument outright rather than
-   * ignoring it — every 2D circle already lies in the one plane there is, and
-   * a reference the circle then never read would be a constraint-shaped thing
-   * that constrains nothing (`addFrame`'s y-ref rule).
+   * `normal` is a **seed**, three numbers whose direction is all that counts,
+   * exactly as `radius` and a point's coordinates are seeds: no relation holds
+   * it. Left out, it is the drawing plane's normal at call time — the work
+   * plane's, else the default frame's, else the origin's +z — so a circle typed
+   * bare lies the way a click there would. A 2D model refuses the argument
+   * rather than ignoring it: every 2D circle lies in the one plane there is.
    *
-   * The plane is resolved before anything is created, so a refused call leaves
-   * no auto-created centre behind. The name moved from third argument to
-   * fourth for the plane to sit before it, as it is on every constructor;
-   * files older than format version 7 are translated on the way in.
+   * Journalled as given — null stays null, seeded again from the drawing plane
+   * at replay, which is journalled state — and the solved normal is saved with
+   * the file's values (persist.ts), as a radius is. Files older than format
+   * version 13 named a frame here; they are translated on the way in.
    */
-  addCircle(center?: string | null, radius?: number | null, plane?: string | null,
+  addCircle(center?: string | null, radius?: number | null, normal?: number[] | string | null,
             name?: string | null): CircleEntity {
     this.checkCircle(center, radius);
-    const frame = this.curvePlane("circle", plane);
+    const seed = this.normalSeed("circle", normal);
     const [nm, c] = this.claimFirst("c", name, () => center ?? this.withoutRecording(() => this.addPoint()).name);
     const ent: CircleEntity = {
       kind: "circle", name: nm, center: c,
       radiusVar: this.problem.addVar(radius ?? Model.DEFAULT_RADIUS),
     };
-    if (frame != null) ent.plane = frame;
+    if (seed != null) ent.normal = seed.map((v) => this.problem.addVar(v));
     this.place(ent);
-    this.record("addCircle", [center ?? null, radius ?? null, frame, nm]);
+    this.record("addCircle", [center ?? null, radius ?? null, normal ?? null, nm]);
     return ent;
   }
 
   /**
    * An arc about `center` from `start` to `end` — counter-clockwise about its
-   * plane's +z in 3D, about the 2D +z in 2D (see `ArcEntity`). `plane` is
-   * resolved exactly as `addCircle` resolves it.
+   * own normal in 3D, about the 2D +z in 2D (see `ArcEntity`). `normal` is
+   * seeded exactly as `addCircle` seeds it.
    *
    * Missing pieces seed as a non-degenerate quarter arc around the centre:
-   * along the kernel's x and y in 2D, as they always did, and along the
-   * **plane's own** +x and +y in 3D, so that a free arc lies in the plane it
-   * names rather than in the gauge's x–y plane, which might be edge-on to it.
-   * Seeds and nothing more — no relation holds them there.
+   * along the kernel's x and y in 2D, as they always did, and in 3D along two
+   * directions square to the normal (`spanOf`), so that a free arc lies in the
+   * plane it faces rather than in the gauge's x–y plane, which might be
+   * edge-on to it. Seeds and nothing more — no relation holds them there.
    */
   addArc(center?: string | null, start?: string | null, end?: string | null,
-         radius?: number | null, plane?: string | null, name?: string | null): ArcEntity {
+         radius?: number | null, normal?: number[] | string | null, name?: string | null): ArcEntity {
     this.checkArc(center, start, end, radius);
     const r = radius ?? Model.DEFAULT_RADIUS;
-    const frame = this.curvePlane("arc", plane);
+    const seed = this.normalSeed("arc", normal);
     const [nm, [c, s, e]] = this.claimFirst("a", name, () => {
       // Auto pieces seed as a non-degenerate quarter arc around the center.
       const c = center ?? this.withoutRecording(() => this.addPoint()).name;
-      const [along0, along1] = frame == null ? [null, null] : this.seedAxes(frame);
-      const seed = (axis: number, along: number[] | null) => along
+      const [along0, along1] = seed == null ? [null, null] : spanOf(unitOf(seed));
+      const place = (axis: number, along: number[] | null) => along
         ? this.withoutRecording(() => this.addPoint(this.coords(c).map((v, i) => v + r * along[i]))).name
         : this.freePointOffset(this.coords(c), axis, r).name;
-      return [c, start ?? seed(0, along0), end ?? seed(1, along1)];
+      return [c, start ?? place(0, along0), end ?? place(1, along1)];
     });
     const ent: ArcEntity = { kind: "arc", name: nm, center: c, start: s, end: e, radiusVar: this.problem.addVar(r) };
-    if (frame != null) ent.plane = frame;
+    if (seed != null) ent.normal = seed.map((v) => this.problem.addVar(v));
     this.place(ent);
-    this.record("addArc", [center ?? null, start ?? null, end ?? null, radius ?? null, frame, nm]);
+    this.record("addArc", [center ?? null, start ?? null, end ?? null, radius ?? null, normal ?? null, nm]);
     return ent;
   }
 
   /**
-   * The refusals `addCircle` makes about its own arguments, before its plane —
-   * public, with `checkArc`, for `curvePlane`'s reason: the command line makes
-   * a frame for a circle typed with no default, and asks these first so a call
-   * that would be refused leaves no frame behind. Changes nothing.
+   * The refusals `addCircle` makes about its own arguments. Public, with
+   * `checkArc`, so the command line can ask before it makes a view-centre
+   * anchor that a refused call would leave behind. Changes nothing.
    */
   checkCircle(center?: string | null, radius?: number | null): void {
     if (center != null) this.point(center);
@@ -1102,42 +1207,171 @@ export class Model {
   }
 
   /**
-   * The plane a new circle or arc gets: in 3D the frame named or the default,
-   * resolved now (`resolveFrame`, with its standing message); anywhere else
-   * none, and an argument naming one is refused rather than ignored. Public so
-   * the command line can ask before it makes anything a refused call would
-   * leave behind; it changes nothing. The "no default frame" here is the guard
-   * under the command layer, which makes a frame first when there is none.
+   * The normal a new circle or arc is seeded with: in 3D the one given —
+   * checked to be three finite numbers with a direction — or the drawing
+   * plane's; anywhere else none, and an argument giving one is refused rather
+   * than ignored. Changes nothing.
    */
-  curvePlane(kind: "circle" | "arc", plane: string | null | undefined): string | null {
-    if (this.dim === 3) return this.resolveFrame(plane);
-    if (plane != null) {
-      throw new Error(`a ${this.dim}D ${kind} takes no plane — it lies in the one plane a ${this.dim}D model has`);
+  normalSeed(kind: "circle" | "arc", normal: unknown): number[] | null {
+    if (this.dim !== 3) {
+      if (normal != null) {
+        throw new Error(`a ${this.dim}D ${kind} takes no normal — it lies in the one plane a ${this.dim}D model has`);
+      }
+      return null;
     }
-    return null;
+    if (normal == null) return this.planeValues(this.drawingPlane())?.n ?? [0, 0, 1];
+    // A plane named — a frame, a curve, "p1.p2.p3" — seeds from that plane's
+    // normal, as it stands at the call, and holds nothing: facing a plane once
+    // is not being held to it, which is a `par` (the command line's `circ(c, r,
+    // "f1")` adds one). Before format 13 this argument named a frame the
+    // curve followed for ever; persist.ts gives those files their `par`.
+    if (typeof normal === "string") return this.planeValues(normal)?.n ?? [0, 0, 1];
+    if (!Array.isArray(normal) || normal.length !== 3 || !normal.every((v) => typeof v === "number" && Number.isFinite(v))
+        || !(Math.hypot(...normal) > 1e-12)) {
+      throw new Error(`a ${kind}'s normal is three numbers with a direction, got ${JSON.stringify(normal)}`);
+    }
+    return normal.slice();
   }
 
   /**
-   * A 3D frame's +x and +y as unit vectors, for *seeding* — laying a free
-   * arc's auto-created ends out in the plane it names. The same Gram–Schmidt
-   * `frameBasis` does, kept here in plain numbers because this layer sits
-   * below the relations and only needs a direction to put a seed along; no
-   * residual ever reads it. A collapsed frame falls back to the kernel's axes,
-   * which is as good a seed as any for a plane that is not there.
+   * A circle's or arc's normal as a unit vector of plain numbers — its own
+   * three variables, normalised; the 2D drawing's +z in a model whose curves
+   * carry none. For seeding, drawing and the questions asked above the
+   * relations; every residual reads the variables themselves
+   * (`curveNormal` in relations/refs.ts).
    */
-  private seedAxes(frame: string): [number[], number[]] {
+  normalOf(name: string): number[] {
+    const c = this.circular(name);
+    if (c.normal === undefined) return [0, 0, 1];
+    return unitOf(c.normal.map((i) => this.problem.getVar(i)));
+  }
+
+  /**
+   * Puts a circle's or arc's normal at `n` outright — a seed, as `setCoords`
+   * is, which the next solve is free to move. What restoring a file's values
+   * and seeding a twin use. Journalled as `setCoords` is.
+   */
+  setNormal(name: string, n: number[]): void {
+    const c = this.circular(name);
+    if (c.normal === undefined) throw new Error(`"${name}" has no normal — a ${this.dim}D curve lies in the one plane there is`);
+    if (!Array.isArray(n) || n.length !== 3 || !(Math.hypot(...n) > 1e-12)) {
+      throw new Error(`a normal is three numbers with a direction, got ${JSON.stringify(n)}`);
+    }
+    c.normal.forEach((gi, i) => this.problem.setVar(gi, n[i]));
+    this.record("setNormal", [name, n]);
+  }
+
+  // ---- planes ------------------------------------------------------------
+
+  /**
+   * Which of the three kinds of **plane reference** `ref` is, or a refusal
+   * naming what it needed to be. A plane reference is one string:
+   *
+   * - a **frame**'s name — its x–y plane — `"origin"` included;
+   * - a **circle's or arc's** name — the plane through its centre square to
+   *   its own normal;
+   * - **three points' names joined by dots** — `"p1.p2.p3"`, the plane through
+   *   them, its normal (p2 − p1) × (p3 − p1). A face of a solid is one of these
+   *   (sketchface.ts), which is how a sketch on a face is stored without a
+   *   frame being made for it.
+   *
+   * One string rather than three arguments, so a plane goes wherever a frame
+   * went — an extrude's journal entry, a feature's record, the work plane —
+   * without changing any of their shapes; and its names stay visible to the
+   * deletion cascade through `referentsOf`. `claimName` refuses a dot, so no
+   * entity can be called `p1.p2.p3`.
+   */
+  planeKind(ref: unknown): "frame" | "curve" | "points" {
+    const what = `name a frame, a circle or arc, or three points as "p1.p2.p3"`;
+    if (typeof ref !== "string") throw new Error(`${JSON.stringify(ref)} is not a plane — ${what}`);
+    const pts = parsePointTriple(ref);
+    if (pts) {
+      for (const p of pts) this.point(p);
+      if (new Set(pts).size !== 3) throw new Error(`"${ref}" names a point twice — a plane through points needs three different ones`);
+      return "points";
+    }
+    if (this.isFrame(ref)) return "frame";
+    const e = this.entities.get(ref);
+    if (e && (e.kind === "circle" || e.kind === "arc")) {
+      if (this.dim !== 3) throw new Error(`"${ref}" lies in the one plane a ${this.dim}D model has — it gives no plane of its own`);
+      return "curve";
+    }
+    throw new Error(`"${ref}" is not a plane — ${what}`);
+  }
+
+  /**
+   * A plane reference read as plain numbers — an origin, two unit in-plane
+   * directions and the unit normal, three coordinates each — or null for one
+   * collapsed past having a plane. **For seeding and for the questions asked
+   * above the relations only**: every residual reads a plane lazily through
+   * `planeBasis` (relations/refs.ts), which reads a frame through
+   * `frameBasis`; this is the same arithmetic in plain numbers, here because
+   * this layer seeds new curves along the drawing plane and sits below them.
+   */
+  planeValues(ref: string): { origin: number[]; u: number[]; v: number[]; n: number[] } | null {
+    const kind = this.planeKind(ref);
+    const at = (p: string) => { const c = this.coords(p); return [c[0], c[1] ?? 0, c[2] ?? 0]; };
+    if (kind === "frame") {
+      if (ref === ORIGIN) return { origin: [0, 0, 0], u: [1, 0, 0], v: [0, 1, 0], n: [0, 0, 1] };
+      const axes = this.frameAxes(ref);
+      return axes ? { origin: at(this.frame(ref).origin), u: axes[0], v: axes[1], n: cross(axes[0], axes[1]) } : null;
+    }
+    if (kind === "curve") {
+      const n = this.normalOf(ref);
+      const [u, v] = spanOf(n);
+      return { origin: at(this.circular(ref).center), u, v, n };
+    }
+    const [a, b, c] = parsePointTriple(ref)!.map(at);
+    const u = unitOrNull(b.map((x, i) => x - a[i]));
+    if (!u) return null;
+    const arm = c.map((x, i) => x - a[i]);
+    const along = arm.reduce((s, x, i) => s + x * u[i], 0);
+    const v = unitOrNull(arm.map((x, i) => x - along * u[i]));
+    return v ? { origin: a, u, v, n: cross(u, v) } : null;
+  }
+
+  /**
+   * The plane a click lands on and a curve is drawn in when nothing else is
+   * said — **the drawing plane**: the work plane when one is set (a face, by
+   * sketch on face), else the default frame's x–y plane, else the origin's,
+   * which is always there.
+   */
+  drawingPlane(): string {
+    return this.workPlane ?? this.defaultFrame ?? ORIGIN;
+  }
+
+  /**
+   * Sets the **work plane** — what is drawn next lies on it — to a plane
+   * reference, or clears it with null. Document state, journalled as typed,
+   * like the default frame: what "Sketch on this face" does, with the face's
+   * own three points (sketchface.ts) rather than a frame made of them — a
+   * reference to the face, not a new entity. Setting the default frame clears
+   * it, since that is the user choosing a frame to sketch on. 3D only.
+   */
+  setWorkPlane(ref: string | null): void {
+    if (ref != null) {
+      if (this.dim !== 3) throw new Error(`a ${this.dim}D model is one plane already — it has no work plane to set`);
+      this.planeKind(ref);
+    }
+    this.workPlane = ref ?? null;
+    this.record("setWorkPlane", [ref ?? null]);
+  }
+
+  /**
+   * A 3D frame's +x and +y as unit vectors of plain numbers, or null for one
+   * collapsed past having a plane — the same Gram–Schmidt `frameBasis` does,
+   * here because this layer sits below the relations and only needs a
+   * direction to put a seed along; no residual ever reads it.
+   */
+  private frameAxes(frame: string): [number[], number[]] | null {
     const f = this.frame(frame);
     const o = this.coords(f.origin);
-    const unit = (v: number[]) => {
-      const len = Math.hypot(...v);
-      return len > 1e-9 ? v.map((x) => x / len) : null;
-    };
-    const ux = unit(this.coords(f.xref).map((v, i) => v - o[i]));
+    const ux = unitOrNull(this.coords(f.xref).map((v, i) => v - o[i]));
     const arm = f.yref === undefined ? null : this.coords(f.yref).map((v, i) => v - o[i]);
-    if (!ux || !arm) return [[1, 0, 0], [0, 1, 0]];
+    if (!ux || !arm) return null;
     const along = arm.reduce((s, v, i) => s + v * ux[i], 0);
-    const uy = unit(arm.map((v, i) => v - along * ux[i]));
-    return uy ? [ux, uy] : [[1, 0, 0], [0, 1, 0]];
+    const uy = unitOrNull(arm.map((v, i) => v - along * ux[i]));
+    return uy ? [ux, uy] : null;
   }
 
   /**
@@ -1245,34 +1479,35 @@ export class Model {
 
   /**
    * Which frame `fix`, `onPlane` and the axis helpers mean when not told. A model-level
-   * pointer and nothing more: a new model has **no** default, because a frame
-   * exists only because a user made one.
+   * pointer and nothing more: a new model has **no** default, and then they
+   * mean the origin. `"origin"` given is the same as null.
    *
    * Journalled, because it changes what a later relation call *means*. What
    * it does not do is change what an *already journalled* relation means —
    * the relations resolve this at call time and record the answer, so a
    * saved file never depends on what the default happened to be later.
+   *
+   * It also clears the work plane: choosing a frame to sketch on is choosing
+   * where the next thing is drawn, and a face left as the work plane would
+   * quietly win over it (`drawingPlane`). Implied by the entry, so journalled
+   * by it.
    */
   setDefaultFrame(name: string | null): void {
-    if (name != null) this.frame(name); // fail on a name that is not a frame
-    this.defaultFrame = name ?? null;
+    if (name != null) this.requireFrame(name); // fail on a name that is not a frame
+    this.defaultFrame = name === ORIGIN ? null : name ?? null;
+    this.workPlane = null;
     this.record("setDefaultFrame", [name ?? null]);
   }
 
   /**
-   * The frame a call meant: the one it named, or the default, resolved *now*.
-   * Relations call this and journal what comes back, so the entry carries an
-   * explicit frame name whatever the caller typed.
+   * The frame a call meant: the one it named, or the default, or the origin,
+   * resolved *now*. Relations call this and journal what comes back, so the
+   * entry carries an explicit frame name whatever the caller typed.
    */
   resolveFrame(name?: string | null): string {
-    // Said first, because in a model that cannot hold a frame the standing
-    // advice to go and make one would only lead to a second refusal.
     if (!framesExistIn(this.dim)) throw new Error(noFramesIn(this.dim));
-    const n = name ?? this.defaultFrame;
-    if (n == null) {
-      throw new Error("no default frame — frame() then setDefaultFrame(), or say which frame");
-    }
-    this.frame(n);
+    const n = name ?? this.defaultFrame ?? ORIGIN;
+    this.requireFrame(n);
     return n;
   }
 
@@ -1299,6 +1534,12 @@ export class Model {
    */
   axisRef(axis: AxisName, frame?: string | null): string {
     this.requireAxis(axis);
+    // A work plane that is a frame is the plane things are drawn on, so a bare
+    // axis means its axis (docs/plans/frameless-curves.md). One that is a
+    // curve or three points has no named x or y, and the default's (else the
+    // origin's) is meant, as `fix`'s is.
+    const wp = this.workPlane;
+    if (frame == null && wp !== null && this.planeKind(wp) === "frame") return `${wp}.${axis}`;
     return `${this.resolveFrame(frame)}.${axis}`;
   }
 
@@ -1342,12 +1583,12 @@ export class Model {
     return e;
   }
 
-  /** A circle or an arc, whichever `name` is — for relations that only need center + radius (+ plane). */
+  /** A circle or an arc, whichever `name` is — for relations that only need center + radius (+ normal). */
   circular(name: string): CircularRef {
     const e = this.entities.get(name);
     if (!e || (e.kind !== "circle" && e.kind !== "arc")) throw new Error(`"${name}" is not a circle or arc`);
     const ref: CircularRef = { name: e.name, center: e.center, radiusVar: e.radiusVar };
-    if (e.plane !== undefined) ref.plane = e.plane;
+    if (e.normal !== undefined) ref.normal = e.normal;
     return ref;
   }
 
@@ -1405,25 +1646,14 @@ export class Model {
   }
 
   /**
-   * The frame a 3D circle or arc lies parallel to, or undefined — for every
-   * other kind, and for any circle in a model whose circles carry no plane.
-   * Kept apart from `refsOf`, which is the *points* an entity is built of and
-   * what a drag moves: a frame is not a point, and dragging a circle must not
-   * try to drag the plane it is drawn on.
-   */
-  planeOf(e: Entity): string | undefined {
-    return e.kind === "circle" || e.kind === "arc" ? e.plane : undefined;
-  }
-
-  /**
    * Every entity that names `name` among its references, in creation order —
-   * its points, and a circle's or arc's plane. The plane counts because a 3D
-   * circle cannot be without one: deleting a frame takes the circles and arcs
-   * drawn on it (inward, like a point taking its lines), and the primitive
-   * refuses to delete a frame they still stand on.
+   * its points. A circle or arc names no frame any more (it carries its own
+   * normal), so deleting a frame takes only the relations reading it — a
+   * `par` holding a circle to it among them — and the circle stays, free to
+   * turn.
    */
   dependents(name: string): Entity[] {
-    return [...this.entities.values()].filter((e) => this.refsOf(e).includes(name) || this.planeOf(e) === name);
+    return [...this.entities.values()].filter((e) => this.refsOf(e).includes(name));
   }
 
   /**
@@ -1439,6 +1669,9 @@ export class Model {
    * note on tombstones in operations.ts.
    */
   deleteEntity(name: string): void {
+    if (name === ORIGIN && framesExistIn(this.dim)) {
+      throw new Error("the origin is part of every model — it cannot be deleted");
+    }
     const e = this.entities.get(name);
     if (!e) throw new Error(`"${name}" is not an entity`);
     const held = this.dependents(name);
@@ -1459,6 +1692,8 @@ export class Model {
     // same discipline the deletion itself follows, so reopening a file gets
     // the pointer the deletion left rather than one recomputed later.
     if (this.defaultFrame === name) this.setDefaultFrame(null);
+    // The work plane is a pointer too, at up to three of the face's points.
+    if (this.workPlane !== null && referentsOf(this.workPlane).includes(name)) this.setWorkPlane(null);
     this.leaveGroups(name);
     this.entities.delete(name);
     this.record("deleteEntity", [name]);

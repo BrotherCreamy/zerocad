@@ -77,18 +77,19 @@ function twoRectangles() {
 
 // --- the measurement ----------------------------------------------------------------
 
-test("two rectangles extruded together: no frame but the sketch's, and no two points on one spot — a version-10 build laid three", async () => {
+test("two rectangles extruded together: no frame at all, and no two points on one spot — a version-10 build laid three", async () => {
   await loadKernel();
-  // As the extrude tool does it: the first region gets a frame of its own
-  // corners (typed before it), and the second is parallel to that frame, so it
-  // is oriented by it too.
+  // As the extrude tool does it: both regions lie in the origin's plane, and
+  // run along its +z — no frame is made for either (docs/plans/
+  // frameless-curves.md; it used to be one of the first's corners).
   const { m, left, right } = twoRectangles();
   assert.equal(await typed(m, `extrude("${left[0]}", 10)`), "e1");
   assert.equal(await typed(m, `extrude("${right[0]}", 10)`), "e2");
   assert.equal(m.solve().solved, true);
   const [e1, e2] = [m.featureOf("e1", "extrude"), m.featureOf("e2", "extrude")];
-  assert.equal(e2.frame, e1.frame, "one sketch frame for both");
-  assert.deepEqual(frames(m), [e1.frame], "and it is the only frame");
+  assert.equal(e1.frame, "origin");
+  assert.equal(e2.frame, "origin", "one plane for both");
+  assert.deepEqual(frames(m), [], "and no frame at all");
   assert.deepEqual(coincident(m), [], "no two points on one spot");
   assert.equal([...m.entities.values()].filter((e) => e.kind === "point").length, 8 + 8, "eight corners, eight twins");
   for (const f of [e1, e2]) {
@@ -98,11 +99,12 @@ test("two rectangles extruded together: no frame but the sketch's, and no two po
 
   // The same sketch the way a version-10 build expanded it: the second lid
   // frame's own three points on the first lid's corners — the owner's report.
-  // The frame is the one the typed call made above, three of the left
-  // rectangle's corners, made here by hand so the old expansion can be asked for.
+  // The frame is the one a typed call made before format 13, three of the left
+  // rectangle's corners — a corner and its neighbours — made here by hand so
+  // the old expansion can be asked for.
   const old = twoRectangles();
-  const sketch = m.frame(e1.frame);
-  old.m.addFrame(sketch.origin, sketch.xref, sketch.yref!, "f1");
+  const [o, x] = old.m.line(old.left[0]).refs;
+  old.m.addFrame(o, x, old.m.line(old.left[3]).refs[0], "f1");
   extrude(old.m, old.left[0], 10, "f1", null, 10);
   extrude(old.m, old.right[0], 10, "f1", null, 10);
   assert.equal(old.m.solve().solved, true);
@@ -120,14 +122,14 @@ test("two rectangles extruded together: no frame but the sketch's, and no two po
 
 // --- what read the lid frame ------------------------------------------------------------
 
-test("a twin circle names the sketch frame and is the same circle lifted — drawn, solved and set exactly as before", async () => {
+test("a twin circle faces as its base does and is the same circle lifted — drawn, solved and set exactly as before", async () => {
   await loadKernel();
   const m = new Model(3);
   const t = tiltedFrame(m);
   const c = ring(m, t, 10, 10, 6);
   const f = m.featureOf(extrude(m, c, 12), "extrude");
   const twin = m.circle(f.twins[0][0]);
-  assert.equal(twin.plane, t.name, "an orientation, which a translation keeps");
+  assert.ok(near(m.normalOf(twin.name), m.normalOf(c), 1e-12), "an orientation, which a translation keeps");
   assert.equal(m.solve().solved, true);
   for (const depth of [12, 30, -7]) {
     if (depth !== 12) set(m, `${f.depth}.value`, depth);
@@ -184,7 +186,7 @@ test("a fillet after the extrude regenerates with no frame made: a twin arc on t
   assert.deepEqual(frames(m), framesBefore, "regenerating made no frame");
   assert.equal(f.top, undefined);
   const ta = m.arc(f.twins[0][1]);
-  assert.equal(ta.plane, m.arc(arc).plane, "the twin arc keeps its base's frame");
+  assert.ok(near(m.normalOf(ta.name), m.normalOf(arc), 1e-12), "the twin arc faces as its base does");
   assert.deepEqual(coincident(m), []);
   assert.equal(baseOf(m, f.depth).size, 5 + 1 + 1, "five corners, the centre, the radius");
   for (const [twin, base] of baseOf(m, f.depth)) {
@@ -207,7 +209,8 @@ test('del("e1") takes exactly what it made — twins, walls, depth, no frame —
   const removed = del(m, "e1");
   assert.deepEqual(new Set(removed), new Set(["e1", ...f.owns]));
   assert.equal(removed.length, new Set(removed).size);
-  assert.deepEqual([...m.entities.keys()], [...entities, f.frame], "the sketch, and the frame the typed call made for it");
+  assert.equal(f.frame, "origin");
+  assert.deepEqual([...m.entities.keys()], entities, "the sketch, and nothing the call made");
   assert.deepEqual([...m.relations.keys()], relations);
   assert.equal(m.solve().solved, true);
 });
@@ -236,7 +239,7 @@ test("a new file says nothing new: the extrude entry is the call, the version is
 
 // --- a sketch on a circle's lid ------------------------------------------------------
 
-test("sketch on a cylinder's top: a plane made through the lid's centre, held on its rim — it faces out, follows the depth, and a boss on it stands off the lid", async () => {
+test("sketch on a cylinder's top: the work plane is the lid's own circle — nothing made; it faces out, follows the depth, and a boss on it stands off the lid", async () => {
   await loadKernel();
   const m = new Model(3);
   const t = tiltedFrame(m);
@@ -248,48 +251,33 @@ test("sketch on a cylinder's top: a plane made through the lid's centre, held on
   const lid = findLoops(m).find((l) => l.members.length === 1 && l.members[0].name === rim)!;
   assert.ok(lid, "the top is a loop");
 
-  // No three points of its own, and no frame on its plane: one is made.
-  const p = sketchFrameFor(m, lid, t.uz);
-  assert.ok(!Array.isArray(p), "a plane to make");
-  assert.equal(p.origin, centre, "through the lid's own centre — no second point there");
-  assert.equal(p.on, rim);
+  // No three points of its own — and none needed: the rim carries its own
+  // normal, so its plane is the rim itself. It used to be a frame made through
+  // the centre with two points held on the rim (docs/plans/frameless-curves.md).
+  assert.equal(sketchFrameFor(m, lid, t.uz), rim);
   const command = sketchOnFaceCommand(m, lid, t.uz);
-  assert.match(command, new RegExp(`^plane\\("${centre}", pt\\([^)]*, oncircle\\(_, "${rim}"\\)\\), pt\\([^)]*, oncircle\\(_, "${rim}"\\)\\)\\)$`));
-
+  assert.equal(command, `workplane(${JSON.stringify(rim)})`);
+  const ents = m.entities.size;
   const before = m.journal.length;
-  const frame = await typed(m, command) as string;
-  assert.deepEqual(m.journal.slice(before).map((j) => j.op), ["addPoint", "onCircle", "addPoint", "onCircle", "addFrame", "setDefaultFrame"],
-    "the typed line's own calls, the clause idiom's order");
-  assert.equal(m.defaultFrame, frame);
-  assert.equal(m.solve().solved, true);
-  const fr = m.frame(frame);
-  assert.equal(fr.origin, centre);
-  const { uz } = frameBasis(m, frame)();
-  assert.ok(near(uz!, t.uz, 1e-9), "facing out of the top, as the circle's frame does");
-  for (const q of [fr.xref, fr.yref!]) assert.ok(Math.abs(Math.hypot(...sub(m.coords(q), m.coords(centre))) - 6) < 1e-9, `${q} on the rim: ${Math.hypot(...sub(m.coords(q), m.coords(centre)))}`);
-  assert.ok(Math.abs(m.radius(rim) - 6) < 1e-12 && Math.abs(m.radius(c) - 6) < 1e-12, "seeded exactly on the rim, so no radius gave way to the holds");
-  assert.deepEqual(coincident(m), [], "no point on another");
-
-  // Seen from below, the same lid's plane is turned over.
-  const under = sketchFrameFor(m, lid, t.uz.map((x) => -x));
-  assert.ok(!Array.isArray(under));
-  const made = under.refs;
-  const n = (([a, b]) => { const u = sub(a, m.coords(centre)), v = sub(b, m.coords(centre));
-    return [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]]; })(made);
-  assert.ok(dot(n, t.uz) < 0, "+z toward whoever looked, from either side");
+  assert.equal(await typed(m, command), rim);
+  assert.deepEqual(m.journal.slice(before), [{ op: "setWorkPlane", args: [rim] }], "one entry, and no entity");
+  assert.equal(m.entities.size, ents);
+  assert.equal(m.drawingPlane(), rim);
+  assert.ok(near(m.normalOf(rim), t.uz, 1e-9), "facing out of the top, as its base does");
 
   // It is the lid's plane, not the place the lid was: set the depth and the
-  // frame rises with it, square as ever.
+  // work plane rises with it, square as ever.
   set(m, `${f.depth}.value`, 20);
   assert.equal(m.solve().solved, true);
   assert.ok(near(m.coords(centre), m.coords(m.circle(c).center).map((x, i) => x + 20 * t.uz[i]), 1e-9));
-  assert.ok(near(frameBasis(m, frame)().uz!, t.uz, 1e-9), "not tipped by the lid moving");
-  for (const q of [fr.xref, fr.yref!]) assert.ok(Math.abs(dot(sub(m.coords(q), m.coords(centre)), t.uz)) < 1e-9, `${q} still in the lid's plane`);
+  assert.ok(near(m.normalOf(rim), t.uz, 1e-9), "not tipped by the lid moving");
+  const frame = rim;
 
   // A boss sketched on it and extruded stands off the top.
   const bc = await typed(m, `pt(${m.coords(centre).join(", ")})`) as string;
   onPlane(m, bc, frame);
-  const boss = m.addCircle(bc, 2, frame).name;
+  const boss = m.addCircle(bc, 2).name; // seeded facing the work plane, the lid
+  parallel(m, boss, frame);
   const g = m.featureOf(extrude(m, boss, 5), "extrude");
   assert.equal(m.solve().solved, true);
   const bossLid = [...baseOf(m, g.depth)].find(([, b]) => b === bc)![0];

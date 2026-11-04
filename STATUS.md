@@ -63,6 +63,34 @@ etc).
   `help()`. A frame's arms are drawn in `AXIS_INKS` — x `#ee6040`, y
   `#60d658`, z `#5b9cff` — lettered in the same ink, amber when lit, violet
   when selected; the default frame is heavier.
+- **A circle is just a circle: curves carry their own normal, one origin, no
+  frame made for you** (docs/plans/frameless-curves.md, built). A 3D
+  `CircleEntity`/`ArcEntity` owns `normal`, three solver variables read
+  normalised (`unitDuals`, `curveNormal` in `relations/refs.ts`) — no
+  normalisation residual, the length a gauge; `addCircle(c, r, normal?, name)`
+  and `addArc(…, r, normal?, name)` take a seed (three numbers, or a plane
+  reference to face), `normalOf`/`setNormal` read and set it, `values.normals`
+  saves it. `curveplane.ts` answers from the curve (`curvePlaneOf`, `spanOf`);
+  `onCircle`, `tangent` and `arcEndpoints` declare the normal; `par`/`perp`/
+  `ang` read a curve as its normal (`directionOf`). **`ORIGIN`** (`"origin"`)
+  is a built-in fixed frame — no entity, not journalled, undeletable, drawn
+  first in RGB, picked last — and what `fix`, `onplane` and `xaxis()` mean
+  with no default. **Plane references** — a frame, a curve, or `"p1.p2.p3"` —
+  are read by `Model.planeKind`/`planeValues`, `planeBasis` (a datum) and
+  `referentsOf` (the cascade). **The work plane** (`Model.workPlane`,
+  `setWorkPlane`, journalled; `workplane(ref?, {look})` at the command line)
+  is what sketch on face sets; `drawingPlane()` is it, else the default, else
+  the origin. **The curve tools** (`CurvePlane` in `tools/place.ts`) draw on
+  the chosen plane, else the solid face under the first click, else the
+  ground, and hold the curve there with `onPlane` and `par`. **Features**:
+  `orientingPlane` picks extrude's and revolve's plane and makes nothing;
+  extrusion and revolution pair twin rims' normals (a `.n` block); `fillet`
+  takes a side vector, not a frame; a revolve makes no end frames (expansion
+  11). **Format 13**: an old curve that named a frame gets that frame's normal
+  and a `par(curve, "f.z")` at the end of the journal (`framelessCurves` in
+  `persist.ts`), a lifted 2D file's circles face the origin, and an old
+  `origin` name is renamed `origin2`. Proved by `test/oldfiles13.test.ts`
+  against fixtures written by the format-12 build.
 - **Select and the Hand head the toolbar** (docs/plans/select-hand.md,
   built). Select (`arm("select")`) is "no tool", lit whenever nothing is
   armed; pressing it puts the armed tool down and keeps the selection. The
@@ -979,7 +1007,7 @@ replacing) the system Node other projects on this machine may depend on.
   resolves the rest, which is what Onshape's drag does too), and still no
   inference or snapping mid-drag.
 
-- **Coordinate frames, and no world frame** (`model.ts`, `relations/basic.ts`,
+- *(Revised by frameless curves, above: one built-in origin now exists, and is what `fix` means with no default.)* **Coordinate frames, and no world frame** (`model.ts`, `relations/basic.ts`,
   `relations/refs.ts`, `framemarker.ts`, `picking.ts`, `boxselect.ts`,
   `main.ts`, `tools/engine.ts`, `tools/line.ts`, `replenv.ts`).
   A `Frame` is an origin point plus a point fixing +x, purely referential the
@@ -1232,7 +1260,7 @@ replacing) the system Node other projects on this machine may depend on.
   (↻ The circle, arc, typed-`frame()` and off-plane-snap seams closed in 3D
   phase 2 — next entry.)
   *Spec:* [`docs/plans/3d-phase1.md`](docs/plans/3d-phase1.md).
-- **Planar discipline: circles and arcs carry a plane** (`model.ts`,
+- *(Superseded by frameless curves, above: a curve carries its own normal, not a frame name.)* **Planar discipline: circles and arcs carry a plane** (`model.ts`,
   `relations/refs.ts`, `relations/geometry.ts`, `curveplane.ts` (new),
   `arcgeom.ts`, `projection.ts`, `glyphs.ts`, `snapping.ts`, `tools/*`,
   `operations.ts`, `persist.ts`, `planetranslation.ts` (new), `replenv.ts`,
@@ -1567,7 +1595,7 @@ replacing) the system Node other projects on this machine may depend on.
   (register). `pt` now refuses a non-number argument it used to pass to the
   model as a coordinate.
   *Spec:* [`docs/plans/clauses.md`](docs/plans/clauses.md).
-- **Sketch on a face** (`src/sketchface.ts` (new), `src/tools/sketch.ts` (new),
+- *(Revised by frameless curves, above: it sets the work plane, `workplane("a.b.c")`, and makes no frame.)* **Sketch on a face** (`src/sketchface.ts` (new), `src/tools/sketch.ts` (new),
   `src/tools/region.ts` (new), `menu.ts`, `tools/tool.ts`, `tools/engine.ts`,
   `main.ts`, `replenv.ts`'s help). A face is not an entity and is not picked:
   every planar face of a solid — and every plain sketch loop — is a loop
@@ -1863,7 +1891,7 @@ replacing) the system Node other projects on this machine may depend on.
   a tray turned against a bottom or right edge lies along it, away from the
   hand, until the next move brings it back under the hand.
   *Spec:* [`docs/plans/panels-push.md`](docs/plans/panels-push.md).
-- **Extrude on a frameless sketch makes its own plane** (`orientingFrame`,
+- *(Superseded by frameless curves, above: no plane is made; `orientingPlane` reads the profile's own.)* **Extrude on a frameless sketch makes its own plane** (`orientingFrame`,
   `extrudeNeedsFrame`, `revolveNeedsFrame`, `checkRevolveRegion` in
   `src/operations.ts`; `featurePlaneCommand` in `src/sketchface.ts`;
   `src/tools/extrude.ts`, `revolve.ts`; `ToolContext.run`/`act`/`log` in
@@ -1889,7 +1917,7 @@ replacing) the system Node other projects on this machine may depend on.
   sketch's +x is whichever edge `sketchFrameFor` starts at; headless with no
   `run` the tools still refuse.
   *Spec:* [`docs/plans/extrude-makes-its-plane.md`](docs/plans/extrude-makes-its-plane.md).
-- **No refusals: the curve tools make their plane, a miss is guidance, and
+- *(Revised by frameless curves, above: the curve tools make no plane now.)* **No refusals: the curve tools make their plane, a miss is guidance, and
   what would work is lit** (`CurvePlane`/`clickPlaneCommand` in
   `src/tools/place.ts`; `circle`, `circle3`, `arc`, `arc3`, `fillet` in
   `src/tools/`; `filletNeedsFrame` in `src/operations.ts`;

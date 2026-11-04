@@ -57,10 +57,10 @@
 
 import { defineTool, type FeatureStep, type PointerInfo, type RegionHit, type RenderContext } from "./tool.ts";
 import type { OptionSpecs } from "./options.ts";
-import { DEFAULT_DEPTH, extrude, extrudeProfile, profileOf, profileOfLoops, regionNaming, regionOf } from "../operations.ts";
+import { DEFAULT_DEPTH, extrude, extrudeProfile, orientingPlane, profileOf, profileOfLoops, regionNaming, regionOf } from "../operations.ts";
 import { memberName } from "../model.ts";
 import { drawRegion, lightRegions, missedRegion, outlineLoops, regionKey, type Region } from "./region.ts";
-import { FeatureTool, callText, foundRegion, planeStep } from "./feature.ts";
+import { FeatureTool, callText, foundRegion } from "./feature.ts";
 import { RegionSelection, leftOut } from "./selection.ts";
 
 /**
@@ -70,11 +70,12 @@ import { RegionSelection, leftOut } from "./selection.ts";
  * outright, `extrude("l1", 10, "f1", [[…], […]])`, which takes exactly those.
  */
 export function extrudeSteps(region: RegionHit, depth: number, typed: boolean, without: readonly number[][] = []): FeatureStep[] {
-  return [planeStep(region, typed), (m): ReturnType<FeatureStep> => {
+  return [(m): ReturnType<FeatureStep> => {
     const r = foundRegion(m, region);
     const out = leftOut(m, r, without);
     if (out.size) {
-      const p = profileOfLoops(m, r.loops, regionOf(r.loops, r.index).filter((i) => !out.has(i)));
+      const p = profileOfLoops(m, r.loops, regionOf(r.loops, r.index).filter((i) => !out.has(i)),
+        orientingPlane(m, r.loops[r.index], region.toward));
       if (p.crossings?.size) return { call: () => { extrudeProfile(m, p, depth); } };
       const member = memberName(p.loops[0][0]);
       return {
@@ -82,8 +83,8 @@ export function extrudeSteps(region: RegionHit, depth: number, typed: boolean, w
         direct: () => extrude(m, member, depth, p.frame, p.loops),
       };
     }
-    const n = regionNaming(m, r.loops, r.index);
-    if (!n) return { call: () => { extrudeProfile(m, profileOf(m, r.loops, r.index), depth); } };
+    const n = regionNaming(m, r.loops, r.index, region.toward);
+    if (!n) return { call: () => { extrudeProfile(m, profileOf(m, r.loops, r.index, orientingPlane(m, r.loops[r.index], region.toward)), depth); } };
     const args: unknown[] = [n.member, depth];
     if (n.frame !== null || n.loops !== null) args.push(n.frame);
     if (n.loops !== null) args.push(n.loops);

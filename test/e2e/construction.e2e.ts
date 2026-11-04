@@ -119,7 +119,9 @@ test("right-click the circle → Construction: typed, one region left, the tag s
   assert.match(await app.log(), new RegExp(`> construction\\("${circle}"\\)`), "the log shows the line it typed");
   assert.equal(await isConstruction(circle), true);
   assert.equal(((await value("loops()")) as string[]).length, 1, "the circle bounds nothing now");
-  assert.match(await hoverTag(...RIM), new RegExp(`^${circle} {2}r [\\d.]+ {2}in f {2}construction`));
+  // A circle carries its own normal, so the tag says which way it faces where
+  // it named its frame ("in f") — docs/plans/frameless-curves.md.
+  assert.match(await hoverTag(...RIM), new RegExp(`^${circle} {2}r [\\d.]+ {2}facing -?[\\d.]+, -?[\\d.]+, -?[\\d.]+ {2}construction`));
 
   await key("Control+z");
   assert.equal(await isConstruction(circle), false, "undone");

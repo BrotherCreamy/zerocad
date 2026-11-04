@@ -15,7 +15,7 @@
 // imports it back.
 
 import { Dual } from "../kernel/dual.ts";
-import { parseAxisRef, type Model } from "../model.ts";
+import { ORIGIN, parseAxisRef, parsePointTriple, spanOf, type Model } from "../model.ts";
 import { vecSub } from "./vec.ts";
 
 /**
@@ -130,7 +130,15 @@ function unitOrZero(v: number[], floor: number): number[] {
  * dragged into.
  */
 export function frameBasis(model: Model, frameName: string): () => FrameBasis {
-  model.frame(frameName); // fail now, not at the first solve
+  model.requireFrame(frameName); // fail now, not at the first solve
+  if (frameName === ORIGIN) {
+    // The origin is the kernel's own axes and never moves (see `ORIGIN`), so
+    // its basis is constant — read like any frame's, as a datum.
+    const basis: FrameBasis = model.dim === 2
+      ? { origin: [0, 0], ux: [1, 0], uy: [0, 1], uz: null, axes: [[1, 0], [0, 1]] }
+      : { origin: [0, 0, 0], ux: [1, 0, 0], uy: [0, 1, 0], uz: [0, 0, 1], axes: [[1, 0, 0], [0, 1, 0], [0, 0, 1]] };
+    return () => basis;
+  }
   return () => {
     const f = model.frame(frameName);
     const o = model.coords(f.origin);
@@ -151,32 +159,102 @@ export function frameBasis(model: Model, frameName: string): () => FrameBasis {
 }
 
 /**
- * The normal of the plane a circle's or arc's rim lies in, re-read at every
- * evaluation — or null when its model gives circles no plane (anything but 3D;
- * see `CircleEntity`). The +z of the frame the circle names, as plain numbers,
- * so it reaches a residual as a datum exactly as an axis reference does:
- * read, never pushed. A residual written against it moves the point to the
- * plane and never the plane to the point.
+ * A circle's or arc's normal variables, re-read at every evaluation — or null
+ * when its model gives curves none (anything but 3D; see `CircleEntity`).
+ * Lazy for the house reason: a relation follows the entity, and fails loudly
+ * once the entity is gone rather than reading indices nothing owns.
  *
- * Lazy twice over: the circle's `plane` is re-read as well as the frame's
- * points, so a relation follows the entity rather than whatever it pointed at
- * when the relation was typed. A collapsed frame floors its +z to zero (see
- * `frameBasis`), and a residual against it degrades to trivially satisfied —
- * a claim about a plane that is no longer there — rather than to NaN.
+ * **The normal is geometry, not a datum.** Its three variables are declared by
+ * every block that reads them, so a free circle turns to meet what it is held
+ * to — a point `oncircle` off its plane, a `tangent` line tipped out of it —
+ * which is what "free to turn in space" means. A curve drawn on a plane is held
+ * there by a `par` of its own (tools/place.ts), which can be deleted.
  */
-export function rimNormal(model: Model, circularName: string): (() => number[]) | null {
+export function curveNormal(model: Model, circularName: string): (() => number[]) | null {
   if (model.dim !== 3) return null;
   model.circular(circularName); // fail now, not at the first solve
   return () => {
-    const plane = model.circular(circularName).plane;
-    // A 3D circle always has one (the constructors resolve it); this branch is
-    // only a circle somebody built around the constructors, which then reads
-    // as having no plane to be on rather than throwing inside a solve.
-    if (plane === undefined) return [0, 0, 0];
-    return frameBasis(model, plane)().uz ?? [0, 0, 0];
+    const n = model.circular(circularName).normal;
+    if (n === undefined) throw new Error(`"${circularName}" has no normal — it was built around the constructors`);
+    return n;
   };
 }
 
+/**
+ * The floor below which a normal's length has no direction to give. A normal is
+ * read normalised, and nothing pushes its length (every residual reading it is
+ * scale-free), so it only gets here by being set there; the floor is what keeps
+ * a NaN out of the Jacobian if it is.
+ */
+const NORMAL_FLOOR = 1e-12;
+
+/**
+ * `v` divided by its length, as Duals — what every residual reads a curve's
+ * normal through, so that the normal's three variables are a **direction**
+ * and their length a gauge (docs/plans/frameless-curves.md). Scale-free, so the
+ * gradient along the normal itself is exactly zero: nothing can shrink it to
+ * satisfy a relation (the 14% shortening a raw frame arm suffered, `directionOf`),
+ * and nothing needs a residual holding it at unit length — which would be an
+ * equation the entity carried, and this codebase keeps those in relations.
+ * The zero vector below the floor, as `frameBasis` floors a collapsed arm.
+ */
+export function unitDuals(v: Dual[]): Dual[] {
+  let sq = v[0].mul(v[0]);
+  for (let k = 1; k < v.length; k++) sq = sq.add(v[k].mul(v[k]));
+  if (!(sq.val > NORMAL_FLOOR * NORMAL_FLOOR)) return v.map(() => Dual.constant(0));
+  const len = sq.sqrt();
+  return v.map((c) => c.div(len));
+}
+
+/** A plane's origin and unit normal (and in-plane axes), as plain numbers. See `planeBasis`. */
+export interface PlaneBasis {
+  origin: number[];
+  u: number[];
+  v: number[];
+  n: number[];
+}
+
+/**
+ * A **plane reference** (`Model.planeKind`) read as a datum at every
+ * evaluation: a frame's x–y plane through `frameBasis`, a curve's own plane —
+ * its centre, its normal normalised — or the plane through three points, its
+ * normal (p2 − p1) × (p3 − p1). Plain numbers, so whatever reads it moves to the
+ * plane and never the plane to it: `onplane` holds a point to a face and does
+ * not pull the face, the rule every frame keeps (`frameBasis`).
+ *
+ * A plane collapsed past having one — three points on a line, a frame folded
+ * onto itself — floors to a zero normal, and a residual against it degrades to
+ * trivially satisfied, as everything written against a collapsed frame does.
+ */
+export function planeBasis(model: Model, ref: string): () => PlaneBasis {
+  const kind = model.planeKind(ref); // fail now, not at the first solve
+  const zero = [0, 0, 0];
+  const lift = (p: number[]) => [p[0], p[1] ?? 0, p[2] ?? 0];
+  if (kind === "frame") {
+    const basis = frameBasis(model, ref);
+    return () => {
+      const b = basis();
+      return { origin: lift(b.origin), u: lift(b.ux), v: lift(b.uy), n: b.uz ? lift(b.uz) : [0, 0, 1] };
+    };
+  }
+  if (kind === "curve") {
+    return () => {
+      const n = model.normalOf(ref);
+      const [u, v] = spanOf(n);
+      return { origin: lift(model.coords(model.circular(ref).center)), u, v, n };
+    };
+  }
+  const pts = parsePointTriple(ref)!;
+  return () => {
+    const [a, b, c] = pts.map((p) => lift(model.coords(p)));
+    const u = unitOrZero(sub(b, a), DEGENERATE_FRAME);
+    const arm = sub(c, a);
+    const along = dotN(arm, u);
+    const v = unitOrZero(arm.map((x, i) => x - along * u[i]), DEGENERATE_FRAME * Math.max(1, Math.hypot(...arm)));
+    const n = cross(u, v);
+    return { origin: a, u, v, n: n.every((x) => x === 0) ? zero : n };
+  };
+}
 // --- directions ------------------------------------------------------------
 //
 // `par`, `perp` and `ang` are claims about *directions* and nothing else, and
@@ -238,7 +316,23 @@ function fromEnds(dim: number, vars: () => number[]): DirectionRef {
  * the same reason: NaN in a Jacobian does not fail loudly.
  */
 export function directionOf(model: Model, ref: string): DirectionRef {
+  // A plane through three points is a direction too — its normal — and a
+  // datum, as a frame's axis is: `par("c2", "p1.p2.p3")` is a circle drawn on
+  // a face, its normal held to the face's (tools/place.ts).
+  if (parsePointTriple(ref)) {
+    const basis = planeBasis(model, ref);
+    return { width: 0, vars: () => [], direction: () => basis().n.map((c) => Dual.constant(c)), frame: ref };
+  }
   const axis = parseAxisRef(ref);
+  // A circle's or arc's direction is its normal: the variables it owns, read
+  // normalised, so `par("c1", "origin.z")` holds a circle level and
+  // `par("c1", "l1")` stands it square to a line (docs/plans/frameless-curves.md).
+  const e = axis ? undefined : model.entities.get(ref);
+  if (e && (e.kind === "circle" || e.kind === "arc")) {
+    const normal = curveNormal(model, ref);
+    if (!normal) throw new Error(`"${ref}" lies in the one plane a ${model.dim}D model has — its normal is no direction to relate`);
+    return { width: 3, vars: normal, direction: (own) => unitDuals(own), frame: null };
+  }
   if (!axis) return fromEnds(model.dim, lineVars(model, ref));
   // A 2D frame has no z. Said here, before the frame is even looked up, so the
   // message names what was actually written rather than whatever goes wrong

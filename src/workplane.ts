@@ -2,54 +2,77 @@
 // line both need.
 //
 // A cursor names a ray through the scene, not a point; turning it into a point
-// needs a surface. That surface is the **working plane**:
+// needs a surface. That surface is the **working plane** — the model's drawing
+// plane (`Model.drawingPlane`):
 //
-//   * the **default frame's x–y plane**, when there is a default frame — the
-//     sketch flow: set a frame as the default and every tool draws on it, the
-//     way an Onshape sketch is drawn on its plane;
-//   * otherwise the **camera-parallel plane through the orbit target**, which
-//     in a view that has never been turned is z = 0 — the plane a 2D drawing
-//     always lived in — and after a turn is the plane facing the viewer through
-//     the middle of the window.
+//   * the **work plane**, when one is set — a solid's face, by sketch on face —
+//     or the **default frame's x–y plane**: the sketch flow, every tool drawing
+//     on the plane the user chose, the way an Onshape sketch is drawn on its
+//     plane;
+//   * otherwise **the origin's x–y plane**, which every document has
+//     (docs/plans/frameless-curves.md). It used to be the plane facing the
+//     viewer through the orbit target, which is z = 0 too in a view never
+//     turned and swung with the camera after one; a fixed ground is what the
+//     owner's "just put the circle right there" needs once the view has turned.
 //
-// A default frame seen exactly edge-on offers no crossing at all, and then the
+// A drawing plane seen exactly edge-on offers no crossing at all, and then the
 // camera plane stands in for it, so a click always lands somewhere. Such a
-// click is off the sketch plane, and `placePoint` notices (see tools/place.ts)
-// rather than holding a point to a plane it is not on.
+// click is off the plane, and `placePoint` notices (see tools/place.ts) rather
+// than holding a point to a plane it is not on.
+//
+// The plane the user **chose** — the work plane or the default frame, never the
+// origin by default — is a second question (`sketchPlane`): it is the one
+// snapping keeps to and points are held on, as they were held on the default
+// frame before. A drawing with no plane chosen is not "sketching on the
+// ground", so its snaps reach everything and its points stay free.
 //
 // In its own file because two layers need it and neither may own it: the
 // engine (tools/) turns every pointer event into a place with it, and the
 // command surface (replenv.ts) uses it to decide where "the middle of the view"
-// is when it seeds a free entity. Above relations, because reading a frame's
-// axes is `frameBasis`'s job and nobody else's.
+// is when it seeds a free entity. Above relations, because reading a plane is
+// `planeBasis`'s job and nobody else's.
 
 import type { Model } from "./model.ts";
-import { frameBasis } from "./relations/refs.ts";
+import { planeAxes } from "./curveplane.ts";
 import { cameraPlane, screenToPlane, type Plane, type View } from "./view.ts";
 
+/** A plane reference as view.ts's Plane, or null when it has collapsed past having one. */
+export function planeOfRef(model: Model, ref: string): Plane | null {
+  const p = planeAxes(model, ref);
+  return p ? { origin: p.origin, u: p.u, v: p.v } : null;
+}
+
 /**
- * The default frame's plane, or null when there is none to draw on: no default,
- * a 2D model (whose frames have no plane to offer that is not the whole
- * world), or a frame collapsed so far that it has no +y left.
+ * The plane the user chose to sketch on — the work plane, else the default
+ * frame's — or null when there is none: no choice made (the origin's plane is
+ * where clicks land, not a sketch), a 2D model (whose frames have no plane to
+ * offer that is not the whole world), or a plane collapsed so far it has none.
  */
-export function framePlane(model: Model): Plane | null {
-  const name = model.defaultFrame;
-  if (model.dim !== 3 || name == null || !model.entities.has(name)) return null;
-  const { origin, ux, uy } = frameBasis(model, name)();
-  if (ux.every((c) => c === 0) || uy.every((c) => c === 0)) return null;
-  return { origin, u: ux, v: uy };
+export function sketchPlane(model: Model): Plane | null {
+  const ref = model.workPlane ?? model.defaultFrame;
+  if (model.dim !== 3 || ref == null) return null;
+  try {
+    return planeOfRef(model, ref);
+  } catch {
+    return null; // named something since deleted: the deletion clears it, but a frame drawn first may ask
+  }
+}
+
+/** The plane reference `sketchPlane` reads, or null. */
+export function sketchPlaneRef(model: Model): string | null {
+  return model.dim === 3 ? model.workPlane ?? model.defaultFrame : null;
 }
 
 /** The plane a click lands on in this model, seen through this view. See the top of the file. */
 export function workingPlane(model: Model, view: View): Plane {
-  return framePlane(model) ?? cameraPlane(view);
+  if (model.dim !== 3) return cameraPlane(view);
+  return sketchPlane(model) ?? planeOfRef(model, model.drawingPlane()) ?? cameraPlane(view);
 }
 
 /**
- * The world point under (sx, sy) on the working plane — or, when that is the
- * default frame seen edge-on, on the camera plane instead — together with the
- * plane it actually landed on. Always three coordinates: this is the 3D
- * question.
+ * The world point under (sx, sy) on the working plane — or, when that is seen
+ * edge-on, on the camera plane instead — together with the plane it actually
+ * landed on. Always three coordinates: this is the 3D question.
  */
 export function pointOnWorkingPlane(model: Model, view: View, sx: number, sy: number):
   { world: number[]; plane: Plane } {

@@ -7,7 +7,7 @@
 // better than arm("rectangle"); anything else is evaluated.
 
 import { ensureKernelLoaded } from "./kernel/problem.ts";
-import { Model } from "./model.ts";
+import { Model, ORIGIN } from "./model.ts";
 import { open as openModelText, save as saveModel, savedTools } from "./persist.ts";
 import { carryIntoSession, toolSources } from "./toolsource.ts";
 import { UndoStack } from "./undo.ts";
@@ -580,6 +580,13 @@ async function main() {
    */
   function entityPass(edges: Entity[], points: Entity[], stroke: (name: string) => string,
                       weight: (name: string) => number, lit: Set<string>, chosen: Set<string>) {
+    // The origin, which every document has and no entity is (`ORIGIN`): drawn
+    // as any frame is, in its RGB triad, from the start — so a fresh document
+    // shows where the ground is and which way it faces. First, so everything
+    // drawn is over it: a frame of the user's made at the same place
+    // (`frame()` in a fresh view lands there) shows its own arms, lit or not,
+    // and is the one picked (picking.ts puts the origin last).
+    if (model.isFrame(ORIGIN)) drawFrame(ORIGIN, lit.has(ORIGIN), chosen.has(ORIGIN));
     for (const e of edges) {
       g.lineWidth = weight(e.name);
       if (e.kind === "line") {
@@ -699,6 +706,8 @@ async function main() {
    * the question they ask.
    */
   function emptyHint(width: number, height: number) {
+    /** How far below the middle the words are centred, in pixels at 100 % (test/e2e/emptyhint.e2e.ts reads the band there). */
+    const HINT_DROP = 64;
     const k = uiOf(view);
     const lines: [string, string, string][] = [
       [`${13 * k}px`, "#7a8b9b", "Nothing drawn yet."],
@@ -718,7 +727,11 @@ async function main() {
       else for (const part of text.split(/(?<=,) /)) rows.push([size, colour, part]);
     }
     const step = 20 * k;
-    let y = height / 2 - ((rows.length - 1) * step) / 2;
+    // Below the middle, not on it: a fresh view puts the origin there, drawn
+    // from the start with its "origin" label under it (docs/plans/
+    // frameless-curves.md), and the words written over its arms read as one
+    // muddle. HINT_DROP clears the marker's label at any interface size.
+    let y = height / 2 + HINT_DROP * k - ((rows.length - 1) * step) / 2;
     for (const [size, colour, text] of rows) {
       g.font = `${size} "IBM Plex Mono", ui-monospace, Menlo, monospace`;
       g.fillStyle = colour;
@@ -926,7 +939,12 @@ async function main() {
     const bx = (marker.x[0] + marker.y[0]) / 2 - marker.origin[0];
     const by = (marker.x[1] + marker.y[1]) / 2 - marker.origin[1];
     const bl = Math.hypot(bx, by) || 1;
-    label(name, marker.origin[0] - ((bx / bl) * 14 + 3) * k, marker.origin[1] - ((by / bl) * 14 - 4) * k);
+    // Not the origin's, unless it is lit or selected: it stands where drawings
+    // start, so its name would print over the first corner's — and a triad at
+    // the kernel's zero, in every document, says what it is without one.
+    if (name !== ORIGIN || state) {
+      label(name, marker.origin[0] - ((bx / bl) * 14 + 3) * k, marker.origin[1] - ((by / bl) * 14 - 4) * k);
+    }
     g.restore();
   }
 
@@ -1345,9 +1363,9 @@ async function main() {
       log(line, outcome === "done" ? "out" : "err");
     },
     // A tool whose commit is a command types it, as the menu does — the sketch
-    // tool's `plane(a, b, c)` — so it is logged, recalled and undone as typed.
-    // The promise is handed back for the extrude tool, which waits for the
-    // plane it typed to be in before extruding along it.
+    // tool's `workplane("a.b.c")` — so it is logged, recalled and undone as
+    // typed. The promise is handed back for a tool that must wait for the line
+    // to be in before going on.
     onRun: async (command) => { await submit(command); },
     // A feature's confirm: every line it types, as typed — logged, recalled,
     // refused in red if the command line refuses it — inside **one** user

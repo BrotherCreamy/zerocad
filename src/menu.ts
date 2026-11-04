@@ -21,7 +21,7 @@
 // the only reading under which the item is safe to click without looking: it
 // adds a constraint the drawing already satisfies, and moves nothing.
 
-import { SETTABLE_PROPERTY, valueArgIndex, type Model } from "./model.ts";
+import { ORIGIN, SETTABLE_PROPERTY, valueArgIndex, type Model } from "./model.ts";
 import { describePick, type Pick } from "./picking.ts";
 import { frameBasis } from "./relations/refs.ts";
 import { toolUnavailable } from "./toolavail.ts";
@@ -326,15 +326,13 @@ function setValueItem(model: Model, name: string): MenuItem[] {
 /**
  * Empty canvas: the tools, plus the one-click way into the frame world.
  *
- * **Frame is `setDefaultFrame(frame())` when the drawing has no frame at all,
- * and `frame()` once it has one.** There is no world frame, so a drawing's first
- * frame is nearly always meant to be the default — `fix`, `xaxis()` and
- * `yaxis()` do nothing at all until one is set, and a first frame that was not
- * the default would leave the user with a marker on screen and the same error
- * message they had before. A *second* frame is a different intent: something
- * specific is being measured against it, and silently repointing the default
- * would move every bare `xaxis()` in the drawing. Neither case ever creates a frame the user
- * did not ask for, which is the rule the no-world-frame decision turns on.
+ * **Frame is `frame()`**, always. It used to be `setDefaultFrame(frame())` for
+ * a drawing's first frame, because with no world frame `fix`, `xaxis()` and
+ * `yaxis()` did nothing at all until one was set. Every document now has the
+ * origin, which they mean when no default is set (docs/plans/
+ * frameless-curves.md), so a frame made from the menu is a datum the user
+ * asked for and nothing more; making it the default is their next choice
+ * (Sketch on this, on the frame).
  *
  * A tool that cannot run here would be **shown and disabled, not hidden**, for
  * Fix's reason: an item that simply vanished would leave "where did it go"
@@ -345,7 +343,6 @@ function setValueItem(model: Model, name: string): MenuItem[] {
  * asking, docs/plans/tool-options.md.)
  */
 function emptyCanvasMenu(model: Model, region: RegionHit | null): Menu {
-  const hasFrame = [...model.entities.values()].some((e) => e.kind === "frame");
   return {
     header: null,
     items: [
@@ -355,7 +352,7 @@ function emptyCanvasMenu(model: Model, region: RegionHit | null): Menu {
       }),
       {
         label: "Frame",
-        action: { do: "run", command: hasFrame ? "frame()" : "setDefaultFrame(frame())" },
+        action: { do: "run", command: "frame()" },
       },
       ...sketchOnFaceItem(model, region),
       ...faceEditItems(model, region),
@@ -368,7 +365,7 @@ function emptyCanvasMenu(model: Model, region: RegionHit | null): Menu {
 
 /**
  * **Sketch on this face**, when the right-click landed inside a closed region:
- * `plane(a, b, c)` on three of its own points, +z toward the viewer — the very
+ * `workplane("a.b.c")` on three of its own points, facing the viewer — the very
  * line the sketch tool types for a click in the same place (see
  * ../sketchface.ts), so menu and tool cannot make different planes of one face.
  * The click is on empty canvas as far as picking goes — faces never pick — and
@@ -392,7 +389,9 @@ function sketchOnFaceItem(model: Model, region: RegionHit | null): MenuItem[] {
 function entityMenu(model: Model, pick: Pick): Menu {
   const items: MenuItem[] = [
     { label: "Insert name", action: { do: "insert", name: pick.name } },
-    { label: "Delete", action: { do: "run", command: `del(${quoted(pick.name)})` } },
+    // The origin is part of every model and cannot be deleted (`ORIGIN`), so
+    // it is offered no Delete to be refused.
+    ...(pick.name === ORIGIN ? [] : [{ label: "Delete", action: { do: "run", command: `del(${quoted(pick.name)})` } } as MenuItem]),
   ];
   const dim = dimensionCommand(model, pick);
   if (dim) items.push({ label: "Dimension", action: { do: "run", command: dim } });
@@ -517,18 +516,16 @@ export function dimensionCommand(model: Model, pick: Pick): string | null {
 /**
  * **Fix needs a frame, and the menu never quietly makes one.**
  *
- * There is no world frame here, so `fix` is a position *in a frame's
- * coordinates* and refuses to run without one. A menu item that created a frame
- * to make itself work would be the exact thing the no-world-frame decision
- * exists to prevent: a datum nobody chose, quietly becoming what every later
- * `par(l, xaxis())` is measured against. So the item is shown and disabled, carrying the
- * model's own standing message — read out of `resolveFrame` rather than copied,
- * so there is one wording of it in the codebase and the menu cannot drift from
- * what the command line says.
- *
- * Shown-and-disabled rather than omitted, because the absence of a frame is
- * exactly what a user needs told. An item that simply was not there would leave
- * "why can I not pin this point" unanswered.
+ * `fix` is a position *in a frame's coordinates*: the default frame's, else
+ * the origin's, which every model that holds frames has (`ORIGIN`,
+ * docs/plans/frameless-curves.md) — so in a 2D or 3D model there is always
+ * one, and the item is a command. A menu item that created a frame to make
+ * itself work would still be the thing to prevent: a datum nobody chose,
+ * quietly becoming what every later `par(l, xaxis())` is measured against.
+ * Where `resolveFrame` refuses (a model with no frames at all), the item is
+ * shown and disabled with the model's own message, read out rather than
+ * copied, so the menu cannot drift from what the command line says — shown
+ * rather than omitted, so "why can I not pin this point" is answered.
  *
  * The coordinates are the point's position *in that frame* — its offset from the
  * origin along each unit axis — not its raw numbers. Raw numbers would be a

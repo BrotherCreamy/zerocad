@@ -179,7 +179,9 @@ test("typing 25 in the depth field moves the previewed lids; Enter in the field 
   const typed = await typedSince(from);
   assert.equal(typed[0], '> arm("extrude", {depth: 25})', `the field's line first: ${typed}`);
   const plane = typed.slice(1).filter((t) => /^> (plane|frame)\(/.test(t));
-  assert.equal(plane.length, 1, `one plane for the frameless sketch: ${typed}`);
+  // None: the rectangles lie on the origin's ground, so they run along its +z and
+  // nothing is made for them (docs/plans/frameless-curves.md; this used to be one).
+  assert.equal(plane.length, 0, `no plane for the frameless sketch: ${typed}`);
   const extrudes = typed.filter((t) => /^> extrude\("l\d+", 25\)$/.test(t));
   assert.equal(extrudes.length, 2, `one extrude a region: ${typed}`);
   assert.deepEqual((await logLines()).filter((l) => l.cls === "err"), [], "nothing red");
@@ -197,7 +199,7 @@ test("typing 25 in the depth field moves the previewed lids; Enter in the field 
   await key("Control+z");
   const after = await app.model();
   assert.equal(after.journalOps.filter((o) => o === "extrude").length, 0, "one Ctrl+Z takes both solids");
-  assert.equal(after.byKind.frame ?? 0, 0, "and the plane made for them");
+  assert.equal(after.byKind.frame ?? 0, 0, "and no frame was ever made");
   assert.equal(after.activeTool, null, "and the tool stays released");
 });
 

@@ -32,23 +32,23 @@
 // live rather than committed into a conflict.
 
 //
-// In 3D the arc lies in the plane of its three clicks — the sketch's — and is
-// given the default frame's plane (see `ArcEntity`), whose +z it turns about;
-// with no default frame the first click makes one, the working plane it
-// landed on, and the later clicks land on it (`CurvePlane`, in place.ts).
-// The tool works out which of the two arcs between the endpoints holds the
-// waypoint, and orders the endpoints so that is the arc drawn about that +z.
+// In 3D the arc lies in the plane of its three clicks — the one its first
+// click chose (`CurvePlane`, in place.ts: the work plane or default frame,
+// else the solid face under it, else the ground) — and carries its own normal
+// facing that plane's (see `ArcEntity`), held there by a `par`; the later
+// clicks land on the same plane. Nothing makes a frame. The tool works out
+// which of the two arcs between the endpoints holds the waypoint, and orders
+// the endpoints so that is the arc drawn about that normal.
 // Its centre is held on the sketch plane with its endpoints. The preview is
 // the same arc, sampled in the world and projected — on a plane seen at an
 // angle it is part of an ellipse.
 
 import { Tool, defineTool, type PointerInfo, type RenderContext } from "./tool.ts";
 import { arcEndpoints } from "../relations/geometry.ts";
-import { CurvePlane, DRAWING_OPTIONS, asArmed, holdOnSketchPlane, placePoint, requirePlanar } from "./place.ts";
+import { CurvePlane, DRAWING_OPTIONS, asArmed, placePoint, requirePlanar } from "./place.ts";
 import type { OptionSpecs } from "./options.ts";
 import { circumcircle, PREVIEW_MAX_R } from "./circumcircle.ts";
 import { arcFrame, arcSamples, arcSegments } from "../arcgeom.ts";
-import { sketchSide } from "../curveplane.ts";
 import { dot3, lift3, sub3 } from "../vec3.ts";
 
 /**
@@ -115,8 +115,8 @@ export class Arc3Tool extends Tool {
 
   onDown(p: PointerInfo): void {
     requirePlanar(this.ctx.model, this.name);
-    if (this.plane.typing) return; // the plane the first click typed is still going in
     if (!this.ends.length && !this.plane.begin(p)) return;
+    p = this.plane.settle(p);
     this.hover = p.world;
 
     if (this.ends.length < 2) {
@@ -131,8 +131,8 @@ export class Arc3Tool extends Tool {
       return; // nothing is committed until the third click — see the header
     }
 
-    const [first, second] = this.ends.map((e) => this.plane.settle(e));
-    const found = arcThrough(first.world, second.world, p.world, sketchSide(this.ctx.model));
+    const [first, second] = this.ends;
+    const found = arcThrough(first.world, second.world, p.world, this.plane.normal() ?? [0, 0, 1]);
     if (!found) {
       // Refuse rather than build, circle3's shape exactly: three points on one
       // line have no arc between them either, and committing one would leave a
@@ -157,7 +157,7 @@ export class Arc3Tool extends Tool {
     // centre and a replay hands out the same ones. Placed in click order,
     // *then* assigned to start/end by the sweep — so which end is "start"
     // never changes which point is which, only which way round the arc goes.
-    const placed = [first, second].map((info) => placePoint(this.ctx, info));
+    const placed = [first, second].map((info) => placePoint(this.ctx, info, undefined, this.plane.plane));
     const start = placed[found.startIndex];
     const end = placed[1 - found.startIndex];
     // A *free* arc, free-entities style: the centre argument is null, so the
@@ -167,9 +167,9 @@ export class Arc3Tool extends Tool {
     // rather than at the library defaults means the solver's first step is
     // chosen by where the drawing is rather than by where the world starts,
     // and it means the arc drawn on screen is the arc that was previewed.
-    const arc = m.addArc(null, start, end, found.radius);
+    const arc = m.addArc(null, start, end, found.radius, this.plane.normal());
     m.setCoords(arc.center, found.center);
-    holdOnSketchPlane(m, arc.center);
+    this.plane.hold(arc.name, arc.center);
     arcEndpoints(m, arc.name);
     asArmed(this.ctx, arc.name);
 
@@ -179,7 +179,7 @@ export class Arc3Tool extends Tool {
 
   onMove(p: PointerInfo): void {
     if (!this.ends.length) return;
-    this.hover = p.world;
+    this.hover = this.plane.settle({ ...p, snap: undefined }).world;
     this.ctx.requestRender();
   }
 
@@ -212,7 +212,7 @@ export class Arc3Tool extends Tool {
     // side it bulges to — so from here the preview is the answer itself.
     if (this.ends.length === 2 && this.hover) {
       const worlds = [this.ends[0].world, this.ends[1].world];
-      const side = sketchSide(this.ctx.model);
+      const side = this.plane.normal() ?? [0, 0, 1];
       const found = arcThrough(worlds[0], worlds[1], this.hover, side);
       const rad = found ? found.radius * r.scale : 0;
       // Nothing at all when the three are collinear, or when the rim is so far

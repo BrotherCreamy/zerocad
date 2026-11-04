@@ -1,6 +1,6 @@
 // Sketching on a plane, the rest of 3D phase 2: an off-plane point offered at
-// its projection (a position aid that infers nothing), the curve tools refusing
-// without a plane to give what they draw, `plane()` as "start sketching here",
+// its projection (a position aid that infers nothing), the curve tools drawing
+// with no frame at all, `plane()` as "start sketching here",
 // `frame()` facing a turned view, and the menu's "Sketch on this".
 
 import { test } from "node:test";
@@ -10,7 +10,7 @@ import { ensureKernelLoaded } from "../src/kernel/problem.ts";
 import { Model } from "../src/model.ts";
 import { findSnap, describeSnap } from "../src/snapping.ts";
 import { placePoint } from "../src/tools/place.ts";
-import { framePlane } from "../src/workplane.ts";
+import { sketchPlane } from "../src/workplane.ts";
 import { alignView, orbitBy, viewAxes, worldToScreen, type View } from "../src/view.ts";
 import { neocadScope } from "../src/replenv.ts";
 import { menuFor } from "../src/menu.ts";
@@ -47,7 +47,7 @@ function scene() {
   const t = tiltedFrame(m);
   m.addPoint(t.at(12, 7, 40), "far"); // forty off the sketch, toward the viewer
   const view: View = alignView({ ox: 400, oy: 300, scale: 3 }, t.ux, t.uy, t.origin);
-  return { m, t, view, sketch: framePlane(m)! };
+  return { m, t, view, sketch: sketchPlane(m)! };
 }
 
 test("an off-plane point is offered at its projection onto the sketch — the foot of the perpendicular", () => {
@@ -99,20 +99,23 @@ test("placing at a projection infers nothing about the point it borrowed — onl
 
 // --- the curve tools need a plane -------------------------------------------------
 
-// With a command line they make the plane instead (test/curvetoolplane.test.ts);
-// this is the guard under it, where there is none to type into.
-test("headless in 3D with no default frame and no command line, the circle and arc tools refuse the first click and place nothing", () => {
+// Nothing to make, so nothing to refuse (docs/plans/frameless-curves.md).
+test("headless in 3D with no default frame and no command line, the circle and arc tools draw — on the origin's ground, no frame", async () => {
+  await loadKernel();
   for (const Tool of [CircleTool, Circle3Tool, ArcTool, Arc3Tool]) {
     const m = new Model(3);
     const logged: string[] = [];
     const tool = new Tool(fakeCtx(m, logged));
-    const click: PointerInfo = { world: [1, 2, 0], screen: [0, 0] };
-    tool.onDown(click);
-    tool.onUp(click);
-    assert.equal(m.entities.size, 0, `${tool.name} placed nothing`);
-    assert.match(logged[0] ?? "", new RegExp(`^${tool.name}: no default frame`), `${tool.name} said why: ${logged}`);
-    // Headless, with no pane to tell, it throws instead.
-    assert.throws(() => new Tool(fakeCtx(m)).onDown(click), /no default frame/);
+    const at = (w: number[]): PointerInfo => ({ world: w, screen: [0, 0] });
+    if (Tool === CircleTool) {
+      tool.onDown(at([1, 2, 0]));
+      tool.onUp(at([6, 2, 0])); // a drag, centre to rim
+    } else {
+      for (const w of [[1, 2, 0], [6, 2, 0], [1, 7, 0]]) { tool.onDown(at(w)); tool.onUp(at(w)); }
+    }
+    assert.deepEqual(logged, [], `${tool.name} refused nothing`);
+    assert.ok([...m.entities.values()].some((e) => e.kind === "circle" || e.kind === "arc"), `${tool.name} drew`);
+    assert.ok([...m.entities.values()].every((e) => e.kind !== "frame"), `${tool.name} made no frame`);
   }
 });
 
@@ -134,7 +137,9 @@ test("the circle tool on a tilted sketch makes a circle in the sketch's plane", 
   tool.onDown({ world: t.at(4, 4), screen: [0, 0], plane });
   tool.onUp({ world: t.at(4, 10), screen: [0, 0], plane });
   const circle = [...m.entities.values()].find((e) => e.kind === "circle")!;
-  assert.equal((circle as { plane?: string }).plane, "t");
+  assert.ok(close(dot(m.normalOf(circle.name), t.uz), 1), "facing the sketch's +z");
+  assert.ok([...m.relations.values()].some((r) => r.op === "parallel" && r.args[0] === circle.name && r.args[1] === "t.z"),
+    "and held to it");
   assert.ok(close(m.radius(circle.name), 6));
 });
 
@@ -191,7 +196,7 @@ test("a frame's menu offers Sketch on this: the default, then look at it — typ
   assert.ok(viewAxes(view).right.every((x, i) => close(x, t.ux[i], 1e-12)));
 });
 
-test("on empty canvas in 3D with no default frame, the curve tools are offered like any other — they make their plane", () => {
+test("on empty canvas in 3D with no default frame, the curve tools are offered like any other — they need no plane made", () => {
   const m = new Model(3);
   const menu = menuFor(m, null);
   for (const label of ["Circle", "3 point circle", "Arc", "3 point arc", "Fillet", "Point", "Line", "Rectangle"]) {

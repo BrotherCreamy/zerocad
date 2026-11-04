@@ -163,12 +163,18 @@ test("the hover tag names the relations constraining what is under the cursor", 
 // its origin (see src/framemarker.ts). Nothing else about a frame is on screen,
 // so nothing else about it can be aimed at.
 
-/** Origin at the world origin, +x along the world's, unless `deg` says otherwise. */
+/**
+ * The frame's origin, off the world's — where the origin's own marker is drawn
+ * and picked (docs/plans/frameless-curves.md), which this file is not about.
+ */
+const FO = [60, 40];
+
+/** Origin at FO, +x along the world's, unless `deg` says otherwise. */
 function framedModel(deg = 0): Model {
   const m = new Model(2);
   const rad = (deg * Math.PI) / 180;
-  m.addPoint([0, 0], "o");
-  m.addPoint([20 * Math.cos(rad), 20 * Math.sin(rad)], "x");
+  m.addPoint(FO, "o");
+  m.addPoint([FO[0] + 20 * Math.cos(rad), FO[1] + 20 * Math.sin(rad)], "x");
   m.addFrame("o", "x", null, "fr");
   return m;
 }
@@ -176,7 +182,7 @@ function framedModel(deg = 0): Model {
 test("picks a frame along either arm of its axes marker", async () => {
   await loadKernel();
   const m = framedModel();
-  const [ox, oy] = at([0, 0]);
+  const [ox, oy] = at(FO);
 
   const alongX = hitTest(m, view, ox + FRAME_ARM_PX * 0.6, oy);
   assert.equal(alongX?.name, "fr");
@@ -192,7 +198,7 @@ test("picks a frame along either arm of its axes marker", async () => {
 test("a frame's arms turn with it, so a tilted frame is picked where it is drawn", async () => {
   await loadKernel();
   const m = framedModel(45);
-  const [ox, oy] = at([0, 0]);
+  const [ox, oy] = at(FO);
   const d = (FRAME_ARM_PX * 0.6) / Math.SQRT2;
 
   assert.equal(hitTest(m, view, ox + d, oy - d)?.name, "fr", "the +x arm now runs up and to the right");
@@ -202,7 +208,7 @@ test("a frame's arms turn with it, so a tilted frame is picked where it is drawn
 test("the frame's own origin point still wins the pick — it is the higher tier", async () => {
   await loadKernel();
   const m = framedModel();
-  const [ox, oy] = at([0, 0]);
+  const [ox, oy] = at(FO);
   assert.equal(hitTest(m, view, ox + 2, oy)?.name, "o",
     "a click on the corner of the marker grabs the point the marker is drawn from");
 });
@@ -210,8 +216,8 @@ test("the frame's own origin point still wins the pick — it is the higher tier
 test("a frame collapsed onto its own origin draws nothing and picks as nothing", async () => {
   await loadKernel();
   const m = framedModel();
-  m.setCoords("x", [0, 0]);
-  const [ox, oy] = at([0, 0]);
+  m.setCoords("x", FO);
+  const [ox, oy] = at(FO);
   assert.equal(hitTest(m, view, ox + FRAME_ARM_PX * 0.6, oy), null);
 });
 

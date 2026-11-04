@@ -15,8 +15,8 @@
 // seam, rather than a guess at the caller's intent from the size of a number.
 
 import type { Dual } from "../kernel/dual.ts";
-import { parseAxisRef, type Model } from "../model.ts";
-import { frameBasis } from "./refs.ts";
+import { ORIGIN, parseAxisRef, type Model } from "../model.ts";
+import { curveNormal, frameBasis, joinVars, unitDuals } from "./refs.ts";
 
 /** A whole turn, and how close to one an angle must be to be one. */
 export const FULL_TURN = 2 * Math.PI;
@@ -64,6 +64,8 @@ export function axisReader(model: Model, axis: string): { read: () => AxisValue;
         return { origin: b.origin, dir: dir.slice() };
       },
       points: () => {
+        // The origin has no points to be datum: it never moves at all.
+        if (ref.frame === ORIGIN) return [];
         const f = model.frame(ref.frame);
         return f.yref === undefined ? [f.origin, f.xref] : [f.origin, f.xref, f.yref];
       },
@@ -218,6 +220,21 @@ export function revolution(model: Model, axis: string, angle: number, ...pairs: 
         holdPoint(b, t);
       } else if ((be?.kind === "circle" || be?.kind === "arc") && (te?.kind === "circle" || te?.kind === "arc")) {
         model.addResidual([be.radiusVar, te.radiusVar], (l) => [l[1].sub(l[0])], `revolution(${b},${t}).r`);
+        // A twin curve on the end face faces as its base does, turned: n̂_t =
+        // M·n̂_b. What the end face's frame used to give a turned twin, before
+        // curves carried their own normal (expansion 11 makes no end frame).
+        const [bn, tn] = [curveNormal(model, b), curveNormal(model, t)];
+        if (bn && tn) {
+          model.addResidual(joinVars(bn, tn), (l) => {
+            const m = turnMatrix(reader.read().dir, angle);
+            const [u, w] = [unitDuals(l.slice(0, 3)), unitDuals(l.slice(3))];
+            return [0, 1, 2].map((r) => {
+              let res = w[r];
+              for (let c = 0; c < 3; c++) res = res.sub(u[c].mul(m[r][c]));
+              return res;
+            });
+          }, `revolution(${b},${t}).n`);
+        }
       } else if (be?.kind === "frame" && te?.kind === "frame") {
         const [bp, tp] = [model.refsOf(be), model.refsOf(te)];
         if (bp.length !== tp.length) throw new Error(`"${b}" and "${t}" are not frames of one kind`);

@@ -12,7 +12,7 @@
 import type { Model } from "../model.ts";
 import type { Dual } from "../kernel/dual.ts";
 import { norm, vecSub } from "./vec.ts";
-import { frameBasis } from "./refs.ts";
+import { frameBasis, planeBasis } from "./refs.ts";
 
 /** |a - b| = target */
 export function dist(model: Model, aName: string, bName: string, target: number): string {
@@ -86,9 +86,13 @@ export function fix(model: Model, name: string, at: number[], frameName?: string
 }
 
 /**
- * A point lies in a frame's plane — the x–y plane of a 3D frame, the one its
- * origin and both refs lie in. This is what "this point is on the sketch"
- * means in a 3D model.
+ * A point lies in a plane — a frame's x–y plane (the one its origin and both
+ * refs lie in; the origin's included), a circle's or arc's own plane, or the
+ * plane through three points (`"p1.p2.p3"`, a solid's face). This is what
+ * "this point is on the sketch" means in a 3D model, and half of what holds a
+ * circle drawn on a plane there (tools/place.ts). Everything below about the
+ * frame holds for every kind of plane: read as a datum (`planeBasis`), never
+ * pushed.
  *
  * The residual is the point's signed distance off the plane, (p − origin) · +z.
  * Linear in the point and not a square, so its gradient is the plane's normal
@@ -109,19 +113,22 @@ export function fix(model: Model, name: string, at: number[], frameName?: string
  * family is "on" plus the kind of thing, and `pointOnLine` keeps its own name
  * only because `on` was taken first.
  */
-export function onPlane(model: Model, pointName: string, frameName?: string | null): string {
+export function onPlane(model: Model, pointName: string, planeName?: string | null): string {
   if (model.dim !== 3) {
     throw new Error("onPlane needs a 3D model — in 2D every point already lies in every frame's plane");
   }
   const p = model.point(pointName);
-  const frame = model.resolveFrame(frameName);
-  return model.relation("onPlane", [pointName, frame], () => {
-    const basis = frameBasis(model, frame);
+  // Any plane reference (`Model.planeKind`): a frame — the origin included —
+  // a circle's or arc's own plane, or a face's three points as "p1.p2.p3".
+  // Left out, the drawing plane, resolved now and journalled resolved.
+  const plane = planeName ?? model.drawingPlane();
+  model.planeKind(plane);
+  return model.relation("onPlane", [pointName, plane], () => {
+    const basis = planeBasis(model, plane);
     model.addResidual(p.varIndices, (l) => {
-      const { origin, uz } = basis();
-      // Non-null: a 3D model's frames all carry a y-ref, so all have a +z.
-      return [alongAxis(l, origin, uz!)];
-    }, `onplane(${pointName},${frame})`);
+      const { origin, n } = basis();
+      return [alongAxis(l, origin, n)];
+    }, `onplane(${pointName},${plane})`);
   });
 }
 

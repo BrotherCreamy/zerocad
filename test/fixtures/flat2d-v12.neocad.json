@@ -1,0 +1,91 @@
+{
+  "format": "neocad-model",
+  "version": 12,
+  "dim": 2,
+  "journal": [
+    {
+      "op": "addPoint",
+      "args": [
+        [
+          0,
+          0
+        ],
+        "p1"
+      ]
+    },
+    {
+      "op": "addCircle",
+      "args": [
+        "p1",
+        5,
+        null,
+        "c1"
+      ]
+    },
+    {
+      "op": "addPoint",
+      "args": [
+        [
+          20,
+          0
+        ],
+        "p2"
+      ]
+    },
+    {
+      "op": "addPoint",
+      "args": [
+        [
+          30,
+          0
+        ],
+        "p3"
+      ]
+    },
+    {
+      "op": "addPoint",
+      "args": [
+        [
+          20,
+          10
+        ],
+        "p4"
+      ]
+    },
+    {
+      "op": "addArc",
+      "args": [
+        "p2",
+        "p3",
+        "p4",
+        10,
+        null,
+        "a1"
+      ]
+    }
+  ],
+  "values": {
+    "points": {
+      "p1": [
+        0,
+        0
+      ],
+      "p2": [
+        20,
+        0
+      ],
+      "p3": [
+        30,
+        0
+      ],
+      "p4": [
+        20,
+        10
+      ]
+    },
+    "radii": {
+      "c1": 5,
+      "a1": 10
+    }
+  }
+}

@@ -1,5 +1,10 @@
 # Plan: no world frame — coordinate frames are entities
 
+> **Revised 2026-11-04 by [`frameless-curves.md`](frameless-curves.md)** (vetoable
+> in the register): every document now has one fixed, built-in origin, which
+> is what `fix` and the axis helpers mean with no default frame. What stays
+> of this plan is that nothing else makes a frame unless asked.
+
 **Status: SHIPPED, both halves** (2026-09-01). What the build decided along
 the way, all of it now in `TODO.md`'s register: a frame is **read, not
 pushed** — its two points are re-read at every evaluation but are not declared

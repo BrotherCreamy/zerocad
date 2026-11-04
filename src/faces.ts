@@ -70,7 +70,7 @@
 
 import type { FeatureEntry, Model, Portion, ProfileMember } from "./model.ts";
 import { arcPoint, arcSamples, arcSegments, portionAngles } from "./arcgeom.ts";
-import { curveFrame, framePlaneAxes } from "./curveplane.ts";
+import { curveFrame, planeAxes } from "./curveplane.ts";
 import { axisReader, turnMatrix } from "./relations/revolution.ts";
 import { depth, viewAxes, worldToScreen, type View } from "./view.ts";
 import { cross3, dot3, lift3, sub3, unit3 } from "./vec3.ts";
@@ -290,7 +290,8 @@ function profileMemberPath(model: Model, m: ProfileMember, scale: number): numbe
  * and the same of the members' twins, sampled piece for piece with their
  * bases. Null when any of it cannot be laid out.
  */
-function profilePaths(model: Model, loops: ProfileMember[][], twins: string[][] | null, scale: number):
+function profilePaths(model: Model, loops: ProfileMember[][], twins: string[][] | null, scale: number,
+                      moved: (p: number[]) => number[] = (p) => p):
   { base: number[][][][]; twin: number[][][][] | null } | null {
   const base: number[][][][] = [];
   const twin: number[][][][] = [];
@@ -303,7 +304,9 @@ function profilePaths(model: Model, loops: ProfileMember[][], twins: string[][] 
       b.push(bp);
       if (twins) {
         // The twin sampled piece for piece with its base, so a wall's quads pair up.
-        const tp = memberPath(model, twins[i][k], scale, bp.length - 1);
+        const tp = wholeCircle(model, loops[i][k], twins[i][k])
+          ? circleFrom(model, twins[i][k], moved(bp[0]), bp.length - 1)
+          : memberPath(model, twins[i][k], scale, bp.length - 1);
         if (!tp || tp.length !== bp.length) return null;
         t.push(tp);
       }
@@ -312,6 +315,30 @@ function profilePaths(model: Model, loops: ProfileMember[][], twins: string[][] 
     twin.push(t);
   }
   return { base, twin: twins ? twin : null };
+}
+
+/** Whether a profile member and its twin are both whole circles — a rim with no ends to pair its samples by. */
+function wholeCircle(model: Model, member: ProfileMember, twin: string): boolean {
+  return typeof member === "string" && model.entities.get(member)?.kind === "circle" && model.entities.get(twin)?.kind === "circle";
+}
+
+/**
+ * A whole circle sampled from the point of it nearest `start` — its base's
+ * first sample moved as the feature moves it — so a twin rim's samples pair up
+ * with its base's however each lays its own plane out. A circle carries its
+ * own normal and starts from the first direction that normal spans its plane
+ * with (`spanOf`), which a turn does not carry over: a revolve's twin rim
+ * started elsewhere, and its last ring of quads twisted across the tunnel (the
+ * suite's tunnel test found it). Its own sweep direction is kept.
+ */
+function circleFrom(model: Model, name: string, start: number[], segments: number): number[][] | null {
+  const e = model.entities.get(name);
+  const f = e ? curveFrame(model, e) : null;
+  if (!f) return null;
+  const d = sub3(lift3(start), f.center);
+  const along = dot3(d, f.normal);
+  const u = unit3([d[0] - along * f.normal[0], d[1] - along * f.normal[1], d[2] - along * f.normal[2]]) ?? f.u;
+  return arcSamples({ ...f, u, v: cross3(f.normal, u) }, segments);
 }
 
 /**
@@ -340,7 +367,7 @@ function outwardSigns(outlines: number[][][], plane: { u: number[]; v: number[] 
 
 /** An extrude's faces: the profile's cap, the lid's, and a wall per member piece. */
 function extrudeFaces(model: Model, f: Extract<FeatureEntry, { kind: "extrude" }>, scale: number): Face[] {
-  const axes = framePlaneAxes(model, f.frame);
+  const axes = planeAxes(model, f.frame);
   if (!axes) return [];
   const z = axes.n;
   const paths = profilePaths(model, f.loops, f.twins, scale);
@@ -409,15 +436,21 @@ function extrudeFaces(model: Model, f: Extract<FeatureEntry, { kind: "extrude" }
  * surface meets the edges drawn over it however the end face got where it is.
  */
 function revolveFaces(model: Model, f: Extract<FeatureEntry, { kind: "revolve" }>, scale: number): Face[] {
-  const plane = framePlaneAxes(model, f.frame);
+  const plane = planeAxes(model, f.frame);
   if (!plane) return [];
   const theta = model.relations.get(f.angle)?.args[1];
   if (typeof theta !== "number" || !Number.isFinite(theta) || theta === 0) return [];
   const axis = axisReader(model, f.axis).read();
   const k = axis.dir;
   if (k.every((c) => c === 0)) return [];
-  const partial = f.end !== null;
-  const paths = profilePaths(model, f.loops, partial ? f.twins : null, scale);
+  const partial = f.twins.length > 0;
+  // A twin rim's samples start where its base's first one turns to.
+  const whole = turnMatrix(k, theta);
+  const turned = (p: number[]) => {
+    const v = sub3(p, axis.origin);
+    return [0, 1, 2].map((r) => axis.origin[r] + whole[r][0] * v[0] + whole[r][1] * v[1] + whole[r][2] * v[2]);
+  };
+  const paths = profilePaths(model, f.loops, partial ? f.twins : null, scale, turned);
   if (!paths) return [];
   const flips = paths.base.map(orient);
   const outlines = paths.base.map((p, i) => joined(p, flips[i]));

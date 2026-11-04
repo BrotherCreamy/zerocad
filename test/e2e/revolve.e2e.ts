@@ -185,7 +185,9 @@ test("the revolve tool: the region is outlined; a click on nothing is refused al
   assert.deepEqual(last!.args.slice(1, 4), ["f1.y", 1.5 * Math.PI, "f1"]);
   const ls = (await app.repl("ls()")).value as string[];
   // The feature's line, then what it made as a count under it (quiet-geometry.md).
-  assert.match(ls.at(-2)!, /^e2  revolve of .*, angle d\d+ = 270° about f1\.y, end f\d+$/);
+  // A partial turn makes no end frame now (expansion 11,
+  // docs/plans/frameless-curves.md), so the line says "partial" where it named one.
+  assert.match(ls.at(-2)!, /^e2  revolve of .*, angle d\d+ = 270° about f1\.y, partial$/);
   assert.match(ls.at(-1)!, /^    \d+ made — members\("e2"\) lists them$/);
 });
 

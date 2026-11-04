@@ -201,15 +201,14 @@ test("solve() still works with no host attached", async () => {
   assert.equal(((await run(repl, "solve()")).value as { solved: boolean }).solved, true);
 });
 
-test("frames are reachable from the command line, and an axis reference needs one", async () => {
+test("frames are reachable from the command line, and a bare axis is the origin's", async () => {
   await loadKernel();
-  // Deliberately unframed: a new model has no coordinate frame at all, and
-  // this checks the command surface says so rather than quietly picking one.
+  // Deliberately unframed: a new model has no frame of the user's, and a bare
+  // axis means the origin's — the one datum every model has
+  // (docs/plans/frameless-curves.md) — named in the reference it returns.
   const { repl, model } = makeRepl(new Model(2), false);
   await run(repl, "l = ln()");
-  const bare = await repl.eval("par(l, xaxis())");
-  assert.equal(bare.ok, false);
-  assert.match(bare.error!.message, /no default frame — frame\(\) then setDefaultFrame\(\)/);
+  assert.equal((await run(repl, "xaxis()")).value, "origin.x");
   assert.equal((await run(repl, "defaultFrame()")).value, null);
 
   // `hor` and `ver` are gone rather than deprecated, so the standing

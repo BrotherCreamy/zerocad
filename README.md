@@ -6,7 +6,8 @@ differentiation and everything above it — with a runtime-extensible
 tool-authoring layer on top. There is no server: the Rust/WASM kernel and
 the TypeScript layer both run together, client-side, in the browser.
 
-CAD sketching — in 3D, on the planes of coordinate frames, through an
+CAD sketching — in 3D, on the ground, a solid's faces or the planes of
+coordinate frames, through an
 orthographic orbit camera (points, lines, circles, arcs; a relation vocabulary of
 distance, coincidence, midpoint, parallel, perpendicular (either of which
 takes a coordinate frame's axis by name), angle, point-on-line,
@@ -17,7 +18,8 @@ a closed loop, holes and all, expanded into a real lid of twins and walls held
 by one depth dimension, drawn shaded; and revolve — a loop turned about a frame
 axis or a line in its plane, its surface drawn from the live profile and, for a
 partial turn, its end face real geometry held by one angle dimension — with
-sketching on a solid's face, a click inside it, to stack the next one on) is the
+sketching on a solid's face, a click inside it, to stack the next one on — and
+no frame made for any of it unless you ask for one) is the
 **first standard library** built on that kernel, not the kernel's whole
 purpose. The kernel itself knows nothing about geometry — just a flat
 variable vector and residual blocks — so the same solver is meant to be
@@ -103,7 +105,7 @@ src/view.ts              the orthographic camera, as pure testable functions (th
 src/vec3.ts              three-vectors over plain numbers, for the camera and arc layout
 src/arcgeom.ts           which way round an arc goes, in its own plane — one rule for everyone
 src/projection.ts        each entity's shape on screen, and a pixel on it lifted back to the world
-src/workplane.ts         what a click lands on in 3D: the default frame's plane, or the one facing you
+src/workplane.ts         what a click lands on in 3D: the work plane, the default frame's, else the ground
 src/loops.ts             closed loops (joined by shared point or coin, never proximity), and which one a click is in
 src/sketchface.ts        the three points of a face a sketch plane on it is made of, +z toward you
 src/faces.ts             a solid's faces from its live geometry (a revolve's swept): culled, sorted per face, lit from the eye
@@ -124,7 +126,7 @@ src/tools/extrude.ts      click inside regions, see the solids, ✓; they are ex
 src/tools/revolve.ts      click inside regions, then on an axis, ✓; they are revolved
 src/tools/feature.ts      pick → preview → confirm, shared by the feature tools
 src/tools/selection.ts    the canvas's selection (names and regions), and a feature tool's picked regions
-src/tools/sketch.ts       click inside a face; plane(a, b, c) on its own points is typed
+src/tools/sketch.ts       click inside a face; workplane("a.b.c") on its own points is typed
 src/tools/edit.ts         Edit e1: the feature dialog on a feature that exists — holes toggled, the depth changed
 src/tools/region.ts       the click-inside tools' shared region preview
 src/featurepreview.ts     a feature's commit, run on a throwaway copy: its preview
@@ -230,23 +232,27 @@ construction is ambiguous (tangent + through-a-point + radius admits four
 circles) the solver returns the branch nearest the seed, and dragging flips
 branches, exactly as Onshape does.
 
-**There is no world frame, and no origin.** Geometry is defined by its
-relations to other geometry; an origin nobody made is what tempts a drawing
-into being related to a global grid instead. So `fix` — and any mention of a
-direction to be level with — is relative to a **coordinate frame**, which is a
-thing you make: `frame()` is an origin point plus a point fixing +x — two
-ordinary, draggable, constrainable points — and `setDefaultFrame(name)` says
-which one is meant when none is named. With no frame at all they refuse, and
-say what to do about it. A frame draws as a small axes marker at its origin,
-in SolidWorks' colours — **x red, y green, z blue**, each lettered — and
-heavier when it is the default; drag the marker to move it, or its x-ref to
-turn it, and everything levelled or fixed against it follows.
+**One origin, and nothing else made for you.** Geometry is defined by its
+relations to other geometry, so a circle is just a circle: it carries its own
+normal, the way it faces, solved like its radius — draw one and you get one
+circle, not a frame to hang it on. Every document has one fixed **origin**,
+drawn as an axes triad in SolidWorks' colours — **x red, y green, z blue** —
+which is never solved and never deleted: `"origin"`, `"origin.x"` … name it,
+and `fix` and any mention of a direction to be level with mean it when you
+name no frame of your own. Anything else is a **coordinate frame** you make:
+`frame()` is an origin point plus a point fixing +x — ordinary, draggable,
+constrainable points — and `setDefaultFrame(name)` makes it what is meant
+when none is named. It draws as the same triad, heavier when it is the
+default; drag the marker to move it, or its x-ref to turn it, and everything
+levelled or fixed against it follows.
 
 **There is no `hor` or `ver` either**, and for the same reason one step
 further on: those words say the universe hands you a privileged pair of
 directions. A frame's axes are things you can name — `"f1.x"`, `"f1.y"`, and
 in a 3D model `"f1.z"` — and `par`, `perp` and `ang` take one wherever they
-take a line. `xaxis()`, `yaxis()` and `zaxis()` fill in the default frame.
+take a line. `xaxis()`, `yaxis()` and `zaxis()` fill in the default frame
+(else the origin). A circle or arc reads as its normal there too:
+`par("c1", "l1")` stands a circle square to a line.
 
 ```js
 f = frame()                        // at the middle of the view, +x to the right
@@ -266,7 +272,7 @@ The viewport works the way Onshape's does: **right-drag orbits**, middle-drag
 pans, the wheel zooms about the cursor — and a left-drag pans too with the
 Hand armed or Space held. The camera is orthographic and starts
 square-on — the drawing in the plane z = 0, exactly as a 2D sketcher shows it
-— and `orbit(yaw, pitch)`, `pan(dx, dy)`, `zoom(f)` and `lookAt(frame?)` do the
+— and `orbit(yaw, pitch)`, `pan(dx, dy)`, `zoom(f)` and `lookAt(plane?)` do the
 same from the command line (`lookAt` puts a frame's plane square to the screen,
 +x right and +y up: Onshape's "normal to sketch"). Navigation is deliberately
 on different buttons from tool use, so the left button always belongs to
@@ -279,12 +285,17 @@ dimmed and makes it all aimable again, `view("wire")` draws no faces, and
 `view("shaded")` is the default (also the View row of the right-click menu on
 empty canvas). The mode is yours, in this browser, never in a file.
 
-**A click lands on the default frame's plane** — set a frame as the default and
-every tool draws on it, holding what it draws there with `onplane` — or, with
-no default frame, on the plane facing you through the middle of the window. So
-sketching on a tilted plane is: make the frame, `setDefaultFrame`, `lookAt`,
-draw. `pt(x, y)` is `pt(x, y, 0)`, and `fix(p, [x, y])` is a position on the
-frame's plane. A 2D file from before 3D opens lifted into z = 0.
+**A click lands on the plane you sketch on** — the work plane, which
+*Sketch on this face* sets to a solid's face (`workplane("p1.p2.p3")`, three
+of its own points, no frame made), or the default frame's — else on the
+origin's ground. The circle and arc tools also land on **the face under the
+cursor** when you have chosen no plane. Every tool holds what it draws on a
+chosen plane with `onplane`, and a circle or arc with an `onplane` on its
+centre and a `par` on its normal: ordinary relations you can delete, after
+which it is free to turn. `pt(x, y)` is `pt(x, y, 0)`, and `fix(p, [x, y])`
+is a position on the frame's plane. A 2D file from before 3D opens lifted
+into z = 0; a file from before curves carried their own normal opens with
+each curve following the frame it named, by a `par`.
 
 **Right-click without moving opens a menu** for whatever is under the
 cursor — an entity, a constraint mark, or empty canvas. Everything on it

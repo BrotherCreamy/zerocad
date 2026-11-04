@@ -144,8 +144,8 @@ export interface ToolContext {
    * Types one line into the command machinery, exactly as if it had been typed
    * at the command line — the context menu's `run`, handed to a tool. For a
    * tool whose commit *is* a command with more to it than the model: the sketch
-   * tool types `plane(a, b, c)`, which turns the camera as well as making a
-   * frame, and going through the command line is what makes the log, the
+   * tool types `workplane("a.b.c")`, which turns the camera as well as setting
+   * the work plane, and going through the command line is what makes the log, the
    * journal and the undo step those of the typed call rather than a second
    * answer to what it means. Absent outside an app, like `log`.
    *

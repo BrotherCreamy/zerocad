@@ -46,9 +46,12 @@ import { construction } from "../operations.ts";
 import type { Snap } from "../snapping.ts";
 import { coincident, midpoint, onPlane } from "../relations/basic.ts";
 import { onCircle, pointOnLine } from "../relations/geometry.ts";
-import { framePlane } from "../workplane.ts";
+import { planeOfRef, sketchPlaneRef } from "../workplane.ts";
+import { sketchFrameFor } from "../sketchface.ts";
+import { parallel } from "../relations/geometry.ts";
+import type { Plane } from "../view.ts";
 import { liesOn } from "../view.ts";
-import { cross3, dot3, lift3, sub3 } from "../vec3.ts";
+import { cross3, dot3, lift3, unit3 } from "../vec3.ts";
 
 /**
  * Creates the point a click asked for and applies whatever constraint the
@@ -58,14 +61,14 @@ import { cross3, dot3, lift3, sub3 } from "../vec3.ts";
  * rather than calling `model.addPoint` directly — that is the whole of what
  * makes a drawn shape actually attach to the one it was drawn onto.
  */
-export function placePoint(ctx: ToolContext, info: PointerInfo, name?: string): string {
+export function placePoint(ctx: ToolContext, info: PointerInfo, name?: string, plane?: string | null): string {
   const placed = ctx.model.addPoint(info.world, name).name;
   if (info.snap) inferFromSnap(ctx.model, placed, info.snap);
   // A projected snap leaves the point as free as empty space does — it is on
   // the sketch, at a position borrowed from something that is not — so it is
   // held on the plane exactly as a click in empty space would be.
   const free = !info.snap || info.snap.kind === "curve" || info.snap.kind === "projected";
-  if (free) holdOnSketchPlane(ctx.model, placed);
+  if (free) holdOnSketchPlane(ctx.model, placed, plane);
   return placed;
 }
 
@@ -82,138 +85,152 @@ export function requirePlanar(model: Model, tool: string): void {
 }
 
 /**
- * Three decimals, the menu's and the hover tag's precision: a plane's origin
- * typed into the log is read by a person, and `pt(512.3456789012345, …)` would
- * teach the command less well than `pt(512.346, …)` for a difference no zoom
- * shows. Negative zero is written as zero.
+ * Whether the region under a click is **a solid's face** — a loop every member
+ * of which one feature names (its profile, its lid's twins, a wall's quad) —
+ * and so a plane a curve drawn there lies on. A plain sketch loop is not one:
+ * a circle drawn inside a rectangle on the ground lies on the ground already.
  */
-function num(v: number): string {
-  const r = Math.round(v * 1000) / 1000;
-  return String(r === 0 ? 0 : r);
+function isSolidFace(model: Model, members: readonly { name: string }[]): boolean {
+  if (!members.length) return false;
+  let common: string[] = model.featuresNaming(members[0].name).map((f) => f.name);
+  for (const m of members.slice(1)) {
+    const mine = model.featuresNaming(m.name).map((f) => f.name);
+    common = common.filter((f) => mine.includes(f));
+  }
+  return common.length > 0;
 }
 
 /**
- * The line a curve tool types when its first click lands in a 3D model with
- * no default frame: `plane(pt(x, y, z), null, null, { look: false })` — a
- * frame whose origin is the click and whose refs `frame()` seeds a span along
- * the screen's right and up (the kernel's x and y in a view never turned), so
- * its plane is the working plane the click already landed on: the one facing
- * the viewer. Made the default, as `plane` does, and the view left alone.
+ * The plane a curve tool's gesture stands on, and the two relations that hold
+ * the curve there. **No frame is made for it** — a circle carries its own
+ * normal (see `CircleEntity`); the owner, twice: *"why does it first create a
+ * frame? … can I not just create a circle or whatever in space?"*
+ * (docs/plans/frameless-curves.md).
  *
- * The origin is rounded (see `num`), which moves the plane a fraction of a
- * thousandth along its normal in a turned view; the refs are seeded by the
- * command layer from the exact screen axes, so its orientation is exact.
- */
-export function clickPlaneCommand(at: number[]): string {
-  return `plane(pt(${at.map(num).join(", ")}), null, null, { look: false })`;
-}
-
-/**
- * The plane a curve tool's gesture stands on. A circle or an arc in a 3D model
- * is given the default frame's plane (see `CircleEntity`), and **with no
- * default frame the tool makes one** at its first click, rather than refusing:
- * nobody should have to know what a frame is to draw a circle. It types
- * `clickPlaneCommand` through the command line (`ctx.run`) — so the log shows
- * the line, and the journal and the undo step are those of the typed call —
- * and the gesture carries on. This is not a world datum: it is the working
- * plane at the click, seeded as a typed `frame()` is, and exists because the
- * click asked for a plane (the register's no-world-frame entry).
+ * Where the curve lies is decided at the gesture's first click, as a plane
+ * reference (`Model.planeKind`):
  *
- * The typed line runs asynchronously, so a commit that arrives before it has
- * settled is held until it has, and then made as a step of its own (`act`) —
- * otherwise it would land inside the plane's undo step. In practice the line
- * has gone in long before a drag ends or a second click comes.
+ * 1. the plane the user chose to sketch on — the work plane (sketch on face)
+ *    or the default frame (`sketchPlaneRef`) — when there is one: a sketch is
+ *    drawn on its own plane, as in Onshape, whatever is under the cursor;
+ * 2. else **the face of a solid under the cursor** (`regionAt`, the nearest loop
+ *    at the pixel, every member of it one feature's): its own plane,
+ *    `sketchFrameFor`'s three points facing the viewer, or a circle's;
+ * 3. else the origin's x–y plane, where the click landed.
  *
- * Headless, with no command line to type into, there is no plane to make, and
- * the first click is refused in the model's own words — through `ctx.log`
- * where there is one, thrown where there is not: the model's "no default
- * frame" stays the guard under the command layer.
+ * Every click of the gesture is read on that plane (`settle`), and the commit
+ * holds the curve there with **ordinary, visible, deletable relations** — its
+ * centre `onplane` (unless a snap already pinned it, or it was held as it was
+ * placed) and its normal `par` to the plane's (`hold`). Delete the `par` and the
+ * circle is free to turn in space; constrain its normal to a line instead and
+ * it follows the line.
  */
 export class CurvePlane {
   private ctx: ToolContext;
-  private tool: string;
-  /** The typed plane, while it is still going in. */
-  private pending: Promise<void> | null = null;
-  /** Which gesture the pending plane belongs to, so a cancel can let it go. */
-  private token: object | null = null;
-  /** The click the plane was made at — taken on the screen-facing plane, before the frame's existed. */
-  private madeAt: PointerInfo | null = null;
+  /** The plane the gesture stands on: its reference, and as view.ts's Plane. */
+  private ref: string | null = null;
+  private on: Plane | null = null;
 
-  constructor(ctx: ToolContext, tool: string) {
+  constructor(ctx: ToolContext, _tool: string) {
     this.ctx = ctx;
-    this.tool = tool;
   }
 
-  /**
-   * Asked on a gesture's first click. True when it may go on — on the default
-   * frame, or on the plane just typed — and false when it was refused.
-   */
+  /** Asked on a gesture's first click: decides the plane. Always goes on. */
   begin(p: PointerInfo): boolean {
-    const ctx = this.ctx;
-    this.madeAt = null;
-    if (ctx.model.dim !== 3) return true;
-    try {
-      ctx.model.resolveFrame();
-      return true;
-    } catch (e) {
-      if (!ctx.run || !ctx.act) {
-        const why = `${this.tool}: ${e instanceof Error ? e.message : e}`;
-        if (!ctx.log) throw new Error(why);
-        ctx.log(why);
-        return false;
+    const m = this.ctx.model;
+    this.ref = null;
+    this.on = null;
+    if (m.dim !== 3) return true;
+    let ref = sketchPlaneRef(m);
+    if (ref === null && !p.snap) {
+      const hit = this.ctx.regionAt?.(p.screen) ?? null;
+      const loop = hit ? hit.loops[hit.index] : null;
+      if (hit && loop && isSolidFace(m, loop.members)) {
+        try {
+          ref = sketchFrameFor(m, loop, hit.toward);
+        } catch {
+          ref = null; // a face no plane can be made of: the ground, then
+        }
       }
     }
-    const token = {};
-    this.token = token;
-    this.madeAt = p;
-    this.pending = Promise.resolve(ctx.run(clickPlaneCommand(p.world))).finally(() => {
-      if (this.token === token) this.pending = null;
-    });
+    ref ??= m.drawingPlane();
+    this.ref = ref;
+    this.on = planeOfRef(m, ref);
     return true;
   }
 
-  /** Whether the plane typed for this gesture is still going in. */
-  get typing(): boolean {
-    return this.pending !== null;
+  /** The plane reference the gesture stands on, or null in 2D. */
+  get plane(): string | null {
+    return this.ref;
   }
 
   /**
-   * `info` as the commit should read it: the click the plane was made at moved
-   * onto that plane, which the rounded origin can have put a fraction of a
-   * thousandth off the one the click landed on — so the point is on the sketch
-   * and `holdOnSketchPlane` holds it there. Every later click landed on the
-   * frame's plane already, and a snapped one is where it was aimed.
+   * The normal a curve drawn on the plane is seeded with — the plane's own,
+   * which for a face is the side facing the viewer — or null in 2D. A seed:
+   * `hold` is what keeps it.
+   */
+  normal(): number[] | null {
+    if (!this.on) return null;
+    return unit3(cross3(lift3(this.on.u), lift3(this.on.v)));
+  }
+
+  /**
+   * `info` as the commit should read it: on the gesture's plane. A click that
+   * landed on another plane (the ground, under a face) is read again on this
+   * one, at the same pixel; a snapped click is where it was aimed, and stays.
    */
   settle(info: PointerInfo): PointerInfo {
-    if (info !== this.madeAt || info.snap) return info;
-    const plane = framePlane(this.ctx.model);
-    if (!plane) return info;
-    const n = cross3(plane.u, plane.v);
-    const len = Math.hypot(...n);
-    if (!(len > 0)) return info;
-    const w = lift3(info.world);
-    const off = dot3(sub3(w, lift3(plane.origin)), n) / (len * len);
-    return { ...info, world: w.map((c, i) => c - off * n[i]) };
+    const plane = this.on;
+    if (!plane || info.snap) return info;
+    // Already on it: kept as it is, plane and all — the engine reports the
+    // plane with its front toward the viewer, which is what a tool reads
+    // "counter-clockwise as seen" by (the arc tools).
+    if (liesOn(plane, info.world)) return info;
+    const w = this.ctx.planeAt?.(info.screen, plane);
+    if (!w) return info;
+    // Read again on this plane, turned to face the way the engine's plane did.
+    const was = info.plane;
+    const flip = was && dot3(cross3(lift3(was.u), lift3(was.v)), cross3(lift3(plane.u), lift3(plane.v))) < 0;
+    return { ...info, world: w, plane: flip ? { ...plane, v: plane.v.map((c) => -c) } : plane };
   }
 
-  /** Runs `commit` now — or, while the plane is still going in, once it is, as a step of its own. */
+  /** Runs `commit` — at once: there is never a typed plane to wait for. */
   commit(commit: () => void): void {
-    if (!this.pending) {
-      commit();
-      return;
-    }
-    const token = this.token;
-    void this.pending.then(() => {
-      if (this.token === token) this.ctx.act!(commit);
-    });
+    commit();
   }
 
-  /** The gesture was abandoned: a plane still going in stays, as typed, and nothing waits on it. */
-  cancel(): void {
-    this.token = null;
-    this.pending = null;
-    this.madeAt = null;
+  /**
+   * Holds `curve` on the gesture's plane: its centre `onplane` — unless the
+   * centre is already held on it, or a snap put it somewhere off it (the snap
+   * wins: it is what was aimed at) — and its normal `par` to the plane's.
+   * Returns the relations made. Nothing in 2D, whose curves lie in the one
+   * plane there is.
+   */
+  hold(curve: string, centre: string): string[] {
+    const m = this.ctx.model;
+    if (!this.ref || !this.on || m.dim !== 3) return [];
+    const made: string[] = [];
+    const held = m.relationsNaming(centre).some((r) => r.op === "onPlane" && r.args[0] === centre && r.args[1] === this.ref);
+    if (!held && liesOn(this.on, m.coords(centre))) made.push(onPlane(m, centre, this.ref));
+    made.push(parallel(m, curve, normalRef(m, this.ref)));
+    return made;
   }
+
+  /** The gesture was abandoned. */
+  cancel(): void {
+    this.ref = null;
+    this.on = null;
+  }
+}
+
+/**
+ * The direction reference for a plane's normal — what `par` takes to hold a
+ * curve's normal to it: a frame's `"f1.z"` (the origin's `"origin.z"`), and a
+ * curve or a face's `"p1.p2.p3"` as themselves (relations/refs.ts reads both
+ * as their normals).
+ */
+export function normalRef(model: Model, ref: string): string {
+  return model.planeKind(ref) === "frame" ? `${ref}.z` : ref;
 }
 
 /**
@@ -238,19 +255,26 @@ export function asArmed(ctx: ToolContext, ...curves: string[]): void {
 }
 
 /**
- * Holds a point on the default frame's plane with `onPlane`, if this is a 3D
- * model with a default frame and the point is on its plane. Returns the
- * relation's name, or null when nothing applied.
+ * Holds a point on the plane the user chose to sketch on with `onPlane` — the
+ * work plane or the default frame (`sketchPlaneRef`), or `plane` when the
+ * caller says which (a curve tool's gesture plane, which may be a solid's
+ * face) — if this is a 3D model and the point is on it. Returns the relation's
+ * name, or null when nothing applied. With no plane chosen and none given,
+ * nothing: a point drawn on the ground in a fresh document stays free, as it
+ * always did, and only a curve — which needs its orientation held by
+ * something — is held there (`CurvePlane.hold`).
  *
  * Exported for the points a tool makes *without* a click of their own — a
  * rectangle's two derived corners, a three-point circle's centre — which are
  * on the sketch because they were laid out there, and have to stay on it for
  * the same reason the clicked ones do.
  */
-export function holdOnSketchPlane(model: Model, pointName: string): string | null {
-  const plane = framePlane(model);
+export function holdOnSketchPlane(model: Model, pointName: string, given?: string | null): string | null {
+  const ref = given ?? sketchPlaneRef(model);
+  if (ref === null || model.dim !== 3) return null;
+  const plane = planeOfRef(model, ref);
   if (!plane || !liesOn(plane, model.coords(pointName))) return null;
-  return onPlane(model, pointName, model.defaultFrame);
+  return onPlane(model, pointName, ref);
 }
 
 /**

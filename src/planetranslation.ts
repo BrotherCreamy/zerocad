@@ -30,15 +30,21 @@
 //   * A **circle** has no normal of its own to match, so it takes the default
 //     frame at its step, else a candidate whose plane its centre lies on, else
 //     the earliest candidate.
-//   * When **no candidate fits** — a file with no frame at all, which a 2D
-//     drawing may well be, or an arc in a plane no frame shares — the
-//     translation makes one: a frame named `plane` (or `plane2`, …; never a
-//     name the file uses), its points `plane_o`, `plane_x`, `plane_y`, lying in
-//     the curve's plane (the kernel's x–y plane for a circle, which has nothing
-//     better to say, and which is where every 2D drawing lived), with its
-//     origin on the curve's centre. It goes into the journal just before the
-//     curve, re-saves with it, and is an ordinary frame from then on: visible,
-//     draggable, deletable (taking its curves, as any frame does).
+//   * **The origin is the last candidate** (docs/plans/frameless-curves.md):
+//     a file with no frame at all — which a 2D drawing may well be — has its
+//     circles face the kernel's x–y plane, where every 2D drawing lived. The
+//     translation used to make a frame of its own for them, `plane`; the
+//     origin is that plane, and is always there.
+//   * When **no candidate fits** an arc — one in a plane no frame shares, the
+//     origin included — the translation makes a frame: named `plane` (or
+//     `plane2`, …; never a name the file uses), its points `plane_o`,
+//     `plane_x`, `plane_y`, lying in the arc's plane with its origin on the
+//     arc's centre. It goes into the journal just before the arc, re-saves
+//     with it, and is an ordinary frame from then on.
+//
+// What "takes a frame" means today is said by persist.ts's format-13 step: the
+// curve is given that frame's +z as its own normal and a `par(curve, "f.z")`,
+// recorded in `following` here and written at the end of the journal there.
 //
 // Every choice is about *orientation* only. A plane never pins a centre (see
 // `CircleEntity`), so no translated curve moves on open — with one honest
@@ -51,7 +57,8 @@
 // as its complement. Only a typed bare `arc()` in a 3D drawing, on a frame
 // turned upside down, and only for files from before this version.
 
-import { Model, type JournalEntry } from "./model.ts";
+import { Model, ORIGIN, type JournalEntry } from "./model.ts";
+import { frameBasis } from "./relations/refs.ts";
 import { arcNormal } from "./arcgeom.ts";
 import { framePlaneAxes } from "./curveplane.ts";
 import { IN_PLANE_SINE } from "./operations.ts";
@@ -131,7 +138,8 @@ interface Made {
  * model cannot take). `lift` says which. Otherwise `give` passes every step
  * through.
  */
-export function planeTranslation(model: Model, journal: JournalEntry[], version: number, lift = false) {
+export function planeTranslation(model: Model, journal: JournalEntry[], version: number, lift: boolean,
+                                 following: Map<string, string>) {
   const active = version < 7 || lift;
   // Where the name is in the entry as written: after the plane from 7 on.
   const v7 = version >= 7;
@@ -163,6 +171,11 @@ export function planeTranslation(model: Model, journal: JournalEntry[], version:
     for (const e of model.entities.values()) {
       if (e.kind === "frame" && !doomed.has(e.name) && normalOf(e.name)) out.push(e.name);
     }
+    // The origin last: where this translation once made a frame of its own for
+    // a curve no frame fitted — every lifted 2D drawing's circles, in the
+    // kernel's x–y plane — the origin is that plane, and is always there
+    // (docs/plans/frameless-curves.md). A frame of the file's own still wins.
+    if (model.dim === 3) out.push(ORIGIN);
     return out;
   }
 
@@ -208,7 +221,7 @@ export function planeTranslation(model: Model, journal: JournalEntry[], version:
     if (at) {
       const on = cands.find((f) => {
         const ax = framePlaneAxes(model, f)!;
-        return liesOn({ origin: model.coords(model.frame(f).origin), u: ax.u, v: ax.v }, at);
+        return liesOn({ origin: frameBasis(model, f)().origin, u: ax.u, v: ax.v }, at);
       });
       if (on) return { plane: on, entries: [] };
     }
@@ -285,14 +298,14 @@ export function planeTranslation(model: Model, journal: JournalEntry[], version:
         if (arc?.kind !== "arc") continue;
         const [C, S, E] = [model.coords(arc.center), model.coords(arc.start), model.coords(arc.end)];
         const raw = unit3(cross3(sub3(lift3(S), lift3(C)), sub3(lift3(E), lift3(C))));
-        let plane = arc.plane!;
+        let plane = following.get(rec.name)!;
         const now = normalOf(plane);
         if (raw && !(now && parallel(raw, now))) {
           const own = made.find((m) => m.frame === plane && m.owner === rec.name);
           const switched = nearest(raw, rec.candidates.filter((f) => f !== own?.frame).concat(later));
           if (switched) {
             plane = switched;
-          } else if (own && model.dependents(own.frame).every((d) => d.name === rec.name)) {
+          } else if (own && [...following].every(([c, f]) => f !== own.frame || c === rec.name)) {
             // The frame was made for this arc alone, on a guess: turn it into
             // the arc's plane rather than leave it and make another.
             [own.u, own.v] = spanOf(v6ArcNormal(C, S, E) ?? raw);
@@ -312,8 +325,8 @@ export function planeTranslation(model: Model, journal: JournalEntry[], version:
             plane = fresh.name;
             later.push(fresh.name);
           }
-          arc.plane = plane;
-          rec.entry.args[4] = plane;
+          following.set(rec.name, plane);
+          rec.entry.args[4] = normalOf(plane) ?? [0, 0, 1];
         }
         // Which way round: version 6's side against the chosen frame's +z.
         const was = v6ArcNormal(C, S, E);

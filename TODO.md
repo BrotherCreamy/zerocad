@@ -24,6 +24,24 @@ otherwise.
 
 ## Decisions made so far — veto here if any are wrong
 
+- **A circle is just a circle: curves carry their own normal, one origin is
+  always there, nothing makes a frame unless asked, sketch on face sets the
+  work plane** (the owner, 2026-11-04: *"why everything need frame? why can
+  not just put circle right there?"*). Spec:
+  [`frameless-curves.md`](docs/plans/frameless-curves.md), **built**.
+  Vetoable, as built: a 3D circle or arc owns three normal variables, read
+  normalised (no normalisation residual, no angles); a fixed built-in frame
+  `origin` — not an entity, not journalled, never deleted, drawn in RGB — is
+  what `fix`, `onplane` and `xaxis()` mean with no default frame; the curve
+  tools draw on the chosen plane, else the solid face under the click, else
+  the ground, and hold the curve there with a deletable `onplane` and `par`;
+  extrude, revolve, fillet and sketch on face make no frame (sketch on face
+  types `workplane("p1.p2.p3")`, journalled document state). **This revises
+  two earlier entries**: `coordinate-frames.md`'s "there is no world frame"
+  (there is now exactly one, fixed — the rest of that decision, that nothing
+  else makes a frame for you, is kept and strengthened) and
+  `extrude-makes-its-plane.md` (extrude no longer makes a plane; it runs
+  along the profile's own). Old files open to the same geometry (format 13).
 - **Everything fits, enforced; the tray wraps where a line will not fit;
   the organiser shown on a phone** (the owner, 2026-11-04: *"Second row....
   everything has to fit"*; *"show from start"*). Spec:
@@ -2019,6 +2037,22 @@ extended the way `defineTool` extends the tool registry would close it.
 
 ## Smaller things
 
+- **`par` started from exactly a right angle does not move** (found building
+  frameless curves): a wedge is at its maximum at 90°, so its gradient there
+  is zero, and a ground circle told `par(c, "origin.x")` sits still while
+  the status says CONFLICT. The same arithmetic holds for two lines at
+  exactly 90°, so it is not new; the tools never write one from there, but a
+  typed relation can. A seed nudge, or a cosine fallback where the wedge's
+  gradient vanishes, would fix it. `frameless.e2e.ts` turns its circle
+  against a 45° line for this reason, and says so.
+- **`xaxis()` against a work plane that is not a frame** falls back to the
+  default frame's (else the origin's), because three points or a curve name
+  no x. Giving a triple's first edge the name of its x — `"p1.p2.p3.x"` —
+  would close it; nothing has asked yet.
+- **`planetranslation.ts` keeps its own `spanOf`**, identical to
+  `model.ts`'s, rather than importing it: the old-file fixtures pin its exact
+  arithmetic, and the two may be merged when someone can rerun them.
+- **A tooltip under a finger at the top-right action strip** (portrait) has
 - ~~**A tooltip under a finger at the top-right action strip** (portrait) has
   room neither above nor beside and goes below the finger, partly under the
   hand while held~~ — a held tip now keeps off the whole tray
@@ -2532,6 +2566,33 @@ extended the way `defineTool` extends the tool registry would close it.
 
 ## Done
 
+- [x] **A circle is just a circle: curves carry their own normal, one origin,
+      nothing makes a frame unless asked** (2026-11-04). The owner: *"why
+      everything need frame? why can not just put circle right there?"* Spec:
+      [`docs/plans/frameless-curves.md`](docs/plans/frameless-curves.md),
+      marked built, every deviation in its *As built*. `ORIGIN`,
+      `planeKind`/`planeValues`/`drawingPlane`/`setWorkPlane`/`normalOf`/
+      `setNormal`, `referentsOf`, `parsePointTriple` in `model.ts`;
+      `curveNormal`/`unitDuals`/`planeBasis` in `relations/refs.ts`;
+      `curveplane.ts` from the curve; `CurvePlane` in `tools/place.ts`;
+      `orientingPlane` and a frameless `fillet` in `operations.ts`; the `.n`
+      blocks in `extrusion.ts`/`revolution.ts`; `workplane.ts`;
+      `sketchface.ts`; format 13 (`framelessCurves`, `renameOldOrigin`) in
+      `persist.ts`; the origin drawn first in `main.ts`. Unit 1153 (1134
+      before; `test/frameless.test.ts` 16, `test/oldfiles13.test.ts` 6),
+      e2e 498 (493 before; `frameless.e2e.ts` 5), `npm run test:all` green.
+      **Deviations, in short**: the normal is three variables read
+      normalised — neither of the spec's two options; the origin's name label
+      is drawn only when it is lit or selected; the empty-canvas words moved
+      below the middle; `xaxis()` takes the work plane's only when it is a
+      frame; chosen planes win over the face under the cursor; points the
+      other tools place on the bare ground are not held (curves are); an old
+      file's `par`s go at the end of its journal; an old `origin` is renamed
+      `origin2`; a lifted 2D file no longer gains a `plane` frame; fillet's
+      fourth argument is a side vector; a revolve makes no end frames
+      (expansion 11); extruding from a curve's plane facing away from the
+      viewer takes the loop's own plane. Two e2e setups changed
+      (`intersection.e2e.ts`, `undo.e2e.ts`), everything else kept its claim.
 - [x] **Everything fits: a second toolbar row, the organiser shown, nothing
       over anything** (2026-11-04). The owner: *"Second row.... everything
       has to fit"*; *"show from start"*. Spec:

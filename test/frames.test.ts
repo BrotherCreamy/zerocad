@@ -136,20 +136,29 @@ test("a frame and its default survive a save/open round trip, byte for byte", as
 
 // --- what the relations mean now -------------------------------------------
 
-test("no frame and no default: the error says what to do about it", () => {
+test("no frame and no default: fix and the axes mean the origin, journalled by name", async () => {
+  // There used to be no world frame, and these refused with "no default frame —
+  // frame() then setDefaultFrame()". Every model has the origin now
+  // (docs/plans/frameless-curves.md), and that is what they mean when nothing
+  // else is said — resolved now and journalled as "origin", as a default is.
+  await loadKernel();
   const m = new Model(2);
   m.addLine(null, null, "l");
   m.addPoint([1, 2], "p");
-  for (const call of [
-    () => parallel(m, "l", xaxis(m)),
-    () => parallel(m, "l", yaxis(m)),
-    () => fix(m, "p", [0, 0]),
-  ]) {
-    assert.throws(call, /no default frame — frame\(\) then setDefaultFrame\(\), or say which frame/);
-  }
-  // And nothing was left behind by the attempt.
-  assert.equal(m.relations.size, 0);
-  assert.equal(m.problem.blockCount, 0);
+  assert.equal(xaxis(m), "origin.x");
+  assert.equal(yaxis(m), "origin.y");
+  const r = fix(m, "p", [3, 4]);
+  assert.deepEqual(m.relationOf(r).args, ["p", [3, 4], "origin"]);
+  m.solve();
+  assert.deepEqual(m.coords("p").map((c) => Math.round(c * 1e6) / 1e6), [3, 4], "the origin is the kernel's own axes");
+  // A frame of the user's, made the default, takes over — and the entry made
+  // before it keeps meaning the origin.
+  m.addPoint([10, 0], "o");
+  m.addPoint([10, 5], "x");
+  m.addFrame("o", "x", null, "f");
+  m.setDefaultFrame("f");
+  assert.equal(xaxis(m), "f.x");
+  assert.deepEqual(m.relationOf(r).args, ["p", [3, 4], "origin"]);
 });
 
 test("par against a tilted frame levels the line to the frame, exactly", async () => {
@@ -254,7 +263,7 @@ test("the default is resolved at call time and journalled resolved", async () =>
 
   m.setDefaultFrame(null);
   assert.equal(m.defaultFrame, null, "null clears it");
-  assert.throws(() => xaxis(m), /no default frame/);
+  assert.equal(xaxis(m), "origin.x", "and the axes mean the origin again");
   assert.throws(() => m.setDefaultFrame("l"), /"l" is not a frame/);
 });
 
@@ -302,12 +311,12 @@ test("deleting the default frame clears the pointer, journalled as the expansion
 
 // --- the older files -------------------------------------------------------
 
-test("a pre-frames file is refused by name and step, not silently skipped", () => {
+test("a pre-frames file opens: its frameless fix and hor mean the origin, which is what they meant", () => {
   // Exactly what this app used to write before frames: `hor`/`fix` with no
-  // frame in sight.
-  // There is no world frame left to resolve them against and a compatibility
-  // shim would preserve precisely the semantics this package removes, so the
-  // file is refused — with the message that says what a frame is for.
+  // frame in sight. These were refused while there was no world frame to
+  // resolve them against. There is one datum now, the origin — the kernel's
+  // own axes, which is precisely what a version-1 `fix` was relative to — so
+  // the file opens, and its entries re-save naming it.
   const old = JSON.stringify({
     format: FORMAT, version: 1, dim: 2,
     journal: [
@@ -315,23 +324,13 @@ test("a pre-frames file is refused by name and step, not silently skipped", () =
       { op: "addPoint", args: [[10, 0], "b"] },
       { op: "addLine", args: ["a", "b", "l"] },
       { op: "fix", args: ["a", [0, 0]] },
-    ],
-    values: { points: {}, radii: {} },
-  });
-  assert.throws(() => open(old), /step 4, fix\("a", \[0,0\]\): no default frame — frame\(\)/);
-
-  const oldHor = JSON.stringify({
-    format: FORMAT, version: 1, dim: 2,
-    journal: [
-      { op: "addLine", args: [null, null, "l"] },
       { op: "horizontal", args: ["l"] },
     ],
     values: { points: {}, radii: {} },
   });
-  // The message now comes out of the *translation* rather than out of `hor`
-  // itself — `hor` is gone — but it is the same message at the same step,
-  // because the translation is what has to resolve the frame the entry lacks.
-  assert.throws(() => open(oldHor), /step 2, horizontal\("l"\): no default frame/);
+  const m = open(old);
+  assert.deepEqual([...m.relations.values()].map((r) => [r.op, r.args]),
+    [["fix", ["a", [0, 0], "origin"]], ["parallel", ["l", "origin.x"]]]);
 });
 
 test("a version-2 file's hor/ver are translated, and re-save in the new vocabulary", async () => {
@@ -386,7 +385,7 @@ test("a version-2 file's hor/ver are translated, and re-save in the new vocabula
   // forever. It does round-trip from here on.
   const saved = save(m);
   assert.equal(saved.includes("horizontal"), false, "the old words are gone from the file");
-  assert.match(saved, /"version": 12/);
+  assert.match(saved, /"version": 13/);
   assert.equal(save(open(saved)), saved, "and the new file is stable");
 });
 
@@ -457,9 +456,9 @@ test("ls() names a frame by its pieces, and says which one is the default", () =
   assert.match(line(), /\(default\)$/);
 });
 
-test("help() covers the frame vocabulary — it is the one thing with no world to fall back on", () => {
+test("help() covers the frame vocabulary — the origin every model has, and the frames a user makes", () => {
   const help = callScope(neocadScope({ model: new Model(2) }), "help");
-  for (const word of ["frame(", "setDefaultFrame", "defaultFrame()", "no world frame"]) {
+  for (const word of ["frame(", "setDefaultFrame", "defaultFrame()", "origin — always there", "workplane("]) {
     assert.ok(help.includes(word), `help() should mention ${word}`);
   }
 });
@@ -469,18 +468,20 @@ test("the format version says the vocabulary changed, and still reads the old en
   // 10 a feature's frames
   // sharing its own points; 9 a fillet
   // journalling the features it regenerated; 8 a
-  // feature's profile carrying portions; circles and arcs
+  // feature's profile carrying portions; 13 a curve carrying its own normal
+  // where it named a frame; circles and arcs
   // carrying a plane was 7, the app becoming 3D 6, `addFrame` taking a y-ref
   // before its name 5, `d`-named dimensions 4 and the hor/ver retirement 3.
   // Every boundary is a translation rather than a wall, so this file's own v2
   // fixture above still opens.
-  assert.equal(VERSION, 12);
+  assert.equal(VERSION, 13);
   // A version-1 file with nothing frameless in it opens unchanged: the version
-  // wall is not what refuses the ones above, the missing frame is.
+  // wall was never what refused a frameless one, the missing frame was — and
+  // since the origin, there is always one (above).
   const empty = JSON.stringify({ format: FORMAT, version: 1, dim: 2, journal: [], values: { points: {}, radii: {} } });
   assert.equal(open(empty).entities.size, 0);
-  const future = JSON.stringify({ format: FORMAT, version: 13, dim: 2, journal: [], values: { points: {}, radii: {} } });
-  assert.throws(() => open(future), /version 13, and this build only reads up to 12/);
+  const future = JSON.stringify({ format: FORMAT, version: 14, dim: 2, journal: [], values: { points: {}, radii: {} } });
+  assert.throws(() => open(future), /version 14, and this build only reads up to 13/);
 });
 
 test("a version-4 frame opens with its name where the name goes now, and re-saves as current", async () => {
@@ -513,7 +514,7 @@ test("a version-4 frame opens with its name where the name goes now, and re-save
     `and it still means the same frame: p at ${at}`);
 
   const saved = save(m);
-  assert.match(saved, /"version": 12/);
+  assert.match(saved, /"version": 13/);
   assert.equal(save(open(saved)), saved, "stable from here on");
 
   // The translation is keyed on the version, not on how many arguments an

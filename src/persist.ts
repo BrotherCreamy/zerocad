@@ -18,7 +18,8 @@
 // and reopening a drawing should give back the one that was saved rather
 // than whichever the solver happens to find this time.
 
-import { Model, type JournalEntry } from "./model.ts";
+import { Model, ORIGIN, memberName, parsePointTriple, type JournalEntry } from "./model.ts";
+import { framePlaneAxes } from "./curveplane.ts";
 import * as basic from "./relations/basic.ts";
 import * as geom from "./relations/geometry.ts";
 import { isFullTurn } from "./relations/revolution.ts";
@@ -29,7 +30,33 @@ import { freshName, planeTranslation } from "./planetranslation.ts";
 
 export const FORMAT = "neocad-model";
 /**
- * 12 since **a group may be empty** (docs/plans/organiser.md). A group made to
+ * 13 since **a circle or arc carries its own normal** (docs/plans/
+ * frameless-curves.md). `addCircle(center, radius, normal, name)` and
+ * `addArc(center, start, end, radius, normal, name)` take three numbers — a
+ * seed — where they named a frame, and a 3D `fillet`'s fourth argument is the
+ * side its arc's normal is on, three numbers, where it was a frame too; a
+ * today's partial `revolve` makes no end frames (expansion 11); and two ops are
+ * new, `setNormal` and `setWorkPlane`. A version-12 build replaying a
+ * version-13 file would read a normal as a frame's name and refuse it, which
+ * is the misreading a version is for. The saved values gain `normals`.
+ *
+ * Going the other way **a version-12 file opens as it was**: a curve recorded
+ * with a frame gets its normal from that frame — the frame's +z at its step as
+ * the seed, and from the restored positions once they are back — **and an
+ * ordinary `par(curve, "f.z")`**, so it still follows the frame. The pars are
+ * written in **at the end of the replay**, not beside the curves: relations
+ * are named by order, and a relation written in at a curve's step would push
+ * every later `r` along, under the `deleteRelation("r5")`s and groups the
+ * file's later entries hold. At the end they take names nothing in the file
+ * uses, and a curve or frame the file deleted on the way gets none. A frame a
+ * feature made (an auto-made sketch frame, an old lid or end frame) is kept: it
+ * is real now, and other things may be constrained to it. A partial revolve
+ * from before 13 is given its expansion, `10` (or `9`, before 10), and — where
+ * its profile's curves stood on frames besides its sketch frame — the list of
+ * frames it turned, read from the frames those curves named, which nothing
+ * else now remembers. A whole turn passes through.
+ *
+ * 12 was **a group may be empty** (docs/plans/organiser.md). A group made to
  * be drawn into starts with nothing, so a group whose last member leaves — by
  * `removeFrom`, or by a deletion's cascade, which writes a `removeFrom` for
  * each group the name leaves — now stays, where version 11's went silently
@@ -234,7 +261,7 @@ export const FORMAT = "neocad-model";
  * with, so an older file replays to exactly the solids it was saved with
  * (`test/explicitregions.test.ts` opens one written by the build before).
  */
-export const VERSION = 12;
+export const VERSION = 13;
 
 export interface SavedModel {
   format: typeof FORMAT;
@@ -242,7 +269,16 @@ export interface SavedModel {
   dim: number;
   journal: JournalEntry[];
   /** Solved coordinates, keyed by point name; radii keyed by circle/arc name. */
-  values: { points: Record<string, number[]>; radii: Record<string, number> };
+  values: {
+    points: Record<string, number[]>;
+    radii: Record<string, number>;
+    /**
+     * Solved normals, keyed by circle/arc name — a 3D model's curves only
+     * (format 13). Absent in a file that has none, and in every older file,
+     * whose curves take theirs from the frames they named.
+     */
+    normals?: Record<string, number[]>;
+  };
   /**
    * The source of any tools authored at the command line, as **inert text**.
    * Absent when there are none, so a drawing with no tools saves exactly the
@@ -290,7 +326,12 @@ function replayTable(model: Model): Map<string, (...args: unknown[]) => unknown>
     // means: `fix` and the axis helpers resolve it when they are called and
     // record the answer.
     setDefaultFrame: bound("setDefaultFrame"),
+    // The work plane (sketch on face) is document state like the default
+    // frame, journalled for the same reason: what is drawn after it lies on it.
+    setWorkPlane: bound("setWorkPlane"),
     setCoords: bound("setCoords"),
+    // A curve's normal put somewhere outright — a seed, as `setCoords` is.
+    setNormal: bound("setNormal"),
     retargetLine: bound("retargetLine"),
     // Deletion is journalled as its *expansion* — one entry per name `del`
     // removed — rather than as the `del` call itself, so a replay removes
@@ -591,6 +632,45 @@ function emptiedBefore12(model: Model, step: JournalEntry, version: number): str
 }
 
 /** Every string anywhere in a journal's arguments — a superset of the names it uses. */
+/**
+ * A file from before the origin (format 13) may already call something
+ * `origin` — a point typed `pt(0, 0, 0, "origin")` is the obvious one — and the
+ * name is the built-in frame's now, which `Model.has` refuses to anything
+ * else. Refusing the file would be the worst answer, and reading the old
+ * `origin` as the new one would quietly give it another meaning. So the
+ * file's own is renamed everywhere the file says it — as a name, as
+ * `"origin.x"`, inside `"p1.origin.p3"` — to the first name the file does not
+ * use (`origin2`, …), and re-saves so. Only for files older than 13, which
+ * cannot have meant the built-in, and only into a model that has one.
+ */
+function renameOldOrigin(saved: SavedModel, model: Model): SavedModel {
+  if (saved.version >= 13 || !model.isFrame(ORIGIN)) return saved;
+  const names = namesIn(saved.journal);
+  const mentions = (s: string) => s === ORIGIN || s.startsWith(`${ORIGIN}.`) || (parsePointTriple(s)?.includes(ORIGIN) ?? false);
+  if (![...names].some(mentions)) return saved;
+  const fresh = freshName(`${ORIGIN}2`, names);
+  const one = (s: string): string => {
+    if (s === ORIGIN) return fresh;
+    const triple = parsePointTriple(s);
+    if (triple?.includes(ORIGIN)) return triple.map((p) => (p === ORIGIN ? fresh : p)).join(".");
+    return s.startsWith(`${ORIGIN}.`) ? fresh + s.slice(ORIGIN.length) : s;
+  };
+  const walk = (v: unknown): unknown => (typeof v === "string" ? one(v) : Array.isArray(v) ? v.map(walk) : v);
+  const keyed = <T>(r: Record<string, T> | undefined): Record<string, T> | undefined =>
+    r === undefined ? undefined : Object.fromEntries(Object.entries(r).map(([k, x]) => [one(k), x]));
+  const values = saved.values;
+  return {
+    ...saved,
+    journal: saved.journal.map((e) => (Array.isArray(e.args) ? { ...e, args: walk(e.args) as unknown[] } : e)),
+    values: values && {
+      ...values,
+      points: keyed(values.points)!,
+      radii: keyed(values.radii)!,
+      ...(values.normals ? { normals: keyed(values.normals) } : {}),
+    },
+  };
+}
+
 function namesIn(journal: JournalEntry[]): Set<string> {
   const out = new Set<string>();
   const walk = (v: unknown) => {
@@ -613,16 +693,23 @@ function namesIn(journal: JournalEntry[]): Set<string> {
 export function toSaved(model: Model, tools: readonly ToolSource[] = []): SavedModel {
   const points: Record<string, number[]> = {};
   const radii: Record<string, number> = {};
+  const normals: Record<string, number[]> = {};
   for (const e of model.entities.values()) {
     if (e.kind === "point") points[e.name] = model.coords(e.name);
-    else if (e.kind === "circle" || e.kind === "arc") radii[e.name] = model.radius(e.name);
+    else if (e.kind === "circle" || e.kind === "arc") {
+      radii[e.name] = model.radius(e.name);
+      // The variables as they are, not normalised: their length is a gauge
+      // nothing reads, and saving it exactly is what reopens the same solve.
+      if (e.normal) normals[e.name] = e.normal.map((i) => model.problem.getVar(i));
+    }
   }
   const saved: SavedModel = {
     format: FORMAT,
     version: VERSION,
     dim: model.dim,
     journal: model.journal.map((e) => ({ op: e.op, args: e.args })),
-    values: { points, radii },
+    // Absent where there are none, so a 2D file's values are the two maps they always were.
+    values: Object.keys(normals).length ? { points, radii, normals } : { points, radii },
   };
   // Absent, not empty: a file from a session that authored no tools is byte
   // for byte the file this app has always written.
@@ -667,6 +754,106 @@ export function savedTools(saved: string | SavedModel): ToolSource[] {
 }
 
 /**
+ * The translation of a file from before **curves carried their own normal**
+ * (format 13, docs/plans/frameless-curves.md) — every 3D file, and every 2D
+ * file lifted, once planetranslation.ts has given its curves the frames a
+ * version-7-to-12 file names. Passes everything through for a 3D file of 13 or
+ * after, and for a 2D model, whose curves never named a frame.
+ *
+ * - `give` rewrites a step **in place** before it runs — in place, because
+ *   planetranslation.ts holds the very entry it gave, and settles an old arc's
+ *   frame and ends in it after the values are back: a curve's frame becomes
+ *   its +z at this step, as the curve's normal seed, and is remembered in
+ *   `following`; a 3D fillet's frame likewise becomes the side its arc faces;
+ *   a partial revolve gets the expansion it was made by and, where it turned
+ *   more frames than its sketch frame, the list of them (`sweptFrames` in
+ *   operations.ts), read from the frames its curves named.
+ * - `made` hears what a step returned: the fillet's arc, which follows the
+ *   fillet's frame; and the twins an old extrude or revolve made, whose frames
+ *   a later revolve of them would have turned.
+ * - `settle`, once every value is back, turns each curve to its frame's +z as
+ *   the positions now put it and writes in `par(curve, "f.z")`, at the end —
+ *   new names, under nothing the file's later entries hold. A curve or frame
+ *   the file deleted on the way gets none.
+ */
+function framelessCurves(model: Model, version: number, lift: boolean, following: Map<string, string>) {
+  // A 2D file lifted into 3D of any version, too: planetranslation.ts gives
+  // its curves a frame — the origin, for a drawing that has none of its own.
+  const active = (version < 13 || lift) && model.dim === 3;
+  /** Old twin curves' frames: only ever asked by a later old revolve's turned-frame list. */
+  const twinFrames = new Map<string, string>();
+  let filletFrame: string | null = null;
+  const plusZ = (frame: string): number[] => {
+    if (!model.isFrame(frame)) throw new Error(`"${frame}" is not a frame`);
+    return framePlaneAxes(model, frame)?.n ?? [0, 0, 1];
+  };
+  const legacyOf = (curve: string) => following.get(curve) ?? twinFrames.get(curve);
+  return {
+    give(step: JournalEntry): void {
+      if (!active) return;
+      const a = step.args;
+      if (step.op === "addCircle" && typeof a[2] === "string") {
+        following.set(String(a[3]), a[2]);
+        a[2] = plusZ(a[2]);
+      } else if (step.op === "addArc" && typeof a[4] === "string") {
+        following.set(String(a[5]), a[4]);
+        a[4] = plusZ(a[4]);
+      } else if (step.op === "fillet" && typeof a[3] === "string") {
+        filletFrame = a[3];
+        a[3] = plusZ(a[3]);
+      } else if (step.op === "revolve" && !(typeof a[2] === "number" && isFullTurn(a[2]))) {
+        // A partial revolve: the expansion its build made, unless an earlier
+        // translation wrote one in (9, before format 10) — and the frames it
+        // turned, its sketch frame and each other frame a profile curve named.
+        if (a.length === 5) a.push(10);
+        const frame = a[3];
+        const loops = a[4];
+        if (typeof frame !== "string" || !Array.isArray(loops)) return;
+        const swept = [frame];
+        for (const loop of loops) {
+          if (!Array.isArray(loop)) continue;
+          for (const m of loop) {
+            const n = typeof m === "string" ? m : (m as { name?: unknown })?.name;
+            const f = typeof n === "string" ? legacyOf(n) : undefined;
+            if (f !== undefined && !swept.includes(f)) swept.push(f);
+          }
+        }
+        if (swept.length > 1 && a.length === 6) a.push(swept);
+      }
+    },
+    made(step: JournalEntry, result: unknown): void {
+      if (!active) return;
+      if (step.op === "fillet" && filletFrame !== null && typeof result === "string") following.set(result, filletFrame);
+      filletFrame = null;
+      if ((step.op === "extrude" || step.op === "revolve") && typeof result === "string" && model.features.has(result)) {
+        // Before 13 a twin curve named its base's frame — or, on an old lid,
+        // the lid frame for a base on the sketch frame, and on an end face the
+        // end frame for the sketch frame: what a later revolve of it turned.
+        const f = model.featureOf(result);
+        const lid = f.kind === "extrude" ? f.top : f.end ?? undefined;
+        f.loops.forEach((loop, i) => loop.forEach((m, j) => {
+          const twin = f.twins[i]?.[j];
+          const base = legacyOf(memberName(m));
+          if (twin === undefined || base === undefined) return;
+          twinFrames.set(twin, lid !== undefined && base === f.frame ? lid : base);
+        }));
+      }
+    },
+    settle(): void {
+      if (!active) return;
+      const pairs = [...following].filter(([c, f]) => {
+        const e = model.entities.get(c);
+        return (e?.kind === "circle" || e?.kind === "arc") && model.isFrame(f);
+      });
+      model.withoutRecording(() => {
+        for (const [c, f] of pairs) model.setNormal(c, plusZ(f));
+      });
+      for (const [c, f] of pairs) geom.parallel(model, c, `${f}.z`);
+    },
+  };
+}
+
+/**
  * A model rebuilt from a saved file — in the file's own dimension, or `dim`
  * when given. The only conversion there is is 2D into 3D (see `lift2D`); the
  * app always asks for 3, and everything else asks for nothing and gets the
@@ -686,6 +873,7 @@ export function fromSaved(saved: SavedModel, dim?: number): Model {
     throw new Error(`a ${fileDim}D file cannot open as a ${into}D model — only 2D files lift, into 3D`);
   }
   const model = new Model(into);
+  saved = renameOldOrigin(saved, model);
   const table = replayTable(model);
   const renamer = relationRenamer(model, saved.version);
   // For the lift: what the file calls things, so a y-ref it adds can be named
@@ -696,7 +884,12 @@ export function fromSaved(saved: SavedModel, dim?: number): Model {
   // For files from before circles and arcs carried a plane, and for any 2D
   // file lifted into 3D (whose circles never had one): see
   // planetranslation.ts. Passes everything else through.
-  const planes = planeTranslation(model, saved.journal, saved.version, lift);
+  // For files from before curves carried their own normal (format 13): which
+  // frame each curve was recorded with, so it can be given its normal and its
+  // `par` once the replay is done (see `VERSION`).
+  const following = new Map<string, string>();
+  const planes = planeTranslation(model, saved.journal, saved.version, lift, following);
+  const frameless = framelessCurves(model, saved.version, lift, following);
 
   // Replay with recording off, then install the journal wholesale, so a model
   // that is opened and saved again round-trips to the same file. What is
@@ -732,7 +925,8 @@ export function fromSaved(saved: SavedModel, dim?: number): Model {
           const fn = table.get(step.op);
           if (!fn) throw new Error(`step ${i + 1}: "${step.op}" is not something a model file may do`);
           try {
-            fn(...step.args);
+            frameless.give(step);
+            frameless.made(step, fn(...step.args));
           } catch (e) {
             throw where(e);
           }
@@ -784,6 +978,15 @@ export function fromSaved(saved: SavedModel, dim?: number): Model {
     const e = model.entities.get(name);
     if (e && (e.kind === "circle" || e.kind === "arc")) model.problem.setVar(e.radiusVar, r);
   }
+  for (const [name, n] of Object.entries(vals.normals ?? {})) {
+    const e = model.entities.get(name);
+    if (e && (e.kind === "circle" || e.kind === "arc") && e.normal && Array.isArray(n) && n.length === 3) {
+      e.normal.forEach((gi, k) => model.problem.setVar(gi, n[k]));
+    }
+  }
+  // An old file's curves, facing their frames as the file drew them and held
+  // there by a `par` each, written at the end (see `VERSION`).
+  frameless.settle();
 
   return model;
 }

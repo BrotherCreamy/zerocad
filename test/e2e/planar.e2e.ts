@@ -62,22 +62,34 @@ const snapState = () => app.page.evaluate(() => {
   return s ? { kind: s.kind, targets: [...s.targets], world: [...s.world] } : null;
 });
 
-const circleOf = (name: string) => app.repl(`(() => { const c = model.circle(${JSON.stringify(name)}); ` +
-  `return { center: model.coords(c.center), r: model.radius(c.name), plane: c.plane }; })()`)
-  .then((r) => r.value as { center: number[]; r: number; plane: string });
+/**
+ * A circle's centre, radius and normal — its own, since
+ * docs/plans/frameless-curves.md — and what holds the normal: the plane each
+ * `par(circle, …)` on it names.
+ */
+const circleOf = (name: string) => app.repl(`(() => { const c = model.circular(${JSON.stringify(name)}); ` +
+  `return { center: model.coords(c.center), r: model.radius(c.name), normal: model.normalOf(c.name), ` +
+  `held: [...model.relations.values()].filter((r) => r.op === "parallel" && r.args[0] === c.name).map((r) => r.args[1]) }; })()`)
+  .then((r) => r.value as { center: number[]; r: number; normal: number[]; held: string[] });
+const parallelTo = (a: number[], b: number[]) => Math.abs(Math.abs(dot(a, b)) - Math.hypot(...a) * Math.hypot(...b)) < 1e-9;
 
-// --- no frame: the circle makes its plane -----------------------------------------
+// --- no frame: the circle lies on the ground ----------------------------------------
 
-test("with no frame, the circle tool makes the plane its press landed on and draws on it; the menu greys nothing; two Ctrl+Z put it all back", async () => {
+test("with no frame, the circle tool draws on the origin's ground and makes nothing; the menu greys nothing; one Ctrl+Z puts it back", async () => {
+  // It used to type plane(pt(…), null, null, { look: false }) — a frame where
+  // the press landed — and draw on that (docs/plans/frameless-curves.md).
   const empty = (await app.repl("save()")).value as string;
   await app.type("circle");
   await leftDrag([300, 200], [330, 200]);
   const log = await app.log();
-  assert.match(log, /> plane\(pt\(-?[\d.]+, -?[\d.]+, 0\), null, null, \{ look: false \}\)/, "the plane, typed");
+  assert.doesNotMatch(log, /> plane\(/, "no plane typed");
   assert.doesNotMatch(log, /no default frame/);
   const m = await app.model();
   assert.equal(m.byKind.circle, 1, "a circle");
-  assert.equal((await circleOf(m.circles[0].name)).plane, (await app.repl("defaultFrame()")).value, "on the plane made for it");
+  assert.equal(m.byKind.frame ?? 0, 0, "and no frame");
+  const k = await circleOf(m.circles[0].name);
+  assert.ok(Math.abs(k.center[2]) < 1e-9 && parallelTo(k.normal, [0, 0, 1]), `on the ground: ${k.center}, facing ${k.normal}`);
+  assert.deepEqual(k.held, ["origin.z"], "held there by a par of its own");
   assert.equal(await app.status(), "SOLVED");
 
   const at = await app.at(500, 300);
@@ -91,13 +103,11 @@ test("with no frame, the circle tool makes the plane its press landed on and dra
   assert.deepEqual(off, [], "nothing greyed");
   await app.page.keyboard.press("Escape");
 
-  // The circle, then the plane: two steps, as two typed lines would be.
-  for (const _ of [0, 1]) {
-    await app.page.fill("#cmd", "");
-    await app.page.keyboard.press("Control+z");
-    await app.page.waitForTimeout(200);
-  }
-  assert.equal((await app.repl("save()")).value, empty, "back to the empty model, so f1 below is the first frame again");
+  // The circle and its hold: one gesture, one step.
+  await app.page.fill("#cmd", "");
+  await app.page.keyboard.press("Control+z");
+  await app.page.waitForTimeout(200);
+  assert.equal((await app.repl("save()")).value, empty, "back to the empty model, so f1 below is the first frame");
 });
 
 // --- a circle on a tilted plane --------------------------------------------------
@@ -123,7 +133,8 @@ test("a circle drawn on it lies in its plane, and seen at an angle is inked on i
   const m = await app.model();
   circle = m.circles[0].name;
   const k = await circleOf(circle);
-  assert.equal(k.plane, "f1", "given the sketch's plane");
+  assert.ok(parallelTo(k.normal, G_Z), `facing the sketch's normal: ${k.normal}`);
+  assert.deepEqual(k.held, ["f1.z"], "and held to it by a par");
   assert.ok(Math.abs(inG(k.center)[2]) < 1e-9, "its centre on the sketch");
   assert.ok(Math.abs(k.r - 25) < 1e-6, `radius ${k.r}`);
   assert.equal(await app.status(), "SOLVED");
@@ -273,13 +284,19 @@ test("a version-6 file with arcs opens with their planes resolved — by normal,
   });
   await app.type(`open(${JSON.stringify(file)})`);
   assert.equal(await app.status(), "SOLVED");
-  const planes = (await app.repl('[model.arc("low").plane, model.arc("high").plane, model.circle("ring").plane]')).value;
-  assert.deepEqual(planes, ["floor", "wall", "floor"],
+  // Each follows the frame it was given by a par of its own, written at the
+  // end of the journal (format 13, docs/plans/frameless-curves.md).
+  const held = await Promise.all(["low", "high", "ring"].map(async (n) => (await circleOf(n)).held));
+  assert.deepEqual(held, [["floor.z"], ["wall.z"], ["floor.z"]],
     "the arc on the wall is given the wall, though the floor was the default");
+  const wallZ = [0, -Math.sin(1.1), Math.cos(1.1)];
+  assert.ok(parallelTo((await circleOf("high")).normal, wallZ), "and faces it");
   const saved = JSON.parse((await app.repl("save()")).value as string);
-  assert.equal(saved.version, 12); // the current version
-  assert.deepEqual(saved.journal.find((e: { op: string; args: unknown[] }) => e.op === "addArc" && e.args[5] === "high").args,
-    ["c2", "s2", "e2", 20, "wall", "high"]);
+  assert.equal(saved.version, 13); // the current version
+  const high = saved.journal.find((e: { op: string; args: unknown[] }) => e.op === "addArc" && e.args[5] === "high").args;
+  assert.deepEqual(high.slice(0, 4), ["c2", "s2", "e2", 20]);
+  assert.ok(parallelTo(high[4] as number[], wallZ), `its normal's seed is the wall's +z: ${high[4]}`);
+  assert.deepEqual(saved.journal.at(-1), { op: "parallel", args: ["ring", "floor.z"] });
 });
 
 test("no uncaught page errors", () => {

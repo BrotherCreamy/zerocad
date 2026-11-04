@@ -7,8 +7,10 @@
 // overlapping points. why is this happening?"*
 // (docs/plans/lid-frame-shares-points.md). Since format 11 there is no lid
 // frame at all (docs/plans/no-lid-frame.md, and nolidframe.e2e.ts for the
-// two-rectangle case that sharing could not fix), so this now reads: no frame
-// but the sketch's, and still no point on another.
+// two-rectangle case that sharing could not fix), and since
+// docs/plans/frameless-curves.md no sketch frame either — the plate lies on
+// the origin's ground and runs along its +z — so this now reads: no frame at
+// all, and still no point on another.
 //
 // Set NEOCAD_E2E_SHOTS to a directory to keep the screenshots; look at them —
 // a doubled label is two names printed over each other at one dot.
@@ -84,22 +86,18 @@ async function coincident(): Promise<{ loose: string[]; joined: string[] }> {
 /** The sketch's one join: the triangle's closing click, a point of its own made on the first and joined to it. */
 let closing = "";
 
-/** The feature's lid frame (none, now), the twins over the sketch frame's points, and its corner count. */
-const lid = (): Promise<{ top: string | null; over: (string | null)[]; frames: string[]; corners: number }> => app.page.evaluate(() => {
+/** The feature's lid frame (none, now), the plane it runs along, its point twins, every frame, and its corner count. */
+const lid = (): Promise<{ top: string | null; frame: string; twins: string[]; frames: string[]; corners: number }> => app.page.evaluate(() => {
   const { model } = (window as never as { __neocad: { model: {
     features: Map<string, { top?: string; frame: string; depth: string; walls: string[] }>;
     relations: Map<string, { args: unknown[] }>;
-    entities: Map<string, { kind: string; name: string; origin?: string; xref?: string; yref?: string }>;
+    entities: Map<string, { kind: string; name: string }>;
   } } }).__neocad;
   const f = model.features.get("e1")!;
-  const fr = model.entities.get(f.frame)!;
   const args = model.relations.get(f.depth)!.args as string[];
-  const over = [fr.origin!, fr.xref!, fr.yref!].map((r) => {
-    const i = args.findIndex((a, k) => k >= 2 && k % 2 === 0 && a === r);
-    return i < 0 ? null : args[i + 1];
-  });
+  const twins = args.filter((a, k) => k >= 3 && k % 2 === 1 && model.entities.get(a)?.kind === "point");
   const frames = [...model.entities.values()].filter((e) => e.kind === "frame").map((e) => e.name);
-  return { top: f.top ?? null, over, frames, corners: f.walls.length };
+  return { top: f.top ?? null, frame: f.frame, twins, frames, corners: f.walls.length };
 });
 
 test("the owner's sequence: a rectangle, a triangle inside it, the extrude tool, Enter — a plate with a hole", async () => {
@@ -138,10 +136,11 @@ test("the owner's sequence: a rectangle, a triangle inside it, the extrude tool,
   assert.equal(l.corners, 7, "walls at the rectangle's four corners and the triangle's three");
   assert.equal(m.byKind.point, 8 + 7, "eight sketch points, seven twins (one per corner): nothing else");
   assert.equal(l.top, null, "no lid frame");
-  assert.equal(l.frames.length, 1, `the sketch frame and nothing else: ${l.frames}`);
+  assert.equal(l.frame, "origin", "along the origin's +z");
+  assert.deepEqual(l.frames, [], "and no frame at all — it used to be the sketch frame alone");
 });
 
-test("orbited: no two points on one spot — no lid frame, the sketch frame's corners twinned once each — and the picture shows no doubled label", async () => {
+test("orbited: no two points on one spot — no lid frame, each corner twinned once — and the picture shows no doubled label", async () => {
   await app.type("orbit(0.5, 0.35)");
   await app.page.waitForTimeout(200);
   await shot("2-orbited");
@@ -153,7 +152,7 @@ test("orbited: no two points on one spot — no lid frame, the sketch frame's co
   assert.deepEqual(after.joined, [closing], "and the sketch's one join, as drawn");
   const l = await lid();
   const { points } = await app.model();
-  for (const r of l.over) assert.ok(r !== null && r in points, `each sketch-frame corner has its one twin: ${l.over}`);
+  assert.equal(l.twins.length, 7, `each corner has its one twin: ${l.twins}`);
 
   // As drawn: two dots on one pixel print two names over each other, which is
   // what the owner saw. None but the sketch's own join.
@@ -168,20 +167,20 @@ test("orbited: no two points on one spot — no lid frame, the sketch frame's co
   }
   assert.ok(closest > 1, `no two dots drawn on one pixel: closest ${closest.toFixed(2)} px`);
 
-  // Close in on the lid corner over the sketch frame's origin, where the lid
-  // frame's marker used to stand: a picture to look at, label by label.
+  // Close in on a lid corner — the first twin, where the lid frame's marker
+  // used to stand: a picture to look at, label by label.
   await app.type("zoom(3)");
-  const [ox, oy] = await app.screenOf(points[l.over[0]!]);
+  const [ox, oy] = await app.screenOf(points[l.twins[0]]);
   await app.type(`pan(${Math.round(700 - ox)}, ${Math.round(330 - oy)})`);
   await app.page.waitForTimeout(200);
-  const centred = await app.screenOf(points[l.over[0]!]);
+  const centred = await app.screenOf(points[l.twins[0]]);
   assert.ok(Math.hypot(centred[0] - 700, centred[1] - 330) < 2, `the lid corner is drawn at ${centred}`);
   await shot("4-lid-origin");
 });
 
 test("save and open: the same names, still no point on another", async () => {
   const before = (await app.repl("save()")).value as string;
-  assert.equal(JSON.parse(before).version, 12);
+  assert.equal(JSON.parse(before).version, 13);
   const r = await app.repl(`open(${JSON.stringify(before)})`);
   assert.equal(r.ok, true, r.error ?? "");
   await app.page.waitForTimeout(200);

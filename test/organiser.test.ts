@@ -269,7 +269,7 @@ test("an old file that relied on an emptied group going still opens: translated 
     "each emptying gets the ungroup that build did silently, so the re-saved file means what it meant");
   const resaved = JSON.parse(save(m));
   assert.equal(resaved.version, VERSION);
-  assert.equal(VERSION, 12);
+  assert.ok(VERSION >= 12);
   assert.equal(save(open(save(m))), save(m), "and re-saves byte for byte from then on");
   // The same file claiming today's version keeps the empty groups, and so fails at the name.
   assert.throws(() => open(JSON.stringify({ ...v11, version: VERSION })), /step 8, group.*"g1" already exists/);

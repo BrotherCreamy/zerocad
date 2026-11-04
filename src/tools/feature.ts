@@ -32,8 +32,6 @@ import { featureFaces, faceColour, type Face } from "../faces.ts";
 import { curveFrame } from "../curveplane.ts";
 import { arcSamples, arcSegments } from "../arcgeom.ts";
 import { REGION_GREEN } from "./region.ts";
-import { orientingFrame } from "../operations.ts";
-import { featurePlaneCommand } from "../sketchface.ts";
 import { refind } from "./selection.ts";
 
 /** How opaque a previewed solid is: solid enough to read as one, see-through enough to read as not made yet. */
@@ -51,22 +49,6 @@ export function foundRegion(model: Model, region: RegionHit): RegionHit {
   const r = refind(model, region);
   if (!r) throw new Error("a region picked is not there any more — pick it again");
   return r;
-}
-
-/**
- * The plane a region needs before a feature can be made of it — `plane(a, b,
- * c, { look: false })`, or `frame(…)` beside a default kept — or null when a
- * frame orients it already, or there is no command line to type it into
- * (`typed` false: the operation then refuses the frameless region in its own
- * words, as it always did headless).
- */
-export function planeStep(region: RegionHit, typed: boolean): FeatureStep {
-  return (m) => {
-    if (!typed) return null;
-    const r = foundRegion(m, region);
-    const loop = r.loops[r.index];
-    return orientingFrame(m, loop) === null ? { text: featurePlaneCommand(m, loop, region.toward) } : null;
-  };
 }
 
 /**

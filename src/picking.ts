@@ -27,7 +27,7 @@
 // `hitTest` at all. They live a layer up because they are UI drawn over the
 // drawing rather than part of it — the same reason snapping ignores them.
 
-import type { AxisName, Entity, FeatureEntry, Model, ProfileMember, RelationEntry } from "./model.ts";
+import { ORIGIN, type AxisName, type Entity, type FeatureEntry, type Model, type ProfileMember, type RelationEntry } from "./model.ts";
 import { screenAngle, withinSweep } from "./intersect.ts";
 import { frameArmPx, frameArms, frameMarker } from "./framemarker.ts";
 import { nearestOnPolyline, screenCurve, screenOf as projectPoint } from "./projection.ts";
@@ -173,8 +173,12 @@ export function hitTest(
     }
     best = { name: e.name, kind: "line", distance: near.d };
   }
-  for (const e of shown) {
-    if (e.kind !== "frame") continue;
+  // The origin is a frame with no entity behind it (`ORIGIN`), and picks by
+  // its marker like any other — revolve about "origin.z", Set as default.
+  // Last, so a frame the user made at the same place wins a tie: theirs is
+  // the one they are more likely to be after.
+  const frames = [...shown.filter((e) => e.kind === "frame"), ...(model.isFrame(ORIGIN) ? [{ name: ORIGIN }] : [])];
+  for (const e of frames) {
     const marker = frameMarker(model, view, e.name);
     if (!marker) continue; // collapsed: nothing drawn, so nothing to hit
     // A marker hidden at its origin is not drawn at all (main.ts), so none of
@@ -269,7 +273,7 @@ export function describeFeature(model: Model, f: FeatureEntry): string {
     const r = model.relations.get(f.angle);
     const value = r && typeof r.args[1] === "number" ? ` = ${round((r.args[1] * 180) / Math.PI)}°` : "";
     return `${f.name}  revolve of ${profile}, angle ${f.angle}${value} about ${f.axis}, `
-      + (f.end === null ? "a full turn" : `end ${f.end}`);
+      + (f.twins.length === 0 ? "a full turn" : f.end === null ? "partial" : `end ${f.end}`);
   }
   const r = model.relations.get(f.depth);
   const value = r && typeof r.args[1] === "number" ? ` = ${round(r.args[1])}` : "";
@@ -340,11 +344,11 @@ function describeGeometry(model: Model, name: string, kind: Entity["kind"], n: (
       return `${name}  ${model.coords(name).map(n).join(", ")}`;
     case "circle":
     case "arc": {
-      // The plane it lies in, where it has one (3D): which frame a circle is
-      // parallel to is not visible in a view square to it, and is what decides
-      // whether `onCircle` and `tan` mean the rim you think they do.
-      const plane = model.circular(name).plane;
-      return `${name}  r ${n(model.radius(name))}${plane === undefined ? "" : `  in ${plane}`}`;
+      // The way it faces, where it has its own normal (3D): not visible in a
+      // view square to it, and what decides whether `onCircle` and `tan` mean
+      // the rim you think they do.
+      const facing = model.circular(name).normal === undefined ? "" : `  facing ${model.normalOf(name).map(n).join(", ")}`;
+      return `${name}  r ${n(model.radius(name))}${facing}`;
     }
     case "line": {
       const l = model.line(name);
@@ -356,6 +360,7 @@ function describeGeometry(model: Model, name: string, kind: Entity["kind"], n: (
     // whether it is the default, because that is the whole difference between
     // a frame a bare `hor` means and one it does not.
     case "frame": {
+      if (name === ORIGIN) return `${name}  the fixed origin${model.defaultFrame === null ? "  (default)" : ""}`;
       const f = model.frame(name);
       const dflt = model.defaultFrame === name ? "  (default)" : "";
       const plane = f.yref === undefined ? "" : `, +y toward ${f.yref}`;

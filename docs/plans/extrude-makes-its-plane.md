@@ -1,5 +1,11 @@
 # Plan: extrude on a frameless sketch makes its own plane
 
+> **Superseded 2026-11-04 by [`frameless-curves.md`](frameless-curves.md)**
+> (vetoable in the register): no plane is made. `orientingPlane` runs a
+> profile along the drawing plane, its frame, a parallel frame (the origin
+> last), or three of its own corners facing the viewer — the same points
+> this plan chose, read as a plane reference rather than made into a frame.
+
 **Status: built** (2026-10-29) — `orientingFrame`, `extrudeNeedsFrame`,
 `revolveNeedsFrame` and `checkRevolveRegion` in `src/operations.ts`,
 `featurePlaneCommand` in `src/sketchface.ts`, the tools in

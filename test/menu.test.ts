@@ -103,20 +103,15 @@ test("a circle and an arc are dimensioned by radius, a point and a frame not at 
   assert.ok(!labels(menuFor(model, pickOf(model, f))).includes("Dimension"));
 });
 
-test("Fix is offered on points only, and is disabled with the standing message when no frame exists", async () => {
+test("Fix is offered on points only — in the origin's coordinates with no frame chosen, and nothing made by asking", async () => {
   await loadKernel();
   const model = new Model(2);
   const p = model.addPoint([3, 4]).name;
 
-  const noFrame = item(menuFor(model, pickOf(model, p)), "Fix").action;
-  assert.equal(noFrame.do, "disabled");
-  // The model's own wording, not a copy of it — one message for the menu and
-  // the command line both.
-  assert.match(noFrame.do === "disabled" ? noFrame.why : "", /no default frame/);
-  assert.match(noFrame.do === "disabled" ? noFrame.why : "", /frame\(\).*setDefaultFrame\(\)/);
-
-  // Nothing was created by asking: the whole point of the disabled item.
-  assert.equal(model.entities.size, 1);
+  // It used to be disabled with "no default frame": every model has the
+  // origin now (docs/plans/frameless-curves.md), and a bare fix means it.
+  assert.equal(commandFor(menuFor(model, pickOf(model, p)), "Fix"), `fix("${p}", [3, 4])`);
+  assert.equal(model.entities.size, 1, "nothing was created by asking");
   assert.equal(model.defaultFrame, null);
 
   axisFrame(model);
@@ -164,9 +159,8 @@ test("Fix in a 3D model is frame coordinates too — three of them, not the kern
   model.addFrame(o, x, y, "f");
   const p = model.addPoint([13, 9, 7]).name; // (3, 4, 5) from the origin, in world terms
 
-  // No default frame: shown, disabled, carrying the model's own message.
-  const item = menuFor(model, pickOf(model, p)).items.find((i) => i.label === "Fix")!;
-  assert.equal(item.action.do, "disabled");
+  // No default frame: the origin's coordinates, which are the kernel's.
+  assert.equal(commandFor(menuFor(model, pickOf(model, p)), "Fix"), `fix("${p}", [13, 9, 7])`);
 
   model.setDefaultFrame("f");
   assert.equal(commandFor(menuFor(model, pickOf(model, p)), "Fix"), `fix("${p}", [4, 5, 3])`);
@@ -226,16 +220,14 @@ test("empty canvas arms the tools, and every tool name it types is registered", 
   }
 });
 
-test("the Frame item makes the first frame the default and later ones not", async () => {
+test("the Frame item makes a frame and nothing more — never the default", async () => {
   await loadKernel();
   const model = new Model(2);
-  // No frame at all: the one click has to leave a *usable* frame behind, or
-  // hor/ver/fix go on refusing and the item has done nothing visible.
-  assert.equal(commandFor(menuFor(model, null), "Frame"), "setDefaultFrame(frame())");
-
+  // It used to make a drawing's first frame the default, since fix and the
+  // axes meant nothing without one. They mean the origin now; a frame made
+  // from the menu is a datum asked for, and choosing it is the user's next step.
+  assert.equal(commandFor(menuFor(model, null), "Frame"), "frame()");
   axisFrame(model);
-  // A second frame is a deliberate extra datum; repointing the default would
-  // silently move every bare `hor` in the drawing.
   assert.equal(commandFor(menuFor(model, null), "Frame"), "frame()");
 });
 

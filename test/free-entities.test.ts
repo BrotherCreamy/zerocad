@@ -313,22 +313,21 @@ test("explicit coordinates are never overridden by the view", () => {
 });
 
 test("a 3D model seeds where a click in the middle of the view would land", () => {
-  // With no default frame that is the plane facing the viewer through the
-  // orbit target — z = 0, in a view that has never been turned — so the 3D
+  // With no default frame that is the origin's x–y plane — z = 0 — so the 3D
   // seed is the 2D one with no depth.
   const m = new Model(3);
   const s = scopeOf(m, offCentreViewport());
   assert.deepEqual(m.coords(call(s, "pt")), [225, -175, 0]);
-  // A circle in 3D needs a plane, and with no frame it makes one there first
-  // (see test/curvetoolplane.test.ts) — and seeds there, like the point.
+  // A circle in 3D carries its own normal and needs no frame (see
+  // test/curvetoolplane.test.ts) — and seeds there, like the point.
   m.addPoint([0, 0, 0], "o"); m.addPoint([1, 0, 0], "x"); m.addPoint([0, 1, 0], "y");
   m.addFrame("o", "x", "y", "f");
   assert.deepEqual(m.coords(m.circle(call(s, "circ", null, null, "f")).center), [225, -175, 0]);
   assert.equal(m.defaultFrame, null, "a plane named is used, and no frame is made");
   const made = m.circle(call(s, "circ"));
   assert.deepEqual(m.coords(made.center), [225, -175, 0]);
-  assert.equal(made.plane, m.defaultFrame, "with none named or default, one is made at the view centre");
-  assert.deepEqual(m.coords(m.frame(m.defaultFrame!).origin), [225, -175, 0]);
+  assert.deepEqual(m.normalOf(made.name), [0, 0, 1], "with none named or default, facing the origin's +z");
+  assert.equal(m.defaultFrame, null, "and no frame made for it");
 });
 
 test("...and on the default frame's plane, when there is one — even a tilted one", () => {

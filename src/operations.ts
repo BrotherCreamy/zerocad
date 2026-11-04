@@ -7,7 +7,7 @@
 // while an operation can leave the model malformed.
 
 import {
-  Model, SETTABLE_PROPERTY, memberName, parseValueRef, referentOf, valueArgIndex,
+  Model, ORIGIN, SETTABLE_PROPERTY, memberName, parseValueRef, referentOf, referentsOf, valueArgIndex,
   type Entity, type Expansion, type FeatureEntry, type Portion, type ProfileMember,
 } from "./model.ts";
 import { dist } from "./relations/basic.ts";
@@ -15,7 +15,8 @@ import { angle, arcEndpoints, onCircle, pointOnLine, radius, tangent } from "./r
 import { extrusion } from "./relations/extrusion.ts";
 import { FULL_TURN, axisReader, isFullTurn, revolution, turnPoint } from "./relations/revolution.ts";
 import { arcPoint, portionAngles, sweepsAs } from "./arcgeom.ts";
-import { curveFrame, framePlaneAxes } from "./curveplane.ts";
+import { curveFrame, framePlaneAxes, planeAxes } from "./curveplane.ts";
+import { sketchFrameFor } from "./sketchface.ts";
 import {
   describeLoop, findLoops, heldOnCurves, insideLoop, isVirtual, joinClasses, memberLabel, parallel, type Held, type Loop,
 } from "./loops.ts";
@@ -74,39 +75,49 @@ function corner(model: Model, l1Name: string, l2Name: string) {
  * **In 3D the corner is a plane** — the one the two legs span — and every
  * step above is the same arithmetic in it: the bisector, the back-off along
  * each leg and the centre along the bisector are all lengths and dot products.
- * The arc it makes needs a plane of its own, as every 3D arc does (see
- * `ArcEntity`): `plane`, or the default frame resolved now and journalled
- * resolved — `fix`'s rule. The corner has to *lie* in that frame's
- * orientation, or the arc's own `arcends` and `tan` would pull the legs into a
- * plane they are not in; a corner turned out of it is refused, naming the
- * frame, rather than rounded into a conflict. (A 2D model refuses the argument,
- * like `addArc`.) Which endpoint the arc starts at is asked of the rule every
- * arc is drawn by (see arcgeom.ts), about that plane's +z, so the short arc
- * between the tangent points is the one drawn however the corner is turned. In
- * 2D the answer is the old one.
+ * The arc it makes carries its own normal, as every 3D arc does (see
+ * `ArcEntity`), and **needs no frame**: its two tangents hold both legs in its
+ * plane (`tangent` in 3D), so the arc follows its corner wherever the corner
+ * turns. It used to be given the default frame and refused a corner out of
+ * that frame's orientation; a fillet in a fresh document then made a frame of
+ * the corner's points first, which is the frame the owner asked why he never
+ * wanted (docs/plans/frameless-curves.md).
+ *
+ * `side` says which of the corner's two normals the arc's is — which only
+ * decides which endpoint it starts at, since the sweep is counter-clockwise
+ * about the normal (arcgeom.ts) and the short arc between the tangent points is
+ * drawn either way. Left out, the drawing plane's normal when the corner lies
+ * square to it, else the corner's own normal on the side of its largest
+ * component (loops.ts's rule, up for a corner drawn level); journalled only
+ * where given — an old file's frame, translated into its +z (persist.ts), so
+ * the arc starts where it did. In 2D the answer is the old one, and a 2D
+ * model refuses the argument, like `addArc`.
  *
  * Returns the new arc's name.
  */
-export function fillet(model: Model, l1Name: string, l2Name: string, r: number, plane?: string | null,
+export function fillet(model: Model, l1Name: string, l2Name: string, r: number, side?: number[] | null,
                        regenerated?: unknown): string {
   if (model.dim !== 2 && model.dim !== 3) throw new Error("fillet rounds a corner in a 2D or 3D model");
   if (!(r > 0)) throw new Error("fillet needs a positive radius");
-  if (model.dim === 2 && plane != null) {
-    throw new Error("a 2D fillet takes no plane — its arc lies in the one plane a 2D model has");
+  if (model.dim === 2 && side != null) {
+    throw new Error("a 2D fillet takes no side — its arc lies in the one plane a 2D model has");
   }
-  const frame = model.dim === 3 ? model.resolveFrame(plane) : null;
+  if (side != null && typeof side === "string") {
+    throw new Error(`fillet's fourth argument is the side its arc's normal is on, three numbers — "${side}" names a `
+      + "frame, which a fillet no longer needs: its arc follows the corner");
+  }
   const given = regenerated == null ? null : givenRegenerated(regenerated, "fillet");
   // Journalled as the one call the user made, not as the entities and
   // relations it expands into — replaying it re-expands them identically. The
-  // plane is journalled resolved, and only where there is one: a 2D fillet's
-  // entry is the three arguments it always was. So is the regeneration — the
+  // side only where given, so a fillet's entry is the three arguments it
+  // always was in 2D, and is now in 3D too. So is the regeneration — the
   // features standing on a leg, with what each profile became — and only where
   // there was such a feature, so a fillet that touched none journals exactly
   // what it always did.
-  const args: unknown[] = frame == null ? [l1Name, l2Name, r] : [l1Name, l2Name, r, frame];
+  const args: unknown[] = side == null ? [l1Name, l2Name, r] : [l1Name, l2Name, r, side];
   let after: Regenerated[] | null = null;
-  return model.asOperation("fillet", () => (after === null ? args : [l1Name, l2Name, r, frame, after]), () => {
-    const arc = filletBody(model, l1Name, l2Name, r, frame);
+  return model.asOperation("fillet", () => (after === null ? args : [l1Name, l2Name, r, side ?? null, after]), () => {
+    const arc = filletBody(model, l1Name, l2Name, r, side ?? null);
     // A profile with a rounded corner is a restructured profile: every feature
     // standing on either leg follows it, inside this same call.
     after = regenerateAfter(model, [l1Name, l2Name], given);
@@ -115,31 +126,12 @@ export function fillet(model: Model, l1Name: string, l2Name: string, r: number, 
 }
 
 /**
- * How far out of a frame's orientation a corner may be and still be rounded in
- * it: the sine of the angle between the corner's normal and the frame's +z. A
- * millionth — far above the solver's tolerance on legs held in a plane by
- * `onPlane`, far below anything a drawing would show.
+ * How far out of a plane a corner, a loop or an axis may lean and still count
+ * as in it: the sine of the angle between two normals. A millionth — far above
+ * the solver's tolerance on legs held in a plane by `onPlane`, far below
+ * anything a drawing would show.
  */
 export const IN_PLANE_SINE = 1e-6;
-
-/**
- * The command line's question before a typed `fillet` names no plane, and the
- * fillet tool's before its second click commits: the corner's three points —
- * the shared one, then each leg's far end — when a 3D model has **no default
- * frame** for the arc to be given, so the layer above can make one on the
- * corner first, as a journalled call of its own; or null when the call can be
- * made as it stands (a 2D model, or a default to resolve). Asked only after
- * every refusal the fillet makes that needs no frame — the radius, two lines
- * that meet, legs that are not one line, a radius that fits — so a corner that
- * is going to be refused makes no frame first (extrude's rule).
- */
-export function filletNeedsFrame(model: Model, l1Name: string, l2Name: string, r: number): [string, string, string] | null {
-  if (model.dim !== 3 || model.defaultFrame != null) return null;
-  if (!(r > 0)) throw new Error("fillet needs a positive radius");
-  const c = cornerOf(model, l1Name, l2Name);
-  cornerFits(model, c, r);
-  return [c.shared, c.a, c.b];
-}
 
 /** A corner's lines and points, with the unit directions of its legs from the shared point. */
 function cornerOf(model: Model, l1Name: string, l2Name: string) {
@@ -170,21 +162,26 @@ function cornerFits(model: Model, c: ReturnType<typeof cornerOf>, r: number): { 
   return { theta, backoff };
 }
 
-function filletBody(model: Model, l1Name: string, l2Name: string, r: number, frame: string | null): string {
+/**
+ * The side a new fillet's arc faces when none is given: the drawing plane's
+ * normal where the corner lies square to it, else the corner's own normal on
+ * the side of its largest component. Plain numbers, for a seed.
+ */
+function filletSide(model: Model, u: number[], v: number[]): number[] {
+  const n = cross3(lift3(u), lift3(v));
+  const len = Math.hypot(...n);
+  const corner = len > 1e-12 ? n.map((x) => x / len) : [0, 0, 1];
+  const drawing = model.planeValues(model.drawingPlane())?.n;
+  if (drawing && Math.hypot(...cross3(corner, drawing)) <= IN_PLANE_SINE) return drawing;
+  const big = corner.reduce((k, x, i) => (Math.abs(x) > Math.abs(corner[k]) + 1e-12 ? i : k), 0);
+  return corner[big] < 0 ? corner.map((x) => -x) : corner;
+}
+
+function filletBody(model: Model, l1Name: string, l2Name: string, r: number, given: number[] | null): string {
   const c = cornerOf(model, l1Name, l2Name);
   const { l1, shared, p, u, v } = c;
-  // The side the arc turns about: its plane's +z, or the 2D drawing's.
-  const side = frame == null ? [0, 0, 1] : framePlaneAxes(model, frame)?.n;
-  if (!side) throw new Error(`"${frame}" has collapsed — it has no plane to round a corner in`);
-  if (frame != null) {
-    const n = cross3(lift3(u), lift3(v));
-    const nl = Math.hypot(...n);
-    const sine = nl > 1e-12 ? Math.hypot(...cross3(n.map((x) => x / nl), side)) : 0;
-    if (sine > IN_PLANE_SINE) {
-      throw new Error(`the corner between "${l1Name}" and "${l2Name}" is not in "${frame}"'s plane — `
-        + `fillet in the frame it is drawn on: fillet("${l1Name}", "${l2Name}", ${r}, "<frame>")`);
-    }
-  }
+  // The side the arc turns about: its own normal's, or the 2D drawing's.
+  const side = model.dim === 2 ? [0, 0, 1] : given ?? filletSide(model, u, v);
 
   // The interior angle at the corner decides how far back the legs are cut.
   const { theta, backoff } = cornerFits(model, c, r);
@@ -209,7 +206,7 @@ function filletBody(model: Model, l1Name: string, l2Name: string, r: number, fra
   const short = cross3(sub3(lift3(t1), lift3(ctr)), sub3(lift3(t2), lift3(ctr)));
   const [start, end] = sweepsAs(ctr, t1, t2, short, side) ? [shared, t2p.name] : [t2p.name, shared];
 
-  const arc = model.addArc(ctrp.name, start, end, r, frame);
+  const arc = model.addArc(ctrp.name, start, end, r, model.dim === 3 ? side : null);
   // A rounded construction corner is construction too: a real arc between two
   // construction legs would be a stray edge drawn as if it were the outline.
   // Only when both are — with one real leg there is no saying which it is.
@@ -303,17 +300,15 @@ export interface Profile {
  * refused with what makes a loop. The extrude tool skips the question: it
  * hands over the region under the click (`extrudeProfile`).
  *
- * **Which way.** Along `frame`'s +z — the frame given, or else the frame the
- * loop lies in (the default first), or else one parallel to it. A loop in no
- * frame's orientation is refused *here*: an extrude reads its direction off a
- * frame, as `fix` reads its coordinates off one, and this layer does not make
- * one up. The layer above does, and it is no invented datum: the command
- * line's `extrude` and the extrude tool build a frame from three of the loop's
- * own points (`sketchFrameFor`, as "Sketch on this face" does) as a journalled
- * call of its own *before* this one, so a replay finds it — see
- * `extrudeNeedsFrame`. It is the sketch's own plane, and it follows the sketch.
- * The refusal stays, as the guard that the layer above did its job. A negative
- * depth extrudes the other way.
+ * **Which way.** Along the normal of `frame` — any plane reference
+ * (`Model.planeKind`): a frame's +z, a curve's own normal, or three points'
+ * — given, or else `orientingPlane`'s: the drawing plane, the loop's frame, a
+ * parallel frame (the origin last), or three of the loop's own points. None
+ * is made (docs/plans/frameless-curves.md): it used to be a frame of those
+ * three points, typed by the layer above before this call. The command line
+ * and the tool hand over `orientingPlane` with the viewer's line of sight, so
+ * a profile in no frame's plane comes out at the viewer. A negative depth
+ * extrudes the other way.
  *
  * **Journalled as the call, with the profile resolved** — `extrude("l1", 20,
  * "f1", [["l1","a1","l2","l3","l4"],["c1"]])`, and over a split region
@@ -362,23 +357,23 @@ export function extrude(model: Model, member: string, depth?: number | null, fra
  * Which expansion a feature was made by — and so which a replay must make it
  * by again, since the auto-names every later entry holds were handed out by it.
  *
- * - **11**, today's extrude: **no lid frame**. One was made "so a sketch on the
- *   cap has a plane", and sketch-on-face builds that plane from the cap itself
- *   now (sketchface.ts). What still read it — a twin curve's frame, and the
- *   depth's pairs — needs none: an extrude translates without turning, and a
- *   curve's frame is an orientation (`CircleEntity`), so a twin curve names the
- *   sketch frame itself. What the lid frame still did was double points. Two
- *   rectangles extruded at once share the first one's sketch frame, which for
- *   the second stands off its profile, so the second lid frame laid three
- *   points of its own on the *first* lid's corners — the owner's *"i'm getting
- *   a lot of overlapping points. why is this happening?"* once more
- *   (docs/plans/no-lid-frame.md).
- * - **10**, today's revolve, and a format-10 file's extrude: a frame the
- *   feature makes (an extrude's lid, a revolve's end frames) **reuses the twin
- *   of every point of the frame it copies that is a profile vertex**, and makes
- *   a point of its own only for one that is not (`frameOver`). A revolve keeps
- *   its end frames: its end face is turned, so a curve on it needs a turned
- *   orientation, which only a frame of its own gives it.
+ * - **11**, today's extrude and revolve: **no frame at all**. An extrude made
+ *   a lid frame "so a sketch on the cap has a plane", and sketch-on-face builds
+ *   that plane from the cap itself now (sketchface.ts); what the lid frame
+ *   still did was double points — two rectangles extruded at once share one
+ *   plane, which for the second stands off its profile, so the second lid frame
+ *   laid three points of its own on the *first* lid's corners, the owner's
+ *   *"i'm getting a lot of overlapping points"* (docs/plans/no-lid-frame.md).
+ *   A revolve made end frames because a curve on its turned end face needed a
+ *   turned orientation; a curve carries its own normal now
+ *   (docs/plans/frameless-curves.md), and the twin rim's is held to its base's
+ *   turned by the revolution's own `.n` block, so a revolve makes none either.
+ * - **10**, a format-12 file's partial revolve and a format-10 file's extrude:
+ *   a frame the feature makes (an extrude's lid, a revolve's end frames)
+ *   **reuses the twin of every point of the frame it copies that is a profile
+ *   vertex**, and makes a point of its own only for one that is not
+ *   (`frameOver`). Kept for those files: their later entries name the end
+ *   frames' points.
  * - **9**, files of format 9 and below: every such frame has three points of
  *   its own, made before the twins.
  *
@@ -392,14 +387,14 @@ export function extrude(model: Model, member: string, depth?: number | null, fra
  *
  * Today's is what every call makes, and what an entry with no expansion means.
  */
-export const EXPANSION: Readonly<Record<"extrude" | "revolve", Expansion>> = { extrude: 11, revolve: 10 };
+export const EXPANSION: Readonly<Record<"extrude" | "revolve", Expansion>> = { extrude: 11, revolve: 11 };
 
 function expansionOf(x: number | null | undefined, op: "extrude" | "revolve"): Expansion {
   if (x == null || x === EXPANSION[op]) return EXPANSION[op];
-  if (x === 9 || (op === "extrude" && x === 10)) return x;
+  if (x === 9 || x === 10) return x;
   const old = op === "extrude"
     ? "9 or 10 (a file of version 9 or 10, whose lid frame had points of its own or stood on the lid's)"
-    : "9 (a file of version 9 or below, whose end frames had points of their own)";
+    : "9 or 10 (a file of version 9 or below, whose end frames had points of their own, or 10 to 12, whose end frames stood on the end face's corners)";
   throw new Error(`${op}'s expansion is ${old} or left out — got ${JSON.stringify(x)}`);
 }
 
@@ -429,7 +424,7 @@ function extrudeDepth(depth: number | null | undefined): number {
 function extruded(model: Model, member: string, d: number, profile: Profile, x: Expansion): string {
   const plan = planSweep(model, profile);
   // The frame's +z when the call was made — where the twins are seeded, and nothing else.
-  const z = framePlaneAxes(model, profile.frame)!.n;
+  const z = planeAxes(model, profile.frame)!.n;
   return model.asOperation("extrude", () => [member, d, plan.frame, resolvedLoops(plan), ...expansionArgs(x, "extrude")],
     () => extrudeBody(model, member, d, plan, z, x));
 }
@@ -485,7 +480,8 @@ export function profileOf(model: Model, all: Loop[], index: number, frame?: stri
  */
 export function profileOfLoops(model: Model, all: Loop[], indices: readonly number[], frame?: string | null,
                                words: ProfileWords = EXTRUDE): Profile {
-  const f = frame ?? sketchFrameOf(model, all[indices[0]], words);
+  const f = frame ?? orientingPlane(model, all[indices[0]]);
+  void words;
   return { frame: f, ...regionMembers(model, all, indices) };
 }
 
@@ -504,8 +500,8 @@ function regionMembers(model: Model, all: Loop[], indices: readonly number[]): P
 }
 
 /** `profileOf`, for a revolve: the same region, and refusals that say "revolve". */
-export function revolveProfileOf(model: Model, all: Loop[], index: number): Profile {
-  return profileOf(model, all, index, null, REVOLVE);
+export function revolveProfileOf(model: Model, all: Loop[], index: number, toward?: number[]): Profile {
+  return profileOf(model, all, index, orientingPlane(model, all[index], toward), REVOLVE);
 }
 
 /**
@@ -551,36 +547,67 @@ export function depthBelow(all: Loop[], inner: number, outer: number): number {
   return 0;
 }
 
-/** The frames to try, the default first and then in creation order — loops.ts's preference. */
+/** The frames to try, the default first, then in creation order, the origin last — loops.ts's preference. */
 function framesByPreference(model: Model): string[] {
-  const all = [...model.entities.values()].filter((e) => e.kind === "frame").map((e) => e.name);
+  const all = model.frameNames().filter((f) => f !== ORIGIN);
   const d = model.defaultFrame;
-  return d != null && all.includes(d) ? [d, ...all.filter((f) => f !== d)] : all;
+  return [...(d != null && all.includes(d) ? [d, ...all.filter((f) => f !== d)] : all), ORIGIN];
 }
 
 /**
- * The frame a loop is extruded along (or revolved in) when none is named: the
- * one it lies in, else the first parallel to it, the default first — or null,
- * when no frame orients it and the layer above has one to make. See `extrude`.
+ * The plane a loop is extruded along (or revolved in) when none is named — a
+ * plane reference (`Model.planeKind`), always one, since **nothing makes a
+ * frame for it** (docs/plans/frameless-curves.md):
+ *
+ * 1. the drawing plane — the work plane, the default frame or the origin —
+ *    when the loop lies in it: a sketch on a face extrudes along that face, and
+ *    follows it;
+ * 2. else a frame the loop lies in, then one parallel to it — the default
+ *    first and the origin last, so a loop drawn level runs along the origin's
+ *    +z and a loop on a user's frame along that frame's, as they always did;
+ * 3. else the loop's own plane (`sketchFrameFor`): three of its points, facing
+ *    `toward` (the viewer, so a positive depth comes out at them; headless the
+ *    loop's own normal, loops.ts's — up for anything drawn level), or a whole
+ *    circle's own plane. It used to be a frame of those three points, made by
+ *    the layer above before the call; the points are the same, and no frame is.
  */
-export function orientingFrame(model: Model, loop: Loop): string | null {
+export function orientingPlane(model: Model, loop: Loop, toward: number[] = loop.plane.normal): string {
+  const drawing = model.drawingPlane();
+  if (liesIn(model, loop, drawing)) {
+    // A curve's plane cannot be turned over the way three points can be
+    // chosen facing the viewer: sketch on a cylinder's base, and the work
+    // plane is the base rim, whose normal points up into the solid. A
+    // positive depth there must come out at the viewer, so a curve plane
+    // facing away gives way to the loop's own, facing `toward`.
+    const away = model.planeKind(drawing) === "curve" && dot3(planeAxes(model, drawing)!.n, toward) < 0;
+    if (!away) return drawing;
+    return sketchFrameFor(model, loop, toward);
+  }
   if (loop.plane.frame !== null) return loop.plane.frame;
   for (const f of framesByPreference(model)) {
     const axes = framePlaneAxes(model, f);
     if (axes && parallel(axes.n, loop.plane.normal)) return f;
   }
-  return null;
+  return sketchFrameFor(model, loop, toward);
 }
 
-/** `orientingFrame`, refused aloud when there is none. */
-function sketchFrameOf(model: Model, loop: Loop, words: ProfileWords): string {
-  const f = orientingFrame(model, loop);
-  if (f !== null) return f;
-  throw new Error(`the loop of ${loop.members.map(memberLabel).join(",")} lies in no frame's plane, and no frame is `
-    + `parallel to it — ${words.needsFrame}: make one on its plane (plane(…), or Sketch on this) `
-    + `and ${words.op} again`);
+/**
+ * The entities a plane or axis reference stands on, for a feature's record to
+ * name: a frame's name, a curve's, a face's three points, a line — and nothing
+ * for the origin, which is no entity and can never be deleted out from under a
+ * record (`ORIGIN`).
+ */
+function planeNames(model: Model, ref: string): string[] {
+  return referentsOf(ref).filter((n) => model.entities.has(n));
 }
 
+/** Whether `loop` lies in the plane `ref` names: parallel to it, and on it. */
+function liesIn(model: Model, loop: Loop, ref: string): boolean {
+  const p = planeAxes(model, ref);
+  if (!p || !parallel(p.n, loop.plane.normal)) return false;
+  const off = Math.abs(dot3(sub3(loop.plane.origin, p.origin), p.n));
+  return off <= 1e-6 * Math.max(1, Math.sqrt(Math.abs(loop.area)));
+}
 /** The loop `member` is in, found — and refused if it is in none, or in several. */
 function foundProfile(model: Model, member: string, frame: string | null, words: ProfileWords): Profile {
   const { all, index } = foundLoop(model, member, frame, words);
@@ -609,8 +636,8 @@ function foundLoop(model: Model, member: string, frame: string | null, words: Pr
 function loopsWith(model: Model, all: Loop[], member: string, frame: string | null): number[] {
   const mine = all.map((_, i) => i).filter((i) => all[i].members.some((m) => m.name === member));
   if (frame === null) return mine;
-  model.frame(frame);
-  const axes = framePlaneAxes(model, frame);
+  model.planeKind(frame);
+  const axes = planeAxes(model, frame);
   if (!axes) throw new Error(`"${frame}" has collapsed — it has no plane for a profile to lie in`);
   return mine.filter((i) => parallel(all[i].plane.normal, axes.n));
 }
@@ -637,7 +664,7 @@ function loopsWith(model: Model, all: Loop[], member: string, frame: string | nu
  * cannot name (a key is not a point, see `givenProfile`) — the tool then calls
  * the operation itself, which materialises the crossing as a short form would.
  */
-export function regionNaming(model: Model, all: Loop[], index: number):
+export function regionNaming(model: Model, all: Loop[], index: number, toward?: number[]):
     { member: string; frame: string | null; loops: ProfileMember[][] | null } | null {
   const own = all[index];
   const wholes = [...new Set(own.members.filter((m) => m.span === null).map((m) => m.name))];
@@ -645,9 +672,13 @@ export function regionNaming(model: Model, all: Loop[], index: number):
     const found = loopsWith(model, all, member, frame);
     return found.length === 1 && found[0] === index;
   };
-  for (const m of wholes) if (only(m, null)) return { member: m, frame: null, loops: null };
-  const frame = orientingFrame(model, own);
-  if (frame === null) return null;
+  // The plane the call would run along. Where the bare call would choose the
+  // same one, it need not be said; where only the viewer's side settles it —
+  // a loop no frame orients, its own points facing the one who clicked — it
+  // is typed, so the line in the log means what the click did.
+  const frame = orientingPlane(model, own, toward);
+  const said = frame === orientingPlane(model, own) ? null : frame;
+  for (const m of wholes) if (only(m, null)) return { member: m, frame: said, loops: null };
   for (const m of wholes) if (only(m, frame)) return { member: m, frame, loops: null };
   const profile = profileOf(model, all, index, frame);
   if (profile.crossings?.size) return null;
@@ -655,35 +686,14 @@ export function regionNaming(model: Model, all: Loop[], index: number):
 }
 
 /**
- * The command line's question before a typed `extrude(member, depth)` names no
- * frame: the loop it would extrude **when no frame orients it** — so the layer
- * above can make one on it first, as a journalled call of its own — or null,
- * when the call can be made as it stands. Asked only after every refusal the
- * call makes that needs no frame (a 2D model, the depth, what the member is, no
- * loop or several), so a call that is going to be refused makes no frame first.
+ * The loop a typed `extrude` or `revolve` of `member` would find — refused as
+ * the call refuses, when it is in none or several. What the command layer asks
+ * to give a typed call the viewer's side (`orientingPlane`'s `toward`), which
+ * only it knows.
  */
-export function extrudeNeedsFrame(model: Model, member: string, depth?: number | null): Loop | null {
-  if (model.dim !== 3) throw new Error("extrude needs a 3D model — a 2D drawing has no direction out of its plane");
-  extrudeDepth(depth);
-  checkMember(model, member, "extrude");
-  const { all, index } = foundLoop(model, member, null, EXTRUDE);
-  return orientingFrame(model, all[index]) === null ? all[index] : null;
-}
-
-/**
- * `extrudeNeedsFrame` for a typed `revolve(member, axis, angle)` — with the
- * geometric refusals asked too, of the loop's own plane (`checkRevolveRegion`),
- * since an axis out of the plane is the likeliest way a revolve is refused and
- * the frame must not be made for a call that then fails.
- */
-export function revolveNeedsFrame(model: Model, member: string, axis: string, angle?: number | null): Loop | null {
-  if (model.dim !== 3) throw new Error("revolve needs a 3D model — a 2D drawing has nothing to turn out of its plane into");
-  revolveAngle(angle);
-  checkMember(model, member, "revolve");
-  axisReader(model, axis);
-  const { all, index } = foundLoop(model, member, null, REVOLVE);
-  if (orientingFrame(model, all[index]) !== null) return null;
-  checkRevolveRegion(model, all, index, axis);
+export function loopOfMember(model: Model, member: string, op: "extrude" | "revolve"): Loop {
+  checkMember(model, member, op);
+  const { all, index } = foundLoop(model, member, null, op === "extrude" ? EXTRUDE : REVOLVE);
   return all[index];
 }
 
@@ -717,7 +727,7 @@ function memberText(m: ProfileMember): string {
 function givenProfile(model: Model, member: string, frame: string | null | undefined, loops: unknown,
                       words: ProfileWords): Profile {
   if (typeof frame !== "string") throw new Error("a profile given as loops needs the frame it is sketched on");
-  model.frame(frame);
+  model.planeKind(frame);
   const isMember = (m: unknown) => typeof m === "string" || (m !== null && typeof m === "object" && !Array.isArray(m)
     && ["name", "from", "to"].every((k) => typeof (m as Record<string, unknown>)[k] === "string"));
   const ok = Array.isArray(loops) && loops.length > 0
@@ -783,6 +793,8 @@ interface SweepPlan {
   crossings: Map<string, number[]> | null;
   /** The vertices that are no point yet, in walk order, each with the edges the profile bounds there. */
   toMake: { v: string; edges: string[] }[];
+  /** The frames an old revolve turns for its end face (`sweptFrames`) — empty for everything today makes. */
+  swept: string[];
   /** Each vertex the body materialised, to the point it made — filled by the body, read by the journal. */
   made: Map<string, string>;
 }
@@ -794,7 +806,7 @@ interface SweepPlan {
  * what the call did.
  */
 function planSweep(model: Model, profile: Profile): SweepPlan {
-  if (!framePlaneAxes(model, profile.frame)) throw new Error(`"${profile.frame}" has collapsed — it has no plane for a profile to lie in`);
+  if (!planeAxes(model, profile.frame)) throw new Error(`"${profile.frame}" has collapsed — it has no plane for a profile to lie in`);
   const classOf = joinClasses(model);
   const held = heldOnCurves(model);
   const walked = profile.loops.map((members) => walkLoop(model, classOf, held, members));
@@ -811,7 +823,7 @@ function planSweep(model: Model, profile: Profile): SweepPlan {
   }
   return {
     frame: profile.frame, loops: profile.loops, walked, classOf,
-    crossings: profile.crossings ?? null, toMake, made: new Map(),
+    crossings: profile.crossings ?? null, toMake, made: new Map(), swept: [],
   };
 }
 
@@ -1010,16 +1022,18 @@ function twinPoints(model: Model, m: Walked, real: (v: string) => string, twinOf
  * A member's twin, in the member's own direction, between the twins of its
  * ends: a line for a line or part of one; an arc about the twinned centre for
  * an arc, or for part of an arc or circle — the same sense about the same
- * frame's +z, so the same part; a circle for a whole circle. A curve's twin
- * lies on `planeFor` its plane.
+ * normal, so the same part; a circle for a whole circle. A curve's twin is
+ * seeded facing `normalFor` its base (its base's normal moved as the twin is:
+ * as it is, for a translation; turned, for a turn) — a seed, which the
+ * feature's dimension then holds (`extrusion`, `revolution`).
  */
 function twinMember(model: Model, m: Walked, real: (v: string) => string, twinOf: (p: string) => string,
-                    planeFor: (p: string | undefined) => string | null | undefined): string {
+                    normalFor: (curve: string) => number[]): string {
   const e = model.entities.get(m.name)!;
-  if (e.kind === "circle" && !m.part) return model.addCircle(twinOf(e.center), model.radius(e.name), planeFor(e.plane)).name;
+  if (e.kind === "circle" && !m.part) return model.addCircle(twinOf(e.center), model.radius(e.name), normalFor(e.name)).name;
   const [a, b] = m.ends!.map((v) => twinOf(real(v)));
   if (e.kind === "line") return model.addLine(a, b).name;
-  if (e.kind === "arc" || e.kind === "circle") return model.addArc(twinOf(e.center), a, b, model.radius(e.name), planeFor(e.plane)).name;
+  if (e.kind === "arc" || e.kind === "circle") return model.addArc(twinOf(e.center), a, b, model.radius(e.name), normalFor(e.name)).name;
   throw new Error(`"${m.name}" is not a line, arc or circle`); // unreachable: walkLoop checked
 }
 
@@ -1068,11 +1082,10 @@ function extrudeBody(model: Model, member: string, depth: number, plan: SweepPla
   const lid = before ?? (x === 10 ? frameOver(model, frame, classOf, byClass, lifted, made) : null);
   const top = lid?.frame;
 
-  // A twin curve keeps its base's frame: a translation turns nothing, so it is
-  // the same orientation and the same arc, with no side to decide. Only an old
-  // file's curve on the sketch frame goes on its lid frame, as it did.
-  const planeFor = (p: string | undefined) => (top !== undefined && p === frame ? top : p);
-  const twins = walked.map((loop) => loop.map((m) => made(twinMember(model, m, real, twinOf, planeFor))));
+  // A twin curve faces as its base does: a translation turns nothing, so it is
+  // the same orientation and the same arc, with no side to decide — and the
+  // depth holds the two normals together from here on (`extrusion`).
+  const twins = walked.map((loop) => loop.map((m) => made(twinMember(model, m, real, twinOf, (c) => model.normalOf(c)))));
 
   // A wall at every corner, base to twin — once per joined class, so a corner
   // two loops share has one. A circle has none (see `extrude`).
@@ -1100,7 +1113,7 @@ function extrudeBody(model: Model, member: string, depth: number, plan: SweepPla
   return model.addFeature({
     kind: "extrude", member, frame, ...(top === undefined ? {} : { top }), depth: held, expansion: x,
     loops: resolvedLoops(plan), twins, walls,
-    names: [...new Set([...builtOn(plan), frame, ...owns])], owns,
+    names: [...new Set([...builtOn(plan), ...planeNames(model, frame), ...owns])], owns,
   }).name;
 }
 
@@ -1169,7 +1182,7 @@ function extrudeBody(model: Model, member: string, depth: number, plan: SweepPla
  * An operation, refusing before it changes anything. 3D only.
  */
 export function revolve(model: Model, member: string, axis: string, angle?: number | null, frame?: string | null,
-                        loops?: ProfileMember[][] | null, expansion?: number | null): string {
+                        loops?: ProfileMember[][] | null, expansion?: number | null, swept?: unknown): string {
   if (model.dim !== 3) throw new Error("revolve needs a 3D model — a 2D drawing has nothing to turn out of its plane into");
   const a = revolveAngle(angle);
   const x = expansionOf(expansion, "revolve");
@@ -1177,7 +1190,7 @@ export function revolve(model: Model, member: string, axis: string, angle?: numb
   axisReader(model, axis); // a name that is not an axis says so before anything is looked for
   const profile = loops != null ? givenProfile(model, member, frame, loops, REVOLVE) : foundProfile(model, member, frame ?? null, REVOLVE);
   if (loops == null) checkRevolve(model, profile, axis);
-  return revolved(model, member, axis, a, profile, x);
+  return revolved(model, member, axis, a, profile, x, isFullTurn(a) ? [] : sweptFrames(model, profile.frame, x, swept));
 }
 
 /**
@@ -1190,7 +1203,7 @@ export function revolveProfile(model: Model, profile: Profile, axis: string, ang
   const a = revolveAngle(angle);
   axisReader(model, axis);
   checkRevolve(model, profile, axis);
-  return revolved(model, memberName(profile.loops[0][0]), axis, a, profile, EXPANSION.revolve);
+  return revolved(model, memberName(profile.loops[0][0]), axis, a, profile, EXPANSION.revolve, []);
 }
 
 function revolveAngle(angle: number | null | undefined): number {
@@ -1202,9 +1215,13 @@ function revolveAngle(angle: number | null | undefined): number {
 }
 
 /** Plans, then expands and journals — as `extruded`. */
-function revolved(model: Model, member: string, axis: string, a: number, profile: Profile, x: Expansion): string {
-  const plan = planSweep(model, profile);
-  return model.asOperation("revolve", () => [member, axis, a, plan.frame, resolvedLoops(plan), ...expansionArgs(x, "revolve")],
+function revolved(model: Model, member: string, axis: string, a: number, profile: Profile, x: Expansion,
+                  swept: string[]): string {
+  const plan = { ...planSweep(model, profile), swept };
+  // An old revolve's turned frames ride in its entry only where they are more
+  // than its sketch frame, so an old entry re-saves as it came in.
+  const tail = swept.length > 1 ? [swept] : [];
+  return model.asOperation("revolve", () => [member, axis, a, plan.frame, resolvedLoops(plan), ...expansionArgs(x, "revolve"), ...tail],
     () => revolveBody(model, member, axis, a, plan, x));
 }
 
@@ -1228,7 +1245,7 @@ const SWEEP_TOL = 1e-6;
 export function checkRevolve(model: Model, profile: Profile, axis: string): void {
   const ax = axisReader(model, axis).read();
   if (ax.dir.every((c) => c === 0)) throw new Error(`the axis ${axis} has collapsed — it has no direction to turn about`);
-  const plane = framePlaneAxes(model, profile.frame);
+  const plane = planeAxes(model, profile.frame);
   if (!plane) throw new Error(`"${profile.frame}" has collapsed — it has no plane for a profile to lie in`);
   checkRevolveIn(model, profile, axis, plane.n, ` (${profile.frame}'s)`);
 }
@@ -1332,7 +1349,7 @@ function revolveBody(model: Model, member: string, axis: string, angle: number, 
   const loops = resolvedLoops(plan);
   const axisOn = referentOf(axis)!;
   // Built on: the profile, its sketch frame and the axis (a profile edge may be the axis — named once).
-  const base = [...builtOn(plan), frame, axisOn];
+  const base = [...builtOn(plan), ...planeNames(model, frame), ...planeNames(model, axisOn)];
 
   if (isFullTurn(angle)) {
     const held = made(revolution(model, axis, angle));
@@ -1346,33 +1363,33 @@ function revolveBody(model: Model, member: string, axis: string, angle: number, 
   // settles anything that moved since the plan was made.
   const at = axisReader(model, axis).read();
   const turned = (p: string) => turnPoint(model.coords(p), at, angle);
+  const turnedNormal = (c: string) => turnPoint(model.normalOf(c), { origin: [0, 0, 0], dir: at.dir }, angle);
 
-  // The end face's frames: the sketch frame turned — so a sketch on the end
-  // face has a plane — and any other frame a profile curve is drawn on, turned
-  // too, so each twin curve lies in its base's plane turned. (A translated
-  // frame keeps its orientation, which is why an extrude's off-sketch curves
-  // keep their own; a turned one does not.) Each stands on the end face's own
-  // corners wherever its frame stands on the profile's.
+  // An old file's end frames (`Expansion` 9 and 10): the sketch frame turned —
+  // so a sketch on the end face had a plane — and any other frame a profile
+  // curve was drawn on, turned too, so each twin curve lay in its base's plane
+  // turned. Today's revolve makes none: a twin curve carries its own normal,
+  // held at its base's turned by the dimension. Each stands on the end face's
+  // own corners wherever its frame stands on the profile's.
   const twinFrame = new Map<string, string>();
   const endFrames = (shared: Map<number | string, { base: string; twin: string }>) => {
-    for (const fr of sweptFrames(model, frame, walked)) {
+    for (const fr of plan.swept) {
       twinFrame.set(fr, frameOver(model, fr, classOf, shared, turned, made).frame);
     }
   };
   if (x === 9) endFrames(new Map());
   const { twinOf, byClass } = twinner(model, classOf, turned, made);
   for (const loop of walked) for (const m of loop) twinPoints(model, m, real, twinOf);
-  if (x !== 9) endFrames(byClass);
+  if (x === 10) endFrames(byClass);
 
-  // Each member's twin in its own direction, a curve on its plane's turned
-  // frame: the same arc, turned, with no side to decide.
-  const planeFor = (p: string | undefined) => (p === undefined ? null : twinFrame.get(p)!);
-  const twins = walked.map((loop) => loop.map((m) => made(twinMember(model, m, real, twinOf, planeFor))));
+  // Each member's twin in its own direction, a curve facing its base turned:
+  // the same arc, turned, with no side to decide.
+  const twins = walked.map((loop) => loop.map((m) => made(twinMember(model, m, real, twinOf, turnedNormal))));
 
   // The angle: corners and centres first (the label sits on the first corner's
-  // path), then the curves' radii, then the frames — as frames, which is what
-  // tells the relation their bases are a datum; it holds a frame's point only
-  // where no corner pair already does (see `revolution`).
+  // path), then the curves' radii and normals, then an old file's frames — as
+  // frames, which is what tells the relation their bases are a datum; it holds
+  // a frame's point only where no corner pair already does (see `revolution`).
   const pairs: string[] = [];
   for (const { base: b, twin } of byClass.values()) pairs.push(b, twin);
   walked.forEach((loop, i) => loop.forEach((m, j) => { if (m.kind !== "line") pairs.push(m.name, twins[i][j]); }));
@@ -1380,25 +1397,31 @@ function revolveBody(model: Model, member: string, axis: string, angle: number, 
   const held = made(revolution(model, axis, angle, ...pairs));
 
   return model.addFeature({
-    kind: "revolve", member, frame, axis, angle: held, loops, twins, end: twinFrame.get(frame)!, expansion: x,
+    kind: "revolve", member, frame, axis, angle: held, loops, twins, end: twinFrame.get(frame) ?? null, expansion: x,
+    ...(plan.swept.length ? { swept: plan.swept } : {}),
     names: [...new Set([...base, ...owns])], owns,
   }).name;
 }
 
 /**
- * The frames a partial revolve's end face turns, by name and in order: the
- * sketch frame, then each other frame a profile curve is drawn on. Never by
- * which way a frame faces, so a replay on seeds makes the same ones.
+ * The frames an old file's partial revolve turned for its end face, in order:
+ * the sketch frame, then each other frame a profile curve was drawn on — given
+ * by the entry, which persist.ts writes in from the frames those curves named
+ * when the file was written (curves name no frame any more). Checked here, so
+ * a hand edit fails at its own step. Empty for today's revolve, which turns
+ * no frame (`Expansion`).
  */
-function sweptFrames(model: Model, frame: string, walked: Walked[][]): string[] {
-  const frames = [frame];
-  for (const loop of walked) {
-    for (const m of loop) {
-      const p = model.planeOf(model.entities.get(m.name)!);
-      if (p !== undefined && !frames.includes(p)) frames.push(p);
-    }
+function sweptFrames(model: Model, frame: string, x: Expansion, given: unknown): string[] {
+  if (x === 11) {
+    if (given != null) throw new Error("today's revolve turns no frames — only an old file's names the frames it turned");
+    return [];
   }
-  return frames;
+  const list = given == null ? [frame] : given;
+  if (!Array.isArray(list) || !list.length || list[0] !== frame || !list.every((f) => typeof f === "string")) {
+    throw new Error(`an old revolve's turned frames are a list of frame names, its sketch frame "${frame}" first`);
+  }
+  for (const f of list) model.frame(f);
+  return [...new Set(list as string[])];
 }
 
 // --- regeneration -----------------------------------------------------------
@@ -1525,7 +1548,7 @@ export interface FeatureRegion {
 }
 
 export function featureRegion(model: Model, f: FeatureEntry, all: Loop[] = findLoops(model)): FeatureRegion {
-  const axes = framePlaneAxes(model, f.frame);
+  const axes = planeAxes(model, f.frame);
   if (!axes) throw new Error(`"${f.frame}" has collapsed — ${f.name}'s profile has no plane to be found in`);
   const mine = all.map((_, i) => i)
     .filter((i) => parallel(all[i].plane.normal, axes.n) && all[i].members.some((m) => m.name === f.member));
@@ -1746,7 +1769,7 @@ function rebuildBody(model: Model, f: FeatureEntry, plan: SweepPlan): { loops: P
   const real = (v: string) => plan.made.get(v) ?? v;
   const loops = resolvedLoops(plan);
 
-  const twinned = f.kind === "extrude" || f.end !== null;
+  const twinned = f.kind === "extrude" || f.twins.length > 0;
   const twins: string[][] = [];
   const walls: string[] = [];
   const pairs: string[] = [];
@@ -1812,14 +1835,16 @@ function rebuildBody(model: Model, f: FeatureEntry, plan: SweepPlan): { loops: P
     // expansion makes them: before the twins in a version-9 feature, after
     // them in today's, which is also when it is known which of their points
     // are twins.
-    let planeFor: (p: string | undefined) => string | null | undefined;
+    // A new twin curve's normal, seeded as the expansion seeds it: its base's,
+    // moved as the twin is — and then held by the dimension, rebuilt below.
+    let normalFor: (c: string) => number[];
     if (f.kind === "extrude") {
-      const z = framePlaneAxes(model, frame)!.n;
+      const z = planeAxes(model, frame)!.n;
       place = (p) => model.coords(p).map((c, i) => c + value * z[i]);
-      // Today's extrude has no lid frame, and a twin curve keeps its base's
-      // frame; an old file's lid frame is kept as that file made it.
+      // Today's extrude has no lid frame; an old file's lid frame is kept as
+      // that file made it.
       const top = f.top;
-      planeFor = (p) => (top !== undefined && p === frame ? top : p);
+      normalFor = (c) => model.normalOf(c);
       const lid = () => {
         if (top === undefined) return;
         for (const p of model.refsOf(model.frame(top))) owned(p);
@@ -1839,10 +1864,12 @@ function rebuildBody(model: Model, f: FeatureEntry, plan: SweepPlan): { loops: P
     } else {
       const at = axisReader(model, f.axis).read();
       place = (p) => turnPoint(model.coords(p), at, value);
-      // The end frames in revolveBody's order, the old one wherever there was one.
+      normalFor = (c) => turnPoint(model.normalOf(c), { origin: [0, 0, 0], dir: at.dir }, value);
+      // An old file's end frames in revolveBody's order, the old one wherever
+      // there was one; today's revolve has none.
       const twinFrame = new Map<string, string>();
       const endFrames = (shared: Map<number | string, { base: string; twin: string }>) => {
-        for (const fr of sweptFrames(model, frame, walked)) {
+        for (const fr of f.swept ?? []) {
           const old = oldFrames.get(fr);
           if (old !== undefined) {
             for (const p of model.refsOf(model.frame(old))) owned(p);
@@ -1856,8 +1883,7 @@ function rebuildBody(model: Model, f: FeatureEntry, plan: SweepPlan): { loops: P
       if (!shares) endFrames(new Map());
       for (const loop of walked) for (const m of loop) twinPoints(model, m, real, twinOf);
       if (shares) endFrames(byClass);
-      end = twinFrame.get(frame)!;
-      planeFor = (p) => (p === undefined ? null : twinFrame.get(p)!);
+      end = twinFrame.get(frame) ?? null;
       for (const [fr, tf] of twinFrame) framePairs.push(fr, tf);
     }
 
@@ -1890,11 +1916,11 @@ function rebuildBody(model: Model, f: FeatureEntry, plan: SweepPlan): { loops: P
           }
         } else if (t?.kind === "arc" && (e.kind === "arc" || (e.kind === "circle" && m.part))) {
           const [s, n] = m.ends!.map((v) => twinOf(real(v)));
-          if (t.center === twinOf(e.center) && t.start === s && t.end === n && t.plane === planeFor(e.plane)) return made(t.name);
+          if (t.center === twinOf(e.center) && t.start === s && t.end === n) return made(t.name);
         } else if (t?.kind === "circle" && e.kind === "circle" && !m.part) {
-          if (t.center === twinOf(e.center) && t.plane === planeFor(e.plane)) return made(t.name);
+          if (t.center === twinOf(e.center)) return made(t.name);
         }
-        return made(twinMember(model, m, real, twinOf, planeFor));
+        return made(twinMember(model, m, real, twinOf, normalFor));
       }));
     });
 
@@ -1933,7 +1959,7 @@ function rebuildBody(model: Model, f: FeatureEntry, plan: SweepPlan): { loops: P
   const rebuild = REBUILD[dim.op];
   model.rebuildRelation(dimName, dim.op, args, () => rebuild(model, args));
 
-  const on = [...builtOn(plan), frame, ...(f.kind === "revolve" ? [referentOf(f.axis)!] : [])];
+  const on = [...builtOn(plan), ...planeNames(model, frame), ...(f.kind === "revolve" ? planeNames(model, f.axis) : [])];
   const names = [...new Set([...on, ...owns])];
   if (f.kind === "extrude") {
     model.rewriteFeature(f.name, {
@@ -1942,7 +1968,8 @@ function rebuildBody(model: Model, f: FeatureEntry, plan: SweepPlan): { loops: P
     });
   } else {
     model.rewriteFeature(f.name, {
-      kind: "revolve", member: f.member, frame, axis: f.axis, angle: f.angle, loops, twins, end, expansion: f.expansion, names, owns,
+      kind: "revolve", member: f.member, frame, axis: f.axis, angle: f.angle, loops, twins, end, expansion: f.expansion,
+      ...(f.swept ? { swept: f.swept } : {}), names, owns,
     });
   }
 
@@ -2027,7 +2054,7 @@ export function holeLoop(model: Model, f: FeatureEntry, member: string, r: Featu
     throw new Error(`${member} is in no closed loop — loops() lists the loops there are. A loop's ends join only at a `
       + "shared point or a coin (never by touching), and lie in one plane");
   }
-  const n = framePlaneAxes(model, f.frame)!.n;
+  const n = planeAxes(model, f.frame)!.n;
   const level = withIt.filter((i) => parallel(all[i].plane.normal, n));
   if (!level.length) {
     throw new Error(`${member}'s loop is not parallel to ${f.name}'s sketch frame ${f.frame} — a hole lies in the plane `
@@ -2214,7 +2241,7 @@ function holesGoing(model: Model, names: ReadonlySet<string>, flagging: boolean)
     const holeNames = new Set([...holed.flatMap((i) => loopNames(f.loops[i])), ...holeMade]);
     const elsewhere = new Set([
       ...kept.flatMap(loopNames),
-      f.frame, ...(f.kind === "revolve" ? [referentOf(f.axis)!] : []),
+      ...planeNames(model, f.frame), ...(f.kind === "revolve" ? planeNames(model, f.axis) : []),
       // A flag never reaches what the feature made (construction refuses an
       // owned twin of a profile no more than it does any curve); a deletion does.
       ...(flagging ? [] : f.owns.filter((n) => !holeMade.has(n))),
@@ -2479,6 +2506,8 @@ export function del(model: Model, ...names: string[]): string[] {
   // edits.)
   for (const n of names) {
     if (!model.has(n)) throw new Error(`"${n}" is not an entity or a relation (or a feature, or a group)`);
+    // The origin answers to its name (`ORIGIN`) and is part of every model.
+    if (n === ORIGIN) throw new Error("the origin is part of every model — it cannot be deleted");
   }
   const removed: string[] = [];
   for (const n of names) {
@@ -2531,14 +2560,12 @@ function cascade(model: Model, name: string): string[] {
 
   const doomed = entityClosure(model, seeds);
   // Every relation that names anything on the way out, plus the relations
-  // asked for. "Names" goes through `referentOf`, so a frame referenced only by
-  // an axis (`par("l1","f.x")`) still takes that relation with it — see
+  // asked for. "Names" goes through `referentsOf`, so a frame referenced only by
+  // an axis (`par("l1","f.x")`) still takes that relation with it, and so
+  // does a face's `"p1.p2.p3"` any of its three points — see
   // `Model.relationsNaming`.
   const relations = [...model.relations.values()]
-    .filter((r) => asked.has(r.name) || r.args.some((a) => {
-      const n = referentOf(a);
-      return n !== null && doomed.has(n);
-    }))
+    .filter((r) => asked.has(r.name) || r.args.some((a) => referentsOf(a).some((n) => doomed.has(n))))
     .map((r) => r.name);
   // Every record naming anything on the way out — the inward rule — plus the
   // feature asked for.

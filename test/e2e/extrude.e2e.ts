@@ -252,14 +252,15 @@ test("looking straight down the lid, the pixels are even-odd: the cap is filled,
   assert.equal((await features()).length, 1);
 });
 
-test("a circle sketched on the lid, on a plane the sketch tool makes of the lid's corners, extrudes again by a click inside it: a boss", async () => {
+test("a circle sketched on the lid, on the work plane the sketch tool sets to the lid's corners, extrudes again by a click inside it: a boss", async () => {
   // The sketch tool on the cap, between the outline and the hole: it types
-  // plane(a, b, c) of three lid corners, which is the lid's plane wherever the
-  // lid goes (there is no lid frame to set as the default any more).
+  // workplane("a.b.c") of three lid corners, which is the lid's plane wherever
+  // the lid goes — and makes no frame (docs/plans/frameless-curves.md; this
+  // used to type plane(a, b, c), a frame on those corners).
   await app.type("sketch");
   await clickAt(...await app.screenOf(onG(36, 34, 35)));
-  const typed = (await app.log()).split("\n").reverse().find((l) => l.includes("plane("));
-  assert.match(typed ?? "", /plane\("p\d+", "p\d+", "p\d+"\)/, `the sketch tool's line: ${typed}`);
+  const typed = (await app.log()).split("\n").reverse().find((l) => l.includes("workplane("));
+  assert.match(typed ?? "", /workplane\("p\d+\.p\d+\.p\d+"\)/, `the sketch tool's line: ${typed}`);
   await app.type("zoom(1)");
   await app.type("circle");
   const c = await app.screenOf(onG(60, 33, 35));
@@ -336,12 +337,17 @@ test('del("e2", "e1") takes both solids and leaves the sketch — the same entit
   assert.deepEqual(await features(), []);
   const now = JSON.parse(await saved());
   const was = JSON.parse(beforeExtrude);
-  // The sketch's entities, and nothing of either solid — except the centre of
-  // the circle drawn on the lid. The circle went with the plane it was drawn
-  // on, which stood on the lid's corners and went with them; its centre is a
-  // point the circle tool placed, and deleting a circle never takes its points.
+  // The sketch's entities, and nothing of either solid — except the circle
+  // drawn on the lid and its centre. The circle stands on no frame now
+  // (docs/plans/frameless-curves.md): what held it to the lid — its onplane
+  // and par, and the work plane — named the lid's corners and went with
+  // them, and the circle stays, free, where it was drawn. (It used to go with
+  // the frame the sketch tool made on those corners.)
   const after = await app.model();
-  assert.ok(!after.circles.some((c) => c.center === bossCentre), "the lid's circle is gone");
+  const boss = after.circles.find((c) => c.center === bossCentre);
+  assert.ok(boss, "the lid's circle stays");
+  assert.equal((await app.repl("model.workPlane")).value, null, "the work plane, which named the lid, is cleared");
+  assert.deepEqual(((await app.repl(`model.relationsNaming("${boss.name}").length`)).value), 0, "and nothing holds the circle any more");
   assert.deepEqual(Object.keys(now.values.points).sort(), [...Object.keys(was.values.points), bossCentre].sort());
   // Compared with just before the deletion, not with before the extrude: the
   // tools draw an undimensioned sketch, and the solves since were free to move

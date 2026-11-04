@@ -41,6 +41,7 @@ async function loadKernel() {
 const dot = (a: number[], b: number[]) => a.reduce((s, x, i) => s + x * b[i], 0);
 const sub = (a: number[], b: number[]) => a.map((x, i) => x - b[i]);
 const near = (a: number[], b: number[], tol = 1e-9) => Math.hypot(...sub(a, b)) <= tol;
+const close = (a: number, b: number, tol = 1e-9) => Math.abs(a - b) <= tol;
 
 const W = 40, H = 30;
 
@@ -141,7 +142,7 @@ test("corners joined by coin, as the line tool joins them, get one twin each —
   assert.equal(m.solve().solved, true);
 });
 
-test("a filleted loop: the arc's twin names the sketch frame, the same arc, the same radius — and its centre has a twin but no wall", async () => {
+test("a filleted loop: the arc's twin faces as its base does, the same arc, the same radius — and its centre has a twin but no wall", async () => {
   await loadKernel();
   const m = new Model(3);
   const t = tiltedFrame(m);
@@ -157,10 +158,10 @@ test("a filleted loop: the arc's twin names the sketch frame, the same arc, the 
   assert.equal(f.walls.length, 5);
   const twinArc = m.arc(f.twins[0][1]);
   const base = m.arc(arc);
-  // The sketch frame itself: a translation turns nothing, and a curve's frame
-  // is its orientation — so it is the same arc, about the same +z.
-  assert.equal(twinArc.plane, t.name);
-  assert.equal(base.plane, t.name);
+  // A translation turns nothing — so it is the same arc, about the same
+  // normal, which the depth holds to its base's (`extrusion`'s .n block).
+  assert.ok(near(m.normalOf(twinArc.name), m.normalOf(arc), 1e-12));
+  assert.ok(near(m.normalOf(arc), t.uz, 1e-9), "and the base faces its sketch's +z");
   assert.ok(Math.abs(m.radius(twinArc.name) - m.radius(arc)) < 1e-12);
   const bases = baseOf(m, f.depth);
   assert.equal(bases.get(twinArc.center), base.center);
@@ -193,7 +194,7 @@ test("a circle is a tube: two rims, two centres, no walls — the cylinder is dr
   // One centre twin and the twin circle, and nothing else.
   assert.equal(m.entities.size - before, 1 + 1);
   const twin = m.circle(f.twins[0][0]);
-  assert.equal(twin.plane, t.name, "the sketch frame: an orientation, not a place");
+  assert.ok(near(m.normalOf(twin.name), m.normalOf(c), 1e-12), "facing as its base does");
   assert.deepEqual(baseOf(m, f.depth), new Map([[twin.center, m.circle(c).center], [twin.name, c]]),
     "the centre's pair and the radius's, and no frame's");
   assert.ok(near(m.coords(twin.center), m.coords(m.circle(c).center).map((x, i) => x + 12 * t.uz[i])));
@@ -439,7 +440,9 @@ test("a sketch on the lid goes with the feature; a second extrude on the lid los
 
   const removed = del(m, f.name);
   assert.ok(removed.includes(cap), "the cap's plane stood on the lid's corners, and needs them");
-  assert.ok(removed.includes(ring1), "so the circle on it goes too");
+  // A circle stands on no frame any more (it carries its own normal): what
+  // held it to the cap goes with the cap, and the circle stays, free.
+  assert.ok(!removed.includes(ring1) && m.entities.has(ring1), "the circle on it stays");
   assert.ok(removed.includes(g.name), "the second extrude's profile was the first's lid");
   // Its walls stood on the first lid's corners and need them; its own lid does not.
   assert.ok(removed.includes(g.walls[0]));
@@ -492,18 +495,31 @@ test("refusals say why, and leave no trace — not a journal entry, an entity or
   assert.equal(extrude(m, extra[1], 10), "e1");
 });
 
-test("a loop in no frame's orientation is refused rather than given a frame nobody chose", async () => {
+test("a loop no frame of the user's orients runs along the origin's +z — or its own plane — and no frame is made", async () => {
   await loadKernel();
+  // It used to be refused here ("lies in no frame's plane") and given a frame
+  // of its own points by the layer above. Every model has the origin now, and
+  // a loop drawn level lies in its plane (docs/plans/frameless-curves.md).
   const m = new Model(3);
   const pts = [[0, 0, 0], [10, 0, 0], [10, 10, 0], [0, 10, 0]].map((c) => m.addPoint(c).name);
   const l = pts.map((p, i) => m.addLine(p, pts[(i + 1) % 4]).name);
-  assert.throws(() => extrude(m, l[0], 5), /lies in no frame's plane, and no frame is parallel to it/);
-  // A frame parallel to it, anywhere, is enough: the direction is its +z.
-  axisFrame(m, "g", [100, 100, 50]);
   const f = m.featureOf(extrude(m, l[0], 5), "extrude");
-  assert.equal(f.frame, "g");
+  assert.equal(f.frame, "origin");
   assert.equal(m.solve().solved, true);
   assert.ok(near(m.coords(m.line(f.walls[0]).refs[1]), [0, 0, 5]));
+  // A loop parallel to no frame at all — standing up, tipped about x — runs
+  // along its own plane: three of its own points, named as "a.b.c".
+  const n = new Model(3);
+  const c = Math.cos(0.4), s = Math.sin(0.4);
+  const up = [[0, 0], [10, 0], [10, 10], [0, 10]].map(([x, y]) => n.addPoint([x, y * c, y * s]).name);
+  const ul = up.map((p, i) => n.addLine(p, up[(i + 1) % 4]).name);
+  const g = n.featureOf(extrude(n, ul[0], 5), "extrude");
+  assert.equal(g.frame.split(".").length, 3, g.frame);
+  assert.equal([...n.entities.values()].filter((e) => e.kind === "frame").length, 0, "no frame made");
+  assert.equal(n.solve().solved, true);
+  const wall = n.line(g.walls[0]).refs.map((q) => n.coords(q));
+  const along = sub(wall[1], wall[0]);
+  assert.ok(close(Math.abs(dot(along, [0, -s, c])), 5, 1e-9), "5 along the loop's own normal");
 });
 
 test("a given profile is walked by its joins and refused where it does not close", async () => {

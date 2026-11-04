@@ -73,7 +73,7 @@ const QUARTER = Math.PI / 2;
 
 // --- the expansion ---------------------------------------------------------------
 
-test("a partial revolve: a twin of every corner and edge, an end frame, one angle dimension, one feature — each twin its base turned about the tilted frame's +y", async () => {
+test("a partial revolve: a twin of every corner and edge, no frame, one angle dimension, one feature — each twin its base turned about the tilted frame's +y", async () => {
   await loadKernel();
   const m = new Model(3);
   const t = tiltedFrame(m);
@@ -82,8 +82,9 @@ test("a partial revolve: a twin of every corner and edge, an end frame, one angl
 
   assert.equal(revolve(m, lines[0], "t.y", QUARTER), "e1");
   const f = m.featureOf("e1", "revolve");
-  // The end frame's three points and the frame; four corner twins; four twin edges.
-  assert.equal(m.entities.size - ents, 3 + 1 + 4 + 4);
+  // Four corner twins and four twin edges — and no end frame since format 13:
+  // a twin curve carries its own normal (docs/plans/frameless-curves.md).
+  assert.equal(m.entities.size - ents, 4 + 4);
   assert.equal(m.relations.size - rels, 1, "one relation: the angle");
   assert.equal(f.angle, "d1", "a dimension, d-named");
   assert.equal(m.relationOf("d1").op, "revolution");
@@ -91,7 +92,7 @@ test("a partial revolve: a twin of every corner and edge, an end frame, one angl
   assert.equal(f.frame, "t");
   assert.deepEqual(f.loops, [lines]);
   assert.deepEqual(f.twins[0].map((n) => m.entities.get(n)?.kind), ["line", "line", "line", "line"]);
-  assert.equal(m.entities.get(f.end!)?.kind, "frame");
+  assert.equal(f.end, null, "no end frame");
   // Built on the profile, its frame and the axis's frame; owns none of them.
   for (const n of [...lines, "t"]) {
     assert.ok(f.names.includes(n), n);
@@ -99,9 +100,9 @@ test("a partial revolve: a twin of every corner and edge, an end frame, one angl
   }
   assert.equal(new Set(f.names).size, f.names.length, "each name once — the axis's frame is the sketch's here");
 
-  // Four corner pairs and the frame pair; every twin where the turn puts it.
+  // Four corner pairs; every twin where the turn puts it.
   const bases = baseOf(m, "d1");
-  assert.equal(bases.size, 4 + 1);
+  assert.equal(bases.size, 4);
   for (const p of points) assert.ok([...bases.values()].includes(p), `${p} has a twin`);
   endAt(m, "d1", QUARTER, (p, a) => aboutY(t, p, a));
   // A twin edge joins the twins of its base edge's ends, in the same direction.
@@ -109,10 +110,6 @@ test("a partial revolve: a twin of every corner and edge, an end frame, one angl
     const [a, b] = m.line(tw).refs;
     assert.deepEqual([bases.get(a), bases.get(b)], m.line(lines[i]).refs);
   });
-  // The end frame is the sketch frame turned: on the axis its origin stays put.
-  const end = m.frame(f.end!);
-  assert.ok(near(m.coords(end.origin), t.origin));
-  assert.ok(near(m.coords(end.xref), aboutY(t, t.at(1, 0), QUARTER)));
 
   assert.equal(m.solve().solved, true);
   assert.ok(m.solve().iterations <= 1, "seeded exactly where the angle holds it");
@@ -141,7 +138,7 @@ test("a full revolve makes nothing: one dimension holding nothing, a whole turn 
   assert.equal(m.solve().solved, true);
 });
 
-test("a filleted profile: the arc's twin is on the end frame — the same arc turned, the same radius and sweep, before and after a set", async () => {
+test("a filleted profile: the arc's twin faces as its base does, turned — the same arc, the same radius and sweep, before and after a set", async () => {
   await loadKernel();
   const m = new Model(3);
   const t = tiltedFrame(m);
@@ -151,7 +148,8 @@ test("a filleted profile: the arc's twin is on the end frame — the same arc tu
   const f = m.featureOf(revolve(m, lines[0], "t.y", 1.2), "revolve");
   assert.deepEqual(f.loops, [[lines[0], lines[1], arc, lines[2], lines[3]]]);
   const [base, twin] = [m.arc(arc), m.arc(f.twins[0][2])];
-  assert.equal(twin.plane, f.end, "on the end frame, so a sketch on the end face means what it says");
+  const turned = (n: number[], a: number) => turn(n, [0, 0, 0], t.uy, a);
+  assert.ok(near(m.normalOf(twin.name), turned(m.normalOf(arc), 1.2), 1e-9), "its normal is its base's turned");
   assert.ok(Math.abs(m.radius(twin.name) - m.radius(arc)) < 1e-12);
   assert.ok(m.relationOf(f.angle).args.includes(arc), "the radius is one of the angle's pairs");
   assert.equal(m.solve().solved, true);
@@ -159,23 +157,24 @@ test("a filleted profile: the arc's twin is on the end frame — the same arc tu
   for (const a of [1.2, 4]) {
     if (a !== 1.2) { set(m, `${f.angle}.value`, a); assert.equal(m.solve().solved, true); }
     const [cb, ct] = [curveFrame(m, base)!, curveFrame(m, twin)!];
+    assert.ok(near(m.normalOf(twin.name), turned(m.normalOf(arc), a), 1e-6), `held turned at ${a}`);
     assert.ok(Math.abs(cb.sweep - ct.sweep) < 1e-6 && cb.sweep < Math.PI, `the short arc both times: ${cb.sweep}, ${ct.sweep}`);
     const [sb, st] = [arcSamples(cb, 16), arcSamples(ct, 16)];
     sb.forEach((p, i) => assert.ok(near(st[i], aboutY(t, p, a), 1e-6), `sample ${i} at ${a}`));
   }
 });
 
-test("a circle turned partway — the end of a torus — is a twin circle on the end frame; a whole turn of it makes nothing", async () => {
+test("a circle turned partway — the end of a torus — is a twin circle facing its base turned; a whole turn of it makes nothing", async () => {
   await loadKernel();
   const m = new Model(3);
   const t = tiltedFrame(m);
   const c = ring(m, t, 25, 10, 6);
   const ents = m.entities.size;
   const f = m.featureOf(revolve(m, c, "t.y", 2), "revolve");
-  // One centre twin, the end frame's three points and the frame, the twin circle.
-  assert.equal(m.entities.size - ents, 1 + 3 + 1 + 1);
+  // One centre twin and the twin circle — no end frame.
+  assert.equal(m.entities.size - ents, 1 + 1);
   const twin = m.circle(f.twins[0][0]);
-  assert.equal(twin.plane, f.end);
+  assert.ok(near(m.normalOf(twin.name), turn(m.normalOf(c), [0, 0, 0], t.uy, 2)), "facing its base turned");
   assert.ok(near(m.coords(twin.center), aboutY(t, m.coords(m.circle(c).center), 2)));
   assert.equal(m.featureOf(revolve(m, c, "t.y"), "revolve").twins.length, 0);
 });
@@ -195,24 +194,20 @@ test("a hole comes with the profile: its twin too, and a hole's island", async (
   assert.match(describePick(m, { name: lines[0], kind: "line", distance: 0 }), /·\s+e1$/);
 });
 
-test("a curve drawn on another frame parallel to the sketch gets that frame turned too, so its twin turns the same way", async () => {
+test("an arc facing the other way from the sketch turns the same way: its twin's normal is its own turned", async () => {
   await loadKernel();
   const m = new Model(3);
   const t = tiltedFrame(m);
-  // A second frame in the same plane, upside down: +x along t's, +y against —
-  // so its +z is t's −z, and an arc on it turns the other way about t's +z.
-  const g = m.addFrame(m.addPoint(t.at(40, 40)).name, m.addPoint(t.at(41, 40)).name, m.addPoint(t.at(40, 39)).name).name;
+  // Before format 13 an arc on a second, upside-down frame needed that frame
+  // turned too, so its twin turned the same way. An arc carries its own normal
+  // now, and the angle holds its twin's at that normal turned.
   const { lines } = polygon(m, t, BLOCK);
-  m.setDefaultFrame(g);
-  const arc = fillet(m, lines[1], lines[2], 6);
-  m.setDefaultFrame(t.name);
-  assert.equal(m.arc(arc).plane, g);
+  const arc = fillet(m, lines[1], lines[2], 6, t.uz.map((x) => -x));
+  assert.ok(near(m.normalOf(arc), t.uz.map((x) => -x)), "the arc faces −z of the sketch");
   assert.equal(m.solve().solved, true);
   const f = m.featureOf(revolve(m, lines[0], "t.y", 1), "revolve");
   const twin = m.arc(f.twins[0][2]);
-  assert.notEqual(twin.plane, f.end, "not the sketch frame's end frame");
-  assert.notEqual(twin.plane, g);
-  assert.equal(baseOf(m, f.angle).get(twin.plane!), g, "g's own turned twin");
+  assert.ok(near(m.normalOf(twin.name), turn(m.normalOf(arc), [0, 0, 0], t.uy, 1), 1e-9));
   endAt(m, f.angle, 1, (p, a) => aboutY(t, p, a));
   const [cb, ct] = [curveFrame(m, m.arc(arc))!, curveFrame(m, twin)!];
   assert.ok(Math.abs(cb.sweep - ct.sweep) < 1e-9 && cb.sweep < Math.PI, "the same short arc");
@@ -331,13 +326,6 @@ test("the axis is a datum: pulling the end face never moves it, and moving it ca
     m.setCoords(tw, m.coords(tw).map((c) => c - 5));
     assert.equal(m.solve().solved, true);
     ends.forEach((p, i) => assert.ok(near(m.coords(p), was[i], 0), `${p} did not move at all`));
-    // And the end frame never turns the sketch frame: here it is a datum only
-    // because it is a twinned frame, the axis being a line.
-    const frameWas = ["t_o", "t_x", "t_y"].map((n) => m.coords(n));
-    const endX = m.frame(f.end!).xref;
-    m.setCoords(endX, m.coords(endX).map((c) => c + 4));
-    assert.equal(m.solve().solved, true);
-    ["t_o", "t_x", "t_y"].forEach((n, i) => assert.ok(near(m.coords(n), frameWas[i], 0), `${n} did not move at all`));
 
     m.setCoords(ends[1], t.at(-3, 25));
     assert.equal(m.solve().solved, true);
@@ -461,12 +449,14 @@ test("which loop is exactly extrude's question, asked in revolve's words — and
   assert.throws(() => revolve(m, lines[1], "t.y"), /"l2" is in 2 loops — .* \(revolve\("l2", axis, angle, "f1"\)\), .* with the revolve tool/);
   const open1 = m.addLine(m.addPoint(t.at(0, 60)).name, m.addPoint(t.at(20, 60)).name).name;
   assert.throws(() => revolve(m, open1, "t.y"), /is in no closed loop/);
-  // A loop in no frame's orientation.
+  // A loop in no frame of the user's: it lies in the origin's plane, and is
+  // revolved in it — no frame is made (docs/plans/frameless-curves.md).
   const n = new Model(3);
   const pts = [[10, 0, 0], [20, 0, 0], [20, 10, 0], [10, 10, 0]].map((c) => n.addPoint(c).name);
   const ls = pts.map((p, i) => n.addLine(p, pts[(i + 1) % 4]).name);
   const axis = n.addLine(n.addPoint([0, 0, 0]).name, n.addPoint([0, 10, 0]).name).name;
-  assert.throws(() => revolve(n, ls[0], axis), /lies in no frame's plane.* a revolve's end face lies on its sketch frame turned: .* and revolve again/);
+  assert.equal(n.featureOf(revolve(n, ls[0], axis, 1), "revolve").frame, "origin");
+  assert.equal([...n.entities.values()].filter((e) => e.kind === "frame").length, 0);
   // Unlike an extrude, a revolve makes no walls along the profile's edges, so
   // its profile edges are each still in one loop and can be revolved again.
   revolve(m, lines[0], "t.y", 1);
@@ -552,7 +542,7 @@ test("deleting a piece — a profile edge, an end twin, the angle, the axis line
   {
     const { m, axis, f } = build();
     assert.deepEqual(del(m, axis), [f.name, f.angle, axis]);
-    assert.ok(m.entities.has(f.end!));
+    assert.ok(f.twins.flat().every((n) => m.entities.has(n)));
   }
   // The primitives refuse to leave a record naming nothing.
   {
@@ -628,7 +618,7 @@ test("coin-joined corners, as the line tool joins them, get one twin each and th
   });
   ls.forEach((l, i) => coincident(m, l.refs[1], ls[(i + 1) % 4].refs[0]));
   const f = m.featureOf(revolve(m, ls[0].name, "t.y", 1), "revolve");
-  assert.equal(baseOf(m, f.angle).size, 4 + 1, "a twin per corner, not per point");
+  assert.equal(baseOf(m, f.angle).size, 4, "a twin per corner, not per point");
   const g = m.featureOf(extrude(m, f.twins[0][0], 3, f.end), "extrude");
   assert.equal(g.loops[0].length, 4);
   assert.equal(m.solve().solved, true);
@@ -648,11 +638,11 @@ test("the command line: revolve returns the feature, ls() lists it in degrees, r
   const f = m.featureOf("e1", "revolve");
   const ls = (scope.ls as () => string[])();
   // The feature's line, then what it made as a count under it (quiet-geometry.md).
-  assert.equal(ls.at(-2), "e1  revolve of l1,l2,l3,l4, angle d1 = 90° about t.y, end f1");
+  assert.equal(ls.at(-2), "e1  revolve of l1,l2,l3,l4, angle d1 = 90° about t.y, partial");
   assert.match(ls.at(-1)!, /^    \d+ made — members\("e1"\) lists them$/);
   const corner = m.line(f.twins[0][0]).refs[0];
-  assert.deepEqual((scope.rels as (n?: string) => string[])(corner), [`d1  revolution ${QUARTER} (90°) about t.y, 5 pairs`]);
-  assert.equal(describePick(m, { name: "d1", kind: "relation", distance: 0 }), `d1  revolution ${QUARTER} (90°) about t.y, 5 pairs  ·  e1`);
+  assert.deepEqual((scope.rels as (n?: string) => string[])(corner), [`d1  revolution ${QUARTER} (90°) about t.y, 4 pairs`]);
+  assert.equal(describePick(m, { name: "d1", kind: "relation", distance: 0 }), `d1  revolution ${QUARTER} (90°) about t.y, 4 pairs  ·  e1`);
   assert.match(describePick(m, { name: f.twins[0][2], kind: "line", distance: 0 }), /·\s+e1$/);
   // A full turn says so, everywhere.
   rev(lines[0], "t.y");

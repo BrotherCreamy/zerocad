@@ -32,7 +32,7 @@ import { defineTool, type FeatureStep, type PointerInfo, type RegionHit, type Re
 import type { OptionSpecs } from "./options.ts";
 import type { Model } from "../model.ts";
 import {
-  checkRevolveRegion, profileOfLoops, regionNaming, regionOf, revolve, revolveProfile, revolveProfileOf,
+  checkRevolveRegion, orientingPlane, profileOfLoops, regionNaming, regionOf, revolve, revolveProfile, revolveProfileOf,
 } from "../operations.ts";
 import { memberName } from "../model.ts";
 import type { Pick } from "../picking.ts";
@@ -41,7 +41,7 @@ import { FRAME_ARM_PX } from "../framemarker.ts";
 import {
   LIT_STROKE, REGION_GREEN, drawRegion, lightRegions, missedRegion, outlineLoops, regionKey, type Region,
 } from "./region.ts";
-import { FeatureTool, callText, foundRegion, planeStep } from "./feature.ts";
+import { FeatureTool, callText, foundRegion } from "./feature.ts";
 import { RegionSelection, leftOut } from "./selection.ts";
 
 /**
@@ -80,12 +80,13 @@ export function revolveSteps(region: RegionHit, axis: string, angle: number, typ
     const r = foundRegion(m, region);
     checkRevolveRegion(m, r.loops, r.index, axis);
     return null;
-  }, planeStep(region, typed), (m): ReturnType<FeatureStep> => {
+  }, (m): ReturnType<FeatureStep> => {
     const r = foundRegion(m, region);
     // Holes clicked out of the proposal: the loops named outright, as the extrude tool does.
     const out = leftOut(m, r, without);
     if (out.size) {
-      const p = profileOfLoops(m, r.loops, regionOf(r.loops, r.index).filter((i) => !out.has(i)));
+      const p = profileOfLoops(m, r.loops, regionOf(r.loops, r.index).filter((i) => !out.has(i)),
+        orientingPlane(m, r.loops[r.index], region.toward));
       if (p.crossings?.size) return { call: () => { revolveProfile(m, p, axis, angle); } };
       const member = memberName(p.loops[0][0]);
       return {
@@ -93,8 +94,8 @@ export function revolveSteps(region: RegionHit, axis: string, angle: number, typ
         direct: () => revolve(m, member, axis, angle, p.frame, p.loops),
       };
     }
-    const n = regionNaming(m, r.loops, r.index);
-    if (!n) return { call: () => { revolveProfile(m, revolveProfileOf(m, r.loops, r.index), axis, angle); } };
+    const n = regionNaming(m, r.loops, r.index, region.toward);
+    if (!n) return { call: () => { revolveProfile(m, revolveProfileOf(m, r.loops, r.index, region.toward), axis, angle); } };
     const args: unknown[] = [n.member, axis];
     const more = n.frame !== null || n.loops !== null;
     if (more || angle !== FULL_TURN) args.push(angle);

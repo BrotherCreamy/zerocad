@@ -1,6 +1,7 @@
 # Plan: a circle is just a circle — curves carry their own orientation, and nothing makes a frame for you
 
-**Status: queued** (2026-11-04). The owner, twice: *"why when I create
+**Status: built** (2026-11-04) — see *As built* at the end, every deviation
+there and in TODO.md's Done entry. The owner, twice: *"why when I create
 something, why does it first create a frame? do I need to create a frame? can
 I not just create a circle or whatever in space?"* and *"why everything need
 frame? why can not just put circle right there?"* — and *"a frame should be
@@ -111,3 +112,103 @@ sketch on face sets the work plane) as vetoable — note it revises
 `coordinate-frames.md`'s "there is no world frame" and
 `extrude-makes-its-plane.md`; STATUS; ARCHITECTURE (the curve-plane
 question's new answer); README; `help()`; the spec marked built.
+
+## As built (2026-11-04)
+
+Built on `claude/frameless-curves`. What was chosen where the spec left a
+choice, and every place it was not followed to the letter:
+
+- **The normal is three variables read normalised — neither option the spec
+  offered.** Not a unit vector held by a normalisation residual: that would
+  be an equation the entity carries, and equations live in relations; and
+  not two angles, which have a pole where one angle's gradient vanishes — a
+  circle facing straight up, the commonest one, would sit on it. Every
+  residual reads the normal through `unitDuals` (v / |v|), so it is
+  scale-free: the length is a gauge with exactly zero gradient, the damped
+  solve leaves it where it was seeded, and no relation can satisfy itself by
+  shrinking it. Saved as `values.normals`. A collapsed normal (length under
+  1e-12, only reachable by setting it there) reads as zero and its relations
+  degrade to trivially satisfied, as a collapsed frame's do.
+- **The origin is built in, as recommended**: `ORIGIN = "origin"`, no entity,
+  not journalled, a constant basis in `frameBasis`. `Model.has("origin")` is
+  true, so nothing else can be given the name; `isFrame`, `requireFrame`,
+  `frameNames` (it first), `resolveFrame` (its fallback) and the menu know
+  it; `del` and `deleteEntity` refuse it. It exists wherever frames do (2D
+  and 3D models). Drawn by `main.ts` after every frame entity, and picked
+  last among frames so a frame of the user's at the same place wins.
+- **A file that already called something `origin`** (format 12 or older) has
+  it renamed to the first free `origin2`, … everywhere the file says it,
+  rather than refused or confused with the built-in.
+- **`xaxis()` with a work plane set**: the work plane's when the work plane
+  is a frame; a work plane that is a curve or three points has no named x,
+  so `xaxis()` stays the default frame's, else the origin's.
+- **Where a curve lies**: the work plane when one is chosen (`workplane` or a
+  default frame) — chosen planes win over the face under the cursor, so a
+  sketch on a face is not undone by the next click landing on another face;
+  else the solid face under the first click; else the origin's ground. The
+  face is `sketchFrameFor`'s three points (or the circle, for a round lid),
+  facing the viewer, the same plane reference sketch on face uses. A plain
+  sketch loop is not a face for this — drawing over a rectangle on the
+  ground draws on the ground, which is the same plane.
+- **The hold**: `onPlane(centre, ref)` (skipped when a snap already holds
+  it there) and `par(curve, normal)` — `"f.z"` for a frame,
+  the curve or the triple itself otherwise (`directionOf` reads a triple as
+  its plane's normal, as a datum). On the bare ground both are written
+  against `origin`: the spec's "visible, deletable" relations. Points the
+  other tools place on the ground are *not* held (as before, when no frame
+  was chosen): a rectangle in a fresh document is free.
+- **Sketch on face** types `workplane("p1.p2.p3")` — or
+  `workplane("c3")` on a round face — and looks at it square-on, as
+  `plane(…)` did. The reference is three of the face's own points, not a
+  face id (faces are not entities): it follows the solid, and deleting a
+  point it names clears the work plane with a journalled
+  `setWorkPlane(null)`. `setDefaultFrame` clears it too (choosing a frame is
+  choosing a plane).
+- **Extrude and revolve** run along `orientingPlane`: the drawing plane if
+  the loop lies in it, else the frame its curves were drawn on, else a
+  parallel frame (the user's first, the origin last), else three of the
+  loop's own corners facing the viewer. None is made. A feature's `frame`
+  field is that plane reference, a datum: a triple's points are read and
+  never pushed. **A revolve makes no end frames** (expansion 11); 9 and 10
+  stay for old files, and a partial revolve of an old file keeps its frames.
+- **Fillet** takes an optional side vector instead of a plane: the drawing
+  plane's normal when the corner is parallel to it, else the corner's own
+  normal on the side of its largest component. A 3D fillet journals
+  `fillet(l1, l2, r, [x, y, z])`; an old file's `fillet(…, "f")` has its
+  frame's +z as the side.
+- **Old files (format 13)**: each curve that named a frame keeps that
+  frame's normal (sign and all, so arcs sweep the same way) and gets
+  `par(curve, "f.z")` **appended at the end of the journal**, not beside the
+  curve, so that no relation already in the file changes name. Every frame
+  the file made is kept, auto-made or not. A lifted 2D file's circles used to
+  get a frame of the translation's own, `plane`; they now face the origin,
+  which is that plane — that frame is no longer made. Proved by four
+  fixtures (three written by the format-12 build, and the explicit-regions
+  format-11 fixture with its geometry recorded by that build): same points,
+  radii, normals and sweeps; solved, regenerated and re-saved without moving.
+- **A feature's twin rims** follow their base's normal by the feature's own
+  `.n` block (`n̂ top − n̂ base`, or the turned base for a revolve) — the
+  frame used to do that for free.
+- **A curve's plane facing away from the viewer**: sketching on a cylinder's
+  base makes the base rim the work plane, and a rim cannot be turned over, so
+  its normal points into the solid. `orientingPlane` then takes the loop's
+  own plane facing the viewer, so a positive depth still comes out at you.
+- **What a fresh document shows**: the origin's triad at the middle, drawn
+  first (under every frame — one made at the same spot showed none of its
+  hover ink otherwise) and **without its name** unless lit or selected: it
+  stands where drawings start, and "origin" printed over the first corner's
+  label. The empty-canvas words moved 64 px below the middle, off the
+  triad. The golden picture (`hidden.e2e.ts`) is re-recorded: 160 pixels,
+  all in the origin's triad.
+- **Existing e2e**: every claim kept; expectations changed where a frame
+  used to be made (typed `plane(…)` lines, frame counts, `workplane` for
+  sketch on face, version 13, "partial" for a revolve with no end frame, a
+  hover tag that says `facing` where it said `in f`, Fix enabled with no
+  default frame, an axis reference with no frame meaning the origin's).
+  Setup changed in two places: `intersection.e2e.ts` no longer parks a
+  frame only to give its circle a plane, and `undo.e2e.ts`'s typed fillet
+  no longer names one.
+- **Left in place deliberately**: a normal's length is one null direction of
+  the Jacobian per curve. The damped solve treats it as it treats every
+  direction nothing constrains (it stays where it was seeded) and reports
+  SOLVED; anything that someday counts degrees of freedom must discount it.

@@ -140,7 +140,7 @@
 //
 // Loops live in a 2D or a 3D model; anything else has no planes to put them in.
 
-import type { Model } from "./model.ts";
+import { ORIGIN, type Model } from "./model.ts";
 import { arcSegments } from "./arcgeom.ts";
 import { curveFrame, curvePlaneOf, framePlaneAxes } from "./curveplane.ts";
 import { frameBasis } from "./relations/refs.ts";
@@ -437,11 +437,18 @@ function inPlane(model: Model, g: Group, name: string): boolean {
   return false;
 }
 
-/** The frames to try as a plane's own, the default first and then in creation order. */
+/**
+ * The frames to try as a plane's own, the default first and then in creation
+ * order — and in 3D the origin last, so a loop drawn on the origin's plane
+ * reports it (`in origin`) when no frame of the user's is there first. Not in
+ * 2D, where every frame's plane is the drawing and a loop names a frame only
+ * when the user made one, as it always did.
+ */
 function framesByPreference(model: Model): string[] {
-  const all = [...model.entities.values()].filter((e) => e.kind === "frame").map((e) => e.name);
+  const all = model.frameNames().filter((f) => f !== ORIGIN);
   const d = model.defaultFrame;
-  return d != null && all.includes(d) ? [d, ...all.filter((f) => f !== d)] : all;
+  const mine = d != null && all.includes(d) ? [d, ...all.filter((f) => f !== d)] : all;
+  return model.dim === 3 ? [...mine, ORIGIN] : mine;
 }
 
 /** The plane a group's loops are reported in, and measured in. See the top of the file. */
@@ -458,7 +465,7 @@ function orientPlane(model: Model, g: Group, lines: Edge[], curves: string[]): L
   for (const f of framesByPreference(model)) {
     const axes = framePlaneAxes(model, f);
     if (!axes || !parallel(axes.n, g.normal)) continue;
-    const origin = lift3(model.coords(model.frame(f).origin));
+    const origin = lift3(frameBasis(model, f)().origin);
     if (liesOn(g.plane, origin)) return { origin, u: axes.u, v: axes.v, normal: axes.n, frame: f };
   }
   if (curves.length) {

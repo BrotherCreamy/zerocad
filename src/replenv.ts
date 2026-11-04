@@ -19,10 +19,9 @@ import { OptionMemory, declaredOptions, defaultsOf, describeValues, resolveOptio
 import * as basic from "./relations/basic.ts";
 import * as geom from "./relations/geometry.ts";
 import {
-  construction, del, extrude, extrudeNeedsFrame, fillet, filletNeedsFrame, hole, regen, revolve, revolveNeedsFrame, set, unhole,
+  construction, del, extrude, fillet, hole, loopOfMember, orientingPlane, regen, revolve, set, unhole,
 } from "./operations.ts";
-import { facingPoints, sketchFrameFor, type FacePlane } from "./sketchface.ts";
-import { cross3, lift3, sub3 } from "./vec3.ts";
+import { planeAxes } from "./curveplane.ts";
 import { save as saveModel, savedTools } from "./persist.ts";
 import { fileNameFor } from "./files.ts";
 import { carryIntoSession, toolSources, type ToolSourceStore } from "./toolsource.ts";
@@ -211,9 +210,9 @@ function describe(e: Entity, model: Model): string {
     case "point": return `${e.name}  point  (${model.coords(e.name).map((v) => v.toFixed(3)).join(", ")})`;
     case "line": return `${e.name}  line   ${e.refs[0]}–${e.refs[1]}`;
     case "circle": return `${e.name}  circle  center ${e.center}, r=${model.radius(e.name).toFixed(3)}`
-      + (e.plane === undefined ? "" : `, in ${e.plane}`);
+      + (e.normal === undefined ? "" : `, facing (${model.normalOf(e.name).map((v) => v.toFixed(3)).join(", ")})`);
     case "arc": return `${e.name}  arc    center ${e.center}, ${e.start}→${e.end}, r=${model.radius(e.name).toFixed(3)}`
-      + (e.plane === undefined ? "" : `, in ${e.plane}`);
+      + (e.normal === undefined ? "" : `, facing (${model.normalOf(e.name).map((v) => v.toFixed(3)).join(", ")})`);
     case "frame": return `${e.name}  frame  origin ${e.origin}, +x toward ${e.xref}`
       + (e.yref === undefined ? "" : `, +y toward ${e.yref}`)
       + (model.defaultFrame === e.name ? "  (default)" : "");
@@ -374,96 +373,48 @@ export function neocadScope(h: EnvHandles): Bag {
   }
 
   /**
-   * Puts a frame's plane square to the screen — `lookAt`'s body, shared with
-   * `plane()`. See `lookAt` below.
+   * Puts a plane square to the screen — `lookAt`'s body, shared with `plane()`
+   * and `workplane()`. Any plane reference: a frame (the origin included), a
+   * curve's own plane, a face's three points. The drawing plane when none is
+   * named. See `lookAt` below.
    */
   function lookAtFrame(frame?: string | null): string {
     if (!h.view) throw new Error("no viewport in this environment");
-    const name = model.resolveFrame(frame);
-    const { origin, ux, uy } = frameBasis(model, name)();
-    if (ux.every((c) => c === 0) || uy.every((c) => c === 0)) {
-      throw new Error(`"${name}" has collapsed — it has no plane to look at`);
-    }
-    assignView(h.view, alignView(h.view, ux, uy, origin));
+    const name = frame ?? model.drawingPlane();
+    const axes = planeAxes(model, name);
+    if (!axes) throw new Error(`"${name}" has collapsed — it has no plane to look at`);
+    assignView(h.view, alignView(h.view, axes.u, axes.v, axes.origin));
     h.refresh?.();
     return `looking at ${name}`;
   }
 
   /**
-   * The frame a typed `extrude` or `revolve` makes for a loop no frame orients:
-   * three of the loop's own points by `sketchFrameFor`'s rule (a corner and its
-   * neighbours), the default only if there was none, and the view left alone —
-   * what the tools type as `plane(a, b, c, { look: false })` or `frame(a, b,
-   * c)`, made here as the same model calls. +z toward the viewer where there
-   * is one, so a positive depth comes out at them as it does from the tool;
-   * with no view, the loop's own normal (loops.ts's: the side whose largest
-   * component is positive, so up for anything drawn level).
+   * The plane a typed `extrude` or `revolve` with no plane named runs along,
+   * where there is a viewer to face: `orientingPlane` with the line of sight,
+   * so a loop no frame orients comes out toward whoever typed it, as it does
+   * from the tool. Null headless, where the operation asks the same question
+   * with the loop's own normal.
    */
-  function planeForFeature(loop: Loop): string {
-    const toward = model.dim === 3 && h.view ? viewAxes(h.view).toward : loop.plane.normal;
-    const name = frameOnFace(sketchFrameFor(model, loop, toward));
-    if (model.defaultFrame == null) model.setDefaultFrame(name);
-    return name;
+  function planeForFeature(member: string, op: "extrude" | "revolve"): string | null {
+    if (model.dim !== 3 || !h.view) return null;
+    return orientingPlane(model, loopOfMember(model, member, op), viewAxes(h.view).toward);
   }
 
   /**
-   * The frame of a face's plane, as the model calls the typed
-   * `plane(…)`/`frame(…)` line makes: of three of its points, or — a circle off
-   * its frame's plane — of its centre and two points held on its rim
-   * (`MadePlane`), in the order the clause idiom applies them.
+   * A circle's or arc's typed plane: three numbers are its normal's seed, and
+   * nothing more; a plane reference — a frame, a curve, `"p1.p2.p3"` — seeds the
+   * normal from it **and holds it there** with `par`, since that is what
+   * naming a plane asks for (it pins no centre: `onplane` does that, and is
+   * the user's to add). Left out, the drawing plane seeds it and nothing holds
+   * it — the free-entities rule: an argument is never a constraint, and none
+   * was given.
    */
-  function frameOnFace(p: FacePlane): string {
-    if (Array.isArray(p)) return model.addFrame(...p).name;
-    const [x, y] = p.refs.map((at) => {
-      const q = model.addPoint(at).name;
-      geom.onCircle(model, q, p.on);
-      return q;
-    });
-    return model.addFrame(p.origin, x, y).name;
-  }
-
-  /**
-   * The frame a typed `circ()` or `arc()` makes in a 3D model with no default
-   * frame and no plane named — the curve tools' rule at the command line:
-   * nobody should have to know what a frame is to draw a circle. It is
-   * `plane()` with nothing given, `{ look: false }`: a frame seeded at the
-   * middle of the view on the working plane, its refs along the screen's right
-   * and up, exactly as a typed `frame()` seeds — the plane facing the viewer —
-   * made the default, the view left where it is. Its model calls are journalled
-   * before the circle's, so a replay finds the frame there, and the whole line
-   * is one entry and so one undo step. Asked only after the call's own
-   * refusals (`check`), so a circle that would be refused makes no frame.
-   * Headless there is no view, and the frame is the model's own seed: at the
-   * origin, along the kernel's x and y.
-   *
-   * Said in the log, where there is one: the answer to the line is the
-   * circle's name, and a frame nobody named appearing beside it unannounced
-   * would be the surprise this exists to remove.
-   */
-  function planeForCurve(who: string, plane: string | null | undefined, check: () => void): void {
-    if (model.dim !== 3 || plane != null || model.defaultFrame != null) return;
-    check();
-    const made = (geometry.plane as PlaneCall)(null, null, null, { look: false });
-    h.log?.(`${who}: no default frame, so ${made} was made at the view centre, facing you`);
-  }
-
-  /**
-   * `planeForCurve` for a typed `fillet` on a corner with no default frame to
-   * give its arc: a frame of the corner's own three points (`filletNeedsFrame`
-   * — asked after every refusal that needs no frame), the default, +z toward
-   * the viewer where there is one; headless, the side of the corner's normal
-   * whose largest component is positive (loops.ts's rule, so up for a corner
-   * drawn level). The fillet tool types the same frame as `plane(…)`.
-   */
-  function planeForCorner(corner: [string, string, string]): string {
-    const [o, a, b] = corner.map((p) => lift3(model.coords(p)));
-    const n = cross3(sub3(a, o), sub3(b, o));
-    const big = n.reduce((k, c, i) => (Math.abs(c) > Math.abs(n[k]) ? i : k), 0);
-    const toward = h.view ? viewAxes(h.view).toward : n[big] < 0 ? n.map((c) => -c) : n;
-    const name = model.addFrame(...facingPoints(model, corner, toward)).name;
-    model.setDefaultFrame(name);
-    h.log?.(`fillet: no default frame, so ${name} was made on the corner, facing you`);
-    return name;
+  function curveFacing(plane: unknown): { seed: number[] | null; hold: string | null } {
+    if (plane == null || typeof plane !== "string") return { seed: (plane as number[] | null) ?? null, hold: null };
+    if (model.dim !== 3) throw new Error(`a ${model.dim}D curve lies in the one plane a ${model.dim}D model has — it takes no plane`);
+    const kind = model.planeKind(plane);
+    const axes = planeAxes(model, plane);
+    return { seed: axes?.n ?? null, hold: kind === "frame" ? `${plane}.z` : plane };
   }
 
   const geometry: Bag = {
@@ -492,21 +443,27 @@ export function neocadScope(h: EnvHandles): Bag {
     }),
     ln: withClauses("ln", (a?: string | null, b?: string | null) =>
       model.addLine(a ?? (b == null ? anchor() : null), b ?? null).name),
-    // In 3D a circle or arc takes a plane — a frame, or the default — and with
-    // neither it makes one first (`planeForCurve`). It is resolved here
-    // *before* the view-centre anchor is made, so a refusal (a plane named in
-    // 2D) leaves no stray point behind, and resolved again by the model
-    // itself, which is what journals it.
-    circ: withClauses("circ", (center?: string | null, r?: number | null, plane?: string | null) => {
-      planeForCurve("circ", plane, () => model.checkCircle(center, r));
-      model.curvePlane("circle", plane);
-      return model.addCircle(center ?? anchor(), r ?? null, plane ?? null).name;
+    // In 3D a circle or arc carries its own normal: a seed from the drawing
+    // plane when nothing is said, three numbers, or a plane named, which also
+    // holds it there (`curveFacing`). Asked *before* the view-centre anchor is
+    // made, so a refusal (a plane named in 2D) leaves no stray point behind.
+    // Nothing makes a frame for it (docs/plans/frameless-curves.md).
+    circ: withClauses("circ", (center?: string | null, r?: number | null, plane?: string | number[] | null) => {
+      model.checkCircle(center, r);
+      const { seed, hold } = curveFacing(plane);
+      model.normalSeed("circle", seed);
+      const name = model.addCircle(center ?? anchor(), r ?? null, seed).name;
+      if (hold) geom.parallel(model, name, hold);
+      return name;
     }),
     arc: withClauses("arc", (center?: string | null, start?: string | null, end?: string | null, r?: number | null,
-          plane?: string | null) => {
-      planeForCurve("arc", plane, () => model.checkArc(center, start, end, r));
-      model.curvePlane("arc", plane);
-      return model.addArc(center ?? anchor(), start ?? null, end ?? null, r ?? null, plane ?? null).name;
+          plane?: string | number[] | null) => {
+      model.checkArc(center, start, end, r);
+      const { seed, hold } = curveFacing(plane);
+      model.normalSeed("arc", seed);
+      const name = model.addArc(center ?? anchor(), start ?? null, end ?? null, r ?? null, seed).name;
+      if (hold) geom.parallel(model, name, hold);
+      return name;
     }),
   };
   /**
@@ -578,6 +535,29 @@ export function neocadScope(h: EnvHandles): Bag {
     return model.defaultFrame ?? "no default frame";
   };
   geometry.defaultFrame = () => model.defaultFrame;
+  /**
+   * `workplane(plane)` — **"sketch on this"** without making anything: the
+   * work plane set to any plane reference — a face's three points
+   * (`"p1.p2.p3"`), a circle's own plane, a frame — so what is drawn next lies
+   * on it, and looked at square-on where there is a view (`{ look: false }`
+   * leaves the view alone). What the sketch tool and "Sketch on this face"
+   * type: a reference to the face, journalled as document state like the
+   * default frame, and **not a frame** (docs/plans/frameless-curves.md).
+   * `workplane(null)` clears it, back to the default frame's plane or the
+   * origin's; `workplane()` says which plane things are drawn on now.
+   */
+  geometry.workplane = (...args: unknown[]) => {
+    if (args.length === 0) return model.dim === 3 ? model.drawingPlane() : `a ${model.dim}D model is one plane`;
+    const [ref, options] = args as [string | null, { look?: boolean } | null | undefined];
+    if (options != null && (typeof options !== "object" || Array.isArray(options)
+        || (options.look !== undefined && typeof options.look !== "boolean"))) {
+      throw new Error(`workplane's second argument is its options — { look: false } sets the plane without turning the view, `
+        + `got ${JSON.stringify(options)}`);
+    }
+    model.setWorkPlane(ref ?? null);
+    if (ref != null && h.view && options?.look !== false) lookAtFrame(ref);
+    return model.drawingPlane();
+  };
 
   /**
    * A frame's axis, as the string `par`, `perp` and `ang` take:
@@ -631,16 +611,11 @@ export function neocadScope(h: EnvHandles): Bag {
      * operations.ts.
      */
     //
-    // A corner with no default frame for its arc gets one first, on its own
-    // points (`planeForCorner`), journalled before the fillet entry that names
-    // it; one line, one undo step.
-    fillet: (l1: string, l2: string, r: number, plane?: string | null, regenerated?: unknown) => {
-      if (plane == null && regenerated == null) {
-        const corner = filletNeedsFrame(model, l1, l2, r);
-        if (corner) plane = planeForCorner(corner);
-      }
-      return fillet(model, l1, l2, r, plane, regenerated);
-    },
+    // No frame is made for the arc: it carries its own normal and its two
+    // tangents hold it in the corner (docs/plans/frameless-curves.md). `side`
+    // is the journal's — an old file's frame, translated — and never needs typing.
+    fillet: (l1: string, l2: string, r: number, side?: number[] | null, regenerated?: unknown) =>
+      fillet(model, l1, l2, r, side ?? null, regenerated),
     /**
      * Brings a feature back into step with its profile as it is now —
      * `regen("e1")` — keeping every twin and wall whose vertex or member is
@@ -666,17 +641,12 @@ export function neocadScope(h: EnvHandles): Bag {
      * that frame's plane. `loops` is the profile as the journal carries it
      * resolved, and never needs typing. See operations.ts.
      *
-     * A loop no frame orients gets one first (`planeForFeature`): a frame of
-     * three of its own points, journalled as its own `addFrame` before the
-     * `extrude` entry that names it — a replay has to find the frame there —
-     * and the default if there was none. The operation itself still refuses a
-     * frameless loop; this is the layer that is meant to have dealt with it.
+     * `frame` is any plane (a frame, a curve, `"p1.p2.p3"`); a loop no frame
+     * orients runs along its own plane — three of its points, facing you — and
+     * **no frame is made for it** (`planeForFeature`, `orientingPlane`).
      */
     extrude: (member: string, depth?: number | null, frame?: string | null, loops?: ProfileMember[][] | null) => {
-      if (frame == null && loops == null) {
-        const loop = extrudeNeedsFrame(model, member, depth ?? null);
-        if (loop) frame = planeForFeature(loop);
-      }
+      if (frame == null && loops == null) frame = planeForFeature(member, "extrude");
       return extrude(model, member, depth ?? null, frame ?? null, loops ?? null);
     },
     /**
@@ -684,15 +654,10 @@ export function neocadScope(h: EnvHandles): Bag {
      * "f1.y", Math.PI)`, or `yaxis()` for the default frame's — through an angle
      * in radians, a whole turn when left out, and returns the feature's name.
      * The axis is a frame's axis or a line, read and never moved. `frame` and
-     * `loops` are extrude's, and so is the frame made for a loop no frame
-     * orients — after the axis has been checked against the loop's own plane,
-     * so a revolve refused on its geometry makes no frame first.
+     * `loops` are extrude's, and so is the plane of a loop no frame orients.
      */
     revolve: (member: string, axis: string, angle?: number | null, frame?: string | null, loops?: ProfileMember[][] | null) => {
-      if (frame == null && loops == null) {
-        const loop = revolveNeedsFrame(model, member, axis, angle ?? null);
-        if (loop) frame = planeForFeature(loop);
-      }
+      if (frame == null && loops == null) frame = planeForFeature(member, "revolve");
       return revolve(model, member, axis, angle ?? null, frame ?? null, loops ?? null);
     },
     /**
@@ -1072,9 +1037,10 @@ export function neocadScope(h: EnvHandles): Bag {
      * Puts a frame's plane square to the screen, its +x to the right and +y up
      * — Onshape's "normal to sketch", the gesture for going back to drawing on
      * a plane after looking at it from somewhere else. The frame's origin keeps
-     * its place on screen and becomes what the next orbit turns about. The
-     * default frame when none is named, resolved like everything else that
-     * takes one.
+     * its place on screen and becomes what the next orbit turns about. Any
+     * plane — a frame, the origin, a curve's plane, a face's "p1.p2.p3" — and
+     * the drawing plane (the work plane, the default frame, the origin) when
+     * none is named.
      */
     lookAt: (frame?: string | null) => lookAtFrame(frame),
   };
@@ -1180,24 +1146,33 @@ function help(scope: Bag): string {
     "           point()  line()  circle()  — the same three, long names",
     "           every argument is optional: what you leave out is created free",
     "           near the middle of the view, for your relations to define.",
-    "           In 3D a circle or arc lies in a plane — a frame, or the default",
-    "           one. Its rim is parallel to the frame through its own centre,",
-    "           which the plane does not pin. With neither, one is made first:",
-    "           typed, plane() at the view centre, facing you, the default now",
-    "           (the log says so); the circle and arc tools type",
-    "           plane(pt(x, y, z), null, null, { look: false }) at the click,",
-    "           and the fillet tool and fillet() make one on the corner's points.",
-    "frames     frame(origin, xref)  setDefaultFrame(name)  defaultFrame()",
+    "           In 3D a circle or arc carries its own normal, the way it faces —",
+    "           solved like its radius. Left out, it faces the drawing plane",
+    "           (below) and nothing holds it: free to turn. A plane named — a",
+    '           frame, a curve, "p1.p2.p3" — faces it and holds it there with',
+    '           par; three numbers are a seed and no more. par("c1", "l1") stands',
+    "           a circle square to a line; par/perp/ang read a curve as its normal.",
+    "           No frame is ever made for a curve. The circle and arc tools draw",
+    "           where you click — on the plane you sketch on, else a solid's face",
+    "           under the cursor, else the ground — and hold what they draw with",
+    "           onplane on its centre and par on its normal, both deletable.",
+    "frames     origin — always there: a fixed point and three axes, drawn in",
+    '           RGB, never solved or deleted. "origin.x" … "origin.z", fix and',
+    "           onplane take it by name, and it is what they mean when no frame",
+    "           is named and none is the default. The ground is its x–y plane.",
+    "           frame(origin, xref)  setDefaultFrame(name)  defaultFrame()",
     "           plane(origin?, xref?, yref?) — a frame, made the default and",
-    "           looked at square-on: \"start sketching here\" in one call.",
+    '           looked at square-on: "start sketching here" in one call.',
     "           plane(a, b, c, { look: false }) — the same, the view left alone.",
+    '           workplane("p1.p2.p3") — draw on a plane without making a frame:',
+    "           three points (a face's), a curve's own plane, or a frame; looked",
+    "           at square-on ({ look: false } leaves the view). workplane(null)",
+    "           clears it; workplane() says which plane things are drawn on.",
     "           On a face: arm(\"sketch\") and click inside it (or right-click",
-    "           it: Sketch on this face) — plane(a, b, c) on three of the",
-    "           face's own points, +z toward you, so out of a solid.",
-    "           xaxis(frame?)  yaxis(frame?)  — a frame's axis, by name",
-    "           there is no world frame: fix and the axes are relative to one,",
-    "           and say so if you have made none (a tool that needs a plane",
-    "           makes the one under its click). There is no hor/ver either:",
+    "           it: Sketch on this face) — workplane on three of the face's own",
+    "           points, facing you, so out of a solid. Nothing is made.",
+    "           xaxis(frame?)  yaxis(frame?)  — a frame's axis, by name; the",
+    "           default frame's, else the origin's. There is no hor/ver:",
     '           par(l, yaxis()) is vertical, par(l, xaxis()) is level, and',
     '           par/perp/ang take any axis by name — par("l1", "f2.x").',
     "           A frame draws as an axes marker at its origin, in SolidWorks'",
@@ -1207,10 +1182,11 @@ function help(scope: Bag): string {
     "           axis par only against the default.",
     "           The app is 3D: frame(origin, xref, yref) is a plane (the y-ref",
     "           picks its side of +x, not its exact angle), zaxis(frame?) is its",
-    "           normal, onplane(p, frame?) holds a point in it, and fix takes",
-    "           [x, y, z] in the frame — or [x, y], on its plane. pt(x, y) is",
-    "           pt(x, y, 0). Tools draw on the default frame's plane and hold",
-    "           what they draw there with onplane. A point off that plane",
+    "           normal, onplane(p, plane?) holds a point in any plane, and fix",
+    "           takes [x, y, z] in the frame — or [x, y], on its plane. pt(x, y)",
+    "           is pt(x, y, 0). Tools draw on the work plane, else the default",
+    "           frame's plane, else the ground, and hold the points they draw on",
+    "           a plane you chose with onplane. A point off that plane",
     "           snaps at its projection onto it (a dashed square) and infers",
     "           nothing.",
     "relations  dist fix coin mid par perp ang on eq",
@@ -1222,7 +1198,7 @@ function help(scope: Bag): string {
     '           pt(on(_, "l1"), on(_, "l2"))      — the intersection',
     "           constrain(name, ...clauses) applies them to what exists. All",
     "           are checked before anything is made; each journals as itself.",
-    "operations fillet(line1, line2, radius, plane?)  del(name, ...)",
+    "operations fillet(line1, line2, radius)  del(name, ...) — the arc follows its corner",
     '           set("d4.value", 60)  — a dimension is named d1, d2, … and its',
     "           value is the one thing you can set. ang stores radians (its",
     "           label reads degrees); dist and rad store what you typed.",
@@ -1234,12 +1210,10 @@ function help(scope: Bag): string {
     '           pointing: arm("extrude", { depth: 20 }), click inside regions',
     "           (several), see the solids, then ✓ or Enter — it types one",
     '           extrude("l1", 20) here a region, the shortest line naming it.',
-    "           A sketch no frame lies in or along (a rectangle drawn in a fresh",
-    "           model) gets one first, from three of its own corners, +z toward",
-    "           you, the default if there was none: the tool types it as",
-    "           plane(a, b, c, { look: false }) — or frame(a, b, c) beside a",
-    "           default it keeps — and then extrudes; typed, extrude makes the",
-    "           same frame itself. Revolve does the same.",
+    "           A sketch on the ground runs along the origin's +z; one on the work",
+    "           plane along it; one in no frame's plane along its own, three of",
+    '           its corners facing you ("p1.p2.p4"). No frame is made for any of',
+    "           them. Revolve does the same.",
     "           A region is its outline and the holes you confirmed: the click",
     "           (or a typed extrude) proposes every loop inside; in the dialog a",
     "           click on a hole takes it out of the proposal (and back), a click",
@@ -1326,7 +1300,7 @@ function help(scope: Bag): string {
     "           With nothing armed, a click inside a region selects it (shift",
     "           adds), and arming extrude, revolve or sketch starts from it.",
     "           orbit(yaw, pitch)  — turn the drawing, radians, like a right-drag",
-    "           lookAt(frame?)     — a frame's plane square-on, +x right, +y up",
+    "           lookAt(plane?)     — a plane square-on, +x right, +y up",
     '           view("shaded")  view("hidden")  view("wire")  view() — how',
     "           solids are shown. Shaded, the default, is opaque: nothing",
     "           behind a face is drawn, picked, snapped to or boxed — turn the",
