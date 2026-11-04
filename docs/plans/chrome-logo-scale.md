@@ -16,6 +16,21 @@ of 0.1.0 in portrait and landscape:
 > is as far as I can drag it down. Please allow it to be dragged right to the
 > bottom.*
 
+**Amended the same day** (2026-11-04), the owner again:
+
+> *Clicking on the logo should bring up a dropdown menu, and that menu should
+> include a zoom level little spin box like  - 80% +, a show hide for the
+> panes, and file open etc etc*
+>
+> *Also, if I push a toolbar right to one side, or up against another
+> toolbar, that setting should persist if I change from landscape to portrait
+> or vice versa*
+
+The amendment changes three things below, marked **(amended)**: the menu is a
+dropdown with a spin box instead of a sheet with presets and a slider; the
+menu shows and hides each pane; and docking — not pixel position — is what a
+moved pane keeps through a rotation.
+
 His portrait screenshot (iPhone, standalone, 0.1.0): the command panel dragged
 as low as it goes stops roughly 60 pt above the bottom of the screen. The
 header takes ~75 pt at the top.
@@ -54,7 +69,8 @@ package owns the menu; that one owns the commands.** The seam is below.
   the app menu. Nothing here may take pointer events except the logo itself,
   so a drag across the corner still reaches the drawing.
 - **The logo opens the app menu** (tap or click; Escape or a tap outside
-  closes it). A panel-styled sheet anchored under the logo, in sections:
+  closes it). **(amended)** A dropdown anchored under the logo, in the
+  context menu's family, in sections:
   - **File**: the document's name and an unsaved dot, then *New*, *Open…*,
     *Save*, *Share…*. Each item **types its command through `submit`**, as
     every menu item does: `newFile()`, `openFile()`, `saveFile()`,
@@ -63,10 +79,18 @@ package owns the menu; that one owns the commands.** The seam is below.
     name and dot come from a host function `document(): { name: string;
     dirty: boolean }`, defaulting to `{ name: "Untitled", dirty: false }`;
     the files package supplies the real one.
-  - **Interface size**: presets (Small, Medium, Large) and a slider (60 %–
-    160 %), applied live. Typed as `ui({ scale: 0.8 })` — one command, so the
+  - **Interface size** **(amended)**: a compact spin box, `− 80% +`, in 10 %
+    steps clamped to 60 %–160 %, applied live; tapping the number resets it
+    to the device's default. The − and + have a finger-sized hit area however
+    small they are drawn. Typed as `ui({ scale: 0.8 })` — one command, so the
     command line and the menu say the same thing; it journals nothing (it is
     the viewer's, not the document's), like `view(...)`.
+  - **Panes** **(amended)**: a checkbox row per pane — toolbar, command line,
+    log, action strip, and any other panel the panel manager knows, the list
+    built from the panels that exist (an "organisation" pane comes next and
+    must appear with no edit to the menu). Per-device viewer state, saved with
+    the layout; a hidden pane comes back where it was. The logo cannot be
+    hidden, so the way back into the menu is never lost.
   - **View**: Shaded / Hidden / Wire, typing `view(...)` as the context
     menu's row does.
   - **About**: the build stamp, and a link to the repository.
@@ -96,11 +120,20 @@ package owns the menu; that one owns the commands.** The seam is below.
   toolbar pattern — and likewise at the top under the status bar and at a
   landscape notch's side. The phone default layouts follow: the command line
   docks to the bottom in portrait.
+- **Docking survives rotation** **(amended)**. When a pane is pushed against
+  a screen edge, or up against another pane, that relation is what persists,
+  not its pixel position. Rotating portrait↔landscape (or any resize)
+  re-applies it: a pane docked to the right edge stays docked right, and a
+  pane resting against the toolbar stays against it. A pane that was only
+  floating keeps its position proportionally, clamped inside the area. Store
+  each pane's edge and neighbour relations and recompute on resize; if the
+  storage format changes, migrate the old one rather than dropping saved
+  layouts.
 
 ## Tests
 
 Unit: the metrics scale (every field, clamped); the scale setting's storage
-and its defaults per pointer; the edge-docking rule (a panel's rect and its
+and its defaults per pointer, and the spin box's steps; the edge-docking rule (a panel's rect and its
 inset padding for each edge, with and without insets); the status fade rules.
 
 E2E (iPhone 13 emulation with the real insets, and a desktop viewport):
@@ -115,6 +148,11 @@ its bottom edge at the screen's bottom and its input above the inset; the
 portrait default has the command line at the bottom. Every existing e2e test
 passes (some read the header's status — keep the ids). LOOK at portrait and
 landscape screenshots at three sizes and compare them with the owner's.
+**(amended)** Also: the spin box steps by 10 % and its number resets; a pane
+hidden from the menu is gone, survives a reload, and comes back where it was;
+dock a pane to an edge and another against it in portrait, rotate to
+landscape and back, and both relations hold each time, a floating pane
+inside — with screenshots of each orientation.
 
 ## Docs
 
