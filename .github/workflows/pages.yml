@@ -5,7 +5,8 @@
 # the build's URLs are all relative, so the repository's name is the only
 # thing that decides the address. docs/plans/pwa-pages.md.
 #
-# No third-party action: the two used are GitHub's own (checkout, setup-node),
+# No third-party action: the three used are GitHub's own (checkout,
+# setup-node, cache),
 # the kernel's toolchain comes from rustup (preinstalled on the runner) and
 # wasm-pack's official installer, and the publish is a plain git push with the
 # job's own token.
@@ -58,6 +59,24 @@ jobs:
             echo "::warning title=Kernel built without wasm-opt::binaryen could not be fetched; published the dev kernel (larger, same behaviour)"
             npm run build:kernel:dev
           fi
+
+      # The solid kernel (docs/plans/solids-kernel.md): NVIDIA's SMLib built
+      # from source at the pins in its recipe. Its sources, emsdk and one
+      # object per source are cached under .solids-cache/, keyed by the recipe
+      # itself — change a pin or a flag and the key changes with it. Cold, the
+      # build is the compile of 235 C++ files (about 15 minutes on four cores);
+      # warm, a relink. The time is said in the run's summary either way.
+      - name: Solid kernel's cache
+        uses: actions/cache@v4
+        with:
+          path: .solids-cache
+          key: solids-${{ runner.os }}-${{ hashFiles('scripts/solids/build.sh') }}
+
+      - name: Solid kernel
+        run: |
+          start=$(date +%s)
+          JOBS=$(nproc) npm run build:solids
+          echo "::notice title=Solid kernel built::$(( $(date +%s) - start )) s on $(nproc) cores"
 
       - run: npm run build:pwa
 

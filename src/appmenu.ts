@@ -114,6 +114,8 @@ export interface AppMenuHost {
   /** How solids are shown now, and the modes there are, as `view()` names them. */
   viewMode(): string;
   viewModes: readonly string[];
+  /** Where SMLib's Apache-2.0 licence is, for About's notice (solidshost.ts) — absent for no notice. */
+  solidsLicence?: string;
   /** The build stamp's element, moved into About (the single-file build fills it in). */
   stamp: HTMLElement | null;
   /** Where the source is. */
@@ -332,6 +334,19 @@ export class AppMenu {
     linkRow.className = "about";
     linkRow.appendChild(link);
     about.appendChild(linkRow);
+    // The solid kernel's notice (Apache-2.0 §4): what it is, whose, and its licence.
+    if (h.solidsLicence) {
+      const row = document.createElement("div");
+      row.className = "about";
+      row.append("Solids: NVIDIA SMLib 1.0.1, ");
+      const lic = document.createElement("a");
+      lic.href = h.solidsLicence;
+      lic.target = "_blank";
+      lic.rel = "noopener";
+      lic.textContent = "Apache-2.0";
+      row.appendChild(lic);
+      about.appendChild(row);
+    }
   }
 
   private section(title: string): HTMLElement {

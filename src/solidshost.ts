@@ -22,7 +22,22 @@ export interface SolidsBuild {
   worker: { url: string } | { text: string };
   /** The module's bytes: a URL to fetch, base64 in the page, or neither (the Worker finds its own). */
   wasm?: { url: string } | { base64: string };
+  /** SMLib's Apache-2.0 LICENSE, which goes with every copy (§4): beside the page, or its text. */
+  license?: { url: string } | { text: string };
 }
+
+/** Where About links SMLib's licence: the copy this build carries, or the pinned upstream's. */
+export function solidsLicence(): string {
+  const build = (globalThis as { __ZEROCAD_SOLIDS?: SolidsBuild }).__ZEROCAD_SOLIDS;
+  const l = build?.license;
+  if (l && "url" in l) return l.url;
+  if (l && "text" in l) return URL.createObjectURL(new Blob([l.text], { type: "text/plain" }));
+  // The dev server serves the build's own copy beside the module.
+  return build ? UPSTREAM_LICENCE : new URL("./solids/smlib-gen/LICENSE", import.meta.url).href;
+}
+
+/** The licence at the pinned commit (scripts/solids/build.sh), for a build that carries none. */
+export const UPSTREAM_LICENCE = "https://github.com/NVIDIA-Omniverse/usd-brep/blob/3fd5b9548d19aa8c12c29bc9637a96d42a06f8a5/LICENSE";
 
 function fromBuild(build: SolidsBuild): SolidsClient {
   const url = "url" in build.worker ? build.worker.url

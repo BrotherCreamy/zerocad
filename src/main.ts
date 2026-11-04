@@ -47,7 +47,7 @@ import { arcSamples, arcSegments } from "./arcgeom.ts";
 import { curveFrame } from "./curveplane.ts";
 import { createFaceLayer, paintFaces } from "./facelayer.ts";
 import { Bodies } from "./bodies.ts";
-import { solidsClient } from "./solidshost.ts";
+import { solidsClient, solidsLicence } from "./solidshost.ts";
 import { kernelBody } from "./kernelbrep.ts";
 import type { KernelSolid } from "./step.ts";
 import { SOLID_EDGE, visibleFaces } from "./faces.ts";
@@ -1789,6 +1789,7 @@ async function main() {
     viewModes: VIEW_MODES,
     stamp: document.getElementById("buildstamp"),
     repository: "https://github.com/BrotherCreamy/zerocad",
+    solidsLicence: solidsLicence(),
     tooltip,
   });
 

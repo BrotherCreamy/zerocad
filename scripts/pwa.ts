@@ -21,7 +21,7 @@ const root = new URL("..", import.meta.url).pathname;
 const { values } = parseArgs({ options: { out: { type: "string" }, stamp: { type: "string" } } });
 const out = resolve(values.out ?? join(root, "dist-pwa"));
 
-const app = await singleFile({ stamp: values.stamp });
+const app = await singleFile({ stamp: values.stamp, solids: "files" });
 // The worker must change when the build does, and the stamp is the build's
 // name; a checkout with no git gives none, so the time stands in.
 const stamp = app.stamp || new Date().toISOString();
@@ -34,7 +34,12 @@ mkdirSync(join(out, "icons"), { recursive: true });
 const page = pwaDocument(app);
 writeFileSync(join(out, "index.html"), page);
 writeFileSync(join(out, "manifest.webmanifest"), JSON.stringify(manifest(), null, 2) + "\n");
-writeFileSync(join(out, "sw.js"), serviceWorker(stamp));
+writeFileSync(join(out, "sw.js"), serviceWorker(stamp, app.solidFiles !== null));
+// The solid kernel beside the page — Apache-2.0, its LICENSE with it (§4).
+if (app.solidFiles) {
+  mkdirSync(join(out, "solids"), { recursive: true });
+  for (const [name, data] of Object.entries(app.solidFiles)) writeFileSync(join(out, "solids", name), data);
+}
 // Pages runs Jekyll over a branch unless told not to; nothing here needs it.
 writeFileSync(join(out, ".nojekyll"), "");
 for (const file of [ICON_SVG, ...rasters().map((r) => r.src)]) {
