@@ -24,6 +24,13 @@ otherwise.
 
 ## Decisions made so far — veto here if any are wrong
 
+- **Select and Hand tools head the toolbar** (the owner, 2026-11-04: *"there
+  is no hand/selction tool. would be nice since a lot of people are used to
+  that"*). Select is the "no tool" state made visible (`arm("select")`), lit
+  whenever nothing is armed; the Hand pans from anywhere with one finger or a
+  left-drag; Space is a temporary hand on a desktop. Spec:
+  [`select-hand.md`](docs/plans/select-hand.md), after the chrome package.
+
 - **The organisation method: the groups that exist, plus an open group, in
   an organiser pane** (the owner, 2026-11-04: *"the group view or whatever
   organisation method you decided on. There needs to be a pane for that"*,
