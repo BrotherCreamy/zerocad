@@ -241,14 +241,14 @@ test("the logo opens the app menu; Escape closes it; a tap outside closes it and
   }
 });
 
-test("File: the four items type the files package's commands; one whose command is gone is off with its reason; the name line is the document's", async () => {
+test("File: the items type the files package's commands and the STEP export; one whose command is gone is off with its reason; the name line is the document's", async () => {
   const page = await desktop();
   try {
     await page.click("#logo");
     const items = await page.$$eval("#appmenu .sect[data-section=File] .item", (els) =>
       els.map((e) => [(e as HTMLElement).dataset.command, e.classList.contains("off")]));
-    assert.deepEqual(items, [["newFile()", false], ["openFile()", false], ["saveFile()", false], ["shareFile()", false]],
-      "all four, on: the files package defines them");
+    assert.deepEqual(items, [["newFile()", false], ["openFile()", false], ["saveFile()", false], ["shareFile()", false], ["exportStep()", false]],
+      "all five, on: the files package and step export define them");
     assert.equal(await page.$eval("#appmenu .docname", (e) => e.textContent ?? ""), "Untitled", "a fresh document, clean");
     // New types newFile() through the command line, as every item types.
     await page.click('#appmenu .item[data-command="newFile()"]');

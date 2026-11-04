@@ -30,7 +30,7 @@
 //   which `shareFile()` uses, but `saveFile()` downloads (see `saveRoute`).
 
 import {
-  ACCEPT, FILE_TYPE, PICKER_TYPES, UNTITLED, cancelled, fileNameFor, nameOfFile, openRoute, saveRoute, shareRoute,
+  ACCEPT, FILE_TYPE, PICKER_TYPES, UNTITLED, cancelled, exportRoute, fileNameFor, nameOfFile, openRoute, saveRoute, shareRoute,
   type Autosave, type AutosaveRecord, type AutosaveStore, type DocumentInfo, DocumentState,
 } from "./files.ts";
 
@@ -230,6 +230,22 @@ export class Files {
   }
 
   /**
+   * Hands over a file that is not the document — an export, `exportStep()`'s
+   * STEP file — the way `exportRoute` says: the share sheet under a finger,
+   * else a download. Settles with what happened; a dismissed sheet is "export
+   * cancelled". The document is untouched, and stays as dirty as it was.
+   */
+  async exportFile(text: string, fileName: string, type: string): Promise<string> {
+    const file = new File([text], fileName, { type });
+    if (exportRoute({ phone: this.o.phone, shareFiles: canShareFile(file) }) === "share") {
+      const how = await this.share(file, text);
+      return how === "cancelled" ? "export cancelled" : how === "shared" ? `exported ${fileName} — through the share sheet` : `downloaded ${fileName}`;
+    }
+    this.download(text, fileName, type);
+    return `downloaded ${fileName}`;
+  }
+
+  /**
    * Opens a file's text as the document — the door every arrival goes
    * through: the input, the picker, a drop, the desktop's launch. Asks first
    * when the current document has unsaved changes. Settles with whether it
@@ -348,19 +364,19 @@ export class Files {
         return "shared";
       } catch (e) {
         if (cancelled(e)) return "cancelled";
-        // Chromium says yes to canShare and then refuses a .json file with
+        // Chromium says yes to canShare and then refuses a .json or .step file with
         // NotAllowedError (see the top of this file); a share also needs the
         // press that asked for it. Either way the file still has to go
         // somewhere the person can find it.
         this.o.log(`the share sheet would not take the file (${errorText(e)}) — downloading it instead`, "out");
       }
     }
-    this.download(text, file.name);
+    this.download(text, file.name, file.type || FILE_TYPE);
     return "downloaded";
   }
 
-  private download(text: string, fileName: string): void {
-    const url = URL.createObjectURL(new Blob([text], { type: FILE_TYPE }));
+  private download(text: string, fileName: string, type: string = FILE_TYPE): void {
+    const url = URL.createObjectURL(new Blob([text], { type }));
     const link = document.createElement("a");
     link.href = url;
     link.download = fileName;

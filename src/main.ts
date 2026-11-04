@@ -1569,6 +1569,7 @@ async function main() {
       openFile: () => files!.openFile(),
       saveFile: () => files!.saveFile(),
       shareFile: () => files!.shareFile(),
+      exportFile: (text: string, name: string, type: string) => files!.exportFile(text, name, type),
       document: () => files!.document(),
     };
   }

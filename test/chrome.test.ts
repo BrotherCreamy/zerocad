@@ -376,8 +376,8 @@ test("the status fades when it says all is well, and stays when it says somethin
 
 // ---- the app menu -----------------------------------------------------------
 
-test("the File items: the four commands, each off with its reason until it exists", () => {
-  assert.deepEqual(FILE_ITEMS.map((i) => i.command), ["newFile()", "openFile()", "saveFile()", "shareFile()"]);
+test("the File items: the four commands and Export STEP…, each off with its reason until it exists", () => {
+  assert.deepEqual(FILE_ITEMS.map((i) => i.command), ["newFile()", "openFile()", "saveFile()", "shareFile()", "exportStep()"]);
   const only = (names: string[]) => (n: string) => names.includes(n);
   assert.equal(fileItemOff(FILE_ITEMS[1], only(["openFile"])), null);
   assert.match(fileItemOff(FILE_ITEMS[0], only(["openFile"]))!, /newFile\(\) is not in this build yet/);

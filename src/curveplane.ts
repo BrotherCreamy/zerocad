@@ -15,7 +15,7 @@
 // axes are `frameBasis`'s to read and nobody else's, so the marker, every
 // relation and every drawing of a rim agree on what "the frame's +z" is.
 
-import type { Entity, Model } from "./model.ts";
+import type { Entity, FeatureEntry, Model } from "./model.ts";
 import { frameBasis } from "./relations/refs.ts";
 import { arcFrame, circleFrame, type ArcFrame } from "./arcgeom.ts";
 import { lift3 } from "./vec3.ts";
@@ -56,6 +56,18 @@ export function curvePlaneOf(model: Model, name: string): CurvePlane {
   const plane = model.circular(name).plane;
   if (plane === undefined || !model.entities.has(plane)) return flat();
   return framePlaneAxes(model, plane) ?? flat();
+}
+
+/**
+ * The plane a feature's profile is sketched in — an extrude's lid is offset
+ * along its normal, a revolve's axis lies in it — or null for a collapsed one.
+ * Today that is the feature's sketch frame; asked here rather than of the frame
+ * so the STEP exporter (step.ts, solids.ts) reads a feature's plane the way it
+ * reads a curve's, and a change to where that orientation lives changes this
+ * accessor and not the exporter.
+ */
+export function featurePlane(model: Model, feature: FeatureEntry): CurvePlane | null {
+  return framePlaneAxes(model, feature.frame);
 }
 
 /**

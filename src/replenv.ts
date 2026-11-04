@@ -25,6 +25,7 @@ import { facingPoints, sketchFrameFor, type FacePlane } from "./sketchface.ts";
 import { cross3, lift3, sub3 } from "./vec3.ts";
 import { save as saveModel, savedTools } from "./persist.ts";
 import { fileNameFor } from "./files.ts";
+import { STEP_TYPE, stepExport, stepFileName } from "./step.ts";
 import { carryIntoSession, toolSources, type ToolSourceStore } from "./toolsource.ts";
 import { alignView, assignView, orbitBy, panBy, screenToWorld, viewAxes, zoomAbout, type View } from "./view.ts";
 import { pointOnWorkingPlane } from "./workplane.ts";
@@ -96,6 +97,11 @@ export interface EnvHandles {
   openFile?: () => string;
   saveFile?: () => Promise<string>;
   shareFile?: () => Promise<string>;
+  /**
+   * Hands over a file that is not the document — `exportStep()`'s — the share
+   * sheet under a finger, else a download (filehost.ts's `exportFile`).
+   */
+  exportFile?: (text: string, fileName: string, type: string) => Promise<string>;
   /**
    * The document's name and whether it has unsaved changes — what the app
    * menu shows, and what `download()` names its file for.
@@ -794,6 +800,30 @@ export function neocadScope(h: EnvHandles): Bag {
       if (!h.shareFile) throw new Error("no share sheet in this environment — save() gives the text");
       return h.shareFile();
     },
+    // STEP (docs/plans/step-export.md, src/step.ts): the shown solids as a
+    // file every other CAD tool opens — `exportStep()`, `exportStep("name")`,
+    // `exportStep({ curves: true })`. Like saveFile it acts on nothing in the
+    // drawing, so it journals nothing and is not in persist.ts's replay table.
+    // The solids are asked for before the host is, so a drawing without one
+    // hears "there is no solid" wherever it is typed.
+    exportStep: (name?: unknown, options?: unknown) => {
+      const o = typeof name === "object" && name !== null ? name : options ?? {};
+      if (typeof o !== "object" || o === null || Array.isArray(o)) {
+        throw new Error('exportStep takes a name and { curves: true } — exportStep("bracket", { curves: true })');
+      }
+      const opts = o as Record<string, unknown>;
+      const extra = Object.keys(opts).filter((k) => k !== "curves" && k !== "name");
+      if (extra.length) throw new Error(`exportStep takes { curves: true } and a name, not ${extra.join(", ")}`);
+      if (name != null && typeof name !== "string" && typeof name !== "object") throw new Error("exportStep's name is a string");
+      const title = typeof name === "string" ? name : typeof opts.name === "string" ? opts.name : h.document?.().name ?? "Untitled";
+      const out = stepExport(model, { name: title, curves: opts.curves === true });
+      if (!h.exportFile) throw new Error("no download or share sheet in this environment");
+      const bodies = out.bodies.map((b) => b.name);
+      const said = [`${bodies.join(", ")} (${bodies.length} ${bodies.length === 1 ? "body" : "bodies"})`];
+      if (out.curves > 0) said.push(`${out.curves} sketch curve${out.curves === 1 ? "" : "s"}`);
+      if (out.skipped.length) said.push(`left out ${out.skipped.map((x) => `${x.feature} (${x.why})`).join(", ")}`);
+      return h.exportFile(out.text, stepFileName(title), STEP_TYPE).then((how) => `${how}: ${said.join("; ")}`);
+    },
     journal: () => model.journal.map((e) => `${e.op}(${e.args.map((a) => JSON.stringify(a)).join(", ")})`),
     // The same thing Ctrl+Z does, and not a parallel implementation of it: both
     // go through the host handle, so a difference between the keystroke and the
@@ -1279,6 +1309,14 @@ function help(scope: Bag): string {
     "           there are unsaved changes, and each is one undo step. The",
     "           drawing is autosaved on this device and is there when the app",
     "           starts again. Files are <name>.zerocad.json.",
+    "           exportStep(name?)  exportStep({ curves: true }) — the shown",
+    "           solids as <name>.step (STEP AP214, millimetres) for any other",
+    "           CAD or CAM tool: exact faces — planes, cylinders, cones,",
+    "           spheres, tori — one body per extrude or revolve, named e1, e2,",
+    "           …; hidden solids and construction geometry left out. curves:",
+    "           true adds the sketch curves no solid is made of. The share",
+    "           sheet on a phone, a download elsewhere; the app menu's Export",
+    "           STEP… types it. With no solid it says so and writes nothing.",
     "           save()  open(text)  download(name)  journal() — the text itself.",
     "           a file carries the source of tools you defined here, as text:",
     "           open() never runs it, toolSource(name) prints it, and pasting",
