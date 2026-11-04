@@ -44,9 +44,38 @@ export async function fingers(app: AppContext): Promise<Fingers> {
   let next = 0;
   const points = (fs: { id: number; at: At }[]) =>
     fs.map((f) => ({ x: box.x + f.at[0], y: box.y + f.at[1], id: f.id, radiusX: 8, radiusY: 8, force: 1 }));
-  const send = (type: "touchStart" | "touchMove" | "touchEnd", fs: { id: number; at: At }[]) =>
-    cdp.send("Input.dispatchTouchEvent", { type, touchPoints: points(fs) });
-  const settle = () => app.page.waitForTimeout(16);
+  /**
+   * **A tap is timed by the hand, not by the machine.** CDP waits for a touch
+   * to be handled before it returns, so on a loaded machine a landing handled
+   * 600 ms late made the lift go 600 ms late too, and the page — which times a
+   * tap by the events' own timestamps, as a phone's OS stamps them
+   * (gestures.ts, `LATE_MS`) — read a 40 ms tap as a 640 ms press and never
+   * tapped (measured: landed at 2358, handled at 2963). So a gesture's first
+   * landing is stamped when it is sent, and **a lift with no movement before
+   * it** is stamped that plus the pauses this helper meant (`pause`) — a tap
+   * or a hold lasts what the test says. Moves, and a lift after moves, keep
+   * the browser's own stamps: stamping a drag's moves 16 ms apart would make
+   * every drag a fast flick, and Chromium suppresses the next tap after a
+   * fling (measured: the Hand's tap after a slide was lost). The stamps are
+   * never ahead of the wall clock — the pauses are really waited.
+   */
+  let startedAt = 0;
+  let meant = 0;
+  let moved = false;
+  const send = (type: "touchStart" | "touchMove" | "touchEnd", fs: { id: number; at: At }[]) => {
+    let timestamp: number | undefined;
+    if (type === "touchStart" && down.length === 1 && fs.length === 1) {
+      startedAt = Date.now();
+      meant = 0;
+      moved = false;
+      timestamp = startedAt / 1000;
+    } else if (type === "touchMove") moved = true;
+    else if (type === "touchEnd" && !moved && down.length === 0) timestamp = (startedAt + meant) / 1000;
+    return cdp.send("Input.dispatchTouchEvent", { type, touchPoints: points(fs), ...(timestamp === undefined ? {} : { timestamp }) });
+  };
+  /** Waits `ms`, and counts it as part of the gesture under way. */
+  const pause = (ms: number) => { meant += ms; return app.page.waitForTimeout(ms); };
+  const settle = () => pause(16);
 
   const self: Fingers = {
     async down(...at) {
@@ -75,24 +104,24 @@ export async function fingers(app: AppContext): Promise<Fingers> {
       const lifting = which.length ? down.filter((_, k) => which.includes(k)) : down;
       down = down.filter((f) => !lifting.includes(f));
       await send("touchEnd", lifting);
-      await app.page.waitForTimeout(60);
+      await pause(60);
     },
     async tap(x, y) {
       await self.down([x, y]);
-      await app.page.waitForTimeout(40);
+      await pause(40);
       await self.up();
-      await app.page.waitForTimeout(120);
+      await pause(120);
     },
     async hold(x, y, ms, keep = false) {
       await self.down([x, y]);
-      await app.page.waitForTimeout(ms);
+      await pause(ms);
       if (!keep) await self.up();
     },
     async drag(from, to, steps = 10) {
       await self.down(from);
       await self.glide(steps, to);
       await self.up();
-      await app.page.waitForTimeout(80);
+      await pause(80);
     },
   };
   return self;

@@ -1521,6 +1521,14 @@ starts.
       worker deletes only caches under its own prefix. The release that
       renames it should delete `neocad-` caches too, or every phone that had
       the old app keeps one stale cache forever.
+- [x] **The fingers helper stamps a tap by the hand's clock** (2026-11-04):
+      CDP waits for each touch to be handled, so on a loaded machine a 40 ms
+      tap was delivered as a 640 ms press and the page — timing taps by event
+      timestamps since the busy-page fix — rightly refused it (measured:
+      landed at 2358 ms, handled at 2963). A gesture's first landing and a
+      lift with no movement before it are now stamped by the helper's own
+      pauses; moves keep the browser's stamps, because stamping a drag 16 ms a
+      step makes it a flick and Chromium then suppresses the next tap.
 - [x] **A quick tap on a busy page was lost** — fixed: taps are timed by the
       events' timestamps, and a late long-press timer yields to queued input
       (`gestures.ts`, `LATE_MS`; see the CHANGELOG). This was the cause behind
