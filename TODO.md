@@ -24,6 +24,11 @@ otherwise.
 
 ## Decisions made so far — veto here if any are wrong
 
+- **STEP export** (the owner, 2026-11-04: *"also, please add step export"*):
+  exact B-rep, one body per feature, hand-written with no dependency,
+  validated against OpenCascade outside the repo. Spec:
+  [`step-export.md`](docs/plans/step-export.md).
+
 - **Tooltips on every control, long-press on touch; frames drawn in RGB**
   (the owner, 2026-11-04: *"when I hover over tools, I should see a
   tooltip"*; *"a frame should be coloured or something so I can tell the
