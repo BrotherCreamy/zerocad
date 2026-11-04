@@ -24,21 +24,28 @@ import { previewSteps } from "./featurepreview.ts";
 import { describePick, type Pick } from "./picking.ts";
 import { ContextMenu, menuFor } from "./menu.ts";
 import { toolUnavailable } from "./toolavail.ts";
-import { FRAME_ARM_PX, frameMarker } from "./framemarker.ts";
+import { frameArmPx, frameMarker } from "./framemarker.ts";
 import { constrainedBy, type Glyph } from "./glyphs.ts";
 import { getToolCtor, listTools } from "./tools/tool.ts";
 import {
-  ACTIONS, ActionStrip, COARSE, FINE, OptionsPanel, Panels, Toolbar, browserStorage, defaultLayout, type Size,
+  ACTIONS, ActionStrip, FINE, OptionsPanel, Panels, Toolbar, browserStorage, defaultLayout, logoBox, scaledMetrics, touchMetrics,
+  type Insets, type Metrics, type Size,
 } from "./panels.ts";
+import {
+  clampScale, deviceScale, formFactor, formatScale, recallScale, rememberScale, textFactor, type Device,
+} from "./uiscale.ts";
+import { GUIDE_NOTE_MS, STEP_NOTE_MS, StatusLine } from "./statusline.ts";
+import { AppMenu, UNTITLED } from "./appmenu.ts";
+import { logoSvg } from "./logo.ts";
 import { OptionMemory, declaredOptions, unitSymbol, type OptionValue } from "./tools/options.ts";
 import { toolIcon } from "./tools/icons.ts";
-import { depth } from "./view.ts";
+import { depth, uiOf } from "./view.ts";
 import { arcSamples, arcSegments } from "./arcgeom.ts";
 import { curveFrame } from "./curveplane.ts";
 import { createFaceLayer, paintFaces } from "./facelayer.ts";
 import { SOLID_EDGE, visibleFaces } from "./faces.ts";
 import { hiddenInk, inSight, inkRuns, occlusion, type Occlusion } from "./occlusion.ts";
-import { drawsFaces, isViewMode, opaque, recallViewMode, rememberViewMode, viewModeError, type ViewMode } from "./viewmode.ts";
+import { VIEW_MODES, drawsFaces, isViewMode, opaque, recallViewMode, rememberViewMode, viewModeError, type ViewMode } from "./viewmode.ts";
 import { entityDrawn, glyphDrawn, quietEntities, revealed, solidEdges } from "./quiet.ts";
 import { frameBasis } from "./relations/refs.ts";
 import { lockPage } from "./pagelock.ts";
@@ -56,12 +63,12 @@ import "./tools/revolve.ts";
 import "./tools/sketch.ts";
 import "./tools/edit.ts";
 
-const statusEl = document.getElementById("status")!;
-const stepNoteEl = document.getElementById("stepnote")!;
-/** How long "undid" stays beside the verdict: long enough to read, gone before the next thought. */
-const STEP_NOTE_MS = 1600;
-/** How long a tool's guidance stays in that note: a sentence of a dozen words, not a one-word "undid". */
-const GUIDE_NOTE_MS = 5000;
+/**
+ * The status beside the logo — the verdict and the step note — and the rules
+ * for when each fades (statusline.ts). The element ids are what they were in
+ * the header: `#status`, `#stepnote`.
+ */
+const statusLine = new StatusLine(document.getElementById("status")!, document.getElementById("stepnote")!);
 const logEl = document.getElementById("log")!;
 const cv = document.getElementById("cv") as HTMLCanvasElement;
 const g = cv.getContext("2d")!;
@@ -88,7 +95,92 @@ const optionsEl = document.getElementById("options")!;
  * so a mouse plugged into a tablet is still a mouse.
  */
 const coarse = typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
-const metrics = coarse ? COARSE : FINE;
+
+/**
+ * What the page can tell about the device (uiscale.ts's `Device`): the
+ * pointer, the screen's short side, and the text size its person chose — iOS's
+ * Dynamic Type through `font: -apple-system-body` where Safari has it, else the
+ * browser's default font size, read off `font-size: medium` (the root's own
+ * size is the stylesheet's 13 px, not the person's). Measured once, at load: a
+ * changed text size is picked up by the next start.
+ */
+function measureDevice(): Device {
+  const probe = document.createElement("span");
+  probe.style.cssText = "position:absolute;visibility:hidden;font-size:medium";
+  document.body.appendChild(probe);
+  const defaultFont = parseFloat(getComputedStyle(probe).fontSize) || 16;
+  let appleBody: number | null = null;
+  // Feature-detected rather than sniffed: where the keyword is not a font,
+  // the declaration is dropped and the probe would read back `medium`.
+  if (typeof CSS !== "undefined" && CSS.supports?.("font", "-apple-system-body")) {
+    probe.style.font = "-apple-system-body";
+    appleBody = parseFloat(getComputedStyle(probe).fontSize) || null;
+  }
+  probe.remove();
+  const shortSide = Math.min(screen.width, screen.height) || Math.min(innerWidth, innerHeight);
+  return { coarse, shortSide, appleBody, defaultFont };
+}
+const device = measureDevice();
+
+/**
+ * **The interface size** — the one factor everything drawn for a person to
+ * read is multiplied by (uiscale.ts): **this device's 100 %**, worked out from
+ * `device` (1 under a mouse; 1.3 on a phone under a finger, 1.15 on a tablet;
+ * times the person's text size), **times the viewer's multiplier**, the spin
+ * box's `− 100% +`, which is all that is stored. Handed from here to
+ * everything that draws: the panels' metrics, the stylesheet's custom
+ * properties, the logo, and the view (`view.ui`), which the glyphs, labels,
+ * points, frame markers and snap marker are drawn from. Set by
+ * `ui({ scale })` alone, through `setScale`.
+ */
+const deviceUi = deviceScale(device);
+let uiScale = recallScale(browserStorage()) ?? 1;
+const drawnScale = () => Math.round(deviceUi * uiScale * 1000) / 1000;
+const metricsAt = (k: number): Metrics => (coarse ? touchMetrics(k) : scaledMetrics(FINE, k));
+let metrics: Metrics = metricsAt(drawnScale());
+
+const logoEl = document.getElementById("logo")!;
+const cornerEl = document.getElementById("corner")!;
+const probeEl = document.getElementById("safeprobe")!;
+
+/**
+ * The safe-area insets, read off a probe whose padding is the four
+ * `env(safe-area-inset-*)` — the one way script can read them.
+ */
+function insets(): Insets {
+  const c = getComputedStyle(probeEl);
+  const px = (v: string) => parseFloat(v) || 0;
+  return { top: px(c.paddingTop), right: px(c.paddingRight), bottom: px(c.paddingBottom), left: px(c.paddingLeft) };
+}
+
+/**
+ * The chrome's sizes into the page: the stylesheet's custom properties (the
+ * panels' numbers exactly, and the factor for everything else), the logo at
+ * its size, and the status beside it.
+ */
+function applyChrome(): void {
+  const root = document.documentElement.style;
+  root.setProperty("--ui", String(metrics.scale));
+  root.setProperty("--gap", `${metrics.gap}px`);
+  root.setProperty("--title", `${metrics.title}px`);
+  root.setProperty("--button", `${metrics.button}px`);
+  root.setProperty("--icon", `${metrics.icon}px`);
+  root.setProperty("--grip", `${metrics.grip}px`);
+  root.setProperty("--orow", `${metrics.optionRow}px`);
+  logoEl.innerHTML = logoSvg(metrics.logo);
+  placeCorner();
+}
+
+/** The status, just right of the logo, in the logo's row. */
+function placeCorner(): void {
+  const i = insets();
+  const box = logoBox(metrics);
+  cornerEl.style.left = `${i.left + box.w}px`;
+  cornerEl.style.top = `${i.top}px`;
+  cornerEl.style.minHeight = `${box.h}px`;
+  cornerEl.style.maxWidth = `calc(100% - ${i.left + i.right + box.w + 8}px)`;
+}
+applyChrome();
 
 /**
  * The action strip — Undo, Redo, Delete, Cancel — is a finger's Ctrl+Z, Ctrl+Y,
@@ -99,6 +191,9 @@ const metrics = coarse ? COARSE : FINE;
 const actionsPanelEl = document.querySelector<HTMLElement>('.panel[data-panel="actions"]');
 if (!coarse) actionsPanelEl?.remove();
 const actionsEl = coarse ? document.getElementById("actions") : null;
+
+/** What `ui()` says when it is given something it does not take. */
+const UI_USAGE = 'ui() takes { scale: 0.8 } (0.6 to 1.6, or "default"), { hide: "log" } or { show: "log" } (a pane or a list of them); ui() says what is in force';
 
 /**
  * The options panel's size, once there is an options panel to ask — it is
@@ -156,8 +251,16 @@ const panels = new Panels(
     check: Boolean((import.meta as { env?: { DEV?: boolean } }).env?.DEV),
     fitted: { options: { size: () => optionsShown(), beside: "toolbar" } },
     metrics,
+    // The logo is a panel nothing moves: what is pushed into the corner stops
+    // against it, and the way into the app menu is never under anything.
+    fixed: { logo: { el: logoEl, size: () => logoBox(metrics) } },
+    insets,
   },
 );
+// The insets change without the window resizing — a rotation does both, but
+// an emulator's override, or iOS settling its bars, may do only this. The
+// probe's border box is its padding, so it is what changes.
+new ResizeObserver(() => { placeCorner(); panels.apply(); }).observe(probeEl, { box: "border-box" });
 
 function log(msg: string, cls?: string) {
   const d = document.createElement("div");
@@ -216,7 +319,7 @@ const CONSTRUCTION_PX = 0.9;
 const CONSTRUCTION_CASING_PX = 0.5;
 
 async function main() {
-  statusEl.textContent = "loading kernel…";
+  statusLine.show("loading", "loading kernel…");
   await ensureKernelLoaded();
   log("kernel loaded");
 
@@ -240,7 +343,7 @@ async function main() {
     log(`restored ${r.name}${r.dirty ? " (unsaved changes)" : ""} — autosaved on this device`, "out");
     for (const line of carryIntoSession(savedTools(r.text), toolSources)) log(line, "out");
   }
-  const view: View = { ox: 0, oy: 0, scale: 3 };
+  const view: View = { ox: 0, oy: 0, scale: 3, ui: metrics.scale };
   sizeCanvas();
   const r0 = cv.getBoundingClientRect();
   view.ox = r0.width / 2;
@@ -422,25 +525,26 @@ async function main() {
       }
     }
 
-    g.font = "11px monospace";
+    const k = uiOf(view);
+    g.font = `${11 * k}px monospace`;
     for (const e of points) {
       const world = model.coords(e.name);
       // Behind a face in a shaded view: not drawn, dot and name together —
       // and not pickable either, by the same answer (picking.ts).
       if (!inSight(hides, world)) continue;
       const [sx, sy] = engine.worldToScreen(world);
-      const r = lit.has(e.name) || chosen.has(e.name) ? 5 : 3.5;
+      const r = (lit.has(e.name) || chosen.has(e.name) ? 5 : 3.5) * k;
       if (casing) {
         g.fillStyle = CASING;
         g.beginPath(); g.arc(sx, sy, r + CASING_PX, 0, Math.PI * 2); g.fill();
-        label(e.name, sx + 6, sy - 6);
+        label(e.name, sx + 6 * k, sy - 6 * k);
         continue;
       }
       // A point keeps its sketch colour on a solid: it is a target, not an
       // outline, and its casing carries it over a light face.
       g.fillStyle = lit.has(e.name) ? "#e8a33d" : chosen.has(e.name) ? SELECTION : "#afc6d9";
       g.beginPath(); g.arc(sx, sy, r, 0, Math.PI * 2); g.fill();
-      label(e.name, sx + 6, sy - 6);
+      label(e.name, sx + 6 * k, sy - 6 * k);
     }
   }
 
@@ -519,9 +623,10 @@ async function main() {
    * the question they ask.
    */
   function emptyHint(width: number, height: number) {
+    const k = uiOf(view);
     const lines: [string, string, string][] = [
-      ["13px", "#7a8b9b", "Nothing drawn yet."],
-      ["12px", "#56697b", coarse
+      [`${13 * k}px`, "#7a8b9b", "Nothing drawn yet."],
+      [`${12 * k}px`, "#56697b", coarse
         ? "Pick a tool from the toolbar, long-press for the menu, or type help() in the command line."
         : "Pick a tool from the toolbar, right-click for the menu, or type help() in the command line."],
     ];
@@ -536,7 +641,7 @@ async function main() {
       if (g.measureText(text).width <= width - 40) rows.push([size, colour, text]);
       else for (const part of text.split(/(?<=,) /)) rows.push([size, colour, part]);
     }
-    const step = 20;
+    const step = 20 * k;
     let y = height / 2 - ((rows.length - 1) * step) / 2;
     for (const [size, colour, text] of rows) {
       g.font = `${size} "IBM Plex Mono", ui-monospace, Menlo, monospace`;
@@ -672,7 +777,8 @@ async function main() {
     // Behind a solid at its origin, in a shaded view, the marker is not drawn
     // at all — the place it stands for is out of sight, and picking agrees.
     if (!inSight(hides, basis.origin)) return;
-    const reach = FRAME_ARM_PX / view.scale;
+    const reach = frameArmPx(view) / view.scale;
+    const k = uiOf(view);
     const armEnd = (u: number[]) => basis.origin.map((c, i) => c + (u[i] ?? 0) * reach);
     const isDefault = model.defaultFrame === name;
     const colour = lit ? "#e8a33d" : chosen ? SELECTION : isDefault ? "#c9dcec" : "#7b93a8";
@@ -680,7 +786,7 @@ async function main() {
     g.strokeStyle = colour;
     g.fillStyle = colour;
     g.lineWidth = lit || chosen ? 2.2 : isDefault ? 1.6 : 1.2;
-    g.font = "10px ui-monospace, Menlo, monospace";
+    g.font = `${10 * k}px ui-monospace, Menlo, monospace`;
     const arms: [[number, number], string, number[]][] = [[marker.x, "x", basis.ux], [marker.y, "y", basis.uy]];
     if (marker.z && basis.uz) arms.push([marker.z, "z", basis.uz]);
     for (const [tip, letter, axis] of arms) {
@@ -689,7 +795,7 @@ async function main() {
       if (!(len > 0.5)) {
         // Pointing at the viewer: a dot of an arm. The letter alone, just off
         // the origin, still says the axis is there and which way it faces.
-        label(letter, marker.origin[0] + 4, marker.origin[1] + 12);
+        label(letter, marker.origin[0] + 4 * k, marker.origin[1] + 12 * k);
         continue;
       }
       const [ux, uy] = [dx / len, dy / len];
@@ -713,16 +819,16 @@ async function main() {
       for (const s of [1, -1]) {
         const a = Math.atan2(uy, ux) + s * 0.4;
         g.moveTo(tip[0], tip[1]);
-        g.lineTo(tip[0] - Math.cos(a) * 6, tip[1] - Math.sin(a) * 6);
+        g.lineTo(tip[0] - Math.cos(a) * 6 * k, tip[1] - Math.sin(a) * 6 * k);
       }
       // The casing pass rims the head as `strokeEdge` rimmed the arm.
       const width = g.lineWidth;
       if (casing) g.lineWidth = width + 2 * CASING_PX;
       g.stroke();
       g.lineWidth = width;
-      label(letter, tip[0] + ux * 8 - 3, tip[1] + uy * 8 + 3.5);
+      label(letter, tip[0] + (ux * 8 - 3) * k, tip[1] + (uy * 8 + 3.5) * k);
     }
-    g.font = "11px monospace";
+    g.font = `${11 * k}px monospace`;
     // Away from both arms, not at a fixed corner: the arms turn with the frame,
     // and a label pinned below-right would sit on top of one of them as soon as
     // the frame was tilted — which is the case this package is about. Opposite
@@ -730,7 +836,7 @@ async function main() {
     const bx = (marker.x[0] + marker.y[0]) / 2 - marker.origin[0];
     const by = (marker.x[1] + marker.y[1]) / 2 - marker.origin[1];
     const bl = Math.hypot(bx, by) || 1;
-    label(name, marker.origin[0] - (bx / bl) * 14 - 3, marker.origin[1] - (by / bl) * 14 + 4);
+    label(name, marker.origin[0] - ((bx / bl) * 14 + 3) * k, marker.origin[1] - ((by / bl) * 14 - 4) * k);
     g.restore();
   }
 
@@ -747,18 +853,21 @@ async function main() {
     // picks the corner.
     const marks = engine.glyphs().filter((m) => chosen.has(m.relation) || glyphDrawn(m, quiet, shown, hoveredRelation));
     if (!marks.length) return;
+    const k = uiOf(view);
     g.save();
-    g.font = "12px ui-monospace, Menlo, monospace";
+    // At the interface size, as the boxes are (glyphs.ts sizes them from
+    // GLYPH_CHAR_W, this font's advance, times the same factor).
+    g.font = `${12 * k}px ui-monospace, Menlo, monospace`;
     g.textAlign = "center";
     g.textBaseline = "middle";
-    for (const mark of marks) if (mark.ends) dimensionLines(mark, mark.relation === hoveredRelation);
+    for (const mark of marks) if (mark.ends) dimensionLines(mark, mark.relation === hoveredRelation, k);
     for (const mark of marks) {
       const on = mark.relation === hoveredRelation;
       // A selected constraint is its box in the selection's colour, a little
       // heavier: the mark is the whole of what a relation looks like.
       const picked = !on && chosen.has(mark.relation);
       const [x, y] = mark.screen;
-      roundedBox(x - mark.halfW, y - mark.halfH, mark.halfW * 2, mark.halfH * 2, 3);
+      roundedBox(x - mark.halfW, y - mark.halfH, mark.halfW * 2, mark.halfH * 2, 3 * k);
       g.fillStyle = on ? "#20303f" : "#0e141bee";
       g.fill();
       g.strokeStyle = on ? "#e8a33d" : picked ? SELECTION : "#2c3d4f";
@@ -772,7 +881,7 @@ async function main() {
       // Nudged down a hair: several of these marks (— ∥ ⊥ ∴) sit high in their
       // em box, and centring by metrics leaves them looking as though they are
       // escaping upward out of the box.
-      g.fillText(mark.symbol, x, y + 0.5);
+      g.fillText(mark.symbol, x, y + 0.5 * k);
     }
     g.restore();
   }
@@ -782,7 +891,7 @@ async function main() {
    * what is being measured, and a line between them at the label's own level,
    * with an arrow into each end.
    */
-  function dimensionLines(mark: Glyph, on: boolean) {
+  function dimensionLines(mark: Glyph, on: boolean, k: number) {
     const [a, b] = mark.ends!;
     const [lx, ly] = mark.screen;
     // How far out the dimension line sits: the label's own offset, projected
@@ -802,7 +911,7 @@ async function main() {
     // Witness lines start clear of the geometry, the way a draughtsman's do —
     // touching the point would make them read as part of the drawing.
     for (const end of [a, b]) {
-      const gap = off >= 0 ? 4 : -4;
+      const gap = (off >= 0 ? 4 : -4) * k;
       g.moveTo(...at(end, gap));
       g.lineTo(...at(end, off + gap));
     }
@@ -817,8 +926,8 @@ async function main() {
       const tip = at(end, off);
       g.beginPath();
       g.moveTo(tip[0], tip[1]);
-      g.lineTo(tip[0] + s * dx * 7 + ux * 2.5, tip[1] + s * dy * 7 + uy * 2.5);
-      g.lineTo(tip[0] + s * dx * 7 - ux * 2.5, tip[1] + s * dy * 7 - uy * 2.5);
+      g.lineTo(tip[0] + (s * dx * 7 + ux * 2.5) * k, tip[1] + (s * dy * 7 + uy * 2.5) * k);
+      g.lineTo(tip[0] + (s * dx * 7 - ux * 2.5) * k, tip[1] + (s * dy * 7 - uy * 2.5) * k);
       g.closePath();
       g.fill();
     }
@@ -838,8 +947,8 @@ async function main() {
 
   function solveAndRender() {
     const report = model.solve();
-    statusEl.textContent = report.solved ? "SOLVED" : `CONFLICT: ${report.offenders.map((o) => o.label).join(", ")}`;
-    statusEl.className = report.solved ? "solved" : "bad";
+    if (report.solved) statusLine.show("solved", "SOLVED");
+    else statusLine.show("conflict", `CONFLICT: ${report.offenders.map((o) => o.label).join(", ")}`);
     render();
     return report;
   }
@@ -957,7 +1066,7 @@ async function main() {
     // has been made it is stale, and a header still saying "click inside a
     // closed outline" over the solid that click just made would be the
     // stale-readout bug in a new place.
-    if (changed && stepNoteEl.className === "guide") stepNote("", 0);
+    if (changed && statusLine.noteClass === "guide") stepNote("", 0);
     return changed;
   }
 
@@ -1024,12 +1133,8 @@ async function main() {
    * this project has already paid for once. Cleared on a timer, and replaced
    * by the next step's note if that comes first.
    */
-  let stepNoteTimer: ReturnType<typeof setTimeout> | undefined;
   function stepNote(text: string, ms = STEP_NOTE_MS, cls = "") {
-    stepNoteEl.textContent = text;
-    stepNoteEl.className = cls;
-    clearTimeout(stepNoteTimer);
-    stepNoteTimer = setTimeout(() => { stepNoteEl.textContent = ""; stepNoteEl.className = ""; }, ms);
+    statusLine.note(text, ms, cls);
   }
 
   /**
@@ -1309,6 +1414,9 @@ async function main() {
         return viewMode;
       },
       refresh: () => { solveAndRender(); },
+      // The interface size and which panes are shown: the viewer's, like the
+      // layout — typed through `submit`, recording nothing.
+      ui: (options?: unknown) => uiCommand(options),
       // The chrome's arrangement. Typed through `submit` like everything else,
       // and so bracketed as a user action — which records nothing, because the
       // model is untouched: layout is the viewer's, not the drawing's.
@@ -1366,6 +1474,90 @@ async function main() {
   });
 
   const repl = new Repl(neocadScope(handles()));
+
+  /**
+   * `ui()` — the interface size and the panes. `ui({ scale: 0.8 })` sets the
+   * size (held to 60–160 %, and said so when held), `ui({ scale: "default" })`
+   * goes back to this device's; `ui({ hide: "log" })` and `ui({ show: "log" })`
+   * — a name or a list of names — hide and show panes. `ui()` says what is in
+   * force. The app menu types exactly these. Nothing journals: it is this
+   * viewer's, on this device.
+   */
+  function uiCommand(options?: unknown): string {
+    if (options === undefined) return describeUi();
+    if (!options || typeof options !== "object" || Array.isArray(options)) throw new Error(UI_USAGE);
+    const o = options as Record<string, unknown>;
+    const unknown = Object.keys(o).filter((key) => !["scale", "show", "hide"].includes(key));
+    if (unknown.length) throw new Error(`ui() takes scale, show and hide — ${unknown.map((u) => JSON.stringify(u)).join(", ")} is not one. ${UI_USAGE}`);
+    const said: string[] = [];
+    if ("scale" in o) {
+      if (o.scale === "default" || o.scale === null) setScale(null);
+      else {
+        const c = clampScale(o.scale);
+        if (c === null) throw new Error(`ui({ scale }) takes a number, 0.6 to 1.6, or "default" — ${JSON.stringify(o.scale) ?? String(o.scale)} is neither`);
+        if (c !== o.scale) said.push(`${o.scale} held to ${formatScale(c)}`);
+        setScale(c);
+      }
+    }
+    for (const [key, shown] of [["show", true], ["hide", false]] as const) {
+      if (!(key in o)) continue;
+      const ids = Array.isArray(o[key]) ? o[key] as unknown[] : [o[key]];
+      for (const id of ids) {
+        if (typeof id !== "string") throw new Error(`ui({ ${key} }) takes a pane's name or a list of them — ${JSON.stringify(id)} is not one`);
+        panels.setShown(id, shown);
+      }
+    }
+    syncToolbar();
+    return [...said, describeUi()].join("\n");
+  }
+
+  function describeUi(): string {
+    const panes = panels.panes();
+    const hidden = panes.filter((p) => !p.shown).map((p) => p.id);
+    // The device's 100 % said in its parts, so a person can see why their
+    // phone draws what it draws: the form factor and the text size.
+    const why = `100% here is ${deviceUi}× a desktop's: ${coarse ? (formFactor(device) === 1.3 ? "a phone" : "a tablet") : "a mouse"} ` +
+      `${formFactor(device)}, text size ${textFactor(device).toFixed(2)}`;
+    return `interface ${formatScale(uiScale)} (${why})` +
+      `; panes ${panes.map((p) => p.id).join(", ")}` + (hidden.length ? `; hidden ${hidden.join(", ")}` : "; all shown");
+  }
+
+  /**
+   * The interface size, set — or with null forgotten, back to the device's
+   * default — and everything that draws told: the panels and their
+   * stylesheet, the options panel, the logo, and the view the drawing's marks
+   * are sized from.
+   */
+  function setScale(s: number | null): void {
+    rememberScale(browserStorage(), s);
+    uiScale = s ?? 1;
+    metrics = metricsAt(drawnScale());
+    view.ui = metrics.scale;
+    applyChrome();
+    optionsPanel.setMetrics(metrics);
+    panels.setMetrics(metrics);
+    render();
+  }
+
+  /**
+   * The app menu, opened by the logo, through the same seam as every other
+   * menu: each control types its line into `submit`. Its File items type the
+   * files package's commands (docs/plans/files.md), and are off with their
+   * reason until the command line's scope has them.
+   */
+  const appMenu = new AppMenu(document.getElementById("appmenu")!, logoEl, {
+    run: (command) => submit(command),
+    // The files package's host function (docs/plans/files.md): the name and
+    // the unsaved dot. Untitled and clean only before it exists.
+    document: () => files?.document() ?? UNTITLED,
+    defined: (name) => typeof repl.scope[name] === "function",
+    scale: () => uiScale,
+    panes: () => panels.panes(),
+    viewMode: () => viewMode,
+    viewModes: VIEW_MODES,
+    stamp: document.getElementById("buildstamp"),
+    repository: "https://github.com/BrotherCreamy/zerocad",
+  });
 
   /**
    * Points everything at a different model. The tool engine and the command
@@ -1536,7 +1728,7 @@ async function main() {
     // that appeared", and with a menu on screen that is the menu — cancelling
     // the gesture underneath it as well would abandon a half-drawn rectangle
     // that the user was only right-clicking to look away from.
-    if (menu.close()) {
+    if (menu.close() || appMenu.close()) {
       log("menu closed", "out");
       return;
     }
@@ -1633,7 +1825,7 @@ async function main() {
   files.install();
 
   render();
-  statusEl.textContent = "ready — type help(), a tool name, or any expression";
+  statusLine.show("ready", "ready — type help(), a tool name, or any expression");
   log("type help() for the command surface");
   // **The keyboard stays away until asked for.** A focused field on iOS is a
   // keyboard over the drawing (raised by the next tap, if not by this), so
@@ -1646,8 +1838,7 @@ async function main() {
 lockPage(document);
 
 main().catch((e) => {
-  statusEl.textContent = "ERROR — see log";
-  statusEl.className = "bad";
+  statusLine.show("error", "ERROR — see log");
   log(String((e && e.stack) || e), "err");
   console.error(e);
 });

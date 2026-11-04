@@ -114,7 +114,7 @@ export interface AppContext {
    * Canvas-relative screen coordinates -> absolute page coordinates, for a
    * point where the canvas is actually what a pointer would hit.
    *
-   * The canvas is the whole area under the header, and nothing in the page
+   * The canvas is the whole window (there is no header), and nothing in the page
    * resizes it any more — the log used to, taking height as a test typed into
    * it, which is gone with the chrome becoming floating panels. What took its
    * place is the panels themselves lying *over* the canvas: a click aimed at
@@ -233,6 +233,12 @@ export interface OpenOptions {
    */
   device?: "iPhone 13" | "iPhone 13 landscape";
   /**
+   * A desktop window of another size than the suite's 1100×800. The golden
+   * picture (hidden.e2e.ts) was recorded on a 1100×768 canvas — the 800 window
+   * less the title bar there was then — and asks for that canvas again.
+   */
+  viewport?: { width: number; height: number };
+  /**
    * A script run before the app's first line on every load of the page —
    * what the page's own APIs are to be (files.e2e.ts takes the file pickers
    * away, or stubs them and the share sheet, to play each platform).
@@ -281,7 +287,7 @@ export async function openApp(options: OpenOptions = {}): Promise<AppContext> {
       watch.observe(document, { childList: true, subtree: true });
     });
   } else {
-    page = await browser.newPage({ viewport: { width: 1100, height: 800 } });
+    page = await browser.newPage({ viewport: options.viewport ?? { width: 1100, height: 800 } });
   }
   if (options.webgl === false) {
     await page.addInitScript(() => {
@@ -312,10 +318,12 @@ export async function openApp(options: OpenOptions = {}): Promise<AppContext> {
       const { box, panel } = await page.$eval("#cv", (el, [sx, sy]) => {
         const r = el.getBoundingClientRect();
         const top = document.elementFromPoint(r.x + sx, r.y + sy);
-        const covering = top?.closest<HTMLElement>(".panel[data-panel]");
+        // A panel, or the logo — the one piece of chrome in the corner that
+        // takes a press.
+        const covering = top?.closest<HTMLElement>(".panel[data-panel], #logo");
         return {
           box: { x: r.x, y: r.y, width: r.width, height: r.height },
-          panel: covering ? covering.dataset.panel ?? "?" : null,
+          panel: covering ? covering.dataset.panel ?? covering.id ?? "?" : null,
         };
       }, [sx, sy]);
       if (sx < 0 || sy < 0 || sx > box.width || sy > box.height) {

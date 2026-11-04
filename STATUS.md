@@ -16,6 +16,24 @@ etc).
   on every push to the working branch. Called NeoCAD until 0.1.0; the
   internal code name stays in identifiers, the file format tag and storage
   keys (see TODO.md's register).
+- **No title bar** (docs/plans/chrome-logo-scale.md, built). The drawing is
+  the whole window; the logo (`src/logo.ts`, also the home-screen icon's
+  source) sits top-left inside the safe area as the one panel nothing moves,
+  with the status beside it (`src/statusline.ts`: `ready`/`SOLVED` fade, a
+  conflict stays), and opens the app menu (`src/appmenu.ts`: File, the
+  interface size's spin box, a box per pane, View, About — every control
+  typing through `submit`). **The interface size** (`src/uiscale.ts`) is each
+  device's 100 % — 1 under a mouse, 1.3 on a phone, 1.15 on a tablet, times
+  the person's text size — times the viewer's multiplier, stored per device;
+  `touchMetrics` draws a finger's controls at that size and hits them at
+  44 px; `View.ui` carries it to the glyphs, labels, points, frame markers
+  and snap marks; picking's reach is never scaled. `ui({ scale })`,
+  `ui({ hide })`, `ui({ show })`, `ui()`. **Panels to the edge**: the area is
+  the safe area, and a panel touching an inset edge reaches under it, padded
+  (`bleed`). **Docking**: a moved panel is stored (`neocad.panels.v3`, v2
+  migrated) as what each side rests against, and re-laid by that in any area
+  (`relaid`), so a rotation keeps it. The installed app's status bar is
+  `default` (iOS 26 blurs a translucent one).
 - **`kernel-rs/`** — Rust crate, compiles to WASM via `npm run build:kernel`.
   Exposes one function: `solve_step(rows, cols, vals, r, n, lambda) -> dx`,
   a matrix-free conjugate-gradient solve of the damped normal equations

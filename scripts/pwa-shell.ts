@@ -13,8 +13,13 @@ import { readFileSync } from "node:fs";
 
 /** The page's ground (index.html's body) — what a launching app shows before it draws. */
 export const BACKGROUND = "#0a0e13";
-/** The header's ground: the colour the system bars around the app take. */
-export const THEME = "#0e141b";
+/**
+ * The colour the system bars round the installed app take — on an iPhone the
+ * status bar's band, which the app starts below (`pwaHead`). The drawing's
+ * own ground: there is no title bar, so the band and the drawing under it
+ * read as one surface.
+ */
+export const THEME = BACKGROUND;
 
 export interface Icon {
   src: string;
@@ -128,9 +133,16 @@ export function pwaHead(): string {
     `<meta name="theme-color" content="${THEME}">`,
     `<meta name="mobile-web-app-capable" content="yes">`,
     `<meta name="apple-mobile-web-app-capable" content="yes">`,
-    // Translucent: the app draws under the status bar, and the header's own
-    // padding (env(safe-area-inset-top), index.html) keeps its text clear.
-    `<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">`,
+    // **`default`, not `black-translucent`.** Translucent, the page ran under
+    // the status bar — and since iOS 26's Liquid Glass, iOS draws its
+    // scroll-edge blur over the top ~40 pt of a translucent home-screen app
+    // (the owner's screenshot: "some blending at the top of the screen";
+    // reported by several projects, not stated by Apple — see
+    // CONVERSATION_LOG.md). `default` starts the page below the bar, the bar
+    // a solid band in `theme-color`, and there is nothing under it to blur.
+    // iOS reads this when the app is added to the home screen: an installed
+    // app keeps its old style until it is removed and added again.
+    `<meta name="apple-mobile-web-app-status-bar-style" content="default">`,
     `<meta name="apple-mobile-web-app-title" content="ZeroCAD">`,
     `<link rel="manifest" href="manifest.webmanifest">`,
     `<link rel="icon" type="image/svg+xml" href="${ICON_SVG}">`,

@@ -37,7 +37,7 @@
 import type { Model } from "./model.ts";
 import type { Pt } from "./intersect.ts";
 import { frameBasis } from "./relations/refs.ts";
-import { viewAxes, worldToScreen, type View } from "./view.ts";
+import { uiOf, viewAxes, worldToScreen, type View } from "./view.ts";
 import { dot3, lift3 } from "./vec3.ts";
 
 /**
@@ -47,6 +47,15 @@ import { dot3, lift3 } from "./vec3.ts";
  * this one and cannot move out of the way.
  */
 export const FRAME_ARM_PX = 36;
+
+/**
+ * The arm's length at the view's interface size: the marker is drawn for a
+ * person to read and aim at, so it scales with the interface — and its hit
+ * test with it, being the drawn arm.
+ */
+export function frameArmPx(view: View): number {
+  return FRAME_ARM_PX * uiOf(view);
+}
 
 /** A frame's marker in screen space: where it sits and where each arm ends. */
 export interface FrameMarker {
@@ -71,11 +80,12 @@ export function frameMarker(model: Model, view: View, name: string): FrameMarker
   if (ux.every((c) => c === 0)) return null;
   const origin = worldToScreen(view, o);
   const { right, up } = viewAxes(view);
+  const len = frameArmPx(view);
   // An axis's on-screen arm: its components along the screen's right and up,
   // scaled to the arm length. Screen y runs down, hence the minus.
   const arm = (u: number[]): Pt => {
     const a = lift3(u);
-    return [origin[0] + dot3(a, right) * FRAME_ARM_PX, origin[1] - dot3(a, up) * FRAME_ARM_PX];
+    return [origin[0] + dot3(a, right) * len, origin[1] - dot3(a, up) * len];
   };
   const marker: FrameMarker = { origin, x: arm(ux), y: arm(uy) };
   if (uz) marker.z = arm(uz);

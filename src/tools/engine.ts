@@ -63,7 +63,7 @@ import {
   type RenderContext,
 } from "./tool.ts";
 import {
-  assignView, orbitBy, panBy, screenToPlane, screenToWorld, viewAxes, worldToScreen, zoomAbout, type Plane, type View,
+  assignView, orbitBy, panBy, screenToPlane, screenToWorld, uiOf, viewAxes, worldToScreen, zoomAbout, type Plane, type View,
 } from "../view.ts";
 import { framePlane, pointOnWorkingPlane } from "../workplane.ts";
 import { TOUCH_REACH, hitTest, type Pick } from "../picking.ts";
@@ -1310,6 +1310,7 @@ export class ToolEngine {
     this.renderBox();
     const r: RenderContext = {
       g: this.g, worldToScreen: (w) => this.worldToScreen(w), scale: this.view.scale, toward: viewAxes(this.view).toward,
+      ui: uiOf(this.view),
     };
     if (!this.active) {
       // The canvas's selected regions, in the selection's own colour — the
@@ -1367,6 +1368,7 @@ export class ToolEngine {
     if (!this.snap) return;
     const [x, y] = this.snap.screen;
     const g = this.g;
+    const k = uiOf(this.view);
     g.save();
     g.strokeStyle = "#55c07a";
     g.lineWidth = 1.6;
@@ -1379,11 +1381,11 @@ export class ToolEngine {
       // what is being borrowed and from where. It infers nothing, and the
       // marker must not look like a snap that does.
       g.setLineDash([2.5, 2]);
-      g.rect(x - 6, y - 6, 12, 12);
+      g.rect(x - 6 * k, y - 6 * k, 12 * k, 12 * k);
       g.stroke();
       g.setLineDash([]);
       g.beginPath();
-      g.arc(x, y, 1.6, 0, Math.PI * 2);
+      g.arc(x, y, 1.6 * k, 0, Math.PI * 2);
       g.stroke();
       const from = this.model.entities.has(this.snap.targets[0]) ? this.model.coords(this.snap.targets[0]) : null;
       const [fx, fy] = from ? this.worldToScreen(from) : [x, y];
@@ -1399,7 +1401,7 @@ export class ToolEngine {
       g.restore();
       return;
     }
-    traceMark(g, this.snap.kind, x, y);
+    traceMark(g, this.snap.kind, x, y, k);
     g.stroke();
     g.restore();
   }
@@ -1426,6 +1428,11 @@ export class ToolEngine {
     if (!this.active) return;
     const [cx, cy] = this.contact!;
     const [px, py] = this.snap ? this.snap.screen : [cx, cy];
+    // The disc, its mark and its words are drawn for the eye and scale with
+    // the interface; how far above the finger it floats is the finger's, and
+    // does not.
+    const k = uiOf(this.view);
+    const disc = 13 * k;
     const above = py - LIFT >= 16;
     const [lx, ly] = [px, above ? py - LIFT : py + LIFT];
     const g = this.g;
@@ -1436,13 +1443,13 @@ export class ToolEngine {
     g.setLineDash([2, 3]);
     g.beginPath();
     g.moveTo(px, py);
-    g.lineTo(lx, above ? ly + 13 : ly - 13);
+    g.lineTo(lx, above ? ly + disc : ly - disc);
     g.stroke();
     g.globalAlpha = 1;
     g.setLineDash([]);
     g.fillStyle = "#0a0e13d9";
     g.beginPath();
-    g.arc(lx, ly, 13, 0, Math.PI * 2);
+    g.arc(lx, ly, disc, 0, Math.PI * 2);
     g.fill();
     g.strokeStyle = "#223041";
     g.stroke();
@@ -1451,22 +1458,23 @@ export class ToolEngine {
     g.beginPath();
     if (this.snap) {
       if (this.snap.kind === "projected") g.setLineDash([2.5, 2]);
-      traceMark(g, this.snap.kind, lx, ly);
+      traceMark(g, this.snap.kind, lx, ly, k);
     } else {
-      g.moveTo(lx - 6, ly); g.lineTo(lx + 6, ly);
-      g.moveTo(lx, ly - 6); g.lineTo(lx, ly + 6);
+      g.moveTo(lx - 6 * k, ly); g.lineTo(lx + 6 * k, ly);
+      g.moveTo(lx, ly - 6 * k); g.lineTo(lx, ly + 6 * k);
     }
     g.stroke();
     if (this.snap) {
       g.setLineDash([]);
-      g.font = '11px "IBM Plex Mono", ui-monospace, Menlo, monospace';
+      g.font = `${11 * k}px "IBM Plex Mono", ui-monospace, Menlo, monospace`;
       g.fillStyle = "#55c07a";
       g.textBaseline = "middle";
       const text = describeSnap(this.snap);
       // Right of the disc, or left of it where the right would run off.
-      const right = lx + 17 + g.measureText(text).width <= this.canvas.getBoundingClientRect().width - 4;
+      const gap = disc + 4 * k;
+      const right = lx + gap + g.measureText(text).width <= this.canvas.getBoundingClientRect().width - 4;
       g.textAlign = right ? "left" : "right";
-      g.fillText(text, right ? lx + 17 : lx - 17, ly);
+      g.fillText(text, right ? lx + gap : lx - gap, ly);
     }
     g.restore();
   }
@@ -1478,19 +1486,20 @@ export class ToolEngine {
  * cross, a triangle for a midpoint, a circle along a curve. Traced, not
  * stroked, so the marker and its lifted copy share one drawing of each kind.
  */
-function traceMark(g: CanvasRenderingContext2D, kind: SnapKind, x: number, y: number): void {
+function traceMark(g: CanvasRenderingContext2D, kind: SnapKind, x: number, y: number, k = 1): void {
+  const [a, b] = [5 * k, 6 * k];
   if (kind === "point" || kind === "projected") {
-    g.rect(x - 5, y - 5, 10, 10); // a square: an exact, existing point
+    g.rect(x - a, y - a, 2 * a, 2 * a); // a square: an exact, existing point
   } else if (kind === "intersection") {
     // An x: two curves crossing, drawn as the thing itself.
-    g.moveTo(x - 5, y - 5); g.lineTo(x + 5, y + 5);
-    g.moveTo(x + 5, y - 5); g.lineTo(x - 5, y + 5);
+    g.moveTo(x - a, y - a); g.lineTo(x + a, y + a);
+    g.moveTo(x + a, y - a); g.lineTo(x - a, y + a);
   } else if (kind === "midpoint") {
-    g.moveTo(x, y - 6); // a triangle: derived, but still an exact position
-    g.lineTo(x + 6, y + 5);
-    g.lineTo(x - 6, y + 5);
+    g.moveTo(x, y - b); // a triangle: derived, but still an exact position
+    g.lineTo(x + b, y + a);
+    g.lineTo(x - b, y + a);
     g.closePath();
   } else {
-    g.arc(x, y, 5, 0, Math.PI * 2); // a circle: somewhere along a curve
+    g.arc(x, y, a, 0, Math.PI * 2); // a circle: somewhere along a curve
   }
 }

@@ -159,6 +159,13 @@ export interface EnvHandles {
    */
   viewMode?: (mode?: string) => string;
   /**
+   * The interface size and which panes are shown — `ui({ scale: 0.8 })`,
+   * `ui({ hide: "log" })`, `ui()` to report (docs/plans/chrome-logo-scale.md).
+   * Per-viewer, per-device state like the layout: never journalled, so it has
+   * no entry in persist.ts's replay table.
+   */
+  ui?: (options?: unknown) => string;
+  /**
    * The viewer's last value of each tool option — the same memory the host's
    * tool engine arms from, so `tools()` lists what `arm` would use. Per-viewer
    * state, like the layout; a scope with none keeps its own for its lifetime.
@@ -998,6 +1005,19 @@ export function neocadScope(h: EnvHandles): Bag {
       if (!h.viewMode) throw new Error("no viewport in this environment");
       return h.viewMode(mode);
     },
+
+    /**
+     * The interface size — `ui({ scale: 0.8 })`, 60 % to 160 %, or
+     * `ui({ scale: "default" })` for this device's — and the panes —
+     * `ui({ hide: "log" })`, `ui({ show: ["log", "cmd"] })`. `ui()` says what
+     * is in force. What the app menu's spin box and pane boxes type. The
+     * viewer's, on this device: never journalled, never in a file, never an
+     * undo step.
+     */
+    ui: (options?: unknown) => {
+      if (!h.ui) throw new Error("no interface in this environment");
+      return h.ui(options);
+    },
     // Viewport control as an ordinary command, per the brief's goal of having
     // the whole interface drivable the same way a tool is authored. The camera
     // object itself is `camera` — it was `view` until `view()` became the
@@ -1282,6 +1302,19 @@ function help(scope: Bag): string {
     '           layout()  layout("reset") — where the panels are; put them back.',
     "           Drag a panel by its strip, resize it by its corner; the",
     "           arrangement is yours, in this browser, and never in a file.",
+    "           A panel pushed against an edge, or against another panel,",
+    "           stays against it when the window turns or resizes.",
+    "           ui({ scale: 0.8 })  — the interface size, 0.6 to 1.6 of this",
+    "           device's own 100 % (worked out from the pointer, the screen",
+    "           and your text size: a phone's is 1.3 × a desktop's): panels,",
+    "           type, menus, and in the drawing the glyphs, labels, points and",
+    '           markers. ui({ scale: "default" }) — back to 100 %. Under a',
+    "           finger every control is hit over 44 px however small it is",
+    "           drawn, and how far a finger reaches to pick is not scaled.",
+    '           ui({ hide: "log" })  ui({ show: "log" }) — a',
+    "           pane, or a list of them; ui() says what is in force. Also the",
+    "           logo's menu: − 80% + and a box per pane. Yours, on this",
+    "           device, like the layout: never in a file, never an undo step.",
     "           right-drag orbits, middle-drag pans, the wheel zooms; a click",
     "           lands on the default frame's plane (or the one facing you)",
     "touch      a tap is a click; one finger drags what it lands on — a tool's",

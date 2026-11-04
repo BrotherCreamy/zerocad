@@ -69,14 +69,15 @@ export async function singleFile(options = {}) {
       stamp = `${rev} · ${new Date().toISOString().slice(0, 10)}`;
     } catch { /* not in a git checkout — no stamp */ }
   }
+  // Into the app menu's About (src/appmenu.ts moves the element there), by its
+  // id, which the PWA's tests read.
   if (stamp) {
-    body = body.replace(
-      '<span id="status">',
-      `<span id="buildstamp" style="font-size:10px;color:#46586a;margin-left:auto">build ${stamp}</span><span id="status">`,
-    );
+    const empty = '<span id="buildstamp" hidden></span>';
+    if (!body.includes(empty)) throw new Error("index.html has lost its #buildstamp — update the stamp's insertion");
+    body = body.replace(empty, `<span id="buildstamp" hidden>build ${stamp}</span>`);
   }
 
-  const fullStyle = `${style}\n#buildstamp{margin-left:auto}`;
+  const fullStyle = style;
   const fullBody = `${body}
 <script>window.__NEOCAD_WASM_B64=${JSON.stringify(wasm.toString("base64"))};</script>
 <script type="module">${js}</script>`;

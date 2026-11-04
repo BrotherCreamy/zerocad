@@ -194,7 +194,7 @@ test("the manifest, as an installer reads it: standalone, and every icon it and 
   for (const { sizes, got } of found.icons) assert.equal(`${got[0]}x${got[1]}`, sizes, got[2]);
   assert.deepEqual(found.apple.slice(0, 2), [180, 180]);
   assert.equal(found.metas["apple-mobile-web-app-capable"], "yes");
-  assert.equal(found.metas["apple-mobile-web-app-status-bar-style"], "black-translucent");
+  assert.equal(found.metas["apple-mobile-web-app-status-bar-style"], "default");
   assert.match(found.metas.viewport, /user-scalable=no/);
   assert.deepEqual(hosted.served.misses, []);
 });
@@ -363,18 +363,20 @@ for (const where of ["the dev server", "the hosted build"] as const) {
       await page.$eval("#cmd", (el: HTMLInputElement) => el.blur());
       assert.deepEqual(await pageState(page), STILL, "at rest");
 
-      const header = await centreOf(page, "header");
+      // The logo is the chrome in the corner now that there is no header:
+      // the swipes and the pinch that went to the header go to it.
+      const header = await centreOf(page, "#logo");
       await page.mouse.move(header.x, header.y);
       await page.mouse.wheel(0, 600);
       await page.waitForTimeout(250);
-      assert.deepEqual(await pageState(page), STILL, "after a wheel over the header");
+      assert.deepEqual(await pageState(page), STILL, "after a wheel over the logo");
 
       await drag(cdp, header, { x: header.x, y: header.y + 400 });
       await drag(cdp, { x: header.x, y: header.y + 300 }, header);
       const tray = await centreOf(page, '.panel[data-panel="toolbar"] #toolbar');
       await drag(cdp, tray, { x: tray.x, y: tray.y - 300 });
       await page.waitForTimeout(300);
-      assert.deepEqual(await pageState(page), STILL, "after swipes on the header and the tray");
+      assert.deepEqual(await pageState(page), STILL, "after swipes on the logo and the tray");
 
       for (const target of [header, await centreOf(page, "#cv")]) {
         await spread(cdp, target);
@@ -390,7 +392,7 @@ for (const where of ["the dev server", "the hosted build"] as const) {
         return {
           canvas: [s("#cv").touchAction, s("#cv").userSelect],
           body: [s("body").touchAction, s("body").userSelect],
-          chrome: [s("header").userSelect, s("#toolbar").userSelect],
+          chrome: [s("#logo").userSelect, s("#toolbar").userSelect],
           cmd: s("#cmd").userSelect,
           log: s("#log").userSelect,
         };
@@ -443,7 +445,7 @@ test("iPhone 13 as iOS Safari treats it — the viewport's no-zoom ignored — a
     const { context, page, cdp } = await phone();
     try {
       await relaxed(page, dropLock);
-      await spread(cdp, await centreOf(page, "header"));
+      await spread(cdp, await centreOf(page, "#logo"));
       await page.waitForTimeout(300);
       const { scale } = await pageState(page);
       if (dropLock) assert.ok(scale > 1.5, `without the lock the pinch zooms (scale ${scale})`);
@@ -466,7 +468,7 @@ const INSETS = {
   landscape: { top: 0, right: 47, bottom: 21, left: 47 },
 };
 
-test("iPhone 13 at home-screen size, portrait and landscape: the header's text, the drawing and every panel clear of the notch and the home indicator", async () => {
+test("iPhone 13 at home-screen size, portrait and landscape: the drawing to the glass; the logo, the status and every panel's content clear of the notch and the home indicator", async () => {
   const dir = join(work, "phone");
   if (!existsSync(dir)) buildPwa(dir, "e2e-phone");
   const served = await serve(dir);
@@ -490,11 +492,20 @@ test("iPhone 13 at home-screen size, portrait and landscape: the header's text, 
           const r = el.getBoundingClientRect();
           return { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
         };
+        // A panel's content: its box less the padding it takes where it
+        // reaches under an inset (panels.ts's bleed).
+        const content = (el: HTMLElement) => {
+          const r = el.getBoundingClientRect();
+          const c = getComputedStyle(el);
+          return { left: r.left + parseFloat(c.paddingLeft), top: r.top + parseFloat(c.paddingTop),
+            right: r.right - parseFloat(c.paddingRight), bottom: r.bottom - parseFloat(c.paddingBottom) };
+        };
         return {
-          header: box(document.querySelector("header")!),
-          words: Array.from(document.querySelectorAll("header > span")).filter((s) => (s as HTMLElement).offsetWidth > 0).map(box),
+          header: document.querySelectorAll("header").length,
+          words: [document.getElementById("logo")!, ...Array.from(document.querySelectorAll("#corner > span"))]
+            .filter((s) => (s as HTMLElement).offsetWidth > 0).map(box),
           drawing: box(document.getElementById("viewwrap")!),
-          panels: Array.from(document.querySelectorAll<HTMLElement>(".panel[data-panel]")).filter((p) => !p.hidden).map((p) => ({ id: p.dataset.panel, ...box(p) })),
+          panels: Array.from(document.querySelectorAll<HTMLElement>(".panel[data-panel]")).filter((p) => !p.hidden).map((p) => ({ id: p.dataset.panel, ...content(p) })),
         };
       });
       const inside = (what: string, b: { left: number; top: number; right: number; bottom: number }) => {
@@ -502,10 +513,11 @@ test("iPhone 13 at home-screen size, portrait and landscape: the header's text, 
         assert.ok(b.left >= safe.left - tol && b.top >= safe.top - tol && b.right <= safe.right + tol && b.bottom <= safe.bottom + tol,
           `${orientation}: ${what} ${JSON.stringify(b)} is inside the safe area ${JSON.stringify(safe)}`);
       };
-      assert.equal(boxes.header.top, 0, "the header's ground runs up under the status bar");
-      for (const [i, w] of boxes.words.entries()) inside(`the header's text #${i}`, { ...w, bottom: Math.min(w.bottom, safe.bottom) });
-      inside("the drawing", boxes.drawing);
-      for (const p of boxes.panels) inside(`the ${p.id} panel`, p);
+      assert.equal(boxes.header, 0, "there is no title bar");
+      for (const [i, w] of boxes.words.entries()) inside(`the logo and the status #${i}`, w);
+      assert.deepEqual(boxes.drawing, { left: 0, top: 0, right: size.width, bottom: size.height },
+        "the drawing runs to the glass, under the status bar and the home indicator");
+      for (const p of boxes.panels) inside(`the ${p.id} panel's content`, p);
       assert.deepEqual(await pageState(page), STILL);
 
       if (SHOTS) {

@@ -303,7 +303,7 @@ export class RevolveTool extends FeatureTool {
           ends = [model.coords(l.refs[0]), model.coords(l.refs[1])];
         } else {
           const ax = axisReader(model, axis).read();
-          const len = FRAME_ARM_PX / r.scale;
+          const len = (FRAME_ARM_PX * (r.ui ?? 1)) / r.scale;
           ends = [ax.origin, ax.origin.map((o, i) => o + len * ax.dir[i])];
         }
       } catch {

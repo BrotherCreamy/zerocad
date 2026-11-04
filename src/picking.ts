@@ -29,7 +29,7 @@
 
 import type { AxisName, Entity, FeatureEntry, Model, ProfileMember, RelationEntry } from "./model.ts";
 import { screenAngle, withinSweep } from "./intersect.ts";
-import { FRAME_ARM_PX, frameArms, frameMarker } from "./framemarker.ts";
+import { frameArmPx, frameArms, frameMarker } from "./framemarker.ts";
 import { nearestOnPolyline, screenCurve, screenOf as projectPoint } from "./projection.ts";
 import { inSight, type Occlusion } from "./occlusion.ts";
 import { frameBasis } from "./relations/refs.ts";
@@ -188,7 +188,7 @@ export function hitTest(
       const near = toSegment(sx, sy, a, b);
       if (!near || near.d >= rLine || (best && near.d >= best.distance)) return;
       if (basis) {
-        const out = (near.t * FRAME_ARM_PX) / view.scale;
+        const out = (near.t * frameArmPx(view)) / view.scale;
         if (!seen(basis.origin.map((c, i) => c + (axes[arm][i] ?? 0) * out))) return;
       }
       best = { name: e.name, kind: "frame", distance: near.d, axis: (["x", "y", "z"] as const)[arm] };
