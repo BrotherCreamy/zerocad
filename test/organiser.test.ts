@@ -343,7 +343,7 @@ test("the pane's sections: a group row is its name, count, eye and open marker; 
   group(m, lines[0], lines[1]);
   opengroup(m, group(m));
   hide(m, lines[1]);
-  const [groups, features] = organiserSections(m, [lines[0]]);
+  const [bodies, groups, features] = organiserSections(m, [lines[0]]);
   assert.equal(groups.title, "Groups");
   assert.deepEqual(groups.rows.map((r) => [r.name, r.count, r.eye, r.open]), [["g1", 2, "partial", false], ["g2", 0, "none", true]]);
   assert.equal(groups.rows[0].eyeCommand, 'show("g1")', "anything hidden in it: the eye shows it all");
@@ -352,13 +352,15 @@ test("the pane's sections: a group row is its name, count, eye and open marker; 
   assert.equal(groups.rows[0].openCommand, 'opengroup("g1")');
   assert.equal(groups.rows[1].openCommand, "closegroup()");
   assert.equal(groups.rows[0].selected, false, "one of two selected is not the row");
-  assert.equal(organiserSections(m, [lines[0], lines[1]])[0].rows[0].selected, true);
+  assert.equal(organiserSections(m, [lines[0], lines[1]])[1].rows[0].selected, true);
   assert.equal(features.title, "Features");
+  // The body e1 makes, alone (docs/plans/solids-kernel.md): its eye the feature's.
+  assert.deepEqual(bodies.rows.map((r) => [r.name, r.detail, r.count, r.eye, r.eyeCommand]), [["e1", "e1", 1, "shown", 'hide("e1")']]);
   const e1 = features.rows[0];
   assert.deepEqual([e1.name, e1.detail, e1.count, e1.eye, e1.open, e1.eyeCommand], ["e1", "extrude", m.featureOf("e1").owns.length, "shown", null, 'hide("e1")']);
   hide(m, "e1");
-  assert.equal(organiserSections(m)[1].rows[0].eyeCommand, 'show("e1")');
-  assert.deepEqual(organiserSections(new Model(2)).map((s) => s.rows.length), [0, 0]);
+  assert.equal(organiserSections(m)[2].rows[0].eyeCommand, 'show("e1")');
+  assert.deepEqual(organiserSections(new Model(2)).map((s) => s.rows.length), [0, 0, 0]);
 });
 
 test("the ＋ types a group of the selection, or with nothing selected a new empty group opened at once", () => {

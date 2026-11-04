@@ -26,8 +26,10 @@
 // to the solids' (`curves: true`).
 
 import type { Model } from "./model.ts";
+import { chainsOf } from "./modes.ts";
 import { looseCurves, solidsOf, type Body, type Curve, type Edge, type Face, type LooseCurve, type Shell, type Surface, type Vertex } from "./solids.ts";
 import { cross3, dot3, sub3, unit3 } from "./vec3.ts";
+import type { NurbsCurve, NurbsSurface } from "./solids/kernel.ts";
 
 /** The file's media type: `model/step`, IANA-registered for ISO 10303-21 with the `.step` and `.stp` extensions. */
 export const STEP_TYPE = "model/step";
@@ -46,6 +48,16 @@ export const STEP_SCHEMA = "AUTOMOTIVE_DESIGN { 1 0 10303 214 1 1 1 1 }";
  * than this — a solve converges to a few parts in 10¹² — so nothing is near it.
  */
 export const STEP_UNCERTAINTY = 1e-7;
+
+/**
+ * The uncertainty a file declares when it carries a curve the solid kernel
+ * computed — where a boss's cylinder meets a curved wall, a B-spline that is
+ * the intersection to SMLib's own tolerance, not exactly. Measured: OpenCascade
+ * reading such a file widens those edges' tolerance to 3.1e-6 mm to fit them
+ * to their surfaces; a file claiming 1e-7 there would be claiming more than
+ * it holds. Every file with no such curve still declares 1e-7.
+ */
+export const KERNEL_CURVE_UNCERTAINTY = 1e-5;
 
 export interface StepOptions {
   /** The document's name: the product's, and the file's. "Untitled" when not given. */
@@ -69,13 +81,40 @@ export interface StepExport {
 }
 
 /**
+ * A body the solid kernel built (bodies.ts, kernelbrep.ts): one solid for all
+ * of its features, which are then not written one by one.
+ */
+export interface KernelSolid {
+  body: Body;
+  features: readonly string[];
+}
+
+/**
  * The model's shown solids as a STEP file. Throws, writing nothing, when there
  * is no solid to write: a file of nothing opens empty in every tool, which reads
  * as an export that failed.
+ *
+ * **One solid per body** (docs/plans/solids-kernel.md): a body of one feature
+ * is solids.ts's, exactly as before the kernel shipped; a body the kernel
+ * built — a plate with its holes and bosses — is handed in (`kernel`), its
+ * features written as that one solid and not again on their own.
  */
-export function stepExport(model: Model, options: StepOptions = {}): StepExport {
+export function stepExport(model: Model, options: StepOptions = {}, kernel: readonly KernelSolid[] = []): StepExport {
   const hidden = [...model.features.values()].filter((f) => model.hidden.has(f.name)).map((f) => f.name);
-  const { bodies, skipped } = solidsOf(model);
+  // Every feature of a body of two or more is the kernel's to write — as that
+  // body, never one by one (a cut written as a solid would be the opposite of
+  // what it is). One the kernel did not hand in is left out and said.
+  const given = new Set(kernel.flatMap((k) => k.features));
+  const kernels = chainsOf(model, { hidden: true }).bodies.filter((c) => c.features.length > 1);
+  const covered = new Set(kernels.flatMap((c) => c.features.map((f) => f.name)));
+  const missing = kernels.filter((c) => !model.hidden.has(c.name) && !c.features.every((f) => given.has(f.name)));
+  const rest = [...model.features.keys()].filter((n) => !covered.has(n) && !given.has(n));
+  const own = solidsOf(model, rest);
+  // In feature order: a body is where its first feature is.
+  const order = [...model.features.keys()];
+  const at = (b: Body) => order.indexOf(b.feature);
+  const bodies = [...kernel.map((k) => k.body), ...own.bodies].sort((a, b) => at(a) - at(b));
+  const skipped = [...own.skipped, ...missing.map((c) => ({ feature: c.name, why: "its body is the solid kernel's, which has not built it" }))];
   const left = [...skipped, ...hidden.map((feature) => ({ feature, why: "hidden" }))];
   if (bodies.length === 0) {
     if (model.features.size === 0) throw new Error("there is no solid to export — extrude or revolve a region first; a STEP file of nothing would open empty");
@@ -185,7 +224,48 @@ function surface(d: Data, s: Surface): number {
       const axis = d.add(`AXIS1_PLACEMENT('',${ref(d.point(s.origin))},${ref(d.direction(s.axis))})`);
       return d.add(`SURFACE_OF_REVOLUTION('',${ref(d.circle(s.curve))},${ref(axis)})`);
     }
+    case "bspline": return bsplineSurface(d, s.nurbs);
   }
+}
+
+/**
+ * A kernel's NURBS surface, exactly: Part 42's B_SPLINE_SURFACE_WITH_KNOTS —
+ * as the complex instance with RATIONAL_B_SPLINE_SURFACE when it has weights,
+ * its parts listed alphabetically as Part 21 requires. Control points are the
+ * kernel's own net, u-major (each inner list one u row), as Part 42 lists them.
+ */
+function bsplineSurface(d: Data, n: NurbsSurface): number {
+  const [nu, nv] = n.count;
+  const rows: string[] = [];
+  const weights: string[] = [];
+  for (let i = 0; i < nu; i++) {
+    const row: number[] = [];
+    const w: string[] = [];
+    for (let j = 0; j < nv; j++) {
+      const [x, y, z, wt] = n.points[i * nv + j];
+      row.push(d.point([x, y, z]));
+      w.push(real(wt));
+    }
+    rows.push(list(row.map(ref)));
+    weights.push(list(w));
+  }
+  const [du, dv] = n.degree;
+  const knots = `${list(n.mults[0])},${list(n.mults[1])},${list(n.knots[0].map(real))},${list(n.knots[1].map(real))},.UNSPECIFIED.`;
+  if (!n.rational) {
+    return d.add(`B_SPLINE_SURFACE_WITH_KNOTS('',${du},${dv},${list(rows)},.UNSPECIFIED.,.F.,.F.,.F.,${knots})`);
+  }
+  return d.add(`(BOUNDED_SURFACE()B_SPLINE_SURFACE(${du},${dv},${list(rows)},.UNSPECIFIED.,.F.,.F.,.F.)`
+    + `B_SPLINE_SURFACE_WITH_KNOTS(${knots})GEOMETRIC_REPRESENTATION_ITEM()RATIONAL_B_SPLINE_SURFACE(${list(weights)})`
+    + `REPRESENTATION_ITEM('')SURFACE())`);
+}
+
+/** A kernel's NURBS curve, exactly — B_SPLINE_CURVE_WITH_KNOTS, rational as a complex instance. */
+function bsplineCurve(d: Data, n: NurbsCurve): number {
+  const pts = list(n.points.map(([x, y, z]) => ref(d.point([x, y, z]))));
+  const knots = `${list(n.mults)},${list(n.knots.map(real))},.UNSPECIFIED.`;
+  if (!n.rational) return d.add(`B_SPLINE_CURVE_WITH_KNOTS('',${n.degree},${pts},.UNSPECIFIED.,.F.,.F.,${knots})`);
+  return d.add(`(BOUNDED_CURVE()B_SPLINE_CURVE(${n.degree},${pts},.UNSPECIFIED.,.F.,.F.)B_SPLINE_CURVE_WITH_KNOTS(${knots})`
+    + `CURVE()GEOMETRIC_REPRESENTATION_ITEM()RATIONAL_B_SPLINE_CURVE(${list(n.points.map((q) => real(q[3])))})REPRESENTATION_ITEM(''))`);
 }
 
 /** One body's topology, each vertex and edge written once and referred to by every face that uses it. */
@@ -200,9 +280,12 @@ function body(d: Data, b: Body): number {
   const edge = (e: Edge) => {
     let id = edges.get(e);
     if (id === undefined) {
-      const curve = e.curve.kind === "line" ? d.line(e.start.at, e.end.at) : d.circle(e.curve);
-      // Every curve runs the edge's way (solids.ts), so same_sense is always true.
-      id = d.add(`EDGE_CURVE('',${ref(vertex(e.start))},${ref(vertex(e.end))},${ref(curve)},.T.)`);
+      const curve = e.curve.kind === "line" ? d.line(e.start.at, e.end.at)
+        : e.curve.kind === "circle" ? d.circle(e.curve) : bsplineCurve(d, e.curve.nurbs);
+      // Every line and circle runs the edge's way (solids.ts, kernelbrep.ts);
+      // a kernel's B-spline is written as the kernel parametrised it, and says.
+      const sense = e.curve.kind === "bspline" ? e.curve.sense : true;
+      id = d.add(`EDGE_CURVE('',${ref(vertex(e.start))},${ref(vertex(e.end))},${ref(curve)},${bool(sense)})`);
       edges.set(e, id);
     }
     return id;
@@ -269,7 +352,10 @@ function write(bodies: Body[], curves: LooseCurve[], o: StepOptions): string {
   const mm = d.add("(LENGTH_UNIT()NAMED_UNIT(*)SI_UNIT(.MILLI.,.METRE.))");
   const rad = d.add("(NAMED_UNIT(*)PLANE_ANGLE_UNIT()SI_UNIT($,.RADIAN.))");
   const sr = d.add("(NAMED_UNIT(*)SI_UNIT($,.STERADIAN.)SOLID_ANGLE_UNIT())");
-  const uncertainty = d.add(`UNCERTAINTY_MEASURE_WITH_UNIT(LENGTH_MEASURE(${real(STEP_UNCERTAINTY)}),${ref(mm)},'distance_accuracy_value','confusion accuracy')`);
+  const approximate = bodies.some((b) => [b.outer, ...b.voids].some((sh) => sh.faces.some((f) => f.bounds.some((bd) =>
+    bd.uses.some((u) => u.edge.curve.kind === "bspline")))));
+  const within = approximate ? KERNEL_CURVE_UNCERTAINTY : STEP_UNCERTAINTY;
+  const uncertainty = d.add(`UNCERTAINTY_MEASURE_WITH_UNIT(LENGTH_MEASURE(${real(within)}),${ref(mm)},'distance_accuracy_value','confusion accuracy')`);
   const context = d.add(`(GEOMETRIC_REPRESENTATION_CONTEXT(3)GLOBAL_UNCERTAINTY_ASSIGNED_CONTEXT((${ref(uncertainty)}))`
     + `GLOBAL_UNIT_ASSIGNED_CONTEXT((${ref(mm)},${ref(rad)},${ref(sr)}))REPRESENTATION_CONTEXT('','3D'))`);
 

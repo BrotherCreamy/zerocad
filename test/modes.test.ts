@@ -12,6 +12,7 @@ import { extrude, revolve } from "../src/operations.ts";
 import { open, save } from "../src/persist.ts";
 import { neocadScope } from "../src/replenv.ts";
 import { chainsOf, defaultMode, insideBody, insideFeature, modeOf } from "../src/modes.ts";
+import { organiserSections } from "../src/organiser.ts";
 import { L, T, W, circleOn, loadSolver, onTop, plate } from "./solids/scene.ts";
 import { polygon } from "./profiles.ts";
 import { parallel } from "../src/relations/geometry.ts";
@@ -89,6 +90,10 @@ test("a boss on a side face adds; the chains follow the order features were made
   assert.ok(!inside(p.t.at(50, 30, 5)), "the hole is not material");
   assert.ok(inside(p.t.at(20, 30, 5)), "the plate beside it is");
   assert.ok(inside(p.t.at(50, -4, T / 2)), "the boss is");
+  // The organiser's Bodies: one, named by its first feature, its chain signed.
+  const [bodies, , features] = organiserSections(m);
+  assert.deepEqual(bodies.rows.map((r) => [r.name, r.detail, r.count, r.eyeCommand]), [[p.feature, `${p.feature} +${e2} −${e3}`, 3, `hide("${p.feature}")`]]);
+  assert.deepEqual(features.rows.map((r) => r.detail), ["extrude", "extrude · add", "extrude · cut"]);
 });
 
 test("typed: extrude(member, depth, { mode: \"cut\" }) cuts the body it touches, journalled with the body resolved; options must come last", async () => {

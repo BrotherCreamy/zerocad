@@ -24,6 +24,7 @@
 // without either knowing it exists.
 
 import type { Model } from "./model.ts";
+import { chainsOf, modeOf } from "./modes.ts";
 import type { Menu, MenuItem } from "./menu.ts";
 import { giveTip, type AttachTip, type Tip } from "./tooltip.ts";
 
@@ -100,13 +101,30 @@ export function organiserSections(model: Model, selection: readonly string[] = [
     // `hide("e1")` hides the feature's own name with what it made (its faces
     // go with it), so the name is what says it is hidden.
     const eye = eyeOf(model, f.owns, model.hidden.has(f.name));
+    const mode = modeOf(f);
     return {
-      name: f.name, detail: f.kind, count: f.owns.length, eye, eyeCommand: eyeCommand(f.name, eye),
+      name: f.name, detail: mode === "new" ? f.kind : `${f.kind} · ${mode}`, count: f.owns.length, eye, eyeCommand: eyeCommand(f.name, eye),
       tapCommand: `select(${quoted(f.name)})`, selected: lit(f.owns.filter((n) => !model.hidden.has(n))),
       open: null, openCommand: null,
     };
   });
+  // A body is the result of its chain (modes.ts), named by its first feature:
+  // hiding it is hiding that feature, which hides the body whole. Its detail
+  // is the chain, each later feature signed by what it does — e1 +e3 −e2.
+  const sign: Record<string, string> = { add: "+", cut: "−", intersect: "∩", new: "" };
+  const bodies: OrganiserRow[] = chainsOf(model, { hidden: true }).bodies.map((c) => {
+    const first = c.features[0];
+    const members = c.features.flatMap((f) => f.owns);
+    const eye: Eye = model.hidden.has(first.name) ? "hidden" : "shown";
+    return {
+      name: c.name, detail: c.features.map((f, i) => (i === 0 ? f.name : `${sign[modeOf(f)]}${f.name}`)).join(" "),
+      count: c.features.length, eye, eyeCommand: eyeCommand(first.name, eye),
+      tapCommand: `select(${c.features.map((f) => quoted(f.name)).join(", ")})`,
+      selected: lit(members.filter((n) => !model.hidden.has(n))), open: null, openCommand: null,
+    };
+  });
   return [
+    { id: "bodies", title: "Bodies", rows: bodies, empty: "none — an extrude or a revolve makes one" },
     { id: "groups", title: "Groups", rows: groups, empty: "none — ＋ makes one, open to draw into" },
     { id: "features", title: "Features", rows: features, empty: "none — an extrude or a revolve makes one" },
   ];

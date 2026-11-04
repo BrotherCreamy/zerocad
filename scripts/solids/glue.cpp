@@ -250,11 +250,18 @@ API int sm_shell(int h, const int* idx, int n, double dist) {
 
 // ---- queries ----------------------------------------------------------------
 
+// The volume, asked to a part in a billion, and failing that to looser
+// accuracies: measured, a valid full revolve of a 10 x 20 rectangle at
+// radius 30 has no volume at 1e-9 (SMLib's integration gives up) and the
+// right one at 1e-7. NaN only when every accuracy fails.
 API double sm_volume(int h) {
   SmBrep* b = get(h);
-  double v = NAN;
-  if (b && SmApiBrepComputeVolume(b, 1e-9, v) != SM_SUCCESS) v = NAN;
-  return v;
+  if (!b) return NAN;
+  for (double acc : {1e-9, 1e-7, 1e-5}) {
+    double v = NAN;
+    if (SmApiBrepComputeVolume(b, acc, v) == SM_SUCCESS && std::isfinite(v)) return v;
+  }
+  return NAN;
 }
 
 API int sm_bbox(int h, double* out) {

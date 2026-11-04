@@ -44,7 +44,7 @@ import { portionAngles } from "./arcgeom.ts";
 import { curveFrame, featurePlane } from "./curveplane.ts";
 import { axisReader, isFullTurn, turnMatrix } from "./relations/revolution.ts";
 import { cross3, dot3, lift3, sub3, unit3 } from "./vec3.ts";
-import type { Member, Placement as KernelPlacement, Profile as KernelProfile } from "./solids/kernel.ts";
+import type { Member, NurbsCurve, NurbsSurface, Placement as KernelPlacement, Profile as KernelProfile } from "./solids/kernel.ts";
 import type { Sweep } from "./solids/evaluate.ts";
 
 // ---- what a solid is made of ----------------------------------------------------
@@ -61,7 +61,9 @@ export interface Vertex {
  */
 export type Curve =
   | { kind: "line" }
-  | { kind: "circle"; center: number[]; normal: number[]; ref: number[]; r: number };
+  | { kind: "circle"; center: number[]; normal: number[]; ref: number[]; r: number }
+  /** The solid kernel's exact curve, as it gave it (a boolean's edge — kernelbrep.ts); `sense`: whether it runs the edge's way. */
+  | { kind: "bspline"; nurbs: NurbsCurve; sense: boolean };
 
 export interface Edge {
   id: number;
@@ -91,7 +93,9 @@ export type Surface =
   | { kind: "sphere"; origin: number[]; axis: number[]; ref: number[]; r: number }
   | { kind: "torus"; origin: number[]; axis: number[]; ref: number[]; major: number; minor: number }
   /** `curve` turned about the line through `origin` along `axis`. */
-  | { kind: "revolution"; origin: number[]; axis: number[]; curve: Extract<Curve, { kind: "circle" }> };
+  | { kind: "revolution"; origin: number[]; axis: number[]; curve: Extract<Curve, { kind: "circle" }> }
+  /** The solid kernel's exact surface, where no feature says what it is (kernelbrep.ts). */
+  | { kind: "bspline"; nurbs: NurbsSurface };
 
 export interface Face {
   surface: Surface;
@@ -452,6 +456,7 @@ export function surfaceNormal(s: Surface, p: number[], swept?: { q: number[]; an
       const r = radial(s.origin, s.axis);
       return unit3(sub3(p, s.origin.map((c, i) => c + s.major * r[i])))!;
     }
+    case "bspline": throw new Error("a kernel surface's normal is the kernel's own; ask it of the face's sense");
     case "revolution": {
       if (!swept) throw new Error("a surface of revolution's normal is asked at a turned point of its curve");
       // σu: the way the turn carries p. σv: the curve's own direction at q,
@@ -849,6 +854,72 @@ export function kernelSweep(model: Model, f: FeatureEntry): { at: KernelPlacemen
       degrees: isFullTurn(theta) ? 360 : (Math.abs(theta) * 180) / Math.PI,
     },
   };
+}
+
+/**
+ * The exact surface a feature's face lies on, by the face's role in the
+ * feature — what the solid kernel tags a face with (naming.ts): `base` and
+ * `lid` an extrude's caps (a revolve's start and end), member k the face swept
+ * from the record's k-th member, loop by loop. The same planes, cylinders,
+ * cones, spheres and tori the exact bodies above are made of, so a face a
+ * boolean left untouched exports exactly as it did before booleans existed,
+ * and a face it cut keeps its analytic surface with the kernel's new edges on
+ * it. Null where the feature says no analytic surface (a general surface of
+ * revolution), and the kernel's own NURBS is written instead.
+ */
+export function roleSurface(model: Model, f: FeatureEntry, role: "base" | "lid" | number): Surface | null {
+  const members = f.loops.flat();
+  if (f.kind === "extrude") {
+    const plane = featurePlane(model, f);
+    const depth = model.relations.get(f.depth)?.args[1];
+    if (!plane || typeof depth !== "number" || depth === 0) return null;
+    const n = unit3(plane.n);
+    if (!n) return null;
+    const e = n.map((c) => Math.sign(depth) * c);
+    const D = n.map((c) => c * depth);
+    const first = members[0];
+    if (first === undefined) return null;
+    const o = piecesOf(model, first)[0].a;
+    if (role === "base") return { kind: "plane", origin: o, axis: e.map((c) => -c), ref: square(e) };
+    if (role === "lid") return { kind: "plane", origin: o.map((c, i) => c + D[i]), axis: e, ref: square(e) };
+    const m = members[role];
+    if (m === undefined) return null;
+    const p = piecesOf(model, m)[0];
+    if (p.kind === "line") {
+      const along = unit3(sub3(p.b, p.a));
+      const out = along ? unit3(cross3(along, e)) : null;
+      return along && out ? { kind: "plane", origin: p.a, axis: out, ref: along } : null;
+    }
+    return { kind: "cylinder", origin: p.c, axis: e, ref: p.u, r: p.r };
+  }
+  const plane = featurePlane(model, f);
+  const theta = model.relations.get(f.angle)?.args[1];
+  if (!plane || typeof theta !== "number" || theta === 0) return null;
+  const axis = axisReader(model, f.axis).read();
+  const k = unit3(axis.dir.map((c) => Math.sign(theta) * c));
+  if (!k) return null;
+  const O = lift3(axis.origin);
+  const raw = profileWalks(model, f);
+  const tol = tolerance(raw.flatMap((w) => w.joints));
+  const foot = (q: number[]) => { const d = sub3(q, O); return O.map((c, i) => c + dot3(d, k) * k[i]); };
+  const all = raw.flatMap((w) => w.pieces.map((q) => pieceAt(q, 0.5)));
+  const reach = (q: number[]) => Math.hypot(...sub3(q, foot(q)));
+  const far = all.reduce((a, b) => (reach(b) > reach(a) ? b : a));
+  const rhat = unit3(sub3(far, foot(far)));
+  if (!rhat) return null;
+  const e0 = unit3(cross3(k, rhat))!;
+  if (role === "base" || role === "lid") {
+    const first = members[0];
+    if (first === undefined) return null;
+    const o = piecesOf(model, first)[0].a;
+    if (role === "base") return { kind: "plane", origin: o, axis: e0.map((c) => -c), ref: square(e0, rhat) };
+    const end = turned(O, k, Math.abs(theta));
+    return { kind: "plane", origin: end.point(o), axis: end.vector(e0), ref: square(end.vector(e0), end.vector(rhat)) };
+  }
+  const m = members[role];
+  if (m === undefined) return null;
+  const s = sweptSurface(piecesOf(model, m)[0], O, k, rhat, tol);
+  return s.kind === "revolution" ? null : s;
 }
 
 // ---- for the wireframe -------------------------------------------------------------

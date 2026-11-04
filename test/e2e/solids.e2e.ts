@@ -214,7 +214,7 @@ test("a dimension changed and the hole's rim dragged: the body rebuilds; one und
 test("save, open: the same body; STEP exports it and reads back as one solid", { skip }, async () => {
   const file = await saved();
   const was = (await settled()).bodies[0];
-  await app.page.evaluate((text) => { (window as unknown as { SAVED: string }).SAVED = text; }, file);
+  await app.repl(`SAVED = ${JSON.stringify(file)}`);
   const opened = await app.repl("open(SAVED)");
   assert.equal(opened.ok, true, opened.error ?? "");
   const now = (await settled()).bodies[0];

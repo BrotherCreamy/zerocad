@@ -48,6 +48,8 @@ import { curveFrame } from "./curveplane.ts";
 import { createFaceLayer, paintFaces } from "./facelayer.ts";
 import { Bodies } from "./bodies.ts";
 import { solidsClient } from "./solidshost.ts";
+import { kernelBody } from "./kernelbrep.ts";
+import type { KernelSolid } from "./step.ts";
 import { SOLID_EDGE, visibleFaces } from "./faces.ts";
 import { hiddenInk, inSight, inkRuns, occlusion, type Occlusion } from "./occlusion.ts";
 import { VIEW_MODES, drawsFaces, isViewMode, opaque, recallViewMode, rememberViewMode, viewModeError, type ViewMode } from "./viewmode.ts";
@@ -1658,6 +1660,20 @@ async function main() {
       saveFile: () => files!.saveFile(),
       shareFile: () => files!.shareFile(),
       exportFile: (text: string, name: string, type: string) => files!.exportFile(text, name, type),
+      // The bodies the kernel built, exactly: each one's topology asked of the
+      // Worker that holds it, with the faces' surfaces from their features.
+      kernelSolids: () => {
+        const views = solidBodies.views();
+        if (!solidBodies.kernelFeatures().size) return null;
+        return (async () => {
+          const out: KernelSolid[] = [];
+          for (const v of views) {
+            const topo = await solidBodies.topology(v.name);
+            if (topo) out.push({ body: kernelBody(model, v.name, topo, v.result), features: v.features });
+          }
+          return out;
+        })();
+      },
       document: () => files!.document(),
     };
   }

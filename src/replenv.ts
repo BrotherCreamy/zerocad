@@ -24,7 +24,7 @@ import {
 import { planeAxes } from "./curveplane.ts";
 import { save as saveModel, savedTools } from "./persist.ts";
 import { fileNameFor } from "./files.ts";
-import { STEP_TYPE, stepExport, stepFileName } from "./step.ts";
+import { STEP_TYPE, stepExport, stepFileName, type KernelSolid } from "./step.ts";
 import { carryIntoSession, toolSources, type ToolSourceStore } from "./toolsource.ts";
 import { alignView, assignView, orbitBy, panBy, screenToWorld, viewAxes, zoomAbout, type View } from "./view.ts";
 import { pointOnWorkingPlane } from "./workplane.ts";
@@ -101,6 +101,12 @@ export interface EnvHandles {
    * sheet under a finger, else a download (filehost.ts's `exportFile`).
    */
   exportFile?: (text: string, fileName: string, type: string) => Promise<string>;
+  /**
+   * The bodies the solid kernel built, exactly, for STEP (kernelbrep.ts) —
+   * asked of its Worker, so a promise — or null when there are none, which
+   * keeps an export with no kernel body exactly as synchronous as it was.
+   */
+  kernelSolids?: () => Promise<KernelSolid[]> | null;
   /**
    * The document's name and whether it has unsaved changes — what the app
    * menu shows, and what `download()` names its file for.
@@ -716,6 +722,17 @@ export function neocadScope(h: EnvHandles): Bag {
   // back the file's text rather than writing it anywhere, which is the
   // command-line-shaped thing to do: it composes. `download`/`openFile` are
   // the browser conveniences on top.
+  /** STEP's last step, once any kernel body is in hand: the file, handed to the host, and what it held. */
+  const exportWith = (title: string, opts: Record<string, unknown>, solids: KernelSolid[]): Promise<string> => {
+    const out = stepExport(model, { name: title, curves: opts.curves === true }, solids);
+    if (!h.exportFile) throw new Error("no download or share sheet in this environment");
+    const bodies = out.bodies.map((b) => b.name);
+    const said = [`${bodies.join(", ")} (${bodies.length} ${bodies.length === 1 ? "body" : "bodies"})`];
+    if (out.curves > 0) said.push(`${out.curves} sketch curve${out.curves === 1 ? "" : "s"}`);
+    if (out.skipped.length) said.push(`left out ${out.skipped.map((x) => `${x.feature} (${x.why})`).join(", ")}`);
+    return h.exportFile(out.text, stepFileName(title), STEP_TYPE).then((how) => `${how}: ${said.join("; ")}`);
+  };
+
   const persistence: Bag = {
     // The tools go in here and *only* here, not in `toSaved`'s default,
     // because the same function writes the undo stack's snapshots — see
@@ -790,15 +807,12 @@ export function neocadScope(h: EnvHandles): Bag {
       if (extra.length) throw new Error(`exportStep takes { curves: true } and a name, not ${extra.join(", ")}`);
       if (name != null && typeof name !== "string" && typeof name !== "object") throw new Error("exportStep's name is a string");
       const title = typeof name === "string" ? name : typeof opts.name === "string" ? opts.name : h.document?.().name ?? "Untitled";
-      const out = stepExport(model, { name: title, curves: opts.curves === true });
-      if (!h.exportFile) throw new Error("no download or share sheet in this environment");
-      const bodies = out.bodies.map((b) => b.name);
-      const said = [`${bodies.join(", ")} (${bodies.length} ${bodies.length === 1 ? "body" : "bodies"})`];
-      if (out.curves > 0) said.push(`${out.curves} sketch curve${out.curves === 1 ? "" : "s"}`);
-      if (out.skipped.length) said.push(`left out ${out.skipped.map((x) => `${x.feature} (${x.why})`).join(", ")}`);
-      return h.exportFile(out.text, stepFileName(title), STEP_TYPE).then((how) => `${how}: ${said.join("; ")}`);
+      const kernel = h.kernelSolids?.() ?? null;
+      if (kernel) return kernel.then((solids) => exportWith(title, opts, solids));
+      return exportWith(title, opts, []);
     },
     journal: () => model.journal.map((e) => `${e.op}(${e.args.map((a) => JSON.stringify(a)).join(", ")})`),
+
     // The same thing Ctrl+Z does, and not a parallel implementation of it: both
     // go through the host handle, so a difference between the keystroke and the
     // command is not something this codebase can express.

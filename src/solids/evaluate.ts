@@ -244,7 +244,8 @@ export class Evaluator {
     }
     // A profile that is no closed region sweeps to a sheet, not a solid —
     // measured: a lone line extrudes to one face, volume 0, not manifold.
-    if (!(k.volume(tool) > 0) || !k.validity(tool).manifold) {
+    // (A volume the kernel could not integrate, NaN, is no evidence either way: the manifold test decides.)
+    if (k.volume(tool) <= 0 || !k.validity(tool).manifold) {
       k.free(tool);
       c.failed.push({ node: index, id: n.id, why: `its ${n.sweep.kind} is not a solid — its profile does not close` });
       return null;
@@ -259,7 +260,7 @@ export class Evaluator {
     try {
       const out = k.boolean(n.op, a, tool);
       const now = k.volume(out);
-      if (!(now > 0)) {
+      if (now <= 0) {
         // Nothing left: an intersect that misses, a cut that takes everything.
         k.free(out);
         c.failed.push({ node: index, id: n.id, why: n.op === "intersect" ? "it does not overlap the body, so nothing would be left" : "nothing of the body would be left" });
