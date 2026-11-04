@@ -7,6 +7,80 @@ decisions.
 
 ---
 
+## Files: open, save and share on an iPhone and a desktop, and a drawing that survives the app being closed
+
+The owner, after trying 0.1.0 on his iPhone:
+
+> *think about file system access etc. I want to be able to open files on my
+> phone, share files etc. Should also work for desktop.*
+
+Four commands, each what a menu item will type (the app menu is the chrome
+package's, landing beside this one): **`newFile()`**, **`openFile()`**,
+**`saveFile()`**, **`shareFile()`**. **Ctrl+S / ⌘S** types `saveFile()` and
+**Ctrl+O / ⌘O** `openFile()`. A file is `<name>.zerocad.json`; the document
+is called after the file it came from, or *Untitled*, and knows whether it
+has unsaved changes (read off the drawing itself, so undoing back to the
+opened state is saved again). New and Open ask before throwing away unsaved
+changes, and each is one undo step.
+
+- **On an iPhone**: *Open* is the Files picker (iCloud Drive, On My iPhone,
+  any provider). *Save* is the share sheet — choose **Save to Files**; there
+  is no other way for a web app to put a file where you can find it. *Share*
+  is the same sheet, for AirDrop, Messages, Mail.
+- **On a desktop, in Chrome or Edge**: *Save* asks where once and then saves
+  back into that file without asking; a file you opened is saved back into
+  too (Chrome asks once for permission to write it). Drop a file on the
+  window to open it. Installed as an app, ZeroCAD is offered in the desktop's
+  *Open with* for `.json` files.
+- **Firefox and desktop Safari**: *Open* is the file picker, *Save* a
+  download; Safari's *Share* is its share sheet.
+- **Autosave, on by default.** The drawing, its name and whether it is saved
+  are kept on the device after every change and when the app is put away,
+  and are back when it starts — an iPhone closes a backgrounded app without
+  warning, and this is what makes that harmless. `newFile()` replaces it.
+  Stored in IndexedDB (the reasons are in `docs/plans/files.md`).
+
+**What an iPhone cannot do**, plainly — these are iOS's rules for web apps,
+not something a later version can fix:
+
+- **It cannot save back into a file.** Every save is a new copy through the
+  share sheet; Files asks where, and whether to replace one of the same name.
+- **It cannot be "Open with" ZeroCAD.** A `.zerocad.json` in Files, Mail or
+  Messages does not open in the app from there; open it from inside the app.
+- **It cannot receive a share.** ZeroCAD will not appear in another app's
+  share sheet.
+- **It cannot see your files except the one you pick**, each time.
+- **Its stored data is not forever outside the home-screen app**: Safari
+  deletes a site's storage after seven days of using Safari without opening
+  the site. The home-screen app counts only days it is used. A file saved to
+  Files is the copy that lasts.
+
+**Please try on the iPhone** (Chromium's emulation stood in for all of this;
+only the phone runs iOS Safari):
+
+1. `openFile()` (the menu's *Open…* once it lands): a `.zerocad.json` in
+   iCloud Drive or On My iPhone can be chosen, not greyed out.
+2. `saveFile()`: the share sheet appears, *Save to Files* saves **one** file
+   called `Untitled.zerocad.json` (not also a note with the title), and it
+   opens back with `openFile()`.
+3. `shareFile()` by AirDrop to a Mac or by Messages: the other end receives a
+   `.zerocad.json`.
+4. Draw something, close the app from the app switcher, start it again: the
+   drawing is there and the log says *restored*.
+5. Is a drawing autosaved in Safari also in the home-screen app, or are the
+   two kept apart?
+6. `newFile()` with unsaved changes shows a question in the home-screen app.
+7. Dismiss the share sheet: the log says *save cancelled* and nothing else.
+
+Corrected in the spec, checked against MDN's compatibility data, Chromium's
+source and WebKit's notes: desktop Safari *can* share files; Chromium says
+yes to sharing a `.json` file and then refuses it, so a refused share
+downloads instead; Chrome on Android has the file pickers too; and nothing
+documents what a download does in an iOS home-screen app today. Every
+deviation is in the spec's *As built*.
+
+---
+
 ## ZeroCAD 0.1.0 — the first version, and a new name
 
 The owner named the project **ZeroCAD** and asked for *"the first version of

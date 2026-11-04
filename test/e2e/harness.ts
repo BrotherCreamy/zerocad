@@ -232,6 +232,23 @@ export interface OpenOptions {
    * is the owner's to try on the device (CHANGELOG, the touch entry).
    */
   device?: "iPhone 13" | "iPhone 13 landscape";
+  /**
+   * A script run before the app's first line on every load of the page —
+   * what the page's own APIs are to be (files.e2e.ts takes the file pickers
+   * away, or stubs them and the share sheet, to play each platform).
+   */
+  init?: { fn: (arg: never) => void; arg?: unknown };
+}
+
+/**
+ * Empties the app's autosave and stops it writing for the rest of this page's
+ * life (docs/plans/files.md), so the next reload is the app's first start —
+ * which is what every suite that reloads meant by one before there was an
+ * autosave. Call it just before the reload.
+ */
+export async function forgetAutosave(page: Page): Promise<void> {
+  await page.evaluate(() =>
+    (window as unknown as { __neocad: { files: { forget(): Promise<void> } } }).__neocad.files.forget());
 }
 
 export async function openApp(options: OpenOptions = {}): Promise<AppContext> {
@@ -273,6 +290,9 @@ export async function openApp(options: OpenOptions = {}): Promise<AppContext> {
         return /webgl/.test(kind) ? null : (real as (...a: unknown[]) => unknown).call(this, kind, ...rest);
       } as typeof real;
     });
+  }
+  if (options.init) {
+    await page.addInitScript(options.init.fn as (arg: unknown) => void, options.init.arg);
   }
   const pageErrors: string[] = [];
   page.on("pageerror", (e) => pageErrors.push(String(e)));
