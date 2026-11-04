@@ -11,7 +11,7 @@ all; the Delete key; hidden left out of the pick, the snapper, the box, the
 glyphs, the faces, the draw pass and region clicks. Phase 2 is not started.
 Deviations, each also in TODO.md's Done entry: the Delete key is never taken
 from a focused text field (empty or not); `removeFrom` that empties a group
-removes it; the menu offers *Select e1* too; a feature's members are what it
+removes it (reversed by `organiser.md`: a group may be empty now); the menu offers *Select e1* too; a feature's members are what it
 made (`owns`); `select()` leaves hidden names out and says so; a plain empty
 box clears the selection. The spec's account of the code needed no
 correction.
@@ -91,7 +91,10 @@ needs one, and every CAD tool has one.
   precedent).
 - Deleting a member: the cascade removes it from its groups, and a group left
   empty goes too — journalled as part of the deletion's expansion, as the
-  cascade already is.
+  cascade already is. *(As built the expansion journals the `removeFrom`
+  only, and the group went silently inside it. Reversed by
+  [`organiser.md`](organiser.md): a group may be empty, and stays; a
+  version-11 file has the silent `ungroup` written in on the way in.)*
 - The hover tag ends with `· g1 g2` (as it does with `· e1` for a feature).
 
 ### Hide and show

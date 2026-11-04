@@ -58,8 +58,23 @@ otherwise.
   overlapping sets that imply nothing; `opengroup`/`closegroup` is journalled
   document state; a group may be empty. Typed objects that enforce rules
   (regions, chains, solids) are the next design conversation and would arrive
-  as sections of the same pane. Spec:
-  [`organiser.md`](docs/plans/organiser.md), after the chrome package merges.
+  as sections of the same pane. ✅ **Built** (2026-11-04):
+  [`organiser.md`](docs/plans/organiser.md), every deviation in its *As
+  built*. Vetoable as built:
+  - **Every entity made while a group is open joins it**, in the entry that
+    made it — a tool's, a typed constructor's, an operation's (a fillet's arc,
+    an extrude's twins); relations do not. One group at a time; it stays open
+    through Escape and in the saved file.
+  - **A regeneration's new pieces join the groups that held all the feature
+    had made, never the open group** (not the spec's recommended "the groups
+    the entity they twin was in", which would file a lid's new arc with the
+    sketch).
+  - **A group may be empty** — reversing groups.md's "a group is never
+    empty": `group()` makes one, and a group whose last member goes stays
+    until `ungroup`. Format version 12; a version-11 file has each silent
+    emptying `ungroup` written in on the way in.
+  - **The pane starts hidden on a phone** (one tick in the app menu's Panes),
+    shown on a tablet and a desktop — a desktop's in the bottom-right corner.
 - **The app menu is a dropdown under the logo** with an interface-size spin
   box (`− 80% +`), a show/hide row per pane, and the File items; **a pane's
   docking (to an edge, or against another pane) survives rotation** (the
@@ -1911,6 +1926,20 @@ extended the way `defineTool` extends the tool registry would close it.
 
 ## Smaller things
 
+- [ ] **Found while building `organiser.md`** (each deliberate, written down
+      so it is a decision and not a rediscovery):
+  - A group holding *most* of a solid gets none of a regeneration's new
+    pieces — the rule asks for groups that held everything it made.
+  - The organiser's rows are flat, in creation order: no sorting, no
+    dragging a row, no nesting (that last on purpose). The typed objects
+    (regions, chains, solids) are not sections yet.
+  - The pane re-reads the model every redraw and rebuilds only on a change,
+    compared as JSON — not measured past tens of groups.
+  - `● g1` beside the status never fades; in a phone's landscape layout it
+    lies over the left end of the command line's strip.
+  - Whether iOS keeps its own long-press callout off a row is only an
+    iPhone's to show (`-webkit-touch-callout: none` is set).
+
 - [ ] **Found while building `chrome-logo-scale.md`** (each deliberate and
       documented in the spec's *As built*):
       - **The owner's iPhone list**: the drawing to the glass with nothing
@@ -2348,6 +2377,31 @@ extended the way `defineTool` extends the tool registry would close it.
       the resolver's flush arithmetic assumes does not happen.
 
 ## Done
+
+- [x] **The organiser: groups you can see, open, and draw into** (2026-11-04).
+      The owner: *"there needs to be a group pane I think, and the ability to
+      e.g. create a new group and "open" the group, which means any entities
+      which get created become a part of that group."* Spec:
+      [`docs/plans/organiser.md`](docs/plans/organiser.md), marked built,
+      every deviation in its *As built*. `src/organiser.ts` (new); the open
+      group in `model.ts` (`openGroup`, `place`, `withoutOpenGroup`,
+      `setOpenGroup`, `renameGroup`) and `groups.ts` (`opengroup`,
+      `closegroup`, `rename`, `group()` empty); regeneration's group rule in
+      `operations.ts`; format 12 and the version-11 translation in
+      `persist.ts`; the commands, `ls()` and `help()` in `replenv.ts`;
+      `Panels`' `hiddenAtFirst`; the pane in `index.html` and `main.ts`.
+      1109 unit (1094 before; `test/organiser.test.ts` 15), 473 e2e (463
+      before; `organiser.e2e.ts` 10), `npm run test:all` green.
+      **Deviations, in short** (in full in the spec): old files are
+      translated (an `ungroup` written in), not marked; the pane starts
+      hidden on a phone, and a desktop's is bottom-right; a regeneration's
+      new pieces join the groups that held the whole feature, not "the groups
+      the entity they twin was in"; `rename(g, name)` is new and only for
+      groups; the ＋ types `opengroup(group())`; only entities join; the
+      status says `● g1`; the eye has a partial state; the long-press is the
+      pane's own timer; the ＋ sits over the strip's corner grip; `del` lists
+      no emptied group. One correction to `groups.md`: its cascade never
+      journalled an emptied group's going.
 
 - [x] **No title bar: a logo over the drawing, each device's own interface
       size, panels to the very edge, docking through a rotation**

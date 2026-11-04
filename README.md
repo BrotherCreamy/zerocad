@@ -92,7 +92,8 @@ src/relations/refs.ts    lazy variable lists, and a frame's basis as re-read val
 src/relations/basic.ts   dist / fix (frame-relative) / coincident / midpoint — all dimension-generic
 src/relations/geometry.ts par / perp / ang (any of which takes a frame axis) / on / eq / rad / oncircle / conc / eqrad / tan / sym
 src/operations.ts        operations, which change structure rather than add equations: fillet, extrude, revolve, del, set
-src/groups.ts            groups (named sets that own nothing and never nest) and hide/show, as operations
+src/groups.ts            groups (named sets that own nothing and never nest), hide/show and the open group, as operations
+src/organiser.ts         the Organiser pane: groups and features, each control typing its command
 src/relations/extrusion.ts the one dimension an extrude's lid is held by: twin = base + depth·ẑ
 src/relations/revolution.ts the one dimension a revolve's end face is held by: twin = base turned about the axis
 src/persist.ts           save/open — a file is the model's journal, replayed
@@ -304,7 +305,19 @@ group("g1", "c1", { name: "plate" }) // g1's members now, and c1: a union, not a
 members("plate"); groups("l1")     // what is in it; what it is in
 hide("g1"); show(); hide("e1")     // the sketch gone from view, the solid kept; a solid hidden
 ungroup("plate")                   // or del("plate"): the grouping goes, never a member
+opengroup(group())                 // a new empty group, open: what is drawn next joins it
+closegroup(); rename("g2", "holes") // stop joining; a group's name, in place
 ```
+
+**The Organiser pane** lists the groups and the features. A tap on a row
+selects it, the eye hides and shows it, the dot opens a group to draw into
+(everything made while it is open joins it — drawn, typed, a fillet's arc, an
+extrude's twins — and the status says `● g1`), and a right-click or a
+long-press has *Rename…*, *Add selection*, *Remove selection*, *Open* or
+*Close*, and *Ungroup* (*Edit* and *Delete* for a feature). The **＋** groups
+the selection, or with nothing selected opens a new empty group. Every control
+types its command into the log. On a phone the pane starts hidden: tick it in
+the logo's menu, under Panes.
 
 **Dimensions are named `d1`, `d2`, …** — `dist`, `rad` and `ang`, the
 relations that carry a number — while every other constraint is `r1`, `r2`, ….

@@ -106,6 +106,58 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### The organiser: what an open group is, and the two places it was not obvious
+
+The owner asked for a pane and for groups that can be "opened" so that what is
+drawn joins them. Most of it follows from groups.md without a decision: a pane
+that reads the model and types commands, like every other piece of chrome.
+Three things did need one.
+
+**Where the joining happens.** The open group could have been an `addTo`
+journalled after each creation, or a membership worked out on replay from
+when each entity appeared. Both re-infer. Instead every constructor puts its
+entity through one door, `Model.place`, which adds it to the open group if one
+is open — so the joining is part of the constructor's own entry, and a replay,
+which reopens the group at its step, makes the same membership by running the
+same code. Five `entities.set` calls became one method; nothing that makes an
+entity can forget the open group, including an auto-made endpoint, a fillet's
+tangent points and an extrude's twins.
+
+**Regeneration.** A fillet on an extruded sketch rebuilds the solid, making a
+twin arc, its ends and walls. The spec recommended they "join the groups the
+entity they twin was in"; I traced it through and it files the lid's new arc
+with the *sketch* (the arc it twins is a sketch member), so hiding the sketch
+after extruding — the use groups.md gives for groups — would leave a hole in
+the solid's edges. Joining the open group is wrong for the same reason when
+the sketch's group is the open one, as it naturally is while filleting. The
+rule taken: the new pieces join every group that held all the entities the
+feature had made, read before the rebuild. A group that held the solid still
+holds it; one holding a single edge does not suddenly hold the new arc.
+*Rejected:* the union of the groups of what the feature made (one edge in a
+group would pull every new piece in); the twinned entity's groups (above).
+
+**The empty group and old files.** A group made to be drawn into starts
+empty, so "a group is never empty" had to go. The only journals that could
+rely on the old rule are ones that used an emptied group's name again; none
+is in the repository, but a file from the groups build could be. I bumped
+the format to 12 and, for an older file, write the silent `ungroup` in after
+each emptying `removeFrom` on the way in. The spec suggested a marker, as old
+extrudes carry; a marker is right when re-expanding would shift names, and an
+`ungroup` shifts none, so translation (the `horizontal` precedent) leaves a
+re-saved file speaking today's vocabulary. Correcting groups.md on the way:
+it said the emptied group's going was journalled in the deletion's
+expansion; only the `removeFrom` was.
+
+**Where the pane goes.** First top right. The full e2e run said otherwise: 31
+failures, every one a click or a drag that now landed on the pane — top right
+is where the suites park their "empty canvas" and where the tray goes when it
+is pushed along the top. Bottom right, level with the log, cost one suite (a
+drag to that corner) and one pixel sample. On a phone no corner is free: the
+touch suite draws in the middle, and the pane in either orientation covers a
+third of what is left. So a phone starts with it hidden, a tick away in the
+app menu, and the panel manager learnt `hiddenAtFirst`. Vetoable, and said so
+in the register.
+
 ### No title bar: what "huge" was, where the 60 pt went, and a blur nobody documents
 
 The owner tried 0.1.0 on his iPhone: no title bar, a tiny logo that opens

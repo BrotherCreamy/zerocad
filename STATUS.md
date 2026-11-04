@@ -2094,9 +2094,10 @@ replacing) the system Node other projects on this machine may depend on.
   it inserts the name**, as it always did. Region preselection is the same
   selection. UI state: not journalled, saved or undone. **A group is a set**:
   owns nothing, overlaps, never nests (a group or feature named is flattened to
-  its members then, and the log says so), never empty; a feature is a
+  its members then, and the log says so), never empty *(until the organiser
+  package: an emptied group stays now — see below)*; a feature is a
   read-only group of what it made. Deleting a member journals a `removeFrom`
-  per group before the primitive; an emptied group goes and `del` returns it.
+  per group before the primitive; an emptied group went and `del` returned it.
   The hover tag ends `· g1 g2`. **Hidden** (`hide`/`show`, groups and features
   expanded) is not drawn, picked, snapped to, boxed or glyphed, is still
   solved; a hidden feature's faces are not drawn; journalled, saved, undone.
@@ -2416,6 +2417,35 @@ replacing) the system Node other projects on this machine may depend on.
     name; a refused restore pauses autosave for the session; nothing tried
     on iOS itself (CHANGELOG lists what to try). *Spec:*
     [`docs/plans/files.md`](docs/plans/files.md).
+
+- **The organiser and the open group** (`src/organiser.ts` (new): the
+  sections, a row's menu and the ＋'s command as pure functions, and the
+  pane's DOM; `opengroup`/`closegroup`/`rename` in `src/groups.ts`;
+  `Model.openGroup`, `place`, `withoutOpenGroup`, `setOpenGroup`,
+  `renameGroup`; `rebuildFeature`'s group rule in `operations.ts`; version
+  12 in `persist.ts`; `Panels`' `hiddenAtFirst`). The owner: *"create a new
+  group and "open" the group, which means any entities which get created
+  become a part of that group."* **The pane**: *Groups* and *Features*, a row
+  each — open marker, name, count, eye; a tap types `select`, the eye
+  `hide`/`show`, the marker `opengroup`/`closegroup`, a right-click or a
+  long-press the row's menu (*Rename…*, *Add selection*, *Remove selection*,
+  *Open*/*Close*, *Ungroup*; *Edit e1*, *Delete*); the ＋ groups the selection
+  or types `opengroup(group())`. A panel like the others, in the app menu's
+  Panes untouched; bottom-right on a desktop, hidden at first on a phone and
+  under the log at the right edge when shown. **The open group**: every
+  entity made while it is open joins it in the constructor that made it
+  (`place`, the one door), so a replay reproduces it; relations do not join;
+  journalled, saved, undone; `● g1` beside the status, `· g1 (open)` on the
+  hover tag. **A regeneration's new pieces join the groups that held all the
+  feature had made**, never the open group. **A group may be empty**;
+  `rename(g, name)` renames one in place. **Format 12**: a version-11
+  `removeFrom` that emptied a group gets the `ungroup` that build did
+  silently. Unit: `test/organiser.test.ts` (15); browser:
+  `test/e2e/organiser.e2e.ts` (10, desktop and iPhone 13 both ways).
+  1109 unit tests, 473 e2e. *Known and deliberate* (TODO.md, Smaller things): a
+  group holding most of a solid gets no regenerated piece; rows are flat and
+  in creation order; `● g1` lies over a landscape phone's command strip.
+  *Spec:* [`docs/plans/organiser.md`](docs/plans/organiser.md).
 
 ## What's next
 

@@ -7,6 +7,65 @@ decisions.
 
 ---
 
+## The organiser: groups you can see, open, and draw into
+
+The owner:
+
+> *there needs to be a group pane I think, and the ability to e.g. create a
+> new group and "open" the group, which means any entities which get created
+> become a part of that group.*
+
+and, of the design: *"the group view or whatever organisation method you
+decided on. There needs to be a pane for that."*
+
+Spec: [`docs/plans/organiser.md`](docs/plans/organiser.md), built, its
+deviations in its *As built* and in TODO.md's Done entry.
+
+- **The organisation method** is the groups that were already built —
+  overlapping sets that own nothing and imply nothing, hide and show as
+  document state — plus the one thing they lacked, an **open group**. The
+  typed objects (regions, chains, solids) are the next design conversation
+  and arrive as more sections of the same pane. Vetoable, in the register.
+- **The Organiser pane** (`src/organiser.ts`): *Groups* and *Features*, a row
+  each — the open marker (● open, ○ not), the name, the member count, an eye.
+  A tap on a row types `select("g1")`; the eye `hide("g1")` / `show("g1")`;
+  the marker `opengroup("g1")` / `closegroup()`; a right-click or a finger's
+  long-press opens the row's menu — *Rename…*, *Add selection*, *Remove
+  selection*, *Open* / *Close*, *Ungroup* for a group, *Edit e1* and *Delete*
+  for a feature. The **＋** in its strip groups the selection, or with
+  nothing selected types `opengroup(group())` — the owner's "create a new
+  group and open it". Everything typed through `submit`, so it is in the log
+  and is one undo step. A panel like the others: moved, docked, sized by the
+  interface size, and in the app menu's Panes with no edit to the menu.
+  Bottom right on a desktop. **On a phone it starts hidden** — a tick in
+  Panes away — and shown sits under the log at the right edge, either way up.
+- **The open group** (`opengroup(g)`, `closegroup()`): every entity made
+  while it is open joins it, in the entry that made it — a tool's gesture, a
+  typed constructor, a line's own endpoints, a fillet's arc, an extrude's
+  twins and walls. Journalled document state, like hide and show: saved,
+  reopened at its step on replay, undone. One at a time; Escape leaves it
+  open. Shown in the pane, as `● g1` beside the status, and in the hover tag
+  of what joined it (`· g1 (open)`).
+- **A regeneration's new pieces join the groups that held all the feature
+  had made** — so a group holding the whole solid still does after a fillet
+  rounds its sketch — and never the open group, which is what is being drawn.
+- **A group may be empty**, reversing one line of groups.md: a group made to
+  be drawn into starts empty, and a group whose last member is removed or
+  deleted stays until `ungroup`. `group()` makes an empty one.
+- **`rename(g, name)`**: a group's name, by the model's name rules; it keeps
+  its members, its place and its being open. Only a group.
+- **Format version 12.** An emptying `removeFrom` means something else now,
+  so a version-11 file is translated on the way in: each `removeFrom` that
+  emptied a group is followed by the `ungroup` that build did silently, and a
+  later entry that reused the name still opens. No file in the repository
+  relied on it.
+- Tests: `test/organiser.test.ts` (15), `test/groups.test.ts` updated where
+  the emptied group used to go, the pinned format version in five suites;
+  `test/e2e/organiser.e2e.ts` (10: desktop, iPhone 13 portrait and
+  landscape). 1109 unit tests (1094 before), 473 e2e (463 before).
+
+---
+
 ## No title bar: a logo over the drawing, each device's own interface size, panels to the very edge
 
 The owner tried 0.1.0 on his iPhone and sent two screenshots:
