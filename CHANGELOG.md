@@ -86,7 +86,7 @@ it and a boss on its side is now one part, and it exports to STEP as one solid.
     when it grows past 256 MB.
   - About has SMLib's Apache-2.0 notice and a link to its licence.
 - **CI** builds the kernel from source in 6 m 51 s cold on GitHub's four
-  cores, and caches it by the recipe's hash.
+  cores, and caches it by the recipe's hash: warm, the build is 16 s.
 
 ![A plate seen from below the top, a hole cut through it: one body, e1 −e2, in the organiser's Bodies](docs/images/106-a-hole-cut-through-the-plate-one-body.png)
 ![The same plate with a boss standing on its side: the organiser lists one body, e1 −e2 +e3, and the features e2 extrude · cut and e3 extrude · add](docs/images/107-a-boss-added-on-the-side-bodies-e1-minus-e2-plus-e3.png)

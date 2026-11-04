@@ -114,7 +114,7 @@ marked ⚠; each ⚠ is also in TODO.md.
     `SOLIDS_OBJ` reuse an existing checkout.
   - **CI.** The Pages workflow and a new `solids` workflow both cache
     `.solids-cache/` by the recipe's hash. The cold build is 6 m 51 s on
-    GitHub's four cores; for the warm time see the PR.
+    GitHub's four cores, and the warm one 16 s after a 20 s cache restore.
   - **Shipping.** The PWA carries `solids/worker.js`, `smlib.wasm` and
     `LICENSE` as files of their own, which the service worker caches; the
     Worker starts the first time a body needs it. The single file inlines

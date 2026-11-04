@@ -11,7 +11,8 @@ npm run dev             # vite, on :5173
 
 `build:solids` (`scripts/solids/build.sh`) is the solid kernel. It fetches
 usd-brep and Emscripten at the commits it pins into `.solids-cache/` and
-compiles SMLib to wasm: about 15 minutes on four cores cold, and about a minute and a half warm, which only relinks.
+compiles SMLib to wasm: about 15 minutes on four cores cold (6 m 51 s on
+GitHub's runner), and 16 s in CI with the cache warm and nothing changed.
 `SMLIB_SRC`, `EMSDK` and `SOLIDS_OBJ` point it at a checkout you already have.
 Without it the app still runs: bodies with a boolean are drawn as their
 features, cuts left out, the log says why, and the kernel's tests skip and

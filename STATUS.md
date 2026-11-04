@@ -50,7 +50,7 @@ etc).
   - **Packaging.** The PWA carries the kernel as cached files of its own, the
     single file carries it inline, and About carries its Apache-2.0 notice.
   - **CI.** The Pages workflow and the `solids` workflow build the kernel,
-    cached by the recipe's hash. A cold build takes 6 m 51 s.
+    cached by the recipe's hash. A cold build takes 6 m 51 s, a warm one 16 s.
   - **Known gaps** are in TODO.md's Done entry. Among them: kernel edges are
     not yet hover or constraint targets, and a full revolve drilled through
     its seam fails OpenCascade's strict read.
