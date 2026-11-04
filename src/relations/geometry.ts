@@ -18,7 +18,7 @@
 import type { Model } from "../model.ts";
 import type { Dual } from "../kernel/dual.ts";
 import { dot, norm, vecSub, wedge, wedgeNorm } from "./vec.ts";
-import { chunk, directionOf, directionOfPoints, joinVars, lineVars, rimNormal, type DirectionRef } from "./refs.ts";
+import { chunk, curveNormal, directionOf, directionOfPoints, joinVars, lineVars, unitDuals, type DirectionRef } from "./refs.ts";
 import { coincident } from "./basic.ts";
 
 // --- the direction relations -----------------------------------------------
@@ -74,7 +74,7 @@ function directionSides(model: Model, op: string, a: string, b: string, c?: stri
   // nothing it could move to satisfy it. Refused rather than added as a
   // constraint that silently either holds already or never can.
   if (made.u.frame && made.v.frame) {
-    throw new Error(`${op} needs something it can move: "${a}" and "${made.args.at(-1)}" are both frame axes`);
+    throw new Error(`${op} needs something it can move: "${a}" and "${made.args.at(-1)}" are both datums (a frame's axis, a plane's normal)`);
   }
   return made;
 }
@@ -184,12 +184,14 @@ export function radius(model: Model, circleName: string, target: number): string
 }
 
 /**
- * The signed distance of a point (as Duals) off a rim's plane — the plane
- * through the centre (as Duals) whose normal is `n` (plain numbers, a datum).
- * Linear in both, and not a square: its gradient is the normal itself all the
- * way down to the root.
+ * The signed distance of a point off a rim's plane — the plane through the
+ * centre square to `n`, the curve's own normal, already normalised
+ * (`unitDuals`). All three as Duals: the point, the centre and the normal are
+ * all geometry the solver may move. Linear in the point and the centre and
+ * scale-free in the normal, and not a square: its gradient is the normal
+ * itself all the way down to the root.
  */
-function offRim(q: Dual[], ctr: Dual[], n: number[]): Dual {
+function offRim(q: Dual[], ctr: Dual[], n: Dual[]): Dual {
   let acc = q[0].sub(ctr[0]).mul(n[0]);
   for (let k = 1; k < q.length; k++) acc = acc.add(q[k].sub(ctr[k]).mul(n[k]));
   return acc;
@@ -199,14 +201,16 @@ function offRim(q: Dual[], ctr: Dual[], n: number[]): Dual {
  * A point sits on a circle's rim: its distance from the center equals the
  * radius — and, in 3D, it lies in the rim's plane.
  *
- * In 3D a circle carries a plane (see `CircleEntity`), and "on the circle"
- * without it would be "on the sphere": a whole surface where a sketcher means a
- * curve. So a 3D `onCircle` is **two** blocks: the distance, exactly as ever,
- * and the point's signed distance off the plane through the centre parallel to
- * the circle's frame, `(p − centre) · +z`. The frame is read as a datum
- * (`rimNormal`), so the point and the centre move to satisfy it and the frame
- * does not. The second block is its own block, not a second row of the first,
- * so an offender report names `oncircle(p,c)|plane` when that is what fails.
+ * In 3D a circle carries its own normal (see `CircleEntity`), and "on the
+ * circle" without it would be "on the sphere": a whole surface where a
+ * sketcher means a curve. So a 3D `onCircle` is **two** blocks: the distance,
+ * exactly as ever, and the point's signed distance off the plane through the
+ * centre square to the circle's normal, `(p − centre) · n̂`. The normal is
+ * declared with the rest (`curveNormal`), so a circle nothing holds level
+ * turns to meet the point — it used to be read off a frame as a datum, which
+ * no circle has any more. The second block is its own block, not a second row
+ * of the first, so an offender report names `oncircle(p,c)|plane` when that is
+ * what fails.
  *
  * In 2D the second block would be trivially zero, and it is **not emitted**:
  * a 2D `onCircle` is exactly the one block it always was, value for value —
@@ -222,11 +226,11 @@ export function onCircle(model: Model, pointName: string, circleName: string): s
       const [q, ctr] = chunk(l, dim, 2);
       return [norm(vecSub(q, ctr)).sub(l[2 * dim])];
     }, `oncircle(${pointName},${circleName})`);
-    const normal = rimNormal(model, circleName);
+    const normal = curveNormal(model, circleName);
     if (normal) {
-      model.addResidual([...p.varIndices, ...center.varIndices], (l) => {
-        const [q, ctr] = chunk(l, dim, 2);
-        return [offRim(q, ctr, normal())];
+      model.addResidual(joinVars(p.varIndices, center.varIndices, normal), (l) => {
+        const [q, ctr, n] = chunk(l, dim, 3);
+        return [offRim(q, ctr, unitDuals(n))];
       }, `oncircle(${pointName},${circleName})|plane`);
     }
   });
@@ -265,8 +269,9 @@ export function equalRadius(model: Model, c1: string, c2: string): string {
  * **In 3D a tangent line lies in the circle's plane.** It touches the rim at
  * one point and runs along the rim's own direction there, both of which are in
  * the plane — so a 3D `tangent` adds a second block holding both of the line's
- * ends on the plane through the centre parallel to the circle's frame (the
- * frame a datum, as for `onCircle`). Without it the distance block alone would
+ * ends on the plane through the centre square to the circle's own normal
+ * (declared, as for `onCircle`, so a free circle turns with its tangents — a
+ * fillet's arc follows its corner this way and needs no plane given). Without it the distance block alone would
  * describe a line tangent to a *sphere*, free to swing round the centre. In 2D
  * that block is trivially zero and is not emitted; the 2D relation is the one
  * block it always was. The line is still read lazily, so the plane block
@@ -282,11 +287,11 @@ export function tangent(model: Model, lineName: string, circleName: string): str
       const u = vecSub(b, a);
       return [wedgeNorm(vecSub(ctr, a), u).div(norm(u)).sub(l[3 * dim])];
     }, `tan(${lineName},${circleName})`);
-    const normal = rimNormal(model, circleName);
+    const normal = curveNormal(model, circleName);
     if (normal) {
-      model.addResidual(joinVars(lineVars(model, lineName), center.varIndices), (l) => {
-        const [a, b, ctr] = chunk(l, dim, 3);
-        const n = normal();
+      model.addResidual(joinVars(lineVars(model, lineName), center.varIndices, normal), (l) => {
+        const [a, b, ctr, raw] = chunk(l, dim, 4);
+        const n = unitDuals(raw);
         return [offRim(a, ctr, n), offRim(b, ctr, n)];
       }, `tan(${lineName},${circleName})|plane`);
     }

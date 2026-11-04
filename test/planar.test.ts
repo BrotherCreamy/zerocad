@@ -1,22 +1,24 @@
-// 3D phase 2, planar discipline: circles and arcs carry a plane.
+// 3D phase 2, planar discipline: circles and arcs lie in a plane — since
+// docs/plans/frameless-curves.md, one they carry themselves, as a normal.
 //
 // Closed forms throughout, against frames tilted off every kernel axis — "it
 // solved" is what a sphere-tangent line and a wrong-plane rim both report too.
 // The claims:
 //
-//   * a 3D circle's plane is a frame, resolved like `fix`'s (default at call
-//     time, journalled resolved, the standing message with none) and refused
-//     in 2D;
-//   * the plane orients the rim through the circle's own centre and never pins
-//     that centre: drag the centre off the frame and the rim goes with it,
+//   * a 3D circle's normal is a seed — the drawing plane's at call time, or the
+//     plane named — journalled as the call, and refused in 2D; nothing makes a
+//     frame for it;
+//   * the normal orients the rim through the circle's own centre and never pins
+//     that centre: drag the centre off the plane and the rim goes with it,
 //     parallel;
 //   * `onCircle` and `tangent` in 3D are the planar rim, two blocks each, the
-//     frame a datum — and in 2D exactly the one block each they always were,
-//     value for value;
-//   * an arc turns about its frame's +z, never the kernel's;
+//     normal geometry the solver may turn — a free circle turns to meet them, a
+//     held one (`par`) does not — and in 2D exactly the one block each they
+//     always were, value for value;
+//   * an arc turns about its own normal, never the kernel's +z;
 //   * a planar circle is drawn, picked and lifted as the ellipse it projects to;
-//   * deleting a frame takes the circles on it, and a fillet refuses a corner
-//     out of its plane without leaving a journal entry behind.
+//   * deleting a frame takes the `par` holding a circle to it and leaves the
+//     circle, and a fillet's arc follows its corner with no frame at all.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -24,7 +26,7 @@ import { readFile } from "node:fs/promises";
 import { ensureKernelLoaded } from "../src/kernel/problem.ts";
 import { Model } from "../src/model.ts";
 import { fix } from "../src/relations/basic.ts";
-import { arcEndpoints, onCircle, radius, tangent } from "../src/relations/geometry.ts";
+import { arcEndpoints, onCircle, parallel, radius, tangent } from "../src/relations/geometry.ts";
 import { del, fillet } from "../src/operations.ts";
 import { curveFrame, curvePlaneOf } from "../src/curveplane.ts";
 import { arcPoint } from "../src/arcgeom.ts";
@@ -59,42 +61,47 @@ function otherFrame(m: Model) {
 
 // --- the plane reference --------------------------------------------------------
 
-test("a 3D circle takes the default frame at call time, journalled resolved", () => {
+test("a 3D circle faces the drawing plane at call time, or the plane named — a seed, journalled as the call", () => {
   const m = new Model(3);
   const t = tiltedFrame(m);
   const w = otherFrame(m);
   m.addPoint(t.origin, "c");
   const c1 = m.addCircle("c", 5);
-  assert.equal(c1.plane, "t", "no plane named: the default");
-  assert.deepEqual(m.journal.at(-1), { op: "addCircle", args: ["c", 5, "t", c1.name] }, "and the entry says which");
+  const faces = (name: string, n: number[]) => close(dot(m.normalOf(name), n), 1);
+  assert.ok(faces(c1.name, t.uz), "nothing said: the default frame's plane");
+  assert.deepEqual(m.journal.at(-1), { op: "addCircle", args: ["c", 5, null, c1.name] }, "and the entry says what was said");
   const c2 = m.addCircle("c", 5, w.name);
-  assert.equal(c2.plane, "w", "or the one named");
-  // Moving the default afterwards changes nothing already made — the entry
-  // carries the answer, not the question.
+  assert.ok(faces(c2.name, w.uz), "or the plane named");
+  assert.deepEqual(m.journal.at(-1)!.args, ["c", 5, "w", c2.name]);
+  // A seed and no more: moving the default afterwards changes nothing made,
+  // and nothing holds the circle to either plane — that is a `par`'s job.
   m.setDefaultFrame("w");
-  assert.equal(m.circle(c1.name).plane, "t");
+  assert.ok(faces(c1.name, t.uz));
+  assert.equal(m.relations.size, 0, "a constructor constrains nothing");
   const a = m.addArc("c", null, null, 3);
-  assert.equal(a.plane, "w");
-  assert.equal(m.journal.at(-1)!.args[4], "w");
+  assert.ok(faces(a.name, w.uz));
+  assert.equal(m.journal.at(-1)!.args[4], null);
 });
 
-test("with no frame at all, a 3D circle or arc is refused — the standing message, and nothing left behind", () => {
+test("with no frame at all, a 3D circle or arc faces the origin's +z — and no frame is made", () => {
   const m = new Model(3);
-  assert.throws(() => m.addCircle(), /no default frame — frame\(\) then setDefaultFrame\(\), or say which frame/);
-  assert.throws(() => m.addArc(), /no default frame/);
-  assert.equal(m.entities.size, 0, "the plane is resolved before any auto-created centre");
-  assert.equal(m.journal.length, 0);
+  const c = m.addCircle();
+  const a = m.addArc();
+  assert.deepEqual(m.normalOf(c.name), [0, 0, 1]);
+  assert.deepEqual(m.normalOf(a.name), [0, 0, 1]);
+  assert.equal([...m.entities.values()].filter((e) => e.kind === "frame").length, 0, "nothing makes a frame unless asked");
   m.addPoint([0, 0, 0], "p");
-  assert.throws(() => m.addCircle("p", 2, "p"), /"p" is not a frame/);
+  assert.throws(() => m.addCircle("p", 2, "p"), /"p" is not a plane/);
+  assert.throws(() => m.addCircle("p", 2, [0, 0, 0]), /three numbers with a direction/);
 });
 
-test("a 2D circle refuses a plane — it lies in the one there is — and journals none", () => {
+test("a 2D circle refuses a normal — it lies in the one plane there is — and journals none", () => {
   const m = new Model(2);
   axisFrame(m);
-  assert.throws(() => m.addCircle(null, 3, "f"), /a 2D circle takes no plane/);
-  assert.throws(() => m.addArc(null, null, null, 3, "f"), /a 2D arc takes no plane/);
+  assert.throws(() => m.addCircle(null, 3, "f"), /a 2D circle takes no normal/);
+  assert.throws(() => m.addArc(null, null, null, 3, [0, 0, 1]), /a 2D arc takes no normal/);
   const c = m.addCircle(null, 3);
-  assert.equal(c.plane, undefined);
+  assert.equal(c.normal, undefined);
   assert.deepEqual(m.journal.at(-1)!.args, [null, 3, null, c.name]);
 });
 
@@ -124,15 +131,18 @@ test("the plane orients the rim through the circle's own centre, and dragging th
     t.uz.map((x) => Math.round(x * 1e12) / 1e12), "the rim's normal is the frame's +z");
 });
 
-test("a free arc in 3D is seeded in its plane, along the frame's own axes", () => {
+test("a free arc in 3D is seeded in the plane it faces, a quarter turn about its normal", () => {
   const m = new Model(3);
   const t = tiltedFrame(m);
   m.addPoint(t.at(1, 1), "c");
   const a = m.addArc("c", null, null, 4);
-  assert.ok(Math.hypot(...sub(m.coords(a.start), t.at(5, 1))) < 1e-9, "start along +x");
-  assert.ok(Math.hypot(...sub(m.coords(a.end), t.at(1, 5))) < 1e-9, "end along +y");
+  for (const end of [a.start, a.end]) {
+    const rel = sub(m.coords(end), t.at(1, 1));
+    assert.ok(close(Math.hypot(...rel), 4) && close(dot(rel, t.uz), 0), `${end} on the rim, in the plane`);
+  }
   const f = curveFrame(m, a)!;
-  assert.ok(close(f.sweep, Math.PI / 2), "a quarter, counter-clockwise about the frame's +z");
+  assert.ok(close(f.sweep, Math.PI / 2), "a quarter, counter-clockwise about its own normal");
+  assert.ok(close(dot(f.normal, t.uz), 1));
 });
 
 // --- onCircle and tangent: the planar rim -----------------------------------------
@@ -162,6 +172,7 @@ test("onCircle in 3D puts a point on the planar rim, not on the sphere", async (
   fix(m, "c", [2, 1, 0]);
   const circ = m.addCircle("c", 5).name;
   radius(m, circ, 5);
+  parallel(m, circ, "t.z"); // held on the frame's plane, as a tool holds what it draws
   m.addPoint(t.at(5, 5, 2), "q");
   onCircle(m, "q", circ);
   assert.equal(m.solve().solved, true);
@@ -170,19 +181,36 @@ test("onCircle in 3D puts a point on the planar rim, not on the sphere", async (
   assert.ok(close(dot(rel, t.uz), 0, 1e-7), `and in its plane: ${dot(rel, t.uz)} off`);
 });
 
-test("the frame is a datum: onCircle moves the point and the centre, never the frame", async () => {
+test("a circle's normal is geometry: a free circle turns to meet a point held on it; one held by par does not", async () => {
   await loadKernel();
+  // Free: only the centre and the radius are pinned, and a point off the
+  // circle's plane is held on its rim. The circle turns to take it in — what
+  // "free to turn in space" means (docs/plans/frameless-curves.md).
   const m = new Model(3);
   const t = tiltedFrame(m);
-  const frameAt = ["t_o", "t_x", "t_y"].map((n) => m.coords(n));
-  m.addPoint(t.at(0, 0, 3), "c"); // the centre three above the frame — free
+  m.addPoint(t.at(0, 0), "c");
+  fix(m, "c", [0, 0, 0]);
   const circ = m.addCircle("c", 4).name;
-  m.addPoint(t.at(4, 0, -5), "q"); // eight below the centre's plane
+  radius(m, circ, 4);
+  m.addPoint(t.at(0, 0, 4), "q"); // straight above the centre, 4 off its plane
+  fix(m, "q", [0, 0, 4]);
   onCircle(m, "q", circ);
   assert.equal(m.solve().solved, true);
-  assert.deepEqual(["t_o", "t_x", "t_y"].map((n) => m.coords(n)), frameAt, "the frame did not move");
-  const rel = sub(m.coords("q"), m.coords("c"));
-  assert.ok(close(dot(rel, t.uz), 0, 1e-7), "the point and the centre met in a plane parallel to the frame");
+  assert.ok(close(dot(m.normalOf(circ), t.uz), 0, 1e-6), "it stood up: its normal now lies in the frame's plane");
+  // Held: the same, with the normal par to the frame's +z, and the point
+  // free. Now the point comes down onto the rim, and the circle stays level.
+  const n = new Model(3);
+  const u = tiltedFrame(n);
+  n.addPoint(u.at(0, 0), "c");
+  fix(n, "c", [0, 0, 0]);
+  const held = n.addCircle("c", 4).name;
+  radius(n, held, 4);
+  parallel(n, held, "t.z");
+  n.addPoint(u.at(4, 0, 5), "q");
+  onCircle(n, "q", held);
+  assert.equal(n.solve().solved, true);
+  assert.ok(close(Math.abs(dot(n.normalOf(held), u.uz)), 1, 1e-9), "still level with the frame");
+  assert.ok(close(dot(sub(n.coords("q"), u.origin), u.uz), 0, 1e-7), "and the point met it in its plane");
 });
 
 test("tangent in 3D: the line lies in the circle's plane and touches it once", async () => {
@@ -193,6 +221,7 @@ test("tangent in 3D: the line lies in the circle's plane and touches it once", a
   fix(m, "c", [0, 0, 0]);
   const circ = m.addCircle("c", 5).name;
   radius(m, circ, 5);
+  parallel(m, circ, "t.z");
   // A line well above the plane and not at the right distance.
   m.addPoint(t.at(-10, 8, 4), "a");
   m.addPoint(t.at(10, 7, -3), "b");
@@ -341,51 +370,57 @@ test("face-on, a planar circle is still the exact circle it always was", () => {
 
 // --- structure ------------------------------------------------------------------
 
-test("deleting a frame takes the circles and arcs drawn on it, and leaves their points", () => {
+test("deleting a frame takes the par holding a circle to it, and leaves the circle, free to turn", () => {
   const m = new Model(3);
   const t = tiltedFrame(m);
   m.addPoint(t.at(0, 0), "c");
   const circ = m.addCircle("c", 3).name;
   const arc = m.addArc("c", null, null, 2).name;
-  assert.throws(() => m.deleteEntity("t"), /still used by/, "the primitive will not orphan a circle");
+  const held = parallel(m, circ, "t.z");
+  assert.doesNotThrow(() => m.dependents("t").length, "no curve stands on a frame any more");
+  assert.deepEqual(m.dependents("t").map((e) => e.name), []);
   const removed = del(m, "t");
-  assert.ok(removed.includes(circ) && removed.includes(arc) && removed.includes("t"), JSON.stringify(removed));
-  assert.ok(m.entities.has("c"), "the centre was the drawing's point first");
+  assert.ok(removed.includes(held) && removed.includes("t"), JSON.stringify(removed));
+  assert.ok(m.entities.has(circ) && m.entities.has(arc) && m.entities.has("c"), "the curves and their centre stay");
+  assert.ok(close(dot(m.normalOf(circ), t.uz), 1), "facing where the frame faced");
 });
 
-test("a fillet in 3D takes the default plane, and refuses a corner out of it without journalling anything", () => {
+test("a fillet in 3D needs no frame: its arc faces its corner, and its tangents keep it there as the corner turns", async () => {
+  await loadKernel();
   const m = new Model(3);
   const t = tiltedFrame(m);
   m.addPoint(t.at(30, 0), "a"); m.addPoint(t.at(0, 0), "k"); m.addPoint(t.at(0, 30), "b");
   m.addLine("a", "k", "l1"); m.addLine("k", "b", "l2");
-  // A corner standing up out of the plane: its legs span x and z.
+  // A corner standing up out of the default frame's plane: its legs span x and z.
+  // It used to be refused, naming the frame; now it is rounded in its own plane.
   m.addPoint(t.at(-30, 0), "a2"); m.addPoint(t.at(-60, 0), "k2"); m.addPoint(t.at(-60, 0, 30), "b2");
   m.addLine("a2", "k2", "m1"); m.addLine("k2", "b2", "m2");
   const journal = m.journal.length;
-  assert.throws(() => fillet(m, "m1", "m2", 5), /not in "t"'s plane/);
-  assert.equal(m.journal.length, journal, "a refused fillet leaves no entry — or the file would not reopen");
   assert.throws(() => fillet(m, "l1", "l2", 500), /too large/);
-  assert.equal(m.journal.length, journal, "nor does one refused for its radius (the old bug)");
+  assert.equal(m.journal.length, journal, "a refused fillet leaves no entry — or the file would not reopen");
   const arc = fillet(m, "l1", "l2", 5);
-  assert.equal(m.arc(arc).plane, "t");
-  assert.deepEqual(m.journal.at(-1), { op: "fillet", args: ["l1", "l2", 5, "t"] });
+  assert.ok(close(Math.abs(dot(m.normalOf(arc), t.uz)), 1), "the arc faces its corner's plane");
+  assert.deepEqual(m.journal.at(-1), { op: "fillet", args: ["l1", "l2", 5] }, "and names no plane");
+  const up = fillet(m, "m1", "m2", 5);
+  assert.ok(close(Math.abs(dot(m.normalOf(up), t.uy)), 1), "the standing corner's arc faces its own plane");
+  assert.equal([...m.entities.values()].filter((e) => e.kind === "frame").length, 1, "and no frame was made for either");
+  assert.equal(m.solve().solved, true);
 });
 
-test("a 2D fillet's entry is the three arguments it always was, and a plane is refused", () => {
+test("a 2D fillet's entry is the three arguments it always was, and a side is refused", () => {
   const m = new Model(2);
   m.addPoint([30, 0], "a"); m.addPoint([0, 0], "k"); m.addPoint([0, 30], "b");
   m.addLine("a", "k", "l1"); m.addLine("k", "b", "l2");
-  assert.throws(() => fillet(m, "l1", "l2", 5, "f"), /a 2D fillet takes no plane/);
+  assert.throws(() => fillet(m, "l1", "l2", 5, [0, 0, 1]), /a 2D fillet takes no side/);
   fillet(m, "l1", "l2", 5);
   assert.deepEqual(m.journal.at(-1), { op: "fillet", args: ["l1", "l2", 5] });
 });
 
-test("ls() and the hover tag say which plane a circle is in", () => {
+test("ls() and the hover tag say which way a circle faces", () => {
   const m = new Model(3);
-  tiltedFrame(m);
   m.addPoint([0, 0, 0], "c");
-  const circ = m.addCircle("c", 4).name;
+  const circ = m.addCircle("c", 4, [0, 1, 0]).name;
   const s = neocadScope({ model: m }) as Record<string, (...a: unknown[]) => unknown>;
-  assert.ok((s.ls() as string[]).some((l) => l.startsWith(circ) && l.includes("in t")));
-  assert.match(describePick(m, { name: circ, kind: "circle", distance: 0 }), new RegExp(`^${circ}  r 4  in t`));
+  assert.ok((s.ls() as string[]).some((l) => l.startsWith(circ) && l.includes("facing (0.000, 1.000, 0.000)")));
+  assert.match(describePick(m, { name: circ, kind: "circle", distance: 0 }), new RegExp(`^${circ}  r 4  facing 0, 1, 0`));
 });

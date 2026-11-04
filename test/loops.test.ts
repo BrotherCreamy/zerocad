@@ -16,7 +16,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { ensureKernelLoaded } from "../src/kernel/problem.ts";
-import { Model } from "../src/model.ts";
+import { Model, spanOf } from "../src/model.ts";
 import { coincident, midpoint } from "../src/relations/basic.ts";
 import { onCircle, pointOnLine } from "../src/relations/geometry.ts";
 import { fillet } from "../src/operations.ts";
@@ -69,13 +69,14 @@ function traced(m: Model, loop: Loop): number {
     if (e.kind !== "arc" && e.kind !== "circle") throw new Error("not a curve");
     const c = flat(m.coords(e.center));
     const r = m.radius(e.name);
-    // Which way round the arc's own frame turns, seen in this plane.
-    const own = e.plane === undefined ? 1 : Math.sign(dot(frameAxes(m, e.plane).uz, loop.plane.normal));
+    // Which way round the curve's own normal turns it, seen in this plane.
+    const own = e.normal === undefined ? 1 : Math.sign(dot(m.normalOf(e.name), loop.plane.normal));
     const angle = (p: string) => { const q = flat(m.coords(p)); return Math.atan2(q[1] - c[1], q[0] - c[0]); };
     let a0: number, sweep: number;
     if (e.kind === "circle") {
-      // From the circle's own +x: its frame's in 3D, the drawing's x in 2D.
-      const x = e.plane === undefined ? [1, 0, 0] : frameAxes(m, e.plane).ux;
+      // From the circle's own +x: the first of the two directions its normal
+      // spans its plane with in 3D (`spanOf`), the drawing's x in 2D.
+      const x = e.normal === undefined ? [1, 0, 0] : spanOf(m.normalOf(e.name))[0];
       a0 = Math.atan2(dot(x, v), dot(x, u));
       sweep = 2 * Math.PI * own;
     } else {
@@ -96,16 +97,6 @@ function traced(m: Model, loop: Loop): number {
     s += p[0] * q[1] - p[1] * q[0];
   }
   return s / 2;
-}
-
-function frameAxes(m: Model, frame: string): { ux: number[]; uz: number[] } {
-  const f = m.frame(frame);
-  const o = m.coords(f.origin), x = sub(m.coords(f.xref), o), y = sub(m.coords(f.yref!), o);
-  const ux = x.map((c) => c / Math.hypot(...x));
-  const along = dot(y, ux);
-  const yy = y.map((c, i) => c - along * ux[i]);
-  const uy = yy.map((c) => c / Math.hypot(...yy));
-  return { ux, uz: [ux[1] * uy[2] - ux[2] * uy[1], ux[2] * uy[0] - ux[0] * uy[2], ux[0] * uy[1] - ux[1] * uy[0]] };
 }
 
 /** Each member ends where the next begins — by point entity, the only kind of "where" a join has. */
@@ -374,9 +365,15 @@ function sheets(): Sheet[] {
   });
   const tilted = new Model(3);
   const t = tiltedFrame(tilted);
+  // The sheet's own axes are the two its normal spans the plane with
+  // (`spanOf`): what a circle on it is laid out from, since a circle carries
+  // its own normal and no frame's +x (docs/plans/frameless-curves.md), so a
+  // seam falls where it does in 2D and a span reads the same on both sheets.
+  const [U, V] = spanOf(t.uz);
+  const on = (u: number, v: number) => t.origin.map((o, i) => o + u * U[i] + v * V[i]);
   return [
     make("in 2D", new Model(2), (u, v) => [u, v], null, { ox: 400, oy: 300, scale: 2 }),
-    make("on a tilted plane", tilted, (u, v) => t.at(u, v), t.name, orbitBy({ ox: 400, oy: 300, scale: 3 }, 0.6, -0.4)),
+    make("on a tilted plane", tilted, on, t.name, orbitBy({ ox: 400, oy: 300, scale: 3 }, 0.6, -0.4)),
   ];
 }
 
@@ -718,7 +715,10 @@ test("a box's twelve edges are its six faces — and the belt round its middle i
   assert.ok(loops.every((l) => l.members.length === 4 && close(l.area, 100)));
   const normals = loops.map((l) => l.plane.normal.map((x) => Math.round(x)).join(","));
   assert.deepEqual(normals.sort(), ["0,0,1", "0,0,1", "0,1,0", "0,1,0", "1,0,0", "1,0,0"]);
-  assert.ok(loops.every((l) => l.parent === null && l.plane.frame === null));
+  // The bottom face lies in the origin's x–y plane, which every model has
+  // (docs/plans/frameless-curves.md), and says so; no other face is in a frame.
+  assert.deepEqual(loops.map((l) => l.plane.frame).filter((f) => f !== null), ["origin"]);
+  assert.ok(loops.every((l) => l.parent === null));
 });
 
 test("on a tilted frame, the loop's plane is the frame's, and area and orientation are the closed form", async () => {
@@ -737,7 +737,7 @@ test("on a tilted frame, the loop's plane is the frame's, and area and orientati
   assert.ok(close(loop.area, 1200, 1e-9) && close(traced(m, loop), 1200, 1e-9));
 
   // A fillet on it, in the frame.
-  const arc = fillet(m, lines[3], lines[0], 6, t.name);
+  const arc = fillet(m, lines[3], lines[0], 6, t.uz);
   m.solve();
   [loop] = findLoops(m);
   assert.ok(names(loop).includes(arc));

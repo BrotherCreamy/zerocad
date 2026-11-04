@@ -1,22 +1,24 @@
-// Where a circle's or arc's rim is, read off the model as plain numbers — the
-// one answer the renderer, picking/snapping/box select (through
-// projection.ts), the glyphs, the arc tools and `fillet` all need about a
-// curve's plane.
+// Where a circle's or arc's rim is, and where a plane is, read off the model as
+// plain numbers — the one answer the renderer, picking/snapping/box select
+// (through projection.ts), the glyphs, the arc tools, the loops and `fillet`
+// all need about a curve's plane.
 //
-// A circle or arc in a 3D model names a frame (see `CircleEntity`), and its rim
-// lies in the plane through its own centre **parallel** to that frame's x–y
-// plane: the frame orients it, the centre places it. In 2D the plane is the
-// drawing's own, x and y, and its +z is the side every 2D arc has always been
-// counter-clockwise about. `arcgeom.ts` does the arithmetic over plain numbers
-// and knows nothing of either; this file is where the model is asked which
-// numbers to hand it.
+// A circle or arc in a 3D model carries its own normal (see `CircleEntity`),
+// and its rim lies in the plane through its own centre square to that normal.
+// It used to name a frame and be read off the frame; nothing asks a frame what
+// plane a curve is in any more (docs/plans/frameless-curves.md). In 2D the
+// plane is the drawing's own, x and y, and its +z is the side every 2D arc has
+// always been counter-clockwise about. `arcgeom.ts` does the arithmetic over
+// plain numbers and knows nothing of either; this file is where the model is
+// asked which numbers to hand it.
 //
 // It sits above the relations for the reason `workplane.ts` does: a frame's
-// axes are `frameBasis`'s to read and nobody else's, so the marker, every
-// relation and every drawing of a rim agree on what "the frame's +z" is.
+// axes are `frameBasis`'s to read and a plane's `planeBasis`'s, so the marker,
+// every relation and every drawing of a rim agree on what "the plane's
+// normal" is.
 
-import type { Entity, Model } from "./model.ts";
-import { frameBasis } from "./relations/refs.ts";
+import { spanOf, type Entity, type Model } from "./model.ts";
+import { frameBasis, planeBasis } from "./relations/refs.ts";
 import { arcFrame, circleFrame, type ArcFrame } from "./arcgeom.ts";
 import { lift3 } from "./vec3.ts";
 
@@ -33,10 +35,10 @@ function flat(): CurvePlane {
 }
 
 /**
- * A frame's x–y plane, as plain unit directions — or null for a frame
- * collapsed so far it has no plane (an x-ref on the origin, a y-ref on the
- * frame's own x axis; see `frameBasis`), which a caller then has to decide
- * how to draw.
+ * A frame's x–y plane, as plain unit directions — the origin's included — or
+ * null for a frame collapsed so far it has no plane (an x-ref on the origin, a
+ * y-ref on the frame's own x axis; see `frameBasis`), which a caller then has
+ * to decide how to draw.
  */
 export function framePlaneAxes(model: Model, frame: string): CurvePlane | null {
   const { ux, uy, uz } = frameBasis(model, frame)();
@@ -45,31 +47,40 @@ export function framePlaneAxes(model: Model, frame: string): CurvePlane | null {
 }
 
 /**
- * The plane a circle's or arc's rim lies parallel to: its frame's x–y plane in
- * 3D, the drawing's own in 2D. A frame collapsed onto itself has no plane to
- * give, and the rim is then drawn in the kernel's x–y plane — the floor that
- * keeps a renderer from throwing, for a drawing whose datum has stopped
- * meaning anything (every relation against that frame has degraded the same
- * way; see `frameBasis`).
+ * Any plane reference (`Model.planeKind`) — a frame, a curve's own plane, three
+ * points — as an origin and plain unit directions, or null for one collapsed
+ * past having a plane. What a feature's profile plane and the work plane are
+ * read as by everything that draws or measures them.
  */
-export function curvePlaneOf(model: Model, name: string): CurvePlane {
-  const plane = model.circular(name).plane;
-  if (plane === undefined || !model.entities.has(plane)) return flat();
-  return framePlaneAxes(model, plane) ?? flat();
+export function planeAxes(model: Model, ref: string): (CurvePlane & { origin: number[] }) | null {
+  const { origin, u, v, n } = planeBasis(model, ref)();
+  if (n.every((c) => c === 0) || u.every((c) => c === 0)) return null;
+  return { origin, u, v, n };
 }
 
 /**
- * The side a new arc drawn on the sketch will turn about: the default frame's
- * +z in a 3D model — the plane a tool's arc is about to be given — and the 2D
- * +z otherwise, or when there is no default frame to ask (the tool refuses
- * before it gets that far; see tools/place.ts).
+ * The plane a circle's or arc's rim lies in: square to its own normal in 3D,
+ * the drawing's own in 2D. In-plane directions from `spanOf`, so a level
+ * circle is laid out from the kernel's +x, as one on the origin's plane was.
  */
-export function sketchSide(model: Model): number[] {
-  if (model.dim !== 3 || model.defaultFrame == null || !model.entities.has(model.defaultFrame)) return flat().n;
-  return framePlaneAxes(model, model.defaultFrame)?.n ?? flat().n;
+export function curvePlaneOf(model: Model, name: string): CurvePlane {
+  if (model.circular(name).normal === undefined) return flat();
+  const n = model.normalOf(name);
+  const [u, v] = spanOf(n);
+  return { u, v, n };
 }
 
-/** The side an existing arc turns about — its own plane's normal. */
+/**
+ * The side a new arc drawn on the sketch will turn about: the drawing plane's
+ * normal in a 3D model (the work plane's, the default frame's, the origin's)
+ * — the normal the tool is about to give the arc — and the 2D +z otherwise.
+ */
+export function sketchSide(model: Model): number[] {
+  if (model.dim !== 3) return flat().n;
+  return planeAxes(model, model.drawingPlane())?.n ?? flat().n;
+}
+
+/** The side an existing arc turns about — its own normal. */
 export function arcSide(model: Model, name: string): number[] {
   return curvePlaneOf(model, name).n;
 }
@@ -81,7 +92,8 @@ export function arcSide(model: Model, name: string): number[] {
  *
  * A circle is the full turn about its centre in its plane (`circleFrame`). An
  * arc is laid out in the plane through its centre and both ends, counter-
- * clockwise from start to end about its plane's +z (`arcFrame`).
+ * clockwise from start to end about its own normal (`arcFrame`) — measured
+ * from its own start, so it needs no reference axis.
  */
 export function curveFrame(model: Model, e: Entity): ArcFrame | null {
   if (e.kind === "circle") {

@@ -63,9 +63,9 @@ const refusals: { what: string; dims: number[]; noDefault?: boolean; call: (m: M
   { what: "addCircle: a centre that does not exist", dims: [2, 3], call: (m) => m.addCircle("nope"), error: /nope/ },
   { what: "addCircle: a centre that is not a point", dims: [2, 3], call: (m) => m.addCircle("ab"), error: /ab/ },
   { what: "addCircle: a radius that is not positive", dims: [2, 3], call: (m) => m.addCircle(null, -1), error: /positive radius/ },
-  { what: "addCircle: a plane named in 2D", dims: [2], call: (m) => m.addCircle(null, null, "f"), error: /takes no plane/ },
+  { what: "addCircle: a normal given in 2D", dims: [2], call: (m) => m.addCircle(null, null, "f"), error: /takes no normal/ },
   { what: "addCircle: a plane that is not a frame", dims: [3], call: (m) => m.addCircle(null, null, "a"), error: /"a"/ },
-  { what: "addCircle: no plane and no default", dims: [3], noDefault: true, call: (m) => m.addCircle(), error: /no default frame/ },
+  { what: "addCircle: a normal with no direction", dims: [3], noDefault: true, call: (m) => m.addCircle(null, null, [0, 0, 0]), error: /three numbers with a direction/ },
   // addArc
   { what: "addArc: a dotted name", dims: [2, 3], call: (m) => m.addArc(null, null, null, null, null, "a.x"), error: /cannot contain a dot/ },
   { what: "addArc: a taken name", dims: [2, 3], call: (m) => m.addArc(null, null, null, null, null, "b"), error: /"b" already exists/ },
@@ -73,8 +73,8 @@ const refusals: { what: string; dims: number[]; noDefault?: boolean; call: (m: M
   { what: "addArc: an end that is not a point", dims: [2, 3], call: (m) => m.addArc(null, null, "ab"), error: /ab/ },
   { what: "addArc: the same endpoint twice", dims: [2, 3], call: (m) => m.addArc(null, "a", "a"), error: /two different endpoints/ },
   { what: "addArc: a radius that is not positive", dims: [2, 3], call: (m) => m.addArc(null, null, null, 0), error: /positive radius/ },
-  { what: "addArc: a plane named in 2D", dims: [2], call: (m) => m.addArc(null, null, null, null, "f"), error: /takes no plane/ },
-  { what: "addArc: no plane and no default", dims: [3], noDefault: true, call: (m) => m.addArc(), error: /no default frame/ },
+  { what: "addArc: a normal given in 2D", dims: [2], call: (m) => m.addArc(null, null, null, null, "f"), error: /takes no normal/ },
+  { what: "addArc: a plane that is not one", dims: [3], noDefault: true, call: (m) => m.addArc(null, null, null, null, "nope"), error: /"nope" is not a plane/ },
   // addFrame
   { what: "addFrame: a dotted name", dims: [2, 3], call: (m) => m.addFrame(null, null, null, "w.x"), error: /cannot contain a dot/ },
   { what: "addFrame: a taken name", dims: [2, 3], call: (m) => m.addFrame(null, null, null, "a"), error: /"a" already exists/ },
@@ -142,8 +142,10 @@ test("a successful call journals exactly what it did before, and names its point
       { op: "addFrame", args: [null, null, null, "f1"] },
       { op: "addLine", args: [null, null, "l1"] },
       { op: "setDefaultFrame", args: [frame] },
-      { op: "addCircle", args: [null, 2, frame, "c1"] },
-      { op: "addArc", args: [null, null, null, null, frame, "a1"] },
+      // Since format 13 the slot is the normal's seed, null when not given:
+      // the drawing plane (the default frame, here) seeds it.
+      { op: "addCircle", args: [null, 2, null, "c1"] },
+      { op: "addArc", args: [null, null, null, null, null, "a1"] },
       { op: "addLine", args: ["p1", null, "edge"] },
     ], `${dim}D`);
     const fp = dim === 3 ? ["p1", "p2", "p3"] : ["p1", "p2"];

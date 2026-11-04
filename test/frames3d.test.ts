@@ -228,13 +228,14 @@ test("fix in 3D pins frame coordinates against a tilted frame — the closed for
   assert.ok(near(m.coords("p"), world([3, -4, 5])), `p moved to ${m.coords("p")}`);
 });
 
-test("fix in 3D needs a frame and three coordinates — the frameless form is gone", () => {
+test("fix in 3D is in a frame and takes three coordinates — the origin's, when none is named", () => {
   const m = new Model(3);
   m.addPoint([1, 2, 3], "p");
-  // The same standing message as 2D: there is no world frame to fall back on,
-  // in three dimensions any more than in two.
-  assert.throws(() => fix(m, "p", [0, 0, 0]),
-    /no default frame — frame\(\) then setDefaultFrame\(\), or say which frame/);
+  // No world gauge: the frameless form names the origin, the one datum every
+  // model has (docs/plans/frameless-curves.md), journalled as it.
+  const r = fix(m, "p", [0, 0, 0]);
+  assert.deepEqual(m.relationOf(r).args, ["p", [0, 0, 0], "origin"]);
+  m.deleteRelation(r);
   m.addFrame(null, null, null, "f");
   assert.throws(() => fix(m, "p", [0, 0], "f"), /fix needs 3 coordinates/);
   assert.equal(m.relations.size, 0, "nothing left behind by the attempts");
@@ -306,7 +307,9 @@ test("onPlane reads the plane and never pushes it, and follows it when it moves"
 test("onPlane: the default resolved at call time and journalled resolved; refused in 2D", () => {
   const m = new Model(3);
   m.addPoint([1, 1, 1], "p");
-  assert.throws(() => onPlane(m, "p"), /no default frame/);
+  // With no frame chosen, the drawing plane: the origin's.
+  const ground = onPlane(m, "p");
+  assert.deepEqual(m.relationOf(ground).args, ["p", "origin"]);
   m.addFrame(null, null, null, "a");
   m.addFrame(null, null, null, "b");
   m.setDefaultFrame("a");
@@ -438,10 +441,10 @@ test("a 3D frame and everything written against it survive save/open byte for by
   for (const n of ["a", "b", "c"]) assert.ok(near(reopened.coords(n), m.coords(n)), n);
 });
 
-test("a v4 3D file that leant on the gauge fix is refused by step, with the standing message", () => {
-  // The app has only ever been 2D, so a file like this could only have come
-  // from the command line or a test. It is refused the way a frameless v1 file
-  // is, and for the same reason: there is no world frame left to read it in.
+test("a v4 3D file that leant on the gauge fix opens with it in the origin, the gauge it meant", () => {
+  // The app had only ever been 2D, so a file like this could only have come
+  // from the command line or a test. It was refused while there was no world
+  // frame; the origin is the kernel's own axes, which is what it pinned.
   const v4 = JSON.stringify({
     format: "neocad-model", version: 4, dim: 3,
     journal: [
@@ -450,7 +453,7 @@ test("a v4 3D file that leant on the gauge fix is refused by step, with the stan
     ],
     values: { points: {}, radii: {} },
   });
-  assert.throws(() => open(v4), /step 2, fix\("a", \[0,0,0\]\): no default frame/);
+  assert.deepEqual([...open(v4).relations.values()].map((r) => r.args), [["a", [0, 0, 0], "origin"]]);
 });
 
 // --- the command surface -----------------------------------------------------

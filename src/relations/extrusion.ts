@@ -15,7 +15,8 @@
 // extrusion with no feature around it would be a `d` with nothing to draw.
 
 import type { Model } from "../model.ts";
-import { frameBasis } from "./refs.ts";
+import { curveNormal, joinVars, planeBasis, unitDuals } from "./refs.ts";
+import { ORIGIN, referentsOf } from "../model.ts";
 
 /**
  * Holds each `twin` at its `base` plus `depth` along `frame`'s +z.
@@ -55,11 +56,20 @@ export function extrusion(model: Model, frame: string, depth: number, ...pairs: 
     throw new Error(`an extrusion needs a non-zero depth, got ${JSON.stringify(depth)}`);
   }
   if (pairs.length === 0 || pairs.length % 2 !== 0) throw new Error("an extrusion takes base/twin pairs");
-  model.frame(frame); // fail now, not at the first solve
+  // `frame` is any plane reference (`Model.planeKind`) — a frame, the origin, a
+  // curve of the profile, or three of its points — since a frameless profile
+  // is extruded along its own plane's normal and no frame is made for it
+  // (docs/plans/frameless-curves.md). The name stays: it is the argument that
+  // always said which way.
+  const kind = model.planeKind(frame); // fail now, not at the first solve
   return model.relation("extrusion", [frame, depth, ...pairs], () => {
-    const basis = frameBasis(model, frame);
-    const f = model.frame(frame);
-    const datum = new Set([f.origin, f.xref, f.yref]);
+    const plane = planeBasis(model, frame);
+    const basis = () => ({ uz: plane().n });
+    // A base that is the plane's own point is a datum, as a frame's points
+    // always were: the twin follows it and cannot drag it.
+    const datum = new Set<string | undefined>(kind === "frame"
+      ? (frame === ORIGIN ? [] : model.refsOf(model.frame(frame)))
+      : kind === "points" ? referentsOf(frame) : []);
     const lift = (z: number[] | null) => z ?? [0, 0, 0];
     for (let i = 0; i < pairs.length; i += 2) {
       const [b, t] = [pairs[i], pairs[i + 1]];
@@ -80,6 +90,17 @@ export function extrusion(model: Model, frame: string, depth: number, ...pairs: 
         }
       } else if ((be?.kind === "circle" || be?.kind === "arc") && (te?.kind === "circle" || te?.kind === "arc")) {
         model.addResidual([be.radiusVar, te.radiusVar], (l) => [l[1].sub(l[0])], `extrusion(${b},${t}).r`);
+        // A translation turns nothing, so a twin curve faces exactly as its
+        // base does — the same normal, sign and all, since an arc's sign says
+        // which way round it goes. Both declared: they are both geometry, and
+        // the base is held to its sketch by relations of its own.
+        const [bn, tn] = [curveNormal(model, b), curveNormal(model, t)];
+        if (bn && tn) {
+          model.addResidual(joinVars(bn, tn), (l) => {
+            const [u, w] = [unitDuals(l.slice(0, 3)), unitDuals(l.slice(3))];
+            return [0, 1, 2].map((k) => w[k].sub(u[k]));
+          }, `extrusion(${b},${t}).n`);
+        }
       } else {
         throw new Error(`"${b}" and "${t}" are not a pair an extrusion can hold — two points, or two circles or arcs`);
       }

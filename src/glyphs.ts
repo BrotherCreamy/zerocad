@@ -40,7 +40,7 @@
 //     much larger piece of work with its own failure modes (labels that jump
 //     about as the drawing solves being the obvious one).
 
-import { parseAxisRef, referentOf, type Model, type RelationEntry } from "./model.ts";
+import { parseAxisRef, referentsOf, type Model, type RelationEntry } from "./model.ts";
 import { uiOf, viewAxes, worldToScreen, type View } from "./view.ts";
 import { dot3, lift3, sub3 } from "./vec3.ts";
 import { curvePlaneOf } from "./curveplane.ts";
@@ -548,9 +548,9 @@ export function constrainedBy(model: Model, relationName: string): string[] {
   const r = model.relations.get(relationName);
   if (!r) return [];
   const out: string[] = [];
+  // A face's `"p1.p2.p3"` lights its three points.
   for (const a of r.args) {
-    const name = referentOf(a);
-    if (name !== null && model.entities.has(name) && !out.includes(name)) out.push(name);
+    for (const name of referentsOf(a)) if (model.entities.has(name) && !out.includes(name)) out.push(name);
   }
   return out;
 }
