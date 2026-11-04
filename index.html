@@ -2,11 +2,39 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
+  <!-- The page never zooms, and covers the whole screen, notch and all — the
+       app keeps itself clear of the notch by the safe-area insets below.
+       Every build carries these: scripts/singlefile.mjs takes each
+       <meta name> from here. docs/plans/pwa-pages.md. -->
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <!-- iOS turns a run of digits into a phone link; a log of coordinates is
+       full of them. -->
+  <meta name="format-detection" content="telephone=no">
   <title>NeoCAD</title>
   <style>
-    html,body{height:100%;margin:0;background:#0a0e13;color:#d5e1ec;font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace;font-size:13px}
-    #app{display:flex;flex-direction:column;height:100vh}
-    header{padding:8px 14px;background:#0e141b;border-bottom:1px solid #223041;display:flex;gap:14px;align-items:center}
+    /* The page itself never moves (docs/plans/pwa-pages.md): fixed to the
+       viewport, nothing to scroll, no rubber band, so a finger on the chrome
+       cannot drag the app off the screen. Every touch on the chrome may pan
+       (the log scrolls) but never double-tap zoom; the canvas takes touch-
+       action none below, all of every touch its own. Nothing selects or
+       raises iOS's long-press callout except where there is text to take —
+       the command line, the log, a field — and no grey flash on a tap. The
+       pinch iOS zooms on in spite of the viewport is refused by
+       src/pagelock.ts. */
+    html,body{position:fixed;inset:0;overflow:hidden;overscroll-behavior:none;margin:0;background:#0a0e13;color:#d5e1ec;font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace;font-size:13px;
+      touch-action:manipulation;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent;-webkit-text-size-adjust:100%;text-size-adjust:100%}
+    #cmd,#log,input{-webkit-user-select:text;user-select:text;-webkit-touch-callout:default}
+    /* dvh, not vh: on iOS 100vh is the screen with the browser's bars
+       hidden, so the bottom of the app would sit under them. vh first for a
+       browser without dvh. */
+    #app{display:flex;flex-direction:column;height:100vh;height:100dvh}
+    /* The safe areas (zero anywhere without a notch): the header's ground
+       runs up under the status bar and out under a landscape notch, its text
+       kept clear by padding; the drawing, and so every panel (src/panels.ts
+       keeps them inside it), is inset from the notch, the rounded corners and
+       the home indicator. */
+    header{padding:calc(8px + env(safe-area-inset-top)) calc(14px + env(safe-area-inset-right)) 8px calc(14px + env(safe-area-inset-left));
+      background:#0e141b;border-bottom:1px solid #223041;display:flex;gap:14px;align-items:center}
     header b{color:#e8a33d}
     #status{font-size:11px;color:#7a8b9b}
     #status.solved{color:#55c07a}
@@ -56,14 +84,15 @@
        floats over it as panels (see src/panels.ts) — so nothing reflows the
        drawing when the log fills. Panels stack from z-index 10; the hover tag
        and the menu sit far above any stack, being transient. */
-    #viewwrap{position:relative;flex:1;min-height:0;overflow:hidden}
+    #viewwrap{position:relative;flex:1;min-height:0;overflow:hidden;
+      margin:0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
     /* Two canvases, one picture: a solid's faces by WebGL with a depth test
        (#faces, src/facelayer.ts) under the 2D drawing (#cv), which is clear
        wherever it draws nothing so the faces and the ground show through.
        Every pointer listener is on #cv; the faces canvas takes no events, so
        a face can never be what a click lands on. */
     #faces{position:absolute;left:0;top:0;pointer-events:none}
-    #cv{position:relative;background:transparent}
+    #cv{position:relative;background:transparent;touch-action:none}
     .panel{position:absolute;display:flex;flex-direction:column;box-sizing:border-box;
       background:#0e141b;border:1px solid #223041;border-radius:4px;box-shadow:0 4px 14px #0008}
     .panel *{box-sizing:border-box}

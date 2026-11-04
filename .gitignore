@@ -9,3 +9,4 @@ src/kernel/wasm-gen/
 # A worker's tree is its own repository state, never content of this one.
 .claude/worktrees/
 dist-single/
+dist-pwa/

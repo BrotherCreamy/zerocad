@@ -43,9 +43,11 @@ const SOFTWARE_GL = ["--use-angle=swiftshader", "--enable-unsafe-swiftshader"];
  * against is present, and a machine may well have a different one installed
  * (a preinstalled image, a differently-pinned project). So: try the normal
  * path first, then fall back to any chromium under PLAYWRIGHT_BROWSERS_PATH,
- * and only then complain — with the command that fixes it.
+ * and only then complain — with the command that fixes it. Exported for the
+ * suites that need their own contexts (pwa.e2e.ts's phone emulation) and for
+ * scripts/icons.ts, which rasterises with the same browser.
  */
-async function launchBrowser(): Promise<Browser> {
+export async function launchBrowser(): Promise<Browser> {
   try {
     return await chromium.launch({ args: SOFTWARE_GL });
   } catch (firstError) {

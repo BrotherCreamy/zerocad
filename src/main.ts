@@ -37,6 +37,7 @@ import { hiddenInk, inSight, inkRuns, occlusion, type Occlusion } from "./occlus
 import { drawsFaces, isViewMode, opaque, recallViewMode, rememberViewMode, viewModeError, type ViewMode } from "./viewmode.ts";
 import { entityDrawn, glyphDrawn, quietEntities, revealed, solidEdges } from "./quiet.ts";
 import { frameBasis } from "./relations/refs.ts";
+import { lockPage } from "./pagelock.ts";
 import type { Entity } from "./model.ts";
 import "./tools/point.ts";
 import "./tools/line.ts";
@@ -1482,6 +1483,10 @@ async function main() {
   log("type help() for the command surface");
   cmdEl.focus();
 }
+
+// Before the kernel loads, so a pinch during the wait cannot zoom the page
+// either (pagelock.ts).
+lockPage(document);
 
 main().catch((e) => {
   statusEl.textContent = "ERROR — see log";

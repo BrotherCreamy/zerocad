@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- NeoCAD's mark, in the app's own inks: the panel ground, the drawing's
+       light grey for geometry, the amber of the hovered thing. A right
+       triangle with its incircle — three lines, one circle tangent to all of
+       them, a right angle held — is a small constrained sketch, which is what
+       the app is for. Full bleed and square: iOS and a maskable icon both cut
+       their own corners, so the art stays inside the maskable safe circle
+       (radius 0.4 of the side about the centre) and the ground runs to the
+       edge. scripts/icons.ts rounds the corners for the "any" icons. -->
+  <rect width="512" height="512" fill="#0e141b"/>
+  <!-- The incircle: legs of 248, so r = (248 + 248 - 248√2) / 2 ≈ 72.64,
+       centred that far in from the right angle. -->
+  <circle cx="266.36" cy="267.36" r="72.64" fill="none" stroke="#e8a33d" stroke-width="24"/>
+  <g stroke="#afc6d9" stroke-width="24" stroke-linecap="round" fill="none">
+    <path d="M91 340 L339 340 L339 92 Z" stroke-linejoin="round"/>
+  </g>
+  <g fill="#d5e1ec">
+    <rect x="74" y="323" width="34" height="34" rx="4"/>
+    <rect x="322" y="323" width="34" height="34" rx="4"/>
+    <rect x="322" y="75" width="34" height="34" rx="4"/>
+  </g>
+</svg>

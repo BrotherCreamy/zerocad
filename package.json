@@ -15,6 +15,8 @@
     "typecheck": "tsc --noEmit",
     "build:kernel:dev": "cd kernel-rs && wasm-pack build --dev --target web --out-dir ../src/kernel/wasm-gen",
     "build:single": "node scripts/singlefile.mjs",
+    "build:pwa": "node --experimental-strip-types scripts/pwa.ts",
+    "build:icons": "node --experimental-strip-types scripts/icons.ts",
     "measure:depth": "node --experimental-strip-types test/e2e/run.ts test/e2e/depth.measure.ts",
     "measure:hidden": "node --experimental-strip-types test/e2e/run.ts test/e2e/hidden.measure.ts"
   },
