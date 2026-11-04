@@ -2394,6 +2394,23 @@ replacing) the system Node other projects on this machine may depend on.
   becomes a hole by even-odd; a tie refuses; fillet's fill is unsaid; a hole's
   twin deleted still takes the record. *Spec:*
   [`docs/plans/explicit-regions.md`](docs/plans/explicit-regions.md).
+- **STEP export** (`src/solids.ts`, `src/step.ts`, both new;
+  docs/plans/step-export.md). `exportStep(name?, { curves? })` — the app
+  menu's *Export STEP…* — writes the shown solids as an AP214 Part 21 file,
+  `<name>.step`, `model/step`: the share sheet under a finger, a download
+  elsewhere (`Files.exportFile`, `exportRoute`). Exact B-rep: `solids.ts`
+  makes one body per feature (a second, `e1.2`, for an island in a hole) of
+  planes, cylinders, cones, spheres, tori and surfaces of revolution bounded
+  by lines and circles, every vertex and edge once and every edge in two
+  faces once each way, a whole circle as two halves and a full revolve as
+  two half turns, a hole turned whole as a void; and ZeroCAD's own volume
+  (Green, Pappus) and extent from the profile. Hidden features are left out
+  and named; construction never bounds a profile; `curves: true` adds the
+  loose sketch curves as a wireframe. Reads a curve only through
+  `curveplane.ts`/`arcgeom.ts` and a feature's plane through `featurePlane`.
+  Journals nothing. Validated: fourteen parts read back by OpenCascade 8.0.1
+  valid and closed, volumes and boxes matching, committed as fixtures with
+  `validated.json`.
 - **Files — open, save, share, drop, and an autosave** (`src/files.ts`,
   `src/filehost.ts` (both new); `replenv.ts`, `main.ts`, `pwa-shell.ts`).
   - **The document**: a name (*Untitled*, or the file's less

@@ -497,6 +497,30 @@ ZeroCAD appears in the desktop's *Open with* for `.json` files. In Firefox
 and Safari, open is the file picker and save a download; Safari's
 `shareFile()` is its share sheet. The autosave works everywhere.
 
+**STEP export, for every other CAD tool.** `exportStep()` — the app menu's
+*Export STEP…* — writes the shown solids as `<name>.step` (STEP AP214, in
+millimetres), which SolidWorks, Fusion, Onshape, FreeCAD, Inventor and CAM
+tools open. On an iPhone it opens the share sheet (Save to Files, AirDrop);
+on a desktop it downloads. `exportStep("bracket")` names the file, and
+`exportStep({ curves: true })` adds the sketch curves no solid is made of.
+What the receiving tool gets:
+
+- **One body per extrude or revolve**, named `e1`, `e2`, … — there are no
+  booleans in ZeroCAD yet, so two solids that overlap arrive as two bodies
+  that overlap; combine them there if you need one. (A profile with a solid
+  island inside a hole is two bodies, `e1` and `e1.2`.)
+- **Exact geometry, not a mesh**: planes, cylinders, cones, spheres, tori and
+  surfaces of revolution, bounded by lines and circles, so a hole is a
+  cylinder another tool can dimension and fillet. A full circle arrives as
+  two half circles, and a full revolve as two half turns.
+- **Hidden solids are left out** (the log names them), **construction
+  geometry is never exported**, and with no solid at all it says so and
+  writes nothing. The sketch, the dimensions and the relations do not travel
+  — STEP carries the shape, not how it was made.
+
+Every test part is read back by OpenCascade, valid and closed with its
+volume and extent matching ZeroCAD's (`test/fixtures/step/validated.json`).
+
 ## Building and running
 
 ```sh

@@ -106,6 +106,65 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### STEP export: a validator that could not fail, and what replaced it
+
+The owner asked for STEP export. The spec's hard line was that a file that
+"looks right" and fails to import is worse than none, so the acceptance test
+was a real kernel: OpenCascade, installed from PyPI (cadquery-ocp 8.0.1.1.0,
+OCCT 8.0.1) in the session's scratch directory, never a dependency.
+
+**The first validator passed everything, including what it should not
+have.** Reading each file the way an application does — `STEPControl_Reader`,
+transfer, `BRepCheck_Analyzer`, volume — every part came back valid, volume to
+1e-15. Before believing that, the validator was given files broken on
+purpose: one face's `same_sense` flipped, every face flipped (a solid inside
+out), one oriented edge reversed, a vertex moved 0.01 mm. All four came back
+valid with the right volume. OpenCascade's reader heals shapes after
+translating them (ShapeFix: face orientation, wire order, tolerances), which
+is right for an application and useless for a test of the file. So the
+validator that was going to be reported was one that could not fail on the
+errors most likely in a hand-written B-rep.
+
+**The strict read.** The fix was to translate each solid straight from its
+entities with `StepToTopoDS_Builder` and skip the healing. Then *every* curved
+part failed, which could have been the exporter, and was not: OpenCascade's
+own STEP output of a cylinder, torus and sphere passed the same read because
+it carries pcurves (each edge's 2D curve on each face), and ZeroCAD's does
+not. Without them the raw translator leaves curved faces with none; computing
+them is the part of healing every reader needs. So the strict read allows
+exactly that — compute the missing pcurves, shift them by whole periods, add
+the zero-length edge OpenCascade wants at a pole — and nothing that moves a
+vertex, reverses anything or reorders a loop. Re-run on the broken files it
+rejects all four (and an open shell); on the fixtures it accepts all of them.
+Both reads are recorded in `validated.json`.
+
+**Rejected: writing pcurves.** They would make the raw read pass without the
+allowed repairs, and some readers prefer them. But they are a second
+description of every edge, in another space, which a reader may trust over
+the 3D one; a wrong pcurve is worse than none, and every reader computes them.
+Left as a limitation, in TODO.md.
+
+**Rejected: AP242.** It carries the same solid entities. What it adds (PMI,
+tessellation, newer product data) ZeroCAD has none of, and what it costs is
+readers: every AP242 reader reads AP214, not the other way round.
+
+**Rejected: a circle as one closed edge.** Every major kernel reads a
+periodic face bounded by a seam edge it uses twice, but that is where readers
+are known to differ, and two half circles cost one vertex and one edge each.
+It also keeps "every edge in two faces, once each way" an exceptionless rule,
+which is what the in-repo test asserts. The full revolve followed: two half
+turns rather than one face round a seam.
+
+**Found on the way:** a full revolve of a profile with a hole is a solid with
+a *cavity*, which needs `BREP_WITH_VOIDS` — the spec did not mention it. Its
+orientation convention was settled by writing a box with a cavity out of
+OpenCascade and reading how it spells one (the cavity's shell facing out of
+it, flagged `.F.`), rather than from memory of Part 42; ZeroCAD's first
+spelling (facing in, `.T.`) means the same and OpenCascade read it the same,
+but the convention readers are tested against is the one their most common
+writer uses. And a mistyped Gauss–Legendre weight made every volume 2e-8 too
+large; the closed forms in the unit test caught it before any kernel did.
+
 ### Tooltips and RGB frames: what a hold means, and which red
 
 The owner asked for a tooltip on hover and for frames coloured like

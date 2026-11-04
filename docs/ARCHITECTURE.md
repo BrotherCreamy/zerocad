@@ -45,7 +45,16 @@ kind again: the document's name and dirty flag (a comparison against the
 snapshot at the last open or save), which way a save or share goes for what
 the platform offers, and the autosave, all over strings and injected stores.
 Its browser half, `filehost.ts`, is host-level — pickers, the share sheet,
-drops, IndexedDB — and only `main.ts` constructs it. `arcgeom.ts` is the same
+drops, IndexedDB — and only `main.ts` constructs it. `step.ts` is pure the
+same way, over a model: the Part 21 spelling of what `solids.ts` says each
+feature exactly is — a B-rep of planes, cylinders, cones, spheres, tori and
+surfaces of revolution with shared vertices and edges — beside `faces.ts`,
+which says the same solid for drawing, in flat pieces at the screen's
+resolution. The two never share a surface: a drawing is allowed to facet, an
+export is not. `solids.ts` reads a curve only through `curveplane.ts` and
+`arcgeom.ts` and a feature's plane through `featurePlane`, so where a curve
+keeps its orientation is those accessors' business, not the exporter's.
+`arcgeom.ts` is the same
 kind of file: which way round an arc goes about a given side, and a whole
 circle laid out in a given plane, over plain numbers. `curveplane.ts` is the
 one that asks the model *which* numbers — a circle's or arc's plane read off
