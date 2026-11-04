@@ -56,6 +56,20 @@ export interface View {
   up?: number[];
   /** The orbit pivot, in world coordinates. Absent means the world origin. */
   target?: number[];
+  /**
+   * The interface size (uiscale.ts) — not the camera's, the viewer's: how big
+   * everything drawn *for a person* is on screen, glyphs, labels, point dots,
+   * frame markers, the snap marker. Carried on the view because every one of
+   * them is drawn and hit-tested from (model, view) already; absent is 100 %.
+   * Nothing about where geometry is drawn reads it, and nothing about how far
+   * a finger reaches (picking.ts's `TOUCH_REACH`).
+   */
+  ui?: number;
+}
+
+/** The interface size a view is drawn at: `view.ui`, or 100 %. The one place it is read. */
+export function uiOf(view: View): number {
+  return view.ui ?? 1;
 }
 
 /**

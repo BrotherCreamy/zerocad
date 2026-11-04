@@ -41,11 +41,15 @@
 //     about as the drawing solves being the obvious one).
 
 import { parseAxisRef, referentOf, type Model, type RelationEntry } from "./model.ts";
-import { viewAxes, worldToScreen, type View } from "./view.ts";
+import { uiOf, viewAxes, worldToScreen, type View } from "./view.ts";
 import { dot3, lift3, sub3 } from "./vec3.ts";
 import { curvePlaneOf } from "./curveplane.ts";
 import { axisReader, turnPoint } from "./relations/revolution.ts";
 import { inSight, type Occlusion } from "./occlusion.ts";
+
+// Every size below is at 100 %; `placeGlyphs` multiplies each by the view's
+// interface size (view.ts's `uiOf`), so a glyph is drawn — and, its box being
+// its hit box, picked — at the size the viewer chose.
 
 /** How far a glyph sits from its anchor, in screen pixels. */
 export const GLYPH_OFFSET = 15;
@@ -569,6 +573,9 @@ export function constrainedBy(model: Model, relationName: string): string[] {
  */
 export function placeGlyphs(model: Model, view: View, occ: Occlusion | null = null): Glyph[] {
   const out: Glyph[] = [];
+  const k = uiOf(view);
+  const [OFFSET, STEP, HALF_W, HALF_H, CHAR_W, PAD, MARGIN] =
+    [GLYPH_OFFSET, GLYPH_STEP, GLYPH_HALF_W, GLYPH_HALF_H, GLYPH_CHAR_W, LABEL_PAD, LABEL_MARGIN].map((v) => v * k);
   /**
    * How far along each anchor's row is already spoken for — the right-hand edge
    * of the last box placed there, relative to the first box's centre.
@@ -594,8 +601,8 @@ export function placeGlyphs(model: Model, view: View, occ: Occlusion | null = nu
     // Sized to the text, so the box a label is picked by is the box it is drawn
     // in. A generic mark keeps the square it always had.
     const halfW = label
-      ? Math.max(GLYPH_HALF_W, ([...label].length * GLYPH_CHAR_W) / 2 + LABEL_PAD)
-      : GLYPH_HALF_W;
+      ? Math.max(HALF_W, ([...label].length * CHAR_W) / 2 + PAD)
+      : HALF_W;
     const highlights = constrainedBy(model, r.name);
     for (const a of anchors) {
       if (!inSight(occ, a.world)) continue;
@@ -609,14 +616,14 @@ export function placeGlyphs(model: Model, view: View, occ: Occlusion | null = nu
       // *overlap* they have always had (two of them land GLYPH_STEP apart,
       // narrower than their boxes); a label asks for daylight instead, since a
       // number touching a neighbouring mark reads as one longer number.
-      const margin = label ? LABEL_MARGIN : (GLYPH_STEP - GLYPH_HALF_W * 2) / 2;
+      const margin = label ? MARGIN : (STEP - HALF_W * 2) / 2;
       const edge = taken.get(key);
       const along = edge === undefined ? 0 : edge + margin + halfW;
       taken.set(key, along + halfW + margin);
       // A wide label nudged *sideways* has to travel the extra width it has
       // over a mark, or its near edge sits where a mark's centre would — on the
       // geometry. Nudged up or down it does not, because it is no taller.
-      const push = GLYPH_OFFSET + (halfW - GLYPH_HALF_W) * Math.abs(a.dir[0]);
+      const push = OFFSET + (halfW - HALF_W) * Math.abs(a.dir[0]);
       out.push({
         relation: r.name,
         op: r.op,
@@ -624,7 +631,7 @@ export function placeGlyphs(model: Model, view: View, occ: Occlusion | null = nu
         highlights,
         anchor,
         halfW,
-        halfH: GLYPH_HALF_H,
+        halfH: HALF_H,
         isLabel: label !== null,
         about: a.about,
         ...(label !== null && a.ends

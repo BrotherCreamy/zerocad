@@ -5,15 +5,21 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  ACTIONS, COARSE, FINE, actionCommand, arranged, defaultLayout, inCorner, optionsSize, overlapping, traySize,
-  type Layout, type Size,
+  ACTIONS, COARSE, FINE, actionCommand, arranged, defaultLayout, inCorner, logoBox, optionsSize, overlapping, scaledMetrics,
+  traySize, type Layout, type Size,
 } from "../src/panels.ts";
 
 /** Eleven built-in tools, as the app registers them. */
 const TOOLS = 11;
-/** The area the panels get on an iPhone 13 in Safari: the viewport less the header. */
-const PORTRAIT: Size = { w: 390, h: 621 };
-const LANDSCAPE: Size = { w: 750, h: 312 };
+/**
+ * The area the panels get on an iPhone 13 at home-screen size: the screen less
+ * the safe-area insets (portrait 47 top, 34 bottom; landscape 47 each side,
+ * 21 bottom) — there is no header any more.
+ */
+const PORTRAIT: Size = { w: 390, h: 844 - 47 - 34 };
+const LANDSCAPE: Size = { w: 844 - 2 * 47, h: 390 - 21 };
+/** A phone's chrome at its default 70 %. */
+const PHONE = scaledMetrics(COARSE, 0.7);
 
 function inside(layout: Layout, area: Size): string[] {
   return Object.entries(layout).filter(([, r]) => r.x < 0 || r.y < 0 || r.x + r.w > area.w || r.y + r.h > area.h)
@@ -33,37 +39,45 @@ test("a finger's tray: 44 px buttons and a 44 px strip, one line, either way", (
   assert.equal(optionsSize(2, COARSE).h, 44 + 8 + 2 * 44, "an option's row is a target tall");
 });
 
-test("portrait: the command line on top, the tray a column down the left, a one-line log, the strip bottom-right", () => {
-  const d = defaultLayout(PORTRAIT, TOOLS, COARSE);
-  assert.deepEqual(Object.keys(d).sort(), ["actions", "cmd", "log", "options", "toolbar"]);
-  const { options, ...panels } = d;
-  assert.deepEqual(inside(panels, PORTRAIT), []);
-  assert.deepEqual(overlapping(panels), []);
-  assert.equal(d.toolbar.orient, "column");
-  assert.ok(d.cmd.y === 8 && d.cmd.x > d.toolbar.x + d.toolbar.w);
-  assert.equal(d.log.h, COARSE.title + COARSE.logLine);
-  assert.equal(d.actions.orient, "row");
-  assert.equal(d.actions.x + d.actions.w, PORTRAIT.w - 8);
-  assert.equal(d.actions.y + d.actions.h, PORTRAIT.h - 8);
-  // The options panel's box: right of the tray, between the log and the strip.
-  assert.ok(options.y >= d.log.y + d.log.h && options.y + options.h <= d.actions.y && options.x >= d.cmd.x);
-});
+for (const m of [COARSE, PHONE]) {
+  const at = `${Math.round(m.scale * 100)} %`;
+  const logo = { logo: { x: 0, y: 0, ...logoBox(m), fixed: true } };
 
-test("landscape: the tray a row along the bottom, the command line top-left, the strip and the log top-right", () => {
-  const d = defaultLayout(LANDSCAPE, TOOLS, COARSE);
-  assert.deepEqual(Object.keys(d).sort(), ["actions", "cmd", "log", "toolbar"]);
-  assert.deepEqual(inside(d, LANDSCAPE), []);
-  assert.deepEqual(overlapping(d), []);
-  assert.equal(d.toolbar.orient, "row");
-  assert.equal(d.toolbar.y + d.toolbar.h, LANDSCAPE.h - 8);
-  assert.ok(d.cmd.y === 8 && d.actions.y === 8 && d.actions.x > d.cmd.x + d.cmd.w);
-  assert.ok(d.log.x === d.actions.x && d.log.y > d.actions.y + d.actions.h);
-});
+  test(`portrait at ${at}: the command line docked to the bottom, the tray a column under the logo, the strip top-right, a one-line log`, () => {
+    const d = defaultLayout(PORTRAIT, TOOLS, m);
+    assert.deepEqual(Object.keys(d).sort(), ["actions", "cmd", "log", "options", "toolbar"]);
+    const { options, ...panels } = d;
+    assert.deepEqual(inside(panels, PORTRAIT), []);
+    assert.deepEqual(overlapping({ ...panels, ...logo }), [], "clear of one another and of the logo");
+    assert.equal(d.toolbar.orient, "column");
+    assert.ok(d.toolbar.y >= logoBox(m).h + 8, "the tray under the logo, a margin off it");
+    assert.deepEqual(d.cmd, { x: 0, y: PORTRAIT.h - (m.title + m.line), w: PORTRAIT.w, h: m.title + m.line }, "edge to edge, on the bottom");
+    assert.equal(d.log.h, m.title + m.logLine);
+    assert.equal(d.actions.orient, "row");
+    assert.equal(d.actions.x + d.actions.w, PORTRAIT.w - 8);
+    assert.equal(d.actions.y, 8, "the strip at the top right");
+    assert.ok(d.log.y > d.actions.y + d.actions.h && d.log.x > d.toolbar.x + d.toolbar.w, "the log under it, right of the tray");
+    // The options panel's box: right of the tray, between the log and the command line.
+    assert.ok(options.y >= d.log.y + d.log.h && options.y + options.h <= d.cmd.y && options.x >= d.log.x);
+  });
+
+  test(`landscape at ${at}: the tray a row docked to the bottom, the command line top, right of the logo, the strip and the log top-right`, () => {
+    const d = defaultLayout(LANDSCAPE, TOOLS, m);
+    assert.deepEqual(Object.keys(d).sort(), ["actions", "cmd", "log", "toolbar"]);
+    assert.deepEqual(inside(d, LANDSCAPE), []);
+    assert.deepEqual(overlapping({ ...d, ...logo }), []);
+    assert.equal(d.toolbar.orient, "row");
+    assert.equal(d.toolbar.y + d.toolbar.h, LANDSCAPE.h, "on the bottom edge");
+    assert.ok(d.cmd.y === 8 && d.cmd.x >= logoBox(m).w && d.actions.y === 8 && d.actions.x > d.cmd.x + d.cmd.w);
+    assert.ok(d.log.x === d.actions.x && d.log.y > d.actions.y + d.actions.h);
+  });
+}
 
 test("arranged at a finger's sizes keeps the phone's defaults clear of one another, the strip a tray", () => {
-  for (const area of [PORTRAIT, LANDSCAPE]) {
-    const d = defaultLayout(area, TOOLS, COARSE);
-    const r = arranged(["toolbar", "log", "actions", "cmd"], {}, d, { toolbar: TOOLS, actions: ACTIONS.length }, area, {}, COARSE);
+  for (const [area, m] of [[PORTRAIT, COARSE], [LANDSCAPE, COARSE], [PORTRAIT, PHONE], [LANDSCAPE, PHONE]] as const) {
+    const d = defaultLayout(area, TOOLS, m);
+    const r = arranged(["toolbar", "log", "actions", "cmd"], {}, d, { toolbar: TOOLS, actions: ACTIONS.length }, area, {}, m,
+      { logo: { x: 0, y: 0, ...logoBox(m), fixed: true } });
     assert.ok(r.ok);
     assert.deepEqual(overlapping(r.layout), []);
     assert.deepEqual(r.layout.actions, d.actions, "the defaults already fit: nothing was pushed");

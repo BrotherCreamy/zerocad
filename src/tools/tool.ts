@@ -53,6 +53,8 @@ export interface RenderContext {
    * preview cannot promise a different shape from what the click will build.
    */
   scale: number;
+  /** The interface size (view.ts's `uiOf`): what a mark drawn for a person — not geometry — is multiplied by. */
+  ui?: number;
 }
 
 /**

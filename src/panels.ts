@@ -5,11 +5,18 @@
 // its content's: a tray, always one line of its buttons, or the options panel,
 // one row per option — a grip on each of its four corners to resize by. Every
 // piece of chrome — the toolbar, the log, the command line, the armed tool's
-// options — is one, and the canvas underneath is the whole of the area
-// below the header, which nothing reflows any more. The header is the one fixed
-// thing: it is the app's title bar, carrying the solve status (and, in the
-// single-file build, the buildstamp), and a title bar that could be dragged
-// away would leave nowhere to read either.
+// options — is one, and the canvas underneath is the whole window, which
+// nothing reflows. There is no title bar (docs/plans/chrome-logo-scale.md): the
+// one fixed thing is the logo in the top-left corner, which opens the app
+// menu, and which is in the layout as a panel nothing can move — so a panel
+// pushed into the corner stops against it, and the way into the menu is never
+// under anything.
+//
+// The layout's area is the **safe area** — inside a phone's notch, status bar
+// and home indicator — and a panel touching an edge that has an inset reaches
+// under it, its content kept clear (`bleed`). A panel the viewer has moved is
+// stored as **what it rests against** (`Docking`), not only where it is, so a
+// rotation puts a panel docked to the right edge on the right edge again.
 //
 // **Layout is per-viewer state, not model state.** Where a viewer has put their
 // log is a fact about their screen, not about the drawing: it is not journalled,
@@ -31,6 +38,8 @@
 // command string, so neither can reach the model any more than the context
 // menu can, nor do anything a typed line could not.
 
+import { clampScale } from "./uiscale.ts";
+
 export interface Rect { x: number; y: number; w: number; h: number }
 export interface Size { w: number; h: number }
 export interface Point { x: number; y: number }
@@ -49,8 +58,12 @@ const EPS = 1e-6;
  */
 export type Orientation = "column" | "row";
 
-/** A panel's rectangle, and for a tray the way it runs. */
-export interface Placed extends Rect { orient?: Orientation }
+/**
+ * A panel's rectangle, and for a tray the way it runs. `fixed` marks the one
+ * thing in a layout that nothing moves — the logo: a push that reaches it
+ * stops flush against it, exactly as a push that reaches the area's edge does.
+ */
+export interface Placed extends Rect { orient?: Orientation; fixed?: boolean }
 
 /** Placements by panel id. A panel absent from it is where the defaults put it. */
 export type Layout = Record<string, Placed>;
@@ -80,6 +93,12 @@ export interface Metrics {
   title: number;
   /** A tray button's side. */
   button: number;
+  /** The glyph inside a tray button. */
+  icon: number;
+  /** A corner grip's side. */
+  grip: number;
+  /** The logo's mark, square. */
+  logo: number;
   /** One option's row in the options panel. */
   optionRow: number;
   /** The options panel's width. */
@@ -90,10 +109,53 @@ export interface Metrics {
   logLine: number;
   /** Whether this is a finger's chrome — which also lays out a phone's defaults (`defaultLayout`). */
   coarse: boolean;
+  /**
+   * The interface size these were scaled by (uiscale.ts): 1 for `FINE` and
+   * `COARSE` themselves. Carried so a size the viewer set — a command line
+   * made taller — can be scaled with the rest (`relaid`).
+   */
+  scale: number;
 }
 
-export const FINE: Metrics = { title: 16, button: 20, optionRow: 22, optionsW: 168, line: 28, logLine: 30, coarse: false };
-export const COARSE: Metrics = { title: 44, button: 44, optionRow: 44, optionsW: 230, line: 44, logLine: 28, coarse: true };
+export const FINE: Metrics = {
+  title: 16, button: 20, icon: 16, grip: 12, logo: 24, optionRow: 22, optionsW: 168, line: 28, logLine: 30, coarse: false, scale: 1,
+};
+/**
+ * A finger's, at 100 %. The logo's mark is 34 here so that at a phone's
+ * default 70 % (uiscale.ts) it is 24 px, the spec's "about 22–28".
+ */
+export const COARSE: Metrics = {
+  title: 44, button: 44, icon: 24, grip: 44, logo: 34, optionRow: 44, optionsW: 230, line: 44, logLine: 28, coarse: true, scale: 1,
+};
+
+/**
+ * `base` at interface size `s` (the owner: *"the interface elements are huge
+ * on my screen"*): every size multiplied and rounded to the pixel, so a strip
+ * and the row it is drawn in agree to the pixel; the factor held to
+ * [UI_MIN, UI_MAX], and anything that is not a number taken as 100 %. The one
+ * place a panel's arithmetic learns the size — the stylesheet takes the same
+ * numbers from the host, as custom properties.
+ */
+export function scaledMetrics(base: Metrics, s: number): Metrics {
+  const k = clampScale(s) ?? 1;
+  const r = (v: number) => Math.round(v * k);
+  return {
+    title: r(base.title), button: r(base.button), icon: r(base.icon), grip: r(base.grip), logo: r(base.logo),
+    optionRow: r(base.optionRow), optionsW: r(base.optionsW), line: r(base.line), logLine: r(base.logLine),
+    coarse: base.coarse, scale: k,
+  };
+}
+
+/**
+ * The logo's box in the top-left corner of the area: the mark and a margin
+ * round it — and under a finger never less than 44 px, Apple's target, which
+ * is the one size here the interface does not shrink below: the logo is the
+ * way into the menu that changes the size, and it must stay easy to hit.
+ */
+export function logoBox(m: Metrics): Size {
+  const side = Math.max(m.coarse ? 44 : 0, m.logo + 2 * Math.round(6 * m.scale));
+  return { w: side, h: side };
+}
 
 function clamp(v: number, lo: number, hi: number): number {
   return Math.min(Math.max(v, lo), Math.max(lo, hi));
@@ -355,13 +417,20 @@ function shove(layout: Layout, mover: string, axis: Axis, dir: 1 | -1): Layout {
   return out;
 }
 
-/** How far past the area's edge in `dir` the furthest panel that `after` moved (and `before` had elsewhere) has gone. */
+/**
+ * How far past the area's edge in `dir` the furthest panel that `after` moved
+ * (and `before` had elsewhere) has gone — or a fixed panel has moved at all,
+ * which is the same thing: it is an edge that happens to stand inside the
+ * area. Every panel the chain moves moves one for one with the mover's
+ * leading edge, so pulling back by this is flush against the fixed one too.
+ */
 function excess(before: Layout, after: Layout, mover: string, axis: Axis, dir: 1 | -1, area: Size): number {
   let e = 0;
   for (const id of Object.keys(after)) {
     if (id === mover || after[id] === before[id]) continue;
     const r = after[id];
-    e = Math.max(e, dir > 0 ? start(r, axis) + span(r, axis) - room(area, axis) : -start(r, axis));
+    if (r.fixed) e = Math.max(e, Math.abs(start(r, axis) - start(before[id], axis)));
+    else e = Math.max(e, dir > 0 ? start(r, axis) + span(r, axis) - room(area, axis) : -start(r, axis));
   }
   return e;
 }
@@ -461,7 +530,9 @@ export function pushed(
 ): Pushed {
   const from = layout[id];
   const orient = want.orient ?? from.orient;
-  const to = placed(constrain(want, area, minSizes[id] ?? { w: 0, h: 0 }), orient);
+  // A fixed panel pushing what was put down on it (`settled`) stays fixed.
+  const keep = (r: Placed): Placed => (from.fixed ? { ...r, fixed: true } : r);
+  const to = keep(placed(constrain(want, area, minSizes[id] ?? { w: 0, h: 0 }), orient));
   if (motion.x === 0 && motion.y === 0) return settle(id, to, layout, area);
   let out = layout;
   const axes: Axis[] = Math.abs(motion.x) >= Math.abs(motion.y) ? ["x", "y"] : ["y", "x"];
@@ -479,7 +550,7 @@ export function pushed(
     const dir = (far > EPS ? 1 : near < -EPS ? -1 : Math.sign(m) || 1) as 1 | -1;
     out = pass(out, id, along(cur, axis, start(to, axis), span(to, axis)), axis, dir, area);
   }
-  const rect = placed(out[id], orient);
+  const rect = keep(placed(out[id], orient));
   const ok = Math.abs(rect.x - to.x) <= EPS && Math.abs(rect.y - to.y) <= EPS &&
     Math.abs(rect.w - to.w) <= EPS && Math.abs(rect.h - to.h) <= EPS;
   return { layout: { ...out, [id]: rect }, rect, ok };
@@ -666,8 +737,6 @@ export function dragStep(
 
 /** Margin between a default panel and the area's edge, and between panels. */
 const GAP = 8;
-/** The command-line panel's default height: its strip and one row of input. */
-const CMD_H = TITLE_H + 28;
 const LOG_H = 150;
 const BOTTOM_W = 560;
 
@@ -684,66 +753,77 @@ const BOTTOM_W = 560;
  */
 export function defaultLayout(area: Size, tools: number, m: Metrics = FINE): Layout {
   if (m.coarse) return touchLayout(area, tools, m);
-  const w = Math.min(BOTTOM_W, area.w - 2 * GAP);
-  const cmdY = area.h - GAP - CMD_H;
+  // Under the logo, a margin clear of it: touching it, the tray would be
+  // against it, and the first sideways drag would turn it into a row.
+  const top = logoBox(m).h + GAP;
+  const w = Math.min(Math.round(BOTTOM_W * m.scale), area.w - 2 * GAP);
+  const cmdH = m.title + m.line;
+  const logH = Math.round(LOG_H * m.scale);
+  const cmdY = area.h - GAP - cmdH;
   return {
-    toolbar: { x: GAP, y: GAP, ...traySize(tools, "column"), orient: "column" },
-    log: { x: GAP, y: cmdY - GAP / 2 - LOG_H, w, h: LOG_H },
-    cmd: { x: GAP, y: cmdY, w, h: CMD_H },
+    toolbar: { x: GAP, y: top, ...traySize(tools, "column", m), orient: "column" },
+    log: { x: GAP, y: cmdY - GAP / 2 - logH, w, h: logH },
+    cmd: { x: GAP, y: cmdY, w, h: cmdH },
   };
 }
 
 /**
  * Where each panel goes on a fresh screen under a finger (docs/plans/touch.md)
- * — a phone's, in either orientation, at 44 px targets. The command line is at
- * the top in both: it is where iOS puts the keyboard's field, and a line typed
- * at the bottom would sit under the keyboard it raised. The log is **one line**
- * beside it, enlarged by its grips. The action strip (Undo, Redo, Delete,
- * Cancel) is a row of its own.
+ * — a phone's, in either orientation, at the interface size `m` carries. The
+ * logo has the top-left corner in both; nothing default touches it.
  *
- * **Landscape** (wider than tall): the tray is a row along the bottom, the
- * action strip at the top right with the one-line log under it.
+ * **Portrait**: the command line **docked to the bottom**, edge to edge — the
+ * owner: *"Please allow it to be dragged right to the bottom"*; touching the
+ * bottom, it reaches under the home indicator with its line above it (`bleed`),
+ * iOS's own toolbar. (It was at the top, on the theory that a line typed at
+ * the bottom sits under the keyboard it raises; iOS scrolls a focused field
+ * into view, and the owner had dragged it to the bottom himself — see the
+ * spec's limitations.) The tray a **column down the left**, under the logo —
+ * eleven buttons are too long a row for a phone's width. The action strip at
+ * the top right, where the owner put it in his own screenshot, and the
+ * one-line log under it, right of the tray.
  *
- * **Portrait**: the tray is a **column down the left**, not the spec's row
- * along the bottom — eleven buttons at 44 px are 556 px of row, and a phone is
- * 390 wide; one line of them fits only the tall way. The command line and the
- * log go right of it, the action strip along the bottom at the right, where a
- * thumb is.
+ * **Landscape** (wider than tall): the tray a row docked to the bottom, the
+ * command line along the top right of the logo, the action strip at the top
+ * right with the one-line log under it.
  *
  * Positions only, like every default: the viewer moves anything, and what they
  * move is theirs. Safe areas are the area's business — `area` is the space
- * the page leaves the panels.
+ * inside them.
  */
 function touchLayout(area: Size, tools: number, m: Metrics): Layout {
   const cmdH = m.title + m.line;
   const logH = m.title + m.logLine;
   const act = traySize(ACTIONS.length, "row", m);
+  const logo = logoBox(m);
   if (area.w >= area.h) {
     const bar = traySize(tools, "row", m);
     const right = area.w - GAP - act.w;
+    const left = logo.w + GAP;
     return {
-      cmd: { x: GAP, y: GAP, w: right - 2 * GAP, h: cmdH },
+      cmd: { x: left, y: GAP, w: right - GAP - left, h: cmdH },
       actions: { x: right, y: GAP, ...act, orient: "row" },
       log: { x: right, y: GAP + act.h + GAP, w: act.w, h: logH },
-      toolbar: { x: GAP, y: area.h - GAP - bar.h, ...bar, orient: "row" },
+      toolbar: { x: GAP, y: area.h - bar.h, ...bar, orient: "row" },
     };
   }
   const bar = traySize(tools, "column", m);
   const left = GAP + bar.w + GAP;
   const w = area.w - left - GAP;
-  const below = GAP + cmdH + GAP + logH + GAP;
-  const actY = area.h - GAP - act.h;
+  const logY = GAP + act.h + GAP;
+  const cmdY = area.h - cmdH;
+  const below = logY + logH + GAP;
   return {
-    toolbar: { x: GAP, y: GAP, ...bar, orient: "column" },
-    cmd: { x: left, y: GAP, w, h: cmdH },
-    log: { x: left, y: GAP + cmdH + GAP, w, h: logH },
-    actions: { x: area.w - GAP - act.w, y: actY, ...act, orient: "row" },
+    toolbar: { x: GAP, y: logo.h + GAP, ...bar, orient: "column" },
+    actions: { x: area.w - GAP - act.w, y: GAP, ...act, orient: "row" },
+    log: { x: left, y: logY, w, h: logH },
+    cmd: { x: 0, y: cmdY, w: area.w, h: cmdH },
     // Beside a column on the left the options panel would hang in the middle
     // of a phone's drawing (measured: it covered the rectangle the extrude was
-    // aimed at). So it gets the space right of the tray and between the log
-    // and the strip, and sits in that box's bottom-right corner — just above
-    // the strip, its ✓ under the same thumb (`inCorner`).
-    options: { x: left, y: below, w, h: actY - GAP - below },
+    // aimed at). So it gets the space right of the tray, between the log and
+    // the command line, and sits in that box's bottom-right corner — just
+    // above the line, its ✓ under the same thumb (`inCorner`).
+    options: { x: left, y: below, w, h: cmdY - GAP - below },
   };
 }
 
@@ -789,10 +869,15 @@ export function arranged(
   order: readonly string[], stored: Layout, defaults: Layout,
   trays: Readonly<Record<string, number>>, area: Size,
   fitted: Readonly<Record<string, Size>> = {}, m: Metrics = FINE,
+  fixed: Layout = {},
 ): { layout: Layout; ok: boolean } {
+  // The fixed panels — the logo — first, exactly where they are: put down
+  // before every other, they are what the rest is pushed out of the way of.
   const wanted: Layout = {};
+  for (const [id, r] of Object.entries(fixed)) wanted[id] = { ...r, fixed: true };
   const minOf = (id: string, orient: Orientation | undefined) => minSizeOf(id, orient, id in trays, fitted[id], m);
   for (const id of order) {
+    if (id in fixed) continue;
     const want = stored[id] ?? defaults[id] ?? { x: GAP, y: GAP, w: 200, h: 120 };
     const tray = id in trays;
     // A tray always runs some way; one with nothing stored or defaulted runs
@@ -801,9 +886,374 @@ export function arranged(
     const size = tray ? traySize(trays[id], orient!, m) : fitted[id] ?? { w: want.w, h: want.h };
     wanted[id] = placed(constrain({ x: want.x, y: want.y, ...size }, area, minOf(id, orient)), orient);
   }
-  const mins = Object.fromEntries(order.map((id) => [id, minOf(id, wanted[id].orient)]));
-  return settled(wanted, order, area, mins);
+  const all = [...Object.keys(fixed), ...order.filter((id) => !(id in fixed))];
+  const mins = Object.fromEntries(all.map((id) => [id, id in fixed ? { w: fixed[id].w, h: fixed[id].h } : minOf(id, wanted[id].orient)]));
+  return settled(wanted, all, area, mins);
 }
+// ---- insets: a panel to the very edge ---------------------------------------
+//
+// The owner, of his portrait screenshot: *"the command bar is not at the
+// bottom. That is as far as I can drag it down. Please allow it to be dragged
+// right to the bottom."* The layout's area is the safe area — inside the notch,
+// the status bar, the rounded corners and the home indicator — so a panel's
+// content is never under any of them. But **a panel touching an edge that has
+// an inset extends its ground under the inset and keeps its content clear of
+// it**: iOS's own toolbar, which runs to the bottom of the glass with its
+// buttons above the home indicator. That is `bleed`, and it is drawing only:
+// every rule above — push, turn, the clamp — is about the rectangle inside the
+// safe area, and none of it knows the inset exists.
+
+/** The safe area's insets from the window's edges, in CSS pixels (`env(safe-area-inset-*)`). */
+export interface Insets { top: number; right: number; bottom: number; left: number }
+export const NO_INSETS: Insets = { top: 0, right: 0, bottom: 0, left: 0 };
+
+/**
+ * Where a panel at `r` — in the area's coordinates, the safe area's — is drawn
+ * in the window's, and how much of it is padding: for each edge of the area it
+ * touches that has an inset, it reaches out by the inset, which it pads. An
+ * edge it does not touch, or one with no inset, it neither reaches nor pads:
+ * a floating panel is drawn exactly where it is.
+ */
+export function bleed(r: Rect, area: Size, insets: Insets): { rect: Rect; pad: Insets } {
+  const touches = {
+    left: r.x <= EPS, top: r.y <= EPS,
+    right: r.x + r.w >= area.w - EPS, bottom: r.y + r.h >= area.h - EPS,
+  };
+  const pad: Insets = {
+    top: touches.top ? insets.top : 0, right: touches.right ? insets.right : 0,
+    bottom: touches.bottom ? insets.bottom : 0, left: touches.left ? insets.left : 0,
+  };
+  return {
+    rect: { x: insets.left + r.x - pad.left, y: insets.top + r.y - pad.top, w: r.w + pad.left + pad.right, h: r.h + pad.top + pad.bottom },
+    pad,
+  };
+}
+
+// ---- docking: what a panel rests against, kept through a rotation ----------
+//
+// The owner: *"if I push a toolbar right to one side, or up against another
+// toolbar, that setting should persist if I change from landscape to portrait
+// or vice versa."* A pixel position cannot do that — the right edge of a
+// portrait phone is 390 px from its left, of a landscape one 844 — so what is
+// stored for a panel the viewer has put somewhere is **what it rests
+// against**: for each of its four sides, the area's edge, another panel by
+// name, or nothing. Re-laid in a new area (`relaid`), a panel against the
+// right edge is against the right edge, one against the toolbar's right is
+// against the toolbar's right wherever the toolbar went, and one against
+// nothing keeps its place in proportion to the room there is.
+
+/** What one side of a panel rests against: the area's edge, or a panel by its id. */
+export type Against = "edge" | string;
+/** A panel's four sides, each against something or nothing. */
+export interface Docking { left?: Against; right?: Against; top?: Against; bottom?: Against }
+
+/** Two edges this close are touching: a push leaves them flush, so this is noise, not a snap. */
+const TOUCH = 0.5;
+
+/**
+ * What each side of panel `id` rests against in `layout`, in `area`: the area's
+ * edge before any panel; otherwise the panel whose facing edge it is flush
+ * with and which it overlaps along that edge — the rule `contacts` uses for a
+ * tray's turn, at a touch's distance rather than a snap's.
+ */
+export function dockingOf(id: string, layout: Layout, area: Size): Docking {
+  const r = layout[id];
+  const near = (a: number, b: number) => Math.abs(a - b) <= TOUCH;
+  const d: Docking = {};
+  if (near(r.x, 0)) d.left = "edge";
+  if (near(r.x + r.w, area.w)) d.right = "edge";
+  if (near(r.y, 0)) d.top = "edge";
+  if (near(r.y + r.h, area.h)) d.bottom = "edge";
+  for (const [o, q] of Object.entries(layout)) {
+    if (o === id) continue;
+    const alongX = overlap(r.x, r.x + r.w, q.x, q.x + q.w) > EPS;
+    const alongY = overlap(r.y, r.y + r.h, q.y, q.y + q.h) > EPS;
+    if (!d.left && alongY && near(r.x, q.x + q.w)) d.left = o;
+    if (!d.right && alongY && near(r.x + r.w, q.x)) d.right = o;
+    if (!d.top && alongX && near(r.y, q.y + q.h)) d.top = o;
+    if (!d.bottom && alongX && near(r.y + r.h, q.y)) d.bottom = o;
+  }
+  return d;
+}
+/**
+ * A panel the viewer has put somewhere, as it is stored: the rectangle it was
+ * left at, the area and the interface size it was left in, what each of its
+ * sides rested against (`dockingOf`) — and, along an axis on which neither
+ * side rests on anything but the panel lies against another across that axis
+ * (a log resting on the toolbar's top, its left free), how far along that
+ * panel it was, so it stays on the same stretch of it.
+ */
+export interface Recorded extends Placed {
+  area: Size;
+  scale: number;
+  dock: Docking;
+  /** Its left less the left of the panel its top or bottom rests on, when neither its left nor its right rests on anything. */
+  ox?: number;
+  /** Likewise its top less the top of the panel its left or right rests on. */
+  oy?: number;
+}
+
+/** What `id` is in `layout`, as it would be stored now. */
+export function recorded(id: string, layout: Layout, area: Size, scale: number): Recorded {
+  const r = layout[id];
+  const dock = dockingOf(id, layout, area);
+  const rec: Recorded = { ...placed(r, r.orient), area: { w: area.w, h: area.h }, scale, dock };
+  const panelOf = (...v: (Against | undefined)[]) => v.find((a) => a !== undefined && a !== "edge" && layout[a]);
+  if (!dock.left && !dock.right) {
+    const n = panelOf(dock.top, dock.bottom);
+    if (n) rec.ox = r.x - layout[n].x;
+  }
+  if (!dock.top && !dock.bottom) {
+    const n = panelOf(dock.left, dock.right);
+    if (n) rec.oy = r.y - layout[n].y;
+  }
+  return rec;
+}
+
+/**
+ * Where each panel of `recs` goes in `area` at interface size `scale`: what
+ * every side of it rested against, it rests against again.
+ *
+ * `base` is every other panel, already placed — the fixed ones and those at
+ * their defaults — which a recorded panel may rest against. `sizeOf` answers a
+ * panel's size when its content fixes it (a tray's line, which way it runs)
+ * and null for one the viewer sizes, whose recorded size is scaled with the
+ * interface: a command line made 60 px tall at 100 % is 42 at 70 %.
+ *
+ * Axis by axis, the same rule each way:
+ *
+ * - **Against something on one side**: flush with it — the edge, or the
+ *   panel's facing edge wherever that panel has gone.
+ * - **Against something on both**: a panel the viewer sizes is stretched
+ *   between them — the command line docked to both sides of a portrait phone
+ *   spans a landscape one too; a tray, whose length is its buttons', keeps the
+ *   near side.
+ * - **Against nothing on this axis, but resting on a panel across it**: the
+ *   same distance along that panel as before (`ox`/`oy`), held so the two
+ *   still overlap — a log on the toolbar's top stays on the toolbar.
+ * - **Against nothing at all**: the same share of the free room as before —
+ *   halfway across a portrait phone is halfway across a landscape one.
+ *
+ * A panel waits for the panels it rests against to be placed first. Two that
+ * rest on each other (a log against the toolbar's right is the toolbar against
+ * the log's left) are a ring: the one with more sides against the area's edges
+ * goes first, by those, and the other follows it. A side against a panel that
+ * is gone — hidden, or never there — counts as against nothing.
+ *
+ * A tray whose line no longer fits along its run — a row along the bottom of a
+ * landscape phone, stood up — turns, keeping its edges: it is a column against
+ * the same bottom edge. Nothing here holds a panel inside the area or keeps
+ * panels apart; that is `arranged`'s, which this feeds.
+ */
+export function relaid(
+  recs: Readonly<Record<string, Recorded>>, base: Layout, area: Size, scale: number,
+  sizeOf: (id: string, orient: Orientation | undefined) => Size | null,
+  minOf: (id: string, orient: Orientation | undefined) => Size,
+): Layout {
+  const ids = Object.keys(recs);
+  const sizes: Record<string, Size> = {};
+  const orients: Record<string, Orientation | undefined> = {};
+  const stretchy = new Set<string>();
+  for (const id of ids) {
+    const rec = recs[id];
+    let orient = rec.orient;
+    let s = sizeOf(id, orient);
+    if (s && orient) {
+      const long = orient === "row" ? s.w > area.w : s.h > area.h;
+      const other: Orientation = orient === "row" ? "column" : "row";
+      const t = sizeOf(id, other);
+      if (long && t && (other === "row" ? t.w <= area.w : t.h <= area.h)) [orient, s] = [other, t];
+    }
+    if (!s) {
+      stretchy.add(id);
+      const k = scale / (rec.scale > 0 ? rec.scale : 1);
+      s = { w: rec.w * k, h: rec.h * k };
+    }
+    orients[id] = orient;
+    sizes[id] = s;
+  }
+  const known = new Set([...Object.keys(base), ...ids]);
+  const solve = (axis: Axis): Map<string, [number, number]> => {
+    const [lo, hi] = axis === "x" ? ["left", "right"] as const : ["top", "bottom"] as const;
+    const across = axis === "x" ? ["top", "bottom"] as const : ["left", "right"] as const;
+    const roomNow = room(area, axis);
+    const done = new Map<string, [number, number]>();
+    for (const [id, r] of Object.entries(base)) done.set(id, [start(r, axis), span(r, axis)]);
+    // A side against a panel that is not here is against nothing.
+    const ref = (v: Against | undefined) => (v === "edge" || (v !== undefined && known.has(v)) ? v : undefined);
+    const panelAcross = (id: string) => {
+      const d = recs[id].dock;
+      return across.map((s) => ref(d[s])).find((v) => v !== undefined && v !== "edge");
+    };
+    const offset = (id: string) => (axis === "x" ? recs[id].ox : recs[id].oy);
+    const deps = (id: string): string[] => {
+      const d = recs[id].dock;
+      const sides = [ref(d[lo]), ref(d[hi])].filter((v) => v !== undefined);
+      if (sides.length) return sides.filter((v): v is string => v !== "edge");
+      const n = panelAcross(id);
+      return n !== undefined && offset(id) !== undefined ? [n] : [];
+    };
+    const place = (id: string): [number, number] => {
+      const rec = recs[id];
+      const d = rec.dock;
+      const len = axis === "x" ? sizes[id].w : sizes[id].h;
+      const l = ref(d[lo]);
+      const h = ref(d[hi]);
+      const a = l === "edge" ? 0 : l !== undefined && done.has(l) ? done.get(l)![0] + done.get(l)![1] : null;
+      const b = h === "edge" ? roomNow : h !== undefined && done.has(h) ? done.get(h)![0] : null;
+      if (a !== null && b !== null) {
+        const least = axis === "x" ? minOf(id, orients[id]).w : minOf(id, orients[id]).h;
+        return stretchy.has(id) ? [a, Math.max(least, b - a)] : [a, len];
+      }
+      if (a !== null) return [a, len];
+      if (b !== null) return [b - len, len];
+      const n = panelAcross(id);
+      const off = offset(id);
+      if (n !== undefined && off !== undefined && done.has(n)) {
+        const [np, nl] = done.get(n)!;
+        return [clamp(np + off, np - len + 1, np + nl - 1), len];
+      }
+      const free = room(rec.area, axis) - span(rec, axis);
+      const share = free > EPS ? clamp(start(rec, axis) / free, 0, 1) : 0;
+      return [share * Math.max(0, roomNow - len), len];
+    };
+    let todo = ids.slice();
+    while (todo.length) {
+      const ready = todo.filter((id) => deps(id).every((v) => done.has(v)));
+      if (ready.length) {
+        for (const id of ready) done.set(id, place(id));
+        todo = todo.filter((id) => !ready.includes(id));
+        continue;
+      }
+      // A ring. The one held by more of the area's edges goes first, on those.
+      const edges = (id: string) => [lo, hi].filter((s) => recs[id].dock[s] === "edge").length;
+      const first = todo.reduce((best, id) => (edges(id) > edges(best) ? id : best));
+      done.set(first, place(first));
+      todo = todo.filter((id) => id !== first);
+    }
+    return done;
+  };
+  const xs = solve("x");
+  const ys = solve("y");
+  const out: Layout = {};
+  for (const id of ids) {
+    const [x, w] = xs.get(id)!;
+    const [y, h] = ys.get(id)!;
+    out[id] = placed({ x, y, w, h }, orients[id]);
+  }
+  return out;
+}
+
+// ---- what is stored ---------------------------------------------------------
+
+/**
+ * One panel as stored: where the viewer put it (`at`, absent while it is at
+ * its default) and whether they hid it from the app menu (`hidden`, the
+ * owner's *"a show hide for the panes"*). Both the viewer's, per device, like
+ * every arrangement; a hidden panel keeps its `at`, so it comes back where it
+ * was.
+ */
+export interface StoredPanel { at?: Recorded; hidden?: boolean }
+export type Stored = Record<string, StoredPanel>;
+
+/**
+ * Where the layout is stored now: v3, a panel's docking and its area with its
+ * rectangle (`Recorded`). v2 (`STORAGE_KEY`) was rectangles alone; it is read
+ * once and migrated — its rectangles docked where they lie (`recorded`) — then
+ * removed, so a viewer's arrangement survives the change of format.
+ */
+export const LAYOUT_KEY = "neocad.panels.v3";
+
+const SIDES = ["left", "right", "top", "bottom"] as const;
+
+function isSize(v: unknown): v is Size {
+  if (!v || typeof v !== "object") return false;
+  const r = v as Record<string, unknown>;
+  return ["w", "h"].every((k) => typeof r[k] === "number" && Number.isFinite(r[k]) && (r[k] as number) > 0);
+}
+
+/** A stored `Recorded`, read leniently: anything malformed in it is null, a side that is not one is dropped alone. */
+function parseRecorded(v: unknown): Recorded | null {
+  if (!isRect(v)) return null;
+  const r = v as unknown as Record<string, unknown>;
+  if (!isSize(r.area)) return null;
+  const scale = typeof r.scale === "number" && Number.isFinite(r.scale) && r.scale > 0 ? r.scale : 1;
+  const dock: Docking = {};
+  const raw = r.dock && typeof r.dock === "object" ? r.dock as Record<string, unknown> : {};
+  for (const side of SIDES) if (typeof raw[side] === "string") dock[side] = raw[side] as string;
+  const out: Recorded = { x: v.x, y: v.y, w: v.w, h: v.h, area: { w: r.area.w, h: r.area.h }, scale, dock };
+  if (r.orient === "row" || r.orient === "column") out.orient = r.orient;
+  if (typeof r.ox === "number" && Number.isFinite(r.ox)) out.ox = r.ox;
+  if (typeof r.oy === "number" && Number.isFinite(r.oy)) out.oy = r.oy;
+  return out;
+}
+
+/** A stored v3 layout, read leniently: a panel whose entry is malformed is dropped, and so goes back to its default. */
+export function parseStored(text: string | null): Stored {
+  if (!text) return {};
+  let raw: unknown;
+  try {
+    raw = JSON.parse(text);
+  } catch {
+    return {};
+  }
+  const panels = raw && typeof raw === "object" ? (raw as { panels?: unknown }).panels : null;
+  if (!panels || typeof panels !== "object" || Array.isArray(panels)) return {};
+  const out: Stored = {};
+  for (const [id, v] of Object.entries(panels as Record<string, unknown>)) {
+    if (!v || typeof v !== "object") continue;
+    const e = v as { at?: unknown; hidden?: unknown };
+    const at = e.at === undefined ? null : parseRecorded(e.at);
+    const entry: StoredPanel = {};
+    if (at) entry.at = at;
+    if (e.hidden === true) entry.hidden = true;
+    if (entry.at || entry.hidden) out[id] = entry;
+  }
+  return out;
+}
+
+/**
+ * What is stored: the v3 layout, and — only when there is none yet — the v2
+ * rectangles, for the panel manager to migrate against the area it has (a
+ * docking needs an area to be against, which only the page knows). Never
+ * throws.
+ */
+export function loadStored(storage: StorageLike | null): { stored: Stored; legacy: Layout | null } {
+  if (!storage) return { stored: {}, legacy: null };
+  try {
+    const text = storage.getItem(LAYOUT_KEY);
+    if (text !== null) return { stored: parseStored(text), legacy: null };
+    const old = loadLayout(storage);
+    return { stored: {}, legacy: Object.keys(old).length ? old : null };
+  } catch {
+    return { stored: {}, legacy: null };
+  }
+}
+
+/**
+ * Stores the layout as v3, and removes v2's key — the migration's last step,
+ * and harmless every time after. An empty layout removes v3's key too, so a
+ * reset leaves nothing behind. Returns whether it was stored; never throws.
+ */
+export function saveStored(storage: StorageLike | null, stored: Stored): boolean {
+  if (!storage) return false;
+  try {
+    if (Object.keys(stored).length === 0) storage.removeItem(LAYOUT_KEY);
+    else storage.setItem(LAYOUT_KEY, JSON.stringify({ panels: stored }));
+    storage.removeItem(STORAGE_KEY);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** A v2 layout's rectangles as v3 entries: each docked against what it lies against in `area`. */
+export function migrated(legacy: Layout, area: Size, scale: number): Stored {
+  const out: Stored = {};
+  for (const id of Object.keys(legacy)) out[id] = { at: recorded(id, legacy, area, scale) };
+  return out;
+}
+
 
 // ---- the options panel's size and place -------------------------------------
 
@@ -961,11 +1411,19 @@ function placed(r: Rect, orient: Orientation | undefined): Placed {
  * a tray — resizable.
  *
  * Holds two layouts and keeps them apart deliberately. `stored` is what the
- * viewer *asked for* — only the panels they have touched, as they left them —
- * and is what persists. What is on screen is that, or the default for an
- * untouched panel, passed through `constrain` against the area as it is now.
- * So shrinking the window pulls panels in without forgetting where they were
- * put, and widening it again puts them back.
+ * viewer *asked for* — only the panels they have touched, as they left them,
+ * with what each rested against — and is what persists. What is on screen is
+ * that re-laid in the area as it is now (`relaid`), or the default for an
+ * untouched panel, then held inside and kept apart (`arranged`). So shrinking
+ * the window pulls panels in without forgetting where they were put, widening
+ * it puts them back, and turning a phone keeps a panel docked to the right
+ * edge on the right edge.
+ *
+ * The area is the element's box less the safe-area `insets`; a panel touching
+ * an inset edge is drawn reaching under it, padded by it (`bleed`). `fixed`
+ * names the panels nothing moves — the logo — each an element placed at the
+ * area's top-left at the size it answers, which the others are pushed against
+ * and docked to like any panel.
  *
  * `trays` names the panels that are trays, each with how many buttons it holds
  * right now: those, and only those, have no grips, are always one line of
@@ -977,6 +1435,9 @@ function placed(r: Rect, orient: Orientation | undefined): Placed {
  * and is hidden while that answers null. Shown, it is placed after every other
  * panel (so it is the one moved out of the way of a panel already down), at
  * its stored position or else `beside` the tray it names (`besideTray`).
+ *
+ * Any panel can be hidden by the viewer (`setShown`, the app menu's Panes):
+ * hidden, it is out of the page and out of the layout, and its place is kept.
  *
  * Every arrangement goes through `pushed`: a drag, a resize, a turn, and (by
  * `settled`) every `apply`. So no two panels are ever shown overlapping while
@@ -990,15 +1451,28 @@ export interface Fitted {
   beside?: string;
 }
 
+/** A panel nothing moves: its element, and its size now (it sits at the area's top-left). */
+export interface Fixed {
+  el: HTMLElement;
+  size(): Size;
+}
+
+/** One panel as the app menu lists it: its id, the name it shows, and whether it is shown. */
+export interface Pane { id: string; label: string; shown: boolean }
+
 export class Panels {
   private area: HTMLElement;
   private storage: StorageLike | null;
   private defaults: (area: Size) => Layout;
   private trays: Record<string, () => number>;
   private fitted: Record<string, Fitted>;
-  private stored: Layout;
+  private fixed: Record<string, Fixed>;
+  private insets: () => Insets;
+  private stored: Stored;
+  /** A v2 layout read at load, migrated against the first area there is. */
+  private legacy: Layout | null;
   private els = new Map<string, HTMLElement>();
-  /** Where each panel is on screen right now — what a gesture starts from. */
+  /** Where each panel is on screen right now — what a gesture starts from. Fixed panels included. */
   private shown: Layout = {};
   /** Back to front. The panel last pressed is drawn over the others. */
   private order: string[] = [];
@@ -1006,13 +1480,18 @@ export class Panels {
   /** A gesture is in progress; `apply` waits for it (`stale`) rather than undo its pushes. */
   private holding = false;
   private stale = false;
-  /** The chrome's sizes: the mouse's, or a finger's (see `Metrics`). */
+  /** The chrome's sizes: the mouse's, or a finger's, at the interface size (see `Metrics`). */
   private m: Metrics;
+  /** The insets the last `apply` laid out against — a gesture's pointer is offset by them. */
+  private inset: Insets = NO_INSETS;
 
   constructor(
     area: HTMLElement, defaults: (area: Size) => Layout, storage: StorageLike | null,
     trays: Record<string, () => number> = {},
-    options: { check?: boolean; fitted?: Record<string, Fitted>; metrics?: Metrics } = {},
+    options: {
+      check?: boolean; fitted?: Record<string, Fitted>; metrics?: Metrics;
+      fixed?: Record<string, Fixed>; insets?: () => Insets;
+    } = {},
   ) {
     this.m = options.metrics ?? FINE;
     this.area = area;
@@ -1020,8 +1499,12 @@ export class Panels {
     this.storage = storage;
     this.trays = trays;
     this.fitted = options.fitted ?? {};
+    this.fixed = options.fixed ?? {};
+    this.insets = options.insets ?? (() => NO_INSETS);
     this.check = options.check ?? false;
-    this.stored = loadLayout(storage);
+    const loaded = loadStored(storage);
+    this.stored = loaded.stored;
+    this.legacy = loaded.legacy;
     for (const el of Array.from(area.querySelectorAll<HTMLElement>(".panel[data-panel]"))) {
       const id = el.dataset.panel!;
       this.els.set(id, el);
@@ -1033,43 +1516,75 @@ export class Panels {
     this.apply();
   }
 
+  /** The safe area's size: the element's box less the insets. */
   private size(): Size {
-    return { w: this.area.clientWidth, h: this.area.clientHeight };
+    const i = this.inset;
+    return { w: Math.max(0, this.area.clientWidth - i.left - i.right), h: Math.max(0, this.area.clientHeight - i.top - i.bottom) };
   }
 
   private min(id: string, orient: Orientation | undefined): Size {
     return minSizeOf(id, orient, id in this.trays, this.fitted[id]?.size() ?? undefined, this.m);
   }
 
+  private fixedLayout(): Layout {
+    return Object.fromEntries(Object.entries(this.fixed).map(([id, f]) => [id, { x: 0, y: 0, ...f.size(), fixed: true }]));
+  }
+
+  /** Whether the viewer has hidden `id`. */
+  private hiddenByViewer(id: string): boolean {
+    return this.stored[id]?.hidden === true;
+  }
+
   /**
    * Puts every panel where the layouts say, clear of one another (`arranged`),
-   * each tray one line of the buttons it has now. Cheap; call it whenever a
-   * default or a tray's count may have changed. What it moves is not stored:
-   * it is this window's answer, and a wider one may need none of it.
+   * each tray one line of the buttons it has now and each stored panel docked
+   * as it was (`relaid`). Cheap; call it whenever a default, a tray's count,
+   * the insets or the interface size may have changed. What it moves is not
+   * stored: it is this window's answer, and a wider one may need none of it.
    */
   apply(): void {
     // Mid-gesture the gesture owns the layout: putting the panels back where
     // the stored layout says would throw away the pushes it has made so far.
     if (this.holding) { this.stale = true; return; }
+    this.inset = this.insets();
     const area = this.size();
+    if (this.legacy) {
+      // The v2 layout, docked where it lies, now that there is an area for it
+      // to lie in — and written back as v3 at once, so it migrates only once.
+      this.stored = { ...migrated(this.legacy, area, this.m.scale), ...this.stored };
+      this.legacy = null;
+      saveStored(this.storage, this.stored);
+    }
     const counts = Object.fromEntries(Object.entries(this.trays).map(([id, n]) => [id, n()]));
     const order: string[] = [];
     const later: string[] = [];
     const sizes: Record<string, Size> = {};
     for (const [id, el] of this.els) {
       const f = this.fitted[id];
+      const size = f ? f.size() : undefined;
+      const off = this.hiddenByViewer(id) || size === null;
+      el.hidden = off;
+      if (off) { delete this.shown[id]; continue; }
       if (!f) { order.push(id); continue; }
-      const size = f.size();
-      el.hidden = size === null;
-      if (size === null) { delete this.shown[id]; continue; }
-      sizes[id] = size;
+      sizes[id] = size!;
       later.push(id);
     }
+    const fixed = this.fixedLayout();
+    for (const [id, r] of Object.entries(fixed)) this.placeFixed(id, r);
     const defaults = this.defaults(area);
+    const recs: Record<string, Recorded> = {};
+    for (const id of [...order, ...later]) if (this.stored[id]?.at) recs[id] = this.stored[id].at!;
+    const sizeOf = (id: string, orient: Orientation | undefined): Size | null =>
+      id in counts ? traySize(counts[id], orient ?? "column", this.m) : sizes[id] ?? null;
+    const minOf = (id: string, orient: Orientation | undefined) => this.min(id, orient);
+    const relay = (base: Layout) => relaid(recs, base, area, this.m.scale, sizeOf, minOf);
+    const unstored = (ids: string[], from: Layout) =>
+      Object.fromEntries(ids.filter((id) => !recs[id] && from[id]).map((id) => [id, from[id]]));
     if (later.length) {
       // Earlier panels hold their places in `settled`, so the tray is where the
       // panels without the fitted ones put it — which is what "beside" means.
-      const first = arranged(order, this.stored, defaults, counts, area, {}, this.m).layout;
+      const base0 = { ...fixed, ...unstored(order, defaults) };
+      const first = arranged(order, relay(base0), defaults, counts, area, {}, this.m, fixed).layout;
       for (const id of later) {
         const by = this.fitted[id].beside;
         const box = defaults[id];
@@ -1077,7 +1592,9 @@ export class Panels {
           : by && first[by] ? besideTray(first[by], sizes[id], area) : { x: GAP, y: GAP, ...sizes[id] };
       }
     }
-    const s = arranged([...order, ...later], this.stored, defaults, counts, area, sizes, this.m);
+    const all = [...order, ...later];
+    const wanted = relay({ ...fixed, ...unstored(all, defaults) });
+    const s = arranged(all, wanted, defaults, counts, area, sizes, this.m, fixed);
     this.show(s.layout, s.ok);
   }
 
@@ -1089,6 +1606,7 @@ export class Panels {
    */
   private show(layout: Layout, sound = true): void {
     for (const [id, r] of Object.entries(layout)) {
+      if (r.fixed) { this.shown[id] = r; continue; }
       const el = this.els.get(id);
       if (el && this.shown[id] !== r) this.place(id, el, r);
     }
@@ -1100,21 +1618,40 @@ export class Panels {
     }
   }
 
-  private place(id: string, el: HTMLElement, r: Placed): void {
-    this.shown[id] = r;
-    el.style.left = `${r.x}px`;
-    el.style.top = `${r.y}px`;
+  private placeFixed(id: string, r: Placed): void {
+    const el = this.fixed[id].el;
+    el.style.left = `${this.inset.left + r.x}px`;
+    el.style.top = `${this.inset.top + r.y}px`;
     el.style.width = `${r.w}px`;
     el.style.height = `${r.h}px`;
-    if (r.orient && el.dataset.orient !== r.orient) {
-      // The stylesheet turns the body and moves the strip on this attribute;
-      // the strip's thickness is set here, from TITLE_H, as for every strip.
-      el.dataset.orient = r.orient;
-      const strip = el.querySelector<HTMLElement>(":scope > .ptitle");
-      if (strip) {
-        strip.style.height = r.orient === "column" ? `${this.m.title}px` : "";
-        strip.style.width = r.orient === "row" ? `${this.m.title}px` : "";
-      }
+    this.shown[id] = r;
+  }
+
+  private place(id: string, el: HTMLElement, r: Placed): void {
+    this.shown[id] = r;
+    // Drawn reaching under any inset edge it touches, its content padded clear
+    // of it; the rectangle it is in the layout is `r` all the same.
+    const { rect, pad } = bleed(r, this.size(), this.inset);
+    el.style.left = `${rect.x}px`;
+    el.style.top = `${rect.y}px`;
+    el.style.width = `${rect.w}px`;
+    el.style.height = `${rect.h}px`;
+    el.style.padding = pad.top || pad.right || pad.bottom || pad.left ? `${pad.top}px ${pad.right}px ${pad.bottom}px ${pad.left}px` : "";
+    // The grips sit in the corners of the content, not out under the inset —
+    // a grip under the home indicator is a swipe the system takes.
+    for (const [k, v] of [["--pad-t", pad.top], ["--pad-r", pad.right], ["--pad-b", pad.bottom], ["--pad-l", pad.left]] as const) {
+      el.style.setProperty(k, `${v}px`);
+    }
+    const bled = (["top", "right", "bottom", "left"] as const).filter((side) => pad[side] > 0).join(" ");
+    if (bled) el.dataset.bleed = bled;
+    else delete el.dataset.bleed;
+    const strip = el.querySelector<HTMLElement>(":scope > .ptitle");
+    if (r.orient && el.dataset.orient !== r.orient) el.dataset.orient = r.orient;
+    if (strip && r.orient) {
+      // The stylesheet turns the body and moves the strip on the attribute;
+      // the strip's thickness is set here, from the metrics, as for every strip.
+      strip.style.height = r.orient === "column" ? `${this.m.title}px` : "";
+      strip.style.width = r.orient === "row" ? `${this.m.title}px` : "";
     }
   }
 
@@ -1132,16 +1669,96 @@ export class Panels {
     this.order.forEach((id, i) => { this.els.get(id)!.style.zIndex = String(PANEL_Z + i); });
   }
 
-  /** Forgets every arrangement — this viewer's, in this browser — and goes back to the defaults. */
+  /**
+   * New sizes — the interface size changed (`ui({ scale })`): every strip
+   * re-sized, every tray re-measured, and the layout laid out again, a panel
+   * the viewer sized scaled with the rest.
+   */
+  setMetrics(m: Metrics): void {
+    this.m = m;
+    for (const [id, el] of this.els) {
+      const strip = el.querySelector<HTMLElement>(":scope > .ptitle");
+      if (strip && !(id in this.trays)) strip.style.height = `${m.title}px`;
+      // A tray's strip follows its orientation; forgetting it makes `place` set it again.
+      if (id in this.trays) delete el.dataset.orient;
+    }
+    this.shown = {};
+    this.apply();
+  }
+
+  /** Every panel there is, in the page's order, with the name it shows and whether it is shown — the app menu's Panes. */
+  panes(): Pane[] {
+    return [...this.els.keys()].map((id) => {
+      const el = this.els.get(id)!;
+      const strip = el.querySelector<HTMLElement>(":scope > .ptitle");
+      const label = el.dataset.label ?? strip?.title ?? strip?.textContent ?? id;
+      return { id, label: label || id, shown: !this.hiddenByViewer(id) };
+    });
+  }
+
+  /**
+   * Shows or hides panel `id` — the viewer's, stored with the layout. Hidden,
+   * its place is kept: shown again, it comes back where it was, and what has
+   * moved into that place since is pushed out of its way. Throws for an id
+   * that is not a panel, naming those there are.
+   */
+  setShown(id: string, shown: boolean): void {
+    if (!this.els.has(id)) {
+      throw new Error(`there is no "${id}" pane — the panes are ${[...this.els.keys()].map((k) => JSON.stringify(k)).join(", ")}`);
+    }
+    const entry = { ...this.stored[id] };
+    if (shown) delete entry.hidden;
+    else entry.hidden = true;
+    if (entry.at || entry.hidden) this.stored[id] = entry;
+    else delete this.stored[id];
+    saveStored(this.storage, this.stored);
+    if (shown) this.raise(id);
+    this.apply();
+  }
+
+  /** Forgets every arrangement — this viewer's, in this browser, hidden panes too — and goes back to the defaults. */
   reset(): string {
     this.stored = {};
-    saveLayout(this.storage, this.stored);
+    saveStored(this.storage, this.stored);
     this.apply();
     return "layout reset to the defaults";
   }
 
   report(): string {
-    return describeLayout(this.shown, this.stored);
+    const at = Object.fromEntries(Object.entries(this.stored).filter(([, e]) => e.at).map(([id, e]) => [id, e.at!]));
+    const panels = Object.fromEntries(Object.entries(this.shown).filter(([, r]) => !r.fixed));
+    const hidden = Object.keys(this.stored).filter((id) => this.stored[id].hidden);
+    const area = this.size();
+    const i = this.inset;
+    // The window and the insets as the page measured them: on a phone this is
+    // the one place to read what iOS actually reported.
+    const where = `window ${this.area.clientWidth}x${this.area.clientHeight}, insets ${i.top} ${i.right} ${i.bottom} ${i.left}` +
+      ` (top right bottom left), panels' area ${Math.round(area.w)}x${Math.round(area.h)}`;
+    return [describeLayout(panels, at), ...(hidden.length ? [`hidden   ${hidden.join(", ")}`] : []), where].join("\n");
+  }
+
+  /**
+   * Stores what a gesture changed: each panel it moved, docked against what it
+   * now rests on; and each stored panel that rested on one of those, re-docked
+   * where it now is — its neighbour has gone, and a docking to where the
+   * neighbour was would pull it after it on the next rotation.
+   */
+  private remember(start: Layout): boolean {
+    const area = this.size();
+    const moved = Object.keys(this.shown).filter((o) => {
+      const now = this.shown[o];
+      const was = start[o];
+      return !now.fixed && !(was && now.x === was.x && now.y === was.y && now.w === was.w && now.h === was.h && now.orient === was.orient);
+    });
+    if (!moved.length) return false;
+    const touched = new Set(moved);
+    for (const [o, e] of Object.entries(this.stored)) {
+      if (!e.at || !this.shown[o] || touched.has(o)) continue;
+      if (SIDES.some((side) => e.at!.dock[side] !== undefined && touched.has(e.at!.dock[side]!))) touched.add(o);
+    }
+    for (const o of touched) this.stored[o] = { ...this.stored[o], at: recorded(o, this.shown, area, this.m.scale) };
+    saveStored(this.storage, this.stored);
+    return true;
   }
 
   /**
@@ -1167,7 +1784,7 @@ export class Panels {
     // the page: that a panel resizes from any corner, and a tray from none, is
     // the panel manager's rule, not something each panel's markup could
     // forget. Last in the panel, so they are over its content — each only a
-    // 12px triangle in its corner (the stylesheet clips it), which leaves a
+    // triangle in its corner (the stylesheet clips it), which leaves a
     // strip its middle. They draw nothing (the owner: *"you dont need those
     // diag lines on every corner"*); the resize cursor is the affordance.
     const grips = gripCorners(id in this.trays || id in this.fitted).map((corner) => {
@@ -1195,15 +1812,14 @@ export class Panels {
       // The whole layout at the press: a push can move any panel, and each one
       // this gesture moves is stored at its end like the one held.
       const start = { ...this.shown };
-      // The pointer in the area's own coordinates, the layout's. With the grab
-      // re-based on every move, window coordinates did no harm — the header's
-      // height cancelled out. Held for the whole gesture, the grab has to be a
-      // point *of the panel*, or a tray that turns (`regrasped`) carries the
-      // header's height along its strip. Measured once: the area does not
+      // The pointer in the layout's own coordinates — the safe area's, so the
+      // element's box less the insets. Held for the whole gesture, the grab has
+      // to be a point *of the panel*, or a tray that turns (`regrasped`)
+      // carries the offset along its strip. Measured once: the area does not
       // move under a held pointer, and measuring it on every move would force
       // a layout after each `show`.
       const box = this.area.getBoundingClientRect();
-      const [ox, oy] = [box.left + this.area.clientLeft, box.top + this.area.clientTop];
+      const [ox, oy] = [box.left + this.area.clientLeft + this.inset.left, box.top + this.area.clientTop + this.inset.top];
       const at = (ev: PointerEvent): Point => ({ x: ev.clientX - ox, y: ev.clientY - oy });
       let grab = grabbed(id, kind, at(e), this.shown, corner);
       // Counted at the press: nothing defines a tool while a pointer is held on a panel.
@@ -1228,15 +1844,7 @@ export class Panels {
         // A press that never moved is not an arrangement; storing it would turn
         // an untouched panel's following-the-defaults into a fixed position.
         // Nor is a panel the gesture left where it was.
-        let changed = false;
-        for (const [o, now] of Object.entries(this.shown)) {
-          const was = start[o];
-          if (was && now.x === was.x && now.y === was.y && now.w === was.w && now.h === was.h &&
-              now.orient === was.orient) continue;
-          this.stored[o] = now;
-          changed = true;
-        }
-        if (changed) saveLayout(this.storage, this.stored);
+        this.remember(start);
         if (this.stale) { this.stale = false; this.apply(); }
       };
       handle.addEventListener("pointermove", move);
@@ -1454,6 +2062,11 @@ export class OptionsPanel {
       const at = document.activeElement;
       if (at instanceof HTMLInputElement && at.type === "text" && this.body.contains(at) && e.target !== at) void this.commit(at);
     }, true);
+  }
+
+  /** New sizes, when the interface size changes; the host lays the panels out again after. */
+  setMetrics(m: Metrics): void {
+    this.m = m;
   }
 
   /** The panel's size now, or null while no tool with options is armed — `Fitted.size`. */

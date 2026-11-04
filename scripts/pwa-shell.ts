@@ -13,7 +13,7 @@ import { readFileSync } from "node:fs";
 
 /** The page's ground (index.html's body) — what a launching app shows before it draws. */
 export const BACKGROUND = "#0a0e13";
-/** The header's ground: the colour the system bars around the app take. */
+/** The panels' ground (and the icon's): the colour the system bars around the app take. */
 export const THEME = "#0e141b";
 
 export interface Icon {
@@ -111,8 +111,9 @@ export function pwaHead(): string {
     `<meta name="theme-color" content="${THEME}">`,
     `<meta name="mobile-web-app-capable" content="yes">`,
     `<meta name="apple-mobile-web-app-capable" content="yes">`,
-    // Translucent: the app draws under the status bar, and the header's own
-    // padding (env(safe-area-inset-top), index.html) keeps its text clear.
+    // Translucent: the drawing runs under the status bar, and a panel docked
+    // to the top reaches under it with its content padded clear (panels.ts's
+    // `bleed`); the logo and the status sit inside the safe area.
     `<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">`,
     `<meta name="apple-mobile-web-app-title" content="ZeroCAD">`,
     `<link rel="manifest" href="manifest.webmanifest">`,

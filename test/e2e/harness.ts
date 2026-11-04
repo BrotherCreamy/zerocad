@@ -114,7 +114,7 @@ export interface AppContext {
    * Canvas-relative screen coordinates -> absolute page coordinates, for a
    * point where the canvas is actually what a pointer would hit.
    *
-   * The canvas is the whole area under the header, and nothing in the page
+   * The canvas is the whole window (there is no header), and nothing in the page
    * resizes it any more — the log used to, taking height as a test typed into
    * it, which is gone with the chrome becoming floating panels. What took its
    * place is the panels themselves lying *over* the canvas: a click aimed at
@@ -292,10 +292,12 @@ export async function openApp(options: OpenOptions = {}): Promise<AppContext> {
       const { box, panel } = await page.$eval("#cv", (el, [sx, sy]) => {
         const r = el.getBoundingClientRect();
         const top = document.elementFromPoint(r.x + sx, r.y + sy);
-        const covering = top?.closest<HTMLElement>(".panel[data-panel]");
+        // A panel, or the logo — the one piece of chrome in the corner that
+        // takes a press.
+        const covering = top?.closest<HTMLElement>(".panel[data-panel], #logo");
         return {
           box: { x: r.x, y: r.y, width: r.width, height: r.height },
-          panel: covering ? covering.dataset.panel ?? "?" : null,
+          panel: covering ? covering.dataset.panel ?? covering.id ?? "?" : null,
         };
       }, [sx, sy]);
       if (sx < 0 || sy < 0 || sx > box.width || sy > box.height) {

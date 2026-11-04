@@ -58,10 +58,10 @@ test("the manifest: standalone, any orientation, the app's colours, and every UR
   assert.equal(m.id, "./");
   assert.equal(m.background_color, BACKGROUND);
   assert.equal(m.theme_color, THEME);
-  // The colours are the app's own: the body's ground and the header's.
+  // The colours are the app's own: the body's ground and the panels'.
   const index = readFileSync(new URL("../index.html", import.meta.url), "utf8");
   assert.match(index, new RegExp(`html,body\\{[^}]*background:${BACKGROUND}`));
-  assert.match(index, new RegExp(`header\\{[^}]*background:${THEME}`));
+  assert.match(index, new RegExp(`\\.panel\\{[^}]*background:${THEME}`));
   const urls = [m.start_url, m.scope, m.id, ...(m.icons as { src: string }[]).map((i) => i.src)] as string[];
   for (const url of urls) assert.ok(isRelative(url), `${url} is relative`);
   // JSON round trip: what is written is what was checked.
@@ -206,7 +206,11 @@ test("index.html: a viewport that never zooms and covers the notch, a page that 
   assert.match(index, /<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">/);
   const css = index.match(/<style>([\s\S]*?)<\/style>/)![1];
   assert.match(css, /html,body\{[^}]*position:fixed;inset:0;overflow:hidden;overscroll-behavior:none/);
-  assert.match(css, /#app\{[^}]*height:100dvh/);
+  // The window by its four edges, not 100dvh — which an iOS home-screen app
+  // reads as the screen less the status bar (docs/plans/chrome-logo-scale.md).
+  assert.match(css, /#app\{position:fixed;inset:0\}/);
+  assert.doesNotMatch(css, /height:100d?vh/);
+  // The insets are read through the probe, and the panels pad by them.
   for (const side of ["top", "right", "bottom", "left"]) assert.match(css, new RegExp(`env\\(safe-area-inset-${side}\\)`));
   assert.match(css, /#cv\{[^}]*touch-action:none/);
   assert.match(css, /body\{[^}]*touch-action:manipulation/);

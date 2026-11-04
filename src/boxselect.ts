@@ -39,7 +39,7 @@ import { inSight, visibleRuns, type Occlusion } from "./occlusion.ts";
 import { arcSamples, arcSegments } from "./arcgeom.ts";
 import { curveFrame } from "./curveplane.ts";
 import { frameBasis } from "./relations/refs.ts";
-import { FRAME_ARM_PX } from "./framemarker.ts";
+import { frameArmPx } from "./framemarker.ts";
 import type { View } from "./view.ts";
 
 /** Which of the two selections the drag direction asked for. */
@@ -137,7 +137,7 @@ function worldPaths(model: Model, view: View, e: Entity): { world: number[][]; c
   }
   if (e.kind === "frame") {
     const b = frameBasis(model, e.name)();
-    const reach = FRAME_ARM_PX / view.scale;
+    const reach = frameArmPx(view) / view.scale;
     return [b.ux, b.uy, b.uz].filter((u): u is number[] => !!u && u.some((c) => c !== 0))
       .map((u) => ({ world: [b.origin, b.origin.map((c, i) => c + (u[i] ?? 0) * reach)], closed: false }));
   }
