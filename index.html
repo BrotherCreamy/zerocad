@@ -97,20 +97,23 @@
     .panel.held[data-orient]>.ptitle,.panel[data-orient]>.ptitle:hover{
       background:#0b1016 radial-gradient(circle,#46586a 0.8px,transparent 1.2px) center/4px 4px}
     .panel[data-orient="row"]>.ptitle{border-bottom:none;border-right:1px solid #223041;border-radius:3px 0 0 3px}
-    /* The toolbar: one square button per registered tool, its face the tool's
-       icon in currentColor — so the colours below are the glyph's. The amber is
-       the armed tool's and nothing else's. One line of them, the way the tray
-       runs, and panels.ts sizes the tray to exactly that line (traySize). The
-       overflow is hidden for the one case where the line does not fit — a
-       window shorter than it — so the buttons past the edge are clipped there
-       rather than drawn over the window's edge. */
-    #toolbar{display:flex;flex-direction:column;gap:2px;padding:3px;overflow:hidden}
-    .panel[data-orient="row"]>#toolbar{flex-direction:row}
-    #toolbar button{flex:none;width:20px;height:20px;padding:0;display:flex;align-items:center;justify-content:center;
+    /* A tray's buttons — the toolbar's, one square per registered tool, its
+       face the tool's icon in currentColor, so the colours below are the
+       glyph's; and the action strip's (touch only). The amber is the armed
+       tool's and nothing else's. One line of them, the way the tray runs, and
+       panels.ts sizes the tray to exactly that line (traySize). The overflow is
+       hidden for the one case where the line does not fit — a window shorter
+       than it — so the buttons past the edge are clipped there rather than
+       drawn over the window's edge. */
+    .tray{display:flex;flex-direction:column;gap:2px;padding:3px;overflow:hidden}
+    .panel[data-orient="row"]>.tray{flex-direction:row}
+    .tray button{flex:none;width:20px;height:20px;padding:0;display:flex;align-items:center;justify-content:center;
       font-family:inherit;color:#afc6d9;background:transparent;border:1px solid transparent;border-radius:3px;cursor:default}
-    #toolbar button svg{flex:none;display:block}
-    #toolbar button:hover{background:#20303f;color:#d5e1ec}
-    #toolbar button[aria-pressed="true"]{color:#e8a33d;border-color:#e8a33d80;background:#e8a33d18}
+    .tray button svg{flex:none;display:block}
+    .tray button:hover{background:#20303f;color:#d5e1ec}
+    .tray button[aria-pressed="true"]{color:#e8a33d;border-color:#e8a33d80;background:#e8a33d18}
+    /* An action that would do nothing now (nothing to undo, nothing selected). */
+    .tray button:disabled,.tray button:disabled:hover{color:#2f4050;background:transparent}
     /* A panel that comes and goes (the options panel) is hidden by the
        attribute, which .panel's display:flex would otherwise beat. */
     .panel[hidden]{display:none}
@@ -150,7 +153,7 @@
       <canvas id="cv"></canvas>
       <div class="panel" data-panel="toolbar">
         <div class="ptitle" title="tools"></div>
-        <div id="toolbar" class="pbody"></div>
+        <div id="toolbar" class="pbody tray"></div>
       </div>
       <div class="panel" data-panel="log">
         <div class="ptitle">log</div>
@@ -159,6 +162,12 @@
       <div class="panel" data-panel="options" hidden>
         <div class="ptitle">options</div>
         <div id="options" class="pbody"></div>
+      </div>
+      <!-- Undo, Redo, Delete, Cancel: a finger's keys. main.ts takes it out of
+           the page where the pointer is fine — a mouse has the keys. -->
+      <div class="panel" data-panel="actions">
+        <div class="ptitle" title="actions"></div>
+        <div id="actions" class="pbody tray"></div>
       </div>
       <div class="panel" data-panel="cmd">
         <div class="ptitle">command</div>

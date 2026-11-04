@@ -63,6 +63,20 @@ export const PICK_POINT = 8;
 export const PICK_CURVE = 6;
 export const PICK_LINE = 5;
 
+/**
+ * How much further a finger reaches than a mouse: every pick and snap radius
+ * is multiplied by this for a touch (the engine passes it; `reach` below).
+ *
+ * Measured, not guessed: a fingertip covers 7–10 mm of glass, and Apple's
+ * smallest target is 44 pt — on an iPhone 13 a CSS pixel is a point, so 44 px,
+ * about 7.3 mm. A point's pick radius of 8 px times 2.75 is 22 px, which makes
+ * a point exactly a 44 pt target under a finger. One factor for every tier,
+ * rather than a radius apiece, so the tiers keep their order — a point still
+ * out-reaches the curve it ends, and a curve the line beside it — and a
+ * finger landing on a corner still takes the corner.
+ */
+export const TOUCH_REACH = 22 / PICK_POINT;
+
 function dist(ax: number, ay: number, bx: number, by: number): number {
   return Math.hypot(ax - bx, ay - by);
 }
@@ -88,7 +102,11 @@ function dist(ax: number, ay: number, bx: number, by: number): number {
  * **What is hidden (`Model.hidden`) never picks**: it is not drawn, and a
  * click on what is not there must not find it.
  */
-export function hitTest(model: Model, view: View, sx: number, sy: number, occ: Occlusion | null = null): Pick | null {
+export function hitTest(
+  model: Model, view: View, sx: number, sy: number, occ: Occlusion | null = null, reach = 1,
+): Pick | null {
+  // A finger's radii (`TOUCH_REACH`) or a mouse's: every tier scaled together.
+  const [rPoint, rCurve, rLine] = [PICK_POINT * reach, PICK_CURVE * reach, PICK_LINE * reach];
   const screenOf = (name: string) => projectPoint(model, view, name);
   const seen = (world: number[]) => inSight(occ, world);
   const shown = [...model.entities.values()].filter((e) => !model.hidden.has(e.name));
@@ -99,7 +117,7 @@ export function hitTest(model: Model, view: View, sx: number, sy: number, occ: O
     if (e.kind !== "point") continue;
     const [px, py] = screenOf(e.name);
     const d = dist(sx, sy, px, py);
-    if (d < PICK_POINT && (!best || d < best.distance) && seen(model.coords(e.name))) {
+    if (d < rPoint && (!best || d < best.distance) && seen(model.coords(e.name))) {
       best = { name: e.name, kind: "point", distance: d };
     }
   }
@@ -111,7 +129,7 @@ export function hitTest(model: Model, view: View, sx: number, sy: number, occ: O
   // piece of it is.
   for (const e of shown) {
     if (e.kind !== "circle" && e.kind !== "arc") continue;
-    const screen = screenCurve(model, view, e, PICK_CURVE)!;
+    const screen = screenCurve(model, view, e, rCurve)!;
     const shape = screen.curve;
     let d: number;
     if (shape.kind === "polyline") {
@@ -122,12 +140,12 @@ export function hitTest(model: Model, view: View, sx: number, sy: number, occ: O
       // A small slack so the very ends of an arc are still pickable. The test
       // itself lives in intersect.ts, so snapping to a crossing and picking a
       // rim agree on where an arc stops.
-      if (shape.kind === "arc" && d < PICK_CURVE
+      if (shape.kind === "arc" && d < rCurve
         && !withinSweep(shape.a0, shape.a1, screenAngle(cx, cy, sx, sy), shape.slack)) continue;
     } else {
       continue;
     }
-    if (d >= PICK_CURVE || (best && d >= best.distance)) continue;
+    if (d >= rCurve || (best && d >= best.distance)) continue;
     if (occ && !seen(screen.lift([sx, sy]))) continue;
     best = { name: e.name, kind: e.kind, distance: d };
   }
@@ -146,7 +164,7 @@ export function hitTest(model: Model, view: View, sx: number, sy: number, occ: O
   for (const e of shown) {
     if (e.kind !== "line") continue;
     const near = toSegment(sx, sy, screenOf(e.refs[0]), screenOf(e.refs[1]));
-    if (!near || near.d >= PICK_LINE || (best && near.d >= best.distance)) continue;
+    if (!near || near.d >= rLine || (best && near.d >= best.distance)) continue;
     if (occ) {
       // Orthographic projection is affine, so the fraction along the segment
       // on screen is the fraction along the edge in the world.
@@ -168,10 +186,10 @@ export function hitTest(model: Model, view: View, sx: number, sy: number, occ: O
     const axes = basis ? [basis.ux, basis.uy, basis.uz ?? []] : [];
     frameArms(marker).forEach(([a, b], arm) => {
       const near = toSegment(sx, sy, a, b);
-      if (!near || near.d >= PICK_LINE || (best && near.d >= best.distance)) return;
+      if (!near || near.d >= rLine || (best && near.d >= best.distance)) return;
       if (basis) {
-        const reach = (near.t * FRAME_ARM_PX) / view.scale;
-        if (!seen(basis.origin.map((c, i) => c + (axes[arm][i] ?? 0) * reach))) return;
+        const out = (near.t * FRAME_ARM_PX) / view.scale;
+        if (!seen(basis.origin.map((c, i) => c + (axes[arm][i] ?? 0) * out))) return;
       }
       best = { name: e.name, kind: "frame", distance: near.d, axis: (["x", "y", "z"] as const)[arm] };
     });

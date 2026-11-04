@@ -1498,3 +1498,116 @@ export class OptionsPanel {
     });
   }
 }
+
+// ---- the action strip -------------------------------------------------------
+//
+// A finger has no Ctrl+Z, no Delete and no Escape (docs/plans/touch.md): the
+// action strip is those four keys as buttons — **Undo, Redo, Delete, Cancel** —
+// a tray like the toolbar, moved and turned the same way. Like every other
+// piece of chrome it can only type: each button types its line through the
+// host's `run` (`submit`), so the log shows `undo()` or `del("l1", "l2")` and
+// the strip can do nothing a typed line could not. Shown where the primary
+// pointer is coarse (the host decides, from the same media query the
+// stylesheet sizes by); a mouse has the keys.
+
+/** The strip's buttons, in order. */
+export type Action = "undo" | "redo" | "delete" | "cancel";
+export const ACTIONS: readonly Action[] = ["undo", "redo", "delete", "cancel"];
+
+/** What the strip needs to know to say what each button would type. */
+export interface ActionState {
+  canUndo: boolean;
+  canRedo: boolean;
+  /** The canvas's selected names, as `sel()` lists them. */
+  selected: readonly string[];
+  /** Whether a tool is armed. */
+  armed: boolean;
+}
+
+/**
+ * The line `action` types now, or null when it would do nothing — and the
+ * button is then disabled, rather than typing a line that only says so.
+ * **Delete is the Delete key exactly**: the selection's names quoted as JSON,
+ * and nothing while a tool is armed. **Cancel is `cancel()`**: the tool and
+ * the selection put down together — Escape's one-step-at-a-time (a feature's
+ * picks first) is the options panel's ✗, which a feature always shows.
+ */
+export function actionCommand(action: Action, state: ActionState): string | null {
+  switch (action) {
+    case "undo": return state.canUndo ? "undo()" : null;
+    case "redo": return state.canRedo ? "redo()" : null;
+    case "delete":
+      return state.selected.length && !state.armed ? `del(${state.selected.map((n) => JSON.stringify(n)).join(", ")})` : null;
+    case "cancel": return state.armed || state.selected.length ? "cancel()" : null;
+  }
+}
+
+const ACTION_LABELS: Readonly<Record<Action, string>> = {
+  undo: "Undo", redo: "Redo", delete: "Delete selection", cancel: "Cancel",
+};
+
+/** The toolbar's glyph family (tools/icons.ts): a 16-unit box, 1.5-unit round strokes, nothing filled. */
+function actionGlyph(name: Action, body: string): string {
+  return `<svg class="ico" data-glyph="${name}" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" ` +
+    `fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">${body}</svg>`;
+}
+
+const ACTION_ICONS: Readonly<Record<Action, string>> = {
+  undo: actionGlyph("undo", `<path d="M5.5 3.5 2.5 6.5l3 3"/><path d="M2.5 6.5H10a3.5 3.5 0 0 1 0 7H7"/>`),
+  redo: actionGlyph("redo", `<path d="M10.5 3.5l3 3-3 3"/><path d="M13.5 6.5H6a3.5 3.5 0 0 0 0 7h3"/>`),
+  delete: actionGlyph("delete", `<path d="M2.5 4.5h11"/><path d="M6.5 4.5V2.5h3v2"/><path d="M4 4.5l.8 9h6.4l.8-9"/>`),
+  cancel: actionGlyph("cancel", `<path d="M4 4l8 8M12 4l-8 8"/>`),
+};
+
+/** What the action strip needs of its host. */
+export interface ActionHost {
+  state(): ActionState;
+  /** Types one line into the command machinery, as one user action — `submit`. */
+  run(command: string): void;
+}
+
+/**
+ * The strip's buttons, one per `ACTIONS`, each disabled while it would do
+ * nothing. The host calls `sync` whenever the history, the selection or the
+ * armed tool may have changed — the toolbar's `sync` is called from the same
+ * places — and it touches the DOM only for a button whose state changed.
+ */
+export class ActionStrip {
+  private buttons = new Map<Action, HTMLButtonElement>();
+  private host: ActionHost;
+
+  constructor(el: HTMLElement, host: ActionHost) {
+    this.host = host;
+    for (const action of ACTIONS) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.innerHTML = ACTION_ICONS[action];
+      b.dataset.action = action;
+      b.setAttribute("aria-label", ACTION_LABELS[action]);
+      b.title = ACTION_LABELS[action];
+      // The focus stays where it was: a tap here must not raise a keyboard
+      // that a tap on the command line had put away, nor take it from a field.
+      b.addEventListener("mousedown", (e) => e.preventDefault());
+      b.addEventListener("contextmenu", (e) => e.preventDefault());
+      b.addEventListener("click", () => {
+        // Asked again at the press, not read off the button: the state may
+        // have moved since the last sync.
+        const command = actionCommand(action, this.host.state());
+        if (command) this.host.run(command);
+      });
+      el.appendChild(b);
+      this.buttons.set(action, b);
+    }
+  }
+
+  sync(): void {
+    const state = this.host.state();
+    for (const [action, b] of this.buttons) {
+      const command = actionCommand(action, state);
+      const off = command === null;
+      if (b.disabled !== off) b.disabled = off;
+      const title = command ? `${ACTION_LABELS[action]} — ${command}` : ACTION_LABELS[action];
+      if (b.title !== title) b.title = title;
+    }
+  }
+}
