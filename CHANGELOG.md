@@ -7,6 +7,63 @@ decisions.
 
 ---
 
+## One circle tool and one arc tool — the gesture chooses the method
+
+The owner:
+
+> *why are there multiple circle tools and arc tools? they all achieve the
+> same thing. surely just one tool, but different ways to set constraints.*
+
+Spec: [`docs/plans/one-circle-one-arc.md`](docs/plans/one-circle-one-arc.md),
+marked built; every deviation is in its *As built* and in TODO.md's Done
+entry. There were four tools: `circle`, `circle3`, `arc` and `arc3`. Now there
+is **one Circle and one Arc**, and how you use them decides which constraints
+the clicks make. The toolbar has **11 buttons** (Select, the Hand and nine
+tools), down from 13.
+
+- **Circle.** A press and drag sets the centre and then the radius. Three
+  separate clicks make a circle through all three. A click, then a drag,
+  takes that click as the centre. When a rim click lands *along* a line or a
+  circle, the new circle is **tangent** to it (`tan`), and no rim point is
+  left on the line. Letting go of a drag on a line also makes it tangent;
+  letting go on a point makes the circle pass through that point.
+- **Arc.** Drag from one end to the other, then click the bulge, for a
+  3-point arc. Or click first (that click is the centre), then click the start
+  and the end; from the centre, one stroke from start to end also works. If
+  you drag from the end of a line or arc and bring the bulge near the arc that
+  carries on smoothly, it **snaps** to that arc and is held tangent.
+- **The options panel shows what it read** — `centre · radius`, `3 points`,
+  `tangent`, `centre · ends` — in amber while you draw, and you can **lock**
+  it from the same drop-down. The lock is typed as
+  `arm("circle", { method: "3pt" })` and remembered like any option. Each lock
+  behaves exactly like the old tool it replaces. `tangent` is new: the circle
+  touching three lines or circles, and Onshape's tangent arc.
+- **`circle3` and `arc3` still work** as typed names, and so do old scripts.
+  `circle3` arms the Circle locked to 3 points, and `tools()` lists both old
+  names. Old files open unchanged: the tools only ever wrote ordinary relations.
+- **`tan` takes two circles** (or arcs): `tan("c1", "c2")` makes them touch
+  from outside or inside, whichever is nearer. The choice is saved in the
+  file, and in 3D the two circles are also held in one plane.
+- **Nothing was lost.** Before the change, the old build recorded sixteen
+  files from the four old tools (test/fixtures/curve-tools-v13.json). Every
+  one of those gestures, made with the new tools, writes the same file byte
+  for byte, both locked to the old method and with auto reading the gesture.
+
+![The circle tool after two clicks: one on a line, one above it. The dashed preview is the circle through the cursor that touches the line, and the options panel reads "tangent" in amber](docs/images/103-circle-a-rim-click-on-a-line-reads-tangent.png)
+![The arc tool dragged from a line's end, with the bulge near the smooth way on: the preview is the quarter arc leaving the line tangent, and the panel reads "tangent"](docs/images/104-arc-from-a-lines-end-snapped-smooth.png)
+![An iPhone after two taps with the circle tool: two marks on the canvas and the options panel reading "3 points" in amber](docs/images/105-phone-two-taps-read-3-points.png)
+
+Tests: unit 1219 (1199 before), with `test/onetool.test.ts` adding 19 and `test/tooltips.test.ts` 1. E2E
+521 (509 before), with `test/e2e/onetool.e2e.ts` adding 12: a mouse and
+iPhone 13 emulation, each gesture checked against a closed form, and the panel
+read during each gesture. `npm run test:all` passes. **Found along the way:** with eleven buttons, a
+phone's column can run the full height of the screen, and a tooltip too wide
+for the room beside it was being clamped back over the column. The tooltip is
+now narrowed to that room (`roomBeside`, tooltip.ts). On an iPhone 13 in
+landscape the tray now fits in one row, where thirteen buttons took two.
+
+---
+
 ## The solid-kernel spike: SMLib, measured — go
 
 The owner:

@@ -106,6 +106,58 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### One circle, one arc: what a press means, and where the reading goes
+
+The owner asked why there were four curve tools when they all make the same
+two entities. The answer is that they differed only in which constraints the
+clicks wrote, so the clicks are now read for it. Four decisions needed
+reasons.
+
+**A press is undecided until it moves or lifts, and a click acts on the
+press.** The spec's first click is "a provisional centre-or-rim point", and
+only what comes next can say which. The commit timing kept each old tool's
+own: the 3-point tools and the centre-point arc acted on the press, and the
+drag-out circle on the release. A press that gets another press before any
+release counts as a click. That one rule is why every old test and script
+that only ever sent presses still draws. *Rejected*: deciding every click on
+its release. That would also have worked in the app, but it would have meant
+rewriting every click-only test to say the same thing differently, and the
+fixtures written by the old build would no longer have shown that nothing
+was lost.
+
+**"Hold still" is a click, not a timer.** On a phone a held finger is the
+context menu (`LONG_PRESS_MS`), and the recogniser hands the tool nothing
+until it has decided. A timed hold on the mouse that a finger could not make
+would give the two hands different tools. *Rejected*: a hold shorter than
+the long-press, between 350 and 500 ms, which no hand can be relied on to
+hit.
+
+**The reading goes inside the drop-down.** A label beside the choice was
+built first. In the screenshot, "centre · radius" was cut to "centre …", and
+on the phone "auto: centre · radius" was cut too. The drop-down now fills
+the row. Its first option is hidden from the list and shows what was read,
+lit in amber, so the list underneath is still only the locks. *Rejected*:
+widening the options panel, which every layout's arithmetic on every phone
+depends on (`fits.test.ts`), for one row.
+
+**The alias's lock is not remembered.** The spec says the lock is
+"remembered like any option", and it is, when chosen in the panel or typed
+by name. But someone who types `circle3` once would otherwise find that the
+Circle button's drag no longer draws, with nothing to say why unless they
+look at the panel. So `circle3` is a shortcut for one use, and the button
+stays as they left it.
+
+**The tangent preview is a fit, not a closed form.** The circle through two
+points tangent to a line has a closed form, and so does each other mix of
+points, lines and circles. Writing all of them out, each with its own
+degenerate cases, would be a lot of code, used only for the preview. A
+three-unknown damped Newton from the circumcircle, keeping each condition on
+the side the clicks are on, covers every mix in forty lines. It either lands
+within a millionth of the drawing's size or reports that it did not, and
+then the preview is blank and the click is answered with guidance. The
+relations and the solver are what hold the result; the fit only makes the
+preview honest and starts the solver at the answer.
+
 ### The solid-kernel spike: why SMLib, and why the others lost
 
 The owner can make nothing but extrusions because nothing joins or cuts

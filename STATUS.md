@@ -890,7 +890,44 @@ replacing) the system Node other projects on this machine may depend on.
   composition and is listed on `TODO.md` as enabled, not built. **↳ Since
   built** — see the next entry, and it really was trivial.
 
-- **The 3-point circle tool** (`src/tools/circle3.ts`). `circle3` — bare word
+- **One circle tool and one arc tool, the gesture choosing the method**
+  (`src/tools/circle.ts`, `src/tools/arc.ts`, `src/tools/curvemethod.ts`;
+  docs/plans/one-circle-one-arc.md). The owner: *"why are there multiple
+  circle tools and arc tools? … surely just one tool, but different ways to
+  set constraints."* There is one Circle button and one Arc button.
+  - **Circle.** A press and drag is a centre and a radius. Three clicks make
+    a circle through the three points (three `oncircle`s). A click and then a
+    drag takes that click as the centre. A rim click *along* a line or
+    circle (a `curve` snap) makes the circle tangent to it (`tan`). A drag let
+    go along a curve makes it tangent; let go on a point, the circle passes
+    through it.
+  - **Arc.** Drag from one end to the other, then click the bulge (3 points).
+    Or click the centre first, then the start and the end; from the centre,
+    one stroke from start to end also works. When an end is on the end of a
+    line or arc and the bulge comes within 8 px of the arc that carries on
+    smoothly, the bulge is pulled onto it and held there with `tan`.
+  - **How a press is read.** It is held until it moves 3 px (a drag) or
+    lifts in place (a click). Clicks commit on the press and drags on the
+    release, as the old tools did. **The options panel's method drop-down**
+    shows, in amber, what the gesture was read as (`centre · radius`,
+    `3 points`, `tangent`, `centre · ends`). The same drop-down locks it, which
+    types `arm("circle", { method: "3pt" })`, and the lock is remembered.
+  - **Each lock is the old tool**, proven against sixteen files the old tools
+    wrote (`test/fixtures/curve-tools-v13.json`). The circle's `tangent` lock
+    is the circle touching three lines or circles; the arc's is Onshape's
+    tangent arc, from the end of a line or arc.
+  - **`circle3` and `arc3` are typed names** (`TOOL_ALIASES` in tool.ts).
+    They arm the one tool locked to 3 points, without remembering the lock.
+  - Tangent previews are the fitted circle itself (`fitCircle`, a small
+    Newton fit used only for the preview and the seed). `tan` also takes two
+    circles: outside or inside, journalled as read, and coplanar in 3D.
+  - What was decided, and every deviation from the spec, is in the spec's
+    *As built*.
+
+- **The 3-point circle tool** — **↳ since folded into the one circle tool**
+  above: `circle3` now arms the Circle locked to 3 points, and what follows
+  describes that lock, which behaves exactly as this tool did (the file it was
+  in, `src/tools/circle3.ts`, is gone). `circle3` — bare word
   or `arm("circle3")` — then three clicks, and a circle passes through all
   three. Onshape calls it *3 point circle*; `circle3` is the name that is also
   a legal identifier.
@@ -930,7 +967,9 @@ replacing) the system Node other projects on this machine may depend on.
   scoped out of. On `TODO.md` as a follow-up. **↳ Closed:** tools have a voice
   now (`ctx.log`), and the refusal goes to the pane.
 
-- **The 3-point arc tool** (`src/tools/arc3.ts`). `arc3` — bare word or
+- **The 3-point arc tool** — **↳ since folded into the one arc tool** above:
+  `arc3` arms the Arc locked to 3 points, which behaves exactly as this did
+  (`src/tools/arc3.ts` is gone). `arc3` — bare word or
   `arm("arc3")` — then three clicks: **the two endpoints first, then a point
   the arc passes through.** Onshape calls it *3 point arc*, and that click
   order is Onshape's; it is neither the natural guess (start, waypoint, end)
