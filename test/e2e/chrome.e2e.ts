@@ -197,8 +197,8 @@ for (const orientation of ["portrait", "landscape"] as const) {
       // A fingertip clear of the logo: the browser moves a touch that lands
       // within a finger's width of a button onto the button (touch
       // adjustment — measured: 16 px off the logo's edge went to the logo), as
-      // a phone does. 40 px off it, on the status, is the drawing's.
-      const near: [number, number][] = [[logo.right + 40, status.y + status.h / 2], [logo.x + logo.w / 2, logo.bottom + 40]];
+      // a phone does. 40 px right of it, on the status, is the drawing's.
+      const near: [number, number][] = [[logo.right + 40, logo.y + logo.h / 2], [logo.x + logo.w / 2, logo.bottom + 40]];
       const free = (await topAt(p.page, near)).indexOf("canvas");
       assert.ok(free >= 0, "beside the logo, right of it or under it, is the drawing");
       const [sx, sy] = near[free];

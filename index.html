@@ -266,7 +266,8 @@
       /* A phone has no room for the command beside each item, and no hover to
          read it by: the log shows what each one typed. An item that is off
          keeps its reason. */
-      #appmenu .item:not(.off) .cmd{display:none}
+      :is(#ctxmenu,#appmenu) .item:not(.off) .cmd,#ctxmenu .row .cmd{display:none}
+      #ctxmenu{max-width:calc(100vw - 8px)}
       /* − and + drawn at the menu's size, hit at a finger's: the buttons are
          44 px whatever the interface size; only their faces scale. */
       #appmenu .srow{padding:0 6px 4px}

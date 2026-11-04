@@ -837,7 +837,11 @@ function touchLayout(area: Size, tools: number, m: Metrics): Layout {
   const bar = traySize(tools, "column", m);
   const left = GAP + bar.w + GAP;
   const w = area.w - left - GAP;
-  const logY = GAP + act.h + GAP;
+  // Under the strip, and low enough that its strip's hit box — which reaches
+  // up over the drawing to a whole target (index.html) — stays out of the
+  // logo's row: the status is there, and a drag that starts on it must reach
+  // the drawing (measured: at the strip's own margin it took the press).
+  const logY = Math.max(GAP + act.h + GAP, logo.h + Math.max(0, m.hit - m.title) + GAP / 2);
   const cmdY = area.h - cmdH;
   const below = logY + logH + GAP;
   return {
