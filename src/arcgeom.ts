@@ -84,6 +84,18 @@ export interface ArcFrame {
   v: number[];
   normal: number[];
   sweep: number;
+  /**
+   * An **ellipse**'s semi-axis along `v`, when it is one (`ellipseFrame`): the
+   * frame is then `center + r·cos t·u + rv·sin t·v`, `t` the eccentric anomaly,
+   * and every function below reads it so. Absent for a circle or an arc, whose
+   * radius is `r` both ways — so nothing that only ever meets those changes.
+   */
+  rv?: number;
+}
+
+/** The frame's larger semi-axis — the radius a circle has both ways, an ellipse's longer one. */
+export function frameReach(f: ArcFrame): number {
+  return Math.max(f.r, f.rv ?? f.r);
 }
 
 /**
@@ -119,10 +131,27 @@ export function circleFrame(c: number[], r: number, u: number[], v: number[]): A
   return { center: lift3(c), r, u: U, v: V, normal: cross3(U, V), sweep: Math.PI * 2 };
 }
 
-/** The point at angle `t` along the arc, from its start. */
+/**
+ * A whole ellipse about `c`: semi-axis `a` along the unit direction `u`, `b`
+ * along `v`, laid out from `u` (its major end) round toward `v` — the circle's
+ * frame with a second radius, so the arc machinery draws, picks, lifts and
+ * samples it as it does a circle. Counter-clockwise about `u × v`.
+ */
+export function ellipseFrame(c: number[], a: number, b: number, u: number[], v: number[]): ArcFrame {
+  const U = lift3(u), V = lift3(v);
+  return { center: lift3(c), r: a, rv: b, u: U, v: V, normal: cross3(U, V), sweep: Math.PI * 2 };
+}
+
+/** The point at angle `t` along the arc, from its start — an ellipse's eccentric anomaly. */
 export function arcPoint(f: ArcFrame, t: number): number[] {
-  const c = Math.cos(t) * f.r, s = Math.sin(t) * f.r;
+  const c = Math.cos(t) * f.r, s = Math.sin(t) * (f.rv ?? f.r);
   return [0, 1, 2].map((i) => f.center[i] + c * f.u[i] + s * f.v[i]);
+}
+
+/** The direction of travel at angle `t` — d/dt of `arcPoint`, so not unit length. */
+export function arcTangent(f: ArcFrame, t: number): number[] {
+  const c = -Math.sin(t) * f.r, s = Math.cos(t) * (f.rv ?? f.r);
+  return [0, 1, 2].map((i) => c * f.u[i] + s * f.v[i]);
 }
 
 /**
@@ -157,7 +186,8 @@ export function portionAngles(f: ArcFrame, a: number[], b: number[]): [number, n
   const angle = (p: number[]) => {
     const P = lift3(p);
     const d = [P[0] - f.center[0], P[1] - f.center[1], P[2] - f.center[2]];
-    const t = Math.atan2(dot3(d, f.v), dot3(d, f.u));
+    // An ellipse's angle is its eccentric anomaly: each axis scaled to one.
+    const t = Math.atan2(dot3(d, f.v) / (f.rv ?? 1), dot3(d, f.u) / (f.rv === undefined ? 1 : f.r));
     return ((t % tau) + tau + 1e-9) % tau - 1e-9;
   };
   const t0 = angle(a);

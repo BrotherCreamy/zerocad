@@ -19,8 +19,10 @@ import {
 } from "../src/panels.ts";
 import { IPHONES, areaOf, everyWay, windowOf } from "./devices.ts";
 
-// Select, the Hand and the nine tools (one circle, one arc: docs/plans/one-circle-one-arc.md).
-const TOOLS = 11;
+// Select, the Hand and ten buttons of tools (one circle, one arc:
+// docs/plans/one-circle-one-arc.md; the shapes and curves groups:
+// docs/plans/sketch-shapes.md).
+const TOOLS = 12;
 /** The spin box's steps, 60 % to 160 % (uiscale.ts). */
 const STEPS = [0.6, 0.7, 0.8, 0.9, 1, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6];
 

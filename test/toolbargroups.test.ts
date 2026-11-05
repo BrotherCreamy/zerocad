@@ -41,18 +41,20 @@ const inside = (a: Rect, b: Rect) => a.x >= b.x - 1e-6 && a.y >= b.y - 1e-6 && a
 // The registry is one per process, and these tests add to it in order: the
 // first reads the app's own list before anything is defined over it.
 
-test("the button list is eleven today, with these names in this order — a group's button showing its first member", async () => {
+test("the button list is twelve today, with these names in this order — a group's button showing its first member", async () => {
   await registerBuiltIns();
   const buttons = toolbarButtons();
-  assert.equal(buttons.length, 11);
+  // Twelve since the sketch shapes (docs/plans/sketch-shapes.md): the polygon
+  // and the slot joined the rectangle's button, and the ellipse brought the
+  // curves group's, after the arc as the table puts it.
+  assert.equal(buttons.length, 12);
   assert.deepEqual(buttons.map((b) => b.group ?? b.tools[0]),
-    ["select", "hand", "point", "line", "shapes", "circle", "arc", "modify", "extrude", "revolve", "sketch"]);
-  assert.deepEqual(buttons.find((b) => b.group === "shapes")!.tools, ["rectangle"]);
+    ["select", "hand", "point", "line", "shapes", "circle", "arc", "curves", "modify", "extrude", "revolve", "sketch"]);
+  assert.deepEqual(buttons.find((b) => b.group === "shapes")!.tools, ["rectangle", "polygon", "slot"]);
+  assert.deepEqual(buttons.find((b) => b.group === "curves")!.tools, ["ellipse"]);
   assert.deepEqual(buttons.find((b) => b.group === "modify")!.tools, ["fillet"]);
   // Every listed tool is on exactly one button.
   assert.deepEqual(buttons.flatMap((b) => b.tools).sort(), [...ENGINE_TOOLS, ...listTools()].sort());
-  // A group none of whose members is registered shows no button.
-  assert.ok(!buttons.some((b) => b.group === "curves"), "no curves button until an ellipse or a spline exists");
 });
 
 test("grouping is the table: shapes, curves and modify, in their order; Select, the Hand and the rest alone", () => {
@@ -88,13 +90,16 @@ test("a tool with static group joins it, after the table's members — and its b
   defineTool("t_stamp", Stamp);
   assert.equal(toolGroup("t_stamp"), "shapes");
   const shapes = toolbarButtons().find((b) => b.group === "shapes")!;
-  assert.deepEqual(shapes.tools, ["rectangle", "t_stamp"]);
-  assert.equal(toolbarButtons().length, 11, "no new button");
+  assert.deepEqual(shapes.tools, ["rectangle", "polygon", "slot", "t_stamp"]);
+  assert.equal(toolbarButtons().length, 12, "no new button");
   assert.equal(toolbarButtons().findIndex((b) => b.group === "shapes"), 4, "where the rectangle's was");
-  // A table member registered after it still comes first in the group's order.
-  class Polygon extends Tool { name = "polygon"; }
-  defineTool("polygon", Polygon);
-  assert.deepEqual(toolbarButtons().find((b) => b.group === "shapes")!.tools, ["rectangle", "polygon", "t_stamp"]);
+  // A table member registered after it still comes first in the group's order
+  // — a stand-in for the chamfer, which is not built yet.
+  class Stamp2 extends Tool { static group = "modify"; name = "t_late"; }
+  defineTool("t_late", Stamp2);
+  class Chamfer extends Tool { name = "chamfer"; }
+  defineTool("chamfer", Chamfer);
+  assert.deepEqual(toolbarButtons().find((b) => b.group === "modify")!.tools, ["fillet", "chamfer", "t_late"]);
 });
 
 test("static group is the class's own: a subclass of a grouped tool is not in its group", () => {
@@ -112,21 +117,24 @@ test("an unknown group name is a plain button; null is too; a group that is not 
   defineTool("t_odd", Odd);
   assert.equal(toolGroup("t_odd"), null);
   assert.deepEqual(toolbarButtons().at(-1), { group: null, tools: ["t_odd"] });
-  // A tool the table would group, declaring null, is a button of its own.
-  class Lone extends Tool { static group = null; name = "slot"; }
-  defineTool("slot", Lone);
-  assert.equal(toolGroup("slot"), null);
+  // A tool the table would group, declaring null, is a button of its own — a
+  // stand-in for the spline, which is not built yet.
+  class Lone extends Tool { static group = null; name = "spline"; }
+  defineTool("spline", Lone);
+  assert.equal(toolGroup("spline"), null);
   assert.equal(toolbarButtons().length, before + 2);
   assert.throws(() => defineTool("t_bad", class extends Tool { static group = 3 as unknown as string; name = "t_bad"; }), /static group must be a group's name/);
   assert.ok(!listTools().includes("t_bad"), "refused before anything is registered");
 });
 
-test("a group of none shows no button; its first member brings it, after the tools registered before it", () => {
-  assert.ok(!toolbarButtons().some((b) => b.group === "curves"));
-  class Ellipse extends Tool { name = "ellipse"; }
-  defineTool("ellipse", Ellipse);
+test("a group's button stands where its first member registered: curves after the arc, where main.ts imports the ellipse", () => {
   const buttons = toolbarButtons();
-  assert.deepEqual(buttons.at(-1), { group: "curves", tools: ["ellipse"] });
+  const at = (g: string) => buttons.findIndex((b) => b.group === g || b.tools[0] === g);
+  assert.equal(at("curves"), at("arc") + 1);
+  assert.equal(at("modify"), at("curves") + 1);
+  // A group of none shows no button: one defined at the command line with
+  // a name in no table, and no members, is nowhere.
+  assert.ok(!buttons.some((b) => b.group !== null && b.tools.length === 0));
 });
 
 test("the current member: the last armed while it is a member, else the first", () => {
@@ -230,7 +238,8 @@ test("slid along the tray off a pane in the way, to the nearest clear place; nev
 
 // --- everything fits, with a flyout open --------------------------------------------
 
-const TOOLS = 11;
+// Twelve since the sketch shapes: the curves group's button.
+const TOOLS = 12;
 /** Where the tray's `i`th button is, in a tray placed at `t` (the stylesheet's grid: strip, padding, a pitch a button). */
 function buttonAt(t: Layout[string], i: number, m: Metrics): Rect {
   const lines = linesOf(t, m);
@@ -266,9 +275,9 @@ for (const { phone, turn, mode } of everyWay()) {
       const tray = layout.toolbar;
       const avoid = Object.entries(layout).filter(([id, r]) => id !== "toolbar" && !r.fixed).map(([, r]) => r);
       const keep = [layout.logo, cornerBox(COARSE)];
-      // The shapes button is the fifth, modify the eighth; each with two
-      // members (a padding tool) up to every member queued behind this package.
-      for (const [index, sizes] of [[4, [2, 3]], [7, [2, 4, 7]]] as const) {
+      // The shapes button is the fifth, curves the eighth, modify the ninth;
+      // each at every size it has or will have once the queued packages land.
+      for (const [index, sizes] of [[4, [3]], [7, [1, 2]], [8, [2, 4, 7]]] as const) {
         for (const items of sizes) {
           const where = `${area.w}×${area.h}, options ${rows}, button ${index}, ${items} items`;
           const p = flyoutPlacement({ button: buttonAt(tray, index, COARSE), tray, along: tray.orient!, items, m: COARSE, bounds: all, keep, avoid });
@@ -288,7 +297,7 @@ test("a mouse's flyout on a desktop window: beside the column, one row, clear of
   const layout = defaultLayout(area, TOOLS, FINE);
   const tray = layout.toolbar;
   const avoid = Object.entries(layout).filter(([id]) => id !== "toolbar" && id !== "options").map(([, r]) => r);
-  const p = flyoutPlacement({ button: buttonAt(tray, 7, FINE), tray, along: "column", items: 7, m: FINE, bounds: { x: 0, y: 0, ...area }, keep: [cornerBox(FINE)], avoid });
+  const p = flyoutPlacement({ button: buttonAt(tray, 8, FINE), tray, along: "column", items: 7, m: FINE, bounds: { x: 0, y: 0, ...area }, keep: [cornerBox(FINE)], avoid });
   assert.deepEqual([p.orient, p.lines, p.side, p.clear], ["row", 1, "right", true]);
 });
 
@@ -299,7 +308,7 @@ test("at a larger interface size the flyout still fits beside a phone's tray, at
     const layout = laidOut(area, m, null);
     const tray = layout.toolbar;
     const avoid = Object.entries(layout).filter(([id, r]) => id !== "toolbar" && !r.fixed).map(([, r]) => r);
-    const p = flyoutPlacement({ button: buttonAt(tray, 7, m), tray, along: tray.orient!, items: 7, m, bounds: { x: 0, y: 0, ...area }, keep: [layout.logo, cornerBox(m)], avoid });
+    const p = flyoutPlacement({ button: buttonAt(tray, 8, m), tray, along: tray.orient!, items: 7, m, bounds: { x: 0, y: 0, ...area }, keep: [layout.logo, cornerBox(m)], avoid });
     assert.ok(inside(p.rect, { x: 0, y: 0, ...area }) && !meets(p.rect, tray), `${phone.name} ${turn} ${mode}`);
     assert.ok(p.clear, `${phone.name} ${turn} ${mode} at 120 %: ${JSON.stringify(p)}`);
   }
@@ -311,11 +320,13 @@ test("the menu's tool items: a group of more than one under its heading, every m
   await ensureKernelLoaded(await readFile(new URL("../src/kernel/wasm-gen/neocad_kernel_bg.wasm", import.meta.url)));
   const menu = menuFor(new Model(2), null);
   const rows = menu.items.map((i) => (i.action.do === "heading" ? `# ${i.label}` : i.label));
-  // By now the shapes group holds the rectangle, the stand-in polygon and
-  // t_stamp, and modify the fillet and t_base (the tests above): each under
-  // its heading. The others are as they were.
+  // By now the shapes group holds the rectangle, the polygon, the slot and
+  // t_stamp, and modify the fillet, the stand-in chamfer, t_late and t_base
+  // (the tests above): each under its heading. The ellipse's curves group has
+  // one member, so it is a plain item; the others are as they were.
   assert.deepEqual(rows.slice(0, rows.indexOf("Frame")),
-    ["Point", "Line", "# Shapes", "Rectangle", "Polygon", "T_stamp", "Circle", "Arc", "# Modify", "Fillet", "T_base"]);
+    ["Point", "Line", "# Shapes", "Rectangle", "Polygon", "Slot", "T_stamp", "Circle", "Arc", "Ellipse",
+      "# Modify", "Fillet", "Chamfer", "T_late", "T_base"]);
   const polygon = menu.items.find((i) => i.label === "Polygon")!;
   assert.deepEqual(polygon.action, { do: "run", command: 'arm("polygon")' });
 });
@@ -324,7 +335,7 @@ test("help() says which tools share a button, how to open it, and how a tool joi
   const repl = new Repl(neocadScope({ model: new Model(2), optionMemory: new OptionMemory(null) }));
   const help = (await repl.eval("help()")).value as string;
   assert.match(help, /rectangle +.*\[shapes\]/);
-  assert.match(help, /Sharing a button now: rectangle \/ polygon \/ t_stamp; fillet \/ t_base\./);
+  assert.match(help, /Sharing a button now: rectangle \/ polygon \/ slot \/ t_stamp; fillet \/ chamfer \/ t_late \/ t_base\./);
   assert.match(help, /static group = "shapes"/);
   assert.match(help, /slides off it onto one and lifts/);
   const tools = (await repl.eval("tools()")).value as string[];

@@ -45,7 +45,7 @@ import type { Model } from "../model.ts";
 import { construction } from "../operations.ts";
 import type { Snap } from "../snapping.ts";
 import { coincident, midpoint, onPlane } from "../relations/basic.ts";
-import { onCircle, pointOnLine } from "../relations/geometry.ts";
+import { onCircle, onEllipse, pointOnLine } from "../relations/geometry.ts";
 import { planeOfRef, sketchPlaneRef } from "../workplane.ts";
 import { sketchFrameFor } from "../sketchface.ts";
 import { parallel } from "../relations/geometry.ts";
@@ -216,13 +216,8 @@ export class CurvePlane {
    * plane there is.
    */
   hold(curve: string, centre: string): string[] {
-    const m = this.ctx.model;
-    if (!this.ref || !this.on || m.dim !== 3) return [];
-    const made: string[] = [];
-    const held = m.relationsNaming(centre).some((r) => r.op === "onPlane" && r.args[0] === centre && r.args[1] === this.ref);
-    if (!held && liesOn(this.on, m.coords(centre))) made.push(onPlane(m, centre, this.ref));
-    made.push(parallel(m, curve, normalRef(m, this.ref)));
-    return made;
+    if (!this.ref || !this.on) return [];
+    return holdCurve(this.ctx.model, curve, centre, this.ref);
   }
 
   /** The gesture was abandoned. */
@@ -230,6 +225,25 @@ export class CurvePlane {
     this.ref = null;
     this.on = null;
   }
+}
+
+/**
+ * Holds `curve` on the plane `ref`: its centre `onplane` — unless the centre is
+ * already held on it, or lies off it (a snap put it there, and the snap wins) —
+ * and its normal `par` to the plane's. Returns the relations made; nothing in
+ * 2D. `CurvePlane.hold`'s body, shared with the composites (shapes.ts), which
+ * hold their construction circle and their arcs exactly as a circle drawn on
+ * the plane is held.
+ */
+export function holdCurve(m: Model, curve: string, centre: string, ref: string): string[] {
+  if (m.dim !== 3) return [];
+  const on = planeOfRef(m, ref);
+  if (!on) return [];
+  const made: string[] = [];
+  const held = m.relationsNaming(centre).some((r) => r.op === "onPlane" && r.args[0] === centre && r.args[1] === ref);
+  if (!held && liesOn(on, m.coords(centre))) made.push(onPlane(m, centre, ref));
+  made.push(parallel(m, curve, normalRef(m, ref)));
+  return made;
 }
 
 /**
@@ -333,4 +347,5 @@ function onCurve(model: Model, pointName: string, curveName: string): void {
   if (!target || target.name === pointName) return;
   if (target.kind === "line") pointOnLine(model, pointName, target.name);
   else if (target.kind === "circle" || target.kind === "arc") onCircle(model, pointName, target.name);
+  else if (target.kind === "ellipse") onEllipse(model, pointName, target.name);
 }

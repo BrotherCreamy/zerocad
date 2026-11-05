@@ -16,7 +16,7 @@ import { ensureKernelLoaded } from "../src/kernel/problem.ts";
 import { DIMENSION_OPS, Model, parseValueRef, relationPrefix, valueArgIndex } from "../src/model.ts";
 import { coincident, dist, fix, midpoint } from "../src/relations/basic.ts";
 import {
-  angle, equalLength, equalRadius, onCircle, parallel, perpendicular, pointOnLine,
+  angle, equalLength, majorAxis, minorAxis, equalRadius, onCircle, parallel, perpendicular, pointOnLine,
   radius, symmetric, tangent,
 } from "../src/relations/geometry.ts";
 import { del, set } from "../src/operations.ts";
@@ -85,7 +85,9 @@ test("the three value-carrying relations are d-named and every other one is r-na
   // fifth, an extrude's depth and a revolve's angle, need a 3D model and a
   // feature around them, and have files of their own (test/extrude.test.ts,
   // test/revolve.test.ts).
-  assert.deepEqual([...DIMENSION_OPS].sort(), ["angle", "dist", "extrusion", "radius", "revolution"]);
+  // An ellipse's two semi-axes (docs/plans/sketch-shapes.md) are dimensions
+  // as a radius is; test/shapes.test.ts makes them.
+  assert.deepEqual([...DIMENSION_OPS].sort(), ["angle", "dist", "extrusion", "majorAxis", "minorAxis", "radius", "revolution"]);
   assert.equal(relationPrefix("dist"), "d");
   assert.equal(relationPrefix("fix"), "r");
   // A relation authored at the command line has never heard of any of this and
@@ -211,7 +213,7 @@ test("set says what is settable when it is handed something that is not", async 
 
   // A relation with no value. The message names the three that have one, in
   // the short spellings the user typed to make them.
-  assert.throws(() => set(m, `${r}.value`, 3), /"r1" is a parallel, not a dimension — only dist, rad, ang, an extrude's depth and a revolve's angle have a \.value/);
+  assert.throws(() => set(m, `${r}.value`, 3), /"r1" is a parallel, not a dimension — only dist, rad, ang, an ellipse's major and minor, an extrude's depth and a revolve's angle have a \.value/);
   // A name that is an entity, and a name that is nothing at all.
   assert.throws(() => set(m, "a.value", 3), /"a" is an entity, not a dimension/);
   assert.throws(() => set(m, "d99.value", 3), /"d99" is not a relation/);
@@ -283,6 +285,9 @@ test("every op in DIMENSION_OPS can actually be rebuilt by set", async () => {
     extrusion: (m) => extrusion(m, "f", 10, "a", "b"),
     // A quarter turn about the frame's z, of a point ten out along its x.
     revolution: (m) => revolution(m, "f.z", Math.PI / 2, "a", "b"),
+    // An ellipse's semi-axes, on the ellipse `e` the fixture below makes.
+    majorAxis: (m) => majorAxis(m, "e", 12),
+    minorAxis: (m) => minorAxis(m, "e", 4),
   };
   for (const op of DIMENSION_OPS) {
     assert.ok(fixtures[op], `${op} is a dimension with no fixture here — add one, and a REBUILD entry`);
@@ -316,6 +321,7 @@ test("every op in DIMENSION_OPS can actually be rebuilt by set", async () => {
     m.addCircle("c2", 5, null, "c");
     m.addLine("a", "b", "l1");
     m.addLine("a", "c2", "l2");
+    m.addEllipse("a", "c2", 3, null, "e");
     const name = fixtures[op](m);
     // Would throw `"<op>" cannot be rebuilt` if REBUILD were missing an entry.
     assert.equal(set(m, `${name}.value`, op === "angle" ? Math.PI / 4 : 7), name, op);
@@ -402,7 +408,7 @@ test("a version-3 file's deleteRelation is pointed at the name that relation has
   // finish. That is the same rule the hor/ver translation follows.
   assert.deepEqual(m.journal.at(-1), { op: "deleteRelation", args: ["d2"] });
   const saved = save(m);
-  assert.match(saved, /"version": 14/); // the current version, whatever later boundaries it crossed
+  assert.match(saved, /"version": 15/); // the current version, whatever later boundaries it crossed
   assert.equal(save(open(saved)), saved, "and the file is stable from here on");
 });
 

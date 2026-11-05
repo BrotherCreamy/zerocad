@@ -43,7 +43,7 @@ import { logoSvg } from "./logo.ts";
 import { GroupMemory, OptionMemory, declaredOptions, unitSymbol, type OptionValue } from "./tools/options.ts";
 import { toolIcon } from "./tools/icons.ts";
 import { depth, uiOf } from "./view.ts";
-import { arcSamples, arcSegments } from "./arcgeom.ts";
+import { arcSamples, arcSegments, frameReach } from "./arcgeom.ts";
 import { curveFrame } from "./curveplane.ts";
 import { createFaceLayer, paintFaces } from "./facelayer.ts";
 import { Bodies } from "./bodies.ts";
@@ -60,8 +60,15 @@ import type { Entity } from "./model.ts";
 import "./tools/point.ts";
 import "./tools/line.ts";
 import "./tools/rectangle.ts";
+// The shapes group's other members (docs/plans/sketch-shapes.md): after the
+// rectangle, whose button they share.
+import "./tools/polygon.ts";
+import "./tools/slot.ts";
 import "./tools/circle.ts";
 import "./tools/arc.ts";
+// The curves group, after the arc, so its button stands where the table puts it
+// (docs/plans/toolbar-groups.md, As built).
+import "./tools/ellipse.ts";
 import "./tools/fillet.ts";
 import "./tools/extrude.ts";
 import "./tools/revolve.ts";
@@ -682,7 +689,7 @@ async function main() {
       g.lineWidth = weight(e.name);
       if (e.kind === "line") {
         strokeEdge([model.coords(e.refs[0]), model.coords(e.refs[1])], false, stroke(e.name));
-      } else if (e.kind === "circle" || e.kind === "arc") {
+      } else if (e.kind === "circle" || e.kind === "arc" || e.kind === "ellipse") {
         // In its plane (see curveplane.ts): a circle the full turn round its
         // centre in its frame's orientation, an arc counter-clockwise from
         // start to end about its plane's +z (for a 2D arc, about +z, as
@@ -691,9 +698,10 @@ async function main() {
         // arc and seen at an angle is an ellipse, or part of one — the very
         // curve picking and snapping aim at. (A circle was drawn as a sphere's
         // silhouette until it carried a plane: round from every angle, which
-        // was the phase-2 seam showing.)
+        // was the phase-2 seam showing.) An ellipse is the same frame with a
+        // second radius (arcgeom.ts's `rv`), sampled by its longer one.
         const f = curveFrame(model, e);
-        if (f) strokeEdge(arcSamples(f, arcSegments(f.sweep, f.r * view.scale)), e.kind === "circle", stroke(e.name));
+        if (f) strokeEdge(arcSamples(f, arcSegments(f.sweep, frameReach(f) * view.scale)), e.kind !== "arc", stroke(e.name));
       } else if (e.kind === "frame") {
         drawFrame(e.name, lit.has(e.name), chosen.has(e.name));
       }
@@ -922,7 +930,8 @@ async function main() {
       case "point": return at(e.name);
       case "line": return (at(e.refs[0]) + at(e.refs[1])) / 2;
       case "circle":
-      case "arc": return at(e.center);
+      case "arc":
+      case "ellipse": return at(e.center);
       case "frame": return at(e.origin);
     }
   }

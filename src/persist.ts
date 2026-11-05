@@ -30,7 +30,23 @@ import { freshName, planeTranslation } from "./planetranslation.ts";
 
 export const FORMAT = "neocad-model";
 /**
- * 14 since **an extrude or revolve says what it does to a body**
+ * 15 since **the ellipse** (docs/plans/sketch-shapes.md): a new entity kind,
+ * `addEllipse(center, major, minor, normal, name)`, its relations
+ * `onEllipse`, `majorAxis` and `minorAxis` (and `tangent` and `concentric`
+ * taking one), and `values.minors` — each ellipse's minor semi-axis, keyed by
+ * name, as `radii` keys a circle's radius — with its normal in `normals`
+ * beside the circles'. The precedent below would have added the ops without a
+ * bump, since an older build refuses `addEllipse` by name at its step; the
+ * plan asked for one, and it is the honest thing for a file whose `values`
+ * carry a map an older build would silently drop. A version-14 build opening a
+ * version-15 file says "this file is version 15" instead of failing at the
+ * first ellipse.
+ *
+ * Going the other way **a version-14 file opens exactly as it was**: nothing
+ * in it is an ellipse, no op it uses changed meaning, and nothing is
+ * translated. `test/shapes.test.ts` opens one.
+ *
+ * 14 was **an extrude or revolve says what it does to a body**
  * (docs/plans/solids-kernel.md): every new `extrude` and `revolve` entry ends
  * in its options, resolved — `{ mode: "add", into: "e1" }`, `{ mode: "cut",
  * into: "e1" }`, `{ mode: "new" }` — written even when the call typed none,
@@ -278,7 +294,7 @@ export const FORMAT = "neocad-model";
  * with, so an older file replays to exactly the solids it was saved with
  * (`test/explicitregions.test.ts` opens one written by the build before).
  */
-export const VERSION = 14;
+export const VERSION = 15;
 
 export interface SavedModel {
   format: typeof FORMAT;
@@ -295,6 +311,8 @@ export interface SavedModel {
      * whose curves take theirs from the frames they named.
      */
     normals?: Record<string, number[]>;
+    /** Solved minor semi-axes, keyed by ellipse name (format 15). Absent in a file that has none. */
+    minors?: Record<string, number>;
   };
   /**
    * The source of any tools authored at the command line, as **inert text**.
@@ -337,6 +355,8 @@ function replayTable(model: Model): Map<string, (...args: unknown[]) => unknown>
     addLine: bound("addLine"),
     addCircle: bound("addCircle"),
     addArc: bound("addArc"),
+    // The ellipse (docs/plans/sketch-shapes.md, format 15).
+    addEllipse: bound("addEllipse"),
     addFrame: bound("addFrame"),
     // The default frame is journalled because it changes what a *later*
     // relation call means. It never changes what an already-journalled one
@@ -381,6 +401,11 @@ function replayTable(model: Model): Map<string, (...args: unknown[]) => unknown>
     tangent: rel(geom.tangent),
     symmetric: rel(geom.symmetric),
     arcEndpoints: rel(geom.arcEndpoints),
+    // The ellipse's own relations (format 15). `tangent` and `concentric`
+    // take an ellipse under their own names, above.
+    onEllipse: rel(geom.onEllipse),
+    majorAxis: rel(geom.majorAxis),
+    minorAxis: rel(geom.minorAxis),
 
     fillet: rel(fillet),
     // Journalled with its profile resolved (see `extrude`), so a replay walks
@@ -711,8 +736,13 @@ export function toSaved(model: Model, tools: readonly ToolSource[] = []): SavedM
   const points: Record<string, number[]> = {};
   const radii: Record<string, number> = {};
   const normals: Record<string, number[]> = {};
+  const minors: Record<string, number> = {};
   for (const e of model.entities.values()) {
     if (e.kind === "point") points[e.name] = model.coords(e.name);
+    else if (e.kind === "ellipse") {
+      minors[e.name] = model.problem.getVar(e.minorVar);
+      if (e.normal) normals[e.name] = e.normal.map((i) => model.problem.getVar(i));
+    }
     else if (e.kind === "circle" || e.kind === "arc") {
       radii[e.name] = model.radius(e.name);
       // The variables as they are, not normalised: their length is a gauge
@@ -728,6 +758,7 @@ export function toSaved(model: Model, tools: readonly ToolSource[] = []): SavedM
     // Absent where there are none, so a 2D file's values are the two maps they always were.
     values: Object.keys(normals).length ? { points, radii, normals } : { points, radii },
   };
+  if (Object.keys(minors).length) saved.values.minors = minors;
   // Absent, not empty: a file from a session that authored no tools is byte
   // for byte the file this app has always written.
   if (tools.length) saved.tools = tools.map((t) => ({ name: t.name, source: t.source }));
@@ -997,9 +1028,13 @@ export function fromSaved(saved: SavedModel, dim?: number): Model {
   }
   for (const [name, n] of Object.entries(vals.normals ?? {})) {
     const e = model.entities.get(name);
-    if (e && (e.kind === "circle" || e.kind === "arc") && e.normal && Array.isArray(n) && n.length === 3) {
+    if (e && (e.kind === "circle" || e.kind === "arc" || e.kind === "ellipse") && e.normal && Array.isArray(n) && n.length === 3) {
       e.normal.forEach((gi, k) => model.problem.setVar(gi, n[k]));
     }
+  }
+  for (const [name, b] of Object.entries(vals.minors ?? {})) {
+    const e = model.entities.get(name);
+    if (e?.kind === "ellipse" && typeof b === "number" && Number.isFinite(b)) model.problem.setVar(e.minorVar, b);
   }
   // An old file's curves, facing their frames as the file drew them and held
   // there by a `par` each, written at the end (see `VERSION`).

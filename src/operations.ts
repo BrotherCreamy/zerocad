@@ -12,7 +12,7 @@ import {
 } from "./model.ts";
 import { defaultMode, resolveMode } from "./modes.ts";
 import { dist } from "./relations/basic.ts";
-import { angle, arcEndpoints, onCircle, pointOnLine, radius, tangent } from "./relations/geometry.ts";
+import { angle, arcEndpoints, majorAxis, minorAxis, onCircle, onEllipse, pointOnLine, radius, tangent } from "./relations/geometry.ts";
 import { extrusion } from "./relations/extrusion.ts";
 import { FULL_TURN, axisReader, isFullTurn, revolution, turnPoint } from "./relations/revolution.ts";
 import { arcPoint, portionAngles, sweepsAs } from "./arcgeom.ts";
@@ -2491,6 +2491,9 @@ const REBUILD: Record<string, (model: Model, args: unknown[]) => void> = {
   // A revolve's angle: the whole end face, one value — and the refusals across
   // the full/partial line live in the relation, so a `set` meets them here.
   revolution: (m, a) => void revolution(m, a[0] as string, a[1] as number, ...(a.slice(2) as string[])),
+  // An ellipse's semi-axes (docs/plans/sketch-shapes.md), `rad`'s cousins.
+  majorAxis: (m, a) => void majorAxis(m, a[0] as string, a[1] as number),
+  minorAxis: (m, a) => void minorAxis(m, a[0] as string, a[1] as number),
 };
 
 /**
@@ -2498,7 +2501,7 @@ const REBUILD: Record<string, (model: Model, args: unknown[]) => void> = {
  * in the *short* names, because those are what the user typed to make one —
  * being told about `radius` after typing `rad` is a small riddle to no purpose.
  */
-const onlyDims = `only dist, rad, ang, an extrude's depth and a revolve's angle have a .${SETTABLE_PROPERTY}`;
+const onlyDims = `only dist, rad, ang, an ellipse's major and minor, an extrude's depth and a revolve's angle have a .${SETTABLE_PROPERTY}`;
 
 /**
  * Changes a dimension's value: `set("d4.value", 60)`.

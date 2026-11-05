@@ -99,7 +99,7 @@ test("points, frames and relations among the names are passed over; a call namin
   assert.throws(() => construction(m), /construction needs a name/);
   assert.throws(() => construction(m, "nope"), /"nope" is not an entity/);
   assert.throws(() => construction(m, 3), /construction takes names, then true or false/);
-  assert.throws(() => m.setConstruction("p1", true), /"p1" is not a line, arc or circle/, "the primitive refuses too");
+  assert.throws(() => m.setConstruction("p1", true), /"p1" is not a line, arc, circle or ellipse/, "the primitive refuses too");
 });
 
 test("a group expands to its members at the call, and later membership changes never alter a flag", async () => {

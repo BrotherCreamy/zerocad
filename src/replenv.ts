@@ -11,7 +11,8 @@
 // implicitly, since a REPL entry always has one in hand.
 
 import { Dual } from "./kernel/dual.ts";
-import { Model, type Entity, type ProfileMember } from "./model.ts";
+import { Model, spanOf, unitOf, type Entity, type ProfileMember } from "./model.ts";
+import * as shapes from "./tools/shapes.ts";
 import { describeFeature, describeRelation } from "./picking.ts";
 import type { SolveReport } from "./kernel/problem.ts";
 import { ENGINE_TOOLS, TOOL_GROUPS, Tool, defineTool, getToolCtor, listTools, aliasCommand, armedLine, TOOL_ALIASES, toolAlias, toolSummary, toolbarButtons, type ToolCtor } from "./tools/tool.ts";
@@ -225,6 +226,11 @@ function describe(e: Entity, model: Model): string {
       + (e.normal === undefined ? "" : `, facing (${model.normalOf(e.name).map((v) => v.toFixed(3)).join(", ")})`);
     case "arc": return `${e.name}  arc    center ${e.center}, ${e.start}→${e.end}, r=${model.radius(e.name).toFixed(3)}`
       + (e.normal === undefined ? "" : `, facing (${model.normalOf(e.name).map((v) => v.toFixed(3)).join(", ")})`);
+    case "ellipse": {
+      const { a, b } = model.semiAxes(e.name);
+      return `${e.name}  ellipse center ${e.center}, major end ${e.major}, a=${a.toFixed(3)}, b=${b.toFixed(3)}`
+        + (e.normal === undefined ? "" : `, facing (${model.normalOf(e.name).map((v) => v.toFixed(3)).join(", ")})`);
+    }
     case "frame": return `${e.name}  frame  origin ${e.origin}, +x toward ${e.xref}`
       + (e.yref === undefined ? "" : `, +y toward ${e.yref}`)
       + (model.defaultFrame === e.name ? "  (default)" : "");
@@ -269,6 +275,12 @@ export function neocadScope(h: EnvHandles): Bag {
   relation(["tan", "tangent"], slots("line", "circle"), bind(model, geom.tangent));
   relation(["sym", "symmetric"], slots("a", "b", "line"), bind(model, geom.symmetric));
   relation(["arcends", "arcEndpoints"], slots("arc"), bind(model, geom.arcEndpoints));
+  // The ellipse's (docs/plans/sketch-shapes.md). `tan` and `conc` take one
+  // under their own names; `major` and `minor` are its semi-axes, dimensions
+  // as `rad` is.
+  relation(["onellipse", "onEllipse"], slots("point", "ellipse"), bind(model, geom.onEllipse));
+  relation(["major", "majorAxis"], slots("ellipse", "#semi-axis"), bind(model, geom.majorAxis));
+  relation(["minor", "minorAxis"], slots("ellipse", "#semi-axis"), bind(model, geom.minorAxis));
 
   /**
    * Applies clauses to an entity that exists, returning the relation names
@@ -477,6 +489,51 @@ export function neocadScope(h: EnvHandles): Bag {
       if (hold) geom.parallel(model, name, hold);
       return name;
     }),
+    // The ellipse (docs/plans/sketch-shapes.md): a centre, its major end — a
+    // point, or a number for the semi-major, laid off along the drawing
+    // plane's first direction — and the minor semi-axis, every one optional
+    // and none a constraint, as `circ`'s. A plane named holds it there, as a
+    // circle's does.
+    ellipse: withClauses("ellipse", (center?: string | null, major?: string | number | null, minor?: number | null,
+          plane?: string | number[] | null) => {
+      model.checkEllipse(center, typeof major === "string" ? major : null, minor);
+      if (major != null && typeof major !== "string" && !(typeof major === "number" && major > 0)) {
+        throw new Error(`ellipse: the major end is a point's name or a positive semi-axis, got ${JSON.stringify(major)}`);
+      }
+      const { seed, hold } = curveFacing(plane);
+      model.normalSeed("ellipse", seed);
+      const c = center ?? anchor();
+      let end: string | null = typeof major === "string" ? major : null;
+      if (typeof major === "number") {
+        const at = c ? model.coords(c) : new Array<number>(model.dim).fill(0);
+        const n = seed ?? model.planeValues(model.drawingPlane())?.n ?? null;
+        const u = model.dim === 3 && n ? spanOf(unitOf(n))[0] : [1, 0];
+        end = model.addPoint(at.map((v, i) => v + major * (u[i] ?? 0))).name;
+      }
+      const name = model.addEllipse(c, end, minor ?? null, seed).name;
+      if (hold) geom.parallel(model, name, hold);
+      return name;
+    }),
+    // The composites (docs/plans/sketch-shapes.md): the pieces a tool would
+    // draw, each journalled as itself, so a file replays them as pieces. They
+    // return what they made, by name, and take no clauses — there is no one
+    // thing made for `_` to be.
+    polygon: (centre?: unknown, vertex?: unknown, n?: unknown, circumscribed?: unknown) => {
+      if (typeof centre !== "string" || typeof vertex !== "string") {
+        throw new Error('polygon(centre, vertex, n?, circumscribed?) takes two points\' names — polygon("p1", "p2", 6)');
+      }
+      if (n != null && typeof n !== "number") throw new Error(`polygon: n is a number of sides, got ${JSON.stringify(n)}`);
+      if (circumscribed != null && typeof circumscribed !== "boolean") {
+        throw new Error(`polygon: circumscribed is true or false, got ${JSON.stringify(circumscribed)}`);
+      }
+      return shapes.polygon(model, centre, vertex, n ?? 6, circumscribed ?? true, model.dim === 3 ? model.drawingPlane() : null);
+    },
+    slot: (a?: unknown, b?: unknown, width?: unknown) => {
+      if (typeof a !== "string" || typeof b !== "string" || typeof width !== "number") {
+        throw new Error('slot(a, b, width) takes its two centres\' names and a width — slot("p1", "p2", 10)');
+      }
+      return shapes.slot(model, a, b, width, model.dim === 3 ? model.drawingPlane() : null);
+    },
   };
   /**
    * Coordinate frames, as ordinary commands.
@@ -1227,6 +1284,18 @@ function groupLines(): string[] {
 function help(scope: Bag): string {
   return [
     "geometry   pt(x,y)  ln(a,b)  circ(center,r,plane?)  arc(center,start,end,r,plane?)",
+    "           ellipse(center, major, minor, plane?) — major a point (its major",
+    "           end) or a number (the semi-major), minor the semi-minor: an",
+    "           entity, centre and major end its points, minor its variable.",
+    '           polygon("p1", "p2", n?, circumscribed?) — a regular polygon about',
+    "           p1 with p2 a corner: n points and lines (6), every side eq to the",
+    "           first, a construction circle oncircle every corner; inscribed",
+    "           (false) adds a second, inside, tan to the first side.",
+    '           slot("p1", "p2", width) — two lines and two arcs about p1 and p2,',
+    "           eqrad, arcends, each side perp to the radius at its ends (a",
+    "           tangency said linearly), a construction line p1–p2 for the",
+    "           length. Both leave ordinary pieces and replay as them; the",
+    "           polygon, slot and ellipse tools draw them (shapes, curves).",
     "           point()  line()  circle()  — the same three, long names",
     "           every argument is optional: what you leave out is created free",
     "           near the middle of the view, for your relations to define.",
@@ -1284,6 +1353,10 @@ function help(scope: Bag): string {
     "           nothing.",
     "relations  dist fix coin mid par perp ang on eq",
     "           rad oncircle conc eqrad tan sym arcends onplane",
+    "           onellipse(p, e)  major(e, a)  minor(e, b) — an ellipse's: on it,",
+    "           and its semi-axes, dimensions like rad (labelled a20, b10).",
+    "           tan(line, e) and conc with circles and ellipses take one; tan",
+    "           between an ellipse and a circle or another ellipse does not.",
     "clauses    _ is the thing being made. A relation given _ does not apply:",
     "           it becomes a clause, and pt ln circ arc frame take clauses",
     "           after their own arguments, applying each to what they made —",

@@ -16,9 +16,9 @@
 // component to three.
 
 import type { Model } from "../model.ts";
-import type { Dual } from "../kernel/dual.ts";
+import { Dual } from "../kernel/dual.ts";
 import { dot, norm, vecSub, wedge, wedgeNorm } from "./vec.ts";
-import { chunk, curveNormal, directionOf, directionOfPoints, joinVars, lineVars, unitDuals, type DirectionRef } from "./refs.ts";
+import { chunk, curveNormal, directionOf, directionOfPoints, ellipseAxes, joinVars, lineVars, unitDuals, type DirectionRef } from "./refs.ts";
 import { coincident } from "./basic.ts";
 
 // --- the direction relations -----------------------------------------------
@@ -246,8 +246,14 @@ export function onCircle(model: Model, pointName: string, circleName: string): s
  * carry the coincidence twice.)
  */
 export function concentric(model: Model, c1: string, c2: string): string {
+  // A circle, an arc or an ellipse: anything with a centre (docs/plans/
+  // sketch-shapes.md). The ellipse's is a point like a circle's, so this is
+  // the same coincidence.
+  const centre = (n: string) => model.oriented(n).center;
+  centre(c1);
+  centre(c2);
   return model.relation("concentric", [c1, c2], () => {
-    coincident(model, model.circular(c1).center, model.circular(c2).center);
+    coincident(model, centre(c1), centre(c2));
   });
 }
 
@@ -298,6 +304,7 @@ export function equalRadius(model: Model, c1: string, c2: string): string {
  */
 export function tangent(model: Model, a: string, b: string, side?: string | null): string {
   const kind = (n: string) => model.entities.get(n)?.kind;
+  if (kind(a) === "ellipse" || kind(b) === "ellipse") return tangentEllipse(model, a, b, side);
   const isCurve = (n: string) => kind(n) === "circle" || kind(n) === "arc";
   if (isCurve(a) && isCurve(b)) return tangentCircles(model, a, b, side);
   if (side != null) throw new Error(`tan takes a side ("outside" or "inside") only between two circles — ${a} and ${b} are not both`);
@@ -358,6 +365,154 @@ function tangentCircles(model: Model, a: string, b: string, given?: string | nul
         return [offRim(q, p, ua), ...wedge(ua, ub)];
       }, `tan(${a},${b})|plane`);
     }
+  });
+}
+
+// --- ellipses ---------------------------------------------------------------
+//
+// The first curve that is not a circle (docs/plans/sketch-shapes.md; see
+// `EllipseEntity`). Its centre and major end are points and its minor
+// semi-axis a variable, so every relation below reads them as a circle's
+// relations read a centre and a radius, and none of them needs the minor
+// *direction*: in the ellipse's own frame a point's coordinate along the major
+// axis is `(q − c)·û`, and its distance off that axis comes from `|q − c|²`
+// less the square of that — `dot` all the way, so each relation holds in 2D
+// and 3D alike. In 3D each also says what a circle's says of its rim's plane,
+// against the ellipse's straightened normal (`ellipseAxes`).
+
+/** The ellipse's centre, major end, minor variable and — in 3D — normal, as one lazy list. */
+function ellipseVars(model: Model, name: string): { vars: () => number[]; dim: number; normal: boolean } {
+  model.ellipse(name); // fail now, not at the first solve
+  const normal = curveNormal(model, name);
+  return {
+    vars: () => {
+      const e = model.ellipse(name);
+      return [...model.point(e.center).varIndices, ...model.point(e.major).varIndices, e.minorVar, ...(normal ? normal() : [])];
+    },
+    dim: model.dim,
+    normal: normal !== null,
+  };
+}
+
+/** Splits `ellipseVars`' Duals: centre, major end, minor, raw normal (or null). */
+function ellipseParts(l: Dual[], dim: number, normal: boolean): { c: Dual[]; m: Dual[]; b: Dual; raw: Dual[] | null } {
+  return { c: l.slice(0, dim), m: l.slice(dim, 2 * dim), b: l[2 * dim], raw: normal ? l.slice(2 * dim + 1, 2 * dim + 4) : null };
+}
+
+/**
+ * A point lies on an ellipse.
+ *
+ * In the ellipse's frame the point is at `x` along the major axis and `y` off
+ * it, and it is on the ellipse when `(x/a)² + (y/b)² = 1`. That implicit form
+ * is not a square of anything, but its value is a pure number whatever the
+ * drawing's size, and its gradient shrinks with the ellipse; so the residual
+ * is the **distance-like** form instead: squash the major axis by `b/a`, which
+ * turns the ellipse into the circle of radius `b`, and ask what `onCircle`
+ * asks — `√((x·b/a)² + y²) − b`. A length, exactly the circle's residual when
+ * `a = b`, and its gradient on the curve is `(x·b/a², y)/b`, never zero (the
+ * suite checks it at a root). `y²` is `|q − c|² − x²` — the distance off the
+ * major axis, by `dot` — so the form is the same in any dimension; in 3D a
+ * second block holds the point in the ellipse's plane, as a circle's does.
+ */
+export function onEllipse(model: Model, pointName: string, ellipseName: string): string {
+  return model.relation("onEllipse", [pointName, ellipseName], () => {
+    const p = model.point(pointName);
+    const ev = ellipseVars(model, ellipseName);
+    const dim = model.dim;
+    model.addResidual(joinVars(p.varIndices, ev.vars), (l) => {
+      const q = l.slice(0, dim);
+      const { c, m, b, raw } = ellipseParts(l.slice(dim), dim, ev.normal);
+      const { u, a } = ellipseAxes(c, m, raw);
+      const r = vecSub(q, c);
+      const x = dot(r, u);
+      // |r|² − x²(1 − b²/a²): the squashed point's distance from the centre, squared.
+      const squashed = dot(r, r).sub(x.mul(x).mul(Dual.constant(1).sub(b.mul(b).div(a.mul(a)))));
+      return [squashed.sqrt().sub(b)];
+    }, `onellipse(${pointName},${ellipseName})`);
+    if (ev.normal) {
+      model.addResidual(joinVars(p.varIndices, ev.vars), (l) => {
+        const q = l.slice(0, dim);
+        const { c, m, raw } = ellipseParts(l.slice(dim), dim, true);
+        return [offRim(q, c, ellipseAxes(c, m, raw).n!)];
+      }, `onellipse(${pointName},${ellipseName})|plane`);
+    }
+  });
+}
+
+/**
+ * A line touches an ellipse — either order, `tan("l1", "el1")` or
+ * `tan("el1", "l1")`, journalled as typed.
+ *
+ * The ellipse's **support** in the direction of the line's normal is
+ * `√(a² sin²θ + b² cos²θ)`, θ the angle between the line and the major axis,
+ * and the line touches when its distance from the centre is that: the
+ * discriminant of the line meeting the ellipse, said as a distance minus a
+ * distance — `|(c − p) ∧ ŵ| − √(a² − (a² − b²) cos²θ)` — so it is the circle's
+ * tangency exactly when `a = b`, a length, and not a square: neither the
+ * discriminant nor anything else here is squared to make it vanish. Unsigned,
+ * like a circle's: a line touches from either side. `cos θ` is `û·ŵ`, so the
+ * form is `dot` throughout and holds in 3D, where a second block keeps the
+ * line in the ellipse's plane, as a tangent circle's does.
+ *
+ * `tan` between an ellipse and a circle, or two ellipses, is **out of scope**
+ * (sketch-shapes.md): a quartic with no closed form this relation could be a
+ * distance of. Refused by name.
+ */
+function tangentEllipse(model: Model, a: string, b: string, side?: string | null): string {
+  const kind = (n: string) => model.entities.get(n)?.kind;
+  const [lineName, ellipseName] = kind(a) === "ellipse" ? [b, a] : [a, b];
+  if (kind(lineName) !== "line") {
+    throw new Error(`tan takes an ellipse with a line — "${lineName}" is ${kind(lineName) ? `a ${kind(lineName)}` : "not there"}; `
+      + "an ellipse tangent to a circle or another ellipse is not supported");
+  }
+  if (side != null) throw new Error(`tan takes a side only between two circles — ${a} and ${b} are a line and an ellipse`);
+  return model.relation("tangent", [a, b], () => {
+    const ev = ellipseVars(model, ellipseName);
+    const dim = model.dim;
+    model.addResidual(joinVars(lineVars(model, lineName), ev.vars), (l) => {
+      const [p, q] = chunk(l, dim, 2);
+      const { c, m, b: minor, raw } = ellipseParts(l.slice(2 * dim), dim, ev.normal);
+      const { u, a: major } = ellipseAxes(c, m, raw);
+      const w = vecSub(q, p);
+      const len = norm(w);
+      const cos = dot(u, w).div(len);
+      const support = major.mul(major).sub(major.mul(major).sub(minor.mul(minor)).mul(cos.mul(cos))).sqrt();
+      return [wedgeNorm(vecSub(c, p), w).div(len).sub(support)];
+    }, `tan(${a},${b})`);
+    if (ev.normal) {
+      model.addResidual(joinVars(lineVars(model, lineName), ev.vars), (l) => {
+        const [p, q] = chunk(l, dim, 2);
+        const { c, m, raw } = ellipseParts(l.slice(2 * dim), dim, true);
+        const n = ellipseAxes(c, m, raw).n!;
+        return [offRim(p, c, n), offRim(q, c, n)];
+      }, `tan(${a},${b})|plane`);
+    }
+  });
+}
+
+/**
+ * An ellipse's major semi-axis — the distance from its centre to its major
+ * end — pinned to a number: a **dimension** (`d`-named, `set`-able), the
+ * ellipse's `rad`. A distance minus a number, as `dist` is.
+ */
+export function majorAxis(model: Model, ellipseName: string, target: number): string {
+  if (typeof target !== "number" || !(target > 0)) throw new Error(`major takes a positive semi-axis, got ${JSON.stringify(target)}`);
+  return model.relation("majorAxis", [ellipseName, target], () => {
+    const e = model.ellipse(ellipseName);
+    const c = model.point(e.center), m = model.point(e.major);
+    model.addResidual([...c.varIndices, ...m.varIndices], (l) => {
+      const [p, q] = chunk(l, model.dim, 2);
+      return [norm(vecSub(q, p)).sub(target)];
+    }, `major(${ellipseName})`);
+  });
+}
+
+/** An ellipse's minor semi-axis pinned to a number: a dimension, its variable minus the number, as `rad` is. */
+export function minorAxis(model: Model, ellipseName: string, target: number): string {
+  if (typeof target !== "number" || !(target > 0)) throw new Error(`minor takes a positive semi-axis, got ${JSON.stringify(target)}`);
+  return model.relation("minorAxis", [ellipseName, target], () => {
+    const e = model.ellipse(ellipseName);
+    model.addResidual([e.minorVar], (l) => [l[0].sub(target)], `minor(${ellipseName})`);
   });
 }
 

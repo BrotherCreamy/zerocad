@@ -81,6 +81,7 @@ export function quietEntities(model: Model, scene: QuietScene): Set<string> {
         if (e?.kind === "line") for (const p of e.refs) out.add(p);
         else if (e?.kind === "arc") { out.add(e.start); out.add(e.end); out.add(e.center); }
         else if (e?.kind === "circle") out.add(e.center);
+        else if (e?.kind === "ellipse") { out.add(e.center); out.add(e.major); }
       }
     }
     if (f.kind === "extrude") for (const w of f.walls) out.add(w);
@@ -90,7 +91,10 @@ export function quietEntities(model: Model, scene: QuietScene): Set<string> {
   for (const e of model.entities.values()) {
     if (e.kind === "line") for (const p of e.refs) out.add(p);
     else if (e.kind === "arc") { out.add(e.start); out.add(e.end); }
-    if (e.kind === "arc" || e.kind === "circle") centres.add(e.center);
+    // An ellipse's major end is on its rim, as an arc's ends are: quiet with
+    // the edge it sits on. Its centre is kept, as a circle's is.
+    else if (e.kind === "ellipse") out.add(e.major);
+    if (e.kind === "arc" || e.kind === "circle" || e.kind === "ellipse") centres.add(e.center);
   }
   for (const c of centres) out.delete(c);
   for (const n of solidEdges(model, scene.faced)) out.add(n);
@@ -129,6 +133,7 @@ export function revealed(model: Model, names: Iterable<string>): Set<string> {
     if (e.kind === "line") for (const p of e.refs) out.add(p);
     else if (e.kind === "arc") { out.add(e.start); out.add(e.end); out.add(e.center); }
     else if (e.kind === "circle") out.add(e.center);
+    else if (e.kind === "ellipse") { out.add(e.center); out.add(e.major); }
   }
   return out;
 }

@@ -128,8 +128,9 @@ export function hitTest(
   // An arc seen obliquely is a polyline on screen, and is near wherever any
   // piece of it is.
   for (const e of shown) {
-    if (e.kind !== "circle" && e.kind !== "arc") continue;
-    const screen = screenCurve(model, view, e, rCurve)!;
+    if (e.kind !== "circle" && e.kind !== "arc" && e.kind !== "ellipse") continue;
+    const screen = screenCurve(model, view, e, rCurve);
+    if (!screen) continue;
     const shape = screen.curve;
     let d: number;
     if (shape.kind === "polyline") {
@@ -349,6 +350,11 @@ function describeGeometry(model: Model, name: string, kind: Entity["kind"], n: (
       // the rim you think they do.
       const facing = model.circular(name).normal === undefined ? "" : `  facing ${model.normalOf(name).map(n).join(", ")}`;
       return `${name}  r ${n(model.radius(name))}${facing}`;
+    }
+    case "ellipse": {
+      const { a, b } = model.semiAxes(name);
+      const facing = model.ellipse(name).normal === undefined ? "" : `  facing ${model.normalOf(name).map(n).join(", ")}`;
+      return `${name}  a ${n(a)}  b ${n(b)}${facing}`;
     }
     case "line": {
       const l = model.line(name);

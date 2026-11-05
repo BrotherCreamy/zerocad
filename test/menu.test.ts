@@ -24,6 +24,7 @@ import "../src/tools/line.ts";
 import "../src/tools/rectangle.ts";
 import "../src/tools/circle.ts";
 import "../src/tools/arc.ts";
+import "../src/tools/ellipse.ts";
 import "../src/tools/fillet.ts";
 
 async function loadKernel() {
@@ -208,7 +209,7 @@ test("empty canvas arms the tools, and every tool name it types is registered", 
   assert.deepEqual(labels(menu), [
     // One circle and one arc (docs/plans/one-circle-one-arc.md): the 3-point
     // items went with their tools.
-    "Point", "Line", "Rectangle", "Circle", "Arc", "Fillet", "Frame",
+    "Point", "Line", "Rectangle", "Circle", "Arc", "Ellipse", "Fillet", "Frame",
   ]);
   // A typo in the table would be a menu item that throws when chosen, and
   // nothing else would catch it.
