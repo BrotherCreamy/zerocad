@@ -46,7 +46,7 @@ export class DimensionTool extends Tool {
     diameter: { default: false, label: "diameter" },
     driven: { default: false, label: "driven" },
   };
-  static readonly summary = "Dimensions what you click: a line, two points, a point and a line, two lines, a circle — then click to place";
+  static readonly summary = "Dimensions what you click; a click on empty canvas places it";
   readonly name = "dimension";
   // Its picks are entities, not places: a snap marker would promise a point.
   readonly snaps = false;

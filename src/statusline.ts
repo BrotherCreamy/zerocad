@@ -97,3 +97,41 @@ export class StatusLine {
     return this.stepNote.className;
   }
 }
+
+/**
+ * What the diagnosis beside the verdict says (docs/plans/sketch-relations.md):
+ * words, and relation names to be drawn as things to click. Pure, over plain
+ * data — the model's `diagnose` and `conflicting` answers — so the wording is
+ * tested without a browser.
+ *
+ * - a conflict: the relations that cannot all hold — `d1 · d2 cannot all hold`;
+ * - solved with redundancy: the count, then the redundant ones, in the softer
+ *   word — `3 free · redundant r5` — never blocking;
+ * - solved: how many ways the drawing can still move — `3 free`, `0 free`.
+ */
+export type DiagnosisPart = string | { relation: string };
+
+export interface DiagnosisLine {
+  cls: "" | "conflict" | "redundant";
+  parts: DiagnosisPart[];
+  /** Whether it fades with SOLVED: only when it says nothing is wrong. */
+  fades: boolean;
+}
+
+export function diagnosisLine(
+  solved: boolean, dof: number | null, conflicts: readonly string[], unowned: readonly string[], redundant: readonly string[],
+): DiagnosisLine {
+  const names = (rs: readonly string[]): DiagnosisPart[] => rs.flatMap((r, i) => (i ? [" · ", { relation: r }] : [{ relation: r }]));
+  if (!solved) {
+    const parts: DiagnosisPart[] = [...names(conflicts)];
+    if (unowned.length) parts.push(...(parts.length ? [" · "] : []), unowned.join(" · "));
+    if (!parts.length) return { cls: "conflict", parts: [], fades: false };
+    parts.push(conflicts.length + unowned.length > 1 ? " cannot all hold" : " cannot hold");
+    return { cls: "conflict", parts, fades: false };
+  }
+  const count: DiagnosisPart[] = dof === null ? [] : [`${dof} free`];
+  if (redundant.length) {
+    return { cls: "redundant", parts: [...count, ...(count.length ? [" · "] : []), "redundant ", ...names(redundant)], fades: false };
+  }
+  return { cls: "", parts: count, fades: true };
+}

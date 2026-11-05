@@ -21,7 +21,7 @@ import { constraintsFor } from "../dimensioning.ts";
 import { markPicked } from "./picked.ts";
 
 export class ConstrainTool extends Tool {
-  static readonly summary = "Relates what you pick: parallel, tangent, equal, on, … — choose from the list that applies";
+  static readonly summary = "Relates what you pick: choose from the relations that apply";
   readonly name = "constrain";
   readonly snaps = false;
   /** What is picked, in the order picked. */

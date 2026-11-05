@@ -96,7 +96,7 @@ after(async () => { await desk.close(); });
 test("desktop: Select and the Hand head the toolbar, each its own glyph and the command it types; Select is lit at start and after Escape", async () => {
   await fresh(desk);
   const bs = await buttons(desk);
-  assert.equal(bs.length, 11, "two more than the nine tools — one circle and one arc");
+  assert.equal(bs.length, 13, "two more than the eleven tools — one circle and one arc, dimension and constrain");
   assert.deepEqual(bs.slice(0, 3).map((b) => b.tool), ["select", "hand", "point"], "first, then the tools as they were");
   assert.deepEqual(bs.slice(0, 2).map((b) => [b.glyph, b.hint]),
     [["select", true], ["hand", true]]);
@@ -243,7 +243,7 @@ async function slide(from: [number, number], to: [number, number]): Promise<void
 
 test("iPhone: Select is lit at start, and one finger on empty canvas orbits without the Hand and pans with it", async () => {
   await freshPhone();
-  assert.equal((await buttons(phone)).length, 11);
+  assert.equal((await buttons(phone)).length, 13);
   assert.deepEqual(await lit(phone), ["select"]);
   await shot(phone, "portrait");
 

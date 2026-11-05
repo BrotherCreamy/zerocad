@@ -58,6 +58,17 @@
     #status[data-faded]{opacity:0}
     #status.solved{color:#55c07a}
     #status.bad{color:#e0605c}
+    /* The diagnosis beside the verdict: muted while it only counts what is
+       free (and fading with SOLVED), red for a conflict and a soft orange for
+       a redundancy, which stay. A relation it names takes a click: it selects
+       it, and Delete removes it. */
+    #diagnosis{color:#7a8b9b}
+    #diagnosis[data-faded]{opacity:0}
+    #diagnosis.conflict{color:#e0605c}
+    #diagnosis.redundant{color:#d99a6c}
+    #diagnosis .rel{pointer-events:auto;cursor:pointer;font:inherit;color:inherit;background:none;border:none;padding:0 2px;
+      text-decoration:underline dotted;text-underline-offset:2px}
+    #diagnosis .rel:hover{color:#e8a33d}
     /* What the last undo or redo did, beside the verdict rather than over it
        (see stepNote in main.ts). Amber, the colour of what just happened. */
     #stepnote{color:#e8a33d}
@@ -306,6 +317,12 @@
     #options{padding:3px 6px;overflow:hidden}
     #options .orow{display:flex;align-items:center;gap:6px;height:var(--orow);font-size:calc(11px * var(--ui));color:#8fa7bb}
     #options .olabel{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    /* A tool's command (the constrain tool's relations): a row-wide button,
+       its label, and dim after it the line it types. */
+    #options .ocmd{width:100%;padding:0 4px;font-family:inherit;text-align:left;background:transparent;border:1px solid transparent;border-radius:3px;cursor:default}
+    #options .ocmd:hover{background:#20303f;color:#d5e1ec;border-color:#223041}
+    #options .ocmd .olabel{flex:none;color:inherit}
+    #options .ocmdtext{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#56697b;text-align:right}
     #options .oval{flex:none;width:calc(64px * var(--ui));height:calc(18px * var(--ui));padding:0 5px;font-family:inherit;font-size:calc(11px * var(--ui));color:#d5e1ec;
       background:#0a0e13;border:1px solid #223041;border-radius:3px;outline:none;text-align:right}
     #options .oval[type="checkbox"]{width:calc(14px * var(--ui));height:calc(14px * var(--ui));margin:0 calc(25px * var(--ui));accent-color:#e8a33d}
@@ -398,6 +415,9 @@
       <button id="logo" type="button" title="ZeroCAD — menu" aria-label="ZeroCAD — menu" aria-haspopup="menu" aria-expanded="false"></button>
       <div id="corner">
         <span id="status" aria-live="polite">loading kernel…</span>
+        <!-- What the solve could say beyond its verdict (docs/plans/sketch-relations.md):
+             "3 free", which relations conflict or are redundant — each a name to click. -->
+        <span id="diagnosis" aria-live="polite"></span>
         <span id="stepnote" aria-live="polite"></span>
         <span id="opengroup" aria-live="polite"></span>
         <!-- A new version, offered (src/update.ts): hidden until one waits. -->
