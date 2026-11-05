@@ -2450,6 +2450,13 @@ extended the way `defineTool` extends the tool registry would close it.
 
 ## Smaller things
 
+- [x] **Pages reloading mid-test when a worker checks out a worktree
+  (2026-11-05).** "Execution context was destroyed, most likely because of a
+  navigation" across three gates; Vite reloads every page on any `.html`
+  change under the root, and `.claude/worktrees/` is under the root. The
+  watcher now ignores `.claude/**` (`vite.config.ts`). Load is the other
+  cause of lost tests and stays recorded below; this one is gone.
+
 - [ ] **A touch offset that persists on the owner's iPhone (2026-11-05):**
   *"the touch input is offset upwards at some point and it persists"*. Our
   mapping is fresh per event; the likely cause is iOS leaving the layout
