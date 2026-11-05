@@ -106,7 +106,7 @@ type Side = "above" | "below" | "left" | "right";
  * none fits (a window smaller than the tip), the first is clamped in.
  */
 export function tipPlacement(
-  anchor: Box, size: Size, bounds: Box, opts: { finger?: At | null; along?: Along; line?: Box | null } = {},
+  anchor: Box, size: Size, bounds: Box, opts: { finger?: At | null; along?: Along; line?: Box | null; clear?: readonly Box[] } = {},
 ): At & { side: Side } {
   const f = opts.finger ?? null;
   // What the tip keeps off: the tray's whole box for a control in one, so it
@@ -132,10 +132,21 @@ export function tipPlacement(
     : opts.along === "row" ? (f ? ["above", "below", ...sides] : ["below", "above", ...sides])
     : f ? ["above", ...sides, "below"]
     : ["below", "above", ...sides];
-  const fits = (p: At) => p.x >= left - 0.5 && p.y >= top - 0.5 && p.x + size.w <= right + 0.5 && p.y + size.h <= bottom + 0.5;
+  // And clear of whatever else the control asks it to keep off (a flyout item: the tray it opened from).
+  const off2 = opts.clear ?? [];
+  const hits = (p: At) => off2.some((o) => p.x < o.x + o.w - 0.5 && o.x < p.x + size.w - 0.5 && p.y < o.y + o.h - 0.5 && o.y < p.y + size.h - 0.5);
+  const fits = (p: At) => p.x >= left - 0.5 && p.y >= top - 0.5 && p.x + size.w <= right + 0.5 && p.y + size.h <= bottom + 0.5 && !hits(p);
   for (const side of order) {
     const p = at[side]();
     if (fits(p)) return { ...p, side };
+    // Slid along that side, just past a box it is to keep off — above a
+    // flyout, to the far side of the tray it opened from.
+    for (const o of off2) {
+      const slid: At[] = side === "above" || side === "below"
+        ? [{ x: o.x + o.w + GAP, y: p.y }, { x: o.x - GAP - size.w, y: p.y }]
+        : [{ x: p.x, y: o.y + o.h + GAP }, { x: p.x, y: o.y - GAP - size.h }];
+      for (const q of slid) if (fits(q)) return { ...q, side };
+    }
   }
   const p = at[order[0]]();
   return { x: slideX(p.x), y: slideY(p.y), side: order[0] };
@@ -163,6 +174,8 @@ export interface AttachOptions {
   along?: () => Along;
   /** The element holding the control's whole line — the tray — whose box the tip keeps off. */
   line?: () => Element | null;
+  /** Other elements the tip keeps off — a flyout item's tray (docs/plans/toolbar-groups.md). */
+  clear?: () => Element[];
   /**
    * False where a finger's hold already means something on this control — an
    * organiser row's long-press is its menu — so only a mouse shows the tip.
@@ -187,7 +200,7 @@ export function giveTip(control: HTMLElement, tip: TipSource, attach: AttachTip 
   if (t) control.title = tipText(t);
 }
 
-interface Entry { tip: TipSource; along?: () => Along; line?: () => Element | null; hold: boolean }
+interface Entry { tip: TipSource; along?: () => Along; line?: () => Element | null; clear?: () => Element[]; hold: boolean }
 
 /**
  * The one tooltip element, and every control attached to it. Listening is
@@ -244,7 +257,7 @@ export class Tooltips {
 
   /** Gives `control` its tooltip — the `AttachTip` every host is handed. */
   readonly attach: AttachTip = (control, tip, options = {}) => {
-    this.controls.set(control, { tip, along: options.along, line: options.line, hold: options.hold ?? true });
+    this.controls.set(control, { tip, along: options.along, line: options.line, clear: options.clear, hold: options.hold ?? true });
     // One tooltip at a time: the native one goes.
     control.removeAttribute("title");
     control.dataset.tip = "";
@@ -363,7 +376,8 @@ export class Tooltips {
     }
     const size = { w: this.el.offsetWidth, h: this.el.offsetHeight };
     const p = tipPlacement({ x: r.x, y: r.y, w: r.width, h: r.height }, size, this.bounds(),
-      { finger, along: entry!.along?.() ?? null, line: l ? { x: l.x, y: l.y, w: l.width, h: l.height } : null });
+      { finger, along: entry!.along?.() ?? null, line: l ? { x: l.x, y: l.y, w: l.width, h: l.height } : null,
+        clear: (entry!.clear?.() ?? []).map((e) => { const q = e.getBoundingClientRect(); return { x: q.x, y: q.y, w: q.width, h: q.height }; }) });
     this.el.style.left = `${Math.round(p.x)}px`;
     this.el.style.top = `${Math.round(p.y)}px`;
     this.el.dataset.side = p.side;

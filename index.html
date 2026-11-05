@@ -125,6 +125,8 @@
     :is(#ctxmenu,#appmenu) .item{display:flex;justify-content:space-between;gap:18px;padding:3px 10px;
       color:#d5e1ec;white-space:nowrap;cursor:default}
     :is(#ctxmenu,#appmenu) .item .cmd{color:#46586a}
+    /* A toolbar group's name over its tools (docs/plans/toolbar-groups.md). */
+    #ctxmenu .sub{padding:4px 10px 1px;color:#46586a;font-size:calc(9.5px * var(--ui));letter-spacing:.06em;text-transform:uppercase;cursor:default}
     :is(#ctxmenu,#appmenu) .item:hover{background:#20303f;color:#e8a33d}
     :is(#ctxmenu,#appmenu) .item:hover .cmd{color:#8fa7bb}
     :is(#ctxmenu,#appmenu) .item.off,:is(#ctxmenu,#appmenu) .item.off:hover{color:#46586a;background:transparent}
@@ -240,6 +242,29 @@
     .tray button[aria-pressed="true"]{color:#e8a33d;border-color:#e8a33d80;background:#e8a33d18}
     /* An action that would do nothing now (nothing to undo, nothing selected). */
     .tray button:disabled,.tray button:disabled:hover{color:#2f4050;background:transparent}
+    /* A group's button (docs/plans/toolbar-groups.md): a small triangle in its
+       bottom-right corner says more tools are behind it — in the glyph's ink,
+       dimmed, so armed it is amber with the rest. Two pixels in from the
+       corner, its legs four, at the interface size. A finger's press may slide
+       off it onto the flyout, so the browser is told not to take the slide. */
+    .tray button[data-more]{position:relative;touch-action:none}
+    .tray button[data-more]::after{content:"";position:absolute;right:calc(2px * var(--ui));bottom:calc(2px * var(--ui));
+      width:calc(4px * var(--ui));height:calc(4px * var(--ui));background:currentColor;opacity:.75;
+      clip-path:polygon(100% 0,100% 100%,0 100%);pointer-events:none}
+    /* The flyout: the rest of the group, beside the tray — drawn as a tray
+       without a strip (nothing drags it), a line the other way from the tray,
+       wrapped where panels.ts's flyoutPlacement says. Fixed, over the panels
+       and under the tooltip and the menus. The current member is outlined;
+       the armed one is amber, as on the tray; .hot is the item a sliding
+       finger is over, lit as a hover lights it. */
+    #flyout{position:fixed;z-index:60;box-sizing:border-box;background:#0e141b;border:1px solid #2c3d4f;border-radius:4px;
+      box-shadow:0 4px 14px #0008;grid-auto-flow:row;grid-template-rows:none;grid-auto-rows:var(--button);
+      grid-template-columns:repeat(var(--per,1),var(--button))}
+    #flyout[data-orient="column"]{grid-auto-flow:column;grid-template-columns:none;grid-auto-columns:var(--button);
+      grid-template-rows:repeat(var(--per,1),var(--button))}
+    #flyout[hidden]{display:none}
+    #flyout button.current{border-color:#46586a}
+    #flyout button.hot{background:#20303f;color:#d5e1ec}
     /* A panel that comes and goes (the options panel) is hidden by the
        attribute, which .panel's display:flex would otherwise beat. */
     .panel[hidden]{display:none}
@@ -415,6 +440,8 @@
       <div id="hovertag" hidden></div>
       <!-- The tooltip every icon and short word in the chrome shares (src/tooltip.ts). -->
       <div id="tooltip" role="tooltip" hidden></div>
+      <!-- A toolbar group's flyout: the family beside its button (src/panels.ts's Toolbar). -->
+      <div id="flyout" class="tray" role="group" aria-label="tools in this group" hidden></div>
       <div id="ctxmenu" hidden></div>
       <div id="appmenu" role="menu" hidden></div>
     </div>

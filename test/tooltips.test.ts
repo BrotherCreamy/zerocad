@@ -277,3 +277,21 @@ test("a tip too wide for the room beside a column is given exactly that room, an
   assert.ok(!over(narrowed, room, 90) && narrowed.x >= finger.x + FINGER_CLEAR);
   assert.ok(room >= MIN_TIP_W);
 });
+
+test("a flyout item's tip keeps off the tray it opened from as well as the flyout — slid past it (docs/plans/toolbar-groups.md)", () => {
+  // A row flyout right of a column tray, held under a finger: above it, centred
+  // on the item, the tip lay over the tray's buttons (seen in a screenshot).
+  const bounds = { x: 0, y: 0, w: 390, h: 760 };
+  const tray: Box = { x: 8, y: 60, w: 34, h: 600 };
+  const fly: Box = { x: 46, y: 380, w: 96, h: 34 };
+  const item: Box = { x: 50, y: 384, w: 26, h: 26 };
+  const size = { w: 200, h: 60 };
+  const finger = { x: 63, y: 397 };
+  const meets = (p: { x: number; y: number }, o: Box) => p.x < o.x + o.w && o.x < p.x + size.w && p.y < o.y + o.h && o.y < p.y + size.h;
+  const plain = tipPlacement(item, size, bounds, { finger, along: "row", line: fly });
+  assert.ok(meets(plain, tray), "not told of the tray, it lies over it");
+  const told = tipPlacement(item, size, bounds, { finger, along: "row", line: fly, clear: [tray] });
+  assert.ok(!meets(told, tray) && !meets(told, fly), JSON.stringify(told));
+  assert.equal(told.side, "above");
+  assert.equal(told.x, tray.x + tray.w + GAP);
+});

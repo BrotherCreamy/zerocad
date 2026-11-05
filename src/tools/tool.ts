@@ -264,6 +264,15 @@ export abstract class Tool {
    * one tool.
    */
   static readonly summary?: string;
+  /**
+   * The toolbar group the tool's button is in: `static group = "shapes"`
+   * (docs/plans/toolbar-groups.md) — one of `TOOL_GROUPS`' names, so a tool
+   * defined at the command line can share a family's button. A built-in's
+   * group is the table's, by name. Read from the class itself, never
+   * inherited, as `summary` is; a name not in the table, or null, is a button
+   * of its own.
+   */
+  static readonly group?: string | null;
   abstract readonly name: string;
   /**
    * Whether the engine pulls this tool's cursor onto nearby geometry and draws
@@ -381,6 +390,100 @@ export function toolbarTools(): string[] {
 }
 
 /**
+ * **Toolbar groups** (docs/plans/toolbar-groups.md): tools of one family share
+ * one toolbar button, which shows the one armed last and opens the rest beside
+ * it. The owner asked for *"better sketch tools, relations, trim, slot... all
+ * the usual"* and, before that, that *"everything has to fit"*: twenty-odd
+ * buttons fit no phone as a column, so a family is one button.
+ *
+ * **A table keyed by the registered name, as `TOOL_ICONS` is** (icons.ts) — a
+ * built-in's group is a property of its name, not guessed and not inherited:
+ * a tool defined at the command line as `class extends FilletTool` under a new
+ * name is not a fillet. A group's members are in its button's order, the
+ * default first. A name listed here that nothing registers yet (polygon, until
+ * its package lands) is simply not on the button, and **a group none of whose
+ * members is registered shows no button at all**. Vetoable (TODO.md).
+ *
+ * Select and the Hand are the engine's and never grouped; point, line, circle,
+ * arc, extrude, revolve and sketch are in no group and keep a button each. A
+ * tool defined at the command line joins a group by declaring `static group =
+ * "shapes"` (its own, not inherited — see `toolGroup`); a group not in this
+ * table is no group, and the tool is a button of its own.
+ */
+export const TOOL_GROUPS: Readonly<Record<string, readonly string[]>> = {
+  shapes: ["rectangle", "polygon", "slot"],
+  curves: ["ellipse", "spline"],
+  modify: ["fillet", "chamfer", "trim", "extend", "offset", "mirror", "pattern"],
+};
+
+/** The class's own `static group`, when it declares one: a name, or null for none. Undefined when it declares nothing. */
+function ownGroup(ctor: ToolCtor): string | null | undefined {
+  if (!Object.hasOwn(ctor, "group")) return undefined;
+  const g = (ctor as unknown as { group?: unknown }).group;
+  return typeof g === "string" && g.trim() ? g.trim() : null;
+}
+
+/**
+ * The group whose button `name` is on, or null for a button of its own. A
+ * class's own `static group` decides first — a known group joins it, anything
+ * else (an unknown name, null) is a button of its own; a class that declares
+ * none is where the table puts its name. Read from the class itself, never
+ * inherited, for the reason `summary` is not (see `Tool.summary`).
+ */
+export function toolGroup(name: string): string | null {
+  if (ENGINE_TOOLS.includes(name)) return null;
+  const ctor = registry.get(name);
+  const own = ctor ? ownGroup(ctor) : undefined;
+  if (own !== undefined) return own !== null && Object.hasOwn(TOOL_GROUPS, own) ? own : null;
+  for (const [group, members] of Object.entries(TOOL_GROUPS)) if (members.includes(name)) return group;
+  return null;
+}
+
+/** One toolbar button: a tool on its own (`group` null, one tool), or a group's registered members in its order. */
+export interface ToolbarButton { group: string | null; tools: string[] }
+
+/**
+ * The toolbar's buttons, in order: Select, the Hand, then every listed tool in
+ * registration order, where a group's button stands where its first registered
+ * member does — its members in the table's order, then any that joined by
+ * `static group`, in registration order. Eleven today.
+ */
+export function toolbarButtons(): ToolbarButton[] {
+  const out: ToolbarButton[] = [];
+  const byGroup = new Map<string, ToolbarButton>();
+  for (const name of toolbarTools()) {
+    const group = toolGroup(name);
+    if (group === null) {
+      out.push({ group: null, tools: [name] });
+      continue;
+    }
+    let b = byGroup.get(group);
+    if (!b) {
+      b = { group, tools: [] };
+      byGroup.set(group, b);
+      out.push(b);
+    }
+    b.tools.push(name);
+  }
+  for (const b of byGroup.values()) {
+    const table = TOOL_GROUPS[b.group!];
+    const rank = (t: string) => (table.includes(t) ? table.indexOf(t) : table.length);
+    // A stable sort: those the table does not list keep their registration order after it.
+    b.tools.sort((a, c) => rank(a) - rank(c));
+  }
+  return out;
+}
+
+/**
+ * The tool a group's button shows, and a press on it arms: the member the
+ * viewer armed last from it (`remembered` — the host keeps it, see
+ * `GroupMemory` in options.ts), while that is still a member; else the first.
+ */
+export function groupCurrent(button: ToolbarButton, remembered: string | null | undefined): string {
+  return remembered && button.tools.includes(remembered) ? remembered : button.tools[0];
+}
+
+/**
  * Names that arm a registered tool already set one way: `circle3` is the circle
  * tool locked to three points, `arc3` the arc tool likewise. They were tools of
  * their own until the owner asked *"why are there multiple circle tools and arc
@@ -444,6 +547,14 @@ export function defineTool(name: string, ctor: ToolCtor, { listed = true }: { li
     const s = (ctor as unknown as { summary?: unknown }).summary;
     if (s !== undefined && typeof s !== "string") {
       throw new Error(`${name}'s static summary must be one line of text, like "Draws a rectangle: drag from corner to corner"`);
+    }
+  }
+  // Likewise a group that is not a name: `static group = 3` would otherwise
+  // quietly be a button of its own. An unknown name is allowed, and is one.
+  if (Object.hasOwn(ctor, "group")) {
+    const g = (ctor as unknown as { group?: unknown }).group;
+    if (g !== undefined && g !== null && typeof g !== "string") {
+      throw new Error(`${name}'s static group must be a group's name — ${Object.keys(TOOL_GROUPS).map((k) => JSON.stringify(k)).join(", ")} — or null`);
     }
   }
   registry.set(name, ctor);

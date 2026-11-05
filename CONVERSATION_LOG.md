@@ -106,6 +106,34 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### Toolbar groups: why the flyout replaces a grouped button's tooltip, and is not a panel
+
+The owner wants the usual sketch tools, and everything to fit; a family
+sharing a button is how every CAD program does both. Three choices were
+not obvious from the spec.
+
+**The tooltip.** A plain button shows its tooltip on a hover or a hold —
+exactly the gestures the spec gives the flyout. Showing both put the tip
+where the flyout goes (beside a column, on the drawing's side) and raced two
+timers at 400 and 500 ms. Rejected: delaying the flyout behind the tip (a
+mouse would wait twice), and placing the tip on the far side (there is no
+far side for a tray against the left edge). So once a group has two members
+its button opens the flyout instead, and each item carries the tooltip a
+button would have. A group of one keeps its button's tooltip.
+
+**Not a layout panel.** The flyout could have been a pane in `Panels`, pushed
+and pushing like the options panel. Rejected: it lives for a second, and a
+pane that appears pushes the log and the organiser out of the way and back
+again each time it opens — the chrome jumping under the finger mid-gesture.
+It is placed instead by a pure function over the panes' rectangles, and
+keeps off them (slid along the tray) rather than moving them; the device
+table proves a clear place exists on every phone.
+
+**The table beats nothing, the class beats the table.** The spec has a
+table for built-ins and `static group` for command-line tools. A class that
+declares a group, or `null`, means it: a redefined `slot` that wants its own
+button can have one. Reading the table first would make that impossible.
+
 ### Solids on SMLib: what the kernel draws, what stays relational, and why Cut waits to be asked
 
 The spike settled which kernel. This package settled where the kernel sits

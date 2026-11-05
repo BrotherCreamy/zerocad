@@ -26,7 +26,7 @@ import { describePick, type Pick } from "./picking.ts";
 import { frameBasis } from "./relations/refs.ts";
 import { toolUnavailable } from "./toolavail.ts";
 import { sketchOnFaceCommand } from "./sketchface.ts";
-import type { RegionHit } from "./tools/tool.ts";
+import { toolGroup, toolbarButtons, type RegionHit } from "./tools/tool.ts";
 import { findLoops, type Loop } from "./loops.ts";
 import { featureRegion, holeIndex, holeLoop, type FeatureRegion } from "./operations.ts";
 import { VIEW_MODES, type ViewMode } from "./viewmode.ts";
@@ -41,14 +41,16 @@ import { VIEW_MODES, type ViewMode } from "./viewmode.ts";
  * for the user to complete, which is what an item needing a number the menu
  * cannot know has to do — see Set value…, below. `disabled` is an item that is
  * shown and cannot be chosen, with the reason it cannot; see Fix, below, for
- * the one case this exists for.
+ * the one case this exists for. `heading` does nothing: it names the toolbar
+ * group the tool items under it share a button in (docs/plans/toolbar-groups.md).
  */
 export type MenuAction =
   | { do: "run"; command: string }
   | { do: "insert"; name: string }
   | { do: "type"; text: string }
   | { do: "disabled"; why: string }
-  | { do: "choose"; choices: MenuChoice[] };
+  | { do: "choose"; choices: MenuChoice[] }
+  | { do: "heading" };
 
 /**
  * One of a row of choices — the View row's three modes. Each types its own
@@ -342,14 +344,42 @@ function setValueItem(model: Model, name: string): MenuItem[] {
  * toolbar used to read the same rule; with nothing ever greyed it stopped
  * asking, docs/plans/tool-options.md.)
  */
+/**
+ * The menu's tool items: `TOOL_ITEMS`, and where one of them is in a toolbar
+ * group that has more than one member, **the whole group under its name**
+ * (docs/plans/toolbar-groups.md) — every member as an item, in the button's
+ * order, so a tool that joins the shapes group is on the menu without this
+ * file knowing it exists. A group of one is its one item, as before groups.
+ */
+function toolItems(model: Model): MenuItem[] {
+  const item = (label: string, tool: string): MenuItem => {
+    const why = toolUnavailable(model, tool);
+    return { label, action: why !== null ? { do: "disabled", why } : { do: "run", command: `arm(${quoted(tool)})` } };
+  };
+  const labelOf = (tool: string) => TOOL_ITEMS.find(([, t]) => t === tool)?.[0] ?? (tool ? tool[0].toUpperCase() + tool.slice(1) : tool);
+  const buttons = toolbarButtons();
+  const out: MenuItem[] = [];
+  const done = new Set<string>();
+  for (const [label, tool] of TOOL_ITEMS) {
+    const group = toolGroup(tool);
+    const members = group ? buttons.find((b) => b.group === group)?.tools ?? [tool] : [tool];
+    if (!group || members.length < 2) {
+      out.push(item(label, tool));
+      continue;
+    }
+    if (done.has(group)) continue;
+    done.add(group);
+    out.push({ label: group[0].toUpperCase() + group.slice(1), action: { do: "heading" } });
+    for (const t of members) out.push(item(labelOf(t), t));
+  }
+  return out;
+}
+
 function emptyCanvasMenu(model: Model, region: RegionHit | null): Menu {
   return {
     header: null,
     items: [
-      ...TOOL_ITEMS.map(([label, tool]): MenuItem => {
-        const why = toolUnavailable(model, tool);
-        return { label, action: why !== null ? { do: "disabled", why } : { do: "run", command: `arm(${quoted(tool)})` } };
-      }),
+      ...toolItems(model),
       {
         label: "Frame",
         action: { do: "run", command: "frame()" },
@@ -593,6 +623,7 @@ function hintFor(action: MenuAction): string {
     case "insert": return `"${action.name}"`;
     case "disabled": return "";
     case "choose": return action.choices.find((c) => c.current)?.command ?? "";
+    case "heading": return "";
   }
 }
 
@@ -697,6 +728,12 @@ export class ContextMenu {
       wrap.appendChild(row);
       wrap.appendChild(why);
       return wrap;
+    }
+
+    if (item.action.do === "heading") {
+      // A toolbar group's name over its tools: words, not a thing to choose.
+      row.className = "sub";
+      return row;
     }
 
     if (item.action.do === "choose") {

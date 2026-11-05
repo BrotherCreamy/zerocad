@@ -297,3 +297,63 @@ export class OptionMemory {
     }
   }
 }
+
+/**
+ * Which member each toolbar group last armed (docs/plans/toolbar-groups.md):
+ * the tool a group's button shows. Per viewer, like the option values above
+ * and kept the same way — under its own key, in memory for the session and
+ * written through to storage when there is any — and never in the engine, the
+ * journal or a file: which rectangle-like tool someone reaches for is a fact
+ * about them, not about the drawing. The host owns it (main.ts, beside
+ * `OptionMemory`) and the toolbar asks it through its host.
+ */
+export const GROUPS_KEY = "neocad.toolGroups.v1";
+
+/** Stored choices, read leniently: anything not a group's name mapped to a tool's is dropped alone. */
+export function parseGroupChoices(text: string | null): Record<string, string> {
+  if (!text) return {};
+  let raw: unknown;
+  try {
+    raw = JSON.parse(text);
+  } catch {
+    return {};
+  }
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const out: Record<string, string> = {};
+  for (const [group, tool] of Object.entries(raw as Record<string, unknown>)) if (typeof tool === "string" && tool) out[group] = tool;
+  return out;
+}
+
+export class GroupMemory {
+  private storage: OptionStorage | null;
+  private held: Record<string, string>;
+
+  constructor(storage: OptionStorage | null) {
+    this.storage = storage;
+    let text: string | null = null;
+    try {
+      text = storage?.getItem(GROUPS_KEY) ?? null;
+    } catch {
+      text = null;
+    }
+    this.held = parseGroupChoices(text);
+  }
+
+  /** The member `group` last armed, or null for none remembered. */
+  recall(group: string): string | null {
+    return Object.hasOwn(this.held, group) ? this.held[group] : null;
+  }
+
+  /** Remembers `tool` as `group`'s; returns whether storage took it (false for no change, too). */
+  remember(group: string, tool: string): boolean {
+    if (this.held[group] === tool) return false;
+    this.held[group] = tool;
+    if (!this.storage) return false;
+    try {
+      this.storage.setItem(GROUPS_KEY, JSON.stringify(this.held));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+}

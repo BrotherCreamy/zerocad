@@ -27,9 +27,9 @@ import { ContextMenu, menuFor } from "./menu.ts";
 import { toolUnavailable } from "./toolavail.ts";
 import { AXIS_INKS, frameArmPx, frameMarker } from "./framemarker.ts";
 import { constrainedBy, type Glyph } from "./glyphs.ts";
-import { ENGINE_TOOLS, HAND, SELECT, armedLine, getToolCtor, toolAlias, toolSummary, toolbarTools } from "./tools/tool.ts";
+import { ENGINE_TOOLS, HAND, SELECT, armedLine, getToolCtor, groupCurrent, toolAlias, toolSummary, toolbarButtons } from "./tools/tool.ts";
 import {
-  ACTIONS, ActionStrip, FINE, OptionsPanel, Panels, Toolbar, actionKey, browserStorage, cornerRoom, defaultLayout, logoBox, scaledMetrics,
+  ACTIONS, ActionStrip, FINE, OptionsPanel, Panels, Toolbar, actionKey, browserStorage, cornerBox, cornerRoom, defaultLayout, logoBox, scaledMetrics,
   touchMetrics, type Insets, type Layout, type Metrics, type Size,
 } from "./panels.ts";
 import { Tooltips } from "./tooltip.ts";
@@ -40,7 +40,7 @@ import { GUIDE_NOTE_MS, STEP_NOTE_MS, StatusLine } from "./statusline.ts";
 import { AppMenu, UNTITLED } from "./appmenu.ts";
 import { Organiser, organiserSections, rowMenu } from "./organiser.ts";
 import { logoSvg } from "./logo.ts";
-import { OptionMemory, declaredOptions, unitSymbol, type OptionValue } from "./tools/options.ts";
+import { GroupMemory, OptionMemory, declaredOptions, unitSymbol, type OptionValue } from "./tools/options.ts";
 import { toolIcon } from "./tools/icons.ts";
 import { depth, uiOf } from "./view.ts";
 import { arcSamples, arcSegments } from "./arcgeom.ts";
@@ -216,13 +216,12 @@ const actionsEl = coarse ? document.getElementById("actions") : null;
  * tooltip exists beyond that. Kept inside the window less its safe-area
  * insets, so never under a notch or the home indicator.
  */
-const tooltips = new Tooltips(document.getElementById("tooltip")!, {
-  bounds: () => {
-    const i = insets();
-    const [w, h] = [document.documentElement.clientWidth, document.documentElement.clientHeight];
-    return { x: i.left, y: i.top, w: Math.max(0, w - i.left - i.right), h: Math.max(0, h - i.top - i.bottom) };
-  },
-});
+function tooltipBounds() {
+  const i = insets();
+  const [w, h] = [document.documentElement.clientWidth, document.documentElement.clientHeight];
+  return { x: i.left, y: i.top, w: Math.max(0, w - i.left - i.right), h: Math.max(0, h - i.top - i.bottom) };
+}
+const tooltips = new Tooltips(document.getElementById("tooltip")!, { bounds: tooltipBounds });
 const tooltip = tooltips.attach;
 
 /**
@@ -254,6 +253,13 @@ let optionsShown: () => Size | null = () => null;
  * to both the engine that arms from it and the command scope that lists it.
  */
 const optionMemory = new OptionMemory(browserStorage());
+
+/**
+ * Which member each toolbar group armed last — the tool its button shows
+ * (docs/plans/toolbar-groups.md). The viewer's, kept as their option values
+ * are and beside them, never in the engine or the journal.
+ */
+const groupMemory = new GroupMemory(browserStorage());
 
 /**
  * What the last press anywhere was made with — `"mouse"`, `"pen"` or
@@ -290,9 +296,9 @@ let viewMode: ViewMode = recallViewMode(browserStorage());
  */
 const panels = new Panels(
   document.getElementById("viewwrap")!,
-  (area) => defaultLayout(area, toolbarTools().length, metrics),
+  (area) => defaultLayout(area, toolbarButtons().length, metrics),
   browserStorage(),
-  { toolbar: () => toolbarTools().length, ...(actionsEl ? { actions: () => ACTIONS.length } : {}) },
+  { toolbar: () => toolbarButtons().length, ...(actionsEl ? { actions: () => ACTIONS.length } : {}) },
   {
     check: Boolean((import.meta as { env?: { DEV?: boolean } }).env?.DEV),
     fitted: { options: { size: () => optionsShown(), beside: "toolbar" } },
@@ -1377,7 +1383,31 @@ async function main() {
     // typing `arm("select")` and `arm("hand")` like every other, and the lit
     // one is the engine's answer to what is in the hand — Select whenever
     // nothing is armed.
-    tools: toolbarTools,
+    tools: () => toolbarButtons().flatMap((b) => b.tools),
+    // A family's tools share a button (docs/plans/toolbar-groups.md), which
+    // shows the one this viewer armed last.
+    buttons: toolbarButtons,
+    current: (group, tools) => groupCurrent({ group, tools: [...tools] }, groupMemory.recall(group)),
+    remember: (group, tool) => { groupMemory.remember(group, tool); },
+    flyout: {
+      el: document.getElementById("flyout")!,
+      metrics: () => metrics,
+      bounds: () => tooltipBounds(),
+      // Never over the logo or the status's corner, whatever the corner says
+      // now; and clear of every other pane where there is room.
+      keep: () => {
+        const i = insets();
+        const rect = (el: Element) => { const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; };
+        const corner = cornerBox(metrics);
+        const texts = Array.from(document.querySelectorAll<HTMLElement>("#corner > *"))
+          .filter((el) => !el.hidden && el.textContent && getComputedStyle(el).display !== "none").map(rect)
+          .filter((r) => r.w > 0 && r.h > 0);
+        return [rect(logoEl), { ...corner, x: corner.x + i.left, y: corner.y + i.top }, ...texts];
+      },
+      avoid: () => Array.from(document.querySelectorAll<HTMLElement>(".panel[data-panel]"))
+        .filter((el) => !el.hidden && el.dataset.panel !== "toolbar")
+        .map((el) => { const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; }),
+    },
     icon: toolIcon,
     active: () => engine.lit,
     run: (command) => void submit(command),

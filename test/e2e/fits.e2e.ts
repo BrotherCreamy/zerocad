@@ -162,6 +162,63 @@ test("every iPhone, both ways up, installed and in Safari: no pane over another,
   }
 });
 
+// A group's flyout open (docs/plans/toolbar-groups.md): two padding tools give
+// shapes and modify a second member each — the packages that fill them have
+// not landed — so the flyout's room is exercised on every phone now. Still
+// eleven buttons; the flyout, opened by a long-press, overlaps no pane, the
+// tray, the logo or the corner, and is on screen; closed, everything fits as
+// above. (The arithmetic at every queued size, up to modify's seven, is
+// toolbargroups.test.ts's.)
+test("every iPhone, both ways up, installed and in Safari, with a group's flyout open: over nothing, on screen; closed, everything fits", async () => {
+  const p = await phone();
+  try {
+    for (const ph of IPHONES) {
+      for (const turn of ["portrait", "landscape"] as const) {
+        for (const mode of ["installed", "safari"] as const) {
+          await hold(p, ph, turn, mode);
+          for (const [t, g] of [["t_pad1", "shapes"], ["t_pad2", "modify"]]) {
+            // Typed, so the entry brings the toolbar up to date.
+            await p.page.fill("#cmd", `defineTool("${t}", class extends Tool { static group = "${g}"; name = "${t}"; })`);
+            await p.page.press("#cmd", "Enter");
+          }
+          await p.page.waitForTimeout(200);
+          await p.page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+          const where = `${ph.name}, ${turn}, ${mode}`;
+          assert.equal(await p.page.$$eval("#toolbar button", (bs) => bs.length), 11, `${where}: eleven buttons`);
+          for (const g of ["shapes", "modify"]) {
+            const b = await p.page.$eval(`#toolbar button[data-group="${g}"]`, (el) => {
+              const r = el.getBoundingClientRect();
+              return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+            });
+            await p.cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ ...b, id: 1, radiusX: 8, radiusY: 8, force: 1 }] });
+            await p.page.waitForTimeout(700);
+            await p.cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+            await p.page.waitForTimeout(100);
+            const fly = await p.page.$eval("#flyout", (el) => {
+              const r = el.getBoundingClientRect();
+              return (el as HTMLElement).hidden ? null : { x: r.x, y: r.y, w: r.width, h: r.height };
+            });
+            assert.ok(fly, `${where}: ${g}'s flyout opened`);
+            const c = await chrome(p.page);
+            assert.ok(fly.x >= -0.5 && fly.y >= -0.5 && fly.x + fly.w <= c.w + 0.5 && fly.y + fly.h <= c.h + 0.5, `${where}: ${g}'s flyout on screen`);
+            for (const [id, r] of Object.entries(c.panes)) assert.ok(!intersect(fly, r), `${where}: ${g}'s flyout over ${id} ${JSON.stringify({ fly, r })}`);
+            assert.ok(!intersect(fly, c.logo), `${where}: over the logo`);
+            for (const t of c.corner) assert.ok(!intersect(fly, t), `${where}: over the corner's text`);
+            if (g === "modify") await shot(p.page, `flyout-${slug(ph)}-${turn}-${mode}`);
+            await p.page.keyboard.press("Escape");
+            await p.page.waitForTimeout(50);
+            assert.equal(await p.page.$eval("#flyout", (el) => (el as HTMLElement).hidden), true, `${where}: closed`);
+          }
+          assert.deepEqual(await breaches(p.page), [], `${where}, closed`);
+          assert.deepEqual(errors, [], `${where}: the page reported no layout problem`);
+        }
+      }
+    }
+  } finally {
+    await p.context.close();
+  }
+});
+
 // Eleven buttons since one circle tool and one arc (docs/plans/one-circle-one-arc.md):
 // on the 13's landscape they fit one row, where thirteen took two; the SE still
 // takes two. The claim is the same either way — as many lines as the room

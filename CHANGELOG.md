@@ -7,6 +7,43 @@ decisions.
 
 ---
 
+## Toolbar groups — one button per family, the rest a flyout away
+
+The owner: *"give me better sketch tools, relations, trim, slot... all the
+usual"* — and before that, *"Second row.... everything has to fit"*. The
+packages queued behind this add a dozen tools; twenty-three buttons fit no
+phone. So a family shares one button
+([`docs/plans/toolbar-groups.md`](docs/plans/toolbar-groups.md), with every
+deviation):
+
+- **The table** (`TOOL_GROUPS` in `src/tools/tool.ts`, vetoable): *shapes* —
+  rectangle, polygon, slot; *curves* — ellipse, spline; *modify* — fillet,
+  chamfer, trim, extend, offset, mirror, pattern. Select, the Hand, point,
+  line, circle, arc, extrude, revolve and sketch keep a button each. A
+  group with no registered member has no button. Eleven buttons today, as
+  before; fourteen when every queued package has landed.
+- **The button shows the one armed last** — by the flyout, the button, or
+  `arm("polygon")` typed — remembered per browser, never in a file, and a
+  tap arms it. Once a group has two members its button carries a small
+  triangle in its corner.
+- **The flyout**, beside the tray and clear of every pane on every iPhone
+  in the device table: under a mouse, rest on the button or press and hold,
+  then click; under a finger, press and slide off onto a tool and lift — one
+  gesture, as a phone keyboard's accents — or hold and tap. A plain tap never
+  opens it. Escape, leaving it, or a press elsewhere puts it away. Each
+  item has its tooltip.
+- A tool defined at the command line joins a family with
+  `static group = "shapes"`; the context menu lists a family of two or more
+  under its name; `help()` says which tools share a button.
+- Found by looking: an item's tooltip lay over the tray's buttons. A
+  tooltip can now be told what else to keep off, and a flyout item's keeps
+  off its tray.
+
+Today every group has one member, so nothing on screen changes until the
+next package lands; the tests pad the groups with command-line tools.
+Pictures: docs/images/111–117. Not tried on an iPhone — try a slide off the
+modify button once chamfer or trim is in.
+
 ## A tap on a loaded phone is not lost to the menu
 
 Two ways a tap could go missing when the page was slow, both found by the

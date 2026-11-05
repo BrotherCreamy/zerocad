@@ -152,7 +152,16 @@ buttons are shortcuts into it: each is a tool's icon, types `arm("name")`,
 and the log shows it. Hover one — or, on a phone, hold it — for its
 **tooltip**: the tool's name, what it does, and the command it types (a hold
 shows it without pressing the button; a tap presses it). Every icon in the
-chrome has one. The first two are **Select** — the
+chrome has one. **Tools of one family share a button** — *shapes*
+(rectangle, then polygon and slot as they land), *curves* (ellipse,
+spline), *modify* (fillet, then chamfer, trim, extend, offset, mirror,
+pattern) — which shows the one you armed last, arms it on a tap, and carries
+a small triangle in its corner once a second tool joins it. Rest the mouse on
+it or press and hold to open the rest beside it, then click one; on a phone,
+press and slide off it onto one and lift, or hold it and tap one. Escape, or
+a press elsewhere, puts it away. `arm("polygon")` still arms any tool by
+name, and a tool you define joins a family with `static group = "shapes"`.
+The first two are **Select** — the
 arrow, lit whenever no tool is armed, which puts the armed tool down and
 keeps what is selected — and **the Hand**, with which a left-drag (or one
 finger) pans from wherever it starts, over geometry too, while a click still
