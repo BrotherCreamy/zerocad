@@ -9,6 +9,7 @@
 // out of `d4` would satisfy every numeric assertion in this file and destroy
 // the entire point of the feature.
 
+import { addEllipse, checkEllipse, ellipseOf, semiAxes } from "../src/kinds/ellipse.ts";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
@@ -325,7 +326,7 @@ test("every op in DIMENSION_OPS can actually be rebuilt by set", async () => {
     m.addCircle("c2", 5, null, "c");
     m.addLine("a", "b", "l1");
     m.addLine("a", "c2", "l2");
-    m.addEllipse("a", "c2", 3, null, "e");
+    addEllipse(m, "a", "c2", 3, null, "e");
     const name = fixtures[op](m);
     // Would throw `"<op>" cannot be rebuilt` if REBUILD were missing an entry.
     assert.equal(set(m, `${name}.value`, op === "angle" ? Math.PI / 4 : 7), name, op);
@@ -412,7 +413,7 @@ test("a version-3 file's deleteRelation is pointed at the name that relation has
   // finish. That is the same rule the hor/ver translation follows.
   assert.deepEqual(m.journal.at(-1), { op: "deleteRelation", args: ["d2"] });
   const saved = save(m);
-  assert.match(saved, /"version": 15/); // the current version, whatever later boundaries it crossed
+  assert.match(saved, /"version": 16/); // the current version, whatever later boundaries it crossed
   assert.equal(save(open(saved)), saved, "and the file is stable from here on");
 });
 

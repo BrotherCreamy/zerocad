@@ -233,5 +233,3 @@ export class EditRevolveTool extends EditTool {
   protected readonly option = "angle";
 }
 
-defineTool("edit extrude", EditExtrudeTool, { listed: false });
-defineTool("edit revolve", EditRevolveTool, { listed: false });

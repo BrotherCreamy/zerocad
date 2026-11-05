@@ -28,6 +28,10 @@ import { construction, extrude, featuresOnProfile, fillet, hole, regen, revolve,
 import * as grouping from "./groups.ts";
 import type { ToolSource } from "./toolsource.ts";
 import { freshName, planeTranslation } from "./planetranslation.ts";
+import { DEFAULT_WORKBENCH, getModule, loadedModules, moduleHash, replayEntries } from "./modules.ts";
+// The app's vocabulary, so a file opens wherever persist.ts is imported — a
+// test included — with the modules every start loads (modules/builtin.ts).
+import "./modules/builtin.ts";
 
 export const FORMAT = "neocad-model";
 /**
@@ -295,7 +299,12 @@ export const FORMAT = "neocad-model";
  * with, so an older file replays to exactly the solids it was saved with
  * (`test/explicitregions.test.ts` opens one written by the build before).
  */
-export const VERSION = 15;
+export const VERSION = 16;
+// 16 (docs/plans/workbenches.md): the head may carry `workbench` and `modules`
+// — the workbench the document was in, and the modules not shipped with the
+// app that its journal needs. No op or value changed meaning: a file of 15 or
+// before opens exactly as it did, and a 16 file that names no added module and
+// stayed in `part` differs from a 15 file only in its version number.
 
 export interface SavedModel {
   format: typeof FORMAT;
@@ -327,7 +336,24 @@ export interface SavedModel {
    * strings to whoever asked, to render.
    */
   tools?: ToolSource[];
+  /**
+   * The workbench the document was last in (docs/plans/workbenches.md, format
+   * 16) — the head's, not the journal's: switching is no edit to the drawing.
+   * Absent for the default (`part`), so a file that never left it is the file
+   * this app has always written but for its version.
+   */
+  workbench?: string;
+  /**
+   * The modules the journal needs that the app does not ship — a workbench
+   * file's, or one defined at the command line — by name, the hash of their
+   * source, and the ops of theirs the journal uses, so a device without one
+   * can say which is missing and replay everything else. Absent when none.
+   */
+  modules?: SavedModuleUse[];
 }
+
+/** A module a document needs, as its head records it. */
+export interface SavedModuleUse { name: string; hash: string; ops: string[] }
 
 /**
  * Every call a journal entry can name. Model's own structural methods, plus
@@ -344,125 +370,16 @@ export interface SavedModel {
  * `saveFile`, `shareFile` (docs/plans/files.md) — and `download`. They act
  * on the document, never in it, and journal nothing, so a file has nothing
  * of theirs to replay.
+ *
+ * **Filled from the loaded modules** (modules.ts), in module order: each module
+ * brings the ops its entity kinds, relations and operations are journalled as,
+ * and core brings the model's own structural edits. Still a fixed list for any
+ * one session — what was loaded — so a file is still data: it can only name a
+ * call some module registered. `horizontal`/`vertical` (v2) are not here: they
+ * are rewritten into `parallel` before the lookup happens (see `translate`).
  */
 function replayTable(model: Model): Map<string, (...args: unknown[]) => unknown> {
-  const m = model as unknown as Record<string, (...a: unknown[]) => unknown>;
-  const bound = (name: string) => (...args: unknown[]) => m[name](...args);
-  const rel = (fn: (model: Model, ...args: never[]) => unknown) =>
-    (...args: unknown[]) => (fn as (model: Model, ...a: unknown[]) => unknown)(model, ...args);
-
-  return new Map<string, (...args: unknown[]) => unknown>(Object.entries({
-    addPoint: bound("addPoint"),
-    addLine: bound("addLine"),
-    addCircle: bound("addCircle"),
-    addArc: bound("addArc"),
-    // The ellipse (docs/plans/sketch-shapes.md, format 15).
-    addEllipse: bound("addEllipse"),
-    addFrame: bound("addFrame"),
-    // The default frame is journalled because it changes what a *later*
-    // relation call means. It never changes what an already-journalled one
-    // means: `fix` and the axis helpers resolve it when they are called and
-    // record the answer.
-    setDefaultFrame: bound("setDefaultFrame"),
-    // The work plane (sketch on face) is document state like the default
-    // frame, journalled for the same reason: what is drawn after it lies on it.
-    setWorkPlane: bound("setWorkPlane"),
-    setCoords: bound("setCoords"),
-    // A curve's normal put somewhere outright — a seed, as `setCoords` is.
-    setNormal: bound("setNormal"),
-    retargetLine: bound("retargetLine"),
-    // Deletion is journalled as its *expansion* — one entry per name `del`
-    // removed — rather than as the `del` call itself, so a replay removes
-    // exactly what was removed rather than recomputing a cascade against a
-    // model that may have been built differently since. Old files carry
-    // neither op and open unchanged; there is nothing to version-bump.
-    deleteEntity: bound("deleteEntity"),
-    deleteRelation: bound("deleteRelation"),
-    // A feature's record, as `del` journals it — see `delOne`. Added with
-    // extrude, without a version bump, for the reason the two above were.
-    deleteFeature: bound("deleteFeature"),
-
-    dist: rel(basic.dist),
-    fix: rel(basic.fix),
-    onPlane: rel(basic.onPlane),
-    coincident: rel(basic.coincident),
-    midpoint: rel(basic.midpoint),
-    // `horizontal`/`vertical` are not here: they are rewritten into `parallel`
-    // before the lookup happens. See `translate`.
-
-    parallel: rel(geom.parallel),
-    perpendicular: rel(geom.perpendicular),
-    angle: rel(geom.angle),
-    pointOnLine: rel(geom.pointOnLine),
-    equalLength: rel(geom.equalLength),
-    radius: rel(geom.radius),
-    onCircle: rel(geom.onCircle),
-    concentric: rel(geom.concentric),
-    equalRadius: rel(geom.equalRadius),
-    tangent: rel(geom.tangent),
-    symmetric: rel(geom.symmetric),
-    arcEndpoints: rel(geom.arcEndpoints),
-    // The sketch relations (docs/plans/sketch-relations.md). `horizontal` and
-    // `vertical` typed today journal the `parallel` they expand to, so they need
-    // no entry; the v2 rewrite above is for the old relations of those names.
-    collinear: rel(geom.collinear),
-    intersection: rel(geom.intersection),
-    pierce: rel(geom.pierce),
-    equalSpacing: rel(geom.equalSpacing),
-    diameter: rel(geom.diameter),
-    measure: rel(measure),
-    // The ellipse's own relations (format 15). `tangent` and `concentric`
-    // take an ellipse under their own names, above.
-    onEllipse: rel(geom.onEllipse),
-    majorAxis: rel(geom.majorAxis),
-    minorAxis: rel(geom.minorAxis),
-
-    fillet: rel(fillet),
-    // Journalled with its profile resolved (see `extrude`), so a replay walks
-    // the loops it is handed and never looks for one among the seeds.
-    extrude: rel(extrude),
-    // The same, about an axis — and given its loops it asks no question about
-    // positions either, so the geometric refusals the call made are not re-made
-    // against seeds (see `revolve`).
-    revolve: rel(revolve),
-    // A feature brought back into step with its profile, journalled as the
-    // call with what it found resolved (see `regen`), so a replay walks the
-    // profiles it is handed and looks for nothing among the seeds. `fillet`'s
-    // own regeneration rides in its entry, the same way.
-    regen: rel(regen),
-    // A region's membership changed by name (docs/plans/explicit-regions.md),
-    // journalled as `regen` is: the call, and the profiles it rebuilt resolved.
-    // `unhole` is also what a deletion's or a flag's expansion writes when the
-    // loop of a recorded hole goes, ahead of the deletion or the flag itself.
-    hole: rel(hole),
-    unhole: rel(unhole),
-    // `set` is journalled as the one call the user made, like every operation,
-    // so replaying it re-runs the edit rather than the dimension it rebuilt.
-    set: rel(set),
-
-    // Groups (see groups.ts). `group` and `addTo` are journalled with their
-    // members resolved — the union as it was — and `removeFrom` is also what a
-    // deletion's expansion writes for each group its name leaves.
-    group: rel(grouping.group),
-    addTo: rel(grouping.addTo),
-    removeFrom: rel(grouping.removeFrom),
-    ungroup: rel(grouping.ungroup),
-    // The open group (docs/plans/organiser.md): document state, journalled as
-    // typed, so a replay opens it at the step it was opened at and every
-    // constructor after joins it exactly as it did — the membership is made
-    // again, never stored or re-inferred. `rename` renames a group in place.
-    opengroup: rel(grouping.opengroup),
-    closegroup: rel(grouping.closegroup),
-    rename: rel(grouping.rename),
-    // Visibility is the document's: journalled as typed, and what a name stood
-    // for at that step is what it stands for when the step is replayed.
-    hide: rel(grouping.hide),
-    show: rel(grouping.show),
-    // Construction geometry (see operations.ts): journalled with the curves
-    // it changed resolved, never the group or feature typed, so a replay flags
-    // exactly the entities the call did.
-    construction: rel(construction),
-  }));
+  return new Map<string, (...args: unknown[]) => unknown>(replayEntries(model));
 }
 
 /**
@@ -742,7 +659,7 @@ function namesIn(journal: JournalEntry[]): Set<string> {
  * snapshots with `save(model, false)` and therefore never sees a tool source,
  * so defining a tool cannot register as an edit to the drawing.
  */
-export function toSaved(model: Model, tools: readonly ToolSource[] = []): SavedModel {
+export function toSaved(model: Model, tools: readonly ToolSource[] = [], head: SavedHead = {}): SavedModel {
   const points: Record<string, number[]> = {};
   const radii: Record<string, number> = {};
   const normals: Record<string, number[]> = {};
@@ -772,11 +689,58 @@ export function toSaved(model: Model, tools: readonly ToolSource[] = []): SavedM
   // Absent, not empty: a file from a session that authored no tools is byte
   // for byte the file this app has always written.
   if (tools.length) saved.tools = tools.map((t) => ({ name: t.name, source: t.source }));
+  if (head.workbench && head.workbench !== DEFAULT_WORKBENCH) saved.workbench = head.workbench;
+  const used = modulesUsed(model.journal);
+  if (used.length) saved.modules = used;
   return saved;
 }
 
-export function save(model: Model, pretty = true, tools: readonly ToolSource[] = []): string {
-  return JSON.stringify(toSaved(model, tools), null, pretty ? 2 : 0);
+/**
+ * What a document's head says beyond its journal: the workbench it is in. A
+ * *parameter*, as `tools` is, so the undo snapshot (`save(model, false)`)
+ * never sees it — switching workbench is no edit to the drawing.
+ */
+export interface SavedHead { workbench?: string }
+
+/**
+ * The modules a journal needs that the app does not ship, read off the ops it
+ * uses: every loaded module that is not built in and registered one of them.
+ * Derived at save time, so it is never stale and never stored anywhere else.
+ */
+export function modulesUsed(journal: readonly JournalEntry[]): SavedModuleUse[] {
+  const ops = new Set(journal.map((e) => e.op));
+  return loadedModules()
+    .filter((m) => m.origin !== "builtin")
+    .map((m) => ({ name: m.name, hash: moduleHash(m), ops: m.ops.filter((op) => ops.has(op)) }))
+    .filter((m) => m.ops.length > 0);
+}
+
+export function save(model: Model, pretty = true, tools: readonly ToolSource[] = [], head: SavedHead = {}): string {
+  return JSON.stringify(toSaved(model, tools, head), null, pretty ? 2 : 0);
+}
+
+/** A saved file's head, read as data: its workbench, and the modules it needs that are not loaded here. */
+export function savedHead(saved: string | SavedModel): { workbench: string | null; missing: SavedModuleUse[] } {
+  let parsed: unknown = saved;
+  if (typeof saved === "string") {
+    try { parsed = JSON.parse(saved); } catch { return { workbench: null, missing: [] }; }
+  }
+  const p = parsed as { workbench?: unknown; modules?: unknown } | null;
+  const workbench = typeof p?.workbench === "string" ? p.workbench : null;
+  return { workbench, missing: neededModules(p?.modules).filter((m) => !getModule(m.name)) };
+}
+
+/** The `modules` a head lists, shape-checked and copied; anything malformed is skipped. */
+function neededModules(raw: unknown): SavedModuleUse[] {
+  if (!Array.isArray(raw)) return [];
+  const out: SavedModuleUse[] = [];
+  for (const m of raw) {
+    if (!m || typeof m !== "object") continue;
+    const { name, hash, ops } = m as { name?: unknown; hash?: unknown; ops?: unknown };
+    if (typeof name !== "string" || !Array.isArray(ops)) continue;
+    out.push({ name, hash: typeof hash === "string" ? hash : "", ops: ops.filter((o): o is string => typeof o === "string") });
+  }
+  return out;
 }
 
 /**
@@ -956,6 +920,28 @@ export function fromSaved(saved: SavedModel, dim?: number): Model {
   // to be rewritten on the way out too, or the file would keep saying
   // `horizontal` forever and nothing would ever finish the migration.
   const replayed: JournalEntry[] = [];
+  // **A module the file needs and this device lacks** (docs/plans/
+  // workbenches.md): its steps are left out — and so is every later step that
+  // names something one of them made — and everything else is replayed, so the
+  // rest of the model is intact and the open never hangs or fails on them. A
+  // step that refuses while one is missing is left out the same way, since it
+  // may have been leaning on something the missing module made. What was left
+  // out is said by the host (`lastOpen`).
+  const missing = neededModules(saved.modules).filter((m) => !getModule(m.name));
+  const missingOps = new Set(missing.flatMap((m) => m.ops));
+  const gone = new Set<string>();
+  let skipped = 0;
+  const leaveOut = (step: JournalEntry) => {
+    skipped++;
+    const names = (v: unknown): void => {
+      if (typeof v === "string") {
+        if (!model.entities.has(v) && !model.relations.has(v) && !model.features.has(v) && !model.groups.has(v)) gone.add(v);
+      } else if (Array.isArray(v)) v.forEach(names);
+    };
+    names(step.args);
+  };
+  const mentionsGone = (v: unknown): boolean =>
+    typeof v === "string" ? gone.has(v) || v.split(".").some((part) => gone.has(part)) : Array.isArray(v) && v.some(mentionsGone);
   model.withoutRecording(() => {
     saved.journal.forEach((entry, i) => {
       if (!Array.isArray(entry.args)) throw new Error(`step ${i + 1}: "${entry.op}" has no arguments`);
@@ -980,12 +966,14 @@ export function fromSaved(saved: SavedModel, dim?: number): Model {
           throw where(e);
         }
         for (const step of given) {
+          if (missing.length && (missingOps.has(step.op) || mentionsGone(step.args))) { leaveOut(step); continue; }
           const fn = table.get(step.op);
           if (!fn) throw new Error(`step ${i + 1}: "${step.op}" is not something a model file may do`);
           try {
             frameless.give(step);
             frameless.made(step, fn(...step.args));
           } catch (e) {
+            if (missing.length) { leaveOut(step); continue; }
             throw where(e);
           }
           replayed.push({ op: step.op, args: step.args });
@@ -1050,7 +1038,19 @@ export function fromSaved(saved: SavedModel, dim?: number): Model {
   // there by a `par` each, written at the end (see `VERSION`).
   frameless.settle();
 
+  last = { missing, skipped };
   return model;
+}
+
+let last: { missing: SavedModuleUse[]; skipped: number } = { missing: [], skipped: 0 };
+
+/**
+ * What the last open left out: the modules the file needs that are not loaded
+ * here, and how many of its steps were not replayed for want of them. Empty
+ * for every file that needs nothing this device lacks.
+ */
+export function lastOpen(): { missing: SavedModuleUse[]; skipped: number } {
+  return last;
 }
 
 /** Opens a saved file — into `dim` dimensions when given (see `fromSaved`). */

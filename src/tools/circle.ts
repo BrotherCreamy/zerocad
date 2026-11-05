@@ -407,4 +407,3 @@ export class CircleTool extends Tool {
   }
 }
 
-defineTool("circle", CircleTool);

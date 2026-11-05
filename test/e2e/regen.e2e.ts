@@ -240,7 +240,7 @@ test("one Ctrl+Z takes the fillet away and brings the four-cornered lid back; Ct
 
 test("save and open: the same file back, byte for byte, the lid still rounded — and regen on it changes nothing", async () => {
   const file = await saved();
-  assert.equal(JSON.parse(file).version, 15);
+  assert.equal(JSON.parse(file).version, 16);
   await app.type(`open(${JSON.stringify(file)})`);
   assert.equal(await app.status(), "SOLVED");
   assert.equal(await saved(), file);

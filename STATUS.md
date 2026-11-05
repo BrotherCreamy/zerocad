@@ -16,6 +16,30 @@ etc).
   on every push to the working branch. Called NeoCAD until 0.1.0; the
   internal code name stays in identifiers, the file format tag and storage
   keys (see TODO.md's register).
+- **Workbenches: the app as modules, and Add workbench…**
+  (docs/plans/workbenches.md, built).
+  - **Modules.** `src/modules.ts`'s `defineModule` fills every table — glyphs,
+    groups, menu tool items, File items, the relation vocabulary, the replay
+    table, `help()` — from seven built-in modules in `src/modules/` (core,
+    sketch, solids, files, step, organiser, interface), loaded by
+    `modules/builtin.ts`. A name two modules register is refused, whole.
+    `modules()` lists them.
+  - **The entity extension point.** `EntityKindSpec` (`model.ts`) and its
+    facets in `curveplane.ts` (frame), `picking.ts` (hover line), `step.ts`
+    (curve writer), `projection.ts` (sampled polyline); the ellipse is
+    declared by the sketch module (`src/kinds/ellipse.ts`) and named nowhere
+    in `model.ts`, `loops.ts`, `faces.ts`, `picking.ts`, `step.ts`,
+    `curveplane.ts`. Its minor and normal now count in the diagnosis.
+  - **Workbenches**: part (default, today's tray) and sketch; the logo menu's
+    Workbench section and `workbench(name)`; remembered in a file's head
+    (format 16).
+  - **Add workbench…**: a `.zerocad.js` from the device's picker, a drop or
+    `loadModule(url)`; its manifest shown before anything runs; kept in
+    IndexedDB and loaded at every start; Share… and Remove. A drawing records
+    the added modules it needs; opened without one, it says so, opens the rest
+    and offers Add workbench….
+  - At the command line: `defineModule`, `defineWorkbench`, `defineRelation`,
+    `defineOperation`, `defineEntity`.
 - **Sketch relations: diagnosis, a dimension tool, a constrain tool**
   (docs/plans/sketch-relations.md, built).
   - **Diagnosis.** `Problem.analyse` asks the kernel's `null_support`

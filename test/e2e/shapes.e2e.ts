@@ -24,10 +24,10 @@ async function shot(app: AppContext, name: string): Promise<void> {
 interface Probe {
   __neocad: {
     model: {
-      entities: Map<string, { kind: string; name: string; refs?: string[]; center?: string; major?: string; construction?: true }>;
+      entities: Map<string, { kind: string; name: string; refs?: string[]; center?: string; major?: string; minorVar?: number; construction?: true }>;
       relations: Map<string, { op: string; args: unknown[] }>;
       coords(n: string): number[];
-      semiAxes(n: string): { a: number; b: number };
+      problem: { getVar(i: number): number };
       features: Map<string, unknown>;
     };
     engine: { glyphs(): { relation: string; op: string }[] };
@@ -44,7 +44,13 @@ const glyphOps = (app: AppContext) => app.page.evaluate(() => (window as never a
 const entities = (app: AppContext) => app.page.evaluate(() =>
   [...(window as never as Probe).__neocad.model.entities.values()].map((e) => ({ ...e })));
 const coords = (app: AppContext, n: string) => app.page.evaluate((x) => (window as never as Probe).__neocad.model.coords(x), n);
-const semiAxes = (app: AppContext, n: string) => app.page.evaluate((x) => (window as never as Probe).__neocad.model.semiAxes(x), n);
+// The ellipse is the sketch module's now (docs/plans/workbenches.md): its semi-axes read off the entity, as `semiAxes` in kinds/ellipse.ts reads them.
+const semiAxes = (app: AppContext, n: string) => app.page.evaluate((x) => {
+  const m = (window as never as Probe).__neocad.model;
+  const e = m.entities.get(x)!;
+  const c = m.coords(e.center!), j = m.coords(e.major!);
+  return { a: Math.hypot(...j.map((v, i) => v - c[i])), b: m.problem.getVar(e.minorVar!) };
+}, n);
 
 const dist = (a: number[], b: number[]) => Math.hypot(...a.map((v, i) => v - b[i]));
 
@@ -92,7 +98,7 @@ async function savedRoundTrip(app: AppContext): Promise<void> {
   const before = await app.repl("save()");
   assert.equal(before.ok, true, before.error ?? "");
   const text = before.value as string;
-  assert.match(text, /"version": 15/);
+  assert.match(text, /"version": 16/);
   const was = await relations(app);
   await app.type("pt(0, 0); pt(5, 5)"); // something to lose
   await app.repl(`SAVED = ${JSON.stringify(text)}`);

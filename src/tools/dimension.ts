@@ -159,4 +159,3 @@ function previewText(model: Model, picks: string[], opts: { diameter: boolean; d
   return wrap(formatValue(v));
 }
 
-defineTool("dimension", DimensionTool);

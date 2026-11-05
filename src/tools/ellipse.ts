@@ -14,6 +14,7 @@
 // to the plane's — the same three kinds of visible, deletable relation a
 // circle drawn there carries. The whole gesture is one undo step.
 
+import { addEllipse, checkEllipse, ellipseOf, semiAxes } from "../kinds/ellipse.ts";
 import { Tool, defineTool, type PointerInfo, type RenderContext } from "./tool.ts";
 import { DRAWING_OPTIONS, asArmed, holdOnSketchPlane, placePoint } from "./place.ts";
 import type { OptionSpecs } from "./options.ts";
@@ -79,7 +80,7 @@ export class EllipseTool extends Tool {
     const m = this.ctx.model;
     const centre = placePoint(this.ctx, from, undefined, ref);
     const major = placePoint(this.ctx, to, undefined, ref);
-    const e = m.addEllipse(centre, major, b, plane.normal()).name;
+    const e = addEllipse(m, centre, major, b, plane.normal()).name;
     // The centre `onplane` (unless placing it already held it) and the normal
     // `par`, as a circle's are; the major end was held as it was placed, when
     // nothing it snapped to pinned it — or is held here, if a snap left it free.
@@ -138,4 +139,3 @@ export class EllipseTool extends Tool {
   }
 }
 
-defineTool("ellipse", EllipseTool);

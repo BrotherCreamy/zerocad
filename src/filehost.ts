@@ -64,6 +64,8 @@ export interface FileHostOptions {
   autosave: Autosave;
   /** What the start restored, if anything: the name, the dirty flag and the handle carry on. */
   restored?: AutosaveRecord | null;
+  /** A workbench file (`*.js`) dropped on the window: its text and name, for Add workbench… to ask about. */
+  workbenchFile?(text: string, fileName: string): void;
 }
 
 /** The window's file APIs, as far as this file needs them. Every one may be missing. */
@@ -446,6 +448,13 @@ export class Files {
       // Chromium's handle lets Save write back to the dropped file.
       const asHandle = (item as { getAsFileSystemHandle?: () => Promise<unknown> }).getAsFileSystemHandle?.();
       const file = item.getAsFile();
+      // A workbench file (docs/plans/workbenches.md) is no drawing: it goes to
+      // the host's Add workbench…, which shows its manifest and asks.
+      if (file && /\.js$/i.test(file.name) && this.o.workbenchFile) {
+        const take = this.o.workbenchFile;
+        void file.text().then((text) => take(text, file.name), (err) => this.o.log(errorText(err), "err"));
+        return;
+      }
       void (async () => {
         try {
           const h = await asHandle?.catch(() => null);

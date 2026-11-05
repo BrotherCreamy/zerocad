@@ -7,6 +7,63 @@ decisions.
 
 ---
 
+## Workbenches — the app as modules, and Add workbench… from a file
+
+The owner: *"the whole framework should be modular and extensible (!). like
+onshape workbenches"* — and *"obv the concept is that I should be able to add
+a workbench simply by opening a file on my device, from the menu... should be
+some item like 'add workbench'"*
+([`docs/plans/workbenches.md`](docs/plans/workbenches.md), with every
+deviation under *As built*):
+
+- **A module is the unit.** `defineModule(name, { tools, icons, groups,
+  relations, operations, entities, menu, files, help, commands })` registers
+  everything a module brings in one call, and every table that used to be
+  kept by hand — the tray's glyphs and groups, the menu's tool items and File
+  items, the relation vocabulary, the replay table a file is opened by,
+  `help()` — is filled from the modules in load order. The app is seven
+  built-in modules (`src/modules/`): core, sketch, solids, files, step,
+  organiser, interface. A module that registers a name something already has
+  is refused with that name, and registers nothing. `modules()` lists them.
+- **Nothing you could see changed.** The whole unit suite passes with the
+  same tests, the e2e suite has the same results as the build before, failure
+  for failure (that build had twelve, since fixed on the working branch: see
+  TODO.md), and every
+  fixture file — and a new one with every sketch-shapes piece in it, written
+  by the build before — replays to the same bytes.
+- **The entity extension point.** An entity kind is declared — what it is
+  built of, what it owns, whether it is a curve, closed, carries a plane, the
+  relations that hold a point on it, the frame it is drawn and looped by, its
+  hover line, its STEP spelling, its constructor — and each layer asks the
+  declaration. The proof: the ellipse moved out of the model into the sketch
+  module, and `grep ellipse src/model.ts src/loops.ts src/faces.ts
+  src/picking.ts src/step.ts` is empty (a test holds it). Found on the way:
+  the diagnosis never counted an ellipse's minor or normal, so an ellipse
+  whose minor nothing held read as fully held; it now reads free.
+- **Workbenches.** A workbench is a named set of modules with its own tray:
+  **part** (the default — today's tray exactly) and **sketch** (no solids).
+  Switch in the logo menu's new Workbench section, or `workbench("sketch")`;
+  the tray and the menu follow, and a typed name works in any workbench. The
+  document remembers its workbench (format 16; a file in part is the file it
+  was but for its version), and the organiser's heading names it.
+- **Add workbench…** in the logo menu opens the device's file picker (a
+  dropped `.zerocad.js`, or `loadModule(url)`, too). The file's manifest —
+  a comment at its top — is shown before anything in it runs: its tools,
+  relations, operations and entity kinds, by name, and that it runs with the
+  command line's authority, curated and not a sandbox. Added, it is loaded,
+  kept on the device and loaded at every start; the menu lists it with
+  **Share…** (the file back, byte for byte) and **Remove**. A file that
+  registers anything its manifest did not show is refused, and registers
+  nothing. A drawing that uses an added workbench records it; opened on a
+  device without it, it says which is missing, opens everything else, and
+  offers Add workbench… — after which it opens whole.
+- At the command line, `defineRelation`, `defineOperation` and
+  `defineEntity` join a `user` module as `defineTool` puts a tool on the
+  tray, and a file carries their source as text, as it carries a tool's.
+
+Screenshots 135–143. Tests: `test/modules.test.ts` (10) and
+`test/e2e/workbenches.e2e.ts` (9, mouse and iPhone 13).
+
 ## A touch offset that persisted: the page scrolled back to zero whenever iOS may have scrolled it
 
 The owner, from his iPhone: *"a weird bug where the touch input is offset

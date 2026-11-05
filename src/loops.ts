@@ -140,7 +140,7 @@
 //
 // Loops live in a 2D or a 3D model; anything else has no planes to put them in.
 
-import { ORIGIN, type Model } from "./model.ts";
+import { ORIGIN, entityKind, type Model } from "./model.ts";
 import { arcSegments } from "./arcgeom.ts";
 import { curveFrame, curvePlaneOf, framePlaneAxes } from "./curveplane.ts";
 import { frameBasis } from "./relations/refs.ts";
@@ -333,11 +333,13 @@ function collect(model: Model, classOf: Map<string, number>): { edges: Edge[]; c
       }
     } else if (e.kind === "circle") {
       if (model.radius(e.name) > 0) circles.push({ name: e.name, order });
-    } else if (e.kind === "ellipse") {
-      // A closed member like a circle (docs/plans/sketch-shapes.md): a loop on
-      // its own, cut by what is held on it or crosses it.
-      const { a, b } = model.semiAxes(e.name);
-      if (a > 0 && b > 0) circles.push({ name: e.name, order });
+    } else {
+      // A declared closed curve (model.ts's `EntityKindSpec`) is a closed
+      // member like a circle: a loop on its own, cut by what is held on it or
+      // crosses it — when it bounds anything as it stands, and is laid out by a
+      // frame (curveplane.ts) the pieces below can walk.
+      const k = entityKind(e.kind);
+      if (k?.curve && k.closed && (k.bounds?.(model, e.name) ?? true) && curveFrame(model, e)) circles.push({ name: e.name, order });
     }
   }
   return { edges, circles };
@@ -439,7 +441,8 @@ function inPlane(model: Model, g: Group, name: string): boolean {
   if (e.kind === "line") return on(e.refs[0]) && on(e.refs[1]);
   if (e.kind === "arc") return parallel(curvePlaneOf(model, name).n, g.normal) && on(e.center) && on(e.start) && on(e.end);
   if (e.kind === "circle") return parallel(curvePlaneOf(model, name).n, g.normal) && on(e.center);
-  if (e.kind === "ellipse") return parallel(curvePlaneOf(model, name).n, g.normal) && on(e.center) && on(e.major);
+  // A declared kind that carries a plane: its plane, and every point it is built of.
+  if (entityKind(e.kind)?.plane) return parallel(curvePlaneOf(model, name).n, g.normal) && model.refsOf(e).every(on);
   return false;
 }
 
@@ -499,11 +502,12 @@ type P2 = [number, number];
  * counter-clockwise about the plane's normal); `p` and `q` are exactly its two
  * ends at that radius, which is what keeps the area formula exact.
  *
- * **An ellipse is an arc with a second radius** (docs/plans/sketch-shapes.md):
- * `b` its semi-axis across `r`'s, and `dir` the unit direction of its `r` axis
- * in the plane, so a point is `c + R(dir)·(r cos s, b sin s)` — `s` the
- * eccentric anomaly, counter-clockwise in the plane. Absent for a circle or an
- * arc, and every function below reads `rb`/`dirOf` so the two are one case.
+ * **A conic is an arc with a second radius**: a declared kind whose frame
+ * (curveplane.ts) has one (`ArcFrame.rv`) is laid out as `b` its semi-axis
+ * across `r`'s, and `dir` the unit direction of its `r` axis in the plane, so
+ * a point is `c + R(dir)·(r cos s, b sin s)` — `s` the eccentric anomaly,
+ * counter-clockwise in the plane. Absent for a circle or an arc, and every
+ * function below reads `rb`/`dirOf` so the two are one case.
  */
 type Piece =
   | { kind: "line"; p: P2; q: P2 }
@@ -511,12 +515,12 @@ type Piece =
 
 type ArcPiece = Extract<Piece, { kind: "arc" }>;
 
-/** The semi-axis across `r`: `b` for an ellipse, `r` for a circle. */
+/** The semi-axis across `r`: `b` for a conic, `r` for a circle. */
 const rb = (piece: ArcPiece): number => piece.b ?? piece.r;
 /** The unit direction of the `r` axis: +u for a circle. */
 const dirOf = (piece: ArcPiece): P2 => piece.dir ?? [1, 0];
 
-/** The piece's curve at parameter `s` (an angle for a circle, the eccentric anomaly for an ellipse). */
+/** The piece's curve at parameter `s` (an angle for a circle, the eccentric anomaly for a conic). */
 function onCurve(piece: ArcPiece, s: number): P2 {
   if (piece.b === undefined) return onCircle(piece.c, piece.r, s);
   const [dx, dy] = dirOf(piece);
@@ -531,7 +535,7 @@ function normalised(piece: ArcPiece, x: P2): P2 {
   return [(ox * dx + oy * dy) / piece.r, (-ox * dy + oy * dx) / rb(piece)];
 }
 
-/** The parameter of the curve's point "toward" `x`: its angle about the centre, an ellipse's in its normalised axes. */
+/** The parameter of the curve's point "toward" `x`: its angle about the centre, a conic's in its normalised axes. */
 function paramOf(piece: ArcPiece, x: P2): number {
   if (piece.b === undefined) return Math.atan2(x[1] - piece.c[1], x[0] - piece.c[0]);
   const [nx, ny] = normalised(piece, x);
@@ -591,10 +595,11 @@ function pieceOf(model: Model, name: string, plane: LoopPlane): Piece {
   const f = curveFrame(model, e)!;
   const c = toPlane(plane, f.center);
   const side = dot3(f.normal, plane.normal) < 0 ? -1 : 1;
-  if (e.kind === "ellipse") {
-    // From its major end, its own way round: the plane's way when its normal
+  if (f.rv !== undefined) {
+    // A conic (its frame has a second radius): from the end of its first axis,
+    // its own way round: the plane's way when its normal
     // agrees, the other when not — so a span means the same fraction of the
-    // ellipse here as it does in faces.ts's outline.
+    // curve here as it does in faces.ts's outline.
     const m = toPlane(plane, [0, 1, 2].map((i) => f.center[i] + f.u[i]));
     const len = Math.hypot(m[0] - c[0], m[1] - c[1]);
     const dir: P2 = [(m[0] - c[0]) / len, (m[1] - c[1]) / len];
@@ -641,7 +646,7 @@ function fractionAlong(piece: Piece, x: P2): number | null {
 
 /**
  * ½∮(x dy − y dx) along the piece — Green's theorem, closed form for a line, an
- * arc and an ellipse's arc alike: about its centre an ellipse sweeps `r·b` per
+ * arc and a conic's arc alike: about its centre a conic sweeps `r·b` per
  * unit of its parameter as a circle sweeps `r²`, and the centre's own share is
  * the chord's wedge with it.
  */
@@ -752,9 +757,9 @@ function crossings(e: Piece, f: Piece, tol: number): P2[] {
 }
 
 /**
- * Where the segment a–b's line meets a circle or an ellipse: `lineCircle` in
- * the ellipse's own axes scaled to one — an affine map, so a line stays a line
- * and the ellipse becomes the unit circle — mapped back. The tangency
+ * Where the segment a–b's line meets a circle or a conic: `lineCircle` in
+ * the conic's own axes scaled to one — an affine map, so a line stays a line
+ * and the conic becomes the unit circle — mapped back. The tangency
  * tolerance is scaled by the shorter semi-axis, the most a length shrinks.
  */
 function lineConic(a: P2, b: P2, piece: ArcPiece, tol: number): P2[] {
@@ -764,7 +769,7 @@ function lineConic(a: P2, b: P2, piece: ArcPiece, tol: number): P2[] {
 }
 
 /**
- * Where two curves at least one of which is an ellipse cross — the one pair
+ * Where two curves at least one of which is a conic with two radii cross — the one pair
  * with no closed form (a quartic). Found by walking the first's whole curve in
  * small steps for a change of side of the second (inside its normalised unit
  * circle or out), and halving each step that changes to the crossing. A
@@ -824,7 +829,7 @@ function distanceTo(piece: Piece, x: P2): number {
     return dist2(x, [piece.p[0] + t * d[0], piece.p[1] + t * d[1]]);
   }
   if (piece.b !== undefined) {
-    // An ellipse's nearest point has no closed form: a fine walk along it, as
+    // A conic's nearest point has no closed form: a fine walk along it, as
     // drawn, is near enough for the one question asked of this — is a point on
     // the outline, to a millionth of the drawing.
     const n = 720;
@@ -887,7 +892,7 @@ export function heldOnCurves(model: Model): Held[] {
     // `midpoint` with two arguments is the line form; with three it names two
     // points and no edge.
     const onLine = (rel.op === "pointOnLine" || (rel.op === "midpoint" && rel.args.length === 2)) && kind === "line";
-    const onRim = (rel.op === "onCircle" && (kind === "arc" || kind === "circle")) || (rel.op === "onEllipse" && kind === "ellipse");
+    const onRim = (rel.op === "onCircle" && (kind === "arc" || kind === "circle")) || (entityKind(kind)?.heldBy?.includes(rel.op) ?? false);
     if (onLine || onRim) out.push({ point, curve });
   }
   return out;

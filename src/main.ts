@@ -8,7 +8,7 @@
 
 import { ensureKernelLoaded } from "./kernel/problem.ts";
 import { Model, ORIGIN } from "./model.ts";
-import { open as openModelText, save as saveModel, savedTools } from "./persist.ts";
+import { open as openModelText, save as saveModel, savedHead, savedTools } from "./persist.ts";
 import { carryIntoSession, toolSources } from "./toolsource.ts";
 import { UndoStack } from "./undo.ts";
 import { historyChord } from "./historykeys.ts";
@@ -23,11 +23,14 @@ import { runSteps } from "./tools/feature.ts";
 import type { FeatureStep } from "./tools/tool.ts";
 import { previewSteps } from "./featurepreview.ts";
 import { describePick, describeRelation, type Pick } from "./picking.ts";
+import { sampledWorld } from "./projection.ts";
 import { ContextMenu, menuFor } from "./menu.ts";
 import { toolUnavailable } from "./toolavail.ts";
 import { AXIS_INKS, frameArmPx, frameMarker } from "./framemarker.ts";
 import { constrainedBy, type Glyph } from "./glyphs.ts";
-import { ENGINE_TOOLS, HAND, SELECT, armedLine, getToolCtor, groupCurrent, toolAlias, toolSummary, toolbarButtons } from "./tools/tool.ts";
+import { ENGINE_TOOLS, HAND, SELECT, armedLine, getToolCtor, groupCurrent, toolAlias, toolSummary, toolbarButtons, type ToolbarButton } from "./tools/tool.ts";
+import { activeWorkbench, fileMenuItems, getWorkbench, listWorkbenches, onWorkbench, setActiveWorkbench, DEFAULT_WORKBENCH } from "./modules.ts";
+import { WorkbenchFiles, indexedDbWorkbenches } from "./workbenchhost.ts";
 import {
   ACTIONS, ActionStrip, FINE, OptionsPanel, Panels, Toolbar, actionKey, browserStorage, cornerBox, cornerRoom, defaultLayout, logoBox, scaledMetrics,
   touchMetrics, type Insets, type Layout, type Metrics, type Size,
@@ -57,25 +60,11 @@ import { entityDrawn, glyphDrawn, quietEntities, revealed, solidEdges } from "./
 import { frameBasis } from "./relations/refs.ts";
 import { lockPage } from "./pagelock.ts";
 import type { Diagnosis, Entity } from "./model.ts";
-import "./tools/point.ts";
-import "./tools/line.ts";
-import "./tools/rectangle.ts";
-// The shapes group's other members (docs/plans/sketch-shapes.md): after the
-// rectangle, whose button they share.
-import "./tools/polygon.ts";
-import "./tools/slot.ts";
-import "./tools/circle.ts";
-import "./tools/arc.ts";
-// The curves group, after the arc, so its button stands where the table puts it
-// (docs/plans/toolbar-groups.md, As built).
-import "./tools/ellipse.ts";
-import "./tools/fillet.ts";
-import "./tools/dimension.ts";
-import "./tools/constrain.ts";
-import "./tools/extrude.ts";
-import "./tools/revolve.ts";
-import "./tools/sketch.ts";
-import "./tools/edit.ts";
+// The app is its modules (docs/plans/workbenches.md): every built-in module,
+// in the order that orders the tray, the menu, the replay table and help()
+// (modules/builtin.ts). A workbench added from the device is one more, loaded
+// after them.
+import "./modules/builtin.ts";
 
 /**
  * The status beside the logo — the verdict and the step note — and the rules
@@ -314,11 +303,21 @@ let viewMode: ViewMode = recallViewMode(browserStorage());
  * do, so the e2e suite's "no uncaught page errors" covers every gesture it
  * makes, not only the ones a test measures. A built page does not pay for it.
  */
+/**
+ * The tray's buttons: the current workbench's tools in their groups
+ * (docs/plans/workbenches.md) — `part`, the default, is every tool, today's
+ * tray exactly. Typed names are not filtered: a typed call is not a toolbar.
+ */
+function trayButtons(): ToolbarButton[] {
+  const bench = activeWorkbench();
+  return toolbarButtons((t) => onWorkbench(bench, t));
+}
+
 const panels = new Panels(
   document.getElementById("viewwrap")!,
-  (area) => defaultLayout(area, toolbarButtons().length, metrics),
+  (area) => defaultLayout(area, trayButtons().length, metrics),
   browserStorage(),
-  { toolbar: () => toolbarButtons().length, ...(actionsEl ? { actions: () => ACTIONS.length } : {}) },
+  { toolbar: () => trayButtons().length, ...(actionsEl ? { actions: () => ACTIONS.length } : {}) },
   {
     check: Boolean((import.meta as { env?: { DEV?: boolean } }).env?.DEV),
     fitted: { options: { size: () => optionsShown(), beside: "toolbar" } },
@@ -731,6 +730,11 @@ async function main() {
         if (f) strokeEdge(arcSamples(f, arcSegments(f.sweep, frameReach(f) * view.scale)), e.kind !== "arc", stroke(e.name));
       } else if (e.kind === "frame") {
         drawFrame(e.name, lit.has(e.name), chosen.has(e.name));
+      } else {
+        // A kind a module declares with no frame: the polyline it samples
+        // itself as, which is what picking aims at (projection.ts).
+        const pts = sampledWorld(model, e);
+        if (pts) strokeEdge(pts, false, stroke(e.name));
       }
     }
 
@@ -960,6 +964,8 @@ async function main() {
       case "arc":
       case "ellipse": return at(e.center);
       case "frame": return at(e.origin);
+      // A kind a module declares at run time: where its first point is.
+      default: { const refs = model.refsOf(e as Entity); return refs.length ? at(refs[0]) : 0; }
     }
   }
 
@@ -1490,10 +1496,10 @@ async function main() {
     // typing `arm("select")` and `arm("hand")` like every other, and the lit
     // one is the engine's answer to what is in the hand — Select whenever
     // nothing is armed.
-    tools: () => toolbarButtons().flatMap((b) => b.tools),
+    tools: () => trayButtons().flatMap((b) => b.tools),
     // A family's tools share a button (docs/plans/toolbar-groups.md), which
     // shows the one this viewer armed last.
-    buttons: toolbarButtons,
+    buttons: trayButtons,
     current: (group, tools) => groupCurrent({ group, tools: [...tools] }, groupMemory.recall(group)),
     remember: (group, tool) => { groupMemory.remember(group, tool); },
     flyout: {
@@ -1783,6 +1789,18 @@ async function main() {
       log: (line: string) => log(line, "out"),
       toolSources,
       optionMemory,
+      // Workbenches and modules (docs/plans/workbenches.md): the tray and the
+      // menu follow a switch or a module loaded, and a module's new names are
+      // handed to the live evaluator.
+      workbench: (name: string) => switchWorkbench(name),
+      modulesChanged: () => modulesChanged(),
+      rescope: (names: Record<string, unknown>) => repl.define(names),
+      workbenchFiles: {
+        add: () => workbenchFiles.add(),
+        load: (url: string) => workbenchFiles.load(url),
+        remove: (name: string) => workbenchFiles.remove(name),
+        share: (name: string) => workbenchFiles.share(name),
+      },
       // Measured fresh on every ask, not cached: the window can be resized at
       // any time, and a size read once at startup would put "the middle of the
       // view" somewhere that is no longer the middle of what is on screen.
@@ -1853,7 +1871,7 @@ async function main() {
       // from harmless. (Typed at the command line this is already inside
       // `submit`'s bracket; the bracket here is what covers `openFile()`, whose
       // work happens in an event handler long after the entry returned.)
-      openModel: (json: string) => asUserAction(() => swapModel(openModelText(json, APP_DIM))),
+      openModel: (json: string) => { asUserAction(() => swapModel(openModelText(json, APP_DIM))); afterOpen(json); },
       undo: () => step("undo"),
       redo: () => step("redo"),
       download: (json: string, filename: string) => {
@@ -1894,7 +1912,7 @@ async function main() {
    * `submit` like every menu item.
    */
   files = new Files({
-    text: () => saveModel(model, true, toolSources.all()),
+    text: () => saveModel(model, true, toolSources.all(), { workbench: activeWorkbench() }),
     snapshot,
     // A file from any door — the input, a picker, a drop, the desktop — is
     // opened the way `open()` opens one: one undo step, and what the file
@@ -1903,12 +1921,15 @@ async function main() {
     open: (text) => {
       asUserAction(() => swapModel(openModelText(text, APP_DIM)));
       for (const line of carryIntoSession(savedTools(text), toolSources)) log(line, "out");
+      afterOpen(text);
     },
     fresh: () => asUserAction(() => swapModel(new Model(APP_DIM))),
     log: (line, cls) => log(line, cls ?? "out"),
     phone: coarse,
     autosave,
     restored: restored?.record ?? null,
+    // A dropped workbench file goes to Add workbench…, which shows its manifest and asks.
+    workbenchFile: (text, name) => workbenchFiles.offer(text, name),
   });
 
   // A new version waiting is offered beside the status, never imposed: a tap
@@ -1916,6 +1937,144 @@ async function main() {
   watchForUpdates({ button: document.getElementById("update") as HTMLButtonElement, flush: () => files!.flush() });
 
   const repl = new Repl(neocadScope(handles()));
+
+  // ---- workbenches and modules (docs/plans/workbenches.md) -------------------
+  //
+  // Kept to the wiring: the registry is modules.ts, the files are
+  // workbenchhost.ts. The workbench is the document's — written into a saved
+  // file's head and read back from one — but never an undo step: the snapshot
+  // the undo stack compares carries no head.
+
+  /**
+   * The organiser's heading names the workbench, so the tray's set is said
+   * somewhere a person reads — when it is not the default: in `part` the
+   * heading is today's, pixel for pixel, as the tray is.
+   */
+  function showWorkbench() {
+    const title = document.querySelector<HTMLElement>('.panel[data-panel="organiser"] .ptitle');
+    if (!title) return;
+    const bench = activeWorkbench();
+    // Its own span, which gives way to an ellipsis on a phone's narrow pane
+    // rather than wrapping the strip (found by looking at the iPhone picture).
+    let tag = title.querySelector<HTMLElement>(".ptbench");
+    if (bench === DEFAULT_WORKBENCH) { tag?.remove(); return; }
+    if (!tag) {
+      // The pane's own word in a span of its own too, so on a phone it is the
+      // word that gives way to an ellipsis and the workbench that stays.
+      const word = title.firstChild;
+      if (word && word.nodeType === Node.TEXT_NODE) {
+        const span = document.createElement("span");
+        span.className = "ptword";
+        span.textContent = word.textContent;
+        word.replaceWith(span);
+      }
+      tag = document.createElement("span");
+      tag.className = "ptbench";
+      title.firstChild?.after(tag);
+    }
+    tag.textContent = `· ${getWorkbench(bench)?.label ?? bench}`;
+  }
+
+  /** The tray, the menu and the options panel after the tray's set changed. */
+  function modulesChanged() {
+    syncToolbar();
+    panels.apply();
+    showWorkbench();
+  }
+
+  /** `workbench(name)` and the logo menu's switcher. A tool off the new tray is put down. */
+  function switchWorkbench(name: string): string {
+    setActiveWorkbench(name);
+    const armed = engine.armed?.name;
+    if (armed && !onWorkbench(name, armed)) engine.cancel();
+    modulesChanged();
+    files?.changed();
+    return `workbench: ${name} — ${getWorkbench(name)!.modules.join(", ")}`;
+  }
+
+  /** A document whose head said it needs modules this device lacks: waiting for Add workbench… to bring them. */
+  let waitingDocument: string | null = null;
+
+  /**
+   * What a file's head says, after it has opened: the workbench it was in (or
+   * the default), and any module it needs that this device lacks — said, with
+   * Add workbench… offered, and the rest of the drawing already open.
+   */
+  function afterOpen(text: string) {
+    const head = savedHead(text);
+    const bench = head.workbench && getWorkbench(head.workbench) ? head.workbench : DEFAULT_WORKBENCH;
+    if (bench !== activeWorkbench()) { setActiveWorkbench(bench); modulesChanged(); }
+    if (!head.missing.length) { waitingDocument = null; return; }
+    waitingDocument = text;
+    for (const m of head.missing) {
+      log(`this file needs workbench "${m.name}" (source ${m.hash || "typed"}), which is not on this device: what it made `
+        + `(${m.ops.join(", ")}) is left out and the rest is open. Add workbench… (addWorkbench()) to load it — saving `
+        + "before then would leave those steps out of the file", "out");
+    }
+    offerMissing(head.missing.map((m) => m.name));
+  }
+
+  /** The "missing workbench" offer: a small question with Add workbench… on it. Never blocks the open. */
+  function offerMissing(names: string[]) {
+    document.getElementById("wbmissing")?.remove();
+    const el = document.createElement("div");
+    el.id = "wbmissing";
+    el.setAttribute("role", "dialog");
+    const head = document.createElement("div");
+    head.className = "wbhead";
+    head.textContent = `This drawing needs workbench ${names.join(", ")}`;
+    const note = document.createElement("div");
+    note.className = "wbnote";
+    note.textContent = "Not on this device. The rest of the drawing is open; add the workbench file to bring the rest back.";
+    const buttons = document.createElement("div");
+    buttons.className = "wbbuttons";
+    const later = document.createElement("button");
+    later.type = "button";
+    later.textContent = "Not now";
+    later.addEventListener("click", () => el.remove());
+    const add = document.createElement("button");
+    add.type = "button";
+    add.className = "wbyes";
+    add.textContent = "Add workbench…";
+    add.addEventListener("click", () => { el.remove(); void submit("addWorkbench()"); });
+    buttons.append(later, add);
+    el.append(head, note, buttons);
+    document.body.appendChild(el);
+  }
+
+  const workbenchFiles = new WorkbenchFiles({
+    evaluate: async (source) => {
+      const r = await repl.eval(source);
+      if (!r.ok) throw r.error ?? new Error("the file did not run");
+    },
+    log: (line, cls) => log(line, cls ?? "out"),
+    exportFile: (text, name, type) => files!.exportFile(text, name, type),
+    changed: () => { repl.define(neocadScope(handles())); modulesChanged(); },
+    // A document that was waiting for this module opens whole now.
+    added: () => {
+      if (waitingDocument && !savedHead(waitingDocument).missing.length) {
+        const text = waitingDocument;
+        waitingDocument = null;
+        asUserAction(() => swapModel(openModelText(text, APP_DIM)));
+        log("the drawing that needed it is opened again, whole", "out");
+      }
+    },
+    store: indexedDbWorkbenches(),
+  });
+
+  // The workbench files kept on this device, loaded after the built-ins, before
+  // the first picture. The autosaved drawing was read before they were: one
+  // that needs one of them is read again now it is here, and its head's
+  // workbench is put on the tray.
+  await workbenchFiles.start();
+  if (restored) {
+    const text = restored.record.text;
+    let needs = false;
+    try { needs = Array.isArray(JSON.parse(text).modules) && JSON.parse(text).modules.length > 0; } catch { /* opened already */ }
+    if (needs && !savedHead(text).missing.length) swapModel(openModelText(text, APP_DIM));
+    afterOpen(text);
+  }
+  showWorkbench();
 
   /**
    * `ui()` — the interface size and the panes. `ui({ scale: 0.8 })` sets the
@@ -2000,6 +2159,9 @@ async function main() {
     stamp: document.getElementById("buildstamp"),
     repository: "https://github.com/BrotherCreamy/zerocad",
     solidsLicence: solidsLicence(),
+    // The modules' File items and the workbench switcher (docs/plans/workbenches.md).
+    fileItems: fileMenuItems,
+    workbenches: () => listWorkbenches().map((w) => ({ name: w.name, label: w.label, current: w.name === activeWorkbench(), added: w.origin === "added" })),
     tooltip,
   });
 

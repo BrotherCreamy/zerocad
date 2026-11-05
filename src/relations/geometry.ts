@@ -15,6 +15,7 @@
 // the relations taking them are generic, with the wedge simply growing from one
 // component to three.
 
+import { addEllipse, checkEllipse, ellipseOf, semiAxes } from "../kinds/ellipse.ts";
 import type { Model } from "../model.ts";
 import { Dual } from "../kernel/dual.ts";
 import { dot, norm, vecSub, wedge, wedgeNorm } from "./vec.ts";
@@ -582,11 +583,11 @@ function tangentCircles(model: Model, a: string, b: string, given?: string | nul
 
 /** The ellipse's centre, major end, minor variable and — in 3D — normal, as one lazy list. */
 function ellipseVars(model: Model, name: string): { vars: () => number[]; dim: number; normal: boolean } {
-  model.ellipse(name); // fail now, not at the first solve
+  ellipseOf(model, name); // fail now, not at the first solve
   const normal = curveNormal(model, name);
   return {
     vars: () => {
-      const e = model.ellipse(name);
+      const e = ellipseOf(model, name);
       return [...model.point(e.center).varIndices, ...model.point(e.major).varIndices, e.minorVar, ...(normal ? normal() : [])];
     },
     dim: model.dim,
@@ -698,7 +699,7 @@ function tangentEllipse(model: Model, a: string, b: string, side?: string | null
 export function majorAxis(model: Model, ellipseName: string, target: number): string {
   if (typeof target !== "number" || !(target > 0)) throw new Error(`major takes a positive semi-axis, got ${JSON.stringify(target)}`);
   return model.relation("majorAxis", [ellipseName, target], () => {
-    const e = model.ellipse(ellipseName);
+    const e = ellipseOf(model, ellipseName);
     const c = model.point(e.center), m = model.point(e.major);
     model.addResidual([...c.varIndices, ...m.varIndices], (l) => {
       const [p, q] = chunk(l, model.dim, 2);
@@ -711,7 +712,7 @@ export function majorAxis(model: Model, ellipseName: string, target: number): st
 export function minorAxis(model: Model, ellipseName: string, target: number): string {
   if (typeof target !== "number" || !(target > 0)) throw new Error(`minor takes a positive semi-axis, got ${JSON.stringify(target)}`);
   return model.relation("minorAxis", [ellipseName, target], () => {
-    const e = model.ellipse(ellipseName);
+    const e = ellipseOf(model, ellipseName);
     model.addResidual([e.minorVar], (l) => [l[0].sub(target)], `minor(${ellipseName})`);
   });
 }

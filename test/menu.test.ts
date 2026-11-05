@@ -19,13 +19,13 @@ import { getToolCtor } from "../src/tools/tool.ts";
 import { fix } from "../src/relations/basic.ts";
 import type { Pick } from "../src/picking.ts";
 import { axisFrame } from "./frames.ts";
-import "../src/tools/point.ts";
-import "../src/tools/line.ts";
-import "../src/tools/rectangle.ts";
-import "../src/tools/circle.ts";
-import "../src/tools/arc.ts";
-import "../src/tools/ellipse.ts";
-import "../src/tools/fillet.ts";
+import "../src/modules/builtin.ts"; // registers the built-in tools, as the app does
+import "../src/modules/builtin.ts"; // registers the built-in tools, as the app does
+import "../src/modules/builtin.ts"; // registers the built-in tools, as the app does
+import "../src/modules/builtin.ts"; // registers the built-in tools, as the app does
+import "../src/modules/builtin.ts"; // registers the built-in tools, as the app does
+import "../src/modules/builtin.ts"; // registers the built-in tools, as the app does
+import "../src/modules/builtin.ts"; // registers the built-in tools, as the app does
 
 async function loadKernel() {
   const bytes = await readFile(new URL("../src/kernel/wasm-gen/neocad_kernel_bg.wasm", import.meta.url));
@@ -208,12 +208,14 @@ test("empty canvas arms the tools, and every tool name it types is registered", 
   assert.equal(menu.header, null);
   assert.deepEqual(labels(menu), [
     // One circle and one arc (docs/plans/one-circle-one-arc.md): the 3-point
-    // items went with their tools.
-    "Point", "Line", "Rectangle", "Circle", "Arc", "Ellipse", "Fillet", "Frame",
+    // items went with their tools. The shapes group whole under its heading:
+    // this test registers the built-in modules as the app does, and a module
+    // is registered whole (it used to import the rectangle alone).
+    "Point", "Line", "Shapes", "Rectangle", "Polygon", "Slot", "Circle", "Arc", "Ellipse", "Fillet", "Frame",
   ]);
   // A typo in the table would be a menu item that throws when chosen, and
   // nothing else would catch it.
-  for (const label of labels(menu).slice(0, -1)) {
+  for (const label of labels(menu).slice(0, -1).filter((l) => l !== "Shapes")) {
     const command = commandFor(menu, label);
     const tool = command.match(/^arm\("(.+)"\)$/)?.[1];
     assert.ok(tool, `${label} should arm a tool, got ${command}`);

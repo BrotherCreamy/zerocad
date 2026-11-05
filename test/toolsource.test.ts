@@ -18,7 +18,7 @@ import { neocadScope } from "../src/replenv.ts";
 import { VERSION, open as openModel, save, savedTools, type SavedModel } from "../src/persist.ts";
 import { ToolSourceStore, carriedNotice, carryIntoSession } from "../src/toolsource.ts";
 import { defineTool, getToolCtor, listTools } from "../src/tools/tool.ts";
-import "../src/tools/point.ts"; // a built-in, registered the way built-ins are
+import "../src/modules/builtin.ts"; // registers the built-in tools, as the app does
 import { axisFrame } from "./frames.ts";
 
 async function loadKernel() {

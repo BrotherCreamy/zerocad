@@ -34,9 +34,13 @@ If `build:kernel` fails downloading binaryen, `npm run build:kernel:dev` skips
   same reason; it needs real transformation, not type-stripping.
 - `npm run typecheck` works and should stay at zero errors. It is part of
   `npm run test:all`.
-- A new relation must be registered in **both** `src/replenv.ts` (so it's
-  callable) and `src/persist.ts`'s replay table (so it survives save/open).
-  Nothing catches this but a test.
+- A new relation is **one entry in its module's `relations`** (`src/modules/`,
+  `defineModule`): the op a file journals, the names it is typed by, its slot
+  list and its function. That entry is what makes it callable *and* what
+  replays it on open — there is no second table any more (there was, in
+  `persist.ts`, and forgetting it lost the relation silently on save/open).
+  A relation registered outside a module, or an op whose entry is missing,
+  is still caught by nothing but a test.
 - A relation's body must be wrapped in `model.relation(op, args, body)` — that
   is what journals it *and* what gives it a name and a `del`. Forget it and
   the relation silently vanishes on save/open.
@@ -64,7 +68,7 @@ under-constrain, an operation can leave the model malformed.
 
 ## Verification
 
-**Run `npm run test:e2e` for anything that touches the app.** Eighteen bugs so far (the count is kept honest in docs/ARCHITECTURE.md)
+**Run `npm run test:e2e` for anything that touches the app.** Twenty bugs so far (the count is kept honest in docs/ARCHITECTURE.md)
 passed the entire unit suite and were obvious within seconds in a browser: a
 stale status readout, a fillet that satisfied every constraint to six decimals
 while drawing a broken rectangle, an auto-naming loop that hung the tab, and a

@@ -483,6 +483,27 @@ is evaluated. Note that a bare assignment (`box = ...`) persists between
 entries while a `const`/`let`/`class` declaration does not — a
 consequence of how the scope is built, described in `src/repl.ts`.
 
+## Workbenches, and adding one from a file
+
+The app is modules — core, sketch, solids, files, step, organiser — each one
+file that registers its tools, relations, operations, entity kinds, menu
+items and help (`modules()` lists them). A **workbench** is a set of them
+with its own toolbar: **Part** (the default: everything) and **Sketch** (the
+drawing, no solids). Switch in the logo menu's *Workbench* section or with
+`workbench("sketch")`; a typed command works in any workbench, and a drawing
+remembers which it was in.
+
+**Add workbench…** in the same menu opens your device's file picker (the
+Files app on an iPhone) for a workbench file, `<name>.zerocad.js`. Before
+anything in it runs, the app shows what it says it adds — its tools,
+relations, operations and entity kinds — and asks. Added, it stays on the
+device and loads every time the app starts; the menu has **Share…** (to send
+the file on, by AirDrop or mail) and **Remove**. A file that adds anything it
+did not show is refused. A drawing that used an added workbench, opened
+somewhere without it, says which one is missing, opens everything else, and
+offers Add workbench…. How to write one: [`CONTRIBUTING.md`](CONTRIBUTING.md),
+*Adding a module*.
+
 ## On a phone or a tablet
 
 The app is hosted at **https://brothercreamy.github.io/zerocad/**, a static

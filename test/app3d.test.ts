@@ -24,7 +24,7 @@ import { findSnap } from "../src/snapping.ts";
 import { curveFrame } from "../src/curveplane.ts";
 import { orbitBy, viewAxes, worldToScreen, type Plane, type View } from "../src/view.ts";
 import type { PointerInfo, ToolContext } from "../src/tools/tool.ts";
-import "../src/tools/point.ts";
+import "../src/modules/builtin.ts"; // registers the built-in tools, as the app does
 import { tiltedFrame, type TiltedFrame } from "./frames.ts";
 
 async function loadKernel() {
@@ -382,7 +382,7 @@ test("a lifted file re-saves as a 3D file of the current version that reopens to
   const text = save(m);
   const saved = JSON.parse(text);
   assert.equal(saved.version, VERSION);
-  assert.equal(saved.version, 15);
+  assert.equal(saved.version, 16);
   assert.equal(saved.dim, 3);
   assert.equal(save(open(text, 3)), text, "stable from here on");
   assert.equal(save(open(text)), text, "and a 3D file opens as itself without being asked");

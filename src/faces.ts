@@ -68,7 +68,7 @@
 // dimension's value. Caps only for a partial revolve, even-odd as an extrude's;
 // normals the profile's own, turned; the same culling and headlight.
 
-import type { FeatureEntry, Model, Portion, ProfileMember } from "./model.ts";
+import { entityKind, type FeatureEntry, type Model, type Portion, type ProfileMember } from "./model.ts";
 import { arcPoint, arcSamples, arcSegments, frameReach, portionAngles } from "./arcgeom.ts";
 import { curveFrame, planeAxes } from "./curveplane.ts";
 import { axisReader, turnMatrix } from "./relations/revolution.ts";
@@ -197,14 +197,14 @@ const closedPath = (o: number[][]) => (o.length ? [...o, o[0]] : o);
 
 /**
  * Whether a profile member has vertices at its ends — every member but a whole
- * circle or ellipse, which closes on itself with no corner, so its wall has no
- * wall line and its sweep no edge but its rims. (An ellipse's samples start at
- * its major end; a line drawn there was a seam the solid does not have —
+ * circle, or a kind declared closed (model.ts's `EntityKindSpec.closed`), which closes on itself with no corner, so its wall has no
+ * wall line and its sweep no edge but its rims. (A closed curve's samples start
+ * somewhere on it; a line drawn there was a seam the solid does not have —
  * looked at, docs/plans/sketch-shapes.md.)
  */
 function hasVertices(model: Model, m: ProfileMember): boolean {
   const kind = typeof m === "string" ? model.entities.get(m)?.kind : undefined;
-  return kind !== "circle" && kind !== "ellipse";
+  return kind !== "circle" && entityKind(kind)?.closed !== true;
 }
 
 const mean = (pts: number[][]) => [0, 1, 2].map((i) => pts.reduce((s, p) => s + p[i], 0) / pts.length);

@@ -32,8 +32,8 @@ import { OptionMemory } from "../src/tools/options.ts";
 /** The built-ins, as main.ts registers them — read from main.ts, as icons.test.ts does, so a new tool cannot slip past. */
 async function builtIns(): Promise<string[]> {
   const main = await readFile(new URL("../src/main.ts", import.meta.url), "utf8");
-  const files = [...main.matchAll(/^import "\.\/(tools\/[a-z0-9]+\.ts)";$/gm)].map((m) => m[1]);
-  assert.ok(files.length >= 10, `main.ts's tool imports: ${files.join(", ")}`);
+  const files = [...main.matchAll(/^import "\.\/(modules\/[a-z0-9]+\.ts)";$/gm)].map((m) => m[1]);
+  assert.ok(files.length >= 1, `main.ts's module imports: ${files.join(", ")}`);
   for (const f of files) await import(new URL(`../src/${f}`, import.meta.url).href);
   // The edit dialogs are unlisted — never on the toolbar — and are tools all the same.
   return [...ENGINE_TOOLS, ...listTools(), "edit extrude", "edit revolve"];

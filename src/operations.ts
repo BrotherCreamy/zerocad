@@ -6,6 +6,7 @@
 // with different eyes: a relation can only ever over- or under-constrain,
 // while an operation can leave the model malformed.
 
+import { addEllipse, checkEllipse, ellipseOf, semiAxes } from "./kinds/ellipse.ts";
 import {
   Model, ORIGIN, SETTABLE_PROPERTY, memberName, parseValueRef, referentOf, referentsOf, valueArgIndex,
   FEATURE_MODES, type Entity, type Expansion, type FeatureEntry, type FeatureMode, type Portion, type ProfileMember,
@@ -1157,7 +1158,7 @@ function twinMember(model: Model, m: Walked, real: (v: string) => string, twinOf
   // normal — the depth holds the minor and the normal to the base's (`extrusion`).
   if (e.kind === "ellipse") {
     const raw = e.normal ? e.normal.map((i) => model.problem.getVar(i)) : null;
-    return model.addEllipse(twinOf(e.center), twinOf(e.major), model.semiAxes(e.name).b, raw ? normalFor(e.name) : null).name;
+    return addEllipse(model, twinOf(e.center), twinOf(e.major), semiAxes(model, e.name).b, raw ? normalFor(e.name) : null).name;
   }
   const [a, b] = m.ends!.map((v) => twinOf(real(v)));
   if (e.kind === "line") return model.addLine(a, b).name;
@@ -2524,10 +2525,15 @@ const REBUILD: Record<string, (model: Model, args: unknown[]) => void> = {
   // A revolve's angle: the whole end face, one value — and the refusals across
   // the full/partial line live in the relation, so a `set` meets them here.
   revolution: (m, a) => void revolution(m, a[0] as string, a[1] as number, ...(a.slice(2) as string[])),
-  // An ellipse's semi-axes (docs/plans/sketch-shapes.md), `rad`'s cousins.
-  majorAxis: (m, a) => void majorAxis(m, a[0] as string, a[1] as number),
-  minorAxis: (m, a) => void minorAxis(m, a[0] as string, a[1] as number),
 };
+
+/**
+ * How a module's dimension is re-run (../modules.ts): the relation's own
+ * function over its recorded arguments, which is all every row above is.
+ */
+export function defineRebuild(op: string, rebuild: (model: Model, args: unknown[]) => void): void {
+  REBUILD[op] = rebuild;
+}
 
 /**
  * The half of every "that has no value" message that says what does. Written

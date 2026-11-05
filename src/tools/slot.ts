@@ -158,4 +158,3 @@ export class SlotTool extends Tool {
   }
 }
 
-defineTool("slot", SlotTool);

@@ -20,6 +20,10 @@ this document are consequences of it.
   ├──────────────────────────────────────────────────────────────┤
   │ repl.ts          a scoped evaluator                          │
   │ replenv.ts       ...and the command surface it evaluates in  │
+  ├──────────────────────────────────────────────────────────────┤
+  │ modules/         the app as modules: core, sketch, solids,   │
+  │ modules.ts       files, step, organiser, interface — each    │
+  │                  registers into every table below            │
   ├───────────────────────┬──────────────────┬───────────────────┤
   │ tools/               │ operations.ts    │ persist.ts        │
   │ pointer gestures     │ structural edits │ journal + replay  │
@@ -1043,7 +1047,89 @@ replaces it on a crash (an abort in SMLib is fatal to its module), on 30 s
 without an answer, and past 256 MB (the fillet leak the spike measured). The
 next request starts a fresh one, and the log says each time.
 
+## A module is the unit
+
+The owner: *"the whole framework should be modular and extensible (!). like
+onshape workbenches"* (docs/plans/workbenches.md). Before, a tool, its
+relations, its replay entry, its glyph, its group, its menu item and its help
+were written into five tables by hand, beside code that knew nothing of them.
+Now **a module is one file that registers everything it brings, in one call**
+— `defineModule(name, spec)` in `src/modules.ts` — and every one of those
+tables is filled from the modules, in load order: `TOOL_ICONS`, `TOOL_GROUPS`,
+the menu's tool items and the logo menu's File items, the relation vocabulary
+`replenv.ts` binds, the replay table `persist.ts` opens a file by, `help()`.
+The app is seven built-in modules (`src/modules/`), loaded by
+`modules/builtin.ts`, which `main.ts`, `persist.ts`, `replenv.ts` and
+`menu.ts` import — so any host that opens a file or builds a command scope,
+a test included, has the app's vocabulary.
+
+**Where it sits, and why that keeps the layer rule.** `modules.ts` is in the
+row above tools, operations and persist: it registers into the registries
+below it and nothing below imports it. A module *file* is a manifest of
+pieces that live at their own heights — a tool in `tools/`, a relation in
+`relations/`, an entity kind's structure beside the model (`src/kinds/`) —
+and only the registering call is up here. The replay table is still a fixed
+list for any one session (whatever was loaded), so a file is still data: it
+can only name a call a module registered.
+
+**Refusals are whole.** A module naming a tool, glyph, relation spelling,
+journal op or entity kind that another module has is refused with the name
+and the owner, *before* anything is registered — `checkModule` reads the whole
+spec first. Groups are the one thing shared on purpose: the shapes group is
+the sketch module's, and any later module adds to it, members in module order.
+
+**The entity extension point: each layer owns its facet.** An entity kind is
+declared, but no one object is read by every layer, because then the model
+would have to import the drawing. Instead the model owns `EntityKindSpec` —
+structure only: what points it is built of, what variables it owns, whether it
+is a curve, closed, carries a plane (and is straightened against a point of its
+own), which relations hold a point on it, whether it bounds — and every layer
+above owns a registry for its own question: `curveplane.ts` the frame a curve
+is sampled by (so the renderer, box select, faces and loops take it at once),
+`picking.ts` its hover line, `step.ts` its Part 42 spelling, `projection.ts`
+the polyline of a kind with no frame. `defineModule` hands each its part.
+`Entity` is `EntityTypes[keyof EntityTypes]`; a kind's file adds itself by
+declaration merging, so every `switch (e.kind)` above the model narrows to it
+while `model.ts` names it nowhere. **The proof is the ellipse**: it moved into
+the sketch module (`src/kinds/ellipse.ts`, `modules/sketch.ts`) and
+`model.ts`, `loops.ts`, `faces.ts`, `picking.ts` and `step.ts` no longer
+mention it (a test greps them). `loops.ts` walks any kind whose frame has a
+second radius as the conic piece it already had; `faces.ts` treats any closed
+kind as a whole circle. Point, line, circle, arc and frame are still known by
+name — the vocabulary every fast path is written in — and the registry is
+asked for every other kind (vetoable, TODO.md). The kernel sees variables and
+residuals, as it always did.
+
+**A workbench is a named set of modules with its own tray.** `part` (the
+default — every built-in, today's tray exactly) and `sketch` (no solids, no
+STEP). The tray and the menu's tool items are the current workbench's tools;
+**a typed name is not filtered**, because a typed call is not a toolbar. A
+module no workbench names (typed at the command line) is on every tray, as a
+typed tool is. The workbench is the document's — written in a saved file's
+head (format 16) and read back — but not the journal's and not the undo
+snapshot's: switching is no edit to the drawing, so it is no undo step,
+exactly as the camera is not.
+
+**Add workbench… is the paste rule with a file.** A workbench file is one
+`.zerocad.js` whose top is a manifest comment saying what it registers. The
+app reads the manifest *without running the file*, shows it, and asks — that
+is the consent, as pasting a tool's source is (below). Accepted, the file runs
+once in the command line's scope, which is curation and not a sandbox (and the
+question says so), and `defineModule` refuses a module that registers anything
+the manifest did not show before registering any of it. It is kept in
+IndexedDB beside the autosave and loaded at every start until removed; Share
+hands the stored text back. A document records the added modules its journal
+uses — read off the ops at save time, so it is never stale — and opened on a
+device without one, `fromSaved` leaves out those steps and what named their
+results, opens the rest, and the host says which workbench is missing and
+offers the picker. Never a hung open: the rest of the model is intact.
+
 ## A second curve kind: what the ellipse needed
+
+(The list below is what the ellipse touched when it was hard-wired. The
+entity extension point — "A module is the unit", above — now carries items 1,
+3, 4 (its frame), 5, 7 and 8's writer through a declaration; the rest still
+name it, TODO.md.)
 
 The ellipse (docs/plans/sketch-shapes.md) is the first curve that is not a
 circle, and it went through every seam a curve meets. Listed, so the spline
@@ -1474,7 +1560,7 @@ until the next action went unrecorded.
 
 ## Why there is an end-to-end suite
 
-Nineteen bugs so far were invisible to the unit tests and obvious within seconds
+Twenty bugs so far were invisible to the unit tests and obvious within seconds
 of running the app:
 
 1. a status readout that went stale, so a conflict could be introduced from
@@ -1568,6 +1654,12 @@ of running the app:
    passed, the exact B-rep and the STEP among them (they have no such
    line); found by looking at the first picture of the wall
    (sketch-shapes.md). A whole ellipse has no vertices, as a circle has none.
+20. The organiser's strip on a phone, once it named the workbench: "organiser
+   · Pins" wrapped onto a second line the strip has no room for, and the
+   name was clipped away — then, kept to one line, squeezed to nothing.
+   Every test passed, the heading's text included; found by looking at the
+   iPhone picture of workbenches.md. The word "organiser" now gives way to an
+   ellipsis and the workbench's name keeps its width.
 
 None of these are mathematics. They are all *assembly*. Hence `npm run
 test:e2e`, and hence the expectation that anything touching the app is checked

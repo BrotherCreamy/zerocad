@@ -128,7 +128,7 @@ export function hitTest(
   // An arc seen obliquely is a polyline on screen, and is near wherever any
   // piece of it is.
   for (const e of shown) {
-    if (e.kind !== "circle" && e.kind !== "arc" && e.kind !== "ellipse") continue;
+    if (e.kind === "point" || e.kind === "line" || e.kind === "frame") continue;
     const screen = screenCurve(model, view, e, rCurve);
     if (!screen) continue;
     const shape = screen.curve;
@@ -341,7 +341,22 @@ function relationTag(model: Model, name: string): string {
   return rs.length ? `  ·  ${rs.map((r) => r.name).join(" ")}` : "";
 }
 
+/** The hover tag's line for an entity of a kind a module declares (../modules.ts): its name first, then what it is. */
+export type Describer = (model: Model, name: string, n: (v: number) => string) => string;
+
+const describers = new Map<string, Describer>();
+
+export function defineDescriber(kind: string, describe: Describer): void {
+  describers.set(kind, describe);
+}
+
+export function undefineDescriber(kind: string): void {
+  describers.delete(kind);
+}
+
 function describeGeometry(model: Model, name: string, kind: Entity["kind"], n: (v: number) => string): string {
+  const declared = describers.get(kind);
+  if (declared) return declared(model, name, n);
   switch (kind) {
     case "point":
       return `${name}  ${model.coords(name).map(n).join(", ")}`;
@@ -352,11 +367,6 @@ function describeGeometry(model: Model, name: string, kind: Entity["kind"], n: (
       // the rim you think they do.
       const facing = model.circular(name).normal === undefined ? "" : `  facing ${model.normalOf(name).map(n).join(", ")}`;
       return `${name}  r ${n(model.radius(name))}${facing}`;
-    }
-    case "ellipse": {
-      const { a, b } = model.semiAxes(name);
-      const facing = model.ellipse(name).normal === undefined ? "" : `  facing ${model.normalOf(name).map(n).join(", ")}`;
-      return `${name}  a ${n(a)}  b ${n(b)}${facing}`;
     }
     case "line": {
       const l = model.line(name);
@@ -374,5 +384,7 @@ function describeGeometry(model: Model, name: string, kind: Entity["kind"], n: (
       const plane = f.yref === undefined ? "" : `, +y toward ${f.yref}`;
       return `${name}  origin ${f.origin}, +x toward ${f.xref}${plane}${dflt}`;
     }
+    // A kind a module declared, with no hover line of its own: its name and kind.
+    default: return `${name}  ${kind}`;
   }
 }

@@ -19,7 +19,7 @@
 
 import { spanOf, type Entity, type FeatureEntry, type Model } from "./model.ts";
 import { frameBasis, planeBasis } from "./relations/refs.ts";
-import { arcFrame, circleFrame, ellipseFrame, type ArcFrame } from "./arcgeom.ts";
+import { arcFrame, circleFrame, type ArcFrame } from "./arcgeom.ts";
 import { cross3, lift3, unit3 } from "./vec3.ts";
 
 /** A plane's two in-plane unit directions and its normal, three coordinates each. */
@@ -79,10 +79,9 @@ export function featurePlane(model: Model, feature: FeatureEntry): CurvePlane | 
  */
 export function curvePlaneOf(model: Model, name: string): CurvePlane {
   const e = model.entities.get(name);
-  if (e?.kind === "ellipse") {
-    // An ellipse's plane is laid out along its own axes: u the major
-    // direction, v the minor, n their cross — `ellipseFrame`'s, so a loop
-    // in an ellipse's plane is measured where the ellipse is drawn.
+  if (e && kindFrames.has(e.kind)) {
+    // A declared kind's plane is laid out along its own frame's axes — u, v
+    // and their cross — so a loop in its plane is measured where it is drawn.
     const f = curveFrame(model, e);
     if (f) return { u: f.u, v: f.v, n: f.normal };
   }
@@ -107,6 +106,20 @@ export function arcSide(model: Model, name: string): number[] {
   return curvePlaneOf(model, name).n;
 }
 
+/** How a kind a module declares is laid out (../modules.ts): its frame, as `curveFrame` answers for a circle. */
+export type CurveFrameFn = (model: Model, e: Entity) => ArcFrame | null;
+
+const kindFrames = new Map<string, CurveFrameFn>();
+
+/** Registers how `kind` is laid out — drawn, boxed, looped and picked by that frame from then on. */
+export function defineCurveFrame(kind: string, frame: CurveFrameFn): void {
+  kindFrames.set(kind, frame);
+}
+
+export function undefineCurveFrame(kind: string): void {
+  kindFrames.delete(kind);
+}
+
 /**
  * A circle or arc laid out in its plane, as `arcgeom.ts` draws, picks and lifts
  * it — or null for any other kind, or an arc with an endpoint on its centre.
@@ -126,23 +139,7 @@ export function curveFrame(model: Model, e: Entity): ArcFrame | null {
     return arcFrame(model.coords(e.center), model.coords(e.start), model.coords(e.end),
       model.radius(e.name), arcSide(model, e.name));
   }
-  if (e.kind === "ellipse") return ellipseFrameOf(model, e.name);
-  return null;
-}
-
-/**
- * An ellipse laid out in its plane (`ellipseFrame`): from its major end round
- * toward its minor axis — counter-clockwise about its straightened normal in
- * 3D (`Model.normalOf`), about +z in 2D. Null for an ellipse whose major end
- * sits on its centre, which has no axis to lay out along.
- */
-function ellipseFrameOf(model: Model, name: string): ArcFrame | null {
-  const e = model.ellipse(name);
-  const c = lift3(model.coords(e.center));
-  const u = unit3(lift3(model.coords(e.major)).map((x, i) => x - c[i]));
-  if (!u) return null;
-  const n = e.normal === undefined ? [0, 0, 1] : model.normalOf(name);
-  const v = unit3(cross3(n, u)) ?? [-u[1], u[0], 0];
-  const { a, b } = model.semiAxes(name);
-  return ellipseFrame(c, a, Math.abs(b), u, v);
+  // A kind a module declares is laid out as its declaration says (`defineCurveFrame`).
+  const declared = kindFrames.get(e.kind);
+  return declared ? declared(model, e) : null;
 }

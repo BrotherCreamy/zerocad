@@ -29,15 +29,16 @@ import { giveTip, type AttachTip, type Tip } from "./tooltip.ts";
 /** A File item: what it is called and the command it types. */
 export interface FileItem { label: string; command: string }
 
-/** In the order the menu shows them — the seam with the files package, by exactly these names. */
-export const FILE_ITEMS: readonly FileItem[] = [
-  { label: "New", command: "newFile()" },
-  { label: "Open…", command: "openFile()" },
-  { label: "Save", command: "saveFile()" },
-  { label: "Share…", command: "shareFile()" },
-  // A copy for another CAD tool, not the document (docs/plans/step-export.md).
-  { label: "Export STEP…", command: "exportStep()" },
-];
+/**
+ * A workbench row in the menu: the switcher's (docs/plans/workbenches.md). The
+ * host hands them over — this file still imports nothing of the registry.
+ */
+export interface WorkbenchRow { name: string; label: string; current: boolean; added: boolean }
+
+/** The command a workbench row types: `workbench("sketch")`. */
+export function workbenchCommand(name: string): string {
+  return `workbench(${JSON.stringify(name)})`;
+}
 
 /** The function a command calls: `newFile()` → `newFile`. */
 export function commandName(command: string): string {
@@ -122,6 +123,14 @@ export interface AppMenuHost {
   repository: string;
   /** Gives the spin box's buttons their tooltips (tooltip.ts); without it, each has a `title`. */
   tooltip?: AttachTip;
+  /**
+   * The File items, in the order the menu shows them — the modules' (the files
+   * module's New, Open…, Save, Share…, then the step module's Export STEP…;
+   * modules.ts's `fileMenuItems`).
+   */
+  fileItems(): readonly FileItem[];
+  /** The workbenches, built in then added, the current one marked. Absent: no Workbench section. */
+  workbenches?(): readonly WorkbenchRow[];
 }
 
 /**
@@ -223,7 +232,7 @@ export class AppMenu {
       name.appendChild(dot);
     }
     file.appendChild(name);
-    for (const item of FILE_ITEMS) {
+    for (const item of h.fileItems()) {
       const off = fileItemOff(item, (n) => h.defined(n));
       // Off, the reason is said where the command would be — on the item's
       // own line, so four of them do not double the menu's height on a
@@ -236,6 +245,33 @@ export class AppMenu {
         row.title = off;
       }
       file.appendChild(row);
+    }
+
+    // Workbench (docs/plans/workbenches.md): the built-in ones, then those added
+    // on this device — each a row typing `workbench("…")`, the current one
+    // marked — then Add workbench…, and for each added one Share… and Remove.
+    const benches = h.workbenches?.();
+    if (benches) {
+      const wb = this.section("Workbench");
+      for (const w of benches) {
+        const command = workbenchCommand(w.name);
+        const row = this.item(`${w.current ? "● " : ""}${w.label}`, command, () => this.type(command, false));
+        row.dataset.command = command;
+        row.dataset.workbench = w.name;
+        if (w.current) row.setAttribute("aria-current", "true");
+        wb.appendChild(row);
+      }
+      const add = this.item("Add workbench…", "addWorkbench()", () => this.type("addWorkbench()", false));
+      add.dataset.command = "addWorkbench()";
+      wb.appendChild(add);
+      for (const w of benches.filter((b) => b.added)) {
+        for (const [label, command] of [[`Share ${w.label}…`, `shareWorkbench(${JSON.stringify(w.name)})`],
+          [`Remove ${w.label}`, `removeWorkbench(${JSON.stringify(w.name)})`]] as const) {
+          const row = this.item(label, command, () => this.type(command, false));
+          row.dataset.command = command;
+          wb.appendChild(row);
+        }
+      }
     }
 
     // Interface size: − 80% +, a multiplier on this device's own 100 %. The

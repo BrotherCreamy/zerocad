@@ -117,4 +117,3 @@ export class SketchTool extends Tool {
   }
 }
 
-defineTool("sketch", SketchTool);

@@ -7,6 +7,9 @@
 // surface for a body a boolean made. Without the kernel build the kernel's
 // half skips and says why, as every kernel test does.
 
+import { addEllipse, checkEllipse, ellipseOf, semiAxes } from "../src/kinds/ellipse.ts";
+// The ellipse is the sketch module's (docs/plans/workbenches.md): loaded, as the app loads it.
+import "../src/modules/builtin.ts";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { Model } from "../src/model.ts";
@@ -31,7 +34,7 @@ function groundEllipse(m: Model, cx: number, cy: number, a: number, b: number, a
   const c = m.addPoint([cx, cy, 0]).name;
   const end = m.addPoint([cx + a * Math.cos(angle), cy + a * Math.sin(angle), 0]).name;
   for (const p of [c, end]) onPlane(m, p, "origin");
-  const e = m.addEllipse(c, end, b, [0, 0, 1]).name;
+  const e = addEllipse(m, c, end, b, [0, 0, 1]).name;
   parallel(m, e, "origin.z");
   majorAxis(m, e, a);
   minorAxis(m, e, b);
@@ -127,7 +130,7 @@ test("an elliptic hole through a plate, and an elliptic boss on it: the kernel's
     const c = m.addPoint(onTop(p, u, v)).name;
     const end = m.addPoint(onTop(p, u + a, v)).name;
     for (const q of [c, end]) onPlane(m, q, top);
-    const e = m.addEllipse(c, end, b, p.t.uz).name;
+    const e = addEllipse(m, c, end, b, p.t.uz).name;
     parallel(m, e, top);
     majorAxis(m, e, a);
     minorAxis(m, e, b);

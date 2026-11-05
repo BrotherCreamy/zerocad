@@ -18,10 +18,10 @@ import {
   OPTIONS_KEY, OptionMemory, declaredOptions, describeValues, explicitOptions, parseRemembered, resolveOptions,
   unitSymbol, type OptionSpecs, type OptionStorage,
 } from "../src/tools/options.ts";
-import "../src/tools/extrude.ts";
-import "../src/tools/revolve.ts";
-import "../src/tools/fillet.ts";
-import "../src/tools/point.ts";
+import "../src/modules/builtin.ts"; // registers the built-in tools, as the app does
+import "../src/modules/builtin.ts"; // registers the built-in tools, as the app does
+import "../src/modules/builtin.ts"; // registers the built-in tools, as the app does
+import "../src/modules/builtin.ts"; // registers the built-in tools, as the app does
 
 async function loadKernel() {
   await ensureKernelLoaded(await readFile(new URL("../src/kernel/wasm-gen/neocad_kernel_bg.wasm", import.meta.url)));

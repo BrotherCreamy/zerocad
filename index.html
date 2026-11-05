@@ -128,6 +128,24 @@
     /* The context menu, in the hover tag's family: same ground, same border,
        same corner. It is the other thing that appears at the cursor over the
        drawing, so the two ought to look like one idea. */
+    /* Add workbench…'s question and the missing-workbench offer
+       (docs/plans/workbenches.md): the menus' family, centred, over everything,
+       inside the safe area and never wider than a phone's screen. */
+    #wbconsent,#wbmissing{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:80;box-sizing:border-box;
+      width:min(calc(360px * var(--ui)),calc(100vw - 24px - env(safe-area-inset-left) - env(safe-area-inset-right)));
+      max-height:calc(100vh - 24px);overflow-y:auto;font-family:inherit;font-size:calc(11.5px * var(--ui));
+      color:#b9c7d4;background:#0e141bf8;border:1px solid #2c3d50;border-radius:6px;padding:10px 12px;box-shadow:0 10px 32px #000c}
+    :is(#wbconsent,#wbmissing) .wbhead{color:#e8a33d;font-size:calc(13px * var(--ui));margin-bottom:4px}
+    #wbconsent .wbfile{color:#7a8b9b;margin-bottom:6px;word-break:break-all}
+    #wbconsent .wbrow{padding:2px 0}
+    :is(#wbconsent,#wbmissing) .wbnote{color:#7a8b9b;font-size:calc(10.5px * var(--ui));margin-top:8px;line-height:1.4}
+    :is(#wbconsent,#wbmissing) .wbbuttons{display:flex;justify-content:flex-end;gap:8px;margin-top:10px}
+    :is(#wbconsent,#wbmissing) button{font:inherit;color:#b9c7d4;background:#16202b;border:1px solid #2c3d50;border-radius:4px;
+      padding:4px 12px;min-height:calc(24px * var(--ui));cursor:pointer}
+    :is(#wbconsent,#wbmissing) button.wbyes{color:#0e141b;background:#e8a33d;border-color:#e8a33d}
+    /* The offer leaves the drawing it is about in sight: under the status, not over the middle. */
+    #wbmissing{top:calc(56px + env(safe-area-inset-top));transform:translate(-50%,0)}
+    @media (pointer: coarse){:is(#wbconsent,#wbmissing) button{min-height:44px;min-width:72px}}
     #ctxmenu,#appmenu{position:absolute;font-family:inherit;font-size:calc(11.5px * var(--ui));background:#0e141bf5;
       border:1px solid #223041;border-radius:4px;padding:3px 0;z-index:60;min-width:120px;
       box-shadow:0 6px 20px #000a;user-select:none}
@@ -296,6 +314,10 @@
     .panel>.ptitle .padd{position:relative;z-index:1;margin-left:auto;margin-right:-5px;padding:0 5px;height:100%;display:flex;align-items:center;
       border:none;background:transparent;color:#8fa7bb;font-family:inherit;font-size:calc(13px * var(--ui));line-height:1;cursor:default}
     .panel>.ptitle .padd:hover{color:#e8a33d}
+    /* The workbench in the organiser's strip (docs/plans/workbenches.md): an ellipsis before it wraps. */
+    .panel>.ptitle .ptword{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .panel>.ptitle .ptbench{flex:none;margin-left:.5em;white-space:nowrap}
+    .panel[data-panel="organiser"]>.ptitle{white-space:nowrap}
     #organiser{overflow-y:auto;overflow-x:hidden;padding:1px 0 4px;font-size:calc(11px * var(--ui));color:#8fa7bb;touch-action:pan-y;
       -webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
     #organiser .ohead{padding:calc(4px * var(--ui)) 8px calc(1px * var(--ui));font-size:calc(9px * var(--ui));letter-spacing:.07em;
