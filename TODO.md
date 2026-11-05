@@ -2747,11 +2747,25 @@ extended the way `defineTool` extends the tool registry would close it.
       - Every page load started the kernel's Worker for an empty program. It
         now starts only when a body has two features (`bodies.test.ts`
         asserts no Worker for old files).
-        - With this fixed, `touch.e2e.ts`'s "a finger down on a quiet corner"
-          passed a full run. Before the fix it had lost its tap in three full
-          runs out of three, and only under the full suite's load.
-        - [ ] The link is inferred, not proven. If that tap is lost again,
-          suspect input delivered late under CPU load, not the app.
+      - [ ] **Open: a touch tap lost under the full suite's load.**
+        `touch.e2e.ts` lost one tap on p2 in 7 of 9 full e2e runs of this
+        branch: "a finger down on a quiet corner…" 6 times and "a quick tap
+        while the page is busy…" once.
+        - It passed every time the file ran alone or with one or three
+          other files (16 runs), and passed a full run with passive event
+          recording in the page.
+        - The base branch passed its one full run here, and two tail runs
+          (tooltips, touch, undo, undokeys); this branch failed one tail
+          run in two.
+        - On the phone page, a frame (~0.1 ms) and a reload (~0.7 s) cost
+          the same as on the base branch, and there are no long tasks after
+          a reload.
+        - The Worker-per-page-load fix above did not cure it.
+        - What the recording showed when the tap was lost: the pointer
+          events arrived in time (a 56 ms tap), and the pick at that spot
+          was p2 a moment later, but nothing was selected. Next: record
+          `gestures`' decisions and the context menu in a full run without
+          changing its timing.
 
 - [x] **One circle tool and one arc tool, the gesture choosing the method**
       (2026-11-04). The owner: *"why are there multiple circle tools and arc

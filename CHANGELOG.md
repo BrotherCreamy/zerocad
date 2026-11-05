@@ -109,10 +109,17 @@ tests:
 - an empty Bodies section pushed Groups out of an iPhone's pane, so it is now
   shown only once there is a body;
 - every page load started the kernel's Worker and compiled its 4 MB for an
-  empty program. It now starts only when a body has two features. With that
-  fixed, a touch test that had lost a tap in three full runs out of three
-  passed. The tap was lost only under the full suite's load, so the link
-  between the two is inferred, not proven.
+  empty program. It now starts only when a body has two features.
+
+**Still open:** under the full suite's load, `touch.e2e.ts` loses one tap on
+a corner, in most full runs of this branch: in 7 of 9 runs, the test was
+"a finger down on a quiet corner…" 6 times and "a quick tap while the page
+is busy…" once. It never failed in a pass of the file alone or with one
+other file, and the base branch's one full run here passed. Two things
+measured the same as on the base branch on the touch suite's phone page: the
+cost of a frame and the cost of a reload. No long task runs after a reload.
+With passive event recording the full suite passed, so the cause is not yet
+known; TODO.md has the item.
 
 ## One circle tool and one arc tool — the gesture chooses the method
 
