@@ -9,9 +9,10 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { Evaluator, type BodyResult, type Program, type SweepNode } from "../src/solids/evaluate.ts";
+import { Evaluator, type BodyResult, type Node, type Program, type SweepNode } from "../src/solids/evaluate.ts";
 import type { Placement } from "../src/solids/kernel.ts";
 import { circle, profile, rect } from "./solids/profiles.ts";
+import type { BlendNode } from "../src/solids/evaluate.ts";
 import { kernel, noKernel as skip } from "./solids/load.ts";
 
 const top = (z: number): Placement => ({ origin: [0, 0, z], x: [1, 0, 0], y: [0, 1, 0] });
@@ -19,7 +20,7 @@ const XY: Placement = top(0);
 
 const plate: SweepNode = { id: 1, op: "new", sweep: { kind: "extrude", depth: 10 }, profile: profile(rect(0, 0, 100, 60)), at: XY };
 
-function program(...nodes: SweepNode[]): Program {
+function program(...nodes: Node[]): Program {
   return { bodies: [{ name: "b", nodes }], prefix: "e", chord: 5e-4, angle: 10 };
 }
 
@@ -180,4 +181,64 @@ test("a refusal is a result: the node is left out, said, and the rest of the cha
   assert.match(r.failed[0].why, /not a solid/);
   valid(r);
   assert.ok(Math.abs(solidOf(r).volume - (100 * 60 * 10 - Math.PI * 25 * 10)) < 1e-6);
+});
+
+// ---- a filleted part (docs/plans/solid-fillets.md) --------------------------------------
+//
+// A fillet names its edges by their two faces, so it follows the body's
+// history: what keeps an edge's faces keeps the edge, and its fillet; what
+// takes an edge takes its fillet, said.
+
+/** A filleted straight edge of length `len` removes (4 − π)/4 · r² · len. */
+const filletCut = (r: number, len: number) => ((4 - Math.PI) / 4) * r * r * len;
+const close = (a: number, b: number, what: string) => assert.ok(Math.abs(a - b) <= 1e-9 * Math.max(1, Math.abs(b)), `${what}: ${a} against ${b}`);
+
+/** The whole front of the plate, y < 8, cut away right through. */
+const front = (id: number): SweepNode => ({ id, op: "subtract", sweep: { kind: "extrude", depth: 20 }, profile: profile(rect(-5, -5, 105, 8)), at: top(-5) });
+
+test("a filleted part: a cut after the fillet takes the front's fillet with the front, and the back's stands", { skip }, async () => {
+  const ev = new Evaluator(await kernel());
+  const rounded: BlendNode = { id: 2, op: "fillet", edges: ["e1.lid|e1.m0", "e1.lid|e1.m2"], size: 2 };
+  const both = ev.run(program(plate, rounded)).bodies[0];
+  valid(both);
+  assert.deepEqual([...faceNames(both)].filter((n) => n.startsWith("e2.")).sort(), ["e2.f0", "e2.f1"]);
+  const r = ev.run(program(plate, rounded, front(3))).bodies[0];
+  valid(r);
+  assert.deepEqual(r.missing, [], "the fillet came first: nothing it named was missing when it ran");
+  const d = diff(both, r);
+  assert.ok(d.facesGone.includes("e2.f0") && !d.facesGone.includes("e2.f1"), `the front fillet went with the front: ${d.facesGone}`);
+  close(solidOf(r).volume, 100 * 52 * 10 - filletCut(2, 100), "volume");
+  sameMeaning(both, r);
+});
+
+test("a filleted part: the same cut before the fillet takes the front edge, which the fillet then says it no longer has", { skip }, async () => {
+  const ev = new Evaluator(await kernel());
+  const rounded: BlendNode = { id: 3, op: "fillet", edges: ["e1.lid|e1.m0", "e1.lid|e1.m2"], size: 2 };
+  const r = ev.run(program(plate, front(2), rounded)).bodies[0];
+  valid(r);
+  assert.deepEqual(r.missing.map((x) => [x.id, x.edges]), [[3, ["e1.lid|e1.m0"]]], "the edge the cut took, by name");
+  assert.ok(faceNames(r).has("e3.f1") && !faceNames(r).has("e3.f0"), "the rest is rounded, and its face keeps its index");
+  close(solidOf(r).volume, 100 * 52 * 10 - filletCut(2, 100), "volume");
+  // Every edge it names taken: refused, and the body stands without it.
+  const gone = ev.run(program(plate, front(2), { ...rounded, edges: ["e1.lid|e1.m0"] })).bodies[0];
+  assert.deepEqual(gone.failed.map((f) => f.id), [3]);
+  valid(gone);
+  close(solidOf(gone).volume, 100 * 52 * 10, "volume without it");
+});
+
+test("a filleted part: a notch splits the edge in two — both pieces keep its name, both round — and a thicker plate keeps every name", { skip }, async () => {
+  const ev = new Evaluator(await kernel());
+  const notch: SweepNode = { id: 2, op: "subtract", sweep: { kind: "extrude", depth: 30 }, profile: profile(rect(40, -5, 60, 20)), at: top(-10) };
+  const rounded: BlendNode = { id: 3, op: "fillet", edges: ["e1.lid|e1.m0"], size: 2 };
+  const notched = ev.run(program(plate, notch)).bodies[0];
+  assert.equal(solidOf(notched).edges.filter((e) => e.name === "e1.lid|e1.m0").length, 2, "two pieces, one name");
+  const r = ev.run(program(plate, notch, rounded)).bodies[0];
+  valid(r);
+  assert.equal(solidOf(r).faces.filter((f) => f.name === "e3.f0").length, 2, "both rounded, under the one name");
+  close(solidOf(r).volume, 100 * 60 * 10 - 20 * 20 * 10 - filletCut(2, 80), "volume");
+  const thicker = { ...plate, sweep: { kind: "extrude" as const, depth: 14 } };
+  const r2 = ev.run(program(thicker, notch, rounded)).bodies[0];
+  valid(r2);
+  assert.deepEqual(diff(r, r2), { facesGone: [], facesNew: [], edgesGone: [], edgesNew: [] }, "every name holds");
+  close(solidOf(r2).volume, 100 * 60 * 14 - 20 * 20 * 14 - filletCut(2, 80), "volume");
 });
