@@ -13,7 +13,7 @@ import { cross3, lift3, unit3 } from "../vec3.ts";
 import { spanOf, unitOf } from "../model.ts";
 import { slots } from "../clauses.ts";
 import * as geom from "../relations/geometry.ts";
-import { fillet, hole, unhole } from "../operations.ts";
+import { add, deleteRegionSteps, fillet, hole, intersect, region, subtract, unhole } from "../operations.ts";
 import * as shapes from "../tools/shapes.ts";
 import { svg } from "../tools/icons.ts";
 import { RectangleTool } from "../tools/rectangle.ts";
@@ -142,6 +142,9 @@ defineModule("sketch", {
   replay: {
     addCircle: bound("addCircle"),
     addArc: bound("addArc"),
+    // A region's record going: a primitive of `del`'s expansion, as
+    // `deleteFeature` is a feature's (docs/plans/regions-as-operations.md).
+    deleteRegion: bound("deleteRegion"),
   },
   relations: {
     radius: { names: ["rad", "radius"], slots: slots("circle", "#radius"), fn: geom.radius },
@@ -168,6 +171,17 @@ defineModule("sketch", {
     // loop of a recorded hole goes, ahead of the deletion or the flag itself.
     hole,
     unhole,
+    // Regions as operations (docs/plans/regions-as-operations.md): a region is
+    // a face combined with others by named operations, each journalled with
+    // its face resolved and what it rebuilt. `hole`/`unhole` above are their
+    // aliases now — kept as typed names, and replayed for a file that has
+    // them — and `deleteRegionSteps` is what a deletion of a face a region
+    // names journals ahead of itself.
+    region,
+    subtract,
+    add,
+    intersect,
+    deleteRegionSteps,
   },
   menu: [
     { label: "Rectangle", tool: "rectangle" },
