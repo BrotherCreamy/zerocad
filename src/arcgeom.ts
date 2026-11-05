@@ -84,6 +84,46 @@ export interface ArcFrame {
   v: number[];
   normal: number[];
   sweep: number;
+  /**
+   * An **ellipse**'s semi-axis along `v`, when it is one (`ellipseFrame`): the
+   * frame is then `center + r·cos t·u + rv·sin t·v`, `t` the eccentric anomaly,
+   * and every function below reads it so. Absent for a circle or an arc, whose
+   * radius is `r` both ways — so nothing that only ever meets those changes.
+   */
+  rv?: number;
+}
+
+/**
+ * The radius a circle sampled as finely as this frame needs would have: a
+ * circle's or arc's own, an ellipse's **largest radius of curvature** (`a²/b`,
+ * at the ends of its minor axis) — what `arcSegments` is asked about, so the
+ * flattest stretch of an ellipse strays no further from its chords than a
+ * circle's does. With `arcSamples` spacing an ellipse's samples evenly in the
+ * direction its normal faces, that is the stretch with the longest chords.
+ */
+export function frameReach(f: ArcFrame): number {
+  if (f.rv === undefined || f.rv === f.r) return f.r;
+  if (!(f.rv > 0) || !(f.r > 0)) return Math.max(f.r, f.rv);
+  return Math.max((f.r * f.r) / f.rv, (f.rv * f.rv) / f.r);
+}
+
+/**
+ * The parameter of the sample a fraction `s` of the way along the frame: the
+ * angle `s·sweep` for a circle or an arc; for an ellipse the eccentric
+ * anomaly whose **normal** faces `s·sweep` round from the major axis's
+ * (`tan ψ = (a/b) tan t`). So an ellipse is cut where it bends, not evenly in
+ * its parameter: an even parameter put a few long facets round each end of
+ * the major axis, where the normal turns a/b times as fast as on average, and
+ * a shaded elliptic wall showed them as bands (looked at, on the iPhone
+ * picture; docs/plans/sketch-shapes.md). Exact at both ends of the sweep.
+ */
+export function sampleAngle(f: ArcFrame, s: number): number {
+  const psi = s * f.sweep;
+  if (f.rv === undefined || f.rv === f.r) return psi;
+  const t = Math.atan2(f.rv * Math.sin(psi), f.r * Math.cos(psi));
+  // The same turn as ψ: atan2 answers in (−π, π], and t and ψ share their
+  // quadrant, so the nearest whole turn is the one.
+  return t + 2 * Math.PI * Math.round((psi - t) / (2 * Math.PI));
 }
 
 /**
@@ -119,10 +159,27 @@ export function circleFrame(c: number[], r: number, u: number[], v: number[]): A
   return { center: lift3(c), r, u: U, v: V, normal: cross3(U, V), sweep: Math.PI * 2 };
 }
 
-/** The point at angle `t` along the arc, from its start. */
+/**
+ * A whole ellipse about `c`: semi-axis `a` along the unit direction `u`, `b`
+ * along `v`, laid out from `u` (its major end) round toward `v` — the circle's
+ * frame with a second radius, so the arc machinery draws, picks, lifts and
+ * samples it as it does a circle. Counter-clockwise about `u × v`.
+ */
+export function ellipseFrame(c: number[], a: number, b: number, u: number[], v: number[]): ArcFrame {
+  const U = lift3(u), V = lift3(v);
+  return { center: lift3(c), r: a, rv: b, u: U, v: V, normal: cross3(U, V), sweep: Math.PI * 2 };
+}
+
+/** The point at angle `t` along the arc, from its start — an ellipse's eccentric anomaly. */
 export function arcPoint(f: ArcFrame, t: number): number[] {
-  const c = Math.cos(t) * f.r, s = Math.sin(t) * f.r;
+  const c = Math.cos(t) * f.r, s = Math.sin(t) * (f.rv ?? f.r);
   return [0, 1, 2].map((i) => f.center[i] + c * f.u[i] + s * f.v[i]);
+}
+
+/** The direction of travel at angle `t` — d/dt of `arcPoint`, so not unit length. */
+export function arcTangent(f: ArcFrame, t: number): number[] {
+  const c = -Math.sin(t) * f.r, s = Math.cos(t) * (f.rv ?? f.r);
+  return [0, 1, 2].map((i) => c * f.u[i] + s * f.v[i]);
 }
 
 /**
@@ -157,7 +214,8 @@ export function portionAngles(f: ArcFrame, a: number[], b: number[]): [number, n
   const angle = (p: number[]) => {
     const P = lift3(p);
     const d = [P[0] - f.center[0], P[1] - f.center[1], P[2] - f.center[2]];
-    const t = Math.atan2(dot3(d, f.v), dot3(d, f.u));
+    // An ellipse's angle is its eccentric anomaly: each axis scaled to one.
+    const t = Math.atan2(dot3(d, f.v) / (f.rv ?? 1), dot3(d, f.u) / (f.rv === undefined ? 1 : f.r));
     return ((t % tau) + tau + 1e-9) % tau - 1e-9;
   };
   const t0 = angle(a);
@@ -169,7 +227,7 @@ export function portionAngles(f: ArcFrame, a: number[], b: number[]): [number, n
 /** The arc as points along it, start to end inclusive, evenly spaced in angle. */
 export function arcSamples(f: ArcFrame, segments: number): number[][] {
   const out: number[][] = [];
-  for (let k = 0; k <= segments; k++) out.push(arcPoint(f, (f.sweep * k) / segments));
+  for (let k = 0; k <= segments; k++) out.push(arcPoint(f, sampleAngle(f, k / segments)));
   return out;
 }
 

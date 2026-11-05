@@ -43,7 +43,7 @@
 import { parseAxisRef, referentsOf, type Model, type RelationEntry } from "./model.ts";
 import { uiOf, viewAxes, worldToScreen, type View } from "./view.ts";
 import { dot3, lift3, sub3 } from "./vec3.ts";
-import { curvePlaneOf } from "./curveplane.ts";
+import { curveFrame, curvePlaneOf } from "./curveplane.ts";
 import { axisReader, turnPoint } from "./relations/revolution.ts";
 import { inSight, type Occlusion } from "./occlusion.ts";
 import { measured } from "./relations/measure.ts";
@@ -134,6 +134,7 @@ export const GLYPH_SYMBOL: Record<string, string> = {
   // ring above is two points sharing one place, which is a different claim.
   pointOnLine: "●",
   onCircle: "●",
+  onEllipse: "●",
   arcEndpoints: "●",
   midpoint: "∴",
   // `—` and `|` went with `horizontal` and `vertical`. A level edge wears the
@@ -278,6 +279,13 @@ export function labelFor(op: string, args: unknown[]): string | null {
       const v = args[2];
       return typeof v === "number" ? formatValue(v) : null;
     }
+    case "majorAxis":
+    case "minorAxis": {
+      // An ellipse's semi-axes, `a` and `b` as every textbook writes them —
+      // the prefix says which, as `R` says a radius (docs/plans/sketch-shapes.md).
+      const v = args[1];
+      return typeof v === "number" ? `${op === "majorAxis" ? "a" : "b"}${formatValue(v)}` : null;
+    }
     case "radius": {
       const v = args[1];
       // Onshape's prefix. `R12` says which dimension it is without a leader
@@ -410,10 +418,13 @@ function atLineMid(model: Model, view: View, lineName: string): Anchor {
  * mark then goes to the rim's own `theta`, which is on the rim and draws.
  */
 function atRim(model: Model, view: View, circleName: string, theta: number): Anchor {
-  const c = model.circular(circleName);
-  const ctr = lift3(model.coords(c.center));
-  const r = model.radius(circleName);
-  const { u, v } = curvePlaneOf(model, circleName);
+  const e = model.entities.get(circleName);
+  const ell = e?.kind === "ellipse" ? curveFrame(model, e) : null;
+  const ctr = lift3(model.coords(model.oriented(circleName).center));
+  // An ellipse's rim is its frame's (semi-axes `r` along u, `rv` along v); the
+  // direction found below is then its parameter, which lands on the rim too.
+  const [r, rv] = ell ? [ell.r, ell.rv ?? ell.r] : [model.radius(circleName), model.radius(circleName)];
+  const { u, v } = ell ?? curvePlaneOf(model, circleName);
   const { right, up } = viewAxes(view);
   const cos = Math.cos(theta), sin = Math.sin(theta);
   // How the rim's two directions land on screen (world-up convention): solve
@@ -427,10 +438,36 @@ function atRim(model: Model, view: View, circleName: string, theta: number): Anc
     [p, q] = [x / len, y / len];
   }
   return {
-    world: [0, 1, 2].map((i) => ctr[i] + r * (p * u[i] + q * v[i])),
+    world: [0, 1, 2].map((i) => ctr[i] + r * p * u[i] + rv * q * v[i]),
     dir: [cos, -sin],
     about: [circleName],
   };
+}
+
+/**
+ * Where a line touches an ellipse, or is trying to: the ellipse's **support
+ * point** toward the line — the one whose tangent is the line's direction, on
+ * the line's side — `(a²Nx, b²Ny)/h` in the ellipse's frame for N the line's
+ * unit normal there. Arbitrary rather than NaN when the line runs through the
+ * centre, as `atNearestRim`'s is.
+ */
+function atEllipseTouch(model: Model, view: View, lineName: string, ellipseName: string): Anchor {
+  const f = curveFrame(model, model.ellipse(ellipseName));
+  const l = model.line(lineName);
+  if (!f) return { ...atLineMid(model, view, lineName), about: [lineName, ellipseName] };
+  const [a, b] = [lift3(model.coords(l.refs[0])), lift3(model.coords(l.refs[1]))];
+  const local = (p: number[]) => { const d = sub3(p, f.center); return [dot3(d, f.u), dot3(d, f.v)]; };
+  const [pa, pb] = [local(a), local(b)];
+  const w = [pb[0] - pa[0], pb[1] - pa[1]];
+  const len = Math.hypot(w[0], w[1]);
+  let N = len > 1e-12 ? [-w[1] / len, w[0] / len] : [1, 0];
+  // Toward the line from the centre.
+  if (N[0] * pa[0] + N[1] * pa[1] < 0) N = [-N[0], -N[1]];
+  const [ra, rb] = [f.r, f.rv ?? f.r];
+  const h = Math.hypot(ra * N[0], rb * N[1]);
+  const [x, y] = h > 1e-12 ? [(ra * ra * N[0]) / h, (rb * rb * N[1]) / h] : [ra, 0];
+  const world = [0, 1, 2].map((i) => f.center[i] + x * f.u[i] + y * f.v[i]);
+  return { world, dir: dirBetween(view, f.center, world), about: [lineName, ellipseName] };
 }
 
 /**
@@ -541,7 +578,8 @@ function atEntity(model: Model, view: View, name: string): Anchor {
     case "point": return atPoint(model, name);
     case "line": return atLineMid(model, view, name);
     case "circle":
-    case "arc": return atRim(model, view, name, Math.PI / 4);
+    case "arc":
+    case "ellipse": return atRim(model, view, name, Math.PI / 4);
     // A frame is its origin, as far as a mark beside it is concerned.
     case "frame": return atPoint(model, e.origin);
   }
@@ -582,6 +620,7 @@ function anchorsFor(model: Model, view: View, r: RelationEntry): Anchor[] {
     case "midpoint":
     case "pointOnLine":
     case "onCircle":
+    case "onEllipse":
       return [atPoint(model, str(args[0]))];
     case "dist":
       return [atDistance(model, view, str(args[0]), str(args[1]))];
@@ -638,15 +677,26 @@ function anchorsFor(model: Model, view: View, r: RelationEntry): Anchor[] {
     case "equalRadius":
       return [atRim(model, view, str(args[0]), Math.PI / 4), atRim(model, view, str(args[1]), Math.PI / 4)];
     case "concentric":
-      return [atPoint(model, model.circular(str(args[0])).center)];
+      return [atPoint(model, model.oriented(str(args[0])).center)];
     case "radius":
       return [atRim(model, view, str(args[0]), Math.PI / 4)];
+    // A semi-axis is a length from the centre: the major's drawn along it,
+    // centre to major end, with witness lines like a `dist`; the minor's at
+    // the end of the minor axis, where a radius's label would sit.
+    case "majorAxis": {
+      const e = model.ellipse(str(args[0]));
+      return [{ ...atSegmentMid(model, view, e.center, e.major), about: [e.name] }];
+    }
+    case "minorAxis":
+      return [atRim(model, view, str(args[0]), Math.PI / 2)];
     case "tangent": {
       // A line and a circle, either way round as typed — or two circles,
       // marked where they touch (docs/plans/one-circle-one-arc.md).
       const [a, b] = [str(args[0]), str(args[1])];
       const line = model.entities.get(a)?.kind === "line" ? a : model.entities.get(b)?.kind === "line" ? b : null;
-      if (line) return [atNearestRim(model, view, line, line === a ? b : a)];
+      const other = line === a ? b : a;
+      if (line && model.entities.get(other)?.kind === "ellipse") return [atEllipseTouch(model, view, line, other)];
+      if (line) return [atNearestRim(model, view, line, other)];
       return [atTouch(model, view, a, b)];
     }
     case "symmetric":

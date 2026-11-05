@@ -71,7 +71,7 @@ export function tagRevolve(k: SolidKernel, s: Solid, feature: number, profile: P
   const n: V2 = [-u[1], u[0]];
   // Which side of the axis the profile lies on: a revolve's profile is all on
   // one, but some of its points may be on the axis itself, so sum them all.
-  const starts: V2[] = profile.loops[0].map((m) => (m.kind === "line" ? m.from : m.centre));
+  const starts: V2[] = profile.loops[0].map((m) => (m.kind === "line" ? m.from : m.kind === "nurbs" ? [m.points[0][0], m.points[0][1]] : m.centre));
   const side = Math.sign(starts.reduce((acc, p) => acc + (p[0] - point[0]) * n[0] + (p[1] - point[1]) * n[1], 0)) || 1;
   k.faces(s).forEach((f, i) => {
     const q = local(at, f.point);

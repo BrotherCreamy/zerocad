@@ -101,8 +101,20 @@ export function extrusion(model: Model, frame: string, depth: number, ...pairs: 
             return [0, 1, 2].map((k) => w[k].sub(u[k]));
           }, `extrusion(${b},${t}).n`);
         }
+      } else if (be?.kind === "ellipse" && te?.kind === "ellipse") {
+        // An ellipse's centre and major end are held by their point pairs;
+        // what is left is its minor, equal, and its normal, the base's — as a
+        // twin circle's radius and normal are.
+        model.addResidual([be.minorVar, te.minorVar], (l) => [l[1].sub(l[0])], `extrusion(${b},${t}).b`);
+        const [bn, tn] = [curveNormal(model, b), curveNormal(model, t)];
+        if (bn && tn) {
+          model.addResidual(joinVars(bn, tn), (l) => {
+            const [u, w] = [unitDuals(l.slice(0, 3)), unitDuals(l.slice(3))];
+            return [0, 1, 2].map((k) => w[k].sub(u[k]));
+          }, `extrusion(${b},${t}).n`);
+        }
       } else {
-        throw new Error(`"${b}" and "${t}" are not a pair an extrusion can hold — two points, or two circles or arcs`);
+        throw new Error(`"${b}" and "${t}" are not a pair an extrusion can hold — two points, two circles or arcs, or two ellipses`);
       }
     }
   });

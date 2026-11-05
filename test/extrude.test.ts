@@ -479,8 +479,8 @@ test("refusals say why, and leave no trace — not a journal entry, an entity or
   const key = `${tie[0]}×${tie[2]}`;
   assert.throws(() => extrude(m, tie[1], 10, t.name, [[{ name: tie[0], from: key, to: bow[1] }, tie[1], { name: tie[2], from: bow[2], to: key }]]),
     new RegExp(`"${key}" is a crossing's key, not a point`));
-  assert.throws(() => extrude(m, "t_o", 10), /"t_o" is not a line, arc or circle/);
-  assert.throws(() => extrude(m, "nope", 10), /"nope" is not a line, arc or circle/);
+  assert.throws(() => extrude(m, "t_o", 10), /"t_o" is not a line, arc, circle or ellipse/);
+  assert.throws(() => extrude(m, "nope", 10), /"nope" is not a line, arc, circle or ellipse/);
   assert.throws(() => extrude(m, lines[0], 0), /non-zero depth/);
   assert.throws(() => extrude(m, lines[0], NaN), /non-zero depth/);
   // Narrowed by a frame no loop of it is parallel to.

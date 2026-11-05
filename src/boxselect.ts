@@ -36,7 +36,7 @@ import { intersect, withinSweep, type Curve, type Pt } from "./intersect.ts";
 import { frameArms, frameMarker } from "./framemarker.ts";
 import { screenCurve, screenOf as projectPoint } from "./projection.ts";
 import { inSight, visibleRuns, type Occlusion } from "./occlusion.ts";
-import { arcSamples, arcSegments } from "./arcgeom.ts";
+import { arcSamples, arcSegments, frameReach } from "./arcgeom.ts";
 import { curveFrame } from "./curveplane.ts";
 import { frameBasis } from "./relations/refs.ts";
 import { frameArmPx } from "./framemarker.ts";
@@ -131,9 +131,9 @@ function seenInBox(model: Model, view: View, e: Entity, rect: ScreenRect, mode: 
  */
 function worldPaths(model: Model, view: View, e: Entity): { world: number[][]; closed: boolean }[] {
   if (e.kind === "line") return [{ world: [model.coords(e.refs[0]), model.coords(e.refs[1])], closed: false }];
-  if (e.kind === "circle" || e.kind === "arc") {
+  if (e.kind === "circle" || e.kind === "arc" || e.kind === "ellipse") {
     const f = curveFrame(model, e);
-    return f ? [{ world: arcSamples(f, arcSegments(f.sweep, f.r * view.scale)), closed: e.kind === "circle" }] : [];
+    return f ? [{ world: arcSamples(f, arcSegments(f.sweep, frameReach(f) * view.scale)), closed: e.kind !== "arc" }] : [];
   }
   if (e.kind === "frame") {
     const b = frameBasis(model, e.name)();

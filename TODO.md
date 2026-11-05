@@ -1569,6 +1569,43 @@ starts.
          build, all pass with it).
       2. In parallel on that: [`sketch-shapes.md`](docs/plans/sketch-shapes.md)
          (polygon, slot, the ellipse as a new entity),
+         **[x] sketch-shapes BUILT (2026-11-05)** on `claude/sketch-shapes`.
+         Register (vetoable): **polygon** — n corners, n sides sharing them,
+         `oncircle` × n on a construction circle about the centre, each side
+         `eq` to the one before (not all to the first: the glyphs stacked
+         five deep on a hexagon's first side); inscribed keeps that and adds
+         an inner circle `tan` to the first side (one circle `tan` to every
+         side folds under a drag for n ≥ 4 — measured). **Slot** — two lines,
+         two arcs about the centres, `arcends`, `eqrad`, a construction line
+         for the length, and the tangencies said as **`perp` from each side
+         to the radius at its ends**, not `tan` (see Found). **Ellipse** — a
+         centre, a major-end point, a minor variable, a normal straightened
+         against the major axis; `onellipse`, `tan(line, e)`, `conc`,
+         `major`/`minor` (semi-axes, dimensions, `a30`/`b12`); a region an
+         ellipse bounds whole extrudes and exports exactly (ELLIPSE, surface
+         of linear extrusion), part of one is refused; the kernel takes it
+         as an exact NURBS (a new `nurbs` profile member and
+         `sm_profile_nurbs`). Format 15. Twelve toolbar buttons (curves).
+         Out of scope, refused by name: `tan` of an ellipse with a curve,
+         revolving an ellipse; no arc slot (cost, said in the spec).
+         **Found:** (1) **a tangency at a point already held on its curve is
+         a square in disguise** — `tan` + `arcends` sharing an end touches
+         to second order, so the residual is quadratic in the angle and the
+         Jacobian is a row short at the root (measured: the slot with `tan`s
+         had 9 freedoms by rank where it has 5). The **fillet** has it too
+         (two legs, measured 2 extra freedoms): its `tan`s want the slot's
+         `perp(centre, end, leg)` — and any redundancy check
+         (`sketch-relations.md`) will misreport fillets until they do.
+         (2) `par` against a short *fixed* line stalls the solver short of
+         the answer on a rectangle as on a slot (60 iterations, 0.02 off);
+         against a frame axis it is exact. (3) A boolean body's elliptic
+         wall is one seamed B-spline face: OpenCascade's strict read rejects
+         it (the healed read is valid and exact), as it rejects
+         `turned-and-drilled`; split such walls as `splitSeams` splits a
+         cylinder's. (4) faces.ts drew a seam line down an elliptic wall
+         (fixed: a whole ellipse has no vertices, as a whole circle has
+         none). Left open: not tried on an iPhone; a kernel body's elliptic
+         seam may draw as an edge, not looked at.
          [`sketch-edit.md`](docs/plans/sketch-edit.md) (trim, extend, offset,
          mirror, chamfer, linear and circular patterns — operations, never
          relations), [`sketch-relations.md`](docs/plans/sketch-relations.md)

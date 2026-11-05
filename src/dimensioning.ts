@@ -49,7 +49,11 @@ const q = (s: string) => JSON.stringify(s);
 const call = (op: string, args: (string | number | { raw: string })[]) =>
   `${op}(${args.map((a) => (typeof a === "number" ? String(a) : typeof a === "string" ? q(a) : a.raw)).join(", ")})`;
 
-type Kind = "point" | "line" | "circle" | "arc" | "frame";
+// The ellipse (docs/plans/sketch-shapes.md) landed beside this module: it is
+// a kind here so the two meet, but the dimension and constrain tools offer
+// nothing for one yet — its `major`, `minor`, `tan` and `conc` are typed, or
+// taken from the context menu. A row for it is a follow-up in TODO.md.
+type Kind = "point" | "line" | "circle" | "arc" | "frame" | "ellipse";
 const kindOf = (model: Model, n: string): Kind | undefined => model.entities.get(n)?.kind;
 const isCurve = (k: Kind | undefined) => k === "circle" || k === "arc";
 

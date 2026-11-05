@@ -118,15 +118,17 @@ test("desktop: a toolbar button's tooltip comes within half a second — the nam
   await fresh(desk);
   // Out in the drawing first, so the hover is a fresh one.
   await desk.page.mouse.move(700, 400);
-  const delay = await hoverDelay(desk, button("rectangle"));
+  // The circle: a button of its own. The rectangle's is the shapes group's
+  // now (docs/plans/sketch-shapes.md), whose hover opens a flyout instead.
+  const delay = await hoverDelay(desk, button("circle"));
   assert.ok(delay >= 300 && delay <= 500, `shown ${Math.round(delay)} ms after the pointer arrived: a short hover, not at once and not a native title's wait`);
   const t = await tipState(desk);
-  assert.equal(t.text, 'Rectangle Draws a rectangle: drag from corner to corner arm("rectangle")');
+  assert.equal(t.text, 'Circle Draws a circle: drag out from its centre, or click 3 points or edges arm("circle")');
   // The native title has gone, so two never show at once; the accessible name stays.
-  const b = await desk.page.$eval(button("rectangle"), (el) => ({
+  const b = await desk.page.$eval(button("circle"), (el) => ({
     title: el.getAttribute("title"), label: el.getAttribute("aria-label"), described: el.getAttribute("aria-describedby"),
   }));
-  assert.deepEqual(b, { title: null, label: "rectangle", described: "tooltip" });
+  assert.deepEqual(b, { title: null, label: "circle", described: "tooltip" });
   // Beside the column, not over the buttons the pointer runs along next.
   const bar = await rectOf(desk, '.panel[data-panel="toolbar"]');
   assert.equal(t.side, "right");
@@ -138,17 +140,17 @@ test("desktop: a toolbar button's tooltip comes within half a second — the nam
 
   await desk.page.mouse.move(700, 400);
   await tipBecomes(desk, (s) => !s.shown, "gone on leave", 150);
-  assert.equal(await desk.page.$eval(button("rectangle"), (el) => el.getAttribute("aria-describedby")), null);
+  assert.equal(await desk.page.$eval(button("circle"), (el) => el.getAttribute("aria-describedby")), null);
   assert.deepEqual(desk.pageErrors, []);
 });
 
 test("desktop: moving from one button to the next shows that one at once; a press puts it away and arms the tool as it always did", async () => {
   await fresh(desk);
   await desk.page.mouse.move(700, 400);
-  await hoverDelay(desk, button("line"));
-  const next = await hoverDelay(desk, button("rectangle"));
+  await hoverDelay(desk, button("circle"));
+  const next = await hoverDelay(desk, button("arc"));
   assert.ok(next < 100, `the next button's at once: ${Math.round(next)} ms`);
-  assert.match((await tipState(desk)).text, /^Rectangle /);
+  assert.match((await tipState(desk)).text, /^Arc /);
   // Select's and the Hand's say their keys.
   await hoverDelay(desk, button("hand"));
   assert.equal((await tipState(desk)).text, 'Hand hold Space Pans the view: drag from anywhere, over the drawing too arm("hand")');
@@ -172,8 +174,12 @@ test("desktop: every icon and short word in the chrome has a tooltip and no nati
     what: (el as HTMLElement).dataset.tool ?? el.id ?? el.className, title: el.getAttribute("title"),
   })));
   assert.deepEqual(all.filter((a) => a.title !== null), [], "no control with a tooltip keeps a title");
-  const tools = await desk.page.$$eval("#toolbar button", (els) => els.filter((el) => !el.hasAttribute("data-tip")).length);
-  assert.equal(tools, 0, "every toolbar button");
+  // A group's button that opens a flyout has no tooltip of its own — its
+  // items carry theirs (docs/plans/toolbar-groups.md); the shapes group's,
+  // with the polygon and the slot in it (docs/plans/sketch-shapes.md).
+  const tools = await desk.page.$$eval("#toolbar button", (els) =>
+    els.filter((el) => !el.hasAttribute("data-tip") && el.getAttribute("aria-haspopup") !== "true").length);
+  assert.equal(tools, 0, "every toolbar button but a flyout's");
   for (const sel of ["#logo", '.panel[data-panel="toolbar"] > .ptitle', '.panel[data-panel="log"] > .ptitle', ".padd"]) {
     assert.equal(await desk.page.$eval(sel, (el) => el.hasAttribute("data-tip")), true, sel);
   }
@@ -348,10 +354,10 @@ async function freshPhone(app: AppContext): Promise<void> {
 test("iPhone 13: holding a toolbar button shows its tooltip clear of the finger and does not arm the tool; a tap arms it", async () => {
   await freshPhone(phone);
   const f = await fingers(phone);
-  const at = await middleOf(phone, button("rectangle"));
+  const at = await middleOf(phone, button("circle"));
   await f.hold(...at, 750, true);
   const t = await tipBecomes(phone, (s) => s.shown, "the hold's tooltip");
-  assert.equal(t.text, 'Rectangle Draws a rectangle: drag from corner to corner arm("rectangle")');
+  assert.equal(t.text, 'Circle Draws a circle: drag out from its centre, or click 3 points or edges arm("circle")');
   // Clear of the finger: above it or beside it, never under it.
   const cv = await rectOf(phone, "#cv");
   const [fx, fy] = [cv.x + at[0], cv.y + at[1]];
@@ -362,14 +368,14 @@ test("iPhone 13: holding a toolbar button shows its tooltip clear of the finger 
   await f.up();
   await phone.page.waitForTimeout(200);
   assert.equal((await phone.model()).activeTool, null, "lifting after the hold pressed nothing");
-  assert.doesNotMatch(await phone.log(), /arm\("rectangle"\)/, "nothing typed");
+  assert.doesNotMatch(await phone.log(), /arm\("circle"\)/, "nothing typed");
   // It stays a moment to be read, then goes.
   assert.equal((await tipState(phone)).shown, true, "still there just after the lift");
   await tipBecomes(phone, (s) => !s.shown, "gone a moment later", 3000);
 
   // A tap is a press, as it always was — its timing untouched.
   await f.tap(...at);
-  assert.equal((await phone.model()).activeTool, "rectangle", "a tap arms it");
+  assert.equal((await phone.model()).activeTool, "circle", "a tap arms it");
   assert.equal((await tipState(phone)).shown, false, "and shows no tooltip");
   await phone.type("cancel()");
   assert.deepEqual(phone.pageErrors, []);

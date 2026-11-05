@@ -12,7 +12,7 @@ import {
 } from "./model.ts";
 import { defaultMode, resolveMode } from "./modes.ts";
 import { dist } from "./relations/basic.ts";
-import { angle, arcEndpoints, diameter, onCircle, pointOnLine, radius, tangent } from "./relations/geometry.ts";
+import { angle, arcEndpoints, diameter, majorAxis, minorAxis, onCircle, onEllipse, pointOnLine, radius, tangent } from "./relations/geometry.ts";
 import { extrusion } from "./relations/extrusion.ts";
 import { FULL_TURN, axisReader, isFullTurn, revolution, turnPoint } from "./relations/revolution.ts";
 import { arcPoint, portionAngles, sweepsAs } from "./arcgeom.ts";
@@ -800,10 +800,21 @@ export function loopOfMember(model: Model, member: string, op: "extrude" | "revo
   return all[index];
 }
 
+/**
+ * A revolve of an ellipse is **out of scope** (docs/plans/sketch-shapes.md): its
+ * surface is a revolution of an ellipse, which neither the exact B-rep
+ * (solids.ts) nor STEP writing has a spelling for yet. Refused by name, before
+ * anything is planned, whichever member of the profile was named.
+ */
+function refuseEllipse(model: Model, member: string): void {
+  const e = model.entities.get(member);
+  if (e?.kind === "ellipse") throw new Error(`"${member}" is an ellipse — revolving an ellipse is not supported yet`);
+}
+
 function checkMember(model: Model, member: string, op: "extrude" | "revolve"): void {
   const e = typeof member === "string" ? model.entities.get(member) : undefined;
-  if (!e || (e.kind !== "line" && e.kind !== "arc" && e.kind !== "circle")) {
-    throw new Error(`${JSON.stringify(member)} is not a line, arc or circle — ${op} names a member of the loop to ${op}`);
+  if (!e || (e.kind !== "line" && e.kind !== "arc" && e.kind !== "circle" && e.kind !== "ellipse")) {
+    throw new Error(`${JSON.stringify(member)} is not a line, arc, circle or ellipse — ${op} names a member of the loop to ${op}`);
   }
   // Said by name rather than left to "in no closed loop", which would send the
   // reader looking for a gap in the outline that is not there.
@@ -872,7 +883,7 @@ function givenProfile(model: Model, member: string, frame: string | null | undef
 /** One member of a profile loop, walked. */
 interface Walked {
   name: string;
-  kind: "line" | "arc" | "circle";
+  kind: "line" | "arc" | "circle" | "ellipse";
   /** Its ends in walk order; null for a whole circle. */
   from: string | null;
   to: string | null;
@@ -954,8 +965,8 @@ function walkLoop(model: Model, classOf: Map<string, number>, held: Held[], memb
   const label = members.map(memberText).join(",");
   const entity = (n: string) => {
     const e = model.entities.get(n);
-    if (!e || (e.kind !== "line" && e.kind !== "arc" && e.kind !== "circle")) {
-      throw new Error(`"${n}" is not a line, arc or circle — it cannot be part of a loop`);
+    if (!e || (e.kind !== "line" && e.kind !== "arc" && e.kind !== "circle" && e.kind !== "ellipse")) {
+      throw new Error(`"${n}" is not a line, arc, circle or ellipse — it cannot be part of a loop`);
     }
     return e;
   };
@@ -972,6 +983,13 @@ function walkLoop(model: Model, classOf: Map<string, number>, held: Held[], memb
   const resolved = members.map((m) => {
     const e = entity(memberName(m));
     if (typeof m === "string") return { e, own: ownEnds(e), part: false };
+    // There is no elliptic arc to twin a part of an ellipse with, so a region
+    // an ellipse bounds only in part is found (loops.ts) but not built: said
+    // here, by name, before anything is made (docs/plans/sketch-shapes.md).
+    if (e.kind === "ellipse") {
+      throw new Error(`a part of the ellipse "${e.name}" bounds this region — an ellipse makes a solid only whole, `
+        + "on its own or as a hole; nothing yet can make part of one");
+    }
     if (m.from === m.to) throw new Error(`the part of "${m.name}" from "${m.from}" to itself is no part — name the whole member`);
     for (const v of [m.from, m.to]) {
       if (!onIt(v, e)) throw new Error(`"${v}" is not on "${m.name}" — a part of an edge runs between its own points, or points held on it`);
@@ -980,14 +998,14 @@ function walkLoop(model: Model, classOf: Map<string, number>, held: Held[], memb
   });
   if (members.length === 1) {
     const { e, part } = resolved[0];
-    if (e.kind !== "circle" || part) {
-      throw new Error(`a loop of one member is a circle — "${names[0]}" is ${part ? "part of one" : e.kind === "arc" ? "an arc" : "a line"}`);
+    if ((e.kind !== "circle" && e.kind !== "ellipse") || part) {
+      throw new Error(`a loop of one member is a circle or an ellipse — "${names[0]}" is ${part ? "part of one" : e.kind === "arc" ? "an arc" : "a line"}`);
     }
-    return [{ name: e.name, kind: "circle", from: null, to: null, ends: null, part: false }];
+    return [{ name: e.name, kind: e.kind, from: null, to: null, ends: null, part: false }];
   }
   const ends = (i: number): [string, string] => {
     const { e, own } = resolved[i];
-    if (!own) throw new Error(`a circle is a loop on its own — the whole of "${e.name}" cannot be part of the loop ${label} (a part of it can)`);
+    if (!own) throw new Error(`a${e.kind === "ellipse" ? "n ellipse" : " circle"} is a loop on its own — the whole of "${e.name}" cannot be part of the loop ${label}${e.kind === "ellipse" ? "" : " (a part of it can)"}`);
     return own;
   };
   const meets = (p: string, i: number) => ends(i).some((q) => cls(q) === cls(p));
@@ -1116,6 +1134,7 @@ function frameOver(model: Model, base: string, classOf: Map<string, number>,
 function twinPoints(model: Model, m: Walked, real: (v: string) => string, twinOf: (p: string) => string): void {
   const e = model.entities.get(m.name)!;
   if (e.kind === "circle" && !m.part) { twinOf(e.center); return; }
+  if (e.kind === "ellipse") { twinOf(e.center); twinOf(e.major); return; }
   twinOf(real(m.from!));
   if (e.kind === "arc" || e.kind === "circle") twinOf(e.center);
   twinOf(real(m.to!));
@@ -1134,6 +1153,12 @@ function twinMember(model: Model, m: Walked, real: (v: string) => string, twinOf
                     normalFor: (curve: string) => number[]): string {
   const e = model.entities.get(m.name)!;
   if (e.kind === "circle" && !m.part) return model.addCircle(twinOf(e.center), model.radius(e.name), normalFor(e.name)).name;
+  // A whole ellipse's twin: its centre's and major end's twins, its minor, its
+  // normal — the depth holds the minor and the normal to the base's (`extrusion`).
+  if (e.kind === "ellipse") {
+    const raw = e.normal ? e.normal.map((i) => model.problem.getVar(i)) : null;
+    return model.addEllipse(twinOf(e.center), twinOf(e.major), model.semiAxes(e.name).b, raw ? normalFor(e.name) : null).name;
+  }
   const [a, b] = m.ends!.map((v) => twinOf(real(v)));
   if (e.kind === "line") return model.addLine(a, b).name;
   if (e.kind === "arc" || e.kind === "circle") return model.addArc(twinOf(e.center), a, b, model.radius(e.name), normalFor(e.name)).name;
@@ -1292,6 +1317,7 @@ export function revolve(model: Model, member: string, axis: string, ...rest: unk
   const a = revolveAngle(angle);
   const x = expansionOf(expansion, "revolve");
   checkMember(model, member, "revolve");
+  refuseEllipse(model, member);
   axisReader(model, axis); // a name that is not an axis says so before anything is looked for
   checkOptions(model, options, "revolve");
   const profile = loops != null ? givenProfile(model, member, frame, loops, REVOLVE) : foundProfile(model, member, frame ?? null, REVOLVE);
@@ -1325,6 +1351,10 @@ function revolveAngle(angle: number | null | undefined): number {
 function revolved(model: Model, member: string, axis: string, a: number, profile: Profile, x: Expansion,
                   swept: string[], options: FeatureOptions): string {
   const plan = { ...planSweep(model, profile), swept };
+  // An ellipse anywhere in the profile — the outline or a hole — has no
+  // surface of revolution this app can write (`refuseEllipse`).
+  const oval = plan.walked.flat().find((w) => w.kind === "ellipse");
+  if (oval) throw new Error(`"${oval.name}" is an ellipse — revolving an ellipse is not supported yet`);
   // An old revolve's turned frames ride in its entry only where they are more
   // than its sketch frame, so an old entry re-saves as it came in. Options,
   // when there are any, come after both, the two written out (null for
@@ -2037,6 +2067,8 @@ function rebuildBody(model: Model, f: FeatureEntry, plan: SweepPlan): { loops: P
           if (t.center === twinOf(e.center) && t.start === s && t.end === n) return made(t.name);
         } else if (t?.kind === "circle" && e.kind === "circle" && !m.part) {
           if (t.center === twinOf(e.center)) return made(t.name);
+        } else if (t?.kind === "ellipse" && e.kind === "ellipse") {
+          if (t.center === twinOf(e.center) && t.major === twinOf(e.major)) return made(t.name);
         }
         return made(twinMember(model, m, real, twinOf, normalFor));
       }));
@@ -2166,8 +2198,8 @@ function checkFeatureName(model: Model, feature: unknown, op: string): asserts f
  */
 export function holeLoop(model: Model, f: FeatureEntry, member: string, r: FeatureRegion): number {
   const e = typeof member === "string" ? model.entities.get(member) : undefined;
-  if (!e || (e.kind !== "line" && e.kind !== "arc" && e.kind !== "circle")) {
-    throw new Error(`${JSON.stringify(member)} is not a line, arc or circle — hole names a member of the loop to cut through ${f.name}`);
+  if (!e || (e.kind !== "line" && e.kind !== "arc" && e.kind !== "circle" && e.kind !== "ellipse")) {
+    throw new Error(`${JSON.stringify(member)} is not a line, arc, circle or ellipse — hole names a member of the loop to cut through ${f.name}`);
   }
   if (model.isConstruction(member)) throw new Error(constructionBoundsNothing(member, "hole"));
   const { all, outline } = r;
@@ -2399,10 +2431,10 @@ function holesGoing(model: Model, names: ReadonlySet<string>, flagging: boolean)
 
 // --- construction geometry --------------------------------------------------
 
-/** Whether `name` is something that can carry the construction flag: a line, arc or circle. */
+/** Whether `name` is something that can carry the construction flag: a line, arc, circle or ellipse. */
 function takesConstruction(model: Model, name: string): boolean {
   const k = model.entities.get(name)?.kind;
-  return k === "line" || k === "arc" || k === "circle";
+  return k === "line" || k === "arc" || k === "circle" || k === "ellipse";
 }
 
 /**
@@ -2492,6 +2524,9 @@ const REBUILD: Record<string, (model: Model, args: unknown[]) => void> = {
   // A revolve's angle: the whole end face, one value — and the refusals across
   // the full/partial line live in the relation, so a `set` meets them here.
   revolution: (m, a) => void revolution(m, a[0] as string, a[1] as number, ...(a.slice(2) as string[])),
+  // An ellipse's semi-axes (docs/plans/sketch-shapes.md), `rad`'s cousins.
+  majorAxis: (m, a) => void majorAxis(m, a[0] as string, a[1] as number),
+  minorAxis: (m, a) => void minorAxis(m, a[0] as string, a[1] as number),
 };
 
 /**
@@ -2499,7 +2534,7 @@ const REBUILD: Record<string, (model: Model, args: unknown[]) => void> = {
  * in the *short* names, because those are what the user typed to make one —
  * being told about `radius` after typing `rad` is a small riddle to no purpose.
  */
-const onlyDims = `only dist, rad, dia, ang, an extrude's depth and a revolve's angle have a .${SETTABLE_PROPERTY}`;
+const onlyDims = `only dist, rad, dia, ang, an ellipse's major and minor, an extrude's depth and a revolve's angle have a .${SETTABLE_PROPERTY}`;
 
 /**
  * Changes a dimension's value: `set("d4.value", 60)`.

@@ -31,7 +31,7 @@
 
 import type { Entity, Model } from "./model.ts";
 import { arcSlack, screenAngle, type Curve, type Pt } from "./intersect.ts";
-import { arcPoint, arcSamples, arcSegments, type ArcFrame } from "./arcgeom.ts";
+import { arcPoint, arcSamples, arcSegments, frameReach, sampleAngle, type ArcFrame } from "./arcgeom.ts";
 import { curveFrame } from "./curveplane.ts";
 import { viewAxes, worldToScreen, type View } from "./view.ts";
 import { dot3, lift3 } from "./vec3.ts";
@@ -113,7 +113,51 @@ export function screenCurve(model: Model, view: View, e: Entity, slackPx: number
     }
     return obliquely(view, f, rs, dim);
   }
+  if (e.kind === "ellipse") {
+    // Never an exact screen curve: an ellipse is a polyline on screen however
+    // it is seen — intersect.ts has no ellipse, and needs none, since a
+    // quarter-pixel polyline is what is drawn — and a pixel on it lifts back
+    // to the true ellipse by Newton on its parametric form (`ellipseLift`).
+    const f = curveFrame(model, e);
+    if (!f) return null;
+    const shape = obliquely(view, f, frameReach(f) * view.scale, dim);
+    return { curve: shape.curve, lift: ellipseLift(view, f, shape.curve as { kind: "polyline"; pts: Pt[] }, dim) };
+  }
   return null;
+}
+
+/**
+ * A pixel near an ellipse, as the point of the ellipse nearest it **on
+ * screen**: the polyline's nearest piece gives a parameter to a quarter-pixel,
+ * and a few Newton steps on the projected parametric form — orthographic
+ * projection is affine, so the projected ellipse is `S(c) + cos t·A + sin t·B`
+ * exactly — take it the rest of the way. Then read back off the ellipse at
+ * that parameter, so a snap along an ellipse lands on it to rounding rather
+ * than on a chord a quarter-pixel inside it.
+ */
+function ellipseLift(view: View, f: ArcFrame, curve: { kind: "polyline"; pts: Pt[] }, dim: number): (p: Pt) => number[] {
+  const n = curve.pts.length - 1;
+  const C = worldToScreen(view, f.center);
+  const S = (w: number[]) => { const s = worldToScreen(view, w); return [s[0] - C[0], s[1] - C[1]]; };
+  const A = S(arcPoint(f, 0)), B = S(arcPoint(f, Math.PI / 2));
+  return (p) => {
+    const near = nearestOnPolyline(curve.pts, p);
+    let t = near ? sampleAngle(f, (near.index + near.t) / n) : 0;
+    const [px, py] = [p[0] - C[0], p[1] - C[1]];
+    for (let k = 0; k < 6; k++) {
+      const [c, s] = [Math.cos(t), Math.sin(t)];
+      const P = [c * A[0] + s * B[0] - px, c * A[1] + s * B[1] - py];
+      const D = [-s * A[0] + c * B[0], -s * A[1] + c * B[1]];
+      const DD = [-c * A[0] - s * B[0], -c * A[1] - s * B[1]];
+      const g = P[0] * D[0] + P[1] * D[1];
+      const h = D[0] * D[0] + D[1] * D[1] + P[0] * DD[0] + P[1] * DD[1];
+      if (!(h > 1e-12)) break; // past the curve's evolute: the polyline's answer stands
+      const step = g / h;
+      t -= step;
+      if (Math.abs(step) < 1e-12) break;
+    }
+    return arcPoint(f, t).slice(0, dim);
+  };
 }
 
 /** Whether a circle or arc is seen square-on — see `FACE_ON`. */
@@ -134,7 +178,7 @@ function obliquely(view: View, f: ArcFrame, pixelRadius: number, dim: number): S
     lift: (p) => {
       const near = nearestOnPolyline(pts, p);
       const k = near ? near.index + near.t : 0;
-      return arcPoint(f, (f.sweep * k) / n).slice(0, dim);
+      return arcPoint(f, sampleAngle(f, k / n)).slice(0, dim);
     },
   };
 }

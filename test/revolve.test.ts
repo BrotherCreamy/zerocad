@@ -413,7 +413,7 @@ test("refusals name the geometry and leave no trace: an axis leaning out of the 
   assert.throws(() => revolve(m, lines[0], "t.y", 0), /an angle in radians, more than 0 and at most a whole turn/);
   assert.throws(() => revolve(m, lines[0], "t.y", NaN), /an angle in radians/);
   assert.throws(() => revolve(m, lines[0], "t.y", 7), /at most a whole turn/);
-  assert.throws(() => revolve(m, "t_o", "t.y"), /"t_o" is not a line, arc or circle — revolve names a member/);
+  assert.throws(() => revolve(m, "t_o", "t.y"), /"t_o" is not a line, arc, circle or ellipse — revolve names a member/);
   assert.throws(() => revolve(new Model(2), "l1", "f.y"), /revolve needs a 3D model/);
 
   assert.equal(m.journal.length, journal, "not a journal entry");

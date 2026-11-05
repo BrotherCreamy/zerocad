@@ -47,7 +47,15 @@ export const TOOL_ICONS: Readonly<Record<string, string>> = {
   point: svg("point", dot(8, 8, 2.6)),
   line: svg("line", `<path d="M3 13 13 3"/>`),
   rectangle: svg("rectangle", `<rect x="2.5" y="4" width="11" height="8" rx="1"/>`),
+  // A hexagon, the polygon tool's default — pointed left and right, so its
+  // flat top and bottom sit level with the rectangle's beside it in the flyout.
+  polygon: svg("polygon", `<path d="M13.5 8 10.75 12.75H5.25L2.5 8 5.25 3.25h5.5z"/>`),
+  // A stadium: two straight sides and two round ends, as wide as the rectangle.
+  slot: svg("slot", `<path d="M5.5 5h5a3 3 0 0 1 0 6h-5a3 3 0 0 1 0-6z"/>`),
   circle: svg("circle", `<circle cx="8" cy="8" r="5.5"/>`),
+  // Wider than tall by the circle's own width, so it is read as a circle's
+  // cousin and not as a squashed slot.
+  ellipse: svg("ellipse", `<ellipse cx="8" cy="8" rx="6" ry="3.75"/>`),
   // Half a turn, opening downward: anything shallower reads at 16 px as a bent
   // line. (The 3-point circle's and arc's dotted glyphs went with their buttons:
   // one circle tool and one arc tool, docs/plans/one-circle-one-arc.md.)

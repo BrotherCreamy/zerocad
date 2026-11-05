@@ -172,9 +172,9 @@ export function frameBasis(model: Model, frameName: string): () => FrameBasis {
  */
 export function curveNormal(model: Model, circularName: string): (() => number[]) | null {
   if (model.dim !== 3) return null;
-  model.circular(circularName); // fail now, not at the first solve
+  model.oriented(circularName); // fail now, not at the first solve
   return () => {
-    const n = model.circular(circularName).normal;
+    const n = model.oriented(circularName).normal;
     if (n === undefined) throw new Error(`"${circularName}" has no normal — it was built around the constructors`);
     return n;
   };
@@ -204,6 +204,35 @@ export function unitDuals(v: Dual[]): Dual[] {
   if (!(sq.val > NORMAL_FLOOR * NORMAL_FLOOR)) return v.map(() => Dual.constant(0));
   const len = sq.sqrt();
   return v.map((c) => c.div(len));
+}
+
+/**
+ * An ellipse's own frame, as Duals, from its centre, its major end and (in 3D)
+ * its raw normal: `u` the unit major direction, `v` the unit minor direction,
+ * `n` the plane's unit normal (null in 2D), and `a` the major semi-axis.
+ *
+ * In 2D `v` is `u` turned a quarter turn counter-clockwise. In 3D the normal is
+ * **straightened** against the major axis, as `frameBasis` straightens a
+ * y-ref: its part along `u` is taken out and the rest renormalised, so the
+ * plane always contains the major axis and no relation has to keep the major
+ * end in it (see `EllipseEntity`), and `v = n × u`. Every residual that needs
+ * the minor direction reads it here; the ones that need only `u` and `a` —
+ * `onellipse`'s distance, `tan`'s — are written through `dot` and never ask.
+ */
+export function ellipseAxes(ctr: Dual[], major: Dual[], raw: Dual[] | null):
+  { u: Dual[]; v: Dual[]; n: Dual[] | null; a: Dual } {
+  const d = vecSub(major, ctr);
+  let sq = d[0].mul(d[0]);
+  for (let k = 1; k < d.length; k++) sq = sq.add(d[k].mul(d[k]));
+  const a = sq.sqrt();
+  const u = sq.val > NORMAL_FLOOR * NORMAL_FLOOR ? d.map((c) => c.div(a)) : d.map(() => Dual.constant(0));
+  if (raw === null) return { u, v: [u[1].neg(), u[0]], n: null, a };
+  const w = unitDuals(raw);
+  let along = w[0].mul(u[0]);
+  for (let k = 1; k < 3; k++) along = along.add(w[k].mul(u[k]));
+  const n = unitDuals(w.map((c, k) => c.sub(along.mul(u[k]))));
+  const v = [n[1].mul(u[2]).sub(n[2].mul(u[1])), n[2].mul(u[0]).sub(n[0].mul(u[2])), n[0].mul(u[1]).sub(n[1].mul(u[0]))];
+  return { u, v, n, a };
 }
 
 /** A plane's origin and unit normal (and in-plane axes), as plain numbers. See `planeBasis`. */
@@ -241,7 +270,7 @@ export function planeBasis(model: Model, ref: string): () => PlaneBasis {
     return () => {
       const n = model.normalOf(ref);
       const [u, v] = spanOf(n);
-      return { origin: lift(model.coords(model.circular(ref).center)), u, v, n };
+      return { origin: lift(model.coords(model.oriented(ref).center)), u, v, n };
     };
   }
   const pts = parsePointTriple(ref)!;
@@ -328,7 +357,10 @@ export function directionOf(model: Model, ref: string): DirectionRef {
   // normalised, so `par("c1", "origin.z")` holds a circle level and
   // `par("c1", "l1")` stands it square to a line (docs/plans/frameless-curves.md).
   const e = axis ? undefined : model.entities.get(ref);
-  if (e && (e.kind === "circle" || e.kind === "arc")) {
+  // An ellipse's raw normal, as a circle's: `par` holding it to a plane's
+  // normal holds the straightened one too, since that one only drops the part
+  // along the major axis, which a normal held square to the plane has none of.
+  if (e && (e.kind === "circle" || e.kind === "arc" || e.kind === "ellipse")) {
     const normal = curveNormal(model, ref);
     if (!normal) throw new Error(`"${ref}" lies in the one plane a ${model.dim}D model has — its normal is no direction to relate`);
     return { width: 3, vars: normal, direction: (own) => unitDuals(own), frame: null };

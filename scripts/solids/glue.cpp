@@ -157,6 +157,31 @@ API int sm_profile_circle(double cx, double cy, double r) {
   return (int)g_profile.size() - 1;
 }
 
+// A curve exactly as a (rational) B-spline in the local XY plane: `points`
+// control points as x, y, weight (Euclidean), `uniq` unique knots and their
+// multiplicities (as doubles, end ones degree + 1). What an ellipse is handed
+// over as — an exact rational quadratic — so the kernel sweeps the ellipse
+// itself, not a polygon of it (docs/plans/sketch-shapes.md).
+API int sm_profile_nurbs(int degree, int points, const double* xyw, int uniq, const double* knots, const double* mults) {
+  SmTArray<SmPoint3d> pts;
+  SmTArray<double> w;
+  for (int i = 0; i < points; i++) {
+    pts.Add(SmPoint3d(xyw[3 * i], xyw[3 * i + 1], 0));
+    w.Add(xyw[3 * i + 2]);
+  }
+  SmTArray<double> ks;
+  SmTArray<ULONG> ms;
+  for (int i = 0; i < uniq; i++) {
+    ks.Add(knots[i]);
+    ms.Add((ULONG)mults[i]);
+  }
+  SmBSplineCurve* c = nullptr;
+  SmApiStatus s = SmApiCreateCanonicalCurve(pts, ks, ms, &w, (ULONG)degree, SM_CF_UNSPECIFIED, c);
+  if (s != SM_SUCCESS || !c) return -(int)s - 1;
+  g_profile.push_back(c);
+  return (int)g_profile.size() - 1;
+}
+
 static SmTArray<SmCurve*> profileArray() {
   SmTArray<SmCurve*> a;
   for (SmCurve* c : g_profile) a.Add(c);

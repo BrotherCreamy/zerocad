@@ -333,6 +333,11 @@ function collect(model: Model, classOf: Map<string, number>): { edges: Edge[]; c
       }
     } else if (e.kind === "circle") {
       if (model.radius(e.name) > 0) circles.push({ name: e.name, order });
+    } else if (e.kind === "ellipse") {
+      // A closed member like a circle (docs/plans/sketch-shapes.md): a loop on
+      // its own, cut by what is held on it or crosses it.
+      const { a, b } = model.semiAxes(e.name);
+      if (a > 0 && b > 0) circles.push({ name: e.name, order });
     }
   }
   return { edges, circles };
@@ -372,7 +377,7 @@ function candidatePlanes(model: Model, edges: Edge[], circles: CircleRef[]): Gro
     for (const g of groups) if (parallel(g.normal, n) && liesOn(g.plane, origin)) return;
     groups.push({ normal: n, plane: planeThrough(origin, n) });
   };
-  for (const c of circles) add(lift3(model.coords(model.circle(c.name).center)), curvePlaneOf(model, c.name).n);
+  for (const c of circles) add(lift3(model.coords(model.oriented(c.name).center)), curvePlaneOf(model, c.name).n);
   for (const e of edges) {
     if (e.kind === "arc") add(lift3(model.coords(model.arc(e.name).center)), curvePlaneOf(model, e.name).n);
   }
@@ -434,6 +439,7 @@ function inPlane(model: Model, g: Group, name: string): boolean {
   if (e.kind === "line") return on(e.refs[0]) && on(e.refs[1]);
   if (e.kind === "arc") return parallel(curvePlaneOf(model, name).n, g.normal) && on(e.center) && on(e.start) && on(e.end);
   if (e.kind === "circle") return parallel(curvePlaneOf(model, name).n, g.normal) && on(e.center);
+  if (e.kind === "ellipse") return parallel(curvePlaneOf(model, name).n, g.normal) && on(e.center) && on(e.major);
   return false;
 }
 
@@ -470,7 +476,7 @@ function orientPlane(model: Model, g: Group, lines: Edge[], curves: string[]): L
   }
   if (curves.length) {
     const { u, v, n } = curvePlaneOf(model, curves[0]);
-    return { origin: lift3(model.coords(model.circular(curves[0]).center)), u, v, normal: n, frame: null };
+    return { origin: lift3(model.coords(model.oriented(curves[0]).center)), u, v, normal: n, frame: null };
   }
   // Lines only, and no frame to ask: the normal whose largest component is
   // positive (+z for anything drawn level), +u along the first line.
@@ -492,10 +498,54 @@ type P2 = [number, number];
  * arc runs from angle `t0` about `c` through the signed `sweep` (positive is
  * counter-clockwise about the plane's normal); `p` and `q` are exactly its two
  * ends at that radius, which is what keeps the area formula exact.
+ *
+ * **An ellipse is an arc with a second radius** (docs/plans/sketch-shapes.md):
+ * `b` its semi-axis across `r`'s, and `dir` the unit direction of its `r` axis
+ * in the plane, so a point is `c + R(dir)·(r cos s, b sin s)` — `s` the
+ * eccentric anomaly, counter-clockwise in the plane. Absent for a circle or an
+ * arc, and every function below reads `rb`/`dirOf` so the two are one case.
  */
 type Piece =
   | { kind: "line"; p: P2; q: P2 }
-  | { kind: "arc"; p: P2; q: P2; c: P2; r: number; t0: number; sweep: number };
+  | { kind: "arc"; p: P2; q: P2; c: P2; r: number; t0: number; sweep: number; b?: number; dir?: P2 };
+
+type ArcPiece = Extract<Piece, { kind: "arc" }>;
+
+/** The semi-axis across `r`: `b` for an ellipse, `r` for a circle. */
+const rb = (piece: ArcPiece): number => piece.b ?? piece.r;
+/** The unit direction of the `r` axis: +u for a circle. */
+const dirOf = (piece: ArcPiece): P2 => piece.dir ?? [1, 0];
+
+/** The piece's curve at parameter `s` (an angle for a circle, the eccentric anomaly for an ellipse). */
+function onCurve(piece: ArcPiece, s: number): P2 {
+  if (piece.b === undefined) return onCircle(piece.c, piece.r, s);
+  const [dx, dy] = dirOf(piece);
+  const [x, y] = [piece.r * Math.cos(s), piece.b * Math.sin(s)];
+  return [piece.c[0] + x * dx - y * dy, piece.c[1] + x * dy + y * dx];
+}
+
+/** `x` in the piece's own axes, each scaled to one: on the curve exactly when its length is 1. */
+function normalised(piece: ArcPiece, x: P2): P2 {
+  const [dx, dy] = dirOf(piece);
+  const [ox, oy] = [x[0] - piece.c[0], x[1] - piece.c[1]];
+  return [(ox * dx + oy * dy) / piece.r, (-ox * dy + oy * dx) / rb(piece)];
+}
+
+/** The parameter of the curve's point "toward" `x`: its angle about the centre, an ellipse's in its normalised axes. */
+function paramOf(piece: ArcPiece, x: P2): number {
+  if (piece.b === undefined) return Math.atan2(x[1] - piece.c[1], x[0] - piece.c[0]);
+  const [nx, ny] = normalised(piece, x);
+  return Math.atan2(ny, nx);
+}
+
+/** The same curve from `t0` through `sweep`. */
+function arcLike(piece: ArcPiece, t0: number, sweep: number): Piece {
+  const out: ArcPiece = { kind: "arc", p: [0, 0], q: [0, 0], c: piece.c, r: piece.r, t0, sweep };
+  if (piece.b !== undefined) { out.b = piece.b; out.dir = piece.dir; }
+  out.p = onCurve(out, t0);
+  out.q = onCurve(out, t0 + sweep);
+  return out;
+}
 
 const TAU = Math.PI * 2;
 const sub2 = (a: P2, b: P2): P2 => [a[0] - b[0], a[1] - b[1]];
@@ -510,7 +560,7 @@ function arcPiece(c: P2, r: number, t0: number, sweep: number): Piece {
 
 function reversed(piece: Piece): Piece {
   if (piece.kind === "line") return { kind: "line", p: piece.q, q: piece.p };
-  return arcPiece(piece.c, piece.r, piece.t0 + piece.sweep, -piece.sweep);
+  return arcLike(piece, piece.t0 + piece.sweep, -piece.sweep);
 }
 
 /** A whole circle: its two ends are one point, and that point is no end at all. */
@@ -541,6 +591,15 @@ function pieceOf(model: Model, name: string, plane: LoopPlane): Piece {
   const f = curveFrame(model, e)!;
   const c = toPlane(plane, f.center);
   const side = dot3(f.normal, plane.normal) < 0 ? -1 : 1;
+  if (e.kind === "ellipse") {
+    // From its major end, its own way round: the plane's way when its normal
+    // agrees, the other when not — so a span means the same fraction of the
+    // ellipse here as it does in faces.ts's outline.
+    const m = toPlane(plane, [0, 1, 2].map((i) => f.center[i] + f.u[i]));
+    const len = Math.hypot(m[0] - c[0], m[1] - c[1]);
+    const dir: P2 = [(m[0] - c[0]) / len, (m[1] - c[1]) / len];
+    return arcLike({ kind: "arc", p: c, q: c, c, r: f.r, t0: 0, sweep: 0, b: f.rv ?? f.r, dir }, 0, side * TAU);
+  }
   const s = toPlane(plane, [0, 1, 2].map((i) => f.center[i] + f.r * f.u[i]));
   return arcPiece(c, f.r, Math.atan2(s[1] - c[1], s[0] - c[0]), side * (e.kind === "circle" ? TAU : f.sweep));
 }
@@ -548,7 +607,7 @@ function pieceOf(model: Model, name: string, plane: LoopPlane): Piece {
 /** The piece's point a fraction `t` of the way along it. */
 function pointAt(piece: Piece, t: number): P2 {
   if (piece.kind === "line") return [piece.p[0] + t * (piece.q[0] - piece.p[0]), piece.p[1] + t * (piece.q[1] - piece.p[1])];
-  return onCircle(piece.c, piece.r, piece.t0 + t * piece.sweep);
+  return onCurve(piece, piece.t0 + t * piece.sweep);
 }
 
 /**
@@ -558,7 +617,7 @@ function pointAt(piece: Piece, t: number): P2 {
  * always did.
  */
 function slice(piece: Piece, a: number, b: number): Piece {
-  if (piece.kind === "arc") return arcPiece(piece.c, piece.r, piece.t0 + a * piece.sweep, (b - a) * piece.sweep);
+  if (piece.kind === "arc") return arcLike(piece, piece.t0 + a * piece.sweep, (b - a) * piece.sweep);
   return { kind: "line", p: a === 0 ? piece.p : pointAt(piece, a), q: b === 1 ? piece.q : pointAt(piece, b) };
 }
 
@@ -574,34 +633,45 @@ function fractionAlong(piece: Piece, x: P2): number | null {
     const t = ((x[0] - piece.p[0]) * d[0] + (x[1] - piece.p[1]) * d[1]) / (d[0] * d[0] + d[1] * d[1]);
     return t >= 0 && t <= 1 ? t : null;
   }
-  const t = Math.atan2(x[1] - piece.c[1], x[0] - piece.c[0]);
+  const t = paramOf(piece, x);
   const along = mod(piece.sweep >= 0 ? t - piece.t0 : piece.t0 - t, TAU);
   if (whole(piece)) return along / TAU;
   return along <= Math.abs(piece.sweep) ? along / Math.abs(piece.sweep) : null;
 }
 
-/** ½∮(x dy − y dx) along the piece — Green's theorem, closed form for a line and an arc. */
+/**
+ * ½∮(x dy − y dx) along the piece — Green's theorem, closed form for a line, an
+ * arc and an ellipse's arc alike: about its centre an ellipse sweeps `r·b` per
+ * unit of its parameter as a circle sweeps `r²`, and the centre's own share is
+ * the chord's wedge with it.
+ */
 function pieceArea(piece: Piece): number {
   if (piece.kind === "line") return wedge2(piece.p, piece.q) / 2;
-  return (wedge2(piece.c, sub2(piece.q, piece.p)) + piece.r * piece.r * piece.sweep) / 2;
+  return (wedge2(piece.c, sub2(piece.q, piece.p)) + piece.r * rb(piece) * piece.sweep) / 2;
 }
 
 /** The piece's direction where it starts. */
 function startTangent(piece: Piece): P2 {
   if (piece.kind === "line") return sub2(piece.q, piece.p);
   const s = Math.sign(piece.sweep);
-  return [-s * Math.sin(piece.t0), s * Math.cos(piece.t0)];
+  if (piece.b === undefined) return [-s * Math.sin(piece.t0), s * Math.cos(piece.t0)];
+  const [dx, dy] = dirOf(piece);
+  const [x, y] = [-piece.r * Math.sin(piece.t0), piece.b * Math.cos(piece.t0)];
+  return [s * (x * dx - y * dy), s * (x * dy + y * dx)];
 }
 
-/** Signed curvature: positive turns left (counter-clockwise), a line is zero. */
+/** Signed curvature where the piece starts: positive turns left (counter-clockwise), a line is zero. */
 function curvature(piece: Piece): number {
-  return piece.kind === "line" ? 0 : Math.sign(piece.sweep) / piece.r;
+  if (piece.kind === "line") return 0;
+  if (piece.b === undefined) return Math.sign(piece.sweep) / piece.r;
+  const [a, b, t] = [piece.r, piece.b, piece.t0];
+  return Math.sign(piece.sweep) * (a * b) / Math.pow(a * a * Math.sin(t) ** 2 + b * b * Math.cos(t) ** 2, 1.5);
 }
 
 /** Whether a point of the piece's circle is inside its sweep, clear of both ends — a whole circle has none. */
 function withinArc(piece: Extract<Piece, { kind: "arc" }>, x: P2, tol: number): boolean {
   if (whole(piece)) return true;
-  const t = Math.atan2(x[1] - piece.c[1], x[0] - piece.c[0]);
+  const t = paramOf(piece, x);
   const along = mod(piece.sweep >= 0 ? t - piece.t0 : piece.t0 - t, TAU);
   return along <= Math.abs(piece.sweep) && dist2(x, piece.p) > tol && dist2(x, piece.q) > tol;
 }
@@ -674,10 +744,53 @@ function crossings(e: Piece, f: Piece, tol: number): P2[] {
   }
   if (e.kind === "arc" && f.kind === "line") return crossings(f, e, tol);
   if (e.kind === "line" && f.kind === "arc") {
-    return lineCircle(e.p, e.q, f.c, f.r, tol).filter((x) => withinSegment(e.p, e.q, x, tol) && withinArc(f, x, tol));
+    return lineConic(e.p, e.q, f, tol).filter((x) => withinSegment(e.p, e.q, x, tol) && withinArc(f, x, tol));
   }
   const [a, b] = [e as Extract<Piece, { kind: "arc" }>, f as Extract<Piece, { kind: "arc" }>];
+  if (a.b !== undefined || b.b !== undefined) return conicConic(a, b, tol).filter((x) => withinArc(a, x, tol) && withinArc(b, x, tol));
   return circleCircle(a.c, a.r, b.c, b.r, tol).filter((x) => withinArc(a, x, tol) && withinArc(b, x, tol));
+}
+
+/**
+ * Where the segment a–b's line meets a circle or an ellipse: `lineCircle` in
+ * the ellipse's own axes scaled to one — an affine map, so a line stays a line
+ * and the ellipse becomes the unit circle — mapped back. The tangency
+ * tolerance is scaled by the shorter semi-axis, the most a length shrinks.
+ */
+function lineConic(a: P2, b: P2, piece: ArcPiece, tol: number): P2[] {
+  if (piece.b === undefined) return lineCircle(a, b, piece.c, piece.r, tol);
+  const [A, B] = [normalised(piece, a), normalised(piece, b)];
+  return lineCircle(A, B, [0, 0], 1, tol / Math.min(piece.r, piece.b)).map(([x, y]) => onCurve(piece, Math.atan2(y, x)));
+}
+
+/**
+ * Where two curves at least one of which is an ellipse cross — the one pair
+ * with no closed form (a quartic). Found by walking the first's whole curve in
+ * small steps for a change of side of the second (inside its normalised unit
+ * circle or out), and halving each step that changes to the crossing. A
+ * tangency changes no side, so it is no crossing, as everywhere here; two
+ * crossings closer than a step apart would be missed, which at 720 steps round
+ * is two curves all but tangent.
+ */
+function conicConic(e: ArcPiece, f: ArcPiece, tol: number): P2[] {
+  const STEPS = 720;
+  const side = (s: number) => Math.hypot(...normalised(f, onCurve(e, s))) - 1;
+  const out: P2[] = [];
+  let [s0, g0] = [0, side(0)];
+  for (let k = 1; k <= STEPS; k++) {
+    const s1 = (TAU * k) / STEPS, g1 = side(s1);
+    if ((g0 < 0) !== (g1 < 0)) {
+      let [lo, hi, glo] = [s0, s1, g0];
+      for (let i = 0; i < 60; i++) {
+        const mid = (lo + hi) / 2, gm = side(mid);
+        if ((gm < 0) === (glo < 0)) { lo = mid; glo = gm; } else hi = mid;
+      }
+      const x = onCurve(e, (lo + hi) / 2);
+      if (!out.some((y) => dist2(x, y) <= tol)) out.push(x);
+    }
+    [s0, g0] = [s1, g1];
+  }
+  return out;
 }
 
 /**
@@ -690,7 +803,7 @@ function crossings(e: Piece, f: Piece, tol: number): P2[] {
 function turnAbout(piece: Piece, x: P2): number {
   const a = sub2(piece.p, x), b = sub2(piece.q, x);
   const base = Math.atan2(wedge2(a, b), a[0] * b[0] + a[1] * b[1]);
-  if (piece.kind === "line" || dist2(x, piece.c) >= piece.r) return base;
+  if (piece.kind === "line" || Math.hypot(...normalised(piece, x)) >= 1) return base;
   if (whole(piece)) return Math.sign(piece.sweep) * TAU;
   if (piece.sweep > 0 && base < 0) return base + TAU;
   if (piece.sweep < 0 && base > 0) return base - TAU;
@@ -710,6 +823,15 @@ function distanceTo(piece: Piece, x: P2): number {
     const t = len2 > 0 ? Math.max(0, Math.min(1, ((x[0] - piece.p[0]) * d[0] + (x[1] - piece.p[1]) * d[1]) / len2)) : 0;
     return dist2(x, [piece.p[0] + t * d[0], piece.p[1] + t * d[1]]);
   }
+  if (piece.b !== undefined) {
+    // An ellipse's nearest point has no closed form: a fine walk along it, as
+    // drawn, is near enough for the one question asked of this — is a point on
+    // the outline, to a millionth of the drawing.
+    const n = 720;
+    let best = Infinity;
+    for (let k = 0; k <= n; k++) best = Math.min(best, dist2(x, pointAt(piece, k / n)));
+    return best;
+  }
   const t = Math.atan2(x[1] - piece.c[1], x[0] - piece.c[0]);
   const along = mod(piece.sweep >= 0 ? t - piece.t0 : piece.t0 - t, TAU);
   if (along <= Math.abs(piece.sweep)) return Math.abs(dist2(x, piece.c) - piece.r);
@@ -719,7 +841,7 @@ function distanceTo(piece: Piece, x: P2): number {
 /** The piece's halfway point. */
 function midpoint(piece: Piece): P2 {
   if (piece.kind === "line") return [(piece.p[0] + piece.q[0]) / 2, (piece.p[1] + piece.q[1]) / 2];
-  return onCircle(piece.c, piece.r, piece.t0 + piece.sweep / 2);
+  return onCurve(piece, piece.t0 + piece.sweep / 2);
 }
 
 interface Box { x0: number; y0: number; x1: number; y1: number }
@@ -733,7 +855,7 @@ function boxOf(pieces: Piece[]): Box {
   };
   for (const piece of pieces) {
     grow(piece.p); grow(piece.q);
-    if (piece.kind === "arc") grow(piece.c, piece.r);
+    if (piece.kind === "arc") grow(piece.c, Math.max(piece.r, rb(piece)));
   }
   return b;
 }
@@ -765,8 +887,8 @@ export function heldOnCurves(model: Model): Held[] {
     // `midpoint` with two arguments is the line form; with three it names two
     // points and no edge.
     const onLine = (rel.op === "pointOnLine" || (rel.op === "midpoint" && rel.args.length === 2)) && kind === "line";
-    const onCurve = rel.op === "onCircle" && (kind === "arc" || kind === "circle");
-    if (onLine || onCurve) out.push({ point, curve });
+    const onRim = (rel.op === "onCircle" && (kind === "arc" || kind === "circle")) || (rel.op === "onEllipse" && kind === "ellipse");
+    if (onLine || onRim) out.push({ point, curve });
   }
   return out;
 }
@@ -1318,7 +1440,7 @@ function contains(outer: Found, inner: Found, ob: Box, ib: Box): boolean {
   for (const p of inner.outline) for (const q of outer.outline) if (crossings(p, q, tol).length) return false;
   const probes = inner.outline.flatMap((piece) =>
     piece.kind === "arc" && Math.abs(piece.sweep) >= TAU - 1e-12
-      ? [0, 1, 2, 3].map((k) => onCircle(piece.c, piece.r, piece.t0 + (k * Math.PI) / 2))
+      ? [0, 1, 2, 3].map((k) => onCurve(piece, piece.t0 + (k * Math.PI) / 2))
       : [piece.p, midpoint(piece)]);
   let clear = false;
   for (const x of probes) {
@@ -1394,8 +1516,8 @@ function edgeOn(view: View, plane: LoopPlane, outline: Piece[]): boolean {
   };
   for (const piece of outline) {
     if (piece.kind === "line") { take(piece.p); continue; }
-    const n = arcSegments(Math.abs(piece.sweep), piece.r * view.scale);
-    for (let k = 0; k < n; k++) take(onCircle(piece.c, piece.r, piece.t0 + (piece.sweep * k) / n));
+    const n = arcSegments(Math.abs(piece.sweep), Math.max(piece.r, rb(piece)) * view.scale);
+    for (let k = 0; k < n; k++) take(onCurve(piece, piece.t0 + (piece.sweep * k) / n));
   }
   return hi - lo < EDGE_ON_PX;
 }

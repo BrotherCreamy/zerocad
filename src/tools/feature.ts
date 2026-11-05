@@ -30,7 +30,7 @@ import type { Model } from "../model.ts";
 import { describeFeature } from "../picking.ts";
 import { featureFaces, faceColour, type Face } from "../faces.ts";
 import { curveFrame } from "../curveplane.ts";
-import { arcSamples, arcSegments } from "../arcgeom.ts";
+import { arcSamples, arcSegments, frameReach } from "../arcgeom.ts";
 import { REGION_GREEN } from "./region.ts";
 import { refind } from "./selection.ts";
 import { defaultMode, modeOf } from "../modes.ts";
@@ -427,9 +427,9 @@ export function drawPreview(r: RenderContext, p: FeaturePreview, features: reado
     const e = model.entities.get(name);
     let pts: number[][] | null = null;
     if (e?.kind === "line") pts = [model.coords(e.refs[0]), model.coords(e.refs[1])];
-    else if (e?.kind === "arc" || e?.kind === "circle") {
+    else if (e?.kind === "arc" || e?.kind === "circle" || e?.kind === "ellipse") {
       const f = curveFrame(model, e);
-      if (f) pts = arcSamples(f, arcSegments(f.sweep, f.r * r.scale));
+      if (f) pts = arcSamples(f, arcSegments(f.sweep, frameReach(f) * r.scale));
     }
     if (!pts || pts.length < 2) continue;
     g.beginPath();

@@ -3,6 +3,7 @@ _sm_profile_clear
 _sm_profile_line
 _sm_profile_arc
 _sm_profile_circle
+_sm_profile_nurbs
 _sm_extrude
 _sm_revolve
 _sm_place

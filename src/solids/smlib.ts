@@ -23,6 +23,7 @@ export interface SmModule {
   _sm_profile_line(x0: number, y0: number, x1: number, y1: number): number;
   _sm_profile_arc(cx: number, cy: number, r: number, a0: number, a1: number): number;
   _sm_profile_circle(cx: number, cy: number, r: number): number;
+  _sm_profile_nurbs(degree: number, points: number, xyw: number, knots: number, uniq: number, mults: number): number;
   _sm_extrude(d: number): number;
   _sm_revolve(px: number, py: number, pz: number, ax: number, ay: number, az: number, deg: number): number;
   _sm_place(h: number, ox: number, oy: number, oz: number, xx: number, xy: number, xz: number,
@@ -320,5 +321,18 @@ function addMember(m: SmModule, c: Member): number {
     case "line": return m._sm_profile_line(c.from[0], c.from[1], c.to[0], c.to[1]);
     case "arc": return m._sm_profile_arc(c.centre[0], c.centre[1], c.radius, c.start, c.end);
     case "circle": return m._sm_profile_circle(c.centre[0], c.centre[1], c.radius);
+    case "nurbs": {
+      // Control points [x, y, w], then the unique knots, then their
+      // multiplicities (as doubles), in one scratch block.
+      const xyw = c.points.flat();
+      const all = [...xyw, ...c.knots, ...c.mults];
+      const p = m._malloc(all.length * 8);
+      try {
+        m.HEAPF64.set(all, p >> 3);
+        return m._sm_profile_nurbs(c.degree, c.points.length, p, c.knots.length, p + xyw.length * 8, p + (xyw.length + c.knots.length) * 8);
+      } finally {
+        m._free(p);
+      }
+    }
   }
 }

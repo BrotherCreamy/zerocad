@@ -89,6 +89,10 @@ const TOOL_ITEMS: [label: string, tool: string][] = [
   // one-circle-one-arc.md), and `circle3`/`arc3` are typed names, not tools.
   ["Circle", "circle"],
   ["Arc", "arc"],
+  // The first curve that is not a circle (docs/plans/sketch-shapes.md): offered
+  // where the circle and arc are, as the shapes group's polygon and slot are
+  // under the rectangle's heading.
+  ["Ellipse", "ellipse"],
   ["Fillet", "fillet"],
 ];
 
@@ -190,7 +194,7 @@ function constrainItems(model: Model, selection: readonly string[]): MenuItem[] 
 function constructionItems(model: Model, names: readonly string[]): MenuItem[] {
   const curves = names.filter((n) => {
     const k = model.entities.get(n)?.kind;
-    return k === "line" || k === "arc" || k === "circle";
+    return k === "line" || k === "arc" || k === "circle" || k === "ellipse";
   });
   if (!curves.length) return [];
   const args = curves.map(quoted).join(", ");
@@ -448,6 +452,12 @@ function entityMenu(model: Model, pick: Pick): Menu {
   ];
   const dim = dimensionCommand(model, pick);
   if (dim) items.push({ label: "Dimension", action: { do: "run", command: dim } });
+  // An ellipse has two numbers, so two items: its semi-axes as they stand.
+  if (pick.kind === "ellipse") {
+    const { a, b } = model.semiAxes(pick.name);
+    items.push({ label: "Dimension major", action: { do: "run", command: `major(${quoted(pick.name)}, ${num(a)})` } });
+    items.push({ label: "Dimension minor", action: { do: "run", command: `minor(${quoted(pick.name)}, ${num(b)})` } });
+  }
   if (pick.kind === "point") items.push(fixItem(model, pick.name));
   if (pick.kind === "frame") items.push(sketchOnItem(model, pick.name));
   items.push(...constructionItems(model, [pick.name]));
@@ -467,7 +477,7 @@ function entityMenu(model: Model, pick: Pick): Menu {
  */
 function holeItems(model: Model, name: string): MenuItem[] {
   const k = model.entities.get(name)?.kind;
-  if ((k !== "line" && k !== "arc" && k !== "circle") || model.isConstruction(name) || !model.features.size) return [];
+  if ((k !== "line" && k !== "arc" && k !== "circle" && k !== "ellipse") || model.isConstruction(name) || !model.features.size) return [];
   let all: Loop[];
   try {
     all = findLoops(model);

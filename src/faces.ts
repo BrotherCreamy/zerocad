@@ -69,7 +69,7 @@
 // normals the profile's own, turned; the same culling and headlight.
 
 import type { FeatureEntry, Model, Portion, ProfileMember } from "./model.ts";
-import { arcPoint, arcSamples, arcSegments, portionAngles } from "./arcgeom.ts";
+import { arcPoint, arcSamples, arcSegments, frameReach, portionAngles } from "./arcgeom.ts";
 import { curveFrame, planeAxes } from "./curveplane.ts";
 import { axisReader, turnMatrix } from "./relations/revolution.ts";
 import { depth, viewAxes, worldToScreen, type View } from "./view.ts";
@@ -140,9 +140,9 @@ function memberPath(model: Model, name: string, scale: number, segments?: number
   }
   const f = curveFrame(model, e);
   if (!f) return null;
-  if (!span) return arcSamples(f, segments ?? arcSegments(f.sweep, f.r * scale));
+  if (!span) return arcSamples(f, segments ?? arcSegments(f.sweep, frameReach(f) * scale));
   const [t0, t1] = span.map((t) => t * f.sweep);
-  const n = segments ?? arcSegments(t1 - t0, f.r * scale);
+  const n = segments ?? arcSegments(t1 - t0, frameReach(f) * scale);
   return Array.from({ length: n + 1 }, (_, k) => arcPoint(f, t0 + ((t1 - t0) * k) / n));
 }
 
@@ -197,11 +197,14 @@ const closedPath = (o: number[][]) => (o.length ? [...o, o[0]] : o);
 
 /**
  * Whether a profile member has vertices at its ends — every member but a whole
- * circle, which closes on itself with no corner, so its wall has no wall line
- * and its sweep no edge but its rims.
+ * circle or ellipse, which closes on itself with no corner, so its wall has no
+ * wall line and its sweep no edge but its rims. (An ellipse's samples start at
+ * its major end; a line drawn there was a seam the solid does not have —
+ * looked at, docs/plans/sketch-shapes.md.)
  */
 function hasVertices(model: Model, m: ProfileMember): boolean {
-  return !(typeof m === "string" && model.entities.get(m)?.kind === "circle");
+  const kind = typeof m === "string" ? model.entities.get(m)?.kind : undefined;
+  return kind !== "circle" && kind !== "ellipse";
 }
 
 const mean = (pts: number[][]) => [0, 1, 2].map((i) => pts.reduce((s, p) => s + p[i], 0) / pts.length);
@@ -271,7 +274,7 @@ function portionPath(model: Model, p: Portion, scale: number): number[][] | null
   const f = curveFrame(model, e);
   if (!f) return null;
   const [t0, t1] = portionAngles(f, a, b);
-  const n = arcSegments(t1 - t0, f.r * scale);
+  const n = arcSegments(t1 - t0, frameReach(f) * scale);
   const path = Array.from({ length: n + 1 }, (_, k) => arcPoint(f, t0 + ((t1 - t0) * k) / n));
   // Its ends are the points themselves, not their shadows on a rim a solve
   // has not quite reached: the cap closes where the walls stand.

@@ -1043,6 +1043,58 @@ replaces it on a crash (an abort in SMLib is fatal to its module), on 30 s
 without an answer, and past 256 MB (the fillet leak the spike measured). The
 next request starts a fresh one, and the log says each time.
 
+## A second curve kind: what the ellipse needed
+
+The ellipse (docs/plans/sketch-shapes.md) is the first curve that is not a
+circle, and it went through every seam a curve meets. Listed, so the spline
+(`spline.md`) can follow the same list instead of finding it again:
+
+1. **The entity** (`model.ts`): its points among `refsOf` (so `del` of one
+   takes it), its own variables (a minor; a normal in 3D, through
+   `normalSeed`), the construction flag, `oriented` (centre and normal for
+   `normalOf`, `setNormal` and the plane questions — an ellipse is a plane
+   reference), and the exhaustive `switch`es TypeScript then names (`ls()`,
+   the hover tag, a glyph's default anchor, the painter's depth).
+2. **Relations** written through `dot` so they hold in 2D and 3D, each with
+   the circle's plane block in 3D, and **dimensions** for its numbers: their
+   op in `DIMENSION_OPS` and `VALUE_ARG`, a `REBUILD` row for `set`, a label
+   in `glyphs.ts`. Every relation in **both** `replenv.ts` and `persist.ts`.
+3. **A frame to sample by** (`arcgeom.ts`, `curveplane.ts`): `curveFrame`
+   answers for it, and every consumer that samples through `arcPoint`,
+   `arcSamples` and `portionAngles` — the renderer, box select, faces, the
+   feature preview — drew it at once. What had to change in each was only the
+   sample count (`frameReach`, the larger semi-axis).
+4. **Picking and snapping** through `projection.ts`: a screen polyline (what
+   `intersect.ts` already crosses) and a lift back onto the true curve —
+   Newton on the projected parametric form. Snapping then needed nothing,
+   and inference one row in `place.ts`'s `onCurve`.
+5. **Regions** (`loops.ts`): the arc piece took a second radius and a
+   direction, so every function that walks, slices, measures or winds a
+   piece reads one; the crossings needed their own (closed form with a line
+   in the curve's normalised axes, numeric with another conic), and
+   `heldOnCurves` the curve's on-relation.
+6. **Features** (`operations.ts`, `relations/extrusion.ts`): the twin of a
+   whole member, what the depth holds of it (its own variables), and the
+   refusals — part of one, and a revolve.
+7. **Drawing a solid** (`faces.ts`): nothing but `hasVertices` — a closed
+   curve has no corner for a wall line.
+8. **The exact B-rep and STEP** (`solids.ts`, `step.ts`): a `Curve` and a
+   `Surface` kind and their Part 21 spelling, the surface's own normal for
+   `same_sense`, `roleSurface` saying there is no analytic surface where the
+   kernel's NURBS should be written instead, and `looseCurves`.
+9. **The solid kernel** (`src/solids/`, `scripts/solids/glue.cpp`): a profile
+   member it can take exactly — the contract grew a `nurbs` member, so the
+   spline will need no further change there — and the profile helpers
+   (`distanceTo`, `memberPoints`) that naming and insideness read.
+10. **The chrome**: a tool in the group the table names (`TOOL_GROUPS`), its
+    icon, its import where the group's button should stand, a menu item, the
+    quiet set (which of its points are on the curve), `help()`.
+11. **The file format**: a version, its saved values, and the old-file test.
+
+What did *not* need touching is the point of the layer rule: the kernel, the
+engine, the undo stack, the organiser, groups, selection — none of them knows
+what kind of curve anything is.
+
 ## Constraints are drawn, and a drawn constraint is a thing you can click
 
 Every relation wears a small mark beside the geometry it constrains. The tiers
@@ -1422,7 +1474,7 @@ until the next action went unrecorded.
 
 ## Why there is an end-to-end suite
 
-Eighteen bugs so far were invisible to the unit tests and obvious within seconds
+Nineteen bugs so far were invisible to the unit tests and obvious within seconds
 of running the app:
 
 1. a status readout that went stale, so a conflict could be introduced from
@@ -1510,6 +1562,12 @@ of running the app:
    the tray's buttons — on a desktop and on a phone. The placement's unit
    tests had no tray to keep off; found by looking at the first screenshots
    of toolbar-groups.md. A tip can now be told what else to keep off.
+19. A dark line down an elliptic cylinder's wall, where no edge is: faces.ts
+   drew a wall line at a member's first sample unless the member was a whole
+   circle, and the ellipse's samples start at its major end. Every unit test
+   passed, the exact B-rep and the STEP among them (they have no such
+   line); found by looking at the first picture of the wall
+   (sketch-shapes.md). A whole ellipse has no vertices, as a circle has none.
 
 None of these are mathematics. They are all *assembly*. Hence `npm run
 test:e2e`, and hence the expectation that anything touching the app is checked

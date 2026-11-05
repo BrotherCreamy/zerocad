@@ -7,6 +7,45 @@ decisions.
 
 ---
 
+## Sketch shapes — a polygon, a slot, and the ellipse
+
+The owner: *"give me better sketch tools, relations, trim, slot... all the
+usual"*. Three tools, in the families the toolbar groups made room for
+([`docs/plans/sketch-shapes.md`](docs/plans/sketch-shapes.md), with every
+deviation):
+
+- **Polygon** (shapes): press at the centre, drag to a corner; `n` sides (6)
+  and `circumscribed` in the options panel. It leaves n points, n lines and a
+  construction circle through the corners, each side `eq` to the one before
+  it — ordinary relations, so a side dimensioned resizes it and a corner
+  dragged turns it, regular all the way. Inscribed adds a second circle
+  inside, touching the sides. Typed: `polygon("p1", "p2", 6)`.
+- **Slot** (shapes): drag between the two centres, then click (or tap) the
+  width — or set `width` and skip that. Two lines, two arcs about the
+  centres, a construction line between them for the length; `rad` on an arc
+  is half the width. Typed: `slot("p1", "p2", 10)`.
+- **Ellipse** (curves, after arc): drag from the centre to the end of the
+  major axis, then click the minor. A new kind of entity — a centre, a
+  major-end point, a minor semi-axis, and in 3D a normal — with its own
+  relations: `onellipse(p, e)` (a line drawn onto one infers it),
+  `tan(line, e)`, `conc` with circles, and `major(e, 30)` / `minor(e, 12)`,
+  dimensions labelled `a30` and `b12` (the menu's Dimension major / minor).
+  It bounds regions (a line across one cuts it), extrudes to an elliptic
+  cylinder, goes to the solid kernel as its exact NURBS, and exports to STEP
+  as `ELLIPSE`s and a surface of linear extrusion — read back by OpenCascade
+  as valid, the volume to 3e-16 (the table is in the spec). Typed:
+  `ellipse(pt(0, 0), 30, 12)`.
+
+Twelve toolbar buttons now (curves). Format 15 for the ellipse; older files
+open as they were. Out of scope, refused by name: `tan` between an ellipse
+and a curve, revolving an ellipse, extruding part of one. Found on the way:
+a tangency at a point already held on the curve is a square in disguise —
+the slot says its tangencies as `perp` to the radius instead, and the
+fillet has the same flaw (TODO.md). An ellipse is sampled where it
+bends — evenly in its normal's direction, as finely as its flattest stretch
+needs — after the shaded wall of an extruded one showed bands. Pictures: docs/images/118–126. Not tried
+on an iPhone.
+
 ## Sketch relations — a dimension tool, a constrain tool, and knowing what is free
 
 The owner: *"give me better sketch tools, relations, trim, slot... all the

@@ -101,11 +101,12 @@ test("mouse: the group's button carries the mark; a hover opens its flyout besid
   desk = await openApp();
   apps.push(desk);
   await fresh(desk);
-  // A group of one is a plain button: no mark, its own tooltip, nothing opens.
-  assert.equal(await desk.page.$eval(group("shapes"), (b) => b.hasAttribute("data-more")), false);
-  assert.equal(await desk.page.$$eval("#toolbar button", (bs) => bs.length), 13);
+  // A group of one is a plain button: no mark, its own tooltip, nothing opens
+  // — the curves group's, the ellipse alone (docs/plans/sketch-shapes.md).
+  assert.equal(await desk.page.$eval(group("curves"), (b) => b.hasAttribute("data-more")), false);
+  assert.equal(await desk.page.$$eval("#toolbar button", (bs) => bs.length), 14);
   await pad(desk);
-  assert.equal(await desk.page.$$eval("#toolbar button", (bs) => bs.length), 13, "two more tools, no more buttons");
+  assert.equal(await desk.page.$$eval("#toolbar button", (bs) => bs.length), 14, "two more tools, no more buttons");
   assert.equal(await desk.page.$eval(group("shapes"), (b) => b.hasAttribute("data-more") && b.getAttribute("aria-haspopup")), "true");
   // The mark is drawn: the ::after triangle in the corner, in the glyph's ink.
   const mark = await desk.page.$eval(group("shapes"), (b) => {
@@ -121,7 +122,7 @@ test("mouse: the group's button carries the mark; a hover opens its flyout besid
   const f = await flyoutBecomes(desk, (s) => s.open, "a hover opens it");
   const waited = Date.now() - t0;
   assert.ok(waited >= 250 && waited < 1200, `after the tooltip's delay, not at once: ${waited} ms`);
-  assert.deepEqual([f.group, f.orient, f.items, f.current], ["shapes", "row", ["rectangle", "t_pad1"], "rectangle"]);
+  assert.deepEqual([f.group, f.orient, f.items, f.current], ["shapes", "row", ["rectangle", "polygon", "slot", "t_pad1"], "rectangle"]);
   const tray = await rectOf(desk, '.panel[data-panel="toolbar"]');
   assert.ok(f.box!.x >= tray.x + tray.w, "beside the column, on the drawing's side");
   assert.ok(Math.abs(f.box!.y + 4 - b.y) <= 1.5, `level with its button: ${f.box!.y} against ${b.y}`);
@@ -258,7 +259,9 @@ for (const device of ["iPhone 13", "iPhone 13 landscape"] as const) {
 
     // Slid off onto nothing: closed, nothing armed.
     await f.down(from);
-    await f.glide(12, [from[0] + 6, from[1] - 160]);
+    // Clear of the flyout: a column of the four shapes over a landscape row
+    // reaches past 160 px (docs/plans/sketch-shapes.md filled it).
+    await f.glide(12, [from[0] + 6, from[1] - (device === "iPhone 13" ? 160 : 250)]);
     await f.up();
     await flyoutBecomes(app, (s) => !s.open, "slid off onto nothing");
     assert.equal((await app.model()).activeTool, null);
