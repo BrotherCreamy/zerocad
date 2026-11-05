@@ -55,7 +55,12 @@ test("a contradiction reports CONFLICT and names the offender", async () => {
   await app.type("rad(c, 5); solve()");
   const status = await app.status();
   assert.ok(status.startsWith("CONFLICT"), status);
-  assert.ok(status.includes("rad(c1)"), status);
+  // The offender is named beside the verdict, by its relation's name
+  // (docs/plans/sketch-relations.md): the rad just typed.
+  const rels = (await app.repl("rels()")).value as string[];
+  const rad = rels.find((r) => / rad c1 5$/.test(r))!.split(" ")[0];
+  const named = await app.page.$eval("#diagnosis", (el) => el.textContent ?? "");
+  assert.ok(named.split(/[ ·]+/).includes(rad), `${rad} in "${named}"`);
 });
 
 test("no uncaught page errors", () => {

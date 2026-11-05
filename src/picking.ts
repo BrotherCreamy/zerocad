@@ -313,6 +313,8 @@ export const SHORT_OP: Record<string, string> = {
   equalLength: "eq", radius: "rad", onCircle: "oncircle", concentric: "conc",
   equalRadius: "eqrad", tangent: "tan", symmetric: "sym", arcEndpoints: "arcends",
   onPlane: "onplane",
+  // docs/plans/sketch-relations.md
+  collinear: "col", equalSpacing: "spacing", diameter: "dia",
 };
 
 export function describeRelation(r: RelationEntry): string {

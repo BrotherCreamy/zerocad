@@ -22,7 +22,7 @@ import { SELECTION } from "./tools/selection.ts";
 import { runSteps } from "./tools/feature.ts";
 import type { FeatureStep } from "./tools/tool.ts";
 import { previewSteps } from "./featurepreview.ts";
-import { describePick, type Pick } from "./picking.ts";
+import { describePick, describeRelation, type Pick } from "./picking.ts";
 import { ContextMenu, menuFor } from "./menu.ts";
 import { toolUnavailable } from "./toolavail.ts";
 import { AXIS_INKS, frameArmPx, frameMarker } from "./framemarker.ts";
@@ -36,7 +36,7 @@ import { Tooltips } from "./tooltip.ts";
 import {
   clampScale, deviceScale, formFactor, formatScale, recallScale, rememberScale, textFactor, type Device,
 } from "./uiscale.ts";
-import { GUIDE_NOTE_MS, STEP_NOTE_MS, StatusLine } from "./statusline.ts";
+import { GUIDE_NOTE_MS, STATUS_FADE_MS, STEP_NOTE_MS, StatusLine, diagnosisLine } from "./statusline.ts";
 import { AppMenu, UNTITLED } from "./appmenu.ts";
 import { Organiser, organiserSections, rowMenu } from "./organiser.ts";
 import { logoSvg } from "./logo.ts";
@@ -56,13 +56,15 @@ import { VIEW_MODES, drawsFaces, isViewMode, opaque, recallViewMode, rememberVie
 import { entityDrawn, glyphDrawn, quietEntities, revealed, solidEdges } from "./quiet.ts";
 import { frameBasis } from "./relations/refs.ts";
 import { lockPage } from "./pagelock.ts";
-import type { Entity } from "./model.ts";
+import type { Diagnosis, Entity } from "./model.ts";
 import "./tools/point.ts";
 import "./tools/line.ts";
 import "./tools/rectangle.ts";
 import "./tools/circle.ts";
 import "./tools/arc.ts";
 import "./tools/fillet.ts";
+import "./tools/dimension.ts";
+import "./tools/constrain.ts";
 import "./tools/extrude.ts";
 import "./tools/revolve.ts";
 import "./tools/sketch.ts";
@@ -74,6 +76,17 @@ import "./tools/edit.ts";
  * the header: `#status`, `#stepnote`.
  */
 const statusLine = new StatusLine(document.getElementById("status")!, document.getElementById("stepnote")!);
+/** The diagnosis beside the verdict (`showDiagnosis`): "3 free", a conflict's or a redundancy's names. */
+const diagnosisEl = document.getElementById("diagnosis")!;
+let diagnosisFade: ReturnType<typeof setTimeout> | undefined;
+/** The last diagnosis (`Model.diagnose`), read by the drawing: what is free. Null before the first solve. */
+let diagnosis: Diagnosis | null = null;
+/** The relations the last solve said cannot all hold: drawn in the conflict ink. */
+let conflicted = new Set<string>();
+/** What the log last said about a conflict, so a re-solve does not say it again. */
+let conflictSaid = "";
+/** Whether free entities wear the free ink (`freeink(false)` turns it off, as `glyphs(false)` the marks). */
+let freeInkOn = true;
 const logEl = document.getElementById("log")!;
 const cv = document.getElementById("cv") as HTMLCanvasElement;
 const g = cv.getContext("2d")!;
@@ -376,6 +389,20 @@ const FRAME_NAME_INK = "#9fb4c7";
  * sketch's 1.4. Drawn solid, never dashed: a dash means selection here.
  */
 const CONSTRUCTION = "#679b91";
+/**
+ * **The free ink** (docs/plans/sketch-relations.md): an entity some motion can
+ * still move with every relation holding — Onshape's blue for what is not yet
+ * defined — where a fully held one keeps the sketch's own pale ink. A clear
+ * blue, saturated where the held ink is grey, so the two read apart at a
+ * glance and neither is the hover's amber or the selection's violet.
+ */
+const FREE = "#5aa2ff";
+/** The sketch's own ink: what a held entity is drawn in. */
+const HELD = "#afc6d9";
+/** A glyph whose relation cannot hold with the others: the conflict's red, the status's. */
+const CONFLICT_INK = "#e0605c";
+/** A redundant relation's glyph: the softer orange the status says it in. */
+const REDUNDANT_INK = "#d99a6c";
 const CONSTRUCTION_PX = 0.9;
 /** Its casing over a face, each side: a hairline, not `CASING_PX` — see `strokeEdge`. */
 const CONSTRUCTION_CASING_PX = 0.5;
@@ -504,7 +531,7 @@ async function main() {
     // like any circle; it outranks a solid's edge colour, since a feature's
     // twin flagged construction should look it.
     const stroke = (name: string) => (lit.has(name) ? "#e8a33d" : chosen.has(name) ? SELECTION
-      : model.isConstruction(name) ? CONSTRUCTION : solid.has(name) ? SOLID_EDGE : "#afc6d9");
+      : model.isConstruction(name) ? CONSTRUCTION : solid.has(name) ? SOLID_EDGE : inkOf(name));
     const weight = (name: string) => (lit.has(name) ? 2.2 : chosen.has(name) ? 2.6
       : model.isConstruction(name) ? CONSTRUCTION_PX : 1.4);
 
@@ -716,7 +743,7 @@ async function main() {
       }
       // A point keeps its sketch colour on a solid: it is a target, not an
       // outline, and its casing carries it over a light face.
-      g.fillStyle = lit.has(e.name) ? "#e8a33d" : chosen.has(e.name) ? SELECTION : "#afc6d9";
+      g.fillStyle = lit.has(e.name) ? "#e8a33d" : chosen.has(e.name) ? SELECTION : inkOf(e.name);
       g.beginPath(); g.arc(sx, sy, r, 0, Math.PI * 2); g.fill();
       label(e.name, sx + 6 * k, sy - 6 * k);
     }
@@ -1065,18 +1092,24 @@ async function main() {
       // A selected constraint is its box in the selection's colour, a little
       // heavier: the mark is the whole of what a relation looks like.
       const picked = !on && chosen.has(mark.relation);
+      // A relation the last solve said cannot hold with the others wears the
+      // conflict's red, box and mark; a redundant one the softer orange
+      // (docs/plans/sketch-relations.md). Hover and selection still outrank
+      // both, so the one being aimed at reads as aimed at.
+      const verdict = conflicted.has(mark.relation) ? CONFLICT_INK
+        : diagnosis?.redundant.includes(mark.relation) ? REDUNDANT_INK : null;
       const [x, y] = mark.screen;
       roundedBox(x - mark.halfW, y - mark.halfH, mark.halfW * 2, mark.halfH * 2, 3 * k);
       g.fillStyle = on ? "#20303f" : "#0e141bee";
       g.fill();
-      g.strokeStyle = on ? "#e8a33d" : picked ? SELECTION : "#2c3d4f";
-      g.lineWidth = picked ? 1.6 : 1;
+      g.strokeStyle = on ? "#e8a33d" : picked ? SELECTION : verdict ?? "#2c3d4f";
+      g.lineWidth = picked || verdict ? 1.6 : 1;
       g.stroke();
       // A dimension is brighter than an annotation on purpose: it states
       // something the user asked for, where `∥` states something they may only
       // have implied. Onshape draws its dimensions the same way — a value
       // reads as part of the drawing, an inferred mark as a note about it.
-      g.fillStyle = on ? "#e8a33d" : picked ? SELECTION : mark.isLabel ? "#cfe0ee" : "#8fa7bb";
+      g.fillStyle = on ? "#e8a33d" : picked ? SELECTION : verdict ?? (mark.isLabel ? "#cfe0ee" : "#8fa7bb");
       // Nudged down a hair: several of these marks (— ∥ ⊥ ∴) sit high in their
       // em box, and centring by metrics leaves them looking as though they are
       // escaping upward out of the box.
@@ -1146,10 +1179,75 @@ async function main() {
 
   function solveAndRender() {
     const report = model.solve();
+    // Which relations cannot all hold (model.ts's `conflicting`), by name, as
+    // the hover tag and `rels()` name them — the verdict used to list their
+    // blocks' labels.
+    const c = report.solved ? { relations: [], unowned: [] } : model.conflicting(report);
+    conflicted = new Set(c.relations);
     if (report.solved) statusLine.show("solved", "SOLVED");
-    else statusLine.show("conflict", `CONFLICT: ${report.offenders.map((o) => o.label).join(", ")}`);
+    // The verdict alone: the names it accuses are the diagnosis beside it, each
+    // one a thing to click (`showDiagnosis`), so they are not said twice.
+    else statusLine.show("conflict", "CONFLICT");
+    // **What is free, and what is said twice**, after the solve and never
+    // during a drag: a drag's frames solve through the engine and draw with
+    // the last answer, and this runs when the drag ends (its `onSolveRender`).
+    // Measured on the biggest drawing the suite builds: see the spec's As built.
+    try {
+      diagnosis = model.diagnose();
+    } catch (err) {
+      diagnosis = null;
+      console.warn("diagnosis failed", err);
+    }
+    showDiagnosis(report.solved, c.relations, c.unowned);
+    const said = c.relations.join(" ");
+    if (said && said !== conflictSaid) {
+      log(`CONFLICT — these cannot all hold: ${c.relations.map((r) => describeRelation(model.relationOf(r))).join(" · ")}`, "err");
+    }
+    conflictSaid = said;
     render();
     return report;
+  }
+
+  /** An entity's ink when nothing outranks it: free, or held. */
+  function inkOf(name: string): string {
+    return freeInkOn && diagnosis?.free.has(name) ? FREE : HELD;
+  }
+
+  /**
+   * The diagnosis beside the verdict (statusline.ts's `diagnosisLine`): its
+   * words, and each relation it names as a button that selects it — so a
+   * conflict is clicked, then Delete takes it away (constraint-deletion.md).
+   * It fades with SOLVED when it only counts what is free; a conflict and a
+   * redundancy stay until the next solve replaces them.
+   */
+  function showDiagnosis(solved: boolean, conflicts: string[], unowned: string[]) {
+    const line = model.entities.size === 0 && solved
+      ? { cls: "" as const, parts: [], fades: true }
+      : diagnosisLine(solved, diagnosis?.dof ?? null, conflicts, unowned, solved ? diagnosis?.redundant ?? [] : []);
+    diagnosisEl.textContent = "";
+    diagnosisEl.className = line.cls;
+    for (const part of line.parts) {
+      if (typeof part === "string") {
+        diagnosisEl.append(part);
+        continue;
+      }
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "rel";
+      b.dataset.relation = part.relation;
+      b.textContent = part.relation;
+      b.title = `${model.relations.has(part.relation) ? describeRelation(model.relationOf(part.relation)) : part.relation} — click to select it, then Delete removes it`;
+      b.addEventListener("click", () => {
+        if (!model.relations.has(part.relation)) return;
+        engine.select([part.relation]);
+        log(`${part.relation} selected — Delete removes it`, "out");
+        render();
+      });
+      diagnosisEl.append(b);
+    }
+    delete diagnosisEl.dataset.faded;
+    clearTimeout(diagnosisFade);
+    if (line.fades) diagnosisFade = setTimeout(() => { diagnosisEl.dataset.faded = ""; }, STATUS_FADE_MS);
   }
 
   /**
@@ -1445,9 +1543,24 @@ async function main() {
         ...(s.choices ? { choices: Object.entries(s.choices), read: s.choices[read[name]] ?? null, ...(s.buttons ? { buttons: true } : {}) } : {}),
       }));
       const dialog = engine.dialog();
-      return rows.length || dialog ? { tool: a.name, rows, dialog } : null;
+      // A tool's commands (the constrain tool's relations), a row each.
+      const commands = engine.active?.commands?.() ?? [];
+      // The constrain tool shows its panel with nothing picked yet: it says
+      // there is nothing to list rather than vanishing (and coming back
+      // somewhere else) at the first pick.
+      const wantsPanel = rows.length || dialog || commands.length || engine.active?.commands !== undefined;
+      return wantsPanel ? { tool: a.name, rows, dialog, commands } : null;
     },
     run: (command) => submit(command),
+    // A command row is typed like any line, and then the tool hears it ran —
+    // its picks are spent. Told after the line has run, so it is the line's
+    // own undo step and the tool's next pick is the next one's.
+    command: async (command) => {
+      const tool = engine.active;
+      await submit(command);
+      tool?.ran?.(command);
+      render();
+    },
     confirm: () => {
       engine.confirm();
       syncToolbar();
@@ -1655,6 +1768,13 @@ async function main() {
       snapping: (on?: boolean) => {
         if (on !== undefined) engine.snapping = on;
         return engine.snapping;
+      },
+      freeink: (on?: boolean) => {
+        if (on !== undefined) {
+          freeInkOn = on;
+          render();
+        }
+        return freeInkOn;
       },
       glyphs: (on?: boolean) => {
         if (on !== undefined) {
@@ -1873,7 +1993,7 @@ async function main() {
   }
 
   function exposeDebugHook() {
-    (window as unknown as { __neocad: unknown }).__neocad = { model, engine, repl, render, files, faces: faceLayer ? "depth" : "painter's", bodies: solidBodies }; // debug/automation hook
+    (window as unknown as { __neocad: unknown }).__neocad = { model, engine, repl, render, files, faces: faceLayer ? "depth" : "painter's", bodies: solidBodies, diagnosis: () => diagnosis }; // debug/automation hook
   }
   exposeDebugHook();
 

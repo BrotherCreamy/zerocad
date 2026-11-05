@@ -37,12 +37,18 @@ const built = existsSync(new URL("../../src/solids/smlib-gen/smlib.mjs", import.
 const skip = built ? false : "no SMLib build — run `npm run build:solids`";
 
 const SHOTS = process.env.NEOCAD_E2E_SHOTS;
+// Re-recorded for docs/plans/sketch-relations.md: the bottom edge's level mark
+// is `—` where it was `//` — the 61 pixels of that one mark's box (680–693,
+// 367–376) and nothing else, measured against the old picture. The test turns
+// the free ink off, so the drawing is otherwise the previous build's.
 const GOLDEN = new URL("./golden/hidden-plain-sketch.png", import.meta.url).pathname;
 const opened: AppContext[] = [];
 after(async () => { for (const a of opened) await a.close(); });
 
 async function fresh(): Promise<AppContext> {
   const app = await openApp();
+  // What is drawn, not what is free: the sketch's own ink (docs/plans/sketch-relations.md).
+  await app.repl("freeink(false)");
   opened.push(app);
   return app;
 }
@@ -158,6 +164,8 @@ test("a sketch with no solid draws pixel for pixel what the previous build drew 
   // window less the title bar there was then. There is no title bar now, so
   // the window is asked for at that size — the drawing is what is compared.
   const app = await openApp({ viewport: { width: 1100, height: 768 } });
+  // What is drawn, not what is free: the sketch's own ink (docs/plans/sketch-relations.md).
+  await app.repl("freeink(false)");
   opened.push(app);
   await plainSketch(app);
   assert.equal((await app.repl('view("hidden")')).value, "hidden");
@@ -215,6 +223,8 @@ const CORNER = [1, -2, 1.5];
 /** A fresh app in the hidden view, which is what this file tests. */
 async function hiddenApp(options: { webgl?: boolean } = {}): Promise<AppContext> {
   const app = await openApp(options);
+  // What is drawn, not what is free: the sketch's own ink (docs/plans/sketch-relations.md).
+  await app.repl("freeink(false)");
   opened.push(app);
   assert.equal((await app.repl('view("hidden")')).value, "hidden");
   return app;

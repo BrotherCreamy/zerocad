@@ -30,6 +30,8 @@ after(async () => { for (const a of opened) await a.close(); });
 
 async function fresh(): Promise<AppContext> {
   const app = await openApp();
+  // What is drawn, not what is free: the sketch's own ink (docs/plans/sketch-relations.md).
+  await app.repl("freeink(false)");
   opened.push(app);
   return app;
 }

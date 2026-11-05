@@ -18,6 +18,7 @@ import { ENGINE_TOOLS, TOOL_GROUPS, Tool, defineTool, getToolCtor, listTools, al
 import { OptionMemory, declaredOptions, defaultsOf, describeValues, resolveOptions } from "./tools/options.ts";
 import * as basic from "./relations/basic.ts";
 import * as geom from "./relations/geometry.ts";
+import { measure } from "./relations/measure.ts";
 import {
   construction, del, extrude, fillet, hole, loopOfMember, orientingPlane, peelOptions, regen, revolve, set, unhole,
 } from "./operations.ts";
@@ -65,6 +66,12 @@ export interface EnvHandles {
    * mark you cannot see but can still click would be a trap.
    */
   glyphs?: (on?: boolean) => boolean;
+  /**
+   * Whether free entities wear the free ink (docs/plans/sketch-relations.md):
+   * on by default; off draws every entity in the sketch's own ink, the status
+   * still counting what is free. A viewer's setting, never journalled.
+   */
+  freeink?: (on?: boolean) => boolean;
   /** Cancels whatever tool is armed. */
   cancel?: () => void;
   /** Re-solves and redraws. Absent outside the browser. */
@@ -212,6 +219,22 @@ function lifted(model: Model, coords: number[]): number[] {
   return model.dim === 3 && Array.isArray(coords) && coords.length === 2 ? [...coords, 0] : coords;
 }
 
+/**
+ * `horizontal("l1")` / `vertical("l1")`, and the two-point forms: `par`
+ * against the default frame's x or y axis, resolved now (`axisRef`), so the
+ * journal holds the `par` with the frame it meant. A line takes nothing more;
+ * a point takes the second point.
+ */
+function level(model: Model, axis: "x" | "y", word: string, a: string, b?: string | null): string {
+  const ref = model.axisRef(axis);
+  if (model.entities.get(a)?.kind === "point") {
+    if (b == null) throw new Error(`${word}("${a}") needs a second point — or give it a line`);
+    return geom.parallel(model, a, b, ref);
+  }
+  if (b != null) throw new Error(`${word} takes a line, or two points — "${a}" is not a point, so nothing more`);
+  return geom.parallel(model, a, ref);
+}
+
 // `describeRelation` and the short-name table it reads used to live here. They
 // moved down to picking.ts when the hover tag started describing relations too
 // — one table, so the canvas and the command line cannot end up calling the
@@ -269,6 +292,19 @@ export function neocadScope(h: EnvHandles): Bag {
   relation(["tan", "tangent"], slots("line", "circle"), bind(model, geom.tangent));
   relation(["sym", "symmetric"], slots("a", "b", "line"), bind(model, geom.symmetric));
   relation(["arcends", "arcEndpoints"], slots("arc"), bind(model, geom.arcEndpoints));
+  // The sketch relations (docs/plans/sketch-relations.md). `horizontal` and
+  // `vertical` are the words an Onshape hand types, and they **expand to
+  // par** against the default frame's axis — `par("l1", xaxis())` is what is
+  // journalled and drawn (`—`), so there is still no hor/ver relation, only a
+  // second spelling of the one that exists.
+  relation(["col", "collinear"], slots("line", "line"), bind(model, geom.collinear));
+  relation(["horizontal"], slots("a", "b"), (a: string, b?: string | null) => level(model, "x", "horizontal", a, b));
+  relation(["vertical"], slots("a", "b"), (a: string, b?: string | null) => level(model, "y", "vertical", a, b));
+  relation(["intersection"], slots("point", "curve", "curve"), bind(model, geom.intersection));
+  relation(["pierce"], slots("point", "curve", "plane"), bind(model, geom.pierce));
+  relation(["spacing", "equalSpacing"], slots("point", "point", "point"), bind(model, geom.equalSpacing));
+  relation(["dia", "diameter"], slots("circle", "#diameter"), bind(model, geom.diameter));
+  relation(["measure"], slots("#kind", "a", "b"), bind(model, measure));
 
   /**
    * Applies clauses to an entity that exists, returning the relation names
@@ -594,6 +630,17 @@ export function neocadScope(h: EnvHandles): Bag {
   geometry.xaxis = (frame?: string | null) => model.axisRef("x", frame);
   geometry.yaxis = (frame?: string | null) => model.axisRef("y", frame);
   geometry.zaxis = (frame?: string | null) => model.axisRef("z", frame);
+  /**
+   * Degrees as radians — `ang("l1", "l2", deg(30))`. `ang` stores radians and
+   * its label reads degrees; this is how the dimension tool types what it
+   * measured in the unit the label shows (dimensioning.ts).
+   */
+  geometry.deg = (degrees: number) => {
+    if (typeof degrees !== "number" || !Number.isFinite(degrees)) {
+      throw new Error(`deg takes a number of degrees, got ${JSON.stringify(degrees)}`);
+    }
+    return (degrees * Math.PI) / 180;
+  };
 
   // Long names beside the short ones, the way every relation already has both.
   // The owner's examples are written `circle()`, and a creator function shares
@@ -1019,6 +1066,11 @@ export function neocadScope(h: EnvHandles): Bag {
       if (!h.glyphs) throw new Error("no viewport in this environment");
       return h.glyphs(on);
     },
+    /** The free ink, on by default; `freeink(false)` draws everything in the sketch's ink. */
+    freeink: (on?: boolean) => {
+      if (!h.freeink) throw new Error("no viewport in this environment");
+      return h.freeink(on);
+    },
     refresh: () => { h.refresh?.(); return "ok"; },
     /**
      * Where the panels are — `layout()` — or all of them back where they
@@ -1284,6 +1336,32 @@ function help(scope: Bag): string {
     "           nothing.",
     "relations  dist fix coin mid par perp ang on eq",
     "           rad oncircle conc eqrad tan sym arcends onplane",
+    "           col dia spacing intersection pierce horizontal vertical measure",
+    '           dist(p, l, d) a point from a line; dist(l1, l2, d) two lines (the',
+    "           second's middle from the first). eq takes two circles (equal",
+    "           radius) or a line and an arc (equal length). mid(p, arc) halfway",
+    '           round an arc. col(l1, l2) one line; intersection(p, c1, c2) on',
+    "           both; pierce(p, curve, plane?) where a curve crosses the plane",
+    "           (3D); spacing(p1, p2, p3, …) even gaps; dia(c, d) a diameter.",
+    '           horizontal("l1") / vertical("p1", "p2") are par against the',
+    "           default frame's axis — par(l, xaxis()) is what they journal, drawn",
+    '           — and |. tan at a shared end is a smooth join. deg(30) is radians.',
+    '           measure("dist", a, b) — or "angle", "radius", "diameter" — is a',
+    "           driven dimension: drawn in parentheses, live, holding nothing.",
+    "diagnosis  After each solve: free entities are drawn blue (Onshape's), held",
+    "           ones in the sketch's ink, and the status says SOLVED · 3 free —",
+    "           how many ways the drawing can still move. A point on the drawing",
+    "           plane or the ground is not counted free off it; a curve's normal",
+    "           length is no freedom. CONFLICT names the relations that cannot",
+    "           all hold, drawn red: click one in the status to select it, Delete",
+    "           removes it. A relation the earlier ones already imply is",
+    "           redundant — said in orange, never refused. Not during a drag.",
+    "           freeink(false) draws every entity in the sketch's ink.",
+    "           arm(\"dimension\") clicks a line, two points, a point and a line,",
+    "           two lines or a circle, then empty canvas to place: dist, ang, rad",
+    "           (or dia, { diameter: true }; measure, { driven: true }), holding",
+    "           what it measures. arm(\"constrain\") lists the relations what is",
+    "           picked — or selected first — takes; one press types one.",
     "clauses    _ is the thing being made. A relation given _ does not apply:",
     "           it becomes a clause, and pt ln circ arc frame take clauses",
     "           after their own arguments, applying each to what they made —",
@@ -1504,7 +1582,7 @@ function help(scope: Bag): string {
     '           the drawing tools take it too: arm("circle", { construction: true }).',
     "           The hover tag says construction; ls() (construction).",
     "inspect    ls()  rels(name?)  coords(name)  solve()  tools()  hover()",
-    "           snapping(on)  glyphs(on)  model",
+    "           snapping(on)  glyphs(on)  freeink(on)  model",
     "           loops() — the closed loops of lines and arcs (and whole circles),",
     "           each in one plane: ends join only at a shared point or a coin,",
     "           never by sitting on the same spot. Read-only; named by members.",

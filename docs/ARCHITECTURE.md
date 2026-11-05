@@ -223,6 +223,46 @@ that is the part worth having in WASM. The outer loop is bookkeeping —
 damping, step acceptance, convergence — which is easier to read, change and
 debug in TypeScript and is not where the time goes.
 
+## Diagnosis: the kernel says the rank, the model says the names
+
+What is still free, and which relations disagree, are questions about the
+Jacobian — so they are answered at the layer that has one, and translated
+into names at the layer that has names. The layer rule is the shape of it.
+
+**kernel-rs** gains one linear-algebra function, `null_support`: the rank of
+a sparse m × n matrix and, per column, whether it is in the support of the
+null space. It splits the matrix into connected components and eliminates
+each densely, columns in order, rank relative to each column's own norm. It
+knows variables and rows, nothing else.
+
+**`Problem.analyse`** asks it twice. Of J, with extra **gauge rows** the
+caller supplies (plain linear rows over variable indices), it gives the free
+variables and the count of independent motions. Of Jᵀ, over the stored rows
+only, it gives the rows each implied by the rows before it — so "redundant"
+means the later of two ways of saying one thing. `SolveReport.blocks` names
+the blocks whose residual stayed large after a failed solve; at a
+least-squares minimum the residual lies in Jᵀ's null space, so those are
+rows in a dependency. All of it is handles and indices: `problem.ts` still
+has never heard of a point.
+
+**`Model.diagnose`** owns the meaning. It says which variables are live (a
+deleted entity's are tombstoned and would otherwise count), which directions
+are gauges rather than freedoms (a curve's normal length; a point lying on
+the drawing plane or the ground, off it), maps free variables back to the
+entities that own or refer to them, and maps blocks back to the relations
+whose `model.relation` collected them (`Model.conflicting`). A relation is
+redundant only when every one of its rows is implied.
+
+**main.ts** asks once per solve that the user caused — a commit, an entry,
+an undo, the end of a drag — never per drag frame, which draws with the last
+answer. It is a few milliseconds where a drag frame's solve is ten.
+
+One consequence worth knowing: the analysis is first order, so a residual
+whose gradient vanishes at its own root reads as holding nothing. That is
+the old rule against squared residuals, seen from the other side — and it is
+why `tan` at a shared end needed a join form: the distance form there was a
+double root, and the joint read as free (docs/plans/sketch-relations.md).
+
 ## Structure and equations are separate
 
 `model.ts` holds structure: names, references between entities, and which

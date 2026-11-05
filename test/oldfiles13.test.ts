@@ -64,6 +64,32 @@ function following(m: Model): Map<string, string> {
   return out;
 }
 
+/**
+ * Points a file's solve now puts **exactly** where they belong, which the
+ * build that recorded its geometry left a little short. `pre-explicit-regions`
+ * rounds the corner at (40, 0) with radius 5, and its tangent points belong at
+ * (35, 0) and (40, 5) — on the base and on the lid. `tan(line, arc)` at a
+ * shared end was a double root (docs/plans/sketch-relations.md, As built), so
+ * the old solve stopped within √tolerance of the join: 1.8e-3 and 3.8e-4 off.
+ * The join form crosses zero cleanly and lands on them; everything else in the
+ * file is where it was, to 1e-6.
+ */
+const NOW_EXACT: Record<string, Record<string, number[]>> = {
+  "pre-explicit-regions": { p5: [35, 0, 0], p10: [35, 0, 12], p15: [40, 5, 0], p18: [40, 5, 12] },
+};
+
+/** And the arcs between them, which now sweep exactly the quarter turn the corner is. */
+const NOW_EXACT_SWEEP: Record<string, Record<string, number>> = {
+  "pre-explicit-regions": { a1: Math.PI / 2, a2: Math.PI / 2 },
+};
+
+/** The recorded geometry, with what a solve now puts exactly where it belongs put there. */
+function solvedGeometry(name: string, want: Geometry): Geometry {
+  const curves = { ...want.curves };
+  for (const [c, sweep] of Object.entries(NOW_EXACT_SWEEP[name] ?? {})) curves[c] = { ...curves[c], sweep };
+  return { ...want, points: { ...want.points, ...(NOW_EXACT[name] ?? {}) }, curves };
+}
+
 for (const [name, lifted] of [["curves-v12", false], ["features-v12", false], ["flat2d-v12", true], ["pre-explicit-regions", false]] as const) {
   test(`${name}: opens to the geometry the format-12 build opened it to — solved, regenerated and re-saved without moving`, async () => {
     await loadKernel();
@@ -94,16 +120,16 @@ for (const [name, lifted] of [["curves-v12", false], ["features-v12", false], ["
     }
 
     assert.equal(m.solve().solved, true, "solved as it stands");
-    sameGeometry(m, want, 1e-6, "solved");
+    sameGeometry(m, solvedGeometry(name, want), 1e-6, "solved");
     for (const f of [...m.features.keys()]) regen(m, f);
     assert.equal(m.solve().solved, true);
-    sameGeometry(m, want, 1e-6, "regenerated");
+    sameGeometry(m, solvedGeometry(name, want), 1e-6, "regenerated");
 
     const once = save(m);
     assert.equal(JSON.parse(once).version, 14);
     const back = open(once);
     assert.equal(save(back), once, "re-saves stably as the current format");
-    sameGeometry(back, want, 1e-6, "reopened");
+    sameGeometry(back, solvedGeometry(name, want), 1e-6, "reopened");
   });
 }
 

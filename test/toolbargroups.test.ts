@@ -41,12 +41,12 @@ const inside = (a: Rect, b: Rect) => a.x >= b.x - 1e-6 && a.y >= b.y - 1e-6 && a
 // The registry is one per process, and these tests add to it in order: the
 // first reads the app's own list before anything is defined over it.
 
-test("the button list is eleven today, with these names in this order — a group's button showing its first member", async () => {
+test("the button list is thirteen today, with these names in this order — a group's button showing its first member", async () => {
   await registerBuiltIns();
   const buttons = toolbarButtons();
-  assert.equal(buttons.length, 11);
+  assert.equal(buttons.length, 13);
   assert.deepEqual(buttons.map((b) => b.group ?? b.tools[0]),
-    ["select", "hand", "point", "line", "shapes", "circle", "arc", "modify", "extrude", "revolve", "sketch"]);
+    ["select", "hand", "point", "line", "shapes", "circle", "arc", "modify", "dimension", "constrain", "extrude", "revolve", "sketch"]);
   assert.deepEqual(buttons.find((b) => b.group === "shapes")!.tools, ["rectangle"]);
   assert.deepEqual(buttons.find((b) => b.group === "modify")!.tools, ["fillet"]);
   // Every listed tool is on exactly one button.
@@ -89,7 +89,7 @@ test("a tool with static group joins it, after the table's members — and its b
   assert.equal(toolGroup("t_stamp"), "shapes");
   const shapes = toolbarButtons().find((b) => b.group === "shapes")!;
   assert.deepEqual(shapes.tools, ["rectangle", "t_stamp"]);
-  assert.equal(toolbarButtons().length, 11, "no new button");
+  assert.equal(toolbarButtons().length, 13, "no new button");
   assert.equal(toolbarButtons().findIndex((b) => b.group === "shapes"), 4, "where the rectangle's was");
   // A table member registered after it still comes first in the group's order.
   class Polygon extends Tool { name = "polygon"; }
@@ -230,7 +230,7 @@ test("slid along the tray off a pane in the way, to the nearest clear place; nev
 
 // --- everything fits, with a flyout open --------------------------------------------
 
-const TOOLS = 11;
+const TOOLS = 13;
 /** Where the tray's `i`th button is, in a tray placed at `t` (the stylesheet's grid: strip, padding, a pitch a button). */
 function buttonAt(t: Layout[string], i: number, m: Metrics): Rect {
   const lines = linesOf(t, m);

@@ -55,6 +55,12 @@ export const TOOL_ICONS: Readonly<Record<string, string>> = {
   // Two edges meeting at a corner, the corner itself replaced by a quarter
   // circle on its inside — what a fillet does to the corner it is given.
   fillet: svg("fillet", `<path d="M3 13.5V8.5A5.5 5.5 0 0 1 8.5 3H13.5"/>`),
+  // A draughtsman's dimension: two witness lines and the arrowed line between
+  // them — what the tool puts on the drawing (docs/plans/sketch-relations.md).
+  dimension: svg("dimension", `<path d="M2.5 3.5v9M13.5 3.5v9M2.5 8h11"/><path d="M5 6.2 2.5 8 5 9.8M11 6.2 13.5 8 11 9.8"/>`),
+  // Two edges at a right angle with the square drawn in their corner: a
+  // relation between two things, the commonest one there is.
+  constrain: svg("constrain", `<path d="M3 13.5h10.5M3 13.5V2.5"/><path d="M3 9.5h4v4"/>`),
   // A slab seen from above: the face raised off its base, the three vertical
   // edges that can be seen, and the base's two front edges — the back two are
   // behind the slab, and drawn they cross its front face.

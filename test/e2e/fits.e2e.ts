@@ -165,7 +165,7 @@ test("every iPhone, both ways up, installed and in Safari: no pane over another,
 // A group's flyout open (docs/plans/toolbar-groups.md): two padding tools give
 // shapes and modify a second member each — the packages that fill them have
 // not landed — so the flyout's room is exercised on every phone now. Still
-// eleven buttons; the flyout, opened by a long-press, overlaps no pane, the
+// thirteen buttons; the flyout, opened by a long-press, overlaps no pane, the
 // tray, the logo or the corner, and is on screen; closed, everything fits as
 // above. (The arithmetic at every queued size, up to modify's seven, is
 // toolbargroups.test.ts's.)
@@ -184,7 +184,7 @@ test("every iPhone, both ways up, installed and in Safari, with a group's flyout
           await p.page.waitForTimeout(200);
           await p.page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
           const where = `${ph.name}, ${turn}, ${mode}`;
-          assert.equal(await p.page.$$eval("#toolbar button", (bs) => bs.length), 11, `${where}: eleven buttons`);
+          assert.equal(await p.page.$$eval("#toolbar button", (bs) => bs.length), 13, `${where}: thirteen buttons`);
           for (const g of ["shapes", "modify"]) {
             const b = await p.page.$eval(`#toolbar button[data-group="${g}"]`, (el) => {
               const r = el.getBoundingClientRect();
@@ -219,11 +219,15 @@ test("every iPhone, both ways up, installed and in Safari, with a group's flyout
   }
 });
 
-// Eleven buttons since one circle tool and one arc (docs/plans/one-circle-one-arc.md):
+// Thirteen buttons since the dimension and constrain tools (docs/plans/
+// sketch-relations.md), as there were before one circle tool and one arc
+// (docs/plans/one-circle-one-arc.md) made it eleven: on the 13's landscape
+// eleven fit one row and thirteen take two, as they always did; the SE takes
+// two either way. Earlier: eleven buttons since one circle tool and one arc —
 // on the 13's landscape they fit one row, where thirteen took two; the SE still
 // takes two. The claim is the same either way — as many lines as the room
 // needs, every button on screen, filled line by line.
-for (const [ph, lines] of [[THIRTEEN, 1], [SE, 2]] as const) {
+for (const [ph, lines] of [[THIRTEEN, 2], [SE, 2]] as [typeof THIRTEEN, number][]) {
   test(`${ph.name}: the landscape tray is ${lines === 1 ? "one row" : "two rows"}, every button on screen, in order line by line`, async () => {
     const p = await phone();
     try {
@@ -324,16 +328,15 @@ test("iPhone 13: a pane docked against a tray keeps lying along it when a rotati
     await forgetAutosave(p.page);
     await p.page.reload({ waitUntil: "networkidle" });
     await ready(p.page);
-    // Thirteen buttons, as this was written for: the toolbar has eleven since
-    // one circle tool and one arc (docs/plans/one-circle-one-arc.md), and two
-    // tools defined at the command line put back the length this rotation was
-    // measured at — what is under test is the docking, not the count. (At
-    // eleven the landscape column is two lines, too tall to start under the
-    // logo's corner from where the portrait one stood, and the resolver sets
-    // it beside the corner instead: TODO.md, found by this package.)
-    for (const t of ["t_pad1", "t_pad2"]) {
-      assert.ok((await repl(p.page, `defineTool("${t}", class extends Tool { name = "${t}"; })`)).ok);
-    }
+    // Thirteen buttons, as this was written for: the toolbar had eleven from
+    // one circle tool and one arc (docs/plans/one-circle-one-arc.md) and two
+    // tools defined at the command line here put back the length this rotation
+    // was measured at; since the dimension and constrain tools
+    // (docs/plans/sketch-relations.md) it has thirteen of its own. What is
+    // under test is the docking, not the count. (At eleven the landscape
+    // column is two lines, too tall to start under the logo's corner from
+    // where the portrait one stood, and the resolver sets it beside the
+    // corner instead: TODO.md, found by this package.)
     await p.page.waitForTimeout(250);
     const check = async (turn: Turn, lines: string) => {
       const c = await chrome(p.page);

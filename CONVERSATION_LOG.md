@@ -106,6 +106,46 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### Sketch relations: why the rank is asked per component, and why `tan` changed
+
+The owner asked for *"strict rule enforcement"*: say what is free and what
+conflicts. The solver already had the Jacobian; what it lacked was a rank.
+
+**Rejected: an SVD, or any dense factorisation of the whole matrix.** Exact
+and simple, and cubic in the drawing — a hundred rectangles would be a
+second. Sketches are mostly separate pieces (a frame is a datum, so it joins
+nothing), so the matrix is split into connected components first and each is
+eliminated densely. Gaussian elimination with row pivoting, columns in
+order, rank relative to each column's own norm: not as rank-revealing as QR
+with column pivoting in theory, and in practice the Jacobians here are well
+scaled per column, and keeping columns in order is what gives "redundant" a
+useful meaning (the later relation is the one named).
+
+**Rejected: calling every row in the left null space's support redundant.**
+Tried in the head before writing it: a 3D arc drawn by the tool has an
+`onplane` end and an `oncircle` plane row saying the same thing, so every
+arc would have been orange. "Every row implied by the rows before it" names
+only a relation that says nothing new, and only the later one.
+
+**The z gauge** is the one judgement in it. Points drawn on the ground in a
+fresh document hold nothing in z, truly; the solver never moves them; and an
+Onshape user calls a fully dimensioned sketch fully defined. Counting z would
+have left every drawing "free" forever and made the ink useless, so a point
+lying on the drawing plane or the ground is not counted free off it. Written
+down as vetoable.
+
+**`tan` changed because the analysis found it.** The first unit test of a
+tangent join failed at 2e-7 residual and a point 0.002 off — the distance
+form at a shared end is a double root. That had always been true (an old
+fixture's fillet was 1.8e-3 short) and nothing had noticed, because the solve
+still called it solved. The join form fixes both the accuracy and the
+diagnosis; the old-file test now expects the exact points, and says why.
+
+**The status.** Putting `3 free` inside `#status` would have broken every
+test that reads `SOLVED` exactly, and more to the point mixed a verdict with
+a description, so the diagnosis is its own span beside it — which is also
+what lets its names be buttons inside a corner that takes no pointer events.
+
 ### Toolbar groups: why the flyout replaces a grouped button's tooltip, and is not a panel
 
 The owner wants the usual sketch tools, and everything to fit; a family

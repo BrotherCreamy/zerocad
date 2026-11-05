@@ -16,6 +16,32 @@ etc).
   on every push to the working branch. Called NeoCAD until 0.1.0; the
   internal code name stays in identifiers, the file format tag and storage
   keys (see TODO.md's register).
+- **Sketch relations: diagnosis, a dimension tool, a constrain tool**
+  (docs/plans/sketch-relations.md, built).
+  - **Diagnosis.** `Problem.analyse` asks the kernel's `null_support`
+    (kernel-rs/src/analysis.rs: per-component dense elimination) for the
+    Jacobian's rank: free variables from J (with gauge rows), redundant rows
+    from Jᵀ. `Model.diagnose` maps them to entities (`free`, `dof`) and
+    relations (`redundant`); `Model.conflicting` maps a failed solve's large
+    rows (`SolveReport.blocks`) to relations. Not counted free: a curve's
+    normal length; a point lying on the drawing plane or the ground.
+  - **In the app**, after each solve and never per drag frame: free
+    entities in a blue ink, held ones in the sketch's; `#diagnosis` beside
+    the verdict says `5 free`, `d1 · d2 cannot all hold` (red, names
+    clickable to select, then Delete) or `· redundant r5` (orange); a
+    conflicting or redundant relation's glyph wears that ink. 2.1 ms on the
+    biggest fixture.
+  - **Relations**: `col`, `intersection`, `pierce` (3D), `spacing`, `dia`
+    (a dimension), `measure` (driven: no blocks, drawn in parentheses, live),
+    `dist` point–line and line–line, `eq` circles and line–arc, `mid(p,
+    arc)`, `horizontal`/`vertical` (journalled as `par` to the default
+    frame's axis; an axis `par` wears `—`/`|`); `deg(x)`. `tan` at a shared
+    end is a join form (exact, where the distance form was a double root).
+  - **Tools**: `dimension` (pick, then empty canvas; options diameter,
+    driven) and `constrain` (picks or the selection; the options panel lists
+    `constraintsFor` as rows), each its own button — thirteen buttons. One
+    rounding for the tool and the menu (`dimensioning.ts`). The selection's
+    context menu has the same Constrain list.
 - **Solids on SMLib: bodies that add, cut and intersect**
   (docs/plans/solids-kernel.md, built). NVIDIA's SMLib is built from pinned
   source (`npm run build:solids` runs `scripts/solids/build.sh`, output in the

@@ -2765,6 +2765,16 @@ export interface DialogState {
   choice?: { option: string; resolved: string | null; offer: string | null } | null;
 }
 
+/**
+ * A command a tool offers on its panel, one row each: the label, and the line
+ * the row types when pressed. This file's own shape, as `DialogState` is — it
+ * knows nothing of tools.
+ */
+export interface PanelCommand {
+  label: string;
+  command: string;
+}
+
 /** What the options panel needs of its host. */
 export interface OptionsHost {
   /**
@@ -2772,7 +2782,12 @@ export interface OptionsHost {
    * tool that makes a feature, the state of its ✓ — or null when none is armed
    * or it has neither options nor a ✓.
    */
-  armed(): { tool: string; rows: OptionRow[]; dialog?: DialogState | null } | null;
+  armed(): { tool: string; rows: OptionRow[]; dialog?: DialogState | null; commands?: readonly PanelCommand[] } | null;
+  /**
+   * Types one of the armed tool's `commands` (the constrain tool's relations) as
+   * one user action and tells the tool it ran. Absent: `run`, untold.
+   */
+  command?(text: string): Promise<unknown> | void;
   /** Types one line into the command machinery, as one user action — `submit`. Settles once it has run. */
   run(command: string): Promise<unknown> | void;
   /** ✓ — what Enter does. */
@@ -2869,18 +2884,21 @@ export class OptionsPanel {
    */
   sync(): boolean {
     const a = this.host.armed();
+    const commands = a?.commands ?? [];
     const key = a
-      ? [a.tool, a.dialog ? "dialog" : "", ...a.rows.map((r) => `${r.name}\t${typeof r.value}\t${r.label}\t${r.unit}\t${r.choices?.flat().join("\t") ?? ""}`)].join("\n")
+      ? [a.tool, a.dialog ? "dialog" : "", ...a.rows.map((r) => `${r.name}\t${typeof r.value}\t${r.label}\t${r.unit}\t${r.choices?.flat().join("\t") ?? ""}`),
+        ...commands.map((c) => `cmd\t${c.label}\t${c.command}`)].join("\n")
       : "";
     const shaped = key !== this.key;
     if (shaped) {
       this.key = key;
       this.tool = a?.tool ?? "";
-      this.count = a ? a.rows.length + (a.dialog ? 1 : 0) : null;
+      this.count = a ? a.rows.length + (a.dialog ? 1 : 0) + commands.length : null;
       this.body.textContent = "";
       this.ok = null;
       if (this.strip) this.strip.textContent = a ? a.tool : "";
       for (const row of a?.rows ?? []) this.body.appendChild(this.row(row));
+      for (const c of commands) this.body.appendChild(this.commandRow(c));
       if (a?.dialog) this.body.appendChild(this.actions());
     }
     if (a) this.fill(a.rows, false, a.dialog?.choice ?? null);
@@ -2921,6 +2939,33 @@ export class OptionsPanel {
       name: "Cancel", key: "Esc", summary: "Drops what is picked; a second Esc puts the tool down",
     }), () => this.host.cancel?.()));
     return line;
+  }
+
+  /**
+   * One of the tool's commands (docs/plans/sketch-relations.md — the constrain
+   * tool's relations for what is picked): a row-wide button, the label and,
+   * dim beside it, the line it types — the context menu's rule, every item
+   * showing what it does. Pressed, it types that line; it never takes the
+   * focus, so typing after it still types.
+   */
+  private commandRow(c: PanelCommand): HTMLElement {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "orow ocmd";
+    b.dataset.command = c.command;
+    const label = document.createElement("span");
+    label.className = "olabel";
+    label.textContent = c.label;
+    const cmd = document.createElement("span");
+    cmd.className = "ocmdtext";
+    cmd.textContent = c.command;
+    b.append(label, cmd);
+    b.title = `${c.label} — ${c.command}`;
+    b.addEventListener("mousedown", (e) => e.preventDefault());
+    b.addEventListener("click", () => {
+      void (this.host.command ? this.host.command(c.command) : this.host.run(c.command));
+    });
+    return b;
   }
 
   /**

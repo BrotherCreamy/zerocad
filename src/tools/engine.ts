@@ -727,11 +727,16 @@ export class ToolEngine {
     this.armedWith = { name: toolName, options, ...(target === undefined ? {} : { target }) };
     // Spent once taken: a selection carried into one tool is not carried on into the next.
     const preselected = [...this.selected.refresh(this.model)];
+    // The entities selected, too — what the constrain tool constrains when
+    // armed on a selection (docs/plans/sketch-relations.md). Relations and
+    // regions are not entities, and the model is asked which names are.
+    const prenamed = this.selection.prune(this.model).filter((n) => this.model.entities.has(n));
     this.selection.clear();
     const ctx: ToolContext = {
       model: this.model,
       options,
       preselected,
+      prenamed,
       trial: {},
       ...(target === undefined ? {} : { target }),
       planeAt: ([sx, sy], plane) => screenToPlane(this.view, sx, sy, plane),

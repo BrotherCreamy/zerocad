@@ -19,7 +19,7 @@ import type { Model } from "../model.ts";
 import type { Dual } from "../kernel/dual.ts";
 import { dot, norm, vecSub, wedge, wedgeNorm } from "./vec.ts";
 import { chunk, curveNormal, directionOf, directionOfPoints, joinVars, lineVars, unitDuals, type DirectionRef } from "./refs.ts";
-import { coincident } from "./basic.ts";
+import { coincident, onPlane } from "./basic.ts";
 
 // --- the direction relations -----------------------------------------------
 //
@@ -156,14 +156,169 @@ export function pointOnLine(model: Model, pointName: string, lineName: string): 
   });
 }
 
-/** Two lines have the same length. */
+/**
+ * Two things are the same size: two lines the same length — and, since the
+ * sketch-relations package, two circles or arcs (any mix) the same radius,
+ * which is `eqrad` under the name a person reaches for, and a line and an arc
+ * the same length (the arc's length along its sweep, r·θ). Journalled as
+ * `equalLength` whatever it relates, so one name replays every form.
+ */
 export function equalLength(model: Model, l1: string, l2: string): string {
+  const kind = (n: string) => model.entities.get(n)?.kind;
+  const curve = (n: string) => kind(n) === "circle" || kind(n) === "arc";
+  if (curve(l1) && curve(l2)) {
+    return model.relation("equalLength", [l1, l2], () => {
+      const a = model.circular(l1), b = model.circular(l2);
+      model.addResidual([a.radiusVar, b.radiusVar], (l) => [l[0].sub(l[1])], `eq(${l1},${l2})`);
+    });
+  }
+  if ((kind(l1) === "arc" && kind(l2) === "line") || (kind(l1) === "line" && kind(l2) === "arc")) {
+    return equalArcLength(model, l1, l2);
+  }
   return model.relation("equalLength", [l1, l2], () => {
     const dim = model.dim;
     model.addResidual(joinVars(lineVars(model, l1), lineVars(model, l2)), (l) => {
       const [a, b, c, d] = chunk(l, dim, 4);
       return [norm(vecSub(b, a)).sub(norm(vecSub(d, c)))];
     }, `eq(${l1},${l2})`);
+  });
+}
+
+/**
+ * A line as long as an arc: |b − a| = r·θ, θ the arc's sweep from its start to
+ * its end, counter-clockwise about its normal (arcgeom.ts's convention — about
+ * +z in 2D), in (0, 2π].
+ *
+ * The sweep is `atan2` of the two radii's wedge along the normal against their
+ * dot — smooth everywhere but where it wraps, which is an arc of nothing or of
+ * a whole turn, neither of which has a length worth equalling. Dimension-
+ * generic as far as an arc has an orientation: 2D reads +z, 3D the arc's own
+ * normal (declared, so a free arc turns); above 3D there is no "counter-
+ * clockwise" and it refuses.
+ */
+function equalArcLength(model: Model, l1: string, l2: string): string {
+  const [lineName, arcName] = model.entities.get(l1)?.kind === "line" ? [l1, l2] : [l2, l1];
+  if (model.dim > 3) throw new Error(`eq between a line and an arc needs an orientation, which a ${model.dim}D arc has not`);
+  return model.relation("equalLength", [l1, l2], () => {
+    const dim = model.dim;
+    model.arc(arcName);
+    const arcVars = () => {
+      const a = model.arc(arcName);
+      return [...model.point(a.center).varIndices, ...model.point(a.start).varIndices,
+        ...model.point(a.end).varIndices, a.radiusVar, ...(a.normal ?? [])];
+    };
+    model.addResidual(joinVars(lineVars(model, lineName), arcVars), (l) => {
+      const [p, q, c, s, e] = chunk(l, dim, 5);
+      const r = l[5 * dim];
+      const u = vecSub(s, c), v = vecSub(e, c);
+      let across: Dual;
+      if (dim === 2) {
+        across = wedge(u, v)[0];
+      } else {
+        const n = unitDuals(l.slice(5 * dim + 1, 5 * dim + 4));
+        const x = [u[1].mul(v[2]).sub(u[2].mul(v[1])), u[2].mul(v[0]).sub(u[0].mul(v[2])), u[0].mul(v[1]).sub(u[1].mul(v[0]))];
+        across = dot(n, x);
+      }
+      let sweep = across.atan2(dot(u, v));
+      if (sweep.val <= 0) sweep = sweep.add(2 * Math.PI);
+      return [norm(vecSub(q, p)).sub(r.mul(sweep))];
+    }, `eq(${l1},${l2})`);
+  });
+}
+
+// --- the sketch relations (docs/plans/sketch-relations.md) ----------------
+
+/**
+ * Two lines lie on one infinite line: both of the second's ends on the first's
+ * line — which is `par` plus an end `on`, said as one relation with one glyph.
+ * Two blocks, the wedge of each of the second's ends against the first's
+ * direction; both lazy, so the relation follows an edge a fillet re-points.
+ * Every component is linear in each end and none is a square, in any
+ * dimension.
+ */
+export function collinear(model: Model, l1: string, l2: string): string {
+  if (l1 === l2) throw new Error(`collinear needs two lines: ${l1} twice is one`);
+  return model.relation("collinear", [l1, l2], () => {
+    const dim = model.dim;
+    const vars = joinVars(lineVars(model, l1), lineVars(model, l2));
+    for (const [end, tag] of [[2, "start"], [3, "end"]] as const) {
+      model.addResidual(vars, (l) => {
+        const pts = chunk(l, dim, 4);
+        return wedge(vecSub(pts[end], pts[0]), vecSub(pts[1], pts[0]));
+      }, `col(${l1},${l2})|${tag}`);
+    }
+  });
+}
+
+/** The relation that holds `p` on `curve` — `on` for a line, `oncircle` for a circle or an arc — nested. */
+function onCurve(model: Model, p: string, curve: string): void {
+  const k = model.entities.get(curve)?.kind;
+  if (k === "line") pointOnLine(model, p, curve);
+  else if (k === "circle" || k === "arc") onCircle(model, p, curve);
+  else throw new Error(`"${curve}" is not a line, circle or arc`);
+}
+
+/**
+ * A point held where two curves cross: on both — `on` for a line, `oncircle`
+ * for a circle or an arc — as one relation. What the line tool's crossing snap
+ * has always applied as two relations, said as one that can be typed, deleted
+ * and seen as one glyph; the relation the trim and extend operations lean on.
+ * Two curves cross at up to two points; the solve keeps the one the point is
+ * nearer, as every relation with branches here does.
+ */
+export function intersection(model: Model, p: string, c1: string, c2: string): string {
+  if (c1 === c2) throw new Error(`intersection needs two curves: ${c1} twice is one`);
+  model.point(p);
+  return model.relation("intersection", [p, c1, c2], () => {
+    onCurve(model, p, c1);
+    onCurve(model, p, c2);
+  });
+}
+
+/**
+ * A sketch point where a curve pierces the sketch plane: on the curve, and on
+ * the plane (`onplane`) — the drawing plane when none is named, resolved now
+ * and journalled resolved, as `onplane` is. 3D only: in 2D every curve lies in
+ * the one plane there is, and the relation would be `on` with a lie attached.
+ * A line through the plane pierces it once; a circle twice, and the solve
+ * keeps the nearer.
+ */
+export function pierce(model: Model, p: string, curve: string, planeName?: string | null): string {
+  if (model.dim !== 3) throw new Error("pierce needs a 3D model — in 2D every curve already lies in the sketch's plane");
+  model.point(p);
+  const plane = planeName ?? model.drawingPlane();
+  model.planeKind(plane);
+  return model.relation("pierce", [p, curve, plane], () => {
+    onCurve(model, p, curve);
+    onPlane(model, p, plane);
+  });
+}
+
+/**
+ * Three or more points evenly spaced: each gap |pᵢ₊₁ − pᵢ| equal to the first.
+ * Distances minus distances, never a square; says nothing about the points
+ * being in a line — that is `on`, or `collinear` of the lines between them.
+ */
+export function equalSpacing(model: Model, ...points: string[]): string {
+  if (points.length < 3) throw new Error(`equalSpacing needs three points or more, not ${points.length}`);
+  if (new Set(points).size !== points.length) throw new Error("equalSpacing needs each point once");
+  return model.relation("equalSpacing", points, () => {
+    const vars = points.map((p) => model.point(p).varIndices);
+    const dim = model.dim;
+    for (let i = 1; i + 1 < points.length; i++) {
+      model.addResidual([...vars[0], ...vars[1], ...vars[i], ...vars[i + 1]], (l) => {
+        const [a, b, c, d] = chunk(l, dim, 4);
+        return [norm(vecSub(d, c)).sub(norm(vecSub(b, a)))];
+      }, `spacing(${points[i]},${points[i + 1]})`);
+    }
+  });
+}
+
+/** Pins a circle's (or arc's) diameter to a number: 2r = target. A dimension, `d`-named and settable, drawn `⌀24`. */
+export function diameter(model: Model, circleName: string, target: number): string {
+  return model.relation("diameter", [circleName, target], () => {
+    const c = model.circular(circleName);
+    model.addResidual([c.radiusVar], (l) => [l[0].mul(2).sub(target)], `dia(${circleName})`);
   });
 }
 
@@ -308,9 +463,26 @@ export function tangent(model: Model, a: string, b: string, side?: string | null
     const c = model.circular(circleName);
     const center = model.point(c.center);
     const dim = model.dim;
+    // Which of the line's ends is one of the arc's, read at every evaluation
+    // (the line can be re-pointed under it): 0 or 1, or -1 for none.
+    const shared = (): number => {
+      if (kind(circleName) !== "arc") return -1;
+      const arc = model.arc(circleName), refs = model.line(lineName).refs;
+      return refs.findIndex((r) => r === arc.start || r === arc.end);
+    };
     model.addResidual(joinVars(lineVars(model, lineName), center.varIndices, [c.radiusVar]), (l) => {
       const [p, q, ctr] = chunk(l, dim, 3);
       const u = vecSub(q, p);
+      // **At a shared end, the join**: the radius to that end square to the
+      // line, (end − centre) · (q − p) = 0 — a smooth join, Onshape's tangent
+      // arc. The distance form below is a *double* root there (the line
+      // touches the circle where the arc's own end already holds it to the
+      // rim), so its gradient vanishes at its own root: the solve crept to
+      // within √tolerance of the join and the rank analysis read the joint
+      // as free. This one crosses zero cleanly. Either way the arc is
+      // tangent to the line; which side it leaves on is kept by the seed.
+      const at = shared();
+      if (at >= 0) return [dot(vecSub(at === 0 ? p : q, ctr), u)];
       return [wedgeNorm(vecSub(ctr, p), u).div(norm(u)).sub(l[3 * dim])];
     }, `tan(${a},${b})`);
     const normal = curveNormal(model, circleName);
@@ -344,10 +516,38 @@ function tangentCircles(model: Model, a: string, b: string, given?: string | nul
   return model.relation("tangent", [a, b, side], () => {
     const pa = model.point(ca.center), pb = model.point(cb.center);
     const dim = model.dim;
-    model.addResidual([...pa.varIndices, ...pb.varIndices, ca.radiusVar, cb.radiusVar], (l) => {
+    // The end two arcs share, read at every evaluation — or null.
+    const joint = (): string | null => {
+      if (dim > 3) return null;
+      const ea = model.entities.get(a), eb = model.entities.get(b);
+      if (ea?.kind !== "arc" || eb?.kind !== "arc") return null;
+      return [ea.start, ea.end].find((n) => n === eb.start || n === eb.end) ?? null;
+    };
+    const normalA = curveNormal(model, a);
+    const vars = () => {
+      const s = joint();
+      return [...pa.varIndices, ...pb.varIndices, ca.radiusVar, cb.radiusVar,
+        ...model.point(s ?? ca.center).varIndices, ...(normalA ? normalA() : [])];
+    };
+    model.addResidual(vars, (l) => {
       const [p, q] = chunk(l, dim, 2);
-      const d = norm(vecSub(p, q));
       const ra = l[2 * dim], rb = l[2 * dim + 1];
+      // **At a shared end, the join**: the two centres and the end in one line
+      // — in 2D their wedge, in 3D its component along the first arc's normal
+      // (the |plane block below puts both in one plane). The distance form is
+      // a double root there, for `tan(line, arc)`'s reason: with the end
+      // already on both rims, |p − q| = ra ± rb is the triangle inequality's
+      // boundary, and its gradient vanishes at its own root. `side` is then
+      // whichever way the arcs were drawn, held by the seed.
+      if (joint() !== null) {
+        const s = l.slice(2 * dim + 2, 3 * dim + 2);
+        const u = vecSub(s, p), v = vecSub(q, p);
+        if (dim === 2) return [wedge(u, v)[0]];
+        const n = unitDuals(l.slice(3 * dim + 2, 3 * dim + 5));
+        const x = [u[1].mul(v[2]).sub(u[2].mul(v[1])), u[2].mul(v[0]).sub(u[0].mul(v[2])), u[0].mul(v[1]).sub(u[1].mul(v[0]))];
+        return [dot(n, x)];
+      }
+      const d = norm(vecSub(p, q));
       return [inside ? d.sub(ra.sub(rb).abs()) : d.sub(ra.add(rb))];
     }, `tan(${a},${b})`);
     const na = curveNormal(model, a), nb = curveNormal(model, b);

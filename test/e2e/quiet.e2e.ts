@@ -30,6 +30,8 @@ after(async () => { for (const a of opened) await a.close(); });
 
 async function fresh(): Promise<AppContext> {
   const app = await openApp();
+  // What is drawn, not what is free: the sketch's own ink (docs/plans/sketch-relations.md).
+  await app.repl("freeink(false)");
   opened.push(app);
   return app;
 }
@@ -418,6 +420,8 @@ test("the owner's plate with a hole reads as a clean solid: no dots, no names, t
 
 test("with no WebGL the painter's fallback draws the same fine edge line, into the drawing, after each face", async () => {
   const app = await openApp({ webgl: false });
+  // What is drawn, not what is free: the sketch's own ink (docs/plans/sketch-relations.md).
+  await app.repl("freeink(false)");
   opened.push(app);
   assert.equal(await app.renderer(), "painter's");
   await extruded(app);

@@ -10,6 +10,7 @@
 //! The outer LM loop (try a step, accept/reject, adjust lambda, repeat)
 //! lives in TypeScript too — this crate does one linear solve per call.
 
+mod analysis;
 mod solver;
 mod sparse;
 
@@ -32,6 +33,24 @@ pub fn solve_step(
 ) -> Vec<f64> {
     let j = Triplets { rows, cols, vals, m: r.len(), n };
     solver::solve_damped_step(&j, r, lambda, 200, 1e-10)
+}
+
+/// The rank of an m x n sparse matrix and, per column, whether it is held (0),
+/// a free pivot (1) or a non-pivot (2) — see analysis.rs. Returned as one flat
+/// array, `[rank, flag_0, …, flag_{n-1}]`, because one typed array is the
+/// cheapest thing to hand across the boundary.
+///
+/// What diagnosis is built on: asked of J, a non-zero flag is a variable some
+/// motion leaves every residual unchanged by (free); asked of Jᵀ, a 2 is a
+/// residual row the rows before it already imply (redundant).
+#[wasm_bindgen]
+pub fn null_support(rows: &[u32], cols: &[u32], vals: &[f64], m: usize, n: usize, tol: f64) -> Vec<u32> {
+    let j = Triplets { rows, cols, vals, m, n };
+    let (rank, flags) = analysis::null_support(&j, tol);
+    let mut out = Vec::with_capacity(n + 1);
+    out.push(rank as u32);
+    out.extend(flags.iter().map(|&f| f as u32));
+    out
 }
 
 #[cfg(test)]

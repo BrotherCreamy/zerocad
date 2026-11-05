@@ -408,8 +408,9 @@ async function tray(): Promise<{ x: number; y: number; w: number; h: number; ori
 
 // The built-ins after the reload that dropped "stamp": Select and the Hand
 // (docs/plans/select-hand.md) and the nine drawing tools — one circle and one
-// arc since docs/plans/one-circle-one-arc.md.
-const TOOLS = 11;
+// arc since docs/plans/one-circle-one-arc.md — and dimension and constrain since
+// docs/plans/sketch-relations.md.
+const TOOLS = 13;
 const RUN = 16 + 6 + TOOLS * 22; // strip, padding, a 22px step per button
 const DEPTH = 28; // one button thick
 /** The default tray's top: under the logo's 32 px box, a margin off it. */
