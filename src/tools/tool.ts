@@ -486,7 +486,7 @@ export interface ToolbarButton { group: string | null; tools: string[] }
  * The toolbar's buttons, in order: Select, the Hand, then every listed tool in
  * registration order, where a group's button stands where its first registered
  * member does — its members in the table's order, then any that joined by
- * `static group`, in registration order. Eleven today.
+ * `static group`, in registration order. Thirteen today.
  */
 export function toolbarButtons(on?: (tool: string) => boolean): ToolbarButton[] {
   const out: ToolbarButton[] = [];

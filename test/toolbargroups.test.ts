@@ -41,30 +41,37 @@ const inside = (a: Rect, b: Rect) => a.x >= b.x - 1e-6 && a.y >= b.y - 1e-6 && a
 // The registry is one per process, and these tests add to it in order: the
 // first reads the app's own list before anything is defined over it.
 
-test("the button list is fourteen today, with these names in this order — a group's button showing its first member", async () => {
+test("the button list is thirteen today, with these names in this order — a group's button showing its first member", async () => {
   await registerBuiltIns();
   const buttons = toolbarButtons();
-  // Fourteen: the dimension and constrain tools (docs/plans/sketch-relations.md),
+  // Thirteen: the dimension and constrain tools (docs/plans/sketch-relations.md)
+  // share the relate group's button (tool.ts, TOOL_GROUPS: a fourteenth ran a
+  // phone's column onto the command line),
   // and the sketch shapes (docs/plans/sketch-shapes.md) — the polygon and the
   // slot joined the rectangle's button, and the ellipse brought the curves
   // group's, after the arc as the table puts it.
-  assert.equal(buttons.length, 14);
+  assert.equal(buttons.length, 13);
   assert.deepEqual(buttons.map((b) => b.group ?? b.tools[0]),
-    ["select", "hand", "point", "line", "shapes", "circle", "arc", "curves", "modify", "dimension", "constrain", "extrude", "revolve", "sketch"]);
+    ["select", "hand", "point", "line", "shapes", "circle", "arc", "curves", "modify", "relate", "extrude", "revolve", "sketch"]);
   assert.deepEqual(buttons.find((b) => b.group === "shapes")!.tools, ["rectangle", "polygon", "slot"]);
   assert.deepEqual(buttons.find((b) => b.group === "curves")!.tools, ["ellipse"]);
+  assert.deepEqual(buttons.find((b) => b.group === "relate")!.tools, ["dimension", "constrain"]);
   assert.deepEqual(buttons.find((b) => b.group === "modify")!.tools, ["fillet"]);
   // Every listed tool is on exactly one button.
   assert.deepEqual(buttons.flatMap((b) => b.tools).sort(), [...ENGINE_TOOLS, ...listTools()].sort());
 });
 
-test("grouping is the table: shapes, curves and modify, in their order; Select, the Hand and the rest alone", () => {
-  assert.deepEqual(Object.keys(TOOL_GROUPS), ["shapes", "curves", "modify"]);
+test("grouping is the table: shapes, curves, modify and relate, in their order; Select, the Hand and the rest alone", () => {
+  assert.deepEqual(Object.keys(TOOL_GROUPS), ["shapes", "curves", "modify", "relate"]);
   assert.deepEqual(TOOL_GROUPS.shapes, ["rectangle", "polygon", "slot"]);
   assert.deepEqual(TOOL_GROUPS.curves, ["ellipse", "spline"]);
   assert.deepEqual(TOOL_GROUPS.modify, ["fillet", "chamfer", "trim", "extend", "offset", "mirror", "pattern"]);
+  // Dimension and constrain share a button since a fourteenth ran a phone's
+  // column onto the command line (tool.ts, beside the table).
+  assert.deepEqual(TOOL_GROUPS.relate, ["dimension", "constrain"]);
   assert.equal(toolGroup("rectangle"), "shapes");
   assert.equal(toolGroup("fillet"), "modify");
+  assert.equal(toolGroup("constrain"), "relate");
   for (const alone of ["select", "hand", "point", "line", "circle", "arc", "extrude", "revolve", "sketch"]) {
     assert.equal(toolGroup(alone), null, alone);
   }
@@ -92,7 +99,7 @@ test("a tool with static group joins it, after the table's members — and its b
   assert.equal(toolGroup("t_stamp"), "shapes");
   const shapes = toolbarButtons().find((b) => b.group === "shapes")!;
   assert.deepEqual(shapes.tools, ["rectangle", "polygon", "slot", "t_stamp"]);
-  assert.equal(toolbarButtons().length, 14, "no new button");
+  assert.equal(toolbarButtons().length, 13, "no new button");
   assert.equal(toolbarButtons().findIndex((b) => b.group === "shapes"), 4, "where the rectangle's was");
   // A table member registered after it still comes first in the group's order
   // — a stand-in for the chamfer, which is not built yet.
@@ -239,8 +246,8 @@ test("slid along the tray off a pane in the way, to the nearest clear place; nev
 
 // --- everything fits, with a flyout open --------------------------------------------
 
-// Fourteen: dimension and constrain, and the curves group's button.
-const TOOLS = 14;
+// Thirteen: the relate group's button (dimension and constrain) and the curves group's.
+const TOOLS = 13;
 /** Where the tray's `i`th button is, in a tray placed at `t` (the stylesheet's grid: strip, padding, a pitch a button). */
 function buttonAt(t: Layout[string], i: number, m: Metrics): Rect {
   const lines = linesOf(t, m);
@@ -336,7 +343,7 @@ test("help() says which tools share a button, how to open it, and how a tool joi
   const repl = new Repl(neocadScope({ model: new Model(2), optionMemory: new OptionMemory(null) }));
   const help = (await repl.eval("help()")).value as string;
   assert.match(help, /rectangle +.*\[shapes\]/);
-  assert.match(help, /Sharing a button now: rectangle \/ polygon \/ slot \/ t_stamp; fillet \/ chamfer \/ t_late \/ t_base\./);
+  assert.match(help, /Sharing a button now: rectangle \/ polygon \/ slot \/ t_stamp; fillet \/ chamfer \/ t_late \/ t_base; dimension \/ constrain\./);
   assert.match(help, /static group = "shapes"/);
   assert.match(help, /slides off it onto one and lifts/);
   const tools = (await repl.eval("tools()")).value as string[];

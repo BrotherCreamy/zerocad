@@ -28,7 +28,7 @@ const LIAR = readFileSync(new URL("../fixtures/workbenches/liar.zerocad.js", imp
 
 /** Today's tray, button by button — what `part` must still be. */
 const PART_TRAY = ["select", "hand", "point", "line", "rectangle", "circle", "arc", "ellipse", "fillet", "dimension",
-  "constrain", "extrude", "revolve", "sketch"];
+  "extrude", "revolve", "sketch"]; // dimension shows the relate group (dimension, constrain)
 const SKETCH_TRAY = PART_TRAY.filter((t) => !["extrude", "revolve", "sketch"].includes(t));
 
 async function fresh(app: AppContext): Promise<void> {

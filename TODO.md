@@ -1786,6 +1786,15 @@ starts.
         Android's way, the back gesture closing what is open, Install app in
         the menu, the file paths and their fallbacks, nothing new in the
         recogniser).
+      - **Also queued after mode feedback:**
+        [`panels-preview.md`](docs/plans/panels-preview.md) (the owner:
+        *"they should show how they will snap IF the user drops the grasped
+        toolbar in that spot. but until they actually drop it, the permanent
+        position of any tool bar is not changed"* — a drag moves only the
+        grasped panel, ghosts show where everything will land, the drop
+        commits, Escape commits nothing; a tray's turn at an edge is
+        previewed and happens at the drop; every panel not in hand is
+        translucent for the drag).
       - **Also queued (the owner, 2026-11-05: *"please add solid and surface
         fillet tools if possible (after you do the nurbs conversion)"*):**
         [`solid-fillets.md`](docs/plans/solid-fillets.md) after workbenches,
@@ -2400,6 +2409,31 @@ the same shape as "tools are not privileged", and a menu that could be
 extended the way `defineTool` extends the tool registry would close it.
 
 ## Smaller things
+
+- [x] **The tray's first button crowded the handle and a gap's worth of tray
+  sat empty after the last; fields under a finger did not scale below 16 px
+  (2026-11-05, the owner from his iPhone).** Measured in Chromium: a tray's
+  run is `title + 6 + per × (button + gap)` but the grid draws `per − 1`
+  gaps, so one gap — 18 px on a phone, 2 px on a desktop — was blank at the
+  end while the first button sat 3 px from the strip. The tray's padding
+  along its run is now `3 px + gap ⁄ 2` at both ends: the first button is
+  half a gap from the strip, the last half a gap from the end, and the run
+  is unchanged, so no layout arithmetic moved. The 16 px floor on fields is
+  retired (`chrome-logo-scale.md`, vetoable by one check on the device).
+  Found on the way: fourteen buttons at a phone's 100 % ran one pixel onto
+  an iPhone 13's command line and the line stepped aside to the right of
+  the tray (the old fallback; three chrome tests failed on it, one because
+  the line's strip was then hittable under the last button). Tried first:
+  the portrait column taking its room from what lies above the command
+  line and wrapping — it fixed those three but moved the organiser and the
+  log on the phone, and five touch tests aimed at the drawing under them.
+  Kept instead: **dimension and constrain share a button, the `relate`
+  group** (`TOOL_GROUPS`), so the column is the thirteen the relations
+  package passed with. **Vetoable**: if you would rather have both buttons,
+  the wrap is the other answer and the touch tests re-aim. Open with it:
+  the resolver still sizes a dragged or turned tray by the area alone, so
+  a fourteenth button would run onto the line again; `trayRoom` is where
+  that decision lives.
 
 - **A tray docked to the left edge, rotated so that it wraps into two lines
   too tall to start under the logo's corner, is set beside the corner (x 91 on

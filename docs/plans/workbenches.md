@@ -238,8 +238,8 @@ src/model.ts src/loops.ts src/faces.ts src/picking.ts src/step.ts` is empty
 | interface | — | — | — | help: history, tools, workbench, modules, viewport, touch, selection, construction, inspect, authoring |
 
 **The workbench table:** part (the default) = core, sketch, solids, files,
-step, organiser, interface — 14 buttons, today's exactly; sketch = core,
-sketch, files, organiser, interface — 11 buttons. A module no workbench names
+step, organiser, interface — 13 buttons, today's exactly; sketch = core,
+sketch, files, organiser, interface — 10 buttons. A module no workbench names
 is on every tray.
 
 **Add workbench… end to end:** logo menu → Add workbench… types

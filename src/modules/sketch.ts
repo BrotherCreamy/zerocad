@@ -102,6 +102,14 @@ defineModule("sketch", {
     shapes: ["rectangle", "polygon", "slot"],
     curves: ["ellipse", "spline"],
     modify: ["fillet", "chamfer", "trim", "extend", "offset", "mirror", "pattern"],
+    // Dimension and constrain share a button (docs/plans/sketch-relations.md
+    // gave each its own): both make relations, and as the fourteenth button
+    // the second ran an iPhone 13's column one pixel onto the command line at
+    // the phone's 100 %, which sent the line to the right of the tray and put
+    // its strip's hit box under the last button (measured, 2026-11-05). At
+    // thirteen the column ends above the line, as it did when the relations
+    // package passed its own gate. Vetoable (TODO.md).
+    relate: ["dimension", "constrain"],
   },
   icons: {
     rectangle: svg("rectangle", `<rect x="2.5" y="4" width="11" height="8" rx="1"/>`),
