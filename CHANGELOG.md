@@ -47,7 +47,7 @@ every deviation):
 
 Two buttons more makes thirteen: on an iPhone 13 held sideways the toolbar is
 two rows again. The dimension label is not yet draggable (TODO.md). Not tried
-on an iPhone. Pictures: docs/images/118–126.
+on an iPhone. Pictures: docs/images/126–134 (118–125 are the sibling sketch-shapes package's).
 
 Tests: unit 1290 → 1327 passing (37 skipped, as before), with
 `test/sketchrelations.test.ts` adding 37; Rust 3 → 11; e2e: 10 new in

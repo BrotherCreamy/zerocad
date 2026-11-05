@@ -124,7 +124,7 @@ Tests: `test/sketchrelations.test.ts` (37), `test/e2e/sketchrelations.e2e.ts`
 (10: mouse, iPhone 13, iPhone 13 landscape); counts in
 `dimensions.test.ts`, `glyphs.test.ts`, `oldfiles13.test.ts`,
 `toolbargroups.test.ts` and five e2e files moved from eleven buttons to
-thirteen. Pictures: docs/images/118–126.
+thirteen. Pictures: docs/images/126–134 (118–125 are the sibling sketch-shapes package's).
 
 **The relations, and what each journals:**
 
