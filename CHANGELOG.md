@@ -7,6 +7,68 @@ decisions.
 
 ---
 
+## Regions as operations: a face is a face, and a region is faces combined by named operations
+
+The owner: *"rather than auto detecting regions + things inside that region
+which then get subtracted automatically, there should be explicit
+specification of positive region and negative region"* — and then,
+correcting himself: *"there should be no such thing as a negative face. a
+face is just a face. just like there should be no such thing as a negative
+solid, only an operation which subtracts one solid from another"*. Built to
+[`docs/plans/regions-as-operations.md`](docs/plans/regions-as-operations.md);
+every deviation is in its *As built*.
+
+- **A face is a closed loop, found — its whole inside.** A circle drawn
+  inside a rectangle is a circle, and the rectangle's face is the whole
+  rectangle, until an operation says otherwise. So `extrude("l1", 10)` and a
+  click with the extrude tool make a solid plate: **nothing is proposed as a
+  hole any more.** This is a change in what the extrude and revolve tools do,
+  and the explicit-regions creating dialog's click that took a proposed hole
+  out is gone with the proposal.
+- **A region is a named thing made by operations**: `region("l1")` makes
+  `rg1` of the face `l1` bounds; `subtract("rg1", "c1")`, `add("rg1", "c3")`
+  and `intersect("rg1", "l9")` change it. Each is one typed line, one undo
+  step, journalled with its face resolved and replayed without finding
+  anything. Its area is the faces' as loops.ts measures them, exactly. A face
+  added beside a region merges with it into one outline.
+- **A feature takes a region**: `extrude("rg1", 10)`, `revolve("rg1",
+  "f1.y")`. A bare face makes its region on the way (`rg1 = l1–l4  (made for
+  e1)`, in the log). Several features may stand on one region; editing the
+  region regenerates every one of them. The extrude and revolve tools take
+  the region a click is inside, its holes and islands as its operations made
+  them.
+- **The region tool**, under the shapes button: click a face to make a
+  region, then click faces to **Subtract** (what an unpressed mode row
+  means), or press **Add**, **∩** or **New** in the row, as the extrude
+  dialog's. With a region in hand a click is read on its plane, so a circle
+  under the region's own solid is the circle.
+- **The organiser lists Regions** — `rg1  l1–l4 − c1 − c2` — with the eye,
+  *Edit rg1* (`edit("rg1")`, the tool armed on it), *Extrude rg1* and Delete.
+  A region nothing stands on yet is tinted faintly in a violet of its own.
+- **`hole("e1", "c1")` and `unhole(…)` are aliases now**: the step on e1's
+  region that gives the loop the meaning they always gave it, journalled as
+  that `subtract` or `add`. The menu's *Add as hole to e1* still types them.
+- **Deleting a face a region names: the region loses it** (the decision,
+  vetoable). The step comes out of the chain and the solid is rebuilt
+  without it — the hole fills, the solid stays, as it did. Deleting the
+  region's first face takes the region; `del("rg1")` takes the features on
+  it and keeps the sketch.
+- **Format 17. A file's holes become regions at open**: each old feature its
+  region and its holes `subtract`s (an island an `add`), each old
+  `hole`/`unhole` the step it meant, every entry still carrying the profiles
+  it rebuilt — so the model is the same, thing for thing. Proved on every
+  journal fixture with a feature, against the same file replayed with the
+  translation off. A file re-saves in today's vocabulary.
+- **The rule, written down for all three algebras** (ARCHITECTURE's
+  *Nothing is negative*): faces → regions, surfaces → surfaces (trim, extend,
+  knit — not built; `surfaces.md`), solids → bodies.
+
+Found by the e2e test and by looking: a click on a circle under the
+region's own solid landed on the lid's twin of it; pressing a mode button
+put the region down; the mode row's label was cut to one letter
+(ARCHITECTURE's 24–26). Pictures: [161](docs/images/161-the-region-tool-a-plate-less-two-circles-in-hand.png)–[166](docs/images/166-iphone-the-solid-follows-its-region.png).
+**Not tried on an iPhone**: try the region tool by taps, then extrude it.
+
 ## Mode feedback: the sketch plane drawn, a chip that says where · what · next, and Done
 
 The owner: *"at the moment, it is not obvious how the UI works. like when

@@ -24,6 +24,55 @@ otherwise.
 
 ## Decisions made so far — veto here if any are wrong
 
+- **Regions as operations: a face is a face, a region is faces combined by
+  named operations, a feature takes a region** (the owner, 2026-11-05:
+  *"rather than auto detecting regions + things inside that region which then
+  get subtracted automatically, there should be explicit specification of
+  positive region and negative region"*, then *"there should be no such thing
+  as a negative face. a face is just a face. just like there should be no
+  such thing as a negative solid, only an operation which subtracts one solid
+  from another"*). Spec: [`regions-as-operations.md`](docs/plans/regions-as-operations.md),
+  **built**; its *As built* lists every deviation. Open to veto, as built:
+  - **The rule, one for every dimension** (ARCHITECTURE's *Nothing is
+    negative*): things are things, booleans are operations between things,
+    nothing is negative. Faces → regions (`region`, `subtract`, `add`,
+    `intersect`); surfaces → surfaces (`trim`, `extend`, `knit` — written down,
+    not built); solids → bodies (a feature's mode). Each a name, a chain, an
+    organiser row.
+  - **A face is its loop's whole inside, and nothing is proposed as a hole**:
+    `extrude("l1", 10)` and the extrude tool's click on a plate with a circle
+    inside make a solid plate. This reverses explicit regions' "click-to-pick
+    proposes the loops inside" (which the owner had left to us) by his own
+    first sentence above. A hole is a region's `subtract`.
+  - **Regions are named `rg1`, `rg2`, …** (`r1` is a relation, `f1` a frame);
+    a face is written by its members (`rg1 = l1–l4 − c1 − c3`).
+  - **Every feature stands on a region**: a bare face makes one on the way,
+    journalled as a `region` entry before the feature (one line typed, one
+    undo step), named in the log. Several features may take one region;
+    editing it regenerates them all.
+  - **The algebra is of the cells of the faces a region names**, nested by
+    geometry, so a loop no step names is part of the face it lies in. A face
+    added beside the region merges into one outline; a region in pieces is
+    refused for a feature, not for itself.
+  - **Deleting a face a region names: the region loses it** — the step drops
+    out of the chain (`deleteRegionSteps`), the features rebuild, the hole
+    fills. Its first face going deletes the region; `del("rg1")` deletes the
+    features on it, keeping the sketch. A face whose loop merely opened does
+    nothing while it is open, and the step stays.
+  - **`hole`/`unhole` are aliases**, choosing `subtract` or `add` by whether
+    the region holds the loop's cell (the even-odd meaning they had), and
+    journalled as that step. The menu's items still type them.
+  - **The region tool is under the shapes button** (no fourteenth button);
+    its mode row is New · Add · Subtract · ∩, unpressed meaning Subtract with
+    a region in hand and New with none; a click inside a region with none in
+    hand takes it in hand; clicks with one in hand are read on its plane.
+  - **The organiser's Regions section is last**, shown once there is one;
+    *Edit rg1*, *Extrude rg1*, Delete; the eye hides by name. **A region no
+    feature stands on is tinted** faintly violet, so hiding it shows.
+  - **Format 17; a file's holes become regions at open**, hole or island read
+    off its saved geometry; the model unchanged (proved per fixture against
+    the file replayed with the translation off).
+
 - **Workbenches: the app as modules, the entity extension point, and Add
   workbench… from a file on the device** (the owner, 2026-11-05: *"the whole
   framework should be modular and extensible (!). like onshape workbenches"*;
@@ -1776,7 +1825,20 @@ starts.
         face is just a face. just like there should be no such thing as a
         negative solid, only an operation which subtracts"* — a region is
         faces combined by named operations, an extrude takes a region, holes
-        become regions at open, the same rule written down for surfaces),
+        become regions at open, the same rule written down for surfaces) —
+        **[x] BUILT (2026-11-05)** on `claude/regions-as-operations`; the
+        register's first entry above has the decisions, the spec's *As
+        built* every deviation. Found here: a click under a region's own
+        solid landing on the lid's twin, a mode button putting the region
+        down, the mode row's label cut to a letter (ARCHITECTURE's 24–26).
+        - [ ] **Left for later**: `RegionSelection.toggleHole`/`leftOut` have
+          no caller now that nothing is proposed (the edit dialog toggles a
+          feature's holes through `hole`/`unhole`); no typed way to drop one
+          step of a chain but undo and `del`; an old file's hole or island is
+          read where its saved drawing has the loop; a merged outline through
+          a pinch vertex takes the first way on; regions are not in STEP (a
+          region is no solid); `sketch-edit.md`'s trim should take a region's
+          faces through this algebra. Not tried on an iPhone.
         then `sketch-edit.md` and `spline.md` as modules.
       - **In parallel with workbenches:**
         [`mode-feedback.md`](docs/plans/mode-feedback.md) (the owner: *"it
