@@ -3,6 +3,7 @@
 // docs/plans/sketch-shapes.md. The owner: *"give me better sketch tools,
 // relations, trim, slot... all the usual"*.
 
+import { addEllipse, checkEllipse, ellipseOf, semiAxes } from "../src/kinds/ellipse.ts";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
@@ -115,22 +116,22 @@ test("addEllipse: a centre, a major end, a minor variable — named el1, journal
   const m = new Model(2);
   const c = m.addPoint([1, 2]).name;
   const a = m.addPoint([11, 2]).name;
-  const e = m.addEllipse(c, a, 4);
+  const e = addEllipse(m, c, a, 4);
   assert.equal(e.name, "el1");
   assert.deepEqual(m.refsOf(e), [c, a]);
-  assert.deepEqual(m.semiAxes("el1"), { a: 10, b: 4 });
+  assert.deepEqual(semiAxes(m, "el1"), { a: 10, b: 4 });
   assert.equal(e.normal, undefined, "a 2D ellipse lies in the one plane there is");
   assert.deepEqual(m.journal.at(-1), { op: "addEllipse", args: [c, a, 4, null, "el1"] });
-  assert.throws(() => m.addEllipse(c, c, 2), /major end apart/);
-  assert.throws(() => m.addEllipse(c, a, -1), /positive minor/);
-  assert.throws(() => m.addEllipse(c, a, 2, [0, 0, 1]), /takes no normal/);
+  assert.throws(() => addEllipse(m, c, c, 2), /major end apart/);
+  assert.throws(() => addEllipse(m, c, a, -1), /positive minor/);
+  assert.throws(() => addEllipse(m, c, a, 2, [0, 0, 1]), /takes no normal/);
   // Bare: everything seeded, nothing held.
-  const free = m.addEllipse();
-  const { a: fa, b: fb } = m.semiAxes(free.name);
+  const free = addEllipse(m);
+  const { a: fa, b: fb } = semiAxes(m, free.name);
   assert.ok(fa > 0 && fb > 0 && Math.abs(fb - fa / 2) < 1e-12);
 
   const m3 = new Model(3);
-  const e3 = m3.addEllipse();
+  const e3 = addEllipse(m3);
   assert.equal(e3.normal?.length, 3);
   assert.deepEqual(m3.normalOf(e3.name), [0, 0, 1]);
 });
@@ -141,7 +142,7 @@ test("onellipse: a point is held on the ellipse, and its gradient at the root do
   const c = m.addPoint([0, 0]).name, a = m.addPoint([10, 0]).name;
   fix(m, c, [0, 0]);
   fix(m, a, [10, 0]);
-  const e = m.addEllipse(c, a, 4).name;
+  const e = addEllipse(m, c, a, 4).name;
   minorAxis(m, e, 4);
   const p = m.addPoint([3, 7]).name;
   const r = onEllipse(m, p, e);
@@ -171,7 +172,7 @@ test("onellipse in 3D on a tilted plane: on the curve and in its plane, both blo
   const c = m.addPoint(o).name;
   const a = m.addPoint(at(8 * Math.cos(0.4), 8 * Math.sin(0.4))).name;
   for (const q of [c, a]) fix(m, q, m.coords(q));
-  const e = m.addEllipse(c, a, 3, n).name;
+  const e = addEllipse(m, c, a, 3, n).name;
   minorAxis(m, e, 3);
   const p = m.addPoint(at(2, 6).map((x, i) => x + 2 * n[i])).name; // off the plane, off the curve
   const r = onEllipse(m, p, e);
@@ -201,7 +202,7 @@ test("tan(line, ellipse): from either side, either order, the support distance �
       const c = m.addPoint([0, 0]).name, a = m.addPoint([10, 0]).name;
       fix(m, c, [0, 0]);
       fix(m, a, [10, 0]);
-      const e = m.addEllipse(c, a, 4).name;
+      const e = addEllipse(m, c, a, 4).name;
       minorAxis(m, e, 4);
       // A line at 30° that starts off the ellipse on one side.
       const p = m.addPoint([-20, side * 6]).name, q = m.addPoint([20, side * 5]).name;
@@ -231,13 +232,13 @@ test("tan(line, ellipse): from either side, either order, the support distance �
 test("tan(line, ellipse) in 3D holds the line in the ellipse's plane; tan with a circle or another ellipse is refused by name", async () => {
   await loadKernel();
   const m = new Model(3);
-  const e = m.addEllipse(m.addPoint([0, 0, 0]).name, m.addPoint([10, 0, 0]).name, 4).name;
+  const e = addEllipse(m, m.addPoint([0, 0, 0]).name, m.addPoint([10, 0, 0]).name, 4).name;
   const l = m.addLine(m.addPoint([-20, 6, 3]).name, m.addPoint([20, 6, -2]).name).name;
   const r = tangent(m, l, e);
   assert.equal(gradients(m, r).length, 3, "the support block, and the plane block's two ends");
   const c = m.addCircle(null, 3).name;
   assert.throws(() => tangent(m, e, c), /tan takes an ellipse with a line .*not supported/);
-  const e2 = m.addEllipse().name;
+  const e2 = addEllipse(m).name;
   assert.throws(() => tangent(m, e, e2), /not supported/);
 });
 
@@ -246,31 +247,31 @@ test("major and minor are dimensions: d-named, labelled, set-able; conc takes an
   const m = new Model(2);
   const c = m.addPoint([0, 0]).name;
   fix(m, c, [0, 0]);
-  const e = m.addEllipse(c, m.addPoint([7, 1]).name, 2).name;
+  const e = addEllipse(m, c, m.addPoint([7, 1]).name, 2).name;
   const d1 = majorAxis(m, e, 20);
   const d2 = minorAxis(m, e, 10);
   assert.match(d1, /^d\d+$/);
   assert.match(d2, /^d\d+$/);
   ok(m);
-  const { a, b } = m.semiAxes(e);
+  const { a, b } = semiAxes(m, e);
   assert.ok(Math.abs(a - 20) < 1e-9 && Math.abs(b - 10) < 1e-9);
   set(m, `${d2}.value`, 5);
   ok(m);
-  assert.ok(Math.abs(m.semiAxes(e).b - 5) < 1e-9);
+  assert.ok(Math.abs(semiAxes(m, e).b - 5) < 1e-9);
   for (const [g] of [gradients(m, d1), gradients(m, d2)]) assert.ok(g.grad > 0.5, "neither is a square");
   assert.throws(() => majorAxis(m, e, 0), /positive semi-axis/);
   const circ = m.addCircle(m.addPoint([3, 3]).name, 2).name;
   concentric(m, circ, e);
-  const e2 = m.addEllipse(m.addPoint([-4, 2]).name, null, 1).name;
+  const e2 = addEllipse(m, m.addPoint([-4, 2]).name, null, 1).name;
   concentric(m, e, e2);
   ok(m);
-  assert.ok(len(m.coords(m.circle(circ).center)) < 1e-9 && len(m.coords(m.ellipse(e2).center)) < 1e-9);
+  assert.ok(len(m.coords(m.circle(circ).center)) < 1e-9 && len(m.coords(ellipseOf(m, e2).center)) < 1e-9);
 });
 
 test("an ellipse is construction-able, deletable with its points, and a plane reference in 3D", async () => {
   await loadKernel();
   const m = new Model(3);
-  const e = m.addEllipse(m.addPoint([0, 0, 0]).name, m.addPoint([10, 0, 0]).name, 4).name;
+  const e = addEllipse(m, m.addPoint([0, 0, 0]).name, m.addPoint([10, 0, 0]).name, 4).name;
   m.setConstruction(e, true);
   assert.equal(m.isConstruction(e), true);
   assert.equal(m.planeKind(e), "curve");
@@ -280,7 +281,7 @@ test("an ellipse is construction-able, deletable with its points, and a plane re
   assert.deepEqual(m.normalOf(e).map((x) => Math.round(x * 1e12) / 1e12), [0, 0, 1]);
   const p = m.addPoint([3, 3, 0]).name;
   onEllipse(m, p, e);
-  del(m, m.ellipse(e).center);
+  del(m, ellipseOf(m, e).center);
   assert.equal(m.entities.has(e), false, "deleting its centre takes the ellipse and what reads it");
   assert.equal([...m.relations.values()].some((r) => r.op === "onEllipse"), false);
 });
@@ -289,7 +290,7 @@ test("an ellipse replays from its file: format 15, minors and normals saved, a v
   await loadKernel();
   const m = new Model(3);
   const c = m.addPoint([1, 1, 0]).name;
-  const e = m.addEllipse(c, m.addPoint([9, 3, 0]).name, 2).name;
+  const e = addEllipse(m, c, m.addPoint([9, 3, 0]).name, 2).name;
   onPlane(m, c);
   const p = m.addPoint([0, 5, 0]).name;
   onEllipse(m, p, e);
@@ -304,7 +305,7 @@ test("an ellipse replays from its file: format 15, minors and normals saved, a v
   assert.equal(saved.values.normals[e].length, 3);
   const back = open(text);
   assert.deepEqual([...back.relations.values()].map((r) => r.op), [...m.relations.values()].map((r) => r.op));
-  assert.deepEqual(back.semiAxes(e), m.semiAxes(e));
+  assert.deepEqual(semiAxes(back, e), semiAxes(m, e));
   assert.deepEqual(back.coords(p), m.coords(p));
   assert.equal(save(back), text, "and saves back to the same bytes");
   // A file from before the ellipse opens unchanged.
@@ -526,7 +527,7 @@ test("a polygon's side made eq to another line keeps the polygon regular — the
 test("loops: an ellipse is a loop on its own, area πab, counter-clockwise; inside a rectangle it is the rectangle's hole", async () => {
   await loadKernel();
   const m = new Model(2);
-  const e = m.addEllipse(m.addPoint([0, 0]).name, m.addPoint([8 * Math.cos(0.3), 8 * Math.sin(0.3)]).name, 3).name;
+  const e = addEllipse(m, m.addPoint([0, 0]).name, m.addPoint([8 * Math.cos(0.3), 8 * Math.sin(0.3)]).name, 3).name;
   let loops = findLoops(m);
   assert.equal(loops.length, 1);
   assert.deepEqual(loops[0].members.map((x) => x.name), [e]);
@@ -548,7 +549,7 @@ test("loops: an ellipse is a loop on its own, area πab, counter-clockwise; insi
 test("loops: a line across an ellipse cuts it into two regions at the crossings, a point held on it cuts it", async () => {
   await loadKernel();
   const m = new Model(2);
-  const e = m.addEllipse(m.addPoint([0, 0]).name, m.addPoint([10, 0]).name, 4).name;
+  const e = addEllipse(m, m.addPoint([0, 0]).name, m.addPoint([10, 0]).name, 4).name;
   const l = m.addLine(m.addPoint([-1, -8]).name, m.addPoint([2, 8]).name).name;
   const loops = findLoops(m);
   assert.equal(loops.length, 2, "the two sides of the chord");
@@ -557,7 +558,7 @@ test("loops: a line across an ellipse cuts it into two regions at the crossings,
   for (const x of loops) assert.ok(x.members.some((mm) => mm.name === l) && x.members.some((mm) => mm.name === e));
   // An ellipse crossing a circle: a lens and two crescents.
   const m2 = new Model(2);
-  m2.addEllipse(m2.addPoint([0, 0]).name, m2.addPoint([10, 0]).name, 4);
+  addEllipse(m2, m2.addPoint([0, 0]).name, m2.addPoint([10, 0]).name, 4);
   m2.addCircle(m2.addPoint([9, 0]).name, 3);
   assert.equal(findLoops(m2).length, 3);
 });
@@ -588,7 +589,7 @@ test("loops in 3D: an ellipse on a tilted plane is found in that plane, its area
   const n = [-Math.sin(t), 0, Math.cos(t)];
   const o = [3, 4, 5];
   const at = (x: number, y: number) => o.map((c, i) => c + x * u[i] + y * v[i]);
-  m.addEllipse(m.addPoint(o).name, m.addPoint(at(6, 2)).name, 2.5, n);
+  addEllipse(m, m.addPoint(o).name, m.addPoint(at(6, 2)).name, 2.5, n);
   const loops = findLoops(m);
   assert.equal(loops.length, 1);
   assert.ok(Math.abs(Math.abs(dot(loops[0].plane.normal, n)) - 1) < 1e-9);

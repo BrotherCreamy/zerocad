@@ -40,6 +40,7 @@
 //     much larger piece of work with its own failure modes (labels that jump
 //     about as the drawing solves being the obvious one).
 
+import { addEllipse, checkEllipse, ellipseOf, semiAxes } from "./kinds/ellipse.ts";
 import { parseAxisRef, referentsOf, type Model, type RelationEntry } from "./model.ts";
 import { uiOf, viewAxes, worldToScreen, type View } from "./view.ts";
 import { dot3, lift3, sub3 } from "./vec3.ts";
@@ -452,7 +453,7 @@ function atRim(model: Model, view: View, circleName: string, theta: number): Anc
  * centre, as `atNearestRim`'s is.
  */
 function atEllipseTouch(model: Model, view: View, lineName: string, ellipseName: string): Anchor {
-  const f = curveFrame(model, model.ellipse(ellipseName));
+  const f = curveFrame(model, ellipseOf(model, ellipseName));
   const l = model.line(lineName);
   if (!f) return { ...atLineMid(model, view, lineName), about: [lineName, ellipseName] };
   const [a, b] = [lift3(model.coords(l.refs[0])), lift3(model.coords(l.refs[1]))];
@@ -684,7 +685,7 @@ function anchorsFor(model: Model, view: View, r: RelationEntry): Anchor[] {
     // centre to major end, with witness lines like a `dist`; the minor's at
     // the end of the minor axis, where a radius's label would sit.
     case "majorAxis": {
-      const e = model.ellipse(str(args[0]));
+      const e = ellipseOf(model, str(args[0]));
       return [{ ...atSegmentMid(model, view, e.center, e.major), about: [e.name] }];
     }
     case "minorAxis":

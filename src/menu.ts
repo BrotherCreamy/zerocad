@@ -21,6 +21,7 @@
 // the only reading under which the item is safe to click without looking: it
 // adds a constraint the drawing already satisfies, and moves nothing.
 
+import { addEllipse, checkEllipse, ellipseOf, semiAxes } from "./kinds/ellipse.ts";
 import { ORIGIN, SETTABLE_PROPERTY, valueArgIndex, type Model } from "./model.ts";
 import { describePick, type Pick } from "./picking.ts";
 import { frameBasis } from "./relations/refs.ts";
@@ -440,7 +441,7 @@ function entityMenu(model: Model, pick: Pick): Menu {
   if (dim) items.push({ label: "Dimension", action: { do: "run", command: dim } });
   // An ellipse has two numbers, so two items: its semi-axes as they stand.
   if (pick.kind === "ellipse") {
-    const { a, b } = model.semiAxes(pick.name);
+    const { a, b } = semiAxes(model, pick.name);
     items.push({ label: "Dimension major", action: { do: "run", command: `major(${quoted(pick.name)}, ${num(a)})` } });
     items.push({ label: "Dimension minor", action: { do: "run", command: `minor(${quoted(pick.name)}, ${num(b)})` } });
   }

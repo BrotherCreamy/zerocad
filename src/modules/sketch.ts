@@ -5,8 +5,11 @@
 // and the explicit regions' `hole` and `unhole`. With core it is the sketch
 // workbench; with solids and step, the part workbench.
 
-import { defineModule } from "../modules.ts";
-import type { Model } from "../model.ts";
+import { ELLIPSE_STRUCTURE, addEllipse, checkEllipse, ellipseOf, semiAxes } from "../kinds/ellipse.ts";
+import { defineModule, type EntityDecl } from "../modules.ts";
+import type { Entity, Model } from "../model.ts";
+import { ellipseFrame, type ArcFrame } from "../arcgeom.ts";
+import { cross3, lift3, unit3 } from "../vec3.ts";
 import { spanOf, unitOf } from "../model.ts";
 import { slots } from "../clauses.ts";
 import * as geom from "../relations/geometry.ts";
@@ -27,6 +30,52 @@ import { ConstrainTool } from "../tools/constrain.ts";
 const bound = (name: string) => (model: Model) => {
   const m = model as unknown as Record<string, (...a: unknown[]) => unknown>;
   return (...args: unknown[]) => m[name](...args);
+};
+
+/**
+ * An ellipse laid out in its plane (arcgeom.ts's `ellipseFrame`): from its
+ * major end round toward its minor axis — counter-clockwise about its
+ * straightened normal in 3D (`Model.normalOf`), about +z in 2D. Null for an
+ * ellipse whose major end sits on its centre, which has no axis to lay out
+ * along. What curveplane.ts's `curveFrame` answers for one, so everything that
+ * draws, boxes, loops, shades and picks through a frame takes it as it takes
+ * a circle — with the frame's second radius (`rv`) saying it is not one.
+ */
+function ellipseFrameOf(model: Model, e: Entity): ArcFrame | null {
+  const el = ellipseOf(model, e.name);
+  const c = lift3(model.coords(el.center));
+  const u = unit3(lift3(model.coords(el.major)).map((x, i) => x - c[i]));
+  if (!u) return null;
+  const n = el.normal === undefined ? [0, 0, 1] : model.normalOf(e.name);
+  const v = unit3(cross3(n, u)) ?? [-u[1], u[0], 0];
+  const { a, b } = semiAxes(model, e.name);
+  return ellipseFrame(c, a, Math.abs(b), u, v);
+}
+
+/**
+ * **The ellipse, through the entity extension point** (docs/plans/
+ * workbenches.md) — the proof the point is real: model.ts, loops.ts, faces.ts,
+ * picking.ts and step.ts no longer name it. Its structure (kinds/ellipse.ts),
+ * its constructor as the journal op a file replays, the frame it is drawn,
+ * boxed, looped and picked by, its hover line, and its Part 42 spelling.
+ */
+const ELLIPSE: EntityDecl = {
+  ...ELLIPSE_STRUCTURE,
+  add: { op: "addEllipse", fn: addEllipse },
+  frame: ellipseFrameOf,
+  describe: (model, name, n) => {
+    const { a, b } = semiAxes(model, name);
+    const facing = ellipseOf(model, name).normal === undefined ? "" : `  facing ${model.normalOf(name).map(n).join(", ")}`;
+    return `${name}  a ${n(a)}  b ${n(b)}${facing}`;
+  },
+  // Part 42's ELLIPSE: placed at its centre, its first semi-axis along the
+  // placement's reference (docs/plans/sketch-shapes.md) — a lid's edge, a
+  // loose sketch curve, and the directrix of an elliptic wall's
+  // SURFACE_OF_LINEAR_EXTRUSION.
+  step: (w, c, name, { real, str, ref }) => {
+    const e = c as unknown as { center: number[]; normal: number[]; ref: number[]; a: number; b: number };
+    return w.add(`ELLIPSE(${str(name)},${ref(w.placement(e.center, e.normal, e.ref))},${real(e.a)},${real(e.b)})`);
+  },
 };
 
 defineModule("sketch", {
@@ -79,11 +128,12 @@ defineModule("sketch", {
     // relation between two things, the commonest one there is.
     constrain: svg("constrain", `<path d="M3 13.5h10.5M3 13.5V2.5"/><path d="M3 9.5h4v4"/>`),
   },
+  // The ellipse (docs/plans/sketch-shapes.md, format 15): an entity kind of
+  // this module's, declared above.
+  entities: [ELLIPSE],
   replay: {
     addCircle: bound("addCircle"),
     addArc: bound("addArc"),
-    // The ellipse (docs/plans/sketch-shapes.md, format 15).
-    addEllipse: bound("addEllipse"),
   },
   relations: {
     radius: { names: ["rad", "radius"], slots: slots("circle", "#radius"), fn: geom.radius },
@@ -99,8 +149,8 @@ defineModule("sketch", {
     // under their own names; `major` and `minor` are its semi-axes, dimensions
     // as `rad` is.
     onEllipse: { names: ["onellipse", "onEllipse"], slots: slots("point", "ellipse"), fn: geom.onEllipse },
-    majorAxis: { names: ["major", "majorAxis"], slots: slots("ellipse", "#semi-axis"), fn: geom.majorAxis },
-    minorAxis: { names: ["minor", "minorAxis"], slots: slots("ellipse", "#semi-axis"), fn: geom.minorAxis },
+    majorAxis: { names: ["major", "majorAxis"], slots: slots("ellipse", "#semi-axis"), fn: geom.majorAxis, dimension: 1 },
+    minorAxis: { names: ["minor", "minorAxis"], slots: slots("ellipse", "#semi-axis"), fn: geom.minorAxis, dimension: 1 },
   },
   operations: {
     fillet,
@@ -131,7 +181,7 @@ defineModule("sketch", {
     ellipse: kit.clauses("ellipse", (center?: string | null, major?: string | number | null, minor?: number | null,
       plane?: string | number[] | null) => {
       const model = kit.model;
-      model.checkEllipse(center, typeof major === "string" ? major : null, minor);
+      checkEllipse(model, center, typeof major === "string" ? major : null, minor);
       if (major != null && typeof major !== "string" && !(typeof major === "number" && major > 0)) {
         throw new Error(`ellipse: the major end is a point's name or a positive semi-axis, got ${JSON.stringify(major)}`);
       }
@@ -145,7 +195,7 @@ defineModule("sketch", {
         const u = model.dim === 3 && n ? spanOf(unitOf(n))[0] : [1, 0];
         end = model.addPoint(at.map((v, i) => v + major * (u[i] ?? 0))).name;
       }
-      const name = model.addEllipse(c, end, minor ?? null, seed).name;
+      const name = addEllipse(model, c, end, minor ?? null, seed).name;
       if (hold) geom.parallel(model, name, hold);
       return name;
     }),

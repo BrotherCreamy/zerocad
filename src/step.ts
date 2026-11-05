@@ -229,9 +229,15 @@ class Data {
     return this.add(`CIRCLE(${str(name)},${ref(this.placement(c.center, c.normal, c.ref))},${real(c.r)})`);
   }
 
-  /** Part 42's ELLIPSE: placed at its centre, its first semi-axis along the placement's reference (docs/plans/sketch-shapes.md). */
-  ellipse(c: Extract<Curve, { kind: "ellipse" }>, name = ""): number {
-    return this.add(`ELLIPSE(${str(name)},${ref(this.placement(c.center, c.normal, c.ref))},${real(c.a)},${real(c.b)})`);
+  /**
+   * A curve of a kind a module declares, by the writer it registered
+   * (`defineStepCurve`) — this file knows no such kind by name. A curve no
+   * module writes is refused by its kind, never written as something else.
+   */
+  declared(c: { kind: string }, name = ""): number {
+    const write = curveWriters.get(c.kind);
+    if (!write) throw new Error(`no loaded module writes a ${c.kind} curve to STEP`);
+    return write(this, c as { kind: string } & Record<string, unknown>, name, { real, str, ref });
   }
 
   line(a: number[], b: number[], name = ""): number {
@@ -259,11 +265,11 @@ function surface(d: Data, s: Surface): number {
       return d.add(`SURFACE_OF_REVOLUTION('',${ref(d.circle(s.curve))},${ref(axis)})`);
     }
     case "bspline": return bsplineSurface(d, s.nurbs);
-    // An ellipse's wall: the ellipse swept along the extrude's direction —
-    // exact, and what a receiving tool calls an elliptic cylinder.
+    // A swept curve's wall: a declared kind's curve (its directrix) swept along
+    // the extrude's direction — exact, as a receiving tool reads it.
     case "extrusion": {
       const vector = d.add(`VECTOR('',${ref(d.direction(s.axis))},${real(1)})`);
-      return d.add(`SURFACE_OF_LINEAR_EXTRUSION('',${ref(d.ellipse(s.curve))},${ref(vector)})`);
+      return d.add(`SURFACE_OF_LINEAR_EXTRUSION('',${ref(d.declared(s.curve))},${ref(vector)})`);
     }
   }
 }
@@ -322,7 +328,7 @@ function body(d: Data, b: Body): number {
     if (id === undefined) {
       const curve = e.curve.kind === "line" ? d.line(e.start.at, e.end.at)
         : e.curve.kind === "circle" ? d.circle(e.curve)
-          : e.curve.kind === "ellipse" ? d.ellipse(e.curve) : bsplineCurve(d, e.curve.nurbs);
+          : e.curve.kind === "bspline" ? bsplineCurve(d, e.curve.nurbs) : d.declared(e.curve);
       // Every line and circle runs the edge's way (solids.ts, kernelbrep.ts);
       // a kernel's B-spline is written as the kernel parametrised it, and says.
       const sense = e.curve.kind === "bspline" ? e.curve.sense : true;
@@ -362,10 +368,10 @@ function insideOut(s: Shell): Shell {
   };
 }
 
-/** A loose sketch curve, bounded: a trimmed line or arc, or a whole circle or ellipse. */
+/** A loose sketch curve, bounded: a trimmed line or arc, a whole circle, or a whole curve of a declared kind. */
 function loose(d: Data, c: LooseCurve): number {
   if (c.kind === "circle") return d.circle(c.curve, c.name);
-  if (c.kind === "ellipse") return d.ellipse(c.curve, c.name);
+  if (c.kind !== "line" && c.kind !== "arc") return d.declared(c.curve, c.name);
   const trim = (p: number[]) => `(${ref(d.point(p))})`;
   const basis = c.kind === "line" ? d.line(c.a, c.b) : d.circle(c.curve);
   return d.add(`TRIMMED_CURVE(${str(c.name)},${ref(basis)},${trim(c.a)},${trim(c.b)},.T.,.CARTESIAN.)`);

@@ -132,55 +132,30 @@ export interface FrameEntity {
 }
 
 /**
- * An ellipse: a centre point, a **major end** point — the end of its first
- * axis, which gives that axis's direction and its semi-length `a` as the
- * distance from the centre — one variable for the **minor semi-axis** `b`, and
- * in a 3D model three normal variables, as a circle has (docs/plans/
- * sketch-shapes.md). The first curve kind that is not a circle.
- *
- * Why a point and not an angle: the major end is an ordinary point, so it can
- * be dragged, snapped to, `coin`ed and dimensioned like any other, and the
- * relations that read the ellipse need no trigonometry — the major direction
- * is `major − centre`, read through `dot`. `b` is a plain variable, as a
- * radius is, so `minor(e, 10)` is the one-variable dimension `rad` is.
- *
- * **The normal is straightened, not obeyed** — `frameBasis`'s y-ref rule. The
- * plane is the one through the centre containing the major axis and the
- * normal's part square to it (`ellipseNormal` in relations/refs.ts), so a
- * normal tipped toward the major axis turns nothing and no relation is needed
- * to keep the major end in the plane: the ellipse is well defined however its
- * variables stand. A tool holds it on its sketch plane as a circle is held
- * (`onplane` on the centre and the major end, `par` on the normal). In 2D it
- * has no normal and its minor axis is the major turned a quarter turn
- * counter-clockwise.
- *
- * Nothing says `a ≥ b`: "major" names the axis the point is on, and a minor
- * dimensioned past it is an ellipse drawn the other way round, as legal as a
- * rectangle taller than it is wide.
+ * Every entity kind, by its `kind` — the built-ins here, and every kind a
+ * module declares added to it by declaration merging from the module's own
+ * file (`declare module "../model.ts" { interface EntityTypes { … } }`, as
+ * a module's kind file does). So `Entity` is every kind the program knows, and a
+ * `switch (e.kind)` above this layer narrows to a module's kind as it does to
+ * a circle, while this file names none of them.
  */
-export interface EllipseEntity {
-  kind: "ellipse";
-  name: string;
-  center: string;
-  /** The end of the first (major) axis: a point name. */
-  major: string;
-  /** The minor semi-axis's variable. */
-  minorVar: number;
-  /** 3D only: the normal's three variables, read straightened against the major axis. Absent in 2D. */
-  normal?: number[];
-  /** Construction geometry: forms no regions. Absent when not. See `Model.setConstruction`. */
-  construction?: true;
+export interface EntityTypes {
+  point: PointEntity;
+  line: LineEntity;
+  circle: CircleEntity;
+  arc: ArcEntity;
+  frame: FrameEntity;
 }
 
-/** The kinds of curve a region can be bounded by and a drawing tool draws. */
-export type CurveKind = "line" | "arc" | "circle" | "ellipse";
+export type Entity = EntityTypes[keyof EntityTypes];
 
-/** Whether `kind` is one of `CurveKind` — what the construction flag and the region questions accept. */
-export function isCurveKind(kind: string | undefined): kind is CurveKind {
-  return kind === "line" || kind === "arc" || kind === "circle" || kind === "ellipse";
+/** The kinds of curve a region can be bounded by and a drawing tool draws: line, arc, circle, and any kind declared a curve. */
+export type CurveKind = string;
+
+/** Whether `kind` is a curve — what the construction flag and the region questions accept. */
+export function isCurveKind(kind: string | undefined): boolean {
+  return kind === "line" || kind === "arc" || kind === "circle" || entityKind(kind)?.curve === true;
 }
-
-export type Entity = PointEntity | LineEntity | CircleEntity | ArcEntity | EllipseEntity | FrameEntity;
 
 /**
  * **An entity kind's structure, declared** (docs/plans/workbenches.md: the
@@ -195,7 +170,7 @@ export type Entity = PointEntity | LineEntity | CircleEntity | ArcEntity | Ellip
  */
 export interface EntityKindSpec {
   kind: string;
-  /** How a refusal names one: "an ellipse". */
+  /** How a refusal names one: "a spline". */
   noun?: string;
   /** The point names an entity of this kind is built out of. */
   refs(e: Entity): string[];
@@ -228,6 +203,21 @@ export function defineEntityKind(spec: EntityKindSpec): void {
 /** Drops a kind's declaration — for a module removed with no entity of the kind left. */
 export function undefineEntityKind(kind: string): void {
   entityKinds.delete(kind);
+}
+
+/** "a, b, c or d" — a refusal's list of what would have done. */
+export function orList(words: readonly string[]): string {
+  return words.length <= 1 ? words.join("") : `${words.slice(0, -1).join(", ")} or ${words[words.length - 1]}`;
+}
+
+/** The declared kinds that are curves, by name: what a refusal adds after "a line, arc, circle". */
+export function curveNouns(): string[] {
+  return [...entityKinds.values()].filter((k) => k.curve).map((k) => k.kind);
+}
+
+/** The declared kinds that carry a plane, by name. */
+export function planeNouns(): string[] {
+  return [...entityKinds.values()].filter((k) => k.plane).map((k) => k.kind);
 }
 
 /** A kind's declared structure, or undefined for a built-in this layer knows by name, or for nothing. */
@@ -316,8 +306,7 @@ function noFramesIn(dim: number): string {
  * owns the namespace, and a relation authored at the command line gets `r`
  * without having to know any of this exists.
  */
-export const DIMENSION_OPS: ReadonlySet<string> = new Set(["dist", "radius", "diameter", "angle", "extrusion", "revolution",
-  "majorAxis", "minorAxis"]);
+export const DIMENSION_OPS: ReadonlySet<string> = new Set(["dist", "radius", "diameter", "angle", "extrusion", "revolution"]);
 
 /**
  * **Reference dimensions** — `measure`, the driven dimension (relations/measure.ts):
@@ -333,7 +322,17 @@ export const REFERENCE_OPS: ReadonlySet<string> = new Set(["measure"]);
  * …pairs]`: the value sits second so that it is at a fixed place however many
  * pairs follow it.
  */
-const VALUE_ARG: Record<string, number> = { dist: 2, radius: 1, diameter: 1, angle: 2, extrusion: 1, revolution: 1, majorAxis: 1, minorAxis: 1 };
+const VALUE_ARG: Record<string, number> = { dist: 2, radius: 1, diameter: 1, angle: 2, extrusion: 1, revolution: 1 };
+
+/**
+ * Declares `op` a dimension whose value is its recorded argument `valueArg` —
+ * how a module's dimension joins the built-in ones (../modules.ts: a relation
+ * declared with `dimension`). `d`-named and `set`-able from then on.
+ */
+export function defineDimension(op: string, valueArg: number): void {
+  (DIMENSION_OPS as Set<string>).add(op);
+  VALUE_ARG[op] = valueArg;
+}
 
 /** The name prefix a relation made by `op` claims. See `DIMENSION_OPS`. */
 export function relationPrefix(op: string): string {
@@ -849,7 +848,7 @@ export class Model {
    * The one door every constructor goes through, so no way of making an
    * entity can forget the open group.
    */
-  private place(ent: Entity): void {
+  place(ent: Entity): void {
     this.entities.set(ent.name, ent);
     if (this.joining && this.openGroup !== null) this.groups.get(this.openGroup)?.members.push(ent.name);
   }
@@ -1220,7 +1219,7 @@ export class Model {
    * one. No call that succeeded before gets different names: the hold only
    * changes an auto-name that would have landed on the claimed one.
    */
-  private claimFirst<T>(prefix: string, name: string | null | undefined, makeParts: () => T): [string, T] {
+  claimFirst<T>(prefix: string, name: string | null | undefined, makeParts: () => T): [string, T] {
     const nm = this.claimName(prefix, name ?? undefined);
     this.claimed = nm;
     try {
@@ -1231,7 +1230,7 @@ export class Model {
   }
 
   /** A point along axis `axis` from `from`, for seeding auto-created pieces. */
-  private freePointOffset(from: number[], axis: number, by: number): PointEntity {
+  freePointOffset(from: number[], axis: number, by: number): PointEntity {
     const seed = from.slice();
     seed[axis] += by;
     return this.withoutRecording(() => this.addPoint(seed));
@@ -1329,47 +1328,6 @@ export class Model {
   }
 
   /**
-   * An ellipse about `center` with its major axis ending at `major` and a
-   * minor semi-axis of `minor` — and, in 3D, facing `normal` (seeded exactly
-   * as `addCircle` seeds it). See `EllipseEntity`. Missing pieces seed a
-   * non-degenerate ellipse: a centre at the origin, a major end `FREE_SPAN`
-   * along the plane's first direction, a minor of half the major. Seeds and
-   * nothing more, as every constructor's are.
-   */
-  addEllipse(center?: string | null, major?: string | null, minor?: number | null,
-             normal?: number[] | string | null, name?: string | null): EllipseEntity {
-    this.checkEllipse(center, major, minor);
-    const seed = this.normalSeed("ellipse", normal);
-    const [nm, [c, m]] = this.claimFirst("el", name, () => {
-      const c = center ?? this.withoutRecording(() => this.addPoint()).name;
-      if (major != null) return [c, major];
-      const along = seed == null ? null : spanOf(unitOf(seed))[0];
-      const m = along
-        ? this.withoutRecording(() => this.addPoint(this.coords(c).map((v, i) => v + Model.FREE_SPAN * along[i]))).name
-        : this.freePointOffset(this.coords(c), 0, Model.FREE_SPAN).name;
-      return [c, m];
-    });
-    const a = Math.hypot(...this.coords(m).map((v, i) => v - this.coords(c)[i]));
-    const ent: EllipseEntity = {
-      kind: "ellipse", name: nm, center: c, major: m,
-      minorVar: this.problem.addVar(minor ?? (a > 0 ? a / 2 : Model.FREE_SPAN / 2)),
-    };
-    if (seed != null) ent.normal = seed.map((v) => this.problem.addVar(v));
-    this.place(ent);
-    this.record("addEllipse", [center ?? null, major ?? null, minor ?? null, normal ?? null, nm]);
-    return ent;
-  }
-
-  /** `checkCircle` for `addEllipse`. */
-  checkEllipse(center?: string | null, major?: string | null, minor?: number | null): void {
-    if (center != null) this.point(center);
-    if (major != null) this.point(major);
-    if (center != null && center === major) throw new Error("an ellipse needs its major end apart from its centre");
-    if (minor != null && !(minor > 0)) throw new Error("an ellipse needs a positive minor semi-axis");
-    if (this.dim !== 2 && this.dim !== 3) throw new Error(`an ellipse lies in a plane — a ${this.dim}D model has none to give it`);
-  }
-
-  /**
    * The refusals `addCircle` makes about its own arguments. Public, with
    * `checkArc`, so the command line can ask before it makes a view-centre
    * anchor that a refused call would leave behind. Changes nothing.
@@ -1399,7 +1357,7 @@ export class Model {
    * plane's; anywhere else none, and an argument giving one is refused rather
    * than ignored. Changes nothing.
    */
-  normalSeed(kind: "circle" | "arc" | "ellipse", normal: unknown): number[] | null {
+  normalSeed(kind: string, normal: unknown): number[] | null {
     if (this.dim !== 3) {
       if (normal != null) {
         throw new Error(`a ${this.dim}D ${kind} takes no normal — it lies in the one plane a ${this.dim}D model has`);
@@ -1431,25 +1389,30 @@ export class Model {
     const c = this.oriented(name);
     if (c.normal === undefined) return [0, 0, 1];
     const n = unitOf(c.normal.map((i) => this.problem.getVar(i)));
-    if (c.major === undefined) return n;
-    // An ellipse's plane is straightened against its major axis (see
-    // `EllipseEntity`): the normal's part along that axis is not its plane's.
-    const d = unitOf(this.coords(c.major).map((v, i) => v - this.coords(c.center)[i]));
+    if (c.straighten === undefined) return n;
+    // A kind that straightens its plane against an axis of its own (its
+    // `plane` says which point): the normal's part along that axis is not its
+    // plane's, as a frame's y-ref is straightened against its +x.
+    const d = unitOf(this.coords(c.straighten).map((v, i) => v - this.coords(c.center)[i]));
     const along = n.reduce((s, x, i) => s + x * d[i], 0);
     const straight = n.map((x, i) => x - along * d[i]);
     return Math.hypot(...straight) > 1e-12 ? unitOf(straight) : n;
   }
 
   /**
-   * A curve that carries a plane — a circle, an arc or an ellipse: its centre
-   * and its normal's variables (and an ellipse's major end). What `normalOf`,
-   * `setNormal` and the plane questions read, so an ellipse is a plane
-   * reference exactly as a circle is.
+   * A curve that carries a plane — a circle, an arc, or a kind whose
+   * declaration says it carries one (`EntityKindSpec.plane`): its centre and
+   * its normal's variables (and the point it is straightened against). What
+   * `normalOf`, `setNormal` and the plane questions read, so such a kind is a
+   * plane reference exactly as a circle is.
    */
-  oriented(name: string): { center: string; normal?: number[]; major?: string } {
+  oriented(name: string): { center: string; normal?: number[]; straighten?: string } {
     const e = this.entities.get(name);
-    if (e?.kind === "ellipse") return { center: e.center, normal: e.normal, major: e.major };
-    if (!e || (e.kind !== "circle" && e.kind !== "arc")) throw new Error(`"${name}" is not a circle, arc or ellipse`);
+    const declared = e && entityKind(e.kind)?.plane;
+    if (e && declared) return declared(e);
+    if (!e || (e.kind !== "circle" && e.kind !== "arc")) {
+      throw new Error(`"${name}" is not ${orList(["a circle", "arc", ...planeNouns()])}`);
+    }
     return { center: e.center, normal: e.normal };
   }
 
@@ -1499,7 +1462,7 @@ export class Model {
     }
     if (this.isFrame(ref)) return "frame";
     const e = this.entities.get(ref);
-    if (e && (e.kind === "circle" || e.kind === "arc" || e.kind === "ellipse")) {
+    if (e && (e.kind === "circle" || e.kind === "arc" || entityKind(e.kind)?.plane)) {
       if (this.dim !== 3) throw new Error(`"${ref}" lies in the one plane a ${this.dim}D model has — it gives no plane of its own`);
       return "curve";
     }
@@ -1790,19 +1753,6 @@ export class Model {
     return e;
   }
 
-  ellipse(name: string): EllipseEntity {
-    const e = this.entities.get(name);
-    if (!e || e.kind !== "ellipse") throw new Error(`"${name}" is not an ellipse`);
-    return e;
-  }
-
-  /** An ellipse's semi-axes as they stand: `a` the centre-to-major-end distance, `b` its minor variable. */
-  semiAxes(name: string): { a: number; b: number } {
-    const e = this.ellipse(name);
-    const a = Math.hypot(...this.coords(e.major).map((v, i) => v - this.coords(e.center)[i]));
-    return { a, b: this.problem.getVar(e.minorVar) };
-  }
-
   /** A circle or an arc, whichever `name` is — for relations that only need center + radius (+ normal). */
   circular(name: string): CircularRef {
     const e = this.entities.get(name);
@@ -1859,10 +1809,11 @@ export class Model {
       case "line": return [...e.refs];
       case "circle": return [e.center];
       case "arc": return [e.center, e.start, e.end];
-      case "ellipse": return [e.center, e.major];
       // The y-ref is a reference like the other two, so deleting it takes the
       // frame — a 3D frame cannot outlive the point that gives it a plane.
       case "frame": return e.yref === undefined ? [e.origin, e.xref] : [e.origin, e.xref, e.yref];
+      // Any other kind says what it is built out of (`EntityKindSpec.refs`).
+      default: return entityKind((e as { kind: string }).kind)?.refs(e) ?? [];
     }
   }
 
@@ -1962,8 +1913,7 @@ export class Model {
    */
   isConstruction(name: string): boolean {
     const e = this.entities.get(name);
-    return e !== undefined && (e.kind === "line" || e.kind === "arc" || e.kind === "circle" || e.kind === "ellipse")
-      && e.construction === true;
+    return e !== undefined && isCurveKind(e.kind) && (e as { construction?: true }).construction === true;
   }
 
   /**
@@ -1979,11 +1929,12 @@ export class Model {
    */
   setConstruction(name: string, on: boolean): void {
     const e = this.entities.get(name);
-    if (!e || (e.kind !== "line" && e.kind !== "arc" && e.kind !== "circle" && e.kind !== "ellipse")) {
-      throw new Error(`"${name}" is not a line, arc, circle or ellipse — only they bound regions, so only they can be construction`);
+    if (!e || !isCurveKind(e.kind)) {
+      throw new Error(`"${name}" is not ${orList(["a line", "arc", "circle", ...curveNouns()])} — only they bound regions, so only they can be construction`);
     }
-    if (on) e.construction = true;
-    else delete e.construction;
+    const flagged = e as { construction?: true };
+    if (on) flagged.construction = true;
+    else delete flagged.construction;
   }
 
   // ---- groups and visibility ---------------------------------------------

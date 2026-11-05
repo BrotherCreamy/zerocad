@@ -128,7 +128,7 @@ export function hitTest(
   // An arc seen obliquely is a polyline on screen, and is near wherever any
   // piece of it is.
   for (const e of shown) {
-    if (e.kind !== "circle" && e.kind !== "arc" && e.kind !== "ellipse") continue;
+    if (e.kind === "point" || e.kind === "line" || e.kind === "frame") continue;
     const screen = screenCurve(model, view, e, rCurve);
     if (!screen) continue;
     const shape = screen.curve;
@@ -368,11 +368,6 @@ function describeGeometry(model: Model, name: string, kind: Entity["kind"], n: (
       const facing = model.circular(name).normal === undefined ? "" : `  facing ${model.normalOf(name).map(n).join(", ")}`;
       return `${name}  r ${n(model.radius(name))}${facing}`;
     }
-    case "ellipse": {
-      const { a, b } = model.semiAxes(name);
-      const facing = model.ellipse(name).normal === undefined ? "" : `  facing ${model.normalOf(name).map(n).join(", ")}`;
-      return `${name}  a ${n(a)}  b ${n(b)}${facing}`;
-    }
     case "line": {
       const l = model.line(name);
       const [a, b] = [model.coords(l.refs[0]), model.coords(l.refs[1])];
@@ -389,5 +384,7 @@ function describeGeometry(model: Model, name: string, kind: Entity["kind"], n: (
       const plane = f.yref === undefined ? "" : `, +y toward ${f.yref}`;
       return `${name}  origin ${f.origin}, +x toward ${f.xref}${plane}${dflt}`;
     }
+    // A kind a module declared, with no hover line of its own: its name and kind.
+    default: return `${name}  ${kind}`;
   }
 }

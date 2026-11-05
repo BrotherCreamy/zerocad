@@ -31,7 +31,8 @@ import type { Model } from "./model.ts";
 import type { Slot } from "./clauses.ts";
 import { defineTool, getToolCtor, listTools, undefineTool, defineGroup, ungroupTool, type ToolCtor } from "./tools/tool.ts";
 import { defineIcon, undefineIcon, hasIcon } from "./tools/icons.ts";
-import { defineEntityKind, undefineEntityKind, entityKind, type EntityKindSpec } from "./model.ts";
+import { defineDimension, defineEntityKind, undefineEntityKind, entityKind, type EntityKindSpec } from "./model.ts";
+import { defineRebuild } from "./operations.ts";
 import { defineCurveFrame, undefineCurveFrame, type CurveFrameFn } from "./curveplane.ts";
 import { defineDescriber, undefineDescriber, type Describer } from "./picking.ts";
 import { defineStepCurve, undefineStepCurve, type StepCurveWriter } from "./step.ts";
@@ -55,6 +56,11 @@ export interface RelationDecl {
   typed?: (model: Model, ...args: never[]) => string;
   /** False: typed only, nothing of this name in a file. */
   op?: false;
+  /**
+   * A dimension: which of its arguments is its value (`rad`'s is 1). It is then
+   * `d`-named, `set` re-runs it with the new value, and its label is a number.
+   */
+  dimension?: number;
 }
 
 /** A command a module adds to the command line, built when a scope is (see `ModuleKit`). */
@@ -233,6 +239,12 @@ export function defineModule(name: string, spec: ModuleSpec, origin: LoadedModul
     if (e.frame) defineCurveFrame(e.kind, e.frame);
     if (e.describe) defineDescriber(e.kind, e.describe);
     if (e.step) defineStepCurve(e.kind, e.step);
+  }
+  for (const [op, decl] of Object.entries(spec.relations ?? {})) {
+    if (decl.dimension === undefined || decl.op === false) continue;
+    defineDimension(op, decl.dimension);
+    const fn = decl.fn as (model: Model, ...args: unknown[]) => unknown;
+    defineRebuild(op, (model, args) => void fn(model, ...args));
   }
   for (const [icon, svg] of Object.entries(spec.icons ?? {})) defineIcon(icon, svg);
   for (const [group, members] of Object.entries(spec.groups ?? {})) defineGroup(group, members);

@@ -10,6 +10,7 @@
 // `perp(l1, l2)` and `perpendicular(l1, l2)` work. Each takes the model
 // implicitly, since a REPL entry always has one in hand.
 
+import { addEllipse, checkEllipse, ellipseOf, semiAxes } from "./kinds/ellipse.ts";
 import { Dual } from "./kernel/dual.ts";
 import { Model, spanOf, unitOf, type Entity, type ProfileMember } from "./model.ts";
 import * as shapes from "./tools/shapes.ts";
@@ -213,7 +214,7 @@ function describe(e: Entity, model: Model): string {
     case "arc": return `${e.name}  arc    center ${e.center}, ${e.start}→${e.end}, r=${model.radius(e.name).toFixed(3)}`
       + (e.normal === undefined ? "" : `, facing (${model.normalOf(e.name).map((v) => v.toFixed(3)).join(", ")})`);
     case "ellipse": {
-      const { a, b } = model.semiAxes(e.name);
+      const { a, b } = semiAxes(model, e.name);
       return `${e.name}  ellipse center ${e.center}, major end ${e.major}, a=${a.toFixed(3)}, b=${b.toFixed(3)}`
         + (e.normal === undefined ? "" : `, facing (${model.normalOf(e.name).map((v) => v.toFixed(3)).join(", ")})`);
     }
