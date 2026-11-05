@@ -30,6 +30,7 @@ import { toolGroup, toolbarButtons, type RegionHit } from "./tools/tool.ts";
 import { findLoops, type Loop } from "./loops.ts";
 import { featureRegion, holeIndex, holeLoop, type FeatureRegion } from "./operations.ts";
 import { VIEW_MODES, type ViewMode } from "./viewmode.ts";
+import { constraintsFor, roundValue } from "./dimensioning.ts";
 
 /**
  * What clicking an item does.
@@ -104,7 +105,9 @@ const TOOL_ITEMS: [label: string, tool: string][] = [
  * nobody can see.
  */
 function num(v: number): string {
-  return String(Math.round(v * 1000) / 1000);
+  // The dimension tool's rounding, read from the one place both say it
+  // (dimensioning.ts), so a menu-typed and a tool-typed dimension agree.
+  return String(roundValue(v));
 }
 
 function quoted(name: string): string {
@@ -159,6 +162,22 @@ function selectionItems(model: Model, selection: readonly string[]): MenuItem[] 
     { label: "Delete", action: { do: "run", command: `del(${args})` } },
     { label: "Hide", action: { do: "run", command: `hide(${args})` } },
     ...constructionItems(model, selection),
+  ];
+}
+
+/**
+ * **The relations a selection takes**, under a Constrain heading — the very
+ * list the constrain tool shows (dimensioning.ts's `constraintsFor`), each
+ * item typing its relation over the selection: `par("l1", "l2")`. Only for a
+ * selection of two or more: one thing right-clicked has its own menu, with
+ * its Dimension and Fix.
+ */
+function constrainItems(model: Model, selection: readonly string[]): MenuItem[] {
+  const found = constraintsFor(model, selection);
+  if (!found.length) return [];
+  return [
+    { label: "Constrain", action: { do: "heading" } },
+    ...found.map((a): MenuItem => ({ label: a.label, action: { do: "run", command: a.text } })),
   ];
 }
 
@@ -231,14 +250,18 @@ function menuOf(model: Model, pick: Pick | null, region: RegionHit | null, selec
   if (!pick) {
     const menu = emptyCanvasMenu(model, region);
     if (!onSelection) return menu;
-    return { header: selectionHeader(selection), items: [...selectionItems(model, selection), ...menu.items] };
+    const constrain = selection.length > 1 ? constrainItems(model, selection) : [];
+    return { header: selectionHeader(selection), items: [...selectionItems(model, selection), ...constrain, ...menu.items] };
   }
   // Several selected, one of them right-clicked: the menu is about the set —
   // and about the sets the one clicked is in, the way to select one of those.
   if (onSelection && selection.length > 1) {
     return {
       header: selectionHeader(selection),
-      items: [...selectionItems(model, selection), ...selectGroupItems(model, pick.name), ...editItems(model, selection)],
+      items: [
+        ...selectionItems(model, selection), ...constrainItems(model, selection),
+        ...selectGroupItems(model, pick.name), ...editItems(model, selection),
+      ],
     };
   }
   const menu = pick.kind === "relation" ? relationMenu(model, pick) : entityMenu(model, pick);

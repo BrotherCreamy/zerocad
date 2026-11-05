@@ -171,6 +171,13 @@ export interface ToolContext {
    */
   preselected?: RegionHit[];
   /**
+   * The entities selected before arming — a click on each with nothing armed
+   * — handed over once, at arming, as `preselected` hands over regions. The
+   * constrain tool starts from these: select two lines, press Constrain, and
+   * the relations for two lines are listed. Empty when nothing was.
+   */
+  prenamed?: string[];
+  /**
    * Values typed into the options panel and not yet committed — the depth
    * field reading 25 while the tool is still armed with 10. A feature tool
    * previews with them laid over `options`, so the lid moves as the number is
@@ -330,6 +337,14 @@ export abstract class Tool {
   /** Whether this tool shows ✓ and ✗, and whether ✓ would do anything now. Absent for a tool that is not a feature. */
   dialog?(): FeatureDialog;
   /**
+   * Commands the options panel offers as buttons, one per row — each typed
+   * through the command line when pressed, as every menu item is (the constrain
+   * tool's relations for what it has picked). Absent, or empty: none.
+   */
+  commands?(): readonly ToolCommand[];
+  /** One of `commands` was typed and has run: the tool's picks are spent. */
+  ran?(command: string): void;
+  /**
    * Features whose faces the host leaves undrawn while this tool is armed,
    * because the tool draws them itself, as they will be — the edit dialog's
    * preview of the feature it edits. Without it the solid as it is would sit
@@ -339,6 +354,12 @@ export abstract class Tool {
 }
 
 export type ToolCtor = new (ctx: ToolContext) => Tool;
+
+/** A command a tool offers on its panel: the label on the button and the line it types. */
+export interface ToolCommand {
+  label: string;
+  command: string;
+}
 
 /**
  * **Select and the Hand** (docs/plans/select-hand.md; the owner: *"there is no

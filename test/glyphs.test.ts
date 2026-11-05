@@ -167,7 +167,9 @@ test("an axis-referenced par gets one mark, on the line — there is no second e
   const marks = placeGlyphs(m, view).filter((gl) => gl.relation === r);
   assert.equal(marks.length, 1, "one mark, not two and not none");
   assert.deepEqual(marks[0].anchor, at([20, 0]), "the middle of the edge it constrains");
-  assert.equal(marks[0].symbol, "//");
+  // Level against the frame: `—`, as `horizontal` typed draws it (docs/plans/
+  // sketch-relations.md). A par to another line keeps `//`, checked below.
+  assert.equal(marks[0].symbol, "—");
 
   // The point form is the same story with a segment for a subject.
   const rp = parallel(m, "p1", "p3", "f.y");

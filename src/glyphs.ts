@@ -46,6 +46,7 @@ import { dot3, lift3, sub3 } from "./vec3.ts";
 import { curvePlaneOf } from "./curveplane.ts";
 import { axisReader, turnPoint } from "./relations/revolution.ts";
 import { inSight, type Occlusion } from "./occlusion.ts";
+import { measured } from "./relations/measure.ts";
 
 // Every size below is at 100 %; `placeGlyphs` multiplies each by the view's
 // interface size (view.ts's `uiOf`), so a glyph is drawn — and, its box being
@@ -162,7 +163,76 @@ export const GLYPH_SYMBOL: Record<string, string> = {
   // thing seen at an angle. Deferred from the model half of 3D phase 1 until
   // there was a 3D drawing to look at it in.
   onPlane: "▱",
+  // The sketch relations (docs/plans/sketch-relations.md). A `par` against a
+  // frame's x or y axis — what `horizontal` and `vertical` expand to — wears
+  // `—` or `|` instead of `//` (see `symbolOf`); these two are here so the
+  // e2e suite measures them against the monospace cell like every other mark.
+  horizontal: "—",
+  vertical: "|",
+  collinear: "⋯",
+  intersection: "×",
+  pierce: "⊕",
+  equalSpacing: "≡",
+  diameter: "⌀",
+  measure: "( )",
 };
+
+/**
+ * The mark a relation wears: its table entry — except a `par` whose other side
+ * is a frame's x or y axis, which is the level or the upright edge
+ * `horizontal`/`vertical` typed, and wears `—` or `|` as Onshape draws them.
+ * (A `par` to a z axis, or to another line, keeps `//`.)
+ */
+function symbolOf(r: RelationEntry): string {
+  if (r.op === "parallel") {
+    const last = r.args.at(-1);
+    const axis = typeof last === "string" ? parseAxisRef(last) : null;
+    if (axis?.axis === "x") return GLYPH_SYMBOL.horizontal;
+    if (axis?.axis === "y") return GLYPH_SYMBOL.vertical;
+  }
+  return GLYPH_SYMBOL[r.op] ?? fallbackSymbol(r.op);
+}
+
+/**
+ * A driven dimension's text: what it measures now, written as the dimension
+ * it would be would write it, in parentheses — the draughtsman's mark for a
+ * reference dimension (SolidWorks', Onshape's). Read off the geometry, so it
+ * follows a drag.
+ */
+export function drivenLabel(model: Model, args: readonly unknown[]): string | null {
+  const v = measured(model, args);
+  if (!Number.isFinite(v)) return null;
+  const kind = args[0];
+  const text = kind === "angle" ? `${formatValue((v * 180) / Math.PI)}°`
+    : kind === "radius" ? `R${formatValue(v)}` : kind === "diameter" ? `⌀${formatValue(v)}` : formatValue(v);
+  return `(${text})`;
+}
+
+/**
+ * The two places a distance runs between, in the world: two points; a point
+ * and its foot on a line; the second line's midpoint and its foot on the
+ * first — the very numbers `dist`'s three forms hold equal to their target,
+ * so the witness lines are drawn along what is measured.
+ */
+export function distEnds(model: Model, a: string, b: string): [number[], number[]] {
+  const kind = (n: string) => model.entities.get(n)?.kind;
+  const foot = (q: number[], line: string): number[] => {
+    const l = model.line(line);
+    const p = model.coords(l.refs[0]), e = model.coords(l.refs[1]);
+    const u = e.map((v, i) => v - p[i]);
+    const uu = u.reduce((s, v) => s + v * v, 0);
+    const t = uu > 0 ? q.reduce((s, v, i) => s + (v - p[i]) * u[i], 0) / uu : 0;
+    return p.map((v, i) => v + t * u[i]);
+  };
+  if (kind(a) === "line" && kind(b) === "line") {
+    const l = model.line(b);
+    const q = model.coords(l.refs[0]).map((v, i) => (v + model.coords(l.refs[1])[i]) / 2);
+    return [foot(q, a), q];
+  }
+  if (kind(a) === "line") return [foot(model.coords(b), a), model.coords(b)];
+  if (kind(b) === "line") return [model.coords(a), foot(model.coords(a), b)];
+  return [model.coords(a), model.coords(b)];
+}
 
 /**
  * A mark for a relation this file has never heard of — one authored at the
@@ -213,6 +283,10 @@ export function labelFor(op: string, args: unknown[]): string | null {
       // Onshape's prefix. `R12` says which dimension it is without a leader
       // line having to say it.
       return typeof v === "number" ? `R${formatValue(v)}` : null;
+    }
+    case "diameter": {
+      const v = args[1];
+      return typeof v === "number" ? `⌀${formatValue(v)}` : null;
     }
     case "angle": {
       const v = args[2];
@@ -293,6 +367,23 @@ function atPoint(model: Model, name: string): Anchor {
 /** Midway between two points, nudged off to one side of the segment. */
 function atSegmentMid(model: Model, view: View, aName: string, bName: string): Anchor {
   const a = model.coords(aName), b = model.coords(bName);
+  return {
+    world: a.map((ai, i) => (ai + b[i]) / 2),
+    dir: perp(dirBetween(view, a, b)),
+    ends: [a, b],
+    about: [aName, bName],
+  };
+}
+
+/**
+ * A distance's label: between the two places it measures (`distEnds`) —
+ * which for two points is exactly `atSegmentMid` — nudged off to one side.
+ */
+function atDistance(model: Model, view: View, aName: string, bName: string): Anchor {
+  const [a, b] = distEnds(model, aName, bName);
+  if (model.entities.get(aName)?.kind === "point" && model.entities.get(bName)?.kind === "point") {
+    return atSegmentMid(model, view, aName, bName);
+  }
   return {
     world: a.map((ai, i) => (ai + b[i]) / 2),
     dir: perp(dirBetween(view, a, b)),
@@ -493,7 +584,26 @@ function anchorsFor(model: Model, view: View, r: RelationEntry): Anchor[] {
     case "onCircle":
       return [atPoint(model, str(args[0]))];
     case "dist":
-      return [atSegmentMid(model, view, str(args[0]), str(args[1]))];
+      return [atDistance(model, view, str(args[0]), str(args[1]))];
+    case "collinear":
+      return [atLineMid(model, view, str(args[0])), atLineMid(model, view, str(args[1]))];
+    case "intersection":
+    case "pierce":
+      return [atPoint(model, str(args[0]))];
+    case "equalSpacing":
+      return args.map((p) => atPoint(model, str(p)));
+    case "diameter":
+      return [atRim(model, view, str(args[0]), Math.PI / 4)];
+    case "measure": {
+      const [kind, a, b] = args.map(str);
+      if (kind === "radius" || kind === "diameter") return [atRim(model, view, a, Math.PI / 4)];
+      if (kind === "angle") return [atVertex(model, view, a, b)];
+      if (b === undefined) {
+        const l = model.line(a);
+        return [{ ...atSegmentMid(model, view, l.refs[0], l.refs[1]), about: [a] }];
+      }
+      return [atDistance(model, view, a, b)];
+    }
     case "parallel":
     case "perpendicular": {
       // A mark on each side that is real geometry. Three arguments is the
@@ -621,8 +731,13 @@ export function placeGlyphs(model: Model, view: View, occ: Occlusion | null = nu
     } catch {
       continue;
     }
-    const label = labelFor(r.op, r.args);
-    const symbol = label ?? GLYPH_SYMBOL[r.op] ?? fallbackSymbol(r.op);
+    let label: string | null;
+    try {
+      label = r.op === "measure" ? drivenLabel(model, r.args) : labelFor(r.op, r.args);
+    } catch {
+      continue;
+    }
+    const symbol = label ?? symbolOf(r);
     // Sized to the text, so the box a label is picked by is the box it is drawn
     // in. A generic mark keeps the square it always had.
     const halfW = label

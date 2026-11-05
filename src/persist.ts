@@ -22,6 +22,7 @@ import { Model, ORIGIN, memberName, parsePointTriple, type JournalEntry } from "
 import { framePlaneAxes } from "./curveplane.ts";
 import * as basic from "./relations/basic.ts";
 import * as geom from "./relations/geometry.ts";
+import { measure } from "./relations/measure.ts";
 import { isFullTurn } from "./relations/revolution.ts";
 import { construction, extrude, featuresOnProfile, fillet, hole, regen, revolve, set, unhole } from "./operations.ts";
 import * as grouping from "./groups.ts";
@@ -381,6 +382,15 @@ function replayTable(model: Model): Map<string, (...args: unknown[]) => unknown>
     tangent: rel(geom.tangent),
     symmetric: rel(geom.symmetric),
     arcEndpoints: rel(geom.arcEndpoints),
+    // The sketch relations (docs/plans/sketch-relations.md). `horizontal` and
+    // `vertical` typed today journal the `parallel` they expand to, so they need
+    // no entry; the v2 rewrite above is for the old relations of those names.
+    collinear: rel(geom.collinear),
+    intersection: rel(geom.intersection),
+    pierce: rel(geom.pierce),
+    equalSpacing: rel(geom.equalSpacing),
+    diameter: rel(geom.diameter),
+    measure: rel(measure),
 
     fillet: rel(fillet),
     // Journalled with its profile resolved (see `extrude`), so a replay walks

@@ -11,7 +11,7 @@
 // with, so the same relation code (see src/relations) works whether the
 // model is 2D or 3D.
 
-import { Problem, type BlockHandle, type SolveReport, type VarRefs } from "./kernel/problem.ts";
+import { Problem, type BlockHandle, type GaugeRow, type SolveReport, type VarRefs } from "./kernel/problem.ts";
 import type { Dual } from "./kernel/dual.ts";
 
 export interface PointEntity {
@@ -214,7 +214,15 @@ function noFramesIn(dim: number): string {
  * owns the namespace, and a relation authored at the command line gets `r`
  * without having to know any of this exists.
  */
-export const DIMENSION_OPS: ReadonlySet<string> = new Set(["dist", "radius", "angle", "extrusion", "revolution"]);
+export const DIMENSION_OPS: ReadonlySet<string> = new Set(["dist", "radius", "diameter", "angle", "extrusion", "revolution"]);
+
+/**
+ * **Reference dimensions** — `measure`, the driven dimension (relations/measure.ts):
+ * `d`-named, because a person reads them as dimensions and Onshape names them
+ * so, but not in `DIMENSION_OPS`, because they hold no value to `set`. They
+ * measure and never constrain.
+ */
+export const REFERENCE_OPS: ReadonlySet<string> = new Set(["measure"]);
 
 /**
  * Which index of a dimension's recorded `args` holds its value. An
@@ -222,11 +230,11 @@ export const DIMENSION_OPS: ReadonlySet<string> = new Set(["dist", "radius", "an
  * …pairs]`: the value sits second so that it is at a fixed place however many
  * pairs follow it.
  */
-const VALUE_ARG: Record<string, number> = { dist: 2, radius: 1, angle: 2, extrusion: 1, revolution: 1 };
+const VALUE_ARG: Record<string, number> = { dist: 2, radius: 1, diameter: 1, angle: 2, extrusion: 1, revolution: 1 };
 
 /** The name prefix a relation made by `op` claims. See `DIMENSION_OPS`. */
 export function relationPrefix(op: string): string {
-  return DIMENSION_OPS.has(op) ? "d" : "r";
+  return DIMENSION_OPS.has(op) || REFERENCE_OPS.has(op) ? "d" : "r";
 }
 
 /**
@@ -1947,4 +1955,139 @@ export class Model {
   solve(): SolveReport {
     return this.problem.solve();
   }
+
+  /** Which variables each entity owns — its own, not those of the points it refers to. */
+  private ownVars(e: Entity): number[] {
+    switch (e.kind) {
+      case "point": return e.varIndices;
+      case "circle":
+      case "arc": return [e.radiusVar, ...(e.normal ?? [])];
+      default: return [];
+    }
+  }
+
+  /**
+   * **What is free, and what is said twice** (docs/plans/sketch-relations.md):
+   * the problem's rank analysis (`Problem.analyse`, which knows no entity)
+   * mapped back to the names a person sees.
+   *
+   * **Free**: an entity is free when any variable it owns or refers to — a
+   * point's coordinates, a line's two ends, a curve's centre, ends, radius
+   * and normal, a frame's points — moves in some motion that leaves every
+   * relation satisfied. `dof` counts those motions. Only live entities'
+   * variables are asked about: the problem never forgets a variable, and a
+   * deleted point's would otherwise count as a freedom.
+   *
+   * **Two gauges are not counted as freedoms**, and they are the only place
+   * this is a choice rather than arithmetic:
+   *
+   * - **A curve's normal is a direction** (frameless-curves.md): every
+   *   residual reads it normalised, so its length is free by construction
+   *   and nothing could ever hold it. One gauge row along the normal itself.
+   * - **A point lying on the drawing plane, or on the ground, is not free off
+   *   it.** A sketch drawn on the ground in a fresh document holds no point
+   *   there (`holdOnSketchPlane` only holds them on a plane the user chose),
+   *   and the solver never moves one off it — so a fully dimensioned
+   *   rectangle on the ground would otherwise read free forever in z, which
+   *   is not what a sketcher means by free and not what Onshape says. A point
+   *   *off* both planes — 3D geometry proper — is counted in full. Vetoable,
+   *   in TODO.md.
+   *
+   * **Redundant**: a relation every row of which the rows stored before it
+   * already imply — consistent, and saying nothing new. Reported, never
+   * refused: the later of two ways of saying one thing is the one named, which
+   * is the one just added. A relation with some rows new and some implied
+   * (a 3D `par`'s third wedge component, an `oncircle`'s plane row beside an
+   * `onplane`) is not redundant — only the whole relation is a thing a person
+   * can delete.
+   *
+   * Asked after a solve, not during a drag: it costs one Jacobian and two
+   * eliminations (`ms` says how long), which is several solves' worth.
+   */
+  diagnose(): Diagnosis {
+    const t0 = performance.now();
+    const live: number[] = [];
+    const gauge: GaugeRow[] = [];
+    const planes = this.dim === 3 ? this.gaugePlanes() : [];
+    for (const e of this.entities.values()) {
+      live.push(...this.ownVars(e));
+      if ((e.kind === "circle" || e.kind === "arc") && e.normal) {
+        gauge.push({ vars: e.normal, coeffs: e.normal.map((i) => this.problem.getVar(i)) });
+      }
+      if (e.kind === "point" && planes.length) {
+        const p = e.varIndices.map((i) => this.problem.getVar(i));
+        const on = planes.find((pl) => Math.abs(pl.n.reduce((s, c, k) => s + c * (p[k] - pl.origin[k]), 0)) < 1e-6);
+        if (on) gauge.push({ vars: e.varIndices, coeffs: on.n });
+      }
+    }
+    const a = this.problem.analyse({ vars: live, gauge });
+    const freeVars = new Set(a.free);
+    const pointFree = (name: string) => this.entities.get(name)?.kind === "point"
+      && (this.entities.get(name) as PointEntity).varIndices.some((i) => freeVars.has(i));
+    const free = new Set<string>();
+    for (const e of this.entities.values()) {
+      const own = this.ownVars(e).some((i) => freeVars.has(i));
+      if (own || this.refsOf(e).some(pointFree)) free.add(e.name);
+    }
+    const dependent = new Map(a.dependent.map((d) => [d.block, d]));
+    const redundant: string[] = [];
+    for (const r of this.relations.values()) {
+      if (!r.blocks.length) continue;
+      if (r.blocks.every((b) => { const d = dependent.get(b); return d !== undefined && d.dependent === d.rows; })) {
+        redundant.push(r.name);
+      }
+    }
+    return { dof: a.dof, free, redundant, ms: performance.now() - t0 };
+  }
+
+  /** The planes a point lying in is not counted free off: the drawing plane, and the ground. See `diagnose`. */
+  private gaugePlanes(): { origin: number[]; n: number[] }[] {
+    const out: { origin: number[]; n: number[] }[] = [{ origin: [0, 0, 0], n: [0, 0, 1] }];
+    try {
+      const pl = this.planeValues(this.drawingPlane());
+      if (pl && pl.n.some((c) => c !== 0)) out.push({ origin: pl.origin, n: pl.n });
+    } catch {
+      // a plane that cannot be read is one nothing lies in
+    }
+    return out;
+  }
+
+  /**
+   * **Which relations a failed solve accuses** — those owning a block whose
+   * residual stayed large (`SolveReport.blocks`), in that order: the rows that
+   * cannot all be zero at once. A block no relation owns (one added straight
+   * to the problem at the command line) is named by its label in `unowned`.
+   */
+  conflicting(report: SolveReport): { relations: string[]; unowned: string[] } {
+    const owner = new Map<BlockHandle, string>();
+    for (const r of this.relations.values()) for (const b of r.blocks) owner.set(b, r.name);
+    const relations: string[] = [];
+    for (const b of report.blocks) {
+      const name = owner.get(b);
+      if (name !== undefined && !relations.includes(name)) relations.push(name);
+    }
+    const named = new Set(relations.flatMap((n) => this.relations.get(n)!.blocks));
+    const unowned = report.blocks.some((b) => !named.has(b))
+      ? report.offenders.map((o) => o.label).filter((l) => !relations.some((n) => this.relationLabels(n).includes(l)))
+      : [];
+    return { relations, unowned };
+  }
+
+  /** The labels a relation's blocks carry — what an offender report spells it as. */
+  private relationLabels(name: string): string[] {
+    const r = this.relations.get(name);
+    return r ? r.blocks.map((b) => this.problem.labelOf(b) ?? "") : [];
+  }
+}
+
+/** What `Model.diagnose` found. */
+export interface Diagnosis {
+  /** Independent ways the drawing can still move with every relation holding. */
+  dof: number;
+  /** The entities some such motion moves. */
+  free: Set<string>;
+  /** Relations every row of which the relations before them already imply. */
+  redundant: string[];
+  /** How long it took, in milliseconds. */
+  ms: number;
 }

@@ -8,7 +8,7 @@
 // for the expensive part: one damped linear solve per Newton step.
 
 import { Dual } from "./dual.ts";
-import initWasm, { solve_step } from "./wasm-gen/neocad_kernel.js";
+import initWasm, { null_support, solve_step } from "./wasm-gen/neocad_kernel.js";
 
 /**
  * Which variables a block reads, either as a fixed list or as a thunk
@@ -74,7 +74,48 @@ export interface SolveReport {
   iterations: number;
   maxResidual: number;
   offenders: { label: string; residual: number }[];
+  /**
+   * The stored blocks whose residual stayed large — the rows `offenders` names
+   * by label, named by handle instead, largest first. A handle is what the
+   * layer above can map back to whatever added the block (a relation, in
+   * model.ts); a label is only words.
+   */
+  blocks: BlockHandle[];
 }
+
+/**
+ * A row the analysis adds that no block holds: `coeffs` over `vars`, a linear
+ * statement "this combination does not count as a freedom". For a variable
+ * direction that is a *gauge* — a length nothing reads, a scale every residual
+ * is blind to — which would otherwise be reported free forever. Plain numbers
+ * over plain indices: what a gauge means is the caller's business.
+ */
+export interface GaugeRow {
+  vars: number[];
+  coeffs: number[];
+}
+
+/** What `analyse` found. See there. */
+export interface Analysis {
+  /** The rank of the stored rows, with the gauge rows, over the columns analysed. */
+  rank: number;
+  /** Columns analysed minus that rank: how many independent ways the variables can still move. */
+  dof: number;
+  /** The variables some such motion moves, ascending. */
+  free: number[];
+  /**
+   * The stored blocks with at least one row that the rows before it already
+   * imply — `dependent` of their `rows` — in the order they were stored. A
+   * block all of whose rows are dependent says nothing new: redundant.
+   */
+  dependent: { block: BlockHandle; rows: number; dependent: number }[];
+}
+
+/** Relative rank tolerance for `analyse`: a column counts when its remainder is above this share of its norm. */
+const RANK_TOL = 1e-9;
+
+/** How far off a stored row must stay for a solve to call it an offender. */
+const OFFENDING = 0.05;
 
 /**
  * How the kernel can be handed to us: a URL to fetch (the browser path) or the
@@ -123,6 +164,11 @@ export class Problem {
    * file has lost track — and a removal that silently did nothing would leave
    * that constraint in the drawing with no sign of why.
    */
+  /** The label a stored block was added with, or undefined (no label, or no such block). */
+  labelOf(handle: BlockHandle): string | undefined {
+    return this.blocks.find((e) => e.id === handle)?.block.label;
+  }
+
   removeBlock(handle: BlockHandle): void {
     const i = this.blocks.findIndex((e) => e.id === handle);
     if (i < 0) throw new Error(`no residual block ${handle}`);
@@ -144,13 +190,17 @@ export class Problem {
    */
   private evaluate(extra: ResidualBlock[] = []): {
     r: number[]; rows: number[]; cols: number[]; vals: number[]; labels: (string | undefined)[]; storedRows: number;
+    owners: BlockHandle[];
   } {
     const r: number[] = [];
     const rows: number[] = [];
     const cols: number[] = [];
     const vals: number[] = [];
     const labels: (string | undefined)[] = [];
-    const run = (block: ResidualBlock) => {
+    // The block each row came from (0 for an extra), so a row can be named by
+    // the handle its owner was given.
+    const owners: BlockHandle[] = [];
+    const run = (block: ResidualBlock, owner: BlockHandle) => {
       const varIndices = resolve(block.varIndices);
       const locals = varIndices.map((gi, li) => Dual.variable(this.values[gi], li));
       const outs = block.fn(locals);
@@ -158,6 +208,7 @@ export class Problem {
         const rowIdx = r.length;
         r.push(out.val);
         labels.push(block.label);
+        owners.push(owner);
         for (const [localSlot, deriv] of out.grad) {
           if (deriv === 0) continue;
           rows.push(rowIdx);
@@ -170,10 +221,10 @@ export class Problem {
     // between what the problem *is* and what this one solve was also asked to
     // weigh. A row index, rather than a flag per block, because that is what
     // the report has to slice.
-    for (const entry of this.blocks) run(entry.block);
+    for (const entry of this.blocks) run(entry.block, entry.id);
     const storedRows = r.length;
-    for (const block of extra) run(block);
-    return { r, rows, cols, vals, labels, storedRows };
+    for (const block of extra) run(block, 0);
+    return { r, rows, cols, vals, labels, storedRows, owners };
   }
 
   /**
@@ -197,10 +248,10 @@ export class Problem {
     const extra = opts.extra ?? [];
     const n = this.values.length;
 
-    let { r, rows, cols, vals, labels, storedRows } = this.evaluate(extra);
+    let { r, rows, cols, vals, labels, storedRows, owners } = this.evaluate(extra);
     let norm = norm2(r);
     if (n === 0 || r.length === 0) {
-      return { solved: true, iterations: 0, maxResidual: 0, offenders: [] };
+      return { solved: true, iterations: 0, maxResidual: 0, offenders: [], blocks: [] };
     }
 
     let lambda = 1e-3;
@@ -218,7 +269,7 @@ export class Problem {
         const nextNorm = norm2(next.r);
         if (isFinite(nextNorm) && nextNorm < norm) {
           r = next.r; rows = next.rows; cols = next.cols; vals = next.vals; labels = next.labels;
-          storedRows = next.storedRows;
+          storedRows = next.storedRows; owners = next.owners;
           norm = nextNorm;
           lambda = Math.max(1e-10, lambda / 3);
           improved = true;
@@ -234,16 +285,95 @@ export class Problem {
     const stored = r.slice(0, storedRows);
     const offenders: { label: string; residual: number }[] = [];
     const seen = new Map<string, number>();
+    const byBlock = new Map<BlockHandle, number>();
     stored.forEach((v, i) => {
       const mag = Math.abs(v);
-      if (mag > 0.05) {
+      if (mag > OFFENDING) {
         const label = labels[i] ?? `r${i}`;
         seen.set(label, Math.max(seen.get(label) ?? 0, mag));
+        byBlock.set(owners[i], Math.max(byBlock.get(owners[i]) ?? 0, mag));
       }
     });
     for (const [label, residual] of seen) offenders.push({ label, residual });
     offenders.sort((a, b) => b.residual - a.residual);
+    const blocks = [...byBlock].sort((a, b) => b[1] - a[1]).map(([id]) => id);
 
-    return { solved: offenders.length === 0, iterations, maxResidual: maxAbs(stored), offenders };
+    return { solved: offenders.length === 0, iterations, maxResidual: maxAbs(stored), offenders, blocks };
+  }
+
+  /**
+   * **What is still free, and what is said twice** — the rank of the Jacobian
+   * at the current values, from the kernel (`null_support`), asked twice.
+   *
+   * Asked of J itself — the stored rows, then `gauge` — the support of its null
+   * space: every variable some motion moves while no residual changes to first
+   * order. Those are the free variables; `dof` counts the independent motions.
+   * Asked of Jᵀ, the stored rows each implied by the rows stored before it: a
+   * block whose every row is one of those says nothing the drawing did not
+   * already say. The gauge rows take no part in that second question — they
+   * are not the problem's, and a block must not be called redundant for
+   * agreeing with a statement nobody made.
+   *
+   * `vars`, when given, are the only columns analysed: the caller's live
+   * variables, since this file never forgets a variable, and one nothing owns
+   * any more would otherwise count as a freedom. A block reading a column
+   * outside them is read as though that column were constant.
+   *
+   * First-order, as every rank test is: a variable held only by a residual
+   * whose gradient vanishes at its own root would read free — one more reason
+   * no relation here is ever written as a square.
+   *
+   * Point-blind like the rest of this file: columns are variables and rows
+   * residuals. What a variable *is* is the caller's to say.
+   */
+  analyse(opts: { vars?: number[]; gauge?: GaugeRow[] } = {}): Analysis {
+    const { rows, cols, vals, storedRows, owners } = this.evaluate();
+    const all = this.values.length;
+    const live = opts.vars
+      ? [...new Set(opts.vars)].filter((i) => i >= 0 && i < all).sort((a, b) => a - b)
+      : Array.from({ length: all }, (_, i) => i);
+    const at = new Int32Array(all).fill(-1);
+    live.forEach((v, k) => { at[v] = k; });
+    const n = live.length;
+    // J over the live columns, then each gauge row under it.
+    const jr: number[] = [], jc: number[] = [], jv: number[] = [];
+    for (let k = 0; k < rows.length; k++) {
+      const c = at[cols[k]];
+      if (c < 0) continue;
+      jr.push(rows[k]); jc.push(c); jv.push(vals[k]);
+    }
+    const stored = jr.length;
+    let m = storedRows;
+    for (const g of opts.gauge ?? []) {
+      g.vars.forEach((v, i) => {
+        const c = v >= 0 && v < all ? at[v] : -1;
+        if (c < 0 || g.coeffs[i] === 0) return;
+        jr.push(m); jc.push(c); jv.push(g.coeffs[i]);
+      });
+      m++;
+    }
+    const outJ = null_support(new Uint32Array(jr), new Uint32Array(jc), new Float64Array(jv), m, n, RANK_TOL);
+    const rank = outJ[0];
+    const free: number[] = [];
+    for (let k = 0; k < n; k++) if (outJ[k + 1] !== 0) free.push(live[k]);
+
+    // Jᵀ, stored rows only: a row is a column now, and a non-pivot (2) is one
+    // the rows before it already imply.
+    const outT = null_support(
+      new Uint32Array(jc.slice(0, stored)), new Uint32Array(jr.slice(0, stored)), new Float64Array(jv.slice(0, stored)),
+      n, storedRows, RANK_TOL,
+    );
+    const dependent: Analysis["dependent"] = [];
+    let last: Analysis["dependent"][number] | null = null;
+    for (let i = 0; i < storedRows; i++) {
+      const owner = owners[i];
+      if (!last || last.block !== owner) {
+        last = { block: owner, rows: 0, dependent: 0 };
+        dependent.push(last);
+      }
+      last.rows++;
+      if (outT[i + 1] === 2) last.dependent++;
+    }
+    return { rank, dof: n - rank, free, dependent: dependent.filter((d) => d.dependent > 0) };
   }
 }

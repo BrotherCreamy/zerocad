@@ -11,20 +11,60 @@
 
 import type { Model } from "../model.ts";
 import type { Dual } from "../kernel/dual.ts";
-import { norm, vecSub } from "./vec.ts";
-import { frameBasis, planeBasis } from "./refs.ts";
+import { norm, vecSub, wedgeNorm } from "./vec.ts";
+import { chunk, frameBasis, joinVars, lineVars, planeBasis, unitDuals } from "./refs.ts";
 
-/** |a - b| = target */
+/**
+ * A distance: |a − b| = target between two points — and, since the dimension
+ * tool (docs/plans/sketch-relations.md), between a **point and a line** (its
+ * perpendicular distance from the infinite line, either order) or **two
+ * lines** (the second's midpoint from the first's infinite line: what a
+ * distance between two parallel edges means, and still a number when they are
+ * not).
+ *
+ * The line forms read their lines lazily (`lineVars`), so the dimension
+ * follows an edge a fillet re-points. The perpendicular distance is
+ * |(q − a) ∧ (b − a)| / |b − a| — the wedge's length, so it is the same
+ * expression in any dimension, and not a square: its gradient is the unit
+ * normal toward the point all the way down to the target. (At a target of 0 it
+ * is the length of a vector at its own root, unsmooth exactly there; a point
+ * on a line is `on`, which is what the tool types for that.)
+ */
 export function dist(model: Model, aName: string, bName: string, target: number): string {
   return model.relation("dist", [aName, bName, target], () => {
-    const a = model.point(aName), b = model.point(bName);
+    const kind = (n: string) => model.entities.get(n)?.kind;
     const dim = model.dim;
+    if (kind(aName) === "line" || kind(bName) === "line") {
+      const label = `dist(${aName},${bName})`;
+      if (kind(aName) === "line" && kind(bName) === "line") {
+        model.addResidual(joinVars(lineVars(model, aName), lineVars(model, bName)), (l) => {
+          const [a, b, c, d] = chunk(l, dim, 4);
+          const q = c.map((ci, i) => ci.add(d[i]).div(2));
+          return [offLine(q, a, b).sub(target)];
+        }, label);
+        return;
+      }
+      const [p, line] = kind(aName) === "line" ? [bName, aName] : [aName, bName];
+      const pt = model.point(p);
+      model.addResidual(joinVars(pt.varIndices, lineVars(model, line)), (l) => {
+        const [q, a, b] = chunk(l, dim, 3);
+        return [offLine(q, a, b).sub(target)];
+      }, label);
+      return;
+    }
+    const a = model.point(aName), b = model.point(bName);
     const varIndices = [...a.varIndices, ...b.varIndices];
     model.addResidual(varIndices, (l) => {
       const A = l.slice(0, dim), B = l.slice(dim);
       return [norm(vecSub(B, A)).sub(target)];
     }, `dist(${aName},${bName})`);
   });
+}
+
+/** How far `q` is from the infinite line through `a` and `b`: |(q − a) ∧ (b − a)| / |b − a|. */
+function offLine(q: Dual[], a: Dual[], b: Dual[]): Dual {
+  const u = vecSub(b, a);
+  return wedgeNorm(vecSub(q, a), u).div(norm(u));
 }
 
 /**
@@ -158,6 +198,7 @@ export function coincident(model: Model, aName: string, bName: string): string {
  */
 export function midpoint(model: Model, mName: string, aName: string, bName?: string): string {
   const args = bName === undefined ? [mName, aName] : [mName, aName, bName];
+  if (bName === undefined && model.entities.get(aName)?.kind === "arc") return arcMidpoint(model, mName, aName);
   return model.relation("midpoint", args, () => {
     const m = model.point(mName);
     const label = bName === undefined ? `mid(${mName},${aName})` : `mid(${mName})`;
@@ -168,6 +209,54 @@ export function midpoint(model: Model, mName: string, aName: string, bName?: str
         : [gi, ends[0][i], ends[1][i]];
       model.addResidual(vars, (l) => [l[0].sub(l[1].add(l[2]).div(2))], `${label}[${i}]`);
     });
+  });
+}
+
+/**
+ * `mid(m, arc)`: the point halfway round an arc — on its circle, and as far
+ * from its start as from its end. Journalled as `midpoint` with the arc's name
+ * in the line's place; the arc is read when the blocks are evaluated, as a
+ * line is, so the point follows an arc whose ends move.
+ *
+ * Two blocks: the rim (|m − centre| = r, and in 3D `m` on the rim's plane, read
+ * through the arc's own normal as `onCircle` reads it) and the equal chords,
+ * |m − start| − |m − end|. Neither is a square. **Two points satisfy both** —
+ * the middle of this arc and the middle of the rest of its circle — and the
+ * solve keeps the one it is nearer, as a tangency keeps its side: seed it on
+ * the arc (the snap does) and it stays there. Saying which side with an
+ * equation would need the sweep's sign, which no smooth residual has.
+ */
+function arcMidpoint(model: Model, mName: string, arcName: string): string {
+  return model.relation("midpoint", [mName, arcName], () => {
+    const m = model.point(mName);
+    model.arc(arcName);
+    const dim = model.dim;
+    const vars = () => {
+      const a = model.arc(arcName);
+      return [...m.varIndices, ...model.point(a.center).varIndices, ...model.point(a.start).varIndices,
+        ...model.point(a.end).varIndices, a.radiusVar];
+    };
+    model.addResidual(vars, (l) => {
+      const [q, c] = chunk(l, dim, 2);
+      return [norm(vecSub(q, c)).sub(l[4 * dim])];
+    }, `mid(${mName},${arcName})|rim`);
+    model.addResidual(vars, (l) => {
+      const [q, , s, e] = chunk(l, dim, 4);
+      return [norm(vecSub(q, s)).sub(norm(vecSub(q, e)))];
+    }, `mid(${mName},${arcName})|chords`);
+    if (dim === 3) {
+      model.addResidual(() => {
+        const a = model.arc(arcName);
+        if (!a.normal) throw new Error(`"${arcName}" has no normal — it was built around the constructors`);
+        return [...m.varIndices, ...model.point(a.center).varIndices, ...a.normal];
+      }, (l) => {
+        const [q, c, raw] = chunk(l, dim, 3);
+        const n = unitDuals(raw);
+        let acc = q[0].sub(c[0]).mul(n[0]);
+        for (let k = 1; k < dim; k++) acc = acc.add(q[k].sub(c[k]).mul(n[k]));
+        return [acc];
+      }, `mid(${mName},${arcName})|plane`);
+    }
   });
 }
 

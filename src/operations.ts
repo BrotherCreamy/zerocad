@@ -12,7 +12,7 @@ import {
 } from "./model.ts";
 import { defaultMode, resolveMode } from "./modes.ts";
 import { dist } from "./relations/basic.ts";
-import { angle, arcEndpoints, onCircle, pointOnLine, radius, tangent } from "./relations/geometry.ts";
+import { angle, arcEndpoints, diameter, onCircle, pointOnLine, radius, tangent } from "./relations/geometry.ts";
 import { extrusion } from "./relations/extrusion.ts";
 import { FULL_TURN, axisReader, isFullTurn, revolution, turnPoint } from "./relations/revolution.ts";
 import { arcPoint, portionAngles, sweepsAs } from "./arcgeom.ts";
@@ -2484,6 +2484,7 @@ export function construction(model: Model, ...args: unknown[]): string[] {
 const REBUILD: Record<string, (model: Model, args: unknown[]) => void> = {
   dist: (m, a) => void dist(m, a[0] as string, a[1] as string, a[2] as number),
   radius: (m, a) => void radius(m, a[0] as string, a[1] as number),
+  diameter: (m, a) => void diameter(m, a[0] as string, a[1] as number),
   angle: (m, a) => void angle(m, a[0] as string, a[1] as string, a[2] as number),
   // An extrude's depth: the whole lid, one value. Without this line `set` on
   // one throws — `test/dimensions.test.ts` drives every dimension through here.
@@ -2498,7 +2499,7 @@ const REBUILD: Record<string, (model: Model, args: unknown[]) => void> = {
  * in the *short* names, because those are what the user typed to make one —
  * being told about `radius` after typing `rad` is a small riddle to no purpose.
  */
-const onlyDims = `only dist, rad, ang, an extrude's depth and a revolve's angle have a .${SETTABLE_PROPERTY}`;
+const onlyDims = `only dist, rad, dia, ang, an extrude's depth and a revolve's angle have a .${SETTABLE_PROPERTY}`;
 
 /**
  * Changes a dimension's value: `set("d4.value", 60)`.

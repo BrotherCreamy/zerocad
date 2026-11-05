@@ -16,7 +16,7 @@ import { ensureKernelLoaded } from "../src/kernel/problem.ts";
 import { DIMENSION_OPS, Model, parseValueRef, relationPrefix, valueArgIndex } from "../src/model.ts";
 import { coincident, dist, fix, midpoint } from "../src/relations/basic.ts";
 import {
-  angle, equalLength, equalRadius, onCircle, parallel, perpendicular, pointOnLine,
+  angle, diameter, equalLength, equalRadius, onCircle, parallel, perpendicular, pointOnLine,
   radius, symmetric, tangent,
 } from "../src/relations/geometry.ts";
 import { del, set } from "../src/operations.ts";
@@ -85,7 +85,10 @@ test("the three value-carrying relations are d-named and every other one is r-na
   // fifth, an extrude's depth and a revolve's angle, need a 3D model and a
   // feature around them, and have files of their own (test/extrude.test.ts,
   // test/revolve.test.ts).
-  assert.deepEqual([...DIMENSION_OPS].sort(), ["angle", "dist", "extrusion", "radius", "revolution"]);
+  assert.deepEqual([...DIMENSION_OPS].sort(), ["angle", "diameter", "dist", "extrusion", "radius", "revolution"]);
+  // A driven dimension is a dimension to read and name, never to set.
+  assert.equal(relationPrefix("measure"), "d");
+  assert.equal(valueArgIndex("measure"), null);
   assert.equal(relationPrefix("dist"), "d");
   assert.equal(relationPrefix("fix"), "r");
   // A relation authored at the command line has never heard of any of this and
@@ -211,7 +214,7 @@ test("set says what is settable when it is handed something that is not", async 
 
   // A relation with no value. The message names the three that have one, in
   // the short spellings the user typed to make them.
-  assert.throws(() => set(m, `${r}.value`, 3), /"r1" is a parallel, not a dimension — only dist, rad, ang, an extrude's depth and a revolve's angle have a \.value/);
+  assert.throws(() => set(m, `${r}.value`, 3), /"r1" is a parallel, not a dimension — only dist, rad, dia, ang, an extrude's depth and a revolve's angle have a \.value/);
   // A name that is an entity, and a name that is nothing at all.
   assert.throws(() => set(m, "a.value", 3), /"a" is an entity, not a dimension/);
   assert.throws(() => set(m, "d99.value", 3), /"d99" is not a relation/);
@@ -277,6 +280,7 @@ test("every op in DIMENSION_OPS can actually be rebuilt by set", async () => {
   const fixtures: Record<string, (m: Model) => string> = {
     dist: (m) => dist(m, "a", "b", 10),
     radius: (m) => radius(m, "c", 5),
+    diameter: (m) => diameter(m, "c", 10),
     angle: (m) => angle(m, "l1", "l2", Math.PI / 3),
     // 3D only, so on a model of its own (see below); one pair is enough to
     // prove `set` can re-run it.

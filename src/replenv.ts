@@ -18,6 +18,7 @@ import { ENGINE_TOOLS, TOOL_GROUPS, Tool, defineTool, getToolCtor, listTools, al
 import { OptionMemory, declaredOptions, defaultsOf, describeValues, resolveOptions } from "./tools/options.ts";
 import * as basic from "./relations/basic.ts";
 import * as geom from "./relations/geometry.ts";
+import { measure } from "./relations/measure.ts";
 import {
   construction, del, extrude, fillet, hole, loopOfMember, orientingPlane, peelOptions, regen, revolve, set, unhole,
 } from "./operations.ts";
@@ -212,6 +213,22 @@ function lifted(model: Model, coords: number[]): number[] {
   return model.dim === 3 && Array.isArray(coords) && coords.length === 2 ? [...coords, 0] : coords;
 }
 
+/**
+ * `horizontal("l1")` / `vertical("l1")`, and the two-point forms: `par`
+ * against the default frame's x or y axis, resolved now (`axisRef`), so the
+ * journal holds the `par` with the frame it meant. A line takes nothing more;
+ * a point takes the second point.
+ */
+function level(model: Model, axis: "x" | "y", word: string, a: string, b?: string | null): string {
+  const ref = model.axisRef(axis);
+  if (model.entities.get(a)?.kind === "point") {
+    if (b == null) throw new Error(`${word}("${a}") needs a second point — or give it a line`);
+    return geom.parallel(model, a, b, ref);
+  }
+  if (b != null) throw new Error(`${word} takes a line, or two points — "${a}" is not a point, so nothing more`);
+  return geom.parallel(model, a, ref);
+}
+
 // `describeRelation` and the short-name table it reads used to live here. They
 // moved down to picking.ts when the hover tag started describing relations too
 // — one table, so the canvas and the command line cannot end up calling the
@@ -269,6 +286,19 @@ export function neocadScope(h: EnvHandles): Bag {
   relation(["tan", "tangent"], slots("line", "circle"), bind(model, geom.tangent));
   relation(["sym", "symmetric"], slots("a", "b", "line"), bind(model, geom.symmetric));
   relation(["arcends", "arcEndpoints"], slots("arc"), bind(model, geom.arcEndpoints));
+  // The sketch relations (docs/plans/sketch-relations.md). `horizontal` and
+  // `vertical` are the words an Onshape hand types, and they **expand to
+  // par** against the default frame's axis — `par("l1", xaxis())` is what is
+  // journalled and drawn (`—`), so there is still no hor/ver relation, only a
+  // second spelling of the one that exists.
+  relation(["col", "collinear"], slots("line", "line"), bind(model, geom.collinear));
+  relation(["horizontal"], slots("a", "b"), (a: string, b?: string | null) => level(model, "x", "horizontal", a, b));
+  relation(["vertical"], slots("a", "b"), (a: string, b?: string | null) => level(model, "y", "vertical", a, b));
+  relation(["intersection"], slots("point", "curve", "curve"), bind(model, geom.intersection));
+  relation(["pierce"], slots("point", "curve", "plane"), bind(model, geom.pierce));
+  relation(["spacing", "equalSpacing"], slots("point", "point", "point"), bind(model, geom.equalSpacing));
+  relation(["dia", "diameter"], slots("circle", "#diameter"), bind(model, geom.diameter));
+  relation(["measure"], slots("#kind", "a", "b"), bind(model, measure));
 
   /**
    * Applies clauses to an entity that exists, returning the relation names
@@ -594,6 +624,17 @@ export function neocadScope(h: EnvHandles): Bag {
   geometry.xaxis = (frame?: string | null) => model.axisRef("x", frame);
   geometry.yaxis = (frame?: string | null) => model.axisRef("y", frame);
   geometry.zaxis = (frame?: string | null) => model.axisRef("z", frame);
+  /**
+   * Degrees as radians — `ang("l1", "l2", deg(30))`. `ang` stores radians and
+   * its label reads degrees; this is how the dimension tool types what it
+   * measured in the unit the label shows (dimensioning.ts).
+   */
+  geometry.deg = (degrees: number) => {
+    if (typeof degrees !== "number" || !Number.isFinite(degrees)) {
+      throw new Error(`deg takes a number of degrees, got ${JSON.stringify(degrees)}`);
+    }
+    return (degrees * Math.PI) / 180;
+  };
 
   // Long names beside the short ones, the way every relation already has both.
   // The owner's examples are written `circle()`, and a creator function shares
