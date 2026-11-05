@@ -305,8 +305,13 @@ otherwise.
   `"neocad-model"` and the browser-storage keys keep the old name, because
   renaming them would make saved files and saved layouts unreadable for no
   visible gain. The public repository is `BrotherCreamy/zerocad`, its history
-  carried over whole with author identities rewritten to noreply addresses;
-  this repository stays private as the archive it came from.
+  carried over whole with author identities rewritten to noreply addresses.
+  **Development stays here, in the private repository** (the owner, asked
+  2026-11-05 whether to move it: *"actually just keep it that way I guess"*):
+  the working branch, the workers' pull requests and the gate are here, and
+  after every merge the history is rewritten and pushed to `zerocad` as its
+  `main`, behind a check that no personal name or address survives — the
+  mirror is never committed to directly. Pages deploys from the mirror.
 
 - **A region's membership is its outline plus the loops confirmed as holes,
   never re-inferred from coplanarity; click-to-pick proposes the loops inside**
