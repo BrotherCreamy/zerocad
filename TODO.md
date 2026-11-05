@@ -2751,12 +2751,12 @@ extended the way `defineTool` extends the tool registry would close it.
         `touch.e2e.ts` lost one tap on p2 in 6 of 9 full e2e runs of this
         branch: "a finger down on a quiet corner…" 5 times and "a quick tap
         while the page is busy…" once.
-        - It passed every time the file ran alone or with one or three
-          other files (16 runs), and passed a full run with passive event
-          recording in the page.
-        - The base branch passed its one full run here, and two tail runs
-          (tooltips, touch, undo, undokeys); this branch failed one tail
-          run in two.
+        - It never failed alone. Paired with `solids.e2e.ts`, it failed in
+          4 runs of 12, all before event recording was added. With the
+          suite's tail (tooltips, touch, undo, undokeys), it failed in 1 run
+          of 2. A full run with passive event recording in the page passed.
+        - The base branch passed its one full run here, and 2 tail runs of
+          2.
         - On the phone page, a frame (~0.1 ms) and a reload (~0.7 s) cost
           the same as on the base branch, and there are no long tasks after
           a reload.
