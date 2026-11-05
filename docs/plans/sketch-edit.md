@@ -1,8 +1,10 @@
 # Plan: sketch editing — trim, extend, offset, mirror, chamfer, patterns
 
-**Status: queued** (2026-11-05), after `toolbar-groups.md`, in parallel with
-`sketch-shapes.md` and `sketch-relations.md`. The owner: *"give me better
-sketch tools, relations, trim, slot... all the usual"*.
+**Status: queued** (2026-11-05), after `workbenches.md` and
+`regions-as-operations.md` (the owner confirmed the order): written as a
+module from the start, and trim works on regions as that package defines
+them. The owner: *"give me better sketch tools, relations, trim, slot... all
+the usual"*.
 
 Every one of these **creates or re-points entities**, so each is an
 *operation* (`operations.ts`, `asOperation`, journalled as its typed call and
