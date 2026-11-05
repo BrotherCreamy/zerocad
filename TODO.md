@@ -305,8 +305,13 @@ otherwise.
   `"neocad-model"` and the browser-storage keys keep the old name, because
   renaming them would make saved files and saved layouts unreadable for no
   visible gain. The public repository is `BrotherCreamy/zerocad`, its history
-  carried over whole with author identities rewritten to noreply addresses;
-  this repository stays private as the archive it came from.
+  carried over whole with author identities rewritten to noreply addresses.
+  **Development stays here, in the private repository** (the owner, asked
+  2026-11-05 whether to move it: *"actually just keep it that way I guess"*):
+  the working branch, the workers' pull requests and the gate are here, and
+  after every merge the history is rewritten and pushed to `zerocad` as its
+  `main`, behind a check that no personal name or address survives — the
+  mirror is never committed to directly. Pages deploys from the mirror.
 
 - **A region's membership is its outline plus the loops confirmed as holes,
   never re-inferred from coplanarity; click-to-pick proposes the loops inside**
@@ -1559,7 +1564,9 @@ starts.
          corner; the boss on a plate) fail every time, alone and in the full
          suite, on this branch and on its base commit alike — they appear to
          need the kernel body the boss makes and, unlike `solids.e2e.ts`, do
-         not skip without the SMLib build. Make them skip (or need) it.
+         not skip without the SMLib build. **Done (2026-11-05):** they skip
+         and say so, as the solids tests do (measured: 2 skipped without the
+         build, all pass with it).
       2. In parallel on that: [`sketch-shapes.md`](docs/plans/sketch-shapes.md)
          (polygon, slot, the ellipse as a new entity),
          **[x] sketch-shapes BUILT (2026-11-05)** on `claude/sketch-shapes`.
@@ -1609,15 +1616,36 @@ starts.
          same seams.
       Out of scope for now, written down: text in sketches; `tan` between
       an ellipse and another curve; tangent handles on splines unless free.
-      - **Proposed, not yet queued — regions as operations.** The owner:
-        *"there should be no such thing as a negative face. a face is just a
-        face. just like there should be no such thing as a negative solid,
-        only an operation which subtracts"*. A face is a closed loop (found);
-        a region is `face − face` by a named operation, listed and reusable,
-        and an extrude takes a region; a feature's recorded holes become a
-        region at open. The same rule for surfaces later: trim and knit are
-        operations, nothing is negative. Spec to write once the owner
-        confirms the order (before `sketch-edit.md`, which trims regions).
+      - **The order, confirmed by the owner (2026-11-05, *"the order is
+        good"*):** after shapes and relations land,
+        [`workbenches.md`](docs/plans/workbenches.md) (the owner: *"the whole
+        framework should be modular and extensible (!). like onshape
+        workbenches"* — modules that register what they bring, the entity
+        extension point proven by moving the ellipse out of `model.ts`,
+        workbenches with their own toolbars, and **Add workbench…** in the
+        menu — the owner: *"I should be able to add a workbench simply by
+        opening a file on my device, from the menu"* — a workbench file
+        picked from the device, its manifest shown before consent, kept on
+        the device, removable, shareable),
+        then [`regions-as-operations.md`](docs/plans/regions-as-operations.md)
+        (the owner: *"there should be no such thing as a negative face. a
+        face is just a face. just like there should be no such thing as a
+        negative solid, only an operation which subtracts"* — a region is
+        faces combined by named operations, an extrude takes a region, holes
+        become regions at open, the same rule written down for surfaces),
+        then `sketch-edit.md` and `spline.md` as modules.
+      - **In parallel with workbenches:**
+        [`mode-feedback.md`](docs/plans/mode-feedback.md) (the owner: *"it
+        isnt obvious to me that is whats happening. needs clearer
+        visual/contextual feedback to the user"* — the active plane drawn and
+        tinted, a mode chip saying where · what · next, a Done for the
+        sketch plane, the gesture's stage drawn, what is in the plane in
+        focus); then [`android.md`](docs/plans/android.md) (the owner: *"obv
+        this whole platform should also work on android"* — Pixels, Galaxies
+        and tablets in the device table, the system font scale read
+        Android's way, the back gesture closing what is open, Install app in
+        the menu, the file paths and their fallbacks, nothing new in the
+        recogniser).
 
 - [x] **Files — open, save, share, drop, autosave — BUILT (2026-11-04).**
       The owner: *"I want to be able to open files on my phone, share files

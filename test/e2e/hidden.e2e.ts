@@ -22,10 +22,19 @@
 
 import { test, after } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { axisFrame, openApp, type AppContext } from "./harness.ts";
 import { HELPERS, build, look, lookAlong, scene } from "./scenes.ts";
+
+// Two scenes here are bodies of two features, which the solid kernel builds
+// (docs/plans/solids-kernel.md): their dimmed edges are the kernel's. Without
+// a kernel build the app draws the features' own faces instead and the
+// picture is a different one, so they skip and say so, as the solids tests
+// do — they failed instead, for the toolbar-groups worker, which had not
+// built the kernel.
+const built = existsSync(new URL("../../src/solids/smlib-gen/smlib.mjs", import.meta.url));
+const skip = built ? false : "no SMLib build — run `npm run build:solids`";
 
 const SHOTS = process.env.NEOCAD_E2E_SHOTS;
 const GOLDEN = new URL("./golden/hidden-plain-sketch.png", import.meta.url).pathname;
@@ -291,7 +300,7 @@ const solidInk = async (app: AppContext): Promise<string> => app.page.evaluate(a
   return (await import(path)).SOLID_EDGE as string;
 });
 
-test("the stepped block from a corner, hidden view: its far edges are in the dimmed ink, its near ones in full, and a point behind it keeps its full dot", async () => {
+test("the stepped block from a corner, hidden view: its far edges are in the dimmed ink, its near ones in full, and a point behind it keeps its full dot", { skip }, async () => {
   const app = await hiddenApp();
   await build(app, scene("stepped-boss").source);
   await lookAlong(app, CORNER);
@@ -398,7 +407,7 @@ test("hidden view: a line from in front of the block to under it: lit, amber in 
   await shot(app, "stepped-block-lit");
 });
 
-test("hidden view, the boss on a plate: the far side of the boss's foot is dimmed behind the boss, its near side and its top are not, and the plate's far edge is dimmed", async () => {
+test("hidden view, the boss on a plate: the far side of the boss's foot is dimmed behind the boss, its near side and its top are not, and the plate's far edge is dimmed", { skip }, async () => {
   const app = await hiddenApp();
   await build(app, scene("boss-plate").source);
   await lookAlong(app, CORNER);
