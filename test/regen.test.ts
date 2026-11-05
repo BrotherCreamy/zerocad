@@ -329,7 +329,8 @@ test("regen refuses a name that is no feature, and a feature whose profile is go
   const stray = m.addPoint(t.at(50, -5)).name;
   m.retargetLine(lines[1], m.line(lines[1]).refs[0], stray);
   const [record, length, names] = [structuredClone(m.featureOf("e1")), m.journal.length, allNames(m)];
-  assert.throws(() => regen(m, "e1"), /e1's profile is gone — "l1" is in no closed loop parallel to t now/);
+  // Said by the region it stands on, whose first face it is.
+  assert.throws(() => regen(m, "e1"), /rg1's first face l1–l4 is gone — "l1" is in no closed loop parallel to t now/);
   assert.deepEqual(m.featureOf("e1"), record);
   assert.equal(m.journal.length, length);
   assert.deepEqual(allNames(m), names);

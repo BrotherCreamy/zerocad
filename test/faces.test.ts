@@ -16,7 +16,7 @@ import { readFile } from "node:fs/promises";
 import { ensureKernelLoaded } from "../src/kernel/problem.ts";
 import { Model } from "../src/model.ts";
 import { onPlane } from "../src/relations/basic.ts";
-import { extrude, fillet, revolve } from "../src/operations.ts";
+import { add, extrude, fillet, hole as holeOp, region, revolve, subtract } from "../src/operations.ts";
 import { FACE_DARK, FACE_LIGHT, SOLID_EDGE, faceColour, faceRGB, facesToDraw, featureFaces, loopOutlines, visibleFaces, type Face } from "../src/faces.ts";
 import { arcSegments } from "../src/arcgeom.ts";
 import { findLoops } from "../src/loops.ts";
@@ -152,7 +152,11 @@ test("a hole's walls face into the hole, an island's out of it — and even-odd 
   const c = m.addPoint([30, 25, 0]).name;
   const hole = m.addCircle(c, 15, "f").name;
   const island = m.addCircle(c, 5, "f").name;
-  const f = m.featureOf(extrude(m, lines[0], 20), "extrude");
+  // The hole and the island said, as a region's steps (regions-as-operations.md).
+  const e = extrude(m, lines[0], 20);
+  holeOp(m, e, hole);
+  holeOp(m, e, island);
+  const f = m.featureOf(e, "extrude");
   assert.deepEqual(f.loops, [lines, [hole], [island]]);
 
   const scale = 3;
@@ -314,7 +318,12 @@ function ringed(): { m: Model; lines: string[]; hole: string; island: string } {
   return { m, lines, hole: m.addCircle(c, 15, "f").name, island: m.addCircle(c, 5, "f").name };
 }
 
-test("the extrude tool: hovering inside outlines the region, a click there picks it, a confirm extrudes it with its holes, and the journal says what a typed call would", async () => {
+// Was: "…a confirm extrudes it with its holes". The owner, since: *"rather
+// than auto detecting regions + things inside that region which then get
+// subtracted automatically, there should be explicit specification"* — so a
+// click takes the face it is in, whole, and a region with holes is one the
+// region operations made (the next test).
+test("the extrude tool: hovering inside outlines the face, a click there picks it, a confirm extrudes it whole, and the journal says what a typed call would", async () => {
   await loadKernel();
   const { m, lines, hole, island } = ringed();
   const ctx = toolCtx(m, ABOVE, { depth: 12 });
@@ -334,11 +343,33 @@ test("the extrude tool: hovering inside outlines the region, a click there picks
   assert.equal(tool.picks.size, 0, "with nothing picked");
   assert.equal(ctx.solves, 1);
   const f = m.featureOf("e1", "extrude");
-  assert.deepEqual(f.loops, [lines, [hole], [island]], "between the outline and the hole: the outline, with its hole and the hole's island");
-  assert.deepEqual(m.journal.at(-1), { op: "extrude", args: [lines[0], 12, "f", [lines, [hole], [island]]] });
+  assert.deepEqual(f.loops, [lines], "between the outline and the hole: the outline's face, the circles inside it drawn and no more");
+  assert.ok(hole && island);
+  assert.deepEqual(m.journal.slice(-2), [
+    { op: "region", args: [lines[0], "f", lines] },
+    { op: "extrude", args: ["rg1", 12, "f", [lines]] },
+  ]);
 });
 
-test("a click on the island takes the island; a click in the ring takes the hole's loop, the island its hole", async () => {
+test("inside a named region the extrude tool takes the region: its holes and islands as its operations made them", async () => {
+  await loadKernel();
+  const { m, lines, hole, island } = ringed();
+  const rg = region(m, lines[0]);
+  subtract(m, rg, hole);
+  add(m, rg, island);
+  const ctx = toolCtx(m, ABOVE, { depth: 12 });
+  const tool = new ExtrudeTool(ctx);
+  tool.onDown({ world: [5, 5, 0], screen: worldToScreen(ABOVE, [5, 5, 0]) });
+  tool.onDown({ world: [31, 25, 0], screen: worldToScreen(ABOVE, [31, 25, 0]) }); // the island: rg1 again
+  assert.equal(tool.confirm(), true);
+  const f = m.featureOf("e1", "extrude");
+  assert.equal(m.features.size, 1, "one region, one feature, however many of its cells were clicked");
+  assert.deepEqual(f.loops, [lines, [hole], [island]]);
+  assert.equal(f.region, rg);
+  assert.deepEqual(m.journal.at(-1), { op: "extrude", args: [rg, 12, "f", [lines, [hole], [island]]] });
+});
+
+test("a click on the island takes the island; a click in the ring takes the hole's loop — its whole inside, the island in it", async () => {
   await loadKernel();
   for (const [x, want] of [[31, "island"], [40, "hole"]] as const) {
     const r = ringed();
@@ -347,7 +378,7 @@ test("a click on the island takes the island; a click in the ring takes the hole
     tool.onDown({ world: [x, 25, 0], screen: worldToScreen(ABOVE, [x, 25, 0]) });
     tool.onDown({ world: [x, 25, 0], screen: worldToScreen(ABOVE, [x, 25, 0]) }); // again: the quick path
     const f = r.m.featureOf("e1", "extrude");
-    assert.deepEqual(f.loops, want === "island" ? [[r.island]] : [[r.hole], [r.island]]);
+    assert.deepEqual(f.loops, want === "island" ? [[r.island]] : [[r.hole]]);
     assert.equal(r.m.relationOf(f.depth).args[1], 10, "no depth armed: the default");
   }
 });
@@ -399,7 +430,7 @@ test("on a split region the extrude tool outlines the half under the cursor, and
   tool.confirm();
   assert.deepEqual(log, []);
   const f = m.featureOf("e1", "extrude");
-  assert.equal(m.journal.length, journal + 1, "one entry: the extrude");
+  assert.equal(m.journal.length, journal + 2, "two entries: the half's region, and the extrude on it");
   // The two crossings became the first two points made, held on the edges
   // through them; the journal names them, never the keys.
   const made = f.owns.filter((n) => m.entities.get(n)?.kind === "point").slice(0, 2);
@@ -407,9 +438,10 @@ test("on a split region the extrude tool outlines the half under the cursor, and
   assert.ok(!entry.includes("×"), entry);
   // Named by the one member only this half has, whole — the right edge —
   // which is the shortest call a user could have typed for it.
+  assert.deepEqual(m.journal.at(-2), { op: "region", args: [lines[1], "f", [lines[0], lines[1], lines[2], across]] });
   assert.deepEqual(m.journal.at(-1), {
     op: "extrude",
-    args: [lines[1], 10, "f", [[{ name: lines[0], from: made[0], to: m.line(lines[0]).refs[1] }, lines[1],
+    args: ["rg1", 10, "f", [[{ name: lines[0], from: made[0], to: m.line(lines[0]).refs[1] }, lines[1],
       { name: lines[2], from: m.line(lines[2]).refs[0], to: made[1] }, { name: across, from: made[0], to: made[1] }]]],
   });
   for (const [p, x, y] of [[made[0], 15, 0], [made[1], 15, 30]] as const) {
@@ -451,7 +483,7 @@ test("the extrude tool asks the engine for no snap; the tools that place points 
   assert.equal(new RectangleTool(toolCtx(m, ABOVE)).snaps, true);
 });
 
-test("its preview fills the region even-odd and strokes it", async () => {
+test("its preview fills the face to its rim and strokes it — a loop inside is drawn, not cut", async () => {
   await loadKernel();
   const { m } = ringed();
   const ctx = toolCtx(m, ABOVE);
@@ -469,7 +501,7 @@ test("its preview fills the region even-odd and strokes it", async () => {
   }) as unknown as CanvasRenderingContext2D;
   tool.render({ g, worldToScreen: (w) => worldToScreen(ABOVE, w), scale: ABOVE.scale });
   assert.ok(calls.includes("fill(evenodd)"));
-  assert.equal(calls.filter((c) => c === "closePath()").length, 3, "the outline, the hole and the island");
+  assert.equal(calls.filter((c) => c === "closePath()").length, 1, "the outline alone: the circles inside are no holes yet");
   assert.ok(calls.includes("stroke()"));
 });
 
@@ -625,7 +657,9 @@ test("a hole in the profile turns into a tunnel: its walls face into it, and bot
   const pts = [[10, 0, 0], [50, 0, 0], [50, 40, 0], [10, 40, 0]].map((c) => m.addPoint(c).name);
   const lines = pts.map((p, i) => m.addLine(p, pts[(i + 1) % 4]).name);
   const hole = m.addCircle(m.addPoint([30, 20, 0]).name, 8, "f").name;
-  const f = m.featureOf(revolve(m, lines[0], "f.y", 2), "revolve");
+  const e = revolve(m, lines[0], "f.y", 2);
+  holeOp(m, e, hole);
+  const f = m.featureOf(e, "revolve");
   assert.deepEqual(f.loops, [lines, [hole]]);
   const faces = featureFaces(m, f, 3);
   for (const cap of faces.filter((x) => x.kind !== "wall")) assert.equal(cap.outlines.length, 2, `${cap.kind}: the outline and the hole`);
@@ -673,7 +707,10 @@ test("the revolve tool: a click inside a region, then on a frame's +y arm — re
   tool.confirm();
   assert.equal(ctx.finished, true, "a confirm releases the tool, as Onshape's ✓ closes its dialog");
   assert.equal(ctx.solves, 1);
-  assert.deepEqual(m.journal.at(-1), { op: "revolve", args: [lines[0], "f.y", 1.5, "f", [lines]] });
+  assert.deepEqual(m.journal.slice(-2), [
+    { op: "region", args: [lines[0], "f", lines] },
+    { op: "revolve", args: ["rg1", "f.y", 1.5, "f", [lines]] },
+  ]);
 });
 
 test("after the profile: nothing there is refused aloud, another region is toggled in and out, an axis revolve refuses is logged and the profile kept — then a line does it", async () => {
@@ -775,8 +812,10 @@ test("a hole's wall has no line across it — a whole circle has no vertex — a
   for (const p of pts) onPlane(m, p, "f");
   const c = m.addPoint([20, 15, 0]).name;
   onPlane(m, c, "f");
-  m.addCircle(c, 6, "f");
-  const f = m.featureOf(extrude(m, lines[0], 10), "extrude");
+  const circle = m.addCircle(c, 6, "f").name;
+  const e = extrude(m, lines[0], 10);
+  holeOp(m, e, circle);
+  const f = m.featureOf(e, "extrude");
   const faces = featureFaces(m, f, 4);
   const hole = faces.filter((x) => x.kind === "wall" && Math.hypot(x.centroid[0] - 20, x.centroid[1] - 15) < 7);
   assert.ok(hole.length > 8, "the hole's wall is a strip");

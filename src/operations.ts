@@ -2795,14 +2795,15 @@ export function planRegionStep(model: Model, op: Exclude<RegionOp, "region">, r:
   const names = faceNames(all[at]);
   const label = loopLabel(names);
   const after = withStep(model, r, before, op, at);
-  const cells = after.cells;
-  const same = cells.size === before.cells.size && [...cells].every((c) => before.cells.has(c));
-  if (same) {
+  // Compared by area: a cell's index names a face, and what the cell is —
+  // the face less the faces named inside it — changes as faces are named.
+  const [was, now] = [cellsArea(before), cellsArea(after)];
+  if (Math.abs(now - was) <= 1e-9 * Math.max(1, was)) {
     throw new Error(op === "subtract" ? `${label} is not inside ${r} — subtracting it takes nothing away`
       : op === "add" ? `${label} is in ${r} already — adding it changes nothing`
         : `${r} is inside ${label} already — intersecting changes nothing`);
   }
-  if (!cells.size) {
+  if (!after.cells.size || now <= 1e-9 * Math.max(1, was)) {
     throw new Error(op === "intersect" ? `${r} and ${label} share nothing — intersecting would leave ${r} empty`
       : `subtracting ${label} would leave ${r} empty — del("${r}") removes it`);
   }

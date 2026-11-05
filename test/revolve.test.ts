@@ -22,7 +22,7 @@ import { Model } from "../src/model.ts";
 import { coincident, dist, fix, onPlane } from "../src/relations/basic.ts";
 import { parallel } from "../src/relations/geometry.ts";
 import { revolution } from "../src/relations/revolution.ts";
-import { checkRevolve, del, extrude, fillet, revolve, revolveProfile, set } from "../src/operations.ts";
+import { checkRevolve, del, extrude, fillet, hole as holeOp, revolve, revolveProfile, set } from "../src/operations.ts";
 import { open, save } from "../src/persist.ts";
 import { neocadScope } from "../src/replenv.ts";
 import { describePick } from "../src/picking.ts";
@@ -114,7 +114,9 @@ test("a partial revolve: a twin of every corner and edge, no frame, one angle di
   assert.equal(m.solve().solved, true);
   assert.ok(m.solve().iterations <= 1, "seeded exactly where the angle holds it");
   // Journalled as the one call, with the profile resolved.
-  assert.deepEqual(m.journal.at(-1), { op: "revolve", args: [lines[0], "t.y", QUARTER, "t", [lines]] });
+  // On the region made for it on the way (regions-as-operations.md).
+  assert.deepEqual(m.journal.at(-2), { op: "region", args: [lines[0], "t", lines] });
+  assert.deepEqual(m.journal.at(-1), { op: "revolve", args: ["rg1", "t.y", QUARTER, "t", [lines]] });
 });
 
 test("a full revolve makes nothing: one dimension holding nothing, a whole turn — and that is what no angle means", async () => {
@@ -132,7 +134,7 @@ test("a full revolve makes nothing: one dimension holding nothing, a whole turn 
   assert.equal(r.op, "revolution");
   assert.deepEqual(r.args, ["t.y", 2 * Math.PI]);
   assert.deepEqual(r.blocks, [], "a label, holding nothing");
-  assert.deepEqual(m.journal.at(-1), { op: "revolve", args: [lines[0], "t.y", 2 * Math.PI, "t", [lines]] });
+  assert.deepEqual(m.journal.at(-1), { op: "revolve", args: ["rg1", "t.y", 2 * Math.PI, "t", [lines]] });
   // The other way round is a whole turn too.
   assert.equal(m.featureOf(revolve(m, lines[0], "t.y", -2 * Math.PI), "revolve").end, null);
   assert.equal(m.solve().solved, true);
@@ -179,14 +181,18 @@ test("a circle turned partway — the end of a torus — is a twin circle facing
   assert.equal(m.featureOf(revolve(m, c, "t.y"), "revolve").twins.length, 0);
 });
 
-test("a hole comes with the profile: its twin too, and a hole's island", async () => {
+test("a hole comes with the region: its twin too, and a hole's island — each said by a region step", async () => {
   await loadKernel();
   const m = new Model(3);
   const t = tiltedFrame(m);
   const { lines } = polygon(m, t, [[10, 0], [50, 0], [50, 40], [10, 40]]);
   const hole = ring(m, t, 30, 20, 10);
   const island = m.addCircle(m.circle(hole).center, 4, t.name).name;
-  const f = m.featureOf(revolve(m, lines[0], "t.y", 3), "revolve");
+  const e = revolve(m, lines[0], "t.y", 3);
+  assert.deepEqual(m.featureOf(e).loops, [lines], "a loop inside is no hole until an operation names it");
+  holeOp(m, e, hole);
+  holeOp(m, e, island);
+  const f = m.featureOf(e, "revolve");
   assert.deepEqual(f.loops, [lines, [hole], [island]]);
   assert.equal(f.twins.length, 3);
   assert.equal(m.circle(f.twins[2][0]).center, m.circle(f.twins[1][0]).center, "one shared centre, one shared twin");
@@ -521,7 +527,8 @@ test("deleting a piece — a profile edge, an end twin, the angle, the axis line
   // geometry still held, drawn without faces.
   {
     const { m, lines, f } = build();
-    assert.deepEqual(del(m, lines[2]), [f.name, lines[2]]);
+    // And the region whose first face it bounded.
+    assert.deepEqual(del(m, lines[2]), [f.name, lines[2], "rg1"]);
     for (const n of f.owns) assert.ok(m.has(n), `${n} stayed`);
     assert.equal(m.solve().solved, true);
   }

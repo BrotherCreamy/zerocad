@@ -14,7 +14,9 @@
 // profile): there ZeroCAD's own figure is checked against OpenCascade's.
 
 import { Model } from "../src/model.ts";
-import { construction, extrude, fillet, revolve } from "../src/operations.ts";
+// A loop inside an outline is a hole once a region's operation says so
+// (docs/plans/regions-as-operations.md): `hole` here, the alias of `subtract`.
+import { construction, extrude, fillet, hole, revolve } from "../src/operations.ts";
 import { hide } from "../src/groups.ts";
 import { onPlane } from "../src/relations/basic.ts";
 import { arcEndpoints } from "../src/relations/geometry.ts";
@@ -73,8 +75,8 @@ export function parts(): Part[] {
   part("plate-hole", "a plate with a round hole", 1, (60 * 40 - Math.PI * 64) * 6, (m) => {
     const t = square(m);
     const { lines } = polygon(m, t, [[0, 0], [60, 0], [60, 40], [0, 40]]);
-    ring(m, t, 30, 20, 8);
-    extrude(m, lines[0], 6);
+    const c = ring(m, t, 30, 20, 8);
+    hole(m, extrude(m, lines[0], 6), c);
   });
 
   // A fillet of radius r takes r² − πr²/4 out of the corner.
@@ -118,8 +120,8 @@ export function parts(): Part[] {
   part("tilted", "a tilted profile on a non-axis plane", 1, (30 * 20 - Math.PI * 25) * 8, (m) => {
     const t = tiltedFrame(m);
     const { lines } = polygon(m, t, [[0, 0], [30, 0], [30, 20], [0, 20]]);
-    ring(m, t, 10, 10, 5);
-    extrude(m, lines[0], 8);
+    const c = ring(m, t, 10, 10, 5);
+    hole(m, extrude(m, lines[0], 8), c);
   });
 
   // ---- beyond the spec's list ----
@@ -147,8 +149,8 @@ export function parts(): Part[] {
   part("cavity", "a full revolve of a profile with a hole (a void)", 1, 2 * Math.PI * (8000 - Math.PI * 16 * 20), (m) => {
     const t = square(m);
     const { lines } = polygon(m, t, [[10, 0], [30, 0], [30, 20], [10, 20]]);
-    ring(m, t, 20, 10, 4);
-    revolve(m, lines[0], "f.y");
+    const c = ring(m, t, 20, 10, 4);
+    hole(m, revolve(m, lines[0], "f.y"), c);
   });
 
   // A hole with an island in it: the island is solid and the hole round it
@@ -156,9 +158,10 @@ export function parts(): Part[] {
   part("island", "an island inside a hole (one feature, two bodies)", 2, (3600 - Math.PI * 400 + Math.PI * 64) * 5, (m) => {
     const t = square(m);
     const { lines } = polygon(m, t, [[0, 0], [60, 0], [60, 60], [0, 60]]);
-    ring(m, t, 30, 30, 20);
-    ring(m, t, 30, 30, 8);
-    extrude(m, lines[0], 5);
+    const [h, i] = [ring(m, t, 30, 30, 20), ring(m, t, 30, 30, 8)];
+    const e = extrude(m, lines[0], 5);
+    hole(m, e, h);
+    hole(m, e, i);
   });
 
   // The revolve e2e's poster: a filleted block turned 270° about the tilted

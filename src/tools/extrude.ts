@@ -59,7 +59,7 @@ import { defineTool, type FeatureStep, type PointerInfo, type RegionHit, type Re
 import type { OptionSpecs } from "./options.ts";
 import { DEFAULT_DEPTH, extrude, extrudeProfile, orientingPlane, profileOf, profileOfLoops, regionNaming, regionOf } from "../operations.ts";
 import { memberName } from "../model.ts";
-import { drawRegion, lightRegions, missedRegion, outlineLoops, regionKey, type Region } from "./region.ts";
+import { drawHit, lightRegions, missedRegion, namedRegionAt, outlineLoops, regionKey } from "./region.ts";
 import { FeatureTool, MODE_OPTION, callText, foundRegion, modeOptions } from "./feature.ts";
 import type { FeatureOptions } from "../operations.ts";
 import { RegionSelection, leftOut } from "./selection.ts";
@@ -76,6 +76,9 @@ export function extrudeSteps(region: RegionHit, depth: number, typed: boolean, w
   const tail = options ? [options] : [];
   return [(m): ReturnType<FeatureStep> => {
     const r = foundRegion(m, region);
+    // Inside a named region the click took the region: `extrude("rg1", 10)`.
+    const named = namedRegionAt(m, r);
+    if (named) return { text: callText("extrude", [named, depth, ...tail]), direct: () => extrude(m, named, depth, ...tail) };
     const out = leftOut(m, r, without);
     if (out.size) {
       const p = profileOfLoops(m, r.loops, regionOf(r.loops, r.index).filter((i) => !out.has(i)),
@@ -107,7 +110,7 @@ export class ExtrudeTool extends FeatureTool {
   };
   static readonly summary = "Pulls a closed shape into a solid: click inside it, then ✓";
   readonly name = "extrude";
-  private under: Region | null = null;
+  private under: RegionHit | null = null;
   /** The regions picked, in the order picked. */
   readonly picks = new RegionSelection();
 
@@ -130,7 +133,16 @@ export class ExtrudeTool extends FeatureTool {
     const depth = this.depthOf(values);
     const typed = !!this.ctx.perform;
     const options = modeOptions(values);
-    return this.picks.regions.flatMap((r, i) => extrudeSteps(r, depth, typed, this.picks.without(i), options));
+    // Two clicks inside one named region are one region, extruded once.
+    const seen = new Set<string>();
+    return this.picks.regions.flatMap((r, i) => {
+      const named = namedRegionAt(this.ctx.model, r);
+      if (named) {
+        if (seen.has(named)) return [];
+        seen.add(named);
+      }
+      return extrudeSteps(r, depth, typed, this.picks.without(i), options);
+    });
   }
 
   protected picksKey(): string {
@@ -159,12 +171,6 @@ export class ExtrudeTool extends FeatureTool {
       this.guide(missedRegion(this.ctx.model));
       return;
     }
-    // A hole of a picked region toggles out of its proposal (and back) before
-    // it can be a region of its own — see the top of this file.
-    if (this.picks.toggleHole(this.ctx.model, hit) !== null) {
-      this.ctx.requestRender();
-      return;
-    }
     if (this.picks.toggle(this.ctx.model, hit) === "again") {
       this.confirm();
       return;
@@ -182,11 +188,11 @@ export class ExtrudeTool extends FeatureTool {
     lightRegions(model, r, this.under);
     this.picks.refresh(model).forEach((picked, i) => {
       const out = leftOut(model, picked, this.picks.without(i));
-      drawRegion(model, r, picked, "40", undefined, out);
+      drawHit(model, r, picked, "40", undefined, out);
       // A hole clicked out stays outlined, so it can be clicked back in.
       outlineLoops(model, r, picked.loops, [...out]);
     });
-    if (this.under) drawRegion(model, r, this.under);
+    if (this.under) drawHit(model, r, this.under);
     this.renderPreview(r);
   }
 }

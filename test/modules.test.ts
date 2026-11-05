@@ -104,9 +104,17 @@ test("a file written before the re-cut — every sketch-shapes piece and an extr
   await loadKernel();
   const text = await readFile(new URL("./fixtures/shapes-v15.neocad.json", import.meta.url), "utf8");
   const m = open(text);
-  // Saved again it is the same file but for its version: 16 added the head's
-  // workbench and modules, and a file that uses neither changes nothing else.
-  assert.equal(save(m, true), text.replace('"version": 15', '"version": 16'));
+  // Saved again it is the same file but for its version — 16 added the head's
+  // workbench and modules, and a file that uses neither changes nothing else
+  // — and its extrude standing on a region (17, docs/plans/regions-as-
+  // operations.md): the face is a region first, the feature on it after.
+  const want = JSON.parse(text);
+  want.version = 17;
+  const at = want.journal.findIndex((e: { op: string }) => e.op === "extrude");
+  const [member, , frame, loops] = want.journal[at].args;
+  want.journal.splice(at, 1, { op: "region", args: [member, frame, loops[0]] },
+    { op: "extrude", args: ["rg1", ...want.journal[at].args.slice(1)] });
+  assert.deepEqual(JSON.parse(save(m, true)), want);
   // And it is the ellipse it was: drawn by the sketch module's kind.
   const s = neocadScope({ model: m }) as Record<string, (...a: unknown[]) => unknown>;
   assert.match(String(s.ls()), /el1\s+ellipse/);

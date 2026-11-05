@@ -99,8 +99,8 @@ function ownersPlate() {
   const rect = [[0, 0], [60, 0], [60, 40], [0, 40]].map(([x, y]) => m.addPoint([x, y, 0]).name);
   const outline = rect.map((p, i) => m.addLine(p, rect[(i + 1) % 4]).name);
   const tri = [[20, 10], [40, 10], [30, 30]].map(([x, y]) => m.addPoint([x, y, 0]).name);
-  tri.forEach((p, i) => m.addLine(p, tri[(i + 1) % 3]));
-  return { m, rect, outline };
+  const hole = tri.map((p, i) => m.addLine(p, tri[(i + 1) % 3]).name);
+  return { m, rect, outline, hole };
 }
 
 async function typed(m: Model, line: string): Promise<unknown> {
@@ -113,11 +113,12 @@ async function typed(m: Model, line: string): Promise<unknown> {
 
 test("the owner's plate with a hole, extruded frameless the version-10 way: 14 points, none on another — the lid frame stands on three lid corners", async () => {
   await loadKernel();
-  const { m, rect, outline } = ownersPlate();
+  const { m, rect, outline, hole } = ownersPlate();
   // The frame the typed call makes for it (three of the outline's corners), then the old expansion.
   m.addFrame(rect[0], rect[1], rect[3], "f1");
   m.setDefaultFrame("f1");
-  assert.equal(extrude(m, outline[0], 10, "f1", null, 10), "e1");
+  // The triangle a hole, said (a loop inside is none until an operation names it).
+  assert.equal(extrude(m, outline[0], 10, "f1", [outline, hole], 10), "e1");
   assert.equal(m.solve().solved, true);
   const f = m.featureOf("e1", "extrude");
   const sketch = m.frame(f.frame);
@@ -419,10 +420,10 @@ test("a version-10 file reopens with its lid frame and the same names, the expan
  * which is the one thing an old build's entry does not say, so it is struck.
  */
 function version9File() {
-  const { m } = ownersPlate();
+  const { m, outline, hole } = ownersPlate();
   m.addFrame("p1", "p2", "p4", "f1");
   m.setDefaultFrame("f1");
-  extrude(m, "l1", 10, "f1", null, 9);
+  extrude(m, "l1", 10, "f1", [outline, hole], 9);
   m.solve();
   assert.equal(points(m).length, 17);
   assert.equal(coincident(m).length, 3, "the old expansion, measured: three pairs");
@@ -431,7 +432,9 @@ function version9File() {
   dist(m, later, "p16", 50);
   assert.equal(m.solve().solved, true);
   const saved = JSON.parse(save(m));
-  for (const e of saved.journal) if (e.op === "extrude") e.args = e.args.slice(0, 4);
+  // As the old build wrote it: no region entries (format 17), the extrude on its member.
+  saved.journal = saved.journal.filter((e: { op: string }) => !["region", "subtract", "add"].includes(e.op));
+  for (const e of saved.journal) if (e.op === "extrude") e.args = ["l1", ...e.args.slice(1, 4)];
   saved.version = 9;
   return { m, saved, later };
 }

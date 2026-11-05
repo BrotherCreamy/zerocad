@@ -227,7 +227,9 @@ test("a construction outline is no loop at all; in 3D on a tilted plane as in 2D
 
 test("a feature's outline member is refused by name, before anything changes", async () => {
   const { m, lines, c } = await solidSketch();
+  // A loop inside is a hole once an operation says so (regions-as-operations.md).
   const e = extrude(m, lines[0], 20);
+  hole(m, e, c);
   assert.equal(m.featureOf(e).loops.length, 2, "the ring is a hole");
   const n = m.journal.length;
   assert.throws(() => construction(m, lines[1]), new RegExp(`"${lines[1]}" is part of ${e}'s outline — a solid's outline cannot stop being a boundary`));
@@ -242,17 +244,20 @@ test("a feature's outline member is refused by name, before anything changes", a
 // nothing, so the hole's loop has gone — the same as deleting the circle,
 // which fills the hole. Refusing would have kept the flag from ever reaching a
 // recorded hole; regenerating is what the construction spec asked for.
-test("a hole's member made construction fills the hole: journalled as the unhole it is, then the flag — one call, one undo step, the file agrees", async () => {
+test("a hole's member made construction fills the hole: journalled as the region losing it, then the flag — one call, one undo step, the file agrees", async () => {
   const { m, lines, c } = await solidSketch();
   const e = extrude(m, lines[0], 20);
+  hole(m, e, c);
   const twin = m.featureOf(e).twins[1][0];
   const n = m.journal.length;
   assert.deepEqual(construction(m, c), [c]);
   assert.equal(m.isConstruction(c), true);
   assert.deepEqual(m.featureOf(e).loops, [lines], "filled: the outline alone");
   assert.ok(!m.entities.has(twin), "the hole's twin went with it");
-  assert.deepEqual(m.journal.slice(n).map((j) => j.op), ["unhole", "construction"]);
-  assert.deepEqual(m.journal[n].args, [e, c, [[e, [lines]]]]);
+  // The region loses the face (regions-as-operations.md: the decision), as a
+  // deletion of it does.
+  assert.deepEqual(m.journal.slice(n).map((j) => j.op), ["deleteRegionSteps", "construction"]);
+  assert.deepEqual(m.journal[n].args, [m.featureOf(e).region, [1], [[e, [lines]]]]);
   const reopened = open(save(m));
   assert.deepEqual(reopened.featureOf(e).loops, [lines]);
   assert.equal(reopened.isConstruction(c), true);
