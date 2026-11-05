@@ -139,7 +139,7 @@ test("the toolbar has a button per registered tool: its icon, with a tooltip and
   // slot are behind the rectangle's (docs/plans/sketch-shapes.md), and
   // constrain behind dimension's, the relate group's (tool.ts, TOOL_GROUPS).
   const tools = ((await app.repl("tools()")).value as string[]).map((t) => t.split(" ")[0])
-    .filter((t) => t !== "circle3" && t !== "arc3" && t !== "polygon" && t !== "slot" && t !== "constrain");
+    .filter((t) => t !== "circle3" && t !== "arc3" && t !== "polygon" && t !== "slot" && t !== "region" && t !== "constrain");
   const buttons = await app.page.$$eval("#toolbar button", (els) =>
     els.map((el) => ({
       tool: (el as HTMLElement).dataset.tool,

@@ -200,7 +200,7 @@ test("the fillet tool picks a corner of the base, and Enter rounds it, and the l
   await shot("7-fillet");
 });
 
-test("turned by a right-drag, the revolve tool: a miss says so; a click inside the hole's lid circle chooses it; a miss says what to click and lights the axes; a lid edge is the axis, and Enter revolves it", async () => {
+test("turned by a right-drag, the revolve tool: a miss says so; a click inside the lid chooses it; a miss says what to click and lights the axes; a lid edge is the axis, and Enter revolves it", async () => {
   // Orbit with the mouse, so the lid's edges and the base's are apart on screen.
   const from = await app.at(760, 420), to = await app.at(860, 350);
   await app.page.mouse.move(from.x, from.y);
@@ -213,14 +213,17 @@ test("turned by a right-drag, the revolve tool: a miss says so; a click inside t
   await clickAt(...OUTSIDE);
   await guided(/^revolve: click inside a closed outline — the ones I can see are lit$/);
 
-  // The lid's circle: the twin of the circle's centre, on screen.
+  // The lid's face. It was the lid's circle, the twin of a hole the extrude
+  // proposed; since regions as operations nothing is proposed, the plate is
+  // solid, and the circle is under the lid (docs/plans/regions-as-operations.md).
   const m = await app.model();
   const z = (p: string) => m.points[p][2];
   const top = Math.max(...Object.values(m.points).map((p) => p[2]));
-  const lidCentre = m.circles.map((c) => c.center).find((p) => Math.abs(z(p) - top) < 1e-6)!;
-  assert.ok(lidCentre, "the circle's twin on the lid");
-  const [cx, cy] = await app.screenOf(m.points[lidCentre]);
-  await clickAt(Math.round(cx + 8), Math.round(cy + 8));
+  assert.ok(!m.circles.some((c) => Math.abs(z(c.center) - top) < 1e-6), "no circle on the lid: the newcomer's plate has no hole");
+  const corners = Object.entries(m.points).filter(([, p]) => Math.abs(p[2] - top) < 1e-6).map(([, p]) => p);
+  const inner = corners.map((p, i, all) => p.map((c, k) => (c * 3 + all.reduce((s, q) => s + q[k], 0) / all.length) / 4));
+  const [cx, cy] = await app.screenOf(inner[0]);
+  await clickAt(Math.round(cx), Math.round(cy));
   assert.equal((await logLines()).at(-1)!.text.startsWith("revolve:"), true, "the miss is still the last thing said");
 
   await clickAt(...OUTSIDE);

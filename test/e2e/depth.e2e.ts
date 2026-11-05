@@ -157,7 +157,7 @@ test("a lid seen at a grazing angle, a hole near its end: the lid over its hole'
   // being wrong here: a limitation kept on purpose, so a test says so.
   const app = await fresh();
   await build(app, `ls = poly([[0,0,0],[120,0,0],[120,30,0],[0,30,0]], "f");
-    c = P([105,15,0]); onplane(c, "f"); model.addCircle(c, 10, "f"); extrude(ls[0], 40)`);
+    c = P([105,15,0]); onplane(c, "f"); h = model.addCircle(c, 10, "f").name; e = extrude(ls[0], 40); hole(e, h)`);
   let fallbackMissed = 0;
   for (const [yaw, pitch] of [[1.2, 0.2], [-1.3, 0.25], [1.45, 0.1], [0.4, 0.3]]) {
     await look(app, yaw, pitch, 0.42);

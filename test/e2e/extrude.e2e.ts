@@ -159,8 +159,7 @@ test("on a tilted sketch: a rectangle, a filleted corner and a hole from the too
   await app.type('arm("region")');
   await clickAt(...await app.screenOf(onG(36, 34)));
   await clickAt(...await app.screenOf(onG(48 + 6.5, 25)));
-  await app.type('arm("region", { mode: "add" })');
-  await clickAt(...await app.screenOf(onG(36, 34))); // rg1, taken in hand
+  await app.type('arm("region", { mode: "add" })'); // the tool retunes: rg1 stays in hand
   await clickAt(...await app.screenOf(onG(48, 25)));
   await key("Escape");
   await key("Escape");

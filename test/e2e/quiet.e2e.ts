@@ -369,8 +369,8 @@ test("the owner's plate with a hole reads as a clean solid: no dots, no names, t
     fr = plane(ps[0], ps[1], ps[3], { look: false });
     ls = ps.map((p, i) => model.addLine(p, ps[(i + 1) % 4]).name);
     onplane(ps[2], fr);
-    c = P([30,20,0]); onplane(c, fr); model.addCircle(c, 9, fr);
-    extrude(ls[0], 10); solve(); refresh(); "plate"`;
+    c = P([30,20,0]); onplane(c, fr); h = model.addCircle(c, 9, fr).name;
+    hole(extrude(ls[0], 10), h); solve(); refresh(); "plate"`; // the hole said (regions-as-operations.md)
   const r = await app.repl(src);
   assert.equal(r.ok, true, r.error ?? "");
   await lookAlong(app, [1, -1.6, 1.4]);

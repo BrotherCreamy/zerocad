@@ -48,8 +48,8 @@ export const SCENES: Scene[] = [
     name: "revolve-355",
     what: "the register's 355° revolve: a 30 × 30 block with a bore, turned 355° about f.y",
     source: `ls = poly([[10,-15,0],[40,-15,0],[40,15,0],[10,15,0]], "f");
-      c = P([25,0,0]); onplane(c, "f"); model.addCircle(c, 6, "f");
-      revolve(ls[0], "f.y", 355 * Math.PI / 180)`,
+      c = P([25,0,0]); onplane(c, "f"); bore = model.addCircle(c, 6, "f").name;
+      hole(revolve(ls[0], "f.y", 355 * Math.PI / 180), bore)`, // a hole is said (regions-as-operations.md)
   },
   {
     name: "interpenetrating",
