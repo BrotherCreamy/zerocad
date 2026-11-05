@@ -1526,6 +1526,35 @@ are flagged as such.
 Queue for Opus, in order. Each gets a spec in `docs/plans/` before work
 starts.
 
+- [ ] **The sketch packages (2026-11-05).** The owner: *"give me better
+      sketch tools, relations, trim, slot... all the usual"*, picked from
+      the full-CAD list. Five specs, in this order:
+      1. [`toolbar-groups.md`](docs/plans/toolbar-groups.md) first — one
+         button per family with a flyout (hover or press-and-hold on a
+         mouse; press-and-slide or long-press on a phone), so the dozen
+         tools below fit a phone. Default table in the spec; **vetoable**.
+      2. In parallel on that: [`sketch-shapes.md`](docs/plans/sketch-shapes.md)
+         (polygon, slot, the ellipse as a new entity),
+         [`sketch-edit.md`](docs/plans/sketch-edit.md) (trim, extend, offset,
+         mirror, chamfer, linear and circular patterns — operations, never
+         relations), [`sketch-relations.md`](docs/plans/sketch-relations.md)
+         (collinear, horizontal/vertical, pierce, intersection, a dimension
+         tool, a constrain tool, and diagnosis: free entities drawn in their
+         own ink, conflicts naming their relations).
+      3. [`spline.md`](docs/plans/spline.md) after the ellipse, through the
+         same seams.
+      Out of scope for now, written down: text in sketches; `tan` between
+      an ellipse and another curve; tangent handles on splines unless free.
+      - **Proposed, not yet queued — regions as operations.** The owner:
+        *"there should be no such thing as a negative face. a face is just a
+        face. just like there should be no such thing as a negative solid,
+        only an operation which subtracts"*. A face is a closed loop (found);
+        a region is `face − face` by a named operation, listed and reusable,
+        and an extrude takes a region; a feature's recorded holes become a
+        region at open. The same rule for surfaces later: trim and knit are
+        operations, nothing is negative. Spec to write once the owner
+        confirms the order (before `sketch-edit.md`, which trims regions).
+
 - [x] **Files — open, save, share, drop, autosave — BUILT (2026-11-04).**
       The owner: *"I want to be able to open files on my phone, share files
       etc. Should also work for desktop."* `newFile()`, `openFile()`,
