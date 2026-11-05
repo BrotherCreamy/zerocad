@@ -1585,7 +1585,11 @@ starts.
         framework should be modular and extensible (!). like onshape
         workbenches"* — modules that register what they bring, the entity
         extension point proven by moving the ellipse out of `model.ts`,
-        workbenches with their own toolbars, loading a module from a file),
+        workbenches with their own toolbars, and **Add workbench…** in the
+        menu — the owner: *"I should be able to add a workbench simply by
+        opening a file on my device, from the menu"* — a workbench file
+        picked from the device, its manifest shown before consent, kept on
+        the device, removable, shareable),
         then [`regions-as-operations.md`](docs/plans/regions-as-operations.md)
         (the owner: *"there should be no such thing as a negative face. a
         face is just a face. just like there should be no such thing as a

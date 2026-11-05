@@ -87,14 +87,30 @@ seams the ellipse touched, listed there), `solids-kernel.md`,
   tray shows the workbench's tools in its groups; typed names from any
   loaded module work in any workbench (a typed call is not a toolbar).
   Default workbench: `part`, which is today's toolbar exactly.
-- **Loading.** Built-in modules ship with the app and are loaded at start.
-  A module can also be loaded from a file or a URL from the command line
-  (`loadModule(url)`), with the consent rule files use for tool source and
-  the same scope (the REPL's: curated, not a sandbox, and said so). A
-  document that uses a loaded module records it (name, source, hash) in the
-  journal's head, as files record their tools, and says what is missing
-  when opened without it — never a hung open. This is the door someone
-  else's workbench comes in by.
+- **Loading — "Add workbench…" in the menu.** The owner: *"obv the concept
+  is that I should be able to add a workbench simply by opening a file on my
+  device, from the menu... should be some item like 'add workbench'"*.
+  Built-in modules ship with the app and are loaded at start. The logo
+  menu gets **Add workbench…**, which opens the device's file picker (the
+  `files.md` host: the Files app on an iPhone, a file dialog on a desktop,
+  drop onto the window too) for a **workbench file**: one JavaScript file
+  whose source calls `defineModule` and, optionally, `defineWorkbench`
+  (`.zerocad.js`; a `.zip` of several files later if ever needed). Before
+  anything runs the app shows what the file registers — its name, its
+  tools, relations, operations and entity kinds, by name, read from a
+  manifest comment at the top of the file, not by running it — and asks;
+  the paste rule of `tool-source-in-files.md` is the model: the consent is
+  explicit, the scope is the REPL's (curated, not a sandbox, and said so).
+  Accepted, it is loaded now, **kept on the device** (IndexedDB, beside the
+  autosave) and loaded at every start until removed; the menu lists added
+  workbenches under the built-in ones with a Remove and a Share (which
+  hands the file back, so a workbench travels by AirDrop or mail like a
+  document). Typed: `loadModule(url)` and `addWorkbench()` do the same with
+  a URL or the picker. A document that uses an added module records it
+  (name, source hash) in the journal's head, as files record their tools,
+  and when opened on a device without it says which workbench is missing
+  and offers the picker — never a hung open, and the rest of the model is
+  intact. This is the door someone else's workbench comes in by.
 - **The command line is the first client.** `defineTool` keeps working as
   it is (a tool with no module joins a `user` module); `defineRelation`,
   `defineOperation` and `defineEntity` join it, each documented in
@@ -109,6 +125,12 @@ seams the ellipse touched, listed there), `solids-kernel.md`,
 - A module defined at the command line with one tool, one relation and one
   entity kind: drawn, picked, saved, opened; opened without the module the
   file says what is missing and the rest of the model is intact.
+- **Add workbench… end to end** (mouse and iPhone 13): a workbench file
+  picked from the menu shows its manifest, is accepted, its tools appear in
+  the tray under its workbench, it is there after a reload, Remove takes it
+  away, Share hands the file back byte for byte; a file whose manifest and
+  source disagree is refused and says so; a document that needs it opens on
+  a fresh profile with the "missing workbench" offer.
 - The workbench switcher: the tray and menu change, typed names do not;
   remembered on save/open; the default is today's toolbar (button list
   equal).
