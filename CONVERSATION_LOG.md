@@ -106,6 +106,54 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### Sketch shapes: why the ellipse is a point and a number, and the slot's tangencies are perps
+
+**A point for the major end, not an angle.** An ellipse could have been a
+centre, two semi-axes and a rotation angle. Rejected: an angle is a variable
+nothing can snap to, drag or dimension against a line, and every relation
+reading it would need trigonometry. With the major end a point, the major
+direction is `major − centre` and every relation is `dot` — so `onellipse`
+and `tan(line, e)` came out the same in 2D and 3D, and the ellipse drags,
+snaps and `coin`s like a circle's rim point. The minor is a plain variable
+because nothing else gives it a place to be: a second point would need a
+relation to keep it square to the major axis, which is an equation the
+entity would carry, and this codebase keeps those in relations. The normal
+is straightened against the major axis for the same reason a frame's y-ref
+is: so a free ellipse is always well defined, with no relation holding the
+major end in the plane.
+
+**`onellipse` is a distance, not the implicit form.** `(x/a)² + (y/b)² − 1`
+is not a square, and its gradient on the curve is not zero — but its scale
+is a pure number that shrinks with the ellipse, so least squares would
+weigh a big ellipse's points less than a small one's. Squashing the major
+axis by `b/a` turns the question into `onCircle`'s, a length.
+
+**The slot's tangencies are `perp`.** The spec said each line `tan` to both
+arcs, as the fillet does. Built that way, the Jacobian at the solution was
+four short of full rank (nine freedoms by rank, for a shape with five): a
+side whose end is already on its arc meets it to second order, so `tan`'s
+distance-minus-radius is `r(1 − sin φ)`, a square in the angle off tangency
+— the CLAUDE.md rule, in disguise. Both versions solved a width dimension;
+the difference is what a rank check sees, and `sketch-relations.md` is about
+to build one. `perp(centre, end, side)` says the same tangency linearly.
+Not changed in the fillet, which has the same flaw (measured: two extra
+freedoms) — a change to an operation every old file replays is its own
+package (TODO.md).
+
+**The inscribed polygon has two circles.** Rejected, by dragging corners far
+off in steps for n = 3 … 8: one circle tangent to every side with equal sides
+(folds for n ≥ 4 — equal tangent sides can rock, a rhombus does); tangent
+sides with corners on an outer circle and no `eq` (a side collapsed at 8);
+spokes of equal length (folded at 8). Equal sides are what stop a fold, so
+the inscribed polygon is the circumscribed one plus an inner circle touching
+one side, and costs one equation for its one radius.
+
+**No elliptic arc.** A region bounded by part of an ellipse is found
+(loops.ts cuts an ellipse at crossings and Ts, as Onshape does), but
+extruding it would need a twin that is part of an ellipse, and there is no
+such entity. Adding one would be a third curve kind; refusing by name keeps
+the found regions honest and the solids correct.
+
 ### Toolbar groups: why the flyout replaces a grouped button's tooltip, and is not a panel
 
 The owner wants the usual sketch tools, and everything to fit; a family

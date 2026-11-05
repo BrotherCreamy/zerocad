@@ -96,7 +96,7 @@ after(async () => { await desk.close(); });
 test("desktop: Select and the Hand head the toolbar, each its own glyph and the command it types; Select is lit at start and after Escape", async () => {
   await fresh(desk);
   const bs = await buttons(desk);
-  assert.equal(bs.length, 11, "two more than the nine tools — one circle and one arc");
+  assert.equal(bs.length, 12, "two more than the ten tool buttons — one circle and one arc, the shapes and the curves groups");
   assert.deepEqual(bs.slice(0, 3).map((b) => b.tool), ["select", "hand", "point"], "first, then the tools as they were");
   assert.deepEqual(bs.slice(0, 2).map((b) => [b.glyph, b.hint]),
     [["select", true], ["hand", true]]);

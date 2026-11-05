@@ -101,11 +101,12 @@ test("mouse: the group's button carries the mark; a hover opens its flyout besid
   desk = await openApp();
   apps.push(desk);
   await fresh(desk);
-  // A group of one is a plain button: no mark, its own tooltip, nothing opens.
-  assert.equal(await desk.page.$eval(group("shapes"), (b) => b.hasAttribute("data-more")), false);
-  assert.equal(await desk.page.$$eval("#toolbar button", (bs) => bs.length), 11);
+  // A group of one is a plain button: no mark, its own tooltip, nothing opens
+  // — the curves group's, the ellipse alone (docs/plans/sketch-shapes.md).
+  assert.equal(await desk.page.$eval(group("curves"), (b) => b.hasAttribute("data-more")), false);
+  assert.equal(await desk.page.$$eval("#toolbar button", (bs) => bs.length), 12);
   await pad(desk);
-  assert.equal(await desk.page.$$eval("#toolbar button", (bs) => bs.length), 11, "two more tools, no more buttons");
+  assert.equal(await desk.page.$$eval("#toolbar button", (bs) => bs.length), 12, "two more tools, no more buttons");
   assert.equal(await desk.page.$eval(group("shapes"), (b) => b.hasAttribute("data-more") && b.getAttribute("aria-haspopup")), "true");
   // The mark is drawn: the ::after triangle in the corner, in the glyph's ink.
   const mark = await desk.page.$eval(group("shapes"), (b) => {
@@ -121,7 +122,7 @@ test("mouse: the group's button carries the mark; a hover opens its flyout besid
   const f = await flyoutBecomes(desk, (s) => s.open, "a hover opens it");
   const waited = Date.now() - t0;
   assert.ok(waited >= 250 && waited < 1200, `after the tooltip's delay, not at once: ${waited} ms`);
-  assert.deepEqual([f.group, f.orient, f.items, f.current], ["shapes", "row", ["rectangle", "t_pad1"], "rectangle"]);
+  assert.deepEqual([f.group, f.orient, f.items, f.current], ["shapes", "row", ["rectangle", "polygon", "slot", "t_pad1"], "rectangle"]);
   const tray = await rectOf(desk, '.panel[data-panel="toolbar"]');
   assert.ok(f.box!.x >= tray.x + tray.w, "beside the column, on the drawing's side");
   assert.ok(Math.abs(f.box!.y + 4 - b.y) <= 1.5, `level with its button: ${f.box!.y} against ${b.y}`);

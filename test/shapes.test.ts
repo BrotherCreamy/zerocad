@@ -315,7 +315,7 @@ test("an ellipse replays from its file: format 15, minors and normals saved, a v
 
 // ---- the polygon -------------------------------------------------------------
 
-test("polygon: n points, n lines sharing corners, every side eq to the first, a construction circle through the corners", async () => {
+test("polygon: n points, n lines sharing corners, every side eq to its neighbour, a construction circle through the corners", async () => {
   await loadKernel();
   const m = new Model(2);
   const c = m.addPoint([0, 0]).name, v = m.addPoint([10, 0]).name;

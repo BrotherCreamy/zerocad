@@ -8,12 +8,13 @@ the TypeScript layer both run together, client-side, in the browser.
 
 CAD sketching — in 3D, on the ground, a solid's faces or the planes of
 coordinate frames, through an
-orthographic orbit camera (points, lines, circles, arcs; a relation vocabulary of
+orthographic orbit camera (points, lines, circles, arcs, ellipses; a relation vocabulary of
 distance, coincidence, midpoint, parallel, perpendicular (either of which
 takes a coordinate frame's axis by name), angle, point-on-line,
 equal-length, radius, on-circle,
-concentric, equal-radius, tangent and symmetry; line, rectangle, circle and
-arc tools with Onshape-style constraint inference; a fillet; extrude —
+concentric, equal-radius, tangent and symmetry, and on-ellipse with an
+ellipse's two semi-axes; line, rectangle, polygon, slot, circle, arc and
+ellipse tools with Onshape-style constraint inference; a fillet; extrude —
 a closed loop, holes and all, expanded into a real lid of twins and walls held
 by one depth dimension, drawn shaded; and revolve — a loop turned about a frame
 axis or a line in its plane, its surface drawn from the live profile and, for a
@@ -129,6 +130,11 @@ src/tools/circle.ts       the one circle tool: a drag is centre and radius, thre
 src/tools/arc.ts          the one arc tool: drag end to end then click the bulge, or click the centre then both ends; tangent off a line's end
 src/tools/curvemethod.ts  what those two share: the method option, press-or-drag, what a click touched, the tangent closed forms
 src/tools/circumcircle.ts the circle through three points, and when there is none
+src/tools/shapes.ts       the polygon and the slot as ordinary pieces and relations, for the tools and the command line
+src/tools/polygon.ts      drag from the centre to a corner; n sides, a construction circle
+src/tools/slot.ts         drag between the two centres, then click the width
+src/tools/ellipse.ts      drag from the centre to the major end, then click the minor
+src/tools/twopoint.ts     the press-and-drag (or two clicks) those three begin with
 src/tools/extrude.ts      click inside regions, see the solids, ✓; they are extruded
 src/tools/revolve.ts      click inside regions, then on an axis, ✓; they are revolved
 src/tools/feature.ts      pick → preview → confirm, shared by the feature tools
@@ -153,9 +159,9 @@ and the log shows it. Hover one — or, on a phone, hold it — for its
 **tooltip**: the tool's name, what it does, and the command it types (a hold
 shows it without pressing the button; a tap presses it). Every icon in the
 chrome has one. **Tools of one family share a button** — *shapes*
-(rectangle, then polygon and slot as they land), *curves* (ellipse,
-spline), *modify* (fillet, then chamfer, trim, extend, offset, mirror,
-pattern) — which shows the one you armed last, arms it on a tap, and carries
+(rectangle, polygon, slot), *curves* (ellipse, then spline), *modify*
+(fillet, then chamfer, trim, extend, offset, mirror, pattern) — which shows
+the one you armed last, arms it on a tap, and carries
 a small triangle in its corner once a second tool joins it. Rest the mouse on
 it or press and hold to open the rest beside it, then click one; on a phone,
 press and slide off it onto one and lift, or hold it and tap one. Escape, or
@@ -395,8 +401,15 @@ referred to `d1` still does; it is one undo step, and the drawing re-solves.
 `ang` stores radians, so `set` on an angle takes radians even though the label
 on the canvas reads degrees.
 
-Drawing tools are `point`, `rectangle`, `circle`, `circle3`, `arc` and
-`arc3` — type the name to arm one. The two numbered ones are Onshape's
+Drawing tools are `point`, `rectangle`, `polygon`, `slot`, `circle`,
+`circle3`, `arc`, `arc3` and `ellipse` — type the name to arm one. The
+**polygon** is dragged from its centre to a corner (`n` sides, 6 by default,
+and a construction circle through the corners); the **slot** is dragged
+between its two centres and then given its width with a click; the
+**ellipse** is dragged from its centre to the end of its major axis and then
+given its minor with a click, and is dimensioned by `major(e, 30)` and
+`minor(e, 12)`. The first two leave ordinary lines, arcs and relations; the
+ellipse is an entity of its own that regions, extrude and STEP all know. The two numbered ones are Onshape's
 *3 point circle* (three clicks, all three on the rim) and *3 point arc*
 (the two endpoints, then a point the arc passes through). `fillet` rounds
 the corner where two lines meet:

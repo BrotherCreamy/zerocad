@@ -133,8 +133,8 @@ etc).
   tools shares one button: `TOOL_GROUPS` in `tool.ts` (shapes: rectangle,
   polygon, slot; curves: ellipse, spline; modify: fillet, chamfer, trim,
   extend, offset, mirror, pattern), a command-line tool's own `static group`
-  joining one; `toolbarButtons()` is the button list (eleven today, the same
-  eleven as before: no group has two members yet). A group's button shows
+  joining one; `toolbarButtons()` is the button list (twelve since the sketch
+  shapes: shapes has three members, curves its first). A group's button shows
   the member armed last (`GroupMemory` in `options.ts`, per viewer under
   `neocad.toolGroups.v1`, never in a file) and opens a **flyout** of the
   family once it has two (`Toolbar` in `panels.ts`: hover or press-and-hold
@@ -143,6 +143,26 @@ etc).
   clear of every pane on every iPhone in the device table). The context
   menu lists a group of two or more under its heading; `help()` says which
   tools share a button.
+- **Sketch shapes** (docs/plans/sketch-shapes.md, built). **Polygon** and
+  **slot** under the shapes button, the **ellipse** under curves (a button of
+  its own after arc while it is the group's only member: twelve buttons).
+  The polygon and the slot are composites (`src/tools/shapes.ts`, shared by
+  the tools and the typed `polygon(c, v, n?, circumscribed?)` and `slot(a,
+  b, width)`) that leave ordinary points, lines, arcs, construction curves
+  and relations and journal nothing of their own; the first stage of all
+  three gestures is `tools/twopoint.ts`. The **ellipse is an entity**
+  (`EllipseEntity`: centre, major-end point, minor variable, 3D normal
+  straightened against the major axis) with `onEllipse`, `tangent` of a line
+  and an ellipse, `concentric`, and the `majorAxis`/`minorAxis` dimensions
+  (typed `onellipse`, `major`, `minor`). Every seam reads it: drawing,
+  picking, snapping and box select through `ArcFrame.rv` (arcgeom.ts) and a
+  polyline lifted by Newton (projection.ts); loops (an arc piece with a
+  second radius); extrude (a whole ellipse twins as centre, major end and
+  minor); faces; the exact B-rep and STEP (`ELLIPSE`, `SURFACE_OF_LINEAR_
+  EXTRUSION`); the solid kernel (a `nurbs` profile member,
+  `sm_profile_nurbs` in the glue). Format 15 (`values.minors`). Refused by
+  name: part of an ellipse extruded, an ellipse revolved, `tan` of an
+  ellipse with a curve.
 - **Select and the Hand head the toolbar** (docs/plans/select-hand.md,
   built). Select (`arm("select")`) is "no tool", lit whenever nothing is
   armed; pressing it puts the armed tool down and keeps the selection. The

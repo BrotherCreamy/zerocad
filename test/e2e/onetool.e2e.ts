@@ -132,10 +132,10 @@ async function pressButton(tool: string): Promise<void> {
   await desk.page.waitForTimeout(100);
 }
 
-test("desktop: one circle and one arc on the toolbar — eleven buttons — and circle3, arc3 typed arm the one tool, locked", async () => {
+test("desktop: one circle and one arc on the toolbar — twelve buttons — and circle3, arc3 typed arm the one tool, locked", async () => {
   await fresh(desk);
   const tools = await desk.page.$$eval("#toolbar button", (bs) => bs.map((b) => (b as HTMLElement).dataset.tool));
-  assert.equal(tools.length, 11, `Select, the Hand and nine tools: ${tools.join(" ")}`);
+  assert.equal(tools.length, 12, `Select, the Hand and ten buttons of tools (shapes and curves grouped): ${tools.join(" ")}`);
   assert.equal(tools.filter((t) => t === "circle").length, 1);
   assert.equal(tools.filter((t) => t === "arc").length, 1);
   assert.ok(!tools.includes("circle3") && !tools.includes("arc3"), "no 3-point buttons");
@@ -355,7 +355,7 @@ async function tapButton(tool: string): Promise<void> {
 test("iPhone 13: one circle and one arc on the toolbar; a finger's drag is a centre and a radius, the panel saying so", async () => {
   await freshPhone();
   const tools = await phone.page.$$eval("#toolbar button", (bs) => bs.map((b) => (b as HTMLElement).dataset.tool));
-  assert.equal(tools.length, 11, tools.join(" "));
+  assert.equal(tools.length, 12, tools.join(" "));
   await shot(phone, "phone-toolbar");
   await tapButton("circle");
   await fingerDrag([0, 0], [12, 9], async () => {

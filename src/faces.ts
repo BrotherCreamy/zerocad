@@ -197,11 +197,14 @@ const closedPath = (o: number[][]) => (o.length ? [...o, o[0]] : o);
 
 /**
  * Whether a profile member has vertices at its ends — every member but a whole
- * circle, which closes on itself with no corner, so its wall has no wall line
- * and its sweep no edge but its rims.
+ * circle or ellipse, which closes on itself with no corner, so its wall has no
+ * wall line and its sweep no edge but its rims. (An ellipse's samples start at
+ * its major end; a line drawn there was a seam the solid does not have —
+ * looked at, docs/plans/sketch-shapes.md.)
  */
 function hasVertices(model: Model, m: ProfileMember): boolean {
-  return !(typeof m === "string" && model.entities.get(m)?.kind === "circle");
+  const kind = typeof m === "string" ? model.entities.get(m)?.kind : undefined;
+  return kind !== "circle" && kind !== "ellipse";
 }
 
 const mean = (pts: number[][]) => [0, 1, 2].map((i) => pts.reduce((s, p) => s + p[i], 0) / pts.length);

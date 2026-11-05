@@ -164,8 +164,8 @@ test("every iPhone, both ways up, installed and in Safari: no pane over another,
 
 // A group's flyout open (docs/plans/toolbar-groups.md): two padding tools give
 // shapes and modify a second member each — the packages that fill them have
-// not landed — so the flyout's room is exercised on every phone now. Still
-// eleven buttons; the flyout, opened by a long-press, overlaps no pane, the
+// not landed — so the flyout's room is exercised on every phone now. Twelve
+// buttons since the sketch shapes (the curves group's); the flyout, opened by a long-press, overlaps no pane, the
 // tray, the logo or the corner, and is on screen; closed, everything fits as
 // above. (The arithmetic at every queued size, up to modify's seven, is
 // toolbargroups.test.ts's.)
@@ -184,7 +184,7 @@ test("every iPhone, both ways up, installed and in Safari, with a group's flyout
           await p.page.waitForTimeout(200);
           await p.page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
           const where = `${ph.name}, ${turn}, ${mode}`;
-          assert.equal(await p.page.$$eval("#toolbar button", (bs) => bs.length), 11, `${where}: eleven buttons`);
+          assert.equal(await p.page.$$eval("#toolbar button", (bs) => bs.length), 12, `${where}: twelve buttons`);
           for (const g of ["shapes", "modify"]) {
             const b = await p.page.$eval(`#toolbar button[data-group="${g}"]`, (el) => {
               const r = el.getBoundingClientRect();
@@ -331,7 +331,9 @@ test("iPhone 13: a pane docked against a tray keeps lying along it when a rotati
     // eleven the landscape column is two lines, too tall to start under the
     // logo's corner from where the portrait one stood, and the resolver sets
     // it beside the corner instead: TODO.md, found by this package.)
-    for (const t of ["t_pad1", "t_pad2"]) {
+    // Twelve since the sketch shapes added the curves group's button: one
+    // tool defined puts back the thirteen.
+    for (const t of ["t_pad1"]) {
       assert.ok((await repl(p.page, `defineTool("${t}", class extends Tool { name = "${t}"; })`)).ok);
     }
     await p.page.waitForTimeout(250);

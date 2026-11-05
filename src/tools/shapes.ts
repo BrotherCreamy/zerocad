@@ -77,10 +77,13 @@ export interface PolygonParts {
  *
  * **What holds it regular.** `circumscribed` (the default): a construction
  * circle about the centre through every corner (`oncircle` on each) and every
- * side `eq` to the first — n points on a circle cut into n equal chords are a
- * regular polygon, and those 2n − 1 equations leave exactly its four freedoms.
- * The circle is centred on the polygon's own centre point, so no `conc` is
- * needed.
+ * side `eq` to the one before it — n points on a circle cut into n equal
+ * chords are a regular polygon, and those 2n − 1 equations leave exactly its
+ * four freedoms. The circle is centred on the polygon's own centre point, so
+ * no `conc` is needed. Each side `eq` to its neighbour rather than all to the
+ * first (the plan's words), because an `eq` wears a mark on both its lines:
+ * to the first, the first side wore n − 1 of them in a row (docs/images/,
+ * looked at on an iPhone), along the chain no side wears more than two.
  *
  * Inscribed (`circumscribed: false`): all of that, and a second construction
  * circle about the same centre **touching the first side** (one `tan`) — the
@@ -128,7 +131,7 @@ export function polygon(model: Model, centre: string, vertex: string, n: number,
   const relations: string[] = [];
   if (plane) relations.push(...holdCurve(model, circle, centre, plane));
   for (const p of vertices) relations.push(onCircle(model, p, circle));
-  for (let k = 1; k < n; k++) relations.push(equalLength(model, sides[k], sides[0]));
+  for (let k = 1; k < n; k++) relations.push(equalLength(model, sides[k], sides[k - 1]));
   let inscribed: string | null = null;
   if (!circumscribed) {
     inscribed = model.addCircle(centre, R * Math.cos(Math.PI / n), normalOn(model, plane)).name;
