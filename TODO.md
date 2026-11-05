@@ -312,6 +312,9 @@ otherwise.
   after every merge the history is rewritten and pushed to `zerocad` as its
   `main`, behind a check that no personal name or address survives — the
   mirror is never committed to directly. Pages deploys from the mirror.
+  The tooling is `scripts/mirror/` (its README says how); the mailmap and
+  the leak regex are environment secrets, never files in the repository,
+  so any session on this repository can sync once it has them.
 
 - **A region's membership is its outline plus the loops confirmed as holes,
   never re-inferred from coplanarity; click-to-pick proposes the loops inside**
