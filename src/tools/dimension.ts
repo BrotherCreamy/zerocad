@@ -31,7 +31,7 @@
 // be kept yet (glyphs.ts holds no state, and a position is not a relation);
 // that is filed in TODO.md as the next step, not smuggled in here.
 
-import { defineTool, type PointerInfo, type RenderContext } from "./tool.ts";
+import { defineTool, press, type Hand, type PointerInfo, type RenderContext } from "./tool.ts";
 import type { OptionSpecs } from "./options.ts";
 import { Tool } from "./tool.ts";
 import type { Model } from "../model.ts";
@@ -57,6 +57,13 @@ export class DimensionTool extends Tool {
 
   private opts() {
     return { diameter: this.ctx.options.diameter === true, driven: this.ctx.options.driven === true };
+  }
+
+  /** What to click: what to measure, then more of it, then where the value goes. */
+  next(hand: Hand): string {
+    if (!this.picks.length) return `${press(hand)} what to dimension`;
+    if (this.planned()) return `${press(hand)} empty space to place it`;
+    return `${press(hand)} what to measure ${this.picks[0]} against`;
   }
 
   /** The dimension the picks make now, or null. */

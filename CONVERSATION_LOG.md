@@ -106,6 +106,46 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### Mode feedback: why focus is by relation, why the chip only types, and what was rejected
+
+**Focus by relation, not by position.** Dimming whatever lies off the plane
+by coordinates was the obvious rule, and it is wrong in the square-on view a
+sketch is drawn in. Every vertex of the solid behind the lid shares a pixel
+with the sketch, and a corner of the far face is "near the plane" in screen
+terms. `findSnap` already refuses those as places on the sketch for the
+same reason. The relation that holds a thing on the plane (`onPlane`, the
+`par` on a curve's normal) is what makes it part of the sketch, so that is
+what chooses. The cost is visible and written down: points typed with `pt()`
+under a default frame hold to nothing, and are dimmed.
+
+**Name the face, don't store it.** Faces are not entities (sketch-on-face.md).
+The work plane is three of the face's points, and the face is found again
+every frame by matching those points against the features' faces in the
+plane. Storing a face id was rejected for the reason faces have none: an id
+would go stale under regeneration, while points follow the solid.
+
+**The chip lives in the corner, not as a pane.** A pane would have been laid
+out by the resolver and pushed about. The corner is already the region
+everything-fits keeps for the status, wrapped and clipped to its room, so
+the chip inherited the guarantee for free. Its one new duty is to give way
+to the verdict, since a CONFLICT cut off would be the stale-readout bug
+again.
+
+**Done types.** A Done that cleared `model.workPlane` itself would be a
+second meaning of ending a sketch beside the typed `workplane(null)`, with
+its own undo and journal story. Through `submit` it is the typed line. For a
+default frame's plane, `workplane(null)` would do nothing, so Done types
+`setDefaultFrame(null)` there. Changing what `workplane(null)` means was
+rejected because the default frame also governs `fix` and `xaxis()`, and
+ending it should be said.
+
+**Rejected: a mode bar across the top.** The spec's chip is three parts
+beside the status, and a bar would have taken the logo's row from the panes
+on a phone. **Rejected: moving the extrude, sketch and revolve lighting onto
+`Tool.takes`.** It would have changed nothing on screen for a diff across
+three tools. The seam exists, the fillet uses it, and a tool written at the
+command line can.
+
 ### Workbenches: why each layer owns its facet of a kind, and why the manifest is read and not run
 
 The owner asked for the framework to be *"modular and extensible (!). like

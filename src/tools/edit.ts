@@ -29,7 +29,7 @@
 // thing is no tool to pick up empty-handed — under `edit extrude` and `edit
 // revolve`, since each has one value of its own kind for the panel.
 
-import { defineTool, type FeatureStep, type PointerInfo, type RenderContext, type FeaturePreview } from "./tool.ts";
+import { defineTool, press, type FeatureStep, type Hand, type PointerInfo, type RenderContext, type FeaturePreview } from "./tool.ts";
 import type { OptionSpecs } from "./options.ts";
 import type { FeatureEntry, Model } from "../model.ts";
 import { loopAround } from "../loops.ts";
@@ -85,6 +85,15 @@ abstract class EditTool extends FeatureTool {
   /** The loop under the cursor, as an index into the loops last found. */
   private under: number | null = null;
   protected abstract readonly option: "depth" | "angle";
+
+  protected get verb(): string {
+    return "apply";
+  }
+
+  /** Nothing changed yet: what can be. */
+  protected picking(hand: Hand): string {
+    return `${press(hand)} a hole in or out, or change the ${this.option}`;
+  }
 
   /** The feature being edited, while it is there. */
   protected get feature(): FeatureEntry | null {

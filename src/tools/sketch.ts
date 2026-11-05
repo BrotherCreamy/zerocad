@@ -26,7 +26,7 @@
 // face no plane can be made of — muted, never red; either way the tool stays
 // armed.
 
-import { Tool, defineTool, type PointerInfo, type RegionHit, type RenderContext } from "./tool.ts";
+import { Tool, defineTool, press, type Hand, type PointerInfo, type RegionHit, type RenderContext } from "./tool.ts";
 import { drawRegion, lightRegions, missedRegion, regionKey } from "./region.ts";
 import { sketchOnFaceCommand } from "../sketchface.ts";
 import { refind } from "./selection.ts";
@@ -38,6 +38,10 @@ export class SketchTool extends Tool {
   // click does not go to.
   readonly snaps = false;
   private under: RegionHit | null = null;
+
+  next(hand: Hand): string {
+    return `${press(hand)} inside a lit face to sketch on it`;
+  }
 
   onMove(p: PointerInfo): void {
     const next = this.ctx.regionAt?.(p.screen) ?? null;

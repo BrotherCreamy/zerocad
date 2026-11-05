@@ -91,6 +91,9 @@ const topAt = (page: Page, points: [number, number][]) => page.evaluate((pts) =>
   if (!el) return "nothing";
   if (el.id === "cv") return "canvas";
   if (el.closest("#logo")) return "logo";
+  // The mode chip's parts (docs/plans/mode-feedback.md): the plane's name, its
+  // Done and the tool's name each take a press; nothing else in the corner does.
+  if (el.closest("#mode button")) return "chip";
   const p = el.closest<HTMLElement>(".panel[data-panel]");
   return p ? `panel ${p.dataset.panel}` : el.id || el.tagName;
 }), points);
@@ -143,7 +146,7 @@ async function shot(page: Page, name: string): Promise<void> {
 
 // --- no title bar ----------------------------------------------------------
 
-test("desktop: no header; the logo top-left; the status beside it; only the logo takes a press in the corner", async () => {
+test("desktop: no header; the logo top-left; the status beside it; only the logo and the chip's parts take a press in the corner", async () => {
   const page = await desktop();
   try {
     assert.equal(await page.$$eval("header", (h) => h.length), 0, "there is no title bar");
@@ -155,13 +158,21 @@ test("desktop: no header; the logo top-left; the status beside it; only the logo
     assert.ok(mark.h >= 18 && mark.h <= 28, `the mark is tiny: ${mark.h}px`);
     const status = await boxOf(page, "#status");
     assert.ok(status.x >= logo.right && status.y < logo.bottom, "the status after the logo, in its row");
-    // Every point of the corner band but the logo is the drawing's.
+    // Every point of the corner band but the logo and the mode chip's parts —
+    // the tool's name, with nothing armed: Select, and no plane — is the
+    // drawing's, the status included.
+    const parts = await page.$$eval("#mode button", (bs) => bs.filter((b) => b.getClientRects().length).map((b) => {
+      const r = b.getBoundingClientRect();
+      return { x: r.x, y: r.y, right: r.right, bottom: r.bottom };
+    }));
+    assert.equal(parts.length, 1, "with no plane, the chip's one part that is a button is the tool's name");
     const band: [number, number][] = [];
     for (let x = 2; x < 400; x += 12) for (let y = 2; y < 40; y += 9) band.push([x, y]);
     const tops = await topAt(page, band);
     band.forEach(([x, y], i) => {
       const inLogo = x < logo.right && y < logo.bottom;
-      assert.equal(tops[i], inLogo ? "logo" : "canvas", `at (${x}, ${y})`);
+      const inChip = parts.some((r) => x >= r.x && x < r.right && y >= r.y && y < r.bottom);
+      assert.equal(tops[i], inLogo ? "logo" : inChip ? "chip" : "canvas", `at (${x}, ${y})`);
     });
     // A right-drag that starts on the status text orbits the drawing.
     const before = await view(page);
@@ -191,8 +202,11 @@ for (const orientation of ["portrait", "landscape"] as const) {
       assert.ok(mark.h >= 22 && mark.h <= 28, `drawn ${mark.h}px — the spec's 22–28`);
       const status = await boxOf(p.page, "#status");
       assert.ok(status.y >= ins.top && status.x >= logo.right, "the status inside the safe area, after the logo");
+      // On the status is the drawing; beside the logo is the mode chip's tool
+      // name, which takes a press (docs/plans/mode-feedback.md), or the drawing.
       const tops = await topAt(p.page, [[logo.right + 6, logo.y + logo.h / 2], [status.x + 5, status.y + status.h / 2]]);
-      assert.deepEqual(tops, ["canvas", "canvas"], "beside the logo, and on the status, is the drawing");
+      assert.ok(["canvas", "chip"].includes(tops[0]), `beside the logo: ${tops[0]}`);
+      assert.equal(tops[1], "canvas", "on the status is the drawing");
       const before = await view(p.page);
       // A fingertip clear of the logo: the browser moves a touch that lands
       // within a finger's width of a button onto the button (touch

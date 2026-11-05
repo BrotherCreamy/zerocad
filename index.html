@@ -86,6 +86,36 @@
        is said for as long as it is open — it never fades, being a state and
        not news. Amber, the organiser's open marker's colour. */
     #opengroup{color:#e8a33d}
+    /* **The mode chip** (src/modechip.ts): where · what · next, always in that
+       order, beside the status. The plane in the sketch tool's green, lighter
+       — the colour the plane is tinted on the canvas — with a Done beside it in
+       the tools' green; the tool in the sketch's own pale ink; the next step
+       muted, and guidance (a click that missed, answered) in the same muted
+       blue the log answers in, set apart only by its slant: no-refusals.md's
+       guidance, moved here, never red. Its parts take a press, the next step
+       does not; nothing else in the corner does but Update. */
+    #mode{display:inline-flex;flex-wrap:wrap;align-items:baseline;column-gap:2px;color:#9fb4c7}
+    #mode button{pointer-events:auto;font:inherit;color:inherit;background:none;border:none;padding:0 3px;margin:0;
+      cursor:pointer;touch-action:manipulation;border-radius:3px;white-space:nowrap;overflow-wrap:normal}
+    #mode button:hover{background:#1a2430}
+    #mode .plane{display:inline-flex;flex-wrap:wrap;align-items:baseline;column-gap:2px}
+    #mode .plane[hidden],#mode .sep[hidden]{display:none}
+    #mode .where{color:#8fe0a8}
+    #mode .done{color:#0a0e13;background:#55c07a;padding:0 6px;margin:0 2px}
+    #mode .done:hover{background:#7cd59a}
+    #mode .what{color:#d5e1ec}
+    #mode .what:disabled{cursor:default;background:none}
+    #mode .sep{color:#4d5f70}
+    #mode .next{color:#8fa7bb}
+    #mode .next.guide{font-style:italic}
+    #mode .next:empty{display:none}
+    /* Short of room beside the verdict (ModeChip.fit): the next step gives way,
+       then the tool's name — never the verdict, never where or Done. */
+    #mode.tight .next,#mode.tight .nsep,#mode.tighter .what,#mode.tighter .psep{display:none}
+    /* The chip's tool part tapped: the options panel it opened is ringed in the
+       accent for a moment, so the eye finds it wherever the viewer put it. */
+    @keyframes optflash{0%,45%{box-shadow:0 0 0 2px #55c07a}100%{box-shadow:0 0 0 2px #55c07a00}}
+    .panel.flash{animation:optflash 1s ease-out}
     /* The logo (src/logo.ts), top-left over the drawing, inside the safe area
        — placed and sized by src/panels.ts, for which it is the one panel that
        never moves. A button: it opens the app menu. No ground of its own; the
@@ -418,6 +448,13 @@
       /* The organiser: a row a target tall, its marker, its eye and the strip's
          ＋ each answering over 44 however small they are drawn. */
       #organiser .orow{height:auto;min-height:44px}
+      /* The chip's parts: drawn at the size, answering over 44 tall. */
+      #mode button{position:relative}
+      #mode button::before{content:"";position:absolute;left:0;right:0;top:50%;height:44px;transform:translateY(-50%)}
+      /* Wrapped onto two lines, a part's 44 px reaches over the line above:
+         the plane's part, Done above all, is stacked over the tool's, so a
+         tap on Done is Done (found on the landscape phone). */
+      #mode .plane{position:relative;z-index:1}
       #organiser button,.panel>.ptitle .padd{position:relative}
       #organiser button::before,.panel>.ptitle .padd::before{content:"";position:absolute;left:50%;top:50%;
         width:max(100%,44px);height:max(100%,44px);transform:translate(-50%,-50%)}
@@ -448,6 +485,10 @@
            the app menu. There is no title bar. -->
       <button id="logo" type="button" title="ZeroCAD — menu" aria-label="ZeroCAD — menu" aria-haspopup="menu" aria-expanded="false"></button>
       <div id="corner">
+        <!-- The mode chip (src/modechip.ts; docs/plans/mode-feedback.md):
+             where · what · next — the plane being sketched on, the tool in
+             hand, and what the gesture wants next. Filled by main.ts. -->
+        <span id="mode" aria-live="polite"></span>
         <span id="status" aria-live="polite">loading kernel…</span>
         <!-- What the solve could say beyond its verdict (docs/plans/sketch-relations.md):
              "3 free", which relations conflict or are redundant — each a name to click. -->

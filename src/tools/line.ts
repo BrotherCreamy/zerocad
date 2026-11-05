@@ -47,7 +47,7 @@
 // seen square-on the two are the same angle, and seen obliquely the plane's
 // own angle is the one the constraint that lands will hold.
 
-import { Tool, defineTool, type PointerInfo, type RenderContext } from "./tool.ts";
+import { Tool, defineTool, press, type Hand, type PointerInfo, type RenderContext } from "./tool.ts";
 import { parallel } from "../relations/geometry.ts";
 import { frameBasis } from "../relations/refs.ts";
 import { DRAWING_OPTIONS, asArmed, placePoint } from "./place.ts";
@@ -106,6 +106,28 @@ export class LineTool extends Tool {
   private anchor: string | null = null;
   /** Where the far end currently wants to be, axis-corrected, for the preview. */
   private aim: Aim | null = null;
+  /** The lines this chain has made: in the accent until the chain ends (`placed`). */
+  private chain: string[] = [];
+
+  next(hand: Hand): string {
+    // How a chain ends: Escape under a mouse, the action strip's Cancel under a finger.
+    if (this.anchor) return `${press(hand)} the next end — ${hand === "finger" ? "Cancel" : "Esc"} ends the chain`;
+    if (this.pending) return `${press(hand)} the end`;
+    return `${press(hand)} the start`;
+  }
+
+  /** The chain so far, its lines and their points: placed, and not finished with until it ends. */
+  placed(): readonly string[] {
+    const m = this.ctx.model;
+    const names = new Set<string>();
+    for (const l of this.chain) {
+      const e = m.entities.get(l);
+      if (e?.kind !== "line") continue;
+      names.add(l);
+      for (const r of e.refs) names.add(r);
+    }
+    return [...names];
+  }
 
   onDown(p: PointerInfo): void {
     const from = this.startWorld();
@@ -135,6 +157,7 @@ export class LineTool extends Tool {
     // not turn a drawing gesture into an error message.
     if (m.defaultFrame && aim.axis) parallel(m, line.name, `${m.defaultFrame}.${aim.axis}`);
     asArmed(this.ctx, line.name);
+    this.chain.push(line.name);
 
     // The committed end becomes the next segment's start: the same entity.
     this.pending = null;
@@ -157,6 +180,7 @@ export class LineTool extends Tool {
     this.pending = null;
     this.anchor = null;
     this.aim = null;
+    this.chain = [];
     this.ctx.requestRender();
   }
 

@@ -25,7 +25,7 @@
 // built once where nobody will keep it. The copy is asked for again only when
 // the picks, the values or the model change, never per frame.
 
-import { Tool, type FeatureDialog, type FeatureLine, type FeaturePreview, type FeatureStep, type RegionHit, type RenderContext } from "./tool.ts";
+import { Tool, press, type FeatureDialog, type FeatureLine, type FeaturePreview, type FeatureStep, type Hand, type RegionHit, type RenderContext } from "./tool.ts";
 import type { Model } from "../model.ts";
 import { describeFeature } from "../picking.ts";
 import { featureFaces, faceColour, type Face } from "../faces.ts";
@@ -202,6 +202,28 @@ export abstract class FeatureTool extends Tool {
   /** The preview's refusal for the picks and values as they are now, if it has one. */
   private refused(): string | null {
     return this.shown?.error && this.shownFor === this.signature() ? this.shown.error : null;
+  }
+
+  /**
+   * The chip's words (docs/plans/mode-feedback.md): **"✓ to extrude"** once a
+   * confirm would build something, else what the picks still want
+   * (`picking`). A preview the call refuses is said by its guidance, not here:
+   * the chip's third part shows that guidance while it is fresh.
+   */
+  next(hand: Hand): string | null {
+    if (this.committing) return null;
+    if (this.plan(this.values()) !== null && this.refused() === null) return `✓ to ${this.verb}`;
+    return this.picking(hand);
+  }
+
+  /** What ✓ does, after "✓ to": the tool's name, which is its verb for extrude and revolve. */
+  protected get verb(): string {
+    return this.name;
+  }
+
+  /** What the picks still want, as the chip says it: a region, by default — the extrude tool's one stage. */
+  protected picking(hand: Hand): string {
+    return `${press(hand)} inside a closed shape`;
   }
 
   dialog(): FeatureDialog {

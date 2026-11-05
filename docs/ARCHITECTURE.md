@@ -715,6 +715,68 @@ mid-replay is a name some later entry already holds, and placed from the
 put its +y. The command line applies the same lift to a two-number `pt` or
 `fix`.
 
+## A sketch is a plane, and the plane is drawn
+
+A sketch here is no container. It is the **work plane**, a plane reference
+held as document state (`workplane("p5.p6.p8")`), or the default frame's
+plane. Until docs/plans/mode-feedback.md nothing drew it: the camera turned
+square to it once, and that was the only sign. The owner: *"it isnt obvious to
+me that is whats happening."* Now three things say it, and none of them is
+model state.
+
+**The plane is drawn** (`activeplane.ts`, pure, at quiet.ts's height, asked
+once a frame by main.ts's draw pass). A plane of points, or of a curve, is
+matched to the face it was taken from. That is a feature's face lying in the
+plane whose outline runs through the plane's points, or for a round face
+whose rim is that circle. The face is tinted in the tools' green, lighter, and
+outlined in the green, under the drawing and over the faces, in every view
+mode. Where a solid is in front of it, or it faces away, the tint fades and
+the outline takes the hidden view's ink for that green (`hiddenInk`), so the
+plane reads from behind too. No face, and the plain loop the points are
+corners of is tinted. A frame made the work plane, or a bare plane, is a patch sized to
+what is held on it, with a grid whose step is the first 1·2·5×10ⁿ that is
+32 px on screen, so the grid follows the zoom. **No plane, nothing drawn**,
+and a default frame on its own is only named in the chip: it is drawn heavier
+already, and what is typed under it is held by no relation, so focus would
+dim the whole drawing.
+Drawing on the ground is not a mode, and must not look like one.
+
+**Focus is chosen by relation, not by position.** What is held on the plane
+by `onPlane(p, ref)`, a curve whose centre is or which a `par` holds to the
+plane's normal, a line whose ends are, the plane's own points, and the solid
+its face belongs to are drawn in full ink. Everything else is drawn in the
+out-of-focus ink, its own colour taken toward the canvas's ground. "On the
+plane" by coordinates would catch every vertex the square-on view stacks
+behind the sketch, which is exactly what `findSnap` already refuses to offer
+as a place on it. None of this reaches the pick: dimmed is not hidden.
+
+**The chip says where · what · next** (`modechip.ts`), in the status's
+corner, so it is laid out by the corner's rules (everything-fits.md): it
+wraps within the room the panes leave it and is clipped, never drawn over
+a pane. *Where* is the plane's name (`e1's top`, `f1`). *What* is
+`engine.lit`. *Next* is **one engine seam**, `engine.next()`, asking the
+armed tool (`Tool.next(hand)`), every frame, in the verb of the last hand on
+the canvas. Guidance goes there too. A miss is answered where the next step
+is said, and dropped once the step moves on. The status keeps the verdict
+and its one-off notes, so the two never fight over one line. When the
+corner is short, the chip gives way (its next step, then the tool's name)
+and **the verdict is never cut** for it.
+
+**The chip only types, as the context menu does.** Done is
+`workplane(null)`, or `setDefaultFrame(null)` where the plane is the
+default frame's. Look at is `lookAt(ref)`; Change… is `arm("sketch")`. Each
+goes through `submit`, so it is logged, journalled where it is document
+state, and undone in one step. The camera is left where it is.
+
+**The gesture's stage is drawn through two more optional hooks.**
+`Tool.placed()` names what a gesture has put in the model and not finished
+with, and the host draws it in the accent (the line tool's chain).
+`Tool.takes()` names what the next pick could take, lit faintly (the
+fillet's corners). The point a mouse click would place is a ghost at the
+cursor, the mouse's half of the lifted mark a finger already had. A tool
+written at the command line with none of these hooks is drawn as before, and
+the chip then says its name and nothing after it.
+
 ## Tools are not privileged
 
 A tool is a class with `onDown` / `onMove` / `onUp` / `onCancel` / `render`,
@@ -1560,7 +1622,7 @@ until the next action went unrecorded.
 
 ## Why there is an end-to-end suite
 
-Twenty bugs so far were invisible to the unit tests and obvious within seconds
+Twenty-three bugs so far were invisible to the unit tests and obvious within seconds
 of running the app:
 
 1. a status readout that went stale, so a conflict could be introduced from
@@ -1660,6 +1722,19 @@ of running the app:
    Every test passed, the heading's text included; found by looking at the
    iPhone picture of workbenches.md. The word "organiser" now gives way to an
    ellipsis and the workbench's name keeps its width.
+21. A miss's guidance in the mode chip outranking the step after the next
+   click had succeeded: "click inside a closed outline" stayed for five
+   seconds over a region already picked. Every unit test of the words
+   passed; the e2e suite's miss-then-hit failed. Guidance now goes once
+   the tool's next step changes.
+22. Done on a landscape phone, which the chip wraps onto two lines, taken by
+   the tool's name on the line below: its 44 px touch box reached up over
+   Done. Found by the phone e2e test's one-tap Done; the plane's part is now
+   stacked over the tool's.
+23. The verdict cut off on an iPhone held upright: the chip's two lines
+   pushed `SOLVED 8 free` past the corner's room, which clips it. Every test
+   passed. Found by looking at the phone screenshot of mode-feedback.md; the
+   chip's next step now gives way while the verdict shows.
 
 None of these are mathematics. They are all *assembly*. Hence `npm run
 test:e2e`, and hence the expectation that anything touching the app is checked

@@ -21,8 +21,10 @@ axis or a line in its plane, its surface drawn from the live profile and, for a
 partial turn, its end face real geometry held by one angle dimension; either
 of which adds to a body, cuts from it, intersects it or starts one, the bodies
 built by NVIDIA's SMLib in a Worker — with
-sketching on a solid's face, a click inside it, to stack the next one on — and
-no frame made for any of it unless you ask for one) is the
+sketching on a solid's face, a click inside it, to stack the next one on; the
+plane being sketched on drawn and named, with a chip beside the status saying
+where · what · next — `on e1's top · circle · drag the radius` — and a Done to
+end it — and no frame made for any of it unless you ask for one) is the
 **first standard library** built on that kernel, not the kernel's whole
 purpose. The kernel itself knows nothing about geometry — just a flat
 variable vector and residual blocks — so the same solver is meant to be

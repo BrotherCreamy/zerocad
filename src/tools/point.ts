@@ -6,12 +6,16 @@
 // an existing vertex, edge or midpoint leaves the new point *constrained* to
 // what was clicked, the way every sketcher does it — see place.ts.
 
-import { Tool, defineTool, type PointerInfo } from "./tool.ts";
+import { Tool, defineTool, press, type Hand, type PointerInfo } from "./tool.ts";
 import { placePoint } from "./place.ts";
 
 export class PointTool extends Tool {
   static readonly summary = "Places a point where you click";
   readonly name = "point";
+
+  next(hand: Hand): string {
+    return `${press(hand)} where the point goes`;
+  }
 
   onDown(p: PointerInfo): void {
     placePoint(this.ctx, p);

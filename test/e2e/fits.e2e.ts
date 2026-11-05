@@ -162,6 +162,45 @@ test("every iPhone, both ways up, installed and in Safari: no pane over another,
   }
 });
 
+// The mode chip at its longest (docs/plans/mode-feedback.md): a plane set — the
+// drawing's default frame, so the chip's first part and its Done are there —
+// and the circle tool armed, whose options panel is open and whose next step
+// is the chip's longest line. The chip is in the corner, so the corner's text
+// is what is checked: over no pane, on every phone of the table, both ways up,
+// installed and in Safari.
+test("every iPhone, both ways up, installed and in Safari, with a sketch plane and a tool armed: the mode chip over no pane", async () => {
+  const p = await phone();
+  try {
+    for (const ph of IPHONES) {
+      for (const turn of ["portrait", "landscape"] as const) {
+        for (const mode of ["installed", "safari"] as const) {
+          await hold(p, ph, turn, mode);
+          await drawing(p.page);
+          assert.ok((await repl(p.page, 'arm("circle")')).ok);
+          await p.page.evaluate(() => (window as unknown as { __neocad: { render(): void } }).__neocad.render());
+          await p.page.waitForTimeout(150);
+          const where = `${ph.name}, ${turn}, ${mode}`;
+          const said = await p.page.$eval("#mode", (el) => ({ ...(el as HTMLElement).dataset }));
+          assert.equal(said.where, "on f", `${where}: the chip says where`);
+          assert.equal(said.what, "circle", where);
+          assert.deepEqual(await breaches(p.page), [], where);
+          // Its parts are inside the corner's room, not clipped away: Done can be reached.
+          const done = await p.page.$eval("#mode .done", (el) => {
+            const r = el.getBoundingClientRect();
+            const c = document.getElementById("corner")!.getBoundingClientRect();
+            return r.width > 0 && r.bottom <= c.bottom + 0.5 && r.right <= c.right + 0.5;
+          });
+          assert.ok(done, `${where}: Done is on screen, inside the corner's room`);
+          assert.deepEqual(errors, [], `${where}: the page reported no layout problem`);
+          await shot(p.page, `chip-${slug(ph)}-${turn}-${mode}`);
+        }
+      }
+    }
+  } finally {
+    await p.context.close();
+  }
+});
+
 // A group's flyout open (docs/plans/toolbar-groups.md): two padding tools give
 // shapes and modify a second member each — the packages that fill them have
 // not landed — so the flyout's room is exercised on every phone now. Thirteen

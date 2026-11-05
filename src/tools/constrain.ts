@@ -15,7 +15,7 @@
 // empty canvas drops them all. After a relation is applied the picks are spent
 // and the tool stays armed for the next.
 
-import { defineTool, type PointerInfo, type RenderContext, type ToolCommand } from "./tool.ts";
+import { defineTool, press, type Hand, type PointerInfo, type RenderContext, type ToolCommand } from "./tool.ts";
 import { Tool } from "./tool.ts";
 import { constraintsFor } from "../dimensioning.ts";
 import { markPicked } from "./picked.ts";
@@ -31,6 +31,12 @@ export class ConstrainTool extends Tool {
     this.picks = [...(this.ctx.prenamed ?? [])];
     if (!this.picks.length) this.ctx.log?.("constrain: click what to relate — the relations that apply are listed in the panel", "guide");
     this.ctx.requestRender();
+  }
+
+  /** What to pick, then a relation from the panel's list. */
+  next(hand: Hand): string {
+    if (!this.picks.length) return `${press(hand)} what to relate`;
+    return this.commands().length ? "choose a relation in the panel, or pick more" : `${press(hand)} something else to relate`;
   }
 
   /** The relations the picks take, as the panel lists them. */

@@ -28,7 +28,7 @@
 // geometric refusals a typed call makes, so the tool cannot revolve anything
 // the command line would not.
 
-import { defineTool, type FeatureStep, type PointerInfo, type RegionHit, type RenderContext } from "./tool.ts";
+import { defineTool, press, type FeatureStep, type Hand, type PointerInfo, type RegionHit, type RenderContext } from "./tool.ts";
 import type { OptionSpecs } from "./options.ts";
 import type { Model } from "../model.ts";
 import {
@@ -191,6 +191,15 @@ export class RevolveTool extends FeatureTool {
     this.under = null;
     this.axisUnder = null;
     return had;
+  }
+
+  /** The region, then the axis — the lit lines and arms — then ✓ (`FeatureTool.next`). */
+  protected picking(hand: Hand): string {
+    if (!this.picks.size) return `${press(hand)} inside a closed shape`;
+    if (this.axis === null) {
+      return this.candidates().length ? `${press(hand)} a lit line or arm to turn it about` : "draw a line in its plane to turn it about";
+    }
+    return `${press(hand)} inside a closed shape`;
   }
 
   protected wanting(): string | null {

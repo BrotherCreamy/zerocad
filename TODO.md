@@ -1784,7 +1784,43 @@ starts.
         visual/contextual feedback to the user"* — the active plane drawn and
         tinted, a mode chip saying where · what · next, a Done for the
         sketch plane, the gesture's stage drawn, what is in the plane in
-        focus); then [`android.md`](docs/plans/android.md) (the owner: *"obv
+        focus) — **[x] BUILT (2026-11-05)** on `claude/mode-feedback`; the
+        spec's *As built* has the table of the chip's parts and every
+        deviation. Register (vetoable):
+        - **The plane is drawn**: the face it was taken from tinted green
+          (the tools' green, lighter) and outlined in the green, fading and
+          dimmed where it is behind the solid; a frame made the work plane a
+          patch with a grid that follows the zoom; nothing at all with no
+          plane chosen. A default frame on its own is named in the chip but
+          not drawn or focused on.
+        - **The mode chip**, first in the status's corner: where (`on e1's
+          top`, `on f1`, absent on the ground) · what (`engine.lit`) · next
+          (`Tool.next(hand)`, one engine seam, "click" or "tap"). Always
+          shown. Guidance moves here from the status's note and goes once
+          the step moves on. **The verdict is never cut for it**: on a short
+          corner, the next step gives way, then the tool's name.
+        - **Done**: a button beside the plane's name and the plane menu's
+          third item (with Look at and Change…). It types `workplane(null)`,
+          or `setDefaultFrame(null)` when the plane is the default frame's.
+          The camera stays.
+        - **Focus by relation**: held by `onPlane`/`par` to the plane (and
+          the face's own feature) is full ink; the rest is `outOfFocusInk`,
+          one step toward the ground; entities only; the pick unchanged.
+          Typed `pt()`s on a default frame are not held, so they are dimmed.
+        - **The stage**: a ghost dot at the mouse for placing tools;
+          `Tool.placed` (the line's chain, in the green); `Tool.takes` (the
+          fillet's corners, lit). Extrude, sketch and revolve keep their own
+          lighting; dimension and constrain light nothing.
+        - Found here: stale guidance over a picked region; Done's tap taken
+          by the line below it on a landscape phone; the verdict cut off on
+          an upright phone (ARCHITECTURE's 20–22).
+        - [ ] **Left for later**: a hole a later feature cut through the
+          sketched face is tinted over (the tint is the feature's own face,
+          not the kernel body's); the other features of the same kernel body
+          are drawn out of focus; on an upright phone a drag's stage is shown
+          only by the lifted mark for the 3 s after a solve, while the
+          verdict shows. Not tried on an iPhone.
+        Then [`android.md`](docs/plans/android.md) (the owner: *"obv
         this whole platform should also work on android"* — Pixels, Galaxies
         and tablets in the device table, the system font scale read
         Android's way, the back gesture closing what is open, Install app in

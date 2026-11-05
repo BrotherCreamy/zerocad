@@ -10,7 +10,7 @@
 // what the press and the release landed on (place.ts), exactly as the
 // rectangle keeps its first press.
 
-import type { PointerInfo, ToolContext } from "./tool.ts";
+import { press, type Hand, type PointerInfo, type ToolContext } from "./tool.ts";
 import { CurvePlane, requirePlanar } from "./place.ts";
 import { pressMoved } from "./curvemethod.ts";
 import { cross3, lift3 } from "../vec3.ts";
@@ -35,6 +35,16 @@ export class TwoPoint {
     this.ctx = ctx;
     this.tool = tool;
     this.plane = new CurvePlane(ctx, tool);
+  }
+
+  /**
+   * Where the gesture is, for the mode chip's words: nothing yet; pressed and
+   * held (a drag to the second place, or a click about to be one); or the
+   * first click made and the second awaited.
+   */
+  get step(): "first" | "held" | "second" {
+    if (!this.first) return "first";
+    return this.press ? "held" : "second";
   }
 
   /** Whether the first place has been given, and the second is being chosen. */
@@ -108,4 +118,16 @@ export function halfWidth(a: number[], b: number[], at: number[]): number {
   if (!(len > 0)) return 0;
   const w = P.map((x, i) => x - A[i]);
   return Math.hypot(...cross3(w, d)) / len;
+}
+
+/**
+ * The chip's words for a two-place stage (docs/plans/mode-feedback.md): press
+ * at the first place; drag to the second while held; click (or tap) it after
+ * a click. `first` and `second` are the places' names — "the centre", "a
+ * corner".
+ */
+export function twoPointNext(step: TwoPoint["step"], hand: Hand, first: string, second: string): string {
+  if (step === "first") return `press at ${first}`;
+  if (step === "held") return `drag to ${second}`;
+  return `${press(hand)} ${second}`;
 }
