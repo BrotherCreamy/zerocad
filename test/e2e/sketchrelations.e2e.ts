@@ -301,3 +301,24 @@ test("iPhone 13: two lines tapped, the constrain button, a tap on Parallel", asy
 test("no uncaught page errors on the phone", () => {
   assert.deepEqual(phone.pageErrors, []);
 });
+
+test("iPhone 13 landscape: thirteen buttons take two rows, every one on screen, and the diagnosis reads beside the verdict", async () => {
+  const land = await openApp({ device: "iPhone 13 landscape" });
+  try {
+    await fresh(land);
+    await land.type('a = pt(0, 0); b = pt(40, 0); c = pt(0, 25); ln(a, b); ln(a, c); dist(a, b, 40); perp("l1", "l2")');
+    await land.page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+    const bs = await land.page.$$eval("#toolbar button", (els) => els.map((b) => {
+      const r = b.getBoundingClientRect();
+      return { y: Math.round(r.y), inside: r.left >= 0 && r.top >= 0 && r.right <= innerWidth && r.bottom <= innerHeight };
+    }));
+    assert.equal(bs.length, 13);
+    assert.equal(new Set(bs.map((b) => b.y)).size, 2, "two rows");
+    assert.ok(bs.every((b) => b.inside), "every button wholly on screen");
+    assert.match(await diagnosisText(land), /^\d+ free$/);
+    await shot(land, "9-phone-landscape-two-rows");
+    assert.deepEqual(land.pageErrors, []);
+  } finally {
+    await land.close();
+  }
+});

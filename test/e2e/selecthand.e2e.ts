@@ -320,12 +320,12 @@ test("iPhone landscape: the two more buttons fit the row along the bottom, every
           && b.left >= bar.left - 0.5 && b.right <= bar.right + 0.5),
       };
     });
-    assert.deepEqual(await look(), { row: true, n: 11, inside: true });
+    assert.deepEqual(await look(), { row: true, n: 13, inside: true });
     assert.deepEqual(await lit(land), ["select"]);
     await shot(land, "landscape");
     await land.type("ui({ scale: 0.7 })");
     await land.page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
-    assert.deepEqual(await look(), { row: true, n: 11, inside: true }, "and at 70 %");
+    assert.deepEqual(await look(), { row: true, n: 13, inside: true }, "and at 70 %");
     await shot(land, "landscape-70");
   } finally {
     await land.close();
