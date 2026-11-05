@@ -1642,7 +1642,12 @@ starts.
         visual/contextual feedback to the user"* — the active plane drawn and
         tinted, a mode chip saying where · what · next, a Done for the
         sketch plane, the gesture's stage drawn, what is in the plane in
-        focus).
+        focus); then [`android.md`](docs/plans/android.md) (the owner: *"obv
+        this whole platform should also work on android"* — Pixels, Galaxies
+        and tablets in the device table, the system font scale read
+        Android's way, the back gesture closing what is open, Install app in
+        the menu, the file paths and their fallbacks, nothing new in the
+        recogniser).
 
 - [x] **Files — open, save, share, drop, autosave — BUILT (2026-11-04).**
       The owner: *"I want to be able to open files on my phone, share files
