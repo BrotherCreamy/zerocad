@@ -211,11 +211,13 @@ test("empty canvas arms the tools, and every tool name it types is registered", 
     // items went with their tools. The shapes group whole under its heading:
     // this test registers the built-in modules as the app does, and a module
     // is registered whole (it used to import the rectangle alone).
-    "Point", "Line", "Shapes", "Rectangle", "Polygon", "Slot", "Circle", "Arc", "Ellipse", "Fillet", "Frame",
+    // The modify group under its heading once the solids module brings its
+    // round and chamfer (docs/plans/solid-fillets.md), in the button's order.
+    "Point", "Line", "Shapes", "Rectangle", "Polygon", "Slot", "Circle", "Arc", "Ellipse", "Modify", "Fillet", "Chamfer", "Round", "Frame",
   ]);
   // A typo in the table would be a menu item that throws when chosen, and
   // nothing else would catch it.
-  for (const label of labels(menu).slice(0, -1).filter((l) => l !== "Shapes")) {
+  for (const label of labels(menu).slice(0, -1).filter((l) => l !== "Shapes" && l !== "Modify")) {
     const command = commandFor(menu, label);
     const tool = command.match(/^arm\("(.+)"\)$/)?.[1];
     assert.ok(tool, `${label} should arm a tool, got ${command}`);

@@ -43,13 +43,28 @@ import type { View } from "./view.ts";
  * to do the same thing with it, and a second parallel type would mean writing
  * all of that twice.
  */
-export type PickKind = Entity["kind"] | "relation";
+export type PickKind = Entity["kind"] | "relation" | "edge";
 
 export interface Pick {
   name: string;
+  /**
+   * `"edge"` is a **kernel edge** (docs/plans/solid-fillets.md): an edge of a
+   * body the solid kernel built, named by its two faces (`e1.lid|e1.m0`) — no
+   * entity, so the host finds it (kerneledges.ts) and says it (`tag`).
+   */
   kind: PickKind;
   /** Screen-space distance in pixels, for choosing between candidates. */
   distance: number;
+  /** A kernel edge's body — its first feature's name. */
+  body?: string;
+  /** A kernel edge's hover line, written by the host that found it. */
+  tag?: string;
+  /**
+   * The entity a kernel edge was picked in place of — the lid's twin line it
+   * lies along — which a press still drags, so a body's edge is resized by
+   * its relational skeleton exactly as before edges could be picked.
+   */
+  under?: Pick;
   /**
    * For a frame: which arm of its marker was nearest — what a tool choosing an
    * *axis* needs (the revolve tool turns it into `"f1.y"`). Absent for every
@@ -230,6 +245,7 @@ function toSegment(sx: number, sy: number, [ax, ay]: [number, number], [bx, by]:
  * does. One tag, one code path, no second way to say the same thing.
  */
 export function describePick(model: Model, pick: Pick): string {
+  if (pick.kind === "edge") return pick.tag ?? pick.name;
   if (pick.kind === "relation") {
     const r = model.relations.get(pick.name);
     return r ? `${describeRelation(r)}${featureTag(model, pick.name)}${groupTag(model, pick.name)}` : pick.name;

@@ -72,7 +72,7 @@ import type { Model } from "../model.ts";
 import type { ResidualBlock } from "../kernel/problem.ts";
 import {
   HAND, SELECT, engineNext, getToolCtor, toolAlias, type FeatureDialog, type FeaturePreview, type FeatureStep, type Hand, type Tool, type ToolContext,
-  type PointerInfo, type RegionHit, type RenderContext,
+  type PointerInfo, type RegionHit, type RenderContext, type SolidsAccess,
 } from "./tool.ts";
 import {
   assignView, cameraPlane, depth, orbitBy, panBy, screenToPlane, screenToWorld, uiOf, viewAxes, worldToScreen, zoomAbout, type Plane, type View,
@@ -592,8 +592,26 @@ export class ToolEngine {
     // take every tap aimed at it.
     const gl = glyphAt(this.glyphs(), sx, sy);
     if (gl) return { name: gl.relation, kind: "relation", distance: 0 };
-    return hitTest(this.model, this.view, sx, sy, this.occlusion, this.reach);
+    const hit = hitTest(this.model, this.view, sx, sy, this.occlusion, this.reach);
+    // **A kernel body's edges pick** (docs/plans/solid-fillets.md) — where no
+    // entity does, and in place of the quiet skeleton a kernel body's edges
+    // lie along (a lid's twins, its walls, its profile: what the kernel draws
+    // in their stead, quiet.ts). A point still wins, as it wins over a line:
+    // a corner is what a hand on a corner means. The entity rides along
+    // (`under`), so a press still drags it.
+    if (this.solids && (!hit || (hit.kind !== "point" && this.solids.skeleton(hit.name)))) {
+      const e = this.solids.edgePick([sx, sy], this.occlusion, this.reach);
+      if (e) return hit ? { ...e, under: hit } : e;
+    }
+    return hit;
   }
+
+  /**
+   * The bodies the solid kernel built, as a hand reaches them — set by the
+   * host (main.ts, over bodies.ts and kerneledges.ts), null where there is no
+   * kernel. What makes a kernel edge a pick, a box's catch and a fillet's edge.
+   */
+  solids: SolidsAccess | null = null;
 
   /**
    * The points a drag is moving right now — empty until the press has moved
@@ -750,12 +768,16 @@ export class ToolEngine {
     // armed on a selection (docs/plans/sketch-relations.md). Relations and
     // regions are not entities, and the model is asked which names are.
     const prenamed = this.selection.prune(this.model).filter((n) => this.model.entities.has(n));
+    // And the kernel edges selected — what the fillet and chamfer tools round.
+    const preedges = [...this.selection.edges];
     this.selection.clear();
     const ctx: ToolContext = {
       model: this.model,
       options,
       preselected,
       prenamed,
+      preedges,
+      ...(this.solids ? { solids: this.solids } : {}),
       trial: {},
       ...(target === undefined ? {} : { target }),
       planeAt: ([sx, sy], plane) => screenToPlane(this.view, sx, sy, plane),
@@ -1182,7 +1204,11 @@ export class ToolEngine {
     // dragging the geometry behind it or a box over it.
     const under = this.pickAt(sx, sy);
     const { world: grab, plane } = this.dragPointAt(sx, sy);
-    const names = under ? dragGoverns(this.model, under) : [];
+    // A kernel edge drags the entity it was picked in place of, if any — and
+    // otherwise nothing: the kernel's edge is derived, and a press on it that
+    // moves is a pan (it is not empty canvas, so no box).
+    const grabbed = under?.kind === "edge" ? under.under ?? null : under;
+    const names = grabbed ? dragGoverns(this.model, grabbed) : [];
     const drag = names.length
       ? { names, origins: names.map((n) => this.model.coords(n).slice(0, grab.length)), grab, ...(plane ? { plane } : {}) }
       : null;
@@ -1241,7 +1267,7 @@ export class ToolEngine {
     if (!moved) {
       const pick = this.pickAt(sx, sy);
       if (pick && this.composing()) this.onPick(pick);
-      else if (pick) this.pickInto(pick.name, add);
+      else if (pick) this.pickInto(pick, add);
       else this.preselect(sx, sy, add);
     } else if (box) {
       // A box is a multi-click: every name it caught goes down the same path
@@ -1252,6 +1278,8 @@ export class ToolEngine {
       // empty canvas does.
       const { rect, mode } = boxFrom(box.ax, box.ay, box.bx, box.by);
       const caught = selectInBox(this.model, this.view, rect, mode, this.occlusion);
+      // And a kernel body's edges, by the same two rules (kerneledges.ts).
+      const edges = this.composing() ? [] : this.solids?.edgesInBox(rect, mode, this.occlusion) ?? [];
       if (this.composing()) {
         for (const name of caught) {
           const entity = this.model.entities.get(name)!;
@@ -1259,8 +1287,10 @@ export class ToolEngine {
         }
       } else if (add) {
         this.selection.add(caught);
+        this.selection.addEdges(edges);
       } else {
         this.selection.set(caught);
+        this.selection.addEdges(edges);
       }
       this.onRenderOnly(); // the box is gone; the canvas has to stop drawing it
     } else if (drag) {
@@ -1329,7 +1359,7 @@ export class ToolEngine {
         const pick = this.pickAt(x, y);
         const add = this.selection.size > 0;
         if (pick && this.composing()) this.onPick(pick);
-        else if (pick) this.pickInto(pick.name, add);
+        else if (pick) this.pickInto(pick, add);
         else this.preselect(x, y, add);
       },
       dragStart: (x0, y0) => {
@@ -1421,8 +1451,13 @@ export class ToolEngine {
   }
 
   /** A click with nothing armed on an entity or a glyph, while no command is being written: see `selection`. */
-  private pickInto(name: string, shift: boolean): void {
-    if (shift) this.selection.toggle(name);
+  private pickInto(pick: Pick, shift: boolean): void {
+    const name = pick.name;
+    if (pick.kind === "edge") {
+      // A kernel edge is selected as an edge (selection.ts), not a name the model has.
+      if (shift) this.selection.toggleEdge(name);
+      else this.selection.onlyEdge(name);
+    } else if (shift) this.selection.toggle(name);
     else this.selection.only(name);
     this.onRenderOnly();
   }

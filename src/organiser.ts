@@ -23,7 +23,7 @@
 // docked, hidden from the app menu's Panes and sized by the interface size
 // without either knowing it exists.
 
-import type { Model } from "./model.ts";
+import { isBlendFeature, type BlendFeature, type FeatureEntry, type Model } from "./model.ts";
 import { chainsOf, modeOf } from "./modes.ts";
 import type { Menu, MenuItem } from "./menu.ts";
 import { giveTip, type AttachTip, type Tip } from "./tooltip.ts";
@@ -113,19 +113,35 @@ export function organiserSections(model: Model, selection: readonly string[] = [
       open: null, openCommand: null,
     };
   });
+  // Fillets and chamfers are features too (docs/plans/solid-fillets.md), each
+  // after the sweeps made before it: a row with its eye — hiding one leaves it
+  // out of its body — and Edit and Delete on its menu.
+  for (const b of model.blends.values()) {
+    const eye = eyeOf(model, b.owns, model.hidden.has(b.name));
+    const row: OrganiserRow = {
+      name: b.name, detail: `${b.kind} · ${b.edges.length} edge${b.edges.length === 1 ? "" : "s"}`, count: b.owns.length, eye,
+      eyeCommand: eyeCommand(b.name, eye), tapCommand: `select(${quoted(b.name)})`,
+      selected: lit(b.owns.filter((n) => !model.hidden.has(n))), open: null, openCommand: null,
+    };
+    const after = features.findIndex((f) => Number(f.name.slice(1)) > Number(b.name.slice(1)));
+    if (after < 0) features.push(row);
+    else features.splice(after, 0, row);
+  }
   // A body is the result of its chain (modes.ts), named by its first feature:
   // hiding it is hiding that feature, which hides the body whole. Its detail
   // is the rest of the chain, each feature signed by what it does — +e3 −e2
   // after the name e1 (a phone's narrow pane cut "e1 e1 +e3 −e2" to "e…").
   const sign: Record<string, string> = { add: "+", cut: "−", intersect: "∩", new: "" };
+  // A fillet signed ⌒ and a chamfer ⌔ in the chain, where they fall in it.
+  const stepSign = (f: FeatureEntry | BlendFeature) => (isBlendFeature(f) ? (f.kind === "fillet" ? "⌒" : "⌔") : sign[modeOf(f)]);
   const bodies: OrganiserRow[] = chainsOf(model, { hidden: true }).bodies.map((c) => {
     const first = c.features[0];
-    const members = c.features.flatMap((f) => f.owns);
+    const members = c.steps.flatMap((f) => f.owns);
     const eye: Eye = model.hidden.has(first.name) ? "hidden" : "shown";
     return {
-      name: c.name, detail: c.features.slice(1).map((f) => `${sign[modeOf(f)]}${f.name}`).join(" "),
-      count: c.features.length, eye, eyeCommand: eyeCommand(first.name, eye),
-      tapCommand: `select(${c.features.map((f) => quoted(f.name)).join(", ")})`,
+      name: c.name, detail: c.steps.slice(1).map((f) => `${stepSign(f)}${f.name}`).join(" "),
+      count: c.steps.length, eye, eyeCommand: eyeCommand(first.name, eye),
+      tapCommand: `select(${c.steps.map((f) => quoted(f.name)).join(", ")})`,
       selected: lit(members.filter((n) => !model.hidden.has(n))), open: null, openCommand: null,
     };
   });
@@ -176,10 +192,12 @@ export function rowMenu(model: Model, name: string, selection: readonly string[]
     const count = `${g.members.length} member${g.members.length === 1 ? "" : "s"}`;
     return { header: `${name}  group of ${count}${open ? "  ·  open" : ""}`, items };
   }
-  const f = model.features.get(name);
+  const f = model.features.get(name) ?? model.blends.get(name);
   if (f) {
     return {
-      header: `${name}  ${f.kind}, ${f.owns.length} made`,
+      header: f.kind === "fillet" || f.kind === "chamfer"
+        ? `${name}  ${f.kind} of ${f.edges.length} edge${f.edges.length === 1 ? "" : "s"} of ${f.into}`
+        : `${name}  ${f.kind}, ${f.owns.length} made`,
       items: [
         { label: `Edit ${name}`, action: { do: "run", command: `edit(${quoted(name)})` } },
         { label: "Delete", action: { do: "run", command: `del(${quoted(name)})` } },

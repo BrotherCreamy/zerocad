@@ -24,7 +24,7 @@
 // picture alone would not show it.
 
 import type { BooleanOp, EdgeInfo, FaceInfo, Mesh, Placement, Profile, Solid, SolidKernel, Topology, V2, V3, Validity } from "./kernel.ts";
-import { namesOf, tagExtrude, tagRevolve } from "./naming.ts";
+import { BLEND_EDGES, blendTag, namesOf, tagExtrude, tagRevolve } from "./naming.ts";
 
 export type NodeOp = "new" | BooleanOp;
 
@@ -43,10 +43,35 @@ export interface SweepNode {
   at: Placement;
 }
 
+export type BlendOp = "fillet" | "chamfer";
+
+/**
+ * A fillet or a chamfer of edges of the body as the nodes before it left it
+ * (docs/plans/solid-fillets.md). **Edges by name**, never by index: `e1.lid|e1.m0`
+ * is the edge between those two faces in whatever topology the rebuild made,
+ * and every edge answering to a name is taken (the pieces of a split face
+ * share it). A name no edge answers to is said (`missing`) and left out; a
+ * blend none of whose edges is there is refused and left out of the chain —
+ * a cut that took the edge took its fillet, and the log says so.
+ */
+export interface BlendNode {
+  id: number;
+  op: BlendOp;
+  edges: string[];
+  /** The fillet's radius; the chamfer's setback along each face (the spike measured SMLib's meaning). */
+  size: number;
+}
+
+export type Node = SweepNode | BlendNode;
+
+export function isBlend(n: Node): n is BlendNode {
+  return n.op === "fillet" || n.op === "chamfer";
+}
+
 export interface BodyProgram {
   /** The caller's name for it — returned with its result, never read. */
   name: string;
-  nodes: SweepNode[];
+  nodes: Node[];
 }
 
 export interface Program {
@@ -77,6 +102,8 @@ export interface BodyResult {
   failed: { node: number; id: number; why: string }[];
   /** Nodes that changed nothing, by index. */
   idle: { node: number; id: number }[];
+  /** Blends some of whose edges are not on the body they were applied to: those names, left out. */
+  missing: { node: number; id: number; edges: string[] }[];
   /** Null when not even the first node could be made. */
   solid: {
     volume: number;
@@ -101,11 +128,11 @@ export interface ProgramResult {
 }
 
 /** A key per node prefix: the same nodes give the same key, whatever object they were spelled in. */
-export function nodeKeys(nodes: readonly SweepNode[]): string[] {
+export function nodeKeys(nodes: readonly Node[]): string[] {
   const keys: string[] = [];
   let chain = "";
   for (const n of nodes) {
-    chain = `${chain}|${JSON.stringify([n.id, n.op, n.sweep, n.profile, n.at])}`;
+    chain = `${chain}|${JSON.stringify(isBlend(n) ? [n.id, n.op, n.edges, n.size] : [n.id, n.op, n.sweep, n.profile, n.at])}`;
     keys.push(hash(chain));
   }
   return keys;
@@ -129,6 +156,7 @@ interface Chain {
   solids: (Solid | null)[];
   failed: BodyResult["failed"];
   idle: BodyResult["idle"];
+  missing: BodyResult["missing"];
   /** The result as last extracted, for the last key. */
   result: BodyResult | null;
 }
@@ -138,12 +166,17 @@ export class Evaluator {
   private chains = new Map<string, Chain>();
   /** Last tessellation settings, which a cached result is only good for. */
   private tess = "";
+  /** The program's blend features, by number — whose faces are named `e3.f0` (naming.ts). */
+  private blends: ReadonlySet<number> = new Set();
+  private prefix = "e";
 
   constructor(k: SolidKernel) {
     this.k = k;
   }
 
   run(p: Program): ProgramResult {
+    this.blends = new Set(p.bodies.flatMap((b) => b.nodes.filter(isBlend).map((n) => n.id)));
+    this.prefix = p.prefix;
     const tess = `${p.chord}:${p.angle}:${p.prefix}`;
     if (tess !== this.tess) {
       for (const c of this.chains.values()) c.result = null;
@@ -186,13 +219,14 @@ export class Evaluator {
     c.keys.length = Math.min(c.keys.length, from);
     c.failed = c.failed.filter((f) => f.node < from);
     c.idle = c.idle.filter((f) => f.node < from);
+    c.missing = c.missing.filter((f) => f.node < from);
   }
 
   private body(b: BodyProgram, p: Program): BodyResult {
     const keys = nodeKeys(b.nodes);
     let c = this.chains.get(b.name);
     if (!c) {
-      c = { keys: [], solids: [], failed: [], idle: [], result: null };
+      c = { keys: [], solids: [], failed: [], idle: [], missing: [], result: null };
       this.chains.set(b.name, c);
     }
     let same = 0;
@@ -210,7 +244,7 @@ export class Evaluator {
       c.solids.push(this.node(b.nodes[i], i, lastSolid(c), c));
     }
     const result: BodyResult = {
-      name: b.name, key, failed: [...c.failed], idle: [...c.idle], solid: null, ms: 0,
+      name: b.name, key, failed: [...c.failed], idle: [...c.idle], missing: [...c.missing], solid: null, ms: 0,
     };
     const s = lastSolid(c);
     if (s !== null) {
@@ -226,7 +260,8 @@ export class Evaluator {
   }
 
   /** One node: its sweep, tagged, and its boolean with what came before. Null when it adds nothing to the chain. */
-  private node(n: SweepNode, index: number, before: Solid | null, c: Chain): Solid | null {
+  private node(n: Node, index: number, before: Solid | null, c: Chain): Solid | null {
+    if (isBlend(n)) return this.blend(n, index, before, c);
     const k = this.k;
     let tool: Solid;
     try {
@@ -284,11 +319,72 @@ export class Evaluator {
     }
   }
 
+  /**
+   * A fillet or chamfer of the body as it stands: its edges found by name in
+   * this topology, the kernel's blend on a copy (the solid before it stays the
+   * cache's), and each face the kernel made tagged after the edge it was made
+   * of — the one whose midpoint lies nearest it. The kernel's new faces come
+   * back untagged, and every other face keeps its tag (measured in the spike),
+   * so the untagged ones are exactly this blend's.
+   */
+  private blend(n: BlendNode, index: number, before: Solid | null, c: Chain): Solid | null {
+    const k = this.k;
+    const verb = n.op;
+    const fail = (why: string) => { c.failed.push({ node: index, id: n.id, why }); return null; };
+    if (before === null) return fail(`there is no body to ${verb}`);
+    if (!(n.size > 0) || !Number.isFinite(n.size)) return fail(`its ${n.op === "fillet" ? "radius" : "setback"} is ${n.size}, and must be more than 0`);
+    if (n.edges.length > BLEND_EDGES) return fail(`it names ${n.edges.length} edges, and one ${verb} can tell at most ${BLEND_EDGES} apart — make it two`);
+    const edges = k.edges(before);
+    const names = namesOf(k.faces(before), edges, this.prefix, this.blends).edges;
+    const wanted = new Map<string, number>();
+    n.edges.forEach((e, i) => { if (!wanted.has(e)) wanted.set(e, i); });
+    const picked: number[] = [];
+    const of: number[] = [];
+    names.forEach((name, i) => {
+      const at = wanted.get(name);
+      // A seam is no edge of the shape (naming.ts): there is nothing to round.
+      if (at === undefined || name.endsWith(":seam")) return;
+      picked.push(i);
+      of.push(at);
+    });
+    const found = new Set(of);
+    const missing = n.edges.filter((e, i) => !found.has(i) && wanted.get(e) === i);
+    if (!picked.length) {
+      return fail(`none of the edges it ${verb}s is on the body now (${n.edges.join(", ")}) — an edge it named was taken by a change before it`);
+    }
+    if (missing.length) c.missing.push({ node: index, id: n.id, edges: missing });
+    const out = k.copy(before);
+    try {
+      if (n.op === "fillet") k.fillet(out, picked, n.size);
+      else k.chamfer(out, picked, n.size);
+    } catch (e) {
+      k.free(out);
+      const what = n.op === "fillet" ? `radius ${n.size}` : `setback ${n.size}`;
+      return fail(`the kernel could not ${verb} ${picked.length === 1 ? "that edge" : `those ${picked.length} edges`} at ${what} — `
+        + `${n.op === "fillet" ? "a radius" : "a setback"} too big for a face next to it is the usual reason (${message(e)})`);
+    }
+    if (!k.manifold(out)) {
+      k.free(out);
+      return fail(`the ${verb} left the body open — try a smaller ${n.op === "fillet" ? "radius" : "setback"}`);
+    }
+    const mids = picked.map((i) => edges[i].mid);
+    k.faces(out).forEach((f, i) => {
+      if (f.tag >= 0) return;
+      let best = 0, bestD = Infinity;
+      mids.forEach((m, j) => {
+        const d = k.distanceToFace(out, i, m);
+        if (d < bestD) [best, bestD] = [j, d];
+      });
+      k.tagFace(out, i, blendTag(n.id, of[best]));
+    });
+    return out;
+  }
+
   private extract(s: Solid, p: Program): NonNullable<BodyResult["solid"]> {
     const k = this.k;
     const faces = k.faces(s);
     const edges = k.edges(s);
-    const names = namesOf(faces, edges, p.prefix);
+    const names = namesOf(faces, edges, p.prefix, this.blends);
     const box = k.bbox(s);
     const diag = Math.hypot(box[1][0] - box[0][0], box[1][1] - box[0][1], box[1][2] - box[0][2]);
     return {

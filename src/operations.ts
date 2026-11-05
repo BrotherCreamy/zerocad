@@ -2718,7 +2718,8 @@ function delOne(model: Model, name: string): string[] {
 
 /** `delOne` once any hole it fills is filled: the inward rule, for records, relations and entities. */
 function cascade(model: Model, name: string): string[] {
-  const feature = model.features.get(name);
+  // A fillet's or chamfer's record cascades as a feature's does (docs/plans/solid-fillets.md).
+  const feature = model.features.get(name) ?? model.blends.get(name);
   const owned = (pred: (n: string) => boolean) => (feature ? feature.owns.filter(pred) : []);
   const seeds = feature ? owned((n) => model.entities.has(n)) : model.entities.has(name) ? [name] : [];
   const asked = new Set(feature ? owned((n) => model.relations.has(n)) : model.relations.has(name) ? [name] : []);
@@ -2735,7 +2736,7 @@ function cascade(model: Model, name: string): string[] {
   // Every record naming anything on the way out — the inward rule — plus the
   // feature asked for.
   const going = new Set([...doomed, ...relations]);
-  const features = [...model.features.values()]
+  const features = [...model.features.values(), ...model.blends.values()]
     .filter((f) => f.name === name || f.names.some((n) => going.has(n)))
     .map((f) => f.name);
 

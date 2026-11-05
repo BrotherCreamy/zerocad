@@ -23,6 +23,7 @@ import {
 import { del, set } from "../src/operations.ts";
 import { extrusion } from "../src/relations/extrusion.ts";
 import { revolution } from "../src/relations/revolution.ts";
+import { chamferSetback, filletRadius } from "../src/relations/blend.ts";
 import { FORMAT, open, save } from "../src/persist.ts";
 import { axisFrame } from "./frames.ts";
 
@@ -88,7 +89,9 @@ test("the three value-carrying relations are d-named and every other one is r-na
   // test/revolve.test.ts).
   // An ellipse's two semi-axes (docs/plans/sketch-shapes.md) are dimensions
   // as a radius is; test/shapes.test.ts makes them.
-  assert.deepEqual([...DIMENSION_OPS].sort(), ["angle", "diameter", "dist", "extrusion", "majorAxis", "minorAxis", "radius", "revolution"]);
+  // A fillet's radius and a chamfer's setback (docs/plans/solid-fillets.md) are
+  // dimensions with no equation: test/solidfillets.test.ts makes them.
+  assert.deepEqual([...DIMENSION_OPS].sort(), ["angle", "chamferSetback", "diameter", "dist", "extrusion", "filletRadius", "majorAxis", "minorAxis", "radius", "revolution"]);
   // A driven dimension is a dimension to read and name, never to set.
   assert.equal(relationPrefix("measure"), "d");
   assert.equal(valueArgIndex("measure"), null);
@@ -293,6 +296,9 @@ test("every op in DIMENSION_OPS can actually be rebuilt by set", async () => {
     // An ellipse's semi-axes, on the ellipse `e` the fixture below makes.
     majorAxis: (m) => majorAxis(m, "e", 12),
     minorAxis: (m) => minorAxis(m, "e", 4),
+    // A blend's size holds nothing to solve; `set` re-runs it with the new value.
+    filletRadius: (m) => filletRadius(m, 3),
+    chamferSetback: (m) => chamferSetback(m, 2),
   };
   for (const op of DIMENSION_OPS) {
     assert.ok(fixtures[op], `${op} is a dimension with no fixture here — add one, and a REBUILD entry`);

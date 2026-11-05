@@ -33,7 +33,7 @@ test("the built-in modules load in order, and the tables are filled from them in
   assert.deepEqual(builtin, ["core", "sketch", "solids", "files", "step", "organiser", "interface"]);
   // The tray: core's tools, then the sketch module's, then the solids'.
   assert.deepEqual(listTools(), ["point", "line", "rectangle", "polygon", "slot", "circle", "arc", "ellipse", "fillet",
-    "dimension", "constrain", "extrude", "revolve", "sketch"]);
+    "dimension", "constrain", "extrude", "revolve", "sketch", "round", "chamfer"]);
   // The menu's tool items and the File items, module by module.
   assert.deepEqual(menuToolItems().map((i) => i.tool), ["point", "line", "rectangle", "circle", "arc", "ellipse", "fillet"]);
   assert.deepEqual(fileMenuItems().map((i) => i.label), ["New", "Open…", "Save", "Share…", "Export STEP…"]);
@@ -48,7 +48,8 @@ test("persist.ts's replay table is the modules' ops: the model's own edits, ever
   await loadKernel();
   const ops = replayEntries(new Model(3)).map(([op]) => op);
   for (const op of ["addPoint", "addLine", "addFrame", "deleteEntity", "addCircle", "addArc", "addEllipse", "dist", "parallel",
-    "onEllipse", "majorAxis", "fillet", "hole", "extrude", "revolve", "regen", "set", "construction", "group", "hide"]) {
+    "onEllipse", "majorAxis", "fillet", "hole", "extrude", "revolve", "regen", "set", "construction", "group", "hide",
+    "filletEdges", "chamferEdges", "setEdges"]) {
     assert.ok(ops.includes(op), `${op} replays`);
   }
   assert.equal(new Set(ops).size, ops.length, "no op twice");
