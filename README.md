@@ -161,6 +161,15 @@ it or press and hold to open the rest beside it, then click one; on a phone,
 press and slide off it onto one and lift, or hold it and tap one. Escape, or
 a press elsewhere, puts it away. `arm("polygon")` still arms any tool by
 name, and a tool you define joins a family with `static group = "shapes"`.
+**Dimension** and **Constrain** have a button each: the first measures what
+you click — a line, two points, a point and a line, two lines, a circle —
+and a click on empty canvas types the dimension holding it (or, driven, a
+reference in parentheses that holds nothing); the second lists the
+relations what you picked or selected takes, one press typing one. After
+every solve **what is still free is drawn blue** and the status says how
+many ways the drawing can still move (`SOLVED · 3 free`); a `CONFLICT` names
+the relations that cannot all hold, drawn red, each a click away from
+selected and a Delete from gone.
 The first two are **Select** — the
 arrow, lit whenever no tool is armed, which puts the armed tool down and
 keeps what is selected — and **the Hand**, with which a left-drag (or one

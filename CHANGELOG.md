@@ -7,6 +7,55 @@ decisions.
 
 ---
 
+## Sketch relations — a dimension tool, a constrain tool, and knowing what is free
+
+The owner: *"give me better sketch tools, relations, trim, slot... all the
+usual"* — and earlier *"strict rule enforcement"*: a model should say what is
+under-constrained and what conflicts
+([`docs/plans/sketch-relations.md`](docs/plans/sketch-relations.md), with
+every deviation):
+
+- **What is free is drawn blue.** After every solve — not during a drag —
+  the solver's Jacobian is asked its rank (a new kernel function,
+  `null_support`, in Rust), and every entity some motion can still move with
+  all its relations holding is drawn in a blue ink, Onshape's; held ones keep
+  the sketch's own. The status says `SOLVED · 5 free` — degrees of freedom —
+  down to `0 free`. 2.1 ms on the biggest drawing the suite carries.
+- **A conflict names its relations.** `CONFLICT`, and beside it
+  `d1 · d2 cannot all hold`: each name a button that selects the relation, so
+  Delete removes it; their marks on the drawing turn red; the log says them in
+  full. A relation the earlier ones already imply is **redundant** — said in
+  orange, never refused.
+- **The dimension tool** (its own button): click a line, two points, a point
+  and a line, two lines, or a circle — then empty canvas — and it types the
+  `dist`, `ang` or `rad` holding what it measures, rounded as the menu's
+  Dimension is. Options: diameter (`dia`) and **driven** (`measure(…)`, a
+  reference dimension in parentheses that measures and holds nothing).
+- **The constrain tool** (its own button): select things, press it, and the
+  relations they take are listed — two lines: Parallel, Perpendicular, Equal,
+  Collinear, Angle; a point and a line: On, Midpoint, Distance; two circles:
+  Concentric, Equal, Tangent; … One press types one. The context menu on a
+  selection carries the same list.
+- **Relations**: `col`, `intersection`, `pierce` (3D), `spacing`, `dia`,
+  `measure`; `dist` to a line and between lines; `eq` between circles and
+  between a line and an arc; `mid` of an arc; `horizontal` and `vertical`,
+  which are `par` against the default frame's axis, drawn `—` and `|`.
+- **A fillet's corner is now exact.** `tan` where a line or arc leaves an
+  arc's own end was a double root: the solve stopped within the square root
+  of its tolerance — a filleted rectangle's tangent points 0.0018 off — and
+  would have read every such joint as free. It has a join form there now.
+
+Two buttons more makes thirteen: on an iPhone 13 held sideways the toolbar is
+two rows again. The dimension label is not yet draggable (TODO.md). Not tried
+on an iPhone. Pictures: docs/images/118–126.
+
+Tests: unit 1290 → 1327 passing (37 skipped, as before), with
+`test/sketchrelations.test.ts` adding 37; Rust 3 → 11; e2e: 10 new in
+`test/e2e/sketchrelations.e2e.ts` (mouse, iPhone 13, landscape), and the
+suite's eleven-button counts moved to thirteen.
+
+---
+
 ## Toolbar groups — one button per family, the rest a flyout away
 
 The owner: *"give me better sketch tools, relations, trim, slot... all the

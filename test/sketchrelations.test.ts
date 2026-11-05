@@ -32,6 +32,7 @@ import { ConstrainTool } from "../src/tools/constrain.ts";
 import type { ToolContext } from "../src/tools/tool.ts";
 import type { Pick } from "../src/picking.ts";
 import { tiltedFrame } from "./frames.ts";
+import { diagnosisLine } from "../src/statusline.ts";
 
 await (async () => {
   const bytes = await readFile(new URL("../src/kernel/wasm-gen/neocad_kernel_bg.wasm", import.meta.url));
@@ -677,4 +678,31 @@ test("the analysis costs milliseconds on a large sketch, and is never asked duri
   assert.ok(runs[2] < 500, `median ${runs[2]} ms`);
   // Every rectangle's y is free except the first's: the chain ties x only.
   assert.equal(d.dof, 39);
+});
+
+// --- what the status says, and the marks -------------------------------------
+
+test("the diagnosis line: a count that fades, a conflict that names, a redundancy in the softer word", () => {
+  assert.deepEqual(diagnosisLine(true, 3, [], [], []), { cls: "", parts: ["3 free"], fades: true });
+  assert.deepEqual(diagnosisLine(true, 0, [], [], []).parts, ["0 free"]);
+  assert.deepEqual(diagnosisLine(false, null, ["d1", "d2"], [], []),
+    { cls: "conflict", parts: [{ relation: "d1" }, " · ", { relation: "d2" }, " cannot all hold"], fades: false });
+  assert.deepEqual(diagnosisLine(false, null, [], ["mine"], []).parts, ["mine", " cannot hold"]);
+  assert.deepEqual(diagnosisLine(true, 2, [], [], ["r5"]),
+    { cls: "redundant", parts: ["2 free", " · ", "redundant ", { relation: "r5" }], fades: false });
+});
+
+test("a par between two lines keeps //; against an axis it is — or |", () => {
+  const m = new Model(2);
+  line(m, "l1", [0, 0], [10, 0]);
+  line(m, "l2", [0, 5], [10, 6]);
+  line(m, "l3", [20, 0], [21, 10]);
+  const between = parallel(m, "l1", "l2");
+  const level = parallel(m, "l1", "origin.x");
+  const upright = parallel(m, "l3", "origin.y");
+  const marks = placeGlyphs(m, { ox: 0, oy: 0, scale: 3 });
+  const of = (r: string) => [...new Set(marks.filter((g) => g.relation === r).map((g) => g.symbol))];
+  assert.deepEqual(of(between), ["//"]);
+  assert.deepEqual(of(level), ["—"]);
+  assert.deepEqual(of(upright), ["|"]);
 });

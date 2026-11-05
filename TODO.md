@@ -1575,6 +1575,45 @@ starts.
          (collinear, horizontal/vertical, pierce, intersection, a dimension
          tool, a constrain tool, and diagnosis: free entities drawn in their
          own ink, conflicts naming their relations).
+         - [x] **`sketch-relations.md` BUILT (2026-11-05)** on
+           `claude/sketch-relations`; every deviation is in its *As built*.
+           Register (vetoable): **relations** `col`, `intersection`,
+           `pierce` (3D), `spacing`, `dia` (a settable dimension, `⌀`),
+           `measure` (a **driven** dimension: no blocks, `d`-named, drawn in
+           parentheses, live), `dist` to a line and between two lines, `eq`
+           over circles and between a line and an arc, `mid(p, arc)`;
+           **`horizontal`/`vertical` are expansions** journalled as `par`
+           against the default frame's axis, and every axis `par` now wears
+           `—`/`|` (was `//`); no `hor`/`ver`. **The free ink** is a blue
+           (`#5aa2ff`), held entities keep the sketch's ink; the status's
+           count is **degrees of freedom** (`5 free`), beside a verdict that
+           now says only `CONFLICT`, the names clickable beside it (select,
+           then Delete); a conflict's glyphs red, a redundancy's orange.
+           **Two gauges are not freedoms**: a curve's normal length, and a
+           point lying on the drawing plane or the ground — else a sketch on
+           the ground is free in z forever. **Redundant** is "every row
+           implied by earlier rows", so the later one is named. Dimension and
+           constrain are **buttons of their own**: thirteen, and the iPhone
+           13's landscape tray is two rows again. Deviations: **`tan` at a
+           shared end has a join form** — the distance form was a double root
+           there (a fillet's tangent points converged to 1.8e-3, now exact;
+           an old-file test now expects the exact points); **the label is not
+           draggable** — the spec assumed `dimension-labels.md` had built
+           dragging, and it had not; `deg(x)` added; the empty-canvas menu
+           does not list the two tools. Measured: **2.1 ms** a diagnosis on
+           the biggest fixture (9.5 ms a drag-frame solve), run once per
+           solve outside a drag, never per frame. **Found:** opening
+           `pre-explicit-regions` reports `r24` redundant — the `par` the old
+           translation adds to a fillet's arc, which its tangents already
+           hold; true, and shown in orange.
+           - [ ] **Next: a dimension label you drag to a place.** Needs a
+             place to keep it — a journalled, non-equation attribute of the
+             relation (an offset in the drawing's plane) — and the glyph
+             layer to read it. The dimension tool's placement click would
+             then place.
+           - [ ] **Merge with `sketch-shapes`**: the toolbar counts become
+             fourteen when the ellipse brings curves; both packages edit the
+             same counts.
       3. [`spline.md`](docs/plans/spline.md) after the ellipse, through the
          same seams.
       Out of scope for now, written down: text in sketches; `tan` between

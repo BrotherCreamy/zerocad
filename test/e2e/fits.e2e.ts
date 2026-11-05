@@ -227,7 +227,7 @@ test("every iPhone, both ways up, installed and in Safari, with a group's flyout
 // on the 13's landscape they fit one row, where thirteen took two; the SE still
 // takes two. The claim is the same either way — as many lines as the room
 // needs, every button on screen, filled line by line.
-for (const [ph, lines] of [[THIRTEEN, 2], [SE, 2]] as const) {
+for (const [ph, lines] of [[THIRTEEN, 2], [SE, 2]] as [typeof THIRTEEN, number][]) {
   test(`${ph.name}: the landscape tray is ${lines === 1 ? "one row" : "two rows"}, every button on screen, in order line by line`, async () => {
     const p = await phone();
     try {

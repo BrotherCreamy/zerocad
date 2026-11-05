@@ -147,3 +147,23 @@ Not done, deliberately, and all of it already named as out of scope above:
 per-relation or per-kind hiding, a leader line from a mark to its geometry, and
 any kind of layout pass. Crowding is real on a busy drawing and `glyphs(false)`
 is the v1 answer to it.
+
+## Added by the sketch relations (2026-11-05)
+
+From [`sketch-relations.md`](sketch-relations.md). Every mark is measured
+against the monospace cell by `test/e2e/glyphs.e2e.ts`, as the table above.
+
+| relation | symbol | anchored to |
+|---|---|---|
+| `par` to a frame's x / y axis (`horizontal`, `vertical`) | `—` / `\|` | the line's midpoint (was `//`; a z axis and line-to-line keep `//`) |
+| `collinear` | `⋯` | each line's midpoint |
+| `intersection` | `×` | the point |
+| `pierce` | `⊕` | the point |
+| `equalSpacing` | `≡` | each point |
+| `diameter` | `⌀24` (its value) | the rim, upper right |
+| `measure` (driven) | `(50)`, `(R12)`, `(45°)`, `(⌀24)` — live | as the dimension it measures would be |
+| `dist` to a line, between lines | its value | between the point (or the second line's middle) and its foot on the line |
+
+A conflicting relation's mark is drawn in the conflict's red, box and
+symbol; a redundant one's in a softer orange. Hover and selection outrank
+both.
