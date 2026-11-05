@@ -106,6 +106,66 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### Solid fillets: why blends have a registry of their own, why the preview is a trial, and what was rejected
+
+**A separate registry, measured first.** The obvious record for a fillet was
+a third kind in `model.features`, beside extrude and revolve. I added the
+kind to the union and ran the typecheck. Every function that reads a sweep's
+profile broke, 81 of them in `operations.ts` alone. Narrowing only the map's
+value type still left 29 there. `operations.ts` is the file
+regions-as-operations is rewriting on a sibling branch, so either change was
+a merge waiting to go wrong. Worse, each of those sites would then have had
+to remember to skip a blend, and a site that forgot would read `f.loops` of
+something with none. So blends got `model.blends`: the same `e` names and the
+same `del`, `hide` and `edit`, while every sweep reader stays exactly as it
+was. The deletion cascade needed two lines. `Chain.steps` puts blends in
+order among the sweeps for the one reader that needs both, the program;
+`Chain.features` stays sweeps for the rest.
+
+**The preview is a trial in the chain, not the model copy.** Every other
+feature tool previews by running its commit on a throwaway copy of the
+model. A blend's copy would hold the same record and tell nothing, because
+the shape is the kernel's. So the tool asks `Bodies` to build the body with
+the blend appended to its chain. The cache keeps everything before the
+blend, so a radius drag rebuilds only the fillet, and the answer is the
+very body ✓ will give. The first browser run showed the one hazard: between
+✓ and the tool letting go, the trial was still in the chain next to the real
+fillet. The real fillet had already rounded the edges, so the trial failed,
+and its refusal was logged as the fillet's. Hence the rules now in place:
+the trial steps aside once its blend exists, the tool keeps the number it
+guessed, and an answer to a trial since ended is dropped.
+
+**Names, not geometry, for edges.** A fillet holds `e1.lid|e1.m0`, never an
+index or a point. That is why it survives a rebuild, and why a cut that takes
+the edge can say so instead of quietly rounding a neighbour. Rejected: matching
+edges geometrically after each rebuild. The spike chose tags for faces for the
+same reason, so edges follow faces.
+
+**The kernel edge outranks the skeleton, but the press drags the skeleton.**
+In a kernel body the twins are quiet: what you see is the kernel's edge. So
+hover and click should land on that edge. But a lid is resized by dragging
+its edge, which moves the twins. The edge pick therefore carries the entity
+it was found in place of, and a press drags that entity. Two simpler rules
+were rejected. "Entities always win" left a kernel edge unpickable wherever a
+twin lay along it. "Kernel edges always win" took away dragging a lid. The
+hidden view's suite then caught the rule being too broad: a sketch line,
+only part of which bounds the body, lost its pick to the edge along that
+part. Only what the kernel draws in an entity's place yields now.
+
+**`round`, not `fillet`, for the tool.** Icon names must be a single word,
+and `fillet` is taken by the sketch's corner fillet, which the regions
+package is also touching. So the tool is called `round`, as in Creo. The
+typed call keeps the spec's name: `fillet` given a list of edges is the
+solid fillet; given two lines it is the sketch fillet, unchanged.
+
+**Things measured and left alone.** SMLib refuses to fillet an edge that
+runs into an earlier fillet at a corner, at any radius. Both edges in one
+call works. I left the kernel unpatched (the pin stays) and made the
+refusal say what to do. A test pins the behaviour, so the day SMLib can do
+it, the test will say so. The leak is 150 kB a rebuild, and upstream has no
+newer commit that might fix it. The facets show at 4× zoom; smooth shading
+would remove them, but that is a renderer change, not a fillet's.
+
 ### Mode feedback: why focus is by relation, why the chip only types, and what was rejected
 
 **Focus by relation, not by position.** Dimming whatever lies off the plane

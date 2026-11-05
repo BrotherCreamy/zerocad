@@ -1109,6 +1109,37 @@ replaces it on a crash (an abort in SMLib is fatal to its module), on 30 s
 without an answer, and past 256 MB (the fillet leak the spike measured). The
 next request starts a fresh one, and the log says each time.
 
+**A fillet is a step of the chain, and an edge is its name**
+(docs/plans/solid-fillets.md). A fillet or chamfer is a `BlendFeature` in
+`model.blends`: the body it rounds, its edges by name, and the dimension
+holding its size. It sits in a registry of its own rather than among
+`model.features`, because every reader of `features` reads a sweep's
+profile, and a blend has none. It shares the features' `e` names, `del`,
+`hide`, `edit` and the organiser. `chainsOf` merges the blends into
+`Chain.steps` by number, so a blend applies to what was made before it, and
+a cut made after it cuts the rounded body. `Chain.features` stays the sweeps.
+- **Evaluated by name, every rebuild.** The evaluator finds the edges by
+  their names in the topology the chain made. It rounds a copy and tags each
+  face the kernel made after the edge it came from (`e3.f0`), so a fillet's
+  faces have names that survive rebuilds as a sweep's do.
+- **A soft refusal.** A name that is gone is said and left out. A blend with
+  none left is refused, and the body without it is drawn: unlike a failed
+  boolean, a dropped fillet leaves a body that is right.
+- **Its size is a dimension with no equation.** It is a named value that
+  `set` rebuilds and undo restores. The kernel reads it off the record;
+  nothing is solved.
+- **Edges are picks without being entities.** A `kind: "edge"` pick is
+  found through the host (`SolidsAccess`), since only it holds the kernel's
+  answer. It outranks the skeleton the kernel draws in its place: twins,
+  walls and whole profile members. A press on it still drags that skeleton,
+  so the relational model stays the thing a hand moves.
+- **Selected edges are names too**, in the selection beside the entity names
+  (`Selection.edges`), pruned against the bodies on screen.
+- **The preview is a trial in the chain** (`Bodies.trial`), not a model copy.
+  The kernel builds the body with the blend appended (or swapped in, for an
+  edit), from the cache up to it. The answer is drawn in the body's place
+  until the trial ends and the body's own answer arrives.
+
 ## A module is the unit
 
 The owner: *"the whole framework should be modular and extensible (!). like
@@ -1622,7 +1653,7 @@ until the next action went unrecorded.
 
 ## Why there is an end-to-end suite
 
-Twenty-three bugs so far were invisible to the unit tests and obvious within seconds
+Twenty-seven bugs so far were invisible to the unit tests and obvious within seconds
 of running the app:
 
 1. a status readout that went stale, so a conflict could be introduced from
@@ -1735,6 +1766,22 @@ of running the app:
    pushed `SOLVED 8 free` past the corner's room, which clips it. Every test
    passed. Found by looking at the phone screenshot of mode-feedback.md; the
    chip's next step now gives way while the verdict shows.
+24. A fillet that had just succeeded, logged as refused. Between ✓ and the
+   tool letting go, the preview was still in the chain beside the fillet it
+   previewed. It found its edges already rounded, and its refusal was
+   reported as the new feature's. Found by looking at the log in
+   solid-fillets.md's screenshot. A trial now steps aside once its blend
+   exists, and the report speaks only for nodes the body has.
+25. The page's stack exhausted by guidance. A preview refusal said as
+   guidance redrew synchronously, before the tool had recorded that it had
+   said it, so the redraw said it again, forever. Found by the e2e suite's
+   page errors.
+26. A sketch line losing its pick to a kernel edge. Part of the line bounds
+   a kernel body's step and the rest runs past the solid, but the edge
+   along the part was taken in its place. Found by the hidden view's e2e test.
+   Only the skeleton the kernel draws in an entity's place now yields.
+27. A fillet's committed `R2` drawn under the edit dialog's own radius label,
+   on a phone. Found by looking at the phone screenshot.
 
 None of these are mathematics. They are all *assembly*. Hence `npm run
 test:e2e`, and hence the expectation that anything touching the app is checked

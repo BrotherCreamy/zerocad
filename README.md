@@ -20,7 +20,8 @@ by one depth dimension, drawn shaded; and revolve — a loop turned about a fram
 axis or a line in its plane, its surface drawn from the live profile and, for a
 partial turn, its end face real geometry held by one angle dimension; either
 of which adds to a body, cuts from it, intersects it or starts one, the bodies
-built by NVIDIA's SMLib in a Worker — with
+built by NVIDIA's SMLib in a Worker, their edges filleted or chamfered as
+features of the body — with
 sketching on a solid's face, a click inside it, to stack the next one on; the
 plane being sketched on drawn and named, with a chip beside the status saying
 where · what · next — `on e1's top · circle · drag the radius` — and a Done to
@@ -115,7 +116,11 @@ src/loops.ts             closed loops (joined by shared point or coin, never pro
 src/sketchface.ts        the three points of a face a sketch plane on it is made of, +z toward you
 src/faces.ts             a solid's faces from its live geometry (a revolve's swept): culled, sorted per face, lit from the eye
 src/modes.ts             which features make which body, and what a new one does by default (Add on a body, else New)
-src/bodies.ts            the bodies the kernel builds: the program sent, the last good answer drawn and picked
+src/bodies.ts            the bodies the kernel builds: the program sent, the last good answer drawn and picked, a fillet's preview
+src/kerneledges.ts       a kernel body's edges to the hand: under a pixel, in a box, tangent chains, a face's, the hover tag
+src/blends.ts            fillet and chamfer of a body's edges, as operations: a feature in the chain, its size a dimension
+src/relations/blend.ts   a fillet's radius and a chamfer's setback: dimensions with no equation
+src/tools/blend.ts       the round and chamfer tools, and their edit dialogs: click edges, the kernel's preview, ✓
 src/kernelbrep.ts        a kernel body's topology as the STEP exporter's B-rep
 src/solidshost.ts        where the kernel's Worker, wasm and licence are in each build
 src/solids/              the solid kernel's side, numbers only: contract, SMLib adapter, evaluation, naming, Worker, client
@@ -246,6 +251,15 @@ Bodies with a boolean are built by the solid kernel (NVIDIA's SMLib, Apache-2.0,
 built from source and run in a Worker). The last good body stays on screen
 until the kernel answers, and a refusal is said in the log. Sketch on face works
 on any flat face of a body, the floor of a pocket included.
+
+**A body's edges are named and picked** by their two faces — `e1.lid|e1.m0`,
+the tag says so when you hover one — and **rounded or bevelled as a feature
+of the body**: `fillet("e1", ["e1.lid|e1.m0"], 3)` or `chamfer("e1", [...], 2)`,
+or the round and chamfer tools on the modify button. Click edges (a face
+takes its edges, tangent chains a rounded rim whole), see the kernel's
+preview, drag the `R3` label, ✓. The radius is a dimension (`set("d7.value",
+4)`), the fillet's faces are `e3.f0` …, and a later cut that takes an edge
+leaves it out of the fillet and says so. `edit("e3")` changes the edges.
 
 **Every constructor argument is optional**, because none of them was ever a
 constraint — `circ(centre, r)` only *seeds* a radius, it does not pin one. So
