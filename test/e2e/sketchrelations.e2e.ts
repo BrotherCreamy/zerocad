@@ -93,8 +93,26 @@ async function park(app: AppContext): Promise<void> {
   await app.page.waitForTimeout(100);
 }
 
+/** The group's button a tool is behind (tool.ts, TOOL_GROUPS), for the two this file presses. */
+const GROUP_OF: Record<string, string> = { dimension: "relate", constrain: "relate" };
+
+/**
+ * Presses a tool's button — or, for a tool behind a group's button (constrain
+ * is behind dimension's, the relate group's: tool.ts, TOOL_GROUPS), rests the
+ * mouse on the group's button until its flyout opens and clicks the tool there
+ * (docs/plans/toolbar-groups.md).
+ */
 async function pressButton(app: AppContext, tool: string): Promise<void> {
-  await app.page.click(`#toolbar button[data-tool="${tool}"]`);
+  const own = await app.page.$(`#toolbar button[data-tool="${tool}"]`);
+  if (own) {
+    await own.click();
+  } else {
+    const group = GROUP_OF[tool];
+    assert.ok(group, `${tool} is on no button and in no group this helper knows`);
+    await app.page.hover(`#toolbar button[data-group="${group}"]`);
+    await app.page.waitForSelector(`#flyout button[data-tool="${tool}"]`, { state: "visible", timeout: 3000 });
+    await app.page.click(`#flyout button[data-tool="${tool}"]`);
+  }
   await app.page.waitForTimeout(150);
 }
 
@@ -182,7 +200,7 @@ test("desktop: the dimension tool on an angle and a radius — two lines then a 
   await shot(desk, "3-angle-and-radius");
 });
 
-test("desktop: two lines selected, the constrain button lists what they take, and Parallel makes them parallel", async () => {
+test("desktop: two lines selected, constrain from the relate button's flyout lists what they take, and Parallel makes them parallel", async () => {
   await fresh(desk);
   await desk.type('ln(pt(-30, 0), pt(30, 4)); ln(pt(-30, 25), pt(30, 15))');
   await click(desk, await along(desk, "l1", 0.3));
@@ -283,14 +301,19 @@ test("iPhone 13: a tap on a line, a tap on empty canvas — a dimension; and its
   await shot(phone, "7-phone-dimensioned");
 });
 
-test("iPhone 13: two lines tapped, the constrain button, a tap on Parallel", async () => {
+test("iPhone 13: two lines tapped, constrain from the relate button's flyout, a tap on Parallel", async () => {
   await freshPhone();
   await phone.type('ln(pt(-20, 0), pt(20, 3)); ln(pt(-20, 25), pt(20, 15))');
   await phone.page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
   await tap(await along(phone, "l1", 0.3));
   await tap(await along(phone, "l2", 0.3));
   assert.deepEqual((await phone.selection()).sort(), ["l1", "l2"], "a tap adds to the selection on a phone");
-  await tap(await middleOf('#toolbar button[data-tool="constrain"]'), true);
+  // Constrain is behind dimension's button, the relate group's (tool.ts,
+  // TOOL_GROUPS): a long-press opens the flyout, a tap on the item arms it
+  // (docs/plans/toolbar-groups.md).
+  await f.hold(...await middleOf('#toolbar button[data-group="relate"]'), 700);
+  await phone.page.waitForSelector('#flyout button[data-tool="constrain"]', { state: "visible", timeout: 3000 });
+  await tap(await middleOf('#flyout button[data-tool="constrain"]'), true);
   const rows = await phone.page.$$eval("#options .ocmd", (els) => els.map((e) => (e as HTMLElement).dataset.command));
   assert.equal(rows[0], 'par("l1", "l2")');
   await shot(phone, "8-phone-constrain-panel");

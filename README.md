@@ -162,7 +162,8 @@ and the log shows it. Hover one — or, on a phone, hold it — for its
 shows it without pressing the button; a tap presses it). Every icon in the
 chrome has one. **Tools of one family share a button** — *shapes*
 (rectangle, polygon, slot), *curves* (ellipse, then spline), *modify*
-(fillet, then chamfer, trim, extend, offset, mirror, pattern) — which shows
+(fillet, then chamfer, trim, extend, offset, mirror, pattern), *relate*
+(dimension, constrain) — which shows
 the one you armed last, arms it on a tap, and carries
 a small triangle in its corner once a second tool joins it. Rest the mouse on
 it or press and hold to open the rest beside it, then click one; on a phone,

@@ -53,6 +53,8 @@ toolbar tests.
     once a member does: a group of none shows no button);
   - **modify**: `fillet`, then `chamfer`, `trim`, `extend`, `offset`,
     `mirror`, `pattern`;
+  - **relate**: `dimension`, `constrain` (added 2026-11-05: as a fourteenth
+    button the second ran an iPhone 13's column onto the command line);
   - `extrude`, `revolve`, `sketch` — alone;
   - a tool defined at the command line with a `group` joins it; without one
     it is its own button, as now.
@@ -116,6 +118,7 @@ the corner mark, `.sub` in the menu). Tests: `test/toolbargroups.test.ts`
 | circle, arc | alone | 2 buttons |
 | **curves** | ellipse, spline | no member yet — no button |
 | **modify** | fillet, chamfer, trim, extend, offset, mirror, pattern | fillet only — a plain button |
+| **relate** | dimension, constrain | both (2026-11-05, after the relations package) |
 | extrude, revolve, sketch | alone | 3 buttons |
 
 Eleven buttons today, in the same order as before; fourteen once every

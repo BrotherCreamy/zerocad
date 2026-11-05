@@ -104,9 +104,9 @@ test("mouse: the group's button carries the mark; a hover opens its flyout besid
   // A group of one is a plain button: no mark, its own tooltip, nothing opens
   // — the curves group's, the ellipse alone (docs/plans/sketch-shapes.md).
   assert.equal(await desk.page.$eval(group("curves"), (b) => b.hasAttribute("data-more")), false);
-  assert.equal(await desk.page.$$eval("#toolbar button", (bs) => bs.length), 14);
+  assert.equal(await desk.page.$$eval("#toolbar button", (bs) => bs.length), 13);
   await pad(desk);
-  assert.equal(await desk.page.$$eval("#toolbar button", (bs) => bs.length), 14, "two more tools, no more buttons");
+  assert.equal(await desk.page.$$eval("#toolbar button", (bs) => bs.length), 13, "two more tools, no more buttons");
   assert.equal(await desk.page.$eval(group("shapes"), (b) => b.hasAttribute("data-more") && b.getAttribute("aria-haspopup")), "true");
   // The mark is drawn: the ::after triangle in the corner, in the glyph's ink.
   const mark = await desk.page.$eval(group("shapes"), (b) => {
