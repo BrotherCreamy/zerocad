@@ -283,4 +283,3 @@ export class LineTool extends Tool {
   }
 }
 
-defineTool("line", LineTool);

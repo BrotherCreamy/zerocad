@@ -15,7 +15,7 @@ import { Model } from "../src/model.ts";
 import { dist, fix } from "../src/relations/basic.ts";
 import { parallel } from "../src/relations/geometry.ts";
 import { ToolEngine, type View } from "../src/tools/engine.ts";
-import "../src/tools/point.ts"; // registers the "point" tool, armed below
+import "../src/modules/builtin.ts"; // registers the built-in tools, as the app does
 import { axisFrame } from "./frames.ts";
 
 async function loadKernel() {

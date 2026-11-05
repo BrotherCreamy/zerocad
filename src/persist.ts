@@ -28,6 +28,10 @@ import { construction, extrude, featuresOnProfile, fillet, hole, regen, revolve,
 import * as grouping from "./groups.ts";
 import type { ToolSource } from "./toolsource.ts";
 import { freshName, planeTranslation } from "./planetranslation.ts";
+import { replayEntries } from "./modules.ts";
+// The app's vocabulary, so a file opens wherever persist.ts is imported — a
+// test included — with the modules every start loads (modules/builtin.ts).
+import "./modules/builtin.ts";
 
 export const FORMAT = "neocad-model";
 /**
@@ -344,125 +348,16 @@ export interface SavedModel {
  * `saveFile`, `shareFile` (docs/plans/files.md) — and `download`. They act
  * on the document, never in it, and journal nothing, so a file has nothing
  * of theirs to replay.
+ *
+ * **Filled from the loaded modules** (modules.ts), in module order: each module
+ * brings the ops its entity kinds, relations and operations are journalled as,
+ * and core brings the model's own structural edits. Still a fixed list for any
+ * one session — what was loaded — so a file is still data: it can only name a
+ * call some module registered. `horizontal`/`vertical` (v2) are not here: they
+ * are rewritten into `parallel` before the lookup happens (see `translate`).
  */
 function replayTable(model: Model): Map<string, (...args: unknown[]) => unknown> {
-  const m = model as unknown as Record<string, (...a: unknown[]) => unknown>;
-  const bound = (name: string) => (...args: unknown[]) => m[name](...args);
-  const rel = (fn: (model: Model, ...args: never[]) => unknown) =>
-    (...args: unknown[]) => (fn as (model: Model, ...a: unknown[]) => unknown)(model, ...args);
-
-  return new Map<string, (...args: unknown[]) => unknown>(Object.entries({
-    addPoint: bound("addPoint"),
-    addLine: bound("addLine"),
-    addCircle: bound("addCircle"),
-    addArc: bound("addArc"),
-    // The ellipse (docs/plans/sketch-shapes.md, format 15).
-    addEllipse: bound("addEllipse"),
-    addFrame: bound("addFrame"),
-    // The default frame is journalled because it changes what a *later*
-    // relation call means. It never changes what an already-journalled one
-    // means: `fix` and the axis helpers resolve it when they are called and
-    // record the answer.
-    setDefaultFrame: bound("setDefaultFrame"),
-    // The work plane (sketch on face) is document state like the default
-    // frame, journalled for the same reason: what is drawn after it lies on it.
-    setWorkPlane: bound("setWorkPlane"),
-    setCoords: bound("setCoords"),
-    // A curve's normal put somewhere outright — a seed, as `setCoords` is.
-    setNormal: bound("setNormal"),
-    retargetLine: bound("retargetLine"),
-    // Deletion is journalled as its *expansion* — one entry per name `del`
-    // removed — rather than as the `del` call itself, so a replay removes
-    // exactly what was removed rather than recomputing a cascade against a
-    // model that may have been built differently since. Old files carry
-    // neither op and open unchanged; there is nothing to version-bump.
-    deleteEntity: bound("deleteEntity"),
-    deleteRelation: bound("deleteRelation"),
-    // A feature's record, as `del` journals it — see `delOne`. Added with
-    // extrude, without a version bump, for the reason the two above were.
-    deleteFeature: bound("deleteFeature"),
-
-    dist: rel(basic.dist),
-    fix: rel(basic.fix),
-    onPlane: rel(basic.onPlane),
-    coincident: rel(basic.coincident),
-    midpoint: rel(basic.midpoint),
-    // `horizontal`/`vertical` are not here: they are rewritten into `parallel`
-    // before the lookup happens. See `translate`.
-
-    parallel: rel(geom.parallel),
-    perpendicular: rel(geom.perpendicular),
-    angle: rel(geom.angle),
-    pointOnLine: rel(geom.pointOnLine),
-    equalLength: rel(geom.equalLength),
-    radius: rel(geom.radius),
-    onCircle: rel(geom.onCircle),
-    concentric: rel(geom.concentric),
-    equalRadius: rel(geom.equalRadius),
-    tangent: rel(geom.tangent),
-    symmetric: rel(geom.symmetric),
-    arcEndpoints: rel(geom.arcEndpoints),
-    // The sketch relations (docs/plans/sketch-relations.md). `horizontal` and
-    // `vertical` typed today journal the `parallel` they expand to, so they need
-    // no entry; the v2 rewrite above is for the old relations of those names.
-    collinear: rel(geom.collinear),
-    intersection: rel(geom.intersection),
-    pierce: rel(geom.pierce),
-    equalSpacing: rel(geom.equalSpacing),
-    diameter: rel(geom.diameter),
-    measure: rel(measure),
-    // The ellipse's own relations (format 15). `tangent` and `concentric`
-    // take an ellipse under their own names, above.
-    onEllipse: rel(geom.onEllipse),
-    majorAxis: rel(geom.majorAxis),
-    minorAxis: rel(geom.minorAxis),
-
-    fillet: rel(fillet),
-    // Journalled with its profile resolved (see `extrude`), so a replay walks
-    // the loops it is handed and never looks for one among the seeds.
-    extrude: rel(extrude),
-    // The same, about an axis — and given its loops it asks no question about
-    // positions either, so the geometric refusals the call made are not re-made
-    // against seeds (see `revolve`).
-    revolve: rel(revolve),
-    // A feature brought back into step with its profile, journalled as the
-    // call with what it found resolved (see `regen`), so a replay walks the
-    // profiles it is handed and looks for nothing among the seeds. `fillet`'s
-    // own regeneration rides in its entry, the same way.
-    regen: rel(regen),
-    // A region's membership changed by name (docs/plans/explicit-regions.md),
-    // journalled as `regen` is: the call, and the profiles it rebuilt resolved.
-    // `unhole` is also what a deletion's or a flag's expansion writes when the
-    // loop of a recorded hole goes, ahead of the deletion or the flag itself.
-    hole: rel(hole),
-    unhole: rel(unhole),
-    // `set` is journalled as the one call the user made, like every operation,
-    // so replaying it re-runs the edit rather than the dimension it rebuilt.
-    set: rel(set),
-
-    // Groups (see groups.ts). `group` and `addTo` are journalled with their
-    // members resolved — the union as it was — and `removeFrom` is also what a
-    // deletion's expansion writes for each group its name leaves.
-    group: rel(grouping.group),
-    addTo: rel(grouping.addTo),
-    removeFrom: rel(grouping.removeFrom),
-    ungroup: rel(grouping.ungroup),
-    // The open group (docs/plans/organiser.md): document state, journalled as
-    // typed, so a replay opens it at the step it was opened at and every
-    // constructor after joins it exactly as it did — the membership is made
-    // again, never stored or re-inferred. `rename` renames a group in place.
-    opengroup: rel(grouping.opengroup),
-    closegroup: rel(grouping.closegroup),
-    rename: rel(grouping.rename),
-    // Visibility is the document's: journalled as typed, and what a name stood
-    // for at that step is what it stands for when the step is replayed.
-    hide: rel(grouping.hide),
-    show: rel(grouping.show),
-    // Construction geometry (see operations.ts): journalled with the curves
-    // it changed resolved, never the group or feature typed, so a replay flags
-    // exactly the entities the call did.
-    construction: rel(construction),
-  }));
+  return new Map<string, (...args: unknown[]) => unknown>(replayEntries(model));
 }
 
 /**

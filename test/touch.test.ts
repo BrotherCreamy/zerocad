@@ -15,8 +15,8 @@ import { LIFT, ToolEngine, type View } from "../src/tools/engine.ts";
 import { LONG_PRESS_MS, type Clock } from "../src/tools/gestures.ts";
 import { PICK_POINT, TOUCH_REACH } from "../src/picking.ts";
 import { viewAxes } from "../src/view.ts";
-import "../src/tools/point.ts";
-import "../src/tools/rectangle.ts";
+import "../src/modules/builtin.ts"; // registers the built-in tools, as the app does
+import "../src/modules/builtin.ts"; // registers the built-in tools, as the app does
 import { axisFrame } from "./frames.ts";
 
 async function loadKernel() {

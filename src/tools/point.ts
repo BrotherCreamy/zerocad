@@ -20,4 +20,3 @@ export class PointTool extends Tool {
   }
 }
 
-defineTool("point", PointTool);

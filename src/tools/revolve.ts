@@ -348,4 +348,3 @@ export class RevolveTool extends FeatureTool {
   }
 }
 
-defineTool("revolve", RevolveTool);

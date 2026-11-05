@@ -183,6 +183,59 @@ export function isCurveKind(kind: string | undefined): kind is CurveKind {
 export type Entity = PointEntity | LineEntity | CircleEntity | ArcEntity | EllipseEntity | FrameEntity;
 
 /**
+ * **An entity kind's structure, declared** (docs/plans/workbenches.md: the
+ * entity extension point). What this layer asks of a kind it does not know by
+ * name: which points it is built out of (so `del` of one takes it), which
+ * variables it owns, whether it is a curve (bounds regions, can be
+ * construction), whether it is closed on itself (no vertex, so no wall line),
+ * whether it carries a plane, and which relations hold a point on it. A module
+ * declares the rest — how it is sampled, picked, written — to the layers that
+ * ask those questions (../modules.ts). This layer stays structure: no kind's
+ * equations, no kind's drawing.
+ */
+export interface EntityKindSpec {
+  kind: string;
+  /** How a refusal names one: "an ellipse". */
+  noun?: string;
+  /** The point names an entity of this kind is built out of. */
+  refs(e: Entity): string[];
+  /** The variables it owns — not its points'. */
+  vars?(e: Entity): number[];
+  /** A curve: bounds regions, and can be construction geometry. */
+  curve?: boolean;
+  /** Closed on itself, with no vertex: a whole curve, as a circle is. */
+  closed?: boolean;
+  /**
+   * The plane it carries, as a circle's: its centre, its normal's variables,
+   * and the point whose direction from the centre the normal is straightened
+   * against (`straighten`), when it is. Makes it a plane reference.
+   */
+  plane?(e: Entity): { center: string; normal?: number[]; straighten?: string };
+  /** The relations (journal ops) that hold a point on it — what cuts it at a T. */
+  heldBy?: readonly string[];
+  /** Whether one bounds a region as it stands — a closed member of zero size bounds nothing. */
+  bounds?(model: Model, name: string): boolean;
+}
+
+const entityKinds = new Map<string, EntityKindSpec>();
+
+/** Registers a kind's structure. A module's (../modules.ts); refused for a kind already declared. */
+export function defineEntityKind(spec: EntityKindSpec): void {
+  if (entityKinds.has(spec.kind)) throw new Error(`the entity kind "${spec.kind}" is already declared`);
+  entityKinds.set(spec.kind, spec);
+}
+
+/** Drops a kind's declaration — for a module removed with no entity of the kind left. */
+export function undefineEntityKind(kind: string): void {
+  entityKinds.delete(kind);
+}
+
+/** A kind's declared structure, or undefined for a built-in this layer knows by name, or for nothing. */
+export function entityKind(kind: string | undefined): EntityKindSpec | undefined {
+  return kind === undefined ? undefined : entityKinds.get(kind);
+}
+
+/**
  * A **frame-axis reference**: the string `"f1.x"`, `"f1.y"` or — for a 3D
  * frame — `"f1.z"`, naming the direction of that frame's axis rather than any
  * entity.

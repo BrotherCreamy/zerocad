@@ -138,4 +138,3 @@ export class EllipseTool extends Tool {
   }
 }
 
-defineTool("ellipse", EllipseTool);

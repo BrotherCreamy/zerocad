@@ -497,4 +497,3 @@ export class ArcTool extends Tool {
   }
 }
 
-defineTool("arc", ArcTool);

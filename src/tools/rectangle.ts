@@ -136,4 +136,3 @@ export class RectangleTool extends Tool {
   }
 }
 
-defineTool("rectangle", RectangleTool);

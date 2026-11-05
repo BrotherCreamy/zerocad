@@ -182,4 +182,3 @@ export class FilletTool extends FeatureTool {
   }
 }
 
-defineTool("fillet", FilletTool);

@@ -120,4 +120,3 @@ export class PolygonTool extends Tool {
   }
 }
 
-defineTool("polygon", PolygonTool);

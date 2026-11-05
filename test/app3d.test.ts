@@ -24,7 +24,7 @@ import { findSnap } from "../src/snapping.ts";
 import { curveFrame } from "../src/curveplane.ts";
 import { orbitBy, viewAxes, worldToScreen, type Plane, type View } from "../src/view.ts";
 import type { PointerInfo, ToolContext } from "../src/tools/tool.ts";
-import "../src/tools/point.ts";
+import "../src/modules/builtin.ts"; // registers the built-in tools, as the app does
 import { tiltedFrame, type TiltedFrame } from "./frames.ts";
 
 async function loadKernel() {

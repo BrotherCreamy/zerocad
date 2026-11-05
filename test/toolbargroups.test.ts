@@ -31,7 +31,7 @@ import { areaOf, everyWay } from "./devices.ts";
 /** The built-ins, registered as main.ts registers them — read from its imports, as icons.test.ts does. */
 async function registerBuiltIns(): Promise<void> {
   const main = await readFile(new URL("../src/main.ts", import.meta.url), "utf8");
-  const files = [...main.matchAll(/^import "\.\/(tools\/[a-z0-9]+\.ts)";$/gm)].map((m) => m[1]);
+  const files = [...main.matchAll(/^import "\.\/(modules\/[a-z0-9]+\.ts)";$/gm)].map((m) => m[1]);
   for (const f of files) await import(new URL(`../src/${f}`, import.meta.url).href);
 }
 

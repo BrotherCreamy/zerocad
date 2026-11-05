@@ -30,8 +30,8 @@ import { declaredOptions } from "../src/tools/options.ts";
 import { getToolCtor, type ToolContext } from "../src/tools/tool.ts";
 import { CircleTool } from "../src/tools/circle.ts";
 import { RectangleTool } from "../src/tools/rectangle.ts";
-import "../src/tools/line.ts";
-import "../src/tools/arc.ts";
+import "../src/modules/builtin.ts"; // registers the built-in tools, as the app does
+import "../src/modules/builtin.ts"; // registers the built-in tools, as the app does
 import { worldToScreen, type View } from "../src/view.ts";
 import { axisFrame, tiltedFrame } from "./frames.ts";
 import { polygon, ring } from "./profiles.ts";

@@ -341,7 +341,22 @@ function relationTag(model: Model, name: string): string {
   return rs.length ? `  ·  ${rs.map((r) => r.name).join(" ")}` : "";
 }
 
+/** The hover tag's line for an entity of a kind a module declares (../modules.ts): its name first, then what it is. */
+export type Describer = (model: Model, name: string, n: (v: number) => string) => string;
+
+const describers = new Map<string, Describer>();
+
+export function defineDescriber(kind: string, describe: Describer): void {
+  describers.set(kind, describe);
+}
+
+export function undefineDescriber(kind: string): void {
+  describers.delete(kind);
+}
+
 function describeGeometry(model: Model, name: string, kind: Entity["kind"], n: (v: number) => string): string {
+  const declared = describers.get(kind);
+  if (declared) return declared(model, name, n);
   switch (kind) {
     case "point":
       return `${name}  ${model.coords(name).map(n).join(", ")}`;

@@ -20,7 +20,7 @@ import { Repl } from "../src/repl.ts";
 import { neocadScope } from "../src/replenv.ts";
 import { save } from "../src/persist.ts";
 import type { Pick } from "../src/picking.ts";
-import "../src/tools/point.ts";
+import "../src/modules/builtin.ts"; // registers the built-in tools, as the app does
 import { axisFrame } from "./frames.ts";
 
 async function loadKernel() {

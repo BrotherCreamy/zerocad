@@ -88,4 +88,3 @@ export class ConstrainTool extends Tool {
   }
 }
 
-defineTool("constrain", ConstrainTool);

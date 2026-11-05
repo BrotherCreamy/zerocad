@@ -16,7 +16,7 @@ import { ToolEngine } from "../src/tools/engine.ts";
 import { ExtrudeTool, extrudeSteps } from "../src/tools/extrude.ts";
 import { RevolveTool, revolveSteps } from "../src/tools/revolve.ts";
 import { FilletTool, filletSteps } from "../src/tools/fillet.ts";
-import "../src/tools/sketch.ts";
+import "../src/modules/builtin.ts"; // registers the built-in tools, as the app does
 import { RegionSelection, refind } from "../src/tools/selection.ts";
 import { regionKey } from "../src/tools/region.ts";
 import { callText } from "../src/tools/feature.ts";

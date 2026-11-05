@@ -191,4 +191,3 @@ export class ExtrudeTool extends FeatureTool {
   }
 }
 
-defineTool("extrude", ExtrudeTool);

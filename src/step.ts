@@ -172,6 +172,35 @@ const list = (xs: (string | number)[]) => `(${xs.join(",")})`;
 const ref = (n: number) => `#${n}`;
 const bool = (b: boolean) => (b ? ".T." : ".F.");
 
+/**
+ * What a module's curve writer is handed (../modules.ts): the file being
+ * written, numbered as it goes — `add` an instance and get its number,
+ * `placement` an axis system — and nothing else of the exporter.
+ */
+export interface StepWriter {
+  add(entity: string): number;
+  placement(origin: number[], axis: number[], refDir: number[]): number;
+}
+
+/**
+ * How a curve of a kind a module declares is written: its Part 42 instance,
+ * named `name` (a loose sketch curve's) or not (a solid's edge, a swept
+ * surface's directrix), answered with its number. `real`, `str` and `ref` are
+ * this file's spelling of numbers, names and references.
+ */
+export type StepCurveWriter = (w: StepWriter, curve: { kind: string } & Record<string, unknown>, name: string,
+  spell: { real: (x: number) => string; str: (s: string) => string; ref: (n: number) => string }) => number;
+
+const curveWriters = new Map<string, StepCurveWriter>();
+
+export function defineStepCurve(kind: string, write: StepCurveWriter): void {
+  curveWriters.set(kind, write);
+}
+
+export function undefineStepCurve(kind: string): void {
+  curveWriters.delete(kind);
+}
+
 /** The entity instances, numbered as they are added. */
 class Data {
   readonly lines: string[] = [];

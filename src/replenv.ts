@@ -36,6 +36,11 @@ import { _, checkClauses, checkOrdinary, slots, splitClauses, subjectable, type 
 import {
   addTo, closegroup, group as groupOp, groupsOf, hide, members, opengroup, removeFrom, rename, show, ungroup,
 } from "./groups.ts";
+import { moduleCommands, moduleHelp, moduleRelations, type ModuleKit } from "./modules.ts";
+import { lifted } from "./modules/core.ts";
+// The app's vocabulary — every built-in module, loaded once — so a scope built
+// anywhere, a test's included, has it (modules/builtin.ts).
+import "./modules/builtin.ts";
 
 type Bag = Record<string, unknown>;
 type PlaneCall = (origin?: string | null, xref?: string | null, yref?: string | null,
@@ -194,48 +199,6 @@ export interface EnvHandles {
   optionMemory?: OptionMemory;
 }
 
-/**
- * Curries a relation so REPL callers don't pass the model every time:
- * `dist("a", "b", 10)` rather than `dist(model, "a", "b", 10)`.
- */
-function bind<A extends unknown[]>(model: Model, fn: (m: Model, ...args: A) => string) {
-  return (...args: A) => fn(model, ...args);
-}
-
-/**
- * Two coordinates where a 3D model wants three, made three with a zero — the
- * one rule the command line and an opened 2D file share (see persist.ts).
- *
- * The app is 3D now, and a hand that has typed `pt(40, 30)` for as long as the
- * app has existed should not be met with "point needs 3 coordinates". A 2D
- * coordinate in a 3D model reads as the 3D one with no depth: for `pt` that is
- * the kernel's z = 0 — a *seed*, the gauge every 2D drawing already lived in,
- * and no constraint — and for `fix` it is the frame's own z = 0, which is the
- * one thing `fix(p, [x, y])` can mean on a sketch plane: at (x, y) *on* it.
- *
- * Anything else is passed through untouched, so a wrong count still meets the
- * model's own message.
- */
-function lifted(model: Model, coords: number[]): number[] {
-  return model.dim === 3 && Array.isArray(coords) && coords.length === 2 ? [...coords, 0] : coords;
-}
-
-/**
- * `horizontal("l1")` / `vertical("l1")`, and the two-point forms: `par`
- * against the default frame's x or y axis, resolved now (`axisRef`), so the
- * journal holds the `par` with the frame it meant. A line takes nothing more;
- * a point takes the second point.
- */
-function level(model: Model, axis: "x" | "y", word: string, a: string, b?: string | null): string {
-  const ref = model.axisRef(axis);
-  if (model.entities.get(a)?.kind === "point") {
-    if (b == null) throw new Error(`${word}("${a}") needs a second point — or give it a line`);
-    return geom.parallel(model, a, b, ref);
-  }
-  if (b != null) throw new Error(`${word} takes a line, or two points — "${a}" is not a point, so nothing more`);
-  return geom.parallel(model, a, ref);
-}
-
 // `describeRelation` and the short-name table it reads used to live here. They
 // moved down to picking.ts when the hover tag started describing relations too
 // — one table, so the canvas and the command line cannot end up calling the
@@ -267,56 +230,22 @@ export function neocadScope(h: EnvHandles): Bag {
 
   /**
    * The relation vocabulary, short name and long, each with where `_` may
-   * stand (see clauses.ts). A slot marked `#` takes a number, so `_` there is
-   * refused when the clause is made. `relation` will not take a binding
-   * without one, so a new relation cannot arrive here unsaid.
+   * stand (see clauses.ts) — every loaded module's, in module order
+   * (modules.ts: core's `dist fix coin mid par perp ang on eq sym …`, the
+   * sketch module's `rad oncircle conc eqrad tan arcends …`). A slot marked `#`
+   * takes a number, so `_` there is refused when the clause is made. A module
+   * cannot declare a relation without its slots, so a new relation cannot
+   * arrive here unsaid. Re-read by `bindRelations` when a module loads later.
    */
   const relations: Bag = {};
-  const relation = (names: [string, string] | [string], sig: Slot[], fn: (...args: never[]) => string) => {
-    for (const op of names) relations[op] = subjectable(op, sig, fn);
+  const bindRelations = () => {
+    for (const { decl } of moduleRelations()) {
+      const fn = (decl.typed ?? decl.fn) as (model: Model, ...args: never[]) => string;
+      const bound = (...args: never[]) => fn(model, ...args);
+      for (const name of decl.names) relations[name] = subjectable(name, decl.slots, bound);
+    }
   };
-  // dimension-generic, from relations/basic.ts
-  relation(["dist"], slots("a", "b", "#distance"), bind(model, basic.dist));
-  relation(["fix"], slots("point", "#coordinates", "frame"),
-    (name: string, at: number[], frame?: string | null) => basic.fix(model, name, lifted(model, at), frame));
-  // 3D only: the point lies in the frame's plane. Frame-relative like `fix`.
-  relation(["onplane", "onPlane"], slots("point", "frame"), bind(model, basic.onPlane));
-  relation(["coin", "coincident"], slots("a", "b"), bind(model, basic.coincident));
-  relation(["mid", "midpoint"], slots("midpoint", "a", "b"), bind(model, basic.midpoint));
-  // relations/geometry.ts. `par`, `perp` and `ang` additionally take a
-  // frame-axis reference — `par("l1", yaxis())` is what `ver("l1")` was;
-  // see the helpers below and relations/geometry.ts for why those three.
-  relation(["par", "parallel"], slots("a", "b", "c"), bind(model, geom.parallel));
-  relation(["perp", "perpendicular"], slots("a", "b", "c"), bind(model, geom.perpendicular));
-  relation(["ang", "angle"], slots("a", "b", "#angle"), bind(model, geom.angle));
-  relation(["on", "pointOnLine"], slots("point", "line"), bind(model, geom.pointOnLine));
-  relation(["eq", "equalLength"], slots("line", "line"), bind(model, geom.equalLength));
-  relation(["rad", "radius"], slots("circle", "#radius"), bind(model, geom.radius));
-  relation(["oncircle", "onCircle"], slots("point", "circle"), bind(model, geom.onCircle));
-  relation(["conc", "concentric"], slots("circle", "circle"), bind(model, geom.concentric));
-  relation(["eqrad", "equalRadius"], slots("circle", "circle"), bind(model, geom.equalRadius));
-  relation(["tan", "tangent"], slots("line", "circle"), bind(model, geom.tangent));
-  relation(["sym", "symmetric"], slots("a", "b", "line"), bind(model, geom.symmetric));
-  relation(["arcends", "arcEndpoints"], slots("arc"), bind(model, geom.arcEndpoints));
-  // The sketch relations (docs/plans/sketch-relations.md). `horizontal` and
-  // `vertical` are the words an Onshape hand types, and they **expand to
-  // par** against the default frame's axis — `par("l1", xaxis())` is what is
-  // journalled and drawn (`—`), so there is still no hor/ver relation, only a
-  // second spelling of the one that exists.
-  relation(["col", "collinear"], slots("line", "line"), bind(model, geom.collinear));
-  relation(["horizontal"], slots("a", "b"), (a: string, b?: string | null) => level(model, "x", "horizontal", a, b));
-  relation(["vertical"], slots("a", "b"), (a: string, b?: string | null) => level(model, "y", "vertical", a, b));
-  relation(["intersection"], slots("point", "curve", "curve"), bind(model, geom.intersection));
-  relation(["pierce"], slots("point", "curve", "plane"), bind(model, geom.pierce));
-  relation(["spacing", "equalSpacing"], slots("point", "point", "point"), bind(model, geom.equalSpacing));
-  relation(["dia", "diameter"], slots("circle", "#diameter"), bind(model, geom.diameter));
-  relation(["measure"], slots("#kind", "a", "b"), bind(model, measure));
-  // The ellipse's (docs/plans/sketch-shapes.md). `tan` and `conc` take one
-  // under their own names; `major` and `minor` are its semi-axes, dimensions
-  // as `rad` is.
-  relation(["onellipse", "onEllipse"], slots("point", "ellipse"), bind(model, geom.onEllipse));
-  relation(["major", "majorAxis"], slots("ellipse", "#semi-axis"), bind(model, geom.majorAxis));
-  relation(["minor", "minorAxis"], slots("ellipse", "#semi-axis"), bind(model, geom.minorAxis));
+  bindRelations();
 
   /**
    * Applies clauses to an entity that exists, returning the relation names
@@ -525,51 +454,6 @@ export function neocadScope(h: EnvHandles): Bag {
       if (hold) geom.parallel(model, name, hold);
       return name;
     }),
-    // The ellipse (docs/plans/sketch-shapes.md): a centre, its major end — a
-    // point, or a number for the semi-major, laid off along the drawing
-    // plane's first direction — and the minor semi-axis, every one optional
-    // and none a constraint, as `circ`'s. A plane named holds it there, as a
-    // circle's does.
-    ellipse: withClauses("ellipse", (center?: string | null, major?: string | number | null, minor?: number | null,
-          plane?: string | number[] | null) => {
-      model.checkEllipse(center, typeof major === "string" ? major : null, minor);
-      if (major != null && typeof major !== "string" && !(typeof major === "number" && major > 0)) {
-        throw new Error(`ellipse: the major end is a point's name or a positive semi-axis, got ${JSON.stringify(major)}`);
-      }
-      const { seed, hold } = curveFacing(plane);
-      model.normalSeed("ellipse", seed);
-      const c = center ?? anchor();
-      let end: string | null = typeof major === "string" ? major : null;
-      if (typeof major === "number") {
-        const at = c ? model.coords(c) : new Array<number>(model.dim).fill(0);
-        const n = seed ?? model.planeValues(model.drawingPlane())?.n ?? null;
-        const u = model.dim === 3 && n ? spanOf(unitOf(n))[0] : [1, 0];
-        end = model.addPoint(at.map((v, i) => v + major * (u[i] ?? 0))).name;
-      }
-      const name = model.addEllipse(c, end, minor ?? null, seed).name;
-      if (hold) geom.parallel(model, name, hold);
-      return name;
-    }),
-    // The composites (docs/plans/sketch-shapes.md): the pieces a tool would
-    // draw, each journalled as itself, so a file replays them as pieces. They
-    // return what they made, by name, and take no clauses — there is no one
-    // thing made for `_` to be.
-    polygon: (centre?: unknown, vertex?: unknown, n?: unknown, circumscribed?: unknown) => {
-      if (typeof centre !== "string" || typeof vertex !== "string") {
-        throw new Error('polygon(centre, vertex, n?, circumscribed?) takes two points\' names — polygon("p1", "p2", 6)');
-      }
-      if (n != null && typeof n !== "number") throw new Error(`polygon: n is a number of sides, got ${JSON.stringify(n)}`);
-      if (circumscribed != null && typeof circumscribed !== "boolean") {
-        throw new Error(`polygon: circumscribed is true or false, got ${JSON.stringify(circumscribed)}`);
-      }
-      return shapes.polygon(model, centre, vertex, n ?? 6, circumscribed ?? true, model.dim === 3 ? model.drawingPlane() : null);
-    },
-    slot: (a?: unknown, b?: unknown, width?: unknown) => {
-      if (typeof a !== "string" || typeof b !== "string" || typeof width !== "number") {
-        throw new Error('slot(a, b, width) takes its two centres\' names and a width — slot("p1", "p2", 10)');
-      }
-      return shapes.slot(model, a, b, width, model.dim === 3 ? model.drawingPlane() : null);
-    },
   };
   /**
    * Coordinate frames, as ordinary commands.
@@ -1301,373 +1185,35 @@ export function neocadScope(h: EnvHandles): Bag {
     },
   };
 
-  const scope: Bag = { ...relations, ...geometry, ...operations, ...grouping, ...persistence, ...clauses, ...commands };
+  /**
+   * What the modules' own typed commands are handed (modules.ts's `ModuleKit`):
+   * this surface's helpers, so a module's constructor takes clauses and seeds
+   * at the middle of the view exactly as `circ` does, without importing this
+   * file.
+   */
+  const kit: ModuleKit = {
+    model,
+    clauses: (who, make) => withClauses(who, make),
+    anchor,
+    facing: curveFacing,
+  };
+
+  const scope: Bag = {
+    ...relations, ...geometry, ...moduleCommands(kit), ...operations, ...grouping, ...persistence, ...clauses, ...commands,
+  };
   scope.help = () => help(scope);
   return scope;
 }
 
 /**
- * help()'s word on toolbar groups (docs/plans/toolbar-groups.md): which tools
- * share a button now, how the button is opened, and the groups waiting for
- * their first tool — from the same table and registry the toolbar is built
- * from, so it cannot say one thing while the tray shows another.
+ * help(): every loaded module's lines, in module order (modules.ts) — core's
+ * geometry, frames, relations and clauses, the sketch module's curves, the
+ * solids', STEP's, files', the organiser's, then the interface's sections every
+ * workbench shares — and what is in scope.
  */
-function groupLines(): string[] {
-  const buttons = toolbarButtons().filter((b) => b.group);
-  const sharing = buttons.filter((b) => b.tools.length > 1);
-  const shown = new Set(buttons.map((b) => b.group));
-  const waiting = Object.keys(TOOL_GROUPS).filter((g) => !shown.has(g));
-  return [
-    "           [group]: tools of one family share one button — " +
-      (buttons.map((b) => `${b.group}: ${b.tools.join(", ")}`).join("; ") || "none yet") + ".",
-    sharing.length
-      ? `           Sharing a button now: ${sharing.map((b) => b.tools.join(" / ")).join("; ")}.`
-      : "           Each has one tool so far; a group's button opens when it has two.",
-    "           A group's button shows the one armed last, and arms it; to",
-    "           pick another, rest the mouse on it or press and hold, then",
-    "           click one; a finger slides off it onto one and lifts, or",
-    "           holds it and taps one. A plain tap arms the one it shows.",
-    "           arm() takes every tool by name, grouped or not. A tool you",
-    `           define joins a group with static group = "${Object.keys(TOOL_GROUPS)[0]}"` +
-      (waiting.length ? `; ${waiting.join(", ")} has no tool yet` : "") + ".",
-  ];
-}
-
 function help(scope: Bag): string {
   return [
-    "geometry   pt(x,y)  ln(a,b)  circ(center,r,plane?)  arc(center,start,end,r,plane?)",
-    "           ellipse(center, major, minor, plane?) — major a point (its major",
-    "           end) or a number (the semi-major), minor the semi-minor: an",
-    "           entity, centre and major end its points, minor its variable.",
-    '           polygon("p1", "p2", n?, circumscribed?) — a regular polygon about',
-    "           p1 with p2 a corner: n points and lines (6), each side eq to",
-    "           the one before, a construction circle oncircle every corner; inscribed",
-    "           (false) adds a second, inside, tan to the first side.",
-    '           slot("p1", "p2", width) — two lines and two arcs about p1 and p2,',
-    "           eqrad, arcends, each side perp to the radius at its ends (a",
-    "           tangency said linearly), a construction line p1–p2 for the",
-    "           length. Both leave ordinary pieces and replay as them; the",
-    "           polygon, slot and ellipse tools draw them (shapes, curves).",
-    "           point()  line()  circle()  — the same three, long names",
-    "           every argument is optional: what you leave out is created free",
-    "           near the middle of the view, for your relations to define.",
-    "           In 3D a circle or arc carries its own normal, the way it faces —",
-    "           solved like its radius. Left out, it faces the drawing plane",
-    "           (below) and nothing holds it: free to turn. A plane named — a",
-    '           frame, a curve, "p1.p2.p3" — faces it and holds it there with',
-    '           par; three numbers are a seed and no more. par("c1", "l1") stands',
-    "           a circle square to a line; par/perp/ang read a curve as its normal.",
-    "           No frame is ever made for a curve. The circle and arc tools draw",
-    "           where you click — on the plane you sketch on, else a solid's face",
-    "           under the cursor, else the ground — and hold what they draw with",
-    "           onplane on its centre and par on its normal, both deletable.",
-    "           One circle tool and one arc tool; the gesture says how. Circle:",
-    "           drag out from the centre (a click, then a drag: the click is the",
-    "           centre), or click three points on it; a click along a line or",
-    "           circle touches it (tan). Arc: drag end to end, then click its",
-    "           bulge — near the smooth way on from a line's end it snaps",
-    "           tangent — or click its centre, then both ends. The options panel",
-    '           shows what it read, and locks it: arm("circle", { method: "3pt" }).',
-    "           circle3 and arc3 typed arm that lock (not remembered). tan takes",
-    '           two circles too: tan("c1", "c2"), outside or inside as drawn.',
-    "frames     origin — always there: a fixed point and three axes, drawn in",
-    '           RGB, never solved or deleted. "origin.x" … "origin.z", fix and',
-    "           onplane take it by name, and it is what they mean when no frame",
-    "           is named and none is the default. The ground is its x–y plane.",
-    "           frame(origin, xref)  setDefaultFrame(name)  defaultFrame()",
-    "           plane(origin?, xref?, yref?) — a frame, made the default and",
-    '           looked at square-on: "start sketching here" in one call.',
-    "           plane(a, b, c, { look: false }) — the same, the view left alone.",
-    '           workplane("p1.p2.p3") — draw on a plane without making a frame:',
-    "           three points (a face's), a curve's own plane, or a frame; looked",
-    "           at square-on ({ look: false } leaves the view). workplane(null)",
-    "           clears it; workplane() says which plane things are drawn on.",
-    "           On a face: arm(\"sketch\") and click inside it (or right-click",
-    "           it: Sketch on this face) — workplane on three of the face's own",
-    "           points, facing you, so out of a solid. Nothing is made.",
-    "           xaxis(frame?)  yaxis(frame?)  — a frame's axis, by name; the",
-    "           default frame's, else the origin's. There is no hor/ver:",
-    '           par(l, yaxis()) is vertical, par(l, xaxis()) is level, and',
-    '           par/perp/ang take any axis by name — par("l1", "f2.x").',
-    "           A frame draws as an axes marker at its origin, in SolidWorks'",
-    "           colours — x red, y green, z blue, each lettered — heavier when",
-    "           it is the default; drag the marker to move it, or its x-ref to turn",
-    "           it and everything levelled against it. The line tool infers an",
-    "           axis par only against the default.",
-    "           The app is 3D: frame(origin, xref, yref) is a plane (the y-ref",
-    "           picks its side of +x, not its exact angle), zaxis(frame?) is its",
-    "           normal, onplane(p, plane?) holds a point in any plane, and fix",
-    "           takes [x, y, z] in the frame — or [x, y], on its plane. pt(x, y)",
-    "           is pt(x, y, 0). Tools draw on the work plane, else the default",
-    "           frame's plane, else the ground, and hold the points they draw on",
-    "           a plane you chose with onplane. A point off that plane",
-    "           snaps at its projection onto it (a dashed square) and infers",
-    "           nothing.",
-    "relations  dist fix coin mid par perp ang on eq",
-    "           rad oncircle conc eqrad tan sym arcends onplane",
-    "           col dia spacing intersection pierce horizontal vertical measure",
-    '           dist(p, l, d) a point from a line; dist(l1, l2, d) two lines (the',
-    "           second's middle from the first). eq takes two circles (equal",
-    "           radius) or a line and an arc (equal length). mid(p, arc) halfway",
-    '           round an arc. col(l1, l2) one line; intersection(p, c1, c2) on',
-    "           both; pierce(p, curve, plane?) where a curve crosses the plane",
-    "           (3D); spacing(p1, p2, p3, …) even gaps; dia(c, d) a diameter.",
-    '           horizontal("l1") / vertical("p1", "p2") are par against the',
-    "           default frame's axis — par(l, xaxis()) is what they journal, drawn",
-    '           — and |. tan at a shared end is a smooth join. deg(30) is radians.',
-    '           measure("dist", a, b) — or "angle", "radius", "diameter" — is a',
-    "           driven dimension: drawn in parentheses, live, holding nothing.",
-    "diagnosis  After each solve: free entities are drawn blue (Onshape's), held",
-    "           ones in the sketch's ink, and the status says SOLVED · 3 free —",
-    "           how many ways the drawing can still move. A point on the drawing",
-    "           plane or the ground is not counted free off it; a curve's normal",
-    "           length is no freedom. CONFLICT names the relations that cannot",
-    "           all hold, drawn red: click one in the status to select it, Delete",
-    "           removes it. A relation the earlier ones already imply is",
-    "           redundant — said in orange, never refused. Not during a drag.",
-    "           freeink(false) draws every entity in the sketch's ink.",
-    "           arm(\"dimension\") clicks a line, two points, a point and a line,",
-    "           two lines or a circle, then empty canvas to place: dist, ang, rad",
-    "           (or dia, { diameter: true }; measure, { driven: true }), holding",
-    "           what it measures. arm(\"constrain\") lists the relations what is",
-    "           picked — or selected first — takes; one press types one.",
-    "           onellipse(p, e)  major(e, a)  minor(e, b) — an ellipse's: on it,",
-    "           and its semi-axes, dimensions like rad (labelled a20, b10).",
-    "           tan(line, e) and conc with circles and ellipses take one; tan",
-    "           between an ellipse and a circle or another ellipse does not.",
-    "clauses    _ is the thing being made. A relation given _ does not apply:",
-    "           it becomes a clause, and pt ln circ arc frame take clauses",
-    "           after their own arguments, applying each to what they made —",
-    '           circ(oncircle("p1", _), oncircle("p2", _), oncircle("p3", _))',
-    '           pt(on(_, "l1"), on(_, "l2"))      — the intersection',
-    "           constrain(name, ...clauses) applies them to what exists. All",
-    "           are checked before anything is made; each journals as itself.",
-    "operations fillet(line1, line2, radius)  del(name, ...) — the arc follows its corner",
-    '           set("d4.value", 60)  — a dimension is named d1, d2, … and its',
-    "           value is the one thing you can set. ang stores radians (its",
-    "           label reads degrees); dist and rad store what you typed.",
-    '           extrude(member, depth?, frame?) — a solid of the closed loop',
-    "           the member is in, holes and all, along its sketch frame's +z:",
-    '           a feature e1, a lid of twins and walls held by one depth',
-    '           dimension (set("d9.value", 40) moves the lid). frame picks the',
-    "           loop when the member is in several. The extrude tool does it by",
-    '           pointing: arm("extrude", { depth: 20 }), click inside regions',
-    "           (several), see the solids, then ✓ or Enter — it types one",
-    '           extrude("l1", 20) here a region, the shortest line naming it.',
-    "           A sketch on the ground runs along the origin's +z; one on the work",
-    "           plane along it; one in no frame's plane along its own, three of",
-    '           its corners facing you ("p1.p2.p4"). No frame is made for any of',
-    "           them. Revolve does the same.",
-    "           Bodies: a solid touching or overlapping a body adds to it; one",
-    '           touching none is a body of its own. Cut is chosen: extrude("c1",',
-    '           -10, { mode: "cut" }) — a hole — and { mode: "add" | "new" |',
-    '           "intersect", into: "e1" } names it all. The dialog has a mode',
-    "           row (New Add Cut ∩): left alone it shows what it will do, and",
-    "           offers Cut when the solid runs into a body. Bodies of two or",
-    "           more features are built by the solid kernel (NVIDIA SMLib, in a",
-    "           Worker): drawn when it answers, the last good body shown until",
-    "           then, a refusal said in the log. The organiser lists Bodies;",
-    "           hiding one hides its first feature, hiding a later one leaves",
-    "           it out of the body. exportStep() writes one solid per body.",
-    "           A region is its outline and the holes you confirmed: the click",
-    "           (or a typed extrude) proposes every loop inside; in the dialog a",
-    "           click on a hole takes it out of the proposal (and back), a click",
-    "           on a solid island is a region of its own. Nothing joins later",
-    '           by being drawn inside: hole("e1", "c1") cuts the loop c1 is in',
-    '           through e1, unhole("e1", "c1") fills it (and its islands) —',
-    "           the menu's Add as hole to e1 / Remove hole from e1. Deleting a",
-    "           hole's circle, or making it construction, fills the hole.",
-    '           edit("e1") — the menu\'s Edit e1 on a face — opens the dialog on',
-    "           e1: click loops inside the outline to toggle them, change the",
-    "           depth, ✓ types hole/unhole and set as one undo step.",
-    '           del("e1") removes the solid and keeps its sketch; deleting any',
-    "           other piece of it takes only the feature's record (its faces).",
-    "           revolve(member, axis, angle?, frame?) — the same loop turned",
-    '           about an axis in its plane ("f1.y", yaxis(), or a line), angle',
-    "           in radians, a whole turn when left out. A partial revolve has a",
-    "           real end face, held by one angle dimension that set swings",
-    "           (radians; its label reads degrees); a full one has none, and",
-    "           turning it partial is a new revolve, not a set. The revolve tool:",
-    '           arm("revolve", { angle }), click inside regions, then the axis,',
-    "           then ✓ or Enter. The fillet tool: two lines, or their corner.",
-    "           A feature follows its profile: fillet a corner of an extruded",
-    "           or revolved sketch and the lid (or end face) is rounded too,",
-    "           keeping every twin and wall whose corner is still there.",
-    '           regen("e1") does the same for a profile you changed by hand —',
-    "           a line drawn across it. Neither adds a hole; a recorded hole",
-    "           whose loop has gone is filled, and the log says so.",
-    "files      newFile()  openFile()  saveFile()  shareFile()",
-    "           The document has a name (Untitled until opened or saved), and",
-    "           the app menu shows it and whether it is unsaved. saveFile()",
-    "           writes back to the file it came from where the browser can",
-    "           (Chrome, Edge), else asks where; on an iPhone it is the share",
-    "           sheet — Save to Files — and elsewhere a download. shareFile()",
-    "           hands a copy to the share sheet (AirDrop, Messages, Mail), or",
-    "           downloads it. ctrl+s and ctrl+o type saveFile() and openFile();",
-    "           a file dropped on the window opens. New and Open ask first when",
-    "           there are unsaved changes, and each is one undo step. The",
-    "           drawing is autosaved on this device and is there when the app",
-    "           starts again. Files are <name>.zerocad.json.",
-    "           exportStep(name?)  exportStep({ curves: true }) — the shown",
-    "           solids as <name>.step (STEP AP214, millimetres) for any other",
-    "           CAD or CAM tool: exact faces — planes, cylinders, cones,",
-    "           spheres, tori — one body per extrude or revolve, named e1, e2,",
-    "           …; hidden solids and construction geometry left out. curves:",
-    "           true adds the sketch curves no solid is made of. The share",
-    "           sheet on a phone, a download elsewhere; the app menu's Export",
-    "           STEP… types it. With no solid it says so and writes nothing.",
-    "           save()  open(text)  download(name)  journal() — the text itself.",
-    "           a file carries the source of tools you defined here, as text:",
-    "           open() never runs it, toolSource(name) prints it, and pasting",
-    "           it back is an ordinary entry — the paste is the consent.",
-    "history    undo()  redo()          — ctrl+z, ctrl+shift+z (ctrl+y)",
-    "           or Undo / Redo at the bottom of the right-click menu. The",
-    "           keys are the drawing's wherever the focus is: text half-typed",
-    "           in the command line stays put, and the drawing undoes. Only",
-    "           the drawing has steps — panel layout and the camera (orbit,",
-    "           pan, zoom, lookAt) are not, so Ctrl+Z after an orbit undoes",
-    "           the last edit, not the turn.",
-    "tools      the toolbar, in its order — what each button's tooltip says:",
-    // Read off the tools themselves (`static summary`), so a tool defined at
-    // the command line with one is listed here as the built-ins are.
-    ...toolbarButtons().flatMap((b) => b.tools.map((name) =>
-      `           ${name.padEnd(10)} ${toolSummary(name) ?? "(no summary)"}${b.group ? `   [${b.group}]` : ""}`)),
-    "           Hover a button (a mouse) or hold it (a finger) for its tooltip:",
-    "           its name, what it does, the line it types and its key. Held,",
-    "           lifting does not press it; a tap does. Every icon and short",
-    "           word in the chrome has one: the action strip, the organiser's",
-    "           ＋ and eyes, the spin box, a panel's strip, the logo.",
-    // Which tools share a button, said from the same table the toolbar is
-    // built from (docs/plans/toolbar-groups.md).
-    ...groupLines(),
-    "viewport   arm(tool, opts)  cancel()  zoom(f)  pan(dx,dy)  refresh()",
-    '           arm("select") puts the armed tool down and keeps the',
-    "           selection — no tool, which is what a click selects in; its",
-    '           arrow heads the toolbar, lit whenever nothing is armed. arm(',
-    '           "hand"), the hand beside it, makes a left-drag or one finger',
-    "           pan from anywhere, over geometry too, moving nothing; a click",
-    "           or a tap still selects, the wheel and a pinch still zoom.",
-    "           Holding Space is a hand for as long as it is held, over",
-    "           whatever is armed (not while the command line has the focus).",
-    "           A tool's options are declared, and tools() lists them with",
-    '           what arm would use now: extrude  { depth: 10 }. arm("extrude",',
-    "           { depth: 25 }) sets one; one the tool does not have is refused,",
-    "           naming those it does. Armed, a tool with options shows them in",
-    "           a small panel beside the tray: edit a field (Enter, or click",
-    '           away; Escape puts it back) and it types arm("extrude", {depth:',
-    "           25}) here. The last value you armed a tool with is remembered",
-    "           as its default — in this browser, like the layout, never in a",
-    "           file; type the default to have it back.",
-    "           A feature tool (extrude, revolve, fillet) picks, previews and",
-    "           confirms: clicks toggle what is picked, the result is drawn as",
-    "           it will be built and follows the panel as you type, and ✓,",
-    "           Enter (the command line empty) or a second click on the last",
-    "           pick builds it — one undo step, the tool still armed. ✗ or",
-    "           Escape drops the picks; a second Escape releases the tool.",
-    "           With nothing armed, a click inside a region selects it (shift",
-    "           adds), and arming extrude, revolve or sketch starts from it.",
-    "           orbit(yaw, pitch)  — turn the drawing, radians, like a right-drag",
-    "           lookAt(plane?)     — a plane square-on, +x right, +y up",
-    '           view("shaded")  view("hidden")  view("wire")  view() — how',
-    "           solids are shown. Shaded, the default, is opaque: nothing",
-    "           behind a face is drawn, picked, snapped to or boxed — turn the",
-    "           view to see it. Hidden draws it dimmed and keeps it all",
-    "           pickable; wire draws no faces. Also the View row of the",
-    "           right-click menu on empty canvas. Yours, in this browser, like",
-    "           the layout: never in a file, never an undo step. The camera",
-    "           object itself is camera (it was view).",
-    '           layout()  layout("reset") — where the panels are; put them back.',
-    "           Drag a panel by its strip, resize it by its corner; the",
-    "           arrangement is yours, in this browser, and never in a file.",
-    "           A panel pushed against an edge, or against another panel,",
-    "           stays against it when the window turns or resizes.",
-    "           ui({ scale: 0.8 })  — the interface size, 0.6 to 1.6 of this",
-    "           device's own 100 % (worked out from the pointer, the screen",
-    "           and your text size: a phone's is 1.3 × a desktop's): panels,",
-    "           type, menus, and in the drawing the glyphs, labels, points and",
-    '           markers. ui({ scale: "default" }) — back to 100 %. Under a',
-    "           finger every control is hit over 44 px however small it is",
-    "           drawn, and how far a finger reaches to pick is not scaled.",
-    '           ui({ hide: "log" })  ui({ show: "log" }) — a',
-    "           pane, or a list of them; ui() says what is in force. Also the",
-    "           logo's menu: − 80% + and a box per pane. Yours, on this",
-    "           device, like the layout: never in a file, never an undo step.",
-    "           right-drag orbits, middle-drag pans, the wheel zooms; a click",
-    "           lands on the default frame's plane (or the one facing you)",
-    "touch      a tap is a click; one finger drags what it lands on — a tool's",
-    "           shape, a point, an edge — or, on empty canvas with nothing armed,",
-    "           turns the drawing (with the hand armed it pans, from anywhere); two fingers pan and pinch-zoom together; a",
-    "           long-press is the menu, and long-press then drag is the box. A",
-    "           tap toggles once something is selected; a tap on empty canvas",
-    "           clears. A second finger drops a shape half-drawn, a third drops",
-    "           everything. While a finger is down the point it will land on is",
-    "           drawn above it. Undo, Redo, Delete and Cancel are the strip by",
-    "           the tray; the keyboard waits for a tap on the command line.",
-    "selection  click selects (the command line empty), shift-click adds or",
-    "           drops, a box selects what it catches (shift adds), a click on",
-    "           empty canvas or Escape clears; it is drawn in violet. With text",
-    "           in the command line a click inserts the name instead, as ever.",
-    '           sel()  select("l1", "g1")  select() — list, set (a group or',
-    "           feature selects its members), clear. Yours,",
-    "           not the drawing's: never journalled, never an undo step. The",
-    "           right-click menu acts on it (Group, Delete, Hide, and Select g1",
-    "           on a member of g1); the Delete key types",
-    '           del("l1", "l2") for it.',
-    "groups     group(...names, { name? }) — a named set: g1, g2, … or yours.",
-    "           A set, not a container: it owns nothing (ungroup(g) or del(g)",
-    "           removes the grouping, never a member), an entity may be in any",
-    "           number, and a group never holds a group — name one (or a",
-    "           feature) and its members now are added: a union, not a link.",
-    "           addTo(g, ...names)  removeFrom(g, ...names)  members(g)",
-    "           groups(name) — the groups it is in; groups() — them all.",
-    "           Deleting a member takes it out of its groups; a group may be",
-    "           empty, and stays until ungroup(g). rename(g, name) renames one.",
-    '           A feature is a read-only group: members("e1") is what it',
-    '           made, select("e1") and hide("e1") work, addTo("e1", …) refuses.',
-    "           The hover tag ends with · g1 g2; ls() lists the groups.",
-    '           opengroup("g1") — everything made from now on joins g1: drawn,',
-    "           typed, a fillet's arc, an extrude's twins; closegroup() ends it.",
-    "           One at a time; journalled, saved, undone; Escape leaves it open.",
-    "           opengroup(group()) is a new empty group, open. A feature's",
-    "           regenerated pieces join the groups that held all it made.",
-    "organiser  the Organiser pane: Groups and Features, a row each — tap",
-    "           selects it (select), the eye hides and shows, ● opens or closes",
-    "           a group; right-click or a long-press for Rename, Add or Remove",
-    "           selection, Open/Close, Ungroup (Edit and Delete for a feature).",
-    "           ＋ groups the selection, or with nothing selected types",
-    "           opengroup(group()). Every control types its command; the app",
-    "           menu's Panes shows and hides the pane.",
-    "visibility hide(...names)  show(...names)  show() — groups and features",
-    "           expand. Hidden is not drawn, picked, snapped to or boxed, and is",
-    "           still solved; a hidden feature's faces go too. Part of the",
-    "           drawing: journalled, saved, undone. The menu's Hide and, on",
-    "           empty canvas, Show all type them.",
-    'construction  construction(...names)  construction(...names, false) —',
-    "           construction geometry forms no regions: it bounds, splits and",
-    "           crosses nothing, so a circle inside an outline is no hole and a",
-    "           line across it no split. Otherwise ordinary: constrained,",
-    "           solved, picked, snapped to; drawn thin and muted. A flag on each",
-    "           line, arc or circle (points have none): a group or feature named",
-    "           flags its members now, and later changes to the group change",
-    "           no flag. Journalled, saved, undone. A solid's outline member is",
-    "           refused; a hole's member fills the hole; clearing a flag adds",
-    "           no hole (hole() does). The menu's Construction / Not construction type it;",
-    '           the drawing tools take it too: arm("circle", { construction: true }).',
-    "           The hover tag says construction; ls() (construction).",
-    "inspect    ls()  rels(name?)  coords(name)  solve()  tools()  hover()",
-    "           snapping(on)  glyphs(on)  freeink(on)  model",
-    "           loops() — the closed loops of lines and arcs (and whole circles),",
-    "           each in one plane: ends join only at a shared point or a coin,",
-    "           never by sitting on the same spot. Read-only; named by members.",
-    "authoring  Tool  defineTool(name, ctor)  toolSource(name)  Dual",
-    '           static options = { depth: { default: 10, unit: "length" } } on',
-    "           a tool class declares what it can be armed with (a number, or",
-    "           true/false; unit \"length\", \"angle\" in radians, or any text;",
-    "           label?, check?) — and it gets arm's checks, the panel and the",
-    "           remembered values with no more work.",
-    '           static summary = "Stamps a point where you click" says what it',
-    "           does, in one line: its tooltip, tools() and help() show it.",
-    "           Not inherited — a class extending a built-in says its own.",
+    ...moduleHelp(),
     "",
     "A bare assignment persists between entries (box = class extends Tool {…});",
     "a const/let/class declaration does not.",
@@ -1675,3 +1221,4 @@ function help(scope: Bag): string {
     `in scope: ${Object.keys(scope).sort().join(" ")}`,
   ].join("\n");
 }
+

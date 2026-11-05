@@ -15,8 +15,8 @@ import { type Clock } from "../src/tools/gestures.ts";
 import { defineTool, toolbarTools, listTools, Tool } from "../src/tools/tool.ts";
 import { actionCommand } from "../src/panels.ts";
 import { viewAxes, worldToScreen } from "../src/view.ts";
-import "../src/tools/point.ts";
-import "../src/tools/rectangle.ts";
+import "../src/modules/builtin.ts"; // registers the built-in tools, as the app does
+import "../src/modules/builtin.ts"; // registers the built-in tools, as the app does
 import { axisFrame } from "./frames.ts";
 
 async function loadKernel() {

@@ -1,0 +1,182 @@
+// The **interface** module: help()'s sections every workbench shares — the
+// history, the tray and its groups, workbenches and modules, the viewport,
+// touch, the selection, construction, inspection and authoring. It registers
+// nothing else; it is loaded last so these come after every module's own
+// sections, where help() has always put them.
+
+import { defineModule } from "../modules.ts";
+import { TOOL_GROUPS, toolSummary, toolbarButtons } from "../tools/tool.ts";
+
+/**
+ * help()'s word on toolbar groups (docs/plans/toolbar-groups.md): which tools
+ * share a button now, how the button is opened, and the groups waiting for
+ * their first tool — from the same table and registry the toolbar is built
+ * from, so it cannot say one thing while the tray shows another.
+ */
+function groupLines(): string[] {
+  const buttons = toolbarButtons().filter((b) => b.group);
+  const sharing = buttons.filter((b) => b.tools.length > 1);
+  const shown = new Set(buttons.map((b) => b.group));
+  const waiting = Object.keys(TOOL_GROUPS).filter((g) => !shown.has(g));
+  return [
+    "           [group]: tools of one family share one button — " +
+      (buttons.map((b) => `${b.group}: ${b.tools.join(", ")}`).join("; ") || "none yet") + ".",
+    sharing.length
+      ? `           Sharing a button now: ${sharing.map((b) => b.tools.join(" / ")).join("; ")}.`
+      : "           Each has one tool so far; a group's button opens when it has two.",
+    "           A group's button shows the one armed last, and arms it; to",
+    "           pick another, rest the mouse on it or press and hold, then",
+    "           click one; a finger slides off it onto one and lifts, or",
+    "           holds it and taps one. A plain tap arms the one it shows.",
+    "           arm() takes every tool by name, grouped or not. A tool you",
+    `           define joins a group with static group = "${Object.keys(TOOL_GROUPS)[0]}"` +
+      (waiting.length ? `; ${waiting.join(", ")} has no tool yet` : "") + ".",
+  ];
+}
+
+defineModule("interface", {
+  label: "The command line, the tray and the viewport",
+  help: () => [
+    "history    undo()  redo()          — ctrl+z, ctrl+shift+z (ctrl+y)",
+    "           or Undo / Redo at the bottom of the right-click menu. The",
+    "           keys are the drawing's wherever the focus is: text half-typed",
+    "           in the command line stays put, and the drawing undoes. Only",
+    "           the drawing has steps — panel layout and the camera (orbit,",
+    "           pan, zoom, lookAt) are not, so Ctrl+Z after an orbit undoes",
+    "           the last edit, not the turn.",
+    "tools      the toolbar, in its order — what each button's tooltip says:",
+    // Read off the tools themselves (`static summary`), so a tool defined at
+    // the command line with one is listed here as the built-ins are.
+    ...toolbarButtons().flatMap((b) => b.tools.map((name) =>
+      `           ${name.padEnd(10)} ${toolSummary(name) ?? "(no summary)"}${b.group ? `   [${b.group}]` : ""}`)),
+    "           Hover a button (a mouse) or hold it (a finger) for its tooltip:",
+    "           its name, what it does, the line it types and its key. Held,",
+    "           lifting does not press it; a tap does. Every icon and short",
+    "           word in the chrome has one: the action strip, the organiser's",
+    "           ＋ and eyes, the spin box, a panel's strip, the logo.",
+    // Which tools share a button, said from the same table the toolbar is
+    // built from (docs/plans/toolbar-groups.md).
+    ...groupLines(),
+    'workbench  workbench()  workbench("sketch")  workbenches()  — a workbench is',
+    "           a named set of modules with its own tray: part, the default",
+    "           (core, sketch, solids, step), and sketch (core and sketch). The",
+    "           logo menu switches it, and the document remembers it. A typed",
+    "           name from any loaded module works in any workbench: a typed",
+    "           call is not a toolbar.",
+    "modules    modules() — what is loaded, in order, and what each registers.",
+    '           defineModule("gears", { tools, relations, operations, entities,',
+    "           menu, help, groups }) — one call that registers all of it; a name",
+    "           something already has is refused, naming it, and nothing is",
+    '           registered. defineWorkbench("gears", { modules: ["core",',
+    '           "sketch", "gears"] }) gives it a tray. defineRelation(name,',
+    "           slots, fn), defineOperation(name, fn), defineEntity(decl) join",
+    "           the user module, as defineTool does; a file carries their source",
+    "           as text, as it carries a tool's.",
+    "           addWorkbench() — the logo menu's Add workbench…: a workbench",
+    "           file (.zerocad.js) from this device. What it registers is read",
+    "           from its manifest and shown before anything runs; accepted, it",
+    "           is loaded, kept on this device and loaded at every start, until",
+    "           removeWorkbench(name). shareWorkbench(name) hands the file back.",
+    "           loadModule(url) does the same from a URL. A workbench file runs",
+    "           with the command line's authority: curated, not a sandbox.",
+    "viewport   arm(tool, opts)  cancel()  zoom(f)  pan(dx,dy)  refresh()",
+    '           arm("select") puts the armed tool down and keeps the',
+    "           selection — no tool, which is what a click selects in; its",
+    '           arrow heads the toolbar, lit whenever nothing is armed. arm(',
+    '           "hand"), the hand beside it, makes a left-drag or one finger',
+    "           pan from anywhere, over geometry too, moving nothing; a click",
+    "           or a tap still selects, the wheel and a pinch still zoom.",
+    "           Holding Space is a hand for as long as it is held, over",
+    "           whatever is armed (not while the command line has the focus).",
+    "           A tool's options are declared, and tools() lists them with",
+    '           what arm would use now: extrude  { depth: 10 }. arm("extrude",',
+    "           { depth: 25 }) sets one; one the tool does not have is refused,",
+    "           naming those it does. Armed, a tool with options shows them in",
+    "           a small panel beside the tray: edit a field (Enter, or click",
+    '           away; Escape puts it back) and it types arm("extrude", {depth:',
+    "           25}) here. The last value you armed a tool with is remembered",
+    "           as its default — in this browser, like the layout, never in a",
+    "           file; type the default to have it back.",
+    "           A feature tool (extrude, revolve, fillet) picks, previews and",
+    "           confirms: clicks toggle what is picked, the result is drawn as",
+    "           it will be built and follows the panel as you type, and ✓,",
+    "           Enter (the command line empty) or a second click on the last",
+    "           pick builds it — one undo step, the tool still armed. ✗ or",
+    "           Escape drops the picks; a second Escape releases the tool.",
+    "           With nothing armed, a click inside a region selects it (shift",
+    "           adds), and arming extrude, revolve or sketch starts from it.",
+    "           orbit(yaw, pitch)  — turn the drawing, radians, like a right-drag",
+    "           lookAt(plane?)     — a plane square-on, +x right, +y up",
+    '           view("shaded")  view("hidden")  view("wire")  view() — how',
+    "           solids are shown. Shaded, the default, is opaque: nothing",
+    "           behind a face is drawn, picked, snapped to or boxed — turn the",
+    "           view to see it. Hidden draws it dimmed and keeps it all",
+    "           pickable; wire draws no faces. Also the View row of the",
+    "           right-click menu on empty canvas. Yours, in this browser, like",
+    "           the layout: never in a file, never an undo step. The camera",
+    "           object itself is camera (it was view).",
+    '           layout()  layout("reset") — where the panels are; put them back.',
+    "           Drag a panel by its strip, resize it by its corner; the",
+    "           arrangement is yours, in this browser, and never in a file.",
+    "           A panel pushed against an edge, or against another panel,",
+    "           stays against it when the window turns or resizes.",
+    "           ui({ scale: 0.8 })  — the interface size, 0.6 to 1.6 of this",
+    "           device's own 100 % (worked out from the pointer, the screen",
+    "           and your text size: a phone's is 1.3 × a desktop's): panels,",
+    "           type, menus, and in the drawing the glyphs, labels, points and",
+    '           markers. ui({ scale: "default" }) — back to 100 %. Under a',
+    "           finger every control is hit over 44 px however small it is",
+    "           drawn, and how far a finger reaches to pick is not scaled.",
+    '           ui({ hide: "log" })  ui({ show: "log" }) — a',
+    "           pane, or a list of them; ui() says what is in force. Also the",
+    "           logo's menu: − 80% + and a box per pane. Yours, on this",
+    "           device, like the layout: never in a file, never an undo step.",
+    "           right-drag orbits, middle-drag pans, the wheel zooms; a click",
+    "           lands on the default frame's plane (or the one facing you)",
+    "touch      a tap is a click; one finger drags what it lands on — a tool's",
+    "           shape, a point, an edge — or, on empty canvas with nothing armed,",
+    "           turns the drawing (with the hand armed it pans, from anywhere); two fingers pan and pinch-zoom together; a",
+    "           long-press is the menu, and long-press then drag is the box. A",
+    "           tap toggles once something is selected; a tap on empty canvas",
+    "           clears. A second finger drops a shape half-drawn, a third drops",
+    "           everything. While a finger is down the point it will land on is",
+    "           drawn above it. Undo, Redo, Delete and Cancel are the strip by",
+    "           the tray; the keyboard waits for a tap on the command line.",
+    "selection  click selects (the command line empty), shift-click adds or",
+    "           drops, a box selects what it catches (shift adds), a click on",
+    "           empty canvas or Escape clears; it is drawn in violet. With text",
+    "           in the command line a click inserts the name instead, as ever.",
+    '           sel()  select("l1", "g1")  select() — list, set (a group or',
+    "           feature selects its members), clear. Yours,",
+    "           not the drawing's: never journalled, never an undo step. The",
+    "           right-click menu acts on it (Group, Delete, Hide, and Select g1",
+    "           on a member of g1); the Delete key types",
+    '           del("l1", "l2") for it.',
+    'construction  construction(...names)  construction(...names, false) —',
+    "           construction geometry forms no regions: it bounds, splits and",
+    "           crosses nothing, so a circle inside an outline is no hole and a",
+    "           line across it no split. Otherwise ordinary: constrained,",
+    "           solved, picked, snapped to; drawn thin and muted. A flag on each",
+    "           line, arc or circle (points have none): a group or feature named",
+    "           flags its members now, and later changes to the group change",
+    "           no flag. Journalled, saved, undone. A solid's outline member is",
+    "           refused; a hole's member fills the hole; clearing a flag adds",
+    "           no hole (hole() does). The menu's Construction / Not construction type it;",
+    '           the drawing tools take it too: arm("circle", { construction: true }).',
+    "           The hover tag says construction; ls() (construction).",
+    "inspect    ls()  rels(name?)  coords(name)  solve()  tools()  hover()",
+    "           snapping(on)  glyphs(on)  freeink(on)  model",
+    "           loops() — the closed loops of lines and arcs (and whole circles),",
+    "           each in one plane: ends join only at a shared point or a coin,",
+    "           never by sitting on the same spot. Read-only; named by members.",
+    "authoring  Tool  defineTool(name, ctor)  toolSource(name)  Dual",
+    '           static options = { depth: { default: 10, unit: "length" } } on',
+    "           a tool class declares what it can be armed with (a number, or",
+    "           true/false; unit \"length\", \"angle\" in radians, or any text;",
+    "           label?, check?) — and it gets arm's checks, the panel and the",
+    "           remembered values with no more work.",
+    '           static summary = "Stamps a point where you click" says what it',
+    "           does, in one line: its tooltip, tools() and help() show it.",
+    "           Not inherited — a class extending a built-in says its own.",
+  ],
+});

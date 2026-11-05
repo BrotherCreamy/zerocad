@@ -417,7 +417,8 @@ export function toolbarTools(): string[] {
  * the usual"* and, before that, that *"everything has to fit"*: twenty-odd
  * buttons fit no phone as a column, so a family is one button.
  *
- * **A table keyed by the registered name, as `TOOL_ICONS` is** (icons.ts) — a
+ * **A table keyed by the registered name, as `TOOL_ICONS` is** (icons.ts),
+ * filled by the modules that own or extend each group (../modules.ts) — a
  * built-in's group is a property of its name, not guessed and not inherited:
  * a tool defined at the command line as `class extends FilletTool` under a new
  * name is not a fillet. A group's members are in its button's order, the
@@ -431,11 +432,29 @@ export function toolbarTools(): string[] {
  * "shapes"` (its own, not inherited — see `toolGroup`); a group not in this
  * table is no group, and the tool is a button of its own.
  */
-export const TOOL_GROUPS: Readonly<Record<string, readonly string[]>> = {
-  shapes: ["rectangle", "polygon", "slot"],
-  curves: ["ellipse", "spline"],
-  modify: ["fillet", "chamfer", "trim", "extend", "offset", "mirror", "pattern"],
-};
+export const TOOL_GROUPS: Readonly<Record<string, readonly string[]>> = {};
+
+/**
+ * Adds `members` to `group`, making it if it is new — how a module owns or
+ * extends a group (../modules.ts: the sketch module's `shapes`, and a later
+ * module's addition to it). Members already listed keep their place, so a
+ * group extended by two modules keeps both lists in module order.
+ */
+export function defineGroup(group: string, members: readonly string[]): void {
+  const table = TOOL_GROUPS as Record<string, string[]>;
+  const list = Object.hasOwn(table, group) ? table[group] : (table[group] = []);
+  for (const m of members) if (!list.includes(m)) list.push(m);
+}
+
+/** Takes `tool` out of every group's list, and drops a group left with none — a removed module's. */
+export function ungroupTool(tool: string): void {
+  const table = TOOL_GROUPS as Record<string, string[]>;
+  for (const [group, list] of Object.entries(table)) {
+    const i = list.indexOf(tool);
+    if (i >= 0) list.splice(i, 1);
+    if (list.length === 0) delete table[group];
+  }
+}
 
 /** The class's own `static group`, when it declares one: a name, or null for none. Undefined when it declares nothing. */
 function ownGroup(ctor: ToolCtor): string | null | undefined {
@@ -469,10 +488,12 @@ export interface ToolbarButton { group: string | null; tools: string[] }
  * member does — its members in the table's order, then any that joined by
  * `static group`, in registration order. Eleven today.
  */
-export function toolbarButtons(): ToolbarButton[] {
+export function toolbarButtons(on?: (tool: string) => boolean): ToolbarButton[] {
   const out: ToolbarButton[] = [];
   const byGroup = new Map<string, ToolbarButton>();
-  for (const name of toolbarTools()) {
+  // `on`: the tools the current workbench's tray has (../modules.ts) — the
+  // engine's two are on every tray. Absent: every listed tool.
+  for (const name of toolbarTools().filter((t) => !on || ENGINE_TOOLS.includes(t) || on(t))) {
     const group = toolGroup(name);
     if (group === null) {
       out.push({ group: null, tools: [name] });
@@ -581,6 +602,12 @@ export function defineTool(name: string, ctor: ToolCtor, { listed = true }: { li
   registry.set(name, ctor);
   if (listed) unlisted.delete(name);
   else unlisted.add(name);
+}
+
+/** Unregisters `name` — a removed module's tool. Nothing armed is touched: the host releases it. */
+export function undefineTool(name: string): void {
+  registry.delete(name);
+  unlisted.delete(name);
 }
 
 export function getToolCtor(name: string): ToolCtor | undefined {

@@ -31,6 +31,8 @@ import { findLoops, type Loop } from "./loops.ts";
 import { featureRegion, holeIndex, holeLoop, type FeatureRegion } from "./operations.ts";
 import { VIEW_MODES, type ViewMode } from "./viewmode.ts";
 import { constraintsFor, roundValue } from "./dimensioning.ts";
+import { activeWorkbench, menuToolItems, onWorkbench } from "./modules.ts";
+import "./modules/builtin.ts";
 
 /**
  * What clicking an item does.
@@ -75,26 +77,6 @@ export interface Menu {
   items: MenuItem[];
 }
 
-/**
- * The tool arms offered on empty canvas, in the order they appear. Labels are
- * the names the tools go by in the docs; the second element is the registered
- * tool name, which is what `arm` takes. A unit test checks every one of them
- * actually resolves, because a typo here would be a menu item that throws.
- */
-const TOOL_ITEMS: [label: string, tool: string][] = [
-  ["Point", "point"],
-  ["Line", "line"],
-  ["Rectangle", "rectangle"],
-  // One circle and one arc: the gesture says which way (docs/plans/
-  // one-circle-one-arc.md), and `circle3`/`arc3` are typed names, not tools.
-  ["Circle", "circle"],
-  ["Arc", "arc"],
-  // The first curve that is not a circle (docs/plans/sketch-shapes.md): offered
-  // where the circle and arc are, as the shapes group's polygon and slot are
-  // under the rectangle's heading.
-  ["Ellipse", "ellipse"],
-  ["Fillet", "fillet"],
-];
 
 /**
  * How a measurement is written into the command an item types. Three decimals,
@@ -372,22 +354,26 @@ function setValueItem(model: Model, name: string): MenuItem[] {
  * asking, docs/plans/tool-options.md.)
  */
 /**
- * The menu's tool items: `TOOL_ITEMS`, and where one of them is in a toolbar
- * group that has more than one member, **the whole group under its name**
- * (docs/plans/toolbar-groups.md) — every member as an item, in the button's
- * order, so a tool that joins the shapes group is on the menu without this
- * file knowing it exists. A group of one is its one item, as before groups.
+ * The menu's tool items: each loaded module's (modules.ts's `menuToolItems`, in
+ * module order) that the current workbench's tray has, and where one of them
+ * is in a toolbar group that has more than one member, **the whole group under
+ * its name** (docs/plans/toolbar-groups.md) — every member as an item, in the
+ * button's order, so a tool that joins the shapes group is on the menu without
+ * this file knowing it exists. A group of one is its one item, as before
+ * groups. A unit test checks every item resolves to a registered tool.
  */
 function toolItems(model: Model): MenuItem[] {
   const item = (label: string, tool: string): MenuItem => {
     const why = toolUnavailable(model, tool);
     return { label, action: why !== null ? { do: "disabled", why } : { do: "run", command: `arm(${quoted(tool)})` } };
   };
-  const labelOf = (tool: string) => TOOL_ITEMS.find(([, t]) => t === tool)?.[0] ?? (tool ? tool[0].toUpperCase() + tool.slice(1) : tool);
-  const buttons = toolbarButtons();
+  const bench = activeWorkbench();
+  const items = menuToolItems().filter((i) => onWorkbench(bench, i.tool));
+  const labelOf = (tool: string) => items.find((i) => i.tool === tool)?.label ?? (tool ? tool[0].toUpperCase() + tool.slice(1) : tool);
+  const buttons = toolbarButtons((t) => onWorkbench(bench, t));
   const out: MenuItem[] = [];
   const done = new Set<string>();
-  for (const [label, tool] of TOOL_ITEMS) {
+  for (const { label, tool } of items) {
     const group = toolGroup(tool);
     const members = group ? buttons.find((b) => b.group === group)?.tools ?? [tool] : [tool];
     if (!group || members.length < 2) {

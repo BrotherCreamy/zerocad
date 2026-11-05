@@ -57,25 +57,11 @@ import { entityDrawn, glyphDrawn, quietEntities, revealed, solidEdges } from "./
 import { frameBasis } from "./relations/refs.ts";
 import { lockPage } from "./pagelock.ts";
 import type { Diagnosis, Entity } from "./model.ts";
-import "./tools/point.ts";
-import "./tools/line.ts";
-import "./tools/rectangle.ts";
-// The shapes group's other members (docs/plans/sketch-shapes.md): after the
-// rectangle, whose button they share.
-import "./tools/polygon.ts";
-import "./tools/slot.ts";
-import "./tools/circle.ts";
-import "./tools/arc.ts";
-// The curves group, after the arc, so its button stands where the table puts it
-// (docs/plans/toolbar-groups.md, As built).
-import "./tools/ellipse.ts";
-import "./tools/fillet.ts";
-import "./tools/dimension.ts";
-import "./tools/constrain.ts";
-import "./tools/extrude.ts";
-import "./tools/revolve.ts";
-import "./tools/sketch.ts";
-import "./tools/edit.ts";
+// The app is its modules (docs/plans/workbenches.md): every built-in module,
+// in the order that orders the tray, the menu, the replay table and help()
+// (modules/builtin.ts). A workbench added from the device is one more, loaded
+// after them.
+import "./modules/builtin.ts";
 
 /**
  * The status beside the logo — the verdict and the step note — and the rules

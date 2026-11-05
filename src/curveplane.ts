@@ -107,6 +107,20 @@ export function arcSide(model: Model, name: string): number[] {
   return curvePlaneOf(model, name).n;
 }
 
+/** How a kind a module declares is laid out (../modules.ts): its frame, as `curveFrame` answers for a circle. */
+export type CurveFrameFn = (model: Model, e: Entity) => ArcFrame | null;
+
+const kindFrames = new Map<string, CurveFrameFn>();
+
+/** Registers how `kind` is laid out — drawn, boxed, looped and picked by that frame from then on. */
+export function defineCurveFrame(kind: string, frame: CurveFrameFn): void {
+  kindFrames.set(kind, frame);
+}
+
+export function undefineCurveFrame(kind: string): void {
+  kindFrames.delete(kind);
+}
+
 /**
  * A circle or arc laid out in its plane, as `arcgeom.ts` draws, picks and lifts
  * it — or null for any other kind, or an arc with an endpoint on its centre.
