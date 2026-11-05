@@ -7,6 +7,50 @@ decisions.
 
 ---
 
+## Mode feedback: the sketch plane drawn, a chip that says where · what · next, and Done
+
+The owner: *"at the moment, it is not obvious how the UI works. like when
+creating a sketch or a face or something - in active face mode or whatever,
+it isnt obvious to me that is whats happening. needs clearer
+visual/contextual feedback to the user."* Built to
+[`docs/plans/mode-feedback.md`](docs/plans/mode-feedback.md); every
+deviation is in its *As built*.
+
+- **The plane being sketched on is drawn.** The face it was taken from is
+  tinted the tools' green, lighter, and outlined in the green, in every view
+  mode. Turn the view and the tint is still there. Look from behind the solid
+  and it fades, its outline dimmed as a hidden edge is. A frame's plane is a
+  patch with a faint grid whose step follows the zoom. With no plane chosen
+  nothing is drawn: drawing on the ground is not a mode.
+- **The mode chip**, beside the status: `on e1's top · circle · drag the
+  radius`. Where is the face, named by its feature and side, or the frame by
+  name. What is the tool. Next is the gesture's next step, from the tool,
+  worded for a mouse or a finger ("click", "tap"). The plane's name opens
+  Look at, Change… and Done; the tool's name opens its options. A miss's
+  guidance is said here, where the next step is, and goes once the step
+  moves on. The status keeps the verdict, which the chip gives way to rather
+  than cut on a phone.
+- **Done** beside the plane's name ends the plane in one tap. It types
+  `workplane(null)` (or `setDefaultFrame(null)` for a default frame's
+  plane), so it is logged, journalled and undone like any typed line. The
+  camera stays where it is.
+- **What is held on the plane is in focus; the rest is dimmed one step.**
+  Held means by the relation that holds it there (`onPlane`, the `par` on a
+  curve's normal), never by where it happens to lie. Picking is unchanged.
+- **The stage is drawn.** A ghost dot shows where a mouse click would place
+  the next point. The line tool's chain is in the green until it ends. The
+  fillet tool lights the corners it can take, through one new seam
+  (`Tool.takes`), beside `Tool.next` and `Tool.placed`.
+
+On a phone the chip wraps under the logo, as the status does, and is over no
+pane on any iPhone in the device table, both ways up, installed and in Safari
+(the fits suite). Looking at the screenshots found three bugs, now fixed and
+listed in ARCHITECTURE: stale guidance over a picked region, Done's tap taken
+by the line below on a landscape phone, and the verdict cut off on an upright
+one. Pictures: [135](docs/images/135-sketching-on-the-lid-tinted-the-chip-says-on-e1s-top.png)–[146](docs/images/146-phone-se-safari-landscape-the-chip-over-no-pane.png).
+**Not tried on an iPhone**: try sketching on a face, turning the view, and
+tapping Done.
+
 ## Sketch shapes — a polygon, a slot, and the ellipse
 
 The owner: *"give me better sketch tools, relations, trim, slot... all the

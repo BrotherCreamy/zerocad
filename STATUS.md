@@ -16,6 +16,21 @@ etc).
   on every push to the working branch. Called NeoCAD until 0.1.0; the
   internal code name stays in identifiers, the file format tag and storage
   keys (see TODO.md's register).
+- **Mode feedback** (docs/plans/mode-feedback.md, built). The plane being
+  sketched on is drawn (`src/activeplane.ts`): the face it was taken from is
+  tinted and outlined in the tools' green, fainter and dimmed from behind
+  the solid, and a frame's plane is a patch with a grid that follows the
+  zoom. What is held on the plane by relation is in full ink, and the rest
+  is drawn one step dimmed. **The mode chip** (`src/modechip.ts`, `#mode`,
+  first in the status's corner) says where · what · next — `on e1's top ·
+  circle · drag the radius`. Every tool says its stage through `Tool.next`,
+  and guidance is said in the chip rather than the status's note. **Done**
+  (`workplane(null)`, typed) ends the plane and leaves the camera; the
+  plane's name opens Look at, Change… and Done. A ghost dot sits at the
+  mouse for placing tools, the line's chain is in the green until it ends,
+  and the fillet lights its corners (`Tool.takes`, `Tool.placed`). The
+  verdict is never cut for the chip, and the chip is over no pane on any
+  iPhone in the table.
 - **Sketch relations: diagnosis, a dimension tool, a constrain tool**
   (docs/plans/sketch-relations.md, built).
   - **Diagnosis.** `Problem.analyse` asks the kernel's `null_support`
