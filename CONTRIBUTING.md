@@ -137,32 +137,113 @@ Three things that are easy to get wrong:
   its own root, so least-squares ends up minimising a fourth power and
   converges badly. Use the wedge's components, not their sum of squares.
 
-Then register it in `src/replenv.ts` (short name and long) and in
-`src/persist.ts`'s replay table, or it won't survive a save. The `replenv.ts`
-line takes a slot list too — `slots("circle", "#radius")` — which is what lets
-`_` stand in it as a clause and refuses `_` where a number goes (`#`); see
-`src/clauses.ts`.
+Then register it in **its module's `relations`** (`src/modules/core.ts` or
+`sketch.ts`, or your own module — see *Adding a module*), keyed by the op it
+journals, with the names it is typed by (short first) and its slot list —
+`{ names: ["rad", "radius"], slots: slots("circle", "#radius"), fn: radius }`.
+That one entry is both what makes it typeable (`replenv.ts` binds every
+module's relations) and what lets a file replay it (`persist.ts`'s table is
+filled from the same entries); there is no second table to forget any more.
+The slot list is what lets `_` stand in it as a clause and refuses `_` where a
+number goes (`#`); see `src/clauses.ts`. (`CLAUDE.md` still says "both
+`replenv.ts` and `persist.ts`" — the module entry is both now.)
 
 **If it carries a single value the user would want to go back and change**, it
-is a *dimension* rather than a constraint: add its op to `DIMENSION_OPS` in
-`src/model.ts` so it claims a `d` name, its value's argument index to
-`VALUE_ARG` beside it, and a line to `REBUILD` in `src/operations.ts` so `set`
-can re-run it. Miss the first and the relation is `r`-named and has no
-`.value`; miss either of the others and `set` throws on something it should
-have handled. `test/dimensions.test.ts` checks that the three tables agree.
+is a *dimension* rather than a constraint: give its module entry `dimension:
+<the value's argument index>` (`major: { …, dimension: 1 }`) and it claims a
+`d` name and `set` re-runs it. The built-in dimensions are still listed by hand
+in `DIMENSION_OPS`, `VALUE_ARG` (`src/model.ts`) and `REBUILD`
+(`src/operations.ts`); `test/dimensions.test.ts` checks that they agree.
 A relation that carries *coordinates* is not a dimension — that is why `fix`
 is `r`-named — and neither is one that carries no number at all.
 
 ### Adding a tool
 
-Subclass `Tool`, call `defineTool`. See `src/tools/rectangle.ts` — that is the
-example the interface was designed around. `onDown` should not touch the model;
-commit in `onUp` and then call `ctx.requestSolve()` and `ctx.finish()`. Draw
-previews from the tool's own state in `render()`.
+Subclass `Tool` and list it in a module's `tools` — the built-ins are in
+`src/modules/`; at the command line, `defineTool(name, ctor)` does the same for
+one tool. See `src/tools/rectangle.ts` — that is the example the interface was
+designed around. A tool file defines its class and **does not register
+itself**: the module does, with its glyph (`icons`, drawn with `svg()` from
+`src/tools/icons.ts`) and its group (`groups`). `onDown` should not touch the
+model; commit in `onUp` and then call `ctx.requestSolve()` and `ctx.finish()`.
+Draw previews from the tool's own state in `render()`.
 
 Prefer constraining *edges* over corner points (`par(edge, xaxis())` over
 `par(cornerA, cornerB, xaxis())`), so the result survives being filleted
 later.
+
+### Adding a module
+
+A module is one call that registers everything it brings
+(docs/plans/workbenches.md; the interface is `ModuleSpec` in
+`src/modules.ts`). For a built-in, write `src/modules/<name>.ts` and import it
+from `src/modules/builtin.ts` **where its tools should stand on the tray** —
+load order is the order of every table. For someone else's, write the same
+call in a workbench file (below). The minimum, a module with one tool, one
+relation and one entity kind:
+
+```js
+defineModule("pins", {
+  tools: { pin: class extends Tool { name = "pin"; onUp(p) { addPin(pt(...p.world)); this.ctx.requestSolve(); this.ctx.finish(); } } },
+  icons: { /* pin: svg("pin", "<path …/>") — else it gets the generic glyph */ },
+  groups: { /* shapes: ["pin"] — join a family's button */ },
+  relations: {
+    // keyed by the op a file journals; names typed by, short first; slots for `_`
+    level: { names: ["level"], slots: ["a", "b"], fn: (model, a, b) => model.relation("level", [a, b], () => {
+      const A = model.point(a), B = model.point(b);
+      model.addResidual([A.varIndices[1], B.varIndices[1]], (l) => [l[0].sub(l[1])]);
+    }) },
+  },
+  operations: { /* op: (model, ...args) => … — run inside model.asOperation when typed */ },
+  entities: [{
+    kind: "pin", refs: (e) => [e.at],                 // the points it is built of: del of one takes it
+    add: { op: "addPin", fn: (model, at, name) => {  // its constructor, as a file replays it
+      const [nm] = model.claimFirst("pin", name, () => null);
+      const e = { kind: "pin", name: nm, at };
+      model.place(e); model.record("addPin", [at, nm]); return e;
+    } },
+    samples: (model, name) => { /* the world polyline it is drawn and picked as */ },
+  }],
+  menu: [{ label: "Pin", tool: "pin" }],             // the empty-canvas menu
+  help: ["pins       pin tool, level(a, b), addPin(point)"],
+});
+defineWorkbench("pins", { label: "Pins", modules: ["core", "sketch", "pins"] });
+```
+
+The rules that are easy to miss:
+
+- **A name is one module's.** Defining a tool, glyph, relation spelling, op or
+  entity kind another module has is refused with the name, and nothing of the
+  module is registered. A group is the exception: extend it freely.
+- **An entity kind declares its structure** (`refs`, `vars`, `curve`,
+  `closed`, `plane`, `heldBy`, `bounds` — `EntityKindSpec` in `src/model.ts`)
+  and, for the layers above, `frame` (a conic laid out as `arcgeom.ts`'s
+  `ArcFrame`: drawn, boxed, looped, picked), `describe` (the hover line),
+  `step` (its Part 42 curve) or `samples` (a polyline, for a kind with no
+  frame). Its TypeScript type joins `Entity` by declaration merging — see
+  `src/kinds/ellipse.ts`. Never add a kind's name to `model.ts`, `loops.ts`,
+  `faces.ts`, `picking.ts` or `step.ts`: `test/modules.test.ts` greps them for
+  the ellipse, and the rule is the same for every kind.
+- **A relation's body is still one `model.relation(…)`**, with
+  `model.addResidual` inside — the module entry does not change that.
+- **Help, menu and File items** are the module's too (`help`, `menu`,
+  `files`); `help()` and the menus read them in load order.
+
+**A workbench file** is the same call in one `<name>.zerocad.js`, with a
+manifest comment at its very top that names exactly what it registers — the
+app shows this before anything runs, and refuses a file that registers
+anything it does not list:
+
+```js
+/* zerocad-workbench
+{ "name": "pins", "label": "Pins", "workbench": "pins",
+  "tools": ["pin"], "relations": ["level"], "operations": [], "entities": ["pin"] }
+*/
+```
+
+`test/fixtures/workbenches/pins.zerocad.js` is a whole one. Add it with the
+logo menu's **Add workbench…**, `addWorkbench()`, or `loadModule(url)`; test it
+with `test/modules.test.ts`'s pattern (`readManifest`, `loadingFile`).
 
 ## Documentation
 

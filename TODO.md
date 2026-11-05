@@ -24,6 +24,68 @@ otherwise.
 
 ## Decisions made so far — veto here if any are wrong
 
+- **Workbenches: the app as modules, the entity extension point, and Add
+  workbench… from a file on the device** (the owner, 2026-11-05: *"the whole
+  framework should be modular and extensible (!). like onshape workbenches"*;
+  *"I should be able to add a workbench simply by opening a file on my
+  device, from the menu"*). Spec: [`workbenches.md`](docs/plans/workbenches.md),
+  **built**; its *As built* lists every deviation. Open to veto, as built:
+  - **The modules.** `defineModule(name, spec)` (`src/modules.ts`) fills every
+    table: glyphs, groups, the menu's tool items and File items, relations,
+    the replay table, `help()`. Seven built-ins, loaded in this order:
+    **core** (point, line, frame; `dist fix onplane coin mid par perp ang on
+    eq sym col horizontal vertical spacing measure`; `set construction`; the
+    structural edits), **sketch** (rectangle, polygon, slot, circle, arc,
+    ellipse, fillet, dimension, constrain; `rad oncircle conc eqrad tan
+    arcends intersection pierce dia onellipse major minor`; `fillet hole
+    unhole`; the ellipse kind), **solids** (extrude, revolve, sketch, the edit
+    dialog; `extrude revolve regen`), **files** (New, Open…, Save, Share…),
+    **step** (Export STEP…), **organiser** (groups, open group, hide/show),
+    **interface** (help's shared sections; nothing else). ⚠ `interface` is not
+    in the spec; files is before step so the menu keeps its order.
+  - **A name twice is refused, whole.** A module naming a tool, icon,
+    relation spelling, op or entity kind another module has is refused with
+    the name and the owner, before anything is registered. A group may be
+    extended by any module; members keep module order.
+  - **The entity declaration** (`EntityKindSpec` in `model.ts`, `EntityDecl`
+    in `modules.ts`): `refs`, `vars`, `curve`, `closed`, `plane` (centre,
+    normal, the point it is straightened against), `heldBy`, `bounds`; and
+    above the model `add` (its journal op), `frame` (curveplane.ts), `describe`
+    (picking.ts), `step` (step.ts), `samples` (projection.ts, for a kind with
+    no frame). `Entity` is `EntityTypes[keyof EntityTypes]`, and a kind's file
+    joins it by declaration merging. ⚠ **Point, line, circle, arc and frame
+    are not declarations**: model.ts and the layers above still know them by
+    name, and ask the registry for every other kind. The ellipse is the proof
+    the point is real; re-expressing the five through facets would touch every
+    file for nothing a test can see. Veto and they move.
+  - **The workbench table**: **part** = core, sketch, solids, files, step,
+    organiser, interface — the default, today's tray exactly; **sketch** =
+    core, sketch, files, organiser, interface. A module no workbench names (one
+    typed at the command line) is on every tray, as a typed tool is.
+  - **The workbench is the document's**: in a file's head (format 16, absent
+    for part), not in the journal and not in the undo snapshot — switching is
+    no undo step and undo does not switch back. ⚠ The organiser's heading names
+    it only when it is not part, so part is today's picture pixel for pixel.
+  - **Loading and its consent.** A workbench file is one `.zerocad.js` with a
+    `/* zerocad-workbench { … } */` manifest at its top. The app reads the
+    manifest without running anything, shows it, and asks; Add runs the file
+    once in the command line's scope (curated, not a sandbox — the question
+    says so); `defineModule` refuses a module registering anything the
+    manifest did not show (tools, relations by first name, operations, entity
+    kinds) before registering any of it. ⚠ Top-level code outside
+    `defineModule` has run by then — the consent was to run the file. Kept in
+    IndexedDB (`neocad.workbenches.v1`) and loaded at every start without
+    asking again; Share hands the stored text back; Remove takes it off the
+    device, the tray and the menu at once. ⚠ Its entity kinds and any typed
+    names already in the live command line stay until the next start.
+  - **A document that needs a missing module** records it in its head (name,
+    FNV-1a hash of its source, the ops its journal uses). Opened without it:
+    those steps, every later step naming something they made, and any step
+    that refuses while a module is missing are left out; the rest opens; the
+    log says which workbench is missing and an offer opens Add workbench…;
+    added, the drawing reopens whole. ⚠ Saving before adding it writes the
+    file without those steps (the log says so).
+
 - **Solids on SMLib: extrude and revolve add to, cut from, intersect or
   start a body** (the owner, 2026-11-04: *"I find it impossible to make
   anything beyond an extruded shape. fix this so I can create complex
@@ -1665,6 +1727,35 @@ starts.
          same seams.
       Out of scope for now, written down: text in sketches; `tan` between
       an ellipse and another curve; tangent handles on splines unless free.
+      - **[x] workbenches BUILT (2026-11-05)** on `claude/workbenches` — the
+        register entry above, and every deviation in the spec's *As built*.
+        Found and left in place, each written down:
+        - [ ] **Ten e2e tests fail on the base branch in this environment, run
+          alone**, and fail the same way on this branch (chrome 2, fits 2,
+          selecthand 1, shapes 1, sketchrelations 1, touch 3): most aim a
+          finger at a canvas point the organiser pane now covers on an iPhone
+          (`(315, 227) is under the organiser panel`). Not this package's; the
+          counts were the oracle for "no visible change" (555 tests, 542 pass,
+          12 fail, 1 skipped, before and after the re-cut; solidsphone's two
+          are load flakes that pass alone).
+        - [ ] **The ellipse is still named outside the five files the spec's
+          grep covers**: its relations, the twin and refusals in operations.ts,
+          the exact B-rep in solids.ts, projection's comment, arcgeom's conic
+          frame helper, glyphs, quiet, menu, boxselect, sketchface,
+          dimensioning, persist's `values.minors`, `ls()`, main.ts's drawing
+          condition. Each could ask the declaration; the spline should push
+          the first few through it.
+        - [ ] **Relation auto-names after a left-out step shift** when a file
+          opens without a module it needs: a later `deleteRelation("r7")` can
+          name another relation. Rare (it needs a deletion by name after the
+          missing step); a missing module's relations could be counted in.
+        - [ ] **A removed module's typed names stay callable** in the live
+          command line until the next start or open (the scope is copied by
+          the evaluator, and nothing deletes from it).
+        - [ ] **No `.zip` of several files**, as the spec allowed for later.
+        - [ ] **The iPhone Add-workbench e2e test failed once in four runs**,
+          uncaptured; the touch harness's known loss under load is the likely
+          cause (no retry added).
       - **The order, confirmed by the owner (2026-11-05, *"the order is
         good"*):** after shapes and relations land,
         [`workbenches.md`](docs/plans/workbenches.md) (the owner: *"the whole

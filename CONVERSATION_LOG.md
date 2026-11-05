@@ -106,6 +106,62 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### Workbenches: why each layer owns its facet of a kind, and why the manifest is read and not run
+
+The owner asked for the framework to be *"modular and extensible (!). like
+onshape workbenches"*, and for a workbench to be added *"simply by opening a
+file on my device, from the menu"*. Three decisions carried most of it.
+
+**One declaration object read by every layer was rejected.** The obvious
+shape of "an entity kind declares how it is drawn, picked, looped and written"
+is one object with all of that on it, handed to everyone. But the model would
+then hold an object whose methods need the drawing's types, and the first
+time any facet reached for `projection.ts` the layer rule would be gone in
+spirit even if not in imports. So the model owns only the structure facet
+(`EntityKindSpec`), and each layer above owns a registry for the one question
+it asks — curveplane's frame, picking's hover line, step's writer,
+projection's polyline. `defineModule` is the only thing that sees the whole
+declaration, and it sits above all of them. For TypeScript, `Entity` became
+`EntityTypes[keyof EntityTypes]` so a kind's own file can add itself by
+declaration merging; the alternative, a catch-all `{ kind: string }` member in
+the union, would have stopped every `switch (e.kind)` in the program from
+narrowing.
+
+**Point, line, circle, arc and frame stayed known by name.** Declaring them
+too was the spec's wish; doing it would have meant routing every fast path in
+loops, picking, faces, projection and the renderer through facets, a change
+with no test that could see it and a large surface for a regression the e2e
+suite might not. The ellipse was the one with a grep to pass, and it did; the
+five are written up as vetoable.
+
+**The re-cut was proved against the build before, not against itself.** The
+oracle was the same e2e results failure for failure (the base branch already
+had 12 failures in this environment — 10 deterministic, under the organiser
+pane on an iPhone — so "green" was not available as a criterion), the same
+unit tests, and every fixture saving to the same bytes under both builds. No
+existing fixture had an ellipse, so one was written *by the build before* and
+committed, and the ellipse's move was checked against it.
+
+**The workbench is in the head, not the journal.** A journalled
+`setWorkbench` would have made switching an undo step and put a UI choice into
+the transcript of the model; the head is where `tools` already rides, and it
+is a parameter of `save`, so the undo snapshot never sees it.
+
+**The manifest is read, not run, and checked at `defineModule`.** A dry run —
+evaluate the file with a recording `defineModule` to see what it would
+register — was rejected: it runs the file before the person has said yes,
+which is the one thing the consent is for. Reading a JSON comment runs
+nothing. The check that the file does what its manifest says is made inside
+the real `defineModule`, before anything is registered; code at the file's
+top level outside that call has run by then, and that is said plainly (the
+person consented to running it; the scope is curated, not a sandbox).
+
+**Found by looking:** the missing-workbench offer, centred, covered the very
+points it said were safe; the notice was red though it is guidance; and on a
+phone the organiser's strip wrapped "organiser · Pins" and clipped it. The
+offer now sits under the status, the line is ordinary, and the word
+"organiser" ellipsises before the workbench's name does.
+
 ### Sketch shapes: why the ellipse is a point and a number, and the slot's tangencies are perps
 
 **A point for the major end, not an angle.** An ellipse could have been a
