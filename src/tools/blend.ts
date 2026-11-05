@@ -205,7 +205,10 @@ abstract class BlendTool extends FeatureTool {
       this.ctx.requestRender();
       return;
     }
-    const next = this.hitAt(p.screen);
+    // Over the size label nothing else is lit: a press there drags the size.
+    const onHandle = this.handle !== null
+      && Math.hypot(p.screen[0] - this.handle.at[0], p.screen[1] - this.handle.at[1]) < HANDLE_REACH * this.ui;
+    const next = onHandle ? null : this.hitAt(p.screen);
     if (JSON.stringify(next) === JSON.stringify(this.under)) return;
     this.under = next;
     this.ctx.requestRender();
@@ -214,6 +217,7 @@ abstract class BlendTool extends FeatureTool {
   onDown(p: PointerInfo): void {
     if (this.handle && Math.hypot(p.screen[0] - this.handle.at[0], p.screen[1] - this.handle.at[1]) < HANDLE_REACH * this.ui) {
       this.drag = { from: p.screen, start: this.sizeOf(this.values()) };
+      this.under = null;
       return;
     }
     const s = this.ctx.solids;
@@ -273,8 +277,10 @@ abstract class BlendTool extends FeatureTool {
     const trial = this.trialNow();
     s?.trial(trial ?? this.idleTrial());
     const why = s?.trialAnswer().why ?? null;
-    if (why && why !== this.toldWhy && this.edges.length) this.guide(why);
+    // Recorded before it is said: saying it redraws, and the redraw is this.
+    const fresh = why !== null && why !== this.toldWhy && this.edges.length > 0;
     this.toldWhy = why ?? "";
+    if (fresh) this.guide(why!);
     const g = r.g;
     const stroke = (pts: number[][], colour: string, width: number) => {
       if (pts.length < 2) return;
@@ -386,8 +392,23 @@ export function blendSteps(kind: BlendKind, body: string, edges: readonly string
 }
 
 abstract class NewBlendTool extends BlendTool {
+  /**
+   * The number the preview runs under, guessed once per pick set and kept: the
+   * blend ✓ makes is then most likely that number, so its first answer is the
+   * preview's own from the cache — and a guess made again after ✓ would be the
+   * next feature's, previewing a second fillet of edges already rounded.
+   */
+  private frozen: number | null = null;
+
   protected trialId(): number {
-    return nextFeatureNumber(this.ctx.model);
+    if (this.frozen === null) this.frozen = nextFeatureNumber(this.ctx.model);
+    return this.frozen;
+  }
+
+  protected dropPicks(): boolean {
+    const had = super.dropPicks();
+    this.frozen = null;
+    return had;
   }
 
   protected replaceId(): number | undefined {
@@ -403,7 +424,7 @@ abstract class NewBlendTool extends BlendTool {
 export class EdgeFilletTool extends NewBlendTool {
   static readonly options: OptionSpecs = {
     radius: { default: DEFAULT_BLEND, unit: "length", check: positive },
-    tangent: { default: true, label: "tangent chain" },
+    tangent: { default: true, label: "tangent" },
   };
   static readonly summary = "Fillets a solid's edges: click edges or a face, see it, then ✓";
   readonly name = "round";
@@ -413,7 +434,7 @@ export class EdgeFilletTool extends NewBlendTool {
 export class EdgeChamferTool extends NewBlendTool {
   static readonly options: OptionSpecs = {
     setback: { default: DEFAULT_BLEND, unit: "length", check: positive },
-    tangent: { default: true, label: "tangent chain" },
+    tangent: { default: true, label: "tangent" },
   };
   static readonly summary = "Chamfers a solid's edges, one setback: click edges or a face, then ✓";
   readonly name = "chamfer";
@@ -510,7 +531,7 @@ abstract class EditBlendTool extends BlendTool {
 export class EditFilletTool extends EditBlendTool {
   static readonly options: OptionSpecs = {
     radius: { default: DEFAULT_BLEND, unit: "length", check: positive },
-    tangent: { default: true, label: "tangent chain" },
+    tangent: { default: true, label: "tangent" },
   };
   readonly name = "edit fillet";
   protected readonly kind = "fillet";
@@ -519,7 +540,7 @@ export class EditFilletTool extends EditBlendTool {
 export class EditChamferTool extends EditBlendTool {
   static readonly options: OptionSpecs = {
     setback: { default: DEFAULT_BLEND, unit: "length", check: positive },
-    tangent: { default: true, label: "tangent chain" },
+    tangent: { default: true, label: "tangent" },
   };
   readonly name = "edit chamfer";
   protected readonly kind = "chamfer";

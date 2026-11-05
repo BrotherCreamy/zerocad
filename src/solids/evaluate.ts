@@ -360,7 +360,15 @@ export class Evaluator {
     } catch (e) {
       k.free(out);
       const what = n.op === "fillet" ? `radius ${n.size}` : `setback ${n.size}`;
-      return fail(`the kernel could not ${verb} ${picked.length === 1 ? "that edge" : `those ${picked.length} edges`} at ${what} — `
+      const them = picked.length === 1 ? "that edge" : `those ${picked.length} edges`;
+      // Measured (test/solidfillets.test.ts): SMLib refuses to fillet an edge
+      // that runs into an earlier fillet's face at a corner, whatever the
+      // radius — and fillets both in one call. Said as what to do.
+      if (n.op === "fillet" && this.meetsBlend(edges, names, picked)) {
+        return fail(`the kernel cannot fillet ${them} where it runs into an earlier fillet — add it to that fillet instead `
+          + `(Edit it and click the edge), or fillet both in one (${message(e)})`);
+      }
+      return fail(`the kernel could not ${verb} ${them} at ${what} — `
         + `${n.op === "fillet" ? "a radius" : "a setback"} too big for a face next to it is the usual reason (${message(e)})`);
     }
     if (!k.manifold(out)) {
@@ -378,6 +386,17 @@ export class Evaluator {
       k.tagFace(out, i, blendTag(n.id, of[best]));
     });
     return out;
+  }
+
+  /** Whether any picked edge ends where an edge of an earlier blend's face does. */
+  private meetsBlend(edges: readonly EdgeInfo[], names: readonly string[], picked: readonly number[]): boolean {
+    const blendFace = new RegExp(`(?:^|\\|)${this.prefix}(\\d+)\\.f\\d+`);
+    const ends = edges.flatMap((e, i) => {
+      const m = blendFace.exec(names[i]);
+      return m && this.blends.has(Number(m[1])) ? [e.start, e.end] : [];
+    });
+    const near = (a: V3, b: V3) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]) < 1e-6 * Math.max(1, Math.hypot(...a));
+    return picked.some((i) => ends.some((p) => near(p, edges[i].start) || near(p, edges[i].end)));
   }
 
   private extract(s: Solid, p: Program): NonNullable<BodyResult["solid"]> {

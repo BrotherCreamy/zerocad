@@ -1886,6 +1886,8 @@ async function main() {
   // along its outward normal as seen. None until the kernel has answered.
   const blendAnchor = (m: Model, v: View, r: { name: string }) => {
     const b = [...m.blends.values()].find((x) => x.size === r.name);
+    // Its own edit dialog draws the size where it is being changed.
+    if (b && engine.armed?.target === b.name) return [];
     const body = b ? solidBodies.views().find((x) => x.name === b.into) : undefined;
     const s = body?.result.solid;
     if (!b || !body || !s) return [];

@@ -119,7 +119,8 @@ export function organiserSections(model: Model, selection: readonly string[] = [
   for (const b of model.blends.values()) {
     const eye = eyeOf(model, b.owns, model.hidden.has(b.name));
     const row: OrganiserRow = {
-      name: b.name, detail: `${b.kind} · ${b.edges.length} edge${b.edges.length === 1 ? "" : "s"}`, count: b.owns.length, eye,
+      // The kind alone: a phone's pane cut "chamfer · 1 edge" (seen); its menu's header says the edges.
+      name: b.name, detail: b.kind, count: b.owns.length, eye,
       eyeCommand: eyeCommand(b.name, eye), tapCommand: `select(${quoted(b.name)})`,
       selected: lit(b.owns.filter((n) => !model.hidden.has(n))), open: null, openCommand: null,
     };

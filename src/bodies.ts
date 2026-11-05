@@ -116,7 +116,11 @@ export function programOf(model: Model, all = false, trial: BlendTrial | null = 
     if (tried) {
       const at = trial.replace === undefined ? -1 : nodes.findIndex((n) => n.id === trial.replace);
       if (at >= 0) nodes[at] = trial.node;
-      else nodes.push(trial.node);
+      // A new blend's trial steps aside once the blend it previews is made:
+      // between ✓ and the tool letting go, both would be in the chain, and the
+      // second would find its edges already rounded (seen in the browser: a
+      // refusal logged for a fillet that had just succeeded).
+      else if (!nodes.some((n) => n.id === trial.node.id)) nodes.push(trial.node);
     }
     chains.set(chain.name, chain);
     bodies.push({ name: chain.name, nodes });
@@ -332,7 +336,7 @@ export class Bodies {
   trial(t: BlendTrial | null): boolean {
     if (JSON.stringify(t) === JSON.stringify(this.trying)) return false;
     this.trying = t;
-    if (t === null) this.triedWhy = null;
+    this.triedWhy = null;
     return true;
   }
 
@@ -430,6 +434,8 @@ export class Bodies {
       // body without it would read as the fillet vanishing — and says why.
       const trial = p.trial?.body === b.name ? p.trial : null;
       if (trial) {
+        // An answer to a trial since ended or changed says nothing about the one up now.
+        if (JSON.stringify(trial) !== JSON.stringify(this.trying)) continue;
         const refused = result.failed.find((f) => f.id === trial.node.id);
         this.triedWhy = refused ? refused.why : null;
         if (!refused && result.solid) this.tried = { name: b.name, features, result, faces: bodyFaces(result) };
@@ -587,9 +593,14 @@ export class Bodies {
         }
       }
       const name = (id: number) => `${PREFIX}${id}`;
-      for (const f of r.failed) lines.push(`${name(f.id)} could not be applied to ${b.name}: ${f.why}`);
+      // A preview's refusal is the tool's to say (it does, as guidance), not
+      // the body's — nor is one from a preview since ended, whose answer is
+      // still the latest until the body's own arrives: only nodes the body has.
+      const trial = p.trial?.body === b.name ? p.trial.node.id : null;
+      const own = (id: number) => id !== trial && b.nodes.some((n) => n.id === id);
+      for (const f of r.failed) if (own(f.id)) lines.push(`${name(f.id)} could not be applied to ${b.name}: ${f.why}`);
       // A fillet some of whose edges a change took (docs/plans/solid-fillets.md): the rest are still rounded.
-      for (const m of r.missing ?? []) {
+      for (const m of (r.missing ?? []).filter((x) => own(x.id))) {
         const what = model?.blends.get(name(m.id))?.kind ?? "fillet";
         lines.push(`${name(m.id)} no longer ${what === "fillet" ? "fillets" : "chamfers"} ${m.edges.join(", ")} — ${b.name} has no such edge now`);
       }
