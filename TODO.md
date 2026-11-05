@@ -2748,8 +2748,8 @@ extended the way `defineTool` extends the tool registry would close it.
         now starts only when a body has two features (`bodies.test.ts`
         asserts no Worker for old files).
       - [ ] **Open: a touch tap lost under the full suite's load.**
-        `touch.e2e.ts` lost one tap on p2 in 7 of 9 full e2e runs of this
-        branch: "a finger down on a quiet corner…" 6 times and "a quick tap
+        `touch.e2e.ts` lost one tap on p2 in 6 of 9 full e2e runs of this
+        branch: "a finger down on a quiet corner…" 5 times and "a quick tap
         while the page is busy…" once.
         - It passed every time the file ran alone or with one or three
           other files (16 runs), and passed a full run with passive event

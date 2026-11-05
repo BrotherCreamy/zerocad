@@ -112,9 +112,8 @@ tests:
   empty program. It now starts only when a body has two features.
 
 **Still open:** under the full suite's load, `touch.e2e.ts` loses one tap on
-a corner, in most full runs of this branch: in 7 of 9 runs, the test was
-"a finger down on a quiet corner…" 6 times and "a quick tap while the page
-is busy…" once. It never failed in a pass of the file alone or with one
+a corner in most full runs of this branch: in 6 runs of 9, "a finger down
+on a quiet corner…" 5 times and "a quick tap while the page is busy…" once. It never failed in a pass of the file alone or with one
 other file, and the base branch's one full run here passed. Two things
 measured the same as on the base branch on the touch suite's phone page: the
 cost of a frame and the cost of a reload. No long task runs after a reload.
