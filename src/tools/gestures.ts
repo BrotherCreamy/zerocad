@@ -52,7 +52,8 @@ export const LONG_PRESS_MS = 500;
  * A long-press timer firing this much past its time means the page was busy
  * (a heavy solve, a big file opening) — and a lift that happened meanwhile may
  * be waiting in the queue behind it. So a late timer does not decide; it
- * yields once, letting queued input land first. Measured: a 40 ms tap made
+ * waits this long again, letting queued input land first (`ripe`: one turn
+ * of the queue was not enough on a loaded machine). Measured: a 40 ms tap made
  * while the page was blocked for 700 ms at touchdown was read as a held press,
  * and the tap was lost (`touch.e2e.ts`).
  */
@@ -275,12 +276,21 @@ export class Gestures {
     this.sink.end();
   }
 
-  /** The long-press timer: on time, the press is held; late, see `LATE_MS` — yield once, then decide. */
+  /**
+   * The long-press timer: on time, the press is held; late, see `LATE_MS` —
+   * wait a grace of that much, then decide. One turn of the queue was the
+   * first version, and it lost a tap under load (touch.e2e.ts, the busy
+   * page, once in nine full runs): the browser forwards a lift only once the
+   * landing is acknowledged — after the block, by a message — and on a
+   * loaded machine that message takes longer than one turn. A long-press on
+   * a page that was already blocked longer than this opens its menu
+   * `LATE_MS` later, which is not felt.
+   */
   private ripe(id: number, due: number): void {
     const p = this.phase;
     if (p.kind !== "pending" || p.id !== id) return;
     if (this.clock.now() - due <= LATE_MS) { this.held(id); return; }
-    p.stop = this.clock.after(0, () => this.held(id));
+    p.stop = this.clock.after(LATE_MS, () => this.held(id));
   }
 
   private held(id: number): void {

@@ -7,6 +7,32 @@ decisions.
 
 ---
 
+## A tap on a loaded phone is not lost to the menu
+
+Two ways a tap could go missing when the page was slow, both found by the
+touch suite under the full suite's load while solids were being built (the
+solids PR left it open; 6 of 9 full runs there), fixed in the engine rather
+than the tests:
+
+- **A second finger ends the menu the first opened.** A finger held past
+  the long-press opens the context menu. When a second finger then landed,
+  the recogniser dropped the held gesture (as it should) but the menu stayed,
+  so the next tap closed the menu instead of selecting what it landed on.
+  Now `abandon` withdraws the menu, as a drag out of the held press already
+  did. The quiet-corner test says which state the recogniser was in when
+  the second finger landed, so a loaded machine's answer is legible.
+- **A late long-press timer waits a grace, not one turn.** When the page was
+  blocked at touchdown, the timer fired late and yielded one turn of the
+  queue for a lift that might be waiting. But the browser forwards a lift only
+  once the landing is acknowledged — after the block, by a message — and on
+  a loaded machine that message takes longer than a turn. It now waits
+  `LATE_MS` (50 ms); a long-press on a page that was already blocked longer
+  opens 50 ms later, which is not felt. `gestures.test.ts` holds both.
+
+Seen once in three paired runs and left open in `TODO.md`: the depth test
+"two solids driven through each other" found the painter's picture right
+everywhere (it expects it wrong inside the overlap).
+
 ## Solids on SMLib — extrude and revolve add to, cut from or start a body
 
 The owner:

@@ -198,6 +198,27 @@ test("a long-press is the menu, for what it landed on; long-press then drag with
   assert.equal(engine.box, null);
 });
 
+// Seen in the browser under load (touch.e2e.ts, the quiet corner): a finger
+// held past the long-press while the page was slow had opened the menu, a
+// second finger ended its gesture, and the tap that followed closed the menu
+// instead of selecting. A second finger ends what the first opened too.
+test("a long-press joined by a second finger withdraws the menu it opened, and the next tap selects", async () => {
+  const { model, view } = await sketch();
+  const { engine, finger, clock, log, tap } = engineOn(model, view);
+  const f = finger(1);
+  f.down(300, 300);
+  clock.advance(LONG_PRESS_MS + 1);
+  assert.deepEqual(log.menus, ["c"]);
+  const g = finger(2);
+  g.down(100, 400);
+  assert.equal(log.withdrawn, 1, "the menu goes with the gesture that opened it");
+  g.up(100, 400);
+  f.up(300, 300);
+  assert.equal(engine.selection.size, 0);
+  tap(300, 300);
+  assert.deepEqual([...engine.selection.names], ["c"]);
+});
+
 test("two fingers pan by the centroid and zoom about it: the world point under the centroid stays under it", async () => {
   const { model, view } = await sketch();
   const { engine, finger } = engineOn(model, view);

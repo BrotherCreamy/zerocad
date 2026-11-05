@@ -1330,6 +1330,12 @@ export class ToolEngine {
         this.touchTool = null;
         const armed = this.armed;
         if (tool && this.active === tool && armed) this.arm(armed.name, armed.options);
+        // A press held past the long-press opened the menu; the second
+        // finger ends that gesture, so it ends the menu too — as a drag out
+        // of the held press does (`boxStart`). Seen under load in the
+        // browser: the held finger's menu stayed, and the tap that followed
+        // closed it instead of selecting (touch.e2e.ts, the quiet corner).
+        this.onContextMenuWithdrawn();
         if (this.idle) {
           // A drag is settled rather than dropped, for `cancel`'s reasons; a
           // box and an orbit are simply over.

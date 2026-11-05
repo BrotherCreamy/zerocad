@@ -223,10 +223,16 @@ test("a finger down on a quiet corner reveals it, as a hover does; lifting ends 
   await shot(app, "reveal");
   // Ended without a tap — a second finger, which drops the first's gesture
   // however long the first was down (a lift would be a tap or not by the
-  // clock, and a loaded machine's clock is not the test's to choose).
+  // clock, and a loaded machine's clock is not the test's to choose). On a
+  // loaded machine the reads above can outlast the long-press, and the
+  // first finger has opened the menu by now: the second finger ends that
+  // too, so the tap below selects rather than closing a menu.
+  const before = await engine<string>("engine.gestures.state");
   await f.down([x - 120, y + 60]);
   await f.up();
   assert.equal(await engine("engine.hover"), null, "the finger's reveal is over");
+  assert.equal(await app.page.$eval("#ctxmenu", (el) => (el as HTMLElement).hidden), true,
+    `no menu is left open by the first finger (it was "${before}" when the second landed)`);
   assert.deepEqual(await app.selection(), []);
   assert.equal((await dot())[3], 0, "quiet again once the hand is off");
   // What is selected stays drawn after the lift; cleared, it is quiet again.

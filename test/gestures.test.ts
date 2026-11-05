@@ -267,13 +267,31 @@ test("a long-press timer that fires late yields once, so a lift waiting in the q
   assert.ok(!calls.some((c) => c.startsWith("longPress")));
 });
 
-test("a late timer with no lift waiting still makes a long-press, one yield later", () => {
+test("a late timer with no lift waiting still makes a long-press, a grace later", () => {
   const { g, clock, calls } = setup();
   g.down(1, 10, 10, 0);
   clock.block(LONG_PRESS_MS + LATE_MS + 150);
   clock.fireOnce();
   clock.advance(0);
+  assert.ok(!calls.some((c) => c.startsWith("longPress")), "not on the next turn: the lift may still be on its way");
+  clock.advance(LATE_MS);
   assert.ok(calls.includes("longPress 10,10"), calls.join(" | "));
+});
+
+// Measured in the browser (touch.e2e.ts, the busy page, under the full suite's
+// load): the browser forwards a lift only once the landing is acknowledged,
+// which is after the block, and on a loaded machine that takes longer than
+// one turn of the page's queue. A grace of LATE_MS covers it.
+test("a lift arriving within the grace after a late timer is still a tap", () => {
+  const { g, clock, calls } = setup();
+  g.down(1, 10, 10, 0);
+  clock.block(LONG_PRESS_MS + LATE_MS + 150);
+  clock.fireOnce();
+  clock.advance(LATE_MS - 1);
+  g.up(1, 10, 10, 40);
+  clock.advance(LATE_MS);
+  assert.ok(calls.includes("tap 10,10"), calls.join(" | "));
+  assert.ok(!calls.some((c) => c.startsWith("longPress")));
 });
 
 test("on time, a held finger is a long-press exactly as before", () => {

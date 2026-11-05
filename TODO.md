@@ -2747,7 +2747,28 @@ extended the way `defineTool` extends the tool registry would close it.
       - Every page load started the kernel's Worker for an empty program. It
         now starts only when a body has two features (`bodies.test.ts`
         asserts no Worker for old files).
-      - [ ] **Open: a touch tap lost under the full suite's load.**
+      - [x] **A touch tap lost under the full suite's load — fixed in the
+        engine (2026-11-05).** Two causes, read off `gestures.ts` against the
+        two tests, both in the CHANGELOG: a second finger did not withdraw
+        the menu a held press had opened (the quiet corner's reads outlast
+        the long-press under load, so the tap that followed closed a menu);
+        and a late long-press timer yielded one turn for the queued lift,
+        when the browser forwards a lift only after the landing's ack, which
+        under load is longer than a turn — it now waits `LATE_MS`. The
+        quiet-corner test records the recogniser's state as the second
+        finger lands, so a recurrence says why. The flake did not reproduce
+        in 3 paired runs (touch, solids, depth) before the fix; the fix
+        stands on the reading and the unit tests.
+      - [ ] **Open: `depth.e2e.ts` "two solids driven through each other"
+        failed once in 3 paired runs** (touch, solids, depth together): the
+        painter's offscreen picture matched the oracle at every sample
+        (`missed` 0, where > 100 is expected), after 40 s. It passed the full
+        gate and the worker's runs. The scene makes two bodies (`mode:
+        "new"`), so no kernel is involved; something in `paintFaces` or the
+        oracle under load gave the same picture. Next: on a failure, dump
+        `want`'s face count and a histogram of `painted` to see which side
+        went empty.
+        The worker's record of the touch flake:
         `touch.e2e.ts` lost one tap on p2 in 6 of 9 full e2e runs of this
         branch: "a finger down on a quiet corner…" 5 times and "a quick tap
         while the page is busy…" once.
