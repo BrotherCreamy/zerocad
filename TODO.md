@@ -1554,6 +1554,12 @@ starts.
          import `ellipse.ts` after `arc.ts` in `main.ts` to put curves after
          arc; a member needs nothing else (the table already names it).
          Left open: no keyboard way through a flyout; not tried on an iPhone.
+         **Found, not this package's:** on a machine without `npm run
+         build:solids`, two `hidden.e2e.ts` tests (the stepped block from a
+         corner; the boss on a plate) fail every time, alone and in the full
+         suite, on this branch and on its base commit alike — they appear to
+         need the kernel body the boss makes and, unlike `solids.e2e.ts`, do
+         not skip without the SMLib build. Make them skip (or need) it.
       2. In parallel on that: [`sketch-shapes.md`](docs/plans/sketch-shapes.md)
          (polygon, slot, the ellipse as a new entity),
          [`sketch-edit.md`](docs/plans/sketch-edit.md) (trim, extend, offset,
