@@ -26,8 +26,9 @@ deviation under *As built*):
   organiser, interface. A module that registers a name something already has
   is refused with that name, and registers nothing. `modules()` lists them.
 - **Nothing you could see changed.** The whole unit suite passes with the
-  same tests, the e2e suite has the same results as the build before (the
-  same failures too, which were there before: see TODO.md), and every
+  same tests, the e2e suite has the same results as the build before, failure
+  for failure (that build had twelve, since fixed on the working branch: see
+  TODO.md), and every
   fixture file — and a new one with every sketch-shapes piece in it, written
   by the build before — replays to the same bytes.
 - **The entity extension point.** An entity kind is declared — what it is

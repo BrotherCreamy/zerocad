@@ -1730,14 +1730,15 @@ starts.
       - **[x] workbenches BUILT (2026-11-05)** on `claude/workbenches` — the
         register entry above, and every deviation in the spec's *As built*.
         Found and left in place, each written down:
-        - [ ] **Ten e2e tests fail on the base branch in this environment, run
-          alone**, and fail the same way on this branch (chrome 2, fits 2,
-          selecthand 1, shapes 1, sketchrelations 1, touch 3): most aim a
-          finger at a canvas point the organiser pane now covers on an iPhone
-          (`(315, 227) is under the organiser panel`). Not this package's; the
-          counts were the oracle for "no visible change" (555 tests, 542 pass,
-          12 fail, 1 skipped, before and after the re-cut; solidsphone's two
-          are load flakes that pass alone).
+        - [x] **The e2e record.** On the base this branch was cut from
+          (5c891d3) 555 tests, 542 pass, 12 fail, 1 skipped — ten of them
+          deterministic (a finger aimed under the organiser pane on an iPhone,
+          `(315, 227) is under the organiser panel`), fixed on the base by the
+          relate group (8f03383). After the re-cut: the identical 555 / 542 /
+          12 / 1, failure for failure — the oracle for "no visible change".
+          On 8f03383: 555 / 551 / 3 / 1 (three timing tests under load). This
+          branch, merged with it: 564 / 563 / 1 / 0 — the one a touch test
+          that passed when its file was run alone (18/18).
         - [ ] **The ellipse is still named outside the five files the spec's
           grep covers**: its relations, the twin and refusals in operations.ts,
           the exact B-rep in solids.ts, projection's comment, arcgeom's conic

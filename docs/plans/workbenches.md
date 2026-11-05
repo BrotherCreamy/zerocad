@@ -314,9 +314,12 @@ offer (`#wbmissing`).
 same 1400, plus 10 in `test/modules.test.ts`). Kernel 11. E2E: the base build 555 tests,
 542 pass, 12 fail, 1 skipped; after the re-cut the identical 555 / 542 / 12 /
 1, failure for failure; run alone on the base, 10 of the 12 still fail (a
-finger aimed under the organiser pane on an iPhone — not this package's,
-TODO.md) and solidsphone's 2 pass. Fixtures: every journal fixture, and
-`shapes-v15`, replay to the same bytes as under the build before the re-cut.
+finger aimed under the organiser pane on an iPhone — fixed on the base by its
+relate group, 8f03383, merged here) and solidsphone's 2 pass. On 8f03383:
+555 / 551 / 3 / 1. This branch merged with it: 564 / 563 / 1 / 0, the one a
+touch test that passed with its file run alone (18/18). Fixtures: every
+journal fixture, and `shapes-v15`, replay to the same model as under the
+build before the re-cut (the same bytes but for the format's version).
 Screenshots 135–143, each looked at.
 
 Limitations left in place, deliberately:
