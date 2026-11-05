@@ -15,7 +15,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { Model } from "../src/model.ts";
-import { extrude, revolve } from "../src/operations.ts";
+import { extrude, fillet as sketchFillet, revolve } from "../src/operations.ts";
+import { chamferEdges, filletEdges } from "../src/blends.ts";
 import { programOf } from "../src/bodies.ts";
 import { kernelBody } from "../src/kernelbrep.ts";
 import { stepExport, STEP_UNCERTAINTY, type KernelSolid } from "../src/step.ts";
@@ -24,6 +25,8 @@ import { parallel } from "../src/relations/geometry.ts";
 import { AP214_TYPES, checkShell, genus, parseStep, refOf, type Value } from "./stepread.ts";
 import { L, T, W, circleOn, loadSolver, onTop, plate } from "./solids/scene.ts";
 import { polygon } from "./profiles.ts";
+import { tiltedFrame } from "./frames.ts";
+import { PARTS as SPIKE_PARTS } from "./solids/parts.ts";
 import { kernel, noKernel as skip } from "./solids/load.ts";
 
 const neg = (v: number[]) => v.map((c) => -c);
@@ -101,6 +104,41 @@ const PARTS: KernelPart[] = [
     },
     volume: null,
   },
+  // Fillets and chamfers (docs/plans/solid-fillets.md): their faces are the
+  // kernel's B-spline surfaces, written as every kernel face with no feature
+  // role is; the faces they trim keep their analytic surfaces.
+  {
+    name: "filleted-plate-drilled", what: "a plate's front and back lid edges filleted, then a hole cut through",
+    build(m) {
+      const p = plate(m);
+      filletEdges(m, p.feature, ["e1.lid|e1.m0", "e1.lid|e1.m2"], 3);
+      const top = p.lid.slice(0, 3).join(".");
+      extrude(m, circleOn(m, top, onTop(p, 50, 30), 6, p.t.uz), -T, { mode: "cut" });
+    },
+    volume: L * W * T - 2 * ((4 - Math.PI) / 4) * 9 * L - Math.PI * 36 * T,
+  },
+  {
+    name: "rounded-outline-filleted", what: "an outline rounded in the sketch, extruded, its whole lid filleted (lines and arcs)",
+    build(m) {
+      const t = tiltedFrame(m);
+      const { lines } = polygon(m, t, [[0, 0], [60, 0], [60, 40], [0, 40]]);
+      for (let i = 0; i < 4; i++) sketchFillet(m, lines[i], lines[(i + 1) % 4], 8);
+      m.solve();
+      extrude(m, lines[0], 15);
+      m.solve();
+      filletEdges(m, "e1", Array.from({ length: 8 }, (_, i) => `e1.lid|e1.m${i}`), 3);
+    },
+    volume: SPIKE_PARTS.find((x) => x.name === "fillet-outline-and-top")!.expect({ L: 60, W: 40, R: 8, T: 15, r: 3 }).volume,
+  },
+  {
+    name: "chamfered-lid", what: "a plate's four lid edges chamfered, an equal setback",
+    build(m) {
+      const p = plate(m);
+      chamferEdges(m, p.feature, ["e1.lid|e1.m0", "e1.lid|e1.m1", "e1.lid|e1.m2", "e1.lid|e1.m3"], 2);
+    },
+    // Four prisms of section c²/2 along the perimeter, less what the corners count twice (inclusion–exclusion).
+    volume: L * W * T - ((2 * 2) / 2) * 2 * (L + W) + (4 / 3) * 2 ** 3,
+  },
 ];
 
 async function exported(part: KernelPart) {
@@ -177,6 +215,21 @@ test("a boss on a curved wall: the edge where they meet is the kernel's B-spline
   const f = parseStep(x.text);
   const splines = [...f.data.values()].filter((e) => e.types.includes("B_SPLINE_CURVE_WITH_KNOTS"));
   assert.ok(splines.length >= 1, "an intersection curve no circle is");
+});
+
+test("a fillet's faces are the kernel's B-splines; the faces it trims keep their planes and the hole its cylinder", { skip }, async () => {
+  await loadSolver();
+  const { x } = await exported(PARTS.find((p) => p.name === "filleted-plate-drilled")!);
+  const f = parseStep(x.text);
+  const count = (t: string) => [...f.data.values()].filter((e) => e.types.includes(t)).length;
+  assert.equal(count("MANIFOLD_SOLID_BREP"), 1);
+  assert.equal(count("B_SPLINE_SURFACE_WITH_KNOTS"), 2, "the two fillets");
+  assert.equal(count("PLANE"), 6, "the plate's six sides, trimmed");
+  assert.equal(count("CYLINDRICAL_SURFACE"), 2, "the hole, in two halves");
+  // Where a fillet meets a plane its edges are lines (sampled so), and the
+  // file keeps the 1e-7 it can hold; only a B-spline edge loosens it.
+  assert.equal(count("B_SPLINE_CURVE_WITH_KNOTS"), 0);
+  assert.ok(x.text.includes("LENGTH_MEASURE(1.E-7)"));
 });
 
 test("the committed fixtures are what OpenCascade read as valid closed solids, and today's export is the same part", { skip }, async () => {
