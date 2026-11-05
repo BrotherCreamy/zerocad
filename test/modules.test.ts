@@ -32,7 +32,7 @@ test("the built-in modules load in order, and the tables are filled from them in
   const builtin = loadedModules().filter((m) => m.origin === "builtin").map((m) => m.name);
   assert.deepEqual(builtin, ["core", "sketch", "solids", "files", "step", "organiser", "interface"]);
   // The tray: core's tools, then the sketch module's, then the solids'.
-  assert.deepEqual(listTools(), ["point", "line", "rectangle", "polygon", "slot", "circle", "arc", "ellipse", "fillet",
+  assert.deepEqual(listTools(), ["point", "line", "rectangle", "polygon", "slot", "region", "circle", "arc", "ellipse", "fillet",
     "dimension", "constrain", "extrude", "revolve", "sketch"]);
   // The menu's tool items and the File items, module by module.
   assert.deepEqual(menuToolItems().map((i) => i.tool), ["point", "line", "rectangle", "circle", "arc", "ellipse", "fillet"]);
@@ -48,7 +48,8 @@ test("persist.ts's replay table is the modules' ops: the model's own edits, ever
   await loadKernel();
   const ops = replayEntries(new Model(3)).map(([op]) => op);
   for (const op of ["addPoint", "addLine", "addFrame", "deleteEntity", "addCircle", "addArc", "addEllipse", "dist", "parallel",
-    "onEllipse", "majorAxis", "fillet", "hole", "extrude", "revolve", "regen", "set", "construction", "group", "hide"]) {
+    "onEllipse", "majorAxis", "fillet", "hole", "extrude", "revolve", "regen", "set", "construction", "group", "hide",
+    "region", "subtract", "add", "intersect", "deleteRegionSteps", "deleteRegion"]) {
     assert.ok(ops.includes(op), `${op} replays`);
   }
   assert.equal(new Set(ops).size, ops.length, "no op twice");
@@ -73,10 +74,10 @@ test("a module that registers a name twice, or one another module has, is refuse
 test("a group extended by two modules keeps both lists, in module order; removing a module takes its members away", () => {
   const a = defineModule("ext_a", { tools: { t_ga: Stamp }, groups: { shapes: ["t_ga"] }, icons: { t_ga: svg("t_ga", "") } });
   const b = defineModule("ext_b", { tools: { t_gb: Stamp }, groups: { shapes: ["t_gb"] } });
-  assert.deepEqual(TOOL_GROUPS.shapes, ["rectangle", "polygon", "slot", "t_ga", "t_gb"]);
-  assert.deepEqual(toolbarButtons().find((x) => x.group === "shapes")!.tools, ["rectangle", "polygon", "slot", "t_ga", "t_gb"]);
+  assert.deepEqual(TOOL_GROUPS.shapes, ["rectangle", "polygon", "slot", "region", "t_ga", "t_gb"]);
+  assert.deepEqual(toolbarButtons().find((x) => x.group === "shapes")!.tools, ["rectangle", "polygon", "slot", "region", "t_ga", "t_gb"]);
   removeModule("ext_a");
-  assert.deepEqual(TOOL_GROUPS.shapes, ["rectangle", "polygon", "slot", "t_gb"]);
+  assert.deepEqual(TOOL_GROUPS.shapes, ["rectangle", "polygon", "slot", "region", "t_gb"]);
   assert.equal(getToolCtor("t_ga"), undefined);
   assert.equal(TOOL_ICONS.t_ga, undefined);
   removeModule("ext_b");
@@ -88,7 +89,7 @@ test("a group extended by two modules keeps both lists, in module order; removin
 test("the workbenches: part is today's toolbar exactly, sketch is core and sketch", () => {
   assert.deepEqual(listWorkbenches().map((w) => w.name), ["part", "sketch"]);
   assert.deepEqual(workbenchTools("part"), listTools());
-  assert.deepEqual(workbenchTools("sketch"), ["point", "line", "rectangle", "polygon", "slot", "circle", "arc", "ellipse",
+  assert.deepEqual(workbenchTools("sketch"), ["point", "line", "rectangle", "polygon", "slot", "region", "circle", "arc", "ellipse",
     "fillet", "dimension", "constrain"]);
   assert.equal(onWorkbench("sketch", "extrude"), false);
 });

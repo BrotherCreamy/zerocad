@@ -2689,6 +2689,51 @@ export function regionAtPoint(model: Model, world: number[], all: Loop[] = findL
 }
 
 /**
+ * The shortest typed `region(…)` that means the face at `index` of `all` —
+ * what the region tool types for a click, so the log shows a line a user
+ * could have written: a member only this loop has; else one only it has
+ * among the loops parallel to the plane that orients it (a lid, whose edges
+ * are walls' too), with that plane; else its first member, with the plane
+ * and the face resolved.
+ */
+export function faceNaming(model: Model, all: Loop[], index: number, toward?: number[]):
+    { member: string; frame: string | null; face: string[] | null } {
+  const own = all[index];
+  const names = faceNames(own);
+  const frame = orientingPlane(model, own, toward);
+  const said = frame === orientingPlane(model, own) ? null : frame;
+  const only = (m: string, f: string | null) => {
+    const found = loopsWith(model, all, m, f);
+    return found.length === 1 && found[0] === index;
+  };
+  for (const m of names) if (only(m, null)) return { member: m, frame: said, face: null };
+  for (const m of names) if (only(m, frame)) return { member: m, frame, face: null };
+  return { member: names[0], frame, face: names };
+}
+
+/**
+ * The shortest typed step — `subtract("rg1", "c1")` — that names the face at
+ * `index` of `all` for region `r`: a member that finds that very loop, or the
+ * face resolved beside its first member where none does alone. What the
+ * region tool types; the step's own refusals are asked separately.
+ */
+export function regionStepNaming(model: Model, op: Exclude<RegionOp, "region">, r: string, all: Loop[], index: number):
+    { member: string; face: string[] | null } {
+  const entry = model.regionEntry(r);
+  const n = regionNormal(model, entry);
+  const v = regionValue(model, r, all);
+  const base = all[v.faces[0]!];
+  const names = faceNames(all[index]);
+  for (const m of names) {
+    const level = all.map((_, i) => i).filter((i) => all[i].members.some((x) => x.name === m)
+      && parallel(all[i].plane.normal, n) && coplanarLoops(all[i], base));
+    if (level.length === 1 && level[0] === index) return { member: m, face: null };
+  }
+  void op;
+  return { member: names[0], face: names };
+}
+
+/**
  * **Makes a region of one face** — `region("l1")`: the closed loop `l1` is
  * in, everything inside it included — and returns its name, `rg1`. A member
  * in several loops is refused with them listed unless `frame` narrows it to

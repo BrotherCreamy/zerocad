@@ -2,7 +2,9 @@
 // and the ellipse — and the composites drawn of them (rectangle, polygon,
 // slot); the relations that read a curve's rim (`rad oncircle conc eqrad tan
 // arcends`, and the ellipse's); the fillet; the dimension and constrain tools;
-// and the explicit regions' `hole` and `unhole`. With core it is the sketch
+// regions — faces combined by named operations, `region`, `subtract`, `add`,
+// `intersect`, and the region tool (docs/plans/regions-as-operations.md) —
+// with the explicit regions' `hole` and `unhole` their aliases. With core it is the sketch
 // workbench; with solids and step, the part workbench.
 
 import { ELLIPSE_STRUCTURE, addEllipse, checkEllipse, ellipseOf, semiAxes } from "../kinds/ellipse.ts";
@@ -25,6 +27,7 @@ import { EllipseTool } from "../tools/ellipse.ts";
 import { FilletTool } from "../tools/fillet.ts";
 import { DimensionTool } from "../tools/dimension.ts";
 import { ConstrainTool } from "../tools/constrain.ts";
+import { RegionTool } from "../tools/regiontool.ts";
 
 /** A model method, as a replay entry. */
 const bound = (name: string) => (model: Model) => {
@@ -87,6 +90,9 @@ defineModule("sketch", {
     rectangle: RectangleTool,
     polygon: PolygonTool,
     slot: SlotTool,
+    // A region of faces (docs/plans/regions-as-operations.md): under the
+    // shapes button, after the shapes it is made of.
+    region: RegionTool,
     circle: CircleTool,
     arc: ArcTool,
     ellipse: EllipseTool,
@@ -99,7 +105,7 @@ defineModule("sketch", {
   // a group none of whose members is registered shows no button at all.
   // Vetoable (TODO.md).
   groups: {
-    shapes: ["rectangle", "polygon", "slot"],
+    shapes: ["rectangle", "polygon", "slot", "region"],
     curves: ["ellipse", "spline"],
     modify: ["fillet", "chamfer", "trim", "extend", "offset", "mirror", "pattern"],
     // Dimension and constrain share a button (docs/plans/sketch-relations.md
@@ -118,6 +124,9 @@ defineModule("sketch", {
     polygon: svg("polygon", `<path d="M13.5 8 10.75 12.75H5.25L2.5 8 5.25 3.25h5.5z"/>`),
     // A stadium: two straight sides and two round ends, as wide as the rectangle.
     slot: svg("slot", `<path d="M5.5 5h5a3 3 0 0 1 0 6h-5a3 3 0 0 1 0-6z"/>`),
+    // A face with a face subtracted from it: an outline, and a circle inside
+    // it drawn dashed — a face taken away, not a negative one.
+    region: svg("region", `<rect x="2.5" y="3.5" width="11" height="9" rx="1"/><circle cx="8" cy="8" r="2.4" stroke-dasharray="1.6 1.2"/>`),
     circle: svg("circle", `<circle cx="8" cy="8" r="5.5"/>`),
     // Wider than tall by the circle's own width, so it is read as a circle's
     // cousin and not as a squashed slot.
@@ -245,6 +254,25 @@ defineModule("sketch", {
     },
   }),
   help: [
+    'regions    region("l1") — rg1, a region of the face l1 bounds: a face is a',
+    "           closed loop, found, and its whole inside — a loop drawn inside",
+    "           it is part of it until an operation names it. Nothing is",
+    '           negative: subtract("rg1", "c1") takes c1\'s face out, add("rg1",',
+    '           "c3") puts one in, intersect("rg1", "l9") keeps what both cover —',
+    "           each one line, one undo step, journalled with its face resolved,",
+    "           and every feature on rg1 regenerated. extrude(\"rg1\", 10) and",
+    "           revolve take a region; extrude(\"l1\", 10) makes one on the way.",
+    "           The region tool (under shapes): click a face to make a region,",
+    "           then faces to Subtract (the default), Add or ∩ — the mode row —",
+    "           or New for another; a click inside a region with none in hand",
+    "           takes it in hand; Esc puts it down. The organiser lists Regions",
+    '           (rg1 = l1–l4 − c1), hideable; edit("rg1") arms the tool on it,',
+    '           del("rg1") removes it and the features on it. Deleting a face',
+    "           a region subtracts, adds or intersects takes that step out of",
+    "           its chain (the region loses it); deleting its first face takes",
+    "           the region. hole/unhole are aliases of the step (solids).",
+    "           Surfaces will be the same shape: trim, extend, knit are",
+    "           operations between surfaces, nothing a negative surface.",
     "curves     ellipse(center, major, minor, plane?) — major a point (its major",
     "           end) or a number (the semi-major), minor the semi-minor: an",
     "           entity, centre and major end its points, minor its variable.",

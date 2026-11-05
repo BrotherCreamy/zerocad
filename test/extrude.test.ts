@@ -658,7 +658,7 @@ test("the command line: extrude returns the feature, ls() lists it, rels() and t
   assert.deepEqual((scope.rels as (n?: string) => string[])(corner), ["d1  extrusion 20 along t.z, 4 pairs"]);
   assert.equal(describePick(m, { name: "d1", kind: "relation", distance: 0 }), "d1  extrusion 20 along t.z, 4 pairs  ·  e1");
   assert.match(describePick(m, { name: f.walls[0], kind: "line", distance: 0 }), /·\s+e1$/);
-  assert.match((scope.help as () => string)(), /extrude\(member, depth\?, frame\?\)/);
+  assert.match((scope.help as () => string)(), /extrude\(region, depth\?, frame\?\)/);
   // No depth: the seed every free entity gets.
   const g = m.featureOf(ex(f.twins[0][0], undefined, t.name), "extrude");
   assert.equal(m.relationOf(g.depth).args[1], DEFAULT_DEPTH);

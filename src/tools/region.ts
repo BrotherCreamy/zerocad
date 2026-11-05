@@ -234,6 +234,30 @@ export function drawNamedRegion(model: Model, r: RenderContext, name: string, lo
   }
 }
 
+/**
+ * A named region's own ink: a violet, so a region made and standing ready is
+ * told at a glance from the green of what an armed tool could take.
+ */
+export const NAMED_REGION = "#9d8cf0";
+
+/**
+ * Every region shown and standing ready — no feature made of it yet, not
+ * hidden — tinted faintly in its own ink, holes clear: what the organiser's
+ * eye shows and hides (docs/plans/regions-as-operations.md). A region a
+ * feature stands on is drawn by the feature's faces, and is not tinted again.
+ */
+export function drawStandingRegions(model: Model, r: RenderContext): void {
+  const ready = [...model.regions.keys()].filter((n) => !model.hidden.has(n) && !model.featuresOnRegion(n).length);
+  if (!ready.length) return;
+  let loops: Loop[];
+  try {
+    loops = findLoops(model);
+  } catch {
+    return;
+  }
+  for (const n of ready) drawNamedRegion(model, r, n, loops, "1c", NAMED_REGION);
+}
+
 /** What a feature tool draws for a hit: the named region it is in, or else its face. */
 export function drawHit(model: Model, r: RenderContext, hit: RegionHit, fill = "2e", colour = REGION_GREEN,
                         skip: ReadonlySet<number> = new Set()): number[][][] | null {

@@ -86,7 +86,7 @@ import type { Occlusion } from "../occlusion.ts";
 import { findLoops, loopAround, loopAt } from "../loops.ts";
 import { OptionMemory, declaredOptions, explicitOptions, resolveOptions } from "./options.ts";
 import { SELECTION, Selection, type RegionSelection } from "./selection.ts";
-import { drawRegion, hiddenLoop } from "./region.ts";
+import { drawRegion, drawStandingRegions, hiddenLoop } from "./region.ts";
 import { Gestures, type Clock, type GestureSink } from "./gestures.ts";
 
 export type { View };
@@ -1570,6 +1570,8 @@ export class ToolEngine {
       g: this.g, worldToScreen: (w) => this.worldToScreen(w), scale: this.view.scale, toward: viewAxes(this.view).toward,
       ui: uiOf(this.view),
     };
+    // Regions made and standing ready, under whatever a tool draws.
+    drawStandingRegions(this.model, r);
     if (!this.active) {
       // The canvas's selected regions, in the selection's own colour — the
       // entities beside them wear it too (main.ts) — and not in an armed

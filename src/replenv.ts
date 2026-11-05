@@ -987,6 +987,12 @@ export function neocadScope(h: EnvHandles): Bag {
       for (const f of model.features.values()) for (const n of f.owns) made.add(n);
       return [
         ...[...model.entities.values()].filter((e) => !made.has(e.name)).map((e) => mark(e.name, describe(e, model))),
+        // A region by its chain, and what stands on it (regions-as-operations.md):
+        // after the sketch it is made of, before the features made of it.
+        ...[...model.regions.keys()].map((r) => {
+          const on = model.featuresOnRegion(r).map((f) => f.name);
+          return mark(r, `${regionText(model, r)}${on.length ? `  (${on.join(", ")} on it)` : ""}`);
+        }),
         ...[...model.features.values()].flatMap((f) => {
           const own = model.membersOf(f.name) ?? [];
           const hid = own.filter((n) => model.hidden.has(n)).length;
@@ -1034,6 +1040,12 @@ export function neocadScope(h: EnvHandles): Bag {
      * is not: it journals nothing.
      */
     edit: (feature: unknown) => {
+      // A region: the region tool, armed on it (docs/plans/regions-as-operations.md).
+      if (typeof feature === "string" && model.regions.has(feature)) {
+        if (!h.arm) throw new Error("no viewport in this environment");
+        h.arm("region", {}, feature);
+        return `editing ${feature}`;
+      }
       if (typeof feature !== "string" || !model.features.has(feature)) {
         throw new Error(`${JSON.stringify(feature) ?? String(feature)} is not a feature — edit takes a feature's name, as ls() lists them (e1, e2, …)`);
       }
