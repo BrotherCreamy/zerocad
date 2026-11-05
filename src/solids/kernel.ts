@@ -18,7 +18,14 @@ export type Member =
   | { kind: "line"; from: V2; to: V2 }
   /** Counter-clockwise from `start` to `end`, degrees. */
   | { kind: "arc"; centre: V2; radius: number; start: number; end: number }
-  | { kind: "circle"; centre: V2; radius: number };
+  | { kind: "circle"; centre: V2; radius: number }
+  /**
+   * A curve exactly as a (rational) B-spline in the profile's plane — what an
+   * ellipse is handed over as (docs/plans/sketch-shapes.md): its degree, its
+   * unique knots and their multiplicities, and its control points, each
+   * `[x, y, weight]`, Euclidean as `NurbsCurve`'s are.
+   */
+  | { kind: "nurbs"; degree: number; knots: number[]; mults: number[]; points: [number, number, number][] };
 
 /**
  * A planar region: its loops, read even-odd (the outer boundary, then holes,

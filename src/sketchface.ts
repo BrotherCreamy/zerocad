@@ -132,6 +132,7 @@ export function sketchFrameFor(model: Model, loop: Loop, toward: number[]): stri
     if (e?.kind === "arc") return m.span === null ? [e.center] : [e.center, e.start, e.end];
     if (m.span === null) return [];
     if (e?.kind === "line") return [...e.refs];
+    if (e?.kind === "ellipse") return [e.center, e.major];
     return e?.kind === "circle" ? [e.center] : [];
   });
   const candidates = [...new Set([...vertices.filter(real), ...extra])];
@@ -145,7 +146,7 @@ export function sketchFrameFor(model: Model, loop: Loop, toward: number[]): stri
   }
   // A region bounded by parts of circles alone (a lens) has their planes left,
   // on the same terms as a whole circle.
-  const ring = loop.members.find((m) => model.entities.get(m.name)?.kind === "circle");
+  const ring = loop.members.find((m) => ["circle", "ellipse"].includes(model.entities.get(m.name)?.kind ?? ""));
   if (ring) return circlePlane(model, ring.name, facing);
   throw new Error(`the loop of ${members(loop)} has no three points off one line to make a plane of — `
     + "say which plane with points of your own: workplane(\"p1.p2.p3\")");

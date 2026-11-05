@@ -7,6 +7,33 @@ import type { Member, Profile, V2 } from "./kernel.ts";
 
 const rad = (d: number) => (d * Math.PI) / 180;
 
+/**
+ * A `nurbs` member's point at parameter `t`, by de Boor's algorithm in
+ * homogeneous coordinates — so a rational curve (an exact ellipse) is evaluated
+ * exactly. `t` is clamped to the knot range.
+ */
+export function nurbsPoint(m: Extract<Member, { kind: "nurbs" }>, t: number): V2 {
+  const knots = m.knots.flatMap((k, i) => Array<number>(m.mults[i]).fill(k));
+  const p = m.degree;
+  const [lo, hi] = [knots[p], knots[knots.length - p - 1]];
+  const u = Math.min(hi, Math.max(lo, t));
+  let span = p;
+  while (span < knots.length - p - 2 && u >= knots[span + 1]) span++;
+  const d = Array.from({ length: p + 1 }, (_, j) => {
+    const [x, y, w] = m.points[span - p + j];
+    return [x * w, y * w, w];
+  });
+  for (let r = 1; r <= p; r++) {
+    for (let j = p; j >= r; j--) {
+      const i = span - p + j;
+      const denom = knots[i + p - r + 1] - knots[i];
+      const a = denom === 0 ? 0 : (u - knots[i]) / denom;
+      d[j] = d[j].map((c, k) => (1 - a) * d[j - 1][k] + a * c);
+    }
+  }
+  return [d[p][0] / d[p][2], d[p][1] / d[p][2]];
+}
+
 /** Distance from a point in the profile's plane to a member. */
 export function distanceTo(m: Member, p: V2): number {
   if (m.kind === "line") {
@@ -15,6 +42,11 @@ export function distanceTo(m: Member, p: V2): number {
     const len2 = dx * dx + dy * dy;
     const t = len2 === 0 ? 0 : Math.max(0, Math.min(1, ((p[0] - ax) * dx + (p[1] - ay) * dy) / len2));
     return Math.hypot(p[0] - ax - t * dx, p[1] - ay - t * dy);
+  }
+  if (m.kind === "nurbs") {
+    // No closed form: the nearest of a fine walk along it, enough to say which
+    // member a face was swept from.
+    return Math.min(...memberPoints(m, 256).map((q) => Math.hypot(p[0] - q[0], p[1] - q[1])));
   }
   const d = Math.hypot(p[0] - m.centre[0], p[1] - m.centre[1]);
   if (m.kind === "circle") return Math.abs(d - m.radius);
@@ -33,6 +65,14 @@ export function distanceTo(m: Member, p: V2): number {
  */
 export function memberPoints(m: Member, n = 32): V2[] {
   if (m.kind === "line") return [m.from, m.to];
+  if (m.kind === "nurbs") {
+    const [a, b] = [m.knots[0], m.knots[m.knots.length - 1]];
+    const out = Array.from({ length: n + 1 }, (_, i) => nurbsPoint(m, a + ((b - a) * i) / n));
+    // Closed when it starts where it ends, exactly — the circle's reason above.
+    const [s, e] = [m.points[0], m.points[m.points.length - 1]];
+    if (s[0] === e[0] && s[1] === e[1]) out[n] = out[0];
+    return out;
+  }
   const [a, b] = m.kind === "circle" ? [0, 360] : [m.start, m.end];
   const out: V2[] = [];
   for (let i = 0; i <= n; i++) {

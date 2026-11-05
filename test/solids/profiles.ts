@@ -46,6 +46,7 @@ function integrals(m: Member): { area: number; half2: number } {
     // x(t) linear: ∫x dy = dy·(x0+x1)/2; ∫x²/2 dy = dy·(x0²+x0x1+x1²)/6.
     return { area: (dy * (x0 + x1)) / 2, half2: (dy * (x0 * x0 + x0 * x1 + x1 * x1)) / 6 };
   }
+  if (m.kind === "nurbs") throw new Error("the closed forms here are for lines, arcs and circles; an ellipse's are in test/shapes.test.ts");
   const [cx, cy] = m.centre, r = m.radius;
   const a = m.kind === "circle" ? 0 : rad(m.start);
   const b = m.kind === "circle" ? 2 * Math.PI : rad(m.end);
@@ -81,5 +82,6 @@ export function revolvedVolume(loop: Member[]): number {
 export function memberLength(m: Member): number {
   if (m.kind === "line") return Math.hypot(m.to[0] - m.from[0], m.to[1] - m.from[1]);
   if (m.kind === "circle") return 2 * Math.PI * m.radius;
+  if (m.kind === "nurbs") throw new Error("a NURBS member has no closed-form length here");
   return rad(m.end - m.start) * m.radius;
 }

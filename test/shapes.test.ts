@@ -17,6 +17,7 @@ import { polygon, slot } from "../src/tools/shapes.ts";
 import { open, save, VERSION } from "../src/persist.ts";
 import { del, set } from "../src/operations.ts";
 import { pullTo } from "../src/tools/engine.ts";
+import { findLoops } from "../src/loops.ts";
 
 /**
  * A drag as the engine does one: the grabbed point pulled weakly (the
@@ -515,4 +516,78 @@ test("a polygon's side made eq to another line keeps the polygon regular — the
   ok(m);
   assertRegular(m, parts.centre, parts.vertices, "eq to a 12-long line");
   assert.ok(Math.abs(regular(m, parts.centre, parts.vertices).sides[0] - 12) < 1e-8);
+});
+
+// ---- regions -----------------------------------------------------------------
+
+test("loops: an ellipse is a loop on its own, area πab, counter-clockwise; inside a rectangle it is the rectangle's hole", async () => {
+  await loadKernel();
+  const m = new Model(2);
+  const e = m.addEllipse(m.addPoint([0, 0]).name, m.addPoint([8 * Math.cos(0.3), 8 * Math.sin(0.3)]).name, 3).name;
+  let loops = findLoops(m);
+  assert.equal(loops.length, 1);
+  assert.deepEqual(loops[0].members.map((x) => x.name), [e]);
+  assert.ok(Math.abs(loops[0].area - Math.PI * 8 * 3) < 1e-9, `area ${loops[0].area}`);
+  // A rectangle round it: two loops, the ellipse the rectangle's child.
+  const c = [[-20, -10], [20, -10], [20, 10], [-20, 10]].map((at) => m.addPoint(at).name);
+  c.forEach((p, k) => m.addLine(p, c[(k + 1) % 4]));
+  loops = findLoops(m);
+  assert.equal(loops.length, 2);
+  const ring = loops.findIndex((l) => l.members.length === 1);
+  const box = 1 - ring;
+  assert.equal(loops[ring].parent, box);
+  assert.deepEqual(loops[box].children, [ring]);
+  // Construction: no region at all.
+  m.setConstruction(e, true);
+  assert.equal(findLoops(m).length, 1);
+});
+
+test("loops: a line across an ellipse cuts it into two regions at the crossings, a point held on it cuts it", async () => {
+  await loadKernel();
+  const m = new Model(2);
+  const e = m.addEllipse(m.addPoint([0, 0]).name, m.addPoint([10, 0]).name, 4).name;
+  const l = m.addLine(m.addPoint([-1, -8]).name, m.addPoint([2, 8]).name).name;
+  const loops = findLoops(m);
+  assert.equal(loops.length, 2, "the two sides of the chord");
+  const total = loops.reduce((s, x) => s + x.area, 0);
+  assert.ok(Math.abs(total - Math.PI * 40) < 1e-6, `the two parts make the whole: ${total}`);
+  for (const x of loops) assert.ok(x.members.some((mm) => mm.name === l) && x.members.some((mm) => mm.name === e));
+  // An ellipse crossing a circle: a lens and two crescents.
+  const m2 = new Model(2);
+  m2.addEllipse(m2.addPoint([0, 0]).name, m2.addPoint([10, 0]).name, 4);
+  m2.addCircle(m2.addPoint([9, 0]).name, 3);
+  assert.equal(findLoops(m2).length, 3);
+});
+
+test("loops: a slot is one region — two lines and two arcs — area 2r·L + πr²", async () => {
+  await loadKernel();
+  const m = new Model(2);
+  const parts = slot(m, m.addPoint([0, 0]).name, m.addPoint([30, 0]).name, 10);
+  ok(m);
+  const loops = findLoops(m);
+  assert.equal(loops.length, 1, "the construction axis bounds nothing");
+  assert.deepEqual(loops[0].members.map((x) => x.name).sort(), [...parts.sides, ...parts.arcs].sort());
+  assert.ok(Math.abs(loops[0].area - (10 * 30 + Math.PI * 25)) < 1e-9, `area ${loops[0].area}`);
+  // A polygon is one too; its construction circle none.
+  const m2 = new Model(2);
+  polygon(m2, m2.addPoint([0, 0]).name, m2.addPoint([10, 0]).name, 6, false);
+  ok(m2);
+  const pl = findLoops(m2);
+  assert.equal(pl.length, 1);
+  assert.ok(Math.abs(pl[0].area - (3 * Math.sqrt(3) / 2) * 100) < 1e-8, `a hexagon of circumradius 10: ${pl[0].area}`);
+});
+
+test("loops in 3D: an ellipse on a tilted plane is found in that plane, its area πab", async () => {
+  await loadKernel();
+  const m = new Model(3);
+  const t = 0.6;
+  const u = [Math.cos(t), 0, Math.sin(t)], v = [0, 1, 0];
+  const n = [-Math.sin(t), 0, Math.cos(t)];
+  const o = [3, 4, 5];
+  const at = (x: number, y: number) => o.map((c, i) => c + x * u[i] + y * v[i]);
+  m.addEllipse(m.addPoint(o).name, m.addPoint(at(6, 2)).name, 2.5, n);
+  const loops = findLoops(m);
+  assert.equal(loops.length, 1);
+  assert.ok(Math.abs(Math.abs(dot(loops[0].plane.normal, n)) - 1) < 1e-9);
+  assert.ok(Math.abs(loops[0].area - Math.PI * Math.hypot(6, 2) * 2.5) < 1e-9);
 });

@@ -62,6 +62,12 @@ export interface Vertex {
 export type Curve =
   | { kind: "line" }
   | { kind: "circle"; center: number[]; normal: number[]; ref: number[]; r: number }
+  /**
+   * An ellipse, counter-clockwise about `normal` from `ref`, its major (`a`)
+   * axis along `ref` and its `b` axis a quarter turn on — Part 42's ELLIPSE
+   * (docs/plans/sketch-shapes.md).
+   */
+  | { kind: "ellipse"; center: number[]; normal: number[]; ref: number[]; a: number; b: number }
   /** The solid kernel's exact curve, as it gave it (a boolean's edge — kernelbrep.ts); `sense`: whether it runs the edge's way. */
   | { kind: "bspline"; nurbs: NurbsCurve; sense: boolean };
 
@@ -95,7 +101,9 @@ export type Surface =
   /** `curve` turned about the line through `origin` along `axis`. */
   | { kind: "revolution"; origin: number[]; axis: number[]; curve: Extract<Curve, { kind: "circle" }> }
   /** The solid kernel's exact surface, where no feature says what it is (kernelbrep.ts). */
-  | { kind: "bspline"; nurbs: NurbsSurface };
+  | { kind: "bspline"; nurbs: NurbsSurface }
+  /** `curve` swept along `axis` — an ellipse's wall: Part 42's SURFACE_OF_LINEAR_EXTRUSION. */
+  | { kind: "extrusion"; curve: Extract<Curve, { kind: "ellipse" }>; axis: number[] };
 
 export interface Face {
   surface: Surface;
@@ -157,14 +165,15 @@ export function solidsOf(model: Model, features?: readonly string[]): Solids {
  */
 type Piece =
   | { kind: "line"; a: number[]; b: number[] }
-  | { kind: "arc"; c: number[]; r: number; u: number[]; v: number[]; t0: number; t1: number; a: number[]; b: number[] };
+  /** `rv`, when there is one, is an ellipse's semi-axis along `v` (arcgeom.ts's `ArcFrame.rv`). */
+  | { kind: "arc"; c: number[]; r: number; rv?: number; u: number[]; v: number[]; t0: number; t1: number; a: number[]; b: number[] };
 
 const TAU = Math.PI * 2;
 
 type ArcPiece = Extract<Piece, { kind: "arc" }>;
 
-function onArc(p: Pick<ArcPiece, "c" | "r" | "u" | "v">, t: number): number[] {
-  const [c, s] = [Math.cos(t) * p.r, Math.sin(t) * p.r];
+function onArc(p: Pick<ArcPiece, "c" | "r" | "u" | "v" | "rv">, t: number): number[] {
+  const [c, s] = [Math.cos(t) * p.r, Math.sin(t) * (p.rv ?? p.r)];
   return [0, 1, 2].map((i) => p.c[i] + c * p.u[i] + s * p.v[i]);
 }
 
@@ -183,16 +192,19 @@ function piecesOf(model: Model, m: ProfileMember): Piece[] {
     const [p, q] = typeof m === "string" ? e.refs : [m.from, m.to];
     return [{ kind: "line", a: at(p), b: at(q) }];
   }
-  if (e.kind !== "arc" && e.kind !== "circle") throw new Error(`its profile member ${name} is a ${e.kind}, which bounds nothing`);
+  if (e.kind !== "arc" && e.kind !== "circle" && e.kind !== "ellipse") throw new Error(`its profile member ${name} is a ${e.kind}, which bounds nothing`);
   const f = curveFrame(model, e);
   if (!f) throw new Error(`${name} cannot be laid out (an end on its centre)`);
-  const circle = { c: f.center, r: f.r, u: f.u, v: f.v };
+  const circle: Pick<ArcPiece, "c" | "r" | "u" | "v" | "rv"> = { c: f.center, r: f.r, u: f.u, v: f.v };
+  if (f.rv !== undefined) circle.rv = f.rv;
   const arc = (t0: number, t1: number, a: number[], b: number[]): ArcPiece => ({ kind: "arc", ...circle, t0, t1, a, b });
   const halves = (t0: number): Piece[] => {
     const [p0, p1] = [onArc(circle, t0), onArc(circle, t0 + Math.PI)];
     return [arc(t0, t0 + Math.PI, p0, p1), arc(t0 + Math.PI, t0 + TAU, p1, p0)];
   };
-  if (typeof m === "string") return e.kind === "circle" ? halves(0) : [arc(0, f.sweep, at(e.start), at(e.end))];
+  // A whole ellipse is two half ellipses, from its major end, as a circle is two halves.
+  if (typeof m === "string") return e.kind !== "arc" ? halves(0) : [arc(0, f.sweep, at(e.start), at(e.end))];
+  if (e.kind === "ellipse") throw new Error(`a part of the ellipse ${name} cannot be made — an ellipse bounds a solid only whole`);
   const [a, b] = [at(m.from), at(m.to)];
   const [t0, t1] = portionAngles(f, a, b);
   return t1 - t0 >= TAU - 1e-9 ? halves(t0) : [arc(t0, t1, a, b)];
@@ -208,12 +220,15 @@ function pieceAt(p: Piece, s: number): number[] {
 function pieceTangent(p: Piece, s: number): number[] {
   if (p.kind === "line") return sub3(p.b, p.a);
   const t = p.t0 + s * (p.t1 - p.t0);
-  return [0, 1, 2].map((i) => p.r * (-Math.sin(t) * p.u[i] + Math.cos(t) * p.v[i]));
+  return [0, 1, 2].map((i) => -p.r * Math.sin(t) * p.u[i] + (p.rv ?? p.r) * Math.cos(t) * p.v[i]);
 }
 
 /** The curve a piece lies on, moved by `x`, in its own direction. */
 function curveOf(p: Piece, x: Placement): Curve {
   if (p.kind === "line") return { kind: "line" };
+  if (p.rv !== undefined) {
+    return { kind: "ellipse", center: x.point(p.c), normal: x.vector(unit3(cross3(p.u, p.v))!), ref: x.vector(p.u), a: p.r, b: p.rv };
+  }
   return {
     kind: "circle", center: x.point(p.c), normal: x.vector(unit3(cross3(p.u, p.v))!),
     ref: x.vector(p.u), r: p.r,
@@ -457,6 +472,16 @@ export function surfaceNormal(s: Surface, p: number[], swept?: { q: number[]; an
       return unit3(sub3(p, s.origin.map((c, i) => c + s.major * r[i])))!;
     }
     case "bspline": throw new Error("a kernel surface's normal is the kernel's own; ask it of the face's sense");
+    case "extrusion": {
+      // σ(t, v) = C(t) + v·axis, so σt × σv = C′(t) × axis, at the parameter
+      // of the curve's point under p (its eccentric anomaly in the curve's axes).
+      const c = s.curve;
+      const across = cross3(c.normal, c.ref);
+      const d = sub3(p, c.center);
+      const t = Math.atan2(dot3(d, across) / c.b, dot3(d, c.ref) / c.a);
+      const dc = [0, 1, 2].map((i) => -c.a * Math.sin(t) * c.ref[i] + c.b * Math.cos(t) * across[i]);
+      return unit3(cross3(dc, s.axis)) ?? [0, 0, 0];
+    }
     case "revolution": {
       if (!swept) throw new Error("a surface of revolution's normal is asked at a turned point of its curve");
       // σu: the way the turn carries p. σv: the curve's own direction at q,
@@ -555,9 +580,13 @@ function extrudeBodies(model: Model, f: Extract<FeatureEntry, { kind: "extrude" 
         const tangent = pieceTangent(p, 0.5).map((c) => (w.forward[k] ? c : -c));
         const out = unit3(cross3(tangent, e))!;
         const mid = pieceAt(p, 0.5).map((c, x) => c + D[x] / 2);
+        // An ellipse's wall is its curve swept along the depth, exactly
+        // (docs/plans/sketch-shapes.md); a circle's a cylinder.
         const surface: Surface = p.kind === "line"
           ? { kind: "plane", origin: p.a, axis: out, ref: unit3(sub3(p.b, p.a))! }
-          : { kind: "cylinder", origin: p.c, axis: e, ref: p.u, r: p.r };
+          : p.rv !== undefined
+            ? { kind: "extrusion", curve: curveOf(p, still) as Extract<Curve, { kind: "ellipse" }>, axis: e }
+            : { kind: "cylinder", origin: p.c, axis: e, ref: p.u, r: p.r };
         faces.push(face(surface, [{ outer: true, uses }], mid, out));
       });
     }
@@ -824,6 +853,15 @@ export function kernelSweep(model: Model, f: FeatureEntry): { at: KernelPlacemen
     const pieces = piecesOf(model, m);
     const p = pieces[0];
     if (p.kind === "line") return { kind: "line", from: local(p.a), to: local(p.b) };
+    if (p.rv !== undefined) {
+      // A whole ellipse: the kernel's own NURBS of it (kernel.ts's `nurbs`),
+      // exact — counter-clockwise in the plane's own axes, whichever way the
+      // ellipse itself runs, as a kernel circle has no direction to keep.
+      const u2 = local(p.c.map((c, i) => c + p.u[i]));
+      const c2 = local(p.c);
+      const ux: [number, number] = [u2[0] - c2[0], u2[1] - c2[1]];
+      return ellipseMember(c2, ux, p.r, p.rv);
+    }
     const centre = local(p.c);
     const sweep = pieces.reduce((s, q) => s + (q.kind === "arc" ? q.t1 - q.t0 : 0), 0);
     if (sweep >= TAU - 1e-9) return { kind: "circle", centre, radius: p.r };
@@ -885,6 +923,10 @@ export function roleSurface(model: Model, f: FeatureEntry, role: "base" | "lid" 
     const m = members[role];
     if (m === undefined) return null;
     const p = piecesOf(model, m)[0];
+    // An ellipse's wall: no analytic surface the kernel names a face by, so the
+    // kernel's own NURBS of it is written (B_SPLINE_SURFACE_WITH_KNOTS) — what
+    // the plan asks for where a body has one.
+    if (p.kind === "arc" && p.rv !== undefined) return null;
     if (p.kind === "line") {
       const along = unit3(sub3(p.b, p.a));
       const out = along ? unit3(cross3(along, e)) : null;
@@ -922,6 +964,26 @@ export function roleSurface(model: Model, f: FeatureEntry, role: "base" | "lid" 
   return s.kind === "revolution" ? null : s;
 }
 
+/**
+ * An ellipse about `c` with its `a` axis along the unit `ux` and its `b` axis a
+ * quarter turn counter-clockwise on, as the kernel's exact NURBS: the standard
+ * nine-point rational quadratic circle (weights 1 and √2/2 at the corners,
+ * knots at the quarters, each doubled) with its control square stretched by
+ * `a` and `b` — an affine image of an exact circle is an exact ellipse, and a
+ * rational B-spline's affine image is its control points' image. Counter-
+ * clockwise from the `a` end.
+ */
+export function ellipseMember(c: [number, number], ux: [number, number], a: number, b: number): Member {
+  const uy: [number, number] = [-ux[1], ux[0]];
+  const w = Math.SQRT1_2;
+  const square: [number, number, number][] = [
+    [1, 0, 1], [1, 1, w], [0, 1, 1], [-1, 1, w], [-1, 0, 1], [-1, -1, w], [0, -1, 1], [1, -1, w], [1, 0, 1],
+  ];
+  const points = square.map(([x, y, wt]): [number, number, number] =>
+    [c[0] + a * x * ux[0] + b * y * uy[0], c[1] + a * x * ux[1] + b * y * uy[1], wt]);
+  return { kind: "nurbs", degree: 2, knots: [0, 0.25, 0.5, 0.75, 1], mults: [3, 2, 2, 2, 3], points };
+}
+
 // ---- for the wireframe -------------------------------------------------------------
 
 /**
@@ -932,6 +994,7 @@ export function roleSurface(model: Model, f: FeatureEntry, role: "base" | "lid" 
  */
 export type LooseCurve =
   | { name: string; kind: "line"; a: number[]; b: number[] }
+  | { name: string; kind: "ellipse"; curve: Extract<Curve, { kind: "ellipse" }> }
   | { name: string; kind: "arc"; curve: Extract<Curve, { kind: "circle" }>; a: number[]; b: number[] }
   | { name: string; kind: "circle"; curve: Extract<Curve, { kind: "circle" }> };
 
@@ -940,8 +1003,14 @@ export function looseCurves(model: Model): LooseCurve[] {
   for (const f of model.features.values()) for (const n of f.names) taken.add(n);
   const out: LooseCurve[] = [];
   for (const e of model.entities.values()) {
-    if (e.kind !== "line" && e.kind !== "arc" && e.kind !== "circle") continue;
+    if (e.kind !== "line" && e.kind !== "arc" && e.kind !== "circle" && e.kind !== "ellipse") continue;
     if (e.construction || model.hidden.has(e.name) || taken.has(e.name)) continue;
+    if (e.kind === "ellipse") {
+      const f = curveFrame(model, e);
+      if (!f || !(f.r > 0) || !((f.rv ?? 0) > 0)) continue;
+      out.push({ name: e.name, kind: "ellipse", curve: { kind: "ellipse", center: f.center, normal: unit3(cross3(f.u, f.v))!, ref: f.u, a: f.r, b: f.rv! } });
+      continue;
+    }
     if (e.kind === "line") {
       out.push({ name: e.name, kind: "line", a: lift3(model.coords(e.refs[0])), b: lift3(model.coords(e.refs[1])) });
       continue;

@@ -200,6 +200,11 @@ class Data {
     return this.add(`CIRCLE(${str(name)},${ref(this.placement(c.center, c.normal, c.ref))},${real(c.r)})`);
   }
 
+  /** Part 42's ELLIPSE: placed at its centre, its first semi-axis along the placement's reference (docs/plans/sketch-shapes.md). */
+  ellipse(c: Extract<Curve, { kind: "ellipse" }>, name = ""): number {
+    return this.add(`ELLIPSE(${str(name)},${ref(this.placement(c.center, c.normal, c.ref))},${real(c.a)},${real(c.b)})`);
+  }
+
   line(a: number[], b: number[], name = ""): number {
     const d = sub3(b, a);
     const len = Math.hypot(...d);
@@ -225,6 +230,12 @@ function surface(d: Data, s: Surface): number {
       return d.add(`SURFACE_OF_REVOLUTION('',${ref(d.circle(s.curve))},${ref(axis)})`);
     }
     case "bspline": return bsplineSurface(d, s.nurbs);
+    // An ellipse's wall: the ellipse swept along the extrude's direction —
+    // exact, and what a receiving tool calls an elliptic cylinder.
+    case "extrusion": {
+      const vector = d.add(`VECTOR('',${ref(d.direction(s.axis))},${real(1)})`);
+      return d.add(`SURFACE_OF_LINEAR_EXTRUSION('',${ref(d.ellipse(s.curve))},${ref(vector)})`);
+    }
   }
 }
 
@@ -281,7 +292,8 @@ function body(d: Data, b: Body): number {
     let id = edges.get(e);
     if (id === undefined) {
       const curve = e.curve.kind === "line" ? d.line(e.start.at, e.end.at)
-        : e.curve.kind === "circle" ? d.circle(e.curve) : bsplineCurve(d, e.curve.nurbs);
+        : e.curve.kind === "circle" ? d.circle(e.curve)
+          : e.curve.kind === "ellipse" ? d.ellipse(e.curve) : bsplineCurve(d, e.curve.nurbs);
       // Every line and circle runs the edge's way (solids.ts, kernelbrep.ts);
       // a kernel's B-spline is written as the kernel parametrised it, and says.
       const sense = e.curve.kind === "bspline" ? e.curve.sense : true;
@@ -321,9 +333,10 @@ function insideOut(s: Shell): Shell {
   };
 }
 
-/** A loose sketch curve, bounded: a trimmed line or arc, or a whole circle. */
+/** A loose sketch curve, bounded: a trimmed line or arc, or a whole circle or ellipse. */
 function loose(d: Data, c: LooseCurve): number {
   if (c.kind === "circle") return d.circle(c.curve, c.name);
+  if (c.kind === "ellipse") return d.ellipse(c.curve, c.name);
   const trim = (p: number[]) => `(${ref(d.point(p))})`;
   const basis = c.kind === "line" ? d.line(c.a, c.b) : d.circle(c.curve);
   return d.add(`TRIMMED_CURVE(${str(c.name)},${ref(basis)},${trim(c.a)},${trim(c.b)},.T.,.CARTESIAN.)`);
