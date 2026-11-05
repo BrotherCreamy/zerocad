@@ -69,6 +69,16 @@ put the region down; the mode row's label was cut to one letter
 (ARCHITECTURE's 24–26). Pictures: [161](docs/images/161-the-region-tool-a-plate-less-two-circles-in-hand.png)–[166](docs/images/166-iphone-the-solid-follows-its-region.png).
 **Not tried on an iPhone**: try the region tool by taps, then extrude it.
 
+## The dev server no longer reloads the tests when a worker checks out a tree
+
+Three gates in a row lost tests to "Execution context was destroyed, most
+likely because of a navigation" — a page reloading mid-test. The cause:
+Vite reloads every open page when any `.html` file under the project root
+changes, and the agents' worktrees live under `.claude/worktrees/` inside
+the root, so a worker checking out its tree (which writes an `index.html`)
+reloaded the suite's pages. `vite.config.ts` now tells the watcher to ignore
+`.claude/**`; nothing under it is the app's.
+
 ## Mode feedback: the sketch plane drawn, a chip that says where · what · next, and Done
 
 The owner: *"at the moment, it is not obvious how the UI works. like when
