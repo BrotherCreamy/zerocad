@@ -1529,10 +1529,31 @@ starts.
 - [ ] **The sketch packages (2026-11-05).** The owner: *"give me better
       sketch tools, relations, trim, slot... all the usual"*, picked from
       the full-CAD list. Five specs, in this order:
-      1. [`toolbar-groups.md`](docs/plans/toolbar-groups.md) first — one
+      1. [x] [`toolbar-groups.md`](docs/plans/toolbar-groups.md) first — one
          button per family with a flyout (hover or press-and-hold on a
          mouse; press-and-slide or long-press on a phone), so the dozen
          tools below fit a phone. Default table in the spec; **vetoable**.
+         **BUILT (2026-11-05)** on `claude/toolbar-groups`. Register
+         (vetoable): **tools of one family share a button** — `TOOL_GROUPS`
+         in `tool.ts`: shapes (rectangle, polygon, slot), curves (ellipse,
+         spline), modify (fillet, chamfer, trim, extend, offset, mirror,
+         pattern), everything else alone; eleven buttons today, fourteen
+         when every package has landed; the button shows the member armed
+         last, per viewer; **press-and-slide on touch** (8 px, 500 ms — the
+         recogniser's numbers, host code). Deviations, each vetoable (the
+         spec's *As built* has them all): the flyout shows the whole group,
+         current outlined; a group's button has no tooltip of its own once it
+         opens a flyout (its items do); a group of one is a plain button, so
+         today nothing looks different; a class's own `static group` beats
+         the table and `null` opts out; the menu lists a group under a
+         heading only at two members, and still only for its six drawing
+         tools; Escape closes the flyout and nothing else. **Found:** a
+         flyout item's tooltip lay over the tray, so tooltips can now be told
+         boxes to keep off (`clear`). **For the packages that fill it:** a
+         group's button sits where its first registered member's import is —
+         import `ellipse.ts` after `arc.ts` in `main.ts` to put curves after
+         arc; a member needs nothing else (the table already names it).
+         Left open: no keyboard way through a flyout; not tried on an iPhone.
       2. In parallel on that: [`sketch-shapes.md`](docs/plans/sketch-shapes.md)
          (polygon, slot, the ellipse as a new entity),
          [`sketch-edit.md`](docs/plans/sketch-edit.md) (trim, extend, offset,

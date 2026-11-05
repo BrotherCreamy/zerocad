@@ -129,6 +129,20 @@ etc).
   `persist.ts`), a lifted 2D file's circles face the origin, and an old
   `origin` name is renamed `origin2`. Proved by `test/oldfiles13.test.ts`
   against fixtures written by the format-12 build.
+- **Toolbar groups** (docs/plans/toolbar-groups.md, built). A family of
+  tools shares one button: `TOOL_GROUPS` in `tool.ts` (shapes: rectangle,
+  polygon, slot; curves: ellipse, spline; modify: fillet, chamfer, trim,
+  extend, offset, mirror, pattern), a command-line tool's own `static group`
+  joining one; `toolbarButtons()` is the button list (eleven today, the same
+  eleven as before: no group has two members yet). A group's button shows
+  the member armed last (`GroupMemory` in `options.ts`, per viewer under
+  `neocad.toolGroups.v1`, never in a file) and opens a **flyout** of the
+  family once it has two (`Toolbar` in `panels.ts`: hover or press-and-hold
+  under a mouse; press-and-slide or long-press under a finger, with the
+  recogniser's 8 px and 500 ms; placed by `flyoutPlacement` beside the tray,
+  clear of every pane on every iPhone in the device table). The context
+  menu lists a group of two or more under its heading; `help()` says which
+  tools share a button.
 - **Select and the Hand head the toolbar** (docs/plans/select-hand.md,
   built). Select (`arm("select")`) is "no tool", lit whenever nothing is
   armed; pressing it puts the armed tool down and keeps the selection. The

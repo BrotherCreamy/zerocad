@@ -1382,7 +1382,7 @@ until the next action went unrecorded.
 
 ## Why there is an end-to-end suite
 
-Seventeen bugs so far were invisible to the unit tests and obvious within seconds
+Eighteen bugs so far were invisible to the unit tests and obvious within seconds
 of running the app:
 
 1. a status readout that went stale, so a conflict could be introduced from
@@ -1465,6 +1465,11 @@ of running the app:
    pushing Groups out of an iPhone's pane, so a tap on a group landed on
    nothing. The organiser suite's phone test failed; Bodies is now shown
    once there is a body.
+18. A toolbar group's flyout item showing its tooltip over the tray it had
+   opened from: kept off the flyout, centred on its item, and slid back over
+   the tray's buttons — on a desktop and on a phone. The placement's unit
+   tests had no tray to keep off; found by looking at the first screenshots
+   of toolbar-groups.md. A tip can now be told what else to keep off.
 
 None of these are mathematics. They are all *assembly*. Hence `npm run
 test:e2e`, and hence the expectation that anything touching the app is checked
