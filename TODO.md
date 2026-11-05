@@ -1559,7 +1559,9 @@ starts.
          corner; the boss on a plate) fail every time, alone and in the full
          suite, on this branch and on its base commit alike — they appear to
          need the kernel body the boss makes and, unlike `solids.e2e.ts`, do
-         not skip without the SMLib build. Make them skip (or need) it.
+         not skip without the SMLib build. **Done (2026-11-05):** they skip
+         and say so, as the solids tests do (measured: 2 skipped without the
+         build, all pass with it).
       2. In parallel on that: [`sketch-shapes.md`](docs/plans/sketch-shapes.md)
          (polygon, slot, the ellipse as a new entity),
          [`sketch-edit.md`](docs/plans/sketch-edit.md) (trim, extend, offset,
