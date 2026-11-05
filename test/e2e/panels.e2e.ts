@@ -134,13 +134,18 @@ test("the canvas is the whole window — there is no header — and the chrome f
 test("the toolbar has a button per registered tool: its icon, with a tooltip and its name as its accessible name", async () => {
   // A tool with options is listed with them (`extrude  { depth: 10 }`); its name is the first word.
   // The old names circle3 and arc3 are listed after the tools as what they arm, not as tools.
+  // A group's members share its one button, which shows the first of them
+  // until another is armed (docs/plans/toolbar-groups.md): the polygon and the
+  // slot are behind the rectangle's (docs/plans/sketch-shapes.md).
   const tools = ((await app.repl("tools()")).value as string[]).map((t) => t.split(" ")[0])
-    .filter((t) => t !== "circle3" && t !== "arc3");
+    .filter((t) => t !== "circle3" && t !== "arc3" && t !== "polygon" && t !== "slot");
   const buttons = await app.page.$$eval("#toolbar button", (els) =>
     els.map((el) => ({
       tool: (el as HTMLElement).dataset.tool,
       name: el.getAttribute("aria-label"),
-      hint: el.hasAttribute("data-tip") && !el.hasAttribute("title"),
+      // A group's button that opens a flyout carries no tooltip of its own (its
+      // items do — toolbar-groups.md), and no native title either.
+      hint: (el.hasAttribute("data-tip") || el.getAttribute("aria-haspopup") === "true") && !el.hasAttribute("title"),
       glyph: el.querySelector(":scope > svg")?.getAttribute("data-glyph") ?? null,
       text: el.textContent,
       box: (() => { const r = el.getBoundingClientRect(); return [r.width, r.height]; })(),
@@ -406,10 +411,11 @@ async function tray(): Promise<{ x: number; y: number; w: number; h: number; ori
   return { x: r.x - cv.x, y: r.y - cv.y, w: r.width, h: r.height, orient, rows };
 }
 
-// The built-ins after the reload that dropped "stamp": Select and the Hand
-// (docs/plans/select-hand.md) and the nine drawing tools — one circle and one
-// arc since docs/plans/one-circle-one-arc.md.
-const TOOLS = 11;
+// The built-ins' buttons after the reload that dropped "stamp": Select and the
+// Hand (docs/plans/select-hand.md) and ten more — one circle and one arc since
+// docs/plans/one-circle-one-arc.md, the shapes and curves groups' since
+// docs/plans/sketch-shapes.md.
+const TOOLS = 12;
 const RUN = 16 + 6 + TOOLS * 22; // strip, padding, a 22px step per button
 const DEPTH = 28; // one button thick
 /** The default tray's top: under the logo's 32 px box, a margin off it. */

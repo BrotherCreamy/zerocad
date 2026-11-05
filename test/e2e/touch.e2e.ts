@@ -119,7 +119,7 @@ test("portrait: the phone's defaults — command line docked to the bottom, the 
   assert.ok(out.cmd.x === 0 || out.cmd.x >= out.toolbar.x + out.toolbar.w, `edge to edge, or beside the column: ${JSON.stringify(out.cmd)}`);
   const logo = await app.page.$eval("#logo", (el) => (el as HTMLElement).offsetTop + (el as HTMLElement).offsetHeight);
   assert.ok(out.toolbar.x <= 8 && out.toolbar.h > out.toolbar.w && out.toolbar.y >= logo, "the tray is a column down the left, under the logo");
-  assert.equal(await app.page.$$eval("#toolbar button", (bs) => bs.length), 11, "Select, the Hand and the nine tools");
+  assert.equal(await app.page.$$eval("#toolbar button", (bs) => bs.length), 12, "Select, the Hand and ten buttons of tools");
   // Under the logo's row, which is the status's (it used to be at y 8, under the status's text).
   assert.ok(out.actions.y >= logo && out.actions.y <= logo + 8 && out.actions.x + out.actions.w >= area.w - 8 && out.actions.w > out.actions.h,
     `the strip is a row at the top right, under the logo's row: ${JSON.stringify(out.actions)}`);

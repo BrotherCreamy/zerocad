@@ -31,7 +31,7 @@
 
 import type { Entity, Model } from "./model.ts";
 import { arcSlack, screenAngle, type Curve, type Pt } from "./intersect.ts";
-import { arcPoint, arcSamples, arcSegments, frameReach, type ArcFrame } from "./arcgeom.ts";
+import { arcPoint, arcSamples, arcSegments, frameReach, sampleAngle, type ArcFrame } from "./arcgeom.ts";
 import { curveFrame } from "./curveplane.ts";
 import { viewAxes, worldToScreen, type View } from "./view.ts";
 import { dot3, lift3 } from "./vec3.ts";
@@ -142,7 +142,7 @@ function ellipseLift(view: View, f: ArcFrame, curve: { kind: "polyline"; pts: Pt
   const A = S(arcPoint(f, 0)), B = S(arcPoint(f, Math.PI / 2));
   return (p) => {
     const near = nearestOnPolyline(curve.pts, p);
-    let t = near ? (f.sweep * (near.index + near.t)) / n : 0;
+    let t = near ? sampleAngle(f, (near.index + near.t) / n) : 0;
     const [px, py] = [p[0] - C[0], p[1] - C[1]];
     for (let k = 0; k < 6; k++) {
       const [c, s] = [Math.cos(t), Math.sin(t)];
@@ -178,7 +178,7 @@ function obliquely(view: View, f: ArcFrame, pixelRadius: number, dim: number): S
     lift: (p) => {
       const near = nearestOnPolyline(pts, p);
       const k = near ? near.index + near.t : 0;
-      return arcPoint(f, (f.sweep * k) / n).slice(0, dim);
+      return arcPoint(f, sampleAngle(f, k / n)).slice(0, dim);
     },
   };
 }

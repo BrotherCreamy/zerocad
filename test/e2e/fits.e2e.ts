@@ -219,11 +219,12 @@ test("every iPhone, both ways up, installed and in Safari, with a group's flyout
   }
 });
 
-// Eleven buttons since one circle tool and one arc (docs/plans/one-circle-one-arc.md):
-// on the 13's landscape they fit one row, where thirteen took two; the SE still
-// takes two. The claim is the same either way — as many lines as the room
-// needs, every button on screen, filled line by line.
-for (const [ph, lines] of [[THIRTEEN, 1], [SE, 2]] as const) {
+// Eleven buttons since one circle tool and one arc (docs/plans/one-circle-one-arc.md)
+// fitted the 13's landscape in one row, where thirteen took two; twelve since
+// the sketch shapes (the curves group's button, docs/plans/sketch-shapes.md)
+// take two again, as on the SE. The claim is the same either way — as many
+// lines as the room needs, every button on screen, filled line by line.
+for (const [ph, lines] of [[THIRTEEN, 2], [SE, 2]] as [typeof THIRTEEN, number][]) {
   test(`${ph.name}: the landscape tray is ${lines === 1 ? "one row" : "two rows"}, every button on screen, in order line by line`, async () => {
     const p = await phone();
     try {
@@ -284,8 +285,10 @@ for (const ph of [THIRTEEN, SE]) {
         await hold(p, ph, turn, "installed");
         for (const tray of ["#toolbar button", "#actions button"]) {
           const bs = await buttons(p.page, tray);
-          // The fifth tool (or the strip's second button), and the last — on the second line where the tray wrapped.
-          for (const i of tray.startsWith("#toolbar") ? [4, bs.length - 1] : [1]) {
+          // The sixth tool (or the strip's second button), and the last — on the
+          // second line where the tray wrapped. Not the fifth: that is the shapes
+          // group's button, whose hold opens its flyout instead (toolbar-groups.md).
+          for (const i of tray.startsWith("#toolbar") ? [5, bs.length - 1] : [1]) {
             const b = bs[i];
             const tip = await heldTip(p, b.x + b.w / 2, b.y + b.h / 2, `tip-${slug(ph)}-${turn}-${tray.slice(1, 8)}-${i}`);
             assert.ok(tip, `${ph.name} ${turn}: ${tray} ${i} showed its tip`);

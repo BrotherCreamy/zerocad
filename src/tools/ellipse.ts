@@ -18,7 +18,7 @@ import { Tool, defineTool, type PointerInfo, type RenderContext } from "./tool.t
 import { DRAWING_OPTIONS, asArmed, holdOnSketchPlane, placePoint } from "./place.ts";
 import type { OptionSpecs } from "./options.ts";
 import { TwoPoint, halfWidth, unsnapped } from "./twopoint.ts";
-import { arcSamples, arcSegments, ellipseFrame } from "../arcgeom.ts";
+import { arcSamples, arcSegments, ellipseFrame, frameReach } from "../arcgeom.ts";
 import { cross3, lift3, unit3 } from "../vec3.ts";
 
 /** The ellipse a centre, a major end and a minor semi-axis make, laid out on a plane (+z in 2D), for drawing. */
@@ -30,7 +30,7 @@ export function ellipsePreview(c: number[], m: number[], b: number, normal: numb
   const v = u ? unit3(cross3(normal ?? [0, 0, 1], u)) : null;
   if (!u || !v || !(a > 0)) return [];
   const f = ellipseFrame(C, a, Math.max(b, 0), u, v);
-  return arcSamples(f, arcSegments(f.sweep, Math.max(a, b) * scale));
+  return arcSamples(f, arcSegments(f.sweep, frameReach(f) * scale));
 }
 
 export class EllipseTool extends Tool {

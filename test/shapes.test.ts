@@ -18,6 +18,9 @@ import { open, save, VERSION } from "../src/persist.ts";
 import { del, set } from "../src/operations.ts";
 import { pullTo } from "../src/tools/engine.ts";
 import { findLoops } from "../src/loops.ts";
+import { arcSamples, arcSegments, ellipseFrame, frameReach, sampleAngle } from "../src/arcgeom.ts";
+
+const dist3 = (p: number[], q: number[]) => Math.hypot(...p.map((x, i) => x - q[i]));
 
 /**
  * A drag as the engine does one: the grabbed point pulled weakly (the
@@ -590,4 +593,31 @@ test("loops in 3D: an ellipse on a tilted plane is found in that plane, its area
   assert.equal(loops.length, 1);
   assert.ok(Math.abs(Math.abs(dot(loops[0].plane.normal, n)) - 1) < 1e-9);
   assert.ok(Math.abs(loops[0].area - Math.PI * Math.hypot(6, 2) * 2.5) < 1e-9);
+});
+
+test("an ellipse is sampled where it bends: its samples' normals evenly spaced, every chord within a quarter-pixel", () => {
+  const [a, b] = [20, 5];
+  const f = ellipseFrame([0, 0, 0], a, b, [1, 0, 0], [0, 1, 0]);
+  const scale = 4; // pixels per unit
+  const n = arcSegments(f.sweep, frameReach(f) * scale);
+  const pts = arcSamples(f, n);
+  assert.ok(dist3(pts[0], [a, 0, 0]) < 1e-12 && dist3(pts[n], [a, 0, 0]) < 1e-9, "from the major end, round to it");
+  // The normal's direction at each sample: (b cos t, a sin t) for the parameter there.
+  const ts = Array.from({ length: n + 1 }, (_, k) => sampleAngle(f, k / n));
+  const psi = ts.map((t) => Math.atan2(a * Math.sin(t), b * Math.cos(t)));
+  const steps = psi.slice(1).map((p, k) => ((p - psi[k] + 3 * Math.PI) % (2 * Math.PI)) - Math.PI);
+  assert.ok(Math.max(...steps) - Math.min(...steps) < 1e-9, `even in the normal's turn: ${Math.min(...steps)}…${Math.max(...steps)}`);
+  // Each chord's worst gap to the curve, by a fine walk between its ends.
+  let worst = 0;
+  for (let k = 0; k < n; k++) {
+    for (let j = 1; j < 16; j++) {
+      const t = ts[k] + ((ts[k + 1] - ts[k]) * j) / 16;
+      const q = [a * Math.cos(t), b * Math.sin(t)];
+      const [p0, p1] = [pts[k], pts[k + 1]];
+      const d = [p1[0] - p0[0], p1[1] - p0[1]];
+      const off = Math.abs((q[0] - p0[0]) * d[1] - (q[1] - p0[1]) * d[0]) / Math.hypot(d[0], d[1]);
+      worst = Math.max(worst, off * scale);
+    }
+  }
+  assert.ok(worst <= 0.25 + 1e-9, `a quarter-pixel at worst: ${worst}`);
 });

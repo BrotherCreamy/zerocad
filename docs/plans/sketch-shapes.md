@@ -120,7 +120,7 @@ the `ellipse` curve and `extrusion` surface, `ellipseMember`);
 `persist.ts` (format 15); `src/tools/shapes.ts` (the composites),
 `twopoint.ts` (the first stage the tools share), `polygon.ts`, `slot.ts`,
 `ellipse.ts`, `place.ts` (`holdCurve`), `icons.ts`. Tests:
-`test/shapes.test.ts` (29), `test/shapessolids.test.ts` (6),
+`test/shapes.test.ts` (30), `test/shapessolids.test.ts` (6),
 `test/e2e/shapes.e2e.ts` (7, a mouse and iPhone 13); counts and names
 updated where the toolbar grew a button (`fits`, `toolbargroups`,
 `tooltips`, `onetool`, `selecthand`, `menu`) and the format a version.
@@ -237,6 +237,15 @@ Deviations and additions — each a decision, vetoable:
   wall line at the ellipse's first sample as at a profile vertex; a whole
   ellipse is treated as a whole circle is (`hasVertices`).
 - **Revolving an ellipse is refused**, wherever it is in the profile.
+- **Found by looking: bands on an elliptic wall.** An ellipse sampled evenly
+  in its parameter put a few long facets round each end of the major axis,
+  where it bends a/b times as fast as on average, and the iPhone picture of
+  an extruded ellipse showed them as shaded bands. Its samples are now spaced
+  evenly in the direction its normal faces (`sampleAngle`), and how many is
+  asked of its largest radius of curvature, a²/b (`frameReach`) — so every
+  chord is within the quarter-pixel a circle's are (unit suite). Everything that
+  draws, shades, boxes or picks one goes through `arcSamples`, and
+  projection's lift reads the same spacing back.
 
 Limitations left in place, deliberately:
 

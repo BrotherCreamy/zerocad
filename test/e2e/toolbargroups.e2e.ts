@@ -259,7 +259,9 @@ for (const device of ["iPhone 13", "iPhone 13 landscape"] as const) {
 
     // Slid off onto nothing: closed, nothing armed.
     await f.down(from);
-    await f.glide(12, [from[0] + 6, from[1] - 160]);
+    // Clear of the flyout: a column of the four shapes over a landscape row
+    // reaches past 160 px (docs/plans/sketch-shapes.md filled it).
+    await f.glide(12, [from[0] + 6, from[1] - (device === "iPhone 13" ? 160 : 250)]);
     await f.up();
     await flyoutBecomes(app, (s) => !s.open, "slid off onto nothing");
     assert.equal((await app.model()).activeTool, null);

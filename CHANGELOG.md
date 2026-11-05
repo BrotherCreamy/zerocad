@@ -41,7 +41,9 @@ open as they were. Out of scope, refused by name: `tan` between an ellipse
 and a curve, revolving an ellipse, extruding part of one. Found on the way:
 a tangency at a point already held on the curve is a square in disguise —
 the slot says its tangencies as `perp` to the radius instead, and the
-fillet has the same flaw (TODO.md). Pictures: docs/images/118–125. Not tried
+fillet has the same flaw (TODO.md). An ellipse is sampled where it
+bends — evenly in its normal's direction, as finely as its flattest stretch
+needs — after the shaded wall of an extruded one showed bands. Pictures: docs/images/118–126. Not tried
 on an iPhone.
 
 ## Toolbar groups — one button per family, the rest a flyout away

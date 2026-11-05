@@ -174,8 +174,12 @@ test("desktop: every icon and short word in the chrome has a tooltip and no nati
     what: (el as HTMLElement).dataset.tool ?? el.id ?? el.className, title: el.getAttribute("title"),
   })));
   assert.deepEqual(all.filter((a) => a.title !== null), [], "no control with a tooltip keeps a title");
-  const tools = await desk.page.$$eval("#toolbar button", (els) => els.filter((el) => !el.hasAttribute("data-tip")).length);
-  assert.equal(tools, 0, "every toolbar button");
+  // A group's button that opens a flyout has no tooltip of its own — its
+  // items carry theirs (docs/plans/toolbar-groups.md); the shapes group's,
+  // with the polygon and the slot in it (docs/plans/sketch-shapes.md).
+  const tools = await desk.page.$$eval("#toolbar button", (els) =>
+    els.filter((el) => !el.hasAttribute("data-tip") && el.getAttribute("aria-haspopup") !== "true").length);
+  assert.equal(tools, 0, "every toolbar button but a flyout's");
   for (const sel of ["#logo", '.panel[data-panel="toolbar"] > .ptitle', '.panel[data-panel="log"] > .ptitle', ".padd"]) {
     assert.equal(await desk.page.$eval(sel, (el) => el.hasAttribute("data-tip")), true, sel);
   }
