@@ -64,6 +64,10 @@ export const ELLIPSE_STRUCTURE: EntityKindSpec = {
   kind: "ellipse",
   noun: "an ellipse",
   refs: (e) => { const el = e as EllipseEntity; return [el.center, el.major]; },
+  // Its minor and its normal: counted by the diagnosis as a circle's radius and
+  // normal are (before the extension point they were not, and an ellipse whose
+  // minor nothing held read as held).
+  vars: (e) => { const el = e as EllipseEntity; return [el.minorVar, ...(el.normal ?? [])]; },
   curve: true,
   closed: true,
   plane: (e) => { const el = e as EllipseEntity; return { center: el.center, normal: el.normal, straighten: el.major }; },

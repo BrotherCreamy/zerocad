@@ -109,3 +109,24 @@ test("a file written before the re-cut — every sketch-shapes piece and an extr
   const s = neocadScope({ model: m }) as Record<string, (...a: unknown[]) => unknown>;
   assert.match(String(s.ls()), /el1\s+ellipse/);
 });
+
+test("a declared kind's own variables count in the diagnosis: an ellipse whose minor nothing holds is free", async () => {
+  await loadKernel();
+  for (const [dim, free] of [[2, 1], [3, 2]] as const) {
+    const model = new Model(dim);
+    const s = neocadScope({ model }) as Record<string, (...a: unknown[]) => unknown>;
+    const c = s.pt(0, 0) as string;
+    const e = s.ellipse(c, 30, 12) as string;
+    const major = (model.entities.get(e) as unknown as { major: string }).major;
+    s.fix(c, [0, 0]);
+    s.fix(major, [30, 0]);
+    model.solve();
+    // 2D: the minor. 3D: the minor, and the turn about the major axis.
+    assert.equal(model.diagnose().dof, free, `${dim}D`);
+    assert.ok(model.diagnose().free.has(e));
+    s.minor(e, 12);
+    if (dim === 3) s.par(e, "origin.z");
+    model.solve();
+    assert.equal(model.diagnose().dof, 0, `${dim}D, held`);
+  }
+});

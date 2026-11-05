@@ -2092,7 +2092,9 @@ export class Model {
       case "point": return e.varIndices;
       case "circle":
       case "arc": return [e.radiusVar, ...(e.normal ?? [])];
-      default: return [];
+      // A declared kind says what it owns (`EntityKindSpec.vars`); a line or a
+      // frame owns nothing.
+      default: return entityKind((e as { kind: string }).kind)?.vars?.(e) ?? [];
     }
   }
 
@@ -2141,8 +2143,17 @@ export class Model {
     const planes = this.dim === 3 ? this.gaugePlanes() : [];
     for (const e of this.entities.values()) {
       live.push(...this.ownVars(e));
-      if ((e.kind === "circle" || e.kind === "arc") && e.normal) {
-        gauge.push({ vars: e.normal, coeffs: e.normal.map((i) => this.problem.getVar(i)) });
+      const normal = e.kind === "circle" || e.kind === "arc" ? e.normal : entityKind(e.kind)?.plane?.(e).normal;
+      if (normal) {
+        gauge.push({ vars: normal, coeffs: normal.map((i) => this.problem.getVar(i)) });
+        // A plane straightened against an axis of its own reads nothing of the
+        // normal's part along that axis — a second gauge, as the frame's y-ref
+        // has one along +x.
+        const along = e.kind === "circle" || e.kind === "arc" ? undefined : entityKind(e.kind)?.plane?.(e).straighten;
+        const center = along === undefined ? undefined : entityKind(e.kind)!.plane!(e).center;
+        if (along !== undefined && center !== undefined) {
+          gauge.push({ vars: normal, coeffs: unitOf(this.coords(along).map((v, i) => v - this.coords(center)[i])) });
+        }
       }
       if (e.kind === "point" && planes.length) {
         const p = e.varIndices.map((i) => this.problem.getVar(i));
