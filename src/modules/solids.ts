@@ -52,7 +52,7 @@ defineModule("solids", {
     regen,
   },
   help: [
-    '           extrude(member, depth?, frame?) — a solid of the closed loop',
+    'solids     extrude(member, depth?, frame?) — a solid of the closed loop',
     "           the member is in, holes and all, along its sketch frame's +z:",
     '           a feature e1, a lid of twins and walls held by one depth',
     '           dimension (set("d9.value", 40) moves the lid). frame picks the',
