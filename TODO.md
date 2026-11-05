@@ -1658,6 +1658,15 @@ starts.
         Android's way, the back gesture closing what is open, Install app in
         the menu, the file paths and their fallbacks, nothing new in the
         recogniser).
+      - **Also queued (the owner, 2026-11-05: *"please add solid and surface
+        fillet tools if possible (after you do the nurbs conversion)"*):**
+        [`solid-fillets.md`](docs/plans/solid-fillets.md) after workbenches,
+        in parallel with Android — kernel edges made pickable first, then
+        fillet and chamfer as features in the body's chain with a live
+        preview and the radius as a dimension; and
+        [`surfaces.md`](docs/plans/surfaces.md) after regions as operations
+        — a surface is a kind, trim, extend, knit, thicken and the surface
+        fillet are operations, nothing negative.
 
 - [x] **Files — open, save, share, drop, autosave — BUILT (2026-11-04).**
       The owner: *"I want to be able to open files on my phone, share files
