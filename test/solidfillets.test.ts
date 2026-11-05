@@ -18,6 +18,7 @@ import { chainsOf } from "../src/modes.ts";
 import { Bodies, bodyFaces, programOf, type BodyView } from "../src/bodies.ts";
 import { bodyEdges, edgeAt, faceEdges, tangentChain } from "../src/kerneledges.ts";
 import { organiserSections } from "../src/organiser.ts";
+import { neocadScope } from "../src/replenv.ts";
 import { Evaluator, type BodyResult, type Node } from "../src/solids/evaluate.ts";
 import { RECYCLE_BYTES, SolidsClient } from "../src/solids/client.ts";
 import { occlusion } from "../src/occlusion.ts";
@@ -378,4 +379,34 @@ test("the tessellation follows the radius: a fillet's facets turn at most the ke
     across.push(angles.length);
   }
   assert.ok(Math.max(...across) - Math.min(...across) <= 1, `as many facets across a radius of 0.5 as of 12: ${across}`);
+});
+
+// ---- the command line ----------------------------------------------------------------------
+
+test("typed: fillet with a list of edges is the solid's, with two lines the sketch's; chamfer, setEdges, ls() and help() say it", async () => {
+  await loadSolver();
+  const m = new Model(3);
+  const p = plate(m);
+  const scope = neocadScope({ model: m });
+  const fl = scope.fillet as (a: string, b: string | string[], r: number) => string;
+  const ch = scope.chamfer as (a: string, b: string[], r: number) => string;
+  const se = scope.setEdges as (a: string, b: string[]) => string;
+  assert.equal(fl(p.feature, ["e1.lid|e1.m0"], 3), "e2");
+  assert.equal(m.blendOf("e2").kind, "fillet");
+  assert.equal(ch(p.feature, ["e1.lid|e1.m2"], 1.5), "e3");
+  assert.equal(se("e2", ["e1.lid|e1.m0", "e1.lid|e1.m1"]), "e2");
+  assert.deepEqual(m.journal.slice(-3).map((j) => j.op), ["filletEdges", "chamferEdges", "setEdges"]);
+  const ls = (scope.ls as () => string[])();
+  assert.ok(ls.some((l) => l.startsWith("e2  fillet of 2 edges of e1, radius d2 = 3")), ls.join("\n"));
+  assert.ok(ls.some((l) => l.startsWith("e3  chamfer of 1 edge of e1, setback d3 = 1.5")));
+  const help = (scope.help as () => string)();
+  assert.match(help, /fillet\("e1", \["e1\.lid\|e1\.m0", …\], 3\)/);
+  assert.match(help, /arm\("round", \{ radius: 3 \}\)/);
+  // The sketch's corner fillet is unchanged: two lines.
+  const m2 = new Model(3);
+  const t = tiltedFrame(m2);
+  const { lines } = polygon(m2, t, [[0, 0], [40, 0], [40, 30], [0, 30]]);
+  const arc = (neocadScope({ model: m2 }).fillet as (a: string, b: string, r: number) => string)(lines[0], lines[1], 5);
+  assert.equal(m2.entities.get(arc)?.kind, "arc");
+  assert.equal(m2.blends.size, 0);
 });

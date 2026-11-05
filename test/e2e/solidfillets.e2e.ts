@@ -216,6 +216,22 @@ test("nothing armed: a kernel edge hovers with its name, a click selects it, shi
   // 50 less the 3 the front fillet took from its end.
   assert.match(h!.tag ?? "", /^e1\.lid\|e1\.m\d  edge of e1  len 47/);
   await shot("5-hover-names-the-edge", true);
+  // Its menu: the hover's line, and Fillet… / Chamfer…, each typing the call up to its size.
+  const at = await app.at(...await app.screenOf(RIGHT));
+  await app.page.mouse.move(at.x, at.y);
+  await app.page.mouse.down({ button: "right" });
+  await app.page.mouse.up({ button: "right" });
+  await app.page.waitForTimeout(150);
+  const menu = await app.page.$eval("#ctxmenu", (el) => ({
+    open: !(el as HTMLElement).hidden,
+    head: el.querySelector(".head")?.textContent ?? "",
+    items: Array.from(el.querySelectorAll(".item")).map((i) => i.firstElementChild?.textContent ?? ""),
+  }));
+  assert.ok(menu.open, "a right-click on an edge opens its menu");
+  assert.match(menu.head, /^e1\.lid\|e1\.m\d  edge of e1/);
+  assert.deepEqual(menu.items.slice(0, 2), ["Fillet…", "Chamfer…"]);
+  await app.page.keyboard.press("Escape");
+  await app.page.waitForTimeout(150);
   await clickAt(...await app.screenOf(RIGHT));
   let sel = await app.page.evaluate(() => [...(window as never as Neo).__neocad.engine.selection.edges]);
   assert.deepEqual(sel, [h!.name]);

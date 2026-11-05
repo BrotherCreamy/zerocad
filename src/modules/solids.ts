@@ -27,7 +27,7 @@ import { EditExtrudeTool, EditRevolveTool } from "../tools/edit.ts";
 import { EdgeChamferTool, EdgeFilletTool, EditChamferTool, EditFilletTool } from "../tools/blend.ts";
 
 defineModule("solids", {
-  label: "Solids: extrude, revolve, sketch on a face, bodies",
+  label: "Solids: extrude, revolve, sketch on a face, bodies, fillets and chamfers of their edges",
   tools: {
     extrude: ExtrudeTool,
     revolve: RevolveTool,
@@ -137,5 +137,22 @@ defineModule("solids", {
     '           regen("e1") does the same for a profile you changed by hand —',
     "           a line drawn across it. Neither adds a hole; a recorded hole",
     "           whose loop has gone is filled, and the log says so.",
+    "           A solid's edges: a kernel body's edges are named by their two",
+    '           faces (e1.lid|e1.m0) — hover one for its name; a click selects',
+    "           it, shift adds one, a box selects every edge it holds.",
+    '           fillet("e1", ["e1.lid|e1.m0", …], 3) rounds them: a feature',
+    "           (e3) in e1's chain, after what it rounds; its faces are e3.f0,",
+    "           e3.f1 … (one per edge named); its radius a dimension",
+    '           (set("d7.value", 4)). chamfer("e1", [...], 2) cuts them back by',
+    "           one setback along each face. The round and chamfer tools (the",
+    '           modify button): arm("round", { radius: 3 }), click edges — a',
+    "           face for all its edges, again for the body's; tangent chains",
+    "           take a rounded rim whole — see it rounded, drag the R label to",
+    '           change it, ✓. edit("e3") opens it again: click an edge in, a',
+    '           rounded face out. setEdges("e3", [...]) types that. A cut that',
+    "           takes an edge leaves it out of its fillet, said. The kernel",
+    "           will not fillet an edge that runs into an earlier fillet: add",
+    "           it to that fillet instead. Equal setback only; no variable",
+    "           radius or face fillets yet.",
   ],
 });
