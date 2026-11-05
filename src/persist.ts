@@ -28,7 +28,7 @@ import { construction, extrude, featuresOnProfile, fillet, hole, regen, revolve,
 import * as grouping from "./groups.ts";
 import type { ToolSource } from "./toolsource.ts";
 import { freshName, planeTranslation } from "./planetranslation.ts";
-import { replayEntries } from "./modules.ts";
+import { DEFAULT_WORKBENCH, getModule, loadedModules, moduleHash, replayEntries } from "./modules.ts";
 // The app's vocabulary, so a file opens wherever persist.ts is imported — a
 // test included — with the modules every start loads (modules/builtin.ts).
 import "./modules/builtin.ts";
@@ -299,7 +299,12 @@ export const FORMAT = "neocad-model";
  * with, so an older file replays to exactly the solids it was saved with
  * (`test/explicitregions.test.ts` opens one written by the build before).
  */
-export const VERSION = 15;
+export const VERSION = 16;
+// 16 (docs/plans/workbenches.md): the head may carry `workbench` and `modules`
+// — the workbench the document was in, and the modules not shipped with the
+// app that its journal needs. No op or value changed meaning: a file of 15 or
+// before opens exactly as it did, and a 16 file that names no added module and
+// stayed in `part` differs from a 15 file only in its version number.
 
 export interface SavedModel {
   format: typeof FORMAT;
@@ -331,7 +336,24 @@ export interface SavedModel {
    * strings to whoever asked, to render.
    */
   tools?: ToolSource[];
+  /**
+   * The workbench the document was last in (docs/plans/workbenches.md, format
+   * 16) — the head's, not the journal's: switching is no edit to the drawing.
+   * Absent for the default (`part`), so a file that never left it is the file
+   * this app has always written but for its version.
+   */
+  workbench?: string;
+  /**
+   * The modules the journal needs that the app does not ship — a workbench
+   * file's, or one defined at the command line — by name, the hash of their
+   * source, and the ops of theirs the journal uses, so a device without one
+   * can say which is missing and replay everything else. Absent when none.
+   */
+  modules?: SavedModuleUse[];
 }
+
+/** A module a document needs, as its head records it. */
+export interface SavedModuleUse { name: string; hash: string; ops: string[] }
 
 /**
  * Every call a journal entry can name. Model's own structural methods, plus
@@ -637,7 +659,7 @@ function namesIn(journal: JournalEntry[]): Set<string> {
  * snapshots with `save(model, false)` and therefore never sees a tool source,
  * so defining a tool cannot register as an edit to the drawing.
  */
-export function toSaved(model: Model, tools: readonly ToolSource[] = []): SavedModel {
+export function toSaved(model: Model, tools: readonly ToolSource[] = [], head: SavedHead = {}): SavedModel {
   const points: Record<string, number[]> = {};
   const radii: Record<string, number> = {};
   const normals: Record<string, number[]> = {};
@@ -667,11 +689,58 @@ export function toSaved(model: Model, tools: readonly ToolSource[] = []): SavedM
   // Absent, not empty: a file from a session that authored no tools is byte
   // for byte the file this app has always written.
   if (tools.length) saved.tools = tools.map((t) => ({ name: t.name, source: t.source }));
+  if (head.workbench && head.workbench !== DEFAULT_WORKBENCH) saved.workbench = head.workbench;
+  const used = modulesUsed(model.journal);
+  if (used.length) saved.modules = used;
   return saved;
 }
 
-export function save(model: Model, pretty = true, tools: readonly ToolSource[] = []): string {
-  return JSON.stringify(toSaved(model, tools), null, pretty ? 2 : 0);
+/**
+ * What a document's head says beyond its journal: the workbench it is in. A
+ * *parameter*, as `tools` is, so the undo snapshot (`save(model, false)`)
+ * never sees it — switching workbench is no edit to the drawing.
+ */
+export interface SavedHead { workbench?: string }
+
+/**
+ * The modules a journal needs that the app does not ship, read off the ops it
+ * uses: every loaded module that is not built in and registered one of them.
+ * Derived at save time, so it is never stale and never stored anywhere else.
+ */
+export function modulesUsed(journal: readonly JournalEntry[]): SavedModuleUse[] {
+  const ops = new Set(journal.map((e) => e.op));
+  return loadedModules()
+    .filter((m) => m.origin !== "builtin")
+    .map((m) => ({ name: m.name, hash: moduleHash(m), ops: m.ops.filter((op) => ops.has(op)) }))
+    .filter((m) => m.ops.length > 0);
+}
+
+export function save(model: Model, pretty = true, tools: readonly ToolSource[] = [], head: SavedHead = {}): string {
+  return JSON.stringify(toSaved(model, tools, head), null, pretty ? 2 : 0);
+}
+
+/** A saved file's head, read as data: its workbench, and the modules it needs that are not loaded here. */
+export function savedHead(saved: string | SavedModel): { workbench: string | null; missing: SavedModuleUse[] } {
+  let parsed: unknown = saved;
+  if (typeof saved === "string") {
+    try { parsed = JSON.parse(saved); } catch { return { workbench: null, missing: [] }; }
+  }
+  const p = parsed as { workbench?: unknown; modules?: unknown } | null;
+  const workbench = typeof p?.workbench === "string" ? p.workbench : null;
+  return { workbench, missing: neededModules(p?.modules).filter((m) => !getModule(m.name)) };
+}
+
+/** The `modules` a head lists, shape-checked and copied; anything malformed is skipped. */
+function neededModules(raw: unknown): SavedModuleUse[] {
+  if (!Array.isArray(raw)) return [];
+  const out: SavedModuleUse[] = [];
+  for (const m of raw) {
+    if (!m || typeof m !== "object") continue;
+    const { name, hash, ops } = m as { name?: unknown; hash?: unknown; ops?: unknown };
+    if (typeof name !== "string" || !Array.isArray(ops)) continue;
+    out.push({ name, hash: typeof hash === "string" ? hash : "", ops: ops.filter((o): o is string => typeof o === "string") });
+  }
+  return out;
 }
 
 /**
@@ -851,6 +920,28 @@ export function fromSaved(saved: SavedModel, dim?: number): Model {
   // to be rewritten on the way out too, or the file would keep saying
   // `horizontal` forever and nothing would ever finish the migration.
   const replayed: JournalEntry[] = [];
+  // **A module the file needs and this device lacks** (docs/plans/
+  // workbenches.md): its steps are left out — and so is every later step that
+  // names something one of them made — and everything else is replayed, so the
+  // rest of the model is intact and the open never hangs or fails on them. A
+  // step that refuses while one is missing is left out the same way, since it
+  // may have been leaning on something the missing module made. What was left
+  // out is said by the host (`lastOpen`).
+  const missing = neededModules(saved.modules).filter((m) => !getModule(m.name));
+  const missingOps = new Set(missing.flatMap((m) => m.ops));
+  const gone = new Set<string>();
+  let skipped = 0;
+  const leaveOut = (step: JournalEntry) => {
+    skipped++;
+    const names = (v: unknown): void => {
+      if (typeof v === "string") {
+        if (!model.entities.has(v) && !model.relations.has(v) && !model.features.has(v) && !model.groups.has(v)) gone.add(v);
+      } else if (Array.isArray(v)) v.forEach(names);
+    };
+    names(step.args);
+  };
+  const mentionsGone = (v: unknown): boolean =>
+    typeof v === "string" ? gone.has(v) || v.split(".").some((part) => gone.has(part)) : Array.isArray(v) && v.some(mentionsGone);
   model.withoutRecording(() => {
     saved.journal.forEach((entry, i) => {
       if (!Array.isArray(entry.args)) throw new Error(`step ${i + 1}: "${entry.op}" has no arguments`);
@@ -875,12 +966,14 @@ export function fromSaved(saved: SavedModel, dim?: number): Model {
           throw where(e);
         }
         for (const step of given) {
+          if (missing.length && (missingOps.has(step.op) || mentionsGone(step.args))) { leaveOut(step); continue; }
           const fn = table.get(step.op);
           if (!fn) throw new Error(`step ${i + 1}: "${step.op}" is not something a model file may do`);
           try {
             frameless.give(step);
             frameless.made(step, fn(...step.args));
           } catch (e) {
+            if (missing.length) { leaveOut(step); continue; }
             throw where(e);
           }
           replayed.push({ op: step.op, args: step.args });
@@ -945,7 +1038,19 @@ export function fromSaved(saved: SavedModel, dim?: number): Model {
   // there by a `par` each, written at the end (see `VERSION`).
   frameless.settle();
 
+  last = { missing, skipped };
   return model;
+}
+
+let last: { missing: SavedModuleUse[]; skipped: number } = { missing: [], skipped: 0 };
+
+/**
+ * What the last open left out: the modules the file needs that are not loaded
+ * here, and how many of its steps were not replayed for want of them. Empty
+ * for every file that needs nothing this device lacks.
+ */
+export function lastOpen(): { missing: SavedModuleUse[]; skipped: number } {
+  return last;
 }
 
 /** Opens a saved file — into `dim` dimensions when given (see `fromSaved`). */

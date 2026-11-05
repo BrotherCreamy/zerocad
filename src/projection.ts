@@ -113,17 +113,59 @@ export function screenCurve(model: Model, view: View, e: Entity, slackPx: number
     }
     return obliquely(view, f, rs, dim);
   }
-  if (e.kind === "ellipse") {
-    // Never an exact screen curve: an ellipse is a polyline on screen however
-    // it is seen — intersect.ts has no ellipse, and needs none, since a
-    // quarter-pixel polyline is what is drawn — and a pixel on it lifts back
-    // to the true ellipse by Newton on its parametric form (`ellipseLift`).
-    const f = curveFrame(model, e);
-    if (!f) return null;
+  if (e.kind === "point" || e.kind === "frame") return null;
+  // A kind a module declares. Laid out by a conic frame (one with a second
+  // radius — the ellipse): never an exact screen curve, a polyline on screen
+  // however it is seen — intersect.ts has no ellipse, and needs none, since a
+  // quarter-pixel polyline is what is drawn — and a pixel on it lifts back to
+  // the true curve by Newton on its parametric form (`ellipseLift`).
+  const f = curveFrame(model, e);
+  if (f && f.rv !== undefined) {
     const shape = obliquely(view, f, frameReach(f) * view.scale, dim);
     return { curve: shape.curve, lift: ellipseLift(view, f, shape.curve as { kind: "polyline"; pts: Pt[] }, dim) };
   }
+  // Sampled (a kind typed at the command line, `defineEntity`): its world
+  // polyline projected, and a pixel lifted along the nearest of its pieces.
+  const world = sampledWorld(model, e);
+  if (world && world.length >= 2) {
+    const pts = world.map((w) => worldToScreen(view, w));
+    return {
+      curve: { kind: "polyline", pts },
+      lift: (p) => {
+        const near = nearestOnPolyline(pts, p);
+        if (!near) return world[0];
+        const [a, b] = [world[near.index], world[near.index + 1] ?? world[near.index]];
+        return a.map((ai, i) => ai + near.t * (b[i] - ai));
+      },
+    };
+  }
   return null;
+}
+
+/** A kind's world polyline, as its declaration samples it (`EntityDecl.samples`, ../modules.ts). */
+export type Sampler = (model: Model, name: string) => number[][] | null;
+
+const samplers = new Map<string, { sample: Sampler; closed: boolean }>();
+
+export function defineSampler(kind: string, sample: Sampler, closed: boolean): void {
+  samplers.set(kind, { sample, closed });
+}
+
+export function undefineSampler(kind: string): void {
+  samplers.delete(kind);
+}
+
+/**
+ * The world polyline a sampled kind is drawn as — closed back to its start
+ * when the kind says it is closed — or null for a kind with no sampler. What
+ * the drawing strokes and picking aims at, so the two cannot disagree.
+ */
+export function sampledWorld(model: Model, e: Entity): number[][] | null {
+  const s = samplers.get(e.kind);
+  if (!s) return null;
+  const pts = s.sample(model, e.name);
+  if (!pts || pts.length < 2) return null;
+  return s.closed ? [...pts, pts[0]] : pts;
 }
 
 /**

@@ -37,7 +37,10 @@ import { _, checkClauses, checkOrdinary, slots, splitClauses, subjectable, type 
 import {
   addTo, closegroup, group as groupOp, groupsOf, hide, members, opengroup, removeFrom, rename, show, ungroup,
 } from "./groups.ts";
-import { moduleCommands, moduleHelp, moduleRelations, type ModuleKit } from "./modules.ts";
+import {
+  activeWorkbench, defineModule, defineWorkbench, describeModule, extendModule, fileLoading, getModule, listWorkbenches,
+  loadedModules, moduleCommands, moduleHelp, moduleRelations, setActiveWorkbench, type EntityDecl, type ModuleKit, type ModuleSpec,
+} from "./modules.ts";
 import { lifted } from "./modules/core.ts";
 // The app's vocabulary — every built-in module, loaded once — so a scope built
 // anywhere, a test's included, has it (modules/builtin.ts).
@@ -198,6 +201,30 @@ export interface EnvHandles {
    * state, like the layout; a scope with none keeps its own for its lifetime.
    */
   optionMemory?: OptionMemory;
+  /**
+   * Switches the workbench (docs/plans/workbenches.md): the tray and the
+   * menu follow, and the document remembers it in its head. The host's, since
+   * the tray is; headless, `workbench(name)` sets the registry's own.
+   */
+  workbench?: (name: string) => string;
+  /** A module or workbench was defined or removed: the tray and the menu are rebuilt. */
+  modulesChanged?: () => void;
+  /**
+   * Hands the scope's names, a module's new relations and commands among
+   * them, to the live evaluator (`Repl.define`) — which copied the scope when
+   * it was made, so a name added after needs handing over.
+   */
+  rescope?: (names: Record<string, unknown>) => void;
+  /**
+   * Workbench files on this device (workbenchhost.ts): the picker and the
+   * consent, a URL, Remove, Share. Browser only.
+   */
+  workbenchFiles?: {
+    add(): string;
+    load(url: string): Promise<string>;
+    remove(name: string): Promise<string>;
+    share(name: string): Promise<string>;
+  };
 }
 
 // `describeRelation` and the short-name table it reads used to live here. They
@@ -243,7 +270,7 @@ export function neocadScope(h: EnvHandles): Bag {
     for (const { decl } of moduleRelations()) {
       const fn = (decl.typed ?? decl.fn) as (model: Model, ...args: never[]) => string;
       const bound = (...args: never[]) => fn(model, ...args);
-      for (const name of decl.names) relations[name] = subjectable(name, decl.slots, bound);
+      for (const name of decl.names) relations[name] = subjectable(name, decl.slots as Slot[], bound);
     }
   };
   bindRelations();
@@ -727,7 +754,7 @@ export function neocadScope(h: EnvHandles): Bag {
     // because the same function writes the undo stack's snapshots — see
     // persist.ts. A file the user asked for carries them; a snapshot does not,
     // so authoring a tool is not an edit to the drawing.
-    save: () => saveModel(model, true, sources.all()),
+    save: () => saveModel(model, true, sources.all(), { workbench: activeWorkbench() }),
     /**
      * Opens a file, and **evaluates nothing**.
      *
@@ -1199,9 +1226,155 @@ export function neocadScope(h: EnvHandles): Bag {
     facing: curveFacing,
   };
 
+  /**
+   * After a module loads: its relations and commands join this scope at once,
+   * and the host hears of it (the tray, the menu). A scope built later — the
+   * next open, an undo — reads them from the registry like the built-ins'.
+   */
+  const joined = () => {
+    bindRelations();
+    Object.assign(scope, relations, moduleCommands(kit));
+    addedCommands();
+    h.rescope?.(scope);
+    h.modulesChanged?.();
+  };
+
+  /**
+   * A module that is not built in — typed, or from a workbench file — has its
+   * operations typed by name, each one journalled call (`asOperation`), and its
+   * entity kinds' constructors typed by their op (`addPin(…)`), answering the
+   * name made. The built-ins type theirs through their own commands.
+   */
+  function addedCommands() {
+    for (const m of loadedModules()) {
+      if (m.origin === "builtin") continue;
+      for (const [op, fn] of Object.entries(m.spec.operations ?? {})) {
+        const f = fn as (model: Model, ...args: unknown[]) => unknown;
+        if (!(op in scope) || m.name === "user") scope[op] = (...args: unknown[]) => model.asOperation(op, args, () => f(model, ...args));
+      }
+      for (const decl of m.spec.entities ?? []) {
+        scope[decl.add.op] = (...args: unknown[]) => {
+          const made = (decl.add.fn as (model: Model, ...a: unknown[]) => unknown)(model, ...args);
+          return made && typeof made === "object" && "name" in made ? (made as { name: string }).name : made;
+        };
+      }
+    }
+  }
+
+  /** Captures the entry that defined `name` as its source — a file carries it as it carries a tool's (toolsource.ts). */
+  const capture = (name: string) => {
+    const entry = h.currentEntry?.();
+    if (entry && !fileLoading()) sources.capture(name, entry);
+    return entry ?? undefined;
+  };
+
+  const moduleCmds: Bag = {
+    /**
+     * `defineModule(name, spec)` — one call that registers everything a module
+     * brings (modules.ts). From a workbench file it is checked against the
+     * file's manifest before anything is registered; typed, the entry is the
+     * consent, as a pasted tool's is, and it is carried by a saved file as
+     * text.
+     */
+    defineModule: (name: string, spec: ModuleSpec) => {
+      const file = fileLoading();
+      const m = defineModule(name, spec, file ? { file: file.fileName, hash: file.hash } : "typed");
+      if (!file) { const src = capture(name); if (src) m.source = src; }
+      joined();
+      return `module ${name}: ${describeModule(m)}`;
+    },
+    defineWorkbench: (name: string, spec: { modules: string[]; label?: string }) => {
+      defineWorkbench(name, spec, "added");
+      h.rescope?.(scope);
+      h.modulesChanged?.();
+      return `workbench ${name}: ${spec.modules.join(", ")}`;
+    },
+    /**
+     * `defineRelation(name, slots, fn)` — a relation of the `user` module, as
+     * `defineTool` makes a tool: `name` a word or `[short, long]` (the long is
+     * what a file journals), `slots` where `_` may stand (`["point", "#d"]`),
+     * and `fn(model, ...args)`, whose body is one `model.relation(op, args, …)`
+     * so it is named, journalled and deletable.
+     */
+    defineRelation: (name: string | string[], sig: string[], fn: (model: Model, ...args: never[]) => string) => {
+      const names = Array.isArray(name) ? name : [name];
+      if (!names.length || !names.every((n) => typeof n === "string")) throw new Error("defineRelation(name, slots, fn): name is a word or [short, long]");
+      if (!Array.isArray(sig) || typeof fn !== "function") throw new Error('defineRelation(name, slots, fn): slots is a list like ["point", "#distance"], fn(model, ...args)');
+      const op = names[names.length - 1];
+      extendModule("user", { relations: { [op]: { names, slots: slots(...sig), fn } } }, capture(op));
+      joined();
+      return `relation ${names.join(" / ")} (user)`;
+    },
+    /**
+     * `defineOperation(name, fn)` — an operation of the `user` module: typed,
+     * it runs `fn(model, ...args)` as one journalled call (`asOperation`), and
+     * a file replays it by name.
+     */
+    defineOperation: (name: string, fn: (model: Model, ...args: unknown[]) => unknown) => {
+      if (typeof name !== "string" || typeof fn !== "function") throw new Error("defineOperation(name, fn): fn(model, ...args)");
+      extendModule("user", { operations: { [name]: fn as (model: Model, ...args: never[]) => unknown } }, capture(name));
+      scope[name] = (...args: unknown[]) => model.asOperation(name, args, () => fn(model, ...args));
+      h.rescope?.(scope);
+      h.modulesChanged?.();
+      return `operation ${name} (user)`;
+    },
+    /**
+     * `defineEntity(decl)` — an entity kind of the `user` module (modules.ts's
+     * `EntityDecl`): its structure (`refs`, `vars`, `curve`, `closed`), its
+     * constructor (`add: { op, fn }`), and how it is drawn and picked
+     * (`samples(model, name)`, a world polyline). Typed, its constructor is
+     * `add.op` with the model in hand.
+     */
+    defineEntity: (decl: EntityDecl) => {
+      if (!decl || typeof decl.kind !== "string" || !decl.add || typeof decl.add.fn !== "function") {
+        throw new Error('defineEntity({ kind, refs, add: { op, fn }, samples? }) — see help()');
+      }
+      extendModule("user", { entities: [decl] }, capture(decl.kind));
+      scope[decl.add.op] = (...args: unknown[]) => {
+        const made = (decl.add.fn as (model: Model, ...a: unknown[]) => unknown)(model, ...args);
+        return made && typeof made === "object" && "name" in made ? (made as { name: string }).name : made;
+      };
+      h.rescope?.(scope);
+      h.modulesChanged?.();
+      return `entity kind ${decl.kind} (user)`;
+    },
+    /** `modules()` — what is loaded, in order, and what each registers. */
+    modules: () => loadedModules().map((m) => `${m.name.padEnd(10)} ${describeModule(m)}`),
+    /** `workbench()` names the current one; `workbench("sketch")` switches the tray and the menu to it. */
+    workbench: (name?: string) => {
+      if (name === undefined) return activeWorkbench();
+      if (h.workbench) return h.workbench(name);
+      setActiveWorkbench(name);
+      return `workbench: ${name}`;
+    },
+    workbenches: () => listWorkbenches().map((w) =>
+      `${w.name === activeWorkbench() ? "●" : " "} ${w.name.padEnd(10)} ${w.modules.join(", ")}${w.origin === "added" ? "  (added)" : ""}`),
+    /** The logo menu's Add workbench…: the device's file picker, the manifest, the question. Browser only. */
+    addWorkbench: () => {
+      if (!h.workbenchFiles) throw new Error("addWorkbench() needs the app's file picker — a browser");
+      return h.workbenchFiles.add();
+    },
+    /** `loadModule(url)` — the same, from a URL: fetched, its manifest shown, asked. */
+    loadModule: (url: string) => {
+      if (!h.workbenchFiles) throw new Error("loadModule(url) needs the app — a browser");
+      if (typeof url !== "string") throw new Error('loadModule(url) takes the workbench file\'s URL, "…/gears.zerocad.js"');
+      return h.workbenchFiles.load(url);
+    },
+    removeWorkbench: (name: string) => {
+      if (!h.workbenchFiles) throw new Error("removeWorkbench(name) needs the app — a browser");
+      return h.workbenchFiles.remove(name);
+    },
+    shareWorkbench: (name: string) => {
+      if (!h.workbenchFiles) throw new Error("shareWorkbench(name) needs the app — a browser");
+      return h.workbenchFiles.share(name);
+    },
+  };
+
   const scope: Bag = {
     ...relations, ...geometry, ...moduleCommands(kit), ...operations, ...grouping, ...persistence, ...clauses, ...commands,
+    ...moduleCmds,
   };
+  addedCommands();
   scope.help = () => help(scope);
   return scope;
 }

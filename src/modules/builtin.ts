@@ -10,14 +10,14 @@
 import "./core.ts";
 import "./sketch.ts";
 import "./solids.ts";
-import "./step.ts";
 import "./files.ts";
+import "./step.ts";
 import "./organiser.ts";
 import "./interface.ts";
 import { defineWorkbench, markBuiltin } from "../modules.ts";
 
 // Built in: marked so neither they nor their workbenches can be removed.
-for (const name of ["core", "sketch", "solids", "step", "files", "organiser", "interface"]) markBuiltin(name);
+for (const name of ["core", "sketch", "solids", "files", "step", "organiser", "interface"]) markBuiltin(name);
 
 /**
  * The workbenches (docs/plans/workbenches.md): `part`, the default, is today's

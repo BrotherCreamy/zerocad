@@ -30,13 +30,13 @@ class Stamp extends Tool {
 
 test("the built-in modules load in order, and the tables are filled from them in that order", () => {
   const builtin = loadedModules().filter((m) => m.origin === "builtin").map((m) => m.name);
-  assert.deepEqual(builtin, ["core", "sketch", "solids", "step", "files", "organiser", "interface"]);
+  assert.deepEqual(builtin, ["core", "sketch", "solids", "files", "step", "organiser", "interface"]);
   // The tray: core's tools, then the sketch module's, then the solids'.
   assert.deepEqual(listTools(), ["point", "line", "rectangle", "polygon", "slot", "circle", "arc", "ellipse", "fillet",
     "dimension", "constrain", "extrude", "revolve", "sketch"]);
   // The menu's tool items and the File items, module by module.
   assert.deepEqual(menuToolItems().map((i) => i.tool), ["point", "line", "rectangle", "circle", "arc", "ellipse", "fillet"]);
-  assert.deepEqual(fileMenuItems().map((i) => i.label), ["Export STEP…", "New", "Open…", "Save", "Share…"]);
+  assert.deepEqual(fileMenuItems().map((i) => i.label), ["New", "Open…", "Save", "Share…", "Export STEP…"]);
   // Relations: core's before the sketch module's.
   const ops = moduleRelations().map((r) => r.op);
   assert.ok(ops.indexOf("dist") < ops.indexOf("radius") && ops.indexOf("radius") < ops.indexOf("onEllipse"));
@@ -104,7 +104,9 @@ test("a file written before the re-cut — every sketch-shapes piece and an extr
   await loadKernel();
   const text = await readFile(new URL("./fixtures/shapes-v15.neocad.json", import.meta.url), "utf8");
   const m = open(text);
-  assert.equal(save(m, true), text);
+  // Saved again it is the same file but for its version: 16 added the head's
+  // workbench and modules, and a file that uses neither changes nothing else.
+  assert.equal(save(m, true), text.replace('"version": 15', '"version": 16'));
   // And it is the ellipse it was: drawn by the sketch module's kind.
   const s = neocadScope({ model: m }) as Record<string, (...a: unknown[]) => unknown>;
   assert.match(String(s.ls()), /el1\s+ellipse/);
@@ -129,4 +131,118 @@ test("a declared kind's own variables count in the diagnosis: an ellipse whose m
     model.solve();
     assert.equal(model.diagnose().dof, 0, `${dim}D, held`);
   }
+});
+
+/** The entry a person types: one tool, one relation and one entity kind, in one module. */
+const PINS = `defineModule("pins", {
+  tools: { pin: class extends Tool { name = "pin"; onUp(p) { addPin(pt(...p.world)); this.ctx.finish(); } } },
+  relations: {
+    level: { names: ["level"], slots: ["a", "b"], fn: (model, a, b) => model.relation("level", [a, b], () => {
+      const A = model.point(a), B = model.point(b);
+      model.addResidual([A.varIndices[1], B.varIndices[1]], (l) => [l[0].sub(l[1])]);
+    }) },
+  },
+  entities: [{
+    kind: "pin", noun: "a pin", refs: (e) => [e.at],
+    add: { op: "addPin", fn: (model, at, name) => {
+      const [nm] = model.claimFirst("pin", name, () => null);
+      const e = { kind: "pin", name: nm, at };
+      model.place(e);
+      model.record("addPin", [at, nm]);
+      return e;
+    } },
+    // A cross, 4 units each way, drawn and picked as one polyline.
+    samples: (model, name) => {
+      const [x, y, z] = model.coords(model.entities.get(name).at);
+      return [[x - 4, y, z], [x + 4, y, z], [x, y, z], [x, y - 4, z], [x, y + 4, z]];
+    },
+  }],
+})`;
+
+test("a module defined at the command line — a tool, a relation, an entity kind — is drawn, picked, saved and opened; without it the file says what is missing and the rest is intact", async () => {
+  await loadKernel();
+  const { Repl } = await import("../src/repl.ts");
+  const { ToolSourceStore } = await import("../src/toolsource.ts");
+  const { hitTest } = await import("../src/picking.ts");
+  const { sampledWorld } = await import("../src/projection.ts");
+  const { lastOpen, savedHead } = await import("../src/persist.ts");
+  const model = new Model(3);
+  const sources = new ToolSourceStore();
+  let repl: InstanceType<typeof Repl>;
+  repl = new Repl(neocadScope({ model, toolSources: sources, currentEntry: () => repl.entry, rescope: (b) => repl.define(b) }));
+  const defined = await repl.eval(PINS);
+  assert.ok(defined.ok, String(defined.error?.message));
+  assert.match(String(defined.value), /tools pin; relations level; entities pin/);
+  assert.ok(getToolCtor("pin"), "its tool is registered");
+  // Drawn: the polyline its kind samples. Built by its constructor, held by its relation.
+  const run = async (line: string) => { const r = await repl.eval(line); assert.ok(r.ok, `${line}: ${r.error?.message}`); return r.value; };
+  const a = await run("pt(0, 0, 0)") as string;
+  const b = await run("pt(30, 7, 0)") as string;
+  const pin = await run(`addPin("${b}")`) as string;
+  assert.equal(pin, "pin1");
+  await run(`fix("${a}", [0, 0, 0])`);
+  await run(`level("${a}", "${b}")`);
+  model.solve();
+  assert.ok(Math.abs(model.coords(b)[1]) < 1e-6, "the relation held");
+  const world = sampledWorld(model, model.entities.get(pin)!);
+  assert.equal(world?.length, 5);
+  // Picked: a pixel on one of its arms, away from its point.
+  const view = { ox: 400, oy: 300, scale: 4 };
+  const [sx, sy] = [400 + (30 + 3) * 4, 300];
+  assert.equal(hitTest(model, view, sx, sy)?.name, pin);
+  // Saved: the head records the module, the file carries its source as text.
+  const text = await run("save()") as string;
+  const saved = JSON.parse(text);
+  assert.deepEqual(saved.modules.map((m: { name: string; ops: string[] }) => [m.name, m.ops.sort()]), [["pins", ["addPin", "level"]]]);
+  assert.ok(saved.tools.some((t: { name: string; source: string }) => t.name === "pins" && t.source.includes("defineModule")));
+  // Opened with it: the same drawing.
+  const again = open(text);
+  assert.equal(again.entities.get(pin)?.kind, "pin");
+  assert.equal(save(again, true, saved.tools), text.replace(/,\n  "workbench": "[^"]*"/, ""));
+  // Opened on a device without it: what is missing is said, and everything else is there.
+  const pins = removeModule("pins");
+  forgetKinds(pins);
+  assert.deepEqual(savedHead(text).missing.map((m) => m.name), ["pins"]);
+  const without = open(text);
+  assert.deepEqual(lastOpen().missing.map((m) => m.name), ["pins"]);
+  assert.equal(lastOpen().skipped, 2, "addPin and level, nothing else");
+  assert.ok(without.entities.has(a) && without.entities.has(b), "the points are there");
+  assert.equal(without.entities.has(pin), false);
+  assert.equal(without.relations.size, 1, "the fix is there; the level is not");
+  assert.deepEqual(without.coords(b), model.coords(b), "and where it was saved");
+});
+
+test("a workbench file: its manifest is read without running it, loading it registers exactly that, and a file whose manifest and source disagree is refused with what was not shown", async () => {
+  await loadKernel();
+  const { Repl } = await import("../src/repl.ts");
+  const { loadingFile, readManifest, textHash, getWorkbench } = await import("../src/modules.ts");
+  const pins = await readFile(new URL("./fixtures/workbenches/pins.zerocad.js", import.meta.url), "utf8");
+  const liar = await readFile(new URL("./fixtures/workbenches/liar.zerocad.js", import.meta.url), "utf8");
+  assert.deepEqual(readManifest(pins), {
+    name: "pins", label: "Pins", workbench: "pins", tools: ["pin"], relations: ["level"], operations: [], entities: ["pin"],
+  });
+  assert.throws(() => readManifest("defineModule('x', {})"), /no \/\* zerocad-workbench/);
+  assert.equal(getModule("pins"), undefined, "reading ran nothing");
+
+  const model = new Model(3);
+  let repl: InstanceType<typeof Repl>;
+  repl = new Repl(neocadScope({ model, currentEntry: () => repl.entry, rescope: (b) => repl.define(b) }));
+  const load = async (source: string, fileName: string) => loadingFile(
+    { fileName, hash: textHash(source), manifest: readManifest(source) },
+    async () => { const r = await repl.eval(source); if (!r.ok) throw r.error; },
+  );
+  await load(pins, "pins.zerocad.js");
+  const m = getModule("pins")!;
+  assert.deepEqual(m.origin, { file: "pins.zerocad.js", hash: textHash(pins) });
+  assert.deepEqual([m.tools, m.entities, m.ops.sort()], [["pin"], ["pin"], ["addPin", "level"]]);
+  assert.deepEqual(getWorkbench("pins")?.modules, ["core", "sketch", "pins"]);
+  assert.deepEqual(workbenchTools("pins").slice(-1), ["pin"], "its tool is on its own tray");
+  assert.equal(onWorkbench("part", "pin"), false, "and not on part's");
+
+  await assert.rejects(load(liar, "liar.zerocad.js"), /refused — the file registers relations its manifest does not show: sneak/);
+  assert.equal(getModule("liar"), undefined, "nothing of it was registered");
+  assert.equal(getToolCtor("dot"), undefined);
+
+  forgetKinds(removeModule("pins"));
+  assert.equal(getWorkbench("pins"), undefined, "its workbench went with it");
 });

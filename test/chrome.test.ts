@@ -19,7 +19,11 @@ import {
   formatScale, recallScale, rememberScale, stepScale, textFactor, type Device,
 } from "../src/uiscale.ts";
 import { GUIDE_NOTE_MS, STATUS_FADE_MS, STEP_NOTE_MS, StatusLine, statusFade, type TextLike } from "../src/statusline.ts";
-import { FILE_ITEMS, UNTITLED, fileItemOff, paneCommand, scaleCommand, spinCommands } from "../src/appmenu.ts";
+import { UNTITLED, fileItemOff, paneCommand, scaleCommand, spinCommands } from "../src/appmenu.ts";
+// The File items are the modules' now (the files module's, then STEP's): the same list, from them.
+import { fileMenuItems } from "../src/modules.ts";
+import "../src/modules/builtin.ts";
+const FILE_ITEMS = fileMenuItems();
 import { iconSvg, logoMark } from "../src/logo.ts";
 
 function memory(): { storage: StorageLike; store: Map<string, string> } {

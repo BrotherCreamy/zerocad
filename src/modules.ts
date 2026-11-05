@@ -28,7 +28,7 @@
 // module adds to it; members keep module order.
 
 import type { Model } from "./model.ts";
-import type { Slot } from "./clauses.ts";
+import { slots, type Slot } from "./clauses.ts";
 import { defineTool, getToolCtor, listTools, undefineTool, defineGroup, ungroupTool, type ToolCtor } from "./tools/tool.ts";
 import { defineIcon, undefineIcon, hasIcon } from "./tools/icons.ts";
 import { defineDimension, defineEntityKind, undefineEntityKind, entityKind, type EntityKindSpec } from "./model.ts";
@@ -36,6 +36,7 @@ import { defineRebuild } from "./operations.ts";
 import { defineCurveFrame, undefineCurveFrame, type CurveFrameFn } from "./curveplane.ts";
 import { defineDescriber, undefineDescriber, type Describer } from "./picking.ts";
 import { defineStepCurve, undefineStepCurve, type StepCurveWriter } from "./step.ts";
+import { defineSampler, undefineSampler, type Sampler } from "./projection.ts";
 
 type Fn = (...args: unknown[]) => unknown;
 
@@ -49,7 +50,7 @@ export interface RelationDecl {
   /** The names it is typed by, short first: `["par", "parallel"]`. */
   names: string[];
   /** Where `_` may stand (clauses.ts); `#` marks a number. */
-  slots: Slot[];
+  slots: (Slot | string)[];
   /** `(model, ...args)` → the relation's name. What both the typed call and a replay run. */
   fn: (model: Model, ...args: never[]) => string;
   /** The typed form, where it differs from the replayed one (`fix` lifts two coordinates to three). */
@@ -90,6 +91,12 @@ export interface EntityDecl extends EntityKindSpec {
   describe?: Describer;
   /** How a solid's edge or a loose curve of this kind is written to STEP (step.ts). */
   step?: StepCurveWriter;
+  /**
+   * For a kind with no frame: the world polyline it is drawn as and picked by
+   * (projection.ts) — closed back to its start when `closed`. A sampled kind
+   * bounds no region and goes to no STEP file (docs/plans/workbenches.md).
+   */
+  samples?: Sampler;
 }
 
 /** A menu tool item: the label the empty-canvas menu shows, and the tool it arms. */
@@ -135,9 +142,13 @@ export interface LoadedModule {
   relations: string[];
   ops: string[];
   entities: string[];
+  /** The text that defined it, when one did: a workbench file's, or the command-line entries a typed module grew from. */
+  source?: string;
 }
 
 const modules = new Map<string, LoadedModule>();
+/** A counter for the pieces `extendModule` registers before folding them into the module they extend. */
+let pieces = 0;
 
 /** What a refusal names a thing as. */
 const what = (kind: string, name: string) => `${kind} ${JSON.stringify(name)}`;
@@ -232,13 +243,23 @@ export function defineModule(name: string, spec: ModuleSpec, origin: LoadedModul
   if (modules.has(name)) {
     throw new Error(`module "${name}" is already loaded — a module is loaded once; removeModule("${name}") first`);
   }
+  // Slots may be written as clauses.ts spells them — "point", "#distance" — by a
+  // module typed or loaded from a file; held as `Slot`s from here on.
+  for (const decl of Object.values(spec.relations ?? {})) {
+    if (Array.isArray(decl?.slots)) decl.slots = decl.slots.map((s) => (typeof s === "string" ? slots(s)[0] : s));
+  }
   checkModule(name, spec);
+  if (loading) {
+    const why = manifestDisagrees(loading.manifest, name, spec);
+    if (why) throw new Error(`refused — ${why}. Nothing was registered.`);
+  }
   // Kinds first: a tool's class or a relation may name one at load.
   for (const e of spec.entities ?? []) {
     defineEntityKind(e);
     if (e.frame) defineCurveFrame(e.kind, e.frame);
     if (e.describe) defineDescriber(e.kind, e.describe);
     if (e.step) defineStepCurve(e.kind, e.step);
+    if (e.samples) defineSampler(e.kind, e.samples, e.closed === true);
   }
   for (const [op, decl] of Object.entries(spec.relations ?? {})) {
     if (decl.dimension === undefined || decl.op === false) continue;
@@ -288,7 +309,28 @@ export function forgetKinds(m: LoadedModule): void {
     undefineCurveFrame(e.kind);
     undefineDescriber(e.kind);
     undefineStepCurve(e.kind);
+    undefineSampler(e.kind);
   }
+}
+
+/**
+ * A short, stable hash of a text — FNV-1a, 64 bits, as 16 hex digits. What a
+ * document's head records a module's source by; not a security measure (the
+ * consent is), only "is this the same file".
+ */
+export function textHash(text: string): string {
+  let h = 0xcbf29ce484222325n;
+  for (let i = 0; i < text.length; i++) {
+    h ^= BigInt(text.charCodeAt(i));
+    h = (h * 0x100000001b3n) & 0xffffffffffffffffn;
+  }
+  return h.toString(16).padStart(16, "0");
+}
+
+/** The hash a document records a module by: its file's or its typed source's, or "" for one with none. */
+export function moduleHash(m: LoadedModule): string {
+  if (typeof m.origin === "object") return m.origin.hash;
+  return m.source ? textHash(m.source) : "";
 }
 
 /** Marks a module as one the app ships — loaded at every start, never removed. builtin.ts's, once each has loaded. */
@@ -296,6 +338,146 @@ export function markBuiltin(name: string): void {
   const m = modules.get(name);
   if (!m) throw new Error(`no module "${name}" is loaded`);
   m.origin = "builtin";
+}
+
+/** One line of what a module registers, by name: what `modules()` and the consent read. */
+export function describeModule(m: LoadedModule): string {
+  const parts: string[] = [];
+  const list = (word: string, names: string[]) => { if (names.length) parts.push(`${word} ${names.join(", ")}`); };
+  list("tools", m.tools.filter((t) => listTools().includes(t)));
+  list("relations", Object.entries(m.spec.relations ?? {}).map(([, r]) => r.names[0]));
+  list("operations", Object.keys(m.spec.operations ?? {}));
+  list("entities", m.entities);
+  const origin = m.origin === "builtin" ? "built in" : m.origin === "typed" ? "typed" : `from ${m.origin.file}`;
+  return `${parts.join("; ") || "help and menu items only"}  (${origin})`;
+}
+
+/**
+ * Adds to a module that grows: the `user` module, which `defineRelation`,
+ * `defineOperation` and `defineEntity` at the command line join, as
+ * `defineTool` puts a tool on the tray with no module. Made on first use;
+ * checked whole, as `defineModule` checks, before anything is added.
+ */
+export function extendModule(name: string, spec: ModuleSpec, source?: string): LoadedModule {
+  const m = modules.get(name);
+  if (!m) {
+    const made = defineModule(name, spec, "typed");
+    if (source) made.source = source;
+    return made;
+  }
+  checkModule(name, spec);
+  const piece = defineModule(`${name}-piece-${++pieces}`, spec, "typed");
+  modules.delete(piece.name);
+  const merge = <T>(a: Record<string, T> | undefined, b: Record<string, T> | undefined) => ({ ...(a ?? {}), ...(b ?? {}) });
+  m.spec = {
+    ...m.spec,
+    tools: merge(m.spec.tools, spec.tools),
+    icons: merge(m.spec.icons, spec.icons),
+    relations: merge(m.spec.relations, spec.relations),
+    operations: merge(m.spec.operations, spec.operations),
+    replay: merge(m.spec.replay, spec.replay),
+    entities: [...(m.spec.entities ?? []), ...(spec.entities ?? [])],
+  };
+  m.tools.push(...piece.tools);
+  m.relations.push(...piece.relations);
+  m.ops.push(...piece.ops);
+  m.entities.push(...piece.entities);
+  if (source) m.source = m.source ? `${m.source}\n${source}` : source;
+  return m;
+}
+
+/**
+ * **A workbench file's manifest** (docs/plans/workbenches.md): what the file
+ * says it registers, read from the comment at its top — *not by running it* —
+ * so the person is asked about what they can see before anything runs.
+ *
+ * ```js
+ * /* zerocad-workbench
+ * { "name": "gears", "label": "Gears", "tools": ["gear"], "relations": ["mesh"],
+ *   "operations": [], "entities": ["involute"], "workbench": "gears" }
+ * *\/
+ * defineModule("gears", { … });
+ * defineWorkbench("gears", { modules: ["core", "sketch", "gears"] });
+ * ```
+ */
+export interface Manifest {
+  name: string;
+  label?: string;
+  tools: string[];
+  relations: string[];
+  operations: string[];
+  entities: string[];
+  /** The workbench the file defines, if it defines one. */
+  workbench?: string;
+}
+
+/** The manifest at the top of a workbench file, or a refusal saying what is wrong with it. Runs nothing. */
+export function readManifest(source: string): Manifest {
+  const m = /^\s*\/\*\s*zerocad-workbench\s*([\s\S]*?)\*\//.exec(source);
+  if (!m) throw new Error("this is not a workbench file: it has no /* zerocad-workbench { … } */ manifest at its top");
+  let raw: unknown;
+  try { raw = JSON.parse(m[1]); } catch (e) {
+    throw new Error(`the workbench file's manifest is not JSON: ${e instanceof Error ? e.message : e}`);
+  }
+  const r = raw as Record<string, unknown>;
+  const names = (key: string): string[] => {
+    const v = r?.[key] ?? [];
+    if (!Array.isArray(v) || !v.every((x) => typeof x === "string")) throw new Error(`the manifest's ${key} is a list of names`);
+    return v as string[];
+  };
+  if (!r || typeof r.name !== "string" || !/^[A-Za-z][\w-]*$/.test(r.name)) throw new Error("the manifest names its module: \"name\": \"gears\"");
+  const out: Manifest = {
+    name: r.name, tools: names("tools"), relations: names("relations"), operations: names("operations"), entities: names("entities"),
+  };
+  if (typeof r.label === "string") out.label = r.label;
+  if (typeof r.workbench === "string") out.workbench = r.workbench;
+  return out;
+}
+
+/** Where the manifest and what `defineModule` was handed disagree, said by name; null when they agree exactly. */
+export function manifestDisagrees(manifest: Manifest, name: string, spec: ModuleSpec): string | null {
+  if (name !== manifest.name) return `the manifest says module "${manifest.name}", the file defines "${name}"`;
+  const said: [string, string[], string[]][] = [
+    ["tools", manifest.tools, Object.keys(spec.tools ?? {})],
+    ["relations", manifest.relations, Object.values(spec.relations ?? {}).map((r) => r.names[0])],
+    ["operations", manifest.operations, Object.keys(spec.operations ?? {})],
+    ["entities", manifest.entities, (spec.entities ?? []).map((e) => e.kind)],
+  ];
+  for (const [what, claimed, real] of said) {
+    const extra = real.filter((x) => !claimed.includes(x));
+    const absent = claimed.filter((x) => !real.includes(x));
+    if (extra.length) return `the file registers ${what} its manifest does not show: ${extra.join(", ")}`;
+    if (absent.length) return `the manifest shows ${what} the file does not register: ${absent.join(", ")}`;
+  }
+  return null;
+}
+
+/** The workbench file being loaded now, if one is: what `defineModule` checks against. */
+export interface FileLoad { fileName: string; hash: string; manifest: Manifest }
+let loading: FileLoad | null = null;
+
+export function fileLoading(): FileLoad | null {
+  return loading;
+}
+
+/**
+ * Runs `body` — the file's evaluation — with `load` in force: the one
+ * `defineModule` it makes must be the manifest's module, registering exactly
+ * what the manifest shows, or it is refused before anything is registered. A
+ * file that defines no module, or a module other than its manifest's, is
+ * refused after (`body` may have run its top level by then: the consent was to
+ * run it; the REPL's scope is curated, not a sandbox).
+ */
+export async function loadingFile<T>(load: FileLoad, body: () => Promise<T>): Promise<T> {
+  if (loading) throw new Error(`a workbench file is already loading (${loading.fileName})`);
+  loading = load;
+  try {
+    const out = await body();
+    if (!modules.has(load.manifest.name)) throw new Error(`the file defines no module "${load.manifest.name}", which its manifest names`);
+    return out;
+  } finally {
+    loading = null;
+  }
 }
 
 /** The loaded modules, in load order. */
@@ -443,7 +625,10 @@ export function onWorkbench(workbench: string, tool: string): boolean {
   const w = workbenches.get(workbench);
   if (!w) return true;
   const owner = moduleOfTool(tool);
-  return owner === null || owner === "user" || w.modules.includes(owner);
+  if (owner === null || w.modules.includes(owner)) return true;
+  // A module no workbench names — typed at the command line, pasted — is on
+  // every tray, as a tool typed there is: the person put it there.
+  return ![...workbenches.values()].some((b) => b.modules.includes(owner));
 }
 
 /** The listed tools on `workbench`'s tray, in registration order. */
