@@ -1599,7 +1599,10 @@ starts.
            there (a fillet's tangent points converged to 1.8e-3, now exact;
            an old-file test now expects the exact points); **the label is not
            draggable** — the spec assumed `dimension-labels.md` had built
-           dragging, and it had not; `deg(x)` added; the empty-canvas menu
+           dragging, and it had not; `deg(x)` and `freeink(false)` (a viewer's
+           switch, which five pixel-reading e2e files now use) added; the
+           hidden view's golden picture re-recorded for the `—` mark only
+           (61 pixels); the empty-canvas menu
            does not list the two tools. Measured: **2.1 ms** a diagnosis on
            the biggest fixture (9.5 ms a drag-frame solve), run once per
            solve outside a drag, never per frame. **Found:** opening

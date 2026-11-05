@@ -235,6 +235,14 @@ Deviations and additions — each a decision, vetoable:
   labels. The log says the relations in full, once per change.
 - **The count is degrees of freedom** — `5 free`, `0 free` — not entities.
   It fades with SOLVED; a conflict and a redundancy stay.
+- **`freeink(false)`** is new: a viewer's switch, after `glyphs(false)`, that
+  draws every entity in the sketch's ink (the status still counts). Found by
+  the full suite: five e2e files read "#afc6d9 is sketch geometry" off the
+  pixels (quiet, opaque, hidden, free-entities, and the hidden view's golden
+  picture), and their claims are about what is drawn, not what is free — so
+  they turn it off. The golden was re-recorded for the axis `par`'s new mark
+  only: 61 pixels, all in that mark's 14 × 10 box, measured against the old
+  picture.
 - **`deg(x)`** is new at the command line: the dimension tool types
   `ang("l1", "l2", deg(45))`, degrees rounded to a thousandth (a thousandth of
   a radian is a seventeenth of a degree).

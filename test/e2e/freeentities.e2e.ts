@@ -24,7 +24,11 @@ import assert from "node:assert/strict";
 import { axisFrame, openApp, distanceToLine, type AppContext } from "./harness.ts";
 
 let app: AppContext;
-before(async () => { app = await openApp(); });
+before(async () => {
+  app = await openApp();
+  // What is drawn, not what is free: the sketch's own ink (docs/plans/sketch-relations.md).
+  await app.repl("freeink(false)");
+});
 after(async () => { await app.close(); });
 
 /** An empty saved model — the shortest honest way back to a clean sheet. */

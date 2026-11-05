@@ -66,6 +66,12 @@ export interface EnvHandles {
    * mark you cannot see but can still click would be a trap.
    */
   glyphs?: (on?: boolean) => boolean;
+  /**
+   * Whether free entities wear the free ink (docs/plans/sketch-relations.md):
+   * on by default; off draws every entity in the sketch's own ink, the status
+   * still counting what is free. A viewer's setting, never journalled.
+   */
+  freeink?: (on?: boolean) => boolean;
   /** Cancels whatever tool is armed. */
   cancel?: () => void;
   /** Re-solves and redraws. Absent outside the browser. */
@@ -1060,6 +1066,11 @@ export function neocadScope(h: EnvHandles): Bag {
       if (!h.glyphs) throw new Error("no viewport in this environment");
       return h.glyphs(on);
     },
+    /** The free ink, on by default; `freeink(false)` draws everything in the sketch's ink. */
+    freeink: (on?: boolean) => {
+      if (!h.freeink) throw new Error("no viewport in this environment");
+      return h.freeink(on);
+    },
     refresh: () => { h.refresh?.(); return "ok"; },
     /**
      * Where the panels are — `layout()` — or all of them back where they
@@ -1345,6 +1356,7 @@ function help(scope: Bag): string {
     "           all hold, drawn red: click one in the status to select it, Delete",
     "           removes it. A relation the earlier ones already imply is",
     "           redundant — said in orange, never refused. Not during a drag.",
+    "           freeink(false) draws every entity in the sketch's ink.",
     "           arm(\"dimension\") clicks a line, two points, a point and a line,",
     "           two lines or a circle, then empty canvas to place: dist, ang, rad",
     "           (or dia, { diameter: true }; measure, { driven: true }), holding",
@@ -1570,7 +1582,7 @@ function help(scope: Bag): string {
     '           the drawing tools take it too: arm("circle", { construction: true }).',
     "           The hover tag says construction; ls() (construction).",
     "inspect    ls()  rels(name?)  coords(name)  solve()  tools()  hover()",
-    "           snapping(on)  glyphs(on)  model",
+    "           snapping(on)  glyphs(on)  freeink(on)  model",
     "           loops() — the closed loops of lines and arcs (and whole circles),",
     "           each in one plane: ends join only at a shared point or a coin,",
     "           never by sitting on the same spot. Read-only; named by members.",

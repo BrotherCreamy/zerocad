@@ -85,6 +85,8 @@ let diagnosis: Diagnosis | null = null;
 let conflicted = new Set<string>();
 /** What the log last said about a conflict, so a re-solve does not say it again. */
 let conflictSaid = "";
+/** Whether free entities wear the free ink (`freeink(false)` turns it off, as `glyphs(false)` the marks). */
+let freeInkOn = true;
 const logEl = document.getElementById("log")!;
 const cv = document.getElementById("cv") as HTMLCanvasElement;
 const g = cv.getContext("2d")!;
@@ -1208,7 +1210,7 @@ async function main() {
 
   /** An entity's ink when nothing outranks it: free, or held. */
   function inkOf(name: string): string {
-    return diagnosis?.free.has(name) ? FREE : HELD;
+    return freeInkOn && diagnosis?.free.has(name) ? FREE : HELD;
   }
 
   /**
@@ -1766,6 +1768,13 @@ async function main() {
       snapping: (on?: boolean) => {
         if (on !== undefined) engine.snapping = on;
         return engine.snapping;
+      },
+      freeink: (on?: boolean) => {
+        if (on !== undefined) {
+          freeInkOn = on;
+          render();
+        }
+        return freeInkOn;
       },
       glyphs: (on?: boolean) => {
         if (on !== undefined) {
