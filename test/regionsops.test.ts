@@ -32,7 +32,7 @@ import { featureFaces } from "../src/faces.ts";
 import { organiserSections, rowMenu } from "../src/organiser.ts";
 import { RegionTool } from "../src/tools/regiontool.ts";
 import type { ToolContext } from "../src/tools/tool.ts";
-import { worldToScreen, type View } from "../src/view.ts";
+import { screenToPlane, worldToScreen, type View } from "../src/view.ts";
 import { regionAtFor } from "./featurectx.ts";
 import { axisFrame } from "./frames.ts";
 import "../src/modules/builtin.ts";
@@ -415,8 +415,9 @@ test("the organiser's Regions: a row per region, its chain, the eye hiding it by
 function toolCtx(m: Model, options: Record<string, unknown> = {}, target?: string) {
   const said: string[] = [];
   const ctx = {
-    model: m, options: { mode: "subtract", ...options }, requestRender() {}, requestSolve() {}, finish() {},
+    model: m, options: { mode: "auto", ...options }, requestRender() {}, requestSolve() {}, finish() {},
     regionAt: regionAtFor(m, ABOVE), log: (l: string) => said.push(l), ...(target ? { target } : {}),
+    planeAt: (s: [number, number], plane: { origin: number[]; u: number[]; v: number[] }) => screenToPlane(ABOVE, ...s, plane),
   } as unknown as ToolContext;
   return { ctx, said };
 }
@@ -446,7 +447,7 @@ test("the region tool: a click makes a region, a click inside subtracts (the def
   assert.equal(regionText(m, "rg2"), `rg2 = ${side[0]}–${side[3]}`);
   assert.equal(tool.clear(), true, "Esc puts it down");
   assert.equal(tool.held, null);
-  ctx.options = { mode: "subtract" };
+  ctx.options = { mode: "auto" };
   click(4, 4);
   assert.equal(tool.held, "rg1", "inside a region with none in hand: that one, taken in hand, nothing typed");
   assert.equal(m.regions.size, 2);
@@ -475,4 +476,18 @@ test("the region tool types what a user could have, one line each — and armed 
   assert.deepEqual(armed, [["region", {}, "rg1"]]);
   const held = new RegionTool(toolCtx(m, {}, "rg1").ctx);
   assert.equal(held.held, "rg1");
+});
+
+test("with a solid on the region, a click on a circle under its lid means the circle: read on the region's plane", async () => {
+  await loadKernel();
+  const { m, lines, ring } = sheet();
+  const e = extrude(m, lines[0], 10);
+  m.solve();
+  const { ctx } = toolCtx(m, {}, "rg1");
+  const tool = new RegionTool(ctx);
+  const s = worldToScreen(ABOVE, [20, 25, 0]);
+  assert.notEqual(regionAtFor(m, ABOVE)(s)!.loops[regionAtFor(m, ABOVE)(s)!.index].plane.origin[2], 0, "the nearest loop there is the lid's");
+  tool.onDown({ world: [20, 25, 10], screen: s });
+  assert.equal(regionText(m, "rg1"), `rg1 = ${lines[0]}–${lines[3]} − ${ring}`);
+  assert.deepEqual(m.featureOf(e).loops, [lines, [ring]], "and the solid has its hole");
 });

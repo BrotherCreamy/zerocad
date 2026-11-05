@@ -10,9 +10,16 @@
 // click on a face types the mode's operation on it — `subtract("rg1", "c1")`,
 // `add(…)`, `intersect(…)` — and the region in hand is drawn as a feature
 // would take it, holes clear. The mode row is the extrude dialog's shape:
-// **New · Add · Subtract · ∩**, Subtract first chosen, because a face inside a
-// region is the commonest thing to click next. New makes another region of
-// the face clicked, which is then the one in hand.
+// **New · Add · Subtract · ∩**, none pressed meaning what the extrude's
+// unpressed row means — the obvious thing: Subtract with a region in hand
+// (a face inside a region is the commonest next click), a new region with
+// none. New pressed makes another region of the face clicked, which is then
+// the one in hand.
+//
+// **With a region in hand a click is read on its plane** (`ctx.planeAt`), as
+// the edit dialog reads its clicks: once a feature stands on the region its
+// lid is nearer the eye than the sketch, and a click aimed at a circle under
+// the lid means the circle, not the lid's twin of it.
 //
 // **Which region is in hand**: the one this arming made last, or the one a
 // click landed inside while none was (taking it in hand types nothing — it
@@ -31,15 +38,17 @@ import { Tool, press, type Hand, type PointerInfo, type RegionHit, type RenderCo
 import type { OptionSpecs } from "./options.ts";
 import { drawNamedRegion, drawRegion, lightRegions, missedRegion, regionKey } from "./region.ts";
 import { callText } from "./feature.ts";
-import { findLoops, type Loop } from "../loops.ts";
-import { faceNaming, planRegionStep, region as makeRegion, regionAtPoint, regionStepNaming, subtract, add, intersect } from "../operations.ts";
+import { findLoops, loopAround, type Loop } from "../loops.ts";
+import {
+  faceNaming, planRegionStep, region as makeRegion, regionHolds, regionStepNaming, regionValue, subtract, add, intersect,
+} from "../operations.ts";
 
 /** The cut's red, as the preview of a cut draws it — what a click would subtract is drawn in it. */
 export const SUBTRACT_RED = "#e8806c";
 
-/** The mode row's choices, in the extrude dialog's order. */
-export const REGION_MODES = { new: "New", add: "Add", subtract: "Subtract", intersect: "∩" } as const;
-export type RegionMode = keyof typeof REGION_MODES;
+/** The mode row's choices, in the extrude dialog's order — the first, unpressed, the obvious thing. */
+export const REGION_MODES = { auto: "auto", new: "New", add: "Add", subtract: "Subtract", intersect: "∩" } as const;
+export type RegionMode = Exclude<keyof typeof REGION_MODES, "auto">;
 
 const OPS = { add, subtract, intersect } as const;
 
@@ -49,7 +58,10 @@ const VERB: Record<RegionMode, string> = { new: "make a region of", add: "add", 
 export class RegionTool extends Tool {
   static readonly summary = "Combines faces into a region: click a face, then faces to subtract";
   static readonly options: OptionSpecs = {
-    mode: { default: "subtract", choices: REGION_MODES, buttons: true, remember: false },
+    // No label: the row is the panel's only one, and "Subtract" is the long
+    // word the extrude's Cut is not — beside it the label was cut to one
+    // letter (found by looking at the screenshot).
+    mode: { default: "auto", choices: REGION_MODES, buttons: true, remember: false, label: "" },
   };
   readonly name = "region";
   readonly snaps = false;
@@ -62,20 +74,73 @@ export class RegionTool extends Tool {
     if (typeof ctx.target === "string" && ctx.model.regions.has(ctx.target)) this.held = ctx.target;
   }
 
-  private mode(): RegionMode {
+  /** The mode pressed, or null for none — the obvious thing. */
+  private pressed(): RegionMode | null {
     const m = this.ctx.options.mode;
-    return typeof m === "string" && Object.hasOwn(REGION_MODES, m) ? m as RegionMode : "subtract";
+    return typeof m === "string" && m !== "auto" && Object.hasOwn(REGION_MODES, m) ? m as RegionMode : null;
   }
 
-  /** What a click does now: make a region, or the mode's step on the one in hand. */
+  private holding(): boolean {
+    return this.held !== null && this.ctx.model.regions.has(this.held);
+  }
+
+  /** What a click does now: make a region, or the mode's step on the one in hand (Subtract unless another is pressed). */
   private doing(): RegionMode {
-    return this.held === null || !this.ctx.model.regions.has(this.held) ? "new" : this.mode();
+    return !this.holding() ? "new" : this.pressed() ?? "subtract";
+  }
+
+  /**
+   * The face under `screen` on `region`'s plane — where its first face is —
+   * or null. What a click with that region in hand is read as.
+   */
+  private onPlaneOf(region: string, screen: [number, number], loops: Loop[] = findLoopsSafe(this.ctx.model)): RegionHit | null {
+    if (!this.ctx.planeAt) return null;
+    try {
+      const v = regionValue(this.ctx.model, region, loops);
+      const plane = loops[v.faces[0]!].plane;
+      const at = this.ctx.planeAt(screen, plane);
+      if (!at) return null;
+      const loop = loopAround(this.ctx.model, at, loops);
+      return loop ? { loops, index: loops.indexOf(loop), toward: plane.normal, at } : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** The face a press at `screen` means: on the plane of the region in hand, else the nearest under the pointer. */
+  private faceAt(screen: [number, number]): RegionHit | null {
+    const hit = this.holding() ? this.onPlaneOf(this.held!, screen) : null;
+    return hit ?? this.ctx.regionAt?.(screen) ?? null;
+  }
+
+  /** The latest region shown that a press at `screen` is inside, each asked on its own plane. */
+  private regionUnder(screen: [number, number], hit: RegionHit): string | null {
+    const model = this.ctx.model;
+    for (const name of [...model.regions.keys()].reverse()) {
+      if (model.hidden.has(name)) continue;
+      const on = this.onPlaneOf(name, screen, hit.loops) ?? hit;
+      try {
+        if (regionHolds(model, regionValue(model, name, hit.loops), on.at)) return name;
+      } catch {
+        // a region whose first face is gone holds nothing
+      }
+    }
+    return null;
   }
 
   next(hand: Hand): string {
     const d = this.doing();
     if (d === "new") return `${press(hand)} a face to make a region of it`;
     return `${press(hand)} a face to ${VERB[d]} ${this.held}`;
+  }
+
+  /**
+   * Armed again with other options — a mode button pressed, or `arm("region",
+   * { mode: "add" })` typed — it keeps the region in hand: the engine hands it
+   * the new options, and the next click is read in the new mode.
+   */
+  retune(): void {
+    this.ctx.requestRender();
   }
 
   /** Escape's first press: the region goes out of hand, and the tool stays armed. */
@@ -93,7 +158,7 @@ export class RegionTool extends Tool {
   }
 
   onMove(p: PointerInfo): void {
-    const next = this.ctx.regionAt?.(p.screen) ?? null;
+    const next = this.faceAt(p.screen);
     const changed = regionKey(next) !== regionKey(this.under);
     this.under = next;
     if (changed) this.ctx.requestRender();
@@ -101,15 +166,15 @@ export class RegionTool extends Tool {
 
   onDown(p: PointerInfo): void {
     const model = this.ctx.model;
-    const hit = this.ctx.regionAt?.(p.screen) ?? null;
+    const hit = this.faceAt(p.screen);
     if (!hit) {
       this.guide(missedRegion(model));
       return;
     }
     const d = this.doing();
     // Nothing in hand and the click inside a region: take that one in hand.
-    if (d === "new" && this.mode() !== "new") {
-      const inside = regionAtPoint(model, hit.at, hit.loops);
+    if (d === "new" && this.pressed() !== "new") {
+      const inside = this.regionUnder(p.screen, hit);
       if (inside) {
         this.held = inside;
         this.ctx.requestRender();
@@ -181,8 +246,16 @@ export class RegionTool extends Tool {
       }
     }
     if (this.under) {
-      const d = this.doing();
-      drawRegion(model, r, this.under, "2e", d === "subtract" ? SUBTRACT_RED : undefined);
+      // Red where the click would take the face away; the region's own first
+      // face is never that (it would leave nothing), and is drawn green.
+      const own = this.holding() && (() => {
+        try {
+          return regionValue(model, this.held!, this.under!.loops).faces[0] === this.under!.index;
+        } catch {
+          return false;
+        }
+      })();
+      drawRegion(model, r, this.under, "2e", this.doing() === "subtract" && !own ? SUBTRACT_RED : undefined);
     }
   }
 }
