@@ -1904,9 +1904,13 @@ async function main() {
   defineGlyphAnchor("filletRadius", blendAnchor);
   defineGlyphAnchor("chamferSetback", blendAnchor);
   engine.solids = {
+    // What the kernel draws in an entity's place: a kernel body's twins, walls
+    // and whole profile members (quiet.ts's solid edges). A profile member that
+    // is only a portion of a longer line is still the sketch's (it runs past
+    // the solid), and keeps the pick — found by the hidden view's suite.
     skeleton: (name) => {
       const kernel = solidBodies.kernelFeatures();
-      return kernel.size > 0 && model.featuresNaming(name).some((f) => kernel.has(f.name));
+      return kernel.size > 0 && solidEdges(model, kernel).has(name);
     },
     edgePick: ([sx, sy], occ, reach) => {
       const views = solidBodies.madeViews();

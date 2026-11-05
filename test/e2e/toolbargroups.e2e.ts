@@ -172,7 +172,8 @@ test("mouse: leaving closes it; Escape closes it and only it; a press held opens
   await desk.page.mouse.move(700, 400);
   await desk.page.mouse.move(b.x + b.w / 2, b.y + b.h / 2, { steps: 2 });
   await flyoutBecomes(desk, (s) => s.open && s.group === "modify", "the modify group's");
-  assert.deepEqual((await flyout(desk)).items, ["fillet", "t_pad2"]);
+  // The sketch's corner fillet, then the solids module's round and chamfer (docs/plans/solid-fillets.md), then the padding.
+  assert.deepEqual((await flyout(desk)).items, ["fillet", "chamfer", "round", "t_pad2"]);
   await desk.page.mouse.move(700, 600, { steps: 3 });
   await desk.page.waitForTimeout(150);
   assert.equal((await flyout(desk)).open, true, "not at once: the way across to it is allowed");
