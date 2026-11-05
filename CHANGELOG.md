@@ -49,6 +49,16 @@ found four bugs, now fixed and listed in ARCHITECTURE. Pictures:
 Tests: unit 1435 → 1453, e2e +11. **Not tried on an iPhone**: try
 filleting a lid's edge and dragging the radius label.
 
+## The dev server no longer reloads the tests when a worker checks out a tree
+
+Three gates in a row lost tests to "Execution context was destroyed, most
+likely because of a navigation" — a page reloading mid-test. The cause:
+Vite reloads every open page when any `.html` file under the project root
+changes, and the agents' worktrees live under `.claude/worktrees/` inside
+the root, so a worker checking out its tree (which writes an `index.html`)
+reloaded the suite's pages. `vite.config.ts` now tells the watcher to ignore
+`.claude/**`; nothing under it is the app's.
+
 ## Mode feedback: the sketch plane drawn, a chip that says where · what · next, and Done
 
 The owner: *"at the moment, it is not obvious how the UI works. like when
