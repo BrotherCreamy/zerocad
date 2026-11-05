@@ -414,6 +414,10 @@
       /* The chip's parts: drawn at the size, answering over 44 tall. */
       #mode button{position:relative}
       #mode button::before{content:"";position:absolute;left:0;right:0;top:50%;height:44px;transform:translateY(-50%)}
+      /* Wrapped onto two lines, a part's 44 px reaches over the line above:
+         the plane's part, Done above all, is stacked over the tool's, so a
+         tap on Done is Done (found on the landscape phone). */
+      #mode .plane{position:relative;z-index:1}
       #organiser button,.panel>.ptitle .padd{position:relative}
       #organiser button::before,.panel>.ptitle .padd::before{content:"";position:absolute;left:50%;top:50%;
         width:max(100%,44px);height:max(100%,44px);transform:translate(-50%,-50%)}

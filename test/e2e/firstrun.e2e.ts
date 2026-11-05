@@ -80,7 +80,9 @@ async function clickAt(sx: number, sy: number): Promise<void> {
 /** The log's lines, with the class each is shown in. */
 const logLines = (): Promise<{ text: string; cls: string }[]> => app.page.$$eval("#log > div",
   (els) => els.map((el) => ({ text: el.textContent ?? "", cls: el.className })));
-const stepNote = () => app.page.$eval("#stepnote", (el) => ({ text: el.textContent ?? "", cls: el.className }));
+/** The mode chip's third part, where a tool's guidance is said (docs/plans/mode-feedback.md) — and the status's note, which no longer says it. */
+const chipNext = () => app.page.$eval("#mode", (el) => ({ text: (el as HTMLElement).dataset.next ?? "", guiding: (el as HTMLElement).dataset.guiding }));
+const stepNote = () => app.page.$eval("#stepnote", (el) => el.textContent ?? "");
 const defaultFrame = async (): Promise<string | null> => (await app.repl("defaultFrame()")).value as string | null;
 
 /** Whether a drawing-canvas pixel is lit: the tools' green, faint, over nothing else. */
@@ -89,14 +91,20 @@ async function lit(sx: number, sy: number): Promise<boolean> {
   return a > 0 && g > r + 10 && g > b;
 }
 
-/** The last line of the log, which must be the tool's guidance: muted, never red — and in the header's note. */
+/**
+ * The last line of the log, which must be the tool's guidance: muted, never
+ * red — and in the mode chip's third part, the same sentence less the tool's
+ * name the chip already says (it used to be the header's note, which now keeps
+ * the verdict's own news: docs/plans/mode-feedback.md).
+ */
 async function guided(expected: RegExp): Promise<void> {
   const last = (await logLines()).at(-1)!;
   assert.match(last.text, expected);
   assert.equal(last.cls, "out", `guidance is muted, not red: "${last.text}"`);
-  const note = await stepNote();
-  assert.equal(note.text, last.text, "and said in the header's note");
-  assert.equal(note.cls, "guide");
+  const chip = await chipNext();
+  assert.equal(chip.text, last.text.replace(/^[a-z0-9 ]+: /, ""), "and said in the chip's third part");
+  assert.equal(chip.guiding, "true");
+  assert.equal(await stepNote(), "", "not in the status's note, which keeps the verdict's news");
 }
 
 const RECT: [[number, number], [number, number]] = [[460, 320], [660, 480]];

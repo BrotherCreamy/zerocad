@@ -757,14 +757,26 @@ async function main() {
   function syncChip() {
     if (!chip) return;
     const what = engine.lit;
-    chip.show(chipParts(plane?.label ?? null, what, engine.next(), chipGuide?.text ?? null), optionsPanel.size() !== null);
+    const next = engine.next();
+    // Guidance answers the click that missed, at the stage it missed in: once
+    // the gesture has moved on (a region picked after a miss) it is stale, and
+    // the step is said again.
+    if (chipGuide && (chipGuide.at !== next || chipGuide.what !== what)) {
+      clearTimeout(chipGuide.timer);
+      chipGuide = null;
+    }
+    chip.show(chipParts(plane?.label ?? null, what, next, chipGuide?.text ?? null), optionsPanel.size() !== null);
   }
 
-  /** A tool's guidance, in the chip's third part for `GUIDE_NOTE_MS`, or until something is made. */
-  let chipGuide: { text: string; timer: ReturnType<typeof setTimeout> } | null = null;
+  /**
+   * A tool's guidance, in the chip's third part for `GUIDE_NOTE_MS` — or until
+   * something is made, the tool changes, or its next step does.
+   */
+  let chipGuide: { text: string; at: string | null; what: string; timer: ReturnType<typeof setTimeout> } | null = null;
   function guideChip(text: string | null) {
     if (chipGuide) clearTimeout(chipGuide.timer);
-    chipGuide = text === null ? null : { text, timer: setTimeout(() => { chipGuide = null; syncChip(); }, GUIDE_NOTE_MS) };
+    chipGuide = text === null ? null
+      : { text, at: engine.next(), what: engine.lit, timer: setTimeout(() => { chipGuide = null; syncChip(); }, GUIDE_NOTE_MS) };
     syncChip();
   }
 
