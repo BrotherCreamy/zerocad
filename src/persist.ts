@@ -892,7 +892,7 @@ function framelessCurves(model: Model, version: number, lift: boolean, following
  * app always asks for 3, and everything else asks for nothing and gets the
  * file's own.
  */
-export function fromSaved(saved: SavedModel, dim?: number): Model {
+export function fromSaved(saved: SavedModel, dim?: number, how: { regions?: boolean } = {}): Model {
   if (saved?.format !== FORMAT) throw new Error("not a neocad model");
   if (saved.version > VERSION) {
     throw new Error(`this file is version ${saved.version}, and this build only reads up to ${VERSION}`);
@@ -925,7 +925,10 @@ export function fromSaved(saved: SavedModel, dim?: number): Model {
   const frameless = framelessCurves(model, saved.version, lift, following);
   // Before format 17, a feature's holes were its record's: opened as regions
   // made by operations (regiontranslation.ts, see `VERSION`).
-  const regions = regionTranslation(model, saved.version);
+  // `how.regions` false replays a feature entry as written and makes no
+  // regions: the build before's model, which is the oracle a test holds an
+  // opened file to (test/regionsops.test.ts). Nothing else asks for it.
+  const regions = regionTranslation(model, how.regions === false ? VERSION : saved.version);
 
   // Replay with recording off, then install the journal wholesale, so a model
   // that is opened and saved again round-trips to the same file. What is
