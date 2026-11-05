@@ -25,7 +25,7 @@
 // plane could fold about its own diagonal. The relations need nothing new:
 // `par` and `perp` were always dimension-generic.
 
-import { Tool, defineTool, type PointerInfo, type RenderContext } from "./tool.ts";
+import { Tool, defineTool, type Hand, type PointerInfo, type RenderContext } from "./tool.ts";
 import { parallel, perpendicular } from "../relations/geometry.ts";
 import { DRAWING_OPTIONS, asArmed, holdOnSketchPlane, placePoint, requirePlanar } from "./place.ts";
 import type { OptionSpecs } from "./options.ts";
@@ -56,6 +56,11 @@ export class RectangleTool extends Tool {
    */
   private from: PointerInfo | null = null;
   private current: number[] | null = null;
+
+  /** One stage: a press at a corner, held and dragged to the opposite one (a click alone builds nothing). */
+  next(_hand: Hand): string {
+    return this.from ? "drag to the opposite corner" : "press at a corner";
+  }
 
   onDown(p: PointerInfo): void {
     requirePlanar(this.ctx.model, this.name);

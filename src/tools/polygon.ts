@@ -13,10 +13,10 @@
 // on — the sketch plane, a solid's face, the ground — as a circle does
 // (`CurvePlane`). The whole gesture is one undo step.
 
-import { Tool, defineTool, type PointerInfo, type RenderContext } from "./tool.ts";
+import { Tool, defineTool, type Hand, type PointerInfo, type RenderContext } from "./tool.ts";
 import { DRAWING_OPTIONS, asArmed, placePoint } from "./place.ts";
 import type { OptionSpecs } from "./options.ts";
-import { TwoPoint } from "./twopoint.ts";
+import { TwoPoint, twoPointNext } from "./twopoint.ts";
 import { POLYGON_MAX_SIDES, POLYGON_MIN_SIDES, polygon } from "./shapes.ts";
 import { arcSamples, arcSegments, circleFrame } from "../arcgeom.ts";
 import { cross3, lift3, unit3 } from "../vec3.ts";
@@ -49,6 +49,10 @@ export class PolygonTool extends Tool {
   static readonly summary = "Draws a regular polygon: drag from its centre to a corner";
   readonly name = "polygon";
   private stage = new TwoPoint(this.ctx, this.name);
+
+  next(hand: Hand): string {
+    return twoPointNext(this.stage.step, hand, "the centre", "a corner");
+  }
 
   private get sides(): number {
     const n = this.ctx.options.n;

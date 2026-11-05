@@ -20,7 +20,7 @@
 // tangents hold it in the corner (docs/plans/frameless-curves.md); it used to
 // need a frame's plane, and a fillet in a fresh model typed one first.
 
-import { defineTool, type FeatureStep, type PointerInfo, type RenderContext } from "./tool.ts";
+import { defineTool, press, type FeatureStep, type Hand, type PointerInfo, type RenderContext } from "./tool.ts";
 import type { OptionSpecs } from "./options.ts";
 import { fillet } from "../operations.ts";
 import type { Model } from "../model.ts";
@@ -85,6 +85,31 @@ export class FilletTool extends FeatureTool {
 
   protected wanting(): string | null {
     return this.lines.length ? `now click a line that meets ${this.lines[0]}` : null;
+  }
+
+  protected get verb(): string {
+    return "round the corner";
+  }
+
+  protected picking(hand: Hand): string {
+    return this.lines.length ? `${press(hand)} a line that meets ${this.lines[0]}` : `${press(hand)} a lit corner, or a line`;
+  }
+
+  /**
+   * Lit while the tool waits (docs/plans/mode-feedback.md): every corner it
+   * could round — a point two lines meet at, quiet until now — or, with one
+   * line picked, the lines that share a corner with it.
+   */
+  takes(): readonly string[] {
+    const model = this.ctx.model;
+    if (this.lines.length === 2) return [];
+    if (this.lines.length === 1) {
+      const first = this.lines[0];
+      return [...model.entities.values()]
+        .filter((e) => e.kind === "line" && e.name !== first && sharesCorner(model, first, e.name))
+        .map((e) => e.name);
+    }
+    return [...model.entities.values()].filter((e) => e.kind === "point" && cornerAt(model, e.name)).map((e) => e.name);
   }
 
   onDown(p: PointerInfo): void {

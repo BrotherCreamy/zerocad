@@ -32,7 +32,7 @@
 // the arc lies on the first press's plane (`CurvePlane`, place.ts) and is held
 // there by `onplane` and `par`.
 
-import { Tool, defineTool, type PointerInfo, type RenderContext } from "./tool.ts";
+import { Tool, defineTool, press, type Hand, type PointerInfo, type RenderContext } from "./tool.ts";
 import { arcEndpoints, tangent } from "../relations/geometry.ts";
 import { CurvePlane, DRAWING_OPTIONS, asArmed, placePoint, requirePlanar } from "./place.ts";
 import type { OptionSpecs } from "./options.ts";
@@ -147,6 +147,21 @@ export class ArcTool extends Tool {
 
   private get method(): string {
     return methodOf(this.ctx, LOCKS);
+  }
+
+  /** The stage, in a few words: which end, the bulge, the centre's start and end, or the end of a tangent arc. */
+  next(hand: Hand): string {
+    const tap = press(hand);
+    const s = this.stage;
+    if (s.kind === "ends") return s.ends.length === 1 ? `${tap} the other end` : `${tap} the bulge`;
+    if (s.kind === "centre") return s.start ? `${tap} the end` : `${tap} the start`;
+    if (s.kind === "from") return `${tap} the end`;
+    const method = this.method;
+    if (this.press && this.dragged) return method === "centre" ? "drag to the start" : "drag to the other end";
+    if (method === "centre") return "press at the centre";
+    if (method === "tangent") return "press on the end of a line or arc";
+    // Auto: a drag is the two ends, a click the centre.
+    return method === "3pt" ? `${tap} one end` : `drag end to end, or ${tap} the centre`;
   }
 
   /** What the gesture has been read as so far, for the options panel — nothing until it is known. */

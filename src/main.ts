@@ -42,7 +42,7 @@ import { Organiser, organiserSections, rowMenu } from "./organiser.ts";
 import { logoSvg } from "./logo.ts";
 import { GroupMemory, OptionMemory, declaredOptions, unitSymbol, type OptionValue } from "./tools/options.ts";
 import { toolIcon } from "./tools/icons.ts";
-import { depth, uiOf } from "./view.ts";
+import { depth, uiOf, viewAxes } from "./view.ts";
 import { arcSamples, arcSegments, frameReach } from "./arcgeom.ts";
 import { curveFrame } from "./curveplane.ts";
 import { createFaceLayer, paintFaces } from "./facelayer.ts";
@@ -54,6 +54,8 @@ import { SOLID_EDGE, visibleFaces } from "./faces.ts";
 import { hiddenInk, inSight, inkRuns, occlusion, type Occlusion } from "./occlusion.ts";
 import { VIEW_MODES, drawsFaces, isViewMode, opaque, recallViewMode, rememberViewMode, viewModeError, type ViewMode } from "./viewmode.ts";
 import { entityDrawn, glyphDrawn, quietEntities, revealed, solidEdges } from "./quiet.ts";
+import { activePlane, focusOf, outOfFocusInk, planePatch, type ActivePlane } from "./activeplane.ts";
+import { ModeChip, chipParts, doneCommand, guideText, planeMenu } from "./modechip.ts";
 import { frameBasis } from "./relations/refs.ts";
 import { lockPage } from "./pagelock.ts";
 import type { Diagnosis, Entity } from "./model.ts";
@@ -85,6 +87,8 @@ import "./tools/edit.ts";
 const statusLine = new StatusLine(document.getElementById("status")!, document.getElementById("stepnote")!);
 /** The diagnosis beside the verdict (`showDiagnosis`): "3 free", a conflict's or a redundancy's names. */
 const diagnosisEl = document.getElementById("diagnosis")!;
+/** The mode chip beside it (modechip.ts): where · what · next. */
+const modeEl = document.getElementById("mode")!;
 let diagnosisFade: ReturnType<typeof setTimeout> | undefined;
 /** The last diagnosis (`Model.diagnose`), read by the drawing: what is free. Null before the first solve. */
 let diagnosis: Diagnosis | null = null;
@@ -410,6 +414,24 @@ const HELD = "#afc6d9";
 const CONFLICT_INK = "#e0605c";
 /** A redundant relation's glyph: the softer orange the status says it in. */
 const REDUNDANT_INK = "#d99a6c";
+/**
+ * **The mode's accent** (docs/plans/mode-feedback.md): the tools' green
+ * (region.ts's `REGION_GREEN`, the snap marker's), which is the sketch tool's
+ * colour — what a gesture has placed and not finished with, and the outline of
+ * the plane being sketched on.
+ */
+const ACCENT = "#55c07a";
+/** What an armed tool's next pick could take: the accent made paler, lit but not yet chosen. */
+const TAKES = "#9fdcb2";
+/** The plane's face tinted: the accent lighter, translucent — and fainter where it is behind the solid. */
+const PLANE_TINT = "rgba(143, 224, 168, 0.3)";
+const PLANE_TINT_BEHIND = "rgba(143, 224, 168, 0.08)";
+/** A frame's plane, as a patch: the tint fainter still, its grid fainter than that, its edge half the accent. */
+const PATCH_TINT = "rgba(143, 224, 168, 0.06)";
+const PLANE_GRID = "rgba(143, 224, 168, 0.16)";
+const PATCH_EDGE_ALPHA = 0.55;
+/** The plane's outline: a little heavier than the sketch's 1.4, so the face reads as the one in use. */
+const PLANE_EDGE_PX = 1.8;
 const CONSTRUCTION_PX = 0.9;
 /** Its casing over a face, each side: a hairline, not `CASING_PX` — see `strokeEdge`. */
 const CONSTRUCTION_CASING_PX = 0.5;
@@ -522,6 +544,18 @@ async function main() {
     hides = occluded && opaque(viewMode) ? occluded : null;
     engine.occlusion = hides;
 
+    // **The plane being sketched on, drawn** (activeplane.ts; docs/plans/
+    // mode-feedback.md): the face it was taken from tinted, a frame's plane a
+    // patch with a faint grid — under the drawing, over the faces, in every
+    // view, and dimmed where it is behind the solid. With it, what is held on
+    // the plane is in focus and the rest is drawn one step dimmed. Drawing
+    // only: none of it reaches the pick.
+    plane = activePlane(model, view.scale);
+    focus = focusOf(model, plane);
+    drawActivePlane(plane);
+    placedNow = new Set(engine.placed());
+    takesNow = new Set(engine.takes());
+
     // A solid's own edges — its profile, the lid's twins, the walls — in a
     // dark ink over the light faces, as Onshape draws a part. Only where faces
     // are drawn: in a wireframe that ink would be lost on the background. A
@@ -538,9 +572,9 @@ async function main() {
     // like any circle; it outranks a solid's edge colour, since a feature's
     // twin flagged construction should look it.
     const stroke = (name: string) => (lit.has(name) ? "#e8a33d" : chosen.has(name) ? SELECTION
-      : model.isConstruction(name) ? CONSTRUCTION : solid.has(name) ? SOLID_EDGE : inkOf(name));
+      : staged(name) ?? focused(name, model.isConstruction(name) ? CONSTRUCTION : solid.has(name) ? SOLID_EDGE : inkOf(name)));
     const weight = (name: string) => (lit.has(name) ? 2.2 : chosen.has(name) ? 2.6
-      : model.isConstruction(name) ? CONSTRUCTION_PX : 1.4);
+      : placedNow.has(name) ? 2 : model.isConstruction(name) ? CONSTRUCTION_PX : 1.4);
 
     // **Quiet geometry** (quiet.ts; the owner: points "disappear when they are
     // the endpoint of a line or a corner (except when you hover over them)",
@@ -559,6 +593,9 @@ async function main() {
       ...(engine.snap?.targets ?? []),
       ...(engine.armedUnder ? [engine.armedUnder.name] : []),
       ...engine.dragging,
+      // What the armed tool could take, and what its gesture has placed: lit, so shown.
+      ...takesNow,
+      ...placedNow,
     ]);
 
     // Painter's order, far to near, one depth per entity, for the wireframe on
@@ -618,6 +655,117 @@ async function main() {
     }
     syncToolbar();
     syncOrganiser();
+    syncChip();
+  }
+
+  /** This frame's plane, what is in focus on it, and what the armed tool has placed or could take (`render`). */
+  let plane: ActivePlane | null = null;
+  let focus: ReadonlySet<string> | null = null;
+  let placedNow: ReadonlySet<string> = new Set();
+  let takesNow: ReadonlySet<string> = new Set();
+  /** The chip, once the engine it reads is made. */
+  let chip: ModeChip | null = null;
+
+  /**
+   * The gesture's stage, in ink: what it has placed and not finished with, in
+   * the tools' green until it ends; what its next pick could take, lit in a
+   * paler green. Undefined for anything else, which keeps its own ink.
+   */
+  function staged(name: string): string | undefined {
+    return placedNow.has(name) ? ACCENT : takesNow.has(name) ? TAKES : undefined;
+  }
+
+  /** `ink` as the focus rule draws `name`: itself while it is held on the plane (or no plane is set), else one step dimmed. */
+  function focused(name: string, ink: string): string {
+    return focus === null || focus.has(name) || ink === SOLID_EDGE ? ink : outOfFocusInk(ink);
+  }
+
+  /**
+   * The plane as drawn (docs/plans/mode-feedback.md). **A face** — the one the
+   * plane was taken from, or the plain loop it lies on — tinted in the tools'
+   * green made lighter and outlined in the green itself; where a solid is in
+   * front of it, or it faces away (it is being looked at from inside the
+   * solid), the tint fades and the outline is drawn in the hidden view's ink
+   * for that green — as a hidden edge is — so it is there from every side.
+   * **A frame's plane**, or one no loop joins, a patch sized to what is held
+   * on it, with a faint grid whose step follows the zoom (`planePatch`).
+   */
+  function drawActivePlane(p: ActivePlane | null) {
+    if (!p) return;
+    const toward = viewAxes(view).toward;
+    const facing = p.n[0] * toward[0] + p.n[1] * toward[1] + p.n[2] * toward[2];
+    const project = (pts: number[][]) => pts.map((w) => engine.worldToScreen(w));
+    g.save();
+    g.setLineDash([]);
+    if (p.outlines) {
+      const centre = p.outlines[0].reduce((s, q) => s.map((c, i) => c + q[i]), [0, 0, 0]).map((c) => c / p.outlines![0].length);
+      const behind = (p.kind === "face" && facing < 0) || !inSight(occluded, centre);
+      g.beginPath();
+      for (const o of p.outlines) {
+        const pts = project(o);
+        g.moveTo(...pts[0]);
+        for (const q of pts.slice(1)) g.lineTo(...q);
+        g.closePath();
+      }
+      g.fillStyle = behind ? PLANE_TINT_BEHIND : PLANE_TINT;
+      g.fill("evenodd");
+      g.lineWidth = PLANE_EDGE_PX;
+      for (const o of p.outlines) strokeRuns(o, true, behind);
+    } else {
+      const held = [...(focus ?? [])].filter((n) => model.entities.get(n)?.kind === "point").map((n) => model.coords(n));
+      const patch = planePatch(p, held, view.scale);
+      const corners = project(patch.corners);
+      g.beginPath();
+      g.moveTo(...corners[0]);
+      for (const q of corners.slice(1)) g.lineTo(...q);
+      g.closePath();
+      g.fillStyle = PATCH_TINT;
+      g.fill();
+      g.strokeStyle = PLANE_GRID;
+      g.lineWidth = 1;
+      g.beginPath();
+      for (const [a, b] of patch.lines) {
+        g.moveTo(...engine.worldToScreen(a));
+        g.lineTo(...engine.worldToScreen(b));
+      }
+      g.stroke();
+      g.lineWidth = PLANE_EDGE_PX;
+      strokeRuns(patch.corners, true, false, PATCH_EDGE_ALPHA);
+    }
+    g.restore();
+  }
+
+  /** A plane's outline, in the green where it is in sight and in the green's hidden ink where a face is in front (or all of it, `behind`). */
+  function strokeRuns(world: number[][], closed: boolean, behind: boolean, alpha = 1) {
+    const runs = occluded ? inkRuns(occluded, world, closed) : [{ hidden: false, points: world.map((w) => engine.worldToScreen(w)) }];
+    g.globalAlpha = alpha;
+    for (const run of runs) {
+      g.strokeStyle = behind || run.hidden ? hiddenInk(ACCENT) : ACCENT;
+      g.beginPath();
+      g.moveTo(...run.points[0]);
+      for (const q of run.points.slice(1)) g.lineTo(...q);
+      if (closed && runs.length === 1) g.closePath();
+      g.stroke();
+    }
+    g.globalAlpha = 1;
+  }
+
+  /**
+   * The chip, as this frame has it: the plane's name, what is in the hand, and
+   * the next step — or the guidance a tool last gave, while it is fresh.
+   */
+  function syncChip() {
+    if (!chip) return;
+    const what = engine.lit;
+    chip.show(chipParts(plane?.label ?? null, what, engine.next(), chipGuide?.text ?? null), optionsPanel.size() !== null);
+  }
+
+  /** A tool's guidance, in the chip's third part for `GUIDE_NOTE_MS`, or until something is made. */
+  let chipGuide: { text: string; timer: ReturnType<typeof setTimeout> } | null = null;
+  function guideChip(text: string | null) {
+    if (chipGuide) clearTimeout(chipGuide.timer);
+    chipGuide = text === null ? null : { text, timer: setTimeout(() => { chipGuide = null; syncChip(); }, GUIDE_NOTE_MS) };
+    syncChip();
   }
 
   /**
@@ -751,7 +899,7 @@ async function main() {
       }
       // A point keeps its sketch colour on a solid: it is a target, not an
       // outline, and its casing carries it over a light face.
-      g.fillStyle = lit.has(e.name) ? "#e8a33d" : chosen.has(e.name) ? SELECTION : inkOf(e.name);
+      g.fillStyle = lit.has(e.name) ? "#e8a33d" : chosen.has(e.name) ? SELECTION : staged(e.name) ?? focused(e.name, inkOf(e.name));
       g.beginPath(); g.arc(sx, sy, r, 0, Math.PI * 2); g.fill();
       label(e.name, sx + 6 * k, sy - 6 * k);
     }
@@ -1373,6 +1521,7 @@ async function main() {
     // closed outline" over the solid that click just made would be the
     // stale-readout bug in a new place.
     if (changed && statusLine.noteClass === "guide") stepNote("", 0);
+    if (changed && chipGuide) guideChip(null);
     return changed;
   }
 
@@ -1597,8 +1746,11 @@ async function main() {
     // else a tool logs is a refusal, in an entry error's red.
     onLog: (line, outcome) => {
       if (outcome === "guide") {
+        // The chip's third part, where the next step is said — not the
+        // status's note, which keeps the verdict's one-off news
+        // (docs/plans/mode-feedback.md).
         log(line, "out");
-        stepNote(line, GUIDE_NOTE_MS, "guide");
+        guideChip(guideText(line, engine.armed?.name ?? null));
         return;
       }
       log(line, outcome === "done" ? "out" : "err");
@@ -1638,6 +1790,35 @@ async function main() {
   // A kernel body's faces are no loop of entities: sketch on face, and a
   // click inside a region, ask the kernel's picture what is under the pixel.
   engine.solidFaceAt = (sx, sy) => solidBodies.faceAt(view, sx, sy, model.hidden);
+  // A phone's words are a finger's from the start: "tap", before any tap.
+  engine.pointing = coarse ? "finger" : "mouse";
+
+  /**
+   * The mode chip (modechip.ts), through the seams everything else uses: the
+   * plane's menu is the context menu, shown under the chip; Done types
+   * `workplane(null)` through `submit`; the tool's name shows its options
+   * panel — the viewer may have hidden it from the app menu's Panes — and
+   * draws the eye to it.
+   */
+  chip = new ModeChip(modeEl, {
+    planeMenu: (anchor) => {
+      if (!plane) return;
+      const wrap = menuEl.parentElement!.getBoundingClientRect();
+      menu.show(planeMenu(model, plane), anchor.left - wrap.left, anchor.bottom - wrap.top + 2);
+    },
+    done: () => {
+      const line = doneCommand(model);
+      if (line) void submit(line);
+    },
+    options: () => {
+      if (optionsPanel.size() === null) return;
+      panels.setShown("options", true);
+      optionsPanelEl.classList.remove("flash");
+      void optionsPanelEl.offsetWidth; // restart the animation
+      optionsPanelEl.classList.add("flash");
+    },
+  });
+  syncChip();
 
   /**
    * The action strip, through the same seam as the toolbar and the menu: each

@@ -18,10 +18,10 @@
 // the straight slot's composition, for a shape the owner did not name. Left
 // for later (TODO.md).
 
-import { Tool, defineTool, type PointerInfo, type RenderContext } from "./tool.ts";
+import { Tool, defineTool, press, type Hand, type PointerInfo, type RenderContext } from "./tool.ts";
 import { DRAWING_OPTIONS, asArmed, placePoint } from "./place.ts";
 import type { OptionSpecs } from "./options.ts";
-import { TwoPoint, halfWidth, unsnapped } from "./twopoint.ts";
+import { TwoPoint, halfWidth, twoPointNext, unsnapped } from "./twopoint.ts";
 import { slot } from "./shapes.ts";
 import { arcPoint, arcSegments } from "../arcgeom.ts";
 import { cross3, lift3, unit3 } from "../vec3.ts";
@@ -57,6 +57,11 @@ export class SlotTool extends Tool {
   private centres: { from: PointerInfo; to: PointerInfo } | null = null;
   private press: PointerInfo | null = null;
   private hover: PointerInfo | null = null;
+
+  next(hand: Hand): string {
+    if (this.centres) return `${press(hand)} the width`;
+    return twoPointNext(this.stage.step, hand, "the first centre", "the second centre");
+  }
 
   private get fixedWidth(): number {
     const w = this.ctx.options.width;

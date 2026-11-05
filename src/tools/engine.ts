@@ -71,8 +71,8 @@
 import type { Model } from "../model.ts";
 import type { ResidualBlock } from "../kernel/problem.ts";
 import {
-  HAND, SELECT, getToolCtor, toolAlias, type FeatureDialog, type FeaturePreview, type FeatureStep, type Tool, type ToolContext, type PointerInfo, type RegionHit,
-  type RenderContext,
+  HAND, SELECT, engineNext, getToolCtor, toolAlias, type FeatureDialog, type FeaturePreview, type FeatureStep, type Hand, type Tool, type ToolContext,
+  type PointerInfo, type RegionHit, type RenderContext,
 } from "./tool.ts";
 import {
   assignView, cameraPlane, depth, orbitBy, panBy, screenToPlane, screenToWorld, uiOf, viewAxes, worldToScreen, zoomAbout, type Plane, type View,
@@ -117,6 +117,9 @@ export const ORBIT_PER_PIXEL = Math.PI / 360;
  * ring and a gap clear of the nail.
  */
 export const LIFT = 56;
+
+/** The ghost of the point about to be placed, at the mouse: the tools' green, the snap marker's. */
+export const GHOST = "#55c07a";
 
 /**
  * How hard a drag pulls the grabbed point toward the cursor, relative to a
@@ -319,6 +322,20 @@ export class ToolEngine {
    */
   contact: [number, number] | null = null;
   /**
+   * Where the mouse is on the canvas while a tool is armed, in canvas pixels —
+   * null off the canvas, under a finger, or with nothing armed. What the
+   * **ghost** of the point about to be placed is drawn at (`renderGhost`): the
+   * mouse's half of the lifted mark a finger gets (docs/plans/mode-feedback.md).
+   */
+  cursorAt: [number, number] | null = null;
+  /**
+   * **The hand last on the canvas** — a finger's touch, or a mouse or a pen —
+   * which is the hand the mode chip's words are for: "tap the third point"
+   * under a finger, "click" under a mouse. Set by every pointer event; the host
+   * seeds it from the device (a phone starts as a finger) before any event.
+   */
+  pointing: Hand = "mouse";
+  /**
    * The Hand, armed — `arm("hand")`. Not an `active` tool: with the Hand armed
    * nothing is armed as far as the selection, Delete and a tap are concerned;
    * only a press that moves is read differently (see the top of this file).
@@ -471,7 +488,9 @@ export class ToolEngine {
     // the pointerup by then, and nothing on the canvas listens for clicks.
     canvas.addEventListener("touchend", (e) => { if (e.cancelable) e.preventDefault(); });
     canvas.addEventListener("pointerleave", () => {
-      if (this.hover || this.armedUnder) { this.hover = null; this.armedUnder = null; this.onRenderOnly(); }
+      if (this.hover || this.armedUnder || this.cursorAt) {
+        this.hover = null; this.armedUnder = null; this.cursorAt = null; this.onRenderOnly();
+      }
     });
     canvas.addEventListener("pointerdown", (e) => this.dispatch("down", e));
     canvas.addEventListener("pointermove", (e) => this.dispatch("move", e));
@@ -780,6 +799,7 @@ export class ToolEngine {
     this.active = null;
     this.snap = null;
     this.armedUnder = null;
+    this.cursorAt = null;
     this.touchTool = null;
     this.hand = hand;
     this.cursor();
@@ -845,6 +865,42 @@ export class ToolEngine {
   select(names: readonly string[]): void {
     this.selection.set(names);
     this.onRenderOnly();
+  }
+
+  /**
+   * **The mode chip's third part** (docs/plans/mode-feedback.md): what the
+   * gesture wants next — the armed tool's own words for the stage it is in
+   * (`Tool.next`), or Select's or the Hand's — in the verb of the hand last on
+   * the canvas. One seam, asked every frame, so the chip is never a stage
+   * behind. A tool that says nothing, or throws saying it, says nothing: the
+   * chip is not where a tool's bug should surface.
+   */
+  next(): string | null {
+    if (this.handOn) return engineNext(HAND, this.pointing);
+    if (!this.active) return engineNext(SELECT, this.pointing);
+    try {
+      return this.active.next?.(this.pointing) ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** What the armed tool's next pick could take, for the host to light (`Tool.takes`) — none with nothing armed. */
+  takes(): readonly string[] {
+    try {
+      return this.active?.takes?.() ?? [];
+    } catch {
+      return [];
+    }
+  }
+
+  /** What the armed tool's gesture has placed and not finished with, drawn in the accent (`Tool.placed`). */
+  placed(): readonly string[] {
+    try {
+      return this.active?.placed?.() ?? [];
+    } catch {
+      return [];
+    }
   }
 
   /** What the options panel shows of the armed tool's ✓ and ✗ — null for a tool that is not a feature. */
@@ -916,6 +972,7 @@ export class ToolEngine {
     this.idle = null;
     this.box = null;
     this.snap = null;
+    this.cursorAt = null;
     // Fingers still down when everything is dropped are spent until they lift:
     // the gesture they were making is gone, and their next move must not
     // start another.
@@ -932,10 +989,13 @@ export class ToolEngine {
     // A finger: the recogniser decides what it is (see the top of this file).
     if (e.pointerType === "touch") {
       this.reach = TOUCH_REACH;
+      this.pointing = "finger";
+      this.cursorAt = null;
       this.finger(kind, e);
       return;
     }
     this.reach = 1;
+    this.pointing = "mouse";
     const [sx, sy] = this.local(e);
 
     // Navigation first, and on its own buttons — a pan in the middle of a
@@ -1007,8 +1067,10 @@ export class ToolEngine {
     if (this.active) {
       if (this.hover) { this.hover = null; this.onRenderOnly(); }
       if (kind === "move") this.armedUnder = this.pickAt(sx, sy);
+      this.cursorAt = [sx, sy];
     } else {
       this.armedUnder = null;
+      this.cursorAt = null;
       if (kind === "move" && e.buttons === 0) this.updateHover(sx, sy);
     }
 
@@ -1526,6 +1588,36 @@ export class ToolEngine {
     this.g.restore();
     this.renderSnapMarker();
     if (this.contact) this.renderLift();
+    else this.renderGhost();
+  }
+
+  /**
+   * **The point about to be placed, at the mouse** — a ghost of the dot a
+   * click will put there, in the tools' green: the mouse's half of the lifted
+   * mark a finger gets, so every placing tool shows where its next point lands
+   * before the click (docs/plans/mode-feedback.md). Only for a tool that
+   * places points (`snaps`), only while nothing is snapped — the snap marker
+   * is the ghost then, and says more — and never while a press would pan.
+   */
+  private renderGhost(): void {
+    if (!this.active?.snaps || this.snap || !this.cursorAt || this.handOn) return;
+    const [x, y] = this.cursorAt;
+    const k = uiOf(this.view);
+    const g = this.g;
+    g.save();
+    g.setLineDash([]);
+    g.globalAlpha = 0.45;
+    g.fillStyle = GHOST;
+    g.beginPath();
+    g.arc(x, y, 3.5 * k, 0, Math.PI * 2);
+    g.fill();
+    g.globalAlpha = 0.9;
+    g.strokeStyle = GHOST;
+    g.lineWidth = 1.2;
+    g.beginPath();
+    g.arc(x, y, 6 * k, 0, Math.PI * 2);
+    g.stroke();
+    g.restore();
   }
 
   /**

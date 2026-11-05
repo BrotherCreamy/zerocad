@@ -41,7 +41,7 @@
 // projected — and a tangent preview is the fitted circle itself
 // (`fitCircle`), so what is on the screen is what the click builds.
 
-import { Tool, defineTool, type PointerInfo, type RenderContext } from "./tool.ts";
+import { Tool, defineTool, press, type Hand, type PointerInfo, type RenderContext } from "./tool.ts";
 import { onCircle, tangent } from "../relations/geometry.ts";
 import { CurvePlane, DRAWING_OPTIONS, asArmed, placePoint, requirePlanar } from "./place.ts";
 import type { OptionSpecs } from "./options.ts";
@@ -83,6 +83,29 @@ export class CircleTool extends Tool {
   read(): Readonly<Record<string, string>> {
     const m = this.method === AUTO ? this.reading() : null;
     return m ? { method: m } : {};
+  }
+
+  /**
+   * The stage, in the method's words: a centre lock presses at the centre and
+   * drags (or clicks) the rim; a three-click way counts its points; `auto`
+   * offers both until the gesture has said which — a drag is a radius, a third
+   * click a circle through three.
+   */
+  next(hand: Hand): string {
+    const tap = press(hand);
+    const n = this.clicks.length;
+    const ordinal = ["first", "second", "third"][Math.min(n, 2)];
+    const method = this.method;
+    if (method === "centre") {
+      if (this.press) return n ? `let go at the rim` : "drag the radius";
+      return n ? `${tap} the rim` : "press at the centre";
+    }
+    if (method === "3pt") return `${tap} the ${ordinal} point`;
+    if (method === "tangent") return `${tap} the ${ordinal} edge or point`;
+    if (this.press && this.dragged) return "drag the radius";
+    if (n === 0) return `press at the centre, or ${tap} 3 points`;
+    if (n === 1) return `drag the radius, or ${tap} the second point`;
+    return `${tap} the third point`;
   }
 
   private reading(): string | null {

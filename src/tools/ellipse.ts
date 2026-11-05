@@ -14,10 +14,10 @@
 // to the plane's — the same three kinds of visible, deletable relation a
 // circle drawn there carries. The whole gesture is one undo step.
 
-import { Tool, defineTool, type PointerInfo, type RenderContext } from "./tool.ts";
+import { Tool, defineTool, press, type Hand, type PointerInfo, type RenderContext } from "./tool.ts";
 import { DRAWING_OPTIONS, asArmed, holdOnSketchPlane, placePoint } from "./place.ts";
 import type { OptionSpecs } from "./options.ts";
-import { TwoPoint, halfWidth, unsnapped } from "./twopoint.ts";
+import { TwoPoint, halfWidth, twoPointNext, unsnapped } from "./twopoint.ts";
 import { arcSamples, arcSegments, ellipseFrame, frameReach } from "../arcgeom.ts";
 import { cross3, lift3, unit3 } from "../vec3.ts";
 
@@ -42,6 +42,11 @@ export class EllipseTool extends Tool {
   private axis: { from: PointerInfo; to: PointerInfo } | null = null;
   private press: PointerInfo | null = null;
   private hover: PointerInfo | null = null;
+
+  next(hand: Hand): string {
+    if (this.axis) return `${press(hand)} the minor axis's end`;
+    return twoPointNext(this.stage.step, hand, "the centre", "the major axis's end");
+  }
 
   onDown(p: PointerInfo): void {
     if (!this.axis) { this.stage.down(p); return; }

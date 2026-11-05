@@ -351,6 +351,57 @@ export abstract class Tool {
    * opaque over the preview, and a hole being cut would never show.
    */
   replaces?(): readonly string[];
+
+  // The mode chip's seam (docs/plans/mode-feedback.md): what the gesture wants
+  // next, and what a pick could take. Optional, so a tool written at the
+  // command line before they existed is exactly what it was — the chip then
+  // says the tool's name and nothing after it.
+
+  /**
+   * **The gesture's next step**, in a few of a person's words — `"press at the
+   * centre"`, `"drag the radius"`, `"tap the third point"`, `"✓ to extrude"` —
+   * read afresh every frame from the tool's own state, so it is always the
+   * stage the gesture is in now. `hand` says which verb a press is under the
+   * hand last on the canvas (`click` or `tap`). Null: nothing to say.
+   */
+  next?(hand: Hand): string | null;
+  /**
+   * **What a pick could take, lit**: entity names the host draws in a faint
+   * accent while the tool waits for one — the fillet tool's corners. The extrude,
+   * revolve and sketch tools light their regions and axes in their own
+   * `render`, as they did before this seam; a tool that takes any entity at all
+   * (the dimension tool, before its first pick) lights nothing, because
+   * everything lit says nothing.
+   */
+  takes?(): readonly string[];
+  /**
+   * **What the gesture has placed so far**: entity names it has already put in
+   * the model and has not finished with — the line tool's chain. The host draws
+   * them in the accent until the gesture ends.
+   */
+  placed?(): readonly string[];
+}
+
+/**
+ * The hand a gesture's words are for: a mouse clicks, a finger taps. Read off
+ * the last pointer on the canvas (the engine's `hand`), never off the device —
+ * a mouse plugged into a tablet clicks.
+ */
+export type Hand = "mouse" | "finger";
+
+/** "click" or "tap": the verb a press is under `hand`. */
+export function press(hand: Hand): string {
+  return hand === "finger" ? "tap" : "click";
+}
+
+/**
+ * What Select and the Hand want next — the chip's third part with nothing
+ * armed, here beside `ENGINE_SUMMARIES` because neither is a class to say it.
+ */
+export function engineNext(name: string, hand: Hand): string | null {
+  if (name === HAND) return "drag anywhere to pan";
+  if (name === SELECT) return hand === "finger" ? "tap a thing, or hold and drag to box" : "click a thing, or drag to box";
+  return null;
 }
 
 export type ToolCtor = new (ctx: ToolContext) => Tool;
