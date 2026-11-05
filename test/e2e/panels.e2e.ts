@@ -136,9 +136,10 @@ test("the toolbar has a button per registered tool: its icon, with a tooltip and
   // The old names circle3 and arc3 are listed after the tools as what they arm, not as tools.
   // A group's members share its one button, which shows the first of them
   // until another is armed (docs/plans/toolbar-groups.md): the polygon and the
-  // slot are behind the rectangle's (docs/plans/sketch-shapes.md).
+  // slot are behind the rectangle's (docs/plans/sketch-shapes.md), and
+  // constrain behind dimension's, the relate group's (tool.ts, TOOL_GROUPS).
   const tools = ((await app.repl("tools()")).value as string[]).map((t) => t.split(" ")[0])
-    .filter((t) => t !== "circle3" && t !== "arc3" && t !== "polygon" && t !== "slot");
+    .filter((t) => t !== "circle3" && t !== "arc3" && t !== "polygon" && t !== "slot" && t !== "constrain");
   const buttons = await app.page.$$eval("#toolbar button", (els) =>
     els.map((el) => ({
       tool: (el as HTMLElement).dataset.tool,
@@ -412,11 +413,11 @@ async function tray(): Promise<{ x: number; y: number; w: number; h: number; ori
 }
 
 // The built-ins after the reload that dropped "stamp": Select and the Hand
-// (docs/plans/select-hand.md) and twelve buttons of tools — one circle and one
-// arc since docs/plans/one-circle-one-arc.md, dimension and constrain since
-// docs/plans/sketch-relations.md, the shapes and curves groups' since
+// (docs/plans/select-hand.md) and eleven buttons of tools — one circle and one
+// arc since docs/plans/one-circle-one-arc.md, the relate group's (dimension
+// and constrain) since docs/plans/sketch-relations.md, the shapes and curves groups' since
 // docs/plans/sketch-shapes.md.
-const TOOLS = 14;
+const TOOLS = 13;
 const RUN = 16 + 6 + TOOLS * 22; // strip, padding, a 22px step per button
 const DEPTH = 28; // one button thick
 /** The default tray's top: under the logo's 32 px box, a margin off it. */

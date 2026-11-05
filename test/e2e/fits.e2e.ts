@@ -164,8 +164,8 @@ test("every iPhone, both ways up, installed and in Safari: no pane over another,
 
 // A group's flyout open (docs/plans/toolbar-groups.md): two padding tools give
 // shapes and modify a second member each — the packages that fill them have
-// not landed — so the flyout's room is exercised on every phone now. Fourteen
-// buttons now; the flyout, opened by a long-press, overlaps no pane, the
+// not landed — so the flyout's room is exercised on every phone now. Thirteen
+// buttons now (dimension and constrain share the relate group's); the flyout, opened by a long-press, overlaps no pane, the
 // tray, the logo or the corner, and is on screen; closed, everything fits as
 // above. (The arithmetic at every queued size, up to modify's seven, is
 // toolbargroups.test.ts's.)
@@ -184,7 +184,7 @@ test("every iPhone, both ways up, installed and in Safari, with a group's flyout
           await p.page.waitForTimeout(200);
           await p.page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
           const where = `${ph.name}, ${turn}, ${mode}`;
-          assert.equal(await p.page.$$eval("#toolbar button", (bs) => bs.length), 14, `${where}: fourteen buttons`);
+          assert.equal(await p.page.$$eval("#toolbar button", (bs) => bs.length), 13, `${where}: thirteen buttons`);
           for (const g of ["shapes", "modify"]) {
             const b = await p.page.$eval(`#toolbar button[data-group="${g}"]`, (el) => {
               const r = el.getBoundingClientRect();
@@ -219,11 +219,11 @@ test("every iPhone, both ways up, installed and in Safari, with a group's flyout
   }
 });
 
-// Fourteen buttons since the dimension and constrain tools (docs/plans/
-// sketch-relations.md) and the sketch shapes' curves group (docs/plans/
-// sketch-shapes.md); eleven, since one circle tool and one arc
+// Thirteen buttons since the relate group's button (dimension and constrain,
+// docs/plans/sketch-relations.md) and the sketch shapes' curves group
+// (docs/plans/sketch-shapes.md); eleven, since one circle tool and one arc
 // (docs/plans/one-circle-one-arc.md), fitted the 13's landscape in one row,
-// where thirteen and fourteen take two, as the SE does either way. The claim
+// where thirteen take two, as the SE does either way. The claim
 // is the same — as many lines as the room needs, every button on screen,
 // filled line by line.
 for (const [ph, lines] of [[THIRTEEN, 2], [SE, 2]] as [typeof THIRTEEN, number][]) {
@@ -333,9 +333,9 @@ test("iPhone 13: a pane docked against a tray keeps lying along it when a rotati
     // one circle tool and one arc (docs/plans/one-circle-one-arc.md) and two
     // tools defined at the command line here put back the length this rotation
     // was measured at; since the dimension and constrain tools
-    // (docs/plans/sketch-relations.md) and the curves group's button
-    // (docs/plans/sketch-shapes.md) it has fourteen of its own, one more than
-    // measured. What is under test is the docking, not the count. (At eleven
+    // (docs/plans/sketch-relations.md, one button as the relate group) and
+    // the curves group's button (docs/plans/sketch-shapes.md) it has thirteen
+    // of its own. What is under test is the docking, not the count. (At eleven
     // the landscape column is two lines, too tall to start under the logo's
     // corner from where the portrait one stood, and the resolver sets it beside
     // the corner instead: TODO.md, found by this package.)

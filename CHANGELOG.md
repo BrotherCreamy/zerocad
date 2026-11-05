@@ -7,6 +7,34 @@ decisions.
 
 ---
 
+## The tray's ends, fields that scale, and a column that wraps above the command line
+
+The owner, from his iPhone: *"the first button in the toolbars is too close
+to the handle, and there is too much blank space after the end of the last
+tool"*, and *"the cmd text does not scale... the title of this pane scales,
+but not the text itself"*. Three things, each measured:
+
+- **The tray's padding along its run is half a gap more at each end.** The
+  run `traySize` gives holds `per` gaps and the grid draws `per − 1`, so one
+  gap — 18 px on a phone, 2 px on a desktop — sat empty after the last
+  button while the first sat 3 px from the strip. The first button is now
+  half a gap from the strip and the last half a gap from the end; the run is
+  unchanged, so no layout arithmetic moved.
+- **Fields scale with everything else.** The 16 px floor under a finger
+  (against Safari zooming into a focused field) held the command line at
+  16 px below 95 %, which is exactly where the owner was looking; the
+  viewport meta's `maximum-scale=1` is what stops that zoom, and the floor
+  is retired (`chrome-logo-scale.md`, As built — vetoable by one check on
+  the device: if a focused field zooms the page, say so).
+- **Dimension and constrain share a button, the *relate* group.** Fourteen
+  buttons at a phone's 100 % (the two of them and the curves group's button
+  together) ran one pixel onto an iPhone 13's command line; the line stepped
+  aside to the right of the tray, and its strip's 44 px hit box then lay
+  under the last button (measured). Wrapping the column instead moved every
+  other pane on the phone, so the two relation tools — both make a relation
+  — are one button, and the column is the thirteen that the relations
+  package passed its gate with. Vetoable in the register.
+
 ## Sketch shapes — a polygon, a slot, and the ellipse
 
 The owner: *"give me better sketch tools, relations, trim, slot... all the

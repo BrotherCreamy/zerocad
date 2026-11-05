@@ -248,10 +248,18 @@ Deviations and additions — each a decision, vetoable:
   on the status). And Chromium's touch adjustment sends a touch landing
   within ~16 px of the logo to the logo — the drag-beside-the-logo test
   starts 40 px off it.
-- **Fields keep 16 px type at least, under a finger**: below it iOS zooms
+- ~~**Fields keep 16 px type at least, under a finger**: below it iOS zooms
   the page into a focused field, and a zoomed page is the one thing the page
   lock cannot undo. At a phone's 100 % the command line's type is 17 px
-  anyway; only the 60–70 % end is held.
+  anyway; only the 60–70 % end is held.~~ **Retired (2026-11-05)**: the
+  owner, from his iPhone, *"the cmd text does not scale... the title of
+  this pane scales, but not the text itself"* — the floor held the command
+  line at 16 px below 95 %, which is exactly where he was looking. The
+  viewport meta's `maximum-scale=1` is what stops Safari's focus zoom (the
+  page lock already relies on it); the floor is gone and the fields scale
+  with everything else. **Vetoable by one check on the device**: if a
+  focused field zooms the page, say so and the floor comes back as a
+  per-viewer switch.
 - **Phone menus drop the command hints** beside their items (no room at
   15 px type, no hover to read them by; the log shows what was typed), and
   both menus are held to the screen's width — the context menu came out

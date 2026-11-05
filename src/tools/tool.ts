@@ -435,6 +435,14 @@ export const TOOL_GROUPS: Readonly<Record<string, readonly string[]>> = {
   shapes: ["rectangle", "polygon", "slot"],
   curves: ["ellipse", "spline"],
   modify: ["fillet", "chamfer", "trim", "extend", "offset", "mirror", "pattern"],
+  // Dimension and constrain share a button (docs/plans/sketch-relations.md
+  // gave each its own): both make relations, and as the fourteenth button
+  // the second ran an iPhone 13's column one pixel onto the command line at
+  // the phone's 100 %, which sent the line to the right of the tray and put
+  // its strip's hit box under the last button (measured, 2026-11-05). At
+  // thirteen the column ends above the line, as it did when the relations
+  // package passed its own gate. Vetoable (TODO.md).
+  relate: ["dimension", "constrain"],
 };
 
 /** The class's own `static group`, when it declares one: a name, or null for none. Undefined when it declares nothing. */
@@ -467,7 +475,7 @@ export interface ToolbarButton { group: string | null; tools: string[] }
  * The toolbar's buttons, in order: Select, the Hand, then every listed tool in
  * registration order, where a group's button stands where its first registered
  * member does — its members in the table's order, then any that joined by
- * `static group`, in registration order. Eleven today.
+ * `static group`, in registration order. Thirteen today.
  */
 export function toolbarButtons(): ToolbarButton[] {
   const out: ToolbarButton[] = [];
