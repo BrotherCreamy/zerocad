@@ -7,6 +7,22 @@ decisions.
 
 ---
 
+## A touch offset that persisted: the page scrolled back to zero whenever iOS may have scrolled it
+
+The owner, from his iPhone: *"a weird bug where the touch input is offset
+upwards at some point and it persists"*. The engine maps every press from a
+fresh `getBoundingClientRect`, so nothing of ours is stale. What fits the
+symptom is WebKit's: the page is fixed by its four edges, but iOS scrolls the
+layout viewport to bring a focused field above the keyboard and, in an
+installed app, can leave that scroll behind when the keyboard goes — from
+then on a touch's client position and the fixed canvas disagree by the
+leftover, every press landing above the finger, until a reload. The scroll
+is now put back to zero when a field loses focus (after the keyboard's
+animation), when the visual viewport settles, and on every press on the
+drawing, so a press already off heals the next. Chromium cannot scroll this
+page at all, so this is unverified until the owner's phone says; the trigger
+he saw is still to be named (after typing? after rotating?). In TODO.md.
+
 ## The tray's ends, fields that scale, and a column that wraps above the command line
 
 The owner, from his iPhone: *"the first button in the toolbars is too close

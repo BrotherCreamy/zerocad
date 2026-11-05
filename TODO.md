@@ -2319,6 +2319,18 @@ extended the way `defineTool` extends the tool registry would close it.
 
 ## Smaller things
 
+- [ ] **A touch offset that persists on the owner's iPhone (2026-11-05):**
+  *"the touch input is offset upwards at some point and it persists"*. Our
+  mapping is fresh per event; the likely cause is iOS leaving the layout
+  viewport scrolled after the keyboard goes (a focused command line). A heal
+  is in (`main.ts`, `unscroll`: scroll to zero on focus-out, on the visual
+  viewport settling, and on every press on the drawing). **Unverified on the
+  device**: Chromium cannot scroll this page. Owner, two questions: does it
+  start after typing in the command line, and does rotating the phone fix
+  it? If it still happens with the heal in, the next suspect is the canvas's
+  backing size after a viewport change (`sizeCanvas`) and the answer is a
+  resize on `visualViewport` events.
+
 - [x] **The tray's first button crowded the handle and a gap's worth of tray
   sat empty after the last; fields under a finger did not scale below 16 px
   (2026-11-05, the owner from his iPhone).** Measured in Chromium: a tray's

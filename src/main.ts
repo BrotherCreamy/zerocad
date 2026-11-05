@@ -1698,8 +1698,32 @@ async function main() {
    * dispatched the press — and so does the toolbar sync on release, by which
    * time a tool that finished on that click has cleared `engine.active`.
    */
+  /**
+   * **The page is never scrolled, and iOS is told so again whenever it may
+   * have scrolled it.** The owner, from his iPhone: *"a weird bug where the
+   * touch input is offset upwards at some point and it persists"*. The page
+   * is fixed by its four edges and has nothing to scroll, but WebKit scrolls
+   * the layout viewport anyway to bring a focused field above the keyboard,
+   * and in an installed app it can leave that scroll behind when the keyboard
+   * goes; from then on a touch's client position and the fixed canvas's box
+   * disagree by the leftover, every press landing above the finger, until a
+   * reload. So the scroll is put back to zero when a field loses focus (after
+   * the keyboard's own animation), when the visual viewport settles, and on
+   * every press on the drawing — a press already off by the leftover heals the
+   * next. Not reproducible in Chromium, which cannot scroll this page at all;
+   * the owner's device is the test (TODO.md).
+   */
+  const unscroll = () => {
+    if (window.scrollX || window.scrollY) window.scrollTo(0, 0);
+    const root = document.documentElement;
+    if (root.scrollTop || root.scrollLeft) { root.scrollTop = 0; root.scrollLeft = 0; }
+    if (document.body.scrollTop || document.body.scrollLeft) { document.body.scrollTop = 0; document.body.scrollLeft = 0; }
+  };
+  document.addEventListener("focusout", () => { setTimeout(unscroll, 350); });
+  window.visualViewport?.addEventListener("resize", () => { setTimeout(unscroll, 50); });
   cv.addEventListener("pointerdown", (e) => {
     if (!cv.hasPointerCapture(e.pointerId)) cv.setPointerCapture(e.pointerId);
+    unscroll();
     // **A finger on the drawing puts the keyboard away.** iOS leaves a field
     // focused — and its keyboard over half the drawing — when the tap lands on
     // something that is not focusable, which a canvas is not; a mouse's press
