@@ -765,8 +765,29 @@ async function main() {
       clearTimeout(chipGuide.timer);
       chipGuide = null;
     }
-    chip.show(chipParts(plane?.label ?? null, what, next, chipGuide?.text ?? null), optionsPanel.size() !== null);
+    if (chip.show(chipParts(plane?.label ?? null, what, next, chipGuide?.text ?? null), optionsPanel.size() !== null)) fitChip();
   }
+
+  /**
+   * The chip given way where the verdict would be cut (`ModeChip.fit`): asked
+   * when the chip changes, when the corner is placed again, and when anything
+   * after the chip changes or fades — the observer below.
+   */
+  function fitChip() {
+    chip?.fit(() => {
+      const room = cornerEl.getBoundingClientRect();
+      return ["status", "diagnosis", "stepnote"].some((id) => {
+        const el = document.getElementById(id)!;
+        if (!el.textContent || el.dataset.faded !== undefined || getComputedStyle(el).display === "none") return false;
+        return el.getBoundingClientRect().bottom > room.bottom + 0.5;
+      });
+    });
+  }
+  new MutationObserver(() => fitChip()).observe(document.getElementById("status")!, { attributes: true, childList: true, characterData: true, subtree: true });
+  new MutationObserver(() => fitChip()).observe(diagnosisEl, { attributes: true, childList: true, characterData: true, subtree: true });
+  new MutationObserver(() => fitChip()).observe(document.getElementById("stepnote")!, { attributes: true, childList: true, characterData: true, subtree: true });
+  // The corner placed again (a rotation, a pane moved into its row) changes its room.
+  new ResizeObserver(() => fitChip()).observe(cornerEl);
 
   /**
    * A tool's guidance, in the chip's third part for `GUIDE_NOTE_MS` — or until

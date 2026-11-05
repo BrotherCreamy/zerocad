@@ -253,6 +253,20 @@ for (const device of ["iPhone 13", "iPhone 13 landscape"] as const) {
           .filter(([, r]) => c.x < r.right - 0.5 && r.x < c.right - 0.5 && c.y < r.bottom - 0.5 && r.y < c.bottom - 0.5).map(([id]) => id);
       });
       assert.deepEqual(over, [], "the chip over no pane");
+      // The verdict is never cut for the chip: while it shows, it is inside the
+      // corner's room, the chip's next step giving way where it must; once
+      // it fades, the chip has its whole line back.
+      const verdict = () => phone.page.evaluate(() => {
+        const s = document.getElementById("status")!;
+        const room = document.getElementById("corner")!.getBoundingClientRect();
+        return { shown: s.dataset.faded === undefined, inside: s.getBoundingClientRect().bottom <= room.bottom + 0.5,
+          yielded: document.getElementById("mode")!.className };
+      });
+      const v = await verdict();
+      if (v.shown) assert.ok(v.inside, `the verdict is inside the corner's room (${v.yielded || "chip whole"})`);
+      await phone.page.waitForFunction(() => document.getElementById("status")?.dataset.faded !== undefined, null, { timeout: 6000 });
+      await phone.page.waitForTimeout(100);
+      assert.equal((await verdict()).yielded, "", "faded: the chip whole again");
       await f.tap(...await middle("#mode .done"));
       await phone.page.waitForTimeout(300);
       assert.match(await phone.log(), /> workplane\(null\)/);

@@ -109,6 +109,9 @@
     #mode .next{color:#8fa7bb}
     #mode .next.guide{font-style:italic}
     #mode .next:empty{display:none}
+    /* Short of room beside the verdict (ModeChip.fit): the next step gives way,
+       then the tool's name — never the verdict, never where or Done. */
+    #mode.tight .next,#mode.tight .nsep,#mode.tighter .what,#mode.tighter .psep{display:none}
     /* The chip's tool part tapped: the options panel it opened is ringed in the
        accent for a moment, so the eye finds it wherever the viewer put it. */
     @keyframes optflash{0%,45%{box-shadow:0 0 0 2px #55c07a}100%{box-shadow:0 0 0 2px #55c07a00}}

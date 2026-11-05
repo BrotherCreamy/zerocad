@@ -149,16 +149,16 @@ export class ModeChip {
     this.what = part("what", "the tool in hand — its options");
     this.next = document.createElement("span");
     this.next.className = "next";
-    const sep = () => {
+    const sep = (cls: string) => {
       const s = document.createElement("span");
-      s.className = "sep";
+      s.className = `sep ${cls}`;
       s.textContent = "·";
       return s;
     };
     const plane = document.createElement("span");
     plane.className = "plane";
-    plane.append(this.where, this.done, sep());
-    el.append(plane, this.what, sep(), this.next);
+    plane.append(this.where, this.done, sep("psep"));
+    el.append(plane, this.what, sep("nsep"), this.next);
     // A press on the chip is the chip's: never a gesture on the canvas under it.
     el.addEventListener("pointerdown", (e) => e.stopPropagation());
     this.where.addEventListener("click", () => this.host.planeMenu(this.where.getBoundingClientRect()));
@@ -166,10 +166,13 @@ export class ModeChip {
     this.what.addEventListener("click", () => this.host.options());
   }
 
-  /** Shows `p`; `options` says whether the tool has an options panel, which is what makes the second part a button. */
-  show(p: ChipParts, options: boolean): void {
+  /**
+   * Shows `p`; `options` says whether the tool has an options panel, which is
+   * what makes the second part a button. Answers whether anything changed.
+   */
+  show(p: ChipParts, options: boolean): boolean {
     const key = JSON.stringify([p, options]);
-    if (key === this.shown) return;
+    if (key === this.shown) return false;
     this.shown = key;
     const plane = this.where.parentElement!;
     plane.hidden = p.where === null;
@@ -184,5 +187,27 @@ export class ModeChip {
     this.el.dataset.what = p.what;
     this.el.dataset.next = p.next ?? "";
     this.el.dataset.guiding = p.guiding ? "true" : "false";
+    return true;
+  }
+
+  /**
+   * **The verdict is never cut for the chip** (docs/plans/mode-feedback.md):
+   * the corner is clipped to the room the panes leave it (everything-fits.md),
+   * and on a phone held upright the chip's two lines can push the verdict past
+   * it. So while anything after the chip that is showing — the verdict, the
+   * diagnosis, a note — would be clipped, the chip gives way in order: its
+   * next step first (`tight`), then the tool's name (`tighter`). Where, and
+   * Done, stay. `clipped` asks the page whether something showing is cut.
+   */
+  fit(clipped: () => boolean): void {
+    this.el.classList.remove("tight", "tighter");
+    if (!clipped()) return;
+    this.el.classList.add("tight");
+    if (clipped()) this.el.classList.add("tighter");
+  }
+
+  /** How much of the chip is given way: 0 all of it shown, 1 the next step hidden, 2 the tool's name too. */
+  get yielded(): number {
+    return this.el.classList.contains("tighter") ? 2 : this.el.classList.contains("tight") ? 1 : 0;
   }
 }
