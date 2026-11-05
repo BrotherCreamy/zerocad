@@ -1614,6 +1614,13 @@ starts.
              relation (an offset in the drawing's plane) — and the glyph
              layer to read it. The dimension tool's placement click would
              then place.
+           - [ ] **Found under load, not this package's:** in a full
+             `test:all` run beside another agent's suite (load average 12 on
+             four cores) `toolbargroups.e2e.ts`'s "leaving closes it" failed
+             its 300 ms leave-timer check ("not at once: the way across to it
+             is allowed") and the next test, which builds on it, followed;
+             the file passed 8/8 alone, twice. A timer under load, like the
+             touch harness's lost drags; no retry added.
            - [ ] **Merge with `sketch-shapes`**: the toolbar counts become
              fourteen when the ellipse brings curves; both packages edit the
              same counts.
