@@ -2788,6 +2788,23 @@ extended the way `defineTool` extends the tool registry would close it.
         finger lands, so a recurrence says why. The flake did not reproduce
         in 3 paired runs (touch, solids, depth) before the fix; the fix
         stands on the reading and the unit tests.
+      - [ ] **Open: the touch harness under a saturated machine.** With a
+        worker's e2e suite and a kernel build sharing the four cores (load
+        average 13–15), `solidsphone.e2e.ts`'s two drag tests lose the
+        circle their drag draws (0–2 circles, not 3) and pass alone at
+        load 10; `depth.e2e.ts`'s grazing-lid test took 200 s and read a
+        view before the lid was drawn. The cause for the drags: `fingers.ts`
+        awaits each touch's acknowledgement, so under load the first move
+        lands more than `LONG_PRESS_MS` after the landing and the drag is
+        read as a held press — a phone streams its moves, so this is the
+        harness's and not the engine's. Tried and dropped (2026-11-05):
+        sending the first move behind the landing without awaiting it broke
+        every drag (the browser's own stamp for the move preceded the
+        landing's); stamped a frame after the landing it fixed `onetool`'s
+        drag but the phone solids file still failed at load 15, so it was
+        not kept — unproven on a loaded box is not proven. Next: measure the
+        ack latency under load, and either stream a whole drag with stamps
+        16 ms apart only when no fling matters, or run touch files alone.
       - [ ] **Open: `depth.e2e.ts` "two solids driven through each other"
         failed once in 3 paired runs** (touch, solids, depth together): the
         painter's offscreen picture matched the oracle at every sample
