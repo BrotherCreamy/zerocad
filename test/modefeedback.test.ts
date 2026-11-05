@@ -124,6 +124,16 @@ test("a frame's plane is named by the frame, and drawn as a patch", async () => 
   assert.equal(p.outlines, null);
 });
 
+test("a default frame alone is named, not drawn: the tint, the patch and the focus follow the work plane", async () => {
+  const { m, run } = await drawn("frame()", 'setDefaultFrame("f1")', "pt(5, 5, 0)");
+  assert.equal(activePlane(m, 4)!.label, "f1", "named, for the chip");
+  assert.equal(activePlane(m, 4, m.workPlane), null, "and not drawn: what main.ts draws is the work plane");
+  assert.equal(focusOf(m, activePlane(m, 4, m.workPlane)), null, "so nothing typed under it is dimmed");
+  await run('workplane("f1", { look: false })');
+  const p = activePlane(m, 4, m.workPlane)!;
+  assert.equal(p.kind, "frame", "a frame made the work plane is drawn, as a patch");
+});
+
 test("a plane whose named point is deleted is no plane: the deletion cleared it", async () => {
   const { m, run } = await drawn(PLATE[0], PLATE[1], 'workplane("p1.p2.p4")');
   await run('del("p4")');

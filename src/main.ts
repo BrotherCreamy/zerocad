@@ -550,7 +550,11 @@ async function main() {
     // view, and dimmed where it is behind the solid. With it, what is held on
     // the plane is in focus and the rest is drawn one step dimmed. Drawing
     // only: none of it reaches the pick.
-    plane = activePlane(model, view.scale);
+    // The work plane is drawn and focused on; a default frame on its own is
+    // only named (activeplane.ts): it draws heavier already, and the drawing
+    // typed under it is held by no relation.
+    plane = activePlane(model, view.scale, model.workPlane);
+    named = plane ?? activePlane(model, view.scale, model.defaultFrame);
     focus = focusOf(model, plane);
     drawActivePlane(plane);
     placedNow = new Set(engine.placed());
@@ -660,6 +664,8 @@ async function main() {
 
   /** This frame's plane, what is in focus on it, and what the armed tool has placed or could take (`render`). */
   let plane: ActivePlane | null = null;
+  /** The plane the chip names: the work plane, else the default frame's. */
+  let named: ActivePlane | null = null;
   let focus: ReadonlySet<string> | null = null;
   let placedNow: ReadonlySet<string> = new Set();
   let takesNow: ReadonlySet<string> = new Set();
@@ -765,7 +771,7 @@ async function main() {
       clearTimeout(chipGuide.timer);
       chipGuide = null;
     }
-    if (chip.show(chipParts(plane?.label ?? null, what, next, chipGuide?.text ?? null), optionsPanel.size() !== null)) fitChip();
+    if (chip.show(chipParts(named?.label ?? null, what, next, chipGuide?.text ?? null), optionsPanel.size() !== null)) fitChip();
   }
 
   /**
@@ -1835,9 +1841,9 @@ async function main() {
    */
   chip = new ModeChip(modeEl, {
     planeMenu: (anchor) => {
-      if (!plane) return;
+      if (!named) return;
       const wrap = menuEl.parentElement!.getBoundingClientRect();
-      menu.show(planeMenu(model, plane), anchor.left - wrap.left, anchor.bottom - wrap.top + 2);
+      menu.show(planeMenu(model, named), anchor.left - wrap.left, anchor.bottom - wrap.top + 2);
     },
     done: () => {
       const line = doneCommand(model);

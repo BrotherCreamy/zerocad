@@ -19,8 +19,8 @@ etc).
 - **Mode feedback** (docs/plans/mode-feedback.md, built). The plane being
   sketched on is drawn (`src/activeplane.ts`): the face it was taken from is
   tinted and outlined in the tools' green, fainter and dimmed from behind
-  the solid, and a frame's plane is a patch with a grid that follows the
-  zoom. What is held on the plane by relation is in full ink, and the rest
+  the solid, and a frame made the work plane is a patch with a grid that
+  follows the zoom (a default frame alone is named, not drawn). What is held on the plane by relation is in full ink, and the rest
   is drawn one step dimmed. **The mode chip** (`src/modechip.ts`, `#mode`,
   first in the status's corner) says where · what · next — `on e1's top ·
   circle · drag the radius`. Every tool says its stage through `Tool.next`,

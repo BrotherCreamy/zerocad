@@ -729,9 +729,12 @@ outlined in the green, under the drawing and over the faces, in every view
 mode. Where a solid is in front of it, or it faces away, the tint fades and
 the outline takes the hidden view's ink for that green (`hiddenInk`), so the
 plane reads from behind too. No face, and the plain loop the points are
-corners of is tinted. A frame's plane, or a bare one, is a patch sized to
+corners of is tinted. A frame made the work plane, or a bare plane, is a patch sized to
 what is held on it, with a grid whose step is the first 1·2·5×10ⁿ that is
-32 px on screen, so the grid follows the zoom. **No plane, nothing drawn.**
+32 px on screen, so the grid follows the zoom. **No plane, nothing drawn**,
+and a default frame on its own is only named in the chip: it is drawn heavier
+already, and what is typed under it is held by no relation, so focus would
+dim the whole drawing.
 Drawing on the ground is not a mode, and must not look like one.
 
 **Focus is chosen by relation, not by position.** What is held on the plane

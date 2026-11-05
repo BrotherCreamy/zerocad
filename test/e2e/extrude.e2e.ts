@@ -285,6 +285,10 @@ test("a circle sketched on the lid, on the work plane the sketch tool sets to th
 });
 
 test("turned, the solid is shaded by depth: every pixel off an outline is the nearest face's own shade — both lids over their walls — and the screen shows a lid pixel as it is", async () => {
+  // The lid the boss was sketched on is still the work plane, and is tinted as
+  // the plane being sketched on (docs/plans/mode-feedback.md); this is about
+  // the face's own fill, so the sketch is ended first.
+  await app.type("workplane(null)");
   await app.type("orbit(0.45, 0.4)");
   assert.equal(await app.renderer(), "depth", "the depth layer draws the faces, not the painter's fallback");
   const pic = await checkPicture(app, 6);

@@ -1694,8 +1694,10 @@ starts.
         deviation. Register (vetoable):
         - **The plane is drawn**: the face it was taken from tinted green
           (the tools' green, lighter) and outlined in the green, fading and
-          dimmed where it is behind the solid; a frame's plane a patch with a
-          grid that follows the zoom; nothing at all with no plane chosen.
+          dimmed where it is behind the solid; a frame made the work plane a
+          patch with a grid that follows the zoom; nothing at all with no
+          plane chosen. A default frame on its own is named in the chip but
+          not drawn or focused on.
         - **The mode chip**, first in the status's corner: where (`on e1's
           top`, `on f1`, absent on the ground) · what (`engine.lit`) · next
           (`Tool.next(hand)`, one engine seam, "click" or "tap"). Always

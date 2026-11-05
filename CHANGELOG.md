@@ -19,9 +19,10 @@ deviation is in its *As built*.
 - **The plane being sketched on is drawn.** The face it was taken from is
   tinted the tools' green, lighter, and outlined in the green, in every view
   mode. Turn the view and the tint is still there. Look from behind the solid
-  and it fades, its outline dimmed as a hidden edge is. A frame's plane is a
-  patch with a faint grid whose step follows the zoom. With no plane chosen
-  nothing is drawn: drawing on the ground is not a mode.
+  and it fades, its outline dimmed as a hidden edge is. A frame made the
+  work plane is a patch with a faint grid whose step follows the zoom. With
+  no plane chosen nothing is drawn: drawing on the ground is not a mode. A
+  default frame on its own is named in the chip, not drawn.
 - **The mode chip**, beside the status: `on e1's top · circle · drag the
   radius`. Where is the face, named by its feature and side, or the frame by
   name. What is the tool. Next is the gesture's next step, from the tool,
@@ -47,7 +48,7 @@ pane on any iPhone in the device table, both ways up, installed and in Safari
 (the fits suite). Looking at the screenshots found three bugs, now fixed and
 listed in ARCHITECTURE: stale guidance over a picked region, Done's tap taken
 by the line below on a landscape phone, and the verdict cut off on an upright
-one. Pictures: [135](docs/images/135-sketching-on-the-lid-tinted-the-chip-says-on-e1s-top.png)–[146](docs/images/146-phone-se-safari-landscape-the-chip-over-no-pane.png).
+one. Pictures: [135](docs/images/135-sketching-on-the-lid-tinted-the-chip-says-on-e1s-top.png)–[147](docs/images/147-a-frame-made-the-work-plane-a-patch-with-a-grid.png).
 **Not tried on an iPhone**: try sketching on a face, turning the view, and
 tapping Done.
 

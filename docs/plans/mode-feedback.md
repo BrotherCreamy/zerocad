@@ -112,10 +112,10 @@ Branch `claude/mode-feedback`. By file:
   options flash.
 - `index.html` adds `#mode`, its styles, and its 44 px touch boxes.
 - `src/replenv.ts`: `help()`.
-- Tests: `test/modefeedback.test.ts` (24), `test/e2e/modefeedback.e2e.ts`
+- Tests: `test/modefeedback.test.ts` (25), `test/e2e/modefeedback.e2e.ts`
   (10), one device-table test in `test/e2e/fits.e2e.ts`, and
   `test/e2e/firstrun.e2e.ts`, which now reads guidance from the chip.
-- Pictures: docs/images/135–146.
+- Pictures: docs/images/135–147.
 
 **The chip's three parts, for each state** (unit-tested, and read off
 `#mode`'s `data-where`, `data-what` and `data-next` in the e2e tests):
@@ -148,7 +148,7 @@ unit-tested at each stage.
   face (occlusion.ts), the tint drops to alpha 0.08. The outline is drawn run
   by run: where a face is in front of it, it is in `hiddenInk(green)`, as a
   hidden edge is. The lid seen from below is in docs/images/137.
-- A frame's plane is a patch with tint alpha 0.06, a grid at alpha 0.16, and
+- A frame made the work plane is a patch with tint alpha 0.06, a grid at alpha 0.16, and
   its edge at half the green. It is sized to the points held on it, a step
   past them and at least three steps from the frame's origin, and its step is
   the first 1·2·5×10ⁿ at least 32 px on screen.
@@ -173,6 +173,16 @@ to the canvas's ground (`#0a0e13`), its hue kept. Picking is unchanged
 
 ### Deviations, each a decision, vetoable
 
+- **What is drawn, and focused on, is the work plane** (`workplane(…)`,
+  which sketch on face sets), **not a default frame on its own.** The spec
+  says a frame's plane is drawn as a patch. That holds for a frame made the
+  work plane (`workplane("f1")`, picture 147). The default frame alone is
+  named in the chip with its Done, but not tinted, patched or focused on.
+  Two reasons. It is already drawn heavier (ARCHITECTURE's frame marker).
+  And a drawing typed under it with `pt()` is held by no relation, so the
+  focus rule would dim all of it: the first full e2e run showed that in
+  eighteen pixel tests whose suites set a default frame, which is what a
+  user typing `plane()` and a sketch would see.
 - **Done is a button of its own beside the plane's name**, as well as the
   plane menu's third item. The spec puts it in the menu and also asks for
   "one tap" on a phone; a menu item is two.

@@ -135,7 +135,16 @@ function loopOf(loops: Loop[], model: Model, ref: string): number {
 }
 
 /**
- * The plane being sketched on — or null when none is chosen (the ground is
+ * **What is drawn, and dimmed around, is the work plane** — what `workplane()`
+ * sets, which is what sketch on face sets — not a default frame on its own:
+ * the default frame is already drawn heavier (main.ts's `drawFrame`) and is
+ * named in the chip, and under it the drawing typed with `pt()` is held by no
+ * relation, so dimming by relation would dim the whole of it. main.ts asks
+ * with `model.workPlane` for the tint and the focus, and with the default
+ * frame for the chip's name alone.
+ *
+ * The plane being sketched on (`ref`, by default the work plane else the
+ * default frame) — or null when none is chosen (the ground is
  * where clicks land, and is not a mode: the owner's "just put the circle right
  * there"), the model is 2D, or the plane has collapsed. `scale` is pixels per
  * world unit, which round faces' outlines are sampled at.
@@ -146,9 +155,8 @@ function loopOf(loops: Loop[], model: Model, ref: string): number {
  * neighbours, as sketch on face takes them) or, for a round face, the rim of
  * its circle — then to the plain loop they are corners of, then left a plane.
  */
-export function activePlane(model: Model, scale: number): ActivePlane | null {
-  const ref = sketchPlaneRef(model);
-  if (ref === null) return null;
+export function activePlane(model: Model, scale: number, ref: string | null = sketchPlaneRef(model)): ActivePlane | null {
+  if (ref === null || model.dim !== 3) return null;
   let axes: ReturnType<typeof planeAxes>;
   let anchors: ReturnType<typeof anchorsOf>;
   try {
