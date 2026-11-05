@@ -19,12 +19,12 @@ import { OptionMemory, declaredOptions, defaultsOf, describeValues, resolveOptio
 import * as basic from "./relations/basic.ts";
 import * as geom from "./relations/geometry.ts";
 import {
-  construction, del, extrude, fillet, hole, loopOfMember, orientingPlane, regen, revolve, set, unhole,
+  construction, del, extrude, fillet, hole, loopOfMember, orientingPlane, peelOptions, regen, revolve, set, unhole,
 } from "./operations.ts";
 import { planeAxes } from "./curveplane.ts";
 import { save as saveModel, savedTools } from "./persist.ts";
 import { fileNameFor } from "./files.ts";
-import { STEP_TYPE, stepExport, stepFileName } from "./step.ts";
+import { STEP_TYPE, stepExport, stepFileName, type KernelSolid } from "./step.ts";
 import { carryIntoSession, toolSources, type ToolSourceStore } from "./toolsource.ts";
 import { alignView, assignView, orbitBy, panBy, screenToWorld, viewAxes, zoomAbout, type View } from "./view.ts";
 import { pointOnWorkingPlane } from "./workplane.ts";
@@ -101,6 +101,12 @@ export interface EnvHandles {
    * sheet under a finger, else a download (filehost.ts's `exportFile`).
    */
   exportFile?: (text: string, fileName: string, type: string) => Promise<string>;
+  /**
+   * The bodies the solid kernel built, exactly, for STEP (kernelbrep.ts) —
+   * asked of its Worker, so a promise — or null when there are none, which
+   * keeps an export with no kernel body exactly as synchronous as it was.
+   */
+  kernelSolids?: () => Promise<KernelSolid[]> | null;
   /**
    * The document's name and whether it has unsaved changes — what the app
    * menu shows, and what `download()` names its file for.
@@ -650,10 +656,17 @@ export function neocadScope(h: EnvHandles): Bag {
      * `frame` is any plane (a frame, a curve, `"p1.p2.p3"`); a loop no frame
      * orients runs along its own plane — three of its points, facing you — and
      * **no frame is made for it** (`planeForFeature`, `orientingPlane`).
+     *
+     * Options come last, wherever that is: `extrude("c1", -10, { mode:
+     * "cut" })` cuts a hole in the body the circle is on; `{ mode: "add",
+     * into: "e1" }` names the body. Left out, the mode is add when the solid
+     * touches or overlaps a body and new otherwise (docs/plans/solids-kernel.md).
      */
-    extrude: (member: string, depth?: number | null, frame?: string | null, loops?: ProfileMember[][] | null) => {
-      if (frame == null && loops == null) frame = planeForFeature(member, "extrude");
-      return extrude(model, member, depth ?? null, frame ?? null, loops ?? null);
+    extrude: (member: string, ...rest: unknown[]) => {
+      const { args, options } = peelOptions(rest, "extrude", 3);
+      const [depth, given, loops] = args as [number | null | undefined, string | null | undefined, ProfileMember[][] | null | undefined];
+      const frame = given == null && loops == null ? planeForFeature(member, "extrude") : given;
+      return extrude(model, member, depth ?? null, frame ?? null, loops ?? null, null, options);
     },
     /**
      * Revolves the closed loop a member is in about an axis — `revolve("l1",
@@ -662,9 +675,11 @@ export function neocadScope(h: EnvHandles): Bag {
      * The axis is a frame's axis or a line, read and never moved. `frame` and
      * `loops` are extrude's, and so is the plane of a loop no frame orients.
      */
-    revolve: (member: string, axis: string, angle?: number | null, frame?: string | null, loops?: ProfileMember[][] | null) => {
-      if (frame == null && loops == null) frame = planeForFeature(member, "revolve");
-      return revolve(model, member, axis, angle ?? null, frame ?? null, loops ?? null);
+    revolve: (member: string, axis: string, ...rest: unknown[]) => {
+      const { args, options } = peelOptions(rest, "revolve", 3);
+      const [angle, given, loops] = args as [number | null | undefined, string | null | undefined, ProfileMember[][] | null | undefined];
+      const frame = given == null && loops == null ? planeForFeature(member, "revolve") : given;
+      return revolve(model, member, axis, angle ?? null, frame ?? null, loops ?? null, null, null, options);
     },
     /**
      * Changes a dimension's value — `set("d4.value", 60)` — rebuilding it in
@@ -707,6 +722,17 @@ export function neocadScope(h: EnvHandles): Bag {
   // back the file's text rather than writing it anywhere, which is the
   // command-line-shaped thing to do: it composes. `download`/`openFile` are
   // the browser conveniences on top.
+  /** STEP's last step, once any kernel body is in hand: the file, handed to the host, and what it held. */
+  const exportWith = (title: string, opts: Record<string, unknown>, solids: KernelSolid[]): Promise<string> => {
+    const out = stepExport(model, { name: title, curves: opts.curves === true }, solids);
+    if (!h.exportFile) throw new Error("no download or share sheet in this environment");
+    const bodies = out.bodies.map((b) => b.name);
+    const said = [`${bodies.join(", ")} (${bodies.length} ${bodies.length === 1 ? "body" : "bodies"})`];
+    if (out.curves > 0) said.push(`${out.curves} sketch curve${out.curves === 1 ? "" : "s"}`);
+    if (out.skipped.length) said.push(`left out ${out.skipped.map((x) => `${x.feature} (${x.why})`).join(", ")}`);
+    return h.exportFile(out.text, stepFileName(title), STEP_TYPE).then((how) => `${how}: ${said.join("; ")}`);
+  };
+
   const persistence: Bag = {
     // The tools go in here and *only* here, not in `toSaved`'s default,
     // because the same function writes the undo stack's snapshots — see
@@ -781,15 +807,12 @@ export function neocadScope(h: EnvHandles): Bag {
       if (extra.length) throw new Error(`exportStep takes { curves: true } and a name, not ${extra.join(", ")}`);
       if (name != null && typeof name !== "string" && typeof name !== "object") throw new Error("exportStep's name is a string");
       const title = typeof name === "string" ? name : typeof opts.name === "string" ? opts.name : h.document?.().name ?? "Untitled";
-      const out = stepExport(model, { name: title, curves: opts.curves === true });
-      if (!h.exportFile) throw new Error("no download or share sheet in this environment");
-      const bodies = out.bodies.map((b) => b.name);
-      const said = [`${bodies.join(", ")} (${bodies.length} ${bodies.length === 1 ? "body" : "bodies"})`];
-      if (out.curves > 0) said.push(`${out.curves} sketch curve${out.curves === 1 ? "" : "s"}`);
-      if (out.skipped.length) said.push(`left out ${out.skipped.map((x) => `${x.feature} (${x.why})`).join(", ")}`);
-      return h.exportFile(out.text, stepFileName(title), STEP_TYPE).then((how) => `${how}: ${said.join("; ")}`);
+      const kernel = h.kernelSolids?.() ?? null;
+      if (kernel) return kernel.then((solids) => exportWith(title, opts, solids));
+      return exportWith(title, opts, []);
     },
     journal: () => model.journal.map((e) => `${e.op}(${e.args.map((a) => JSON.stringify(a)).join(", ")})`),
+
     // The same thing Ctrl+Z does, and not a parallel implementation of it: both
     // go through the host handle, so a difference between the keystroke and the
     // command is not something this codebase can express.
@@ -1257,6 +1280,17 @@ function help(scope: Bag): string {
     "           plane along it; one in no frame's plane along its own, three of",
     '           its corners facing you ("p1.p2.p4"). No frame is made for any of',
     "           them. Revolve does the same.",
+    "           Bodies: a solid touching or overlapping a body adds to it; one",
+    '           touching none is a body of its own. Cut is chosen: extrude("c1",',
+    '           -10, { mode: "cut" }) — a hole — and { mode: "add" | "new" |',
+    '           "intersect", into: "e1" } names it all. The dialog has a mode',
+    "           row (New Add Cut ∩): left alone it shows what it will do, and",
+    "           offers Cut when the solid runs into a body. Bodies of two or",
+    "           more features are built by the solid kernel (NVIDIA SMLib, in a",
+    "           Worker): drawn when it answers, the last good body shown until",
+    "           then, a refusal said in the log. The organiser lists Bodies;",
+    "           hiding one hides its first feature, hiding a later one leaves",
+    "           it out of the body. exportStep() writes one solid per body.",
     "           A region is its outline and the holes you confirmed: the click",
     "           (or a typed extrude) proposes every loop inside; in the dialog a",
     "           click on a hole takes it out of the proposal (and back), a click",

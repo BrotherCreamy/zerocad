@@ -274,7 +274,7 @@ test("sketched on a cylinder's base, a boss comes out at the viewer: the rim's p
   assert.deepEqual(frames(m), []);
 });
 
-test("an old file that already called something \"origin\" opens with it renamed — everywhere it is named — and re-saves as format 13", async () => {
+test("an old file that already called something \"origin\" opens with it renamed — everywhere it is named — and re-saves as the current format", async () => {
   await loadKernel();
   const file = JSON.stringify({
     format: "neocad-model", version: 12, dim: 3,
@@ -297,7 +297,7 @@ test("an old file that already called something \"origin\" opens with it renamed
   assert.equal(m.frame("f1").origin, "origin2");
   assert.equal(m.solve().solved, true);
   const text = save(m);
-  assert.equal(JSON.parse(text).version, 13);
+  assert.equal(JSON.parse(text).version, 14);
   assert.equal(save(open(text)), text);
 });
 

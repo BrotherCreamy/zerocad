@@ -2,7 +2,7 @@
 // against a real dev server.
 //
 // These exist because a good deal of what this project does is only wrong
-// once it is assembled. Fourteen bugs so far were invisible to the unit tests and
+// once it is assembled. Seventeen bugs so far were invisible to the unit tests and
 // obvious within seconds of running the thing: a status readout that went
 // stale, a fillet that satisfied every constraint to six decimal places while
 // drawing a broken rectangle, an auto-naming loop that hung the tab, and a
@@ -436,16 +436,68 @@ export async function openApp(options: OpenOptions = {}): Promise<AppContext> {
       const { faceRGB, visibleFaces } = await import(facesPath);
       const { nearestFace, occlusion, outlineDistance } = await import(occlusionPath);
       const { model, engine } = (window as never as PageGlobals).__neocad;
-      type F = { feature: string; kind: string; shade: number };
-      const faces = visibleFaces(model, engine.view) as F[];
+      type F = { feature: string; kind: string; shade: number; face?: number; normal: number[]; outlines: number[][][] };
+      // The kernel's bodies in place of their features' own faces, as main.ts
+      // hands them to the face layer (docs/plans/solids-kernel.md) — the
+      // last good answer, which is what is on the screen.
+      const kernel = (window as never as { __neocad: { bodies?: { drawn(): unknown } } }).__neocad.bodies?.drawn() ?? null;
+      const faces = visibleFaces(model, engine.view, new Set(), kernel) as F[];
       const occ = occlusion(faces, engine.view);
+      // A kernel body's face is drawn as triangles, one `Face` each (bodies.ts).
+      // Those of one kernel face lying in one plane are one shade, so they are
+      // one face here — their shared sides are no outline anything is drawn
+      // along. A curved face's triangles shade apart, and stay apart. (The
+      // normals to a thousandth: the kernel's positions are single precision,
+      // and a thin triangle's normal is read off them.)
+      const group = (i: number): number | string => {
+        const f = faces[i];
+        return typeof f.face === "number" ? `${f.feature}#${f.face}#${f.normal.map((c) => c.toFixed(3)).join(",")}` : i;
+      };
+      const groups = faces.map((_, i) => group(i));
+      const ids = new Map([...new Set(groups.filter((g) => typeof g === "string"))].map((g, k) => [g, -1 - k]));
+      // A side two triangles of one such face share is inside it: no outline.
+      const sideKey = (g: string, a: number[], b: number[]) =>
+        [g, ...[a, b].map((p) => p.map((c) => c.toFixed(4)).join(",")).sort()].join("|");
+      const sides = new Map<string, number>();
+      faces.forEach((f, i) => {
+        const g = groups[i];
+        if (typeof g !== "string") return;
+        const o = f.outlines[0];
+        for (let k = 0; k < o.length; k++) {
+          const key = sideKey(g, o[k], o[(k + 1) % o.length]);
+          sides.set(key, (sides.get(key) ?? 0) + 1);
+        }
+      });
+      const inside = (i: number, k: number) => {
+        const g = groups[i];
+        if (typeof g !== "string") return false;
+        const o = faces[i].outlines[0];
+        return (sides.get(sideKey(g, o[k], o[(k + 1) % o.length])) ?? 0) > 1;
+      };
+      type Occ = { faces: { screen: [number, number][][]; box: number[]; facing: number }[] };
+      const toSegment = (x: number, y: number, a: [number, number], b: [number, number]) => {
+        const [dx, dy] = [b[0] - a[0], b[1] - a[1]];
+        const t = Math.max(0, Math.min(1, ((x - a[0]) * dx + (y - a[1]) * dy) / (dx * dx + dy * dy || 1)));
+        return Math.hypot(x - a[0] - t * dx, y - a[1] - t * dy);
+      };
       return at.map(([x, y]) => {
         const best = nearestFace(occ, x, y) as { index: number } | null;
         const f = best ? faces[best.index] : null;
+        const g = best ? groups[best.index] : null;
         // Three pixels out from every face's screen box: further than that
-        // from an outline is "far" (JSON has no Infinity).
-        const edge = Math.min(99, outlineDistance(occ, x, y, 3) as number);
-        return { face: f ? { id: best!.index, feature: f.feature, kind: f.kind, rgb: faceRGB(f.shade) } : null, edge };
+        // from an outline is "far" (JSON has no Infinity) — `outlineDistance`,
+        // but for the sides inside a kernel face, which no outline is.
+        let edge = 99;
+        if (ids.size === 0) edge = Math.min(99, outlineDistance(occ, x, y, 3) as number);
+        else (occ as Occ).faces.forEach((o, i) => {
+          if (!(o.facing > 0)) return;
+          if (x < o.box[0] - 3 || y < o.box[1] - 3 || x > o.box[2] + 3 || y > o.box[3] + 3) return;
+          for (const s of o.screen) for (let k = 0; k < s.length; k++) {
+            if (!inside(i, k)) edge = Math.min(edge, toSegment(x, y, s[k], s[(k + 1) % s.length]));
+          }
+        });
+        const id = typeof g === "string" ? ids.get(g)! : best?.index ?? -1;
+        return { face: f ? { id, feature: f.feature, kind: f.kind, rgb: faceRGB(f.shade) } : null, edge };
       });
     }, at),
     renderer: () => page.evaluate(() => (window as never as PageGlobals).__neocad.faces),

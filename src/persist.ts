@@ -30,7 +30,24 @@ import { freshName, planeTranslation } from "./planetranslation.ts";
 
 export const FORMAT = "neocad-model";
 /**
- * 13 since **a circle or arc carries its own normal** (docs/plans/
+ * 14 since **an extrude or revolve says what it does to a body**
+ * (docs/plans/solids-kernel.md): every new `extrude` and `revolve` entry ends
+ * in its options, resolved — `{ mode: "add", into: "e1" }`, `{ mode: "cut",
+ * into: "e1" }`, `{ mode: "new" }` — written even when the call typed none,
+ * because the default is decided by where the solid stood when it was made
+ * and a replay must not decide it again from seeds. A version-13 build
+ * replaying a version-14 file would read the options as an old expansion and
+ * refuse the step, which is the misreading a version is for.
+ *
+ * Going the other way **a version-13 file opens to the same solids**: its
+ * entries carry no options, and an entry with none is a body of its own — as
+ * every feature then was, two overlapping extrudes overlapping rather than
+ * joining. Nothing is translated or written in; a feature from such a file
+ * shows as "new" and draws as it always did (its single-feature body is drawn
+ * from its live geometry, faces.ts, exactly as before the kernel shipped).
+ * `test/solidsoldfiles.test.ts` opens every fixture and holds it to that.
+ *
+ * 13 was **a circle or arc carries its own normal** (docs/plans/
  * frameless-curves.md). `addCircle(center, radius, normal, name)` and
  * `addArc(center, start, end, radius, normal, name)` take three numbers — a
  * seed — where they named a frame, and a 3D `fillet`'s fourth argument is the
@@ -261,7 +278,7 @@ export const FORMAT = "neocad-model";
  * with, so an older file replays to exactly the solids it was saved with
  * (`test/explicitregions.test.ts` opens one written by the build before).
  */
-export const VERSION = 13;
+export const VERSION = 14;
 
 export interface SavedModel {
   format: typeof FORMAT;

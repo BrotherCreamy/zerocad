@@ -41,7 +41,8 @@ import { FRAME_ARM_PX } from "../framemarker.ts";
 import {
   LIT_STROKE, REGION_GREEN, drawRegion, lightRegions, missedRegion, outlineLoops, regionKey, type Region,
 } from "./region.ts";
-import { FeatureTool, callText, foundRegion } from "./feature.ts";
+import { FeatureTool, MODE_OPTION, callText, foundRegion, modeOptions } from "./feature.ts";
+import type { FeatureOptions } from "../operations.ts";
 import { RegionSelection, leftOut } from "./selection.ts";
 
 /**
@@ -75,7 +76,8 @@ export function revolveAxes(model: Model, region: Region): string[] {
  * the plane if it needs one, then the shortest typed call that names it.
  */
 export function revolveSteps(region: RegionHit, axis: string, angle: number, typed: boolean,
-                             without: readonly number[][] = []): FeatureStep[] {
+                             without: readonly number[][] = [], options: FeatureOptions | null = null): FeatureStep[] {
+  const tail = options ? [options] : [];
   return [(m) => {
     const r = foundRegion(m, region);
     checkRevolveRegion(m, r.loops, r.index, axis);
@@ -87,21 +89,21 @@ export function revolveSteps(region: RegionHit, axis: string, angle: number, typ
     if (out.size) {
       const p = profileOfLoops(m, r.loops, regionOf(r.loops, r.index).filter((i) => !out.has(i)),
         orientingPlane(m, r.loops[r.index], region.toward));
-      if (p.crossings?.size) return { call: () => { revolveProfile(m, p, axis, angle); } };
+      if (p.crossings?.size) return { call: () => { revolveProfile(m, p, axis, angle, options ?? {}); } };
       const member = memberName(p.loops[0][0]);
       return {
-        text: callText("revolve", [member, axis, angle, p.frame, p.loops]),
-        direct: () => revolve(m, member, axis, angle, p.frame, p.loops),
+        text: callText("revolve", [member, axis, angle, p.frame, p.loops, ...tail]),
+        direct: () => revolve(m, member, axis, angle, p.frame, p.loops, ...tail),
       };
     }
     const n = regionNaming(m, r.loops, r.index, region.toward);
-    if (!n) return { call: () => { revolveProfile(m, revolveProfileOf(m, r.loops, r.index, region.toward), axis, angle); } };
+    if (!n) return { call: () => { revolveProfile(m, revolveProfileOf(m, r.loops, r.index, region.toward), axis, angle, options ?? {}); } };
     const args: unknown[] = [n.member, axis];
     const more = n.frame !== null || n.loops !== null;
-    if (more || angle !== FULL_TURN) args.push(angle);
+    if (more || angle !== FULL_TURN || tail.length) args.push(angle);
     if (more) args.push(n.frame);
     if (n.loops !== null) args.push(n.loops);
-    return { text: callText("revolve", args), direct: () => revolve(m, n.member, axis, angle, n.frame, n.loops) };
+    return { text: callText("revolve", [...args, ...tail]), direct: () => revolve(m, n.member, axis, angle, n.frame, n.loops, null, null, ...tail) };
   }];
 }
 
@@ -112,6 +114,7 @@ export class RevolveTool extends FeatureTool {
       default: FULL_TURN, unit: "angle",
       check: (v) => (v === 0 || Math.abs(v as number) > FULL_TURN ? "must be within a whole turn (±6.283185) and not 0" : null),
     },
+    mode: MODE_OPTION,
   };
   static readonly summary = "Spins a closed shape into a solid: click it, then the axis, then ✓";
   readonly name = "revolve";
@@ -172,7 +175,8 @@ export class RevolveTool extends FeatureTool {
     const angle = this.angleOf(values);
     const typed = !!this.ctx.perform;
     const axis = this.axis;
-    return this.picks.regions.flatMap((r, i) => revolveSteps(r, axis, angle, typed, this.picks.without(i)));
+    const options = modeOptions(values);
+    return this.picks.regions.flatMap((r, i) => revolveSteps(r, axis, angle, typed, this.picks.without(i), options));
   }
 
   protected picksKey(): string {

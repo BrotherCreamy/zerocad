@@ -24,15 +24,40 @@ otherwise.
 
 ## Decisions made so far — veto here if any are wrong
 
-- **Next, specced 2026-11-04:** [`solids-kernel.md`](docs/plans/solids-kernel.md)
-  — SMLib ships; extrude and revolve add to, cut from or start a body (Add
-  by default where a profile lies on or overlaps a body, as in Onshape);
-  bodies in the organiser; sketch on any face, a boolean's included; STEP
-  from bodies. And, in parallel,
-  [`one-circle-one-arc.md`](docs/plans/one-circle-one-arc.md) — one Circle and
-  one Arc tool, the gesture choosing the method, tangent on existing
-  geometry, lockable; `circle3`/`arc3` stay as typed names. **Built** (see
-  its register entry below and the Done entry).
+- **Solids on SMLib: extrude and revolve add to, cut from, intersect or
+  start a body** (the owner, 2026-11-04: *"I find it impossible to make
+  anything beyond an extruded shape. fix this so I can create complex
+  parts"*). Spec: [`solids-kernel.md`](docs/plans/solids-kernel.md),
+  **built**; every deviation (⚠) is in its *As built* and in the Done entry.
+  Open to veto, as built:
+  - **SMLib ships.** It is built from pinned source by `npm run
+    build:solids`, runs in a Worker loaded only when a body first needs it,
+    and is recycled past 256 MB. Its Apache-2.0 notice is in About.
+  - **The modes and their defaults.** New, Add, Cut and ∩ are offered.
+    - The default is **Add** when the solid touches or overlaps a body
+      (Onshape's rule), and **New** otherwise.
+    - **Cut is never a default.** The dialog outlines it when the solid runs
+      into a body.
+    - The mode is decided at the call and journalled resolved; `new` is
+      journalled as nothing. It is never remembered as the next default.
+  - **A body is its chain**: its first feature and everything added to it,
+    cut from it or intersected with it, in creation order, named by its first
+    feature.
+    - The organiser lists Bodies.
+    - Hiding the first feature hides the body; hiding a later one leaves it
+      out.
+    - A deleted target leaves an add standing alone and a cut left out, both
+      said.
+  - **The twins' fate: kept.** An extrude's lid lines and walls stay solved
+    entities, the relational skeleton that dimensions and constraints hold,
+    and are quiet in a kernel body's every view. The spike's suggestion,
+    deriving them from the kernel, was rejected: old files' constraints on a
+    lid edge would have been lost.
+  - **A body of one feature is drawn as before**, live, by `faces.ts`. Only a
+    body with a boolean is the kernel's to draw.
+  - **STEP writes one solid per body.** Where the geometry is analytic it is
+    written from feature data; elsewhere the kernel's B-splines, with a
+    declared uncertainty of 10⁻⁵ when they are present.
 
 - **One circle tool and one arc tool, the gesture choosing the method**
   (the owner, 2026-11-04: *"why are there multiple circle tools and arc
@@ -121,17 +146,18 @@ otherwise.
 
   Found by the spike, still to do:
   - [ ] Report the `SmApiFilletEdges` leak upstream: about 154 kB per call on
-    a rounded outline's lid (`bench/leak.ts`). Recycle the Worker until it
-    is fixed.
+    a rounded outline's lid (`scripts/solids/bench/leak.ts`). The Worker is
+    recycled past 256 MB until it is fixed (built: `src/solids/client.ts`).
   - [ ] Fuzz SMLib on random profiles and booleans before the product depends
     on it. `KNOWN_ISSUES.md` lists open shell, stitch and tessellation bugs
     that our parts did not hit.
-  - [ ] The STEP exporter must recognise analytic surfaces: SMLib returns an
-    extruded arc as a B-spline and every revolve face as a surface of
-    revolution. The glue must also export knots, edge curves and p-curves.
-  - [ ] Spec the integration: `solids.ts` feature nodes, the Worker client,
-    names for faces and edges, and the migration of twins and walls. See the
-    Findings' architecture sketch.
+  - [x] The STEP exporter must recognise analytic surfaces. Built in
+    `solids-kernel.md`: a face's tag names the feature role it came from, and
+    the surface is written from that feature's data; the glue exports knots,
+    edge curves and surfaces for the rest. **P-curves are still not
+    exported.**
+  - [x] Spec the integration: [`solids-kernel.md`](docs/plans/solids-kernel.md),
+    built.
 
 - **STEP export** (the owner, 2026-11-04: *"also, please add step export"*):
   exact B-rep, one body per feature, hand-written with no dependency,
@@ -2658,6 +2684,88 @@ extended the way `defineTool` extends the tool registry would close it.
       the resolver's flush arithmetic assumes does not happen.
 
 ## Done
+
+- [x] **Solids on SMLib** (2026-11-04). The owner: *"I find it impossible to
+      make anything beyond an extruded shape. fix this so I can create
+      complex parts"*. Spec:
+      [`docs/plans/solids-kernel.md`](docs/plans/solids-kernel.md), marked
+      built, every deviation in its *As built*.
+      - **New**: `src/solids/` (the kernel's contract, the SMLib adapter,
+        evaluation, naming, the Worker and its client); `src/modes.ts`,
+        `src/bodies.ts`, `src/kernelbrep.ts` and `src/solidshost.ts`; and
+        `scripts/solids/` (the recipe, the glue, the Worker entry and the
+        benches).
+      - **Changed**: `extrude`/`revolve` take `{ mode, into }`; the format is
+        14; the tools have a mode row; the organiser lists Bodies; STEP
+        exports kernel bodies; the PWA and single-file builds carry the
+        kernel.
+      - **Tests**: unit 1278 (1219 before), e2e 529 (521 before),
+        `npm run test:all` green.
+      **Deviations**:
+      - ⚠ Cut is offered (outlined, and said in the log), never the default,
+        even for a negative depth into a body.
+      - ⚠ The mode is not remembered as the next arm's default.
+      - ⚠ The edit dialog cannot change a feature's mode.
+      - ⚠ `into` is not part of a feature's names. A deleted target makes an
+        add a body of its own and leaves a cut out, both said.
+      - ⚠ Hiding a later feature of a body suppresses it from the body.
+      - ⚠ A one-feature body is drawn by `faces.ts`, not by the kernel.
+      - ⚠ The twins are kept as relational entities (not derived), and are
+        quiet in every view of a kernel body.
+      - ⚠ A file with B-spline edges declares 10⁻⁵ uncertainty.
+      - ⚠ The tool options' `choices` merged with the curve tools': one
+        record of words to labels, plus `buttons` (a row of buttons, not a
+        drop-down) and `remember: false`.
+      **Known gaps, left deliberately**:
+      - [ ] Kernel edges are drawn but not hoverable, and are not constraint
+        targets. A constraint to a boolean's new edge needs a name the
+        relational model can hold, which is the next naming question.
+      - [ ] The edit preview is drawn over a kernel body, not in place of it.
+      - [ ] `turned-and-drilled` (a full revolve drilled across its seam)
+        fails OpenCascade's strict read; the healed read takes it. Seams in
+        surfaces other than a cylinder's are kept whole
+        (`kernelbrep.ts`'s `splitSeams`).
+      - [ ] A body's disconnected lumps (a cut that splits it) share one
+        shell in STEP.
+      - [ ] No p-curves in STEP.
+      - [ ] The kernel tests skip, saying so, without a kernel build. CI's
+        `solids` workflow is where they always run.
+      - [ ] The unit suite takes 25–45 s, up from 14, mostly in the kernel
+        tests.
+      - [ ] The ∩ button's glyph reads like an "n" in the UI font.
+      - [ ] Fillet and chamfer of solid edges, shell, mirror and patterns:
+        their own packages, on this one.
+      - [ ] Fuzzing SMLib (above) is still to do.
+      **Found** by the e2e suite, each invisible to the unit tests:
+      - On a phone, the organiser's body row lost its name. The name now
+        keeps its width and the chain gives way to an ellipsis.
+      - The hidden view drew none of a kernel body's edges behind its faces.
+        They are now dimmed through the same occlusion as an extrude's
+        twins.
+      - An empty Bodies section pushed Groups out of an iPhone's pane. It is
+        now shown only once there is a body.
+      - Every page load started the kernel's Worker for an empty program. It
+        now starts only when a body has two features (`bodies.test.ts`
+        asserts no Worker for old files).
+      - [ ] **Open: a touch tap lost under the full suite's load.**
+        `touch.e2e.ts` lost one tap on p2 in 6 of 9 full e2e runs of this
+        branch: "a finger down on a quiet corner…" 5 times and "a quick tap
+        while the page is busy…" once.
+        - It never failed alone. Paired with `solids.e2e.ts`, it failed in
+          4 runs of 12, all before event recording was added. With the
+          suite's tail (tooltips, touch, undo, undokeys), it failed in 1 run
+          of 2. A full run with passive event recording in the page passed.
+        - The base branch passed its one full run here, and 2 tail runs of
+          2.
+        - On the phone page, a frame (~0.1 ms) and a reload (~0.7 s) cost
+          the same as on the base branch, and there are no long tasks after
+          a reload.
+        - The Worker-per-page-load fix above did not cure it.
+        - What the recording showed when the tap was lost: the pointer
+          events arrived in time (a 56 ms tap), and the pick at that spot
+          was p2 a moment later, but nothing was selected. Next: record
+          `gestures`' decisions and the context menu in a full run without
+          changing its timing.
 
 - [x] **One circle tool and one arc tool, the gesture choosing the method**
       (2026-11-04). The owner: *"why are there multiple circle tools and arc

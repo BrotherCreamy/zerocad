@@ -2286,6 +2286,8 @@ export interface OptionRow {
   name: string; label: string; unit: string; value: number | boolean | string;
   choices?: readonly (readonly [string, string])[];
   read?: string | null;
+  /** A choice drawn as buttons, one per word but the first, rather than a drop-down (an extrude's mode). */
+  buttons?: boolean;
 }
 
 /**
@@ -2293,7 +2295,16 @@ export interface OptionRow {
  * anything now. Its own shape rather than the tools' — this file knows nothing
  * of tools — which the host fills from the engine.
  */
-export interface DialogState { ready: boolean }
+export interface DialogState {
+  ready: boolean;
+  /**
+   * For a word option left at its default (an extrude's `mode: "auto"`): what
+   * the default comes to for what is picked — shown as that button dimly
+   * down — and a choice worth offering, outlined (Cut, when the solid runs
+   * into a body). Null or absent: nothing to show.
+   */
+  choice?: { option: string; resolved: string | null; offer: string | null } | null;
+}
 
 /** What the options panel needs of its host. */
 export interface OptionsHost {
@@ -2413,7 +2424,7 @@ export class OptionsPanel {
       for (const row of a?.rows ?? []) this.body.appendChild(this.row(row));
       if (a?.dialog) this.body.appendChild(this.actions());
     }
-    if (a) this.fill(a.rows, false);
+    if (a) this.fill(a.rows, false, a.dialog?.choice ?? null);
     if (this.ok && a?.dialog) this.ok.disabled = !a.dialog.ready;
     return shaped;
   }
@@ -2453,7 +2464,43 @@ export class OptionsPanel {
     return line;
   }
 
+  /**
+   * A choice drawn as buttons (`buttons: true`): a button per word but the
+   * first (the default, which is "none of these"). A press types
+   * `arm(tool, { mode: "cut" })`; a press on the button already down types the
+   * default back. The buttons never take the focus, so typing after one still
+   * types.
+   */
+  private choiceRow(r: OptionRow): HTMLElement {
+    const line = document.createElement("div");
+    line.className = "orow ochoice";
+    line.dataset.option = r.name;
+    line.title = `${r.label} — ${optionCommand(this.tool, r.name, r.value)}`;
+    const label = document.createElement("span");
+    label.className = "olabel";
+    label.textContent = r.label;
+    line.append(label);
+    const tool = this.tool;
+    const [[none], ...words] = r.choices ?? [["", ""]];
+    for (const [word, text] of words) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "ochoose";
+      b.dataset.choice = word;
+      b.textContent = text;
+      b.setAttribute("aria-label", `${r.label}: ${word}`);
+      b.addEventListener("mousedown", (e) => e.preventDefault());
+      b.addEventListener("click", () => {
+        const now = this.host.armed()?.rows.find((x) => x.name === r.name)?.value;
+        void this.type(tool, r.name, now === word ? none : word);
+      });
+      line.append(b);
+    }
+    return line;
+  }
+
   private row(r: OptionRow): HTMLElement {
+    if (r.choices && r.buttons) return this.choiceRow(r);
     const line = document.createElement("label");
     line.className = "orow";
     line.title = `${r.label} — ${optionCommand(this.tool, r.name, r.value)}`;
@@ -2553,15 +2600,30 @@ export class OptionsPanel {
     // `arm` runs as the line is typed, so the tool is armed afresh by now — or,
     // refused, as it was; either way the fields say which, the edited one too.
     const a = this.host.armed();
-    if (a && a.tool === this.tool) this.fill(a.rows, true);
+    if (a && a.tool === this.tool) this.fill(a.rows, true, a.dialog?.choice ?? null);
     return ran;
   }
 
   /** Every field to its row's value — except, unless `force`, one being edited. */
-  private fill(rows: OptionRow[], force: boolean): void {
+  private fill(rows: OptionRow[], force: boolean, choice: DialogState["choice"] = null): void {
     const fields = Array.from(this.body.querySelectorAll<HTMLInputElement | HTMLSelectElement>(".oval"));
-    rows.forEach((r, i) => {
-      const field = fields[i];
+    // A row of buttons has no field, so fields are counted, not indexed by row.
+    let next = 0;
+    rows.forEach((r) => {
+      if (r.choices && r.buttons) {
+        const line = this.body.querySelector<HTMLElement>(`.ochoice[data-option="${r.name}"]`);
+        if (!line) return;
+        const hint = choice?.option === r.name && r.value === r.choices[0]?.[0] ? choice : null;
+        for (const b of Array.from(line.querySelectorAll<HTMLButtonElement>("button.ochoose"))) {
+          const word = b.dataset.choice!;
+          b.setAttribute("aria-pressed", String(r.value === word));
+          b.classList.toggle("resolved", hint?.resolved === word);
+          b.classList.toggle("offer", hint?.offer === word);
+        }
+        line.title = `${r.label} — ${optionCommand(this.tool, r.name, r.value)}`;
+        return;
+      }
+      const field = fields[next++];
       if (!field) return;
       if (field instanceof HTMLSelectElement) {
         // What the gesture was read as, in the hidden first option, lit, while

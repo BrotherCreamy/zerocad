@@ -1,0 +1,181 @@
+{
+ "kernel": "Open CASCADE Technology 8.0.1, through cadquery-ocp 8.0.1.1.0 (OCP) from PyPI, on Python 3.11 — in a scratch directory, never a dependency of this repo",
+ "date": "2026-11-04",
+ "read": "As test/fixtures/step/validated.json: (1) STEPControl_Reader with OpenCascade's standard healing -> valid, volume, box; (2) strict: each solid translated by StepToTopoDS_Builder with no healing, then only FixEdgeCurves, FixShifted, FixDegenerated and SameParameter, then the same checks and every vertex and edge tolerance within the uncertainty the file declares -> strict.",
+ "parts": {
+  "owner-part": {
+   "what": "a plate, a hole cut through from the top, a boss on a side",
+   "bodies": 1,
+   "uncertainty": 1e-07,
+   "valid": true,
+   "strict": true,
+   "strictByBody": [
+    {
+     "valid": true,
+     "vertexTol": 1.0000000000000002e-07,
+     "edgeTol": 1e-07,
+     "volume": 59440.79650766103
+    }
+   ],
+   "volume": 59440.79650766102,
+   "zerocadVolume": 59440.79650783766,
+   "closedForm": 59440.79650766102,
+   "box": [
+    [
+     -12.870614602002881,
+     -8.93363783361388,
+     -1.6240571233325567
+    ],
+    [
+     99.61480123878866,
+     78.20981254740055,
+     48.301483107106364
+    ]
+   ],
+   "shells": [
+    1
+   ],
+   "surfaces": {
+    "plane": 7,
+    "cylinder": 4
+   },
+   "looseEdges": 0,
+   "readerFails": 0,
+   "readerWarnings": 0
+  },
+  "pocket-boss-breakout": {
+   "what": "a blind pocket, a boss standing on the top, a hole breaking out through a wall",
+   "bodies": 1,
+   "uncertainty": 1e-07,
+   "valid": true,
+   "strict": true,
+   "strictByBody": [
+    {
+     "valid": true,
+     "vertexTol": 1.0000000000000002e-07,
+     "edgeTol": 1e-07,
+     "volume": 59174.00915121247
+    }
+   ],
+   "volume": 59174.00915121247,
+   "zerocadVolume": 59174.00915094829,
+   "closedForm": 59174.00915121246,
+   "box": [
+    [
+     -12.870614602002881,
+     -8.93363783361388,
+     2.0
+    ],
+    [
+     99.61480123878866,
+     78.20981254740055,
+     48.30148310710636
+    ]
+   ],
+   "shells": [
+    1
+   ],
+   "surfaces": {
+    "plane": 9,
+    "cylinder": 5
+   },
+   "looseEdges": 0,
+   "readerFails": 0,
+   "readerWarnings": 0
+  },
+  "boss-on-cylinder": {
+   "what": "a cylinder lying on its side, a boss stood on its curved wall: edges no circle or line is",
+   "bodies": 2,
+   "uncertainty": 1e-05,
+   "valid": true,
+   "strict": true,
+   "strictByBody": [
+    {
+     "valid": true,
+     "vertexTol": 1.0000000000000002e-07,
+     "edgeTol": 1e-07,
+     "volume": 60000.0
+    },
+    {
+     "valid": true,
+     "vertexTol": 3.071075266506595e-06,
+     "edgeTol": 3.0710752665065943e-06,
+     "volume": 12265.601448208987
+    }
+   ],
+   "volume": 72265.60144820898,
+   "zerocadVolume": 72265.68542898634,
+   "closedForm": null,
+   "box": [
+    [
+     -29.665080282556914,
+     -12.784324830242591,
+     2.0
+    ],
+    [
+     99.61480123878867,
+     78.20981254740056,
+     50.028660333800886
+    ]
+   ],
+   "shells": [
+    1,
+    1
+   ],
+   "surfaces": {
+    "plane": 9,
+    "cylinder": 2
+   },
+   "looseEdges": 0,
+   "readerFails": 0,
+   "readerWarnings": 0
+  },
+  "turned-and-drilled": {
+   "what": "a revolved collar, drilled through across its axis",
+   "bodies": 2,
+   "uncertainty": 1e-05,
+   "valid": true,
+   "strict": false,
+   "strictByBody": [
+    {
+     "valid": true,
+     "vertexTol": 1.0000000000000002e-07,
+     "edgeTol": 1e-07,
+     "volume": 60000.0
+    },
+    {
+     "valid": false,
+     "vertexTol": 3.4571933794600413e-06,
+     "edgeTol": 3.4571933794600405e-06,
+     "volume": 96950.32158657956
+    }
+   ],
+   "volume": 103416.4065149427,
+   "zerocadVolume": 103416.2788996149,
+   "closedForm": null,
+   "box": [
+    [
+     -39.14145918067529,
+     -31.389497446204828,
+     -28.593687591379553
+    ],
+    [
+     99.61480123878867,
+     78.20981254740056,
+     48.30148310710634
+    ]
+   ],
+   "shells": [
+    1,
+    1
+   ],
+   "surfaces": {
+    "plane": 8,
+    "cylinder": 4
+   },
+   "looseEdges": 0,
+   "readerFails": 0,
+   "readerWarnings": 0
+  }
+ }
+}

@@ -33,6 +33,31 @@ import { curveFrame } from "../curveplane.ts";
 import { arcSamples, arcSegments } from "../arcgeom.ts";
 import { REGION_GREEN } from "./region.ts";
 import { refind } from "./selection.ts";
+import { defaultMode, modeOf } from "../modes.ts";
+import type { FeatureOptions } from "../operations.ts";
+
+/**
+ * The option every feature tool that makes a body takes (docs/plans/
+ * solids-kernel.md): what its solid does to a body. `auto` lets the call
+ * decide — add to a body it touches, else a new body — and is what every arm
+ * starts from: a cut chosen for one hole is not the next feature's.
+ */
+export const MODE_OPTION = {
+  default: "auto", choices: { auto: "auto", new: "New", add: "Add", cut: "Cut", intersect: "∩" }, buttons: true, remember: false,
+} as const;
+
+/** A tool's mode option as a call's options: nothing for `auto`, which leaves the call to decide. */
+export function modeOptions(values: Record<string, unknown>): FeatureOptions | null {
+  const m = values.mode;
+  return m === "new" || m === "add" || m === "cut" || m === "intersect" ? { mode: m } : null;
+}
+
+/** A cut's previewed tool solid: a warm red, edge-on to square-on, as faceColour runs a body's tones. */
+export function cutColour(shade: number): string {
+  const [lo, hi] = [[110, 46, 42], [232, 128, 108]];
+  const t = Math.max(0, Math.min(1, shade));
+  return `rgb(${lo.map((c, i) => Math.round(c + (hi[i] - c) * t)).join(",")})`;
+}
 
 /** How opaque a previewed solid is: solid enough to read as one, see-through enough to read as not made yet. */
 export const PREVIEW_ALPHA = 0.55;
@@ -122,6 +147,8 @@ export abstract class FeatureTool extends Tool {
   private told = "";
   /** Set while a confirm's lines go in: a second Enter must not type them twice. */
   private committing = false;
+  /** What the mode left at auto comes to for the preview up — and a choice to offer — or null. */
+  private hint: FeatureDialog["choice"] = null;
 
   /** The steps a confirm would run with `values`, or null while the picks are not enough. */
   protected abstract plan(values: Record<string, unknown>): FeatureStep[] | null;
@@ -165,6 +192,7 @@ export abstract class FeatureTool extends Tool {
       if (this.asked !== sig) return; // superseded while it was built
       this.shown = p;
       this.shownFor = sig;
+      this.hint = this.modeHint(p);
       if (p.error && p.error !== this.told) this.guide(p.error);
       this.told = p.error ?? "";
       this.ctx.requestRender();
@@ -177,7 +205,41 @@ export abstract class FeatureTool extends Tool {
   }
 
   dialog(): FeatureDialog {
-    return { ready: !this.committing && this.plan(this.values()) !== null && this.refused() === null };
+    const choice = this.values().mode === "auto" && this.shownFor === this.signature() ? this.hint : null;
+    return { ready: !this.committing && this.plan(this.values()) !== null && this.refused() === null, ...(choice ? { choice } : {}) };
+  }
+
+  /**
+   * What `mode: "auto"` comes to for a preview — read off the copy's new
+   * features, which the same call made — and whether to offer Cut: when the
+   * default adds and the solid runs into the body's material, an add would
+   * change nothing, and the spec's "a negative depth into a body offers it".
+   * Offered, not chosen: cut is always the user's choice (modes.ts). Said once
+   * in the log when it first applies, as guidance.
+   */
+  private modeHint(p: FeaturePreview): FeatureDialog["choice"] {
+    if (!p.model || !("mode" in this.values())) return null;
+    let resolved: string | null = null;
+    let offer: string | null = null;
+    let body = "";
+    for (const name of p.features) {
+      const f = p.model.features.get(name);
+      if (!f) continue;
+      resolved = modeOf(f);
+      if (resolved === "add") {
+        try {
+          const d = defaultMode(p.model, f);
+          if (d.into_material) [offer, body] = ["cut", d.into ?? ""];
+        } catch {
+          // The hint is a courtesy; a profile it cannot read offers nothing.
+        }
+      }
+    }
+    const was = this.hint?.offer ?? null;
+    if (offer && offer !== was && this.values().mode === "auto" && this.ctx.log) {
+      this.ctx.log(`${this.name}: this runs into ${body} — choose Cut to take it away; as it is, it adds`, "guide");
+    }
+    return { option: "mode", resolved, offer };
   }
 
   /**
@@ -266,6 +328,7 @@ export abstract class FeatureTool extends Tool {
 
   onCancel(): void {
     this.dropPicks();
+    this.hint = null;
     this.shown = null;
     this.asked = this.shownFor = this.told = "";
     this.ctx.requestRender();
@@ -322,24 +385,29 @@ export function drawPreview(r: RenderContext, p: FeaturePreview, features: reado
   if (!model) return;
   const toward = r.toward ?? [0, 0, 1];
   const dot = (a: number[], b: number[]) => a.reduce((s, x, i) => s + x * (b[i] ?? 0), 0);
-  const faces: { face: Face; shade: number; depth: number }[] = [];
+  const faces: { face: Face; shade: number; depth: number; cut: boolean }[] = [];
   for (const name of features) {
     let found: Face[];
+    let cut = false;
     try {
-      found = featureFaces(model, model.featureOf(name), r.scale);
+      const f = model.featureOf(name);
+      // What a cut takes away is shown as the solid it takes, in a warm tint —
+      // the tool, not the result — so it reads at once as "this goes".
+      cut = modeOf(f) === "cut" || modeOf(f) === "intersect";
+      found = featureFaces(model, f, r.scale);
     } catch {
       continue;
     }
     for (const face of found) {
       const shade = dot(face.normal, toward);
-      if (shade > 1e-9) faces.push({ face, shade: Math.min(1, shade), depth: dot(face.centroid, toward) });
+      if (shade > 1e-9) faces.push({ face, shade: Math.min(1, shade), depth: dot(face.centroid, toward), cut });
     }
   }
   faces.sort((a, b) => a.depth - b.depth);
   const g = r.g;
   g.save();
   g.globalAlpha = PREVIEW_ALPHA;
-  for (const { face, shade } of faces) {
+  for (const { face, shade, cut } of faces) {
     g.beginPath();
     for (const o of face.outlines) {
       const pts = o.map((w) => r.worldToScreen(w));
@@ -347,7 +415,7 @@ export function drawPreview(r: RenderContext, p: FeaturePreview, features: reado
       for (const q of pts.slice(1)) g.lineTo(...q);
       g.closePath();
     }
-    g.fillStyle = faceColour(shade);
+    g.fillStyle = cut ? cutColour(shade) : faceColour(shade);
     g.fill("evenodd");
   }
   g.restore();

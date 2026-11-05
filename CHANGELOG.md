@@ -7,6 +7,119 @@ decisions.
 
 ---
 
+## Solids on SMLib — extrude and revolve add to, cut from or start a body
+
+The owner:
+
+> *I find it impossible to make anything beyond an extruded shape. fix this
+> so I can create complex parts*
+
+> *consider using an open source nurbs engine, or the nvidia one so you can
+> do real solving*
+
+Spec: [`docs/plans/solids-kernel.md`](docs/plans/solids-kernel.md), marked
+built; every deviation is in its *As built* and in TODO.md. NVIDIA's SMLib,
+the kernel the spike chose, now ships: it is built from pinned source, runs
+in a Worker, and turns features into solids. A plate with a hole cut through
+it and a boss on its side is now one part, and it exports to STEP as one solid.
+
+- **Extrude and revolve have a mode**: **New** body, **Add**, **Cut** or
+  **∩** (intersect). The dialog shows it as a row of buttons, and it can be
+  typed too: `extrude("c1", -10, { mode: "cut" })`, with
+  `{ mode, into: "e1" }` to name the body.
+  - **Left alone, the mode is Onshape's default.** A solid that touches or
+    overlaps a body adds to it; a solid that touches nothing is a new body.
+    The dialog lights the button for what it will do.
+  - **Cut is never the default.** When the solid runs into a body, the
+    dialog outlines Cut, and the log says *this runs into e1 — choose Cut to
+    cut it*.
+  - The mode is decided when the feature is made and saved with it. Moving
+    the profile later never turns an add into a new body. Old files have no
+    modes, and every solid in them stays a body of its own, as before.
+- **Bodies.** A body is its first feature and everything added to it, cut
+  from it or intersected with it, in the order they were made. The
+  organiser lists **Bodies** first, once there is one, each with its chain
+  (`e1 +e3 −e2`).
+  Hiding a body hides its first feature. Hiding a later feature leaves it
+  out of the body, so the hole disappears.
+- **Sketch on any face**, a boolean's faces included. Click the floor of a
+  pocket or the side of a boss and the sketch plane is that face. Its plane
+  follows the solid when a dimension changes.
+- **Names survive a rebuild.** Each face is named by the feature, role and
+  profile member that made it (`e1.lid`, `e2.m0`), and each edge by its two
+  faces. The kernel carries those names through every boolean. When a change
+  in topology removes a face, the log says so, and a sketch on that face stays
+  where it was rather than jumping. Measured:
+  - a pocket deepened until it breaks through loses only its floor and the
+    floor's four edges, and gets every name back when it is made shallow again;
+  - a hole dragged out through a wall splits that wall into two pieces with
+    one name;
+  - a cut dragged off the plate is said to cut nothing.
+- **Drawn from the kernel.** A body of two or more features is drawn from the
+  kernel's tessellation and edges. A one-feature body is drawn as before, live
+  at every frame. So every old file looks exactly as it did, and the app works
+  before the kernel has loaded. A dimension drag shows the last good body
+  until the new one arrives, about 0.2 s later in Chromium. A refusal leaves the last good
+  body on screen and says why.
+- **STEP exports bodies**: one solid per body, booleans included. Planes and
+  cylinders are written from the feature data. The curves where two features
+  meet are written as the kernel's B-splines. Four new parts were read back by
+  OpenCascade 8.0.1, all of them valid closed solids:
+
+  | part | strict read | OpenCascade's volume | ZeroCAD's | closed form |
+  |---|---|---|---|---|
+  | plate, hole cut, boss on a side | valid | 59440.796508 | 59440.796508 | 59440.796508 |
+  | pocket, boss on top, hole out through a wall | valid | 59174.009151 | 59174.009151 | 59174.009151 |
+  | boss on a cylinder's curved wall | valid (3·10⁻⁶ tolerance, declared 10⁻⁵) | 72265.601448 | 72265.685429 | 72265.685636 (numerical) |
+  | revolved collar drilled across | **not strict**: healed read only | 103416.406515 | 103416.278900 | — |
+
+- **What it costs.**
+  - The kernel is 4.37 MB, or **1.16 MB with brotli**. The PWA loads it
+    lazily as a file of its own and caches it for offline use. The single
+    file is 6.2 MB, since it carries the kernel inline.
+  - In Chromium, a Worker is ready in 0.16 to 0.26 s. A rebuild of the
+    owner's part answers in a median of 0.19 to 0.21 s, round trip. In Node
+    the full build takes 0.12 s.
+  - The spike's eleven parts rebuild in a median of 171 ms in a Chromium
+    Worker; the spike measured 181 ms.
+  - The Worker is replaced when it dies, when it does not answer in 30 s, or
+    when it grows past 256 MB.
+  - About has SMLib's Apache-2.0 notice and a link to its licence.
+- **CI** builds the kernel from source in 6 m 51 s cold on GitHub's four
+  cores, and caches it by the recipe's hash: warm, the build is 16 s.
+
+![A plate seen from below the top, a hole cut through it: one body, e1 −e2, in the organiser's Bodies](docs/images/106-a-hole-cut-through-the-plate-one-body.png)
+![The same plate with a boss standing on its side: the organiser lists one body, e1 −e2 +e3, and the features e2 extrude · cut and e3 extrude · add](docs/images/107-a-boss-added-on-the-side-bodies-e1-minus-e2-plus-e3.png)
+![The plate thickened to 16 and the hole dragged out through its wall: the kernel rebuilt the body, the hole now a notch in the edge](docs/images/108-the-plate-thickened-and-the-hole-dragged-out-through-its-wall.png)
+![An iPhone: a circle on the plate's top previewed as a cut, the mode row New Add Cut ∩ with Cut chosen, and the status line saying the solid runs into e1](docs/images/109-phone-the-mode-row-cut-chosen-and-the-log-offering-it.png)
+![An iPhone: the owner's part, a hole through the top and a boss on the side, the organiser's body row reading e1 with its chain cut to an ellipsis](docs/images/110-phone-the-owners-part-hole-and-boss.png)
+
+Tests: unit 1278 (1219 before); of the 59 new, 49 are in `test/smlib`, `solidprofiles`, `solidsidentity`,
+`solidsclient`, `modes`, `bodies` and `stepkernel`. E2E 529 (521
+before), with `test/e2e/solids.e2e.ts` and `solidsphone.e2e.ts` adding 8. They
+draw the owner's part with a mouse and with a finger under iPhone 13
+emulation: a plate, a hole cut through, a boss added on a side, and a
+dimension dragged. The kernel's tests skip, and say so, in a checkout with no
+kernel build. `npm run test:all` passes. **Found along the way**, each invisible to the unit
+tests:
+- on a phone, the organiser's body row lost its name (`−e2 +e3 3`), so the
+  name now keeps its width and the chain gives way to an ellipsis;
+- the hidden view drew none of a kernel body's edges behind its faces, and
+  now dims them as it does an extrude's;
+- an empty Bodies section pushed Groups out of an iPhone's pane, so it is now
+  shown only once there is a body;
+- every page load started the kernel's Worker and compiled its 4 MB for an
+  empty program. It now starts only when a body has two features.
+
+**Still open:** under the full suite's load, `touch.e2e.ts` loses one tap on
+a corner in most full runs of this branch: in 6 runs of 9, "a finger down
+on a quiet corner…" 5 times and "a quick tap while the page is busy…" once. It never failed with the file alone, sometimes with one
+or three others beside it, and the base branch's one full run here passed. Two things
+measured the same as on the base branch on the touch suite's phone page: the
+cost of a frame and the cost of a reload. No long task runs after a reload.
+With passive event recording the full suite passed, so the cause is not yet
+known; TODO.md has the item.
+
 ## One circle tool and one arc tool — the gesture chooses the method
 
 The owner:

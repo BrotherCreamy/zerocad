@@ -106,6 +106,94 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### Solids on SMLib: what the kernel draws, what stays relational, and why Cut waits to be asked
+
+The spike settled which kernel. This package settled where the kernel sits
+against a model that was already relational: one where a lid's edge is a
+solved line that a constraint can hold. Most of the decisions are about
+which side of that line each thing falls on. Here is the reasoning the diff
+does not show.
+
+**The twins stay.** The spike recommended deriving an extrude's lid lines and
+walls from the kernel once booleans exist. *Rejected* for three reasons:
+- every old file with a constraint on a lid edge would have lost it;
+- the first frame of a dimension drag would have waited on a Worker round
+  trip;
+- the depth dimension holds a twin, so deriving the twin means deriving the
+  dimension's target.
+
+The cost of keeping them is that the twins describe a lid the kernel may have
+cut away. So in a kernel body they are *quiet* in every view, not only the
+shaded one. The kernel draws what the body is, and the twins are what the
+dimensions hold. Like any quiet entity they show when the hand is on them.
+
+**A one-feature body is not the kernel's.** *Rejected: drawing everything
+from the kernel.* It would have made every old file's picture depend on a
+4 MB download and a Worker. It would also have put a round trip between every
+drag frame and its picture, on the shapes that need no boolean at all. The
+hybrid has a seam: a body changes renderer when its second feature arrives.
+That seam is invisible because the kernel's faces are converted into
+`faces.ts` faces, so the face layer, the painter's and the occlusion answer
+cannot tell which kernel built what they draw.
+
+**Cut is never a default.** Onshape defaults to Add where a profile lies on a
+body, and so does this. The spec suggested a negative depth into a body might
+default to Cut. *Rejected*: a default that removes material the user meant to
+add is the worse mistake, and it is silent. Adding material the user meant
+to remove is at least visible. So the dialog *offers* Cut: it is outlined,
+and the log says *this runs into e1 — choose Cut*. For the same reason the
+mode is never remembered: a cut chosen for one hole is not the next
+feature's.
+
+**The mode is decided once, at the call.** It is journalled resolved, as an
+extrude's frame is. *Rejected: re-deciding at every evaluation.* Dragging a
+boss's profile off the plate would then quietly turn it into a separate
+body, and a replay would need geometry to read its own file. Insideness is
+closed-form (`modes.ts`), so the default is the same before the kernel loads,
+in a unit test, and on a phone that never loads it. `new` is journalled as no
+options at all, so a file with no booleans is byte for byte the file it was.
+
+**`into` is not a name.** A feature's record lists the names it depends on,
+and deleting one of them deletes the feature. *Rejected* for `into`: deleting
+a plate would have deleted every boss on it. Instead an add whose target is
+gone becomes a body of its own, a cut whose target is gone is left out, and
+the log says both.
+
+**No timeline.** A feature can only name a body that existed when it was
+made, so creation order is already a dependency order. A body's chain is its
+features in that order. *Rejected: a reorderable feature list.* Nothing asked
+for one, and reordering is what makes a timeline's names unstable.
+
+**Idle is read off the tags.** A rebuild measured 245 ms for the owner's
+part, and 142 ms of it was SMLib integrating volumes. It did that four times
+a node: to tell a sheet from a solid, and an idle cut from a real one. A sheet
+is told by the manifold test alone. A cut that reached nothing leaves no face
+carrying its tag, because the kernel carries tags onto every surviving piece
+of a face. The volume is now integrated once, for the answer, and a rebuild
+takes 118 ms.
+
+**STEP surfaces by tag, not by recognition.** The spike's TODO was to
+*recognise* analytic surfaces in SMLib's B-splines. *Rejected*: fitting a
+cylinder to a B-spline is a guess with a tolerance. The face's tag already
+says which feature and role made it, and that feature's data says exactly
+which plane, cylinder, cone or torus it lies on (`roleSurface`). Only faces
+no role names, and intersection edges, are the kernel's B-splines.
+- Those edges sit about 3·10⁻⁶ off OpenCascade's own intersection of the same
+  surfaces, so a file that has them declares 10⁻⁵ uncertainty. *Rejected:
+  writing pcurves.* It is a larger job, and every reader healed without them.
+- A cylinder's seam, which a boolean can cross, is split into halves, as
+  step-export.md already did for a whole revolve.
+- The one strict-read failure (a full revolve drilled across its seam) is
+  documented and pinned by a test, not hidden.
+
+**Merging with the curve tools.** The parallel package taught the tool
+options a word, `method`, at the same time as this one taught them `mode`.
+Theirs merged first, so theirs is the shape: `choices` is a record of word to
+label. Two flags were added on top:
+- `buttons`: four short words and an outlined offer want a row of buttons a
+  finger hits in one tap, where a method's long words want a drop-down;
+- `remember: false`, explained above.
+
 ### One circle, one arc: what a press means, and where the reading goes
 
 The owner asked why there were four curve tools when they all make the same

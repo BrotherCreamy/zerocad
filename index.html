@@ -261,8 +261,8 @@
     #organiser .orow:hover{background:#16212c}
     #organiser .orow.on{background:#c46cff1f}
     #organiser .orow.on .oname{color:#dcb6ff}
-    #organiser .oname{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#d5e1ec}
-    #organiser .odetail{flex:none;color:#46586a}
+    #organiser .oname{flex:1 0 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#d5e1ec}
+    #organiser .odetail{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#46586a}
     #organiser .ocount{flex:none;min-width:calc(14px * var(--ui));text-align:right;color:#7a8b9b;font-variant-numeric:tabular-nums}
     #organiser button,#organiser .slot{flex:none;display:flex;align-items:center;justify-content:center;width:calc(16px * var(--ui));
       height:calc(16px * var(--ui));padding:0;margin:0;border:none;border-radius:3px;background:transparent;color:#7a8b9b;
@@ -293,6 +293,16 @@
     #options .ochoice .oval.oread{color:#e8a33d}
     /* A feature's ✓ and ✗, under its options: ✓ in the tools' green, dim and
        inert until the picks are enough, ✗ in the panel's ink. */
+    /* A word option (an extrude's mode): a button per word, the one chosen
+       down in amber; the default's choice for what is picked dimly down; one
+       worth offering (Cut, into a body) outlined in amber. */
+    #options .ochoice{gap:3px}
+    #options .ochoose{flex:none;min-width:calc(25px * var(--ui));height:calc(18px * var(--ui));padding:0 3px;font-family:inherit;font-size:calc(11px * var(--ui));
+      background:transparent;border:1px solid #223041;border-radius:3px;cursor:default;color:#8fa7bb}
+    #options .ochoose:hover{background:#20303f;color:#d5e1ec}
+    #options .ochoose[aria-pressed="true"]{background:#e8a33d33;border-color:#e8a33d;color:#e8a33d}
+    #options .ochoose.resolved{background:#16212c;border-color:#46586a;color:#d5e1ec}
+    #options .ochoose.offer{border-color:#e8a33d;color:#e8a33d}
     #options .oact{justify-content:flex-end;gap:4px}
     #options .oact button{flex:none;width:calc(28px * var(--ui));height:calc(18px * var(--ui));padding:0;font-family:inherit;font-size:calc(12px * var(--ui));line-height:calc(16px * var(--ui));
       background:transparent;border:1px solid #223041;border-radius:3px;cursor:default;color:#8fa7bb}

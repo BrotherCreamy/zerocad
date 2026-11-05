@@ -492,6 +492,9 @@ export interface ExtrudeFeature {
   walls: string[];
   /** Which expansion made it — whether there is a `top`, and whether it stands on the lid's own corners. See `Expansion`. */
   expansion: Expansion;
+  /** What it does to a body, and which body. See `FeatureMode`. */
+  mode?: FeatureMode;
+  into?: string;
   /** Everything the record refers to. See above. */
   names: string[];
   /** The part of `names` the feature made, which deleting it takes. */
@@ -543,6 +546,9 @@ export interface RevolveFeature {
   swept?: string[];
   /** Which expansion made it — whether its end frames stand on the end face's own corners. See `Expansion`. */
   expansion: Expansion;
+  /** What it does to a body, and which body. See `FeatureMode`. */
+  mode?: FeatureMode;
+  into?: string;
   /** Everything the record refers to. See `ExtrudeFeature`. */
   names: string[];
   /** The part of `names` the feature made, which deleting it takes. */
@@ -551,6 +557,24 @@ export interface RevolveFeature {
 
 /** Every kind of feature there is. */
 export type FeatureEntry = ExtrudeFeature | RevolveFeature;
+
+/**
+ * What a feature does to a body (docs/plans/solids-kernel.md): **new** is a
+ * body of its own; **add** is unioned into a body, **cut** subtracted from
+ * it, **intersect** keeps only what the two share. The body is named by
+ * `into` — any feature of it; a body is the result of its chain, in the order
+ * the features were made (modes.ts). A record with no mode is a feature from
+ * a file older than modes, and is a body of its own, as every feature then
+ * was: old files open to the same solids.
+ *
+ * `into` is not among `names`: deleting the body's feature does not take this
+ * record with it. The evaluation says what became of it instead — an add with
+ * no body is a body of its own, a cut or intersect with none is left out and
+ * said (bodies.ts) — because the cascade taking a cut's record whenever the
+ * plate it cut was deleted would lose a sketch's worth of work silently.
+ */
+export type FeatureMode = "new" | "add" | "cut" | "intersect";
+export const FEATURE_MODES: readonly FeatureMode[] = ["new", "add", "cut", "intersect"];
 
 /**
  * Which expansion of an extrude or revolve call a feature was made by: `11`,
@@ -733,6 +757,17 @@ export class Model {
     } finally {
       this.joining = prev;
     }
+  }
+
+  /**
+   * Whether calls are being journalled — false while a file replays
+   * (persist.ts) and inside an operation's own body. What tells an operation,
+   * asked before its body runs, that it is being replayed: a replay is handed
+   * everything resolved and decides nothing from positions (an extrude's
+   * default mode, modes.ts).
+   */
+  get journalling(): boolean {
+    return this.recording;
   }
 
   /** Runs `body` without journalling anything it does. Used by replay. */

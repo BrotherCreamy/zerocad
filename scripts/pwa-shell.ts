@@ -100,23 +100,29 @@ export function cacheName(stamp: string): string {
   return CACHE_PREFIX + slug;
 }
 
+/** The solid kernel's files, beside the page (docs/plans/solids-kernel.md): its Worker, its module and its licence. */
+export const SOLID_FILES = ["solids/worker.js", "solids/smlib.wasm", "solids/LICENSE"];
+
 /**
  * What the worker keeps: the page (as "./", the address the app is started
- * at), the manifest and the icons. The page alone is the app — the kernel and
- * the code ride inside it — so this is the whole of what offline needs.
+ * at), the manifest and the icons — and, in a build that has it, the solid
+ * kernel's files. The page is the app — the solver's kernel and the code ride
+ * inside it — so it opens with no network at all; the solid kernel is its own
+ * 4 MB, fetched by the page only when a body first needs it and cached here at
+ * install, so it is there offline too.
  */
-export function shellFiles(): string[] {
-  return ["./", "manifest.webmanifest", ICON_SVG, ...rasters().map((r) => r.src)];
+export function shellFiles(solids = false): string[] {
+  return ["./", "manifest.webmanifest", ICON_SVG, ...rasters().map((r) => r.src), ...(solids ? SOLID_FILES : [])];
 }
 
 const SW_TEMPLATE = new URL("./pwa-sw.js", import.meta.url);
 
 /** The hand-written worker (scripts/pwa-sw.js) with its cache and its file list filled in. */
-export function serviceWorker(stamp: string): string {
+export function serviceWorker(stamp: string, solids = false): string {
   const src = readFileSync(SW_TEMPLATE, "utf8");
   const filled = src
     .replace('"__NEOCAD_CACHE__"', JSON.stringify(cacheName(stamp)))
-    .replace("__NEOCAD_SHELL__", JSON.stringify(shellFiles()));
+    .replace("__NEOCAD_SHELL__", JSON.stringify(shellFiles(solids)));
   if (filled.includes("__NEOCAD_")) throw new Error("scripts/pwa-sw.js has a placeholder this build does not fill");
   return filled;
 }

@@ -24,6 +24,7 @@
 // without either knowing it exists.
 
 import type { Model } from "./model.ts";
+import { chainsOf, modeOf } from "./modes.ts";
 import type { Menu, MenuItem } from "./menu.ts";
 import { giveTip, type AttachTip, type Tip } from "./tooltip.ts";
 
@@ -58,8 +59,13 @@ export interface OrganiserSection {
   id: string;
   title: string;
   rows: OrganiserRow[];
-  /** What it says with no rows: the way to make one. */
-  empty: string;
+  /**
+   * What it says with no rows: the way to make one — or null, for a section
+   * not shown at all until it has a row. Bodies: with no feature, Features
+   * already says how to make one, and the line said twice pushed Groups out
+   * of a phone's pane (found by organiser.e2e.ts under iPhone 13).
+   */
+  empty: string | null;
 }
 
 function quoted(name: string): string {
@@ -100,13 +106,31 @@ export function organiserSections(model: Model, selection: readonly string[] = [
     // `hide("e1")` hides the feature's own name with what it made (its faces
     // go with it), so the name is what says it is hidden.
     const eye = eyeOf(model, f.owns, model.hidden.has(f.name));
+    const mode = modeOf(f);
     return {
-      name: f.name, detail: f.kind, count: f.owns.length, eye, eyeCommand: eyeCommand(f.name, eye),
+      name: f.name, detail: mode === "new" ? f.kind : `${f.kind} · ${mode}`, count: f.owns.length, eye, eyeCommand: eyeCommand(f.name, eye),
       tapCommand: `select(${quoted(f.name)})`, selected: lit(f.owns.filter((n) => !model.hidden.has(n))),
       open: null, openCommand: null,
     };
   });
+  // A body is the result of its chain (modes.ts), named by its first feature:
+  // hiding it is hiding that feature, which hides the body whole. Its detail
+  // is the rest of the chain, each feature signed by what it does — +e3 −e2
+  // after the name e1 (a phone's narrow pane cut "e1 e1 +e3 −e2" to "e…").
+  const sign: Record<string, string> = { add: "+", cut: "−", intersect: "∩", new: "" };
+  const bodies: OrganiserRow[] = chainsOf(model, { hidden: true }).bodies.map((c) => {
+    const first = c.features[0];
+    const members = c.features.flatMap((f) => f.owns);
+    const eye: Eye = model.hidden.has(first.name) ? "hidden" : "shown";
+    return {
+      name: c.name, detail: c.features.slice(1).map((f) => `${sign[modeOf(f)]}${f.name}`).join(" "),
+      count: c.features.length, eye, eyeCommand: eyeCommand(first.name, eye),
+      tapCommand: `select(${c.features.map((f) => quoted(f.name)).join(", ")})`,
+      selected: lit(members.filter((n) => !model.hidden.has(n))), open: null, openCommand: null,
+    };
+  });
   return [
+    { id: "bodies", title: "Bodies", rows: bodies, empty: null },
     { id: "groups", title: "Groups", rows: groups, empty: "none — ＋ makes one, open to draw into" },
     { id: "features", title: "Features", rows: features, empty: "none — an extrude or a revolve makes one" },
   ];
@@ -256,7 +280,7 @@ export class Organiser {
     if (key === this.shown) return false;
     this.shown = key;
     this.body.textContent = "";
-    for (const s of sections) this.body.appendChild(this.sectionEl(s));
+    for (const s of sections) if (s.rows.length || s.empty !== null) this.body.appendChild(this.sectionEl(s));
     return true;
   }
 
@@ -271,7 +295,7 @@ export class Organiser {
     if (!s.rows.length) {
       const none = document.createElement("div");
       none.className = "onone";
-      none.textContent = s.empty;
+      none.textContent = s.empty ?? "";
       el.appendChild(none);
     }
     for (const r of s.rows) el.appendChild(this.rowEl(r));

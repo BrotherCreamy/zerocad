@@ -56,6 +56,21 @@ export interface OptionSpec {
    * typo in it would be a value nothing reads.
    */
   choices?: Readonly<Record<string, string>>;
+  /**
+   * A choice drawn as a row of buttons, one per word but the first (the
+   * default, which is "none of these": pressing the button already down goes
+   * back to it), rather than a drop-down. For a few short words a finger
+   * should reach in one tap — an extrude's mode, New Add Cut ∩
+   * (docs/plans/solids-kernel.md) — where the curve tools' longer methods
+   * need a drop-down's width.
+   */
+  buttons?: boolean;
+  /**
+   * False: never the next default. A value the viewer chose for one feature
+   * that would be wrong for the next — a cut — starts from the declared
+   * default at every arm, whatever the last one was.
+   */
+  remember?: boolean;
 }
 
 export type OptionSpecs = Readonly<Record<string, OptionSpec>>;
@@ -172,7 +187,7 @@ export function resolveOptions(
   const out: Record<string, unknown> = {};
   for (const k of names) {
     if (Object.hasOwn(g, k)) out[k] = g[k];
-    else if (Object.hasOwn(remembered, k) && fault(specs[k], remembered[k]) === null) out[k] = remembered[k];
+    else if (specs[k].remember !== false && Object.hasOwn(remembered, k) && fault(specs[k], remembered[k]) === null) out[k] = remembered[k];
     else out[k] = specs[k].default;
   }
   return out;
@@ -183,7 +198,7 @@ export function explicitOptions(specs: OptionSpecs, given: unknown): Record<stri
   if (!given || typeof given !== "object") return {};
   const out: Record<string, OptionValue> = {};
   for (const [k, v] of Object.entries(given as Record<string, unknown>)) {
-    if (Object.hasOwn(specs, k) && isOptionValue(v)) out[k] = v;
+    if (Object.hasOwn(specs, k) && specs[k].remember !== false && isOptionValue(v)) out[k] = v;
   }
   return out;
 }

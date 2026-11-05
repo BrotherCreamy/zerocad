@@ -1,0 +1,61 @@
+# Builds the solid kernel from its pinned source and runs the tests that need
+# it (docs/plans/solids-kernel.md) — the check that the recipe still builds on
+# a clean runner, which nothing on a developer's machine can say. Publishes
+# nothing: the Pages workflow builds and ships the kernel with the site.
+#
+# The cache is the Pages workflow's, keyed by the recipe (scripts/solids/
+# build.sh), so a warm run here warms the publish and the other way round.
+# The cold and warm times are said in each run's summary.
+
+name: solids
+
+on:
+  pull_request:
+    paths: ["scripts/solids/**", "src/solids/**", ".github/workflows/solids.yml"]
+  push:
+    branches: [claude/solids-kernel]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Rust for wasm32, and wasm-pack
+        run: |
+          rustup toolchain install stable --profile minimal --target wasm32-unknown-unknown
+          rustup default stable
+          curl -sSf https://wasm-bindgen.github.io/wasm-pack/installer/init.sh | sh
+
+      - run: npm ci
+
+      # The solver's kernel, which the tests' sketches solve on. The dev build:
+      # what the tests need, and no download of binaryen to fail on.
+      - run: npm run build:kernel:dev
+
+      - name: Solid kernel's cache
+        uses: actions/cache@v4
+        with:
+          path: .solids-cache
+          key: solids-${{ runner.os }}-${{ hashFiles('scripts/solids/build.sh') }}
+
+      - name: Solid kernel
+        run: |
+          start=$(date +%s)
+          JOBS=$(nproc) npm run build:solids
+          echo "::notice title=Solid kernel built::$(( $(date +%s) - start )) s on $(nproc) cores"
+
+      - name: The tests that need it
+        run: >
+          node --experimental-strip-types --test
+          test/smlib.test.ts test/solidsidentity.test.ts test/solidsclient.test.ts
+          test/bodies.test.ts test/stepkernel.test.ts test/modes.test.ts

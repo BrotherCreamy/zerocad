@@ -20,7 +20,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { ensureKernelLoaded } from "../src/kernel/problem.ts";
 import { Model } from "../src/model.ts";
-import { open, save } from "../src/persist.ts";
+import { VERSION, open, save } from "../src/persist.ts";
 import { findSnap } from "../src/snapping.ts";
 import { pointOnWorkingPlane } from "../src/workplane.ts";
 import { screenToPlane, worldToScreen, type View } from "../src/view.ts";
@@ -43,6 +43,11 @@ type Step = ["down" | "move" | "up", number, number];
 interface Fixture { view: View; gestures: Record<string, { tool: string; steps: Step[]; base?: boolean }>; files: Record<string, string> }
 const FIXTURE: Fixture = JSON.parse(await readFile(new URL("./fixtures/curve-tools-v13.json", import.meta.url), "utf8"));
 const view = FIXTURE.view;
+// A v13 file as today's build writes it: the same journal, stamped with the
+// current version. Version 14 (docs/plans/solids-kernel.md) added a feature's
+// mode and changed nothing a curve tool writes, so this is the one byte that
+// may differ — and the fixtures stay what the old build wrote.
+const current = (file: string) => file.replace('"version": 13,', `"version": ${VERSION},`);
 
 function ctxFor(m: Model, options: Record<string, unknown> = {}) {
   const said: string[] = [];
@@ -115,7 +120,7 @@ test("every gesture the four old tools knew writes the old tool's file — the o
   for (const dim of [2, 3] as const) {
     for (const [name, g] of Object.entries(FIXTURE.gestures)) {
       const [Ctor, method] = as[g.tool];
-      const want = FIXTURE.files[`${dim}D ${name}`];
+      const want = current(FIXTURE.files[`${dim}D ${name}`]);
       assert.equal(draw(dim, g.base, Ctor, { method }, g.steps).file, want, `${dim}D ${name}, locked to ${method}`);
       // The 3-point tools decided on the press; a script of presses alone still draws.
       if (g.tool === "circle3" || g.tool === "arc3" || g.tool === "arc") {
@@ -128,7 +133,7 @@ test("every gesture the four old tools knew writes the old tool's file — the o
 test("…and left to read the gesture, the same gestures still draw the same files — clicks, drags and all", async () => {
   await loadKernel();
   for (const dim of [2, 3] as const) {
-    const f = (name: string) => FIXTURE.files[`${dim}D ${name}`];
+    const f = (name: string) => current(FIXTURE.files[`${dim}D ${name}`]);
     const g = FIXTURE.gestures;
     // A drag is a centre and a radius; three clicks on nothing are three points;
     // clicks with the arc are its centre, start and end.
@@ -149,7 +154,7 @@ test("old files open as they were: what the old tools wrote reopens to itself an
   await loadKernel();
   for (const [name, file] of Object.entries(FIXTURE.files)) {
     const m = open(file);
-    assert.equal(save(m), file, `${name} reopens to itself`);
+    assert.equal(save(m), current(file), `${name} reopens to itself`);
     const before = save(m);
     assert.equal(m.solve().solved, true, name);
     assert.equal(save(m), before, `${name} solves without moving`);

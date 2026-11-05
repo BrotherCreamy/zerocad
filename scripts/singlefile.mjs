@@ -27,8 +27,19 @@ import { pathToFileURL } from "node:url";
  * desktop width and lets it zoom), the style, and the body with the kernel
  * and the code inlined. `html` is the fragment build:single writes.
  *
- * @param {{ stamp?: string }} [options] stamp replaces the commit-and-date one
- * @returns {Promise<{ title: string, metas: string, style: string, body: string, stamp: string, html: string, kernelBytes: number }>}
+ * **The solid kernel rides along too** (docs/plans/solids-kernel.md), when
+ * there is a build of it (src/solids/smlib-gen/, npm run build:solids): its
+ * Worker bundled into one script (scripts/solids/worker-entry.ts), and its
+ * .wasm. `solids: "inline"` (build:single's) puts both in the page — the
+ * Worker as text, the module as base64 — since a lone file has nothing to
+ * fetch; `solids: "files"` (the PWA's) has the page point at `solids/`
+ * beside it, which the caller writes from `solidFiles` — so the page stays
+ * the size it was and the kernel is fetched only when a body first needs it.
+ * Without a build the app still runs, and says that cuts are not shown.
+ *
+ * @param {{ stamp?: string, solids?: "inline" | "files" }} [options] stamp replaces the commit-and-date one
+ * @returns {Promise<{ title: string, metas: string, style: string, body: string, stamp: string, html: string, kernelBytes: number,
+ *   solidFiles: { "worker.js": string, "smlib.wasm": Buffer, "LICENSE": string } | null }>}
  */
 export async function singleFile(options = {}) {
   const wasmPath = new URL("../src/kernel/wasm-gen/neocad_kernel_bg.wasm", import.meta.url);
@@ -77,16 +88,54 @@ export async function singleFile(options = {}) {
     body = body.replace(empty, `<span id="buildstamp" hidden>build ${stamp}</span>`);
   }
 
+  const solidFiles = await solidsBuild();
+  let solidsScript = "";
+  if (solidFiles) {
+    const inline = (options.solids ?? "inline") === "inline";
+    const config = inline
+      ? { worker: { text: solidFiles["worker.js"] }, wasm: { base64: solidFiles["smlib.wasm"].toString("base64") }, license: { text: solidFiles.LICENSE } }
+      : { worker: { url: "./solids/worker.js" }, wasm: { url: "./solids/smlib.wasm" }, license: { url: "./solids/LICENSE" } };
+    solidsScript = `\n<script>window.__ZEROCAD_SOLIDS=${JSON.stringify(config).replace(/<\/script/gi, "<\\/script")};</script>`;
+  }
+
   const fullStyle = style;
   const fullBody = `${body}
-<script>window.__NEOCAD_WASM_B64=${JSON.stringify(wasm.toString("base64"))};</script>
+<script>window.__NEOCAD_WASM_B64=${JSON.stringify(wasm.toString("base64"))};</script>${solidsScript}
 <script type="module">${js}</script>`;
   const html = `<title>${title}</title>
 ${metas}
 <style>${fullStyle}</style>
 ${fullBody}
 `;
-  return { title, metas, style: fullStyle, body: fullBody, stamp, html, kernelBytes: wasm.length };
+  return { title, metas, style: fullStyle, body: fullBody, stamp, html, kernelBytes: wasm.length, solidFiles };
+}
+
+/**
+ * The solid kernel's files for a build — the Worker bundled to one ES module,
+ * the .wasm, its Apache-2.0 LICENSE — or null when no build of it exists.
+ */
+async function solidsBuild() {
+  const dir = new URL("../src/solids/smlib-gen/", import.meta.url);
+  let wasm, license;
+  try {
+    wasm = readFileSync(new URL("smlib.wasm", dir));
+    license = readFileSync(new URL("LICENSE", dir), "utf8");
+  } catch {
+    console.warn("src/solids/smlib-gen is missing — building without the solid kernel (npm run build:solids)");
+    return null;
+  }
+  const worker = await build({
+    entryPoints: [new URL("./solids/worker-entry.ts", import.meta.url).pathname],
+    bundle: true,
+    format: "esm",
+    target: "es2022",
+    minify: true,
+    write: false,
+    logLevel: "warning",
+    // Emscripten's loader reaches for Node's `module` only when it is in Node.
+    external: ["module"],
+  });
+  return { "worker.js": worker.outputFiles[0].text, "smlib.wasm": wasm, LICENSE: license };
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

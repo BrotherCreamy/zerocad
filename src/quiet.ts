@@ -53,6 +53,15 @@ export interface QuietScene {
   shaded: boolean;
   /** The features with faces on screen this frame — whose edges the face layer draws. */
   faced: ReadonlySet<string>;
+  /**
+   * The features of bodies the solid kernel builds (bodies.ts). Their twins
+   * and walls are no edge of the solid any more — a cut crossed the lid, a boss
+   * stands where a wall was — so they are quiet in **every** view, drawn only
+   * when the hand is on them: still there to hover, drag and constrain (a lid
+   * edge held by a relation keeps working), but never drawn as an edge the
+   * body does not have. The kernel's own edges are the body's edges.
+   */
+  kernel?: ReadonlySet<string>;
 }
 
 /**
@@ -61,6 +70,21 @@ export interface QuietScene {
  */
 export function quietEntities(model: Model, scene: QuietScene): Set<string> {
   const out = new Set<string>();
+  for (const f of model.features.values()) {
+    if (!scene.kernel?.has(f.name)) continue;
+    for (const loop of f.twins) {
+      for (const t of loop) {
+        out.add(t);
+        // The twin's own points too (a lid's corners, a twin circle's centre):
+        // the hidden view draws points, and a through-cut's lid floats past the body.
+        const e = model.entities.get(t);
+        if (e?.kind === "line") for (const p of e.refs) out.add(p);
+        else if (e?.kind === "arc") { out.add(e.start); out.add(e.end); out.add(e.center); }
+        else if (e?.kind === "circle") out.add(e.center);
+      }
+    }
+    if (f.kind === "extrude") for (const w of f.walls) out.add(w);
+  }
   if (!scene.shaded) return out;
   const centres = new Set<string>();
   for (const e of model.entities.values()) {
