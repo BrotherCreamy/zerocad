@@ -40,7 +40,7 @@
 // for their tooltips are handed in the same way (`ToolbarHost.summary`), and
 // the tooltip itself (tooltip.ts) is handed in as a function to attach one.
 
-import { giveTip, type AttachTip, type Tip } from "./tooltip.ts";
+import { HOLD_MS, HOLD_SLOP, HOVER_MS, WARM_MS, giveTip, type AttachTip, type Tip } from "./tooltip.ts";
 
 export interface Rect { x: number; y: number; w: number; h: number }
 export interface Size { w: number; h: number }
@@ -2159,10 +2159,188 @@ export function toolTip(tool: string, summary: string | null = null, key: string
   return { name: displayName(tool), summary, command: armCommand(tool), key };
 }
 
+// ---- the flyout: a group's other tools, beside its button --------------------
+//
+// docs/plans/toolbar-groups.md. Tools of one family share one button
+// (tools/tool.ts's `TOOL_GROUPS`); the button shows the one armed last, and the
+// whole family opens beside it, a line the other way from the tray — a row
+// beside a column, a column over a row — so it runs out into the drawing and
+// never back along the tray. Where is pure arithmetic over rectangles, below;
+// what opens it is the Toolbar's.
+
+/** Between a tray and its flyout. */
+export const FLYOUT_GAP = 4;
+/** The least a flyout keeps from the edge of its bounds, as a tooltip does. */
+const FLYOUT_MARGIN = 4;
+/**
+ * How long the pointer may be off both a button and its open flyout before the
+ * flyout closes — the crossing from one to the other, and a hand's wobble.
+ */
+export const FLYOUT_LEAVE_MS = 300;
+
+/**
+ * A flyout's size: `items` buttons in `lines` lines running `orient`. A tray's
+ * family (`traySize`) without the strip — nothing drags a flyout — so a line is
+ * the padding, the border and the buttons a gap apart, and the lines a whole
+ * button pitch apart, as a tray's are.
+ */
+export function flyoutSize(items: number, orient: Orientation, m: Metrics = FINE, lines = 1): Size {
+  const n = Math.max(1, items);
+  const l = Math.min(n, Math.max(1, Math.round(lines)));
+  const per = Math.ceil(n / l);
+  const run = 8 + per * m.button + (per - 1) * m.gap;
+  const depth = 8 + m.button + (l - 1) * (m.button + m.gap);
+  return orient === "row" ? { w: run, h: depth } : { w: depth, h: run };
+}
+
+/** What a flyout is laid out round: every rectangle in the same coordinates (the window's, in the app). */
+export interface FlyoutAsk {
+  /** The button it opens from. */
+  button: Rect;
+  /** The whole tray the button is in, every line of it. Never covered. */
+  tray: Rect;
+  /** Which way the tray runs. The flyout runs the other way. */
+  along: Orientation;
+  /** How many buttons it holds. */
+  items: number;
+  m: Metrics;
+  /** Where it may be: the window less its safe-area insets. */
+  bounds: Rect;
+  /** What it must never cover: the logo and the corner the status is shown in. */
+  keep: readonly Rect[];
+  /** What it keeps off where it can: every other pane on screen. */
+  avoid: readonly Rect[];
+}
+
+export type FlyoutSide = "left" | "right" | "above" | "below";
+
+export interface FlyoutPlace {
+  rect: Rect;
+  orient: Orientation;
+  lines: number;
+  /** Buttons a line — the stylesheet's `--per`. */
+  per: number;
+  side: FlyoutSide;
+  /** Whether it is clear of every pane in `avoid` as well as of everything it must be. */
+  clear: boolean;
+}
+
+const meets = (a: Rect, b: Rect) => a.x < b.x + b.w - EPS && b.x < a.x + a.w - EPS && a.y < b.y + b.h - EPS && b.y < a.y + a.h - EPS;
+const overlapArea = (a: Rect, b: Rect) =>
+  Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)) * Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
+
+/**
+ * Where a flyout goes: beside the tray, on the side with more room (the
+ * drawing's, for a tray docked to an edge) and then the other; a row beside a
+ * column, a column above or below a row; **level with its button** where that
+ * is clear, else slid along the tray to the nearest place that is; wrapped
+ * into more lines where one is too long for the room — an iPhone SE's
+ * landscape tray has a short way up to the top of the screen.
+ *
+ * Never over the tray, never over `keep` (the logo and the status's corner),
+ * always inside `bounds`. Clear of every other pane wherever such a place
+ * exists (`clear`); where none does — a screen too small for it anywhere —
+ * the place that covers least of them, as a menu covers what is under it.
+ *
+ * Of the clear places, the nearest the button wins, then the one on the
+ * preferred side, then the fewest lines.
+ */
+export function flyoutPlacement(a: FlyoutAsk): FlyoutPlace {
+  const orient: Orientation = a.along === "column" ? "row" : "column";
+  const { bounds: B, tray: T, button, m } = a;
+  const lo = { x: B.x + FLYOUT_MARGIN, y: B.y + FLYOUT_MARGIN };
+  const hi = { x: B.x + B.w - FLYOUT_MARGIN, y: B.y + B.h - FLYOUT_MARGIN };
+  const sides: FlyoutSide[] = a.along === "column"
+    ? (hi.x - (T.x + T.w) >= T.x - lo.x ? ["right", "left"] : ["left", "right"])
+    : (T.y - lo.y >= hi.y - (T.y + T.h) ? ["above", "below"] : ["below", "above"]);
+  const hard = [...a.keep, T];
+  const n = Math.max(1, a.items);
+  // Across the flyout's run, its first line lies level with the button: the
+  // padding and the border are what the button's face is in from the edge.
+  const level = (orient === "row" ? button.y : button.x) - 4;
+  interface Cand extends FlyoutPlace { cover: number; dist: number; rank: number }
+  const cands: Cand[] = [];
+  sides.forEach((side, rank) => {
+    for (let lines = 1; lines <= n; lines++) {
+      const size = flyoutSize(n, orient, m, lines);
+      const run = side === "right" ? T.x + T.w + FLYOUT_GAP : side === "left" ? T.x - FLYOUT_GAP - size.w
+        : side === "below" ? T.y + T.h + FLYOUT_GAP : T.y - FLYOUT_GAP - size.h;
+      const runLen = orient === "row" ? size.w : size.h;
+      const [runLo, runHi] = orient === "row" ? [lo.x, hi.x] : [lo.y, hi.y];
+      if (run < runLo - EPS || run + runLen > runHi + EPS) continue;
+      const depth = orient === "row" ? size.h : size.w;
+      const [crossLo, crossHi] = orient === "row" ? [lo.y, hi.y] : [lo.x, hi.x];
+      if (depth > crossHi - crossLo + EPS) continue;
+      const clampC = (c: number) => Math.min(Math.max(c, crossLo), crossHi - depth);
+      // Level with the button, at either end of the room, or just past any
+      // obstacle — the only places the nearest clear one can be.
+      const at = new Set<number>([level, crossLo, crossHi - depth]);
+      for (const o of [...hard, ...a.avoid]) {
+        const [o0, o1] = orient === "row" ? [o.y, o.y + o.h] : [o.x, o.x + o.w];
+        at.add(o0 - FLYOUT_GAP - depth);
+        at.add(o1 + FLYOUT_GAP);
+      }
+      for (const c0 of at) {
+        const c = clampC(c0);
+        const rect: Rect = orient === "row" ? { x: run, y: c, ...size } : { x: c, y: run, ...size };
+        if (hard.some((h) => meets(rect, h))) continue;
+        const cover = a.avoid.reduce((s, o) => s + overlapArea(rect, o), 0);
+        cands.push({
+          rect, orient, lines, per: Math.ceil(n / lines), side, clear: cover <= EPS, cover, dist: Math.abs(c - level), rank,
+        });
+      }
+    }
+  });
+  cands.sort((p, q) => p.cover - q.cover || p.dist - q.dist || p.rank - q.rank || p.lines - q.lines);
+  const best = cands[0];
+  if (best) {
+    const { cover: _c, dist: _d, rank: _r, ...place } = best;
+    return place;
+  }
+  // Nowhere at all beside the tray — a window smaller than the flyout: on the
+  // first side, held inside, and said not to be clear.
+  const size = flyoutSize(n, orient, m, 1);
+  const side = sides[0];
+  const x = side === "right" ? T.x + T.w + FLYOUT_GAP : side === "left" ? T.x - FLYOUT_GAP - size.w : level;
+  const y = side === "below" ? T.y + T.h + FLYOUT_GAP : side === "above" ? T.y - FLYOUT_GAP - size.h : level;
+  return {
+    rect: { x: clamp(x, lo.x, hi.x - size.w), y: clamp(y, lo.y, hi.y - size.h), ...size },
+    orient, lines: 1, per: n, side, clear: false,
+  };
+}
+
+/** One toolbar button, as the host hands it: a tool on its own (`group` null), or a group's members in their order. */
+export interface ToolbarButtonSpec { group: string | null; tools: string[] }
+
+/** What the flyout needs of its host, beyond the toolbar's: where it may go and what it keeps off. */
+export interface FlyoutHost {
+  /** The element it is drawn in — fixed, over the panels, empty until it opens. */
+  el: HTMLElement;
+  /** The chrome's sizes now (they change with the interface size). */
+  metrics(): Metrics;
+  /** The window less its safe-area insets, in the window's coordinates — what the tooltip is kept inside. */
+  bounds(): Rect;
+  /** What it must never cover, in the window's coordinates: the logo and the status's corner. */
+  keep(): Rect[];
+  /** Every other pane on screen, in the window's coordinates. */
+  avoid(): Rect[];
+}
+
 /** What the toolbar needs of its host. */
 export interface ToolbarHost {
   /** Select, the Hand, then every registered tool in registration order — `toolbarTools()`. */
   tools(): string[];
+  /**
+   * The buttons, in order — `toolbarButtons()`: a group's members share one.
+   * Without it every tool is a button of its own, as before groups.
+   */
+  buttons?(): ToolbarButtonSpec[];
+  /** The member a group's button shows now — `groupCurrent` over what the viewer armed last. Without it, the first. */
+  current?(group: string, tools: readonly string[]): string;
+  /** `tool`, just armed, is now `group`'s current member: remember it for the viewer (`GroupMemory`). */
+  remember?(group: string, tool: string): void;
+  /** Where a group's flyout opens. Without it a group's button is a button of its current tool and nothing opens. */
+  flyout?: FlyoutHost;
   /**
    * The tool's glyph, as an inline SVG string drawn in `currentColor`: a
    * built-in's own, any other tool's the generic one (`toolIcon`). Asked once
@@ -2181,12 +2359,27 @@ export interface ToolbarHost {
   tooltip?: AttachTip;
 }
 
+/** A press on a group's button, until it lifts: where it landed, and whether it has opened the flyout yet. */
+interface Press {
+  id: number;
+  x: number;
+  y: number;
+  touch: boolean;
+  button: HTMLButtonElement;
+  timer: ReturnType<typeof setTimeout> | undefined;
+  /** Moved past `HOLD_SLOP`: a slide, which opened the flyout if the hold had not. */
+  moved: boolean;
+  /** Held past `HOLD_MS` without moving: a long-press, which opened it. */
+  held: boolean;
+}
+
 /**
- * One button per registered tool, built from the registry when asked rather
- * than from a list kept here — so a tool defined at the command line gets a
- * button exactly as a built-in has one. Nothing in the registry announces a new
- * tool, so the host calls `sync` whenever one might have appeared or the armed
- * tool might have changed; it does DOM work only when something did.
+ * One button per registered tool — or per group of them — built from the
+ * registry when asked rather than from a list kept here, so a tool defined at
+ * the command line gets a button exactly as a built-in has one. Nothing in the
+ * registry announces a new tool, so the host calls `sync` whenever one might
+ * have appeared or the armed tool might have changed; it does DOM work only
+ * when something did.
  *
  * **A button types `arm("name")`** through the host's `run`, the context menu's
  * seam, so the log shows what the button did and a user learns the command by
@@ -2196,6 +2389,28 @@ export interface ToolbarHost {
  * the vocabulary the command line uses is still one hover — or, under a
  * finger, one hold — away and still what the log shows; the name is the
  * button's accessible name too.
+ *
+ * **A group's button** (docs/plans/toolbar-groups.md) wears its current
+ * member's icon and `data-tool`, and a tap or click arms that member as any
+ * button arms its tool. Where the group has more than one member it carries a
+ * small mark in its corner and opens the **flyout** — the whole group beside
+ * it, the current one marked:
+ *
+ * - a mouse: rest on it (`HOVER_MS`, the tooltip's delay), or press and hold
+ *   (`HOLD_MS`); click an item. It closes on arming, when the pointer has been
+ *   off it and its button `FLYOUT_LEAVE_MS`, and on Escape.
+ * - a finger: press and slide off the button onto an item and lift — one
+ *   gesture, a phone keyboard's accents — or hold (`HOLD_MS`) to open it, lift,
+ *   and tap an item. A press anywhere else closes it. A plain tap never opens
+ *   it: it arms the button's tool. The numbers are the canvas recogniser's
+ *   (tools/gestures.ts's `TAP_SLOP` and `LONG_PRESS_MS`, which tooltip.ts
+ *   holds as `HOLD_SLOP` and `HOLD_MS`); the recogniser itself is the
+ *   canvas's, and a tray is the host's.
+ *
+ * **What opens the flyout is what shows a plain button's tooltip** — the
+ * hover, the hold — so a group's button has none of its own: its items do,
+ * each with its name, what it does and its command, shown by a hover or a
+ * hold as any button's.
  *
  * **No button is ever greyed.** One used to be, for a tool the model could not
  * run, with the reason as its hover text; since every built-in makes what it
@@ -2207,59 +2422,303 @@ export class Toolbar {
   private el: HTMLElement;
   private host: ToolbarHost;
   private names = "";
-  private armed: string | null = null;
+  /** The group buttons, by group, with their members. */
+  private groups = new Map<string, { el: HTMLButtonElement; tools: string[] }>();
+  /** The group whose flyout is open, and its button. */
+  private open: { group: string; button: HTMLButtonElement } | null = null;
+  private press: Press | null = null;
+  private hoverTimer: ReturnType<typeof setTimeout> | undefined;
+  private leaveTimer: ReturnType<typeof setTimeout> | undefined;
+  /** When a flyout last closed, for `WARM_MS`: running along the toolbar opens the next at once. */
+  private closedAt = -Infinity;
+  /** The button whose next click is the lift of a press that opened or used its flyout — not a press of the button. */
+  private swallow: HTMLButtonElement | null = null;
 
   constructor(el: HTMLElement, host: ToolbarHost) {
     this.el = el;
     this.host = host;
+    const fly = host.flyout?.el;
+    if (!fly || typeof window === "undefined") return;
+    fly.hidden = true;
+    fly.addEventListener("pointerenter", (e) => { if (e.pointerType !== "touch") clearTimeout(this.leaveTimer); });
+    fly.addEventListener("pointerleave", (e) => { if (e.pointerType !== "touch") this.leaving(); });
+    fly.addEventListener("contextmenu", (e) => e.preventDefault());
+    // Escape closes it, and only that: the tool armed stays armed. On the
+    // window, in the capture phase, ahead of the app's own Escape.
+    window.addEventListener("keydown", (e) => {
+      if (e.key !== "Escape" || !this.open) return;
+      this.close();
+      e.preventDefault();
+      e.stopImmediatePropagation();
+    }, true);
+    // A press anywhere but the flyout and its button closes it — and goes on
+    // to do what it does there.
+    window.addEventListener("pointerdown", (e) => {
+      if (!this.open || !(e.target instanceof Node)) return;
+      if (fly.contains(e.target) || this.open.button.contains(e.target)) return;
+      this.close();
+    }, true);
+    window.addEventListener("resize", () => this.close());
   }
 
-  /** Rebuilds if the tool list changed and re-marks the armed button. Returns whether the list changed. */
+  /** Whether a group's flyout is open, and which. */
+  get opened(): string | null {
+    return this.open?.group ?? null;
+  }
+
+  /** Rebuilds if the buttons changed and re-marks the armed button. Returns whether the buttons changed. */
   sync(): boolean {
-    const tools = this.host.tools();
-    const key = tools.join("\n");
+    const buttons = this.host.buttons?.() ?? this.host.tools().map((t) => ({ group: null, tools: [t] }));
+    const key = JSON.stringify(buttons);
     const rebuilt = key !== this.names;
     if (rebuilt) {
       this.names = key;
+      this.close();
       this.el.textContent = "";
-      for (const tool of tools) this.el.appendChild(this.button(tool));
-      this.armed = null; // the new buttons carry no state; mark them below
+      this.groups.clear();
+      for (const b of buttons) this.el.appendChild(this.button(b));
     }
     const active = this.host.active();
-    if (rebuilt || active !== this.armed) {
-      this.armed = active;
-      for (const b of Array.from(this.el.querySelectorAll<HTMLButtonElement>("button"))) {
-        b.setAttribute("aria-pressed", String(b.dataset.tool === active));
-      }
+    // The current member follows whatever armed it — this button, the flyout,
+    // or `arm("polygon")` typed.
+    for (const [group, g] of this.groups) {
+      if (active !== null && g.tools.includes(active)) this.host.remember?.(group, active);
+      const current = this.host.current?.(group, g.tools) ?? g.tools[0];
+      if (g.el.dataset.tool !== current) this.face(g.el, current);
+    }
+    for (const b of Array.from(this.el.querySelectorAll<HTMLButtonElement>("button"))) {
+      const on = String(b.dataset.tool === active);
+      if (b.getAttribute("aria-pressed") !== on) b.setAttribute("aria-pressed", on);
     }
     return rebuilt;
   }
 
-  private button(tool: string): HTMLButtonElement {
-    const b = document.createElement("button");
-    b.type = "button";
+  /** Shows `tool` on a group's button: its glyph, its name, the tool a press arms. */
+  private face(b: HTMLButtonElement, tool: string): void {
     // The host's string, from a table of constants or built round the name
     // escaped; nothing a file or another viewer supplies reaches it.
     b.innerHTML = this.host.icon(tool);
     b.dataset.tool = tool;
     b.setAttribute("aria-label", tool);
-    // Asked when it shows, not now: a tool redefined at the command line
-    // with a summary says it the next time, with no rebuild.
-    giveTip(b, () => toolTip(tool, this.host.summary?.(tool) ?? null, this.host.key?.(tool) ?? null), this.host.tooltip, {
-      // Beside the tray when it is a column, so the tip never covers the
-      // buttons the pointer is about to run down.
-      along: () => (this.el.closest<HTMLElement>(".panel")?.dataset.orient as "column" | "row" | undefined) ?? null,
-      // Beside or past the whole tray, every line of it, so a held tip never
-      // covers the next button — on this line or the next.
-      line: () => this.el,
-    });
+  }
+
+  private button(spec: ToolbarButtonSpec): HTMLButtonElement {
+    const b = document.createElement("button");
+    b.type = "button";
+    const grouped = spec.group !== null;
+    const flies = grouped && spec.tools.length > 1 && !!this.host.flyout;
+    const first = grouped ? this.host.current?.(spec.group!, spec.tools) ?? spec.tools[0] : spec.tools[0];
+    this.face(b, first);
+    if (grouped) {
+      b.dataset.group = spec.group!;
+      this.groups.set(spec.group!, { el: b, tools: spec.tools });
+    }
+    if (flies) {
+      // The mark in the corner (index.html), and what assistive tech is told:
+      // the button opens something.
+      b.dataset.more = "";
+      b.setAttribute("aria-haspopup", "true");
+      b.setAttribute("aria-expanded", "false");
+      this.flyoutGestures(b, spec.group!);
+    } else {
+      // Asked when it shows, not now: a tool redefined at the command line
+      // with a summary says it the next time, with no rebuild.
+      giveTip(b, () => {
+        const tool = b.dataset.tool!;
+        return toolTip(tool, this.host.summary?.(tool) ?? null, this.host.key?.(tool) ?? null);
+      }, this.host.tooltip, {
+        // Beside the tray when it is a column, so the tip never covers the
+        // buttons the pointer is about to run down.
+        along: () => (this.el.closest<HTMLElement>(".panel")?.dataset.orient as "column" | "row" | undefined) ?? null,
+        // Beside or past the whole tray, every line of it, so a held tip never
+        // covers the next button — on this line or the next.
+        line: () => this.el,
+      });
+    }
     b.setAttribute("aria-pressed", "false");
     // Keeps the focus where it was — the command line — so a click on a button
     // is not followed by Enter or Space re-pressing it instead of submitting.
     b.addEventListener("mousedown", (e) => e.preventDefault());
     b.addEventListener("contextmenu", (e) => e.preventDefault());
-    b.addEventListener("click", () => this.host.run(armCommand(tool)));
+    b.addEventListener("click", (e) => {
+      if (this.swallow === b) {
+        this.swallow = null;
+        e.preventDefault();
+        return;
+      }
+      this.close();
+      this.host.run(armCommand(b.dataset.tool!));
+    });
     return b;
+  }
+
+  /** A group button's ways into its flyout: the hover and the hold, the slide, the long-press. */
+  private flyoutGestures(b: HTMLButtonElement, group: string): void {
+    b.addEventListener("pointerenter", (e) => {
+      if (e.pointerType === "touch") return;
+      clearTimeout(this.leaveTimer);
+      if (this.open?.group === group) return;
+      clearTimeout(this.hoverTimer);
+      // At once when another group's flyout is open or just was — a run along
+      // the toolbar — as the tooltip comes at once on the next button.
+      const warm = this.open !== null || performance.now() - this.closedAt < WARM_MS;
+      this.hoverTimer = setTimeout(() => { if (!this.press) this.show(group, b); }, warm ? 0 : HOVER_MS);
+    });
+    b.addEventListener("pointerleave", (e) => {
+      if (e.pointerType === "touch") return;
+      clearTimeout(this.hoverTimer);
+      if (this.open?.group === group) this.leaving();
+    });
+    b.addEventListener("pointerdown", (e) => {
+      if (e.button !== 0) return;
+      clearTimeout(this.hoverTimer);
+      this.swallow = null;
+      const press: Press = {
+        id: e.pointerId, x: e.clientX, y: e.clientY, touch: e.pointerType === "touch", button: b,
+        moved: false, held: false, timer: undefined,
+      };
+      press.timer = setTimeout(() => {
+        if (this.press !== press || press.moved) return;
+        press.held = true;
+        this.show(group, b);
+      }, HOLD_MS);
+      this.press = press;
+      // Held, so the slide's moves and its lift come here wherever the
+      // finger or the mouse goes — the items are found under it by position.
+      try { b.setPointerCapture(e.pointerId); } catch { /* a synthetic press has nothing to capture */ }
+    });
+    b.addEventListener("pointermove", (e) => {
+      const p = this.press;
+      if (!p || p.id !== e.pointerId) return;
+      if (!p.moved && Math.hypot(e.clientX - p.x, e.clientY - p.y) > HOLD_SLOP) {
+        p.moved = true;
+        clearTimeout(p.timer);
+        if (this.open?.group !== group) this.show(group, b);
+      }
+      if (p.moved) this.mark(this.itemAt(e.clientX, e.clientY));
+    });
+    b.addEventListener("pointerup", (e) => {
+      const p = this.press;
+      if (!p || p.id !== e.pointerId) return;
+      clearTimeout(p.timer);
+      this.press = null;
+      if (!p.moved && !p.held) return; // a tap or a click: the click arms the button's tool
+      // The lift is the end of the gesture, not a press of the button.
+      this.swallow = b;
+      const item = p.moved ? this.itemAt(e.clientX, e.clientY) : null;
+      if (item) {
+        this.close();
+        this.host.run(armCommand(item.dataset.tool!));
+      } else if (p.moved) {
+        // Slid off onto nothing: put away, nothing armed.
+        this.close();
+      }
+      // Held and lifted where it was: it stays open, for a tap on an item.
+    });
+    b.addEventListener("pointercancel", (e) => {
+      const p = this.press;
+      if (!p || p.id !== e.pointerId) return;
+      clearTimeout(p.timer);
+      this.press = null;
+      if (p.moved) this.close();
+    });
+  }
+
+  /** The flyout's item under a window point, if any. */
+  private itemAt(x: number, y: number): HTMLButtonElement | null {
+    const fly = this.host.flyout?.el;
+    const hit = typeof document.elementFromPoint === "function" ? document.elementFromPoint(x, y) : null;
+    const item = hit?.closest<HTMLButtonElement>("button[data-tool]") ?? null;
+    return item && fly?.contains(item) ? item : null;
+  }
+
+  /** Lights the item a sliding finger is over, as a hover lights it under a mouse. */
+  private mark(item: HTMLButtonElement | null): void {
+    const fly = this.host.flyout?.el;
+    if (!fly) return;
+    for (const b of Array.from(fly.querySelectorAll<HTMLButtonElement>("button"))) b.classList.toggle("hot", b === item);
+  }
+
+  private leaving(): void {
+    clearTimeout(this.leaveTimer);
+    if (this.press) return;
+    this.leaveTimer = setTimeout(() => this.close(), FLYOUT_LEAVE_MS);
+  }
+
+  /** Opens `group`'s flyout beside `b`, closing any other. */
+  private show(group: string, b: HTMLButtonElement): void {
+    const host = this.host.flyout;
+    const g = this.groups.get(group);
+    if (!host || !g || !b.isConnected) return;
+    if (this.open && this.open.group !== group) this.close();
+    clearTimeout(this.leaveTimer);
+    const fly = host.el;
+    fly.textContent = "";
+    const active = this.host.active();
+    const current = b.dataset.tool;
+    for (const tool of g.tools) {
+      const item = document.createElement("button");
+      item.type = "button";
+      item.innerHTML = this.host.icon(tool);
+      item.dataset.tool = tool;
+      item.setAttribute("aria-label", tool);
+      item.setAttribute("aria-pressed", String(tool === active));
+      if (tool === current) {
+        item.classList.add("current");
+        item.setAttribute("aria-current", "true");
+      }
+      giveTip(item, () => toolTip(tool, this.host.summary?.(tool) ?? null, this.host.key?.(tool) ?? null), this.host.tooltip, {
+        along: () => (fly.dataset.orient as Orientation | undefined) ?? null,
+        line: () => fly,
+        // Never over the tray it opened from: its buttons are the next thing a finger reaches for.
+        clear: () => [this.el.closest<HTMLElement>(".panel") ?? this.el],
+      });
+      item.addEventListener("mousedown", (e) => e.preventDefault());
+      item.addEventListener("contextmenu", (e) => e.preventDefault());
+      item.addEventListener("click", () => {
+        this.close();
+        this.host.run(armCommand(tool));
+      });
+      fly.appendChild(item);
+    }
+    const r = (el: Element): Rect => {
+      const q = el.getBoundingClientRect();
+      return { x: q.x, y: q.y, w: q.width, h: q.height };
+    };
+    const panel = this.el.closest<HTMLElement>(".panel") ?? this.el;
+    const along = (panel.dataset.orient as Orientation | undefined) ?? "column";
+    const place = flyoutPlacement({
+      button: r(b), tray: r(panel), along, items: g.tools.length, m: host.metrics(),
+      bounds: host.bounds(), keep: host.keep(), avoid: host.avoid(),
+    });
+    fly.dataset.orient = place.orient;
+    fly.dataset.lines = String(place.lines);
+    fly.dataset.side = place.side;
+    fly.dataset.group = group;
+    fly.style.setProperty("--per", String(place.per));
+    fly.style.left = `${Math.round(place.rect.x)}px`;
+    fly.style.top = `${Math.round(place.rect.y)}px`;
+    fly.style.width = `${place.rect.w}px`;
+    fly.style.height = `${place.rect.h}px`;
+    fly.hidden = false;
+    b.setAttribute("aria-expanded", "true");
+    this.open = { group, button: b };
+  }
+
+  /** Puts the flyout away, if one is open. Returns whether one was. */
+  close(): boolean {
+    clearTimeout(this.leaveTimer);
+    clearTimeout(this.hoverTimer);
+    if (!this.open) return false;
+    const fly = this.host.flyout?.el;
+    if (fly) {
+      fly.hidden = true;
+      fly.textContent = "";
+    }
+    this.open.button.setAttribute("aria-expanded", "false");
+    this.open = null;
+    this.closedAt = performance.now();
+    return true;
   }
 }
 

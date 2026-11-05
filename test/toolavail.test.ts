@@ -56,7 +56,7 @@ test("panels.ts still imports nothing but the tooltip, which imports nothing: th
   // The tooltip (docs/plans/tooltips-rgb-frames.md) is chrome beside the
   // panels, not something that knows the model or the tools — and to keep
   // that true transitively, it is held to importing nothing at all.
-  assert.deepEqual(src.match(/^import .*$/gm) ?? [], ['import { giveTip, type AttachTip, type Tip } from "./tooltip.ts";']);
+  assert.deepEqual(src.match(/^import .*$/gm) ?? [], ['import { HOLD_MS, HOLD_SLOP, HOVER_MS, WARM_MS, giveTip, type AttachTip, type Tip } from "./tooltip.ts";']);
   const tip = await readFile(new URL("../src/tooltip.ts", import.meta.url), "utf8");
   assert.deepEqual(tip.match(/^import .*$/gm) ?? [], []);
 });

@@ -14,7 +14,7 @@ import { Dual } from "./kernel/dual.ts";
 import { Model, type Entity, type ProfileMember } from "./model.ts";
 import { describeFeature, describeRelation } from "./picking.ts";
 import type { SolveReport } from "./kernel/problem.ts";
-import { ENGINE_TOOLS, Tool, defineTool, getToolCtor, listTools, aliasCommand, armedLine, TOOL_ALIASES, toolAlias, toolSummary, toolbarTools, type ToolCtor } from "./tools/tool.ts";
+import { ENGINE_TOOLS, TOOL_GROUPS, Tool, defineTool, getToolCtor, listTools, aliasCommand, armedLine, TOOL_ALIASES, toolAlias, toolSummary, toolbarButtons, type ToolCtor } from "./tools/tool.ts";
 import { OptionMemory, declaredOptions, defaultsOf, describeValues, resolveOptions } from "./tools/options.ts";
 import * as basic from "./relations/basic.ts";
 import * as geom from "./relations/geometry.ts";
@@ -1197,6 +1197,33 @@ export function neocadScope(h: EnvHandles): Bag {
   return scope;
 }
 
+/**
+ * help()'s word on toolbar groups (docs/plans/toolbar-groups.md): which tools
+ * share a button now, how the button is opened, and the groups waiting for
+ * their first tool — from the same table and registry the toolbar is built
+ * from, so it cannot say one thing while the tray shows another.
+ */
+function groupLines(): string[] {
+  const buttons = toolbarButtons().filter((b) => b.group);
+  const sharing = buttons.filter((b) => b.tools.length > 1);
+  const shown = new Set(buttons.map((b) => b.group));
+  const waiting = Object.keys(TOOL_GROUPS).filter((g) => !shown.has(g));
+  return [
+    "           [group]: tools of one family share one button — " +
+      (buttons.map((b) => `${b.group}: ${b.tools.join(", ")}`).join("; ") || "none yet") + ".",
+    sharing.length
+      ? `           Sharing a button now: ${sharing.map((b) => b.tools.join(" / ")).join("; ")}.`
+      : "           Each has one tool so far; a group's button opens when it has two.",
+    "           A group's button shows the one armed last, and arms it; to",
+    "           pick another, rest the mouse on it or press and hold, then",
+    "           click one; a finger slides off it onto one and lifts, or",
+    "           holds it and taps one. A plain tap arms the one it shows.",
+    "           arm() takes every tool by name, grouped or not. A tool you",
+    `           define joins a group with static group = "${Object.keys(TOOL_GROUPS)[0]}"` +
+      (waiting.length ? `; ${waiting.join(", ")} has no tool yet` : "") + ".",
+  ];
+}
+
 function help(scope: Bag): string {
   return [
     "geometry   pt(x,y)  ln(a,b)  circ(center,r,plane?)  arc(center,start,end,r,plane?)",
@@ -1352,12 +1379,16 @@ function help(scope: Bag): string {
     "tools      the toolbar, in its order — what each button's tooltip says:",
     // Read off the tools themselves (`static summary`), so a tool defined at
     // the command line with one is listed here as the built-ins are.
-    ...toolbarTools().map((name) => `           ${name.padEnd(10)} ${toolSummary(name) ?? "(no summary)"}`),
+    ...toolbarButtons().flatMap((b) => b.tools.map((name) =>
+      `           ${name.padEnd(10)} ${toolSummary(name) ?? "(no summary)"}${b.group ? `   [${b.group}]` : ""}`)),
     "           Hover a button (a mouse) or hold it (a finger) for its tooltip:",
     "           its name, what it does, the line it types and its key. Held,",
     "           lifting does not press it; a tap does. Every icon and short",
     "           word in the chrome has one: the action strip, the organiser's",
     "           ＋ and eyes, the spin box, a panel's strip, the logo.",
+    // Which tools share a button, said from the same table the toolbar is
+    // built from (docs/plans/toolbar-groups.md).
+    ...groupLines(),
     "viewport   arm(tool, opts)  cancel()  zoom(f)  pan(dx,dy)  refresh()",
     '           arm("select") puts the armed tool down and keeps the',
     "           selection — no tool, which is what a click selects in; its",
