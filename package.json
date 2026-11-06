@@ -19,6 +19,7 @@
     "build:icons": "node --experimental-strip-types scripts/icons.ts",
     "measure:depth": "node --experimental-strip-types test/e2e/run.ts test/e2e/depth.measure.ts",
     "measure:hidden": "node --experimental-strip-types test/e2e/run.ts test/e2e/hidden.measure.ts",
+    "measure:panels": "node --experimental-strip-types test/e2e/run.ts test/e2e/panels.measure.ts",
     "build:solids": "bash scripts/solids/build.sh"
   },
   "devDependencies": {
