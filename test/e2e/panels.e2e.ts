@@ -638,7 +638,7 @@ test("the glyph is the button's colour: amber when armed, the label colour other
   await app.page.keyboard.press("Escape");
 });
 
-// --- panels push one another, and the grasp point stays the same ---------------
+// --- panels reshuffle (a drag) and push (a resize); the grasp point stays the same
 
 const IDS = ["toolbar", "log", "cmd"];
 
@@ -687,85 +687,82 @@ async function assertSound(what: string): Promise<void> {
   }
 }
 
-test("the tray pushes the log, the log the command line, and at the bottom edge the tray stops flush — and waits for the hand", async () => {
+test("the tray dragged down the left edge takes its place after the log and the command line — ghosts first, nothing pushed, the same spot the same ghosts", async () => {
+  // Panels reshuffle rather than push (docs/plans/panels-reshuffle.md; the
+  // owner: "reshuffle rather than push"). This test pushed a chain to the
+  // bottom edge until then.
   await reloadApp();
   await app.type('layout("reset")');
   const cv = await rectOf("#cv");
-  // The log up out of the way first, so there is a push worth watching — 200
-  // px, not the 250 it was before Select and the Hand made the column two
-  // buttons (44 px) longer and the log would have landed on it.
+  // The log up a little first, so the three are spaced along the left edge.
   await dragBy(strip("log"), 0, -200);
   const l0 = await panelsNow();
   assert.ok(l0.log.y > l0.toolbar.y + l0.toolbar.height + 20, "room between the tray and the log");
+  assert.ok(l0.log.y + l0.log.height < l0.cmd.y, "and between the log and the command line");
 
   const s = await rectOf(strip("toolbar"));
   let [x, y] = [s.x + s.width / 2, s.y + s.height / 2];
   await app.page.mouse.move(x, y);
   await app.page.mouse.down();
-  // Down in 10 px steps, far further than there is room for.
-  const travel = cv.height;
-  for (let d = 0; d < travel; d += 10) await app.page.mouse.move(x, (y += 10));
-  // Nothing moves until the drop (docs/plans/panels-preview.md): the push is
-  // the ghosts', and the panels under them are where they were.
+  // Down in 10 px steps, far further than there is room for, along the edge.
+  for (let d = 0; d < cv.height; d += 10) await app.page.mouse.move(x, (y += 10));
   const still = await panelsNow();
   assert.deepEqual([still.log, still.cmd], [l0.log, l0.cmd], "the log and the command line have not moved under the hand");
   const held = { ...still, ...(await ghostsNow()) };
-  assert.ok(held.log.y > l0.log.y, `the log's ghost was pushed down: ${l0.log.y} → ${held.log.y}`);
-  assert.equal(held.cmd.y + held.cmd.height, cv.height, "the command line's, pushed by the log's, is on the bottom edge");
-  assert.equal(held.log.y + held.log.height, held.cmd.y, "the log's flush on it");
-  assert.equal(held.toolbar.y + held.toolbar.height, held.log.y, "and the tray's own ghost stopped flush on the log's — not short, not over it");
-  await shot("pushed-chain-held");
+  // Past both middles: the block from the tray's place to the command line's
+  // end laid out again as log, command line, tray — each its own length, the
+  // gaps between the places kept.
+  const gap1 = l0.log.y - (l0.toolbar.y + l0.toolbar.height);
+  const gap2 = l0.cmd.y - (l0.log.y + l0.log.height);
+  assert.equal(held.log.y, l0.toolbar.y, "the log's ghost where the tray was");
+  assert.equal(held.cmd.y, held.log.y + held.log.height + gap1, "the command line's after it, the first gap kept");
+  assert.equal(held.toolbar.y, held.cmd.y + held.cmd.height + gap2, "the tray's after that, the second gap kept…");
+  assert.equal(held.toolbar.y + held.toolbar.height, l0.cmd.y + l0.cmd.height, "…ending where the command line ended: nothing pushed past it");
+  assert.equal(await ghostOrient("toolbar"), "column", "along its own edge it stays a column");
+  assert.equal((await tray()).orient, "column");
+  await shot("reordered-held");
 
-  // The preview is the drop at this spot (docs/plans/panels-preview.md): the
-  // tray taken from where it was at the press straight to the hand, from the
-  // layout at the press. Stopped against the chain, its ghost waits while the
-  // hand draws back — a drop there is still against the chain — and once the
-  // hand is back far enough for the column it was taken as to clear the log,
-  // the ghosts move back with it: nothing of the push the way down is kept.
-  // The tray in the hand is simply under the hand throughout.
-  assert.equal(await ghostOrient("toolbar"), "row", "the ghost is a row against the log's top");
-  assert.equal((await tray()).orient, "column", "the tray in the hand still a column");
-  const top0 = (await ghostsNow()).toolbar.y;
+  // The preview is the drop at this spot: drawn back above the command line's
+  // middle, the tray's landing comes back between the log and the command line.
   const yHeld = y;
-  await app.page.mouse.move(x, (y -= 10));
-  assert.equal((await ghostsNow()).toolbar.y, top0, "ten pixels back: the drop there is the same");
-  let back = await ghostsNow();
-  for (let i = 0; i < 80 && back.toolbar && back.toolbar.y === top0; i++) {
+  const top0 = held.toolbar.y;
+  let back = { ...(await panelsNow()), ...(await ghostsNow()) };
+  for (let i = 0; i < 80 && back.toolbar.y === top0; i++) {
     await app.page.mouse.move(x, (y -= 10));
     back = { ...(await panelsNow()), ...(await ghostsNow()) };
   }
-  assert.ok(!back.toolbar || back.toolbar.y < top0, "drawn back far enough, the tray's landing comes back up");
-  assert.ok((back.log?.y ?? l0.log.y) < held.log.y, `and the log's ghost goes back up with it — no memory of the push: ${held.log.y} → ${back.log?.y ?? l0.log.y}`);
-  await shot("pushed-chain-back-under-hand");
-  // Down to where it was stopped again: the same ghosts as the first time.
+  assert.ok(back.toolbar.y < top0, "drawn back, its landing moves back");
+  assert.equal(back.cmd?.y ?? l0.cmd.y, l0.cmd.y, "and the command line's ghost goes home: no memory of the way down");
+  // Down to where it was again: the same ghosts as the first time.
   await app.page.mouse.move(x, (y = yHeld));
   const again = { ...(await panelsNow()), ...(await ghostsNow()) };
   assert.deepEqual([again.toolbar, again.log, again.cmd], [held.toolbar, held.log, held.cmd], "the same spot, the same ghosts");
-  const landing = { ...(await panelsNow()), ...(await ghostsNow()) };
   await app.page.mouse.up();
   await settled(app.page);
 
   const after = await panelsNow();
-  assert.deepEqual([after.log, after.cmd], [landing.log, landing.cmd],
-    "dropped, the log and the command line are where their ghosts were");
-  assert.deepEqual(after.toolbar, landing.toolbar, "and the tray on its own ghost");
-  await assertSound("after the push");
-  await shot("pushed-chain-released");
+  assert.deepEqual([after.toolbar, after.log, after.cmd], [held.toolbar, held.log, held.cmd], "dropped, each on its ghost");
+  await assertSound("after the reorder");
+  await shot("reordered-released");
 });
 
-test("the log dragged into the command line pushes it, as far as the bottom edge", async () => {
+test("the log dragged down onto the command line stops flush short of its middle — and past it, the two trade places", async () => {
   await app.type('layout("reset")');
-  const cv = await rectOf("#cv");
   const l0 = await panelsNow();
-  await dragBy(strip("log"), 0, 100);
+  // Short of the command line's middle: the log stops flush on it, which stays put.
+  const short = l0.cmd.y + l0.cmd.height / 2 - 2 - (l0.log.y + l0.log.height);
+  await dragBy(strip("log"), 0, short);
   const l = await panelsNow();
-  assert.ok(l.cmd.y > l0.cmd.y, "the command line moved");
-  assert.equal(l.cmd.y + l.cmd.height, cv.height, "as far as the bottom edge");
-  assert.equal(l.log.y + l.log.height, l.cmd.y, "and the log is flush on it");
-  assert.equal(l.log.y - l0.log.y, (l0.cmd.y - l0.log.y - l0.log.height) + (cv.height - l0.cmd.y - l0.cmd.height),
-    "the log moved by the gap and the command line's room, exactly");
-  assert.deepEqual([l.log.x, l.cmd.x], [l0.log.x, l0.cmd.x], "pushed down, and not a pixel sideways");
-  await assertSound("log into command line");
+  assert.deepEqual(l.cmd, l0.cmd, "the command line is not pushed");
+  assert.equal(l.log.y + l.log.height, l.cmd.y, "the log flush on it");
+  assert.deepEqual([l.log.x, l.log.width], [l0.log.x, l0.log.width], "and not a pixel sideways");
+  // On, past its middle: they trade places — the command line where the log
+  // began, the log ending where the command line ended.
+  await dragBy(strip("log"), 0, l.cmd.height / 2 + 4);
+  const t = await panelsNow();
+  assert.equal(t.cmd.y, l.log.y, "the command line in the log's slot");
+  assert.equal(t.log.y + t.log.height, l0.cmd.y + l0.cmd.height, "the log in the command line's");
+  await assertSound("log past the command line");
 });
 
 test("resizing the log into the command line pushes it, and the grip stops at the edge", async () => {

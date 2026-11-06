@@ -117,6 +117,8 @@ test("the held panel is under the hand at the point it was taken by, held inside
   const layout: Layout = { a: box(100, 100), b: box(300, 100) };
   const drag = along(beginDrag("a", "move", { x: 130, y: 120 }, layout), steps({ x: 130, y: 120 }, { x: 380, y: 140 }, 5));
   assert.deepEqual(drag.held, box(350, 120), "over b, exactly under the hand — where it lands is the preview's, not the hand's");
+  // Flush against b, at the hand's height: the furthest it can go toward the
+  // hand clear of b, along the line and then along each axis.
   assert.deepEqual(drag.preview.a, box(200, 120), "the preview has a stopped flush against b (its middle short of b's: no trade)…");
   assert.deepEqual(drag.preview.b, box(300, 100), "…and b not pushed (docs/plans/panels-reshuffle.md)");
   assert.deepEqual(drag.start.b, box(300, 100), "nor b itself");

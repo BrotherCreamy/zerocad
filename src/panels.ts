@@ -1021,7 +1021,7 @@ export function dragTo(
   const { refused: _was, ...rest } = drag;
   // By the strip, a reshuffle (docs/plans/panels-reshuffle.md); by a grip, the push.
   if (drag.grab.kind === "move") {
-    const r = reshuffled(drag, held, pointer, area, minSize, m);
+    const r = reshuffled(drag, held, area, m);
     return { ...rest, preview: r.preview, held, ...(r.refused ? { refused: r.refused } : {}) };
   }
   const step = dragStep(drag.grab, pointer, drag.start, area, minSize, drag.buttons, m);
@@ -1329,21 +1329,70 @@ export const NO_ROOM = "no room on this edge";
 export const NO_SWAP = "no room to trade places there";
 
 /**
- * The held pane taken straight from the press to the hand with every other
- * pane standing still — the old resolver with everything but the held one
- * fixed, as the logo always was: where the way is clear it goes where the hand
- * has it, and where it meets a pane it **stops flush** against it, pushing
- * nothing. `turn` lets a tray turn against an edge it meets, where its turned
- * shape lies on nothing.
+ * Where the held pane lands with every other pane standing still: **where the
+ * hand has it, if that lies on nothing**; else, on the straight line from
+ * where it was at the press to there, the furthest point it is clear of
+ * everything — so it **stops flush** against what it was dropped on, from
+ * the side it came, and pushes nothing. Furthest, not first: a pane carried
+ * over another to the empty space beyond lands there. Found exactly: along the
+ * line each other pane is in the way over one open stretch of it, and the
+ * answer is the far end of the line stepped back to the near end of each
+ * stretch it lies in, until it lies in none — the press itself, at worst,
+ * where the layout was sound.
+ *
+ * `turn`, for a tray in no edge's sequence: against a pane's edge, or the
+ * area's, it turns as it always has (`turned`), where its turned shape lies on
+ * nothing — the owner's *"that includes pushing it up against a
+ * vertical/horizontal edge of another tooltray"*.
  */
-function flush(
-  drag: Drag, pointer: Point, area: Size, minSize: (id: string, orient: Orientation | undefined) => Size, m: Metrics, turn: boolean,
-): Layout {
+function landing(drag: Drag, held: Placed, area: Size, m: Metrics, turn: boolean): Layout {
   const id = drag.grab.id;
-  const pinned: Layout = {};
-  for (const [o, r] of Object.entries(drag.start)) pinned[o] = o === id || r.fixed ? r : { ...r, fixed: true };
-  const step = dragStep(drag.grab, pointer, pinned, area, minSize, turn ? drag.buttons : undefined, m);
-  return { ...drag.start, [id]: step.layout[id] };
+  const others = Object.keys(drag.start).filter((o) => o !== id).map((o) => drag.start[o]);
+  // The line from the press, then along each axis on toward the hand from
+  // wherever that stopped: a pane taken diagonally into the corner under the
+  // logo stops on the logo's bottom and still slides on to the left edge, as a
+  // hand dragging it there means.
+  let r = furthest(drag.start[id], held, others);
+  r = furthest(r, { ...r, x: held.x }, others);
+  r = furthest(r, { ...r, y: held.y }, others);
+  if (turn && drag.buttons !== undefined && r.orient) {
+    const u = turned(r, r.orient, area, others, (o) => traySize(drag.buttons!, o, m, trayRoom(area, o, m)));
+    const to = placed(u.rect, u.orient);
+    if (u.orient !== r.orient && others.every((o) => !overlaps(o, to))) r = to;
+  }
+  return { ...drag.start, [id]: r };
+}
+
+/** `held`'s shape on the straight line from `from` to `held`: the furthest point along it that lies on none of `others` (see `landing`). */
+function furthest(from: Placed, held: Placed, others: readonly Rect[]): Placed {
+  const v = { x: held.x - from.x, y: held.y - from.y };
+  // The open stretch of the line, as a share t of it, over which the held pane overlaps `r`.
+  const stretch = (r: Rect): [number, number] | null => {
+    let lo = -Infinity;
+    let hi = Infinity;
+    for (const a of ["x", "y"] as const) {
+      const [p, len, d] = [start(from, a), span(held, a), a === "x" ? v.x : v.y];
+      const [q0, q1] = [start(r, a), start(r, a) + span(r, a)];
+      if (Math.abs(d) < EPS) {
+        if (overlap(p, p + len, q0, q1) <= EPS) return null;
+        continue;
+      }
+      const [t0, t1] = [(q0 - len - p) / d, (q1 - p) / d];
+      lo = Math.max(lo, Math.min(t0, t1));
+      hi = Math.min(hi, Math.max(t0, t1));
+    }
+    return lo < hi ? [lo, hi] : null;
+  };
+  const stretches = others.map(stretch).filter((s): s is [number, number] => s !== null);
+  let t = 1;
+  for (let guard = 0; guard <= stretches.length; guard++) {
+    const inside = stretches.find(([a, b]) => a < t - 1e-9 && t < b - 1e-9);
+    if (!inside) break;
+    t = Math.max(0, inside[0]);
+  }
+  // Flush to the bit: t·v is the obstacle's edge less the pane, give or take an ulp.
+  const snap = (x: number) => (Math.abs(x - Math.round(x)) < 1e-6 ? Math.round(x) : x);
+  return { ...held, x: snap(from.x + v.x * t), y: snap(from.y + v.y * t) };
 }
 
 /**
@@ -1362,10 +1411,7 @@ function flush(
  * along for another it was on (a row in the bottom-left corner, slid up the
  * left edge) is inserted there turned, as if it had come from elsewhere.
  */
-export function reshuffled(
-  drag: Drag, held: Placed, pointer: Point, area: Size,
-  minSize: (id: string, orient: Orientation | undefined) => Size, m: Metrics = FINE,
-): { preview: Layout; refused?: string } {
+export function reshuffled(drag: Drag, held: Placed, area: Size, m: Metrics = FINE): { preview: Layout; refused?: string } {
   const id = drag.grab.id;
   const was = drag.start[id];
   const reach = reachOf(m);
@@ -1395,7 +1441,7 @@ export function reshuffled(
   if (e !== undefined) {
     if (stay.includes(e) && !turning) {
       const r = reordered(drag.start, id, held, e, area, reach);
-      if (r === "slide") return { preview: flush(drag, pointer, area, minSize, m, false) };
+      if (r === "slide") return { preview: landing(drag, held, area, m, false) };
       return overlapping(r).length ? refuse(NO_ROOM) : { preview: r };
     }
     let shape: Placed = held;
@@ -1421,7 +1467,7 @@ export function reshuffled(
     };
     return overlapping(out).length ? refuse(NO_SWAP) : { preview: out };
   }
-  return { preview: flush(drag, pointer, area, minSize, m, true) };
+  return { preview: landing(drag, held, area, m, true) };
 }
 
 // ---- see-through and locked -------------------------------------------------
