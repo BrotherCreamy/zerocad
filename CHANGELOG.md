@@ -7,6 +7,71 @@ decisions.
 
 ---
 
+## The spline: a curve through points you can drag
+
+The owner: *"give me better sketch tools, relations, trim, slot... all the
+usual"*. After the polygon, slot and ellipse, the curve every CAD sketch
+has. Built to [`docs/plans/spline.md`](docs/plans/spline.md); every
+deviation, the table of what each edit does with a spline, and the
+OpenCascade reading are in its *As built*.
+
+- **A cubic B-spline through the points you click** — Onshape's spline, not a
+  control polygon. The **spline tool** is under the **curves** button beside
+  the ellipse (picture 246): click the points, watch the curve grow through
+  them (247); a second click on the last (a double-click), Enter or ✓ ends
+  it open (248); a click on the first, with three laid, closes it (255).
+  Typed: `spline("p1", "p2", [10, 5], { closed: true })` — names or
+  coordinates — answering `sp1`. Open, its ends are natural (no curvature);
+  closed, it is smooth to the second derivative round its seam. Its knots
+  are centripetal, so it neither overshoots a tight turn nor loops between
+  close points.
+- **Its points are ordinary points**: drag one and the curve follows, still
+  through every point (249); dimension between them (250); `coin`, `fix`,
+  snap to them. The curve's control points are its own variables, held by
+  equations the spline **owns** — made with it, deleted with it, journalled
+  with it as one step (ARCHITECTURE.md, "An entity can own its equations").
+  Deleting a through-point takes the spline; deleting the spline leaves its
+  points.
+- **Relations**: `onspline("p9", "sp1")` holds a point on the curve, sliding
+  along it, by a parameter of the relation's own (saved, so it opens where it
+  was); a click on the curve with the point tool infers it. `tan` takes a
+  spline at an end — with a line, an arc or a circle at the end they share,
+  or another spline end to end.
+- **The menu on the curve**: *Add point here* (`addThrough`, the curve bends
+  a little anew through it — picture 251), *Remove point pN*
+  (`removeThrough`), and *Remove from sp1* on a through-point.
+- **Solids**: a spline is a profile edge, a closed loop on its own, or a
+  hole, for extrude and revolve (252, 256); its wall is the spline swept, a
+  surface of linear extrusion or of revolution over the spline's own
+  `B_SPLINE_CURVE_WITH_KNOTS`, and the solid kernel takes it as its exact
+  NURBS. STEP of six spline parts read valid by OpenCascade 8.0.1, the
+  volumes the closed forms to 3·10⁻¹¹ (`test/fixtures/step-spline/`).
+- **Drawn smooth**: within a quarter pixel of the curve and no chord turning
+  more than 2° from the next — the wall's shading at 3× showed bands until
+  the second rule (253, 254).
+- **The sketch edits** (the spec's table, every refusal tested): a spline
+  **cuts** a line, arc or circle it crosses, and a line extends to one; mirror
+  and the patterns copy it as the spline through the copied points; trim,
+  extend and offset of a spline itself are refused by name, as is a region
+  bounded by part of one. Surfaces sweep and turn one.
+- **Found on the way**: the kernel's revolve named a profile's faces by its
+  members' first points, wrong when a member starts on the axis (fixed, with
+  arcs only); a closed spline in no frame's plane could not be extruded
+  (sketchface.ts asked it for a normal); a chord between a closed spline's
+  own points split nothing; three by looking at pictures — a lid's spline
+  points drawn as dots, the wall's bands, and a phone chip's sentence wrapped
+  to three lines (ARCHITECTURE.md's list, now forty-eight).
+- **Format 18** (`values.splines`, `values.params`). Old files open
+  unchanged.
+- On an iPhone 13 (Chromium's emulation): armed from the curves flyout by a
+  held finger, tapped, ✓ (257, 258); a closed one extruded and undone from
+  the action strip (259, 260).
+- Tests: unit `test/spline.test.ts` (12), `test/splinesolids.test.ts` (9),
+  `test/splineedit.test.ts` (8), `test/stepspline.test.ts` (6); browser
+  `test/e2e/spline.e2e.ts` (7).
+
+---
+
 ## Surfaces: a surface is a thing, and trim, knit, fillet and thicken are operations
 
 The owner: *"please add solid and surface fillet tools if possible"*, and

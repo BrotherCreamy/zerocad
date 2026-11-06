@@ -126,7 +126,7 @@ test("refusals say why and change nothing: a face outside, one already in, a dis
   assert.throws(() => subtract(m, r, lines[2]), /would leave rg1 empty — del\("rg1"\) removes it/);
   assert.throws(() => subtract(m, "rg9", ring), /"rg9" is not a region — regions are named rg1, rg2/);
   assert.throws(() => subtract(m, lines[0], ring), /is a line, not a region/);
-  assert.throws(() => region(m, "p1"), /is not a line, arc, circle or ellipse/);
+  assert.throws(() => region(m, "p1"), /is not a line, arc, circle, ellipse or spline/);
   const up = m.addFrame(m.addPoint([0, 0, 0]).name, m.addPoint([1, 0, 0]).name, m.addPoint([0, 0, 1]).name).name;
   const tall = m.addCircle(m.addPoint([20, 0, 10]).name, 3, up).name;
   assert.throws(() => subtract(m, r, tall), /loop is not in rg1's plane/);

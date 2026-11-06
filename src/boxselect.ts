@@ -34,7 +34,7 @@
 import type { Entity, Model } from "./model.ts";
 import { intersect, withinSweep, type Curve, type Pt } from "./intersect.ts";
 import { frameArms, frameMarker } from "./framemarker.ts";
-import { screenCurve, screenOf as projectPoint } from "./projection.ts";
+import { sampledWorld, screenCurve, screenOf as projectPoint } from "./projection.ts";
 import { inSight, visibleRuns, type Occlusion } from "./occlusion.ts";
 import { arcSamples, arcSegments, frameReach } from "./arcgeom.ts";
 import { curveFrame } from "./curveplane.ts";
@@ -141,7 +141,10 @@ function worldPaths(model: Model, view: View, e: Entity): { world: number[][]; c
     return [b.ux, b.uy, b.uz].filter((u): u is number[] => !!u && u.some((c) => c !== 0))
       .map((u) => ({ world: [b.origin, b.origin.map((c, i) => c + (u[i] ?? 0) * reach)], closed: false }));
   }
-  return [];
+  // A declared kind with no frame (a spline, docs/plans/spline.md): the samples
+  // it is drawn as. Before it, a shaded view's box never held such a kind.
+  const pts = sampledWorld(model, e, view.scale);
+  return pts ? [{ world: pts, closed: false }] : [];
 }
 
 /** Is the whole of `e` inside `rect`? */

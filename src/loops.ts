@@ -140,9 +140,10 @@
 //
 // Loops live in a 2D or a 3D model; anything else has no planes to put them in.
 
-import { ORIGIN, entityKind, type Model } from "./model.ts";
+import { ORIGIN, entityKind, isClosedEntity, spanOf, type Model } from "./model.ts";
 import { arcSegments } from "./arcgeom.ts";
-import { curveFrame, curvePlaneOf, framePlaneAxes } from "./curveplane.ts";
+import { curveFrame, curvePath, curvePlaneOf, framePlaneAxes, hasCurvePath } from "./curveplane.ts";
+import { areaSweep, derivs, domain, nearestParam, pointAt as pathPoint, sampleParams, type BSpline } from "./bspline.ts";
 import { frameBasis } from "./relations/refs.ts";
 import { depth, liesOn, screenToPlane, viewAxes, worldToScreen, type Plane, type View } from "./view.ts";
 import { cross3, dot3, lift3, sub3, unit3 } from "./vec3.ts";
@@ -255,7 +256,8 @@ export function memberLabel(m: LoopMember): string {
 /** A line or arc that can be part of a loop: its two ends, and which joined class each is in. */
 interface Edge {
   name: string;
-  kind: "line" | "arc";
+  /** `path`: a declared curve laid out by an exact B-spline (curveplane.ts's `curvePath`), open, with two ends. */
+  kind: "line" | "arc" | "path";
   /** Creation order — what "earliest" means everywhere below. */
   order: number;
   /** Point names in the entity's own direction: a line's refs, an arc's start and end. */
@@ -337,9 +339,19 @@ function collect(model: Model, classOf: Map<string, number>): { edges: Edge[]; c
       // A declared closed curve (model.ts's `EntityKindSpec`) is a closed
       // member like a circle: a loop on its own, cut by what is held on it or
       // crosses it — when it bounds anything as it stands, and is laid out by a
-      // frame (curveplane.ts) the pieces below can walk.
+      // frame or an exact B-spline (curveplane.ts) the pieces below can walk.
+      // A declared open one with a B-spline is an edge between its two ends.
       const k = entityKind(e.kind);
-      if (k?.curve && k.closed && (k.bounds?.(model, e.name) ?? true) && curveFrame(model, e)) circles.push({ name: e.name, order });
+      if (!k?.curve || !(k.bounds?.(model, e.name) ?? true)) continue;
+      const laid = curveFrame(model, e) !== null || curvePath(model, e) !== null;
+      if (isClosedEntity(e)) {
+        if (laid) circles.push({ name: e.name, order });
+      } else if (hasCurvePath(e.kind) && laid) {
+        const ends = k.ends?.(e);
+        if (!ends) continue;
+        const at: [number, number] = [classOf.get(ends[0])!, classOf.get(ends[1])!];
+        if (at[0] !== at[1]) edges.push({ name: e.name, kind: "path", order, ends: [ends[0], ends[1]], at });
+      }
     }
   }
   return { edges, circles };
@@ -379,9 +391,21 @@ function candidatePlanes(model: Model, edges: Edge[], circles: CircleRef[]): Gro
     for (const g of groups) if (parallel(g.normal, n) && liesOn(g.plane, origin)) return;
     groups.push({ normal: n, plane: planeThrough(origin, n) });
   };
-  for (const c of circles) add(lift3(model.coords(model.oriented(c.name).center)), curvePlaneOf(model, c.name).n);
+  // A curve laid out by a B-spline offers the plane its control points span,
+  // when they span one (a straight one does not, and takes the plane of what
+  // it joins).
+  const pathPlane = (name: string) => {
+    const path = curvePath(model, model.entities.get(name)!);
+    const n = path ? polygonNormal(path.curve.ctrl) : null;
+    if (path && n) add(path.curve.ctrl[0], n);
+  };
+  for (const c of circles) {
+    if (hasCurvePath(model.entities.get(c.name)!.kind)) { pathPlane(c.name); continue; }
+    add(lift3(model.coords(model.oriented(c.name).center)), curvePlaneOf(model, c.name).n);
+  }
   for (const e of edges) {
     if (e.kind === "arc") add(lift3(model.coords(model.arc(e.name).center)), curvePlaneOf(model, e.name).n);
+    if (e.kind === "path") pathPlane(e.name);
   }
   const incident = new Map<number, { at: number[]; dir: number[] }[]>();
   for (const e of edges) {
@@ -434,10 +458,29 @@ function candidatePlanes(model: Model, edges: Edge[], circles: CircleRef[]): Gro
   return groups;
 }
 
+/**
+ * The unit normal of the plane a polygon's points span — Newell's sum about
+ * the first, so a nearly straight run of points still gives the plane its
+ * bend does — or null for points on a line.
+ */
+function polygonNormal(pts: number[][]): number[] | null {
+  let n = [0, 0, 0];
+  for (let i = 1; i + 1 < pts.length; i++) n = n.map((c, k) => c + cross3(sub3(pts[i], pts[0]), sub3(pts[i + 1], pts[0]))[k]);
+  const len = Math.hypot(...n);
+  const size = Math.max(...pts.map((p) => Math.hypot(...sub3(p, pts[0]))));
+  return len > PARALLEL_SINE * size * size ? n.map((c) => c / len) : null;
+}
+
 /** Whether a line, arc or circle lies in a candidate plane. See the top of the file. */
 function inPlane(model: Model, g: Group, name: string): boolean {
   const e = model.entities.get(name)!;
   const on = (p: string) => liesOn(g.plane, lift3(model.coords(p)));
+  // A curve laid out by a B-spline: every point it runs through and every
+  // control point it is solved for (the curve is in their hull).
+  if (hasCurvePath(e.kind)) {
+    const path = curvePath(model, e);
+    return !!path && model.refsOf(e).every(on) && path.curve.ctrl.every((c) => liesOn(g.plane, c));
+  }
   if (e.kind === "line") return on(e.refs[0]) && on(e.refs[1]);
   if (e.kind === "arc") return parallel(curvePlaneOf(model, name).n, g.normal) && on(e.center) && on(e.start) && on(e.end);
   if (e.kind === "circle") return parallel(curvePlaneOf(model, name).n, g.normal) && on(e.center);
@@ -481,6 +524,15 @@ function orientPlane(model: Model, g: Group, lines: Edge[], curves: string[]): L
     const { u, v, n } = curvePlaneOf(model, curves[0]);
     return { origin: lift3(model.coords(model.oriented(curves[0]).center)), u, v, normal: n, frame: null };
   }
+  if (!lines.length) {
+    // Curves laid out by B-splines alone, and no frame: the plane's normal the
+    // way its largest component is positive, as for lines, from the plane's
+    // own point, its first direction the one `spanOf` gives.
+    const big = g.normal.reduce((k, x, i) => (Math.abs(x) > Math.abs(g.normal[k]) + 1e-12 ? i : k), 0);
+    const normal = g.normal[big] < 0 ? g.normal.map((x) => -x) : g.normal.slice();
+    const [u, v] = spanOf(normal);
+    return { origin: g.plane.origin, u, v, normal, frame: null };
+  }
   // Lines only, and no frame to ask: the normal whose largest component is
   // positive (+z for anything drawn level), +u along the first line.
   const big = g.normal.reduce((k, x, i) => (Math.abs(x) > Math.abs(g.normal[k]) + 1e-12 ? i : k), 0);
@@ -511,9 +563,19 @@ type P2 = [number, number];
  */
 type Piece =
   | { kind: "line"; p: P2; q: P2 }
-  | { kind: "arc"; p: P2; q: P2; c: P2; r: number; t0: number; sweep: number; b?: number; dir?: P2 };
+  | { kind: "arc"; p: P2; q: P2; c: P2; r: number; t0: number; sweep: number; b?: number; dir?: P2 }
+  /**
+   * A curve laid out by an exact B-spline (curveplane.ts's `curvePath`), flat
+   * in the plane: walked from its parameter `t0` to `t1` (either way round,
+   * `t1 < t0` walking it backwards), a closed one's parameter wrapping
+   * round its `period` — every question below answered on the curve itself:
+   * its area exactly (Green's theorem by Gauss–Legendre, ../bspline.ts), its
+   * crossings and nearest points by a fine walk refined by Newton.
+   */
+  | { kind: "path"; p: P2; q: P2; curve: BSpline; t0: number; t1: number; closed: boolean };
 
 type ArcPiece = Extract<Piece, { kind: "arc" }>;
+type PathPiece = Extract<Piece, { kind: "path" }>;
 
 /** The semi-axis across `r`: `b` for a conic, `r` for a circle. */
 const rb = (piece: ArcPiece): number => piece.b ?? piece.r;
@@ -552,6 +614,8 @@ function arcLike(piece: ArcPiece, t0: number, sweep: number): Piece {
 }
 
 const TAU = Math.PI * 2;
+/** `n` steps along a piece, as fractions from 0 to 1. */
+const arcSteps = (n: number): number[] => Array.from({ length: n + 1 }, (_, k) => k / n);
 const sub2 = (a: P2, b: P2): P2 => [a[0] - b[0], a[1] - b[1]];
 const wedge2 = (a: P2, b: P2): number => a[0] * b[1] - a[1] * b[0];
 const dist2 = (a: P2, b: P2): number => Math.hypot(a[0] - b[0], a[1] - b[1]);
@@ -564,11 +628,110 @@ function arcPiece(c: P2, r: number, t0: number, sweep: number): Piece {
 
 function reversed(piece: Piece): Piece {
   if (piece.kind === "line") return { kind: "line", p: piece.q, q: piece.p };
+  if (piece.kind === "path") return { ...piece, p: piece.q, q: piece.p, t0: piece.t1, t1: piece.t0 };
   return arcLike(piece, piece.t0 + piece.sweep, -piece.sweep);
 }
 
 /** A whole circle: its two ends are one point, and that point is no end at all. */
-const whole = (piece: Piece): boolean => piece.kind === "arc" && Math.abs(piece.sweep) >= TAU - 1e-12;
+const whole = (piece: Piece): boolean => (piece.kind === "arc" && Math.abs(piece.sweep) >= TAU - 1e-12)
+  || (piece.kind === "path" && piece.closed && Math.abs(piece.t1 - piece.t0) >= period(piece) * (1 - 1e-12));
+
+// --- a path's own geometry ------------------------------------------------------------
+
+/** A path's parameter range, and how long it is. */
+const span = (piece: PathPiece): [number, number] => domain(piece.curve);
+const period = (piece: PathPiece): number => { const [lo, hi] = span(piece); return hi - lo; };
+
+/** A parameter, wrapped into a closed path's range; an open one's as it is. */
+function wrapped(piece: PathPiece, u: number): number {
+  if (!piece.closed) return u;
+  const [lo] = span(piece);
+  return lo + mod(u - lo, period(piece));
+}
+
+/** The path's point at parameter `u`. */
+function onPath(piece: PathPiece, u: number): P2 {
+  const p = pathPoint(piece.curve, wrapped(piece, u));
+  return [p[0], p[1]];
+}
+
+/** The path's first and second derivatives at parameter `u`. */
+function pathDerivs(piece: PathPiece, u: number): [P2, P2] {
+  const [, d1, d2] = derivs(piece.curve, wrapped(piece, u), 2);
+  return [[d1[0], d1[1]], [d2[0], d2[1]]];
+}
+
+/** The parameter `t` of the piece's way along, as fractions of it. */
+const pathParam = (piece: PathPiece, t: number): number => piece.t0 + t * (piece.t1 - piece.t0);
+
+/** Parameters along the piece, as fractions, fine enough that a walk between them follows it. */
+function pathSteps(piece: PathPiece): number[] {
+  const spans = Math.max(1, piece.curve.ctrl.length - piece.curve.degree);
+  const frac = Math.abs(piece.t1 - piece.t0) / period(piece);
+  const n = Math.max(16, Math.ceil(64 * spans * Math.min(1, frac + 1e-9)));
+  return Array.from({ length: n + 1 }, (_, k) => k / n);
+}
+
+/** The piece's own parameter ranges, in the curve's domain and in walking order: a closed path's run across its seam is two. */
+function pathRanges(piece: PathPiece): [number, number][] {
+  const [lo, hi] = span(piece);
+  const T = hi - lo;
+  if (!piece.closed) return [[piece.t0, piece.t1]];
+  const fwd = piece.t1 >= piece.t0;
+  const [a, b] = fwd ? [piece.t0, piece.t1] : [piece.t1, piece.t0];
+  const out: [number, number][] = [];
+  // Unwrap from the first turn the range starts in.
+  let start = lo + mod(a - lo, T);
+  let left = b - a;
+  while (left > 1e-15 * T) {
+    const take = Math.min(left, hi - start);
+    out.push([start, start + take]);
+    left -= take;
+    start = lo;
+  }
+  return fwd ? out : out.reverse().map(([x, y]) => [y, x]);
+}
+
+/** Where on the piece, as a fraction of it, the curve's point nearest `x` is — or null when that is off the piece. */
+function pathFraction(piece: PathPiece, x: P2, slack = 1e-9): number | null {
+  const u = nearestParam(piece.curve, x, piece.closed);
+  const d = piece.t1 - piece.t0;
+  if (piece.closed) {
+    const along = mod(Math.sign(d || 1) * (u - piece.t0), period(piece));
+    if (whole(piece)) return along / period(piece);
+    if (along <= Math.abs(d) * (1 + slack)) return Math.min(1, along / Math.abs(d));
+    // Just short of its start, round the seam: its start.
+    if (period(piece) - along <= Math.abs(d) * slack) return 0;
+    return null;
+  }
+  const f = (u - piece.t0) / d;
+  if (f < -slack || f > 1 + slack) return null;
+  return Math.min(1, Math.max(0, f));
+}
+
+/** The piece's point nearest `x` within the piece, and how far: a walk along it, then Newton kept inside it. */
+function nearestOnPath(piece: PathPiece, x: P2): { t: number; d: number } {
+  let best = { t: 0, d: Infinity };
+  for (const t of pathSteps(piece)) {
+    const d = dist2(onPath(piece, pathParam(piece, t)), x);
+    if (d < best.d) best = { t, d };
+  }
+  let t = best.t;
+  const scale = piece.t1 - piece.t0;
+  for (let k = 0; k < 20; k++) {
+    const u = pathParam(piece, t);
+    const c = onPath(piece, u);
+    const [d1, d2] = pathDerivs(piece, u);
+    const r = sub2(c, x);
+    const g = (r[0] * d1[0] + r[1] * d1[1]) * scale;
+    const h = (d1[0] * d1[0] + d1[1] * d1[1] + r[0] * d2[0] + r[1] * d2[1]) * scale * scale;
+    if (!(h > 0)) break;
+    const next = Math.min(1, Math.max(0, t - g / h));
+    if (Math.abs(next - t) < 1e-15) { t = next; break; }
+    t = next;
+  }
+  return { t, d: dist2(onPath(piece, pathParam(piece, t)), x) };
+}
 
 /** World → the plane's (u, v), measured from its origin. */
 function toPlane(plane: LoopPlane, world: number[]): P2 {
@@ -592,6 +755,18 @@ function toWorld(plane: LoopPlane, [x, y]: P2): number[] {
 function pieceOf(model: Model, name: string, plane: LoopPlane): Piece {
   const e = model.entities.get(name)!;
   if (e.kind === "line") return { kind: "line", p: toPlane(plane, model.coords(e.refs[0])), q: toPlane(plane, model.coords(e.refs[1])) };
+  const path = curvePath(model, e);
+  if (path) {
+    // Its control points laid flat in the plane: the same curve, since a
+    // B-spline's points are affine in its control points. In its own
+    // direction, from the start of its parameter — what a span measures.
+    const curve: BSpline = { ...path.curve, ctrl: path.curve.ctrl.map((c) => toPlane(plane, c)) };
+    const [lo, hi] = domain(curve);
+    const flat: PathPiece = { kind: "path", p: [0, 0], q: [0, 0], curve, t0: lo, t1: hi, closed: path.closed };
+    flat.p = onPath(flat, lo);
+    flat.q = path.closed ? flat.p : onPath(flat, hi);
+    return flat;
+  }
   const f = curveFrame(model, e)!;
   const c = toPlane(plane, f.center);
   const side = dot3(f.normal, plane.normal) < 0 ? -1 : 1;
@@ -612,6 +787,7 @@ function pieceOf(model: Model, name: string, plane: LoopPlane): Piece {
 /** The piece's point a fraction `t` of the way along it. */
 function pointAt(piece: Piece, t: number): P2 {
   if (piece.kind === "line") return [piece.p[0] + t * (piece.q[0] - piece.p[0]), piece.p[1] + t * (piece.q[1] - piece.p[1])];
+  if (piece.kind === "path") return onPath(piece, pathParam(piece, t));
   return onCurve(piece, piece.t0 + t * piece.sweep);
 }
 
@@ -623,6 +799,12 @@ function pointAt(piece: Piece, t: number): P2 {
  */
 function slice(piece: Piece, a: number, b: number): Piece {
   if (piece.kind === "arc") return arcLike(piece, piece.t0 + a * piece.sweep, (b - a) * piece.sweep);
+  if (piece.kind === "path") {
+    return {
+      ...piece, t0: pathParam(piece, a), t1: pathParam(piece, b),
+      p: a === 0 ? piece.p : pointAt(piece, a), q: b === 1 ? piece.q : pointAt(piece, b),
+    };
+  }
   return { kind: "line", p: a === 0 ? piece.p : pointAt(piece, a), q: b === 1 ? piece.q : pointAt(piece, b) };
 }
 
@@ -633,6 +815,7 @@ function slice(piece: Piece, a: number, b: number): Piece {
  * whole circle's answer is in [0, 1).
  */
 function fractionAlong(piece: Piece, x: P2): number | null {
+  if (piece.kind === "path") return pathFraction(piece, x);
   if (piece.kind === "line") {
     const d = sub2(piece.q, piece.p);
     const t = ((x[0] - piece.p[0]) * d[0] + (x[1] - piece.p[1]) * d[1]) / (d[0] * d[0] + d[1] * d[1]);
@@ -652,12 +835,18 @@ function fractionAlong(piece: Piece, x: P2): number | null {
  */
 function pieceArea(piece: Piece): number {
   if (piece.kind === "line") return wedge2(piece.p, piece.q) / 2;
+  if (piece.kind === "path") return pathRanges(piece).reduce((s, [a, b]) => s + areaSweep(piece.curve, a, b), 0);
   return (wedge2(piece.c, sub2(piece.q, piece.p)) + piece.r * rb(piece) * piece.sweep) / 2;
 }
 
 /** The piece's direction where it starts. */
 function startTangent(piece: Piece): P2 {
   if (piece.kind === "line") return sub2(piece.q, piece.p);
+  if (piece.kind === "path") {
+    const [d] = pathDerivs(piece, piece.t0);
+    const s = Math.sign(piece.t1 - piece.t0) || 1;
+    return [s * d[0], s * d[1]];
+  }
   const s = Math.sign(piece.sweep);
   if (piece.b === undefined) return [-s * Math.sin(piece.t0), s * Math.cos(piece.t0)];
   const [dx, dy] = dirOf(piece);
@@ -668,6 +857,12 @@ function startTangent(piece: Piece): P2 {
 /** Signed curvature where the piece starts: positive turns left (counter-clockwise), a line is zero. */
 function curvature(piece: Piece): number {
   if (piece.kind === "line") return 0;
+  if (piece.kind === "path") {
+    // Walking it backwards turns the other way: the first derivative's sign flips, the second's does not.
+    const [d1, d2] = pathDerivs(piece, piece.t0);
+    const speed = Math.hypot(d1[0], d1[1]);
+    return speed > 0 ? (Math.sign(piece.t1 - piece.t0) || 1) * wedge2(d1, d2) / (speed * speed * speed) : 0;
+  }
   if (piece.b === undefined) return Math.sign(piece.sweep) / piece.r;
   const [a, b, t] = [piece.r, piece.b, piece.t0];
   return Math.sign(piece.sweep) * (a * b) / Math.pow(a * a * Math.sin(t) ** 2 + b * b * Math.cos(t) ** 2, 1.5);
@@ -735,6 +930,7 @@ function circleCircle(c1: P2, r1: number, c2: P2, r2: number, tol: number): P2[]
  * at whatever point noise in their directions would put it.
  */
 function crossings(e: Piece, f: Piece, tol: number): P2[] {
+  if (e.kind === "path" || f.kind === "path") return pathCrossings(e, f, tol);
   if (e.kind === "line" && f.kind === "line") {
     const side = (a: P2, b: P2, x: P2) => wedge2(sub2(b, a), sub2(x, a)) / dist2(a, b);
     const straddles = (a: P2, b: P2, x: P2, y: P2) => {
@@ -754,6 +950,75 @@ function crossings(e: Piece, f: Piece, tol: number): P2[] {
   const [a, b] = [e as Extract<Piece, { kind: "arc" }>, f as Extract<Piece, { kind: "arc" }>];
   if (a.b !== undefined || b.b !== undefined) return conicConic(a, b, tol).filter((x) => withinArc(a, x, tol) && withinArc(b, x, tol));
   return circleCircle(a.c, a.r, b.c, b.r, tol).filter((x) => withinArc(a, x, tol) && withinArc(b, x, tol));
+}
+
+/**
+ * Where a path crosses another piece, of any kind — none of which has a closed
+ * form with a B-spline. Both walked as fine polylines (`pathSteps`; a line is
+ * its own); where two of their segments cross, the crossing is refined by
+ * Newton on the two exact curves, `A(s) = B(t)`. Kept when it is clear of
+ * every end of both and is a **crossing**: the first piece passes from one side
+ * of the second to the other there, read against the second's tangent a short
+ * step either way — so a tangency, which changes no side, is no crossing, as
+ * everywhere here. Crossings within `tol` of one another are one.
+ */
+function pathCrossings(e: Piece, f: Piece, tol: number): P2[] {
+  const steps = (p: Piece) => (p.kind === "line" ? [0, 1] : p.kind === "path" ? pathSteps(p)
+    : arcSteps(Math.max(16, Math.ceil(Math.abs(p.sweep) / (TAU / 256)))));
+  const [se, sf] = [steps(e), steps(f)];
+  const [pe, pf] = [se.map((t) => pointAt(e, t)), sf.map((t) => pointAt(f, t))];
+  const tangent = (p: Piece, t: number): P2 => {
+    if (p.kind === "line") return sub2(p.q, p.p);
+    if (p.kind === "path") { const [d] = pathDerivs(p, pathParam(p, t)); const k = p.t1 - p.t0; return [d[0] * k, d[1] * k]; }
+    const a = p.t0 + t * p.sweep;
+    if (p.b === undefined) return [-p.r * Math.sin(a) * p.sweep, p.r * Math.cos(a) * p.sweep];
+    const [dx, dy] = dirOf(p);
+    const [x, y] = [-p.r * Math.sin(a) * p.sweep, p.b * Math.cos(a) * p.sweep];
+    return [x * dx - y * dy, x * dy + y * dx];
+  };
+  const out: P2[] = [];
+  for (let i = 0; i + 1 < pe.length; i++) {
+    const [a, b] = [pe[i], pe[i + 1]];
+    const lo = [Math.min(a[0], b[0]) - tol, Math.min(a[1], b[1]) - tol];
+    const hi = [Math.max(a[0], b[0]) + tol, Math.max(a[1], b[1]) + tol];
+    for (let j = 0; j + 1 < pf.length; j++) {
+      const [c, d] = [pf[j], pf[j + 1]];
+      if (Math.max(c[0], d[0]) < lo[0] || Math.min(c[0], d[0]) > hi[0] || Math.max(c[1], d[1]) < lo[1] || Math.min(c[1], d[1]) > hi[1]) continue;
+      const u = sub2(b, a), v = sub2(d, c);
+      const den = wedge2(u, v);
+      if (Math.abs(den) < 1e-300) continue;
+      const w = sub2(c, a);
+      const s0 = wedge2(w, v) / den, t0 = wedge2(w, u) / den;
+      if (s0 < -0.5 || s0 > 1.5 || t0 < -0.5 || t0 > 1.5) continue;
+      // Newton on A(s) − B(t) = 0, from where the two segments cross.
+      let s = se[i] + s0 * (se[i + 1] - se[i]);
+      let t = sf[j] + t0 * (sf[j + 1] - sf[j]);
+      for (let k = 0; k < 30; k++) {
+        const r = sub2(pointAt(e, s), pointAt(f, t));
+        const [A, B] = [tangent(e, s), tangent(f, t)];
+        const det = -A[0] * B[1] + A[1] * B[0];
+        if (Math.abs(det) < 1e-300) break;
+        const ds = (-r[0] * -B[1] - -r[1] * -B[0]) / det;
+        const dt = (A[0] * -r[1] - A[1] * -r[0]) / det;
+        s += ds; t += dt;
+        if (Math.abs(ds) + Math.abs(dt) < 1e-15) break;
+      }
+      if (!(s >= 0 && s <= 1 && t >= 0 && t <= 1)) continue;
+      const x = pointAt(e, s);
+      if (dist2(x, pointAt(f, t)) > tol) continue;
+      if (!whole(e) && (dist2(x, e.p) <= tol || dist2(x, e.q) <= tol)) continue;
+      if (!whole(f) && (dist2(x, f.p) <= tol || dist2(x, f.q) <= tol)) continue;
+      // A crossing, not a touch: e is on opposite sides of f's tangent either side of it.
+      const T = tangent(f, t);
+      const step = Math.min(1e-3, 0.25 * Math.max(se[i + 1] - se[i], 1e-6));
+      const side = (q: number) => wedge2(T, sub2(pointAt(e, Math.min(1, Math.max(0, q))), x));
+      const [l, r] = [side(s - step), side(s + step)];
+      const scale = Math.hypot(T[0], T[1]) * tol;
+      if (!((l > scale && r < -scale) || (l < -scale && r > scale))) continue;
+      if (!out.some((y) => dist2(x, y) <= tol)) out.push(x);
+    }
+  }
+  return out;
 }
 
 /**
@@ -806,6 +1071,17 @@ function conicConic(e: ArcPiece, f: ArcPiece, tol: number): P2[] {
  * the long way round when it has to be — and a whole circle is a whole turn.
  */
 function turnAbout(piece: Piece, x: P2): number {
+  if (piece.kind === "path") {
+    // A fine walk along it, each step's turn about x small and signed.
+    let sum = 0;
+    let prev = sub2(piece.p, x);
+    for (const t of pathSteps(piece).slice(1)) {
+      const next = sub2(pointAt(piece, t), x);
+      sum += Math.atan2(wedge2(prev, next), prev[0] * next[0] + prev[1] * next[1]);
+      prev = next;
+    }
+    return sum;
+  }
   const a = sub2(piece.p, x), b = sub2(piece.q, x);
   const base = Math.atan2(wedge2(a, b), a[0] * b[0] + a[1] * b[1]);
   if (piece.kind === "line" || Math.hypot(...normalised(piece, x)) >= 1) return base;
@@ -822,6 +1098,7 @@ function inside(outline: Piece[], x: P2): boolean {
 
 /** The shortest distance from `x` to the piece. */
 function distanceTo(piece: Piece, x: P2): number {
+  if (piece.kind === "path") return nearestOnPath(piece, x).d;
   if (piece.kind === "line") {
     const d = sub2(piece.q, piece.p);
     const len2 = d[0] * d[0] + d[1] * d[1];
@@ -846,6 +1123,7 @@ function distanceTo(piece: Piece, x: P2): number {
 /** The piece's halfway point. */
 function midpoint(piece: Piece): P2 {
   if (piece.kind === "line") return [(piece.p[0] + piece.q[0]) / 2, (piece.p[1] + piece.q[1]) / 2];
+  if (piece.kind === "path") return pointAt(piece, 0.5);
   return onCurve(piece, piece.t0 + piece.sweep / 2);
 }
 
@@ -861,6 +1139,8 @@ function boxOf(pieces: Piece[]): Box {
   for (const piece of pieces) {
     grow(piece.p); grow(piece.q);
     if (piece.kind === "arc") grow(piece.c, Math.max(piece.r, rb(piece)));
+    // A B-spline lies in its control points' hull: all of them, generous for a part of one.
+    if (piece.kind === "path") for (const c of piece.curve.ctrl) grow([c[0], c[1]]);
   }
   return b;
 }
@@ -894,6 +1174,12 @@ export function heldOnCurves(model: Model): Held[] {
     const onLine = (rel.op === "pointOnLine" || (rel.op === "midpoint" && rel.args.length === 2)) && kind === "line";
     const onRim = (rel.op === "onCircle" && (kind === "arc" || kind === "circle")) || (entityKind(kind)?.heldBy?.includes(rel.op) ?? false);
     if (onLine || onRim) out.push({ point, curve });
+  }
+  // A curve's own points on it (`EntityKindSpec.through`): a chord drawn
+  // between two of a closed spline's points split nothing until they were
+  // read here — no relation says they are on it; its definition does.
+  for (const e of model.entities.values()) {
+    for (const point of entityKind(e.kind)?.through?.(e) ?? []) out.push({ point, curve: e.name });
   }
   return out;
 }
@@ -1356,12 +1642,16 @@ export function findLoops(model: Model): Loop[] {
     const lines = edges.filter((e) => inPlane(model, g, e.name));
     const rings = circles.filter((c) => inPlane(model, g, c.name));
     if (!lines.length && !rings.length) return;
-    const curves = [...lines.filter((e) => e.kind === "arc"), ...rings].sort((a, b) => a.order - b.order).map((c) => c.name);
+    // The curves a plane can be oriented by: those laid out by a frame. A
+    // B-spline has no centre or normal of its own to offer.
+    const framed = rings.filter((c) => !hasCurvePath(model.entities.get(c.name)!.kind));
+    const curves = [...lines.filter((e) => e.kind === "arc"), ...framed].sort((a, b) => a.order - b.order).map((c) => c.name);
     const plane = orientPlane(model, g, lines.filter((e) => e.kind === "line"), curves);
 
     const sources: Source[] = [
+      // An open path walks, cuts and joins as an arc does: an edge with two ends.
       ...lines.map((e): Source => ({
-        name: e.name, kind: e.kind, order: e.order, piece: pieceOf(model, e.name, plane), ends: e.ends, at: e.at, cuts: [], parts: 1,
+        name: e.name, kind: e.kind === "path" ? "arc" : e.kind, order: e.order, piece: pieceOf(model, e.name, plane), ends: e.ends, at: e.at, cuts: [], parts: 1,
       })),
       ...rings.map((c): Source => ({
         name: c.name, kind: "circle", order: c.order, piece: pieceOf(model, c.name, plane), ends: null, at: null, cuts: [], parts: 0,
@@ -1395,7 +1685,8 @@ export function findLoops(model: Model): Loop[] {
       // Counter-clockwise about the plane's normal: against the circle's own
       // way round when its frame faces the other way.
       const own = s.piece;
-      const outline = [own.kind === "arc" && own.sweep < 0 ? reversed(own) : own];
+      // By its area's sign, which for a circle is its sweep's.
+      const outline = [own.kind !== "line" && pieceArea(own) < 0 ? reversed(own) : own];
       found.push({
         loop: {
           members: [{ name: s.name, reversed: outline[0] !== own, from: null, to: null, span: null }],
@@ -1446,7 +1737,8 @@ function contains(outer: Found, inner: Found, ob: Box, ib: Box): boolean {
   const probes = inner.outline.flatMap((piece) =>
     piece.kind === "arc" && Math.abs(piece.sweep) >= TAU - 1e-12
       ? [0, 1, 2, 3].map((k) => onCurve(piece, piece.t0 + (k * Math.PI) / 2))
-      : [piece.p, midpoint(piece)]);
+      : whole(piece) ? [0, 0.25, 0.5, 0.75].map((t) => pointAt(piece, t))
+        : [piece.p, midpoint(piece)]);
   let clear = false;
   for (const x of probes) {
     if (outer.outline.some((piece) => distanceTo(piece, x) <= tol)) continue;
@@ -1521,6 +1813,12 @@ function edgeOn(view: View, plane: LoopPlane, outline: Piece[]): boolean {
   };
   for (const piece of outline) {
     if (piece.kind === "line") { take(piece.p); continue; }
+    if (piece.kind === "path") {
+      for (const u of sampleParams({ ...piece.curve, ctrl: piece.curve.ctrl.map((c) => toWorld(plane, [c[0], c[1]])) }, 0.25 / view.scale)) {
+        take(onPath(piece, u));
+      }
+      continue;
+    }
     const n = arcSegments(Math.abs(piece.sweep), Math.max(piece.r, rb(piece)) * view.scale);
     for (let k = 0; k < n; k++) take(onCurve(piece, piece.t0 + (piece.sweep * k) / n));
   }

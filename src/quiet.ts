@@ -45,7 +45,7 @@
 // view is shaded, which solids have faces on screen, what is revealed — at
 // glyphs.ts's height, so the draw pass and a unit test read one answer.
 
-import type { Model } from "./model.ts";
+import { entityKind, type Model } from "./model.ts";
 
 /** What the rule needs to know about this frame beyond the model. */
 export interface QuietScene {
@@ -82,6 +82,8 @@ export function quietEntities(model: Model, scene: QuietScene): Set<string> {
         else if (e?.kind === "arc") { out.add(e.start); out.add(e.end); out.add(e.center); }
         else if (e?.kind === "circle") out.add(e.center);
         else if (e?.kind === "ellipse") { out.add(e.center); out.add(e.major); }
+        // A declared kind's points (a lid's spline: every one it runs through).
+        else if (e && entityKind(e.kind)) for (const p of model.refsOf(e)) out.add(p);
       }
     }
     if (f.kind === "extrude") for (const w of f.walls) out.add(w);
@@ -94,10 +96,22 @@ export function quietEntities(model: Model, scene: QuietScene): Set<string> {
     // An ellipse's major end is on its rim, as an arc's ends are: quiet with
     // the edge it sits on. Its centre is kept, as a circle's is.
     else if (e.kind === "ellipse") out.add(e.major);
+    // A declared open curve's ends (a spline's first and last points) are ends,
+    // as a line's are. The points it bends through stay drawn: they are what
+    // shapes it, the handles a hand reaches for, and no corner.
+    else { const ends = entityKind(e.kind)?.ends?.(e); if (ends) for (const p of ends) out.add(p); }
     if (e.kind === "arc" || e.kind === "circle" || e.kind === "ellipse") centres.add(e.center);
   }
   for (const c of centres) out.delete(c);
-  for (const n of solidEdges(model, scene.faced)) out.add(n);
+  for (const n of solidEdges(model, scene.faced)) {
+    out.add(n);
+    // A declared curve that is a solid's edge (a spline's, or its lid twin's)
+    // takes its points with it: they lie on the edge the face layer draws, and
+    // a lid's were dots and names along a smooth rim (looked at,
+    // docs/plans/spline.md). Revealed with the curve, as a line's ends are.
+    const e = model.entities.get(n);
+    if (e && entityKind(e.kind)?.ends) for (const p of model.refsOf(e)) out.add(p);
+  }
   return out;
 }
 
@@ -134,6 +148,7 @@ export function revealed(model: Model, names: Iterable<string>): Set<string> {
     else if (e.kind === "arc") { out.add(e.start); out.add(e.end); out.add(e.center); }
     else if (e.kind === "circle") out.add(e.center);
     else if (e.kind === "ellipse") { out.add(e.center); out.add(e.major); }
+    else if (entityKind(e.kind)) for (const p of model.refsOf(e)) out.add(p);
   }
   return out;
 }

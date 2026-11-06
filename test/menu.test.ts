@@ -214,12 +214,13 @@ test("empty canvas arms the tools, and every tool name it types is registered", 
     // The region tool is the shapes group's last (docs/plans/regions-as-operations.md); the modify
     // group under its heading once the solids module brings its round and chamfer (docs/plans/solid-fillets.md).
     // The sketch's edits join modify after the fillet (docs/plans/sketch-edit.md).
-    "Point", "Line", "Shapes", "Rectangle", "Polygon", "Slot", "Region", "Circle", "Arc", "Ellipse", "Modify", "Fillet", "Bevel", "Trim",
-    "Extend", "Offset", "Mirror", "Pattern", "Round", "Chamfer", "Frame",
+    // The spline joins the ellipse, so the curves group has a heading (docs/plans/spline.md).
+    "Point", "Line", "Shapes", "Rectangle", "Polygon", "Slot", "Region", "Circle", "Arc", "Curves", "Ellipse", "Spline", "Modify", "Fillet",
+    "Bevel", "Trim", "Extend", "Offset", "Mirror", "Pattern", "Round", "Chamfer", "Frame",
   ]);
   // A typo in the table would be a menu item that throws when chosen, and
   // nothing else would catch it.
-  for (const label of labels(menu).slice(0, -1).filter((l) => l !== "Shapes" && l !== "Modify")) {
+  for (const label of labels(menu).slice(0, -1).filter((l) => l !== "Shapes" && l !== "Modify" && l !== "Curves")) {
     const command = commandFor(menu, label);
     const tool = command.match(/^arm\("(.+)"\)$/)?.[1];
     assert.ok(tool, `${label} should arm a tool, got ${command}`);

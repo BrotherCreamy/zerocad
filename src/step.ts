@@ -271,14 +271,17 @@ function surface(d: Data, s: Surface): number {
     case "torus": return d.add(`TOROIDAL_SURFACE('',${ref(d.placement(s.origin, s.axis, s.ref))},${real(s.major)},${real(s.minor)})`);
     case "revolution": {
       const axis = d.add(`AXIS1_PLACEMENT('',${ref(d.point(s.origin))},${ref(d.direction(s.axis))})`);
-      return d.add(`SURFACE_OF_REVOLUTION('',${ref(d.circle(s.curve))},${ref(axis)})`);
+      // Its curve a circle, or a B-spline written as one (docs/plans/spline.md).
+      const swept = s.curve.kind === "bspline" ? bsplineCurve(d, s.curve.nurbs) : d.circle(s.curve);
+      return d.add(`SURFACE_OF_REVOLUTION('',${ref(swept)},${ref(axis)})`);
     }
     case "bspline": return bsplineSurface(d, s.nurbs);
     // A swept curve's wall: a declared kind's curve (its directrix) swept along
     // the extrude's direction — exact, as a receiving tool reads it.
     case "extrusion": {
       const vector = d.add(`VECTOR('',${ref(d.direction(s.axis))},${real(1)})`);
-      return d.add(`SURFACE_OF_LINEAR_EXTRUSION('',${ref(d.declared(s.curve))},${ref(vector)})`);
+      const directrix = s.curve.kind === "bspline" ? bsplineCurve(d, s.curve.nurbs) : d.declared(s.curve);
+      return d.add(`SURFACE_OF_LINEAR_EXTRUSION('',${ref(directrix)},${ref(vector)})`);
     }
   }
 }
@@ -315,12 +318,12 @@ function bsplineSurface(d: Data, n: NurbsSurface): number {
 }
 
 /** A kernel's NURBS curve, exactly — B_SPLINE_CURVE_WITH_KNOTS, rational as a complex instance. */
-function bsplineCurve(d: Data, n: NurbsCurve): number {
+function bsplineCurve(d: Data, n: NurbsCurve, name = ""): number {
   const pts = list(n.points.map(([x, y, z]) => ref(d.point([x, y, z]))));
   const knots = `${list(n.mults)},${list(n.knots.map(real))},.UNSPECIFIED.`;
-  if (!n.rational) return d.add(`B_SPLINE_CURVE_WITH_KNOTS('',${n.degree},${pts},.UNSPECIFIED.,.F.,.F.,${knots})`);
+  if (!n.rational) return d.add(`B_SPLINE_CURVE_WITH_KNOTS(${str(name)},${n.degree},${pts},.UNSPECIFIED.,.F.,.F.,${knots})`);
   return d.add(`(BOUNDED_CURVE()B_SPLINE_CURVE(${n.degree},${pts},.UNSPECIFIED.,.F.,.F.)B_SPLINE_CURVE_WITH_KNOTS(${knots})`
-    + `CURVE()GEOMETRIC_REPRESENTATION_ITEM()RATIONAL_B_SPLINE_CURVE(${list(n.points.map((q) => real(q[3])))})REPRESENTATION_ITEM(''))`);
+    + `CURVE()GEOMETRIC_REPRESENTATION_ITEM()RATIONAL_B_SPLINE_CURVE(${list(n.points.map((q) => real(q[3])))})REPRESENTATION_ITEM(${str(name)}))`);
 }
 
 /** One body's topology, each vertex and edge written once and referred to by every face that uses it. */
@@ -385,6 +388,8 @@ function insideOut(s: Shell): Shell {
 /** A loose sketch curve, bounded: a trimmed line or arc, a whole circle, or a whole curve of a declared kind. */
 function loose(d: Data, c: LooseCurve): number {
   if (c.kind === "circle") return d.circle(c.curve, c.name);
+  // A B-spline is bounded by its own knots: written whole, under its name.
+  if (c.kind === "bspline") return bsplineCurve(d, c.curve.nurbs, c.name);
   if (c.kind !== "line" && c.kind !== "arc") return d.declared(c.curve, c.name);
   const trim = (p: number[]) => `(${ref(d.point(p))})`;
   const basis = c.kind === "line" ? d.line(c.a, c.b) : d.circle(c.curve);

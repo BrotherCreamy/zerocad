@@ -101,9 +101,10 @@ test("mouse: the group's button carries the mark; a hover opens its flyout besid
   desk = await openApp();
   apps.push(desk);
   await fresh(desk);
-  // A group of one is a plain button: no mark, its own tooltip, nothing opens
-  // — the curves group's, the ellipse alone (docs/plans/sketch-shapes.md).
-  assert.equal(await desk.page.$eval(group("curves"), (b) => b.hasAttribute("data-more")), false);
+  // The curves group has two members since the spline joined the ellipse
+  // (docs/plans/spline.md): it carries the mark. (A group of one, a plain
+  // button, is the next test's — none of the built-ins is one any more.)
+  assert.equal(await desk.page.$eval(group("curves"), (b) => b.hasAttribute("data-more")), true);
   assert.equal(await desk.page.$$eval("#toolbar button", (bs) => bs.length), 13);
   await pad(desk);
   assert.equal(await desk.page.$$eval("#toolbar button", (bs) => bs.length), 13, "two more tools, no more buttons");
@@ -240,6 +241,27 @@ test("mouse: the choice is the viewer's — it survives a reload, and is in no f
   const saved = await desk.repl("JSON.stringify(save())");
   assert.ok(saved.ok);
   assert.doesNotMatch(String(saved.value), /toolGroups|"shapes": *"t_pad1"/, "the choice is not in the drawing's file");
+  assert.deepEqual(desk.pageErrors, []);
+});
+
+test("mouse: a group of one is a plain button — no mark, nothing opens on a hover", async () => {
+  // Last of the mouse tests: fresh() reloads, and those before it hand an
+  // open flyout and the padding tools on from one to the next.
+  await fresh(desk);
+  // A module of the command line's own, its group of one: the curves group was
+  // the built-in one, until the spline joined it (docs/plans/spline.md).
+  await desk.type('defineModule("solo", { tools: { t_solo: class extends Tool { static summary = "Stands alone"; name = "t_solo"; } }, '
+    + 'groups: { solo: ["t_solo"] } })');
+  assert.doesNotMatch(await desk.log(), /Error|refused/, "defined");
+  await desk.page.waitForFunction(() => !!document.querySelector('#toolbar button[data-group="solo"]'));
+  assert.equal(await desk.page.$eval(group("solo"), (b) => b.hasAttribute("data-more") || b.hasAttribute("aria-haspopup")), false);
+  await desk.page.mouse.move(700, 400);
+  const b = await rectOf(desk, group("solo"));
+  await desk.page.mouse.move(b.x + b.w / 2, b.y + b.h / 2, { steps: 2 });
+  // Its own tooltip shows (the group's lone member's), and no flyout opens.
+  await desk.page.waitForFunction(() => !(document.getElementById("tooltip") as HTMLElement).hidden, null, { timeout: 3000 });
+  assert.equal(await desk.page.$eval("#flyout", (el) => (el as HTMLElement).hidden), true);
+  assert.match(await desk.page.$eval("#tooltip", (el) => el.textContent ?? ""), /Stands alone/);
   assert.deepEqual(desk.pageErrors, []);
 });
 

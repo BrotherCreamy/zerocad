@@ -125,8 +125,12 @@ export function menuFor(
   history: History | null = null,
   viewMode: ViewMode | null = null,
   selection: readonly string[] = [],
+  at: number[] | null = null,
 ): Menu {
   const menu = menuOf(model, pick, region, selection);
+  // A spline's own items (docs/plans/spline.md): where on it the click was is
+  // the host's to say (`at`, the world point under it), as the region is.
+  if (pick && (pick.kind === "spline" || pick.kind === "point")) menu.items.splice(1, 0, ...splineItems(model, pick, at));
   if (!pick && viewMode) menu.items.push(viewItem(viewMode));
   if (history) menu.items.push(...historyItems(history));
   return menu;
@@ -177,7 +181,7 @@ function constrainItems(model: Model, selection: readonly string[]): MenuItem[] 
 function constructionItems(model: Model, names: readonly string[]): MenuItem[] {
   const curves = names.filter((n) => {
     const k = model.entities.get(n)?.kind;
-    return k === "line" || k === "arc" || k === "circle" || k === "ellipse";
+    return k === "line" || k === "arc" || k === "circle" || k === "ellipse" || k === "spline";
   });
   if (!curves.length) return [];
   const args = curves.map(quoted).join(", ");
@@ -458,6 +462,47 @@ function sketchOnFaceItem(model: Model, region: RegionHit | null): MenuItem[] {
     return [{ label, action: { do: "disabled", why: err instanceof Error ? err.message : String(err) } }];
   }
 }
+
+/**
+ * **Add point here** and **Remove point pN** on a spline — the point added on
+ * the curve where it was right-clicked, the one taken out the through-point
+ * nearest the click (not where it would leave too few) — and **Remove from
+ * sp1** on a through-point, one per spline through it. Each types its
+ * operation (splineedit.ts); a spline a feature stands on is offered them
+ * disabled, with the reason.
+ */
+function splineItems(model: Model, pick: Pick, at: number[] | null): MenuItem[] {
+  const fewest = (closed: boolean) => (closed ? 3 : 2);
+  const underFeature = (s: string) => {
+    const f = model.featuresNaming(s)[0];
+    return f ? `"${s}" is part of ${f.name} — edit the spline before extruding it` : null;
+  };
+  const item = (label: string, command: string, s: string, ok: string | null): MenuItem => {
+    const why = underFeature(s) ?? ok;
+    return why ? { label, action: { do: "disabled", why } } : { label, action: { do: "run", command } };
+  };
+  if (pick.kind === "point") {
+    return [...model.entities.values()].filter((e) => e.kind === "spline" && e.points.includes(pick.name)).map((e) => {
+      const s = e as Extract<typeof e, { kind: "spline" }>;
+      const short = s.points.length <= fewest(s.closed === true) ? `"${s.name}" has no point to spare — del("${s.name}") removes it` : null;
+      return item(`Remove from ${s.name}`, `removeThrough(${quoted(s.name)}, ${quoted(pick.name)})`, s.name, short);
+    });
+  }
+  const s = model.entities.get(pick.name);
+  if (s?.kind !== "spline") return [];
+  const out: MenuItem[] = [];
+  if (at) out.push(item("Add point here", `addThrough(${quoted(s.name)}, [${at.map(num).join(", ")}])`, s.name, null));
+  const nearest = at
+    ? s.points.reduce((best, p) => (dist(model.coords(p), at) < dist(model.coords(best), at) ? p : best))
+    : null;
+  if (nearest) {
+    const short = s.points.length <= fewest(s.closed === true) ? `"${s.name}" goes through the fewest points it can` : null;
+    out.push(item(`Remove point ${nearest}`, `removeThrough(${quoted(s.name)}, ${quoted(nearest)})`, s.name, short));
+  }
+  return out;
+}
+
+const dist = (a: number[], b: number[]) => Math.hypot(...a.map((x, i) => x - (b[i] ?? 0)));
 
 function entityMenu(model: Model, pick: Pick): Menu {
   const items: MenuItem[] = [

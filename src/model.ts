@@ -178,8 +178,32 @@ export interface EntityKindSpec {
   vars?(e: Entity): number[];
   /** A curve: bounds regions, and can be construction geometry. */
   curve?: boolean;
-  /** Closed on itself, with no vertex: a whole curve, as a circle is. */
-  closed?: boolean;
+  /**
+   * Closed on itself, with no vertex: a whole curve, as a circle is. A kind
+   * whose entities may be either (a spline, open or closed) answers per
+   * entity — read through `isClosedEntity`.
+   */
+  closed?: boolean | ((e: Entity) => boolean);
+  /**
+   * An open curve's two ends, in its own direction — the points it runs
+   * between, as a line's refs are — or null for one closed on itself. What
+   * the regions join it by. Absent for a kind that has no ends to offer.
+   */
+  ends?(e: Entity): [string, string] | null;
+  /**
+   * Points the curve passes through **by its own definition** — a spline's
+   * through-points — as a relation like `onspline` holds a point on it. The
+   * regions cut it at one another edge meets, as at a T (loops.ts's
+   * `heldOnCurves`). Absent for a kind whose points are not on it.
+   */
+  through?(e: Entity): readonly string[];
+  /**
+   * The residual blocks an entity of this kind holds **itself** — equations
+   * that are its definition, not relations on it (a spline's interpolation,
+   * docs/plans/spline.md). This layer never reads them; it removes them with
+   * the entity (`deleteEntity`), which is the whole of what owning means here.
+   */
+  owns?(e: Entity): readonly BlockHandle[];
   /**
    * The plane it carries, as a circle's: its centre, its normal's variables,
    * and the point whose direction from the centre the normal is straightened
@@ -218,6 +242,13 @@ export function curveNouns(): string[] {
 /** The declared kinds that carry a plane, by name. */
 export function planeNouns(): string[] {
   return [...entityKinds.values()].filter((k) => k.plane).map((k) => k.kind);
+}
+
+/** Whether an entity is closed on itself — a circle, or a declared kind that says so (`EntityKindSpec.closed`). */
+export function isClosedEntity(e: Entity): boolean {
+  if (e.kind === "circle") return true;
+  const c = entityKind(e.kind)?.closed;
+  return typeof c === "function" ? c(e) : c === true;
 }
 
 /** A kind's declared structure, or undefined for a built-in this layer knows by name, or for nothing. */
@@ -506,6 +537,13 @@ export interface RelationEntry {
   op: string;
   args: unknown[];
   blocks: BlockHandle[];
+  /**
+   * Variables the relation made for itself (`Model.relationVar`): a point's
+   * parameter along the curve it is held on (docs/plans/spline.md's
+   * `onspline`). Counted by the diagnosis as the relation's own, saved with
+   * the file. Absent for a relation that made none — every one before it.
+   */
+  vars?: number[];
 }
 
 /**
@@ -965,7 +1003,7 @@ export class Model {
    * The relation currently being built, if any — see `relation()`. Its
    * presence is also what tells a nested relation call that it is nested.
    */
-  private building: { name: string; blocks: BlockHandle[] } | null = null;
+  private building: { name: string; blocks: BlockHandle[]; vars: number[] } | null = null;
 
   /**
    * How this model was built, in order — every entity created, every
@@ -1178,7 +1216,7 @@ export class Model {
     // failed `dist` having quietly shifted every later dimension's name.
     const counterWas = this.counters.get(prefix);
     const name = this.claimName(prefix);
-    const building = { name, blocks: [] as BlockHandle[] };
+    const building = { name, blocks: [] as BlockHandle[], vars: [] as number[] };
     this.building = building;
     try {
       // Suppressed, so an inner relation's own `record` does not double up.
@@ -1191,7 +1229,9 @@ export class Model {
     } finally {
       this.building = null;
     }
-    this.relations.set(name, { name, op, args, blocks: building.blocks });
+    this.relations.set(name, building.vars.length
+      ? { name, op, args, blocks: building.blocks, vars: building.vars }
+      : { name, op, args, blocks: building.blocks });
     this.record(op, args);
     return name;
   }
@@ -1217,7 +1257,7 @@ export class Model {
   rebuildRelation(name: string, op: string, args: unknown[], body: () => void): void {
     const entry = this.relationOf(name);
     const outer = this.building;
-    const building = { name, blocks: [] as BlockHandle[] };
+    const building = { name, blocks: [] as BlockHandle[], vars: [] as number[] };
     this.building = building;
     try {
       this.withoutRecording(body);
@@ -1228,7 +1268,9 @@ export class Model {
       this.building = outer;
     }
     for (const h of entry.blocks) this.problem.removeBlock(h);
-    this.relations.set(name, { name, op, args, blocks: building.blocks });
+    this.relations.set(name, building.vars.length
+      ? { name, op, args, blocks: building.blocks, vars: building.vars }
+      : { name, op, args, blocks: building.blocks });
   }
 
   /**
@@ -1240,6 +1282,19 @@ export class Model {
     const handle = this.problem.addResidual(varIndices, fn, label);
     this.building?.blocks.push(handle);
     return handle;
+  }
+
+  /**
+   * A variable the relation being built makes for itself, seeded at `initial`
+   * — a point's parameter along a spline (docs/plans/spline.md). Only inside a
+   * `relation()` body: a variable no relation owns would be one nothing
+   * counts, saves or deletes. Its value is the solver's, as any variable's is.
+   */
+  relationVar(initial: number): number {
+    if (!this.building) throw new Error("relationVar is for a relation's body — a variable outside one belongs to nothing");
+    const v = this.problem.addVar(initial);
+    this.building.vars.push(v);
+    return v;
   }
 
   relationOf(name: string): RelationEntry {
@@ -2172,6 +2227,8 @@ export class Model {
     // The work plane is a pointer too, at up to three of the face's points.
     if (this.workPlane !== null && referentsOf(this.workPlane).includes(name)) this.setWorkPlane(null);
     this.leaveGroups(name);
+    // The equations that are its own definition go with it (`EntityKindSpec.owns`).
+    for (const h of entityKind(e.kind)?.owns?.(e) ?? []) this.problem.removeBlock(h);
     this.entities.delete(name);
     this.record("deleteEntity", [name]);
   }
@@ -2540,6 +2597,9 @@ export class Model {
         if (on) gauge.push({ vars: e.varIndices, coeffs: on.n });
       }
     }
+    // A relation's own variables (a point's parameter along a spline) are
+    // freedoms like any entity's: its rows hold them, or they are free.
+    for (const r of this.relations.values()) if (r.vars) live.push(...r.vars);
     const a = this.problem.analyse({ vars: live, gauge });
     const freeVars = new Set(a.free);
     const pointFree = (name: string) => this.entities.get(name)?.kind === "point"

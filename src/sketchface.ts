@@ -35,7 +35,7 @@
 // asking has no camera: it has the region it was handed (`RegionHit.toward`),
 // which carries the side it was seen from.
 
-import type { Model } from "./model.ts";
+import { entityKind, type Model } from "./model.ts";
 import { PARALLEL_SINE, isVirtual, type Loop } from "./loops.ts";
 import { cross3, dot3, lift3, sub3 } from "./vec3.ts";
 
@@ -102,7 +102,13 @@ export function sketchFrameFor(model: Model, loop: Loop, toward: number[]): stri
     return cos;
   };
 
-  if (loop.members.length === 1 && loop.members[0].from === null) return circlePlane(model, loop.members[0].name, facing);
+  // A whole closed curve that carries its own plane (a circle, an ellipse) is
+  // its plane. One that carries none — a closed spline (docs/plans/
+  // spline.md), whose plane is its points' — takes three of its points below
+  // (found: a closed spline drawn on a plate's top threw here, asked for a
+  // normal it has not got, the moment it was extruded).
+  const whole = loop.members.length === 1 && loop.members[0].from === null ? model.entities.get(loop.members[0].name) : undefined;
+  if (whole && (whole.kind === "circle" || entityKind(whole.kind)?.plane)) return circlePlane(model, whole.name, facing);
 
   const where = new Map<string, number[]>();
   const at = (p: string): number[] => {
@@ -130,6 +136,9 @@ export function sketchFrameFor(model: Model, loop: Loop, toward: number[]): stri
   const extra = loop.members.flatMap((m) => {
     const e = model.entities.get(m.name);
     if (e?.kind === "arc") return m.span === null ? [e.center] : [e.center, e.start, e.end];
+    // A spline's points are all in its plane (docs/plans/spline.md): a D of a
+    // spline and one line has two corners, and its bend through them.
+    if (e?.kind === "spline") return [...e.points];
     if (m.span === null) return [];
     if (e?.kind === "line") return [...e.refs];
     if (e?.kind === "ellipse") return [e.center, e.major];

@@ -68,9 +68,10 @@
 // dimension's value. Caps only for a partial revolve, even-odd as an extrude's;
 // normals the profile's own, turned; the same culling and headlight.
 
-import { entityKind, type FeatureEntry, type Model, type Portion, type ProfileMember } from "./model.ts";
+import { isClosedEntity, type FeatureEntry, type Model, type Portion, type ProfileMember } from "./model.ts";
 import { arcPoint, arcSamples, arcSegments, frameReach, portionAngles } from "./arcgeom.ts";
-import { curveFrame, planeAxes } from "./curveplane.ts";
+import { curveFrame, curvePath, planeAxes } from "./curveplane.ts";
+import { domain, pointAt, sampleParams } from "./bspline.ts";
 import { axisReader, turnMatrix } from "./relations/revolution.ts";
 import { depth, viewAxes, worldToScreen, type View } from "./view.ts";
 import { cross3, dot3, lift3, sub3, unit3 } from "./vec3.ts";
@@ -138,12 +139,50 @@ function memberPath(model: Model, name: string, scale: number, segments?: number
     if (!span) return [a, b];
     return span.map((t) => a.map((x, i) => x + t * (b[i] - x)));
   }
+  // A curve laid out by an exact B-spline (a spline): sampled as it is drawn,
+  // every chord within a quarter pixel (`pathFractions`).
+  if (curvePath(model, e)) return pathAt(model, name, pathFractions(model, name, scale, span));
   const f = curveFrame(model, e);
   if (!f) return null;
   if (!span) return arcSamples(f, segments ?? arcSegments(f.sweep, frameReach(f) * scale));
   const [t0, t1] = span.map((t) => t * f.sweep);
   const n = segments ?? arcSegments(t1 - t0, frameReach(f) * scale);
   return Array.from({ length: n + 1 }, (_, k) => arcPoint(f, t0 + ((t1 - t0) * k) / n));
+}
+
+/**
+ * Where along a B-spline member it is drawn, as fractions of its parameter:
+ * the quarter-pixel samples (../bspline.ts's `sampleParams`) of the part
+ * `span` says — the whole of it when null; a span past 1 runs on round a
+ * closed one. Fractions, so a twin — the same curve moved, its knots the
+ * same — is sampled at the same ones and its wall's quads pair up with its
+ * base's even mid-drag, before the solve has made it exactly the same.
+ */
+function pathFractions(model: Model, name: string, scale: number, span: [number, number] | null): number[] {
+  const path = curvePath(model, model.entities.get(name)!);
+  if (!path) return [];
+  const [lo, hi] = domain(path.curve);
+  const all = sampleParams(path.curve, 0.25 / Math.max(scale, 1e-9)).map((u) => (u - lo) / (hi - lo));
+  if (!span) return all;
+  const [a, b] = span;
+  // The samples inside the span, on every turn it covers, with its two ends.
+  const inside: number[] = [a];
+  for (let turn = Math.floor(a); turn <= Math.ceil(b); turn++) {
+    for (const f of all) { const t = turn + f; if (t > a && t < b) inside.push(t); }
+  }
+  inside.push(b);
+  return inside.sort((x, y) => x - y);
+}
+
+/** A B-spline member's points at fractions of its parameter (a closed one's past 1 round again), three coordinates each. */
+function pathAt(model: Model, name: string, fractions: readonly number[]): number[][] | null {
+  const path = curvePath(model, model.entities.get(name)!);
+  if (!path) return null;
+  const [lo, hi] = domain(path.curve);
+  return fractions.map((f) => {
+    const g = path.closed ? f - Math.floor(f) + (f > 0 && f === Math.floor(f) ? 1 : 0) : Math.min(1, Math.max(0, f));
+    return lift3(pointAt(path.curve, lo + g * (hi - lo)));
+  });
 }
 
 /** A loop member as `loopOutlines` takes it: a name for the whole entity, or loops.ts's member with its `span`. */
@@ -203,8 +242,8 @@ const closedPath = (o: number[][]) => (o.length ? [...o, o[0]] : o);
  * looked at, docs/plans/sketch-shapes.md.)
  */
 function hasVertices(model: Model, m: ProfileMember): boolean {
-  const kind = typeof m === "string" ? model.entities.get(m)?.kind : undefined;
-  return kind !== "circle" && entityKind(kind)?.closed !== true;
+  const e = typeof m === "string" ? model.entities.get(m) : undefined;
+  return !e || !isClosedEntity(e);
 }
 
 const mean = (pts: number[][]) => [0, 1, 2].map((i) => pts.reduce((s, p) => s + p[i], 0) / pts.length);
@@ -306,10 +345,14 @@ function profilePaths(model: Model, loops: ProfileMember[][], twins: string[][] 
       if (!bp) return null;
       b.push(bp);
       if (twins) {
-        // The twin sampled piece for piece with its base, so a wall's quads pair up.
-        const tp = wholeCircle(model, loops[i][k], twins[i][k])
+        // The twin sampled piece for piece with its base, so a wall's quads
+        // pair up — a B-spline's at the very fractions its base was.
+        const member = loops[i][k];
+        const tp = wholeCircle(model, member, twins[i][k])
           ? circleFrom(model, twins[i][k], moved(bp[0]), bp.length - 1)
-          : memberPath(model, twins[i][k], scale, bp.length - 1);
+          : typeof member === "string" && curvePath(model, model.entities.get(member)!)
+            ? pathAt(model, twins[i][k], pathFractions(model, member, scale, null))
+            : memberPath(model, twins[i][k], scale, bp.length - 1);
         if (!tp || tp.length !== bp.length) return null;
         t.push(tp);
       }

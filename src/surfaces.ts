@@ -446,6 +446,7 @@ export function surfacePlane(model: Model, curves: readonly string[], frame: str
     const e = model.entities.get(c)!;
     if (e.kind === "line") pts.push(...e.refs.map((p) => model.coords(p)));
     else if (e.kind === "arc") pts.push(model.coords(e.start), model.coords(e.end), model.coords(e.center));
+    else if (e.kind === "spline") pts.push(...e.points.map((p) => model.coords(p)));
     else if ("center" in e) pts.push(model.coords((e as { center: string }).center));
   }
   const holds = (ref: string) => {
@@ -459,7 +460,10 @@ export function surfacePlane(model: Model, curves: readonly string[], frame: str
   const candidates = [model.drawingPlane(), ...model.frameNames()];
   for (const c of candidates) if (holds(c)) return c;
   // Three of their own points not in a line.
-  const named = [...new Set(curves.flatMap((c) => { const e = model.entities.get(c)!; return e.kind === "line" ? e.refs : e.kind === "arc" ? [e.start, e.end] : []; }))];
+  const named = [...new Set(curves.flatMap((c) => {
+    const e = model.entities.get(c)!;
+    return e.kind === "line" ? e.refs : e.kind === "arc" ? [e.start, e.end] : e.kind === "spline" ? e.points : [];
+  }))];
   for (let i = 0; i < named.length; i++) for (let j = i + 1; j < named.length; j++) for (let k = j + 1; k < named.length; k++) {
     const [a, b, c] = [named[i], named[j], named[k]].map((p) => model.coords(p));
     if (unit3(cross3(sub3(b, a), sub3(c, a))) && holds(`${named[i]}.${named[j]}.${named[k]}`)) return `${named[i]}.${named[j]}.${named[k]}`;
@@ -475,8 +479,9 @@ function sweptCurves(model: Model, curves: unknown, op: string): { names: string
   }
   for (const c of list as string[]) {
     const e = model.entities.get(c);
-    if (!e || !(e.kind === "line" || e.kind === "arc" || e.kind === "circle")) {
-      throw new Error(`${op} sweeps lines, arcs and circles — ${quoted(c)} is ${e ? `a ${e.kind}` : "not there"}`);
+    // A spline sweeps as its exact NURBS (docs/plans/spline.md).
+    if (!e || !(e.kind === "line" || e.kind === "arc" || e.kind === "circle" || e.kind === "spline")) {
+      throw new Error(`${op} sweeps lines, arcs, circles and splines — ${quoted(c)} is ${e ? `a ${e.kind}` : "not there"}`);
     }
     if (model.isConstruction(c)) throw new Error(`${c} is construction, which sweeps nothing — make it a real curve first`);
   }

@@ -261,6 +261,7 @@ function describe(e: Entity, model: Model): string {
       return `${e.name}  ellipse center ${e.center}, major end ${e.major}, a=${a.toFixed(3)}, b=${b.toFixed(3)}`
         + (e.normal === undefined ? "" : `, facing (${model.normalOf(e.name).map((v) => v.toFixed(3)).join(", ")})`);
     }
+    case "spline": return `${e.name}  spline through ${e.points.join(", ")}${e.closed ? ", closed" : ""}`;
     case "frame": return `${e.name}  frame  origin ${e.origin}, +x toward ${e.xref}`
       + (e.yref === undefined ? "" : `, +y toward ${e.yref}`)
       + (model.defaultFrame === e.name ? "  (default)" : "");

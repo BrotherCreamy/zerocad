@@ -385,7 +385,7 @@ test("a version-2 file's hor/ver are translated, and re-save in the new vocabula
   // forever. It does round-trip from here on.
   const saved = save(m);
   assert.equal(saved.includes("horizontal"), false, "the old words are gone from the file");
-  assert.match(saved, /"version": 17/);
+  assert.match(saved, /"version": 18/);
   assert.equal(save(open(saved)), saved, "and the new file is stable");
 });
 
@@ -464,7 +464,7 @@ test("help() covers the frame vocabulary — the origin every model has, and the
 });
 
 test("the format version says the vocabulary changed, and still reads the old envelope", () => {
-  // 17 a feature standing on a region (regions-as-operations.md);
+  // 18 the spline (spline.md); 17 a feature standing on a region (regions-as-operations.md);
   // 15 the ellipse (sketch-shapes.md); 14 an extrude saying what it does to a
   // body; 12 that a group may be empty; 11 an extrude making no lid frame;
   // 10 a feature's frames
@@ -477,14 +477,14 @@ test("the format version says the vocabulary changed, and still reads the old en
   // before its name 5, `d`-named dimensions 4 and the hor/ver retirement 3.
   // Every boundary is a translation rather than a wall, so this file's own v2
   // fixture above still opens.
-  assert.equal(VERSION, 17);
+  assert.equal(VERSION, 18);
   // A version-1 file with nothing frameless in it opens unchanged: the version
   // wall was never what refused a frameless one, the missing frame was — and
   // since the origin, there is always one (above).
   const empty = JSON.stringify({ format: FORMAT, version: 1, dim: 2, journal: [], values: { points: {}, radii: {} } });
   assert.equal(open(empty).entities.size, 0);
-  const future = JSON.stringify({ format: FORMAT, version: 18, dim: 2, journal: [], values: { points: {}, radii: {} } });
-  assert.throws(() => open(future), /version 18, and this build only reads up to 17/);
+  const future = JSON.stringify({ format: FORMAT, version: 19, dim: 2, journal: [], values: { points: {}, radii: {} } });
+  assert.throws(() => open(future), /version 19, and this build only reads up to 18/);
 });
 
 test("a version-4 frame opens with its name where the name goes now, and re-saves as current", async () => {
@@ -517,7 +517,7 @@ test("a version-4 frame opens with its name where the name goes now, and re-save
     `and it still means the same frame: p at ${at}`);
 
   const saved = save(m);
-  assert.match(saved, /"version": 17/);
+  assert.match(saved, /"version": 18/);
   assert.equal(save(open(saved)), saved, "stable from here on");
 
   // The translation is keyed on the version, not on how many arguments an

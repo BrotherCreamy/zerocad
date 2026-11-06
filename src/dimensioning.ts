@@ -53,7 +53,9 @@ const call = (op: string, args: (string | number | { raw: string })[]) =>
 // a kind here so the two meet, but the dimension and constrain tools offer
 // nothing for one yet — its `major`, `minor`, `tan` and `conc` are typed, or
 // taken from the context menu. A row for it is a follow-up in TODO.md.
-type Kind = "point" | "line" | "circle" | "arc" | "frame" | "ellipse";
+// The spline (docs/plans/spline.md) likewise: its points are dimensioned as any
+// points are, and the curve itself takes no dimension.
+type Kind = "point" | "line" | "circle" | "arc" | "frame" | "ellipse" | "spline";
 const kindOf = (model: Model, n: string): Kind | undefined => model.entities.get(n)?.kind;
 const isCurve = (k: Kind | undefined) => k === "circle" || k === "arc";
 

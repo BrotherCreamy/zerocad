@@ -41,7 +41,8 @@
 
 import { memberName, type FeatureEntry, type Model, type ProfileMember } from "./model.ts";
 import { portionAngles } from "./arcgeom.ts";
-import { curveFrame, featurePlane } from "./curveplane.ts";
+import { curveFrame, curvePath, featurePlane } from "./curveplane.ts";
+import { derivs, domain, nearestParam, nurbsOf, pointAt as pathPoint, subCurve, type BSpline } from "./bspline.ts";
 import { axisReader, isFullTurn, turnMatrix } from "./relations/revolution.ts";
 import { cross3, dot3, lift3, sub3, unit3 } from "./vec3.ts";
 import type { Member, NurbsCurve, NurbsSurface, Placement as KernelPlacement, Profile as KernelProfile } from "./solids/kernel.ts";
@@ -98,12 +99,15 @@ export type Surface =
   | { kind: "cone"; origin: number[]; axis: number[]; ref: number[]; r: number; semiAngle: number }
   | { kind: "sphere"; origin: number[]; axis: number[]; ref: number[]; r: number }
   | { kind: "torus"; origin: number[]; axis: number[]; ref: number[]; major: number; minor: number }
-  /** `curve` turned about the line through `origin` along `axis`. */
-  | { kind: "revolution"; origin: number[]; axis: number[]; curve: Extract<Curve, { kind: "circle" }> }
+  /** `curve` turned about the line through `origin` along `axis`: a circle, or a B-spline (a spline's, docs/plans/spline.md). */
+  | { kind: "revolution"; origin: number[]; axis: number[]; curve: Extract<Curve, { kind: "circle" | "bspline" }> }
   /** The solid kernel's exact surface, where no feature says what it is (kernelbrep.ts). */
   | { kind: "bspline"; nurbs: NurbsSurface }
-  /** `curve` swept along `axis` — an ellipse's wall: Part 42's SURFACE_OF_LINEAR_EXTRUSION. */
-  | { kind: "extrusion"; curve: Extract<Curve, { kind: "ellipse" }>; axis: number[] };
+  /**
+   * `curve` swept along `axis` — an ellipse's wall, or a B-spline's (a
+   * spline's, docs/plans/spline.md): Part 42's SURFACE_OF_LINEAR_EXTRUSION.
+   */
+  | { kind: "extrusion"; curve: Extract<Curve, { kind: "ellipse" | "bspline" }>; axis: number[] };
 
 export interface Face {
   surface: Surface;
@@ -168,7 +172,12 @@ export function solidsOf(model: Model, features?: readonly string[]): Solids {
 type Piece =
   | { kind: "line"; a: number[]; b: number[] }
   /** `rv`, when there is one, is an ellipse's semi-axis along `v` (arcgeom.ts's `ArcFrame.rv`). */
-  | { kind: "arc"; c: number[]; r: number; rv?: number; u: number[]; v: number[]; t0: number; t1: number; a: number[]; b: number[] };
+  | { kind: "arc"; c: number[]; r: number; rv?: number; u: number[]; v: number[]; t0: number; t1: number; a: number[]; b: number[] }
+  /**
+   * A curve laid out by an exact B-spline (curveplane.ts's `curvePath`; a
+   * spline), the whole of the piece over its own domain, three coordinates.
+   */
+  | { kind: "path"; curve: BSpline; a: number[]; b: number[] };
 
 const TAU = Math.PI * 2;
 
@@ -194,6 +203,18 @@ function piecesOf(model: Model, m: ProfileMember): Piece[] {
     const [p, q] = typeof m === "string" ? e.refs : [m.from, m.to];
     return [{ kind: "line", a: at(p), b: at(q) }];
   }
+  const path = curvePath(model, e);
+  if (path) {
+    // A whole curve only — a part of one is refused where it is planned
+    // (operations.ts) — and a closed one in two halves, as a circle is.
+    if (typeof m !== "string") throw new Error(`a part of ${name} cannot be made — it bounds a solid only whole`);
+    const [lo, hi] = domain(path.curve);
+    const piece = (c: BSpline): Piece => ({ kind: "path", curve: c, a: pathPoint(c, domain(c)[0]), b: pathPoint(c, domain(c)[1]) });
+    // Its ends are its first and last points exactly: the curve is clamped.
+    if (!path.closed) return [piece(path.curve)];
+    const mid = (lo + hi) / 2;
+    return [piece(subCurve(path.curve, lo, mid)), piece(subCurve(path.curve, mid, hi))];
+  }
   if (e.kind !== "arc" && e.kind !== "circle" && e.kind !== "ellipse") throw new Error(`its profile member ${name} is a ${e.kind}, which bounds nothing`);
   const f = curveFrame(model, e);
   if (!f) throw new Error(`${name} cannot be laid out (an end on its centre)`);
@@ -215,12 +236,14 @@ function piecesOf(model: Model, m: ProfileMember): Piece[] {
 /** The point a fraction `s` of the way along a piece, in its own direction. */
 function pieceAt(p: Piece, s: number): number[] {
   if (p.kind === "line") return p.a.map((x, i) => x + s * (p.b[i] - x));
+  if (p.kind === "path") { const [lo, hi] = domain(p.curve); return pathPoint(p.curve, lo + s * (hi - lo)); }
   return onArc(p, p.t0 + s * (p.t1 - p.t0));
 }
 
 /** The piece's direction of travel at fraction `s`, in its own direction. */
 function pieceTangent(p: Piece, s: number): number[] {
   if (p.kind === "line") return sub3(p.b, p.a);
+  if (p.kind === "path") { const [lo, hi] = domain(p.curve); return derivs(p.curve, lo + s * (hi - lo), 1)[1].map((c) => c * (hi - lo)); }
   const t = p.t0 + s * (p.t1 - p.t0);
   return [0, 1, 2].map((i) => -p.r * Math.sin(t) * p.u[i] + (p.rv ?? p.r) * Math.cos(t) * p.v[i]);
 }
@@ -228,6 +251,11 @@ function pieceTangent(p: Piece, s: number): number[] {
 /** The curve a piece lies on, moved by `x`, in its own direction. */
 function curveOf(p: Piece, x: Placement): Curve {
   if (p.kind === "line") return { kind: "line" };
+  // A B-spline moved is its control points moved: exactly the curve, placed.
+  if (p.kind === "path") {
+    const n = nurbsOf({ ...p.curve, ctrl: p.curve.ctrl.map((c) => x.point(c)) });
+    return { kind: "bspline", nurbs: { kind: "bspline", rational: false, ...n }, sense: true };
+  }
   if (p.rv !== undefined) {
     return { kind: "ellipse", center: x.point(p.c), normal: x.vector(unit3(cross3(p.u, p.v))!), ref: x.vector(p.u), a: p.r, b: p.rv };
   }
@@ -235,6 +263,12 @@ function curveOf(p: Piece, x: Placement): Curve {
     kind: "circle", center: x.point(p.c), normal: x.vector(unit3(cross3(p.u, p.v))!),
     ref: x.vector(p.u), r: p.r,
   };
+}
+
+/** A NURBS of unit weights (a B-spline curve as `curveOf` writes one) read back as the plain B-spline it is. */
+function bsplineOf(n: NurbsCurve): BSpline {
+  const knots = n.knots.flatMap((k, i) => new Array<number>(n.mults[i]).fill(k));
+  return { degree: n.degree, knots, ctrl: n.points.map((q) => [q[0], q[1], q[2]]) };
 }
 
 /** A rigid motion: a translation, or a turn about an axis. */
@@ -329,6 +363,22 @@ const GL_W = [0.1012285362903763, 0.2223810344533745, 0.3137066458778873, 0.3626
  * integrated to rounding.
  */
 function integral(p: Piece, f: (q: number[]) => number, dir: number[]): number {
+  if (p.kind === "path") {
+    // Span by knot span, where the curve is one polynomial: eight points
+    // integrate its area's degree-5 integrand and the moment's degree-8 exactly.
+    const [lo, hi] = domain(p.curve);
+    const breaks = [lo, ...p.curve.knots.filter((k) => k > lo && k < hi), hi].filter((k, i, all) => i === 0 || k !== all[i - 1]);
+    let sum = 0;
+    for (let i = 0; i + 1 < breaks.length; i++) {
+      const [a, b] = [breaks[i], breaks[i + 1]];
+      for (let g = 0; g < GL_X.length; g++) {
+        const u = (a + b) / 2 + ((b - a) / 2) * GL_X[g];
+        const [q, d] = derivs(p.curve, u, 1);
+        sum += GL_W[g] * ((b - a) / 2) * f(q) * dot3(d, dir);
+      }
+    }
+    return sum;
+  }
   const spans = p.kind === "line" ? 1 : Math.max(1, Math.ceil((p.t1 - p.t0) / (TAU / 16)));
   let sum = 0;
   for (let s = 0; s < spans; s++) {
@@ -362,7 +412,8 @@ function planeAxes(n: number[], hint?: number[]): { u: number[]; v: number[] } {
 function polygon(w: Walk, origin: number[], u: number[], v: number[]): [number, number][] {
   const out: [number, number][] = [];
   w.pieces.forEach((p, k) => {
-    const n = p.kind === "line" ? 1 : Math.max(8, Math.ceil((p.t1 - p.t0) / (TAU / 128)));
+    const n = p.kind === "line" ? 1 : p.kind === "path" ? 32 * Math.max(1, p.curve.ctrl.length - p.curve.degree)
+      : Math.max(8, Math.ceil((p.t1 - p.t0) / (TAU / 128)));
     for (let i = 0; i < n; i++) {
       const q = pieceAt(p, w.forward[k] ? i / n : 1 - i / n);
       const d = sub3(q, origin);
@@ -476,7 +527,18 @@ export function surfaceNormal(s: Surface, p: number[], swept?: { q: number[]; an
     case "bspline": throw new Error("a kernel surface's normal is the kernel's own; ask it of the face's sense");
     case "extrusion": {
       // σ(t, v) = C(t) + v·axis, so σt × σv = C′(t) × axis, at the parameter
-      // of the curve's point under p (its eccentric anomaly in the curve's axes).
+      // of the curve's point under p — a B-spline's nearest point to p moved
+      // back along the axis onto the curve's plane; an ellipse's eccentric
+      // anomaly in its own axes.
+      if (s.curve.kind === "bspline") {
+        const spline = bsplineOf(s.curve.nurbs);
+        const base = pathPoint(spline, domain(spline)[0]);
+        const back = p.map((c, i) => c - dot3(sub3(p, base), s.axis) * s.axis[i]);
+        const u = nearestParam(spline, back);
+        const d = derivs(spline, u, 1)[1];
+        const dc = s.curve.sense ? d : d.map((c) => -c);
+        return unit3(cross3(dc, s.axis)) ?? [0, 0, 0];
+      }
       const c = s.curve;
       const across = cross3(c.normal, c.ref);
       const d = sub3(p, c.center);
@@ -487,10 +549,15 @@ export function surfaceNormal(s: Surface, p: number[], swept?: { q: number[]; an
     case "revolution": {
       if (!swept) throw new Error("a surface of revolution's normal is asked at a turned point of its curve");
       // σu: the way the turn carries p. σv: the curve's own direction at q,
-      // counter-clockwise about its normal, carried round with it.
+      // counter-clockwise about its normal, carried round with it — a
+      // B-spline's own derivative there (a spline, docs/plans/spline.md).
       const turn = turned(s.origin, s.axis, swept.angle);
       const du = cross3(s.axis, sub3(p, s.origin));
-      const dv = turn.vector(cross3(s.curve.normal, sub3(swept.q, s.curve.center)));
+      const c = s.curve;
+      const along = c.kind === "bspline"
+        ? (() => { const sp = bsplineOf(c.nurbs); const d = derivs(sp, nearestParam(sp, swept.q), 1)[1]; return c.sense ? d : d.map((x) => -x); })()
+        : cross3(c.normal, sub3(swept.q, c.center));
+      const dv = turn.vector(along);
       return unit3(cross3(du, dv)) ?? [0, 0, 0];
     }
   }
@@ -584,11 +651,14 @@ function extrudeBodies(model: Model, f: Extract<FeatureEntry, { kind: "extrude" 
         const mid = pieceAt(p, 0.5).map((c, x) => c + D[x] / 2);
         // An ellipse's wall is its curve swept along the depth, exactly
         // (docs/plans/sketch-shapes.md); a circle's a cylinder.
+        // A B-spline's wall is its curve swept along the depth, exactly, as an ellipse's is.
         const surface: Surface = p.kind === "line"
           ? { kind: "plane", origin: p.a, axis: out, ref: unit3(sub3(p.b, p.a))! }
-          : p.rv !== undefined
-            ? { kind: "extrusion", curve: curveOf(p, still) as Extract<Curve, { kind: "ellipse" }>, axis: e }
-            : { kind: "cylinder", origin: p.c, axis: e, ref: p.u, r: p.r };
+          : p.kind === "path"
+            ? { kind: "extrusion", curve: curveOf(p, still) as Extract<Curve, { kind: "bspline" }>, axis: e }
+            : p.rv !== undefined
+              ? { kind: "extrusion", curve: curveOf(p, still) as Extract<Curve, { kind: "ellipse" }>, axis: e }
+              : { kind: "cylinder", origin: p.c, axis: e, ref: p.u, r: p.r };
         faces.push(face(surface, [{ outer: true, uses }], mid, out));
       });
     }
@@ -754,6 +824,8 @@ function sweptSurface(p: Piece, O: number[], k: number[], rhat: number[], tol: n
       semiAngle: Math.atan2(Math.abs(ra - rb), Math.abs(ha - hb)),
     };
   }
+  // A B-spline turned: the general surface of revolution of its own curve, exact.
+  if (p.kind === "path") return { kind: "revolution", origin: O, axis: k, curve: curveOf(p, still) as Extract<Curve, { kind: "bspline" }> };
   const R = reach(p.c);
   if (R <= tol) return { kind: "sphere", origin: foot(p.c), axis: k, ref: rhat, r: p.r };
   if (p.r < R - tol) return { kind: "torus", origin: foot(p.c), axis: k, ref: rhat, major: R, minor: p.r };
@@ -893,6 +965,14 @@ export function kernelProfile(model: Model, plane: { u: number[]; n: number[] } 
     const pieces = piecesOf(model, m);
     const p = pieces[0];
     if (p.kind === "line") return { kind: "line", from: local(p.a), to: local(p.b) };
+    // A B-spline as the kernel's exact curve in the plane (kernel.ts's `nurbs`),
+    // whole — a closed one's two halves joined again — run its own way: a
+    // kernel profile's open members are joined end to end, so their ways matter.
+    if (p.kind === "path") {
+      const path = curvePath(model, model.entities.get(memberName(m))!)!;
+      const n = nurbsOf(path.curve);
+      return { kind: "nurbs", degree: n.degree, knots: n.knots, mults: n.mults, points: path.curve.ctrl.map((c): [number, number, number] => [...local(c), 1]) };
+    }
     if (p.rv !== undefined) {
       // A whole ellipse: the kernel's own NURBS of it (kernel.ts's `nurbs`),
       // exact — counter-clockwise in the plane's own axes, whichever way the
@@ -948,8 +1028,8 @@ export function roleSurface(model: Model, f: FeatureEntry, role: "base" | "lid" 
     const p = piecesOf(model, m)[0];
     // An ellipse's wall: no analytic surface the kernel names a face by, so the
     // kernel's own NURBS of it is written (B_SPLINE_SURFACE_WITH_KNOTS) — what
-    // the plan asks for where a body has one.
-    if (p.kind === "arc" && p.rv !== undefined) return null;
+    // the plan asks for where a body has one. A spline's likewise.
+    if ((p.kind === "arc" && p.rv !== undefined) || p.kind === "path") return null;
     if (p.kind === "line") {
       const along = unit3(sub3(p.b, p.a));
       const out = along ? unit3(cross3(along, e)) : null;
@@ -1017,6 +1097,8 @@ export function ellipseMember(c: [number, number], ux: [number, number], a: numb
  */
 export type LooseCurve =
   | { name: string; kind: "line"; a: number[]; b: number[] }
+  /** A curve laid out by an exact B-spline (a spline): written as one, from its first point to its last. */
+  | { name: string; kind: "bspline"; curve: Extract<Curve, { kind: "bspline" }>; a: number[]; b: number[] }
   | { name: string; kind: "ellipse"; curve: Extract<Curve, { kind: "ellipse" }> }
   | { name: string; kind: "arc"; curve: Extract<Curve, { kind: "circle" }>; a: number[]; b: number[] }
   | { name: string; kind: "circle"; curve: Extract<Curve, { kind: "circle" }> };
@@ -1026,6 +1108,16 @@ export function looseCurves(model: Model): LooseCurve[] {
   for (const f of model.features.values()) for (const n of f.names) taken.add(n);
   const out: LooseCurve[] = [];
   for (const e of model.entities.values()) {
+    const path = curvePath(model, e);
+    if (path) {
+      if (model.isConstruction(e.name) || model.hidden.has(e.name) || taken.has(e.name)) continue;
+      const [lo, hi] = domain(path.curve);
+      out.push({
+        name: e.name, kind: "bspline", curve: curveOf({ kind: "path", curve: path.curve, a: [], b: [] }, still) as Extract<Curve, { kind: "bspline" }>,
+        a: pathPoint(path.curve, lo), b: pathPoint(path.curve, hi),
+      });
+      continue;
+    }
     if (e.kind !== "line" && e.kind !== "arc" && e.kind !== "circle" && e.kind !== "ellipse") continue;
     if (e.construction || model.hidden.has(e.name) || taken.has(e.name)) continue;
     if (e.kind === "ellipse") {

@@ -44,7 +44,8 @@ import { addEllipse, checkEllipse, ellipseOf, semiAxes } from "./kinds/ellipse.t
 import { parseAxisRef, referentsOf, type Model, type RelationEntry } from "./model.ts";
 import { uiOf, viewAxes, worldToScreen, type View } from "./view.ts";
 import { dot3, lift3, sub3 } from "./vec3.ts";
-import { curveFrame, curvePlaneOf } from "./curveplane.ts";
+import { curveFrame, curvePath, curvePlaneOf } from "./curveplane.ts";
+import { derivs, domain } from "./bspline.ts";
 import { axisReader, turnPoint } from "./relations/revolution.ts";
 import { inSight, type Occlusion } from "./occlusion.ts";
 import { measured } from "./relations/measure.ts";
@@ -136,6 +137,7 @@ export const GLYPH_SYMBOL: Record<string, string> = {
   pointOnLine: "●",
   onCircle: "●",
   onEllipse: "●",
+  onSpline: "●",
   arcEndpoints: "●",
   midpoint: "∴",
   // `—` and `|` went with `horizontal` and `vertical`. A level edge wears the
@@ -604,7 +606,19 @@ function atEntity(model: Model, view: View, name: string): Anchor {
     case "ellipse": return atRim(model, view, name, Math.PI / 4);
     // A frame is its origin, as far as a mark beside it is concerned.
     case "frame": return atPoint(model, e.origin);
+    // A spline: halfway along its parameter, nudged off it on screen.
+    case "spline": return atPathMiddle(model, view, name);
   }
+}
+
+/** The middle of a curve laid out by a B-spline (curveplane.ts's `curvePath`), its mark off to one side on screen. */
+function atPathMiddle(model: Model, view: View, name: string): Anchor {
+  const path = curvePath(model, model.entities.get(name)!);
+  if (!path) return { world: model.coords(model.refsOf(model.entities.get(name)!)[0]), dir: DOWN_RIGHT, about: [name] };
+  const [lo, hi] = domain(path.curve);
+  const [c, d] = derivs(path.curve, (lo + hi) / 2, 1);
+  const world = c.slice(0, model.dim);
+  return { world, dir: perp(dirBetween(view, world, c.map((x, i) => x + d[i]).slice(0, model.dim))), about: [name] };
 }
 
 const str = (v: unknown): string => v as string;
@@ -661,6 +675,7 @@ function anchorsFor(model: Model, view: View, r: RelationEntry): Anchor[] {
     case "pointOnLine":
     case "onCircle":
     case "onEllipse":
+    case "onSpline":
       return [atPoint(model, str(args[0]))];
     case "dist":
       return [atDistance(model, view, str(args[0]), str(args[1]))];
@@ -733,6 +748,13 @@ function anchorsFor(model: Model, view: View, r: RelationEntry): Anchor[] {
       // A line and a circle, either way round as typed — or two circles,
       // marked where they touch (docs/plans/one-circle-one-arc.md).
       const [a, b] = [str(args[0]), str(args[1])];
+      // At a spline's end (docs/plans/spline.md): where the two curves meet,
+      // the spline's end point, journalled with the relation.
+      const spline = [a, b].find((n) => model.entities.get(n)?.kind === "spline");
+      if (spline) {
+        const s = model.entities.get(spline);
+        if (s?.kind === "spline") return [atPoint(model, args[spline === a ? 2 : 3] === "end" ? s.points[s.points.length - 1] : s.points[0])];
+      }
       const line = model.entities.get(a)?.kind === "line" ? a : model.entities.get(b)?.kind === "line" ? b : null;
       const other = line === a ? b : a;
       if (line && model.entities.get(other)?.kind === "ellipse") return [atEllipseTouch(model, view, line, other)];

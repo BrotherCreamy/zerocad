@@ -8,13 +8,13 @@ the TypeScript layer both run together, client-side, in the browser.
 
 CAD sketching — in 3D, on the ground, a solid's faces or the planes of
 coordinate frames, through an
-orthographic orbit camera (points, lines, circles, arcs, ellipses; a relation vocabulary of
+orthographic orbit camera (points, lines, circles, arcs, ellipses, splines through points you drag; a relation vocabulary of
 distance, coincidence, midpoint, parallel, perpendicular (either of which
 takes a coordinate frame's axis by name), angle, point-on-line,
 equal-length, radius, on-circle,
-concentric, equal-radius, tangent and symmetry, and on-ellipse with an
-ellipse's two semi-axes; line, rectangle, polygon, slot, circle, arc and
-ellipse tools with Onshape-style constraint inference; a fillet; sketch
+concentric, equal-radius, tangent and symmetry, on-ellipse with an
+ellipse's two semi-axes, and on-spline; line, rectangle, polygon, slot, circle, arc,
+ellipse and spline tools with Onshape-style constraint inference; a fillet; sketch
 editing — trim, extend, offset, mirror, a corner chamfer and linear and
 circular patterns, each an operation whose result is held by relations to
 what it was made from; regions —
@@ -109,6 +109,10 @@ src/relations/basic.ts   dist / fix (frame-relative) / coincident / midpoint —
 src/relations/geometry.ts par / perp / ang (any of which takes a frame axis) / on / eq / rad / oncircle / conc / eqrad / tan / sym
 src/operations.ts        operations, which change structure rather than add equations: fillet, extrude, revolve, region and its steps, del, set
 src/sketchedit.ts        the sketch edits, as operations: trim, extend, offset, mirror, chamfer, linear and circular patterns
+src/splineedit.ts        a spline's points added on the curve and taken out (the context menu's), as operations
+src/bspline.ts           the cubic B-spline arithmetic: the interpolation's layout and rows, evaluation, sampling, nearest point
+src/kinds/spline.ts      the spline's structure, as the sketch module declares it: its points, its control points, the equations it owns
+src/relations/spline.ts  the spline and its own equations; onspline, by a parameter of its own; tan at a spline's end
 src/sketchgeom.ts        where sketch curves cross, where along a curve a place is, where an end would reach
 src/relations/pattern.ts translated / rotated / rotation: what a pattern's copies are held by
 src/groups.ts            groups (named sets that own nothing and never nest), hide/show and the open group, as operations
@@ -155,6 +159,7 @@ src/tools/shapes.ts       the polygon and the slot as ordinary pieces and relati
 src/tools/polygon.ts      drag from the centre to a corner; n sides, a construction circle
 src/tools/slot.ts         drag between the two centres, then click the width
 src/tools/ellipse.ts      drag from the centre to the major end, then click the minor
+src/tools/spline.ts       click the points; a second click on the last ends it, a click on the first closes it
 src/tools/twopoint.ts     the press-and-drag (or two clicks) those three begin with
 src/tools/extrude.ts      click inside regions, see the solids, ✓; they are extruded
 src/tools/revolve.ts      click inside regions, then on an axis, ✓; they are revolved

@@ -33,7 +33,7 @@ import { defineTool, getToolCtor, listTools, undefineTool, defineGroup, ungroupT
 import { defineIcon, undefineIcon, hasIcon } from "./tools/icons.ts";
 import { defineDimension, defineEntityKind, undefineEntityKind, entityKind, type EntityKindSpec } from "./model.ts";
 import { defineRebuild } from "./operations.ts";
-import { defineCurveFrame, undefineCurveFrame, type CurveFrameFn } from "./curveplane.ts";
+import { defineCurveFrame, undefineCurveFrame, defineCurvePath, undefineCurvePath, type CurveFrameFn, type CurvePathFn } from "./curveplane.ts";
 import { defineDescriber, undefineDescriber, type Describer } from "./picking.ts";
 import { defineStepCurve, undefineStepCurve, type StepCurveWriter } from "./step.ts";
 import { defineSampler, undefineSampler, type Sampler } from "./projection.ts";
@@ -89,6 +89,12 @@ export interface EntityDecl extends EntityKindSpec {
   add: { op: string; fn: (model: Model, ...args: never[]) => unknown };
   /** The frame it is sampled by, as `curveFrame` lays a circle out (curveplane.ts) — drawn, boxed, looped and picked by it. */
   frame?: CurveFrameFn;
+  /**
+   * The exact B-spline it is, for a kind that is no conic (curveplane.ts's
+   * `curvePath`) — drawn, picked, looped, extruded and written to STEP by it,
+   * as a frame lays a circle out (docs/plans/spline.md).
+   */
+  path?: CurvePathFn;
   /** The hover tag's line for one (picking.ts's `describeEntity`). */
   describe?: Describer;
   /** How a solid's edge or a loose curve of this kind is written to STEP (step.ts). */
@@ -259,6 +265,7 @@ export function defineModule(name: string, spec: ModuleSpec, origin: LoadedModul
   for (const e of spec.entities ?? []) {
     defineEntityKind(e);
     if (e.frame) defineCurveFrame(e.kind, e.frame);
+    if (e.path) defineCurvePath(e.kind, e.path);
     if (e.describe) defineDescriber(e.kind, e.describe);
     if (e.step) defineStepCurve(e.kind, e.step);
     if (e.samples) defineSampler(e.kind, e.samples, e.closed === true);
@@ -309,6 +316,7 @@ export function forgetKinds(m: LoadedModule): void {
   for (const e of m.spec.entities ?? []) {
     undefineEntityKind(e.kind);
     undefineCurveFrame(e.kind);
+    undefineCurvePath(e.kind);
     undefineDescriber(e.kind);
     undefineStepCurve(e.kind);
     undefineSampler(e.kind);

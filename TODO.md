@@ -26,6 +26,39 @@ otherwise.
 
 ## Decisions made so far — veto here if any are wrong
 
+- **The spline: a cubic B-spline through points you drag** (the owner:
+  *"give me better sketch tools, relations, trim, slot... all the usual"*).
+  Spec: [`spline.md`](docs/plans/spline.md), **built**; its *As built* has
+  the edit table, the OpenCascade reading and every deviation. Open to
+  veto, as built:
+  - **Interpolating, cubic, centripetal** — Onshape's spline, not a control
+    polygon you drag. Open: **natural ends** (no curvature). Closed: **C²
+    round the seam**. Rejected: uniform and chord-length knots (overshoot,
+    loops), clamped end tangents by default (a tangent is a `tan` to a line
+    you draw).
+  - **No tangent handles** — `tan(line, sp1)` at an end is the handle, with
+    an ordinary line.
+  - **No normal** — the plan gave it a circle's three; its points' plane is
+    its plane, held by `onplane` on its points.
+  - **The equations are the entity's own**, not relations: not in `rels()`,
+    not deletable alone, made, deleted and journalled with it
+    (ARCHITECTURE.md). Rejected: an `interp(sp1)` relation (deletable,
+    leaving a curve through nothing) and control points as hidden points.
+  - **`onspline` owns its parameter**, saved in the file.
+  - **Named `sp1`, `sp2`, …**; **two points** make one, three a closed one.
+  - **Under the curves button** with the ellipse; ended by a second click on
+    the last point, Enter or ✓; closed by a click on the first.
+  - **`addThrough` re-bends the curve a little** (under 2 % of its length in
+    the suite) rather than keeping it exactly with a knot that is no
+    through-point.
+  - **Trim, extend and offset of a spline itself are refused by name**; a
+    spline **cuts** what it crosses and a line extends to it; mirror and the
+    patterns copy it; a region bounded by **part** of one is refused, a whole
+    one extrudes and revolves; a surface sweeps and turns one, and is not
+    trimmed by one. Every refusal's message is tested.
+  - **Drawn by turn as well as distance**: no chord turning more than 2°.
+  - **Format 18.**
+
 - **Surfaces: a surface is a thing; trim, extend, knit, offset, thicken and
   the fillet and chamfer of surfaces are operations** (the owner: *"please
   add solid and surface fillet tools if possible"*, *"also fillets and
@@ -2035,8 +2068,45 @@ starts.
            - [ ] **Merge with `sketch-shapes`**: the toolbar counts become
              fourteen when the ellipse brings curves; both packages edit the
              same counts.
-      3. [`spline.md`](docs/plans/spline.md) after the ellipse, through the
-         same seams.
+      3. [x] [`spline.md`](docs/plans/spline.md) after the ellipse, through
+         the same seams — **BUILT (2026-11-06)** on `claude/spline`: the
+         register entry above, the spec's *As built*. Found and left, each
+         written down:
+         - [ ] **A partial revolve whose wall meets its axis fails
+           OpenCascade's strict read** (two poles, no degenerate edge in the
+           file) — for an arc and for lines as for a spline, exported the
+           same from the branch before this one; the healed read is valid
+           and exact. `STRICT_FAILS` in `test/stepspline.test.ts`. Not the
+           spline's; the exact B-rep's revolve near an axis.
+         - [ ] **A kernel body's closed B-spline wall keeps its seam** — the
+           ellipse's (3) above, now for the spline's hole too; split it as
+           `splitSeams` splits a cylinder's.
+         - [ ] **Trim, extend and offset of a spline**, and a region bounded
+           by part of one: each needs a curve that is not an interpolant (a
+           piece of a spline through points it does not go through). A
+           B-spline entity of control points would serve all three.
+         - [ ] **`addThrough` / `removeThrough` refuse a spline a feature is
+           built on**: the lid's twin spline would need the same edit.
+         - [ ] **The spline is still named** in its relations, operations.ts,
+           quiet.ts, menu.ts, glyphs.ts, sketchedit.ts, sketchgeom.ts,
+           surfaces.ts and persist.ts's `values.splines` — as the ellipse is.
+         - [ ] **The e2e record, under a load of 26–35 on four cores**
+           (another session's 22 `touchharness-busy` loops, the whole run):
+           `test:all` 709 e2e, 697 pass, 10 fail, 2 skipped (the picture
+           tests). One was this branch's — `panels.e2e.ts` listed the spline
+           as a button of its own; fixed, 39/39 alone. The other nine are
+           fingers: `modefeedback` (2) and `touchdensity` (2) passed alone
+           (10/10, 14/14); `android` failed alone with a different set each
+           run (3, then 2) and failed on the base branch's src too;
+           `solidsphone` (2) failed alone three times, its circle's finger
+           drag drawing nothing, and the base branch's src failed the same
+           probe identically. The touch harness's known loss under load
+           (`touch-harness.md`). Not retried into a pass; to run again on a
+           quiet machine.
+         - [x] Fixed on the way: the kernel's revolve naming (`tagRevolve`
+           read only the members' first points); a closed spline in no
+           frame's plane (sketchface.ts); a chord between a spline's own
+           points (`EntityKindSpec.through`).
       Out of scope for now, written down: text in sketches; `tan` between
       an ellipse and another curve; tangent handles on splines unless free.
       - **[x] workbenches BUILT (2026-11-05)** on `claude/workbenches` — the
