@@ -33,6 +33,15 @@ where SMLib has it), `src/organiser.ts`, and the solids and step tests.
   call on a sheet body) or, where SMLib offers it, a face-face blend
   between two surfaces that do not share an edge, trimming both. Say which
   of the two the kernel gives; build what it gives.
+- **Surface chamfer** (the owner, 2026-11-06: *"also fillets and chamfers
+  for surfaces"*): `chamfer(s, t, d)` the same way — a ruled strip between
+  the two surfaces at an equal setback `d` along each, both trimmed back to
+  it; at a knitted shared edge through `solid-fillets.md`'s kernel
+  `chamfer` on the sheet body, between surfaces that do not share an edge
+  only if the kernel offers it (say which). Both the fillet and the chamfer
+  use the solid tool's gesture (`solid-fillets.md` as built: pick the edge,
+  or here the two surfaces; the distance as a dimension; a live preview),
+  under the same **modify** group, so one tool does solids and surfaces.
 - **Sketch on a surface**: a planar surface is a work plane like a face.
 - **STEP**: sheets as `SHELL_BASED_SURFACE_MODEL` (AP214), faces as the
   kernel writes them; re-validate with OpenCascade.

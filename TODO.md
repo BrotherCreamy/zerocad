@@ -1843,7 +1843,9 @@ starts.
         preview and the radius as a dimension; and
         [`surfaces.md`](docs/plans/surfaces.md) after regions as operations
         — a surface is a kind, trim, extend, knit, thicken and the surface
-        fillet are operations, nothing negative.
+        fillet and chamfer (the owner, 2026-11-06: *"also fillets and
+        chamfers for surfaces"*; one modify tool for solids and surfaces)
+        are operations, nothing negative.
 
 - [x] **Files — open, save, share, drop, autosave — BUILT (2026-11-04).**
       The owner: *"I want to be able to open files on my phone, share files
