@@ -230,9 +230,21 @@ offset, mirror, pattern, round, chamfer; it wraps into two lines on a phone):
   groups rule (a group of two or more under its heading).
 
 **Verification as run.** Typecheck 0 errors before and after. Unit 1584 →
-1623 (the base's 1584, 28 in `test/sketchedit.test.ts`, 10 in
-`test/sketchedittools.test.ts`, one in `test/dimensions.test.ts`'s table
-grown). Kernel 11. E2E: see TODO.md's entry for the gate. Pictures:
+1622 (the base's 1584, 28 in `test/sketchedit.test.ts`, 10 in
+`test/sketchedittools.test.ts`; the tables in the modules, menu, toolbar
+groups and dimensions suites grown, no test added there). Kernel 11/11. E2E,
+the whole suite in nineteen sets of four files on the commit before the merge
+with the working branch: 645 tests (the base's 637, 8 in
+`sketchedit.e2e.ts`), 640 pass, 4 fail, 1 skipped. Of the four, one was real
+— `panels.e2e.ts`'s toolbar table, which had to learn that the edits share
+the fillet's button (fixed; 39/39 alone); three were the timing flakes the
+working branch's log already records — Pixel 7's drag in `android.e2e.ts`
+(14/14 alone) and the phone fillet file's two steps (3/3 alone). After the
+merge, typecheck, unit and kernel again, and the files the merge or this
+package touch (panels, panels preview, fits, chrome, touch, sketch edit,
+toolbar groups, context menu) once more, in two sets: 125 tests, 122 pass,
+1 skipped, 2 fail — toolbar groups' 300 ms leave-timer check and the test
+built on it, the load flake TODO.md records (8/8 alone). Pictures:
 docs/images/206–215, each looked at.
 
 **Left in place, deliberately:**
