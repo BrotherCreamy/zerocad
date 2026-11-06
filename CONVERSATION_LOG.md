@@ -106,6 +106,56 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### The drag preview: why it is the drop at the spot, and what was rejected
+
+**The preview is the drop at this spot, and that came from review.** The first
+build ran `dragStep` move by move on the drag's own copy, which is what the
+panels used to do live. It kept the push's memory: a ghost pushed on the way
+stayed pushed when the hand drew back. I wrote that down as vetoable, reading
+"the rules of the push are unchanged" as covering the push's memory, and
+reading the spec's "lifting back where it started commits nothing" as having
+allowed for it. The review rejected it on the owner's own words: "show how
+they will snap IF the user drops the grasped toolbar in that spot". What a
+drop commits must be a function of where the hand is, not of the path.
+
+So each move now asks the resolver once, from the layout at the press, for
+the held panel taken straight to the hand: one `dragStep`, the grab as taken.
+I considered replaying the straight line from the press in small steps. It is
+just as path-free, but it costs a resolve per step, and it differs from the
+single step only in which way a panel crossed diagonally is pushed. One step
+is the resolver's own answer to "this move", so it won. One consequence is in
+the e2e: a tray turned in the preview keeps the column grab it was taken by,
+so its ghost leaves the chain when the column would clear it. The old
+"come back by exactly the lead" measurement does not hold any more. The test
+now checks that the ghosts come back up with the hand and that the same spot
+gives the same ghosts. The lift-at-the-press rule stays, for the fingertip
+that does not quite come home.
+
+**The held panel is drawn, not placed.** `place` both drew a panel and wrote
+it into `shown`, the layout every rule reads. The held panel must be drawn
+over others without the layout knowing, or `onShow` would wrap the corner's
+text round a panel that is only in the hand. So `draw` was split out, and
+`shown` is the start until the drop.
+
+**Rejected: animating the settle with a transform.** The thought was that a
+FLIP (final box at once, a transform easing from the old place) might leave
+`getBoundingClientRect` final for the tests. It does not: the rect includes
+transforms. So the settle is a plain transition on the boxes, and the
+harness waits for it (`settled()`). The first version waited for the
+`settling` class alone, and failed under load twice in different ways. Once
+the input was acknowledged before the page had handled the pointerup, so
+nothing was settling yet. Once the transition's first frame came after the
+timer that removes the class. The helper now waits for no drag, no settle
+and no running transition, which is the condition rather than a guess at
+how long it takes.
+
+**Two of the browser's facts, found by looking.** A row's ghost along the
+top was drawn under the corner's status text. The ghosts are now lifted over
+the logo's row for the drag. A phone's ghost line, asked for at 1.95 px, was
+drawn at 1. Chromium floors border widths to whole CSS pixels, so the width
+is rounded in the stylesheet. Neither shows in any unit test; both are in
+ARCHITECTURE's count.
+
 ### Solid fillets: why blends have a registry of their own, why the preview is a trial, and what was rejected
 
 **A separate registry, measured first.** The obvious record for a fillet was

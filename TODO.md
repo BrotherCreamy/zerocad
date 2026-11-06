@@ -1897,6 +1897,76 @@ starts.
         commits, Escape commits nothing; a tray's turn at an edge is
         previewed and happens at the drop; every panel not in hand is
         translucent for the drag).
+        - [x] **A dragged panel previews; nothing moves until the drop —
+          BUILT (2026-11-06)**, on `claude/panels-preview`; the spec's *As
+          built* has the detail. **The preview is the drop at this spot**:
+          each move asks the unchanged resolver for one step from the layout
+          at the press straight to the hand (`Drag`, `dragTo`), so a spot shows
+          the same ghosts however it was reached and the press shows none
+          (revised on review — it first kept the push's memory along the
+          path, which the owner's "IF the user drops ... in that spot"
+          rules out). The held panel is drawn under the
+          hand over whatever it is over (`heldAt`); a dashed ghost marks each
+          panel the drop would move and the held one's landing where it is not
+          under the hand (`ghostsOf`); every other panel is at half opacity
+          from the first move; the drop commits the preview in one step
+          (`dropOf`) and the panels glide onto it in 120 ms. Measured on an
+          emulated iPhone 13 (`npm run measure:panels`, CPU 4×): the move
+          handler 1.9 ms median, 4.1–4.5 ms p95; the resolver alone under
+          0.1 ms median, 0.6–0.7 ms p95; the opacity class costs no frame at
+          the median.
+          **Vetoable, each a decision:**
+          - **One step, not the path replayed.** The drop at a spot is one
+            `dragStep` from the press — the resolver's own single step, its
+            push along each axis in turn (the larger first) by the swept
+            rectangle, its turn and its re-grasp asked once. Replaying the
+            straight line in small steps would be as path-free but cost a
+            resolve per step, for a difference only in which way a panel
+            crossed diagonally is pushed. A consequence: a tray turned in the
+            preview keeps the grab it was taken by, so its ghost leaves a
+            chain when the column it was taken as clears it, not when the
+            turned row would.
+          - **The held panel goes over anything**, the logo and the corner's
+            status included, for the drag (z 47; the ghosts 46): a ghost may
+            land in the logo's row, where the corner's text keeps clear of
+            panes only once they are placed.
+          - **Back where it started** is within 2 px of the press for a mouse
+            (a 3 px nudge is an arrangement) and 8 px for a finger (the tap's
+            slop).
+          - **Escape is the drag's alone** while one is held: it does not also
+            put the armed tool down. One key takes back one thing.
+          - **A pointercancel commits nothing** (it used to commit): the
+            system taking the touch is not the hand putting the panel down.
+          - **The drag's look starts with the first move**, not the press: a
+            tap on a strip does not flash every other panel to half.
+          - **A resize by a grip previews the same way** — the panel grows
+            under the hand, over its neighbour, the neighbour's ghost pushed.
+            The spec spoke of a drag; one rule for every gesture.
+          - **The ghosts' line is 1.5 px × the interface size, rounded to a
+            whole pixel** — 2 px at a desktop's and a phone's 100 %, 3 px from
+            a phone's 140 %. Chromium floors a border to a whole CSS pixel,
+            so an unrounded 1.95 drew 1.
+          - **The settle is a 120 ms CSS transition, eased out** (no
+            overshoot), on the panels' boxes; their rectangles, the store and
+            every rule are the new layout the moment it starts, only the
+            drawing catches up. An Escape or a lift back at the press glides
+            the held panel home the same way.
+          - **The held panel's own ghost is brighter** than the others'
+            (`data-own`), and is not drawn while it lies exactly under the
+            hand.
+          - **The refusal is a status note** (`no layout fits there — nothing
+            moved`), with the reason in the console. The resolver never
+            produced one in 1 500 random gestures on a phone's defaults; the
+            branch is tested with a constructed preview.
+        - [ ] **Found, still to do (panels preview):**
+          - The strip's tooltip still says *"Drag to move it; pushed against
+            an edge or a pane, it stays there"*; it could say that Escape puts
+            it back.
+          - The held panel covers the logo while it is over it; harmless (the
+            logo cannot be pressed mid-drag) but it is the one time anything
+            does.
+          - Not tried on an iPhone: the glide, the half opacity over a solid,
+            and a ghost at 3×.
       - **Then, on the preview:**
         [`panels-overlay-lock.md`](docs/plans/panels-overlay-lock.md) (the
         owner: *"a menu option to make the toolbars transparent to maximize

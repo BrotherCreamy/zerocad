@@ -18,7 +18,7 @@ import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { openApp, type AppContext, forgetAutosave } from "./harness.ts";
+import { openApp, type AppContext, forgetAutosave, settled } from "./harness.ts";
 
 let app: AppContext;
 before(async () => { app = await openApp(); });
@@ -243,7 +243,7 @@ test("the panel pushes and is pushed like any panel, and its place is the viewer
     await app.page.mouse.down();
     await app.page.mouse.move(s.x + s.width / 2 + dx, s.y + s.height / 2 + dy, { steps: 10 });
     await app.page.mouse.up();
-    await app.page.waitForTimeout(100);
+    await settled(app.page); // the glide onto the drop (docs/plans/panels-preview.md)
   };
   const LOG = '.panel[data-panel="log"]';
   await dragStrip(PANEL, 300, 200); // out into the drawing, over the log's columns

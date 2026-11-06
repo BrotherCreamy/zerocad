@@ -164,7 +164,12 @@ The command line (a panel at the bottom-left until you move it — every
 piece of chrome can be dragged by its strip, and all but the toolbar — one
 line of its tools, or two where one will not fit — resized from any corner) is a
 REPL over the app's own command surface, and it is the primary interface —
-not a debug console. `help()` lists everything in scope. The toolbar's
+not a debug console. `help()` lists everything in scope. **While you drag a
+panel, nothing else moves**: the others go faint, a dashed ghost shows where
+each one will be pushed to and where the one in your hand will snap (a
+toolbar that will turn from a column to a row shows the row), and only when
+you let go do they move there. Escape, or letting go back where you started,
+leaves everything where it was. The toolbar's
 buttons are shortcuts into it: each is a tool's icon, types `arm("name")`,
 and the log shows it. Hover one — or, on a phone, hold it — for its
 **tooltip**: the tool's name, what it does, and the command it types (a hold

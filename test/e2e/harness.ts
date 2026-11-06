@@ -257,6 +257,31 @@ export async function forgetAutosave(page: Page): Promise<void> {
     (window as unknown as { __neocad: { files: { forget(): Promise<void> } } }).__neocad.files.forget());
 }
 
+/**
+ * Waits until the panels have arrived (docs/plans/panels-preview.md): at a drop
+ * or an escape they glide onto their places for 120 ms, and a rectangle read in
+ * the middle of that is a frame of the glide. Their places are final when it
+ * starts; only the drawing catches up — so a test reading where a panel is
+ * drawn waits for this, and one reading `layout()` need not.
+ *
+ * It waits for the drag to be over as well (`dragging` gone): the input a test
+ * sends can be acknowledged before the page has handled it, and a check made
+ * in between would find nothing settling yet and return mid-gesture.
+ */
+export async function settled(page: Page): Promise<void> {
+  // And for the glide itself to have finished on every panel: its timer and
+  // its transition are not the same clock, and under load the transition's
+  // first frame can come late.
+  await page.waitForFunction(() => {
+    const v = document.getElementById("viewwrap");
+    if (!v) return true;
+    if (v.classList.contains("dragging") || v.classList.contains("settling")) return false;
+    return !Array.from(v.querySelectorAll(":scope > .panel")).some((el) =>
+      el.getAnimations().some((a) => a instanceof CSSTransition && a.playState === "running"));
+  });
+  await page.evaluate(() => new Promise<void>((r) => requestAnimationFrame(() => r())));
+}
+
 export async function openApp(options: OpenOptions = {}): Promise<AppContext> {
   await requireServer();
   const browser = await launchBrowser();

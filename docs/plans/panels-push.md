@@ -5,8 +5,11 @@
 and the places this text was wrong are corrected below and marked *(as
 built)*. **Rule 2 below was then reversed by the owner** — *"actually the
 grasp point should stay the same"* — and the reversal is built too (2026-10-27,
-branch `claude/grab-stays`); see the last section. The owner's direction,
-verbatim:
+branch `claude/grab-stays`); see the last section. **And the push is now previewed** (the owner,
+2026-11-05; built by [`panels-preview.md`](panels-preview.md)): during a drag
+the other panels do not move — ghosts show where this resolver would push
+them — and the drop commits it; the rules below are unchanged. The owner's
+direction, verbatim:
 
 > *shouldn't be able to drag windows over other windows. they should collide
 > and push one another around. not collide like physics, just push. also when
