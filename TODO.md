@@ -3781,7 +3781,8 @@ extended the way `defineTool` extends the tool registry would close it.
         3/3. Fixing the harness (stamped touches, not awaited ones) is the
         one cure for all three, and it is the "Next:" above.
       - [ ] **Queued (2026-11-06): fix the touch harness's latency, now a
-        package of its own.** The `solidsphone` drags (on the iPhone, Cut
+        package of its own** ([`touch-harness.md`](docs/plans/touch-harness.md);
+        a fourth red gate after #78, again 3/3 alone). The `solidsphone` drags (on the iPhone, Cut
         through the top and a boss on the side) failed in the gates after
         #75, #76 and #77: three in a row. Each time they passed alone
         (3/3). A gate that is red by default stops meaning anything. The
