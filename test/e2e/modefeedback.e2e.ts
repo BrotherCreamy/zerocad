@@ -265,8 +265,14 @@ for (const device of ["iPhone 13", "iPhone 13 landscape"] as const) {
       const v = await verdict();
       if (v.shown) assert.ok(v.inside, `the verdict is inside the corner's room (${v.yielded || "chip whole"})`);
       await phone.page.waitForFunction(() => document.getElementById("status")?.dataset.faded !== undefined, null, { timeout: 6000 });
+      // Fading, it still has its line (docs/plans/touch-density.md: 100 ms
+      // into the fade the chip used to be whole and the verdict cut in half).
       await phone.page.waitForTimeout(100);
-      assert.equal((await verdict()).yielded, "", "faded: the chip whole again");
+      const fading = await verdict();
+      assert.ok(fading.inside, `fading, the verdict is still inside the corner's room (${fading.yielded || "chip whole"})`);
+      // The fade is 0.6 s; once it is over, the line is the chip's again.
+      await phone.page.waitForTimeout(800);
+      assert.equal((await verdict()).yielded, "", "faded out: the chip whole again");
       await f.tap(...await middle("#mode .done"));
       await phone.page.waitForTimeout(300);
       assert.match(await phone.log(), /> workplane\(null\)/);

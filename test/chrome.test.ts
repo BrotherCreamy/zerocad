@@ -55,11 +55,14 @@ test("the metrics scale: every size field multiplied and rounded, the flags kept
   assert.deepEqual(traySize(3, "column", scaledMetrics(FINE, 1.5)), { w: 30 + 8, h: 24 + 6 + 3 * (30 + 3) });
 });
 
-test("a finger's metrics: drawn at the size, hit at 44 — the tray's pitch a whole target, rows and the command line a target tall", () => {
-  const m = touchMetrics(1.3);
+test("a finger's metrics at a phone's 100 %: hit at 44 — the tray's pitch a whole target, its button 0.8 of it, rows and the command line a target tall", () => {
+  const m = touchMetrics(1.3, 1.3);
   assert.deepEqual(COARSE, m, "COARSE is a phone's 100 %");
-  assert.equal(m.button, 26, "a tool button drawn at 1.3 × the desktop's 20");
-  assert.equal(m.icon, 21);
+  // Was 26 (1.3 × the desktop's 20) in an 18 px gap: the tool now fills its
+  // target (docs/plans/touch-density.md; the owner: "the white space between
+  // eg the tools on the tool palettes is a bit too much").
+  assert.equal(m.button, 35, "a tool button drawn at 0.8 of its 44 px target");
+  assert.equal(m.icon, 26);
   assert.equal(m.title, 21, "a strip drawn 21 thick, not 44");
   assert.equal(m.button + m.gap, TOUCH_TARGET, "each button's pitch along the tray is a whole target");
   assert.equal(m.hit, TOUCH_TARGET);
@@ -67,12 +70,10 @@ test("a finger's metrics: drawn at the size, hit at 44 — the tray's pitch a wh
   assert.equal(m.optionRow, TOUCH_TARGET);
   assert.equal(m.line, TOUCH_TARGET);
   assert.equal(m.coarse, true);
-  // Big enough that the drawn button is its own target: no gap added past the mouse's.
-  const big = touchMetrics(2.5);
-  assert.equal(big.button, 50);
-  assert.equal(big.gap, Math.round(2 * 2.5));
-  // 11 tools: a slim column, 34 thick — the 0.1.0 one was 52.
-  assert.deepEqual(traySize(11, "column", m), { w: 34, h: 21 + 6 + 11 * 44 });
+  assert.equal(m.base, 1.3, "measured against the phone's own 100 %");
+  // 11 tools: a column 43 thick — the 0.1.0 one was 52, the last 34 — and as
+  // long as before: the pitch at 100 % did not change.
+  assert.deepEqual(traySize(11, "column", m), { w: 43, h: 21 + 6 + 11 * 44 });
 });
 
 test("the device's 100 %: form factor × preferred text size, per pointer and screen", () => {
@@ -186,7 +187,10 @@ test("the logo's box: the mark and a margin, never under a finger's 44 px", () =
   assert.deepEqual(logoBox(FINE), { w: 32, h: 32 });
   assert.equal(COARSE.logo, 26, "the mark at a phone's 100 % is 26 px — the spec's 22–28");
   assert.deepEqual(logoBox(COARSE), { w: 44, h: 44 });
-  assert.deepEqual(logoBox(touchMetrics(2)), { w: 40 + 24, h: 40 + 24 });
+  // Larger, the box is the mark and its margin or the target, whichever is more:
+  // at a desktop's 2 ×, 64; on a phone at 154 % (2 ÷ 1.3) the target, 68.
+  assert.deepEqual(logoBox(scaledMetrics(FINE, 2)), { w: 40 + 24, h: 40 + 24 });
+  assert.deepEqual(logoBox(touchMetrics(2, 1.3)), { w: 68, h: 68 });
 });
 
 test("a push stops at the logo: it is in the layout, and nothing moves it", () => {
@@ -211,7 +215,11 @@ test("a push stops at the logo: it is in the layout, and nothing moves it", () =
 const PHONE = { top: 47, right: 0, bottom: 34, left: 0 };
 const AREA: Size = { w: 390, h: 844 - 47 - 34 };
 
-test("a panel touching an inset edge reaches under the inset and pads by it; elsewhere it is drawn where it is", () => {
+// The rule was every inset edge; it is the bottom's alone since the owner, on a
+// landscape iPhone: "when I move something up against the left or right edge,
+// it hits an invisible edge, but then the padding of the palette expands out
+// to touch the edge of the screen" (docs/plans/touch-density.md).
+test("a panel touching the bottom edge reaches under the bottom inset and pads by it; at the top and the sides, and elsewhere, it is drawn where it is", () => {
   // Docked to the bottom of a portrait phone, full width: ground under the
   // home indicator, content above it.
   const cmd = { x: 0, y: AREA.h - 62, w: AREA.w, h: 62 };
@@ -222,16 +230,19 @@ test("a panel touching an inset edge reaches under the inset and pads by it; els
   // …so its bottom edge is the screen's.
   const b = bleed(cmd, AREA, PHONE).rect;
   assert.equal(b.y + b.h, 844);
-  // At the top, under the status bar.
+  // At the top, under the status bar: not upward — drawn at its rectangle.
   assert.deepEqual(bleed({ x: 100, y: 0, w: 50, h: 40 }, AREA, PHONE),
-    { rect: { x: 100, y: 0, w: 50, h: 87 }, pad: { top: 47, right: 0, bottom: 0, left: 0 } });
+    { rect: { x: 100, y: 47, w: 50, h: 40 }, pad: NO_INSETS });
   // Floating: offset into the safe area, nothing padded.
   assert.deepEqual(bleed({ x: 10, y: 10, w: 50, h: 40 }, AREA, PHONE),
     { rect: { x: 10, y: 57, w: 50, h: 40 }, pad: NO_INSETS });
-  // A landscape notch's side.
+  // A landscape notch's side: not sideways — at its rectangle, the drawing under the cutout.
   const land = { top: 0, right: 47, bottom: 21, left: 47 };
   assert.deepEqual(bleed({ x: 0, y: 100, w: 40, h: 200 }, { w: 750, h: 369 }, land),
-    { rect: { x: 0, y: 100, w: 87, h: 200 }, pad: { top: 0, right: 0, bottom: 0, left: 47 } });
+    { rect: { x: 47, y: 100, w: 40, h: 200 }, pad: NO_INSETS });
+  // In the bottom-left corner of a landscape phone: down to the glass, not under the cutout.
+  assert.deepEqual(bleed({ x: 0, y: 309, w: 300, h: 60 }, { w: 750, h: 369 }, land),
+    { rect: { x: 47, y: 309, w: 300, h: 81 }, pad: { top: 0, right: 0, bottom: 21, left: 0 } });
   // Touching an edge with no inset (a desktop): touching, nothing to reach under.
   assert.deepEqual(bleed(cmd, AREA, NO_INSETS), { rect: cmd, pad: NO_INSETS });
 });
@@ -326,7 +337,7 @@ test("resting on another pane's top with its sides free, a pane stays the same d
 // landscape phone made a 599 px row along the right edge and left no room
 // beside it for a log (docs/plans/everything-fits.md).
 test("a tray whose line no longer fits along its edge wraps onto a second line, keeping the way it runs and the edge", () => {
-  const m = touchMetrics(1.6);
+  const m = touchMetrics(1.3, 1.3); // a phone's 100 %: eleven at 44 are 511 px, two lines of six in 390
   const row = traySize(11, "row", m);
   const shown: Layout = { toolbar: { x: 0, y: LANDSCAPE.h - row.h, ...row, orient: "row" } };
   const recs = { toolbar: recorded("toolbar", shown, { w: 800, h: LANDSCAPE.h }, 1) };
@@ -340,7 +351,7 @@ test("a tray whose line no longer fits along its edge wraps onto a second line, 
 
 test("a pane beside a tray that wraps in a rotation, and so gets shorter, lies along it still — not off its end", () => {
   // A log against a column's right side, two thirds of the way down it.
-  const m = touchMetrics(1.3);
+  const m = touchMetrics(1.3, 1.3);
   const col = traySize(13, "column", m);
   const shown: Layout = {
     toolbar: { x: 0, y: 60, ...col, orient: "column" },

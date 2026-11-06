@@ -27,7 +27,7 @@
        sized for. Everything else drawn for a person to read or hit is
        multiplied by --ui below. The defaults are a mouse's 100 %, so the page
        before main.ts runs is what it always was. */
-    :root{--ui:1;--title:16px;--button:20px;--gap:2px;--icon:16px;--grip:12px;--orow:22px}
+    :root{--ui:1;--title:16px;--button:20px;--gap:2px;--icon:16px;--grip:12px;--orow:22px;--target:44px}
     html,body{position:fixed;inset:0;overflow:hidden;overscroll-behavior:none;margin:0;background:#0a0e13;color:#d5e1ec;font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace;font-size:13px;
       touch-action:manipulation;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent;-webkit-text-size-adjust:100%;text-size-adjust:100%}
     #cmd,#log,input{-webkit-user-select:text;user-select:text;-webkit-touch-callout:default}
@@ -175,7 +175,7 @@
     :is(#wbconsent,#wbmissing) button.wbyes{color:#0e141b;background:#e8a33d;border-color:#e8a33d}
     /* The offer leaves the drawing it is about in sight: under the status, not over the middle. */
     #wbmissing{top:calc(56px + env(safe-area-inset-top));transform:translate(-50%,0)}
-    @media (pointer: coarse){:is(#wbconsent,#wbmissing) button{min-height:44px;min-width:72px}}
+    @media (pointer: coarse){:is(#wbconsent,#wbmissing) button{min-height:var(--target);min-width:72px}}
     #ctxmenu,#appmenu{position:absolute;font-family:inherit;font-size:calc(11.5px * var(--ui));background:#0e141bf5;
       border:1px solid #223041;border-radius:4px;padding:3px 0;z-index:60;min-width:120px;
       box-shadow:0 6px 20px #000a;user-select:none}
@@ -217,7 +217,7 @@
     #appmenu .about a{color:#8fa7bb}
     #buildstamp{color:inherit}
     /* The spin box, − 80% +: its faces drawn small, the buttons round them
-       the hit area — a finger's 44 px under a finger, below. */
+       the hit area — a finger's target under a finger, below. */
     #appmenu .srow{padding:3px 6px 6px}
     #appmenu .spin{display:inline-flex;align-items:center;border:1px solid #223041;border-radius:4px;background:#0a0e13}
     #appmenu .spin button{display:flex;align-items:center;justify-content:center;padding:0;margin:0;border:none;background:transparent;
@@ -530,30 +530,34 @@
       background:transparent;border-color:transparent;color:transparent;cursor:default}
     #viewwrap.locked>.panel>.ptitle::before{display:none}
     #viewwrap.locked>.panel>.ptitle .padd{color:#8fa7bb}
-    /* **Under a finger: drawn at the interface size, hit at 44 px**
-       (docs/plans/chrome-logo-scale.md). Everything above is already drawn at
-       the device's own size (--ui: 1.3 on a phone — src/uiscale.ts); what a
-       finger needs on top is a target of Apple's 44 pt, a CSS pixel being a
-       point on an iPhone, and it gets it here **without anything being drawn
-       bigger**: an invisible ::before round a small face, a row that is a
-       target tall with its text drawn at the size. (They used to be one
-       size — drawn at 44 — which is what the owner called huge.) A tray's
-       buttons are spaced by panels.ts so that each one's pitch is a whole
-       target, and their hit boxes overhang the tray's edges a little.
-       **Fields stay at 16 px type at least**: below it iOS zooms the page
-       into any field it focuses, and a zoomed page is the one thing the page
-       lock cannot undo. Hover colours are left as they are: a finger has no
-       hover, and a colour that sticks after a tap is iOS's, not ours. */
+    /* **Under a finger: drawn at the interface size, hit at the target**
+       (docs/plans/chrome-logo-scale.md, touch-density.md). Everything above
+       is already drawn at the device's own size (--ui: 1.3 on a phone —
+       src/uiscale.ts); what a finger needs on top is a target, and it gets it
+       here **without anything being drawn bigger**: an invisible ::before
+       round a small face, a row that is a target tall with its text drawn at
+       the size. (They used to be one size — drawn at 44 — which is what the
+       owner called huge.) **The target is --target**, set by main.ts from
+       panels.ts's `target`: Apple's 44 pt at the device's own 100 %, and in
+       proportion to the spin box from there (35 at 80 %, 57 at 130 %; never
+       under 32) — it was a literal 44, so shrinking the interface shrank the
+       type and left the rows where they were (the owner: "the text resizes
+       but the spacing between e.g menu items and toolbar items barely
+       changes"). A tray's buttons are drawn at 0.8 of it and spaced by
+       panels.ts so that each one's pitch is a whole target, and their hit
+       boxes overhang the tray's edges a little. Hover colours are left as
+       they are: a finger has no hover, and a colour that sticks after a tap
+       is iOS's, not ours. */
     @media (pointer: coarse){
       .tray{overflow:visible}
       .tray button{position:relative;border-radius:5px}
       .tray button::before,#options .oact button::before{content:"";position:absolute;left:50%;top:50%;
-        width:max(100%,44px);height:max(100%,44px);transform:translate(-50%,-50%)}
+        width:max(100%,var(--target));height:max(100%,var(--target));transform:translate(-50%,-50%)}
       #options .oact button{position:relative}
-      /* A strip is drawn its own thickness and grabbed over 44: its hit box
+      /* A strip is drawn its own thickness and grabbed over the target: its hit box
          reaches outward, over the drawing, never into the panel's content. */
       .panel>.ptitle{position:relative}
-      .panel>.ptitle::before{content:"";position:absolute;left:50%;bottom:0;width:max(100%,44px);height:max(100%,44px);transform:translateX(-50%)}
+      .panel>.ptitle::before{content:"";position:absolute;left:50%;bottom:0;width:max(100%,var(--target));height:max(100%,var(--target));transform:translateX(-50%)}
       .panel[data-orient="row"]>.ptitle::before{left:auto;right:0;bottom:auto;top:50%;transform:translateY(-50%)}
       /* Fields scale with everything else. They were held at 16px at least
          here, against Safari's zoom into a focused field, which the viewport
@@ -564,32 +568,35 @@
       #cmdhint{display:none}
       #log{line-height:1.4;padding:0 10px}
       /* The see-through tree under a finger: rows drawn 20 px at the size,
-         22 px of the drawing between them. Not closer: Chromium — Android's
-         engine — moves a touch onto the nearest control its contact area
-         reaches, and a tap in the middle of a gap went to a row at every gap
-         up to 18 px with an 8 px fingertip (measured; 20 px was the first
-         clear). A row a target tall, as docked, would leave no gap at all. */
-      .otree,.otree .tnode,.otree .tkids{gap:max(calc(6px * var(--ui)), 22px)}
+         half a target of the drawing between them, and never less than
+         22 px. Not closer: Chromium — Android's engine — moves a touch onto
+         the nearest control its contact area reaches, and a tap in the middle
+         of a gap went to a row at every gap up to 18 px with an 8 px
+         fingertip (measured; 20 px was the first clear). That reach is the
+         finger's, not the picture's, so the 22 holds at 80 % too, where half
+         a target would be 17 (measured again there: overlaylock.e2e.ts). A
+         row a target tall, as docked, would leave no gap at all. */
+      .otree,.otree .tnode,.otree .tkids{gap:max(calc(6px * var(--ui)), 22px, calc(var(--target) / 2))}
       .otree .trow{height:calc(20px * var(--ui))}
       .otree .ttog{width:calc(18px * var(--ui));height:calc(20px * var(--ui))}
       /* The organiser: a row a target tall, its marker, its eye and the strip's
-         ＋ each answering over 44 however small they are drawn. */
-      #organiser .orow{height:auto;min-height:44px}
-      /* The chip's parts: drawn at the size, answering over 44 tall. */
+         ＋ each answering over the target however small they are drawn. */
+      #organiser .orow{height:auto;min-height:var(--target)}
+      /* The chip's parts: drawn at the size, answering over a target tall. */
       #mode button{position:relative}
-      #mode button::before{content:"";position:absolute;left:0;right:0;top:50%;height:44px;transform:translateY(-50%)}
-      /* Wrapped onto two lines, a part's 44 px reaches over the line above:
+      #mode button::before{content:"";position:absolute;left:0;right:0;top:50%;height:var(--target);transform:translateY(-50%)}
+      /* Wrapped onto two lines, a part's target reaches over the line above:
          the plane's part, Done above all, is stacked over the tool's, so a
          tap on Done is Done (found on the landscape phone). */
       #mode .plane{position:relative;z-index:1}
       #organiser button,.panel>.ptitle .padd{position:relative}
       #organiser button::before,.panel>.ptitle .padd::before{content:"";position:absolute;left:50%;top:50%;
-        width:max(100%,44px);height:max(100%,44px);transform:translate(-50%,-50%)}
+        width:max(100%,var(--target));height:max(100%,var(--target));transform:translate(-50%,-50%)}
       :is(#ctxmenu,#appmenu) .head{padding:calc(6px * var(--ui)) 14px}
       #appmenu .head{padding:calc(6px * var(--ui)) 14px calc(2px * var(--ui))}
-      :is(#ctxmenu,#appmenu) .item{min-height:44px;align-items:center;padding:0 14px}
-      #ctxmenu .row{min-height:44px;align-items:center;padding:0 14px}
-      :is(#ctxmenu,#appmenu) .choice{display:inline-flex;align-items:center;min-height:44px;min-width:44px;padding:0 8px;justify-content:center}
+      :is(#ctxmenu,#appmenu) .item{min-height:var(--target);align-items:center;padding:0 14px}
+      #ctxmenu .row{min-height:var(--target);align-items:center;padding:0 14px}
+      :is(#ctxmenu,#appmenu) .choice{display:inline-flex;align-items:center;min-height:var(--target);min-width:var(--target);padding:0 8px;justify-content:center}
       #appmenu .docname,#appmenu .about{padding:2px 14px 4px}
       /* A phone has no room for the command beside each item, and no hover to
          read it by: the log shows what each one typed. An item that is off
@@ -597,9 +604,9 @@
       :is(#ctxmenu,#appmenu) .item:not(.off) .cmd,#ctxmenu .row .cmd{display:none}
       #ctxmenu{max-width:calc(100vw - 8px)}
       /* − and + drawn at the menu's size, hit at a finger's: the buttons are
-         44 px whatever the interface size; only their faces scale. */
+         a target square, which follows the size as everything else does. */
       #appmenu .srow{padding:0 6px 4px}
-      #appmenu .spin button{min-width:44px;height:44px}
+      #appmenu .spin button{min-width:var(--target);height:var(--target)}
     }
   </style>
 </head>

@@ -33,7 +33,7 @@ import { activeWorkbench, fileMenuItems, getWorkbench, listWorkbenches, onWorkbe
 import { WorkbenchFiles, indexedDbWorkbenches } from "./workbenchhost.ts";
 import {
   ACTIONS, ActionStrip, FINE, OptionsPanel, Panels, Toolbar, actionKey, browserStorage, cornerBox, cornerRoom, defaultLayout, logoBox, panelsLine, scaledMetrics,
-  touchMetrics, type Insets, type Layout, type Metrics, type Size,
+  TOUCH_TARGET, touchMetrics, type Insets, type Layout, type Metrics, type Size,
 } from "./panels.ts";
 import { Tooltips } from "./tooltip.ts";
 import {
@@ -169,7 +169,10 @@ const device = measureDevice();
 const deviceUi = deviceScale(device);
 let uiScale = recallScale(browserStorage()) ?? 1;
 const drawnScale = () => Math.round(deviceUi * uiScale * 1000) / 1000;
-const metricsAt = (k: number): Metrics => (coarse ? touchMetrics(k) : scaledMetrics(FINE, k));
+// A finger's target is measured against this device's form factor: 44 at its
+// 100 % with the default text size, larger with a larger one, and following
+// the spin box (panels.ts's `target`).
+const metricsAt = (k: number): Metrics => (coarse ? touchMetrics(k, formFactor(device)) : scaledMetrics(FINE, k));
 let metrics: Metrics = metricsAt(drawnScale());
 
 const logoEl = document.getElementById("logo")!;
@@ -200,6 +203,9 @@ function applyChrome(): void {
   root.setProperty("--icon", `${metrics.icon}px`);
   root.setProperty("--grip", `${metrics.grip}px`);
   root.setProperty("--orow", `${metrics.optionRow}px`);
+  // The finger's target (panels.ts's `target`): every hit box under a coarse
+  // pointer is this, so it follows the interface size as the faces do.
+  root.setProperty("--target", `${metrics.hit || TOUCH_TARGET}px`);
   logoEl.innerHTML = logoSvg(metrics.logo);
   placeCorner();
 }
@@ -830,18 +836,30 @@ async function main() {
   /**
    * The chip given way where the verdict would be cut (`ModeChip.fit`): asked
    * when the chip changes, when the corner is placed again, and when anything
-   * after the chip changes or fades — the observer below.
+   * after the chip changes, starts to fade or has faded — the observers below.
+   *
+   * **A fading verdict still needs its line.** It used to count as gone the
+   * moment it was marked faded, so the chip took its next step back at once
+   * and pushed the verdict past the corner's room while it was still fading
+   * out: `SOLVED 36 free` drawn cut in half under the chip on an upright
+   * iPhone for the 0.6 s of the fade (docs/images/196; docs/plans/
+   * touch-density.md). Now what is drawn at all — its opacity above nothing —
+   * counts, and the chip is fitted again when the fade ends.
    */
   function fitChip() {
     chip?.fit(() => {
       const room = cornerEl.getBoundingClientRect();
       return ["status", "diagnosis", "stepnote"].some((id) => {
         const el = document.getElementById(id)!;
-        if (!el.textContent || el.dataset.faded !== undefined || getComputedStyle(el).display === "none") return false;
+        if (!el.textContent) return false;
+        const style = getComputedStyle(el);
+        if (style.display === "none" || Number(style.opacity) <= 0.01) return false;
         return el.getBoundingClientRect().bottom > room.bottom + 0.5;
       });
     });
   }
+  // The fade's end, which no attribute marks: only then has the line been given up.
+  cornerEl.addEventListener("transitionend", (e) => { if ((e as TransitionEvent).propertyName === "opacity") fitChip(); });
   new MutationObserver(() => fitChip()).observe(document.getElementById("status")!, { attributes: true, childList: true, characterData: true, subtree: true });
   new MutationObserver(() => fitChip()).observe(diagnosisEl, { attributes: true, childList: true, characterData: true, subtree: true });
   new MutationObserver(() => fitChip()).observe(document.getElementById("stepnote")!, { attributes: true, childList: true, characterData: true, subtree: true });

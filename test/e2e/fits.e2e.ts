@@ -398,7 +398,7 @@ test("iPhone 13: a pane docked against a tray keeps lying along it when a rotati
     // they the log, which is the resolver keeping everything apart — not the
     // docking this is about.
     const area = { w: 390, h: 844 - 47 - 34 };
-    const col = { w: 34, h: 21 + 6 + 13 * 44 };
+    const col = { w: 43, h: 21 + 6 + 13 * 44 };
     const stored = {
       panels: {
         toolbar: { at: { x: 0, y: 60, ...col, orient: "column", area, scale: 1.3, dock: { left: "edge" } } },
@@ -423,7 +423,9 @@ test("iPhone 13: a pane docked against a tray keeps lying along it when a rotati
     const check = async (turn: Turn, lines: string) => {
       const c = await chrome(p.page);
       const [tb, log] = [c.panes.toolbar, c.panes.log];
-      assert.equal(Math.round(tb.x), 0, `${turn}: the tray against the left edge, reaching under any inset`);
+      // Drawn at its rectangle: against the safe area's left edge, not under
+      // the cutout (docs/plans/touch-density.md — it used to reach under it).
+      assert.equal(Math.round(tb.x), windowOf(THIRTEEN, turn, "installed").insets.left, `${turn}: the tray against the left edge, at the safe area's line`);
       assert.equal(await p.page.$eval('.panel[data-panel="toolbar"]', (el) => (el as HTMLElement).dataset.lines), lines, `${turn}: ${lines} line(s)`);
       assert.ok(tb.h > tb.w, `${turn}: still a column`);
       assert.equal(Math.round(log.x), Math.round(tb.x + tb.w), `${turn}: the log against its right ${JSON.stringify({ tb, log })}`);

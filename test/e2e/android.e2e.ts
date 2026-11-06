@@ -508,8 +508,17 @@ test("Samsung Internet's user agent on a Galaxy S24 (Chromium underneath — a s
     await s.type('arm("rectangle")');
     await s.page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
     const n = (await s.model()).size;
-    const [ax, ay] = await at([-40, -30, 0]);
-    const [bx, by] = await at([-32, -22, 0]);
+    // A fingertip clear of the tray all round: on a 360 px Galaxy, world x −40
+    // was 9 px off the tray's hit boxes once its tools were drawn at 0.8 of
+    // the target (docs/plans/touch-density.md), and Chromium's touch
+    // adjustment moved the press onto a button.
+    const clear = async (w: number[]) => {
+      const [x, y] = await at(w);
+      for (const [dx, dy] of [[0, 0], [-12, 0], [12, 0], [0, -12], [0, 12]]) await s.at(x + dx, y + dy);
+      return [x, y] as [number, number];
+    };
+    const [ax, ay] = await clear([-36, -32, 0]);
+    const [bx, by] = await clear([-28, -24, 0]);
     await g.down([ax, ay]);
     await g.glide(6, [bx, by]);
     await s.page.waitForTimeout(120);

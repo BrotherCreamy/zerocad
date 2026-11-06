@@ -78,7 +78,7 @@ test("the device table: every iPhone from the SE to the Pro Max, its area the wi
 test("traySize wraps by the room along it: one line where one fits, then two, then three — at every interface size", () => {
   for (const coarse of [false, true]) {
     for (const step of STEPS) {
-      const m = coarse ? touchMetrics(1.3 * step) : scaledMetrics(FINE, step);
+      const m = coarse ? touchMetrics(1.3 * step, 1.3) : scaledMetrics(FINE, step);
       const at = `${coarse ? "a finger's" : "a mouse's"} ${Math.round(step * 100)} %`;
       for (const orient of ["row", "column"] as const) {
         const one = traySize(TOOLS, orient, m);
@@ -88,9 +88,9 @@ test("traySize wraps by the room along it: one line where one fits, then two, th
         const two = traySize(TOOLS, orient, m, run(one) - 1);
         assert.equal(trayLines(TOOLS, orient, m, run(one) - 1), 2, at);
         assert.ok(run(two) < run(one) && depth(two) > depth(one), at);
-        // The second line a whole button pitch over: under a finger, a 44 px target apart, as along the line.
+        // The second line a whole button pitch over: under a finger, a target apart, as along the line.
         assert.equal(depth(two) - depth(one), m.button + m.gap, at);
-        if (coarse) assert.ok(depth(two) - depth(one) >= TOUCH_TARGET, `${at}: the lines' hit boxes do not overlap`);
+        if (coarse) assert.ok(depth(two) - depth(one) >= m.hit, `${at}: the lines' hit boxes do not overlap`);
         assert.equal(trayLines(TOOLS, orient, m, run(two) - 1), 3, `${at}: three, where two are too long`);
         assert.equal(linesOf({ x: 0, y: 0, ...two, orient }, m), 2, `${at}: and read back off its depth`);
         // Same order, line by line: six then five.
@@ -126,15 +126,27 @@ for (const { phone, turn, mode } of everyWay()) {
   });
 }
 
-test("at larger interface sizes it holds as far as the screen allows — to 120 % on every phone — and past that the resolver says so", () => {
+/**
+ * How far the guarantee goes above 100 %. **The target follows the interface
+ * size** (docs/plans/touch-density.md): at 120 % it is 53, not the 44 it was,
+ * so option rows and tray pitches are longer there than they were, and the
+ * guarantee is shorter — 120 % everywhere with no tool armed or a drawing
+ * tool's one row of options, 110 % everywhere with a feature's two rows (at
+ * 120 % those do not fit an SE in Safari, the 390 and 393 pt phones in
+ * Safari's landscape, or a 360 px Android on its side). The step-by-step table
+ * is in touch-density.md's As built. Past it, the resolver says so.
+ */
+const holds = (step: number, rows: number | null) => step <= 1.1 || (step <= 1.2 && rows !== 2);
+
+test("at larger interface sizes it holds as far as the screen allows — to 120 % on every phone, 110 % with a feature's options — and past that the resolver says so", () => {
   for (const { phone, turn, mode } of everyWay()) {
     const area = areaOf(phone, turn, mode);
     for (const step of STEPS) {
-      const m = touchMetrics(1.3 * step);
+      const m = touchMetrics(1.3 * step, 1.3);
       for (const rows of [null, 1, 2]) {
         const where = `${phone.name} ${turn} ${mode} at ${Math.round(step * 100)} %, options ${rows}`;
         const r = laidOut(area, m, rows);
-        if (step <= 1.2) assert.deepEqual(breaches(area, m, rows), [], where);
+        if (holds(step, rows)) assert.deepEqual(breaches(area, m, rows), [], where);
         // Never an overlap drawn silently: either the layout is sound, or
         // the resolver gave up and `layoutProblem` says so.
         if (r.ok) assert.deepEqual(overlapping(r.layout), [], where);
@@ -183,7 +195,7 @@ test("the corner's room: the whole logo's row while the panes are at their defau
 // device's own 100 % (uiscale.ts: a phone 1.3, a large screen 1.15), since a
 // tablet is drawn at the tablet's size, not a phone's.
 
-const androidMetrics = (d: AndroidDevice) => touchMetrics(formFactor({ coarse: true, shortSide: Math.min(d.w, d.h) }));
+const androidMetrics = (d: AndroidDevice) => { const k = formFactor({ coarse: true, shortSide: Math.min(d.w, d.h) }); return touchMetrics(k, k); };
 
 test("the Android table: Pixels 7, 8 and 9 with their Pro sizes, a Galaxy S, a Fold's two screens, two tablets — each area its window less its insets", () => {
   const names = ANDROIDS.map((d) => d.name).join(" | ");
@@ -220,16 +232,16 @@ for (const { device, turn, mode } of everyAndroidWay()) {
   });
 }
 
-test("Android at larger interface sizes: to 120 % on every device, and past where it stops the resolver says so", () => {
+test("Android at larger interface sizes: to 120 % on every device, 110 % with a feature's options, and past where it stops the resolver says so", () => {
   for (const { device, turn, mode } of everyAndroidWay()) {
     const area = androidAreaOf(device, turn, mode);
     const k = formFactor({ coarse: true, shortSide: Math.min(device.w, device.h) });
     for (const step of STEPS) {
-      const m = touchMetrics(k * step);
+      const m = touchMetrics(k * step, k);
       for (const rows of [null, 1, 2]) {
         const where = `${device.name} ${turn} ${mode} at ${Math.round(step * 100)} %, options ${rows}`;
         const r = laidOut(area, m, rows);
-        if (step <= 1.2) assert.deepEqual(breaches(area, m, rows), [], where);
+        if (holds(step, rows)) assert.deepEqual(breaches(area, m, rows), [], where);
         if (r.ok) assert.deepEqual(overlapping(r.layout), [], where);
         else assert.match(layoutProblem(r.layout, r.ok, area) ?? "", /no layout fits/, where);
       }

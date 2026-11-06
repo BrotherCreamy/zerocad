@@ -314,7 +314,7 @@ test("a mouse's flyout on a desktop window: beside the column, one row, clear of
 });
 
 test("at a larger interface size the flyout still fits beside a phone's tray, at 120 %", () => {
-  const m = touchMetrics(1.3 * 1.2);
+  const m = touchMetrics(1.3 * 1.2, 1.3);
   for (const { phone, turn, mode } of everyWay()) {
     const area = areaOf(phone, turn, mode);
     const layout = laidOut(area, m, null);
