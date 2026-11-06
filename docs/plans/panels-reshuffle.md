@@ -216,6 +216,10 @@ register):
   push made room for; now there is none there (refused, said), so it slides
   the strip straight along the top to the right edge. Its claim — drawn at
   the safe area's line — is unchanged.
+- **`tooloptions.e2e.ts`'s "pushes and is pushed"** asserted the push in a
+  drag for the options panel; the full run caught it. It now asserts the
+  options panel's share of the reshuffle: the log dragged into it stops flush
+  under it, and the panel dragged onto the floating log trades places with it.
 - **The files the brief listed**: there is no `panelspush.e2e.ts` (the push's
   e2e lives in `panels.e2e.ts`) and `touchlayout` is a unit test; both were
   run as what they are.
