@@ -258,6 +258,15 @@ Deviations and additions — each a decision, vetoable:
   circle's centre is); the wall's bands at 3×; the phone chip's wrapped
   sentence.
 
+**Verification.** `npm run typecheck` 0 errors; `npm test` 1708/1708 (1672
+before); `npm run test:kernel` 11/11; `npm run test:e2e` in the full
+`test:all` 709 tests, 697 pass, 10 fail, 2 skipped — run under another
+session's load of 26–35 on four cores. One failure was this branch's
+(`panels.e2e.ts`, fixed, 39/39 alone); the nine others are finger gestures
+— two files passed alone, and `android` and `solidsphone` failed alone the
+same way on the base branch's src (TODO.md). `spline.e2e.ts` 7/7 alone and
+in the run.
+
 Pictures 246–260, each looked at: 246 the curves flyout (ellipse and spline);
 247 a spline previewed through its clicks; 248 drawn, its ends quiet; 249 a
 through-point dragged, the curve still through every point; 250 a dimension
