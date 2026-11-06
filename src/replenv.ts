@@ -203,6 +203,13 @@ export interface EnvHandles {
    */
   ui?: (options?: unknown) => string;
   /**
+   * How the panels are drawn and whether they move — `panels({ overlay: true })`
+   * (see-through), `panels({ locked: true })`, `panels()` to report
+   * (docs/plans/panels-overlay-lock.md). The viewer's, like the layout: never
+   * journalled, so it has no entry in persist.ts's replay table.
+   */
+  panels?: (options?: unknown) => string;
+  /**
    * The viewer's last value of each tool option — the same memory the host's
    * tool engine arms from, so `tools()` lists what `arm` would use. Per-viewer
    * state, like the layout; a scope with none keeps its own for its lifetime.
@@ -1161,6 +1168,16 @@ export function neocadScope(h: EnvHandles): Bag {
     ui: (options?: unknown) => {
       if (!h.ui) throw new Error("no interface in this environment");
       return h.ui(options);
+    },
+    /**
+     * See-through panels and locked ones — `panels({ overlay: true })`,
+     * `panels({ locked: true })`, either or both in one call; `panels()` says
+     * both. What the app menu's View switches type. The viewer's, in this
+     * browser: never journalled, never in a file, never an undo step.
+     */
+    panels: (options?: unknown) => {
+      if (!h.panels) throw new Error("no panels in this environment");
+      return h.panels(options);
     },
     // Viewport control as an ordinary command, per the brief's goal of having
     // the whole interface drivable the same way a tool is authored. The camera

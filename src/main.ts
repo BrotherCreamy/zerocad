@@ -32,7 +32,7 @@ import { ENGINE_TOOLS, HAND, SELECT, armedLine, getToolCtor, groupCurrent, toolA
 import { activeWorkbench, fileMenuItems, getWorkbench, listWorkbenches, onWorkbench, setActiveWorkbench, DEFAULT_WORKBENCH } from "./modules.ts";
 import { WorkbenchFiles, indexedDbWorkbenches } from "./workbenchhost.ts";
 import {
-  ACTIONS, ActionStrip, FINE, OptionsPanel, Panels, Toolbar, actionKey, browserStorage, cornerBox, cornerRoom, defaultLayout, logoBox, scaledMetrics,
+  ACTIONS, ActionStrip, FINE, OptionsPanel, Panels, Toolbar, actionKey, browserStorage, cornerBox, cornerRoom, defaultLayout, logoBox, panelsLine, scaledMetrics,
   touchMetrics, type Insets, type Layout, type Metrics, type Size,
 } from "./panels.ts";
 import { Tooltips } from "./tooltip.ts";
@@ -41,6 +41,7 @@ import {
 } from "./uiscale.ts";
 import { GUIDE_NOTE_MS, STATUS_FADE_MS, STEP_NOTE_MS, StatusLine, diagnosisLine } from "./statusline.ts";
 import { AppMenu, UNTITLED } from "./appmenu.ts";
+import { LogTail } from "./logtail.ts";
 import { Organiser, organiserSections, rowMenu } from "./organiser.ts";
 import { logoSvg } from "./logo.ts";
 import { GroupMemory, OptionMemory, declaredOptions, unitSymbol, type OptionValue } from "./tools/options.ts";
@@ -213,6 +214,8 @@ function applyChrome(): void {
 let cornerLayout: { layout: Layout; area: Size } | null = null;
 /** Puts the panel being typed into back above the keyboard after the panels are placed (set in main(); keyboard.ts). */
 let relift: () => void = () => {};
+/** Says a locked pane's refusal in the chip's guidance (set in main(), once the chip is). */
+let sayLocked: (text: string) => void = (text) => statusLine.note(text);
 function placeCorner(): void {
   const i = insets();
   const box = logoBox(metrics);
@@ -361,6 +364,11 @@ const panels = new Panels(
     // A drop the resolver could not make sound commits nothing, and says so
     // where the eye already is for what just happened (docs/plans/panels-preview.md).
     onRefused: (text) => statusLine.note(text),
+    // Locked (docs/plans/panels-overlay-lock.md): a press on a strip's place
+    // says why nothing moves, in the chip's guidance once the chip is built;
+    // a rotation that made the locked layout re-fit says so in the status.
+    onLocked: (text) => sayLocked(text),
+    onRefit: (text) => statusLine.note(text, 5000),
   },
 );
 // The insets change without the window resizing — a rotation does both, but
@@ -368,12 +376,21 @@ const panels = new Panels(
 // probe's border box is its padding, so it is what changes.
 new ResizeObserver(() => { placeCorner(); panels.apply(); }).observe(probeEl, { box: "border-box" });
 
+/**
+ * The log's see-through form (logtail.ts): its last three lines over the
+ * drawing, read off the docked log's own lines and their stamps.
+ */
+const logTail = new LogTail(document.getElementById("otail")!, logEl);
+
 function log(msg: string, cls?: string) {
   const d = document.createElement("div");
   d.textContent = msg;
   if (cls) d.className = cls;
+  // When it was said: what the see-through log fades it by.
+  d.dataset.at = String(Date.now());
   logEl.appendChild(d);
   logEl.scrollTop = logEl.scrollHeight;
+  logTail.sync();
 }
 
 function sizeCanvas() {
@@ -842,6 +859,7 @@ async function main() {
       : { text, at: engine.next(), what: engine.lit, timer: setTimeout(() => { chipGuide = null; syncChip(); }, GUIDE_NOTE_MS) };
     syncChip();
   }
+  sayLocked = (text) => guideChip(text);
 
   /**
    * What the kernel has to say — a cut that removed nothing, a boolean it
@@ -2026,6 +2044,7 @@ async function main() {
       },
       run: (command) => void submit(command),
       tooltip,
+      tree: document.getElementById("otree"),
     });
   }
 
@@ -2244,6 +2263,9 @@ async function main() {
       // The interface size and which panes are shown: the viewer's, like the
       // layout — typed through `submit`, recording nothing.
       ui: (options?: unknown) => uiCommand(options),
+      // See-through and locked panels (docs/plans/panels-overlay-lock.md): the
+      // viewer's, stored beside the layout, recording nothing.
+      panels: (options?: unknown) => panelsLine(() => panels.getSwitches(), (s) => panels.setSwitches(s), options),
       // The chrome's arrangement. Typed through `submit` like everything else,
       // and so bracketed as a user action — which records nothing, because the
       // model is untouched: layout is the viewer's, not the drawing's.
@@ -2543,6 +2565,7 @@ async function main() {
     panes: () => panels.panes(),
     viewMode: () => viewMode,
     viewModes: VIEW_MODES,
+    switches: () => panels.getSwitches(),
     stamp: document.getElementById("buildstamp"),
     repository: "https://github.com/BrotherCreamy/zerocad",
     solidsLicence: solidsLicence(),

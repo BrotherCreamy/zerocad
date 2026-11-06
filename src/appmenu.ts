@@ -8,7 +8,9 @@
 // border and type), in sections: **File** — the document's name and an
 // unsaved dot, then New, Open…, Save, Share…, Export STEP…; **Interface size** — the spin
 // box; **Panes** — a checkbox per panel the panel manager has; **View** —
-// Shaded / Hidden / Wire; **About** — the build and the source.
+// Shaded / Hidden / Wire, and the panels' two switches, See-through panels and
+// Lock panels (docs/plans/panels-overlay-lock.md); **About** — the build and
+// the source.
 //
 // **Every control types its command through `submit`**, as every menu item
 // and every button does: a File item types `newFile()`, the spin box
@@ -100,6 +102,20 @@ export function paneCommand(id: string, show: boolean): string {
   return `ui({ ${show ? "show" : "hide"}: ${JSON.stringify(id)} })`;
 }
 
+/** The two View switches (docs/plans/panels-overlay-lock.md), as the menu shows them. */
+export interface SwitchState { overlay: boolean; locked: boolean }
+
+/** The View section's switches, in the order shown: what each is called, and its key in `panels({...})`. */
+export const SWITCH_ITEMS: readonly { key: keyof SwitchState; label: string }[] = [
+  { key: "overlay", label: "See-through panels" },
+  { key: "locked", label: "Lock panels" },
+];
+
+/** The line a switch's box types to turn it the other way: `panels({ overlay: true })`. */
+export function switchCommand(key: keyof SwitchState, on: boolean): string {
+  return `panels({ ${key}: ${on} })`;
+}
+
 /** What the menu needs of its host. */
 export interface AppMenuHost {
   /** Types one line into the command machinery, as one user action — `submit`. */
@@ -115,6 +131,8 @@ export interface AppMenuHost {
   /** How solids are shown now, and the modes there are, as `view()` names them. */
   viewMode(): string;
   viewModes: readonly string[];
+  /** See-through and locked, as they are now — the View section's two boxes. Absent: no boxes. */
+  switches?(): SwitchState;
   /** Where SMLib's Apache-2.0 licence is, for About's notice (solidshost.ts) — absent for no notice. */
   solidsLicence?: string;
   /** The build stamp's element, moved into About (the single-file build fills it in). */
@@ -373,6 +391,28 @@ export class AppMenu {
       choices.appendChild(c);
     }
     view.appendChild(choices);
+    // The panels' two switches: boxes, as the panes' are, and like them kept
+    // open after a press so the viewer sees what changed.
+    const sw = h.switches?.();
+    if (sw) {
+      for (const { key, label } of SWITCH_ITEMS) {
+        const row = document.createElement("label");
+        row.className = "item check";
+        row.dataset.switch = key;
+        const box = document.createElement("input");
+        box.type = "checkbox";
+        box.checked = sw[key];
+        const command = switchCommand(key, !sw[key]);
+        box.addEventListener("change", () => this.type(command, true));
+        const text = document.createElement("span");
+        text.textContent = label;
+        const hint = document.createElement("span");
+        hint.className = "cmd";
+        hint.textContent = command;
+        row.append(box, text, hint);
+        view.appendChild(row);
+      }
+    }
 
     // About: the build, and where the source is.
     const about = this.section("About");

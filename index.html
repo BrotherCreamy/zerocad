@@ -433,6 +433,103 @@
     #options .oact button.ok:hover:not(:disabled){background:#55c07a22}
     #options .oact button.no:hover{background:#20303f;color:#d5e1ec}
     #options .oact button:disabled{color:#2f4050;border-color:#1a2633}
+    /* **See-through panels** (docs/plans/panels-overlay-lock.md; the owner:
+       "a menu option to make the toolbars transparent to maximize visible
+       viewport size ... like how the feature tree in solidworks changes form
+       when it is overlaid over the viewport"). `overlay` on the area: every
+       pane but the options panel loses its box — no ground, no border, no
+       shadow, no strip, no grips — and takes no press itself; only its
+       content does, so a press between two of the organiser's rows, or
+       beside a tray's buttons, is the drawing's. Each pane's content is
+       drawn in a form of its own: a tray its buttons alone, the organiser a
+       tree hugging its corner (data-hug, from panels.ts), the log its last
+       three lines, the command line its input on an underline. Text and
+       glyphs carry a thin halo in the drawing's ground — a 1 px ring at the
+       interface size and a soft 3 px glow — so they read over the dark
+       ground and over a light face alike; a button gets a faint backplate
+       only under the hand. A pane a mouse is over (`hand`) gets its box back
+       — ground, border, strip — under the same content, so it reads over a
+       busy drawing and can be dragged, and the tree stays a tree to open; a
+       press on a pane's content (`pinned`, until the next press outside it)
+       and the pane held in a drag are drawn wholly docked. Both fade back. The options panel, the
+       feature dialog it holds, the menus, the flyout, the tooltip and the
+       mode chip stay opaque: they are read and typed into, not looked
+       through. */
+    #viewwrap{--h:calc(1px * var(--ui));--hc:#0a0e13;
+      --halo:var(--h) 0 0 var(--hc),calc(-1 * var(--h)) 0 0 var(--hc),0 var(--h) 0 var(--hc),0 calc(-1 * var(--h)) 0 var(--hc),
+        var(--h) var(--h) 0 var(--hc),calc(-1 * var(--h)) var(--h) 0 var(--hc),var(--h) calc(-1 * var(--h)) 0 var(--hc),
+        calc(-1 * var(--h)) calc(-1 * var(--h)) 0 var(--hc),0 0 calc(3 * var(--h)) var(--hc);
+      --glyph-halo:drop-shadow(0 0 var(--h) var(--hc)) drop-shadow(0 0 var(--h) var(--hc))}
+    .panel{transition:background-color .2s ease-out,border-color .2s ease-out,box-shadow .2s ease-out}
+    .otree,.otail{display:none}
+    #viewwrap.overlay>.panel:not([data-panel="options"]):not(.hand):not(.pinned):not(.held){background:transparent;border-color:transparent;box-shadow:none;pointer-events:none}
+    #viewwrap.overlay>.panel:not([data-panel="options"]):not(.hand):not(.pinned):not(.held)>.ptitle{visibility:hidden}
+    #viewwrap.overlay>.panel:not([data-panel="options"]):not(.hand):not(.pinned):not(.held)>.pgrip{display:none}
+    /* A tray: the buttons alone, in their column or row; the group mark and the flyout unchanged. */
+    #viewwrap.overlay>.panel:not(.pinned):not(.held) .tray button{pointer-events:auto}
+    #viewwrap.overlay>.panel:not(.pinned):not(.held) .tray button svg{filter:var(--glyph-halo)}
+    #viewwrap.overlay>.panel:not(.pinned):not(.held) .tray button:hover{background:#0e141bb8}
+    #viewwrap.overlay>.panel:not(.pinned):not(.held) .tray button[data-more]::after{filter:var(--glyph-halo)}
+    /* The organiser: the tree in place of the sections, in the corner it hugs. */
+    #viewwrap.overlay>.panel:not(.pinned):not(.held)>#organiser{display:none}
+    #viewwrap.overlay>.panel:not(.pinned):not(.held)>.otree{display:flex}
+    .otree{position:absolute;flex-direction:column;align-items:flex-start;gap:calc(3px * var(--ui));pointer-events:none;
+      max-width:calc(100% - var(--pad-l, 0px) - var(--pad-r, 0px));max-height:calc(100% - var(--pad-t, 0px) - var(--pad-b, 0px));
+      overflow-y:auto;overflow-x:hidden;scrollbar-width:none;font-size:calc(11px * var(--ui))}
+    .otree::-webkit-scrollbar{display:none}
+    .panel[data-hug^="n"]>.otree{top:var(--pad-t, 0px)}
+    .panel[data-hug^="s"]>.otree{bottom:var(--pad-b, 0px)}
+    .panel[data-hug$="w"]>.otree{left:var(--pad-l, 0px)}
+    .panel[data-hug$="e"]>.otree{right:var(--pad-r, 0px)}
+    .otree .tnode,.otree .tkids{display:flex;flex-direction:column;align-items:flex-start;gap:calc(3px * var(--ui));max-width:100%}
+    .otree .tkids{padding-left:calc(14px * var(--ui))}
+    .otree .trow{pointer-events:auto;display:flex;align-items:center;gap:calc(4px * var(--ui));height:calc(16px * var(--ui));max-width:100%;
+      padding:0 calc(5px * var(--ui)) 0 calc(2px * var(--ui));border-radius:3px;color:#e6eef5;white-space:nowrap;text-shadow:var(--halo);cursor:default;
+      -webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+    .otree .trow:hover{background:#0e141bb8}
+    .otree .tname{flex:none}
+    .otree .tnote{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;color:#a9bccd}
+    .otree .ticon,.otree .ttog{flex:none;display:flex;align-items:center;justify-content:center;width:calc(13px * var(--ui));height:calc(13px * var(--ui))}
+    .otree .ticon svg{display:block;width:100%;height:100%;filter:var(--glyph-halo)}
+    .otree .ttog{padding:0;margin:0;border:none;background:transparent;color:#a9bccd;font:inherit;font-size:calc(10px * var(--ui));line-height:1;text-shadow:var(--halo);cursor:default}
+    .otree .trow[data-kind="body"] .ticon{color:#afc6d9}
+    .otree .trow[data-kind="feature"] .ticon{color:#8fa7bb}
+    .otree .trow[data-kind="group"] .ticon{color:#c9a7f5}
+    .otree .trow[data-kind="region"] .ticon{color:#7cd59a}
+    .otree .trow[data-heading] .tname{font-size:calc(9.5px * var(--ui));letter-spacing:.07em;text-transform:uppercase;color:#c3d2df}
+    .otree .trow.on .tname{color:#e3c6ff}
+    .otree .trow[data-open] .ticon{color:#e8a33d}
+    .otree .trow[data-eye="hidden"] .tname{text-decoration:line-through;color:#a9bccd}
+    /* The log: its last three lines, fading with age (src/logtail.ts: whole for 3 s, gone at 10). */
+    #viewwrap.overlay>.panel:not(.pinned):not(.held)>#log{display:none}
+    #viewwrap.overlay>.panel:not(.pinned):not(.held)>.otail{display:flex}
+    .otail{position:absolute;left:var(--pad-l, 0px);right:var(--pad-r, 0px);flex-direction:column;align-items:flex-start;gap:calc(1px * var(--ui));
+      padding:0 calc(6px * var(--ui));pointer-events:none;font-size:calc(11px * var(--ui));line-height:1.45}
+    .panel[data-hug^="n"]>.otail{top:var(--pad-t, 0px)}
+    .panel[data-hug^="s"]>.otail{bottom:var(--pad-b, 0px)}
+    .otail .tline{pointer-events:auto;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#c3d2df;text-shadow:var(--halo);
+      animation:tailfade 10s linear forwards}
+    .otail .tline.in{color:#a9bccd}
+    .otail .tline.out{color:#d5e1ec}
+    .otail .tline.err{color:#ff8f8a}
+    .otail .tline.guide{color:#b9d0e2}
+    @keyframes tailfade{0%,30%{opacity:1}100%{opacity:0}}
+    /* The command line: the prompt and the input on an underline, at its bottom edge; the hint gone. */
+    #viewwrap.overlay>.panel:not(.pinned):not(.held)>#cmdrow{pointer-events:auto;text-shadow:var(--halo)}
+    #viewwrap.overlay>.panel:not(.pinned):not(.held)>#cmdrow #cmd{text-shadow:var(--halo);border-bottom:1px solid #a9bccd;box-shadow:0 1px 0 var(--hc)}
+    #viewwrap.overlay>.panel:not(.pinned):not(.held)>#cmdrow #cmd::placeholder{color:#a9bccd;text-shadow:var(--halo)}
+    #viewwrap.overlay>.panel:not(.pinned):not(.held)>#cmdrow #cmdhint{display:none}
+    /* **Locked**: panels stay where they are. No strip and no grip is drawn,
+       and a grip takes no press; a press on a strip's place moves nothing and
+       says why in the chip (panels.ts's LOCKED_GUIDE). The strip's reach out
+       over the drawing under a finger goes too, so the lock takes nothing of
+       the drawing — and with see-through on as well, the strip's place is the
+       drawing's. The organiser's ＋ stays: it is a control, not the strip. */
+    #viewwrap.locked>.panel>.pgrip{display:none}
+    #viewwrap.locked>.panel>.ptitle,#viewwrap.locked>.panel[data-orient]>.ptitle,#viewwrap.locked>.panel[data-orient]>.ptitle:hover{
+      background:transparent;border-color:transparent;color:transparent;cursor:default}
+    #viewwrap.locked>.panel>.ptitle::before{display:none}
+    #viewwrap.locked>.panel>.ptitle .padd{color:#8fa7bb}
     /* **Under a finger: drawn at the interface size, hit at 44 px**
        (docs/plans/chrome-logo-scale.md). Everything above is already drawn at
        the device's own size (--ui: 1.3 on a phone — src/uiscale.ts); what a
@@ -466,6 +563,15 @@
          docs/plans/chrome-logo-scale.md, As built, has the retirement. */
       #cmdhint{display:none}
       #log{line-height:1.4;padding:0 10px}
+      /* The see-through tree under a finger: rows drawn 20 px at the size,
+         22 px of the drawing between them. Not closer: Chromium — Android's
+         engine — moves a touch onto the nearest control its contact area
+         reaches, and a tap in the middle of a gap went to a row at every gap
+         up to 18 px with an 8 px fingertip (measured; 20 px was the first
+         clear). A row a target tall, as docked, would leave no gap at all. */
+      .otree,.otree .tnode,.otree .tkids{gap:max(calc(6px * var(--ui)), 22px)}
+      .otree .trow{height:calc(20px * var(--ui))}
+      .otree .ttog{width:calc(18px * var(--ui));height:calc(20px * var(--ui))}
       /* The organiser: a row a target tall, its marker, its eye and the strip's
          ＋ each answering over 44 however small they are drawn. */
       #organiser .orow{height:auto;min-height:44px}
@@ -528,12 +634,16 @@
       <div class="panel" data-panel="log" data-label="Log">
         <div class="ptitle">log</div>
         <div id="log" class="pbody"></div>
+        <!-- See-through, the log is its last three lines over the drawing (src/logtail.ts). -->
+        <div id="otail" class="otail" aria-hidden="true"></div>
       </div>
       <!-- The organiser (src/organiser.ts): the groups and the features. Its
            ＋ is in the strip, and its press never starts a drag. -->
       <div class="panel" data-panel="organiser" data-label="Organiser">
         <div class="ptitle">organiser<button class="padd" type="button" title="＋ a group of the selection — or, with nothing selected, a new empty group, open" aria-label="new group">＋</button></div>
         <div id="organiser" class="pbody"></div>
+        <!-- See-through, the organiser is a tree hugging its corner (src/organiser.ts's organiserTree). -->
+        <div id="otree" class="otree"></div>
       </div>
       <div class="panel" data-panel="options" data-label="Tool options" hidden>
         <div class="ptitle">options</div>

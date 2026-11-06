@@ -202,7 +202,7 @@ test("the row menu's items type their commands: Add selection, Remove selection,
 
 test("the pane is in the app menu's Panes, and hides and shows from there", async () => {
   await app.page.click("#logo");
-  const listed = await app.page.$$eval("#appmenu .item.check", (els) => els.map((e) => (e as HTMLElement).dataset.pane));
+  const listed = await app.page.$$eval("#appmenu .item.check[data-pane]", (els) => els.map((e) => (e as HTMLElement).dataset.pane));
   assert.ok(listed.includes("organiser"), listed.join(", "));
   await app.page.click('#appmenu .item.check[data-pane="organiser"] input');
   await app.page.waitForTimeout(150);

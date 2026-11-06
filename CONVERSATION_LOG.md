@@ -106,6 +106,41 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### See-through panels: why the layout does not change, why hover is not the docked form, and what was rejected
+
+**The layout is the same rectangles see-through.** The tempting version
+shrinks each pane to its content so the resolver gives the drawing the rest.
+Rejected: every rule built so far — pushing, docking through a rotation, the
+fit table over 94 device ways — would have needed a second set of sizes, and
+a pane that changes size when the switch flips would push its neighbours
+about. Instead the box simply takes no press and draws nothing, and the
+content is drawn in a form of its own inside it. So "everything fits" holds
+by construction, and the tests only have to add that the content stays
+inside its box.
+
+**Hover gives the box back, not the docked form.** The spec says a pane
+under the hand is drawn docked. Built literally, a mouse moving onto the
+organiser's tree turns it into the docked sections before the pointer
+reaches the root it was going to open, so the tree can never be used with a
+mouse. The box (ground, border, strip) under the same content gives the
+spec's two reasons — a row legible over a busy drawing, a strip to drag —
+without that. The docked form proper comes with a press, which is the spec's
+own rule for the log, and the only door a finger has.
+
+**The rows' gap was measured, not chosen.** A compact tree wants a few
+pixels between rows; a finger in Chromium gets moved onto the nearest
+control its contact area reaches, so the first e2e run's tap between rows
+selected a row. 20 px was the first gap clear for the emulation's 8 px
+fingertip; 22 is used. Rejected: delegating the rows' handlers to the tree
+so the rows are not "tappable" to the adjuster — it depends on how Chromium
+scores candidates, which is not ours to rely on.
+
+**The lock is in the pure drag.** A DOM-only guard would have been three
+lines; but then "a locked layout refuses a drag and a push" is a claim about
+the DOM nobody can unit-test. A locked `Drag` keeps the start as its preview
+at every spot and its drop commits nothing, and the DOM takes the one path it
+always took.
+
 ### Android: why the scale is a CSS variable and not a font size, why the guard is only on a phone, and what was rejected
 
 **The spec's way to read the font scale reads nothing.** It suggested the

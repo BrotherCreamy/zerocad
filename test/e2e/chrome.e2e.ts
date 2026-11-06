@@ -490,7 +490,7 @@ test("a pane hidden from the menu is gone, stays gone through a reload, and come
   const page = await desktop();
   try {
     await page.click("#logo");
-    const listed = await page.$$eval("#appmenu .item.check", (els) => els.map((e) => (e as HTMLElement).dataset.pane));
+    const listed = await page.$$eval("#appmenu .item.check[data-pane]", (els) => els.map((e) => (e as HTMLElement).dataset.pane));
     const present = await page.$$eval(".panel[data-panel]", (els) => els.map((e) => (e as HTMLElement).dataset.panel));
     assert.deepEqual(listed, present, "a box per panel the page has, in its order — none hard-coded");
     const was = await boxOf(page, panel("log"));

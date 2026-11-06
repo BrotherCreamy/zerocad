@@ -1578,6 +1578,31 @@ nothing — the start is the layout at the press, which no move touched, so
 there is nothing to undo. Every preview is checked by `layoutProblem` as a
 shown layout is, so "nothing overlaps" holds for what the ghosts show too.
 
+**See-through is a form per pane, not a transparent box**
+(docs/plans/panels-overlay-lock.md; the owner: *"like how the feature tree in
+solidworks changes form when it is overlaid over the viewport vs being in a
+pane on the side"*). With `panels({ overlay: true })` the layout is the very
+same rectangles — so every fit rule holds unchanged — and each pane draws
+its content in a form of its own inside its rectangle: a tray its buttons
+alone, the organiser a tree hugging its corner (`organiserTree`, built from
+the sections the docked pane draws, so the two cannot disagree), the log its
+last three lines (`logtail.ts`, read off the docked log's own stamped lines),
+the command line its input on an underline. **Only content takes a press**:
+the box is `pointer-events: none`, so the drawing has every pixel between.
+A thin halo in the drawing's ground keeps text legible on a light face as on
+the dark ground — measured from the pixels, not chosen by eye. A mouse over
+a pane gives its box back under the same content; a press on its content
+brings its docked form until the next press outside. What is read and typed
+into — the options panel, the menus, the flyout, the tooltip, the chip —
+never goes see-through. **The lock is a property of the drag**
+(`beginDrag`'s `locked`): the preview stays the start and the drop commits
+nothing, so the gesture takes the path it always took and the rule is the
+pure half's; the strips and grips are simply not drawn. The resolver still
+runs under a lock — a rotation that leaves the layout unfittable is
+re-fitted, said, and not stored — because the lock is against a hand, not
+against the window. Both switches are the viewer's, stored beside the layout
+under their own key, never journalled.
+
 **Gestures never cross**, and it takes both halves: a panel captures the
 pointer on its strip or grips, and the host captures it on every canvas press.
 The engine already captured drags, boxes and pans, but not an armed tool's
@@ -1738,7 +1763,7 @@ until the next action went unrecorded.
 
 ## Why there is an end-to-end suite
 
-Thirty-four bugs so far were invisible to the unit tests and obvious within seconds
+Thirty-six bugs so far were invisible to the unit tests and obvious within seconds
 of running the app:
 
 1. a status readout that went stale, so a conflict could be introduced from
@@ -1895,6 +1920,17 @@ of running the app:
    bar it no longer touched: an empty band between the text and the keys.
    The lift's arithmetic was right and its test passed; found by looking at
    the keyboard picture. A lifted panel is lifted as its own rectangle now.
+35. A tap midway between two of the see-through organiser's rows, 8 px
+   apart, selecting a row instead of reaching the drawing: Chromium moves a
+   touch onto the nearest control its contact area reaches, and pointer
+   events with it. Every unit test passed (there is no finger in them);
+   found by the phone e2e's point tool, which made no point. A finger's rows
+   are 22 px apart now, measured clear (panels-overlay-lock.md).
+36. A locked layout re-fitted in a rotation and nothing said: the check
+   compared the shown panes with the stored ones re-laid, which `relaid`
+   returns alone — a default pane the resolver pushed out of a stored one's
+   way was invisible to it. Found by the e2e's rotation; every pane is
+   compared with what its docking or its default asked now.
 
 None of these are mathematics. They are all *assembly*. Hence `npm run
 test:e2e`, and hence the expectation that anything touching the app is checked

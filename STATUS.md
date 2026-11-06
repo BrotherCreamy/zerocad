@@ -16,6 +16,24 @@ etc).
   on every push to the working branch. Called NeoCAD until 0.1.0; the
   internal code name stays in identifiers, the file format tag and storage
   keys (see TODO.md's register).
+- **See-through panels and a lock** (docs/plans/panels-overlay-lock.md,
+  built). The owner: *"a menu option to make the toolbars transparent to
+  maximize visible viewport size. and also another option to lock the
+  toolbars in place"*. `panels({ overlay: true })`, `panels({ locked: true })`,
+  `panels()`, and the logo menu's View boxes; the viewer's, under
+  `neocad.panels.switches.v1`, never journalled. See-through, every pane but
+  the options panel keeps its rectangle and draws its content in a form of
+  its own: the tray's buttons; the organiser a tree in its corner
+  (`organiserTree`: a root per body with its chain, Groups and Regions,
+  collapsed, ▸ to open); the log's last three lines (`logtail.ts`, gone at
+  10 s); the command line's input on an underline. Only content takes a
+  press. A halo in the ground's colour (10–16.5 : 1 over a light lid,
+  measured). A mouse over a pane gives its box back; a press on its content
+  shows it docked until a press outside. Locked: no strip or grip drawn, a
+  locked `Drag` moves and pushes nothing, the chip says why; a rotation that
+  needs a re-fit says so. Unit: `test/overlaylock.test.ts` (10); browser:
+  `test/e2e/overlaylock.e2e.ts` (12), and the fits suite with each switch.
+  *Not tried on a phone.*
 - **Android** (docs/plans/android.md, built). The owner: *"obv this whole
   platform should also work on android"*. The device table
   (`test/devices.ts`) has eleven Android rows — Pixels 7, 8, 9 and their

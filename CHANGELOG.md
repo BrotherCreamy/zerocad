@@ -7,6 +7,69 @@ decisions.
 
 ---
 
+## See-through panels, each in a form of its own, and a lock
+
+The owner: *"there should be a menu option to make the toolbars transparent
+to maximize visible viewport size. and also another option to lock the
+toolbars in place. note: things like the organiser toolbar etc need to have
+some kind of structure to their layout in order to make the transparent view
+work. like how the feature tree in solidworks changes form when it is
+overlaid over the viewport vs being in a pane on the side"*. Built to
+[`docs/plans/panels-overlay-lock.md`](docs/plans/panels-overlay-lock.md);
+every measurement and deviation is in its *As built*.
+
+- **Two switches in the logo menu's View**: *See-through panels* and *Lock
+  panels*, typed `panels({ overlay: true })` and `panels({ locked: true })`;
+  `panels()` says both. Yours, in this browser, beside the layout — never in
+  a file, never an undo step.
+- **See-through, each pane has a form of its own**, drawn inside the same
+  rectangle it has docked (so everything that fitted still fits, on every
+  iPhone and Android way, tested): the toolbar and the action strip their
+  buttons alone; **the organiser a small tree in its corner** — each body a
+  root with its chain under it, Groups and Regions each a root, collapsed to
+  `e1 › e2 extrude · add`, ▸ to open, empty sections not drawn; the log its
+  last three lines, fading, gone after ten seconds; the command line its
+  input on an underline. The options panel, menus, tooltips and the mode chip
+  stay opaque.
+- **The drawing has everything between**: only the content takes a press,
+  so a tap between two of the tree's rows, or on the tray's strip's place,
+  draws — measured with the point tool on a mouse, an iPhone 13 and a Pixel
+  7, both ways up.
+- **A halo keeps it legible**: a thin ring in the drawing's ground round
+  every letter and glyph. Sampled from the pixels over a light lid: 10–16.5 : 1,
+  against 1.2–1.4 : 1 without it.
+- **The hand brings the box back**: a mouse over a pane gives it its ground
+  and strip under the same content; a press on its content shows it docked —
+  the organiser's eyes and counts, the whole log — until you press outside.
+- **Locked, the panels stay where they are**: no strip or grip is drawn, a
+  drag moves and pushes nothing, and a press where a strip was says *panels
+  are locked — unlock in the menu* in the chip. A rotation that leaves a
+  locked layout unfittable re-fits it, says so, and turning back puts every
+  pane where it was locked.
+
+Found in a browser and fixed (ARCHITECTURE's 35–36): an 8 px gap between the
+tree's rows went to a row under a finger — Chromium moves a touch onto the
+nearest control its contact area reaches — so a finger's rows are 22 px
+apart (20 was the first clear); and a re-fit after a rotation went unsaid
+when the pane the resolver moved was a default one. Pictures:
+[195](docs/images/195-see-through-on-a-desktop-the-organiser-a-tree-in-its-corner-the-log-three-lines.png),
+[196](docs/images/196-iphone-13-see-through-over-a-busy-model-the-drawing-between-the-rows.png),
+[197](docs/images/197-iphone-13-see-through-over-a-light-lid-the-halo-keeps-it-legible.png),
+[198](docs/images/198-iphone-13-on-its-side-see-through-over-a-light-lid.png),
+[199](docs/images/199-iphone-13-a-root-open-the-body-and-its-chain-see-through.png),
+[200](docs/images/200-pixel-7-on-its-side-a-root-open-the-tree-hugging-the-bottom-right.png),
+[201](docs/images/201-a-mouse-over-the-organiser-its-box-back-the-tree-kept.png),
+[202](docs/images/202-iphone-13-a-tap-on-a-row-selects-it-and-shows-the-organiser-docked.png),
+[203](docs/images/203-pixel-7-on-its-side-locked-no-strips-no-grips.png),
+[204](docs/images/204-pixel-7-locked-and-see-through-the-chip-says-why-nothing-moved.png),
+[205](docs/images/205-iphone-13-a-locked-layout-re-fitted-on-its-side-and-said.png).
+Tests: typecheck 0; unit 1574 → 1584 (+10); kernel 11; e2e 621 → 637 (+16:
+the new file's 12, and the fits suite with each switch, 4). The gate as run
+(`npm run test:all`, the only worker): 634 passed, 1 skipped, 2 failed — the
+phone fillet file's held-label drag and edge tap, the register's open touch
+flake; alone, that file failed them in 2 of 4 runs here and in 1 of 4 on the
+base commit.
+
 ## Android: the same app, at home on a Pixel or a Galaxy
 
 The owner: *"obv this whole platform should also work on android"*. Built to

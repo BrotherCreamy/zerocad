@@ -2044,6 +2044,62 @@ starts.
         drawing in a form of its own, the organiser as a tree hugging its
         corner, empty space the drawing's; lock keeps every pane where it
         is).
+        - [x] **See-through panels and the lock — BUILT (2026-11-06)**, on
+          `claude/panels-overlay-lock`; the spec's *As built* has the table
+          of forms and the measurements. `panels({ overlay: true })`,
+          `panels({ locked: true })`, `panels()`; the logo menu's View boxes
+          *See-through panels* and *Lock panels*. See-through: each pane's
+          content in a form of its own inside the same rectangle (the tray's
+          buttons; the organiser a tree in its corner, bodies with their
+          chains, Groups and Regions as roots, collapsed, empty sections
+          absent; the log's last three lines, gone at 10 s; the command
+          line's input on an underline), the box taking no press — a press
+          between two rows or on the tray's strip's place makes a point
+          (measured, five ways). The halo measured 10–16.5 : 1 over a light
+          lid (1.2–1.4 : 1 without it). Locked: no strip or grip drawn, a
+          drag moves nothing and the chip says why, a rotation re-fits once
+          and says so. **Vetoable, each a decision:**
+          - **A mouse over a see-through pane brings its box back, not its
+            docked form**; a press on its content brings the docked form
+            until the next press outside, for any hand. Under a mouse the
+            docked form would turn the tree into sections as the pointer
+            reached a root. A tree's ▸ and headings pin nothing.
+          - **A finger's tree rows are 22 px apart, not 44 px targets**:
+            Chromium moves a touch onto the nearest control its contact area
+            reaches, and every gap up to 18 px went to a row (measured, 8 px
+            fingertip).
+          - **The tree**: a root per body with its whole chain (its first
+            feature too) as children; Groups and Regions each a root; a
+            collapsed body says `› its last feature` beside its name; ▸
+            opens, the name selects as the docked row does; eyes, counts,
+            open markers and the ＋ are the docked form's.
+          - **"Hugs its corner"** is the pane's corner nearest the area's
+            corner it is in (`hugOf`); the log's lines keep to its top or
+            bottom but read left to right; the command line stays at its
+            pane's bottom.
+          - **The log fades** whole for 3 s, then to nothing at 10 s.
+          - **The halo**: eight 1 px offsets and a 3 px glow in the ground's
+            colour, times the interface size; glyphs two 1 px drop-shadows.
+          - **The locked strip still takes a press on its own band** — to
+            say *"panels are locked — unlock in the menu"* — but not its
+            finger's reach over the drawing; see-through and locked, its
+            place is the drawing's. The ＋ stays.
+          - **The lock refuses only a hand's gestures**: the resolver still
+            places a pane shown again, a grown tray, the options panel; a
+            rotation's re-fit is said in the status and not stored.
+          - **The switches have their own key** (`neocad.panels.switches.v1`):
+            `layout("reset")` does not change them, and still moves panes
+            while locked.
+        - [ ] **Found, still to do (see-through and lock):**
+          - An empty organiser draws nothing see-through, so its ＋ is
+            reachable only docked.
+          - A portrait phone's organiser (121 × 183) shows about four roots
+            at a finger's spacing; the rest scroll.
+          - Not tried on an iPhone or an Android device: the halo at 3× over
+            a real lid, and whether a real fingertip's contact area is
+            larger than the emulation's 8 px (Android would move a tap
+            between rows onto one).
+          - At a desktop's 100 % the halo makes small type look heavier.
       - **Also queued (the owner, 2026-11-05: *"please add solid and surface
         fillet tools if possible (after you do the nurbs conversion)"*):**
         [`solid-fillets.md`](docs/plans/solid-fillets.md) after workbenches,
@@ -3398,6 +3454,11 @@ extended the way `defineTool` extends the tool registry would close it.
         three — on the base commit at the same load, `solidsphone`'s two;
         every one passed with its file alone. Which of the four miss moves
         with the load, run to run.
+        Seen again (2026-11-06, `claude/panels-overlay-lock`'s gate, the
+        only worker): the same two in the full gate; alone, at load about 3,
+        the file failed them in 2 of 4 runs on the branch and in 1 of 4 on
+        the base commit (its `src` and `index.html` checked out) — so not
+        this package's, and no longer only under a saturated machine.
         Also seen (2026-11-06), with nothing else running but the suite's
         own two files at a time (load ~6): `solidfilletsphone.e2e.ts`'s held
         radius-label drag and its edge tap, in the full gate only; the file
