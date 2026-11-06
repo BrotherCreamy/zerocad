@@ -54,7 +54,14 @@ reviews (`npm run measure:android`): the mode chip's `activePlane` costs
 0.9 ms a frame (2–2.7 ms under a 4× CPU throttle), so it is not cached.
 Arming round on a one-sweep box waits 1.2–1.7 s for the kernel's Worker.
 Pictures: [177](docs/images/177-pixel-7-installed-below-its-52px-status-bar-the-command-line-over-the-gesture-bar.png)–[183](docs/images/183-pixel-tablet-upright-with-three-buttons-along-the-bottom.png).
-Tests: GATE_COUNTS. **Not tried on an Android device**, and Firefox for
+Tests: typecheck 0; unit 1477 → 1561 (+84); kernel 11; e2e 592 → 607 (+15: the
+Android file's 14, and the Android table in fits), run in sets of three on a
+machine shared with another worker. 604 passed, 1 skipped, and 2 failed: the
+phone fillet file's held-label drag and edge tap, which the register already
+records as missing under load. That file passed 3/3 alone, twice. Run as
+its set again, the misses moved with the load. Sometimes they were those two,
+sometimes solidsphone's drags (also on the register). The base, at the same
+load, missed solidsphone's two. **Not tried on an Android device**, and Firefox for
 Android and Samsung Internet are untested; Samsung's user agent was
 smoke-run on Chromium. Worth trying: install from the logo menu, then Back
 with a menu open and with nothing open, Open… and Save, and type with the

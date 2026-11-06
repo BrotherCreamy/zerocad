@@ -3322,6 +3322,12 @@ extended the way `defineTool` extends the tool registry would close it.
         in 3 paired runs (touch, solids, depth) before the fix; the fix
         stands on the reading and the unit tests.
       - [ ] **Open: the touch harness under a saturated machine.**
+        Seen again (2026-11-06, `claude/android`'s gate, sets of three files
+        beside another worker's suite, load 5–16): `solidfilletsphone`'s held
+        label and edge tap in two runs of its set, `solidsphone`'s drags in
+        three — on the base commit at the same load, `solidsphone`'s two;
+        every one passed with its file alone. Which of the four miss moves
+        with the load, run to run.
         Also seen (2026-11-06), with nothing else running but the suite's
         own two files at a time (load ~6): `solidfilletsphone.e2e.ts`'s held
         radius-label drag and its edge tap, in the full gate only; the file
