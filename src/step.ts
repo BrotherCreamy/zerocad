@@ -24,6 +24,14 @@
 // used by two faces in opposite senses. Optionally, the sketch curves no solid
 // is made of, as a `GEOMETRIC_CURVE_SET` in a wireframe representation related
 // to the solids' (`curves: true`).
+//
+// **A surface is a `SHELL_BASED_SURFACE_MODEL`** (docs/plans/surfaces.md): an
+// `OPEN_SHELL` of the same `ADVANCED_FACE`s, whose boundary edges each belong
+// to one face, in a `MANIFOLD_SURFACE_SHAPE_REPRESENTATION` — AP214's surface
+// model, as OpenCascade writes a shell. With solids beside it, it is related
+// to the solids' representation as the wireframe is; with none, it is the
+// product's shape itself. A thickened or closed surface is a solid, and is
+// written as one.
 
 import type { Model } from "./model.ts";
 import { chainsOf } from "./modes.ts";
@@ -111,13 +119,14 @@ export function stepExport(model: Model, options: StepOptions = {}, kernel: read
   const rest = [...model.features.keys()].filter((n) => !covered.has(n) && !given.has(n));
   const own = solidsOf(model, rest);
   // In feature order: a body is where its first feature is.
-  const order = [...model.features.keys()];
+  // Surfaces after every feature, in their own order (their records are not features).
+  const order = [...model.features.keys(), ...model.surfaces.keys()];
   const at = (b: Body) => order.indexOf(b.feature);
   const bodies = [...kernel.map((k) => k.body), ...own.bodies].sort((a, b) => at(a) - at(b));
   const skipped = [...own.skipped, ...missing.map((c) => ({ feature: c.name, why: "its body is the solid kernel's, which has not built it" }))];
   const left = [...skipped, ...hidden.map((feature) => ({ feature, why: "hidden" }))];
   if (bodies.length === 0) {
-    if (model.features.size === 0) throw new Error("there is no solid to export — extrude or revolve a region first; a STEP file of nothing would open empty");
+    if (model.features.size === 0 && model.surfaces.size === 0) throw new Error("there is no solid to export — extrude or revolve a region first; a STEP file of nothing would open empty");
     throw new Error(`there is no solid to export — ${left.map((s) => `${s.feature}: ${s.why}`).join("; ")}`);
   }
   const loose = options.curves ? looseCurves(model) : [];
@@ -346,6 +355,11 @@ function body(d: Data, b: Body): number {
     return d.add(`ADVANCED_FACE('',${list(bounds.map(ref))},${ref(surface(d, f.surface))},${bool(f.sameSense)})`);
   };
   const shell = (s: Shell) => d.add(`CLOSED_SHELL('',${list(s.faces.map(face).map(ref))})`);
+  if (b.sheet) {
+    // A surface: its faces as one open shell, the model of it a shell-based surface model.
+    const open = d.add(`OPEN_SHELL('',${list(b.outer.faces.map(face).map(ref))})`);
+    return d.add(`SHELL_BASED_SURFACE_MODEL(${str(b.name)},(${ref(open)}))`);
+  }
   const outer = shell(b.outer);
   if (b.voids.length === 0) return d.add(`MANIFOLD_SOLID_BREP(${str(b.name)},${ref(outer)})`);
   // A void is written as the cavity would be as a solid of its own — normals
@@ -408,9 +422,19 @@ function write(bodies: Body[], curves: LooseCurve[], o: StepOptions): string {
     + `GLOBAL_UNIT_ASSIGNED_CONTEXT((${ref(mm)},${ref(rad)},${ref(sr)}))REPRESENTATION_CONTEXT('','3D'))`);
 
   const origin = d.placement([0, 0, 0], [0, 0, 1], [1, 0, 0]);
-  const solids = bodies.map((b) => body(d, b));
-  const rep = d.add(`ADVANCED_BREP_SHAPE_REPRESENTATION(${str(name)},${list([origin, ...solids].map(ref))},${ref(context)})`);
+  const solids = bodies.filter((b) => !b.sheet).map((b) => body(d, b));
+  const sheets = bodies.filter((b) => b.sheet).map((b) => body(d, b));
+  // The product's shape: the solids' advanced B-rep — or, with only surfaces,
+  // the surfaces' representation, so a file of surfaces is not an empty solid.
+  const surfaceRep = () => d.add(`MANIFOLD_SURFACE_SHAPE_REPRESENTATION(${str(name)},${list([origin, ...sheets].map(ref))},${ref(context)})`);
+  const rep = solids.length || !sheets.length
+    ? d.add(`ADVANCED_BREP_SHAPE_REPRESENTATION(${str(name)},${list([origin, ...solids].map(ref))},${ref(context)})`)
+    : surfaceRep();
   d.add(`SHAPE_DEFINITION_REPRESENTATION(${ref(shape)},${ref(rep)})`);
+  if (solids.length && sheets.length) {
+    const surfaces = surfaceRep();
+    d.add(`SHAPE_REPRESENTATION_RELATIONSHIP('surfaces','',${ref(rep)},${ref(surfaces)})`);
+  }
 
   if (curves.length > 0) {
     // The sketch beside the solids: a wireframe representation in the same

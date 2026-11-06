@@ -35,8 +35,9 @@ import { insideProfile } from "./solids/profile.ts";
 import { kernelSweep } from "./solids.ts";
 import type { Face } from "./faces.ts";
 import { depth, viewAxes, worldToScreen, type View } from "./view.ts";
-import { isBlend, nodeKeys, type BlendNode, type BodyResult, type Node, type NodeOp, type Program, type ProgramResult } from "./solids/evaluate.ts";
-import { tagParts } from "./solids/naming.ts";
+import { allNodes, isBlend, nodeKeys, type BlendNode, type PairBlendNode, type BodyResult, type Node, type NodeOp, type Program, type ProgramResult } from "./solids/evaluate.ts";
+import { featureLabel, tagParts } from "./solids/naming.ts";
+import { surfacePrograms, type PairAsk } from "./surfaces.ts";
 import type { SolidsClient } from "./solids/client.ts";
 import type { Topology } from "./solids/kernel.ts";
 import { cross3, dot3, sub3, unit3 } from "./vec3.ts";
@@ -76,7 +77,10 @@ export interface ProgramOf {
  */
 export interface BlendTrial {
   body: string;
-  node: BlendNode;
+  /** A fillet or chamfer of edges — or, on a surface, one between two surfaces (surfaces.md). */
+  node: BlendNode | PairBlendNode;
+  /** Bodies the preview takes in and so stands for: the other surface of a fillet between two, not drawn on its own meanwhile. */
+  hides?: string[];
   replace?: number;
 }
 
@@ -89,11 +93,9 @@ export function programOf(model: Model, all = false, trial: BlendTrial | null = 
   const chains = new Map<string, Chain>();
   const skipped: ProgramOf["skipped"] = [];
   const bodies: Program["bodies"] = [];
-  for (const chain of chainsOf(model).bodies) {
-    const tried = trial !== null && trial.body === chain.name;
-    // A body of one sweep is faces.ts's — unless it is rounded: a fillet is
-    // the kernel's alone, so one extrude and its fillet is a kernel body.
-    if (!all && chain.steps.length < 2 && !tried) continue;
+  /** Every body's nodes, shown or not and of one sweep or more: what a surface taken from a body's face is built from. */
+  const nodesOf = new Map<string, Node[]>();
+  const lay = (chain: Chain, said: boolean): Node[] => {
     const nodes: Node[] = [];
     for (const f of chain.steps) {
       if (isBlendFeature(f)) {
@@ -109,9 +111,18 @@ export function programOf(model: Model, all = false, trial: BlendTrial | null = 
         const { at, profile, sweep } = kernelSweep(model, sw);
         nodes.push({ id: featureId(f.name), op: nodes.length === 0 ? "new" : OPS[modeOf(sw)], sweep, profile, at });
       } catch (e) {
-        skipped.push({ feature: f.name, why: e instanceof Error ? e.message : String(e) });
+        if (said) skipped.push({ feature: f.name, why: e instanceof Error ? e.message : String(e) });
       }
     }
+    return nodes;
+  };
+  for (const chain of chainsOf(model).bodies) {
+    const tried = trial !== null && trial.body === chain.name;
+    // A body of one sweep is faces.ts's — unless it is rounded: a fillet is
+    // the kernel's alone, so one extrude and its fillet is a kernel body.
+    if (!all && chain.steps.length < 2 && !tried) continue;
+    const nodes = lay(chain, true);
+    for (const f of chain.steps) nodesOf.set(f.name, [...nodes]);
     if (!nodes.length) continue;
     if (tried) {
       const at = trial.replace === undefined ? -1 : nodes.findIndex((n) => n.id === trial.replace);
@@ -125,7 +136,43 @@ export function programOf(model: Model, all = false, trial: BlendTrial | null = 
     chains.set(chain.name, chain);
     bodies.push({ name: chain.name, nodes });
   }
+  // Surfaces (docs/plans/surfaces.md): every one is the kernel's — a sheet has
+  // no live drawing of its own — each a body of the program under its name.
+  // A trial on a surface (the round tool's preview) is tried as a body's is.
+  const sp = surfacePrograms(model, (feature) => {
+    if (nodesOf.has(feature)) return nodesOf.get(feature)!;
+    // A body of one sweep (faces.ts's), laid out only when a surface asks;
+    // a body hidden whole still has faces a surface may have been taken from.
+    const c = chainsOf(model).bodies.find((x) => x.steps.some((f) => f.name === feature))
+      ?? chainsOf(model, { hidden: true }).bodies.find((x) => x.steps.some((f) => f.name === feature));
+    return c ? lay(c, false) : null;
+  });
+  skipped.push(...sp.skipped);
+  for (const b of sp.bodies) {
+    const nodes = [...b.nodes];
+    if (trial !== null && trial.body === b.name) {
+      const at = trial.replace === undefined ? -1 : nodes.findIndex((n) => n.id === trial.replace);
+      if (at >= 0) nodes[at] = trial.node;
+      else if (!nodes.some((n) => n.id === trial.node.id)) nodes.push(trial.node);
+    }
+    chains.set(b.name, { name: b.name, features: [], steps: [] });
+    bodies.push({ name: b.name, nodes });
+  }
   return { program: { bodies, prefix: PREFIX, chord: CHORD, angle: ANGLE }, chains, skipped, ...(trial ? { trial } : {}) };
+}
+
+/**
+ * A fillet or chamfer between two surfaces as the node its record would make
+ * (docs/plans/surfaces.md) — what the round tool previews before ✓; null where
+ * it cannot be laid out.
+ */
+export function pairTrial(model: Model, ask: PairAsk): PairBlendNode | null {
+  const every = programOf(model, true).program.bodies;
+  const byFeature = (feature: string) => {
+    const c = chainsOf(model, { hidden: true }).bodies.find((x) => x.steps.some((f) => f.name === feature));
+    return c ? every.find((b) => b.name === c.name)?.nodes ?? null : null;
+  };
+  return surfacePrograms(model, byFeature, ask).trial ?? null;
 }
 
 // ---- the kernel's answer, as faces --------------------------------------------------
@@ -192,13 +239,26 @@ export function bodyFaces(result: BodyResult): KernelFace[] {
     const face = faceOf[t];
     const record = s.faces[face];
     const tag = record?.tag ?? -1;
-    const feature = tag >= 0 ? `${PREFIX}${tagParts(tag).feature}` : result.name;
+    const feature = tag >= 0 ? featureLabel(tagParts(tag).feature, PREFIX) : result.name;
     faces.push({
       feature, kind: kindOf(tag), outlines: [[a, b, c]], normal,
       centroid: [0, 1, 2].map((i) => (a[i] + b[i] + c[i]) / 3), edges: [], face,
     });
     if (!byFace.has(face)) byFace.set(face, []);
     byFace.get(face)!.push(faces.length - 1);
+  }
+  // A sheet (a surface, docs/plans/surfaces.md) has two sides and no inside:
+  // each triangle is drawn and picked from both, so the face layer — which
+  // shows a face from its outward side — shows a surface from either.
+  const twin = new Map<number, number>();
+  if (!s.validity.manifold) {
+    const one = faces.length;
+    for (let t = 0; t < one; t++) {
+      const f = faces[t];
+      const [a, b, c] = f.outlines[0];
+      faces.push({ ...f, outlines: [[a, c, b]], normal: f.normal.map((x) => -x), edges: [] });
+      twin.set(t, faces.length - 1);
+    }
   }
   for (const line of s.lines) {
     const e = s.edges[line.edge];
@@ -214,7 +274,11 @@ export function bodyFaces(result: BodyResult): KernelFace[] {
           const d = triangleDistance(mid, a, b, c);
           if (d < bestD) [best, bestD] = [t, d];
         }
-        if (best >= 0) faces[best].edges.push([pts[i], pts[i + 1]]);
+        if (best >= 0) {
+          faces[best].edges.push([pts[i], pts[i + 1]]);
+          const other = twin.get(best);
+          if (other !== undefined) faces[other].edges.push([pts[i], pts[i + 1]]);
+        }
       }
     }
   }
@@ -476,7 +540,10 @@ export class Bodies {
 
   private viewsOf(withTrial: boolean): BodyView[] {
     const out: BodyView[] = [];
+    // A fillet's preview between two surfaces stands for both: the other is not drawn apart meanwhile.
+    const hidden = new Set(withTrial ? this.trying?.hides ?? [] : []);
     for (const [name, chain] of this.current?.chains ?? []) {
+      if (hidden.has(name)) continue;
       const v = withTrial && this.tried?.name === name ? this.tried : this.good.get(name);
       if (v && v.features.join() === chain.features.map((f) => f.name).join()) out.push(v);
     }
@@ -592,12 +659,13 @@ export class Bodies {
           }
         }
       }
-      const name = (id: number) => `${PREFIX}${id}`;
+      const name = (id: number) => featureLabel(id, PREFIX);
       // A preview's refusal is the tool's to say (it does, as guidance), not
       // the body's — nor is one from a preview since ended, whose answer is
       // still the latest until the body's own arrives: only nodes the body has.
       const trial = p.trial?.body === b.name ? p.trial.node.id : null;
-      const own = (id: number) => id !== trial && b.nodes.some((n) => n.id === id);
+      // A surface's partners' nodes are carried inside its own (a knit's), and their refusals are its.
+      const own = (id: number) => id !== trial && allNodes(b.nodes).some((n) => n.id === id);
       for (const f of r.failed) if (own(f.id)) lines.push(`${name(f.id)} could not be applied to ${b.name}: ${f.why}`);
       // A fillet some of whose edges a change took (docs/plans/solid-fillets.md): the rest are still rounded.
       for (const m of (r.missing ?? []).filter((x) => own(x.id))) {
@@ -606,6 +674,10 @@ export class Bodies {
       }
       for (const i of r.idle) {
         const mode = model?.features.get(name(i.id)) ? modeOf(model.features.get(name(i.id)) as FeatureEntry) : "add";
+        if (model?.surfaces.has(name(i.id))) {
+          lines.push(`${name(i.id)} trims nothing from ${b.name} — what it cuts by does not cross it`);
+          continue;
+        }
         lines.push(mode === "cut" ? `${name(i.id)} cuts nothing from ${b.name} — it does not reach it`
           : mode === "add" ? `${name(i.id)} adds nothing to ${b.name} — it is all inside it`
             : `${name(i.id)} changes nothing in ${b.name}`);

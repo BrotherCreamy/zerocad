@@ -16,6 +16,37 @@ etc).
   on every push to the working branch. Called NeoCAD until 0.1.0; the
   internal code name stays in identifiers, the file format tag and storage
   keys (see TODO.md's register).
+- **Surfaces** (docs/plans/surfaces.md, built). The owner: *"please add
+  solid and surface fillet tools if possible"*, *"also fillets and chamfers
+  for surfaces."* A surface is a thing — a sheet the solid kernel builds, no
+  inside — named `s1`, `s2`, … in `model.surfaces`, listed under the
+  organiser's Surfaces, hideable, drawn two-sided with the kernel's edges.
+  Made by `surface(...)`: a curve chain extruded or revolved, the planar
+  face a loop or region bounds, or a body's face (`surface("e1.lid")`), and
+  by the **surface tool** under the extrude button (the **sweep** group).
+  Changed only by operations, each a record in its chain: `trim(s, by,
+  point)` (a curve projected along its plane's normal, or another surface;
+  the side the point is on kept; the trim tool pressed on a surface),
+  `extend(s, edge, d)` (the sweep lengthened), `knit(s, t, …)`, `offset(s,
+  d)` (a new surface), `thicken(s, d)` and `solidify(s)` (a solid), and the
+  **fillet and chamfer** of a surface's shared edges or between two surfaces
+  (each trimmed back to the other, knitted, blended — the round and chamfer
+  tools, one pick or two). `trim`, `extend`, `offset`, `fillet`, `chamfer`
+  are shared with the sketch: a surface first is the surface's, journalled
+  under its own op (`trimSurface`, `filletSurfaces`, …). Dimensions
+  `surfaceDepth`, `surfaceAngle`, `surfaceDistance` (and the fillet's
+  radius) are set like any. The context menu: Thicken…, Offset…, Knit with
+  sN, Solidify, Delete; an open edge's Extend…. STEP writes a sheet as an
+  open shell in a `SHELL_BASED_SURFACE_MODEL`, a thickened one as a solid —
+  read valid by OpenCascade 8.0.1, areas and volume the closed forms to
+  ~10⁻⁸. A surfaces workbench (the part's modules). Kernel: SMLib's caps-off
+  sweeps, project-and-trim, intersect, stitch, offset and edge fillet on
+  sheets; thicken, the planar face and extend built around what it does not
+  do (the spec's *As built*). Unit: `test/surfaceskernel.test.ts` (12),
+  `test/surfaces.test.ts` (16), `test/stepsurfaces.test.ts` (3); browser:
+  `test/e2e/surfaces.e2e.ts` (8), `test/e2e/surfacesphone.e2e.ts` (6,
+  iPhone 13). *Not tried on a phone.*
+
 - **Touch targets that follow the interface size** (docs/plans/touch-density.md,
   built). The owner: *"the text resizes but the spacing between e.g menu
   items and toolbar items barely changes … the white space between eg the
@@ -119,8 +150,8 @@ etc).
   (docs/plans/workbenches.md, built).
   - **Modules.** `src/modules.ts`'s `defineModule` fills every table — glyphs,
     groups, menu tool items, File items, the relation vocabulary, the replay
-    table, `help()` — from seven built-in modules in `src/modules/` (core,
-    sketch, solids, files, step, organiser, interface), loaded by
+    table, `help()` — from eight built-in modules in `src/modules/` (core,
+    sketch, solids, surfaces, files, step, organiser, interface), loaded by
     `modules/builtin.ts`. A name two modules register is refused, whole.
     `modules()` lists them.
   - **The entity extension point.** `EntityKindSpec` (`model.ts`) and its
@@ -129,7 +160,7 @@ etc).
     declared by the sketch module (`src/kinds/ellipse.ts`) and named nowhere
     in `model.ts`, `loops.ts`, `faces.ts`, `picking.ts`, `step.ts`,
     `curveplane.ts`. Its minor and normal now count in the diagnosis.
-  - **Workbenches**: part (default, today's tray) and sketch; the logo menu's
+  - **Workbenches**: part (default, today's tray), sketch and surfaces; the logo menu's
     Workbench section and `workbench(name)`; remembered in a file's head
     (format 16).
   - **Add workbench…**: a `.zerocad.js` from the device's picker, a drop or

@@ -33,6 +33,22 @@ export interface SmModule {
   _sm_boolean(a: number, b: number, op: number): number;
   _sm_fillet(h: number, idx: number, n: number, r: number, xsect: number): number;
   _sm_shell(h: number, idx: number, n: number, d: number): number;
+  _sm_sheet_extrude(d: number): number;
+  _sm_sheet_revolve(px: number, py: number, pz: number, ax: number, ay: number, az: number, deg: number): number;
+  _sm_profile_place(ox: number, oy: number, oz: number, xx: number, xy: number, xz: number,
+    yx: number, yy: number, yz: number): number;
+  _sm_trim_curve(h: number, i: number, dx: number, dy: number, dz: number, rx: number, ry: number, rz: number): number;
+  _sm_trim_brep(h: number, by: number, dx: number, dy: number, dz: number, rx: number, ry: number, rz: number): number;
+  _sm_intersect_points(h: number, by: number, out: number, cap: number): number;
+  _sm_normal_at(h: number, x: number, y: number, z: number, out: number): number;
+  _sm_knit(h: number, h2: number, tol: number, out: number): number;
+  _sm_solidify(h: number): number;
+  _sm_offset(h: number, d: number): number;
+  _sm_thicken(h: number, d: number): number;
+  _sm_extract_face(h: number, i: number): number;
+  _sm_face_blend(h1: number, f1: number, h2: number, f2: number, r1: number, r2: number, xsect: number): number;
+  _sm_is_sheet(h: number): number;
+  _sm_tag_edge(h: number, i: number, tag: number): number;
   _sm_volume(h: number): number;
   _sm_bbox(h: number, out: number): number;
   _sm_is_manifold(h: number): number;
@@ -54,6 +70,9 @@ export interface SmModule {
   _sm_topology(h: number): number;
   _sm_topology_data(): number;
 }
+
+/** Doubles per edge in glue.cpp's `sm_edges`. */
+const EDGE_STRIDE = 13;
 
 const KINDS: SurfaceKind[] = ["other", "plane", "cylinder", "cone", "sphere", "torus", "revolution", "bspline"];
 const OPS: Record<BooleanOp, number> = { union: 1, intersect: 2, subtract: 3 };
@@ -145,6 +164,100 @@ export class SmlibKernel implements SolidKernel {
     return this.ok("shell", h);
   }
 
+  // ---- sheets (docs/plans/surfaces.md) ----
+
+  sheetExtrude(profile: Profile, depth: number, at?: Placement): Solid {
+    this.loadProfile(profile);
+    return this.place(this.ok("sheet extrude", this.m._sm_sheet_extrude(depth)), at);
+  }
+
+  sheetRevolve(profile: Profile, point: V2, dir: V2, degrees: number, at?: Placement): Solid {
+    this.loadProfile(profile);
+    return this.place(this.ok("sheet revolve", this.m._sm_sheet_revolve(point[0], point[1], 0, dir[0], dir[1], 0, degrees)), at);
+  }
+
+  extractFace(s: Solid, face: number): Solid {
+    return this.ok("face", this.m._sm_extract_face(s, face));
+  }
+
+  trimByCurve(s: Solid, curve: Member, at: Placement, dir: V3, keep: V3): Solid {
+    this.loadProfile({ loops: [[curve]] });
+    const { origin: o, x, y } = at;
+    const placed = this.m._sm_profile_place(o[0], o[1], o[2], x[0], x[1], x[2], y[0], y[1], y[2]);
+    if (placed !== 0) throw new KernelError("trim", placed);
+    const st = this.m._sm_trim_curve(s, 0, dir[0], dir[1], dir[2], keep[0], keep[1], keep[2]);
+    if (st !== 0) throw new KernelError("trim", st < 0 ? -st - 1 : st);
+    return s;
+  }
+
+  trimBySheet(s: Solid, by: Solid, dir: V3, keep: V3): Solid {
+    const n = this.m._sm_trim_brep(s, by, dir[0], dir[1], dir[2], keep[0], keep[1], keep[2]);
+    if (n === -2) throw new Error("the two surfaces do not cross");
+    if (n < 0) throw new KernelError("trim", -n - 1);
+    return s;
+  }
+
+  normal(s: Solid, p: V3): V3 | null {
+    return this.doubles(3, (ptr, v) => {
+      if (this.m._sm_normal_at(s, p[0], p[1], p[2], ptr) !== 0) return null;
+      const d = v();
+      return [d[0], d[1], d[2]];
+    });
+  }
+
+  crossing(s: Solid, by: Solid): V3[] {
+    const cap = 3 * 9 * 64;
+    return this.doubles(cap, (p, v) => {
+      const n = this.m._sm_intersect_points(s, by, p, cap);
+      if (n <= 0) return [];
+      const d = v();
+      const out: V3[] = [];
+      for (let i = 0; i < n; i++) out.push([d[i * 3], d[i * 3 + 1], d[i * 3 + 2]]);
+      return out;
+    });
+  }
+
+  knit(s: Solid, t: Solid, tolerance: number): { solid: Solid; stitched: number; lamina: number } {
+    return this.doubles(4, (p, v) => {
+      const st = this.m._sm_knit(s, t, tolerance, p);
+      if (st !== 0) throw new KernelError("knit", st < 0 ? -st - 1 : st);
+      const d = v();
+      return { solid: s, stitched: d[0], lamina: d[1] };
+    });
+  }
+
+  solidify(s: Solid): boolean {
+    const r = this.m._sm_solidify(s);
+    if (r < 0) throw new KernelError("solidify", -r - 1);
+    return r === 1;
+  }
+
+  offsetSheet(s: Solid, distance: number): Solid {
+    return this.ok("offset", this.m._sm_offset(s, distance));
+  }
+
+  thicken(s: Solid, distance: number): Solid {
+    const h = this.m._sm_thicken(s, distance);
+    // glue.cpp's own codes: -10 the offset failed, -11 a wall, -12 the result did not close.
+    if (h === -10) throw new Error("the kernel could not offset it that far");
+    if (h === -11) throw new Error("the kernel could not wall an edge to its offset");
+    if (h === -12) throw new Error("its walls and offset did not close into a solid");
+    return this.ok("thicken", h);
+  }
+
+  sheet(s: Solid): boolean {
+    return this.m._sm_is_sheet(s) === 1;
+  }
+
+  faceBlend(a: Solid, fa: number, b: Solid, fb: number, size: number, chamfer: boolean): Solid {
+    return this.ok("face blend", this.m._sm_face_blend(a, fa, b, fb, size, size, chamfer ? 0 : 2));
+  }
+
+  tagEdge(s: Solid, edge: number, tag: number): void {
+    const st = this.m._sm_tag_edge(s, edge, tag);
+    if (st !== 0) throw new KernelError("tag", st);
+  }
+
   copy(s: Solid): Solid { return this.ok("copy", this.m._sm_copy(s)); }
   free(s: Solid): void { this.m._sm_delete(s); }
 
@@ -186,15 +299,16 @@ export class SmlibKernel implements SolidKernel {
 
   edges(s: Solid): EdgeInfo[] {
     const n = this.m._sm_count(s, 1);
-    return this.doubles(n * 12, (p, v) => {
-      this.m._sm_edges(s, p, n * 12);
+    return this.doubles(n * EDGE_STRIDE, (p, v) => {
+      this.m._sm_edges(s, p, n * EDGE_STRIDE);
       const d = v();
       const out: EdgeInfo[] = [];
       for (let i = 0; i < n; i++) {
-        const o = i * 12;
+        const o = i * EDGE_STRIDE;
         out.push({
           faces: [d[o], d[o + 1]], start: [d[o + 2], d[o + 3], d[o + 4]],
           end: [d[o + 5], d[o + 6], d[o + 7]], mid: [d[o + 8], d[o + 9], d[o + 10]],
+          tag: d[o + 11], lamina: d[o + 12] === 1,
         });
       }
       return out;

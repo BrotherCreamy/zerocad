@@ -128,6 +128,8 @@ export interface Body {
   volume: number;
   /** Its extent, `[min, max]`, each three coordinates. */
   box: [number[], number[]];
+  /** A surface's sheet (docs/plans/surfaces.md): an open shell, no volume — written as a surface model, not a solid. */
+  sheet?: true;
 }
 
 /** What could and could not be made. A feature that cannot be laid out costs its own body and is named. */
@@ -839,12 +841,50 @@ function extent(pieces: Piece[], reach: (p: number[], dir: number[]) => number):
  * its axis taken with the angle's sign, as `revolveBodies` does.
  */
 export function kernelSweep(model: Model, f: FeatureEntry): { at: KernelPlacement; profile: KernelProfile; sweep: Sweep } {
-  const plane = featurePlane(model, f);
+  const { at, profile, local } = kernelProfile(model, featurePlane(model, f), f.loops);
+  if (f.kind === "extrude") {
+    const depth = model.relations.get(f.depth)?.args[1];
+    if (typeof depth !== "number" || !Number.isFinite(depth) || depth === 0) throw new Error("it has no depth");
+    return { at, profile, sweep: { kind: "extrude", depth } };
+  }
+  const theta = model.relations.get(f.angle)?.args[1];
+  if (typeof theta !== "number" || !Number.isFinite(theta) || theta === 0) throw new Error("it has no angle");
+  return { at, profile, sweep: revolveSweep(model, f.axis, theta, local) };
+}
+
+/**
+ * A revolve's sweep in its profile's plane — the axis as a point and a
+ * direction in the plane's own coordinates, the angle in degrees — from the
+ * axis reference and the signed angle in radians: what `kernelSweep` hands
+ * the kernel for a revolve, and a revolved surface (surfaces.ts) for its sheet.
+ */
+export function revolveSweep(model: Model, axisRef: string, theta: number, local: (p: number[]) => [number, number]): Sweep {
+  const axis = axisReader(model, axisRef).read();
+  const k = unit3(axis.dir.map((c) => Math.sign(theta) * c));
+  if (!k) throw new Error("its axis has no direction");
+  const O = lift3(axis.origin);
+  // The axis's direction in the plane: where O + k lands, from where O does.
+  const [o, ok] = [local(O), local(O.map((c, i) => c + k[i]))];
+  const dir: [number, number] = [ok[0] - o[0], ok[1] - o[1]];
+  return {
+    kind: "revolve", point: local(O), dir,
+    degrees: isFullTurn(theta) ? 360 : (Math.abs(theta) * 180) / Math.PI,
+  };
+}
+
+/**
+ * Profile loops as the kernel takes them — members in a plane's own
+ * coordinates, and where that plane is — for any plane and any loops of
+ * curves, closed or (a surface's, docs/plans/surfaces.md) open. The plane's
+ * origin is the first member's first point; `local` maps a world point into it.
+ */
+export function kernelProfile(model: Model, plane: { u: number[]; n: number[] } | null, loops: readonly (readonly ProfileMember[])[]):
+  { at: KernelPlacement; profile: KernelProfile; local: (p: number[]) => [number, number]; n: number[] } {
   const n = plane ? unit3(plane.n) : null;
   const x = plane && n ? unit3(sub3(plane.u, n.map((c) => c * dot3(plane.u, n)))) : null;
   if (!n || !x) throw new Error("its sketch plane has collapsed");
   const y = cross3(n, x);
-  const first = f.loops[0]?.[0];
+  const first = loops[0]?.[0];
   if (first === undefined) throw new Error("its profile is empty");
   const origin = piecesOf(model, first)[0].a;
   const local = (p: number[]): [number, number] => { const d = sub3(p, origin); return [dot3(d, x), dot3(d, y)]; };
@@ -872,26 +912,9 @@ export function kernelSweep(model: Model, f: FeatureEntry): { at: KernelPlacemen
     const start = angle(from);
     return { kind: "arc", centre, radius: p.r, start, end: start + (sweep * 180) / Math.PI };
   };
-  const profile: KernelProfile = { loops: f.loops.map((loop) => loop.map(member)) };
+  const profile: KernelProfile = { loops: loops.map((loop) => loop.map(member)) };
   const at: KernelPlacement = { origin: [origin[0], origin[1], origin[2]], x: [x[0], x[1], x[2]], y: [y[0], y[1], y[2]] };
-  if (f.kind === "extrude") {
-    const depth = model.relations.get(f.depth)?.args[1];
-    if (typeof depth !== "number" || !Number.isFinite(depth) || depth === 0) throw new Error("it has no depth");
-    return { at, profile, sweep: { kind: "extrude", depth } };
-  }
-  const theta = model.relations.get(f.angle)?.args[1];
-  if (typeof theta !== "number" || !Number.isFinite(theta) || theta === 0) throw new Error("it has no angle");
-  const axis = axisReader(model, f.axis).read();
-  const k = unit3(axis.dir.map((c) => Math.sign(theta) * c));
-  if (!k) throw new Error("its axis has no direction");
-  const O = lift3(axis.origin);
-  return {
-    at, profile,
-    sweep: {
-      kind: "revolve", point: local(O), dir: [dot3(k, x), dot3(k, y)],
-      degrees: isFullTurn(theta) ? 360 : (Math.abs(theta) * 180) / Math.PI,
-    },
-  };
+  return { at, profile, local, n };
 }
 
 /**

@@ -21,6 +21,10 @@
 #include <SmApiFillets.h>
 #include <SmApiGeneral.h>
 #include <SmApiQueries.h>
+#include <SmApiIntersectors.h>
+#include <SmApiSurfaces.h>
+#include <SmExtent1d.h>
+#include <SmApiTrimmedSurfaces.h>
 
 #include <SmAssertArray.h>
 #include <SmAttribute.h>
@@ -273,6 +277,363 @@ API int sm_shell(int h, const int* idx, int n, double dist) {
   return keep(r);
 }
 
+namespace {
+
+// An edge's curve, copied and cut to the part of it the edge uses.
+SmBSplineCurve* edgeCurve(SmEdge* e) {
+  const SmCurve* c = e->GetCurve();
+  if (!c) return nullptr;
+  SmCurve* cp = nullptr;
+  if (c->Copy(*SmApiGetOrCreateContext(), cp) != SM_SUCCESS || !cp) return nullptr;
+  SmBSplineCurve* b = dynamic_cast<SmBSplineCurve*>(cp);
+  if (!b) { delete cp; return nullptr; }
+  double lo = 0, hi = 0;
+  if (SmApiEdgeParameterRange(e, lo, hi) == SM_SUCCESS) {
+    SmExtent1d iv(lo, hi);
+    b->Trim(iv);
+  }
+  return b;
+}
+
+SmPoint3d at(const SmBSplineCurve* c, double t) {
+  SmVector3d pd[3];
+  c->Evaluate(t, 0, true, pd);
+  return SmPoint3d(pd[0].x, pd[0].y, pd[0].z);
+}
+
+double dist3(const SmPoint3d& a, const SmPoint3d& b) {
+  return std::sqrt((a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y) + (a.z - b.z) * (a.z - b.z));
+}
+
+SmPoint3d edgeMid(SmEdge* e) {
+  double lo = 0, hi = 0;
+  SmApiEdgeParameterRange(e, lo, hi);
+  SmVector3d pd[3];
+  e->GetCurve()->Evaluate(0.5 * (lo + hi), 0, true, pd);
+  return SmPoint3d(pd[0].x, pd[0].y, pd[0].z);
+}
+
+}  // namespace
+
+// ---- sheets: surfaces as the kernel's sheet bodies (docs/plans/surfaces.md) --
+//
+// A sheet is an SmBrep like a solid, with lamina edges (one face) where a
+// solid has none. Everything below takes and returns handles as the solids'
+// calls do; a handle may hold a sheet or a solid, and `sm_is_manifold` /
+// `sm_is_sheet` say which.
+//
+// What SMLib gives for sheets, measured (test/surfaces.test.ts): sweeps with
+// no caps, a trim by a projected curve (SmApiProjectAndTrim), the crossing of
+// two sheets (SmApiIntersectBreps), knitting (MergeBrep + SmApiStitchAdvanced),
+// closing a closed knit into a solid (SmApiStitchIntoSolid), offset
+// (SmApiOffsetBrepFull), the edge fillet and chamfer on a sheet's shared edge
+// (SmApiFilletEdges, as on a solid), and an untrimmed face-face blend
+// (SmApiSurfaceSurfaceFillet). What it does not: extending a trimmed face at
+// an edge, and a thickened sheet (below).
+
+// The profile's curves swept along +z with no caps: a sheet, open or closed.
+API int sm_sheet_extrude(double dist) {
+  SmTArray<SmCurve*> a = profileArray();
+  SmBrep* r = nullptr;
+  SmApiStatus s = SmApiCreateLinearSweep(a, SmVector3d(0, 0, 1), dist, FALSE, r);
+  if (s != SM_SUCCESS || !r) return -(int)s - 1;
+  return keep(r);
+}
+
+API int sm_sheet_revolve(double px, double py, double pz, double ax, double ay, double az, double deg) {
+  SmTArray<SmCurve*> a = profileArray();
+  SmBrep* r = nullptr;
+  SmApiStatus s = SmApiCreateRotationalSweep(a, SmPoint3d(px, py, pz), SmVector3d(ax, ay, az), deg, FALSE, r);
+  if (s != SM_SUCCESS || !r) return -(int)s - 1;
+  return keep(r);
+}
+
+// Move the profile's curves from the local frame to this one — so a curve can
+// be handed to a trim in the world's coordinates, where the sheet is.
+API int sm_profile_place(double ox, double oy, double oz, double xx, double xy, double xz,
+                         double yx, double yy, double yz) {
+  SmAxis2Placement p(ox, oy, oz, xx, xy, xz, yx, yy, yz);
+  for (SmCurve* c : g_profile) {
+    SmApiStatus s = SmApiTransform(c, p);
+    if (s != SM_SUCCESS) return (int)s;
+  }
+  return 0;
+}
+
+// Trim a sheet by profile curve i projected along (dx, dy, dz), keeping the
+// side the reference point projects onto. In place.
+API int sm_trim_curve(int h, int i, double dx, double dy, double dz, double rx, double ry, double rz) {
+  SmBrep* b = get(h);
+  if (!b || i < 0 || i >= (int)g_profile.size()) return -1;
+  SmBSplineCurve* c = dynamic_cast<SmBSplineCurve*>(g_profile[i]);
+  if (!c) return -2;
+  return st(SmApiProjectAndTrim(b, c, SmVector3d(dx, dy, dz), SmPoint3d(rx, ry, rz)));
+}
+
+// The normal of the face of h nearest a point, at the nearest place on it
+// (the surface's own, not the face's side): what a trim by another sheet
+// projects its crossing along. False where h has no face near.
+static bool normalAt(SmBrep* b, const SmPoint3d& p, SmVector3d& n) {
+  SmTArray<SmFace*> f;
+  faces(b, f);
+  SmFace* best = nullptr;
+  double bestD = 1e300;
+  for (ULONG i = 0; i < f.GetSize(); i++) {
+    SmPoint3d q;
+    double d = 0;
+    if (SmApiFaceClosestPoint(f[i], p, q, d) == SM_SUCCESS && d < bestD) { bestD = d; best = f[i]; }
+  }
+  if (!best) return false;
+  SmPoint3d q;
+  SmTArray<SmPoint2d> uvs;
+  double d = 0;
+  if (SmApiSurfaceClosestPoint(best->GetSurface(), p, q, uvs, d) != SM_SUCCESS || uvs.GetSize() == 0) return false;
+  SmVector3d out;
+  if (SmApiEvaluateSurfaceNormal(best->GetSurface(), SmVector2d(uvs[0].x, uvs[0].y), out) != SM_SUCCESS) return false;
+  n = out;
+  return true;
+}
+
+API int sm_normal_at(int h, double x, double y, double z, double* out) {
+  SmBrep* b = get(h);
+  if (!b) return -1;
+  SmVector3d n;
+  if (!normalAt(b, SmPoint3d(x, y, z), n)) return -2;
+  out[0] = n.x; out[1] = n.y; out[2] = n.z;
+  return 0;
+}
+
+// Trim sheet h where sheet `by` crosses it: their intersection curves, each
+// projected onto h — along (dx, dy, dz), or, given (0, 0, 0), along h's own
+// normal where the curve's middle is, so a curve already on h lands where it
+// is — keeping the side the reference point is on. In place; `by` is left as
+// it was. The number of curves trimmed by, or a negative status (-2: the two
+// do not cross).
+API int sm_trim_brep(int h, int by, double dx, double dy, double dz, double rx, double ry, double rz) {
+  SmBrep* b = get(h);
+  SmBrep* t = get(by);
+  if (!b || !t) return -1;
+  SmTArray<SmCurve*> cs;
+  SmApiStatus s = SmApiIntersectBreps(b, t, cs, nullptr);
+  if (s != SM_SUCCESS) return -(int)s - 1;
+  if (cs.GetSize() == 0) return -2;
+  int n = 0;
+  int bad = 0;
+  for (ULONG i = 0; i < cs.GetSize(); i++) {
+    SmBSplineCurve* c = dynamic_cast<SmBSplineCurve*>(cs[i]);
+    SmVector3d dir(dx, dy, dz);
+    if (c && dx == 0 && dy == 0 && dz == 0) {
+      SmExtent1d iv = c->GetNaturalInterval();
+      if (!normalAt(b, at(c, 0.5 * (iv.GetMin() + iv.GetMax())), dir)) { bad++; continue; }
+    }
+    if (c && SmApiProjectAndTrim(b, c, dir, SmPoint3d(rx, ry, rz)) == SM_SUCCESS) n++;
+    else bad++;
+  }
+  for (ULONG i = 0; i < cs.GetSize(); i++) delete cs[i];
+  return n > 0 ? n : -3 - bad;
+}
+
+// Knit sheet h2 into h: the two copied into one brep, then every pair of
+// lamina edges within `tol` stitched into one edge. h2 is spent. out: edges
+// stitched, lamina edges left, largest vertex gap, largest edge gap.
+API int sm_knit(int h, int h2, double tol, double* out) {
+  SmBrep* a = get(h);
+  SmBrep* b = get(h2);
+  if (!a || !b || a == b) return -1;
+  SmStatus ms = a->MergeBrep(*b);
+  if (ms != SM_SUCCESS) return -(int)ms - 1;
+  delete b;
+  g_breps[h2] = nullptr;
+  ULONG stitched = 0, lamina = 0;
+  double vg = 0, eg = 0;
+  SmApiStatus s = SmApiStitchAdvanced(a, tol, FALSE, TRUE, FALSE, FALSE, stitched, lamina, vg, eg);
+  out[0] = (double)stitched; out[1] = (double)lamina; out[2] = vg; out[3] = eg;
+  return st(s);
+}
+
+// Stitch a closed sheet into a solid, in place: 1 when it closed into one.
+API int sm_solidify(int h) {
+  SmBrep* b = get(h);
+  if (!b) return -1;
+  SmBoolean solid = FALSE;
+  ULONG n = 0;
+  double vg = 0, eg = 0;
+  SmApiStatus s = SmApiStitchIntoSolid(b, solid, n, vg, eg);
+  if (s != SM_SUCCESS) return -(int)s - 1;
+  return solid ? 1 : 0;
+}
+
+// A sheet offset by `dist` along its normals. New handle; h left as it was.
+API int sm_offset(int h, double dist) {
+  SmBrep* b = get(h);
+  if (!b) return -1;
+  SmBrep* c = nullptr;
+  if (SmApiBrepCopy(b, c) != SM_SUCCESS || !c) return -2;
+  SmBrep* r = nullptr;
+  SmApiStatus s = SmApiOffsetBrepFull(c, dist, TRUE, FALSE, r);
+  if (r != c) delete c;
+  if (s != SM_SUCCESS || !r) return -(int)s - 1;
+  return keep(r);
+}
+
+// Face i of h on its own, as a sheet: a copy with every other face deleted.
+// New handle. What a solid's face used as a surface is, and what a planar
+// surface is made by — the cap of a one-unit extrude of the region, taken on
+// its own: SmApiCreatePlanarFaces's faces took the module down ("table index
+// is out of bounds") in every trim and every second knit tried, where a
+// sweep's cap trims and knits as any sheet does.
+API int sm_extract_face(int h, int i) {
+  SmBrep* b = get(h);
+  if (!b) return -1;
+  SmTArray<SmFace*> f0;
+  faces(b, f0);
+  if (i < 0 || i >= (int)f0.GetSize()) return -2;
+  SmBrep* c = nullptr;
+  if (SmApiBrepCopy(b, c) != SM_SUCCESS || !c) return -3;
+  SmTArray<SmFace*> f;
+  faces(c, f);
+  // DeleteFace refuses a brep not in edit mode (SmBrep::m_bEditingEnabled,
+  // which SmBrep.h says callers set for the edit's length).
+  SmBoolean was = c->m_bEditingEnabled;
+  c->m_bEditingEnabled = TRUE;
+  for (ULONG k = 0; k < f.GetSize(); k++) {
+    if ((int)k == i) continue;
+    if (c->DeleteFace(f[k], TRUE) != SM_SUCCESS) { delete c; return -4; }
+  }
+  c->m_bEditingEnabled = was;
+  return keep(c);
+}
+
+
+// The kernel's face–face blend between face f1 of h1 and face f2 of h2
+// (their whole surfaces, untrimmed): a new sheet of fillet faces, or a
+// negative status. xsect 0 linear (a chamfer), 2 circular.
+API int sm_face_blend(int h1, int f1, int h2, int f2, double r1, double r2, int xsect) {
+  SmBrep* a = get(h1);
+  SmBrep* b = get(h2);
+  if (!a || !b) return -1;
+  SmTArray<SmFace*> fa, fb;
+  faces(a, fa);
+  faces(b, fb);
+  if (f1 < 0 || f1 >= (int)fa.GetSize() || f2 < 0 || f2 >= (int)fb.GetSize()) return -2;
+  SmBrep* r = nullptr;
+  SmApiStatus s = SmApiSurfaceSurfaceFillet(fa[f1]->GetSurface(), fb[f2]->GetSurface(), r1, r2, 1e-3, r,
+                                            (ULONG)xsect, FALSE, FALSE);
+  if (s != SM_SUCCESS || !r) return -(int)s - 1;
+  return keep(r);
+}
+
+API int sm_tag_edge(int h, int i, int tag) {
+  SmBrep* b = get(h);
+  if (!b) return -1;
+  SmTArray<SmEdge*> e;
+  edges(b, e);
+  if (i < 0 || i >= (int)e.GetSize()) return -2;
+  setTag(e[i], tag);
+  return 0;
+}
+
+
+// A solid from a sheet, made of what SMLib does do reliably for a sheet: the
+// sheet, its offset by `dist`, and between each lamina edge and its offset a
+// ruled wall — stitched, then closed into a solid. (SmApiShellBrepFull's own
+// bCreateOffsetSolid returned no solid for a sheet in every case tried: a
+// planar sheet refused, a cylindrical one came back as two coincident faces.)
+// New handle, or a negative status: -10 the offset, -11 a wall, -12 not closed.
+API int sm_thicken(int h, double dist) {
+  SmBrep* b = get(h);
+  if (!b) return -1;
+  const SmContext* cx = SmApiGetOrCreateContext();
+  SmBrep* c = nullptr;
+  if (SmApiBrepCopy(b, c) != SM_SUCCESS || !c) return -2;
+  SmBrep* off = nullptr;
+  SmApiStatus os = SmApiOffsetBrepFull(c, dist, TRUE, FALSE, off);
+  if (off != c) delete c;
+  if (os != SM_SUCCESS || !off) return -10;
+  SmBrep* out = nullptr;
+  if (SmApiBrepCopy(b, out) != SM_SUCCESS || !out) { delete off; return -3; }
+  SmTArray<SmEdge*> e0, e1;
+  edges(b, e0);
+  edges(off, e1);
+  std::vector<SmEdge*> lam;
+  for (ULONG i = 0; i < e1.GetSize(); i++) if (e1[i]->IsLamina()) lam.push_back(e1[i]);
+  int walls = 0;
+  for (ULONG i = 0; i < e0.GetSize(); i++) {
+    if (!e0[i]->IsLamina()) continue;
+    // Its offset: the lamina edge of the offset sheet whose midpoint is nearest |dist| away.
+    SmPoint3d m = edgeMid(e0[i]);
+    SmEdge* best = nullptr;
+    double bestD = 1e300;
+    for (SmEdge* e : lam) {
+      double d = std::fabs(dist3(edgeMid(e), m) - std::fabs(dist));
+      if (d < bestD) { bestD = d; best = e; }
+    }
+    if (!best) { delete off; delete out; return -11; }
+    SmBSplineCurve* c1 = edgeCurve(e0[i]);
+    SmBSplineCurve* c2 = edgeCurve(best);
+    if (!c1 || !c2) { delete c1; delete c2; delete off; delete out; return -11; }
+    SmExtent1d i1 = c1->GetNaturalInterval(), i2 = c2->GetNaturalInterval();
+    // Ruled between ends that correspond: run the second the first's way.
+    if (dist3(at(c1, i1.GetMin()), at(c2, i2.GetMin())) > dist3(at(c1, i1.GetMin()), at(c2, i2.GetMax()))) {
+      SmExtent1d nv;
+      c2->ReverseParameterization(i2, nv);
+    }
+    SmSurface* srf = nullptr;
+    SmApiStatus rs = SmApiCreateRuledSurface(c1, c2, srf);
+    delete c1;
+    delete c2;
+    if (rs != SM_SUCCESS || !srf) { delete off; delete out; return -11; }
+    SmBrep* wall = new (*cx) SmBrep();
+    SmFace* f = nullptr;
+    if (wall->CreateFaceFromSurface(srf, srf->GetNaturalUVDomain(), f) != SM_SUCCESS || !f) {
+      delete wall; delete off; delete out; return -11;
+    }
+    out->MergeBrep(*wall);
+    delete wall;
+    walls++;
+  }
+  out->MergeBrep(*off);
+  delete off;
+  ULONG stitched = 0, lamina = 0;
+  double vg = 0, eg = 0;
+  SmApiStitchAdvanced(out, 1e-4 * std::max(1.0, std::fabs(dist)), FALSE, TRUE, FALSE, FALSE, stitched, lamina, vg, eg);
+  SmBoolean solid = FALSE;
+  ULONG n = 0;
+  SmApiStitchIntoSolid(out, solid, n, vg, eg);
+  if (!out->IsManifoldSolid()) { delete out; return -12; }
+  return keep(out);
+}
+
+// Points along the curves where sheets h and `by` cross, for a caller to
+// choose a side by: up to cap / 3 of them, xyz; the count, or a negative status.
+API int sm_intersect_points(int h, int by, double* out, int cap) {
+  SmBrep* b = get(h);
+  SmBrep* t = get(by);
+  if (!b || !t) return -1;
+  SmTArray<SmCurve*> cs;
+  SmApiStatus s = SmApiIntersectBreps(b, t, cs, nullptr);
+  if (s != SM_SUCCESS) return -(int)s - 1;
+  int n = 0;
+  for (ULONG i = 0; i < cs.GetSize(); i++) {
+    const SmBSplineCurve* c = dynamic_cast<const SmBSplineCurve*>(cs[i]);
+    if (c) {
+      SmExtent1d iv = c->GetNaturalInterval();
+      for (int k = 0; k <= 8 && (n + 1) * 3 <= cap; k++) {
+        SmPoint3d p = at(c, iv.GetMin() + (iv.GetMax() - iv.GetMin()) * k / 8.0);
+        out[n * 3] = p.x; out[n * 3 + 1] = p.y; out[n * 3 + 2] = p.z;
+        n++;
+      }
+    }
+    delete cs[i];
+  }
+  return n;
+}
+
+API int sm_is_sheet(int h) {
+  SmBrep* b = get(h);
+  return b ? (b->IsSheet() ? 1 : 0) : -1;
+}
+
 // ---- queries ----------------------------------------------------------------
 
 // The volume, asked to a part in a billion, and failing that to looser
@@ -376,8 +737,9 @@ API int sm_tag_face(int h, int i, int tag) {
   return 0;
 }
 
-// Per edge, 12 doubles: face index 0, face index 1 (-1 if none), start xyz,
-// end xyz, mid xyz, tag.
+// Per edge, 13 doubles: face index 0, face index 1 (-1 if none), start xyz,
+// end xyz, mid xyz, tag, and 1 for a lamina edge (a sheet's boundary: one
+// face, and no seam) else 0.
 API int sm_edges(int h, double* out, int cap) {
   SmBrep* b = get(h);
   if (!b) return -1;
@@ -386,8 +748,8 @@ API int sm_edges(int h, double* out, int cap) {
   SmTArray<SmEdge*> e;
   edges(b, e);
   int n = (int)e.GetSize();
-  for (int i = 0; i < n && (i + 1) * 12 <= cap; i++) {
-    double* o = out + i * 12;
+  for (int i = 0; i < n && (i + 1) * 13 <= cap; i++) {
+    double* o = out + i * 13;
     SmTArray<SmFace*> ef;
     e[i]->GetFaces(ef);
     for (int k = 0; k < 2; k++) {
@@ -410,6 +772,7 @@ API int sm_edges(int h, double* out, int cap) {
     }
     o[8] = m.x; o[9] = m.y; o[10] = m.z;
     o[11] = (double)tagOf(e[i]);
+    o[12] = e[i]->IsLamina() ? 1 : 0;
   }
   return n;
 }

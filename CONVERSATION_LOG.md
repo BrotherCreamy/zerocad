@@ -106,6 +106,66 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### Surfaces: why the verbs are shared, why thicken and the pair fillet are built from parts, and what was rejected
+
+**The name clash.** The sketch already owned `trim`, `extend` and `offset`,
+and `fillet`/`chamfer` already served both the sketch and the solid. I had
+two choices: give surfaces distinct verbs (`trimSurface`, a surface-trim
+button), or share the verbs and dispatch on the first argument. I chose
+sharing:
+- `fillet` already worked that way;
+- the owner prefers one tool doing solids and surfaces;
+- the modify flyout is full at 10 items.
+
+The risk with sharing is getting the wrong one silently. Three things close
+that off:
+- only surfaces are named `s` plus a number;
+- a surface-shaped name that names nothing is refused as a surface's;
+- each surface form is journalled under its own op, so no file can replay
+  one as the other, and old files replay untouched.
+
+Probing edge cases with a script turned up one more:
+- `trim("s2", …)` after s2 had been knitted into s1 was recorded as a trim
+  *into s2*.
+- It cut correctly, because s2's name answers for s1's chain.
+- But if the knit were deleted later, the trim would have moved onto s2
+  alone.
+
+So a surface's name now resolves to the sheet it is part of when the record
+is made.
+
+**What the kernel could not do.** I surveyed SMLib for sheets before
+designing anything. Most of what the spec asked for was there: caps-off
+sweeps, project-and-trim, intersect, stitch, stitch-into-solid, offset, and
+the edge fillet on a sheet. Four things were missing:
+- **Thicken.** `SmApiShellBrepFull`'s offset-solid option refused a planar
+  sheet and gave two coincident faces for a cylinder. I built thicken from
+  the sheet, its offset and ruled walls; the volumes come out exact,
+  curvature term included.
+- **Planar faces.** `SmApiCreatePlanarFaces` makes faces that crashed the
+  wasm module once trimmed or knitted a second time, so a planar surface is
+  the cap of a one-unit sweep, extracted on its own.
+- **Extending a face.** No call extends a trimmed face, so `extend`
+  lengthens the sweep the surface was made by.
+- **The face–face blend.** `SmApiSurfaceSurfaceFillet` does exist, but it
+  leaves both surfaces whole; a test pins that. A fillet between surfaces
+  that only cross is therefore trim, knit and the edge fillet, in one
+  record, so the user sees a single operation.
+
+The glue grew; the pinned source did not.
+
+**Rejected.**
+- Keeping a trim's side as a sign or an inside/outside flag: it would be a
+  negative surface by another name. The kept side is a point, as the press
+  that made it.
+- Projecting a trim's curve along the view: the camera isn't journalled, so
+  a replay would cut somewhere else.
+- `offset` as a record in its source's chain: an offset is wanted beside its
+  source, so it is a new surface.
+- A separate button for the surface tool: it went under extrude, in a sweep
+  group, so the toolbar keeps its thirteen. The cost is that extrude's
+  button now opens a flyout on a hover instead of showing a tooltip.
+
 ### Touch density: why the target follows the size, why 0.8, and what each follow-up turned out to be
 
 **One number, scaled — and scaled against the form factor.** The owner's

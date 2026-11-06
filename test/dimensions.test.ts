@@ -24,6 +24,7 @@ import { del, set } from "../src/operations.ts";
 import { extrusion } from "../src/relations/extrusion.ts";
 import { revolution } from "../src/relations/revolution.ts";
 import { chamferSetback, filletRadius } from "../src/relations/blend.ts";
+import { surfaceAngle, surfaceDepth, surfaceDistance } from "../src/relations/surface.ts";
 import { rotation } from "../src/relations/pattern.ts";
 import { FORMAT, open, save } from "../src/persist.ts";
 import { axisFrame } from "./frames.ts";
@@ -94,7 +95,9 @@ test("the three value-carrying relations are d-named and every other one is r-na
   // dimensions with no equation: test/solidfillets.test.ts makes them.
   // A circular pattern's step (docs/plans/sketch-edit.md) is a dimension too:
   // test/sketchedit.test.ts sets one and the pattern turns.
-  assert.deepEqual([...DIMENSION_OPS].sort(), ["angle", "chamferSetback", "diameter", "dist", "extrusion", "filletRadius", "majorAxis", "minorAxis", "radius", "revolution", "rotation"]);
+  // A surface's depth, angle and distances (docs/plans/surfaces.md) are
+  // dimensions with no equation too: test/surfaces.test.ts sets one.
+  assert.deepEqual([...DIMENSION_OPS].sort(), ["angle", "chamferSetback", "diameter", "dist", "extrusion", "filletRadius", "majorAxis", "minorAxis", "radius", "revolution", "rotation", "surfaceAngle", "surfaceDepth", "surfaceDistance"]);
   // A driven dimension is a dimension to read and name, never to set.
   assert.equal(relationPrefix("measure"), "d");
   assert.equal(valueArgIndex("measure"), null);
@@ -302,6 +305,10 @@ test("every op in DIMENSION_OPS can actually be rebuilt by set", async () => {
     // A blend's size holds nothing to solve; `set` re-runs it with the new value.
     filletRadius: (m) => filletRadius(m, 3),
     chamferSetback: (m) => chamferSetback(m, 2),
+    // A surface's numbers hold nothing to solve either (docs/plans/surfaces.md).
+    surfaceDepth: (m) => surfaceDepth(m, 20),
+    surfaceAngle: (m) => surfaceAngle(m, Math.PI),
+    surfaceDistance: (m) => surfaceDistance(m, 3),
     // A circular pattern's step: b is a turned a quarter about c2.
     rotation: (m) => rotation(m, "a", "b", "c2", Math.PI / 2),
   };

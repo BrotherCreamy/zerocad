@@ -26,7 +26,10 @@ axis or a line in its plane, its surface drawn from the live profile and, for a
 partial turn, its end face real geometry held by one angle dimension; either
 of which adds to a body, cuts from it, intersects it or starts one, the bodies
 built by NVIDIA's SMLib in a Worker, their edges filleted or chamfered as
-features of the body — with
+features of the body; surfaces — sheets swept from curves, a loop's planar
+face or a body's face, changed only by operations (trim, extend, knit,
+offset, a fillet or chamfer between two, thicken into a solid), written to
+STEP as surface models — with
 sketching on a solid's face, a click inside it, to stack the next one on; the
 plane being sketched on drawn and named, with a chip beside the status saying
 where · what · next — `on e1's top · circle · drag the radius` — and a Done to
@@ -128,7 +131,10 @@ src/bodies.ts            the bodies the kernel builds: the program sent, the las
 src/kerneledges.ts       a kernel body's edges to the hand: under a pixel, in a box, tangent chains, a face's, the hover tag
 src/blends.ts            fillet and chamfer of a body's edges, as operations: a feature in the chain, its size a dimension
 src/relations/blend.ts   a fillet's radius and a chamfer's setback: dimensions with no equation
-src/tools/blend.ts       the round and chamfer tools, and their edit dialogs: click edges, the kernel's preview, ✓
+src/tools/blend.ts       the round and chamfer tools, and their edit dialogs: click edges (a solid's or a surface's, or two surfaces), the kernel's preview, ✓
+src/surfaces.ts          surfaces as operations: surface(), trim, extend, knit, offset, thicken, solidify, the fillet and chamfer of surfaces; their chains and the program the kernel builds
+src/relations/surface.ts a surface's depth, angle and distance: dimensions with no equation
+src/tools/surface.ts     the surface tool: click curves (a chain) or inside a loop, set the depth, ✓
 src/kernelbrep.ts        a kernel body's topology as the STEP exporter's B-rep
 src/solidshost.ts        where the kernel's Worker, wasm and licence are in each build
 src/solids/              the solid kernel's side, numbers only: contract, SMLib adapter, evaluation, naming, Worker, client
@@ -562,11 +568,11 @@ consequence of how the scope is built, described in `src/repl.ts`.
 
 ## Workbenches, and adding one from a file
 
-The app is modules — core, sketch, solids, files, step, organiser — each one
+The app is modules — core, sketch, solids, surfaces, files, step, organiser, interface — each one
 file that registers its tools, relations, operations, entity kinds, menu
 items and help (`modules()` lists them). A **workbench** is a set of them
-with its own toolbar: **Part** (the default: everything) and **Sketch** (the
-drawing, no solids). Switch in the logo menu's *Workbench* section or with
+with its own toolbar: **Part** (the default: everything), **Sketch** (the
+drawing, no solids) and **Surfaces** (the part's modules). Switch in the logo menu's *Workbench* section or with
 `workbench("sketch")`; a typed command works in any workbench, and a drawing
 remembers which it was in.
 

@@ -12,6 +12,20 @@ _sm_delete
 _sm_boolean
 _sm_fillet
 _sm_shell
+_sm_sheet_extrude
+_sm_sheet_revolve
+_sm_profile_place
+_sm_trim_curve
+_sm_trim_brep
+_sm_normal_at
+_sm_knit
+_sm_solidify
+_sm_offset
+_sm_thicken
+_sm_extract_face
+_sm_face_blend
+_sm_is_sheet
+_sm_tag_edge
 _sm_volume
 _sm_bbox
 _sm_is_manifold
@@ -35,3 +49,4 @@ _sm_topology
 _sm_topology_data
 _malloc
 _free
+_sm_intersect_points

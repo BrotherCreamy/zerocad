@@ -59,6 +59,8 @@ export interface Pick {
   body?: string;
   /** A kernel edge's hover line, written by the host that found it. */
   tag?: string;
+  /** A kernel edge that bounds one face — a surface's boundary (docs/plans/surfaces.md). */
+  lamina?: boolean;
   /**
    * The entity a kernel edge was picked in place of — the lid's twin line it
    * lies along — which a press still drags, so a body's edge is resized by

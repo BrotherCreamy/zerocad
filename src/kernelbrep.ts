@@ -120,7 +120,10 @@ export function kernelBody(model: Model, name: string, topo: Topology, result: B
     vol += dot3(tri[0], cross3(tri[1], tri[2]));
     tris[faceOf[t]]?.push(tri);
   }
-  const outwardSign = vol < 0 ? -1 : 1;
+  // A sheet (a surface, docs/plans/surfaces.md) has no inside: its faces face
+  // the way the kernel's tessellation winds them, one way across the sheet.
+  const sheet = !s.validity.manifold;
+  const outwardSign = !sheet && vol < 0 ? -1 : 1;
   const onFace = (fi: number, p: number[]) => Math.min(...tris[fi].map(([a, b, c]) => pointTriangle(p, a, b, c)));
 
   const features = new Map([...model.features.values()].map((f) => [f.name, f]));
@@ -186,7 +189,10 @@ export function kernelBody(model: Model, name: string, topo: Topology, result: B
   });
 
   let next = vertices.length + edges.length + 1;
-  return { name, feature: name, outer: { faces: splitSeams(faces, () => next++) }, voids: [], volume: s.volume, box: s.box };
+  return {
+    name, feature: name, outer: { faces: splitSeams(faces, () => next++) }, voids: [], volume: sheet ? 0 : s.volume, box: s.box,
+    ...(sheet ? { sheet: true } : {}),
+  };
 }
 
 /** `p` turned through half a turn about the line through `c` along unit `k`. */

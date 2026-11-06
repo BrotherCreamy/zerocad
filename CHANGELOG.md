@@ -7,6 +7,71 @@ decisions.
 
 ---
 
+## Surfaces: a surface is a thing, and trim, knit, fillet and thicken are operations
+
+The owner: *"please add solid and surface fillet tools if possible"*, and
+then *"also fillets and chamfers for surfaces."* The rule this follows is his,
+from regions: *there is no negative face or solid, only an operation between
+things.* Built to [`docs/plans/surfaces.md`](docs/plans/surfaces.md); every
+deviation, and what the kernel could not do, is in its *As built*.
+
+- **A surface is made, and named `s1`, `s2`, ….** `surface("l1", 20)` sweeps
+  the chain through `l1` (open or closed) 20 along its plane's normal;
+  `surface("l1", "l9", 90)` revolves it about `l9`; `surface("l1")` on a
+  closed loop is the planar face inside it (a hole drawn inside is a trim,
+  not a negative); `surface("e1.lid")` is a solid's face as a surface. Each
+  is a sheet — a shell with no inside — drawn two-sided, listed in the
+  organiser under **Surfaces**, hideable, with the kernel's edges.
+- **The surface tool** sits under the extrude button (a new **sweep** group,
+  so the toolbar keeps its thirteen): click a curve and its chain is lit —
+  or the curve alone, with *chain* off — click inside a loop for the planar
+  face, ✓ (picture 236).
+- **Operations, never negatives**, each a record in the surface's chain as
+  a body's booleans are: `trim("s1", by, point)` by a curve (projected along
+  its plane's normal) or by another surface where they cross, keeping the
+  side the point is on — **the trim tool trims a surface when you press on
+  one**, the press being the side kept (picture 237); `extend("s1", edge,
+  5)` lengthens a swept surface at a boundary edge; `knit("s1", "s2")` makes
+  one sheet where edges meet (picture 238); `offset("s1", 3)` a new surface
+  along its normals; `thicken("s1", 2)` a solid from a sheet, and
+  `solidify("s1")` a closed knit filled.
+- **Fillets and chamfers for surfaces, with the solid's tools.** The round
+  and chamfer tools take a surface's shared edges as they take a solid's —
+  click the join a knit made, the kernel's preview, ✓ — `fillet("s1",
+  ["s1.base|s3.m0"], 4)` (pictures 239, 242). The chamfer is the same,
+  armed from the modify group with its setback typed in the panel:
+  `chamfer("s1", ["s1.base|s3.m0"], 3)`, a flat in place of the corner
+  (pictures 244, 245). Between two surfaces that do
+  not share an edge, click one and then the other: each is trimmed back to
+  the other where they cross, the clicks being the sides kept, knitted and
+  rounded, in one record — `fillet("s1", "s2", 3)`. Picture 240 is the
+  filleted sheet thickened, its volume the closed form to 10⁻⁵.
+- **The verbs the sketch already had are shared, never guessed.** `trim`,
+  `extend`, `offset`, `fillet` and `chamfer` are the surface's when the
+  first argument is a surface and exactly what they were otherwise; each is
+  journalled under its own name (`trimSurface`, `filletSurfaces`, …), so a
+  file made before this opens unchanged and no file can replay one as the
+  other. A name that reads as a surface's but is not one (`s9`) is refused
+  as a surface's, not the sketch's. `help()` lists both under each verb.
+- **The context menu on a surface**: Thicken…, Offset…, Knit with s2,
+  Solidify, Delete; a sheet's open edge offers Extend….
+- **A surfaces workbench**, the part's modules, for the toolbar it implies.
+- **STEP**: a surface is written as an open shell in a
+  `SHELL_BASED_SURFACE_MODEL`; a thickened one as a solid. The four test
+  parts (a holed plate, a revolved band, a knitted and filleted L, and that
+  thickened) read valid by OpenCascade 8.0.1, their areas and the volume the
+  closed forms to about 10⁻⁸ (`test/fixtures/step-surfaces/`).
+- **What the kernel could not do**, written down: SMLib extends no trimmed
+  face, so `extend` acts on the sweep that made the surface; its own thicken
+  makes no solid of a sheet, so thicken is built from the sheet, its offset
+  and ruled walls; its planar-face call took the module down whenever the
+  face was trimmed or knitted twice, so a planar surface is the cap of a
+  sweep, taken on its own; its face–face blend leaves both surfaces whole,
+  so the fillet between two is built from trim, knit and the edge fillet.
+- On the phone: the same flow by finger — tap the face, ✓, trim, a wall, the
+  knit from a held finger's menu, the join's fillet, thicken, share
+  (pictures 241–243).
+
 ## Panels reshuffle rather than push
 
 The owner: *"When I push toolbars around, they should be able to reorder with

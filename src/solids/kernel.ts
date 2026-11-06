@@ -72,6 +72,14 @@ export interface EdgeInfo {
   start: V3;
   end: V3;
   mid: V3;
+  /**
+   * A sheet's boundary (docs/plans/surfaces.md): an edge of one face and no
+   * seam — where a solid would have a second face. A closed surface's seam has
+   * one face too, and is not lamina.
+   */
+  lamina: boolean;
+  /** The caller's tag on the edge, -1 for none — what a sheet's boundary edges are named by (naming.ts). */
+  tag: number;
 }
 
 export interface Mesh {
@@ -106,6 +114,36 @@ export interface SolidKernel {
   chamfer(s: Solid, edges: number[], distance: number): Solid;
   /** Hollow inward to wall `thickness`, leaving `open` faces open; null if the kernel has no shell. */
   shell(s: Solid, open: number[], thickness: number): Solid | null;
+
+  // ---- sheets (docs/plans/surfaces.md): a surface is a solid's kind of handle with lamina edges ----
+
+  /** The profile's curves, open or closed, swept `depth` along its plane's +z with no caps. */
+  sheetExtrude(profile: Profile, depth: number, at?: Placement): Solid;
+  /** The profile's curves turned about an axis in their plane, with no caps. */
+  sheetRevolve(profile: Profile, point: V2, dir: V2, degrees: number, at?: Placement): Solid;
+  /** Face `face` of `s` on its own, as a sheet; `s` is kept. */
+  extractFace(s: Solid, face: number): Solid;
+  /** `s` trimmed by a curve (a profile's one member, where `at` places it) projected along `dir`, keeping the side `keep` projects onto. */
+  trimByCurve(s: Solid, curve: Member, at: Placement, dir: V3, keep: V3): Solid;
+  /** `s` trimmed where `by` crosses it, the crossing projected along `dir` (or `s`'s own normal, given [0, 0, 0]), keeping `keep`'s side; `by` is kept. */
+  trimBySheet(s: Solid, by: Solid, dir: V3, keep: V3): Solid;
+  /** The normal of the surface under the face of `s` nearest `p` (the surface's own way), or null. */
+  normal(s: Solid, p: V3): V3 | null;
+  /** Points along the curves where two sheets cross; empty where they do not. */
+  crossing(s: Solid, by: Solid): V3[];
+  /** `t` knitted into `s`: lamina edges within `tolerance` stitched into one. Spends `t`. */
+  knit(s: Solid, t: Solid, tolerance: number): { solid: Solid; stitched: number; lamina: number };
+  /** A closed sheet stitched into a solid, in place: whether it closed. */
+  solidify(s: Solid): boolean;
+  /** A sheet offset `distance` along its normals, as a new sheet; `s` is kept. */
+  offsetSheet(s: Solid, distance: number): Solid;
+  /** A solid from a sheet: it, its offset by `distance`, and ruled walls between; `s` is kept. */
+  thicken(s: Solid, distance: number): Solid;
+  /** Whether a handle is a sheet — every edge lamina or shared by two faces, one shell. */
+  sheet(s: Solid): boolean;
+  /** The kernel's own blend between two faces' whole surfaces (untrimmed): a new sheet. */
+  faceBlend(a: Solid, fa: number, b: Solid, fb: number, size: number, chamfer: boolean): Solid;
+  tagEdge(s: Solid, edge: number, tag: number): void;
   copy(s: Solid): Solid;
   free(s: Solid): void;
 

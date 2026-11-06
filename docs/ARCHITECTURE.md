@@ -1174,7 +1174,7 @@ dimension:
 | things | found or made | combined into | by | named | built |
 |---|---|---|---|---|---|
 | faces | found: a closed loop of sketch curves (loops.ts) | **regions** | `region`, `subtract`, `add`, `intersect` | `rg1` | yes |
-| surfaces | made: extruded, revolved, lofted, or a solid's face | **surfaces** | `trim(s, by)`, `extend(s, to)`, `knit(s, t)` | `s1` | no — `surfaces.md` |
+| surfaces | made: a curve chain extruded or revolved, a face of the drawing, or a solid's face | **surfaces** | `trim(s, by, keep)`, `extend(s, edge, d)`, `knit(s, t)`, `offset`, `fillet`/`chamfer(s, edges \| t, d)`; `thicken`/`solidify` to a solid | `s1` | yes — `surfaces.md` |
 | solids | made: a feature's sweep | **bodies** | `new`, `add`, `cut`, `intersect` (a feature's mode) | the body's first feature | yes (*A body is a chain*) |
 
 Each is the same shape: a **name**, a **chain** of named operations that is
@@ -1224,6 +1224,26 @@ as an outline's going takes a feature.
 `hole`/`unhole`, explicit regions' calls, stay as typed names: aliases of the
 step that gives a loop the meaning they always gave it.
 
+**A surface is a chain too** (docs/plans/surfaces.md): `model.surfaces` holds
+`s`-named records, a head (`extrude`, `revolve`, `planar`, `face`) and then
+records whose `into` names it — `trim`, `extend`, `knit`, `offset`,
+`fillet`/`chamfer`, `thicken`, `solidify` — and the kernel builds the chain as
+a *sheet* body, a lamina shell, no inside. A trim keeps a side by a point (the
+press), not by a sign: nothing is a negative surface. A knit, and a fillet or
+chamfer between two surfaces, **absorb** the partner — its chain is inlined
+as of the moment the record was made (`chainAt` with the record's own index),
+so a later record on the partner does not reach back into the knit — and the
+partner leaves the organiser as a body leaves it for a boolean. `thicken` and
+`solidify` end the sheet: the chain's result is a manifold solid (STEP writes
+it as a solid), and a sheet operation after them is refused, naming the
+record. A surface's record keeps what it read off the drawing (its curves'
+plane, the trim's keep point, the knit's tolerance), so a replay asks no
+kernel to resolve anything. The equations a surface carries are dimensions
+only (`surfaceDepth`, `surfaceAngle`, `surfaceDistance`, and the fillet's
+`filletRadius`/`chamferSetback`), each a number a rebuild reads; the module
+entries are `src/modules/surfaces.ts`, the operations `src/surfaces.ts`, the
+kernel's half `src/solids/evaluate.ts` (`SheetNode` … `PairBlendNode`).
+
 ## A module is the unit
 
 The owner: *"the whole framework should be modular and extensible (!). like
@@ -1235,7 +1255,7 @@ Now **a module is one file that registers everything it brings, in one call**
 tables is filled from the modules, in load order: `TOOL_ICONS`, `TOOL_GROUPS`,
 the menu's tool items and the logo menu's File items, the relation vocabulary
 `replenv.ts` binds, the replay table `persist.ts` opens a file by, `help()`.
-The app is seven built-in modules (`src/modules/`), loaded by
+The app is eight built-in modules (`src/modules/`), loaded by
 `modules/builtin.ts`, which `main.ts`, `persist.ts`, `replenv.ts` and
 `menu.ts` import — so any host that opens a file or builds a command scope,
 a test included, has the app's vocabulary.

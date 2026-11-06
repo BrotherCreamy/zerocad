@@ -30,10 +30,11 @@ class Stamp extends Tool {
 
 test("the built-in modules load in order, and the tables are filled from them in that order", () => {
   const builtin = loadedModules().filter((m) => m.origin === "builtin").map((m) => m.name);
-  assert.deepEqual(builtin, ["core", "sketch", "solids", "files", "step", "organiser", "interface"]);
-  // The tray: core's tools, then the sketch module's, then the solids'.
+  assert.deepEqual(builtin, ["core", "sketch", "solids", "surfaces", "files", "step", "organiser", "interface"]);
+  // The tray: core's tools, then the sketch module's, then the solids', then the surfaces' (docs/plans/surfaces.md).
   assert.deepEqual(listTools(), ["point", "line", "rectangle", "polygon", "slot", "region", "circle", "arc", "ellipse", "fillet",
-    "bevel", "trim", "extend", "offset", "mirror", "pattern", "dimension", "constrain", "extrude", "revolve", "sketch", "round", "chamfer"]);
+    "bevel", "trim", "extend", "offset", "mirror", "pattern", "dimension", "constrain", "extrude", "revolve", "sketch", "round", "chamfer",
+    "surface"]);
   // The menu's tool items and the File items, module by module.
   assert.deepEqual(menuToolItems().map((i) => i.tool), ["point", "line", "rectangle", "circle", "arc", "ellipse", "fillet"]);
   assert.deepEqual(fileMenuItems().map((i) => i.label), ["New", "Open…", "Save", "Share…", "Export STEP…"]);
@@ -50,7 +51,9 @@ test("persist.ts's replay table is the modules' ops: the model's own edits, ever
   for (const op of ["addPoint", "addLine", "addFrame", "deleteEntity", "addCircle", "addArc", "addEllipse", "dist", "parallel",
     "onEllipse", "majorAxis", "fillet", "hole", "extrude", "revolve", "regen", "set", "construction", "group", "hide",
     "region", "subtract", "add", "intersect", "deleteRegionSteps", "deleteRegion",
-    "filletEdges", "chamferEdges", "setEdges"]) {
+    "filletEdges", "chamferEdges", "setEdges",
+    "surfaceExtrude", "surfaceRevolve", "surfacePlanar", "surfaceFace", "trimSurface", "extendSurface", "knit", "offsetSurface",
+    "thicken", "solidify", "filletSurfaces", "chamferSurfaces"]) {
     assert.ok(ops.includes(op), `${op} replays`);
   }
   assert.equal(new Set(ops).size, ops.length, "no op twice");
@@ -88,8 +91,10 @@ test("a group extended by two modules keeps both lists, in module order; removin
 });
 
 test("the workbenches: part is today's toolbar exactly, sketch is core and sketch", () => {
-  assert.deepEqual(listWorkbenches().map((w) => w.name), ["part", "sketch"]);
+  // surfaces (docs/plans/surfaces.md) is the part's modules: surfacing is done beside solids.
+  assert.deepEqual(listWorkbenches().map((w) => w.name), ["part", "sketch", "surfaces"]);
   assert.deepEqual(workbenchTools("part"), listTools());
+  assert.deepEqual(workbenchTools("surfaces"), listTools());
   assert.deepEqual(workbenchTools("sketch"), ["point", "line", "rectangle", "polygon", "slot", "region", "circle", "arc", "ellipse",
     "fillet", "bevel", "trim", "extend", "offset", "mirror", "pattern", "dimension", "constrain"]);
   assert.equal(onWorkbench("sketch", "extrude"), false);

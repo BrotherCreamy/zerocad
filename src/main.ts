@@ -42,7 +42,8 @@ import {
 import { GUIDE_NOTE_MS, STATUS_FADE_MS, STEP_NOTE_MS, StatusLine, diagnosisLine } from "./statusline.ts";
 import { AppMenu, UNTITLED } from "./appmenu.ts";
 import { LogTail } from "./logtail.ts";
-import { Organiser, organiserSections, rowMenu } from "./organiser.ts";
+import { Organiser, organiserSections, rowMenu, surfaceMenu } from "./organiser.ts";
+import { surfaceNameOf } from "./surfaces.ts";
 import { logoSvg } from "./logo.ts";
 import { GroupMemory, OptionMemory, declaredOptions, unitSymbol, type OptionValue } from "./tools/options.ts";
 import { toolIcon } from "./tools/icons.ts";
@@ -1934,6 +1935,16 @@ async function main() {
       // so the menu stays a pure function of what it is handed.
       const history = { canUndo: undoStack.canUndo, canRedo: undoStack.canRedo };
       const selected = engine.selection.prune(model);
+      // A surface under the click, nothing nearer (docs/plans/surfaces.md):
+      // its own menu — Thicken…, Offset…, Knit with…, Delete.
+      const on = pick ? null : solidBodies.faceAt(view, sx, sy, model.hidden);
+      if (on && model.surfaces.has(on.body)) {
+        const m = surfaceMenu(model, on.body);
+        // With undo and redo after it, as every menu has; not the empty canvas's tools, which would make it a phone's height.
+        const history2 = menuFor(model, null, null, history, null, []).items.filter((i) => i.label === "Undo" || i.label === "Redo");
+        menu.show({ ...m, items: [...m.items, ...history2] }, sx, sy);
+        return;
+      }
       menu.show(menuFor(model, pick, pick ? null : engine.regionAt(sx, sy), history, viewMode, selected), sx, sy);
     },
     // A finger's long-press opened the menu and then dragged on: that is the
@@ -1951,7 +1962,9 @@ async function main() {
   // blend made — the kernel's face, which only this host holds — nudged off it
   // along its outward normal as seen. None until the kernel has answered.
   const blendAnchor = (m: Model, v: View, r: { name: string }) => {
-    const b = [...m.blends.values()].find((x) => x.size === r.name);
+    // A surface's fillet or chamfer (docs/plans/surfaces.md) is drawn the same way, on its surface.
+    const sf = [...m.surfaces.values()].find((x) => x.size === r.name && (x.kind === "fillet" || x.kind === "chamfer"));
+    const b = [...m.blends.values()].find((x) => x.size === r.name) ?? (sf ? { name: sf.name, into: surfaceNameOf(m, sf.name) ?? sf.into! } : undefined);
     // Its own edit dialog draws the size where it is being changed.
     if (b && engine.armed?.target === b.name) return [];
     const body = b ? solidBodies.views().find((x) => x.name === b.into) : undefined;
@@ -1984,7 +1997,9 @@ async function main() {
       if (!hit) return null;
       const v = views.find((x) => x.name === hit.body)!;
       const by = [...model.blends.values()].filter((b) => b.into === hit.body && b.edges.includes(hit.name)).map((b) => b.name);
-      return { name: hit.name, kind: "edge", distance: hit.distance, body: hit.body, tag: describeEdge(v, hit.name, by) };
+      // A surface's boundary edge (one face) is said so: what the menu offers there is Extend, not a fillet.
+      const lamina = !!v.result.solid?.edges.some((e) => e.name === hit.name && e.lamina);
+      return { name: hit.name, kind: "edge", distance: hit.distance, body: hit.body, tag: describeEdge(v, hit.name, by), ...(lamina ? { lamina } : {}) };
     },
     edgesInBox: (rect, mode, occ) => edgesInBox(solidBodies.madeViews(), view, rect, mode, occ, model.hidden),
     views: () => solidBodies.views(),
@@ -2322,7 +2337,8 @@ async function main() {
       // Worker that holds it, with the faces' surfaces from their features.
       kernelSolids: () => {
         const views = solidBodies.views();
-        if (!solidBodies.kernelFeatures().size) return null;
+        // Surfaces are the kernel's too, and have no features of their own (docs/plans/surfaces.md).
+        if (!views.length) return null;
         return (async () => {
           const out: KernelSolid[] = [];
           for (const v of views) {

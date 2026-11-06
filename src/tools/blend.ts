@@ -22,6 +22,16 @@
 // The edit dialog (`edit("e3")`, Edit on the organiser row) is the same tool
 // opened on a blend that exists: its edges picked, its size in the panel, the
 // preview the blend as edited, ✓ typing `setEdges` and `set` as one step.
+//
+// **One tool does solids and surfaces** (docs/plans/surfaces.md; the owner:
+// *"also fillets and chamfers for surfaces"*). An edge of a surface — two
+// knitted surfaces' join, or a crease of one — is picked as a solid's is, and ✓
+// types `fillet("s1", ["s1.m0|s2.m0"], 3)`. A click on a surface where no edge
+// of it is shared picks the surface; a click on another surface then picks the
+// pair — where each was clicked is the side of it kept — and the preview is
+// the two trimmed back to each other, knitted and rounded: ✓ types
+// `fillet("s1", "s2", 3, [[…], […]])`. A surface's boundary edge (one face) is
+// never picked: there is nothing on its other side to round to.
 
 import { press, type FeatureDialog, type FeatureStep, type Hand, type PointerInfo, type RenderContext } from "./tool.ts";
 import type { OptionSpecs } from "./options.ts";
@@ -30,8 +40,10 @@ import { REGION_GREEN } from "./region.ts";
 import type { BlendFeature, Model } from "../model.ts";
 import { blendSize, chamferEdges, filletEdges, setEdges } from "../blends.ts";
 import { set } from "../operations.ts";
-import { PREFIX, type BlendTrial, type BodyView } from "../bodies.ts";
+import { PREFIX, pairTrial, type BlendTrial, type BodyView } from "../bodies.ts";
 import { bodyEdges, edgePoints, faceEdges, tangentChain } from "../kerneledges.ts";
+import { featureLabel } from "../solids/naming.ts";
+import { nextSurfaceId, surfaceBlend } from "../surfaces.ts";
 
 export type BlendKind = "fillet" | "chamfer";
 
@@ -52,7 +64,12 @@ interface Hit {
   face: boolean;
   /** A face's index in its body, for a second click on it taking the whole body. */
   faceIndex?: number;
+  /** A surface picked whole — a face of it no edge of which is shared — and where on it: the side kept. */
+  surface?: { at: number[] };
 }
+
+/** Rounded to four decimals: a place only says which side, as the trim's does. */
+const place = (p: readonly number[]) => p.map((v) => Math.round(v * 1e4) / 1e4);
 
 /** How far from the size label a press still grabs it, in pixels at 100 %. */
 const HANDLE_REACH = 16;
@@ -66,6 +83,11 @@ abstract class BlendTool extends FeatureTool {
   protected body: string | null = null;
   /** The edges picked, by name, in the order picked. */
   protected edges: string[] = [];
+  /** A fillet between two surfaces: the second surface, once picked (`body` the first), and where each was clicked. */
+  protected pair: string | null = null;
+  protected keeps: [number[] | null, number[] | null] = [null, null];
+  /** The pair's preview node, laid out once per pick and size — a program read is not free. */
+  private pairCache: { key: string; trial: BlendTrial | null } | null = null;
   private under: Hit | null = null;
   /** The size label, where it was last drawn: its centre on screen and the way it stands off its face. */
   private handle: { at: [number, number]; dir: [number, number] } | null = null;
@@ -108,6 +130,17 @@ abstract class BlendTool extends FeatureTool {
 
   /** The preview to ask for, or null for none. */
   protected trialNow(): BlendTrial | null {
+    if (this.body !== null && this.pair !== null) {
+      const size = this.sizeOf(this.values());
+      const key = `${this.body}:${this.pair}:${JSON.stringify(this.keeps)}:${size}:${this.trialId()}`;
+      if (this.pairCache?.key !== key) {
+        const node = pairTrial(this.ctx.model, {
+          into: this.body, other: this.pair, kind: this.kind, size, keeps: [...this.keeps], id: this.trialId(),
+        });
+        this.pairCache = { key, trial: node ? { body: this.body, node, hides: [this.pair] } : null };
+      }
+      return this.pairCache.trial;
+    }
     if (this.body === null || !this.edges.length) return null;
     const replace = this.replaceId();
     return {
@@ -119,8 +152,13 @@ abstract class BlendTool extends FeatureTool {
 
   /** A face or edge the preview's blend made: the index of the picked edge it was made of, or null. */
   private ownIndex(name: string): number | null {
-    const m = new RegExp(`(?:^|\\|)${PREFIX}${this.trialId()}\\.f(\\d+)(?:$|\\|)`).exec(name);
+    const m = new RegExp(`(?:^|\\|)${featureLabel(this.trialId(), PREFIX)}\\.f(\\d+)(?:$|\\|)`).exec(name);
     return m ? Number(m[1]) : null;
+  }
+
+  /** Whether an edge of a view is a sheet's boundary: one face, nothing beyond it to round to. */
+  private lamina(v: BodyView | null, name: string): boolean {
+    return !!v?.result.solid?.edges.some((e) => e.name === name && e.lamina);
   }
 
   private viewOf(body: string): BodyView | null {
@@ -133,7 +171,7 @@ abstract class BlendTool extends FeatureTool {
     if (!s) return null;
     const tangent = this.values().tangent !== false;
     const e = s.edgeAt(screen);
-    if (e) {
+    if (e && !this.lamina(this.viewOf(e.body), e.name)) {
       const v = this.viewOf(e.body);
       const own = this.ownIndex(e.name);
       if (own !== null) return this.edges[own] ? { body: e.body, names: [this.edges[own]], face: true } : null;
@@ -145,8 +183,11 @@ abstract class BlendTool extends FeatureTool {
     const own = this.ownIndex(f.name);
     if (own !== null) return this.edges[own] ? { body: f.body, names: [this.edges[own]], face: true } : null;
     const v = this.viewOf(f.body);
-    const names = v ? faceEdges(v, f.face).filter((n) => this.ownIndex(n) === null) : [];
-    return names.length ? { body: f.body, names, face: true, faceIndex: f.face } : null;
+    const names = v ? faceEdges(v, f.face).filter((n) => this.ownIndex(n) === null && !this.lamina(v, n)) : [];
+    if (names.length) return { body: f.body, names, face: true, faceIndex: f.face };
+    // A surface's face with no edge shared: the surface itself, for a fillet to another.
+    if (this.ctx.model.surfaces.has(f.body)) return { body: f.body, names: [], face: true, faceIndex: f.face, surface: { at: f.at } };
+    return null;
   }
 
   onArmed(): void {
@@ -162,12 +203,15 @@ abstract class BlendTool extends FeatureTool {
   }
 
   protected picksKey(): string {
-    return `${this.body ?? ""}:${this.edges.join(",")}`;
+    return `${this.body ?? ""}:${this.edges.join(",")}:${this.pair ?? ""}:${JSON.stringify(this.keeps)}`;
   }
 
   protected dropPicks(): boolean {
-    const had = this.edges.length > 0;
+    const had = this.edges.length > 0 || this.pair !== null || (this.body !== null && this.keeps[0] !== null);
     this.edges = [];
+    this.pair = null;
+    this.keeps = [null, null];
+    this.pairCache = null;
     this.body = null;
     this.under = null;
     this.dragged = null;
@@ -181,9 +225,13 @@ abstract class BlendTool extends FeatureTool {
   }
 
   protected picking(hand: Hand): string {
+    if (this.pair) return `drag the ${this.option}, or ${press(hand)} either surface where it is kept`;
+    if (this.body !== null && !this.edges.length && this.ctx.model.surfaces.has(this.body)) {
+      return `${press(hand)} the surface to ${this.kind} ${this.body} to`;
+    }
     return this.edges.length
       ? `${press(hand)} more edges, or drag the ${this.option}`
-      : `${press(hand)} an edge of a solid (a face takes its edges)`;
+      : `${press(hand)} an edge of a solid or a surface (a face takes its edges), or a surface`;
   }
 
   protected get verb(): string {
@@ -238,6 +286,31 @@ abstract class BlendTool extends FeatureTool {
     const hit = this.hitAt(p.screen);
     if (!hit) {
       this.guide("pick an edge of a solid, or a face for its edges — what a pick takes is lit under the cursor");
+      return;
+    }
+    if (hit.surface) {
+      // A surface picked whole: the first of a pair, the second, or either one's kept side again.
+      if (this.edges.length) {
+        this.guide(`${this.body}'s edges are picked — ✓ them first, or ✗ to start again`);
+        return;
+      }
+      if (this.body === null || (this.pair === null && hit.body === this.body)) {
+        this.body = hit.body;
+        this.keeps = [place(hit.surface.at), null];
+      } else if (hit.body === this.body) {
+        this.keeps = [place(hit.surface.at), this.keeps[1]];
+      } else if (this.pair === null || hit.body === this.pair) {
+        this.pair = hit.body;
+        this.keeps = [this.keeps[0], place(hit.surface.at)];
+      } else {
+        this.guide(`${this.body} and ${this.pair} are picked — ✓ them, or ✗ to start again`);
+        return;
+      }
+      this.ctx.requestRender();
+      return;
+    }
+    if (this.pair !== null || (this.body !== null && !this.edges.length && this.keeps[0] !== null)) {
+      this.guide(`${this.body} is picked as a surface — click another surface, or ✗ to pick edges instead`);
       return;
     }
     if (this.body !== null && hit.body !== this.body) {
@@ -319,6 +392,16 @@ abstract class BlendTool extends FeatureTool {
       const us = u?.result.solid;
       if (u && us) us.edges.forEach((e, i) => { if (this.under!.names.includes(e.name)) stroke(edgePoints(u, i), "#e8a33d", 2.2); });
     }
+    // Where each surface of a pair was clicked: the side of it kept.
+    for (const k of this.keeps) {
+      if (!k) continue;
+      const [x, y] = r.worldToScreen(k);
+      g.strokeStyle = REGION_GREEN;
+      g.lineWidth = 2 * this.ui;
+      g.beginPath();
+      g.arc(x, y, 7 * this.ui, 0, Math.PI * 2);
+      g.stroke();
+    }
     g.restore();
     this.renderHandle(r, v);
   }
@@ -383,7 +466,7 @@ abstract class BlendTool extends FeatureTool {
 }
 
 /** The number a new feature will most likely be given: one past every feature and blend there is. */
-function nextFeatureNumber(model: Model): number {
+export function nextFeatureNumber(model: Model): number {
   let n = 0;
   for (const name of [...model.features.keys(), ...model.blends.keys()]) {
     const m = /^e(\d+)$/.exec(name);
@@ -397,8 +480,15 @@ export function blendSteps(kind: BlendKind, body: string, edges: readonly string
   const list = [...edges];
   return [(m) => ({
     text: callText(kind, [body, list, size]),
-    direct: () => (kind === "fillet" ? filletEdges(m, body, list, size) : chamferEdges(m, body, list, size)),
+    direct: () => (m.surfaces.has(body) ? surfaceBlend(m, kind, body, list, size)
+      : kind === "fillet" ? filletEdges(m, body, list, size) : chamferEdges(m, body, list, size)),
   })];
+}
+
+/** The step a confirm of a fillet between two surfaces types: `fillet("s1", "s2", 3, [[…], […]])` — the clicked sides kept. */
+export function pairSteps(kind: BlendKind, body: string, other: string, size: number, keeps: (number[] | null)[]): FeatureStep[] {
+  const k = [...keeps];
+  return [(m) => ({ text: callText(kind, [body, other, size, k]), direct: () => surfaceBlend(m, kind, body, other, size, k) })];
 }
 
 abstract class NewBlendTool extends BlendTool {
@@ -409,9 +499,16 @@ abstract class NewBlendTool extends BlendTool {
    * next feature's, previewing a second fillet of edges already rounded.
    */
   private frozen: number | null = null;
+  /** Whether `frozen` was guessed for a surface's record or a feature's: a hover asks before a pick says which. */
+  private frozenSurface = false;
 
   protected trialId(): number {
-    if (this.frozen === null) this.frozen = nextFeatureNumber(this.ctx.model);
+    // A surface's blend is a surface's record, numbered as surfaces are (surfaces.md).
+    const surface = this.body !== null && this.ctx.model.surfaces.has(this.body);
+    if (this.frozen === null || this.frozenSurface !== surface) {
+      this.frozen = surface ? nextSurfaceId(this.ctx.model) : nextFeatureNumber(this.ctx.model);
+      this.frozenSurface = surface;
+    }
     return this.frozen;
   }
 
@@ -426,6 +523,7 @@ abstract class NewBlendTool extends BlendTool {
   }
 
   protected plan(values: Record<string, unknown>): FeatureStep[] | null {
+    if (this.body !== null && this.pair !== null) return pairSteps(this.kind, this.body, this.pair, this.sizeOf(values), this.keeps);
     if (this.body === null || !this.edges.length) return null;
     return blendSteps(this.kind, this.body, this.edges, this.sizeOf(values));
   }

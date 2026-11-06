@@ -26,6 +26,46 @@ otherwise.
 
 ## Decisions made so far — veto here if any are wrong
 
+- **Surfaces: a surface is a thing; trim, extend, knit, offset, thicken and
+  the fillet and chamfer of surfaces are operations** (the owner: *"please
+  add solid and surface fillet tools if possible"*, *"also fillets and
+  chamfers for surfaces."*). Spec: [`surfaces.md`](docs/plans/surfaces.md),
+  **built**. Its *As built* has the full table, what SMLib could not do, and
+  every deviation. Open to veto, as built:
+  - **The shared verbs dispatch on the first argument.** `trim`, `extend`,
+    `offset`, `fillet` and `chamfer` given a surface (`s1`) are the
+    surface's; given anything else, exactly what they were. Each is
+    journalled under its own op (`trimSurface`, `extendSurface`,
+    `offsetSurface`, `filletSurfaces`, `chamferSurfaces`), so old files
+    replay unchanged. A surface-shaped name that names nothing is refused as
+    a surface's. Both forms are in `help()`. A knitted surface's name
+    resolves to the sheet it is part of. Rejected: distinct verbs and a
+    second trim button.
+  - **One tool does solids and surfaces.** The trim tool trims a surface
+    when pressed on one, the press being the side kept. The round and
+    chamfer tools take a surface's shared edges, or two surfaces, the clicks
+    being the sides kept.
+  - **The surface tool is under the extrude button**, in a new **sweep**
+    group, so the toolbar keeps its thirteen. A consequence: extrude's
+    button heads a group now, so a hover opens its flyout instead of a
+    tooltip, and a click still arms extrude.
+  - **The surfaces workbench is the part's modules exactly.**
+  - **`offset` makes a new surface** and keeps the original.
+  - **`extend` lengthens the sweep** the surface was made by, because SMLib
+    extends no trimmed face. A trimmed edge doesn't extend.
+  - **A fillet between two surfaces that only cross trims each back to the
+    other** (the larger piece, or the clicked sides), knits them and rounds
+    the join, all in one record. SMLib's own face–face blend leaves both
+    surfaces untrimmed.
+  - **Thicken is built**: the sheet, its offset and ruled walls. SMLib's own
+    thicken makes no solid of a sheet. A closed shell thickened gives the
+    hollow between it and its offset; filling it is `solidify`.
+  - **A planar surface is the cap of a sweep, extracted**, because SMLib's
+    planar faces crashed the module once trimmed or knitted twice.
+  - **The trim's kept side is a point** and its curve is projected along the
+    curve's plane's normal, never the view (which isn't journalled). A trim
+    signs `−` in a row.
+
 - **Sketch editing: trim, extend, offset, mirror, chamfer and two patterns,
   each an operation held by relations** (the owner, 2026-11-05: *"give me
   better sketch tools, relations, trim, slot... all the usual"*). Spec:
@@ -99,8 +139,8 @@ otherwise.
   - **The rule, one for every dimension** (ARCHITECTURE's *Nothing is
     negative*): things are things, booleans are operations between things,
     nothing is negative. Faces → regions (`region`, `subtract`, `add`,
-    `intersect`); surfaces → surfaces (`trim`, `extend`, `knit` — written down,
-    not built); solids → bodies (a feature's mode). Each a name, a chain, an
+    `intersect`); surfaces → surfaces (`trim`, `extend`, `knit` — built,
+    `surfaces.md`); solids → bodies (a feature's mode). Each a name, a chain, an
     organiser row.
   - **A face is its loop's whole inside, and nothing is proposed as a hole**:
     `extrude("l1", 10)` and the extrude tool's click on a plate with a circle
@@ -2391,6 +2431,20 @@ starts.
           - Delete with only kernel edges selected deletes nothing; Group and
             Hide take no edge either.
           - Not tried on an iPhone.
+        - [x] **Surfaces — BUILT (2026-11-06)**, on `claude/surfaces`. The
+          spec's *As built* has the detail; the decisions are in the register
+          above. The surface tool, trim, extend, knit, offset, thicken and
+          solidify; fillets and chamfers of surfaces through the round and
+          chamfer tools; STEP surface models read valid by OpenCascade.
+        - [ ] **Found, still to do (surfaces):**
+          - Revolved and face surfaces in the surface tool (an axis pick).
+          - A thickened surface joining bodies (add and cut) as a feature's
+            solid does.
+          - Extending a trimmed edge. SMLib has no call for it.
+          - An edit dialog for surface records.
+          - Sketching on a flat swept wall or an offset surface (only a loop
+            of the drawing is a work plane).
+          - Not tried on a real phone.
 
 - [x] **Files — open, save, share, drop, autosave — BUILT (2026-11-04).**
       The owner: *"I want to be able to open files on my phone, share files
