@@ -3726,6 +3726,16 @@ extended the way `defineTool` extends the tool registry would close it.
         (557, 558) are the drag form of it; alone at load 12.5 they went
         3/3. Fixing the harness (stamped touches, not awaited ones) is the
         one cure for all three, and it is the "Next:" above.
+      - [ ] **Queued (2026-11-06): fix the touch harness's latency, now a
+        package of its own.** The `solidsphone` drags (on the iPhone, Cut
+        through the top and a boss on the side) failed in the gates after
+        #75, #76 and #77: three in a row. Each time they passed alone
+        (3/3). A gate that is red by default stops meaning anything. The
+        same gate after #77 also had `fits.e2e.ts:252` die on `page.reload:
+        net::ERR_ABORTED; maybe frame was detached?`, with the surfaces
+        worker starting up beside it (14/14 alone; log kept in the
+        session's scratchpad as `gate77.log`). One sighting, cause not
+        found.
       - [ ] **Open: `depth.e2e.ts` "two solids driven through each other"
         failed once in 3 paired runs** (touch, solids, depth together): the
         painter's offscreen picture matched the oracle at every sample
