@@ -183,6 +183,25 @@ export function lengthOf(model: Model, name: string): number {
   return c.f.r * (c.closed ? TAU : c.f.sweep);
 }
 
+/**
+ * How far a place is from the curve itself — a line's segment, an arc's sweep,
+ * a circle's rim — in the model's units. What a tool asks to choose between the
+ * curves meeting at a point it was handed.
+ */
+export function distanceToCurve(model: Model, name: string, world: number[]): number {
+  const c = carrierOf(model, name);
+  if (!c) return Infinity;
+  const x = lift3(world);
+  if (c.kind === "line") {
+    const t = Math.min(1, Math.max(0, fractionAlong(c, x)));
+    return Math.hypot(...sub3(x, c.p.map((pi, i) => pi + t * (c.q[i] - pi))));
+  }
+  const th = angleOn(c.f, x);
+  const sweep = c.closed ? TAU : c.f.sweep;
+  const t = th <= sweep ? th : (th - sweep < TAU - th ? sweep : 0);
+  return Math.hypot(...sub3(x, arcPoint(c.f, t)));
+}
+
 /** Whether a place on a carrier is on the curve itself — a line's segment, an arc's sweep — to `tol`. */
 function onExtent(c: Carrier, x: V, tol: number): boolean {
   if (c.kind === "line") {

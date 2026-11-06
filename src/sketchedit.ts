@@ -23,7 +23,7 @@
 // takes (relations/pattern.ts).
 
 import {
-  type ArcEntity, type Entity, type Model, ORIGIN, parseAxisRef, spanOf, unitOf,
+  type ArcEntity, type Entity, type FeatureDraft, type Model, ORIGIN, parseAxisRef, spanOf, unitOf,
 } from "./model.ts";
 import { dist, onPlane } from "./relations/basic.ts";
 import {
@@ -225,7 +225,9 @@ function planTidy(model: Model, curve: string, lo: CutSpec | null, hi: CutSpec |
     }
   }
   const stranded = circle || (lo && hi) ? null : lo === null ? endsOf(e)[0] : endsOf(e)[1];
-  return { drop: drop.filter((r) => free(model, r)), rehold, stranded };
+  // Whether a feature names one is asked when it is taken, not now: a trim can
+  // free a hold a feature owned (`adoptCutPoints`).
+  return { drop, rehold, stranded };
 }
 
 /**
@@ -295,6 +297,7 @@ export function trim(model: Model, curve: string, near: unknown, resolved?: unkn
       throw e;
     }
     after = given ? (regen ? regenerateNamed(model, [], regen) : null) : regenerateNamed(model, touched, null, notes);
+    adoptCutPoints(model, [lo?.[1], hi?.[1]].filter((p): p is string => typeof p === "string"));
   });
   if (tidyPlan) {
     for (const r of tidyPlan.drop) tidy(model, r);
@@ -305,6 +308,29 @@ export function trim(model: Model, curve: string, near: unknown, resolved?: unkn
     if (s && model.entities.has(s) && !model.dependents(s).length && free(model, s)) tidy(model, s);
   }
   return [curve, ...made];
+}
+
+/**
+ * **A point a feature made that a trimmed curve now ends at is the sketch's.**
+ * An extrude over a crossing makes the crossing a real point held on both
+ * curves (operations.ts, `materialise`) and owns it, with its holds; a trim
+ * that cuts there ends the curve at that very point, so it is a corner of the
+ * sketch now, and a feature owning it would take the sketch's edge with it
+ * when deleted. So the record stops owning the point and its holds (it still
+ * names the point it stands on, as it names every corner), and the hold on the
+ * curve that now ends there — which says nothing any more — is free for the
+ * trim's tidying to take. Inside the trim's own entry, so a replay does it too.
+ */
+function adoptCutPoints(model: Model, points: readonly string[]): void {
+  for (const p of points) {
+    for (const f of [...model.features.values()]) {
+      if (!f.owns.includes(p)) continue;
+      const holds = f.owns.filter((n) => model.relations.get(n)?.args[0] === p);
+      const gone = new Set([p, ...holds]);
+      const { name, ...draft } = f;
+      model.rewriteFeature(name, { ...draft, owns: f.owns.filter((n) => !gone.has(n)), names: f.names.filter((n) => !holds.includes(n)) } as FeatureDraft);
+    }
+  }
 }
 
 /**
@@ -587,6 +613,38 @@ export function walkChain(model: Model, names: readonly string[]): { walk: Walke
     throw new Error(`${loose.join(", ")} ${loose.length === 1 ? "is" : "are"} not joined to ${first} — offset takes one connected chain (offset each on its own)`);
   }
   return { walk, closed };
+}
+
+/**
+ * The chain a curve is in: it, and on from each of its ends through every
+ * vertex where exactly one other line or arc joins (a shared point or a
+ * `coin`), stopping at a branch or a free end — what a click on one member
+ * of an outline offsets. The curve clicked first, the rest in creation order.
+ * A circle is a chain of one.
+ */
+export function chainThrough(model: Model, curve: string): string[] {
+  const e = model.entities.get(curve);
+  if (!e || e.kind === "circle") return [curve];
+  const cls = joinClasses(model);
+  const keyOf = (p: string) => cls.get(p) ?? p;
+  const at = new Map<number | string, string[]>();
+  const order = [...model.entities.keys()];
+  for (const c of model.entities.values()) {
+    if (c.kind !== "line" && c.kind !== "arc") continue;
+    for (const p of endsOf(c)) at.set(keyOf(p), [...(at.get(keyOf(p)) ?? []), c.name]);
+  }
+  const found = new Set([curve]);
+  const queue = [curve];
+  while (queue.length) {
+    const c = queue.shift()!;
+    for (const p of endsOf(model.entities.get(c)!)) {
+      const here = at.get(keyOf(p)) ?? [];
+      if (here.length !== 2) continue;
+      const next = here.find((n) => n !== c);
+      if (next && !found.has(next)) { found.add(next); queue.push(next); }
+    }
+  }
+  return [curve, ...[...found].filter((n) => n !== curve).sort((a, b) => order.indexOf(a) - order.indexOf(b))];
 }
 
 /** What `offset` resolved, journalled: which side a positive distance went, each round member's new radius, and which joints are smooth. */

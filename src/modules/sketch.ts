@@ -30,6 +30,12 @@ import { FilletTool } from "../tools/fillet.ts";
 import { DimensionTool } from "../tools/dimension.ts";
 import { ConstrainTool } from "../tools/constrain.ts";
 import { RegionTool } from "../tools/regiontool.ts";
+import { BevelTool } from "../tools/bevel.ts";
+import { TrimTool } from "../tools/trim.ts";
+import { ExtendTool } from "../tools/extend.ts";
+import { OffsetTool } from "../tools/offset.ts";
+import { MirrorTool } from "../tools/mirror.ts";
+import { PatternTool } from "../tools/pattern.ts";
 
 /** A model method, as a replay entry. */
 const bound = (name: string) => (model: Model) => {
@@ -99,6 +105,15 @@ defineModule("sketch", {
     arc: ArcTool,
     ellipse: EllipseTool,
     fillet: FilletTool,
+    // Sketch editing (docs/plans/sketch-edit.md), on the modify button after
+    // the fillet. `bevel` is the sketch's chamfer: `chamfer` is the solid's
+    // edge tool, on the same button.
+    bevel: BevelTool,
+    trim: TrimTool,
+    extend: ExtendTool,
+    offset: OffsetTool,
+    mirror: MirrorTool,
+    pattern: PatternTool,
     dimension: DimensionTool,
     constrain: ConstrainTool,
   },
@@ -109,7 +124,10 @@ defineModule("sketch", {
   groups: {
     shapes: ["rectangle", "polygon", "slot", "region"],
     curves: ["ellipse", "spline"],
-    modify: ["fillet", "chamfer", "trim", "extend", "offset", "mirror", "pattern"],
+    // The sketch's edits first, then (from the solids module) the solid's
+    // round and chamfer: one family per half of the flyout
+    // (docs/plans/sketch-edit.md). `bevel` is the sketch's two-line chamfer.
+    modify: ["fillet", "bevel", "trim", "extend", "offset", "mirror", "pattern"],
     // Dimension and constrain share a button (docs/plans/sketch-relations.md
     // gave each its own): both make relations, and as the fourteenth button
     // the second ran an iPhone 13's column one pixel onto the command line at
@@ -140,6 +158,18 @@ defineModule("sketch", {
     // Two edges meeting at a corner, the corner itself replaced by a quarter
     // circle on its inside — what a fillet does to the corner it is given.
     fillet: svg("fillet", `<path d="M3 13.5V8.5A5.5 5.5 0 0 1 8.5 3H13.5"/>`),
+    // The sketch edits (docs/plans/sketch-edit.md). The bevel is the fillet's
+    // corner cut straight; trim and extend are a line meeting a wall, the
+    // piece past it gone (dotted) or the gap to it bridged (dotted, arrowed).
+    bevel: svg("bevel", `<path d="M3 13.5V7.5L7.5 3H13.5"/>`),
+    trim: svg("trim", `<path d="M9 2.5v11M2.5 8H9"/><path d="M9 8h4.5" stroke-dasharray="1.2 1.6"/>`),
+    extend: svg("extend", `<path d="M13.5 2.5v11M2.5 8H7"/><path d="M7 8h4.5" stroke-dasharray="1.2 1.6"/><path d="M9.8 6.2 11.6 8 9.8 9.8"/>`),
+    // A corner and its parallel copy inside it, dotted: what an offset adds.
+    offset: svg("offset", `<path d="M2.5 13.5V6.5a4 4 0 0 1 4-4h7"/><path d="M5.5 13.5V8a2.5 2.5 0 0 1 2.5-2.5h5.5" stroke-dasharray="1.4 1.3"/>`),
+    // Two halves either side of a dotted axis, each the other's mirror image.
+    mirror: svg("mirror", `<path d="M8 1.5v13" stroke-dasharray="1.4 1.4"/><path d="M6 4 2.5 12H6zM10 4l3.5 8H10z"/>`),
+    // A seed and its copies in a row.
+    pattern: svg("pattern", `<rect x="1.8" y="5.5" width="3.4" height="5" rx=".6"/><rect x="6.3" y="5.5" width="3.4" height="5" rx=".6"/><rect x="10.8" y="5.5" width="3.4" height="5" rx=".6"/>`),
     // A draughtsman's dimension: two witness lines and the arrowed line between
     // them — what the tool puts on the drawing (docs/plans/sketch-relations.md).
     dimension: svg("dimension", `<path d="M2.5 3.5v9M13.5 3.5v9M2.5 8h11"/><path d="M5 6.2 2.5 8 5 9.8M11 6.2 13.5 8 11 9.8"/>`),

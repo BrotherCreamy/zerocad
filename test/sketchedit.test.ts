@@ -126,6 +126,28 @@ test("trim across a profile under an extrude regenerates the solid onto the face
   replays(m);
 });
 
+test("a second trim at a crossing the extrude made real ends the curve at that point, which is the sketch's now: nothing redundant, and deleting the solid keeps the edge", () => {
+  const m = new Model(3);
+  const { l } = rect(m, 0, 0, 40, 30);
+  const e1 = extrude(m, l[0], 10);
+  seg(m, [20, -10], [20, 40]);
+  trim(m, l[0], [30, 0, 0]);
+  // The regeneration made the top edge's crossing a point of its own, held on both lines.
+  const made = m.featureOf(e1).owns.filter((n) => m.entities.get(n)?.kind === "point" && near(m.coords(n), [20, 30, 0]));
+  assert.equal(made.length, 1, "the crossing the extrude made real");
+  trim(m, l[2], [30, 30, 0]);
+  const [p] = made;
+  assert.ok(m.line(l[2]).refs.includes(p), "the top edge ends at that point");
+  assert.ok(!m.featureOf(e1).owns.includes(p), "and the solid no longer owns it");
+  assert.ok(![...m.relations.values()].some((r) => r.op === "pointOnLine" && r.args[0] === p && r.args[1] === l[2]), "its hold on the edge it ends went");
+  solved(m);
+  assert.deepEqual(m.diagnose().redundant, [], "nothing said twice");
+  const back = replays(m);
+  assert.deepEqual(back.diagnose().redundant, []);
+  del(m, e1);
+  assert.ok(m.entities.has(l[2]) && m.entities.has(p), "deleting the solid keeps the sketch");
+});
+
 test("trim that would open a profile under an extrude refuses, says why, and leaves the model — names and counters — exactly as it was", () => {
   const m = new Model(3);
   const { l } = rect(m, 0, 0, 40, 30);

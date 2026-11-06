@@ -172,8 +172,8 @@ test("mouse: leaving closes it; Escape closes it and only it; a press held opens
   await desk.page.mouse.move(700, 400);
   await desk.page.mouse.move(b.x + b.w / 2, b.y + b.h / 2, { steps: 2 });
   await flyoutBecomes(desk, (s) => s.open && s.group === "modify", "the modify group's");
-  // The sketch's corner fillet, then the solids module's round and chamfer (docs/plans/solid-fillets.md), then the padding.
-  assert.deepEqual((await flyout(desk)).items, ["fillet", "chamfer", "round", "t_pad2"]);
+  // The sketch's corner fillet and its edits (docs/plans/sketch-edit.md), then the solids module's round and chamfer (docs/plans/solid-fillets.md), then the padding.
+  assert.deepEqual((await flyout(desk)).items, ["fillet", "bevel", "trim", "extend", "offset", "mirror", "pattern", "round", "chamfer", "t_pad2"]);
   await desk.page.mouse.move(700, 600, { steps: 3 });
   await desk.page.waitForTimeout(150);
   assert.equal((await flyout(desk)).open, true, "not at once: the way across to it is allowed");
@@ -316,7 +316,12 @@ test("iPhone 13: a long-press opens it and the lift arms nothing; a tap on an it
   await f.hold(...at, 700);
   await flyoutBecomes(app, (s) => s.open, "open");
   const cv = await rectOf(app, "#cv");
-  await f.tap(cv.w * 0.6, cv.h * 0.75);
+  // Right of the flyout: with the sketch edits in it (docs/plans/sketch-edit.md)
+  // the modify flyout wraps into a second line, which 60 % across the canvas
+  // now reaches — a tap there is a tap on an item.
+  const [ex, ey] = [cv.w * 0.85, cv.h * 0.75];
+  assert.equal(await app.page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.id, [cv.x + ex, cv.y + ey]), "cv", "elsewhere is the canvas");
+  await f.tap(ex, ey);
   await flyoutBecomes(app, (s) => !s.open, "a tap elsewhere closes it");
   assert.equal((await app.model()).activeTool, null);
   assert.deepEqual(app.pageErrors, []);
