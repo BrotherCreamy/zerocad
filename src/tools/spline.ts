@@ -53,8 +53,10 @@ export class SplineTool extends Tool {
     const p = press(hand);
     if (this.laid.length === 0) return `${p} the first point`;
     if (this.laid.length === 1) return `${p} the next point`;
-    const end = hand === "finger" ? "✓ or the last point again ends it" : "double-click or Enter ends it";
-    return `${p} the next point — ${end}${this.laid.length >= 2 ? ", the first closes it" : ""}`;
+    // Short on a phone: the chip is one line there, and a longer one wrapped
+    // and lost its end (looked at, iPhone 13).
+    if (hand === "finger") return this.laid.length >= 3 ? "tap more, ✓ ends, the first closes" : "tap more, or ✓ to end";
+    return `click the next point — double-click ends it${this.laid.length >= 3 ? ", the first closes it" : ""}`;
   }
 
   /** How near two screen points must be to be one laid point, for the hand that pressed. */

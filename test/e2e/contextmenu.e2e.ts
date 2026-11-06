@@ -104,8 +104,9 @@ test("the empty-canvas menu arms a tool, and the log shows the command it typed"
     // group's polygon and slot under the rectangle's heading, and the ellipse
     // (docs/plans/sketch-shapes.md). A heading is no item.
     // The modify group whole: the sketch's corner fillet and its edits (docs/plans/sketch-edit.md: bevel is the sketch's chamfer), then the solids module's round and chamfer (docs/plans/solid-fillets.md).
-    "Point", "Line", "Rectangle", "Polygon", "Slot", "Region", "Circle", "Arc", "Ellipse", "Fillet", "Bevel", "Trim", "Extend", "Offset", "Mirror",
-    "Pattern", "Round", "Chamfer", "Frame",
+    // The curves group, ellipse and spline, under its heading (docs/plans/spline.md).
+    "Point", "Line", "Rectangle", "Polygon", "Slot", "Region", "Circle", "Arc", "Ellipse", "Spline", "Fillet", "Bevel", "Trim", "Extend", "Offset",
+    "Mirror", "Pattern", "Round", "Chamfer", "Frame",
     "Undo", "Redo",
   ]);
   // The commands are on the menu, not hidden behind it: this is a shortcut to

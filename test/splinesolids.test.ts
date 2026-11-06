@@ -28,6 +28,28 @@ import { kernel, noKernel as skip } from "./solids/load.ts";
 
 const STAMP = "2026-11-06T00:00:00";
 
+test("the kernel names a partial revolve's caps and wall where the members' first points say nothing of the side — before the spline too", { skip }, async () => {
+  await loadSolver();
+  // A circular segment over the x axis, its chord the axis: the line starts
+  // on the axis and the arc's centre lies below it, opposite the region —
+  // which is all tagRevolve used to read, and it took the side below.
+  const m = new Model(3);
+  const [a, b, c] = [[-8, 0, 0], [8, 0, 0], [0, 0, -6]].map((p) => m.addPoint(p).name);
+  for (const p of [a, b, c]) fix(m, p, m.coords(p));
+  const arc = m.addArc(c, b, a, 10, [0, -1, 0]).name;
+  const axis = m.addLine(a, b).name;
+  revolve(m, arc, axis, Math.PI / 2);
+  assert.equal(m.solve().solved, true);
+  const { program } = programOf(m, true);
+  const ev = new Evaluator(await kernel());
+  const r = ev.run(program).bodies[0];
+  const faces = ev.topology(r.name)!.faces;
+  ev.clear();
+  const roles = faces.map((f) => `${f.kind === "plane" ? "plane" : "turned"}:${f.tag % 1000}`).sort();
+  // The base and the lid for the two caps, member 0 for the arc's turned wall.
+  assert.deepEqual(roles, ["plane:0", "plane:1", "turned:2"], JSON.stringify(roles));
+});
+
 /** What the exporter writes beyond AP214's analytic types: a B-spline, plain or as a complex instance (stepkernel.test.ts's list). */
 const SPLINE_TYPES = new Set([...AP214_TYPES, "B_SPLINE_CURVE_WITH_KNOTS", "B_SPLINE_CURVE", "BOUNDED_CURVE", "CURVE",
   "GEOMETRIC_REPRESENTATION_ITEM", "RATIONAL_B_SPLINE_CURVE", "REPRESENTATION_ITEM",
@@ -210,5 +232,7 @@ test("revolve a spline profile: the exact B-rep is a surface of revolution of th
   assert.equal(count(parsed, "SURFACE_OF_REVOLUTION"), 1);
   assert.equal(shellsClosed(parsed, "revolved"), 1);
   const ks = parseStep(step.text);
+  // (The kernel named the turned wall for the axis line until naming.ts read
+  // the profile's side along every member — the test below.)
   assert.ok(count(ks, "B_SPLINE_SURFACE_WITH_KNOTS") >= 1, `the kernel's turned wall, its own NURBS: ${[...new Set([...ks.data.values()].flatMap((e) => e.types))].join(" ")}`);
 });

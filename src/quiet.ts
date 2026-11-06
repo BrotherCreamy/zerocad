@@ -103,7 +103,15 @@ export function quietEntities(model: Model, scene: QuietScene): Set<string> {
     if (e.kind === "arc" || e.kind === "circle" || e.kind === "ellipse") centres.add(e.center);
   }
   for (const c of centres) out.delete(c);
-  for (const n of solidEdges(model, scene.faced)) out.add(n);
+  for (const n of solidEdges(model, scene.faced)) {
+    out.add(n);
+    // A declared curve that is a solid's edge (a spline's, or its lid twin's)
+    // takes its points with it: they lie on the edge the face layer draws, and
+    // a lid's were dots and names along a smooth rim (looked at,
+    // docs/plans/spline.md). Revealed with the curve, as a line's ends are.
+    const e = model.entities.get(n);
+    if (e && entityKind(e.kind)?.ends) for (const p of model.refsOf(e)) out.add(p);
+  }
   return out;
 }
 

@@ -31,6 +31,7 @@ import {
   perpendicular, pointOnLine, radius as radiusRel, symmetric, tangent,
 } from "./relations/geometry.ts";
 import { rotated, rotation, translated } from "./relations/pattern.ts";
+import { addSpline, onSpline } from "./relations/spline.ts";
 import {
   del, featuresTouching, givenRegenerated, regenerateAfter, regenerateNamed, regenerationRefusal, type Regenerated,
 } from "./operations.ts";
@@ -56,7 +57,23 @@ function holdOn(model: Model, p: string, curve: string): string {
   if (k === "line") return pointOnLine(model, p, curve);
   if (k === "circle" || k === "arc") return onCircle(model, p, curve);
   if (k === "ellipse") return onEllipse(model, p, curve);
-  throw new Error(`"${curve}" is not a line, arc, circle or ellipse`);
+  // A spline cuts what it crosses (docs/plans/spline.md): the new end held on it, by its own parameter.
+  if (k === "spline") return onSpline(model, p, curve);
+  throw new Error(`"${curve}" is not a line, arc, circle, ellipse or spline`);
+}
+
+/**
+ * Why a spline is refused by an edit that would cut, lengthen or offset it
+ * (docs/plans/spline.md): a piece of a spline would be a spline through
+ * points it does not go through, which nothing here makes yet. Said by name,
+ * with what does work.
+ */
+function refuseSpline(model: Model, name: string, op: string): void {
+  if (model.entities.get(name)?.kind !== "spline") return;
+  const what = op === "trim" ? "trims nothing of one yet — a piece of a spline would be a spline through points it does not go through"
+    : op === "extend" ? "does not lengthen one — drag its end, or addThrough a point past it"
+      : "does not offset one yet — an offset of a spline is no spline";
+  throw new Error(`"${name}" is a spline, and ${op} ${what}. A spline does cut a line, an arc or a circle it crosses`);
 }
 
 /** Whether `p` is on `curve` already: one of its ends, or held there by a relation. */
@@ -125,6 +142,7 @@ function checkTrimmable(model: Model, curve: unknown, op: "trim" | "extend"): En
   const takes = op === "trim" ? "a line, an arc or a circle" : "a line or an arc";
   if (!e) throw new Error(`${op} takes ${takes} by name — ${JSON.stringify(curve) ?? String(curve)} is none`);
   if (e.kind === "ellipse") throw new Error(`"${e.name}" is an ellipse, and there is no elliptical arc for a piece of one to be — ${op} takes ${takes}`);
+  refuseSpline(model, e.name, op);
   if (op === "trim" ? !(e.kind === "line" || e.kind === "arc" || e.kind === "circle") : !(e.kind === "line" || e.kind === "arc")) {
     throw new Error(`"${e.name}" is a ${e.kind} — ${op} takes ${takes}`);
   }
@@ -564,17 +582,21 @@ interface Walked {
 export function walkChain(model: Model, names: readonly string[]): { walk: Walked[]; closed: boolean } {
   const ents = names.map((n) => model.entities.get(n));
   ents.forEach((e, i) => {
-    if (!e || !(e.kind === "line" || e.kind === "arc" || e.kind === "circle")) {
+    if (!e || !(e.kind === "line" || e.kind === "arc" || e.kind === "circle" || e.kind === "spline")) {
       throw new Error(`offset takes lines, arcs and circles — "${names[i]}" is ${e ? `a ${e.kind}` : "not there"}`);
     }
   });
-  if (ents.some((e) => e!.kind === "circle")) {
-    if (names.length > 1) throw new Error("a circle is a chain on its own — offset it by itself");
+  // A circle, or a closed spline (a surface's sweep walks one; offset refuses
+  // a spline before it gets here), is a chain on its own.
+  const shut = (e: Entity) => e.kind === "circle" || (e.kind === "spline" && e.closed === true);
+  if (ents.some((e) => shut(e!))) {
+    const noun = ents.some((e) => e!.kind === "circle") ? "a circle" : "a closed spline";
+    if (names.length > 1) throw new Error(`${noun} is a chain on its own — offset it by itself`);
     return { walk: [{ name: names[0], reversed: false, from: null, to: null }], closed: true };
   }
   const cls = joinClasses(model);
   const keyOf = (p: string) => cls.get(p) ?? p;
-  const ends = (n: string) => endsOf(model.entities.get(n)!);
+  const ends = (n: string) => chainEnds(model.entities.get(n)!);
   const at = new Map<number | string, string[]>();
   for (const n of names) for (const p of ends(n)) at.set(keyOf(p), [...(at.get(keyOf(p)) ?? []), n]);
   for (const [, list] of at) {
@@ -622,22 +644,28 @@ export function walkChain(model: Model, names: readonly string[]): { walk: Walke
  * of an outline offsets. The curve clicked first, the rest in creation order.
  * A circle is a chain of one.
  */
+/** The ends a chain is joined by: a line's, an arc's, an open spline's first and last points; none for a closed curve. */
+function chainEnds(e: Entity): string[] {
+  if (e.kind === "spline") return e.closed ? [] : [e.points[0], e.points[e.points.length - 1]];
+  return endsOf(e);
+}
+
 export function chainThrough(model: Model, curve: string): string[] {
   const e = model.entities.get(curve);
-  if (!e || e.kind === "circle") return [curve];
+  if (!e || e.kind === "circle" || (e.kind === "spline" && e.closed)) return [curve];
   const cls = joinClasses(model);
   const keyOf = (p: string) => cls.get(p) ?? p;
   const at = new Map<number | string, string[]>();
   const order = [...model.entities.keys()];
   for (const c of model.entities.values()) {
-    if (c.kind !== "line" && c.kind !== "arc") continue;
-    for (const p of endsOf(c)) at.set(keyOf(p), [...(at.get(keyOf(p)) ?? []), c.name]);
+    if (c.kind !== "line" && c.kind !== "arc" && c.kind !== "spline") continue;
+    for (const p of chainEnds(c)) at.set(keyOf(p), [...(at.get(keyOf(p)) ?? []), c.name]);
   }
   const found = new Set([curve]);
   const queue = [curve];
   while (queue.length) {
     const c = queue.shift()!;
-    for (const p of endsOf(model.entities.get(c)!)) {
+    for (const p of chainEnds(model.entities.get(c)!)) {
       const here = at.get(keyOf(p)) ?? [];
       if (here.length !== 2) continue;
       const next = here.find((n) => n !== c);
@@ -757,6 +785,7 @@ export interface OffsetPlan {
 
 export function planOffset(model: Model, names: readonly string[], d: number, resolved?: OffsetResolved | null): OffsetPlan {
   if (typeof d !== "number" || !Number.isFinite(d) || d === 0) throw new Error(`offset needs a distance that is not 0, got ${JSON.stringify(d)}`);
+  for (const n of names) refuseSpline(model, n, "offset");
   for (const n of names) refuseOwned(model, n, "offset");
   const { walk, closed } = walkChain(model, names);
   const n = planeNormal(model, names);
@@ -935,12 +964,13 @@ function copySet(model: Model, names: readonly string[], op: string, skip: Reado
   for (const n of expanded) {
     const e = model.entities.get(n)!;
     if (e.kind === "point") points.add(n);
-    else if (e.kind === "line" || e.kind === "arc" || e.kind === "circle") {
+    // A spline is its points (docs/plans/spline.md): copied as the spline through their copies.
+    else if (e.kind === "line" || e.kind === "arc" || e.kind === "circle" || e.kind === "spline") {
       refuseOwned(model, n, op);
       curves.add(n);
       for (const p of model.refsOf(e)) points.add(p);
     } else {
-      throw new Error(`${op} copies points, lines, arcs and circles — "${n}" is ${e.kind === "ellipse" ? "an ellipse" : `a ${e.kind}`}`);
+      throw new Error(`${op} copies points, lines, arcs, circles and splines — "${n}" is ${e.kind === "ellipse" ? "an ellipse" : `a ${e.kind}`}`);
     }
   }
   if (!curves.size && !points.size) throw new Error(`${op}: nothing among ${names.join(", ")} is a point or a curve to copy`);
@@ -955,6 +985,9 @@ function copyCurve(model: Model, name: string, map: (p: string) => string, norma
   let copy: string;
   if (e.kind === "line") copy = model.addLine(map(e.refs[0]), map(e.refs[1]), as ?? null).name;
   else if (e.kind === "circle") copy = model.addCircle(map(e.center), model.radius(name), normal, as ?? null).name;
+  // The spline through the copies of its points, in its order: a mirror, a
+  // translation or a turn is an isometry, so it is the original's image exactly.
+  else if (e.kind === "spline") copy = addSpline(model, e.points.map(map), e.closed === true, as ?? null);
   else {
     const a = e as ArcEntity;
     const [s, t] = swap ? [map(a.end), map(a.start)] : [map(a.start), map(a.end)];

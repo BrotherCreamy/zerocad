@@ -27,8 +27,9 @@
 // whole turn, in [0, 1).
 
 import type { Entity, Model } from "./model.ts";
-import { curveFrame } from "./curveplane.ts";
+import { curveFrame, curvePath } from "./curveplane.ts";
 import { arcPoint, type ArcFrame } from "./arcgeom.ts";
+import { pointAt as pathPoint, sampleParams, type BSpline } from "./bspline.ts";
 import { heldOnCurves } from "./loops.ts";
 import { cross3, dot3, lift3, sub3, unit3 } from "./vec3.ts";
 
@@ -39,17 +40,26 @@ type V = number[];
 /** A curve's carrier, lifted to three coordinates. */
 type Carrier =
   | { kind: "line"; p: V; q: V }
-  | { kind: "round"; f: ArcFrame; closed: boolean };
+  | { kind: "round"; f: ArcFrame; closed: boolean }
+  /**
+   * A curve laid out by an exact B-spline (a spline, docs/plans/spline.md) —
+   * its own curve, bounded: a **cutter** only. It cuts a line, an arc or a
+   * circle it crosses, and an end is extended to it; it is trimmed by
+   * nothing (sketchedit.ts refuses it by name).
+   */
+  | { kind: "path"; curve: BSpline };
 
-/** The curve kinds trim and extend read: a line, an arc, a circle, and an ellipse as a cutter. */
+/** The curve kinds trim and extend read: a line, an arc, a circle, and an ellipse or a spline as a cutter. */
 export function isSketchCurve(e: Entity | undefined): boolean {
-  return !!e && (e.kind === "line" || e.kind === "arc" || e.kind === "circle" || e.kind === "ellipse");
+  return !!e && (e.kind === "line" || e.kind === "arc" || e.kind === "circle" || e.kind === "ellipse" || e.kind === "spline");
 }
 
 function carrierOf(model: Model, name: string): Carrier | null {
   const e = model.entities.get(name);
   if (!e) return null;
   if (e.kind === "line") return { kind: "line", p: lift3(model.coords(e.refs[0])), q: lift3(model.coords(e.refs[1])) };
+  const path = curvePath(model, e);
+  if (path) return { kind: "path", curve: path.curve };
   const f = curveFrame(model, e);
   if (!f) return null;
   return { kind: "round", f, closed: e.kind !== "arc" };
@@ -57,12 +67,67 @@ function carrierOf(model: Model, name: string): Carrier | null {
 
 /** How big a curve is, for tolerances: a line's length, a round's radius. */
 function sizeOf(c: Carrier): number {
+  if (c.kind === "path") return Math.max(...c.curve.ctrl.map((p) => Math.hypot(...sub3(p, c.curve.ctrl[0]))));
   return c.kind === "line" ? Math.hypot(...sub3(c.q, c.p)) : Math.max(c.f.r, c.f.rv ?? 0);
 }
 
 /** A millionth of the larger of two curves (at least of one unit) — loops.ts's `LENGTH_TOL`, for a pair. */
 function tolFor(a: Carrier, b: Carrier): number {
-  return 1e-6 * Math.max(1, sizeOf(a), sizeOf(b), Math.hypot(...(a.kind === "line" ? a.p : a.f.center)));
+  return 1e-6 * Math.max(1, sizeOf(a), sizeOf(b), Math.hypot(...(a.kind === "line" ? a.p : a.kind === "path" ? a.curve.ctrl[0] : a.f.center)));
+}
+
+/** The unit normal of the plane a B-spline's control points span, or null for one that is straight. */
+function pathNormal(c: BSpline): V | null {
+  let n = [0, 0, 0];
+  for (let i = 1; i + 1 < c.ctrl.length; i++) n = n.map((x, k) => x + cross3(sub3(c.ctrl[i], c.ctrl[0]), sub3(c.ctrl[i + 1], c.ctrl[0]))[k]);
+  const size = Math.max(1e-300, ...c.ctrl.map((p) => Math.hypot(...sub3(p, c.ctrl[0]))));
+  return Math.hypot(...n) > 1e-9 * size * size ? unit3(n) : null;
+}
+
+/**
+ * Where a line's or a round's carrier crosses a B-spline: the spline walked
+ * finely (its quarter-thousandth samples), each step where a side function of
+ * the other carrier changes sign halved to the crossing — the signed distance
+ * across a line, the normalised distance from a round's rim. A tangency
+ * changes no side and is no meeting, as everywhere here. Only in a plane the
+ * two share.
+ */
+function pathMeets(c: Carrier, path: Extract<Carrier, { kind: "path" }>, tol: number): V[] {
+  const s = path.curve;
+  const n = pathNormal(s) ?? (c.kind === "round" ? c.f.normal : null);
+  let side: (x: V) => number;
+  if (c.kind === "line") {
+    const d = sub3(c.q, c.p);
+    const across = n ? unit3(cross3(n, d)) : null;
+    if (!across) return [];
+    if (n && Math.abs(dot3(sub3(c.p, s.ctrl[0]), n)) > tol) return [];
+    side = (x) => dot3(sub3(x, c.p), across);
+  } else if (c.kind === "round") {
+    if (pathNormal(s) && Math.hypot(...cross3(pathNormal(s)!, c.f.normal)) > 1e-6) return [];
+    if (s.ctrl.some((p) => Math.abs(dot3(sub3(p, c.f.center), c.f.normal)) > tol)) return [];
+    side = (x) => {
+      const d = sub3(x, c.f.center);
+      return Math.hypot(dot3(d, c.f.u) / c.f.r, dot3(d, c.f.v) / (c.f.rv ?? c.f.r)) - 1;
+    };
+  } else return [];
+  const us = sampleParams(s, Math.max(tol, 1e-3 * sizeOf(path)) * 4, 8000);
+  const at = (u: number) => lift3(pathPoint(s, u));
+  const out: V[] = [];
+  let [u0, g0] = [us[0], side(at(us[0]))];
+  for (const u1 of us.slice(1)) {
+    const g1 = side(at(u1));
+    if ((g0 < 0) !== (g1 < 0)) {
+      let [lo, hi, glo] = [u0, u1, g0];
+      for (let i = 0; i < 80; i++) {
+        const mid = (lo + hi) / 2, gm = side(at(mid));
+        if ((gm < 0) === (glo < 0)) { lo = mid; glo = gm; } else hi = mid;
+      }
+      const x = at((lo + hi) / 2);
+      if (!out.some((y) => Math.hypot(...sub3(x, y)) <= tol)) out.push(x);
+    }
+    [u0, g0] = [u1, g1];
+  }
+  return out;
 }
 
 /** A plane by its origin and two unit axes. */
@@ -84,6 +149,8 @@ const inPlane = (pl: Flat, x: V, tol: number) => Math.abs(dot3(sub3(x, pl.o), pl
  * curves in no shared plane, parallel lines, a miss or a tangency.
  */
 function carriersMeet(a: Carrier, b: Carrier, tol: number): V[] {
+  if (b.kind === "path") return a.kind === "path" ? [] : pathMeets(a, b, tol);
+  if (a.kind === "path") return pathMeets(b, a, tol);
   if (a.kind === "line" && b.kind === "line") {
     const d1 = sub3(a.q, a.p), d2 = sub3(b.q, b.p);
     const raw = cross3(d1, d2);
@@ -150,6 +217,7 @@ function angleOn(f: ArcFrame, x: V): number {
 
 /** How far along a carrier a world point (three coordinates) is — see the top of the file. */
 function fractionAlong(c: Carrier, x: V): number {
+  if (c.kind === "path") return 0; // a spline is cut by nothing: never asked where along it
   if (c.kind === "line") {
     const d = sub3(c.q, c.p);
     return dot3(sub3(x, c.p), d) / dot3(d, d);
@@ -170,7 +238,7 @@ export function fractionOn(model: Model, name: string, world: number[]): number 
 /** The place a fraction `t` along `name` is, in the model's coordinates. */
 export function pointOn(model: Model, name: string, t: number): number[] {
   const c = carrierOf(model, name);
-  if (!c) throw new Error(`"${name}" is not a line, arc or circle`);
+  if (!c || c.kind === "path") throw new Error(`"${name}" is not a line, arc or circle`);
   if (c.kind === "line") return own(model, c.p.map((pi, i) => pi + t * (c.q[i] - pi)));
   return own(model, arcPoint(c.f, t * (c.closed ? TAU : c.f.sweep)));
 }
@@ -178,7 +246,7 @@ export function pointOn(model: Model, name: string, t: number): number[] {
 /** How long `name` is along itself, for turning a length into a fraction: a line's length, an arc's or circle's circumference. */
 export function lengthOf(model: Model, name: string): number {
   const c = carrierOf(model, name);
-  if (!c) return 0;
+  if (!c || c.kind === "path") return 0;
   if (c.kind === "line") return Math.hypot(...sub3(c.q, c.p));
   return c.f.r * (c.closed ? TAU : c.f.sweep);
 }
@@ -192,6 +260,10 @@ export function distanceToCurve(model: Model, name: string, world: number[]): nu
   const c = carrierOf(model, name);
   if (!c) return Infinity;
   const x = lift3(world);
+  if (c.kind === "path") {
+    const us = sampleParams(c.curve, 1e-4 * Math.max(1, sizeOf(c)), 8000);
+    return Math.min(...us.map((u) => Math.hypot(...sub3(x, lift3(pathPoint(c.curve, u))))));
+  }
   if (c.kind === "line") {
     const t = Math.min(1, Math.max(0, fractionAlong(c, x)));
     return Math.hypot(...sub3(x, c.p.map((pi, i) => pi + t * (c.q[i] - pi))));
@@ -204,6 +276,7 @@ export function distanceToCurve(model: Model, name: string, world: number[]): nu
 
 /** Whether a place on a carrier is on the curve itself — a line's segment, an arc's sweep — to `tol`. */
 function onExtent(c: Carrier, x: V, tol: number): boolean {
+  if (c.kind === "path") return true; // its meetings are on it: it is its own extent
   if (c.kind === "line") {
     const len = Math.hypot(...sub3(c.q, c.p));
     const t = fractionAlong(c, x);
@@ -243,7 +316,7 @@ export interface CurveCut {
 export function cutsOf(model: Model, name: string): CurveCut[] {
   const me = model.entities.get(name);
   const mine = carrierOf(model, name);
-  if (!me || !mine || me.kind === "ellipse") return [];
+  if (!me || !mine || me.kind === "ellipse" || mine.kind === "path") return [];
   const held = heldOnCurves(model).filter((h) => h.curve === name).map((h) => h.point);
   const ends = new Set(endsOf(me));
   const len = lengthOf(model, name);
@@ -309,6 +382,7 @@ export function reachOf(model: Model, name: string, end: "start" | "end", to?: s
     for (const x of carriersMeet(mine, them, tol)) {
       if (!onExtent(them, x, tol)) continue;
       let past: number;
+      if (mine.kind === "path") continue; // a spline is not extended (sketchedit.ts)
       if (mine.kind === "line") {
         const t = fractionAlong(mine, x);
         const len = Math.hypot(...sub3(mine.q, mine.p));

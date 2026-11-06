@@ -40,8 +40,11 @@ function sharedPlane(model: Model, points: readonly string[]): string | null {
 
 /**
  * `addThrough("sp1", [x, y])`: a new through-point on the curve where it is
- * nearest `at`, between the two points either side of it — so the curve is
- * where it was until the new point is dragged. In 3D the new point is held on
+ * nearest `at`, between the two points either side of it. The curve then goes
+ * through it and stays near where it was — not exactly: an interpolating
+ * spline through one more point re-spaces its knots and bends a little
+ * differently (under 2 % of its length in the suite's case), the price of a
+ * curve that passes through every point it is given. In 3D the new point is held on
  * the plane every other point of the spline is held on, if they share one.
  * Journalled as `addThrough(s, at, { index, at })`: where it went in the list,
  * and where it was laid. Answers the new point's name.

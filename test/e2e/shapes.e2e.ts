@@ -234,8 +234,9 @@ test("desktop: the slot — dragged centre to centre, a click for its width — 
 
 test("desktop: the ellipse — dragged centre to major end, a click for the minor — dimensioned, dragged, undone, saved, extruded", async () => {
   await fresh(desk);
-  // The curves button: the ellipse alone in its group, so a plain button.
-  await desk.page.click('#toolbar button[data-tool="ellipse"]');
+  // The curves button: a click arms its current member, the ellipse — the
+  // first of the group, the spline after it (docs/plans/spline.md).
+  await desk.page.click('#toolbar button[data-group="curves"]');
   assert.equal((await desk.model()).activeTool, "ellipse");
   await drag([0, 0, 0], [24, 8, 0]);
   await hover([-3, 9, 0]);
@@ -394,7 +395,8 @@ test("iPhone 13: the slot — a finger dragged centre to centre, then a tap for 
 
 test("iPhone 13: the ellipse — tapped from its button, a finger dragged out, a tap for the minor — and extruded", async () => {
   await freshPhone();
-  await f.tap(...await middleOf('#toolbar button[data-tool="ellipse"]'));
+  // A tap on the curves button arms its current member, the ellipse (the spline after it).
+  await f.tap(...await middleOf('#toolbar button[data-group="curves"]'));
   await settled(phone, () => phone.model(), (m) => m.activeTool === "ellipse", "the ellipse button armed it");
   await phone.page.waitForTimeout(300);
   await fingerDrag([0, 0, 0], [20, 0, 0]);
