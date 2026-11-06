@@ -81,6 +81,11 @@ otherwise.
   - **The edit tools read a press on a solid's own edge on the sketch
     plane**; **`#flyout` has its own 3 px padding**; **the empty-canvas menu
     lists the edits** under Modify.
+  - [ ] **Follow-ups from the review of [#75](https://github.com/BrotherCreamy/neocad/pull/75)**
+    (none blocking): a pattern of six draws twelve `translated`/`rotated`
+    glyphs — one glyph per pattern would read better; at an iPhone's width
+    the option forms cut their labels ("construc…" in picture 214) — the
+    form should wrap a label before it cuts one.
 
 - **Regions as operations: a face is a face, a region is faces combined by
   named operations, a feature takes a region** (the owner, 2026-11-05:
