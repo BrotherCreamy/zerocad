@@ -423,6 +423,11 @@ otherwise.
   after every merge the history is rewritten and pushed to `zerocad` as its
   `main`, behind a check that no personal name or address survives — the
   mirror is never committed to directly. Pages deploys from the mirror.
+  **Every commit goes to the mirror at once** (the owner, 2026-11-06:
+  *"Commit to mirror. Always"*): push and sync after each commit, not only
+  after a gated merge, so GitHub always shows the newest work. The gate
+  still runs before a merge is called done, and the CHANGELOG says what
+  passed; the site may briefly carry a commit whose gate is still running.
   The tooling is `scripts/mirror/` (its README says how); the mailmap and
   the leak regex are environment secrets, never files in the repository,
   so any session on this repository can sync once it has them.
