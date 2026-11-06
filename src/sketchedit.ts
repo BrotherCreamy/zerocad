@@ -71,7 +71,7 @@ function holdOn(model: Model, p: string, curve: string): string {
 function refuseSpline(model: Model, name: string, op: string): void {
   if (model.entities.get(name)?.kind !== "spline") return;
   const what = op === "trim" ? "trims nothing of one yet — a piece of a spline would be a spline through points it does not go through"
-    : op === "extend" ? "does not lengthen one — drag its end, or addThrough a point past it"
+    : op === "extend" ? "does not lengthen one — drag its end out"
       : "does not offset one yet — an offset of a spline is no spline";
   throw new Error(`"${name}" is a spline, and ${op} ${what}. A spline does cut a line, an arc or a circle it crosses`);
 }

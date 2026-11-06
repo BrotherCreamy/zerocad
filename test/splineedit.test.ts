@@ -54,7 +54,7 @@ test("trim and extend: a spline is refused as what is trimmed or extended, and c
   const m = new Model(2);
   const { s } = wave(m);
   assert.throws(() => trim(m, s, [10, 6]), /"sp1" is a spline, and trim trims nothing of one yet.*A spline does cut a line/);
-  assert.throws(() => extend(m, s, "p1"), /"sp1" is a spline, and extend does not lengthen one/);
+  assert.throws(() => extend(m, s, "p1"), /"sp1" is a spline, and extend does not lengthen one — drag its end out\. A spline does cut/);
   // A line across the spline: trimmed at the crossing, its end held onspline.
   const l = m.addLine(m.addPoint([20, -15]).name, m.addPoint([20, 15]).name).name;
   ok(m);
@@ -226,3 +226,36 @@ test("a surface swept from a spline: the kernel's sheet, its area the curve's le
   // Trimming a surface by a spline is refused by name: the surface trim projects lines, arcs and circles.
   assert.throws(() => scope.trim("s1", s, [10, 0, 5]), /a surface is trimmed by a line, an arc or a circle — sp1 is a spline/);
 });
+
+test("a surface turned from a spline: the kernel's sheet, its area by Pappus — the turn by ∫ r ds", { skip }, async () => {
+  await loadSolver();
+  const m = new Model(3);
+  const { s } = wave(m);
+  // An axis along x, 20 below the wave: every point of it 10 or more off the axis.
+  const axis = m.addLine(m.addPoint([0, -20, 0]).name, m.addPoint([45, -20, 0]).name).name;
+  fix(m, lineEnds(m, axis)[0], [0, -20, 0]);
+  fix(m, lineEnds(m, axis)[1], [45, -20, 0]);
+  const scope = neocadScope({ model: m }) as Record<string, (...a: unknown[]) => unknown>;
+  const name = scope.surface(s, axis) as string;
+  ok(m);
+  const ev = new Evaluator(await kernel());
+  const r = ev.run(programOf(m).program).bodies.find((b) => b.name === name)!;
+  ev.clear();
+  assert.deepEqual(r.failed, []);
+  const area = r.solid!.faces.reduce((a, f) => a + f.area, 0);
+  const c = splineCurve(m, s);
+  const [lo, hi] = domain(c);
+  let moment = 0;
+  for (let k = 0; k < 20000; k++) {
+    const [p, q] = [pointAt(c, lo + ((hi - lo) * k) / 20000), pointAt(c, lo + ((hi - lo) * (k + 1)) / 20000)];
+    moment += len(sub(q, p)) * ((p[1] + q[1]) / 2 + 20);
+  }
+  assert.ok(Math.abs(area - 2 * Math.PI * moment) < 1e-5 * area, `area ${area} against ${2 * Math.PI * moment}`);
+});
+
+/** A line's two points. */
+function lineEnds(m: Model, line: string): [string, string] {
+  const e = m.entities.get(line)!;
+  if (e.kind !== "line") throw new Error("a line");
+  return e.refs;
+}
