@@ -202,7 +202,8 @@ test("desktop: LOOK — a tooltip at 70 % and 130 %", async () => {
     await fresh(desk);
     await desk.type(`ui({ scale: ${scale} })`);
     await desk.page.mouse.move(700, 400);
-    await hoverDelay(desk, button("extrude"));
+    // Revolve, a plain button: extrude heads the sweep group now, and a group's hover opens its flyout (surfaces.md).
+    await hoverDelay(desk, button("revolve"));
     const t = await tipState(desk);
     const font = await desk.page.$eval("#tooltip", (el) => parseFloat(getComputedStyle(el).fontSize));
     assert.ok(Math.abs(font - 11 * scale) < 0.05, `drawn at the interface size: ${font}px at ${scale}`);
@@ -415,7 +416,7 @@ test("iPhone 13: LOOK — a held tooltip in portrait and landscape at 70 % and 1
       await app.type(`ui({ scale: ${scale} })`);
       await app.page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
       const f = await fingers(app);
-      await f.hold(...await middleOf(app, button("extrude")), 750, true);
+      await f.hold(...await middleOf(app, button("revolve")), 750, true); // a plain button, as on the desktop
       const t = await tipBecomes(app, (s) => s.shown, `${orient} ${name}`);
       assert.ok(await insideWindow(app, t.box!), `${orient} ${name}: inside the window — ${JSON.stringify(t.box)}`);
       await shot(app, `phone-${orient}-${name}`);
