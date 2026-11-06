@@ -840,6 +840,154 @@ export function dragStep(
   return { layout: r.layout, grab: held };
 }
 
+// ---- the preview: nothing moves until the drop ------------------------------
+//
+// The owner: *"the toolbars should push each other around, but they should show
+// how they will snap IF the user drops the grasped toolbar in that spot. but
+// until they actually drop it, the permanent position of any tool bar is not
+// changed"* (docs/plans/panels-preview.md). So a gesture keeps two things
+// apart. **The preview** is the layout the resolver answers — `dragStep`, move
+// by move, on a copy, exactly as it pushed the panels themselves before: the
+// rules of the push are unchanged, the preview only shows them before they
+// happen. **The held panel** is the one in the hand, drawn where the hand has
+// it — under the pointer at the point it was taken by, held only inside the
+// area, over whatever it is over. Every other panel stays where it was until
+// the drop, which commits the preview; Escape, or a lift back where the press
+// was, commits nothing.
+//
+// The preview is the push's, so it keeps the push's memory: a panel the
+// preview pushed stays pushed in it when the hand draws back, as a pushed
+// panel used to (*"nothing springs back"*). A drop there moves it; a drop
+// back where the drag started does not, because that is the one place the
+// owner's words name for taking it all back.
+
+/** A gesture in progress: the layout at the press, the resolver's answer so far, and the panel in the hand. */
+export interface Drag {
+  /** The grab as taken — where the held panel is drawn from, for the whole gesture. */
+  grab: Grab;
+  /** The resolver's grab — the same, until a turn in the preview re-grasps it (`regrasped`). */
+  step: Grab;
+  /** Where the press was, in the layout's coordinates. */
+  press: Point;
+  /** Every panel at the press — what Escape goes back to. */
+  start: Layout;
+  /** What a drop now would commit. */
+  preview: Layout;
+  /** The held panel, where the hand has it: its shape at the press, under the pointer. */
+  held: Placed;
+  /** For a tray, its buttons, counted at the press. */
+  buttons?: number;
+}
+
+/** A gesture taken at `pointer`, nothing yet moved: the preview is the layout itself, and so are the ghosts — none. */
+export function beginDrag(
+  id: string, kind: "move" | "resize", pointer: Point, layout: Layout, corner: Corner = "se", buttons?: number,
+): Drag {
+  const grab = grabbed(id, kind, pointer, layout, corner);
+  return { grab, step: grab, press: { ...pointer }, start: layout, preview: layout, held: layout[id], buttons };
+}
+
+/**
+ * Where the hand has the held panel at `pointer`: by the strip, its shape at
+ * the press with the point it was taken by under the pointer; by a grip, that
+ * corner under the pointer and the opposite one where it was (`resized`).
+ * Held wholly inside the area, as every panel is, and against nothing else —
+ * it is in the hand, over whatever it is over, and its ghost is what says
+ * where it will land. A tray keeps the way it ran at the press: its turn is
+ * the preview's until the drop (the owner: *"it should not actually change the
+ * toolbar between modes unless I let go"*).
+ */
+export function heldAt(drag: Drag, pointer: Point, area: Size, min: Size): Placed {
+  const g = drag.grab;
+  const r = drag.start[g.id];
+  if (g.kind === "move") {
+    return placed(constrain({ x: pointer.x - g.dx, y: pointer.y - g.dy, w: r.w, h: r.h }, area, { w: 0, h: 0 }), r.orient, r.lines);
+  }
+  // A tray has no grips; a resize grab on one holds it where it was, as `dragStep` does.
+  if (drag.buttons !== undefined) return r;
+  const corner = g.corner ?? "se";
+  const c = cornerOf(r, corner);
+  return placed(resized(r, pointer.x - g.dx - c.x, pointer.y - g.dy - c.y, area, min, corner), r.orient, r.lines);
+}
+
+/**
+ * One move of a gesture: the resolver asked again from where its last answer
+ * left things (`dragStep` on the preview — which is the push as it always
+ * was, a copy of the layout standing in for the panels), and the held panel
+ * put where the hand now has it. Pure: nothing on screen is this until it is
+ * drawn, and nothing is committed until `dropOf`.
+ */
+export function dragTo(
+  drag: Drag, pointer: Point, area: Size,
+  minSize: (id: string, orient: Orientation | undefined) => Size, m: Metrics = FINE,
+): Drag {
+  const step = dragStep(drag.step, pointer, drag.preview, area, minSize, drag.buttons, m);
+  const id = drag.grab.id;
+  const held = heldAt(drag, pointer, area, minSize(id, drag.start[id].orient));
+  return { ...drag, step: step.grab, preview: step.layout, held };
+}
+
+const sameRect = (a: Placed | undefined, b: Placed | undefined): boolean =>
+  a !== undefined && b !== undefined && a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h && a.orient === b.orient;
+
+/**
+ * The ghosts a gesture shows now: each panel the drop would move, where it
+ * will land — and the held panel's own, where it will snap, wherever that is
+ * not exactly where the hand has it (stopped flush against a chain, turned
+ * against an edge). A panel the drop would not move shows none, and neither
+ * does the held one lying exactly on its landing. Never a fixed panel: nothing
+ * moves the logo.
+ */
+export function ghostsOf(drag: Drag): Layout {
+  const out: Layout = {};
+  const id = drag.grab.id;
+  for (const [o, r] of Object.entries(drag.preview)) {
+    if (r.fixed) continue;
+    if (o === id ? !sameRect(r, drag.held) : !sameRect(r, drag.start[o])) out[o] = r;
+  }
+  return out;
+}
+
+/**
+ * How near the press a lift must be to be **back where the drag started** —
+ * which commits nothing (the spec: *"Escape, or lifting back where the drag
+ * started, commits nothing"*). A finger's is the slop a press already has
+ * before it is a drag rather than a tap (tools/gestures.ts's `TAP_SLOP`,
+ * tooltip.ts's `HOLD_SLOP`): a fingertip does not come down on the pixel it
+ * left. A mouse's is two pixels — a hand on a mouse comes back nearly exactly,
+ * and a nudge of a panel by three pixels is a real arrangement that must not
+ * be read as taking it back.
+ */
+export function backSlop(coarse: boolean): number {
+  return coarse ? HOLD_SLOP : 2;
+}
+
+/** What a drop did: `moved` committed the preview; the other three left every panel where it was. */
+export type DropOutcome = "moved" | "unchanged" | "back" | "refused";
+
+/**
+ * The drop at `pointer`: the layout to show and what it was. The preview, if
+ * it is a layout at all — so a drop commits exactly what the ghosts showed, in
+ * one step. **Back where it started** (within `slop` of the press): the start,
+ * whatever the ghosts said — the owner's way out under a finger, which has no
+ * Escape. **The resolver's refusal** (a preview two panels overlap in, which
+ * `layoutProblem` names): the start too, the same as Escape, and `problem`
+ * says why — the host puts a word of it in the status. A preview the same as
+ * the start is `unchanged`: there is nothing to commit, or to store.
+ */
+export function dropOf(drag: Drag, pointer: Point, area: Size, slop: number): { layout: Layout; outcome: DropOutcome; problem: string | null } {
+  if (Math.hypot(pointer.x - drag.press.x, pointer.y - drag.press.y) <= slop) {
+    return { layout: drag.start, outcome: "back", problem: null };
+  }
+  const problem = layoutProblem(drag.preview, true, area);
+  if (problem) return { layout: drag.start, outcome: "refused", problem };
+  const same = Object.keys(drag.start).every((o) => sameRect(drag.start[o], drag.preview[o]));
+  return { layout: same ? drag.start : drag.preview, outcome: same ? "unchanged" : "moved", problem: null };
+}
+
+/** How long the panels take to settle onto their ghosts at a drop: short, and no spring (index.html eases out). */
+export const SETTLE_MS = 120;
+
 // ---- the default layout -----------------------------------------------------
 
 /** Margin between a default panel and the area's edge, and between panels. */
@@ -1648,6 +1796,14 @@ export function layoutProblem(layout: Layout, ok: boolean, area: Size): string |
 
 /** The lowest panel's z-index; index.html puts the hover tag and menu well above any stack. */
 const PANEL_Z = 10;
+/**
+ * A gesture's ghosts, and over them the held panel (one more), for the drag:
+ * over the corner's status (40) and the logo (45) — a ghost may land in the
+ * logo's row, where the corner's text keeps clear of panes only once they are
+ * placed — and under the hover tag and the menus (50 and up), which belong
+ * over everything.
+ */
+const LIFTED_Z = 46;
 
 /** `r` running `orient`, asking for at least `lines` — or, for a panel that is not a tray, just `r`. */
 function placed(r: Rect, orient: Orientation | undefined, lines?: number): Placed {
@@ -1750,6 +1906,12 @@ export class Panels {
   private inset: Insets = NO_INSETS;
   /** Gives each panel's strip its tooltip, where the host has them. */
   private tooltip: AttachTip | undefined;
+  /** Told, in a few words, when a drop is refused — the host puts it in the status. */
+  private onRefused: ((text: string) => void) | undefined;
+  /** Where a gesture's ghosts are drawn: over the other panels, under the held one. */
+  private ghostLayer: HTMLElement;
+  private ghosts = new Map<string, HTMLElement>();
+  private settleTimer: ReturnType<typeof setTimeout> | undefined;
 
   constructor(
     area: HTMLElement, defaults: (area: Size) => Layout, storage: StorageLike | null,
@@ -1758,9 +1920,11 @@ export class Panels {
       check?: boolean; fitted?: Record<string, Fitted>; metrics?: Metrics;
       fixed?: Record<string, Fixed>; insets?: () => Insets;
       tooltip?: AttachTip; onShow?: (layout: Layout, area: Size, insets: Insets) => void;
+      onRefused?: (text: string) => void;
     } = {},
   ) {
     this.tooltip = options.tooltip;
+    this.onRefused = options.onRefused;
     this.onShow = options.onShow;
     this.m = options.metrics ?? FINE;
     this.area = area;
@@ -1780,6 +1944,10 @@ export class Panels {
       this.order.push(id);
       this.wire(id, el);
     }
+    this.ghostLayer = document.createElement("div");
+    this.ghostLayer.className = "pghosts";
+    this.ghostLayer.hidden = true;
+    area.appendChild(this.ghostLayer);
     this.restack();
     new ResizeObserver(() => this.apply()).observe(area);
     this.apply();
@@ -1900,6 +2068,11 @@ export class Panels {
 
   private place(id: string, el: HTMLElement, r: Placed): void {
     this.shown[id] = r;
+    this.draw(el, r);
+  }
+
+  /** Draws `el` at `r` — the DOM half of `place`, and how the held panel is drawn mid-gesture without being placed. */
+  private draw(el: HTMLElement, r: Placed): void {
     // Drawn reaching under any inset edge it touches, its content padded clear
     // of it; the rectangle it is in the layout is `r` all the same.
     const { rect, pad } = bleed(r, this.size(), this.inset);
@@ -2083,56 +2256,160 @@ export class Panels {
     for (const part of [strip, ...grips]) part?.addEventListener("contextmenu", (e) => e.preventDefault());
   }
 
+  /**
+   * The ghosts of a gesture, drawn: one outline per panel the drop would move
+   * (`ghostsOf`), where it will land, in the layer between the other panels
+   * and the held one. Each kept by its panel's id and moved rather than made
+   * again, so a move that changes nothing in the preview writes nothing.
+   */
+  private drawGhosts(drag: Drag | null): void {
+    const want = drag ? ghostsOf(drag) : {};
+    const area = this.size();
+    for (const [id, g] of this.ghosts) if (!(id in want)) { g.remove(); this.ghosts.delete(id); }
+    for (const [id, r] of Object.entries(want)) {
+      let g = this.ghosts.get(id);
+      if (!g) {
+        g = document.createElement("div");
+        g.className = "pghost";
+        g.dataset.ghost = id;
+        this.ghostLayer.appendChild(g);
+        this.ghosts.set(id, g);
+      }
+      if (drag && id === drag.grab.id) g.dataset.own = "";
+      else delete g.dataset.own;
+      if (r.orient) g.dataset.orient = r.orient;
+      else delete g.dataset.orient;
+      const { rect } = bleed(r, area, this.inset);
+      const where = `${rect.x},${rect.y},${rect.w},${rect.h}`;
+      if (g.dataset.at === where) continue;
+      g.dataset.at = where;
+      g.style.left = `${rect.x}px`;
+      g.style.top = `${rect.y}px`;
+      g.style.width = `${rect.w}px`;
+      g.style.height = `${rect.h}px`;
+    }
+    this.ghostLayer.hidden = !drag;
+  }
+
+  /**
+   * The panels glide onto their places at a drop or an escape, for `SETTLE_MS`
+   * (index.html eases the move out: no spring). Their rectangles are final the
+   * moment it starts — the layout, the store and every rule are the new one at
+   * once — and only the drawing catches up. `settling` on the area is the
+   * stylesheet's cue, and the tests' sign that the panels have arrived.
+   */
+  private settle(): void {
+    clearTimeout(this.settleTimer);
+    this.area.classList.add("settling");
+    this.settleTimer = setTimeout(() => this.area.classList.remove("settling"), SETTLE_MS);
+  }
+
+  /**
+   * One gesture, by a strip or a grip (`wire`). **Nothing moves until the drop** (docs/plans/panels-preview.md): through
+   * the gesture only the held panel is drawn anywhere new — lifted, under the
+   * hand — and every other one stays where it was, translucent (`dragging` on
+   * the area: one class, for every panel at once), with a ghost where the
+   * resolver says it would land. The drop commits the ghosts (`dropOf`), and
+   * the panels settle onto them. Escape, a lift back at the press, and a
+   * pointercancel (the system taking the touch) commit nothing; a preview the
+   * resolver could not make sound commits nothing either, and says so.
+   */
   private gesture(id: string, handle: HTMLElement, kind: "move" | "resize", corner: Corner = "se"): void {
     // `mousedown`, not `pointerdown`, is the event whose default moves focus and
     // starts a text selection. Prevented, a drag leaves the command line holding
     // the focus it had, so typing after rearranging still types.
     handle.addEventListener("mousedown", (e) => e.preventDefault());
     handle.addEventListener("pointerdown", (e) => {
-      if (e.button !== 0) return;
+      if (e.button !== 0 || this.holding) return;
       e.preventDefault();
       const el = this.els.get(id)!;
-      // The whole layout at the press: a push can move any panel, and each one
-      // this gesture moves is stored at its end like the one held.
-      const start = { ...this.shown };
       // The pointer in the layout's own coordinates — the safe area's, so the
       // element's box less the insets. Held for the whole gesture, the grab has
       // to be a point *of the panel*, or a tray that turns (`regrasped`)
       // carries the offset along its strip. Measured once: the area does not
       // move under a held pointer, and measuring it on every move would force
-      // a layout after each `show`.
+      // a layout after each draw.
       const box = this.area.getBoundingClientRect();
       const [ox, oy] = [box.left + this.area.clientLeft + this.inset.left, box.top + this.area.clientTop + this.inset.top];
       const at = (ev: PointerEvent): Point => ({ x: ev.clientX - ox, y: ev.clientY - oy });
-      let grab = grabbed(id, kind, at(e), this.shown, corner);
       // Counted at the press: nothing defines a tool while a pointer is held on a panel.
       const buttons = id in this.trays ? this.trays[id]() : undefined;
+      // The whole layout at the press — what Escape goes back to, and what the
+      // drop stores the changes from: a push can move any panel.
+      let drag = beginDrag(id, kind, at(e), { ...this.shown }, corner, buttons);
+      const slop = backSlop(e.pointerType !== "mouse");
       handle.setPointerCapture(e.pointerId);
-      el.classList.add("held");
+      // A press during the last drop's settle: the panels are already where it
+      // put them, and the glide would only drag behind the hand.
+      clearTimeout(this.settleTimer);
+      this.area.classList.remove("settling");
       this.holding = true;
+      el.classList.add("held");
+      // The drag's look starts with its first move, not at the press: a press
+      // on a strip that never moves (to raise a panel, to read a strip's
+      // tooltip) must not flash every other panel to half and back.
+      let started = false;
       const move = (ev: PointerEvent) => {
         if (ev.pointerId !== e.pointerId) return;
-        const step = dragStep(grab, at(ev), this.shown, this.size(),
-          (o, orient) => this.min(o, orient), buttons, this.m);
-        grab = step.grab;
-        this.show(step.layout);
+        if (!started) {
+          started = true;
+          this.area.classList.add("dragging");
+          // The held panel over everything, the ghosts just under it and over the rest.
+          this.ghostLayer.style.zIndex = String(LIFTED_Z);
+          el.style.zIndex = String(LIFTED_Z + 1);
+        }
+        const area = this.size();
+        drag = dragTo(drag, at(ev), area, (o, orient) => this.min(o, orient), this.m);
+        this.draw(el, drag.held);
+        this.drawGhosts(drag);
+        // Every preview keeps the rules a committed layout does — nothing a
+        // ghost shows overlaps — and is checked as one is (`show`).
+        const problem = layoutProblem(drag.preview, true, area);
+        if (problem && this.check) reportError(new Error(`preview: ${problem}`));
       };
-      const end = (ev: PointerEvent) => {
-        if (ev.pointerId !== e.pointerId) return;
+      const finish = (pointer: Point | null) => {
         handle.removeEventListener("pointermove", move);
-        handle.removeEventListener("pointerup", end);
-        handle.removeEventListener("pointercancel", end);
+        handle.removeEventListener("pointerup", up);
+        handle.removeEventListener("pointercancel", cancel);
+        window.removeEventListener("keydown", key, true);
+        if (handle.hasPointerCapture(e.pointerId)) handle.releasePointerCapture(e.pointerId);
         el.classList.remove("held");
+        this.area.classList.remove("dragging");
+        this.drawGhosts(null);
         this.holding = false;
-        // A press that never moved is not an arrangement; storing it would turn
-        // an untouched panel's following-the-defaults into a fixed position.
-        // Nor is a panel the gesture left where it was.
-        this.remember(start);
+        const drop = pointer ? dropOf(drag, pointer, this.size(), slop) : null;
+        if (started) this.settle();
+        if (drop?.outcome === "moved") this.show(drop.layout);
+        // The held panel back onto its place — the ghost it dropped on, or the
+        // place it was taken from — which `show` alone would skip where the
+        // drop left that place as it was.
+        this.draw(el, this.shown[id]);
+        this.restack();
+        if (drop?.outcome === "refused") {
+          this.onRefused?.("no layout fits there — nothing moved");
+          if (drop.problem) console.warn(drop.problem);
+        }
+        // A press that never moved is not an arrangement; storing it would
+        // turn an untouched panel's following-the-defaults into a fixed
+        // position. Nor is a drop that changed nothing.
+        if (drop?.outcome === "moved") this.remember(drag.start);
         if (this.stale) { this.stale = false; this.apply(); }
       };
+      const up = (ev: PointerEvent) => { if (ev.pointerId === e.pointerId) finish(at(ev)); };
+      const cancel = (ev: PointerEvent) => { if (ev.pointerId === e.pointerId) finish(null); };
+      // Escape is the drag's while one is held, and only the drag's: the window's
+      // own Escape (main.ts) would also put the armed tool down, and one key
+      // takes back one thing — the most recent, which is this.
+      const key = (ev: KeyboardEvent) => {
+        if (ev.key !== "Escape") return;
+        ev.preventDefault();
+        ev.stopImmediatePropagation();
+        finish(null);
+      };
       handle.addEventListener("pointermove", move);
-      handle.addEventListener("pointerup", end);
-      handle.addEventListener("pointercancel", end);
+      handle.addEventListener("pointerup", up);
+      handle.addEventListener("pointercancel", cancel);
+      window.addEventListener("keydown", key, true);
     });
   }
 }

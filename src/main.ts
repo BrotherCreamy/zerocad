@@ -334,6 +334,9 @@ const panels = new Panels(
     tooltip,
     // The corner keeps clear of wherever the panes now are.
     onShow: (layout, area) => { cornerLayout = { layout, area }; placeCorner(); },
+    // A drop the resolver could not make sound commits nothing, and says so
+    // where the eye already is for what just happened (docs/plans/panels-preview.md).
+    onRefused: (text) => statusLine.note(text),
   },
 );
 // The insets change without the window resizing — a rotation does both, but

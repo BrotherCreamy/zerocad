@@ -249,6 +249,27 @@
       letter-spacing:.06em;color:#46586a;background:#0b1016;border-bottom:1px solid #223041;
       border-radius:3px 3px 0 0;cursor:grab;user-select:none;touch-action:none}
     .panel.held>.ptitle{cursor:grabbing;color:#7a8b9b}
+    /* A drag shows where everything will land before anything moves
+       (docs/plans/panels-preview.md). The panel in the hand is lifted — a
+       deeper shadow, as a held card — and drawn solid; every other panel is at
+       half opacity for the gesture (one class on the area, `dragging`), and
+       over them a ghost — a dashed outline, a breath of fill, at full line
+       weight — where each panel the drop would move will land, the held one's
+       own (brighter) where it will snap. The ghosts' line is the interface
+       size's — 1.5 px times it, rounded to the whole pixel a border is drawn
+       at anyway (Chromium floors 1.95 px to 1) — so it reads on a 3× phone as
+       on a desktop: 2 px at either's 100 %. The ghosts' layer and the held
+       panel are lifted over the logo's row for the drag (panels.ts's
+       LIFTED_Z), where a ghost may land. At the drop the
+       panels glide onto their ghosts (`settling`: 120 ms, panels.ts's
+       SETTLE_MS, eased out — no spring). */
+    #viewwrap.dragging>.panel:not(.held){opacity:.5}
+    #viewwrap.dragging>.panel.held{box-shadow:0 14px 34px #000c,0 0 0 1px #46586a}
+    .pghosts{position:absolute;inset:0;pointer-events:none}
+    .pghosts[hidden]{display:none}
+    .pghost{position:absolute;box-sizing:border-box;border:round(calc(1.5px * var(--ui)), 1px) dashed #afc6d9;border-radius:4px;background:#afc6d91a}
+    .pghost[data-own]{border-color:#e6eef5;background:#d5e1ec1f}
+    #viewwrap.settling>.panel{transition:left .12s ease-out,top .12s ease-out,width .12s ease-out,height .12s ease-out}
     .panel>.pbody{flex:1;min-height:0}
     /* A grip on each corner of a panel that resizes — the log and the command
        line; a tray has none — made by panels.ts: a 12px square clipped to the
