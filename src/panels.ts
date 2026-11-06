@@ -60,6 +60,13 @@ export interface Point { x: number; y: number }
 const EPS = 1e-6;
 
 /**
+ * Margin between a default panel and the area's edge, and between panels —
+ * and the gap a pane inserted into an edge's sequence is given where it has
+ * to make room (docs/plans/panels-reshuffle.md).
+ */
+const GAP = 8;
+
+/**
  * Which way a tray runs. A tray is a panel of buttons — the toolbar is the one
  * there is — and it is the one kind of panel that turns: the log and the
  * command line keep their shape wherever they are put.
@@ -954,6 +961,13 @@ export interface Drag {
    * panel is dragged and none is pushed, and the drop commits nothing.
    */
   locked?: boolean;
+  /**
+   * Why the drop at this spot would move nothing (docs/plans/panels-reshuffle.md):
+   * the edge the held pane is brought to has no room for it, or two panes
+   * cannot trade places there. The preview is then the start, the held pane's
+   * ghost is where it would go back to, and it says this.
+   */
+  refused?: string;
 }
 
 /** A gesture taken at `pointer`, nothing yet moved: the preview is the layout itself, and so are the ghosts — none. */
@@ -1002,10 +1016,16 @@ export function dragTo(
 ): Drag {
   // Locked, the spot changes nothing: the held panel stays put and pushes nobody.
   if (drag.locked) return { ...drag, preview: drag.start, held: drag.start[drag.grab.id] };
-  const step = dragStep(drag.grab, pointer, drag.start, area, minSize, drag.buttons, m);
   const id = drag.grab.id;
   const held = heldAt(drag, pointer, area, minSize(id, drag.start[id].orient));
-  return { ...drag, preview: step.layout, held };
+  const { refused: _was, ...rest } = drag;
+  // By the strip, a reshuffle (docs/plans/panels-reshuffle.md); by a grip, the push.
+  if (drag.grab.kind === "move") {
+    const r = reshuffled(drag, held, pointer, area, minSize, m);
+    return { ...rest, preview: r.preview, held, ...(r.refused ? { refused: r.refused } : {}) };
+  }
+  const step = dragStep(drag.grab, pointer, drag.start, area, minSize, drag.buttons, m);
+  return { ...rest, preview: step.layout, held };
 }
 
 const sameRect = (a: Placed | undefined, b: Placed | undefined): boolean =>
@@ -1062,6 +1082,7 @@ export function dropOf(drag: Drag, pointer: Point, area: Size, slop: number): { 
   if (Math.hypot(pointer.x - drag.press.x, pointer.y - drag.press.y) <= slop) {
     return { layout: drag.start, outcome: "back", problem: null };
   }
+  if (drag.refused) return { layout: drag.start, outcome: "refused", problem: drag.refused };
   const problem = layoutProblem(drag.preview, true, area);
   if (problem) return { layout: drag.start, outcome: "refused", problem };
   const same = Object.keys(drag.start).every((o) => sameRect(drag.start[o], drag.preview[o]));
@@ -1070,6 +1091,338 @@ export function dropOf(drag: Drag, pointer: Point, area: Size, slop: number): { 
 
 /** How long the panels take to settle onto their ghosts at a drop: short, and no spring (index.html eases out). */
 export const SETTLE_MS = 120;
+
+// ---- reshuffle: the panes along an edge are a sequence ----------------------
+//
+// The owner: *"When I push toolbars around, they should be able to reorder with
+// other toolbars. So reshuffle rather than push."* (docs/plans/panels-
+// reshuffle.md). So a pane dragged by its strip no longer pushes anything.
+// The panes along each edge of the area are **a sequence** — top to bottom
+// down a side, left to right along the top or the bottom — read from where
+// they are at the press, and a drag does one of four things to it, decided
+// from where the hand has the pane now (the preview's rule stands: the drop at
+// this spot, one step from the press):
+//
+// - **Along an edge it is on** it reorders: past the middle of a neighbour, it
+//   takes that neighbour's slot and the neighbour takes its own, down the line
+//   as a dock's icons do (`reordered`); short of a middle it slides, and stops
+//   flush against whatever it meets.
+// - **To another edge** it is inserted into that edge's sequence where the
+//   hand is, between the two it lands between, and those after it make room
+//   (`inserted`); a tray takes the way that edge runs, at the drop.
+// - **Dropped on a pane that is on no edge** — floating — the two trade
+//   places. Anywhere else it is put where it is, or stops flush against what
+//   it meets: nothing is pushed out of its way.
+// - **No room** on the edge: the pane wraps to a second line beside the first
+//   (`wrapped`), and failing that the preview is refused, and says so.
+//
+// Only a drag by the strip reshuffles. A resize by a grip has no order to
+// change, and grows into its neighbour as it always has: the push stays there.
+
+/** One of the area's four edges. */
+export type Edge = "left" | "top" | "right" | "bottom";
+export const EDGES: readonly Edge[] = ["left", "top", "right", "bottom"];
+const OPPOSITE: Readonly<Record<Edge, Edge>> = { left: "right", right: "left", top: "bottom", bottom: "top" };
+/** The axis an edge runs along: down a side, across the top or the bottom. */
+const runAxis = (e: Edge): Axis => (e === "left" || e === "right" ? "y" : "x");
+const acrossAxis = (e: Edge): Axis => (e === "left" || e === "right" ? "x" : "y");
+/** The way a tray lies along edge `e` — a column down a side, a row along the top or the bottom (`orientationFor`'s rule). */
+export const orientAlong = (e: Edge): Orientation => (runAxis(e) === "y" ? "column" : "row");
+const middle = (r: Rect, a: Axis) => start(r, a) + span(r, a) / 2;
+
+/** How far `r`'s side facing edge `e` is from it. */
+export function edgeGap(r: Rect, e: Edge, area: Size): number {
+  if (e === "left") return r.x;
+  if (e === "top") return r.y;
+  if (e === "right") return area.w - r.x - r.w;
+  return area.h - r.y - r.h;
+}
+
+/** How near an edge, at 100 % under a mouse, a pane is on it. */
+export const EDGE_REACH = 16;
+
+/**
+ * How near an edge a pane's side must be for the pane to be **on** it — in its
+ * sequence. More than the defaults' margin (`GAP`, 8 px off every edge) and a
+ * snap, so the panes a fresh screen puts down are on their edges; and under a
+ * finger at least half a target, so a thumb sliding a pane along an edge can
+ * drift that far off it and still be sliding along it.
+ */
+export function reachOf(m: Metrics): number {
+  return Math.max(GAP + SNAP, Math.round(EDGE_REACH * m.scale), Math.round(m.hit / 2));
+}
+
+/**
+ * The edges a pane at `r` is on: those its side is within `reach` of — but
+ * not a pair of opposite ones. A pane from edge to edge (a phone's command
+ * line along the bottom) is the bottom's alone: in a side's sequence it would
+ * be a slot as wide as the screen, which no reorder could ever give to a pane
+ * beside another.
+ */
+export function edgesOf(r: Rect, area: Size, reach: number): Edge[] {
+  const near = EDGES.filter((e) => edgeGap(r, e, area) <= reach + EPS);
+  return near.filter((e) => !near.includes(OPPOSITE[e]));
+}
+
+/** The panes on each edge, in order along it. */
+export type Sequences = Record<Edge, string[]>;
+
+/**
+ * **Each edge's sequence, read from where the panes are**: every pane on that
+ * edge (`edgesOf`), in order along it — top to bottom down a side, left to
+ * right along the top or the bottom. A pane in a corner is in both its edges'.
+ * The logo is in none: it is the corner a sequence starts after (`runOf`).
+ * Read afresh at every press, so a layout stored before sequences existed —
+ * rectangles and dockings, as every layout is stored — is read into the order
+ * of its positions, with nothing to migrate.
+ */
+export function sequences(layout: Layout, area: Size, reach: number): Sequences {
+  const out: Sequences = { left: [], top: [], right: [], bottom: [] };
+  for (const [id, r] of Object.entries(layout)) {
+    if (r.fixed) continue;
+    for (const e of edgesOf(r, area, reach)) out[e].push(id);
+  }
+  for (const e of EDGES) {
+    const a = runAxis(e);
+    out[e].sort((p, q) => start(layout[p], a) - start(layout[q], a) || span(layout[p], a) - span(layout[q], a) || (p < q ? -1 : 1));
+  }
+  return out;
+}
+
+/** Where edge `e`'s sequence may lie along it: the whole edge, short of a fixed panel on it at either end — the logo's corner. */
+function runOf(layout: Layout, e: Edge, area: Size, reach: number): [number, number] {
+  const a = runAxis(e);
+  let lo = 0;
+  let hi = room(area, a);
+  for (const r of Object.values(layout)) {
+    if (!r.fixed || edgeGap(r, e, area) > reach + EPS) continue;
+    if (middle(r, a) <= room(area, a) / 2) lo = Math.max(lo, start(r, a) + span(r, a));
+    else hi = Math.min(hi, start(r, a));
+  }
+  return [lo, hi];
+}
+
+/** `r` with its side facing edge `e` at `dist` from it, along the other axis untouched. */
+function offEdge(r: Placed, e: Edge, dist: number, area: Size): Placed {
+  const c = acrossAxis(e);
+  return along(r, c, e === "right" || e === "bottom" ? room(area, c) - dist - span(r, c) : dist);
+}
+
+/**
+ * The pane `id`, held at `held`, dragged along edge `e`, which it was on at the
+ * press: **past the middle of a neighbour, it takes the neighbour's slot** —
+ * its leading edge past the middle, the way it is going — and so on down the
+ * line. The panes between where it was and where it goes (the block) are laid
+ * out again in their new order from the block's first place, each its own
+ * length, the gaps between places kept as they were — so the block's ends do
+ * not move and nothing outside it does. Each keeps its own distance from the
+ * edge; the held one, the hand's. `"slide"` when it has passed no middle.
+ */
+function reordered(start0: Layout, id: string, held: Placed, e: Edge, area: Size, reach: number): Layout | "slide" {
+  const seq = sequences(start0, area, reach)[e];
+  const i = seq.indexOf(id);
+  const a = runAxis(e);
+  const was = start0[id];
+  const d = start(held, a) - start(was, a);
+  let k = i;
+  if (d > EPS) while (k + 1 < seq.length && middle(start0[seq[k + 1]], a) < start(held, a) + span(held, a)) k++;
+  else if (d < -EPS) while (k > 0 && middle(start0[seq[k - 1]], a) > start(held, a)) k--;
+  if (k === i) return "slide";
+  const [lo, hi] = [Math.min(i, k), Math.max(i, k)];
+  const block = seq.slice(lo, hi + 1);
+  const gaps = block.slice(1).map((o, j) => {
+    const p = start0[block[j]];
+    return Math.max(0, start(start0[o], a) - start(p, a) - span(p, a));
+  });
+  const order = block.filter((o) => o !== id);
+  order.splice(k - lo, 0, id);
+  const c = acrossAxis(e);
+  const out: Layout = { ...start0 };
+  let p = start(start0[block[0]], a);
+  order.forEach((o, j) => {
+    const r = o === id ? along(was, c, start(held, c)) : start0[o];
+    out[o] = along(r, a, p);
+    p += span(r, a) + (gaps[j] ?? 0);
+  });
+  return out;
+}
+
+/** The gap a pane inserted into a sequence is given from its neighbours, where it has to make room: the defaults' margin. */
+const ROOM_GAP = GAP;
+
+/**
+ * Pane `id`, held at `held`, brought to edge `e`, which it was not on: put in
+ * `shape` (a tray turned to run along the edge, else its own) where the hand
+ * is along the edge, as far off it as the hand has it, **between the two it
+ * lands between** — those whose middles are either side of its own. Where it
+ * would lie on the one before, it goes just after it; those after it **make
+ * room**, each moving on only as far as it must to keep clear of the one
+ * before (`ROOM_GAP`, or the gap two already had where that was less); and
+ * where the last would leave the edge, the whole line closes back from the
+ * far end. Null when the line does not fit the edge (**no room**), or when the
+ * result lies on a pane that is not in the line — a pane the hand did not
+ * take is never pushed out of its way.
+ */
+function inserted(start0: Layout, id: string, shape: Placed, held: Placed, e: Edge, area: Size, reach: number): Layout | null {
+  const others: Layout = { ...start0 };
+  delete others[id];
+  const seq = sequences(others, area, reach)[e];
+  const [lo, hi] = runOf(others, e, area, reach);
+  const a = runAxis(e);
+  const len = span(shape, a);
+  if (len > hi - lo + EPS) return null;
+  const want = clamp(start(held, a), lo, hi - len);
+  const h = offEdge(along(shape, a, want), e, clamp(edgeGap(held, e, area), 0, reach), area);
+  const k = seq.filter((o) => middle(others[o], a) < want + len / 2).length;
+  const ids = [...seq.slice(0, k), id, ...seq.slice(k)];
+  const rect = (o: string): Placed => (o === id ? h : others[o]);
+  const pos = ids.map((o) => start(rect(o), a));
+  const lens = ids.map((o) => span(rect(o), a));
+  // Between two that were already neighbours, the gap they had if it was less
+  // than the room gap — so making room moves only what the new pane reaches.
+  const sep = (j: number) => {
+    if (ids[j - 1] === id || ids[j] === id) return ROOM_GAP;
+    const p = others[ids[j - 1]];
+    return clamp(start(others[ids[j]], a) - start(p, a) - span(p, a), 0, ROOM_GAP);
+  };
+  for (let j = Math.max(1, k); j < ids.length; j++) pos[j] = Math.max(pos[j], pos[j - 1] + lens[j - 1] + sep(j));
+  const n = ids.length - 1;
+  if (pos[n] + lens[n] > hi + EPS) {
+    pos[n] = hi - lens[n];
+    for (let j = n - 1; j >= 0; j--) pos[j] = Math.min(pos[j], pos[j + 1] - sep(j + 1) - lens[j]);
+  }
+  if (pos[0] < lo - EPS) return null;
+  const out: Layout = { ...start0 };
+  ids.forEach((o, j) => { out[o] = along(rect(o), a, pos[j]); });
+  return overlapping(out).length ? null : out;
+}
+
+/**
+ * Pane `id` brought to edge `e` where the line has no room for it: **a second
+ * line**, as a tray's buttons wrap — beside the panes of the first line it
+ * lies along, a room gap further off the edge than the furthest of them,
+ * where the hand has it along the edge. Null when there is no first line
+ * there to wrap beside, when the second line would leave the area, or when it
+ * lies on a pane.
+ */
+function wrapped(start0: Layout, id: string, shape: Placed, held: Placed, e: Edge, area: Size, reach: number): Layout | null {
+  const others: Layout = { ...start0 };
+  delete others[id];
+  const seq = sequences(others, area, reach)[e];
+  const [lo, hi] = runOf(others, e, area, reach);
+  const a = runAxis(e);
+  const c = acrossAxis(e);
+  const len = span(shape, a);
+  if (len > hi - lo + EPS) return null;
+  const want = clamp(start(held, a), lo, hi - len);
+  const first = seq.filter((o) => overlap(start(others[o], a), start(others[o], a) + span(others[o], a), want, want + len) > EPS);
+  if (!first.length) return null;
+  const dist = Math.max(...first.map((o) => edgeGap(others[o], e, area) + span(others[o], c))) + ROOM_GAP;
+  if (dist + span(shape, c) > room(area, c) + EPS) return null;
+  const out: Layout = { ...start0, [id]: offEdge(along(shape, a, want), e, dist, area) };
+  return overlapping(out).length ? null : out;
+}
+
+/** What the preview says, on the held pane's ghost and in the status at the drop, when an edge has no room for it. */
+export const NO_ROOM = "no room on this edge";
+/** Likewise when two panes cannot trade places where they are. */
+export const NO_SWAP = "no room to trade places there";
+
+/**
+ * The held pane taken straight from the press to the hand with every other
+ * pane standing still — the old resolver with everything but the held one
+ * fixed, as the logo always was: where the way is clear it goes where the hand
+ * has it, and where it meets a pane it **stops flush** against it, pushing
+ * nothing. `turn` lets a tray turn against an edge it meets, where its turned
+ * shape lies on nothing.
+ */
+function flush(
+  drag: Drag, pointer: Point, area: Size, minSize: (id: string, orient: Orientation | undefined) => Size, m: Metrics, turn: boolean,
+): Layout {
+  const id = drag.grab.id;
+  const pinned: Layout = {};
+  for (const [o, r] of Object.entries(drag.start)) pinned[o] = o === id || r.fixed ? r : { ...r, fixed: true };
+  const step = dragStep(drag.grab, pointer, pinned, area, minSize, turn ? drag.buttons : undefined, m);
+  return { ...drag.start, [id]: step.layout[id] };
+}
+
+/**
+ * **The drop at this spot, reshuffled** (see the section's head): what the
+ * layout would be if the pane in the hand, now `held`, were dropped here —
+ * and, where an edge has no room for it or two panes cannot trade places, the
+ * start and the word for why (`refused`). Pure, and a function of the spot:
+ * every decision is made from the layout at the press and where the held pane
+ * is now.
+ *
+ * Which of the four it is: **an edge it was on at the press and is still on**
+ * (within `reachOf`) — it reorders along it; of two such (a corner), the one
+ * running the way it has moved further. Otherwise **the nearest other edge it
+ * is on** — inserted there. Otherwise it is floating, and **its middle on a
+ * floating pane** trades places with it. A tray that has left the edge it lay
+ * along for another it was on (a row in the bottom-left corner, slid up the
+ * left edge) is inserted there turned, as if it had come from elsewhere.
+ */
+export function reshuffled(
+  drag: Drag, held: Placed, pointer: Point, area: Size,
+  minSize: (id: string, orient: Orientation | undefined) => Size, m: Metrics = FINE,
+): { preview: Layout; refused?: string } {
+  const id = drag.grab.id;
+  const was = drag.start[id];
+  const reach = reachOf(m);
+  const home = edgesOf(was, area, reach);
+  const near = edgesOf(held, area, reach);
+  const stay = home.filter((e) => near.includes(e));
+  const tray = drag.buttons !== undefined && was.orient !== undefined;
+  const refuse = (why: string) => ({ preview: drag.start, refused: why });
+  let e: Edge | undefined;
+  if (stay.length) {
+    const moved = Math.abs(held.x - was.x) >= Math.abs(held.y - was.y) ? "x" : "y";
+    e = stay.find((s) => runAxis(s) === moved) ?? stay[0];
+  } else if (near.length) {
+    const gap = (s: Edge) => edgeGap(held, s, area);
+    e = near.reduce((best, s) => {
+      const d = gap(s) - gap(best);
+      if (Math.abs(d) > EPS) return d < 0 ? s : best;
+      return tray && orientAlong(s) === was.orient && orientAlong(best) !== was.orient ? s : best;
+    });
+  }
+  // A tray that lay along an edge at the press and has left it for one it does
+  // not lie along has come to that edge as much as one from elsewhere. One that
+  // lay along none — a phone's action strip, a row down the right edge — keeps
+  // the way it runs as it moves along its edge.
+  const lay = (edges: Edge[]) => edges.some((s) => orientAlong(s) === was.orient);
+  const turning = tray && lay(home) && !lay(stay);
+  if (e !== undefined) {
+    if (stay.includes(e) && !turning) {
+      const r = reordered(drag.start, id, held, e, area, reach);
+      if (r === "slide") return { preview: flush(drag, pointer, area, minSize, m, false) };
+      return overlapping(r).length ? refuse(NO_ROOM) : { preview: r };
+    }
+    let shape: Placed = held;
+    if (tray && orientAlong(e) !== was.orient) {
+      const o = orientAlong(e);
+      shape = placed({ x: held.x, y: held.y, ...traySize(drag.buttons!, o, m, trayRoom(area, o, m)) }, o);
+    }
+    const r = inserted(drag.start, id, shape, held, e, area, reach) ?? wrapped(drag.start, id, shape, held, e, area, reach);
+    return r ? { preview: r } : refuse(NO_ROOM);
+  }
+  const mid = { x: held.x + held.w / 2, y: held.y + held.h / 2 };
+  const onto = Object.keys(drag.start).find((o) => {
+    const r = drag.start[o];
+    return o !== id && !r.fixed && mid.x > r.x && mid.x < r.x + r.w && mid.y > r.y && mid.y < r.y + r.h &&
+      edgesOf(r, area, reach).length === 0;
+  });
+  if (onto !== undefined) {
+    const f = drag.start[onto];
+    const out: Layout = {
+      ...drag.start,
+      [id]: placed(constrain({ x: f.x, y: f.y, w: was.w, h: was.h }, area, { w: 0, h: 0 }), was.orient, was.lines),
+      [onto]: placed(constrain({ x: was.x, y: was.y, w: f.w, h: f.h }, area, { w: 0, h: 0 }), f.orient, f.lines),
+    };
+    return overlapping(out).length ? refuse(NO_SWAP) : { preview: out };
+  }
+  return { preview: flush(drag, pointer, area, minSize, m, true) };
+}
 
 // ---- see-through and locked -------------------------------------------------
 //
@@ -1229,8 +1582,6 @@ export function refitted(wanted: Layout, shown: Layout, ids: readonly string[]):
 
 // ---- the default layout -----------------------------------------------------
 
-/** Margin between a default panel and the area's edge, and between panels. */
-const GAP = 8;
 const LOG_H = 150;
 const BOTTOM_W = 560;
 /** The organiser's (docs/plans/organiser.md) default size at 100 %: the most it is given anywhere. */
@@ -2667,6 +3018,11 @@ export class Panels {
       }
       if (drag && id === drag.grab.id) g.dataset.own = "";
       else delete g.dataset.own;
+      // A refused spot (docs/plans/panels-reshuffle.md): the held pane's ghost
+      // is home, and says why the drop here would leave it there.
+      const note = drag && id === drag.grab.id ? drag.refused : undefined;
+      if (note) g.dataset.note = note;
+      else delete g.dataset.note;
       if (r.orient) g.dataset.orient = r.orient;
       else delete g.dataset.orient;
       const { rect } = bleed(r, area, this.inset);
@@ -2782,8 +3138,11 @@ export class Panels {
         this.draw(el, this.shown[id]);
         this.restack();
         if (drop?.outcome === "refused") {
-          this.onRefused?.("no layout fits there — nothing moved");
-          if (drop.problem) console.warn(drop.problem);
+          // A reshuffle's own refusal says its word; a preview the check found
+          // unsound (which no rule should make) says the old one, and why, in
+          // the console.
+          this.onRefused?.(`${drag.refused ?? "no layout fits there"} — nothing moved`);
+          if (drop.problem && !drag.refused) console.warn(drop.problem);
         }
         // A press that never moved is not an arrangement; storing it would
         // turn an untouched panel's following-the-defaults into a fixed

@@ -4,8 +4,9 @@
 // they actually drop it, the permanent position of any tool bar is not
 // changed".
 //
-// The pure half: the preview is the drop at this spot — one `dragStep` from
-// the layout at the press, so the same spot shows the same ghosts however it
+// The pure half: the preview is the drop at this spot — one step from the
+// layout at the press (a reshuffle since docs/plans/panels-reshuffle.md, the
+// push it was before that), so the same spot shows the same ghosts however it
 // was reached, and the press shows none; the held panel is under the hand; the
 // ghosts are what the drop would move; the drop commits the preview, and a lift
 // back at the press or a refused preview commits nothing. The DOM half — the panels
@@ -15,7 +16,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  SNAP, backSlop, beginDrag, dragStep, dragTo, dropOf, ghostsOf, heldAt, layoutProblem, overlapping, traySize,
+  NO_ROOM, NO_SWAP, SNAP, backSlop, beginDrag, dragTo, dropOf, ghostsOf, heldAt, layoutProblem, overlapping, traySize,
   touchMetrics, defaultLayout, arranged, trayRoom,
   type Drag, type Layout, type Point, type Rect, type Size,
 } from "../src/panels.ts";
@@ -43,14 +44,15 @@ function sound(l: Layout, a: Size = area): void {
   }
 }
 
-test("the preview is the drop at this spot: one dragStep from the layout at the press — and the layout itself is untouched", () => {
+test("the preview is the drop at this spot: one step from the layout at the press — and the layout itself is untouched", () => {
   const layout: Layout = { a: box(100, 100), b: box(250, 100), c: box(400, 150) };
   const frozen = JSON.parse(JSON.stringify(layout));
   const begun = beginDrag("a", "move", { x: 150, y: 150 }, layout);
   const drag = along(begun, steps({ x: 150, y: 150 }, { x: 420, y: 160 }, 9));
-  const once = dragStep(begun.grab, { x: 420, y: 160 }, layout, area, minSize);
-  assert.deepEqual(drag.preview, once.layout, "the resolver's single step from the press to here");
-  assert.ok(drag.preview.b.x > layout.b.x && drag.preview.c.x > layout.c.x, "b and c pushed, in the preview");
+  const once = dragTo(begun, { x: 420, y: 160 }, area, minSize);
+  assert.deepEqual(drag.preview, once.preview, "one step from the press to here, however many moves it took");
+  // Since docs/plans/panels-reshuffle.md a held pane over a floating one trades places with it; b, passed over, is not pushed.
+  assert.deepEqual([drag.preview.a, drag.preview.c, drag.preview.b], [box(400, 150), box(100, 100), layout.b], "a and c traded places, in the preview");
   assert.deepEqual(layout, frozen, "and nothing about the layout itself changed");
   assert.deepEqual(drag.start, frozen, "the start is the layout at the press");
 });
@@ -60,26 +62,26 @@ test("one spot by two paths: the same ghosts and the same drop — and out and b
   // with room for the pushes to be different if the path mattered.
   const layout: Layout = {
     tray: { x: 8, y: 40, ...traySize(10, "column"), orient: "column" },
-    log: box(60, 420, 400, 120), cmd: box(60, 560, 400, 40), org: box(700, 300, 200, 200),
+    log: box(8, 420, 400, 120), cmd: box(8, 560, 400, 40), org: box(700, 300, 200, 200),
   };
   const mins = (id: string, o: "row" | "column" | undefined) => (id === "tray" ? traySize(1, o ?? "column") : { w: 60, h: 30 });
   const press = { x: 22, y: 48 };
   const spot = { x: 300, y: 300 };
   const begin = () => beginDrag("tray", "move", press, layout, "se", 10);
-  // Straight there; and the long way round — down through the log and the
-  // command line to the bottom edge, across under the organiser, up past it.
+  // Straight there; and the long way round — down the left edge past the log
+  // and the command line (reordering them), across under the organiser, up past it.
   const straight = along(begin(), steps(press, spot, 12), area, mins);
   const detour = along(begin(), [
-    ...steps(press, { x: 120, y: 690 }, 15), ...steps({ x: 120, y: 690 }, { x: 800, y: 690 }, 15),
+    ...steps(press, { x: 22, y: 690 }, 15), ...steps({ x: 22, y: 690 }, { x: 800, y: 690 }, 15),
     ...steps({ x: 800, y: 690 }, { x: 800, y: 100 }, 15), ...steps({ x: 800, y: 100 }, spot, 15),
   ], area, mins);
-  assert.ok(Object.keys(ghostsOf(along(begin(), steps(press, { x: 120, y: 690 }, 15), area, mins))).length > 1,
-    "the detour pushed things on its way");
+  assert.ok(Object.keys(ghostsOf(along(begin(), steps(press, { x: 22, y: 690 }, 15), area, mins))).length > 1,
+    "the detour reordered the left edge on its way");
   assert.deepEqual(ghostsOf(detour), ghostsOf(straight), "the same ghosts");
   assert.deepEqual(detour.preview, straight.preview, "the same preview");
   assert.deepEqual(dropOf(detour, spot, area, backSlop(false)), dropOf(straight, spot, area, backSlop(false)), "the same drop");
   // Out through everything and back to the press exactly: the start, no ghosts.
-  const home = along(begin(), [...steps(press, { x: 120, y: 690 }, 15), ...steps({ x: 120, y: 690 }, press, 15)], area, mins);
+  const home = along(begin(), [...steps(press, { x: 22, y: 690 }, 15), ...steps({ x: 22, y: 690 }, press, 15)], area, mins);
   assert.deepEqual(ghostsOf(home), {}, "back at the press: no ghosts");
   assert.deepEqual(home.preview, layout, "the preview is the start");
   sound(straight.preview);
@@ -98,6 +100,13 @@ test("the resolver's answer for a drag position equals the layout a drop there c
     const drag = along(beginDrag(id, "move", press, layout, "se", id === "tray" ? 10 : undefined), steps(press, to, 1 + Math.floor(rand() * 12)));
     const drop = dropOf(drag, to, area, backSlop(false));
     if (drop.outcome === "back") continue;
+    // A refusal is a reshuffle's own (no room on an edge), with the start as
+    // its preview — never an unsound preview caught at the drop.
+    if (drop.outcome === "refused") {
+      assert.ok(drag.refused === NO_ROOM || drag.refused === NO_SWAP, `trial ${trial}: refused for ${drop.problem}`);
+      assert.equal(drop.layout, layout);
+      continue;
+    }
     assert.ok(drop.outcome === "moved" || drop.outcome === "unchanged", `trial ${trial}: ${drop.outcome} ${drop.problem}`);
     assert.deepEqual(drop.layout, drag.preview, `trial ${trial}: the drop commits exactly what the ghosts showed`);
     sound(drag.preview);
@@ -107,10 +116,10 @@ test("the resolver's answer for a drag position equals the layout a drop there c
 test("the held panel is under the hand at the point it was taken by, held inside the area and against nothing else", () => {
   const layout: Layout = { a: box(100, 100), b: box(300, 100) };
   const drag = along(beginDrag("a", "move", { x: 130, y: 120 }, layout), steps({ x: 130, y: 120 }, { x: 380, y: 140 }, 5));
-  assert.deepEqual(drag.held, box(350, 120), "over b, exactly under the hand — the push is the preview's, not the hand's");
-  assert.deepEqual(drag.preview.a, box(350, 120), "the preview has a there too, unblocked…");
-  assert.deepEqual(drag.preview.b, box(450, 100), "…and b pushed out of its way");
-  assert.deepEqual(drag.start.b, box(300, 100), "while b itself has not moved");
+  assert.deepEqual(drag.held, box(350, 120), "over b, exactly under the hand — where it lands is the preview's, not the hand's");
+  assert.deepEqual(drag.preview.a, box(200, 120), "the preview has a stopped flush against b (its middle short of b's: no trade)…");
+  assert.deepEqual(drag.preview.b, box(300, 100), "…and b not pushed (docs/plans/panels-reshuffle.md)");
+  assert.deepEqual(drag.start.b, box(300, 100), "nor b itself");
   // Past the right edge the hand goes on; the held panel stops at the edge, as every panel does.
   const far = dragTo(drag, { x: 5000, y: 140 }, area, minSize);
   assert.equal(far.held.x + far.held.w, area.w, "held wholly inside");
@@ -132,12 +141,15 @@ test("a drag that moves nothing draws no ghosts; one stopped short shows only it
   assert.deepEqual(stopped.held, box(750, 100), "while the hand has it 50 px on");
 });
 
-test("a pushed panel's ghost is where it will land, and a fixed panel never has one", () => {
+test("a ghost is where its panel will land, and a fixed panel never has one", () => {
   const layout: Layout = { logo: { ...box(0, 0, 40, 40), fixed: true }, a: box(100, 100), b: box(100, 250) };
   const drag = along(beginDrag("a", "move", { x: 150, y: 150 }, layout), steps({ x: 150, y: 150 }, { x: 150, y: 250 }, 5));
   const g = ghostsOf(drag);
-  assert.deepEqual(Object.keys(g).sort(), ["b"], "the held one is where it will land; b's ghost below it");
-  assert.deepEqual(g.b, box(100, 300));
+  assert.deepEqual(Object.keys(g).sort(), ["a"], "b is not pushed (docs/plans/panels-reshuffle.md); the held one's ghost where it will land…");
+  assert.deepEqual(g.a, box(100, 150), "…flush on b's top");
+  // Its middle over b: the two trade places, and b's ghost is where a was.
+  const swap = along(beginDrag("a", "move", { x: 150, y: 150 }, layout), steps({ x: 150, y: 150 }, { x: 150, y: 310 }, 5));
+  assert.deepEqual(ghostsOf(swap), { a: box(100, 250), b: box(100, 100) });
   const up = along(beginDrag("a", "move", { x: 150, y: 150 }, layout), steps({ x: 150, y: 150 }, { x: 20, y: 20 }, 8));
   assert.ok(!("logo" in ghostsOf(up)), "nothing moves the logo");
   sound(up.preview);
@@ -161,10 +173,10 @@ test("a tray's turn is the preview's: the held tray keeps the way it ran, its gh
 test("lifting back where the drag started commits nothing — and a finger's lift near the press counts as back", () => {
   const layout: Layout = { a: box(100, 100), b: box(100, 250) };
   const press = { x: 150, y: 150 };
-  // Down into b (b's ghost pushed), and back up to a pixel off the press.
-  let drag = along(beginDrag("a", "move", press, layout), steps(press, { x: 150, y: 260 }, 6));
-  assert.ok(drag.preview.b.y > layout.b.y, "b's ghost pushed on the way");
-  drag = along(drag, steps({ x: 150, y: 260 }, { x: 151, y: 151 }, 6));
+  // Down onto b (b's ghost trades places with a), and back up to a pixel off the press.
+  let drag = along(beginDrag("a", "move", press, layout), steps(press, { x: 150, y: 310 }, 6));
+  assert.ok(drag.preview.b.y < layout.b.y, "b's ghost moved on the way, to a's place");
+  drag = along(drag, steps({ x: 150, y: 310 }, { x: 151, y: 151 }, 6));
   assert.deepEqual(drag.preview.b, layout.b, "the hand drawn back, b's ghost is home: the preview is the spot's");
   const mouse = dropOf(drag, { x: 151, y: 151 }, area, backSlop(false));
   assert.equal(mouse.outcome, "back");
@@ -249,7 +261,9 @@ test("everything fits for every preview: 1 500 random gestures on a phone's defa
         sound(drag.preview, a);
       }
       const drop = dropOf(drag, to, a, backSlop(true));
-      assert.notEqual(drop.outcome, "refused");
+      // Refused only for a reshuffle's own reason — no room on an edge, no
+      // room to trade — never for a preview that broke the rules.
+      if (drop.outcome === "refused") assert.ok(drag.refused === NO_ROOM || drag.refused === NO_SWAP, `refused: ${drop.problem}`);
       layout = drop.layout;
       sound(layout, a);
     }

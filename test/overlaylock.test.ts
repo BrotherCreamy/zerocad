@@ -191,9 +191,11 @@ const layout: Layout = {
 const mins = () => ({ w: 10, h: 10 });
 
 test("a locked layout refuses a drag and a push: the held panel stays, nothing is pushed, nothing is ghosted, the drop commits nothing", () => {
-  // Unlocked, the tray dragged right into the log pushes it.
+  // Unlocked, the tray dragged right into the log moves up against it (it
+  // pushed the log until docs/plans/panels-reshuffle.md; now nothing is pushed).
   const free = dragTo(beginDrag("toolbar", "move", { x: 20, y: 45 }, layout), { x: 120, y: 45 }, area, mins);
-  assert.notDeepEqual(free.preview.log, layout.log, "unlocked, the log would be pushed");
+  assert.notDeepEqual(free.preview.toolbar, layout.toolbar, "unlocked, the tray would move");
+  assert.deepEqual(ghostsOf(free).toolbar, { ...layout.toolbar, x: layout.log.x - layout.toolbar.w }, "flush against the log");
   // Locked, the same drag and the same push move nothing.
   let drag = beginDrag("toolbar", "move", { x: 20, y: 45 }, layout, "se", 12, true);
   for (const p of [{ x: 60, y: 45 }, { x: 120, y: 45 }, { x: 400, y: 500 }]) {
