@@ -1887,7 +1887,74 @@ starts.
         and tablets in the device table, the system font scale read
         Android's way, the back gesture closing what is open, Install app in
         the menu, the file paths and their fallbacks, nothing new in the
-        recogniser).
+        recogniser) — **[x] BUILT (2026-11-06)** on `claude/android`; the
+        spec's *As built* has the tables. Open to veto, as built:
+        - **The device table's Android rows**: Pixel 9 (360×808), Galaxy
+          S23/S24, the Fold 7's cover and inner screens, Pixel 7/7a/8/8a,
+          7 Pro, 9 Pro, 8 Pro, 9 Pro XL, Galaxy Tab S9, Pixel Tablet — each
+          installed with the gesture bar (24, a bottom inset), installed with
+          three buttons (48) and in a Chrome tab. Status bars and cutouts read
+          off AOSP's own Pixel overlays; **Samsung's and the Pixel Tablet's
+          are estimated**, marked so in the rows. Everything fits on all 66
+          ways, to 120 %, and with the keyboard up, with no layout change.
+        - **Android's scale factor is `env(preferred-text-scale)` × the
+          browser's font size / 16**, under a finger. Measured in Chromium 141
+          with Blink's accessibility font scale at 1.3: the variable reads
+          1.3; `font: medium` reads 16 px on a probe whatever the scale (Chrome
+          applies it only by text autosizing, which never acts on a probe), so
+          the spec's suggested reading was dropped. A Pixel's 100 % is 1.3 at
+          the default, 1.69 at 130 %. No `<meta name="text-scale">` (it would
+          count it twice).
+        - **The back-gesture rule**: back closes the top-most open thing
+          (tooltip, the workbench question or offer, context menu, flyout,
+          app menu) through the same seam as Escape; one history entry per
+          opening made by a press, taken off again when it closes otherwise;
+          at rest a guard makes back do nothing — **under a finger or
+          installed only**; in a desktop's tab Back leaves as it always has.
+          Escape now closes the workbench question too.
+        - **Install app** is an App section first in the logo menu while the
+          browser offers to install (`beforeinstallprompt` kept, Chrome's own
+          infobar suppressed); on an iPhone in Safari it says Share, Add to
+          Home Screen. The manifest gains screenshots, `launch_handler:
+          focus-existing` and the workbench `.js` in `file_handlers`.
+        - **Files**: a save picker that refuses downloads and says why; an open
+          picker that fails falls back to the input; Add workbench… asks the
+          picker first; every result names its door. **Corrected: Chrome on
+          Android refuses a `.json` share** (its share service's permitted
+          list has no json), so Share downloads there — the spec had this as
+          Safari's alone.
+        - **The keyboard**: the page is not resized for it
+          (`interactive-widget=resizes-visual`); the panel being typed into
+          rides on the keyboard's top, narrowed beside the other panes.
+        - **Browsers**: tested Chromium under the Pixel 7 and Galaxy S24
+          descriptors; a smoke run under Samsung Internet's user agent
+          (Chromium with Samsung's string); **untested: Firefox for Android
+          and Samsung Internet itself.**
+        - **Measured** (`npm run measure:android`, Pixel 7, ×1 and CPU ×4):
+          the mode chip's `activePlane` with a work plane on a face, 0.9 ms a
+          frame (2.0–2.7 ms at ×4) on the three-feature fixture —
+          **not cached**, under the brief's few ms; `Bodies.everything`
+          starting the Worker when round is armed on a one-sweep box: the
+          arming frame 15 ms (47 at ×4), the kernel's bodies in after
+          1.2–1.7 s, the longest frame gap meanwhile 0.6–0.8 s with the page's
+          own JavaScript idle.
+        - Found here: a tray button's long-press let a `contextmenu` through
+          (Chrome's own menu on Android); the lifted command line kept its
+          gesture-bar padding (ARCHITECTURE's 31–32). And a harness flaw: a
+          safe-area override sent before a reload, after other sizes, was
+          sometimes not in force — the Android suites now re-send it and
+          assert it.
+        - [ ] **Left for later**: cache `activePlane` on the solve once a
+          drawing makes it cost more than a few ms a frame (it asks every
+          feature for its faces each frame); start the solid kernel's Worker
+          when the first feature is made, so arming round does not wait a
+          second and a half for it; the iPhone fits suite's `hold` sends the
+          safe-area override before the reload and checks no insets — give it
+          the Android suite's re-send and assertion; tabulate the Android ways
+          step by step above 120 %. **Not tried on an Android device**: the
+          bars' insets in the installed app, the richer install sheet, the
+          pickers' reported quirks, `file_handlers` for a WebAPK, two backs
+          with no tap between, Samsung Internet, Firefox.
       - **Also queued after mode feedback:**
         [`panels-preview.md`](docs/plans/panels-preview.md) (the owner:
         *"they should show how they will snap IF the user drops the grasped

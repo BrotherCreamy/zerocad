@@ -106,6 +106,61 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### Android: why the scale is a CSS variable and not a font size, why the guard is only on a phone, and what was rejected
+
+**The spec's way to read the font scale reads nothing.** It suggested the
+computed size of a `font: medium` element with `text-size-adjust` left at its
+default. I measured before building: Chromium 141 under Pixel 7 emulation
+with Blink's accessibility font scale set to 1.3 (the setting Chrome on
+Android fills from the system's). Among four lines of text, `medium` came
+back 20.8 px. On a lone probe it came back 16 px, with or without
+`text-size-adjust`. Chrome applies the system's scale to type only through
+text autosizing, a heuristic over runs of text, and a probe is never one.
+`env(preferred-text-scale)`, which Chrome on Android has since 138, read 1.3
+exactly. So the variable is read, through a probe's *width*
+(`calc(100px * env(…, 0))`), since script can read a CSS number no other
+way. **Rejected: `<meta name="text-scale" content="scale">`** (Chrome 146).
+It would make Chrome scale `medium` by the system's setting, and the factor
+would then be counted twice: once in the variable and once in `defaultFont`.
+**Rejected: reading the variable under a mouse.** A desktop's preference is
+its browser's font size, and where Chrome brings the variable to Windows it
+is a scale Chrome already applies as zoom.
+
+**The guard entry is a phone's and an installed app's, not a tab's.** The
+spec says back at rest does nothing, never leaving the app. In an installed
+app, or on a phone where the gesture is a thumb's reflex, that is right. In
+a desktop browser's tab, a page that will not let Back leave is the
+pattern people hate. Things that are open still get their entry everywhere,
+so a desktop's Back closes a menu before it leaves. **Rejected: one entry per
+open thing**, a stack mirroring the overlays. One entry for "something is
+open", re-pushed after a back while more stays open, has the same effect,
+and fewer entries to leave behind. **Rejected: pushing on hover.** A mouse
+running along the tray opens and closes flyouts many times a second. That is
+history churn, and Chromium marks entries pushed without user activation as
+ones Back skips. The guard's own pop closes the hover's flyout anyway.
+
+**The keyboard is dodged by the panel, not by a re-layout.**
+`interactive-widget=resizes-visual` keeps the page its size under the
+keyboard (Chrome's default since 108, now asked for), so nothing re-lays out
+and the drawing does not shrink. Only the panel holding the focused field is
+moved, onto the keyboard's top, and narrowed beside the panes it would
+otherwise cover. **Rejected: re-running the resolver with a shorter area.** It
+would move every pane twice per keystroke session and fight the viewer's own
+layout, all to dodge something that goes away when the field loses focus.
+
+**activePlane not cached.** The brief: cache it on the solve if it costs more
+than a few ms a frame. It costs 0.9 ms unthrottled and 2.0–2.7 ms at a 4× CPU
+throttle, on the largest fixture with faces. The model has no revision
+number, so a correct cache key would be a fingerprint of every solved value,
+every frame. That is cheaper than the call, but it is a new invariant to keep
+true for a saving of a millisecond. Written down as the thing to do once a
+drawing makes it cross.
+
+**The share refusal.** The spec believed Chrome on Android shares a `.json`.
+Chromium's Android share service has its own permitted list, and `json` is
+not on it, as on the desktop. I read the source rather than trust either
+claim, and the e2e now plays Android's refusal, not a share that works.
+
 ### Solid fillets: why blends have a registry of their own, why the preview is a trial, and what was rejected
 
 **A separate registry, measured first.** The obvious record for a fillet was

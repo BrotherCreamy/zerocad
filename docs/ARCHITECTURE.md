@@ -49,7 +49,12 @@ kind again: the document's name and dirty flag (a comparison against the
 snapshot at the last open or save), which way a save or share goes for what
 the platform offers, and the autosave, all over strings and injected stores.
 Its browser half, `filehost.ts`, is host-level — pickers, the share sheet,
-drops, IndexedDB — and only `main.ts` constructs it. `step.ts` is pure the
+drops, IndexedDB — and only `main.ts` constructs it. Three more of that kind
+came with Android (docs/plans/android.md), each pure with the browser handed
+in: `backstack.ts`, the session-history entries that make a back close what
+is open (a fake history in its test); `keyboard.ts`, where a panel being
+typed into goes when the keyboard covers it; and `install.ts`, the browser's
+install offer kept and made from the logo menu. `step.ts` is pure the
 same way, over a model: the Part 21 spelling of what `solids.ts` says each
 feature exactly is — a B-rep of planes, cylinders, cones, spheres, tori and
 surfaces of revolution with shared vertices and edges — beside `faces.ts`,
@@ -1715,7 +1720,7 @@ until the next action went unrecorded.
 
 ## Why there is an end-to-end suite
 
-Thirty bugs so far were invisible to the unit tests and obvious within seconds
+Thirty-two bugs so far were invisible to the unit tests and obvious within seconds
 of running the app:
 
 1. a status readout that went stale, so a conflict could be introduced from
@@ -1855,6 +1860,15 @@ of running the app:
    Only the skeleton the kernel draws in an entity's place now yields.
 30. A fillet's committed `R2` drawn under the edit dialog's own radius label,
    on a phone. Found by looking at the phone screenshot.
+31. A long-press on a tray button raising a `contextmenu` nothing cancelled —
+   the one surface that let it through, where Chrome on Android shows its own
+   menu. Every unit test passed (none has a browser to raise one); found by
+   the Android e2e's touch checks (android.md). It is now cancelled page-wide
+   but where there is text to copy.
+32. The command line lifted above the keyboard still padded for the gesture
+   bar it no longer touched: an empty band between the text and the keys.
+   The lift's arithmetic was right and its test passed; found by looking at
+   the keyboard picture. A lifted panel is lifted as its own rectangle now.
 
 None of these are mathematics. They are all *assembly*. Hence `npm run
 test:e2e`, and hence the expectation that anything touching the app is checked
