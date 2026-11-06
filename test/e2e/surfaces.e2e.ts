@@ -135,7 +135,7 @@ const typed = () => app.page.$$eval("#log .in", (els) => els.map((e) => (e.textC
 const near = (a: number, b: number, rel = 1e-6) => Math.abs(a - b) <= rel * Math.max(1, Math.abs(b));
 
 // The rectangle 60 × 40 on the ground, a hole r 6 at (10, 0), a wall 15 up off the front edge (y = −20).
-const W = 30, H = 20, R = 6, CX = 10, UP = 15, F = 4, T = 2;
+const W = 30, H = 20, R = 6, CX = 10, UP = 15, F = 4, T = 2, C = 3;
 const plate = 4 * W * H - Math.PI * R * R;
 
 test("a rectangle's face, clicked with the surface tool: a planar surface s1, its area the rectangle's", { skip }, async () => {
@@ -198,6 +198,82 @@ test("a wall swept up off the front edge — the surface tool, chain off, a curv
   assert.equal(s[0].shared.length, 1, `one shared edge, the join: ${s[0].shared}`);
   assert.match(s[0].shared[0], /^s1\.base\|s3\.m0$|^s3\.m0\|s1\.base$/);
   await shot("6-knitted");
+});
+
+/** The model's size, to undo back to: its surface records and entities. */
+const counts = () => app.page.evaluate(() => {
+  const m = (window as never as { __neocad: { model: { surfaces: Map<string, unknown>; entities: Map<string, unknown> } } }).__neocad.model;
+  return `${m.surfaces.size}/${m.entities.size}`;
+});
+
+/** Ctrl+Z until the model is back to `want`, polling after each for the step to land. */
+async function undoTo(want: string): Promise<void> {
+  for (let i = 0; i < 8 && (await counts()) !== want; i++) {
+    const was = await counts();
+    await app.page.fill("#cmd", "");
+    await app.page.keyboard.press("Control+z");
+    await app.page.waitForFunction(([w, f]) => {
+      const m = (window as never as { __neocad: { model: { surfaces: Map<string, unknown>; entities: Map<string, unknown> } } }).__neocad.model;
+      const now = `${m.surfaces.size}/${m.entities.size}`;
+      return now !== w || now === f;
+    }, [was, want] as const, { timeout: 10_000 });
+  }
+  assert.equal(await counts(), want, "undone back to the knitted sheet");
+}
+
+test("the join chamfered with the chamfer tool from the modify group: the setback typed, previewed, ✓ — chamferSurfaces, the closed form; a trim of the wall's name is s1's", { skip }, async () => {
+  const knitted = (await settled())[0].area;
+  const back = await counts();
+  // Armed from the modify group's flyout, as a mouse does it: a hover opens it, a click on the item arms.
+  const b = await app.page.$eval('#toolbar button[data-group="modify"]', (el) => { const r = el.getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; });
+  await app.page.mouse.move(700, 300);
+  await app.page.mouse.move(b[0], b[1], { steps: 2 });
+  await app.page.waitForFunction(() => {
+    const f = document.querySelector("#flyout") as HTMLElement;
+    return !f.hidden && f.dataset.group === "modify";
+  });
+  await app.page.click('#flyout button[data-tool="chamfer"]');
+  await app.page.waitForFunction(() => (window as never as Neo).__neocad.engine.active?.name === "chamfer");
+  // The setback from the options panel.
+  await app.page.click('#options input.oval[data-option="setback"]', { clickCount: 3 });
+  await app.page.keyboard.type(String(C));
+  await app.page.waitForFunction((c) => (document.querySelector('#options input.oval[data-option="setback"]') as HTMLInputElement).value === String(c), C);
+  await hoverAt([0, -H, 0]);
+  await clickAt([0, -H, 0]);
+  await app.page.waitForFunction(() => (window as never as Neo).__neocad.bodies.trialAnswer().settled, undefined, { timeout: 30_000 });
+  assert.equal(await app.page.evaluate(() => (window as never as Neo).__neocad.bodies.trialAnswer().why), null, "the preview is the kernel's, refused by nothing");
+  await shot("7a-chamfer-preview", true);
+  await app.page.click("#options .oact button.ok");
+  const s5 = await record("s5");
+  assert.equal(s5.kind, "chamfer");
+  assert.equal(s5.edges?.length, 1);
+  const entry = await app.page.evaluate(() => {
+    const j = (window as never as { __neocad: { model: { journal: { op: string; args: unknown[] }[] } } }).__neocad.model.journal;
+    return j.filter((e) => e.op === "chamferSurfaces").at(-1) ?? null;
+  });
+  assert.ok(entry, "journalled as chamferSurfaces — neither the sketch's chamfer nor the solid's");
+  assert.equal(entry.args[0], "s1");
+  assert.equal(entry.args[2], C, `its setback, ${C}: ${JSON.stringify(entry.args)}`);
+  const s = await settled();
+  // Each side cut back C along 2W of join, a flat C√2 wide in its place — the unit test's closed form and tolerance.
+  const expect = knitted - 2 * C * 2 * W + Math.SQRT2 * C * 2 * W;
+  assert.ok(near(s[0].area, expect, 1e-6), `area ${s[0].area} against ${expect}`);
+  assert.ok(s[0].faces.includes("s5.f0"), `the chamfer's face is s5's: ${s[0].faces}`);
+  // s3, the wall, is part of s1: a trim of it is recorded as s1's.
+  await app.page.keyboard.press("Escape");
+  await app.type(`line(pt(${W - 6}, ${-H - 5}, 0), pt(${W - 6}, ${H + 5}, 0))`);
+  const lineName = await app.page.evaluate(() => {
+    const m = (window as never as { __neocad: { model: { entities: Map<string, { kind: string }> } } }).__neocad.model;
+    return [...m.entities.entries()].filter(([, e]) => e.kind === "line").at(-1)![0];
+  });
+  await app.type(`trim("s3", "${lineName}", [${-W / 2}, ${H / 2}, 0])`);
+  const s6 = await record("s6");
+  assert.equal(s6.kind, "trim");
+  assert.equal(s6.into, "s1", "the knitted wall's name answers for the sheet it is part of");
+  assert.deepEqual((await settled()).map((x) => x.name), ["s1"]);
+  // Back to the knitted sheet for the fillet that follows: the names counted again from s5.
+  await undoTo(back);
+  assert.ok(near((await settled())[0].area, knitted), "the knitted area again");
 });
 
 test("the join filleted with the round tool: clicked, previewed, ✓ — the closed form, one record", { skip }, async () => {

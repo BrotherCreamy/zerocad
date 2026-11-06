@@ -243,17 +243,26 @@ Unit tests:
   open, deletion, refusals, and the organiser.
 - `test/stepsurfaces.test.ts` (3).
 
-Browser tests: `test/e2e/surfaces.e2e.ts` (7, mouse) and
-`test/e2e/surfacesphone.e2e.ts` (5, iPhone 13). Both run the same flow:
+Browser tests: `test/e2e/surfaces.e2e.ts` (8, mouse) and
+`test/e2e/surfacesphone.e2e.ts` (6, iPhone 13). Both run the same flow:
 1. a rectangle's face becomes the planar surface s1;
 2. a circle and the trim tool leave an area of 2400 − 36π;
 3. a wall is made and knitted in from the menu;
-4. the round tool rounds the join (checked against the closed form);
-5. Thicken from the menu makes a solid, its volume the closed form with the
+4. the join is **chamfered**. The chamfer tool is armed from the modify
+   group's flyout (a hover with the mouse; a held finger, then a tap on the
+   phone), and the setback is typed in the options panel. The join is picked
+   by a click or a tap, the preview is taken, then ✓. The record is checked
+   as `chamferSurfaces` with that setback, and the area against
+   knitted − 2·C·L + √2·C·L to the unit test's 10⁻⁶. With the mouse, a
+   `trim("s3", …)` of the knitted wall's name is then recorded as s1's. The
+   test undoes back to the knitted sheet;
+5. the round tool rounds the join (checked against the closed form);
+6. Thicken from the menu makes a solid, its volume the closed form with the
    curvature term (π/2)·L·T²/2;
-6. the part is exported.
+7. the part is exported.
 
-Pictures 236–243, each looked at.
+Pictures 236–245, each looked at (244: the mouse's chamfer preview; 245:
+the iPhone's chamfered join).
 
 ### Found, still to do
 

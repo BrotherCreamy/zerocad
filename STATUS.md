@@ -44,7 +44,7 @@ etc).
   sheets; thicken, the planar face and extend built around what it does not
   do (the spec's *As built*). Unit: `test/surfaceskernel.test.ts` (12),
   `test/surfaces.test.ts` (16), `test/stepsurfaces.test.ts` (3); browser:
-  `test/e2e/surfaces.e2e.ts` (7), `test/e2e/surfacesphone.e2e.ts` (5,
+  `test/e2e/surfaces.e2e.ts` (8), `test/e2e/surfacesphone.e2e.ts` (6,
   iPhone 13). *Not tried on a phone.*
 
 - **Touch targets that follow the interface size** (docs/plans/touch-density.md,

@@ -38,7 +38,10 @@ deviation, and what the kernel could not do, is in its *As built*.
 - **Fillets and chamfers for surfaces, with the solid's tools.** The round
   and chamfer tools take a surface's shared edges as they take a solid's —
   click the join a knit made, the kernel's preview, ✓ — `fillet("s1",
-  ["s1.base|s3.m0"], 4)` (pictures 239, 242). Between two surfaces that do
+  ["s1.base|s3.m0"], 4)` (pictures 239, 242). The chamfer is the same,
+  armed from the modify group with its setback typed in the panel:
+  `chamfer("s1", ["s1.base|s3.m0"], 3)`, a flat in place of the corner
+  (pictures 244, 245). Between two surfaces that do
   not share an edge, click one and then the other: each is trimmed back to
   the other where they cross, the clicks being the sides kept, knitted and
   rounded, in one record — `fillet("s1", "s2", 3)`. Picture 240 is the

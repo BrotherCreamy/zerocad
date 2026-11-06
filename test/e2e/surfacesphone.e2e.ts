@@ -135,7 +135,7 @@ async function kind(name: string): Promise<string> {
 
 const near = (a: number, b: number, rel = 1e-5) => Math.abs(a - b) <= rel * Math.max(1, Math.abs(b));
 
-const W = 24, H = 16, R = 5, CX = 8, UP = 12, F = 3, T = 2;
+const W = 24, H = 16, R = 5, CX = 8, UP = 12, F = 3, T = 2, C = 2;
 const plate = 4 * W * H - Math.PI * R * R;
 /** A place on the plate well clear of every curve, for a finger. */
 const IN = [-W / 2, -H / 4, 0];
@@ -183,6 +183,66 @@ test("on an iPhone: a wall swept down off the front edge, and the two knitted fr
   assert.deepEqual(s.map((x) => x.name), ["s1"]);
   assert.ok(near(s[0].area, plate + 2 * W * UP));
   await shot("3-knitted");
+});
+
+/** A selector's middle, in the canvas's coordinates the fingers take. */
+const middleOf = (selector: string) => app.page.$eval(selector, (el) => {
+  const r = el.getBoundingClientRect();
+  const c = document.getElementById("cv")!.getBoundingClientRect();
+  return [r.x + r.width / 2 - c.x, r.y + r.height / 2 - c.y] as [number, number];
+});
+
+const counts = () => app.page.evaluate(() => {
+  const m = (window as never as { __neocad: { model: { surfaces: Map<string, unknown>; entities: Map<string, unknown> } } }).__neocad.model;
+  return `${m.surfaces.size}/${m.entities.size}`;
+});
+
+test("on an iPhone: the join chamfered — chamfer tapped in the modify group's flyout, its setback typed in the panel, the join tapped, ✓ tapped", { skip }, async () => {
+  const knitted = (await settled())[0].area;
+  const back = await counts();
+  // A held finger opens the group's flyout (toolbar-groups.md); a tap on the item arms it.
+  await hand.hold(...await middleOf('#toolbar button[data-group="modify"]'), 700, true);
+  await app.page.waitForFunction(() => {
+    const f = document.querySelector("#flyout") as HTMLElement;
+    return !f.hidden && f.dataset.group === "modify";
+  });
+  await hand.up();
+  await hand.tap(...await middleOf('#flyout button[data-tool="chamfer"]'));
+  await app.page.waitForFunction(() => (window as never as { __neocad: { engine: { active: { name: string } | null } } }).__neocad.engine.active?.name === "chamfer");
+  // The setback entered in the options panel: a tap on the field, a number, no drag.
+  const field = '#options input.oval[data-option="setback"]';
+  await app.page.tap(field);
+  await app.page.fill(field, String(C));
+  await app.page.waitForFunction(([s, c]) => (document.querySelector(s) as HTMLInputElement).value === c, [field, String(C)] as const);
+  await app.page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  await tapAt([0, -H, 0], [0, 5]);
+  await app.page.waitForFunction(() => (window as never as Neo).__neocad.bodies.trialAnswer().settled, undefined, { timeout: 30_000 });
+  assert.equal(await app.page.evaluate(() => (window as never as Neo).__neocad.bodies.trialAnswer().why), null);
+  await tapOk();
+  assert.equal(await kind("s5"), "chamfer");
+  const entry = await app.page.evaluate(() => {
+    const j = (window as never as { __neocad: { model: { journal: { op: string; args: unknown[] }[] } } }).__neocad.model.journal;
+    return j.filter((e) => e.op === "chamferSurfaces").at(-1) ?? null;
+  });
+  assert.ok(entry, "journalled as chamferSurfaces");
+  assert.equal(entry.args[2], C, `the setback typed in the panel: ${JSON.stringify(entry.args)}`);
+  const [s] = await settled();
+  const expect = knitted - 2 * C * 2 * W + Math.SQRT2 * C * 2 * W;
+  assert.ok(near(s.area, expect, 1e-6), `area ${s.area} against ${expect}`);
+  assert.ok(s.faces.includes("s5.f0"));
+  await shot("4a-chamfered");
+  // Back to the knitted sheet for the fillet: the action strip's Undo, tapped until it is.
+  for (let i = 0; i < 4 && (await counts()) !== back; i++) {
+    const was = await counts();
+    await hand.tap(...await middleOf('#actions button[data-action="undo"]'));
+    await app.page.waitForFunction((w) => {
+      const m = (window as never as { __neocad: { model: { surfaces: Map<string, unknown>; entities: Map<string, unknown> } } }).__neocad.model;
+      return `${m.surfaces.size}/${m.entities.size}` !== w;
+    }, was, { timeout: 10_000 });
+  }
+  assert.equal(await counts(), back, "undone back to the knitted sheet");
+  assert.ok(near((await settled())[0].area, knitted));
+  await type('arm("select")');
 });
 
 test("on an iPhone: the join tapped with the round tool — the preview — ✓ tapped", { skip }, async () => {
