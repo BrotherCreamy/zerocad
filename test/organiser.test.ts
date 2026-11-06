@@ -360,7 +360,7 @@ test("the pane's sections: a group row is its name, count, eye and open marker; 
   assert.deepEqual([e1.name, e1.detail, e1.count, e1.eye, e1.open, e1.eyeCommand], ["e1", "extrude", m.featureOf("e1").owns.length, "shown", null, 'hide("e1")']);
   hide(m, "e1");
   assert.equal(organiserSections(m)[2].rows[0].eyeCommand, 'show("e1")');
-  assert.deepEqual(organiserSections(new Model(2)).map((s) => s.rows.length), [0, 0, 0, 0]);
+  assert.deepEqual(organiserSections(new Model(2)).map((s) => s.rows.length), [0, 0, 0, 0, 0]);
   // Regions, last: the one e1 was made on, its chain the row's detail.
   const regions = organiserSections(m)[3];
   assert.equal(regions.title, "Regions");

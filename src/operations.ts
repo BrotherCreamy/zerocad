@@ -3658,7 +3658,8 @@ function delOne(model: Model, name: string): string[] {
 /** `delOne` once any hole it fills is filled: the inward rule, for records, relations and entities. */
 function cascade(model: Model, name: string): string[] {
   // A fillet's or chamfer's record cascades as a feature's does (docs/plans/solid-fillets.md).
-  const feature = model.features.get(name) ?? model.blends.get(name);
+  // A surface's record too (docs/plans/surfaces.md): its dimension goes with it.
+  const feature = model.features.get(name) ?? model.blends.get(name) ?? model.surfaces.get(name);
   const owned = (pred: (n: string) => boolean) => (feature ? feature.owns.filter(pred) : []);
   const seeds = feature ? owned((n) => model.entities.has(n)) : model.entities.has(name) ? [name] : [];
   const asked = new Set(feature ? owned((n) => model.relations.has(n)) : model.relations.has(name) ? [name] : []);
@@ -3678,6 +3679,22 @@ function cascade(model: Model, name: string): string[] {
   const features = [...model.features.values(), ...model.blends.values()]
     .filter((f) => f.name === name || f.names.some((n) => going.has(n)))
     .map((f) => f.name);
+  // Surfaces naming anything on the way out — a curve swept, a feature a face
+  // was taken from, a surface trimmed by or knitted — and the records changing
+  // those, transitively; each with its own dimension.
+  const gone = new Set([...going, ...features]);
+  for (let grew = true; grew;) {
+    grew = false;
+    for (const sf of model.surfaces.values()) {
+      if (gone.has(sf.name)) continue;
+      if (sf.name === name || sf.names.some((n) => gone.has(n)) || (sf.into !== undefined && gone.has(sf.into))) {
+        gone.add(sf.name);
+        features.push(sf.name);
+        for (const d of sf.owns) if (model.relations.has(d) && !relations.includes(d)) relations.push(d);
+        grew = true;
+      }
+    }
+  }
 
   const removed: string[] = [];
   // Records first, since they name relations and entities alike and the

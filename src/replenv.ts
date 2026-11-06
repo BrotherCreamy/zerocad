@@ -26,6 +26,7 @@ import {
   regionText, revolve, set, subtract, unhole,
 } from "./operations.ts";
 import { chamferEdges, describeBlend, filletEdges, setEdges } from "./blends.ts";
+import { describeSurface, surfaceBlend } from "./surfaces.ts";
 import { chamfer as sketchChamfer } from "./sketchedit.ts";
 import { planeAxes } from "./curveplane.ts";
 import { save as saveModel, savedTools } from "./persist.ts";
@@ -682,8 +683,14 @@ export function neocadScope(h: EnvHandles): Bag {
     // A list of edges second is the other fillet — a solid's edges, rounded
     // by the solid kernel as a feature of the body (docs/plans/solid-fillets.md):
     // `fillet("e1", ["e1.lid|e1.m0"], 3)`, journalled as `filletEdges`.
-    fillet: (l1: string, l2: string | string[], r: number, side?: number[] | null, regenerated?: unknown) =>
-      Array.isArray(l2) ? filletEdges(model, l1, l2, r) : fillet(model, l1, l2, r, side ?? null, regenerated),
+    //
+    // A surface first is the surface's (docs/plans/surfaces.md): `fillet("s1",
+    // "s2", 3)` between two, `fillet("s1", ["s1.m0|s1.m1"], 3)` its own
+    // edges — journalled as `filletSurfaces`, so neither the sketch's nor the
+    // solid's entry ever reads as one.
+    fillet: (l1: string, l2: string | string[], r: number, side?: unknown, regenerated?: unknown) =>
+      model.surfaces.has(l1) ? surfaceBlend(model, "fillet", l1, l2, r, side)
+        : Array.isArray(l2) ? filletEdges(model, l1, l2, r) : fillet(model, l1, l2, r, (side as number[] | null | undefined) ?? null, regenerated),
     /**
      * Cuts a body's edges back by one setback along each face —
      * `chamfer("e1", ["e1.lid|e1.m0"], 2)` — a feature of the body, its
@@ -693,8 +700,9 @@ export function neocadScope(h: EnvHandles): Bag {
     // Two lines second is the sketch's chamfer (docs/plans/sketch-edit.md):
     // `chamfer("l1", "l2", 5)` cuts the corner they share with a line,
     // journalled as `chamfer`, as the two fillets are told apart.
-    chamfer: (a: string, b: string | string[], c: number, d?: number | null, regenerated?: unknown) =>
-      Array.isArray(b) ? chamferEdges(model, a, b, c) : sketchChamfer(model, a, b, c, d ?? null, regenerated),
+    chamfer: (a: string, b: string | string[], c: number, d?: unknown, regenerated?: unknown) =>
+      model.surfaces.has(a) ? surfaceBlend(model, "chamfer", a, b, c, d)
+        : Array.isArray(b) ? chamferEdges(model, a, b, c) : sketchChamfer(model, a, b, c, (d as number | null | undefined) ?? null, regenerated),
     /** A fillet's or chamfer's edges, replaced in place: `setEdges("e3", [...])` — the feature dialog's ✓. */
     setEdges: (feature: string, edges: string[]) => setEdges(model, feature, edges),
     /**
@@ -1038,6 +1046,8 @@ export function neocadScope(h: EnvHandles): Bag {
         }),
         // Fillets and chamfers: what they round, and their size (blends.ts).
         ...[...model.blends.values()].map((b) => `${mark(b.name, describeBlend(model, b))}\n    edges ${b.edges.join(" ")}`),
+        // Surfaces, record by record (surfaces.ts): what each made or changed.
+        ...[...model.surfaces.values()].map((x) => mark(x.name, describeSurface(model, x))),
         ...[...model.groups.values()].map((g) => `${g.name}  group of ${g.members.length ? g.members.join(" ") : "nothing yet"}`
           + (model.openGroup === g.name ? "  (open — new geometry joins it)" : "")),
       ];

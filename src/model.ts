@@ -834,6 +834,69 @@ export interface RegionEntry {
   steps: RegionStep[];
 }
 
+/**
+ * A **surface** (docs/plans/surfaces.md): a sheet the solid kernel builds — no
+ * volume, edges that bound one face — named `s1`, `s2`, … in a namespace of
+ * its own beside the features (`e`) and regions (`rg`). The owner's rule from
+ * regions-as-operations.md, *"there should be no such thing as a negative
+ * face … only an operation which subtracts"*, holds here as for faces and
+ * solids: a surface is a thing, and trim, extend, knit, offset, thicken and
+ * the fillet between two are **operations** on it, never a negative surface.
+ *
+ * **A surface is its chain**, as a body is (modes.ts): a record that makes it
+ * (`extrude` of curves, `revolve`, `planar` of a region, a body's `face`, an
+ * `offset` of another surface) and every later record whose `into` names it,
+ * in the order they were made — each its own `sN`, as a body's booleans are
+ * each an `eN`. A `knit` takes the surfaces in `with` into this one: they are
+ * no longer surfaces of their own (a knitted pair is one sheet), and their
+ * chains come with them. Its shape is the kernel's, derived every rebuild;
+ * what is relational is the one number most records carry, a dimension (the
+ * depth, the angle, a distance, a radius), `set` and undone like any.
+ *
+ * Structure, so it lives here; the operations that make them are in
+ * surfaces.ts. Rebuilt by replay, never saved.
+ */
+export type SurfaceKind = "extrude" | "revolve" | "planar" | "face" | "offset"
+  | "trim" | "extend" | "knit" | "thicken" | "solidify" | "fillet" | "chamfer";
+
+/** The records that start a surface; every other kind changes one (`into`). */
+export const SURFACE_HEADS: readonly SurfaceKind[] = ["extrude", "revolve", "planar", "face", "offset"];
+
+export interface SurfaceEntry {
+  kind: SurfaceKind;
+  name: string;
+  /** The surface it changes, by any record of its chain; absent for one that starts a surface. */
+  into?: string;
+  /** extrude, revolve: the curves swept, in walk order; planar: the region's loops. */
+  curves?: string[];
+  loops?: ProfileMember[][];
+  /** extrude, revolve, planar, a trim by a curve: the plane the curves lie in (any plane reference). */
+  frame?: string;
+  /** revolve: the axis (a line, or a frame's axis). */
+  axis?: string;
+  /** face: the face's name on its body or surface (`e1.lid`); offset: the surface offset. */
+  of?: string;
+  /** trim: the curve or the surface it cuts by. */
+  by?: string;
+  /** trim: a point on the side kept. fillet, chamfer between two: a point on each kept side, or null. */
+  keep?: number[];
+  keeps?: (number[] | null)[];
+  /** extend: the boundary edge lengthened, by name (`s1.m0|s1.lid`). */
+  edge?: string;
+  /** knit: the surfaces taken in; fillet, chamfer between two: the other. */
+  with?: string[];
+  /** fillet, chamfer of a surface's own edges, by name. */
+  edges?: string[];
+  /** knit: how near two edges must run to be stitched. */
+  tolerance?: number;
+  /** The dimension holding its number, where it has one. */
+  size?: string;
+  /** Everything the record refers to: curves, other surfaces and features, its dimension. */
+  names: string[];
+  /** What deleting it takes: its dimension. */
+  owns: string[];
+}
+
 type WithoutName<F> = F extends unknown ? Omit<F, "name"> : never;
 export type FeatureDraft = WithoutName<FeatureEntry>;
 
@@ -851,6 +914,8 @@ export class Model {
   groups = new Map<string, GroupEntry>();
   /** Named regions — `rg1`, `rg2`, … — in the order they were made. See `RegionEntry`. */
   regions = new Map<string, RegionEntry>();
+  /** Named surfaces' records — `s1`, `s2`, … — in the order they were made. See `SurfaceEntry`. */
+  surfaces = new Map<string, SurfaceEntry>();
   /**
    * What is hidden: entity, relation and feature names. A hidden entity is not
    * drawn, picked, snapped to or boxed — and is **still solved**: nothing below
@@ -1005,7 +1070,7 @@ export class Model {
     // The origin answers too, so nothing can be made under its name.
     return (name === ORIGIN && framesExistIn(this.dim))
       || this.entities.has(name) || this.relations.has(name) || this.features.has(name) || this.blends.has(name)
-      || this.groups.has(name) || this.regions.has(name);
+      || this.groups.has(name) || this.regions.has(name) || this.surfaces.has(name);
   }
 
   /** Whether `name` is a frame: one a user made, or the origin. */
@@ -1244,6 +1309,33 @@ export class Model {
     const entry: BlendFeature = { ...blend, name };
     this.blends.set(name, entry);
     return entry;
+  }
+
+  /**
+   * Registers a surface's record under a fresh `sN` and returns it. Its names
+   * are checked as a feature's are, except that a record may name another
+   * surface or a feature (what it trims by, knits, offsets, takes a face of).
+   * Journals nothing: the operation is the entry (surfaces.ts).
+   */
+  addSurface(entry: Omit<SurfaceEntry, "name">): SurfaceEntry {
+    for (const n of entry.names) {
+      if (!this.entities.has(n) && !this.relations.has(n) && !this.surfaces.has(n) && !this.features.has(n) && !this.blends.has(n)) {
+        throw new Error(`a surface cannot name "${n}" — there is no such thing`);
+      }
+    }
+    const named = new Set(entry.names);
+    for (const n of entry.owns) if (!named.has(n)) throw new Error(`a surface cannot own "${n}" without naming it`);
+    const name = this.claimName("s");
+    const made: SurfaceEntry = { ...entry, name };
+    this.surfaces.set(name, made);
+    return made;
+  }
+
+  /** The surface record called `name`. */
+  surfaceOf(name: string): SurfaceEntry {
+    const s = this.surfaces.get(name);
+    if (!s) throw new Error(`"${name}" is not a surface`);
+    return s;
   }
 
   /** The fillet or chamfer called `name`. */
@@ -2091,7 +2183,7 @@ export class Model {
    */
   deleteRelation(name: string): void {
     const r = this.relationOf(name);
-    const featured = [...this.featuresNaming(name), ...this.blendsNaming(name)];
+    const featured = [...this.featuresNaming(name), ...this.blendsNaming(name), ...[...this.surfaces.values()].filter((x) => x.names.includes(name))];
     if (featured.length) {
       throw new Error(`"${name}" is still part of ${featured.map((f) => f.name).join(", ")}`);
     }
@@ -2110,8 +2202,10 @@ export class Model {
    */
   deleteFeature(name: string): void {
     // A fillet's or chamfer's record goes by the same primitive: one name
-    // space, one journal op for "this record, and only it".
+    // space, one journal op for "this record, and only it" — and so does a
+    // surface's (docs/plans/surfaces.md).
     if (this.blends.has(name)) this.blends.delete(name);
+    else if (this.surfaces.has(name)) this.surfaces.delete(name);
     else this.featureOf(name);
     this.features.delete(name);
     this.hidden.delete(name);
@@ -2241,7 +2335,7 @@ export class Model {
   membersOf(name: string): readonly string[] | null {
     const g = this.groups.get(name);
     if (g) return g.members;
-    const f = this.features.get(name) ?? this.blends.get(name);
+    const f = this.features.get(name) ?? this.blends.get(name) ?? this.surfaces.get(name);
     return f ? f.owns : null;
   }
 
@@ -2258,7 +2352,7 @@ export class Model {
     for (const n of names) {
       const set = this.membersOf(n);
       if (set) {
-        if (withFeatures && (this.features.has(n) || this.blends.has(n))) out.add(n);
+        if (withFeatures && (this.features.has(n) || this.blends.has(n) || this.surfaces.has(n))) out.add(n);
         for (const m of set) out.add(m);
       } else if (this.entities.has(n) || this.relations.has(n)) {
         out.add(n);

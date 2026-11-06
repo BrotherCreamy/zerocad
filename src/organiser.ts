@@ -25,6 +25,7 @@
 // without either knowing it exists.
 
 import { isBlendFeature, type BlendFeature, type FeatureEntry, type Model } from "./model.ts";
+import { describeSurface, surfaceChains, surfaceDetail, surfaceNameOf } from "./surfaces.ts";
 import { memberName } from "./model.ts";
 import { regionText } from "./operations.ts";
 import { chainsOf, modeOf } from "./modes.ts";
@@ -165,6 +166,18 @@ export function organiserSections(model: Model, selection: readonly string[] = [
       selected: lit(members), open: null, openCommand: null,
     };
   });
+  // A surface is its chain (docs/plans/surfaces.md), as a body is: a row per
+  // surface, named by its first record, its detail the rest of the chain
+  // signed — ✂ a trim, + a knit (the surface taken in), ⌒ a fillet, ▮ a
+  // thicken — hidden by its first record's name, which hides it whole.
+  const surfaces: OrganiserRow[] = surfaceChains(model, { hidden: true }).chains.map((c) => {
+    const eye: Eye = model.hidden.has(c.name) ? "hidden" : "shown";
+    return {
+      name: c.name, detail: surfaceDetail(model, c), count: c.steps.length, eye, eyeCommand: eyeCommand(c.name, eye),
+      tapCommand: `select(${c.steps.map((x) => quoted(x.name)).join(", ")})`, selected: false, open: null, openCommand: null,
+      chain: c.steps.map((x) => x.name),
+    };
+  });
   return [
     { id: "bodies", title: "Bodies", rows: bodies, empty: null },
     { id: "groups", title: "Groups", rows: groups, empty: "none — ＋ makes one, open to draw into" },
@@ -172,6 +185,8 @@ export function organiserSections(model: Model, selection: readonly string[] = [
     // Last, and shown only once there is one: a feature made on a face makes
     // its region on the way, so with any feature this has a row.
     { id: "regions", title: "Regions", rows: regions, empty: null },
+    // Shown only once there is one, as Regions.
+    { id: "surfaces", title: "Surfaces", rows: surfaces, empty: null },
   ];
 }
 
@@ -190,7 +205,7 @@ export function organiserSections(model: Model, selection: readonly string[] = [
 // one cannot.
 
 /** What a tree node is, for its icon. */
-export type TreeKind = "body" | "feature" | "group" | "region";
+export type TreeKind = "body" | "feature" | "group" | "region" | "surface";
 
 export interface TreeNode {
   /** Unique in the tree: what its open state is kept by. */
@@ -224,7 +239,7 @@ export function organiserTree(sections: readonly OrganiserSection[]): TreeNode[]
     return { key: `body:${b.name}`, kind: "body", row: b, label: b.name, children: chain.map((r) => leaf("feature", r, `feature:${r.name}`)) };
   });
   for (const r of features) if (!placed.has(r.name)) roots.push(leaf("feature", r, `feature:${r.name}`));
-  for (const [id, kind, title] of [["groups", "group", "Groups"], ["regions", "region", "Regions"]] as const) {
+  for (const [id, kind, title] of [["groups", "group", "Groups"], ["regions", "region", "Regions"], ["surfaces", "surface", "Surfaces"]] as const) {
     const rows = of(id);
     if (rows.length) roots.push({ key: `section:${id}`, kind, row: null, label: title, children: rows.map((r) => leaf(kind, r, `${kind}:${r.name}`)) });
   }
@@ -296,6 +311,7 @@ export function rowMenu(model: Model, name: string, selection: readonly string[]
       ],
     };
   }
+  if (model.surfaces.has(name)) return surfaceMenu(model, name);
   const f = model.features.get(name) ?? model.blends.get(name);
   if (f) {
     return {
@@ -309,6 +325,30 @@ export function rowMenu(model: Model, name: string, selection: readonly string[]
     };
   }
   return null;
+}
+
+/**
+ * A surface's menu (docs/plans/surfaces.md) — on its organiser row and on the
+ * canvas, a right-click on it: what can be done to it, each typing its call,
+ * the ones that need a number put in the command line to finish as *Set
+ * value…* is — Thicken…, Offset…, Knit with s2 for each other surface,
+ * Solidify, Delete. A surface a thicken has made a solid has only Delete.
+ */
+export function surfaceMenu(model: Model, name: string): Menu {
+  const head = surfaceNameOf(model, name) ?? name;
+  const all = surfaceChains(model, { hidden: true }).chains;
+  const chain = all.find((c) => c.name === head);
+  const solid = chain?.steps.find((x) => x.kind === "thicken" || x.kind === "solidify");
+  const others = all.map((c) => c.name).filter((n) => n !== head);
+  const items: MenuItem[] = solid ? [] : [
+    { label: "Thicken…", action: { do: "type", text: `thicken(${quoted(head)}, ` } },
+    { label: "Offset…", action: { do: "type", text: `offset(${quoted(head)}, ` } },
+    ...others.map((o): MenuItem => ({ label: `Knit with ${o}`, action: { do: "run", command: `knit(${quoted(head)}, ${quoted(o)})` } })),
+    { label: "Solidify", action: { do: "run", command: `solidify(${quoted(head)})` } },
+  ];
+  items.push({ label: "Delete", action: { do: "run", command: `del(${quoted(name)})` } });
+  const rec = model.surfaces.get(name);
+  return { header: rec ? describeSurface(model, rec) : head, items };
 }
 
 // ---- the DOM ----------------------------------------------------------------
@@ -377,6 +417,8 @@ const TREE_ICONS: Readonly<Record<TreeKind, string>> = {
   feature: `<svg ${TREE_SVG}><path d="M2.5 13.5h11"/><path d="M4 13.5V8h8v5.5"/><path d="M8 6V1.8M5.8 4 8 1.8 10.2 4"/></svg>`,
   group: `<svg ${TREE_SVG}><rect x="2" y="2" width="8" height="8" rx="1.2"/><rect x="6" y="6" width="8" height="8" rx="1.2"/></svg>`,
   region: `<svg ${TREE_SVG}><path d="M2.5 12.5 3.8 3.5l8.2-1 1.5 7-5.2 3.2z" fill="currentColor" fill-opacity=".3"/></svg>`,
+  // A sheet: a curved strip with no thickness, the surface tool's S.
+  surface: `<svg ${TREE_SVG}><path d="M2 12.5c2-3 4 0 6-2.5s3-3 6-2.5M2 7c2-3 4 0 6-2.5s3-3 6-2.5M2 12.5V7M14 7.5V2"/></svg>`,
 };
 
 /**

@@ -50,9 +50,12 @@ test("the button list is thirteen today, with these names in this order — a gr
   // and the sketch shapes (docs/plans/sketch-shapes.md) — the polygon and the
   // slot joined the rectangle's button, and the ellipse brought the curves
   // group's, after the arc as the table puts it.
+  // The surface tool (docs/plans/surfaces.md) shares the extrude's button,
+  // the sweep group's: still thirteen.
   assert.equal(buttons.length, 13);
   assert.deepEqual(buttons.map((b) => b.group ?? b.tools[0]),
-    ["select", "hand", "point", "line", "shapes", "circle", "arc", "curves", "modify", "relate", "extrude", "revolve", "sketch"]);
+    ["select", "hand", "point", "line", "shapes", "circle", "arc", "curves", "modify", "relate", "sweep", "revolve", "sketch"]);
+  assert.deepEqual(buttons.find((b) => b.group === "sweep")!.tools, ["extrude", "surface"]);
   assert.deepEqual(buttons.find((b) => b.group === "shapes")!.tools, ["rectangle", "polygon", "slot", "region"]);
   assert.deepEqual(buttons.find((b) => b.group === "curves")!.tools, ["ellipse"]);
   assert.deepEqual(buttons.find((b) => b.group === "relate")!.tools, ["dimension", "constrain"]);
@@ -65,7 +68,7 @@ test("the button list is thirteen today, with these names in this order — a gr
 });
 
 test("grouping is the table: shapes, curves, modify and relate, in their order; Select, the Hand and the rest alone", () => {
-  assert.deepEqual(Object.keys(TOOL_GROUPS), ["shapes", "curves", "modify", "relate"]);
+  assert.deepEqual(Object.keys(TOOL_GROUPS), ["shapes", "curves", "modify", "relate", "sweep"]);
   assert.deepEqual(TOOL_GROUPS.shapes, ["rectangle", "polygon", "slot", "region"]);
   assert.deepEqual(TOOL_GROUPS.curves, ["ellipse", "spline"]);
   // The sketch module's table — its edits, bevel its chamfer (docs/plans/
@@ -77,7 +80,8 @@ test("grouping is the table: shapes, curves, modify and relate, in their order; 
   assert.equal(toolGroup("rectangle"), "shapes");
   assert.equal(toolGroup("fillet"), "modify");
   assert.equal(toolGroup("constrain"), "relate");
-  for (const alone of ["select", "hand", "point", "line", "circle", "arc", "extrude", "revolve", "sketch"]) {
+  assert.deepEqual(TOOL_GROUPS.sweep, ["extrude", "surface"]);
+  for (const alone of ["select", "hand", "point", "line", "circle", "arc", "revolve", "sketch"]) {
     assert.equal(toolGroup(alone), null, alone);
   }
   // Queued and not yet built: named by the table all the same, so the
@@ -349,7 +353,7 @@ test("help() says which tools share a button, how to open it, and how a tool joi
   const repl = new Repl(neocadScope({ model: new Model(2), optionMemory: new OptionMemory(null) }));
   const help = (await repl.eval("help()")).value as string;
   assert.match(help, /rectangle +.*\[shapes\]/);
-  assert.match(help, /Sharing a button now: rectangle \/ polygon \/ slot \/ region \/ t_stamp; fillet \/ bevel \/ trim \/ extend \/ offset \/ mirror \/ pattern \/ round \/ chamfer \/ t_late \/ t_base; dimension \/ constrain\./);
+  assert.match(help, /Sharing a button now: rectangle \/ polygon \/ slot \/ region \/ t_stamp; fillet \/ bevel \/ trim \/ extend \/ offset \/ mirror \/ pattern \/ round \/ chamfer \/ t_late \/ t_base; dimension \/ constrain; extrude \/ surface\./);
   assert.match(help, /static group = "shapes"/);
   assert.match(help, /slides off it onto one and lifts/);
   const tools = (await repl.eval("tools()")).value as string[];

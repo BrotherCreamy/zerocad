@@ -653,8 +653,21 @@ export class Evaluator {
         }
         case "thicken": {
           if (before === null) return fail("there is no surface to thicken");
-          if (!k.sheet(before)) return fail("it is a solid already");
-          const out = own(k.thicken(before, n.distance));
+          let out: Solid;
+          if (k.manifold(before)) {
+            // A closed knit is a closed shell: thickened, it is the hollow between
+            // it and its offset — outward the offset less it, inward it less the
+            // offset (measured: the ruled thicken of a closed shell is two solids,
+            // not one with a void).
+            const off = own(k.offsetSheet(before, n.distance));
+            const it = own(k.copy(before));
+            keep(off);
+            keep(it);
+            out = own(n.distance > 0 ? k.boolean("subtract", off, it) : k.boolean("subtract", it, off));
+          } else {
+            if (!k.sheet(before)) return fail("it is no sheet the kernel can thicken");
+            out = own(k.thicken(before, n.distance));
+          }
           tagOffsets(k, before, out);
           // A wall is named after the boundary edge it stands on: s5.f0, s5.f1 … in the sheet's edge order.
           const rims = k.edges(before).filter((e) => e.lamina).map((e) => e.mid);
