@@ -80,6 +80,56 @@ async function previewed(): Promise<{ why: string | null; volume: number | null 
   });
 }
 
+/**
+ * **What the recogniser decided and what the tool saw**, recorded as it
+ * happens and printed when a finger test fails (docs/plans/touch-density.md:
+ * these two tests failed alone at load ~3 in some runs, and the failure alone
+ * said only that the radius had not grown). Wrappers round the recogniser's
+ * sink and the armed tool's handlers — the page's own calls, each a push onto
+ * an array, so the timing is the gesture's as before. The canvas's pointer
+ * events are stamped with their age when handled.
+ */
+async function record(): Promise<void> {
+  await app.page.evaluate(() => {
+    type Rec = (string | number | null)[];
+    const w = window as never as { __rec: Rec[]; __neocad: { engine: Record<string, unknown> & { gestures: { sink: Record<string, (...a: number[]) => void>; state: string } } } };
+    // Once per page: a second call only starts the record afresh (and wraps a tool armed since).
+    const first = (w as { __rec?: Rec[] }).__rec === undefined;
+    w.__rec = [];
+    const now = () => Math.round(performance.now());
+    const round = (v: unknown) => (typeof v === "number" ? Math.round(v * 1000) / 1000 : v === undefined ? null : JSON.stringify(v));
+    const engine = w.__neocad.engine;
+    const sink = engine.gestures.sink;
+    if (first) for (const k of Object.keys(sink)) {
+      const f = sink[k];
+      sink[k] = (...a: number[]) => { w.__rec.push([now(), `gesture ${k}`, ...a.map((v) => Math.round(v))]); return f(...a); };
+    }
+    const tool = engine.active as Record<string, unknown> | null;
+    if (tool && !tool.__recorded) {
+      tool.__recorded = true;
+      for (const k of ["onDown", "onMove", "onUp"]) {
+        const f = tool[k] as (p: { screen: number[] }) => void;
+        tool[k] = (p: { screen: number[] }) => {
+          const r = f.call(tool, p);
+          const h = tool.handle as { at: number[]; dir: number[] } | null;
+          w.__rec.push([now(), `tool ${k}`, round(p.screen.map(Math.round)), h ? round({ at: h.at.map(Math.round), dir: h.dir.map((d) => Math.round(d * 100) / 100) }) : null,
+            round(tool.drag), round(tool.dragged)]);
+          return r;
+        };
+      }
+    }
+    const cv = document.getElementById("cv")!;
+    if (first) for (const type of ["pointerdown", "pointermove", "pointerup", "pointercancel"]) {
+      cv.addEventListener(type, (e) => {
+        const p = e as PointerEvent;
+        w.__rec.push([now(), type, Math.round(p.offsetX), Math.round(p.offsetY), `${Math.round(performance.now() - p.timeStamp)} ms late`, engine.gestures.state]);
+      }, { capture: true });
+    }
+  });
+}
+const recorded = () => app.page.evaluate(() =>
+  ((window as never as { __rec?: unknown[][] }).__rec ?? []).map((r) => r.join(" ")).join("\n"));
+
 const blends = () => app.page.evaluate(() =>
   [...(window as never as Neo).__neocad.model.blends.values()].map((b) => ({ name: b.name, kind: b.kind, edges: b.edges, size: b.size })));
 
@@ -117,17 +167,25 @@ test("on an iPhone: the radius label held and dragged — the preview while the 
   await previewed();
   const handle = await app.page.evaluate(() => (window as never as Neo).__neocad.engine.active?.handle?.at ?? null);
   assert.ok(handle, "the radius label is on the drawing");
+  await record();
   await app.at(handle[0], handle[1]);
   await hand.down(handle);
   // Held past a tap's time, then moved: a drag of the label.
   await app.page.waitForTimeout(120);
   await hand.glide(8, [handle[0] + 18, handle[1] - 26]);
   await app.page.waitForTimeout(500);
-  const held = await previewed();
-  assert.equal(held.why, null);
-  assert.ok(held.volume !== null && held.volume < plate - filletCut(R, 2 * W) - 1, `the finger still down, the preview is bigger: ${held.volume}`);
-  await shot("3-finger-holds-the-radius");
-  await hand.up();
+  // The finger comes off whatever the checks find: left down, it made the
+  // next test's tap a second finger — a pinch, abandoned — and one failure
+  // read as two (the recording showed it).
+  try {
+    const held = await previewed();
+    assert.equal(held.why, null);
+    assert.ok(held.volume !== null && held.volume < plate - filletCut(R, 2 * W) - 1,
+      `the finger still down, the preview is bigger: ${held.volume}; the label read at ${handle}\n${await recorded()}`);
+    await shot("3-finger-holds-the-radius");
+  } finally {
+    await hand.up();
+  }
   await app.page.waitForTimeout(400);
   await tapButton("#options .oact button.ok");
   const size = (await blends())[0].size;
@@ -140,11 +198,12 @@ test("on an iPhone: the radius label held and dragged — the preview while the 
 
 test("on an iPhone: nothing armed, a kernel edge tapped — selected; a chamfer of another edge, ✓ tapped", { skip }, async () => {
   await type('arm("select")');
+  await record();
   // The back lid edge, long on screen: a short one's corners are within a
   // finger's reach of its middle, and a corner wins, as it should.
   await tapAt([0, H, T]);
   const sel = await app.page.evaluate(() => [...(window as never as Neo).__neocad.engine.selection.edges]);
-  assert.equal(sel.length, 1, `a tap on an edge selects it: ${sel}`);
+  assert.equal(sel.length, 1, `a tap on an edge selects it: ${sel}\n${await recorded()}`);
   await shot("4-edge-tapped");
   await type('arm("chamfer", { setback: 1.5, tangent: false })');
   const p = await previewed();
