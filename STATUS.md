@@ -16,6 +16,31 @@ etc).
   on every push to the working branch. Called NeoCAD until 0.1.0; the
   internal code name stays in identifiers, the file format tag and storage
   keys (see TODO.md's register).
+- **The spline** (docs/plans/spline.md, built). The owner: *"give me better
+  sketch tools, relations, trim, slot... all the usual"*. A cubic B-spline
+  **through** points you click and drag (Onshape's, not a control polygon),
+  open (natural ends) or closed (C² round the seam), centripetally spaced,
+  named `sp1`, `sp2`, …: the **spline tool** under the **curves** button
+  beside the ellipse (a second click on the last point, Enter or ✓ ends it;
+  a click on the first closes it), or typed `spline("p1", "p2", [10, 5], {
+  closed })`. Its points are ordinary points; the curve's control points are
+  its own variables, held to pass through them by equations the entity
+  **owns** — made, deleted and journalled with it (ARCHITECTURE.md).
+  `onspline(p, sp1)` (a point sliding on it, by a parameter of the
+  relation's own); `tan` at an end with a line, an arc or circle, or another
+  spline. The menu on the curve: Add point here, Remove point pN
+  (`addThrough`, `removeThrough`). It draws within a quarter pixel and no
+  chord turning more than 2°, picks and snaps; cuts lines, arcs and circles
+  it crosses; mirrors and patterns; is a whole profile edge, closed loop or
+  hole for extrude and revolve (exact B-rep: surfaces of linear extrusion
+  and of revolution over the spline's own `B_SPLINE_CURVE_WITH_KNOTS`; the
+  solid kernel takes it as its exact NURBS); sweeps surfaces. Trim, extend
+  and offset of a spline itself, and part of one in a region, are refused by
+  name (the spec's table). STEP read valid by OpenCascade 8.0.1, volumes the
+  closed forms to 3·10⁻¹¹ (`test/fixtures/step-spline/`). Format 18. Unit:
+  `test/spline.test.ts` (12), `splinesolids` (9), `splineedit` (8),
+  `stepspline` (6); browser: `test/e2e/spline.e2e.ts` (7, mouse and iPhone
+  13). *Not tried on a phone.*
 - **Surfaces** (docs/plans/surfaces.md, built). The owner: *"please add
   solid and surface fillet tools if possible"*, *"also fillets and chamfers
   for surfaces."* A surface is a thing — a sheet the solid kernel builds, no

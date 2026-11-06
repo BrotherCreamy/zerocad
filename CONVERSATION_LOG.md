@@ -106,6 +106,75 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### The spline: why it owns its equations, why it has no normal, and what was rejected
+
+**Interpolating, not a control polygon.** The plan said Onshape's spline,
+and the owner's "all the usual" is that: you put the curve where you want
+it by putting points on it, and you dimension, `coin` and snap those
+points like any other. A control-polygon spline would have put draggable
+points off the curve, which nothing else in the sketch does.
+
+**Centripetal knots.** With uniform spacing, a spline through two close
+points and then a far one overshoots wildly; with chord-length it can loop
+at a tight corner. Centripetal (gap = √distance) is the standard answer
+and the one that looked right in every picture I made. Natural ends for an
+open spline (no curvature at the ends) rather than clamped tangents:
+clamping needs a tangent from somewhere, and the honest source of one is a
+line the user draws and `tan`s — which is what a tangent handle would have
+been, so I did not build handles.
+
+**Why the equations are the entity's, and not a relation.** The obvious
+first design was `addSpline` + an `interp(sp1)` relation. Two things killed
+it. A relation is deletable, and a spline whose interpolation is deleted is
+a curve of free control points — through nothing, malformed in exactly the
+way the delete primitives exist to refuse. And a relation shows in
+`rels()`, so every spline would list a constraint the user never made and
+cannot meaningfully remove. So the rows are the entity's: `owns` on its
+kind, removed by `deleteEntity`, journalled by the one `addSpline`. That is
+the one place a block goes straight to `problem.addResidual` outside a
+`model.relation` body, deliberately; CLAUDE.md's rule is about relations,
+and this is not one. Control points as hidden point entities were the other
+rejected option: they would be pickable, draggable, listed, and every drag
+of one would fight the rows holding it.
+
+**Why no normal.** The plan gave the spline a circle's three normal
+variables. But every control point is an affine combination of the
+through-points (the rows are linear), so if the through-points lie in a
+plane the curve does too, whatever is solved. A normal would be three
+variables only a `par` could hold, saying what the points already say —
+and a 3D spline drawn on a tilted plane works by holding its points
+`onplane`, as a line's are. It also meant `sketchface.ts` had to stop
+assuming a lone closed curve has a normal (found writing the OpenCascade
+fixtures; fixed).
+
+**`onspline` needed a variable of its own.** A point on a curve has to say
+where along it it is. A circle answers that with an angle the residual can
+eliminate; a spline cannot. So the relation owns a parameter
+(`relationVar`), deleted with it and saved with it — otherwise reopening a
+file would let the solver pick the nearest root and the point could jump.
+
+**The 2° rule.** Quarter-pixel sampling made the outline exact and the
+extruded wall still banded at 3×: the shading is a function of the facet
+normal, and a facet can be within a quarter pixel and still turn 6° from
+its neighbour at a tight bend. The fix bounds the turn per chord as well,
+by halving (evenly-spaced subdivision bunched the turn and overshot to
+2.8°, measured). It costs about 0.3 ms a frame for a ten-point spline.
+
+**What I decided for the edits.** A piece of a spline is a spline through
+points it does not go through, so trim, extend and offset of a spline
+itself, and a region bounded by part of one, would all need a second kind
+of curve (control points, no through-points). That is a real feature, not
+a corner of this one, so each is refused by name, with what does work
+said in the message. Everything that only needs the spline as a cutter, a
+target or a copy works.
+
+**OpenCascade, strictly.** Four of six parts read without healing; the two
+that do not fail identically with no spline in them, which I proved by
+exporting an arc and a triangle revolved the same way from the previous
+branch's code. I wrote them down rather than chase them: both are older
+than the spline, and the healed read — what every application does — is
+valid and exact.
+
 ### Surfaces: why the verbs are shared, why thicken and the pair fillet are built from parts, and what was rejected
 
 **The name clash.** The sketch already owned `trim`, `extend` and `offset`,

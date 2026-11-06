@@ -1378,6 +1378,61 @@ What did *not* need touching is the point of the layer rule: the kernel, the
 engine, the undo stack, the organiser, groups, selection — none of them knows
 what kind of curve anything is.
 
+**The spline followed the list through the extension point**
+(docs/plans/spline.md): items 1, 3–5, 7 and 8 went through declarations — a
+**path** facet in `curveplane.ts` (`defineCurvePath`: a kind that *is* an
+exact B-spline, which drawing, picking, box select, regions, faces, the exact
+B-rep and STEP each read), `EntityKindSpec`'s `closed` as a function, `ends`,
+`through` and `owns` — and `model.ts`, `loops.ts`, `faces.ts`, `picking.ts`
+and `step.ts` never name it (the same grep). Item 9 needed nothing: the
+ellipse's `nurbs` member carries the spline exactly. Items 2, 6, 10 and 11
+still name it, as they name the ellipse.
+
+## An entity can own its equations: the spline
+
+A circle's radius is a variable and nothing more; every equation on a circle
+is a relation someone put there, named, listed and deletable. **A spline is
+the first entity whose definition is equations**: its control points are its
+own variables, and the rows that make the curve pass through its points (one
+per point, linear in the control points, and the natural ends or the closed
+seam's smoothness) are what make it a spline and not a cloud of control
+points. They are not relations on it, so they are not relations:
+
+- **Made with it.** `addSpline` adds the entity and its rows together —
+  `problem.addResidual` straight, the one place a block is added outside a
+  `model.relation` body on purpose — and keeps their handles on the entity.
+  `EntityKindSpec.owns` declares them.
+- **Gone with it.** `deleteEntity` removes the blocks a kind owns before the
+  entity. The cascade is unchanged: deleting a through-point takes the
+  spline (its `refs` are its points), which takes its rows; deleting the
+  spline takes the relations naming it (`onspline`, `tan`) and leaves its
+  points. No row can be deleted alone, because a spline without one is
+  malformed — exactly what the primitives refuse to leave.
+- **Journalled once.** The file says `addSpline(points, closed, name)`; replay
+  re-makes the entity and its rows in one step, and format 18 saves the
+  control points' values (`values.splines`) so a file opens at the solution
+  it was saved at, as every other variable does. Re-pointing a spline —
+  `addThrough`, `removeThrough` — is an operation (it changes what the entity
+  is built of), journalled as its call with what it read off positions
+  resolved beside it, and `respline` swaps the rows.
+- **Diagnosed as held.** The control points' variables count among the
+  entity's (`vars`), so `diagnose` sees them fixed by the rows and reports the
+  through-points as what is free — the user's question.
+
+**A relation can own variables too.** `onspline(p, s)` needs a parameter σ —
+where along the curve p is — that belongs to no entity. `Model.relationVar`
+makes one inside a relation's body and the relation's entry keeps it
+(`RelationEntry.vars`): deleted with the relation, counted by `diagnose`,
+saved (`values.params`) so the point does not jump to the nearest root on
+open. Outside a relation body it is refused: a variable nothing owns is one
+nothing would ever delete.
+
+Rejected: the interpolation as an ordinary relation (`interp(sp1)`) — it
+would be in `rels()`, deletable, and a deleted one leaves free control
+points that draw a curve through nothing; and the control points as hidden
+point entities — they would be in `ls()`, pickable and draggable, and a drag
+of one would fight the rows that hold it.
+
 ## Constraints are drawn, and a drawn constraint is a thing you can click
 
 Every relation wears a small mark beside the geometry it constrains. The tiers
@@ -1826,7 +1881,7 @@ until the next action went unrecorded.
 
 ## Why there is an end-to-end suite
 
-Forty-five bugs so far were invisible to the unit tests and obvious within seconds
+Forty-eight bugs so far were invisible to the unit tests and obvious within seconds
 of running the app:
 
 1. a status readout that went stale, so a conflict could be introduced from
@@ -2040,6 +2095,21 @@ of running the app:
    was sound, nothing overlapped; found by looking at the picture of the
    drop. Along the top the corner is the logo and the status's least room
    now (`cornerBox`), and a row too long for the rest wraps under it.
+46. A spline extruded, and its points drawn again as dots on the lid — the
+   twin spline's through-points, which a lid's circle never had (its centre
+   is not on the lid's edge). Every count and every volume was right; found
+   by looking at the extrude picture of spline.md. A feature's declared
+   curve's points are quiet now (`quiet.ts`).
+47. Bands down a spline's extruded wall at 3×, where a tight bend's facets
+   each turned several degrees: every chord was within a quarter pixel of
+   the curve, which is all the unit test asked. Found by looking at the 3×
+   picture; no drawn chord turns more than 2° from the next now, and the
+   unit test asks that too.
+48. The spline tool's sentence for a mouse — "click the next point —
+   double-click ends it, the first closes it" — wrapped to three lines in an
+   iPhone's chip, over the drawing. The tool said the right thing; found by
+   looking at the iPhone picture. A finger reads "tap more, ✓ ends, the
+   first closes".
 
 None of these are mathematics. They are all *assembly*. Hence `npm run
 test:e2e`, and hence the expectation that anything touching the app is checked
