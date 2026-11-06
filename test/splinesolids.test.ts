@@ -152,6 +152,36 @@ test("a closed spline on a tilted plane in 3D is a loop in that plane", async ()
   assert.ok(Math.abs(Math.abs(n[1]) - Math.sin(0.5)) < 1e-9 && Math.abs(Math.abs(n[2]) - Math.cos(0.5)) < 1e-9, JSON.stringify(n));
 });
 
+test("a closed spline in no frame's plane extrudes along its own plane — its plane from three of its points, it carries no normal", async () => {
+  // Found making the OpenCascade fixtures: the loop's own plane is asked of
+  // sketchface.ts, which took any whole closed curve for a circle and asked
+  // it for a normal a spline has not got — extrude threw.
+  await loadSolver();
+  const m = new Model(3);
+  const v = [0, Math.cos(0.5), Math.sin(0.5)];
+  const at = (x: number, y: number) => [2 + x, 3 + y * v[1], 4 + y * v[2]];
+  const pts = [[0, 0], [12, 9], [24, 2], [17, -10], [4, -6]].map(([x, y]) => m.addPoint(at(x, y)).name);
+  for (const p of pts) fix(m, p, m.coords(p));
+  const s = addSpline(m, pts, true);
+  extrude(m, s, 9);
+  assert.ok(m.solve().solved);
+  // Its area in its own plane: the same curve laid flat (interpolation through
+  // points moved rigidly is the same curve moved), by the shoelace of a fine sampling.
+  const c = splineCurve(m, s);
+  const [lo, hi] = domain(c);
+  let area = 0;
+  let prev = pointAt(c, lo);
+  const flat = (q: number[]) => [q[0], (q[1] - 3) * v[1] + (q[2] - 4) * v[2]];
+  for (let k = 1; k <= 20000; k++) {
+    const q = pointAt(c, lo + ((hi - lo) * k) / 20000);
+    const [a, b] = [flat(prev), flat(q)];
+    area += (a[0] * b[1] - b[0] * a[1]) / 2;
+    prev = q;
+  }
+  const volume = solidsOf(m).bodies.reduce((t, b) => t + b.volume, 0);
+  assert.ok(Math.abs(volume - 9 * Math.abs(area)) < 1e-6 * volume, `${volume} against ${9 * Math.abs(area)}`);
+});
+
 test("extrude a spline profile: the exact B-rep's volume is its area by its depth, its wall the spline swept", async () => {
   await loadSolver();
   const m = new Model(3);
