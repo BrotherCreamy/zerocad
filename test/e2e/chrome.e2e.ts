@@ -18,7 +18,7 @@ import assert from "node:assert/strict";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { devices, type Browser, type BrowserContext, type CDPSession, type Page } from "playwright";
-import { APP_URL, forgetAutosave, launchBrowser } from "./harness.ts";
+import { APP_URL, forgetAutosave, launchBrowser, settled } from "./harness.ts";
 
 const SHOTS = process.env.NEOCAD_E2E_SHOTS;
 const INSETS = {
@@ -134,7 +134,8 @@ async function dragStrip(p: Phone, id: string, dx: number, dy: number): Promise<
   const s = await boxOf(p.page, `${panel(id)} > .ptitle`);
   const [x, y] = [s.x + s.w / 2, s.y + s.h / 2];
   await fingerDrag(p.cdp, [x, y], [x + dx, y + dy], 16);
-  await p.page.waitForTimeout(120);
+  // The panels glide onto their places at the lift (docs/plans/panels-preview.md).
+  await settled(p.page);
 }
 
 async function shot(page: Page, name: string): Promise<void> {
@@ -528,14 +529,14 @@ test("a tray docked to the right edge and a pane against it stay so through port
     // the strip stops it.
     const se = await boxOf(p.page, `${panel("log")} > .pgrip[data-corner="se"]`);
     await fingerDrag(p.cdp, [se.right - 4, se.bottom - 4], [se.right - 4 - 250, se.bottom - 4], 12);
-    await p.page.waitForTimeout(120);
+    await settled(p.page);
     await dragStrip(p, "actions", 400, 0);
     await dragStrip(p, "log", 0, 60);
     await dragStrip(p, "log", 300, 0);
     // The command line, floating: narrowed, and lifted off every edge and every panel.
     const ne = await boxOf(p.page, `${panel("cmd")} > .pgrip[data-corner="ne"]`);
     await fingerDrag(p.cdp, [ne.right - 4, ne.y + 4], [ne.right - 4 - 150, ne.y + 4], 12);
-    await p.page.waitForTimeout(120);
+    await settled(p.page);
     await dragStrip(p, "cmd", 60, -150);
     const check = async (orientation: Orientation) => {
       const size = SIZE[orientation];

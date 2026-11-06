@@ -12,7 +12,7 @@
 
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { openApp, sketchFrame, type AppContext } from "./harness.ts";
+import { openApp, settled, sketchFrame, type AppContext } from "./harness.ts";
 
 let app: AppContext;
 before(async () => {
@@ -213,7 +213,7 @@ test("after dragging a panel by its strip — and the panel does not move back",
   await app.page.mouse.down();
   await app.page.mouse.move(r.x - 60, r.y - 40, { steps: 8 });
   await app.page.mouse.up();
-  await app.page.waitForTimeout(120);
+  await settled(app.page); // the glide onto the drop (docs/plans/panels-preview.md)
   const moved = await rect();
   assert.notDeepEqual(moved, was, "the panel was dragged");
 
