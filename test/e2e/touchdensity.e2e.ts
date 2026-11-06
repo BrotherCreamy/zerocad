@@ -311,9 +311,12 @@ for (const way of [IPHONE13, PIXEL7]) {
       const win = way.win("landscape");
       const strip = (id: string) => p.page.$eval(`.panel[data-panel="${id}"] > .ptitle`, (el) => { const r = el.getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2] as [number, number]; });
       const settle = () => p.page.waitForTimeout(450);
-      // The action strip as far right as it goes, the toolbar as far left.
+      // The action strip as far right as it goes along the top (straight
+      // along: since docs/plans/panels-reshuffle.md a strip taken down the
+      // right edge into the log and the organiser finds no room there, where
+      // it used to push them), the toolbar as far left.
       const a = await strip("actions");
-      await fingerDrag(p.cdp, a, [win.w - 4, a[1] + 60]);
+      await fingerDrag(p.cdp, a, [win.w - 4, a[1]]);
       await settle();
       const t = await strip("toolbar");
       await fingerDrag(p.cdp, t, [4, t[1] - 120]);

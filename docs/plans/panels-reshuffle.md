@@ -210,6 +210,11 @@ register):
   inserted under the strip, so the test takes it 10 px into the strip, short
   of the edge's reach, where it stops flush against the strip's left — the
   same docking, reached without a push.
+- **`touchdensity.e2e.ts`'s side-edge bleed test** took the landscape strip
+  to the right edge and 60 px down into the log and the organiser, which the
+  push made room for; now there is none there (refused, said), so it slides
+  the strip straight along the top to the right edge. Its claim — drawn at
+  the safe area's line — is unchanged.
 - **The files the brief listed**: there is no `panelspush.e2e.ts` (the push's
   e2e lives in `panels.e2e.ts`) and `touchlayout` is a unit test; both were
   run as what they are.
