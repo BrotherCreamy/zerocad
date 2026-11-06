@@ -2813,11 +2813,20 @@ async function main() {
    * nothing is open.
    */
   const installed = ["standalone", "fullscreen", "minimal-ui"].some((m) => matchMedia?.(`(display-mode: ${m})`)?.matches);
+  // **Not on iOS.** It has no back button: the one thing the session history
+  // does there is iOS's own edge swipe — back from the left edge, forward from
+  // the right — and every entry pushed here gave it somewhere to go (the
+  // owner, 2026-11-06: *"if I swipe right from the left or right side, it
+  // takes me "back" or forward. How can I disable this"*). A page cannot turn
+  // the swipe off; with the page its only entry, there is nothing to swipe
+  // to. So on iOS this pushes nothing: no guard, no entry for what opens.
+  // Escape and a tap outside still close what is open. test/e2e/iosback.e2e.ts.
+  const pushes = !ios;
   const back = new BackStack(window.history, {
     open: openings,
     close: closeOpening,
-    tracked: (name) => name !== "tooltip",
-  }, { guard: coarse || installed });
+    tracked: (name) => pushes && name !== "tooltip",
+  }, { guard: pushes && (coarse || installed) });
   // Put up at a press, which carries the gesture an entry needs not to be one Back skips.
   window.addEventListener("pointerup", () => back.arm(), true);
   window.addEventListener("keyup", () => back.arm(), true);

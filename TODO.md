@@ -26,6 +26,20 @@ otherwise.
 
 ## Decisions made so far — veto here if any are wrong
 
+- **No back stack on iOS: the page keeps one history entry, so iOS's edge
+  swipe has nowhere to go** (the owner, 2026-11-06, from the installed app:
+  *"if I swipe right from the left or right side, it takes me "back" or
+  forward. How can I disable this kind of navigation"*). Android's back
+  (`backstack.ts`) pushed a guard entry under a finger and one for each thing
+  a press opened; iOS has no back button, so the only use iOS made of them was
+  that swipe. A page cannot switch the swipe off. On iOS (an iPad
+  included) nothing is pushed now, and Escape or a tap outside still close
+  what is open. Android is unchanged. `test/e2e/iosback.e2e.ts` failed before
+  (two entries pushed, a guard on top) and passes after; `android.e2e.ts`
+  14/14. **Caveat:** an app already open keeps the entries it pushed before
+  the update until it is closed from the app switcher; a fresh launch starts
+  with one entry.
+
 - **The spline: a cubic B-spline through points you drag** (the owner:
   *"give me better sketch tools, relations, trim, slot... all the usual"*).
   Spec: [`spline.md`](docs/plans/spline.md), **built**; its *As built* has

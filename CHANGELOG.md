@@ -7,6 +7,32 @@ decisions.
 
 ---
 
+## iOS's edge swipe no longer goes "back" or "forward" in the app
+
+The owner, from the installed app on his iPhone (2026-11-06): *"if I swipe
+right from the left or right side, it takes me "back" or forward. How can I
+disable this kind of navigation"*.
+
+The cause was the Android back support (`src/backstack.ts`, built for
+`docs/plans/android.md`). Under a finger it pushed a guard history entry at
+the first press, plus one more whenever a press opened a menu, a flyout or a
+dialog, so that Android's back closes what is open. iOS has no back button.
+Its only use for those entries is the edge swipe: from the left it pops one,
+and from the right it goes forward onto it again. A web page cannot switch
+the swipe off, but the swipe does nothing when the page has no entry behind
+it and none ahead.
+
+So on iOS (`ios` in `main.ts`, an iPad included) the back stack pushes
+nothing: no guard, and no entry for what opens. Escape and a tap outside close
+things as before, and Android is unchanged.
+
+- `test/e2e/iosback.e2e.ts` (new) drives an iPhone by finger: a tap, the logo
+  menu opened and closed, a flyout held open and closed. It then counts the
+  session history. It failed on the old code (two entries pushed, a guard on
+  top) and passes now. `android.e2e.ts` is 14/14.
+- An app already running keeps the entries it pushed before this until it is
+  closed from the app switcher. A fresh launch starts with one.
+
 ## The touch harness streams a hand's events, and a held press reads its move's stamp
 
 The iPhone drags in `solidsphone.e2e.ts` failed in four full gates in a row

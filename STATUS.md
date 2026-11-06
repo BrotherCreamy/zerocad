@@ -137,7 +137,8 @@ etc).
   installed with the gesture bar, with three buttons and in a Chrome tab;
   everything fits on all 66, with the keyboard up. The interface size reads
   Android's font scale from `env(preferred-text-scale)` (`uiscale.ts`).
-  Android's **back** closes what is open, and at rest does nothing
+  Android's **back** (not iOS's: there the page keeps one history entry, so
+  the edge swipe has nowhere to go) closes what is open, and at rest does nothing
   (`backstack.ts`; one seam with Escape). The panel being typed into rides
   above the keyboard (`keyboard.ts`). **Install app** in the logo menu
   (`install.ts`, `installApp()`), the manifest's screenshots and
