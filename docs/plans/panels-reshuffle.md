@@ -187,7 +187,8 @@ register):
   a row down the right edge — keeps its way as it moves along, until it is
   pressed right up against that edge (within `SNAP`, 6 px, the turn's own
   reach): then it turns, as a tray always has against the edge it meets
-  (`chrome.e2e.ts` docks the strip to the right edge that way). In free space
+  (`chrome.e2e.ts` docks the strip to the right edge that way, and is what
+  found the first build missing it — ARCHITECTURE's bug 44). In free space
   it still turns against a pane's edge or the area's (the owner's *"that
   includes pushing it up against a vertical/horizontal edge of another
   tooltray"*), where the turned shape lies on nothing.

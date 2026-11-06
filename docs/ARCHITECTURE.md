@@ -1800,7 +1800,7 @@ until the next action went unrecorded.
 
 ## Why there is an end-to-end suite
 
-Forty-three bugs so far were invisible to the unit tests and obvious within seconds
+Forty-four bugs so far were invisible to the unit tests and obvious within seconds
 of running the app:
 
 1. a status readout that went stale, so a conflict could be introduced from
@@ -2001,6 +2001,13 @@ of running the app:
 43. Targets measured against the device's whole 100 % — text size included
    — so a larger system font drew no larger tools. The unit table was
    right for its inputs; found by the Android e2e's "drawn 1.3 × larger".
+44. The phone's action strip pushed flush into the right edge no longer
+   turning into a column: the reshuffle kept a tray that lay along none of
+   its edges running its own way along them, so the strip and the log could
+   trade places. Every unit test passed (none presses a row into a side);
+   found by the rotation e2e's docking, which starts with exactly that
+   turn. Pressed within the turn's own 6 px it turns again
+   (docs/plans/panels-reshuffle.md).
 
 None of these are mathematics. They are all *assembly*. Hence `npm run
 test:e2e`, and hence the expectation that anything touching the app is checked
