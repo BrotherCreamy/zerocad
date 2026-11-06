@@ -37,7 +37,7 @@ import {
 } from "./panels.ts";
 import { Tooltips } from "./tooltip.ts";
 import {
-  clampScale, deviceScale, formFactor, formatScale, recallScale, rememberScale, textFactor, type Device,
+  clampScale, deviceScale, formFactor, formatScale, recallScale, rememberScale, textFactor, textSource, type Device,
 } from "./uiscale.ts";
 import { GUIDE_NOTE_MS, STATUS_FADE_MS, STEP_NOTE_MS, StatusLine, diagnosisLine } from "./statusline.ts";
 import { AppMenu, UNTITLED } from "./appmenu.ts";
@@ -136,9 +136,18 @@ function measureDevice(): Device {
     probe.style.font = "-apple-system-body";
     appleBody = parseFloat(getComputedStyle(probe).fontSize) || null;
   }
+  // Android's system font scale (docs/plans/android.md): Chrome reports it as
+  // `env(preferred-text-scale)`, a plain number, which script can read only
+  // through a length — 100 px times it, with a fallback of 0 for a browser
+  // that does not know the variable. Read off the probe's width, not its type
+  // size: Chrome applies the system scale to type only by text autosizing,
+  // which never acts on a probe (uiscale.ts's `textFactor` has the measurement).
+  probe.style.cssText = "position:absolute;visibility:hidden;height:0;width:calc(100px * env(preferred-text-scale, 0))";
+  const reported = probe.getBoundingClientRect().width / 100;
+  const textScale = reported > 0 ? reported : null;
   probe.remove();
   const shortSide = Math.min(screen.width, screen.height) || Math.min(innerWidth, innerHeight);
-  return { coarse, shortSide, appleBody, defaultFont };
+  return { coarse, shortSide, appleBody, defaultFont, textScale };
 }
 const device = measureDevice();
 
@@ -2431,7 +2440,7 @@ async function main() {
     // The device's 100 % said in its parts, so a person can see why their
     // phone draws what it draws: the form factor and the text size.
     const why = `100% here is ${deviceUi}× a desktop's: ${coarse ? (formFactor(device) === 1.3 ? "a phone" : "a tablet") : "a mouse"} ` +
-      `${formFactor(device)}, text size ${textFactor(device).toFixed(2)}`;
+      `${formFactor(device)}, text size ${textFactor(device).toFixed(2)} (${textSource(device)})`;
     return `interface ${formatScale(uiScale)} (${why})` +
       `; panes ${panes.map((p) => p.id).join(", ")}` + (hidden.length ? `; hidden ${hidden.join(", ")}` : "; all shown");
   }

@@ -16,7 +16,7 @@ import {
 } from "../src/panels.ts";
 import {
   FORM_FACTOR, TABLET_SHORT_SIDE, TEXT_MAX, TEXT_MIN, UI_MAX, UI_MIN, UI_SCALE_KEY, clampScale, deviceScale, formFactor,
-  formatScale, recallScale, rememberScale, stepScale, textFactor, type Device,
+  formatScale, recallScale, rememberScale, stepScale, textFactor, textSource, type Device,
 } from "../src/uiscale.ts";
 import { GUIDE_NOTE_MS, STATUS_FADE_MS, STEP_NOTE_MS, StatusLine, statusFade, type TextLike } from "../src/statusline.ts";
 import { UNTITLED, fileItemOff, paneCommand, scaleCommand, spinCommands } from "../src/appmenu.ts";
@@ -105,6 +105,33 @@ test("the device's 100 %: form factor × preferred text size, per pointer and sc
   assert.equal(textFactor({ ...phone, appleBody: null, defaultFont: 0 }), 1, "nothing measured is the default");
   // A tablet.
   assert.equal(deviceScale({ coarse: true, shortSide: 820, appleBody: 17, defaultFont: 16 }), 1.15);
+});
+
+test("Android's text size: the system's font scale as Chrome reports it (env(preferred-text-scale)), times the browser's own", () => {
+  // A Pixel 7 at the system's default: 1, so a phone's 100 % is 1.3 as on an iPhone.
+  const pixel: Device = { coarse: true, shortSide: 412, appleBody: null, defaultFont: 16, textScale: 1 };
+  assert.equal(deviceScale(pixel), 1.3);
+  assert.equal(textSource(pixel), "the system's font scale");
+  // Font size one step up in Android's settings (1.15) and the largest (2.0, held to TEXT_MAX).
+  assert.equal(textFactor({ ...pixel, textScale: 1.15 }), 1.15);
+  assert.equal(deviceScale({ ...pixel, textScale: 1.3 }), 1.69, "the measured case: 1.3 × 1.3");
+  assert.equal(textFactor({ ...pixel, textScale: 2 }), TEXT_MAX);
+  assert.equal(textFactor({ ...pixel, textScale: 0.85 }), 0.85);
+  // Chrome's own font size setting moves `medium` on top of the system's scale.
+  assert.equal(textFactor({ ...pixel, textScale: 1.1, defaultFont: 20 }), Math.min(TEXT_MAX, 1.1 * 1.25));
+  // A tablet of the table (a Galaxy Tab's 640 short side) takes it too.
+  assert.equal(deviceScale({ ...pixel, shortSide: 640, textScale: 1.2 }), Math.round(1.15 * 1.2 * 100) / 100);
+  // Where Chrome has no variable (before 138), or Firefox: the browser's font size, 1 for a person who changed only the system's.
+  for (const none of [null, undefined, 0, -1, Number.NaN]) {
+    const d = { ...pixel, textScale: none as number | null };
+    assert.equal(textFactor(d), 1, String(none));
+    assert.equal(textSource(d), "the browser's font size");
+  }
+  // Under a mouse the variable is not read: a desktop's preference is its browser's font size.
+  assert.equal(textFactor({ coarse: false, shortSide: 900, appleBody: null, defaultFont: 16, textScale: 1.5 }), 1);
+  // Dynamic Type, where Safari has it, still wins on an iPhone.
+  assert.equal(textSource({ ...pixel, appleBody: 19 }), "Dynamic Type");
+  assert.equal(textFactor({ ...pixel, appleBody: 19, textScale: 1.5 }), 19 / 17);
 });
 
 test("the viewer's multiplier: its ladder, and how it reads", () => {
