@@ -172,9 +172,15 @@ line of its tools, or two where one will not fit — resized from any corner) is
 REPL over the app's own command surface, and it is the primary interface —
 not a debug console. `help()` lists everything in scope. **While you drag a
 panel, nothing else moves**: the others go faint, a faint white ghost outline shows where
-each one will be pushed to and where the one in your hand will snap (a
+each one will go and where the one in your hand will land (a
 toolbar that will turn from a column to a row shows the row), and only when
-you let go do they move there. Escape, or letting go back where you started,
+you let go do they move there. **Panels reshuffle, they are not shoved**:
+drag one along its edge past the middle of its neighbour and the two trade
+places; bring it to another edge and it goes in where you drop it, the
+others there making room; drop it on a floating pane and they swap. Any pane
+it would land on moves to the nearest free place, its ghost showing where.
+Only where they cannot all fit does its ghost say *no room on this edge*, and
+letting go moves nothing. Escape, or letting go back where you started,
 leaves everything where it was. **For more of the drawing**, the logo
 menu's View has *See-through panels* — every pane drawn as its content alone
 over the drawing: the tools their buttons, the organiser a small tree in its

@@ -235,7 +235,9 @@ test("a tool defined at the command line with a static options gets the panel, a
   await app.type("cancel()");
 });
 
-test("the panel pushes and is pushed like any panel, and its place is the viewer's across a reload", async () => {
+test("the panel takes its place among the others like any panel, and its place is the viewer's across a reload", async () => {
+  // Like any panel since docs/plans/panels-reshuffle.md: a drag reshuffles,
+  // it does not push. (This test pushed the panel and the log about until then.)
   await app.type('arm("extrude")');
   const dragStrip = async (selector: string, dx: number, dy: number) => {
     const s = await rectOf(`${selector} > .ptitle`);
@@ -247,25 +249,27 @@ test("the panel pushes and is pushed like any panel, and its place is the viewer
   };
   const LOG = '.panel[data-panel="log"]';
   await dragStrip(PANEL, 300, 200); // out into the drawing, over the log's columns
-  await dragStrip(LOG, 60, 0); // and the log out from under the tray's column, so only the options panel is above it
+  await dragStrip(LOG, 60, 0); // and the log off the left edge, floating, so only the options panel is above it
   const op = await rectOf(PANEL);
   const log0 = await rectOf(LOG);
   assert.ok(op.x < log0.x + log0.width && op.x + op.width > log0.x, "above the log, sharing its columns");
 
-  // The log dragged up into it pushes it up by exactly the overlap.
+  // The log dragged up into it, 40 px over it: it stops flush under the
+  // panel, which is not pushed.
   const into = log0.y - (op.y + op.height) + 40;
   await dragStrip(LOG, 0, -into);
-  const pushedUp = await rectOf(PANEL);
+  const stayed = await rectOf(PANEL);
   const log1 = await rectOf(LOG);
-  assert.ok(Math.abs(pushedUp.y - (op.y - 40)) <= 1, `pushed up by the 40 px it was covered: ${op.y} → ${pushedUp.y}; log ${JSON.stringify(log0)} → ${JSON.stringify(log1)}, options ${JSON.stringify(op)}`);
-  assert.ok(pushedUp.y + pushedUp.height <= log1.y + 0.5, "flush, not over it");
+  assert.deepEqual(stayed, op, `the panel not pushed: ${JSON.stringify(op)} → ${JSON.stringify(stayed)}`);
+  assert.ok(Math.abs(log1.y - (op.y + op.height)) <= 0.5, `the log flush under it, not over it: ${JSON.stringify(log1)}`);
 
-  // It dragged down into the log pushes the log down.
-  await dragStrip(PANEL, 0, 30 + (log1.y - (pushedUp.y + pushedUp.height)));
+  // The panel dragged down until its middle is on the log, both floating: they trade places.
+  await dragStrip(PANEL, 0, log1.y + 20 - (stayed.y + stayed.height / 2));
   const log2 = await rectOf(LOG);
   const op2 = await rectOf(PANEL);
-  assert.ok(log2.y > log1.y + 25, `the log was pushed down: ${log1.y} → ${log2.y}`);
-  assert.ok(op2.y + op2.height <= log2.y + 0.5, "and nothing overlaps");
+  assert.deepEqual([op2.x, op2.y], [log1.x, log1.y], `the panel at the log's place: ${JSON.stringify(op2)}`);
+  assert.deepEqual([log2.x, log2.y], [stayed.x, stayed.y], `the log at the panel's: ${JSON.stringify(log2)}`);
+  assert.ok(op2.y + op2.height <= log2.y + 0.5 || log2.y + log2.height <= op2.y + 0.5 || op2.x >= log2.x + log2.width - 0.5 || log2.x >= op2.x + op2.width - 0.5, "and nothing overlaps");
   await shot("moved");
 
   await reloadApp();

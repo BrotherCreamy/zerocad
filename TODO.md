@@ -1590,7 +1590,7 @@ are flagged as such.
   just push"*, and *"when i grab a window at a point on that window, then push
   it up against something, the grab point should kind of slip, so that when i
   push it back in the opposite direction, it doesnt have to get back to the
-  original slip point"*. Two rules: **panels never overlap** — a dragged,
+  original slip point"*. Two rules: **panels never overlap** — a ~~dragged,~~
   resized, turned or grown panel pushes what it meets, in a chain, by exactly
   the overlap, and nothing springs back; the window's edge is the one
   immovable thing, and a panel blocked by a chain against it stops flush —
@@ -1638,7 +1638,18 @@ are flagged as such.
   [`docs/plans/toolbar-icons-docking.md`](docs/plans/toolbar-icons-docking.md),
   [`docs/plans/panels-push.md`](docs/plans/panels-push.md),
   [`docs/plans/panels-corners-wrap.md`](docs/plans/panels-corners-wrap.md),
-  [`docs/plans/tray-fixed-line.md`](docs/plans/tray-fixed-line.md).
+  [`docs/plans/tray-fixed-line.md`](docs/plans/tray-fixed-line.md),
+  [`docs/plans/panels-reshuffle.md`](docs/plans/panels-reshuffle.md).
+  **A drag no longer pushes** (the owner, 2026-11-06: *"When I push toolbars
+  around, they should be able to reorder with other toolbars. So reshuffle
+  rather than push."*): the panes along an edge are a sequence read from
+  their positions; a pane dragged along its edge past a neighbour's middle
+  takes its slot, brought to another edge is inserted between the two it
+  lands between (those after it making room), dropped on a floating pane
+  trades places with it, and with no room wraps to a second line; the panes
+  it then lies on make room (the nearest free place, the push as the
+  fallback), and only where none can is it refused and says so. The push
+  stays for a resize and for `apply`.
 - **Ctrl+Z is the drawing's, everywhere** (owner's direction, 2026-10-29:
   *"why does ctrl+z and ctrl+y not work? should work and be bulletproof"*).
   Ctrl+Z / Cmd+Z always undoes the model and Ctrl+Y / Ctrl+Shift+Z / Cmd+⇧Z
@@ -1788,12 +1799,52 @@ starts.
           exits. Not chased.
         - Not tried on a phone.
 
-- [ ] **Panels reshuffle rather than push (2026-11-06)** — after touch
+- [x] **Panels reshuffle rather than push (2026-11-06)** — after touch
       density. The owner: *"When I push toolbars around, they should be able
       to reorder with other toolbars. So reshuffle rather than push."* Panes
       along an edge are a sequence; a drag reorders, another edge inserts,
       a floating pane swaps. Spec:
       [`panels-reshuffle.md`](docs/plans/panels-reshuffle.md).
+      **BUILT (2026-11-06)** on `claude/panels-reshuffle`; the spec's *As
+      built* has the rules as built, the measurement (0.012 ms a move median;
+      of 1 500 random phone gestures 5 % refused upright, 1 % on its side —
+      32 % and 36 % in the first build, before the review had the others make
+      room) and pictures 224–235. **Register, vetoable:**
+      - **The sequence is read from the positions at each press, not stored**:
+        the layout's storage is unchanged, old layouts read into the order of
+        their positions, `refit` and the bleed untouched. A reordered pair that
+        is not flush re-lays by its own share through a rotation.
+      - **On an edge = within reach** (16 px at a mouse's 100 %, at least half
+        a target under a finger: 22 at a phone's 100 %); **never both of a
+        pair** — an edge-to-edge command line is the bottom's alone.
+      - **Past the middle = the held pane's leading edge past the neighbour's
+        middle**; a reorder lays out the stretch again with its ends and gaps
+        kept (a dock's).
+      - **The destination makes room, the source does not close up**: only a
+        pane the hand took moves, but for those after it on the edge it joins.
+      - **The others make room** (the coordinator's review, 2026-11-06:
+        *"'reshuffle rather than push' means the others reorder to let the
+        held one in"*): a pane the inserted one, its second line, a reordered
+        stretch or a trade lies on goes to the nearest place on nothing, the
+        old push's search the fallback, then every pane not kept laid again
+        round the kept ones; refused, said on the ghost and in the status,
+        only when none finds room. A drop in free space partly on a pane
+        stops flush (nothing moves for it).
+      - **Along the top the corner is the logo and the status's least room**
+        (`cornerBox`): a line starts after it, a row too long for the rest
+        wraps under the logo's row, so the status is never left a sliver.
+      - **Any held pane on no edge trades places with a floating one** (the
+        spec: "a pane not docked to anything"), by top-left corner.
+      - **A tray turns** when inserted into an edge it does not lie along, or
+        when it leaves the edge it lay along for another it was on; one that
+        lay along none (the phone's action strip) keeps its way; in free
+        space against a pane's edge as before.
+      - **The resize and `apply` keep the push.**
+      - **Discovered, left**: room is found greedily, one pane at a time; the
+        refusals left are mostly the command line as wide as an upright phone
+        with no band of its height clear once the held pane and its line hold
+        their places (31 of 38 upright), and a second line that would run off
+        a landscape screen. A pane is never resized to fit.
 
 - [ ] **The sketch packages (2026-11-05).** The owner: *"give me better
       sketch tools, relations, trim, slot... all the usual"*, picked from

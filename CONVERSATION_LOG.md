@@ -5320,3 +5320,60 @@ opened; nothing about the app itself changed from that detour.
 context across that machine switch — so a fresh session (on Windows or
 anywhere else) starting from this repo has the reasoning behind the
 architecture, not just the code.
+
+---
+
+## 2026-11-06 — panels reshuffle rather than push
+
+The owner: *"When I push toolbars around, they should be able to reorder with
+other toolbars. So reshuffle rather than push."* Spec:
+`docs/plans/panels-reshuffle.md`, built.
+
+**Why the sequence is read and not stored.** The spec keeps an ordered list
+per edge and lays positions out from it. That would have been a new storage
+format beside v3's dockings, a second source of truth for where a pane is,
+and a migration — and it would have had to live with `refit` (touch-density's
+"a layout that does not fit is never drawn") and `relaid` deciding positions
+through a rotation. Reading the order from the positions at each press gives
+the owner's behaviour (a drag reorders, the result is a new order) with
+nothing stored differently, and makes "old layouts translate" true by
+construction. Rejected: storing the list. The price is written down in the
+spec: a reordered pair with a gap between them is not docked to each other,
+so a rotation re-lays each on its own.
+
+**Why the source edge does not close up.** "The rest of that edge closes up
+or makes room" could mean the edge a pane left closes the hole. Tried on
+paper against the desktop's defaults: the tray leaving the left edge would
+pull the log and the command line up from the bottom to the top. Built: the
+destination makes room, the source is left; only what the hand took moves,
+except to make room for it.
+
+**Why there is no push left in a drag at all.** The spec keeps push "where
+order cannot help" and then says what that means: a second line, else a
+refusal — "nothing is ever pushed off screen". So a reorder or a trade that
+would land a pane on another is refused and said, not pushed; and a drop in
+free space partly on a pane stops flush against it. The first build of that
+last case reused the old resolver with every other pane fixed, which stops a
+pane at the *first* thing on the line from the press — so a pane carried over
+another to empty space beyond stopped on it. It lands now at the furthest point
+toward the hand that lies on nothing, then slides on along each axis (so a
+pane taken diagonally into the corner under the logo still reaches the edge).
+
+**What it costs, measured.** On a phone's crowded defaults a third of random
+drops are refusals: where the push used to make room, nothing does. The
+sharpest case is the toolbar along the top of an upright phone — the
+organiser and the action strip are under the logo's row and nothing moves
+them. Left in place, said on the ghost, and vetoable.
+
+**Overturned on review, the same day.** The coordinator read the third of
+drops refused, and the picture of the toolbar at the top doing nothing, as a
+regression: *"'reshuffle rather than push' means the others reorder to let
+the held one in"*. So the panes the drop lands on make room — the nearest free
+place, the old push's search as the fallback, then all of them laid again —
+and refusal is kept for panes that genuinely cannot all fit. Rejected on the
+way: making room by the push alone (it moves whole chains along one axis and
+throws a pane across the screen where a free place is a few pixels off), and
+packing every pane again on each move (it would move panes the drop never
+touched). The first new picture showed one more thing the rule needed: let in
+beside the bare logo, the toolbar left the status a 20 px column, so along the
+top the corner is the logo and the status's least room.

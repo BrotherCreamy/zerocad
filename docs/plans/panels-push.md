@@ -8,8 +8,16 @@ grasp point should stay the same"* — and the reversal is built too (2026-10-27
 branch `claude/grab-stays`); see the last section. **And the push is now previewed** (the owner,
 2026-11-05; built by [`panels-preview.md`](panels-preview.md)): during a drag
 the other panels do not move — ghosts show where this resolver would push
-them — and the drop commits it; the rules below are unchanged. The owner's
-direction, verbatim:
+them — and the drop commits it; the rules below are unchanged. **And a drag
+no longer pushes — superseded for the strip** (the owner, 2026-11-06: *"When I
+push toolbars around, they should be able to reorder with other toolbars. So
+reshuffle rather than push."*; built by
+[`panels-reshuffle.md`](panels-reshuffle.md)): a pane dragged by its strip
+reorders along its edge, is inserted into another, trades places with a
+floating pane, or stops flush, and a pane it then lands on moves to the
+nearest free place — with this push's zero-motion search as the fallback
+where there is none. The push below stands whole for a resize by a grip and
+for `apply`, and rule 1 (no overlap) stands for everything. The owner's direction, verbatim:
 
 > *shouldn't be able to drag windows over other windows. they should collide
 > and push one another around. not collide like physics, just push. also when
@@ -27,7 +35,9 @@ re-basing it already does when a tray turns — `test/panels.test.ts` and
 ## The two rules
 
 1. **Panels never overlap.** Not during a drag, not after a resize, not when
-   a tray turns or grows, not on load. A dragged panel that meets another
+   a tray turns or grows, not on load. ~~A dragged panel~~ *(superseded for a
+   drag by [`panels-reshuffle.md`](panels-reshuffle.md); a resized one still
+   does)* A dragged panel that meets another
    **pushes it**, and that one pushes whatever it meets, in a chain. Nothing
    springs back: a pushed panel stays where it was pushed. When a push would
    put any panel in the chain outside the area, the chain cannot move, and

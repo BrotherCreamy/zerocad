@@ -1559,8 +1559,34 @@ time it is placed (`arranged`), so a tool defined at the command line makes
 it one button longer wherever it is. (For an afternoon a tray could be
 shortened and wrapped its buttons into more lines; the owner reversed it.)
 
-**Panels push one another, and never overlap.** Every arrangement — a drag, a
-resize, a turn, every `apply` — goes through one pure resolver, `pushed`: the
+**A dragged pane takes its place among the others; nothing is shoved**
+(docs/plans/panels-reshuffle.md; the owner: *"When I push toolbars around,
+they should be able to reorder with other toolbars. So reshuffle rather than
+push."*). The panes along each edge are **a sequence**, and a drag by the
+strip is resolved against it (`reshuffled`), not by pushing: along an edge
+the pane was on, past a neighbour's middle it takes that neighbour's slot (a
+dock's reorder: the stretch laid out again in the new order, its ends and
+gaps kept); brought to another edge it is inserted between the two it lands
+between, and those after it make room; dropped on a pane that is on no edge
+the two trade places; elsewhere it lands where it is put, or flush against
+what it would lie on. An edge with no room takes it on a second line. **The
+others make room**: any pane the held one, its line or a trade now lies on
+goes to the nearest place on nothing (`madeRoom`), the push below the
+fallback, then every unkept pane laid again round the kept ones; only where
+none of that finds room — the panes cannot all be had at their sizes — is the
+preview refused, said on the held pane's ghost. Along the top the corner is
+the logo and the status's least room (`cornerBox`), so a pane let in there
+never leaves the status a sliver.
+**The sequence is read, not stored**: each press reads it from where the
+panes are (`sequences`), and the layout is stored as before — so the order a
+viewer made is the order of the positions they left, and a layout from before
+reshuffling reads into the same order with nothing to migrate. The push below
+stays for what has no order to change: a resize by a grip, and `apply`
+making a stored or grown layout sound.
+
+**Panels never overlap, and what is left of the push.** A resize, a turn and
+every `apply` go through one pure resolver, `pushed` (a drag by the strip did
+too until the reshuffle above): the
 mover goes where it wants along each axis of the pointer's move in turn, and
 whatever its swept rectangle covers is put flush ahead of it along that axis,
 in a chain. The window edge is the one thing that does not move: a chain that
@@ -1581,7 +1607,7 @@ ones it measures.
 *"they should show how they will snap IF the user drops the grasped toolbar
 in that spot. but until they actually drop it, the permanent position of any
 tool bar is not changed"*). A gesture keeps two things apart (`Drag`): the
-**preview, which is the drop at this spot** — the resolver above asked for
+**preview, which is the drop at this spot** — the resolvers above (the reshuffle for a strip, the push for a grip) asked for
 one step, from the layout at the press straight to where the hand is, so it
 is a function of the spot and not the path, the rules have one
 implementation, and the preview cannot disagree with what a drop commits —
@@ -1780,7 +1806,7 @@ until the next action went unrecorded.
 
 ## Why there is an end-to-end suite
 
-Forty-three bugs so far were invisible to the unit tests and obvious within seconds
+Forty-five bugs so far were invisible to the unit tests and obvious within seconds
 of running the app:
 
 1. a status readout that went stale, so a conflict could be introduced from
@@ -1981,6 +2007,19 @@ of running the app:
 43. Targets measured against the device's whole 100 % — text size included
    — so a larger system font drew no larger tools. The unit table was
    right for its inputs; found by the Android e2e's "drawn 1.3 × larger".
+44. The phone's action strip pushed flush into the right edge no longer
+   turning into a column: the reshuffle kept a tray that lay along none of
+   its edges running its own way along them, so the strip and the log could
+   trade places. Every unit test passed (none presses a row into a side);
+   found by the rotation e2e's docking, which starts with exactly that
+   turn. Pressed within the turn's own 6 px it turns again
+   (docs/plans/panels-reshuffle.md).
+45. The status in the corner squeezed to a 20 px column, running down the
+   screen a character to a line, once the toolbar was let in along the top
+   beside the bare logo. Every unit and e2e assertion passed — the layout
+   was sound, nothing overlapped; found by looking at the picture of the
+   drop. Along the top the corner is the logo and the status's least room
+   now (`cornerBox`), and a row too long for the rest wraps under it.
 
 None of these are mathematics. They are all *assembly*. Hence `npm run
 test:e2e`, and hence the expectation that anything touching the app is checked

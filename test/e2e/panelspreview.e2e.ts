@@ -9,8 +9,12 @@
 // go"; "when I am dragging toolbars, all the ungripped ones should go
 // translucent".
 //
-// What is checked, each way: the command line dragged onto the log — the log's
-// ghost moves, the log does not; dropped, the log moves to its ghost. Dragged
+// What is checked, each way: a pane dragged onto its neighbour along their edge
+// — the command line onto the log under a mouse; on a phone, where those two
+// share no edge, the log onto the action strip upright and the command line
+// onto it on its side — the neighbour's ghost moves, the neighbour does not;
+// dropped, it moves to its ghost (they trade places since
+// docs/plans/panels-reshuffle.md; it was pushed before that). Dragged
 // and Escaped (mouse), or lifted back where it started (both): nothing moved.
 // The tray dragged to an edge: its ghost turns, the tray does not until the
 // drop. Every panel not in hand is at half opacity for the drag and whole
@@ -135,29 +139,50 @@ async function fingerHand(app: AppContext): Promise<Hand> {
   return hand;
 }
 
+/** Which pane is dragged onto which neighbour along their shared edge, and along which axis. */
+interface Pair { held: string; onto: string; along: "x" | "y" }
+const PAIRS: Record<string, Pair> = {
+  desktop: { held: "cmd", onto: "log", along: "y" },
+  "phone-portrait": { held: "log", onto: "actions", along: "y" },
+  "phone-landscape": { held: "cmd", onto: "actions", along: "x" },
+};
+
 /**
- * The command line dragged onto the log until the log's ghost moves; looked at
- * held; dropped. Returns nothing — every claim is asserted here, for each hand.
+ * Where to take `pair.held`'s strip from `p` so its leading edge is 10 px past
+ * the neighbour's middle, along their edge only.
+ */
+function ontoSpot(s: Seen, pair: Pair, p: { x: number; y: number }): { x: number; y: number } {
+  const [h, o] = [s.panels[pair.held], s.panels[pair.onto]];
+  const a = pair.along;
+  const [hs, hl, os, ol] = a === "y" ? [h.y, h.h, o.y, o.h] : [h.x, h.w, o.x, o.w];
+  const dir = os < hs ? -1 : 1;
+  const d = os + ol / 2 + 10 * dir - (dir < 0 ? hs : hs + hl);
+  return a === "y" ? { x: p.x, y: p.y + d } : { x: p.x + d, y: p.y };
+}
+
+/**
+ * A pane dragged onto its neighbour until the neighbour's ghost moves; looked
+ * at held; dropped. Returns nothing — every claim is asserted here, for each hand.
  */
 async function cmdOntoLog(app: AppContext, hand: Hand, name: string): Promise<void> {
   await app.type('layout("reset")');
   await settled(app.page);
+  const pair = PAIRS[name];
   const s0 = await seen(app);
-  const [log, cmd] = [s0.panels.log, s0.panels.cmd];
-  const p = await stripAt(app, "cmd");
-  // Into the log from wherever the command line is: its strip to the log's
-  // middle, so the two overlap by half the log whichever side it comes from.
-  const to = { x: p.x + (log.x + log.w / 2 - (cmd.x + cmd.w / 2)), y: p.y + (log.y + log.h / 2 - cmd.y) };
+  const [log, cmd] = [s0.panels[pair.onto], s0.panels[pair.held]];
+  const p = await stripAt(app, pair.held);
+  const to = ontoSpot(s0, pair, p);
   await hand.down(p.x, p.y);
   await hand.to(to.x, to.y);
   const held = await seen(app);
-  assert.deepEqual(rect(held.panels.log), rect(log), "the log has not moved");
-  for (const id of Object.keys(s0.panels)) if (id !== "cmd") assert.deepEqual(rect(held.panels[id]), rect(s0.panels[id]), `${id} has not moved`);
-  assert.ok(held.ghosts.log, `the log has a ghost: ${JSON.stringify(held.ghosts)}`);
-  assert.notDeepEqual(rect(held.ghosts.log), rect(log), "where it would be pushed to");
-  assert.ok(Math.abs(held.panels.cmd.y - (cmd.y + to.y - p.y)) <= 1, "the command line is in the hand, under it, over the log");
-  assert.ok(intersect(held.panels.cmd, held.panels.log), "drawn over the log — it is held, not placed");
-  translucent(held, "cmd");
+  assert.deepEqual(rect(held.panels[pair.onto]), rect(log), `the ${pair.onto} has not moved`);
+  for (const id of Object.keys(s0.panels)) if (id !== pair.held) assert.deepEqual(rect(held.panels[id]), rect(s0.panels[id]), `${id} has not moved`);
+  assert.ok(held.ghosts[pair.onto], `the ${pair.onto} has a ghost: ${JSON.stringify(held.ghosts)}`);
+  assert.notDeepEqual(rect(held.ghosts[pair.onto]), rect(log), "where it would go: the held one's slot");
+  const k = pair.along;
+  assert.ok(Math.abs(held.panels[pair.held][k] - (cmd[k] + to[k] - p[k])) <= 1, `the ${pair.held} is in the hand, under it, over the ${pair.onto}`);
+  assert.ok(intersect(held.panels[pair.held], held.panels[pair.onto]), `drawn over the ${pair.onto} — it is held, not placed`);
+  translucent(held, pair.held);
   apart(held.ghosts, "the ghosts");
   await shot(app, `${name}-cmd-onto-log-held`);
   const landing = { ...places(held), ...Object.fromEntries(Object.entries(held.ghosts).map(([id, g]) => [id, rect(g)])) };
@@ -169,7 +194,7 @@ async function cmdOntoLog(app: AppContext, hand: Hand, name: string): Promise<vo
       assert.ok(Math.abs(places(after)[id][k] - r[k]) <= 0.5, `${id} landed on its ghost: ${JSON.stringify(places(after)[id])} vs ${JSON.stringify(r)}`);
     }
   }
-  assert.notDeepEqual(rect(after.panels.log), rect(log), "dropped, the log moved");
+  assert.notDeepEqual(rect(after.panels[pair.onto]), rect(log), `dropped, the ${pair.onto} moved`);
   apart(places(after), "after the drop");
   await shot(app, `${name}-cmd-onto-log-dropped`);
 }
@@ -179,17 +204,18 @@ async function cmdOntoLog(app: AppContext, hand: Hand, name: string): Promise<vo
  * the spot, so back at the press there are no ghosts — and the lift there
  * moves nothing.
  */
-async function backWhereItStarted(app: AppContext, hand: Hand): Promise<void> {
+async function backWhereItStarted(app: AppContext, hand: Hand, name: string): Promise<void> {
   await app.type('layout("reset")');
   await settled(app.page);
+  const pair = PAIRS[name];
   const s0 = await seen(app);
-  const [log, cmd] = [s0.panels.log, s0.panels.cmd];
-  const p = await stripAt(app, "cmd");
+  const p = await stripAt(app, pair.held);
   await hand.down(p.x, p.y);
-  await hand.to(p.x + (log.x + log.w / 2 - (cmd.x + cmd.w / 2)), p.y + (log.y + log.h / 2 - cmd.y));
-  assert.ok((await seen(app)).ghosts.log, "the log's ghost moved on the way");
+  const to = ontoSpot(s0, pair, p);
+  await hand.to(to.x, to.y);
+  assert.ok((await seen(app)).ghosts[pair.onto], `the ${pair.onto}'s ghost moved on the way`);
   await hand.to(p.x, p.y);
-  assert.deepEqual((await seen(app)).ghosts, {}, "back at the press: no ghosts, the log's gone home");
+  assert.deepEqual((await seen(app)).ghosts, {}, `back at the press: no ghosts, the ${pair.onto}'s gone home`);
   await hand.to(p.x + 1, p.y + 1);
   await hand.up();
   const after = await seen(app);
@@ -198,14 +224,14 @@ async function backWhereItStarted(app: AppContext, hand: Hand): Promise<void> {
 }
 
 /**
- * The tray dragged against an edge that turns it — a column up against the top
- * (`sideways` along it: on a portrait phone the column is under the logo, and
- * straight up is the logo's bottom edge, which turns it as the area's top
- * would; sideways, the panes beside it are pinned against the right edge), a
- * row against the left edge: its ghost turns, the tray in the hand does not
- * until the drop.
+ * The tray brought to an edge that turns it — a column off the left edge
+ * (`sideways`) and up to the top, or with `down` to the bottom (a portrait
+ * phone's top has the organiser and the action strip under it, no room for a
+ * row since docs/plans/panels-reshuffle.md; along the bottom it is a second
+ * line above the command line); a row from the bottom-left corner up the left
+ * edge: its ghost turns, the tray in the hand does not until the drop.
  */
-async function trayToTop(app: AppContext, hand: Hand, name: string, sideways: number): Promise<void> {
+async function trayToTop(app: AppContext, hand: Hand, name: string, sideways: number, down = false): Promise<void> {
   await app.type('layout("reset")');
   await settled(app.page);
   const s0 = await seen(app);
@@ -214,8 +240,9 @@ async function trayToTop(app: AppContext, hand: Hand, name: string, sideways: nu
   const turnFrom = t0.orient === "row" ? "row" : "column";
   // Against the top for a column, which turns it into a row; against the left
   // edge for a row, which turns it into a column.
+  const bottom = await app.page.$eval("#viewwrap", (el) => el.clientHeight);
   const to = turnFrom === "column"
-    ? { x: p.x + sideways, y: p.y - t0.y - 40 }
+    ? { x: p.x + sideways, y: down ? p.y + (bottom - t0.y - t0.h) + 40 : p.y - t0.y - 40 }
     : { x: p.x - t0.x - 40, y: p.y - Math.min(160, t0.y / 2) };
   await hand.down(p.x, p.y);
   await hand.to(to.x, to.y);
@@ -224,7 +251,8 @@ async function trayToTop(app: AppContext, hand: Hand, name: string, sideways: nu
   assert.equal(held.panels.toolbar.orient, turnFrom, "the tray in the hand still runs the way it did");
   assert.deepEqual([held.panels.toolbar.w, held.panels.toolbar.h], [t0.w, t0.h], "its own shape");
   assert.equal(held.ghosts.toolbar?.orient, turned, `its ghost is turned: ${JSON.stringify(held.ghosts)}`);
-  if (turned === "row") assert.ok(held.ghosts.toolbar.y < s0.panels.toolbar.y, "up where it met the edge");
+  if (turned === "row" && !down) assert.ok(held.ghosts.toolbar.y < s0.panels.toolbar.y, "up where it met the edge");
+  if (turned === "row" && down) assert.ok(held.ghosts.toolbar.y > s0.panels.toolbar.y, "down along the bottom");
   translucent(held, "toolbar");
   apart(held.ghosts, "the ghosts");
   await shot(app, `${name}-tray-turn-held`);
@@ -252,11 +280,12 @@ test("mouse: dragged and Escaped, nothing moved — and the Escape was the drag'
   await app.type('arm("line")');
   await settled(app.page);
   const s0 = await seen(app);
-  const [log, cmd] = [s0.panels.log, s0.panels.cmd];
   const p = await stripAt(app, "cmd");
   const hand = mouseHand(app);
   await hand.down(p.x, p.y);
-  await hand.to(p.x + 200, p.y + (log.y + log.h / 2 - cmd.y));
+  // Along the left edge past the log's middle: the two would trade places.
+  const to = ontoSpot(s0, PAIRS.desktop, p);
+  await hand.to(to.x, to.y);
   const held = await seen(app);
   assert.ok(held.ghosts.log, "the log's ghost moved");
   await app.page.keyboard.press("Escape");
@@ -275,7 +304,7 @@ test("mouse: dragged and Escaped, nothing moved — and the Escape was the drag'
 });
 
 test("mouse: lifted back where it started, nothing moved", async () => {
-  await backWhereItStarted(apps[0], mouseHand(apps[0]));
+  await backWhereItStarted(apps[0], mouseHand(apps[0]), "desktop");
 });
 
 test("mouse: the tray dragged to the top edge — its ghost turns, the tray does not until dropped", async () => {
@@ -313,23 +342,25 @@ for (const device of ["iPhone 13", "iPhone 13 landscape"] as const) {
   });
 
   test(`${device}: lifted back where it started, nothing moved`, async () => {
-    await backWhereItStarted(phone, await fingerHand(phone));
+    await backWhereItStarted(phone, await fingerHand(phone), name);
   });
 
   test(`${device}: the tray dragged to an edge — its ghost turns, the tray does not until lifted`, async () => {
-    await trayToTop(phone, await fingerHand(phone), name, 0);
+    // Upright, off the left edge and down to the bottom; on its side, the row up the left edge.
+    await trayToTop(phone, await fingerHand(phone), name, name === "phone-portrait" ? 60 : 0, name === "phone-portrait");
   });
 
   test(`${device}: the ghosts are drawn at the interface size's line weight`, async () => {
     const app = phone;
     await app.type('layout("reset")');
     await settled(app.page);
-    const p = await stripAt(app, "cmd");
+    const pair = PAIRS[name];
+    const p = await stripAt(app, pair.held);
     const s0 = await seen(app);
     const hand = await fingerHand(app);
     await hand.down(p.x, p.y);
-    const [log, cmd] = [s0.panels.log, s0.panels.cmd];
-    await hand.to(p.x + (log.x + log.w / 2 - (cmd.x + cmd.w / 2)), p.y + (log.y + log.h / 2 - cmd.y));
+    const to = ontoSpot(s0, pair, p);
+    await hand.to(to.x, to.y);
     const weight = await app.page.evaluate(() => {
       const g = document.querySelector<HTMLElement>(".pghost");
       const ui = Number(getComputedStyle(document.documentElement).getPropertyValue("--ui"));
