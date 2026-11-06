@@ -251,7 +251,9 @@ shading, or re-tessellating with the zoom, would remove them; left.
 
 ### Tests
 
-Unit 1435 → 1453: `test/solidfillets.test.ts` (15: the spike's
+**The gate, as run** (merged with regions as operations, 2026-11-06): typecheck 0 errors; unit 1477/1477; kernel 11/11; e2e 592 tests in eighteen sets of four files, 591 pass, 0 fail, 1 skipped. Base before this package: unit 1435.
+
+Unit 1435 → 1453 on its own base: `test/solidfillets.test.ts` (15: the spike's
 fillet-outline-and-top and chamfer-top-edges built the app's way, against
 Pappus and inclusion–exclusion; one straight edge against (4 − π)/4 · r² · L;
 a hole's rim chamfered against Pappus; the chain; the face naming; the soft

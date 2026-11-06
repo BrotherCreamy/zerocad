@@ -46,7 +46,7 @@ chamfers. SMLib also will not fillet an edge that runs into an earlier fillet
 at a corner; the refusal says to add the edge to that fillet instead. Looking
 found four bugs, now fixed and listed in ARCHITECTURE. Pictures:
 [167](docs/images/167-the-round-tool-armed-a-kernel-edge-lit-under-the-cursor.png)–[176](docs/images/176-phone-the-finger-holds-the-radius-label-the-preview-follows.png).
-Tests: unit 1435 → 1453, e2e +11. **Not tried on an iPhone**: try
+Tests: unit 1435 → 1453 (+18; 1477 merged with regions as operations), e2e +11; the gate, merged: typecheck 0, unit 1477/1477, kernel 11, e2e 592 in sets of four files — 591 pass, 0 fail, 1 skipped. **Not tried on an iPhone**: try
 filleting a lid's edge and dragging the radius label.
 
 ## Regions as operations: a face is a face, and a region is faces combined by named operations
