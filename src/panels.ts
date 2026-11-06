@@ -885,14 +885,20 @@ export interface Drag {
   held: Placed;
   /** For a tray, its buttons, counted at the press. */
   buttons?: number;
+  /**
+   * Taken while the panels are locked (docs/plans/panels-overlay-lock.md): the
+   * hand moves nothing — the preview stays the start wherever it goes, so no
+   * panel is dragged and none is pushed, and the drop commits nothing.
+   */
+  locked?: boolean;
 }
 
 /** A gesture taken at `pointer`, nothing yet moved: the preview is the layout itself, and so are the ghosts — none. */
 export function beginDrag(
-  id: string, kind: "move" | "resize", pointer: Point, layout: Layout, corner: Corner = "se", buttons?: number,
+  id: string, kind: "move" | "resize", pointer: Point, layout: Layout, corner: Corner = "se", buttons?: number, locked = false,
 ): Drag {
   const grab = grabbed(id, kind, pointer, layout, corner);
-  return { grab, press: { ...pointer }, start: layout, preview: layout, held: layout[id], buttons };
+  return { grab, press: { ...pointer }, start: layout, preview: layout, held: layout[id], buttons, ...(locked ? { locked } : {}) };
 }
 
 /**
@@ -931,6 +937,8 @@ export function dragTo(
   drag: Drag, pointer: Point, area: Size,
   minSize: (id: string, orient: Orientation | undefined) => Size, m: Metrics = FINE,
 ): Drag {
+  // Locked, the spot changes nothing: the held panel stays put and pushes nobody.
+  if (drag.locked) return { ...drag, preview: drag.start, held: drag.start[drag.grab.id] };
   const step = dragStep(drag.grab, pointer, drag.start, area, minSize, drag.buttons, m);
   const id = drag.grab.id;
   const held = heldAt(drag, pointer, area, minSize(id, drag.start[id].orient));
@@ -972,8 +980,8 @@ export function backSlop(coarse: boolean): number {
   return coarse ? HOLD_SLOP : 2;
 }
 
-/** What a drop did: `moved` committed the preview; the other three left every panel where it was. */
-export type DropOutcome = "moved" | "unchanged" | "back" | "refused";
+/** What a drop did: `moved` committed the preview; the others left every panel where it was. */
+export type DropOutcome = "moved" | "unchanged" | "back" | "refused" | "locked";
 
 /**
  * The drop at `pointer`: the layout to show and what it was. The preview, if
@@ -987,6 +995,7 @@ export type DropOutcome = "moved" | "unchanged" | "back" | "refused";
  * the start is `unchanged`: there is nothing to commit, or to store.
  */
 export function dropOf(drag: Drag, pointer: Point, area: Size, slop: number): { layout: Layout; outcome: DropOutcome; problem: string | null } {
+  if (drag.locked) return { layout: drag.start, outcome: "locked", problem: null };
   if (Math.hypot(pointer.x - drag.press.x, pointer.y - drag.press.y) <= slop) {
     return { layout: drag.start, outcome: "back", problem: null };
   }
@@ -998,6 +1007,126 @@ export function dropOf(drag: Drag, pointer: Point, area: Size, slop: number): { 
 
 /** How long the panels take to settle onto their ghosts at a drop: short, and no spring (index.html eases out). */
 export const SETTLE_MS = 120;
+
+// ---- see-through and locked -------------------------------------------------
+//
+// Two switches in the logo menu's View section (docs/plans/panels-overlay-
+// lock.md; the owner: *"a menu option to make the toolbars transparent to
+// maximize visible viewport size. and also another option to lock the
+// toolbars in place"*). Both are the viewer's, as the layout and the interface
+// size are: kept in this browser beside the layout, never in a file, never
+// journalled, never an undo step — and typed, `panels({ overlay: true })`,
+// `panels({ locked: true })`, so the menu does nothing a line could not.
+
+/** The two switches: every pane drawn as its content alone over the drawing, and every pane held where it is. */
+export interface PanelSwitches { overlay: boolean; locked: boolean }
+export const NO_SWITCHES: PanelSwitches = { overlay: false, locked: false };
+
+/** Beside the layout's key, its own: `layout("reset")` puts the panes back, and leaves how they are drawn alone. */
+export const SWITCHES_KEY = "neocad.panels.switches.v1";
+
+/** What a stored switches text parses to: anything not exactly a boolean is the default, off. */
+export function parseSwitches(text: string | null): PanelSwitches {
+  if (!text) return { ...NO_SWITCHES };
+  try {
+    const o = JSON.parse(text) as Record<string, unknown>;
+    return { overlay: o?.overlay === true, locked: o?.locked === true };
+  } catch {
+    return { ...NO_SWITCHES };
+  }
+}
+
+export function loadSwitches(storage: StorageLike | null): PanelSwitches {
+  try {
+    return parseSwitches(storage?.getItem(SWITCHES_KEY) ?? null);
+  } catch {
+    return { ...NO_SWITCHES };
+  }
+}
+
+export function saveSwitches(storage: StorageLike | null, s: PanelSwitches): boolean {
+  try {
+    storage?.setItem(SWITCHES_KEY, JSON.stringify({ overlay: s.overlay, locked: s.locked }));
+    return storage !== null;
+  } catch {
+    return false;
+  }
+}
+
+/** What `panels()` says: both switches, in the menu's words and the command's. */
+export function describeSwitches(s: PanelSwitches): string {
+  return `panels: see-through ${s.overlay ? "on" : "off"}, locked ${s.locked ? "on" : "off"}` +
+    ` — panels({ overlay: ${s.overlay} }), panels({ locked: ${s.locked} })`;
+}
+
+export const PANELS_USAGE = "panels() takes { overlay: true | false } and { locked: true | false }; panels() says both";
+
+/**
+ * `panels(options)` read against the switches now: the next switches, or a
+ * throw that says what it takes. Each key is optional, so one line can set
+ * either or both; nothing but a boolean is taken for either.
+ */
+export function switchesFrom(now: PanelSwitches, options: unknown): PanelSwitches {
+  if (!options || typeof options !== "object" || Array.isArray(options)) throw new Error(PANELS_USAGE);
+  const o = options as Record<string, unknown>;
+  const unknown = Object.keys(o).filter((k) => k !== "overlay" && k !== "locked");
+  if (unknown.length) throw new Error(`panels() takes overlay and locked — ${unknown.map((u) => JSON.stringify(u)).join(", ")} is neither. ${PANELS_USAGE}`);
+  const next = { ...now };
+  for (const k of ["overlay", "locked"] as const) {
+    if (!(k in o)) continue;
+    if (typeof o[k] !== "boolean") throw new Error(`panels({ ${k} }) takes true or false — ${JSON.stringify(o[k]) ?? String(o[k])} is neither`);
+    next[k] = o[k] as boolean;
+  }
+  return next;
+}
+
+/**
+ * `panels(options)` as the command line runs it: with nothing, what is in
+ * force; with options, the switches set through `set` (which stores and draws
+ * them) and the new state said. The host's half of the command, kept here so
+ * a test can run it without a page.
+ */
+export function panelsLine(get: () => PanelSwitches, set: (s: PanelSwitches) => void, options?: unknown): string {
+  if (options === undefined) return describeSwitches(get());
+  const next = switchesFrom(get(), options);
+  set(next);
+  return describeSwitches(next);
+}
+
+/** What a press on a locked pane's strip says, in the chip's guidance. */
+export const LOCKED_GUIDE = "panels are locked — unlock in the menu";
+
+/** What the status says when a rotation made a locked layout re-fit. */
+export const REFIT_NOTE = "the locked panels did not fit this screen — re-fitted, still locked";
+
+/** A corner of a pane: which way its see-through content hugs. */
+export type Hug = "nw" | "ne" | "sw" | "se";
+
+/**
+ * The corner a pane's see-through content hugs (the owner: *"like how the
+ * feature tree in solidworks changes form when it is overlaid over the
+ * viewport"* — SolidWorks' flown-out tree sits in the view's corner, not in
+ * the middle of a box): the corner of its rectangle nearest the area's corner
+ * it is in — by which half of the area its middle lies in, each way. So an
+ * organiser docked to the right edge has its tree along the right, one at the
+ * bottom has its last rows on the bottom, and the drawing gets the rest.
+ */
+export function hugOf(r: Rect, area: Size): Hug {
+  const ns = r.y + r.h / 2 <= area.h / 2 ? "n" : "s";
+  const we = r.x + r.w / 2 <= area.w / 2 ? "w" : "e";
+  return `${ns}${we}` as Hug;
+}
+
+/**
+ * The panes the resolver moved to make a layout fit: those of `ids` whose
+ * place in `shown` is not where `wanted` (the stored docking, re-laid in the
+ * area there is now) asked. A locked layout is re-fitted like any other — the
+ * lock keeps a hand from moving a pane, not the window from turning under it
+ * — and this is what says that it was.
+ */
+export function refitted(wanted: Layout, shown: Layout, ids: readonly string[]): string[] {
+  return ids.filter((id) => wanted[id] && shown[id] && !sameRect(wanted[id], shown[id]));
+}
 
 // ---- the default layout -----------------------------------------------------
 
@@ -1878,13 +2007,28 @@ export interface Fixed {
  * command: a strip types nothing — where the panels are is the viewer's, never
  * a line in the log.
  */
-export function stripTip(label: string, tray: boolean): Tip {
+export function stripTip(label: string, tray: boolean, locked = false): Tip {
+  if (locked) return { name: label, summary: "The panels are locked where they are", off: "unlock them in the menu's View" };
   return {
     name: label,
     summary: tray ? "Drag to move it; against an edge it turns to fit and stays there"
       : "Drag to move it; pushed against an edge or a pane, it stays there",
   };
 }
+
+/**
+ * A see-through pane the hand is on is drawn as it is docked — box, strip,
+ * every column of the organiser — so a row can be read against a busy
+ * drawing, and a strip is there to drag by. For a mouse, while it is over the
+ * pane, and this long after it leaves (so the gap between two rows is not a
+ * flicker); for any hand, from a press on the pane's content until the next
+ * press outside it — a finger has no hover, and this is how it reaches a
+ * strip.
+ */
+export const HAND_LINGER_MS = 150;
+
+/** The panes that are never see-through: the options panel (and the feature dialog it holds) is read and typed into, not looked through. */
+export const OPAQUE_PANES: readonly string[] = ["options"];
 
 /** One panel as the app menu lists it: its id, the name it shows, and whether it is shown. */
 export interface Pane { id: string; label: string; shown: boolean }
@@ -1923,6 +2067,19 @@ export class Panels {
   private ghostLayer: HTMLElement;
   private ghosts = new Map<string, HTMLElement>();
   private settleTimer: ReturnType<typeof setTimeout> | undefined;
+  /** See-through and locked (docs/plans/panels-overlay-lock.md): the viewer's, stored beside the layout. */
+  private switches: PanelSwitches;
+  /** Told when a press on a locked pane's strip did nothing — the host puts it in the chip's guidance. */
+  private onLocked: ((text: string) => void) | undefined;
+  /** Told when a locked layout had to be re-fitted to a new area — the host says it in the status. */
+  private onRefit: ((text: string) => void) | undefined;
+  /** The area the last `apply` laid out in: a change is a rotation or a resize. */
+  private lastArea: Size | null = null;
+  /** The panes the last re-fit moved, so the same re-fit is said once. */
+  private lastRefit = "";
+  /** See-through panes a press put in docked form, until the next press outside them. */
+  private pinned = new Set<string>();
+  private lingers = new Map<string, ReturnType<typeof setTimeout>>();
 
   constructor(
     area: HTMLElement, defaults: (area: Size) => Layout, storage: StorageLike | null,
@@ -1932,10 +2089,14 @@ export class Panels {
       fixed?: Record<string, Fixed>; insets?: () => Insets;
       tooltip?: AttachTip; onShow?: (layout: Layout, area: Size, insets: Insets) => void;
       onRefused?: (text: string) => void;
+      onLocked?: (text: string) => void; onRefit?: (text: string) => void;
     } = {},
   ) {
     this.tooltip = options.tooltip;
     this.onRefused = options.onRefused;
+    this.onLocked = options.onLocked;
+    this.onRefit = options.onRefit;
+    this.switches = loadSwitches(storage);
     this.onShow = options.onShow;
     this.m = options.metrics ?? FINE;
     this.area = area;
@@ -1959,6 +2120,17 @@ export class Panels {
     this.ghostLayer.className = "pghosts";
     this.ghostLayer.hidden = true;
     area.appendChild(this.ghostLayer);
+    // A press anywhere but on a pinned see-through pane puts it back to see-through.
+    window.addEventListener("pointerdown", (e) => {
+      if (!this.pinned.size) return;
+      const at = e.target instanceof Node ? e.target : null;
+      for (const id of [...this.pinned]) {
+        if (at && this.els.get(id)?.contains(at)) continue;
+        this.pinned.delete(id);
+        this.handOf(id);
+      }
+    }, true);
+    this.drawSwitches();
     this.restack();
     new ResizeObserver(() => this.apply()).observe(area);
     this.apply();
@@ -2043,8 +2215,55 @@ export class Panels {
     const all = [...order, ...later];
     const wanted = relay({ ...fixed, ...unstored(all, defaults) });
     const s = arranged(all, wanted, defaults, counts, area, sizes, this.m, fixed);
+    // A locked layout re-fitted to a new area (a rotation) is said, once: the
+    // lock holds the panes against a hand, and the resolver still runs. The
+    // re-fit is not stored, so turning back puts each where it was locked.
+    const turned = this.lastArea !== null && (this.lastArea.w !== area.w || this.lastArea.h !== area.h);
+    this.lastArea = area;
+    if (this.switches.locked) {
+      const moved = refitted(wanted, s.layout, Object.keys(recs)).join(",");
+      if (turned && moved && moved !== this.lastRefit) this.onRefit?.(REFIT_NOTE);
+      this.lastRefit = moved;
+    }
     this.show(s.layout, s.ok);
   }
+
+  /** See-through and locked, as they are now. */
+  getSwitches(): PanelSwitches {
+    return { ...this.switches };
+  }
+
+  /**
+   * Sets the switches — the viewer's, stored at once beside the layout — and
+   * draws them: see-through is a class on the area the stylesheet draws every
+   * pane's own form from; locked hides the strips and the grips and refuses
+   * every gesture. Neither moves a pane: the layout is the same rectangles
+   * either way, which is why everything that fits docked fits see-through.
+   */
+  setSwitches(s: PanelSwitches): void {
+    this.switches = { overlay: s.overlay, locked: s.locked };
+    saveSwitches(this.storage, this.switches);
+    if (!s.overlay) {
+      this.pinned.clear();
+      for (const t of this.lingers.values()) clearTimeout(t);
+      this.lingers.clear();
+    }
+    for (const id of this.els.keys()) this.handOf(id);
+    this.drawSwitches();
+  }
+
+  private drawSwitches(): void {
+    this.area.classList.toggle("overlay", this.switches.overlay);
+    this.area.classList.toggle("locked", this.switches.locked);
+  }
+
+  /** Whether pane `id` is drawn in its docked form now: the hand on it, pinned by a press, or held. */
+  private handOf(id: string): void {
+    this.els.get(id)?.classList.toggle("hand", this.switches.overlay && (this.pinned.has(id) || this.mouseOver.has(id)));
+  }
+
+  /** The panes a mouse is over now (a finger's enter and leave are a tap's, not a hover). */
+  private mouseOver = new Set<string>();
 
   /**
    * Puts each panel where `layout` says. A layout with two panels overlapping,
@@ -2097,6 +2316,9 @@ export class Panels {
     for (const [k, v] of [["--pad-t", pad.top], ["--pad-r", pad.right], ["--pad-b", pad.bottom], ["--pad-l", pad.left]] as const) {
       el.style.setProperty(k, `${v}px`);
     }
+    // The corner its see-through content hugs, from where it is in the area.
+    const hug = hugOf(r, this.size());
+    if (el.dataset.hug !== hug) el.dataset.hug = hug;
     const bled = (["top", "right", "bottom", "left"] as const).filter((side) => pad[side] > 0).join(" ");
     if (bled) el.dataset.bleed = bled;
     else delete el.dataset.bleed;
@@ -2237,6 +2459,27 @@ export class Panels {
     // end of its parent: moving an element that holds the focus blurs it, and
     // the command line is nearly always the element that holds the focus.
     el.addEventListener("pointerdown", () => this.raise(id), true);
+    // See-through, the hand on a pane brings its docked form (`HAND_LINGER_MS`):
+    // a mouse over it, or a press on its content until the next press outside.
+    // The pin is set after the press's own click has run, so what the press was
+    // on — a row, a button — does its thing in the form it was pressed in.
+    if (!OPAQUE_PANES.includes(id)) {
+      el.addEventListener("pointerenter", (e) => {
+        if (e.pointerType !== "mouse") return;
+        clearTimeout(this.lingers.get(id));
+        this.mouseOver.add(id);
+        this.handOf(id);
+      });
+      el.addEventListener("pointerleave", (e) => {
+        if (e.pointerType !== "mouse") return;
+        clearTimeout(this.lingers.get(id));
+        this.lingers.set(id, setTimeout(() => { this.mouseOver.delete(id); this.handOf(id); }, HAND_LINGER_MS));
+      });
+      el.addEventListener("click", () => {
+        if (!this.switches.overlay) return;
+        setTimeout(() => { this.pinned.add(id); this.handOf(id); }, 0);
+      }, true);
+    }
     const strip = el.querySelector<HTMLElement>(":scope > .ptitle");
     if (strip) {
       // A tray's strip is sized by `place`, which knows which way it runs.
@@ -2245,7 +2488,7 @@ export class Panels {
       // The strip is a control too — a word, or a tray's grip of dots — and
       // says what it is and what it does (`stripTip`), held as any is.
       const label = el.dataset.label || strip.title || id;
-      if (this.tooltip) this.tooltip(strip, () => stripTip(label, id in this.trays));
+      if (this.tooltip) this.tooltip(strip, () => stripTip(label, id in this.trays, this.switches.locked));
     }
     // Every panel but a tray has the four, made here rather than written out in
     // the page: that a panel resizes from any corner, and a tray from none, is
@@ -2347,21 +2590,27 @@ export class Panels {
       const buttons = id in this.trays ? this.trays[id]() : undefined;
       // The whole layout at the press — what Escape goes back to, and what the
       // drop stores the changes from: a push can move any panel.
-      let drag = beginDrag(id, kind, at(e), { ...this.shown }, corner, buttons);
+      // Locked (docs/plans/panels-overlay-lock.md), the gesture is taken as any
+      // is — captured, so it stays the pane's and never becomes the canvas's —
+      // but the drag moves nothing and pushes nobody (`dragTo`), and the drop
+      // commits nothing (`dropOf`); the press says why. The strip is not drawn
+      // and a grip takes no press at all (the stylesheet).
+      let drag = beginDrag(id, kind, at(e), { ...this.shown }, corner, buttons, this.switches.locked);
       const slop = backSlop(e.pointerType !== "mouse");
       handle.setPointerCapture(e.pointerId);
+      if (drag.locked) this.onLocked?.(LOCKED_GUIDE);
       // A press during the last drop's settle: the panels are already where it
       // put them, and the glide would only drag behind the hand.
       clearTimeout(this.settleTimer);
       this.area.classList.remove("settling");
       this.holding = true;
-      el.classList.add("held");
+      if (!drag.locked) el.classList.add("held");
       // The drag's look starts with its first move, not at the press: a press
       // on a strip that never moves (to raise a panel, to read a strip's
       // tooltip) must not flash every other panel to half and back.
       let started = false;
       const move = (ev: PointerEvent) => {
-        if (ev.pointerId !== e.pointerId) return;
+        if (ev.pointerId !== e.pointerId || drag.locked) return;
         if (!started) {
           started = true;
           this.area.classList.add("dragging");

@@ -55,6 +55,8 @@ export interface OrganiserRow {
   open: boolean | null;
   /** What the open marker types: `opengroup("g1")`, or `closegroup()` on the open one. */
   openCommand: string | null;
+  /** A body's chain, its features' names in order — what the see-through tree hangs under it (`organiserTree`). */
+  chain?: string[];
 }
 
 export interface OrganiserSection {
@@ -147,6 +149,7 @@ export function organiserSections(model: Model, selection: readonly string[] = [
       count: c.steps.length, eye, eyeCommand: eyeCommand(first.name, eye),
       tapCommand: `select(${c.steps.map((f) => quoted(f.name)).join(", ")})`,
       selected: lit(members.filter((n) => !model.hidden.has(n))), open: null, openCommand: null,
+      chain: c.steps.map((f) => f.name),
     };
   });
   // A region is its chain (docs/plans/regions-as-operations.md): the row says
@@ -170,6 +173,75 @@ export function organiserSections(model: Model, selection: readonly string[] = [
     // its region on the way, so with any feature this has a row.
     { id: "regions", title: "Regions", rows: regions, empty: null },
   ];
+}
+
+// ---- the see-through form: a tree ---------------------------------------------
+//
+// docs/plans/panels-overlay-lock.md. Over the drawing the pane is not its box
+// made transparent — the owner: *"the organiser toolbar etc need to have some
+// kind of structure to their layout in order to make the transparent view
+// work. like how the feature tree in solidworks changes form when it is
+// overlaid over the viewport vs being in a pane on the side"* — but a compact
+// tree that hugs its corner: each body a root, its chain its children; the
+// Groups and Regions headings roots of their own, their rows the children;
+// collapsed by default to the bodies and each body's last feature; a section
+// with no rows not there at all. Its rows are the docked pane's rows — the
+// same names, the same taps, the same menus — so it can do nothing the docked
+// one cannot.
+
+/** What a tree node is, for its icon. */
+export type TreeKind = "body" | "feature" | "group" | "region";
+
+export interface TreeNode {
+  /** Unique in the tree: what its open state is kept by. */
+  key: string;
+  kind: TreeKind;
+  /** The docked pane's row it is — null for a heading root (Groups, Regions). */
+  row: OrganiserRow | null;
+  /** What it shows: the row's name, or the heading's title. */
+  label: string;
+  /** Its children: a body's chain, a heading's rows. */
+  children: TreeNode[];
+}
+
+/**
+ * The see-through tree, from the very sections the docked pane draws: a root
+ * per body, its chain's feature rows as its children, in chain order; a
+ * feature in no body's chain a root of its own (none is, today: every feature
+ * starts a body or joins one, but the tree must not lose a row if one ever
+ * does); Groups and Regions each one root, its rows the children. A section
+ * with no rows has no root. Pure: a test asks it what the pane would show.
+ */
+export function organiserTree(sections: readonly OrganiserSection[]): TreeNode[] {
+  const of = (id: string) => sections.find((x) => x.id === id)?.rows ?? [];
+  const features = of("features");
+  const byName = new Map(features.map((r) => [r.name, r]));
+  const leaf = (kind: TreeKind, r: OrganiserRow, key: string): TreeNode => ({ key, kind, row: r, label: r.name, children: [] });
+  const placed = new Set<string>();
+  const roots: TreeNode[] = of("bodies").map((b) => {
+    const chain = (b.chain ?? [b.name]).map((n) => byName.get(n)).filter((r): r is OrganiserRow => r !== undefined);
+    for (const r of chain) placed.add(r.name);
+    return { key: `body:${b.name}`, kind: "body", row: b, label: b.name, children: chain.map((r) => leaf("feature", r, `feature:${r.name}`)) };
+  });
+  for (const r of features) if (!placed.has(r.name)) roots.push(leaf("feature", r, `feature:${r.name}`));
+  for (const [id, kind, title] of [["groups", "group", "Groups"], ["regions", "region", "Regions"]] as const) {
+    const rows = of(id);
+    if (rows.length) roots.push({ key: `section:${id}`, kind, row: null, label: title, children: rows.map((r) => leaf(kind, r, `${kind}:${r.name}`)) });
+  }
+  return roots;
+}
+
+/**
+ * What a root shows collapsed (the tree's default): a body its last feature
+ * beside it — `e1 › e3 fillet` — and nothing under it; a heading its count.
+ * Open, every child. The words after the name are the docked row's detail.
+ */
+export function collapsedNote(n: TreeNode): string {
+  if (n.kind === "body") {
+    const last = n.children[n.children.length - 1];
+    return last && n.children.length > 1 ? `› ${last.label} ${last.row?.detail ?? ""}`.trim() : "";
+  }
+  return n.row === null ? String(n.children.length) : "";
 }
 
 /**
@@ -255,6 +327,8 @@ export interface OrganiserHost {
   run(command: string): void;
   /** Gives the ＋, the eyes, the markers and the rows their tooltips (tooltip.ts); without it, each has a `title`. */
   tooltip?: AttachTip;
+  /** Where the see-through tree is drawn (`organiserTree`) — absent: no tree. */
+  tree?: HTMLElement | null;
 }
 
 /** The ＋'s tooltip: what it would type with this selection. */
@@ -296,6 +370,15 @@ const EYES: Readonly<Record<Eye, string>> = {
   none: `<svg ${SVG}><path d="M1.5 8s2.4-4.5 6.5-4.5S14.5 8 14.5 8 12.1 12.5 8 12.5 1.5 8 1.5 8z" stroke-dasharray="1.5 2"/></svg>`,
 };
 
+const TREE_SVG = 'xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"';
+/** The tree's icons: a body a block, a feature a profile drawn up, a group two sets overlapping, a region a shaded patch. */
+const TREE_ICONS: Readonly<Record<TreeKind, string>> = {
+  body: `<svg ${TREE_SVG}><path d="M8 1.8 13.8 5v6L8 14.2 2.2 11V5z"/><path d="M2.2 5 8 8.2 13.8 5M8 8.2v6"/></svg>`,
+  feature: `<svg ${TREE_SVG}><path d="M2.5 13.5h11"/><path d="M4 13.5V8h8v5.5"/><path d="M8 6V1.8M5.8 4 8 1.8 10.2 4"/></svg>`,
+  group: `<svg ${TREE_SVG}><rect x="2" y="2" width="8" height="8" rx="1.2"/><rect x="6" y="6" width="8" height="8" rx="1.2"/></svg>`,
+  region: `<svg ${TREE_SVG}><path d="M2.5 12.5 3.8 3.5l8.2-1 1.5 7-5.2 3.2z" fill="currentColor" fill-opacity=".3"/></svg>`,
+};
+
 /**
  * The pane's body: rebuilt when what it shows changes (`sync`, cheap to call
  * every frame), and only then — a rebuild mid-press would drop the row the
@@ -308,10 +391,16 @@ export class Organiser {
   private shown = "";
   /** Set when a long-press opened a menu, so the click its release makes is not also a tap. */
   private swallow = false;
+  /** The see-through tree's element, and the roots opened in it (the viewer's, for this page's life). */
+  private tree: HTMLElement | null;
+  private opened = new Set<string>();
+  private treeShown = "";
 
   constructor(body: HTMLElement, add: HTMLElement | null, host: OrganiserHost) {
     this.body = body;
     this.host = host;
+    this.tree = host.tree ?? null;
+    this.tree?.addEventListener("contextmenu", (e) => e.preventDefault());
     if (add) {
       // The strip drags the pane from a press anywhere on it; the ＋'s press
       // is its own. (The strip's mousedown still keeps the command line's focus.)
@@ -327,11 +416,110 @@ export class Organiser {
   sync(): boolean {
     const sections = this.host.sections();
     const key = JSON.stringify(sections);
+    this.syncTree(sections, key);
     if (key === this.shown) return false;
     this.shown = key;
     this.body.textContent = "";
     for (const s of sections) if (s.rows.length || s.empty !== null) this.body.appendChild(this.sectionEl(s));
     return true;
+  }
+
+  /** The see-through tree rebuilt when what it shows, or which roots are open, changed. */
+  private syncTree(sections: OrganiserSection[], key: string): void {
+    if (!this.tree) return;
+    const treeKey = `${key}|${[...this.opened].sort().join(",")}`;
+    if (treeKey === this.treeShown) return;
+    this.treeShown = treeKey;
+    this.tree.textContent = "";
+    for (const n of organiserTree(sections)) this.tree.appendChild(this.nodeEl(n, 0));
+  }
+
+  private toggle(key: string): void {
+    if (this.opened.has(key)) this.opened.delete(key);
+    else this.opened.add(key);
+    this.sync();
+  }
+
+  /**
+   * One node of the tree: its row — a disclosure where it has children, its
+   * icon, its name, and after it the collapsed note or the docked row's
+   * detail — then, open, its children indented under it. A row with a docked
+   * row behind it does that row's things: a tap types its `select(…)`, a
+   * right-click or a held finger opens its menu. A heading (Groups, Regions)
+   * has nothing to select, and the whole of it opens and closes.
+   */
+  private nodeEl(n: TreeNode, depth: number): HTMLElement {
+    const node = document.createElement("div");
+    node.className = "tnode";
+    node.dataset.key = n.key;
+    const open = this.opened.has(n.key);
+    const row = document.createElement("div");
+    row.className = n.row?.selected ? "trow on" : "trow";
+    row.dataset.kind = n.kind;
+    row.dataset.depth = String(depth);
+    if (n.row) {
+      row.dataset.name = n.row.name;
+      row.dataset.eye = n.row.eye;
+      if (n.row.open) row.dataset.open = "";
+    } else {
+      row.dataset.heading = "";
+    }
+    if (n.children.length) {
+      const tog = document.createElement("button");
+      tog.type = "button";
+      tog.className = "ttog";
+      tog.textContent = open ? "▾" : "▸";
+      tog.setAttribute("aria-expanded", String(open));
+      tog.setAttribute("aria-label", `${open ? "close" : "open"} ${n.label}`);
+      tog.addEventListener("click", (e) => { e.stopPropagation(); this.toggle(n.key); });
+      row.appendChild(tog);
+    } else if (depth === 0) {
+      // A root with nothing under it keeps the disclosure's place, so the names line up.
+      const slot = document.createElement("span");
+      slot.className = "ttog slot";
+      row.appendChild(slot);
+    }
+    const icon = document.createElement("span");
+    icon.className = "ticon";
+    icon.innerHTML = TREE_ICONS[n.kind];
+    row.appendChild(icon);
+    const name = document.createElement("span");
+    name.className = "tname";
+    name.textContent = n.label;
+    row.appendChild(name);
+    const noteText = open ? "" : collapsedNote(n);
+    const note = noteText || (depth > 0 ? n.row?.detail ?? "" : "");
+    if (note) {
+      const el = document.createElement("span");
+      el.className = "tnote";
+      el.textContent = note;
+      row.appendChild(el);
+    }
+    if (n.row) {
+      const r = n.row;
+      giveTip(row, () => ({ name: r.name, summary: "Selects it — right-click for its menu", command: r.tapCommand }),
+        this.host.tooltip, { hold: false });
+      row.addEventListener("click", () => {
+        if (this.swallow) { this.swallow = false; return; }
+        this.host.run(r.tapCommand);
+      });
+      row.addEventListener("contextmenu", (e) => {
+        e.preventDefault();
+        if (this.swallow) return;
+        this.openMenu(r.name, e.clientX, e.clientY);
+      });
+      this.longPress(row, r.name);
+    } else {
+      row.addEventListener("click", () => this.toggle(n.key));
+    }
+    node.appendChild(row);
+    if (open && n.children.length) {
+      const kids = document.createElement("div");
+      kids.className = "tkids";
+      for (const c of n.children) kids.appendChild(this.nodeEl(c, depth + 1));
+      node.appendChild(kids);
+    }
+    return node;
   }
 
   private sectionEl(s: OrganiserSection): HTMLElement {
