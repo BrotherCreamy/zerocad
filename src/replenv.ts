@@ -116,6 +116,11 @@ export interface EnvHandles {
   saveFile?: () => Promise<string>;
   shareFile?: () => Promise<string>;
   /**
+   * The browser's install sheet (docs/plans/android.md; src/install.ts): the
+   * logo menu's Install app, where the browser has offered one. Browser only.
+   */
+  installApp?: () => Promise<string>;
+  /**
    * Hands over a file that is not the document — `exportStep()`'s — the share
    * sheet under a finger, else a download (filehost.ts's `exportFile`).
    */
@@ -858,6 +863,12 @@ export function neocadScope(h: EnvHandles): Bag {
     shareFile: () => {
       if (!h.shareFile) throw new Error("no share sheet in this environment — save() gives the text");
       return h.shareFile();
+    },
+    // The app installed from its own menu (docs/plans/android.md). Like the
+    // file commands it acts on nothing in the drawing and journals nothing.
+    installApp: () => {
+      if (!h.installApp) throw new Error("installApp() needs the app in a browser");
+      return h.installApp();
     },
     // STEP (docs/plans/step-export.md, src/step.ts): the shown solids as a
     // file every other CAD tool opens — `exportStep()`, `exportStep("name")`,

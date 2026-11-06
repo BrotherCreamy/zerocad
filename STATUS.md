@@ -16,6 +16,23 @@ etc).
   on every push to the working branch. Called NeoCAD until 0.1.0; the
   internal code name stays in identifiers, the file format tag and storage
   keys (see TODO.md's register).
+- **Android** (docs/plans/android.md, built). The owner: *"obv this whole
+  platform should also work on android"*. The device table
+  (`test/devices.ts`) has eleven Android rows — Pixels 7, 8, 9 and their
+  Pro sizes, Galaxy S23/S24, a Fold 7's two screens, two tablets — each
+  installed with the gesture bar, with three buttons and in a Chrome tab;
+  everything fits on all 66, with the keyboard up. The interface size reads
+  Android's font scale from `env(preferred-text-scale)` (`uiscale.ts`).
+  Android's **back** closes what is open, and at rest does nothing
+  (`backstack.ts`; one seam with Escape). The panel being typed into rides
+  above the keyboard (`keyboard.ts`). **Install app** in the logo menu
+  (`install.ts`, `installApp()`), the manifest's screenshots and
+  `launch_handler`. Every file path falls back and says which door it used;
+  Chrome on Android refuses a `.json` share, so Share downloads there.
+  Tested in Chromium under the Pixel 7 and Galaxy S24 descriptors and
+  Samsung Internet's user agent; Firefox for Android and Samsung's browser
+  untested. `npm run measure:android` measures the mode chip's
+  `activePlane` and the Worker's start under round.
 - **Regions as operations** (docs/plans/regions-as-operations.md, built). The
   owner: *"there should be no such thing as a negative face. a face is just a
   face"*. A **face** is a closed loop's whole inside, found; a **region**

@@ -2,7 +2,7 @@
 // against a real dev server.
 //
 // These exist because a good deal of what this project does is only wrong
-// once it is assembled. Twenty-three bugs so far were invisible to the unit tests and
+// once it is assembled. Thirty-four bugs so far were invisible to the unit tests and
 // obvious within seconds of running the thing: a status readout that went
 // stale, a fillet that satisfied every constraint to six decimal places while
 // drawing a broken rectangle, an auto-naming loop that hung the tab, and a
@@ -47,13 +47,13 @@ const SOFTWARE_GL = ["--use-angle=swiftshader", "--enable-unsafe-swiftshader"];
  * suites that need their own contexts (pwa.e2e.ts's phone emulation) and for
  * scripts/icons.ts, which rasterises with the same browser.
  */
-export async function launchBrowser(): Promise<Browser> {
+export async function launchBrowser(extra: string[] = []): Promise<Browser> {
   try {
-    return await chromium.launch({ args: SOFTWARE_GL });
+    return await chromium.launch({ args: [...SOFTWARE_GL, ...extra] });
   } catch (firstError) {
     for (const path of discoverChromium()) {
       try {
-        return await chromium.launch({ executablePath: path, args: SOFTWARE_GL });
+        return await chromium.launch({ executablePath: path, args: [...SOFTWARE_GL, ...extra] });
       } catch { /* try the next candidate */ }
     }
     throw new Error(
@@ -229,9 +229,16 @@ export interface OpenOptions {
    * landscape"`: its viewport, scale, `isMobile` and `hasTouch` (so the page's
    * `(pointer: coarse)` matches and taps are touch pointers), on Chromium,
    * which is the browser this machine has. Not Safari: what only WebKit does
-   * is the owner's to try on the device (CHANGELOG, the touch entry).
+   * is the owner's to try on the device (CHANGELOG, the touch entry). The
+   * Android ones (docs/plans/android.md) are Chromium's own engine and input
+   * pipeline, so for them the emulation is the browser; what it is not is the
+   * device's system around it (its bars, its keyboard, its back gesture).
    */
-  device?: "iPhone 13" | "iPhone 13 landscape";
+  device?: "iPhone 13" | "iPhone 13 landscape" | "Pixel 7" | "Pixel 7 landscape" | "Galaxy S24" | "Galaxy S24 landscape";
+  /** A user agent other than the device's — another browser's on the same engine (Samsung Internet's). */
+  userAgent?: string;
+  /** Flags for the browser — the system font scale stood in for, `--blink-settings=accessibilityFontScaleFactor=1.3`. */
+  args?: string[];
   /**
    * A desktop window of another size than the suite's 1100×800. The golden
    * picture (hidden.e2e.ts) was recorded on a 1100×768 canvas — the 800 window
@@ -284,13 +291,13 @@ export async function settled(page: Page): Promise<void> {
 
 export async function openApp(options: OpenOptions = {}): Promise<AppContext> {
   await requireServer();
-  const browser = await launchBrowser();
+  const browser = await launchBrowser(options.args);
   let page: Page;
   if (options.device) {
     // The descriptor names WebKit as its browser; everything else in it is
     // what Chromium emulates.
     const { defaultBrowserType: _webkit, ...phone } = devices[options.device];
-    page = await (await browser.newContext(phone)).newPage();
+    page = await (await browser.newContext({ ...phone, ...(options.userAgent ? { userAgent: options.userAgent } : {}) })).newPage();
     // A phone lays a page out 980 px wide unless the page asks for the
     // device's width. The PWA package (docs/plans/pwa-pages.md) owns the
     // page's head and adds the real meta; until then the suite asks for the

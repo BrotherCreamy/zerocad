@@ -7,6 +7,66 @@ decisions.
 
 ---
 
+## Android: the same app, at home on a Pixel or a Galaxy
+
+The owner: *"obv this whole platform should also work on android"*. Built to
+[`docs/plans/android.md`](docs/plans/android.md); every number's source and
+every deviation is in its *As built*.
+
+- **The device table has an Android column**: Pixels 7, 8 and 9 and their
+  Pro sizes, Galaxy S23/S24, a Fold 7's cover and inner screens, a Galaxy Tab
+  and a Pixel Tablet. Each is laid out installed with the gesture bar,
+  installed with three buttons, and in a Chrome tab, with its camera cutout
+  and bars. Status bars and cutouts come from AOSP's own Pixel files;
+  Samsung's are estimated and say so. **Everything fits on all 66**, both
+  ways up and with the keyboard up, with no change to the layout.
+- **The interface size follows Android's font size.** Chrome reports it as
+  `env(preferred-text-scale)`. Measured with Chrome's own setting at 130 %,
+  the variable reads 1.3, while `font: medium` (the spec's suggestion) reads
+  16 px whatever the setting. A Pixel's 100 % is then 1.69× a desktop's
+  instead of 1.3×. `ui()` says where its text size came from.
+- **Android's back closes what is open** — a flyout, the menu, the context
+  menu, Add workbench…'s question, a tooltip — **and otherwise does
+  nothing.** It never leaves the app or reloads it. Escape closes the same
+  things through the same seam. In a desktop's tab, Back with nothing open
+  still leaves the page.
+- **The keyboard**: the drawing keeps its size, and the command line rides
+  on the keyboard's top, beside the tray rather than over it.
+- **Install app** is in the logo menu once Chrome offers to install. Tapping
+  it shows Chrome's own install sheet, now with pictures (the manifest's new
+  `screenshots`). Opening the app a second time focuses the window already
+  open. An iPhone's menu says how Safari installs instead.
+- **Files**: Open… and Save use Chrome's pickers where they exist. A picker
+  that refuses or fails falls back to the Files chooser or a download, and
+  the log says which door it used. **Chrome on Android will not share a
+  `.json`** (its share service's list has no json), so Share… downloads
+  there and says why. Add workbench… uses the picker too, and a workbench
+  file opened with the installed app goes to its question.
+- **Touch**: nothing new in the recogniser. Tap, drag, long-press and pinch
+  work as on the iPhone. A long-press now raises no browser menu anywhere
+  but on the command line and the log. A swipe from the screen's edge is
+  Android's back, never a pan.
+
+Looking found two bugs, now fixed and listed in ARCHITECTURE (31–32): a tray
+button's long-press let Chrome's own menu through, and the lifted command
+line kept padding for a bar it no longer touched. Measured, for two earlier
+reviews (`npm run measure:android`): the mode chip's `activePlane` costs
+0.9 ms a frame (2–2.7 ms under a 4× CPU throttle), so it is not cached.
+Arming round on a one-sweep box waits 1.2–1.7 s for the kernel's Worker.
+Pictures: [177](docs/images/188-pixel-7-installed-below-its-52px-status-bar-the-command-line-over-the-gesture-bar.png)–[183](docs/images/194-pixel-tablet-upright-with-three-buttons-along-the-bottom.png).
+Tests: typecheck 0; unit 1477 → 1561 (+84); kernel 11; e2e 592 → 607 (+15: the
+Android file's 14, and the Android table in fits), run in sets of three on a
+machine shared with another worker. 604 passed, 1 skipped, and 2 failed: the
+phone fillet file's held-label drag and edge tap, which the register already
+records as missing under load. That file passed 3/3 alone, twice. Run as
+its set again, the misses moved with the load. Sometimes they were those two,
+sometimes solidsphone's drags (also on the register). The base, at the same
+load, missed solidsphone's two. **Not tried on an Android device**, and Firefox for
+Android and Samsung Internet are untested; Samsung's user agent was
+smoke-run on Chromium. Worth trying: install from the logo menu, then Back
+with a menu open and with nothing open, Open… and Save, and type with the
+keyboard up.
+
 ## A dragged panel shows where everything will land, and nothing moves until it is dropped
 
 The owner: *"the toolbars should push each other around, but they should show

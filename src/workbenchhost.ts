@@ -79,6 +79,13 @@ export interface WorkbenchHostOptions {
 /** The suffix a workbench file goes by, as a drawing is `.zerocad.json`. */
 export const WORKBENCH_SUFFIX = ".zerocad.js";
 
+/**
+ * The pickers' types for a workbench file: `.js` under both of JavaScript's
+ * MIME types, since a phone's file provider may label it either way. (Android's
+ * picker is reported to ignore the MIME filter anyway — docs/plans/android.md.)
+ */
+export const WORKBENCH_TYPES = [{ description: "ZeroCAD workbench", accept: { "text/javascript": [".js"], "application/javascript": [".js"] } }];
+
 export class WorkbenchFiles {
   private stored = new Map<string, StoredWorkbench>();
   private dialog: HTMLElement | null = null;
@@ -112,12 +119,42 @@ export class WorkbenchFiles {
     return [...this.stored.keys()];
   }
 
-  /** `addWorkbench()` — the device's file picker. Returns at once; the file arrives in an event. */
+  /**
+   * `addWorkbench()` — the device's file picker, the way `openFile()` asks
+   * (docs/plans/android.md): `showOpenFilePicker` where there is one (Chrome
+   * and Edge on a desktop, Chrome on Android since 132), else the file input
+   * (the Files app on an iPhone, Android's Files / Downloads chooser). A picker
+   * that fails for any reason but a cancel falls back to the input. Returns at
+   * once, saying which; the file arrives in an event.
+   */
   add(): string {
+    const w = globalThis as unknown as { showOpenFilePicker?(o: unknown): Promise<{ getFile(): Promise<File> }[]> };
+    if (typeof w.showOpenFilePicker === "function") {
+      void (async () => {
+        try {
+          const [h] = await w.showOpenFilePicker!({ types: WORKBENCH_TYPES, multiple: false });
+          if (!h) return;
+          const file = await h.getFile();
+          this.offer(await file.text(), file.name);
+        } catch (e) {
+          if ((e as { name?: string } | null)?.name === "AbortError") return;
+          this.o.log(`the file picker failed (${e instanceof Error ? e.message : e}) — choose with the browser's file chooser instead`, "out");
+          this.byInput();
+        }
+      })();
+      return "choose a workbench file (.zerocad.js) — the file picker";
+    }
+    this.byInput();
+    return "choose a workbench file (.zerocad.js) — the browser's file chooser";
+  }
+
+  /** The file input: in the page and invisible rather than `display: none`, as filehost.ts's is, for older iOS. */
+  private byInput(): void {
     const input = document.createElement("input");
     input.type = "file";
     input.accept = ".js,text/javascript,application/javascript";
-    input.style.display = "none";
+    input.style.cssText = "position:fixed;left:-1000px;top:0;width:1px;height:1px;opacity:0";
+    input.addEventListener("cancel", () => input.remove());
     input.addEventListener("change", () => {
       const file = input.files?.[0];
       input.remove();
@@ -125,7 +162,6 @@ export class WorkbenchFiles {
     });
     document.body.appendChild(input);
     input.click();
-    return "choose a workbench file (.zerocad.js)";
   }
 
   /** `loadModule(url)` — the same, from a URL. */

@@ -76,6 +76,13 @@ export interface Device {
   appleBody: number | null;
   /** The browser's default font size in px (`font-size: medium`). */
   defaultFont: number;
+  /**
+   * The operating system's text scale where the browser reports it —
+   * `env(preferred-text-scale)`, Chrome on Android since 138 (1 at the
+   * default; 1.3 for a person who chose 130 %) — or null where it does not.
+   * Optional: a device measured before it existed has none.
+   */
+  textScale?: number | null;
 }
 
 /** The form factor alone: 1, 1.3 or 1.15 (`FORM_FACTOR`). */
@@ -94,11 +101,37 @@ export function formFactor(d: Pick<Device, "coarse" | "shortSide">): number {
  * shrink every Mac's chrome by a quarter. A Mac's preference is its browser's
  * font size, the second rule. Held to [TEXT_MIN, TEXT_MAX]; anything that is
  * not a positive number is 1.
+ *
+ * **On Android** (docs/plans/android.md), under a finger where there is no
+ * `-apple-system-body`: the system's font scale as Chrome reports it,
+ * `env(preferred-text-scale)`, times the browser's own default font size over
+ * 16 (which a person can also change, and which the system scale does not
+ * touch on a page that has no `<meta name="text-scale">` — this one has none).
+ * *Measured* (Chromium 141 under Pixel 7 emulation, the system scale stood in
+ * for by `--blink-settings=accessibilityFontScaleFactor=1.3`): the variable
+ * reads 1.3, while `font-size: medium` stays 16 px wherever text autosizing
+ * does not act — and it never acts on a lone probe, nor anywhere on this page
+ * (`text-size-adjust: 100%`). Autosizing is a heuristic over runs of text; the
+ * variable is the API. So the variable, and where a browser has none (Chrome
+ * before 138, Firefox), the second rule — 1 for a person who changed only the
+ * system's size. Not under a mouse: a desktop's preference is its browser's
+ * font size, and the variable there is 1 or, where Chrome brings it to
+ * Windows, a scale Chrome already applies as zoom.
  */
 export function textFactor(d: Device): number {
-  const raw = d.coarse && d.appleBody !== null ? d.appleBody / IOS_BODY_PX : d.defaultFont / DEFAULT_FONT_PX;
+  const scale = d.textScale;
+  const raw = d.coarse && d.appleBody !== null ? d.appleBody / IOS_BODY_PX
+    : d.coarse && typeof scale === "number" && scale > 0 ? scale * (d.defaultFont / DEFAULT_FONT_PX)
+    : d.defaultFont / DEFAULT_FONT_PX;
   if (!Number.isFinite(raw) || raw <= 0) return 1;
   return Math.min(TEXT_MAX, Math.max(TEXT_MIN, raw));
+}
+
+/** Where `textFactor` read the person's text size from, as `ui()` says it. */
+export function textSource(d: Device): "Dynamic Type" | "the system's font scale" | "the browser's font size" {
+  if (d.coarse && d.appleBody !== null) return "Dynamic Type";
+  if (d.coarse && typeof d.textScale === "number" && d.textScale > 0) return "the system's font scale";
+  return "the browser's font size";
 }
 
 /** **The device's 100 %**: form factor × preferred text size, to the hundredth. */

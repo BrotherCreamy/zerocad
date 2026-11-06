@@ -547,6 +547,26 @@ an iPhone:
    then **Add**.
 3. Start it from the new icon. It opens full screen, with no Safari bars.
 
+On an Android phone or tablet (a Pixel, a Galaxy):
+
+1. Open that address in **Chrome**.
+2. Tap the **logo** and **Install app** — or Chrome's own ⋮ menu, **Install
+   app** (older Chrome: **Add to Home screen**). Chrome shows its install sheet,
+   with pictures of the app; tap **Install**.
+3. Start it from the new icon or the app list. It opens on its own, with no
+   Chrome bars, the status bar in the drawing's colour. Opening it again
+   brings back the window already open.
+
+Android's **back** — the swipe from the screen's edge, or ◁ — closes what is
+open (a flyout, a menu, a question) and otherwise does nothing: it never
+leaves the app or loses the drawing. The swipe from the edge is always the
+system's, never a pan of the drawing. **Open…** and **Save** use Chrome's file
+pickers (Chrome 132 and later; before that, the Files chooser and a download
+to Downloads). Chrome on Android will not hand a `.json` file to the share
+sheet, so **Share…** downloads it there, and says so. The interface size
+follows Android's own font size (Settings → Display → Font size). Samsung
+Internet and Firefox are untested; Chrome is what the app is tested against.
+
 A new version never replaces the app while it is open. When one has
 downloaded, **Update ready — tap to reload** appears beside the logo; a tap
 saves the drawing and reloads into the new version with it. Ignored, the next
@@ -556,8 +576,9 @@ or zooms under a finger.
 The site is `npm run build:pwa`'s `dist-pwa/` folder, published by
 `.github/workflows/pages.yml` (see `docs/plans/pwa-pages.md`).
 
-Under fingers (built for an iPhone; tested in Chromium's iPhone
-emulation, since only the device runs iOS Safari):
+Under fingers (built for an iPhone and for Android; tested in Chromium's
+iPhone and Pixel emulation — only the device runs iOS Safari, and on Android
+Chromium is the browser, but not the phone around it):
 
 - **tap** — a click: picks a tool, places a point, selects. Once something is
   selected a tap toggles, and a tap on empty canvas clears.
@@ -594,7 +615,9 @@ against another pane, stays against it when the phone turns.
 ![The same in landscape: the tools two rows along the bottom, the command line along the top, the action strip, the log and the organiser down the right](docs/screenshots/phone-landscape.png)
 
 Nothing is ever drawn over anything else: on every iPhone from the SE to the
-Pro Max, either way up, the panes start clear of one another and of the
+Pro Max, and on the Pixels, Galaxies, Fold and tablets of the device table
+(`test/devices.ts`) with the gesture bar, three buttons or in a Chrome tab,
+with the keyboard up too, either way up, the panes start clear of one another and of the
 status beside the logo, and the toolbar takes a second row where one will
 not fit.
 

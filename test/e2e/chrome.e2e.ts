@@ -238,7 +238,9 @@ test("the logo opens the app menu; Escape closes it; a tap outside closes it and
     assert.ok(menu.y >= logo.bottom - 1 && menu.x <= logo.x + 1, "anchored under the logo");
     const sections = await p.page.$$eval("#appmenu .sect", (s) => s.map((e) => (e as HTMLElement).dataset.section));
     // Workbench (docs/plans/workbenches.md): the switcher and Add workbench…, after File.
-    assert.deepEqual(sections, ["File", "Workbench", "Interface size", "Panes", "View", "About"]);
+    // App first (docs/plans/android.md): an iPhone in Safari, not installed, is told how it installs.
+    assert.deepEqual(sections, ["App", "File", "Workbench", "Interface size", "Panes", "View", "About"]);
+    assert.match(await p.page.$eval("#appmenu [data-install='note']", (el) => el.textContent ?? ""), /Share, then Add to Home Screen/);
     await p.page.keyboard.press("Escape");
     assert.equal(await p.page.$eval("#appmenu", (m) => (m as HTMLElement).hidden), true, "Escape closed it");
     await fingerTap(p.cdp, logo.x + logo.w / 2, logo.y + logo.h / 2);

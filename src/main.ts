@@ -37,7 +37,7 @@ import {
 } from "./panels.ts";
 import { Tooltips } from "./tooltip.ts";
 import {
-  clampScale, deviceScale, formFactor, formatScale, recallScale, rememberScale, textFactor, type Device,
+  clampScale, deviceScale, formFactor, formatScale, recallScale, rememberScale, textFactor, textSource, type Device,
 } from "./uiscale.ts";
 import { GUIDE_NOTE_MS, STATUS_FADE_MS, STEP_NOTE_MS, StatusLine, diagnosisLine } from "./statusline.ts";
 import { AppMenu, UNTITLED } from "./appmenu.ts";
@@ -62,6 +62,9 @@ import { activePlane, focusOf, outOfFocusInk, planePatch, type ActivePlane } fro
 import { ModeChip, chipParts, doneCommand, guideText, planeMenu } from "./modechip.ts";
 import { frameBasis } from "./relations/refs.ts";
 import { lockPage } from "./pagelock.ts";
+import { BackStack } from "./backstack.ts";
+import { keyboardTop, lifted } from "./keyboard.ts";
+import { Installer, type InstallWindow } from "./install.ts";
 import type { Diagnosis, Entity } from "./model.ts";
 // The app is its modules (docs/plans/workbenches.md): every built-in module,
 // in the order that orders the tray, the menu, the replay table and help()
@@ -136,9 +139,18 @@ function measureDevice(): Device {
     probe.style.font = "-apple-system-body";
     appleBody = parseFloat(getComputedStyle(probe).fontSize) || null;
   }
+  // Android's system font scale (docs/plans/android.md): Chrome reports it as
+  // `env(preferred-text-scale)`, a plain number, which script can read only
+  // through a length — 100 px times it, with a fallback of 0 for a browser
+  // that does not know the variable. Read off the probe's width, not its type
+  // size: Chrome applies the system scale to type only by text autosizing,
+  // which never acts on a probe (uiscale.ts's `textFactor` has the measurement).
+  probe.style.cssText = "position:absolute;visibility:hidden;height:0;width:calc(100px * env(preferred-text-scale, 0))";
+  const reported = probe.getBoundingClientRect().width / 100;
+  const textScale = reported > 0 ? reported : null;
   probe.remove();
   const shortSide = Math.min(screen.width, screen.height) || Math.min(innerWidth, innerHeight);
-  return { coarse, shortSide, appleBody, defaultFont };
+  return { coarse, shortSide, appleBody, defaultFont, textScale };
 }
 const device = measureDevice();
 
@@ -199,6 +211,8 @@ function applyChrome(): void {
  * the row. Placed again after every placement of the panels.
  */
 let cornerLayout: { layout: Layout; area: Size } | null = null;
+/** Puts the panel being typed into back above the keyboard after the panels are placed (set in main(); keyboard.ts). */
+let relift: () => void = () => {};
 function placeCorner(): void {
   const i = insets();
   const box = logoBox(metrics);
@@ -247,6 +261,16 @@ const tooltip = tooltips.attach;
  */
 const apple = /Mac|iPhone|iPad|iPod/.test(navigator.platform ?? "") || /iPhone|iPad|iPod|Macintosh/.test(navigator.userAgent);
 const TOOL_KEYS: Readonly<Record<string, string>> = { [HAND]: "hold Space", [SELECT]: "Esc" };
+
+/**
+ * **Install app** (install.ts; docs/plans/android.md): the browser's offer,
+ * kept from the moment the page loads — `beforeinstallprompt` can come before
+ * the kernel has — and made from the logo menu. An iPhone or iPad (an iPad
+ * says it is a Mac with a touch screen) has no offer; the menu says how
+ * Safari installs instead.
+ */
+const ios = /iPhone|iPad|iPod/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
+const installer = new Installer(window as unknown as InstallWindow, { ios });
 
 /** The logo's: no command, it opens the menu. */
 tooltip(logoEl, () => ({ name: "ZeroCAD", summary: "Opens the menu: files, interface size, panes and view" }));
@@ -333,7 +357,7 @@ const panels = new Panels(
     insets,
     tooltip,
     // The corner keeps clear of wherever the panes now are.
-    onShow: (layout, area) => { cornerLayout = { layout, area }; placeCorner(); },
+    onShow: (layout, area) => { cornerLayout = { layout, area }; placeCorner(); relift(); },
     // A drop the resolver could not make sound commits nothing, and says so
     // where the eye already is for what just happened (docs/plans/panels-preview.md).
     onRefused: (text) => statusLine.note(text),
@@ -2043,6 +2067,52 @@ async function main() {
   };
   document.addEventListener("focusout", () => { setTimeout(unscroll, 350); });
   window.visualViewport?.addEventListener("resize", () => { setTimeout(unscroll, 50); });
+
+  /**
+   * **The panel being typed into rides above the keyboard** (keyboard.ts;
+   * docs/plans/android.md): moved — by a transform, and narrowed to the free
+   * run beside the other panes — while the keyboard covers it, and put back by
+   * the panels' own placement when the keyboard goes or the focus leaves. The
+   * page is not resized for a keyboard, so the drawing keeps its size.
+   */
+  let liftedEl: HTMLElement | null = null;
+  const lift = () => {
+    const vv = window.visualViewport;
+    const at = document.activeElement;
+    const panel = at instanceof HTMLInputElement || at instanceof HTMLTextAreaElement ? at.closest<HTMLElement>(".panel[data-panel]") : null;
+    const top = keyboardTop(document.documentElement.clientHeight, vv);
+    if (liftedEl && (liftedEl !== panel || top === null)) {
+      const was = liftedEl;
+      liftedEl = null;
+      was.style.transform = "";
+      delete was.dataset.lifted;
+      panels.apply(); // its own width and place again
+    }
+    if (!panel || top === null) return;
+    const box = (el: Element) => { const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; };
+    // Where the panels put it, not where a lift already has — its own
+    // rectangle, without the ground it reaches under an inset with (`bleed`):
+    // lifted off the gesture bar, it has no bar to reach under.
+    const pad = getComputedStyle(panel);
+    const [padT, padB] = [parseFloat(pad.paddingTop) || 0, parseFloat(pad.paddingBottom) || 0];
+    const home = { x: panel.offsetLeft, y: panel.offsetTop + padT, w: panel.offsetWidth, h: panel.offsetHeight - padT - padB };
+    const others = Array.from(document.querySelectorAll<HTMLElement>(".panel[data-panel]"))
+      .filter((el) => el !== panel && !el.hidden).map(box).concat([box(logoEl)]);
+    const to = lifted(home, top, others);
+    if (!to) return;
+    panel.style.padding = "";
+    panel.style.height = `${to.h}px`;
+    delete panel.dataset.bleed;
+    panel.style.transform = `translate(${to.x - panel.offsetLeft}px, ${to.y - panel.offsetTop}px)`;
+    panel.style.width = `${to.w}px`;
+    panel.dataset.lifted = "";
+    liftedEl = panel;
+  };
+  relift = lift;
+  window.visualViewport?.addEventListener("resize", lift);
+  window.visualViewport?.addEventListener("scroll", lift);
+  document.addEventListener("focusin", lift);
+  document.addEventListener("focusout", () => setTimeout(lift, 0));
   cv.addEventListener("pointerdown", (e) => {
     if (!cv.hasPointerCapture(e.pointerId)) cv.setPointerCapture(e.pointerId);
     unscroll();
@@ -2203,6 +2273,7 @@ async function main() {
       openFile: () => files!.openFile(),
       saveFile: () => files!.saveFile(),
       shareFile: () => files!.shareFile(),
+      installApp: () => installer.install(),
       exportFile: (text: string, name: string, type: string) => files!.exportFile(text, name, type),
       // The bodies the kernel built, exactly: each one's topology asked of the
       // Worker that holds it, with the faces' surfaces from their features.
@@ -2434,7 +2505,7 @@ async function main() {
     // The device's 100 % said in its parts, so a person can see why their
     // phone draws what it draws: the form factor and the text size.
     const why = `100% here is ${deviceUi}× a desktop's: ${coarse ? (formFactor(device) === 1.3 ? "a phone" : "a tablet") : "a mouse"} ` +
-      `${formFactor(device)}, text size ${textFactor(device).toFixed(2)}`;
+      `${formFactor(device)}, text size ${textFactor(device).toFixed(2)} (${textSource(device)})`;
     return `interface ${formatScale(uiScale)} (${why})` +
       `; panes ${panes.map((p) => p.id).join(", ")}` + (hidden.length ? `; hidden ${hidden.join(", ")}` : "; all shown");
   }
@@ -2477,6 +2548,7 @@ async function main() {
     solidsLicence: solidsLicence(),
     // The modules' File items and the workbench switcher (docs/plans/workbenches.md).
     fileItems: fileMenuItems,
+    install: () => installer.offer(),
     workbenches: () => listWorkbenches().map((w) => ({ name: w.name, label: w.label, current: w.name === activeWorkbench(), added: w.origin === "added" })),
     tooltip,
   });
@@ -2644,14 +2716,78 @@ async function main() {
    * No carve-out for text in the input: Escape has never meant anything to a
    * text field here, so there is nothing to be ambiguous with.
    */
+  /**
+   * **What is open, top-most first, and how each is closed** — the one seam
+   * Escape and Android's back both close through (docs/plans/android.md). A
+   * dialog (Add workbench…'s question, the missing-workbench offer) by its
+   * first button, which is the one that does nothing (Cancel, Not now); the
+   * tooltip, the menus and a flyout by their own `close`.
+   */
+  const openings = (): string[] => {
+    const shown = (id: string) => { const el = document.getElementById(id); return !!el && !el.hidden; };
+    return ["tooltip", "wbconsent", "wbmissing", "ctxmenu", "flyout", "appmenu"].filter(shown);
+  };
+  const closeOpening = (name: string): void => {
+    if (name === "tooltip") tooltips.hide();
+    else if (name === "ctxmenu") menu.close();
+    else if (name === "flyout") toolbar.close();
+    else if (name === "appmenu") appMenu.close();
+    else document.getElementById(name)?.querySelector<HTMLButtonElement>("button")?.click();
+  };
+  const OPENING_WORDS: Record<string, string> = {
+    tooltip: "tooltip", wbconsent: "question", wbmissing: "offer", ctxmenu: "menu", flyout: "flyout", appmenu: "menu",
+  };
+
+  /**
+   * **Android's back closes what is open, and otherwise does nothing**
+   * (backstack.ts has the rule and what it cannot promise). The guard that
+   * makes a back at rest do nothing is up under a finger and in the installed
+   * app; in a desktop's tab Back leaves the page, as it always has, once
+   * nothing is open.
+   */
+  const installed = ["standalone", "fullscreen", "minimal-ui"].some((m) => matchMedia?.(`(display-mode: ${m})`)?.matches);
+  const back = new BackStack(window.history, {
+    open: openings,
+    close: closeOpening,
+    tracked: (name) => name !== "tooltip",
+  }, { guard: coarse || installed });
+  // Put up at a press, which carries the gesture an entry needs not to be one Back skips.
+  window.addEventListener("pointerup", () => back.arm(), true);
+  window.addEventListener("keyup", () => back.arm(), true);
+  let wasOpen = new Set<string>();
+  const watchOpenings = () => {
+    const now = new Set(openings());
+    // A press opened it: the browser's user activation is still live as this runs.
+    const asked = (navigator as { userActivation?: { isActive: boolean } }).userActivation?.isActive ?? true;
+    for (const name of now) if (!wasOpen.has(name)) back.opened(name, asked);
+    if ([...wasOpen].some((name) => !now.has(name))) back.closed();
+    wasOpen = now;
+  };
+  const watcher = new MutationObserver(watchOpenings);
+  for (const id of ["tooltip", "ctxmenu", "flyout", "appmenu"]) {
+    const el = document.getElementById(id);
+    if (el) watcher.observe(el, { attributes: true, attributeFilter: ["hidden"] });
+  }
+  // The dialogs come and go as elements of the body.
+  watcher.observe(document.body, { childList: true });
+  window.addEventListener("popstate", (e) => {
+    const did = back.popped(e.state);
+    wasOpen = new Set(openings());
+    if (typeof did === "object") log(`back: ${OPENING_WORDS[did.closed] ?? did.closed} closed`, "out");
+    syncToolbar();
+  });
+
   window.addEventListener("keydown", (e) => {
     if (e.key !== "Escape") return;
-    // The menu first, and then nothing else. Escape means "undo the last thing
-    // that appeared", and with a menu on screen that is the menu — cancelling
-    // the gesture underneath it as well would abandon a half-drawn rectangle
-    // that the user was only right-clicking to look away from.
-    if (menu.close() || appMenu.close()) {
-      log("menu closed", "out");
+    // What is open first, and then nothing else. Escape means "undo the last
+    // thing that appeared", and with a menu on screen that is the menu —
+    // cancelling the gesture underneath it as well would abandon a half-drawn
+    // rectangle that the user was only right-clicking to look away from. (The
+    // tooltip and a flyout take their own Escape first, in the capture phase.)
+    const top = openings().find((name) => name !== "tooltip");
+    if (top) {
+      closeOpening(top);
+      log(`${OPENING_WORDS[top] ?? top} closed`, "out");
       return;
     }
     escape();
@@ -2787,6 +2923,18 @@ async function main() {
 // Before the kernel loads, so a pinch during the wait cannot zoom the page
 // either (pagelock.ts).
 lockPage(document);
+
+// **No browser menu on the chrome** (docs/plans/android.md): Chrome on Android
+// raises `contextmenu` for a long-press, and a tray button held for its
+// tooltip or its flyout was the one surface that let it through (the canvas,
+// the logo and the menus cancel their own) — found by the Android e2e. Where
+// there is text to take — the command line, the log, a field — the browser's
+// menu (copy, paste) stays.
+document.addEventListener("contextmenu", (e) => {
+  const at = e.target instanceof Element ? e.target : null;
+  if (at?.closest("#cmd, #log, input, textarea")) return;
+  e.preventDefault();
+});
 
 main().catch((e) => {
   statusLine.show("error", "ERROR — see log");

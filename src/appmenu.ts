@@ -131,6 +131,12 @@ export interface AppMenuHost {
   fileItems(): readonly FileItem[];
   /** The workbenches, built in then added, the current one marked. Absent: no Workbench section. */
   workbenches?(): readonly WorkbenchRow[];
+  /**
+   * Installing (docs/plans/android.md): Install app while the browser offers
+   * it, the iPhone's Add to Home Screen note, or nothing — install.ts's
+   * `installOffer`. Absent or null: no App section.
+   */
+  install?(): { kind: "prompt"; label: string; command: string } | { kind: "note"; text: string } | null;
 }
 
 /**
@@ -216,6 +222,25 @@ export class AppMenu {
   private render(): void {
     const h = this.host;
     this.el.textContent = "";
+
+    // App, first and only while there is something to say: Install app
+    // (Android, desktop Chromium — the browser's own offer, kept), or how an
+    // iPhone installs. Gone once installed.
+    const install = h.install?.() ?? null;
+    if (install) {
+      const app = this.section("App");
+      if (install.kind === "prompt") {
+        const row = this.item(install.label, install.command, () => this.type(install.command, false));
+        row.dataset.command = install.command;
+        app.appendChild(row);
+      } else {
+        const note = document.createElement("div");
+        note.className = "about";
+        note.dataset.install = "note";
+        note.textContent = install.text;
+        app.appendChild(note);
+      }
+    }
 
     // File: the name line, then the document's commands and the export.
     const doc = h.document();

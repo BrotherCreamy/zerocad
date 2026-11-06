@@ -17,7 +17,8 @@ import {
   linesOf, logoBox, optionsSize, overlapping, scaledMetrics, touchMetrics, trayLines, trayRoom, traySize,
   type Layout, type Metrics, type Size,
 } from "../src/panels.ts";
-import { IPHONES, areaOf, everyWay, windowOf } from "./devices.ts";
+import { ANDROIDS, IPHONES, NAV_GESTURE, NAV_BUTTONS, androidAreaOf, androidWindowOf, areaOf, everyAndroidWay, everyWay, windowOf, type AndroidDevice } from "./devices.ts";
+import { formFactor } from "../src/uiscale.ts";
 
 // Select, the Hand and ten buttons of tools (one circle, one arc:
 // docs/plans/one-circle-one-arc.md; the shapes and curves groups:
@@ -173,4 +174,65 @@ test("the corner's room: the whole logo's row while the panes are at their defau
   // And a pane under the stretch it has stops it going down.
   const low = cornerRoom({ cmd: { x: 0, y: 50, w: 390, h: 65 } }, { w: 390, h: 700 }, logo);
   assert.equal(low.h, 46);
+});
+
+// ---- Android (docs/plans/android.md) ------------------------------------------------
+//
+// The same rule over the Android rows of the table — installed with the
+// gesture bar, installed with three buttons, and in a Chrome tab — at each
+// device's own 100 % (uiscale.ts: a phone 1.3, a large screen 1.15), since a
+// tablet is drawn at the tablet's size, not a phone's.
+
+const androidMetrics = (d: AndroidDevice) => touchMetrics(formFactor({ coarse: true, shortSide: Math.min(d.w, d.h) }));
+
+test("the Android table: Pixels 7, 8 and 9 with their Pro sizes, a Galaxy S, a Fold's two screens, two tablets — each area its window less its insets", () => {
+  const names = ANDROIDS.map((d) => d.name).join(" | ");
+  for (const want of [/Pixel 7\b/, /Pixel 8\b/, /Pixel 9\b/, /Pixel 7 Pro/, /Pixel 8 Pro/, /Pixel 9 Pro/, /Galaxy S23, S24/, /Fold 7 cover/, /Fold 7 inner/, /Pixel Tablet/, /Galaxy Tab/]) {
+    assert.match(names, want);
+  }
+  for (const d of ANDROIDS) {
+    const gesture = androidWindowOf(d, "portrait", "installed");
+    assert.equal(gesture.h, d.h - d.status.portrait, `${d.name}: the installed page starts below the status bar`);
+    assert.equal(gesture.insets.bottom, NAV_GESTURE, `${d.name}: and runs under the gesture bar, inset by it`);
+    const buttons = androidWindowOf(d, "portrait", "buttons");
+    assert.equal(buttons.h, d.h - d.status.portrait - NAV_BUTTONS, `${d.name}: three buttons stop the page above them`);
+    assert.deepEqual(androidAreaOf(d, "portrait", "installed"), { w: d.w, h: d.h - d.status.portrait - NAV_GESTURE });
+    const side = androidWindowOf(d, "landscape", "installed");
+    assert.equal(side.insets.left, d.large ? 0 : d.cutout, `${d.name}: on its side the cutout is a left inset`);
+    assert.ok(androidAreaOf(d, "portrait", "chrome").h < androidAreaOf(d, "portrait", "installed").h + NAV_GESTURE,
+      `${d.name}: Chrome's toolbar takes room the installed app has`);
+    assert.equal(d.large, Math.min(d.w, d.h) >= 600, `${d.name}: large is a short side of 600 or more`);
+  }
+  // The narrowest phone in either table is Android's.
+  assert.ok(Math.min(...ANDROIDS.map((d) => d.w)) < Math.min(...IPHONES.map((p) => p.w)));
+});
+
+for (const { device, turn, mode } of everyAndroidWay()) {
+  test(`everything fits: ${device.name}, ${turn}, ${mode === "installed" ? "installed, gesture bar" : mode === "buttons" ? "installed, three buttons" : "in Chrome"}, at its default size`, () => {
+    const area = androidAreaOf(device, turn, mode);
+    const m = androidMetrics(device);
+    for (const rows of [null, 1, 2]) {
+      assert.deepEqual(breaches(area, m, rows), [], `${area.w}×${area.h} at ${m.scale}, ${rows === null ? "no tool armed" : `an options panel of ${rows}`}`);
+    }
+    const d = laidOut(area, m, 2).layout;
+    assert.ok(d.organiser && d.organiser.w > 0 && d.organiser.h > 0, "the organiser is there from the start");
+    assert.equal(d.toolbar.orient, area.w >= area.h ? "row" : "column");
+  });
+}
+
+test("Android at larger interface sizes: to 120 % on every device, and past where it stops the resolver says so", () => {
+  for (const { device, turn, mode } of everyAndroidWay()) {
+    const area = androidAreaOf(device, turn, mode);
+    const k = formFactor({ coarse: true, shortSide: Math.min(device.w, device.h) });
+    for (const step of STEPS) {
+      const m = touchMetrics(k * step);
+      for (const rows of [null, 1, 2]) {
+        const where = `${device.name} ${turn} ${mode} at ${Math.round(step * 100)} %, options ${rows}`;
+        const r = laidOut(area, m, rows);
+        if (step <= 1.2) assert.deepEqual(breaches(area, m, rows), [], where);
+        if (r.ok) assert.deepEqual(overlapping(r.layout), [], where);
+        else assert.match(layoutProblem(r.layout, r.ok, area) ?? "", /no layout fits/, where);
+      }
+    }
+  }
 });

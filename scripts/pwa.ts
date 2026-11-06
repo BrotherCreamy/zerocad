@@ -15,7 +15,7 @@ import { copyFileSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { singleFile } from "./singlefile.mjs";
-import { ICON_SVG, manifest, pwaDocument, rasters, serviceWorker } from "./pwa-shell.ts";
+import { ICON_SVG, SCREENSHOTS, manifest, pwaDocument, rasters, serviceWorker } from "./pwa-shell.ts";
 
 const root = new URL("..", import.meta.url).pathname;
 const { values } = parseArgs({ options: { out: { type: "string" }, stamp: { type: "string" } } });
@@ -42,7 +42,8 @@ if (app.solidFiles) {
 }
 // Pages runs Jekyll over a branch unless told not to; nothing here needs it.
 writeFileSync(join(out, ".nojekyll"), "");
-for (const file of [ICON_SVG, ...rasters().map((r) => r.src)]) {
+// The install sheet's screenshots are not in the worker's cache: only the browser's installer reads them.
+for (const file of [ICON_SVG, ...rasters().map((r) => r.src), ...SCREENSHOTS.map((s) => s.src)]) {
   mkdirSync(dirname(join(out, file)), { recursive: true });
   copyFileSync(join(root, "public", file), join(out, file));
 }
