@@ -492,3 +492,40 @@ export function areaSweep(s: BSpline, a: number, b: number): number {
   }
   return (sign * sum) / 2;
 }
+
+/**
+ * The part of the curve from parameter `a` to `b` (`a < b`, both in its
+ * domain), exactly, as a clamped B-spline of its own over [a, b]: each end
+ * inserted as a knot until it is a full one (Boehm), and what lies outside
+ * dropped. A closed curve's two halves are written so (solids.ts): an edge
+ * that starts where it ends needs a seam the exact B-rep never makes.
+ */
+export function subCurve(s: BSpline, a: number, b: number): BSpline {
+  const p = s.degree;
+  let c = s;
+  const count = (u: number) => c.knots.filter((x) => x === u).length;
+  for (const u of [a, b]) while (count(u) < p + 1 && u > c.knots[0] && u < c.knots[c.knots.length - 1]) {
+    if (count(u) >= p) break;
+    c = insertKnot(c, u);
+  }
+  // With a and b each a knot p times over (or an end p + 1), the curve on
+  // [a, b] is the controls from the span starting at a's first copy minus one.
+  const first = c.knots.indexOf(a);
+  const last = c.knots.lastIndexOf(b);
+  const lo = first - 1 + (count(a) > p ? 1 : 0);
+  const hiCtrl = last - p + (count(b) > p ? 0 : 1) - 1;
+  const ctrl = c.ctrl.slice(Math.max(0, lo), hiCtrl + 1);
+  const knots = [...new Array(p + 1).fill(a), ...c.knots.filter((x) => x > a && x < b), ...new Array(p + 1).fill(b)];
+  return { degree: p, knots, ctrl };
+}
+
+/** The curve as a NURBS of unit weights: its unique knots, how many times each repeats, its points `[x, y, z, 1]`. */
+export function nurbsOf(s: BSpline): { degree: number; knots: number[]; mults: number[]; points: number[][] } {
+  const knots: number[] = [];
+  const mults: number[] = [];
+  for (const k of s.knots) {
+    if (knots.length && k === knots[knots.length - 1]) mults[mults.length - 1]++;
+    else { knots.push(k); mults.push(1); }
+  }
+  return { degree: s.degree, knots, mults, points: s.ctrl.map((c) => [c[0] ?? 0, c[1] ?? 0, c[2] ?? 0, 1]) };
+}

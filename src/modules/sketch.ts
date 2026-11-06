@@ -10,6 +10,7 @@
 import { ELLIPSE_STRUCTURE, addEllipse, checkEllipse, ellipseOf, semiAxes } from "../kinds/ellipse.ts";
 import { SPLINE_STRUCTURE, splineCurve, splineOf } from "../kinds/spline.ts";
 import { addSpline, onSpline } from "../relations/spline.ts";
+import { addThrough, removeThrough } from "../splineedit.ts";
 import { defineModule, type EntityDecl } from "../modules.ts";
 import type { Entity, Model } from "../model.ts";
 import { ellipseFrame, type ArcFrame } from "../arcgeom.ts";
@@ -28,6 +29,7 @@ import { SlotTool } from "../tools/slot.ts";
 import { CircleTool } from "../tools/circle.ts";
 import { ArcTool } from "../tools/arc.ts";
 import { EllipseTool } from "../tools/ellipse.ts";
+import { SplineTool } from "../tools/spline.ts";
 import { FilletTool } from "../tools/fillet.ts";
 import { DimensionTool } from "../tools/dimension.ts";
 import { ConstrainTool } from "../tools/constrain.ts";
@@ -128,6 +130,8 @@ defineModule("sketch", {
     circle: CircleTool,
     arc: ArcTool,
     ellipse: EllipseTool,
+    // Under the curves button, after the ellipse (docs/plans/spline.md).
+    spline: SplineTool,
     fillet: FilletTool,
     // Sketch editing (docs/plans/sketch-edit.md), on the modify button after
     // the fillet. `bevel` is the sketch's chamfer: `chamfer` is the solid's
@@ -175,6 +179,9 @@ defineModule("sketch", {
     // Wider than tall by the circle's own width, so it is read as a circle's
     // cousin and not as a squashed slot.
     ellipse: svg("ellipse", `<ellipse cx="8" cy="8" rx="6" ry="3.75"/>`),
+    // A curve through three dots: the points you click, and the smooth curve
+    // through them — what makes it a spline and not a polyline.
+    spline: svg("spline", `<path d="M2 12.5C4.5 2.5 8.5 3 9.5 8S13 11.5 14 3.5"/><circle cx="2.5" cy="11.5" r="1"/><circle cx="9.3" cy="7.4" r="1"/><circle cx="13.8" cy="4.2" r="1"/>`),
     // Half a turn, opening downward: anything shallower reads at 16 px as a bent
     // line. (The 3-point circle's and arc's dotted glyphs went with their buttons:
     // one circle tool and one arc tool, docs/plans/one-circle-one-arc.md.)
@@ -274,6 +281,10 @@ defineModule("sketch", {
     chamfer,
     linear,
     circular,
+    // A spline's points (docs/plans/spline.md): one added where the curve was
+    // clicked, or one taken out — each journalled with what it resolved.
+    addThrough,
+    removeThrough,
   },
   menu: [
     { label: "Rectangle", tool: "rectangle" },
@@ -285,6 +296,7 @@ defineModule("sketch", {
     // where the circle and arc are, as the shapes group's polygon and slot are
     // under the rectangle's heading.
     { label: "Ellipse", tool: "ellipse" },
+    { label: "Spline", tool: "spline" },
     { label: "Fillet", tool: "fillet" },
   ],
   commands: (kit) => ({
@@ -300,6 +312,8 @@ defineModule("sketch", {
     offset: (chain: string | string[], d: number, options?: { construction?: boolean } | null, resolved?: unknown) =>
       offset(kit.model, chain, d, options, resolved),
     mirror: (names: string | string[], line: string, resolved?: unknown) => mirror(kit.model, names, line, resolved),
+    addThrough: (spline: string, at: unknown, resolved?: unknown) => addThrough(kit.model, spline, at, resolved),
+    removeThrough: (spline: string, point: unknown) => removeThrough(kit.model, spline, point),
     linear: (names: string | string[], dx: number, dy: number, n: number, resolved?: unknown) =>
       linear(kit.model, names, dx, dy, n, resolved),
     circular: (names: string | string[], centre: string, angle?: number | null, n?: number, resolved?: unknown) =>
@@ -434,7 +448,10 @@ defineModule("sketch", {
     "           solved to pass through them — natural ends, or a smooth seam",
     "           when closed. The spline tool (curves) clicks them; a double-click",
     "           (a second click on the last), Enter or ✓ ends it open, a click",
-    "           on the first closes it. Its menu adds or removes a point.",
+    "           on the first closes it. Its menu adds or removes a point:",
+    '           addThrough("sp1", [x, y]) — a point on the curve there, the curve',
+    '           as it was; removeThrough("sp1", "p3") — the curve no longer',
+    "           through p3 (which goes, if nothing else uses it).",
     '           onspline("p9", "sp1") — p9 on the curve, sliding along it.',
     '           tan("l1", "sp1") and tan("sp1", "a2") — tangent at the end they',
     '           share; tan("sp1", "sp2") end to end; tan(…, "end") says which.',

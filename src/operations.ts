@@ -7,8 +7,10 @@
 // while an operation can leave the model malformed.
 
 import { addEllipse, checkEllipse, ellipseOf, semiAxes } from "./kinds/ellipse.ts";
+import { splineOf } from "./kinds/spline.ts";
+import { addSpline } from "./relations/spline.ts";
 import {
-  Model, ORIGIN, SETTABLE_PROPERTY, memberName, parseValueRef, referentOf, referentsOf, valueArgIndex,
+  Model, ORIGIN, SETTABLE_PROPERTY, isCurveKind, memberName, parseValueRef, referentOf, referentsOf, valueArgIndex,
   FEATURE_MODES, type Entity, type Expansion, type FeatureEntry, type FeatureMode, type Portion, type ProfileMember,
   type RegionEntry, type RegionOp, type RegionStep,
 } from "./model.ts";
@@ -856,10 +858,18 @@ function refuseEllipse(model: Model, member: string): void {
   if (e?.kind === "ellipse") throw new Error(`"${member}" is an ellipse — revolving an ellipse is not supported yet`);
 }
 
+/** The kinds a profile is made of: a line, an arc, a circle, an ellipse or a spline (docs/plans/spline.md). */
+function isProfileKind(kind: string | undefined): boolean {
+  return kind === "line" || kind === "arc" || kind === "circle" || kind === "ellipse" || kind === "spline";
+}
+
+/** How a refusal names what a profile is made of. */
+const PROFILE_KINDS = "a line, arc, circle, ellipse or spline";
+
 function checkMember(model: Model, member: string, op: "extrude" | "revolve"): void {
   const e = typeof member === "string" ? model.entities.get(member) : undefined;
-  if (!e || (e.kind !== "line" && e.kind !== "arc" && e.kind !== "circle" && e.kind !== "ellipse")) {
-    throw new Error(`${JSON.stringify(member)} is not a line, arc, circle or ellipse — ${op} names a member of the loop to ${op}`);
+  if (!e || !isProfileKind(e.kind)) {
+    throw new Error(`${JSON.stringify(member)} is not ${PROFILE_KINDS} — ${op} names a member of the loop to ${op}`);
   }
   // Said by name rather than left to "in no closed loop", which would send the
   // reader looking for a gap in the outline that is not there.
@@ -928,7 +938,7 @@ function givenProfile(model: Model, member: string, frame: string | null | undef
 /** One member of a profile loop, walked. */
 interface Walked {
   name: string;
-  kind: "line" | "arc" | "circle" | "ellipse";
+  kind: "line" | "arc" | "circle" | "ellipse" | "spline";
   /** Its ends in walk order; null for a whole circle. */
   from: string | null;
   to: string | null;
@@ -1010,14 +1020,18 @@ function walkLoop(model: Model, classOf: Map<string, number>, held: Held[], memb
   const label = members.map(memberText).join(",");
   const entity = (n: string) => {
     const e = model.entities.get(n);
-    if (!e || (e.kind !== "line" && e.kind !== "arc" && e.kind !== "circle" && e.kind !== "ellipse")) {
-      throw new Error(`"${n}" is not a line, arc, circle or ellipse — it cannot be part of a loop`);
+    if (!e || !isProfileKind(e.kind)) {
+      throw new Error(`"${n}" is not ${PROFILE_KINDS} — it cannot be part of a loop`);
     }
     return e;
   };
   const cls = (p: string) => classKey(classOf, p);
+  // An open spline runs between its first and last points; a closed one is a
+  // loop on its own, as a circle is.
   const ownEnds = (e: Entity): [string, string] | null =>
-    (e.kind === "line" ? [e.refs[0], e.refs[1]] : e.kind === "arc" ? [e.start, e.end] : null);
+    (e.kind === "line" ? [e.refs[0], e.refs[1]] : e.kind === "arc" ? [e.start, e.end]
+      : e.kind === "spline" && !e.closed ? [e.points[0], e.points[e.points.length - 1]] : null);
+  const closedOnItself = (e: Entity) => e.kind === "circle" || e.kind === "ellipse" || (e.kind === "spline" && e.closed === true);
   const onIt = (v: string, e: Entity): boolean => {
     const kind = model.entities.get(v)?.kind;
     if (kind === undefined) return true; // made by the call, on the edges that meet there
@@ -1035,6 +1049,13 @@ function walkLoop(model: Model, classOf: Map<string, number>, held: Held[], memb
       throw new Error(`a part of the ellipse "${e.name}" bounds this region — an ellipse makes a solid only whole, `
         + "on its own or as a hole; nothing yet can make part of one");
     }
+    // Nor a part of a spline (docs/plans/spline.md): its twin would be a spline
+    // through points that are no through-points of it. A whole one extrudes.
+    if (e.kind === "spline") {
+      throw new Error(`a part of the spline "${e.name}" bounds this region — a spline makes a solid only whole, `
+        + "an edge from its first point to its last or a loop on its own; nothing yet can make part of one "
+        + "(a curve crossing it, or a point held on it, cuts it)");
+    }
     if (m.from === m.to) throw new Error(`the part of "${m.name}" from "${m.from}" to itself is no part — name the whole member`);
     for (const v of [m.from, m.to]) {
       if (!onIt(v, e)) throw new Error(`"${v}" is not on "${m.name}" — a part of an edge runs between its own points, or points held on it`);
@@ -1043,14 +1064,15 @@ function walkLoop(model: Model, classOf: Map<string, number>, held: Held[], memb
   });
   if (members.length === 1) {
     const { e, part } = resolved[0];
-    if ((e.kind !== "circle" && e.kind !== "ellipse") || part) {
-      throw new Error(`a loop of one member is a circle or an ellipse — "${names[0]}" is ${part ? "part of one" : e.kind === "arc" ? "an arc" : "a line"}`);
+    if (!closedOnItself(e) || part) {
+      throw new Error(`a loop of one member is a circle, an ellipse or a closed spline — "${names[0]}" is ${part ? "part of one" : e.kind === "arc" ? "an arc" : e.kind === "spline" ? "an open spline" : "a line"}`);
     }
-    return [{ name: e.name, kind: e.kind, from: null, to: null, ends: null, part: false }];
+    return [{ name: e.name, kind: e.kind as Walked["kind"], from: null, to: null, ends: null, part: false }];
   }
   const ends = (i: number): [string, string] => {
     const { e, own } = resolved[i];
-    if (!own) throw new Error(`a${e.kind === "ellipse" ? "n ellipse" : " circle"} is a loop on its own — the whole of "${e.name}" cannot be part of the loop ${label}${e.kind === "ellipse" ? "" : " (a part of it can)"}`);
+    const noun = e.kind === "ellipse" ? "n ellipse" : e.kind === "spline" ? " closed spline" : " circle";
+    if (!own) throw new Error(`a${noun} is a loop on its own — the whole of "${e.name}" cannot be part of the loop ${label}${e.kind === "circle" ? " (a part of it can)" : ""}`);
     return own;
   };
   const meets = (p: string, i: number) => ends(i).some((q) => cls(q) === cls(p));
@@ -1180,6 +1202,12 @@ function twinPoints(model: Model, m: Walked, real: (v: string) => string, twinOf
   const e = model.entities.get(m.name)!;
   if (e.kind === "circle" && !m.part) { twinOf(e.center); return; }
   if (e.kind === "ellipse") { twinOf(e.center); twinOf(e.major); return; }
+  // A spline's every point, in the way the walk goes along it.
+  if (e.kind === "spline") {
+    const pts = m.from !== null && m.from !== e.points[0] ? [...e.points].reverse() : e.points;
+    for (const p of pts) twinOf(real(p));
+    return;
+  }
   twinOf(real(m.from!));
   if (e.kind === "arc" || e.kind === "circle") twinOf(e.center);
   twinOf(real(m.to!));
@@ -1204,6 +1232,9 @@ function twinMember(model: Model, m: Walked, real: (v: string) => string, twinOf
     const raw = e.normal ? e.normal.map((i) => model.problem.getVar(i)) : null;
     return addEllipse(model, twinOf(e.center), twinOf(e.major), semiAxes(model, e.name).b, raw ? normalFor(e.name) : null).name;
   }
+  // A spline's twin is the spline through its points' twins, open or closed as
+  // it is: a spline is its points, so the depth's point pairs hold all of it.
+  if (e.kind === "spline") return addSpline(model, e.points.map((p) => twinOf(real(p))), e.closed === true);
   const [a, b] = m.ends!.map((v) => twinOf(real(v)));
   if (e.kind === "line") return model.addLine(a, b).name;
   if (e.kind === "arc" || e.kind === "circle") return model.addArc(twinOf(e.center), a, b, model.radius(e.name), normalFor(e.name)).name;
@@ -2182,6 +2213,9 @@ function rebuildBody(model: Model, f: FeatureEntry, plan: SweepPlan): { loops: P
           if (t.center === twinOf(e.center)) return made(t.name);
         } else if (t?.kind === "ellipse" && e.kind === "ellipse") {
           if (t.center === twinOf(e.center) && t.major === twinOf(e.major)) return made(t.name);
+        } else if (t?.kind === "spline" && e.kind === "spline") {
+          // The old twin while it still runs through the twins of its base's points, in order.
+          if (t.points.length === e.points.length && t.points.every((p, k) => p === twinOf(real(e.points[k])))) return made(t.name);
         }
         return made(twinMember(model, m, real, twinOf, normalFor));
       }));
@@ -2350,8 +2384,8 @@ export const REGION_SYMBOL: Readonly<Record<RegionOp, string>> = { region: "", s
 /** A line, arc, circle or ellipse, not construction — or the refusal that says what it is instead. */
 function checkCurve(model: Model, member: unknown, op: string): asserts member is string {
   const e = typeof member === "string" ? model.entities.get(member) : undefined;
-  if (!e || (e.kind !== "line" && e.kind !== "arc" && e.kind !== "circle" && e.kind !== "ellipse")) {
-    throw new Error(`${JSON.stringify(member) ?? String(member)} is not a line, arc, circle or ellipse — ${op} names a face `
+  if (!e || !isProfileKind(e.kind)) {
+    throw new Error(`${JSON.stringify(member) ?? String(member)} is not ${PROFILE_KINDS} — ${op} names a face `
       + "by a member of the loop around it");
   }
   if (model.isConstruction(member as string)) throw new Error(constructionBoundsNothing(member as string, op));
@@ -2580,8 +2614,8 @@ export function regionBoundary(model: Model, name: string, v: RegionValue): { al
 function mergedBoundary(model: Model, all: Loop[], B: number[], cells: ReadonlySet<number>): { loop: Loop; outer: boolean }[] {
   const plane = all[B[0]].plane;
   const closed = (name: string) => {
-    const k = model.entities.get(name)?.kind;
-    return k === "circle" || k === "ellipse";
+    const e = model.entities.get(name);
+    return !!e && (e.kind === "circle" || e.kind === "ellipse" || (e.kind === "spline" && e.closed === true));
   };
   const TOL = 1e-7;
   const norm = (name: string, t: number) => (closed(name) ? ((t % 1) + 1) % 1 : t);
@@ -3102,8 +3136,8 @@ export function innerOps(model: Model, loops: readonly ProfileMember[][]): Exclu
  */
 export function holeLoop(model: Model, f: FeatureEntry, member: string, r: FeatureRegion): number {
   const e = typeof member === "string" ? model.entities.get(member) : undefined;
-  if (!e || (e.kind !== "line" && e.kind !== "arc" && e.kind !== "circle" && e.kind !== "ellipse")) {
-    throw new Error(`${JSON.stringify(member)} is not a line, arc, circle or ellipse — hole names a member of the loop to cut through ${f.name}`);
+  if (!e || !isProfileKind(e.kind)) {
+    throw new Error(`${JSON.stringify(member)} is not ${PROFILE_KINDS} — hole names a member of the loop to cut through ${f.name}`);
   }
   if (model.isConstruction(member)) throw new Error(constructionBoundsNothing(member, "hole"));
   const { all, outline } = r;
@@ -3356,10 +3390,9 @@ function holesGoing(model: Model, names: ReadonlySet<string>, flagging: boolean)
 
 // --- construction geometry --------------------------------------------------
 
-/** Whether `name` is something that can carry the construction flag: a line, arc, circle or ellipse. */
+/** Whether `name` is something that can carry the construction flag: a line, an arc, a circle, or a declared curve (an ellipse, a spline). */
 function takesConstruction(model: Model, name: string): boolean {
-  const k = model.entities.get(name)?.kind;
-  return k === "line" || k === "arc" || k === "circle" || k === "ellipse";
+  return isCurveKind(model.entities.get(name)?.kind);
 }
 
 /**

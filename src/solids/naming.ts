@@ -29,7 +29,7 @@
 // never re-attached to a neighbour.
 
 import type { Placement, Profile, Solid, SolidKernel, V2, V3 } from "./kernel.ts";
-import { distanceTo } from "./profile.ts";
+import { distanceTo, memberPoints } from "./profile.ts";
 
 const ROLE_BASE = 0, ROLE_LID = 1, ROLE_MEMBER = 2;
 
@@ -94,9 +94,14 @@ export function tagRevolve(k: SolidKernel, s: Solid, feature: number, profile: P
   const u: V2 = [dir[0] / len, dir[1] / len];
   const n: V2 = [-u[1], u[0]];
   // Which side of the axis the profile lies on: a revolve's profile is all on
-  // one, but some of its points may be on the axis itself, so sum them all.
-  const starts: V2[] = profile.loops[0].map((m) => (m.kind === "line" ? m.from : m.kind === "nurbs" ? [m.points[0][0], m.points[0][1]] : m.centre));
-  const side = Math.sign(starts.reduce((acc, p) => acc + (p[0] - point[0]) * n[0] + (p[1] - point[1]) * n[1], 0)) || 1;
+  // one, but some of its points may be on the axis itself, so sum points all
+  // along every member. Each member's first point (an arc's centre) alone
+  // was read before, and a profile every member of which starts on the axis —
+  // a spline from the axis back to it, closed by the axis line; a half disc —
+  // summed to nothing, took the other side, and named its caps and its wall
+  // for the axis line (found revolving a spline, docs/plans/spline.md).
+  const along: V2[] = profile.loops[0].flatMap((m) => memberPoints(m, 16));
+  const side = Math.sign(along.reduce((acc, p) => acc + (p[0] - point[0]) * n[0] + (p[1] - point[1]) * n[1], 0)) || 1;
   k.faces(s).forEach((f, i) => {
     const q = local(at, f.point);
     const rel: V3 = [q[0] - point[0], q[1] - point[1], q[2]];

@@ -46,6 +46,7 @@ import { construction } from "../operations.ts";
 import type { Snap } from "../snapping.ts";
 import { coincident, midpoint, onPlane } from "../relations/basic.ts";
 import { onCircle, onEllipse, pointOnLine } from "../relations/geometry.ts";
+import { onSpline } from "../relations/spline.ts";
 import { planeOfRef, sketchPlaneRef } from "../workplane.ts";
 import { sketchFrameFor } from "../sketchface.ts";
 import { parallel } from "../relations/geometry.ts";
@@ -348,4 +349,5 @@ function onCurve(model: Model, pointName: string, curveName: string): void {
   if (target.kind === "line") pointOnLine(model, pointName, target.name);
   else if (target.kind === "circle" || target.kind === "arc") onCircle(model, pointName, target.name);
   else if (target.kind === "ellipse") onEllipse(model, pointName, target.name);
+  else if (target.kind === "spline") onSpline(model, pointName, target.name);
 }

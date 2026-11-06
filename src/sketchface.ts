@@ -130,6 +130,9 @@ export function sketchFrameFor(model: Model, loop: Loop, toward: number[]): stri
   const extra = loop.members.flatMap((m) => {
     const e = model.entities.get(m.name);
     if (e?.kind === "arc") return m.span === null ? [e.center] : [e.center, e.start, e.end];
+    // A spline's points are all in its plane (docs/plans/spline.md): a D of a
+    // spline and one line has two corners, and its bend through them.
+    if (e?.kind === "spline") return [...e.points];
     if (m.span === null) return [];
     if (e?.kind === "line") return [...e.refs];
     if (e?.kind === "ellipse") return [e.center, e.major];

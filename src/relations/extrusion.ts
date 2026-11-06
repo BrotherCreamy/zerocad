@@ -113,8 +113,11 @@ export function extrusion(model: Model, frame: string, depth: number, ...pairs: 
             return [0, 1, 2].map((k) => w[k].sub(u[k]));
           }, `extrusion(${b},${t}).n`);
         }
+      } else if (be?.kind === "spline" && te?.kind === "spline") {
+        // A spline is its points (docs/plans/spline.md): their pairs hold the
+        // twin, and its control points follow by its own equations. Nothing more.
       } else {
-        throw new Error(`"${b}" and "${t}" are not a pair an extrusion can hold — two points, two circles or arcs, or two ellipses`);
+        throw new Error(`"${b}" and "${t}" are not a pair an extrusion can hold — two points, two circles or arcs, two ellipses or two splines`);
       }
     }
   });

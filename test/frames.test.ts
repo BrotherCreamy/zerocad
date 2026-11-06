@@ -385,7 +385,7 @@ test("a version-2 file's hor/ver are translated, and re-save in the new vocabula
   // forever. It does round-trip from here on.
   const saved = save(m);
   assert.equal(saved.includes("horizontal"), false, "the old words are gone from the file");
-  assert.match(saved, /"version": 17/);
+  assert.match(saved, /"version": 18/);
   assert.equal(save(open(saved)), saved, "and the new file is stable");
 });
 
@@ -483,8 +483,8 @@ test("the format version says the vocabulary changed, and still reads the old en
   // since the origin, there is always one (above).
   const empty = JSON.stringify({ format: FORMAT, version: 1, dim: 2, journal: [], values: { points: {}, radii: {} } });
   assert.equal(open(empty).entities.size, 0);
-  const future = JSON.stringify({ format: FORMAT, version: 18, dim: 2, journal: [], values: { points: {}, radii: {} } });
-  assert.throws(() => open(future), /version 18, and this build only reads up to 17/);
+  const future = JSON.stringify({ format: FORMAT, version: 19, dim: 2, journal: [], values: { points: {}, radii: {} } });
+  assert.throws(() => open(future), /version 19, and this build only reads up to 18/);
 });
 
 test("a version-4 frame opens with its name where the name goes now, and re-saves as current", async () => {
@@ -517,7 +517,7 @@ test("a version-4 frame opens with its name where the name goes now, and re-save
     `and it still means the same frame: p at ${at}`);
 
   const saved = save(m);
-  assert.match(saved, /"version": 17/);
+  assert.match(saved, /"version": 18/);
   assert.equal(save(open(saved)), saved, "stable from here on");
 
   // The translation is keyed on the version, not on how many arguments an

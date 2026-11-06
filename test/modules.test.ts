@@ -32,11 +32,12 @@ test("the built-in modules load in order, and the tables are filled from them in
   const builtin = loadedModules().filter((m) => m.origin === "builtin").map((m) => m.name);
   assert.deepEqual(builtin, ["core", "sketch", "solids", "surfaces", "files", "step", "organiser", "interface"]);
   // The tray: core's tools, then the sketch module's, then the solids', then the surfaces' (docs/plans/surfaces.md).
-  assert.deepEqual(listTools(), ["point", "line", "rectangle", "polygon", "slot", "region", "circle", "arc", "ellipse", "fillet",
+  // The spline after the ellipse, on the curves button (docs/plans/spline.md).
+  assert.deepEqual(listTools(), ["point", "line", "rectangle", "polygon", "slot", "region", "circle", "arc", "ellipse", "spline", "fillet",
     "bevel", "trim", "extend", "offset", "mirror", "pattern", "dimension", "constrain", "extrude", "revolve", "sketch", "round", "chamfer",
     "surface"]);
   // The menu's tool items and the File items, module by module.
-  assert.deepEqual(menuToolItems().map((i) => i.tool), ["point", "line", "rectangle", "circle", "arc", "ellipse", "fillet"]);
+  assert.deepEqual(menuToolItems().map((i) => i.tool), ["point", "line", "rectangle", "circle", "arc", "ellipse", "spline", "fillet"]);
   assert.deepEqual(fileMenuItems().map((i) => i.label), ["New", "Open…", "Save", "Share…", "Export STEP…"]);
   // Relations: core's before the sketch module's.
   const ops = moduleRelations().map((r) => r.op);
@@ -96,7 +97,7 @@ test("the workbenches: part is today's toolbar exactly, sketch is core and sketc
   assert.deepEqual(workbenchTools("part"), listTools());
   assert.deepEqual(workbenchTools("surfaces"), listTools());
   assert.deepEqual(workbenchTools("sketch"), ["point", "line", "rectangle", "polygon", "slot", "region", "circle", "arc", "ellipse",
-    "fillet", "bevel", "trim", "extend", "offset", "mirror", "pattern", "dimension", "constrain"]);
+    "spline", "fillet", "bevel", "trim", "extend", "offset", "mirror", "pattern", "dimension", "constrain"]);
   assert.equal(onWorkbench("sketch", "extrude"), false);
 });
 
@@ -104,6 +105,14 @@ test("the extension point is real: the five files the spec names never mention t
   for (const f of ["model.ts", "loops.ts", "faces.ts", "picking.ts", "step.ts"]) {
     const text = await readFile(new URL(`../src/${f}`, import.meta.url), "utf8");
     assert.doesNotMatch(text, /ellipse/i, `src/${f} names the ellipse`);
+  }
+});
+
+test("and the spline went through it too: the same five files never mention it (docs/plans/spline.md)", async () => {
+  for (const f of ["model.ts", "loops.ts", "faces.ts", "picking.ts", "step.ts"]) {
+    const text = await readFile(new URL(`../src/${f}`, import.meta.url), "utf8");
+    // Its kind, its file, its structure: what code would name (a comment may say "a spline" as an example).
+    assert.doesNotMatch(text, /["']spline["']|kinds\/spline|\bsplineOf\b|\bSplineEntity\b|\bsplineCurve\b/, `src/${f} names the spline`);
   }
 });
 
@@ -115,8 +124,10 @@ test("a file written before the re-cut — every sketch-shapes piece and an extr
   // workbench and modules, and a file that uses neither changes nothing else
   // — and its extrude standing on a region (17, docs/plans/regions-as-
   // operations.md): the face is a region first, the feature on it after.
+  // 18 brought the spline (docs/plans/spline.md), which a file with none of
+  // its own writes nothing for.
   const want = JSON.parse(text);
-  want.version = 17;
+  want.version = 18;
   const at = want.journal.findIndex((e: { op: string }) => e.op === "extrude");
   const [member, , frame, loops] = want.journal[at].args;
   want.journal.splice(at, 1, { op: "region", args: [member, frame, loops[0]] },

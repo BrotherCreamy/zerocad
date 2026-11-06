@@ -23,7 +23,7 @@ import { runSteps } from "./tools/feature.ts";
 import type { FeatureStep } from "./tools/tool.ts";
 import { previewSteps } from "./featurepreview.ts";
 import { describePick, describeRelation, type Pick } from "./picking.ts";
-import { sampledWorld } from "./projection.ts";
+import { sampledWorld, screenCurve } from "./projection.ts";
 import { ContextMenu, menuFor } from "./menu.ts";
 import { toolUnavailable } from "./toolavail.ts";
 import { AXIS_INKS, frameArmPx, frameMarker } from "./framemarker.ts";
@@ -1945,7 +1945,11 @@ async function main() {
         menu.show({ ...m, items: [...m.items, ...history2] }, sx, sy);
         return;
       }
-      menu.show(menuFor(model, pick, pick ? null : engine.regionAt(sx, sy), history, viewMode, selected), sx, sy);
+      // Where on a picked curve the click was, in the world — what a spline's
+      // Add point here adds at (docs/plans/spline.md).
+      const picked = pick ? model.entities.get(pick.name) : undefined;
+      const at = picked ? screenCurve(model, view, picked, 0)?.lift([sx, sy]) ?? null : null;
+      menu.show(menuFor(model, pick, pick ? null : engine.regionAt(sx, sy), history, viewMode, selected, at), sx, sy);
     },
     // A finger's long-press opened the menu and then dragged on: that is the
     // box, and the menu is not what the hand is doing any more.

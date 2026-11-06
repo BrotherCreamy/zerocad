@@ -26,6 +26,7 @@ import { menuFor } from "../src/menu.ts";
 import { Repl } from "../src/repl.ts";
 import { neocadScope } from "../src/replenv.ts";
 import { LONG_PRESS_MS, TAP_SLOP } from "../src/tools/gestures.ts";
+import { SplineTool } from "../src/tools/spline.ts";
 import { areaOf, everyWay } from "./devices.ts";
 
 /** The built-ins, registered as main.ts registers them — read from its imports, as icons.test.ts does. */
@@ -57,7 +58,8 @@ test("the button list is thirteen today, with these names in this order — a gr
     ["select", "hand", "point", "line", "shapes", "circle", "arc", "curves", "modify", "relate", "sweep", "revolve", "sketch"]);
   assert.deepEqual(buttons.find((b) => b.group === "sweep")!.tools, ["extrude", "surface"]);
   assert.deepEqual(buttons.find((b) => b.group === "shapes")!.tools, ["rectangle", "polygon", "slot", "region"]);
-  assert.deepEqual(buttons.find((b) => b.group === "curves")!.tools, ["ellipse"]);
+  // The spline joins the ellipse there (docs/plans/spline.md): still thirteen.
+  assert.deepEqual(buttons.find((b) => b.group === "curves")!.tools, ["ellipse", "spline"]);
   assert.deepEqual(buttons.find((b) => b.group === "relate")!.tools, ["dimension", "constrain"]);
   // The solids module's round and chamfer join the sketch's fillet there
   // (docs/plans/solid-fillets.md), after the sketch's edits (docs/plans/
@@ -136,11 +138,15 @@ test("an unknown group name is a plain button; null is too; a group that is not 
   assert.equal(toolGroup("t_odd"), null);
   assert.deepEqual(toolbarButtons().at(-1), { group: null, tools: ["t_odd"] });
   // A tool the table would group, declaring null, is a button of its own — a
-  // stand-in for the spline, which is not built yet.
+  // stand-in for the spline, written before it was built; the real one is
+  // put back after (docs/plans/spline.md), so the tests below see the
+  // curves button as it is.
   class Lone extends Tool { static group = null; name = "spline"; }
   defineTool("spline", Lone);
   assert.equal(toolGroup("spline"), null);
   assert.equal(toolbarButtons().length, before + 2);
+  defineTool("spline", SplineTool);
+  assert.equal(toolGroup("spline"), "curves");
   assert.throws(() => defineTool("t_bad", class extends Tool { static group = 3 as unknown as string; name = "t_bad"; }), /static group must be a group's name/);
   assert.ok(!listTools().includes("t_bad"), "refused before anything is registered");
 });
@@ -340,10 +346,10 @@ test("the menu's tool items: a group of more than one under its heading, every m
   const rows = menu.items.map((i) => (i.action.do === "heading" ? `# ${i.label}` : i.label));
   // By now the shapes group holds the rectangle, the polygon, the slot and
   // t_stamp, and modify the fillet, the stand-in chamfer, t_late and t_base
-  // (the tests above): each under its heading. The ellipse's curves group has
-  // one member, so it is a plain item; the others are as they were.
+  // (the tests above): each under its heading. The curves group has two
+  // members since the spline (docs/plans/spline.md), so it has a heading too.
   assert.deepEqual(rows.slice(0, rows.indexOf("Frame")),
-    ["Point", "Line", "# Shapes", "Rectangle", "Polygon", "Slot", "Region", "T_stamp", "Circle", "Arc", "Ellipse",
+    ["Point", "Line", "# Shapes", "Rectangle", "Polygon", "Slot", "Region", "T_stamp", "Circle", "Arc", "# Curves", "Ellipse", "Spline",
       "# Modify", "Fillet", "Bevel", "Trim", "Extend", "Offset", "Mirror", "Pattern", "Round", "Chamfer", "T_late", "T_base"]);
   const polygon = menu.items.find((i) => i.label === "Polygon")!;
   assert.deepEqual(polygon.action, { do: "run", command: 'arm("polygon")' });
@@ -353,7 +359,8 @@ test("help() says which tools share a button, how to open it, and how a tool joi
   const repl = new Repl(neocadScope({ model: new Model(2), optionMemory: new OptionMemory(null) }));
   const help = (await repl.eval("help()")).value as string;
   assert.match(help, /rectangle +.*\[shapes\]/);
-  assert.match(help, /Sharing a button now: rectangle \/ polygon \/ slot \/ region \/ t_stamp; fillet \/ bevel \/ trim \/ extend \/ offset \/ mirror \/ pattern \/ round \/ chamfer \/ t_late \/ t_base; dimension \/ constrain; extrude \/ surface\./);
+  // The curves group shares its button since the spline joined the ellipse (docs/plans/spline.md).
+  assert.match(help, /Sharing a button now: rectangle \/ polygon \/ slot \/ region \/ t_stamp; ellipse \/ spline; fillet \/ bevel \/ trim \/ extend \/ offset \/ mirror \/ pattern \/ round \/ chamfer \/ t_late \/ t_base; dimension \/ constrain; extrude \/ surface\./);
   assert.match(help, /static group = "shapes"/);
   assert.match(help, /slides off it onto one and lifts/);
   const tools = (await repl.eval("tools()")).value as string[];
