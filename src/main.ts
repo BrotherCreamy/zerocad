@@ -2087,13 +2087,20 @@ async function main() {
     }
     if (!panel || top === null) return;
     const box = (el: Element) => { const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; };
-    // Where the panels put it, not where a lift already has.
-    const home = { x: panel.offsetLeft, y: panel.offsetTop, w: panel.offsetWidth, h: panel.offsetHeight };
+    // Where the panels put it, not where a lift already has — its own
+    // rectangle, without the ground it reaches under an inset with (`bleed`):
+    // lifted off the gesture bar, it has no bar to reach under.
+    const pad = getComputedStyle(panel);
+    const [padT, padB] = [parseFloat(pad.paddingTop) || 0, parseFloat(pad.paddingBottom) || 0];
+    const home = { x: panel.offsetLeft, y: panel.offsetTop + padT, w: panel.offsetWidth, h: panel.offsetHeight - padT - padB };
     const others = Array.from(document.querySelectorAll<HTMLElement>(".panel[data-panel]"))
       .filter((el) => el !== panel && !el.hidden).map(box).concat([box(logoEl)]);
     const to = lifted(home, top, others);
     if (!to) return;
-    panel.style.transform = `translate(${to.x - home.x}px, ${to.y - home.y}px)`;
+    panel.style.padding = "";
+    panel.style.height = `${to.h}px`;
+    delete panel.dataset.bleed;
+    panel.style.transform = `translate(${to.x - panel.offsetLeft}px, ${to.y - panel.offsetTop}px)`;
     panel.style.width = `${to.w}px`;
     panel.dataset.lifted = "";
     liftedEl = panel;
@@ -2913,6 +2920,18 @@ async function main() {
 // Before the kernel loads, so a pinch during the wait cannot zoom the page
 // either (pagelock.ts).
 lockPage(document);
+
+// **No browser menu on the chrome** (docs/plans/android.md): Chrome on Android
+// raises `contextmenu` for a long-press, and a tray button held for its
+// tooltip or its flyout was the one surface that let it through (the canvas,
+// the logo and the menus cancel their own) — found by the Android e2e. Where
+// there is text to take — the command line, the log, a field — the browser's
+// menu (copy, paste) stays.
+document.addEventListener("contextmenu", (e) => {
+  const at = e.target instanceof Element ? e.target : null;
+  if (at?.closest("#cmd, #log, input, textarea")) return;
+  e.preventDefault();
+});
 
 main().catch((e) => {
   statusLine.show("error", "ERROR — see log");

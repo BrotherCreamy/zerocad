@@ -23,7 +23,7 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { devices, type Browser, type BrowserContext, type CDPSession, type Page } from "playwright";
 import { APP_URL, forgetAutosave, launchBrowser } from "./harness.ts";
-import { IPHONES, windowOf, type IPhone, type Mode, type Turn } from "../devices.ts";
+import { IPHONES, androidWindowOf, everyAndroidWay, windowOf, type IPhone, type Mode, type Turn } from "../devices.ts";
 
 const SHOTS = process.env.NEOCAD_E2E_SHOTS;
 const errors: string[] = [];
@@ -397,6 +397,95 @@ test("iPhone 13: a pane docked against a tray keeps lying along it when a rotati
     await shot(p.page, "dock-wrap-landscape");
     await hold(p, THIRTEEN, "portrait", "installed", false);
     await check("portrait", "1");
+  } finally {
+    await p.context.close();
+  }
+});
+
+// ---- Android (docs/plans/android.md) ----------------------------------------------
+//
+// The same over the Android rows of test/devices.ts — every device, both ways
+// up, installed with the gesture bar, with three buttons, and in a Chrome tab —
+// in Playwright's Pixel 7 context (Android's user agent, touch, a phone's
+// `isMobile`; each row's own window and insets set as above). Then **with the
+// keyboard up**: the command line focused, and the visual viewport shrunk as
+// Chrome's keyboard shrinks it — a stand-in, since no keyboard comes up in
+// emulation; Gboard's height taken as 40 % of the window upright and 55 % on
+// its side (estimates) — and the rule is that the line is above the keyboard,
+// over no pane where it is not hidden by it, and the drawing the size it was.
+
+/** A Pixel 7's page, with a visual viewport a test can shrink (window.__vv). */
+async function android(): Promise<Phone> {
+  browser ??= await launchBrowser();
+  const { defaultBrowserType: _b, ...device } = devices["Pixel 7"];
+  const context = await browser.newContext(device);
+  await context.addInitScript(() => {
+    const fake = new EventTarget() as EventTarget & Record<string, number>;
+    Object.assign(fake, { offsetLeft: 0, offsetTop: 0, pageLeft: 0, pageTop: 0, scale: 1, width: innerWidth, height: innerHeight });
+    Object.defineProperty(window, "visualViewport", { configurable: true, get: () => fake });
+    (window as unknown as { __vv: typeof fake }).__vv = fake;
+  });
+  const page = await context.newPage();
+  page.on("pageerror", (e) => errors.push(String(e)));
+  const cdp = await context.newCDPSession(page);
+  await page.goto(APP_URL, { waitUntil: "networkidle" });
+  await ready(page);
+  return { context, page, cdp };
+}
+
+test("every Android device, both ways up, installed (gestures, three buttons) and in Chrome: no pane over another, the logo or the status, all on screen — and with the keyboard up, the line above it over nothing", async () => {
+  const p = await android();
+  try {
+    for (const { device, turn, mode } of everyAndroidWay()) {
+      const win = androidWindowOf(device, turn, mode);
+      const where = `${device.name}, ${turn}, ${mode}`;
+      await p.page.setViewportSize({ width: win.w, height: win.h });
+      await p.cdp.send("Emulation.setSafeAreaInsetsOverride", { insets: win.insets });
+      await p.page.evaluate(() => localStorage.clear());
+      await forgetAutosave(p.page);
+      await p.page.reload({ waitUntil: "networkidle" });
+      await ready(p.page);
+      // Sent again once loaded: after a run of other sizes, the first sending
+      // was sometimes not in force by the time the page read it (found by the
+      // Android touch e2e's own check) — and every picture rests on it.
+      await p.cdp.send("Emulation.setSafeAreaInsetsOverride", { insets: win.insets });
+      await p.page.waitForTimeout(250);
+      const reported = await p.page.evaluate(() => {
+        const s = getComputedStyle(document.getElementById("safeprobe")!);
+        return { top: parseFloat(s.paddingTop), right: parseFloat(s.paddingRight), bottom: parseFloat(s.paddingBottom), left: parseFloat(s.paddingLeft) };
+      });
+      assert.deepEqual(reported, win.insets, `${where}: the cutout and the bar in force`);
+      await p.page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+      await drawing(p.page);
+      assert.deepEqual(await breaches(p.page), [], where);
+      // Nothing of the chrome in the cutout or under the bar but a strip's own ground reaching under it.
+      const logo = await chrome(p.page).then((c) => c.logo);
+      assert.ok(logo.x >= win.insets.left - 0.5 && logo.y >= win.insets.top - 0.5, `${where}: the logo clear of the cutout ${JSON.stringify(logo)}`);
+      const org = await chrome(p.page).then((c) => c.panes.organiser);
+      assert.ok(org && org.w > 100 && org.h > 60, `${where}: the organiser is there from the start ${JSON.stringify(org)}`);
+      assert.deepEqual(errors, [], `${where}: the page reported no layout problem`);
+      const slugA = `${device.name.replace(/[^A-Za-z0-9]+/g, "-")}-${turn}-${mode}`;
+      if (device.descriptor === "Pixel 7" || device.name.startsWith("Pixel 9") || device.large) await shot(p.page, `android-${slugA}`);
+      // The keyboard.
+      const canvas = await p.page.$eval("#cv", (el) => [el.clientWidth, el.clientHeight]);
+      const kbTop = Math.round(win.h * (turn === "portrait" ? 0.6 : 0.45));
+      await p.page.focus("#cmd");
+      await p.page.evaluate((h) => { const vv = (window as unknown as { __vv: EventTarget & { height: number } }).__vv; vv.height = h; vv.dispatchEvent(new Event("resize")); }, kbTop);
+      await p.page.waitForTimeout(80);
+      const c = await chrome(p.page);
+      const cmd = c.panes.cmd;
+      assert.ok(cmd.y + cmd.h <= kbTop + 0.5, `${where}: the line above the keyboard ${JSON.stringify(cmd)}`);
+      for (const [id, r] of Object.entries(c.panes)) {
+        if (id === "cmd" || r.y >= kbTop) continue; // a pane wholly under the keyboard is the keyboard's to cover
+        assert.ok(!intersect(cmd, { ...r, h: Math.min(r.h, kbTop - r.y) }), `${where}, keyboard up: the line over ${id} ${JSON.stringify({ cmd, r })}`);
+      }
+      assert.ok(!intersect(cmd, c.logo), `${where}, keyboard up: the line over the logo`);
+      assert.deepEqual(await p.page.$eval("#cv", (el) => [el.clientWidth, el.clientHeight]), canvas, `${where}: the drawing did not shrink`);
+      if (device.descriptor === "Pixel 7" && mode === "installed") await shot(p.page, `android-${slugA}-keyboard`);
+      await p.page.evaluate(() => { const vv = (window as unknown as { __vv: EventTarget & { height: number } }).__vv; vv.height = innerHeight; vv.dispatchEvent(new Event("resize")); });
+      await p.page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+      assert.deepEqual(errors, [], where);
+    }
   } finally {
     await p.context.close();
   }
