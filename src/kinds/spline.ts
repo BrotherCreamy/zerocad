@@ -71,6 +71,9 @@ export const SPLINE_STRUCTURE: EntityKindSpec = {
     return s.closed ? null : [s.points[0], s.points[s.points.length - 1]];
   },
   heldBy: ["onSpline"],
+  // Every through-point is on the curve: what the regions cut it at where a
+  // chord or another edge meets it (found by a test: such a chord split nothing).
+  through: (e) => (e as SplineEntity).points,
   owns: (e) => (e as SplineEntity).blocks,
 };
 

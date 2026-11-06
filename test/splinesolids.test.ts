@@ -10,7 +10,7 @@ import "../src/modules/builtin.ts";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { Model } from "../src/model.ts";
-import { extrude, revolve } from "../src/operations.ts";
+import { del, extrude, revolve } from "../src/operations.ts";
 import { fix, onPlane } from "../src/relations/basic.ts";
 import { addSpline } from "../src/relations/spline.ts";
 import { splineCurve } from "../src/kinds/spline.ts";
@@ -137,6 +137,25 @@ test("a closed spline is a loop on its own; a line across it cuts it into two, t
   assert.equal(two.length, 2, two.map((l) => describeLoop(l, two)).join("; "));
   assert.ok(Math.abs(two[0].area + two[1].area - one[0].area) < 1e-9 * whole, "the two halves make the whole");
   assert.ok(two.every((l) => l.members.some((x) => x.name === spline && x.span !== null)), "each runs along a part of the spline");
+});
+
+test("a region bounded by part of a spline is found but not extruded — refused by name; the whole one extrudes", async () => {
+  await loadSolver();
+  const m = new Model(3);
+  const { spline, points } = blob(m);
+  // A chord between two of its own points: the two regions' corners are real points.
+  const chord = m.addLine(points[0], points[2]).name;
+  assert.equal(m.solve().solved, true);
+  const two = findLoops(m);
+  assert.equal(two.length, 2, two.map((l) => describeLoop(l, two)).join("; "));
+  for (const loop of two) {
+    assert.throws(() => extrude(m, chord, 5, "origin", [loop.members]),
+      new RegExp(`a part of the spline "${spline}" bounds this region — a spline makes a solid only whole, an edge from its first point to its last or a loop on its own`));
+  }
+  assert.equal(m.features.size, 0, "nothing made");
+  del(m, chord);
+  extrude(m, spline, 5);
+  assert.equal(m.features.size, 1, "the whole one extrudes");
 });
 
 test("a closed spline on a tilted plane in 3D is a loop in that plane", async () => {

@@ -1175,6 +1175,12 @@ export function heldOnCurves(model: Model): Held[] {
     const onRim = (rel.op === "onCircle" && (kind === "arc" || kind === "circle")) || (entityKind(kind)?.heldBy?.includes(rel.op) ?? false);
     if (onLine || onRim) out.push({ point, curve });
   }
+  // A curve's own points on it (`EntityKindSpec.through`): a chord drawn
+  // between two of a closed spline's points split nothing until they were
+  // read here — no relation says they are on it; its definition does.
+  for (const e of model.entities.values()) {
+    for (const point of entityKind(e.kind)?.through?.(e) ?? []) out.push({ point, curve: e.name });
+  }
   return out;
 }
 

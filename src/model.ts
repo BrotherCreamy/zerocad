@@ -191,6 +191,13 @@ export interface EntityKindSpec {
    */
   ends?(e: Entity): [string, string] | null;
   /**
+   * Points the curve passes through **by its own definition** — a spline's
+   * through-points — as a relation like `onspline` holds a point on it. The
+   * regions cut it at one another edge meets, as at a T (loops.ts's
+   * `heldOnCurves`). Absent for a kind whose points are not on it.
+   */
+  through?(e: Entity): readonly string[];
+  /**
    * The residual blocks an entity of this kind holds **itself** — equations
    * that are its definition, not relations on it (a spline's interpolation,
    * docs/plans/spline.md). This layer never reads them; it removes them with
