@@ -213,7 +213,9 @@ test("empty canvas arms the tools, and every tool name it types is registered", 
     // is registered whole (it used to import the rectangle alone).
     // The region tool is the shapes group's last (docs/plans/regions-as-operations.md); the modify
     // group under its heading once the solids module brings its round and chamfer (docs/plans/solid-fillets.md).
-    "Point", "Line", "Shapes", "Rectangle", "Polygon", "Slot", "Region", "Circle", "Arc", "Ellipse", "Modify", "Fillet", "Chamfer", "Round", "Frame",
+    // The sketch's edits join modify after the fillet (docs/plans/sketch-edit.md).
+    "Point", "Line", "Shapes", "Rectangle", "Polygon", "Slot", "Region", "Circle", "Arc", "Ellipse", "Modify", "Fillet", "Bevel", "Trim",
+    "Extend", "Offset", "Mirror", "Pattern", "Round", "Chamfer", "Frame",
   ]);
   // A typo in the table would be a menu item that throws when chosen, and
   // nothing else would catch it.

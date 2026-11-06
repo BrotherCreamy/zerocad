@@ -177,6 +177,10 @@ export const GLYPH_SYMBOL: Record<string, string> = {
   equalSpacing: "≡",
   diameter: "⌀",
   measure: "( )",
+  // A pattern's (docs/plans/sketch-edit.md): a copy moved as the first copy
+  // is, or turned as it is — arrows, from the block `⇌` is already measured in.
+  translated: "⇉",
+  rotated: "↻",
 };
 
 /**
@@ -332,6 +336,12 @@ export function labelFor(op: string, args: unknown[]): string | null {
     case "chamferSetback": {
       const v = args[0];
       return typeof v === "number" ? `C${formatValue(v)}` : null;
+    }
+    // A circular pattern's step (docs/plans/sketch-edit.md): radians stored,
+    // degrees drawn, as `ang`'s.
+    case "rotation": {
+      const v = args[3];
+      return typeof v === "number" ? `${formatValue((v * 180) / Math.PI)}°` : null;
     }
     default:
       return null;
@@ -731,6 +741,13 @@ function anchorsFor(model: Model, view: View, r: RelationEntry): Anchor[] {
     }
     case "symmetric":
       return [atPoint(model, str(args[0])), atPoint(model, str(args[1]))];
+    // A pattern's marks sit on the copy each one holds, not on the seed
+    // every one of them names (docs/plans/sketch-edit.md).
+    case "translated":
+    case "rotated":
+      return [atPoint(model, str(args[1]))];
+    case "rotation":
+      return [atPoint(model, str(args[1]))];
     case "arcEndpoints": {
       const a = model.arc(str(args[0]));
       return [atPoint(model, a.start), atPoint(model, a.end)];

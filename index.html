@@ -345,8 +345,11 @@
        wrapped where panels.ts's flyoutPlacement says. Fixed, over the panels
        and under the tooltip and the menus. The current member is outlined;
        the armed one is amber, as on the tray; .hot is the item a sliding
-       finger is over, lit as a hover lights it. */
-    #flyout{position:fixed;z-index:60;box-sizing:border-box;background:#0e141b;border:1px solid #2c3d4f;border-radius:4px;
+       finger is over, lit as a hover lights it. Its padding is the 3 px flyoutSize sizes it
+       for, not the tray's pitch padding: with that a flyout wrapped into two
+       lines lost its last line's bottom under its own edge (docs/plans/
+       sketch-edit.md — the modify group was the first to wrap). */
+    #flyout{position:fixed;z-index:60;box-sizing:border-box;padding:3px;background:#0e141b;border:1px solid #2c3d4f;border-radius:4px;
       box-shadow:0 4px 14px #0008;grid-auto-flow:row;grid-template-rows:none;grid-auto-rows:var(--button);
       grid-template-columns:repeat(var(--per,1),var(--button))}
     #flyout[data-orient="column"]{grid-auto-flow:column;grid-template-columns:none;grid-auto-columns:var(--button);

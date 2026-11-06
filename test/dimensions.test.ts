@@ -24,6 +24,7 @@ import { del, set } from "../src/operations.ts";
 import { extrusion } from "../src/relations/extrusion.ts";
 import { revolution } from "../src/relations/revolution.ts";
 import { chamferSetback, filletRadius } from "../src/relations/blend.ts";
+import { rotation } from "../src/relations/pattern.ts";
 import { FORMAT, open, save } from "../src/persist.ts";
 import { axisFrame } from "./frames.ts";
 
@@ -91,7 +92,9 @@ test("the three value-carrying relations are d-named and every other one is r-na
   // as a radius is; test/shapes.test.ts makes them.
   // A fillet's radius and a chamfer's setback (docs/plans/solid-fillets.md) are
   // dimensions with no equation: test/solidfillets.test.ts makes them.
-  assert.deepEqual([...DIMENSION_OPS].sort(), ["angle", "chamferSetback", "diameter", "dist", "extrusion", "filletRadius", "majorAxis", "minorAxis", "radius", "revolution"]);
+  // A circular pattern's step (docs/plans/sketch-edit.md) is a dimension too:
+  // test/sketchedit.test.ts sets one and the pattern turns.
+  assert.deepEqual([...DIMENSION_OPS].sort(), ["angle", "chamferSetback", "diameter", "dist", "extrusion", "filletRadius", "majorAxis", "minorAxis", "radius", "revolution", "rotation"]);
   // A driven dimension is a dimension to read and name, never to set.
   assert.equal(relationPrefix("measure"), "d");
   assert.equal(valueArgIndex("measure"), null);
@@ -299,6 +302,8 @@ test("every op in DIMENSION_OPS can actually be rebuilt by set", async () => {
     // A blend's size holds nothing to solve; `set` re-runs it with the new value.
     filletRadius: (m) => filletRadius(m, 3),
     chamferSetback: (m) => chamferSetback(m, 2),
+    // A circular pattern's step: b is a turned a quarter about c2.
+    rotation: (m) => rotation(m, "a", "b", "c2", Math.PI / 2),
   };
   for (const op of DIMENSION_OPS) {
     assert.ok(fixtures[op], `${op} is a dimension with no fixture here — add one, and a REBUILD entry`);

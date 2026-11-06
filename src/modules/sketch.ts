@@ -16,6 +16,8 @@ import { spanOf, unitOf } from "../model.ts";
 import { slots } from "../clauses.ts";
 import * as geom from "../relations/geometry.ts";
 import { add, deleteRegionSteps, fillet, hole, intersect, region, subtract, unhole } from "../operations.ts";
+import { chamfer, circular, extend, linear, mirror, offset, trim } from "../sketchedit.ts";
+import * as pattern from "../relations/pattern.ts";
 import * as shapes from "../tools/shapes.ts";
 import { svg } from "../tools/icons.ts";
 import { RectangleTool } from "../tools/rectangle.ts";
@@ -28,6 +30,12 @@ import { FilletTool } from "../tools/fillet.ts";
 import { DimensionTool } from "../tools/dimension.ts";
 import { ConstrainTool } from "../tools/constrain.ts";
 import { RegionTool } from "../tools/regiontool.ts";
+import { BevelTool } from "../tools/bevel.ts";
+import { TrimTool } from "../tools/trim.ts";
+import { ExtendTool } from "../tools/extend.ts";
+import { OffsetTool } from "../tools/offset.ts";
+import { MirrorTool } from "../tools/mirror.ts";
+import { PatternTool } from "../tools/pattern.ts";
 
 /** A model method, as a replay entry. */
 const bound = (name: string) => (model: Model) => {
@@ -97,6 +105,15 @@ defineModule("sketch", {
     arc: ArcTool,
     ellipse: EllipseTool,
     fillet: FilletTool,
+    // Sketch editing (docs/plans/sketch-edit.md), on the modify button after
+    // the fillet. `bevel` is the sketch's chamfer: `chamfer` is the solid's
+    // edge tool, on the same button.
+    bevel: BevelTool,
+    trim: TrimTool,
+    extend: ExtendTool,
+    offset: OffsetTool,
+    mirror: MirrorTool,
+    pattern: PatternTool,
     dimension: DimensionTool,
     constrain: ConstrainTool,
   },
@@ -107,7 +124,10 @@ defineModule("sketch", {
   groups: {
     shapes: ["rectangle", "polygon", "slot", "region"],
     curves: ["ellipse", "spline"],
-    modify: ["fillet", "chamfer", "trim", "extend", "offset", "mirror", "pattern"],
+    // The sketch's edits first, then (from the solids module) the solid's
+    // round and chamfer: one family per half of the flyout
+    // (docs/plans/sketch-edit.md). `bevel` is the sketch's two-line chamfer.
+    modify: ["fillet", "bevel", "trim", "extend", "offset", "mirror", "pattern"],
     // Dimension and constrain share a button (docs/plans/sketch-relations.md
     // gave each its own): both make relations, and as the fourteenth button
     // the second ran an iPhone 13's column one pixel onto the command line at
@@ -138,6 +158,18 @@ defineModule("sketch", {
     // Two edges meeting at a corner, the corner itself replaced by a quarter
     // circle on its inside — what a fillet does to the corner it is given.
     fillet: svg("fillet", `<path d="M3 13.5V8.5A5.5 5.5 0 0 1 8.5 3H13.5"/>`),
+    // The sketch edits (docs/plans/sketch-edit.md). The bevel is the fillet's
+    // corner cut straight; trim and extend are a line meeting a wall, the
+    // piece past it gone (dotted) or the gap to it bridged (dotted, arrowed).
+    bevel: svg("bevel", `<path d="M3 13.5V7.5L7.5 3H13.5"/>`),
+    trim: svg("trim", `<path d="M9 2.5v11M2.5 8H9"/><path d="M9 8h4.5" stroke-dasharray="1.2 1.6"/>`),
+    extend: svg("extend", `<path d="M13.5 2.5v11M2.5 8H7"/><path d="M7 8h4.5" stroke-dasharray="1.2 1.6"/><path d="M9.8 6.2 11.6 8 9.8 9.8"/>`),
+    // A corner and its parallel copy inside it, dotted: what an offset adds.
+    offset: svg("offset", `<path d="M2.5 13.5V6.5a4 4 0 0 1 4-4h7"/><path d="M5.5 13.5V8a2.5 2.5 0 0 1 2.5-2.5h5.5" stroke-dasharray="1.4 1.3"/>`),
+    // Two halves either side of a dotted axis, each the other's mirror image.
+    mirror: svg("mirror", `<path d="M8 1.5v13" stroke-dasharray="1.4 1.4"/><path d="M6 4 2.5 12H6zM10 4l3.5 8H10z"/>`),
+    // A seed and its copies in a row.
+    pattern: svg("pattern", `<rect x="1.8" y="5.5" width="3.4" height="5" rx=".6"/><rect x="6.3" y="5.5" width="3.4" height="5" rx=".6"/><rect x="10.8" y="5.5" width="3.4" height="5" rx=".6"/>`),
     // A draughtsman's dimension: two witness lines and the arrowed line between
     // them — what the tool puts on the drawing (docs/plans/sketch-relations.md).
     dimension: svg("dimension", `<path d="M2.5 3.5v9M13.5 3.5v9M2.5 8h11"/><path d="M5 6.2 2.5 8 5 9.8M11 6.2 13.5 8 11 9.8"/>`),
@@ -154,6 +186,12 @@ defineModule("sketch", {
     // A region's record going: a primitive of `del`'s expansion, as
     // `deleteFeature` is a feature's (docs/plans/regions-as-operations.md).
     deleteRegion: bound("deleteRegion"),
+    // The trim's structure (docs/plans/sketch-edit.md): an arc's end
+    // re-pointed, a circle made an arc under its name and back. Journalled
+    // only where called outside an operation — a trim is its own entry.
+    retargetArc: bound("retargetArc"),
+    circleToArc: bound("circleToArc"),
+    arcToCircle: bound("arcToCircle"),
   },
   relations: {
     radius: { names: ["rad", "radius"], slots: slots("circle", "#radius"), fn: geom.radius },
@@ -171,6 +209,12 @@ defineModule("sketch", {
     onEllipse: { names: ["onellipse", "onEllipse"], slots: slots("point", "ellipse"), fn: geom.onEllipse },
     majorAxis: { names: ["major", "majorAxis"], slots: slots("ellipse", "#semi-axis"), fn: geom.majorAxis, dimension: 1 },
     minorAxis: { names: ["minor", "minorAxis"], slots: slots("ellipse", "#semi-axis"), fn: geom.minorAxis, dimension: 1 },
+    // What a pattern is held by (docs/plans/sketch-edit.md, relations/
+    // pattern.ts): a copy is its seed moved as the first copy is. `rotation`
+    // is a circular pattern's one dimension, the step's angle.
+    translated: { names: ["translated"], slots: slots("point", "point", "point", "point"), fn: pattern.translated },
+    rotated: { names: ["rotated"], slots: slots("point", "point", "point", "point", "point"), fn: pattern.rotated },
+    rotation: { names: ["rotation"], slots: slots("point", "point", "point", "#angle"), fn: pattern.rotation, dimension: 3 },
   },
   operations: {
     fillet,
@@ -191,6 +235,18 @@ defineModule("sketch", {
     add,
     intersect,
     deleteRegionSteps,
+    // Sketch editing (docs/plans/sketch-edit.md): each an operation, journalled
+    // as its typed call with what it read off positions resolved beside it.
+    // `chamfer` is the sketch's two-line chamfer; a solid's edges are
+    // `chamferEdges` (the solids module), and the typed `chamfer` tells them
+    // apart by its second argument, as `fillet` does.
+    trim,
+    extend,
+    offset,
+    mirror,
+    chamfer,
+    linear,
+    circular,
   },
   menu: [
     { label: "Rectangle", tool: "rectangle" },
@@ -205,6 +261,22 @@ defineModule("sketch", {
     { label: "Fillet", tool: "fillet" },
   ],
   commands: (kit) => ({
+    // Sketch editing (docs/plans/sketch-edit.md). Each forwards every argument,
+    // so a line copied out of a journal — its resolved part included — types.
+    trim: (curve: string, near: unknown, resolved?: unknown, regenerated?: unknown) => {
+      const notes: string[] = [];
+      const out = trim(kit.model, curve, near, resolved, regenerated, notes);
+      for (const n of notes) kit.log?.(n);
+      return out;
+    },
+    extend: (curve: string, end: unknown, to?: string | null, at?: unknown) => extend(kit.model, curve, end, to, at),
+    offset: (chain: string | string[], d: number, options?: { construction?: boolean } | null, resolved?: unknown) =>
+      offset(kit.model, chain, d, options, resolved),
+    mirror: (names: string | string[], line: string, resolved?: unknown) => mirror(kit.model, names, line, resolved),
+    linear: (names: string | string[], dx: number, dy: number, n: number, resolved?: unknown) =>
+      linear(kit.model, names, dx, dy, n, resolved),
+    circular: (names: string | string[], centre: string, angle?: number | null, n?: number, resolved?: unknown) =>
+      circular(kit.model, names, centre, angle, n, resolved),
     // An ellipse by its centre, its major end — a point, or a number: the
     // semi-major along the drawing plane's first direction — and the minor
     // semi-axis, every one optional and none a constraint, as `circ`'s. A
@@ -309,5 +381,27 @@ defineModule("sketch", {
     "           tan(line, e) and conc with circles and ellipses take one; tan",
     "           between an ellipse and a circle or another ellipse does not.",
     "           fillet(line1, line2, radius) — the arc follows its corner",
+    'edit       trim("l1", [x, y]) — the piece of l1 the place is on, between the',
+    "           curves that cut it there (or its own end), goes: an end re-pointed",
+    "           and held on (on, oncircle) the curve that cut it; a middle piece",
+    "           leaves two, held col (an arc's: eqrad); a circle becomes an arc,",
+    "           same name. A feature on it regenerates, or the trim refuses.",
+    '           extend("l1", "p2") — that end on to the next curve along l1 (an',
+    '           arc: round its circle), held on it; extend("l1", "p2", "c3") to c3.',
+    '           offset("l1", 5) or offset(["l1", "a1", "l2"], 5, { construction:',
+    "           true }) — a parallel copy of a chain, outward (closed) or to the",
+    "           left of the first member (open): par + dist, arcs about the same",
+    "           centre, corners joined.",
+    '           mirror(["l1", "l2"], "l5") — copies held by sym about l5, or about',
+    '           a frame axis ("origin.y"); a point on the line is its own mirror.',
+    '           chamfer("l1", "l2", 5) or (…, 5, 3) — the corner cut by a line, its',
+    "           ends dist from the corner, which stays (held where the legs meet).",
+    '           linear(names, dx, dy, n) — n instances a step apart (the drawing',
+    '           plane\'s axes); circular(names, "p1", angle, n) — n about p1, over',
+    "           angle radians (a whole turn: evenly round). Copy k of l1 is l1_k;",
+    "           one dimension drives each (a dist, a rotation): set it. Deleting",
+    "           the seed deletes no copy. Tools, under modify: trim (click the",
+    "           piece), extend (click near an end), offset, mirror, bevel (the",
+    "           sketch chamfer: two lines or a corner), pattern.",
   ],
 });

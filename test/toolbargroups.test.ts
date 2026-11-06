@@ -57,8 +57,9 @@ test("the button list is thirteen today, with these names in this order — a gr
   assert.deepEqual(buttons.find((b) => b.group === "curves")!.tools, ["ellipse"]);
   assert.deepEqual(buttons.find((b) => b.group === "relate")!.tools, ["dimension", "constrain"]);
   // The solids module's round and chamfer join the sketch's fillet there
-  // (docs/plans/solid-fillets.md): no button of their own.
-  assert.deepEqual(buttons.find((b) => b.group === "modify")!.tools, ["fillet", "chamfer", "round"]);
+  // (docs/plans/solid-fillets.md), after the sketch's edits (docs/plans/
+  // sketch-edit.md, bevel the sketch's chamfer): no button of their own.
+  assert.deepEqual(buttons.find((b) => b.group === "modify")!.tools, ["fillet", "bevel", "trim", "extend", "offset", "mirror", "pattern", "round", "chamfer"]);
   // Every listed tool is on exactly one button.
   assert.deepEqual(buttons.flatMap((b) => b.tools).sort(), [...ENGINE_TOOLS, ...listTools()].sort());
 });
@@ -67,8 +68,9 @@ test("grouping is the table: shapes, curves, modify and relate, in their order; 
   assert.deepEqual(Object.keys(TOOL_GROUPS), ["shapes", "curves", "modify", "relate"]);
   assert.deepEqual(TOOL_GROUPS.shapes, ["rectangle", "polygon", "slot", "region"]);
   assert.deepEqual(TOOL_GROUPS.curves, ["ellipse", "spline"]);
-  // The sketch module's table, then what the solids module adds (round; its chamfer is the table's).
-  assert.deepEqual(TOOL_GROUPS.modify, ["fillet", "chamfer", "trim", "extend", "offset", "mirror", "pattern", "round"]);
+  // The sketch module's table — its edits, bevel its chamfer (docs/plans/
+  // sketch-edit.md) — then what the solids module adds: round and chamfer.
+  assert.deepEqual(TOOL_GROUPS.modify, ["fillet", "bevel", "trim", "extend", "offset", "mirror", "pattern", "round", "chamfer"]);
   // Dimension and constrain share a button since a fourteenth ran a phone's
   // column onto the command line (tool.ts, beside the table).
   assert.deepEqual(TOOL_GROUPS.relate, ["dimension", "constrain"]);
@@ -111,7 +113,7 @@ test("a tool with static group joins it, after the table's members — and its b
   defineTool("t_late", Stamp2);
   class Chamfer extends Tool { name = "chamfer"; }
   defineTool("chamfer", Chamfer);
-  assert.deepEqual(toolbarButtons().find((b) => b.group === "modify")!.tools, ["fillet", "chamfer", "round", "t_late"]);
+  assert.deepEqual(toolbarButtons().find((b) => b.group === "modify")!.tools, ["fillet", "bevel", "trim", "extend", "offset", "mirror", "pattern", "round", "chamfer", "t_late"]);
 });
 
 test("static group is the class's own: a subclass of a grouped tool is not in its group", () => {
@@ -338,7 +340,7 @@ test("the menu's tool items: a group of more than one under its heading, every m
   // one member, so it is a plain item; the others are as they were.
   assert.deepEqual(rows.slice(0, rows.indexOf("Frame")),
     ["Point", "Line", "# Shapes", "Rectangle", "Polygon", "Slot", "Region", "T_stamp", "Circle", "Arc", "Ellipse",
-      "# Modify", "Fillet", "Chamfer", "Round", "T_late", "T_base"]);
+      "# Modify", "Fillet", "Bevel", "Trim", "Extend", "Offset", "Mirror", "Pattern", "Round", "Chamfer", "T_late", "T_base"]);
   const polygon = menu.items.find((i) => i.label === "Polygon")!;
   assert.deepEqual(polygon.action, { do: "run", command: 'arm("polygon")' });
 });
@@ -347,7 +349,7 @@ test("help() says which tools share a button, how to open it, and how a tool joi
   const repl = new Repl(neocadScope({ model: new Model(2), optionMemory: new OptionMemory(null) }));
   const help = (await repl.eval("help()")).value as string;
   assert.match(help, /rectangle +.*\[shapes\]/);
-  assert.match(help, /Sharing a button now: rectangle \/ polygon \/ slot \/ region \/ t_stamp; fillet \/ chamfer \/ round \/ t_late \/ t_base; dimension \/ constrain\./);
+  assert.match(help, /Sharing a button now: rectangle \/ polygon \/ slot \/ region \/ t_stamp; fillet \/ bevel \/ trim \/ extend \/ offset \/ mirror \/ pattern \/ round \/ chamfer \/ t_late \/ t_base; dimension \/ constrain\./);
   assert.match(help, /static group = "shapes"/);
   assert.match(help, /slides off it onto one and lifts/);
   const tools = (await repl.eval("tools()")).value as string[];

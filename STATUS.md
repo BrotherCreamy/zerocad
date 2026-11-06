@@ -16,6 +16,29 @@ etc).
   on every push to the working branch. Called NeoCAD until 0.1.0; the
   internal code name stays in identifiers, the file format tag and storage
   keys (see TODO.md's register).
+- **Sketch editing** (docs/plans/sketch-edit.md, built). The owner: *"give
+  me better sketch tools, relations, trim, slot... all the usual"*. Seven
+  operations in `src/sketchedit.ts`, each journalled as its call with what it
+  read off positions resolved, each one undo step, replayed: **`trim`** (the
+  piece between the cuts either side of a place goes; an end re-pointed and
+  held `on` the cutter, a middle piece leaving two held `col`, a circle an
+  arc under its name; the features on it regenerated, or the trim refuses
+  having tried and taken itself back — `Model.nameCounters`), **`extend`**
+  (an end on to the next curve along it, held there), **`offset`** (a chain's
+  parallel copy: `par` + `dist`, arcs about the same centre, corners joined),
+  **`mirror`** (`sym` about a line or a frame axis), **`chamfer`** (the
+  corner cut by a line, the corner point kept at the corner by
+  `intersection`, the ends `dist` from it), **`linear`** and **`circular`**
+  (copies `l1_2 …`, held by `translated`/`rotated`/`rotation`,
+  relations/pattern.ts, one dimension driving each). Where curves cross is
+  `src/sketchgeom.ts`. Six tools under modify — trim, extend, offset, mirror,
+  **bevel** (the sketch's chamfer; `chamfer` is the solid's tool) and pattern
+  (`src/tools/`). Unit: `test/sketchedit.test.ts`, `test/sketchedittools.test.ts`;
+  browser: `test/e2e/sketchedit.e2e.ts` (mouse and iPhone 13). *Known and
+  deliberate:* an ellipse is not trimmed and cuts only lines; an offset's
+  distances are a dimension per piece, and a `rad` of r ± d does not follow
+  the original's radius; a curve nothing cuts is `del`'s, not trim's. *Not
+  tried on a phone.*
 - **See-through panels and a lock** (docs/plans/panels-overlay-lock.md,
   built). The owner: *"a menu option to make the toolbars transparent to
   maximize visible viewport size. and also another option to lock the
@@ -303,7 +326,7 @@ etc).
   against fixtures written by the format-12 build.
 - **Toolbar groups** (docs/plans/toolbar-groups.md, built). A family of
   tools shares one button: `TOOL_GROUPS` in `tool.ts` (shapes: rectangle,
-  polygon, slot; curves: ellipse, spline; modify: fillet, chamfer, trim,
+  polygon, slot; curves: ellipse, spline; modify: fillet, bevel, trim,
   extend, offset, mirror, pattern), a command-line tool's own `static group`
   joining one; `toolbarButtons()` is the button list (twelve since the sketch
   shapes: shapes has three members, curves its first). A group's button shows
