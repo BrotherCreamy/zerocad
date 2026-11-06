@@ -266,7 +266,7 @@ etc).
   (`dragTo` → one `dragStep`), so any spot shows the same ghosts however it
   was reached, and the press shows none. It draws the held panel where the hand has it
   (`heldAt`: under the grab, inside the area, over whatever it is over, a
-  tray keeping the way it ran), and draws a dashed **ghost** for each panel
+  tray keeping the way it ran), and draws a solid, slightly translucent white **ghost** for each panel
   the drop would move and for the held one's landing where that is not under
   the hand (`ghostsOf`; the `.pghosts` layer, lifted with the held panel
   over the logo's row for the drag). From the first move every other panel

@@ -18,9 +18,11 @@ otherwise.
 
 ## In flight
 
-- **Standing duty**: after every merged PR, run `npm run build:single` and
-  republish `dist-single/neocad.html` to the owner's review artifact
-  (same URL each time).
+- **Standing duty**: commit to the private repository and sync the public
+  mirror after every commit (the owner, 2026-11-06: *"Commit to mirror.
+  Always"*). The review artifact is **retired** (the owner, 2026-11-06:
+  *"You don't need to update the artifact any more, just commit to main repo
+  and mirror"*): the hosted app on Pages is the review copy now.
 
 ## Decisions made so far — veto here if any are wrong
 
@@ -1714,6 +1716,12 @@ starts.
       floor, so the pitch is air at 100 % and menus never shrink. Spec:
       [`touch-density.md`](docs/plans/touch-density.md), with the verdict
       cut on an upright iPhone and the phone fillet file's two flaky taps.
+- [ ] **Panels reshuffle rather than push (2026-11-06)** — after touch
+      density. The owner: *"When I push toolbars around, they should be able
+      to reorder with other toolbars. So reshuffle rather than push."* Panes
+      along an edge are a sequence; a drag reorders, another edge inserts,
+      a floating pane swaps. Spec:
+      [`panels-reshuffle.md`](docs/plans/panels-reshuffle.md).
 
 - [ ] **The sketch packages (2026-11-05).** The owner: *"give me better
       sketch tools, relations, trim, slot... all the usual"*, picked from

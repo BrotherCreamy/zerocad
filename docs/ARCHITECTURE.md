@@ -1586,7 +1586,7 @@ one step, from the layout at the press straight to where the hand is, so it
 is a function of the spot and not the path, the rules have one
 implementation, and the preview cannot disagree with what a drop commits —
 and the **held panel**, drawn where the hand has it (`heldAt`) and placed
-nowhere. Every other panel stays put, at half opacity, with a dashed ghost
+nowhere. Every other panel stays put, at half opacity, with a translucent white ghost
 where the drop would put it (`ghostsOf`); a tray's turn is the preview's
 until the drop. The drop commits the preview in one step (`dropOf`) and the
 panels glide onto it (the rectangles final at once, only the drawing

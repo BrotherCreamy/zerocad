@@ -64,6 +64,15 @@ toolbargroups, tooltips and touch tests.
   (record the gesture recogniser's decisions and the engine's picks for the
   failing runs without changing their timing), fix the cause wherever it is
   (test or app), and say which. No retries.
+- **Bleed only downward** (the owner, iPhone landscape, 2026-11-06: *"when I
+  move something up against the left or right edge, it hits an invisible
+  edge, but then the padding of the palette expands out to touch the edge
+  of the screen. Strange behaviour"*). A pane bleeds only into the bottom
+  inset (home indicator, gesture bar); against a side cutout's inset it is
+  drawn at its rectangle, the drawing visible beside it. A bled pane never
+  draws over another's rectangle — his picture showed the log drawn over
+  the command line; find whether that is the bleed or the layout and fix
+  it either way.
 - Everything-fits holds at every size on every device; the toolbar's button
   count on each device is whatever the new pitch gives, and the fits tests say
   so rather than hard-coding a count where the pitch changed.
