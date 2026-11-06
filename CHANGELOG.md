@@ -7,6 +7,50 @@ decisions.
 
 ---
 
+## A dragged panel shows where everything will land, and nothing moves until it is dropped
+
+The owner: *"the toolbars should push each other around, but they should show
+how they will snap IF the user drops the grasped toolbar in that spot. but
+until they actually drop it, the permanent position of any tool bar is not
+changed"*; *"when I push a toolbar up against one side and it changes from
+horizontal to vertical layout. it should not actually change the toolbar
+between modes unless I let go"*; and *"when I am dragging toolbars, all the
+ungripped ones should go translucent"*. Built to
+[`docs/plans/panels-preview.md`](docs/plans/panels-preview.md); every
+deviation is in its *As built* and the register.
+
+- **Only the panel in your hand moves.** It is lifted (a deeper shadow) and
+  follows the hand exactly; everything else stays where it is.
+- **Ghosts** — a dashed outline with a faint fill — show where each panel
+  the drop would push will land, and where the one in hand will snap when
+  that is not under the hand (stopped against an edge or a chain, turned). A
+  panel the drop would not move has none.
+- **A toolbar's turn is a ghost too**: dragged to an edge that turns it, it
+  stays a column (or a row) in the hand; its ghost is the turned tray, and it
+  turns when you let go.
+- **Every other panel goes to half opacity** for the drag, and back at the
+  end.
+- **Let go and it all moves at once**, gliding onto the ghosts in 120 ms.
+  **Escape**, or **letting go back where you started**, moves nothing. A drop
+  the layout could not take (never seen) moves nothing and says so.
+- Resizing the log or the command line by a corner previews the same way.
+- The rules of the push are unchanged — the preview is the same resolver,
+  run on a copy. Every preview is checked as a placed layout is: nothing a
+  ghost shows overlaps.
+
+**Measured** on an emulated iPhone 13 with the CPU slowed 4×
+(`npm run measure:panels`): the move handler — the resolver, the held panel
+and the ghosts drawn — 1.4–1.8 ms median, 2.2–2.8 ms at the 95th
+percentile; the resolver alone under 0.1 ms median. The opacity class: a
+frame that flips it is 16.7 ms at the median, as one that flips nothing is;
+dragging with and without the translucency, the same 16.7 ms median and
+33.4 ms p95. Pictures:
+[177](docs/images/177-the-command-line-held-over-the-log-the-logs-ghost-where-it-will-be-pushed.png)–[187](docs/images/187-phone-landscape-lifted-the-tray-a-column.png).
+Tests: unit 1477 → 1489 (+12), e2e 592 → 606 (+14, mouse and iPhone 13 both
+ways up). **Not tried on an iPhone**: drag the command line onto the log and
+look at the ghosts, then lift; drag the toolbar to the top, watch its ghost
+turn, and lift back where you started to see nothing move.
+
 ## Fillets and chamfers of a body's edges, and kernel edges a hand can pick
 
 The owner: *"please add solid and surface fillet tools if possible (after you

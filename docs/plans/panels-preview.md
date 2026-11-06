@@ -1,7 +1,9 @@
 # Plan: a dragged panel shows where everything will land, and nothing moves until it is dropped
 
-**Status: queued** (2026-11-05), after `mode-feedback.md` (both are the
-chrome's; this one touches the resolver and the panels' drawing). The owner:
+**Status: built** (2026-11-06), on `claude/panels-preview`; see *As built*
+at the end for what was measured and every deviation. Queued 2026-11-05,
+after `mode-feedback.md` (both are the chrome's; this one touches the
+resolver and the panels' drawing). The owner:
 *"the toolbars should push each other around, but they should show how they
 will snap IF the user drops the grasped toolbar in that spot. but until they
 actually drop it, the permanent position of any tool bar is not changed"*.
@@ -73,3 +75,130 @@ CHANGELOG at the top quoting the owner; ARCHITECTURE ("The chrome floats"
 gains the preview); the register (ghosts; Escape; the settle) as vetoable;
 STATUS; README's panels paragraph; `help()`; the spec marked built with the
 deviations.
+
+## As built
+
+Built on `claude/panels-preview` (2026-11-06). By file: `src/panels.ts` (the
+preview's pure half — `Drag`, `beginDrag`, `heldAt`, `dragTo`, `ghostsOf`,
+`backSlop`, `dropOf`, `SETTLE_MS` — and in `Panels` the gesture rewritten
+round it, `draw` split from `place`, the ghosts' layer, `settle`, the
+`onRefused` option); `src/main.ts` (the refusal into the status note);
+`index.html` (`dragging`, the lifted held panel, `.pghost`, `settling`);
+`src/modules/interface.ts` (`help()`). Tests: `test/panelspreview.test.ts`
+(12), `test/e2e/panelspreview.e2e.ts` (14: a mouse, and an iPhone 13 portrait
+and landscape), `test/e2e/panels.measure.ts` (`npm run measure:panels`, not
+in the suite), `settled()` in the e2e harness, and the suites that read
+panels after a drop (`panels`, `chrome`, `tooloptions`, `undokeys`) waiting
+on it.
+
+**How it works.** At the press a `Drag` takes the layout as it is (`start`).
+Each move runs `dragStep` — the resolver exactly as it pushed the panels
+before — on the drag's own copy (`preview`), and puts the held panel where
+the hand has it (`heldAt`: the grab taken at the press under the pointer,
+held inside the area and against nothing else; by a grip, that corner under
+the pointer). The DOM half draws the held panel there (`draw`, which touches
+no layout), and a ghost for each panel `ghostsOf` names: every panel the
+preview has somewhere other than at the start, and the held one where its
+landing is not exactly under the hand. `layoutProblem` checks every preview
+as it checks a placed layout, so under the dev server a preview that
+overlapped would be a page error in every e2e test. The drop is `dropOf`:
+back within the slop of the press, the start; a preview `layoutProblem`
+rejects, the start and a status note; otherwise the preview, shown with
+`show` and stored with `remember` — one step, exactly what the ghosts
+showed. Escape (a window capture listener for the gesture's life) and a
+pointercancel drop nothing.
+
+**Measured** (`npm run measure:panels`, two runs, Chromium as an iPhone 13 on
+a shared four-core box, load average about 5; the browser's clock is coarse
+to 0.1 ms). Per move — the handler, timed between a window capture listener
+and a window bubble listener, so the resolver, drawing the held panel and the
+ghosts, and the dev server's check; and the resolver alone, the same moves
+replayed through `dragTo` in the page:
+
+| CPU | handler median | handler p95 | handler max | resolver median | resolver p95 |
+|---|---|---|---|---|---|
+| 1× | 0.4–0.5 ms | 0.7–0.9 ms | 1.7 ms | < 0.1 ms | 0.1 ms |
+| 4× | 1.4–1.8 ms | 2.2–2.8 ms | 2.9–9.8 ms | < 0.1 ms | 0.1–0.4 ms |
+
+The opacity change — frame intervals, requestAnimationFrame to the next:
+
+| CPU | flips the class | flips nothing | drag, translucent | drag, opaque |
+|---|---|---|---|---|
+| 1× | 16.7 / 16.7 / 16.7–16.8 | 16.7 / 16.7–16.8 / 16.8 | 16.7 / 16.8–49.9 / 117–167 | 16.7 / 16.8–33.3 / 33–67 |
+| 4× | 16.7 / 16.8 / 33.3 | 16.7 / 16.7–16.8 / 16.8–33.2 | 16.7 / 33.4 / 50–83 | 16.7 / 33.3–33.4 / 50 |
+
+(median / p95 / max, ms, across the two runs). The class costs no frame at
+the median or the 95th percentile at 1×; at 4× one flip in 60 took two frames
+in each run, and in the second run so did one frame that flipped nothing.
+The long frames while dragging are the machine's — the CDP-driven input on
+a loaded box — and come with the translucency off too. **4× is a crude
+stand-in for an iPhone 13**, whose A15 is faster than one of these cores
+divided by four on most work: these are a ceiling to hold against a frame,
+not the phone's numbers.
+
+Deviations and additions — each a decision, vetoable (also in `TODO.md`'s
+register):
+
+- **The ghosts keep the push's memory.** The spec's "the same `layout()`
+  call that pushes today, on a copy" is taken literally: `dragStep`, move by
+  move, on the copy. A ghost the preview pushed stays pushed when the hand
+  draws back, as a pushed panel always did, and a drop there moves it. Only
+  a lift back at the press or Escape takes it all back — which is why the
+  spec needed that rule at all. Resolving from the press on every move
+  would un-push on a retreat, but one long swept motion pushes differently
+  from the path a hand takes, so it would have changed the push.
+- **The held panel and the ghosts are lifted over the logo and the corner's
+  status** for the drag (`LIFTED_Z`: the ghosts 46, the held panel 47; the
+  corner is 40, the logo 45, the hover tag 50). The first screenshot had a
+  row's ghost along the top under the status text: a ghost may land in the
+  logo's row, which the corner keeps clear of only once panes are placed.
+  The held panel therefore covers the logo while it is over it.
+- **Back where it started** is within 2 px of the press for a mouse and 8 px
+  (`HOLD_SLOP`, the tap's) for a finger.
+- **Escape is the drag's alone** while one is held — captured on window and
+  stopped, so main.ts's Escape does not also put the armed tool down (the
+  e2e checks a line tool stays armed).
+- **A pointercancel commits nothing**; before, it ended the gesture like a
+  lift.
+- **The drag's look starts with the first move**, not the press, so a tap on
+  a strip — to raise a panel, or to read its tooltip — does not flash every
+  other panel to half and back. (The grip test, which compares a held grip's
+  pixels with none, caught the press-time version.)
+- **A resize by a grip is previewed the same way**: the panel grows under the
+  hand, over its neighbour, and the neighbour's ghost is pushed. The spec
+  spoke of dragging; one rule for every gesture.
+- **The ghosts' line is 1.5 px × the interface size, rounded to the whole
+  pixel** (`round()` in the stylesheet): 2 px at a desktop's 100 % and a
+  phone's, 3 px from a phone's 140 %. Chromium floors a border to a whole
+  CSS pixel — the unrounded 1.95 px of a phone's 100 % drew 1 — which the
+  phone e2e found by reading the computed width.
+- **The held panel's own ghost is brighter** than the others', and not drawn
+  while it lies exactly under the hand (an unblocked drag shows no ghost at
+  all).
+- **The settle** is a CSS transition of the panels' boxes under `settling`,
+  120 ms, eased out; the rectangles, the store and every rule are the new
+  layout at once, only the drawing catches up. An Escape or a lift back
+  glides the held panel home the same way. The e2e harness's `settled()`
+  waits for no drag, no settle and no running transition — a fixed pause of
+  the settle's own length read frames of the glide under load.
+- **The refusal** says `no layout fits there — nothing moved` in the status
+  note and the reason in the console. In 1 500 random gestures on a phone's
+  defaults (both ways up) no preview was refused; the branch is tested with
+  a constructed preview.
+- **Tests changed their claim where it was the old rule**: `panels.e2e.ts`'s
+  "turns into a row — live, before the release" now asserts the column in
+  the hand and the row as its ghost, and its push-chain test reads the
+  ghosts mid-drag (the log and the command line not moved under the hand),
+  measures the fixed grab on the tray's ghost, and checks that the drop lands
+  each panel on its ghost.
+
+Limitations left in place, deliberately:
+
+- **Not tried on an iPhone**: the glide, half opacity over a shaded solid,
+  and a ghost's dashes at 3×; the phone numbers are an emulation's.
+- **The strip's tooltip** still reads *"Drag to move it; pushed against an
+  edge or a pane, it stays there"* — true, but silent about Escape.
+- **A busy preview is busy**: the command line pushed into the log on a
+  portrait phone moves the organiser and the log at once, and the picture
+  (181) has three ghosts over three faint panes. Each reads as a ghost; the
+  whole takes a look.

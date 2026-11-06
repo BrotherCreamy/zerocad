@@ -1555,6 +1555,23 @@ DOM half reports any overlap it shows as a page error, which is how the e2e
 suite asserts the invariant over every gesture it makes rather than only the
 ones it measures.
 
+**Nothing moves until the drop** (docs/plans/panels-preview.md; the owner:
+*"they should show how they will snap IF the user drops the grasped toolbar
+in that spot. but until they actually drop it, the permanent position of any
+tool bar is not changed"*). A gesture keeps two things apart (`Drag`): the
+**preview**, which is the resolver above run move by move on a copy of the
+layout — the push exactly as it was, its memory included, so the rules have
+one implementation and the preview cannot disagree with what a drop commits —
+and the **held panel**, drawn where the hand has it (`heldAt`) and placed
+nowhere. Every other panel stays put, at half opacity, with a dashed ghost
+where the drop would put it (`ghostsOf`); a tray's turn is the preview's
+until the drop. The drop commits the preview in one step (`dropOf`) and the
+panels glide onto it (the rectangles final at once, only the drawing
+catching up). Escape, a lift back at the press and a refused preview commit
+nothing — the start is the layout at the press, which no move touched, so
+there is nothing to undo. Every preview is checked by `layoutProblem` as a
+shown layout is, so "nothing overlaps" holds for what the ghosts show too.
+
 **Gestures never cross**, and it takes both halves: a panel captures the
 pointer on its strip or grips, and the host captures it on every canvas press.
 The engine already captured drags, boxes and pans, but not an armed tool's
@@ -1715,7 +1732,7 @@ until the next action went unrecorded.
 
 ## Why there is an end-to-end suite
 
-Thirty bugs so far were invisible to the unit tests and obvious within seconds
+Thirty-two bugs so far were invisible to the unit tests and obvious within seconds
 of running the app:
 
 1. a status readout that went stale, so a conflict could be introduced from
@@ -1855,6 +1872,14 @@ of running the app:
    Only the skeleton the kernel draws in an entity's place now yields.
 30. A fillet's committed `R2` drawn under the edit dialog's own radius label,
    on a phone. Found by looking at the phone screenshot.
+31. A drag's ghost drawn under the corner's status text, where a ghost can
+   land in the logo's row that no placed pane may enter. Found by looking at
+   panels-preview.md's first screenshot. The ghosts and the held panel are
+   now lifted over the corner for the drag.
+32. A ghost's line drawn at 1 px on a phone where the stylesheet asked for
+   1.95 (1.5 × the interface size): Chromium floors a border to a whole CSS
+   pixel. Found by the phone e2e reading the computed width. The width is
+   now rounded to the nearest pixel, 2 at a phone's 100 %.
 
 None of these are mathematics. They are all *assembly*. Hence `npm run
 test:e2e`, and hence the expectation that anything touching the app is checked

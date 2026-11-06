@@ -106,6 +106,48 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### The drag preview: why the ghosts remember, and what was rejected
+
+**The preview is the old push on a copy, not a fresh answer each move.** The
+owner's words are "show how they will snap IF the user drops the grasped
+toolbar in that spot", which reads as path-independent: a function of where
+the hand is. I considered resolving from the press on every move — one
+`dragStep` from the start layout to the pointer. It is not the same push.
+`pushed` sweeps the mover's whole travel so a flick cannot pass through a
+panel, and one sweep from the press pushes everything along the straight
+line, not what the hand actually went through. The spec also says "the rules
+of the push are unchanged". So the preview is `dragStep` run move by move on
+the drag's own copy, which is exactly what the panels used to do. The cost is
+that a ghost pushed stays pushed when the hand draws back, as a panel did.
+The spec had already allowed for this: "lifting back where the drag started
+commits nothing" would be redundant if retreating un-pushed. Written in the
+register as vetoable.
+
+**The held panel is drawn, not placed.** `place` both drew a panel and wrote
+it into `shown`, the layout every rule reads. The held panel must be drawn
+over others without the layout knowing, or `onShow` would wrap the corner's
+text round a panel that is only in the hand. So `draw` was split out, and
+`shown` is the start until the drop.
+
+**Rejected: animating the settle with a transform.** The thought was that a
+FLIP (final box at once, a transform easing from the old place) might leave
+`getBoundingClientRect` final for the tests. It does not: the rect includes
+transforms. So the settle is a plain transition on the boxes, and the
+harness waits for it (`settled()`). The first version waited for the
+`settling` class alone, and failed under load twice in different ways. Once
+the input was acknowledged before the page had handled the pointerup, so
+nothing was settling yet. Once the transition's first frame came after the
+timer that removes the class. The helper now waits for no drag, no settle
+and no running transition, which is the condition rather than a guess at
+how long it takes.
+
+**Two of the browser's facts, found by looking.** A row's ghost along the
+top was drawn under the corner's status text. The ghosts are now lifted over
+the logo's row for the drag. A phone's ghost line, asked for at 1.95 px, was
+drawn at 1. Chromium floors border widths to whole CSS pixels, so the width
+is rounded in the stylesheet. Neither shows in any unit test; both are in
+ARCHITECTURE's count.
+
 ### Solid fillets: why blends have a registry of their own, why the preview is a trial, and what was rejected
 
 **A separate registry, measured first.** The obvious record for a fillet was

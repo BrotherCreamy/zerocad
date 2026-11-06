@@ -29,8 +29,13 @@
 // rectangle, what keeps a panel inside the area, how panels push one another,
 // which point of a held panel the hand keeps (the one it took — the owner:
 // *"the grasp point should stay the same"*), which way a tray runs against the
-// edges it meets, what a stored layout parses to — is pure functions over
-// plain numbers, tested without a DOM. The DOM half is thin on purpose.
+// edges it meets, what a stored layout parses to, what a drag previews and
+// what its drop commits — is pure functions over plain numbers, tested
+// without a DOM. The DOM half is thin on purpose.
+//
+// **Nothing moves until the drop** (docs/plans/panels-preview.md): a drag
+// moves only the panel in the hand, and draws a ghost where each panel the
+// resolver would push will land; the drop commits that, Escape nothing.
 //
 // This file imports nothing from the model or the tools. The toolbar is given
 // its tool names, their glyphs and its armed tool by its host, and the options

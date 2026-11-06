@@ -1897,6 +1897,68 @@ starts.
         commits, Escape commits nothing; a tray's turn at an edge is
         previewed and happens at the drop; every panel not in hand is
         translucent for the drag).
+        - [x] **A dragged panel previews; nothing moves until the drop —
+          BUILT (2026-11-06)**, on `claude/panels-preview`; the spec's *As
+          built* has the detail. The resolver is unchanged and runs move by
+          move on a copy (`Drag`, `dragTo`); the held panel is drawn under the
+          hand over whatever it is over (`heldAt`); a dashed ghost marks each
+          panel the drop would move and the held one's landing where it is not
+          under the hand (`ghostsOf`); every other panel is at half opacity
+          from the first move; the drop commits the preview in one step
+          (`dropOf`) and the panels glide onto it in 120 ms. Measured on an
+          emulated iPhone 13 (`npm run measure:panels`, CPU 4×): the move
+          handler 1.4–1.8 ms median, 2.2–2.8 ms p95; the resolver alone
+          ≤ 0.1 ms median; the opacity class costs no frame at the median.
+          **Vetoable, each a decision:**
+          - **The ghosts keep the push's memory.** The preview is the push as
+            it always was, move by move, so a panel the preview pushed stays
+            pushed when the hand draws back (*"nothing springs back"*), and a
+            drop there moves it. Only a lift back at the press, or Escape,
+            takes it all back. The alternative — resolving from the press each
+            move, so a retreat un-pushes — would change the push rules the
+            spec keeps (one long swept motion pushes differently from the
+            hand's path).
+          - **The held panel goes over anything**, the logo and the corner's
+            status included, for the drag (z 47; the ghosts 46): a ghost may
+            land in the logo's row, where the corner's text keeps clear of
+            panes only once they are placed.
+          - **Back where it started** is within 2 px of the press for a mouse
+            (a 3 px nudge is an arrangement) and 8 px for a finger (the tap's
+            slop).
+          - **Escape is the drag's alone** while one is held: it does not also
+            put the armed tool down. One key takes back one thing.
+          - **A pointercancel commits nothing** (it used to commit): the
+            system taking the touch is not the hand putting the panel down.
+          - **The drag's look starts with the first move**, not the press: a
+            tap on a strip does not flash every other panel to half.
+          - **A resize by a grip previews the same way** — the panel grows
+            under the hand, over its neighbour, the neighbour's ghost pushed.
+            The spec spoke of a drag; one rule for every gesture.
+          - **The ghosts' line is 1.5 px × the interface size, rounded to a
+            whole pixel** — 2 px at a desktop's and a phone's 100 %, 3 px from
+            a phone's 140 %. Chromium floors a border to a whole CSS pixel,
+            so an unrounded 1.95 drew 1.
+          - **The settle is a 120 ms CSS transition, eased out** (no
+            overshoot), on the panels' boxes; their rectangles, the store and
+            every rule are the new layout the moment it starts, only the
+            drawing catches up. An Escape or a lift back at the press glides
+            the held panel home the same way.
+          - **The held panel's own ghost is brighter** than the others'
+            (`data-own`), and is not drawn while it lies exactly under the
+            hand.
+          - **The refusal is a status note** (`no layout fits there — nothing
+            moved`), with the reason in the console. The resolver never
+            produced one in 1 500 random gestures on a phone's defaults; the
+            branch is tested with a constructed preview.
+        - [ ] **Found, still to do (panels preview):**
+          - The strip's tooltip still says *"Drag to move it; pushed against
+            an edge or a pane, it stays there"*; it could say that Escape puts
+            it back.
+          - The held panel covers the logo while it is over it; harmless (the
+            logo cannot be pressed mid-drag) but it is the one time anything
+            does.
+          - Not tried on an iPhone: the glide, the half opacity over a solid,
+            and a ghost at 3×.
       - **Also queued (the owner, 2026-11-05: *"please add solid and surface
         fillet tools if possible (after you do the nurbs conversion)"*):**
         [`solid-fillets.md`](docs/plans/solid-fillets.md) after workbenches,

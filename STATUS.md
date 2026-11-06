@@ -201,6 +201,24 @@ etc).
   (`layoutProblem`), an error in development. The organiser is shown from
   the start everywhere. A held tooltip keeps off its whole tray
   (`tipPlacement`'s `line`).
+- **A dragged panel previews; nothing moves until the drop**
+  (docs/plans/panels-preview.md, built). A gesture (`Drag` in `panels.ts`)
+  runs the unchanged resolver move by move on a copy of the layout
+  (`dragTo` → `dragStep`), draws the held panel where the hand has it
+  (`heldAt`: under the grab, inside the area, over whatever it is over, a
+  tray keeping the way it ran), and draws a dashed **ghost** for each panel
+  the drop would move and for the held one's landing where that is not under
+  the hand (`ghostsOf`; the `.pghosts` layer, lifted with the held panel
+  over the logo's row for the drag). From the first move every other panel
+  is at half opacity (`dragging` on the area). The drop commits the preview
+  (`dropOf`) and the panels glide onto it for 120 ms (`settling`, a CSS
+  transition; the rectangles are final at once). Escape (the drag's alone),
+  a pointercancel, a lift within 2 px (a mouse) or 8 px (a finger) of the
+  press, and a refused preview commit nothing; a refusal says so in the
+  status. Resizes by a grip preview the same way. Measured on an emulated
+  iPhone 13 (`npm run measure:panels`): the move handler 0.4–0.5 ms median
+  at 1× CPU and 1.4–1.8 ms at 4×, the resolver alone ≤ 0.1 ms median; the
+  class costs no frame at the median (16.7 ms either way).
 - **Tooltips on every control; frames in RGB**
   (docs/plans/tooltips-rgb-frames.md, built). `src/tooltip.ts` is one
   tooltip element for every icon or short-word control — the toolbar, the
