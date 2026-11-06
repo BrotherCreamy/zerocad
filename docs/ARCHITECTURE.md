@@ -2044,3 +2044,23 @@ of running the app:
 None of these are mathematics. They are all *assembly*. Hence `npm run
 test:e2e`, and hence the expectation that anything touching the app is checked
 in a browser before it is believed.
+
+**A finger in the suite is a hand, not a request.** `test/e2e/fingers.ts`
+drives touches through CDP, and CDP answers a touch only once the page has
+handled it; every touch here is handled on the main thread. A helper that
+waited for each answer before sending the next made a drag one main-thread
+turn per move. On a loaded box its move past the slop came after the
+long-press, and the gate went red four times in a row for it
+(docs/plans/touch-harness.md). So a call sends its events at a hand's pace
+without waiting for each other, and the browser queues and coalesces them as
+it does a touchscreen's. The pace is 33 ms a move, which is what the old
+helper really sent on an unloaded box. A faster hand flings harder, and the
+tests' steps and rests were tuned to that speed. Every event carries the hand's
+own timestamp: the wall clock less the time spent waiting for the browser.
+The call returns once the page has handled them all, so a test still reads
+the page with the finger where the call left it. A `hold` alone waits for its
+landing before it starts counting, because the long-press is the page's
+timer. The recogniser's half of the contract is to read what the stamps say.
+A tap's length is the lift's stamp less the landing's. A held press whose
+move past the slop is stamped before the long-press is a drag, because a busy
+page can run its timer before a move it already has.

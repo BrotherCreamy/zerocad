@@ -5437,3 +5437,92 @@ packing every pane again on each move (it would move panes the drop never
 touched). The first new picture showed one more thing the rule needed: let in
 beside the bare logo, the toolbar left the status a 20 px column, so along the
 top the corner is the logo and the status's least room.
+
+
+## 2026-11-06 — a touch harness that streams, and a recogniser that reads the stamp
+
+The manager's package (`docs/plans/touch-harness.md`): the iPhone drags in
+`solidsphone.e2e.ts` failed in four full gates in a row and passed alone.
+
+**The first cause was the harness's.** A trace of the page's pointer
+events against the harness's sends, under 20 busy loops, showed it before
+any fix was tried. The long-press timer fired on time (506 ms, due 506), so
+the page was not too slow to decide. What was late was the move that leaves
+`TAP_SLOP`. It was stamped 475–518 ms after the landing, because it really
+was *sent* that late. `fingers.ts` awaited each `dispatchTouchEvent`, and
+every touch here is handled on the main thread, so a 12-step drag cost twelve
+main-thread turns. No change to the recogniser could have fixed that one: by
+its own stamps, that move came at the long-press.
+
+**Why streaming, and not the page's clock.** Both made `solidsphone` green
+at the same load (3/3 each). Playwright's `page.clock`, paused from the first
+landing to the last lift, freezes `performance.now()` for the page as well.
+That broke touch's *"a quick tap while the page is busy is still a tap"*
+(0/2): the test checks that the recogniser times a tap by the event's own
+stamp against the page's clock, and a frozen clock turns it into a different
+test. It also fires the long-press timer by fiat (`runFor`) instead of in
+real time. So it changes what the tests mean, which is the one thing the spec
+asked not to change. Streaming is what a touchscreen does: the OS sends a
+finger's events as they happen, and the browser queues and coalesces them
+while the page is busy.
+
+**Why every event is stamped, not some.** The 2026-11-05 attempt sent the
+first move unawaited and kept the browser's stamp on it, and every drag
+broke: the browser-stamped move came out earlier than the harness-stamped
+landing. One clock for the whole gesture avoids that. That clock is the hand's:
+the wall clock less the time the helper spent waiting for the browser. A
+test's own waits between calls (a finger resting on a corner before it lifts,
+which the fling rule depends on) are the hand's time, so they count.
+
+**Why 33 ms a move, and how I got it wrong first.** I took the old helper's
+`settle(16)` to be its pace and streamed at 16 ms. The six touch files were
+all green at that pace under load. The full gate wasn't: toolbargroups'
+iPhone-landscape slide lost the plain tap after it, deterministically, on an
+unloaded box. Measured, the old helper had sent a move every 32–35 ms,
+because each 16 ms settle came after an acknowledgement and a Playwright
+round trip. So my hand was twice as fast, and its fling suppressed a tap
+400 ms later. A real touchscreen reports at 60–120 Hz, but a drag's *speed*
+is what decides a fling, and the suite's steps and rests were all tuned to
+the old speed. The pace that keeps every test meaning what it meant is the
+old one, so the hand keeps it at every load.
+
+**Why `hold` still waits for its landing.** The long-press is the page's
+timer, started when the page handles the landing. A hold counted from the
+send could lift before the page's 500 ms were up on a page that handled the
+landing late, and so never become a long-press.
+
+**The second cause was the recogniser's, and it holds on a phone.** With the
+harness streaming, android's Pixel 7 rectangle drag still became a box about
+once a run at load 30. The trace put the race in the page: the landing
+handled at 67 ms, the moves in the browser by 228, the main thread busy until
+568, the timer run 1 ms after it was due (so `LATE_MS`'s grace, which only
+looks at the timer's own lateness, did not apply), and the queued move,
+stamped 171, dispatched only at the next frame, at 630. Touch moves are
+rAF-aligned, and a timer can run before the frame that would deliver them.
+Nothing about this is the harness's: a phone whose page is busy drawing a
+heavy preview at touchdown does the same. So a held press's move past the
+slop is read by its own stamp, as a tap's length already was. Made before
+`LONG_PRESS_MS`, it was a drag: the long-press is abandoned, its menu
+withdrawn by the same path a second finger withdraws it, and the drag
+starts where the finger landed. The menu was opened in the same frame the
+move is dispatched in, before that frame paints, so a hand should never see
+it. That is a reading of Chromium's input pipeline, not something measured.
+
+Rejected for the second cause: waiting `LATE_MS` on every timer, on time or
+not. That delays every long-press on a quiet page to save one on a busy page.
+It also only moves the race: a frame can take longer than any grace.
+Rejected too: `navigator.scheduling.isInputPending`, which Safari does not
+have.
+
+**Left alone, and written down.** At load 25 and up on this box (my 20 loops,
+at times with another worker's full suite beside them), taps on chrome
+buttons and on the logo are
+still lost now and then, with either harness. The page took 400–1,400 ms to
+handle a touch, and the click is Chromium's own synthesis from the touch
+sequence. Nothing a harness sends can make a busy page answer sooner. Two
+neighbours of the stamp rule are not built, because nothing measured needs
+them. A press whose move is stamped *after* `LONG_PRESS_MS` but handled
+before a late timer is read as a drag, not as a hold and then a box. And the
+long-press timer is started when the landing is handled, not when it was
+stamped, so a hold made while the page is blocked at touchdown can lift
+before the timer is due and come to nothing.
