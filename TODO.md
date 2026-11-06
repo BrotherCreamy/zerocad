@@ -3244,7 +3244,12 @@ extended the way `defineTool` extends the tool registry would close it.
         finger lands, so a recurrence says why. The flake did not reproduce
         in 3 paired runs (touch, solids, depth) before the fix; the fix
         stands on the reading and the unit tests.
-      - [ ] **Open: the touch harness under a saturated machine.** With a
+      - [ ] **Open: the touch harness under a saturated machine.**
+        Also seen (2026-11-06), with nothing else running but the suite's
+        own two files at a time (load ~6): `solidfilletsphone.e2e.ts`'s held
+        radius-label drag and its edge tap, in the full gate only; the file
+        alone passed 3/3 twice. The same tap-and-drag timing, not the
+        fillet code. With a
         worker's e2e suite and a kernel build sharing the four cores (load
         average 13–15), `solidsphone.e2e.ts`'s two drag tests lose the
         circle their drag draws (0–2 circles, not 3) and pass alone at
