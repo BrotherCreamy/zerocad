@@ -28,7 +28,7 @@ import { L, T, W, circleOn, loadSolver, onTop, plate } from "./solids/scene.ts";
 import { tiltedFrame } from "./frames.ts";
 import { polygon } from "./profiles.ts";
 import { PARTS } from "./solids/parts.ts";
-import { rect, profile } from "./solids/profiles.ts";
+import { rect, profile, roundedRect } from "./solids/profiles.ts";
 import { inProcessPort, kernel, noKernel as skip, smlibFactory } from "./solids/load.ts";
 
 /** The model's body `name` through the kernel, as the app evaluates it. */
@@ -343,12 +343,9 @@ test("an edge picked by a pixel: on it, its name; a finger's reach further; noth
 test("tangent chains: a rounded outline's lid edge takes all eight; a box's takes one; a face takes its own", { skip }, async () => {
   await loadSolver();
   const k = await kernel();
-  const part = PARTS.find((x) => x.name === "fillet-outline-and-top")!;
   const XY = { origin: [0, 0, 0] as [number, number, number], x: [1, 0, 0] as [number, number, number], y: [0, 1, 0] as [number, number, number] };
-  const { roundedRect } = await import("./solids/profiles.ts");
   const rounded: Node = { id: 1, op: "new", sweep: { kind: "extrude", depth: 15 }, profile: profile(roundedRect(0, 0, 60, 40, 8)), at: XY };
   const box: Node = { id: 1, op: "new", sweep: { kind: "extrude", depth: 15 }, profile: profile(rect(0, 0, 60, 40)), at: XY };
-  void part;
   const run = (n: Node) => new Evaluator(k).run({ bodies: [{ name: "e1", nodes: [n] }], prefix: "e", chord: 5e-4, angle: 10 }).bodies[0];
   const rv: BodyView = (() => { const r = run(rounded); return { name: "e1", features: ["e1"], result: r, faces: bodyFaces(r) }; })();
   const chain = tangentChain(rv, "e1.lid|e1.m0");

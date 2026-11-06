@@ -316,12 +316,19 @@ test("hovering a wall names the feature it belongs to", async () => {
     const [a, b] = [await app.screenOf(m.points[wall.refs[0]]), await app.screenOf(m.points[wall.refs[1]])];
     for (const t of [0.5, 0.35, 0.65]) {
       await moveTo(a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1]));
-      if ((await app.repl("hover()")).value === name) { found = name; break; }
+      // The boss made e1 a kernel body, so the hand finds the kernel's edge
+      // the wall lies under (docs/plans/solid-fillets.md), named by e1's
+      // faces; a press there still drags the wall.
+      const h = await app.page.evaluate(() => {
+        const p = (window as never as { __neocad: { engine: { hover: { name: string; kind: string; under?: { name: string } } | null } } }).__neocad.engine.hover;
+        return p ? { name: p.name, kind: p.kind, under: p.under ? { name: p.under.name } : undefined } : null;
+      });
+      if (h && (h.name === name || (h.kind === "edge" && h.under?.name === name))) { found = name; break; }
     }
     if (found) break;
   }
   assert.ok(found, "a wall can be hovered");
-  assert.match(await app.page.$eval("#hovertag", (el) => el.textContent ?? ""), /·\s+e1$/);
+  assert.match(await app.page.$eval("#hovertag", (el) => el.textContent ?? ""), /·\s+e1$|^e1\.m\d+\|e1\.m\d+  edge of e1/);
   await app.page.mouse.move(5, 5);
 });
 
