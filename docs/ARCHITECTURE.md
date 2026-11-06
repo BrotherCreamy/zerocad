@@ -391,6 +391,23 @@ for a profile restructured by hand. The finding reads positions, so — exactly
 as `extrude` — the call journals what it found, resolved, and a replay is
 handed it.
 
+**The sketch edits are operations, held by relations** (`src/sketchedit.ts`,
+docs/plans/sketch-edit.md): trim, extend, offset, mirror, chamfer and the two
+patterns each create or re-point entities, so each is journalled as its call
+with what it read off positions resolved beside it, and what it makes is held
+by ordinary relations to what it was made from — a trimmed end `on` the curve
+that cut it, an offset `par` and `dist`, a mirror `sym`, a pattern the step
+its first copy takes (`translated`, `rotated`, `rotation`, relations/
+pattern.ts). **A trim tries, and takes itself back.** Whether a feature on the
+trimmed curve can still find its profile is a question about the drawing
+*after* the change, and an operation must refuse before it changes anything;
+so trim makes its structural change, asks (`regenerationRefusal`), and on a
+refusal undoes each step by its inverse and puts the auto-name counters back
+(`Model.nameCounters`), so a refused trim leaves the model, its journal and
+every later auto-name exactly as they were. What a trim tidies afterwards —
+holds on the piece that went, the end it stranded — is journalled as `del`
+journals it, after the trim's own entry, in the same typed call.
+
 ## Deleting cascades inward, and undo is the confirmation
 
 `del(name)` removes an entity or a relation and takes with it whatever could
@@ -1763,7 +1780,7 @@ until the next action went unrecorded.
 
 ## Why there is an end-to-end suite
 
-Thirty-six bugs so far were invisible to the unit tests and obvious within seconds
+Thirty-nine bugs so far were invisible to the unit tests and obvious within seconds
 of running the app:
 
 1. a status readout that went stale, so a conflict could be introduced from
@@ -1931,6 +1948,23 @@ of running the app:
    returns alone — a default pane the resolver pushed out of a stored one's
    way was invisible to it. Found by the e2e's rotation; every pane is
    compared with what its docking or its default asked now.
+37. A trim of an extruded outline's second edge refused as "part of e1's
+   solid": seen from above, the lid's edge lies on the very pixel of the
+   sketch edge under it, and the pick took the lid's. The unit suite's tools
+   are handed the curve; found by the trim e2e reading the log. The edit
+   tools read a press on a solid's own geometry on the sketch plane now
+   (`curveUnder`, docs/plans/sketch-edit.md).
+38. `redundant r12` in the header after a second trim: the extrude had made
+   the crossing on the top edge a point of its own, held on both lines, and
+   the trim ended the edge there — so the solid owned a corner of the sketch
+   (deleting the solid would have taken the edge) and its hold on that edge
+   said nothing. Every assertion of the test passed; found by looking at the
+   picture's header. The trim hands such a point to the sketch.
+39. The first toolbar flyout to wrap — modify, with the sketch edits in it —
+   lost its second line's bottom under its own edge: `#flyout` is a `.tray`
+   and took the tray's pitch padding, which `flyoutSize` never counted. A
+   single line hid it (the coarse tray overflows visibly). Found by looking
+   at the iPhone's long-press picture.
 
 None of these are mathematics. They are all *assembly*. Hence `npm run
 test:e2e`, and hence the expectation that anything touching the app is checked
