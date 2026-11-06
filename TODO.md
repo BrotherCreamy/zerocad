@@ -1758,6 +1758,14 @@ starts.
         and its second failure the test's (a finger left down); a stored
         layout a rotation cannot hold was drawn with panes over panes (850
         of 5,592 re-layouts in a fuzz found no layout).
+      - [ ] **Follow-ups from the review of [#76](https://github.com/BrotherCreamy/neocad/pull/76)**
+        (none blocking). In picture 223 (Pro Max, upright, re-fitted) the
+        action strip lands under the log where the upright default has it
+        above, and its right border touches the screen edge where 220 keeps
+        a margin. `touchdensity.e2e.ts` stays up after passing when run
+        under `--test-name-pattern` (twice; unfiltered it exits). The faded
+        status leaves the flow only on Safari 17.4+ (`allow-discrete`);
+        older iOS keeps the old behaviour.
       - [ ] **Found, still to do (touch density):**
         - The fillet's size label still jumps between faces while its radius
           is dragged (the next preview places it); only the drag's direction
