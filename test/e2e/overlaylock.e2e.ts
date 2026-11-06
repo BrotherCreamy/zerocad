@@ -279,39 +279,59 @@ for (const way of WAYS) {
     await app.page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
     await app.page.waitForTimeout(250);
 
-    // The hand on a pane brings its docked form back.
+    // A root opens to its children — the body's chain — see-through, the tap on
+    // its disclosure bringing no docked form; and closes again.
+    const pinnedOn = () => app.page.$eval('.panel[data-panel="organiser"]', (el) => el.classList.contains("pinned"));
+    const toggleAt = () => app.page.$eval('.otree .tnode[data-key="body:e1"] > .trow .ttog', (el) => { const r = el.getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; });
+    let toggle = await toggleAt();
+    await hand.tap(toggle[0], toggle[1]);
+    await app.page.waitForTimeout(250);
+    assert.deepEqual((await treeRows(app)).map((r) => r.name), ["e1", "e1", "e2", "e3", null, null], `${way.name}: e1 open, its chain under it`);
+    assert.equal(await pinnedOn(), false, `${way.name}: opening a root keeps the tree`);
+    assert.deepEqual(await app.page.$$eval('.otree .tnode[data-key="body:e1"] .tkids .trow', (rs) => rs.map((r) => [(r as HTMLElement).dataset.kind, r.textContent])),
+      [["feature", "e1extrude"], ["feature", "e2extrude · add"]]);
+    await shot(app, `${slug}-a-root-open`);
+    // A tree hugging its pane's bottom grew upward: its ▸ is somewhere else now.
+    toggle = await toggleAt();
+    await hand.tap(toggle[0], toggle[1]);
+    await app.page.waitForTimeout(250);
+    assert.equal((await treeRows(app)).length, 4, "closed again");
+
+    // Outside: the drawing's middle row, wherever it is clear of every pane.
+    const outside = await app.page.evaluate(() => {
+      const [w, h] = [innerWidth, innerHeight];
+      for (let y = h * 0.55; y < h * 0.9; y += 9) for (let x = w * 0.3; x < w * 0.9; x += 9) {
+        if (document.elementFromPoint(x, y)?.id === "cv") return [x, y] as [number, number];
+      }
+      return null;
+    });
+    assert.ok(outside, "somewhere on the drawing to tap");
+    // The hand on a pane: a mouse over it gives it its box back, the tree kept.
     const e3 = (await treeRows(app)).find((r) => r.name === "e3")!;
-    const handOn = () => app.page.$eval('.panel[data-panel="organiser"]', (el) => el.classList.contains("hand"));
-    if (touch) {
-      await hand.tap(e3.x + e3.w / 2, e3.y + e3.h / 2);
-      await app.page.waitForTimeout(300);
-      assert.match(await app.log(), /> select\("e3"\)/, `${way.name}: the tap typed the row's select`);
-      assert.ok((await app.selection()).length > 0, `${way.name}: and selected it`);
-      assert.equal(await handOn(), true, `${way.name}: and the pane is docked until the next tap outside`);
-      assert.notEqual(await app.page.$eval("#organiser", (el) => getComputedStyle(el).display), "none");
-      await shot(app, `${slug}-tapped-docked`);
-      // Outside: the drawing's middle row, wherever it is clear of every pane.
-      const outside = await app.page.evaluate(() => {
-        const [w, h] = [innerWidth, innerHeight];
-        for (let y = h * 0.55; y < h * 0.9; y += 9) for (let x = w * 0.3; x < w * 0.9; x += 9) {
-          if (document.elementFromPoint(x, y)?.id === "cv") return [x, y] as [number, number];
-        }
-        return null;
-      });
-      assert.ok(outside, "somewhere on the drawing to tap");
-      await hand.tap(...outside);
-      await app.page.waitForTimeout(300);
-      assert.equal(await handOn(), false, `${way.name}: a tap outside puts it back`);
-    } else {
+    const organiser = '.panel[data-panel="organiser"]';
+    if (!touch) {
       await app.page.mouse.move(e3.x + e3.w / 2, e3.y + e3.h / 2);
       await app.page.waitForTimeout(300);
-      assert.equal(await handOn(), true, "hovered, the organiser is docked");
-      assert.equal(await app.page.$eval('.panel[data-panel="organiser"]', (el) => getComputedStyle(el).backgroundColor), "rgb(14, 20, 27)", "on its ground");
-      await shot(app, `${slug}-hovered-docked`);
-      await app.page.mouse.move(between[0] - 200, between[1] - 200);
+      assert.equal(await app.page.$eval(organiser, (el) => el.classList.contains("hand")), true, "hovered");
+      assert.equal(await app.page.$eval(organiser, (el) => getComputedStyle(el).backgroundColor), "rgb(14, 20, 27)", "on its ground");
+      assert.equal(await app.page.$eval(`${organiser} > .ptitle`, (el) => getComputedStyle(el).visibility), "visible", "its strip there to drag by");
+      assert.equal(await app.page.$eval("#organiser", (el) => getComputedStyle(el).display), "none", "the tree kept");
+      await shot(app, `${slug}-hovered`);
+      await app.page.mouse.move(outside[0], outside[1]);
       await app.page.waitForTimeout(500);
-      assert.equal(await handOn(), false, "the hand gone, it fades back");
+      assert.equal(await app.page.$eval(organiser, (el) => el.classList.contains("hand")), false, "the hand gone, it fades back");
     }
+    // A press on a row: the row's select, and the pane docked until the next press outside.
+    await hand.tap(e3.x + e3.w / 2, e3.y + e3.h / 2);
+    await app.page.waitForTimeout(300);
+    assert.match(await app.log(), /> select\("e3"\)/, `${way.name}: the tap typed the row's select`);
+    assert.ok((await app.selection()).length > 0, `${way.name}: and selected it`);
+    assert.equal(await pinnedOn(), true, `${way.name}: and the pane is docked until the next press outside`);
+    assert.notEqual(await app.page.$eval("#organiser", (el) => getComputedStyle(el).display), "none", "the docked rows");
+    await shot(app, `${slug}-pressed-docked`);
+    await hand.tap(...outside);
+    await app.page.waitForTimeout(300);
+    assert.equal(await pinnedOn(), false, `${way.name}: a press outside puts it back`);
     await settled(app.page);
 
     // **Contrast**: over the dark ground — the view turned away from the model — then over a light lid.
@@ -425,7 +445,7 @@ test("iPhone 13: a locked layout that no longer fits after a rotation is re-fitt
   assert.equal(await app.page.$eval("#viewwrap", (el) => el.classList.contains("locked")), true, "locked from storage");
   await app.page.setViewportSize({ width: vp.height, height: vp.width });
   await app.page.waitForTimeout(400);
-  assert.match(await app.page.$eval("#stepnote", (el) => el.textContent ?? ""), /re-fitted, still locked/, "the re-fit is said");
+  assert.match(await app.page.$eval("#stepnote", (el) => el.textContent ?? ""), /panels re-fitted to this screen — still locked/, "the re-fit is said");
   apart(await paneBoxes(app), "on its side");
   assert.equal(await app.page.$eval("#viewwrap", (el) => el.classList.contains("locked")), true, "still locked");
   await shot(app, "iphone-13-locked-re-fitted-on-its-side");
@@ -455,11 +475,11 @@ test("mouse: the log's see-through lines fade with age and are gone after ten se
   await app.page.mouse.click(line[0], line[1]);
   await app.page.mouse.move(line[0] + 400, line[1] - 300);
   await app.page.waitForTimeout(400);
-  assert.equal(await app.page.$eval('.panel[data-panel="log"]', (el) => el.classList.contains("hand")), true, "clicked, the log is docked though the mouse left");
+  assert.equal(await app.page.$eval('.panel[data-panel="log"]', (el) => el.classList.contains("pinned")), true, "clicked, the log is docked though the mouse left");
   assert.notEqual(await app.page.$eval("#log", (el) => getComputedStyle(el).display), "none");
   await app.page.mouse.click(line[0] + 400, line[1] - 300);
   await app.page.waitForTimeout(300);
-  assert.equal(await app.page.$eval('.panel[data-panel="log"]', (el) => el.classList.contains("hand")), false, "a click outside puts it back");
+  assert.equal(await app.page.$eval('.panel[data-panel="log"]', (el) => el.classList.contains("pinned")), false, "a click outside puts it back");
   await app.page.waitForTimeout(4_000);
   assert.deepEqual(await tail(), [], "ten seconds on, the tail is empty");
   assert.deepEqual(app.pageErrors, []);

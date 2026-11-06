@@ -1097,7 +1097,7 @@ export function panelsLine(get: () => PanelSwitches, set: (s: PanelSwitches) => 
 export const LOCKED_GUIDE = "panels are locked — unlock in the menu";
 
 /** What the status says when a rotation made a locked layout re-fit. */
-export const REFIT_NOTE = "the locked panels did not fit this screen — re-fitted, still locked";
+export const REFIT_NOTE = "panels re-fitted to this screen — still locked";
 
 /** A corner of a pane: which way its see-through content hugs. */
 export type Hug = "nw" | "ne" | "sw" | "se";
@@ -2018,13 +2018,17 @@ export function stripTip(label: string, tray: boolean, locked = false): Tip {
 }
 
 /**
- * A see-through pane the hand is on is drawn as it is docked — box, strip,
- * every column of the organiser — so a row can be read against a busy
- * drawing, and a strip is there to drag by. For a mouse, while it is over the
- * pane, and this long after it leaves (so the gap between two rows is not a
- * flicker); for any hand, from a press on the pane's content until the next
- * press outside it — a finger has no hover, and this is how it reaches a
- * strip.
+ * A see-through pane under the hand. **A mouse over it** gives it its box
+ * back — ground, border, strip — under the same content (`hand`), for as long
+ * as it is there and this long after it leaves (so the gap between two rows is
+ * not a flicker): a row reads against a busy drawing and the strip is there to
+ * drag by, and the organiser stays the tree it was, so the pointer reaching a
+ * root to open it does not turn it into another layout under itself. **A
+ * press on its content** — any hand's — brings its docked form wholly, the
+ * organiser's every column and the log's every line (`pinned`), until the
+ * next press outside it: a finger has no hover, and this is how it reaches a
+ * strip. A control of the see-through form's own (a tree root's disclosure)
+ * pins nothing: it is there to be used see-through.
  */
 export const HAND_LINGER_MS = 150;
 
@@ -2257,7 +2261,9 @@ export class Panels {
 
   /** Whether pane `id` is drawn in its docked form now: the hand on it, pinned by a press, or held. */
   private handOf(id: string): void {
-    this.els.get(id)?.classList.toggle("hand", this.switches.overlay && (this.pinned.has(id) || this.mouseOver.has(id)));
+    const el = this.els.get(id);
+    el?.classList.toggle("hand", this.switches.overlay && this.mouseOver.has(id));
+    el?.classList.toggle("pinned", this.switches.overlay && this.pinned.has(id));
   }
 
   /** The panes a mouse is over now (a finger's enter and leave are a tap's, not a hover). */
@@ -2457,8 +2463,9 @@ export class Panels {
     // end of its parent: moving an element that holds the focus blurs it, and
     // the command line is nearly always the element that holds the focus.
     el.addEventListener("pointerdown", () => this.raise(id), true);
-    // See-through, the hand on a pane brings its docked form (`HAND_LINGER_MS`):
-    // a mouse over it, or a press on its content until the next press outside.
+    // See-through, the hand on a pane (`HAND_LINGER_MS`): a mouse over it
+    // gives it its box back; a press on its content, its docked form until the
+    // next press outside.
     // The pin is set after the press's own click has run, so what the press was
     // on — a row, a button — does its thing in the form it was pressed in.
     if (!OPAQUE_PANES.includes(id)) {
@@ -2473,8 +2480,9 @@ export class Panels {
         clearTimeout(this.lingers.get(id));
         this.lingers.set(id, setTimeout(() => { this.mouseOver.delete(id); this.handOf(id); }, HAND_LINGER_MS));
       });
-      el.addEventListener("click", () => {
+      el.addEventListener("click", (e) => {
         if (!this.switches.overlay) return;
+        if (e.target instanceof Element && e.target.closest("[data-own-form]")) return;
         setTimeout(() => { this.pinned.add(id); this.handOf(id); }, 0);
       }, true);
     }

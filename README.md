@@ -169,7 +169,14 @@ panel, nothing else moves**: the others go faint, a dashed ghost shows where
 each one will be pushed to and where the one in your hand will snap (a
 toolbar that will turn from a column to a row shows the row), and only when
 you let go do they move there. Escape, or letting go back where you started,
-leaves everything where it was. The toolbar's
+leaves everything where it was. **For more of the drawing**, the logo
+menu's View has *See-through panels* — every pane drawn as its content alone
+over the drawing: the tools their buttons, the organiser a small tree in its
+corner, the log its last three lines, the command line its input — with the
+drawing's own between them, so a tap between two rows draws; a mouse over a
+pane, or a tap on one, brings it back as it was. *Lock panels* keeps every
+pane where it is: no strips, nothing to drag (`panels({ overlay: true })`,
+`panels({ locked: true })`). The toolbar's
 buttons are shortcuts into it: each is a tool's icon, types `arm("name")`,
 and the log shows it. Hover one — or, on a phone, hold it — for its
 **tooltip**: the tool's name, what it does, and the command it types (a hold

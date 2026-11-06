@@ -368,7 +368,7 @@ const panels = new Panels(
     // says why nothing moves, in the chip's guidance once the chip is built;
     // a rotation that made the locked layout re-fit says so in the status.
     onLocked: (text) => sayLocked(text),
-    onRefit: (text) => statusLine.note(text),
+    onRefit: (text) => statusLine.note(text, 5000),
   },
 );
 // The insets change without the window resizing — a rotation does both, but

@@ -463,6 +463,7 @@ export class Organiser {
       if (n.row.open) row.dataset.open = "";
     } else {
       row.dataset.heading = "";
+      row.dataset.ownForm = "";
     }
     if (n.children.length) {
       const tog = document.createElement("button");
@@ -471,6 +472,8 @@ export class Organiser {
       tog.textContent = open ? "▾" : "▸";
       tog.setAttribute("aria-expanded", String(open));
       tog.setAttribute("aria-label", `${open ? "close" : "open"} ${n.label}`);
+      // The tree's own control: used see-through, it does not bring the docked form (panels.ts).
+      tog.dataset.ownForm = "";
       tog.addEventListener("click", (e) => { e.stopPropagation(); this.toggle(n.key); });
       row.appendChild(tog);
     } else if (depth === 0) {
