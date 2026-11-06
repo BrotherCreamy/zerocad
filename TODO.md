@@ -3664,9 +3664,17 @@ extended the way `defineTool` extends the tool registry would close it.
         "not at once" (a 150 ms sleep against the flyout's 300 ms grace) is
         now timed by the page; `overlaylock`'s point counts after a tap now
         poll. Before the fix, overlaylock failed in 1 of 2 runs alone. After
-        it, 1 of 8 alone (Pixel 7 portrait, run 2) and 7 green in a row. The
-        one failure's message wasn't captured, so its cause is unknown —
-        the next sighting must keep the log.
+        it, 1 of 8 alone (Pixel 7 portrait, run 2) and 7 green in a row.
+        **Caught on the next gate** (after touch-density, load 17, log
+        kept): still `24 !== 25` after the 3 s poll. So the tap made no
+        point at all; it wasn't late. Touch-density's recorder saw the same
+        press land on the canvas and be read as a long-press. That is this
+        entry's cause: `fingers.ts` waits for each touch's acknowledgement,
+        and under load the lift arrives after `LONG_PRESS_MS`. Alone at
+        load 9: 14/14. The same gate's two `solidsphone` drag failures
+        (557, 558) are the drag form of it; alone at load 12.5 they went
+        3/3. Fixing the harness (stamped touches, not awaited ones) is the
+        one cure for all three, and it is the "Next:" above.
       - [ ] **Open: `depth.e2e.ts` "two solids driven through each other"
         failed once in 3 paired runs** (touch, solids, depth together): the
         painter's offscreen picture matched the oracle at every sample
