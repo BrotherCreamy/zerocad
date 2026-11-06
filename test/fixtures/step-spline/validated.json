@@ -1,0 +1,220 @@
+{
+ "kernel": "Open CASCADE Technology 8.0.1, through cadquery-ocp 8.0.1.1.0 (OCP) from PyPI, on Python 3.11 \u2014 in a scratch directory, never a dependency of this repo",
+ "date": "2026-11-06",
+ "read": "As test/fixtures/step-kernel/validated.json: (1) STEPControl_Reader with OpenCascade's standard healing -> BRepCheck_Analyzer valid, every shell closed, no free edges, a far point classified OUT, a tight box; (2) strict: each MANIFOLD_SOLID_BREP translated by StepToTopoDS_Builder with no healing, then only FixEdgeCurves, FixShifted, FixDegenerated and SameParameter, then the same checks and every vertex and edge tolerance within the file's 1e-7 -> strict. The volume is BRepGProp's Gauss-Kronrod integration to 1e-9 (VolumePropertiesGK): its adaptive VolumeProperties at 1e-10, kept as volumeAdaptive, reads the B-spline walls 2e-4 to 4e-4 off the closed form, GK to 1e-10. looseEdges: edges of the file that no solid holds (the wireframe).",
+ "parts": {
+  "closed-spline": {
+   "what": "a closed spline through five points, extruded 6",
+   "valid": true,
+   "strict": true,
+   "solids": 1,
+   "freeEdges": 0,
+   "volume": 1890.6359607866539,
+   "volumeAdaptive": 1890.2775161752634,
+   "strictVolume": 1890.6359607866539,
+   "surfaces": {
+    "plane": 2,
+    "extrusion": 2
+   },
+   "edgeUses": {
+    "bspline": 8,
+    "line": 4
+   },
+   "maxTolerance": 1.0000000000000002e-07,
+   "box": [
+    [
+     -0.05414699332831646,
+     -9.985000167750352,
+     -1e-07
+    ],
+    [
+     22.57080246048351,
+     8.233636081388683,
+     6.0000001
+    ]
+   ],
+   "looseEdges": 0,
+   "looseKinds": {},
+   "closedForm": 1890.6359608406156,
+   "zerocadVolume": 1890.635960840617
+  },
+  "plate-spline-hole-boss": {
+   "what": "the tilted plate, a closed spline cut through it from the top and a smaller one bossed 5 on it: the solid kernel's body",
+   "valid": true,
+   "strict": false,
+   "solids": 1,
+   "freeEdges": 0,
+   "volume": 57416.13085347176,
+   "volumeAdaptive": 57416.13085359546,
+   "strictVolume": 61617.544099778686,
+   "surfaces": {
+    "plane": 7,
+    "bspline": 2
+   },
+   "edgeUses": {
+    "line": 24,
+    "bspline": 12
+   },
+   "maxTolerance": 1.0000000000000002e-07,
+   "box": [
+    [
+     -12.87061470200288,
+     -8.933637933613879,
+     1.9999999
+    ],
+    [
+     99.61480133878865,
+     78.20981264740054,
+     48.301483207106365
+    ]
+   ],
+   "looseEdges": 0,
+   "looseKinds": {},
+   "closedForm": 57416.130853517825,
+   "zerocadVolume": 57416.13085359732
+  },
+  "spline-d": {
+   "what": "an open spline over a line: a D, extruded 12",
+   "valid": true,
+   "strict": true,
+   "solids": 1,
+   "freeEdges": 0,
+   "volume": 5028.306358089401,
+   "volumeAdaptive": 5030.204157816634,
+   "strictVolume": 5028.306358089401,
+   "surfaces": {
+    "plane": 3,
+    "extrusion": 1
+   },
+   "edgeUses": {
+    "bspline": 4,
+    "line": 8
+   },
+   "maxTolerance": 1.0000000000000002e-07,
+   "box": [
+    [
+     -1e-07,
+     -1e-07,
+     -1e-07
+    ],
+    [
+     40.0000001,
+     15.17739315408767,
+     12.0000001
+    ]
+   ],
+   "looseEdges": 0,
+   "looseKinds": {},
+   "closedForm": 5028.306358172562,
+   "zerocadVolume": 5028.3063581725655
+  },
+  "spline-revolved": {
+   "what": "the D in the xz plane turned a quarter about its straight side: a surface of revolution of the spline",
+   "valid": true,
+   "strict": false,
+   "solids": 1,
+   "freeEdges": 0,
+   "volume": 4074.394792247345,
+   "volumeAdaptive": 4074.394793812461,
+   "strictVolume": -12223.184376742034,
+   "surfaces": {
+    "revolution": 1,
+    "plane": 2
+   },
+   "edgeUses": {
+    "other": 2,
+    "bspline": 4,
+    "line": 2
+   },
+   "maxTolerance": 1.0000000000000002e-07,
+   "box": [
+    [
+     -1e-07,
+     -1e-07,
+     -1e-07
+    ],
+    [
+     40.0000001,
+     15.17739315408767,
+     15.17739315408767
+    ]
+   ],
+   "looseEdges": 0,
+   "looseKinds": {},
+   "closedForm": 4074.394792295165,
+   "zerocadVolume": 4074.394792295169
+  },
+  "spline-wireframe": {
+   "what": "the closed spline extruded 6, and a loose open spline beside it written as wireframe",
+   "valid": true,
+   "strict": true,
+   "solids": 1,
+   "freeEdges": 0,
+   "volume": 1890.6359607866539,
+   "volumeAdaptive": 1890.2775161752634,
+   "strictVolume": 1890.6359607866539,
+   "surfaces": {
+    "plane": 2,
+    "extrusion": 2
+   },
+   "edgeUses": {
+    "bspline": 8,
+    "line": 4
+   },
+   "maxTolerance": 1.0000000000000002e-07,
+   "box": [
+    [
+     -0.05414699332831646,
+     -9.985000167750352,
+     -1e-07
+    ],
+    [
+     22.57080246048351,
+     8.233636081388683,
+     6.0000001
+    ]
+   ],
+   "looseEdges": 1,
+   "looseKinds": {
+    "bspline": 1
+   },
+   "closedForm": 1890.6359608406156,
+   "zerocadVolume": 1890.635960840617
+  },
+  "tilted-spline": {
+   "what": "a closed spline on a plane tipped 0.5 rad about x, in no frame's plane, extruded 9",
+   "valid": true,
+   "strict": true,
+   "solids": 1,
+   "freeEdges": 0,
+   "volume": 3156.3248834339247,
+   "volumeAdaptive": 3155.682153951406,
+   "strictVolume": 3156.3248834339247,
+   "surfaces": {
+    "plane": 2,
+    "extrusion": 2
+   },
+   "edgeUses": {
+    "bspline": 8,
+    "line": 4
+   },
+   "maxTolerance": 1.0000000000000002e-07,
+   "box": [
+    [
+     1.9210043943420267,
+     -10.44326887846168,
+     -0.9868890164053202
+    ],
+    [
+     26.160046227768323,
+     10.980620584595085,
+     16.25807599824601
+    ]
+   ],
+   "looseEdges": 0,
+   "looseKinds": {},
+   "closedForm": 3156.3248834341425,
+   "zerocadVolume": 3156.324883434144
+  }
+ }
+}
