@@ -153,13 +153,18 @@ export class Files {
           const [h] = await w.showOpenFilePicker!({ types: PICKER_TYPES, multiple: false });
           if (h) await this.openHandle(h);
         } catch (e) {
-          if (!cancelled(e)) this.o.log(errorText(e), "err");
+          if (cancelled(e)) return;
+          // A picker that fails for any reason but the person's cancel (a
+          // platform quirk, a policy) still leaves a way to a file.
+          this.o.log(`the file picker failed (${errorText(e)}) — choose with the browser's file chooser instead`, "out");
+          this.chooseByInput();
         }
       })();
-    } else {
-      this.chooseByInput();
+      return "choose a file… (the file picker)";
     }
-    return "choose a file…";
+    this.chooseByInput();
+    // On Android this is the system's Files / Downloads chooser; on an iPhone the Files app.
+    return "choose a file… (the browser's file chooser)";
   }
 
   /**
@@ -202,11 +207,16 @@ export class Files {
       let h: FileHandle;
       try {
         h = await w.showSaveFilePicker!({ suggestedName: fileName, types: PICKER_TYPES });
+        await writeTo(h, text);
       } catch (e) {
         if (cancelled(e)) return "save cancelled";
-        throw e;
+        // The picker or the write refused for another reason — Android's
+        // picker (Chrome 132) is reported to refuse some saves outright
+        // (docs/plans/android.md). The drawing still goes somewhere a person
+        // can find it, and the log says which way and why.
+        this.download(text, fileName);
+        return this.saved(snap, fileName, `downloaded ${fileName} — the save picker refused (${errorText(e)})`);
       }
-      await writeTo(h, text);
       this.handle = h;
       return this.saved(snap, h.name, `saved ${h.name}`);
     }
@@ -216,7 +226,7 @@ export class Files {
       return this.saved(snap, fileName, how === "shared" ? `saved ${fileName} — through the share sheet` : `downloaded ${fileName}`);
     }
     this.download(text, fileName);
-    return this.saved(snap, fileName, `downloaded ${fileName}`);
+    return this.saved(snap, fileName, `downloaded ${fileName} — this browser has no save picker`);
   }
 
   /**
@@ -284,7 +294,16 @@ export class Files {
     // setting it after the start's restore loses none.
     w.launchQueue?.setConsumer((params) => {
       const h = params.files?.[0];
-      if (h && (h.kind === undefined || h.kind === "file")) void this.openHandle(h);
+      if (!h || (h.kind !== undefined && h.kind !== "file")) return;
+      // A workbench file opened with the app goes where a dropped one does:
+      // to Add workbench…'s question, never run unasked.
+      if (/\.js$/i.test(h.name) && this.o.workbenchFile) {
+        const take = this.o.workbenchFile;
+        void h.getFile().then((f) => f.text().then((text) => take(text, f.name || h.name)))
+          .catch((e) => this.o.log(errorText(e), "err"));
+        return;
+      }
+      void this.openHandle(h);
     });
     const hidden = () => { if (document.visibilityState === "hidden") void this.o.autosave.flush(); };
     document.addEventListener("visibilitychange", hidden);

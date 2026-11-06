@@ -58,6 +58,14 @@ async function menuRow(app: AppContext, command: string, touch = false): Promise
   if (touch) await app.page.tap(row); else await app.page.click(row);
 }
 
+/**
+ * The file input's door, which an iPhone has and nothing else (no
+ * `showOpenFilePicker` on iOS): these tests answer Playwright's file chooser,
+ * which is the input's. Desktop Chromium and Android's Chrome take the picker
+ * first (docs/plans/android.md); that door is android.e2e.ts's, stubbed.
+ */
+const INPUT_ONLY = { fn: () => { delete (window as unknown as Record<string, unknown>).showOpenFilePicker; } };
+
 /** Add workbench… from the logo menu, the device's picker answered with `file`. */
 async function pick(app: AppContext, name: string, text: string, touch = false): Promise<void> {
   const [chooser] = await Promise.all([app.page.waitForEvent("filechooser"), menuRow(app, "addWorkbench()", touch)]);
@@ -78,7 +86,7 @@ async function settled<T>(read: () => Promise<T>, want: (t: T) => boolean, what:
 // ===== a mouse ======================================================================
 
 let app: AppContext;
-before(async () => { app = await openApp(); });
+before(async () => { app = await openApp({ init: INPUT_ONLY }); });
 after(async () => {
   assert.deepEqual(app.pageErrors, [], "nothing the page threw went uncaught");
   await app.close();
@@ -233,7 +241,7 @@ test("a document that needs a workbench opens on a fresh profile with the offer,
   await settled(() => app.log(), (l) => l.includes("removed workbench pins"), "removed");
 
   // … opened by someone who has never added it.
-  const other = await openApp();
+  const other = await openApp({ init: INPUT_ONLY });
   try {
     await other.type(`open(${JSON.stringify(doc)})`);
     await other.page.waitForSelector("#wbmissing");
@@ -258,7 +266,7 @@ test("a document that needs a workbench opens on a fresh profile with the offer,
 // ===== a finger, iPhone 13 ===========================================================
 
 let phone: AppContext;
-before(async () => { phone = await openApp({ device: "iPhone 13" }); });
+before(async () => { phone = await openApp({ device: "iPhone 13", init: INPUT_ONLY }); });
 after(async () => {
   assert.deepEqual(phone.pageErrors, [], "nothing the page threw went uncaught");
   await phone.close();

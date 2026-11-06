@@ -15,6 +15,7 @@ import {
 } from "../scripts/pwa-shell.ts";
 import { GESTURE_EVENTS, lockPage } from "../src/pagelock.ts";
 import { FILE_SUFFIX } from "../src/files.ts";
+import { WORKBENCH_SUFFIX } from "../src/workbenchhost.ts";
 
 const publicFile = (src: string) => new URL(`../public/${src}`, import.meta.url);
 
@@ -71,13 +72,34 @@ test("the manifest: standalone, any orientation, the app's colours, and every UR
   assert.deepEqual(JSON.parse(JSON.stringify(m)), m);
 });
 
-test("the manifest offers the installed desktop app for drawings: .json, application/json, opened at the app itself", () => {
+test("the manifest offers the installed app for drawings and workbench files: .json and .js, opened at the app itself", () => {
   const m = manifest();
-  assert.deepEqual(m.file_handlers, [{ action: "./", accept: { "application/json": [".json"] } }]);
-  const [handler] = m.file_handlers as { action: string }[];
-  assert.ok(isRelative(handler.action), "inside the scope under /zerocad/");
-  // The extension it claims is the one every file this app writes ends in.
+  assert.deepEqual(m.file_handlers, [
+    { action: "./", accept: { "application/json": [".json"] } },
+    { action: "./", accept: { "text/javascript": [".js"] } },
+  ]);
+  for (const handler of m.file_handlers as { action: string }[]) assert.ok(isRelative(handler.action), "inside the scope under /zerocad/");
+  // The extensions it claims are the ones every file this app writes ends in.
   assert.ok(FILE_SUFFIX.endsWith(".json"));
+  assert.ok(WORKBENCH_SUFFIX.endsWith(".js"));
+});
+
+test("the manifest's richer install sheet (docs/plans/android.md): a description, a phone's and a desktop's screenshot, a second launch focusing the first", () => {
+  const m = manifest();
+  assert.ok(typeof m.description === "string" && (m.description as string).length > 20);
+  assert.deepEqual(m.launch_handler, { client_mode: ["focus-existing", "auto"] });
+  const shots = m.screenshots as { src: string; sizes: string; type: string; form_factor: string; label: string }[];
+  assert.deepEqual(shots.map((s) => s.form_factor).sort(), ["narrow", "wide"]);
+  for (const s of shots) {
+    assert.ok(isRelative(s.src), s.src);
+    assert.equal(s.type, "image/png");
+    assert.ok(s.label.length > 0);
+    const [w, h] = pngSize(readFileSync(publicFile(s.src)));
+    assert.equal(`${w}x${h}`, s.sizes, `${s.src} is the size it claims`);
+    // Chrome's rule for a screenshot it will show: 320–3840 a side, the long side at most 2.3 × the short.
+    assert.ok(Math.min(w, h) >= 320 && Math.max(w, h) <= 3840 && Math.max(w, h) / Math.min(w, h) <= 2.3, s.src);
+    assert.equal(s.form_factor === "narrow", h > w, `${s.src}: narrow is upright, wide is not`);
+  }
 });
 
 test("every icon the manifest and the head name is committed, a PNG of the size it claims", () => {
@@ -228,7 +250,7 @@ test("the head: the iOS metas, the manifest and the icons, all relative, and the
 
 test("index.html: a viewport that never zooms and covers the notch, a page that never scrolls, and the callout off but the command line and log selectable", () => {
   const index = readFileSync(new URL("../index.html", import.meta.url), "utf8");
-  assert.match(index, /<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">/);
+  assert.match(index, /<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-visual">/);
   const css = index.match(/<style>([\s\S]*?)<\/style>/)![1];
   assert.match(css, /html,body\{[^}]*position:fixed;inset:0;overflow:hidden;overscroll-behavior:none/);
   // The window by its four edges, not 100dvh — which an iOS home-screen app

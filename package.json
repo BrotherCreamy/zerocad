@@ -17,6 +17,7 @@
     "build:single": "node scripts/singlefile.mjs",
     "build:pwa": "node --experimental-strip-types scripts/pwa.ts",
     "build:icons": "node --experimental-strip-types scripts/icons.ts",
+    "build:screenshots": "node --experimental-strip-types test/e2e/run.ts scripts/screenshots.ts",
     "measure:depth": "node --experimental-strip-types test/e2e/run.ts test/e2e/depth.measure.ts",
     "measure:hidden": "node --experimental-strip-types test/e2e/run.ts test/e2e/hidden.measure.ts",
     "build:solids": "bash scripts/solids/build.sh"

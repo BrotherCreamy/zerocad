@@ -67,9 +67,30 @@ export function manifest(): Record<string, unknown> {
     background_color: BACKGROUND,
     theme_color: THEME,
     icons: ICONS,
+    // Chrome's richer install sheet (Android, and desktop): shown when the
+    // manifest has a description and at least one screenshot for the form
+    // factor — a phone's ("narrow") and a desktop's ("wide").
+    screenshots: SCREENSHOTS,
     file_handlers: FILE_HANDLERS,
+    // A second launch — the icon tapped again, a file opened with the app —
+    // focuses the window already open rather than starting another, which
+    // would be a second autosave writer for the one slot there is (files.md).
+    // "auto" after it for a browser that knows neither (the member is a list
+    // of preferences).
+    launch_handler: { client_mode: ["focus-existing", "auto"] },
   };
 }
+
+/**
+ * The install sheet's pictures (docs/plans/android.md): the app on a Pixel 7
+ * and on a desktop, made by `npm run build:screenshots` (scripts/screenshots.ts)
+ * from the real app and committed under public/, as the icons are. Chrome
+ * takes 320–3840 px a side with the long side at most 2.3 × the short.
+ */
+export const SCREENSHOTS = [
+  { src: "screenshots/phone.png", sizes: "1082x2265", type: "image/png", form_factor: "narrow", label: "A bracket drawn and extruded on a phone" },
+  { src: "screenshots/desktop.png", sizes: "1280x800", type: "image/png", form_factor: "wide", label: "The same bracket on a desktop" },
+];
 
 /**
  * The files an installed desktop app offers to open (Chromium 102+, desktop
@@ -85,7 +106,13 @@ export function manifest(): Record<string, unknown> {
  * with" entry, never the default unless a person makes it so — and a JSON
  * file that is not a drawing is refused with the reason, as any open is.
  */
-export const FILE_HANDLERS = [{ action: "./", accept: { "application/json": [".json"] } }];
+export const FILE_HANDLERS = [
+  { action: "./", accept: { "application/json": [".json"] } },
+  // A workbench file (docs/plans/workbenches.md, docs/plans/android.md): the
+  // same door as the logo menu's Add workbench… — its manifest shown, the
+  // question asked, nothing run before the answer. `.js`, by the rule above.
+  { action: "./", accept: { "text/javascript": [".js"] } },
+];
 
 /**
  * The service worker's cache, named for the build. Caches belong to the
