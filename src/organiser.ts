@@ -168,7 +168,7 @@ export function organiserSections(model: Model, selection: readonly string[] = [
   });
   // A surface is its chain (docs/plans/surfaces.md), as a body is: a row per
   // surface, named by its first record, its detail the rest of the chain
-  // signed — ✂ a trim, + a knit (the surface taken in), ⌒ a fillet, ▮ a
+  // signed — − a trim (as a cut is), + a knit (the surface taken in), ⌒ a fillet, ▮ a
   // thicken — hidden by its first record's name, which hides it whole.
   const surfaces: OrganiserRow[] = surfaceChains(model, { hidden: true }).chains.map((c) => {
     const eye: Eye = model.hidden.has(c.name) ? "hidden" : "shown";

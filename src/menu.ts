@@ -272,6 +272,18 @@ function menuOf(model: Model, pick: Pick | null, region: RegionHit | null, selec
  */
 function edgeMenu(pick: Pick): Menu {
   const head = `${quoted(pick.body ?? "e1")}, [${quoted(pick.name)}], `;
+  // A surface's boundary edge (docs/plans/surfaces.md) bounds one face: there
+  // is nothing beyond it to round to, and what it can do is be extended — where
+  // it is an edge of the sweep.
+  if (pick.lamina) {
+    const sweep = /\|s\d+\.(base|lid|start|end)$/.test(pick.name);
+    return {
+      header: pick.tag ?? pick.name,
+      items: [sweep
+        ? { label: "Extend…", action: { do: "type", text: `extend(${quoted(pick.body ?? "s1")}, ${quoted(pick.name)}, ` } }
+        : { label: "Extend…", action: { do: "disabled", why: "only a sweep's own edges extend — this one a trim or a blend made" } }],
+    };
+  }
   return {
     header: pick.tag ?? pick.name,
     items: [

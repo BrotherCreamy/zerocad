@@ -765,10 +765,10 @@ function isKnittedPartner(model: Model, s: string, other: string): boolean {
 
 /** A record's sign in its surface's chain, as a body's are signed (+e3 −e2). */
 const SIGN: Record<string, string> = {
-  trim: "✂", extend: "↦", knit: "+", thicken: "▮", solidify: "■", fillet: "⌒", chamfer: "⌔", offset: "", face: "", planar: "", extrude: "", revolve: "",
+  trim: "−", extend: "→", knit: "+", thicken: "▮", solidify: "■", fillet: "⌒", chamfer: "⌔", offset: "", face: "", planar: "", extrude: "", revolve: "",
 };
 
-/** The chain as a row says it: `extrude ✂s2 +s3 ⌒s4` (the knitted surface by its name, after the +). */
+/** The chain as a row says it: `extrude −s2 +s3 ⌒s4` (the knitted surface by its name, after the +). */
 export function surfaceDetail(model: Model, chain: SurfaceChain): string {
   const head = chain.steps[0];
   const what = head.kind === "face" ? `face ${head.of}` : head.kind === "offset" ? `offset of ${head.of}` : head.kind;

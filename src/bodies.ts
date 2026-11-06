@@ -37,7 +37,7 @@ import type { Face } from "./faces.ts";
 import { depth, viewAxes, worldToScreen, type View } from "./view.ts";
 import { allNodes, isBlend, nodeKeys, type BlendNode, type PairBlendNode, type BodyResult, type Node, type NodeOp, type Program, type ProgramResult } from "./solids/evaluate.ts";
 import { featureLabel, tagParts } from "./solids/naming.ts";
-import { surfacePrograms } from "./surfaces.ts";
+import { surfacePrograms, type PairAsk } from "./surfaces.ts";
 import type { SolidsClient } from "./solids/client.ts";
 import type { Topology } from "./solids/kernel.ts";
 import { cross3, dot3, sub3, unit3 } from "./vec3.ts";
@@ -79,6 +79,8 @@ export interface BlendTrial {
   body: string;
   /** A fillet or chamfer of edges — or, on a surface, one between two surfaces (surfaces.md). */
   node: BlendNode | PairBlendNode;
+  /** Bodies the preview takes in and so stands for: the other surface of a fillet between two, not drawn on its own meanwhile. */
+  hides?: string[];
   replace?: number;
 }
 
@@ -157,6 +159,20 @@ export function programOf(model: Model, all = false, trial: BlendTrial | null = 
     bodies.push({ name: b.name, nodes });
   }
   return { program: { bodies, prefix: PREFIX, chord: CHORD, angle: ANGLE }, chains, skipped, ...(trial ? { trial } : {}) };
+}
+
+/**
+ * A fillet or chamfer between two surfaces as the node its record would make
+ * (docs/plans/surfaces.md) — what the round tool previews before ✓; null where
+ * it cannot be laid out.
+ */
+export function pairTrial(model: Model, ask: PairAsk): PairBlendNode | null {
+  const every = programOf(model, true).program.bodies;
+  const byFeature = (feature: string) => {
+    const c = chainsOf(model, { hidden: true }).bodies.find((x) => x.steps.some((f) => f.name === feature));
+    return c ? every.find((b) => b.name === c.name)?.nodes ?? null : null;
+  };
+  return surfacePrograms(model, byFeature, ask).trial ?? null;
 }
 
 // ---- the kernel's answer, as faces --------------------------------------------------
@@ -524,7 +540,10 @@ export class Bodies {
 
   private viewsOf(withTrial: boolean): BodyView[] {
     const out: BodyView[] = [];
+    // A fillet's preview between two surfaces stands for both: the other is not drawn apart meanwhile.
+    const hidden = new Set(withTrial ? this.trying?.hides ?? [] : []);
     for (const [name, chain] of this.current?.chains ?? []) {
+      if (hidden.has(name)) continue;
       const v = withTrial && this.tried?.name === name ? this.tried : this.good.get(name);
       if (v && v.features.join() === chain.features.map((f) => f.name).join()) out.push(v);
     }

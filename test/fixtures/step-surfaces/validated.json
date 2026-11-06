@@ -1,0 +1,67 @@
+{
+ "kernel": "Open CASCADE Technology 8.0.1, through cadquery-ocp 8.0.1.1.0 (OCP) from PyPI, on Python 3.11 \u2014 in a scratch directory, never a dependency of this repo",
+ "date": "2026-11-06",
+ "read": "STEPControl_Reader with OpenCascade's standard healing; BRepCheck_Analyzer on the shape; its solids, shells and faces counted; its free edges (ShapeAnalysis_FreeBounds: edges of one face); its area and, for a solid, its volume by BRepGProp integrated to 1e-9 (the default reads a cylinder sheet 3.6e-4 off); every check the read and the transfer left, fails and warnings counted. The warnings are all 'Surface forced to be periodic', OpenCascade's own adjustment of a whole turn's B-spline.",
+ "parts": {
+  "planar-holed": {
+   "what": "a rectangle's planar surface, trimmed by a circle on it",
+   "valid": true,
+   "solids": 0,
+   "shells": 1,
+   "faces": 1,
+   "freeEdges": 5,
+   "area": 2286.902677812172,
+   "volume": null,
+   "readerFails": 0,
+   "readerWarnings": 0,
+   "closedForm": 2286.9026644707674,
+   "zerocadArea": 2286.9026777959666,
+   "zerocadVolume": null
+  },
+  "revolved-sheet": {
+   "what": "a line turned whole about a parallel axis: a cylinder sheet, r 5 h 10",
+   "valid": true,
+   "solids": 0,
+   "shells": 1,
+   "faces": 2,
+   "freeEdges": 4,
+   "area": 314.1592635077756,
+   "volume": null,
+   "readerFails": 0,
+   "readerWarnings": 2,
+   "closedForm": 314.1592653589793,
+   "zerocadArea": 314.15906872124805,
+   "zerocadVolume": null
+  },
+  "knit-filleted": {
+   "what": "the holed plate and a wall off its front edge, knitted, the join filleted r 4",
+   "valid": true,
+   "solids": 0,
+   "shells": 1,
+   "faces": 3,
+   "freeEdges": 9,
+   "area": 3083.8937940214996,
+   "volume": null,
+   "readerFails": 0,
+   "readerWarnings": 0,
+   "closedForm": 3083.8937829015426,
+   "zerocadArea": 3083.8937994395123,
+   "zerocadVolume": null
+  },
+  "knit-thickened": {
+   "what": "the same thickened 2: a solid",
+   "valid": true,
+   "solids": 1,
+   "shells": 1,
+   "faces": 15,
+   "freeEdges": 0,
+   "area": 6891.097285503113,
+   "volume": 6356.283268266811,
+   "readerFails": 0,
+   "readerWarnings": 1,
+   "closedForm": null,
+   "zerocadArea": 6891.088450092565,
+   "zerocadVolume": 6356.283291517935
+  }
+ }
+}

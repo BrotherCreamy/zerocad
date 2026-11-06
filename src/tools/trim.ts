@@ -42,7 +42,9 @@ export class TrimTool extends Tool {
 
   next(hand: Hand): string {
     if (this.held) return `${press(hand)} the curve or surface to trim ${this.held.surface} by`;
-    return `${press(hand)} the piece to trim away, or a surface where it is kept`;
+    // A surface is offered only where there is one to trim.
+    if (this.ctx.model.surfaces.size) return `${press(hand)} the piece to trim away, or a surface where it is kept`;
+    return `${press(hand)} the piece to trim away`;
   }
 
   /** The surface under a pixel, if a surface's face is the nearest thing there. */

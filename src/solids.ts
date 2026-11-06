@@ -128,6 +128,8 @@ export interface Body {
   volume: number;
   /** Its extent, `[min, max]`, each three coordinates. */
   box: [number[], number[]];
+  /** A surface's sheet (docs/plans/surfaces.md): an open shell, no volume — written as a surface model, not a solid. */
+  sheet?: true;
 }
 
 /** What could and could not be made. A feature that cannot be laid out costs its own body and is named. */
