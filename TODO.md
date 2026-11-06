@@ -1897,6 +1897,16 @@ starts.
         commits, Escape commits nothing; a tray's turn at an edge is
         previewed and happens at the drop; every panel not in hand is
         translucent for the drag).
+      - **Then, on the preview:**
+        [`panels-overlay-lock.md`](docs/plans/panels-overlay-lock.md) (the
+        owner: *"a menu option to make the toolbars transparent to maximize
+        visible viewport size. and also another option to lock the toolbars
+        in place … like how the feature tree in solidworks changes form when
+        it is overlaid over the viewport"* — two View switches, the
+        viewer's; overlay draws each pane's content straight over the
+        drawing in a form of its own, the organiser as a tree hugging its
+        corner, empty space the drawing's; lock keeps every pane where it
+        is).
       - **Also queued (the owner, 2026-11-05: *"please add solid and surface
         fillet tools if possible (after you do the nurbs conversion)"*):**
         [`solid-fillets.md`](docs/plans/solid-fillets.md) after workbenches,
