@@ -1770,6 +1770,11 @@ starts.
           Chromium's touch adjustment, 4.5 px further out than before.
         - `refit` gives up whole panes' places, the overlapping ones first;
           it does not search for the largest set that fits.
+        - Under load (8–18) a finger's tap on the canvas was read as a
+          long-press: the gap recheck's recorder saw the press down and up
+          on the canvas, the point tool armed, no point, and the menu open.
+          The open touch-harness item below; the recheck now asserts where
+          the press lands and closes the menu.
         - Under `--test-name-pattern`, `touchdensity.e2e.ts` stayed up after
           its last test passed (twice); unfiltered, as the suite runs it, it
           exits. Not chased.

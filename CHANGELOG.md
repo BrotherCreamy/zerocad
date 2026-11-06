@@ -66,7 +66,14 @@ Larger sizes have bigger targets now, so the everything-fits guarantee above
 [221](docs/images/221-iphone-13-on-its-side-panes-at-both-side-edges-drawn-at-the-safe-line.png),
 [222](docs/images/222-pixel-7-on-its-side-panes-at-both-side-edges-drawn-at-the-safe-line.png),
 [223](docs/images/223-iphone-17-pro-max-a-stored-layout-re-fitted-upright-and-said.png).
-Tests: @@COUNTS@@ **Not tried on a phone**: every number is Chromium's
+Tests: typecheck 0; unit 1622 → 1630 (+8: 7 in the new file, 1 for the
+fillet drag); kernel 11; e2e 645 → 662 (+17: the new file's 15 and two
+finger-gap rechecks). The full gate as run, with another worker's suite on
+the same four cores (load 8–18): 655 passed, 2 skipped, 5 failed — the
+Pixel 7's drags and `solidsphone`'s two (the register's load flakes; 14/14
+and 3/3 alone) and the new Pixel gap recheck, whose press the recorder showed
+landing on the canvas with the tap read as a long-press under load (its claim
+made exact; 14/14 twice alone). **Not tried on a phone**: every number is Chromium's
 emulation.
 
 ## Sketch editing: trim, extend, offset, mirror, chamfer and patterns

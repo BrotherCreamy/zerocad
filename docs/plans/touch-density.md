@@ -310,6 +310,26 @@ Deviations and additions — each a decision, vetoable:
 - **The fillet fix is in `blend.ts`**, outside the files this package was
   given; the cause was there.
 
+**Verification as run.** Typecheck 0 before and after. Unit 1622 → 1630
+(the base's 1622 after sketch-edit; `touchdensity.test.ts` 7, the fillet
+drag 1; the chrome, fits, touch-layout, toolbar-groups and panels-preview
+suites' numbers changed claim for claim). Kernel 11/11. E2E 645 → 662
+(`touchdensity.e2e.ts` 15 — one of them the pictures, skipped without
+`NEOCAD_E2E_SHOTS` — and the two finger-gap rechecks), the files that measure
+the chrome run in sets of two or three while building. The full gate
+(`npm run test:all`) after merging the working branch, with another
+worker's suite on the same four cores (load 8–18): 655 passed, 2 skipped, 5
+failed. Each failing file rerun alone: `android.e2e.ts` 14/14 (its Pixel 7
+drags, the register's load flake), `solidsphone.e2e.ts` 3/3 (likewise), and
+`overlaylock.e2e.ts`, whose failure was the new Pixel gap recheck: its
+recorder showed the press going down and up on the canvas with the point
+tool armed and no point made — the tap read as a long-press under load, the
+register's harness item, whose menu then lay over the next size's midpoint.
+The test now asserts what it is about, where the finger's press lands after
+Chromium's touch adjustment, and closes a menu a tap opened; 14/14 twice
+alone. The phone fillet file passed inside the gate and 10/10 alone on the
+final tree (load 2.7–4.7).
+
 Limitations left in place, deliberately:
 
 - **Not tried on a phone.** Every measurement is Chromium's emulation; iOS
