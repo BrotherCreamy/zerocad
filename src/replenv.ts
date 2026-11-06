@@ -26,7 +26,7 @@ import {
   regionText, revolve, set, subtract, unhole,
 } from "./operations.ts";
 import { chamferEdges, describeBlend, filletEdges, setEdges } from "./blends.ts";
-import { describeSurface, surfaceBlend } from "./surfaces.ts";
+import { describeSurface, noSuchSurface, surfaceBlend } from "./surfaces.ts";
 import { chamfer as sketchChamfer } from "./sketchedit.ts";
 import { planeAxes } from "./curveplane.ts";
 import { save as saveModel, savedTools } from "./persist.ts";
@@ -690,7 +690,7 @@ export function neocadScope(h: EnvHandles): Bag {
     // solid's entry ever reads as one.
     fillet: (l1: string, l2: string | string[], r: number, side?: unknown, regenerated?: unknown) =>
       model.surfaces.has(l1) ? surfaceBlend(model, "fillet", l1, l2, r, side)
-        : Array.isArray(l2) ? filletEdges(model, l1, l2, r) : fillet(model, l1, l2, r, (side as number[] | null | undefined) ?? null, regenerated),
+        : (noSuchSurface(model, "fillet", l1), Array.isArray(l2)) ? filletEdges(model, l1, l2, r) : fillet(model, l1, l2, r, (side as number[] | null | undefined) ?? null, regenerated),
     /**
      * Cuts a body's edges back by one setback along each face —
      * `chamfer("e1", ["e1.lid|e1.m0"], 2)` — a feature of the body, its
@@ -702,7 +702,7 @@ export function neocadScope(h: EnvHandles): Bag {
     // journalled as `chamfer`, as the two fillets are told apart.
     chamfer: (a: string, b: string | string[], c: number, d?: unknown, regenerated?: unknown) =>
       model.surfaces.has(a) ? surfaceBlend(model, "chamfer", a, b, c, d)
-        : Array.isArray(b) ? chamferEdges(model, a, b, c) : sketchChamfer(model, a, b, c, (d as number | null | undefined) ?? null, regenerated),
+        : (noSuchSurface(model, "chamfer", a), Array.isArray(b)) ? chamferEdges(model, a, b, c) : sketchChamfer(model, a, b, c, (d as number | null | undefined) ?? null, regenerated),
     /** A fillet's or chamfer's edges, replaced in place: `setEdges("e3", [...])` — the feature dialog's ✓. */
     setEdges: (feature: string, edges: string[]) => setEdges(model, feature, edges),
     /**

@@ -23,7 +23,7 @@ import { defineDimension } from "../model.ts";
 import { defineRebuild } from "../operations.ts";
 import { surfaceAngle, surfaceDepth, surfaceDistance } from "../relations/surface.ts";
 import {
-  extendSurface, knit, offsetSurface, solidify, surface, surfaceBlend, surfaceExtrude, surfaceFace, surfacePlanar,
+  extendSurface, knit, noSuchSurface, offsetSurface, solidify, surface, surfaceBlend, surfaceExtrude, surfaceFace, surfacePlanar,
   surfaceRevolve, thicken, trimSurface,
 } from "../surfaces.ts";
 import { extend, offset, trim } from "../sketchedit.ts";
@@ -85,6 +85,7 @@ defineModule("surfaces", {
     // line copied out of a journal still types).
     trim: (first: unknown, second: unknown, third?: unknown, fourth?: unknown) => {
       if (isSurface(kit.model, first)) return trimSurface(kit.model, first, second, third, fourth as string | null | undefined);
+      noSuchSurface(kit.model, "trim", first);
       const notes: string[] = [];
       const out = trim(kit.model, first as string, second, third, fourth, notes);
       for (const n of notes) kit.log?.(n);
@@ -93,11 +94,12 @@ defineModule("surfaces", {
     extend: (first: unknown, second: unknown, third?: unknown, fourth?: unknown) =>
       isSurface(kit.model, first)
         ? extendSurface(kit.model, first, second, third)
-        : extend(kit.model, first as string, second, third as string | null | undefined, fourth),
+        : (noSuchSurface(kit.model, "extend", first), extend(kit.model, first as string, second, third as string | null | undefined, fourth)),
     offset: (first: unknown, d: unknown, options?: unknown, resolved?: unknown) =>
       isSurface(kit.model, first)
         ? offsetSurface(kit.model, first, d)
-        : offset(kit.model, first as string | string[], d as number, options as { construction?: boolean } | null | undefined, resolved),
+        : (noSuchSurface(kit.model, "offset", first),
+          offset(kit.model, first as string | string[], d as number, options as { construction?: boolean } | null | undefined, resolved)),
     // The journal's names, typed as they are journalled.
     surfaceExtrude: (curves: string | string[], depth: number, frame?: string | null, resolved?: unknown) =>
       surfaceExtrude(kit.model, curves, depth, frame, resolved),

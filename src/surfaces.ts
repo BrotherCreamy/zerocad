@@ -54,12 +54,36 @@ function need3d(model: Model, op: string): void {
   if (model.dim !== 3) throw new Error(`${op} makes a surface, and a ${model.dim}D model has none — surfaces are 3D`);
 }
 
-/** The surface a name is, by any record of its chain: refused, in words, for anything else. */
+/**
+ * The surface a name is, by any record of its chain — **the surface it is part
+ * of now**, so `trim("s3", …)` after s3 was knitted into s1 is recorded as a
+ * trim of s1, which is what it cuts. Recorded under the name typed, it would
+ * leave s1's chain for s3's alone if the knit were deleted later: a trim done
+ * to the joined sheet quietly moving to one piece of it. Refused, in words,
+ * for anything else.
+ */
 function surfaceArg(model: Model, op: string, s: unknown, what = "a surface"): string {
   if (typeof s !== "string" || !model.surfaces.has(s)) {
     throw new Error(`${op} takes ${what} first — ${quoted(s)} is not one (surfaces are s1, s2, …; ls() lists them)`);
   }
-  return s;
+  const now = surfaceNameOf(model, s);
+  if (now === null) throw new Error(`${s} is part of no surface now — the surface it changed was deleted`);
+  return now;
+}
+
+/**
+ * The verbs a surface shares with the sketch (`trim`, `extend`, `offset`,
+ * `fillet`, `chamfer`) go to the surface's when their first argument is a
+ * surface, and to the sketch's otherwise. A name that reads as a surface's
+ * (`s9`) but names nothing would reach the sketch's refusal ("takes a line"),
+ * which says nothing of surfaces: this says it as a surface's, and how to find
+ * the ones there are. Nothing else is named `s` + a number (`claimName("s")`
+ * is the surfaces').
+ */
+export function noSuchSurface(model: Model, op: string, s: unknown): void {
+  if (typeof s === "string" && /^s\d+$/.test(s) && !model.has(s)) {
+    throw new Error(`${op}: there is no surface ${s} — ls() lists the surfaces (the sketch's ${op} takes curves by name)`);
+  }
 }
 
 // ---- chains ---------------------------------------------------------------------

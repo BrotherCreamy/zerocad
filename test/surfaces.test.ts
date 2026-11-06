@@ -211,8 +211,6 @@ test("the shared verbs: a surface first is the surface's, anything else the sket
   s.surface(seg(m, [0, 20, 0], [10, 20, 0]), 5);
   s.offset("s1", 1);
   s.knit("s1", "s2");
-  const ops = (m.journal ?? []).map((e: { op: string }) => e.op);
-  void ops;
   const text = save(m, false);
   for (const op of ["surfaceExtrude", "offsetSurface", "knit"]) assert.ok(text.includes(`"${op}"`), op);
   // The sketch's fillet of two lines is still the sketch's: an arc, no surface record.
@@ -221,6 +219,33 @@ test("the shared verbs: a surface first is the surface's, anything else the sket
   assert.equal(m.entities.get(arc)?.kind, "arc");
   assert.equal(m.surfaces.size, before);
   assert.ok(!save(m, false).includes('"filletSurfaces"'));
+});
+
+test("a surface-shaped name that names nothing is refused as a surface's, by each shared verb; a knitted surface's name answers for the sheet it is part of", async () => {
+  await loadSolver();
+  const { m, s } = scene();
+  const l = seg(m, [0, 0, 0], [10, 0, 0]);
+  const c = s.circle(s.pt(5, 0, 0), 2) as string;
+  const curves = m.entities.size;
+  for (const [verb, call] of [
+    ["trim", () => s.trim("s9", c, [0, 0, 0])], ["extend", () => s.extend("s9", "x", 3)], ["offset", () => s.offset("s9", 3)],
+    ["fillet", () => s.fillet("s9", "s1", 3)], ["chamfer", () => s.chamfer("s9", "s1", 3)],
+  ] as const) {
+    // Not the sketch's "takes a line …", which says nothing of surfaces.
+    assert.throws(call, new RegExp(`^Error: ${verb}: there is no surface s9 — ls\\(\\) lists the surfaces`), verb);
+  }
+  assert.equal(m.entities.size, curves, "nothing made");
+  s.surface(l, 5);
+  s.surface(seg(m, [0, 0, 0], [0, 10, 0]), 5);
+  s.knit("s1", "s2");
+  // s2 is part of s1 now: a trim of "s2" is a trim of s1, recorded so —
+  // deleting s1 later takes it, rather than leaving it on s2 alone.
+  const t = s.trim("s2", c, [9, 0, 0]) as string;
+  assert.equal(m.surfaceOf(t).into, "s1");
+  assert.ok(save(m, false).includes(`["s1","${c}"`), "journalled as the trim of s1");
+  s.del("s1");
+  assert.equal(m.surfaces.has(t), false, "the trim went with s1");
+  assert.deepEqual(surfaceChains(m).chains.map((x) => x.name), ["s2"], "s2 is its own again, untrimmed");
 });
 
 test("save and open: every record back by replay, the same chain, the same dimensions", async () => {
@@ -265,8 +290,9 @@ test("refusals say what to do, before anything is made", async () => {
   const { m, s } = scene();
   const l = seg(m, [0, 0, 0], [20, 0, 0]);
   assert.throws(() => s.surface(l, 0), /a number other than 0/);
-  // Not a surface: the sketch's trim, which says what it takes.
-  assert.throws(() => s.trim("s9", l, [0, 0, 0]), /trim takes a line, an arc or a circle/);
+  // Not a surface: the sketch's trim, which says what it takes. (A name that
+  // reads as a surface's, s9, is refused as one: the test above.)
+  assert.throws(() => s.trim("q9", l, [0, 0, 0]), /trim takes a line, an arc or a circle/);
   s.surface(l, 10);
   assert.throws(() => s.trim("s1", "s1", [0, 0, 0]), /cannot trim itself/);
   assert.throws(() => s.trim("s1", l, [0, 0]), /\[x, y, z\]/);
