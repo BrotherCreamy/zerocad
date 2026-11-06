@@ -343,8 +343,8 @@ defineModule("sketch", {
     "           a region subtracts, adds or intersects takes that step out of",
     "           its chain (the region loses it); deleting its first face takes",
     "           the region. hole/unhole are aliases of the step (solids).",
-    "           Surfaces will be the same shape: trim, extend, knit are",
-    "           operations between surfaces, nothing a negative surface.",
+    "           Surfaces are the same shape (see surfaces): trim, extend, knit",
+    "           are operations between surfaces, nothing a negative surface.",
     "curves     ellipse(center, major, minor, plane?) — major a point (its major",
     "           end) or a number (the semi-major), minor the semi-minor: an",
     "           entity, centre and major end its points, minor its variable.",
@@ -403,5 +403,7 @@ defineModule("sketch", {
     "           the seed deletes no copy. Tools, under modify: trim (click the",
     "           piece), extend (click near an end), offset, mirror, bevel (the",
     "           sketch chamfer: two lines or a corner), pattern.",
+    "           Given a surface first (s1), trim, extend, offset, fillet and",
+    "           chamfer are the surface's instead — see surfaces.",
   ],
 });
