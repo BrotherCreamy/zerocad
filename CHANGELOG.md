@@ -64,7 +64,11 @@ when the pane the resolver moved was a default one. Pictures:
 [204](docs/images/204-pixel-7-locked-and-see-through-the-chip-says-why-nothing-moved.png),
 [205](docs/images/205-iphone-13-a-locked-layout-re-fitted-on-its-side-and-said.png).
 Tests: typecheck 0; unit 1574 → 1584 (+10); kernel 11; e2e 621 → 637 (+16:
-the new file's 12, and the fits suite with each switch, 4).
+the new file's 12, and the fits suite with each switch, 4). The gate as run
+(`npm run test:all`, the only worker): 634 passed, 1 skipped, 2 failed — the
+phone fillet file's held-label drag and edge tap, the register's open touch
+flake; alone, that file failed them in 2 of 4 runs here and in 1 of 4 on the
+base commit.
 
 ## Android: the same app, at home on a Pixel or a Galaxy
 

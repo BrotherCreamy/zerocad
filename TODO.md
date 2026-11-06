@@ -3454,6 +3454,11 @@ extended the way `defineTool` extends the tool registry would close it.
         three — on the base commit at the same load, `solidsphone`'s two;
         every one passed with its file alone. Which of the four miss moves
         with the load, run to run.
+        Seen again (2026-11-06, `claude/panels-overlay-lock`'s gate, the
+        only worker): the same two in the full gate; alone, at load about 3,
+        the file failed them in 2 of 4 runs on the branch and in 1 of 4 on
+        the base commit (its `src` and `index.html` checked out) — so not
+        this package's, and no longer only under a saturated machine.
         Also seen (2026-11-06), with nothing else running but the suite's
         own two files at a time (load ~6): `solidfilletsphone.e2e.ts`'s held
         radius-label drag and its edge tap, in the full gate only; the file
