@@ -31,7 +31,7 @@
 // Pure: a function of the model, at the operations' height (operations.ts
 // asks it inside `extrude` and `revolve`).
 
-import type { FeatureEntry, FeatureMode, Model } from "./model.ts";
+import type { BlendFeature, FeatureEntry, FeatureMode, Model } from "./model.ts";
 import { kernelSweep } from "./solids.ts";
 import { insideProfile, memberPoints } from "./solids/profile.ts";
 import type { V2 } from "./solids/kernel.ts";
@@ -45,8 +45,15 @@ export function modeOf(f: FeatureEntry): FeatureMode {
 export interface Chain {
   /** The body's name: its first feature's. */
   name: string;
-  /** Its features in evaluation order, the first making it. */
+  /** Its sweeps in evaluation order, the first making it. */
   features: FeatureEntry[];
+  /**
+   * Everything the body is built of, in evaluation order: its sweeps, and the
+   * fillets and chamfers among them (docs/plans/solid-fillets.md) — each
+   * blend where its number falls, so it rounds what the features made before
+   * it left, and a cut made after it cuts the rounded body.
+   */
+  steps: (FeatureEntry | BlendFeature)[];
 }
 
 export interface Chains {
@@ -67,8 +74,26 @@ export interface Chains {
 export function chainsOf(model: Model, opts: { hidden?: boolean } = {}): Chains {
   const out: Chains = { bodies: [], left: [], alone: [] };
   const bodyOf = new Map<string, Chain>();
-  const hidden = (f: FeatureEntry) => !opts.hidden && model.hidden.has(f.name);
+  const hidden = (f: FeatureEntry | BlendFeature) => !opts.hidden && model.hidden.has(f.name);
+  // The blends, each taken in just before the first sweep numbered after it:
+  // a blend applies to what was made before it. Merged rather than sorted, so
+  // the sweeps' own order is the registry's, exactly as it always was.
+  const blends = [...model.blends.values()];
+  const number = (name: string) => Number(/^e(\d+)$/.exec(name)?.[1] ?? Number.POSITIVE_INFINITY);
+  const takeBlends = (upTo: number) => {
+    while (blends.length && number(blends[0].name) < upTo) {
+      const b = blends.shift()!;
+      const target = bodyOf.get(b.into);
+      if (!target) {
+        out.left.push({ feature: b.name, why: `it ${b.kind === "fillet" ? "fillets" : "chamfers"} edges of ${b.into}, which is no longer there` });
+        continue;
+      }
+      bodyOf.set(b.name, target);
+      if (!hidden(b)) target.steps.push(b);
+    }
+  };
   for (const f of model.features.values()) {
+    takeBlends(number(f.name));
     const mode = modeOf(f);
     const target = mode === "new" ? undefined : f.into === undefined ? undefined : bodyOf.get(f.into);
     if (mode === "new" || !target) {
@@ -77,21 +102,25 @@ export function chainsOf(model: Model, opts: { hidden?: boolean } = {}): Chains 
         continue;
       }
       if (mode === "add") out.alone.push({ feature: f.name, why: `it adds to ${f.into ?? "a body"}, which is no longer there, so it is a body of its own` });
-      const chain: Chain = { name: f.name, features: [f] };
+      const chain: Chain = { name: f.name, features: [f], steps: [f] };
       bodyOf.set(f.name, chain);
       if (!hidden(f)) out.bodies.push(chain);
       continue;
     }
     bodyOf.set(f.name, target);
-    if (!hidden(f)) target.features.push(f);
+    if (!hidden(f)) {
+      target.features.push(f);
+      target.steps.push(f);
+    }
   }
+  takeBlends(Number.POSITIVE_INFINITY);
   // A body hidden whole is gone from `bodies` already; its later features went into a chain nobody reads.
   return out;
 }
 
-/** The body a feature is part of, by name — null for one left out. */
+/** The body a feature, a fillet or a chamfer is part of, by name — null for one left out. */
 export function bodyNameOf(model: Model, feature: string): string | null {
-  for (const c of chainsOf(model, { hidden: true }).bodies) if (c.features.some((f) => f.name === feature)) return c.name;
+  for (const c of chainsOf(model, { hidden: true }).bodies) if (c.steps.some((f) => f.name === feature)) return c.name;
   return null;
 }
 

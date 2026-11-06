@@ -137,9 +137,11 @@ test("the toolbar has a button per registered tool: its icon, with a tooltip and
   // A group's members share its one button, which shows the first of them
   // until another is armed (docs/plans/toolbar-groups.md): the polygon and the
   // slot are behind the rectangle's (docs/plans/sketch-shapes.md), and
-  // constrain behind dimension's, the relate group's (tool.ts, TOOL_GROUPS).
+  // constrain behind dimension's, the relate group's (tool.ts, TOOL_GROUPS),
+  // and the solids module's round and chamfer behind the fillet's, the
+  // modify group's (docs/plans/solid-fillets.md).
   const tools = ((await app.repl("tools()")).value as string[]).map((t) => t.split(" ")[0])
-    .filter((t) => t !== "circle3" && t !== "arc3" && t !== "polygon" && t !== "slot" && t !== "region" && t !== "constrain");
+    .filter((t) => !["circle3", "arc3", "polygon", "slot", "region", "constrain", "round", "chamfer"].includes(t));
   const buttons = await app.page.$$eval("#toolbar button", (els) =>
     els.map((el) => ({
       tool: (el as HTMLElement).dataset.tool,

@@ -681,8 +681,51 @@ export interface RevolveFeature {
   owns: string[];
 }
 
-/** Every kind of feature there is. */
+/** Every kind of feature a profile is swept into. A blend (below) is the other kind of feature, and is kept apart. */
 export type FeatureEntry = ExtrudeFeature | RevolveFeature;
+
+/**
+ * A **fillet** or a **chamfer** of a body's edges (docs/plans/solid-fillets.md):
+ * a feature in the body's chain like an add or a cut, applied to the body as
+ * the features made before it left it. It has no profile and makes no entity:
+ * its edges are the *solid kernel's*, named by the two faces each lies between
+ * (`e1.lid|e1.m0`, src/solids/naming.ts), and the shape it makes is the
+ * kernel's — derived, every rebuild, never stored. What is relational is the
+ * one number, a dimension (`filletRadius` / `chamferSetback`), so it is
+ * `set`, driven and undone like any dimension.
+ *
+ * **Kept in a registry of its own** (`Model.blends`), not among `features`:
+ * every reader of `features` — regeneration, holes, the twins, sketch on a
+ * face, the faces drawn — reads a sweep's profile, and a blend has none. It
+ * shares their names (`e3`), their organiser rows, `hide`, `del` and `edit`.
+ *
+ * **Identity is by name, so it follows the body's history.** A rebuild that
+ * keeps an edge's two faces keeps the edge, whatever else moved; a change that
+ * takes an edge (a cut through it) leaves that name out of the fillet, and the
+ * log says so; a fillet none of whose edges is left is left out of the body.
+ * `into` is the body's first feature, resolved at the call (as an add's is),
+ * and not among `names`: deleting the body leaves the record, said, as a cut
+ * whose body is gone is.
+ */
+export interface BlendFeature {
+  kind: "fillet" | "chamfer";
+  name: string;
+  /** The body it rounds: its first feature's name. */
+  into: string;
+  /** The kernel's edges, by name, in the order picked — face `i` it makes is `e3.fi`. */
+  edges: string[];
+  /** The dimension holding the radius (a fillet) or the setback (a chamfer). */
+  size: string;
+  /** Everything the record refers to: its dimension. */
+  names: string[];
+  /** What deleting it takes: its dimension. */
+  owns: string[];
+}
+
+/** Whether a step of a body's chain is a fillet or chamfer rather than a sweep. */
+export function isBlendFeature(f: FeatureEntry | BlendFeature): f is BlendFeature {
+  return f.kind === "fillet" || f.kind === "chamfer";
+}
 
 /**
  * What a feature does to a body (docs/plans/solids-kernel.md): **new** is a
@@ -802,6 +845,8 @@ export class Model {
   relations = new Map<string, RelationEntry>();
   /** Named features — `e1`, `e2`, … — in the order they were made. See `FeatureEntry`. */
   features = new Map<string, FeatureEntry>();
+  /** Named fillets and chamfers — `e3` — in the order they were made, numbered with the features. See `BlendFeature`. */
+  blends = new Map<string, BlendFeature>();
   /** Named groups — `g1`, `g2`, … — in the order they were made. See `GroupEntry`. */
   groups = new Map<string, GroupEntry>();
   /** Named regions — `rg1`, `rg2`, … — in the order they were made. See `RegionEntry`. */
@@ -959,8 +1004,8 @@ export class Model {
   has(name: string): boolean {
     // The origin answers too, so nothing can be made under its name.
     return (name === ORIGIN && framesExistIn(this.dim))
-      || this.entities.has(name) || this.relations.has(name) || this.features.has(name) || this.groups.has(name)
-      || this.regions.has(name);
+      || this.entities.has(name) || this.relations.has(name) || this.features.has(name) || this.blends.has(name)
+      || this.groups.has(name) || this.regions.has(name);
   }
 
   /** Whether `name` is a frame: one a user made, or the origin. */
@@ -1177,8 +1222,39 @@ export class Model {
     return entry;
   }
 
+  /**
+   * Registers a fillet or chamfer under a fresh `eN` — the features' counter,
+   * so the number says where it falls in its body's chain — and returns it.
+   * Checked as a feature's record is. Journals nothing: the operation is the
+   * entry (blends.ts).
+   */
+  addBlend(blend: Omit<BlendFeature, "name">): BlendFeature {
+    this.checkFeature(blend);
+    const name = this.claimName("e");
+    const entry: BlendFeature = { ...blend, name };
+    this.blends.set(name, entry);
+    return entry;
+  }
+
+  /** Replaces a blend's record in place — same name, same place in its chain — as `rewriteFeature` does a sweep's. */
+  rewriteBlend(name: string, blend: Omit<BlendFeature, "name">): BlendFeature {
+    const was = this.blendOf(name);
+    if (was.kind !== blend.kind) throw new Error(`"${name}" is a ${was.kind} — its record cannot become a ${blend.kind}`);
+    this.checkFeature(blend);
+    const entry: BlendFeature = { ...blend, name };
+    this.blends.set(name, entry);
+    return entry;
+  }
+
+  /** The fillet or chamfer called `name`. */
+  blendOf(name: string): BlendFeature {
+    const b = this.blends.get(name);
+    if (!b) throw new Error(`"${name}" is not a fillet or a chamfer`);
+    return b;
+  }
+
   /** Every name a record gives answers to something, and it owns only what it names. */
-  private checkFeature(feature: FeatureDraft): void {
+  private checkFeature(feature: Pick<FeatureDraft, "names" | "owns">): void {
     for (const n of feature.names) {
       if (!this.entities.has(n) && !this.relations.has(n)) throw new Error(`a feature cannot name "${n}" — there is no such thing`);
     }
@@ -1209,6 +1285,11 @@ export class Model {
    */
   featuresNaming(name: string): FeatureEntry[] {
     return [...this.features.values()].filter((f) => f.names.includes(name));
+  }
+
+  /** Every fillet and chamfer whose record names `name` — its dimension. `featuresNaming`'s question of the blends. */
+  blendsNaming(name: string): BlendFeature[] {
+    return [...this.blends.values()].filter((f) => f.names.includes(name));
   }
 
   /**
@@ -1938,7 +2019,7 @@ export class Model {
    */
   deleteRelation(name: string): void {
     const r = this.relationOf(name);
-    const featured = this.featuresNaming(name);
+    const featured = [...this.featuresNaming(name), ...this.blendsNaming(name)];
     if (featured.length) {
       throw new Error(`"${name}" is still part of ${featured.map((f) => f.name).join(", ")}`);
     }
@@ -1956,7 +2037,10 @@ export class Model {
    * record, so nothing can refuse it.
    */
   deleteFeature(name: string): void {
-    this.featureOf(name);
+    // A fillet's or chamfer's record goes by the same primitive: one name
+    // space, one journal op for "this record, and only it".
+    if (this.blends.has(name)) this.blends.delete(name);
+    else this.featureOf(name);
     this.features.delete(name);
     this.hidden.delete(name);
     this.record("deleteFeature", [name]);
@@ -2085,7 +2169,7 @@ export class Model {
   membersOf(name: string): readonly string[] | null {
     const g = this.groups.get(name);
     if (g) return g.members;
-    const f = this.features.get(name);
+    const f = this.features.get(name) ?? this.blends.get(name);
     return f ? f.owns : null;
   }
 
@@ -2102,7 +2186,7 @@ export class Model {
     for (const n of names) {
       const set = this.membersOf(n);
       if (set) {
-        if (withFeatures && this.features.has(n)) out.add(n);
+        if (withFeatures && (this.features.has(n) || this.blends.has(n))) out.add(n);
         for (const m of set) out.add(m);
       } else if (this.entities.has(n) || this.relations.has(n)) {
         out.add(n);

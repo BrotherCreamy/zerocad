@@ -251,6 +251,7 @@ function menuOf(model: Model, pick: Pick | null, region: RegionHit | null, selec
       ],
     };
   }
+  if (pick.kind === "edge") return edgeMenu(pick);
   const menu = pick.kind === "relation" ? relationMenu(model, pick) : entityMenu(model, pick);
   menu.items.push(...selectGroupItems(model, pick.name));
   // The one thing selected is the thing clicked: its own menu, whose Delete
@@ -262,6 +263,22 @@ function menuOf(model: Model, pick: Pick | null, region: RegionHit | null, selec
     menu.items.splice(at, 0, ...extra);
   }
   return menu;
+}
+
+/**
+ * A kernel body's edge (docs/plans/solid-fillets.md): its hover line as the
+ * header, and Fillet… and Chamfer…, each putting the call in the command line
+ * up to its size, to finish as Set value… does — the menu only ever types.
+ */
+function edgeMenu(pick: Pick): Menu {
+  const head = `${quoted(pick.body ?? "e1")}, [${quoted(pick.name)}], `;
+  return {
+    header: pick.tag ?? pick.name,
+    items: [
+      { label: "Fillet…", action: { do: "type", text: `fillet(${head}` } },
+      { label: "Chamfer…", action: { do: "type", text: `chamfer(${head}` } },
+    ],
+  };
 }
 
 function relationMenu(model: Model, pick: Pick): Menu {

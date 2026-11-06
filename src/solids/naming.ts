@@ -16,8 +16,11 @@
 // piece of it, which is what survives a hole dragged across the wall (each
 // piece is told apart by its neighbours, `piece`, for whoever needs one; that
 // part of a name does not survive a change of topology, and is never stored).
-// A face a fillet or chamfer *makes* has no tag; it is named by the faces it
-// blends. An edge is named by its two faces' names.
+// A face a fillet or chamfer *makes* comes out of the kernel with no tag; a
+// blend feature tags each one after the edge it was made of (`e3.f0`, the face
+// fillet e3 made of the first edge it names — docs/plans/solid-fillets.md), and
+// a face no one tags is named by the faces it blends (`blend(e1.lid,e1.m0)`).
+// An edge is named by its two faces' names.
 //
 // Measured through changes of topology (test/solidsidentity.test.ts): a pocket
 // deepened until it breaks through loses its floor, `e2.lid`, and nothing
@@ -136,21 +139,43 @@ export interface Names {
   ambiguous: number;
 }
 
-/** A tag's feature number and its role's name: `base`, `lid`, `m3` (the face swept from member 3), primed for an offset. */
-export function tagParts(t: number): { feature: number; role: string; member: number | null } {
+/**
+ * A tag's feature number and its role's name: `base`, `lid`, `m3` (the face
+ * swept from member 3), primed for an offset — or, for a feature in `blends`
+ * (a fillet's or a chamfer's, docs/plans/solid-fillets.md), `f3`: the face it
+ * made of the fourth edge it names. A blend makes no base, lid or member face,
+ * so its faces take the member roles, counted over its edges instead.
+ */
+export function tagParts(t: number, blends: ReadonlySet<number> = NO_BLENDS): { feature: number; role: string; member: number | null } {
   const f = Math.floor(t / 1000), r0 = t % 1000;
   const r = r0 % ROLE_OFFSET;
   const member = r >= ROLE_MEMBER ? r - ROLE_MEMBER : null;
+  if (member !== null && blends.has(f)) return { feature: f, role: `f${member}`, member };
   const role = r === ROLE_BASE ? "base" : r === ROLE_LID ? "lid" : `m${member}`;
   return { feature: f, role: `${role}${r0 >= ROLE_OFFSET ? "'" : ""}`, member };
 }
 
-/** A tag's name: the feature's (`prefix` and its number) and the role, `e1.lid`. */
-export function tagName(t: number, prefix = "F"): string {
+const NO_BLENDS: ReadonlySet<number> = new Set();
+
+/** A tag's name: the feature's (`prefix` and its number) and the role, `e1.lid` — or `e3.f0`, a blend's face. */
+export function tagName(t: number, prefix = "F", blends: ReadonlySet<number> = NO_BLENDS): string {
   if (t < 0) return "?";
-  const { feature, role } = tagParts(t);
+  const { feature, role } = tagParts(t, blends);
   return `${prefix}${feature}.${role}`;
 }
+
+/**
+ * The tag of the face a blend made of its edge `edge` (its place in the
+ * blend's list): the member role of that index, which `tagParts` names `f…`
+ * for a blend. At most 498 edges a blend before the tag runs into the offset
+ * roles — the evaluator refuses more rather than misname them.
+ */
+export function blendTag(feature: number, edge: number): number {
+  return feature * 1000 + ROLE_MEMBER + edge;
+}
+
+/** How many edges one blend can name and tag apart (see `blendTag`). */
+export const BLEND_EDGES = ROLE_OFFSET - ROLE_MEMBER;
 
 /**
  * Name every face and edge of a solid from its tags: a tagged face by its tag,
@@ -162,13 +187,14 @@ export function nameAll(k: SolidKernel, s: Solid, prefix = "F"): Names {
 }
 
 /** `nameAll` over faces and edges already asked for. */
-export function namesOf(faces: readonly { tag: number }[], edges: readonly { faces: [number, number] }[], prefix = "F"): Names {
+export function namesOf(faces: readonly { tag: number }[], edges: readonly { faces: [number, number] }[], prefix = "F",
+  blends: ReadonlySet<number> = NO_BLENDS): Names {
   const neighbours: Set<number>[] = faces.map(() => new Set());
   for (const e of edges) {
     const [a, b] = e.faces;
     if (a >= 0 && b >= 0 && a !== b) { neighbours[a].add(b); neighbours[b].add(a); }
   }
-  const base = faces.map((f) => tagName(f.tag, prefix));
+  const base = faces.map((f) => tagName(f.tag, prefix, blends));
   const count = new Map<string, number>();
   for (const n of base) count.set(n, (count.get(n) ?? 0) + 1);
   const untagged = faces.filter((f) => f.tag < 0).length;

@@ -1908,6 +1908,64 @@ starts.
         fillet and chamfer (the owner, 2026-11-06: *"also fillets and
         chamfers for surfaces"*; one modify tool for solids and surfaces)
         are operations, nothing negative.
+        - [x] **Solid fillets and chamfers — BUILT (2026-11-05)**, on
+          `claude/solid-fillets`; the spec's *As built* has the detail and
+          the OpenCascade table. Kernel edges pick (hover names them, click,
+          shift, box, a finger, a right-click's Fillet… / Chamfer…); a
+          fillet or chamfer is a feature in the body's chain (`fillet("e1",
+          [edges], r)`, `chamfer(...)`, the round and chamfer tools on the
+          modify button), its size a dimension, its preview the kernel's,
+          its radius a label dragged on the drawing; identity by name through
+          cuts; STEP B-splines read valid by OpenCascade both ways; 200
+          rebuilds of the leaking case at 46 MB of 256 (150 kB a rebuild;
+          upstream's `main` is still the pin). **Vetoable, each a decision:**
+          - **Tangent chains on by default** (the option `tangent`); a chain
+            runs on through an earlier fillet's end arc, as Onshape's does.
+          - **Equal setback only** for the chamfer; two distances, or a
+            distance and an angle, when asked.
+          - **Out of scope, written down:** variable-radius fillets, face
+            fillets (`surfaces.md`), setback corners, hold-line fillets.
+          - **The tools are `round` and `chamfer`** (an icon's name is one
+            word; `fillet` is the sketch's corner fillet); the typed call is
+            `fillet` with a list of edges, journalled `filletEdges`.
+          - **A blend's faces are `e3.f0`, `e3.f1` …** (face *i* made of its
+            edge *i*), for the spec's `fillet.n`.
+          - **Blends live in `model.blends`**, not `model.features`, sharing
+            names, del, hide, edit and the organiser.
+          - **A kernel edge outranks the skeleton it lies along** (twins,
+            walls, whole profile members) in every view, a press on it still
+            dragging that skeleton; a point and a partial profile line keep
+            their picks.
+          - **A plain extrude has kernel edges only while round or chamfer is
+            armed** (the Worker starts then), or once rounded; a twin line
+            selected before arming is not turned into its kernel edge.
+          - **A face click takes its edges; a second click the body's.** A
+            click on a picked edge drops it (no "second click confirms" for
+            edges).
+          - **A blend's refusal is soft** — the body without it is drawn —
+            where a failed boolean keeps the last good body.
+          - **The radius label is drawn on the first face the blend made**,
+            dragged in the tool and the edit dialog; the committed `R3` is
+            set by Set value… or `set`.
+          - **A chamfer's flat faces are written as the kernel's B-splines**,
+            not `PLANE`, its file at 10⁻⁵.
+          - **The organiser's row reads `fillet` / `chamfer`**; the chain signs
+            them `⌒` / `⌔`.
+          - **The spec's closed form was four times too big** — (4 − π) r² L;
+            the tests use (4 − π)/4 · r² · L.
+        - [ ] **Found, still to do (solid fillets):**
+          - SMLib will not fillet an edge that runs into an earlier fillet at
+            a corner (both in one call works); a test pins it. Report upstream
+            with the leak, or merge adjacent fillets of one radius into one
+            kernel call.
+          - The tessellation follows the radius (10° facets) but not the
+            zoom: at 4× an r 3 fillet's flat facets show faint steps. Smooth
+            shading, or re-tessellating with the zoom.
+          - On a phone, the lifted mark reveals a corner under the finger
+            while it drags the radius label (the engine's, not the tool's).
+          - Delete with only kernel edges selected deletes nothing; Group and
+            Hide take no edge either.
+          - Not tried on an iPhone.
 
 - [x] **Files — open, save, share, drop, autosave — BUILT (2026-11-04).**
       The owner: *"I want to be able to open files on my phone, share files

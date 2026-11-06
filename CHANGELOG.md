@@ -7,6 +7,48 @@ decisions.
 
 ---
 
+## Fillets and chamfers of a body's edges, and kernel edges a hand can pick
+
+The owner: *"please add solid and surface fillet tools if possible (after you
+do the nurbs conversion)"*. The solid fillet and the chamfer are built to
+[`docs/plans/solid-fillets.md`](docs/plans/solid-fillets.md); the surface
+fillet waits for surfaces ([`surfaces.md`](docs/plans/surfaces.md)). Every
+deviation is in the spec's *As built*.
+
+- **A body's edges pick.** Each kernel edge is named by its two faces,
+  `e1.lid|e1.m0`. Hover one and the tag names it (`… edge of e1  len 47`). A
+  click selects it, shift adds one, a box catches them, a finger reaches them.
+  A right-click offers Fillet… and Chamfer…. A press on an edge still drags the
+  lid line under it, so resizing a body by its edge works as it did.
+- **Fillet** — `fillet("e1", ["e1.lid|e1.m0", …], 3)`, or the **round** tool
+  on the modify button. It is a feature in the body's chain, after what it
+  rounds and before whatever comes next, and its radius is a dimension:
+  `set`, undo and Set value… work as for any. Click edges, a face for its
+  edges, the face again for the whole body; tangent chains take a rounded rim
+  whole. The preview is the kernel's own body, shaded across the blend,
+  standing in for the body until ✓. Drag the `R3` label on the drawing to
+  change the radius. `edit("e3")` opens it again.
+- **Chamfer** — `chamfer("e1", [...], 2)`, or the chamfer tool: the same, with
+  one setback along both faces.
+- **Identity by name.** A cut that takes a filleted edge leaves it out of its
+  fillet and says so. A notch that splits the edge leaves both pieces rounded.
+  A thicker plate keeps every name.
+- **STEP** writes a fillet's faces as the kernel's B-splines. OpenCascade 8.0.1
+  read a filleted, a rounded-outline and a chamfered part as valid closed
+  solids, healed and strict, with volumes equal to the closed forms (table in
+  the spec).
+- **Memory:** 200 rebuilds of the spike's leaking fillet leak 150 kB each, and
+  peak at 46 MB of the Worker's 256 MB. Upstream has no newer version that
+  might fix it.
+
+**Not done:** variable radius, face fillets, setback corners, two-distance
+chamfers. SMLib also will not fillet an edge that runs into an earlier fillet
+at a corner; the refusal says to add the edge to that fillet instead. Looking
+found four bugs, now fixed and listed in ARCHITECTURE. Pictures:
+[167](docs/images/167-the-round-tool-armed-a-kernel-edge-lit-under-the-cursor.png)–[176](docs/images/176-phone-the-finger-holds-the-radius-label-the-preview-follows.png).
+Tests: unit 1435 → 1453 (+18; 1477 merged with regions as operations), e2e +11; the gate, merged: typecheck 0, unit 1477/1477, kernel 11, e2e 592 in sets of four files — 591 pass, 0 fail, 1 skipped. **Not tried on an iPhone**: try
+filleting a lid's edge and dragging the radius label.
+
 ## Regions as operations: a face is a face, and a region is faces combined by named operations
 
 The owner: *"rather than auto detecting regions + things inside that region

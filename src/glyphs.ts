@@ -322,6 +322,17 @@ export function labelFor(op: string, args: unknown[]): string | null {
       const v = args[1];
       return typeof v === "number" ? `${formatValue((v * 180) / Math.PI)}°` : null;
     }
+    // A fillet's radius is a radius, written as `rad`'s; a chamfer's setback
+    // the drafting way, `C2` — an equal setback along both faces
+    // (docs/plans/solid-fillets.md).
+    case "filletRadius": {
+      const v = args[0];
+      return typeof v === "number" ? `R${formatValue(v)}` : null;
+    }
+    case "chamferSetback": {
+      const v = args[0];
+      return typeof v === "number" ? `C${formatValue(v)}` : null;
+    }
     default:
       return null;
   }
@@ -605,6 +616,22 @@ function anchorIfGeometry(model: Model, view: View, arg: unknown): Anchor[] {
   return isGeometry(model, arg) ? [atEntity(model, view, str(arg))] : [];
 }
 
+/** Where a glyph belongs, for an anchor placed from outside (`defineGlyphAnchor`). */
+export type GlyphAnchor = Anchor;
+
+const ANCHORS = new Map<string, (model: Model, view: View, r: RelationEntry) => Anchor[]>();
+
+/**
+ * Says where the glyphs of relations made by `op` go, for a relation whose
+ * place in the drawing is not the model's to know: a fillet's radius sits on
+ * the face the solid kernel made (docs/plans/solid-fillets.md), which only the
+ * host, holding the kernel's answer, can find. An empty list places none —
+ * a body the kernel has not answered for yet has nowhere to put it.
+ */
+export function defineGlyphAnchor(op: string, place: (model: Model, view: View, r: RelationEntry) => Anchor[]): void {
+  ANCHORS.set(op, place);
+}
+
 /**
  * Where a relation's glyphs go — one anchor per glyph, so the relations that
  * are a claim about *two* things (parallel, equal length, symmetric) get a mark
@@ -613,6 +640,8 @@ function anchorIfGeometry(model: Model, view: View, arg: unknown): Anchor[] {
  * pair.
  */
 function anchorsFor(model: Model, view: View, r: RelationEntry): Anchor[] {
+  const placed = ANCHORS.get(r.op);
+  if (placed) return placed(model, view, r);
   const args = r.args;
   switch (r.op) {
     case "coincident":

@@ -235,14 +235,52 @@ export const SELECTION = "#c46cff";
 export class Selection {
   private picked: string[] = [];
   readonly regions = new RegionSelection();
+  /**
+   * **Kernel edges** picked (docs/plans/solid-fillets.md): edges of bodies the
+   * solid kernel built, by name (`e1.lid|e1.m0`) — no entity's, so kept apart
+   * from `names`, which the model prunes. A click, a shift-click and a box
+   * select them as they do entities; the fillet and chamfer tools start from
+   * them. Pruned by the host against the bodies on screen (`pruneEdges`).
+   */
+  private edgeNames: string[] = [];
 
   /** The names, in the order picked. */
   get names(): readonly string[] {
     return this.picked;
   }
 
+  /** The kernel edges, in the order picked. */
+  get edges(): readonly string[] {
+    return this.edgeNames;
+  }
+
   get size(): number {
-    return this.picked.length + this.regions.size;
+    return this.picked.length + this.regions.size + this.edgeNames.length;
+  }
+
+  /** A plain click on an edge: it and nothing else. */
+  onlyEdge(name: string): void {
+    this.picked = [];
+    this.regions.clear();
+    this.edgeNames = [name];
+  }
+
+  /** A shift-click (or a tap, once something is selected) on an edge: in if it was out, out if it was in. */
+  toggleEdge(name: string): void {
+    const at = this.edgeNames.indexOf(name);
+    if (at === -1) this.edgeNames.push(name);
+    else this.edgeNames.splice(at, 1);
+  }
+
+  /** A box's edges: added (a shift-box, a finger's) or exactly these (a plain box, after `set`). */
+  addEdges(names: readonly string[]): void {
+    for (const n of names) if (!this.edgeNames.includes(n)) this.edgeNames.push(n);
+  }
+
+  /** Drops the edges no body on screen has any more — asked every frame, as `prune` is. */
+  pruneEdges(present: (name: string) => boolean): readonly string[] {
+    this.edgeNames = this.edgeNames.filter(present);
+    return this.edgeNames;
   }
 
   has(name: string): boolean {
@@ -253,6 +291,7 @@ export class Selection {
   only(name: string): void {
     this.picked = [name];
     this.regions.clear();
+    this.edgeNames = [];
   }
 
   /** A shift-click: in if it was out, out if it was in. Regions are left alone. */
@@ -271,6 +310,7 @@ export class Selection {
   set(names: readonly string[]): void {
     this.picked = [...new Set(names)];
     this.regions.clear();
+    this.edgeNames = [];
   }
 
   /** Drops everything, answering whether there was anything to drop. */
@@ -278,6 +318,7 @@ export class Selection {
     const had = this.size > 0;
     this.picked = [];
     this.regions.clear();
+    this.edgeNames = [];
     return had;
   }
 

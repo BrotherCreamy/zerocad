@@ -29,13 +29,13 @@
 // layer, the painter's, the occlusion answer and the quiet set take a
 // kernel's body exactly as they take an extrude's.
 
-import type { FeatureEntry, Model } from "./model.ts";
+import { isBlendFeature, type FeatureEntry, type Model } from "./model.ts";
 import { chainsOf, interiorPoint, modeOf, type Chain } from "./modes.ts";
 import { insideProfile } from "./solids/profile.ts";
 import { kernelSweep } from "./solids.ts";
 import type { Face } from "./faces.ts";
 import { depth, viewAxes, worldToScreen, type View } from "./view.ts";
-import { nodeKeys, type BodyResult, type NodeOp, type Program, type ProgramResult, type SweepNode } from "./solids/evaluate.ts";
+import { isBlend, nodeKeys, type BlendNode, type BodyResult, type Node, type NodeOp, type Program, type ProgramResult } from "./solids/evaluate.ts";
 import { tagParts } from "./solids/naming.ts";
 import type { SolidsClient } from "./solids/client.ts";
 import type { Topology } from "./solids/kernel.ts";
@@ -62,32 +62,70 @@ export interface ProgramOf {
   chains: Map<string, Chain>;
   /** Features that could not be laid out (no depth, a collapsed plane), and why. */
   skipped: { feature: string; why: string }[];
+  /** The preview tried in it, if any. */
+  trial?: BlendTrial;
+}
+
+/**
+ * A fillet or chamfer **tried** in a body's chain and not made — what the
+ * fillet tool and its edit dialog preview (docs/plans/solid-fillets.md): the
+ * kernel builds the body with `node` in its chain, appended, or in place of
+ * the blend numbered `replace` (an edit), and the answer is drawn in the
+ * body's place until the trial ends. Its own key, so the body's cache keeps
+ * everything before it and a drag of the radius rebuilds only the blend.
+ */
+export interface BlendTrial {
+  body: string;
+  node: BlendNode;
+  replace?: number;
 }
 
 /**
  * The program for the model's bodies of two or more features — or every body,
- * with `all` (the tests measure single features against solids.ts that way).
+ * with `all` (the tests measure single features against solids.ts that way) —
+ * with `trial` tried in its body's chain.
  */
-export function programOf(model: Model, all = false): ProgramOf {
+export function programOf(model: Model, all = false, trial: BlendTrial | null = null): ProgramOf {
   const chains = new Map<string, Chain>();
   const skipped: ProgramOf["skipped"] = [];
   const bodies: Program["bodies"] = [];
   for (const chain of chainsOf(model).bodies) {
-    if (!all && chain.features.length < 2) continue;
-    const nodes: SweepNode[] = [];
-    for (const f of chain.features) {
+    const tried = trial !== null && trial.body === chain.name;
+    // A body of one sweep is faces.ts's — unless it is rounded: a fillet is
+    // the kernel's alone, so one extrude and its fillet is a kernel body.
+    if (!all && chain.steps.length < 2 && !tried) continue;
+    const nodes: Node[] = [];
+    for (const f of chain.steps) {
+      if (isBlendFeature(f)) {
+        // Before the first sweep is laid out there is nothing to round: left
+        // out with the sweep that could not be, which is said already.
+        if (!nodes.length) continue;
+        const size = model.relations.get(f.size)?.args[0];
+        nodes.push({ id: featureId(f.name), op: f.kind, edges: [...f.edges], size: typeof size === "number" ? size : NaN });
+        continue;
+      }
+      const sw = f;
       try {
-        const { at, profile, sweep } = kernelSweep(model, f);
-        nodes.push({ id: featureId(f.name), op: nodes.length === 0 ? "new" : OPS[modeOf(f)], sweep, profile, at });
+        const { at, profile, sweep } = kernelSweep(model, sw);
+        nodes.push({ id: featureId(f.name), op: nodes.length === 0 ? "new" : OPS[modeOf(sw)], sweep, profile, at });
       } catch (e) {
         skipped.push({ feature: f.name, why: e instanceof Error ? e.message : String(e) });
       }
     }
     if (!nodes.length) continue;
+    if (tried) {
+      const at = trial.replace === undefined ? -1 : nodes.findIndex((n) => n.id === trial.replace);
+      if (at >= 0) nodes[at] = trial.node;
+      // A new blend's trial steps aside once the blend it previews is made:
+      // between ✓ and the tool letting go, both would be in the chain, and the
+      // second would find its edges already rounded (seen in the browser: a
+      // refusal logged for a fillet that had just succeeded).
+      else if (!nodes.some((n) => n.id === trial.node.id)) nodes.push(trial.node);
+    }
     chains.set(chain.name, chain);
     bodies.push({ name: chain.name, nodes });
   }
-  return { program: { bodies, prefix: PREFIX, chord: CHORD, angle: ANGLE }, chains, skipped };
+  return { program: { bodies, prefix: PREFIX, chord: CHORD, angle: ANGLE }, chains, skipped, ...(trial ? { trial } : {}) };
 }
 
 // ---- the kernel's answer, as faces --------------------------------------------------
@@ -279,6 +317,42 @@ export class Bodies {
   /** How many answers have arrived — what a test waits on. */
   answers = 0;
 
+  /** The fillet or chamfer being previewed, if any (`BlendTrial`). */
+  private trying: BlendTrial | null = null;
+  /**
+   * The body as the trial last built it — drawn in the body's place while the
+   * trial is up, and after it ends until the body's own next answer arrives,
+   * so neither ✓ nor ✗ flashes the body as it was (the last good body stands
+   * until the new one arrives, as a drag's does).
+   */
+  private tried: BodyView | null = null;
+  /** The kernel's refusal of the trial's blend, as last answered; null when it took. */
+  private triedWhy: string | null = null;
+
+  /**
+   * Tries a fillet or chamfer in its body's chain (the preview), or ends the
+   * trial with null. Read by the next `sync`, which every frame calls.
+   */
+  trial(t: BlendTrial | null): boolean {
+    if (JSON.stringify(t) === JSON.stringify(this.trying)) return false;
+    this.trying = t;
+    this.triedWhy = null;
+    return true;
+  }
+
+  /**
+   * Whether every body is the kernel's, a body of one sweep included — while a
+   * tool that works on kernel edges is armed, so a plain extruded box has
+   * edges to pick. Off, a body of one sweep is faces.ts's (and no Worker is
+   * started for a drawing with no boolean in it).
+   */
+  everything = false;
+
+  /** Whether the trial's answer is in, and the kernel's refusal of it if it refused. */
+  trialAnswer(): { settled: boolean; why: string | null } {
+    return { settled: this.trying !== null && this.settled, why: this.triedWhy };
+  }
+
   constructor(client: SolidsClient | null, onChange: () => void) {
     this.client = client;
     this.onChange = onChange;
@@ -290,7 +364,7 @@ export class Bodies {
    */
   sync(model: Model): void {
     this.model = model;
-    const p = programOf(model);
+    const p = programOf(model, this.everything, this.trying);
     this.current = p;
     const text = JSON.stringify(p.program);
     if (text === this.sent) return;
@@ -355,23 +429,55 @@ export class Bodies {
       const result = b.cached && prev ? { ...prev, ms: 0 } : b;
       this.latest.set(b.name, result);
       const features = p.chains.get(b.name)?.features.map((f) => f.name) ?? [];
+      // The trial's body: its answer is the preview, kept apart from the last
+      // good body. A blend the kernel refuses keeps the preview it had — the
+      // body without it would read as the fillet vanishing — and says why.
+      const trial = p.trial?.body === b.name ? p.trial : null;
+      if (trial) {
+        // An answer to a trial since ended or changed says nothing about the one up now.
+        if (JSON.stringify(trial) !== JSON.stringify(this.trying)) continue;
+        const refused = result.failed.find((f) => f.id === trial.node.id);
+        this.triedWhy = refused ? refused.why : null;
+        if (!refused && result.solid) this.tried = { name: b.name, features, result, faces: bodyFaces(result) };
+        continue;
+      }
+      if (this.tried?.name === b.name) this.tried = null;
       // A body with a refusal keeps its last good solid — unless it has none,
       // when the best the kernel could do is better than nothing.
       const had = this.good.get(b.name);
       if (!result.solid) continue;
-      if (result.failed.length && had && had.features.join() === features.join()) continue;
+      // A fillet or chamfer refused is left out and the rest of the body
+      // stands — the body without it is the body now (a cut that took its
+      // edges is drawn cut). Any other refusal keeps the last good body.
+      const blends = new Set(p.program.bodies.find((x) => x.name === b.name)?.nodes.filter(isBlend).map((n) => n.id) ?? []);
+      const refused = result.failed.filter((f) => !blends.has(f.id));
+      if (refused.length && had && had.features.join() === features.join()) continue;
       if (had && had.result.key === result.key) continue;
       this.good.set(b.name, { name: b.name, features, result, faces: bodyFaces(result) });
     }
     for (const n of [...this.good.keys()]) if (!names.has(n)) this.good.delete(n);
+    if (this.tried && !names.has(this.tried.name)) this.tried = null;
     for (const n of [...this.latest.keys()]) if (!names.has(n)) this.latest.delete(n);
   }
 
   /** The views to draw: each kernel body's last good one, where it is of the body's features as they are now. */
   views(): BodyView[] {
+    return this.viewsOf(true);
+  }
+
+  /**
+   * The views without the trial's preview: the bodies as they are made — what
+   * a fillet's edges are picked on, so a click lands on the body being
+   * rounded and never on the preview of its rounding.
+   */
+  madeViews(): BodyView[] {
+    return this.viewsOf(false);
+  }
+
+  private viewsOf(withTrial: boolean): BodyView[] {
     const out: BodyView[] = [];
     for (const [name, chain] of this.current?.chains ?? []) {
-      const v = this.good.get(name);
+      const v = withTrial && this.tried?.name === name ? this.tried : this.good.get(name);
       if (v && v.features.join() === chain.features.map((f) => f.name).join()) out.push(v);
     }
     return out;
@@ -418,10 +524,10 @@ export class Bodies {
    * entities a click could otherwise find (a pocket's floor is the cut's lid
    * but the plate's lid is not there). `skip`: bodies not on screen.
    */
-  faceAt(view: View, sx: number, sy: number, hidden: ReadonlySet<string> = new Set()): SolidHit | null {
+  faceAt(view: View, sx: number, sy: number, hidden: ReadonlySet<string> = new Set(), made = false): SolidHit | null {
     const { toward } = viewAxes(view);
     let best: SolidHit | null = null;
-    for (const v of this.views()) {
+    for (const v of made ? this.madeViews() : this.views()) {
       if (hidden.has(v.name)) continue;
       for (const f of v.faces) {
         if (dot3(f.normal, toward) <= 1e-9) continue;
@@ -487,7 +593,17 @@ export class Bodies {
         }
       }
       const name = (id: number) => `${PREFIX}${id}`;
-      for (const f of r.failed) lines.push(`${name(f.id)} could not be applied to ${b.name}: ${f.why}`);
+      // A preview's refusal is the tool's to say (it does, as guidance), not
+      // the body's — nor is one from a preview since ended, whose answer is
+      // still the latest until the body's own arrives: only nodes the body has.
+      const trial = p.trial?.body === b.name ? p.trial.node.id : null;
+      const own = (id: number) => id !== trial && b.nodes.some((n) => n.id === id);
+      for (const f of r.failed) if (own(f.id)) lines.push(`${name(f.id)} could not be applied to ${b.name}: ${f.why}`);
+      // A fillet some of whose edges a change took (docs/plans/solid-fillets.md): the rest are still rounded.
+      for (const m of (r.missing ?? []).filter((x) => own(x.id))) {
+        const what = model?.blends.get(name(m.id))?.kind ?? "fillet";
+        lines.push(`${name(m.id)} no longer ${what === "fillet" ? "fillets" : "chamfers"} ${m.edges.join(", ")} — ${b.name} has no such edge now`);
+      }
       for (const i of r.idle) {
         const mode = model?.features.get(name(i.id)) ? modeOf(model.features.get(name(i.id)) as FeatureEntry) : "add";
         lines.push(mode === "cut" ? `${name(i.id)} cuts nothing from ${b.name} — it does not reach it`

@@ -25,6 +25,7 @@ import {
   add, construction, del, extrude, fillet, hole, intersect, loopOfMember, orientingPlane, peelOptions, regen, region,
   regionText, revolve, set, subtract, unhole,
 } from "./operations.ts";
+import { chamferEdges, describeBlend, filletEdges, setEdges } from "./blends.ts";
 import { planeAxes } from "./curveplane.ts";
 import { save as saveModel, savedTools } from "./persist.ts";
 import { fileNameFor } from "./files.ts";
@@ -664,8 +665,20 @@ export function neocadScope(h: EnvHandles): Bag {
     // No frame is made for the arc: it carries its own normal and its two
     // tangents hold it in the corner (docs/plans/frameless-curves.md). `side`
     // is the journal's — an old file's frame, translated — and never needs typing.
-    fillet: (l1: string, l2: string, r: number, side?: number[] | null, regenerated?: unknown) =>
-      fillet(model, l1, l2, r, side ?? null, regenerated),
+    //
+    // A list of edges second is the other fillet — a solid's edges, rounded
+    // by the solid kernel as a feature of the body (docs/plans/solid-fillets.md):
+    // `fillet("e1", ["e1.lid|e1.m0"], 3)`, journalled as `filletEdges`.
+    fillet: (l1: string, l2: string | string[], r: number, side?: number[] | null, regenerated?: unknown) =>
+      Array.isArray(l2) ? filletEdges(model, l1, l2, r) : fillet(model, l1, l2, r, side ?? null, regenerated),
+    /**
+     * Cuts a body's edges back by one setback along each face —
+     * `chamfer("e1", ["e1.lid|e1.m0"], 2)` — a feature of the body, its
+     * setback a dimension. See blends.ts.
+     */
+    chamfer: (feature: string, edges: string[], setback: number) => chamferEdges(model, feature, edges, setback),
+    /** A fillet's or chamfer's edges, replaced in place: `setEdges("e3", [...])` — the feature dialog's ✓. */
+    setEdges: (feature: string, edges: string[]) => setEdges(model, feature, edges),
     /**
      * Brings a feature back into step with its profile as it is now —
      * `regen("e1")` — keeping every twin and wall whose vertex or member is
@@ -999,6 +1012,8 @@ export function neocadScope(h: EnvHandles): Bag {
           const count = `    ${own.length} made${hid ? `, ${hid} hidden` : ""} — members(${JSON.stringify(f.name)}) lists them`;
           return [mark(f.name, describeFeature(model, f)), ...(own.length ? [count] : [])];
         }),
+        // Fillets and chamfers: what they round, and their size (blends.ts).
+        ...[...model.blends.values()].map((b) => `${mark(b.name, describeBlend(model, b))}\n    edges ${b.edges.join(" ")}`),
         ...[...model.groups.values()].map((g) => `${g.name}  group of ${g.members.length ? g.members.join(" ") : "nothing yet"}`
           + (model.openGroup === g.name ? "  (open — new geometry joins it)" : "")),
       ];
@@ -1040,6 +1055,15 @@ export function neocadScope(h: EnvHandles): Bag {
      * is not: it journals nothing.
      */
     edit: (feature: unknown) => {
+      // A fillet or chamfer: its edges lit, a click on an edge in or out, its
+      // size in the panel (tools/blend.ts's edit dialog).
+      if (typeof feature === "string" && model.blends.has(feature)) {
+        if (!h.arm) throw new Error("no viewport in this environment");
+        const b = model.blendOf(feature);
+        const size = model.relationOf(b.size).args[0] as number;
+        h.arm(`edit ${b.kind}`, { [b.kind === "fillet" ? "radius" : "setback"]: size }, feature);
+        return `editing ${feature}`;
+      }
       // A region: the region tool, armed on it (docs/plans/regions-as-operations.md).
       if (typeof feature === "string" && model.regions.has(feature)) {
         if (!h.arm) throw new Error("no viewport in this environment");

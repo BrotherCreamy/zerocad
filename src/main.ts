@@ -27,7 +27,7 @@ import { sampledWorld } from "./projection.ts";
 import { ContextMenu, menuFor } from "./menu.ts";
 import { toolUnavailable } from "./toolavail.ts";
 import { AXIS_INKS, frameArmPx, frameMarker } from "./framemarker.ts";
-import { constrainedBy, type Glyph } from "./glyphs.ts";
+import { constrainedBy, defineGlyphAnchor, type Glyph } from "./glyphs.ts";
 import { ENGINE_TOOLS, HAND, SELECT, armedLine, getToolCtor, groupCurrent, toolAlias, toolSummary, toolbarButtons, type ToolbarButton } from "./tools/tool.ts";
 import { activeWorkbench, fileMenuItems, getWorkbench, listWorkbenches, onWorkbench, setActiveWorkbench, DEFAULT_WORKBENCH } from "./modules.ts";
 import { WorkbenchFiles, indexedDbWorkbenches } from "./workbenchhost.ts";
@@ -45,11 +45,12 @@ import { Organiser, organiserSections, rowMenu } from "./organiser.ts";
 import { logoSvg } from "./logo.ts";
 import { GroupMemory, OptionMemory, declaredOptions, unitSymbol, type OptionValue } from "./tools/options.ts";
 import { toolIcon } from "./tools/icons.ts";
-import { depth, uiOf, viewAxes } from "./view.ts";
+import { depth, uiOf, viewAxes, worldToScreen } from "./view.ts";
 import { arcSamples, arcSegments, frameReach } from "./arcgeom.ts";
 import { curveFrame } from "./curveplane.ts";
 import { createFaceLayer, paintFaces } from "./facelayer.ts";
 import { Bodies } from "./bodies.ts";
+import { describeEdge, edgeAt, edgePoints, edgesInBox } from "./kerneledges.ts";
 import { solidsClient, solidsLicence } from "./solidshost.ts";
 import { kernelBody } from "./kernelbrep.ts";
 import type { KernelSolid } from "./step.ts";
@@ -518,6 +519,9 @@ async function main() {
     // The kernel's bodies, in place of their features' own faces: read the
     // program off the model (sent only when it changed) and take the last
     // good answer.
+    // A tool on kernel edges (fillet, chamfer) has every body built by the
+    // kernel while it is armed, a single extrude included, so it has edges.
+    solidBodies.everything = engine.active?.kernelEdges === true;
     solidBodies.sync(model);
     const kernelSolid = solidBodies.drawn();
     sayKernel();
@@ -637,6 +641,12 @@ async function main() {
     // entities, so a point's dot is over them.
     if (occluded && !opaque(viewMode)) hiddenKernelEdges();
     entityPass(edges, points, stroke, weight, lit, chosen);
+    // A kernel body's edges the hand is on, or that are selected
+    // (docs/plans/solid-fillets.md): drawn as the solid's edges are — along
+    // the kernel's own curve, through the same occlusion — in the hover's
+    // amber or the selection's violet, at their weights. On top of the
+    // entities, as a lit line is over the drawing it is part of.
+    litKernelEdges(hov?.kind === "edge" ? hov.name : null);
 
     // After the entities so a mark is never hidden by the drawing it describes,
     // and before the tool overlay so a gesture in progress stays on top of
@@ -835,6 +845,38 @@ async function main() {
           const pts: number[][] = [];
           for (let i = 0; i < line.points.length / 3; i++) pts.push([line.points[i * 3], line.points[i * 3 + 1], line.points[i * 3 + 2]]);
           if (pts.length > 1) strokeEdge(pts, false, SOLID_EDGE);
+        }
+      }
+    } finally {
+      g.lineWidth = width;
+    }
+  }
+
+  /**
+   * The kernel edges lit: the one hovered, in amber, and the selected ones, in
+   * violet — every kernel edge answering to the name (a split face's pieces
+   * share it), on the bodies as made rather than a preview of them.
+   */
+  function litKernelEdges(hovered: string | null) {
+    const views = solidBodies.madeViews();
+    if (!views.length) return;
+    const chosenEdges = new Set(engine.selection.pruneEdges((n) => views.some((v) => v.result.solid!.edges.some((e) => e.name === n))));
+    if (!hovered && !chosenEdges.size) return;
+    const width = g.lineWidth;
+    g.lineCap = "round";
+    try {
+      for (const v of views) {
+        if (model.hidden.has(v.name)) continue;
+        const s = v.result.solid!;
+        for (const line of s.lines) {
+          const name = s.edges[line.edge]?.name;
+          if (!name || name.endsWith(":seam")) continue;
+          const lit = name === hovered;
+          if (!lit && !chosenEdges.has(name)) continue;
+          const pts = edgePoints(v, line.edge);
+          if (pts.length < 2) continue;
+          g.lineWidth = lit ? 2.2 : 2.6;
+          strokeEdge(pts, false, lit ? "#e8a33d" : SELECTION);
         }
       }
     } finally {
@@ -1835,6 +1877,57 @@ async function main() {
   // A kernel body's faces are no loop of entities: sketch on face, and a
   // click inside a region, ask the kernel's picture what is under the pixel.
   engine.solidFaceAt = (sx, sy) => solidBodies.faceAt(view, sx, sy, model.hidden);
+  // A kernel body's edges, to the hand (docs/plans/solid-fillets.md): picked,
+  // boxed, named in the hover tag, and — for the fillet and chamfer tools —
+  // their bodies, faces and a preview of a blend in a body's chain. Picked on
+  // the bodies as made, never on a preview of one.
+  // A fillet's radius and a chamfer's setback are drawn on the first face the
+  // blend made — the kernel's face, which only this host holds — nudged off it
+  // along its outward normal as seen. None until the kernel has answered.
+  const blendAnchor = (m: Model, v: View, r: { name: string }) => {
+    const b = [...m.blends.values()].find((x) => x.size === r.name);
+    // Its own edit dialog draws the size where it is being changed.
+    if (b && engine.armed?.target === b.name) return [];
+    const body = b ? solidBodies.views().find((x) => x.name === b.into) : undefined;
+    const s = body?.result.solid;
+    if (!b || !body || !s) return [];
+    const fi = s.faces.findIndex((f) => f.name === `${b.name}.f0`);
+    if (fi < 0) return [];
+    const world = s.faces[fi].point;
+    const n = body.faces.find((t) => t.face === fi)?.normal ?? [0, 0, 1];
+    const [ax, ay] = worldToScreen(v, world);
+    const [bx, by] = worldToScreen(v, world.map((c, k) => c + n[k] * 10 / Math.max(v.scale, 1e-9)));
+    const len = Math.hypot(bx - ax, by - ay);
+    const dir: [number, number] = len > 1e-6 ? [(bx - ax) / len, (by - ay) / len] : [Math.SQRT1_2, Math.SQRT1_2];
+    return [{ world, dir, about: [] }];
+  };
+  defineGlyphAnchor("filletRadius", blendAnchor);
+  defineGlyphAnchor("chamferSetback", blendAnchor);
+  engine.solids = {
+    // What the kernel draws in an entity's place: a kernel body's twins, walls
+    // and whole profile members (quiet.ts's solid edges). A profile member that
+    // is only a portion of a longer line is still the sketch's (it runs past
+    // the solid), and keeps the pick — found by the hidden view's suite.
+    skeleton: (name) => {
+      const kernel = solidBodies.kernelFeatures();
+      return kernel.size > 0 && solidEdges(model, kernel).has(name);
+    },
+    edgePick: ([sx, sy], occ, reach) => {
+      const views = solidBodies.madeViews();
+      const hit = edgeAt(views, view, sx, sy, occ, reach, model.hidden);
+      if (!hit) return null;
+      const v = views.find((x) => x.name === hit.body)!;
+      const by = [...model.blends.values()].filter((b) => b.into === hit.body && b.edges.includes(hit.name)).map((b) => b.name);
+      return { name: hit.name, kind: "edge", distance: hit.distance, body: hit.body, tag: describeEdge(v, hit.name, by) };
+    },
+    edgesInBox: (rect, mode, occ) => edgesInBox(solidBodies.madeViews(), view, rect, mode, occ, model.hidden),
+    views: () => solidBodies.views(),
+    edgeAt: ([sx, sy]) => edgeAt(solidBodies.views(), view, sx, sy, engine.occlusion, engine.reach, model.hidden),
+    faceAt: ([sx, sy]) => solidBodies.faceAt(view, sx, sy, model.hidden),
+    // Asked from inside a tool's drawing, so the frame that sends it is the next one, not this.
+    trial: (t) => { if (solidBodies.trial(t)) queueMicrotask(() => render()); },
+    trialAnswer: () => solidBodies.trialAnswer(),
+  };
   // A phone's words are a finger's from the start: "tap", before any tap.
   engine.pointing = coarse ? "finger" : "mouse";
 

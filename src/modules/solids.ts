@@ -5,15 +5,29 @@
 // what the command line and the tray know of solids.
 
 import { defineModule } from "../modules.ts";
-import { extrude, regen, revolve } from "../operations.ts";
+import { defineDimension } from "../model.ts";
+import { defineRebuild, extrude, regen, revolve } from "../operations.ts";
+import { chamferEdges, filletEdges, setEdges } from "../blends.ts";
+import { chamferSetback, filletRadius } from "../relations/blend.ts";
+
+// A fillet's radius and a chamfer's setback are dimensions — `d`-named, `set`
+// re-runs them — but not typed relations: one with no fillet round it would be
+// a number holding nothing. So they are declared here, as `extrusion` is in
+// model.ts, rather than as a module relation, which would put them on the
+// command line.
+defineDimension("filletRadius", 0);
+defineDimension("chamferSetback", 0);
+defineRebuild("filletRadius", (m, a) => void filletRadius(m, a[0] as number));
+defineRebuild("chamferSetback", (m, a) => void chamferSetback(m, a[0] as number));
 import { svg } from "../tools/icons.ts";
 import { ExtrudeTool } from "../tools/extrude.ts";
 import { RevolveTool } from "../tools/revolve.ts";
 import { SketchTool } from "../tools/sketch.ts";
 import { EditExtrudeTool, EditRevolveTool } from "../tools/edit.ts";
+import { EdgeChamferTool, EdgeFilletTool, EditChamferTool, EditFilletTool } from "../tools/blend.ts";
 
 defineModule("solids", {
-  label: "Solids: extrude, revolve, sketch on a face, bodies",
+  label: "Solids: extrude, revolve, sketch on a face, bodies, fillets and chamfers of their edges",
   tools: {
     extrude: ExtrudeTool,
     revolve: RevolveTool,
@@ -21,6 +35,16 @@ defineModule("solids", {
     // A dialog armed on a feature (`edit("e1")`), never from the tray.
     "edit extrude": { ctor: EditExtrudeTool, listed: false },
     "edit revolve": { ctor: EditRevolveTool, listed: false },
+    // A body's edges rounded or bevelled (docs/plans/solid-fillets.md), on the
+    // modify button beside the sketch's corner fillet — no button of their own,
+    // so an iPhone's column keeps its thirteen.
+    round: EdgeFilletTool,
+    chamfer: EdgeChamferTool,
+    "edit fillet": { ctor: EditFilletTool, listed: false },
+    "edit chamfer": { ctor: EditChamferTool, listed: false },
+  },
+  groups: {
+    modify: ["round", "chamfer"],
   },
   icons: {
     // A slab seen from above: the face raised off its base, the three vertical
@@ -36,6 +60,11 @@ defineModule("solids", {
     // A plane in perspective with a pencil on it: drawing on a face.
     sketch: svg("sketch", `<path d="M1.5 13.5h9l4-4h-3"/><path d="M1.5 13.5l4-4h1.5"/>` +
       `<path d="M6.5 10.5l1-3L13 2l2 2-5.5 5.5zM11.5 3.5l2 2"/>`),
+    // A block's end seen a little from the side, its top front edge rounded
+    // (the edge chamfer's bevelled): the solid's fillet, told from the
+    // sketch's flat quarter-round corner beside it by the depth.
+    round: svg("round", `<path d="M2 14h8V8.5A4 4 0 0 0 6 4.5H2z"/><path d="M6 4.5l3-2.5h1A4 4 0 0 1 14 6v5.5L10 14"/><path d="M10 8.5l4-2.5"/>`),
+    chamfer: svg("chamfer", `<path d="M2 14h8V8L6.5 4.5H2z"/><path d="M6.5 4.5 9.5 2h1L14 5.5v6L10 14"/><path d="M10 8l4-2.5"/>`),
   },
   operations: {
     // Journalled with its profile resolved (see `extrude`), so a replay walks
@@ -50,6 +79,12 @@ defineModule("solids", {
     // profiles it is handed and looks for nothing among the seeds. `fillet`'s
     // own regeneration rides in its entry, the same way.
     regen,
+    // A body's edges rounded or cut back (docs/plans/solid-fillets.md): the
+    // typed `fillet` with a list of edges, `chamfer`, and the dialog's
+    // `setEdges`. Edges are journalled by name; a replay asks no kernel.
+    filletEdges,
+    chamferEdges,
+    setEdges,
   },
   help: [
     'solids     extrude(region, depth?, frame?) — a solid of a region (see',
@@ -106,5 +141,22 @@ defineModule("solids", {
     "           a line drawn across it. Neither adds a hole: a feature on a",
     "           region is found again by the region's chain; a face of it",
     "           whose loop has gone does nothing, and the log says so.",
+    "           A solid's edges: a kernel body's edges are named by their two",
+    '           faces (e1.lid|e1.m0) — hover one for its name; a click selects',
+    "           it, shift adds one, a box selects every edge it holds.",
+    '           fillet("e1", ["e1.lid|e1.m0", …], 3) rounds them: a feature',
+    "           (e3) in e1's chain, after what it rounds; its faces are e3.f0,",
+    "           e3.f1 … (one per edge named); its radius a dimension",
+    '           (set("d7.value", 4)). chamfer("e1", [...], 2) cuts them back by',
+    "           one setback along each face. The round and chamfer tools (the",
+    '           modify button): arm("round", { radius: 3 }), click edges — a',
+    "           face for all its edges, again for the body's; tangent chains",
+    "           take a rounded rim whole — see it rounded, drag the R label to",
+    '           change it, ✓. edit("e3") opens it again: click an edge in, a',
+    '           rounded face out. setEdges("e3", [...]) types that. A cut that',
+    "           takes an edge leaves it out of its fillet, said. The kernel",
+    "           will not fillet an edge that runs into an earlier fillet: add",
+    "           it to that fillet instead. Equal setback only; no variable",
+    "           radius or face fillets yet.",
   ],
 });

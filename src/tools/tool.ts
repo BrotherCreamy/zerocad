@@ -12,6 +12,10 @@ import type { Loop } from "../loops.ts";
 import type { Pick } from "../picking.ts";
 import type { Snap } from "../snapping.ts";
 import type { Plane } from "../view.ts";
+import type { Occlusion } from "../occlusion.ts";
+import type { BoxMode, ScreenRect } from "../boxselect.ts";
+import type { BlendTrial, BodyView, SolidHit } from "../bodies.ts";
+import type { EdgeHit } from "../kerneledges.ts";
 import { declaredOptions, type OptionSpecs } from "./options.ts";
 
 export interface PointerInfo {
@@ -178,6 +182,18 @@ export interface ToolContext {
    */
   prenamed?: string[];
   /**
+   * The kernel edges selected before arming (docs/plans/solid-fillets.md), by
+   * name — what the fillet and chamfer tools start from: select edges, press
+   * Fillet. Handed over once, as `prenamed` is.
+   */
+  preedges?: string[];
+  /**
+   * The bodies the solid kernel built, as a tool reaches them: their edges
+   * under a pixel, their faces, and a preview of a fillet or chamfer in a
+   * body's chain. Absent where there is no kernel (a test with no host).
+   */
+  solids?: SolidsAccess;
+  /**
    * Values typed into the options panel and not yet committed — the depth
    * field reading 25 while the tool is still armed with 10. A feature tool
    * previews with them laid over `options`, so the lid moves as the number is
@@ -215,6 +231,30 @@ export interface ToolContext {
  * member of it shared — see extrude.ts), made directly and answered with the
  * line the log shows; or null, for nothing to do here.
  */
+/**
+ * What the host's solid kernel offers the engine and a tool (main.ts builds it
+ * over bodies.ts and kerneledges.ts). Numbers and names only; the kernel is
+ * the host's.
+ */
+export interface SolidsAccess {
+  /** Whether an entity is a kernel body's skeleton — a twin, wall or profile member the kernel draws in its stead. */
+  skeleton(name: string): boolean;
+  /** The kernel edge under a pixel, as a pick (`kind: "edge"`), or null. */
+  edgePick(screen: [number, number], occ: Occlusion | null, reach: number): Pick | null;
+  /** The kernel edges a selection box holds, by name. */
+  edgesInBox(rect: ScreenRect, mode: BoxMode, occ: Occlusion | null): string[];
+  /** The bodies as drawn now — a body being previewed as its preview. */
+  views(): readonly BodyView[];
+  /** The kernel edge under a pixel on the bodies as drawn now, the preview included, with the hand's reach — for a tool. */
+  edgeAt(screen: [number, number]): EdgeHit | null;
+  /** The kernel face under a pixel on the bodies as drawn now, or null. */
+  faceAt(screen: [number, number]): SolidHit | null;
+  /** Shows a body as it would be with a fillet or chamfer in its chain — the preview; null takes it away. */
+  trial(t: BlendTrial | null): void;
+  /** What the trial last set came to: whether its answer is in, and the kernel's refusal if it refused. */
+  trialAnswer(): { settled: boolean; why: string | null };
+}
+
 export type FeatureStep = (model: Model) => FeatureLine | FeatureCall | null;
 export interface FeatureLine { text: string; direct?: () => unknown }
 export interface FeatureCall { call: () => void }
@@ -374,6 +414,12 @@ export abstract class Tool {
    * everything lit says nothing.
    */
   takes?(): readonly string[];
+  /**
+   * **Works on kernel edges** (docs/plans/solid-fillets.md): while armed, the
+   * host has the solid kernel build every body, one of a single extrude
+   * included, so its edges carry the kernel's names to pick.
+   */
+  readonly kernelEdges?: boolean;
   /**
    * **What the gesture has placed so far**: entity names it has already put in
    * the model and has not finished with — the line tool's chain. The host draws

@@ -1,5 +1,5 @@
 {
- "kernel": "Open CASCADE Technology 8.0.1, through cadquery-ocp 8.0.1.1.0 (OCP) from PyPI, on Python 3.11 — in a scratch directory, never a dependency of this repo",
+ "kernel": "Open CASCADE Technology 8.0.1, through cadquery-ocp 8.0.1.1.0 (OCP) from PyPI, on Python 3.11 \u2014 in a scratch directory, never a dependency of this repo",
  "date": "2026-11-04",
  "read": "As test/fixtures/step/validated.json: (1) STEPControl_Reader with OpenCascade's standard healing -> valid, volume, box; (2) strict: each solid translated by StepToTopoDS_Builder with no healing, then only FixEdgeCurves, FixShifted, FixDegenerated and SameParameter, then the same checks and every vertex and edge tolerance within the uncertainty the file declares -> strict.",
  "parts": {
@@ -176,6 +176,132 @@
    "looseEdges": 0,
    "readerFails": 0,
    "readerWarnings": 0
+  },
+  "filleted-plate-drilled": {
+   "what": "a plate's front and back lid edges filleted, then a hole cut through",
+   "bodies": 1,
+   "uncertainty": 1e-07,
+   "valid": true,
+   "strict": true,
+   "strictByBody": [
+    {
+     "valid": true,
+     "vertexTol": 1.0000000000000002e-07,
+     "edgeTol": 1e-07,
+     "volume": 58482.74333788941,
+     "error": null
+    }
+   ],
+   "volume": 58482.74333788941,
+   "zerocadVolume": 58482.74333912962,
+   "closedForm": 58482.74333882308,
+   "box": [
+    [
+     -12.870614602002881,
+     -7.803330549711615,
+     2.0
+    ],
+    [
+     99.13691498406445,
+     78.20981254740055,
+     47.07430348353994
+    ]
+   ],
+   "shells": [
+    1
+   ],
+   "surfaces": {
+    "plane": 6,
+    "bspline": 2,
+    "cylinder": 2
+   },
+   "readerFails": 0,
+   "readerWarnings": 0,
+   "looseEdges": 0
+  },
+  "rounded-outline-filleted": {
+   "what": "an outline rounded in the sketch, extruded, its whole lid filleted (lines and arcs)",
+   "bodies": 1,
+   "uncertainty": 1e-05,
+   "valid": true,
+   "strict": true,
+   "strictByBody": [
+    {
+     "valid": true,
+     "vertexTol": 1.0000000000000002e-07,
+     "edgeTol": 1e-07,
+     "volume": 34824.30475555495,
+     "error": null
+    }
+   ],
+   "volume": 34824.30475555495,
+   "zerocadVolume": 34824.30472586794,
+   "closedForm": 34824.304725763795,
+   "box": [
+    [
+     -4.906672513225395,
+     -8.393960419955672,
+     1.9999998999999928
+    ],
+    [
+     61.36296907502916,
+     46.23215102933748,
+     38.014160775208445
+    ]
+   ],
+   "shells": [
+    1
+   ],
+   "surfaces": {
+    "plane": 6,
+    "cylinder": 4,
+    "bspline": 8
+   },
+   "readerFails": 0,
+   "readerWarnings": 0,
+   "looseEdges": 0
+  },
+  "chamfered-lid": {
+   "what": "a plate's four lid edges chamfered, an equal setback",
+   "bodies": 1,
+   "uncertainty": 1e-05,
+   "valid": true,
+   "strict": true,
+   "strictByBody": [
+    {
+     "valid": true,
+     "vertexTol": 1.0000000000000002e-07,
+     "edgeTol": 1e-07,
+     "volume": 59370.66666666666,
+     "error": null
+    }
+   ],
+   "volume": 59370.66666666666,
+   "zerocadVolume": 59370.666666666686,
+   "closedForm": 59370.666666666664,
+   "box": [
+    [
+     -12.87061470200288,
+     -7.746910366891103,
+     1.9999999
+    ],
+    [
+     99.11306097108863,
+     78.20981264740054,
+     47.013047832630996
+    ]
+   ],
+   "shells": [
+    1
+   ],
+   "surfaces": {
+    "plane": 6,
+    "bspline": 4
+   },
+   "readerFails": 0,
+   "readerWarnings": 0,
+   "looseEdges": 0
   }
- }
+ },
+ "revalidated": "2026-11-05, for docs/plans/solid-fillets.md: the three fillet and chamfer parts added, read by the same procedure with the same OpenCascade 8.0.1 (cadquery-ocp 8.0.1.1.0); the four before read again, the same verdicts and volumes"
 }

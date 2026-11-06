@@ -141,8 +141,35 @@ etc).
   - **CI.** The Pages workflow and the `solids` workflow build the kernel,
     cached by the recipe's hash. A cold build takes 6 m 51 s, a warm one 16 s.
   - **Known gaps** are in TODO.md's Done entry. Among them: kernel edges are
-    not yet hover or constraint targets, and a full revolve drilled through
-    its seam fails OpenCascade's strict read.
+    not constraint targets (they are hover, selection and fillet targets
+    since solid-fillets.md), and a full revolve drilled through its seam
+    fails OpenCascade's strict read.
+- **Fillets and chamfers of a body's edges** (docs/plans/solid-fillets.md,
+  built).
+  - **Kernel edges pick.** Each is named by its two faces (`e1.lid|e1.m0`,
+    `src/kerneledges.ts`). The hover names it; a click, shift and a box select
+    edges (`Selection.edges`); a right-click offers Fillet… / Chamfer…. An edge
+    outranks the skeleton it lies along, but a press still drags that skeleton.
+  - **Blends are features in the body's chain.** `fillet("e1", [edges], r)`
+    and `chamfer(...)` (`src/blends.ts`, journalled `filletEdges` /
+    `chamferEdges`; `setEdges` to change the list) make a `BlendFeature` in
+    `model.blends`. Its size is a dimension with no equation
+    (`src/relations/blend.ts`). `Chain.steps` orders blends among the sweeps.
+  - **Evaluation.** Edges are found by name in each rebuild. The faces made are
+    tagged `e3.f0` … by the edge they came from. A missing edge is said and
+    left out. A blend that the kernel refuses is left out, and the body without
+    it stands.
+  - **Tools.** `round` and `chamfer` are on the modify button, with edit
+    dialogs `edit fillet` and `edit chamfer` (`src/tools/blend.ts`). The kernel
+    previews the result (`Bodies.trial`), and the radius label on the drawing
+    drags.
+  - **STEP.** Blend faces are B-splines. Three parts are validated by
+    OpenCascade, healed and strict.
+  - **Memory.** 200 rebuilds peak at 46 MB of the 256 MB recycle threshold.
+  - **Known gaps** (TODO.md):
+    - SMLib will not fillet an edge that runs into an earlier fillet.
+    - Facets show at a close zoom.
+    - No variable radius, face fillets or two-distance chamfers.
 - **No title bar** (docs/plans/chrome-logo-scale.md, built). The drawing is
   the whole window; the logo (`src/logo.ts`, also the home-screen icon's
   source) sits top-left inside the safe area as the one panel nothing moves,
