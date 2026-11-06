@@ -69,6 +69,8 @@ put the region down; the mode row's label was cut to one letter
 (ARCHITECTURE's 24–26). Pictures: [161](docs/images/161-the-region-tool-a-plate-less-two-circles-in-hand.png)–[166](docs/images/166-iphone-the-solid-follows-its-region.png).
 **Not tried on an iPhone**: try the region tool by taps, then extrude it.
 
+Tests: typecheck 0 errors; unit 1435 → 1458; kernel 11; e2e 581 (575 before, by the base's records: workbenches' 564 and mode feedback's 11), run in sets of five while building and then whole as the gate: 579 pass, 1 skipped, 1 failed under a load of 16 — solidsphone's iPhone boss — which passes alone (3/3).
+
 ## The dev server no longer reloads the tests when a worker checks out a tree
 
 Three gates in a row lost tests to "Execution context was destroyed, most

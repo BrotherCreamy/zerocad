@@ -230,7 +230,7 @@ lines. `surfaces.md` is the package that builds it.
 **Verification as run.** Typecheck 0 errors before and after. Unit 1435 →
 1458: the base's 1435 (the proposal's tests rewritten in place, not
 removed), 22 in `test/regionsops.test.ts` and one in `test/faces.test.ts`. Kernel 11. E2E: see
-the CHANGELOG entry for the counts as run, in sets of five files.
+581 tests (575 before, by the base's records); run in sets of five while building, then whole as the gate: 579 pass, 1 skipped, 1 failed under a load of 16 (solidsphone's iPhone boss), which passes alone. Screenshots 161–166, each looked at.
 
 Limitations left in place, deliberately:
 
