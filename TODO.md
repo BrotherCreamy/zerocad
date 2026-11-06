@@ -2090,11 +2090,19 @@ starts.
          - [ ] **The spline is still named** in its relations, operations.ts,
            quiet.ts, menu.ts, glyphs.ts, sketchedit.ts, sketchgeom.ts,
            surfaces.ts and persist.ts's `values.splines` — as the ellipse is.
-         - [ ] **solidsphone.e2e.ts failed alone, twice, under a load of 26
-           on four cores** (another session's `touchharness-busy` loops): the
-           circle's finger drag drew nothing. The base branch's src failed
-           the same probe identically; the touch harness's known loss under
-           load (`touch-harness.md`). Not retried into a pass.
+         - [ ] **The e2e record, under a load of 26–35 on four cores**
+           (another session's 22 `touchharness-busy` loops, the whole run):
+           `test:all` 709 e2e, 697 pass, 10 fail, 2 skipped (the picture
+           tests). One was this branch's — `panels.e2e.ts` listed the spline
+           as a button of its own; fixed, 39/39 alone. The other nine are
+           fingers: `modefeedback` (2) and `touchdensity` (2) passed alone
+           (10/10, 14/14); `android` failed alone with a different set each
+           run (3, then 2) and failed on the base branch's src too;
+           `solidsphone` (2) failed alone three times, its circle's finger
+           drag drawing nothing, and the base branch's src failed the same
+           probe identically. The touch harness's known loss under load
+           (`touch-harness.md`). Not retried into a pass; to run again on a
+           quiet machine.
          - [x] Fixed on the way: the kernel's revolve naming (`tagRevolve`
            read only the members' first points); a closed spline in no
            frame's plane (sketchface.ts); a chord between a spline's own
