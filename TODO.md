@@ -3584,6 +3584,14 @@ extended the way `defineTool` extends the tool registry would close it.
         not kept — unproven on a loaded box is not proven. Next: measure the
         ack latency under load, and either stream a whole drag with stamps
         16 ms apart only when no fling matters, or run touch files alone.
+      - [ ] **Open (2026-11-06, the gate after sketch-edit, load 14–15):
+        two fixed sleeps fixed, one failure left uncaught.** `toolbargroups`'
+        "not at once" (a 150 ms sleep against the flyout's 300 ms grace) is
+        now timed by the page; `overlaylock`'s point counts after a tap now
+        poll. Before the fix, overlaylock failed in 1 of 2 runs alone. After
+        it, 1 of 8 alone (Pixel 7 portrait, run 2) and 7 green in a row. The
+        one failure's message wasn't captured, so its cause is unknown —
+        the next sighting must keep the log.
       - [ ] **Open: `depth.e2e.ts` "two solids driven through each other"
         failed once in 3 paired runs** (touch, solids, depth together): the
         painter's offscreen picture matched the oracle at every sample
