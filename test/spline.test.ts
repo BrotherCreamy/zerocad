@@ -13,7 +13,7 @@ import { coincident, dist, fix, onPlane } from "../src/relations/basic.ts";
 import { onCircle, tangent } from "../src/relations/geometry.ts";
 import { addSpline, onSpline } from "../src/relations/spline.ts";
 import { splineCurve, splineOf } from "../src/kinds/spline.ts";
-import { derivs, domain, gapOf, knotsOf, layout, numericGaps, pointAt } from "../src/bspline.ts";
+import { MAX_TURN, derivs, domain, gapOf, interpolate, knotsOf, layout, numericGaps, pointAt, sampleParams } from "../src/bspline.ts";
 import { open, save, VERSION } from "../src/persist.ts";
 import { del } from "../src/operations.ts";
 import { pullTo } from "../src/tools/engine.ts";
@@ -364,4 +364,23 @@ test("typed: spline(...) takes names or coordinates and { closed }; ls() and the
   assert.match(listed, /sp2 {2}spline through .*, closed/);
   // The knot gaps are the points' centripetal distances: |Δ|^½.
   assert.ok(Math.abs(gapOf([0, 0], [9, 12]) - Math.sqrt(15)) < 1e-12);
+});
+
+test("a spline is drawn within a quarter pixel of itself and no chord turning more than 2° from the next — the outline true, the wall unbanded", () => {
+  // A tight wave: a trough where it bends hardest, the case that banded at 3× (looked at, docs/plans/spline.md).
+  const c = interpolate([[-35, 0], [-12, 9], [4, -16], [13, 7], [35, 0]], false);
+  for (const scale of [1, 4, 12, 36]) {
+    const us = sampleParams(c, 0.25 / scale);
+    for (let i = 0; i + 1 < us.length; i++) {
+      const [a, b] = [derivs(c, us[i], 1)[1], derivs(c, us[i + 1], 1)[1]];
+      const turn = Math.acos(Math.min(1, dot(a, b) / (len(a) * len(b))));
+      assert.ok(turn <= MAX_TURN * (1 + 1e-9), `scale ${scale}: a chord turns ${(turn * 180 / Math.PI).toFixed(3)}°`);
+      const [p, q] = [pointAt(c, us[i]), pointAt(c, us[i + 1])];
+      for (const f of [0.25, 0.5, 0.75]) {
+        const x = pointAt(c, us[i] + f * (us[i + 1] - us[i]));
+        const off = Math.abs((q[0] - p[0]) * (x[1] - p[1]) - (q[1] - p[1]) * (x[0] - p[0])) / len(sub(q, p));
+        assert.ok(off * scale <= 0.25, `scale ${scale}: ${off * scale} px off its chord`);
+      }
+    }
+  }
 });

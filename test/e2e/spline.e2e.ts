@@ -18,12 +18,15 @@ import { fingers, type Fingers } from "./fingers.ts";
 import { DEGREE, knotsOf, layout, numericGaps, pointAt, type BSpline } from "../../src/bspline.ts";
 
 const SHOTS = process.env.NEOCAD_E2E_SHOTS;
-async function shot(app: AppContext, name: string): Promise<void> {
+async function shot(app: AppContext, name: string, clip?: { x: number; y: number; width: number; height: number }): Promise<void> {
   if (!SHOTS) return;
   mkdirSync(SHOTS, { recursive: true });
   await app.page.waitForTimeout(150);
-  await app.page.screenshot({ path: join(SHOTS, `spline-${name}.png`) });
+  await app.page.screenshot({ path: join(SHOTS, `spline-${name}.png`), ...(clip ? { clip } : {}) });
 }
+
+/** The mouse parked on empty canvas, clear of the logo's tooltip and every panel, for a picture. */
+const park = (app: AppContext) => app.page.mouse.move(1000, 220);
 
 interface Probe {
   __neocad: {
@@ -175,7 +178,7 @@ test("desktop: the curves button offers the spline; clicked points, a second cli
   const ops = (await desk.model()).journalOps;
   assert.equal(ops.filter((o) => o === "addSpline").length, 1);
   await desk.page.keyboard.press("Escape");
-  await desk.page.mouse.move(10, 10);
+  await park(desk);
   await shot(desk, "desk-spline");
   // One undo step takes the whole gesture.
   await desk.page.keyboard.press("Control+z");
@@ -191,12 +194,13 @@ test("desktop: a through-point dragged — the curve follows, still through ever
   const [t] = await settled(desk, () => splines(desk), (x) => dist(x[0].at[2], [4, -16, 0]) < 0.6, "the point dragged");
   assert.ok(miss(t) < 1e-9, `still through every point after the drag: ${miss(t)}`);
   assert.equal(t.points[2], p);
+  await park(desk);
   await shot(desk, "desk-spline-dragged");
   // A dimension between its two ends, typed as the dimension tool types it.
   await desk.type(`dist("${s.points[0]}", "${s.points[4]}", 70)`);
   const [u] = await settled(desk, () => splines(desk), (x) => Math.abs(dist(x[0].at[0], x[0].at[4]) - 70) < 1e-6, "70 between its ends");
   assert.ok(miss(u) < 1e-9);
-  await desk.page.mouse.move(10, 10);
+  await park(desk);
   await shot(desk, "desk-spline-dimensioned");
 });
 
@@ -229,12 +233,16 @@ test("desktop: closed by two lines under it and extruded — a smooth wall — t
   await desk.type(`extrude("${s.name}", 12)`);
   await settled(desk, () => desk.model(), (x) => x.journalOps.includes("extrude"), "extruded");
   await desk.type("orbit(0.5, 0.6)");
-  await desk.page.mouse.move(10, 10);
+  await park(desk);
   await shot(desk, "desk-spline-extruded");
   // Close, so the wall fills the picture: its shading has to run smoothly
   // along the spline, and the curve has to be smooth at three times the zoom.
   await desk.type("orbit(0.15, 0.5); zoom(3)");
+  await park(desk);
   await shot(desk, "desk-spline-wall-3x");
+  // And the trough, where it bends hardest, close up.
+  const [tx, ty] = await desk.screenOf(curveOf((await splines(desk))[0]).ctrl[3]);
+  await shot(desk, "desk-spline-trough-3x", { x: Math.max(0, tx - 160), y: Math.max(0, ty - 110), width: 320, height: 220 });
   await desk.page.keyboard.press("Control+z");
   await settled(desk, () => desk.page.evaluate(() => (window as never as Probe).__neocad.model.features.size), (n) => n === 0, "the extrude undone");
 });
@@ -252,11 +260,14 @@ test("desktop: a click on the first point closes it — a closed spline, C² rou
   assert.equal(s.points.length, 4);
   assert.ok(miss(s) < 1e-9);
   await desk.page.keyboard.press("Escape");
+  await park(desk);
+  await shot(desk, "desk-closed-spline");
   const loops = await desk.repl("loops()");
   assert.match(JSON.stringify(loops.value), /loop of sp1 /, JSON.stringify(loops.value));
   await desk.type('extrude("sp1", 6); orbit(0.45, 0.65)');
   await settled(desk, () => desk.model(), (x) => x.journalOps.includes("extrude"), "extruded");
-  await desk.page.mouse.move(10, 10);
+  await desk.type("zoom(2)");
+  await park(desk);
   await shot(desk, "desk-closed-spline-extruded");
 });
 

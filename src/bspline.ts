@@ -413,7 +413,7 @@ export function bezierSegments(s: BSpline): { from: number; to: number; pts: num
  * the curve bends, more samples where it bends hard and fewer where it is
  * straight — the spline's `arcSegments`.
  */
-export function sampleParams(s: BSpline, tol: number, cap = 4000): number[] {
+export function sampleParams(s: BSpline, tol: number, cap = 4000, maxTurn = MAX_TURN): number[] {
   const segs = bezierSegments(s);
   const out: number[] = [];
   const each = Math.max(1, Math.floor(cap / Math.max(1, segs.length)));
@@ -426,10 +426,62 @@ export function sampleParams(s: BSpline, tol: number, cap = 4000): number[] {
     }
     const bend = 6 * m;
     const count = Math.min(each, Math.max(1, Math.ceil(Math.sqrt(bend / (8 * Math.max(tol, 1e-12))))));
-    for (let k = 0; k < count; k++) out.push(seg.from + ((seg.to - seg.from) * k) / count);
+    const us = Array.from({ length: count + 1 }, (_, k) => seg.from + ((seg.to - seg.from) * k) / count);
+    // And no chord turning more than `maxTurn` from the next: a quarter pixel
+    // keeps the outline true, but a wall shaded flat facet by facet bands
+    // where its normal steps far — seen at 3×, in a spline's tightest bend
+    // (docs/plans/spline.md), as the ellipse's ends once did.
+    const local = (u: number) => (u - seg.from) / (seg.to - seg.from);
+    // Halved until it turns no more than the bound — evenly would leave a
+    // piece whose turn bunches at one end over it (measured: 2.8° for 2°).
+    let budget = each;
+    const split = (a: number, b: number, depth: number) => {
+      if (depth < 12 && budget > 0 && turnBetween(seg.pts, local(a), local(b)) > maxTurn) {
+        budget--;
+        const m = (a + b) / 2;
+        split(a, m, depth + 1);
+        split(m, b, depth + 1);
+        return;
+      }
+      out.push(a);
+    };
+    for (let k = 0; k < count; k++) split(us[k], us[k + 1], 0);
   }
   out.push(segs.length ? segs[segs.length - 1].to : domain(s)[1]);
   return out;
+}
+
+/**
+ * The most a chord of a drawn curve may turn from the next, in radians: two
+ * degrees, a shade step under three per cent seen at 45° — what makes a
+ * curved wall read as one smooth surface rather than as stripes.
+ */
+export const MAX_TURN = (2 * Math.PI) / 180;
+
+/**
+ * How far a Bézier piece's direction turns from its parameter `a` to `b`,
+ * summed over quarters — read off its control points' hodograph with no
+ * allocation, as cheap as a sample: the curve is sampled every frame it is
+ * drawn. (Over halves it undercounted a tight bend by a third, measured.)
+ */
+function turnBetween(p: number[][], a: number, b: number): number {
+  const dim = p[0].length;
+  let turn = 0;
+  let px = 0, py = 0, pz = 0;
+  for (let k = 0; k <= 4; k++) {
+    const t = a + ((b - a) * k) / 4;
+    const [u, v, w] = [(1 - t) * (1 - t), 2 * (1 - t) * t, t * t];
+    const x = u * (p[1][0] - p[0][0]) + v * (p[2][0] - p[1][0]) + w * (p[3][0] - p[2][0]);
+    const y = u * (p[1][1] - p[0][1]) + v * (p[2][1] - p[1][1]) + w * (p[3][1] - p[2][1]);
+    const z = dim > 2 ? u * (p[1][2] - p[0][2]) + v * (p[2][2] - p[1][2]) + w * (p[3][2] - p[2][2]) : 0;
+    if (k > 0) {
+      const dot = px * x + py * y + pz * z;
+      const cx = py * z - pz * y, cy = pz * x - px * z, cz = px * y - py * x;
+      turn += Math.atan2(Math.sqrt(cx * cx + cy * cy + cz * cz), dot);
+    }
+    [px, py, pz] = [x, y, z];
+  }
+  return turn;
 }
 
 /**
