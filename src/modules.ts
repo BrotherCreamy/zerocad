@@ -79,6 +79,8 @@ export interface ModuleKit {
   clauses<F extends (...args: never[]) => string>(who: string, make: F): (...args: unknown[]) => string;
   anchor(): string | null;
   facing(plane: unknown): { seed: number[] | null; hold: string | null };
+  /** One line to the log, as a typed command's notes are said (`regen`'s "hole c1 is gone"); absent where there is none. */
+  log?(line: string): void;
 }
 
 /** An entity kind as a module declares it: the model's structure facet, and what the layers above ask of it. */

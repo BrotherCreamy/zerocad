@@ -16,6 +16,8 @@ import { spanOf, unitOf } from "../model.ts";
 import { slots } from "../clauses.ts";
 import * as geom from "../relations/geometry.ts";
 import { add, deleteRegionSteps, fillet, hole, intersect, region, subtract, unhole } from "../operations.ts";
+import { chamfer, circular, extend, linear, mirror, offset, trim } from "../sketchedit.ts";
+import * as pattern from "../relations/pattern.ts";
 import * as shapes from "../tools/shapes.ts";
 import { svg } from "../tools/icons.ts";
 import { RectangleTool } from "../tools/rectangle.ts";
@@ -154,6 +156,12 @@ defineModule("sketch", {
     // A region's record going: a primitive of `del`'s expansion, as
     // `deleteFeature` is a feature's (docs/plans/regions-as-operations.md).
     deleteRegion: bound("deleteRegion"),
+    // The trim's structure (docs/plans/sketch-edit.md): an arc's end
+    // re-pointed, a circle made an arc under its name and back. Journalled
+    // only where called outside an operation — a trim is its own entry.
+    retargetArc: bound("retargetArc"),
+    circleToArc: bound("circleToArc"),
+    arcToCircle: bound("arcToCircle"),
   },
   relations: {
     radius: { names: ["rad", "radius"], slots: slots("circle", "#radius"), fn: geom.radius },
@@ -171,6 +179,12 @@ defineModule("sketch", {
     onEllipse: { names: ["onellipse", "onEllipse"], slots: slots("point", "ellipse"), fn: geom.onEllipse },
     majorAxis: { names: ["major", "majorAxis"], slots: slots("ellipse", "#semi-axis"), fn: geom.majorAxis, dimension: 1 },
     minorAxis: { names: ["minor", "minorAxis"], slots: slots("ellipse", "#semi-axis"), fn: geom.minorAxis, dimension: 1 },
+    // What a pattern is held by (docs/plans/sketch-edit.md, relations/
+    // pattern.ts): a copy is its seed moved as the first copy is. `rotation`
+    // is a circular pattern's one dimension, the step's angle.
+    translated: { names: ["translated"], slots: slots("point", "point", "point", "point"), fn: pattern.translated },
+    rotated: { names: ["rotated"], slots: slots("point", "point", "point", "point", "point"), fn: pattern.rotated },
+    rotation: { names: ["rotation"], slots: slots("point", "point", "point", "#angle"), fn: pattern.rotation, dimension: 3 },
   },
   operations: {
     fillet,
@@ -191,6 +205,18 @@ defineModule("sketch", {
     add,
     intersect,
     deleteRegionSteps,
+    // Sketch editing (docs/plans/sketch-edit.md): each an operation, journalled
+    // as its typed call with what it read off positions resolved beside it.
+    // `chamfer` is the sketch's two-line chamfer; a solid's edges are
+    // `chamferEdges` (the solids module), and the typed `chamfer` tells them
+    // apart by its second argument, as `fillet` does.
+    trim,
+    extend,
+    offset,
+    mirror,
+    chamfer,
+    linear,
+    circular,
   },
   menu: [
     { label: "Rectangle", tool: "rectangle" },
@@ -205,6 +231,22 @@ defineModule("sketch", {
     { label: "Fillet", tool: "fillet" },
   ],
   commands: (kit) => ({
+    // Sketch editing (docs/plans/sketch-edit.md). Each forwards every argument,
+    // so a line copied out of a journal — its resolved part included — types.
+    trim: (curve: string, near: unknown, resolved?: unknown, regenerated?: unknown) => {
+      const notes: string[] = [];
+      const out = trim(kit.model, curve, near, resolved, regenerated, notes);
+      for (const n of notes) kit.log?.(n);
+      return out;
+    },
+    extend: (curve: string, end: unknown, to?: string | null, at?: unknown) => extend(kit.model, curve, end, to, at),
+    offset: (chain: string | string[], d: number, options?: { construction?: boolean } | null, resolved?: unknown) =>
+      offset(kit.model, chain, d, options, resolved),
+    mirror: (names: string | string[], line: string, resolved?: unknown) => mirror(kit.model, names, line, resolved),
+    linear: (names: string | string[], dx: number, dy: number, n: number, resolved?: unknown) =>
+      linear(kit.model, names, dx, dy, n, resolved),
+    circular: (names: string | string[], centre: string, angle?: number | null, n?: number, resolved?: unknown) =>
+      circular(kit.model, names, centre, angle, n, resolved),
     // An ellipse by its centre, its major end — a point, or a number: the
     // semi-major along the drawing plane's first direction — and the minor
     // semi-axis, every one optional and none a constraint, as `circ`'s. A
@@ -309,5 +351,27 @@ defineModule("sketch", {
     "           tan(line, e) and conc with circles and ellipses take one; tan",
     "           between an ellipse and a circle or another ellipse does not.",
     "           fillet(line1, line2, radius) — the arc follows its corner",
+    'edit       trim("l1", [x, y]) — the piece of l1 the place is on, between the',
+    "           curves that cut it there (or its own end), goes: an end re-pointed",
+    "           and held on (on, oncircle) the curve that cut it; a middle piece",
+    "           leaves two, held col (an arc's: eqrad); a circle becomes an arc,",
+    "           same name. A feature on it regenerates, or the trim refuses.",
+    '           extend("l1", "p2") — that end on to the next curve along l1 (an',
+    '           arc: round its circle), held on it; extend("l1", "p2", "c3") to c3.',
+    '           offset("l1", 5) or offset(["l1", "a1", "l2"], 5, { construction:',
+    "           true }) — a parallel copy of a chain, outward (closed) or to the",
+    "           left of the first member (open): par + dist, arcs about the same",
+    "           centre, corners joined.",
+    '           mirror(["l1", "l2"], "l5") — copies held by sym about l5, or about',
+    '           a frame axis ("origin.y"); a point on the line is its own mirror.',
+    '           chamfer("l1", "l2", 5) or (…, 5, 3) — the corner cut by a line, its',
+    "           ends dist from the corner, which stays (held where the legs meet).",
+    '           linear(names, dx, dy, n) — n instances a step apart (the drawing',
+    '           plane\'s axes); circular(names, "p1", angle, n) — n about p1, over',
+    "           angle radians (a whole turn: evenly round). Copy k of l1 is l1_k;",
+    "           one dimension drives each (a dist, a rotation): set it. Deleting",
+    "           the seed deletes no copy. Tools, under modify: trim (click the",
+    "           piece), extend (click near an end), offset, mirror, bevel (the",
+    "           sketch chamfer: two lines or a corner), pattern.",
   ],
 });
