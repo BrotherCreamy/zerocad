@@ -1559,8 +1559,28 @@ time it is placed (`arranged`), so a tool defined at the command line makes
 it one button longer wherever it is. (For an afternoon a tray could be
 shortened and wrapped its buttons into more lines; the owner reversed it.)
 
-**Panels push one another, and never overlap.** Every arrangement — a drag, a
-resize, a turn, every `apply` — goes through one pure resolver, `pushed`: the
+**A dragged pane takes its place among the others; nothing is shoved**
+(docs/plans/panels-reshuffle.md; the owner: *"When I push toolbars around,
+they should be able to reorder with other toolbars. So reshuffle rather than
+push."*). The panes along each edge are **a sequence**, and a drag by the
+strip is resolved against it (`reshuffled`), not by pushing: along an edge
+the pane was on, past a neighbour's middle it takes that neighbour's slot (a
+dock's reorder: the stretch laid out again in the new order, its ends and
+gaps kept); brought to another edge it is inserted between the two it lands
+between, and those after it make room; dropped on a pane that is on no edge
+the two trade places; elsewhere it lands where it is put, or flush against
+what it would lie on. An edge with no room takes it on a second line, and
+failing that the preview is refused and says so on the held pane's ghost.
+**The sequence is read, not stored**: each press reads it from where the
+panes are (`sequences`), and the layout is stored as before — so the order a
+viewer made is the order of the positions they left, and a layout from before
+reshuffling reads into the same order with nothing to migrate. The push below
+stays for what has no order to change: a resize by a grip, and `apply`
+making a stored or grown layout sound.
+
+**Panels never overlap, and what is left of the push.** A resize, a turn and
+every `apply` go through one pure resolver, `pushed` (a drag by the strip did
+too until the reshuffle above): the
 mover goes where it wants along each axis of the pointer's move in turn, and
 whatever its swept rectangle covers is put flush ahead of it along that axis,
 in a chain. The window edge is the one thing that does not move: a chain that
@@ -1581,7 +1601,7 @@ ones it measures.
 *"they should show how they will snap IF the user drops the grasped toolbar
 in that spot. but until they actually drop it, the permanent position of any
 tool bar is not changed"*). A gesture keeps two things apart (`Drag`): the
-**preview, which is the drop at this spot** — the resolver above asked for
+**preview, which is the drop at this spot** — the resolvers above (the reshuffle for a strip, the push for a grip) asked for
 one step, from the layout at the press straight to where the hand is, so it
 is a function of the spot and not the path, the rules have one
 implementation, and the preview cannot disagree with what a drop commits —

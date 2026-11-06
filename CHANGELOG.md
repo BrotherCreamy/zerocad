@@ -7,6 +7,38 @@ decisions.
 
 ---
 
+## Panels reshuffle rather than push
+
+The owner: *"When I push toolbars around, they should be able to reorder with
+other toolbars. So reshuffle rather than push."* Built to
+[`docs/plans/panels-reshuffle.md`](docs/plans/panels-reshuffle.md); every
+deviation is in its *As built*.
+
+- **The panes along an edge are a sequence**, read from where they are: down
+  a side top to bottom, along the top or the bottom left to right. A pane
+  within 16 px of an edge (22 under a finger) is on it.
+- **Dragged along its edge, a pane reorders.** Past the middle of a
+  neighbour it takes that neighbour's slot, and the neighbour takes its own —
+  on down the line, as a dock's icons do; the ends of the stretch stay where
+  they were and nothing outside it moves. The command line dragged up past the
+  log on a desktop: they trade places (pictures 224, 225).
+- **Brought to another edge, it is inserted** where you drop it, between the
+  two it lands between; those after it make room, only as far as they must.
+  A toolbar takes the way that edge runs — in its ghost; it turns at the drop.
+- **Dropped on a floating pane, the two trade places.** Anywhere else a pane
+  lands where you put it, or stops flush against what it would lie on.
+  **Nothing is pushed by a drag any more.**
+- **No room on an edge**: the pane goes on a second line beside the first;
+  where that has no room either, its ghost stays home and says *no room on
+  this edge*, and letting go moves nothing (the status says so too). On an
+  upright phone this is what the toolbar does at the top, where the organiser
+  and the action strip leave it no room — take it to the bottom instead, or
+  move them first.
+- Unchanged: the preview (the drop at this spot, ghosts, nothing moves until
+  you let go, Escape), the lock (it refuses a reorder as any drag), a resize
+  still grows into its neighbour, and how layouts are stored — so yours reads
+  into the same order with nothing migrated.
+
 ## Touch targets that follow the interface size, and less air between tools
 
 The owner, from his phone: *"for the scaling, the text resizes but the

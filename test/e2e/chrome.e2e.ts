@@ -529,14 +529,18 @@ test("a tray docked to the right edge and a pane against it stay so through port
     //
     // The log narrowed first, out of the way of the column the strip turns
     // into; the strip right until the edge stops it, and against that edge it
-    // turns, a column; the log brought down beside it, and pushed right until
-    // the strip stops it.
+    // turns, a column; the log brought down beside it, and taken right into
+    // the strip — 10 px into it, short of the edge's reach, so it stops flush
+    // against the strip's left (docs/plans/panels-reshuffle.md: carried on to
+    // the edge it would be inserted under the strip instead; until then it
+    // was pushed right, far past, until the strip stopped it).
     const se = await boxOf(p.page, `${panel("log")} > .pgrip[data-corner="se"]`);
     await fingerDrag(p.cdp, [se.right - 4, se.bottom - 4], [se.right - 4 - 250, se.bottom - 4], 12);
     await settled(p.page);
     await dragStrip(p, "actions", 400, 0);
     await dragStrip(p, "log", 0, 60);
-    await dragStrip(p, "log", 300, 0);
+    const [strip0, log0] = [await boxOf(p.page, panel("actions")), await boxOf(p.page, panel("log"))];
+    await dragStrip(p, "log", strip0.x - log0.right + 10, 0);
     // The command line, floating: narrowed, and lifted off every edge and every panel.
     const ne = await boxOf(p.page, `${panel("cmd")} > .pgrip[data-corner="ne"]`);
     await fingerDrag(p.cdp, [ne.right - 4, ne.y + 4], [ne.right - 4 - 150, ne.y + 4], 12);

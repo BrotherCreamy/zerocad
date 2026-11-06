@@ -36,7 +36,11 @@
 //
 // **Nothing moves until the drop** (docs/plans/panels-preview.md): a drag
 // moves only the panel in the hand, and draws a ghost where each panel the
-// resolver would push will land; the drop commits that, Escape nothing.
+// drop would move will land; the drop commits that, Escape nothing. **And a
+// drag reshuffles, it does not push** (docs/plans/panels-reshuffle.md): the
+// panes along an edge are a sequence, and a pane dragged past a neighbour
+// takes its slot, brought to another edge goes in between two, dropped on a
+// floating pane trades places with it. Only a resize and `apply` still push.
 //
 // This file imports nothing from the model or the tools. The toolbar is given
 // its tool names, their glyphs and its armed tool by its host, and the options
@@ -1435,9 +1439,12 @@ export function reshuffled(drag: Drag, held: Placed, area: Size, m: Metrics = FI
   // A tray that lay along an edge at the press and has left it for one it does
   // not lie along has come to that edge as much as one from elsewhere. One that
   // lay along none — a phone's action strip, a row down the right edge — keeps
-  // the way it runs as it moves along its edge.
+  // the way it runs as it moves along its edge, until it is pressed right up
+  // against it (`SNAP`, the turn's own reach): then it turns, as a tray always
+  // has against the edge it meets.
   const lay = (edges: Edge[]) => edges.some((s) => orientAlong(s) === was.orient);
-  const turning = tray && lay(home) && !lay(stay);
+  const turning = tray && e !== undefined && orientAlong(e) !== was.orient &&
+    ((lay(home) && !lay(stay)) || edgeGap(held, e, area) <= SNAP + EPS);
   if (e !== undefined) {
     if (stay.includes(e) && !turning) {
       const r = reordered(drag.start, id, held, e, area, reach);
@@ -2522,7 +2529,7 @@ export function stripTip(label: string, tray: boolean, locked = false): Tip {
   return {
     name: label,
     summary: tray ? "Drag to move it; against an edge it turns to fit and stays there"
-      : "Drag to move it; pushed against an edge or a pane, it stays there",
+      : "Drag to move it; along its edge past another pane the two trade places",
   };
 }
 
