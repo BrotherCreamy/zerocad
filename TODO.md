@@ -1899,25 +1899,33 @@ starts.
         translucent for the drag).
         - [x] **A dragged panel previews; nothing moves until the drop —
           BUILT (2026-11-06)**, on `claude/panels-preview`; the spec's *As
-          built* has the detail. The resolver is unchanged and runs move by
-          move on a copy (`Drag`, `dragTo`); the held panel is drawn under the
+          built* has the detail. **The preview is the drop at this spot**:
+          each move asks the unchanged resolver for one step from the layout
+          at the press straight to the hand (`Drag`, `dragTo`), so a spot shows
+          the same ghosts however it was reached and the press shows none
+          (revised on review — it first kept the push's memory along the
+          path, which the owner's "IF the user drops ... in that spot"
+          rules out). The held panel is drawn under the
           hand over whatever it is over (`heldAt`); a dashed ghost marks each
           panel the drop would move and the held one's landing where it is not
           under the hand (`ghostsOf`); every other panel is at half opacity
           from the first move; the drop commits the preview in one step
           (`dropOf`) and the panels glide onto it in 120 ms. Measured on an
           emulated iPhone 13 (`npm run measure:panels`, CPU 4×): the move
-          handler 1.4–1.8 ms median, 2.2–2.8 ms p95; the resolver alone
-          ≤ 0.1 ms median; the opacity class costs no frame at the median.
+          handler 1.9 ms median, 4.1–4.5 ms p95; the resolver alone under
+          0.1 ms median, 0.6–0.7 ms p95; the opacity class costs no frame at
+          the median.
           **Vetoable, each a decision:**
-          - **The ghosts keep the push's memory.** The preview is the push as
-            it always was, move by move, so a panel the preview pushed stays
-            pushed when the hand draws back (*"nothing springs back"*), and a
-            drop there moves it. Only a lift back at the press, or Escape,
-            takes it all back. The alternative — resolving from the press each
-            move, so a retreat un-pushes — would change the push rules the
-            spec keeps (one long swept motion pushes differently from the
-            hand's path).
+          - **One step, not the path replayed.** The drop at a spot is one
+            `dragStep` from the press — the resolver's own single step, its
+            push along each axis in turn (the larger first) by the swept
+            rectangle, its turn and its re-grasp asked once. Replaying the
+            straight line in small steps would be as path-free but cost a
+            resolve per step, for a difference only in which way a panel
+            crossed diagonally is pushed. A consequence: a tray turned in the
+            preview keeps the grab it was taken by, so its ghost leaves a
+            chain when the column it was taken as clears it, not when the
+            turned row would.
           - **The held panel goes over anything**, the logo and the corner's
             status included, for the drag (z 47; the ghosts 46): a ghost may
             land in the logo's row, where the corner's text keeps clear of

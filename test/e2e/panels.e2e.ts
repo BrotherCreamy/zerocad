@@ -714,44 +714,38 @@ test("the tray pushes the log, the log the command line, and at the bottom edge 
   assert.equal(held.toolbar.y + held.toolbar.height, held.log.y, "and the tray's own ghost stopped flush on the log's — not short, not over it");
   await shot("pushed-chain-held");
 
-  // The grasp point stays the same, measured on the ghost — the tray in the
-  // hand is simply under the hand. The ghost turned into a row on the log's on
-  // the way down, and the resolver holds the same point of it: the middle of
-  // its strip, as the hand holds the middle of the column's. The ghost is left
-  // behind by `lead`; a step back of less than that moves it not at all, a
-  // step back of exactly that has its strip's middle under the hand again, and
-  // past that it follows, pixel for pixel.
-  const ghostStrip = async () => {
-    const g = (await ghostsNow()).toolbar;
-    // A row's strip is down its left end, the strip's 16 px inside its 1 px border.
-    return { x: g.x + 1 + 8, y: g.y + g.height / 2, top: g.y };
-  };
+  // The preview is the drop at this spot (docs/plans/panels-preview.md): the
+  // tray taken from where it was at the press straight to the hand, from the
+  // layout at the press. Stopped against the chain, its ghost waits while the
+  // hand draws back — a drop there is still against the chain — and once the
+  // hand is back far enough for the column it was taken as to clear the log,
+  // the ghosts move back with it: nothing of the push the way down is kept.
+  // The tray in the hand is simply under the hand throughout.
   assert.equal(await ghostOrient("toolbar"), "row", "the ghost is a row against the log's top");
   assert.equal((await tray()).orient, "column", "the tray in the hand still a column");
-  const m0 = await ghostStrip();
-  const lead = y - m0.y;
-  assert.ok(lead > 100, `the pointer went on far past the ghost: ${lead}px`);
-  const near = (a: number, b: number) => Math.abs(a - b) <= 1.5;
+  const top0 = (await ghostsNow()).toolbar.y;
+  const yHeld = y;
   await app.page.mouse.move(x, (y -= 10));
-  assert.equal((await ghostStrip()).top, m0.top, "ten pixels back of that: not a pixel moved");
-  await app.page.mouse.move(x, (y -= lead - 11));
-  assert.equal((await ghostStrip()).top, m0.top, "a pixel short of it: still not");
-  await app.page.mouse.move(x, (y -= 1));
-  const back = await ghostStrip();
-  assert.equal(back.top, m0.top, "back by exactly the lead: where it stopped…");
-  assert.ok(near(back.y, y), `…its strip's middle under the hand: ${back.y} vs ${y}`);
-  await app.page.mouse.move(x, (y -= 10));
-  const past = await ghostStrip();
-  assert.equal(past.top, m0.top - 10, "ten pixels past it, ten pixels up");
-  assert.ok(near(past.y, y), "still under the hand");
+  assert.equal((await ghostsNow()).toolbar.y, top0, "ten pixels back: the drop there is the same");
+  let back = await ghostsNow();
+  for (let i = 0; i < 80 && back.toolbar && back.toolbar.y === top0; i++) {
+    await app.page.mouse.move(x, (y -= 10));
+    back = { ...(await panelsNow()), ...(await ghostsNow()) };
+  }
+  assert.ok(!back.toolbar || back.toolbar.y < top0, "drawn back far enough, the tray's landing comes back up");
+  assert.ok((back.log?.y ?? l0.log.y) < held.log.y, `and the log's ghost goes back up with it — no memory of the push: ${held.log.y} → ${back.log?.y ?? l0.log.y}`);
   await shot("pushed-chain-back-under-hand");
+  // Down to where it was stopped again: the same ghosts as the first time.
+  await app.page.mouse.move(x, (y = yHeld));
+  const again = { ...(await panelsNow()), ...(await ghostsNow()) };
+  assert.deepEqual([again.toolbar, again.log, again.cmd], [held.toolbar, held.log, held.cmd], "the same spot, the same ghosts");
   const landing = { ...(await panelsNow()), ...(await ghostsNow()) };
   await app.page.mouse.up();
   await settled(app.page);
 
   const after = await panelsNow();
   assert.deepEqual([after.log, after.cmd], [landing.log, landing.cmd],
-    "dropped, the log and the command line are where their ghosts were — and stay: nothing springs back");
+    "dropped, the log and the command line are where their ghosts were");
   assert.deepEqual(after.toolbar, landing.toolbar, "and the tray on its own ghost");
   await assertSound("after the push");
   await shot("pushed-chain-released");

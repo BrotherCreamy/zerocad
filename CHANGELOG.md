@@ -34,23 +34,27 @@ deviation is in its *As built* and the register.
   **Escape**, or **letting go back where you started**, moves nothing. A drop
   the layout could not take (never seen) moves nothing and says so.
 - Resizing the log or the command line by a corner previews the same way.
-- The rules of the push are unchanged — the preview is the same resolver,
-  run on a copy. Every preview is checked as a placed layout is: nothing a
-  ghost shows overlaps.
+- **The preview is the drop at this spot**: what the ghosts show depends on
+  where the hand is, not the way it came — the panel taken from where it was
+  straight to here, from the layout as it was at the press. Back at the start
+  there are no ghosts. The rules of the push are unchanged (the same
+  resolver, asked once for that move). Every preview is checked as a placed
+  layout is: nothing a ghost shows overlaps.
 
 **Measured** on an emulated iPhone 13 with the CPU slowed 4×
 (`npm run measure:panels`): the move handler — the resolver, the held panel
-and the ghosts drawn — 1.4–1.8 ms median, 2.2–2.8 ms at the 95th
-percentile; the resolver alone under 0.1 ms median. The opacity class: a
+and the ghosts drawn — 1.9 ms median, 4.1–4.5 ms at the 95th percentile; the
+resolver alone under 0.1 ms median, 0.6–0.7 ms at the 95th. The opacity class: a
 frame that flips it is 16.7 ms at the median, as one that flips nothing is;
-dragging with and without the translucency, the same 16.7 ms median and
-33.4 ms p95. Pictures:
+dragging with and without the translucency, the same 16.7 ms median. Pictures:
 [177](docs/images/177-the-command-line-held-over-the-log-the-logs-ghost-where-it-will-be-pushed.png)–[187](docs/images/187-phone-landscape-lifted-the-tray-a-column.png).
-Tests: unit 1477 → 1489 (+12), e2e 592 → 606 (+14, mouse and iPhone 13 both
+Tests: unit 1477 → 1490 (+13), e2e 592 → 606 (+14, mouse and iPhone 13 both
 ways up). The gate, in sets of four files: typecheck 0, unit 1489/1489,
 kernel 11, e2e 606 — 603 pass, 1 skipped, 2 failed under a load of about 10:
 `solidsphone.e2e.ts`'s two touch-drawing tests, the touch harness's recorded
-miss, which pass alone (3/3). **Not tried on an iPhone**: drag the command line onto the log and
+miss, which pass alone (3/3). After the review (the preview made the drop at
+the spot, not the push along the path): unit 1490/1490, and the panels,
+preview, chrome and fits e2e files 77 of 78 pass, 1 skipped. **Not tried on an iPhone**: drag the command line onto the log and
 look at the ghosts, then lift; drag the toolbar to the top, watch its ghost
 turn, and lift back where you started to see nothing move.
 

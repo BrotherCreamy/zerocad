@@ -4,11 +4,11 @@
 // they actually drop it, the permanent position of any tool bar is not
 // changed".
 //
-// The pure half: the preview is the resolver's answer, the push exactly as it
-// was (so it is checked against `dragStep` run on the layout itself, which is
-// what the panels did before); the held panel is under the hand; the ghosts are
-// what the drop would move; the drop commits the preview, and a lift back at
-// the press or a refused preview commits nothing. The DOM half — the panels
+// The pure half: the preview is the drop at this spot — one `dragStep` from
+// the layout at the press, so the same spot shows the same ghosts however it
+// was reached, and the press shows none; the held panel is under the hand; the
+// ghosts are what the drop would move; the drop commits the preview, and a lift
+// back at the press or a refused preview commits nothing. The DOM half — the panels
 // standing still, translucent, the ghosts drawn, Escape — is
 // test/e2e/panelspreview.e2e.ts.
 
@@ -25,7 +25,7 @@ const box = (x: number, y: number, w = 100, h = 100): Rect => ({ x, y, w, h });
 const minSize = () => ({ w: 10, h: 10 });
 
 /** Drags `drag` along `path`, one move per point. */
-function along(drag: Drag, path: Point[], a: Size = area, mins = minSize): Drag {
+function along(drag: Drag, path: Point[], a: Size = area, mins: (id: string, o: "row" | "column" | undefined) => Size = minSize): Drag {
   for (const p of path) drag = dragTo(drag, p, a, mins);
   return drag;
 }
@@ -43,19 +43,46 @@ function sound(l: Layout, a: Size = area): void {
   }
 }
 
-test("the preview is the push exactly as it was: dragStep move by move, on a copy — and the layout itself is untouched", () => {
+test("the preview is the drop at this spot: one dragStep from the layout at the press — and the layout itself is untouched", () => {
   const layout: Layout = { a: box(100, 100), b: box(250, 100), c: box(400, 150) };
   const frozen = JSON.parse(JSON.stringify(layout));
-  const path = steps({ x: 150, y: 150 }, { x: 420, y: 160 }, 9);
-  const drag = along(beginDrag("a", "move", { x: 150, y: 150 }, layout), path);
-  // The live push of before: the same steps on the layout itself.
-  let live = layout;
-  let g = beginDrag("a", "move", { x: 150, y: 150 }, layout).grab;
-  for (const p of path) ({ layout: live, grab: g } = dragStep(g, p, live, area, minSize));
-  assert.deepEqual(drag.preview, live, "the same answer the push gave");
+  const begun = beginDrag("a", "move", { x: 150, y: 150 }, layout);
+  const drag = along(begun, steps({ x: 150, y: 150 }, { x: 420, y: 160 }, 9));
+  const once = dragStep(begun.grab, { x: 420, y: 160 }, layout, area, minSize);
+  assert.deepEqual(drag.preview, once.layout, "the resolver's single step from the press to here");
   assert.ok(drag.preview.b.x > layout.b.x && drag.preview.c.x > layout.c.x, "b and c pushed, in the preview");
   assert.deepEqual(layout, frozen, "and nothing about the layout itself changed");
   assert.deepEqual(drag.start, frozen, "the start is the layout at the press");
+});
+
+test("one spot by two paths: the same ghosts and the same drop — and out and back to the press, no ghosts", () => {
+  // A tray, the log under it and the command line under that, in a window
+  // with room for the pushes to be different if the path mattered.
+  const layout: Layout = {
+    tray: { x: 8, y: 40, ...traySize(10, "column"), orient: "column" },
+    log: box(60, 420, 400, 120), cmd: box(60, 560, 400, 40), org: box(700, 300, 200, 200),
+  };
+  const mins = (id: string, o: "row" | "column" | undefined) => (id === "tray" ? traySize(1, o ?? "column") : { w: 60, h: 30 });
+  const press = { x: 22, y: 48 };
+  const spot = { x: 300, y: 300 };
+  const begin = () => beginDrag("tray", "move", press, layout, "se", 10);
+  // Straight there; and the long way round — down through the log and the
+  // command line to the bottom edge, across under the organiser, up past it.
+  const straight = along(begin(), steps(press, spot, 12), area, mins);
+  const detour = along(begin(), [
+    ...steps(press, { x: 120, y: 690 }, 15), ...steps({ x: 120, y: 690 }, { x: 800, y: 690 }, 15),
+    ...steps({ x: 800, y: 690 }, { x: 800, y: 100 }, 15), ...steps({ x: 800, y: 100 }, spot, 15),
+  ], area, mins);
+  assert.ok(Object.keys(ghostsOf(along(begin(), steps(press, { x: 120, y: 690 }, 15), area, mins))).length > 1,
+    "the detour pushed things on its way");
+  assert.deepEqual(ghostsOf(detour), ghostsOf(straight), "the same ghosts");
+  assert.deepEqual(detour.preview, straight.preview, "the same preview");
+  assert.deepEqual(dropOf(detour, spot, area, backSlop(false)), dropOf(straight, spot, area, backSlop(false)), "the same drop");
+  // Out through everything and back to the press exactly: the start, no ghosts.
+  const home = along(begin(), [...steps(press, { x: 120, y: 690 }, 15), ...steps({ x: 120, y: 690 }, press, 15)], area, mins);
+  assert.deepEqual(ghostsOf(home), {}, "back at the press: no ghosts");
+  assert.deepEqual(home.preview, layout, "the preview is the start");
+  sound(straight.preview);
 });
 
 test("the resolver's answer for a drag position equals the layout a drop there commits", () => {
@@ -131,20 +158,21 @@ test("a tray's turn is the preview's: the held tray keeps the way it ran, its gh
   assert.equal(drop.layout.tray.orient, "row", "the turn happens at the drop");
 });
 
-test("lifting back where the drag started commits nothing — whatever the ghosts showed on the way", () => {
+test("lifting back where the drag started commits nothing — and a finger's lift near the press counts as back", () => {
   const layout: Layout = { a: box(100, 100), b: box(100, 250) };
   const press = { x: 150, y: 150 };
-  // Down into b (b's ghost pushed), and back up to the press.
+  // Down into b (b's ghost pushed), and back up to a pixel off the press.
   let drag = along(beginDrag("a", "move", press, layout), steps(press, { x: 150, y: 260 }, 6));
   assert.ok(drag.preview.b.y > layout.b.y, "b's ghost pushed on the way");
   drag = along(drag, steps({ x: 150, y: 260 }, { x: 151, y: 151 }, 6));
-  assert.ok(drag.preview.b.y > layout.b.y, "and, as a push always did, it stays pushed in the preview when the hand draws back");
+  assert.deepEqual(drag.preview.b, layout.b, "the hand drawn back, b's ghost is home: the preview is the spot's");
   const mouse = dropOf(drag, { x: 151, y: 151 }, area, backSlop(false));
   assert.equal(mouse.outcome, "back");
-  assert.equal(mouse.layout, drag.start, "the start, exactly");
+  assert.equal(mouse.layout, drag.start, "the start, exactly — not a pixel's move of a");
   // A finger's slop is the tap's: 8 px.
-  assert.equal(dropOf(drag, { x: 155, y: 156 }, area, backSlop(true)).outcome, "back");
-  assert.equal(dropOf(drag, { x: 155, y: 156 }, area, backSlop(false)).outcome, "moved", "a mouse 7 px off has moved it");
+  const near = dragTo(drag, { x: 155, y: 156 }, area, minSize);
+  assert.equal(dropOf(near, { x: 155, y: 156 }, area, backSlop(true)).outcome, "back");
+  assert.equal(dropOf(near, { x: 155, y: 156 }, area, backSlop(false)).outcome, "moved", "a mouse 7 px off has moved it");
   assert.equal(backSlop(true), 8);
   assert.equal(backSlop(false), 2);
 });

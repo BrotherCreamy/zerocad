@@ -1559,9 +1559,10 @@ ones it measures.
 *"they should show how they will snap IF the user drops the grasped toolbar
 in that spot. but until they actually drop it, the permanent position of any
 tool bar is not changed"*). A gesture keeps two things apart (`Drag`): the
-**preview**, which is the resolver above run move by move on a copy of the
-layout — the push exactly as it was, its memory included, so the rules have
-one implementation and the preview cannot disagree with what a drop commits —
+**preview, which is the drop at this spot** — the resolver above asked for
+one step, from the layout at the press straight to where the hand is, so it
+is a function of the spot and not the path, the rules have one
+implementation, and the preview cannot disagree with what a drop commits —
 and the **held panel**, drawn where the hand has it (`heldAt`) and placed
 nowhere. Every other panel stays put, at half opacity, with a dashed ghost
 where the drop would put it (`ghostsOf`); a tray's turn is the preview's

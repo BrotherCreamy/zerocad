@@ -106,22 +106,30 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
-### The drag preview: why the ghosts remember, and what was rejected
+### The drag preview: why it is the drop at the spot, and what was rejected
 
-**The preview is the old push on a copy, not a fresh answer each move.** The
-owner's words are "show how they will snap IF the user drops the grasped
-toolbar in that spot", which reads as path-independent: a function of where
-the hand is. I considered resolving from the press on every move — one
-`dragStep` from the start layout to the pointer. It is not the same push.
-`pushed` sweeps the mover's whole travel so a flick cannot pass through a
-panel, and one sweep from the press pushes everything along the straight
-line, not what the hand actually went through. The spec also says "the rules
-of the push are unchanged". So the preview is `dragStep` run move by move on
-the drag's own copy, which is exactly what the panels used to do. The cost is
-that a ghost pushed stays pushed when the hand draws back, as a panel did.
-The spec had already allowed for this: "lifting back where the drag started
-commits nothing" would be redundant if retreating un-pushed. Written in the
-register as vetoable.
+**The preview is the drop at this spot, and that came from review.** The first
+build ran `dragStep` move by move on the drag's own copy, which is what the
+panels used to do live. It kept the push's memory: a ghost pushed on the way
+stayed pushed when the hand drew back. I wrote that down as vetoable, reading
+"the rules of the push are unchanged" as covering the push's memory, and
+reading the spec's "lifting back where it started commits nothing" as having
+allowed for it. The review rejected it on the owner's own words: "show how
+they will snap IF the user drops the grasped toolbar in that spot". What a
+drop commits must be a function of where the hand is, not of the path.
+
+So each move now asks the resolver once, from the layout at the press, for
+the held panel taken straight to the hand: one `dragStep`, the grab as taken.
+I considered replaying the straight line from the press in small steps. It is
+just as path-free, but it costs a resolve per step, and it differs from the
+single step only in which way a panel crossed diagonally is pushed. One step
+is the resolver's own answer to "this move", so it won. One consequence is in
+the e2e: a tray turned in the preview keeps the column grab it was taken by,
+so its ghost leaves the chain when the column would clear it. The old
+"come back by exactly the lead" measurement does not hold any more. The test
+now checks that the ghosts come back up with the hand and that the same spot
+gives the same ghosts. The lift-at-the-press rule stays, for the fingertip
+that does not quite come home.
 
 **The held panel is drawn, not placed.** `place` both drew a panel and wrote
 it into `shown`, the layout every rule reads. The held panel must be drawn

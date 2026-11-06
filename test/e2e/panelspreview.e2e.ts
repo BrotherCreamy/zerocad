@@ -174,7 +174,11 @@ async function cmdOntoLog(app: AppContext, hand: Hand, name: string): Promise<vo
   await shot(app, `${name}-cmd-onto-log-dropped`);
 }
 
-/** Dragged onto the log and lifted back where it started: nothing moved, though the ghosts said otherwise on the way. */
+/**
+ * Dragged onto the log and back where it started: the preview is the drop at
+ * the spot, so back at the press there are no ghosts — and the lift there
+ * moves nothing.
+ */
 async function backWhereItStarted(app: AppContext, hand: Hand): Promise<void> {
   await app.type('layout("reset")');
   await settled(app.page);
@@ -184,6 +188,8 @@ async function backWhereItStarted(app: AppContext, hand: Hand): Promise<void> {
   await hand.down(p.x, p.y);
   await hand.to(p.x + (log.x + log.w / 2 - (cmd.x + cmd.w / 2)), p.y + (log.y + log.h / 2 - cmd.y));
   assert.ok((await seen(app)).ghosts.log, "the log's ghost moved on the way");
+  await hand.to(p.x, p.y);
+  assert.deepEqual((await seen(app)).ghosts, {}, "back at the press: no ghosts, the log's gone home");
   await hand.to(p.x + 1, p.y + 1);
   await hand.up();
   const after = await seen(app);

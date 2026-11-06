@@ -851,27 +851,30 @@ export function dragStep(
 // how they will snap IF the user drops the grasped toolbar in that spot. but
 // until they actually drop it, the permanent position of any tool bar is not
 // changed"* (docs/plans/panels-preview.md). So a gesture keeps two things
-// apart. **The preview** is the layout the resolver answers — `dragStep`, move
-// by move, on a copy, exactly as it pushed the panels themselves before: the
-// rules of the push are unchanged, the preview only shows them before they
-// happen. **The held panel** is the one in the hand, drawn where the hand has
+// apart. **The preview is the drop at this spot**: the layout the resolver
+// answers for the held panel taken from where it was at the press straight to
+// where the hand is now, from the layout as it was at the press — so it is a
+// function of the spot alone, not of the path the hand took to it. Back at the
+// press it is the start; any spot shows the same ghosts however it was
+// reached. **The held panel** is the one in the hand, drawn where the hand has
 // it — under the pointer at the point it was taken by, held only inside the
 // area, over whatever it is over. Every other panel stays where it was until
 // the drop, which commits the preview; Escape, or a lift back where the press
 // was, commits nothing.
 //
-// The preview is the push's, so it keeps the push's memory: a panel the
-// preview pushed stays pushed in it when the hand draws back, as a pushed
-// panel used to (*"nothing springs back"*). A drop there moves it; a drop
-// back where the drag started does not, because that is the one place the
-// owner's words name for taking it all back.
+// The step is the resolver's own single one — one `dragStep` from the press —
+// rather than the hand's path replayed: the push's rules are unchanged (a
+// panel in the way is pushed ahead along each axis of the move in turn, the
+// larger first, by the mover's swept rectangle), and they are asked once, for
+// the straight move from the press to here. Replaying a straight line in
+// small steps would be the same function of the spot, and slower by the
+// number of steps, for a difference only in which way a panel crossed
+// diagonally is pushed.
 
-/** A gesture in progress: the layout at the press, the resolver's answer so far, and the panel in the hand. */
+/** A gesture in progress: the layout at the press, the resolver's answer for the spot, and the panel in the hand. */
 export interface Drag {
-  /** The grab as taken — where the held panel is drawn from, for the whole gesture. */
+  /** The grab as taken — where the held panel is drawn from, and what every move resolves from. */
   grab: Grab;
-  /** The resolver's grab — the same, until a turn in the preview re-grasps it (`regrasped`). */
-  step: Grab;
   /** Where the press was, in the layout's coordinates. */
   press: Point;
   /** Every panel at the press — what Escape goes back to. */
@@ -889,7 +892,7 @@ export function beginDrag(
   id: string, kind: "move" | "resize", pointer: Point, layout: Layout, corner: Corner = "se", buttons?: number,
 ): Drag {
   const grab = grabbed(id, kind, pointer, layout, corner);
-  return { grab, step: grab, press: { ...pointer }, start: layout, preview: layout, held: layout[id], buttons };
+  return { grab, press: { ...pointer }, start: layout, preview: layout, held: layout[id], buttons };
 }
 
 /**
@@ -916,20 +919,22 @@ export function heldAt(drag: Drag, pointer: Point, area: Size, min: Size): Place
 }
 
 /**
- * One move of a gesture: the resolver asked again from where its last answer
- * left things (`dragStep` on the preview — which is the push as it always
- * was, a copy of the layout standing in for the panels), and the held panel
- * put where the hand now has it. Pure: nothing on screen is this until it is
- * drawn, and nothing is committed until `dropOf`.
+ * One move of a gesture: the drop at this spot — one `dragStep` from the
+ * layout at the press, the grab as taken, to `pointer` (the resolver's push,
+ * its turn and its re-grasp, asked once for the straight move from the press)
+ * — and the held panel put where the hand now has it. Nothing of earlier
+ * moves is carried: the answer is the same however the hand got here. Pure:
+ * nothing on screen is this until it is drawn, and nothing is committed until
+ * `dropOf`.
  */
 export function dragTo(
   drag: Drag, pointer: Point, area: Size,
   minSize: (id: string, orient: Orientation | undefined) => Size, m: Metrics = FINE,
 ): Drag {
-  const step = dragStep(drag.step, pointer, drag.preview, area, minSize, drag.buttons, m);
+  const step = dragStep(drag.grab, pointer, drag.start, area, minSize, drag.buttons, m);
   const id = drag.grab.id;
   const held = heldAt(drag, pointer, area, minSize(id, drag.start[id].orient));
-  return { ...drag, step: step.grab, preview: step.layout, held };
+  return { ...drag, preview: step.layout, held };
 }
 
 const sameRect = (a: Placed | undefined, b: Placed | undefined): boolean =>
@@ -973,9 +978,10 @@ export type DropOutcome = "moved" | "unchanged" | "back" | "refused";
 /**
  * The drop at `pointer`: the layout to show and what it was. The preview, if
  * it is a layout at all — so a drop commits exactly what the ghosts showed, in
- * one step. **Back where it started** (within `slop` of the press): the start,
- * whatever the ghosts said — the owner's way out under a finger, which has no
- * Escape. **The resolver's refusal** (a preview two panels overlap in, which
+ * one step. **Back where it started** (within `slop` of the press): the start
+ * — exactly at the press the preview is the start anyway, and within the slop
+ * a fingertip that has not quite come home is read as having come home, the
+ * owner's way out under a finger, which has no Escape. **The resolver's refusal** (a preview two panels overlap in, which
  * `layoutProblem` names): the start too, the same as Escape, and `problem`
  * says why — the host puts a word of it in the status. A preview the same as
  * the start is `unchanged`: there is nothing to commit, or to store.

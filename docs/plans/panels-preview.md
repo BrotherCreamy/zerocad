@@ -85,15 +85,30 @@ round it, `draw` split from `place`, the ghosts' layer, `settle`, the
 `onRefused` option); `src/main.ts` (the refusal into the status note);
 `index.html` (`dragging`, the lifted held panel, `.pghost`, `settling`);
 `src/modules/interface.ts` (`help()`). Tests: `test/panelspreview.test.ts`
-(12), `test/e2e/panelspreview.e2e.ts` (14: a mouse, and an iPhone 13 portrait
+(13, one of them the same spot by two paths), `test/e2e/panelspreview.e2e.ts` (14: a mouse, and an iPhone 13 portrait
 and landscape), `test/e2e/panels.measure.ts` (`npm run measure:panels`, not
 in the suite), `settled()` in the e2e harness, and the suites that read
 panels after a drop (`panels`, `chrome`, `tooloptions`, `undokeys`) waiting
 on it.
 
+**The rule: the preview is the drop at this spot.** What the ghosts show — and
+what a drop commits — is a function of where the hand is now, not of the
+path it took: the held panel taken from where it was at the press straight
+to here, from the layout as it was at the press. Back at the press there are
+no ghosts; any spot shows the same ghosts however it was reached.
+
 **How it works.** At the press a `Drag` takes the layout as it is (`start`).
-Each move runs `dragStep` — the resolver exactly as it pushed the panels
-before — on the drag's own copy (`preview`), and puts the held panel where
+Each move asks the resolver for **one step**: `dragStep` with the grab as
+taken, from `start` to the pointer (`preview`) — its push along each axis of
+the move in turn, the larger first, by the mover's swept rectangle, and its
+turn and re-grasp, asked once. That is the resolver's own single step,
+chosen over replaying the straight line from the press in small steps: as
+free of the path, but a resolve per step for a difference only in which way
+a panel crossed diagonally is pushed. *(Revised on review: the first build
+ran `dragStep` move by move on the copy, keeping the push's memory along the
+path — a ghost pushed on the way stayed pushed when the hand drew back. The
+owner's "IF the user drops the grasped toolbar in that spot" rules that
+out.)* It also puts the held panel where
 the hand has it (`heldAt`: the grab taken at the press under the pointer,
 held inside the area and against nothing else; by a grip, that corner under
 the pointer). The DOM half draws the held panel there (`draw`, which touches
@@ -108,17 +123,25 @@ rejects, the start and a status note; otherwise the preview, shown with
 showed. Escape (a window capture listener for the gesture's life) and a
 pointercancel drop nothing.
 
-**Measured** (`npm run measure:panels`, two runs, Chromium as an iPhone 13 on
-a shared four-core box, load average about 5; the browser's clock is coarse
-to 0.1 ms). Per move — the handler, timed between a window capture listener
+**Measured** (`npm run measure:panels`, two runs each, Chromium as an iPhone
+13 on a shared four-core box; the browser's clock is coarse to 0.1 ms). The
+per-move table is of the build as it stands — one step from the press, load
+average about 7.7; the opacity table is of the first build, at about 5 (the
+class did not change; the new runs agree, below). Per move — the handler, timed between a window capture listener
 and a window bubble listener, so the resolver, drawing the held panel and the
 ghosts, and the dev server's check; and the resolver alone, the same moves
 replayed through `dragTo` in the page:
 
 | CPU | handler median | handler p95 | handler max | resolver median | resolver p95 |
 |---|---|---|---|---|---|
-| 1× | 0.4–0.5 ms | 0.7–0.9 ms | 1.7 ms | < 0.1 ms | 0.1 ms |
-| 4× | 1.4–1.8 ms | 2.2–2.8 ms | 2.9–9.8 ms | < 0.1 ms | 0.1–0.4 ms |
+| 1× | 0.5 ms | 0.8 ms | 1.8–4.4 ms | < 0.1 ms | 0.1 ms |
+| 4× | 1.9 ms | 4.1–4.5 ms | 10.8–14.4 ms | < 0.1 ms | 0.6–0.7 ms |
+
+Resolving from the press does more per move than the step from the last
+answer did — the first build's handler was 1.4–1.8 ms median and 2.2–2.8 ms
+p95 at 4×, its resolver p95 0.1–0.4 ms — and is still a small part of a
+16.7 ms frame. (Under the new build the opacity class again flipped on frames
+of 16.7 ms median and p95 at 4× in both runs.)
 
 The opacity change — frame intervals, requestAnimationFrame to the next:
 
@@ -139,14 +162,10 @@ not the phone's numbers.
 Deviations and additions — each a decision, vetoable (also in `TODO.md`'s
 register):
 
-- **The ghosts keep the push's memory.** The spec's "the same `layout()`
-  call that pushes today, on a copy" is taken literally: `dragStep`, move by
-  move, on the copy. A ghost the preview pushed stays pushed when the hand
-  draws back, as a pushed panel always did, and a drop there moves it. Only
-  a lift back at the press or Escape takes it all back — which is why the
-  spec needed that rule at all. Resolving from the press on every move
-  would un-push on a retreat, but one long swept motion pushes differently
-  from the path a hand takes, so it would have changed the push.
+- **One step, not the path replayed** (see the rule above). A consequence: a
+  tray turned in the preview keeps the grab it was taken by, the column's,
+  so its ghost leaves a chain when that column would clear it, not when the
+  turned row would.
 - **The held panel and the ghosts are lifted over the logo and the corner's
   status** for the drag (`LIFTED_Z`: the ghosts 46, the held panel 47; the
   corner is 40, the logo 45, the hover tag 50). The first screenshot had a
@@ -189,8 +208,11 @@ register):
   "turns into a row — live, before the release" now asserts the column in
   the hand and the row as its ghost, and its push-chain test reads the
   ghosts mid-drag (the log and the command line not moved under the hand),
-  measures the fixed grab on the tray's ghost, and checks that the drop lands
-  each panel on its ghost.
+  checks that the ghosts come back up with the hand (no memory of the push)
+  and that the same spot gives the same ghosts, and that the drop lands each
+  panel on its ghost. Its old "back by exactly the lead, under the hand"
+  measurement held only while the preview carried a turned tray's re-grasp
+  from move to move.
 
 Limitations left in place, deliberately:
 
