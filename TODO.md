@@ -1650,6 +1650,15 @@ are flagged as such.
 Queue for Opus, in order. Each gets a spec in `docs/plans/` before work
 starts.
 
+- [ ] **Touch targets that follow the interface size, and less air between
+      tools (2026-11-06)** — next. The owner: *"the text resizes but the
+      spacing between e.g menu items and toolbar items barely changes … the
+      white space between eg the tools on the tool palettes is a bit too
+      much"*. Measured: every target under a finger has a literal 44 px
+      floor, so the pitch is air at 100 % and menus never shrink. Spec:
+      [`touch-density.md`](docs/plans/touch-density.md), with the verdict
+      cut on an upright iPhone and the phone fillet file's two flaky taps.
+
 - [ ] **The sketch packages (2026-11-05).** The owner: *"give me better
       sketch tools, relations, trim, slot... all the usual"*, picked from
       the full-CAD list. Five specs, in this order:
