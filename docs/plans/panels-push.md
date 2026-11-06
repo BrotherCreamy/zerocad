@@ -14,9 +14,10 @@ push toolbars around, they should be able to reorder with other toolbars. So
 reshuffle rather than push."*; built by
 [`panels-reshuffle.md`](panels-reshuffle.md)): a pane dragged by its strip
 reorders along its edge, is inserted into another, trades places with a
-floating pane, or stops flush — it moves no other pane out of its way. The
-push below stands for a resize by a grip and for `apply`, and rule 1 (no
-overlap) stands for everything. The owner's direction, verbatim:
+floating pane, or stops flush, and a pane it then lands on moves to the
+nearest free place — with this push's zero-motion search as the fallback
+where there is none. The push below stands whole for a resize by a grip and
+for `apply`, and rule 1 (no overlap) stands for everything. The owner's direction, verbatim:
 
 > *shouldn't be able to drag windows over other windows. they should collide
 > and push one another around. not collide like physics, just push. also when

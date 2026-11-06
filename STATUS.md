@@ -285,12 +285,16 @@ etc).
   (`reordered`: the stretch laid out again, ends and gaps kept); brought to
   another edge it is inserted between the two it lands between, those after
   making room (`inserted`), a tray turned in its ghost; with no room a second
-  line (`wrapped`), else refused — the held pane's ghost at home saying *no
-  room on this edge*, the status the same at the drop (`Drag.refused`,
-  `NO_ROOM`); on no edge, its middle on a floating pane, the two trade
-  places (`NO_SWAP` where they cannot); elsewhere it lands at the furthest
-  point toward the hand on nothing (`landing`). Nothing is pushed by a drag;
-  a resize and `apply` keep `pushed`. Storage is unchanged. Tests:
+  line (`wrapped`); on no edge, its middle on a floating pane, the two trade
+  places; and **the others make room** — a pane any of those lies on goes to
+  the nearest place on nothing (`madeRoom`, `nearestFree`), the old push's
+  zero-motion search the fallback, then the unkept panes laid again
+  (`relaidAround`); refused only where none finds room — the held pane's
+  ghost at home saying *no room on this edge*, the status the same at the drop
+  (`Drag.refused`, `NO_ROOM`, `NO_SWAP`): 5 % of random drops upright on a
+  phone, 1 % on its side. Along the top the corner is `cornerBox`. Elsewhere
+  it lands at the furthest point toward the hand on nothing (`landing`). A
+  resize and `apply` keep `pushed`. Storage is unchanged. Tests:
   `test/panelsreshuffle.test.ts`, `test/e2e/panelsreshuffle.e2e.ts`.
 - **A dragged panel previews; nothing moves until the drop**
   (docs/plans/panels-preview.md, built). **The preview is the drop at this

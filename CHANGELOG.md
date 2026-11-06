@@ -27,13 +27,22 @@ deviation is in its *As built*.
   A toolbar takes the way that edge runs — in its ghost; it turns at the drop.
 - **Dropped on a floating pane, the two trade places.** Anywhere else a pane
   lands where you put it, or stops flush against what it would lie on.
-  **Nothing is pushed by a drag any more.**
-- **No room on an edge**: the pane goes on a second line beside the first;
-  where that has no room either, its ghost stays home and says *no room on
-  this edge*, and letting go moves nothing (the status says so too). On an
-  upright phone this is what the toolbar does at the top, where the organiser
-  and the action strip leave it no room — take it to the bottom instead, or
-  move them first.
+- **The others make room.** Any pane the one you drop would lie on — off the
+  edge it joins, or where a trade or a reorder lands — moves to the nearest
+  place that is free, and the ghosts show where before you let go. The
+  toolbar taken to the top of an upright phone becomes a row just under the
+  logo's row, and the organiser, the log and the action strip go below it
+  (pictures 231, 232); the command line slid past the log in Safari takes the
+  log's place and the organiser moves out from under it (233, 234).
+- **No room on an edge**: the pane goes on a second line beside the first.
+  Only where the panes genuinely cannot all fit at their sizes does its ghost
+  stay home and say *no room on this edge*, and letting go moves nothing (the
+  status says so too). Over 1 500 random drops on a phone's defaults that is
+  5 % upright and 1 % on its side — it was a third before the others made
+  room — and mostly the command line, as wide as the screen, with no band of
+  its height left.
+- Along the top, a pane starts after the logo **and the status's room**
+  beside it, so the status is never squeezed into a sliver.
 - Unchanged: the preview (the drop at this spot, ghosts, nothing moves until
   you let go, Escape), the lock (it refuses a reorder as any drag), a resize
   still grows into its neighbour, and how layouts are stored — so yours reads

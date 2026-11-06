@@ -1646,8 +1646,10 @@ are flagged as such.
   their positions; a pane dragged along its edge past a neighbour's middle
   takes its slot, brought to another edge is inserted between the two it
   lands between (those after it making room), dropped on a floating pane
-  trades places with it, and with no room wraps to a second line or is
-  refused and says so. The push stays for a resize and for `apply`.
+  trades places with it, and with no room wraps to a second line; the panes
+  it then lies on make room (the nearest free place, the push as the
+  fallback), and only where none can is it refused and says so. The push
+  stays for a resize and for `apply`.
 - **Ctrl+Z is the drawing's, everywhere** (owner's direction, 2026-10-29:
   *"why does ctrl+z and ctrl+y not work? should work and be bulletproof"*).
   Ctrl+Z / Cmd+Z always undoes the model and Ctrl+Y / Ctrl+Shift+Z / Cmd+⇧Z
@@ -1796,9 +1798,10 @@ starts.
       a floating pane swaps. Spec:
       [`panels-reshuffle.md`](docs/plans/panels-reshuffle.md).
       **BUILT (2026-11-06)** on `claude/panels-reshuffle`; the spec's *As
-      built* has the rules as built, the measurement (0.009 ms a move median;
-      of 1 500 random phone gestures ~31 % refused for no room) and pictures
-      224–231. **Register, vetoable:**
+      built* has the rules as built, the measurement (0.012 ms a move median;
+      of 1 500 random phone gestures 5 % refused upright, 1 % on its side —
+      32 % and 36 % in the first build, before the review had the others make
+      room) and pictures 224–235. **Register, vetoable:**
       - **The sequence is read from the positions at each press, not stored**:
         the layout's storage is unchanged, old layouts read into the order of
         their positions, `refit` and the bleed untouched. A reordered pair that
@@ -1811,11 +1814,17 @@ starts.
         kept (a dock's).
       - **The destination makes room, the source does not close up**: only a
         pane the hand took moves, but for those after it on the edge it joins.
-      - **No push in a drag at all**: no room → a second line → refused, said
-        on the ghost (*no room on this edge*) and in the status; a trade or
-        a reorder that would land a pane on another is refused too, never
-        pushed. A drop elsewhere lands at the furthest point toward the hand
-        that lies on nothing.
+      - **The others make room** (the coordinator's review, 2026-11-06:
+        *"'reshuffle rather than push' means the others reorder to let the
+        held one in"*): a pane the inserted one, its second line, a reordered
+        stretch or a trade lies on goes to the nearest place on nothing, the
+        old push's search the fallback, then every pane not kept laid again
+        round the kept ones; refused, said on the ghost and in the status,
+        only when none finds room. A drop in free space partly on a pane
+        stops flush (nothing moves for it).
+      - **Along the top the corner is the logo and the status's least room**
+        (`cornerBox`): a line starts after it, a row too long for the rest
+        wraps under the logo's row, so the status is never left a sliver.
       - **Any held pane on no edge trades places with a floating one** (the
         spec: "a pane not docked to anything"), by top-left corner.
       - **A tray turns** when inserted into an edge it does not lie along, or
@@ -1823,11 +1832,11 @@ starts.
         lay along none (the phone's action strip) keeps its way; in free
         space against a pane's edge as before.
       - **The resize and `apply` keep the push.**
-      - **Discovered, left**: the toolbar cannot be put along the top of an
-        upright phone without first moving the organiser and the strip
-        (refused, said); random drops are refused about a third of the time
-        on a phone's crowded defaults; a refused column ghost's word wraps a
-        word to a line.
+      - **Discovered, left**: room is found greedily, one pane at a time; the
+        refusals left are mostly the command line as wide as an upright phone
+        with no band of its height clear once the held pane and its line hold
+        their places (31 of 38 upright), and a second line that would run off
+        a landscape screen. A pane is never resized to fit.
 
 - [ ] **The sketch packages (2026-11-05).** The owner: *"give me better
       sketch tools, relations, trim, slot... all the usual"*, picked from

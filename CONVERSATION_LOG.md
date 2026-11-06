@@ -5364,3 +5364,16 @@ drops are refusals: where the push used to make room, nothing does. The
 sharpest case is the toolbar along the top of an upright phone — the
 organiser and the action strip are under the logo's row and nothing moves
 them. Left in place, said on the ghost, and vetoable.
+
+**Overturned on review, the same day.** The coordinator read the third of
+drops refused, and the picture of the toolbar at the top doing nothing, as a
+regression: *"'reshuffle rather than push' means the others reorder to let
+the held one in"*. So the panes the drop lands on make room — the nearest free
+place, the old push's search as the fallback, then all of them laid again —
+and refusal is kept for panes that genuinely cannot all fit. Rejected on the
+way: making room by the push alone (it moves whole chains along one axis and
+throws a pane across the screen where a free place is a few pixels off), and
+packing every pane again on each move (it would move panes the drop never
+touched). The first new picture showed one more thing the rule needed: let in
+beside the bare logo, the toolbar left the status a 20 px column, so along the
+top the corner is the logo and the status's least room.

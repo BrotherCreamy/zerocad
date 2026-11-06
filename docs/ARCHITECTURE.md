@@ -1569,8 +1569,14 @@ dock's reorder: the stretch laid out again in the new order, its ends and
 gaps kept); brought to another edge it is inserted between the two it lands
 between, and those after it make room; dropped on a pane that is on no edge
 the two trade places; elsewhere it lands where it is put, or flush against
-what it would lie on. An edge with no room takes it on a second line, and
-failing that the preview is refused and says so on the held pane's ghost.
+what it would lie on. An edge with no room takes it on a second line. **The
+others make room**: any pane the held one, its line or a trade now lies on
+goes to the nearest place on nothing (`madeRoom`), the push below the
+fallback, then every unkept pane laid again round the kept ones; only where
+none of that finds room — the panes cannot all be had at their sizes — is the
+preview refused, said on the held pane's ghost. Along the top the corner is
+the logo and the status's least room (`cornerBox`), so a pane let in there
+never leaves the status a sliver.
 **The sequence is read, not stored**: each press reads it from where the
 panes are (`sequences`), and the layout is stored as before — so the order a
 viewer made is the order of the positions they left, and a layout from before
@@ -1800,7 +1806,7 @@ until the next action went unrecorded.
 
 ## Why there is an end-to-end suite
 
-Forty-four bugs so far were invisible to the unit tests and obvious within seconds
+Forty-five bugs so far were invisible to the unit tests and obvious within seconds
 of running the app:
 
 1. a status readout that went stale, so a conflict could be introduced from
@@ -2008,6 +2014,12 @@ of running the app:
    found by the rotation e2e's docking, which starts with exactly that
    turn. Pressed within the turn's own 6 px it turns again
    (docs/plans/panels-reshuffle.md).
+45. The status in the corner squeezed to a 20 px column, running down the
+   screen a character to a line, once the toolbar was let in along the top
+   beside the bare logo. Every unit and e2e assertion passed — the layout
+   was sound, nothing overlapped; found by looking at the picture of the
+   drop. Along the top the corner is the logo and the status's least room
+   now (`cornerBox`), and a row too long for the rest wraps under it.
 
 None of these are mathematics. They are all *assembly*. Hence `npm run
 test:e2e`, and hence the expectation that anything touching the app is checked

@@ -114,30 +114,61 @@ pane now:
    gap, or the gap two neighbours already had where that was less); where
    the last would leave the edge, the line closes back from the far end. A
    tray takes the way that edge runs — in its ghost; in the hand it keeps its
-   shape until the drop.
+   shape until the drop. **"Inserted" means in order, at the drop point** —
+   between the right two, where the hand let it go along the edge — **not
+   packed against its neighbour**: in picture 228 the organiser lands well
+   clear of the log, because positions are kept and only an overlap moves
+   anything. Along the top, the logo's corner is the logo *and* the status's
+   least room beside it (`cornerBox`), so a line starts after that.
 3. **No room on that edge**: a **second line** beside the first line's panes
-   it lies along, 8 px further off (`wrapped`); failing that the preview is
-   **refused**: the start, the held pane's ghost at home with *no room on
-   this edge* written on it, and at the drop nothing moves and the status says
-   *no room on this edge — nothing moved*.
+   (and the fixed corner) it lies along, 8 px further off (`wrapped`) — so a
+   row too long for the top beside the corner lies just under the logo's row.
 4. **On no edge, its middle on a pane that is on no edge**: the two **trade
-   places**, each at the other's top-left corner, its own size, held inside;
-   where that would put one on a third pane (or the two on each other — their
-   sizes differ), refused: *no room to trade places there*.
-5. **Anywhere else**: it lands where the hand has it if that lies on
+   places**, each at the other's top-left corner, its own size, held inside.
+5. **The others make room** — after any of 1–4 (`madeRoom`, after the
+   coordinator's review: *"reshuffle rather than push" means the others reorder
+   to let the held one in*). The held pane and the line it joined (or the
+   stretch it reordered) hold their new places; **any other pane they now lie
+   on goes to the nearest place that lies on nothing** (`nearestFree`, exact:
+   each coordinate its own or flush with an edge); where there is none, **the
+   old push's own search** — the pane in the way pushing along x then y, each
+   way, a chain allowed, every kept pane standing (`pushed` with no motion);
+   and where that cannot either, **every pane not kept is laid again** round
+   the kept ones, the biggest first, each nearest where it was
+   (`relaidAround`). Only when none of that finds room is the preview
+   **refused**: the start, the held pane's ghost at home with *no room on
+   this edge* (or *no room to trade places there*) on it, and at the drop
+   nothing moves and the status says so. Nothing is ever put off the screen.
+6. **Anywhere else**: it lands where the hand has it if that lies on
    nothing; else at the furthest point toward the hand that does, along the
    line from its place at the press and then along each axis
-   (`landing`). **Nothing is pushed by a drag.**
+   (`landing`). Here nothing moves out of its way: it stops flush.
 
 **Measured** (a scratch walk over the unit test's own 1 500 random gestures on
-a phone's defaults, both ways up, four moves each; Node on the shared box):
-`dragTo` per move 0.009 ms median, 0.03–0.05 ms p95, 3–5 ms max (a GC).
-Outcomes upright / on its side: moved 470 / 453, refused for no room 206 /
-232, refused a trade 31 / 39, unchanged 42 / 25, back 1 / 1. Random spots
-are often against an edge with no room on it — the push used to make that
-room; now it is a refusal, said.
+a phone's defaults — 390 × 763 upright, 750 × 369 on its side, 750 each,
+four moves each; Node on the shared box), before and after the others made
+room:
 
-Pictures: docs/images/224–231, each looked at (below, *Pictures*).
+| | upright refused | on its side refused | moved (up / side) |
+|---|---|---|---|
+| first build (refuse where the line or a trade lies on a pane) | 237 of 750 (32 %): 206 no room, 31 no trade | 271 (36 %): 232, 39 | 470 / 453 |
+| the others make room (as built) | 38 (5 %): 24 no room, 14 no trade | 8 (1 %): 7, 1 | 638 / 713 |
+
+`dragTo` per move: 0.012 ms median, 0.05–0.09 ms p95, 2–4 ms max (a GC).
+**The refusals left, classified** (the same walk, each refusal's cause
+recorded in a scratch copy): upright, **31 of the 38 are the command line**,
+as wide as the screen (390 px, 65 tall): once the inserted pane and the line
+it joined hold their places, no band of the screen 65 px tall is clear of
+them all, so at its size there is nowhere for it — six of those are a trade
+landing the command line on the toolbar's column; **6 are the toolbar's
+column**, 555 px tall, with no stretch of a side that long left; 1 the
+action strip. On its side, **4 are a second line that would run off the
+screen** (the right column full, and the second line beside it as wide as
+the held pane), and 4 the organiser or the toolbar with nowhere left. Each is
+a pane at its own size with no room for it; resizing one to fit is not
+something a drag does.
+
+Pictures: docs/images/224–230 and 231–235, each looked at (below, *Pictures*).
 
 Deviations and additions — each a decision, vetoable (also in `TODO.md`'s
 register):
@@ -167,10 +198,22 @@ register):
   the hand did not take moves only to make room for it. (Closing up the
   source would have the desktop's log and command line jump from the bottom
   to the top when the tray leaves the left edge.)
-- **A reorder or a trade that would put a pane on another is refused, said**
-  — not pushed. Upright in Safari the phone's command line runs down the right
-  edge under the log; past the log's middle the 331 px line in the log's slot
-  would lie on the organiser, so that is *no room on this edge*.
+- **The others make room — the review's correction.** The first build
+  refused a reorder, an insertion or a trade that would put a pane on one off
+  the line (a third of random drops on a phone); the coordinator's review
+  ruled that a regression: the panes it lands on move to the nearest place on
+  nothing, the old push's search the fallback, then all of them laid again;
+  refused only when none of that finds room (above). Upright in Safari the
+  command line past the log's middle now takes the log's slot and the
+  organiser it would lie on goes under it (pictures 233, 234); the toolbar
+  taken to the top lies just under the logo's row and the organiser, the log
+  and the strip go under it (231, 232).
+- **The corner along the top is the logo and the status's least room**
+  (`cornerBox`), held fixed for an insertion there (unless a pane the viewer
+  left is already in it). Found by looking at the first picture of the
+  tray let in at the top: beside the bare logo, the status was left a column
+  20 px wide and ran down the screen a character to a line (ARCHITECTURE's
+  bug 45).
 - **Any pane may trade places with a floating one** — the spec says "a pane
   not docked to anything"; built for any held pane on no edge now, whatever
   it was on at the press. By top-left corner, as the spec's "each takes the
@@ -196,9 +239,10 @@ register):
   left edge's starts under the logo and the top's right of it.
 - **A resize by a grip still pushes**, and so does `apply` (`settled`: a tray
   grown for a new tool, a pane shown again). Neither has an order to change.
-- **The refusal is written on the ghost** (amber on a dark pill, the
-  outline the ghosts' solid translucent white), and in the status at the
-  drop.
+- **The refusal is written on the ghost** (amber on a dark pill, at least
+  9em wide and at most 14, running out from the ghost's side nearer the
+  middle, the outline the ghosts' solid translucent white), and in the status
+  at the drop.
 - **The e2e pairs on a phone.** The command line and the log share no edge
   on a phone (upright the line is along the bottom, the log down the right;
   on its side the line is along the top), so "the command line past the log"
@@ -226,15 +270,13 @@ register):
 
 Limitations left in place, deliberately:
 
-- **No push means no room is made across an edge.** The toolbar brought to the
-  top of an upright phone is refused: the organiser and the action strip
-  are under the logo's row, and nothing moves them out of the way. Bring it
-  to the bottom (a second line above the command line), or move them first.
-  A third of random drops are refusals (above).
-- **A refused ghost's word in a narrow column** wraps a word to a line
-  (picture 231): legible, cramped.
-- **Trades by top-left corner** refuse two floating panes of very different
-  sizes close together (the bigger at the smaller's corner lies on it).
+- **Room is found greedily**, not by a search over every arrangement: the
+  panes to move go one at a time to the nearest free place, then the push,
+  then all laid again biggest first. The command line as wide as an upright
+  phone is what is left without room most (above); a pane is never resized
+  to fit.
+- **The panes moved out of the way are stored where they went**, like the
+  held one, and dock to what they now rest against.
 - **Not tried on an iPhone**; the phones are Chromium's emulation.
 
 ## Pictures
@@ -262,6 +304,21 @@ Each looked at, at full size:
 - **230** — the tray dragged down the left edge past the log and the command
   line: both their ghosts up where the tray was, the tray in the hand at the
   bottom over the command line, its own ghost under it.
-- **231** — an iPhone 13 upright, the tray taken to the top: its ghost at home
-  down the left with *no room on this edge* on it in amber — a word to a
-  line in the narrow column (a limitation, above), legible.
+- **231** — an iPhone 13 upright, the tray taken off the left edge and up to
+  the top (it replaces the first build's picture of the same drag refused):
+  the column in the hand; its ghost a two-line row just under the logo's row,
+  the status whole in its row beside the logo; the organiser's ghost under
+  the row, the log's under that on the right, the strip's under the log —
+  every other pane faint.
+- **232** — dropped: the row under the logo's row, the organiser, the log and
+  the strip below it, the command line where it was; the status reads on one
+  line, and the drawing's middle is clear.
+- **233** — upright in Safari, the command line slid up the right edge past
+  the log's middle: the line in the hand over the log; the line's ghost in
+  the log's slot, the log's ghost down in the line's at the bottom right, and
+  the organiser's ghost moved down out of the line's way.
+- **234** — dropped: the line under the strip, the organiser under the line,
+  the log at the bottom right, the tray untouched.
+- **235** — one of the refusals left: the log taken up into the top-left
+  corner. Its ghost is home, with *no room on this edge* in amber on one line
+  across it; nothing else has a ghost.

@@ -177,8 +177,10 @@ toolbar that will turn from a column to a row shows the row), and only when
 you let go do they move there. **Panels reshuffle, they are not shoved**:
 drag one along its edge past the middle of its neighbour and the two trade
 places; bring it to another edge and it goes in where you drop it, the
-others there making room; drop it on a floating pane and they swap. Where an
-edge has no room, its ghost says so and letting go moves nothing. Escape, or letting go back where you started,
+others there making room; drop it on a floating pane and they swap. Any pane
+it would land on moves to the nearest free place, its ghost showing where.
+Only where they cannot all fit does its ghost say *no room on this edge*, and
+letting go moves nothing. Escape, or letting go back where you started,
 leaves everything where it was. **For more of the drawing**, the logo
 menu's View has *See-through panels* — every pane drawn as its content alone
 over the drawing: the tools their buttons, the organiser a small tree in its
