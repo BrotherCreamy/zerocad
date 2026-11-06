@@ -22,8 +22,8 @@
 // 20 busy loops on 4 cores, `solidsphone`'s circle drags): each move took
 // 50–130 ms to acknowledge; the sixth or seventh of twelve, the one that
 // leaves `TAP_SLOP`, was sent after the long-press timer had fired on time
-// (500 ms), and the drag became a box. A real hand's twelve moves are over in
-// 200 ms whatever the page is doing. So:
+// (500 ms), and the drag became a box. A hand's twelve moves take the same
+// time whatever the page is doing. So:
 //
 // - **Within a call, events are sent without waiting for each other** —
 //   `drag`, `tap` and every step of a `glide` go to the browser at the hand's
@@ -45,13 +45,15 @@
 //   resting before it lifts), so they count. Every event is stamped, not only
 //   some: a move sent unawaited with the browser's stamp once came out
 //   earlier than the landing stamped here, and broke every drag (2026-11-05).
-//   Moves are stamped at the pace they are really sent — 16 ms apart, what an
-//   unloaded box sent before — and no faster: stamped as a fast flick,
-//   Chromium suppresses the tap after the fling (measured: the Hand's tap
-//   after a slide was lost). The stamps are never ahead of the wall clock.
+//   Moves are stamped at the pace they are really sent, `FRAME_MS` apart, and
+//   no faster: stamped as a fast flick, Chromium suppresses the tap after the
+//   fling (measured: the Hand's tap after a slide was lost). The stamps are
+//   never ahead of the wall clock.
+//   The page reads them as it would a phone's: a tap's length, and whether a
+//   press its timer called held had in fact moved first (gestures.ts, `move`).
 // - **The gaps are real time, on this process's clock** (`sleep`), because
-//   they are the hand's: the 16 ms between a hand's moves, the 40 ms of a
-//   tap. They are not waits for the page; nothing here waits a fixed time
+//   they are the hand's: the `FRAME_MS` between a hand's moves, the 40 ms of
+//   a tap. They are not waits for the page; nothing here waits a fixed time
 //   for the page to catch up.
 
 import { setTimeout as sleep } from "node:timers/promises";
@@ -77,8 +79,17 @@ export interface Fingers {
   drag(from: At, to: At, steps?: number): Promise<void>;
 }
 
-/** A hand's gap between two events of one gesture: a frame, as a touchscreen reports. */
-const FRAME_MS = 16;
+/**
+ * A hand's gap between two events of one gesture. **The pace the suite was
+ * written against**, not a touchscreen's report rate: the helper that awaited
+ * each event sent a move every 32–35 ms on an unloaded box (measured,
+ * toolbargroups' slide: its 16 ms settle plus the acknowledgement and
+ * Playwright's round trip). At 16 ms the same twelve steps were a flick twice
+ * as fast, and Chromium dropped the tap 400 ms after its fling (toolbargroups,
+ * 0/3 unloaded). The tests' steps and rests were tuned to this speed, so it is
+ * the speed a gesture keeps at every load.
+ */
+const FRAME_MS = 33;
 
 export async function fingers(app: AppContext): Promise<Fingers> {
   const cdp: CDPSession = await app.page.context().newCDPSession(app.page);
