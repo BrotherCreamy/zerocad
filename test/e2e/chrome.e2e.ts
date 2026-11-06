@@ -332,7 +332,7 @@ test("desktop: 100 % is today's look — 20 px buttons, the same glyphs — and 
   }
 });
 
-test("iPhone 13: 100 % is the phone's own — buttons drawn 1.3 × the desktop's, every one hit over 44 px; the spin box reads 100%", async () => {
+test("iPhone 13: 100 % is the phone's own — buttons drawn at 0.8 of their 44 px target, every one hit over exactly that; the spin box reads 100%", async () => {
   const p = await phone();
   try {
     await p.page.$eval("#logo", (l) => (l as HTMLElement).click());
@@ -343,8 +343,10 @@ test("iPhone 13: 100 % is the phone's own — buttons drawn 1.3 × the desktop's
       const before = getComputedStyle(el, "::before");
       return { w: r.width, h: r.height, x: r.x + r.width / 2, y: r.y + r.height / 2, hitW: parseFloat(before.width), hitH: parseFloat(before.height), tool: (el as HTMLElement).dataset.tool };
     }));
-    assert.equal(b[0].w, 26, `drawn at 1.3 × 20: ${b[0].w}`);
-    for (const one of b) assert.ok(one.hitW >= 44 && one.hitH >= 44, `${one.tool}'s hit box ${one.hitW}×${one.hitH}`);
+    // Drawn at 0.8 of the target (docs/plans/touch-density.md): 26 px in an
+    // 18 px gap until then, which the owner called too much air.
+    assert.equal(b[0].w, 35, `drawn at 0.8 of 44: ${b[0].w}`);
+    for (const one of b) assert.ok(one.hitW === 44 && one.hitH === 44, `${one.tool}'s hit box ${one.hitW}×${one.hitH}`);
     // And a press does land on it 21 px off its middle either way, along the
     // tray and across it — not on its neighbour, not on the drawing.
     const hits = await p.page.evaluate((bs) => bs.flatMap(({ x, y, tool }) =>
@@ -414,7 +416,7 @@ test("the spin box: − and + step 10 %, finger-sized; the number goes back to 1
     await tap(".dec");
     assert.equal(await reads(), "90%", "the menu stays open, showing it");
     assert.match(await log(p.page), /> ui\(\{ scale: 0\.9 \}\)/);
-    assert.equal(await p.page.$eval("#toolbar button", (b) => (b as HTMLElement).offsetWidth), Math.round(20 * 1.3 * 0.9));
+    assert.equal(await p.page.$eval("#toolbar button", (b) => (b as HTMLElement).offsetWidth), Math.round(0.8 * 44 * 0.9), "0.8 of its target at 90 %");
     for (let i = 0; i < 4; i++) await tap(".dec");
     assert.equal(await reads(), "60%");
     assert.equal(await p.page.$eval("#appmenu .spin .dec", (b) => (b as HTMLButtonElement).disabled), true, "the end is off");
@@ -544,7 +546,10 @@ test("a tray docked to the right edge and a pane against it stay so through port
       const size = SIZE[orientation];
       const ins = INSETS[orientation];
       const [tb, log, line] = [await boxOf(p.page, panel("actions")), await boxOf(p.page, panel("log")), await boxOf(p.page, panel("cmd"))];
-      assert.equal(tb.right, size.width, `${orientation}: the strip against the right edge — reaching under the inset to the glass`);
+      // At its rectangle: on the safe area's line, not out under the cutout to
+      // the glass (the owner: "it hits an invisible edge, but then the padding
+      // of the palette expands out to touch the edge of the screen").
+      assert.equal(tb.right, size.width - ins.right, `${orientation}: the strip against the right edge — at the safe area's line`);
       assert.ok(tb.h > tb.w, `${orientation}: a column, turned by the edge`);
       assert.equal(log.right, tb.x, `${orientation}: the log against the strip's left ${JSON.stringify({ tb, log, line })}`);
       assert.ok(log.bottom > tb.y && log.y < tb.bottom, `${orientation}: beside it, not off its end`);

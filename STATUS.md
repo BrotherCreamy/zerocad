@@ -16,6 +16,23 @@ etc).
   on every push to the working branch. Called NeoCAD until 0.1.0; the
   internal code name stays in identifiers, the file format tag and storage
   keys (see TODO.md's register).
+- **Touch targets that follow the interface size** (docs/plans/touch-density.md,
+  built). The owner: *"the text resizes but the spacing between e.g menu
+  items and toolbar items barely changes … the white space between eg the
+  tools on the tool palettes is a bit too much"*. Under a finger every
+  target is `target(m)` (`panels.ts`): 44 at the device's 100 %, in
+  proportion to the spin box, never under 32 — `var(--target)` in every
+  coarse-pointer rule, set by `main.ts`. A tray's tool is drawn at 0.8 of
+  it (`TRAY_SHARE`; 35 px at 100 %, glyph 26). A pane bleeds only into the
+  bottom inset (`bleed`). A stored layout a rotation cannot hold is
+  re-fitted, said and not stored (`refit`), never drawn with panes over
+  panes. The chip keeps the verdict's line until its fade has ended. The
+  fillet label's drag keeps the direction it was pressed in (`blend.ts`).
+  Unit: `test/touchdensity.test.ts` (7); browser:
+  `test/e2e/touchdensity.e2e.ts` (14: four devices × both ways × three
+  sizes, the verdict on all 36 ways, the side edges, the re-fit).
+  *Not tried on a phone.*
+
 - **Sketch editing** (docs/plans/sketch-edit.md, built). The owner: *"give
   me better sketch tools, relations, trim, slot... all the usual"*. Seven
   operations in `src/sketchedit.ts`, each journalled as its call with what it

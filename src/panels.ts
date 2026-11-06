@@ -13,8 +13,9 @@
 // under anything.
 //
 // The layout's area is the **safe area** — inside a phone's notch, status bar
-// and home indicator — and a panel touching an edge that has an inset reaches
-// under it, its content kept clear (`bleed`). A panel the viewer has moved is
+// and home indicator — and a panel touching the bottom edge, where the home
+// indicator or the gesture bar is, reaches under it, its content kept clear
+// (`bleed`); at the sides and the top it is drawn where it is. A panel the viewer has moved is
 // stored as **what it rests against** (`Docking`), not only where it is, so a
 // rotation puts a panel docked to the right edge on the right edge again.
 //
@@ -95,13 +96,14 @@ export const TITLE_H = 16;
  * Every size the chrome is built from, in one value — so that a finger's
  * chrome is the mouse's with other numbers, and no rule below has two
  * versions. `FINE` is the mouse's at 100 %, what every exported constant here
- * is. A finger's is `touchMetrics`: **drawn at the interface size, hit at 44**
- * (docs/plans/chrome-logo-scale.md). The two are apart on purpose — a finger's
- * chrome used to be *drawn* at Apple's 44 pt target, which is what the owner
- * called huge; now a button is drawn at the device's size and a press lands on
- * it over 44 px however small it is drawn. The stylesheet draws from the same
- * numbers (the host sets them as custom properties), so the two cannot
- * disagree.
+ * is. A finger's is `touchMetrics`: **drawn at the interface size, hit at the
+ * target** (docs/plans/chrome-logo-scale.md), and the target follows the size
+ * too — 44 at the device's own 100 % (docs/plans/touch-density.md). The two
+ * are apart on purpose — a finger's chrome used to be *drawn* at Apple's
+ * 44 pt target, which is what the owner called huge; now a button is drawn at
+ * the device's size and a press lands on it over the target however small it
+ * is drawn. The stylesheet draws from the same numbers (the host sets them as
+ * custom properties), so the two cannot disagree.
  */
 export interface Metrics {
   /** A strip's thickness, drawn: across a panel's top, down a row tray's left end. */
@@ -124,7 +126,11 @@ export interface Metrics {
   line: number;
   /** The log's least height under its strip: a line of it, or so. */
   logLine: number;
-  /** The least a control answers a press over, in each direction: 44 under a finger, 0 (its drawn box) under a mouse. */
+  /**
+   * The least a control answers a press over, in each direction — the target
+   * (`target`): 44 under a finger at the device's 100 %, following the
+   * interface size from there, never under 32; 0 (its drawn box) under a mouse.
+   */
   hit: number;
   /** Whether this is a finger's chrome — which also lays out a phone's defaults (`defaultLayout`). */
   coarse: boolean;
@@ -135,15 +141,65 @@ export interface Metrics {
    * (`relaid`).
    */
   scale: number;
+  /**
+   * The device's form factor (uiscale.ts's `formFactor`: 1 under a mouse, 1.3
+   * on a phone, 1.15 on a tablet) — what `scale` is measured against when the
+   * target is worked out, so that the target is 44 at the device's 100 % with
+   * the default text size, and grows with a larger one as the type does. Not
+   * the whole of `deviceScale`, which also has the person's text size in it:
+   * measured against that, a person who chose larger text on their phone got
+   * targets — and tray buttons — no larger than anyone's (docs/plans/
+   * touch-density.md, As built).
+   */
+  base: number;
 }
 
 export const FINE: Metrics = {
   title: 16, button: 20, gap: 2, icon: 16, grip: 12, logo: 20, optionRow: 22, optionsW: 168, line: 28, logLine: 30,
-  hit: 0, coarse: false, scale: 1,
+  hit: 0, coarse: false, scale: 1, base: 1,
 };
 
-/** Apple's minimum target, 44 pt — a CSS pixel is a point on an iPhone. What a finger's controls are hit at. */
+/**
+ * Apple's minimum target, 44 pt — a CSS pixel is a point on an iPhone (and
+ * Google's 48 dp is 44–48 CSS px on the Pixels in the table). What a finger's
+ * controls are hit at **at the device's own 100 %**; from there the target
+ * follows the interface size (`target`).
+ */
 export const TOUCH_TARGET = 44;
+
+/**
+ * The least a target may be, whatever the interface size: below about 32 CSS
+ * px a fingertip — 8–10 mm across, 30–38 px on these screens — misses a
+ * target more often than it hits it. Only the spin box's 60 % and 70 % reach
+ * it (26 and 31 px unfloored).
+ */
+export const TARGET_FLOOR = 32;
+
+/**
+ * How much of its target a tray button is drawn under a finger: the tool
+ * fills its target and the air between tools is what is left (the owner:
+ * *"the white space between eg the tools on the tool palettes is a bit too
+ * much"*). At a phone's 100 % that is 35 of 44, a 9 px gap where there were
+ * 18. 0.75 and 0.85 were looked at, at 1× and 3× (docs/plans/touch-density.md,
+ * As built).
+ */
+export const TRAY_SHARE = 0.8;
+
+/** The glyph inside a finger's tray button, as a share of the button: a mouse's 16 in 20 would crowd its border at 35. */
+export const ICON_SHARE = 0.75;
+
+/**
+ * **The target at `m`'s interface size**: 44 at the device's own 100 % (at the
+ * default text size; a larger one grows it as it grows the type), in
+ * proportion to the spin box from there (`scale / base`), never under
+ * `TARGET_FLOOR` — 35 at 80 %, 57 at 130 %. The
+ * owner, from his phone: *"the text resizes but the spacing between e.g menu
+ * items and toolbar items barely changes"* — they were a literal 44.
+ */
+export function target(m: Pick<Metrics, "scale" | "base">): number {
+  const k = m.base > 0 ? m.scale / m.base : 1;
+  return Math.max(TARGET_FLOOR, Math.round(TOUCH_TARGET * (Number.isFinite(k) ? k : 1)));
+}
 
 /** The interface size is held to this, all factors multiplied: past it nothing fits the screen it is for. */
 const SCALE_MIN = 0.4;
@@ -161,34 +217,41 @@ export function scaledMetrics(base: Metrics, s: number): Metrics {
   return {
     title: r(base.title), button: r(base.button), gap: r(base.gap), icon: r(base.icon), grip: r(base.grip), logo: r(base.logo),
     optionRow: r(base.optionRow), optionsW: r(base.optionsW), line: r(base.line), logLine: r(base.logLine),
-    hit: base.hit, coarse: base.coarse, scale: k,
+    hit: base.hit, coarse: base.coarse, scale: k, base: base.base,
   };
 }
 
 /**
- * A finger's metrics at interface size `s` (a phone's 100 % is 1.3,
- * uiscale.ts): the mouse's, scaled — and then each control made to answer a
- * press over `TOUCH_TARGET` without being drawn any bigger. A tray's buttons
- * are spaced so that each one's pitch along the tray is a whole target (its
- * hit box, index.html's `::before`, overhangs its face across the tray too);
- * an option's row and the command line's are a target tall, their fields
- * drawn at the size inside; a grip, which draws nothing, is a target square.
+ * A finger's metrics at interface size `s` on a device of form factor `base`
+ * (a phone's is 1.3, a tablet's 1.15, uiscale.ts): the mouse's, scaled — and
+ * then each control made to answer a press over the target (`target`: 44 at
+ * `s` = `base`) without being drawn any bigger than it needs. A tray's
+ * button is drawn at `TRAY_SHARE` of the target (of the target before its
+ * floor, so a tray still shrinks at 60 %) and spaced so that its pitch along
+ * the tray is a whole target (its hit box, index.html's `::before`, overhangs
+ * its face across the tray too); an option's row and the command line's are a
+ * target tall, their fields drawn at the size inside; a grip, which draws
+ * nothing, is a target square.
  */
-export function touchMetrics(s: number): Metrics {
-  const m = scaledMetrics(FINE, s);
+export function touchMetrics(s: number, base: number): Metrics {
+  const m = scaledMetrics({ ...FINE, base: base > 0 && Number.isFinite(base) ? base : 1 }, s);
+  const hit = target(m);
+  const button = Math.max(m.button, Math.round(TRAY_SHARE * TOUCH_TARGET * (m.scale / m.base)));
   return {
     ...m,
-    gap: Math.max(m.gap, TOUCH_TARGET - m.button),
-    grip: TOUCH_TARGET,
-    optionRow: Math.max(m.optionRow, TOUCH_TARGET),
-    line: Math.max(m.line, TOUCH_TARGET),
-    hit: TOUCH_TARGET,
+    button,
+    icon: Math.max(m.icon, Math.round(ICON_SHARE * button)),
+    gap: Math.max(m.gap, hit - button),
+    grip: hit,
+    optionRow: Math.max(m.optionRow, hit),
+    line: Math.max(m.line, hit),
+    hit,
     coarse: true,
   };
 }
 
 /** A finger's metrics at a phone's 100 % — what the tests and the defaults' docs call a phone. */
-export const COARSE: Metrics = touchMetrics(1.3);
+export const COARSE: Metrics = touchMetrics(1.3, 1.3);
 
 /**
  * The logo's box in the top-left corner of the area: the mark and a margin
@@ -1099,6 +1162,41 @@ export const LOCKED_GUIDE = "panels are locked — unlock in the menu";
 /** What the status says when a rotation made a locked layout re-fit. */
 export const REFIT_NOTE = "panels re-fitted to this screen — still locked";
 
+/** What the status says when the panes left where they were cannot all fit this screen, and some were put at their defaults. */
+export const REFIT_UNLOCKED_NOTE = "panels re-fitted to this screen";
+
+/**
+ * **A layout that does not fit is never drawn while one that does is there.**
+ * `attempt(keep)` lays the panes out with the stored places of `keep` and the
+ * rest at their defaults; with all of `stored` kept the resolver can find no
+ * layout — the places a viewer left in one area, re-laid through a rotation,
+ * cannot all be had in the other — and what it leaves overlaps (measured over
+ * 2,796 random stored layouts on a 440 × 956 phone, both ways up: 850 of 5,592
+ * re-layouts found none, 844 of them drawn with panes over panes, and only a
+ * console warning said so). So, in order: every stored place; every stored
+ * place but those of the panes the failed layout has overlapping (731 of the
+ * 850 fit so); none — the defaults, which everything-fits guarantees (the
+ * other 119). `dropped` names the stored places given up; the caller says so
+ * and stores nothing. Where even the defaults do not fit, the first result
+ * stands, and is reported as it always was.
+ */
+export function refit(
+  attempt: (keep: readonly string[]) => { layout: Layout; ok: boolean },
+  stored: readonly string[],
+): { result: { layout: Layout; ok: boolean }; dropped: string[] } {
+  const first = attempt(stored);
+  if (first.ok || !stored.length) return { result: first, dropped: [] };
+  const inWay = new Set(overlapping(first.layout).flat());
+  const kept = stored.filter((id) => !inWay.has(id));
+  if (kept.length < stored.length) {
+    const some = attempt(kept);
+    if (some.ok) return { result: some, dropped: stored.filter((id) => inWay.has(id)) };
+  }
+  const none = attempt([]);
+  if (none.ok) return { result: none, dropped: [...stored] };
+  return { result: first, dropped: [] };
+}
+
 /** A corner of a pane: which way its see-through content hugs. */
 export type Hug = "nw" | "ne" | "sw" | "se";
 
@@ -1295,13 +1393,18 @@ function touchLayout(area: Size, tools: number, m: Metrics): Layout {
   // the tray instead, still docked to the bottom and the right edge.
   const clear = top + bar.h <= cmdY;
   const upper = Math.round(area.h * UPPER);
-  const besideW = Math.min(orgW, actions.x - GAP - left);
+  // The log under the strip is the strip's width, or its own least where the
+  // strip is shorter — which it is below about 80 %, now that the strip's
+  // pitch is the target and follows the size (docs/plans/touch-density.md).
+  const logW = Math.max(act.w, logMin.w);
+  const logX = area.w - GAP - logW;
+  const besideW = Math.min(orgW, logX - GAP - left);
   let log: Rect;
   let organiser: Rect;
-  if (besideW >= orgMin.w && act.w >= logMin.w) {
-    log = { x: actions.x, y: logY, w: act.w, h: logH };
+  if (besideW >= orgMin.w) {
+    log = { x: logX, y: logY, w: logW, h: logH };
     const h = Math.max(orgMin.h, Math.min(orgH, Math.max(logY + logH, upper) - stripTop));
-    organiser = { x: actions.x - GAP - besideW, y: stripTop, w: besideW, h };
+    organiser = { x: logX - GAP - besideW, y: stripTop, w: besideW, h };
   } else {
     log = { x: left, y: logY, w: area.w - GAP - left, h: logH };
     const y = logY + logH + GAP;
@@ -1394,12 +1497,27 @@ export function arranged(
 // bottom. That is as far as I can drag it down. Please allow it to be dragged
 // right to the bottom."* The layout's area is the safe area — inside the notch,
 // the status bar, the rounded corners and the home indicator — so a panel's
-// content is never under any of them. But **a panel touching an edge that has
-// an inset extends its ground under the inset and keeps its content clear of
+// content is never under any of them. But **a panel touching the bottom edge
+// extends its ground under the bottom inset and keeps its content clear of
 // it**: iOS's own toolbar, which runs to the bottom of the glass with its
 // buttons above the home indicator. That is `bleed`, and it is drawing only:
 // every rule above — push, turn, the clamp — is about the rectangle inside the
 // safe area, and none of it knows the inset exists.
+//
+// **Only the bottom.** It used to be every inset edge a panel touched, and on
+// a landscape iPhone that read as a fault — the owner: *"when I move something
+// up against the left or right edge, it hits an invisible edge, but then the
+// padding of the palette expands out to touch the edge of the screen. Strange
+// behaviour"*. The drag stops at the safe area's line, and then the box grew
+// out under the cutout to the glass. A side inset is a cutout or a rounded
+// corner, with nothing to keep clear of and nothing a panel's ground there
+// does for anyone; the top inset is the status bar (Safari's; the installed
+// app has none). The bottom is the one inset a docked panel's content must
+// stand above and its ground may run under — the home indicator, Android's
+// gesture bar. A pane against a side or the top is drawn exactly at its
+// rectangle, the drawing visible under the inset. And since a bottom bleed
+// only reaches down, below the safe area, where no pane's rectangle is, a bled
+// pane never draws over another pane.
 
 /** The safe area's insets from the window's edges, in CSS pixels (`env(safe-area-inset-*)`). */
 export interface Insets { top: number; right: number; bottom: number; left: number }
@@ -1407,24 +1525,17 @@ export const NO_INSETS: Insets = { top: 0, right: 0, bottom: 0, left: 0 };
 
 /**
  * Where a panel at `r` — in the area's coordinates, the safe area's — is drawn
- * in the window's, and how much of it is padding: for each edge of the area it
- * touches that has an inset, it reaches out by the inset, which it pads. An
- * edge it does not touch, or one with no inset, it neither reaches nor pads:
- * a floating panel is drawn exactly where it is.
+ * in the window's, and how much of it is padding: touching the area's bottom
+ * edge, it reaches down by the bottom inset, which it pads. Every other edge,
+ * and a panel off the bottom, is drawn exactly where it is (see above: the
+ * owner's *"the padding of the palette expands out to touch the edge of the
+ * screen"*). `pad` keeps all four sides, three of them always 0, so the
+ * stylesheet's padding rules stay one rule.
  */
 export function bleed(r: Rect, area: Size, insets: Insets): { rect: Rect; pad: Insets } {
-  const touches = {
-    left: r.x <= EPS, top: r.y <= EPS,
-    right: r.x + r.w >= area.w - EPS, bottom: r.y + r.h >= area.h - EPS,
-  };
-  const pad: Insets = {
-    top: touches.top ? insets.top : 0, right: touches.right ? insets.right : 0,
-    bottom: touches.bottom ? insets.bottom : 0, left: touches.left ? insets.left : 0,
-  };
-  return {
-    rect: { x: insets.left + r.x - pad.left, y: insets.top + r.y - pad.top, w: r.w + pad.left + pad.right, h: r.h + pad.top + pad.bottom },
-    pad,
-  };
+  const bottom = r.y + r.h >= area.h - EPS ? insets.bottom : 0;
+  const pad: Insets = { top: 0, right: 0, bottom, left: 0 };
+  return { rect: { x: insets.left + r.x, y: insets.top + r.y, w: r.w, h: r.h + bottom }, pad };
 }
 
 // ---- docking: what a panel rests against, kept through a rotation ----------
@@ -1966,7 +2077,8 @@ function placed(r: Rect, orient: Orientation | undefined, lines?: number): Place
  * edge on the right edge.
  *
  * The area is the element's box less the safe-area `insets`; a panel touching
- * an inset edge is drawn reaching under it, padded by it (`bleed`). `fixed`
+ * the bottom edge is drawn reaching under the bottom inset, padded by it
+ * (`bleed`); at the sides and the top, exactly at its rectangle. `fixed`
  * names the panels nothing moves — the logo — each an element placed at the
  * area's top-left at the size it answers, which the others are pushed against
  * and docked to like any panel.
@@ -2078,6 +2190,8 @@ export class Panels {
   private onLocked: ((text: string) => void) | undefined;
   /** Told when a locked layout had to be re-fitted to a new area — the host says it in the status. */
   private onRefit: ((text: string) => void) | undefined;
+  /** The stored places the last `apply` had to give up (`refit`), so a re-fit is said once, not on every apply. */
+  private gaveUp = "";
   /** The area the last `apply` laid out in: a change is a rotation or a resize. */
   private lastArea: Size | null = null;
   /** See-through panes a press put in docked form, until the next press outside them. */
@@ -2199,25 +2313,41 @@ export class Panels {
     }
     const fixed = this.fixedLayout();
     for (const [id, r] of Object.entries(fixed)) this.placeFixed(id, r);
-    const defaults = this.defaults(area);
-    const recs: Record<string, Recorded> = {};
-    for (const id of [...order, ...later]) if (this.stored[id]?.at) recs[id] = this.stored[id].at!;
+    const stored: Record<string, Recorded> = {};
+    for (const id of [...order, ...later]) if (this.stored[id]?.at) stored[id] = this.stored[id].at!;
     const sizeOf = (id: string, orient: Orientation | undefined, lines?: number): Size | null =>
       id in counts ? traySize(counts[id], orient ?? "column", this.m, trayRoom(area, orient ?? "column", this.m), lines) : sizes[id] ?? null;
     const minOf = (id: string, orient: Orientation | undefined) => this.min(id, orient);
-    const relay = (base: Layout) => relaid(recs, base, area, this.m.scale, sizeOf, minOf);
-    const unstored = (ids: string[], from: Layout) =>
-      Object.fromEntries(ids.filter((id) => !recs[id] && from[id]).map((id) => [id, from[id]]));
-    if (later.length) {
-      // Earlier panels hold their places in `settled`, so the tray is where the
-      // panels without the fitted ones put it — which is what "beside" means.
-      const base0 = { ...fixed, ...unstored(order, defaults) };
-      const first = arranged(order, relay(base0), defaults, counts, area, {}, this.m, fixed).layout;
-      for (const id of later) defaults[id] = fittedAt(defaults[id], first[this.fitted[id].beside ?? ""], sizes[id], area);
-    }
     const all = [...order, ...later];
-    const wanted = relay({ ...fixed, ...unstored(all, defaults) });
-    const s = arranged(all, wanted, defaults, counts, area, sizes, this.m, fixed);
+    // The layout from the stored places of `keep` (the rest at their defaults).
+    let defaults: Layout = {};
+    let wanted: Layout = {};
+    const attempt = (keep: readonly string[]) => {
+      const recs = Object.fromEntries(keep.map((id) => [id, stored[id]]));
+      defaults = this.defaults(area);
+      const relay = (base: Layout) => relaid(recs, base, area, this.m.scale, sizeOf, minOf);
+      const unstored = (ids: string[], from: Layout) =>
+        Object.fromEntries(ids.filter((id) => !recs[id] && from[id]).map((id) => [id, from[id]]));
+      if (later.length) {
+        // Earlier panels hold their places in `settled`, so the tray is where the
+        // panels without the fitted ones put it — which is what "beside" means.
+        const base0 = { ...fixed, ...unstored(order, defaults) };
+        const first = arranged(order, relay(base0), defaults, counts, area, {}, this.m, fixed).layout;
+        for (const id of later) defaults[id] = fittedAt(defaults[id], first[this.fitted[id].beside ?? ""], sizes[id], area);
+      }
+      wanted = relay({ ...fixed, ...unstored(all, defaults) });
+      return arranged(all, wanted, defaults, counts, area, sizes, this.m, fixed);
+    };
+    const { result: s, dropped } = refit(attempt, Object.keys(stored));
+    // Stored places this area could not hold all of: the panes in the way were
+    // put at their defaults for this area — said, never stored, so turning back
+    // puts every pane where it was left (the owner's landscape picture had the
+    // log drawn over the command line's body, the resolver's no-layout drawn
+    // as it stood).
+    const gaveUp = dropped.join(" ");
+    const newly = gaveUp !== "" && gaveUp !== this.gaveUp;
+    this.gaveUp = gaveUp;
+    if (newly && !this.switches.locked) this.onRefit?.(REFIT_UNLOCKED_NOTE);
     // A locked layout re-fitted to a new area (a rotation) is said, once — the
     // area changed on this apply only: the lock holds the panes against a
     // hand, and the resolver still runs. The
@@ -2225,7 +2355,7 @@ export class Panels {
     const turned = this.lastArea !== null && (this.lastArea.w !== area.w || this.lastArea.h !== area.h);
     this.lastArea = area;
     if (this.switches.locked) {
-      if (turned && refitted({ ...defaults, ...wanted }, s.layout, all).length) this.onRefit?.(REFIT_NOTE);
+      if ((turned && refitted({ ...defaults, ...wanted }, s.layout, all).length) || newly) this.onRefit?.(REFIT_NOTE);
     }
     this.show(s.layout, s.ok);
   }
@@ -2307,8 +2437,8 @@ export class Panels {
 
   /** Draws `el` at `r` — the DOM half of `place`, and how the held panel is drawn mid-gesture without being placed. */
   private draw(el: HTMLElement, r: Placed): void {
-    // Drawn reaching under any inset edge it touches, its content padded clear
-    // of it; the rectangle it is in the layout is `r` all the same.
+    // Drawn reaching under the bottom inset if it touches the bottom, its
+    // content padded clear of it; the rectangle it is in the layout is `r`.
     const { rect, pad } = bleed(r, this.size(), this.inset);
     el.style.left = `${rect.x}px`;
     el.style.top = `${rect.y}px`;

@@ -407,3 +407,27 @@ test("typed: fillet with a list of edges is the solid's, with two lines the sket
   assert.equal(m2.entities.get(arc)?.kind, "arc");
   assert.equal(m2.blends.size, 0);
 });
+
+// ---- the size label's drag --------------------------------------------------------------
+
+// Found by recording the phone test's gesture (docs/plans/touch-density.md):
+// the label is placed again every frame from the latest preview, which can
+// stand it off another face of the fillet, another way. Read live, the drag's
+// direction flipped mid-gesture and the radius fell to its floor — the phone
+// test failed whenever a preview landed between two moves.
+test("a drag of the size label runs the way the label stood when pressed, whatever face a later preview puts it on", async () => {
+  const { EdgeFilletTool } = await import("../src/tools/blend.ts");
+  const ctx = { options: { radius: 2 }, solids: null, requestRender() {}, model: new Model(3) };
+  const tool = new EdgeFilletTool(ctx as never);
+  const inside = tool as unknown as { handle: { at: [number, number]; dir: [number, number] } | null; dragged: number | null };
+  inside.handle = { at: [100, 100], dir: [0, -1] };
+  const at = (x: number, y: number) => ({ screen: [x, y] as [number, number], world: [0, 0, 0] }) as never;
+  tool.onDown(at(100, 100));
+  tool.onMove(at(100, 90));
+  const out = inside.dragged!;
+  assert.ok(out > 2, `out along the label: ${out}`);
+  // A preview arrives: the label now stands off another face, pointing back.
+  inside.handle = { at: [90, 130], dir: [0, 1] };
+  tool.onMove(at(100, 80));
+  assert.ok(inside.dragged! > out, `further out still, not back to the floor: ${inside.dragged}`);
+});

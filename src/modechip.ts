@@ -197,7 +197,9 @@ export class ModeChip {
    * it. So while anything after the chip that is showing — the verdict, the
    * diagnosis, a note — would be clipped, the chip gives way in order: its
    * next step first (`tight`), then the tool's name (`tighter`). Where, and
-   * Done, stay. `clipped` asks the page whether something showing is cut.
+   * Done, stay. `clipped` asks the page whether something showing is cut —
+   * and a verdict still fading out is showing: the chip waits for the fade's
+   * end before it takes the line back (docs/plans/touch-density.md).
    */
   fit(clipped: () => boolean): void {
     this.el.classList.remove("tight", "tighter");

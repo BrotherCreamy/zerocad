@@ -1713,14 +1713,73 @@ are flagged as such.
 Queue for Opus, in order. Each gets a spec in `docs/plans/` before work
 starts.
 
-- [ ] **Touch targets that follow the interface size, and less air between
-      tools (2026-11-06)** — next. The owner: *"the text resizes but the
+- [x] **Touch targets that follow the interface size, and less air between
+      tools (2026-11-06)**. The owner: *"the text resizes but the
       spacing between e.g menu items and toolbar items barely changes … the
       white space between eg the tools on the tool palettes is a bit too
       much"*. Measured: every target under a finger has a literal 44 px
       floor, so the pitch is air at 100 % and menus never shrink. Spec:
       [`touch-density.md`](docs/plans/touch-density.md), with the verdict
       cut on an upright iPhone and the phone fillet file's two flaky taps.
+      **BUILT (2026-11-06)** on `claude/touch-density`; the spec's *As
+      built* has the size table, the menu heights measured (35 / 44 / 57 px
+      at 80 / 100 / 130 % on an iPhone 13, an SE, a Pixel 7 and a Pixel
+      Tablet, both ways up; 44 at all three before) and the table of where
+      everything-fits now stops. **Register, vetoable:**
+      - **The target follows the interface size**: `target(m)` = 44 at the
+        device's 100 %, in proportion to the spin box (35 at 80 %, 57 at
+        130 %), every 44 in the coarse block `var(--target)`.
+      - **A floor of 32 px** (60 % and 70 % are held there).
+      - **A tray's tool is drawn at 0.8 of its target** (35 px at 100 %, its
+        glyph 0.75 of that, 26); 0.75 and 0.85 were looked at at 1× and 3×.
+        The share moves the face; the glyph is what reads as density.
+      - **A pane bleeds only into the bottom inset** (the manager's item, the
+        owner: *"it hits an invisible edge, but then the padding of the
+        palette expands out to touch the edge of the screen"*); at the sides
+        and the top it is drawn at its rectangle.
+      - **Deviations, each vetoable**: the target is measured against the
+        form factor, not the whole `deviceScale` the spec named — so a
+        larger system text size grows targets too (measured against
+        `deviceScale` a 130 % font drew no larger tools; android.e2e caught
+        it); the tool is drawn from the target before its floor, so 60–70 %
+        still shrink the tray; a layout that cannot fit is never drawn while
+        one that does exists (`refit`: the panes in the way go to their
+        defaults, said, not stored — the cause of the owner's log over the
+        command line, which was not the bleed); a faded status leaves the
+        corner's flow, and a new verdict appears without fading in; the
+        portrait log under the strip takes its own least width below about
+        80 %; `ui()` says the target; the guarantee above 100 % is shorter
+        (120 % everywhere, 110 % with a feature's options); the fillet fix
+        is in `blend.ts`.
+      - **Found and fixed**: the verdict was cut during its 0.6 s fade (the
+        chip took its line back at the fade's start); the phone fillet
+        flake was the app's — the radius label's drag direction re-read
+        every frame from a label a new preview can move to another face —
+        and its second failure the test's (a finger left down); a stored
+        layout a rotation cannot hold was drawn with panes over panes (850
+        of 5,592 re-layouts in a fuzz found no layout).
+      - [ ] **Found, still to do (touch density):**
+        - The fillet's size label still jumps between faces while its radius
+          is dragged (the next preview places it); only the drag's direction
+          is fixed.
+        - At 130 % and up there is more air between glyphs than before (22 px
+          at 130 %, 17 before): the pitch grows with the size, the glyph's
+          share of it stays 0.6. If the owner wants a denser large size, the
+          share could grow with the size.
+        - A finger within about 9 px of the tray is moved onto a tool by
+          Chromium's touch adjustment, 4.5 px further out than before.
+        - `refit` gives up whole panes' places, the overlapping ones first;
+          it does not search for the largest set that fits.
+        - Under load (8–18) a finger's tap on the canvas was read as a
+          long-press: the gap recheck's recorder saw the press down and up
+          on the canvas, the point tool armed, no point, and the menu open.
+          The open touch-harness item below; the recheck now asserts where
+          the press lands and closes the menu.
+        - Under `--test-name-pattern`, `touchdensity.e2e.ts` stayed up after
+          its last test passed (twice); unfiltered, as the suite runs it, it
+          exits. Not chased.
+        - Not tried on a phone.
+
 - [ ] **Panels reshuffle rather than push (2026-11-06)** — after touch
       density. The owner: *"When I push toolbars around, they should be able
       to reorder with other toolbars. So reshuffle rather than push."* Panes
@@ -3558,6 +3617,14 @@ extended the way `defineTool` extends the tool registry would close it.
         three — on the base commit at the same load, `solidsphone`'s two;
         every one passed with its file alone. Which of the four miss moves
         with the load, run to run.
+        **↳ The phone fillet file's two: found and fixed (2026-11-06,
+        touch-density.md).** Not the load and not the harness: recorded, the
+        recogniser made a clean drag every time and the fillet tool read its
+        drag's direction from the size label, which a preview arriving
+        mid-drag moved to another face, pointing another way — the radius
+        fell to its floor. The edge-tap failure after it was the first
+        test's finger left on the glass. 10 runs in a row green alone after.
+        `solidsphone`'s drags are still this item's.
         Seen again (2026-11-06, `claude/panels-overlay-lock`'s gate, the
         only worker): the same two in the full gate; alone, at load about 3,
         the file failed them in 2 of 4 runs on the branch and in 1 of 4 on

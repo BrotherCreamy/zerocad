@@ -223,7 +223,7 @@ test("a resize is previewed the same way: the held panel grows under the hand, t
 test("everything fits for every preview: 1 500 random gestures on a phone's defaults, no ghost over another or outside", () => {
   // The phone's own defaults (touchLayout, through `arranged` as the app
   // places them), portrait and landscape, at 100 % of a phone.
-  const m = touchMetrics(1.3);
+  const m = touchMetrics(1.3, 1.3);
   for (const a of [{ w: 390, h: 763 }, { w: 750, h: 369 }]) {
     const tools = 13;
     const counts = { toolbar: tools, actions: 4 };

@@ -160,7 +160,7 @@ test("iPhone 13, the CPU slowed 4×: the resolver per move, and the opacity chan
         if (m) layout[m[1]] = { x: +m[2], y: +m[3], w: +m[4], h: +m[5], ...(m[6] ? { orient: m[6] as "row" | "column" } : {}) };
       }
       const area = { w: innerWidth, h: innerHeight };
-      const m = P.touchMetrics(1.3);
+      const m = P.touchMetrics(1.3, 1.3);
       const mins = (id: string, o: "row" | "column" | undefined) => (id === "toolbar" || id === "actions") ? P.traySize(1, o ?? "column", m) : { w: 60, h: 30 };
       const out: number[] = [];
       for (let round = 0; round < 5; round++) {

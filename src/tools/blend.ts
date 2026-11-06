@@ -69,7 +69,17 @@ abstract class BlendTool extends FeatureTool {
   private under: Hit | null = null;
   /** The size label, where it was last drawn: its centre on screen and the way it stands off its face. */
   private handle: { at: [number, number]; dir: [number, number] } | null = null;
-  private drag: { from: [number, number]; start: number } | null = null;
+  /**
+   * A drag of the label: where it was pressed, the size then, and **the way
+   * the label stood off its face then** — fixed for the whole drag. The label
+   * is placed again on every frame from the preview the kernel last sent
+   * (`renderHandle`), and a preview of a new size can put it on another face
+   * of the fillet, standing off another way: read live, that turned the same
+   * finger's motion from "out" to "in" mid-drag, and the size fell to its
+   * floor whenever a preview landed between two moves (found by recording the
+   * phone test's gesture: docs/plans/touch-density.md, As built).
+   */
+  private drag: { from: [number, number]; start: number; dir: [number, number] } | null = null;
   /** The size a drag of the label has reached, laid over the options until it is let go. */
   private dragged: number | null = null;
   private scale = 1;
@@ -196,9 +206,9 @@ abstract class BlendTool extends FeatureTool {
   }
 
   onMove(p: PointerInfo): void {
-    if (this.drag && this.handle) {
+    if (this.drag) {
       const d = [p.screen[0] - this.drag.from[0], p.screen[1] - this.drag.from[1]];
-      const along = d[0] * this.handle.dir[0] + d[1] * this.handle.dir[1];
+      const along = d[0] * this.drag.dir[0] + d[1] * this.drag.dir[1];
       // A length is never 0 or less; a hundredth of the start is the least a drag goes to.
       this.dragged = Math.max(this.drag.start / 100, this.drag.start + along / this.scale);
       this.dragged = Math.round(this.dragged * 1000) / 1000;
@@ -216,7 +226,7 @@ abstract class BlendTool extends FeatureTool {
 
   onDown(p: PointerInfo): void {
     if (this.handle && Math.hypot(p.screen[0] - this.handle.at[0], p.screen[1] - this.handle.at[1]) < HANDLE_REACH * this.ui) {
-      this.drag = { from: p.screen, start: this.sizeOf(this.values()) };
+      this.drag = { from: p.screen, start: this.sizeOf(this.values()), dir: this.handle.dir };
       this.under = null;
       return;
     }

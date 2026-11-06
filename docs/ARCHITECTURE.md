@@ -1780,7 +1780,7 @@ until the next action went unrecorded.
 
 ## Why there is an end-to-end suite
 
-Thirty-nine bugs so far were invisible to the unit tests and obvious within seconds
+Forty-three bugs so far were invisible to the unit tests and obvious within seconds
 of running the app:
 
 1. a status readout that went stale, so a conflict could be introduced from
@@ -1965,6 +1965,22 @@ of running the app:
    and took the tray's pitch padding, which `flyoutSize` never counted. A
    single line hid it (the coarse tray overflows visibly). Found by looking
    at the iPhone's long-press picture.
+40. A fillet's radius dragged on a phone falling to nothing mid-drag, now
+   and then: the drag's direction was read every frame from the size label,
+   which the kernel's next preview can stand off another face, pointing
+   another way. Every unit test passed (no preview lands mid-drag in one);
+   found by recording the recogniser's and the tool's decisions in the phone
+   e2e's failing runs. The direction is taken at the press now.
+41. The verdict drawn half under the mode chip on an upright iPhone for the
+   0.6 s of its fade: the chip took its line back when the fade *started*.
+   Found by looking at a picture (196); the chip waits for the fade's end.
+42. A stored layout a rotation could not hold drawn with panes over panes —
+   the resolver's no-layout drawn as it stood, a console warning the only
+   sign. Found by the owner (his log over the command line); a fuzz put it
+   at 850 of 5,592 re-layouts. `refit` gives places up until one fits.
+43. Targets measured against the device's whole 100 % — text size included
+   — so a larger system font drew no larger tools. The unit table was
+   right for its inputs; found by the Android e2e's "drawn 1.3 × larger".
 
 None of these are mathematics. They are all *assembly*. Hence `npm run
 test:e2e`, and hence the expectation that anything touching the app is checked

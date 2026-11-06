@@ -24,8 +24,8 @@ const TOOLS = 13;
  */
 const PORTRAIT: Size = { w: 390, h: 844 - 47 - 34 };
 const LANDSCAPE: Size = { w: 844 - 2 * 47, h: 390 - 21 };
-/** A finger's chrome at 1 × a desktop's — a phone at its smallest (60 % of its 1.3, near enough). */
-const PHONE = touchMetrics(1);
+/** A finger's chrome at 1 × a desktop's — a phone at 77 % of its own 1.3, its target 34. */
+const PHONE = touchMetrics(1, 1.3);
 
 function inside(layout: Layout, area: Size): string[] {
   return Object.entries(layout).filter(([, r]) => r.x < 0 || r.y < 0 || r.x + r.w > area.w || r.y + r.h > area.h)
@@ -39,9 +39,10 @@ test("the mouse's sizes are what they were: FINE is every exported constant, and
   assert.deepEqual(defaultLayout({ w: 1100, h: 760 }, TOOLS), defaultLayout({ w: 1100, h: 760 }, TOOLS, FINE));
 });
 
-test("a finger's tray at a phone's 100 %: 26 px buttons a 44 px target apart, a 21 px strip, one line, either way", () => {
-  assert.deepEqual(traySize(4, "row", COARSE), { w: 21 + 6 + 4 * 44, h: 34 });
-  assert.deepEqual(traySize(TOOLS, "column", COARSE), { w: 34, h: 21 + 6 + TOOLS * 44 });
+test("a finger's tray at a phone's 100 %: 35 px buttons a 44 px target apart, a 21 px strip, one line, either way", () => {
+  // 35 = 0.8 of the target (docs/plans/touch-density.md): it was 26 in an 18 px gap.
+  assert.deepEqual(traySize(4, "row", COARSE), { w: 21 + 6 + 4 * 44, h: 43 });
+  assert.deepEqual(traySize(TOOLS, "column", COARSE), { w: 43, h: 21 + 6 + TOOLS * 44 });
   assert.equal(optionsSize(2, COARSE).h, 21 + 8 + 2 * 44, "an option's row is a target tall");
 });
 
@@ -79,11 +80,14 @@ for (const m of [COARSE, PHONE]) {
     assert.deepEqual(overlapping({ ...d, ...logo }), []);
     assert.equal(d.toolbar.orient, "row");
     assert.equal(d.toolbar.y + d.toolbar.h, LANDSCAPE.h, "on the bottom edge");
-    assert.equal(linesOf(d.toolbar, m), 2, "two rows: thirteen at a finger's pitch do not fit beside the column");
+    // At 100 % the pitch is 44 and twelve do not fit beside the column; at
+    // 77 % it is the target there, 34, and they fit in one row.
+    assert.equal(linesOf(d.toolbar, m), m === COARSE ? 2 : 1, "two rows at 100 %: twelve at a finger's pitch do not fit beside the column");
     assert.ok(d.toolbar.x + d.toolbar.w <= d.organiser.x - 8, "left of the column");
     const corner = cornerBox(m);
     assert.ok(d.cmd.y === 8 && d.cmd.x >= corner.w + 8 && d.actions.y === 8 && d.actions.x > d.cmd.x + d.cmd.w, "the row beyond the corner");
-    assert.ok(d.log.x === d.actions.x && d.log.y > d.actions.y + d.actions.h);
+    // Under the strip, their right edges one: the log is the strip's width, or its own least where the strip is shorter (77 %).
+    assert.ok(d.log.x + d.log.w === d.actions.x + d.actions.w && d.log.x <= d.actions.x && d.log.y > d.actions.y + d.actions.h);
     assert.equal(d.organiser.x + d.organiser.w, LANDSCAPE.w - 8, "the organiser at the right edge");
     assert.ok(d.organiser.y > d.log.y + d.log.h && d.organiser.y + d.organiser.h <= LANDSCAPE.h - 8, "under the log, to the bottom margin");
   });
