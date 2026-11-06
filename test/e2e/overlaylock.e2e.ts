@@ -27,6 +27,7 @@
 import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import { mkdirSync } from "node:fs";
+import { isDeepStrictEqual } from "node:util";
 import { join } from "node:path";
 import { openApp, settled, type AppContext, type OpenOptions } from "./harness.ts";
 import { build, look, lookAlong } from "./scenes.ts";
@@ -80,6 +81,20 @@ const stripBox = (app: AppContext, id: string) => app.page.$eval(`.panel[data-pa
   return { x: r.x, y: r.y, w: r.width, h: r.height };
 });
 const points = async (app: AppContext) => (await app.model()).byKind.point ?? 0;
+/**
+ * What `read` gives once `done` says the page has got there, or at the
+ * deadline whatever it gives then, for the assertion after it to judge.
+ */
+async function until<T>(read: () => Promise<T>, done: (t: T) => boolean, ms = 5000): Promise<T> {
+  const deadline = Date.now() + ms;
+  let v = await read();
+  while (!done(v) && Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 50));
+    v = await read();
+  }
+  return v;
+}
+
 /**
  * The point count once a tap's point has had time to land, then a settle to
  * catch a second one. A fixed 150 ms read raced the tap at load 15 (24 !== 25
@@ -226,14 +241,17 @@ for (const way of WAYS) {
     assert.match(await app.log(), /> panels\(\{ overlay: true \}\)/, "the menu typed the line");
     assert.equal(await app.page.$eval("#appmenu [data-switch='overlay'] input", (el) => (el as HTMLInputElement).checked), true, "and its box is ticked");
     await hand.tap(logo[0], logo[1]); // closes the menu
-    await app.page.waitForTimeout(250); // the boxes' fade
     assert.equal(await app.page.$eval("#viewwrap", (el) => el.classList.contains("overlay")), true);
 
     // Every pane but the options panel: no ground, no border, no press of its own.
-    const forms = await app.page.evaluate(() => Array.from(document.querySelectorAll<HTMLElement>(".panel[data-panel]")).filter((el) => !el.hidden).map((el) => {
+    // Read once the boxes' fade has ended, timed by the page rather than by a
+    // 250 ms sleep: under 20 busy loops a pane still had its whole ground at
+    // 250 ms (1 run of 5 alone). A pane that never fades still fails below.
+    const formsNow = () => app.page.evaluate(() => Array.from(document.querySelectorAll<HTMLElement>(".panel[data-panel]")).filter((el) => !el.hidden).map((el) => {
       const s = getComputedStyle(el);
       return { id: el.dataset.panel!, bg: s.backgroundColor, events: s.pointerEvents, strip: el.querySelector<HTMLElement>(":scope > .ptitle") ? getComputedStyle(el.querySelector(":scope > .ptitle")!).visibility : "none" };
     }));
+    const forms = await until(formsNow, (fs) => fs.every((f) => f.bg === "rgba(0, 0, 0, 0)" && f.events === "none" && f.strip === "hidden"));
     for (const f of forms) {
       assert.deepEqual([f.bg, f.events, f.strip], ["rgba(0, 0, 0, 0)", "none", "hidden"], `${way.name}: ${f.id} is boxless, takes no press, has no strip`);
     }
@@ -460,8 +478,10 @@ test("iPhone 13: a locked layout that no longer fits after a rotation is re-fitt
   assert.equal(await app.page.$eval("#viewwrap", (el) => el.classList.contains("locked")), true, "still locked");
   await shot(app, "iphone-13-locked-re-fitted-on-its-side");
   await app.page.setViewportSize(vp);
-  await app.page.waitForTimeout(400);
-  assert.deepEqual(await paneBoxes(app), portrait, "turned back, every pane where it was locked");
+  // Timed by the page, not by a sleep: under 20 busy loops the relayout after
+  // the turn came later than a fixed 400 ms in 2 runs of 5 alone (every pane
+  // still where landscape put it). A layout that never comes back still fails.
+  assert.deepEqual(await until(() => paneBoxes(app), (b) => isDeepStrictEqual(b, portrait)), portrait, "turned back, every pane where it was locked");
   assert.deepEqual(app.pageErrors, []);
 });
 

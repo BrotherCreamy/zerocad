@@ -7,6 +7,55 @@ decisions.
 
 ---
 
+## The touch harness streams a hand's events, and a held press reads its move's stamp
+
+The iPhone drags in `solidsphone.e2e.ts` failed in four full gates in a row
+(#75–#78) and passed alone. A gate that is red by default stops telling anyone
+anything. Built to [`docs/plans/touch-harness.md`](docs/plans/touch-harness.md);
+the load, every count and the rejected candidates are in its *As built*.
+
+- **Reproduced first, under 20 busy loops** on the 4-core box (load ~24):
+  `solidsphone` alone was 1/5 green, `android` 1/5, `overlaylock` 3/5.
+- **The cause, traced** (the page's pointer events against the harness's
+  sends). `fingers.ts` awaited every `Input.dispatchTouchEvent`, and every
+  touch here is handled on the main thread, so a drag's twelve moves cost
+  twelve main-thread turns of 50–130 ms. The move that leaves `TAP_SLOP` was
+  sent after the long-press timer had fired, on time, and the circle's drag
+  became a box.
+- **The harness now streams.** Within one call, events go to the browser at
+  the hand's pace (a move every 33 ms, a 40 ms tap) without waiting for each
+  other, and the browser queues and coalesces them as it does a
+  touchscreen's. Each call still returns only once the page has handled
+  everything it sent. Every event carries the hand's own timestamp. `hold`
+  waits for its landing before it holds.
+- **The recogniser reads a held press's move by its stamp**
+  (`gestures.ts`'s `move`). With the harness streaming, a second race showed
+  on android's Pixel 7. The page was busy from the landing until its timer
+  was due, and it ran the timer before the move it already had, which was
+  stamped 171 ms. A move past the slop stamped before `LONG_PRESS_MS` is now
+  a drag: the long-press is abandoned and its menu withdrawn. This is right
+  on a phone too, since a page busy drawing at touchdown does the same
+  whatever sends the events. It is the reading a tap's length already had.
+  Three unit tests; the first fails without the rule.
+- **Rejected by measurement:** Playwright's `page.clock` paused through a
+  gesture. It made `solidsphone` green, but it freezes `performance.now()` and
+  broke touch's *"a quick tap while the page is busy is still a tap"* (0/2).
+- **A hand at the pace the suite was written against: 33 ms a move.** The
+  first build streamed at 16 ms, believing that was the old pace. The full
+  gate showed it was not: toolbargroups' iPhone-landscape slide lost the tap
+  after its fling (0/3 unloaded). The old helper had really sent a move every
+  32–35 ms.
+- **After, alone, 5 runs each at the same 20 loops:** `solidsphone` 5/5 (from
+  1/5), `android` 5/5 (from 1/5), `overlaylock` 5/5 (from 3/5).
+  `solidfilletsphone`, `touch` and `surfacesphone` stayed at 5/5, and
+  `toolbargroups` was 5/5. Two of `overlaylock`'s fixed sleeps that are not
+  touches failed at this load, a rotation's relayout at 400 ms and the boxes'
+  fade at 250 ms. They now poll what they assert, in a commit of their own.
+- **Left, and written down in TODO:** at load 25 and up a tap on chrome is now
+  and then lost with either harness (the page took up to 1.4 s to handle the
+  touch, and the click is Chromium's own); a long-press timed from the
+  landing's handling, not its stamp; the stamp rule untried on Safari.
+
 ## The spline: a curve through points you can drag
 
 The owner: *"give me better sketch tools, relations, trim, slot... all the

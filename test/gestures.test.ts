@@ -294,6 +294,39 @@ test("a lift arriving within the grace after a late timer is still a tap", () =>
   assert.ok(!calls.some((c) => c.startsWith("longPress")));
 });
 
+// Measured in the browser (android.e2e.ts, Pixel 7, at load 30): the page,
+// busy from the landing until its long-press timer was due, ran the timer
+// before the move the browser already had for it — a move the finger made at
+// 171 ms. The page's lateness is not the finger's hold.
+test("a drag the page saw only after its long-press timer: moved at 171 ms by its stamp, it is a drag, the long-press dropped", () => {
+  const { g, clock, calls } = setup();
+  g.down(1, 80, 90, 0);
+  clock.advance(LONG_PRESS_MS); // the timer, on time: the move is still queued
+  assert.ok(calls.includes("longPress 80,90"));
+  clock.block(60);
+  g.move(1, 140, 150, 171);
+  g.move(1, 160, 170, 600);
+  g.up(1, 160, 170, 620);
+  assert.deepEqual(calls, ["press 80,90", "longPress 80,90", "abandon", "dragStart 80,90", "drag 140,150", "drag 160,170", "dragEnd 160,170", "end"]);
+});
+
+test("a held press moved by the finger after the long-press is still the box", () => {
+  const { g, clock, calls } = setup();
+  g.down(1, 80, 90, 0);
+  clock.advance(LONG_PRESS_MS + 100);
+  g.move(1, 140, 150, LONG_PRESS_MS + 90);
+  assert.deepEqual(calls, ["press 80,90", "longPress 80,90", "boxStart 80,90", "box 140,150"]);
+});
+
+test("a held press's move inside the slop is nothing, whatever its stamp", () => {
+  const { g, clock, calls } = setup();
+  g.down(1, 80, 90, 0);
+  clock.advance(LONG_PRESS_MS);
+  g.move(1, 84, 93, 100);
+  assert.deepEqual(calls, ["press 80,90", "longPress 80,90"]);
+  assert.equal(g.state, "held");
+});
+
 test("on time, a held finger is a long-press exactly as before", () => {
   const { g, clock, calls } = setup();
   g.down(1, 10, 10, 0);

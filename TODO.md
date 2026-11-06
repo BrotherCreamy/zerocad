@@ -3793,7 +3793,17 @@ extended the way `defineTool` extends the tool registry would close it.
         finger lands, so a recurrence says why. The flake did not reproduce
         in 3 paired runs (touch, solids, depth) before the fix; the fix
         stands on the reading and the unit tests.
-      - [ ] **Open: the touch harness under a saturated machine.**
+      - [x] **The touch harness under a saturated machine — fixed
+        (2026-11-06, [`touch-harness.md`](docs/plans/touch-harness.md)).**
+        Traced under 20 busy loops: the harness's cause was exactly the one
+        named below. A drag's moves went one acknowledged main-thread turn
+        apiece, and the 6th or 7th of 12, the one leaving `TAP_SLOP`, was sent
+        after an on-time long-press. `fingers.ts` now streams a call's events
+        at the hand's pace and stamps every one with the hand's clock. A
+        second cause, the recogniser's own, showed once the harness streamed:
+        a timer run before a move the page already had. A held press's move
+        stamped before `LONG_PRESS_MS` is now a drag. `solidsphone` alone went
+        from 1/5 to 5/5; the spec's *As built* has every count.
         Seen again (2026-11-06, `claude/android`'s gate, sets of three files
         beside another worker's suite, load 5–16): `solidfilletsphone`'s held
         label and edge tap in two runs of its set, `solidsphone`'s drags in
@@ -3834,8 +3844,15 @@ extended the way `defineTool` extends the tool registry would close it.
         not kept — unproven on a loaded box is not proven. Next: measure the
         ack latency under load, and either stream a whole drag with stamps
         16 ms apart only when no fling matters, or run touch files alone.
-      - [ ] **Open (2026-11-06, the gate after sketch-edit, load 14–15):
-        two fixed sleeps fixed, one failure left uncaught.** `toolbargroups`'
+      - [x] **Open (2026-11-06, the gate after sketch-edit, load 14–15):
+        two fixed sleeps fixed, one failure left uncaught.** **↳ Closed by
+        the streamed harness (2026-11-06, touch-harness.md):** a tap's lift
+        no longer waits for its landing's acknowledgement. Alone under 20
+        busy loops, `overlaylock`'s tap between rows failed 2 of 5 runs
+        before (`24 !== 25`) and none of 20 after. Two of its sleeps that
+        are not touches (a rotation's relayout read at 400 ms, the boxes'
+        fade at 250 ms) failed at that load as well, and now poll what they
+        assert. The file has many more fixed sleeps like them. `toolbargroups`'
         "not at once" (a 150 ms sleep against the flyout's 300 ms grace) is
         now timed by the page; `overlaylock`'s point counts after a tap now
         poll. Before the fix, overlaylock failed in 1 of 2 runs alone. After
@@ -3850,17 +3867,42 @@ extended the way `defineTool` extends the tool registry would close it.
         (557, 558) are the drag form of it; alone at load 12.5 they went
         3/3. Fixing the harness (stamped touches, not awaited ones) is the
         one cure for all three, and it is the "Next:" above.
-      - [ ] **Queued (2026-11-06): fix the touch harness's latency, now a
-        package of its own** ([`touch-harness.md`](docs/plans/touch-harness.md);
-        a fourth red gate after #78, again 3/3 alone). The `solidsphone` drags (on the iPhone, Cut
-        through the top and a boss on the side) failed in the gates after
-        #75, #76 and #77: three in a row. Each time they passed alone
-        (3/3). A gate that is red by default stops meaning anything. The
-        same gate after #77 also had `fits.e2e.ts:252` die on `page.reload:
-        net::ERR_ABORTED; maybe frame was detached?`, with the surfaces
-        worker starting up beside it (14/14 alone; log kept in the
-        session's scratchpad as `gate77.log`). One sighting, cause not
-        found.
+      - [x] **Built (2026-11-06): the touch harness's latency**
+        ([`touch-harness.md`](docs/plans/touch-harness.md), its *As built*).
+        The `solidsphone` drags (on the iPhone, Cut through the top and a
+        boss on the side) failed in the gates after #75, #76, #77 and #78,
+        and passed alone each time. The cause, traced: `fingers.ts` awaited
+        every touch, so a drag's moves were sent late. It streams them now, at
+        the 33 ms a move the old helper really managed unloaded (16 ms flung
+        harder and lost toolbargroups' next tap), and the recogniser reads a
+        held press's move by its stamp. Rejected
+        by measurement: Playwright's `page.clock`. It freezes
+        `performance.now()` and broke touch's busy-page tap test (0/2).
+      - [ ] **Open (2026-11-06): `fits.e2e.ts:252` died once on
+        `page.reload: net::ERR_ABORTED; maybe frame was detached?`**, in the
+        gate after #77 with the surfaces worker starting up beside it (14/14
+        alone; log kept in the session's scratchpad as `gate77.log`). One
+        sighting, cause not found. Not a touch test.
+      - [ ] **Open (2026-11-06, found by touch-harness.md): at load 25 and up,
+        a tap on chrome (a tray button, the logo) is now and then lost.**
+        Traced: the page took 400–1,400 ms to handle the touch, and the click
+        is Chromium's own synthesis from the touch sequence. That happens with
+        the old harness and the new, and on a phone whose page is that busy.
+        At load ~25 it showed once in 10 android runs (the logo's tap, the
+        menu never opened). Next, if it matters on a
+        device: chrome that acts on `pointerup` rather than on the
+        synthesised `click`.
+      - [ ] **Open (2026-11-06, found by touch-harness.md): a long-press
+        timed from the landing's handling, not its stamp.** A hold made while
+        the page is blocked at touchdown can lift before the timer is due and
+        come to nothing. The neighbour of the rule now built: a move stamped
+        *after* `LONG_PRESS_MS`, handled before a late timer, is read as a
+        drag and not as a hold, then a box. Neither is hit by any test; both
+        are app questions for a phone.
+      - [ ] **Not tried on a device: the stamp rules on Safari.** If
+        WebKit's `timeStamp` is when the web process made the event and not
+        the touchscreen's time, the held-press rule changes nothing there
+        (the press stays the box), which is no worse than before.
       - [ ] **Open: `depth.e2e.ts` "two solids driven through each other"
         failed once in 3 paired runs** (touch, solids, depth together): the
         painter's offscreen picture matched the oracle at every sample

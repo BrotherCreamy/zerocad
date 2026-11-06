@@ -2776,7 +2776,10 @@ replacing) the system Node other projects on this machine may depend on.
   a multi-touch device. Specifically I have an iPhone."* **One recogniser**,
   pure, with an injected clock, decides tap (8 px, 350 ms), drag, long-press
   (500 ms), long-press-drag, pinch, abandon (a second finger) and spent (a
-  third), and the engine feeds each down the mouse's paths. A tool's press is
+  third), and the engine feeds each down the mouse's paths. A busy page is
+  read by the events' own stamps: a tap's length is the lift's stamp less the
+  landing's, and a held press whose move past the slop is stamped before the
+  long-press is a drag (docs/plans/touch-harness.md). A tool's press is
   held until the finger moves or lifts, so a pinch never reaches it. A second
   finger mid-draw re-arms the tool. One finger on empty canvas orbits (pans in
   2D). A tap toggles once something is selected, and a finger's box adds. A

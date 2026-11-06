@@ -1312,7 +1312,7 @@ export class ToolEngine {
       // wanders — over a panel included.
       this.canvas.setPointerCapture?.(e.pointerId);
       this.gestures.down(e.pointerId, sx, sy, eventTime(e));
-    } else if (kind === "move") this.gestures.move(e.pointerId, sx, sy);
+    } else if (kind === "move") this.gestures.move(e.pointerId, sx, sy, eventTime(e));
     else if (e.type === "pointercancel") this.gestures.cancel(e.pointerId);
     else this.gestures.up(e.pointerId, sx, sy, eventTime(e));
   }

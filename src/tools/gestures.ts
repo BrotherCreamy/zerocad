@@ -32,7 +32,10 @@
 // Pure: no DOM, no model, no camera — pointer ids, canvas pixels and a clock,
 // which a test drives with a fake. Timing is the clock's (`now`, `after`), so
 // the long-press is a timer and not a guess made on the next event: a finger
-// held perfectly still sends no events at all.
+// held perfectly still sends no events at all. But the timer is the page's,
+// and a busy page can run it before the events it already has: so a tap's
+// length and whether a held press had moved first are read from the events'
+// own stamps where the browser gives them (`down`, `move`, `up`'s `at`).
 
 /**
  * How far a finger may wander and still be a tap or a long-press, in CSS
@@ -96,7 +99,12 @@ export interface GestureSink {
   boxEnd(x: number, y: number): void;
   /** Two fingers moved: pan by (dx, dy), then zoom by `factor` about the centroid (cx, cy) they now share. */
   pinch(dx: number, dy: number, factor: number, cx: number, cy: number): void;
-  /** The one-finger gesture in progress — a press, drag, long-press or box — is dropped, not finished. */
+  /**
+   * The one-finger gesture in progress — a press, drag, long-press or box — is
+   * dropped, not finished. One case continues the same finger: a long-press
+   * found by its move's stamp to have been a drag (`move`) is abandoned, and
+   * a `dragStart` follows.
+   */
   abandon(): void;
   /** Every finger is up. */
   end(): void;
@@ -106,7 +114,7 @@ type Phase =
   | { kind: "idle" }
   | { kind: "pending"; id: number; x0: number; y0: number; t0: number; stop: () => void }
   | { kind: "drag"; id: number }
-  | { kind: "held"; id: number; x0: number; y0: number }
+  | { kind: "held"; id: number; x0: number; y0: number; t0: number }
   | { kind: "box"; id: number }
   | { kind: "pinch"; a: number; b: number; cx: number; cy: number; spread: number }
   | { kind: "spent" };
@@ -166,7 +174,18 @@ export class Gestures {
     this.phase = { kind: "spent" };
   }
 
-  move(id: number, x: number, y: number): void {
+  /**
+   * `at` as for `down`: when the finger moved. It decides one thing — a
+   * press already read as held whose move past the slop was made before
+   * `LONG_PRESS_MS`, by the finger's own clock, was never held: a busy page
+   * ran its timer before it got round to the move. Measured
+   * (android.e2e.ts, Pixel 7, at load 30): the landing handled at 67 ms,
+   * the page busy until 568, the timer run on time, and the move the browser
+   * had queued — stamped 171 — handled at 630; the drag became a box.
+   * A finger that moves at 171 ms is a drag on a phone too, however long the
+   * page takes to see it. Without a stamp, the timer's reading stands.
+   */
+  move(id: number, x: number, y: number, at?: number): void {
     const f = this.fingers.get(id);
     if (!f) return;
     f.x = x;
@@ -188,6 +207,15 @@ export class Gestures {
         return;
       case "held":
         if (Math.hypot(x - p.x0, y - p.y0) <= TAP_SLOP) return;
+        if (at !== undefined && at - p.t0 < LONG_PRESS_MS) {
+          // The long-press was the page's lateness, not the finger's: it is
+          // dropped — its menu with it — and the drag the hand made begins.
+          this.sink.abandon();
+          this.phase = { kind: "drag", id };
+          this.sink.dragStart(p.x0, p.y0);
+          this.sink.drag(x, y);
+          return;
+        }
         this.phase = { kind: "box", id };
         this.sink.boxStart(p.x0, p.y0);
         this.sink.box(x, y);
@@ -296,7 +324,7 @@ export class Gestures {
   private held(id: number): void {
     const p = this.phase;
     if (p.kind !== "pending" || p.id !== id) return;
-    this.phase = { kind: "held", id, x0: p.x0, y0: p.y0 };
+    this.phase = { kind: "held", id, x0: p.x0, y0: p.y0, t0: p.t0 };
     this.sink.longPress(p.x0, p.y0);
   }
 
