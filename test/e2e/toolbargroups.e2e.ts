@@ -122,7 +122,7 @@ test("mouse: the group's button carries the mark; a hover opens its flyout besid
   const f = await flyoutBecomes(desk, (s) => s.open, "a hover opens it");
   const waited = Date.now() - t0;
   assert.ok(waited >= 250 && waited < 1200, `after the tooltip's delay, not at once: ${waited} ms`);
-  assert.deepEqual([f.group, f.orient, f.items, f.current], ["shapes", "row", ["rectangle", "polygon", "slot", "t_pad1"], "rectangle"]);
+  assert.deepEqual([f.group, f.orient, f.items, f.current], ["shapes", "row", ["rectangle", "polygon", "slot", "region", "t_pad1"], "rectangle"]);
   const tray = await rectOf(desk, '.panel[data-panel="toolbar"]');
   assert.ok(f.box!.x >= tray.x + tray.w, "beside the column, on the drawing's side");
   assert.ok(Math.abs(f.box!.y + 4 - b.y) <= 1.5, `level with its button: ${f.box!.y} against ${b.y}`);

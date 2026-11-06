@@ -98,7 +98,7 @@ async function savedRoundTrip(app: AppContext): Promise<void> {
   const before = await app.repl("save()");
   assert.equal(before.ok, true, before.error ?? "");
   const text = before.value as string;
-  assert.match(text, /"version": 16/);
+  assert.match(text, /"version": 17/);
   const was = await relations(app);
   await app.type("pt(0, 0); pt(5, 5)"); // something to lose
   await app.repl(`SAVED = ${JSON.stringify(text)}`);
@@ -155,7 +155,7 @@ test("desktop: the shapes button opens rectangle, polygon, slot; the polygon arm
   await desk.page.mouse.move(b.x + b.w / 2, b.y + b.h / 2, { steps: 2 });
   await desk.page.waitForFunction(() => !(document.getElementById("flyout") as HTMLElement).hidden, null, { timeout: 3000 });
   const items = await desk.page.$$eval("#flyout button", (bs) => bs.map((x) => (x as HTMLElement).dataset.tool));
-  assert.deepEqual(items, ["rectangle", "polygon", "slot"]);
+  assert.deepEqual(items, ["rectangle", "polygon", "slot", "region"]); // the region tool last (regions-as-operations.md)
   await shot(desk, "desk-shapes-flyout");
   const it = await rectOf(desk, '#flyout button[data-tool="polygon"]');
   await desk.page.mouse.move(it.x + it.w / 2, it.y + it.h / 2, { steps: 3 });

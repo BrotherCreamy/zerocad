@@ -12,9 +12,10 @@
 // `opengroup(group())`. Nothing here can do what a typed line could not, and
 // the log says what each press did.
 //
-// **A section is a title and rows built from the model** — Groups, Features —
-// so the typed objects the next design conversation is about (regions, chains,
-// solids) arrive as more sections of this pane rather than a new one.
+// **A section is a title and rows built from the model** — Bodies, Groups,
+// Regions, Features — so each typed object arrives as a section of this pane
+// rather than a new one: Regions is the first that did (docs/plans/regions-as-
+// operations.md), each row the region's chain, `rg1 = l1–l4 − c1 − c3`.
 //
 // The split is menu.ts's: what the pane shows and what each control types is
 // pure (`organiserSections`, `rowMenu`, `addCommand`), tested without a DOM;
@@ -24,6 +25,8 @@
 // without either knowing it exists.
 
 import { isBlendFeature, type BlendFeature, type FeatureEntry, type Model } from "./model.ts";
+import { memberName } from "./model.ts";
+import { regionText } from "./operations.ts";
 import { chainsOf, modeOf } from "./modes.ts";
 import type { Menu, MenuItem } from "./menu.ts";
 import { giveTip, type AttachTip, type Tip } from "./tooltip.ts";
@@ -146,10 +149,26 @@ export function organiserSections(model: Model, selection: readonly string[] = [
       selected: lit(members.filter((n) => !model.hidden.has(n))), open: null, openCommand: null,
     };
   });
+  // A region is its chain (docs/plans/regions-as-operations.md): the row says
+  // it — `l1–l4 − c1 − c3` after the name — and its count is its steps. Hidden
+  // by its own name, as a feature is; a tap selects the members its faces run
+  // along, which is what there is of it on the canvas to select.
+  const regions: OrganiserRow[] = [...model.regions.values()].map((g) => {
+    const eye: Eye = model.hidden.has(g.name) ? "hidden" : "shown";
+    const members = [...new Set(g.steps.flatMap((s) => s.face.map(memberName)))].filter((n) => model.entities.has(n));
+    return {
+      name: g.name, detail: regionText(model, g.name).slice(g.name.length + 3), count: g.steps.length, eye,
+      eyeCommand: eyeCommand(g.name, eye), tapCommand: `select(${members.map(quoted).join(", ")})`,
+      selected: lit(members), open: null, openCommand: null,
+    };
+  });
   return [
     { id: "bodies", title: "Bodies", rows: bodies, empty: null },
     { id: "groups", title: "Groups", rows: groups, empty: "none — ＋ makes one, open to draw into" },
     { id: "features", title: "Features", rows: features, empty: "none — an extrude or a revolve makes one" },
+    // Last, and shown only once there is one: a feature made on a face makes
+    // its region on the way, so with any feature this has a row.
+    { id: "regions", title: "Regions", rows: regions, empty: null },
   ];
 }
 
@@ -192,6 +211,18 @@ export function rowMenu(model: Model, name: string, selection: readonly string[]
     ];
     const count = `${g.members.length} member${g.members.length === 1 ? "" : "s"}`;
     return { header: `${name}  group of ${count}${open ? "  ·  open" : ""}`, items };
+  }
+  const r = model.regions.get(name);
+  if (r) {
+    const on = model.featuresOnRegion(name).map((x) => x.name);
+    return {
+      header: `${regionText(model, name)}${on.length ? `  ·  ${on.join(", ")} on it` : ""}`,
+      items: [
+        { label: `Edit ${name}`, action: { do: "run", command: `edit(${quoted(name)})` } },
+        { label: `Extrude ${name}`, action: { do: "run", command: `extrude(${quoted(name)})` } },
+        { label: "Delete", action: { do: "run", command: `del(${quoted(name)})` } },
+      ],
+    };
   }
   const f = model.features.get(name) ?? model.blends.get(name);
   if (f) {

@@ -141,7 +141,7 @@ test("the toolbar has a button per registered tool: its icon, with a tooltip and
   // and the solids module's round and chamfer behind the fillet's, the
   // modify group's (docs/plans/solid-fillets.md).
   const tools = ((await app.repl("tools()")).value as string[]).map((t) => t.split(" ")[0])
-    .filter((t) => !["circle3", "arc3", "polygon", "slot", "constrain", "round", "chamfer"].includes(t));
+    .filter((t) => !["circle3", "arc3", "polygon", "slot", "region", "constrain", "round", "chamfer"].includes(t));
   const buttons = await app.page.$$eval("#toolbar button", (els) =>
     els.map((el) => ({
       tool: (el as HTMLElement).dataset.tool,

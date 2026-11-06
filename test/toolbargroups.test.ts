@@ -53,7 +53,7 @@ test("the button list is thirteen today, with these names in this order — a gr
   assert.equal(buttons.length, 13);
   assert.deepEqual(buttons.map((b) => b.group ?? b.tools[0]),
     ["select", "hand", "point", "line", "shapes", "circle", "arc", "curves", "modify", "relate", "extrude", "revolve", "sketch"]);
-  assert.deepEqual(buttons.find((b) => b.group === "shapes")!.tools, ["rectangle", "polygon", "slot"]);
+  assert.deepEqual(buttons.find((b) => b.group === "shapes")!.tools, ["rectangle", "polygon", "slot", "region"]);
   assert.deepEqual(buttons.find((b) => b.group === "curves")!.tools, ["ellipse"]);
   assert.deepEqual(buttons.find((b) => b.group === "relate")!.tools, ["dimension", "constrain"]);
   // The solids module's round and chamfer join the sketch's fillet there
@@ -65,7 +65,7 @@ test("the button list is thirteen today, with these names in this order — a gr
 
 test("grouping is the table: shapes, curves, modify and relate, in their order; Select, the Hand and the rest alone", () => {
   assert.deepEqual(Object.keys(TOOL_GROUPS), ["shapes", "curves", "modify", "relate"]);
-  assert.deepEqual(TOOL_GROUPS.shapes, ["rectangle", "polygon", "slot"]);
+  assert.deepEqual(TOOL_GROUPS.shapes, ["rectangle", "polygon", "slot", "region"]);
   assert.deepEqual(TOOL_GROUPS.curves, ["ellipse", "spline"]);
   // The sketch module's table, then what the solids module adds (round; its chamfer is the table's).
   assert.deepEqual(TOOL_GROUPS.modify, ["fillet", "chamfer", "trim", "extend", "offset", "mirror", "pattern", "round"]);
@@ -101,7 +101,7 @@ test("a tool with static group joins it, after the table's members — and its b
   defineTool("t_stamp", Stamp);
   assert.equal(toolGroup("t_stamp"), "shapes");
   const shapes = toolbarButtons().find((b) => b.group === "shapes")!;
-  assert.deepEqual(shapes.tools, ["rectangle", "polygon", "slot", "t_stamp"]);
+  assert.deepEqual(shapes.tools, ["rectangle", "polygon", "slot", "region", "t_stamp"]);
   assert.equal(toolbarButtons().length, 13, "no new button");
   assert.equal(toolbarButtons().findIndex((b) => b.group === "shapes"), 4, "where the rectangle's was");
   // A table member registered after it still comes first in the group's order
@@ -337,7 +337,7 @@ test("the menu's tool items: a group of more than one under its heading, every m
   // (the tests above): each under its heading. The ellipse's curves group has
   // one member, so it is a plain item; the others are as they were.
   assert.deepEqual(rows.slice(0, rows.indexOf("Frame")),
-    ["Point", "Line", "# Shapes", "Rectangle", "Polygon", "Slot", "T_stamp", "Circle", "Arc", "Ellipse",
+    ["Point", "Line", "# Shapes", "Rectangle", "Polygon", "Slot", "Region", "T_stamp", "Circle", "Arc", "Ellipse",
       "# Modify", "Fillet", "Chamfer", "Round", "T_late", "T_base"]);
   const polygon = menu.items.find((i) => i.label === "Polygon")!;
   assert.deepEqual(polygon.action, { do: "run", command: 'arm("polygon")' });
@@ -347,7 +347,7 @@ test("help() says which tools share a button, how to open it, and how a tool joi
   const repl = new Repl(neocadScope({ model: new Model(2), optionMemory: new OptionMemory(null) }));
   const help = (await repl.eval("help()")).value as string;
   assert.match(help, /rectangle +.*\[shapes\]/);
-  assert.match(help, /Sharing a button now: rectangle \/ polygon \/ slot \/ t_stamp; fillet \/ chamfer \/ round \/ t_late \/ t_base; dimension \/ constrain\./);
+  assert.match(help, /Sharing a button now: rectangle \/ polygon \/ slot \/ region \/ t_stamp; fillet \/ chamfer \/ round \/ t_late \/ t_base; dimension \/ constrain\./);
   assert.match(help, /static group = "shapes"/);
   assert.match(help, /slides off it onto one and lifts/);
   const tools = (await repl.eval("tools()")).value as string[];

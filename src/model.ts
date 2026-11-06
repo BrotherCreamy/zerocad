@@ -605,6 +605,14 @@ export interface ExtrudeFeature {
   /** What it does to a body, and which body. See `FeatureMode`. */
   mode?: FeatureMode;
   into?: string;
+  /**
+   * The region it stands on (`RegionEntry`, docs/plans/regions-as-operations.md):
+   * what its profile is regenerated from when the region is edited. Every
+   * feature made since format 17 has one, and an older file's are made at open;
+   * absent only on a record built some other way, which then regenerates from
+   * its own `loops` as before.
+   */
+  region?: string;
   /** Everything the record refers to. See above. */
   names: string[];
   /** The part of `names` the feature made, which deleting it takes. */
@@ -659,6 +667,14 @@ export interface RevolveFeature {
   /** What it does to a body, and which body. See `FeatureMode`. */
   mode?: FeatureMode;
   into?: string;
+  /**
+   * The region it stands on (`RegionEntry`, docs/plans/regions-as-operations.md):
+   * what its profile is regenerated from when the region is edited. Every
+   * feature made since format 17 has one, and an older file's are made at open;
+   * absent only on a record built some other way, which then regenerates from
+   * its own `loops` as before.
+   */
+  region?: string;
   /** Everything the record refers to. See `ExtrudeFeature`. */
   names: string[];
   /** The part of `names` the feature made, which deleting it takes. */
@@ -777,6 +793,47 @@ export interface GroupEntry {
  * `addFeature` gives it. Distributed over the kinds (`Omit` on a union keeps
  * only the fields every member shares, which would lose an extrude's walls).
  */
+/**
+ * A **region**: faces combined by named operations, under a name of its own —
+ * `rg1`, `rg2`, … (docs/plans/regions-as-operations.md). The owner: *"there
+ * should be no such thing as a negative face. a face is just a face. just like
+ * there should be no such thing as a negative solid, only an operation which
+ * subtracts one solid from another"*.
+ *
+ * A **face** is a closed loop of sketch curves, found (loops.ts) and never
+ * stored: what the model's curves bound. A region is the chain of operations
+ * that made it — `region(f)`, then `subtract`, `add`, `intersect` with other
+ * faces — and its **membership is that chain, never re-inferred**: a loop
+ * drawn inside a region's outline is a loop and nothing more until an
+ * operation names it. Each step names its face by a member (as `extrude`
+ * names a loop) and keeps the face as it was resolved when the step was made,
+ * which is what the face is found again by (the loop keeping the most of it)
+ * and what a replay is handed instead of finding anything.
+ *
+ * Structure, so it lives here; the operations that make and change it are in
+ * operations.ts, and its area is a question loops.ts answers. Rebuilt by
+ * replay, never saved. Its own namespace prefix is `rg`, not `r`: `r1` is a
+ * relation's name, and `f1` a frame's.
+ */
+export type RegionOp = "region" | "subtract" | "add" | "intersect";
+export const REGION_OPS: readonly RegionOp[] = ["region", "subtract", "add", "intersect"];
+
+export interface RegionStep {
+  op: RegionOp;
+  /** The member the step named its face by. */
+  member: string;
+  /** The face as it was resolved when the step was made: its members in walk order. */
+  face: ProfileMember[];
+}
+
+export interface RegionEntry {
+  name: string;
+  /** The plane the region lies in: the frame (any plane reference) its first face was found parallel to. */
+  frame: string;
+  /** The chain: `region` first, then each operation in the order it was made. */
+  steps: RegionStep[];
+}
+
 type WithoutName<F> = F extends unknown ? Omit<F, "name"> : never;
 export type FeatureDraft = WithoutName<FeatureEntry>;
 
@@ -792,6 +849,8 @@ export class Model {
   blends = new Map<string, BlendFeature>();
   /** Named groups — `g1`, `g2`, … — in the order they were made. See `GroupEntry`. */
   groups = new Map<string, GroupEntry>();
+  /** Named regions — `rg1`, `rg2`, … — in the order they were made. See `RegionEntry`. */
+  regions = new Map<string, RegionEntry>();
   /**
    * What is hidden: entity, relation and feature names. A hidden entity is not
    * drawn, picked, snapped to or boxed — and is **still solved**: nothing below
@@ -946,7 +1005,7 @@ export class Model {
     // The origin answers too, so nothing can be made under its name.
     return (name === ORIGIN && framesExistIn(this.dim))
       || this.entities.has(name) || this.relations.has(name) || this.features.has(name) || this.blends.has(name)
-      || this.groups.has(name);
+      || this.groups.has(name) || this.regions.has(name);
   }
 
   /** Whether `name` is a frame: one a user made, or the origin. */
@@ -1987,6 +2046,72 @@ export class Model {
     this.record("deleteFeature", [name]);
   }
 
+  // ---- regions ------------------------------------------------------------
+
+  /**
+   * Registers a region under a fresh `rgN` and returns it. Journals nothing:
+   * the operation that calls it is the entry (operations.ts's `region`).
+   */
+  addRegion(frame: string, first: RegionStep): RegionEntry {
+    const name = this.claimName("rg");
+    const entry: RegionEntry = { name, frame, steps: [{ ...first, face: [...first.face] }] };
+    this.regions.set(name, entry);
+    return entry;
+  }
+
+  /**
+   * Takes back a region made for a feature that then refused — the record and
+   * the name, so a refused call consumes nothing (`claimName`'s rule).
+   */
+  forgetRegion(name: string): void {
+    this.regions.delete(name);
+    const m = /^rg(\d+)$/.exec(name);
+    if (m && this.counters.get("rg") === Number(m[1])) this.counters.set("rg", Number(m[1]) - 1);
+  }
+
+  /** The region called `name`, or a refusal that says what it is instead. */
+  regionEntry(name: string): RegionEntry {
+    const r = this.regions.get(name);
+    if (r) return r;
+    const kind = this.entities.get(name)?.kind ?? (this.features.has(name) ? "feature" : this.relations.has(name) ? "relation"
+      : this.groups.has(name) ? "group" : null);
+    throw new Error(`${JSON.stringify(name)} ${kind ? `is a ${kind}, not a region` : "is not a region"} — regions are named rg1, rg2, … (ls() lists them)`);
+  }
+
+  /** The features standing on a region, in creation order. */
+  featuresOnRegion(name: string): FeatureEntry[] {
+    return [...this.features.values()].filter((f) => f.region === name);
+  }
+
+  /**
+   * Removes a region's record — a primitive, as `deleteFeature` is: what goes
+   * with it is `del`'s decision, and `del` journals this as part of its
+   * expansion. Refused while a feature stands on it, for the reason an entity
+   * a record names is: a feature naming no region is one whose next
+   * regeneration has nothing to read.
+   */
+  deleteRegion(name: string): void {
+    this.regionEntry(name);
+    const on = this.featuresOnRegion(name);
+    if (on.length) throw new Error(`${name} is what ${on.map((f) => f.name).join(", ")} ${on.length === 1 ? "stands" : "stand"} on — delete ${on.length === 1 ? "it" : "them"} first`);
+    this.regions.delete(name);
+    this.hidden.delete(name);
+    this.record("deleteRegion", [name]);
+  }
+
+  /**
+   * Takes step `index` (1 or more — the first face is the region) out of a
+   * region's chain. A primitive for a deletion's expansion; the operation
+   * that calls it journals (operations.ts's `dropSteps`).
+   */
+  removeRegionStep(name: string, index: number): void {
+    const r = this.regionEntry(name);
+    if (!Number.isInteger(index) || index < 1 || index >= r.steps.length) {
+      throw new Error(`${name} has no step ${index} — its steps are 1 to ${r.steps.length - 1} after its first face`);
+    }
+    r.steps.splice(index, 1);
+  }
+
   // ---- construction geometry ---------------------------------------------
 
   /**
@@ -2064,6 +2189,9 @@ export class Model {
         if (withFeatures && (this.features.has(n) || this.blends.has(n))) out.add(n);
         for (const m of set) out.add(m);
       } else if (this.entities.has(n) || this.relations.has(n)) {
+        out.add(n);
+      } else if (withFeatures && this.regions.has(n)) {
+        // A region is hidden by its own name: it has no members to hide.
         out.add(n);
       } else {
         throw new Error(`${who}: "${n}" is not an entity, a relation, a group or a feature`);

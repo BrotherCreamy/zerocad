@@ -32,7 +32,7 @@ test("the built-in modules load in order, and the tables are filled from them in
   const builtin = loadedModules().filter((m) => m.origin === "builtin").map((m) => m.name);
   assert.deepEqual(builtin, ["core", "sketch", "solids", "files", "step", "organiser", "interface"]);
   // The tray: core's tools, then the sketch module's, then the solids'.
-  assert.deepEqual(listTools(), ["point", "line", "rectangle", "polygon", "slot", "circle", "arc", "ellipse", "fillet",
+  assert.deepEqual(listTools(), ["point", "line", "rectangle", "polygon", "slot", "region", "circle", "arc", "ellipse", "fillet",
     "dimension", "constrain", "extrude", "revolve", "sketch", "round", "chamfer"]);
   // The menu's tool items and the File items, module by module.
   assert.deepEqual(menuToolItems().map((i) => i.tool), ["point", "line", "rectangle", "circle", "arc", "ellipse", "fillet"]);
@@ -49,6 +49,7 @@ test("persist.ts's replay table is the modules' ops: the model's own edits, ever
   const ops = replayEntries(new Model(3)).map(([op]) => op);
   for (const op of ["addPoint", "addLine", "addFrame", "deleteEntity", "addCircle", "addArc", "addEllipse", "dist", "parallel",
     "onEllipse", "majorAxis", "fillet", "hole", "extrude", "revolve", "regen", "set", "construction", "group", "hide",
+    "region", "subtract", "add", "intersect", "deleteRegionSteps", "deleteRegion",
     "filletEdges", "chamferEdges", "setEdges"]) {
     assert.ok(ops.includes(op), `${op} replays`);
   }
@@ -74,10 +75,10 @@ test("a module that registers a name twice, or one another module has, is refuse
 test("a group extended by two modules keeps both lists, in module order; removing a module takes its members away", () => {
   const a = defineModule("ext_a", { tools: { t_ga: Stamp }, groups: { shapes: ["t_ga"] }, icons: { t_ga: svg("t_ga", "") } });
   const b = defineModule("ext_b", { tools: { t_gb: Stamp }, groups: { shapes: ["t_gb"] } });
-  assert.deepEqual(TOOL_GROUPS.shapes, ["rectangle", "polygon", "slot", "t_ga", "t_gb"]);
-  assert.deepEqual(toolbarButtons().find((x) => x.group === "shapes")!.tools, ["rectangle", "polygon", "slot", "t_ga", "t_gb"]);
+  assert.deepEqual(TOOL_GROUPS.shapes, ["rectangle", "polygon", "slot", "region", "t_ga", "t_gb"]);
+  assert.deepEqual(toolbarButtons().find((x) => x.group === "shapes")!.tools, ["rectangle", "polygon", "slot", "region", "t_ga", "t_gb"]);
   removeModule("ext_a");
-  assert.deepEqual(TOOL_GROUPS.shapes, ["rectangle", "polygon", "slot", "t_gb"]);
+  assert.deepEqual(TOOL_GROUPS.shapes, ["rectangle", "polygon", "slot", "region", "t_gb"]);
   assert.equal(getToolCtor("t_ga"), undefined);
   assert.equal(TOOL_ICONS.t_ga, undefined);
   removeModule("ext_b");
@@ -89,7 +90,7 @@ test("a group extended by two modules keeps both lists, in module order; removin
 test("the workbenches: part is today's toolbar exactly, sketch is core and sketch", () => {
   assert.deepEqual(listWorkbenches().map((w) => w.name), ["part", "sketch"]);
   assert.deepEqual(workbenchTools("part"), listTools());
-  assert.deepEqual(workbenchTools("sketch"), ["point", "line", "rectangle", "polygon", "slot", "circle", "arc", "ellipse",
+  assert.deepEqual(workbenchTools("sketch"), ["point", "line", "rectangle", "polygon", "slot", "region", "circle", "arc", "ellipse",
     "fillet", "dimension", "constrain"]);
   assert.equal(onWorkbench("sketch", "extrude"), false);
 });
@@ -105,9 +106,17 @@ test("a file written before the re-cut — every sketch-shapes piece and an extr
   await loadKernel();
   const text = await readFile(new URL("./fixtures/shapes-v15.neocad.json", import.meta.url), "utf8");
   const m = open(text);
-  // Saved again it is the same file but for its version: 16 added the head's
-  // workbench and modules, and a file that uses neither changes nothing else.
-  assert.equal(save(m, true), text.replace('"version": 15', '"version": 16'));
+  // Saved again it is the same file but for its version — 16 added the head's
+  // workbench and modules, and a file that uses neither changes nothing else
+  // — and its extrude standing on a region (17, docs/plans/regions-as-
+  // operations.md): the face is a region first, the feature on it after.
+  const want = JSON.parse(text);
+  want.version = 17;
+  const at = want.journal.findIndex((e: { op: string }) => e.op === "extrude");
+  const [member, , frame, loops] = want.journal[at].args;
+  want.journal.splice(at, 1, { op: "region", args: [member, frame, loops[0]] },
+    { op: "extrude", args: ["rg1", ...want.journal[at].args.slice(1)] });
+  assert.deepEqual(JSON.parse(save(m, true)), want);
   // And it is the ellipse it was: drawn by the sketch module's kind.
   const s = neocadScope({ model: m }) as Record<string, (...a: unknown[]) => unknown>;
   assert.match(String(s.ls()), /el1\s+ellipse/);

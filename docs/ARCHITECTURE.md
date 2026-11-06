@@ -1140,6 +1140,68 @@ a cut made after it cuts the rounded body. `Chain.features` stays the sweeps.
   edit), from the cache up to it. The answer is drawn in the body's place
   until the trial ends and the body's own answer arrives.
 
+## Nothing is negative: three algebras, one rule
+
+The owner, on regions (docs/plans/regions-as-operations.md): *"there should be
+no such thing as a negative face. a face is just a face. just like there
+should be no such thing as a negative solid, only an operation which
+subtracts one solid from another"*. **Things are things; booleans are
+operations between things; nothing is negative.** One rule, in every
+dimension:
+
+| things | found or made | combined into | by | named | built |
+|---|---|---|---|---|---|
+| faces | found: a closed loop of sketch curves (loops.ts) | **regions** | `region`, `subtract`, `add`, `intersect` | `rg1` | yes |
+| surfaces | made: extruded, revolved, lofted, or a solid's face | **surfaces** | `trim(s, by)`, `extend(s, to)`, `knit(s, t)` | `s1` | no — `surfaces.md` |
+| solids | made: a feature's sweep | **bodies** | `new`, `add`, `cut`, `intersect` (a feature's mode) | the body's first feature | yes (*A body is a chain*) |
+
+Each is the same shape: a **name**, a **chain** of named operations that is
+its whole membership, and an **organiser row** that shows the chain. Nothing
+in any of the three is inferred from where things happen to be: a loop drawn
+inside a region's outline is a loop until an operation names it, as a solid
+drawn inside a body is a body of its own until its mode says add or cut.
+
+**A face is found, never stored.** loops.ts answers what the drawing bounds;
+a face is a loop's whole inside, the loops drawn inside it included. **A
+region is stored, as its chain** (`RegionEntry`): its first face, then each
+step, each naming its face by a member and keeping the member names it was
+resolved to, which is what the face is found again by — the loop through the
+member, in the region's plane, keeping the most of them. A face whose loop
+has gone does nothing while it is gone.
+
+**The algebra is of cells, and exact.** The faces a region names nest — a
+crossing splits faces that would overlap (loops.ts) — so each named face is a
+cell, its inside less the named faces inside it, and a face's area is its
+cell and every named cell inside it. Subtract, add and intersect are set
+difference, union and intersection of cells; the region's area is its cells'
+summed. The nesting is asked of the geometry (`within`), not of findLoops's
+tree alone, which keeps one smallest container and hands a circle in a plate
+to a revolve's end face overlapping it.
+
+**What a feature takes is the boundary**: the named faces whose cell is in
+and whose container's is not, or the other way round — exactly the even-odd
+profile a feature has always been built from, outline first. Where two of
+them share an edge (a face added beside the region) the shared pieces cancel
+and the rest are walked into one outline (`mergedBoundary`). A region in
+pieces is a region; a feature on one is refused, naming the pieces.
+
+**The record is the region's, the profile the feature's.** A feature names
+the region it stands on and keeps the profile it was built to, resolved, as
+it always has — the journal must not re-find a loop (*A saved file is a
+journal*). Editing a region is a step that regenerates every feature on it
+and journals what each was rebuilt to, `regen`'s rule. Several features may
+stand on one region. A bare face is a region of one step made on the way, so
+every feature stands on a region and there is one way to change what it is
+made of.
+
+**Deleting a face a region names takes the step, not the region** (the
+decision this package made): the region loses the face and its features are
+rebuilt without it — the hole fills. Its first face going takes the region,
+as an outline's going takes a feature.
+
+`hole`/`unhole`, explicit regions' calls, stay as typed names: aliases of the
+step that gives a loop the meaning they always gave it.
+
 ## A module is the unit
 
 The owner: *"the whole framework should be modular and extensible (!). like
@@ -1653,7 +1715,7 @@ until the next action went unrecorded.
 
 ## Why there is an end-to-end suite
 
-Twenty-seven bugs so far were invisible to the unit tests and obvious within seconds
+Thirty bugs so far were invisible to the unit tests and obvious within seconds
 of running the app:
 
 1. a status readout that went stale, so a conflict could be introduced from
@@ -1766,21 +1828,32 @@ of running the app:
    pushed `SOLVED 8 free` past the corner's room, which clips it. Every test
    passed. Found by looking at the phone screenshot of mode-feedback.md; the
    chip's next step now gives way while the verdict shows.
-24. A fillet that had just succeeded, logged as refused. Between ✓ and the
+24. The region tool's click on a circle under its region's own solid: the
+   nearest loop there is the lid's twin of it, in another plane, and the
+   step was refused. Every unit test passed (none had a lid over the face);
+   the e2e suite's Edit rg1 found it. A click with a region in hand is read
+   on the region's plane now, as the edit dialog's are.
+25. A mode button pressed with a region in hand put the region down: the
+   engine re-arms a tool for new options unless it can retune, and the
+   region tool could not. Found by the same e2e test; it retunes now.
+26. The region tool's mode row label, "mode", cut to one letter beside
+   "Subtract". Every test passed; found by looking at the screenshot. The
+   row has no label.
+27. A fillet that had just succeeded, logged as refused. Between ✓ and the
    tool letting go, the preview was still in the chain beside the fillet it
    previewed. It found its edges already rounded, and its refusal was
    reported as the new feature's. Found by looking at the log in
    solid-fillets.md's screenshot. A trial now steps aside once its blend
    exists, and the report speaks only for nodes the body has.
-25. The page's stack exhausted by guidance. A preview refusal said as
+28. The page's stack exhausted by guidance. A preview refusal said as
    guidance redrew synchronously, before the tool had recorded that it had
    said it, so the redraw said it again, forever. Found by the e2e suite's
    page errors.
-26. A sketch line losing its pick to a kernel edge. Part of the line bounds
+29. A sketch line losing its pick to a kernel edge. Part of the line bounds
    a kernel body's step and the rest runs past the solid, but the edge
    along the part was taken in its place. Found by the hidden view's e2e test.
    Only the skeleton the kernel draws in an entity's place now yields.
-27. A fillet's committed `R2` drawn under the edit dialog's own radius label,
+30. A fillet's committed `R2` drawn under the edit dialog's own radius label,
    on a phone. Found by looking at the phone screenshot.
 
 None of these are mathematics. They are all *assembly*. Hence `npm run

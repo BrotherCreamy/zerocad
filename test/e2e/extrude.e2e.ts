@@ -131,7 +131,7 @@ let hole = "";
 let island = "";
 let beforeExtrude = "";
 
-test("on a tilted sketch: a rectangle, a filleted corner and a hole from the tools, an island typed into the hole", async () => {
+test("on a tilted sketch: a rectangle, a filleted corner and a hole from the tools, an island typed into the hole — and a region of them made with the region tool", async () => {
   const at = (p: number[]) => `pt(${p.join(", ")})`;
   await app.type(`go = ${at(G_O)}; gx = ${at(onG(20, 0))}; gy = ${at(onG(0, 20))}; g = plane(go, gx, gy)`);
   await app.type("rectangle");
@@ -153,10 +153,22 @@ test("on a tilted sketch: a rectangle, a filleted corner and a hole from the too
   island = (await app.repl("island")).value as string;
   assert.equal(await app.status(), "SOLVED");
   await app.type("orbit(0.5, 0.35)");
+  // A loop inside is a hole once an operation says so (docs/plans/regions-as-
+  // operations.md): the region tool, a click on the plate's face, one in the
+  // ring (subtract, the default), then — Add chosen — one on the island.
+  await app.type('arm("region")');
+  await clickAt(...await app.screenOf(onG(36, 34)));
+  await clickAt(...await app.screenOf(onG(48 + 6.5, 25)));
+  await app.type('arm("region", { mode: "add" })'); // the tool retunes: rg1 stays in hand
+  await clickAt(...await app.screenOf(onG(48, 25)));
+  await key("Escape");
+  await key("Escape");
+  const ls = (await app.repl("ls()")).value as string[];
+  assert.ok(ls.some((l) => new RegExp(`^rg1 = \\S+ − ${hole} \\+ ${island}$`).test(l)), ls.join("\n"));
   beforeExtrude = await saved();
 });
 
-test("the extrude tool: the region under the cursor is outlined; a click on nothing is refused aloud; a click inside extrudes it, hole and island and all", async () => {
+test("the extrude tool: the region under the cursor is outlined; a click on nothing is refused aloud; a click inside extrudes the region, hole and island and all", async () => {
   const m0 = await app.model();
   await app.type('arm("extrude", { depth: 20 })');
 
@@ -191,7 +203,7 @@ test("the extrude tool: the region under the cursor is outlined; a click on noth
   // Journalled as the call a typed extrude makes, with the profile resolved.
   const last = await app.page.evaluate(() => (window as never as { __neocad: { model: { journal: { op: string; args: unknown[] }[] } } }).__neocad.model.journal.at(-1));
   assert.equal(last!.op, "extrude");
-  assert.deepEqual(last!.args.slice(1, 3), [20, "f1"]);
+  assert.deepEqual(last!.args.slice(0, 3), ["rg1", 20, "f1"], "on the region the click was inside");
   const ls = (await app.repl("ls()")).value as string[];
   // The feature's line, then what it made as a count under it (quiet-geometry.md).
   // No lid frame to name (docs/plans/no-lid-frame.md).

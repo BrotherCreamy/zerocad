@@ -16,6 +16,30 @@ etc).
   on every push to the working branch. Called NeoCAD until 0.1.0; the
   internal code name stays in identifiers, the file format tag and storage
   keys (see TODO.md's register).
+- **Regions as operations** (docs/plans/regions-as-operations.md, built). The
+  owner: *"there should be no such thing as a negative face. a face is just a
+  face"*. A **face** is a closed loop's whole inside, found; a **region**
+  (`rg1`, `model.regions`, `RegionEntry`) is its chain: `region("l1")`, then
+  `subtract`, `add`, `intersect` (operations.ts), each journalled with its
+  face resolved and what it rebuilt, one undo step. The algebra is of the
+  cells of the faces a region names (`regionValue`, nested by `within`); a
+  face added beside merges into one outline (`mergedBoundary`). **A feature
+  takes a region** (`extrude("rg1", 10)`, its record's `region`); a bare face
+  makes one on the way; several may share one, and a step regenerates them
+  all. **Nothing is proposed as a hole** any more: the extrude and revolve
+  tools take the face a click is in, whole, or the named region it is
+  inside. **The region tool** (`src/tools/regiontool.ts`, shapes button): a
+  click makes a region, later clicks Subtract / Add / ∩ / New by the mode
+  row, read on the region's plane. **The organiser's Regions**, *Edit rg1*
+  (`edit("rg1")`), *Extrude rg1*, Delete; a standing region tinted violet.
+  `hole`/`unhole` are aliases of the step. **Deleting a face a region names:
+  the region loses it** (`deleteRegionSteps`); its first face going deletes
+  the region (`deleteRegion`). **Format 17**: an older file's holes open as
+  region steps (`src/regiontranslation.ts`), the model unchanged — proved
+  per fixture against the file replayed with the translation off. Unit:
+  `test/regionsops.test.ts` (22); browser: `test/e2e/regionsops.e2e.ts` (6,
+  mouse and iPhone 13). *Known and deliberate* (TODO.md): see the spec's
+  *As built*. *Not tried on an iPhone.*
 - **Workbenches: the app as modules, and Add workbench…**
   (docs/plans/workbenches.md, built).
   - **Modules.** `src/modules.ts`'s `defineModule` fills every table — glyphs,

@@ -10,6 +10,7 @@ import { addEllipse, checkEllipse, ellipseOf, semiAxes } from "./kinds/ellipse.t
 import {
   Model, ORIGIN, SETTABLE_PROPERTY, memberName, parseValueRef, referentOf, referentsOf, valueArgIndex,
   FEATURE_MODES, type Entity, type Expansion, type FeatureEntry, type FeatureMode, type Portion, type ProfileMember,
+  type RegionEntry, type RegionOp, type RegionStep,
 } from "./model.ts";
 import { defaultMode, resolveMode } from "./modes.ts";
 import { dist } from "./relations/basic.ts";
@@ -20,7 +21,8 @@ import { arcPoint, portionAngles, sweepsAs } from "./arcgeom.ts";
 import { curveFrame, framePlaneAxes, planeAxes } from "./curveplane.ts";
 import { sketchFrameFor } from "./sketchface.ts";
 import {
-  describeLoop, findLoops, heldOnCurves, insideLoop, isVirtual, joinClasses, memberLabel, parallel, type Held, type Loop,
+  describeLoop, findLoops, heldOnCurves, insideLoop, isVirtual, joinClasses, loopAround, memberLabel, parallel, type Held,
+  type Loop, type LoopMember,
 } from "./loops.ts";
 import { cross3, dot3, lift3, sub3 } from "./vec3.ts";
 import { ungroup } from "./groups.ts";
@@ -352,10 +354,43 @@ export function extrude(model: Model, member: string, ...rest: unknown[]): strin
     ProfileMember[][] | null | undefined, number | null | undefined];
   const d = extrudeDepth(depth);
   const x = expansionOf(expansion, "extrude");
+  if (typeof member === "string" && model.regions.has(member)) {
+    checkOptions(model, options, "extrude");
+    const profile = featureProfile(model, member, frame, loops, EXTRUDE);
+    return extruded(model, member, d, profile, x, options, member);
+  }
   checkMember(model, member, "extrude");
   checkOptions(model, options, "extrude");
   const profile = loops != null ? givenProfile(model, member, frame, loops, EXTRUDE) : foundProfile(model, member, frame ?? null, EXTRUDE);
-  return extruded(model, member, d, profile, x, options);
+  // A replay of a file from before regions: persist.ts gives the feature its
+  // region in entries of its own, so the entry builds the feature and no more.
+  if (!model.journalling) return extruded(model, member, d, profile, x, options, null);
+  return onNewRegion(model, profile, member, (r) => extruded(model, r, d, profile, x, options, r));
+}
+
+/**
+ * The member a feature on region `r` records — the one its region's first
+ * face was named by, as a feature's member has always been the one its call
+ * named, when the outline has it; else the outline's first.
+ */
+function regionMember(model: Model, r: string, profile: Profile): string {
+  const named = model.regionEntry(r).steps[0].member;
+  return profile.loops[0].some((m) => memberName(m) === named) ? named : memberName(profile.loops[0][0]);
+}
+
+/**
+ * The profile of a feature on region `r`: the journal's loops, walked by their
+ * joins — a replay finds nothing — or else the region's boundary as the
+ * drawing stands (`regionProfile`), along `frame` or the region's own plane.
+ */
+function featureProfile(model: Model, r: string, frame: string | null | undefined, loops: ProfileMember[][] | null | undefined,
+                        words: ProfileWords): Profile {
+  const plane = frame ?? model.regionEntry(r).frame;
+  if (loops != null) {
+    const first = Array.isArray(loops) && Array.isArray(loops[0]) && loops[0].length ? memberName(loops[0][0]) : "";
+    return givenProfile(model, first, plane, loops, words);
+  }
+  return regionProfile(model, r, plane);
 }
 
 /**
@@ -505,7 +540,8 @@ function expansionArgs(x: Expansion, op: "extrude" | "revolve"): number[] {
 export function extrudeProfile(model: Model, profile: Profile, depth?: number | null, options: FeatureOptions = {}): string {
   if (model.dim !== 3) throw new Error("extrude needs a 3D model — a 2D drawing has no direction out of its plane");
   checkOptions(model, options, "extrude");
-  return extruded(model, memberName(profile.loops[0][0]), extrudeDepth(depth), profile, EXPANSION.extrude, options);
+  const d = extrudeDepth(depth);
+  return onNewRegion(model, profile, memberName(profile.loops[0][0]), (r) => extruded(model, r, d, profile, EXPANSION.extrude, options, r));
 }
 
 function extrudeDepth(depth: number | null | undefined): number {
@@ -516,8 +552,15 @@ function extrudeDepth(depth: number | null | undefined): number {
   return d;
 }
 
-/** Plans, then expands and journals — the entry read after the body, since it names what the body materialised. */
-function extruded(model: Model, member: string, d: number, profile: Profile, x: Expansion, options: FeatureOptions): string {
+/**
+ * Plans, then expands and journals — the entry read after the body, since it
+ * names what the body materialised. On a region, the entry names the region
+ * (`extrude("rg1", 10, …)`) and the record its outline's first member, which
+ * is what a feature's member has always been.
+ */
+function extruded(model: Model, head: string, d: number, profile: Profile, x: Expansion, options: FeatureOptions,
+                  region: string | null): string {
+  const member = region === null ? head : regionMember(model, region, profile);
   const plan = planSweep(model, profile);
   // The frame's +z when the call was made — where the twins are seeded, and nothing else.
   const z = planeAxes(model, profile.frame)!.n;
@@ -525,9 +568,10 @@ function extruded(model: Model, member: string, d: number, profile: Profile, x: 
   let chosen: FeatureOptions[] = [];
   // Options after the expansion: written out when there are options, so they do not land in its place.
   const tail = () => (chosen.length ? [x === EXPANSION.extrude ? null : x, ...chosen] : expansionArgs(x, "extrude"));
-  return model.asOperation("extrude", () => [member, d, plan.frame, resolvedLoops(plan), ...tail()],
+  return model.asOperation("extrude", () => [head, d, plan.frame, resolvedLoops(plan), ...tail()],
     () => {
       const name = extrudeBody(model, member, d, plan, z, x);
+      if (region !== null) model.featureOf(name).region = region;
       chosen = chooseMode(model, name, options, "extrude", live);
       return name;
     });
@@ -539,7 +583,7 @@ function extruded(model: Model, member: string, d: number, profile: Profile, x: 
  * how to call `extrude`.
  */
 interface ProfileWords {
-  op: "extrude" | "revolve";
+  op: "extrude" | "revolve" | "region";
   /** The call that narrows an ambiguous member to one loop, by its sketch frame. */
   narrowed: (member: string) => string;
   /** Why the operation needs a sketch frame at all. */
@@ -572,7 +616,7 @@ const REVOLVE: ProfileWords = {
  */
 export function profileOf(model: Model, all: Loop[], index: number, frame?: string | null,
                           words: ProfileWords = EXTRUDE): Profile {
-  return profileOfLoops(model, all, regionOf(all, index), frame, words);
+  return profileOfLoops(model, all, [index], frame, words);
 }
 
 /**
@@ -1317,13 +1361,22 @@ export function revolve(model: Model, member: string, axis: string, ...rest: unk
     ProfileMember[][] | null | undefined, number | null | undefined, unknown];
   const a = revolveAngle(angle);
   const x = expansionOf(expansion, "revolve");
+  if (typeof member === "string" && model.regions.has(member)) {
+    axisReader(model, axis);
+    checkOptions(model, options, "revolve");
+    const profile = featureProfile(model, member, frame, loops, REVOLVE);
+    if (loops == null) checkRevolve(model, profile, axis);
+    return revolved(model, member, axis, a, profile, x, isFullTurn(a) ? [] : sweptFrames(model, profile.frame, x, swept), options, member);
+  }
   checkMember(model, member, "revolve");
   refuseEllipse(model, member);
   axisReader(model, axis); // a name that is not an axis says so before anything is looked for
   checkOptions(model, options, "revolve");
   const profile = loops != null ? givenProfile(model, member, frame, loops, REVOLVE) : foundProfile(model, member, frame ?? null, REVOLVE);
   if (loops == null) checkRevolve(model, profile, axis);
-  return revolved(model, member, axis, a, profile, x, isFullTurn(a) ? [] : sweptFrames(model, profile.frame, x, swept), options);
+  const turned = isFullTurn(a) ? [] : sweptFrames(model, profile.frame, x, swept);
+  if (!model.journalling) return revolved(model, member, axis, a, profile, x, turned, options, null);
+  return onNewRegion(model, profile, member, (r) => revolved(model, r, axis, a, profile, x, turned, options, r));
 }
 
 /**
@@ -1337,7 +1390,7 @@ export function revolveProfile(model: Model, profile: Profile, axis: string, ang
   axisReader(model, axis);
   checkOptions(model, options, "revolve");
   checkRevolve(model, profile, axis);
-  return revolved(model, memberName(profile.loops[0][0]), axis, a, profile, EXPANSION.revolve, [], options);
+  return onNewRegion(model, profile, memberName(profile.loops[0][0]), (r) => revolved(model, r, axis, a, profile, EXPANSION.revolve, [], options, r));
 }
 
 function revolveAngle(angle: number | null | undefined): number {
@@ -1348,9 +1401,10 @@ function revolveAngle(angle: number | null | undefined): number {
   return a;
 }
 
-/** Plans, then expands and journals — as `extruded`. */
-function revolved(model: Model, member: string, axis: string, a: number, profile: Profile, x: Expansion,
-                  swept: string[], options: FeatureOptions): string {
+/** Plans, then expands and journals — as `extruded`, on a region as it is. */
+function revolved(model: Model, head: string, axis: string, a: number, profile: Profile, x: Expansion,
+                  swept: string[], options: FeatureOptions, region: string | null): string {
+  const member = region === null ? head : regionMember(model, region, profile);
   const plan = { ...planSweep(model, profile), swept };
   // An ellipse anywhere in the profile — the outline or a hole — has no
   // surface of revolution this app can write (`refuseEllipse`).
@@ -1366,9 +1420,10 @@ function revolved(model: Model, member: string, axis: string, a: number, profile
   const end = () => (chosen.length
     ? [x === EXPANSION.revolve ? null : x, tail.length ? tail[0] : null, ...chosen]
     : [...expansionArgs(x, "revolve"), ...tail]);
-  return model.asOperation("revolve", () => [member, axis, a, plan.frame, resolvedLoops(plan), ...end()],
+  return model.asOperation("revolve", () => [head, axis, a, plan.frame, resolvedLoops(plan), ...end()],
   () => {
     const name = revolveBody(model, member, axis, a, plan, x);
+    if (region !== null) model.featureOf(name).region = region;
     chosen = chooseMode(model, name, options, "revolve", live);
     return name;
   });
@@ -1409,7 +1464,7 @@ export function checkRevolve(model: Model, profile: Profile, axis: string): void
 export function checkRevolveRegion(model: Model, all: Loop[], index: number, axis: string): void {
   const ax = axisReader(model, axis).read();
   if (ax.dir.every((c) => c === 0)) throw new Error(`the axis ${axis} has collapsed — it has no direction to turn about`);
-  checkRevolveIn(model, regionMembers(model, all, regionOf(all, index)), axis, all[index].plane.normal, "");
+  checkRevolveIn(model, regionMembers(model, all, [index]), axis, all[index].plane.normal, "");
 }
 
 /** The two geometric refusals, about a plane of normal `n`; `whose` names it in the message, if anything does. */
@@ -1776,6 +1831,12 @@ export function loopLabel(loop: readonly ProfileMember[]): string {
  */
 function refoundProfile(model: Model, f: FeatureEntry, notes: string[] = []): Profile {
   const words = f.kind === "extrude" ? EXTRUDE : REVOLVE;
+  if (f.region !== undefined && model.regions.has(f.region)) {
+    // A feature on a region is the region's: its chain, never containment.
+    const profile = regionProfile(model, f.region, f.frame, notes);
+    if (f.kind === "revolve") checkRevolve(model, profile, f.axis);
+    return profile;
+  }
   const r = featureRegion(model, f);
   const kept = r.holes.filter((i): i is number => i !== null);
   const profile = profileOfLoops(model, r.all, [r.outline, ...kept], f.frame, words);
@@ -2131,9 +2192,16 @@ function rebuildBody(model: Model, f: FeatureEntry, plan: SweepPlan): { loops: P
   return { loops: resolvedLoops(plan), touched };
 }
 
-/** A record's mode and body, carried through a rewrite: a regenerated cut is still a cut of the same body. */
-function modeFields(f: FeatureEntry): Pick<FeatureEntry, "mode" | "into"> {
-  return { ...(f.mode === undefined ? {} : { mode: f.mode }), ...(f.into === undefined ? {} : { into: f.into }) };
+/**
+ * A record's mode and body, carried through a rewrite: a regenerated cut is
+ * still a cut of the same body. And its region: a regenerated feature still
+ * stands on the region it was made from.
+ */
+function modeFields(f: FeatureEntry): Pick<FeatureEntry, "mode" | "into" | "region"> {
+  return {
+    ...(f.mode === undefined ? {} : { mode: f.mode }), ...(f.into === undefined ? {} : { into: f.into }),
+    ...(f.region === undefined ? {} : { region: f.region }),
+  };
 }
 
 /**
@@ -2187,6 +2255,790 @@ function checkFeatureName(model: Model, feature: unknown, op: string): asserts f
     : model.entities.get(feature)?.kind ?? (model.relations.has(feature) ? "relation" : null);
   const what = kind === null ? "is not a feature" : `is a ${kind}, not a feature`;
   throw new Error(`${JSON.stringify(feature)} ${what} — ${op} takes a feature's name, as ls() lists them (e1, e2, …)`);
+}
+
+// --- regions: faces combined by named operations ------------------------------
+
+/**
+ * **A region is faces combined by named operations** (docs/plans/regions-as-
+ * operations.md) — `rg1 = region("l1")`, then `subtract("rg1", "c1")`,
+ * `add`, `intersect` — and nothing in it is negative. The owner: *"there
+ * should be no such thing as a negative face. a face is just a face"*.
+ *
+ * **A face is a loop's area**: everything inside the closed loop a member is
+ * in, the loops drawn inside it included — a loop inside is drawn as a loop
+ * and nothing more until an operation names it. Faces are found (loops.ts),
+ * never stored. What the region keeps is its chain (`RegionEntry`), each
+ * step's face named by a member and kept as the member names it was resolved
+ * to, which is what it is found again by: the loop through the member, in the
+ * region's plane, keeping the most of them.
+ *
+ * **The algebra is of cells.** The faces of one plane nest (loops.ts's
+ * containment tree) and never overlap otherwise — a crossing splits them — so
+ * a face's area is its loop's *cell* (the inside less its children's) and the
+ * cells of every loop inside it (`regionOf`). Subtract, add and intersect are
+ * then set difference, union and intersection of cells: exact, nothing
+ * sampled, and the area is the cells' areas summed (`cellsArea`).
+ *
+ * **What a feature takes** is the region's boundary: the loops whose cell is
+ * in and whose parent's is not, or the other way round — which is exactly the
+ * even-odd profile a feature has always been built from, outline first
+ * (`regionBoundary`). Where two of those loops share an edge (a face added
+ * beside the region), the shared pieces cancel and the rest are walked into
+ * the merged outline (`mergedBoundary`).
+ */
+const REGION: ProfileWords = {
+  op: "region",
+  narrowed: (m) => `region(${JSON.stringify(m)}, "f1")`,
+  needsFrame: "a region lies in one plane",
+};
+
+/** The symbol a step is written with in a region's row: `rg1 = l1–l4 − c1 + c3`. */
+export const REGION_SYMBOL: Readonly<Record<RegionOp, string>> = { region: "", subtract: "−", add: "+", intersect: "∩" };
+
+/** A line, arc, circle or ellipse, not construction — or the refusal that says what it is instead. */
+function checkCurve(model: Model, member: unknown, op: string): asserts member is string {
+  const e = typeof member === "string" ? model.entities.get(member) : undefined;
+  if (!e || (e.kind !== "line" && e.kind !== "arc" && e.kind !== "circle" && e.kind !== "ellipse")) {
+    throw new Error(`${JSON.stringify(member) ?? String(member)} is not a line, arc, circle or ellipse — ${op} names a face `
+      + "by a member of the loop around it");
+  }
+  if (model.isConstruction(member as string)) throw new Error(constructionBoundsNothing(member as string, op));
+}
+
+/** A face as a step keeps it: the names of the members it runs along, once each. */
+export function faceNames(loop: Loop): string[] {
+  return [...new Set(loop.members.map((m) => m.name))];
+}
+
+/** A journal's (or a typed call's) face: member names, the step's own member among them. */
+function givenFace(face: unknown, member: string, op: string): string[] {
+  const names = Array.isArray(face) ? face.map((m) => (typeof m === "string" ? m : memberName(m as ProfileMember))) : null;
+  if (!names || !names.length || names.some((n) => typeof n !== "string")) {
+    throw new Error(`${op}'s face is the names of the members of its loop — ["l1", "l2", "l3", "l4"]`);
+  }
+  if (!names.includes(member)) throw new Error(`"${member}" is not in the face given to ${op}`);
+  return [...new Set(names)];
+}
+
+/** Two loops in one plane: parallel, and either's origin on the other's plane — `loopAround`'s tolerance. */
+function coplanarLoops(a: Loop, b: Loop): boolean {
+  if (!parallel(a.plane.normal, b.plane.normal)) return false;
+  const off = Math.abs(dot3(sub3(a.plane.origin, b.plane.origin), b.plane.normal));
+  return off <= 1e-6 * Math.max(1, Math.sqrt(Math.abs(a.area)), Math.sqrt(Math.abs(b.area)));
+}
+
+/** The normal of a region's plane, or the refusal for a plane that has collapsed. */
+function regionNormal(model: Model, r: RegionEntry): number[] {
+  const axes = planeAxes(model, r.frame);
+  if (!axes) throw new Error(`"${r.frame}" has collapsed — ${r.name} has no plane for its faces to lie in`);
+  return axes.n;
+}
+
+/**
+ * The loop of `all` a step's face is now: the loops through its member,
+ * parallel to the region's plane (and in the plane of its first face, once
+ * there is one), and of those the one keeping the most of the face as it was
+ * resolved. Null when there is none — the face is gone. A tie refuses: the
+ * region cannot tell which is its face.
+ */
+function faceLoop(all: Loop[], n: number[], r: RegionEntry, step: RegionStep, base: Loop | null): number | null {
+  const mine = all.map((_, i) => i).filter((i) => parallel(all[i].plane.normal, n)
+    && all[i].members.some((m) => m.name === step.member) && (base === null || coplanarLoops(all[i], base)));
+  if (mine.length <= 1) return mine[0] ?? null;
+  const was = new Set(step.face.map(memberName));
+  const kept = (i: number) => all[i].members.filter((m) => was.has(m.name)).length;
+  const most = Math.max(...mine.map(kept));
+  const best = mine.filter((i) => kept(i) === most);
+  if (best.length > 1) {
+    throw new Error(`${r.name}'s face ${loopLabel(step.face)} is in ${best.length} loops that keep as much of it — `
+      + `${best.map((i) => describeLoop(all[i], all)).join("; ")} — and ${r.name} cannot tell which is its face now`);
+  }
+  return best[0];
+}
+
+/**
+ * A region as the drawing stands: where each step's face is (null for one
+ * gone), how the faces it names nest, and the cells it covers.
+ *
+ * **Only the faces a region names are its cells.** A face's cell is its inside
+ * less the faces named inside it — a loop drawn inside that no step names is
+ * part of the cell, which is what "nothing more until an operation names it"
+ * means — and the nesting is asked of the geometry (`within`), not only
+ * findLoops's containment tree, which keeps one smallest container and so
+ * hands a circle in a plate to a revolve's end face overlapping it (the
+ * explicit-regions fixture has one).
+ */
+export interface RegionValue {
+  all: Loop[];
+  faces: (number | null)[];
+  /** Each named face's smallest named container, or null for an outermost one. */
+  parent: Map<number, number | null>;
+  cells: Set<number>;
+}
+
+/** `cells` combined with a face's `area` by a step's operation. */
+export function combineCells(op: RegionOp, cells: ReadonlySet<number>, area: ReadonlySet<number>): Set<number> {
+  if (op === "region") return new Set(area);
+  if (op === "add") return new Set([...cells, ...area]);
+  if (op === "subtract") return new Set([...cells].filter((c) => !area.has(c)));
+  return new Set([...cells].filter((c) => area.has(c)));
+}
+
+/** How a set of faces nest: each one's smallest container among them. */
+export function faceTree(model: Model, all: Loop[], nodes: readonly number[]): Map<number, number | null> {
+  const parent = new Map<number, number | null>();
+  for (const i of nodes) {
+    const around = nodes.filter((j) => j !== i && within(model, all, i, j));
+    around.sort((a, b) => Math.abs(all[a].area) - Math.abs(all[b].area) || a - b);
+    parent.set(i, around[0] ?? null);
+  }
+  return parent;
+}
+
+/** How many faces of a tree down from `outer` the face `inner` is — 0 when it is not inside it. */
+export function treeDepth(parent: ReadonlyMap<number, number | null>, inner: number, outer: number): number {
+  let d = 0;
+  for (let p: number | null = inner; p !== null; p = parent.get(p) ?? null, d++) if (p === outer) return d;
+  return 0;
+}
+
+/** A face's area as cells: itself and every named face inside it. */
+function areaCells(parent: ReadonlyMap<number, number | null>, face: number): Set<number> {
+  return new Set([...parent.keys()].filter((i) => i === face || treeDepth(parent, i, face) > 0));
+}
+
+/** A chain's faces folded by their operations, the nesting asked of the geometry. */
+function foldFaces(model: Model, all: Loop[], ops: readonly RegionOp[], faces: readonly (number | null)[]):
+    { parent: Map<number, number | null>; cells: Set<number> } {
+  const nodes = [...new Set(faces.filter((f): f is number => f !== null))];
+  const parent = faceTree(model, all, nodes);
+  let cells = new Set<number>();
+  faces.forEach((f, k) => { if (f !== null) cells = combineCells(ops[k], cells, areaCells(parent, f)); });
+  return { parent, cells };
+}
+
+/**
+ * Evaluates a region's chain against the drawing as it stands — `steps` in
+ * place of its own when a caller asks what the region would be without some.
+ * The first face gone is a refusal by name, as a feature's outline gone is; a
+ * later face gone does nothing until it is back.
+ */
+export function regionValue(model: Model, name: string, all: Loop[] = findLoops(model),
+                            steps?: readonly RegionStep[]): RegionValue {
+  const r = model.regionEntry(name);
+  const chain = steps ?? r.steps;
+  const n = regionNormal(model, r);
+  const base = faceLoop(all, n, r, chain[0], null);
+  if (base === null) {
+    throw new Error(`${r.name}'s first face ${loopLabel(chain[0].face)} is gone — "${chain[0].member}" is in no closed loop `
+      + `parallel to ${r.frame} now. Close the loop again, or del("${r.name}")`);
+  }
+  const faces: (number | null)[] = [base, ...chain.slice(1).map((step) => faceLoop(all, n, r, step, all[base]))];
+  return { all, faces, ...foldFaces(model, all, chain.map((s) => s.op), faces) };
+}
+
+/** The value a region would have with one more step, its face at `at`. */
+function withStep(model: Model, r: string, v: RegionValue, op: RegionOp, at: number): RegionValue {
+  const faces = [...v.faces, at];
+  const ops = [...model.regionEntry(r).steps.map((s) => s.op), op];
+  return { all: v.all, faces, ...foldFaces(model, v.all, ops, faces) };
+}
+
+/** The area of a region's cells: each face's area less the named faces just inside it. */
+export function cellsArea(v: Pick<RegionValue, "all" | "parent" | "cells">): number {
+  let a = 0;
+  for (const c of v.cells) {
+    a += Math.abs(v.all[c].area);
+    for (const [k, p] of v.parent) if (p === c) a -= Math.abs(v.all[k].area);
+  }
+  return a;
+}
+
+/** A region's area, as the drawing stands. */
+export function regionArea(model: Model, name: string): number {
+  return cellsArea(regionValue(model, name));
+}
+
+/**
+ * Whether a world point is in a region — the innermost of its faces that
+ * holds the point decides. What a click inside asks of a region.
+ */
+export function regionHolds(model: Model, v: RegionValue, world: number[]): boolean {
+  let best: number | null = null;
+  for (const i of v.parent.keys()) {
+    if (!insideLoop(model, v.all[i], world)) continue;
+    if (best === null || Math.abs(v.all[i].area) < Math.abs(v.all[best].area)) best = i;
+  }
+  return best !== null && v.cells.has(best);
+}
+
+/** What the notes say of a region's faces that are gone: each does nothing until its loop is back. */
+function goneFaces(model: Model, name: string, v: RegionValue): string[] {
+  const r = model.regionEntry(name);
+  return r.steps.flatMap((s, k) => (v.faces[k] === null ? [`${name}: ${loopLabel(s.face)} is gone, so its ${s.op} does nothing now`] : []));
+}
+
+/**
+ * The loops a region's profile is made of — `all` with any merged outline
+ * appended, and the indices into it, the outline first — or the refusal that
+ * says why no feature can stand on it: empty, or more than one piece.
+ */
+export function regionBoundary(model: Model, name: string, v: RegionValue): { all: Loop[]; loops: number[] } {
+  const { all, cells, parent } = v;
+  if (!cells.size) throw new Error(`${name} is empty — its operations leave no area`);
+  const up = (i: number) => parent.get(i) ?? null;
+  const inB = (i: number) => cells.has(i) !== (up(i) !== null && cells.has(up(i)!));
+  const B = [...parent.keys()].filter(inB).sort((a, b) => a - b);
+  const counts = new Map<string, number>();
+  for (const i of B) for (const nm of faceNames(all[i])) counts.set(nm, (counts.get(nm) ?? 0) + 1);
+  const shared = [...counts.values()].some((k) => k > 1);
+  const above = (i: number) => {
+    for (let p = up(i); p !== null; p = up(p)) if (B.includes(p)) return true;
+    return false;
+  };
+  const tops = B.filter((i) => !above(i));
+  if (!shared && tops.length === 1) return { all, loops: [tops[0], ...B.filter((i) => i !== tops[0])] };
+  const pieces = shared ? mergedBoundary(model, all, B, cells) : B.map((i) => ({ loop: all[i], outer: !above(i) }));
+  const outers = pieces.filter((m) => m.outer);
+  if (outers.length !== 1) {
+    const said = outers.map((m) => loopLabel(m.loop.members.map((x) => x.name))).join("; ");
+    throw new Error(`${name} is ${outers.length} separate pieces — ${said}. A feature stands on one outline and the loops `
+      + "inside it: make a region of each piece, or add the face that joins them");
+  }
+  const ext = [...all];
+  const at = (l: Loop) => {
+    const i = all.indexOf(l);
+    if (i >= 0) return i;
+    ext.push(l);
+    return ext.length - 1;
+  };
+  return { all: ext, loops: [at(outers[0].loop), ...pieces.filter((m) => !m.outer).map((m) => at(m.loop))] };
+}
+
+/**
+ * The boundary of cells whose loops share edges: every boundary loop's pieces,
+ * cut at every vertex any of them has, each walked the way its cell's inside
+ * is on its left (a hole's loop backwards) — and a piece walked both ways is
+ * an edge between two cells of the region, inside it, and cancels. What is
+ * left is walked vertex to vertex into closed loops; counter-clockwise ones
+ * are outlines, clockwise ones holes. Each is a `Loop` like findLoops's, its
+ * members as long as the walk lets them be, so a profile is made of it as of
+ * any other.
+ */
+function mergedBoundary(model: Model, all: Loop[], B: number[], cells: ReadonlySet<number>): { loop: Loop; outer: boolean }[] {
+  const plane = all[B[0]].plane;
+  const closed = (name: string) => {
+    const k = model.entities.get(name)?.kind;
+    return k === "circle" || k === "ellipse";
+  };
+  const TOL = 1e-7;
+  const norm = (name: string, t: number) => (closed(name) ? ((t % 1) + 1) % 1 : t);
+  const near = (name: string, a: number, b: number) => {
+    const d = Math.abs(norm(name, a) - norm(name, b));
+    return d < TOL || (closed(name) && Math.abs(d - 1) < TOL);
+  };
+  // Every vertex along each entity, by its parameter.
+  const marks = new Map<string, { t: number; v: string }[]>();
+  const mark = (name: string, t: number, v: string | null) => {
+    if (v === null) return;
+    const list = marks.get(name) ?? [];
+    if (!list.some((x) => near(name, x.t, t))) list.push({ t: norm(name, t), v });
+    marks.set(name, list);
+  };
+  for (const i of B) {
+    for (const m of all[i].members) {
+      const [a, b] = m.span ?? [0, 1];
+      const [start, end] = m.reversed ? [m.to, m.from] : [m.from, m.to];
+      mark(m.name, a, start);
+      mark(m.name, b, end);
+    }
+  }
+  const vertexAt = (name: string, t: number): string | null => (marks.get(name) ?? []).find((x) => near(name, x.t, t))?.v ?? null;
+  // Cut into atomic pieces, and count each piece's walks.
+  interface Piece { name: string; t0: number; t1: number; v0: string | null; v1: string | null; n: number }
+  const pieces = new Map<string, Piece>();
+  for (const i of B) {
+    const o = cells.has(i) ? 1 : -1;
+    for (const m of all[i].members) {
+      let [a, b] = m.span ?? [0, 1];
+      const own = marks.get(m.name) ?? [];
+      // A whole circle another loop cuts starts at a cut, so its pieces have vertices.
+      if (m.span === null && closed(m.name) && own.length) [a, b] = [own[0].t, own[0].t + 1];
+      const dir = (m.reversed ? -1 : 1) * o;
+      const cuts = own.flatMap((x) => (closed(m.name) ? [x.t - 1, x.t, x.t + 1] : [x.t]))
+        .filter((t) => t > a + TOL && t < b - TOL).sort((x, y) => x - y);
+      const ts = [a, ...cuts, b];
+      for (let k = 0; k + 1 < ts.length; k++) {
+        const key = `${m.name}@${norm(m.name, ts[k]).toFixed(6)}`;
+        const p = pieces.get(key) ?? { name: m.name, t0: ts[k], t1: ts[k + 1], v0: vertexAt(m.name, ts[k]), v1: vertexAt(m.name, ts[k + 1]), n: 0 };
+        p.n += dir;
+        pieces.set(key, p);
+      }
+    }
+  }
+  // What is left, walked: from its start vertex to its end the way its count says.
+  interface Walk { name: string; t0: number; t1: number; dir: 1 | -1; from: string | null; to: string | null }
+  const left: Walk[] = [...pieces.values()].filter((p) => p.n !== 0).map((p): Walk => (p.n > 0
+    ? { name: p.name, t0: p.t0, t1: p.t1, dir: 1, from: p.v0, to: p.v1 }
+    : { name: p.name, t0: p.t0, t1: p.t1, dir: -1, from: p.v1, to: p.v0 }));
+  const used = new Set<number>();
+  const cycles: Walk[][] = [];
+  for (let s = 0; s < left.length; s++) {
+    if (used.has(s)) continue;
+    used.add(s);
+    const cycle = [left[s]];
+    if (left[s].from === null) { cycles.push(cycle); continue; } // a whole circle
+    let at = left[s].to;
+    while (at !== left[s].from) {
+      const next = left.findIndex((w, k) => !used.has(k) && w.from === at);
+      if (next < 0) throw new Error("a region's merged outline does not close — its faces meet where no vertex joins them");
+      used.add(next);
+      cycle.push(left[next]);
+      at = left[next].to;
+    }
+    cycles.push(cycle);
+  }
+  // Consecutive pieces of one entity walked one way are one member.
+  const follows = (prev: Walk, w: Walk) => prev.name === w.name && prev.dir === w.dir
+    && (w.dir > 0 ? near(w.name, prev.t1, w.t0) : near(w.name, prev.t0, w.t1));
+  const join = (prev: Walk, w: Walk) => {
+    if (w.dir > 0) prev.t1 += w.t1 - w.t0;
+    else prev.t0 -= w.t1 - w.t0;
+    prev.to = w.to;
+  };
+  return cycles.map((cycle) => {
+    const runs: Walk[] = [];
+    for (const w of cycle) {
+      const prev = runs.at(-1);
+      if (prev && follows(prev, w)) join(prev, w);
+      else runs.push({ ...w });
+    }
+    if (runs.length > 1 && follows(runs.at(-1)!, runs[0])) {
+      const last = runs.pop()!;
+      join(last, runs[0]);
+      last.to = runs[0].to;
+      runs[0] = last;
+    }
+    const members: LoopMember[] = runs.map((w) => {
+      let [t0, t1] = [w.t0, w.t1];
+      if (t0 < 0) [t0, t1] = [t0 + 1, t1 + 1];
+      const whole = w.from === null || (closed(w.name) ? Math.abs(t1 - t0 - 1) < TOL : Math.abs(t0) < TOL && Math.abs(t1 - 1) < TOL);
+      if (whole && closed(w.name)) return { name: w.name, reversed: w.dir < 0, from: null, to: null, span: null };
+      return { name: w.name, reversed: w.dir < 0, from: w.from, to: w.to, span: whole ? null : [t0, t1] };
+    });
+    // Signed area about the plane's normal, from points along the walk.
+    const pts: number[][] = [];
+    for (const m of members) {
+      const [a, b] = m.span ?? [0, 1];
+      const k = 24;
+      for (let j = 0; j < k; j++) {
+        const t = m.reversed ? b - ((b - a) * j) / k : a + ((b - a) * j) / k;
+        const d = sub3(lift3(pointAlong(model, m.name, t)), plane.origin);
+        pts.push([dot3(d, plane.u), dot3(d, plane.v)]);
+      }
+    }
+    let area = 0;
+    for (let j = 0; j < pts.length; j++) {
+      const [x0, y0] = pts[j], [x1, y1] = pts[(j + 1) % pts.length];
+      area += x0 * y1 - x1 * y0;
+    }
+    area /= 2;
+    return { loop: { members, plane, area, parent: null, children: [] }, outer: area > 0 };
+  });
+}
+
+/**
+ * The profile a feature on region `name` is built from, as the drawing stands
+ * — its boundary (`regionBoundary`), resolved as a found region is
+ * (`profileOfLoops`), along `frame` or the region's own. A face gone is said
+ * in `notes`.
+ */
+export function regionProfile(model: Model, name: string, frame?: string | null, notes: string[] = []): Profile {
+  const v = regionValue(model, name);
+  const b = regionBoundary(model, name, v);
+  const profile = profileOfLoops(model, b.all, b.loops, frame ?? model.regionEntry(name).frame);
+  notes.push(...goneFaces(model, name, v));
+  return profile;
+}
+
+/** A region as its organiser row and `ls()` write it: `rg1 = l1–l4 − c1 − c3`. */
+export function regionText(model: Model, name: string): string {
+  const r = model.regionEntry(name);
+  return `${name} = ${r.steps.map((s, k) => (k === 0 ? "" : `${REGION_SYMBOL[s.op]} `) + loopLabel(s.face)).join(" ")}`;
+}
+
+/**
+ * The region a world point is in — the latest made whose cells hold the loop
+ * around the point — or null. What a feature tool asks of a click: inside a
+ * region, the click takes the region; anywhere else, the face. A hidden
+ * region is not on screen to be clicked, and one that cannot be found as the
+ * drawing stands holds nothing.
+ */
+export function regionAtPoint(model: Model, world: number[], all: Loop[] = findLoops(model)): string | null {
+  if (!model.regions.size) return null;
+  for (const name of [...model.regions.keys()].reverse()) {
+    if (model.hidden.has(name)) continue;
+    try {
+      if (regionHolds(model, regionValue(model, name, all), world)) return name;
+    } catch {
+      // a region whose first face is gone holds nothing
+    }
+  }
+  return null;
+}
+
+/**
+ * The shortest typed `region(…)` that means the face at `index` of `all` —
+ * what the region tool types for a click, so the log shows a line a user
+ * could have written: a member only this loop has; else one only it has
+ * among the loops parallel to the plane that orients it (a lid, whose edges
+ * are walls' too), with that plane; else its first member, with the plane
+ * and the face resolved.
+ */
+export function faceNaming(model: Model, all: Loop[], index: number, toward?: number[]):
+    { member: string; frame: string | null; face: string[] | null } {
+  const own = all[index];
+  const names = faceNames(own);
+  const frame = orientingPlane(model, own, toward);
+  const said = frame === orientingPlane(model, own) ? null : frame;
+  const only = (m: string, f: string | null) => {
+    const found = loopsWith(model, all, m, f);
+    return found.length === 1 && found[0] === index;
+  };
+  for (const m of names) if (only(m, null)) return { member: m, frame: said, face: null };
+  for (const m of names) if (only(m, frame)) return { member: m, frame, face: null };
+  return { member: names[0], frame, face: names };
+}
+
+/**
+ * The shortest typed step — `subtract("rg1", "c1")` — that names the face at
+ * `index` of `all` for region `r`: a member that finds that very loop, or the
+ * face resolved beside its first member where none does alone. What the
+ * region tool types; the step's own refusals are asked separately.
+ */
+export function regionStepNaming(model: Model, op: Exclude<RegionOp, "region">, r: string, all: Loop[], index: number):
+    { member: string; face: string[] | null } {
+  const entry = model.regionEntry(r);
+  const n = regionNormal(model, entry);
+  const v = regionValue(model, r, all);
+  const base = all[v.faces[0]!];
+  const names = faceNames(all[index]);
+  for (const m of names) {
+    const level = all.map((_, i) => i).filter((i) => all[i].members.some((x) => x.name === m)
+      && parallel(all[i].plane.normal, n) && coplanarLoops(all[i], base));
+    if (level.length === 1 && level[0] === index) return { member: m, face: null };
+  }
+  void op;
+  return { member: names[0], face: names };
+}
+
+/**
+ * **Makes a region of one face** — `region("l1")`: the closed loop `l1` is
+ * in, everything inside it included — and returns its name, `rg1`. A member
+ * in several loops is refused with them listed unless `frame` narrows it to
+ * the loops parallel to a plane, as `extrude` refuses, or `face` names which
+ * (the region tool hands over the face it found under the click). The region
+ * lies in `frame`'s plane, or the plane that orients the loop
+ * (`orientingPlane`).
+ *
+ * Journalled with the face resolved — `region("l1", "f1", ["l1", "l2", "l3",
+ * "l4"])` — which a replay is handed and finds nothing from. An operation: it
+ * makes structure (a region is a named thing), so it is here and never a
+ * relation.
+ */
+export function region(model: Model, member: string, frame?: string | null, face?: unknown): string {
+  checkCurve(model, member, "region");
+  if (frame != null) model.planeKind(frame);
+  let plane: string, names: string[];
+  if (face != null && !model.journalling) {
+    if (typeof frame !== "string") throw new Error("a region given its face needs the plane it lies in");
+    plane = frame;
+    names = givenFace(face, member, "region");
+  } else {
+    const all = findLoops(model);
+    let mine = loopsWith(model, all, member, frame ?? null);
+    if (mine.length > 1 && face != null) {
+      const was = new Set(givenFace(face, member, "region"));
+      const kept = (i: number) => all[i].members.filter((m) => was.has(m.name)).length;
+      const most = Math.max(...mine.map(kept));
+      mine = mine.filter((i) => kept(i) === most);
+    }
+    if (mine.length === 0) {
+      const where = frame == null ? "" : ` parallel to ${frame}`;
+      throw new Error(`"${member}" is in no closed loop${where} — loops() lists the loops there are. A loop's ends join `
+        + "only at a shared point or a coin (never by touching), and lie in one plane");
+    }
+    if (mine.length > 1) {
+      throw new Error(`"${member}" is in ${mine.length} loops — ${mine.map((i) => describeLoop(all[i], all)).join("; ")}. `
+        + `Name the plane (${REGION.narrowed(member)}), name a member only one of them has, or click the face with the region tool`);
+    }
+    plane = frame ?? orientingPlane(model, all[mine[0]]);
+    names = faceNames(all[mine[0]]);
+  }
+  return model.asOperation("region", () => [member, plane, names],
+    () => model.addRegion(plane, { op: "region", member, face: names }).name);
+}
+
+/**
+ * **Subtracts a face from a region** — `subtract("rg1", "c1")`: the cells of
+ * the face `c1` bounds taken out of `rg1`'s — and regenerates every feature
+ * standing on `rg1`. Returns the region's name. Refused, before anything
+ * changes, where it would take nothing away, leave nothing, or leave a
+ * feature on the region with no single outline to stand on.
+ */
+export function subtract(model: Model, r: string, member: string, face?: unknown, regenerated?: unknown, notes: string[] = []): string {
+  return regionStep(model, "subtract", r, member, face, regenerated, notes);
+}
+
+/** **Adds a face to a region** — `add("rg1", "c3")`: its cells joined to the region's. As `subtract`. */
+export function add(model: Model, r: string, member: string, face?: unknown, regenerated?: unknown, notes: string[] = []): string {
+  return regionStep(model, "add", r, member, face, regenerated, notes);
+}
+
+/** **Keeps only what a region and a face share** — `intersect("rg1", "l9")`. As `subtract`. */
+export function intersect(model: Model, r: string, member: string, face?: unknown, regenerated?: unknown, notes: string[] = []): string {
+  return regionStep(model, "intersect", r, member, face, regenerated, notes);
+}
+
+function checkRegionName(model: Model, r: unknown, op: string): asserts r is string {
+  if (typeof r !== "string") throw new Error(`${op} takes a region's name first — ${op}("rg1", "c1")`);
+  model.regionEntry(r);
+}
+
+/**
+ * What a region step would do, found as the drawing stands — the face, the
+ * cells after — or the refusal that says why it would do nothing. Asks
+ * nothing of the model but loops: the region tool asks it of a hover.
+ */
+export function planRegionStep(model: Model, op: Exclude<RegionOp, "region">, r: string, member: string, face?: unknown):
+    { before: RegionValue; after: RegionValue; at: number; names: string[] } {
+  checkRegionName(model, r, op);
+  checkCurve(model, member, op);
+  const entry = model.regionEntry(r);
+  const before = regionValue(model, r);
+  const { all } = before;
+  const base = all[before.faces[0]!];
+  const n = regionNormal(model, entry);
+  const mine = all.map((_, i) => i).filter((i) => all[i].members.some((m) => m.name === member));
+  if (!mine.length) {
+    throw new Error(`"${member}" is in no closed loop — loops() lists the loops there are. A loop's ends join only at a `
+      + "shared point or a coin (never by touching), and lie in one plane");
+  }
+  const level = mine.filter((i) => parallel(all[i].plane.normal, n) && coplanarLoops(all[i], base));
+  if (!level.length) {
+    throw new Error(`"${member}"'s loop is not in ${r}'s plane — a region's faces lie in the plane of its first face, `
+      + `${loopLabel(entry.steps[0].face)}: draw it there, or make a region of it on its own`);
+  }
+  let at: number;
+  if (level.length === 1) at = level[0];
+  else if (face != null) at = faceLoop(all, n, entry, { op, member, face: givenFace(face, member, op) }, base)!;
+  else {
+    throw new Error(`"${member}" is in ${level.length} loops in ${r}'s plane — ${level.map((i) => describeLoop(all[i], all)).join("; ")}. `
+      + "Name a member only one of them has, or click the face with the region tool");
+  }
+  const names = faceNames(all[at]);
+  const label = loopLabel(names);
+  const after = withStep(model, r, before, op, at);
+  // Compared by area: a cell's index names a face, and what the cell is —
+  // the face less the faces named inside it — changes as faces are named.
+  const [was, now] = [cellsArea(before), cellsArea(after)];
+  if (Math.abs(now - was) <= 1e-9 * Math.max(1, was)) {
+    throw new Error(op === "subtract" ? `${label} is not inside ${r} — subtracting it takes nothing away`
+      : op === "add" ? `${label} is in ${r} already — adding it changes nothing`
+        : `${r} is inside ${label} already — intersecting changes nothing`);
+  }
+  if (!after.cells.size || now <= 1e-9 * Math.max(1, was)) {
+    throw new Error(op === "intersect" ? `${r} and ${label} share nothing — intersecting would leave ${r} empty`
+      : `subtracting ${label} would leave ${r} empty — del("${r}") removes it`);
+  }
+  return { before, after, at, names };
+}
+
+/**
+ * One step of a region's chain, made: where the face is, what it does to the
+ * cells, the refusals, and the features on the region rebuilt. **Journalled
+ * as the call with the face resolved and what it rebuilt** —
+ * `subtract("rg1", "c1", ["c1"], [["e1", [[…], […]]]])`, `regen`'s rule for
+ * `regen`'s reason — and a replay handed both looks for nothing.
+ */
+function regionStep(model: Model, op: Exclude<RegionOp, "region">, r: string, member: string, face: unknown,
+                    regenerated: unknown, notes: string[]): string {
+  checkRegionName(model, r, op);
+  checkCurve(model, member, op);
+  const entry = model.regionEntry(r);
+  if (regenerated != null) {
+    const given = givenRegenerated(regenerated, op);
+    const names = givenFace(face, member, op);
+    return model.asOperation(op, [r, member, names, given], () => {
+      entry.steps.push({ op, member, face: names });
+      regenerateGiven(model, given);
+      return r;
+    });
+  }
+  const { after, names } = planRegionStep(model, op, r, member, face);
+  // Every feature on the region must stand on what it becomes: asked now, so
+  // a refusal is a refusal and nothing has changed.
+  const on = model.featuresOnRegion(r);
+  if (on.length) {
+    const b = regionBoundary(model, r, after);
+    for (const f of on) {
+      const p = profileOfLoops(model, b.all, b.loops, f.frame);
+      if (f.kind === "revolve") checkRevolve(model, p, f.axis);
+      planRegen(model, f, p);
+    }
+  }
+  let out: Regenerated[] = [];
+  return model.asOperation(op, () => [r, member, names, out], () => {
+    entry.steps.push({ op, member, face: names });
+    if (on.length) out = regenerateFound(model, on.map((f) => f.name), null, notes);
+    return r;
+  });
+}
+
+/**
+ * **A region loses the faces a deletion takes** (the decision this package
+ * made, docs/plans/regions-as-operations.md): the steps at `indices` come out
+ * of `r`'s chain, and the features on it are rebuilt — a hole whose circle is
+ * deleted is filled, as it was before regions (explicit-regions.md). What a
+ * deletion's or a flag's expansion journals ahead of itself, with what it
+ * rebuilt resolved: `deleteRegionSteps("rg1", [1], [["e1", [[…]]]])`. Never
+ * typed: `del` decides it. The first face going takes the region instead
+ * (`deleteRegion`), as a feature's outline going takes the feature.
+ */
+export function deleteRegionSteps(model: Model, r: string, indices: unknown, regenerated?: unknown): string {
+  checkRegionName(model, r, "deleteRegionSteps");
+  const entry = model.regionEntry(r);
+  const ks = Array.isArray(indices) ? [...new Set(indices as number[])].sort((a, b) => b - a) : [];
+  if (!ks.length || ks.some((k) => !Number.isInteger(k) || k < 1 || k >= entry.steps.length)) {
+    throw new Error(`deleteRegionSteps takes the indices of steps after ${r}'s first face — 1 to ${entry.steps.length - 1}`);
+  }
+  const drop = () => { for (const k of ks) model.removeRegionStep(r, k); };
+  const journalled = [...ks].reverse();
+  if (regenerated != null) {
+    const given = givenRegenerated(regenerated, "deleteRegionSteps");
+    return model.asOperation("deleteRegionSteps", [r, journalled, given], () => { drop(); regenerateGiven(model, given); return r; });
+  }
+  const on = model.featuresOnRegion(r);
+  let out: Regenerated[] = [];
+  return model.asOperation("deleteRegionSteps", () => [r, journalled, out], () => {
+    drop();
+    if (on.length) out = regenerateFound(model, on.map((f) => f.name), null);
+    return r;
+  });
+}
+
+/** Whether a step's face names any of `names` — its member, or a member it was resolved to. */
+function stepNames(s: RegionStep, names: ReadonlySet<string>): boolean {
+  return names.has(s.member) || s.face.some((m) => names.has(memberName(m)));
+}
+
+/**
+ * What a deletion (or a construction flag) of `names` does to the regions,
+ * planned before anything changes: each region whose later step's face names
+ * one of them loses that step (`deleteRegionSteps`) — runs returned, to be run
+ * ahead of the deletion, so the features on it are rebuilt while the face is
+ * still there to leave out. A region whose first face is named is left to the
+ * cascade (`regionsGone`).
+ */
+function regionsLosing(model: Model, names: ReadonlySet<string>): (() => string[])[] {
+  const runs: (() => string[])[] = [];
+  for (const r of model.regions.values()) {
+    if (stepNames(r.steps[0], names)) continue;
+    const ks = r.steps.map((_, k) => k).filter((k) => k > 0 && stepNames(r.steps[k], names));
+    if (!ks.length) continue;
+    const name = r.name;
+    runs.push(() => {
+      const had = model.featuresOnRegion(name).flatMap((f) => f.owns);
+      deleteRegionSteps(model, name, ks);
+      return had.filter((n) => !model.has(n));
+    });
+  }
+  return runs;
+}
+
+/**
+ * The regions whose first face a deletion took, once the cascade has taken
+ * the features on them: each deleted (`deleteRegion`), as a feature whose
+ * outline goes is.
+ */
+function regionsGone(model: Model, gone: ReadonlySet<string>): string[] {
+  const out: string[] = [];
+  for (const r of [...model.regions.values()]) {
+    if (!stepNames(r.steps[0], gone) || model.featuresOnRegion(r.name).length) continue;
+    model.deleteRegion(r.name);
+    out.push(r.name);
+  }
+  return out;
+}
+
+/**
+ * A new feature's region, made for it on the way — a bare face is a region of
+ * one operation (`extrude("l1", 10)` makes `rg1`), and a profile given with
+ * loops inside its outline is that face with each inner loop subtracted (a
+ * hole, an odd number of loops down) or added back (an island, even) — so
+ * the feature stands on a region like every other. `make` builds the feature
+ * on it; the region's entries are journalled ahead of the feature's, and a
+ * feature that refuses takes the region with it, so the call still refuses
+ * before it changes anything.
+ */
+function onNewRegion(model: Model, profile: Profile, named: string, make: (r: string) => string): string {
+  const at = model.journal.length;
+  const loops = profile.loops;
+  const member = loops[0].some((m) => memberName(m) === named) ? named : memberName(loops[0][0]);
+  const names = (l: ProfileMember[]) => [...new Set(l.map(memberName))];
+  const ops = innerOps(model, loops);
+  const first: RegionStep = { op: "region", member, face: names(loops[0]) };
+  const entry = model.addRegion(profile.frame, first);
+  const rest: RegionStep[] = loops.slice(1).map((l, k) => ({ op: ops[k], member: memberName(l[0]), face: names(l) }));
+  entry.steps.push(...rest);
+  let out: string;
+  try {
+    out = make(entry.name);
+  } catch (e) {
+    model.forgetRegion(entry.name);
+    throw e;
+  }
+  if (model.journalling) {
+    model.journal.splice(at, 0, { op: "region", args: [member, profile.frame, first.face] },
+      ...rest.map((s) => ({ op: s.op, args: [entry.name, s.member, s.face, []] })));
+  }
+  return out;
+}
+
+/**
+ * For each loop after a profile's first, the region operation that gives it
+ * the even-odd meaning the profile has: `subtract` for a hole (an odd number
+ * of loops below the outline), `add` for an island (even) — read off the
+ * drawing as it stands, each loop found by its members. One the drawing
+ * cannot answer for is a hole, as most are. What a new feature given its
+ * loops and an older file's feature with holes become (persist.ts).
+ */
+export function innerOps(model: Model, loops: readonly ProfileMember[][]): Exclude<RegionOp, "region">[] {
+  const ops: Exclude<RegionOp, "region">[] = loops.slice(1).map(() => "subtract");
+  if (loops.length < 2) return ops;
+  let all: Loop[];
+  try {
+    all = findLoops(model);
+  } catch {
+    return ops;
+  }
+  const find = (l: readonly ProfileMember[]) => {
+    const want = new Set(l.map(memberName));
+    const hits = all.map((_, i) => i).filter((i) => {
+      const has = faceNames(all[i]);
+      return has.length === want.size && has.every((n) => want.has(n));
+    });
+    return hits.length === 1 ? hits[0] : null;
+  };
+  const outline = find(loops[0]);
+  if (outline === null) return ops;
+  const inner = loops.slice(1).map(find);
+  const tree = faceTree(model, all, [outline, ...inner.filter((i): i is number => i !== null)]);
+  return inner.map((i) => {
+    const d = i === null ? 1 : treeDepth(tree, i, outline);
+    return d > 0 && d % 2 === 0 ? "add" : "subtract";
+  });
 }
 
 // --- a region's membership: hole and unhole -------------------------------------
@@ -2327,6 +3179,25 @@ function membership(model: Model, op: "hole" | "unhole", feature: string, member
   }
   const f = model.featureOf(feature);
   const r = featureRegion(model, f);
+  if (f.region !== undefined && model.regions.has(f.region)) {
+    // **An alias, now** (docs/plans/regions-as-operations.md): the feature's
+    // region gets the step that gives the loop the meaning `hole` and
+    // `unhole` always gave it by even-odd — a loop whose cell the region
+    // holds is subtracted, one it does not (a hole's island, a hole being
+    // filled) is added back — and the step regenerates every feature on the
+    // region. Journalled as that step, in today's vocabulary.
+    const at = op === "hole" ? holeLoop(model, f, member, r) : r.holes[holeIndex(model, f, member, r) - 1];
+    if (at === null) {
+      throw new Error(`${member}'s loop is gone — regen("${feature}") fills the hole it was`);
+    }
+    const v0 = regionValue(model, f.region, r.all);
+    // The loop's own cell: named already, or else its smallest named container's.
+    const around = v0.parent.has(at) ? at : faceTree(model, r.all, [...v0.parent.keys(), at]).get(at) ?? null;
+    const step = around !== null && v0.cells.has(around) ? "subtract" : "add";
+    const face = faceNames(r.all[at]);
+    regionStep(model, step, f.region, face.includes(member) ? member : face[0], face, undefined, notes);
+    return feature;
+  }
   const said: string[] = [];
   let loops: number[];
   if (op === "hole") {
@@ -2376,6 +3247,8 @@ function holesGoing(model: Model, names: ReadonlySet<string>, flagging: boolean)
   const loopNames = (l: ProfileMember[]) => l.flatMap((m) => (typeof m === "string" ? [m] : [m.name, m.from, m.to]));
   const runs: (() => string[])[] = [];
   for (const f of model.features.values()) {
+    // A feature on a region is the region's to rebuild (`regionsLosing`).
+    if (f.region !== undefined && model.regions.has(f.region)) continue;
     const hit = f.names.filter((n) => names.has(n));
     if (!hit.length) continue;
     const holed = f.loops.map((_, i) => i).filter((i) => i > 0 && loopNames(f.loops[i]).some((n) => names.has(n)));
@@ -2497,7 +3370,7 @@ export function construction(model: Model, ...args: unknown[]): string[] {
       throw new Error(`"${held[0]}" is part of ${f.name}'s outline — a solid's outline cannot stop being a boundary under it. `
         + `del("${f.name}") keeps the sketch and removes the solid; then it can be construction`);
     }
-    fills = holesGoing(model, new Set(changed), true);
+    fills = [...regionsLosing(model, new Set(changed)), ...holesGoing(model, new Set(changed), true)];
   }
   for (const fill of fills) fill();
   return model.asOperation("construction", on ? changed : [...changed, false], () => {
@@ -2706,14 +3579,29 @@ export function del(model: Model, ...names: string[]): string[] {
  *   existed. Onshape's rule: deleting an extrude keeps its sketch.
  */
 function delOne(model: Model, name: string): string[] {
+  // A region named goes with the features standing on it — each as del("e1")
+  // takes it, the sketch kept — since a feature on no region has nothing to
+  // regenerate from.
+  if (model.regions.has(name)) {
+    const out: string[] = [];
+    for (const f of model.featuresOnRegion(name)) if (model.features.has(f.name)) out.push(...cascade(model, f.name));
+    model.deleteRegion(name);
+    return [...out, name];
+  }
   // A hole's circle deleted fills the hole; it never takes the solid. Done
-  // first, so the record that is left names none of what goes next.
+  // first, so the record that is left names none of what goes next. On a
+  // region, the region loses the face (`regionsLosing`).
   const filled: string[] = [];
+  let going = new Set<string>();
   if (!model.features.has(name)) {
-    const going = model.entities.has(name) ? entityClosure(model, [name]) : new Set<string>();
+    going = model.entities.has(name) ? entityClosure(model, [name]) : new Set<string>();
+    for (const run of regionsLosing(model, going)) filled.push(...run());
     for (const run of holesGoing(model, going, false)) filled.push(...run());
   }
-  return model.has(name) ? [...filled, ...cascade(model, name)] : filled;
+  const rest = model.has(name) ? cascade(model, name) : [];
+  // A region whose first face went goes too, once nothing stands on it.
+  const regions = going.size ? regionsGone(model, new Set([...going, ...rest])) : [];
+  return [...filled, ...rest, ...regions];
 }
 
 /** `delOne` once any hole it fills is filled: the inward rule, for records, relations and entities. */

@@ -246,7 +246,7 @@ kernel's edge curves. The tessellation is the kernel's angle bound (10°): a
 fillet's facets turn at most 10° whatever its radius — as many across r 0.5
 as across r 12 (tested) — so the density **follows the radius, but not the
 view's scale**. ⚠ At 4× zoom on an r 3 fillet the facets are about 10 px
-wide and the flat shading shows faint steps (docs/images/168). Smooth
+wide and the flat shading shows faint steps (docs/images/174). Smooth
 shading, or re-tessellating with the zoom, would remove them; left.
 
 ### Tests
@@ -269,10 +269,10 @@ label dragged (the preview follows while the finger is still down), undo; a
 click, shift-click, box and right-click on edges with nothing armed; select
 then Round; save and open; STEP; a chamfer; the shading close up. Two
 existing e2e expectations (the modify flyout, the empty-canvas menu) now list
-round and chamfer. Pictures 161–170, each looked at.
+round and chamfer. Pictures 167–176, each looked at.
 
 **Found in the browser**, each invisible to the unit suite (ARCHITECTURE's
-24–27): the preview still in the chain beside the fillet ✓ had just made, its
+27–30): the preview still in the chain beside the fillet ✓ had just made, its
 refusal logged as the new fillet's; a refusal said as guidance redrawing
 before it was recorded as said, recursing until the stack ran out; a sketch
 line that is partly a profile member losing its pick to the kernel edge along
