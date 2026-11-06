@@ -80,6 +80,18 @@ const stripBox = (app: AppContext, id: string) => app.page.$eval(`.panel[data-pa
   return { x: r.x, y: r.y, w: r.width, h: r.height };
 });
 const points = async (app: AppContext) => (await app.model()).byKind.point ?? 0;
+/**
+ * The point count once a tap's point has had time to land, then a settle to
+ * catch a second one. A fixed 150 ms read raced the tap at load 15 (24 !== 25
+ * on a Pixel, a different orientation each run); a tap taken by a row instead
+ * of the canvas still makes no point and still fails.
+ */
+async function pointsReach(app: AppContext, want: number, ms = 3000): Promise<number> {
+  const deadline = Date.now() + ms;
+  while ((await points(app)) < want && Date.now() < deadline) await app.page.waitForTimeout(25);
+  await app.page.waitForTimeout(150);
+  return points(app);
+}
 
 /** A press, the way this hand makes one. */
 interface Hand { tap(x: number, y: number): Promise<void>; drag(from: [number, number], to: [number, number]): Promise<void>; fingers?: Fingers }
@@ -253,8 +265,7 @@ for (const way of WAYS) {
     await app.page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
     let before = await points(app);
     await hand.tap(...between);
-    await app.page.waitForTimeout(150);
-    assert.equal(await points(app), before + 1, `${way.name}: the press between two rows made a point`);
+    assert.equal(await pointsReach(app, before + 1), before + 1, `${way.name}: the press between two rows made a point`);
     // Beside the tray's buttons: the strip's place, which draws nothing and takes nothing.
     const strip = await stripBox(app, "toolbar");
     const beside: [number, number] = [strip.x + strip.w / 2, strip.y + strip.h / 2];
@@ -264,8 +275,7 @@ for (const way of WAYS) {
     await app.page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
     before = await points(app);
     await hand.tap(...beside);
-    await app.page.waitForTimeout(150);
-    assert.equal(await points(app), before + 1, `${way.name}: the press beside the buttons made a point`);
+    assert.equal(await pointsReach(app, before + 1), before + 1, `${way.name}: the press beside the buttons made a point`);
     // And a button still is a button.
     const pointBtn = await app.page.$eval('#toolbar button[data-tool="point"]', (el) => { const r = el.getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; });
     assert.match(await topAt(app, pointBtn[0], pointBtn[1]), /^panel:toolbar$/);

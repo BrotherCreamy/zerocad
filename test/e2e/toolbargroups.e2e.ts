@@ -174,10 +174,28 @@ test("mouse: leaving closes it; Escape closes it and only it; a press held opens
   await flyoutBecomes(desk, (s) => s.open && s.group === "modify", "the modify group's");
   // The sketch's corner fillet and its edits (docs/plans/sketch-edit.md), then the solids module's round and chamfer (docs/plans/solid-fillets.md), then the padding.
   assert.deepEqual((await flyout(desk)).items, ["fillet", "bevel", "trim", "extend", "offset", "mirror", "pattern", "round", "chamfer", "t_pad2"]);
+  // "Not at once" is timed by the page, not by this process: from the first
+  // pointermove outside the button and the flyout to the flyout's hiding.
+  // Sleeping 150 ms here and asking afterwards raced the 300 ms grace
+  // (FLYOUT_LEAVE_MS) at load 15 — the moves and the round-trip ate the rest.
+  await desk.page.evaluate(() => {
+    const w = window as unknown as { __leave?: { left: number | null; closed: number | null } };
+    const fly = document.getElementById("flyout")!;
+    const rec = (w.__leave = { left: null as number | null, closed: null as number | null });
+    const onMove = (e: PointerEvent) => {
+      const over = (e.target as Element | null)?.closest("#flyout, [data-group]");
+      if (!over && rec.left === null) rec.left = performance.now();
+    };
+    document.addEventListener("pointermove", onMove, true);
+    new MutationObserver((_, o) => {
+      if (fly.hidden) { rec.closed = performance.now(); o.disconnect(); document.removeEventListener("pointermove", onMove, true); }
+    }).observe(fly, { attributes: true, attributeFilter: ["hidden"] });
+  });
   await desk.page.mouse.move(700, 600, { steps: 3 });
-  await desk.page.waitForTimeout(150);
-  assert.equal((await flyout(desk)).open, true, "not at once: the way across to it is allowed");
   await flyoutBecomes(desk, (s) => !s.open, "gone once the pointer has left it", 1500);
+  const leave = await desk.page.evaluate(() => (window as unknown as { __leave: { left: number | null; closed: number | null } }).__leave);
+  assert.ok(leave.left !== null && leave.closed !== null, `the leave and the close were both seen: ${JSON.stringify(leave)}`);
+  assert.ok(leave.closed! - leave.left! >= 250, `not at once: the way across to it is allowed (closed ${Math.round(leave.closed! - leave.left!)} ms after leaving)`);
 
   // Escape, with a tool armed: the flyout goes, the tool stays.
   await desk.type('arm("line")');
