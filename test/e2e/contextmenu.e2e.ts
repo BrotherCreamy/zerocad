@@ -103,7 +103,7 @@ test("the empty-canvas menu arms a tool, and the log shows the command it typed"
     // One circle and one arc (docs/plans/one-circle-one-arc.md); the shapes
     // group's polygon and slot under the rectangle's heading, and the ellipse
     // (docs/plans/sketch-shapes.md). A heading is no item.
-    "Point", "Line", "Rectangle", "Polygon", "Slot", "Circle", "Arc", "Ellipse", "Fillet", "Frame",
+    "Point", "Line", "Rectangle", "Polygon", "Slot", "Region", "Circle", "Arc", "Ellipse", "Fillet", "Frame",
     "Undo", "Redo",
   ]);
   // The commands are on the menu, not hidden behind it: this is a shortcut to

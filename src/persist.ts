@@ -28,6 +28,7 @@ import { construction, extrude, featuresOnProfile, fillet, hole, regen, revolve,
 import * as grouping from "./groups.ts";
 import type { ToolSource } from "./toolsource.ts";
 import { freshName, planeTranslation } from "./planetranslation.ts";
+import { regionTranslation, type Ran } from "./regiontranslation.ts";
 import { DEFAULT_WORKBENCH, getModule, loadedModules, moduleHash, replayEntries } from "./modules.ts";
 // The app's vocabulary, so a file opens wherever persist.ts is imported — a
 // test included — with the modules every start loads (modules/builtin.ts).
@@ -299,7 +300,17 @@ export const FORMAT = "neocad-model";
  * with, so an older file replays to exactly the solids it was saved with
  * (`test/explicitregions.test.ts` opens one written by the build before).
  */
-export const VERSION = 16;
+export const VERSION = 17;
+// 17 (docs/plans/regions-as-operations.md): **regions**. A feature stands on a
+// named region made by operations — `region`, `subtract`, `add`, `intersect`,
+// and `deleteRegionSteps`/`deleteRegion` in a deletion's expansion — and a
+// feature entry names its region (`extrude("rg1", 10, "f1", loops)`). A file
+// of 16 or before is opened into that (regiontranslation.ts): each feature's
+// outline a region, each of its holes a `subtract` (an island an `add`), each
+// old `hole`/`unhole` the step it meant — every entry still carrying the
+// profiles it rebuilt, so the model is the same, entity for entity, and only
+// the vocabulary is new. A build of 16 refuses a 17 file at its first `region`
+// step by name, rather than misreading a feature on a name it cannot find.
 // 16 (docs/plans/workbenches.md): the head may carry `workbench` and `modules`
 // — the workbench the document was in, and the modules not shipped with the
 // app that its journal needs. No op or value changed meaning: a file of 15 or
@@ -881,7 +892,7 @@ function framelessCurves(model: Model, version: number, lift: boolean, following
  * app always asks for 3, and everything else asks for nothing and gets the
  * file's own.
  */
-export function fromSaved(saved: SavedModel, dim?: number): Model {
+export function fromSaved(saved: SavedModel, dim?: number, how: { regions?: boolean } = {}): Model {
   if (saved?.format !== FORMAT) throw new Error("not a neocad model");
   if (saved.version > VERSION) {
     throw new Error(`this file is version ${saved.version}, and this build only reads up to ${VERSION}`);
@@ -912,6 +923,12 @@ export function fromSaved(saved: SavedModel, dim?: number): Model {
   const following = new Map<string, string>();
   const planes = planeTranslation(model, saved.journal, saved.version, lift, following);
   const frameless = framelessCurves(model, saved.version, lift, following);
+  // Before format 17, a feature's holes were its record's: opened as regions
+  // made by operations (regiontranslation.ts, see `VERSION`).
+  // `how.regions` false replays a feature entry as written and makes no
+  // regions: the build before's model, which is the oracle a test holds an
+  // opened file to (test/regionsops.test.ts). Nothing else asks for it.
+  const regions = regionTranslation(model, how.regions === false ? VERSION : saved.version);
 
   // Replay with recording off, then install the journal wholesale, so a model
   // that is opened and saved again round-trips to the same file. What is
@@ -965,18 +982,23 @@ export function fromSaved(saved: SavedModel, dim?: number): Model {
         } catch (e) {
           throw where(e);
         }
-        for (const step of given) {
-          if (missing.length && (missingOps.has(step.op) || mentionsGone(step.args))) { leaveOut(step); continue; }
+        // One entry replayed and installed: what it returned, and the entry
+        // as installed (null when it was left out).
+        const exec = (step: JournalEntry): Ran => {
+          if (missing.length && (missingOps.has(step.op) || mentionsGone(step.args))) { leaveOut(step); return { out: undefined, entry: null }; }
           const fn = table.get(step.op);
           if (!fn) throw new Error(`step ${i + 1}: "${step.op}" is not something a model file may do`);
+          let out: unknown;
           try {
             frameless.give(step);
-            frameless.made(step, fn(...step.args));
+            out = fn(...step.args);
+            frameless.made(step, out);
           } catch (e) {
-            if (missing.length) { leaveOut(step); continue; }
+            if (missing.length) { leaveOut(step); return { out: undefined, entry: null }; }
             throw where(e);
           }
-          replayed.push({ op: step.op, args: step.args });
+          const installed = { op: step.op, args: step.args };
+          replayed.push(installed);
           // A version-11 group went with its last member; today's stays. The
           // `ungroup` that build did silently, written in (see `VERSION`).
           const emptied = emptiedBefore12(model, step, saved.version);
@@ -988,7 +1010,9 @@ export function fromSaved(saved: SavedModel, dim?: number): Model {
             }
             replayed.push({ op: "ungroup", args: [emptied] });
           }
-        }
+          return { out, entry: installed };
+        };
+        for (const step of given) regions.give(step, exec);
       }
       // After the step, so the relations it created are named while the order
       // they came out in is still the order the old scheme would have used.
@@ -1037,6 +1061,8 @@ export function fromSaved(saved: SavedModel, dim?: number): Model {
   // An old file's curves, facing their frames as the file drew them and held
   // there by a `par` each, written at the end (see `VERSION`).
   frameless.settle();
+  // An old file's holes and islands, told apart where the saved drawing has them.
+  regions.settle();
 
   last = { missing, skipped };
   return model;

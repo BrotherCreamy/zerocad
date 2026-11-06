@@ -13,6 +13,14 @@
 // inside and letting a click take one out; the menu to offering what the call
 // would take; the edit dialog to typing what it shows; and a file saved by
 // the build before all this to opening as the solids it was saved with.
+//
+// **Since regions as operations** (docs/plans/regions-as-operations.md) a hole
+// is a region's `subtract`, and nothing is proposed: the owner, *"rather than
+// auto detecting regions + things inside that region which then get
+// subtracted automatically, there should be explicit specification"*. So the
+// solids here are made with their holes said — `extrude(l1, 12); hole("e1",
+// h1)` — `hole`/`unhole` are aliases journalled as the region step they are,
+// and the creating dialog takes a click inside a loop as that loop's face.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -77,6 +85,9 @@ const square = (v: string, x: number, y: number, s: number) =>
 
 const loopsOf = (m: Model, e = "e1") => m.featureOf(e).loops;
 
+/** The plate extruded with the holes named — a loop inside is a hole once an operation says so. */
+const holed = (...vs: string[]) => `extrude(l1, 12); ${vs.map((v) => `hole("e1", ${v})`).join("; ")}`;
+
 // --- regeneration adds nothing ---------------------------------------------------
 
 // The behaviour this replaces, inverted. It was: a circle drawn inside an
@@ -85,7 +96,7 @@ const loopsOf = (m: Model, e = "e1") => m.featureOf(e).loops;
 // coplanarity should be used as an automatic basis for deciding which
 // entities to include in a region."
 test("regen with a loop drawn inside since the extrude leaves it out — the record is the membership", async () => {
-  const { m, name } = await plate([circle("h1", 10, 15, 4), "extrude(l1, 12)", circle("h2", 28, 15, 3)]);
+  const { m, name } = await plate([circle("h1", 10, 15, 4), holed("h1"), circle("h2", 28, 15, 3)]);
   const [h1, h2] = [await name("h1"), await name("h2")];
   assert.deepEqual(loopsOf(m).slice(1), [[h1]], "built with the circle inside it then");
   const twins = m.featureOf("e1").twins.flat();
@@ -96,7 +107,7 @@ test("regen with a loop drawn inside since the extrude leaves it out — the rec
 });
 
 test("a fillet on an outline corner keeps the recorded holes and adds none", async () => {
-  const { m, name } = await plate([circle("h1", 10, 15, 4), "extrude(l1, 12)", circle("h2", 28, 15, 3)]);
+  const { m, name } = await plate([circle("h1", 10, 15, 4), holed("h1"), circle("h2", 28, 15, 3)]);
   const [h1, l1, l2] = [await name("h1"), await name("l1"), await name("l2")];
   const twin = m.featureOf("e1").twins[1][0];
   fillet(m, l1, l2, 5);
@@ -108,7 +119,7 @@ test("a fillet on an outline corner keeps the recorded holes and adds none", asy
 });
 
 test("a recorded hole whose loop has gone is filled by regen, and the command line says so", async () => {
-  const { m, repl, log } = await plate([square("s", 20, 10, 8), "extrude(l1, 12)"]);
+  const { m, repl, log } = await plate([square("s", 20, 10, 8), holed("s[0]")]);
   const s = (await repl.eval("s")).value as string[];
   assert.deepEqual(loopsOf(m).slice(1).map((l) => [...l].sort()), [[...s].sort()]);
   const walls = (m.featureOf("e1") as ExtrudeFeature).walls.length;
@@ -120,7 +131,8 @@ test("a recorded hole whose loop has gone is filled by regen, and the command li
   assert.equal(r.value, "e1", "regen still returns the feature");
   assert.deepEqual(loopsOf(m), [loopsOf(m)[0]], "filled");
   assert.equal((m.featureOf("e1") as ExtrudeFeature).walls.length, walls - 4, "its four walls gone with it");
-  assert.ok(log.includes(`e1: hole ${s[0]}–${s[3]} is gone, filled`), `said: ${log.join(" | ")}`);
+  // Said as the region says it: the face is gone, so its step does nothing now.
+  assert.ok(log.includes(`rg1: ${s[0]}–${s[3]} is gone, so its subtract does nothing now`), `said: ${log.join(" | ")}`);
 });
 
 // --- hole and unhole -------------------------------------------------------------
@@ -133,7 +145,8 @@ test("hole adds the loop a member is in, unhole takes it out — each one entry,
   assert.equal(hole(m, "e1", h), "e1");
   assert.deepEqual(loopsOf(m), [outline, [h]]);
   assert.equal(m.journal.length, n + 1);
-  assert.deepEqual(m.journal.at(-1), { op: "hole", args: ["e1", h, [["e1", [outline, [h]]]]] });
+  // An alias: journalled as the region step it is.
+  assert.deepEqual(m.journal.at(-1), { op: "subtract", args: ["rg1", h, [h], [["e1", [outline, [h]]]]] });
   assert.equal(m.solve().solved, true);
   const f = m.featureOf("e1", "extrude");
   const tw = m.circle(f.twins[1][0]);
@@ -144,7 +157,7 @@ test("hole adds the loop a member is in, unhole takes it out — each one entry,
   assert.equal(unhole(m, "e1", h), "e1");
   assert.deepEqual(loopsOf(m), [outline]);
   assert.ok(!m.entities.has(tw.name), "the rim went");
-  assert.deepEqual(m.journal.at(-1), { op: "unhole", args: ["e1", h, [["e1", [outline]]]] });
+  assert.deepEqual(m.journal.at(-1), { op: "add", args: ["rg1", h, [h], [["e1", [outline]]]] });
 });
 
 test("hole and unhole round-trip save and open, replay byte for byte, and are one undo step each", async () => {
@@ -168,7 +181,7 @@ test("hole and unhole round-trip save and open, replay byte for byte, and are on
 });
 
 test("an island: hole on a circle inside a hole puts solid back inside it, by even-odd; unhole of the hole takes the island too", async () => {
-  const { m, name } = await plate([circle("h", 20, 15, 8), "extrude(l1, 12)", circle("i", 20, 15, 3)]);
+  const { m, name } = await plate([circle("h", 20, 15, 8), holed("h"), circle("i", 20, 15, 3)]);
   const [h, i] = [await name("h"), await name("i")];
   hole(m, "e1", i);
   assert.deepEqual(loopsOf(m).slice(1), [[h], [i]]);
@@ -178,7 +191,7 @@ test("an island: hole on a circle inside a hole puts solid back inside it, by ev
 
 test("every refusal says what would work, and changes nothing", async () => {
   const { m, repl, name } = await plate([
-    circle("h", 10, 15, 4), "extrude(l1, 12)",
+    circle("h", 10, 15, 4), holed("h"),
     circle("out", 70, 15, 4),
     "loose = ln(pt(20, 5, 0), pt(25, 5, 0))",
     "up = frame(pt(0, 0, 0), pt(1, 0, 0), pt(0, 0, 1)); tall = circ(pt(20, 0, 5), 2, up)",
@@ -231,8 +244,8 @@ test("revolve takes a hole the same way: turned, it is a tunnel round the axis",
 
 // --- a hole's loop going -----------------------------------------------------------
 
-test("deleting a hole's circle fills it: the solid survives, its hole's rim goes — journalled as the unhole it is, then the deletion", async () => {
-  const { m, name } = await plate([circle("h", 10, 15, 4), "extrude(l1, 12)"]);
+test("deleting a hole's circle fills it: the solid survives, its hole's rim goes — journalled as the region losing it, then the deletion", async () => {
+  const { m, name } = await plate([circle("h", 10, 15, 4), holed("h")]);
   const h = await name("h");
   const rim = m.featureOf("e1").twins[1][0];
   const n = m.journal.length;
@@ -240,7 +253,9 @@ test("deleting a hole's circle fills it: the solid survives, its hole's rim goes
   assert.ok(m.features.has("e1"), "the solid survives");
   assert.equal(loopsOf(m).length, 1, "filled");
   assert.ok(removed.includes(h) && removed.includes(rim), `the circle and its rim: ${removed}`);
-  assert.equal(m.journal[n].op, "unhole");
+  // The decision (regions-as-operations.md): the region loses the face.
+  assert.deepEqual(m.journal[n], { op: "deleteRegionSteps", args: ["rg1", [1], [["e1", [loopsOf(m)[0]]]]] });
+  assert.deepEqual(m.regionEntry("rg1").steps.length, 1, "rg1 is its outline alone");
   assert.ok(m.journal.slice(n + 1).some((j) => j.op === "deleteEntity" && j.args[0] === h));
   const text = save(m);
   assert.equal(open(text).featureOf("e1").loops.length, 1);
@@ -248,7 +263,7 @@ test("deleting a hole's circle fills it: the solid survives, its hole's rim goes
 });
 
 test("deleting a corner of a square hole fills it, walls and all", async () => {
-  const { m, repl } = await plate([square("s", 20, 10, 8), "extrude(l1, 12)"]);
+  const { m, repl } = await plate([square("s", 20, 10, 8), holed("s[0]")]);
   const sp = (await repl.eval("sp")).value as string[];
   const f0 = m.featureOf("e1") as ExtrudeFeature;
   assert.equal(f0.walls.length, 8);
@@ -262,9 +277,10 @@ test("deleting a corner of a square hole fills it, walls and all", async () => {
 });
 
 test("deleting an outline member still takes the record, as it always did", async () => {
-  const { m, name } = await plate([circle("h", 10, 15, 4), "extrude(l1, 12)"]);
+  const { m, name } = await plate([circle("h", 10, 15, 4), holed("h")]);
   del(m, await name("l2"));
   assert.equal(m.features.size, 0);
+  assert.equal(m.regions.size, 0, "and its region, whose first face it was");
 });
 
 // --- a file from before ------------------------------------------------------------
@@ -276,7 +292,7 @@ test("deleting an outline member still takes the record, as it always did", asyn
 // as a hole when the fillet regenerated e1, and h3 when regen did — which
 // this build would not, but a file never re-finds a profile: its entries
 // carry the loops they were built with.
-test("a file saved before this change opens to the same solids, and regenerates to them — no format bump", async () => {
+test("a file saved before this change opens to the same solids, and regenerates to them — its holes regions now", async () => {
   await loadKernel();
   const text = await readFile(new URL("./fixtures/pre-explicit-regions.neocad.json", import.meta.url), "utf8");
   assert.equal(JSON.parse(text).version, 11);
@@ -285,6 +301,11 @@ test("a file saved before this change opens to the same solids, and regenerates 
   assert.deepEqual(m.featureOf("e1").twins, [["l5", "a2", "l6", "l7", "l8"], ["c2"], ["c4"], ["c6"]]);
   assert.deepEqual(m.featureOf("e2").loops, [["l14", "l15", "l16", "l17"], ["c7"]]);
   assert.deepEqual(m.featureOf("e2").twins, [["l19", "l20", "l21", "l22"], ["c8"]]);
+  // Format 17: each feature on a region, its holes the region's steps — the
+  // two the fillet and regen took in by the old inference among them.
+  const { regionText } = await import("../src/operations.ts");
+  assert.deepEqual([...m.regions.keys()].map((r) => regionText(m, r)), ["rg1 = l1–l4 − c1 − c3 − c5", "rg2 = l14–l17 − c7"]);
+  assert.deepEqual([m.featureOf("e1").region, m.featureOf("e2").region], ["rg1", "rg2"]);
   assert.equal(save(open(save(m))), save(m), "re-saves stably");
   // Regenerated by this build: the recorded holes, each found by its own members, and nothing else.
   const loops = m.featureOf("e1").loops;
@@ -297,7 +318,11 @@ test("a file saved before this change opens to the same solids, and regenerates 
 
 // --- the creating dialog ------------------------------------------------------------
 
-test("the creating dialog: a click proposes the hole, a click on the hole takes it out, ✓ types the loops outright", async () => {
+// Was: a click proposed the plate with its hole, and a click on the hole took
+// it out. The owner, since: no auto-detected subtraction — so a click takes
+// the face it is in, the loop inside is a face of its own, and a hole is a
+// region's subtract (the region tool, or hole()).
+test("the creating dialog proposes no hole: a click takes the face, ✓ types the face, the circle inside stays a circle", async () => {
   const { m, repl, name } = await plate([circle("h", 20, 15, 5)]);
   const h = await name("h");
   const host = featureHost(m, repl, ABOVE);
@@ -308,16 +333,11 @@ test("the creating dialog: a click proposes the hole, a click on the hole takes 
   const t = new ExtrudeTool(ctx);
   const click = (x: number, y: number) => t.onDown({ world: [x, y, 0], screen: worldToScreen(ABOVE, [x, y, 0]) });
   click(4, 4);
-  assert.equal(t.picks.size, 1, "the plate, with its hole proposed");
-  click(20, 15);
-  assert.equal(t.picks.size, 1, "the hole's click is not a second region");
-  assert.equal(t.picks.without(0).length, 1, "it took the hole out");
-  click(21, 14);
-  assert.equal(t.picks.without(0).length, 0, "and back in");
-  click(20, 15);
+  assert.equal(t.picks.size, 1, "the plate's face");
+  assert.equal(t.picks.without(0).length, 0, "nothing proposed to take out");
   t.confirm();
   await host.settled();
-  assert.deepEqual(host.typed, [`extrude("l1", 10, "f1", ${JSON.stringify([["l1", "l2", "l3", "l4"]])})`]);
+  assert.deepEqual(host.typed, ['extrude("l1", 10)']);
   assert.deepEqual(loopsOf(m), [loopsOf(m)[0]], "a solid with no hole");
   assert.ok(m.entities.has(h), "the circle is still there, inside and not a hole");
 });
@@ -340,7 +360,7 @@ test("the creating dialog: a click on a solid island is still a region of its ow
 // --- the menu ----------------------------------------------------------------------
 
 test("the menu: Add as hole on a loop inside an outline, Remove hole on a hole, Edit e1 on the solid — each typing its call", async () => {
-  const { m, name } = await plate([circle("h", 10, 15, 4), "extrude(l1, 12)", circle("c", 28, 15, 3)]);
+  const { m, name } = await plate([circle("h", 10, 15, 4), holed("h"), circle("c", 28, 15, 3)]);
   const [h, c, l2] = [await name("h"), await name("c"), await name("l2")];
   const items = (n: string) => menuFor(m, { kind: m.entities.get(n)!.kind, name: n } as never).items
     .filter((i) => /hole|Edit/.test(i.label)).map((i) => [i.label, i.action.do === "run" ? i.action.command : ""]);

@@ -106,6 +106,61 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### Regions as operations: why nothing is proposed, why cells, and what was rejected
+
+**Nothing is proposed as a hole.** Explicit regions kept the creating click's
+proposal — every loop inside the outline offered as a hole, one click to take
+one out — because the owner, asked, said *"do what you think is best"*. His
+first sentence here is the answer to that: *"rather than auto detecting
+regions + things inside that region which then get subtracted automatically,
+there should be explicit specification"*. A proposal the user must notice and
+undo is an automatic subtraction with an escape hatch. So a face is its
+loop's whole inside, and a hole is a step someone took. The cost is real and
+written down: every test that built a holed part by the proposal now says
+the hole, and a user who clicked a plate with a circle in it gets a solid
+plate. The region tool is the one-click way back: plate, circle, extrude.
+
+**Rejected: keep the proposal, made explicit.** The proposal could have typed
+`region` + a `subtract` per loop inside, so the chain would show what was
+taken. It would still be the tool deciding; the owner's word is
+"specification", and a chain written by inference is a record of the
+inference.
+
+**Cells of the named faces, not of every loop.** The first algebra took a
+face's area as findLoops's containment tree gave it — the loop and every
+loop under it. The explicit-regions fixture broke it at once: a circle in
+the plate has the revolve's end face for its smallest container (the end
+face overlaps the plate along two collinear edges), so the plate's area did
+not contain the circle and the subtract did nothing. `within` (explicit
+regions' own fix for the same fixture) answers by geometry, and asking it
+only of the faces a region names makes the other loops irrelevant, which is
+the rule anyway: a loop no step names is part of the face it lies in.
+Comparing cell sets also turned out to be wrong — a cell's index names a
+face, and what the cell *is* changes as faces are named — so a step that
+"does nothing" is decided by area.
+
+**Rejected: refuse to delete a face a region names.** The spec offered it.
+Explicit regions had decided the same question for holes the other way —
+deleting a hole's circle fills the hole and the solid stays — and a refusal
+would make a region's member undeletable until its step was undone, which
+no other structure here does (a relation's entity is deletable, and takes
+the relation). So the region loses the face; its first face is its outline,
+and going takes the region, as an outline's member takes its feature.
+
+**Rejected: re-deriving an old file's holes in the journal text alone.**
+Hole or island depends on nesting, and the journal cannot say it — and the
+replay's seeds cannot either (a loop of free lines may not close until the
+saved values are back). Replaying the old file twice was considered (once
+as written, to read the nesting, once translated). What was built writes
+each step as a hole, replays once, and corrects the op from the saved
+geometry at the end: equivalent, because a replay handed its regeneration
+never reads the op, and it costs nothing for a file with no islands.
+
+**`rg`, not `r`.** The spec wrote `r1 = f3 − f5`, and both prefixes are taken:
+`r1` is a relation (and `del("r1")` must mean one thing), `f3` a frame. Faces
+are not stored and so have no names of their own; a row writes a face by its
+members, as every refusal about loops already does.
+
 ### Mode feedback: why focus is by relation, why the chip only types, and what was rejected
 
 **Focus by relation, not by position.** Dimming whatever lies off the plane

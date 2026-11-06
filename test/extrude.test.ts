@@ -22,7 +22,7 @@ import { Model } from "../src/model.ts";
 import { coincident, dist, fix, onPlane } from "../src/relations/basic.ts";
 import { parallel } from "../src/relations/geometry.ts";
 import { extrusion } from "../src/relations/extrusion.ts";
-import { DEFAULT_DEPTH, del, extrude, fillet, set } from "../src/operations.ts";
+import { DEFAULT_DEPTH, del, extrude, fillet, hole, set } from "../src/operations.ts";
 import { open, save } from "../src/persist.ts";
 import { findLoops } from "../src/loops.ts";
 import { neocadScope } from "../src/replenv.ts";
@@ -100,7 +100,13 @@ test("a rectangle: four twins, four twin edges, four walls, one depth, one featu
   assert.ok(m.solve().iterations <= 1, "seeded exactly where the depth holds it");
 
   // Journalled as the one call, with the frame and profile resolved.
-  assert.deepEqual(m.journal.at(-1), { op: "extrude", args: [lines[0], 20, t.name, [lines]] });
+  // On a region made for it on the way (docs/plans/regions-as-operations.md):
+  // the face first, then the feature on it.
+  assert.deepEqual(m.journal.slice(-2), [
+    { op: "region", args: [lines[0], t.name, lines] },
+    { op: "extrude", args: ["rg1", 20, t.name, [lines]] },
+  ]);
+  assert.equal(f.region, "rg1");
 });
 
 test("the lid is a loop of its own, parallel to the sketch frame, with the profile's area — the twins are joined where the corners were", async () => {
@@ -211,23 +217,29 @@ test("a loop with a hole extrudes with it: the hole gets twins too, and a hole's
   const m = new Model(3);
   const t = tiltedFrame(m);
   const { lines } = polygon(m, t, [[0, 0], [60, 0], [60, 50], [0, 50]]);
-  const hole = ring(m, t, 30, 25, 15);
+  const hole_ = ring(m, t, 30, 25, 15);
   // The island shares the hole's centre point — concentric, as a hand would
   // draw it by clicking the centre again.
-  const island = m.addCircle(m.circle(hole).center, 5, t.name).name;
+  const island = m.addCircle(m.circle(hole_).center, 5, t.name).name;
   assert.equal(m.solve().solved, true);
 
-  const f = m.featureOf(extrude(m, lines[0], 20), "extrude");
-  assert.deepEqual(f.loops, [lines, [hole], [island]], "the outline, the hole, and the island inside the hole");
+  // A loop inside is a hole, and one inside that an island, once a region's
+  // operations say so — the owner: no auto-detected subtraction.
+  const e = extrude(m, lines[0], 20);
+  assert.deepEqual(m.featureOf(e).loops, [lines], "a face is its whole inside: no hole proposed");
+  hole(m, e, hole_);
+  hole(m, e, island);
+  const f = m.featureOf(e, "extrude");
+  assert.deepEqual(f.loops, [lines, [hole_], [island]], "the outline, the hole, and the island inside the hole");
   assert.equal(f.twins.length, 3);
   assert.equal(m.circle(f.twins[2][0]).center, m.circle(f.twins[1][0]).center, "one shared centre, one shared twin");
   assert.equal(f.walls.length, 4, "walls at the outline's corners; circles have none");
   assert.match(describePick(m, { name: lines[0], kind: "line", distance: 0 }), /·\s+e1$/);
 
-  // The hole alone — clicked inside, or named — is a solid plug of its own
-  // with the island as *its* hole.
-  const g = m.featureOf(extrude(m, hole, 5, t.name), "extrude");
-  assert.deepEqual(g.loops, [[hole], [island]]);
+  // The hole alone — clicked inside, or named — is a solid plug of its own,
+  // the island inside it part of it until an operation says otherwise.
+  const g = m.featureOf(extrude(m, hole_, 5, t.name), "extrude");
+  assert.deepEqual(g.loops, [[hole_]]);
 });
 
 // --- set ---------------------------------------------------------------------
@@ -249,12 +261,14 @@ test("set on the depth moves the whole lid by exactly the difference along +z, a
   corners.forEach((p, i) => fix(m, p, [...uv[i], 0], t.name));
   const centre = m.addPoint(t.at(15, 15)).name;
   fix(m, centre, [15, 15, 0], t.name);
-  const hole = m.addCircle(centre, 5, t.name).name;
+  const hole_ = m.addCircle(centre, 5, t.name).name;
   const { radius } = await import("../src/relations/geometry.ts");
-  radius(m, hole, 5);
+  radius(m, hole_, 5);
   assert.equal(m.solve().solved, true);
-  const f = m.featureOf(extrude(m, lines[0], 20), "extrude");
-  assert.deepEqual(f.loops, [lines, [hole]]);
+  const e = extrude(m, lines[0], 20);
+  hole(m, e, hole_);
+  const f = m.featureOf(e, "extrude");
+  assert.deepEqual(f.loops, [lines, [hole_]]);
   assert.equal(m.solve().solved, true);
 
   const points = [...m.entities.values()].filter((e) => e.kind === "point").map((e) => e.name);
@@ -382,8 +396,11 @@ test("deleting a piece of a feature — a profile edge, a lid edge, a wall, the 
   // ordinary geometry, still held, drawn without faces.
   {
     const { m, lines, f } = build();
-    assert.deepEqual(del(m, lines[2]), [f.name, lines[2]]);
+    // And the region whose first face it bounded (regions-as-operations.md),
+    // as the record whose outline it was.
+    assert.deepEqual(del(m, lines[2]), [f.name, lines[2], "rg1"]);
     assert.equal(m.features.size, 0);
+    assert.equal(m.regions.size, 0);
     for (const n of f.owns) assert.ok(m.has(n), `${n} stayed`);
     assert.equal(m.solve().solved, true);
   }
@@ -641,7 +658,7 @@ test("the command line: extrude returns the feature, ls() lists it, rels() and t
   assert.deepEqual((scope.rels as (n?: string) => string[])(corner), ["d1  extrusion 20 along t.z, 4 pairs"]);
   assert.equal(describePick(m, { name: "d1", kind: "relation", distance: 0 }), "d1  extrusion 20 along t.z, 4 pairs  ·  e1");
   assert.match(describePick(m, { name: f.walls[0], kind: "line", distance: 0 }), /·\s+e1$/);
-  assert.match((scope.help as () => string)(), /extrude\(member, depth\?, frame\?\)/);
+  assert.match((scope.help as () => string)(), /extrude\(region, depth\?, frame\?\)/);
   // No depth: the seed every free entity gets.
   const g = m.featureOf(ex(f.twins[0][0], undefined, t.name), "extrude");
   assert.equal(m.relationOf(g.depth).args[1], DEFAULT_DEPTH);

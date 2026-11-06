@@ -61,7 +61,7 @@ function viewFromSide(side: 1 | -1): View {
 
 // --- the command layer ---------------------------------------------------------
 
-test("typed extrude on a frameless rectangle makes no frame: it runs along the origin's +z, journalled as the one call", async () => {
+test("typed extrude on a frameless rectangle makes no frame: it runs along the origin's +z, journalled as its region and the call", async () => {
   await loadKernel();
   const m = new Model(3);
   const { lines } = rectangle(m);
@@ -72,8 +72,10 @@ test("typed extrude on a frameless rectangle makes no frame: it runs along the o
   assert.equal(r.value, "e1");
   assert.deepEqual(frames(m), [], "nothing makes a frame unless asked");
   assert.equal(m.defaultFrame, null);
-  assert.deepEqual(m.journal.slice(before).map((j) => j.op), ["extrude"]);
-  assert.deepEqual(m.journal.at(-1)!.args, [lines[0], 12, "origin", [lines]]);
+  // The face's region, made on the way, then the feature on it — one line typed.
+  assert.deepEqual(m.journal.slice(before).map((j) => j.op), ["region", "extrude"]);
+  assert.deepEqual(m.journal.at(-2)!.args, [lines[0], "origin", lines]);
+  assert.deepEqual(m.journal.at(-1)!.args, ["rg1", 12, "origin", [lines]]);
   assert.equal(m.solve().solved, true);
   lidAlong(m, "e1", [0, 0, 12]);
 });

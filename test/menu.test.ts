@@ -211,7 +211,8 @@ test("empty canvas arms the tools, and every tool name it types is registered", 
     // items went with their tools. The shapes group whole under its heading:
     // this test registers the built-in modules as the app does, and a module
     // is registered whole (it used to import the rectangle alone).
-    "Point", "Line", "Shapes", "Rectangle", "Polygon", "Slot", "Circle", "Arc", "Ellipse", "Fillet", "Frame",
+    // The region tool is the shapes group's last (docs/plans/regions-as-operations.md).
+    "Point", "Line", "Shapes", "Rectangle", "Polygon", "Slot", "Region", "Circle", "Arc", "Ellipse", "Fillet", "Frame",
   ]);
   // A typo in the table would be a menu item that throws when chosen, and
   // nothing else would catch it.

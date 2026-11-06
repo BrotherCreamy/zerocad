@@ -212,7 +212,8 @@ test("a click in the right half extrudes that half — its walls stop at the lin
   const entry = (await app.model()).journalOps.at(-1);
   assert.equal(entry, "extrude");
   assert.ok(!(await saved()).includes("×"), "no key in the file");
-  assert.equal(journal + 1, (await app.model()).journalOps.length, "one entry for the whole feature");
+  // The half's region, made on the way (regions-as-operations.md), and the feature on it.
+  assert.equal(journal + 2, (await app.model()).journalOps.length, "two entries: the region and the whole feature");
   await shot("right-step");
 });
 

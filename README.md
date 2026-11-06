@@ -14,8 +14,10 @@ takes a coordinate frame's axis by name), angle, point-on-line,
 equal-length, radius, on-circle,
 concentric, equal-radius, tangent and symmetry, and on-ellipse with an
 ellipse's two semi-axes; line, rectangle, polygon, slot, circle, arc and
-ellipse tools with Onshape-style constraint inference; a fillet; extrude —
-a closed loop, holes and all, expanded into a real lid of twins and walls held
+ellipse tools with Onshape-style constraint inference; a fillet; regions —
+faces combined by named operations (`region`, `subtract`, `add`,
+`intersect`), nothing negative; extrude — a region, or a closed loop's face,
+expanded into a real lid of twins and walls held
 by one depth dimension, drawn shaded; and revolve — a loop turned about a frame
 axis or a line in its plane, its surface drawn from the live profile and, for a
 partial turn, its end face real geometry held by one angle dimension; either
@@ -98,7 +100,7 @@ src/relations/vec.ts     Dual-vector helpers (dot, wedge) every relation is buil
 src/relations/refs.ts    lazy variable lists, and a frame's basis as re-read values
 src/relations/basic.ts   dist / fix (frame-relative) / coincident / midpoint — all dimension-generic
 src/relations/geometry.ts par / perp / ang (any of which takes a frame axis) / on / eq / rad / oncircle / conc / eqrad / tan / sym
-src/operations.ts        operations, which change structure rather than add equations: fillet, extrude, revolve, del, set
+src/operations.ts        operations, which change structure rather than add equations: fillet, extrude, revolve, region and its steps, del, set
 src/groups.ts            groups (named sets that own nothing and never nest), hide/show and the open group, as operations
 src/organiser.ts         the Organiser pane: groups and features, each control typing its command
 src/relations/extrusion.ts the one dimension an extrude's lid is held by: twin = base + depth·ẑ
@@ -144,6 +146,8 @@ src/tools/selection.ts    the canvas's selection (names and regions), and a feat
 src/tools/sketch.ts       click inside a face; workplane("a.b.c") on its own points is typed
 src/tools/edit.ts         Edit e1: the feature dialog on a feature that exists — holes toggled, the depth changed
 src/tools/region.ts       the click-inside tools' shared region preview
+src/tools/regiontool.ts   the region tool: click a face, then faces to subtract (Add, ∩, New)
+src/regiontranslation.ts  a file before format 17: its holes opened as regions
 src/featurepreview.ts     a feature's commit, run on a throwaway copy: its preview
 src/main.ts              browser entry point (canvas render loop + the REPL)
 test/                    node --test, no browser needed (WASM loaded via a byte buffer)
@@ -204,16 +208,21 @@ adds), and arming extrude, revolve or sketch starts from that selection. What
 ✓ builds is typed into the command line — `extrude("l1", 25)`, one line a
 region — so the log shows it, and the typed commands still build at once.
 
-**A solid's region is its outline and the holes you said.** The click (or
-`extrude("l1", 20)`) proposes the loop with every loop inside it as holes; in
-the dialog a click on one of those holes takes it out of the proposal, and the
-preview fills it. After that, nothing joins a region by being drawn inside it:
-a circle drawn in an extruded outline is no hole until `hole("e1", "c1")` (or
-its right-click menu's *Add as hole to e1*) cuts it, and `regen` never adds
-one. `unhole("e1", "c1")` (*Remove hole from e1*) fills it; deleting the
-circle, or making it construction, does too, and the solid stays. *Edit e1*
-on a solid's face opens the dialog on it: click loops inside the outline to
-toggle them, change the depth, ✓ — one undo step.
+**A face is a face; a region is faces combined by named operations.** A face
+is a closed loop's whole inside — a circle drawn inside a rectangle is part
+of the rectangle's face until an operation says otherwise, so `extrude("l1",
+20)`, or a click with the extrude tool, makes a solid plate and proposes no
+hole. The **region tool** (under the shapes button) makes the holes: click
+the plate's face — `region("l1")`, rg1 — then the circle — `subtract("rg1",
+"c1")`, Subtract being what the unpressed mode row means — or press Add, ∩ or
+New. The extrude tool's click inside rg1 takes the region, holes and all;
+editing rg1 later (the organiser's *Edit rg1*) regenerates every feature on
+it. `hole("e1", "c1")` and `unhole("e1", "c1")` — the right-click menu's *Add
+as hole to e1* / *Remove hole from e1* — are aliases of that step. Deleting
+the circle, or making it construction, fills the hole: the region loses the
+face, and the solid stays. *Edit e1* on a solid's face opens the dialog on
+it: click loops inside the outline to toggle them, change the depth, ✓ —
+one undo step.
 
 ```js
 a = pt(0, 0); b = pt(80, 0)        // entities; each returns its name
@@ -228,8 +237,10 @@ solve()
 zoom(1.5); pan(0, -20)             // the viewport is just more commands
 ls()                               // what's in the model
 loops()                            // its closed loops — the profiles an extrude or a revolve will take
-extrude("l1", 20)                  // a solid of the loop l1 is in: e1, its depth a dimension
-hole("e1", "c1")                   // the loop c1 is in, cut through e1; unhole("e1", "c1") fills it
+r = region("l1")                   // rg1: the face l1 bounds, everything inside it
+subtract(r, "c1")                  // the face c1 bounds taken out: nothing is negative, it is an operation
+extrude(r, 20)                     // a solid of the region: e1, its depth a dimension
+add(r, "c1")                       // put back: e1 regenerates with it; hole/unhole("e1", "c1") are the aliases
 revolve("l5", yaxis(), Math.PI)    // another, turned half way about the default frame's +y
 extrude("c2", -5, { mode: "cut" }) // a circle drawn on e1's top, cut 5 deep: a hole, and e1 one body still
 ```

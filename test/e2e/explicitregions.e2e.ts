@@ -10,7 +10,8 @@
 // circle clicked in, the depth typed, ✓ — one Ctrl+Z undoes both. Then the
 // creating dialog: a second rectangle with a circle inside, clicked — the
 // hole proposed — the circle clicked out, the preview solid over it, ✓ — a
-// solid with no hole.
+// solid with no hole. Since regions as operations the creating dialog
+// proposes no hole at all: the circle stays a circle under the lid.
 //
 // The circle is under the lid, and shaded a solid is opaque: nothing behind a
 // face is picked. So its menu is opened in the hidden view, as
@@ -212,7 +213,12 @@ const BETWEEN2: [number, number] = [715, 455];
 /** Inside the circle, clear of its centre's dot and name. */
 const INSIDE2: [number, number] = [768, 512];
 
-test("the creating dialog: the hole proposed, clicked out (the preview solid over it), ✓ — a solid with no hole", async () => {
+// Was: the hole proposed, clicked out. The owner, since (docs/plans/regions-
+// as-operations.md): *"rather than auto detecting regions + things inside that
+// region which then get subtracted automatically, there should be explicit
+// specification"* — so the click takes the face, whole, and nothing is
+// proposed to click out.
+test("the creating dialog proposes no hole: the circle inside stays under the preview's lid; ✓ — a solid with no hole", async () => {
   await app.type("rectangle");
   await drag(...RECT2);
   await app.type("circle");
@@ -222,18 +228,11 @@ test("the creating dialog: the hole proposed, clicked out (the preview solid ove
   await press(...BETWEEN2);
   await park();
   assert.equal(await drawn(BETWEEN2), true, "previewed");
-  assert.equal(await drawn(INSIDE2), false, "with the circle a hole: no lid over it");
+  assert.equal(await drawn(INSIDE2), true, "the face whole: the lid over the circle too");
   await shot("10-proposed");
 
-  await press(...INSIDE2);
-  await park();
-  assert.equal((await app.model()).journalOps.filter((o) => o === "extrude").length, 1, "nothing built yet");
-  assert.equal(await drawn(INSIDE2), true, "clicked out: the preview's lid covers the circle");
-  await shot("11-toggled-out");
-
   await key("Enter");
-  assert.match(await app.log(), /> extrude\("l\d+", 10, "[^"]+", \[\["l\d+","l\d+","l\d+","l\d+"\]\]\)/,
-    "the loops typed outright: the short form would take them all");
+  assert.match(await app.log(), /> extrude\("l\d+", 10\)/, "the face typed by a member only it has");
   const m = await app.model();
   assert.equal(m.journalOps.filter((o) => o === "extrude").length, 2);
   assert.equal(await loopsOf("e2"), 1, "no hole");

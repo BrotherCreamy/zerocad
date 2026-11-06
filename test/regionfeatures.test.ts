@@ -107,7 +107,9 @@ test("the stepped block: each half of one sketch extruded to its own depth — t
   assert.deepEqual(e1.twins[0].map((n) => m.entities.get(n)?.kind), ["line", "line", "line", "line"]);
   assert.equal(e1.walls.length, 4);
   // The journal names the points, never the keys.
-  assert.deepEqual(m.journal.at(-1), { op: "extrude", args: [l4, 10, t.name, e1.loops] });
+  // On the half's region, made on the way (regions-as-operations.md).
+  assert.deepEqual(m.journal.at(-2), { op: "region", args: [l4, t.name, [l1, across, l3, l4]] });
+  assert.deepEqual(m.journal.at(-1), { op: "extrude", args: ["rg1", 10, t.name, e1.loops] });
   assert.ok(!JSON.stringify(m.journal).includes("×"));
 
   // The right half, by its right side: the crossings are points held on both

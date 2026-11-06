@@ -22,7 +22,8 @@ import * as basic from "./relations/basic.ts";
 import * as geom from "./relations/geometry.ts";
 import { measure } from "./relations/measure.ts";
 import {
-  construction, del, extrude, fillet, hole, loopOfMember, orientingPlane, peelOptions, regen, revolve, set, unhole,
+  add, construction, del, extrude, fillet, hole, intersect, loopOfMember, orientingPlane, peelOptions, regen, region,
+  regionText, revolve, set, subtract, unhole,
 } from "./operations.ts";
 import { planeAxes } from "./curveplane.ts";
 import { save as saveModel, savedTools } from "./persist.ts";
@@ -413,7 +414,8 @@ export function neocadScope(h: EnvHandles): Bag {
    * with the loop's own normal.
    */
   function planeForFeature(member: string, op: "extrude" | "revolve"): string | null {
-    if (model.dim !== 3 || !h.view) return null;
+    // A region lies in its own plane already.
+    if (model.dim !== 3 || !h.view || model.regions.has(member)) return null;
     return orientingPlane(model, loopOfMember(model, member, op), viewAxes(h.view).toward);
   }
 
@@ -630,6 +632,26 @@ export function neocadScope(h: EnvHandles): Bag {
     for (const n of notes) h.log?.(n);
     return out;
   };
+  /**
+   * A feature made on a bare face makes its region on the way — `extrude("l1",
+   * 10)` makes `rg1` — and the log names it, so the region the next edit is
+   * typed against is on screen.
+   */
+  const namingRegion = (call: () => string): string => {
+    const had = new Set(model.regions.keys());
+    const out = call();
+    for (const r of model.regions.keys()) if (!had.has(r)) h.log?.(`${regionText(model, r)}  (made for ${out})`);
+    return out;
+  };
+  /** `planeForFeature`'s question for a region: the plane facing the viewer, where only that settles it. */
+  const planeForRegion = (member: string): string | null => {
+    if (model.dim !== 3 || !h.view) return null;
+    try {
+      return orientingPlane(model, loopOfMember(model, member, "extrude"), viewAxes(h.view).toward);
+    } catch {
+      return null; // region() says why, in its own words
+    }
+  };
   const operations: Bag = {
     /**
      * Rounds the corner two lines meet at, and regenerates every feature
@@ -663,6 +685,23 @@ export function neocadScope(h: EnvHandles): Bag {
     unhole: (feature: string, member: string, regenerated?: unknown) =>
       said((notes) => unhole(model, feature, member, regenerated, notes)),
     /**
+     * Regions as operations (docs/plans/regions-as-operations.md): a face is a
+     * closed loop, found; a region is faces combined by named operations —
+     * `region("l1")` makes `rg1` of the face `l1` bounds, everything inside it
+     * included; `subtract("rg1", "c1")`, `add("rg1", "c3")` and
+     * `intersect("rg1", "l9")` change it, each one undo step, and regenerate
+     * every feature on it. `frame`, `face` and `regenerated` are the
+     * journal's, and never need typing.
+     */
+    region: (member: string, frame?: string | null, face?: unknown) =>
+      said((notes) => { const r = region(model, member, frame ?? planeForRegion(member), face); notes.push(regionText(model, r)); return r; }),
+    subtract: (r: string, member: string, face?: unknown, regenerated?: unknown) =>
+      said((notes) => { subtract(model, r, member, face, regenerated, notes); notes.unshift(regionText(model, r)); return r; }),
+    add: (r: string, member: string, face?: unknown, regenerated?: unknown) =>
+      said((notes) => { add(model, r, member, face, regenerated, notes); notes.unshift(regionText(model, r)); return r; }),
+    intersect: (r: string, member: string, face?: unknown, regenerated?: unknown) =>
+      said((notes) => { intersect(model, r, member, face, regenerated, notes); notes.unshift(regionText(model, r)); return r; }),
+    /**
      * Extrudes the closed loop a member is in — `extrude("l1", 20)` — and
      * returns the feature's name. `frame` picks the loop when the member is in
      * several (it is, once it is the edge of a wall too): the one parallel to
@@ -682,7 +721,7 @@ export function neocadScope(h: EnvHandles): Bag {
       const { args, options } = peelOptions(rest, "extrude", 3);
       const [depth, given, loops] = args as [number | null | undefined, string | null | undefined, ProfileMember[][] | null | undefined];
       const frame = given == null && loops == null ? planeForFeature(member, "extrude") : given;
-      return extrude(model, member, depth ?? null, frame ?? null, loops ?? null, null, options);
+      return namingRegion(() => extrude(model, member, depth ?? null, frame ?? null, loops ?? null, null, options));
     },
     /**
      * Revolves the closed loop a member is in about an axis — `revolve("l1",
@@ -695,7 +734,7 @@ export function neocadScope(h: EnvHandles): Bag {
       const { args, options } = peelOptions(rest, "revolve", 3);
       const [angle, given, loops] = args as [number | null | undefined, string | null | undefined, ProfileMember[][] | null | undefined];
       const frame = given == null && loops == null ? planeForFeature(member, "revolve") : given;
-      return revolve(model, member, axis, angle ?? null, frame ?? null, loops ?? null, null, null, options);
+      return namingRegion(() => revolve(model, member, axis, angle ?? null, frame ?? null, loops ?? null, null, null, options));
     },
     /**
      * Changes a dimension's value — `set("d4.value", 60)` — rebuilding it in
@@ -948,6 +987,12 @@ export function neocadScope(h: EnvHandles): Bag {
       for (const f of model.features.values()) for (const n of f.owns) made.add(n);
       return [
         ...[...model.entities.values()].filter((e) => !made.has(e.name)).map((e) => mark(e.name, describe(e, model))),
+        // A region by its chain, and what stands on it (regions-as-operations.md):
+        // after the sketch it is made of, before the features made of it.
+        ...[...model.regions.keys()].map((r) => {
+          const on = model.featuresOnRegion(r).map((f) => f.name);
+          return mark(r, `${regionText(model, r)}${on.length ? `  (${on.join(", ")} on it)` : ""}`);
+        }),
         ...[...model.features.values()].flatMap((f) => {
           const own = model.membersOf(f.name) ?? [];
           const hid = own.filter((n) => model.hidden.has(n)).length;
@@ -995,6 +1040,12 @@ export function neocadScope(h: EnvHandles): Bag {
      * is not: it journals nothing.
      */
     edit: (feature: unknown) => {
+      // A region: the region tool, armed on it (docs/plans/regions-as-operations.md).
+      if (typeof feature === "string" && model.regions.has(feature)) {
+        if (!h.arm) throw new Error("no viewport in this environment");
+        h.arm("region", {}, feature);
+        return `editing ${feature}`;
+      }
       if (typeof feature !== "string" || !model.features.has(feature)) {
         throw new Error(`${JSON.stringify(feature) ?? String(feature)} is not a feature — edit takes a feature's name, as ls() lists them (e1, e2, …)`);
       }

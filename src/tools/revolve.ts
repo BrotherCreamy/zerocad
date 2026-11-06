@@ -32,14 +32,15 @@ import { defineTool, press, type FeatureStep, type Hand, type PointerInfo, type 
 import type { OptionSpecs } from "./options.ts";
 import type { Model } from "../model.ts";
 import {
-  checkRevolveRegion, orientingPlane, profileOfLoops, regionNaming, regionOf, revolve, revolveProfile, revolveProfileOf,
+  checkRevolve, checkRevolveRegion, orientingPlane, profileOfLoops, regionNaming, regionOf, regionProfile, revolve, revolveProfile,
+  revolveProfileOf,
 } from "../operations.ts";
 import { memberName } from "../model.ts";
 import type { Pick } from "../picking.ts";
 import { FULL_TURN, axisReader } from "../relations/revolution.ts";
 import { FRAME_ARM_PX } from "../framemarker.ts";
 import {
-  LIT_STROKE, REGION_GREEN, drawRegion, lightRegions, missedRegion, outlineLoops, regionKey, type Region,
+  LIT_STROKE, REGION_GREEN, drawHit, lightRegions, missedRegion, namedRegionAt, outlineLoops, regionKey, type Region,
 } from "./region.ts";
 import { FeatureTool, MODE_OPTION, callText, foundRegion, modeOptions } from "./feature.ts";
 import type { FeatureOptions } from "../operations.ts";
@@ -80,10 +81,19 @@ export function revolveSteps(region: RegionHit, axis: string, angle: number, typ
   const tail = options ? [options] : [];
   return [(m) => {
     const r = foundRegion(m, region);
-    checkRevolveRegion(m, r.loops, r.index, axis);
+    const named = namedRegionAt(m, r);
+    if (named) checkRevolve(m, regionProfile(m, named), axis);
+    else checkRevolveRegion(m, r.loops, r.index, axis);
     return null;
   }, (m): ReturnType<FeatureStep> => {
     const r = foundRegion(m, region);
+    // Inside a named region the click took the region: `revolve("rg1", "l7")`.
+    const named = namedRegionAt(m, r);
+    if (named) {
+      const said: unknown[] = [named, axis];
+      if (angle !== FULL_TURN || tail.length) said.push(angle);
+      return { text: callText("revolve", [...said, ...tail]), direct: () => revolve(m, named, axis, angle, ...tail) };
+    }
     // Holes clicked out of the proposal: the loops named outright, as the extrude tool does.
     const out = leftOut(m, r, without);
     if (out.size) {
@@ -129,7 +139,7 @@ export class RevolveTool extends FeatureTool {
   /** What `axes` was found for. */
   private axesFor = "";
   /** The region under the cursor. */
-  private under: Region | null = null;
+  private under: RegionHit | null = null;
   /** The axis under the cursor, once there is a profile. */
   private axisUnder: string | null = null;
 
@@ -251,12 +261,6 @@ export class RevolveTool extends FeatureTool {
       this.guide(this.picks.size ? (this.wanting() ?? missedRegion(ctx.model)) : missedRegion(ctx.model));
       return;
     }
-    // A hole of a picked region toggles out of its proposal, as in extrude.ts.
-    if (this.picks.toggleHole(ctx.model, hit) !== null) {
-      this.lastPicked = "region";
-      ctx.requestRender();
-      return;
-    }
     const was = this.picks.toggle(ctx.model, hit);
     if (was === "again") {
       // The quick path once there is an axis to confirm about; before there
@@ -288,10 +292,10 @@ export class RevolveTool extends FeatureTool {
     const outlines: number[][][] = [];
     this.picks.refresh(model).forEach((picked, i) => {
       const out = leftOut(model, picked, this.picks.without(i));
-      outlines.push(...(drawRegion(model, r, picked, "40", undefined, out) ?? []));
+      outlines.push(...(drawHit(model, r, picked, "40", undefined, out) ?? []));
       outlineLoops(model, r, picked.loops, [...out]);
     });
-    if (this.under) drawRegion(model, r, this.under);
+    if (this.under) drawHit(model, r, this.under);
     if (this.picks.size) {
       this.renderAxes(r);
       if (outlines.length && this.axis) this.renderAxis(r, outlines, this.axis, 2.4);

@@ -100,7 +100,7 @@ const lid = (): Promise<{ top: string | null; frame: string; twins: string[]; fr
   return { top: f.top ?? null, frame: f.frame, twins, frames, corners: f.walls.length };
 });
 
-test("the owner's sequence: a rectangle, a triangle inside it, the extrude tool, Enter — a plate with a hole", async () => {
+test("the owner's sequence: a rectangle, a triangle inside it, the region tool, the extrude tool, Enter — a plate with a hole", async () => {
   assert.equal((await app.model()).byKind.frame ?? 0, 0, "a fresh model has no frame");
   await app.type("rectangle");
   await leftDrag([440, 300], [700, 500]);
@@ -121,8 +121,16 @@ test("the owner's sequence: a rectangle, a triangle inside it, the extrude tool,
   assert.equal(sketch.joined.length, 1, `the closing corner: ${sketch.joined}`);
   closing = sketch.joined[0];
 
+  // The triangle a hole, said with the region tool (docs/plans/regions-as-
+  // operations.md: a loop inside is no hole until an operation names it).
+  await app.type("region");
+  await clickAt(470, 330); // the plate's face
+  await clickAt(570, 425); // the triangle's: subtracted
+  await app.page.press("#cmd", "Escape");
+  await app.page.press("#cmd", "Escape");
+  await app.page.waitForTimeout(150);
   await app.type("extrude");
-  await clickAt(470, 330); // inside the plate, outside the hole
+  await clickAt(470, 330); // inside the plate, outside the hole: rg1
   await app.page.fill("#cmd", "");
   await app.page.keyboard.press("Enter");
   await app.page.waitForTimeout(300);
@@ -180,7 +188,7 @@ test("orbited: no two points on one spot — no lid frame, each corner twinned o
 
 test("save and open: the same names, still no point on another", async () => {
   const before = (await app.repl("save()")).value as string;
-  assert.equal(JSON.parse(before).version, 16);
+  assert.equal(JSON.parse(before).version, 17);
   const r = await app.repl(`open(${JSON.stringify(before)})`);
   assert.equal(r.ok, true, r.error ?? "");
   await app.page.waitForTimeout(200);

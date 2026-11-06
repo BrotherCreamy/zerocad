@@ -12,10 +12,10 @@
 // beats a sentence that only says it (docs/plans/effortless.md, rule 2). The
 // region under the cursor is drawn over it, brighter, as before.
 
-import type { RenderContext } from "./tool.ts";
+import type { RegionHit, RenderContext } from "./tool.ts";
 import type { Model } from "../model.ts";
 import { findLoops, memberLabel, type Loop } from "../loops.ts";
-import { regionOf } from "../operations.ts";
+import { regionAtPoint, regionBoundary, regionValue } from "../operations.ts";
 import { loopOutlines } from "../faces.ts";
 
 /** Only which loops, and which one — what the extrude and revolve tools keep after a click. */
@@ -42,15 +42,16 @@ export const LIT_STROKE = "70";
  */
 export function regionKey(r: Region | null): string {
   if (!r) return "";
-  return regionOf(r.loops, r.index).map((i) => r.loops[i].members.map(memberLabel).join(",")).join("|");
+  return r.loops[r.index].members.map(memberLabel).join(",");
 }
 
 /**
  * The regions a click-inside tool lights while it is armed: every loop
- * `findLoops` sees, each as the region a click inside it would take — the loop
- * with the loops inside it, so a hole is left clear in its outline's region and
- * lit as a region of its own — except the one under the cursor, which is drawn
- * on its own, brighter. Pure: loops in, regions out.
+ * `findLoops` sees, each as the face a click inside it would take — the whole
+ * of its inside, a loop drawn inside it included, since a loop inside is a
+ * hole only once a region's operation says so (docs/plans/regions-as-
+ * operations.md) — except the one under the cursor, which is drawn on its
+ * own, brighter. Pure: loops in, regions out.
  */
 export function litRegions(loops: Loop[], hovered: Region | null): Region[] {
   const skip = hovered ? regionKey(hovered) : null;
@@ -137,11 +138,8 @@ export function drawLit(model: Model, r: RenderContext, regions: Region[]): void
     const own = outline(region.index);
     if (!own) continue;
     r.g.beginPath();
-    for (const i of regionOf(loops, region.index)) {
-      const pts = outline(i);
-      if (pts) path(pts);
-    }
-    r.g.fill("evenodd");
+    path(own);
+    r.g.fill();
     r.g.beginPath();
     path(own);
     r.g.stroke();
@@ -192,8 +190,9 @@ export function missedRegion(model: Model): string {
 }
 
 /**
- * The region — the loop and every loop inside it — filled faintly even-odd, so
- * holes stay clear, and outlined in the tools' green. Returns the outlines
+ * The face a click takes — the loop, filled faintly to its rim, a loop drawn
+ * inside it included (a face is its loop's whole inside) — and outlined in
+ * the tools' green. Returns the outlines
  * drawn (world coordinates), or null when there was nothing to draw — a drawing
  * that moved under the hover, which the next move asks about again. `fill` is
  * the tint's alpha, as two hex digits: a chosen region is drawn a shade
@@ -204,7 +203,66 @@ export function missedRegion(model: Model): string {
  */
 export function drawRegion(model: Model, r: RenderContext, region: Region, fill = "2e",
                            colour = REGION_GREEN, skip: ReadonlySet<number> = new Set()): number[][][] | null {
-  return drawLoops(model, r, region.loops, regionOf(region.loops, region.index).filter((i) => !skip.has(i)), fill, colour);
+  return drawLoops(model, r, region.loops, [region.index].filter((i) => !skip.has(i)), fill, colour);
+}
+
+/**
+ * The named region a click at `hit` is inside (operations.ts's
+ * `regionAtPoint`) — what a feature tool takes there, rather than the face —
+ * or null.
+ */
+export function namedRegionAt(model: Model, hit: RegionHit): string | null {
+  try {
+    return regionAtPoint(model, hit.at, hit.loops);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * A named region drawn as a feature would take it: its outline and its holes,
+ * even-odd, in the tools' green — or null when it cannot be laid out as the
+ * drawing stands (empty, in pieces, its first face gone).
+ */
+export function drawNamedRegion(model: Model, r: RenderContext, name: string, loops: Loop[], fill = "2e",
+                                colour = REGION_GREEN): number[][][] | null {
+  try {
+    const b = regionBoundary(model, name, regionValue(model, name, loops));
+    return drawLoops(model, r, b.all, b.loops, fill, colour);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * A named region's own ink: a violet, so a region made and standing ready is
+ * told at a glance from the green of what an armed tool could take.
+ */
+export const NAMED_REGION = "#9d8cf0";
+
+/**
+ * Every region shown and standing ready — no feature made of it yet, not
+ * hidden — tinted faintly in its own ink, holes clear: what the organiser's
+ * eye shows and hides (docs/plans/regions-as-operations.md). A region a
+ * feature stands on is drawn by the feature's faces, and is not tinted again.
+ */
+export function drawStandingRegions(model: Model, r: RenderContext): void {
+  const ready = [...model.regions.keys()].filter((n) => !model.hidden.has(n) && !model.featuresOnRegion(n).length);
+  if (!ready.length) return;
+  let loops: Loop[];
+  try {
+    loops = findLoops(model);
+  } catch {
+    return;
+  }
+  for (const n of ready) drawNamedRegion(model, r, n, loops, "1c", NAMED_REGION);
+}
+
+/** What a feature tool draws for a hit: the named region it is in, or else its face. */
+export function drawHit(model: Model, r: RenderContext, hit: RegionHit, fill = "2e", colour = REGION_GREEN,
+                        skip: ReadonlySet<number> = new Set()): number[][][] | null {
+  const named = namedRegionAt(model, hit);
+  return (named ? drawNamedRegion(model, r, named, hit.loops, fill, colour) : null) ?? drawRegion(model, r, hit, fill, colour, skip);
 }
 
 /**

@@ -64,7 +64,7 @@ function holed(): { m: Model; lines: string[]; hole: string } {
 
 // --- what is lit ------------------------------------------------------------------
 
-test("the regions lit are every loop's region — the outline around its hole, and the hole on its own — less the one hovered", async () => {
+test("the faces lit are every loop's — the outline's whole inside, and the circle inside it on its own — less the one hovered", async () => {
   await loadKernel();
   const { m, hole } = holed();
   const loops = findLoops(m);
@@ -72,7 +72,9 @@ test("the regions lit are every loop's region — the outline around its hole, a
   const all = litRegions(loops, null);
   assert.equal(all.length, 2, "both");
   const outer = all.find((r) => !loops[r.index].members.some((x) => x.name === hole))!;
-  assert.match(regionKey(outer), /\|/, "the outline's region carries its hole, so the hole stays clear in its fill");
+  // A loop inside is a loop and nothing more until a region's operation
+  // names it (regions-as-operations.md): the outline's face is its loop alone.
+  assert.doesNotMatch(regionKey(outer), /\|/, "the outline's face is its own loop, the circle inside it no hole");
   const rest = litRegions(loops, outer);
   assert.deepEqual(rest.map((r) => loops[r.index].members.map((x) => x.name)), [[hole]], "the hovered one is drawn brighter on its own");
   assert.deepEqual(litRegions([], null), [], "nothing closed, nothing lit");
