@@ -7,6 +7,13 @@ decisions.
 
 ---
 
+## The drag preview's ghosts are solid, translucent white
+
+The owner: *"the outline should be solid white slightly translucent rather
+than dotted"*. A ghost's outline is now solid white at 60 % opacity over a
+7 % white fill; the held panel's own ghost is brighter (85 %). Its width is
+unchanged — the interface size's 1.5 px, rounded to a whole pixel.
+
 ## See-through panels, each in a form of its own, and a lock
 
 The owner: *"there should be a menu option to make the toolbars transparent

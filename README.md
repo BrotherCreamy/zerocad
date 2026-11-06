@@ -165,7 +165,7 @@ piece of chrome can be dragged by its strip, and all but the toolbar — one
 line of its tools, or two where one will not fit — resized from any corner) is a
 REPL over the app's own command surface, and it is the primary interface —
 not a debug console. `help()` lists everything in scope. **While you drag a
-panel, nothing else moves**: the others go faint, a dashed ghost shows where
+panel, nothing else moves**: the others go faint, a faint white ghost outline shows where
 each one will be pushed to and where the one in your hand will snap (a
 toolbar that will turn from a column to a row shows the row), and only when
 you let go do they move there. Escape, or letting go back where you started,
