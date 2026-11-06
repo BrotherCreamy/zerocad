@@ -14,6 +14,11 @@
 // pane docked against a tray keeps lying along it through a rotation that
 // wraps the tray.
 //
+// And all of it again with each of the panels' switches on
+// (docs/plans/panels-overlay-lock.md) — see-through, then locked — over the
+// iPhones and the Android rows: the layout is the same rectangles either way,
+// and see-through content must stay inside them.
+//
 // Not Safari: this machine has no WebKit. Set NEOCAD_E2E_SHOTS to a directory
 // to keep a picture of every device and orientation — and look at them.
 
@@ -53,12 +58,18 @@ async function phone(): Promise<Phone> {
 }
 
 /** The phone held `turn`, `mode`: its window and insets set, and — with `fresh` — a first start: no layout, no autosave. */
-async function hold(p: Phone, phoneOf: IPhone, turn: Turn, mode: Mode, fresh = true): Promise<void> {
+/** The panels' two switches (docs/plans/panels-overlay-lock.md) a fresh start is to have: none, see-through, or locked. */
+type Switches = { overlay: boolean; locked: boolean } | null;
+
+async function hold(p: Phone, phoneOf: IPhone, turn: Turn, mode: Mode, fresh = true, switches: Switches = null): Promise<void> {
   const win = windowOf(phoneOf, turn, mode);
   await p.page.setViewportSize({ width: win.w, height: win.h });
   await p.cdp.send("Emulation.setSafeAreaInsetsOverride", { insets: win.insets });
   if (fresh) {
-    await p.page.evaluate(() => localStorage.clear());
+    await p.page.evaluate((sw) => {
+      localStorage.clear();
+      if (sw) localStorage.setItem("neocad.panels.switches.v1", JSON.stringify(sw));
+    }, switches);
     await forgetAutosave(p.page); // a reload here means the app's first start
     await p.page.reload({ waitUntil: "networkidle" });
     await ready(p.page);
@@ -130,37 +141,67 @@ async function shot(page: Page, name: string): Promise<void> {
 
 const slug = (p: IPhone) => `${p.w}x${p.h}`;
 
-test("every iPhone, both ways up, installed and in Safari: no pane over another, over the logo or over the status; all on screen; the organiser shown", async () => {
+/**
+ * See-through, each pane's content is drawn inside its rectangle — the
+ * layout is the same rectangles — so what fits docked must fit see-through;
+ * this says the content stays in them: the tree, the log's tail and every
+ * tray button inside its pane's box.
+ */
+const contentOutside = (page: Page) => page.evaluate(() => {
+  const out: string[] = [];
+  const box = (el: Element) => el.getBoundingClientRect();
+  for (const [sel, pane] of [[".otree", "organiser"], [".otail", "log"], ["#toolbar button", "toolbar"], ["#actions button", "actions"], ["#cmdrow", "cmd"]] as const) {
+    const p = document.querySelector<HTMLElement>(`.panel[data-panel="${pane}"]`);
+    if (!p || p.hidden) continue;
+    const r = box(p);
+    for (const el of Array.from(document.querySelectorAll(sel))) {
+      const b = box(el);
+      if (b.width === 0 || b.height === 0) continue;
+      if (b.left < r.left - 0.5 || b.top < r.top - 0.5 || b.right > r.right + 0.5 || b.bottom > r.bottom + 0.5) out.push(`${sel} outside ${pane}`);
+    }
+  }
+  return out;
+});
+
+for (const switches of [null, { overlay: true, locked: false }, { overlay: false, locked: true }] as const) {
+const said = switches === null ? "" : switches.overlay ? ", see-through" : ", locked";
+test(`every iPhone, both ways up, installed and in Safari${said}: no pane over another, over the logo or over the status; all on screen; the organiser shown`, async () => {
   const p = await phone();
   try {
     for (const ph of IPHONES) {
       for (const turn of ["portrait", "landscape"] as const) {
         for (const mode of ["installed", "safari"] as const) {
-          await hold(p, ph, turn, mode);
+          await hold(p, ph, turn, mode, true, switches);
           await drawing(p.page);
           const where = `${ph.name}, ${turn}, ${mode}`;
           assert.deepEqual(await breaches(p.page), [], where);
           const org = await chrome(p.page).then((c) => c.panes.organiser);
           assert.ok(org && org.w > 100 && org.h > 60, `${where}: the organiser is there from the start ${JSON.stringify(org)}`);
           assert.deepEqual(errors, [], `${where}: the page reported no layout problem`);
-          await shot(p.page, `${slug(ph)}-${turn}-${mode}`);
+          if (switches) {
+            assert.deepEqual(await p.page.$eval("#viewwrap", (el) => [el.classList.contains("overlay"), el.classList.contains("locked")]), [switches.overlay, switches.locked], `${where}: the switches in force`);
+            assert.deepEqual(await contentOutside(p.page), [], `${where}: every pane's content inside its pane`);
+          }
+          await shot(p.page, `${slug(ph)}-${turn}-${mode}${said.replace(/[ ,]+/g, "-")}`);
         }
       }
     }
     // The owner's phone size at a larger interface size, both ways up.
     for (const turn of ["portrait", "landscape"] as const) {
-      await hold(p, THIRTEEN, turn, "installed");
+      await hold(p, THIRTEEN, turn, "installed", true, switches);
       assert.ok((await repl(p.page, "ui({ scale: 1.3 })")).ok);
       await p.page.waitForTimeout(250);
       await drawing(p.page);
       assert.deepEqual(await breaches(p.page), [], `iPhone 13 ${turn} at 130 %`);
       assert.deepEqual(errors, []);
-      await shot(p.page, `${slug(THIRTEEN)}-${turn}-installed-130`);
+      if (switches) assert.deepEqual(await contentOutside(p.page), [], `iPhone 13 ${turn} at 130 %: content inside its pane`);
+      await shot(p.page, `${slug(THIRTEEN)}-${turn}-installed-130${said.replace(/[ ,]+/g, "-")}`);
     }
   } finally {
     await p.context.close();
   }
 });
+}
 
 // The mode chip at its longest (docs/plans/mode-feedback.md): a plane set — the
 // drawing's default frame, so the chip's first part and its Done are there —
@@ -490,6 +531,34 @@ test("every Android device, both ways up, installed (gestures, three buttons) an
     await p.context.close();
   }
 });
+
+for (const switches of [{ overlay: true, locked: false }, { overlay: false, locked: true }] as const) {
+  test(`every Android device, both ways up, installed (gestures, three buttons) and in Chrome, ${switches.overlay ? "see-through" : "locked"}: no pane over another, the logo or the status, all on screen, the content in its panes`, async () => {
+    const p = await android();
+    try {
+      for (const { device, turn, mode } of everyAndroidWay()) {
+        const win = androidWindowOf(device, turn, mode);
+        const where = `${device.name}, ${turn}, ${mode}, ${switches.overlay ? "see-through" : "locked"}`;
+        await p.page.setViewportSize({ width: win.w, height: win.h });
+        await p.cdp.send("Emulation.setSafeAreaInsetsOverride", { insets: win.insets });
+        await p.page.evaluate((sw) => { localStorage.clear(); localStorage.setItem("neocad.panels.switches.v1", JSON.stringify(sw)); }, switches);
+        await forgetAutosave(p.page);
+        await p.page.reload({ waitUntil: "networkidle" });
+        await ready(p.page);
+        await p.cdp.send("Emulation.setSafeAreaInsetsOverride", { insets: win.insets });
+        await p.page.waitForTimeout(250);
+        await p.page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+        await drawing(p.page);
+        assert.deepEqual(await breaches(p.page), [], where);
+        assert.deepEqual(await contentOutside(p.page), [], where);
+        assert.deepEqual(await p.page.$eval("#viewwrap", (el) => [el.classList.contains("overlay"), el.classList.contains("locked")]), [switches.overlay, switches.locked], where);
+        assert.deepEqual(errors, [], `${where}: the page reported no layout problem`);
+      }
+    } finally {
+      await p.context.close();
+    }
+  });
+}
 
 test("nothing the pages threw went uncaught", () => {
   assert.deepEqual(errors, []);
