@@ -16,8 +16,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  FINE, TARGET_FLOOR, TOUCH_TARGET, TRAY_SHARE, bleed, flyoutSize, optionsSize, scaledMetrics, target, touchMetrics, traySize,
-  type Insets, type Rect,
+  COARSE, FINE, TARGET_FLOOR, TOUCH_TARGET, TRAY_SHARE, arranged, bleed, defaultLayout, flyoutSize, logoBox, minSizeOf, optionsSize,
+  overlapping, recorded, refit, relaid, scaledMetrics, target, touchMetrics, traySize, trayRoom,
+  type Insets, type Layout, type Recorded, type Rect, type Size,
 } from "../src/panels.ts";
 import { FORM_FACTOR, UI_MAX, UI_MIN, UI_STEP } from "../src/uiscale.ts";
 
@@ -150,4 +151,81 @@ test("a bled pane never draws over another pane's rectangle: the bleed is only b
       assert.ok(!over, `${i} and ${j}: ${JSON.stringify([a, b])}`);
     }
   }
+});
+
+// ---- a layout that does not fit is never drawn (the owner's landscape picture) -----------
+//
+// His iPhone on its side, the log drawn over the command line's body. Not the
+// bleed (above: it cannot reach a rectangle); a real overlap — the places he
+// left the panes in, re-laid through a rotation, could not all be had, and the
+// resolver's no-layout was drawn as it stood. `refit` gives up stored places
+// until a layout fits. As Panels.apply lays out, without the DOM.
+
+const PROMAX_UP = { w: 440, h: 956 - 62 - 34 };
+const PROMAX_SIDE = { w: 956 - 124, h: 440 - 40 };
+const counts = { toolbar: 13, actions: 4 };
+const ORDER = ["toolbar", "log", "organiser", "actions", "cmd"];
+
+function laidFrom(area: Size, stored: Record<string, Recorded>, keep: readonly string[], m = COARSE) {
+  const logo: Layout = { logo: { x: 0, y: 0, ...logoBox(m), fixed: true } };
+  const { options: _o, ...defaults } = defaultLayout(area, 13, m);
+  const recs = Object.fromEntries(keep.map((id) => [id, stored[id]]));
+  const sizeOf = (id: string, o: "row" | "column" | undefined, lines?: number) =>
+    id in counts ? traySize(counts[id as keyof typeof counts], o ?? "column", m, trayRoom(area, o ?? "column", m), lines) : null;
+  const minOf = (id: string, o: "row" | "column" | undefined) => minSizeOf(id, o, id in counts, undefined, m);
+  const unstored = Object.fromEntries(ORDER.filter((id) => !recs[id]).map((id) => [id, defaults[id]]));
+  return arranged(ORDER, relaid(recs, { ...logo, ...unstored }, area, m.scale, sizeOf, minOf), defaults, counts, area, {}, m, logo);
+}
+
+test("refit: stored places a rotation cannot all hold give way — those in the way first, then all — and what is drawn fits", () => {
+  // Found by the fuzz below: left on its side, re-laid upright.
+  const stored: Record<string, Recorded> = {
+    log: { x: 607, y: 300, w: 203, h: 60, area: PROMAX_SIDE, scale: 1.3, dock: { left: "toolbar" }, oy: -57 },
+    cmd: { x: 427, y: 141, w: 405, h: 65, area: PROMAX_SIDE, scale: 1.3, dock: { right: "edge" } },
+    actions: { x: 629, y: 84, w: 203, h: 43, orient: "row", area: PROMAX_SIDE, scale: 1.3, dock: { right: "edge" } },
+    organiser: { x: 221, y: 111, w: 203, h: 246, area: PROMAX_SIDE, scale: 1.3, dock: { bottom: "toolbar" }, ox: 213 },
+  };
+  const all = laidFrom(PROMAX_UP, stored, Object.keys(stored));
+  assert.equal(all.ok, false, "every stored place: no layout");
+  assert.ok(overlapping(all.layout).length > 0, "and what it leaves has panes over panes — what used to be drawn");
+  const { result, dropped } = refit((keep) => laidFrom(PROMAX_UP, stored, keep), Object.keys(stored));
+  assert.equal(result.ok, true);
+  assert.deepEqual(overlapping(result.layout), []);
+  assert.ok(dropped.length > 0 && dropped.length < Object.keys(stored).length, `only those in the way given up: ${dropped}`);
+  // A layout that fits as stored gives up nothing.
+  const fine = refit((keep) => laidFrom(PROMAX_SIDE, stored, keep), Object.keys(stored));
+  assert.deepEqual(fine.dropped, []);
+  // Nothing fits even at the defaults: the first result stands, to be reported.
+  const never = refit(() => ({ layout: { a: { x: 0, y: 0, w: 9, h: 9 }, b: { x: 1, y: 1, w: 9, h: 9 } }, ok: false }), ["a"]);
+  assert.deepEqual(never.dropped, []);
+  assert.equal(never.result.ok, false);
+});
+
+test("refit, over 300 stored layouts on a Pro Max taken through a rotation: what is drawn never has a pane over another", () => {
+  let seed = 11;
+  const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+  let gaveUp = 0;
+  for (let n = 0; n < 300; n++) {
+    const from = rnd() < 0.5 ? PROMAX_SIDE : PROMAX_UP;
+    const to = from === PROMAX_SIDE ? PROMAX_UP : PROMAX_SIDE;
+    const { options: _o, ...d } = defaultLayout(from, 13, COARSE);
+    const ids = ORDER.filter(() => rnd() < 0.7);
+    const put: Layout = {};
+    for (const id of ids) {
+      const r = id === "log" || id === "cmd" ? { ...d[id], w: Math.round(160 + rnd() * (from.w - 160)) } : d[id];
+      let x = Math.round(rnd() * (from.w - r.w)), y = Math.round(rnd() * (from.h - r.h));
+      if (rnd() < 0.5) x = rnd() < 0.5 ? 0 : from.w - r.w;
+      if (rnd() < 0.5) y = rnd() < 0.5 ? 0 : from.h - r.h;
+      put[id] = { ...r, x, y };
+    }
+    const logo: Layout = { logo: { x: 0, y: 0, ...logoBox(COARSE), fixed: true } };
+    const left = arranged(ORDER, { ...logo, ...put }, d, counts, from, {}, COARSE, logo);
+    if (!left.ok) continue;
+    const stored = Object.fromEntries(ids.map((id) => [id, recorded(id, left.layout, from, COARSE.scale)]));
+    const { result, dropped } = refit((keep) => laidFrom(to, stored, keep), ids);
+    if (dropped.length) gaveUp++;
+    assert.equal(result.ok, true, `case ${n}`);
+    assert.deepEqual(overlapping(result.layout), [], `case ${n}`);
+  }
+  assert.ok(gaveUp > 0, "some needed it — the fuzz reaches the case");
 });

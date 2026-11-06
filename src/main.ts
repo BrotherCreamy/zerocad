@@ -2546,7 +2546,10 @@ async function main() {
     // phone draws what it draws: the form factor and the text size.
     const why = `100% here is ${deviceUi}× a desktop's: ${coarse ? (formFactor(device) === 1.3 ? "a phone" : "a tablet") : "a mouse"} ` +
       `${formFactor(device)}, text size ${textFactor(device).toFixed(2)} (${textSource(device)})`;
-    return `interface ${formatScale(uiScale)} (${why})` +
+    // Under a finger, the target in force (panels.ts's `target`): what every
+    // row and button answers a press over, so the size's effect can be read off.
+    const hits = coarse ? `; a finger's target ${metrics.hit} px` : "";
+    return `interface ${formatScale(uiScale)} (${why})${hits}` +
       `; panes ${panes.map((p) => p.id).join(", ")}` + (hidden.length ? `; hidden ${hidden.join(", ")}` : "; all shown");
   }
 

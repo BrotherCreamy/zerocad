@@ -455,6 +455,46 @@ test("iPhone 13: a locked layout that no longer fits after a rotation is re-fitt
   assert.deepEqual(app.pageErrors, []);
 });
 
+// The finger's gap between the tree's rows was measured at 100 %, against
+// Chromium's touch adjustment (8 px fingertip: every gap to 18 px went to a
+// row, 20 was the first clear), and kept at 22 px. Now the target follows the
+// interface size (docs/plans/touch-density.md), so the gap is half a target
+// and never under 22: at 80 % half a target would be 17, inside the reach.
+// Rechecked where it changes and where it is held, on Android's engine and the
+// iPhone's emulation alike.
+for (const device of ["iPhone 13", "Pixel 7"] as const) {
+  test(`${device}: see-through, a tap midway between two of the tree's rows reaches the canvas at 80 %, 100 % and 130 % — the gap half a target, never under 22`, async () => {
+    const app = await openApp({ device });
+    apps.push(app);
+    await build(app, BUSY);
+    await look(app, 0.6, 0.9, 0.36);
+    const hand = await handOf(app, true);
+    for (const [scale, gap] of [[0.8, 22], [1, 22], [1.3, 28.5]] as const) {
+      await app.type(`ui({ scale: ${scale} }); panels({ overlay: true }); arm("point")`);
+      await app.page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+      // The panes glide to the new size's places: measured once the rows stand still.
+      let rows = await treeRows(app);
+      for (let i = 0; i < 20; i++) {
+        await app.page.waitForTimeout(100);
+        const again = await treeRows(app);
+        const still = JSON.stringify(again) === JSON.stringify(rows);
+        rows = again;
+        if (still && rows.length >= 2) break;
+      }
+      const [r1, r2] = rows;
+      const measured = r2.y - (r1.y + r1.h);
+      assert.ok(Math.abs(measured - gap) < 0.6, `${device} at ${scale * 100} %: a gap of ${measured.toFixed(1)} px, wanted ${gap}`);
+      const between: [number, number] = [r1.x + Math.min(r1.w, r2.w) / 2, r1.y + r1.h + measured / 2];
+      assert.equal(await topAt(app, ...between), "cv", `${device} at ${scale * 100} %: midway is the canvas's`);
+      const before = await points(app);
+      await hand.tap(...between);
+      await app.page.waitForTimeout(200);
+      assert.equal(await points(app), before + 1, `${device} at ${scale * 100} %: the finger's tap there made a point, not a row's press`);
+    }
+    assert.deepEqual(app.pageErrors, []);
+  });
+}
+
 test("mouse: the log's see-through lines fade with age and are gone after ten seconds; a click on one brings the docked log back until a click outside", async () => {
   const app = await openApp();
   apps.push(app);

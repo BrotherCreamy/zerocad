@@ -115,6 +115,16 @@ package owns the menu; that one owns the commands.** The seam is below.
       least 44 CSS px however small they are drawn (an invisible `::before`,
       a row a target tall, a tray's button pitch a whole target) — the spin
       box's − and + included.
+      **Amended (2026-11-06, [`touch-density.md`](touch-density.md))**: the
+      owner, from his phone, *"the text resizes but the spacing between e.g
+      menu items and toolbar items barely changes. Not sure why. There must be
+      some scaling you're missing"*. The 44 was a literal, so 80 % shrank the
+      type and left every row where it was. **The target follows the
+      interface size**: 44 at the device's own 100 % (at the default text
+      size; a larger text size grows it as it grows the type), in proportion
+      to the spin box from there — 35 at 80 %, 57 at 130 % — and never under
+      32 (`panels.ts`'s `target`, `var(--target)` in the stylesheet). Drawn
+      and hit stay apart: a tray's tool is drawn at 0.8 of its target.
     - **100 % is computed per device**, and the spin box shows 100 % at that
       size; what is stored is only the viewer's multiplier, so a change in the
       OS text size still comes through. Device scale = form factor ×
@@ -146,6 +156,17 @@ package owns the menu; that one owns the commands.** The seam is below.
   flush to the bottom with its text above the home indicator — iOS's own
   toolbar pattern — and likewise at a landscape notch's side, and at the top
   under the status bar where there is a top inset (Safari, not installed).
+  **Amended (2026-11-06, [`touch-density.md`](touch-density.md)): the bottom
+  only.** The owner, on his iPhone on its side: *"when I move something up
+  against the left or right edge, it hits an invisible edge, but then the
+  padding of the palette expands out to touch the edge of the screen. Strange
+  behaviour"*. A drag stops at the safe area's line and the box then grew
+  out under the cutout, which reads as a fault. A panel bleeds only into the
+  **bottom** inset (the home indicator, Android's gesture bar), where its
+  content stands above and the command line was asked to reach; against a
+  side or the top it is drawn exactly at its rectangle, the drawing visible
+  under the inset. A bottom bleed reaches only below the safe area, so a bled
+  pane never draws over another pane's rectangle.
   **(amended: the status bar)** The owner: *"in PWA mode on iPhone, there is
   some blending at the top of the screen which is annoying. Any way to get
   rid of that?"* Since iOS 26, a home-screen app with a `black-translucent`
@@ -238,7 +259,9 @@ and the insets the page measured, so the owner can read them off.
 Deviations and additions — each a decision, vetoable:
 
 - **Along a tray, buttons are a whole target apart** (pitch 44 at a phone's
-  100 %): a hit box of 44 round each 26 px face needs it. So the column is
+  100 %): a hit box of 44 round each 26 px face needs it. (Since
+  touch-density.md: the face is 0.8 of the target, 35 px, and the target
+  follows the size.) So the column is
   34 px thick where 0.1.0's was 52, but as long as before for eleven tools
   (511 px against 556). A shorter column would mean overlapping hit boxes.
 - **A strip's hit box reaches outward over the drawing**, never into the

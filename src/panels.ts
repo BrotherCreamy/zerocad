@@ -1162,6 +1162,41 @@ export const LOCKED_GUIDE = "panels are locked — unlock in the menu";
 /** What the status says when a rotation made a locked layout re-fit. */
 export const REFIT_NOTE = "panels re-fitted to this screen — still locked";
 
+/** What the status says when the panes left where they were cannot all fit this screen, and some were put at their defaults. */
+export const REFIT_UNLOCKED_NOTE = "panels re-fitted to this screen";
+
+/**
+ * **A layout that does not fit is never drawn while one that does is there.**
+ * `attempt(keep)` lays the panes out with the stored places of `keep` and the
+ * rest at their defaults; with all of `stored` kept the resolver can find no
+ * layout — the places a viewer left in one area, re-laid through a rotation,
+ * cannot all be had in the other — and what it leaves overlaps (measured over
+ * 2,796 random stored layouts on a 440 × 956 phone, both ways up: 850 of 5,592
+ * re-layouts found none, 844 of them drawn with panes over panes, and only a
+ * console warning said so). So, in order: every stored place; every stored
+ * place but those of the panes the failed layout has overlapping (731 of the
+ * 850 fit so); none — the defaults, which everything-fits guarantees (the
+ * other 119). `dropped` names the stored places given up; the caller says so
+ * and stores nothing. Where even the defaults do not fit, the first result
+ * stands, and is reported as it always was.
+ */
+export function refit(
+  attempt: (keep: readonly string[]) => { layout: Layout; ok: boolean },
+  stored: readonly string[],
+): { result: { layout: Layout; ok: boolean }; dropped: string[] } {
+  const first = attempt(stored);
+  if (first.ok || !stored.length) return { result: first, dropped: [] };
+  const inWay = new Set(overlapping(first.layout).flat());
+  const kept = stored.filter((id) => !inWay.has(id));
+  if (kept.length < stored.length) {
+    const some = attempt(kept);
+    if (some.ok) return { result: some, dropped: stored.filter((id) => inWay.has(id)) };
+  }
+  const none = attempt([]);
+  if (none.ok) return { result: none, dropped: [...stored] };
+  return { result: first, dropped: [] };
+}
+
 /** A corner of a pane: which way its see-through content hugs. */
 export type Hug = "nw" | "ne" | "sw" | "se";
 
@@ -2155,6 +2190,8 @@ export class Panels {
   private onLocked: ((text: string) => void) | undefined;
   /** Told when a locked layout had to be re-fitted to a new area — the host says it in the status. */
   private onRefit: ((text: string) => void) | undefined;
+  /** The stored places the last `apply` had to give up (`refit`), so a re-fit is said once, not on every apply. */
+  private gaveUp = "";
   /** The area the last `apply` laid out in: a change is a rotation or a resize. */
   private lastArea: Size | null = null;
   /** See-through panes a press put in docked form, until the next press outside them. */
@@ -2276,25 +2313,41 @@ export class Panels {
     }
     const fixed = this.fixedLayout();
     for (const [id, r] of Object.entries(fixed)) this.placeFixed(id, r);
-    const defaults = this.defaults(area);
-    const recs: Record<string, Recorded> = {};
-    for (const id of [...order, ...later]) if (this.stored[id]?.at) recs[id] = this.stored[id].at!;
+    const stored: Record<string, Recorded> = {};
+    for (const id of [...order, ...later]) if (this.stored[id]?.at) stored[id] = this.stored[id].at!;
     const sizeOf = (id: string, orient: Orientation | undefined, lines?: number): Size | null =>
       id in counts ? traySize(counts[id], orient ?? "column", this.m, trayRoom(area, orient ?? "column", this.m), lines) : sizes[id] ?? null;
     const minOf = (id: string, orient: Orientation | undefined) => this.min(id, orient);
-    const relay = (base: Layout) => relaid(recs, base, area, this.m.scale, sizeOf, minOf);
-    const unstored = (ids: string[], from: Layout) =>
-      Object.fromEntries(ids.filter((id) => !recs[id] && from[id]).map((id) => [id, from[id]]));
-    if (later.length) {
-      // Earlier panels hold their places in `settled`, so the tray is where the
-      // panels without the fitted ones put it — which is what "beside" means.
-      const base0 = { ...fixed, ...unstored(order, defaults) };
-      const first = arranged(order, relay(base0), defaults, counts, area, {}, this.m, fixed).layout;
-      for (const id of later) defaults[id] = fittedAt(defaults[id], first[this.fitted[id].beside ?? ""], sizes[id], area);
-    }
     const all = [...order, ...later];
-    const wanted = relay({ ...fixed, ...unstored(all, defaults) });
-    const s = arranged(all, wanted, defaults, counts, area, sizes, this.m, fixed);
+    // The layout from the stored places of `keep` (the rest at their defaults).
+    let defaults: Layout = {};
+    let wanted: Layout = {};
+    const attempt = (keep: readonly string[]) => {
+      const recs = Object.fromEntries(keep.map((id) => [id, stored[id]]));
+      defaults = this.defaults(area);
+      const relay = (base: Layout) => relaid(recs, base, area, this.m.scale, sizeOf, minOf);
+      const unstored = (ids: string[], from: Layout) =>
+        Object.fromEntries(ids.filter((id) => !recs[id] && from[id]).map((id) => [id, from[id]]));
+      if (later.length) {
+        // Earlier panels hold their places in `settled`, so the tray is where the
+        // panels without the fitted ones put it — which is what "beside" means.
+        const base0 = { ...fixed, ...unstored(order, defaults) };
+        const first = arranged(order, relay(base0), defaults, counts, area, {}, this.m, fixed).layout;
+        for (const id of later) defaults[id] = fittedAt(defaults[id], first[this.fitted[id].beside ?? ""], sizes[id], area);
+      }
+      wanted = relay({ ...fixed, ...unstored(all, defaults) });
+      return arranged(all, wanted, defaults, counts, area, sizes, this.m, fixed);
+    };
+    const { result: s, dropped } = refit(attempt, Object.keys(stored));
+    // Stored places this area could not hold all of: the panes in the way were
+    // put at their defaults for this area — said, never stored, so turning back
+    // puts every pane where it was left (the owner's landscape picture had the
+    // log drawn over the command line's body, the resolver's no-layout drawn
+    // as it stood).
+    const gaveUp = dropped.join(" ");
+    const newly = gaveUp !== "" && gaveUp !== this.gaveUp;
+    this.gaveUp = gaveUp;
+    if (newly && !this.switches.locked) this.onRefit?.(REFIT_UNLOCKED_NOTE);
     // A locked layout re-fitted to a new area (a rotation) is said, once — the
     // area changed on this apply only: the lock holds the panes against a
     // hand, and the resolver still runs. The
@@ -2302,7 +2355,7 @@ export class Panels {
     const turned = this.lastArea !== null && (this.lastArea.w !== area.w || this.lastArea.h !== area.h);
     this.lastArea = area;
     if (this.switches.locked) {
-      if (turned && refitted({ ...defaults, ...wanted }, s.layout, all).length) this.onRefit?.(REFIT_NOTE);
+      if ((turned && refitted({ ...defaults, ...wanted }, s.layout, all).length) || newly) this.onRefit?.(REFIT_NOTE);
     }
     this.show(s.layout, s.ok);
   }
