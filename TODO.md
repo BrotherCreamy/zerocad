@@ -1897,6 +1897,7 @@ starts.
         commits, Escape commits nothing; a tray's turn at an edge is
         previewed and happens at the drop; every panel not in hand is
         translucent for the drag).
+<<<<<<< HEAD
         - [x] **A dragged panel previews; nothing moves until the drop —
           BUILT (2026-11-06)**, on `claude/panels-preview`; the spec's *As
           built* has the detail. The resolver is unchanged and runs move by
@@ -1959,6 +1960,18 @@ starts.
             does.
           - Not tried on an iPhone: the glide, the half opacity over a solid,
             and a ghost at 3×.
+=======
+      - **Then, on the preview:**
+        [`panels-overlay-lock.md`](docs/plans/panels-overlay-lock.md) (the
+        owner: *"a menu option to make the toolbars transparent to maximize
+        visible viewport size. and also another option to lock the toolbars
+        in place … like how the feature tree in solidworks changes form when
+        it is overlaid over the viewport"* — two View switches, the
+        viewer's; overlay draws each pane's content straight over the
+        drawing in a form of its own, the organiser as a tree hugging its
+        corner, empty space the drawing's; lock keeps every pane where it
+        is).
+>>>>>>> origin/claude/resume-tasks-o7q02e
       - **Also queued (the owner, 2026-11-05: *"please add solid and surface
         fillet tools if possible (after you do the nurbs conversion)"*):**
         [`solid-fillets.md`](docs/plans/solid-fillets.md) after workbenches,

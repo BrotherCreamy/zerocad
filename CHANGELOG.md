@@ -47,7 +47,10 @@ dragging with and without the translucency, the same 16.7 ms median and
 33.4 ms p95. Pictures:
 [177](docs/images/177-the-command-line-held-over-the-log-the-logs-ghost-where-it-will-be-pushed.png)–[187](docs/images/187-phone-landscape-lifted-the-tray-a-column.png).
 Tests: unit 1477 → 1489 (+12), e2e 592 → 606 (+14, mouse and iPhone 13 both
-ways up). **Not tried on an iPhone**: drag the command line onto the log and
+ways up). The gate, in sets of four files: typecheck 0, unit 1489/1489,
+kernel 11, e2e 606 — 603 pass, 1 skipped, 2 failed under a load of about 10:
+`solidsphone.e2e.ts`'s two touch-drawing tests, the touch harness's recorded
+miss, which pass alone (3/3). **Not tried on an iPhone**: drag the command line onto the log and
 look at the ghosts, then lift; drag the toolbar to the top, watch its ghost
 turn, and lift back where you started to see nothing move.
 
