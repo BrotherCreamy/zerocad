@@ -20,6 +20,7 @@
 import { spanOf, type Entity, type FeatureEntry, type Model } from "./model.ts";
 import { frameBasis, planeBasis } from "./relations/refs.ts";
 import { arcFrame, circleFrame, type ArcFrame } from "./arcgeom.ts";
+import type { BSpline } from "./bspline.ts";
 import { cross3, lift3, unit3 } from "./vec3.ts";
 
 /** A plane's two in-plane unit directions and its normal, three coordinates each. */
@@ -142,4 +143,48 @@ export function curveFrame(model: Model, e: Entity): ArcFrame | null {
   // A kind a module declares is laid out as its declaration says (`defineCurveFrame`).
   const declared = kindFrames.get(e.kind);
   return declared ? declared(model, e) : null;
+}
+
+/**
+ * **An exact curve with no frame** (docs/plans/spline.md): a kind a module
+ * declares that is not a conic says what B-spline it is — its control points
+ * in the world, three coordinates each (a 2D drawing at z = 0), its knots,
+ * and whether it closes on itself. What a curve that is no circle is drawn,
+ * picked, looped, swept and written by: the frame's counterpart for a curve
+ * with no centre (`curvePath`).
+ */
+export interface CurvePath {
+  curve: BSpline;
+  closed: boolean;
+}
+
+/** How a kind a module declares is laid out when it is a B-spline (../modules.ts's `EntityDecl.path`). */
+export type CurvePathFn = (model: Model, e: Entity) => CurvePath | null;
+
+const kindPaths = new Map<string, CurvePathFn>();
+
+/** Registers how `kind` is laid out as an exact B-spline. */
+export function defineCurvePath(kind: string, path: CurvePathFn): void {
+  kindPaths.set(kind, path);
+}
+
+export function undefineCurvePath(kind: string): void {
+  kindPaths.delete(kind);
+}
+
+/** Whether a kind is laid out by a declared B-spline. */
+export function hasCurvePath(kind: string): boolean {
+  return kindPaths.has(kind);
+}
+
+/**
+ * The B-spline an entity of a declared kind is, lifted to three coordinates —
+ * or null for any other kind, or one that cannot be laid out as it stands.
+ */
+export function curvePath(model: Model, e: Entity): CurvePath | null {
+  const declared = kindPaths.get(e.kind);
+  if (!declared) return null;
+  const p = declared(model, e);
+  if (!p) return null;
+  return { closed: p.closed, curve: { ...p.curve, ctrl: p.curve.ctrl.map(lift3) } };
 }

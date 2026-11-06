@@ -1029,7 +1029,7 @@ async function main() {
       } else {
         // A kind a module declares with no frame: the polyline it samples
         // itself as, which is what picking aims at (projection.ts).
-        const pts = sampledWorld(model, e);
+        const pts = sampledWorld(model, e, view.scale);
         if (pts) strokeEdge(pts, false, stroke(e.name));
       }
     }

@@ -300,7 +300,21 @@ export const FORMAT = "neocad-model";
  * with, so an older file replays to exactly the solids it was saved with
  * (`test/explicitregions.test.ts` opens one written by the build before).
  */
-export const VERSION = 17;
+export const VERSION = 18;
+// 18 (docs/plans/spline.md): **the spline**. A new entity kind,
+// `addSpline(points, closed, name)` — the entity and the interpolation it
+// owns, replayed together from that one entry — the relation `onSpline`, and
+// `tangent` taking a spline with the end it holds (`tan("l1", "sp1", "end")`).
+// Two value maps come with it, each absent from a file that has none:
+// `values.splines`, each spline's solved control points (flat, as the entity
+// holds them), and `values.params`, the variables a relation made for itself
+// (`Model.relationVar`), keyed by the relation's name — an `onspline` point's
+// place along its curve, which is a choice among the curve's branches that a
+// fresh solve from seeds need not make again. The format's own precedent would
+// have added the ops without a bump (an older build refuses `addSpline` by
+// name at its step), but `params` is a map an older build would silently drop,
+// as `minors` was for 15. A version-17 file opens exactly as it was: nothing
+// in it is a spline, and no op it uses changed meaning.
 // 17 (docs/plans/regions-as-operations.md): **regions**. A feature stands on a
 // named region made by operations — `region`, `subtract`, `add`, `intersect`,
 // and `deleteRegionSteps`/`deleteRegion` in a deletion's expansion — and a
@@ -334,6 +348,10 @@ export interface SavedModel {
     normals?: Record<string, number[]>;
     /** Solved minor semi-axes, keyed by ellipse name (format 15). Absent in a file that has none. */
     minors?: Record<string, number>;
+    /** Solved control points, keyed by spline name, flat as `SplineEntity.ctrl` (format 18). Absent in a file that has none. */
+    splines?: Record<string, number[]>;
+    /** A relation's own variables, keyed by relation name — an `onspline` point's parameter (format 18). Absent in a file that has none. */
+    params?: Record<string, number[]>;
   };
   /**
    * The source of any tools authored at the command line, as **inert text**.
@@ -675,8 +693,10 @@ export function toSaved(model: Model, tools: readonly ToolSource[] = [], head: S
   const radii: Record<string, number> = {};
   const normals: Record<string, number[]> = {};
   const minors: Record<string, number> = {};
+  const splines: Record<string, number[]> = {};
   for (const e of model.entities.values()) {
     if (e.kind === "point") points[e.name] = model.coords(e.name);
+    else if (e.kind === "spline") splines[e.name] = e.ctrl.map((i) => model.problem.getVar(i));
     else if (e.kind === "ellipse") {
       minors[e.name] = model.problem.getVar(e.minorVar);
       if (e.normal) normals[e.name] = e.normal.map((i) => model.problem.getVar(i));
@@ -697,6 +717,10 @@ export function toSaved(model: Model, tools: readonly ToolSource[] = [], head: S
     values: Object.keys(normals).length ? { points, radii, normals } : { points, radii },
   };
   if (Object.keys(minors).length) saved.values.minors = minors;
+  if (Object.keys(splines).length) saved.values.splines = splines;
+  const params: Record<string, number[]> = {};
+  for (const r of model.relations.values()) if (r.vars?.length) params[r.name] = r.vars.map((i) => model.problem.getVar(i));
+  if (Object.keys(params).length) saved.values.params = params;
   // Absent, not empty: a file from a session that authored no tools is byte
   // for byte the file this app has always written.
   if (tools.length) saved.tools = tools.map((t) => ({ name: t.name, source: t.source }));
@@ -1058,6 +1082,18 @@ export function fromSaved(saved: SavedModel, dim?: number, how: { regions?: bool
     const e = model.entities.get(name);
     if (e?.kind === "ellipse" && typeof b === "number" && Number.isFinite(b)) model.problem.setVar(e.minorVar, b);
   }
+  // A spline's control points and a relation's own variables (format 18), each
+  // only where the file's count is the model's: a mismatch is a file edited by
+  // hand, whose seeds the first solve settles.
+  const restore = (vars: readonly number[] | undefined, xs: unknown) => {
+    if (!vars || !Array.isArray(xs) || xs.length !== vars.length || !xs.every((x) => typeof x === "number" && Number.isFinite(x))) return;
+    vars.forEach((gi, k) => model.problem.setVar(gi, xs[k] as number));
+  };
+  for (const [name, xs] of Object.entries(vals.splines ?? {})) {
+    const e = model.entities.get(name);
+    if (e?.kind === "spline") restore(e.ctrl, xs);
+  }
+  for (const [name, xs] of Object.entries(vals.params ?? {})) restore(model.relations.get(name)?.vars, xs);
   // An old file's curves, facing their frames as the file drew them and held
   // there by a `par` each, written at the end (see `VERSION`).
   frameless.settle();

@@ -21,6 +21,7 @@ import { Dual } from "../kernel/dual.ts";
 import { dot, norm, vecSub, wedge, wedgeNorm } from "./vec.ts";
 import { chunk, curveNormal, directionOf, directionOfPoints, ellipseAxes, frameBasis, joinVars, lineVars, unitDuals, type DirectionRef } from "./refs.ts";
 import { coincident, onPlane } from "./basic.ts";
+import { tangentSpline } from "./spline.ts";
 
 // --- the direction relations -----------------------------------------------
 //
@@ -458,8 +459,12 @@ export function equalRadius(model: Model, c1: string, c2: string): string {
  * was. The line is still read lazily, so the plane block follows an edge a
  * fillet re-points.
  */
-export function tangent(model: Model, a: string, b: string, side?: string | null): string {
+export function tangent(model: Model, a: string, b: string, side?: string | null, end2?: string | null): string {
   const kind = (n: string) => model.entities.get(n)?.kind;
+  // At a spline's end (docs/plans/spline.md, relations/spline.ts): the third
+  // argument is then which end, and a fourth the second spline's.
+  if (kind(a) === "spline" || kind(b) === "spline") return tangentSpline(model, a, b, side, end2);
+  if (end2 != null) throw new Error("tan takes a fourth argument only between two splines — the second one's end");
   if (kind(a) === "ellipse" || kind(b) === "ellipse") return tangentEllipse(model, a, b, side);
   const isCurve = (n: string) => kind(n) === "circle" || kind(n) === "arc";
   if (isCurve(a) && isCurve(b)) return tangentCircles(model, a, b, side);

@@ -32,7 +32,8 @@
 import type { Entity, Model } from "./model.ts";
 import { arcSlack, screenAngle, type Curve, type Pt } from "./intersect.ts";
 import { arcPoint, arcSamples, arcSegments, frameReach, sampleAngle, type ArcFrame } from "./arcgeom.ts";
-import { curveFrame } from "./curveplane.ts";
+import { curveFrame, curvePath, type CurvePath } from "./curveplane.ts";
+import { derivs, pointAt, sampleParams } from "./bspline.ts";
 import { viewAxes, worldToScreen, type View } from "./view.ts";
 import { dot3, lift3 } from "./vec3.ts";
 
@@ -124,9 +125,18 @@ export function screenCurve(model: Model, view: View, e: Entity, slackPx: number
     const shape = obliquely(view, f, frameReach(f) * view.scale, dim);
     return { curve: shape.curve, lift: ellipseLift(view, f, shape.curve as { kind: "polyline"; pts: Pt[] }, dim) };
   }
+  // An exact B-spline (a spline, docs/plans/spline.md): sampled at the screen's
+  // quarter pixel, as a circle seen obliquely is, and a pixel lifted onto the
+  // true curve by Newton on its projection (`pathLift`).
+  const path = curvePath(model, e);
+  if (path) {
+    const params = pathParams(path, view.scale);
+    const pts = params.map((u) => worldToScreen(view, pointAt(path.curve, u)));
+    return { curve: { kind: "polyline", pts }, lift: pathLift(view, path, params, pts, dim) };
+  }
   // Sampled (a kind typed at the command line, `defineEntity`): its world
   // polyline projected, and a pixel lifted along the nearest of its pieces.
-  const world = sampledWorld(model, e);
+  const world = sampledWorld(model, e, view.scale);
   if (world && world.length >= 2) {
     const pts = world.map((w) => worldToScreen(view, w));
     return {
@@ -142,8 +152,11 @@ export function screenCurve(model: Model, view: View, e: Entity, slackPx: number
   return null;
 }
 
-/** A kind's world polyline, as its declaration samples it (`EntityDecl.samples`, ../modules.ts). */
-export type Sampler = (model: Model, name: string) => number[][] | null;
+/**
+ * A kind's world polyline, as its declaration samples it (`EntityDecl.samples`,
+ * ../modules.ts) — `scale`, pixels per unit, when the caller draws at one.
+ */
+export type Sampler = (model: Model, name: string, scale?: number) => number[][] | null;
 
 const samplers = new Map<string, { sample: Sampler; closed: boolean }>();
 
@@ -160,10 +173,14 @@ export function undefineSampler(kind: string): void {
  * when the kind says it is closed — or null for a kind with no sampler. What
  * the drawing strokes and picking aims at, so the two cannot disagree.
  */
-export function sampledWorld(model: Model, e: Entity): number[][] | null {
+export function sampledWorld(model: Model, e: Entity, scale = 1): number[][] | null {
+  // A kind laid out by an exact B-spline is drawn as its samples: a closed
+  // one's last is its first again, so it closes by itself.
+  const path = curvePath(model, e);
+  if (path) return pathParams(path, scale).map((u) => pointAt(path.curve, u).slice(0, model.dim));
   const s = samplers.get(e.kind);
   if (!s) return null;
-  const pts = s.sample(model, e.name);
+  const pts = s.sample(model, e.name, scale);
   if (!pts || pts.length < 2) return null;
   return s.closed ? [...pts, pts[0]] : pts;
 }
@@ -199,6 +216,49 @@ function ellipseLift(view: View, f: ArcFrame, curve: { kind: "polyline"; pts: Pt
       if (Math.abs(step) < 1e-12) break;
     }
     return arcPoint(f, t).slice(0, dim);
+  };
+}
+
+/**
+ * The parameters a B-spline is drawn at, `scale` pixels to the unit: every
+ * chord within a quarter pixel of the curve (../bspline.ts's `sampleParams`,
+ * a bound and not a guess), the same quarter pixel a circle is drawn to.
+ */
+export function pathParams(path: CurvePath, scale: number): number[] {
+  return sampleParams(path.curve, 0.25 / Math.max(scale, 1e-9));
+}
+
+/**
+ * A pixel near a B-spline, as the curve's point nearest it **on screen**: the
+ * polyline's nearest piece gives a parameter to a quarter pixel, and Newton on
+ * the projected curve — orthographic projection is affine, so the projection
+ * of C(u) is a curve whose derivatives are the projections of C's — takes it
+ * the rest of the way, kept inside the curve's range (a closed one wraps).
+ * Read back off the curve, so a snap along a spline lands on it to rounding.
+ */
+function pathLift(view: View, path: CurvePath, params: number[], pts: Pt[], dim: number): (p: Pt) => number[] {
+  const [lo, hi] = [params[0], params[params.length - 1]];
+  const O = worldToScreen(view, [0, 0, 0]);
+  const S = (v: number[]) => { const s = worldToScreen(view, v); return [s[0] - O[0], s[1] - O[1]]; };
+  return (p) => {
+    const near = nearestOnPolyline(pts, p);
+    let u = near ? params[near.index] + near.t * ((params[near.index + 1] ?? params[near.index]) - params[near.index]) : lo;
+    for (let k = 0; k < 8; k++) {
+      const [c, d1, d2] = derivs(path.curve, u, 2);
+      const sc = worldToScreen(view, c);
+      const P = [sc[0] - p[0], sc[1] - p[1]];
+      const D = S(d1), DD = S(d2);
+      const g = P[0] * D[0] + P[1] * D[1];
+      const h = D[0] * D[0] + D[1] * D[1] + P[0] * DD[0] + P[1] * DD[1];
+      if (!(h > 1e-12)) break; // the polyline's answer stands
+      let next = u - g / h;
+      if (path.closed) next = lo + ((((next - lo) % (hi - lo)) + (hi - lo)) % (hi - lo));
+      else next = Math.min(hi, Math.max(lo, next));
+      const done = Math.abs(next - u) < 1e-13 * Math.max(1, hi - lo);
+      u = next;
+      if (done) break;
+    }
+    return pointAt(path.curve, u).slice(0, dim);
   };
 }
 

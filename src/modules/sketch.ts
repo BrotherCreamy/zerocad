@@ -8,6 +8,8 @@
 // workbench; with solids and step, the part workbench.
 
 import { ELLIPSE_STRUCTURE, addEllipse, checkEllipse, ellipseOf, semiAxes } from "../kinds/ellipse.ts";
+import { SPLINE_STRUCTURE, splineCurve, splineOf } from "../kinds/spline.ts";
+import { addSpline, onSpline } from "../relations/spline.ts";
 import { defineModule, type EntityDecl } from "../modules.ts";
 import type { Entity, Model } from "../model.ts";
 import { ellipseFrame, type ArcFrame } from "../arcgeom.ts";
@@ -86,6 +88,28 @@ const ELLIPSE: EntityDecl = {
   step: (w, c, name, { real, str, ref }) => {
     const e = c as unknown as { center: number[]; normal: number[]; ref: number[]; a: number; b: number };
     return w.add(`ELLIPSE(${str(name)},${ref(w.placement(e.center, e.normal, e.ref))},${real(e.a)},${real(e.b)})`);
+  },
+};
+
+/**
+ * **The spline, through the same extension point** (docs/plans/spline.md):
+ * its structure (kinds/spline.ts), its constructor — the entity and the
+ * equations it owns, relations/spline.ts — and the exact B-spline it is,
+ * which is what it is drawn, picked, looped, swept and written to STEP by
+ * (curveplane.ts's `curvePath`). Like the ellipse, named nowhere in
+ * model.ts, loops.ts, faces.ts, picking.ts or step.ts (a test greps them).
+ */
+const SPLINE: EntityDecl = {
+  ...SPLINE_STRUCTURE,
+  add: { op: "addSpline", fn: addSpline },
+  path: (model, e) => {
+    const c = splineCurve(model, e.name);
+    return { curve: { degree: c.degree, knots: c.knots, ctrl: c.ctrl }, closed: c.closed };
+  },
+  describe: (model, name) => {
+    const s = splineOf(model, name);
+    const shown = s.points.length > 6 ? [...s.points.slice(0, 3), "…", ...s.points.slice(-2)] : s.points;
+    return `${name}  spline through ${shown.join(" ")}${s.closed ? "  closed" : ""}`;
   },
 };
 
@@ -179,7 +203,7 @@ defineModule("sketch", {
   },
   // The ellipse (docs/plans/sketch-shapes.md, format 15): an entity kind of
   // this module's, declared above.
-  entities: [ELLIPSE],
+  entities: [ELLIPSE, SPLINE],
   replay: {
     addCircle: bound("addCircle"),
     addArc: bound("addArc"),
@@ -209,6 +233,9 @@ defineModule("sketch", {
     onEllipse: { names: ["onellipse", "onEllipse"], slots: slots("point", "ellipse"), fn: geom.onEllipse },
     majorAxis: { names: ["major", "majorAxis"], slots: slots("ellipse", "#semi-axis"), fn: geom.majorAxis, dimension: 1 },
     minorAxis: { names: ["minor", "minorAxis"], slots: slots("ellipse", "#semi-axis"), fn: geom.minorAxis, dimension: 1 },
+    // The spline's (docs/plans/spline.md): a point on the curve, by a parameter
+    // of the relation's own. `tan` takes a spline at an end under its own name.
+    onSpline: { names: ["onspline", "onSpline"], slots: slots("point", "spline"), fn: onSpline },
     // What a pattern is held by (docs/plans/sketch-edit.md, relations/
     // pattern.ts): a copy is its seed moved as the first copy is. `rotation`
     // is a circular pattern's one dimension, the step's angle.
@@ -317,6 +344,27 @@ defineModule("sketch", {
       }
       return shapes.polygon(model, centre, vertex, n ?? 6, circumscribed ?? true, model.dim === 3 ? model.drawingPlane() : null);
     },
+    // A spline through points (docs/plans/spline.md): each a point's name, or
+    // its coordinates — a new point there — and `{ closed: true }` last for a
+    // closed one. Nothing holds the points: they are the user's to dimension.
+    spline: (...args: unknown[]) => {
+      const model = kit.model;
+      const last = args[args.length - 1];
+      const options = last !== null && typeof last === "object" && !Array.isArray(last) ? (args.pop() as { closed?: unknown }) : null;
+      if (options && Object.keys(options).some((k) => k !== "closed")) {
+        throw new Error(`spline: the options are { closed: true }, got ${JSON.stringify(options)}`);
+      }
+      const list = args.length === 1 && Array.isArray(args[0]) && args[0].every((a) => typeof a === "string" || Array.isArray(a)) ? args[0] as unknown[] : args;
+      for (const a of list) {
+        if (typeof a === "string") continue;
+        if (!Array.isArray(a) || a.length !== model.dim || a.some((x) => typeof x !== "number" || !Number.isFinite(x))) {
+          throw new Error(`spline: a point is a name or ${model.dim} numbers — spline("p1", "p2", [10, 5]), got ${JSON.stringify(a)}`);
+        }
+      }
+      if (options?.closed != null && typeof options.closed !== "boolean") throw new Error(`spline: closed is true or false, got ${JSON.stringify(options.closed)}`);
+      const names = list.map((a) => (typeof a === "string" ? a : model.addPoint(a as number[]).name));
+      return addSpline(model, names, options?.closed === true);
+    },
     slot: (a?: unknown, b?: unknown, width?: unknown) => {
       const model = kit.model;
       if (typeof a !== "string" || typeof b !== "string" || typeof width !== "number") {
@@ -380,6 +428,16 @@ defineModule("sketch", {
     "           and its semi-axes, dimensions like rad (labelled a20, b10).",
     "           tan(line, e) and conc with circles and ellipses take one; tan",
     "           between an ellipse and a circle or another ellipse does not.",
+    '           spline("p1", "p2", "p3", { closed: true }?) — sp1, a cubic',
+    "           B-spline through the points (a name, or [x, y] for a new one):",
+    "           the points are ordinary points, the curve its own control points",
+    "           solved to pass through them — natural ends, or a smooth seam",
+    "           when closed. The spline tool (curves) clicks them; a double-click",
+    "           (a second click on the last), Enter or ✓ ends it open, a click",
+    "           on the first closes it. Its menu adds or removes a point.",
+    '           onspline("p9", "sp1") — p9 on the curve, sliding along it.',
+    '           tan("l1", "sp1") and tan("sp1", "a2") — tangent at the end they',
+    '           share; tan("sp1", "sp2") end to end; tan(…, "end") says which.',
     "           fillet(line1, line2, radius) — the arc follows its corner",
     'edit       trim("l1", [x, y]) — the piece of l1 the place is on, between the',
     "           curves that cut it there (or its own end), goes: an end re-pointed",
