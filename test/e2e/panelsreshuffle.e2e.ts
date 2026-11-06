@@ -11,9 +11,12 @@
 // and the panes standing still until the drop; the organiser brought to
 // another edge is inserted where it is dropped, between the two it lands
 // between; a floating pane dropped on another trades places with it; Escape
-// mid-reorder commits nothing. And once each: a lock refuses the reorder; an
-// edge with no room says so on the ghost and in the status, and the drop moves
-// nothing. Every preview is checked by the page itself (a preview with two
+// mid-reorder commits nothing. And once each: a lock refuses the reorder; the
+// tray taken to the top of an upright phone, the organiser and the action
+// strip making room for it; the command line past the log in Safari, the
+// organiser making room; and one of the refusals left (the log into the
+// top-left corner of an upright phone) saying so on the ghost and in the
+// status, the drop moving nothing. Every preview is checked by the page itself (a preview with two
 // panes over each other is a page error under the dev server). Set
 // NEOCAD_E2E_SHOTS to a directory to keep the pictures — and look at them.
 
@@ -364,27 +367,96 @@ test("mouse: locked, a drag past a neighbour's middle reorders nothing — no gh
   await app.type("panels({ locked: false })");
 });
 
-test("iPhone 13 upright: the tray brought to the top, where the organiser and the action strip leave it no room — the ghost says so, and the drop moves nothing", async () => {
+/**
+ * A drag held at `to`, looked at, and dropped: the ghosts asserted sound and
+ * every pane but the held one unmoved while held, each pane on its ghost after.
+ * Returns the picture before and after.
+ */
+async function heldAndDropped(app: AppContext, id: string, to: { x: number; y: number }, name: string): Promise<{ s0: Seen; s1: Seen; s2: Seen }> {
+  const s0 = await seen(app);
+  const p = await stripAt(app, id);
+  const h = await fingerHand(app);
+  await h.down(p.x, p.y);
+  await h.to(p.x + to.x, p.y + to.y);
+  const s1 = await seen(app);
+  for (const o of Object.keys(s0.panels)) if (o !== id) assert.deepEqual(rect(s1.panels[o]), rect(s0.panels[o]), `${o} has not moved under the hand`);
+  const landing = { ...places(s0), ...Object.fromEntries(Object.entries(s1.ghosts).map(([k, b]) => [k, rect(b)])) };
+  if (!s1.ghosts[id]) landing[id] = rect(s1.panels[id]);
+  apart(landing, "where the drop would put them");
+  await shot(app, `${name}-held`);
+  await h.up();
+  const s2 = await seen(app);
+  assert.deepEqual(s2.ghosts, {}, "the ghosts are gone");
+  landed(s2, landing);
+  apart(places(s2), "after the drop");
+  await shot(app, `${name}-dropped`);
+  return { s0, s1, s2 };
+}
+
+test("iPhone 13 upright: the tray brought to the top turns into a row there, under the logo's row, and the organiser and the action strip make room — ghosts first", async () => {
+  const app = apps.find((a) => a.page.viewportSize()?.width === 390)!;
+  await app.type('layout("reset")');
+  await settled(app.page);
+  const t0 = (await seen(app)).panels.toolbar;
+  // Off the left edge, and up to the top.
+  const { s0, s1, s2 } = await heldAndDropped(app, "toolbar", { x: 60, y: -t0.y - 40 }, "iphone-13-upright-tray-to-the-top");
+  assert.equal(s1.ghosts.toolbar?.note ?? null, null, `not refused: ${JSON.stringify(s1.ghosts)}`);
+  assert.equal(s2.panels.toolbar.orient, "row", "a row");
+  // Too long for the top beside the logo's corner (the logo and the status's
+  // room), so a second line of the top, just under the logo's row — the
+  // corner keeps its row for the status.
+  const logo = await app.page.$eval("#logo", (el) => el.getBoundingClientRect().height);
+  near(s2.panels.toolbar.y, logo + 8, "just under the logo's row");
+  for (const o of ["organiser", "actions"]) {
+    assert.ok(s1.ghosts[o], `the ${o} makes room, its ghost first: ${JSON.stringify(s1.ghosts)}`);
+    assert.notDeepEqual(rect(s2.panels[o]), rect(s0.panels[o]), `the ${o} moved out of the row's way`);
+  }
+});
+
+test("iPhone 13 upright (Safari): the command line dragged up the right edge past the log trades places with it, and the organiser it would lie on makes room", async () => {
+  const app = apps.find((a) => a.page.viewportSize()?.width === 390)!;
+  await app.type('layout("reset")');
+  await settled(app.page);
+  const s = await seen(app);
+  const [cmd, log] = [s.panels.cmd, s.panels.log];
+  assert.deepEqual(along(s, "right", 22), ["actions", "log", "cmd"], "in Safari the line runs right of the tray, down the right edge");
+  // Its top 10 px past the log's middle, short of the strip's.
+  const { s0, s1, s2 } = await heldAndDropped(app, "cmd", { x: 0, y: log.y + log.h / 2 - 10 - cmd.y }, "iphone-13-upright-safari-cmd-past-the-log");
+  assert.equal(s1.ghosts.cmd?.note ?? null, null, `not refused: ${JSON.stringify(s1.ghosts)}`);
+  assert.deepEqual(along(s2, "right", 22), ["actions", "cmd", "log"], "the two traded places");
+  near(s2.panels.cmd.y, log.y, "the line in the log's slot");
+  near(s2.panels.log.y + s2.panels.log.h, cmd.y + cmd.h, "the log in the line's");
+  assert.notDeepEqual(rect(s2.panels.organiser), rect(s0.panels.organiser), "the organiser, which the line now crossed, moved out of its way");
+});
+
+test("iPhone 13 upright (Safari): the log taken up into the top-left corner — no room there: the ghost says so, and the drop moves nothing", async () => {
+  // One of the refusals left (docs/plans/panels-reshuffle.md, As built): the
+  // top beside the logo's corner is shorter than the log, and its second line
+  // under the corner would leave the command line — as wide as the screen
+  // right of the tray — no band of its height anywhere.
   const app = apps.find((a) => a.page.viewportSize()?.width === 390)!;
   await app.type('layout("reset")');
   await settled(app.page);
   const s0 = await seen(app);
-  const t0 = s0.panels.toolbar;
-  const p = await stripAt(app, "toolbar");
+  const l0 = s0.panels.log;
+  const p = await stripAt(app, "log");
   const h = await fingerHand(app);
   await h.down(p.x, p.y);
-  // Off the left edge, and up to the top.
-  await h.to(p.x + 60, p.y - t0.y - 40);
+  await h.to(p.x - 140, p.y - l0.y - 5);
   const s1 = await seen(app);
-  assert.equal(s1.ghosts.toolbar?.note, "no room on this edge", `the held tray's ghost says why: ${JSON.stringify(s1.ghosts)}`);
-  for (const k of ["x", "y", "w", "h"] as const) near(s1.ghosts.toolbar[k], t0[k], `its ghost is home (${k})`);
-  assert.deepEqual(Object.keys(s1.ghosts), ["toolbar"], "nothing else would move");
-  await shot(app, "iphone-13-upright-no-room-held");
+  assert.equal(s1.ghosts.log?.note, "no room on this edge", `the held log's ghost says why: ${JSON.stringify(s1.ghosts)}`);
+  for (const k of ["x", "y", "w", "h"] as const) near(s1.ghosts.log[k], l0[k], `its ghost is home (${k})`);
+  assert.deepEqual(Object.keys(s1.ghosts), ["log"], "nothing else would move");
+  // The word at least 9em wide, on a line or two — not a word to a line.
+  const label = await app.page.$eval('.pghost[data-ghost="log"]', (g) => {
+    const st = getComputedStyle(g, "::after");
+    return { w: parseFloat(st.width), font: parseFloat(st.fontSize) };
+  });
+  assert.ok(label.w >= 9 * label.font - 0.5, `the label is at least 9em wide: ${JSON.stringify(label)}`);
+  await shot(app, "iphone-13-upright-log-to-the-corner-no-room-held");
   await h.up();
-  const s2 = await seen(app);
-  assert.deepEqual(places(s2), places(s0), "nothing moved");
+  assert.deepEqual(places(await seen(app)), places(s0), "nothing moved");
   assert.match(await app.page.$eval("#stepnote", (el) => el.textContent ?? ""), /no room on this edge — nothing moved/, "and the status says so");
-  await shot(app, "iphone-13-upright-no-room-dropped");
 });
 
 test("no uncaught page errors — no preview anywhere overlapped", () => {

@@ -1263,9 +1263,8 @@ const ROOM_GAP = GAP;
  * room**, each moving on only as far as it must to keep clear of the one
  * before (`ROOM_GAP`, or the gap two already had where that was less); and
  * where the last would leave the edge, the whole line closes back from the
- * far end. Null when the line does not fit the edge (**no room**), or when the
- * result lies on a pane that is not in the line — a pane the hand did not
- * take is never pushed out of its way.
+ * far end. Null when the line does not fit the edge (**no room**). A pane
+ * off the edge that the line now lies on **makes room** too (`madeRoom`).
  */
 function inserted(start0: Layout, id: string, shape: Placed, held: Placed, e: Edge, area: Size, reach: number): Layout | null {
   const others: Layout = { ...start0 };
@@ -1298,7 +1297,7 @@ function inserted(start0: Layout, id: string, shape: Placed, held: Placed, e: Ed
   if (pos[0] < lo - EPS) return null;
   const out: Layout = { ...start0 };
   ids.forEach((o, j) => { out[o] = along(rect(o), a, pos[j]); });
-  return overlapping(out).length ? null : out;
+  return madeRoom(out, new Set(ids), area);
 }
 
 /**
@@ -1306,26 +1305,118 @@ function inserted(start0: Layout, id: string, shape: Placed, held: Placed, e: Ed
  * line**, as a tray's buttons wrap — beside the panes of the first line it
  * lies along, a room gap further off the edge than the furthest of them,
  * where the hand has it along the edge. Null when there is no first line
- * there to wrap beside, when the second line would leave the area, or when it
- * lies on a pane.
+ * there to wrap beside, or when the second line would leave the area; a pane
+ * off the edge that it lies on makes room (`madeRoom`).
  */
 function wrapped(start0: Layout, id: string, shape: Placed, held: Placed, e: Edge, area: Size, reach: number): Layout | null {
   const others: Layout = { ...start0 };
   delete others[id];
-  const seq = sequences(others, area, reach)[e];
-  const [lo, hi] = runOf(others, e, area, reach);
+  // The first line is the edge's panes and its fixed ones (the logo, the
+  // corner along the top); a second line beside them may run the whole edge.
+  const seq = [...sequences(others, area, reach)[e], ...Object.keys(others).filter((o) => others[o].fixed && edgeGap(others[o], e, area) <= reach + EPS)];
   const a = runAxis(e);
   const c = acrossAxis(e);
   const len = span(shape, a);
-  if (len > hi - lo + EPS) return null;
-  const want = clamp(start(held, a), lo, hi - len);
+  if (len > room(area, a) + EPS) return null;
+  const want = clamp(start(held, a), 0, room(area, a) - len);
   const first = seq.filter((o) => overlap(start(others[o], a), start(others[o], a) + span(others[o], a), want, want + len) > EPS);
   if (!first.length) return null;
   const dist = Math.max(...first.map((o) => edgeGap(others[o], e, area) + span(others[o], c))) + ROOM_GAP;
   if (dist + span(shape, c) > room(area, c) + EPS) return null;
   const out: Layout = { ...start0, [id]: offEdge(along(shape, a, want), e, dist, area) };
+  return madeRoom(out, new Set([id, ...seq]), area);
+}
+
+/**
+ * The place nearest `r`'s own (by its top-left corner) where a rectangle of
+ * its size lies wholly inside the area and on none of `obstacles` — null if
+ * there is none. Exact, not sampled: the nearest free place of an
+ * axis-aligned box among axis-aligned boxes has each coordinate either its
+ * own or flush with an obstacle's edge or the area's, so those are the only
+ * candidates to try.
+ */
+function nearestFree(r: Placed, obstacles: readonly Rect[], area: Size): Placed | null {
+  const xs = [r.x, 0, area.w - r.w, ...obstacles.flatMap((o) => [o.x - r.w, o.x + o.w])].filter((x) => x >= -EPS && x + r.w <= area.w + EPS);
+  const ys = [r.y, 0, area.h - r.h, ...obstacles.flatMap((o) => [o.y - r.h, o.y + o.h])].filter((y) => y >= -EPS && y + r.h <= area.h + EPS);
+  let best: Placed | null = null;
+  let d = Infinity;
+  for (const x of xs) {
+    for (const y of ys) {
+      const e = (x - r.x) ** 2 + (y - r.y) ** 2;
+      if (e >= d) continue;
+      const c = { ...r, x, y };
+      if (obstacles.some((o) => overlaps(o, c))) continue;
+      best = c;
+      d = e;
+    }
+  }
+  return best;
+}
+
+/**
+ * `layout` with every pane that lies on another moved out of the way —
+ * **reshuffled, not refused** (the owner's *"reshuffle rather than push"*, as
+ * the review of the first build read it: the others reorder to let the held
+ * one in). The panes in `keep` — the one in the hand and the line it joined —
+ * hold the places just given them, and so does the logo; any other pane they
+ * lie on is put at **the nearest place that lies on nothing** (`nearestFree`),
+ * and where there is none, the old push's own search is the fallback: the
+ * pane in the way pushes what it covers along x then y, each way, a chain
+ * allowed, every kept pane standing (`pushed` with no motion); and where that
+ * cannot either, every pane not kept is laid again round the kept ones
+ * (`relaidAround`). Null only when none finds room — the panes cannot all be
+ * had on the screen at their sizes. Nothing is ever put off the screen.
+ */
+function madeRoom(layout: Layout, keep: ReadonlySet<string>, area: Size): Layout | null {
+  let out = layout;
+  const ids = Object.keys(layout);
+  const stays = (o: string) => keep.has(o) || out[o].fixed === true;
+  for (let guard = 0; guard < 4 * ids.length; guard++) {
+    const pair = overlapping(out)[0];
+    if (!pair) return out;
+    const [a, b] = pair;
+    if (stays(a) && stays(b)) return null;
+    // Of a kept pane and another, the other gives way; of two others, the later.
+    const [mover, victim] = stays(a) ? [a, b] : stays(b) ? [b, a] : [a, b];
+    const spot = nearestFree(out[victim], ids.filter((o) => o !== victim).map((o) => out[o]), area);
+    if (spot) {
+      out = { ...out, [victim]: spot };
+      continue;
+    }
+    const pinned: Layout = {};
+    for (const o of ids) pinned[o] = o !== mover && stays(o) ? { ...out[o], fixed: true } : out[o];
+    const r = pushed(mover, out[mover], pinned, area, { [mover]: { w: out[mover].w, h: out[mover].h } }, { x: 0, y: 0 });
+    if (!r.ok) return relaidAround(out, stays, area);
+    const next: Layout = {};
+    for (const o of ids) next[o] = out[o].fixed ? out[o] : placed(r.layout[o], out[o].orient, out[o].lines);
+    out = next;
+  }
   return overlapping(out).length ? null : out;
 }
+
+/**
+ * The last way `madeRoom` has of finding room, when one pane has nowhere to go
+ * and no push can make it: **every pane not kept laid again**, the biggest
+ * first, each at the nearest place to where it was that lies on nothing — the
+ * kept panes and those already laid. A phone's command line, as wide as the
+ * screen, needs a whole band of it free; that band is often there only once
+ * the smaller panes have moved off it. Null when even this leaves one with
+ * nowhere — which, at their sizes, is the screen being too small for them all.
+ */
+function relaidAround(layout: Layout, stays: (id: string) => boolean, area: Size): Layout | null {
+  const out: Layout = {};
+  for (const o of Object.keys(layout)) if (stays(o)) out[o] = layout[o];
+  const rest = Object.keys(layout).filter((o) => !stays(o)).sort((p, q) => layout[q].w * layout[q].h - layout[p].w * layout[p].h);
+  for (const o of rest) {
+    const spot = nearestFree(layout[o], Object.values(out), area);
+    if (!spot) return null;
+    out[o] = spot;
+  }
+  return Object.fromEntries(Object.keys(layout).map((o) => [o, out[o]]));
+}
+
+/** The id the logo's corner is held under while a pane is inserted along the top (`reshuffled`); never a pane's. */
+const CORNER = "\u0000corner";
 
 /** What the preview says, on the held pane's ghost and in the status at the drop, when an edge has no room for it. */
 export const NO_ROOM = "no room on this edge";
@@ -1449,15 +1540,35 @@ export function reshuffled(drag: Drag, held: Placed, area: Size, m: Metrics = FI
     if (stay.includes(e) && !turning) {
       const r = reordered(drag.start, id, held, e, area, reach);
       if (r === "slide") return { preview: landing(drag, held, area, m, false) };
-      return overlapping(r).length ? refuse(NO_ROOM) : { preview: r };
+      // The stretch it reordered holds; a pane off the edge it now lies on makes room.
+      const block = sequences(drag.start, area, reach)[e].filter((o) => r[o] !== drag.start[o]);
+      const made = madeRoom(r, new Set(block), area);
+      return made ? { preview: made } : refuse(NO_ROOM);
     }
     let shape: Placed = held;
     if (tray && orientAlong(e) !== was.orient) {
       const o = orientAlong(e);
       shape = placed({ x: held.x, y: held.y, ...traySize(drag.buttons!, o, m, trayRoom(area, o, m)) }, o);
     }
-    const r = inserted(drag.start, id, shape, held, e, area, reach) ?? wrapped(drag.start, id, shape, held, e, area, reach);
-    return r ? { preview: r } : refuse(NO_ROOM);
+    // Along the top, the logo's corner is the logo and the status's least room
+    // beside it (`cornerBox`), held as a fixed pane for the insertion: the
+    // line starts after it, a pane too long for the rest of the top wraps to
+    // a second line under it, and no pane making room lands in it. A pane let
+    // in beside the bare logo left the status a column a few pixels wide,
+    // running down the screen a character to a line (seen in the picture of
+    // the tray taken to the top of an upright phone).
+    // (Only where the corner is clear: a pane the viewer left in it stays, and
+    // the corner is then the bare logo, as it always was.)
+    // The status's room beside the logo, not over it: two fixed panes never overlap.
+    const box = cornerBox(m);
+    const logoW = logoBox(m).w;
+    const corner: Rect = { x: logoW, y: 0, w: Math.max(0, box.w - logoW), h: box.h };
+    const clear = Object.keys(drag.start).every((o) => o === id || drag.start[o].fixed || !overlaps(drag.start[o], corner));
+    const base: Layout = e === "top" && clear ? { ...drag.start, [CORNER]: { ...corner, fixed: true } } : drag.start;
+    const r = inserted(base, id, shape, held, e, area, reach) ?? wrapped(base, id, shape, held, e, area, reach);
+    if (!r) return refuse(NO_ROOM);
+    const { [CORNER]: _corner, ...preview } = r;
+    return { preview };
   }
   const mid = { x: held.x + held.w / 2, y: held.y + held.h / 2 };
   const onto = Object.keys(drag.start).find((o) => {
@@ -1472,7 +1583,10 @@ export function reshuffled(drag: Drag, held: Placed, area: Size, m: Metrics = FI
       [id]: placed(constrain({ x: f.x, y: f.y, w: was.w, h: was.h }, area, { w: 0, h: 0 }), was.orient, was.lines),
       [onto]: placed(constrain({ x: was.x, y: was.y, w: f.w, h: f.h }, area, { w: 0, h: 0 }), f.orient, f.lines),
     };
-    return overlapping(out).length ? refuse(NO_SWAP) : { preview: out };
+    // The held one holds the place it took; the other — and any third pane
+    // either now lies on — goes to the nearest place on nothing.
+    const made = madeRoom(out, new Set([id]), area);
+    return made ? { preview: made } : refuse(NO_SWAP);
   }
   return { preview: landing(drag, held, area, m, true) };
 }
@@ -3076,6 +3190,9 @@ export class Panels {
       const note = drag && id === drag.grab.id ? drag.refused : undefined;
       if (note) g.dataset.note = note;
       else delete g.dataset.note;
+      // The word runs out from the ghost's side nearer the area's middle, so a
+      // narrow column's at a side edge reads on a line or two, on screen.
+      g.dataset.noteSide = r.x + r.w / 2 <= area.w / 2 ? "left" : "right";
       if (r.orient) g.dataset.orient = r.orient;
       else delete g.dataset.orient;
       const { rect } = bleed(r, area, this.inset);

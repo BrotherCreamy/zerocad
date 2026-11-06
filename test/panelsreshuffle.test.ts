@@ -159,11 +159,14 @@ test("dropped on a floating pane, a pane trades places with it; on empty space i
   const empty = dragged(layout, "a", { x: 400, y: 50 });
   assert.deepEqual(ghostsOf(empty), {});
   assert.deepEqual(empty.preview.a, box(400, 50, 120, 80));
-  // A swap that would land on a third pane is refused, and says so.
+  // A swap that lands a on a third pane: that pane makes room, at the nearest
+  // place on nothing — reshuffled, not refused.
   const crowded: Layout = { a: box(200, 200, 300, 80), b: box(600, 300, 100, 100), c: box(710, 300, 100, 100) };
-  const no = dragged(crowded, "a", { x: 500, y: 290 });
-  assert.equal(no.refused, NO_SWAP);
-  assert.equal(no.preview, crowded);
+  const made = dragged(crowded, "a", { x: 500, y: 290 });
+  assert.equal(made.refused, undefined);
+  assert.deepEqual([made.preview.a, made.preview.b], [box(600, 300, 300, 80), box(200, 200)], "the two traded");
+  assert.deepEqual(made.preview.c, box(710, 380), "c just under a, the nearest place clear of it");
+  sound(made.preview);
 });
 
 test("nothing is pushed: dropped partly on a pane that is on an edge, the held one stops flush and the other stays", () => {
@@ -182,28 +185,41 @@ test("no room on an edge: the pane wraps to a second line beside the first — a
   assert.deepEqual(wrap.preview.h, box(1000 - 8 - 100 - 8 - 100, 300, 100, 120), "a second line: a room gap off the first");
   assert.deepEqual([wrap.preview.p, wrap.preview.q], [layout.p, layout.q], "the first line untouched");
   sound(wrap.preview);
-  // A pane already where the second line would be: no room there either.
+  // A pane already where the second line would be: it makes room.
   const full: Layout = { ...layout, s: box(700, 250, 150, 250) };
-  const no = dragged(full, "h", { x: 900, y: 300 });
+  const made = dragged(full, "h", { x: 900, y: 300 });
+  assert.equal(made.refused, undefined);
+  assert.deepEqual(made.preview.h, wrap.preview.h, "the second line where it was");
+  assert.notDeepEqual(made.preview.s, full.s, "s out of its way");
+  assert.ok(Object.keys(ghostsOf(made)).includes("s"), "and its ghost shows where");
+  sound(made.preview);
+  // Refused only where the panes cannot all be had: a 300 px square whose right
+  // edge is full, and a pane too wide for a second line beside it.
+  const small: Size = { w: 300, h: 300 };
+  const tight: Layout = { p: box(192, 0, 100, 140), q: box(192, 150, 100, 140), h: box(0, 80, 200, 100) };
+  const no = dragged(tight, "h", { x: 100, y: 80 }, undefined, small);
   assert.equal(no.refused, NO_ROOM);
-  assert.equal(no.preview, full, "the preview is the start…");
-  assert.deepEqual(ghostsOf(no), { h: full.h }, "…and the held pane's ghost is where it was, which is where it would go back to");
-  const drop = dropOf(no, { x: 905, y: 305 }, area, 2);
+  assert.equal(no.preview, tight, "the preview is the start…");
+  assert.deepEqual(ghostsOf(no), { h: tight.h }, "…and the held pane's ghost is where it was, which is where it would go back to");
+  const drop = dropOf(no, { x: 105, y: 85 }, small, 2);
   assert.deepEqual([drop.outcome, drop.problem], ["refused", NO_ROOM]);
-  assert.equal(drop.layout, full, "a refused drop moves nothing");
+  assert.equal(drop.layout, tight, "a refused drop moves nothing");
 });
 
-test("a pane dragged along its edge into a pane that is not in the line stops flush against it; past the middle of one too big to trade, it is refused", () => {
+test("a pane dragged along its edge into a pane that is not in the line stops flush against it; past the middle of a wide one, the pane off the edge it lands on makes room", () => {
   // Down the left edge: a, then a pane beside it that is not on the edge.
   const layout: Layout = { a: box(8, 40, 100, 100), wide: box(8, 400, 600, 100), off: box(300, 100, 300, 120) };
   // Short of wide's middle: flush on it, nothing moved.
   const short = dragged(layout, "a", { x: 8, y: 330 });
   assert.deepEqual(short.preview.a, box(8, 300, 100, 100));
   assert.deepEqual([short.preview.wide, short.preview.off], [layout.wide, layout.off]);
-  // a (100 wide) and wide (600) trade: wide at a's slot would lie on `off`.
+  // a (100 wide) and wide (600) trade: wide at a's slot lies on `off`, which
+  // goes to the nearest place on nothing — under wide.
   const d = dragged(layout, "a", { x: 8, y: 400 });
-  assert.equal(d.refused, NO_ROOM);
-  assert.equal(d.preview, layout);
+  assert.equal(d.refused, undefined);
+  assert.deepEqual([d.preview.wide.y, d.preview.a.y], [40, 400], "the two traded slots");
+  assert.deepEqual(d.preview.off, box(300, 140, 300, 120), "off just under wide");
+  sound(d.preview);
 });
 
 test("a layout stored before sequences — v2 rectangles — is read into the same order once migrated and laid out", () => {
