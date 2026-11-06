@@ -52,10 +52,14 @@
        rather than run out, and is cut off rather than drawn past it. */
     #corner{position:absolute;z-index:40;pointer-events:none;display:flex;flex-wrap:wrap;align-items:center;column-gap:10px;
       font-size:calc(11px * var(--ui));line-height:1.35;max-width:calc(100% - 24px);overflow:hidden}
-    #corner>span{padding:1px 5px;border-radius:3px;background:#0a0e13f0;transition:opacity .6s;min-width:0;overflow-wrap:anywhere}
+    #corner>span{padding:1px 5px;border-radius:3px;background:#0a0e13f0;transition:opacity .6s,display .6s;transition-behavior:allow-discrete;min-width:0;overflow-wrap:anywhere}
     #corner>span:empty{display:none}
     #status{color:#7a8b9b}
-    #status[data-faded]{opacity:0}
+    /* Faded, and once the fade is over out of the corner's flow too: an
+       invisible "ready" holding two lines cut the note after it for as long
+       as the note stood (docs/plans/touch-density.md; the re-fit note on a
+       Pro Max). The text stays in the element for the tests and a reader. */
+    #status[data-faded]{opacity:0;display:none}
     #status.solved{color:#55c07a}
     #status.bad{color:#e0605c}
     /* The diagnosis beside the verdict: muted while it only counts what is
@@ -63,7 +67,7 @@
        a redundancy, which stay. A relation it names takes a click: it selects
        it, and Delete removes it. */
     #diagnosis{color:#7a8b9b}
-    #diagnosis[data-faded]{opacity:0}
+    #diagnosis[data-faded]{opacity:0;display:none}
     #diagnosis.conflict{color:#e0605c}
     #diagnosis.redundant{color:#d99a6c}
     #diagnosis .rel{pointer-events:auto;cursor:pointer;font:inherit;color:inherit;background:none;border:none;padding:0 2px;

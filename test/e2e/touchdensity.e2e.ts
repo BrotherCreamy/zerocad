@@ -373,6 +373,16 @@ test("a stored layout a rotation cannot hold: re-fitted, said, nothing drawn ove
     const up = await drawn(p.page);
     assert.deepEqual(overDrawn(up), [], `upright: re-fitted, nothing over anything ${JSON.stringify(up)}`);
     assert.match(await p.page.$eval("#stepnote", (el) => el.textContent ?? ""), /panels re-fitted to this screen/, "and said");
+    // Under a two-line "ready — …" it is cut until that fades; then the faded
+    // status gives up its lines and the note is wholly in the corner, while
+    // it still stands (5 s).
+    await p.page.waitForFunction(() => getComputedStyle(document.getElementById("status")!).display === "none", null, { timeout: 6000 });
+    const note = await p.page.evaluate(() => {
+      const n = document.getElementById("stepnote")!.getBoundingClientRect();
+      const c = document.getElementById("corner")!.getBoundingClientRect();
+      return { text: document.getElementById("stepnote")!.textContent, inside: n.bottom <= c.bottom + 0.5 && n.right <= c.right + 0.5 };
+    });
+    assert.ok(note.text && note.inside, `the ready faded, the note wholly in the corner: ${JSON.stringify(note)}`);
     await shot(p.page, "iphone-17-pro-max-a-stored-layout-re-fitted-upright");
     await turnTo("landscape");
     const back = await drawn(p.page);

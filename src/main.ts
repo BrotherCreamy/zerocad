@@ -859,7 +859,10 @@ async function main() {
     });
   }
   // The fade's end, which no attribute marks: only then has the line been given up.
-  cornerEl.addEventListener("transitionend", (e) => { if ((e as TransitionEvent).propertyName === "opacity") fitChip(); });
+  cornerEl.addEventListener("transitionend", (e) => {
+    const p = (e as TransitionEvent).propertyName;
+    if (p === "opacity" || p === "display") fitChip();
+  });
   new MutationObserver(() => fitChip()).observe(document.getElementById("status")!, { attributes: true, childList: true, characterData: true, subtree: true });
   new MutationObserver(() => fitChip()).observe(diagnosisEl, { attributes: true, childList: true, characterData: true, subtree: true });
   new MutationObserver(() => fitChip()).observe(document.getElementById("stepnote")!, { attributes: true, childList: true, characterData: true, subtree: true });

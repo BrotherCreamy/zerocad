@@ -106,6 +106,57 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### Touch density: why the target follows the size, why 0.8, and what each follow-up turned out to be
+
+**One number, scaled — and scaled against the form factor.** The owner's
+"spacing barely changes" had a single cause: 44 was a literal in a dozen CSS
+rules and in `touchMetrics`. The spec's rule, `44 × scale / base` with `base`
+the device's 100 %, was taken as written at first; the Android e2e that
+checks a 130 % system font draws the tools 1.3 × larger then failed, because
+`deviceScale` already holds the text size and dividing by it cancels it.
+Measuring against the form factor keeps the spec's numbers at the default
+text size and lets a larger text size grow the targets as it grows the type.
+Rejected: keeping the floor at 44 above 100 % and scaling only below (the
+guarantee above 100 % would have stayed where it was), because the owner's
+complaint was about the spacing not following the size, in either direction.
+
+**0.8, and why the share is the smaller lever.** The three shares were shot
+at 1× and 3×. They differ in the tool's face, which is visible only on the
+armed tool, a flyout's current member and a press; the glyph is a fixed share
+of the face, and what reads as air is pitch less glyph. 0.85 put the armed
+face within ~2 px of the tray's border, 0.75 read like the old tray. The
+glyph's growth (21 → 26 px at 100 %) is what made the tray denser; the pitch
+at 100 % is the spec's and unchanged. The tool is drawn from the target
+*before* its floor, so 60 % still shrinks the tray: drawn from the floored
+target the tray would have stopped shrinking at 70 % while its type kept
+going, the owner's complaint again in miniature.
+
+**The fillet flake was looked at, not retried.** Recording the recogniser's
+decisions and the tool's state on every event (wrappers that only push onto
+an array) showed a clean drag and a direction that flipped: the label is
+re-placed every frame from the latest preview, and the drag read its
+direction from it. It is the app's — a person's drag would jump the same way —
+so the fix is in the tool, not the test; the second failure was the test's
+(its finger left down when an assertion threw). The label still jumps between
+faces while dragged; fixing where it is drawn mid-drag was left, written down.
+
+**The owner's overlap was not the bleed.** The tempting reading of his first
+landscape picture was that a side bleed had grown the log over the command
+line. Arithmetic says no: a bleed only reaches into an inset, and no pane's
+rectangle is in one. A fuzz of the same pipeline `Panels.apply` runs found the
+real path — stored places that a rotation cannot hold, the resolver giving
+up, and the leftovers drawn — in 850 of 5,592 re-layouts. Rejected: making the
+resolver itself search harder (a bigger change to the hottest code in the
+panels, for a case the defaults already solve); giving up all stored places
+at once (731 of the 850 fit by giving up only the overlapping panes'). The
+re-fit is not stored, so a rotation back is the viewer's layout again, as
+the lock's re-fit already was.
+
+**The verdict's fade.** "Hidden only for ~3 s after a solve" in the spec was
+right about the symptom and wrong about the clock: the chip hid its step for
+exactly as long as the verdict was not marked faded, and the cut was the 0.6 s
+after. The fix counts what is drawn, not what is marked.
+
 ### See-through panels: why the layout does not change, why hover is not the docked form, and what was rejected
 
 **The layout is the same rectangles see-through.** The tempting version

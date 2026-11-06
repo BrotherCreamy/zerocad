@@ -7,6 +7,68 @@ decisions.
 
 ---
 
+## Touch targets that follow the interface size, and less air between tools
+
+The owner, from his phone: *"for the scaling, the text resizes but the
+spacing between e.g menu items and toolbar items barely changes. Not sure
+why. There must be some scaling you're missing. Also in general the white
+space between eg the tools on the tool palettes is a bit too much"*. And, on
+his iPhone on its side: *"when I move something up against the left or right
+edge, it hits an invisible edge, but then the padding of the palette expands
+out to touch the edge of the screen. Strange behaviour"*. Built to
+[`docs/plans/touch-density.md`](docs/plans/touch-density.md); every
+measurement and deviation is in its *As built*.
+
+- **Every target under a finger follows the interface size.** It was a
+  literal 44 px, so 80 % shrank the type and left every row where it was.
+  Now it is 44 at your device's own 100 %, 35 at 80 %, 57 at 130 %, and never
+  under 32: menu items, menu rows, choices, the spin box, organiser rows,
+  strips, grips, option rows, ✓/✗, the chip's parts and the tray's pitch.
+  Measured on an iPhone 13, an SE, a Pixel 7 and a Pixel Tablet, both ways
+  up: a menu item is 35 / 44 / 57 px at 80 / 100 / 130 % (it was 44 at all
+  three). `ui()` says the target in force.
+- **The tools fill their targets**: a tray button is drawn at 0.8 of its
+  target — 35 px at 100 % with a 26 px glyph, where it was 26 with a 21 px
+  glyph in an 18 px gap. At 80 % the tray is shorter (a 35 px pitch where it
+  was 44) and the air between glyphs is 14 px, not 27. 0.75 and 0.85 were
+  looked at at 1× and 3×; 0.85 crowds the armed tool's face against the
+  tray's border, 0.75 reads as loose as before.
+- **A pane bleeds only into the bottom inset.** Pushed against a side or the
+  top, it is drawn exactly where it stopped, the drawing visible under the
+  cutout; the command line still reaches the glass under the home indicator.
+- **No pane is drawn over another when a layout cannot fit.** Your landscape
+  picture's log over the command line was not the bleed: the places you had
+  left the panes in could not all be had after a rotation, and what the
+  resolver left was drawn as it stood. Now the panes in the way go to their
+  defaults for that screen, the status says *panels re-fitted to this
+  screen*, and turning back puts them where you left them.
+- **The verdict is never cut.** `SOLVED 36 free` drawn half under the chip on
+  an upright iPhone was the 0.6 s of its fade, when the chip took its line
+  back too early. It waits for the fade's end now; asserted on all 36 ways
+  of the device table. A faded status also gives up its lines, so a note
+  after it is not cut.
+- **The phone fillet test's flake was the app's.** Dragging a fillet's
+  radius label, the drag's direction was re-read every frame from the label,
+  which a new preview can stand off another face, so the radius sometimes
+  fell to nothing mid-drag. It keeps the direction it had when pressed.
+  Found by recording the gesture recogniser's decisions and the tool's state
+  in the failing runs; the second failure was the test's, a finger left on
+  the glass. 10 runs in a row green alone.
+
+Larger sizes have bigger targets now, so the everything-fits guarantee above
+100 % is shorter: 120 % everywhere with no tool or a drawing tool's options,
+110 % with a feature's (the step-by-step table is in the spec). Pictures:
+[206](docs/images/206-before-iphone-13-at-80-the-tray-as-long-as-at-100.png) →
+[207](docs/images/207-iphone-13-at-80-the-targets-follow-the-size-the-tray-shorter.png),
+[208](docs/images/208-before-iphone-13-on-its-side-at-80-two-rows-at-a-44-pitch.png) →
+[209](docs/images/209-iphone-13-on-its-side-at-80-one-row-the-tools-fill-their-targets.png),
+[210](docs/images/210-iphone-13-at-100-at-3x-35-px-tools-on-a-44-px-pitch.png),
+[211](docs/images/211-iphone-13-on-its-side-panes-at-both-side-edges-drawn-at-the-safe-line.png),
+[212](docs/images/212-pixel-7-on-its-side-panes-at-both-side-edges-drawn-at-the-safe-line.png),
+[213](docs/images/213-iphone-17-pro-max-a-stored-layout-re-fitted-upright-and-said.png).
+Tests: @@COUNTS@@ **Not tried on a phone**: every number is Chromium's
+emulation.
+
 ## See-through panels, each in a form of its own, and a lock
 
 The owner: *"there should be a menu option to make the toolbars transparent
