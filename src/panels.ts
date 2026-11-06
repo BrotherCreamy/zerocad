@@ -1119,8 +1119,9 @@ export function hugOf(r: Rect, area: Size): Hug {
 
 /**
  * The panes the resolver moved to make a layout fit: those of `ids` whose
- * place in `shown` is not where `wanted` (the stored docking, re-laid in the
- * area there is now) asked. A locked layout is re-fitted like any other — the
+ * place in `shown` is not where `wanted` (the stored docking re-laid in the
+ * area there is now, and the defaults for the rest) asked — a pane the viewer
+ * placed, or a default one it pushed out of its way. A locked layout is re-fitted like any other — the
  * lock keeps a hand from moving a pane, not the window from turning under it
  * — and this is what says that it was.
  */
@@ -2075,8 +2076,6 @@ export class Panels {
   private onRefit: ((text: string) => void) | undefined;
   /** The area the last `apply` laid out in: a change is a rotation or a resize. */
   private lastArea: Size | null = null;
-  /** The panes the last re-fit moved, so the same re-fit is said once. */
-  private lastRefit = "";
   /** See-through panes a press put in docked form, until the next press outside them. */
   private pinned = new Set<string>();
   private lingers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -2215,15 +2214,14 @@ export class Panels {
     const all = [...order, ...later];
     const wanted = relay({ ...fixed, ...unstored(all, defaults) });
     const s = arranged(all, wanted, defaults, counts, area, sizes, this.m, fixed);
-    // A locked layout re-fitted to a new area (a rotation) is said, once: the
-    // lock holds the panes against a hand, and the resolver still runs. The
+    // A locked layout re-fitted to a new area (a rotation) is said, once — the
+    // area changed on this apply only: the lock holds the panes against a
+    // hand, and the resolver still runs. The
     // re-fit is not stored, so turning back puts each where it was locked.
     const turned = this.lastArea !== null && (this.lastArea.w !== area.w || this.lastArea.h !== area.h);
     this.lastArea = area;
     if (this.switches.locked) {
-      const moved = refitted(wanted, s.layout, Object.keys(recs)).join(",");
-      if (turned && moved && moved !== this.lastRefit) this.onRefit?.(REFIT_NOTE);
-      this.lastRefit = moved;
+      if (turned && refitted({ ...defaults, ...wanted }, s.layout, all).length) this.onRefit?.(REFIT_NOTE);
     }
     this.show(s.layout, s.ok);
   }

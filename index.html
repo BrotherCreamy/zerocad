@@ -505,7 +505,6 @@
       padding:0 calc(6px * var(--ui));pointer-events:none;font-size:calc(11px * var(--ui));line-height:1.45}
     .panel[data-hug^="n"]>.otail{top:var(--pad-t, 0px)}
     .panel[data-hug^="s"]>.otail{bottom:var(--pad-b, 0px)}
-    .panel[data-hug$="e"]>.otail{align-items:flex-end}
     .otail .tline{pointer-events:auto;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#c3d2df;text-shadow:var(--halo);
       animation:tailfade 10s linear forwards}
     .otail .tline.in{color:#a9bccd}
@@ -562,11 +561,13 @@
          docs/plans/chrome-logo-scale.md, As built, has the retirement. */
       #cmdhint{display:none}
       #log{line-height:1.4;padding:0 10px}
-      /* The see-through tree under a finger: rows taller and further apart
-         than a mouse's, but not a target's 44 — a row a target tall leaves no
-         gap between rows for the drawing, which see-through is for. The docked
-         form, a tap away, keeps 44. */
-      .otree,.otree .tnode,.otree .tkids{gap:calc(6px * var(--ui))}
+      /* The see-through tree under a finger: rows drawn 20 px at the size,
+         22 px of the drawing between them. Not closer: Chromium — Android's
+         engine — moves a touch onto the nearest control its contact area
+         reaches, and a tap in the middle of a gap went to a row at every gap
+         up to 18 px with an 8 px fingertip (measured; 20 px was the first
+         clear). A row a target tall, as docked, would leave no gap at all. */
+      .otree,.otree .tnode,.otree .tkids{gap:max(calc(6px * var(--ui)), 22px)}
       .otree .trow{height:calc(20px * var(--ui))}
       .otree .ttog{width:calc(18px * var(--ui));height:calc(20px * var(--ui))}
       /* The organiser: a row a target tall, its marker, its eye and the strip's
