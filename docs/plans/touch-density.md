@@ -66,6 +66,15 @@ toolbargroups, tooltips and touch tests.
   (record the gesture recogniser's decisions and the engine's picks for the
   failing runs without changing their timing), fix the cause wherever it is
   (test or app), and say which. No retries.
+- **Bleed only downward** (the owner, iPhone landscape, 2026-11-06: *"when I
+  move something up against the left or right edge, it hits an invisible
+  edge, but then the padding of the palette expands out to touch the edge
+  of the screen. Strange behaviour"*). A pane bleeds only into the bottom
+  inset (home indicator, gesture bar); against a side cutout's inset it is
+  drawn at its rectangle, the drawing visible beside it. A bled pane never
+  draws over another's rectangle — his picture showed the log drawn over
+  the command line; find whether that is the bleed or the layout and fix
+  it either way.
 - Everything-fits holds at every size on every device; the toolbar's button
   count on each device is whatever the new pitch gives, and the fits tests say
   so rather than hard-coding a count where the pitch changed.
@@ -107,7 +116,7 @@ corner's flow); `src/modechip.ts` (the rule, in `fit`'s words);
 `NEOCAD_E2E_SHOTS`), one more in `test/solidfillets.test.ts`, two more in
 `test/e2e/overlaylock.e2e.ts`, the recorder in
 `test/e2e/solidfilletsphone.e2e.ts`, and the suites that knew the old
-pixels. Pictures: docs/images/206–213, each looked at.
+pixels. Pictures: docs/images/216–223, each looked at.
 
 **The target and the tray, by interface size** (the same on a phone and a
 tablet at the default text size: the target is measured against the form
@@ -171,7 +180,7 @@ nothing) counts, and the chip is fitted again when the fade ends
 verdict and its count wholly inside the corner whenever drawn, the chip
 whole again after. Also: a faded status now leaves the corner's flow once
 its fade is over, so an invisible two-line `ready — …` no longer cuts a
-note after it (found by looking at the re-fit picture, 213).
+note after it (found by looking at the re-fit picture, 223).
 
 **The phone fillet file's flake — the cause was the app's**, with a second
 failure that was the test's. Recorded (wrappers round the recogniser's sink
@@ -199,7 +208,7 @@ bottom inset**; at the sides and the top it is drawn exactly at its
 rectangle (`bleed`; `chrome-logo-scale.md` amended). Tested on an iPhone 13
 and a Pixel 7 on their sides: the toolbar and the action strip pushed to
 each side edge are drawn at the safe area's line, a log in the bottom corner
-reaches down only, and no drawn box is over another (pictures 211, 212).
+reaches down only, and no drawn box is over another (pictures 221, 222).
 
 **His first picture's log over the command line's body was not the bleed.**
 A bleed reaches only into an inset, where no pane's rectangle is, under the

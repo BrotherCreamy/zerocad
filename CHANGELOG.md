@@ -58,16 +58,81 @@ measurement and deviation is in its *As built*.
 Larger sizes have bigger targets now, so the everything-fits guarantee above
 100 % is shorter: 120 % everywhere with no tool or a drawing tool's options,
 110 % with a feature's (the step-by-step table is in the spec). Pictures:
-[206](docs/images/206-before-iphone-13-at-80-the-tray-as-long-as-at-100.png) →
-[207](docs/images/207-iphone-13-at-80-the-targets-follow-the-size-the-tray-shorter.png),
-[208](docs/images/208-before-iphone-13-on-its-side-at-80-two-rows-at-a-44-pitch.png) →
-[209](docs/images/209-iphone-13-on-its-side-at-80-one-row-the-tools-fill-their-targets.png),
-[210](docs/images/210-iphone-13-at-100-at-3x-35-px-tools-on-a-44-px-pitch.png),
-[211](docs/images/211-iphone-13-on-its-side-panes-at-both-side-edges-drawn-at-the-safe-line.png),
-[212](docs/images/212-pixel-7-on-its-side-panes-at-both-side-edges-drawn-at-the-safe-line.png),
-[213](docs/images/213-iphone-17-pro-max-a-stored-layout-re-fitted-upright-and-said.png).
+[216](docs/images/216-before-iphone-13-at-80-the-tray-as-long-as-at-100.png) →
+[217](docs/images/217-iphone-13-at-80-the-targets-follow-the-size-the-tray-shorter.png),
+[218](docs/images/218-before-iphone-13-on-its-side-at-80-two-rows-at-a-44-pitch.png) →
+[219](docs/images/219-iphone-13-on-its-side-at-80-one-row-the-tools-fill-their-targets.png),
+[220](docs/images/220-iphone-13-at-100-at-3x-35-px-tools-on-a-44-px-pitch.png),
+[221](docs/images/221-iphone-13-on-its-side-panes-at-both-side-edges-drawn-at-the-safe-line.png),
+[222](docs/images/222-pixel-7-on-its-side-panes-at-both-side-edges-drawn-at-the-safe-line.png),
+[223](docs/images/223-iphone-17-pro-max-a-stored-layout-re-fitted-upright-and-said.png).
 Tests: @@COUNTS@@ **Not tried on a phone**: every number is Chromium's
 emulation.
+
+## Sketch editing: trim, extend, offset, mirror, chamfer and patterns
+
+The owner: *"give me better sketch tools, relations, trim, slot... all the
+usual"*. Built to [`docs/plans/sketch-edit.md`](docs/plans/sketch-edit.md);
+its *As built* has the table of what each operation journals, refuses and
+cascades, and every deviation.
+
+- **Seven operations, each one typed line and one undo step, replayed from
+  the file**: `trim("l1", [x, y, z])`, `extend("l1", "p2")`, `offset(chain,
+  d)`, `mirror(names, line)`, `chamfer("l1", "l2", d)` (or two setbacks),
+  `linear(names, dx, dy, n)` and `circular(names, centre, angle, n)`
+  (`src/sketchedit.ts`). Each creates or re-points entities, so each is an
+  operation, never a relation, and journals what it read off positions —
+  where a curve is cut, which way a chain turns — beside the call.
+- **What they make follows what it was made from**: a trimmed end held `on`
+  the curve that cut it, so it rides that curve; an offset `par` and `dist`
+  from its original, its arcs about the same centre; a mirror `sym` about a
+  line or a frame's axis (`"origin.y"` — `sym` takes an axis now); a chamfer
+  whose corner point stays at the sharp corner with every dimension on it, its
+  ends a `dist` back along each leg; a pattern held by the step its first copy
+  takes, so one dimension spaces or turns it all (three new relations,
+  `translated`, `rotated`, `rotation`, proven in 3D on a tilted plane).
+- **A trim across a solid's profile regenerates the solid** onto the face
+  left — measured: a rectangle's extrude with a line across and the bottom
+  and top edges trimmed back to it stands on the left half — **or refuses,
+  saying why**, and then the model, the journal and every auto-name are
+  exactly as they were: it tries the change and takes it back. A region's
+  face trimmed is found again from its members, as regions-as-operations
+  says. A circle trims to an arc under its own name; a curve nothing cuts is
+  refused (`del` removes it whole).
+- **Six tools on the modify button** — no new button: **trim** (click the
+  piece, drawn red under the cursor), **extend** (click near the end, the
+  reach drawn first), **offset** (click a curve, the side is the cursor's,
+  ✓ — or drag the distance), **mirror** (select, ✓, click the line),
+  **bevel** — the sketch's chamfer, named so it is not the solid's
+  `chamfer` beside it — and **pattern** (select, Linear or Circular, ✓). The
+  flyout lists the sketch's edits, then the solid's round and chamfer.
+  Copies are named after their seed: copy 3 of `l1` is `l1_3`.
+
+Found in a browser and fixed (ARCHITECTURE's 37–39): from above, a lid's edge
+lies on the pixel of the sketch edge under it and won the pick, so a trim of
+an extruded outline's second edge was refused as the solid's — the edit tools
+read such a press on the sketch plane now; a second trim at a crossing the
+extrude had made real left the solid owning a corner of the sketch, and the
+header said `redundant` — the point is the sketch's now; and the first flyout
+to wrap cut its second line under its own edge (`#flyout` had the tray's
+padding). Pictures:
+[206](docs/images/206-a-corner-bevelled-previewed-by-a-click-on-it.png),
+[207](docs/images/207-an-offset-previewed-outward-on-the-cursors-side.png),
+[208](docs/images/208-trim-the-piece-a-click-takes-drawn-red.png),
+[209](docs/images/209-trimmed-across-the-solid-regenerated-on-the-left-half.png),
+[210](docs/images/210-extend-the-reach-drawn-to-where-it-lands.png),
+[211](docs/images/211-mirror-previewed-about-a-line.png),
+[212](docs/images/212-a-linear-pattern-previewed-from-a-selected-circle.png),
+[213](docs/images/213-iphone-13-a-piece-trimmed-by-a-tap.png),
+[214](docs/images/214-iphone-13-an-open-chain-offset-previewed.png),
+[215](docs/images/215-iphone-13-the-modify-flyout-in-two-lines-whole.png).
+
+## The drag preview's ghosts are solid, translucent white
+
+The owner: *"the outline should be solid white slightly translucent rather
+than dotted"*. A ghost's outline is now solid white at 60 % opacity over a
+7 % white fill; the held panel's own ghost is brighter (85 %). Its width is
+unchanged — the interface size's 1.5 px, rounded to a whole pixel.
 
 ## See-through panels, each in a form of its own, and a lock
 

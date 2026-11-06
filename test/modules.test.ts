@@ -33,7 +33,7 @@ test("the built-in modules load in order, and the tables are filled from them in
   assert.deepEqual(builtin, ["core", "sketch", "solids", "files", "step", "organiser", "interface"]);
   // The tray: core's tools, then the sketch module's, then the solids'.
   assert.deepEqual(listTools(), ["point", "line", "rectangle", "polygon", "slot", "region", "circle", "arc", "ellipse", "fillet",
-    "dimension", "constrain", "extrude", "revolve", "sketch", "round", "chamfer"]);
+    "bevel", "trim", "extend", "offset", "mirror", "pattern", "dimension", "constrain", "extrude", "revolve", "sketch", "round", "chamfer"]);
   // The menu's tool items and the File items, module by module.
   assert.deepEqual(menuToolItems().map((i) => i.tool), ["point", "line", "rectangle", "circle", "arc", "ellipse", "fillet"]);
   assert.deepEqual(fileMenuItems().map((i) => i.label), ["New", "Open…", "Save", "Share…", "Export STEP…"]);
@@ -91,7 +91,7 @@ test("the workbenches: part is today's toolbar exactly, sketch is core and sketc
   assert.deepEqual(listWorkbenches().map((w) => w.name), ["part", "sketch"]);
   assert.deepEqual(workbenchTools("part"), listTools());
   assert.deepEqual(workbenchTools("sketch"), ["point", "line", "rectangle", "polygon", "slot", "region", "circle", "arc", "ellipse",
-    "fillet", "dimension", "constrain"]);
+    "fillet", "bevel", "trim", "extend", "offset", "mirror", "pattern", "dimension", "constrain"]);
   assert.equal(onWorkbench("sketch", "extrude"), false);
 });
 

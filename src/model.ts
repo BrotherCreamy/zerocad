@@ -1939,6 +1939,78 @@ export class Model {
     this.record("retargetLine", [lineName, from, to]);
   }
 
+  /**
+   * Points one end of an arc at a different point — `retargetLine` for an arc,
+   * which trim (sketchedit.ts) needs where a feature's regeneration made its
+   * twin arcs again rather than re-point them. Structure only: the relation
+   * holding an arc's ends on its circle (`arcends`) captured the old end when it
+   * was made, so the operation that calls this rebuilds it in place.
+   */
+  retargetArc(arcName: string, from: string, to: string): void {
+    const a = this.arc(arcName);
+    this.point(to);
+    const which = a.start === from ? "start" : a.end === from ? "end" : null;
+    if (which === null) throw new Error(`"${arcName}" does not end at "${from}"`);
+    if ((which === "start" ? a.end : a.start) === to) throw new Error("an arc needs two different endpoints");
+    if (a.center === to) throw new Error(`"${to}" is ${arcName}'s centre, not a point on its rim`);
+    a[which] = to;
+    this.record("retargetArc", [arcName, from, to]);
+  }
+
+  /**
+   * A circle becomes an arc **under the same name**, from `start` to `end`
+   * (counter-clockwise about its normal, as every arc runs) — what a trim of a
+   * circle leaves. The centre, the radius variable and the normal are the
+   * circle's own, so every relation that reads it (`rad`, `oncircle`, `tan`,
+   * `conc`) goes on reading the same variables and means what it meant; only
+   * the ends are new. In place in the registry, so its position — and every
+   * name after it — is unchanged.
+   */
+  circleToArc(name: string, start: string, end: string): void {
+    const c = this.circle(name);
+    this.point(start);
+    this.point(end);
+    if (start === end) throw new Error("an arc needs two different endpoints");
+    if (start === c.center || end === c.center) throw new Error(`an end of ${name} cannot be its own centre`);
+    const arc: ArcEntity = { kind: "arc", name, center: c.center, start, end, radiusVar: c.radiusVar };
+    if (c.normal !== undefined) arc.normal = c.normal;
+    if (c.construction) arc.construction = true;
+    this.entities.set(name, arc);
+    this.record("circleToArc", [name, start, end]);
+  }
+
+  /**
+   * `circleToArc` taken back: the arc is a whole circle again under its name,
+   * its ends left as the points they are. For an operation that tried a trim
+   * and refuses it (sketchedit.ts) — never journalled by one, since a refusal
+   * journals nothing.
+   */
+  arcToCircle(name: string): void {
+    const a = this.arc(name);
+    const c: CircleEntity = { kind: "circle", name, center: a.center, radiusVar: a.radiusVar };
+    if (a.normal !== undefined) c.normal = a.normal;
+    if (a.construction) c.construction = true;
+    this.entities.set(name, c);
+    this.record("arcToCircle", [name]);
+  }
+
+  /**
+   * The auto-name counters as they stand, and putting them back — for an
+   * operation that tries a change on the model to ask the drawing a question
+   * and then takes the change back itself (trim, asking whether a feature on
+   * the curve can still be regenerated). Without this the trial would leave
+   * every later auto-name shifted, and a replay — which never runs a refused
+   * call — would hand out different names from the session's: the rollback
+   * rule `relation()` keeps for a relation that throws.
+   */
+  nameCounters(): ReadonlyMap<string, number> {
+    return new Map(this.counters);
+  }
+
+  restoreNameCounters(saved: ReadonlyMap<string, number>): void {
+    this.counters = new Map(saved);
+  }
+
   radius(name: string): number {
     return this.problem.getVar(this.circular(name).radiusVar);
   }

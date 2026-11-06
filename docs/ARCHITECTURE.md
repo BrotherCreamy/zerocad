@@ -391,6 +391,23 @@ for a profile restructured by hand. The finding reads positions, so — exactly
 as `extrude` — the call journals what it found, resolved, and a replay is
 handed it.
 
+**The sketch edits are operations, held by relations** (`src/sketchedit.ts`,
+docs/plans/sketch-edit.md): trim, extend, offset, mirror, chamfer and the two
+patterns each create or re-point entities, so each is journalled as its call
+with what it read off positions resolved beside it, and what it makes is held
+by ordinary relations to what it was made from — a trimmed end `on` the curve
+that cut it, an offset `par` and `dist`, a mirror `sym`, a pattern the step
+its first copy takes (`translated`, `rotated`, `rotation`, relations/
+pattern.ts). **A trim tries, and takes itself back.** Whether a feature on the
+trimmed curve can still find its profile is a question about the drawing
+*after* the change, and an operation must refuse before it changes anything;
+so trim makes its structural change, asks (`regenerationRefusal`), and on a
+refusal undoes each step by its inverse and puts the auto-name counters back
+(`Model.nameCounters`), so a refused trim leaves the model, its journal and
+every later auto-name exactly as they were. What a trim tidies afterwards —
+holds on the piece that went, the end it stranded — is journalled as `del`
+journals it, after the trim's own entry, in the same typed call.
+
 ## Deleting cascades inward, and undo is the confirmation
 
 `del(name)` removes an entity or a relation and takes with it whatever could
@@ -1569,7 +1586,7 @@ one step, from the layout at the press straight to where the hand is, so it
 is a function of the spot and not the path, the rules have one
 implementation, and the preview cannot disagree with what a drop commits —
 and the **held panel**, drawn where the hand has it (`heldAt`) and placed
-nowhere. Every other panel stays put, at half opacity, with a dashed ghost
+nowhere. Every other panel stays put, at half opacity, with a translucent white ghost
 where the drop would put it (`ghostsOf`); a tray's turn is the preview's
 until the drop. The drop commits the preview in one step (`dropOf`) and the
 panels glide onto it (the rectangles final at once, only the drawing
@@ -1763,7 +1780,7 @@ until the next action went unrecorded.
 
 ## Why there is an end-to-end suite
 
-Forty bugs so far were invisible to the unit tests and obvious within seconds
+Forty-three bugs so far were invisible to the unit tests and obvious within seconds
 of running the app:
 
 1. a status readout that went stale, so a conflict could be introduced from
@@ -1931,20 +1948,37 @@ of running the app:
    returns alone — a default pane the resolver pushed out of a stored one's
    way was invisible to it. Found by the e2e's rotation; every pane is
    compared with what its docking or its default asked now.
-37. A fillet's radius dragged on a phone falling to nothing mid-drag, now
+37. A trim of an extruded outline's second edge refused as "part of e1's
+   solid": seen from above, the lid's edge lies on the very pixel of the
+   sketch edge under it, and the pick took the lid's. The unit suite's tools
+   are handed the curve; found by the trim e2e reading the log. The edit
+   tools read a press on a solid's own geometry on the sketch plane now
+   (`curveUnder`, docs/plans/sketch-edit.md).
+38. `redundant r12` in the header after a second trim: the extrude had made
+   the crossing on the top edge a point of its own, held on both lines, and
+   the trim ended the edge there — so the solid owned a corner of the sketch
+   (deleting the solid would have taken the edge) and its hold on that edge
+   said nothing. Every assertion of the test passed; found by looking at the
+   picture's header. The trim hands such a point to the sketch.
+39. The first toolbar flyout to wrap — modify, with the sketch edits in it —
+   lost its second line's bottom under its own edge: `#flyout` is a `.tray`
+   and took the tray's pitch padding, which `flyoutSize` never counted. A
+   single line hid it (the coarse tray overflows visibly). Found by looking
+   at the iPhone's long-press picture.
+40. A fillet's radius dragged on a phone falling to nothing mid-drag, now
    and then: the drag's direction was read every frame from the size label,
    which the kernel's next preview can stand off another face, pointing
    another way. Every unit test passed (no preview lands mid-drag in one);
    found by recording the recogniser's and the tool's decisions in the phone
    e2e's failing runs. The direction is taken at the press now.
-38. The verdict drawn half under the mode chip on an upright iPhone for the
+41. The verdict drawn half under the mode chip on an upright iPhone for the
    0.6 s of its fade: the chip took its line back when the fade *started*.
    Found by looking at a picture (196); the chip waits for the fade's end.
-39. A stored layout a rotation could not hold drawn with panes over panes —
+42. A stored layout a rotation could not hold drawn with panes over panes —
    the resolver's no-layout drawn as it stood, a console warning the only
    sign. Found by the owner (his log over the command line); a fuzz put it
    at 850 of 5,592 re-layouts. `refit` gives places up until one fits.
-40. Targets measured against the device's whole 100 % — text size included
+43. Targets measured against the device's whole 100 % — text size included
    — so a larger system font drew no larger tools. The unit table was
    right for its inputs; found by the Android e2e's "drawn 1.3 × larger".
 

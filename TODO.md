@@ -18,11 +18,74 @@ otherwise.
 
 ## In flight
 
-- **Standing duty**: after every merged PR, run `npm run build:single` and
-  republish `dist-single/neocad.html` to the owner's review artifact
-  (same URL each time).
+- **Standing duty**: commit to the private repository and sync the public
+  mirror after every commit (the owner, 2026-11-06: *"Commit to mirror.
+  Always"*). The review artifact is **retired** (the owner, 2026-11-06:
+  *"You don't need to update the artifact any more, just commit to main repo
+  and mirror"*): the hosted app on Pages is the review copy now.
 
 ## Decisions made so far — veto here if any are wrong
+
+- **Sketch editing: trim, extend, offset, mirror, chamfer and two patterns,
+  each an operation held by relations** (the owner, 2026-11-05: *"give me
+  better sketch tools, relations, trim, slot... all the usual"*). Spec:
+  [`sketch-edit.md`](docs/plans/sketch-edit.md), **built**; its *As built*
+  has the table of what each journals, refuses and cascades. Open to veto,
+  as built:
+  - **Each op's rule** — *trim*: refuses an ellipse, a curve nothing cuts
+    (`del` is for that), a circle cut once, a feature's own edge, and a cut
+    that leaves a feature on the curve no profile (it tries, and takes itself
+    back, counters and all); takes with it the holds of points on the piece
+    that went (an `intersection` re-held on its other curve), the hold of a
+    cut point on the curve it now ends, and the end the piece stranded with
+    what names it — unless something is built on it or a feature names it.
+    *Extend*: refuses a corner (an end another curve shares or a `coin`
+    holds) and nothing that way; moves the end itself. *Offset*: refuses a
+    branch, a gap, a circle with others, inward past a radius, a corner the
+    copies do not meet at. *Mirror*: refuses an ellipse or frame, a line that
+    is no line or axis. *Chamfer*: refuses a setback past a leg, legs on one
+    line, lines sharing no corner. *Patterns*: refuse a step of nothing, a
+    count outside 2–200, a centre that is no point. None but trim cascades.
+  - **The pattern naming**: copy k of `l1` is `l1_k` (k from 2; the seed is
+    1, the count includes it), points too; a second pattern of one seed takes
+    a letter, `l1_2b`. Deleting the seed deletes no copy — what named the
+    seed's points goes with them, the copies keep what holds them to one
+    another and are otherwise free.
+  - **The sketch chamfer's tool is `bevel`**; the typed call is
+    `chamfer("l1", "l2", d)`, told from the solid's by its second argument,
+    journalled as `chamfer` (the solid's: `chamferEdges`). The modify flyout:
+    fillet, bevel, trim, extend, offset, mirror, pattern, round, chamfer.
+  - **A trimmed end is held `on` the cutter alone** (its own curve holds it
+    as its end); **a circle trims to an arc under its own name**; a middle
+    piece's second half is a new curve held `col` (an arc: same centre,
+    `eqrad`).
+  - **Trim refuses where a feature could not be regenerated**, where `fillet`
+    leaves the feature as it was. **A crossing a feature made real becomes the
+    sketch's** once a trimmed curve ends at it.
+  - **Extend moves the end** (its name kept), and refuses a corner.
+  - **Offset**: arcs share the original's centre point (no `conc`); each
+    piece's distance is a dimension of its own; a radius not settled by a
+    tangent line copy is a `rad` of r ± d (it does not follow the original's
+    radius); positive is outward for a closed chain, left of the first member
+    for an open one.
+  - **Mirror** holds copies by `sym` and adds nothing the `sym`s say; a point
+    on the line is its own mirror, held `on` a line (not an axis). **`sym`
+    takes a frame axis as a located line** through the frame's origin.
+  - **The chamfer's corner point stays at the sharp corner** (held by the
+    legs' `intersection`), not "construction" (a point has no such flag);
+    one setback is a `dist` and an `equalSpacing`.
+  - **Patterns are held by three new relations** — `translated`, `rotated`,
+    `rotation` (a dimension) — and a construction line carrying a linear
+    pattern's step; **one dimension drives each pattern**. **One pattern
+    tool**, its kind a choice. Angles in radians, the whole sweep.
+  - **The edit tools read a press on a solid's own edge on the sketch
+    plane**; **`#flyout` has its own 3 px padding**; **the empty-canvas menu
+    lists the edits** under Modify.
+  - [ ] **Follow-ups from the review of [#75](https://github.com/BrotherCreamy/neocad/pull/75)**
+    (none blocking): a pattern of six draws twelve `translated`/`rotated`
+    glyphs — one glyph per pattern would read better; at an iPhone's width
+    the option forms cut their labels ("construc…" in picture 214) — the
+    form should wrap a label before it cuts one.
 
 - **Regions as operations: a face is a face, a region is faces combined by
   named operations, a feature takes a region** (the owner, 2026-11-05:
@@ -1712,6 +1775,13 @@ starts.
           exits. Not chased.
         - Not tried on a phone.
 
+- [ ] **Panels reshuffle rather than push (2026-11-06)** — after touch
+      density. The owner: *"When I push toolbars around, they should be able
+      to reorder with other toolbars. So reshuffle rather than push."* Panes
+      along an edge are a sequence; a drag reorders, another edge inserts,
+      a floating pane swaps. Spec:
+      [`panels-reshuffle.md`](docs/plans/panels-reshuffle.md).
+
 - [ ] **The sketch packages (2026-11-05).** The owner: *"give me better
       sketch tools, relations, trim, slot... all the usual"*, picked from
       the full-CAD list. Five specs, in this order:
@@ -1789,7 +1859,26 @@ starts.
          seam may draw as an edge, not looked at.
          [`sketch-edit.md`](docs/plans/sketch-edit.md) (trim, extend, offset,
          mirror, chamfer, linear and circular patterns — operations, never
-         relations), [`sketch-relations.md`](docs/plans/sketch-relations.md)
+         relations) — **[x] BUILT (2026-11-06)** on `claude/sketch-edit`; the
+         register's first entry has the decisions, the spec's *As built* the
+         table and every deviation. **Found** (ARCHITECTURE's 37–39): a lid's
+         edge winning the pick over the sketch edge under it from above; a
+         trim ending a curve at a crossing the extrude owned (the header said
+         `redundant`; deleting the solid would have taken the edge); the
+         first wrapped flyout cutting its second line. Also found: `rotated`
+         must read its turn in the plane square to its axis — a centre the
+         solver lifted off the plane turned the copies wrongly (a unit test).
+         - [ ] **Left for later**: an ellipse trimmed (no elliptical arc), an
+           ellipse cutting a circle or arc (a quartic); a curve nothing cuts
+           deleted by the trim tool, as Onshape does (refused now, said);
+           an offset's distance as one dimension (each piece has its own); a
+           `rad` that follows the original's radius; the pattern panel
+           showing only the chosen kind's fields; fewer marks on a big
+           pattern; a linear pattern's direction on a face's plane; not tried
+           on an iPhone. CLAUDE.md's "Twenty-six bugs" is behind
+           ARCHITECTURE's count (thirty-nine now); left for the owner, as the
+           count's home is ARCHITECTURE.
+         [`sketch-relations.md`](docs/plans/sketch-relations.md)
          (collinear, horizontal/vertical, pierce, intersection, a dimension
          tool, a constrain tool, and diagnosis: free entities drawn in their
          own ink, conflicts naming their relations).
@@ -1905,7 +1994,9 @@ starts.
           read where its saved drawing has the loop; a merged outline through
           a pinch vertex takes the first way on; regions are not in STEP (a
           region is no solid); `sketch-edit.md`'s trim should take a region's
-          faces through this algebra. Not tried on an iPhone.
+          faces through this algebra (**done**: a trimmed face is found again
+          from its members, and a feature on one regenerates or the trim
+          refuses). Not tried on an iPhone.
         then `sketch-edit.md` and `spline.md` as modules.
       - **In parallel with workbenches:**
         [`mode-feedback.md`](docs/plans/mode-feedback.md) (the owner: *"it

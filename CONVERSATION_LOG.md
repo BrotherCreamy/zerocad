@@ -157,6 +157,70 @@ right about the symptom and wrong about the clock: the chip hid its step for
 exactly as long as the verdict was not marked faded, and the cut was the 0.6 s
 after. The fix counts what is drawn, not what is marked.
 
+### Sketch editing: why trim tries and takes itself back, why patterns got relations of their own, and what was rejected
+
+**Trim is the one edit that cannot know before it acts.** Whether a feature
+standing on a curve can still find its profile is a question about the drawing
+after the cut — the loop finder reads held points and joins, so the answer
+depends on structure the trim has not made yet. Three ways were weighed.
+*Simulating* the loops a cut would leave, from the drawing before it, means a
+second loop finder that would one day disagree with the first. *A copy of the
+model* (save and open, as the feature preview does) is above `operations.ts`
+in the layering — persist imports the modules, which import the operations.
+*Trying it*: make the structural change, ask the same `refoundProfile` a
+regeneration asks, and on a refusal undo each step by its inverse. The last
+was taken, with one thing the model had to give: its auto-name counters,
+saved and put back, because a refused call journals nothing and a replay
+would otherwise hand out different names from the session's — the rule
+`relation()` already keeps for a relation that throws. The tidying (holds on
+the piece that went, a stranded end) comes after and is journalled as `del`
+journals it, so the trim's own entry stays the structural change and a replay
+does not recompute a cascade on seeds.
+
+**Rejected: holding a trimmed end with `intersection` on both curves**, as the
+spec's words suggest. The end is its own curve's end; `on(end, own line)` is a
+residual identically zero, which the diagnosis then reports as redundant. Held
+`on` the cutter alone, it says exactly what is true. Also rejected: making a
+trimmed circle a *new* arc and re-pointing every relation's arguments at it —
+the arc and the circle own the same kind of variables, so `circleToArc` keeps
+the name, and every `rad`, `tan` and `oncircle` goes on reading what it read.
+
+**The point the extrude owned.** Found by the header, not a test: a second
+trim ended the top edge at a crossing the regeneration had made real. The
+point and its holds were the feature's — so deleting the solid would have
+deleted a corner of the sketch, and the edge's hold on its own end said
+nothing. The fix gives the point to the sketch inside the trim's entry (so a
+replay does the same); the alternative, a new point beside the owned one,
+left two points on one spot that the loop finder reads as two vertices, and
+the profile did not close.
+
+**Patterns: one dimension, not one per point.** The spec's "dist/par of
+corresponding points" holds every copy to its seed with numbers of its own:
+a three-copy pattern of a rectangle would carry twenty-four dimensions, and
+changing the spacing would mean editing all of them. So a copy is held to the
+*step its first copy takes* — `translated(q, q2, p, p2)`, q2 − q = p2 − p, and
+for a turn `rotated`, read off the first step's angle in the plane — and only
+that first step carries a number: a `dist` on a construction line from the
+seed's first point to its first copy (with `par` or `ang` for its direction),
+or a `rotation`. Three relations, each linear in every point and none a
+square, each written with `dot` and the wedge and proven on a tilted plane in
+3D. *Found by that 3D test*: `rotated` first read its angle from the raw
+vectors, and the solver, free to, lifted the centre off the plane and the
+copies came out turned by the wrong angle; it reads the turn in the plane
+square to its axis now.
+
+**Mirror adds nothing the `sym`s already say.** Re-making the originals'
+relations between the copies — the spec's "the same relations between the
+copies" — would make every one of them redundant: a copy whose every point is
+the mirror of an original point is that shape already. What the copies need
+that `sym` cannot give is only what a point cannot carry: an arc's ends on
+its circle (`arcends`) and a circle's radius (`eqrad`).
+
+**`bevel`.** The solid's `chamfer` tool was already on the modify button. Two
+tools called chamfer on one flyout is the confusion asked about; `bevel` is
+one word and a draughtsman's word for the same cut. The typed call stays
+`chamfer`, told apart by its arguments, as the two fillets are.
+
 ### See-through panels: why the layout does not change, why hover is not the docked form, and what was rejected
 
 **The layout is the same rectangles see-through.** The tempting version

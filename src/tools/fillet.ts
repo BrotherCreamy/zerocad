@@ -51,8 +51,8 @@ export class FilletTool extends FeatureTool {
   static readonly options: OptionSpecs = {
     radius: { default: DEFAULT_RADIUS, unit: "length", check: (v) => ((v as number) > 0 ? null : "must be more than 0") },
   };
-  static readonly summary = "Rounds a corner: click two lines that meet, or their corner";
-  readonly name = "fillet";
+  static readonly summary: string = "Rounds a corner: click two lines that meet, or their corner";
+  readonly name: string = "fillet";
   // Its picks are lines, and a corner's point: a snap marker would only echo the pick.
   readonly snaps = false;
   /** The lines picked, in the order picked. */
@@ -132,7 +132,7 @@ export class FilletTool extends FeatureTool {
       const what = hit ? `${hit.name} is a ${hit.kind} — ` : "";
       const first = this.lines[0];
       this.guide(first ? (hit ? `${what}click a line that meets ${first}` : `now click a line that meets ${first}`)
-        : `${hit ? what : "click a line — "}fillet wants two lines that share a corner`);
+        : `${hit ? what : "click a line — "}${this.name} wants two lines that share a corner`);
       return;
     }
     const line = hit.name;
@@ -155,7 +155,7 @@ export class FilletTool extends FeatureTool {
     if (this.lines.length === 1 && !sharesCorner(model, this.lines[0], line)) {
       // Through `refuse`, so headless it still throws, as the operation's own
       // refusal of the same corner always did.
-      this.refuse(new Error(`${this.lines[0]} and ${line} do not meet — fillet wants two lines that share a corner`));
+      this.refuse(new Error(`${this.lines[0]} and ${line} do not meet — ${this.name} wants two lines that share a corner`));
       return;
     }
     // A corner it cannot round — collinear legs, a radius too large for them —
@@ -181,7 +181,7 @@ export class FilletTool extends FeatureTool {
    */
   protected guide(why: string): void {
     this.ctx.requestRender();
-    this.ctx.log?.(`fillet: ${why}`, "guide");
+    this.ctx.log?.(`${this.name}: ${why}`, "guide");
   }
 
   /** The picked lines marked, so it's clear the tool is half-way through; then the rounded corner a confirm would make. */

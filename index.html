@@ -257,9 +257,10 @@
        (docs/plans/panels-preview.md). The panel in the hand is lifted — a
        deeper shadow, as a held card — and drawn solid; every other panel is at
        half opacity for the gesture (one class on the area, `dragging`), and
-       over them a ghost — a dashed outline, a breath of fill, at full line
-       weight — where each panel the drop would move will land, the held one's
-       own (brighter) where it will snap. The ghosts' line is the interface
+       over them a ghost — a solid white outline, a little translucent, and a
+       breath of fill (the owner: "the outline should be solid white slightly
+       translucent rather than dotted") — where each panel the drop would move
+       will land, the held one's own (brighter) where it will snap. The ghosts' line is the interface
        size's — 1.5 px times it, rounded to the whole pixel a border is drawn
        at anyway (Chromium floors 1.95 px to 1) — so it reads on a 3× phone as
        on a desktop: 2 px at either's 100 %. The ghosts' layer and the held
@@ -271,8 +272,8 @@
     #viewwrap.dragging>.panel.held{box-shadow:0 14px 34px #000c,0 0 0 1px #46586a}
     .pghosts{position:absolute;inset:0;pointer-events:none}
     .pghosts[hidden]{display:none}
-    .pghost{position:absolute;box-sizing:border-box;border:round(calc(1.5px * var(--ui)), 1px) dashed #afc6d9;border-radius:4px;background:#afc6d91a}
-    .pghost[data-own]{border-color:#e6eef5;background:#d5e1ec1f}
+    .pghost{position:absolute;box-sizing:border-box;border:round(calc(1.5px * var(--ui)), 1px) solid #ffffff99;border-radius:4px;background:#ffffff12}
+    .pghost[data-own]{border-color:#ffffffd9;background:#ffffff1f}
     #viewwrap.settling>.panel{transition:left .12s ease-out,top .12s ease-out,width .12s ease-out,height .12s ease-out}
     .panel>.pbody{flex:1;min-height:0}
     /* A grip on each corner of a panel that resizes — the log and the command
@@ -348,8 +349,11 @@
        wrapped where panels.ts's flyoutPlacement says. Fixed, over the panels
        and under the tooltip and the menus. The current member is outlined;
        the armed one is amber, as on the tray; .hot is the item a sliding
-       finger is over, lit as a hover lights it. */
-    #flyout{position:fixed;z-index:60;box-sizing:border-box;background:#0e141b;border:1px solid #2c3d4f;border-radius:4px;
+       finger is over, lit as a hover lights it. Its padding is the 3 px flyoutSize sizes it
+       for, not the tray's pitch padding: with that a flyout wrapped into two
+       lines lost its last line's bottom under its own edge (docs/plans/
+       sketch-edit.md — the modify group was the first to wrap). */
+    #flyout{position:fixed;z-index:60;box-sizing:border-box;padding:3px;background:#0e141b;border:1px solid #2c3d4f;border-radius:4px;
       box-shadow:0 4px 14px #0008;grid-auto-flow:row;grid-template-rows:none;grid-auto-rows:var(--button);
       grid-template-columns:repeat(var(--per,1),var(--button))}
     #flyout[data-orient="column"]{grid-auto-flow:column;grid-template-columns:none;grid-auto-columns:var(--button);

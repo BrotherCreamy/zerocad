@@ -14,7 +14,10 @@ takes a coordinate frame's axis by name), angle, point-on-line,
 equal-length, radius, on-circle,
 concentric, equal-radius, tangent and symmetry, and on-ellipse with an
 ellipse's two semi-axes; line, rectangle, polygon, slot, circle, arc and
-ellipse tools with Onshape-style constraint inference; a fillet; regions —
+ellipse tools with Onshape-style constraint inference; a fillet; sketch
+editing — trim, extend, offset, mirror, a corner chamfer and linear and
+circular patterns, each an operation whose result is held by relations to
+what it was made from; regions —
 faces combined by named operations (`region`, `subtract`, `add`,
 `intersect`), nothing negative; extrude — a region, or a closed loop's face,
 expanded into a real lid of twins and walls held
@@ -102,6 +105,9 @@ src/relations/refs.ts    lazy variable lists, and a frame's basis as re-read val
 src/relations/basic.ts   dist / fix (frame-relative) / coincident / midpoint — all dimension-generic
 src/relations/geometry.ts par / perp / ang (any of which takes a frame axis) / on / eq / rad / oncircle / conc / eqrad / tan / sym
 src/operations.ts        operations, which change structure rather than add equations: fillet, extrude, revolve, region and its steps, del, set
+src/sketchedit.ts        the sketch edits, as operations: trim, extend, offset, mirror, chamfer, linear and circular patterns
+src/sketchgeom.ts        where sketch curves cross, where along a curve a place is, where an end would reach
+src/relations/pattern.ts translated / rotated / rotation: what a pattern's copies are held by
 src/groups.ts            groups (named sets that own nothing and never nest), hide/show and the open group, as operations
 src/organiser.ts         the Organiser pane: groups and features, each control typing its command
 src/relations/extrusion.ts the one dimension an extrude's lid is held by: twin = base + depth·ẑ
@@ -165,7 +171,7 @@ piece of chrome can be dragged by its strip, and all but the toolbar — one
 line of its tools, or two where one will not fit — resized from any corner) is a
 REPL over the app's own command surface, and it is the primary interface —
 not a debug console. `help()` lists everything in scope. **While you drag a
-panel, nothing else moves**: the others go faint, a dashed ghost shows where
+panel, nothing else moves**: the others go faint, a faint white ghost outline shows where
 each one will be pushed to and where the one in your hand will snap (a
 toolbar that will turn from a column to a row shows the row), and only when
 you let go do they move there. Escape, or letting go back where you started,
@@ -183,7 +189,8 @@ and the log shows it. Hover one — or, on a phone, hold it — for its
 shows it without pressing the button; a tap presses it). Every icon in the
 chrome has one. **Tools of one family share a button** — *shapes*
 (rectangle, polygon, slot), *curves* (ellipse, then spline), *modify*
-(fillet, then chamfer, trim, extend, offset, mirror, pattern), *relate*
+(fillet, then bevel — the sketch's chamfer — trim, extend, offset, mirror,
+pattern, then the solid's round and chamfer), *relate*
 (dimension, constrain) — which shows
 the one you armed last, arms it on a tap, and carries
 a small triangle in its corner once a second tool joins it. Rest the mouse on
@@ -466,6 +473,31 @@ the corner where two lines meet:
 ```js
 fillet("l1", "l2", 8); solve()     // an arc tangent to both legs
 ```
+
+**Sketch editing** (the *modify* button; docs/plans/sketch-edit.md). Each is
+an operation — one typed line, one undo step, replayed from the file — and
+what it makes is held by relations you can see and delete, so it follows what
+it was made from:
+
+```js
+trim("l1", [30, 0, 0])             // the piece of l1 at that place, between the curves that cut it, goes
+extend("l5", "p9")                 // that end on to the next curve along l5, held on it
+offset(["l1", "l2", "l3", "l4"], 5) // a parallel copy, outward: par + dist, corners joined
+mirror(["l1", "l2"], "origin.y")   // copies held by sym about a line or a frame's axis
+chamfer("l1", "l2", 5)             // the corner cut by a line, 5 back along each leg
+linear(["c1"], 20, 0, 4)           // c1 and three copies 20 apart: c1_2, c1_3, c1_4
+circular(["c1"], "p1", 2 * Math.PI, 6) // six round p1, one rotation dimension turning them all
+```
+
+The tools do the same by pointing: **trim** — click the piece to remove (it
+is drawn red under the cursor); **extend** — click near the end to lengthen
+(the reach is drawn first); **offset** — click a curve, move to the side you
+want, ✓ (or drag the distance); **mirror** — select, ✓, click the mirror line;
+**bevel** — the fillet's gesture, two lines or their corner, a setback;
+**pattern** — select, choose Linear or Circular, the step and count (a
+circular one asks for its centre), ✓. A trim that cuts a solid's profile
+regenerates the solid onto what is left, or refuses and says why; nothing
+cuts is a curve `del` removes whole.
 
 Saving is a command too. `save()` returns the file's text and `open(text)`
 replaces the model; `download()` and `openFile()` are the browser

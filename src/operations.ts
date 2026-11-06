@@ -1675,6 +1675,57 @@ export function regenerateAfter(model: Model, changed: readonly string[], given:
   return regenerateFound(model, first.map((f) => f.name), null);
 }
 
+/**
+ * Every feature a change to `names` reaches: those whose profile names one of
+ * them (`featuresOnProfile`), and those standing on a region one of whose
+ * faces names one — a face trimmed open, or closed again, is the region's
+ * face changed. In creation order. What the sketch edits regenerate
+ * (sketchedit.ts).
+ */
+export function featuresTouching(model: Model, names: readonly string[]): FeatureEntry[] {
+  const set = new Set(names);
+  const regions = [...model.regions.values()].filter((r) => r.steps.some((s) => stepNames(s, set))).map((r) => r.name);
+  return [...model.features.values()].filter((f) => f.loops.some((l) => l.some((m) => set.has(memberName(m))))
+    || (f.region !== undefined && regions.includes(f.region)));
+}
+
+/**
+ * Whether each feature named can be brought into step with its profile as the
+ * drawing now stands — the profile found and planned exactly as a
+ * regeneration finds and plans it, nothing changed — and the first refusal,
+ * named, when one cannot. What an operation that restructures a profile asks
+ * *before* it keeps its change, so that it can refuse where `fillet` (which
+ * predates the question) leaves the feature as it was.
+ */
+export function regenerationRefusal(model: Model, features: readonly string[]): string | null {
+  for (const name of features) {
+    if (!model.features.has(name)) continue;
+    const f = model.featureOf(name);
+    try {
+      planRegen(model, f, refoundProfile(model, f));
+    } catch (e) {
+      return `${name}: ${e instanceof Error ? e.message : String(e)}`;
+    }
+  }
+  return null;
+}
+
+/**
+ * `regenerateAfter` for a list of features already chosen: at a replay
+ * (`given`) those it names with the profiles it names; at the call each
+ * found, the chain after it followed — or null when the list is empty, so the
+ * caller's entry is the one it always was.
+ */
+export function regenerateNamed(model: Model, features: readonly string[], given: Regenerated[] | null,
+                                notes: string[] = []): Regenerated[] | null {
+  if (given !== null) {
+    regenerateGiven(model, given);
+    return given;
+  }
+  if (!features.length) return null;
+  return regenerateFound(model, [...features], null, notes);
+}
+
 /** A journal's (or a typed call's) list of regenerated features, checked for shape and copied. */
 export function givenRegenerated(list: unknown, op: string): Regenerated[] {
   const ok = Array.isArray(list)

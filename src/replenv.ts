@@ -26,6 +26,7 @@ import {
   regionText, revolve, set, subtract, unhole,
 } from "./operations.ts";
 import { chamferEdges, describeBlend, filletEdges, setEdges } from "./blends.ts";
+import { chamfer as sketchChamfer } from "./sketchedit.ts";
 import { planeAxes } from "./curveplane.ts";
 import { save as saveModel, savedTools } from "./persist.ts";
 import { fileNameFor } from "./files.ts";
@@ -688,7 +689,12 @@ export function neocadScope(h: EnvHandles): Bag {
      * `chamfer("e1", ["e1.lid|e1.m0"], 2)` — a feature of the body, its
      * setback a dimension. See blends.ts.
      */
-    chamfer: (feature: string, edges: string[], setback: number) => chamferEdges(model, feature, edges, setback),
+    //
+    // Two lines second is the sketch's chamfer (docs/plans/sketch-edit.md):
+    // `chamfer("l1", "l2", 5)` cuts the corner they share with a line,
+    // journalled as `chamfer`, as the two fillets are told apart.
+    chamfer: (a: string, b: string | string[], c: number, d?: number | null, regenerated?: unknown) =>
+      Array.isArray(b) ? chamferEdges(model, a, b, c) : sketchChamfer(model, a, b, c, d ?? null, regenerated),
     /** A fillet's or chamfer's edges, replaced in place: `setEdges("e3", [...])` — the feature dialog's ✓. */
     setEdges: (feature: string, edges: string[]) => setEdges(model, feature, edges),
     /**
@@ -1327,6 +1333,7 @@ export function neocadScope(h: EnvHandles): Bag {
     clauses: (who, make) => withClauses(who, make),
     anchor,
     facing: curveFacing,
+    log: (line) => h.log?.(line),
   };
 
   /**

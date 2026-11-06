@@ -16,10 +16,10 @@
 // component to three.
 
 import { addEllipse, checkEllipse, ellipseOf, semiAxes } from "../kinds/ellipse.ts";
-import type { Model } from "../model.ts";
+import { parseAxisRef, type Model } from "../model.ts";
 import { Dual } from "../kernel/dual.ts";
 import { dot, norm, vecSub, wedge, wedgeNorm } from "./vec.ts";
-import { chunk, curveNormal, directionOf, directionOfPoints, ellipseAxes, joinVars, lineVars, unitDuals, type DirectionRef } from "./refs.ts";
+import { chunk, curveNormal, directionOf, directionOfPoints, ellipseAxes, frameBasis, joinVars, lineVars, unitDuals, type DirectionRef } from "./refs.ts";
 import { coincident, onPlane } from "./basic.ts";
 
 // --- the direction relations -----------------------------------------------
@@ -727,6 +727,7 @@ export function minorAxis(model: Model, ellipseName: string, target: number): st
  * so this stays generic rather than being marked 2D-only.
  */
 export function symmetric(model: Model, aName: string, bName: string, lineName: string): string {
+  if (parseAxisRef(lineName)) return symmetricAxis(model, aName, bName, lineName);
   return model.relation("symmetric", [aName, bName, lineName], () => {
     const a = model.point(aName), b = model.point(bName);
     const dim = model.dim;
@@ -742,6 +743,46 @@ export function symmetric(model: Model, aName: string, bName: string, lineName: 
       const [p, q, s, e] = chunk(l, dim, 4);
       return [dot(vecSub(q, p), vecSub(e, s))];
     }, `sym(${aName},${bName},${lineName})|perp`);
+  });
+}
+
+/**
+ * `sym(a, b, "f1.y")`: mirror images across a **frame's axis** — the located
+ * line through the frame's origin along that axis, which is what "mirror about
+ * the y axis" means (docs/plans/sketch-edit.md: mirror takes the frame's axes
+ * by name, as `par` takes them). The same two blocks as the line form, the
+ * axis read as a datum (`frameBasis`): never pushed, so the drawing moves to
+ * the mirror and the frame stays put.
+ *
+ * This is the one place an axis reference is read as a *located* line. The
+ * direction relations read `"f1.x"` as a heading; `on` still refuses it (a
+ * point on an axis is `fix`'s to say, in the frame's coordinates). A mirror
+ * needs a place as well as a heading, and a frame's axis has one — its
+ * origin — so `sym` takes it. Vetoable (TODO.md).
+ */
+function symmetricAxis(model: Model, aName: string, bName: string, ref: string): string {
+  const axis = parseAxisRef(ref)!;
+  model.requireAxis(axis.axis, ref);
+  const basis = frameBasis(model, axis.frame);
+  return model.relation("symmetric", [aName, bName, ref], () => {
+    const a = model.point(aName), b = model.point(bName);
+    const dim = model.dim;
+    const along = () => {
+      const f = basis();
+      const u = axis.axis === "x" ? f.ux : axis.axis === "y" ? f.uy : f.uz!;
+      return { o: f.origin.map((c) => Dual.constant(c)), u: u.map((c) => Dual.constant(c)) };
+    };
+    const vars = [...a.varIndices, ...b.varIndices];
+    model.addResidual(vars, (l) => {
+      const [p, q] = chunk(l, dim, 2);
+      const { o, u } = along();
+      const mid = p.map((pi, i) => pi.add(q[i]).div(2));
+      return wedge(vecSub(mid, o), u);
+    }, `sym(${aName},${bName},${ref})|mid`);
+    model.addResidual(vars, (l) => {
+      const [p, q] = chunk(l, dim, 2);
+      return [dot(vecSub(q, p), along().u)];
+    }, `sym(${aName},${bName},${ref})|perp`);
   });
 }
 
