@@ -394,18 +394,35 @@ test("long-press, then drag: the menu goes and a box selects", async () => {
   assert.deepEqual([...sel].sort(), ["l1", "l2", "l3", "l4", "p1", "p2", "p3", "p4"]);
 });
 
-test("a third finger drops everything until the hand is off", async () => {
+test("three fingers always orbit: with a tool armed and landing on geometry, they turn the view and draw, move or zoom nothing", async () => {
+  // The owner, 2026-11-07: *"Can you make it so that three fingers always
+  // orbits?"*. One finger orbits only on empty canvas with nothing armed;
+  // three orbit wherever they land and whatever is armed.
   await fresh();
   await app.type("rectangle");
   await app.page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
   const before = await app.model();
-  const [ax, ay] = await onCanvas([-30, 32, 0]);
-  await f.down([ax, ay], [ax + 100, ay], [ax + 50, ay + 80]);
-  await f.glide(6, [ax + 20, ay + 20], [ax + 160, ay + 20], [ax + 70, ay + 120]);
+  // The first finger on a corner of the rectangle, the second on an edge.
+  const [ax, ay] = await onCanvas([-25, 15, 0]);
+  const [bx, by] = await onCanvas([0, 15, 0]);
+  await f.down([ax, ay], [bx, by], [ax + 50, ay + 80]);
+  await f.glide(6, [ax + 60, ay + 20], [bx + 60, by + 20], [ax + 110, ay + 100]);
   await f.up();
   const after = await app.model();
-  assert.equal(after.size, before.size);
-  assert.equal(after.view.scale, before.view.scale, "no zoom either");
+  assert.equal(after.size, before.size, "nothing drawn");
+  assert.deepEqual(after.points, before.points, "nothing moved");
+  assert.equal(after.view.scale, before.view.scale, "no zoom");
+  assert.equal(after.activeTool, "rectangle", "and the tool is still armed");
+  assert.ok(after.view.right && after.view.up, `the view turned: ${JSON.stringify(after.view)}`);
+  assert.notDeepEqual(after.view.right, before.view.right ?? [1, 0, 0], "turned about the vertical");
+  assert.notDeepEqual(after.view.up, before.view.up ?? [0, 1, 0], "and about the horizontal");
+  await shot(app, "three-finger-orbit");
+  // A fourth finger spends the hand: nothing more until it is off the glass.
+  const turned = after.view;
+  await f.down([ax, ay], [bx, by], [ax + 50, ay + 80], [ax + 100, ay + 80]);
+  await f.glide(6, [ax + 20, ay + 60], [bx + 20, by + 60], [ax + 70, ay + 140], [ax + 120, ay + 140]);
+  await f.up();
+  assert.deepEqual((await app.model()).view, turned, "four fingers did nothing");
 });
 
 test("the action strip: Undo, Redo, Delete, Cancel each type their line — and are off when they would do nothing", async () => {

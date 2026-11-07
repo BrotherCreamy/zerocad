@@ -53,6 +53,7 @@ function recorder(): { sink: GestureSink; calls: string[] } {
     box: (x, y) => calls.push(`box ${x},${y}`),
     boxEnd: (x, y) => calls.push(`boxEnd ${x},${y}`),
     pinch: (dx, dy, f, cx, cy) => calls.push(`pinch ${r(dx)},${r(dy)} ×${r(f)} @${r(cx)},${r(cy)}`),
+    orbit: (dx, dy) => calls.push(`orbit ${r(dx)},${r(dy)}`),
     abandon: () => calls.push("abandon"),
     end: () => calls.push("end"),
   };
@@ -190,19 +191,78 @@ test("a pinch that loses a finger is spent: the finger left behind draws nothing
   assert.deepEqual(calls, ["end", "press 50,50", "tap 50,50", "end"]);
 });
 
-test("a third finger drops everything, a pinch included, until every finger has lifted", () => {
+test("three fingers orbit by their centroid's move — and one lifting spends the hand: the two left neither pinch nor orbit", () => {
   const { g, calls } = setup();
   g.down(1, 100, 100);
   g.move(1, 150, 100);
   g.down(2, 200, 200);
   g.down(3, 250, 250);
   calls.length = 0;
+  // The centroid of (150,100), (200,200), (250,250) is (200,183.333); moving
+  // one finger by 30 moves it by 10.
+  g.move(1, 180, 100);
+  g.move(2, 230, 200);
+  g.move(3, 280, 280);
+  assert.deepEqual(calls, ["orbit 10,0", "orbit 10,0", "orbit 10,10"]);
+  calls.length = 0;
+  g.up(3, 280, 280);
   g.move(1, 10, 10);
-  g.move(2, 20, 20);
-  g.up(3, 250, 250);
-  g.move(1, 30, 30); // two fingers again, still nothing
-  g.up(1, 30, 30);
+  g.move(2, 20, 20); // two fingers again: no pinch
+  g.up(1, 10, 10);
   g.up(2, 20, 20);
+  assert.deepEqual(calls, ["end"]);
+});
+
+test("three fingers orbit wherever the hand was: from a pinch, from a hand already spent, and from a held press's menu", () => {
+  // From a pinch: the first two are a pinch for the moment before the third lands.
+  {
+    const { g, calls } = setup();
+    g.down(1, 0, 0);
+    g.down(2, 30, 0);
+    g.move(2, 40, 0);
+    g.down(3, 20, 30);
+    calls.length = 0;
+    g.move(3, 20, 60);
+    assert.deepEqual(calls, ["orbit 0,10"]);
+  }
+  // From spent: a pinch lost a finger, then two more came down.
+  {
+    const { g, calls } = setup();
+    g.down(1, 0, 0);
+    g.down(2, 30, 0);
+    g.up(2, 30, 0);
+    g.down(3, 60, 0);
+    assert.equal(g.state, "spent", "two down again after a lift: still spent");
+    g.down(4, 90, 0);
+    assert.equal(g.state, "orbit", "three down: an orbit");
+    calls.length = 0;
+    g.move(4, 90, 30);
+    assert.deepEqual(calls, ["orbit 0,10"]);
+  }
+  // From a long-press: its menu is withdrawn (`abandon`), and the hand orbits.
+  {
+    const { g, clock, calls } = setup();
+    g.down(1, 100, 100);
+    clock.advance(LONG_PRESS_MS + 1);
+    g.down(2, 130, 100);
+    g.down(3, 160, 100);
+    assert.equal(g.state, "orbit");
+    assert.deepEqual(calls, ["press 100,100", "longPress 100,100", "abandon"]);
+  }
+});
+
+test("a fourth finger spends the orbit until every finger has lifted", () => {
+  const { g, calls } = setup();
+  g.down(1, 0, 0);
+  g.down(2, 30, 0);
+  g.down(3, 60, 0);
+  g.down(4, 90, 0);
+  calls.length = 0;
+  g.move(1, 0, 50);
+  g.up(4, 90, 0); // three again — but the hand is not lifted, and three that were four are not a new three
+  g.move(2, 30, 50);
+  assert.equal(g.state, "spent");
+  g.up(1, 0, 50); g.up(2, 30, 50); g.up(3, 60, 0);
   assert.deepEqual(calls, ["end"]);
 });
 

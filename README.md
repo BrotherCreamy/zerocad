@@ -642,12 +642,15 @@ Chromium is the browser, but not the phone around it):
   point or edge it lands on; on empty canvas with nothing armed it **turns the
   drawing**.
 - **two fingers** — pan and pinch-zoom, together.
+- **three fingers** — **always orbit**: wherever they land, whatever is
+  armed (in a flat drawing, where there is nothing to turn, they pan).
 - **the Hand** (second on the toolbar) — one finger pans instead, from
   anywhere, over geometry too; a tap still selects. **Select** (the arrow,
   first) puts any tool down; it is lit whenever none is armed.
 - **hold** (half a second) — the menu, at the finger; **hold, then drag** — a
   selection box.
-- A second finger drops a shape half-drawn; a third drops everything.
+- A second finger drops a shape half-drawn; three fingers orbit instead; a
+  fourth drops everything.
 - While a finger is down with a tool armed, the place it will land on — and
   what it snaps to — is drawn above the fingertip.
 - **Undo, Redo, Delete, Cancel** are the strip at the top right. The keyboard

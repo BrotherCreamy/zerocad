@@ -49,8 +49,8 @@
 // back a tap, a drag, a long-press, a box or a pinch. Those are fed down the
 // same paths a mouse uses: a tap is a click, a drag is the left button's drag
 // (a tool's own gesture, or moving the geometry under it), a long-press is the
-// right-click menu, a long-press-then-drag is the box, and two fingers pan and
-// zoom about their centroid at once. One finger on empty canvas with nothing
+// right-click menu, a long-press-then-drag is the box, two fingers pan and
+// zoom about their centroid at once, and three fingers always orbit. One finger on empty canvas with nothing
 // armed **orbits** — it is the only hand there is, and turning the drawing is
 // what a finger on nothing most often means; the box, which the mouse's left
 // button gets on empty canvas, moves behind the long-press. The split is made
@@ -1414,6 +1414,15 @@ export class ToolEngine {
       boxEnd: (x, y) => { if (this.idle) this.idleRelease(x, y, true); },
       pinch: (dx, dy, factor, cx, cy) => {
         assignView(this.view, zoomAbout(panBy(this.view, dx, dy), cx, cy, factor));
+        this.onRenderOnly();
+      },
+      // **Three fingers orbit, always** (gestures.ts): at the right-drag's
+      // rate, whatever is armed or under them. In a 2D model, where there is
+      // nothing to turn, they pan — as the right button does there.
+      orbit: (dx, dy) => {
+        assignView(this.view, this.model.dim === 3
+          ? orbitBy(this.view, dx * ORBIT_PER_PIXEL, dy * ORBIT_PER_PIXEL)
+          : panBy(this.view, dx, dy));
         this.onRenderOnly();
       },
       abandon: () => {

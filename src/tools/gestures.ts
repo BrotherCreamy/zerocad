@@ -19,13 +19,20 @@
 // | down, still for `LONG_PRESS_MS` | **long-press** — the right-click menu |
 // | long-pressed, then moved | **box** — the left drag on empty canvas |
 // | a second finger | **pinch** — the centroid pans, the spread zooms about it |
-// | a third finger | everything in progress dropped, until every finger lifts |
+// | three fingers | **orbit** — the three's centroid turns the view, always |
+// | a fourth finger | everything in progress dropped, until every finger lifts |
 //
 // A second finger arriving during any one-finger gesture **abandons** it
-// first (a half-drawn rectangle dropped, not committed) and then pinches. A
-// pinch that loses a finger, and anything after a third, is *spent*: nothing
-// more happens until the hand is off the glass, so a finger left behind by a
-// pinch cannot start drawing where it happens to be. Twist is ignored — the
+// first (a half-drawn rectangle dropped, not committed) and then pinches.
+// **Three fingers always orbit** (the owner, 2026-11-07: *"Can you make it so
+// that three fingers always orbits?"*): wherever they land — on geometry, on
+// nothing — whatever is armed, and from whatever the hand was doing, a pinch
+// or a spent hand included, since three fingers seldom land at once and the
+// first two are a pinch for a moment. One finger orbits only on empty canvas
+// with nothing armed (engine.ts); three is the one that cannot be read as
+// anything else. A pinch or an orbit that loses a finger, and a fourth, is
+// *spent*: nothing more happens until the hand is off the glass, so a finger
+// left behind cannot start drawing where it happens to be. Twist is ignored — the
 // spread and the centroid are all a pinch reads, so turning two fingers is
 // neither a pan nor a zoom rather than a misread one.
 //
@@ -99,6 +106,8 @@ export interface GestureSink {
   boxEnd(x: number, y: number): void;
   /** Two fingers moved: pan by (dx, dy), then zoom by `factor` about the centroid (cx, cy) they now share. */
   pinch(dx: number, dy: number, factor: number, cx: number, cy: number): void;
+  /** Three fingers moved: their centroid moved by (dx, dy) — an orbit by that much. */
+  orbit(dx: number, dy: number): void;
   /**
    * The one-finger gesture in progress — a press, drag, long-press or box — is
    * dropped, not finished. One case continues the same finger: a long-press
@@ -117,6 +126,7 @@ type Phase =
   | { kind: "held"; id: number; x0: number; y0: number; t0: number }
   | { kind: "box"; id: number }
   | { kind: "pinch"; a: number; b: number; cx: number; cy: number; spread: number }
+  | { kind: "orbit"; ids: number[]; cx: number; cy: number }
   | { kind: "spent" };
 
 /** Which phases are one finger's gesture — what a second or third finger abandons. */
@@ -161,6 +171,14 @@ export class Gestures {
       this.sink.press(x, y);
       return;
     }
+    // Three on the glass orbit, whatever came before — spent included: a
+    // hand that pinched, lifted one and put two down has three down now.
+    if (n === 3) {
+      this.drop();
+      const ids = [...this.fingers.keys()];
+      this.phase = { kind: "orbit", ids, ...this.centroid(ids) };
+      return;
+    }
     if (this.phase.kind === "spent") return;
     if (n === 2 && this.phase.kind !== "pinch") {
       this.drop();
@@ -168,7 +186,7 @@ export class Gestures {
       this.phase = { kind: "pinch", a, b, ...this.pair(a, b) };
       return;
     }
-    // A third finger (or a second arriving at a recogniser that missed the
+    // A fourth finger (or a second arriving at a recogniser that missed the
     // first): everything stops until the hand is off.
     this.drop();
     this.phase = { kind: "spent" };
@@ -234,6 +252,14 @@ export class Gestures {
         this.sink.pinch(dx, dy, factor, next.cx, next.cy);
         return;
       }
+      case "orbit": {
+        if (!p.ids.includes(id)) return;
+        const next = this.centroid(p.ids);
+        const [dx, dy] = [next.cx - p.cx, next.cy - p.cy];
+        this.phase = { ...p, ...next };
+        this.sink.orbit(dx, dy);
+        return;
+      }
     }
   }
 
@@ -254,7 +280,7 @@ export class Gestures {
       this.phase = { kind: "idle" };
     } else if (p.kind === "held") {
       this.phase = { kind: "idle" }; // the menu stays open; the finger has done its work
-    } else if (p.kind === "pinch") {
+    } else if (p.kind === "pinch" || p.kind === "orbit") {
       this.phase = { kind: "spent" };
     }
     this.settle();
@@ -326,6 +352,13 @@ export class Gestures {
     if (p.kind !== "pending" || p.id !== id) return;
     this.phase = { kind: "held", id, x0: p.x0, y0: p.y0, t0: p.t0 };
     this.sink.longPress(p.x0, p.y0);
+  }
+
+  /** Where these fingers' centroid is. */
+  private centroid(ids: number[]): { cx: number; cy: number } {
+    let cx = 0, cy = 0;
+    for (const id of ids) { const f = this.fingers.get(id)!; cx += f.x; cy += f.y; }
+    return { cx: cx / ids.length, cy: cy / ids.length };
   }
 
   /** Where two fingers' centroid is and how far apart they are. */

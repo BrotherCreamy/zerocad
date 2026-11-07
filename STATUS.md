@@ -2783,7 +2783,8 @@ replacing) the system Node other projects on this machine may depend on.
   long-press is a drag (docs/plans/touch-harness.md). A tool's press is
   held until the finger moves or lifts, so a pinch never reaches it. A second
   finger mid-draw re-arms the tool. One finger on empty canvas orbits (pans in
-  2D). A tap toggles once something is selected, and a finger's box adds. A
+  2D); **three fingers always orbit**, wherever they land and whatever is
+  armed, and a fourth spends the hand. A tap toggles once something is selected, and a finger's box adds. A
   finger down reveals as a hover does. **Every pick and snap radius ×2.75**
   under a finger (a point is a 44 pt target); glyphs keep their size. With a
   tool armed, the active point is drawn **56 px above the finger** on a disc,

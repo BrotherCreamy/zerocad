@@ -26,6 +26,18 @@ otherwise.
 
 ## Decisions made so far — veto here if any are wrong
 
+- **Three fingers always orbit; a fourth spends the hand** (the owner,
+  2026-11-07: *"Can you make it so that three fingers always orbits?"*).
+  Wherever they land and whatever is armed; in 2D they pan. A lift ends the
+  orbit and the two fingers left do nothing until the hand is off (as a pinch
+  that loses a finger does), so a hand coming off the glass cannot zoom by
+  accident. The first two fingers are a pinch for the moment before the third
+  lands: whatever that pinch moved stays moved, not undone. **Unverified on
+  the device:** iOS's own three-finger edit gestures (undo/redo swipe,
+  copy/paste pinch) may take the touches. If they do, the page gets a
+  `pointercancel` and the orbit stops. Owner: does it turn smoothly on the
+  iPhone, and does an "Undo" banner ever appear?
+
 - **No back stack on iOS: the page keeps one history entry, so iOS's edge
   swipe has nowhere to go** (the owner, 2026-11-06, from the installed app:
   *"if I swipe right from the left or right side, it takes me "back" or

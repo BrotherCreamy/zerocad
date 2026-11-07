@@ -7,6 +7,37 @@ decisions.
 
 ---
 
+## Three fingers always orbit
+
+The owner (2026-11-07): *"Can you make it so that three fingers always
+orbits?"*. Before, one finger orbited only on empty canvas with nothing armed,
+and a third finger dropped everything until the hand lifted. Now three
+fingers on the glass turn the view at the right-drag's rate (their centroid's
+move), wherever they land and whatever tool is armed. That includes geometry
+under them, a pinch the first two had begun, a long-press whose menu was open
+(it is withdrawn), and a hand that was spent. A shape half-drawn is dropped,
+as a second finger drops it, and the tool stays armed. In a 2D model, where
+there is nothing to turn, three fingers pan, as the right button does there.
+A finger lifting ends the orbit, and the two left neither pinch nor orbit
+until the hand is off. A fourth finger spends the hand.
+
+- `src/tools/gestures.ts`: an `orbit` phase and a sink call. `engine.ts` turns
+  it into `orbitBy`, or `panBy` in 2D.
+- Unit: the old "a third finger drops everything" test now states the new rule
+  (the centroid's move, and a lift spends the hand). New tests cover an orbit
+  from a pinch, from a spent hand and from a long-press, and a fourth finger.
+  1713/1713.
+- E2E (`touch.e2e.ts`, iPhone 13): the rectangle tool armed, with three
+  fingers landing on a corner and an edge. The view turns, nothing is drawn or
+  moved, there is no zoom, and the tool stays armed. Four fingers then do
+  nothing. On the old code the test fails (no turn), and on the new one the
+  file passes 18/18. Looked at the picture: the rectangle is turned so the z
+  axis shows, and nothing is added.
+- **Unverified on the device:** iOS has three-finger gestures of its own
+  (swipe for undo and redo, pinch for copy and paste, a tap for the edit bar).
+  Whether iOS takes the touches from the page for them, which would send
+  `pointercancel` and end the orbit, cannot be seen from Chromium.
+
 ## iOS's edge swipe no longer goes "back" or "forward" in the app
 
 The owner, from the installed app on his iPhone (2026-11-06): *"if I swipe

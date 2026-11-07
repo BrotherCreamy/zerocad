@@ -36,7 +36,9 @@ keys. The mapping, after Onshape and Shapr3D on iPhone and iPad:
 
 In 2D (no orbit), a one-finger drag on empty canvas pans. Two-finger twist is
 ignored, not misread as anything. A third finger cancels the gesture in
-progress. Mouse and keyboard keep working unchanged on the same build: the
+progress. *(Since 2026-11-07: three fingers **orbit**, always — the owner:
+"Can you make it so that three fingers always orbits?" — and a fourth
+cancels. See gestures.ts.)* Mouse and keyboard keep working unchanged on the same build: the
 paths branch on `pointerType`, never on a device guess.
 
 ## Design notes
