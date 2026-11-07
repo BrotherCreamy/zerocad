@@ -330,6 +330,28 @@ test("3D: par(l1, l2) and perp(l2, l3) on a rectangle hold without a fold — th
   console.log(`bare: l2 ${lengthOf(bare, "l2").toExponential(2)}; steered: l2 ${lengthOf(m, "l2").toFixed(3)}`);
 });
 
+// --- the limits of "the user's own zero", pinned (TODO.md) -----------------------------
+
+test("2D: the own-zero rule is one relation — two coins through a third point fold a line, and that is a conflict", () => {
+  const m = new Model(2);
+  m.addPoint([0, 0], "a"); m.addPoint([10, 0], "b"); m.addPoint([5, 5], "c");
+  m.addLine("a", "b", "l1");
+  const one = coincident(m, "a", "c");
+  assert.equal(m.solve().solved, true);
+  const two = coincident(m, "c", "b");
+  conflict(m, [one, two], "a chain of coins");
+});
+
+test("2D: …and one relation that folds what it names by itself reads as meant: perp(l1, l1) solves, the line at nothing", () => {
+  const m = new Model(2);
+  m.addPoint([0, 0], "a"); m.addPoint([10, 3], "b");
+  m.addLine("a", "b", "l1");
+  perpendicular(m, "l1", "l1");
+  const report = m.solve();
+  assert.equal(report.solved, true, `collapsed ${report.collapsed}`);
+  assert.ok(lengthOf(m, "l1") < 1e-3, `folded: ${lengthOf(m, "l1")}`);
+});
+
 // --- every kind declares its measures ------------------------------------------------
 
 test("2D: an ellipse run to nothing by two fixes is a conflict — its own measure, no line in it", () => {
