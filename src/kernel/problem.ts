@@ -175,6 +175,101 @@ export class Problem {
     this.blocks.splice(i, 1);
   }
 
+  /** Every variable's value, copied: what `restore` takes back. */
+  snapshot(): number[] {
+    return this.values.slice();
+  }
+
+  /**
+   * Puts values back from a `snapshot`: all of them, or only `vars`. A
+   * variable made since the snapshot keeps its value, since the snapshot has
+   * none for it.
+   */
+  restore(saved: readonly number[], vars?: Iterable<number>): void {
+    if (vars === undefined) {
+      for (let i = 0; i < saved.length && i < this.values.length; i++) this.values[i] = saved[i];
+      return;
+    }
+    for (const i of vars) if (i >= 0 && i < saved.length && i < this.values.length) this.values[i] = saved[i];
+  }
+
+  /** The variables a stored block reads now (a thunk is asked again), or [] for no such block. */
+  varsOf(handle: BlockHandle): number[] {
+    const e = this.blocks.find((x) => x.id === handle);
+    return e ? [...resolve(e.block.varIndices)] : [];
+  }
+
+  /**
+   * **What can move with these variables**: the connected component of
+   * `seed` in the graph whose edges are the stored blocks. A variable is
+   * joined to every block reading it, and a block to every variable it reads.
+   * A block outside the component shares no variable with it, so solving the
+   * component alone (`solve({ only })`) settles it exactly as a whole solve
+   * would. Variables and handles ascending; plain indices and handles, since
+   * what the variables are is the caller's business.
+   */
+  connected(seed: Iterable<number>): { vars: number[]; blocks: BlockHandle[] } {
+    const reads = this.blocks.map((e) => ({ id: e.id, vars: resolve(e.block.varIndices) }));
+    const readers = new Map<number, number[]>();
+    reads.forEach((b, k) => {
+      for (const v of b.vars) {
+        const list = readers.get(v);
+        if (list) list.push(k);
+        else readers.set(v, [k]);
+      }
+    });
+    const vars = new Set<number>();
+    const blocks = new Set<number>();
+    const stack = [...seed];
+    while (stack.length) {
+      const v = stack.pop()!;
+      if (vars.has(v)) continue;
+      vars.add(v);
+      for (const k of readers.get(v) ?? []) {
+        if (blocks.has(k)) continue;
+        blocks.add(k);
+        for (const w of reads[k].vars) if (!vars.has(w)) stack.push(w);
+      }
+    }
+    return {
+      vars: [...vars].sort((a, b) => a - b),
+      blocks: [...blocks].map((k) => reads[k].id).sort((a, b) => a - b),
+    };
+  }
+
+  /**
+   * **How far each block is from `seed`**, in blocks: 0 for a block reading a
+   * seed variable, 1 for one reading a variable of those, and so on through
+   * the same graph `connected` walks. A block out of reach is absent. What
+   * orders a search by nearness to where something went wrong.
+   */
+  reach(seed: Iterable<number>): Map<BlockHandle, number> {
+    const reads = this.blocks.map((e) => ({ id: e.id, vars: resolve(e.block.varIndices) }));
+    const readers = new Map<number, number[]>();
+    reads.forEach((b, k) => {
+      for (const v of b.vars) {
+        const list = readers.get(v);
+        if (list) list.push(k);
+        else readers.set(v, [k]);
+      }
+    });
+    const out = new Map<BlockHandle, number>();
+    const seen = new Set<number>(seed);
+    let layer = [...seen];
+    for (let d = 0; layer.length; d++) {
+      const next: number[] = [];
+      for (const v of layer) {
+        for (const k of readers.get(v) ?? []) {
+          if (out.has(reads[k].id)) continue;
+          out.set(reads[k].id, d);
+          for (const w of reads[k].vars) if (!seen.has(w)) { seen.add(w); next.push(w); }
+        }
+      }
+      layer = next;
+    }
+    return out;
+  }
+
   clear(): void {
     this.values = [];
     this.blocks = [];
@@ -188,7 +283,7 @@ export class Problem {
    * retained; `storedRows` is where they begin, which is all a caller needs to
    * tell an accusation from a nudge (see `solve`).
    */
-  private evaluate(extra: ResidualBlock[] = []): {
+  private evaluate(extra: ResidualBlock[] = [], only?: ReadonlySet<BlockHandle>): {
     r: number[]; rows: number[]; cols: number[]; vals: number[]; labels: (string | undefined)[]; storedRows: number;
     owners: BlockHandle[];
   } {
@@ -221,7 +316,7 @@ export class Problem {
     // between what the problem *is* and what this one solve was also asked to
     // weigh. A row index, rather than a flag per block, because that is what
     // the report has to slice.
-    for (const entry of this.blocks) run(entry.block, entry.id);
+    for (const entry of this.blocks) if (!only || only.has(entry.id)) run(entry.block, entry.id);
     const storedRows = r.length;
     for (const block of extra) run(block, 0);
     return { r, rows, cols, vals, labels, storedRows, owners };
@@ -241,14 +336,22 @@ export class Problem {
    * reaches zero (that is what makes it weak), so counting it as an offender
    * would report a conflict that is not one; and `maxResidual` is meant to say
    * how well the *model* is satisfied, which a transient nudge would spoil.
+   *
+   * `only`, when given, is the stored blocks that take part: the rest are
+   * left out of this solve as though they were not there, and a variable only
+   * they read stays where it is. What a caller asking "would these blocks
+   * alone agree?" needs (the conflict search, model.ts's `conflicting`)
+   * without removing anything it would then have to put back: a block is a
+   * closure, and a removed one cannot be.
    */
-  solve(opts: { maxIter?: number; tol?: number; extra?: ResidualBlock[] } = {}): SolveReport {
+  solve(opts: { maxIter?: number; tol?: number; extra?: ResidualBlock[]; only?: ReadonlySet<BlockHandle> } = {}): SolveReport {
     const maxIter = opts.maxIter ?? 60;
     const tol = opts.tol ?? 1e-9;
     const extra = opts.extra ?? [];
+    const only = opts.only;
     const n = this.values.length;
 
-    let { r, rows, cols, vals, labels, storedRows, owners } = this.evaluate(extra);
+    let { r, rows, cols, vals, labels, storedRows, owners } = this.evaluate(extra, only);
     let norm = norm2(r);
     if (n === 0 || r.length === 0) {
       return { solved: true, iterations: 0, maxResidual: 0, offenders: [], blocks: [] };
@@ -265,7 +368,7 @@ export class Problem {
         );
         const saved = this.values.slice();
         for (let i = 0; i < n; i++) this.values[i] += dx[i];
-        const next = this.evaluate(extra);
+        const next = this.evaluate(extra, only);
         const nextNorm = norm2(next.r);
         if (isFinite(nextNorm) && nextNorm < norm) {
           r = next.r; rows = next.rows; cols = next.cols; vals = next.vals; labels = next.labels;

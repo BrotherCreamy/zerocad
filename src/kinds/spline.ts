@@ -24,7 +24,7 @@
 // points there (`onplane`), as it holds a line's. A normal would be three more
 // variables only a `par` could hold, saying what the points already say.
 
-import { entityKind, type EntityKindSpec, type Entity, type Model } from "../model.ts";
+import { distanceMeasure, entityKind, type EntityKindSpec, type Entity, type Measure, type Model } from "../model.ts";
 import type { BlockHandle } from "../kernel/problem.ts";
 import { DEGREE, fewestPoints, gapOf, interpolate, knotsOf, layout, numericGaps, type BSpline } from "../bspline.ts";
 
@@ -75,6 +75,18 @@ export const SPLINE_STRUCTURE: EntityKindSpec = {
   // chord or another edge meets it (found by a test: such a chord split nothing).
   through: (e) => (e as SplineEntity).points,
   owns: (e) => (e as SplineEntity).blocks,
+  // The spacing between consecutive through-points, round the seam of a
+  // closed one: two run together is a spline with a kink it never had
+  // (docs/plans/conflict-detection.md), as `checkSpline` refuses to draw one.
+  measures: (model, e) => {
+    const s = e as SplineEntity;
+    const n = s.points.length;
+    const out: Measure[] = [];
+    for (let k = 0; k < (s.closed ? n : n - 1); k++) {
+      out.push(distanceMeasure(model.point(s.points[k]).varIndices, model.point(s.points[(k + 1) % n]).varIndices));
+    }
+    return out;
+  },
 };
 
 /** The spline called `name`, or a refusal saying it is not one. */
