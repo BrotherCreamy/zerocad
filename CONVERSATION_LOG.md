@@ -106,6 +106,77 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### Conflict detection: what a solution is, and why a threshold was not enough
+
+The owner found that a `par` could be added across a rectangle's `perp`s and
+the drawing said SOLVED. It had solved, to 1e-12, by folding a side. The
+residuals are right: a zero vector is parallel and perpendicular to
+everything. So the fix is in what counts as a solution, decided in the model,
+where what a line is is known. The kernel stays blind.
+
+**A plain threshold failed on the first triangle.** The plan's "measure
+below ε·L" works for a collapse a residual meets linearly, which lands at
+the solver's precision, ~1e-12·L. A triangle's second right angle does not.
+Once the first holds, the second row is the square of the folding side, and
+the damped step stalls at ~4e-5·L, which is the size of a real detail. Ruled
+out: a larger ε (it would call real small sizes collapses), and polishing
+with no tolerance (I tried it; the damped step makes no progress there at
+all). What worked is to treat anything that fell past 1e-2·L as a suspect,
+pull it toward nothing, and release it. A collapse has nothing holding it off
+zero and stays there. A real small size has a relation that set it, and that
+relation pulls it back, after which the solve's own state is restored. With
+that in, ε could be measured: across the whole unit suite collapses end at
+≤ 4.6e-10·L, and real sizes that halved in a solve stay ≥ 2e-4·L.
+
+**The solver is local, and the search found it first.** QuickXplain asks
+"does this subset conflict?" by solving the subset. On the rectangle it was
+told that `par(l1,l2)` with `perp(l2,l3)` conflicts, and it named that pair.
+They don't: a turned side meets both. But from the rectangle as drawn, the
+nearest root folds l2. So a collapsing trial is retried *steered*: every size
+pulled toward what it was for a while, then released. The same retry runs on
+the user's own solve, and in 3D it turns a side where the bare solver folded
+one, for a set that was never a conflict. Rejected: normalising `par` and
+`perp` by the lengths (Design 6). It would change every drawing's solving to
+fix the ones that conflict.
+
+**The user's own zero.** `dist(p, q, 0)` is a collapse by the definition,
+and the plan says it is none. A list of which relations may zero what would
+be a second table that the next relation forgets. The rule instead is that
+one relation alone, solved from the state before, collapses the measure too.
+That catches `dist(p, q, 0)` and a `coin` of a line's ends with no list. It
+also reads `perp(l1, l1)` as meant, and a chain of two `coin`s through a
+third point as a conflict. Both are pinned by tests and listed in TODO for
+the owner.
+
+**Two irreducible conflicts in one rectangle.** QuickXplain found
+`{par, perp23, perp34}` before `{par, perp12}`. Both are irreducible: with
+l1 ∥ l2, three corners are in a row and the far corner's two perps fold a
+side. The plan expected the second. Candidates are now ordered nearest what
+folded: first the relations naming the folded entity, then by reach through
+the block graph. QuickXplain keeps the earliest, so the par's own corner is
+what gets named. Delete that perp and the other conflict is named next. That
+is right, and the test says so.
+
+**Rollback per component, not of the whole drawing.** Undoing the whole
+solve would mean a `dist` typed on an unrelated line never lands while a
+conflict stands anywhere. A component shares no variable with another, so
+its answer is the same either way, and only the part that folded goes back.
+
+**The drag: stop the frame, not refuse at the end.** Refusing at release
+would let the rectangle visibly fold under the hand and spring back. A
+frame's check is cheap (only entities whose variables moved, no push, no
+search), so each frame that would fold its part stays where the last one
+was. The price is that a drawing holding a conflict cannot be dragged in that
+part, which seems right while it is red.
+
+**Cost.** The search was 300 ms on forty chained rectangles, a single
+component of 280 relations, because every question solved the whole
+component. Searching rings outward from what failed (a set that conflicts by
+itself is irreducible or not whatever is outside it) brought it to ~130 ms.
+A cache for a standing conflict was considered and left out: its key would
+need everything a block's closure reads outside its declared variables, and
+a frame's points are exactly that.
+
 ### The spline: why it owns its equations, why it has no normal, and what was rejected
 
 **Interpolating, not a control polygon.** The plan said Onshape's spline,

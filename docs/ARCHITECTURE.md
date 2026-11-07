@@ -272,6 +272,55 @@ the old rule against squared residuals, seen from the other side — and it is
 why `tan` at a shared end needed a join form: the distance form there was a
 double root, and the joint read as free (docs/plans/sketch-relations.md).
 
+### A conflict is a conflict even when a collapse satisfies it
+
+The owner: *"I'm able to add a parallel relation to a set of perpendicular
+relation lines. This is a bug."* A line of zero length is parallel and
+perpendicular to everything, so least squares meets a `par` across a
+rectangle's `perp`s by folding a side, to 1e-12, and the verdict said SOLVED.
+Nothing about the residuals is wrong; the solution is. So what a solution is
+gets decided where what a line *is* is known: `Model.solve`, not the kernel
+(docs/plans/conflict-detection.md).
+
+- **Measures.** Every entity has non-degeneracy measures, as functions of its
+  variables: a line's length, a radius, a frame's axes, and whatever a
+  declared kind says through `EntityKindSpec.measures` (an ellipse's axes, a
+  spline's spacing). A **collapse** is a measure above ε·L before a solve and
+  below it after, L being the drawing's size, ε = 1e-6.
+- **Telling a collapse from a small size.** One a residual meets quadratically
+  (a triangle's second right angle) stalls at ~4e-5·L, where the damped step
+  stops seeing it. So a measure that fell past 1e-2·L is a suspect, and is
+  pushed toward zero and released: a collapse stays at zero, and a size a
+  relation set comes back. After that, every collapse in the unit suite ends at
+  ≤ 4.6e-10·L and the smallest real size left after halving is 2e-4·L.
+- **The solver is local.** From a rectangle it will fold a side to meet a set
+  that a turned side meets just as well. A collapse is retried **steered**
+  (every size pulled toward what it was, then released) before it is believed.
+- **The user's own zero** — `dist(p, q, 0)`, a `coin` of a line's ends — is no
+  collapse. The test is that one relation alone, tried from the state before,
+  collapses it too.
+- **What a collapse does.** The solve fails, `collapsed` names what would have
+  folded, and the connected component that folded (`Problem.connected`) is put
+  back as it was. Other components keep their answer, since they share no
+  variable. The relation stays, as Onshape keeps a conflicting constraint.
+  Redundancy is never said of a relation reading a folded entity.
+- **Naming it minimally.** `Model.conflicting` names an irreducible set, for a
+  collapse and a failed solve alike. It runs QuickXplain over the deletable
+  relations of the failed component, each question a trial solve of that
+  component alone from the state before (`Problem.solve({ only })`).
+  Candidates nearest what failed go first: relations naming the folded entity,
+  then by `Problem.reach`. The first ring of them that conflicts by itself is
+  the one searched. A feature's own relations (an extrude's depth) are never
+  named. The search is bounded by trials and milliseconds, and past the bound
+  the component is named as before, by its large rows.
+- **A drag frame** that would fold something stops where the last frame was,
+  for the component that would fold. So a drawing that holds a conflict does
+  not move in that part until the conflict is deleted.
+
+The kernel learned only geometry-free things for this: `solve({ only })`,
+`snapshot`/`restore`, `varsOf`, `connected` and `reach`. It still has never
+heard of a point.
+
 ## Structure and equations are separate
 
 `model.ts` holds structure: names, references between entities, and which
@@ -1881,7 +1930,7 @@ until the next action went unrecorded.
 
 ## Why there is an end-to-end suite
 
-Forty-eight bugs so far were invisible to the unit tests and obvious within seconds
+Fifty bugs so far were invisible to the unit tests and obvious within seconds
 of running the app:
 
 1. a status readout that went stale, so a conflict could be introduced from
@@ -2110,6 +2159,17 @@ of running the app:
    iPhone's chip, over the drawing. The tool said the right thing; found by
    looking at the iPhone picture. A finger reads "tap more, ✓ ends, the
    first closes".
+49. A conflicting relation clicked in the status, the log saying "r4 selected
+   — Delete removes it", and Delete doing nothing: the key is the armed
+   tool's while one is armed, and the constrain tool that had just added the
+   par still was. Every unit test passed (the unit suite has no key); found by
+   the conflict e2e's first run (conflict-detection.md). The click puts the
+   tool down now.
+50. A drawing restored by autosave never solved at start, so one holding a
+   conflict opened reading "ready" in the sketch's ink, its conflict unsaid
+   until the next edit: the stale readout of bug 1, from the other end. Found
+   by the same suite's reload. A restored drawing is solved first; a CONFLICT
+   stays up, and one that solves still reads ready.
 
 None of these are mathematics. They are all *assembly*. Hence `npm run
 test:e2e`, and hence the expectation that anything touching the app is checked

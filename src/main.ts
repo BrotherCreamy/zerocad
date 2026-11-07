@@ -1512,7 +1512,10 @@ async function main() {
     showDiagnosis(report.solved, c.relations, c.unowned);
     const said = c.relations.join(" ");
     if (said && said !== conflictSaid) {
-      log(`CONFLICT — these cannot all hold: ${c.relations.map((r) => describeRelation(model.relationOf(r))).join(" · ")}`, "err");
+      // A collapse says what would have folded: the relations hold only if it
+      // goes to nothing, which is why the drawing did not move.
+      const folds = report.collapsed.length ? ` without collapsing ${report.collapsed.join(", ")}` : "";
+      log(`CONFLICT — these cannot all hold${folds}: ${c.relations.map((r) => describeRelation(model.relationOf(r))).join(" · ")}`, "err");
     }
     conflictSaid = said;
     render();
@@ -1550,6 +1553,14 @@ async function main() {
       b.title = `${model.relations.has(part.relation) ? describeRelation(model.relationOf(part.relation)) : part.relation} — click to select it, then Delete removes it`;
       b.addEventListener("click", () => {
         if (!model.relations.has(part.relation)) return;
+        // Picked up to be deleted, so whatever tool is in the hand is put down
+        // first: Delete is a tool's own while one is armed, and the line below
+        // would otherwise promise what the key then does not do (found by the
+        // conflict e2e, the constrain tool still armed from adding the par).
+        if (engine.active) {
+          engine.arm(SELECT);
+          syncToolbar();
+        }
         engine.select([part.relation]);
         log(`${part.relation} selected — Delete removes it`, "out");
         render();
@@ -2987,8 +2998,14 @@ async function main() {
   // Drops, the desktop's launch queue and the autosave's hidden-flush.
   files.install();
 
+  // **A restored drawing is solved before it is called ready**: one autosaved
+  // holding a conflict used to open reading "ready", its relations in the
+  // sketch's ink, until the next edit solved it — the stale readout again,
+  // found by the conflict e2e's reload (docs/plans/conflict-detection.md).
+  // A CONFLICT stays up; a drawing that solves is "ready", as a fresh one is.
+  const opening = restored ? solveAndRender() : null;
   render();
-  statusLine.show("ready", "ready — type help(), a tool name, or any expression");
+  if (!opening || opening.solved) statusLine.show("ready", "ready — type help(), a tool name, or any expression");
   log("type help() for the command surface");
   // **The keyboard stays away until asked for.** A focused field on iOS is a
   // keyboard over the drawing (raised by the next tap, if not by this), so

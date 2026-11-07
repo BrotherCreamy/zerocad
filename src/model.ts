@@ -11,8 +11,8 @@
 // with, so the same relation code (see src/relations) works whether the
 // model is 2D or 3D.
 
-import { Problem, type BlockHandle, type GaugeRow, type SolveReport, type VarRefs } from "./kernel/problem.ts";
-import type { Dual } from "./kernel/dual.ts";
+import { Problem, type BlockHandle, type GaugeRow, type ResidualBlock, type SolveReport, type VarRefs } from "./kernel/problem.ts";
+import { Dual } from "./kernel/dual.ts";
 
 export interface PointEntity {
   kind: "point";
@@ -214,6 +214,39 @@ export interface EntityKindSpec {
   heldBy?: readonly string[];
   /** Whether one bounds a region as it stands — a closed member of zero size bounds nothing. */
   bounds?(model: Model, name: string): boolean;
+  /**
+   * Its **non-degeneracy measures**, as they stand: the sizes that make one
+   * what it is (a conic's two semi-axes, a spline's spacing between
+   * consecutive through-points), each ≥ 0. A solve that takes one from above
+   * ε·L to below it has **collapsed** it, and a collapse is a conflict, not a
+   * solution (`Model.solve`, docs/plans/conflict-detection.md). Absent for a
+   * kind that cannot fold.
+   */
+  measures?(model: Model, e: Entity): Measure[];
+}
+
+/**
+ * One **non-degeneracy measure** of an entity (`EntityKindSpec.measures`,
+ * `Model.measuresOf`): a size, ≥ 0, as a function of the variables it reads —
+ * so it can be read at the state before a solve as well as after, and pulled
+ * on to steer a solve off a collapse.
+ */
+export interface Measure {
+  /** The variables it reads. */
+  vars: number[];
+  /** Its size, from those variables in that order. */
+  size: (l: Dual[]) => Dual;
+}
+
+/** The length of a vector of Duals. */
+export function dualNorm(v: Dual[]): Dual {
+  return v.reduce((s, x) => s.add(x.mul(x)), Dual.constant(0)).sqrt();
+}
+
+/** The measure that is the distance between two points, by their variables: a line's length, a spline's spacing. */
+export function distanceMeasure(a: number[], b: number[]): Measure {
+  const d = a.length;
+  return { vars: [...a, ...b], size: (l) => dualNorm(l.slice(d).map((v, i) => v.sub(l[i]))) };
 }
 
 const entityKinds = new Map<string, EntityKindSpec>();
@@ -1004,6 +1037,13 @@ export class Model {
    * presence is also what tells a nested relation call that it is nested.
    */
   private building: { name: string; blocks: BlockHandle[]; vars: number[] } | null = null;
+  /**
+   * What each solve's report needs to be explained later: the state before
+   * it, and what was collapsed and what was the user's own zero then. Keyed
+   * by the report `solve` returned, so `conflicting(report)` searches from the
+   * solve it was handed and a report it never made falls back to its blocks.
+   */
+  private solves = new WeakMap<SolveReport, SolveContext>();
 
   /**
    * How this model was built, in order — every entity created, every
@@ -2518,8 +2558,342 @@ export class Model {
     this.hidden.delete(name);
   }
 
-  solve(): SolveReport {
-    return this.problem.solve();
+  /**
+   * **Solves, and refuses a solution that collapses something**
+   * (docs/plans/conflict-detection.md). The owner: *"I'm able to add a
+   * parallel relation to a set of perpendicular relation lines. This is a
+   * bug."* A rectangle's sides held perpendicular and then two of them
+   * parallel solves to 1e-12, by shrinking a side to nothing: a line of zero
+   * length is parallel and perpendicular to everything. Least squares cannot
+   * tell that root from a real one, so the check is made here, where what a
+   * line *is* is known.
+   *
+   * A **collapse** is a measure (`measuresOf`: a line's length, a radius, a
+   * declared kind's own (a spline's spacing), a frame's axes) that was above ε·L
+   * before the solve and is below it after, with L the drawing's size
+   * (`extent`) — see `collapsedNow` for how a slow collapse is told from a
+   * small size. A measure already ~0 before (a point drawn on another) is not
+   * one; nor is a measure **the user's own relation sets to zero**,
+   * `dist(p, q, 0)` or a `coin` of a line's ends: one relation alone does it
+   * too (`ownZeros`).
+   *
+   * **A collapse is first given a second chance**, because the solver is
+   * local: from a rectangle it will fold a side to meet a `par` and a `perp`
+   * on *other* sides that a turn of one side meets as well. So the part that
+   * folded is solved again from where it was, steered (`steered`): first with
+   * every size pulled weakly toward what it was, then released. If that
+   * finds a solution with nothing folded, it is the solution.
+   *
+   * Anything still collapsed makes the solve **fail**: `solved` is false,
+   * `collapsed` names what would have folded, and every variable that can move
+   * with it (`Problem.connected`) is put back where it was, so the drawing
+   * does not visibly fold. The rest of the drawing keeps what the solve did:
+   * a component shares no variable with another, so its answer is the same
+   * either way. `conflicting(report)` then names the relations.
+   */
+  solve(): ModelSolveReport {
+    const ctx: SolveContext = { before: this.problem.snapshot(), L: this.extent(), exempt: new Set() };
+    let out: ModelSolveReport = { ...this.problem.solve(), collapsed: [] };
+    let fell = this.collapsedNow(ctx);
+    if (fell.length) {
+      const part = this.problem.connected(this.varsOfKeys(fell));
+      this.problem.restore(ctx.before, part.vars);
+      this.steered(ctx, new Set(part.blocks), this.entitiesIn(new Set(part.vars)));
+      // A whole solve from there: the parts already settled do not move, and
+      // the report is the drawing's as it now stands.
+      out = { ...this.problem.solve(), collapsed: [] };
+      fell = this.collapsedNow(ctx);
+    }
+    if (fell.length) {
+      this.ownZeros(ctx, fell);
+      fell = fell.filter((k) => !ctx.exempt.has(k));
+    }
+    if (fell.length) {
+      out.collapsed = [...new Set(fell.map(measureEntity))];
+      out.solved = false;
+      this.problem.restore(ctx.before, this.problem.connected(this.varsOfKeys(fell)).vars);
+    }
+    this.solves.set(out, ctx);
+    return out;
+  }
+
+  /**
+   * One frame of a drag: a solve with `extra` pulls (`Problem.solve`), and
+   * **a frame that would collapse something stops where the last one was**,
+   * so a drag folds nothing. Only what can move with the collapse is put back;
+   * the rest of the frame stands. A drawing that already holds a conflict
+   * does not move in that part while it does, which is what the conflict ink
+   * is there to say.
+   *
+   * Cheaper than `solve`'s check, as a frame must be: a measure that shrank
+   * past `SUSPECT`·L is enough to stop the frame, with no polish to tell a
+   * slow collapse from a size that small (the hand goes on, and the next
+   * frame is another chance), and nothing is exempted: a frame adds no
+   * relation, so every zero of the user's own is already zero before it.
+   */
+  solveFrame(extra: ResidualBlock[]): SolveReport {
+    const ctx: SolveContext = { before: this.problem.snapshot(), L: this.extent(), exempt: new Set() };
+    const report = this.problem.solve({ extra });
+    const fell = this.shrunk(ctx, SUSPECT);
+    if (fell.length) this.problem.restore(ctx.before, this.problem.connected(this.varsOfKeys(fell)).vars);
+    return report;
+  }
+
+  /**
+   * An entity's **non-degeneracy measures**: a line's length, a circle's and
+   * an arc's radius, a frame's x-ref's distance from its origin (and in 3D its
+   * y-ref's off the x axis), and whatever a declared kind says
+   * (`EntityKindSpec.measures`). A point has none. Each is a function of
+   * variables, so it can be read at any state (`sizeAt`) and pulled on
+   * (`steered`). The built-ins are answered here by name, as their refs and
+   * variables are (`refsOf`, `ownVars`), since they are declared nowhere
+   * else.
+   */
+  measuresOf(e: Entity): Measure[] {
+    const pt = (n: string) => (this.entities.get(n) as PointEntity).varIndices;
+    switch (e.kind) {
+      case "point": return [];
+      case "line": return [distanceMeasure(pt(e.refs[0]), pt(e.refs[1]))];
+      case "circle":
+      case "arc": return [{ vars: [e.radiusVar], size: (l) => l[0].abs() }];
+      case "frame": {
+        const axis = distanceMeasure(pt(e.origin), pt(e.xref));
+        if (e.yref === undefined) return [axis];
+        const [o, x, y] = [pt(e.origin), pt(e.xref), pt(e.yref)];
+        const d = o.length;
+        // The y-ref's distance off the x axis: what is left of it once its
+        // part along +x is taken away.
+        return [axis, {
+          vars: [...o, ...x, ...y],
+          size: (l) => {
+            const u = l.slice(d, 2 * d).map((v, i) => v.sub(l[i]));
+            const w = l.slice(2 * d).map((v, i) => v.sub(l[i]));
+            const uu = u.reduce((s, v) => s.add(v.mul(v)), Dual.constant(0));
+            if (!(uu.val > 0)) return dualNorm(w);
+            const t = u.reduce((s, v, i) => s.add(v.mul(w[i])), Dual.constant(0)).div(uu);
+            return dualNorm(w.map((v, i) => v.sub(t.mul(u[i]))));
+          },
+        }];
+      }
+      default: return entityKind((e as { kind: string }).kind)?.measures?.(this, e) ?? [];
+    }
+  }
+
+  /** A measure's size at `values` (a `snapshot`, or the problem's own), where every variable it reads has one. */
+  private sizeAt(m: Measure, values?: readonly number[]): number {
+    return m.size(m.vars.map((v) => Dual.constant(values ? values[v] : this.problem.getVar(v)))).val;
+  }
+
+  /**
+   * **L, the drawing's size**: the diagonal of the box round every point, or
+   * the largest measure where that is larger (a lone circle's box is its
+   * centre). What ε is a share of, so a collapse means the same in a drawing
+   * of microns as in one of metres.
+   */
+  extent(): number {
+    const lo: number[] = [], hi: number[] = [];
+    let largest = 0;
+    for (const e of this.entities.values()) {
+      if (e.kind === "point") {
+        e.varIndices.forEach((gi, i) => {
+          const v = this.problem.getVar(gi);
+          lo[i] = Math.min(lo[i] ?? v, v);
+          hi[i] = Math.max(hi[i] ?? v, v);
+        });
+      } else if (e.kind === "circle" || e.kind === "arc") {
+        largest = Math.max(largest, Math.abs(this.problem.getVar(e.radiusVar)));
+      }
+    }
+    const diagonal = Math.hypot(...lo.map((v, i) => hi[i] - v));
+    return Math.max(Number.isFinite(diagonal) ? diagonal : 0, largest);
+  }
+
+  /** Every variable an entity reads: its own and its points'. */
+  private varsOfEntity(name: string): number[] {
+    const e = this.entities.get(name);
+    if (!e) return [];
+    return [...this.ownVars(e), ...this.refsOf(e).flatMap((p) => (this.entities.get(p) as PointEntity | undefined)?.varIndices ?? [])];
+  }
+
+  /** The variables of the entities a list of `name#k` measure keys is of. */
+  private varsOfKeys(keys: readonly string[]): number[] {
+    return [...new Set(keys.map(measureEntity))].flatMap((n) => this.varsOfEntity(n));
+  }
+
+  /** The live entities with a measure that read any of `vars`. */
+  private entitiesIn(vars: ReadonlySet<number>): string[] {
+    const out: string[] = [];
+    for (const e of this.entities.values()) {
+      if (e.kind !== "point" && this.measuresOf(e).some((m) => m.vars.some((v) => vars.has(v)))) out.push(e.name);
+    }
+    return out;
+  }
+
+  /**
+   * The measures (as `name#k` keys) of `names` — every entity, unspecified —
+   * that were above ε·L before (`ctx`) and are now below `share`·L and less
+   * than a tenth of what they were. Only an entity a variable of which moved
+   * is read, so a solve that moved little costs little to check.
+   */
+  private shrunk(ctx: SolveContext, share: number, names?: Iterable<string>): string[] {
+    const floor = COLLAPSE * ctx.L, ceiling = share * ctx.L;
+    const out: string[] = [];
+    if (!(floor > 0)) return out;
+    const moved = (v: number) => v < ctx.before.length && ctx.before[v] !== this.problem.getVar(v);
+    for (const n of names ?? this.entities.keys()) {
+      const e = this.entities.get(n);
+      if (!e || e.kind === "point") continue;
+      this.measuresOf(e).forEach((m, k) => {
+        if (!m.vars.some(moved) || m.vars.some((v) => v >= ctx.before.length)) return;
+        const was = this.sizeAt(m, ctx.before);
+        const now = this.sizeAt(m, undefined);
+        // NaN, a size gone to nothing defined, counts as shrunk.
+        if (was > floor && !(now >= was * SHRINK || now >= ceiling)) out.push(`${n}#${k}`);
+      });
+    }
+    return out;
+  }
+
+  /**
+   * **What has collapsed, told from what is merely small** (`names`, or
+   * every entity). A collapse a residual meets linearly lands at the solver's
+   * own precision, ~1e-12·L. One a residual meets quadratically — a
+   * triangle's two perpendiculars, whose second row is the square of the
+   * folding side once the first holds — stalls where the damped step can no
+   * longer see it, measured at 4e-5·L, which is no smaller than a real
+   * detail. So a measure that shrank below `SUSPECT`·L and to a tenth of
+   * what it was is a **suspect**, and is **pushed**: pulled toward nothing
+   * (with only the blocks of the solve being checked, `only`, or its whole
+   * part), then released. A collapse has nothing holding it off zero, so it
+   * goes there and stays; a real size is pulled back by the relation that set
+   * it. What ends below ε·L has collapsed, and stays where the push put it; a
+   * suspect cleared is put back exactly where the solve left it.
+   */
+  private collapsedNow(ctx: SolveContext, names?: readonly string[], only?: ReadonlySet<BlockHandle>): string[] {
+    const suspects = this.shrunk(ctx, SUSPECT, names);
+    if (!suspects.length) return [];
+    const who = [...new Set(suspects.map(measureEntity))];
+    const deep = new Set(this.shrunk(ctx, COLLAPSE, who));
+    const shallow = suspects.filter((k) => !deep.has(k));
+    if (!shallow.length) return [...deep];
+    const solved = this.problem.snapshot();
+    const part = this.problem.connected(this.varsOfKeys(shallow));
+    const blocks = new Set(only ? part.blocks.filter((b) => only.has(b)) : part.blocks);
+    const pushes: ResidualBlock[] = [];
+    for (const k of shallow) {
+      const m = this.measuresOf(this.entities.get(measureEntity(k))!)[Number(k.slice(k.lastIndexOf("#") + 1))];
+      pushes.push({ varIndices: m.vars, fn: (l) => [m.size(l).mul(PUSH / ctx.L)] });
+    }
+    this.problem.solve({ only: blocks, extra: pushes, maxIter: NUDGE_ITER });
+    this.problem.solve({ only: blocks });
+    const fell = this.shrunk(ctx, COLLAPSE, who);
+    if (fell.some((k) => !deep.has(k))) return fell;
+    // The push cleared every suspect it was given: a size that is small and
+    // real is the solve's answer, not the push's, so the solve's state comes back.
+    this.problem.restore(solved);
+    return [...deep];
+  }
+
+  /**
+   * **A steered solve** of the blocks `only`, from wherever the values stand:
+   * first with every measure of `entities` that had a size before (`ctx`)
+   * pulled toward that size, then released. The pull keeps the solver off a
+   * collapse while it finds what else would do, and the release lets the
+   * relations have the last word, so a size a relation really does change is
+   * not held back. Returns the release's report.
+   */
+  private steered(ctx: SolveContext, only: ReadonlySet<BlockHandle>, entities: readonly string[]): SolveReport {
+    const floor = COLLAPSE * ctx.L;
+    const pulls: ResidualBlock[] = [];
+    for (const n of entities) {
+      const e = this.entities.get(n);
+      if (!e) continue;
+      for (const m of this.measuresOf(e)) {
+        if (m.vars.some((v) => v >= ctx.before.length)) continue;
+        const was = this.sizeAt(m, ctx.before);
+        if (!(was > floor)) continue;
+        // Relative, so a pull means the same on a long side as on a short one.
+        pulls.push({ varIndices: m.vars, fn: (l) => [m.size(l).sub(was).mul(STEER / was)] });
+      }
+    }
+    this.problem.solve({ only, extra: pulls, maxIter: NUDGE_ITER });
+    return this.problem.solve({ only });
+  }
+
+  /**
+   * Which relations a person can delete, as opposed to one a feature holds
+   * (an extrude's depth, which `deleteRelation` refuses): what a conflict is
+   * named by. A held one is part of the feature, as its geometry is.
+   */
+  private removable(name: string): boolean {
+    return !this.featuresNaming(name).length && !this.blendsNaming(name).length
+      && ![...this.surfaces.values()].some((x) => x.names.includes(name));
+  }
+
+  /** The relation owning each block a relation owns. */
+  private blockOwners(): Map<BlockHandle, string> {
+    const owner = new Map<BlockHandle, string>();
+    for (const r of this.relations.values()) for (const b of r.blocks) owner.set(b, r.name);
+    return owner;
+  }
+
+  /**
+   * **A trial**: whether `rels`, with the blocks of `background`, conflict in
+   * `part` — solved alone from the state before (`ctx`), they fail, or
+   * collapse a measure that is not the user's own zero even when steered off
+   * it. What the conflict search asks (`conflicting`) and the exemption is
+   * decided by (`ownZeros`). Leaves the part's values wherever the trial put
+   * them; the caller puts them back.
+   */
+  private trial(ctx: SolveContext, part: Part, rels: readonly RelationEntry[], background: readonly BlockHandle[]): { fails: boolean; fell: string[] } {
+    const only = new Set(background);
+    for (const r of rels) for (const b of r.blocks) only.add(b);
+    this.problem.restore(ctx.before, part.vars);
+    let report = this.problem.solve({ only });
+    let fell = this.collapsedNow(ctx, part.entities, only);
+    if (fell.length) {
+      this.problem.restore(ctx.before, part.vars);
+      report = this.steered(ctx, only, part.entities);
+      fell = this.collapsedNow(ctx, part.entities, only);
+    }
+    return { fails: !report.solved, fell };
+  }
+
+  /** A connected part of the drawing (`Problem.connected`), with the entities measured in it. */
+  private partOf(seed: Iterable<number>): Part {
+    const c = this.problem.connected(seed);
+    const varSet = new Set(c.vars);
+    return { vars: c.vars, varSet, blocks: c.blocks, entities: this.entitiesIn(varSet) };
+  }
+
+  /**
+   * **The user's own zeros**: of the collapsed measures `fell`, those one
+   * relation alone sets to zero — tried alone from the state before
+   * (`trial`), with only what no one can delete beside it (an entity's own
+   * equations, a feature's relations), it collapses the measure too, steered
+   * or not. `dist(p, q, 0)` on a line's ends does; a `par` and a `perp` on two
+   * lines each alone do not, and only together. Added to `ctx.exempt`. The
+   * values are left as the solve left them.
+   */
+  private ownZeros(ctx: SolveContext, fell: string[]): void {
+    const after = this.problem.snapshot();
+    const owner = this.blockOwners();
+    try {
+      for (const name of new Set(fell.map(measureEntity))) {
+        const keys = fell.filter((k) => measureEntity(k) === name);
+        const own = new Set(this.varsOfEntity(name));
+        const part = this.partOf(own);
+        const background = part.blocks.filter((b) => { const r = owner.get(b); return r === undefined || !this.removable(r); });
+        const touching = [...this.relations.values()].filter((r) => this.removable(r.name)
+          && r.blocks.some((b) => this.problem.varsOf(b).some((v) => own.has(v))));
+        for (const r of touching) {
+          for (const k of this.trial(ctx, part, [r], background).fell) if (keys.includes(k)) ctx.exempt.add(k);
+          if (keys.every((k) => ctx.exempt.has(k))) break;
+        }
+      }
+    } finally {
+      this.problem.restore(after);
+    }
   }
 
   /** Which variables each entity owns — its own, not those of the points it refers to. */
@@ -2611,8 +2985,19 @@ export class Model {
     }
     const dependent = new Map(a.dependent.map((d) => [d.block, d]));
     const redundant: string[] = [];
+    // Redundant is said only of a state with nothing collapsed: at a line of
+    // zero length every direction row on it vanishes, and a vanished row reads
+    // as implied (docs/plans/conflict-detection.md). A relation reading a
+    // folded entity is called neither; `solve` puts a collapse back, so this
+    // is a drawing drawn folded, or one the user's own zero folded.
+    const floor = COLLAPSE * this.extent();
+    const folded = new Set<number>();
+    for (const e of this.entities.values()) {
+      if (e.kind !== "point" && this.measuresOf(e).some((m) => !(this.sizeAt(m) > floor))) for (const v of this.varsOfEntity(e.name)) folded.add(v);
+    }
     for (const r of this.relations.values()) {
       if (!r.blocks.length) continue;
+      if (folded.size && r.blocks.some((b) => this.problem.varsOf(b).some((v) => folded.has(v)))) continue;
       if (r.blocks.every((b) => { const d = dependent.get(b); return d !== undefined && d.dependent === d.rows; })) {
         redundant.push(r.name);
       }
@@ -2633,31 +3018,230 @@ export class Model {
   }
 
   /**
-   * **Which relations a failed solve accuses** — those owning a block whose
-   * residual stayed large (`SolveReport.blocks`), in that order: the rows that
-   * cannot all be zero at once. A block no relation owns (one added straight
-   * to the problem at the command line) is named by its label in `unowned`.
+   * **Which relations cannot all hold**, named minimally
+   * (docs/plans/conflict-detection.md): for a failed or collapsing solve from
+   * `solve`, an **irreducible conflicting set** in each part of the drawing
+   * that failed. Every relation named is needed: without it the rest solve
+   * from the state before with nothing collapsed. So a `par` and a `perp` on
+   * one pair of lines are named, and nothing else on the rectangle; a loop of
+   * three perpendiculars is named whole, however long the chain.
+   *
+   * **How**: QuickXplain (Junker, 2004) over the relations a person can delete
+   * in the failed part (the connected component of what failed,
+   * `Problem.connected`). Each question is a `trial`: that part alone, from
+   * the state before, with only the relations asked about and what no one can
+   * delete (an entity's own equations, a feature's relations, a block no
+   * relation owns). A conflict of k relations among n costs about
+   * 2k·log₂(n/k) + 2k trials, not n. Where a part holds more than one
+   * irreducible conflict (a rectangle's par holds against the perp on its own
+   * corner and, through the far corners, against the other two), the one named
+   * is the one **nearest what failed**: candidates are ordered by how many
+   * blocks away from the collapsed entity or the failing rows they are
+   * (`Problem.reach`), then newest first, and QuickXplain keeps the earliest.
+   *
+   * Bounded by `SEARCH_TRIALS` and `SEARCH_MS`: past either, or if the part
+   * alone does not reproduce the failure, the part is named as it was before
+   * this search existed, by the relations whose blocks stayed large or touch
+   * what collapsed.
+   *
+   * A report `solve` did not make (a bare `problem.solve()`) is named the old
+   * way too. A block no relation owns (one added straight to the problem at
+   * the command line) is named by its label in `unowned`. The values are left
+   * exactly as the solve left them.
    */
   conflicting(report: SolveReport): { relations: string[]; unowned: string[] } {
-    const owner = new Map<BlockHandle, string>();
-    for (const r of this.relations.values()) for (const b of r.blocks) owner.set(b, r.name);
+    const owner = this.blockOwners();
+    const unowned = [...new Set(report.blocks.filter((b) => !owner.has(b)).map((b) => this.problem.labelOf(b) ?? `block ${b}`))];
+    const accused = (blocks: Iterable<BlockHandle>) => {
+      const out: string[] = [];
+      for (const b of blocks) {
+        const name = owner.get(b);
+        if (name !== undefined && !out.includes(name)) out.push(name);
+      }
+      return out;
+    };
+    const ctx = this.solves.get(report);
+    const collapsed = (report as Partial<ModelSolveReport>).collapsed ?? [];
+    if (!ctx || report.solved) return { relations: accused(report.blocks), unowned };
+    const now = this.problem.snapshot();
+    const t0 = performance.now();
+    let trials = 0;
     const relations: string[] = [];
-    for (const b of report.blocks) {
-      const name = owner.get(b);
-      if (name !== undefined && !relations.includes(name)) relations.push(name);
+    const seeds = [...report.blocks.map((b) => this.problem.varsOf(b)), ...collapsed.map((n) => this.varsOfEntity(n))];
+    try {
+      for (const part of this.failedParts(seeds)) {
+        const inPart = [...this.relations.values()].filter((r) => r.blocks.some((b) => part.blockSet.has(b)));
+        // Nearest what failed first, then newest.
+        const reach = this.problem.reach(seeds.filter((s) => s.some((v) => part.varSet.has(v))).flat());
+        // A relation naming what folded is nearest of all: on a closed outline
+        // every relation reads the folded side's corners, and only some are
+        // about the side itself.
+        const rank = (r: RelationEntry) => (collapsed.some((n) => r.args.some((a) => argRefersTo(a, n))) ? -1
+          : Math.min(...r.blocks.map((b) => reach.get(b) ?? Infinity)));
+        const order = new Map(inPart.map((r, i) => [r.name, i]));
+        const byNearness = (rs: RelationEntry[]) => [...rs].sort((a, b) => rank(a) - rank(b) || order.get(b.name)! - order.get(a.name)!);
+        const conflicts = (rels: readonly RelationEntry[], background: readonly BlockHandle[]): boolean => {
+          if (++trials > SEARCH_TRIALS || performance.now() - t0 > SEARCH_MS) throw SEARCH_SPENT;
+          const t = this.trial(ctx, part, rels, background);
+          return t.fails || t.fell.some((k) => !ctx.exempt.has(k));
+        };
+        const outside = (rels: readonly RelationEntry[]) => {
+          const mine = new Set(rels.flatMap((r) => r.blocks));
+          return part.blocks.filter((b) => !mine.has(b));
+        };
+        let candidates = byNearness(inPart.filter((r) => this.removable(r.name)));
+        let background = outside(candidates);
+        let found: RelationEntry[] | null = null;
+        try {
+          // What no one can delete conflicting by itself is named among all of them.
+          if (conflicts([], background)) {
+            candidates = byNearness(inPart);
+            background = outside(candidates);
+          }
+          // **Rings outward**: the relations within reach t of what failed,
+          // for t = -1, 0, 1, 2, 4, … — the first ring that conflicts by
+          // itself is searched, so a trial solves a few relations, not the
+          // whole part, when the conflict is where the failure is. A set that
+          // conflicts by itself is irreducible or not whatever lies outside it.
+          const finite = candidates.map(rank);
+          const far = Math.max(-1, ...finite.filter(Number.isFinite)) + 1;
+          const ranks = finite.map((r) => (Number.isFinite(r) ? r : far));
+          let tried = 0;
+          for (let t = -1; tried < candidates.length; t = t < 1 ? t + 1 : t * 2) {
+            const ring = t >= far ? candidates : candidates.filter((_, i) => ranks[i] <= t);
+            if (ring.length <= tried) continue;
+            tried = ring.length;
+            if (conflicts(ring, background)) {
+              found = quickXplain(ring, (s) => conflicts(s, background));
+              break;
+            }
+          }
+        } catch (e) {
+          if (e !== SEARCH_SPENT) throw e;
+        }
+        if (found) {
+          for (const r of found) if (!relations.includes(r.name)) relations.push(r.name);
+          continue;
+        }
+        // Past the bound, or not reproduced alone: named as before the search.
+        const touching = new Set(collapsed.flatMap((n) => this.varsOfEntity(n)));
+        const fallback = [
+          ...accused(report.blocks.filter((b) => part.blockSet.has(b))),
+          ...inPart.filter((r) => this.removable(r.name) && r.blocks.some((b) => this.problem.varsOf(b).some((v) => touching.has(v)))).map((r) => r.name),
+        ];
+        for (const n of fallback) if (!relations.includes(n)) relations.push(n);
+      }
+    } finally {
+      this.problem.restore(now);
     }
-    const named = new Set(relations.flatMap((n) => this.relations.get(n)!.blocks));
-    const unowned = report.blocks.some((b) => !named.has(b))
-      ? report.offenders.map((o) => o.label).filter((l) => !relations.some((n) => this.relationLabels(n).includes(l)))
-      : [];
     return { relations, unowned };
   }
 
-  /** The labels a relation's blocks carry — what an offender report spells it as. */
-  private relationLabels(name: string): string[] {
-    const r = this.relations.get(name);
-    return r ? r.blocks.map((b) => this.problem.labelOf(b) ?? "") : [];
+  /**
+   * The parts of the drawing a failed solve failed in: the connected
+   * components (`Problem.connected`) of each seed (a block that stayed large,
+   * an entity that collapsed), merged where they meet. An entity's points need
+   * not be connected by any block (a line holds none of its own), so an
+   * entity's part is the union of its variables' components.
+   */
+  private failedParts(seeds: readonly number[][]): (Part & { blockSet: Set<BlockHandle> })[] {
+    const parts: (Part & { blockSet: Set<BlockHandle> })[] = [];
+    for (const seed of seeds) {
+      if (!seed.length || parts.some((p) => seed.every((v) => p.varSet.has(v)))) continue;
+      const part = this.partOf(seed);
+      // A component is whole or disjoint, so a part meeting another holds it.
+      for (let i = parts.length - 1; i >= 0; i--) if (parts[i].vars.some((v) => part.varSet.has(v))) parts.splice(i, 1);
+      parts.push({ ...part, blockSet: new Set(part.blocks) });
+    }
+    return parts;
   }
+}
+/**
+ * **ε**: how small a measure must end, as a share of the drawing's size L, to
+ * have collapsed (`Model.solve`). Measured (docs/plans/conflict-detection.md):
+ * once pushed (`collapsedNow`), every collapse the plan's examples make ends
+ * at or below 1e-9·L, and a size a relation sets stays where it is set. 1e-6
+ * sits between with room each way: 0.1 µm on a 100 mm drawing.
+ */
+export const COLLAPSE = 1e-6;
+
+/**
+ * Below this share of L, and below a tenth of what it was, a measure is a
+ * **suspect**: pushed to see whether it goes on to nothing (`collapsedNow`),
+ * and enough by itself to stop a drag's frame (`solveFrame`). A collapse a
+ * residual meets quadratically stalls near 4e-5·L before it is pushed.
+ */
+export const SUSPECT = 1e-2;
+
+/** How far a suspect must have fallen, as a share of what it was. */
+const SHRINK = 0.1;
+
+/** How hard `collapsedNow` pushes a suspect toward nothing: a size of L weighs as a residual of 1. */
+const PUSH = 1;
+
+/**
+ * The iterations a push or a steer may take. Either is a compromise that never
+ * reaches zero (a pull against a relation), so it runs to its limit; it only
+ * has to move the values off one root and toward another, and the release that
+ * follows converges.
+ */
+const NUDGE_ITER = 30;
+
+/** How hard `steered` pulls each size toward what it was: a relative change of 1 weighs as a residual of 1. */
+const STEER = 1;
+
+/** The conflict search's bounds: trial solves, and milliseconds, per `conflicting` call. */
+export const SEARCH_TRIALS = 200;
+export const SEARCH_MS = 500;
+const SEARCH_SPENT = new Error("the conflict search ran out of trials");
+
+/** The entity a `name#k` measure key is of. */
+function measureEntity(key: string): string {
+  return key.slice(0, key.lastIndexOf("#"));
+}
+
+/**
+ * **QuickXplain** (Junker 2004): an irreducible subset of `items` for which
+ * `conflicts` holds, given that it holds for all of them. Prefers the earlier
+ * items: where the first half already conflicts, the second is never asked
+ * about. `conflicts` must be monotone (a superset of a conflict conflicts),
+ * which a trial solve is as nearly as a local solver can be.
+ */
+export function quickXplain<T>(items: readonly T[], conflicts: (set: T[]) => boolean): T[] {
+  const go = (background: T[], asked: boolean, cands: readonly T[]): T[] => {
+    if (asked && conflicts(background)) return [];
+    if (cands.length === 1) return [cands[0]];
+    const k = Math.floor(cands.length / 2);
+    const [c1, c2] = [cands.slice(0, k), cands.slice(k)];
+    const d2 = go([...background, ...c1], c1.length > 0, c2);
+    const d1 = go([...background, ...d2], d2.length > 0, c1);
+    return [...d1, ...d2];
+  };
+  return items.length ? go([], false, items) : [];
+}
+
+/** What a solve left behind for `conflicting` to explain. See `Model.solves`. */
+interface SolveContext {
+  /** Every variable's value before the solve. */
+  before: number[];
+  /** The drawing's size before the solve (`Model.extent`). */
+  L: number;
+  /** The measures (`name#k`) a relation of the user's own sets to zero (`Model.ownZeros`). */
+  exempt: Set<string>;
+}
+
+/** A connected part of the drawing: its variables and blocks (`Problem.connected`), and the entities measured in it. */
+interface Part {
+  vars: number[];
+  varSet: Set<number>;
+  blocks: BlockHandle[];
+  entities: string[];
+}
+
+/** What `Model.solve` found: the kernel's report, and what the solve would have collapsed. */
+export interface ModelSolveReport extends SolveReport {
+  /** The entities the solve would have collapsed, put back where they were: why `solved` is false. Empty when none. */
+  collapsed: string[];
 }
 
 /** What `Model.diagnose` found. */

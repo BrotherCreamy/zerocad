@@ -26,6 +26,36 @@ otherwise.
 
 ## Decisions made so far — veto here if any are wrong
 
+- **A solve that collapses geometry is a CONFLICT** (the owner, 2026-11-07:
+  *"I'm able to add a parallel relation to a set of perpendicular relation
+  lines. This is a bug"*; docs/plans/conflict-detection.md). Four choices in
+  it, each vetoable:
+  - **ε = 1e-6 of the drawing's size** (its box's diagonal). A measure (a
+    line's length, a radius, an ellipse's axes, a spline's spacing, a frame's
+    axes) above ε·L before a solve and below it after has collapsed. Measured
+    over the whole unit suite: once a suspect is pushed, collapses end at
+    ≤ 4.6e-10·L and real sizes that halved stay ≥ 2e-4·L, so 1e-6 has three
+    decades each way (0.1 µm on a 100 mm drawing). A measure already ~0, or
+    one a single relation of the user's own sets to zero (`dist(p, q, 0)`),
+    is no collapse.
+  - **Rollback, per component.** The part of the drawing that folded is put
+    back as it was; the relation stays, red, as Onshape keeps a conflicting
+    constraint. Other components keep what the solve did, so an edit
+    elsewhere still lands while a conflict stands.
+  - **The minimal set**: QuickXplain over the deletable relations of the failed
+    component, nearest what failed first. It is now used for failed solves
+    too, which used to name every relation left large. Where a component
+    holds two irreducible conflicts, the one named is the one on the folded
+    side (the rectangle's par with the perp on its own corner, not the par
+    with the far two perps). A feature's own relation (an extrude's depth) is
+    never named.
+  - **When it runs**: every solve the user causes (`solveAndRender`: an entry,
+    a tool's commit, `del`, an undo, an open, a restore at start, the end of a
+    drag). A drag's frame only stops a fold where it would happen, with no
+    search, so a drawing holding a conflict does not move in that part until
+    the conflict is deleted. The search is bounded (200 trials, 500 ms), past
+    which the component is named as before.
+
 - **Three fingers always orbit; a fourth spends the hand** (the owner,
   2026-11-07: *"Can you make it so that three fingers always orbits?"*).
   Wherever they land and whatever is armed; in 2D they pan. A lift ends the
@@ -1820,13 +1850,38 @@ are flagged as such.
 
 ## Next up
 
-- [ ] **Conflicts the solver satisfied by collapsing geometry** (the owner,
+- [x] **Conflicts the solver satisfied by collapsing geometry** (the owner,
   2026-11-07: *"I'm able to add a parallel relation to a set of perpendicular
   relation lines. This is a bug … should be able to catch that for any chain
   of conflicting relationships"*). Measured: `par` on two sides of a
   perpendicular-held rectangle solves (2D and 3D) by shrinking a side to
   zero length, and SOLVED is shown. Spec:
-  [`conflict-detection.md`](docs/plans/conflict-detection.md). In flight.
+  [`conflict-detection.md`](docs/plans/conflict-detection.md). **Built**
+  (2026-11-07), branch `claude/conflict-detection`: a collapse is a CONFLICT,
+  put back, named minimally (QuickXplain), for failed solves too. Found on
+  the way, left for later:
+  - [ ] **A trial that fails is believed.** The search retries a *collapsing*
+        trial steered, but a trial whose solve merely stalls (a consistent set
+        the damped step cannot reach from the state before) reads as a
+        conflict, and could be named. Not seen in any test; a steered retry
+        for a failed trial too is the obvious fix, at a solve or two each.
+  - [ ] **The user's own zero is one relation.** `dist(p, q, 0)` and a `coin`
+        of a line's ends are no collapse. But `coin(a, c)` with `coin(c, b)`
+        on a line `a`–`b` is one, and both are named. The other way round,
+        one relation that folds what it names by itself is read as meant:
+        `perp("l1", "l1")`, or `oncircle` of a circle's own centre, solves
+        SOLVED with the line or circle at nothing. Both come from the same
+        rule, deliberately; the owner may want either changed.
+  - [ ] **A standing conflict costs its search on every solve.** Measured on
+        forty chained rectangles (280 relations, one component): ~130 ms of
+        solve and ~145 ms of search per edit while the conflict stands; on
+        the largest fixtures, tens of ms. A cache keyed by the failed
+        component's blocks and values would make the repeats free; not built,
+        because what a block's closure reads outside its declared variables
+        (a frame's points) would have to be in the key too.
+  - [ ] **Prevention, considered and not built** (Design 6): residuals
+        normalised so a collapse no longer satisfies them would change every
+        drawing's solving.
 
 Queue for Opus, in order. Each gets a spec in `docs/plans/` before work
 starts.
@@ -3720,6 +3775,10 @@ extended the way `defineTool` extends the tool registry would close it.
       degenerate residuals. A length (`eq`, or `dist` on the ends) avoids it.
       Whether the solver should refuse a collapsed line, or `on`/`par` scale by
       the line's length, needs its own measurement.
+      **Since conflict-detection.md** a fold like this is retried steered and,
+      if it still folds, is a CONFLICT rather than SOLVED. The exact case did
+      not fold in the current build, from `pt(10, 5); l = ln(); …`, so it is
+      left open until it is seen again.
 - [ ] **A clause in the wrong slot is caught only after the entity is made.**
       `circ(oncircle(_, "p1"))` — the subject where the point goes — makes the
       circle and then `onCircle` refuses (the spec itself wrote it this way).

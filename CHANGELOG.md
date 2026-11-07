@@ -7,6 +7,79 @@ decisions.
 
 ---
 
+## A conflict is a conflict even when a collapse satisfies it
+
+The owner (2026-11-07): *"Just noticed I'm able to add a parallel relation to
+a set of perpendicular relation lines. This is a bug. Solver needs to see
+this kind of thing. For any feature combination and relation type, and
+should be able to catch that for any chain of conflicting relationships."*
+Measured before: a rectangle held by three `perp`s, then `par("l1", "l2")`,
+solved to 5e-12 in 2D and 3D by folding l2 to nothing, and SOLVED was shown.
+Now it reads CONFLICT. The par and the perp on its corner are drawn red, the
+rectangle stays as it was, and the par stays until it is deleted
+(docs/plans/conflict-detection.md).
+
+| | |
+|---|---|
+| ![The rectangle drawn with the tool, Parallel added between its bottom and right sides from the constrain tool. The header reads CONFLICT, r4 · r3 cannot all hold. The rectangle is whole; the ⊥ and the new // on both sides are boxed in red, the other two pars are not. The log reads CONFLICT — these cannot all hold without collapsing l2: r4 par l1 l2 · r3 perp l1 l2](docs/images/261-a-par-across-the-rectangles-right-angle-is-a-conflict.png) | ![The same rectangle after r4 was clicked in the header and Delete pressed: SOLVED, 5 free, select armed, no mark red. The log reads r4 selected — Delete removes it, del("r4"), [r4]](docs/images/262-the-par-deleted-solved.png) |
+| ![On an iPhone 13: the same conflict made by finger, CONFLICT r4 · r3 cannot all hold, the ⊥ and // marks red on both sides](docs/images/263-iphone-a-par-across-the-right-angle-is-a-conflict.png) | ![On the iPhone, after r4 is tapped in the header and the strip's Delete: SOLVED, 5 free, nothing red](docs/images/264-iphone-the-par-deleted-solved.png) |
+
+- **A collapse is a measure**, declared per kind: a line's length, a radius,
+  a frame's axes, and `EntityKindSpec.measures` for an ellipse's axes and a
+  spline's spacing. One that falls from above ε·L to below it in a solve has
+  collapsed, with L the drawing's size and **ε = 1e-6**. Measured over the
+  whole unit suite, collapses end at ≤ 4.6e-10·L and real sizes that halved
+  stay ≥ 2e-4·L. A slow collapse is told from a small size by a push toward
+  zero and a release. A collapse is retried steered before it is believed,
+  since the solver is local. One relation's own zero (`dist(p, q, 0)`, a
+  `coin` of a line's ends) is no collapse.
+- **What it does**: the solve fails, the folded component goes back to how
+  it was, other components keep their answer, and the relation stays.
+  Nothing on a folded entity is called redundant.
+- **Named minimally, for any chain**, collapses and failed solves alike, by
+  QuickXplain over the failed component. The set is irreducible: drop any one
+  relation and the rest solve. Unit-tested in 2D and 3D: par+perp; par, par,
+  perp; three lines with three perps (in 3D the six plane holds too); ang+par;
+  a tangent through the centre with the incidence; a lid's par against a
+  base's perp through an extrude's twins (the depth is never named); an
+  ellipse and a spline run to nothing; a frame's axis onto its origin. A
+  failed solve is named smaller than before: a diagonal of 30 at a square
+  corner with a side of 40 names those two and the two levels, not the 25
+  the least squares also left large.
+- **When**: every solve the user causes. A drag's frame that would fold
+  something stops where the last frame was.
+- **Kernel**, geometry-free: `solve({ only })`, `snapshot`/`restore`,
+  `varsOf`, `connected`, `reach`. No Rust change.
+- **Two bugs the browser found** (ARCHITECTURE, 49 and 50; the count is fifty
+  now). A conflict's name clicked in the status while a tool was armed left
+  Delete deaf. And a drawing restored by autosave never solved at start, so
+  a conflict opened reading "ready".
+- **Cost** (two runs each, on a shared box at load ~3). On the largest
+  fixtures, the check on a solve that folds nothing is within noise:
+  pre-explicit-regions 0.7 ms bare against 0.6 checked, shapes-v15 0.5
+  against 0.5, features-v12 0.1 against 0.1. With a conflict made in each (a
+  par and a perp on two joined lines):
+  - pre-explicit-regions, 35 relations: solve 22–26 ms, search 71–72 ms.
+  - shapes-v15, 38 relations: solve 31–33 ms, search 28–31 ms.
+  - features-v12, 12 relations: solve 12–15 ms, search 7–8 ms.
+  - Forty chained rectangles, 280 relations in one component: solve
+    120–138 ms, search 141–147 ms (300 ms before the search went ring by
+    ring). A drag's frame there took 129–131 ms bare and 136–148 ms checked.
+  The search is bounded at 200 trials and 500 ms.
+- Tests: unit 1713 → 1755 (`conflicts.test.ts`), e2e 710 → 717
+  (`conflicts.e2e.ts`: the rectangle by mouse and by iPhone 13, undo, a
+  reload by autosave, a drag on the conflicted drawing; 710 is the 717 less
+  the seven new ones, as the base was not run whole). `npm run test:all`:
+  typecheck clean, unit 1755/1755, kernel 11/11, e2e 716/717. The one
+  failure was `touch.e2e.ts`'s quiet corner ("no menu is left open by the
+  first finger", the long-press already held when the second finger
+  landed). It touches nothing changed here, passed 3/3 alone, and passed in
+  a second whole e2e run (715 and the 2 picture tests skipped without
+  `NEOCAD_E2E_SHOTS`). Pictures 261–264, looked at.
+- **Left for later** (TODO): a stalled trial is believed; the own-zero rule's
+  two edges; a standing conflict's cost on every edit; prevention, considered
+  and not built.
+
 ## Three fingers always orbit
 
 The owner (2026-11-07): *"Can you make it so that three fingers always

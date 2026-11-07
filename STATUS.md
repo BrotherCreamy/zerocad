@@ -217,9 +217,21 @@ etc).
     (kernel-rs/src/analysis.rs: per-component dense elimination) for the
     Jacobian's rank: free variables from J (with gauge rows), redundant rows
     from Jᵀ. `Model.diagnose` maps them to entities (`free`, `dof`) and
-    relations (`redundant`); `Model.conflicting` maps a failed solve's large
-    rows (`SolveReport.blocks`) to relations. Not counted free: a curve's
-    normal length; a point lying on the drawing plane or the ground.
+    relations (`redundant`). Not counted free: a curve's normal length; a
+    point lying on the drawing plane or the ground.
+  - **Conflicts** (docs/plans/conflict-detection.md, built). `Model.solve`
+    refuses a solution that collapses a measure (a line's length, a radius, a
+    frame's axes, `EntityKindSpec.measures` for a declared kind: an ellipse's
+    axes, a spline's spacing) from above 1e-6·L to below it. A suspect is
+    pushed to tell a slow collapse from a small size, and a collapse is
+    retried steered before it is believed. A single relation's own zero is
+    exempt. The folded component is put back and the solve fails, with
+    `collapsed` naming what would have folded. `Model.conflicting` names an
+    irreducible set (QuickXplain, ring by ring outward from what failed) for
+    a collapse or a failed solve, bounded at 200 trials and 500 ms. A drag
+    frame that would fold something stops where the last one was. Kernel
+    additions, geometry-free: `solve({ only })`, `snapshot`/`restore`,
+    `varsOf`, `connected`, `reach`.
   - **In the app**, after each solve and never per drag frame: free
     entities in a blue ink, held ones in the sketch's; `#diagnosis` beside
     the verdict says `5 free`, `d1 · d2 cannot all hold` (red, names

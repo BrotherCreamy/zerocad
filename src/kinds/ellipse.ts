@@ -8,7 +8,7 @@
 // real is that `grep ellipse src/model.ts src/loops.ts src/faces.ts
 // src/picking.ts src/step.ts` is empty (test/modules.test.ts holds it).
 
-import { Model, spanOf, unitOf, entityKind, type EntityKindSpec, type Entity } from "../model.ts";
+import { Model, spanOf, unitOf, entityKind, distanceMeasure, type EntityKindSpec, type Entity } from "../model.ts";
 
 /**
  * An ellipse: a centre point, a **major end** point — the end of its first
@@ -73,6 +73,14 @@ export const ELLIPSE_STRUCTURE: EntityKindSpec = {
   plane: (e) => { const el = e as EllipseEntity; return { center: el.center, normal: el.normal, straighten: el.major }; },
   heldBy: ["onEllipse"],
   bounds: (model, name) => { const { a, b } = semiAxes(model, name); return a > 0 && b > 0; },
+  // Its two semi-axes: either at nothing is no ellipse (docs/plans/conflict-detection.md).
+  measures: (model, e) => {
+    const el = e as EllipseEntity;
+    return [
+      distanceMeasure(model.point(el.center).varIndices, model.point(el.major).varIndices),
+      { vars: [el.minorVar], size: (l) => l[0].abs() },
+    ];
+  },
 };
 
 /** The refusals `addEllipse` makes about its own arguments, made first so a refused call leaves nothing behind. */

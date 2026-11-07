@@ -1527,6 +1527,10 @@ export class ToolEngine {
    * out of true for as long as it is held, and flashing CONFLICT through a
    * gesture that is about to settle correctly would be noise. Release is what
    * asks for the truth.
+   *
+   * A frame that would **collapse** something (a side folded to nothing to
+   * keep a par and a perp both true) stops where the last frame was, for the
+   * part that would fold (`Model.solveFrame`; docs/plans/conflict-detection.md).
    */
   private dragTo(sx: number, sy: number): void {
     const plan = this.idle?.drag;
@@ -1556,7 +1560,7 @@ export class ToolEngine {
     // shift one.
     plan.names.forEach((n, k) => { if (this.movesDatum(n)) this.moveOutright(n, targets[k]); });
     const extra = plan.names.flatMap((n, k) => pullTo(this.model, n, targets[k]));
-    this.model.problem.solve({ extra });
+    this.model.solveFrame(extra);
   }
 
   /**
