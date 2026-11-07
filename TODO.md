@@ -1820,6 +1820,14 @@ are flagged as such.
 
 ## Next up
 
+- [ ] **Conflicts the solver satisfied by collapsing geometry** (the owner,
+  2026-11-07: *"I'm able to add a parallel relation to a set of perpendicular
+  relation lines. This is a bug … should be able to catch that for any chain
+  of conflicting relationships"*). Measured: `par` on two sides of a
+  perpendicular-held rectangle solves (2D and 3D) by shrinking a side to
+  zero length, and SOLVED is shown. Spec:
+  [`conflict-detection.md`](docs/plans/conflict-detection.md). In flight.
+
 Queue for Opus, in order. Each gets a spec in `docs/plans/` before work
 starts.
 
