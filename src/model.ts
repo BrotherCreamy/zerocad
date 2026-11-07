@@ -2784,7 +2784,7 @@ export class Model {
       const m = this.measuresOf(this.entities.get(measureEntity(k))!)[Number(k.slice(k.lastIndexOf("#") + 1))];
       pushes.push({ varIndices: m.vars, fn: (l) => [m.size(l).mul(PUSH / ctx.L)] });
     }
-    this.problem.solve({ only: blocks, extra: pushes });
+    this.problem.solve({ only: blocks, extra: pushes, maxIter: NUDGE_ITER });
     this.problem.solve({ only: blocks });
     const fell = this.shrunk(ctx, COLLAPSE, who);
     if (fell.some((k) => !deep.has(k))) return fell;
@@ -2816,7 +2816,7 @@ export class Model {
         pulls.push({ varIndices: m.vars, fn: (l) => [m.size(l).sub(was).mul(STEER / was)] });
       }
     }
-    this.problem.solve({ only, extra: pulls });
+    this.problem.solve({ only, extra: pulls, maxIter: NUDGE_ITER });
     return this.problem.solve({ only });
   }
 
@@ -3098,7 +3098,24 @@ export class Model {
             candidates = byNearness(inPart);
             background = outside(candidates);
           }
-          if (conflicts(candidates, background)) found = quickXplain(candidates, (s) => conflicts(s, background));
+          // **Rings outward**: the relations within reach t of what failed,
+          // for t = -1, 0, 1, 2, 4, … — the first ring that conflicts by
+          // itself is searched, so a trial solves a few relations, not the
+          // whole part, when the conflict is where the failure is. A set that
+          // conflicts by itself is irreducible or not whatever lies outside it.
+          const finite = candidates.map(rank);
+          const far = Math.max(-1, ...finite.filter(Number.isFinite)) + 1;
+          const ranks = finite.map((r) => (Number.isFinite(r) ? r : far));
+          let tried = 0;
+          for (let t = -1; tried < candidates.length; t = t < 1 ? t + 1 : t * 2) {
+            const ring = t >= far ? candidates : candidates.filter((_, i) => ranks[i] <= t);
+            if (ring.length <= tried) continue;
+            tried = ring.length;
+            if (conflicts(ring, background)) {
+              found = quickXplain(ring, (s) => conflicts(s, background));
+              break;
+            }
+          }
         } catch (e) {
           if (e !== SEARCH_SPENT) throw e;
         }
@@ -3161,6 +3178,14 @@ const SHRINK = 0.1;
 
 /** How hard `collapsedNow` pushes a suspect toward nothing: a size of L weighs as a residual of 1. */
 const PUSH = 1;
+
+/**
+ * The iterations a push or a steer may take. Either is a compromise that never
+ * reaches zero (a pull against a relation), so it runs to its limit; it only
+ * has to move the values off one root and toward another, and the release that
+ * follows converges.
+ */
+const NUDGE_ITER = 30;
 
 /** How hard `steered` pulls each size toward what it was: a relative change of 1 weighs as a residual of 1. */
 const STEER = 1;

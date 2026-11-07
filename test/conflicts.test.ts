@@ -304,6 +304,32 @@ test("3D: a chain through an extrude's twins — a relation on the lid against o
   assert.ok(!m.conflicting(report).relations.includes(f.depth!), "the extrude's depth is the feature's, never named");
 });
 
+// --- a collapse the solver could have avoided -------------------------------------------
+
+test("3D: par(l1, l2) and perp(l2, l3) on a rectangle hold without a fold — the steered retry turns a side", () => {
+  // Consistent: three corners in a row and the fourth off it square. From the
+  // rectangle as drawn the bare solver's nearest root can fold l2 instead,
+  // which is the locality `solve` retries steered against (and every trial of
+  // the conflict search with it: before the retry, the search called this
+  // pair a conflict and named it in the owner's rectangle).
+  const make = () => {
+    const s = sketch(3);
+    [[0, 0], [6, 0], [6, 4], [0, 4]].forEach(([x, y], i) => s.pt(x, y, `p${i + 1}`));
+    for (let i = 1; i <= 4; i++) s.m.addLine(`p${i}`, `p${(i % 4) + 1}`, `l${i}`);
+    parallel(s.m, "l1", "l2");
+    perpendicular(s.m, "l2", "l3");
+    return s.m;
+  };
+  const bare = make();
+  bare.problem.solve();
+  assert.ok(lengthOf(bare, "l2") < 1e-6, `the bare solver folds l2: ${lengthOf(bare, "l2")}`);
+  const m = make();
+  const report = m.solve();
+  assert.equal(report.solved, true, `collapsed ${report.collapsed}`);
+  assert.ok(["l1", "l2", "l3", "l4"].every((l) => lengthOf(m, l) > 0.5), `nothing folded: ${["l1", "l2", "l3", "l4"].map((l) => lengthOf(m, l))}`);
+  console.log(`bare: l2 ${lengthOf(bare, "l2").toExponential(2)}; steered: l2 ${lengthOf(m, "l2").toFixed(3)}`);
+});
+
 // --- every kind declares its measures ------------------------------------------------
 
 test("2D: an ellipse run to nothing by two fixes is a conflict — its own measure, no line in it", () => {
@@ -386,8 +412,22 @@ test("the cost: the check on every solve, and the search, on the largest fixture
     };
     const bare = times(() => m.problem.solve());
     const checked = times(() => m.solve());
-    console.log(`${name}: ${m.entities.size} entities, ${m.relations.size} relations — solve ${bare.toFixed(2)} ms bare, ${checked.toFixed(2)} ms checked`);
     assert.equal(m.solve().solved, true, `${name} solves with nothing collapsed`);
+    // A conflict made in it: a par and a perp on the first two lines that
+    // share a point, and the search for it.
+    const lines = [...m.entities.values()].filter((e) => e.kind === "line").map((e) => m.line(e.name));
+    const pair = lines.flatMap((a) => lines.filter((b) => b !== a && b.refs.some((p) => a.refs.includes(p))).map((b) => [a.name, b.name]))[0];
+    const made = [parallel(m, pair[0], pair[1]), perpendicular(m, pair[0], pair[1])];
+    let t0 = performance.now();
+    const report = m.solve();
+    const solveMs = performance.now() - t0;
+    t0 = performance.now();
+    const named = m.conflicting(report).relations;
+    const searchMs = performance.now() - t0;
+    console.log(`${name}: ${m.entities.size} entities, ${m.relations.size} relations — solve ${bare.toFixed(2)} ms bare, `
+      + `${checked.toFixed(2)} ms checked; with a conflict made in it, solve ${solveMs.toFixed(1)} ms, search ${searchMs.toFixed(1)} ms → ${named.join(" ")}`);
+    assert.equal(report.solved, false, `${name}: the par and the perp conflict`);
+    for (const r of made) assert.ok(named.includes(r), `${name}: ${r} named among ${named}`);
   }
 
   // Forty rectangles in a row, tied to each other (sketchrelations.test.ts's
@@ -407,6 +447,18 @@ test("the cost: the check on every solve, and the search, on the largest fixture
   let t0 = performance.now();
   assert.equal(m.solve().solved, true);
   console.log(`40 rectangles: ${m.entities.size} entities, ${m.relations.size} relations — first solve ${(performance.now() - t0).toFixed(1)} ms`);
+  // A drag's frame, checked and bare: the same pull on a corner, alternately.
+  const frames = { bare: [] as number[], checked: [] as number[] };
+  for (let i = 0; i < 20; i++) {
+    const to = [20 * 50 + 40 + (i % 2 ? 3 : -3), 25 + (i % 2 ? 2 : -2), 0];
+    t0 = performance.now();
+    if (i % 4 < 2) m.problem.solve({ extra: [pull(m, "r20k2", to)] });
+    else m.solveFrame([pull(m, "r20k2", to)]);
+    (i % 4 < 2 ? frames.bare : frames.checked).push(performance.now() - t0);
+  }
+  const median = (xs: number[]) => [...xs].sort((a, b) => a - b)[xs.length >> 1];
+  console.log(`40 rectangles, a drag's frame: ${median(frames.bare).toFixed(1)} ms bare, ${median(frames.checked).toFixed(1)} ms checked`);
+  m.solve();
   const p = parallel(m, "r20e0", "r20e1");
   t0 = performance.now();
   const report = m.solve();
