@@ -108,6 +108,9 @@ defineModule("core", {
     },
     // 3D only: the point lies in the frame's plane. Frame-relative like `fix`.
     onPlane: { names: ["onplane", "onPlane"], slots: slots("point", "frame"), fn: basic.onPlane },
+    // 3D only: the point in the plane of three others, all four moving — the
+    // both-ways hold an offset keeps its copy in its chain's plane by (profiles-held.md).
+    coplanar: { names: ["coplanar"], slots: slots("point", "a", "b", "c"), fn: basic.coplanar },
     coincident: { names: ["coin", "coincident"], slots: slots("a", "b"), fn: basic.coincident },
     midpoint: { names: ["mid", "midpoint"], slots: slots("midpoint", "a", "b"), fn: basic.midpoint },
     // relations/geometry.ts. `par`, `perp` and `ang` additionally take a

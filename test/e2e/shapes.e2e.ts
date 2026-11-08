@@ -98,7 +98,7 @@ async function savedRoundTrip(app: AppContext): Promise<void> {
   const before = await app.repl("save()");
   assert.equal(before.ok, true, before.error ?? "");
   const text = before.value as string;
-  assert.match(text, /"version": 18/);
+  assert.match(text, /"version": 19/);
   const was = await relations(app);
   await app.type("pt(0, 0); pt(5, 5)"); // something to lose
   await app.repl(`SAVED = ${JSON.stringify(text)}`);

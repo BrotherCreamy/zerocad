@@ -136,7 +136,7 @@ test("a file written before the re-cut — every sketch-shapes piece and an extr
   // 18 brought the spline (docs/plans/spline.md), which a file with none of
   // its own writes nothing for.
   const want = JSON.parse(text);
-  want.version = 18;
+  want.version = 19;
   const at = want.journal.findIndex((e: { op: string }) => e.op === "extrude");
   const [member, , frame, loops] = want.journal[at].args;
   want.journal.splice(at, 1, { op: "region", args: [member, frame, loops[0]] },

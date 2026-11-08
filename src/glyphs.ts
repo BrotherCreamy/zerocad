@@ -185,6 +185,8 @@ export const GLYPH_SYMBOL: Record<string, string> = {
   // thing seen at an angle. Deferred from the model half of 3D phase 1 until
   // there was a 3D drawing to look at it in.
   onPlane: "▱",
+  // The point in the plane of three others (profiles-held.md): the same flat thing.
+  coplanar: "▱",
   // The sketch relations (docs/plans/sketch-relations.md). A `par` against a
   // frame's x or y axis — what `horizontal` and `vertical` expand to — wears
   // `—` or `|` instead of `//` (see `symbolOf`); these two are here so the

@@ -90,6 +90,23 @@ const ROWS: Record<string, Row> = {
       };
     },
   },
+  "offset of a circle: the copy about the same centre, facing as its original does (its radius its own dimension)": {
+    build(m, s) {
+      const o = s.pt(0, 0, 0) as string;
+      const c = s.circ(o, 8, [0, 0, 1]) as string;
+      const [copy] = s.offset(c, 3) as string[];
+      // A hand on each rim: a point on it, dragged.
+      const rim = (curve: string, r: number) => { const p = s.pt(r, 0, 0) as string; onCircle(m, p, curve); return p; };
+      return {
+        copy: rim(copy, 11), orig: rim(c, 8),
+        check() {
+          // Its radius is a dimension of its own, r + 3 when made — not "3 bigger than the original":
+          // a pull on the original's rim changes the gap. Written down and left (TODO.md).
+          return { "same facing": len(cross(unit(m.normalOf(copy)), unit(m.normalOf(c)))) };
+        },
+      };
+    },
+  },
   "mirror: each copy the original's half-turn about the line": {
     build(m, s) {
       const { P, L } = rect(m);
@@ -334,4 +351,35 @@ test("a whole revolve whose free profile has turned about its axis is laid out f
     const nearest = Math.min(...P.map((p) => len(sub(C(m, p), w))));
     assert.ok(nearest <= 1e-7, `a corner the kernel is handed, ${w}, is ${nearest} from the profile's nearest`);
   }
+});
+
+test("an offset's holds read nothing redundant — a rectangle's, a circle's, an L's — and a version-18 offset replays as it was made", async () => {
+  await loadKernel();
+  const { open, save } = await import("../src/persist.ts");
+  const shapes: Record<string, (m: Model, s: Record<string, (...a: unknown[]) => any>) => unknown> = {
+    rectangle: (m, s) => s.offset(rect(m).L, 5),
+    circle: (_m, s) => s.offset(s.circ(s.pt(0, 0, 0), 8, [0, 0, 1]), 3),
+    "an open L": (m, s) => { const [a, b, c] = [[0, 0, 0], [30, 0, 0], [30, 20, 0]].map((x) => m.addPoint(x).name); return s.offset([s.ln(a, b), s.ln(b, c)], 4); },
+  };
+  for (const [name, make] of Object.entries(shapes)) {
+    const m = new Model(3);
+    make(m, neocadScope({ model: m }) as Record<string, (...a: unknown[]) => any>);
+    assert.equal(m.solve().solved, true, name);
+    assert.deepEqual(m.diagnose().redundant, [], `${name}: nothing redundant`);
+    // The holds ride in the entry, so a reopened file holds the copy the same way.
+    const entry = m.journal.find((e) => e.op === "offset")!;
+    assert.ok("flat" in (entry.args[3] as object), `${name}: the entry says how it is held`);
+    const back = open(save(m));
+    assert.deepEqual([...back.relations.values()].map((r) => r.op), [...m.relations.values()].map((r) => r.op), `${name}: reopened, the same relations`);
+  }
+  // A version-18 file's offset has no flat: it makes what it always made, under the names the file's later entries hold.
+  const m = new Model(3);
+  const { L } = rect(m);
+  (neocadScope({ model: m }) as Record<string, (...a: unknown[]) => any>).offset(L, 5);
+  const file = JSON.parse(save(m));
+  file.version = 18;
+  for (const e of file.journal) if (e.op === "offset") delete e.args[3].flat;
+  const old = open(JSON.stringify(file));
+  assert.equal([...old.relations.values()].filter((r) => r.op === "coplanar").length, 0, "no coplanar from a version-18 offset");
+  assert.equal(old.relations.size, m.relations.size - 1, "the one coplanar fewer, and nothing else");
 });

@@ -300,7 +300,24 @@ export const FORMAT = "neocad-model";
  * with, so an older file replays to exactly the solids it was saved with
  * (`test/explicitregions.test.ts` opens one written by the build before).
  */
-export const VERSION = 18;
+export const VERSION = 19;
+// 19 (docs/plans/profiles-held.md): **an offset's copy is held in its chain's
+// plane, both ways**. In 3D, where no sketch plane holds the chain, `offset`'s
+// resolved part carries `flat` — three of the chain's points, or none — and
+// the expansion holds the copy by relations between it and the chain: a
+// `coplanar` (a new relation, the point in the plane of three others, all four
+// moving) on one vertex of each run nothing else puts there, and a `par` from
+// each round copy nothing else turns to its original. A version-18 build
+// replaying a 19 offset would ignore `flat` and make none of them, handing
+// every later relation a name the file's later entries disagree with — the
+// misreading a version is for. Going the other way **a version-18 file opens
+// exactly as it was**: its offsets carry no `flat`, and an offset without one
+// makes what it always made (its copy free to slide off along the normal, which
+// is written down in TODO.md rather than changed under old files' names). A
+// 2D offset, or one on a sketch plane, writes no `flat`, and its entry is the
+// same as at 18. The revolve's and the circular pattern's holds changed no
+// entry: they are rows of relations the entries already made (and a circular
+// pattern's plane, always journalled, may now name three of its seed's points).
 // **Nor did trim everything** (docs/plans/trim-everything.md): two new ops,
 // `addEllipticArc` and `addBSpline` (the kinds a trim leaves, made inside the
 // trim's own entry and journalled as themselves only when typed), and `trim`'s
