@@ -419,7 +419,18 @@ function faces(model: Model, a: Ref, b: Ref): Applicable | null {
       const v = roundValue(measured(model, ["dist", la, lb]));
       return driving("Distance", call("dist", [la, lb, v]), (m) => dist(m, la, lb, v), formatValue(v), "dist", [la, lb]);
     }
-    if (!parallelLines(model, la, lb)) return lineAngle(model, la, lb);
+    if (!parallelLines(model, la, lb)) {
+      // Two walls meeting at an edge: the solid's angle there is the
+      // profile's corner — a wedge's 30°, where the two lines' own
+      // directions could read 150° — so it is the angle at that corner.
+      const [ra, rb] = [model.line(la).refs, model.line(lb).refs];
+      const corner = ra.find((p) => rb.includes(p));
+      if (corner && sa.feature === sb.feature) {
+        const [p, q] = [ra.find((x) => x !== corner)!, rb.find((x) => x !== corner)!];
+        return threeThings(model, [corner, p, q].map((n) => ({ kind: "point" as const, name: n })));
+      }
+      return lineAngle(model, la, lb);
+    }
   }
   const ga = solidGeometry(model, a.name), gb = solidGeometry(model, b.name);
   const plane = ga?.kind === "plane" ? ga : gb?.kind === "plane" ? gb : null;

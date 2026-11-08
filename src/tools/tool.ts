@@ -115,8 +115,8 @@ export interface ToolContext {
    * Absent outside a viewport, like `pick`.
    */
   pickSolid?(screen: [number, number]): Pick | null;
-  /** The outlines a face named as `pickSolid` names it is drawn with this frame, in the world — to light it. Empty when not drawn. */
-  faceOutlines?(name: string): number[][][];
+  /** A face named as `pickSolid` names it, as it is seen this frame: the screen cells it is in front at (`SHADE_PX` square) and its edges' runs in sight — to light it (solidpick.ts). Empty when not drawn. */
+  faceShade?(name: string): { cells: [number, number][]; runs: [number, number][][] };
   /** A world point on screen, as the drawing is projected — where a tool's own label would land. Absent outside a viewport. */
   toScreen?(world: number[]): [number, number];
   /**

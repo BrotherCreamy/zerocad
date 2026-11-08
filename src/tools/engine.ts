@@ -69,7 +69,7 @@
 // is simply back when Space is let go — nothing was put down to come back.
 
 import { valueArgIndex, type Model } from "../model.ts";
-import { pickSolid, type DrawnFaces } from "../solidpick.ts";
+import { faceShade, pickSolid, type DrawnFaces } from "../solidpick.ts";
 import { describeFace } from "../relations/solidref.ts";
 import type { ResidualBlock } from "../kernel/problem.ts";
 import {
@@ -228,6 +228,8 @@ export class ToolEngine {
   private onEditDimension: ((name: string) => void) | undefined;
   /** The last left click or tap on a dimension's label: which, where and when — what a second makes a double. */
   private lastLabelClick: { relation: string; x: number; y: number; at: number } | null = null;
+  /** When the last finger went down, by its event's stamp. */
+  private touchDownAt = 0;
   private onContextMenuWithdrawn: () => void;
   /**
    * Whether a user action is currently open, so that `before` and `after`
@@ -627,6 +629,18 @@ export class ToolEngine {
   }
 
   /**
+   * Opens a dimension's value **after** the event that asked: the press that
+   * did is still being dispatched, and its default — a mousedown on a canvas
+   * takes the focus to the page — would take it straight back off the command
+   * line, leaving the typed number going nowhere (found in the browser: the
+   * value landed in front of the command, not after it).
+   */
+  private editSoon(name: string): void {
+    const edit = this.onEditDimension;
+    if (edit) setTimeout(() => edit(name), 0);
+  }
+
+  /**
    * Whether a click at (sx, sy) at time `at` is the second of a double-click
    * on one dimension's label — and if so, its value opened (`onEditDimension`).
    * A click on anything else forgets the first. The window is the platform's
@@ -641,7 +655,7 @@ export class ToolEngine {
     if (!dim || !last || last.relation !== dim || at - last.at > DOUBLE_CLICK_MS
       || Math.hypot(sx - last.x, sy - last.y) > TAP_SLOP) return false;
     this.lastLabelClick = null;
-    this.onEditDimension(dim);
+    this.editSoon(dim);
     return true;
   }
 
@@ -836,8 +850,8 @@ export class ToolEngine {
       pick: ([sx, sy]) => hitTest(this.model, this.view, sx, sy, this.occlusion, this.reach),
       // A vertex before an edge before a face (docs/plans/smart-dimension.md).
       pickSolid: ([sx, sy]) => pickSolid(this.geometryAt(sx, sy), this.drawnFaces, sx, sy, (f) => describeFace(this.model, f)),
-      ...(this.onEditDimension ? { editDimension: this.onEditDimension } : {}),
-      faceOutlines: (name) => (this.drawnFaces?.faces ?? []).filter((f) => f.name === name).flatMap((f) => f.outlines),
+      ...(this.onEditDimension ? { editDimension: (name: string) => this.editSoon(name) } : {}),
+      faceShade: (name) => faceShade(this.drawnFaces, name, this.view),
       toScreen: (world) => worldToScreen(this.view, world),
       regionAt: ([sx, sy]) => this.regionAt(sx, sy),
       log: this.onLog,
@@ -1367,6 +1381,9 @@ export class ToolEngine {
       // wanders — over a panel included.
       this.canvas.setPointerCapture?.(e.pointerId);
       this.gestures.down(e.pointerId, sx, sy, eventTime(e));
+      // When the finger went down, by the event's own stamp: what a double-tap is timed by, so a
+      // busy page that delivers the taps late does not split them (`doubleOnLabel`).
+      this.touchDownAt = eventTime(e) ?? performance.now();
     } else if (kind === "move") this.gestures.move(e.pointerId, sx, sy, eventTime(e));
     else if (e.type === "pointercancel") this.gestures.cancel(e.pointerId);
     else this.gestures.up(e.pointerId, sx, sy, eventTime(e));
@@ -1399,7 +1416,7 @@ export class ToolEngine {
     return {
       press: look,
       tap: (x, y) => {
-        if (this.doubleOnLabel(x, y, performance.now())) return;
+        if (this.doubleOnLabel(x, y, this.touchDownAt)) return;
         if (this.active) {
           // A click: the press and the release, in the one place. A tool that
           // finished on the press (a point) is not handed a release it would

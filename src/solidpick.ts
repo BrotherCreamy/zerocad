@@ -23,7 +23,8 @@
 // Pure: faces, an occlusion over them, a pixel — no canvas, no model state.
 
 import type { Face } from "./faces.ts";
-import { nearestFace, type Occlusion } from "./occlusion.ts";
+import { nearestFace, visibleRuns, type Occlusion } from "./occlusion.ts";
+import type { View } from "./view.ts";
 import type { Pick } from "./picking.ts";
 
 /** The faces drawn this frame and the occlusion answer built over them — in the same order. */
@@ -53,4 +54,41 @@ export function pickSolid(pick: Pick | null, drawn: DrawnFaces | null, sx: numbe
   if (pick) return pick;
   const f = faceUnder(drawn, sx, sy);
   return f ? { name: f.name, kind: "face", distance: 0, body: f.feature, tag: describe(f.name) } : null;
+}
+
+/** How finely a lit face is filled, in screen pixels: the cell a face is asked whether it is in front at. */
+export const SHADE_PX = 3;
+
+/**
+ * **A face lit as it is seen**: the screen cells (`SHADE_PX` square, by their
+ * top-left corners) where it is the face in front, and the runs of its
+ * outlines in sight. A face's whole outline filled would show through the
+ * face in front of it — seen in the browser: the back wall of a step lit
+ * across the front one — and a 2D canvas has no depth test to stop it, so the
+ * same question the pick asks (`nearestFace`) is asked cell by cell, over the
+ * face's own screen box only.
+ */
+export function faceShade(drawn: DrawnFaces | null, name: string, view: View): { cells: [number, number][]; runs: [number, number][][] } {
+  if (!drawn) return { cells: [], runs: [] };
+  const mine = new Set<number>();
+  drawn.faces.forEach((f, i) => { if (f.name === name) mine.add(i); });
+  if (!mine.size) return { cells: [], runs: [] };
+  let [x0, y0, x1, y1] = [Infinity, Infinity, -Infinity, -Infinity];
+  for (const i of mine) {
+    const b = drawn.occ.faces[i]?.box;
+    if (!b) continue;
+    [x0, y0, x1, y1] = [Math.min(x0, b[0]), Math.min(y0, b[1]), Math.max(x1, b[2]), Math.max(y1, b[3])];
+  }
+  const cells: [number, number][] = [];
+  if (Number.isFinite(x0)) {
+    for (let y = Math.floor(y0); y < y1; y += SHADE_PX) {
+      for (let x = Math.floor(x0); x < x1; x += SHADE_PX) {
+        const hit = nearestFace(drawn.occ, x + SHADE_PX / 2, y + SHADE_PX / 2);
+        if (hit && mine.has(hit.index)) cells.push([x, y]);
+      }
+    }
+  }
+  // Its edges as the solid draws them, in sight — the parts a face in front hides left out.
+  const runs = [...mine].flatMap((i) => drawn.faces[i].edges.flatMap((e) => visibleRuns(drawn.occ, view, e)));
+  return { cells, runs };
 }

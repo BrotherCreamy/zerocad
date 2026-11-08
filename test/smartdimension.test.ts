@@ -112,12 +112,22 @@ test("two opposite walls of a block are two lines: the distance between them is 
   void a; void b;
 });
 
-test("the angle between two walls of a wedge is the angle between their lines", () => {
-  const { m, lines, e } = wedge();
+test("the angle between two walls of a wedge is the wedge's angle: at the corner their lines share", () => {
+  const { m, points, e } = wedge();
+  // The profile is p0 (0, 0) → p1 (40, 0) → p2 (40, 23.09) → p0: walls m0 and
+  // m2 meet along the edge over p0, where the wedge is 30° — not the 150°
+  // between the two lines' own directions, which is what ang would read.
   const plan = dimensionFor(m, [`${e}.m0`, `${e}.m2`]);
-  assert.equal(plan?.text, `ang("${lines[0]}", "${lines[2]}", deg(150))`);
-  const flip = dimensionFor(m, [`${e}.m0`, `${e}.m1`]);
-  assert.equal(flip?.text, `ang("${lines[0]}", "${lines[1]}", deg(90))`);
+  assert.equal(plan?.text, `ang3("${points[0]}", "${points[1]}", "${points[2]}", deg(30))`);
+  assert.equal(plan?.reading, "30°");
+  const square = dimensionFor(m, [`${e}.m0`, `${e}.m1`]);
+  assert.equal(square?.text, `ang3("${points[1]}", "${points[0]}", "${points[2]}", deg(90))`);
+  // Set, the wedge steepens: the solid's angle, through its sketch.
+  const d = plan!.apply(m);
+  solved(m);
+  set(m, `${d}.value`, Math.PI / 4);
+  solved(m);
+  close(measured(m, ["angle3", points[0], points[1], points[2]]), Math.PI / 4, 1e-6);
 });
 
 test("an extrude's lid and its own base are its depth: the tool edits that, and makes nothing new", () => {

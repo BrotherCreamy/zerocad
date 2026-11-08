@@ -59,6 +59,7 @@ import { dimensionFor, drivenBecause, takesThird, type Applicable, type Dimensio
 import { REGION_GREEN } from "./region.ts";
 import { markPicked } from "./picked.ts";
 import { edgePoints } from "../kerneledges.ts";
+import { SHADE_PX } from "../solidpick.ts";
 
 /** The hover's amber, as the drawing lights what is under the hand. */
 const HOVER = "#e8a33d";
@@ -182,7 +183,7 @@ export class DimensionTool extends Tool {
       const why = await this.trial(plan);
       if (why !== null) {
         chosen = plan.driven;
-        this.ctx.log?.(`dimension: made driven — ${why}`);
+        this.ctx.log?.(`dimension: made driven — ${why}`, "done");
       }
     }
     if (this.ctx.run) {
@@ -237,25 +238,21 @@ export class DimensionTool extends Tool {
 
   /** A face lit: its outlines filled faintly and stroked, in `colour`. */
   private lightFace(r: RenderContext, name: string, colour: string): void {
-    const outlines = this.ctx.faceOutlines?.(name) ?? [];
-    if (!outlines.length) return;
+    const { cells, runs } = this.ctx.faceShade?.(name) ?? { cells: [], runs: [] };
+    if (!cells.length && !runs.length) return;
     const k = r.ui ?? 1;
     r.g.save();
+    // One path of cells, filled once: overlapping squares at an alpha would band.
     r.g.beginPath();
-    for (const o of outlines) {
-      o.forEach((w, i) => {
-        const [x, y] = r.worldToScreen(w);
-        if (i === 0) r.g.moveTo(x, y);
-        else r.g.lineTo(x, y);
-      });
-      r.g.closePath();
-    }
-    r.g.globalAlpha = 0.28;
+    for (const [x, y] of cells) r.g.rect(x, y, SHADE_PX, SHADE_PX);
+    r.g.globalAlpha = 0.3;
     r.g.fillStyle = colour;
-    r.g.fill("nonzero");
+    r.g.fill();
     r.g.globalAlpha = 1;
     r.g.strokeStyle = colour;
     r.g.lineWidth = 1.5 * k;
+    r.g.beginPath();
+    for (const run of runs) run.forEach(([x, y], i) => (i === 0 ? r.g.moveTo(x, y) : r.g.lineTo(x, y)));
     r.g.stroke();
     r.g.restore();
   }
