@@ -310,7 +310,7 @@ test("the end face is ordinary geometry: a twin corner held 26 from the profile'
 
 // --- the axis ---------------------------------------------------------------------------
 
-test("the axis is a datum: pulling the end face never moves it, and moving it carries the end face", async () => {
+test("a frame's axis is a datum: pulling the end face never moves it; a line's is the user's, pushed both ways; moving either carries the end face", async () => {
   await loadKernel();
   // A frame axis: the frame is the sketch's, and nothing of the revolve moves it.
   {
@@ -325,9 +325,11 @@ test("the axis is a datum: pulling the end face never moves it, and moving it ca
     ["t_o", "t_x", "t_y"].forEach((n, i) => assert.ok(near(m.coords(n), frameWas[i], 0), `${n} did not move at all`));
     endAt(m, f.angle, 2, (p, a) => aboutY(t, p, a), 1e-7);
   }
-  // A line axis whose ends nothing else holds — so anything that moved them
-  // would be the revolve: they do not move by a bit; and dragging the line
-  // turns the end face about where the line now is.
+  // A line axis whose ends nothing else holds. Until profiles-held.md it was a
+  // datum too and did not move by a bit; now it is the user's line, read as
+  // the variables it is (the owner's "bidirectional relationships everywhere
+  // by default"), so the pull on the end face may move it — and whatever it
+  // does, the end face is the profile turned about where the line now is.
   {
     const m = new Model(3);
     const t = tiltedFrame(m);
@@ -339,7 +341,13 @@ test("the axis is a datum: pulling the end face never moves it, and moving it ca
     const tw = m.line(f.twins[0][1]).refs[0];
     m.setCoords(tw, m.coords(tw).map((c) => c - 5));
     assert.equal(m.solve().solved, true);
-    ends.forEach((p, i) => assert.ok(near(m.coords(p), was[i], 0), `${p} did not move at all`));
+    const moved = Math.max(...ends.map((p, i) => Math.hypot(...sub(m.coords(p), was[i]))));
+    assert.ok(moved > 1e-6, `the line took part of the pull: ${moved}`);
+    {
+      const [a, b] = ends.map((p) => m.coords(p));
+      const k = sub(b, a).map((c) => c / Math.hypot(...sub(b, a)));
+      endAt(m, f.angle, 2, (p, x) => turn(p, a, k, x), 1e-7);
+    }
 
     m.setCoords(ends[1], t.at(-3, 25));
     assert.equal(m.solve().solved, true);
@@ -364,16 +372,17 @@ test("a profile's own edge as the axis — the cylinder case: the edge's ends ar
   const k = sub(b, a).map((c) => c / Math.hypot(...sub(b, a)));
   endAt(m, f.angle, 2.5, (p, x) => turn(p, a, k, x));
 
-  // Those two corners are the axis, so they are read as a datum even as bases:
-  // pull one's twin away and the corner does not follow it — the twin goes
-  // back. (Read as variables, the solve would split the pull between them and
-  // drag the axis; the onPlane noise is a picometre.)
+  // Those two corners are the axis, a line the user drew — read as variables
+  // since profiles-held.md, where they were a datum: pull one's twin away and
+  // the solve splits the pull between twin and corner (the corner held onPlane,
+  // so within the sketch), and the twin ends on its corner wherever that is.
   const tw = twinOf.get(points[0])!;
-  const corner = m.coords(points[0]);
   m.setCoords(tw, m.coords(tw).map((c) => c + 6));
   assert.equal(m.solve().solved, true);
-  assert.ok(near(m.coords(points[0]), corner, 1e-9), "the axis's own corner stayed");
-  assert.ok(near(m.coords(tw), corner, 1e-9), "and its twin went back onto it");
+  assert.ok(near(m.coords(tw), m.coords(points[0]), 1e-9), "its twin is on it again");
+  const [a2, b2] = m.line(lines[3]).refs.map((p) => m.coords(p));
+  const k2 = sub(b2, a2).map((c) => c / Math.hypot(...sub(b2, a2)));
+  endAt(m, f.angle, 2.5, (p, x) => turn(p, a2, k2, x), 1e-7);
 });
 
 test("touching the axis closes the solid on it: a semicircle on its diameter, a right triangle on a leg — both allowed, their on-axis corners their own twins' places", async () => {

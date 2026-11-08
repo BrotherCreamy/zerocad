@@ -14,9 +14,10 @@
 // glyphs.ts). One honest unit for what the relation stores, the documented
 // seam, rather than a guess at the caller's intent from the size of a number.
 
-import type { Dual } from "../kernel/dual.ts";
+import { Dual } from "../kernel/dual.ts";
 import { ORIGIN, memberName, parseAxisRef, type FeatureEntry, type Model } from "../model.ts";
 import { curveNormal, frameBasis, joinVars, unitDuals } from "./refs.ts";
+import { vecSub } from "./vec.ts";
 
 /** A whole turn, and how close to one an angle must be to be one. */
 export const FULL_TURN = 2 * Math.PI;
@@ -34,10 +35,12 @@ export interface AxisValue {
 }
 
 /**
- * An axis a revolve turns about, read **lazily and as a value** — the datum
- * rule (`frameBasis`): the reading happens at every evaluation, so the solid
- * follows an axis that is dragged or re-pointed, and it is never declared as a
- * residual's variables, so nothing a revolve holds can push it.
+ * An axis a revolve turns about, read **lazily and as a value**: the reading
+ * happens at every evaluation, so whatever reads it follows an axis that is
+ * dragged or re-pointed. The revolution's own rows read a frame's axis this
+ * way, as a datum, and a line's as its points' variables (`axisLocals`, the
+ * owner's "bidirectional relationships everywhere by default"); the drawing,
+ * the kernel and the glyphs read either as values.
  *
  * Either a frame-axis reference — `"f1.y"`: the frame's origin and that axis,
  * straightened as every relation reads it — or a line's name: its first point
@@ -47,8 +50,8 @@ export interface AxisValue {
  * a residual against it degrades rather than filling the Jacobian with NaN.
  *
  * `points` is which point entities *are* the axis — the frame's three, or the
- * line's two, at the time of asking — so a relation can read those as datum
- * too. Throws now, not at the first solve, for a name that is neither.
+ * line's two, at the time of asking. Throws now, not at the first solve, for a
+ * name that is neither.
  */
 export function axisReader(model: Model, axis: string): { read: () => AxisValue; points: () => string[] } {
   if (model.dim !== 3) throw new Error("a revolve turns about an axis in a 3D model");
@@ -134,24 +137,29 @@ export function turnPoint(p: number[], axis: AxisValue, angle: number): number[]
  *   one. A frame of points all its own — every frame before format 10 — is held
  *   whole, exactly as it was.
  *
- * **The axis is a datum, read and never pushed** — the spec's line, and the rule
- * every relation written against a frame keeps. It reaches the residual as
- * numbers (`axisReader`), and so does every base that *is* a datum: the axis's
- * own points (a profile edge revolved about itself has its ends on the axis)
- * and a twinned frame's points (the sketch frame). For those the block declares
- * the twin alone, so the end frame follows the sketch frame and can never turn
- * it, and no twin can drag its own axis. Every other base is a variable, as an
+ * **The axis is a datum only when it is a frame's** — a datum the user picked,
+ * read and never pushed, the rule every relation written against a frame keeps.
+ * It reaches the residual as numbers, and so does every base that *is* one of
+ * the frame's points, and a twinned frame's points (the sketch frame): for
+ * those the block declares the twin alone, so the end frame follows the sketch
+ * frame and can never turn it. **A line the user drew is an entity like any
+ * other** (docs/plans/profiles-held.md: the owner's "bidirectional
+ * relationships everywhere by default"): its two points are the blocks'
+ * variables, so a drag on the end face or the profile can move the axis line,
+ * and a drag on the axis line swings the solid with it — the same rule as a
+ * circular pattern's seed plane. Every other base is a variable, as an
  * extrude's profile is — the end face can push the profile, which is the
  * one-model negotiation.
  *
- * **A whole turn holds nothing.** With no pairs the angle must be a whole turn,
- * and the relation is a dimension with no blocks: the label on a full revolve,
- * which has no end face to hold. A partial angle with no pairs, or a whole turn
- * with pairs, is refused — and because `set` rebuilds through here, both
- * refusals are what a `set` across the boundary meets, with the old angle left
- * standing. Turning a full revolve partial, or a partial one full, is a
- * different feature, not a different value: a full turn has no end face to
- * swing, and a partial one closed on itself would be two faces in one place.
+ * **A whole turn twins nothing.** Its profile is named by its entities paired
+ * with themselves (a whole turn takes each onto itself), held flat with the
+ * axis (`profileFlat`) and twinned onto nothing. A partial angle with no pair
+ * of two, or a whole turn with one, is refused — and because `set` rebuilds
+ * through here, both refusals are what a `set` across the boundary meets, with
+ * the old angle left standing. Turning a full revolve partial, or a partial
+ * one full, is a different feature, not a different value: a full turn has no
+ * end face to swing, and a partial one closed on itself would be two faces in
+ * one place.
  *
  * 3D only. Refuses a zero angle, more than a whole turn, and anything not a
  * finite number.
@@ -180,38 +188,29 @@ export function revolution(model: Model, axis: string, angle: number, ...pairs: 
       + "no end face: del the revolve and revolve again with no angle for a full one");
   }
   return model.relation("revolution", [axis, angle, ...pairs], () => {
-    const datum = new Set(reader.points());
+    const ax = axisLocals(model, axis, reader);
+    const datum = new Set(ax.datum);
     for (let i = 0; i < pairs.length; i += 2) {
       const be = model.entities.get(pairs[i]);
       if (be?.kind === "frame") for (const p of model.refsOf(be)) datum.add(p);
     }
-    profileFlat(model, reader, pairs, datum);
-    // The turned position of a base, given it as Duals (a variable) or numbers (a datum).
-    const turned = (base: (k: number) => Dual | number, l: Dual[], at: number): Dual[] => {
-      const { origin: o, dir } = reader.read();
-      const m = turnMatrix(dir, angle);
-      const v = [0, 1, 2].map((k) => {
-        const b = base(k);
-        return typeof b === "number" ? b - o[k] : b.sub(o[k]);
-      });
-      return [0, 1, 2].map((r) => {
-        let res = l[at + r].sub(o[r]);
-        for (let c = 0; c < 3; c++) {
-          const vc = v[c];
-          res = typeof vc === "number" ? res.sub(m[r][c] * vc) : res.sub(vc.mul(m[r][c]));
-        }
-        return res;
-      });
-    };
+    profileFlat(model, ax, pairs, datum);
     const holdPoint = (b: string, t: string) => {
       const tv = model.point(t).varIndices;
       if (datum.has(b)) {
-        model.addResidual(tv, (l) => {
-          const at = model.coords(b);
-          return turned((k) => at[k], l, 0);
+        model.addResidual(joinVars(ax.vars, tv), (l) => {
+          const { o, k } = ax.at(l);
+          const at = model.coords(b).map((c) => Dual.constant(c));
+          const r = turnDuals(k, vecSub(at, o), angle);
+          return [0, 1, 2].map((i) => l[ax.width + i].sub(o[i]).sub(r[i]));
         }, `revolution(${b},${t})`);
       } else {
-        model.addResidual([...model.point(b).varIndices, ...tv], (l) => turned((k) => l[k], l, 3), `revolution(${b},${t})`);
+        model.addResidual(joinVars(ax.vars, model.point(b).varIndices, tv), (l) => {
+          const { o, k } = ax.at(l);
+          const w = ax.width;
+          const r = turnDuals(k, vecSub(l.slice(w, w + 3), o), angle);
+          return [0, 1, 2].map((i) => l[w + 3 + i].sub(o[i]).sub(r[i]));
+        }, `revolution(${b},${t})`);
       }
     };
     // Which twins a point pair holds, so a frame pair can leave those to it.
@@ -232,14 +231,12 @@ export function revolution(model: Model, axis: string, angle: number, ...pairs: 
         // curves carried their own normal (expansion 11 makes no end frame).
         const [bn, tn] = [curveNormal(model, b), curveNormal(model, t)];
         if (bn && tn) {
-          model.addResidual(joinVars(bn, tn), (l) => {
-            const m = turnMatrix(reader.read().dir, angle);
-            const [u, w] = [unitDuals(l.slice(0, 3)), unitDuals(l.slice(3))];
-            return [0, 1, 2].map((r) => {
-              let res = w[r];
-              for (let c = 0; c < 3; c++) res = res.sub(u[c].mul(m[r][c]));
-              return res;
-            });
+          model.addResidual(joinVars(ax.vars, bn, tn), (l) => {
+            const { k } = ax.at(l);
+            const w = ax.width;
+            const [u, v] = [unitDuals(l.slice(w, w + 3)), unitDuals(l.slice(w + 3, w + 6))];
+            const r = turnDuals(k, u, angle);
+            return [0, 1, 2].map((i) => v[i].sub(r[i]));
           }, `revolution(${b},${t}).n`);
         }
       } else if (be?.kind === "frame" && te?.kind === "frame") {
@@ -262,6 +259,37 @@ export function revolution(model: Model, axis: string, angle: number, ...pairs: 
 }
 
 /**
+ * The axis as a block reads it: the variables it adds to the block's front
+ * (`vars`, `width` of them — a line's two points, or none for a frame's axis),
+ * and its point and unit direction as Duals over a block's locals (`at`). A
+ * frame's axis is a datum — constants, no variables — and its points (`datum`)
+ * are read as numbers wherever a block meets them; a line's points are the
+ * line's, read lazily so a line a fillet re-points is followed, and no datum.
+ */
+function axisLocals(model: Model, axis: string, reader: ReturnType<typeof axisReader>):
+  { vars: () => number[]; width: number; datum: string[]; points: () => string[]; at: (l: Dual[]) => { o: Dual[]; k: Dual[] } } {
+  if (parseAxisRef(axis)) {
+    return {
+      vars: () => [], width: 0, datum: reader.points(), points: () => [],
+      at: () => { const v = reader.read(); return { o: v.origin.map((c) => Dual.constant(c)), k: v.dir.map((c) => Dual.constant(c)) }; },
+    };
+  }
+  return {
+    vars: () => model.line(axis).refs.flatMap((p) => model.point(p).varIndices), width: 6, datum: [],
+    points: () => [...model.line(axis).refs],
+    at: (l) => { const o = l.slice(0, 3); return { o, k: unitDuals(vecSub(l.slice(3, 6), o)) }; },
+  };
+}
+
+/** `v` turned through `angle` about the unit direction `k` — Rodrigues', over Duals: v cos + (k × v) sin + k (k·v)(1 − cos). */
+function turnDuals(k: Dual[], v: Dual[], angle: number): Dual[] {
+  const c = Math.cos(angle), s = Math.sin(angle);
+  const kv = k[0].mul(v[0]).add(k[1].mul(v[1])).add(k[2].mul(v[2]));
+  const kx = [k[1].mul(v[2]).sub(k[2].mul(v[1])), k[2].mul(v[0]).sub(k[0].mul(v[2])), k[0].mul(v[1]).sub(k[1].mul(v[0]))];
+  return [0, 1, 2].map((i) => v[i].mul(c).add(kx[i].mul(s)).add(k[i].mul(kv).mul(1 - c)));
+}
+
+/**
  * **The axis stays in the profile's plane** (docs/plans/profiles-held.md, the
  * audit). A revolve is only a solid of revolution of its profile while the
  * axis lies in the profile's plane, which `revolve` checks once, at the call;
@@ -277,66 +305,72 @@ export function revolution(model: Model, axis: string, angle: number, ...pairs: 
  * and changes nothing they say if a rebuild chooses another. Linear in each
  * point, nothing squared.
  *
- * **The profile is pushed, and the axis is not**: the axis is a datum, read as
- * numbers, as every row of the revolve reads it (`axisReader`) — a frame's axis
- * or the user's own line, which a feature built on it never moves. So with
+ * **Both ways, as the axis allows** (`axisLocals`): a frame's axis is a datum
+ * the user picked, so the profile turns about it and never moves it; a line's
+ * axis is pushed like the profile, so a profile pulled off the axis's plane
+ * can take the line with it, as far as nothing else holds the line. With
  * nothing else holding it the profile may turn about the axis as a whole,
- * which is still the same solid turned, and never leave it. The axis's own
- * points (a profile edge on the axis) and a frame's points are a datum too,
- * and on the axis already, so they take no row. Vetoable (TODO.md's register).
+ * which is still the same solid turned. The frame's points (a profile edge on
+ * a frame's axis) are a datum, and on the axis already, so they take no row.
+ * Vetoable (TODO.md's register).
  *
  * The profile is the bases of the pairs: an end face's bases for a partial
  * turn, and for a whole turn — which twins nothing — its entities paired with
  * themselves.
  */
-function profileFlat(model: Model, reader: ReturnType<typeof axisReader>, pairs: readonly string[], datum: ReadonlySet<string>): void {
+function profileFlat(model: Model, ax: ReturnType<typeof axisLocals>, pairs: readonly string[], datum: ReadonlySet<string>): void {
+  // The axis line's own points (a profile edge revolved about itself) are on
+  // the axis: a row for one says nothing, so they take none.
+  const axisPoints = new Set(ax.points());
   const points: string[] = [], curves: string[] = [];
   for (let i = 0; i < pairs.length; i += 2) {
     const b = pairs[i];
     const e = model.entities.get(b);
     if (e?.kind === "point") {
-      if (!datum.has(b) && !points.includes(b)) points.push(b);
+      if (!datum.has(b) && !axisPoints.has(b) && !points.includes(b)) points.push(b);
     } else if (e && (e.kind === "circle" || e.kind === "arc" || e.kind === "ellipse" || e.kind === "earc") && !curves.includes(b)) {
       curves.push(b);
     }
   }
-  const at = reader.read();
+  const at = ax.at(ax.vars().map((v) => Dual.constant(model.problem.getVar(v))));
+  const [o0, k0] = [at.o.map((d) => d.val), at.k.map((d) => d.val)];
   const offAxis = (p: string) => {
-    const v = model.coords(p).map((c, i) => c - at.origin[i]);
-    const along = v.reduce((s, c, i) => s + c * at.dir[i], 0);
-    return Math.hypot(...v.map((c, i) => c - along * at.dir[i]));
+    const v = model.coords(p).map((c, i) => c - o0[i]);
+    const along = v.reduce((s, c, i) => s + c * k0[i], 0);
+    return Math.hypot(...v.map((c, i) => c - along * k0[i]));
   };
   let ref: string | null = null;
   for (const p of points) if (offAxis(p) > (ref === null ? 1e-9 : offAxis(ref))) ref = p;
   if (ref === null) return; // every point on the axis: a profile already refused by `revolve`
   const r = ref;
   const rv = model.point(r).varIndices;
-  /** n̂ = unit(k × (r − o)), the plane's normal, as Duals over r's three locals at `at0`. */
-  const normal = (l: Dual[], at0: number): Dual[] => {
-    const { origin: o, dir: k } = reader.read();
-    const w = [0, 1, 2].map((i) => l[at0 + i].sub(o[i]));
-    return unitDuals([
-      w[2].mul(k[1]).sub(w[1].mul(k[2])),
-      w[0].mul(k[2]).sub(w[2].mul(k[0])),
-      w[1].mul(k[0]).sub(w[0].mul(k[1])),
-    ]);
+  const w = ax.width;
+  /** n̂ = unit(k × (r − o)), the plane's normal, as Duals: the axis at the block's front, r after it. */
+  const normal = (l: Dual[]): { n: Dual[]; o: Dual[] } => {
+    const { o, k } = ax.at(l);
+    const d = vecSub(l.slice(w, w + 3), o);
+    return {
+      o, n: unitDuals([
+        k[1].mul(d[2]).sub(k[2].mul(d[1])),
+        k[2].mul(d[0]).sub(k[0].mul(d[2])),
+        k[0].mul(d[1]).sub(k[1].mul(d[0])),
+      ]),
+    };
   };
   for (const p of points) {
     if (p === r) continue;
-    model.addResidual([...rv, ...model.point(p).varIndices], (l) => {
-      const n = normal(l, 0);
-      const o = reader.read().origin;
-      let s = n[0].mul(l[3].sub(o[0]));
-      for (let i = 1; i < 3; i++) s = s.add(n[i].mul(l[3 + i].sub(o[i])));
-      return [s];
+    model.addResidual(joinVars(ax.vars, rv, model.point(p).varIndices), (l) => {
+      const { n, o } = normal(l);
+      const q = vecSub(l.slice(w + 3, w + 6), o);
+      return [n[0].mul(q[0]).add(n[1].mul(q[1])).add(n[2].mul(q[2]))];
     }, `revolution.flat(${p})`);
   }
   for (const c of curves) {
     const cn = curveNormal(model, c);
     if (!cn) continue;
-    model.addResidual(joinVars(rv, cn), (l) => {
-      const n = normal(l, 0);
-      const u = unitDuals(l.slice(3, 6));
+    model.addResidual(joinVars(ax.vars, rv, cn), (l) => {
+      const { n } = normal(l);
+      const u = unitDuals(l.slice(w + 3, w + 6));
       return [
         u[1].mul(n[2]).sub(u[2].mul(n[1])),
         u[2].mul(n[0]).sub(u[0].mul(n[2])),
