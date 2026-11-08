@@ -26,6 +26,52 @@ otherwise.
 
 ## Decisions made so far — veto here if any are wrong
 
+- **Every sketch curve trims; power trim; trim heads the modify button** (the
+  owner, 2026-11-08: *"Also need trim for sketch entities"*). Spec:
+  [`trim-everything.md`](docs/plans/trim-everything.md), **built**; its *As
+  built* has the detail. Each vetoable:
+  - **The elliptical arc is a kind of its own** (`earc`, names `ea1`, …),
+    declared through `EntityKindSpec` beside the ellipse. A trimmed ellipse
+    becomes one under its own name, as a circle becomes an arc. Its ends are
+    held by two `onellipse` relations (an arc's `arcends` said twice), and a
+    middle piece's second is held by `eqrad`, which for two conics now means
+    equal semi-axes. Rejected: sharing the minor variable between the two
+    pieces, which diagnose would count twice; and the ellipse itself carrying
+    optional ends, where the spec asked for a kind.
+  - **Its frame is the ellipse's with a start** (`ArcFrame.t0`, an eccentric
+    anomaly), every parameter still read from the start. Rejected: a
+    conjugate-diameter frame that starts at the start, which is not
+    orthonormal.
+  - **The spline's piece is a spline of control points** (`bspline`, names
+    `bs1`, …): ordinary points for control points, fixed knots, owning
+    nothing, drawn with its control polygon dashed. A trimmed spline becomes
+    one under its own name. Rejected: control points as the entity's own
+    variables, which no hand could reach.
+  - **What a spline trim keeps**: through-points nothing else uses go; a used
+    one on the piece is held `onspline` on it; an `onspline` on the piece is
+    re-made (its parameter read afresh); a `tan` at the end that went is
+    removed and said in the log; at the far end of a middle trim it goes
+    over to the second piece.
+  - **The pieces are journalled resolved** (`trim`'s third resolved part,
+    `[{ knots, ctrl, seam? }]`), because a replay reaches the trim on seeds.
+    **No format bump**: the precedent of the ops added without one (an older
+    build refuses the step by name, it does not misread it).
+  - **Power trim is one typed entry of one `trim` per piece**, which is one
+    undo step and nothing new in the journal. A curve's pieces are typed from
+    its far end back, so each name typed is the curve the piece is on. Pieces
+    are read against the drawing at the press. Where an earlier piece in the
+    stroke took away the crossing that bounded a later one, the later trim
+    takes the piece as it is then, as SolidWorks's live power trim would.
+  - **A click trims on its release**, so that a press can become a stroke.
+  - **Trim heads the modify button** (`modify: [trim, fillet, bevel, …]`), as
+    its face until another member is armed; its glyph strikes the piece out.
+  - **Not built: trim to closest, extend by shift or long-press.** The
+    walkthrough found no need: a click already takes the piece between the
+    nearest cuts, extend has its own tool on the same button, there is no
+    shift on glass, and a long-press is the menu.
+  - **Not built: extend and offset of a spline.** The representation does
+    not make them small (below).
+
 - **Every standard relation, offered for whatever is picked** (the owner,
   2026-11-08: *"Also need to figure out a way to do all the standard
   relations"*; docs/plans/relations-complete.md, whose *As built* is the
@@ -204,7 +250,8 @@ otherwise.
   - **`addThrough` re-bends the curve a little** (under 2 % of its length in
     the suite) rather than keeping it exactly with a knot that is no
     through-point.
-  - **Trim, extend and offset of a spline itself are refused by name**; a
+  - **Extend and offset of a spline itself are refused by name** (trim of one
+    is a spline of control points since trim-everything, above); a
     spline **cuts** what it crosses and a line extends to it; mirror and the
     patterns copy it; a region bounded by **part** of one is refused, a whole
     one extrudes and revolves; a surface sweeps and turns one, and is not
@@ -258,7 +305,7 @@ otherwise.
   [`sketch-edit.md`](docs/plans/sketch-edit.md), **built**; its *As built*
   has the table of what each journals, refuses and cascades. Open to veto,
   as built:
-  - **Each op's rule** — *trim*: refuses an ellipse, a curve nothing cuts
+  - **Each op's rule** — *trim*: refuses (an ellipse until trim-everything; every curve trims now) a curve nothing cuts
     (`del` is for that), a circle cut once, a feature's own edge, and a cut
     that leaves a feature on the curve no profile (it tries, and takes itself
     back, counters and all); takes with it the holds of points on the piece
@@ -1964,6 +2011,38 @@ are flagged as such.
         where it cannot drive.
   - [x] [`relations-complete.md`](docs/plans/relations-complete.md): the
         full SolidWorks/Onshape relation table, offered for any pick, many at
+        once, Fix, and relations to solid edges and faces.
+  - [x] [`trim-everything.md`](docs/plans/trim-everything.md): ellipse and
+        spline trim (an elliptical arc kind, a control-point spline), power
+        trim by dragging across. **BUILT (2026-11-08)** on
+        `claude/trim-everything`; the register entry above, the spec's *As
+        built*. Left, each written down:
+        - [ ] **Extend a spline.** A spline of control points can be carried
+          on past an end (unclamp the end, Piegl & Tiller A12.1, then reach
+          along the end span's polynomial and clamp again), but that is not
+          small, and an interpolant would need a through-point added where
+          the reach lands. Refused by name now.
+        - [ ] **Offset a spline.** No offset of a B-spline is a B-spline; it
+          needs a fit to a tolerance (Tiller & Hanson), which nothing here
+          has. Refused by name now.
+        - [ ] **Revolve an elliptical arc** (and an ellipse): no surface of
+          revolution of a conic is written yet. Refused by name.
+        - [ ] **Part of an elliptical arc or of a spline piece bounding a
+          region** is refused, as part of an ellipse or a spline is. The kinds
+          would now serve (the part is a piece of the same kind), but the
+          twin and the kernel member for a portion are not written.
+        - [ ] **A trimmed spline's through-points do not drive the piece.**
+          A used one is held `onspline` on it; the curve's shape is its
+          control points'. Reshaping a piece by a point on it would need a
+          point-on-curve with the control points solving for it.
+        - [ ] **Power trim reads pieces at the press.** A later piece whose
+          bounding crossing an earlier one in the stroke took away is trimmed
+          as it is then (the register entry). Not seen in the walkthrough.
+        - [ ] **An elliptical arc's major end is drawn** even where it lies on
+          the piece trimmed away, a defining point off the curve, as a centre
+          is. It could be quiet with the edge where it is on the arc.
+  - [ ] [`sketch-mode.md`](docs/plans/sketch-mode.md): sketch on any plane
+
         once, Fix, and relations to solid edges and faces. **Built**
         (2026-11-08), branch `claude/relations-complete`: the table as built
         is in the spec; decisions in the register above. Left:
@@ -2255,8 +2334,9 @@ starts.
          first wrapped flyout cutting its second line. Also found: `rotated`
          must read its turn in the plane square to its axis — a centre the
          solver lifted off the plane turned the copies wrongly (a unit test).
-         - [ ] **Left for later**: an ellipse trimmed (no elliptical arc), an
-           ellipse cutting a circle or arc (a quartic); a curve nothing cuts
+         - [ ] **Left for later**: ~~an ellipse trimmed (no elliptical arc), an
+           ellipse cutting a circle or arc (a quartic)~~ (both done by
+           trim-everything, 2026-11-08); a curve nothing cuts
            deleted by the trim tool, as Onshape does (refused now, said);
            an offset's distance as one dimension (each piece has its own); a
            `rad` that follows the original's radius; the pattern panel
@@ -2335,6 +2415,9 @@ starts.
            by part of one: each needs a curve that is not an interpolant (a
            piece of a spline through points it does not go through). A
            B-spline entity of control points would serve all three.
+           **Trim done** (trim-everything, 2026-11-08: the spline of control
+           points); extend, offset and a part in a region are left, written
+           down under trim-everything above.
          - [ ] **`addThrough` / `removeThrough` refuse a spline a feature is
            built on**: the lid's twin spline would need the same edit.
          - [ ] **The spline is still named** in its relations, operations.ts,

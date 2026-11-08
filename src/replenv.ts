@@ -262,6 +262,12 @@ function describe(e: Entity, model: Model): string {
         + (e.normal === undefined ? "" : `, facing (${model.normalOf(e.name).map((v) => v.toFixed(3)).join(", ")})`);
     }
     case "spline": return `${e.name}  spline through ${e.points.join(", ")}${e.closed ? ", closed" : ""}`;
+    // What a trim leaves (docs/plans/trim-everything.md).
+    case "earc": {
+      const { a, b } = semiAxes(model, e.name);
+      return `${e.name}  elliptical arc center ${e.center}, major end ${e.major}, ${e.start}→${e.end}, a=${a.toFixed(3)}, b=${b.toFixed(3)}`;
+    }
+    case "bspline": return `${e.name}  spline of control points ${e.points.join(", ")}`;
     case "frame": return `${e.name}  frame  origin ${e.origin}, +x toward ${e.xref}`
       + (e.yref === undefined ? "" : `, +y toward ${e.yref}`)
       + (model.defaultFrame === e.name ? "  (default)" : "");

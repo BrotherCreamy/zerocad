@@ -106,6 +106,73 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### Trim everything: what a piece is, and why power trim is only typing
+
+The owner: *"Also need trim for sketch entities"*. Trim already existed for
+lines, arcs and circles, and it was on the modify button behind the fillet's
+face. So the request read two ways: trim the curves it refused, and make trim
+easy to find. Both were done.
+
+**What is a piece of an ellipse?** It is not an ellipse, so it needed a kind.
+I considered letting the ellipse carry optional ends, as "an ellipse with ends
+is an arc of one". It would have cost less code. But every predicate that
+asks "closed?" would then ask a field, and the spec asked for a kind. So the
+elliptical arc is its own kind, built of the same parts and read by the same
+relations (`ellipseOf` answers for both). The hard part was the frame. Every
+consumer of `ArcFrame` measures an arc from its start with `u` pointing at
+it, but a conic's form needs `u` and `v` to be its own square axes. So the
+frame keeps the axes and gains a start, `t0`, and the arithmetic in
+`arcgeom.ts` absorbs it: a caller walking 0 to sweep never knows. I counted
+the places that compute an angle from a point instead (sketchgeom, the extend
+preview, loops), and changed those. The rejected alternative was a frame of
+conjugate diameters, which does start at the start. It is not orthonormal,
+and every one of those consumers projects with a dot product.
+
+The second piece out of the middle needed holding to the first. I first
+reached for sharing the minor variable, which would make the two pieces
+literally one ellipse. I rejected it on reading `diagnose`: each entity's
+owned variables are listed, a shared one would count twice, and the free
+count would lie. `eqrad` for two conics, meaning equal semi-axes, costs one
+more relation and tells the truth.
+
+**What is a piece of a spline?** The spline TODO had named it already: the
+piece of an interpolant is exactly a clamped B-spline, by knot insertion.
+The real decision was who owns the control points. As the entity's own
+variables they would be invisible and undraggable, and a piece the hand can
+reach only by its two ends is not much of a curve. As ordinary points they
+are draggable and dimensionable, with nothing to fight a drag, since nothing
+holds them. That is Onshape's control-point spline. The spline package had
+rejected control points as points, but for the opposite reason: there, rows
+held them. Looking at the picture showed the cost. The points float off the
+curve with nothing saying whose they are, so the control polygon is drawn.
+
+A replay runs on seeds, and an interpolant's knots come from where its points
+are, so a replay would cut a differently-knotted curve. The trim journals the
+pieces it made, knots and control points, and the saved values put the
+points back afterwards. The matrix test, which saves, opens and compares
+bytes for every pair, is what holds that.
+
+**Power trim is only typing.** I wanted no new operation for it: one typed
+entry is already one undo step, and the journal already knows `trim`. The
+problem was names. A middle trim renames the far part, so a later piece of
+the same curve would be typed under a name that no longer covers it. I
+considered simulating the stroke on a cloned model to read the names off. It
+would have meant the tools layer importing persist, and an open per stroke on
+an iPhone. The order is simpler. A trim keeps the curve's name on the part
+from its start, so typing one curve's pieces from its far end back keeps
+every name right. A closed curve is ordered from the cut its first trim
+opens it at. The unit test that crosses two pieces of one line holds it.
+
+**A press that becomes a stroke means a click trims on release.** The old
+tool trimmed on the press. That had to move, and the tool tests that sent
+only a press now send the release a real click sends.
+
+**What looking found.** The e2e's first finger run said Select under the
+armed trim. The bare-name shortcut never drew a frame, and the chip is synced
+in the draw pass. That bug predates this package, and only a test asserting
+the chip before any click could see it. On the phone, trim's glyph read as a
+plus sign as the modify button's face, so the piece is struck out now.
+
 ### Every standard relation: a table first, then rules over predicates
 
 The owner: *"Also need to figure out a way to do all the standard

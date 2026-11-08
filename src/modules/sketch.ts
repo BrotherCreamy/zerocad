@@ -7,13 +7,13 @@
 // with the explicit regions' `hole` and `unhole` their aliases. With core it is the sketch
 // workbench; with solids and step, the part workbench.
 
-import { ELLIPSE_STRUCTURE, addEllipse, checkEllipse, ellipseOf, semiAxes } from "../kinds/ellipse.ts";
-import { SPLINE_STRUCTURE, splineCurve, splineOf } from "../kinds/spline.ts";
+import { EARC_STRUCTURE, ELLIPSE_STRUCTURE, addEllipse, addEllipticArc, checkEllipse, ellipseOf, semiAxes, type EllipticArcEntity } from "../kinds/ellipse.ts";
+import { BSPLINE_STRUCTURE, SPLINE_STRUCTURE, addBSpline, controlCurve, bsplineOf, splineCurve, splineOf } from "../kinds/spline.ts";
 import { addSpline, onSpline } from "../relations/spline.ts";
 import { addThrough, removeThrough } from "../splineedit.ts";
 import { defineModule, type EntityDecl } from "../modules.ts";
 import type { Entity, Model } from "../model.ts";
-import { ellipseFrame, type ArcFrame } from "../arcgeom.ts";
+import { ellipseFrame, ellipticArcFrame, type ArcFrame } from "../arcgeom.ts";
 import { cross3, lift3, unit3 } from "../vec3.ts";
 import { spanOf, unitOf } from "../model.ts";
 import { slots } from "../clauses.ts";
@@ -94,6 +94,28 @@ const ELLIPSE: EntityDecl = {
 };
 
 /**
+ * **The elliptical arc** (docs/plans/trim-everything.md): the piece of an
+ * ellipse a trim leaves, laid out by the ellipse's own frame from its start's
+ * eccentric anomaly (`ArcFrame.t0`) round to its end's — so everything that
+ * draws, boxes, loops, shades and picks an arc by its frame takes it, and its
+ * edge in a solid or a STEP file is an ellipse's, between two vertices.
+ */
+const EARC: EntityDecl = {
+  ...EARC_STRUCTURE,
+  add: { op: "addEllipticArc", fn: addEllipticArc },
+  frame: (model, e) => {
+    const whole = ellipseFrameOf(model, e);
+    const a = e as EllipticArcEntity;
+    return whole ? ellipticArcFrame(whole, model.coords(a.start), model.coords(a.end)) : null;
+  },
+  describe: (model, name, n) => {
+    const { a, b } = semiAxes(model, name);
+    const e = ellipseOf(model, name) as EllipticArcEntity;
+    return `${name}  elliptical arc  ${e.start}→${e.end}  a ${n(a)}  b ${n(b)}`;
+  },
+};
+
+/**
  * **The spline, through the same extension point** (docs/plans/spline.md):
  * its structure (kinds/spline.ts), its constructor — the entity and the
  * equations it owns, relations/spline.ts — and the exact B-spline it is,
@@ -112,6 +134,23 @@ const SPLINE: EntityDecl = {
     const s = splineOf(model, name);
     const shown = s.points.length > 6 ? [...s.points.slice(0, 3), "…", ...s.points.slice(-2)] : s.points;
     return `${name}  spline through ${shown.join(" ")}${s.closed ? "  closed" : ""}`;
+  },
+};
+
+/**
+ * **The piece of a spline** (docs/plans/trim-everything.md): a spline of
+ * control points — ordinary points and fixed knots — laid out by the exact
+ * B-spline it is (curveplane.ts's `curvePath`), so it is drawn, picked,
+ * looped, extruded and written to STEP as a spline is.
+ */
+const BSPLINE: EntityDecl = {
+  ...BSPLINE_STRUCTURE,
+  add: { op: "addBSpline", fn: addBSpline },
+  path: (model, e) => ({ curve: controlCurve(model, e.name), closed: false }),
+  describe: (model, name) => {
+    const s = bsplineOf(model, name);
+    const shown = s.points.length > 6 ? [...s.points.slice(0, 3), "…", ...s.points.slice(-2)] : s.points;
+    return `${name}  spline, control points ${shown.join(" ")}`;
   },
 };
 
@@ -155,7 +194,11 @@ defineModule("sketch", {
     // The sketch's edits first, then (from the solids module) the solid's
     // round and chamfer: one family per half of the flyout
     // (docs/plans/sketch-edit.md). `bevel` is the sketch's two-line chamfer.
-    modify: ["fillet", "bevel", "trim", "extend", "offset", "mirror", "pattern"],
+    // **Trim first** (docs/plans/trim-everything.md): the owner asked for trim
+    // while it was there, behind the fillet's face — the button's face is its
+    // first member until another is armed, and trim is the edit a sketch is
+    // cleaned up with most (SolidWorks and Onshape put it on the bar). Vetoable.
+    modify: ["trim", "fillet", "bevel", "extend", "offset", "mirror", "pattern"],
     // Dimension and constrain share a button (docs/plans/sketch-relations.md
     // gave each its own): both make relations, and as the fourteenth button
     // the second ran an iPhone 13's column one pixel onto the command line at
@@ -193,7 +236,10 @@ defineModule("sketch", {
     // corner cut straight; trim and extend are a line meeting a wall, the
     // piece past it gone (dotted) or the gap to it bridged (dotted, arrowed).
     bevel: svg("bevel", `<path d="M3 13.5V7.5L7.5 3H13.5"/>`),
-    trim: svg("trim", `<path d="M9 2.5v11M2.5 8H9"/><path d="M9 8h4.5" stroke-dasharray="1.2 1.6"/>`),
+    // Trim's piece past the wall is struck out, not dotted: as the modify
+    // button's face (docs/plans/trim-everything.md) the dotted arm read as a
+    // plus sign on the iPhone (looked at, picture 369).
+    trim: svg("trim", `<path d="M8.5 2.5v11M2.5 8h6"/><path d="M10.8 6.4l3.2 3.2M14 6.4l-3.2 3.2"/>`),
     extend: svg("extend", `<path d="M13.5 2.5v11M2.5 8H7"/><path d="M7 8h4.5" stroke-dasharray="1.2 1.6"/><path d="M9.8 6.2 11.6 8 9.8 9.8"/>`),
     // A corner and its parallel copy inside it, dotted: what an offset adds.
     offset: svg("offset", `<path d="M2.5 13.5V6.5a4 4 0 0 1 4-4h7"/><path d="M5.5 13.5V8a2.5 2.5 0 0 1 2.5-2.5h5.5" stroke-dasharray="1.4 1.3"/>`),
@@ -210,7 +256,7 @@ defineModule("sketch", {
   },
   // The ellipse (docs/plans/sketch-shapes.md, format 15): an entity kind of
   // this module's, declared above.
-  entities: [ELLIPSE, SPLINE],
+  entities: [ELLIPSE, SPLINE, EARC, BSPLINE],
   replay: {
     addCircle: bound("addCircle"),
     addArc: bound("addArc"),
@@ -460,11 +506,19 @@ defineModule("sketch", {
     "           fillet(line1, line2, radius) — the arc follows its corner",
     'edit       trim("l1", [x, y]) — the piece of l1 the place is on, between the',
     "           curves that cut it there (or its own end), goes: an end re-pointed",
-    "           and held on (on, oncircle) the curve that cut it; a middle piece",
-    "           leaves two, held col (an arc's: eqrad); a circle becomes an arc,",
-    "           same name. A feature on it regenerates, or the trim refuses.",
+    "           and held on (on, oncircle, onellipse, onspline) the curve that cut",
+    "           it; a middle piece leaves two, held col (an arc's: eqrad); a circle",
+    "           becomes an arc, same name. Every curve trims, against every other:",
+    "           an ellipse becomes an elliptical arc (ea1 for a second piece; its",
+    "           ends onellipse, two pieces eqrad); a spline becomes a spline of",
+    "           control points (bs1) — the piece exactly, its control points",
+    "           ordinary points to drag; a closed one needs two cuts. A feature on",
+    "           it regenerates, or the trim refuses. The trim tool (modify's",
+    "           face): click a piece, or drag across pieces — power trim, every",
+    "           piece the stroke crosses red, one undo step on release.",
     '           extend("l1", "p2") — that end on to the next curve along l1 (an',
-    '           arc: round its circle), held on it; extend("l1", "p2", "c3") to c3.',
+    '           arc or elliptical arc: round its circle or ellipse), held on it;',
+    '           extend("l1", "p2", "c3") to c3. A spline is not lengthened.',
     '           offset("l1", 5) or offset(["l1", "a1", "l2"], 5, { construction:',
     "           true }) — a parallel copy of a chain, outward (closed) or to the",
     "           left of the first member (open): par + dist, arcs about the same",

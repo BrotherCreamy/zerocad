@@ -7,7 +7,7 @@
 // better than arm("rectangle"); anything else is evaluated.
 
 import { ensureKernelLoaded } from "./kernel/problem.ts";
-import { Model, ORIGIN } from "./model.ts";
+import { Model, ORIGIN, isClosedEntity } from "./model.ts";
 import { open as openModelText, save as saveModel, savedHead, savedTools } from "./persist.ts";
 import { carryIntoSession, toolSources } from "./toolsource.ts";
 import { UndoStack } from "./undo.ts";
@@ -1011,7 +1011,7 @@ async function main() {
       g.lineWidth = weight(e.name);
       if (e.kind === "line") {
         strokeEdge([model.coords(e.refs[0]), model.coords(e.refs[1])], false, stroke(e.name));
-      } else if (e.kind === "circle" || e.kind === "arc" || e.kind === "ellipse") {
+      } else if (e.kind === "circle" || e.kind === "arc" || e.kind === "ellipse" || e.kind === "earc") {
         // In its plane (see curveplane.ts): a circle the full turn round its
         // centre in its frame's orientation, an arc counter-clockwise from
         // start to end about its plane's +z (for a 2D arc, about +z, as
@@ -1023,7 +1023,7 @@ async function main() {
         // was the phase-2 seam showing.) An ellipse is the same frame with a
         // second radius (arcgeom.ts's `rv`), sampled by its longer one.
         const f = curveFrame(model, e);
-        if (f) strokeEdge(arcSamples(f, arcSegments(f.sweep, frameReach(f) * view.scale)), e.kind !== "arc", stroke(e.name));
+        if (f) strokeEdge(arcSamples(f, arcSegments(f.sweep, frameReach(f) * view.scale)), isClosedEntity(e), stroke(e.name));
       } else if (e.kind === "frame") {
         drawFrame(e.name, lit.has(e.name), chosen.has(e.name));
       } else {
@@ -1031,6 +1031,21 @@ async function main() {
         // itself as, which is what picking aims at (projection.ts).
         const pts = sampledWorld(model, e, view.scale);
         if (pts) strokeEdge(pts, false, stroke(e.name));
+        // A spline of control points (docs/plans/trim-everything.md) shows its
+        // control polygon, thin and dashed: its points off the curve are what
+        // shapes it, and without the polygon they read as stray dots (looked at).
+        if (e.kind === "bspline" && !casing) {
+          const poly = e.points.map((p) => engine.worldToScreen(model.coords(p)));
+          g.save();
+          g.lineWidth = 1;
+          g.setLineDash([3 * uiOf(view), 3 * uiOf(view)]);
+          g.strokeStyle = CONSTRUCTION;
+          g.beginPath();
+          g.moveTo(...poly[0]);
+          for (const q of poly.slice(1)) g.lineTo(...q);
+          g.stroke();
+          g.restore();
+        }
       }
     }
 
@@ -2728,7 +2743,10 @@ async function main() {
         syncToolbar();
         return TYPED_REFUSAL;
       }
-      syncToolbar();
+      // A frame, not only the toolbar: the chip is synced in the draw pass, and
+      // without one it said Select under a tool just armed by name until the
+      // next pointer event (found by trimeverything.e2e.ts, mouse and finger).
+      render();
       return null;
     }
 

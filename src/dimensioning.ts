@@ -63,7 +63,7 @@ const call = (op: string, args: (string | number | { raw: string })[]) =>
 // ellipse's `major` and `minor` are typed or taken from the context menu, and
 // a spline's points are dimensioned as any points are. The constrain tool's
 // list below takes both, and any kind a module adds (`constraintsFor`).
-type Kind = "point" | "line" | "circle" | "arc" | "frame" | "ellipse" | "spline";
+type Kind = "point" | "line" | "circle" | "arc" | "frame" | "ellipse" | "spline" | "earc" | "bspline";
 const kindOf = (model: Model, n: string): Kind | undefined => model.entities.get(n)?.kind;
 const isCurve = (k: Kind | undefined) => k === "circle" || k === "arc";
 

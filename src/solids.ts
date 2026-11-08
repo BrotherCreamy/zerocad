@@ -39,7 +39,7 @@
 // is the one place readers differ, and two halves are read by everything. So
 // no face here has a seam and no edge is used twice by one face.
 
-import { memberName, type FeatureEntry, type Model, type ProfileMember } from "./model.ts";
+import { entityKind, isClosedEntity, memberName, type FeatureEntry, type Model, type ProfileMember } from "./model.ts";
 import { portionAngles } from "./arcgeom.ts";
 import { curveFrame, curvePath, featurePlane } from "./curveplane.ts";
 import { derivs, domain, nearestParam, nurbsOf, pointAt as pathPoint, subCurve, type BSpline } from "./bspline.ts";
@@ -215,7 +215,7 @@ function piecesOf(model: Model, m: ProfileMember): Piece[] {
     const mid = (lo + hi) / 2;
     return [piece(subCurve(path.curve, lo, mid)), piece(subCurve(path.curve, mid, hi))];
   }
-  if (e.kind !== "arc" && e.kind !== "circle" && e.kind !== "ellipse") throw new Error(`its profile member ${name} is a ${e.kind}, which bounds nothing`);
+  if (e.kind !== "arc" && e.kind !== "circle" && e.kind !== "ellipse" && e.kind !== "earc") throw new Error(`its profile member ${name} is a ${e.kind}, which bounds nothing`);
   const f = curveFrame(model, e);
   if (!f) throw new Error(`${name} cannot be laid out (an end on its centre)`);
   const circle: Pick<ArcPiece, "c" | "r" | "u" | "v" | "rv"> = { c: f.center, r: f.r, u: f.u, v: f.v };
@@ -225,9 +225,16 @@ function piecesOf(model: Model, m: ProfileMember): Piece[] {
     const [p0, p1] = [onArc(circle, t0), onArc(circle, t0 + Math.PI)];
     return [arc(t0, t0 + Math.PI, p0, p1), arc(t0 + Math.PI, t0 + TAU, p1, p0)];
   };
-  // A whole ellipse is two half ellipses, from its major end, as a circle is two halves.
-  if (typeof m === "string") return e.kind !== "arc" ? halves(0) : [arc(0, f.sweep, at(e.start), at(e.end))];
-  if (e.kind === "ellipse") throw new Error(`a part of the ellipse ${name} cannot be made — an ellipse bounds a solid only whole`);
+  // A whole ellipse is two half ellipses, from its major end, as a circle is two halves. An
+  // elliptical arc (docs/plans/trim-everything.md) is one piece of its ellipse, from its own
+  // start (`ArcFrame.t0`) through its sweep, between its two end points.
+  if (typeof m === "string") {
+    if (isClosedEntity(e)) return halves(0);
+    const ends = e.kind === "arc" ? [e.start, e.end] : entityKind(e.kind)!.ends!(e)!;
+    const t0 = f.t0 ?? 0;
+    return [arc(t0, t0 + f.sweep, at(ends[0]), at(ends[1]))];
+  }
+  if (e.kind === "ellipse" || e.kind === "earc") throw new Error(`a part of the ellipse ${name} cannot be made — an ellipse bounds a solid only whole`);
   const [a, b] = [at(m.from), at(m.to)];
   const [t0, t1] = portionAngles(f, a, b);
   return t1 - t0 >= TAU - 1e-9 ? halves(t0) : [arc(t0, t1, a, b)];
@@ -974,12 +981,19 @@ export function kernelProfile(model: Model, plane: { u: number[]; n: number[] } 
       return { kind: "nurbs", degree: n.degree, knots: n.knots, mults: n.mults, points: path.curve.ctrl.map((c): [number, number, number] => [...local(c), 1]) };
     }
     if (p.rv !== undefined) {
-      // A whole ellipse: the kernel's own NURBS of it (kernel.ts's `nurbs`),
-      // exact — counter-clockwise in the plane's own axes, whichever way the
-      // ellipse itself runs, as a kernel circle has no direction to keep.
       const u2 = local(p.c.map((c, i) => c + p.u[i]));
       const c2 = local(p.c);
       const ux: [number, number] = [u2[0] - c2[0], u2[1] - c2[1]];
+      // An elliptical arc: the exact rational NURBS of that piece, run its own
+      // way — the kernel joins a profile's open members end to end — its minor
+      // axis as it lands in the plane, which way up that is.
+      if (pieces.length === 1 && p.t1 - p.t0 < TAU - 1e-9) {
+        const v2 = local(p.c.map((c, i) => c + p.v[i]));
+        return ellipticArcMember(c2, ux, [v2[0] - c2[0], v2[1] - c2[1]], p.r, p.rv, p.t0, p.t1);
+      }
+      // A whole ellipse: the kernel's own NURBS of it (kernel.ts's `nurbs`),
+      // exact — counter-clockwise in the plane's own axes, whichever way the
+      // ellipse itself runs, as a kernel circle has no direction to keep.
       return ellipseMember(c2, ux, p.r, p.rv);
     }
     const centre = local(p.c);
@@ -1076,6 +1090,32 @@ export function roleSurface(model: Model, f: FeatureEntry, role: "base" | "lid" 
  * rational B-spline's affine image is its control points' image. Counter-
  * clockwise from the `a` end.
  */
+/**
+ * A part of an ellipse as the kernel's exact curve: `c + a cos t·ux + b sin t·vy`
+ * for t from `t0` to `t1` in the plane's own coordinates (`ux`, `vy` its axes'
+ * unit directions as they land there), as rational quadratic pieces of at most
+ * a quarter turn — each the affine image of a circular arc's, its middle point
+ * where the end tangents meet and weighted the cosine of its half-sweep.
+ */
+export function ellipticArcMember(c: [number, number], ux: [number, number], vy: [number, number], a: number, b: number,
+                                  t0: number, t1: number): Member {
+  const k = Math.max(1, Math.ceil((t1 - t0) / (Math.PI / 2) - 1e-9));
+  const step = (t1 - t0) / k;
+  const w = Math.cos(step / 2);
+  const at = (t: number, s = 1): [number, number, number] => {
+    const [x, y] = [(a * Math.cos(t)) / s, (b * Math.sin(t)) / s];
+    return [c[0] + x * ux[0] + y * vy[0], c[1] + x * ux[1] + y * vy[1], s === 1 ? 1 : w];
+  };
+  const points: [number, number, number][] = [at(t0)];
+  for (let i = 0; i < k; i++) {
+    const s0 = t0 + i * step;
+    points.push(at(s0 + step / 2, w), at(s0 + step));
+  }
+  const knots = Array.from({ length: k + 1 }, (_, i) => i / k);
+  const mults = knots.map((_, i) => (i === 0 || i === k ? 3 : 2));
+  return { kind: "nurbs", degree: 2, knots, mults, points };
+}
+
 export function ellipseMember(c: [number, number], ux: [number, number], a: number, b: number): Member {
   const uy: [number, number] = [-ux[1], ux[0]];
   const w = Math.SQRT1_2;
@@ -1100,7 +1140,8 @@ export type LooseCurve =
   /** A curve laid out by an exact B-spline (a spline): written as one, from its first point to its last. */
   | { name: string; kind: "bspline"; curve: Extract<Curve, { kind: "bspline" }>; a: number[]; b: number[] }
   | { name: string; kind: "ellipse"; curve: Extract<Curve, { kind: "ellipse" }> }
-  | { name: string; kind: "arc"; curve: Extract<Curve, { kind: "circle" }>; a: number[]; b: number[] }
+  /** An arc of a circle — or of an ellipse: an elliptical arc (docs/plans/trim-everything.md) — between its two ends. */
+  | { name: string; kind: "arc"; curve: Extract<Curve, { kind: "circle" }> | Extract<Curve, { kind: "ellipse" }>; a: number[]; b: number[] }
   | { name: string; kind: "circle"; curve: Extract<Curve, { kind: "circle" }> };
 
 export function looseCurves(model: Model): LooseCurve[] {
@@ -1118,8 +1159,17 @@ export function looseCurves(model: Model): LooseCurve[] {
       });
       continue;
     }
-    if (e.kind !== "line" && e.kind !== "arc" && e.kind !== "circle" && e.kind !== "ellipse") continue;
+    if (e.kind !== "line" && e.kind !== "arc" && e.kind !== "circle" && e.kind !== "ellipse" && e.kind !== "earc") continue;
     if (e.construction || model.hidden.has(e.name) || taken.has(e.name)) continue;
+    if (e.kind === "earc") {
+      const f = curveFrame(model, e);
+      if (!f || !(f.r > 0) || !((f.rv ?? 0) > 0) || !(f.sweep > 0)) continue;
+      out.push({
+        name: e.name, kind: "arc", curve: { kind: "ellipse", center: f.center, normal: unit3(cross3(f.u, f.v))!, ref: f.u, a: f.r, b: f.rv! },
+        a: lift3(model.coords(e.start)), b: lift3(model.coords(e.end)),
+      });
+      continue;
+    }
     if (e.kind === "ellipse") {
       const f = curveFrame(model, e);
       if (!f || !(f.r > 0) || !((f.rv ?? 0) > 0)) continue;

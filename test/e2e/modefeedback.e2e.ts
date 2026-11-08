@@ -189,7 +189,8 @@ test("the fillet tool lights the corners it can take; the tool's name opens its 
   await app.page.mouse.move(2, 400);
   const [x, y] = await app.screenOf([-40, -25, 0]);
   const quiet = await app.pixel(x + 0.5, y + 0.5, "drawing");
-  await app.page.click('#toolbar button[data-tool="fillet"]');
+  // Armed by name: the modify button's face is trim's now (docs/plans/trim-everything.md), the fillet one slide along it.
+  await app.type("fillet");
   await app.page.mouse.move(2, 400);
   await app.page.waitForTimeout(100);
   const lit = await app.pixel(x + 0.5, y + 0.5, "drawing");

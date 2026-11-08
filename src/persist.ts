@@ -301,6 +301,13 @@ export const FORMAT = "neocad-model";
  * (`test/explicitregions.test.ts` opens one written by the build before).
  */
 export const VERSION = 18;
+// **Nor did trim everything** (docs/plans/trim-everything.md): two new ops,
+// `addEllipticArc` and `addBSpline` (the kinds a trim leaves, made inside the
+// trim's own entry and journalled as themselves only when typed), and `trim`'s
+// resolved part may carry a third element, the spline pieces it made. An older
+// build refuses such a trim at its step by name — it refused an ellipse's or a
+// spline's trim outright — and misreads nothing; an elliptical arc's minor and
+// normal ride the maps an ellipse's always did.
 // 18 (docs/plans/spline.md): **the spline**. A new entity kind,
 // `addSpline(points, closed, name)` — the entity and the interpolation it
 // owns, replayed together from that one entry — the relation `onSpline`, and
@@ -697,7 +704,7 @@ export function toSaved(model: Model, tools: readonly ToolSource[] = [], head: S
   for (const e of model.entities.values()) {
     if (e.kind === "point") points[e.name] = model.coords(e.name);
     else if (e.kind === "spline") splines[e.name] = e.ctrl.map((i) => model.problem.getVar(i));
-    else if (e.kind === "ellipse") {
+    else if (e.kind === "ellipse" || e.kind === "earc") {
       minors[e.name] = model.problem.getVar(e.minorVar);
       if (e.normal) normals[e.name] = e.normal.map((i) => model.problem.getVar(i));
     }
@@ -1074,13 +1081,13 @@ export function fromSaved(saved: SavedModel, dim?: number, how: { regions?: bool
   }
   for (const [name, n] of Object.entries(vals.normals ?? {})) {
     const e = model.entities.get(name);
-    if (e && (e.kind === "circle" || e.kind === "arc" || e.kind === "ellipse") && e.normal && Array.isArray(n) && n.length === 3) {
+    if (e && (e.kind === "circle" || e.kind === "arc" || e.kind === "ellipse" || e.kind === "earc") && e.normal && Array.isArray(n) && n.length === 3) {
       e.normal.forEach((gi, k) => model.problem.setVar(gi, n[k]));
     }
   }
   for (const [name, b] of Object.entries(vals.minors ?? {})) {
     const e = model.entities.get(name);
-    if (e?.kind === "ellipse" && typeof b === "number" && Number.isFinite(b)) model.problem.setVar(e.minorVar, b);
+    if ((e?.kind === "ellipse" || e?.kind === "earc") && typeof b === "number" && Number.isFinite(b)) model.problem.setVar(e.minorVar, b);
   }
   // A spline's control points and a relation's own variables (format 18), each
   // only where the file's count is the model's: a mismatch is a file edited by

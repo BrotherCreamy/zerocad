@@ -15,7 +15,7 @@
 // | finger | is |
 // |---|---|
 // | down, lifted within `TAP_SLOP` and `TAP_MS` | **tap** — a click |
-// | down, moved past `TAP_SLOP` | **drag** — the left button's drag |
+// | down, moved past `TAP_SLOP` | **drag** — the left button's drag: with a tool armed, the tool's, never a pan (trim's power-trim stroke, docs/plans/trim-everything.md) |
 // | down, still for `LONG_PRESS_MS` | **long-press** — the right-click menu |
 // | long-pressed, then moved | **box** — the left drag on empty canvas |
 // | a second finger | **pinch** — the centroid pans, the spread zooms about it |

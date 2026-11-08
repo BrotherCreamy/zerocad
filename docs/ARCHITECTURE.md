@@ -1515,6 +1515,77 @@ points that draw a curve through nothing; and the control points as hidden
 point entities — they would be in `ls()`, pickable and draggable, and a drag
 of one would fight the rows that hold it.
 
+## What a trim leaves: the elliptical arc and the spline of control points
+
+The owner: *"Also need trim for sketch entities"* (docs/plans/trim-everything.md).
+A trim is an operation: it re-points and makes entities. What it could not
+do before was say what a piece of an ellipse or a spline *is*, because
+neither piece is the kind it came from. So two kinds came in through the
+extension point, as the ellipse and the spline did, and `model.ts`,
+`loops.ts`, `faces.ts`, `picking.ts` and `step.ts` name neither (the grep
+in `test/modules.test.ts` covers them).
+
+**The elliptical arc (`earc`) is an ellipse with two ends.** It has the
+ellipse's centre, major end, minor variable and normal, and a `start` and an
+`end` it runs between, counter-clockwise about its normal as an arc runs. A
+trimmed ellipse becomes one **under its own name**, as a trimmed circle
+becomes an arc, so `major`, `minor`, `conc`, `tan` and `onellipse` read the
+same variables (`ellipseOf` answers for either conic). Its ends are held by
+two `onellipse` relations, an arc's `arcends` said twice. A trim at one end
+carries the old end's hold to the new end, rebuilt in place under its name.
+A piece out of the middle leaves a second elliptical arc about the same
+centre and major end, held `eqrad`, which now says equal semi-axes for two
+conics. Sharing the minor variable between the two was rejected, because
+`diagnose` would count it twice.
+
+**Its frame is the ellipse's, started late.** A conic's parametric form
+needs its two axes square to each other, so the frame cannot be turned to
+start at the arc's start the way a circular arc's is. `ArcFrame` gained `t0`,
+the start's eccentric anomaly, and every parameter `arcgeom.ts` takes or
+gives is still measured from the start: `arcPoint(f, 0)` is the start,
+`portionAngles` answers from it, and `sampleAngle` spaces the samples by the
+normal's turn between the two ends. So every caller that walks a frame from
+0 to its sweep (drawing, box select, faces, the projection's lift) walks an
+elliptical arc unchanged. The few that read an angle off a point
+(`sketchgeom.ts`, the extend tool's preview) subtract `t0`, and `loops.ts`
+lays the piece out from it. A conjugate-diameter frame that starts at the
+start was the rejected alternative. It is not orthonormal, and every
+consumer projects onto `u` and `v`.
+
+**The spline of control points (`bspline`) is the piece of a spline,
+exactly.** The piece of an interpolating spline between two parameters is no
+interpolant of any points of its own, but it is exactly a clamped cubic
+B-spline: insert each end as a knot until it is whole (Boehm, `subCurve`).
+So it is that: ordinary points for its control polygon, its first and last
+the two ends (the curve passes through them because it is clamped), and the
+knots it was cut with, as fixed numbers. It **owns nothing**, neither
+variables nor equations. Its control points are the user's, as a line's
+points are, which is Onshape's control-point spline, and the dashed polygon
+drawn through them says so. The control points as owned variables were the
+rejected alternative, because no hand could reach them. A trimmed spline
+becomes one under its own name. `onspline` and `tan` read either kind
+lazily, so a `tan` at the end the trim kept holds unchanged. An `onspline`
+is re-made, because its parameter was a fraction of the old domain. A closed
+spline needs two cuts and opens across its seam: the two halves are joined
+end to end, and its first point stays a control point at a triple knot, on
+the curve.
+
+**A replay runs on seeds, so the piece is journalled.** The knots of an
+interpolant come from where its points are, and a replay reaches the trim
+before the saved values put them back. So `trim`'s resolved cuts carry the
+pieces made, `[lo, hi, [{ knots, ctrl }]]`. The replay makes exactly those
+knots and control points, and the saved values then put the points where
+they were saved. Every other trim's entry is unchanged.
+
+**Power trim is typed, not a new operation.** A stroke's pieces are found
+against the drawing as it was at the press, each one red as it is crossed,
+and the release types `trim(…); trim(…)` as one entry, so one undo step and
+nothing new in the journal. Names are the hard part, because a middle trim
+gives the far part a new name. A trim keeps the curve's name on the part
+from its start, so one curve's pieces are typed from its far end back.
+Each name typed is then the curve the piece is on when its turn comes. A
+closed curve is ordered from the cut its first trim opens it at.
+
 ## Constraints are drawn, and a drawn constraint is a thing you can click
 
 Every relation wears a small mark beside the geometry it constrains. The tiers
@@ -1963,7 +2034,7 @@ until the next action went unrecorded.
 
 ## Why there is an end-to-end suite
 
-Fifty-seven bugs so far were invisible to the unit tests and obvious within seconds
+Sixty bugs so far were invisible to the unit tests and obvious within seconds
 of running the app:
 
 1. a status readout that went stale, so a conflict could be introduced from
@@ -2237,6 +2308,19 @@ of running the app:
    points, circles and arcs, because nothing had ever picked a spline. Found
    by looking at the iPhone picture — the arc green, the spline not. Any
    curve is marked by its frame or its path now, and the e2e reads the green.
+58. A tool armed by its name typed at the command line (`trim`) left the
+   chip saying Select until the next pointer event. The bare-name shortcut
+   synced the toolbar but drew no frame, and the chip is synced in the draw
+   pass: the stale readout of bug 1 again, from the tray's side. Found by
+   trimeverything.e2e.ts asserting the chip before its first click, mouse and
+   finger (docs/plans/trim-everything.md).
+59. A trimmed spline's control points drawn as dots far off the curve, with
+   nothing to say they were its: every point was where the knots put it.
+   Found by looking at the trim picture. The control polygon is drawn now,
+   thin and dashed.
+60. Trim's glyph, as the modify button's face, read as a plus sign on the
+   iPhone, because its dotted arm draws solid at that size. Found by looking
+   at the toolbar picture. The piece past the wall is struck out instead.
 
 None of these are mathematics. They are all *assembly*. Hence `npm run
 test:e2e`, and hence the expectation that anything touching the app is checked

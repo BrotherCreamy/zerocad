@@ -174,7 +174,7 @@ test("mouse: leaving closes it; Escape closes it and only it; a press held opens
   await desk.page.mouse.move(b.x + b.w / 2, b.y + b.h / 2, { steps: 2 });
   await flyoutBecomes(desk, (s) => s.open && s.group === "modify", "the modify group's");
   // The sketch's corner fillet and its edits (docs/plans/sketch-edit.md), then the solids module's round and chamfer (docs/plans/solid-fillets.md), then the padding.
-  assert.deepEqual((await flyout(desk)).items, ["fillet", "bevel", "trim", "extend", "offset", "mirror", "pattern", "round", "chamfer", "t_pad2"]);
+  assert.deepEqual((await flyout(desk)).items, ["trim", "fillet", "bevel", "extend", "offset", "mirror", "pattern", "round", "chamfer", "t_pad2"]);
   // "Not at once" is timed by the page, not by this process: from the first
   // pointermove outside the button and the flyout to the flyout's hiding.
   // Sleeping 150 ms here and asking afterwards raced the 300 ms grace

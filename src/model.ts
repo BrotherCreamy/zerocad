@@ -269,12 +269,17 @@ export function orList(words: readonly string[]): string {
 
 /** The declared kinds that are curves, by name: what a refusal adds after "a line, arc, circle". */
 export function curveNouns(): string[] {
-  return [...entityKinds.values()].filter((k) => k.curve).map((k) => k.kind);
+  return [...entityKinds.values()].filter((k) => k.curve).map(bareNoun);
 }
 
 /** The declared kinds that carry a plane, by name. */
 export function planeNouns(): string[] {
-  return [...entityKinds.values()].filter((k) => k.plane).map((k) => k.kind);
+  return [...entityKinds.values()].filter((k) => k.plane).map(bareNoun);
+}
+
+/** A kind as a refusal's list says it: its noun without the article ("elliptical arc"), or its kind where it has none. */
+function bareNoun(k: EntityKindSpec): string {
+  return k.noun ? k.noun.replace(/^an? /, "") : k.kind;
 }
 
 /** Whether an entity is closed on itself — a circle, or a declared kind that says so (`EntityKindSpec.closed`). */
