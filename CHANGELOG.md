@@ -7,6 +7,67 @@ decisions.
 
 ---
 
+## Every standard relation, offered for whatever you pick
+
+The owner (2026-11-08): *"Also need to figure out a way to do all the standard
+relations."* The constrain tool's list is now the union of SolidWorks' and
+Onshape's sketch relations against every pickable kind — point, line, circle,
+arc, ellipse, spline, a frame's axis or plane, a solid's vertex, edge and
+face — written down first as a table (docs/plans/relations-complete.md, *As
+built*) and then made true, row for row, by `test/relationscomplete.test.ts`.
+
+| | |
+|---|---|
+| ![Five lines picked with the constrain tool, each in the picking green; the constrain panel lists Equal (all 5), Parallel (all 5), Horizontal (all 5), Vertical (all 5), Fix (all 5), each with the start of the line it types](docs/images/340-five-lines-picked-the-constrain-list.png) | ![After Equal (all 5): the five lines one length, SOLVED; four = marks on the first line and one on each of the others — four eqs, each against the first; the log reads eq("l1", "l2"); eq("l1", "l3"); eq("l1", "l4"); eq("l1", "l5")](docs/images/341-five-lines-equal-four-eqs-against-the-first.png) |
+| ![On an iPhone 13: the same five lines picked by finger, the list of five rows legible at the phone's width](docs/images/342-iphone-five-lines-picked-the-list.png) | ![On the iPhone: two lines picked, eight rows — Parallel, Perpendicular, Equal, Collinear, Horizontal (both), Vertical (both), Fix (both), Angle — all on screen, covering half the canvas while up](docs/images/343-iphone-two-lines-eight-rows-fit.png) |
+| ![A point and an ellipse picked, On applied: the point on the rim with the ● mark, onellipse("p3", "el1") in the log](docs/images/344-a-point-on-an-ellipse.png) | ![On the iPhone: the same, by finger](docs/images/345-iphone-a-point-on-an-ellipse.png) |
+| ![An arc and a spline leaving its start downward, both picked; the panel lists Tangent, tan("a1", "sp1")](docs/images/346-an-arc-and-a-spline-picked-tangent-listed.png) | ![On the iPhone: the arc and the spline both in the picking green — the spline drew nothing before (bug 53)](docs/images/347-iphone-the-arc-and-the-spline-picked-both-green.png) |
+| ![On the iPhone after Tangent: the arc runs on smoothly into the spline, the join selected and its ● and ⌒ marks shown](docs/images/348-iphone-arc-and-spline-tangent-at-the-join.png) | ![Two circles mirrored about a line by Symmetric, equal radii, a ⇌ on each rim; beside them a coradial pair drawn as one circle with ◎= at its centre](docs/images/349-two-circles-symmetric-and-a-coradial-pair.png) |
+| ![On the iPhone: the same symmetric circles and coradial pair, the marks at 3×](docs/images/350-iphone-two-circles-symmetric-and-coradial.png) | ![A line's end fixed: the padlock beside it, the hover tag p1 -20, 0, 0 · r1](docs/images/351-a-fixed-point-its-padlock-on-hover.png) |
+| ![On the iPhone: the fixed end selected, its padlock at 3×](docs/images/352-iphone-a-fixed-point-its-padlock.png) | ![After a drag on the fixed end and one on the free end: the fixed end where it was, the other end moved, SOLVED](docs/images/353-the-fixed-point-stayed-the-other-end-moved.png) |
+| ![On the iPhone: a line and a spline that share no point; Tangent greyed, its reason on two lines under it — neither end of "sp1" meets "l1" — tan hold…](docs/images/354-iphone-tangent-greyed-with-why.png) | ![A box extruded from a rectangle, a point beside it picked and then the box's top: the three corners that name the face marked, the panel listing On face, onplane("p9", "p5.p6.p8")](docs/images/355-a-point-and-a-boxs-top-picked-on-face.png) |
+| ![After On face: the point on the plane of the box's top (15 up), the ▱ mark beside it](docs/images/356-the-point-on-the-faces-plane.png) | ![On the iPhone: the same](docs/images/357-iphone-the-point-on-the-faces-plane.png) |
+
+- **New relation: `corad(c1, c2)`** (Coradial) — one circle: concentric and
+  equal radius, and in 3D one plane; one module entry, glyph `◎=`.
+- **`sym` takes two lines, two circles or two arcs**, about a line or a
+  frame's axis — the same op, dispatching on kind. Lines need no pairing of
+  ends (the segment is mirrored: middles, direction, length); arcs pair one's
+  start with the other's end, as a mirror turns an arc round.
+- **`intersection` and `pierce` take an ellipse and a spline.**
+- **Offered for the first time**: Fix (any entity — one `fix` per point it is
+  built of, where it stands — drawn as a **padlock**), On for an ellipse and
+  a spline (and for any kind a module adds, through its `heldBy`), Tangent
+  with an ellipse and at a spline's end, Tangent between circles typed with
+  its side (both offered, nearer first), Midpoint between two points,
+  Symmetric about a frame's axis, a frame's arm as an axis (its z arm, in 3D,
+  its plane: On plane, Normal to plane, Parallel to plane), a solid's flat
+  face (On face, Normal to face, Parallel to face).
+- **Many at once**: n lines take Equal, Parallel, Horizontal, Vertical and
+  Fix for all n; n points Coincident, Horizontal, Vertical, Fix; n circles
+  Concentric, Coradial, Equal, Fix — each pick against the first (a star:
+  measured, its conflicts name at most four relations where a chain's name
+  up to nine), typed as one line, so one undo step.
+- **Greyed, with why**: a cell that cannot apply as the drawing stands — a
+  spline whose end meets nothing — is shown greyed with its reason in the
+  tool's panel and the context menu, and a press logs the whole of it. A pick
+  of the solid kernel's own edge or face (a fillet's) greys the list with
+  why nothing can hold to it.
+- **The table stays open**: rules over kind predicates, not a switch over
+  kind names, so the elliptical arc and control-point spline being built
+  beside this get their On, Fix and Concentric cells unwritten.
+- **Solid picking is one function**, `solidRefAt` (src/tools/constrain.ts),
+  to be replaced by smart-dimension's picker.
+- **Three bugs the whole unit suite passed**, found in the browser (51–53 in
+  docs/ARCHITECTURE.md; the count is now fifty-three): On face was never
+  offered for a box (only the kernel's faces were asked); a greyed reason
+  showed a dozen characters on a phone, and those the generic half; and a
+  picked spline drew nothing.
+- Not built, and why, in TODO.md: Convert Entities (an operation and a
+  projection relation that does not exist), Curvature, Equal curve length.
+
+---
+
 ## A conflict is a conflict even when a collapse satisfies it
 
 The owner (2026-11-07): *"Just noticed I'm able to add a parallel relation to

@@ -1930,7 +1930,7 @@ until the next action went unrecorded.
 
 ## Why there is an end-to-end suite
 
-Fifty bugs so far were invisible to the unit tests and obvious within seconds
+Fifty-three bugs so far were invisible to the unit tests and obvious within seconds
 of running the app:
 
 1. a status readout that went stale, so a conflict could be introduced from
@@ -2170,6 +2170,21 @@ of running the app:
    until the next edit: the stale readout of bug 1, from the other end. Found
    by the same suite's reload. A restored drawing is solved first; a CONFLICT
    stays up, and one that solves still reads ready.
+51. On face was never offered for a box: the constrain tool's solid picker
+   asked only the solid kernel for the face under the pixel, and a plain
+   extrude is drawn from its features, not by the kernel, so a press on its
+   lid found nothing and dropped the picks. The unit table fed the face's
+   point triple straight to `constraintsFor` and passed
+   (relations-complete.md). A region is a face now when its loop is a solid
+   feature's own.
+52. A greyed relation's reason, beside its label at an iPhone's width, showed
+   a dozen characters — and those the generic half of the message ("tan
+   holds a s…"). Found by looking at the picture. The reason leads with the
+   particular and sits on two lines under the label.
+53. A spline picked for Tangent drew nothing: `markPicked` knew lines,
+   points, circles and arcs, because nothing had ever picked a spline. Found
+   by looking at the iPhone picture — the arc green, the spline not. Any
+   curve is marked by its frame or its path now, and the e2e reads the green.
 
 None of these are mathematics. They are all *assembly*. Hence `npm run
 test:e2e`, and hence the expectation that anything touching the app is checked
