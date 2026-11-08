@@ -26,6 +26,42 @@ otherwise.
 
 ## Decisions made so far — veto here if any are wrong
 
+- **Smart dimension** (the owner, 2026-11-08: *"Dim tool needs to be similar
+  in functionality to Solidworks smart dimension. I should be able to use it
+  to dimension virtually anything. Distance between two faces of a solid, or
+  angle"*; docs/plans/smart-dimension.md). Each vetoable:
+  - **The pick priority is SolidWorks': vertex, then edge, then face**, by
+    finger with the house's reach. Everything `pick` already finds (a point,
+    a curve, a line, a kernel edge) comes first; a face only where nothing
+    else is under the hand. Faces still pick **only for a tool that asks**
+    (`ctx.pickSolid`): hover, selection and the menu do not see them.
+  - **A whole circle defaults to ⌀, an arc to R**, as SolidWorks does — the
+    menu's Dimension too. The tool's `radial` option says otherwise
+    (`auto`, `radius`, `diameter`).
+  - **Driven instead of asking.** A dimension that would only repeat what is
+    held (`Model.diagnose` names it redundant) or contradict it (the solve
+    fails and `Model.conflicting` names it) is typed as `measure(…)` instead,
+    tried first on a throwaway copy, and the log says why in one line.
+    SolidWorks asks "make this dimension driven?"; the house never asks.
+  - **An extrude's lid and its own base are its depth**: the tool makes
+    nothing and opens the depth's value (`set("dN.value", `), as Set value…
+    does. The extrusion holds every twin at base + depth·z with the depth a
+    constant, so a second relation there could only repeat it or fight it.
+  - **Two walls of one extrude are their lines** (`dist`, or the angle at
+    the corner they share, `ang3`, which reads a wedge's 30° rather than the
+    150° between its lines' own directions). Any other pair of flat faces is
+    `fdist` (driving where something can move) or `measure("fangle")`.
+  - **Horizontal or vertical by placement** (`along`, the drawing plane's
+    x or y — `Model.axisRef`): the label put beyond both points across the
+    axis and between them along it; anything else is the true distance.
+  - **Three points are the angle at the first**, and two picks take a third
+    only where the three make a dimension; a third click on anything else
+    starts again.
+  - **Double-click or double-tap on a label opens its value**; long-press
+    stays the menu (whose first item is Set value…), the house's rule for a
+    held finger. The spec asked for long-press too; that would take the
+    menu away from every label.
+
 - **A solve that collapses geometry is a CONFLICT** (the owner, 2026-11-07:
   *"I'm able to add a parallel relation to a set of perpendicular relation
   lines. This is a bug"*; docs/plans/conflict-detection.md). Four choices in
@@ -1862,9 +1898,34 @@ are flagged as such.
         a Flip control, Cut as a tool of its own (into the material by
         default), end conditions (through all, up to face, symmetric), a
         depth handle, and a first-time-user walkthrough of every solid tool.
-  - [ ] [`smart-dimension.md`](docs/plans/smart-dimension.md): one
+  - [x] [`smart-dimension.md`](docs/plans/smart-dimension.md): one
         dimension tool for anything, solid faces and edges included; driven
-        where it cannot drive.
+        where it cannot drive. **Built** (2026-11-08), branch
+        `claude/smart-dimension`; the table as built is in the spec. Found
+        on the way, left for later:
+    - [ ] **A face dimension mapped to sketch lines is labelled on the
+          sketch**, where the solid can hide it: the step's wall-to-wall
+          `dist`, set from 20 to 30, put its own label behind the near wall
+          (looked at: `docs/images/323`). Placing a label where the person
+          put it (the old TODO below) would answer it; so would anchoring a
+          face dimension at the faces' middles.
+    - [ ] **A picked label's first click is a placement**: double-clicking
+          a label with the dimension tool armed and nothing picked logs the
+          "click what to dimension" guide once before the value opens. The
+          tool cannot see labels (`ctx.pick` is geometry only).
+    - [ ] **fdist on a wall keeps the wall's index** (`e1.m3`, the
+          kernel's caveat): a regeneration that inserts a member renumbers
+          it. Same-feature walls go through their lines, which do not have
+          this; two features' walls do.
+    - [ ] **Kernel vertices are not picked**: a corner a boolean made with
+          no point under it has nothing to pick. A twin or a profile point
+          is a vertex, and picks.
+    - [ ] **A point or line and a frame's plane**: no plane picks yet
+          (sketch-mode.md adds Top/Front/Right); `along(frame, p, axis)`
+          is what it would type.
+    - [ ] **A face and an edge that is not parallel to it, and two faces at
+          an angle across features going different ways**, read as driven
+          (`fangle`) or not at all; an edge–face angle is not offered.
   - [ ] [`relations-complete.md`](docs/plans/relations-complete.md): the
         full SolidWorks/Onshape relation table, offered for any pick, many at
         once, Fix, and relations to solid edges and faces.

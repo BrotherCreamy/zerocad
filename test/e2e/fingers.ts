@@ -73,6 +73,13 @@ export interface Fingers {
   up(...which: number[]): Promise<void>;
   /** One finger down and up, inside a tap's time. */
   tap(x: number, y: number): Promise<void>;
+  /**
+   * Two taps at a hand's pace — the second sent 120 ms after the first lifts,
+   * not after the page has handled it — so a double-tap is one however busy
+   * the page is (docs/plans/smart-dimension.md: two `tap`s on a loaded box
+   * were a page-turn apart, and read as two taps).
+   */
+  doubleTap(x: number, y: number): Promise<void>;
   /** One finger down, held still for `ms` once the page has it, then (unless `keep`) lifted. */
   hold(x: number, y: number, ms: number, keep?: boolean): Promise<void>;
   /** One finger from `from` to `to` in `steps` moves, then lifted. */
@@ -176,6 +183,17 @@ export async function fingers(app: AppContext): Promise<Fingers> {
       await sleep(60);
     },
     async tap(x, y) {
+      await putDown([[x, y]]);
+      await sleep(40);
+      lift([]);
+      await flush();
+      await sleep(180);
+    },
+    async doubleTap(x, y) {
+      await putDown([[x, y]]);
+      await sleep(40);
+      lift([]);
+      await sleep(120);
       await putDown([[x, y]]);
       await sleep(40);
       lift([]);

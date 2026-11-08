@@ -25,7 +25,10 @@ import { neocadScope } from "../src/replenv.ts";
 import { DimensionTool } from "../src/tools/dimension.ts";
 import type { ToolContext } from "../src/tools/tool.ts";
 import type { Pick } from "../src/picking.ts";
-import { worldToScreen, type View } from "../src/view.ts";
+import { orbitBy, worldToScreen, type View } from "../src/view.ts";
+import { visibleFaces } from "../src/faces.ts";
+import { occlusion } from "../src/occlusion.ts";
+import { SHADE_PX, faceShade, faceUnder, pickSolid } from "../src/solidpick.ts";
 
 const defaultView = (): View => ({ ox: 400, oy: 300, scale: 3 });
 import { tiltedFrame } from "./frames.ts";
@@ -476,4 +479,35 @@ test("the tool: three points make an angle at the first; a third thing that make
   const t2 = new DimensionTool(again.ctx);
   t2.onDown(at0); t2.onDown(at0); t2.onDown(at0);
   assert.deepEqual(t2.picks, ["c1"], "two points and a circle make nothing: it starts again from the circle");
+});
+
+// --- the face under the hand ----------------------------------------------------
+
+test("the face picked is the front one under the pixel, named as the kernel names it, and lit only where it is in front", () => {
+  // A stepped block seen from the front right, as the e2e suite sees it: the
+  // step's two +x walls both in sight, the far one partly behind the near.
+  const m = new Model(3);
+  const t = tiltedFrame(m, "t", [0, 0, 0], 0, 0);
+  const { lines } = polygon(m, t, [[0, 0], [40, 0], [40, 15], [20, 15], [20, 30], [0, 30]]);
+  const e = extrude(m, lines[0], 20);
+  solved(m);
+  const view = orbitBy(orbitBy({ ox: 400, oy: 300, scale: 6 }, 0, -0.9), -1.2, 0);
+  const faces = visibleFaces(m, view);
+  const drawn = { faces, occ: occlusion(faces, view) };
+  const at = (w: number[]) => worldToScreen(view, w);
+  assert.equal(faceUnder(drawn, ...at([40, 7, 10]))?.name, `${e}.m1`, "the near +x wall");
+  assert.equal(faceUnder(drawn, ...at([20, 26, 14]))?.name, `${e}.m3`, "the far one, where it shows");
+  assert.equal(faceUnder(drawn, 5, 5), null, "nothing off the solid");
+  // A pick that found geometry is passed on as it is; a face only where nothing was.
+  const point: Pick = { name: "p", kind: "point", distance: 1 };
+  assert.equal(pickSolid(point, drawn, ...at([40, 7, 10]), () => ""), point);
+  assert.equal(pickSolid(null, drawn, ...at([40, 7, 10]), (n) => `tag ${n}`)?.tag, `tag ${e}.m1`);
+  // The far wall's cells: none where the near wall is in front of it.
+  const far = faceShade(drawn, `${e}.m3`, view);
+  assert.ok(far.cells.length > 0);
+  for (const [x, y] of far.cells) {
+    assert.equal(faceUnder(drawn, x + SHADE_PX / 2, y + SHADE_PX / 2)?.name, `${e}.m3`);
+  }
+  // In the wire view nothing is drawn, and nothing picks.
+  assert.equal(faceUnder(null, ...at([40, 7, 10])), null);
 });

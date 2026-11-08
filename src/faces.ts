@@ -52,7 +52,9 @@
 // the entities do all of that, drawn *over* the faces — but a face is opaque
 // to them: in the default shaded view what is behind one is neither drawn nor
 // aimed at (occlusion.ts, viewmode.ts). A click on a face is a click on
-// whatever visible entity is near it, or on nothing.
+// whatever visible entity is near it, or on nothing — except for a tool that
+// asks for faces (`ToolContext.pickSolid`, solidpick.ts: the dimension tool),
+// which gets the front face where nothing else is under the hand, by `name`.
 //
 // **A face says which of its sides are the solid's edges** (`Face.edges`): a
 // cap's outlines all round, a wall's base and twin sides and its side at a

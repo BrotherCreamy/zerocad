@@ -112,7 +112,7 @@ async function hover(app: AppContext, world: number[]): Promise<void> {
 test("desktop: two faces of a stepped block, then a double-click on the label and a value — the block changes", async () => {
   await fresh(desk);
   await solid(desk, STEP, 20);
-  await type(desk, `${CORNER}; zoom(3.5); arm("dimension")`);
+  await type(desk, `${CORNER}; zoom(3.5); pan(-60, 90); arm("dimension")`);
   // The step's near +x wall, lit under the hand before it is picked.
   await hover(desk, [40, 7, 10]);
   await shot(desk, "1-face-under-the-hand");
@@ -140,7 +140,7 @@ test("desktop: two faces of a stepped block, then a double-click on the label an
   const gap = await lineGap(desk, "l2", "l4");
   assert.ok(Math.abs(gap - 30) < 1e-6, `the step is 30 deep now: ${gap}; ${(await desk.log()).split("\n").slice(-6).join(" / ")}`);
   assert.equal(await desk.status(), "SOLVED");
-  await desk.page.mouse.move(5, 5);
+  await desk.page.mouse.move(700, 560);
   await shot(desk, "3-the-step-set-to-30");
   // The dimension is the sketch's, labelled on the sketch: from here the step, set deeper, hides its own label
   // behind the near wall (looked at, smartdim-3) — a limitation filed in TODO.md, not asserted away.
@@ -150,7 +150,7 @@ test("desktop: two faces of a stepped block, then a double-click on the label an
 test("desktop: the angle between two faces of a wedge is the wedge's", async () => {
   await fresh(desk);
   await solid(desk, WEDGE, 10);
-  await type(desk, `${CORNER}; zoom(5); arm("dimension")`);
+  await type(desk, `${CORNER}; zoom(4); pan(-80, 90); arm("dimension")`);
   await click(desk, [20, 0, 5]);
   await click(desk, [20, WEDGE[2][1] / 2, 5]);
   assert.deepEqual(await picks(desk), ["e1.m0", "e1.m1"], "the front and the slope");
@@ -160,7 +160,7 @@ test("desktop: the angle between two faces of a wedge is the wedge's", async () 
   assert.ok(a, "the angle at their shared corner");
   assert.ok(Math.abs((a.args[3] as number) - Math.PI / 6) < 1e-9, `30°: ${a.args[3]}`);
   assert.ok((await glyphs(desk)).some((g) => g.symbol === "30°"), "drawn as 30°");
-  await desk.page.mouse.move(5, 5);
+  await desk.page.mouse.move(700, 560);
   await shot(desk, "4-the-wedge-is-30");
 });
 
@@ -176,7 +176,7 @@ test("desktop: a circle's diameter and an arc's radius, by default", async () =>
   assert.deepEqual(rs.map((r) => [r.op, ...r.args]), [["diameter", "c1", 20], ["radius", "a1", 10]]);
   const symbols = (await glyphs(desk)).map((g) => g.symbol);
   assert.ok(symbols.includes("⌀20") && symbols.includes("R10"), symbols.join(" "));
-  await desk.page.mouse.move(5, 5);
+  await desk.page.mouse.move(700, 560);
   await shot(desk, "5-circle-diameter-arc-radius");
 });
 
@@ -192,7 +192,7 @@ test("desktop: horizontal or vertical, by where the label is put", async () => {
   assert.deepEqual(along.map((r) => [r.args[2], r.args[3]]), [["origin.x", 30], ["origin.y", 20]]);
   const symbols = (await glyphs(desk)).map((g) => g.symbol);
   assert.ok(symbols.includes("30") && symbols.includes("20"), symbols.join(" "));
-  await desk.page.mouse.move(5, 5);
+  await desk.page.mouse.move(700, 560);
   await shot(desk, "6-horizontal-and-vertical");
 });
 
@@ -210,7 +210,7 @@ test("desktop: two lids both depths already hold — made driven, and the log sa
   assert.deepEqual(m.map((r) => r.args), [["fdist", "e1.lid", "e2.lid"]], (await desk.log()).split("\n").slice(-5).join(" / "));
   assert.match(await desk.log(), /made driven — what it measures is already held/);
   assert.ok((await glyphs(desk)).some((g) => g.symbol === "(15)"), "a reference dimension, in parentheses");
-  await desk.page.mouse.move(5, 5);
+  await desk.page.mouse.move(700, 560);
   await shot(desk, "7-lid-to-lid-driven");
 });
 
@@ -255,11 +255,9 @@ test("iPhone 13: two faces tapped, a tap to place, a double-tap on the label —
   assert.deepEqual(dims.map((r) => r.args), [["l2", "l4", 20]]);
   const label = (await glyphs(phone)).find((g) => g.relation === dims[0].name)!;
   await phone.at(...label.screen);
-  await f.tap(...label.screen);
-  await phone.page.waitForTimeout(80);
-  await f.tap(...label.screen);
+  await f.doubleTap(...label.screen);
   await phone.page.waitForTimeout(300);
-  assert.equal(await phone.page.inputValue("#cmd"), `set("${dims[0].name}.value", `, "a double-tap opens the value");
+  assert.equal(await phone.page.inputValue("#cmd"), `set("${dims[0].name}.value", `, `a double-tap opens the value: ${(await phone.log()).split("\n").slice(-4).join(" / ")} · ${JSON.stringify(label.screen)} · ${JSON.stringify((await glyphs(phone)).filter((g) => g.op === "dist"))}`);
   await phone.page.type("#cmd", "22)");
   await phone.page.press("#cmd", "Enter");
   await phone.page.waitForTimeout(400);

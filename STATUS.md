@@ -16,6 +16,25 @@ etc).
   on every push to the working branch. Called NeoCAD until 0.1.0; the
   internal code name stays in identifiers, the file format tag and storage
   keys (see TODO.md's register).
+- **Smart dimension** (docs/plans/smart-dimension.md, built). The owner:
+  *"Dim tool needs to be similar in functionality to Solidworks smart
+  dimension … Distance between two faces of a solid, or angle"*. The
+  dimension tool takes a solid's **vertices, edges and faces** — vertex
+  before edge before face under the hand (`ctx.pickSolid`, solidpick.ts; a
+  face is lit as it is seen) — and SolidWorks' sketch table besides: a
+  circle's ⌀ and an arc's R by default (`radial`), centres for circles,
+  three points' angle (`ang3`), an arc's length (`arclen`), an ellipse's
+  axes, a point's distance from a frame's axis, horizontal or vertical by
+  where the label goes (`along`). A face is named as the kernel names it
+  (`e1.lid`, `e1.m3`) and held by what made it (relations/solidref.ts): two
+  walls of one extrude are their lines (`dist`, or the corner's `ang3`), a
+  round wall its circle, an edge its entity, and anything else flat
+  `fdist(face, b, d)`. An extrude's lid and its base are its depth, opened
+  to set. A dimension that would be redundant or a conflict is made driven
+  (`measure(…)`) and the log says so; what only the kernel knows is driven.
+  Double-click or double-tap a label to set it; `measure only` and
+  `measureOf(…)` read without making. The four new relations are the
+  **dimensions** module's, in every workbench.
 - **The spline** (docs/plans/spline.md, built). The owner: *"give me better
   sketch tools, relations, trim, slot... all the usual"*. A cubic B-spline
   **through** points you click and drag (Onshape's, not a control polygon),
