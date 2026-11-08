@@ -452,11 +452,13 @@ test("the menu: Sketch on this face only inside a region, typing the tool's own 
   assert.deepEqual(item?.action, { do: "run", command: sketchOnFaceCommand(m, loop, region.toward) });
   assert.ok(!menuFor(m, null).items.some((i) => i.label === "Sketch on this face"), "not outside a region");
   assert.ok(!menuFor(m, null, null).items.some((i) => i.label === "Sketch on this face"));
-  // The rest of the empty-canvas menu is unchanged by it — but for Edit e1,
-  // since a wall is a face of a feature (docs/plans/explicit-regions.md).
+  // The rest of the empty-canvas menu is unchanged by it — but for Edit e1 and
+  // Flip direction, since a wall is a face of a feature (docs/plans/explicit-
+  // regions.md) — and the face's own items come first, under them the tools
+  // (on an iPhone the tools filled the screen and hid them: solid-tools-intuitive.md, W15).
   const onFace = menuFor(m, null, region).items;
-  assert.equal(onFace.at(-1)?.label, "Edit e1");
-  assert.deepEqual(onFace.slice(0, -2), menuFor(m, null).items);
+  assert.deepEqual(onFace.slice(0, 4).map((i) => i.label), ["Sketch on this face", "Edit e1", "Flip direction", "Tools"]);
+  assert.deepEqual(onFace.slice(4), menuFor(m, null).items);
 
   // A D on a semicircle: shown, disabled, with the helper's own reason.
   const n = new Model(3);
@@ -465,7 +467,7 @@ test("the menu: Sketch on this face only inside a region, typing the tool's own 
   n.addArc(c, s, e, null, u.name);
   n.addLine(e, s);
   const dl = findLoops(n);
-  const off = menuFor(n, null, { loops: dl, index: 0, toward: u.uz, at: u.at(5, 1) }).items.at(-1)!;
+  const off = menuFor(n, null, { loops: dl, index: 0, toward: u.uz, at: u.at(5, 1) }).items[0];
   assert.equal(off.label, "Sketch on this face");
   assert.equal(off.action.do, "disabled");
   assert.match((off.action as { why: string }).why, /no three points off one line/);

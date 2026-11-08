@@ -440,16 +440,22 @@ function toolItems(model: Model): MenuItem[] {
 }
 
 function emptyCanvasMenu(model: Model, region: RegionHit | null): Menu {
+  // On a face, the face's own items come first — Sketch on this face, Edit e1,
+  // Flip direction — and the tools after: on an iPhone the tool list filled
+  // the screen and the face's items were below it, out of sight (seen in the
+  // solid-tools walkthrough, W15; docs/plans/solid-tools-intuitive.md).
+  const face = [...sketchOnFaceItem(model, region), ...faceEditItems(model, region)];
   return {
     header: null,
     items: [
+      ...face,
+      ...(face.length ? [{ label: "Tools", action: { do: "heading" } } as MenuItem] : []),
       ...toolItems(model),
       {
         label: "Frame",
         action: { do: "run", command: "frame()" },
       },
-      ...sketchOnFaceItem(model, region),
-      ...faceEditItems(model, region),
+
       // Only while something is hidden: the way back from Hide, where there
       // is nothing on screen left to right-click.
       ...(model.hidden.size ? [{ label: "Show all", action: { do: "run", command: "show()" } } as MenuItem] : []),
