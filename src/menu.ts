@@ -181,7 +181,7 @@ function constrainItems(model: Model, selection: readonly string[]): MenuItem[] 
 function constructionItems(model: Model, names: readonly string[]): MenuItem[] {
   const curves = names.filter((n) => {
     const k = model.entities.get(n)?.kind;
-    return k === "line" || k === "arc" || k === "circle" || k === "ellipse" || k === "spline";
+    return k === "line" || k === "arc" || k === "circle" || k === "ellipse" || k === "spline" || k === "earc" || k === "bspline";
   });
   if (!curves.length) return [];
   const args = curves.map(quoted).join(", ");

@@ -8,7 +8,7 @@
 // workbench; with solids and step, the part workbench.
 
 import { EARC_STRUCTURE, ELLIPSE_STRUCTURE, addEllipse, addEllipticArc, checkEllipse, ellipseOf, semiAxes, type EllipticArcEntity } from "../kinds/ellipse.ts";
-import { BSPLINE_STRUCTURE, SPLINE_STRUCTURE, addBSpline, bsplineCurve, bsplineOf, splineCurve, splineOf } from "../kinds/spline.ts";
+import { BSPLINE_STRUCTURE, SPLINE_STRUCTURE, addBSpline, controlCurve, bsplineOf, splineCurve, splineOf } from "../kinds/spline.ts";
 import { addSpline, onSpline } from "../relations/spline.ts";
 import { addThrough, removeThrough } from "../splineedit.ts";
 import { defineModule, type EntityDecl } from "../modules.ts";
@@ -146,7 +146,7 @@ const SPLINE: EntityDecl = {
 const BSPLINE: EntityDecl = {
   ...BSPLINE_STRUCTURE,
   add: { op: "addBSpline", fn: addBSpline },
-  path: (model, e) => ({ curve: bsplineCurve(model, e.name), closed: false }),
+  path: (model, e) => ({ curve: controlCurve(model, e.name), closed: false }),
   describe: (model, name) => {
     const s = bsplineOf(model, name);
     const shown = s.points.length > 6 ? [...s.points.slice(0, 3), "…", ...s.points.slice(-2)] : s.points;

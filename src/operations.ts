@@ -6,11 +6,11 @@
 // with different eyes: a relation can only ever over- or under-constrain,
 // while an operation can leave the model malformed.
 
-import { addEllipse, checkEllipse, ellipseOf, semiAxes } from "./kinds/ellipse.ts";
-import { splineOf } from "./kinds/spline.ts";
+import { addEllipse, addEllipticArc, checkEllipse, ellipseOf, semiAxes } from "./kinds/ellipse.ts";
+import { addBSpline, splineOf } from "./kinds/spline.ts";
 import { addSpline } from "./relations/spline.ts";
 import {
-  Model, ORIGIN, SETTABLE_PROPERTY, isCurveKind, memberName, parseValueRef, referentOf, referentsOf, valueArgIndex,
+  Model, ORIGIN, SETTABLE_PROPERTY, entityKind, isClosedEntity, isCurveKind, memberName, parseValueRef, referentOf, referentsOf, valueArgIndex,
   FEATURE_MODES, type Entity, type Expansion, type FeatureEntry, type FeatureMode, type Portion, type ProfileMember,
   type RegionEntry, type RegionOp, type RegionStep,
 } from "./model.ts";
@@ -856,11 +856,17 @@ export function loopOfMember(model: Model, member: string, op: "extrude" | "revo
 function refuseEllipse(model: Model, member: string): void {
   const e = model.entities.get(member);
   if (e?.kind === "ellipse") throw new Error(`"${member}" is an ellipse — revolving an ellipse is not supported yet`);
+  if (e?.kind === "earc") throw new Error(`"${member}" is an elliptical arc — revolving an ellipse is not supported yet`);
 }
 
-/** The kinds a profile is made of: a line, an arc, a circle, an ellipse or a spline (docs/plans/spline.md). */
+/**
+ * The kinds a profile is made of: a line, an arc, a circle, an ellipse or a
+ * spline (docs/plans/spline.md) — and the pieces a trim leaves of the last two,
+ * an elliptical arc and a spline of control points (docs/plans/trim-everything.md).
+ */
 function isProfileKind(kind: string | undefined): boolean {
-  return kind === "line" || kind === "arc" || kind === "circle" || kind === "ellipse" || kind === "spline";
+  return kind === "line" || kind === "arc" || kind === "circle" || kind === "ellipse" || kind === "spline"
+    || kind === "earc" || kind === "bspline";
 }
 
 /** How a refusal names what a profile is made of. */
@@ -938,7 +944,7 @@ function givenProfile(model: Model, member: string, frame: string | null | undef
 /** One member of a profile loop, walked. */
 interface Walked {
   name: string;
-  kind: "line" | "arc" | "circle" | "ellipse" | "spline";
+  kind: "line" | "arc" | "circle" | "ellipse" | "spline" | "earc" | "bspline";
   /** Its ends in walk order; null for a whole circle. */
   from: string | null;
   to: string | null;
@@ -1028,10 +1034,11 @@ function walkLoop(model: Model, classOf: Map<string, number>, held: Held[], memb
   const cls = (p: string) => classKey(classOf, p);
   // An open spline runs between its first and last points; a closed one is a
   // loop on its own, as a circle is.
+  // An elliptical arc and a spline of control points run between their own two (`EntityKindSpec.ends`).
   const ownEnds = (e: Entity): [string, string] | null =>
     (e.kind === "line" ? [e.refs[0], e.refs[1]] : e.kind === "arc" ? [e.start, e.end]
-      : e.kind === "spline" && !e.closed ? [e.points[0], e.points[e.points.length - 1]] : null);
-  const closedOnItself = (e: Entity) => e.kind === "circle" || e.kind === "ellipse" || (e.kind === "spline" && e.closed === true);
+      : e.kind === "spline" && !e.closed ? [e.points[0], e.points[e.points.length - 1]] : entityKind(e.kind)?.ends?.(e) ?? null);
+  const closedOnItself = (e: Entity) => isClosedEntity(e);
   const onIt = (v: string, e: Entity): boolean => {
     const kind = model.entities.get(v)?.kind;
     if (kind === undefined) return true; // made by the call, on the edges that meet there
@@ -1051,7 +1058,11 @@ function walkLoop(model: Model, classOf: Map<string, number>, held: Held[], memb
     }
     // Nor a part of a spline (docs/plans/spline.md): its twin would be a spline
     // through points that are no through-points of it. A whole one extrudes.
-    if (e.kind === "spline") {
+    if (e.kind === "earc") {
+      throw new Error(`a part of the elliptical arc "${e.name}" bounds this region — an elliptical arc makes a solid only whole, `
+        + "an edge from its start to its end; trim it to the piece meant (a curve crossing it, or a point held on it, cuts it)");
+    }
+    if (e.kind === "spline" || e.kind === "bspline") {
       throw new Error(`a part of the spline "${e.name}" bounds this region — a spline makes a solid only whole, `
         + "an edge from its first point to its last or a loop on its own; nothing yet can make part of one "
         + "(a curve crossing it, or a point held on it, cuts it)");
@@ -1202,8 +1213,10 @@ function twinPoints(model: Model, m: Walked, real: (v: string) => string, twinOf
   const e = model.entities.get(m.name)!;
   if (e.kind === "circle" && !m.part) { twinOf(e.center); return; }
   if (e.kind === "ellipse") { twinOf(e.center); twinOf(e.major); return; }
-  // A spline's every point, in the way the walk goes along it.
-  if (e.kind === "spline") {
+  // An elliptical arc's: its ends as an arc's, and its axes as an ellipse's.
+  if (e.kind === "earc") { twinOf(real(m.from!)); twinOf(e.center); twinOf(e.major); twinOf(real(m.to!)); return; }
+  // A spline's every point, in the way the walk goes along it — a spline of control points' too.
+  if (e.kind === "spline" || e.kind === "bspline") {
     const pts = m.from !== null && m.from !== e.points[0] ? [...e.points].reverse() : e.points;
     for (const p of pts) twinOf(real(p));
     return;
@@ -1235,6 +1248,14 @@ function twinMember(model: Model, m: Walked, real: (v: string) => string, twinOf
   // A spline's twin is the spline through its points' twins, open or closed as
   // it is: a spline is its points, so the depth's point pairs hold all of it.
   if (e.kind === "spline") return addSpline(model, e.points.map((p) => twinOf(real(p))), e.closed === true);
+  // The piece of an ellipse: its twin from its ends' twins about its axes' twins, its minor and normal held as an ellipse's are.
+  if (e.kind === "earc") {
+    const raw = e.normal ? e.normal.map((i) => model.problem.getVar(i)) : null;
+    return addEllipticArc(model, twinOf(e.center), twinOf(e.major), semiAxes(model, e.name).b, twinOf(real(e.start)), twinOf(real(e.end)),
+      raw ? normalFor(e.name) : null).name;
+  }
+  // The piece of a spline: the same knots on its points' twins — exactly the curve moved, a B-spline being affine in its points.
+  if (e.kind === "bspline") return addBSpline(model, e.points.map((p) => twinOf(real(p))), e.knots).name;
   const [a, b] = m.ends!.map((v) => twinOf(real(v)));
   if (e.kind === "line") return model.addLine(a, b).name;
   if (e.kind === "arc" || e.kind === "circle") return model.addArc(twinOf(e.center), a, b, model.radius(e.name), normalFor(e.name)).name;
@@ -1439,7 +1460,7 @@ function revolved(model: Model, head: string, axis: string, a: number, profile: 
   const plan = { ...planSweep(model, profile), swept };
   // An ellipse anywhere in the profile — the outline or a hole — has no
   // surface of revolution this app can write (`refuseEllipse`).
-  const oval = plan.walked.flat().find((w) => w.kind === "ellipse");
+  const oval = plan.walked.flat().find((w) => w.kind === "ellipse" || w.kind === "earc");
   if (oval) throw new Error(`"${oval.name}" is an ellipse — revolving an ellipse is not supported yet`);
   // An old revolve's turned frames ride in its entry only where they are more
   // than its sketch frame, so an old entry re-saves as it came in. Options,
@@ -2213,6 +2234,11 @@ function rebuildBody(model: Model, f: FeatureEntry, plan: SweepPlan): { loops: P
           if (t.center === twinOf(e.center)) return made(t.name);
         } else if (t?.kind === "ellipse" && e.kind === "ellipse") {
           if (t.center === twinOf(e.center) && t.major === twinOf(e.major)) return made(t.name);
+        } else if (t?.kind === "earc" && e.kind === "earc") {
+          if (t.center === twinOf(e.center) && t.major === twinOf(e.major) && t.start === twinOf(real(e.start)) && t.end === twinOf(real(e.end))) return made(t.name);
+        } else if (t?.kind === "bspline" && e.kind === "bspline") {
+          if (t.points.length === e.points.length && t.points.every((p, k) => p === twinOf(real(e.points[k])))
+            && t.knots.length === e.knots.length && t.knots.every((k, i) => k === e.knots[i])) return made(t.name);
         } else if (t?.kind === "spline" && e.kind === "spline") {
           // The old twin while it still runs through the twins of its base's points, in order.
           if (t.points.length === e.points.length && t.points.every((p, k) => p === twinOf(real(e.points[k])))) return made(t.name);
@@ -2615,7 +2641,7 @@ function mergedBoundary(model: Model, all: Loop[], B: number[], cells: ReadonlyS
   const plane = all[B[0]].plane;
   const closed = (name: string) => {
     const e = model.entities.get(name);
-    return !!e && (e.kind === "circle" || e.kind === "ellipse" || (e.kind === "spline" && e.closed === true));
+    return !!e && isClosedEntity(e);
   };
   const TOL = 1e-7;
   const norm = (name: string, t: number) => (closed(name) ? ((t % 1) + 1) % 1 : t);
@@ -3343,7 +3369,7 @@ function holesGoing(model: Model, names: ReadonlySet<string>, flagging: boolean)
     // hole's corner takes its wall) is still only the hole going.
     const corners = (l: ProfileMember[]) => l.flatMap((m) => {
       const e = model.entities.get(memberName(m));
-      return e?.kind === "line" ? [...e.refs] : e?.kind === "arc" ? [e.start, e.end] : [];
+      return e?.kind === "line" ? [...e.refs] : e?.kind === "arc" ? [e.start, e.end] : e ? entityKind(e.kind)?.ends?.(e) ?? [] : [];
     });
     const kept = f.loops.filter((_, i) => !holed.includes(i));
     const keptCorners = new Set(kept.flatMap(corners));

@@ -293,7 +293,7 @@ export function addBSpline(model: Model, points: string[], knots: number[], name
 }
 
 /** The control-point spline as it stands, as a plain B-spline in the model's coordinates. */
-export function bsplineCurve(model: Model, name: string): BSpline {
+export function controlCurve(model: Model, name: string): BSpline {
   const s = bsplineOf(model, name);
   return { degree: DEGREE, knots: s.knots.slice(), ctrl: s.points.map((p) => model.coords(p)) };
 }
@@ -301,7 +301,7 @@ export function bsplineCurve(model: Model, name: string): BSpline {
 /** Either spline kind as a plain B-spline as it stands — an interpolant's, a control-point spline's — and whether it closes. */
 export function pathCurveOf(model: Model, name: string): BSpline & { closed: boolean } {
   const e = model.entities.get(name);
-  if (e?.kind === "bspline") return { ...bsplineCurve(model, name), closed: false };
+  if (e?.kind === "bspline") return { ...controlCurve(model, name), closed: false };
   return splineCurve(model, name);
 }
 

@@ -243,9 +243,10 @@ export function revolution(model: Model, axis: string, angle: number, ...pairs: 
           held.add(tp[k]);
           holdPoint(p, tp[k]);
         });
-      } else if (be?.kind === "spline" && te?.kind === "spline") {
+      } else if ((be?.kind === "spline" && te?.kind === "spline") || (be?.kind === "bspline" && te?.kind === "bspline")) {
         // A spline is its points (docs/plans/spline.md): their pairs turn the
-        // twin, and its control points follow by its own equations.
+        // twin, and its control points follow by its own equations. A spline of
+        // control points turned is its points turned (a B-spline is affine in them).
       } else {
         throw new Error(`"${b}" and "${t}" are not a pair a revolution can hold — two points, two circles or arcs, two frames or two splines`);
       }

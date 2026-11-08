@@ -116,6 +116,15 @@ test("and the spline went through it too: the same five files never mention it (
   }
 });
 
+test("and the pieces a trim leaves went through it too: the elliptical arc and the spline of control points (docs/plans/trim-everything.md)", async () => {
+  for (const f of ["model.ts", "loops.ts", "faces.ts", "picking.ts", "step.ts"]) {
+    const text = await readFile(new URL(`../src/${f}`, import.meta.url), "utf8");
+    // Their kinds, files and structures. ("bspline" alone is solids.ts's own curve kind, which step.ts writes.)
+    assert.doesNotMatch(text, /["']earc["']|\bEllipticArcEntity\b|\bellipticArc|\bBSplineEntity\b|\bbsplineOf\b|\bcontrolCurve\b|kinds\/ellipse/,
+      `src/${f} names a piece a trim leaves`);
+  }
+});
+
 test("a file written before the re-cut — every sketch-shapes piece and an extruded ellipse — replays to the same bytes", async () => {
   await loadKernel();
   const text = await readFile(new URL("./fixtures/shapes-v15.neocad.json", import.meta.url), "utf8");
