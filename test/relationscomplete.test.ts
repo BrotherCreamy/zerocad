@@ -91,10 +91,10 @@ const TABLE: [string[], string[], (2 | 3)[]?][] = [
   // one pick
   [["p"], ["Fix"]],
   [["l1"], ["Horizontal", "Vertical", "Fix", "Length"]],
-  [["c1"], ["Fix", "Radius"]],
+  [["c1"], ["Fix", "Diameter"]],
   [["a1"], ["Fix", "Radius"]],
-  [["e1"], ["Fix"]],
-  [["s1"], ["Fix"]],
+  [["e1"], ["Fix", "Major semi-axis"]],
+  [["s1"], ["Fix", "End to end"]],
   [["origin.x"], []],
   [["f1"], []],
   [["f1", "l1"], []],
@@ -103,9 +103,9 @@ const TABLE: [string[], string[], (2 | 3)[]?][] = [
   [["p", "l1"], ["On", "Midpoint", "Distance"], [2]],
   [["l1", "p"], ["On", "Midpoint", "Distance"], [2]],
   [["p", "l1"], ["On", "Midpoint", "Pierce", "Distance"], [3]],
-  [["p", "c1"], ["On"], [2]],
-  [["p", "c1"], ["On", "Pierce"], [3]],
-  [["p", "a1"], ["On", "Midpoint"], [2]],
+  [["p", "c1"], ["On", "Centre distance"], [2]],
+  [["p", "c1"], ["On", "Pierce", "Centre distance"], [3]],
+  [["p", "a1"], ["On", "Midpoint", "Centre distance"], [2]],
   [["p", "e1"], ["On"], [2]],
   [["p", "e1"], ["On", "Pierce"], [3]],
   [["p", "s1"], ["On"], [2]],
@@ -118,13 +118,13 @@ const TABLE: [string[], string[], (2 | 3)[]?][] = [
   [["l1", "f1.x"], ["Parallel", "Perpendicular"]],
   [["l1", "origin.z"], ["Normal to plane", "Parallel to plane"], [3]],
   [["l1", "k0.k1.k2"], ["Normal to face", "Parallel to face"], [3]],
-  [["l1", "c1"], ["Tangent"]],
-  [["l1", "a1"], ["Tangent", "Equal length"]],
+  [["l1", "c1"], ["Tangent", "Distance"]],
+  [["l1", "a1"], ["Tangent", "Equal length", "Distance"]],
   [["l1", "e1"], ["Tangent"]],
   [["l1", "s1"], ["Tangent"]],
   [["l2", "s1"], ["Tangent!"]],
-  [["c1", "c2"], ["Concentric", "Coradial", "Equal", "Tangent (outside)", "Tangent (inside)", "Fix (both)"]],
-  [["c1", "a2"], ["Concentric", "Coradial", "Equal", "Tangent (outside)", "Tangent (inside)", "Fix (both)"]],
+  [["c1", "c2"], ["Concentric", "Coradial", "Equal", "Tangent (outside)", "Tangent (inside)", "Fix (both)", "Centre distance"]],
+  [["c1", "a2"], ["Concentric", "Coradial", "Equal", "Tangent (outside)", "Tangent (inside)", "Fix (both)", "Centre distance"]],
   [["a1", "s1"], ["Tangent"]],
   [["c1", "s1"], ["Tangent!"]],
   [["s1", "s3"], ["Tangent", "Fix (both)"]],
@@ -135,7 +135,7 @@ const TABLE: [string[], string[], (2 | 3)[]?][] = [
   [["origin.x", "origin.y"], []],
   [["k0.k1.k2", "origin.z"], [], [3]],
   // three picks
-  [["p", "q", "r"], ["Midpoint", "Equal spacing", "Coincident (all 3)", "Horizontal (all 3)", "Vertical (all 3)", "Fix (all 3)"]],
+  [["p", "q", "r"], ["Midpoint", "Equal spacing", "Coincident (all 3)", "Horizontal (all 3)", "Vertical (all 3)", "Fix (all 3)", "Angle at a vertex"]],
   [["p", "q", "l3"], ["Symmetric"]],
   [["p", "q", "origin.y"], ["Symmetric"]],
   [["l1", "l2", "l3"], ["Equal (all 3)", "Parallel (all 3)", "Symmetric", "Horizontal (all 3)", "Vertical (all 3)", "Fix (all 3)"]],
@@ -498,4 +498,23 @@ test("a greyed cell is greyed in the tool's list and the menu, with its reason",
   const menu = menuFor(m, { name: "l2", kind: "line", distance: 0 }, null, null, null, ["l2", "s1"]);
   const item = menu.items.find((i) => i.label === "Tangent")!;
   assert.equal(item.action.do, "disabled");
+});
+
+test("Symmetric takes its picks in any order: the line is the mirror wherever it was picked", () => {
+  // Found merging #84: two circles then the line listed Symmetric, the line
+  // first listed nothing — and the iPhone's seven-row list for two circles
+  // covers the line, so the line first is the order a finger needs.
+  const m = new Model(2);
+  m.addPoint([-22, 8], "o1"); m.addCircle("o1", 10, null, "c1");
+  m.addPoint([16, 14], "o2"); m.addCircle("o2", 8, null, "c2");
+  m.addPoint([0, -25], "la"); m.addPoint([0, 35], "lb"); m.addLine("la", "lb", "l1");
+  m.addPoint([-5, 0], "pa"); m.addPoint([5, 0], "pb");
+  for (const picks of [["c1", "c2", "l1"], ["l1", "c1", "c2"], ["c1", "l1", "c2"]]) {
+    const s = constraintsFor(m, picks).filter((a) => a.label === "Symmetric");
+    assert.equal(s.length, 1, picks.join(", "));
+    assert.match(s[0].text, /^sym\("c[12]", "c[12]", "l1"\)$/, picks.join(", "));
+  }
+  for (const picks of [["l1", "pa", "pb"], ["pa", "l1", "pb"]]) {
+    assert.equal(constraintsFor(m, picks).find((a) => a.label === "Symmetric")?.text.endsWith('"l1")'), true, picks.join(", "));
+  }
 });

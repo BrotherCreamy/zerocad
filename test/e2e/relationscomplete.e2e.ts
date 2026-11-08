@@ -356,9 +356,12 @@ for (const which of ["desktop", "iphone"] as const) {
     await fresh(h);
     await type(h, "circ(pt(-22, 8), 10); circ(pt(16, 14), 8); ln(pt(0, -25), pt(0, 35))");
     await type(h, "constrain");
+    // The mirror line first: two circles' list is seven rows since smart
+    // dimension added Centre distance, and on an iPhone it covers the line
+    // (TODO.md: the list covers the picks). A line and a circle list two.
+    await h.press(await along(h.app, "l1", 0.85));
     await h.press(await curvePixel(h.app, "c1", [-22, 18, 0]));
     await h.press(await curvePixel(h.app, "c2", [16, 22, 0]));
-    await h.press(await along(h.app, "l1", 0.85));
     const listed = await rows(h.app);
     assert.deepEqual(listed.map((r) => r.label), ["Symmetric"], await state(h.app));
     assert.equal(listed[0].command, 'sym("c1", "c2", "l1")');

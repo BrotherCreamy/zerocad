@@ -657,9 +657,10 @@ export function dimensionCommand(model: Model, pick: Pick): string | null {
     const len = Math.hypot(...a.map((ai, i) => b[i] - ai));
     return `dist(${quoted(l.refs[0])}, ${quoted(l.refs[1])}, ${num(len)})`;
   }
-  if (pick.kind === "circle" || pick.kind === "arc") {
-    return `rad(${quoted(pick.name)}, ${num(model.radius(pick.name))})`;
-  }
+  // SolidWorks' default, as the dimension tool's (docs/plans/smart-dimension.md):
+  // a whole circle's diameter, an arc's radius.
+  if (pick.kind === "circle") return `dia(${quoted(pick.name)}, ${num(2 * model.radius(pick.name))})`;
+  if (pick.kind === "arc") return `rad(${quoted(pick.name)}, ${num(model.radius(pick.name))})`;
   return null;
 }
 

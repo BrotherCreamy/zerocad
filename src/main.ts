@@ -52,7 +52,8 @@ import { arcSamples, arcSegments, frameReach } from "./arcgeom.ts";
 import { curveFrame } from "./curveplane.ts";
 import { createFaceLayer, paintFaces } from "./facelayer.ts";
 import { Bodies } from "./bodies.ts";
-import { describeEdge, edgeAt, edgePoints, edgesInBox } from "./kerneledges.ts";
+import { describeEdge, edgeAt, edgeLength, edgePoints, edgesInBox } from "./kerneledges.ts";
+import { setSolidReader } from "./relations/measure.ts";
 import { solidsClient, solidsLicence } from "./solidshost.ts";
 import { kernelBody } from "./kernelbrep.ts";
 import type { KernelSolid } from "./step.ts";
@@ -597,6 +598,9 @@ async function main() {
     occluded = faces.length ? occlusion(faces, view) : null;
     hides = occluded && opaque(viewMode) ? occluded : null;
     engine.occlusion = hides;
+    // The same faces, named, for a tool that picks a solid's faces (solidpick.ts):
+    // the face picked is the face drawn, in front, this frame.
+    engine.drawnFaces = occluded ? { faces, occ: occluded } : null;
 
     // **The plane being sketched on, drawn** (activeplane.ts; docs/plans/
     // mode-feedback.md): the face it was taken from tinted, a frame's plane a
@@ -1978,6 +1982,9 @@ async function main() {
     // The same lines, on a copy (see featurepreview.ts) — with this view, so a
     // plane made for the preview faces the way the commit's will.
     onPreview: (steps) => previewSteps(model, view, steps),
+    // A dimension's label double-clicked, or picks that are a dimension the
+    // drawing has (smart-dimension.md): its value opened, as Set value… does.
+    onEditDimension: (name) => typeCommand(`set(${JSON.stringify(`${name}.value`)}, `),
     optionMemory,
     onContextMenu: (pick, sx, sy) => {
       // The tag and the menu would otherwise sit on top of one another, both
@@ -2038,6 +2045,31 @@ async function main() {
     const dir: [number, number] = len > 1e-6 ? [(bx - ax) / len, (by - ay) / len] : [Math.SQRT1_2, Math.SQRT1_2];
     return [{ world, dir, about: [] }];
   };
+  // A face or an edge only the kernel built — a fillet's, a boolean's —
+  // read by name for a driven dimension (docs/plans/smart-dimension.md):
+  // measure.ts sits below the host and never learns where the kernel is.
+  setSolidReader((name) => {
+    for (const v of solidBodies.views()) {
+      const s = v.result.solid;
+      if (!s) continue;
+      const fi = s.faces.findIndex((f) => f.name === name);
+      if (fi >= 0) {
+        const f = s.faces[fi];
+        if (f.kind === "plane") {
+          const normal = v.faces.find((t) => t.face === fi)?.normal;
+          if (normal) return { kind: "plane", point: [...f.point], normal };
+        }
+        if (f.kind === "cylinder") return { kind: "cylinder", point: [...f.point], radius: f.radius };
+        return { kind: "other", point: [...f.point] };
+      }
+      const edges = s.edges.flatMap((e, i) => (e.name === name ? [i] : []));
+      if (edges.length) {
+        const pts = edges.flatMap((i) => edgePoints(v, i));
+        if (pts.length > 1) return { kind: "edge", length: edgeLength(v, name), ends: [pts[0], pts[pts.length - 1]] };
+      }
+    }
+    return null;
+  });
   defineGlyphAnchor("filletRadius", blendAnchor);
   defineGlyphAnchor("chamferSetback", blendAnchor);
   engine.solids = {
@@ -2069,6 +2101,8 @@ async function main() {
   };
   // A phone's words are a finger's from the start: "tap", before any tap.
   engine.pointing = coarse ? "finger" : "mouse";
+  // A half-typed command takes a label click as its name (`del(` then a label), never as a double-click edit.
+  engine.typingCommand = () => cmdEl.value.trim() !== "";
 
   /**
    * The mode chip (modechip.ts), through the seams everything else uses: the

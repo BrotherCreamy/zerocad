@@ -15,12 +15,14 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { ensureKernelLoaded } from "../src/kernel/problem.ts";
 import { DIMENSION_OPS, Model, parseValueRef, relationPrefix, valueArgIndex } from "../src/model.ts";
-import { coincident, dist, fix, midpoint } from "../src/relations/basic.ts";
+import { coincident, dist, fix, midpoint, onPlane } from "../src/relations/basic.ts";
+import { angle3, arcLength, distAlong } from "../src/relations/smartdim.ts";
+import { faceDistance } from "../src/relations/solidref.ts";
 import {
   angle, diameter, equalLength, equalRadius, majorAxis, minorAxis, onCircle, parallel, perpendicular, pointOnLine,
   radius, symmetric, tangent,
 } from "../src/relations/geometry.ts";
-import { del, set } from "../src/operations.ts";
+import { del, extrude, set } from "../src/operations.ts";
 import { extrusion } from "../src/relations/extrusion.ts";
 import { revolution } from "../src/relations/revolution.ts";
 import { chamferSetback, filletRadius } from "../src/relations/blend.ts";
@@ -97,7 +99,9 @@ test("the three value-carrying relations are d-named and every other one is r-na
   // test/sketchedit.test.ts sets one and the pattern turns.
   // A surface's depth, angle and distances (docs/plans/surfaces.md) are
   // dimensions with no equation too: test/surfaces.test.ts sets one.
-  assert.deepEqual([...DIMENSION_OPS].sort(), ["angle", "chamferSetback", "diameter", "dist", "extrusion", "filletRadius", "majorAxis", "minorAxis", "radius", "revolution", "rotation", "surfaceAngle", "surfaceDepth", "surfaceDistance"]);
+  // Smart dimension's (docs/plans/smart-dimension.md): a distance square to a
+  // solid's face, along a direction, the angle at a vertex, an arc's length.
+  assert.deepEqual([...DIMENSION_OPS].sort(), ["angle", "angle3", "arcLength", "chamferSetback", "diameter", "dist", "distAlong", "extrusion", "faceDistance", "filletRadius", "majorAxis", "minorAxis", "radius", "revolution", "rotation", "surfaceAngle", "surfaceDepth", "surfaceDistance"]);
   // A driven dimension is a dimension to read and name, never to set.
   assert.equal(relationPrefix("measure"), "d");
   assert.equal(valueArgIndex("measure"), null);
@@ -311,6 +315,12 @@ test("every op in DIMENSION_OPS can actually be rebuilt by set", async () => {
     surfaceDistance: (m) => surfaceDistance(m, 3),
     // A circular pattern's step: b is a turned a quarter about c2.
     rotation: (m) => rotation(m, "a", "b", "c2", Math.PI / 2),
+    // Smart dimension's (docs/plans/smart-dimension.md).
+    distAlong: (m) => distAlong(m, "a", "b", "f.x", 10),
+    angle3: (m) => angle3(m, "a", "b", "c2", Math.PI / 3),
+    arcLength: (m) => arcLength(m, "arc", 5),
+    // 3D only, on a block of its own (below): a point above its lid.
+    faceDistance: (m) => faceDistance(m, "e1.lid", "a", 5),
   };
   for (const op of DIMENSION_OPS) {
     assert.ok(fixtures[op], `${op} is a dimension with no fixture here — add one, and a REBUILD entry`);
@@ -323,6 +333,20 @@ test("every op in DIMENSION_OPS can actually be rebuilt by set", async () => {
       assert.equal(set(m, `${name}.value`, 7), name, op);
       assert.equal(m.solve().solved, true, op);
       assert.ok(Math.abs(m.coords("b")[2] - m.coords("a")[2] - 7) < 1e-9, "and the rebuilt depth is the one that holds");
+      continue;
+    }
+    if (op === "faceDistance") {
+      const m = new Model(3);
+      axisFrame(m);
+      const corners = [[0, 0], [10, 0], [10, 10], [0, 10]].map(([x, y]) => m.addPoint([x, y, 0]).name);
+      const sides = corners.map((c, i) => m.addLine(c, corners[(i + 1) % 4]).name);
+      for (const c of corners) onPlane(m, c, "f");
+      extrude(m, sides[0], 10);
+      m.addPoint([5, 5, 15], "a");
+      const name = fixtures[op](m);
+      assert.equal(set(m, `${name}.value`, 7), name, op);
+      assert.equal(m.solve().solved, true, op);
+      assert.ok(Math.abs(m.coords("a")[2] - 17) < 1e-9, "and the rebuilt distance is the one that holds");
       continue;
     }
     if (op === "revolution") {
@@ -345,6 +369,8 @@ test("every op in DIMENSION_OPS can actually be rebuilt by set", async () => {
     m.addLine("a", "b", "l1");
     m.addLine("a", "c2", "l2");
     addEllipse(m, "a", "c2", 3, null, "e");
+    m.addPoint([20, 0], "ac"); m.addPoint([25, 0], "as"); m.addPoint([20, 5], "ae");
+    m.addArc("ac", "as", "ae", 5, null, "arc");
     const name = fixtures[op](m);
     // Would throw `"<op>" cannot be rebuilt` if REBUILD were missing an entry.
     assert.equal(set(m, `${name}.value`, op === "angle" ? Math.PI / 4 : 7), name, op);

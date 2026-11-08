@@ -156,6 +156,76 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### Smart dimension: a face is what made it, and the depth is already a dimension
+
+The owner asked for SolidWorks' Smart Dimension, faces of a solid included,
+and said "don't ask questions". The decision that shaped the rest was what a
+face *is* to a dimension. Three ways were open:
+
+- **A face as kernel geometry**, a plane read off the B-rep. It is exact for
+  any face, a fillet's too. But nothing in the model holds it, so it could
+  only ever be driven. And the kernel answers asynchronously, from a Worker,
+  above the relations layer.
+- **A face as a frame made on it**, a construction plane. It is drivable,
+  but it is a new entity per face with its own name and freedoms, and a
+  datum: a frame is read, never pushed, so a dimension on it could not move
+  the solid.
+- **A face as what made it.** This is what was built. A sweep is real
+  geometry here: a lid is its twins, a wall its member swept. So a face maps
+  to entities, and a dimension on it is an ordinary relation on them.
+
+The third made most of the table fall out of the existing sketch
+vocabulary. Two walls of one extrude are two lines on its sketch. A round
+wall is its circle. An edge between two of one extrude's faces is an entity.
+The names are the kernel's (`e1.lid`, `e1.m3`), because a body drawn by
+faces.ts and one built by the kernel must call one face by one name.
+
+**The depth.** The spec asked that setting a lid-to-base distance set the
+depth "through a relation between those points, not by editing the feature's
+number behind its back", and asked how the depth is held. It is held by
+`extrusion`: three linear residuals per pair, `twin − base − depth·ẑ`, with
+the depth a constant. So any other relation on that distance can only repeat
+it (redundant) or contradict it (conflict). There is no free variable for a
+second relation to drive. The alternatives rejected:
+
+- *Make the depth a solver variable*, so a dimension can drive it. That is a
+  structural change to the extrusion the solid-tools package is editing this
+  week, for one case.
+- *Route the new dimension's `set` to the depth*. That is the "behind its
+  back" the spec ruled out.
+- *Make it driven*. That is honest, but the owner's first try would be a
+  block's height, and a height he cannot set would be the wrong first
+  impression.
+
+So the tool recognises the pair and opens the depth's own value, as Set
+value… does. The relation between those points *is* the extrusion.
+
+**Driven when it must.** SolidWorks asks; the house never asks. So the tool
+tries the driving dimension on a throwaway copy (the feature tools' preview:
+the same command machinery the commit runs) and asks the copy's
+`diagnose` and conflict search. The common case is two lids on one plane:
+both depths already hold their distance. Typed points held by nothing made
+the e2e's lids free in z, and there `fdist` legitimately drove, lifting the
+second block's profile off the ground. That is right for an unheld sketch.
+The test now holds its points as the sketch tools do.
+
+**The wedge's angle.** Two walls' lines meet at the corner the wedge's edge
+stands on, and `ang` reads the angle between their *directions*: 150° for a
+30° wedge, since a profile's lines run head to tail. `ang` cannot be told to
+reverse a line, so walls that share a corner are dimensioned by `ang3` at
+that corner. It reads the solid's angle. Sketch line–line stays `ang`, as the
+existing tests and files have it.
+
+**Faces pick only for a tool that asks.** ARCHITECTURE.md says faces never
+pick, and everything built on that is right as it is: a click on a face
+selects nothing, hover tags only geometry. So `ctx.pickSolid` is a separate
+door, the ordinary pick and then the front face, rather than a fourth tier
+of `hitTest`. The relations package can use the same door.
+
+**Rejected: long-press to edit.** The spec asked for it, but a held finger
+is the menu everywhere in the app. On a label the menu's first item is Set
+value… already, so long-press is one tap from editing and takes nothing away.
+
 ### Trim everything: what a piece is, and why power trim is only typing
 
 The owner: *"Also need trim for sketch entities"*. Trim already existed for

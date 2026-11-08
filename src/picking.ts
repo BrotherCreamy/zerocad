@@ -43,7 +43,7 @@ import type { View } from "./view.ts";
  * to do the same thing with it, and a second parallel type would mean writing
  * all of that twice.
  */
-export type PickKind = Entity["kind"] | "relation" | "edge";
+export type PickKind = Entity["kind"] | "relation" | "edge" | "face";
 
 export interface Pick {
   name: string;
@@ -247,7 +247,7 @@ function toSegment(sx: number, sy: number, [ax, ay]: [number, number], [bx, by]:
  * does. One tag, one code path, no second way to say the same thing.
  */
 export function describePick(model: Model, pick: Pick): string {
-  if (pick.kind === "edge") return pick.tag ?? pick.name;
+  if (pick.kind === "edge" || pick.kind === "face") return pick.tag ?? pick.name;
   if (pick.kind === "relation") {
     const r = model.relations.get(pick.name);
     return r ? `${describeRelation(r)}${featureTag(model, pick.name)}${groupTag(model, pick.name)}` : pick.name;

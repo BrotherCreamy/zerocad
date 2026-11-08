@@ -68,7 +68,9 @@
 // whatever is armed (`hold`): the tool stays armed, untouched, under it, and
 // is simply back when Space is let go — nothing was put down to come back.
 
-import type { Model } from "../model.ts";
+import { valueArgIndex, type Model } from "../model.ts";
+import { faceShade, pickSolid, type DrawnFaces } from "../solidpick.ts";
+import { describeFace } from "../relations/solidref.ts";
 import type { ResidualBlock } from "../kernel/problem.ts";
 import {
   HAND, SELECT, engineNext, getToolCtor, toolAlias, type FeatureDialog, type FeaturePreview, type FeatureStep, type Hand, type Tool, type ToolContext,
@@ -87,7 +89,7 @@ import { findLoops, loopAround, loopAt } from "../loops.ts";
 import { OptionMemory, declaredOptions, explicitOptions, resolveOptions } from "./options.ts";
 import { SELECTION, Selection, type RegionSelection } from "./selection.ts";
 import { drawRegion, drawStandingRegions, hiddenLoop } from "./region.ts";
-import { Gestures, type Clock, type GestureSink } from "./gestures.ts";
+import { Gestures, TAP_SLOP, type Clock, type GestureSink } from "./gestures.ts";
 
 export type { View };
 
@@ -101,6 +103,9 @@ const MIDDLE_BUTTON = 4;
 
 /** Movement past this many pixels turns a click into a drag. cellwork's value. */
 const DRAG_THRESHOLD = 3;
+
+/** Two clicks on one label this close together are a double-click — the usual platform default. */
+const DOUBLE_CLICK_MS = 500;
 
 /**
  * How far a right-drag turns the drawing, in radians per pixel: half a degree,
@@ -220,6 +225,13 @@ export class ToolEngine {
     return this.selection.regions;
   }
   private onContextMenu: (pick: Pick | null, sx: number, sy: number) => void;
+  private onEditDimension: ((name: string) => void) | undefined;
+  /** Whether a command is half-typed — set by the host; then a label click names, never edits. */
+  typingCommand: () => boolean = () => false;
+  /** The last left click or tap on a dimension's label: which, where and when — what a second makes a double. */
+  private lastLabelClick: { relation: string; x: number; y: number; at: number } | null = null;
+  /** When the last finger went down, by its event's stamp. */
+  private touchDownAt = 0;
   private onContextMenuWithdrawn: () => void;
   /**
    * Whether a user action is currently open, so that `before` and `after`
@@ -439,6 +451,12 @@ export class ToolEngine {
        */
       onContextMenu?: (pick: Pick | null, sx: number, sy: number) => void;
       /**
+       * A dimension's label double-clicked (or double-tapped): open its value
+       * to be typed, as Set value… does — SolidWorks' Modify box, in the
+       * house's one way to ask for a number (docs/plans/smart-dimension.md).
+       */
+      onEditDimension?: (name: string) => void;
+      /**
        * The press that asked for a menu moved on instead: a finger held still
        * until `onContextMenu`, then dragged — which is the box (gestures.ts).
        * The menu it opened is no longer what the hand is doing; a host with a
@@ -470,6 +488,7 @@ export class ToolEngine {
     this.onPerform = callbacks.onPerform;
     this.onPreview = callbacks.onPreview;
     this.onContextMenu = callbacks.onContextMenu ?? (() => {});
+    this.onEditDimension = callbacks.onEditDimension;
     this.onContextMenuWithdrawn = callbacks.onContextMenuWithdrawn ?? (() => {});
     this.optionMemory = callbacks.optionMemory ?? new OptionMemory(null);
     this.gestures = new Gestures(this.touchSink(), callbacks.clock);
@@ -592,6 +611,11 @@ export class ToolEngine {
     // take every tap aimed at it.
     const gl = glyphAt(this.glyphs(), sx, sy);
     if (gl) return { name: gl.relation, kind: "relation", distance: 0 };
+    return this.geometryAt(sx, sy);
+  }
+
+  /** `pickAt` below the glyphs: the drawing's own geometry, and a kernel body's edges. */
+  private geometryAt(sx: number, sy: number): Pick | null {
     const hit = hitTest(this.model, this.view, sx, sy, this.occlusion, this.reach);
     // **A kernel body's edges pick** (docs/plans/solid-fillets.md) — where no
     // entity does, and in place of the quiet skeleton a kernel body's edges
@@ -607,11 +631,54 @@ export class ToolEngine {
   }
 
   /**
+   * Opens a dimension's value **after** the event that asked: the press that
+   * did is still being dispatched, and its default — a mousedown on a canvas
+   * takes the focus to the page — would take it straight back off the command
+   * line, leaving the typed number going nowhere (found in the browser: the
+   * value landed in front of the command, not after it).
+   */
+  private editSoon(name: string): void {
+    const edit = this.onEditDimension;
+    if (edit) setTimeout(() => edit(name), 0);
+  }
+
+  /**
+   * Whether a click at (sx, sy) at time `at` is the second of a double-click
+   * on one dimension's label — and if so, its value opened (`onEditDimension`).
+   * A click on anything else forgets the first. The window is the platform's
+   * usual double-click time; the slop a finger's, since a tap lands looser.
+   */
+  private doubleOnLabel(sx: number, sy: number, at: number): boolean {
+    if (!this.onEditDimension) return false;
+    // A command half-typed takes a click on a label as its name, every click:
+    // `del(` then the label is a deletion, not an edit. Two such clicks land
+    // inside the double-click window on a quick hand (found merging #84:
+    // dimensions.e2e's `del(` click opened `set(` on a quiet machine).
+    if (this.typingCommand()) { this.lastLabelClick = null; return false; }
+    const gl = glyphAt(this.glyphs(), sx, sy);
+    const dim = gl && gl.isLabel && valueArgIndex(gl.op) !== null ? gl.relation : null;
+    const last = this.lastLabelClick;
+    this.lastLabelClick = dim ? { relation: dim, x: sx, y: sy, at } : null;
+    if (!dim || !last || last.relation !== dim || at - last.at > DOUBLE_CLICK_MS
+      || Math.hypot(sx - last.x, sy - last.y) > TAP_SLOP) return false;
+    this.lastLabelClick = null;
+    this.editSoon(dim);
+    return true;
+  }
+
+  /**
    * The bodies the solid kernel built, as a hand reaches them — set by the
    * host (main.ts, over bodies.ts and kerneledges.ts), null where there is no
    * kernel. What makes a kernel edge a pick, a box's catch and a fillet's edge.
    */
   solids: SolidsAccess | null = null;
+
+  /**
+   * The faces the last frame drew, with the occlusion answer over them — set
+   * by the host's render (main.ts) — what `ToolContext.pickSolid` finds a
+   * face in (solidpick.ts). Null where none were drawn: no solid, the wire view.
+   */
+  drawnFaces: DrawnFaces | null = null;
 
   /**
    * The points a drag is moving right now — empty until the press has moved
@@ -788,6 +855,11 @@ export class ToolEngine {
         this.snap = null;
       },
       pick: ([sx, sy]) => hitTest(this.model, this.view, sx, sy, this.occlusion, this.reach),
+      // A vertex before an edge before a face (docs/plans/smart-dimension.md).
+      pickSolid: ([sx, sy]) => pickSolid(this.geometryAt(sx, sy), this.drawnFaces, sx, sy, (f) => describeFace(this.model, f)),
+      ...(this.onEditDimension ? { editDimension: (name: string) => this.editSoon(name) } : {}),
+      faceShade: (name) => faceShade(this.drawnFaces, name, this.view),
+      toScreen: (world) => worldToScreen(this.view, world),
       regionAt: ([sx, sy]) => this.regionAt(sx, sy),
       log: this.onLog,
       run: this.onRun,
@@ -1096,6 +1168,10 @@ export class ToolEngine {
       if (kind === "move" && e.buttons === 0) this.updateHover(sx, sy);
     }
 
+    // A second click on a dimension's label opens its value (SolidWorks'
+    // double-click), whatever is armed; the second press goes no further.
+    if (kind === "down" && e.button === 0 && this.doubleOnLabel(sx, sy, e.timeStamp)) return;
+
     // The Hand's left press — armed, or Space held over a tool — is taken
     // before the armed tool can see it, and its moves and release follow it
     // here whether or not the Hand is still on: the press decided.
@@ -1312,6 +1388,9 @@ export class ToolEngine {
       // wanders — over a panel included.
       this.canvas.setPointerCapture?.(e.pointerId);
       this.gestures.down(e.pointerId, sx, sy, eventTime(e));
+      // When the finger went down, by the event's own stamp: what a double-tap is timed by, so a
+      // busy page that delivers the taps late does not split them (`doubleOnLabel`).
+      this.touchDownAt = eventTime(e) ?? performance.now();
     } else if (kind === "move") this.gestures.move(e.pointerId, sx, sy, eventTime(e));
     else if (e.type === "pointercancel") this.gestures.cancel(e.pointerId);
     else this.gestures.up(e.pointerId, sx, sy, eventTime(e));
@@ -1344,6 +1423,7 @@ export class ToolEngine {
     return {
       press: look,
       tap: (x, y) => {
+        if (this.doubleOnLabel(x, y, this.touchDownAt)) return;
         if (this.active) {
           // A click: the press and the release, in the one place. A tool that
           // finished on the press (a point) is not handed a release it would

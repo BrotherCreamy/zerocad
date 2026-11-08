@@ -30,7 +30,7 @@ class Stamp extends Tool {
 
 test("the built-in modules load in order, and the tables are filled from them in that order", () => {
   const builtin = loadedModules().filter((m) => m.origin === "builtin").map((m) => m.name);
-  assert.deepEqual(builtin, ["core", "sketch", "solids", "surfaces", "files", "step", "organiser", "interface"]);
+  assert.deepEqual(builtin, ["core", "sketch", "solids", "surfaces", "dimensions", "files", "step", "organiser", "interface"]);
   // The tray: core's tools, then the sketch module's, then the solids', then the surfaces' (docs/plans/surfaces.md).
   // The spline after the ellipse, on the curves button (docs/plans/spline.md).
   assert.deepEqual(listTools(), ["point", "line", "rectangle", "polygon", "slot", "region", "circle", "arc", "ellipse", "spline", "fillet",

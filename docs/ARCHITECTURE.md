@@ -1004,7 +1004,8 @@ the faces it drew and sets it on the tool engine (`engine.occlusion`), and every
 question the engine asks about the cursor passes it on. A pick between two
 frames therefore uses the last frame's — what is on screen — and since every
 change to the model or the camera redraws before the next pointer event,
-there is no other staleness to handle. A face still never picks: the pieces
+there is no other staleness to handle. A face still never picks for the hover,
+the selection, the menu or a drag (smart dimension's exception is below): the pieces
 of a solid are what a hand aims at. On the surface is not behind: the
 square-to-the-plane half pixel below decides it, so a box's near edges and
 corners draw and pick while its far ones do not.
@@ -1123,6 +1124,48 @@ profile's own in-plane normal turned, which is exact for a surface of revolution
 and is why the axis must lie in the profile's plane. Caps only for a partial
 turn. Every quad is planar, which is all the depth layer needs; the 355° limit
 the painter's sort had here went with the sort.
+
+## A face to dimension is what made it
+
+The owner asked for SolidWorks' Smart Dimension, *"Distance between two
+faces of a solid, or angle"* (docs/plans/smart-dimension.md). A face is not
+stored, so a dimension on one holds **what made it**, by a name that says so.
+
+- **The name is the kernel's**: `e1.base`, `e1.lid`, `e1.m3` for the wall
+  member 3 swept, members counted loop by loop. faces.ts gives every face it
+  draws the name (`Face.name`), and the kernel's record carries the same one.
+  So a face picked on a body faces.ts draws and on one the kernel built is one
+  name, and a relation journals it.
+- **The source is the record's** (`src/relations/solidref.ts`), read at every
+  evaluation. A cap is its profile's points or their twins and the sketch
+  plane's normal, a datum. A line's wall is the line, its normal the line
+  turned square to the extrusion. A round wall is its circle or arc, and an
+  edge between two of one extrude's faces is its entity.
+- **So most face dimensions are sketch dimensions.** Two walls of one extrude
+  are `dist` or `ang3` on their lines, a round wall's size is its circle's
+  `dia`, an edge's length its line's. These follow any regeneration, because
+  lines do. One relation is new: `fdist`, square to a flat face, naming the
+  faces. It is the only place a face's index is held, which is the kernel
+  names' own caveat (a member inserted renumbers the walls after it).
+- **The depth is not a second dimension.** `extrusion` holds the lid at base
+  + depth·ẑ with the depth a constant, so the lid-to-base distance can only
+  be the depth. The tool opens its value rather than add a relation that
+  could only repeat or fight it.
+- **What only the kernel knows** — a fillet's face, a boolean's edge — is read
+  through a function the host hands `measure.ts` (`setSolidReader`), so the
+  relations layer still never learns where the kernel is. It can only be
+  measured: a driven dimension.
+- **A record's going takes the relations naming its faces.** `"e1.lid"`'s
+  referent is the record, which the entity cascade never saw.
+
+**Faces pick for a tool that asks, and nowhere else.** `ToolContext.pickSolid`
+(`src/solidpick.ts`) is the ordinary pick, and where it finds nothing, the
+front face under the pixel. That is occlusion's `nearestFace`, the e2e
+oracle's question, over the faces the frame drew. It is not a fourth tier of
+`hitTest`. A click on a face still selects nothing, hovers nothing and drags
+nothing, which everything built since "faces are display only" relies on. A
+lit face is filled only in the cells where it is in front, because a 2D canvas
+has no depth test.
 
 ## A body is a chain, and the kernel builds only what a boolean made
 
@@ -2052,7 +2095,7 @@ until the next action went unrecorded.
 
 ## Why there is an end-to-end suite
 
-Sixty-four bugs so far were invisible to the unit tests and obvious within seconds
+Sixty-nine bugs so far were invisible to the unit tests and obvious within seconds
 of running the app:
 
 1. a status readout that went stale, so a conflict could be introduced from
@@ -2339,21 +2382,48 @@ of running the app:
 60. Trim's glyph, as the modify button's face, read as a plus sign on the
    iPhone, because its dotted arm draws solid at that size. Found by looking
    at the toolbar picture. The piece past the wall is struck out instead.
-61. The revolve tool never offered the origin's own axes: it asked only the
+61. A dimension's label double-clicked, `set("d2.value", ` put in the command
+   line, and the number typed after it landing *in front of* it. The second
+   press's default, a mousedown on the canvas, took the focus back off the
+   line the press had just focused. The unit suite has no focus; the smart
+   dimension e2e's first run found it (smart-dimension.md). The value opens
+   after the event now.
+62. A face picked behind another, lit straight through the one in front: a 2D
+   canvas has no depth test, and the face's whole outline was filled. Every
+   pick was the right face; found by looking at the picture of a step's two
+   walls picked. A lit face is filled only in the cells where it is the
+   front face, the pick's own question.
+63. A double-tap on a dimension's label read as two taps on a loaded box. It
+   was timed by when the page got round to recognising each tap, not by the
+   touches' own stamps, which the recogniser already reads. It is timed by
+   the pointerdown's stamp now, and the harness has a `doubleTap` that sends
+   the second at a hand's pace.
+64. A dimension's label clicked into a half-typed `del(` opened `set(` instead
+   of naming it: smart dimension's double-click to edit and the glyphs'
+   click-to-name met on a quick hand, two clicks inside the double-click
+   window. Every unit test passed; dimensions.e2e failed once the box was
+   quiet enough for the clicks to be quick. A half-typed command now takes
+   every label click as a name.
+65. Symmetric for two circles was offered only with the mirror line picked
+   last; the line first listed nothing. The table test picked in one order.
+   Found when the iPhone's seven-row list for two circles covered the line,
+   so the test had to pick it first. The mirror is now whichever pick is the
+   line, in any order.
+66. The revolve tool never offered the origin's own axes: it asked only the
    frames that are entities, and the origin is none, so a rectangle beside
    the origin's y axis lit no axis and a tap on the arm was refused as "not
    in its plane" — while `revolve(…, "origin.y")` typed worked. Found by
    walking the revolve on a phone (docs/plans/solid-tools-intuitive.md, W9).
-62. The Cut tool's "this cut doesn't reach any solid" said once after every
+67. The Cut tool's "this cut doesn't reach any solid" said once after every
    confirm: the render between the confirm's lines asked the model half-way
    — the cut already made, its material gone. Found reading the log of the
    first iPhone run; the question now waits while a confirm's lines go in.
-63. On a phone, a held finger on a solid's face opened the empty-canvas menu
+68. On a phone, a held finger on a solid's face opened the empty-canvas menu
    with the tool list first, filling the screen, and the face's own Sketch on
    this face, Edit e1 and Flip direction below it, out of sight. The test that
    asked for the items found them; only the picture showed where they were.
    On a face they come first now.
-64. The extrude's new end-condition row: its label cut to "e." beside
+69. The extrude's new end-condition row: its label cut to "e." beside
    "Through all" and "Symmetric" on an iPhone (#13 again, found by looking),
    and, the row being one more, no panel layout fitting an iPhone held
    sideways — found by the full suite's touch.e2e.ts, every unit test passing.
