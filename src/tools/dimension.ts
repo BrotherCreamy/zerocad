@@ -72,7 +72,7 @@ export class DimensionTool extends Tool {
     // Say what it measures, make nothing (`measureOf`).
     measure: { default: false, label: "measure only", remember: false },
   };
-  static readonly summary = "Dimensions what you click — a vertex, an edge, a face — then a click places it";
+  static readonly summary = "Dimensions what you click, a solid's faces too; a click places it";
   readonly name = "dimension";
   // Its picks are entities, not places: a snap marker would promise a point.
   readonly snaps = false;
@@ -95,10 +95,14 @@ export class DimensionTool extends Tool {
     };
   }
 
-  /** What to click: what to measure, then more of it, then where the value goes. */
+  /**
+   * What to click: what to measure, then more of it, then where the value goes.
+   * Short, as the chip is narrow on a phone (ARCHITECTURE.md's bug 48); the
+   * vertex, edge and face are the summary's and the guide's to say.
+   */
   next(hand: Hand): string {
-    if (!this.picks.length) return `${press(hand)} what to dimension — a vertex, an edge, a face`;
-    if (this.planned()) return `${press(hand)} where it goes — above, beside or between`;
+    if (!this.picks.length) return `${press(hand)} what to dimension`;
+    if (this.planned()) return `${press(hand)} empty space to place it`;
     return `${press(hand)} what to measure ${this.picks[0]} against`;
   }
 
