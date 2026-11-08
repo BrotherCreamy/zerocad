@@ -194,7 +194,11 @@ defineModule("sketch", {
     // The sketch's edits first, then (from the solids module) the solid's
     // round and chamfer: one family per half of the flyout
     // (docs/plans/sketch-edit.md). `bevel` is the sketch's two-line chamfer.
-    modify: ["fillet", "bevel", "trim", "extend", "offset", "mirror", "pattern"],
+    // **Trim first** (docs/plans/trim-everything.md): the owner asked for trim
+    // while it was there, behind the fillet's face — the button's face is its
+    // first member until another is armed, and trim is the edit a sketch is
+    // cleaned up with most (SolidWorks and Onshape put it on the bar). Vetoable.
+    modify: ["trim", "fillet", "bevel", "extend", "offset", "mirror", "pattern"],
     // Dimension and constrain share a button (docs/plans/sketch-relations.md
     // gave each its own): both make relations, and as the fourteenth button
     // the second ran an iPhone 13's column one pixel onto the command line at
@@ -497,11 +501,19 @@ defineModule("sketch", {
     "           fillet(line1, line2, radius) — the arc follows its corner",
     'edit       trim("l1", [x, y]) — the piece of l1 the place is on, between the',
     "           curves that cut it there (or its own end), goes: an end re-pointed",
-    "           and held on (on, oncircle) the curve that cut it; a middle piece",
-    "           leaves two, held col (an arc's: eqrad); a circle becomes an arc,",
-    "           same name. A feature on it regenerates, or the trim refuses.",
+    "           and held on (on, oncircle, onellipse, onspline) the curve that cut",
+    "           it; a middle piece leaves two, held col (an arc's: eqrad); a circle",
+    "           becomes an arc, same name. Every curve trims, against every other:",
+    "           an ellipse becomes an elliptical arc (ea1 for a second piece; its",
+    "           ends onellipse, two pieces eqrad); a spline becomes a spline of",
+    "           control points (bs1) — the piece exactly, its control points",
+    "           ordinary points to drag; a closed one needs two cuts. A feature on",
+    "           it regenerates, or the trim refuses. The trim tool (modify's",
+    "           face): click a piece, or drag across pieces — power trim, every",
+    "           piece the stroke crosses red, one undo step on release.",
     '           extend("l1", "p2") — that end on to the next curve along l1 (an',
-    '           arc: round its circle), held on it; extend("l1", "p2", "c3") to c3.',
+    '           arc or elliptical arc: round its circle or ellipse), held on it;',
+    '           extend("l1", "p2", "c3") to c3. A spline is not lengthened.',
     '           offset("l1", 5) or offset(["l1", "a1", "l2"], 5, { construction:',
     "           true }) — a parallel copy of a chain, outward (closed) or to the",
     "           left of the first member (open): par + dist, arcs about the same",

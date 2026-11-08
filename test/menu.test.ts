@@ -215,8 +215,8 @@ test("empty canvas arms the tools, and every tool name it types is registered", 
     // group under its heading once the solids module brings its round and chamfer (docs/plans/solid-fillets.md).
     // The sketch's edits join modify after the fillet (docs/plans/sketch-edit.md).
     // The spline joins the ellipse, so the curves group has a heading (docs/plans/spline.md).
-    "Point", "Line", "Shapes", "Rectangle", "Polygon", "Slot", "Region", "Circle", "Arc", "Curves", "Ellipse", "Spline", "Modify", "Fillet",
-    "Bevel", "Trim", "Extend", "Offset", "Mirror", "Pattern", "Round", "Chamfer", "Frame",
+    "Point", "Line", "Shapes", "Rectangle", "Polygon", "Slot", "Region", "Circle", "Arc", "Curves", "Ellipse", "Spline", "Modify", "Trim", "Fillet",
+    "Bevel", "Extend", "Offset", "Mirror", "Pattern", "Round", "Chamfer", "Frame",
   ]);
   // A typo in the table would be a menu item that throws when chosen, and
   // nothing else would catch it.

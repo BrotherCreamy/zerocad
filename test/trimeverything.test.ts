@@ -13,7 +13,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { ensureKernelLoaded } from "../src/kernel/problem.ts";
 import { Model, isClosedEntity } from "../src/model.ts";
-import { trim } from "../src/sketchedit.ts";
+import { extend, trim } from "../src/sketchedit.ts";
 import { open, save } from "../src/persist.ts";
 import { addEllipse, addEllipticArc, semiAxes } from "../src/kinds/ellipse.ts";
 import { addBSpline } from "../src/kinds/spline.ts";
@@ -416,4 +416,18 @@ test("a power-trim stroke across two pieces of one line types them from its far 
   const lines = [...m.entities.values()].filter((e) => e.kind === "line" && Math.abs(m.coords(e.refs[0])[1]) < 1e-9 && Math.abs(m.coords(e.refs[1])[1]) < 1e-9);
   const spans = lines.map((e) => (e as Extract<typeof e, { kind: "line" }>).refs.map((p) => Math.round(m.coords(p)[0])).sort((a, b) => a - b)).sort((a, b) => a[0] - b[0]);
   assert.deepEqual(spans, [[0, 8], [16, 24], [32, 40]]);
+});
+
+test("an elliptical arc extends round its ellipse to the next curve, its end held there and still on the ellipse", () => {
+  const m = new Model(2);
+  const el = earc([0, 0], 20, 10, 0, 30, 120)(m, sheet(2));
+  const wall = seg(m, [-15, -20], [-15, 20]); // the ellipse meets x = −15 at y = ±10·√(1 − 0.5625)
+  solved(m);
+  const e = m.entities.get(el) as Extract<ReturnType<typeof m.entities.get>, { kind: "earc" }>;
+  extend(m, el, e.end);
+  solved(m);
+  assert.ok(near(m.coords(e.end), [-15, 10 * Math.sqrt(1 - 0.5625)]), `reached the wall: ${m.coords(e.end)}`);
+  assert.ok([...m.relations.values()].some((r) => r.op === "pointOnLine" && r.args[0] === e.end && r.args[1] === wall), "held on it");
+  assert.throws(() => extend(m, addEllipse(m, m.addPoint([60, 0]).name, m.addPoint([70, 0]).name, 3).name, [70, 0]), /is an ellipse — it has no end to extend/);
+  replays(m);
 });

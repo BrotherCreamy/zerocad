@@ -100,7 +100,7 @@ export function strokeOrder(model: Model, crossed: readonly Crossed[]): Crossed[
 }
 
 export class TrimTool extends Tool {
-  static readonly summary = "Trims a curve back to where others cut it: click the piece to remove, or drag across pieces";
+  static readonly summary = "Trims a curve back to where others cut it: click or drag across pieces";
   readonly name = "trim";
   readonly snaps = false;
   private hover: Hover | null = null;

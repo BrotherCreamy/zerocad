@@ -392,7 +392,7 @@ function loose(d: Data, c: LooseCurve): number {
   if (c.kind === "bspline") return bsplineCurve(d, c.curve.nurbs, c.name);
   if (c.kind !== "line" && c.kind !== "arc") return d.declared(c.curve, c.name);
   const trim = (p: number[]) => `(${ref(d.point(p))})`;
-  // An arc's basis is its circle — or the curve a module writes, for the part of a declared kind's (an elliptical arc's ellipse).
+  // An arc's basis is its circle — or the curve a module writes, for the arc of a declared kind's conic.
   const basis = c.kind === "line" ? d.line(c.a, c.b) : c.curve.kind === "circle" ? d.circle(c.curve) : d.declared(c.curve);
   return d.add(`TRIMMED_CURVE(${str(c.name)},${ref(basis)},${trim(c.a)},${trim(c.b)},.T.,.CARTESIAN.)`);
 }
