@@ -524,7 +524,8 @@ test("the dimension tool's rounding is the menu's", () => {
   const pick = (name: string, kind: "line" | "circle"): Pick => ({ name, kind, distance: 0 });
   assert.equal(dimensionFor(m, ["l1"])!.text, dimensionCommand(m, pick("l1", "line")));
   assert.equal(dimensionFor(m, ["c1"])!.text, dimensionCommand(m, pick("c1", "circle")));
-  assert.equal(dimensionFor(m, ["c1"])!.text, `rad("c1", ${roundValue(7.77777)})`);
+  // A whole circle's diameter, SolidWorks' default (docs/plans/smart-dimension.md).
+  assert.equal(dimensionFor(m, ["c1"])!.text, `dia("c1", ${roundValue(2 * 7.77777)})`);
 });
 
 test("what the dimension tool types for each pick", () => {
@@ -540,11 +541,14 @@ test("what the dimension tool types for each pick", () => {
   assert.equal(t(["p", "l1"]), 'dist("p", "l1", 7)');
   assert.equal(t(["l1", "l2"]), 'ang("l1", "l2", deg(45))');
   assert.equal(t(["l1", "l3"]), 'dist("l1", "l3", 5)', "parallel lines: the distance between");
-  assert.equal(t(["c1"]), 'rad("c1", 4)');
+  // A whole circle's diameter by default, SolidWorks' (docs/plans/smart-dimension.md); its radius asked for.
+  assert.equal(t(["c1"]), 'dia("c1", 8)');
+  assert.equal(t(["c1"], { radial: "radius" }), 'rad("c1", 4)');
   assert.equal(t(["c1"], { diameter: true }), 'dia("c1", 8)');
   assert.equal(t(["l1"], { driven: true }), 'measure("dist", "l1a", "l1b")');
   assert.equal(t(["l1", "l2"], { driven: true }), 'measure("angle", "l1", "l2")');
-  assert.equal(t(["c1", "p"]), null);
+  // A circle and a point: the distance to its centre (smart-dimension.md's table).
+  assert.equal(t(["c1", "p"]), 'dist("c0", "p", 7.616)');
   // And each one applies as the call it types.
   const made = dimensionFor(m, ["l1", "l2"])!.apply(m);
   close(m.relations.get(made)!.args[2] as number, Math.PI / 4, 1e-12);
@@ -560,7 +564,7 @@ test("constraintsFor lists what each selection takes", () => {
   const labels = (names: string[]) => constraintsFor(m, names).map((a) => a.label);
   assert.deepEqual(labels(["l1", "l2"]), ["Parallel", "Perpendicular", "Equal", "Collinear", "Angle"]);
   assert.deepEqual(labels(["p", "l1"]), ["On", "Midpoint", "Distance"]);
-  assert.deepEqual(labels(["c1", "c2"]), ["Concentric", "Equal", "Tangent"]);
+  assert.deepEqual(labels(["c1", "c2"]), ["Concentric", "Equal", "Tangent", "Centre distance"]);
   assert.deepEqual(labels(["l1"]), ["Horizontal", "Vertical", "Length"]);
   assert.deepEqual(labels(["p", "l1a"]), ["Coincident", "Horizontal", "Vertical", "Distance"]);
   assert.deepEqual(constraintsFor(m, ["l1", "l2"])[0].text, 'par("l1", "l2")');
@@ -586,7 +590,9 @@ function scripted(m: Model, picks: (Pick | null)[], options: Record<string, unkn
 
 const at0 = { world: [0, 0], screen: [0, 0] as [number, number] };
 
-test("the dimension tool: click a line, click to place — one dist holding its length", () => {
+// The commit is asynchronous since smart dimension (docs/plans/smart-dimension.md):
+// the dimension is tried on a copy first, to make it driven if it may not drive.
+test("the dimension tool: click a line, click to place — one dist holding its length", async () => {
   const m = new Model(2);
   line(m, "l1", [0, 0], [12, 5]);
   const { ctx } = scripted(m, [{ name: "l1", kind: "line", distance: 0 }, null]);
@@ -594,13 +600,14 @@ test("the dimension tool: click a line, click to place — one dist holding its 
   tool.onDown(at0);
   assert.deepEqual(tool.picks, ["l1"]);
   tool.onDown(at0);
+  await tool.settled;
   const d = [...m.relations.values()];
   assert.equal(d.length, 1);
   assert.deepEqual(d[0].args, ["l1a", "l1b", 13]);
   assert.deepEqual(tool.picks, [], "spent");
 });
 
-test("the dimension tool: two lines make an angle; a click on a picked one drops it; driven types measure", () => {
+test("the dimension tool: two lines make an angle; a click on a picked one drops it; driven types measure", async () => {
   const m = new Model(2);
   line(m, "l1", [0, 0], [10, 0]);
   line(m, "l2", [0, 0], [0, 10]);
@@ -610,6 +617,7 @@ test("the dimension tool: two lines make an angle; a click on a picked one drops
   tool.onDown(at0); tool.onDown(at0); tool.onDown(at0);
   assert.deepEqual(tool.picks, ["l1"], "the second click on l2 dropped it");
   tool.onDown(at0); tool.onDown(at0);
+  await tool.settled;
   const r = [...m.relations.values()][0];
   assert.equal(r.op, "angle");
   close(r.args[2] as number, Math.PI / 2, 1e-12);
@@ -617,6 +625,7 @@ test("the dimension tool: two lines make an angle; a click on a picked one drops
   m.addPoint([0, 0], "c0"); m.addCircle("c0", 4, null, "c1");
   const tool2 = new DimensionTool(driven.ctx);
   tool2.onDown(at0); tool2.onDown(at0);
+  await tool2.settled;
   const last = [...m.relations.values()].at(-1)!;
   assert.deepEqual([last.op, ...last.args], ["measure", "diameter", "c1"]);
 });

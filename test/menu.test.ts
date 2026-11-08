@@ -82,11 +82,11 @@ test("the dimension is the current measurement, so it holds what it measures", a
   assert.deepEqual([model.coords(a), model.coords(b)], before);
 });
 
-test("a circle and an arc are dimensioned by radius, a point and a frame not at all", async () => {
+test("a circle is dimensioned by diameter and an arc by radius (SolidWorks', smart-dimension.md), a point and a frame not at all", async () => {
   await loadKernel();
   const model = new Model(2);
   const c = model.addCircle(model.addPoint([0, 0]).name, 12.25).name;
-  assert.equal(commandFor(menuFor(model, pickOf(model, c)), "Dimension"), `rad("${c}", 12.25)`);
+  assert.equal(commandFor(menuFor(model, pickOf(model, c)), "Dimension"), `dia("${c}", 24.5)`);
 
   const arc = model.addArc(model.addPoint([50, 0]).name, null, null, 8).name;
   assert.equal(commandFor(menuFor(model, pickOf(model, arc)), "Dimension"), `rad("${arc}", 8)`);

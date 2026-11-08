@@ -105,6 +105,27 @@ export interface ToolContext {
    */
   pick?(screen: [number, number]): Pick | null;
   /**
+   * What is under a screen point **on a solid**, SolidWorks' order — a vertex
+   * before an edge before a face (docs/plans/smart-dimension.md): `pick`'s
+   * answer where it has one (a point, a curve, a line, a kernel edge), and
+   * where it has none, the face of a solid the point is on, as a `kind:
+   * "face"` pick named as the kernel names it (`e1.lid`). For a tool that
+   * takes faces — the dimension tool, a relation to a face. Faces still pick
+   * nowhere else (ARCHITECTURE.md: a click on a face is a click on nothing).
+   * Absent outside a viewport, like `pick`.
+   */
+  pickSolid?(screen: [number, number]): Pick | null;
+  /** The outlines a face named as `pickSolid` names it is drawn with this frame, in the world — to light it. Empty when not drawn. */
+  faceOutlines?(name: string): number[][][];
+  /** A world point on screen, as the drawing is projected — where a tool's own label would land. Absent outside a viewport. */
+  toScreen?(world: number[]): [number, number];
+  /**
+   * Opens a dimension's value to be typed — what Set value… on its label does
+   * (`set("d4.value", ` in the command line) — for a tool that finds the
+   * picks are a dimension the drawing already has. Absent outside an app.
+   */
+  editDimension?(name: string): void;
+  /**
    * The closed region a screen point is inside, if any — `pick`'s question
    * asked of regions rather than entities. See `RegionHit`. Absent outside a
    * viewport, like `pick`.
