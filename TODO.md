@@ -2030,6 +2030,16 @@ are flagged as such.
 
 ## Next up
 
+- [ ] **The constrain list covers what it is about, on a phone** (found
+  merging smart dimension, 2026-11-08). Two circles list seven rows, two
+  lines eight; on an iPhone 13 the options pane then covers the second
+  circle and the mirror line a Symmetric needs (picture
+  `relations-iphone-probe-two-circles`, regenerate with NEOCAD_E2E_SHOTS).
+  The panes' make-room places the pane but never against the picks. Either
+  the pane keeps clear of the picked entities, or the list collapses to the
+  likeliest rows with a "more…" row. Not decided; the e2e now picks the
+  line first, which works but is not what a person will always do.
+
 - [ ] **Five packages, in flight in parallel (2026-11-08).** The owner:
   *"Flip button. Also need to figure out a way to do all the standard
   relations. Also need trim for sketch entities. … I need a way to natively

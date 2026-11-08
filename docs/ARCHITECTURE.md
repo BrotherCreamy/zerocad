@@ -2077,7 +2077,7 @@ until the next action went unrecorded.
 
 ## Why there is an end-to-end suite
 
-Sixty-three bugs so far were invisible to the unit tests and obvious within seconds
+Sixty-five bugs so far were invisible to the unit tests and obvious within seconds
 of running the app:
 
 1. a status readout that went stale, so a conflict could be introduced from
@@ -2380,6 +2380,17 @@ of running the app:
    touches' own stamps, which the recogniser already reads. It is timed by
    the pointerdown's stamp now, and the harness has a `doubleTap` that sends
    the second at a hand's pace.
+64. A dimension's label clicked into a half-typed `del(` opened `set(` instead
+   of naming it: smart dimension's double-click to edit and the glyphs'
+   click-to-name met on a quick hand, two clicks inside the double-click
+   window. Every unit test passed; dimensions.e2e failed once the box was
+   quiet enough for the clicks to be quick. A half-typed command now takes
+   every label click as a name.
+65. Symmetric for two circles was offered only with the mirror line picked
+   last; the line first listed nothing. The table test picked in one order.
+   Found when the iPhone's seven-row list for two circles covered the line,
+   so the test had to pick it first. The mirror is now whichever pick is the
+   line, in any order.
 
 None of these are mathematics. They are all *assembly*. Hence `npm run
 test:e2e`, and hence the expectation that anything touching the app is checked

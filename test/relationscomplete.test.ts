@@ -499,3 +499,22 @@ test("a greyed cell is greyed in the tool's list and the menu, with its reason",
   const item = menu.items.find((i) => i.label === "Tangent")!;
   assert.equal(item.action.do, "disabled");
 });
+
+test("Symmetric takes its picks in any order: the line is the mirror wherever it was picked", () => {
+  // Found merging #84: two circles then the line listed Symmetric, the line
+  // first listed nothing — and the iPhone's seven-row list for two circles
+  // covers the line, so the line first is the order a finger needs.
+  const m = new Model(2);
+  m.addPoint([-22, 8], "o1"); m.addCircle("o1", 10, null, "c1");
+  m.addPoint([16, 14], "o2"); m.addCircle("o2", 8, null, "c2");
+  m.addPoint([0, -25], "la"); m.addPoint([0, 35], "lb"); m.addLine("la", "lb", "l1");
+  m.addPoint([-5, 0], "pa"); m.addPoint([5, 0], "pb");
+  for (const picks of [["c1", "c2", "l1"], ["l1", "c1", "c2"], ["c1", "l1", "c2"]]) {
+    const s = constraintsFor(m, picks).filter((a) => a.label === "Symmetric");
+    assert.equal(s.length, 1, picks.join(", "));
+    assert.match(s[0].text, /^sym\("c[12]", "c[12]", "l1"\)$/, picks.join(", "));
+  }
+  for (const picks of [["l1", "pa", "pb"], ["pa", "l1", "pb"]]) {
+    assert.equal(constraintsFor(m, picks).find((a) => a.label === "Symmetric")?.text.endsWith('"l1")'), true, picks.join(", "));
+  }
+});

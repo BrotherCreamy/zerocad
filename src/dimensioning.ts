@@ -770,15 +770,27 @@ export function constraintsFor(model: Model, names: readonly string[]): Applicab
   if (n >= 3 && count(isPoint) === n) {
     add("Equal spacing", "spacing", [...uniq], (m) => equalSpacing(m, ...uniq));
   }
-  // Symmetric: two of a kind about the third pick, a line or a frame's x or y.
-  const mirror = n === 3 && (isLine(k[2]) || (isAxis(k[2]) && (!zAxis(uniq[2]) || threeD))) ? uniq[2] : null;
-  const pair = (want: (x: PickClass | undefined) => boolean) => mirror !== null && want(k[0]) && want(k[1]);
+  // Symmetric: two of a kind about a line or a frame's x or y — picked in any
+  // order, as SolidWorks takes them: the mirror is whichever pick is the line
+  // when the other two are points or circles (found merging #84: two circles
+  // then the line listed Symmetric, the line first listed nothing). Three
+  // lines are the one ambiguous case, and there the third pick is the mirror.
+  const mirrorAt = (i: number) => isLine(k[i]) || (isAxis(k[i]) && (!zAxis(uniq[i]) || threeD));
   const symmetricCell = (): Applicable | null => {
-    if (!mirror) return null;
-    const [a, b] = uniq;
-    const arcs = k[0] === "arc" || k[1] === "arc";
-    if (!(pair(isPoint) || pair(isLine) || (pair(isCircular) && (!arcs || k[0] === k[1] || k[0] === "circle" || k[1] === "circle")))) return null;
-    return { label: "Symmetric", text: call("sym", [a, b, mirror]), apply: (m) => symmetric(m, a, b, mirror) };
+    if (n !== 3) return null;
+    for (const i of [2, 0, 1]) {
+      if (!mirrorAt(i)) continue;
+      const [ia, ib] = [0, 1, 2].filter((j) => j !== i);
+      const [ka, kb] = [k[ia], k[ib]];
+      const both = (want: (x: PickClass | undefined) => boolean) => want(ka) && want(kb);
+      const arcs = ka === "arc" || kb === "arc";
+      const ok = both(isPoint) || (i === 2 && both(isLine))
+        || (both(isCircular) && (!arcs || ka === kb || ka === "circle" || kb === "circle"));
+      if (!ok) continue;
+      const [a, b, mirror] = [uniq[ia], uniq[ib], uniq[i]];
+      return { label: "Symmetric", text: call("sym", [a, b, mirror]), apply: (m) => symmetric(m, a, b, mirror) };
+    }
+    return null;
   };
   const sym = symmetricCell();
   // Three lines are Equal and Parallel as much as a pair and its mirror, so

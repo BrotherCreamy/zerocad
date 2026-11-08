@@ -226,6 +226,8 @@ export class ToolEngine {
   }
   private onContextMenu: (pick: Pick | null, sx: number, sy: number) => void;
   private onEditDimension: ((name: string) => void) | undefined;
+  /** Whether a command is half-typed — set by the host; then a label click names, never edits. */
+  typingCommand: () => boolean = () => false;
   /** The last left click or tap on a dimension's label: which, where and when — what a second makes a double. */
   private lastLabelClick: { relation: string; x: number; y: number; at: number } | null = null;
   /** When the last finger went down, by its event's stamp. */
@@ -648,6 +650,11 @@ export class ToolEngine {
    */
   private doubleOnLabel(sx: number, sy: number, at: number): boolean {
     if (!this.onEditDimension) return false;
+    // A command half-typed takes a click on a label as its name, every click:
+    // `del(` then the label is a deletion, not an edit. Two such clicks land
+    // inside the double-click window on a quick hand (found merging #84:
+    // dimensions.e2e's `del(` click opened `set(` on a quiet machine).
+    if (this.typingCommand()) { this.lastLabelClick = null; return false; }
     const gl = glyphAt(this.glyphs(), sx, sy);
     const dim = gl && gl.isLabel && valueArgIndex(gl.op) !== null ? gl.relation : null;
     const last = this.lastLabelClick;

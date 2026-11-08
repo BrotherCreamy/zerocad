@@ -7,6 +7,23 @@ decisions.
 
 ---
 
+## 2026-11-08 — merging smart dimension: two bugs where packages met
+
+- **A label click into a half-typed command names it again.** `del(` then a
+  click on a dimension's label had opened `set("d1.value", ` when the two
+  clicks fell inside the double-click window: smart dimension's
+  double-click to edit (#84) against the glyphs' click-to-name. A
+  half-typed command now takes every label click as a name
+  (`ToolEngine.typingCommand`). dimensions.e2e failed before, passes after.
+- **Symmetric takes its picks in any order.** Two circles and a mirror line
+  listed Symmetric only with the line picked last (#82); the mirror is now
+  whichever pick is the line. A new unit test fails without the fix.
+- **The relation table takes smart dimension's rows**: a whole circle reads
+  Diameter, and ten cells gain their dimension last.
+- Found, not fixed: on an iPhone, two circles list seven rows, and the list
+  covers the second circle and the mirror line (TODO.md).
+- Bugs 64 and 65 in ARCHITECTURE; the count is sixty-five.
+
 ## Smart dimension: one tool for a vertex, an edge or a face — distances and angles between a solid's faces
 
 The owner (2026-11-08): *"Dim tool needs to be similar in functionality to

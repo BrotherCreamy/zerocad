@@ -2099,6 +2099,8 @@ async function main() {
   };
   // A phone's words are a finger's from the start: "tap", before any tap.
   engine.pointing = coarse ? "finger" : "mouse";
+  // A half-typed command takes a label click as its name (`del(` then a label), never as a double-click edit.
+  engine.typingCommand = () => cmdEl.value.trim() !== "";
 
   /**
    * The mode chip (modechip.ts), through the seams everything else uses: the
