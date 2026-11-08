@@ -12,7 +12,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { ensureKernelLoaded, type ResidualBlock } from "../src/kernel/problem.ts";
 import type { Dual } from "../src/kernel/dual.ts";
-import { COLLAPSE, Model, quickXplain, type ModelSolveReport } from "../src/model.ts";
+import { COLLAPSE, Model, SEARCH_MS, quickXplain, type ModelSolveReport } from "../src/model.ts";
 import { coincident, dist, fix, onPlane } from "../src/relations/basic.ts";
 import { angle, parallel, perpendicular, pointOnLine, tangent } from "../src/relations/geometry.ts";
 import { addEllipse } from "../src/kinds/ellipse.ts";
@@ -489,9 +489,19 @@ test("the cost: the check on every solve, and the search, on the largest fixture
   t0 = performance.now();
   const report = m.solve();
   const solveMs = performance.now() - t0;
+  // What is named, asked of the trials alone (as above): under load the
+  // budget ran out here too and the fallback named eight (merging #83).
+  m.searchMs = Infinity;
   t0 = performance.now();
   const c = m.conflicting(report);
   const searchMs = performance.now() - t0;
+  // And the budget does bound it: the same search with the product's budget
+  // returns within it, give or take one trial, whatever it names.
+  m.searchMs = SEARCH_MS;
+  t0 = performance.now();
+  m.conflicting(report);
+  const boundedMs = performance.now() - t0;
+  assert.ok(boundedMs < SEARCH_MS + 1000, `bounded: ${boundedMs} ms`);
   console.log(`40 rectangles, a par across a corner: solve ${solveMs.toFixed(1)} ms (collapsed ${report.collapsed}), search ${searchMs.toFixed(1)} ms → ${c.relations.join(" ")}`);
   assert.equal(report.solved, false);
   assert.ok(c.relations.includes(p), "the par is named");
