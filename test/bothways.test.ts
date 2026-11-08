@@ -400,3 +400,40 @@ test("a circular pattern turns about its seed's own plane only where no plane is
     assert.deepEqual(m.diagnose().redundant, [], `${picked ? "picked" : "nothing picked"}: nothing redundant`);
   }
 });
+
+test("a revolve about a line the user drew holds both ways: a profile pulled off the axis's plane takes the line with it, and the line pulled takes the profile — a frame's axis never moves", async () => {
+  await loadKernel();
+  /** How far the line a→b is out of the profile's plane, and off its own place. */
+  const lineOff = (m: Model, P: string[], a: string, b: string) => {
+    const n = planeOf(C(m, P[0]), C(m, P[1]), C(m, P[3]));
+    return Math.max(...[a, b].map((p) => Math.abs(dot(sub(C(m, p), C(m, P[0])), n))));
+  };
+  for (const angle of [Math.PI / 2, null]) {
+    for (const grab of ["profile", "axis"] as const) {
+      const m = new Model(3);
+      const { P, L } = besideAxis(m);
+      // The axis: a line the user drew, beside the profile, nothing holding it.
+      const a = m.addPoint([0, -5, 0]).name, b = m.addPoint([0, 30, 0]).name;
+      const ax = m.addLine(a, b).name;
+      revolve(m, L[0], ax, ...(angle === null ? [] : [angle]));
+      assert.equal(m.solve().solved, true);
+      const [a0, b0] = [C(m, a), C(m, b)];
+      const p = grab === "profile" ? P[2] : b;
+      assert.equal(drag(m, p, grab === "profile" ? [0, 0, 8] : [0, 0, -9]), true);
+      const label = `${angle === null ? "whole" : "partial"}, ${grab} pulled`;
+      assert.ok(lineOff(m, P, a, b) <= 1e-7, `${label}: the axis line ${lineOff(m, P, a, b)} off the profile's plane`);
+      if (grab === "profile") {
+        // Pushed, not a datum: with nothing holding it, the line moves with the profile.
+        const moved = Math.max(len(sub(C(m, a), a0)), len(sub(C(m, b), b0)));
+        assert.ok(moved > 0.1, `${label}: the axis line moved ${moved} — it is the user's line, not a datum`);
+      }
+    }
+  }
+  // A frame's axis is a datum the user picked: the profile turns about it, and it stays.
+  const m = new Model(3);
+  const { P, L } = besideAxis(m);
+  revolve(m, L[0], "origin.y", Math.PI / 2);
+  assert.equal(m.solve().solved, true);
+  assert.equal(drag(m, P[2], [0, 0, 8]), true);
+  assert.ok(axisOff(m, P) <= 1e-7, "about the origin's y axis, which never moves");
+});
