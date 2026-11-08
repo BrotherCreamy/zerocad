@@ -27,8 +27,8 @@ const PINS = readFileSync(new URL("../fixtures/workbenches/pins.zerocad.js", imp
 const LIAR = readFileSync(new URL("../fixtures/workbenches/liar.zerocad.js", import.meta.url), "utf8");
 
 /** Today's tray, button by button — what `part` must still be. */
-const PART_TRAY = ["select", "hand", "point", "line", "rectangle", "circle", "arc", "ellipse", "fillet", "dimension",
-  "extrude", "revolve", "sketch"]; // dimension shows the relate group (dimension, constrain)
+const PART_TRAY = ["select", "hand", "point", "line", "rectangle", "circle", "arc", "ellipse", "trim", "dimension",
+  "extrude", "revolve", "sketch"]; // dimension shows the relate group (dimension, constrain); trim the modify group since trim everything
 const SKETCH_TRAY = PART_TRAY.filter((t) => !["extrude", "revolve", "sketch"].includes(t));
 
 async function fresh(app: AppContext): Promise<void> {

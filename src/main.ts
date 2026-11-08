@@ -7,7 +7,7 @@
 // better than arm("rectangle"); anything else is evaluated.
 
 import { ensureKernelLoaded } from "./kernel/problem.ts";
-import { Model, ORIGIN } from "./model.ts";
+import { Model, ORIGIN, isClosedEntity } from "./model.ts";
 import { open as openModelText, save as saveModel, savedHead, savedTools } from "./persist.ts";
 import { carryIntoSession, toolSources } from "./toolsource.ts";
 import { UndoStack } from "./undo.ts";
@@ -27,7 +27,7 @@ import { sampledWorld, screenCurve } from "./projection.ts";
 import { ContextMenu, menuFor } from "./menu.ts";
 import { toolUnavailable } from "./toolavail.ts";
 import { AXIS_INKS, frameArmPx, frameMarker } from "./framemarker.ts";
-import { constrainedBy, defineGlyphAnchor, type Glyph } from "./glyphs.ts";
+import { LOCKED, constrainedBy, defineGlyphAnchor, type Glyph } from "./glyphs.ts";
 import { ENGINE_TOOLS, HAND, SELECT, armedLine, getToolCtor, groupCurrent, toolAlias, toolSummary, toolbarButtons, type ToolbarButton } from "./tools/tool.ts";
 import { activeWorkbench, fileMenuItems, getWorkbench, listWorkbenches, onWorkbench, setActiveWorkbench, DEFAULT_WORKBENCH } from "./modules.ts";
 import { WorkbenchFiles, indexedDbWorkbenches } from "./workbenchhost.ts";
@@ -61,7 +61,7 @@ import { hiddenInk, inSight, inkRuns, occlusion, type Occlusion } from "./occlus
 import { VIEW_MODES, drawsFaces, isViewMode, opaque, recallViewMode, rememberViewMode, viewModeError, type ViewMode } from "./viewmode.ts";
 import { entityDrawn, glyphDrawn, quietEntities, revealed, solidEdges } from "./quiet.ts";
 import { activePlane, focusOf, outOfFocusInk, planePatch, type ActivePlane } from "./activeplane.ts";
-import { ModeChip, chipParts, doneCommand, guideText, planeMenu } from "./modechip.ts";
+import { ModeChip, chipParts, doneCommand, guideText, lookCommand, planeMenu } from "./modechip.ts";
 import { frameBasis } from "./relations/refs.ts";
 import { lockPage } from "./pagelock.ts";
 import { BackStack } from "./backstack.ts";
@@ -1011,7 +1011,7 @@ async function main() {
       g.lineWidth = weight(e.name);
       if (e.kind === "line") {
         strokeEdge([model.coords(e.refs[0]), model.coords(e.refs[1])], false, stroke(e.name));
-      } else if (e.kind === "circle" || e.kind === "arc" || e.kind === "ellipse") {
+      } else if (e.kind === "circle" || e.kind === "arc" || e.kind === "ellipse" || e.kind === "earc") {
         // In its plane (see curveplane.ts): a circle the full turn round its
         // centre in its frame's orientation, an arc counter-clockwise from
         // start to end about its plane's +z (for a 2D arc, about +z, as
@@ -1023,7 +1023,7 @@ async function main() {
         // was the phase-2 seam showing.) An ellipse is the same frame with a
         // second radius (arcgeom.ts's `rv`), sampled by its longer one.
         const f = curveFrame(model, e);
-        if (f) strokeEdge(arcSamples(f, arcSegments(f.sweep, frameReach(f) * view.scale)), e.kind !== "arc", stroke(e.name));
+        if (f) strokeEdge(arcSamples(f, arcSegments(f.sweep, frameReach(f) * view.scale)), isClosedEntity(e), stroke(e.name));
       } else if (e.kind === "frame") {
         drawFrame(e.name, lit.has(e.name), chosen.has(e.name));
       } else {
@@ -1031,6 +1031,21 @@ async function main() {
         // itself as, which is what picking aims at (projection.ts).
         const pts = sampledWorld(model, e, view.scale);
         if (pts) strokeEdge(pts, false, stroke(e.name));
+        // A spline of control points (docs/plans/trim-everything.md) shows its
+        // control polygon, thin and dashed: its points off the curve are what
+        // shapes it, and without the polygon they read as stray dots (looked at).
+        if (e.kind === "bspline" && !casing) {
+          const poly = e.points.map((p) => engine.worldToScreen(model.coords(p)));
+          g.save();
+          g.lineWidth = 1;
+          g.setLineDash([3 * uiOf(view), 3 * uiOf(view)]);
+          g.strokeStyle = CONSTRUCTION;
+          g.beginPath();
+          g.moveTo(...poly[0]);
+          for (const q of poly.slice(1)) g.lineTo(...q);
+          g.stroke();
+          g.restore();
+        }
       }
     }
 
@@ -1424,8 +1439,32 @@ async function main() {
       // Nudged down a hair: several of these marks (— ∥ ⊥ ∴) sit high in their
       // em box, and centring by metrics leaves them looking as though they are
       // escaping upward out of the box.
-      g.fillText(mark.symbol, x, y + 0.5 * k);
+      if (LOCKED.has(mark.op)) padlock(x, y, k);
+      else g.fillText(mark.symbol, x, y + 0.5 * k);
     }
+    g.restore();
+  }
+
+  /**
+   * Fix's mark (glyphs.ts's `LOCKED`): a padlock, in the fill style already
+   * set — a solid body and an open shackle over it, sized to the glyph box at
+   * the interface size `k`, so it is the same weight as the characters beside
+   * it.
+   */
+  function padlock(x: number, y: number, k: number) {
+    const [w, h, r] = [8 * k, 5.5 * k, 2.6 * k];
+    const top = y - 0.5 * k;
+    roundedBox(x - w / 2, top, w, h, 1.2 * k);
+    g.fill();
+    g.save();
+    g.strokeStyle = g.fillStyle;
+    g.lineWidth = 1.5 * k;
+    g.beginPath();
+    g.moveTo(x - r, top);
+    g.lineTo(x - r, top - 1.6 * k);
+    g.arc(x, top - 1.6 * k, r, Math.PI, 0);
+    g.lineTo(x + r, top);
+    g.stroke();
     g.restore();
   }
 
@@ -1877,6 +1916,8 @@ async function main() {
       return wantsPanel ? { tool: a.name, rows, dialog, commands } : null;
     },
     run: (command) => submit(command),
+    // A greyed command row, pressed: why it cannot apply, whole, in the log.
+    note: (text) => log(text, "guide"),
     // A command row is typed like any line, and then the tool hears it ran —
     // its picks are spent. Told after the line has run, so it is the line's
     // own undo step and the tool's next pick is the next one's.
@@ -2044,6 +2085,10 @@ async function main() {
     },
     done: () => {
       const line = doneCommand(model);
+      if (line) void submit(line);
+    },
+    look: () => {
+      const line = lookCommand(model);
       if (line) void submit(line);
     },
     options: () => {
@@ -2700,7 +2745,10 @@ async function main() {
         syncToolbar();
         return TYPED_REFUSAL;
       }
-      syncToolbar();
+      // A frame, not only the toolbar: the chip is synced in the draw pass, and
+      // without one it said Select under a tool just armed by name until the
+      // next pointer event (found by trimeverything.e2e.ts, mouse and finger).
+      render();
       return null;
     }
 
@@ -2779,6 +2827,18 @@ async function main() {
    * armed), then the tool — see `ToolEngine.escape`.
    */
   function escape() {
+    // With nothing in hand and nothing selected, Escape leaves the sketch — the
+    // chip's Done, typed (docs/plans/sketch-mode.md). Only then: with a tool
+    // armed it drops the gesture first, as it always has. Only a work plane
+    // (sketch mode): a default frame is a plane chosen for the document with
+    // plane() and stays until Done, since the Escape that releases a finished
+    // tool arrives with nothing armed and would otherwise drop it unasked.
+    const idle = !engine.active && !engine.hand && engine.selection.size === 0;
+    const leaving = idle && model.workPlane !== null ? doneCommand(model) : null;
+    if (leaving) {
+      void submit(leaving);
+      return;
+    }
     const did = engine.escape();
     syncToolbar();
     log(did === "cleared" ? "selection cleared" : "cancelled", "out");

@@ -91,6 +91,17 @@ export interface ArcFrame {
    * radius is `r` both ways — so nothing that only ever meets those changes.
    */
   rv?: number;
+  /**
+   * An **elliptical arc**'s start, as the eccentric anomaly from `u` (docs/
+   * plans/trim-everything.md): its frame keeps the ellipse's own axes — `u` the
+   * major, `v` the minor, which a conic's form needs square to each other —
+   * and runs from `t0` through `sweep`. Every parameter this file hands out or
+   * takes is still **measured from the start** (`arcPoint(f, 0)` is the start,
+   * `arcPoint(f, sweep)` the end, `portionAngles` from the start), so a caller
+   * that walks an arc from 0 to its sweep walks an elliptical one unchanged.
+   * Absent (0) for every other frame — a circular arc's `u` points at its start.
+   */
+  t0?: number;
 }
 
 /**
@@ -118,12 +129,23 @@ export function frameReach(f: ArcFrame): number {
  * picture; docs/plans/sketch-shapes.md). Exact at both ends of the sweep.
  */
 export function sampleAngle(f: ArcFrame, s: number): number {
-  const psi = s * f.sweep;
-  if (f.rv === undefined || f.rv === f.r) return psi;
+  if (f.rv === undefined || f.rv === f.r) return s * f.sweep;
+  const t0 = f.t0 ?? 0;
+  // The normal's direction at each end, from the major axis, then evenly
+  // between them: for a whole ellipse ψ runs 0 → 2π, for an elliptical arc
+  // from its start's normal to its end's.
+  const [psi0, psi1] = [normalAngle(f, t0), normalAngle(f, t0 + f.sweep)];
+  const psi = psi0 + s * (psi1 - psi0);
   const t = Math.atan2(f.rv * Math.sin(psi), f.r * Math.cos(psi));
   // The same turn as ψ: atan2 answers in (−π, π], and t and ψ share their
   // quadrant, so the nearest whole turn is the one.
-  return t + 2 * Math.PI * Math.round((psi - t) / (2 * Math.PI));
+  return t + 2 * Math.PI * Math.round((psi - t) / (2 * Math.PI)) - t0;
+}
+
+/** The direction an ellipse's normal faces at eccentric anomaly `t`, from its major axis, on `t`'s own turn (`tan ψ = (a/b) tan t`). */
+function normalAngle(f: ArcFrame, t: number): number {
+  const psi = Math.atan2(f.r * Math.sin(t), (f.rv ?? f.r) * Math.cos(t));
+  return psi + 2 * Math.PI * Math.round((t - psi) / (2 * Math.PI));
 }
 
 /**
@@ -170,15 +192,42 @@ export function ellipseFrame(c: number[], a: number, b: number, u: number[], v: 
   return { center: lift3(c), r: a, rv: b, u: U, v: V, normal: cross3(U, V), sweep: Math.PI * 2 };
 }
 
-/** The point at angle `t` along the arc, from its start — an ellipse's eccentric anomaly. */
+/**
+ * The eccentric anomaly of `p` on the ellipse `f` lays out — its angle once
+ * each axis is scaled to one, from `u`, counter-clockwise about `u × v`, in
+ * [0, 2π). Where an elliptical arc's end is (`ellipticArcFrame`).
+ */
+export function eccentricAnomaly(f: ArcFrame, p: number[]): number {
+  const P = lift3(p);
+  const d = [P[0] - f.center[0], P[1] - f.center[1], P[2] - f.center[2]];
+  const t = Math.atan2(dot3(d, f.v) / (f.rv ?? f.r), dot3(d, f.u) / f.r);
+  return ((t % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+}
+
+/**
+ * The part of the ellipse `whole` lays out from `start` round to `end`,
+ * counter-clockwise about its normal as every arc runs — its axes the
+ * ellipse's own, its start at `t0` and its sweep in [0, 2π). Two ends in one
+ * place sweep nothing, as an arc's do.
+ */
+export function ellipticArcFrame(whole: ArcFrame, start: number[], end: number[]): ArcFrame {
+  const t0 = eccentricAnomaly(whole, start);
+  let sweep = eccentricAnomaly(whole, end) - t0;
+  if (sweep < 0) sweep += 2 * Math.PI;
+  return { ...whole, t0, sweep };
+}
+
+/** The point at angle `t` along the arc, from its start — an ellipse's eccentric anomaly, from an elliptical arc's start (`t0`). */
 export function arcPoint(f: ArcFrame, t: number): number[] {
-  const c = Math.cos(t) * f.r, s = Math.sin(t) * (f.rv ?? f.r);
+  const a = t + (f.t0 ?? 0);
+  const c = Math.cos(a) * f.r, s = Math.sin(a) * (f.rv ?? f.r);
   return [0, 1, 2].map((i) => f.center[i] + c * f.u[i] + s * f.v[i]);
 }
 
 /** The direction of travel at angle `t` — d/dt of `arcPoint`, so not unit length. */
 export function arcTangent(f: ArcFrame, t: number): number[] {
-  const c = -Math.sin(t) * f.r, s = Math.cos(t) * (f.rv ?? f.r);
+  const a = t + (f.t0 ?? 0);
+  const c = -Math.sin(a) * f.r, s = Math.cos(a) * (f.rv ?? f.r);
   return [0, 1, 2].map((i) => c * f.u[i] + s * f.v[i]);
 }
 
@@ -215,7 +264,7 @@ export function portionAngles(f: ArcFrame, a: number[], b: number[]): [number, n
     const P = lift3(p);
     const d = [P[0] - f.center[0], P[1] - f.center[1], P[2] - f.center[2]];
     // An ellipse's angle is its eccentric anomaly: each axis scaled to one.
-    const t = Math.atan2(dot3(d, f.v) / (f.rv ?? 1), dot3(d, f.u) / (f.rv === undefined ? 1 : f.r));
+    const t = Math.atan2(dot3(d, f.v) / (f.rv ?? 1), dot3(d, f.u) / (f.rv === undefined ? 1 : f.r)) - (f.t0 ?? 0);
     return ((t % tau) + tau + 1e-9) % tau - 1e-9;
   };
   const t0 = angle(a);

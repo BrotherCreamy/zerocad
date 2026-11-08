@@ -73,7 +73,226 @@ origin's own axis (a bug).
 Tests: unit 1755 → see the PR (+`test/extrudeends.test.ts`,
 `test/cuttool.test.ts`); e2e `test/e2e/solidtools.e2e.ts` (mouse, 5) and
 `test/e2e/solidtoolsphone.e2e.ts` (iPhone 13 by finger, 3). Four more bugs
-the unit suite passed and the browser showed (ARCHITECTURE, 51–54).
+the unit suite passed and the browser showed (ARCHITECTURE, 61–64).
+
+## Every sketch curve trims, and power trim drags across them
+
+The owner (2026-11-08): *"Also need trim for sketch entities"*. Trim took a
+line, an arc or a circle; it refused an ellipse and a spline by name, and it
+lived behind the fillet's face on the modify button. Now every curve trims
+against every other, a press dragged across the drawing trims every piece it
+crosses, and the modify button's face is trim (docs/plans/trim-everything.md).
+
+| | |
+|---|---|
+| ![An ellipse crossed by a line, the trim tool armed: the piece below the line, from crossing to crossing, drawn in the cut's red under the cursor. The chip reads trim · click a piece to trim it, or drag across pieces](docs/images/360-ellipse-piece-red.png) | ![Clicked: the ellipse is the cap above the line, an elliptical arc under its own name el1, drawn open; its centre and major end stay drawn](docs/images/361-ellipse-trimmed-to-an-elliptical-arc.png) |
+| ![A spline whose end runs into a circle: the piece inside the circle red](docs/images/362-spline-piece-in-the-circle-red.png) | ![Clicked: the spline ends on the circle, a spline of control points under its own name sp1 — its control points p13 to p16 drawn with their polygon, thin and dashed](docs/images/363-spline-trimmed-its-control-points.png) |
+| ![A grid of six lines, the trim tool pressed above it and dragged down between x = 0 and 20: the stroke dashed grey, the two pieces it has crossed red, nothing trimmed yet](docs/images/364-power-trim-mid-stroke.png) | ![Released: the three pieces between x = 0 and 20 gone, the log one entry of three trims](docs/images/365-power-trimmed.png) |
+| ![On an iPhone 13, the grid power-trimmed by one finger, mid-stroke: two pieces red](docs/images/367-iphone-power-trim-mid-stroke.png) | ![On the iPhone, the modify button's face is trim's new glyph, the piece past the wall struck out](docs/images/369-iphone-toolbar-modify-face-trim.png) |
+
+- **Every curve against every other**: a line, an arc, a circle, an ellipse,
+  an elliptical arc, a spline and a spline's piece, construction or not, in
+  2D and on any plane in 3D. `sketchgeom.ts` finds every pair's crossings: a
+  conic with a circle or another conic by a walk round one rim, halved at
+  each change of side of the other; a spline with a spline by Bézier
+  subdivision, polished by Newton. A tangency cuts nothing, as before.
+- **An ellipse's piece is an elliptical arc** (`earc`, a new entity kind
+  through `EntityKindSpec`; no kind named in `model.ts`). A trimmed ellipse
+  becomes one under its own name, as a circle becomes an arc. Its frame keeps
+  the ellipse's axes and starts at an eccentric anomaly (`ArcFrame.t0`). Its
+  ends are held `onellipse`. A middle piece leaves a second one, `ea1`, about
+  the same centre and major end, held `eqrad` (equal semi-axes now, for
+  conics). It extrudes, regenerates and goes to STEP as an elliptical edge
+  between two vertices. To the solid kernel it goes as its exact rational
+  NURBS. A revolve of one is refused, as an ellipse's is.
+- **A spline's piece is a spline of control points** (`bspline`). The piece
+  of an interpolating spline is exactly a clamped B-spline, by knot
+  insertion. Its control points are ordinary points to drag and its knots are
+  fixed. A closed spline needs two cuts, and opens across its seam.
+  Through-points nothing else uses go; a used one on the piece is held
+  `onspline`. An `onspline` on the piece is re-made on it. A `tan` at the end
+  that went is removed and said in the log. It extrudes, regenerates and goes
+  to STEP and the kernel as its own B-spline.
+- **Power trim**: with trim armed, press and drag. The stroke is drawn, and
+  each piece goes red as it is crossed. The release types one entry, one
+  `trim` per piece: one undo step. Pieces of one curve are typed from its far
+  end back, so every name typed is the curve the piece is on when its turn
+  comes. A click now trims on its release. By finger it is the natural
+  gesture: a drag with a tool armed is the tool's, never a pan.
+- **Trim heads the modify button.** The button's face is its first member
+  until another is armed; it already showed the member armed last. Trim's
+  glyph strikes the piece out: the dotted arm read as a plus sign on the
+  iPhone (looked at). Extend takes an elliptical arc.
+- **Three bugs the browser found** (ARCHITECTURE, 58–60; the count is
+  sixty now, after sketch mode's and the relations'). A tool armed by its typed name left the chip saying
+  Select until the next pointer event. A spline piece's control points read as
+  stray dots, so its control polygon is drawn now. And trim's glyph read as a
+  plus sign.
+- **Left**: extend and offset of a spline (neither is small in this
+  representation), a revolve of an elliptical arc, part of either piece in a
+  region, trim to closest and extend by shift (no need found). Each is in
+  TODO.md.
+- **Verification** (on a shared four-core box at load 13–39):
+  - `npm run typecheck`: 0 errors, as before.
+  - `npm test`: 1787 tests, 1786 pass, against 1755/1755 before. The one
+    failure is `conflicts.test.ts`'s cost test, whose search is bounded by
+    500 ms. It passed alone three times out of three.
+  - `npm run test:kernel`: 11/11.
+  - `npm run test:e2e`: 721 tests, 700 pass, 19 fail, 2 skipped.
+    - Eleven failures read the modify button's old face (fillet). They were
+      fixed, and those four files pass 67/67.
+    - The rest are finger and timing tests. Each passed alone: regionsops
+      3/3, sketchrelations 3 of 4, touchdensity 3/3. overlaylock failed
+      alone at load 35–39, a different test each run (one run hung), and
+      passed 14/14 twice at load 9. The base branch passed it 14/14 once at
+      load 13.
+  - `trimeverything.e2e.ts`: 4/4.
+- **Tests**: `test/trimeverything.test.ts` (each kind trimmed by each kind,
+  2D and on a tilted plane in 3D, the kept piece checked against the curve
+  as it was; each kind's own rules; power trim's typing), `test/
+  trimsolids.test.ts` (extrude, regenerate, STEP, the kernel),
+  `test/e2e/trimeverything.e2e.ts` (mouse and iPhone 13).
+
+---
+
+## Every standard relation, offered for whatever you pick
+
+The owner (2026-11-08): *"Also need to figure out a way to do all the standard
+relations."* The constrain tool's list is now the union of SolidWorks' and
+Onshape's sketch relations against every pickable kind — point, line, circle,
+arc, ellipse, spline, a frame's axis or plane, a solid's vertex, edge and
+face — written down first as a table (docs/plans/relations-complete.md, *As
+built*) and then made true, row for row, by `test/relationscomplete.test.ts`.
+
+| | |
+|---|---|
+| ![Five lines picked with the constrain tool, each in the picking green; the constrain panel lists Equal (all 5), Parallel (all 5), Horizontal (all 5), Vertical (all 5), Fix (all 5), each with the start of the line it types](docs/images/340-five-lines-picked-the-constrain-list.png) | ![After Equal (all 5): the five lines one length, SOLVED; four = marks on the first line and one on each of the others — four eqs, each against the first; the log reads eq("l1", "l2"); eq("l1", "l3"); eq("l1", "l4"); eq("l1", "l5")](docs/images/341-five-lines-equal-four-eqs-against-the-first.png) |
+| ![On an iPhone 13: the same five lines picked by finger, the list of five rows legible at the phone's width](docs/images/342-iphone-five-lines-picked-the-list.png) | ![On the iPhone: two lines picked, eight rows — Parallel, Perpendicular, Equal, Collinear, Horizontal (both), Vertical (both), Fix (both), Angle — all on screen, covering half the canvas while up](docs/images/343-iphone-two-lines-eight-rows-fit.png) |
+| ![A point and an ellipse picked, On applied: the point on the rim with the ● mark, onellipse("p3", "el1") in the log](docs/images/344-a-point-on-an-ellipse.png) | ![On the iPhone: the same, by finger](docs/images/345-iphone-a-point-on-an-ellipse.png) |
+| ![An arc and a spline leaving its start downward, both picked; the panel lists Tangent, tan("a1", "sp1")](docs/images/346-an-arc-and-a-spline-picked-tangent-listed.png) | ![On the iPhone: the arc and the spline both in the picking green — the spline drew nothing before (bug 53)](docs/images/347-iphone-the-arc-and-the-spline-picked-both-green.png) |
+| ![On the iPhone after Tangent: the arc runs on smoothly into the spline, the join selected and its ● and ⌒ marks shown](docs/images/348-iphone-arc-and-spline-tangent-at-the-join.png) | ![Two circles mirrored about a line by Symmetric, equal radii, a ⇌ on each rim; beside them a coradial pair drawn as one circle with ◎= at its centre](docs/images/349-two-circles-symmetric-and-a-coradial-pair.png) |
+| ![On the iPhone: the same symmetric circles and coradial pair, the marks at 3×](docs/images/350-iphone-two-circles-symmetric-and-coradial.png) | ![A line's end fixed: the padlock beside it, the hover tag p1 -20, 0, 0 · r1](docs/images/351-a-fixed-point-its-padlock-on-hover.png) |
+| ![On the iPhone: the fixed end selected, its padlock at 3×](docs/images/352-iphone-a-fixed-point-its-padlock.png) | ![After a drag on the fixed end and one on the free end: the fixed end where it was, the other end moved, SOLVED](docs/images/353-the-fixed-point-stayed-the-other-end-moved.png) |
+| ![On the iPhone: a line and a spline that share no point; Tangent greyed, its reason on two lines under it — neither end of "sp1" meets "l1" — tan hold…](docs/images/354-iphone-tangent-greyed-with-why.png) | ![A box extruded from a rectangle, a point beside it picked and then the box's top: the three corners that name the face marked, the panel listing On face, onplane("p9", "p5.p6.p8")](docs/images/355-a-point-and-a-boxs-top-picked-on-face.png) |
+| ![After On face: the point on the plane of the box's top (15 up), the ▱ mark beside it](docs/images/356-the-point-on-the-faces-plane.png) | ![On the iPhone: the same](docs/images/357-iphone-the-point-on-the-faces-plane.png) |
+
+- **New relation: `corad(c1, c2)`** (Coradial) — one circle: concentric and
+  equal radius, and in 3D one plane; one module entry, glyph `◎=`.
+- **`sym` takes two lines, two circles or two arcs**, about a line or a
+  frame's axis — the same op, dispatching on kind. Lines need no pairing of
+  ends (the segment is mirrored: middles, direction, length); arcs pair one's
+  start with the other's end, as a mirror turns an arc round.
+- **`intersection` and `pierce` take an ellipse and a spline.**
+- **Offered for the first time**: Fix (any entity — one `fix` per point it is
+  built of, where it stands — drawn as a **padlock**), On for an ellipse and
+  a spline (and for any kind a module adds, through its `heldBy`), Tangent
+  with an ellipse and at a spline's end, Tangent between circles typed with
+  its side (both offered, nearer first), Midpoint between two points,
+  Symmetric about a frame's axis, a frame's arm as an axis (its z arm, in 3D,
+  its plane: On plane, Normal to plane, Parallel to plane), a solid's flat
+  face (On face, Normal to face, Parallel to face).
+- **Many at once**: n lines take Equal, Parallel, Horizontal, Vertical and
+  Fix for all n; n points Coincident, Horizontal, Vertical, Fix; n circles
+  Concentric, Coradial, Equal, Fix — each pick against the first (a star:
+  measured, its conflicts name at most four relations where a chain's name
+  up to nine), typed as one line, so one undo step.
+- **Greyed, with why**: a cell that cannot apply as the drawing stands — a
+  spline whose end meets nothing — is shown greyed with its reason in the
+  tool's panel and the context menu, and a press logs the whole of it. A pick
+  of the solid kernel's own edge or face (a fillet's) greys the list with
+  why nothing can hold to it.
+- **The table stays open**: rules over kind predicates, not a switch over
+  kind names, so the elliptical arc and control-point spline being built
+  beside this get their On, Fix and Concentric cells unwritten.
+- **Solid picking is one function**, `solidRefAt` (src/tools/constrain.ts),
+  to be replaced by smart-dimension's picker.
+- **Three bugs the whole unit suite passed**, found in the browser (55–57 in
+  docs/ARCHITECTURE.md; the count is now fifty-seven, after sketch mode's 51–54): On face was never
+  offered for a box (only the kernel's faces were asked); a greyed reason
+  showed a dozen characters on a phone, and those the generic half; and a
+  picked spline drew nothing.
+- Not built, and why, in TODO.md: Convert Entities (an operation and a
+  projection relation that does not exist), Curvature, Equal curve length.
+
+---
+
+## 2026-11-08 — the conflict search's naming test no longer reads the clock
+
+Found merging #86 (sketch mode): `test/conflicts.test.ts`'s cost test
+failed one run in three *alone*, at a load of ~18 on four cores, naming
+`r5 r1 r2 r27` where it expected the made `par`. The search has two bounds,
+200 trials and 500 ms (`SEARCH_MS`); under load the clock ran out first
+and the fallback named every block that stayed large, which is the bound
+doing its job. The test was asking the clock what the answer is. The budget
+is now a field (`Model.searchMs`, defaulting to `SEARCH_MS`), and the
+fixture part of the test lifts it, so what is named depends on the trials
+alone; the time is still measured and printed. 3/3 alone after, at the
+same load. The 40-rectangle part keeps the budget, since that part tests
+the bound.
+
+## Sketch mode: any plane, every point held on it, square to it on entering
+
+The owner (2026-11-08): *"Not sure how it works right now but I need a way to
+natively sketch on a plane without it being a special feature. It should
+just add 'on plane' relations to each entity as it gets sketched. Also when
+I select this mode it should go normal to the plane/face."*
+(docs/plans/sketch-mode.md)
+
+**Most of it was already true, and is now true everywhere.** Measured
+first: on the ground, a block's top and wall, a revolve's end, a cylinder's
+top, a tilted frame and three points at an angle, every drawing tool held
+every point it made with exactly one `onPlane` — 1 for the point, 3 for a
+two-segment line, 4 for the rectangle, 7 for the hexagon, 6 for the slot,
+1 and 4 for the two circles, 3 and 3 for the two arcs, 2 for the ellipse, 4
+for a four-point spline. What was missing was the planes and the way in.
+
+| | |
+|---|---|
+| ![Before: the sketch tool armed in a fresh document. Nothing is lit; the canvas says Nothing drawn yet, and a click would answer "no closed outline yet"](docs/images/380-before-the-sketch-tool-in-a-fresh-document-takes-nothing.png) | ![Before: a rectangle and a spline drawn on the ground's plane. The rectangle is in full ink; the spline is dimmed, and its two middle points each wear a ▱ mark](docs/images/381-before-on-the-ground-the-spline-dimmed-and-a-plane-mark-on-its-points.png) |
+| ![After: the sketch tool armed in a fresh document. A dashed green square labelled Top round the origin, and the options pane reads plane: Top, Front, Right](docs/images/382-the-sketch-tool-lights-top-and-offers-top-front-right.png) | ![Front picked from the options: the chip reads on Front ⊥ Done, the view looks along +y with x right and z up, a green grid patch round the origin](docs/images/383-front-picked-the-view-square-to-it.png) |
+| ![A rectangle and a spline drawn on Front, then orbited: both stand in the tilted Front patch, the spline now in full ink and no ▱ anywhere](docs/images/384-a-rectangle-and-a-spline-on-front-orbited.png) | ![The chip's ⊥ pressed: square to Front again, lookAt("origin.xz") in the log](docs/images/385-normal-to-square-to-front-again.png) |
+| ![Escape with nothing armed: workplane(null) typed, the patch and the chip's plane gone, the view left as it was](docs/images/386-escape-left-the-sketch-the-view-where-it-was.png) | ![A 60 × 40 × 20 block with its right lid edge filleted R6 and its front lid edge chamfered C6 by the kernel](docs/images/387-a-block-filleted-and-chamfered.png) |
+| ![The block's filleted side wall picked: the chip reads on e1's side, the wall tinted square-on with the fillet's band across its top, a small circle drawn on it](docs/images/388-a-circle-on-the-filleted-blocks-side-wall.png) | ![The sketch tool armed over the block: Top, Front and Right drawn as faint dashed patches through it, the chamfer's face under the cursor](docs/images/389-the-chamfers-face-lit-the-named-planes-behind.png) |
+| ![The chamfer's face picked: a frame f1 made at its middle, the view square to the 45° face, the chamfer's strip between the lid and the front wall](docs/images/390-on-a-frame-made-at-the-chamfers-face.png) | ![iPhone 13: the sketch tool armed, the options pane at the bottom reading plane Top Front Right, the Top patch round the origin](docs/images/391-iphone-the-sketch-tools-options-top-front-right.png) |
+| ![iPhone 13: on Front, a rectangle dragged and a spline tapped out and ended with ✓](docs/images/392-iphone-a-rectangle-and-a-spline-on-front.png) | ![iPhone 13: orbited, the rectangle and the spline still standing in the Front patch](docs/images/393-iphone-orbited-still-on-front.png) |
+| ![iPhone 13: the chip's ⊥ tapped, square to Front again](docs/images/394-iphone-normal-to.png) | ![iPhone 13: a filleted block's side wall tapped with the sketch tool, square-on in the middle of the screen, a circle dragged on it](docs/images/395-iphone-a-circle-on-the-filleted-wall.png) |
+
+- **Front and Right have names now**: `"origin.xz"` and `"origin.yz"`, plane
+  references like Top's `"origin"`, and any frame's `"f1.xz"`/`"f1.yz"`.
+  Choosing one makes nothing. The chip says on Top, on Front, on Right.
+- **The sketch tool takes any planar thing**: a face (held by its own
+  points, as before), a flat face the kernel made that no loop bounds (a
+  chamfer's: a plain frame made there, `kernelplane.ts`), Top, Front and
+  Right (faint patches while it is armed, and one-tap buttons in its
+  options), or a frame or three points selected before arming. Each is one
+  typed `workplane(…)`, one undo step.
+- **Copies stay on the plane**: offset, mirror and both patterns hold every
+  copied point with its own `onPlane`. An offset copy used to float: pushed
+  off the plane, it stayed off.
+- **Normal To** is ⊥ in the chip. **Leaving** is the chip's Done or Escape
+  with nothing armed; the view stays where it is.
+- **Quieter**: the ▱ of an `onPlane` shows only while its point is hovered,
+  selected or just placed. **A spline on the plane is in focus**, and so is
+  any kind a module adds, by its points.
+- **Discoverable**: the sketch button's tooltip reads "Sketch on a face or
+  Top, Front, Right: all you draw stays on it", and help() says what sketch
+  mode is.
+- **Four bugs the browser found** (ARCHITECTURE, 51–54; the count is
+  fifty-four now): the spline dimmed on its own plane; a click on a chamfer
+  sketched on the lid behind it; on the iPhone a picked wall turned half off
+  the screen; Escape dropping a plane made with `plane()`.
+- **The hidden view's golden picture is re-recorded** (`test/e2e/golden/
+  hidden-plain-sketch.png`): the old one drew a ▱ beside six points, which
+  this package makes quiet on purpose. Looked at side by side, the new one
+  differs only there.
+- Tests: unit 1755 → 1769 (`sketchmode.test.ts`, 14: every tool on nine
+  planes, copies, focus, Front and Right, the named-plane picks, a kernel
+  face, following the block, save and open, the chip), kernel 11 → 11, e2e
+  717 → 728 (`sketchmode.e2e.ts` 7 by mouse, `sketchmodephone.e2e.ts` 4 on an
+  iPhone 13). The one full run, at load 35–40 on the shared box, failed 9;
+  the golden above was mine, and the rest are load (TODO.md has which, and
+  what each did alone).
+
 
 ## A conflict is a conflict even when a collapse satisfies it
 

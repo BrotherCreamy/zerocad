@@ -24,14 +24,13 @@
 import { addEllipse, checkEllipse, ellipseOf, semiAxes } from "./kinds/ellipse.ts";
 import { ORIGIN, SETTABLE_PROPERTY, valueArgIndex, type Model } from "./model.ts";
 import { describePick, type Pick } from "./picking.ts";
-import { frameBasis } from "./relations/refs.ts";
 import { toolUnavailable } from "./toolavail.ts";
 import { sketchOnFaceCommand } from "./sketchface.ts";
 import { toolGroup, toolbarButtons, type RegionHit } from "./tools/tool.ts";
 import { findLoops, type Loop } from "./loops.ts";
 import { featureRegion, holeIndex, holeLoop, type FeatureRegion } from "./operations.ts";
 import { VIEW_MODES, type ViewMode } from "./viewmode.ts";
-import { constraintsFor, roundValue } from "./dimensioning.ts";
+import { constraintsFor, frameCoords, roundValue } from "./dimensioning.ts";
 import { activeWorkbench, menuToolItems, onWorkbench } from "./modules.ts";
 import "./modules/builtin.ts";
 
@@ -168,7 +167,7 @@ function constrainItems(model: Model, selection: readonly string[]): MenuItem[] 
   if (!found.length) return [];
   return [
     { label: "Constrain", action: { do: "heading" } },
-    ...found.map((a): MenuItem => ({ label: a.label, action: { do: "run", command: a.text } })),
+    ...found.map((a): MenuItem => ({ label: a.label, action: a.off ? { do: "disabled", why: a.off } : { do: "run", command: a.text } })),
   ];
 }
 
@@ -181,7 +180,7 @@ function constrainItems(model: Model, selection: readonly string[]): MenuItem[] 
 function constructionItems(model: Model, names: readonly string[]): MenuItem[] {
   const curves = names.filter((n) => {
     const k = model.entities.get(n)?.kind;
-    return k === "line" || k === "arc" || k === "circle" || k === "ellipse" || k === "spline";
+    return k === "line" || k === "arc" || k === "circle" || k === "ellipse" || k === "spline" || k === "earc" || k === "bspline";
   });
   if (!curves.length) return [];
   const args = curves.map(quoted).join(", ");
@@ -694,23 +693,6 @@ function fixItem(model: Model, name: string): MenuItem {
     label: "Fix",
     action: { do: "run", command: `fix(${quoted(name)}, [${at.map(num).join(", ")}])` },
   };
-}
-
-/**
- * Where a point sits in the default frame's coordinates, or the reason there is
- * no answer — the message the model itself gives, so the menu and the command
- * line say the same thing about a missing frame.
- */
-function frameCoords(model: Model, name: string): number[] | string {
-  let frame: string;
-  try {
-    frame = model.resolveFrame();
-  } catch (err) {
-    return err instanceof Error ? err.message : String(err);
-  }
-  const { origin, axes } = frameBasis(model, frame)();
-  const rel = model.coords(name).map((v, i) => v - origin[i]);
-  return axes.map((u) => rel.reduce((s, r, i) => s + r * u[i], 0));
 }
 
 /** What the menu needs of its host to be any use. */

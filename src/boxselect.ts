@@ -31,7 +31,7 @@
 // rim, not the disc — the same rule picking already follows, where the middle
 // of a circle is empty space.
 
-import type { Entity, Model } from "./model.ts";
+import { isClosedEntity, type Entity, type Model } from "./model.ts";
 import { intersect, withinSweep, type Curve, type Pt } from "./intersect.ts";
 import { frameArms, frameMarker } from "./framemarker.ts";
 import { sampledWorld, screenCurve, screenOf as projectPoint } from "./projection.ts";
@@ -131,9 +131,9 @@ function seenInBox(model: Model, view: View, e: Entity, rect: ScreenRect, mode: 
  */
 function worldPaths(model: Model, view: View, e: Entity): { world: number[][]; closed: boolean }[] {
   if (e.kind === "line") return [{ world: [model.coords(e.refs[0]), model.coords(e.refs[1])], closed: false }];
-  if (e.kind === "circle" || e.kind === "arc" || e.kind === "ellipse") {
+  if (e.kind === "circle" || e.kind === "arc" || e.kind === "ellipse" || e.kind === "earc") {
     const f = curveFrame(model, e);
-    return f ? [{ world: arcSamples(f, arcSegments(f.sweep, frameReach(f) * view.scale)), closed: e.kind !== "arc" }] : [];
+    return f ? [{ world: arcSamples(f, arcSegments(f.sweep, frameReach(f) * view.scale)), closed: isClosedEntity(e) }] : [];
   }
   if (e.kind === "frame") {
     const b = frameBasis(model, e.name)();

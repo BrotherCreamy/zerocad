@@ -23,7 +23,7 @@
 // takes (relations/pattern.ts).
 
 import {
-  type ArcEntity, type Entity, type FeatureDraft, type Model, ORIGIN, parseAxisRef, spanOf, unitOf,
+  type ArcEntity, type Entity, type FeatureDraft, type Model, ORIGIN, entityKind, isClosedEntity, parseAxisRef, spanOf, unitOf,
 } from "./model.ts";
 import { dist, onPlane } from "./relations/basic.ts";
 import {
@@ -31,11 +31,16 @@ import {
   perpendicular, pointOnLine, radius as radiusRel, symmetric, tangent,
 } from "./relations/geometry.ts";
 import { rotated, rotation, translated } from "./relations/pattern.ts";
-import { addSpline, onSpline } from "./relations/spline.ts";
+import { addSpline, holdSpline, onSpline } from "./relations/spline.ts";
+import {
+  addEllipticArc, arcToEllipse, ellipseOf, ellipseToArc, retargetEllipticArc, semiAxes, type EllipticArcEntity,
+} from "./kinds/ellipse.ts";
+import { addBSpline, checkBSpline, pathCurveOf, type BSplineEntity } from "./kinds/spline.ts";
+import { domain, nearestParam, subCurve, type BSpline } from "./bspline.ts";
 import {
   del, featuresTouching, givenRegenerated, regenerateAfter, regenerateNamed, regenerationRefusal, type Regenerated,
 } from "./operations.ts";
-import { cutsOf, fractionOn, reachOf, type CurveCut } from "./sketchgeom.ts";
+import { curveEnds, cutsOf, distanceToCurve, fractionOn, isSketchCurve, lengthOf, reachOf, type CurveCut } from "./sketchgeom.ts";
 import { heldOnCurves, joinClasses } from "./loops.ts";
 import { curveFrame, sketchSide } from "./curveplane.ts";
 import { cross3, dot3, lift3, sub3, unit3 } from "./vec3.ts";
@@ -44,35 +49,32 @@ const TAU = Math.PI * 2;
 
 // --- small pieces every edit shares ------------------------------------------
 
-/** A curve's ends: a line's two points, an arc's start and end; none for a circle. */
-function endsOf(e: Entity): string[] {
-  if (e.kind === "line") return [...e.refs];
-  if (e.kind === "arc") return [e.start, e.end];
-  return [];
-}
+/** A curve's ends: a line's two points, an arc's start and end, a declared open curve's; none for a closed one. */
+const endsOf = curveEnds;
 
-/** The relation that holds `p` on `curve` — `on`, `oncircle` or `onellipse` by its kind. */
+/** The relation that holds `p` on `curve` — `on`, `oncircle`, `onellipse` or `onspline` by its kind. */
 function holdOn(model: Model, p: string, curve: string): string {
   const k = model.entities.get(curve)?.kind;
   if (k === "line") return pointOnLine(model, p, curve);
   if (k === "circle" || k === "arc") return onCircle(model, p, curve);
-  if (k === "ellipse") return onEllipse(model, p, curve);
+  if (k === "ellipse" || k === "earc") return onEllipse(model, p, curve);
   // A spline cuts what it crosses (docs/plans/spline.md): the new end held on it, by its own parameter.
-  if (k === "spline") return onSpline(model, p, curve);
+  if (k === "spline" || k === "bspline") return onSpline(model, p, curve);
   throw new Error(`"${curve}" is not a line, arc, circle, ellipse or spline`);
 }
 
 /**
- * Why a spline is refused by an edit that would cut, lengthen or offset it
- * (docs/plans/spline.md): a piece of a spline would be a spline through
- * points it does not go through, which nothing here makes yet. Said by name,
- * with what does work.
+ * Why a spline is refused by an edit that would lengthen or offset it
+ * (docs/plans/spline.md): an offset of a spline is no spline, and its end
+ * carried on is a curve nothing here makes. Said by name, with what does
+ * work. (A trim of one is a spline of control points, docs/plans/
+ * trim-everything.md.)
  */
 function refuseSpline(model: Model, name: string, op: string): void {
-  if (model.entities.get(name)?.kind !== "spline") return;
-  const what = op === "trim" ? "trims nothing of one yet — a piece of a spline would be a spline through points it does not go through"
-    : op === "extend" ? "does not lengthen one — drag its end out"
-      : "does not offset one yet — an offset of a spline is no spline";
+  const k = model.entities.get(name)?.kind;
+  if (k !== "spline" && k !== "bspline") return;
+  const what = op === "extend" ? "does not lengthen one — drag its end out"
+    : "does not offset one yet — an offset of a spline is no spline";
   throw new Error(`"${name}" is a spline, and ${op} ${what}. A spline does cut a line, an arc or a circle it crosses`);
 }
 
@@ -135,17 +137,40 @@ function rebuildEnds(model: Model, arc: string): void {
 /** One end of a trimmed piece, as the journal keeps it: the curve that cut it there, the point already there (or null), and where. */
 export type CutSpec = [string, string | null, number[]];
 
+/**
+ * **A piece of a spline, resolved** (docs/plans/trim-everything.md): the
+ * clamped knots of a control-point spline a trim leaves, and where its control
+ * points were when it was cut — first and last its ends. Journalled beside the
+ * cuts, so a replay makes the very curve the session made, whatever shape the
+ * spline has at that point of the replay (a replay runs on seeds); the saved
+ * values then put the points where they were saved.
+ */
+export interface PiecePlan {
+  knots: number[];
+  ctrl: number[][];
+  /** A closed spline's piece across its seam: which control point is the spline's first point, which it passes through still. */
+  seam?: number;
+}
+
 const specOf = (c: CurveCut): CutSpec => [c.by, c.point, c.at];
+
+/** What a trim of each closed kind leaves, for the refusal that says it needs two cuts. */
+function closedPiece(e: Entity): string {
+  if (e.kind === "circle") return "a circle trims to an arc";
+  if (e.kind === "ellipse") return "an ellipse trims to an elliptical arc";
+  return "a closed spline trims to an open one";
+}
 
 function checkTrimmable(model: Model, curve: unknown, op: "trim" | "extend"): Entity {
   const e = typeof curve === "string" ? model.entities.get(curve) : undefined;
-  const takes = op === "trim" ? "a line, an arc or a circle" : "a line or an arc";
+  const takes = op === "trim" ? "a curve — a line, an arc, a circle, an ellipse or a spline" : "a line, an arc or an elliptical arc";
   if (!e) throw new Error(`${op} takes ${takes} by name — ${JSON.stringify(curve) ?? String(curve)} is none`);
-  if (e.kind === "ellipse") throw new Error(`"${e.name}" is an ellipse, and there is no elliptical arc for a piece of one to be — ${op} takes ${takes}`);
-  refuseSpline(model, e.name, op);
-  if (op === "trim" ? !(e.kind === "line" || e.kind === "arc" || e.kind === "circle") : !(e.kind === "line" || e.kind === "arc")) {
-    throw new Error(`"${e.name}" is a ${e.kind} — ${op} takes ${takes}`);
+  if (op === "extend") {
+    refuseSpline(model, e.name, op);
+    if (e.kind === "ellipse") throw new Error(`"${e.name}" is an ellipse — it has no end to extend; extend takes ${takes}`);
   }
+  const ok = op === "trim" ? isSketchCurve(e) : e.kind === "line" || e.kind === "arc" || e.kind === "earc";
+  if (!ok) throw new Error(`"${e.name}" is a ${e.kind} — ${op} takes ${takes}`);
   refuseOwned(model, e.name, op);
   return e;
 }
@@ -153,15 +178,15 @@ function checkTrimmable(model: Model, curve: unknown, op: "trim" | "extend"): En
 /**
  * The piece of `curve` a place is on, between the cuts either side of it — the
  * curve's own end where there is no cut that way — or the refusal for a curve
- * nothing cuts. `lo` is the cut nearer the curve's start (a circle's: the one
- * the piece runs from, counter-clockwise), `hi` the other.
+ * nothing cuts. `lo` is the cut nearer the curve's start (a closed curve's:
+ * the one the piece runs from, in the curve's own direction), `hi` the other.
  */
 export function trimPiece(model: Model, curve: string, at: number[]): { lo: CurveCut | null; hi: CurveCut | null } {
   const e = checkTrimmable(model, curve, "trim");
   const cuts = cutsOf(model, curve);
-  if (e.kind === "circle") {
+  if (isClosedEntity(e)) {
     if (cuts.length < 2) {
-      throw new Error(`${curve} is cut ${cuts.length ? "only once" : "by nothing"} — a circle trims to an arc between two cuts. `
+      throw new Error(`${curve} is cut ${cuts.length ? "only once" : "by nothing"} — ${closedPiece(e)} between two cuts. `
         + `del("${curve}") removes it whole`);
     }
     const tc = ((fractionOn(model, curve, at) % 1) + 1) % 1;
@@ -173,9 +198,10 @@ export function trimPiece(model: Model, curve: string, at: number[]): { lo: Curv
   }
   if (!cuts.length) throw new Error(`nothing cuts ${curve} — there is no piece of it to trim back to. del("${curve}") removes it whole`);
   let tc = fractionOn(model, curve, at);
-  if (e.kind === "arc") {
-    // A place off the arc's sweep means the nearer end.
-    const sweep = curveFrame(model, e)!.sweep;
+  const f = e.kind === "line" ? null : curveFrame(model, e);
+  if (f) {
+    // An arc's (or elliptical arc's) place off its sweep means the nearer end.
+    const sweep = f.sweep;
     if (tc > 1) tc = (tc * sweep - sweep) < (TAU - tc * sweep) ? 1 : 0;
   } else {
     tc = Math.min(1, Math.max(0, tc));
@@ -188,15 +214,38 @@ export function trimPiece(model: Model, curve: string, at: number[]): { lo: Curv
   return { lo, hi };
 }
 
-/** A journal's (or a typed call's) resolved cuts, checked for shape. */
-function givenCuts(model: Model, resolved: unknown): [CutSpec | null, CutSpec | null] {
+/** A journal's (or a typed call's) resolved cuts — and a spline's pieces — checked for shape. */
+function givenCuts(model: Model, resolved: unknown): [CutSpec | null, CutSpec | null, PiecePlan[] | null] {
   const spec = (s: unknown): s is CutSpec => Array.isArray(s) && s.length === 3 && typeof s[0] === "string"
     && (s[1] === null || typeof s[1] === "string") && Array.isArray(s[2]) && s[2].every((v) => typeof v === "number");
-  if (!Array.isArray(resolved) || resolved.length !== 2 || !resolved.every((s) => s === null || spec(s)) || (resolved[0] === null && resolved[1] === null)) {
-    throw new Error("trim's resolved cuts are [lo, hi], each null or [curve, point or null, [x, y…]] — and not both null");
+  const plan = (p: unknown): p is PiecePlan => !!p && typeof p === "object" && Array.isArray((p as PiecePlan).knots)
+    && (p as PiecePlan).knots.every((k) => typeof k === "number") && Array.isArray((p as PiecePlan).ctrl)
+    && (p as PiecePlan).ctrl.every((c) => Array.isArray(c) && c.every((v) => typeof v === "number"))
+    && ((p as PiecePlan).seam === undefined || Number.isInteger((p as PiecePlan).seam));
+  const ok = Array.isArray(resolved) && (resolved.length === 2 || resolved.length === 3)
+    && [resolved[0], resolved[1]].every((s) => s === null || spec(s)) && !(resolved[0] === null && resolved[1] === null)
+    && (resolved.length === 2 || (Array.isArray(resolved[2]) && resolved[2].every(plan)));
+  if (!ok) {
+    throw new Error("trim's resolved cuts are [lo, hi], each null or [curve, point or null, [x, y…]] — and not both null — "
+      + "and a spline's pieces after them, [{ knots, ctrl }…]");
   }
-  for (const s of resolved as (CutSpec | null)[]) if (s && !model.entities.has(s[0])) throw new Error(`trim: "${s[0]}" is not there to cut at`);
-  return [resolved[0] as CutSpec | null, resolved[1] as CutSpec | null];
+  const r = resolved as unknown[];
+  for (const s of [r[0], r[1]] as (CutSpec | null)[]) if (s && !model.entities.has(s[0])) throw new Error(`trim: "${s[0]}" is not there to cut at`);
+  return [r[0] as CutSpec | null, r[1] as CutSpec | null, r.length === 3 ? r[2] as PiecePlan[] : null];
+}
+
+/** The relations (journal ops) that hold a point on a curve: the built-in two, and every kind's own (`EntityKindSpec.heldBy`). */
+function holdOps(): Set<string> {
+  const ops = new Set(["pointOnLine", "onCircle"]);
+  for (const k of ["ellipse", "earc", "spline", "bspline"]) for (const op of entityKind(k)?.heldBy ?? []) ops.add(op);
+  return ops;
+}
+
+/** The relation holding `p` on `curve` by its kind's own hold — `onellipse`, `onspline` — if there is one. */
+function holdOf(model: Model, p: string, curve: string): string | null {
+  const ops = holdOps();
+  for (const r of model.relations.values()) if (ops.has(r.op) && r.args[0] === p && r.args[1] === curve) return r.name;
+  return null;
 }
 
 /**
@@ -204,48 +253,82 @@ function givenCuts(model: Model, resolved: unknown): [CutSpec | null, CutSpec | 
  * held a point on the piece that goes (that point has no subject now), a
  * crossing's `intersection` among them re-held `on` its other curve alone; the
  * relations holding a cut's existing point on the curve it now ends (that
- * says nothing any more); and the end the piece took with it, when nothing
- * else is built on it.
+ * says nothing any more); the end the piece took with it, when nothing else
+ * is built on it — and for a spline, its through-points: those on the piece
+ * kept that something else uses held `onspline` on it, and those that nothing
+ * uses removed (they defined a curve that is not there any more), with any
+ * `tan` held at an end that went.
  */
 interface TrimTidy {
   drop: string[];
   rehold: [string, string][];
   stranded: string | null;
+  /** A spline's through-points nothing else uses: removed. */
+  loose: string[];
+  /** A spline's through-points something else uses, on the piece kept: held on it. */
+  keep: string[];
+  /** What the trim says it removed, for the log: a relation's name and why. */
+  said: string[];
 }
 
 function planTidy(model: Model, curve: string, lo: CutSpec | null, hi: CutSpec | null): TrimTidy {
   const e = model.entities.get(curve)!;
-  const circle = e.kind === "circle";
+  const closed = isClosedEntity(e);
   const t = (at: number[]) => {
     const f = fractionOn(model, curve, at);
-    return circle ? ((f % 1) + 1) % 1 : f;
+    return closed ? ((f % 1) + 1) % 1 : f;
   };
   const [a, b] = [lo ? t(lo[2]) : 0, hi ? t(hi[2]) : 1];
   const eps = 1e-9;
   const inside = (p: string) => {
     const x = t(model.coords(p));
-    if (circle) return a < b ? x > a + eps && x < b - eps : x > a + eps || x < b - eps;
+    if (closed) return a < b ? x > a + eps && x < b - eps : x > a + eps || x < b - eps;
     return x > a + eps && x < b - eps;
   };
   const cutPoints = new Set([lo?.[1], hi?.[1]].filter((p): p is string => typeof p === "string"));
+  const ops = holdOps();
   const drop: string[] = [];
   const rehold: [string, string][] = [];
+  const said: string[] = [];
   for (const r of model.relations.values()) {
     const p = r.args[0];
     if (typeof p !== "string" || model.entities.get(p)?.kind !== "point") continue;
     const gone = cutPoints.has(p) || inside(p);
     if (!gone) continue;
-    if ((r.op === "pointOnLine" || r.op === "onCircle") && r.args[1] === curve) drop.push(r.name);
+    if (ops.has(r.op) && r.args[1] === curve) drop.push(r.name);
     else if (r.op === "intersection" && r.args.slice(1).includes(curve)) {
       drop.push(r.name);
       const other = r.args[1] === curve ? r.args[2] : r.args[1];
       if (typeof other === "string") rehold.push([p, other]);
     }
   }
-  const stranded = circle || (lo && hi) ? null : lo === null ? endsOf(e)[0] : endsOf(e)[1];
+  const [S, E] = endsOf(e);
+  const stranded = closed || (lo && hi) ? null : lo === null ? S : E;
+  // A spline's tangency at an end the trim takes away: it held something that is no longer there.
+  const loose: string[] = [], keep: string[] = [];
+  if (e.kind === "spline" || e.kind === "bspline") {
+    const goneEnd = closed ? null : lo === null ? "start" : hi === null ? "end" : null;
+    for (const r of model.relations.values()) {
+      if (r.op !== "tangent" || !r.args.includes(curve)) continue;
+      const end = r.args[0] === curve ? r.args[2] : r.args.length > 3 ? r.args[3] : r.args[2];
+      if (goneEnd !== null && end === goneEnd) {
+        drop.push(r.name);
+        said.push(`${r.name} (tan at ${curve}'s ${end}, which the trim took) no longer applies — removed`);
+      }
+    }
+  }
+  if (e.kind === "spline") {
+    const ends = new Set(endsOf(e));
+    for (const p of new Set(e.points)) {
+      if (ends.has(p) || cutPoints.has(p)) continue;
+      const used = model.dependents(p).some((d) => d.name !== curve) || model.relationsNaming(p).length > 0;
+      if (!used) loose.push(p);
+      else if (!inside(p)) keep.push(p);
+    }
+  }
   // Whether a feature names one is asked when it is taken, not now: a trim can
   // free a hold a feature owned (`adoptCutPoints`).
-  return { drop, rehold, stranded };
+  return { drop, rehold, stranded, loose, keep, said };
 }
 
 /**
@@ -253,7 +336,8 @@ function planTidy(model: Model, curve: string, lo: CutSpec | null, hi: CutSpec |
  * the piece of `l1` the place is on, between the cuts either side of it (or
  * the curve's own end, where there is none that way), is removed. Returns the
  * curves left: `["l1"]`, or `["l1", "l9"]` where the piece came out of the
- * middle.
+ * middle. **Every sketch curve trims** (docs/plans/trim-everything.md), against
+ * every other:
  *
  * - **A line or an arc trimmed at one end** keeps its name: that end is
  *   re-pointed at the cut, and the end it had — when nothing else is built on
@@ -264,55 +348,65 @@ function planTidy(model: Model, curve: string, lo: CutSpec | null, hi: CutSpec |
  * - **A circle** becomes an arc under its own name — centre, radius and normal
  *   its own, so `rad`, `tan` and the rest still mean what they meant — from
  *   the cut after the piece round to the one before it, held `arcends`.
+ * - **An ellipse** becomes an **elliptical arc** under its own name the same
+ *   way, its ends held `onellipse`; an elliptical arc is trimmed as an arc is,
+ *   a second piece sharing its centre and major end, held `eqrad` (its minor).
+ * - **A spline** becomes a **spline of control points** under its own name —
+ *   the piece of it, exactly (knots inserted at the cuts); a closed one needs
+ *   two cuts and opens across its seam. Its through-points that nothing else
+ *   uses go; those something uses, on the piece kept, are held `onspline`.
+ *   An `onspline` on the piece kept is re-made on it, and a `tan` at an end it
+ *   lost is removed and said.
  *
  * **A cut is a relation, not a number**: a new end is held `on` the curve that
- * cut it (`oncircle` on a circle or arc), so it follows that curve; where a
- * point is there already — a T's own end, a crossing made real — the curve
- * ends at it. A point held on the piece that went loses that hold; one held on
- * what is left keeps it. **What refuses**: a curve nothing cuts (`del` takes
- * it whole), a circle cut only once, an ellipse, a feature's own edge. **A
- * feature on the profile** (or on a region whose face names the curve) is
+ * cut it (`oncircle`, `onellipse`, `onspline` by its kind), so it follows that
+ * curve; where a point is there already — a T's own end, a crossing made real
+ * — the curve ends at it. A point held on the piece that went loses that hold;
+ * one held on what is left keeps it. **What refuses**: a curve nothing cuts
+ * (`del` takes it whole), a closed curve cut only once, a feature's own edge.
+ * **A feature on the profile** (or on a region whose face names the curve) is
  * regenerated inside this call — and where it could not find its profile any
  * more, the trim refuses, by name, having tried the change and taken it back.
- * A region with no feature on it follows the regions rule for a face changed
- * or gone (docs/plans/regions-as-operations.md): it is found again from its
- * members, or does nothing while its face is gone.
  *
  * Journalled as `trim("l1", [x, y], [lo, hi], regenerated?)` — the cuts found,
- * each `[curve, point or null, place]` — then the tidying as `del` journals
- * it, all one typed call and one undo step.
+ * each `[curve, point or null, place]`, and for a spline the pieces made — then
+ * the tidying as `del` journals it, all one typed call and one undo step.
  */
 export function trim(model: Model, curve: string, near: unknown, resolved?: unknown, regenerated?: unknown,
                      notes: string[] = []): string[] {
   checkTrimmable(model, curve, "trim");
   const at = coordsOf(model, near, "trim");
   const given = resolved != null;
-  let lo: CutSpec | null, hi: CutSpec | null;
-  if (given) [lo, hi] = givenCuts(model, resolved);
+  let lo: CutSpec | null, hi: CutSpec | null, pieces: PiecePlan[] | null = null;
+  if (given) [lo, hi, pieces] = givenCuts(model, resolved);
   else {
     const piece = trimPiece(model, curve, at);
     [lo, hi] = [piece.lo && specOf(piece.lo), piece.hi && specOf(piece.hi)];
   }
-  const kind = model.entities.get(curve)!.kind;
-  if (kind === "circle" && (lo === null || hi === null)) throw new Error("trim of a circle needs a cut either side of the piece");
+  const e = model.entities.get(curve)!;
+  if (isClosedEntity(e) && (lo === null || hi === null)) throw new Error(`trim of ${closedPiece(e).split(" trims")[0]} needs a cut either side of the piece`);
+  const path = e.kind === "spline" || e.kind === "bspline";
+  if (path && !pieces) pieces = planPieces(model, curve, lo, hi);
+  if (!path && pieces) throw new Error(`trim: ${curve} is no spline — it takes no pieces`);
   const regen = regenerated == null ? null : givenRegenerated(regenerated, "trim");
   const tidyPlan = given ? null : planTidy(model, curve, lo, hi);
   const touched = featuresTouching(model, [curve]).map((f) => f.name);
   let after: Regenerated[] | null = null;
   let made: string[] = [];
-  model.asOperation("trim", () => (after === null ? [curve, at, [lo, hi]] : [curve, at, [lo, hi], after]), () => {
+  const resolvedNow = () => (pieces ? [lo, hi, pieces] : [lo, hi]);
+  model.asOperation("trim", () => (after === null ? [curve, at, resolvedNow()] : [curve, at, resolvedNow(), after]), () => {
     const marks = model.nameCounters();
     const undo: (() => void)[] = [];
     try {
-      made = applyTrim(model, curve, lo, hi, undo);
+      made = applyTrim(model, curve, lo, hi, pieces, undo);
       if (!given) {
         const why = regenerationRefusal(model, touched);
         if (why) throw new Error(`trimming that piece of ${curve} leaves a feature nothing to stand on — ${why}`);
       }
-    } catch (e) {
+    } catch (err) {
       for (const u of undo.reverse()) u();
       model.restoreNameCounters(marks);
-      throw e;
+      throw err;
     }
     after = given ? (regen ? regenerateNamed(model, [], regen) : null) : regenerateNamed(model, touched, null, notes);
     adoptCutPoints(model, [lo?.[1], hi?.[1]].filter((p): p is string => typeof p === "string"));
@@ -324,6 +418,13 @@ export function trim(model: Model, curve: string, near: unknown, resolved?: unkn
     }
     const s = tidyPlan.stranded;
     if (s && model.entities.has(s) && !model.dependents(s).length && free(model, s)) tidy(model, s);
+    for (const p of tidyPlan.loose) if (model.entities.has(p) && !model.dependents(p).length && free(model, p)) tidy(model, p);
+    for (const p of tidyPlan.keep) {
+      // On the piece it is on now: the curve, or the second piece a middle trim made.
+      const on = [curve, ...made].find((c) => model.entities.has(c) && distanceToCurve(model, c, model.coords(p)) < 1e-6 * Math.max(1, lengthOf(model, c)));
+      if (on && model.entities.has(p) && !holdOf(model, p, on)) holdOn(model, p, on);
+    }
+    notes.push(...tidyPlan.said);
   }
   return [curve, ...made];
 }
@@ -351,12 +452,51 @@ function adoptCutPoints(model: Model, points: readonly string[]): void {
   }
 }
 
+/** A cut's parameter along a spline as it stands: the curve's point nearest the place. */
+function cutParam(model: Model, curve: string, at: number[]): number {
+  const c = pathCurveOf(model, curve);
+  return nearestParam(c, at, c.closed);
+}
+
+/**
+ * The pieces a trim of a spline leaves, as control-point splines — exactly
+ * the piece of the curve as it stands (`subCurve`: knots inserted at the cuts
+ * until they are whole). A closed spline's piece runs from the cut after the
+ * piece taken round to the cut before it, across the seam: the two parts
+ * either side of the seam joined end to end, the seam a knot three times over
+ * — still the same curve, smooth because it was.
+ */
+function planPieces(model: Model, curve: string, lo: CutSpec | null, hi: CutSpec | null): PiecePlan[] {
+  const c = pathCurveOf(model, curve);
+  const [d0, d1] = domain(c);
+  const ua = lo ? cutParam(model, curve, lo[2]) : d0;
+  const ub = hi ? cutParam(model, curve, hi[2]) : d1;
+  const of = (s: BSpline): PiecePlan => ({ knots: s.knots.slice(), ctrl: s.ctrl.map((p) => p.slice(0, model.dim)) });
+  if (c.closed) {
+    if (ub < ua) return [of(subCurve(c, ub, ua))];
+    // The piece kept runs on past the seam.
+    const [A, B] = [subCurve(c, ub, d1), subCurve(c, d0, ua)];
+    const shift = d1 - d0;
+    const p = c.degree;
+    return [{
+      knots: [...A.knots.slice(0, -1), ...B.knots.slice(p + 1).map((k) => k + shift)],
+      ctrl: [...A.ctrl, ...B.ctrl.slice(1)].map((q) => q.slice(0, model.dim)),
+      seam: A.ctrl.length - 1,
+    }];
+  }
+  const out: PiecePlan[] = [];
+  if (lo) out.push(of(subCurve(c, d0, ua)));
+  if (hi) out.push(of(subCurve(c, ub, d1)));
+  return out;
+}
+
 /**
  * The structure of a trim, each change's inverse pushed on `undo` so a trim
  * that must refuse after trying can take itself back. Returns the new curve a
  * piece out of the middle leaves, if any.
  */
-function applyTrim(model: Model, curve: string, lo: CutSpec | null, hi: CutSpec | null, undo: (() => void)[]): string[] {
+function applyTrim(model: Model, curve: string, lo: CutSpec | null, hi: CutSpec | null, pieces: PiecePlan[] | null,
+                   undo: (() => void)[]): string[] {
   const pointFor = ([by, point, at]: CutSpec): string => {
     if (point !== null && model.entities.get(point)?.kind === "point") {
       if (!heldOn(model, point, by)) {
@@ -374,6 +514,7 @@ function applyTrim(model: Model, curve: string, lo: CutSpec | null, hi: CutSpec 
   const relate = (name: string) => undo.push(() => model.deleteRelation(name));
   const made = (name: string) => undo.push(() => model.deleteEntity(name));
   const e = model.entities.get(curve)!;
+  if (e.kind === "spline" || e.kind === "bspline") return trimPath(model, curve, lo, hi, pieces!, pointFor, undo);
   if (e.kind === "circle") {
     const [P1, P2] = [pointFor(lo!), pointFor(hi!)];
     // What is kept runs from the cut after the piece round to the cut before it.
@@ -382,6 +523,15 @@ function applyTrim(model: Model, curve: string, lo: CutSpec | null, hi: CutSpec 
     relate(arcEndpoints(model, curve));
     return [];
   }
+  if (e.kind === "ellipse") {
+    const [P1, P2] = [pointFor(lo!), pointFor(hi!)];
+    ellipseToArc(model, curve, P2, P1);
+    undo.push(() => arcToEllipse(model, curve));
+    // Its ends held on it, as an arc's are by arcends — unless a crossing made real already holds one.
+    for (const p of [P2, P1]) if (!holdOf(model, p, curve)) relate(onEllipse(model, p, curve));
+    return [];
+  }
+  if (e.kind === "earc") return trimEllipticArc(model, curve, lo, hi, pointFor, undo);
   const repoint = (from: string, to: string) => {
     if (e.kind === "line") {
       model.retargetLine(curve, from, to);
@@ -413,6 +563,127 @@ function applyTrim(model: Model, curve: string, lo: CutSpec | null, hi: CutSpec 
   relate(arcEndpoints(model, na));
   relate(equalRadius(model, curve, na));
   return [na];
+}
+
+/**
+ * An elliptical arc trimmed — as an arc is, its ends held `onellipse` where
+ * an arc's are by `arcends`. An end re-pointed carries its hold with it (the
+ * relation re-made in place, same name, on the new end), as `arcends` is
+ * rebuilt; a piece out of the middle leaves a second elliptical arc about the
+ * same centre and major end, held `eqrad` (its minor) — and the far end's hold
+ * goes over to it, so no end is held twice.
+ */
+function trimEllipticArc(model: Model, curve: string, lo: CutSpec | null, hi: CutSpec | null,
+                         pointFor: (c: CutSpec) => string, undo: (() => void)[]): string[] {
+  const relate = (name: string) => undo.push(() => model.deleteRelation(name));
+  /** `p`'s hold re-made on `to` — on `onto` — in place; or a new one where it had none. */
+  const moveHold = (from: string, onFrom: string, to: string, onto: string) => {
+    const r = holdOf(model, from, onFrom);
+    if (holdOf(model, to, onto)) return;
+    if (r === null) { relate(onEllipse(model, to, onto)); return; }
+    model.rebuildRelation(r, "onEllipse", [to, onto], () => void onEllipse(model, to, onto));
+    undo.push(() => model.rebuildRelation(r, "onEllipse", [from, onFrom], () => void onEllipse(model, from, onFrom)));
+  };
+  const repoint = (which: "start" | "end", to: string) => {
+    const from = retargetEllipticArc(model, curve, which, to);
+    undo.push(() => void retargetEllipticArc(model, curve, which, from));
+    moveHold(from, curve, to, curve);
+  };
+  const a = ellipseOf(model, curve) as EllipticArcEntity;
+  const E = a.end;
+  if (lo === null) { repoint("start", pointFor(hi!)); return []; }
+  if (hi === null) { repoint("end", pointFor(lo)); return []; }
+  const [P1, P2] = [pointFor(lo), pointFor(hi)];
+  // The far end's hold first, while it still names the curve's end.
+  const rE = holdOf(model, E, curve);
+  repoint("end", P1);
+  const n = a.normal === undefined ? null : model.normalOf(curve);
+  const na = addEllipticArc(model, a.center, a.major, semiAxes(model, curve).b, P2, E, n).name;
+  undo.push(() => model.deleteEntity(na));
+  if (model.isConstruction(curve)) model.setConstruction(na, true);
+  relate(onEllipse(model, P2, na));
+  if (rE !== null && model.relations.has(rE)) {
+    model.rebuildRelation(rE, "onEllipse", [E, na], () => void onEllipse(model, E, na));
+    undo.push(() => model.rebuildRelation(rE, "onEllipse", [E, curve], () => void onEllipse(model, E, curve)));
+  } else relate(onEllipse(model, E, na));
+  relate(equalRadius(model, curve, na));
+  return [na];
+}
+
+/**
+ * A spline trimmed: it becomes the piece kept, a **spline of control points**
+ * under its own name — its ends the curve's own end and the cut (or two cuts,
+ * a closed one's), its control points new points where `pieces` put them —
+ * and a piece out of the middle leaves a second one. An interpolant's own
+ * equations go with what it was; every `onspline` on what is kept is re-made
+ * on it (its parameter read afresh on the new curve), and a `tan` at the far
+ * end of a middle trim goes over to the second piece, whose end that is now.
+ */
+function trimPath(model: Model, curve: string, lo: CutSpec | null, hi: CutSpec | null, pieces: PiecePlan[],
+                  pointFor: (c: CutSpec) => string, undo: (() => void)[]): string[] {
+  const e = model.entities.get(curve)!;
+  if (e.kind !== "spline" && e.kind !== "bspline") return [];
+  const closed = isClosedEntity(e);
+  const want = closed || !(lo && hi) ? 1 : 2;
+  if (pieces.length !== want) throw new Error(`trim: ${curve} cut there leaves ${want} piece${want > 1 ? "s" : ""} — ${pieces.length} given`);
+  const [S, E] = closed ? [null, null] : endsOf(e);
+  const [P1, P2] = [lo && pointFor(lo), hi && pointFor(hi)];
+  // Each piece's ends, in its own direction: a closed spline's from the cut after the piece taken round to the one before.
+  const ends: [string, string][] = closed ? [[P2!, P1!]] : lo && hi ? [[S!, P1!], [P2!, E!]] : lo ? [[S!, P1!]] : [[P2!, E!]];
+  // A closed spline's seam, where its piece's two halves join: its first point, a control point of the piece now.
+  const seam = e.kind === "spline" && closed ? e.points[0] : null;
+  const pointsOf = (plan: PiecePlan, [a, b]: [string, string]): string[] => plan.ctrl.map((at, k) => {
+    if (k === 0) return a;
+    if (k === plan.ctrl.length - 1) return b;
+    if (seam !== null && k === plan.seam && model.entities.get(seam)?.kind === "point") return seam;
+    const p = model.addPoint(at.slice(0, model.dim)).name;
+    undo.push(() => model.deleteEntity(p));
+    return p;
+  });
+  const points = pointsOf(pieces[0], ends[0]);
+  checkBSpline(model, points, pieces[0].knots);
+  const second = pieces.length > 1 ? pointsOf(pieces[1], ends[1]) : null;
+  if (second) checkBSpline(model, second, pieces[1].knots);
+  // The relations on the curve that follow it, read before it changes.
+  const holds = [...model.relations.values()].filter((r) => r.op === "onSpline" && r.args[1] === curve).map((r) => r.name);
+  const tans = lo && hi ? [...model.relations.values()].filter((r) => r.op === "tangent" && r.args.includes(curve)
+    && (r.args[0] === curve ? r.args[2] : r.args.length > 3 ? r.args[3] : r.args[2]) === "end").map((r) => r.name) : [];
+  const was = e;
+  if (was.kind === "spline") for (const h of was.blocks) model.problem.removeBlock(h);
+  const piece: BSplineEntity = { kind: "bspline", name: curve, points, knots: pieces[0].knots.slice() };
+  if (was.construction) piece.construction = true;
+  model.entities.set(curve, piece as unknown as Entity);
+  undo.push(() => {
+    model.entities.set(curve, was);
+    // Its own equations again — the old handles are gone.
+    if (was.kind === "spline") { was.blocks = []; holdSpline(model, was); }
+  });
+  let na: string | null = null;
+  if (second) {
+    na = addBSpline(model, second, pieces[1].knots).name;
+    const n = na;
+    undo.push(() => model.deleteEntity(n));
+    if (was.construction) model.setConstruction(na, true);
+  }
+  const remake = (r: string, op: string, args: unknown[], body: () => void, back: () => void) => {
+    const old = model.relations.get(r)!;
+    model.rebuildRelation(r, op, args, body);
+    undo.push(() => { model.rebuildRelation(r, old.op, old.args, back); });
+  };
+  // A point on the curve: on the piece it is on now, its parameter read afresh.
+  for (const r of holds) {
+    const p = model.relations.get(r)!.args[0] as string;
+    const on = na !== null && distanceToCurve(model, na, model.coords(p)) < distanceToCurve(model, curve, model.coords(p)) ? na : curve;
+    remake(r, "onSpline", [p, on], () => void onSpline(model, p, on), () => void onSpline(model, p, curve));
+  }
+  // A tangency at the far end: that end is the second piece's now.
+  for (const r of tans) {
+    const old = model.relations.get(r)!;
+    const args = old.args.map((x) => (x === curve ? na : x));
+    remake(r, "tangent", args, () => void tangent(model, ...(args as [string, string, string?, string?])),
+      () => void tangent(model, ...(old.args as [string, string, string?, string?])));
+  }
+  return na === null ? [] : [na];
 }
 
 // --- extend -------------------------------------------------------------------
@@ -951,7 +1222,85 @@ function buildOffset(model: Model, plan: OffsetPlan, d: number, construction: bo
       perpendicular(model, orig, p, w.name);
     }
   }
+  // An offset lies in its chain's plane, so a plane holding every point of the
+  // chain holds every vertex of the copy: each vertex paired with a point of the
+  // chain that is held there (the plane's test is the chain's, not the copy's).
+  const chainPoints = [...new Set(walk.flatMap((w) => model.refsOf(model.entities.get(w.name)!)))];
+  const common = chainPoints.length
+    ? planesHolding(model, chainPoints[0]).filter((ref) => chainPoints.every((p) => planesHolding(model, p).includes(ref)))
+    : [];
+  if (common.length) holdCopiesOnPlanes(model, pts.map((v) => [chainPoints[0], v] as [string, string]), (ref) => common.includes(ref));
   return copies;
+}
+
+// --- copies stay on the sketch plane ------------------------------------------
+
+/**
+ * The planes `p` is held on by `onPlane` — the sketch planes it was drawn on.
+ */
+function planesHolding(model: Model, p: string): string[] {
+  return [...model.relations.values()]
+    .filter((r) => r.op === "onPlane" && r.args[0] === p && typeof r.args[1] === "string")
+    .map((r) => r.args[1] as string);
+}
+
+/**
+ * **A copy of something drawn on a sketch plane is held on that plane, one
+ * `onPlane` per copied point** (docs/plans/sketch-mode.md: "copies made by
+ * offset, mirror and pattern of on-plane geometry are held to the same
+ * plane"). For each original point and its copy, every plane the original is
+ * held on by `onPlane` that the operation maps onto itself (`keeps`) holds the
+ * copy too — unless the copy is the original (a point on a mirror line) or is
+ * held there already.
+ *
+ * Generic over what is copied: it reads points and their copies, never which
+ * curve they belong to, so a curve kind a module adds is held by the same rule.
+ * For a mirror and the patterns the copy is in the plane already by its own
+ * relations (`sym`, `translated`, `rotated`), and the `onPlane` is the same
+ * claim said where the focus, the hover and `del` read it; for an offset it is
+ * the only thing that holds the copy there — `par` and `dist` alone let a
+ * copied rectangle slide off along the normal (found by pushing one off).
+ */
+function holdCopiesOnPlanes(model: Model, pairs: Iterable<[string, string]>, keeps: (ref: string) => boolean): void {
+  if (model.dim !== 3) return;
+  const kept = new Map<string, boolean>();
+  const keep = (ref: string) => {
+    if (!kept.has(ref)) {
+      let ok = false;
+      try { ok = model.planeValues(ref) !== null && keeps(ref); } catch { ok = false; }
+      kept.set(ref, ok);
+    }
+    return kept.get(ref)!;
+  };
+  for (const [p, copy] of pairs) {
+    if (p === copy) continue;
+    const already = new Set(planesHolding(model, copy));
+    for (const ref of planesHolding(model, p)) {
+      if (already.has(ref) || !keep(ref)) continue;
+      onPlane(model, copy, ref);
+      already.add(ref);
+    }
+  }
+}
+
+/** Whether a direction lies along a plane (square to its normal), to a part in a million. */
+function along(model: Model, ref: string, dir: number[]): boolean {
+  const n = model.planeValues(ref)!.n;
+  const d = unit3(lift3(dir));
+  return !d || Math.abs(dot3(d, n)) <= 1e-6;
+}
+
+/** Whether a direction is square to a plane (along its normal), to a part in a million. */
+function across(model: Model, ref: string, dir: number[]): boolean {
+  const n = model.planeValues(ref)!.n;
+  const d = unit3(lift3(dir));
+  return !!d && Math.abs(Math.abs(dot3(d, n)) - 1) <= 1e-6;
+}
+
+/** Whether a world point lies on a plane, to a part in a million of the drawing's size. */
+function lies(model: Model, ref: string, at: number[], scale: number): boolean {
+  const pv = model.planeValues(ref)!;
+  return Math.abs(dot3(sub3(lift3(at), lift3(pv.origin)), pv.n)) <= 1e-6 * Math.max(1, scale);
 }
 
 // --- mirror and the patterns: copies of a set of entities ---------------------
@@ -1112,6 +1461,9 @@ export function mirror(model: Model, names: string | string[], line: string, res
       symmetric(model, p, copyOf.get(p)!, line);
     }
     copied.forEach((c, i) => holdCopy(model, c, made[i], r.level.includes(c)));
+    // A half-turn about a line in the plane, or square to it, maps the plane onto itself.
+    holdCopiesOnPlanes(model, copyOf, (ref) =>
+      (along(model, ref, u) && lies(model, ref, o, scale)) || across(model, ref, u));
     return [...made, ...points.filter((p) => !shared.has(p)).map(map)];
   });
 }
@@ -1211,6 +1563,8 @@ export function linear(model: Model, names: string | string[], dx: number, dy: n
     }
     let at = 0;
     for (let k = 0; k < copies.length; k++) for (const c of curves) holdCopy(model, c, made[at++], true);
+    // A step along the plane carries the plane onto itself.
+    holdCopiesOnPlanes(model, copies.flatMap((m) => [...m.entries()]), (ref) => along(model, ref, r.step));
     return [...made, ...copies.flatMap((m) => [...m.values()]), lead];
   });
 }
@@ -1319,6 +1673,8 @@ export function circular(model: Model, names: string | string[], centre: string,
     }
     let at = 0;
     for (let k = 0; k < copies.length; k++) for (const c of curves) holdCopy(model, c, made[at++], true);
+    // A turn about an axis square to the plane carries the plane onto itself.
+    holdCopiesOnPlanes(model, copies.flatMap((m) => [...m.entries()]), (ref) => model.dim === 3 && across(model, ref, axis));
     return [...made, ...copies.flatMap((m) => [...m.values()].filter((p) => p !== centre))];
   });
 }

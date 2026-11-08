@@ -15,13 +15,13 @@
 // the relations taking them are generic, with the wedge simply growing from one
 // component to three.
 
-import { addEllipse, checkEllipse, ellipseOf, semiAxes } from "../kinds/ellipse.ts";
+import { addEllipse, checkEllipse, ellipseOf, isConic, semiAxes } from "../kinds/ellipse.ts";
 import { parseAxisRef, type Model } from "../model.ts";
 import { Dual } from "../kernel/dual.ts";
 import { dot, norm, vecSub, wedge, wedgeNorm } from "./vec.ts";
 import { chunk, curveNormal, directionOf, directionOfPoints, ellipseAxes, frameBasis, joinVars, lineVars, unitDuals, type DirectionRef } from "./refs.ts";
 import { coincident, onPlane } from "./basic.ts";
-import { tangentSpline } from "./spline.ts";
+import { isPathCurve, onSpline, tangentSpline } from "./spline.ts";
 
 // --- the direction relations -----------------------------------------------
 //
@@ -252,12 +252,21 @@ export function collinear(model: Model, l1: string, l2: string): string {
   });
 }
 
-/** The relation that holds `p` on `curve` — `on` for a line, `oncircle` for a circle or an arc — nested. */
+/**
+ * The relation that holds `p` on `curve` — `on` for a line, `oncircle` for a
+ * circle or an arc, `onellipse` and `onspline` for the two curves that came
+ * after (docs/plans/relations-complete.md) — nested, so `intersection` and
+ * `pierce` take every curve the sketch draws. A kind this file has not heard
+ * of is refused by name: the relation that holds a point on it is its
+ * module's (`EntityKindSpec.heldBy`), which this layer cannot reach.
+ */
 function onCurve(model: Model, p: string, curve: string): void {
   const k = model.entities.get(curve)?.kind;
   if (k === "line") pointOnLine(model, p, curve);
   else if (k === "circle" || k === "arc") onCircle(model, p, curve);
-  else throw new Error(`"${curve}" is not a line, circle or arc`);
+  else if (k === "ellipse") onEllipse(model, p, curve);
+  else if (k === "spline") onSpline(model, p, curve);
+  else throw new Error(`"${curve}" is not a line, circle, arc, ellipse or spline`);
 }
 
 /**
@@ -414,11 +423,58 @@ export function concentric(model: Model, c1: string, c2: string): string {
   });
 }
 
-/** Two circles/arcs have the same radius. */
+/**
+ * Two circles/arcs have the same radius — or two ellipses (an elliptical arc
+ * either) the same semi-axes: what holds the second piece of an elliptical arc
+ * a trim cut out of the middle to the first (docs/plans/trim-everything.md),
+ * as it holds an arc's. The major is a distance minus a distance and the minor
+ * a variable minus a variable, neither a square; two that share their centre
+ * and major end share their major already, and only the minor is said.
+ */
 export function equalRadius(model: Model, c1: string, c2: string): string {
+  if (isConic(model, c1) || isConic(model, c2)) {
+    const [a, b] = [ellipseOf(model, c1), ellipseOf(model, c2)];
+    return model.relation("equalRadius", [c1, c2], () => {
+      const label = `eqrad(${c1},${c2})`;
+      model.addResidual(() => [ellipseOf(model, c1).minorVar, ellipseOf(model, c2).minorVar], (l) => [l[0].sub(l[1])], label);
+      if (a.center === b.center && a.major === b.major) return;
+      const dim = model.dim;
+      const ends = (n: string) => { const e = ellipseOf(model, n); return [...model.point(e.center).varIndices, ...model.point(e.major).varIndices]; };
+      model.addResidual(() => [...ends(c1), ...ends(c2)], (l) => {
+        const [p, q, r, s] = chunk(l, dim, 4);
+        return [norm(vecSub(q, p)).sub(norm(vecSub(s, r)))];
+      }, `${label}|major`);
+    });
+  }
   return model.relation("equalRadius", [c1, c2], () => {
     const a = model.circular(c1), b = model.circular(c2);
     model.addResidual([a.radiusVar, b.radiusVar], (l) => [l[0].sub(l[1])], `eqrad(${c1},${c2})`);
+  });
+}
+
+/**
+ * **Coradial**: two circles or arcs on one circle — the same centre and the
+ * same radius (SolidWorks' Coradial; docs/plans/relations-complete.md). What
+ * an arc split by a trim wants, and what `conc` plus `eq` say as two glyphs
+ * and two deletions, said as one.
+ *
+ * The centre is `coincident`'s blocks, nested as `concentric` nests it; the
+ * radius a difference of two variables. In 3D one circle is also one plane:
+ * the two unit normals parallel — their wedge, as `par` says it — without
+ * which two rings of one radius about one centre could cross like a
+ * gyroscope's. Every row linear in what it reads, none a square; in 2D the
+ * plane block is not emitted, there being one plane.
+ */
+export function coradial(model: Model, c1: string, c2: string): string {
+  if (c1 === c2) throw new Error(`coradial needs two circles: ${c1} twice is one`);
+  const a = model.circular(c1), b = model.circular(c2);
+  return model.relation("coradial", [c1, c2], () => {
+    coincident(model, a.center, b.center);
+    model.addResidual([a.radiusVar, b.radiusVar], (l) => [l[0].sub(l[1])], `corad(${c1},${c2})`);
+    const na = curveNormal(model, c1), nb = curveNormal(model, c2);
+    if (na && nb) {
+      model.addResidual(joinVars(na, nb), (l) => wedge(unitDuals(l.slice(0, 3)), unitDuals(l.slice(3, 6))), `corad(${c1},${c2})|plane`);
+    }
   });
 }
 
@@ -463,9 +519,9 @@ export function tangent(model: Model, a: string, b: string, side?: string | null
   const kind = (n: string) => model.entities.get(n)?.kind;
   // At a spline's end (docs/plans/spline.md, relations/spline.ts): the third
   // argument is then which end, and a fourth the second spline's.
-  if (kind(a) === "spline" || kind(b) === "spline") return tangentSpline(model, a, b, side, end2);
+  if (isPathCurve(kind(a)) || isPathCurve(kind(b))) return tangentSpline(model, a, b, side, end2);
   if (end2 != null) throw new Error("tan takes a fourth argument only between two splines — the second one's end");
-  if (kind(a) === "ellipse" || kind(b) === "ellipse") return tangentEllipse(model, a, b, side);
+  if (isConic(model, a) || isConic(model, b)) return tangentEllipse(model, a, b, side);
   const isCurve = (n: string) => kind(n) === "circle" || kind(n) === "arc";
   if (isCurve(a) && isCurve(b)) return tangentCircles(model, a, b, side);
   if (side != null) throw new Error(`tan takes a side ("outside" or "inside") only between two circles — ${a} and ${b} are not both`);
@@ -666,7 +722,7 @@ export function onEllipse(model: Model, pointName: string, ellipseName: string):
  */
 function tangentEllipse(model: Model, a: string, b: string, side?: string | null): string {
   const kind = (n: string) => model.entities.get(n)?.kind;
-  const [lineName, ellipseName] = kind(a) === "ellipse" ? [b, a] : [a, b];
+  const [lineName, ellipseName] = isConic(model, a) ? [b, a] : [a, b];
   if (kind(lineName) !== "line") {
     throw new Error(`tan takes an ellipse with a line — "${lineName}" is ${kind(lineName) ? `a ${kind(lineName)}` : "not there"}; `
       + "an ellipse tangent to a circle or another ellipse is not supported");
@@ -732,6 +788,10 @@ export function minorAxis(model: Model, ellipseName: string, target: number): st
  * so this stays generic rather than being marked 2D-only.
  */
 export function symmetric(model: Model, aName: string, bName: string, lineName: string): string {
+  // Two lines, circles or arcs (docs/plans/relations-complete.md): the same
+  // op, journalled as typed, which replays through this same dispatch.
+  const kind = (n: string) => model.entities.get(n)?.kind;
+  if (kind(aName) !== "point" || kind(bName) !== "point") return symmetricCurves(model, aName, bName, lineName);
   if (parseAxisRef(lineName)) return symmetricAxis(model, aName, bName, lineName);
   return model.relation("symmetric", [aName, bName, lineName], () => {
     const a = model.point(aName), b = model.point(bName);
@@ -788,6 +848,167 @@ function symmetricAxis(model: Model, aName: string, bName: string, ref: string):
       const [p, q] = chunk(l, dim, 2);
       return [dot(vecSub(q, p), along().u)];
     }, `sym(${aName},${bName},${ref})|perp`);
+  });
+}
+
+/**
+ * The line a mirror is about, as its own variables and a reader of them: a
+ * line's two ends, read lazily so the mirror follows an edge a fillet
+ * re-points; or a frame's axis — the located line through the frame's origin
+ * along it, read as a datum (`frameBasis`, never pushed), `symmetricAxis`'s
+ * reading. `at` hands back a point on it and its direction (not unit).
+ */
+function mirrorLine(model: Model, ref: string): { vars: () => number[]; width: number; at: (own: Dual[]) => { s: Dual[]; u: Dual[] } } {
+  const dim = model.dim;
+  const axis = parseAxisRef(ref);
+  if (!axis) {
+    if (model.entities.get(ref)?.kind !== "line") throw new Error(`sym mirrors about a line or a frame's axis — "${ref}" is neither`);
+    return { vars: lineVars(model, ref), width: 2 * dim, at: (own) => ({ s: own.slice(0, dim), u: vecSub(own.slice(dim, 2 * dim), own.slice(0, dim)) }) };
+  }
+  model.requireAxis(axis.axis, ref);
+  const basis = frameBasis(model, axis.frame);
+  return {
+    vars: () => [],
+    width: 0,
+    at: () => {
+      const f = basis();
+      const u = axis.axis === "x" ? f.ux : axis.axis === "y" ? f.uy : f.uz!;
+      return { s: f.origin.map((c) => Dual.constant(c)), u: u.map((c) => Dual.constant(c)) };
+    },
+  };
+}
+
+/**
+ * `d` mirrored in a line along `u`: 2(d·û)û − d. In 2D the reflection; in 3D
+ * the half-turn about the line, which is what `sym` has always meant there
+ * (see `symmetric`) — so it turns a direction in the plane through the line
+ * the way the 2D mirror does, and one square to that plane round to its
+ * opposite.
+ */
+function mirrored(d: Dual[], u: Dual[]): Dual[] {
+  const k = dot(d, u).mul(2).div(dot(u, u));
+  return d.map((di, i) => u[i].mul(k).sub(di));
+}
+
+/** The two blocks of a mirrored pair of points, `p` and `q`, about the line `s + t·u`: their middle on it, their join square to it. */
+function mirrorPair(p: Dual[], q: Dual[], s: Dual[], u: Dual[]): { mid: Dual[]; perp: Dual } {
+  const mid = p.map((pi, i) => pi.add(q[i]).div(2));
+  return { mid: wedge(vecSub(mid, s), u), perp: dot(vecSub(q, p), u) };
+}
+
+/**
+ * `sym(l1, l2, line)`, `sym(c1, c2, line)`, `sym(a1, a2, line)`: two **lines,
+ * circles or arcs** mirrored about a line or a frame's axis
+ * (docs/plans/relations-complete.md) — SolidWorks' and Onshape's Symmetric on
+ * anything but two points. Dimension-generic as the point form is: in 3D the
+ * mirror is the half-turn about the line.
+ *
+ * - **Two lines** — four rows in 2D, a segment's freedoms: their middles
+ *   mirrored (the point form's two blocks), their directions mirrored
+ *   (`wedge` of one against the other's mirror, as `par` reads two
+ *   directions) and their lengths equal. Said of the *segment*, not its ends,
+ *   so it needs no pairing of one line's ends with the other's: either way
+ *   round satisfies it, and a line drawn the other way is not refused or
+ *   flipped.
+ * - **Two circles** — the centres mirrored and the radii equal; in 3D the
+ *   two in one plane (their unit normals parallel, as `coradial` says it).
+ *   That is the mirror's own answer when the line lies in the circles'
+ *   plane, as a sketch's does; a half-turn about a line out of it, which
+ *   would tip the second circle over, is not what Symmetric means on a
+ *   sketch, and is not offered.
+ * - **Two arcs** — the circles', and each end square across the line from
+ *   the other arc's matching end: the start of one with the **end** of the
+ *   other, because a mirror turns an arc's direction round (in 3D, the same
+ *   when the two normals point one way, as two arcs drawn on one plane do;
+ *   start with start when they point opposite ways, read when the relation is
+ *   made). One row per end, `(q − p)·u`, not the point form's two: the ends
+ *   are on their rims already (`arcends`, which every tool-made arc has), and
+ *   the row that would put them there again would be redundant.
+ *
+ * Lines and circles both lazy where they can be: a line or the mirror line
+ * read through `lineVars`. No residual is a square.
+ */
+function symmetricCurves(model: Model, aName: string, bName: string, ref: string): string {
+  const kind = (n: string) => model.entities.get(n)?.kind;
+  const [ka, kb] = [kind(aName), kind(bName)];
+  const circular = (k: string | undefined) => k === "circle" || k === "arc";
+  const fits = (ka === "line" && kb === "line") || (circular(ka) && circular(kb) && (ka === kb || ka === "circle" || kb === "circle"));
+  if (!fits) {
+    throw new Error(`sym takes two points, two lines, two circles or two arcs — "${aName}" is ${ka ? `a ${ka}` : "not there"} and "${bName}" ${kb ? `a ${kb}` : "is not there"}`);
+  }
+  if (aName === bName) throw new Error(`sym needs two: ${aName} twice is one`);
+  const axis = mirrorLine(model, ref);
+  const dim = model.dim;
+  const tag = `sym(${aName},${bName},${ref})`;
+  if (ka === "line") {
+    return model.relation("symmetric", [aName, bName, ref], () => {
+      const vars = joinVars(lineVars(model, aName), lineVars(model, bName), axis.vars);
+      const parts = (l: Dual[]) => {
+        const [a1, b1, a2, b2] = chunk(l, dim, 4);
+        const { s, u } = axis.at(l.slice(4 * dim));
+        return { a1, b1, a2, b2, s, u };
+      };
+      model.addResidual(vars, (l) => {
+        const { a1, b1, a2, b2, s, u } = parts(l);
+        const m1 = a1.map((v, i) => v.add(b1[i]).div(2)), m2 = a2.map((v, i) => v.add(b2[i]).div(2));
+        const { mid, perp } = mirrorPair(m1, m2, s, u);
+        return [...mid, perp];
+      }, `${tag}|mid`);
+      model.addResidual(vars, (l) => {
+        const { a1, b1, a2, b2, u } = parts(l);
+        return wedge(vecSub(b2, a2), mirrored(vecSub(b1, a1), u));
+      }, `${tag}|dir`);
+      model.addResidual(vars, (l) => {
+        const { a1, b1, a2, b2 } = parts(l);
+        return [norm(vecSub(b2, a2)).sub(norm(vecSub(b1, a1)))];
+      }, `${tag}|len`);
+    });
+  }
+  const ca = model.circular(aName), cb = model.circular(bName);
+  const na = curveNormal(model, aName), nb = curveNormal(model, bName);
+  // Which end of the second arc is the mirror of the first's start: its end,
+  // unless (3D) the two were drawn with opposite normals.
+  const arcs = ka === "arc" && kb === "arc";
+  let crossed = true;
+  if (arcs && dim === 3) {
+    const [ea, eb] = [model.entities.get(aName), model.entities.get(bName)];
+    if (ea?.kind === "arc" && eb?.kind === "arc" && ea.normal && eb.normal) {
+      const [u, v] = [ea.normal.map((i) => model.problem.getVar(i)), eb.normal.map((i) => model.problem.getVar(i))];
+      crossed = u.reduce((acc, x, i) => acc + x * v[i], 0) >= 0;
+    }
+  }
+  return model.relation("symmetric", [aName, bName, ref], () => {
+    const centres = joinVars(model.point(ca.center).varIndices, model.point(cb.center).varIndices, axis.vars);
+    model.addResidual(centres, (l) => {
+      const [p, q] = chunk(l, dim, 2);
+      const { s, u } = axis.at(l.slice(2 * dim));
+      const { mid, perp } = mirrorPair(p, q, s, u);
+      return [...mid, perp];
+    }, `${tag}|centre`);
+    model.addResidual([ca.radiusVar, cb.radiusVar], (l) => [l[1].sub(l[0])], `${tag}|radius`);
+    if (na && nb) {
+      // One plane: the normals parallel — `coradial`'s block. The mirror of a
+      // normal is its opposite whenever the line lies in the circle's plane,
+      // which a sketch's mirror line does; said with the mirror itself
+      // (2(n·û)û − n) the block read the line's direction as well, and the
+      // rank analysis counted it taking a third freedom where it should take
+      // two (measured: 6 against coradial's 5, on a tilted sketch plane).
+      model.addResidual(joinVars(na, nb), (l) => wedge(unitDuals(l.slice(0, 3)), unitDuals(l.slice(3, 6))), `${tag}|plane`);
+    }
+    if (!arcs) return;
+    const ends = () => {
+      const a = model.arc(aName), b = model.arc(bName);
+      return crossed ? [[a.start, b.end], [a.end, b.start]] : [[a.start, b.start], [a.end, b.end]];
+    };
+    for (const [k, which] of [[0, "start"], [1, "end"]] as const) {
+      model.addResidual(() => {
+        const [p, q] = ends()[k];
+        return [...model.point(p).varIndices, ...model.point(q).varIndices, ...axis.vars()];
+      }, (l) => {
+        const [p, q] = chunk(l, dim, 2);
+        return [dot(vecSub(q, p), axis.at(l.slice(2 * dim)).u)];
+      }, `${tag}|${which}`);
+    }
   });
 }
 

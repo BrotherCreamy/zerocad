@@ -5,12 +5,16 @@
 // the cut's red for what it takes away.
 
 import type { PointerInfo, RenderContext, ToolContext } from "./tool.ts";
-import type { Model } from "../model.ts";
-import { distanceToCurve, pointOn } from "../sketchgeom.ts";
+import type { Entity, Model } from "../model.ts";
+import { distanceToCurve, isSketchCurve, pointOn } from "../sketchgeom.ts";
 import { heldOnCurves } from "../loops.ts";
 
-/** The kinds the edit tools take as a curve. */
+/** The kinds the edit tools take as a curve, unless a tool says otherwise. */
 const CURVES = new Set(["line", "arc", "circle"]);
+const usual = (e: Entity | undefined) => !!e && CURVES.has(e.kind);
+
+/** Every sketch curve: what trim takes (docs/plans/trim-everything.md) — an ellipse, an elliptical arc, a spline and its piece too. */
+export const anyCurve = (e: Entity | undefined): boolean => isSketchCurve(e);
 
 /**
  * The curve a press means: the line, arc or circle under it — or, where a
@@ -18,14 +22,14 @@ const CURVES = new Set(["line", "arc", "circle"]);
  * tool), the curve through that point nearest the place pressed, so a click
  * just off a corner still trims the edge it is on.
  */
-export function curveUnder(ctx: ToolContext, p: PointerInfo): string | null {
+export function curveUnder(ctx: ToolContext, p: PointerInfo, takes: (e: Entity | undefined) => boolean = usual): string | null {
   const model = ctx.model;
   const hit = ctx.pick?.(p.screen) ?? null;
   const sketched = (n: string) => !ownedBySolid(model, n);
-  if (hit && CURVES.has(hit.kind) && sketched(hit.name)) return hit.name;
+  if (hit && hit.kind !== "point" && takes(model.entities.get(hit.name)) && sketched(hit.name)) return hit.name;
   if (hit?.kind === "point" && sketched(hit.name)) {
     const held = new Set(heldOnCurves(model).filter((h) => h.point === hit.name).map((h) => h.curve));
-    const through = [...model.entities.values()].filter((e) => CURVES.has(e.kind) && !model.hidden.has(e.name) && sketched(e.name)
+    const through = [...model.entities.values()].filter((e) => takes(e) && !model.hidden.has(e.name) && sketched(e.name)
       && (model.refsOf(e).includes(hit.name) || held.has(e.name)) && !(e.kind !== "line" && "center" in e && e.center === hit.name));
     let best: string | null = null, d = Infinity;
     for (const e of through) {
@@ -37,7 +41,7 @@ export function curveUnder(ctx: ToolContext, p: PointerInfo): string | null {
   // A solid's own edge won the pick — a lid's edge drawn over the sketch edge
   // under it, seen from above — or nothing did: the press read on the sketch
   // plane, and the sketch curve nearest it within a line's pick reach.
-  return onSketchPlane(ctx, p.screen);
+  return onSketchPlane(ctx, p.screen, takes);
 }
 
 /** What a feature made — a lid's edge, a wall — which a sketch edit never takes. */
@@ -47,7 +51,7 @@ export function ownedBySolid(model: Model, name: string): boolean {
 }
 
 /** The sketch curve nearest a press read on the drawing plane, within ten pixels there; null where there is none or no plane to read it on. */
-function onSketchPlane(ctx: ToolContext, [sx, sy]: [number, number]): string | null {
+function onSketchPlane(ctx: ToolContext, [sx, sy]: [number, number], takes: (e: Entity | undefined) => boolean): string | null {
   const model = ctx.model;
   if (!ctx.planeAt) return null;
   let plane: { origin: number[]; u: number[]; v: number[] } | null = null;
@@ -62,7 +66,7 @@ function onSketchPlane(ctx: ToolContext, [sx, sy]: [number, number]): string | n
   const reach = Math.hypot(...at.map((v, i) => v - beside[i]));
   let best: string | null = null, d = reach;
   for (const e of model.entities.values()) {
-    if (!CURVES.has(e.kind) || model.hidden.has(e.name) || ownedBySolid(model, e.name)) continue;
+    if (!takes(e) || model.hidden.has(e.name) || ownedBySolid(model, e.name)) continue;
     const here = distanceToCurve(model, e.name, at.slice(0, model.dim));
     if (here < d) [best, d] = [e.name, here];
   }
@@ -90,7 +94,8 @@ export function strokeWorld(r: RenderContext, pts: readonly number[][], colour: 
 /** The points of `name` from fraction `a` to `b` along it — `b` past 1 runs on round a circle. */
 export function pieceSamples(model: Model, name: string, a: number, b: number, steps = 48): number[][] {
   const kind = model.entities.get(name)?.kind;
-  const n = kind === "line" ? 1 : steps;
+  // A spline's piece more finely: it bends where it likes.
+  const n = kind === "line" ? 1 : kind === "spline" || kind === "bspline" ? Math.max(steps, 160) : steps;
   return Array.from({ length: n + 1 }, (_, k) => pointOn(model, name, a + ((b - a) * k) / n));
 }
 

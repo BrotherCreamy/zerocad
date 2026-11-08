@@ -69,6 +69,148 @@ otherwise.
   - **On a face the menu's face items come first** (Sketch on this face,
     Edit e1, Flip direction), the tools under a Tools heading: on an iPhone
     the tool list filled the screen and hid them.
+- **Every sketch curve trims; power trim; trim heads the modify button** (the
+  owner, 2026-11-08: *"Also need trim for sketch entities"*). Spec:
+  [`trim-everything.md`](docs/plans/trim-everything.md), **built**; its *As
+  built* has the detail. Each vetoable:
+  - **The elliptical arc is a kind of its own** (`earc`, names `ea1`, …),
+    declared through `EntityKindSpec` beside the ellipse. A trimmed ellipse
+    becomes one under its own name, as a circle becomes an arc. Its ends are
+    held by two `onellipse` relations (an arc's `arcends` said twice), and a
+    middle piece's second is held by `eqrad`, which for two conics now means
+    equal semi-axes. Rejected: sharing the minor variable between the two
+    pieces, which diagnose would count twice; and the ellipse itself carrying
+    optional ends, where the spec asked for a kind.
+  - **Its frame is the ellipse's with a start** (`ArcFrame.t0`, an eccentric
+    anomaly), every parameter still read from the start. Rejected: a
+    conjugate-diameter frame that starts at the start, which is not
+    orthonormal.
+  - **The spline's piece is a spline of control points** (`bspline`, names
+    `bs1`, …): ordinary points for control points, fixed knots, owning
+    nothing, drawn with its control polygon dashed. A trimmed spline becomes
+    one under its own name. Rejected: control points as the entity's own
+    variables, which no hand could reach.
+  - **What a spline trim keeps**: through-points nothing else uses go; a used
+    one on the piece is held `onspline` on it; an `onspline` on the piece is
+    re-made (its parameter read afresh); a `tan` at the end that went is
+    removed and said in the log; at the far end of a middle trim it goes
+    over to the second piece.
+  - **The pieces are journalled resolved** (`trim`'s third resolved part,
+    `[{ knots, ctrl, seam? }]`), because a replay reaches the trim on seeds.
+    **No format bump**: the precedent of the ops added without one (an older
+    build refuses the step by name, it does not misread it).
+  - **Power trim is one typed entry of one `trim` per piece**, which is one
+    undo step and nothing new in the journal. A curve's pieces are typed from
+    its far end back, so each name typed is the curve the piece is on. Pieces
+    are read against the drawing at the press. Where an earlier piece in the
+    stroke took away the crossing that bounded a later one, the later trim
+    takes the piece as it is then, as SolidWorks's live power trim would.
+  - **A click trims on its release**, so that a press can become a stroke.
+  - **Trim heads the modify button** (`modify: [trim, fillet, bevel, …]`), as
+    its face until another member is armed; its glyph strikes the piece out.
+  - **Not built: trim to closest, extend by shift or long-press.** The
+    walkthrough found no need: a click already takes the piece between the
+    nearest cuts, extend has its own tool on the same button, there is no
+    shift on glass, and a long-press is the menu.
+  - **Not built: extend and offset of a spline.** The representation does
+    not make them small (below).
+
+- **Every standard relation, offered for whatever is picked** (the owner,
+  2026-11-08: *"Also need to figure out a way to do all the standard
+  relations"*; docs/plans/relations-complete.md, whose *As built* is the
+  table). Each vetoable:
+  - **The ordering**: what is about the selection's mix first (Tangent for a
+    line and a circle, Symmetric for two of a kind and a line), then what
+    chains over many (Equal, Parallel, Horizontal, Vertical, Coincident,
+    Concentric, Coradial), then Fix, then the dimension. Two lines read
+    Parallel, Perpendicular, Equal, Collinear, Horizontal (both), Vertical
+    (both), Fix (both), Angle — eight rows, which fit an iPhone 13
+    (pictures 342, 343) but cover half its canvas while they are up.
+  - **Many at once is a star**: each pick related to the first, not each to
+    the one before. Measured with the conflict search on eight lines: a star
+    names at most four relations in a conflict wherever it is, a chain up to
+    nine; a chain wins only for two neighbours (3 against 4). The price is
+    the first pick wearing n − 1 marks (picture 341). Typed as one line so it
+    is one undo step.
+  - **Fix's glyph is a drawn padlock** (there was no lock glyph; `#` had
+    stood in for an anchor that mushed at 12 px), measured readable at 1×
+    and 3×. It is **quiet with its corner**, as every mark on a line's end
+    is (quiet.ts): a fixed corner shows it on hover or selection, not
+    always. Making Fix the one mark that never goes quiet is a one-line
+    change in main.ts's `glyphDrawn` call if the owner wants it.
+  - **Fix on an entity pins its points**, each where it stands in the
+    default frame; a circle's radius stays free (dimension it).
+  - **Fix, and the many-at-once rows, need one family**: n points, n lines,
+    n circles-or-arcs, n ellipses, n splines. A mixed pick gets no Fix.
+  - **Two circles' Tangent is offered both ways**, nearer side first, each
+    typed with its side, except two arcs sharing an end (the join decides).
+  - **A frame's z arm stands for its plane** in 3D (On plane, Normal to
+    plane, Parallel to plane); its x and y arms are directions. A point and
+    an x or y arm take nothing (a point on an axis is `fix`'s to say).
+  - **A greyed cell shows why**, and a press types nothing and logs the
+    whole reason. A pick of the solid kernel's own edge or face greys the
+    whole list (one row, Relate) rather than offering nothing.
+  - **On face is `onplane` to the face's plane**, not inside its outline —
+    SolidWorks' On Plane. A face is a solid feature's own loop (profile,
+    twins, walls); inside a rectangle only ever sketched is empty canvas.
+  - **`sym` of two circles in 3D holds the normals parallel**, not mirrored
+    — the same thing for a mirror line in the sketch plane, and the mirrored
+    form counted a freedom too many (measured: 6 against 5).
+  - **A frame is no entity pick**: selected, it takes nothing — it is a
+    datum, related to through its arms (the constrain tool turns a click on
+    one into the axis).
+
+- **Sketch mode is the work plane, and choosing a plane makes nothing** (the
+  owner, 2026-11-08: *"I need a way to natively sketch on a plane without it
+  being a special feature. It should just add 'on plane' relations to each
+  entity as it gets sketched. Also when I select this mode it should go
+  normal to the plane/face"*; docs/plans/sketch-mode.md). Each vetoable:
+  - **The named planes are references, not frames**: Top is `"origin"`,
+    Front `"origin.xz"`, Right `"origin.yz"` — and every frame's `"f1.xz"`,
+    `"f1.yz"`. Front faces −y (+x right, +z up), Right +x (+y right, +z up).
+    On them `xaxis()`/`yaxis()` are the plane's own two axes.
+  - **They are offered twice**: one-tap buttons in the sketch tool's options
+    (never remembered, so the next sketch starts by picking), and faint
+    patches round the origin while the tool is armed, at least 90 px each
+    way and 15 % past the drawing's farthest point. A patch seen more nearly
+    edge-on than cos 0.2 is not offered, so a fresh document's top view
+    shows only Top. A face under the pixel wins over a patch, and a body
+    under it hides the patches behind.
+  - **A kernel-made flat face no loop bounds** (a chamfer's) is held by a
+    plain frame made at the face's middle, +x along its longest edge, typed
+    as `workplane(frame(pt(…), pt(…), pt(…)))` — one line, one undo step,
+    no feature. It does **not** follow the solid afterwards: the face has no
+    model points. A flat kernel face that a feature's loop does bound is
+    held by the loop's points, as before, and follows.
+  - **Where a loop of a body's skeleton is in front of a kernel face in
+    another plane** (the lid seen through a chamfer or a round), the kernel's
+    face decides: a flat one is sketched on, a round one refused.
+  - **Copies are held to the plane**: offset, mirror and the patterns add one
+    `onPlane` per copied point, for every plane the original is held on that
+    the operation maps onto itself (offset always; a pattern's step along the
+    plane; a turn about its normal; a mirror line in the plane or square to
+    it). For mirror and pattern this restates what `sym`/`translated`/
+    `rotated` already imply; it is there so the focus, the hover and `del`
+    read it.
+  - **No second relation for a curve's plane** beyond the `par` on a circle's,
+    arc's or ellipse's normal the curve tools already add (a centre alone
+    does not keep a circle in the plane). A spline's or a polygon's plane
+    follows from its points.
+  - **The ▱ is quiet**: an `onPlane` mark is drawn only while its point is
+    revealed (hovered, selected, just placed by the gesture in progress).
+  - **Leaving**: the chip's Done, or **Escape with nothing armed and nothing
+    selected** — for a work plane only; a default frame set by `plane()`
+    stays until Done, because the Escape that releases a finished feature
+    tool arrives with nothing armed. **The view stays where it is** on
+    leaving, as Done always left it.
+  - **Normal To is ⊥ in the chip**, beside Done, typing `lookAt(ref)`; the
+    plane's menu keeps Look at too. **Snapped, not animated**: nothing in the
+    house animates the camera.
+  - **lookAt turns about the middle of a face's three points**, not its first
+    corner, and pans that to the canvas's middle if it would land off it.
+  - **The chip keeps "on e1's top"** rather than the spec's "Sketch on e1's
+    top": seven more characters on the phone's one-line chip, and the ⊥ and
+    Done beside it say it is a mode.
 
 - **A solve that collapses geometry is a CONFLICT** (the owner, 2026-11-07:
   *"I'm able to add a parallel relation to a set of perpendicular relation
@@ -151,7 +293,8 @@ otherwise.
   - **`addThrough` re-bends the curve a little** (under 2 % of its length in
     the suite) rather than keeping it exactly with a knot that is no
     through-point.
-  - **Trim, extend and offset of a spline itself are refused by name**; a
+  - **Extend and offset of a spline itself are refused by name** (trim of one
+    is a spline of control points since trim-everything, above); a
     spline **cuts** what it crosses and a line extends to it; mirror and the
     patterns copy it; a region bounded by **part** of one is refused, a whole
     one extrudes and revolves; a surface sweeps and turns one, and is not
@@ -205,7 +348,7 @@ otherwise.
   [`sketch-edit.md`](docs/plans/sketch-edit.md), **built**; its *As built*
   has the table of what each journals, refuses and cascades. Open to veto,
   as built:
-  - **Each op's rule** — *trim*: refuses an ellipse, a curve nothing cuts
+  - **Each op's rule** — *trim*: refuses (an ellipse until trim-everything; every curve trims now) a curve nothing cuts
     (`del` is for that), a circle cut once, a feature's own edge, and a cut
     that leaves a feature on the curve no profile (it tries, and takes itself
     back, counters and all); takes with it the holds of points on the piece
@@ -1957,15 +2100,86 @@ are flagged as such.
   - [ ] [`smart-dimension.md`](docs/plans/smart-dimension.md): one
         dimension tool for anything, solid faces and edges included; driven
         where it cannot drive.
-  - [ ] [`relations-complete.md`](docs/plans/relations-complete.md): the
+  - [x] [`relations-complete.md`](docs/plans/relations-complete.md): the
         full SolidWorks/Onshape relation table, offered for any pick, many at
         once, Fix, and relations to solid edges and faces.
+  - [x] [`trim-everything.md`](docs/plans/trim-everything.md): ellipse and
+        spline trim (an elliptical arc kind, a control-point spline), power
+        trim by dragging across. **BUILT (2026-11-08)** on
+        `claude/trim-everything`; the register entry above, the spec's *As
+        built*. Left, each written down:
+        - [ ] **Extend a spline.** A spline of control points can be carried
+          on past an end (unclamp the end, Piegl & Tiller A12.1, then reach
+          along the end span's polynomial and clamp again), but that is not
+          small, and an interpolant would need a through-point added where
+          the reach lands. Refused by name now.
+        - [ ] **Offset a spline.** No offset of a B-spline is a B-spline; it
+          needs a fit to a tolerance (Tiller & Hanson), which nothing here
+          has. Refused by name now.
+        - [ ] **Revolve an elliptical arc** (and an ellipse): no surface of
+          revolution of a conic is written yet. Refused by name.
+        - [ ] **Part of an elliptical arc or of a spline piece bounding a
+          region** is refused, as part of an ellipse or a spline is. The kinds
+          would now serve (the part is a piece of the same kind), but the
+          twin and the kernel member for a portion are not written.
+        - [ ] **A trimmed spline's through-points do not drive the piece.**
+          A used one is held `onspline` on it; the curve's shape is its
+          control points'. Reshaping a piece by a point on it would need a
+          point-on-curve with the control points solving for it.
+        - [ ] **Power trim reads pieces at the press.** A later piece whose
+          bounding crossing an earlier one in the stroke took away is trimmed
+          as it is then (the register entry). Not seen in the walkthrough.
+        - [ ] **An elliptical arc's major end is drawn** even where it lies on
+          the piece trimmed away, a defining point off the curve, as a centre
+          is. It could be quiet with the edge where it is on the arc.
+  - [ ] [`sketch-mode.md`](docs/plans/sketch-mode.md): sketch on any plane
+
+        once, Fix, and relations to solid edges and faces. **Built**
+        (2026-11-08), branch `claude/relations-complete`: the table as built
+        is in the spec; decisions in the register above. Left:
+    - [ ] **Convert Entities** (SolidWorks'): a projected copy of a solid's
+          edge, held to it. An operation (it makes entities) plus a
+          projection relation (p − q ∥ the plane's normal, p on the plane)
+          that does not exist yet.
+    - [ ] **Curvature** (G2) between splines, **Equal curve length**, and
+          Equal for two ellipses: no relation says them.
+    - [ ] **A face bounded only by a circle** is picked as its circle (the
+          plane reference it has), so On face is not offered on a cylinder's
+          cap; a plane reference for "this circle's face" would fix it.
+    - [ ] `intersection`/`pierce` take only the kinds geometry.ts's
+          `onCurve` knows (line, circle, arc, ellipse, spline); a module's
+          kind gets On through `heldBy` but not these two.
+    - [ ] Swap `solidRefAt` (src/tools/constrain.ts) for smart-dimension's
+          picker when both are in.
   - [ ] [`trim-everything.md`](docs/plans/trim-everything.md): ellipse and
         spline trim (an elliptical arc kind, a control-point spline), power
         trim by dragging across.
-  - [ ] [`sketch-mode.md`](docs/plans/sketch-mode.md): sketch on any plane
+  - [x] [`sketch-mode.md`](docs/plans/sketch-mode.md): sketch on any plane
         or face (Top/Front/Right, kernel faces), every tool holding every
-        point `onPlane`, normal-to on entering, an explicit exit.
+        point `onPlane`, normal-to on entering, an explicit exit. **Built**
+        (2026-11-08), branch `claude/sketch-mode`: Front and Right named,
+        kernel faces, copies held, Normal To and Escape, the ▱ quiet; the
+        walkthrough found every tool already held every point.
+        Found while building, left for later:
+        - The sketch tool's named-plane patches are drawn over a solid, not
+          behind it (the tool's layer is the 2D canvas, over the faces).
+        - A kernel-only face's frame is a frame like any other: drawn, named
+          `f1`, its points draggable. The chip says "on f1", not "on e3's
+          face".
+        - `lookAt` answers "looking at origin.xz", not "looking at Front".
+        - The hidden view's golden picture was re-recorded: the ▱ marks it
+          held are quiet now. Differs only there, looked at.
+        - Seen at load 35–40, alone and on the base commit too: a phone's
+          first tap after arming the sketch tool is sometimes lost
+          (modefeedback.e2e.ts; 2 of 8 on the base commit, 1 of 8 on this
+          branch, in a probe repeating the test's tap), and overlaylock.e2e.ts's
+          see-through log line fades before it is sampled (1 failure on the
+          base, 6 and 2 on this branch, the same assertion). The rest of
+          that run's failures, each file alone three times:
+          sketchmodephone and solidfilletsphone 3 of 3; sketchrelations 2 of
+          3 (the third lost the taps after arming the dimension tool, the
+          same signature); touchdensity 2 of 3 (the third timed out waiting
+          for selectors, 30 s).
 
 - [x] **Conflicts the solver satisfied by collapsing geometry** (the owner,
   2026-11-07: *"I'm able to add a parallel relation to a set of perpendicular
@@ -2211,8 +2425,9 @@ starts.
          first wrapped flyout cutting its second line. Also found: `rotated`
          must read its turn in the plane square to its axis — a centre the
          solver lifted off the plane turned the copies wrongly (a unit test).
-         - [ ] **Left for later**: an ellipse trimmed (no elliptical arc), an
-           ellipse cutting a circle or arc (a quartic); a curve nothing cuts
+         - [ ] **Left for later**: ~~an ellipse trimmed (no elliptical arc), an
+           ellipse cutting a circle or arc (a quartic)~~ (both done by
+           trim-everything, 2026-11-08); a curve nothing cuts
            deleted by the trim tool, as Onshape does (refused now, said);
            an offset's distance as one dimension (each piece has its own); a
            `rad` that follows the original's radius; the pattern panel
@@ -2291,6 +2506,9 @@ starts.
            by part of one: each needs a curve that is not an interpolant (a
            piece of a spline through points it does not go through). A
            B-spline entity of control points would serve all three.
+           **Trim done** (trim-everything, 2026-11-08: the spline of control
+           points); extend, offset and a part in a region are left, written
+           down under trim-everything above.
          - [ ] **`addThrough` / `removeThrough` refuse a spline a feature is
            built on**: the lid's twin spline would need the same edit.
          - [ ] **The spline is still named** in its relations, operations.ts,

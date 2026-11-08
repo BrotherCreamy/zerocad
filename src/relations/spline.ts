@@ -24,7 +24,7 @@ import { Dual } from "../kernel/dual.ts";
 import type { Model } from "../model.ts";
 import type { BlockHandle } from "../kernel/problem.ts";
 import { DEGREE, dersBasis, domain, interpolate, layout, nearestParam, rowTerms, type Layout, type Ring, type Row } from "../bspline.ts";
-import { checkSpline, placeSpline, splineCurve, splineOf, type SplineEntity } from "../kinds/spline.ts";
+import { bsplineOf, checkSpline, pathCurveOf, placeSpline, splineOf, type SplineEntity } from "../kinds/spline.ts";
 import { dot, vecSub, wedge } from "./vec.ts";
 import { curveNormal, joinVars, lineVars, unitDuals } from "./refs.ts";
 
@@ -155,13 +155,54 @@ function placeSplineVars(model: Model, points: readonly string[], closed: boolea
   return out;
 }
 
-/** Every variable a spline's curve reads, in a fixed order: its through-points', then its control points'. */
+/**
+ * Whether a kind is a spline: an interpolant (`spline`), or the piece of one a
+ * trim leaves, a spline of control points (`bspline`, kinds/spline.ts) — what
+ * `onspline` and `tan` take alike (docs/plans/trim-everything.md).
+ */
+export function isPathCurve(kind: string | undefined): boolean {
+  return kind === "spline" || kind === "bspline";
+}
+
+/** `name` as a spline of either kind, or the refusal. */
+function pathCheck(model: Model, name: string): void {
+  if (!isPathCurve(model.entities.get(name)?.kind)) splineOf(model, name);
+}
+
+/**
+ * Every variable a spline's curve reads, in a fixed order: an interpolant's
+ * through-points' then its control points'; a control-point spline's points'.
+ * Read lazily, so a relation follows a spline a trim turned into its piece
+ * under the same name.
+ */
 function splineVars(model: Model, name: string): () => number[] {
-  splineOf(model, name);
+  pathCheck(model, name);
   return () => {
+    const e = model.entities.get(name);
+    if (e?.kind === "bspline") return e.points.flatMap((p) => model.point(p).varIndices);
     const s = splineOf(model, name);
     return [...s.points.flatMap((p) => model.point(p).varIndices), ...s.ctrl];
   };
+}
+
+/** A control-point spline at a fraction `sigma` of its domain, over its points' Duals — the knots fixed numbers. */
+function bsplineAt(model: Model, name: string, l: Dual[], sigma: Dual): Dual[] {
+  const s = bsplineOf(model, name);
+  const dim = model.dim;
+  const K = s.knots.map((k) => Dual.constant(k));
+  const m = s.points.length;
+  const [lo, hi] = [s.knots[DEGREE], s.knots[m]];
+  // Open: past an end it runs on along the end span's own polynomial, as an interpolant's does.
+  const u = sigma.mul(hi - lo).add(lo);
+  let span = DEGREE;
+  while (span < m - 1 && u.val >= s.knots[span + 1]) span++;
+  const N = dersBasis(DUAL, K, span, u, DEGREE, 0)[0];
+  const out = Array.from({ length: dim }, () => Dual.constant(0));
+  N.forEach((c, j) => {
+    const k = span - DEGREE + j;
+    for (let i = 0; i < dim; i++) out[i] = out[i].add(c.mul(l[k * dim + i]));
+  });
+  return out;
 }
 
 /**
@@ -170,6 +211,7 @@ function splineVars(model: Model, name: string): () => number[] {
  * a relation on the curve moves its points and its shape alike.
  */
 function curveAt(model: Model, name: string, l: Dual[], sigma: Dual): Dual[] {
+  if (model.entities.get(name)?.kind === "bspline") return bsplineAt(model, name, l, sigma);
   const s = splineOf(model, name);
   const dim = model.dim;
   const n = s.points.length;
@@ -210,9 +252,9 @@ function curveAt(model: Model, name: string, l: Dual[], sigma: Dual): Dual[] {
  */
 export function onSpline(model: Model, pointName: string, splineName: string): string {
   model.point(pointName);
-  splineOf(model, splineName);
+  pathCheck(model, splineName);
   return model.relation("onSpline", [pointName, splineName], () => {
-    const curve = splineCurve(model, splineName);
+    const curve = pathCurveOf(model, splineName);
     const [lo, hi] = domain(curve);
     const u0 = nearestParam(curve, model.coords(pointName), curve.closed);
     const sigma = model.relationVar(hi > lo ? (u0 - lo) / (hi - lo) : 0);
@@ -252,6 +294,12 @@ function joined(model: Model, a: string, b: string): boolean {
 /** A spline's end point, and the variables of the end's tangent: the end point and the control point beside it. */
 function endVars(model: Model, name: string, end: SplineEnd): () => number[] {
   return () => {
+    const e = model.entities.get(name);
+    if (e?.kind === "bspline") {
+      const n = e.points.length;
+      const [at, next] = end === "start" ? [e.points[0], e.points[1]] : [e.points[n - 1], e.points[n - 2]];
+      return [...model.point(at).varIndices, ...model.point(next).varIndices];
+    }
     const s = splineOf(model, name);
     const dim = model.dim;
     const at = end === "start" ? s.points[0] : s.points[s.points.length - 1];
@@ -260,9 +308,10 @@ function endVars(model: Model, name: string, end: SplineEnd): () => number[] {
   };
 }
 
-/** The point at a spline's end. */
+/** The point at a spline's end — an interpolant's first or last through-point, a control-point spline's first or last point. */
 function endPoint(model: Model, name: string, end: SplineEnd): string {
-  const s = splineOf(model, name);
+  const e = model.entities.get(name);
+  const s = e?.kind === "bspline" ? e : splineOf(model, name);
   return end === "start" ? s.points[0] : s.points[s.points.length - 1];
 }
 
@@ -273,8 +322,8 @@ function endPoint(model: Model, name: string, end: SplineEnd): string {
  * one, and a spline whose ends both meet with none given (say which).
  */
 function meetingEnd(model: Model, spline: string, other: string, given: unknown): SplineEnd {
-  const s = splineOf(model, spline);
-  if (s.closed) throw new Error(`tan holds a spline at an end, and "${spline}" is closed — it has none`);
+  pathCheck(model, spline);
+  if (pathCurveOf(model, spline).closed) throw new Error(`tan holds a spline at an end, and "${spline}" is closed — it has none`);
   if (given != null && !(ENDS as readonly unknown[]).includes(given)) {
     throw new Error(`tan takes a spline's end as "start" or "end", got ${JSON.stringify(given)}`);
   }
@@ -288,14 +337,40 @@ function meetingEnd(model: Model, spline: string, other: string, given: unknown)
     if (o.kind === "circle") {
       return [...model.relations.values()].some((r) => r.op === "onCircle" && r.args[1] === other && joined(model, p, r.args[0] as string));
     }
-    if (o.kind === "spline") return [o.points[0], o.points[o.points.length - 1]].some((q) => joined(model, p, q));
+    if (o.kind === "spline" || o.kind === "bspline") return [o.points[0], o.points[o.points.length - 1]].some((q) => joined(model, p, q));
     return false;
   };
   const both = ENDS.filter(meets);
   if (both.length === 1) return both[0];
   if (both.length === 2) throw new Error(`both ends of "${spline}" meet "${other}" — say which: tan(…, "start") or tan(…, "end")`);
-  throw new Error(`tan holds a spline at an end that meets the other curve — neither end of "${spline}" meets "${other}" `
+  // The particular first: a greyed Tangent shows the start of this on a phone (relations-complete.md).
+  throw new Error(`neither end of "${spline}" meets "${other}" — tan holds a spline at an end that meets the other curve `
     + "(share the point, or coin it)");
+}
+
+/**
+ * Why `tan(a, b)` with a spline would be refused as the drawing stands — the
+ * relation's own words — or null when it would be made. What the constrain
+ * tool greys a Tangent with (docs/plans/relations-complete.md), so the list
+ * and the command line cannot disagree about which ends meet.
+ */
+export function tangentSplineRefusal(model: Model, a: string, b: string): string | null {
+  const kind = (n: string) => model.entities.get(n)?.kind;
+  try {
+    if (kind(a) === "spline" && kind(b) === "spline") {
+      if (a === b) return `tan needs two curves: "${a}" twice is one`;
+      meetingEnd(model, a, b, null);
+      meetingEnd(model, b, a, null);
+      return null;
+    }
+    const [spline, other] = kind(a) === "spline" ? [a, b] : [b, a];
+    const ok = kind(other);
+    if (ok !== "line" && ok !== "arc" && ok !== "circle") return `tan takes a spline with a line, an arc, a circle or another spline — "${other}" is ${ok ? `a ${ok}` : "not there"}`;
+    meetingEnd(model, spline, other, null);
+    return null;
+  } catch (e) {
+    return e instanceof Error ? e.message : String(e);
+  }
 }
 
 /** A spline end's direction of travel, as Duals: from its end point to the control point beside it (`endVars`' locals). */
@@ -318,7 +393,7 @@ function endTangent(l: Dual[], dim: number, end: SplineEnd): Dual[] {
  */
 export function tangentSpline(model: Model, a: string, b: string, end?: unknown, end2?: unknown): string {
   const kind = (n: string) => model.entities.get(n)?.kind;
-  if (kind(a) === "spline" && kind(b) === "spline") {
+  if (isPathCurve(kind(a)) && isPathCurve(kind(b))) {
     if (a === b) throw new Error(`tan needs two curves: "${a}" twice is one`);
     const [ea, eb] = [meetingEnd(model, a, b, end), meetingEnd(model, b, a, end2)];
     return model.relation("tangent", [a, b, ea, eb], () => {
@@ -327,7 +402,7 @@ export function tangentSpline(model: Model, a: string, b: string, end?: unknown,
         wedge(unitDuals(endTangent(l, dim, ea)), unitDuals(endTangent(l.slice(2 * dim), dim, eb))), `tan(${a},${b})`);
     });
   }
-  const [spline, other] = kind(a) === "spline" ? [a, b] : [b, a];
+  const [spline, other] = isPathCurve(kind(a)) ? [a, b] : [b, a];
   const ok = kind(other);
   if (ok !== "line" && ok !== "arc" && ok !== "circle") {
     throw new Error(`tan takes a spline with a line, an arc, a circle or another spline — "${other}" is ${ok ? `a ${ok}` : "not there"}`);

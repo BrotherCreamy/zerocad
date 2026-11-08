@@ -49,11 +49,12 @@ function wave(m: Model): { s: string; pts: string[] } {
   return { s: addSpline(m, pts), pts };
 }
 
-test("trim and extend: a spline is refused as what is trimmed or extended, and cuts a line it crosses — the new end held on it", async () => {
+test("trim and extend: a spline nothing cuts has no piece to trim, extend refuses one, and a spline cuts a line it crosses — the new end held on it", async () => {
   await loadKernel();
   const m = new Model(2);
   const { s } = wave(m);
-  assert.throws(() => trim(m, s, [10, 6]), /"sp1" is a spline, and trim trims nothing of one yet.*A spline does cut a line/);
+  // A spline trims now (docs/plans/trim-everything.md, test/trimeverything.test.ts) — but only where something cuts it.
+  assert.throws(() => trim(m, s, [10, 6]), /nothing cuts sp1 — there is no piece of it to trim back to/);
   assert.throws(() => extend(m, s, "p1"), /"sp1" is a spline, and extend does not lengthen one — drag its end out\. A spline does cut/);
   // A line across the spline: trimmed at the crossing, its end held onspline.
   const l = m.addLine(m.addPoint([20, -15]).name, m.addPoint([20, 15]).name).name;

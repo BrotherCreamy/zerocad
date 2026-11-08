@@ -199,7 +199,8 @@ test("turned so the near wall faces the camera, the sketch tool outlines it, ref
 
   // A click off the plate is refused aloud, and the tool stays armed.
   await clickAt(...await emptySpot());
-  assert.match(await app.log(), /sketch: click inside a closed outline — the ones I can see are lit/);
+  // In 3D the ground's named planes are there to take too (docs/plans/sketch-mode.md), so the miss says so.
+  assert.match(await app.log(), /sketch: click inside a lit face, or a lit plane — or choose Top, Front or Right in the options/);
   assert.equal((await app.model()).activeTool, "sketch");
 
   const frames = (await app.model()).byKind.frame;

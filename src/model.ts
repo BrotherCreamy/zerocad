@@ -269,12 +269,17 @@ export function orList(words: readonly string[]): string {
 
 /** The declared kinds that are curves, by name: what a refusal adds after "a line, arc, circle". */
 export function curveNouns(): string[] {
-  return [...entityKinds.values()].filter((k) => k.curve).map((k) => k.kind);
+  return [...entityKinds.values()].filter((k) => k.curve).map(bareNoun);
 }
 
 /** The declared kinds that carry a plane, by name. */
 export function planeNouns(): string[] {
-  return [...entityKinds.values()].filter((k) => k.plane).map((k) => k.kind);
+  return [...entityKinds.values()].filter((k) => k.plane).map(bareNoun);
+}
+
+/** A kind as a refusal's list says it: its noun without the article ("elliptical arc"), or its kind where it has none. */
+function bareNoun(k: EntityKindSpec): string {
+  return k.noun ? k.noun.replace(/^an? /, "") : k.kind;
 }
 
 /** Whether an entity is closed on itself — a circle, or a declared kind that says so (`EntityKindSpec.closed`). */
@@ -326,8 +331,9 @@ export type AxisName = "x" | "y" | "z";
 export function parseAxisRef(ref: string): { frame: string; axis: AxisName } | null {
   const dot = ref.indexOf(".");
   if (dot < 0) return null;
-  // Two dots is a plane through three points (`parsePointTriple`), not an axis.
-  if (parsePointTriple(ref)) return null;
+  // Two dots is a plane through three points (`parsePointTriple`), not an axis;
+  // `.xz` and `.yz` are a frame's other two planes (`parseFramePlane`).
+  if (parsePointTriple(ref) || parseFramePlane(ref)) return null;
   const frame = ref.slice(0, dot);
   const axis = ref.slice(dot + 1);
   if (axis !== "x" && axis !== "y" && axis !== "z") {
@@ -486,6 +492,30 @@ export function parsePointTriple(ref: unknown): [string, string, string] | null 
   if (typeof ref !== "string") return null;
   const parts = ref.split(".");
   return parts.length === 3 && parts.every((x) => x.length > 0) ? [parts[0], parts[1], parts[2]] : null;
+}
+
+/**
+ * A frame's **other two planes**, written `"f1.xz"` and `"f1.yz"` — the frame's
+ * x–z and y–z planes — or null for any other string (docs/plans/sketch-mode.md).
+ * A frame's own name is its x–y plane, as it always was; these are the two it
+ * had no name for, so the ground's Front and Right planes are `"origin.xz"` and
+ * `"origin.yz"` and make nothing, as `"origin"` (Top) makes nothing.
+ *
+ * Laid out so each faces the way it is looked at from: x–z runs +x, +z with its
+ * normal x × z = −y (seen from the front, from −y), and y–z runs +y, +z with
+ * its normal y × z = +x (seen from the right). `normal` is the frame axis that
+ * normal lies along — what `par` holds a curve's normal to, sign-agnostic.
+ * One dot, like an axis reference, and told from one by the two letters after
+ * it; `claimName` refuses a dot, so no entity can be called this either.
+ */
+export function parseFramePlane(ref: unknown): { frame: string; u: AxisName; v: AxisName; normal: AxisName } | null {
+  if (typeof ref !== "string") return null;
+  const dot = ref.indexOf(".");
+  if (dot <= 0 || ref.indexOf(".", dot + 1) >= 0) return null;
+  const frame = ref.slice(0, dot), which = ref.slice(dot + 1);
+  if (which === "xz") return { frame, u: "x", v: "z", normal: "y" };
+  if (which === "yz") return { frame, u: "y", v: "z", normal: "x" };
+  return null;
 }
 
 /**
@@ -1101,6 +1131,13 @@ export class Model {
    * solve it was handed and a report it never made falls back to its blocks.
    */
   private solves = new WeakMap<SolveReport, SolveContext>();
+  /**
+   * The conflict search's wall-clock budget, in ms (`SEARCH_MS`). A field,
+   * not only the constant, so a test of *what* the search names can lift it:
+   * on a loaded machine the budget runs out and the old naming comes back,
+   * which is the bound doing its job, not the answer being wrong.
+   */
+  searchMs = SEARCH_MS;
 
   /**
    * How this model was built, in order — every entity created, every
@@ -1823,6 +1860,8 @@ export class Model {
    * naming what it needed to be. A plane reference is one string:
    *
    * - a **frame**'s name — its x–y plane — `"origin"` included;
+   * - a frame's **x–z or y–z plane**, `"f1.xz"` / `"f1.yz"` (`parseFramePlane`):
+   *   the ground's Front and Right are `"origin.xz"` and `"origin.yz"`;
    * - a **circle's or arc's** name — the plane through its centre square to
    *   its own normal;
    * - **three points' names joined by dots** — `"p1.p2.p3"`, the plane through
@@ -1836,9 +1875,15 @@ export class Model {
    * deletion cascade through `referentsOf`. `claimName` refuses a dot, so no
    * entity can be called `p1.p2.p3`.
    */
-  planeKind(ref: unknown): "frame" | "curve" | "points" {
-    const what = `name a frame, a circle or arc, or three points as "p1.p2.p3"`;
+  planeKind(ref: unknown): "frame" | "framePlane" | "curve" | "points" {
+    const what = `name a frame (or its "f1.xz", "f1.yz"), a circle or arc, or three points as "p1.p2.p3"`;
     if (typeof ref !== "string") throw new Error(`${JSON.stringify(ref)} is not a plane — ${what}`);
+    // A frame's x–z or y–z plane (`parseFramePlane`): the ground's Front and Right.
+    const side = parseFramePlane(ref);
+    if (side && this.isFrame(side.frame)) {
+      if (this.dim !== 3) throw new Error(`"${ref}" is a 3D plane — a ${this.dim}D frame has no z to span it with`);
+      return "framePlane";
+    }
     const pts = parsePointTriple(ref);
     if (pts) {
       for (const p of pts) this.point(p);
@@ -1870,6 +1915,15 @@ export class Model {
       if (ref === ORIGIN) return { origin: [0, 0, 0], u: [1, 0, 0], v: [0, 1, 0], n: [0, 0, 1] };
       const axes = this.frameAxes(ref);
       return axes ? { origin: at(this.frame(ref).origin), u: axes[0], v: axes[1], n: cross(axes[0], axes[1]) } : null;
+    }
+    if (kind === "framePlane") {
+      // The frame's own axes, two of the three, in the order `parseFramePlane` lays them.
+      const side = parseFramePlane(ref)!;
+      const xy = side.frame === ORIGIN ? [[1, 0, 0], [0, 1, 0]] : this.frameAxes(side.frame);
+      if (!xy) return null;
+      const axis = { x: xy[0], y: xy[1], z: cross(xy[0], xy[1]) };
+      const [u, v] = [axis[side.u], axis[side.v]];
+      return { origin: side.frame === ORIGIN ? [0, 0, 0] : at(this.frame(side.frame).origin), u, v, n: cross(u, v) };
     }
     if (kind === "curve") {
       const n = this.normalOf(ref);
@@ -2095,6 +2149,11 @@ export class Model {
     // origin's) is meant, as `fix`'s is.
     const wp = this.workPlane;
     if (frame == null && wp !== null && this.planeKind(wp) === "frame") return `${wp}.${axis}`;
+    // A frame's x–z or y–z plane has named axes too: its own x and y are the
+    // plane's two, and its z the frame's axis along the plane's normal — so on
+    // Front, `yaxis()` is upright (`origin.z`), as it is drawn.
+    const side = frame == null && wp !== null ? parseFramePlane(wp) : null;
+    if (side && this.isFrame(side.frame)) return `${side.frame}.${axis === "x" ? side.u : axis === "y" ? side.v : side.normal}`;
     return `${this.resolveFrame(frame)}.${axis}`;
   }
 
@@ -3138,7 +3197,7 @@ export class Model {
         const order = new Map(inPart.map((r, i) => [r.name, i]));
         const byNearness = (rs: RelationEntry[]) => [...rs].sort((a, b) => rank(a) - rank(b) || order.get(b.name)! - order.get(a.name)!);
         const conflicts = (rels: readonly RelationEntry[], background: readonly BlockHandle[]): boolean => {
-          if (++trials > SEARCH_TRIALS || performance.now() - t0 > SEARCH_MS) throw SEARCH_SPENT;
+          if (++trials > SEARCH_TRIALS || performance.now() - t0 > this.searchMs) throw SEARCH_SPENT;
           const t = this.trial(ctx, part, rels, background);
           return t.fails || t.fell.some((k) => !ctx.exempt.has(k));
         };

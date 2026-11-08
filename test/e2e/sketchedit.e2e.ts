@@ -270,7 +270,7 @@ test("iPhone 13: a trim by a tap on the piece, a bevel by a tap on the corner an
     const typed = () => p.page.$$eval("#log .in", (els) => els.map((e) => (e.textContent ?? "").replace(/^> /, "")));
     await p.type("trim");
     await tap([25, -30, 0]);
-    assert.equal(await p.page.$eval("#mode", (el) => (el as HTMLElement).dataset.next), "tap the piece to trim away", "a finger's word");
+    assert.equal(await p.page.$eval("#mode", (el) => (el as HTMLElement).dataset.next), "tap a piece to trim it, or drag across pieces", "a finger's word");
     assert.match((await typed()).at(-1)!, /^trim\("l\d+", \[25,-30,0\]\)$/);
     await shot(p, "12-phone-trimmed");
     const trimmed = await value(p, "save(model, false)");

@@ -848,6 +848,39 @@ cursor, the mouse's half of the lifted mark a finger already had. A tool
 written at the command line with none of these hooks is drawn as before, and
 the chip then says its name and nothing after it.
 
+## Sketch mode is a mode, not a feature
+
+The owner asked to "natively sketch on a plane without it being a special
+feature" (docs/plans/sketch-mode.md). Sketch mode is three things that were
+already true and one rule that makes them hold everywhere:
+
+- **the work plane is set** — a plane reference, `workplane(ref)`, document
+  state that names no new entity;
+- **the view is square to it** — `workplane` turns the camera, and the chip's
+  ⊥ turns it back after an orbit;
+- **everything drawn is held on it by `onPlane`, one per point** — and the
+  rule is checked over the tool registry (`test/sketchmode.test.ts`), so a
+  drawing tool added later that forgets the plane fails by name, and the
+  check reads every new point, never which kind of curve it belongs to.
+
+**A plane is a reference, never a feature.** Four kinds: a frame (its x–y
+plane), a frame's x–z or y–z (`"origin.xz"` is Front, `"origin.yz"` Right),
+a curve's own plane, three points. The ground's three cost nothing to
+choose. A face of a solid is three of its own points, so it follows the
+solid. The one face with no points to name — a flat face the kernel made
+that no loop bounds, a chamfer's — gets a plain frame made where it is
+(`kernelplane.ts`), which is a frame like any other and not in the feature
+list; it does not follow the solid, and that is written down.
+
+**Copies inherit the plane.** offset, mirror and the patterns pair each
+original point with its copy and hold the copy on every plane the original
+is held on that the operation maps onto itself. The pairing is all the rule
+knows, so a module's curve kind is copied onto the plane by the same code.
+
+**The relation is ordinary and quiet.** Each `onPlane` is a relation with a
+name, a `del` and a glyph, but the glyph is drawn only while its point is
+revealed: one ▱ per sketched point is the clutter the glyph work removed.
+
 ## Tools are not privileged
 
 A tool is a class with `onDown` / `onMove` / `onUp` / `onCancel` / `render`,
@@ -1500,6 +1533,77 @@ points that draw a curve through nothing; and the control points as hidden
 point entities — they would be in `ls()`, pickable and draggable, and a drag
 of one would fight the rows that hold it.
 
+## What a trim leaves: the elliptical arc and the spline of control points
+
+The owner: *"Also need trim for sketch entities"* (docs/plans/trim-everything.md).
+A trim is an operation: it re-points and makes entities. What it could not
+do before was say what a piece of an ellipse or a spline *is*, because
+neither piece is the kind it came from. So two kinds came in through the
+extension point, as the ellipse and the spline did, and `model.ts`,
+`loops.ts`, `faces.ts`, `picking.ts` and `step.ts` name neither (the grep
+in `test/modules.test.ts` covers them).
+
+**The elliptical arc (`earc`) is an ellipse with two ends.** It has the
+ellipse's centre, major end, minor variable and normal, and a `start` and an
+`end` it runs between, counter-clockwise about its normal as an arc runs. A
+trimmed ellipse becomes one **under its own name**, as a trimmed circle
+becomes an arc, so `major`, `minor`, `conc`, `tan` and `onellipse` read the
+same variables (`ellipseOf` answers for either conic). Its ends are held by
+two `onellipse` relations, an arc's `arcends` said twice. A trim at one end
+carries the old end's hold to the new end, rebuilt in place under its name.
+A piece out of the middle leaves a second elliptical arc about the same
+centre and major end, held `eqrad`, which now says equal semi-axes for two
+conics. Sharing the minor variable between the two was rejected, because
+`diagnose` would count it twice.
+
+**Its frame is the ellipse's, started late.** A conic's parametric form
+needs its two axes square to each other, so the frame cannot be turned to
+start at the arc's start the way a circular arc's is. `ArcFrame` gained `t0`,
+the start's eccentric anomaly, and every parameter `arcgeom.ts` takes or
+gives is still measured from the start: `arcPoint(f, 0)` is the start,
+`portionAngles` answers from it, and `sampleAngle` spaces the samples by the
+normal's turn between the two ends. So every caller that walks a frame from
+0 to its sweep (drawing, box select, faces, the projection's lift) walks an
+elliptical arc unchanged. The few that read an angle off a point
+(`sketchgeom.ts`, the extend tool's preview) subtract `t0`, and `loops.ts`
+lays the piece out from it. A conjugate-diameter frame that starts at the
+start was the rejected alternative. It is not orthonormal, and every
+consumer projects onto `u` and `v`.
+
+**The spline of control points (`bspline`) is the piece of a spline,
+exactly.** The piece of an interpolating spline between two parameters is no
+interpolant of any points of its own, but it is exactly a clamped cubic
+B-spline: insert each end as a knot until it is whole (Boehm, `subCurve`).
+So it is that: ordinary points for its control polygon, its first and last
+the two ends (the curve passes through them because it is clamped), and the
+knots it was cut with, as fixed numbers. It **owns nothing**, neither
+variables nor equations. Its control points are the user's, as a line's
+points are, which is Onshape's control-point spline, and the dashed polygon
+drawn through them says so. The control points as owned variables were the
+rejected alternative, because no hand could reach them. A trimmed spline
+becomes one under its own name. `onspline` and `tan` read either kind
+lazily, so a `tan` at the end the trim kept holds unchanged. An `onspline`
+is re-made, because its parameter was a fraction of the old domain. A closed
+spline needs two cuts and opens across its seam: the two halves are joined
+end to end, and its first point stays a control point at a triple knot, on
+the curve.
+
+**A replay runs on seeds, so the piece is journalled.** The knots of an
+interpolant come from where its points are, and a replay reaches the trim
+before the saved values put them back. So `trim`'s resolved cuts carry the
+pieces made, `[lo, hi, [{ knots, ctrl }]]`. The replay makes exactly those
+knots and control points, and the saved values then put the points where
+they were saved. Every other trim's entry is unchanged.
+
+**Power trim is typed, not a new operation.** A stroke's pieces are found
+against the drawing as it was at the press, each one red as it is crossed,
+and the release types `trim(…); trim(…)` as one entry, so one undo step and
+nothing new in the journal. Names are the hard part, because a middle trim
+gives the far part a new name. A trim keeps the curve's name on the part
+from its start, so one curve's pieces are typed from its far end back.
+Each name typed is then the curve the piece is on when its turn comes. A
+closed curve is ordered from the cut its first trim opens it at.
+
 ## Constraints are drawn, and a drawn constraint is a thing you can click
 
 Every relation wears a small mark beside the geometry it constrains. The tiers
@@ -1948,7 +2052,7 @@ until the next action went unrecorded.
 
 ## Why there is an end-to-end suite
 
-Fifty-four bugs so far were invisible to the unit tests and obvious within seconds
+Sixty-four bugs so far were invisible to the unit tests and obvious within seconds
 of running the app:
 
 1. a status readout that went stale, so a conflict could be introduced from
@@ -2188,21 +2292,68 @@ of running the app:
    until the next edit: the stale readout of bug 1, from the other end. Found
    by the same suite's reload. A restored drawing is solved first; a CONFLICT
    stays up, and one that solves still reads ready.
-51. The revolve tool never offered the origin's own axes: it asked only the
+51. A spline drawn on the sketch plane, dimmed as though it were off it:
+   the focus had a rule for lines and circles and none for a spline, and
+   every one of its points wore the ▱. Found by looking at the sketch-mode
+   walkthrough's first picture. The focus now takes any curve by the points
+   it is built of, and the ▱ is drawn only when asked.
+52. A click on a chamfer's face, sketched on the lid behind it: the lid is
+   still a loop of the feature's points spanning the corner the kernel cut
+   away, and its plane is nearer the eye, so the region under the pixel was
+   the lid seen through the chamfer. Every unit test passed, because the
+   unit suite has no kernel faces to be in front of anything.
+53. On an iPhone 13, a block's wall picked at the right of the screen turned
+   square about its far corner and ended half off the screen, under the
+   options pane, where the finger that was to draw on it could not reach.
+   `lookAt` turns about the middle of a face's points now, and brings it on
+   screen.
+54. Escape made the sketch's exit rule drop a plane the user had made with
+   `plane()`: the Escape that releases a feature tool after ✓ arrives with
+   nothing armed. Found by the sketch-on-face suite. Escape leaves a work
+   plane only.
+55. On face was never offered for a box: the constrain tool's solid picker
+   asked only the solid kernel for the face under the pixel, and a plain
+   extrude is drawn from its features, not by the kernel, so a press on its
+   lid found nothing and dropped the picks. The unit table fed the face's
+   point triple straight to `constraintsFor` and passed
+   (relations-complete.md). A region is a face now when its loop is a solid
+   feature's own.
+56. A greyed relation's reason, beside its label at an iPhone's width, showed
+   a dozen characters — and those the generic half of the message ("tan
+   holds a s…"). Found by looking at the picture. The reason leads with the
+   particular and sits on two lines under the label.
+57. A spline picked for Tangent drew nothing: `markPicked` knew lines,
+   points, circles and arcs, because nothing had ever picked a spline. Found
+   by looking at the iPhone picture — the arc green, the spline not. Any
+   curve is marked by its frame or its path now, and the e2e reads the green.
+58. A tool armed by its name typed at the command line (`trim`) left the
+   chip saying Select until the next pointer event. The bare-name shortcut
+   synced the toolbar but drew no frame, and the chip is synced in the draw
+   pass: the stale readout of bug 1 again, from the tray's side. Found by
+   trimeverything.e2e.ts asserting the chip before its first click, mouse and
+   finger (docs/plans/trim-everything.md).
+59. A trimmed spline's control points drawn as dots far off the curve, with
+   nothing to say they were its: every point was where the knots put it.
+   Found by looking at the trim picture. The control polygon is drawn now,
+   thin and dashed.
+60. Trim's glyph, as the modify button's face, read as a plus sign on the
+   iPhone, because its dotted arm draws solid at that size. Found by looking
+   at the toolbar picture. The piece past the wall is struck out instead.
+61. The revolve tool never offered the origin's own axes: it asked only the
    frames that are entities, and the origin is none, so a rectangle beside
    the origin's y axis lit no axis and a tap on the arm was refused as "not
    in its plane" — while `revolve(…, "origin.y")` typed worked. Found by
    walking the revolve on a phone (docs/plans/solid-tools-intuitive.md, W9).
-52. The Cut tool's "this cut doesn't reach any solid" said once after every
+62. The Cut tool's "this cut doesn't reach any solid" said once after every
    confirm: the render between the confirm's lines asked the model half-way
    — the cut already made, its material gone. Found reading the log of the
    first iPhone run; the question now waits while a confirm's lines go in.
-53. On a phone, a held finger on a solid's face opened the empty-canvas menu
+63. On a phone, a held finger on a solid's face opened the empty-canvas menu
    with the tool list first, filling the screen, and the face's own Sketch on
    this face, Edit e1 and Flip direction below it, out of sight. The test that
    asked for the items found them; only the picture showed where they were.
    On a face they come first now.
-54. The extrude's new end-condition row: its label cut to "e." beside
+64. The extrude's new end-condition row: its label cut to "e." beside
    "Through all" and "Symmetric" on an iPhone (#13 again, found by looking),
    and, the row being one more, no panel layout fitting an iPhone held
    sideways — found by the full suite's touch.e2e.ts, every unit test passing.

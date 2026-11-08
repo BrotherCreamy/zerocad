@@ -112,7 +112,8 @@ export function extrusion(model: Model, frame: string, depth: number, ...pairs: 
             return [0, 1, 2].map((k) => w[k].sub(u[k]));
           }, `extrusion(${b},${t}).n`);
         }
-      } else if (be?.kind === "ellipse" && te?.kind === "ellipse") {
+      } else if ((be?.kind === "ellipse" && te?.kind === "ellipse") || (be?.kind === "earc" && te?.kind === "earc")) {
+        // An elliptical arc's twin likewise (docs/plans/trim-everything.md): its ends are point pairs too.
         // An ellipse's centre and major end are held by their point pairs;
         // what is left is its minor, equal, and its normal, the base's — as a
         // twin circle's radius and normal are.
@@ -124,9 +125,10 @@ export function extrusion(model: Model, frame: string, depth: number, ...pairs: 
             return [0, 1, 2].map((k) => w[k].sub(u[k]));
           }, `extrusion(${b},${t}).n`);
         }
-      } else if (be?.kind === "spline" && te?.kind === "spline") {
+      } else if ((be?.kind === "spline" && te?.kind === "spline") || (be?.kind === "bspline" && te?.kind === "bspline")) {
         // A spline is its points (docs/plans/spline.md): their pairs hold the
         // twin, and its control points follow by its own equations. Nothing more.
+        // A spline of control points is nothing but its points (docs/plans/trim-everything.md).
       } else {
         throw new Error(`"${b}" and "${t}" are not a pair an extrusion can hold — two points, two circles or arcs, two ellipses or two splines`);
       }

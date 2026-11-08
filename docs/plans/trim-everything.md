@@ -1,6 +1,7 @@
 # Plan: trim every sketch curve, and power trim by dragging across
 
-**Status: queued** (2026-11-08). The owner: *"Also need trim for sketch
+**Status: built** (2026-11-08), on `claude/trim-everything`; see *As built*
+at the end for every deviation. The owner: *"Also need trim for sketch
 entities"*.
 
 ## What is true today
@@ -84,3 +85,102 @@ and `extend.ts`, and the trim and extend tests.
 - Tick the spline and ellipse TODO items this closes.
 - `help()`.
 - The spec marked built.
+
+
+## As built
+
+Built on `claude/trim-everything` (2026-11-08), from
+`claude/resume-tasks-o7q02e`. By file:
+
+- **New.** `test/trimeverything.test.ts` (each kind trimmed by each kind in
+  2D and on a tilted plane in 3D; each kind's own rules; power trim's
+  typing), `test/trimsolids.test.ts` (extrude, regenerate, STEP, the solid
+  kernel, wireframe), `test/e2e/trimeverything.e2e.ts` (four tests, mouse
+  and iPhone 13), pictures 360–369.
+- **The kinds.** `src/kinds/ellipse.ts`: `EllipticArcEntity`,
+  `EARC_STRUCTURE`, `addEllipticArc`, `ellipseToArc` / `arcToEllipse`,
+  `retargetEllipticArc`, `ellipseOf` answering for either conic, `isConic`.
+  `src/kinds/spline.ts`: `BSplineEntity`, `BSPLINE_STRUCTURE`, `addBSpline`,
+  `checkBSpline`, `controlCurve`, `pathCurveOf`. `src/modules/sketch.ts`
+  declares both (`EARC`'s frame, `BSPLINE`'s path) and the replay ops
+  `addEllipticArc` and `addBSpline`. `src/arcgeom.ts`: `ArcFrame.t0`,
+  `eccentricAnomaly`, `ellipticArcFrame`; `arcPoint`, `arcTangent`,
+  `portionAngles` and `sampleAngle` read the start.
+- **The crossings.** `src/sketchgeom.ts`: every declared curve is a carrier
+  (`isSketchCurve` reads the kind's `curve`); `conicsMeet`, `pathsMeet`,
+  `strokeCrossings`; paths are cut and measured (`fractionAlong`, `pointOn`,
+  `lengthOf`, `distanceToCurve` by `nearestParam`); `curveEnds` exported.
+- **The trim.** `src/sketchedit.ts`: `checkTrimmable` takes every curve
+  (extend: a line, an arc, an elliptical arc); `trimPiece` reads closed kinds
+  generically; `applyTrim` dispatches to `trimEllipticArc` and `trimPath`;
+  `planPieces` and the journalled `PiecePlan`; `planTidy` knows every kind's
+  hold and a spline's through-points and tangents.
+- **The relations.** `src/relations/spline.ts`: `isPathCurve`, `onspline`
+  and `tan` on either spline kind (`bsplineAt`); `src/relations/geometry.ts`:
+  `tan` and `eqrad` take an elliptical arc; `src/relations/extrusion.ts`,
+  `revolution.ts` hold both twins.
+- **Solids.** `src/operations.ts` (profile kinds, ends, twins, regeneration
+  matching, the refusals), `src/solids.ts` (the piece, `ellipticArcMember`,
+  loose curves), `src/step.ts` (a trimmed curve on a declared basis),
+  `src/loops.ts` (a declared open frame kind is an arc edge; its piece from
+  `t0`).
+- **The app.** `src/tools/trim.ts` (rewritten: power trim, `strokeOrder`, a
+  click on release), `src/tools/editdraw.ts` (`curveUnder` takes a kind
+  predicate), `src/tools/extend.ts`, `src/main.ts` (an elliptical arc drawn
+  open; a spline piece's control polygon; the chip after a typed tool name),
+  `src/boxselect.ts`, `src/glyphs.ts`, `src/replenv.ts` (`ls()`),
+  `src/dimensioning.ts` (the kind list), `src/menu.ts` (construction),
+  `src/persist.ts` (an elliptical arc's minor and normal saved),
+  `src/tools/gestures.ts` (the table).
+
+Deviations and decisions, each in TODO.md's register and vetoable:
+
+- **The spec said `intersect.ts`**, but that file is screen space, and it
+  already crosses polylines, which is how an ellipse and a spline reach it.
+  The world-space crossings trim reads are `sketchgeom.ts`'s, and that is
+  where every pair was added.
+- **Kind names**: `earc` (an elliptical arc, `ea1`) and `bspline` (a spline
+  of control points, `bs1`). A trimmed curve keeps its own name.
+- **No format bump**: a newer file in an older build is refused at the trim
+  step by name, never misread (persist.ts's precedent for added ops).
+- **Trim to closest and extend by shift**: not built, no need found. A click
+  already takes the piece between the nearest cuts, and extend is its own
+  tool on the same button.
+- **Extend and offset of a spline: not built.** The representation does not
+  make them small: extending needs an unclamp and a reach along the end
+  span, offsetting needs a fit to a tolerance. TODO.md says how.
+- **Discoverability**: trim is the modify group's first member, so its face
+  until another is armed; the flyout already showed the member armed last.
+  The tray at the iPhone 13's width is unchanged: thirteen buttons in one
+  column (picture 369). The glyph changed (below).
+
+Found, and fixed:
+
+- **By the unit suite**: an S-shaped spline's control polygon has no signed
+  area, so `pathNormal` read it as straight and a line across one cut
+  nothing. It takes the largest triangle now. The tidy asked `referentsOf`
+  of a relation (it takes one argument), so a through-point a dimension used
+  was deleted as unused.
+- **By the browser** (ARCHITECTURE.md 58–60): a tool armed by its typed name
+  left the chip saying Select; a spline piece's control points read as stray
+  dots (the polygon is drawn now); trim's glyph read as a plus sign on the
+  iPhone (the piece is struck out now).
+
+**Verification** is in CHANGELOG.md's entry: the counts before and after,
+and the full `npm run test:all` at the end.
+
+Pictures, each looked at: 360 the ellipse's piece red under the cursor; 361
+the ellipse trimmed to an elliptical arc, drawn open; 362 the spline's end
+inside a circle red; 363 the spline trimmed, its control points and dashed
+polygon; 364 a mouse power trim mid-stroke, two pieces red, the stroke
+dashed; 365 the three pieces gone, one entry; 366 the ellipse and spline
+trimmed by taps on an iPhone 13; 367 a finger power trim mid-stroke; 368
+three pieces gone, the view not panned; 369 the iPhone's tray, modify's face
+the new trim glyph.
+
+Limitations left in place, deliberately (TODO.md): extend and offset of a
+spline; a revolve of an elliptical arc; part of either piece bounding a
+region; a trimmed spline's through-points ride the piece and do not drive
+it; power trim reads its pieces at the press; an elliptical arc's major end
+drawn even off the arc. *Touch was Chromium's iPhone 13 emulation, not a
+phone.*

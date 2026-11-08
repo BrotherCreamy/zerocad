@@ -156,6 +156,178 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### Trim everything: what a piece is, and why power trim is only typing
+
+The owner: *"Also need trim for sketch entities"*. Trim already existed for
+lines, arcs and circles, and it was on the modify button behind the fillet's
+face. So the request read two ways: trim the curves it refused, and make trim
+easy to find. Both were done.
+
+**What is a piece of an ellipse?** It is not an ellipse, so it needed a kind.
+I considered letting the ellipse carry optional ends, as "an ellipse with ends
+is an arc of one". It would have cost less code. But every predicate that
+asks "closed?" would then ask a field, and the spec asked for a kind. So the
+elliptical arc is its own kind, built of the same parts and read by the same
+relations (`ellipseOf` answers for both). The hard part was the frame. Every
+consumer of `ArcFrame` measures an arc from its start with `u` pointing at
+it, but a conic's form needs `u` and `v` to be its own square axes. So the
+frame keeps the axes and gains a start, `t0`, and the arithmetic in
+`arcgeom.ts` absorbs it: a caller walking 0 to sweep never knows. I counted
+the places that compute an angle from a point instead (sketchgeom, the extend
+preview, loops), and changed those. The rejected alternative was a frame of
+conjugate diameters, which does start at the start. It is not orthonormal,
+and every one of those consumers projects with a dot product.
+
+The second piece out of the middle needed holding to the first. I first
+reached for sharing the minor variable, which would make the two pieces
+literally one ellipse. I rejected it on reading `diagnose`: each entity's
+owned variables are listed, a shared one would count twice, and the free
+count would lie. `eqrad` for two conics, meaning equal semi-axes, costs one
+more relation and tells the truth.
+
+**What is a piece of a spline?** The spline TODO had named it already: the
+piece of an interpolant is exactly a clamped B-spline, by knot insertion.
+The real decision was who owns the control points. As the entity's own
+variables they would be invisible and undraggable, and a piece the hand can
+reach only by its two ends is not much of a curve. As ordinary points they
+are draggable and dimensionable, with nothing to fight a drag, since nothing
+holds them. That is Onshape's control-point spline. The spline package had
+rejected control points as points, but for the opposite reason: there, rows
+held them. Looking at the picture showed the cost. The points float off the
+curve with nothing saying whose they are, so the control polygon is drawn.
+
+A replay runs on seeds, and an interpolant's knots come from where its points
+are, so a replay would cut a differently-knotted curve. The trim journals the
+pieces it made, knots and control points, and the saved values put the
+points back afterwards. The matrix test, which saves, opens and compares
+bytes for every pair, is what holds that.
+
+**Power trim is only typing.** I wanted no new operation for it: one typed
+entry is already one undo step, and the journal already knows `trim`. The
+problem was names. A middle trim renames the far part, so a later piece of
+the same curve would be typed under a name that no longer covers it. I
+considered simulating the stroke on a cloned model to read the names off. It
+would have meant the tools layer importing persist, and an open per stroke on
+an iPhone. The order is simpler. A trim keeps the curve's name on the part
+from its start, so typing one curve's pieces from its far end back keeps
+every name right. A closed curve is ordered from the cut its first trim
+opens it at. The unit test that crosses two pieces of one line holds it.
+
+**A press that becomes a stroke means a click trims on release.** The old
+tool trimmed on the press. That had to move, and the tool tests that sent
+only a press now send the release a real click sends.
+
+**What looking found.** The e2e's first finger run said Select under the
+armed trim. The bare-name shortcut never drew a frame, and the chip is synced
+in the draw pass. That bug predates this package, and only a test asserting
+the chip before any click could see it. On the phone, trim's glyph read as a
+plus sign as the modify button's face, so the piece is struck out now.
+
+### Every standard relation: a table first, then rules over predicates
+
+The owner: *"Also need to figure out a way to do all the standard
+relations."* The spec asked for the table to be written before the code, and
+that turned out to be the useful order: once every pair of pickable kinds was
+written against SolidWorks' and Onshape's lists, most cells were relations
+that already existed and simply were not offered (`onellipse`, `onspline`,
+`fix`, `tan` with an ellipse, `mid` of two points, `sym` about an axis). The
+new mathematics was small — `corad`, and `sym` for lines, circles and arcs —
+and the work was in the offering.
+
+**Why predicates, not a switch.** Two other workers were adding kinds at the
+same time (an elliptical arc, a control-point spline). A table keyed on kind
+names would have needed a row for each, on merge, from someone who had not
+written it. So the rules read what a kind declares: a point is On any curve
+whose kind says which relation holds a point on it (`heldBy`, looked up in
+its module), Fix takes any entity's `refs`, Concentric anything with a
+centre. A kind a module adds gets those cells with no line here. What it does
+not get is `intersection` and `pierce`, which live in geometry.ts and cannot
+reach a module; that is written down.
+
+**Star, not chain, and the cost of it.** Many at once relates each pick to
+the first. Measured with the conflict search on eight lines: a star's
+conflicts name at most four relations wherever the two disagreeing
+dimensions are; a chain's name every eq on the path between them, up to nine.
+A chain wins one case (the two offenders adjacent in it, 3 against 4). The
+price showed in the first picture: five lines Equal puts four `=` marks on
+the first line. Rejected: a chain (worse conflicts), and a new n-ary
+`equal(...)` relation (one glyph, but one deletion takes all of them, and
+the journal would carry a second spelling of `eq`).
+
+**Two decisions the rank analysis made.** `sym` of two lines was first going
+to pair ends, nearest to nearest, and journal the pairing; saying the
+*segment* is mirrored — middles, direction, length — needs no pairing at all,
+and four rows are exactly a segment's freedoms. `sym` of two circles in 3D was
+written with the true mirror of a normal, 2(n·û)û − n; the diagnosis counted
+it taking six freedoms on a tilted plane where coradial takes five, the extra
+one coming through the mirror line's own direction. Parallel normals are
+what the mirror gives for any line in the circles' plane, which a sketch's
+always is, and take two. The 3D tests hold every point on the tilted plane,
+as the tools do — the first version did not, and a solve that moved a free
+point off the plane *added* a freedom, which read as a relation taking none.
+
+**What the browser found.** Three bugs the unit table passed (55–57 in
+ARCHITECTURE.md). The face picker asked only the solid kernel, and a plain
+box is not the kernel's; a greyed reason was unreadable at a phone's width;
+a picked spline drew nothing. The last two were found by looking at the
+iPhone pictures, which is the CLAUDE.md rule paying for itself again. One
+thing the pictures showed that is *not* a bug: a Fix on a rectangle's corner
+is quiet with the corner (the owner's quiet rule), so its padlock shows on
+hover or selection. Making Fix the one mark that never goes quiet is in the
+register as an option, not done — it would be the first exception to a rule
+the owner set.
+
+**Left.** Convert Entities is an operation plus a projection relation that
+does not exist; Curvature and Equal curve length have no relation. A face
+bounded only by a circle comes back from sketch-on-face's plane reference as
+the circle, so it is picked as the rim.
+
+### Sketch mode: measure first, because most of it was already there
+
+The owner did not know sketch mode existed, and the spec said as much: the
+work plane, `workplane(…)`, `onPlane` from place.ts and activeplane.ts were
+all built. So the first job was a table, not a feature. Every drawing tool,
+every method, on nine kinds of plane, counting `onPlane` against points
+made. It came back clean: one per point, everywhere a plane could be named.
+The table stayed as the test, keyed on the tool registry so a tool added
+later has to say whether it draws.
+
+**Front and Right as references, not frames.** A frame made for Front would
+have been three points and a frame entity in every document that sketched
+on Front, and the owner asked for "not a special feature". A plane
+reference costs a string. `"origin.xz"` has one dot, like an axis
+reference, so the parsers that ask "is this an axis?" had to answer no
+rather than throw. Rejected: built-in names `front`/`right` like `origin`,
+which would have needed the old-file rename `origin` needed, for two more
+reserved words.
+
+**Copies: explicit onPlane, though mirror and pattern imply it.** A
+mirrored copy is in the plane by `sym`. Adding `onPlane` is a redundant
+equation, and the solver does not mind. The focus, the hover and `del` read
+relations, not implications, and without it a mirrored copy was drawn
+dimmed on the plane it lies on. For offset it was not redundant: `par` and
+`dist` alone let the copy slide along the normal. The rule has to decide
+whether an operation keeps a plane, and it decides from what is journalled
+where it can (a pattern's step and plane) and from positions only for a
+mirror line.
+
+**A kernel face's plane is a frame, and does not follow.** Mapping a chamfer
+to model points is impossible: it has none. A frame made at it is the
+honest answer, and it is written down that it stays where the face was.
+Rejected: a new plane-reference kind of plain numbers, which would follow
+nothing either and would be a fourth syntax for one corner case.
+
+**Escape leaves a work plane, not a default frame.** The spec asked for
+Escape with nothing armed. The sketch-on-face suite showed why that needs
+a limit: the Escape that releases a feature tool after ✓ arrives with
+nothing armed and dropped a plane made with `plane()`. The work plane is
+the mode; a default frame is a choice for the document.
+
+**What the browser found** (51–54): the dimmed spline, a chamfer click
+going to the lid behind it, a phone's wall turned half off the screen, and
+the Escape above. None was visible to the unit suite: it has no kernel
+faces, no screen edge and no Escape key.
+
 ### Conflict detection: what a solution is, and why a threshold was not enough
 
 The owner found that a `par` could be added across a rectangle's `perp`s and

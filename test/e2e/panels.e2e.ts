@@ -144,10 +144,12 @@ test("the toolbar has a button per registered tool: its icon, with a tooltip and
   // (docs/plans/sketch-edit.md), and the surface behind the extrude's, the
   // sweep group's (docs/plans/surfaces.md), the cut there too (solid-tools-
   // intuitive.md), and the spline behind the
-  // ellipse's, the curves group's (docs/plans/spline.md).
+  // ellipse's, the curves group's (docs/plans/spline.md). Trim heads the
+  // modify group since trim everything, so the fillet is behind its face
+  // (docs/plans/trim-everything.md).
   const tools = ((await app.repl("tools()")).value as string[]).map((t) => t.split(" ")[0])
     .filter((t) => !["circle3", "arc3", "polygon", "slot", "region", "constrain", "round", "chamfer",
-      "bevel", "trim", "extend", "offset", "mirror", "pattern", "cut", "surface", "spline"].includes(t));
+      "bevel", "fillet", "extend", "offset", "mirror", "pattern", "cut", "surface", "spline"].includes(t));
   const buttons = await app.page.$$eval("#toolbar button", (els) =>
     els.map((el) => ({
       tool: (el as HTMLElement).dataset.tool,
@@ -570,7 +572,8 @@ test("storage that throws costs the arrangement and nothing else", async () => {
 
 // One circle and one arc (docs/plans/one-circle-one-arc.md): circle3 and arc3
 // are typed names now, with no buttons of their own.
-const CURVES = ["circle", "arc", "fillet"];
+// The modify button's face is trim since trim everything (the fillet behind it).
+const CURVES = ["circle", "arc", "trim"];
 
 /** Each button's tool, whether it is disabled, and its hover text. */
 const buttonStates = () => app.page.$$eval("#toolbar button", (els) =>

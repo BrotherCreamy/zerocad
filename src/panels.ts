@@ -3974,6 +3974,9 @@ export interface DialogState {
   choice?: { option: string; resolved: string | null; offer: string | null } | null;
 }
 
+/** How many rows' height a greyed command row takes: its label, and two lines of why. */
+export const OFF_ROWS = 3;
+
 /**
  * A command a tool offers on its panel, one row each: the label, and the line
  * the row types when pressed. This file's own shape, as `DialogState` is — it
@@ -3982,10 +3985,14 @@ export interface DialogState {
 export interface PanelCommand {
   label: string;
   command: string;
+  /** Greyed, with why (`ToolCommand.off`): shown, and a press says why rather than typing. */
+  off?: string;
 }
 
 /** What the options panel needs of its host. */
 export interface OptionsHost {
+  /** Says a line in the log, as guidance — what a greyed command row says when pressed. */
+  note?(text: string): void;
   /**
    * The armed tool's registered name and its declared options — and, for a
    * tool that makes a feature, the state of its ✓ — or null when none is armed
@@ -4096,13 +4103,16 @@ export class OptionsPanel {
     const commands = a?.commands ?? [];
     const key = a
       ? [a.tool, a.dialog ? "dialog" : "", ...a.rows.map((r) => `${r.name}\t${typeof r.value}\t${r.label}\t${r.unit}\t${r.flip ? "flip" : ""}\t${r.beside ?? ""}\t${r.choices?.flat().join("\t") ?? ""}`),
-        ...commands.map((c) => `cmd\t${c.label}\t${c.command}`)].join("\n")
+        ...commands.map((c) => `cmd\t${c.label}\t${c.command}\t${c.off ?? ""}`)].join("\n")
       : "";
     const shaped = key !== this.key;
     if (shaped) {
       this.key = key;
       this.tool = a?.tool ?? "";
-      this.count = a ? a.rows.filter((r) => !r.beside).length + (a.dialog ? 1 : 0) + commands.length : null;
+      // A greyed command row is three rows tall: its label, and its reason on
+      // two lines under it — where a phone, too narrow for it beside the label,
+      // can read it (index.html's `.ocmd.off`).
+      this.count = a ? a.rows.filter((r) => !r.beside).length + (a.dialog ? 1 : 0) + commands.reduce((n, c) => n + (c.off ? OFF_ROWS : 1), 0) : null;
       this.body.textContent = "";
       this.ok = null;
       if (this.strip) this.strip.textContent = a ? a.tool : "";
@@ -4160,18 +4170,26 @@ export class OptionsPanel {
   private commandRow(c: PanelCommand): HTMLElement {
     const b = document.createElement("button");
     b.type = "button";
-    b.className = "orow ocmd";
+    b.className = c.off ? "orow ocmd off" : "orow ocmd";
     b.dataset.command = c.command;
     const label = document.createElement("span");
     label.className = "olabel";
     label.textContent = c.label;
     const cmd = document.createElement("span");
     cmd.className = "ocmdtext";
-    cmd.textContent = c.command;
+    // A greyed row shows why where its command would be, as a disabled
+    // tooltip does (`Tip.off`) — and says it whole in the log when pressed,
+    // which is where a phone, with no hover, can read all of it.
+    cmd.textContent = c.off ?? c.command;
     b.append(label, cmd);
-    b.title = `${c.label} — ${c.command}`;
+    b.title = c.off ? `${c.label} — ${c.off}` : `${c.label} — ${c.command}`;
+    if (c.off) b.setAttribute("aria-disabled", "true");
     b.addEventListener("mousedown", (e) => e.preventDefault());
     b.addEventListener("click", () => {
+      if (c.off) {
+        this.host.note?.(`${c.label}: ${c.off}`);
+        return;
+      }
       void (this.host.command ? this.host.command(c.command) : this.host.run(c.command));
     });
     return b;
