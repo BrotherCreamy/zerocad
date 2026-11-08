@@ -26,6 +26,58 @@ otherwise.
 
 ## Decisions made so far — veto here if any are wrong
 
+- **Sketch mode is the work plane, and choosing a plane makes nothing** (the
+  owner, 2026-11-08: *"I need a way to natively sketch on a plane without it
+  being a special feature. It should just add 'on plane' relations to each
+  entity as it gets sketched. Also when I select this mode it should go
+  normal to the plane/face"*; docs/plans/sketch-mode.md). Each vetoable:
+  - **The named planes are references, not frames**: Top is `"origin"`,
+    Front `"origin.xz"`, Right `"origin.yz"` — and every frame's `"f1.xz"`,
+    `"f1.yz"`. Front faces −y (+x right, +z up), Right +x (+y right, +z up).
+    On them `xaxis()`/`yaxis()` are the plane's own two axes.
+  - **They are offered twice**: one-tap buttons in the sketch tool's options
+    (never remembered, so the next sketch starts by picking), and faint
+    patches round the origin while the tool is armed, at least 90 px each
+    way and 15 % past the drawing's farthest point. A patch seen more nearly
+    edge-on than cos 0.2 is not offered, so a fresh document's top view
+    shows only Top. A face under the pixel wins over a patch, and a body
+    under it hides the patches behind.
+  - **A kernel-made flat face no loop bounds** (a chamfer's) is held by a
+    plain frame made at the face's middle, +x along its longest edge, typed
+    as `workplane(frame(pt(…), pt(…), pt(…)))` — one line, one undo step,
+    no feature. It does **not** follow the solid afterwards: the face has no
+    model points. A flat kernel face that a feature's loop does bound is
+    held by the loop's points, as before, and follows.
+  - **Where a loop of a body's skeleton is in front of a kernel face in
+    another plane** (the lid seen through a chamfer or a round), the kernel's
+    face decides: a flat one is sketched on, a round one refused.
+  - **Copies are held to the plane**: offset, mirror and the patterns add one
+    `onPlane` per copied point, for every plane the original is held on that
+    the operation maps onto itself (offset always; a pattern's step along the
+    plane; a turn about its normal; a mirror line in the plane or square to
+    it). For mirror and pattern this restates what `sym`/`translated`/
+    `rotated` already imply; it is there so the focus, the hover and `del`
+    read it.
+  - **No second relation for a curve's plane** beyond the `par` on a circle's,
+    arc's or ellipse's normal the curve tools already add (a centre alone
+    does not keep a circle in the plane). A spline's or a polygon's plane
+    follows from its points.
+  - **The ▱ is quiet**: an `onPlane` mark is drawn only while its point is
+    revealed (hovered, selected, just placed by the gesture in progress).
+  - **Leaving**: the chip's Done, or **Escape with nothing armed and nothing
+    selected** — for a work plane only; a default frame set by `plane()`
+    stays until Done, because the Escape that releases a finished feature
+    tool arrives with nothing armed. **The view stays where it is** on
+    leaving, as Done always left it.
+  - **Normal To is ⊥ in the chip**, beside Done, typing `lookAt(ref)`; the
+    plane's menu keeps Look at too. **Snapped, not animated**: nothing in the
+    house animates the camera.
+  - **lookAt turns about the middle of a face's three points**, not its first
+    corner, and pans that to the canvas's middle if it would land off it.
+  - **The chip keeps "on e1's top"** rather than the spec's "Sketch on e1's
+    top": seven more characters on the phone's one-line chip, and the ⊥ and
+    Done beside it say it is a mode.
+
 - **A solve that collapses geometry is a CONFLICT** (the owner, 2026-11-07:
   *"I'm able to add a parallel relation to a set of perpendicular relation
   lines. This is a bug"*; docs/plans/conflict-detection.md). Four choices in
@@ -1871,9 +1923,27 @@ are flagged as such.
   - [ ] [`trim-everything.md`](docs/plans/trim-everything.md): ellipse and
         spline trim (an elliptical arc kind, a control-point spline), power
         trim by dragging across.
-  - [ ] [`sketch-mode.md`](docs/plans/sketch-mode.md): sketch on any plane
+  - [x] [`sketch-mode.md`](docs/plans/sketch-mode.md): sketch on any plane
         or face (Top/Front/Right, kernel faces), every tool holding every
-        point `onPlane`, normal-to on entering, an explicit exit.
+        point `onPlane`, normal-to on entering, an explicit exit. **Built**
+        (2026-11-08), branch `claude/sketch-mode`: Front and Right named,
+        kernel faces, copies held, Normal To and Escape, the ▱ quiet; the
+        walkthrough found every tool already held every point.
+        Found while building, left for later:
+        - The sketch tool's named-plane patches are drawn over a solid, not
+          behind it (the tool's layer is the 2D canvas, over the faces).
+        - A kernel-only face's frame is a frame like any other: drawn, named
+          `f1`, its points draggable. The chip says "on f1", not "on e3's
+          face".
+        - `lookAt` answers "looking at origin.xz", not "looking at Front".
+        - The hidden view's golden picture was re-recorded: the ▱ marks it
+          held are quiet now. Differs only there, looked at.
+        - Seen at load 35–40, alone and on the base commit too: a phone's
+          first tap after arming the sketch tool is sometimes lost
+          (modefeedback.e2e.ts; 2 of 8 on the base commit, 1 of 8 on this
+          branch, in a probe repeating the test's tap), and overlaylock.e2e.ts's
+          see-through log line fades before it is sampled (1 failure on the
+          base, 6 and 2 on this branch, the same assertion).
 
 - [x] **Conflicts the solver satisfied by collapsing geometry** (the owner,
   2026-11-07: *"I'm able to add a parallel relation to a set of perpendicular

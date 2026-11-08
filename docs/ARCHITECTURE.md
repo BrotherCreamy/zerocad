@@ -848,6 +848,39 @@ cursor, the mouse's half of the lifted mark a finger already had. A tool
 written at the command line with none of these hooks is drawn as before, and
 the chip then says its name and nothing after it.
 
+## Sketch mode is a mode, not a feature
+
+The owner asked to "natively sketch on a plane without it being a special
+feature" (docs/plans/sketch-mode.md). Sketch mode is three things that were
+already true and one rule that makes them hold everywhere:
+
+- **the work plane is set** — a plane reference, `workplane(ref)`, document
+  state that names no new entity;
+- **the view is square to it** — `workplane` turns the camera, and the chip's
+  ⊥ turns it back after an orbit;
+- **everything drawn is held on it by `onPlane`, one per point** — and the
+  rule is checked over the tool registry (`test/sketchmode.test.ts`), so a
+  drawing tool added later that forgets the plane fails by name, and the
+  check reads every new point, never which kind of curve it belongs to.
+
+**A plane is a reference, never a feature.** Four kinds: a frame (its x–y
+plane), a frame's x–z or y–z (`"origin.xz"` is Front, `"origin.yz"` Right),
+a curve's own plane, three points. The ground's three cost nothing to
+choose. A face of a solid is three of its own points, so it follows the
+solid. The one face with no points to name — a flat face the kernel made
+that no loop bounds, a chamfer's — gets a plain frame made where it is
+(`kernelplane.ts`), which is a frame like any other and not in the feature
+list; it does not follow the solid, and that is written down.
+
+**Copies inherit the plane.** offset, mirror and the patterns pair each
+original point with its copy and hold the copy on every plane the original
+is held on that the operation maps onto itself. The pairing is all the rule
+knows, so a module's curve kind is copied onto the plane by the same code.
+
+**The relation is ordinary and quiet.** Each `onPlane` is a relation with a
+name, a `del` and a glyph, but the glyph is drawn only while its point is
+revealed: one ▱ per sketched point is the clutter the glyph work removed.
+
 ## Tools are not privileged
 
 A tool is a class with `onDown` / `onMove` / `onUp` / `onCancel` / `render`,
@@ -1930,7 +1963,7 @@ until the next action went unrecorded.
 
 ## Why there is an end-to-end suite
 
-Fifty bugs so far were invisible to the unit tests and obvious within seconds
+Fifty-four bugs so far were invisible to the unit tests and obvious within seconds
 of running the app:
 
 1. a status readout that went stale, so a conflict could be introduced from
@@ -2170,6 +2203,25 @@ of running the app:
    until the next edit: the stale readout of bug 1, from the other end. Found
    by the same suite's reload. A restored drawing is solved first; a CONFLICT
    stays up, and one that solves still reads ready.
+51. A spline drawn on the sketch plane, dimmed as though it were off it:
+   the focus had a rule for lines and circles and none for a spline, and
+   every one of its points wore the ▱. Found by looking at the sketch-mode
+   walkthrough's first picture. The focus now takes any curve by the points
+   it is built of, and the ▱ is drawn only when asked.
+52. A click on a chamfer's face, sketched on the lid behind it: the lid is
+   still a loop of the feature's points spanning the corner the kernel cut
+   away, and its plane is nearer the eye, so the region under the pixel was
+   the lid seen through the chamfer. Every unit test passed, because the
+   unit suite has no kernel faces to be in front of anything.
+53. On an iPhone 13, a block's wall picked at the right of the screen turned
+   square about its far corner and ended half off the screen, under the
+   options pane, where the finger that was to draw on it could not reach.
+   `lookAt` turns about the middle of a face's points now, and brings it on
+   screen.
+54. Escape made the sketch's exit rule drop a plane the user had made with
+   `plane()`: the Escape that releases a feature tool after ✓ arrives with
+   nothing armed. Found by the sketch-on-face suite. Escape leaves a work
+   plane only.
 
 None of these are mathematics. They are all *assembly*. Hence `npm run
 test:e2e`, and hence the expectation that anything touching the app is checked

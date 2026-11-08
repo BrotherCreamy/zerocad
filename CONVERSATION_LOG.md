@@ -106,6 +106,52 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### Sketch mode: measure first, because most of it was already there
+
+The owner did not know sketch mode existed, and the spec said as much: the
+work plane, `workplane(…)`, `onPlane` from place.ts and activeplane.ts were
+all built. So the first job was a table, not a feature. Every drawing tool,
+every method, on nine kinds of plane, counting `onPlane` against points
+made. It came back clean: one per point, everywhere a plane could be named.
+The table stayed as the test, keyed on the tool registry so a tool added
+later has to say whether it draws.
+
+**Front and Right as references, not frames.** A frame made for Front would
+have been three points and a frame entity in every document that sketched
+on Front, and the owner asked for "not a special feature". A plane
+reference costs a string. `"origin.xz"` has one dot, like an axis
+reference, so the parsers that ask "is this an axis?" had to answer no
+rather than throw. Rejected: built-in names `front`/`right` like `origin`,
+which would have needed the old-file rename `origin` needed, for two more
+reserved words.
+
+**Copies: explicit onPlane, though mirror and pattern imply it.** A
+mirrored copy is in the plane by `sym`. Adding `onPlane` is a redundant
+equation, and the solver does not mind. The focus, the hover and `del` read
+relations, not implications, and without it a mirrored copy was drawn
+dimmed on the plane it lies on. For offset it was not redundant: `par` and
+`dist` alone let the copy slide along the normal. The rule has to decide
+whether an operation keeps a plane, and it decides from what is journalled
+where it can (a pattern's step and plane) and from positions only for a
+mirror line.
+
+**A kernel face's plane is a frame, and does not follow.** Mapping a chamfer
+to model points is impossible: it has none. A frame made at it is the
+honest answer, and it is written down that it stays where the face was.
+Rejected: a new plane-reference kind of plain numbers, which would follow
+nothing either and would be a fourth syntax for one corner case.
+
+**Escape leaves a work plane, not a default frame.** The spec asked for
+Escape with nothing armed. The sketch-on-face suite showed why that needs
+a limit: the Escape that releases a feature tool after ✓ arrives with
+nothing armed and dropped a plane made with `plane()`. The work plane is
+the mode; a default frame is a choice for the document.
+
+**What the browser found** (51–54): the dimmed spline, a chamfer click
+going to the lid behind it, a phone's wall turned half off the screen, and
+the Escape above. None was visible to the unit suite: it has no kernel
+faces, no screen edge and no Escape key.
+
 ### Conflict detection: what a solution is, and why a threshold was not enough
 
 The owner found that a `par` could be added across a rectangle's `perp`s and
