@@ -301,6 +301,13 @@ export const FORMAT = "neocad-model";
  * (`test/explicitregions.test.ts` opens one written by the build before).
  */
 export const VERSION = 18;
+// **Nor did trim everything** (docs/plans/trim-everything.md): two new ops,
+// `addEllipticArc` and `addBSpline` (the kinds a trim leaves, made inside the
+// trim's own entry and journalled as themselves only when typed), and `trim`'s
+// resolved part may carry a third element, the spline pieces it made. An older
+// build refuses such a trim at its step by name — it refused an ellipse's or a
+// spline's trim outright — and misreads nothing; an elliptical arc's minor and
+// normal ride the maps an ellipse's always did.
 // 18 (docs/plans/spline.md): **the spline**. A new entity kind,
 // `addSpline(points, closed, name)` — the entity and the interpolation it
 // owns, replayed together from that one entry — the relation `onSpline`, and

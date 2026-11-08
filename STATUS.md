@@ -16,6 +16,32 @@ etc).
   on every push to the working branch. Called NeoCAD until 0.1.0; the
   internal code name stays in identifiers, the file format tag and storage
   keys (see TODO.md's register).
+- **Trim everything, and power trim** (docs/plans/trim-everything.md,
+  built). The owner: *"Also need trim for sketch entities"*. Every sketch
+  curve trims against every other (line, arc, circle, ellipse, elliptical
+  arc, spline, a spline's piece; construction too; 2D and any plane in 3D),
+  `sketchgeom.ts` finding every pair's crossings. **The elliptical arc**
+  (`earc`, `src/kinds/ellipse.ts`): what a trimmed ellipse becomes under its
+  own name — the ellipse's centre, major end, minor and normal, two ends held
+  `onellipse`; a middle piece's second is `ea1`, held `eqrad`; laid out by the
+  ellipse's frame from its start's eccentric anomaly (`ArcFrame.t0`); drawn,
+  picked, boxed, looped, extruded, regenerated, written to STEP (an
+  elliptical edge between two vertices) and handed to the solid kernel as its
+  exact rational NURBS; extended round its ellipse. **The spline of control
+  points** (`bspline`, `src/kinds/spline.ts`): what a trimmed spline becomes
+  under its own name — exactly the piece (knots inserted), its control points
+  ordinary points (drawn with their dashed polygon), its knots fixed, owning
+  nothing; `onspline` and `tan` take it; it extrudes, regenerates, goes to
+  STEP and the kernel as its B-spline. **Power trim**: the trim tool pressed
+  and dragged — the stroke drawn, each piece red as it is crossed, one entry
+  of one `trim` per piece on release, one undo step; by finger the drag is
+  the tool's, never a pan. A click trims on its release. **Trim heads the
+  modify button** (its glyph strikes the piece out). Unit:
+  `test/trimeverything.test.ts`, `test/trimsolids.test.ts`; browser:
+  `test/e2e/trimeverything.e2e.ts` (mouse and iPhone 13), pictures 360–369.
+  *Known and deliberate*: extend and offset of a spline, a revolve of an
+  elliptical arc, part of either piece bounding a region — refused by name
+  (TODO.md). *Not tried on a phone.*
 - **The spline** (docs/plans/spline.md, built). The owner: *"give me better
   sketch tools, relations, trim, slot... all the usual"*. A cubic B-spline
   **through** points you click and drag (Onshape's, not a control polygon),
@@ -34,9 +60,10 @@ etc).
   it crosses; mirrors and patterns; is a whole profile edge, closed loop or
   hole for extrude and revolve (exact B-rep: surfaces of linear extrusion
   and of revolution over the spline's own `B_SPLINE_CURVE_WITH_KNOTS`; the
-  solid kernel takes it as its exact NURBS); sweeps surfaces. Trim, extend
-  and offset of a spline itself, and part of one in a region, are refused by
-  name (the spec's table). STEP read valid by OpenCascade 8.0.1, volumes the
+  solid kernel takes it as its exact NURBS); sweeps surfaces. Trim of one is
+  a spline of control points (trim everything, above); extend and offset of
+  a spline itself, and part of one in a region, are refused by name (the
+  spec's table). STEP read valid by OpenCascade 8.0.1, volumes the
   closed forms to 3·10⁻¹¹ (`test/fixtures/step-spline/`). Format 18. Unit:
   `test/spline.test.ts` (12), `splinesolids` (9), `splineedit` (8),
   `stepspline` (6); browser: `test/e2e/spline.e2e.ts` (7, mouse and iPhone
@@ -107,8 +134,9 @@ etc).
   `src/sketchgeom.ts`. Six tools under modify — trim, extend, offset, mirror,
   **bevel** (the sketch's chamfer; `chamfer` is the solid's tool) and pattern
   (`src/tools/`). Unit: `test/sketchedit.test.ts`, `test/sketchedittools.test.ts`;
-  browser: `test/e2e/sketchedit.e2e.ts` (mouse and iPhone 13). *Known and
-  deliberate:* an ellipse is not trimmed and cuts only lines; an offset's
+  browser: `test/e2e/sketchedit.e2e.ts` (mouse and iPhone 13). Since trim
+  everything, every curve trims and cuts (above). *Known and deliberate:* an
+  offset's
   distances are a dimension per piece, and a `rad` of r ± d does not follow
   the original's radius; a curve nothing cuts is `del`'s, not trim's. *Not
   tried on a phone.*
@@ -432,8 +460,8 @@ etc).
   against fixtures written by the format-12 build.
 - **Toolbar groups** (docs/plans/toolbar-groups.md, built). A family of
   tools shares one button: `TOOL_GROUPS` in `tool.ts` (shapes: rectangle,
-  polygon, slot; curves: ellipse, spline; modify: fillet, bevel, trim,
-  extend, offset, mirror, pattern), a command-line tool's own `static group`
+  polygon, slot; curves: ellipse, spline; modify: trim, fillet, bevel,
+  extend, offset, mirror, pattern — trim first since trim everything), a command-line tool's own `static group`
   joining one; `toolbarButtons()` is the button list (twelve since the sketch
   shapes: shapes has three members, curves its first). A group's button shows
   the member armed last (`GroupMemory` in `options.ts`, per viewer under

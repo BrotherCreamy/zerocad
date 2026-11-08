@@ -7,6 +7,71 @@ decisions.
 
 ---
 
+## Every sketch curve trims, and power trim drags across them
+
+The owner (2026-11-08): *"Also need trim for sketch entities"*. Trim took a
+line, an arc or a circle; it refused an ellipse and a spline by name, and it
+lived behind the fillet's face on the modify button. Now every curve trims
+against every other, a press dragged across the drawing trims every piece it
+crosses, and the modify button's face is trim (docs/plans/trim-everything.md).
+
+| | |
+|---|---|
+| ![An ellipse crossed by a line, the trim tool armed: the piece below the line, from crossing to crossing, drawn in the cut's red under the cursor. The chip reads trim · click a piece to trim it, or drag across pieces](docs/images/360-ellipse-piece-red.png) | ![Clicked: the ellipse is the cap above the line, an elliptical arc under its own name el1, drawn open; its centre and major end stay drawn](docs/images/361-ellipse-trimmed-to-an-elliptical-arc.png) |
+| ![A spline whose end runs into a circle: the piece inside the circle red](docs/images/362-spline-piece-in-the-circle-red.png) | ![Clicked: the spline ends on the circle, a spline of control points under its own name sp1 — its control points p13 to p16 drawn with their polygon, thin and dashed](docs/images/363-spline-trimmed-its-control-points.png) |
+| ![A grid of six lines, the trim tool pressed above it and dragged down between x = 0 and 20: the stroke dashed grey, the two pieces it has crossed red, nothing trimmed yet](docs/images/364-power-trim-mid-stroke.png) | ![Released: the three pieces between x = 0 and 20 gone, the log one entry of three trims](docs/images/365-power-trimmed.png) |
+| ![On an iPhone 13, the grid power-trimmed by one finger, mid-stroke: two pieces red](docs/images/367-iphone-power-trim-mid-stroke.png) | ![On the iPhone, the modify button's face is trim's new glyph, the piece past the wall struck out](docs/images/369-iphone-toolbar-modify-face-trim.png) |
+
+- **Every curve against every other**: a line, an arc, a circle, an ellipse,
+  an elliptical arc, a spline and a spline's piece, construction or not, in
+  2D and on any plane in 3D. `sketchgeom.ts` finds every pair's crossings: a
+  conic with a circle or another conic by a walk round one rim, halved at
+  each change of side of the other; a spline with a spline by Bézier
+  subdivision, polished by Newton. A tangency cuts nothing, as before.
+- **An ellipse's piece is an elliptical arc** (`earc`, a new entity kind
+  through `EntityKindSpec`; no kind named in `model.ts`). A trimmed ellipse
+  becomes one under its own name, as a circle becomes an arc. Its frame keeps
+  the ellipse's axes and starts at an eccentric anomaly (`ArcFrame.t0`). Its
+  ends are held `onellipse`. A middle piece leaves a second one, `ea1`, about
+  the same centre and major end, held `eqrad` (equal semi-axes now, for
+  conics). It extrudes, regenerates and goes to STEP as an elliptical edge
+  between two vertices. To the solid kernel it goes as its exact rational
+  NURBS. A revolve of one is refused, as an ellipse's is.
+- **A spline's piece is a spline of control points** (`bspline`). The piece
+  of an interpolating spline is exactly a clamped B-spline, by knot
+  insertion. Its control points are ordinary points to drag and its knots are
+  fixed. A closed spline needs two cuts, and opens across its seam.
+  Through-points nothing else uses go; a used one on the piece is held
+  `onspline`. An `onspline` on the piece is re-made on it. A `tan` at the end
+  that went is removed and said in the log. It extrudes, regenerates and goes
+  to STEP and the kernel as its own B-spline.
+- **Power trim**: with trim armed, press and drag. The stroke is drawn, and
+  each piece goes red as it is crossed. The release types one entry, one
+  `trim` per piece: one undo step. Pieces of one curve are typed from its far
+  end back, so every name typed is the curve the piece is on when its turn
+  comes. A click now trims on its release. By finger it is the natural
+  gesture: a drag with a tool armed is the tool's, never a pan.
+- **Trim heads the modify button.** The button's face is its first member
+  until another is armed; it already showed the member armed last. Trim's
+  glyph strikes the piece out: the dotted arm read as a plus sign on the
+  iPhone (looked at). Extend takes an elliptical arc.
+- **Three bugs the browser found** (ARCHITECTURE, 51–53; the count is
+  fifty-three now). A tool armed by its typed name left the chip saying
+  Select until the next pointer event. A spline piece's control points read as
+  stray dots, so its control polygon is drawn now. And trim's glyph read as a
+  plus sign.
+- **Left**: extend and offset of a spline (neither is small in this
+  representation), a revolve of an elliptical arc, part of either piece in a
+  region, trim to closest and extend by shift (no need found). Each is in
+  TODO.md.
+- **Tests**: `test/trimeverything.test.ts` (each kind trimmed by each kind,
+  2D and on a tilted plane in 3D, the kept piece checked against the curve
+  as it was; each kind's own rules; power trim's typing), `test/
+  trimsolids.test.ts` (extrude, regenerate, STEP, the kernel),
+  `test/e2e/trimeverything.e2e.ts` (mouse and iPhone 13).
+
+---
+
 ## A conflict is a conflict even when a collapse satisfies it
 
 The owner (2026-11-07): *"Just noticed I'm able to add a parallel relation to
