@@ -226,6 +226,24 @@ etc).
   and the fillet lights its corners (`Tool.takes`, `Tool.placed`). The
   verdict is never cut for the chip, and the chip is over no pane on any
   iPhone in the table.
+- **Every standard relation, for whatever is picked**
+  (docs/plans/relations-complete.md, built; its *As built* is the table).
+  The constrain tool and the context menu offer SolidWorks' and Onshape's
+  relations for any selection of points, lines, circles, arcs, ellipses,
+  splines, a frame's arm (an axis; in 3D the z arm is the frame's plane), a
+  solid's vertices and edges (the model's points and lines) and flat faces
+  (`"p1.p2.p3"`), most likely first. `constraintsFor` is rules over kind
+  predicates (`heldBy`, `refs`, `plane`), so a kind a module adds gets On,
+  Fix and Concentric unwritten. New: `corad(c1, c2)` (glyph `◎=`); `sym` of
+  two lines, circles or arcs about a line or an axis; `intersection` and
+  `pierce` on an ellipse or a spline. Fix (one `fix` per point, drawn as a
+  padlock), many at once (Equal, Parallel, Horizontal, Vertical, Coincident,
+  Concentric, Coradial, Fix for n of one family — each against the first,
+  one line, one undo step), and cells greyed with the relation's own reason
+  (`Applicable.off`: shown under the label, logged whole when pressed). A
+  pick of the solid kernel's own edge or face greys the list with why. The
+  solid picker is one function, `solidRefAt` in src/tools/constrain.ts.
+  Not built: Convert Entities, Curvature, Equal curve length (TODO.md).
 - **Sketch relations: diagnosis, a dimension tool, a constrain tool**
   (docs/plans/sketch-relations.md, built).
   - **Diagnosis.** `Problem.analyse` asks the kernel's `null_support`

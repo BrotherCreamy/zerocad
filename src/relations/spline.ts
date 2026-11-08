@@ -294,8 +294,34 @@ function meetingEnd(model: Model, spline: string, other: string, given: unknown)
   const both = ENDS.filter(meets);
   if (both.length === 1) return both[0];
   if (both.length === 2) throw new Error(`both ends of "${spline}" meet "${other}" — say which: tan(…, "start") or tan(…, "end")`);
-  throw new Error(`tan holds a spline at an end that meets the other curve — neither end of "${spline}" meets "${other}" `
+  // The particular first: a greyed Tangent shows the start of this on a phone (relations-complete.md).
+  throw new Error(`neither end of "${spline}" meets "${other}" — tan holds a spline at an end that meets the other curve `
     + "(share the point, or coin it)");
+}
+
+/**
+ * Why `tan(a, b)` with a spline would be refused as the drawing stands — the
+ * relation's own words — or null when it would be made. What the constrain
+ * tool greys a Tangent with (docs/plans/relations-complete.md), so the list
+ * and the command line cannot disagree about which ends meet.
+ */
+export function tangentSplineRefusal(model: Model, a: string, b: string): string | null {
+  const kind = (n: string) => model.entities.get(n)?.kind;
+  try {
+    if (kind(a) === "spline" && kind(b) === "spline") {
+      if (a === b) return `tan needs two curves: "${a}" twice is one`;
+      meetingEnd(model, a, b, null);
+      meetingEnd(model, b, a, null);
+      return null;
+    }
+    const [spline, other] = kind(a) === "spline" ? [a, b] : [b, a];
+    const ok = kind(other);
+    if (ok !== "line" && ok !== "arc" && ok !== "circle") return `tan takes a spline with a line, an arc, a circle or another spline — "${other}" is ${ok ? `a ${ok}` : "not there"}`;
+    meetingEnd(model, spline, other, null);
+    return null;
+  } catch (e) {
+    return e instanceof Error ? e.message : String(e);
+  }
 }
 
 /** A spline end's direction of travel, as Duals: from its end point to the control point beside it (`endVars`' locals). */

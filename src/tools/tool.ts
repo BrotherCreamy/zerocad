@@ -456,6 +456,8 @@ export type ToolCtor = new (ctx: ToolContext) => Tool;
 export interface ToolCommand {
   label: string;
   command: string;
+  /** Greyed, with why: shown and not pressable (the constrain tool's cell that cannot apply as the drawing stands). */
+  off?: string;
 }
 
 /**

@@ -106,6 +106,65 @@ Newest first. Each entry is the reasoning behind a chunk of work —
 `CHANGELOG.md` is the shorter, screenshot-carrying version of the same
 story, and `TODO.md` is what is still ahead.
 
+### Every standard relation: a table first, then rules over predicates
+
+The owner: *"Also need to figure out a way to do all the standard
+relations."* The spec asked for the table to be written before the code, and
+that turned out to be the useful order: once every pair of pickable kinds was
+written against SolidWorks' and Onshape's lists, most cells were relations
+that already existed and simply were not offered (`onellipse`, `onspline`,
+`fix`, `tan` with an ellipse, `mid` of two points, `sym` about an axis). The
+new mathematics was small — `corad`, and `sym` for lines, circles and arcs —
+and the work was in the offering.
+
+**Why predicates, not a switch.** Two other workers were adding kinds at the
+same time (an elliptical arc, a control-point spline). A table keyed on kind
+names would have needed a row for each, on merge, from someone who had not
+written it. So the rules read what a kind declares: a point is On any curve
+whose kind says which relation holds a point on it (`heldBy`, looked up in
+its module), Fix takes any entity's `refs`, Concentric anything with a
+centre. A kind a module adds gets those cells with no line here. What it does
+not get is `intersection` and `pierce`, which live in geometry.ts and cannot
+reach a module; that is written down.
+
+**Star, not chain, and the cost of it.** Many at once relates each pick to
+the first. Measured with the conflict search on eight lines: a star's
+conflicts name at most four relations wherever the two disagreeing
+dimensions are; a chain's name every eq on the path between them, up to nine.
+A chain wins one case (the two offenders adjacent in it, 3 against 4). The
+price showed in the first picture: five lines Equal puts four `=` marks on
+the first line. Rejected: a chain (worse conflicts), and a new n-ary
+`equal(...)` relation (one glyph, but one deletion takes all of them, and
+the journal would carry a second spelling of `eq`).
+
+**Two decisions the rank analysis made.** `sym` of two lines was first going
+to pair ends, nearest to nearest, and journal the pairing; saying the
+*segment* is mirrored — middles, direction, length — needs no pairing at all,
+and four rows are exactly a segment's freedoms. `sym` of two circles in 3D was
+written with the true mirror of a normal, 2(n·û)û − n; the diagnosis counted
+it taking six freedoms on a tilted plane where coradial takes five, the extra
+one coming through the mirror line's own direction. Parallel normals are
+what the mirror gives for any line in the circles' plane, which a sketch's
+always is, and take two. The 3D tests hold every point on the tilted plane,
+as the tools do — the first version did not, and a solve that moved a free
+point off the plane *added* a freedom, which read as a relation taking none.
+
+**What the browser found.** Three bugs the unit table passed (55–57 in
+ARCHITECTURE.md). The face picker asked only the solid kernel, and a plain
+box is not the kernel's; a greyed reason was unreadable at a phone's width;
+a picked spline drew nothing. The last two were found by looking at the
+iPhone pictures, which is the CLAUDE.md rule paying for itself again. One
+thing the pictures showed that is *not* a bug: a Fix on a rectangle's corner
+is quiet with the corner (the owner's quiet rule), so its padlock shows on
+hover or selection. Making Fix the one mark that never goes quiet is in the
+register as an option, not done — it would be the first exception to a rule
+the owner set.
+
+**Left.** Convert Entities is an operation plus a projection relation that
+does not exist; Curvature and Equal curve length have no relation. A face
+bounded only by a circle comes back from sketch-on-face's plane reference as
+the circle, so it is picked as the rim.
+
 ### Sketch mode: measure first, because most of it was already there
 
 The owner did not know sketch mode existed, and the spec said as much: the

@@ -228,6 +228,8 @@ defineModule("sketch", {
     radius: { names: ["rad", "radius"], slots: slots("circle", "#radius"), fn: geom.radius },
     onCircle: { names: ["oncircle", "onCircle"], slots: slots("point", "circle"), fn: geom.onCircle },
     concentric: { names: ["conc", "concentric"], slots: slots("circle", "circle"), fn: geom.concentric },
+    // One circle: concentric and equal, one relation (docs/plans/relations-complete.md).
+    coradial: { names: ["corad", "coradial"], slots: slots("circle", "circle"), fn: geom.coradial },
     equalRadius: { names: ["eqrad", "equalRadius"], slots: slots("circle", "circle"), fn: geom.equalRadius },
     tangent: { names: ["tan", "tangent"], slots: slots("line", "circle"), fn: geom.tangent },
     arcEndpoints: { names: ["arcends", "arcEndpoints"], slots: slots("arc"), fn: geom.arcEndpoints },

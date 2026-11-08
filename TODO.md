@@ -26,6 +26,51 @@ otherwise.
 
 ## Decisions made so far — veto here if any are wrong
 
+- **Every standard relation, offered for whatever is picked** (the owner,
+  2026-11-08: *"Also need to figure out a way to do all the standard
+  relations"*; docs/plans/relations-complete.md, whose *As built* is the
+  table). Each vetoable:
+  - **The ordering**: what is about the selection's mix first (Tangent for a
+    line and a circle, Symmetric for two of a kind and a line), then what
+    chains over many (Equal, Parallel, Horizontal, Vertical, Coincident,
+    Concentric, Coradial), then Fix, then the dimension. Two lines read
+    Parallel, Perpendicular, Equal, Collinear, Horizontal (both), Vertical
+    (both), Fix (both), Angle — eight rows, which fit an iPhone 13
+    (pictures 342, 343) but cover half its canvas while they are up.
+  - **Many at once is a star**: each pick related to the first, not each to
+    the one before. Measured with the conflict search on eight lines: a star
+    names at most four relations in a conflict wherever it is, a chain up to
+    nine; a chain wins only for two neighbours (3 against 4). The price is
+    the first pick wearing n − 1 marks (picture 341). Typed as one line so it
+    is one undo step.
+  - **Fix's glyph is a drawn padlock** (there was no lock glyph; `#` had
+    stood in for an anchor that mushed at 12 px), measured readable at 1×
+    and 3×. It is **quiet with its corner**, as every mark on a line's end
+    is (quiet.ts): a fixed corner shows it on hover or selection, not
+    always. Making Fix the one mark that never goes quiet is a one-line
+    change in main.ts's `glyphDrawn` call if the owner wants it.
+  - **Fix on an entity pins its points**, each where it stands in the
+    default frame; a circle's radius stays free (dimension it).
+  - **Fix, and the many-at-once rows, need one family**: n points, n lines,
+    n circles-or-arcs, n ellipses, n splines. A mixed pick gets no Fix.
+  - **Two circles' Tangent is offered both ways**, nearer side first, each
+    typed with its side, except two arcs sharing an end (the join decides).
+  - **A frame's z arm stands for its plane** in 3D (On plane, Normal to
+    plane, Parallel to plane); its x and y arms are directions. A point and
+    an x or y arm take nothing (a point on an axis is `fix`'s to say).
+  - **A greyed cell shows why**, and a press types nothing and logs the
+    whole reason. A pick of the solid kernel's own edge or face greys the
+    whole list (one row, Relate) rather than offering nothing.
+  - **On face is `onplane` to the face's plane**, not inside its outline —
+    SolidWorks' On Plane. A face is a solid feature's own loop (profile,
+    twins, walls); inside a rectangle only ever sketched is empty canvas.
+  - **`sym` of two circles in 3D holds the normals parallel**, not mirrored
+    — the same thing for a mirror line in the sketch plane, and the mirrored
+    form counted a freedom too many (measured: 6 against 5).
+  - **A frame is no entity pick**: selected, it takes nothing — it is a
+    datum, related to through its arms (the constrain tool turns a click on
+    one into the axis).
+
 - **Sketch mode is the work plane, and choosing a plane makes nothing** (the
   owner, 2026-11-08: *"I need a way to natively sketch on a plane without it
   being a special feature. It should just add 'on plane' relations to each
@@ -1917,9 +1962,25 @@ are flagged as such.
   - [ ] [`smart-dimension.md`](docs/plans/smart-dimension.md): one
         dimension tool for anything, solid faces and edges included; driven
         where it cannot drive.
-  - [ ] [`relations-complete.md`](docs/plans/relations-complete.md): the
+  - [x] [`relations-complete.md`](docs/plans/relations-complete.md): the
         full SolidWorks/Onshape relation table, offered for any pick, many at
-        once, Fix, and relations to solid edges and faces.
+        once, Fix, and relations to solid edges and faces. **Built**
+        (2026-11-08), branch `claude/relations-complete`: the table as built
+        is in the spec; decisions in the register above. Left:
+    - [ ] **Convert Entities** (SolidWorks'): a projected copy of a solid's
+          edge, held to it. An operation (it makes entities) plus a
+          projection relation (p − q ∥ the plane's normal, p on the plane)
+          that does not exist yet.
+    - [ ] **Curvature** (G2) between splines, **Equal curve length**, and
+          Equal for two ellipses: no relation says them.
+    - [ ] **A face bounded only by a circle** is picked as its circle (the
+          plane reference it has), so On face is not offered on a cylinder's
+          cap; a plane reference for "this circle's face" would fix it.
+    - [ ] `intersection`/`pierce` take only the kinds geometry.ts's
+          `onCurve` knows (line, circle, arc, ellipse, spline); a module's
+          kind gets On through `heldBy` but not these two.
+    - [ ] Swap `solidRefAt` (src/tools/constrain.ts) for smart-dimension's
+          picker when both are in.
   - [ ] [`trim-everything.md`](docs/plans/trim-everything.md): ellipse and
         spline trim (an elliptical arc kind, a control-point spline), power
         trim by dragging across.
