@@ -383,3 +383,20 @@ test("an offset's holds read nothing redundant — a rectangle's, a circle's, an
   assert.equal([...old.relations.values()].filter((r) => r.op === "coplanar").length, 0, "no coplanar from a version-18 offset");
   assert.equal(old.relations.size, m.relations.size - 1, "the one coplanar fewer, and nothing else");
 });
+
+test("a circular pattern turns about its seed's own plane only where no plane is picked — and reads nothing redundant either way", async () => {
+  await loadKernel();
+  for (const picked of [false, true]) {
+    const m = new Model(3);
+    const s = neocadScope({ model: m }) as Record<string, (...a: unknown[]) => any>;
+    if (picked) m.setWorkPlane("origin");
+    const { L } = rect(m, [20, -15, 0]);
+    const c = m.addPoint([0, 0, 0]).name;
+    s.circular(L, c, 2 * Math.PI, 3);
+    assert.equal(m.solve().solved, true);
+    const resolved = m.journal.find((e) => e.op === "circular")!.args[4] as { first: string; plane: string; own?: true };
+    if (picked) assert.deepEqual(resolved, { first: resolved.first, plane: "origin" }, "the picked plane, as a datum");
+    else assert.ok(resolved.own === true && /^p\d+\.p\d+\.p\d+$/.test(resolved.plane), `three of the seed's own points, read as variables: ${JSON.stringify(resolved)}`);
+    assert.deepEqual(m.diagnose().redundant, [], `${picked ? "picked" : "nothing picked"}: nothing redundant`);
+  }
+});

@@ -1678,6 +1678,41 @@ function holdDirection(model: Model, lead: string, dx: number, dy: number, plane
 interface CircularResolved {
   first: string;
   plane: string | null;
+  /**
+   * The plane is the seed's own — three of its points, or a curve of it — and
+   * read as the variables it is, so the turn's axis is the seed's normal and
+   * holds both ways (docs/plans/profiles-held.md). Written only then: a
+   * pattern on a picked plane, or from before format 19, turns about that
+   * plane as a datum, as it always did.
+   */
+  own?: true;
+}
+
+/**
+ * The plane a circular pattern's seed lies in, as a reference its turn can read
+ * as variables (`CircularResolved.own`): the three of its points that make the
+ * largest triangle — the best-conditioned plane — else a curve of it with a
+ * normal of its own, else two of its points and the centre; else null, a seed
+ * with no plane (a point, or a line through the centre).
+ */
+function seedPlane(model: Model, points: readonly string[], curves: readonly string[], centre: string): string | null {
+  const largest = (pts: readonly string[]): string | null => {
+    const X = pts.map((p) => lift3(model.coords(p)));
+    const scale = Math.max(1, ...X.map((x) => Math.hypot(...x)));
+    let best: string | null = null, area = 1e-9 * scale * scale;
+    for (let i = 0; i < pts.length; i++) for (let j = i + 1; j < pts.length; j++) for (let k = j + 1; k < pts.length; k++) {
+      const a = Math.hypot(...cross3(sub3(X[j], X[i]), sub3(X[k], X[i])));
+      if (a > area) { area = a; best = `${pts[i]}.${pts[j]}.${pts[k]}`; }
+    }
+    return best;
+  };
+  // The seed's own points first: the turn is about the seed's normal, so its
+  // copies keep their heights off its plane — in it — wherever the centre is.
+  // The centre joins them only for a seed in one line, which has no plane alone.
+  const own = largest(points.filter((p) => p !== centre));
+  if (own) return own;
+  const curve = curves.find((c) => { const k = model.entities.get(c)?.kind; return k === "circle" || k === "arc"; });
+  return curve ?? largest([...new Set([...points, centre])]);
 }
 
 /**
@@ -1718,12 +1753,15 @@ export function circular(model: Model, names: string | string[], centre: string,
   if (resolved != null) {
     const g = resolved as CircularResolved;
     if (!g || typeof g.first !== "string" || !points.includes(g.first)) throw new Error("circular's resolved part is { first: a seed point, plane }");
-    r = { first: g.first, plane: g.plane ?? null };
+    r = { first: g.first, plane: g.plane ?? null, ...((g as { own?: unknown }).own === true ? { own: true as const } : {}) };
   } else {
     const scale = Math.max(1, ...points.map((p) => Math.hypot(...model.coords(p))));
     const first = points.find((p) => Math.hypot(...model.coords(p).map((v, i) => v - c0[i])) > 1e-6 * scale);
     if (!first) throw new Error(`everything given to circular sits on ${centre} — there is nothing to turn about it`);
-    r = { first, plane: model.dim === 3 ? model.drawingPlane() : null };
+    // The plane the user picked, as a datum; else the seed's own, pushed; else, a seed with no plane of
+    // its own (one point, one line through the centre), the drawing plane as before.
+    const own = model.dim === 3 && (model.workPlane ?? model.defaultFrame) == null ? seedPlane(model, points, curves, centre) : null;
+    r = own ? { first, plane: own, own: true } : { first, plane: model.dim === 3 ? model.drawingPlane() : null };
   }
   const axis = model.dim === 3 ? model.planeValues(r.plane!)!.n : [0, 0, 1];
   const turnBy = (x: number[], a: number) => {
@@ -1750,12 +1788,12 @@ export function circular(model: Model, names: string | string[], centre: string,
     }
     const p0 = r.first;
     const first = copies[0].get(p0)!;
-    rotation(model, p0, first, centre, step, r.plane);
+    rotation(model, p0, first, centre, step, r.plane, r.own ?? null);
     for (let k = 0; k < copies.length; k++) {
       for (const p of points) {
         if (k === 0 && p === p0) continue;
         const prev = k === 0 ? p : copies[k - 1].get(p)!;
-        rotated(model, prev, copies[k].get(p)!, centre, p0, first, r.plane);
+        rotated(model, prev, copies[k].get(p)!, centre, p0, first, r.plane, r.own ?? null);
       }
     }
     let at = 0;
