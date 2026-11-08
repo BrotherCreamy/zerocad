@@ -3755,6 +3755,16 @@ function cascade(model: Model, name: string): string[] {
     }
   }
 
+  // A relation naming a going record's face or edge — `fdist("e1.lid", …)`,
+  // `measure("length", "e1.lid|e1.m0")` (docs/plans/smart-dimension.md) —
+  // goes with the record: the name reads the record (`referentOf` is "e1"),
+  // and a record gone leaves it reading nothing.
+  const records = new Set(features);
+  for (const r of model.relations.values()) {
+    if (relations.includes(r.name)) continue;
+    if (r.args.some((a) => typeof a === "string" && a.split("|").some((part) => records.has(referentOf(part) ?? "")))) relations.push(r.name);
+  }
+
   const removed: string[] = [];
   // Records first, since they name relations and entities alike and the
   // primitives refuse while one does; then relations, since an entity cannot go

@@ -52,7 +52,9 @@
 // the entities do all of that, drawn *over* the faces — but a face is opaque
 // to them: in the default shaded view what is behind one is neither drawn nor
 // aimed at (occlusion.ts, viewmode.ts). A click on a face is a click on
-// whatever visible entity is near it, or on nothing.
+// whatever visible entity is near it, or on nothing — except for a tool that
+// asks for faces (`ToolContext.pickSolid`, solidpick.ts: the dimension tool),
+// which gets the front face where nothing else is under the hand, by `name`.
 //
 // **A face says which of its sides are the solid's edges** (`Face.edges`): a
 // cap's outlines all round, a wall's base and twin sides and its side at a
@@ -105,6 +107,13 @@ export interface Face {
    * has a vertex, so there is no edge for the line to be at.
    */
   edges: number[][][];
+  /**
+   * The face's name as the solid kernel names it (src/solids/naming.ts) —
+   * `e1.base`, `e1.lid`, `e1.m3` for every piece of the wall member 3 swept —
+   * so a face picked here and one the kernel built answer to one name
+   * (docs/plans/smart-dimension.md). A kernel face carries its record's.
+   */
+  name?: string;
 }
 
 /** A face as the painter's fallback fills it this frame. */
@@ -411,6 +420,13 @@ function outwardSigns(outlines: number[][][], plane: { u: number[]; v: number[] 
   });
 }
 
+/** The kernel's name for the wall loop `i`'s member `j` swept: members are counted loop by loop (naming.ts). */
+function memberFace(f: FeatureEntry, i: number, j: number): string {
+  let k = j;
+  for (let l = 0; l < i; l++) k += f.loops[l].length;
+  return `${f.name}.m${k}`;
+}
+
 /** An extrude's faces: the profile's cap, the lid's, and a wall per member piece. */
 function extrudeFaces(model: Model, f: Extract<FeatureEntry, { kind: "extrude" }>, scale: number): Face[] {
   const axes = planeAxes(model, f.frame);
@@ -428,8 +444,8 @@ function extrudeFaces(model: Model, f: Extract<FeatureEntry, { kind: "extrude" }
   const [baseMid, lidMid] = [mean(baseOutlines[0]), mean(lidOutlines[0])];
   const up = dot3(sub3(lidMid, baseMid), z) < 0 ? -1 : 1;
   const faces: Face[] = [
-    { feature: f.name, kind: "base", outlines: baseOutlines, normal: z.map((c) => -up * c), centroid: baseMid, edges: baseOutlines.map(closedPath) },
-    { feature: f.name, kind: "lid", outlines: lidOutlines, normal: z.map((c) => up * c), centroid: lidMid, edges: lidOutlines.map(closedPath) },
+    { feature: f.name, kind: "base", outlines: baseOutlines, normal: z.map((c) => -up * c), centroid: baseMid, edges: baseOutlines.map(closedPath), name: `${f.name}.base` },
+    { feature: f.name, kind: "lid", outlines: lidOutlines, normal: z.map((c) => up * c), centroid: lidMid, edges: lidOutlines.map(closedPath), name: `${f.name}.lid` },
   ];
 
   const signs = outwardSigns(baseOutlines, axes);
@@ -448,7 +464,7 @@ function extrudeFaces(model: Model, f: Extract<FeatureEntry, { kind: "extrude" }
       const edges = [[b[k], b[k + 1]], [t[k], t[k + 1]]];
       if (cornered && k === 0) edges.push([b[0], t[0]]);
       if (cornered && k + 1 === last) edges.push([b[last], t[last]]);
-      faces.push({ feature: f.name, kind: "wall", outlines: [quad], normal: n.map((c) => signs[i] * c), centroid: mean(quad), edges });
+      faces.push({ feature: f.name, kind: "wall", outlines: [quad], normal: n.map((c) => signs[i] * c), centroid: mean(quad), edges, name: memberFace(f, i, j) });
     }
   }));
   return faces;
@@ -530,8 +546,8 @@ function revolveFaces(model: Model, f: Extract<FeatureEntry, { kind: "revolve" }
     if (!t0) return [];
     const ahead = t0.map((c) => Math.sign(theta) * c);
     const endOutlines = paths.twin!.map((p, i) => joined(p, flips[i]));
-    faces.push({ feature: f.name, kind: "base", outlines, normal: ahead.map((c) => -c), centroid: mean(outlines[0]), edges: outlines.map(closedPath) });
-    faces.push({ feature: f.name, kind: "end", outlines: endOutlines, normal: apply(turns[steps], ahead), centroid: mean(endOutlines[0]), edges: endOutlines.map(closedPath) });
+    faces.push({ feature: f.name, kind: "base", outlines, normal: ahead.map((c) => -c), centroid: mean(outlines[0]), edges: outlines.map(closedPath), name: `${f.name}.base` });
+    faces.push({ feature: f.name, kind: "end", outlines: endOutlines, normal: apply(turns[steps], ahead), centroid: mean(endOutlines[0]), edges: endOutlines.map(closedPath), name: `${f.name}.lid` });
   }
 
   paths.base.forEach((loop, i) => loop.forEach((path, j) => {
@@ -558,7 +574,7 @@ function revolveFaces(model: Model, f: Extract<FeatureEntry, { kind: "revolve" }
         if (partial && s === steps - 1) edges.push([rings[steps][q], rings[steps][q + 1]]);
         if (cornered && q === 0 && !onAxis(b[0])) edges.push([rings[s][0], rings[s + 1][0]]);
         if (cornered && q + 1 === last && !onAxis(b[last])) edges.push([rings[s][last], rings[s + 1][last]]);
-        faces.push({ feature: f.name, kind: "wall", outlines: [quad], normal: apply(middles[s], out), centroid: mean(quad), edges });
+        faces.push({ feature: f.name, kind: "wall", outlines: [quad], normal: apply(middles[s], out), centroid: mean(quad), edges, name: memberFace(f, i, j) });
       }
     }
   }));

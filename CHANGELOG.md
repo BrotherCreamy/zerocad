@@ -7,6 +7,94 @@ decisions.
 
 ---
 
+## Smart dimension: one tool for a vertex, an edge or a face — distances and angles between a solid's faces
+
+The owner (2026-11-08): *"Dim tool needs to be similar in functionality to
+Solidworks smart dimension. I should be able to use it to dimension virtually
+anything. Distance between two faces of a solid, or angle"*. The dimension
+tool now takes a solid's vertices, edges and faces — vertex before edge before
+face under the hand, as SolidWorks' does — and every row of SolidWorks' table
+for a sketch besides (docs/plans/smart-dimension.md, "As built", has the whole
+table). Pick, pick, then click where the label goes; double-click or
+double-tap the label to set its value.
+
+| | |
+|---|---|
+| ![A stepped block seen from the front right, the dimension tool armed; the near +x wall is lit amber under the cursor](docs/images/320-smart-dimension-a-wall-lit-under-the-cursor.png) | ![Both +x walls of the step picked, lit green only where each is in front of the other; the 20 the click will type is beside the cursor](docs/images/321-two-walls-of-a-step-picked-lit-as-seen.png) |
+| ![Placed: the label 20 between the two walls on the sketch, witness lines to each; the log reads dist("l2", "l4", 20)](docs/images/322-the-step-dimensioned-20-on-its-sketch.png) | ![Double-clicked, 30 typed: the step is deeper, the near wall wider; its label is now behind that wall (filed in TODO.md)](docs/images/323-the-step-set-to-30-its-label-behind-the-wall.png) |
+| ![A wedge: its front and its slope picked, the label 30° at the sharp edge between them; the log reads ang3(…, deg(30))](docs/images/324-two-faces-of-a-wedge-30-degrees.png) | ![Two blocks side by side, their lids picked: (15) in parentheses, driven, and the log's one line — made driven, what it measures is already held](docs/images/327-two-lids-already-held-made-driven.png) |
+| ![A circle labelled ⌀20 and an arc R10, each one click and a placement](docs/images/325-a-circle-diameter-an-arc-radius.png) | ![One line dimensioned twice: horizontal 30 placed above it, vertical 20 beside it](docs/images/326-horizontal-and-vertical-by-placement.png) |
+| ![On an iPhone 13: the step's two walls tapped, lit green](docs/images/328-iphone-two-walls-tapped.png) | ![On the iPhone, the label double-tapped and set to 22](docs/images/329-iphone-double-tapped-and-set-to-22.png) |
+| ![On the iPhone: the wedge's 30°](docs/images/330-iphone-the-wedge-30-degrees.png) | ![On the iPhone: a circle's ⌀20 and an arc's R15, by finger](docs/images/331-iphone-a-circle-diameter-an-arc-radius.png) |
+| ![On the iPhone: one line, horizontal 30 placed above, vertical 20 beside](docs/images/332-iphone-horizontal-and-vertical.png) | |
+
+- **A face is named as the kernel names it** (`e1.base`, `e1.lid`, `e1.m3`),
+  whichever drew the body, and **maps to what made it**
+  (`src/relations/solidref.ts`). Two walls of one extrude are the lines they
+  were swept from: the distance is `dist` on the sketch, and the angle is the
+  one at the corner they share (`ang3`), a wedge's 30° rather than the 150°
+  between its lines' directions. A round wall is its circle, so its size is
+  that circle's `dia`. An edge between two of one extrude's faces is its
+  entity, so its length is that line's.
+- **One new relation for what a sketch cannot say**: `fdist(face, b, d)`,
+  square to a flat face, from a point, an edge's middle, a centre or another
+  flat face. It reads the faces lazily through the feature's record, so it
+  follows a `set` and a regeneration.
+- **An extrude's lid and its own base are its depth.** The extrusion holds
+  every twin at base + depth·z with the depth a constant, so a second
+  relation there could only repeat or fight it. The tool makes nothing and
+  opens the depth's value, as Set value… does.
+- **Driven when it must, and said.** Before typing a driving dimension the
+  tool tries it on a throwaway copy and asks `Model.diagnose` and the
+  conflict check. One that is redundant or in conflict is typed as
+  `measure(…)` instead, with one line in the log. Two lids both depths
+  already hold are the common case. A face only the kernel knows (a
+  fillet's) is always driven, read through a reader main.ts hands measure.ts.
+- **The sketch rows SolidWorks has and the tool lacked**: a whole circle
+  defaults to ⌀ and an arc to R (the menu's Dimension too; the `radial`
+  option says otherwise). A point and a circle, two circles, and a line and a
+  circle measure centres. Three points are the angle at the first (`ang3`),
+  and an arc and its two ends are its length (`arclen`). A point and a
+  frame's axis give its distance from the axis. An ellipse is its major, or
+  its minor where the label is put nearer that axis. Horizontal or vertical
+  is `along`, a distance along the drawing's x or y, chosen by putting the
+  label beyond both points.
+- **`measureOf(…)`** says the reading and makes nothing. A `measure only`
+  row in the options was tried and taken out: on an iPhone a third row put
+  the panel over the drawing a test's tap was aimed at.
+- **Faces pick only for a tool that asks** (`ctx.pickSolid`,
+  `src/solidpick.ts`): the ordinary pick first, then the front face under the
+  pixel, occlusion's `nearestFace`. Hover, selection and the menu still never
+  see a face. The relations package can call the same function.
+- **Deleting a feature now takes the relations naming its faces and edges**:
+  the cascade only ever followed entities, and `"e1.lid"`'s referent is the
+  record.
+
+**Found in the browser, passed by the unit suite** (61–63, now sixty-three in
+docs/ARCHITECTURE.md's list):
+
+- A double-click on a label opened `set("d2.value", ` and the typed number
+  landed *in front of it*. The second press's default, a mousedown on the
+  canvas, took the focus back off the command line. The value now opens
+  after the event.
+- A picked face behind another was lit straight through the face in front,
+  since a 2D canvas has no depth test. It is now filled only in the cells
+  where it is the front face (the pick's own question), and its edges are
+  drawn only in sight.
+- A double-tap on a loaded box was read as two taps: it was timed by when the
+  page recognised each tap, not by the touches' own stamps. It is timed by
+  the pointerdown's stamp now. The harness's `fingers.doubleTap` sends the
+  second tap at a hand's pace.
+
+Tests: test/smartdimension.test.ts (22, unit: every row in 2D and 3D, `fdist`
+set and save/open, redundant and conflicting made driven, kernel faces
+driven, deleting a feature, the glyph), test/e2e/smartdimension.e2e.ts (11,
+mouse and iPhone 13). Updated: menu.test.ts, sketchrelations.test.ts
+(the ⌀ default, the commit now awaited), dimensions.test.ts (the four new
+dimensions rebuild by `set`), modules.test.ts (the module).
+
+---
+
 ## Every sketch curve trims, and power trim drags across them
 
 The owner (2026-11-08): *"Also need trim for sketch entities"*. Trim took a

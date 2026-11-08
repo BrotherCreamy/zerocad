@@ -161,6 +161,7 @@ test("desktop: a drawn rectangle is free ink until fixed and dimensioned, the st
     await click(desk, await along(desk, l, 0.3));
     await click(desk, await emptySpot(desk));
   }
+  await made(desk, ["dist"], 2);
   const dims = (await relations(desk)).filter((r) => r.op === "dist");
   assert.equal(dims.length, 2, JSON.stringify(dims));
   assert.equal(await desk.status(), "SOLVED");
@@ -177,7 +178,19 @@ test("desktop: a drawn rectangle is free ink until fixed and dimensioned, the st
   await shot(desk, "2-held-rectangle");
 });
 
-test("desktop: the dimension tool on an angle and a radius — two lines then a click, a circle then a click", async () => {
+/**
+ * Waits for `count` relations of `ops` to exist: the dimension tool tries a
+ * dimension on a copy before it types it (smart-dimension.md), so its commit
+ * lands a moment after the click, not within it.
+ */
+async function made(app: AppContext, ops: string[], count: number): Promise<void> {
+  await app.page.waitForFunction(([ops, count]) =>
+    [...(window as never as Probe).__neocad.model.relations.values()].filter((r) => (ops as string[]).includes(r.op)).length >= (count as number),
+  [ops, count] as const, { timeout: 20_000 });
+}
+
+// A whole circle's diameter, SolidWorks' default (docs/plans/smart-dimension.md).
+test("desktop: the dimension tool on an angle and a diameter — two lines then a click, a circle then a click", async () => {
   await fresh(desk);
   await desk.type('a = pt(0, 0); b = pt(40, 0); c = pt(30, 30); ln(a, b); ln(a, c); circ(pt(-30, 10), 12)');
   await pressButton(desk, "dimension");
@@ -187,12 +200,13 @@ test("desktop: the dimension tool on an angle and a radius — two lines then a 
   const [x, y] = await desk.screenOf([-30, 22, 0]);
   await click(desk, [x, y]);
   await click(desk, await emptySpot(desk));
-  const made = (await relations(desk)).filter((r) => r.op === "angle" || r.op === "radius");
-  assert.deepEqual(made.map((r) => r.op), ["angle", "radius"]);
-  assert.ok(Math.abs((made[0].args[2] as number) - Math.PI / 4) < 1e-9, "45°, as measured");
-  assert.equal(made[1].args[1], 12);
-  const symbols = (await glyphs(desk)).filter((g) => made.some((r) => r.name === g.relation)).map((g) => g.symbol);
-  assert.deepEqual(symbols.sort(), ["45°", "R12"]);
+  await made(desk, ["angle", "diameter"], 2);
+  const dims = (await relations(desk)).filter((r) => r.op === "angle" || r.op === "diameter");
+  assert.deepEqual(dims.map((r) => r.op), ["angle", "diameter"]);
+  assert.ok(Math.abs((dims[0].args[2] as number) - Math.PI / 4) < 1e-9, "45°, as measured");
+  assert.equal(dims[1].args[1], 24);
+  const symbols = (await glyphs(desk)).filter((g) => dims.some((r) => r.name === g.relation)).map((g) => g.symbol);
+  assert.deepEqual(symbols.sort(), ["45°", "⌀24"]);
   assert.match(await desk.log(), /ang\("l1", "l2", deg\(45\)\)/, "typed as the command it is");
   assert.equal(await desk.status(), "SOLVED");
   await desk.type("select");
@@ -293,6 +307,7 @@ test("iPhone 13: a tap on a line, a tap on empty canvas — a dimension; and its
   await tap(await middleOf('#toolbar button[data-tool="dimension"]'), true);
   await tap(await along(phone, "l1", 0.25));
   await tap(await phone.screenOf([10, -25, 0]));
+  await made(phone, ["dist"], 1);
   const dims = (await relations(phone)).filter((r) => r.op === "dist");
   assert.deepEqual(dims.map((r) => r.args), [["p1", "p2", 30]]);
   assert.equal((await diag(phone))!.dof, 0);

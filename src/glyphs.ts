@@ -673,6 +673,32 @@ export type GlyphAnchor = Anchor;
 
 const ANCHORS = new Map<string, (model: Model, view: View, r: RelationEntry) => Anchor[]>();
 
+const LABELS = new Map<string, (model: Model, r: RelationEntry) => string | null>();
+
+/**
+ * Says what a dimension made by `op` reads on the drawing, for a module's own
+ * dimension (docs/plans/smart-dimension.md) — and for a driven one of a kind
+ * a module brought, under `measure:<kind>`, whose text is then put in the
+ * reference dimension's parentheses here. Null falls back to the mark.
+ */
+export function defineGlyphLabel(op: string, label: (model: Model, r: RelationEntry) => string | null): void {
+  LABELS.set(op, label);
+}
+
+/** A relation's label: a module's, else a driven dimension's, else `labelFor`'s. */
+function labelOf(model: Model, r: RelationEntry): string | null {
+  if (r.op === "measure") {
+    const own = LABELS.get(`measure:${String(r.args[0])}`);
+    if (own) {
+      const text = own(model, r);
+      return text === null ? null : `(${text})`;
+    }
+    return drivenLabel(model, r.args);
+  }
+  const own = LABELS.get(r.op);
+  return own ? own(model, r) : labelFor(r.op, r.args);
+}
+
 /**
  * Says where the glyphs of relations made by `op` go, for a relation whose
  * place in the drawing is not the model's to know: a fillet's radius sits on
@@ -692,7 +718,9 @@ export function defineGlyphAnchor(op: string, place: (model: Model, view: View, 
  * pair.
  */
 function anchorsFor(model: Model, view: View, r: RelationEntry): Anchor[] {
-  const placed = ANCHORS.get(r.op);
+  // A driven dimension of a kind a module brought is placed by that module,
+  // under `measure:<kind>` (docs/plans/smart-dimension.md).
+  const placed = ANCHORS.get(r.op === "measure" ? `measure:${String(r.args[0])}` : r.op) ?? ANCHORS.get(r.op);
   if (placed) return placed(model, view, r);
   const args = r.args;
   switch (r.op) {
@@ -718,6 +746,10 @@ function anchorsFor(model: Model, view: View, r: RelationEntry): Anchor[] {
       return [atRim(model, view, str(args[0]), Math.PI / 4)];
     case "measure": {
       const [kind, a, b] = args.map(str);
+      // A solid's face or edge by name (docs/plans/smart-dimension.md): no
+      // entity to anchor at, so the module that reads them places it.
+      const solid = ANCHORS.get("measure:solid");
+      if (solid && !model.entities.has(a)) return solid(model, view, r);
       if (kind === "radius" || kind === "diameter") return [atRim(model, view, a, Math.PI / 4)];
       if (kind === "angle") return [atVertex(model, view, a, b)];
       if (b === undefined) {
@@ -883,7 +915,7 @@ export function placeGlyphs(model: Model, view: View, occ: Occlusion | null = nu
     }
     let label: string | null;
     try {
-      label = r.op === "measure" ? drivenLabel(model, r.args) : labelFor(r.op, r.args);
+      label = labelOf(model, r);
     } catch {
       continue;
     }

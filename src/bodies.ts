@@ -241,7 +241,7 @@ export function bodyFaces(result: BodyResult): KernelFace[] {
     const tag = record?.tag ?? -1;
     const feature = tag >= 0 ? featureLabel(tagParts(tag).feature, PREFIX) : result.name;
     faces.push({
-      feature, kind: kindOf(tag), outlines: [[a, b, c]], normal,
+      feature, kind: kindOf(tag), outlines: [[a, b, c]], normal, ...(record?.name ? { name: record.name } : {}),
       centroid: [0, 1, 2].map((i) => (a[i] + b[i] + c[i]) / 3), edges: [], face,
     });
     if (!byFace.has(face)) byFace.set(face, []);

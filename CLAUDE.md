@@ -68,7 +68,7 @@ under-constrain, an operation can leave the model malformed.
 
 ## Verification
 
-**Run `npm run test:e2e` for anything that touches the app.** Sixty bugs so far (the count is kept honest in docs/ARCHITECTURE.md)
+**Run `npm run test:e2e` for anything that touches the app.** Sixty-three bugs so far (the count is kept honest in docs/ARCHITECTURE.md)
 passed the entire unit suite and were obvious within seconds in a browser: a
 stale status readout, a fillet that satisfied every constraint to six decimals
 while drawing a broken rectangle, an auto-naming loop that hung the tab, and a
