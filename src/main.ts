@@ -27,7 +27,7 @@ import { sampledWorld, screenCurve } from "./projection.ts";
 import { ContextMenu, menuFor } from "./menu.ts";
 import { toolUnavailable } from "./toolavail.ts";
 import { AXIS_INKS, frameArmPx, frameMarker } from "./framemarker.ts";
-import { constrainedBy, defineGlyphAnchor, type Glyph } from "./glyphs.ts";
+import { LOCKED, constrainedBy, defineGlyphAnchor, type Glyph } from "./glyphs.ts";
 import { ENGINE_TOOLS, HAND, SELECT, armedLine, getToolCtor, groupCurrent, toolAlias, toolSummary, toolbarButtons, type ToolbarButton } from "./tools/tool.ts";
 import { activeWorkbench, fileMenuItems, getWorkbench, listWorkbenches, onWorkbench, setActiveWorkbench, DEFAULT_WORKBENCH } from "./modules.ts";
 import { WorkbenchFiles, indexedDbWorkbenches } from "./workbenchhost.ts";
@@ -1424,8 +1424,32 @@ async function main() {
       // Nudged down a hair: several of these marks (— ∥ ⊥ ∴) sit high in their
       // em box, and centring by metrics leaves them looking as though they are
       // escaping upward out of the box.
-      g.fillText(mark.symbol, x, y + 0.5 * k);
+      if (LOCKED.has(mark.op)) padlock(x, y, k);
+      else g.fillText(mark.symbol, x, y + 0.5 * k);
     }
+    g.restore();
+  }
+
+  /**
+   * Fix's mark (glyphs.ts's `LOCKED`): a padlock, in the fill style already
+   * set — a solid body and an open shackle over it, sized to the glyph box at
+   * the interface size `k`, so it is the same weight as the characters beside
+   * it.
+   */
+  function padlock(x: number, y: number, k: number) {
+    const [w, h, r] = [8 * k, 5.5 * k, 2.6 * k];
+    const top = y - 0.5 * k;
+    roundedBox(x - w / 2, top, w, h, 1.2 * k);
+    g.fill();
+    g.save();
+    g.strokeStyle = g.fillStyle;
+    g.lineWidth = 1.5 * k;
+    g.beginPath();
+    g.moveTo(x - r, top);
+    g.lineTo(x - r, top - 1.6 * k);
+    g.arc(x, top - 1.6 * k, r, Math.PI, 0);
+    g.lineTo(x + r, top);
+    g.stroke();
     g.restore();
   }
 
@@ -1875,6 +1899,8 @@ async function main() {
       return wantsPanel ? { tool: a.name, rows, dialog, commands } : null;
     },
     run: (command) => submit(command),
+    // A greyed command row, pressed: why it cannot apply, whole, in the log.
+    note: (text) => log(text, "guide"),
     // A command row is typed like any line, and then the tool hears it ran —
     // its picks are spent. Told after the line has run, so it is the line's
     // own undo step and the tool's next pick is the next one's.

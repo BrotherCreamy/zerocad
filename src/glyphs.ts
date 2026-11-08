@@ -119,6 +119,18 @@ export interface Glyph {
 }
 
 /**
+ * **The relations drawn as a padlock** rather than a character — Fix
+ * (docs/plans/relations-complete.md, which asked for the house's lock glyph,
+ * or one added where there was none: there was none). `#` stood in for it
+ * because the anchor `⚓` mushed at 12px; a padlock is the mark SolidWorks
+ * and every phone's settings use for "this does not move", and drawn as a
+ * path it is crisp at any interface size and in no font's gift. main.ts
+ * draws it in the box, in the mark's own colour; everything else about the
+ * glyph — its box, its pick, its hover — is any glyph's.
+ */
+export const LOCKED: ReadonlySet<string> = new Set(["fix"]);
+
+/**
  * The mark drawn for each relation.
  *
  * Chosen for legibility at 11px in the app's monospace stack, checked in a
@@ -158,9 +170,14 @@ export const GLYPH_SYMBOL: Record<string, string> = {
   equalLength: "=",
   equalRadius: "=",
   concentric: "◎",
+  // One circle (docs/plans/relations-complete.md): concentric and equal, said
+  // as the two marks it is, at the shared centre — two cells, as `//` is.
+  coradial: "◎=",
   tangent: "⌒",
   radius: "r",
   dist: "↔",
+  // The character a Fix stands for — measured with the rest, and what the
+  // hover tag and the tests read — but drawn as a padlock (`LOCKED`, below).
   fix: "#",
   symmetric: "⇌",
   // A plane drawn the way a plane is always drawn — a parallelogram, a flat
@@ -732,6 +749,7 @@ function anchorsFor(model: Model, view: View, r: RelationEntry): Anchor[] {
     case "equalRadius":
       return [atRim(model, view, str(args[0]), Math.PI / 4), atRim(model, view, str(args[1]), Math.PI / 4)];
     case "concentric":
+    case "coradial":
       return [atPoint(model, model.oriented(str(args[0])).center)];
     case "radius":
       return [atRim(model, view, str(args[0]), Math.PI / 4)];
@@ -762,7 +780,9 @@ function anchorsFor(model: Model, view: View, r: RelationEntry): Anchor[] {
       return [atTouch(model, view, a, b)];
     }
     case "symmetric":
-      return [atPoint(model, str(args[0])), atPoint(model, str(args[1]))];
+      // A mark on each mirrored thing: two points, or (relations-complete.md)
+      // two lines at their middles, two circles or arcs on their rims.
+      return [atEntity(model, view, str(args[0])), atEntity(model, view, str(args[1]))];
     // A pattern's marks sit on the copy each one holds, not on the seed
     // every one of them names (docs/plans/sketch-edit.md).
     case "translated":

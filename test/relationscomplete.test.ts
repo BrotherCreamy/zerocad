@@ -16,10 +16,10 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { ensureKernelLoaded } from "../src/kernel/problem.ts";
 import { Model } from "../src/model.ts";
-import { dist } from "../src/relations/basic.ts";
-import { coradial, equalLength, intersection, pierce, symmetric } from "../src/relations/geometry.ts";
+import { dist, onPlane } from "../src/relations/basic.ts";
+import { arcEndpoints, coradial, equalLength, intersection, pierce, symmetric } from "../src/relations/geometry.ts";
 import { addSpline } from "../src/relations/spline.ts";
-import { addEllipse } from "../src/kinds/ellipse.ts";
+import { addEllipse, semiAxes } from "../src/kinds/ellipse.ts";
 import { open, save } from "../src/persist.ts";
 import { del } from "../src/operations.ts";
 import { Repl } from "../src/repl.ts";
@@ -259,6 +259,19 @@ function line(m: Model, n: string, a: number[], b: number[]): string {
 }
 
 const sub = (a: number[], b: number[]) => a.map((v, i) => v - b[i]);
+/** Distance from p to the infinite line through a, b. */
+function off(p: number[], a: number[], b: number[]): number {
+  const u = sub(b, a), w = sub(p, a);
+  const t = dotv(w, u) / dotv(u, u);
+  return lenv(w.map((v, i) => v - t * u[i]));
+}
+/** The tilted frame's unit normal, from its three points. */
+function tiltedNormal(m: Model): number[] {
+  const [o, x, y] = ["t_o", "t_x", "t_y"].map((p) => m.coords(p));
+  const [u, v] = [sub(x, o), sub(y, o)];
+  const n = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+  return n.map((c) => c / lenv(n));
+}
 const dotv = (a: number[], b: number[]) => a.reduce((s, v, i) => s + v * b[i], 0);
 const lenv = (a: number[]) => Math.hypot(...a);
 /** The mirror of `p` in the line through `s` along `e − s` — in 3D, the half-turn about it. */
@@ -275,19 +288,32 @@ for (const dim of [2, 3] as const) {
     const t = tiltedFrame(m);
     return (x: number, y: number) => t.at(x, y);
   };
+  /**
+   * In 3D, every point held on the tilted sketch plane, as the tools hold
+   * what they draw there — so the freedoms counted are the sketch's: a point
+   * nothing holds on the plane is free off it, and a solve that moved one off
+   * would add a freedom the relation had nothing to do with.
+   */
+  const hold = (m: Model) => {
+    if (dim === 2) return;
+    for (const e of [...m.entities.values()]) if (e.kind === "point" && !e.name.startsWith("t_")) onPlane(m, e.name, "t");
+  };
+  /** What a relation takes in 3D beyond 2D: a circle's normal tied to another's, two freedoms. */
+  const normals = dim === 3 ? 2 : 0;
 
   test(`coradial in ${dim}D: one centre and one radius — and in 3D one plane; deleting it frees them`, () => {
     const m = new Model(dim);
     const xy = at(m);
     m.addPoint(xy(0, 0), "o1"); m.addCircle("o1", 5, null, "c1");
     m.addPoint(xy(1, 2), "o2"); m.addCircle("o2", 3, null, "c2");
+    hold(m);
     const free = m.diagnose().dof;
     const r = coradial(m, "c1", "c2");
     solved(m);
     for (let i = 0; i < dim; i++) close(m.coords("o1")[i], m.coords("o2")[i], 1e-7, "centre");
     close(m.radius("c1"), m.radius("c2"), 1e-7, "radius");
-    // A centre (dim) and a radius; in 3D the two normals parallel as well (two).
-    assert.equal(free - m.diagnose().dof, dim === 2 ? 3 : 6, "the freedoms it takes");
+    // A centre (on the plane, two) and a radius; in 3D the normals parallel as well.
+    assert.equal(free - m.diagnose().dof, 3 + normals, "the freedoms it takes");
     del(m, r);
     assert.equal(m.diagnose().dof, free, "deleting it frees them");
   });
@@ -299,6 +325,7 @@ for (const dim of [2, 3] as const) {
     line(m, "l1", xy(-8, 1), xy(-3, 4));
     // Drawn roughly mirrored but with its ends the other way round.
     line(m, "l2", xy(2.5, 4.5), xy(7, 0));
+    hold(m);
     const free = m.diagnose().dof;
     const r = symmetric(m, "l1", "l2", "ax");
     solved(m);
@@ -308,7 +335,7 @@ for (const dim of [2, 3] as const) {
       const want = mirror(m.coords(p), s, e);
       assert.ok(ends2.some((q) => lenv(sub(q, want)) < 1e-6), `${p}'s mirror is an end of l2`);
     }
-    assert.equal(free - m.diagnose().dof, dim === 2 ? 4 : 6, "a segment's worth of freedoms");
+    assert.equal(free - m.diagnose().dof, 4, "a segment's worth of freedoms, on the plane");
     del(m, r);
     assert.equal(m.diagnose().dof, free);
   });
@@ -319,13 +346,14 @@ for (const dim of [2, 3] as const) {
     line(m, "ax", xy(0, -10), xy(0, 10));
     m.addPoint(xy(-6, 2), "o1"); m.addCircle("o1", 3, null, "c1");
     m.addPoint(xy(5, 3), "o2"); m.addCircle("o2", 2, null, "c2");
+    hold(m);
     const free = m.diagnose().dof;
     const r = symmetric(m, "c1", "c2", "ax");
     solved(m);
     const want = mirror(m.coords("o1"), m.coords("axa"), m.coords("axb"));
     close(lenv(sub(m.coords("o2"), want)), 0, 1e-6, "centre mirrored");
     close(m.radius("c1"), m.radius("c2"), 1e-7, "radius");
-    assert.equal(free - m.diagnose().dof, dim === 2 ? 3 : 6, "centre, radius and — in 3D — plane");
+    assert.equal(free - m.diagnose().dof, 3 + normals, "centre, radius and — in 3D — plane");
     del(m, r);
     assert.equal(m.diagnose().dof, free);
   });
@@ -338,6 +366,9 @@ for (const dim of [2, 3] as const) {
     m.addArc("o1", "s1", "e1", 3, null, "a1");
     m.addPoint(xy(6.3, 0.2), "o2"); m.addPoint(xy(6, 2.8), "s2"); m.addPoint(xy(3.2, 0), "e2");
     m.addArc("o2", "s2", "e2", 3, null, "a2");
+    // As every tool-made arc is: its ends on its rim.
+    arcEndpoints(m, "a1"); arcEndpoints(m, "a2");
+    hold(m);
     solved(m);
     const free = m.diagnose().dof;
     const r = symmetric(m, "a1", "a2", "ax");
@@ -347,7 +378,9 @@ for (const dim of [2, 3] as const) {
     // A mirror turns an arc's direction round: its start is the other's end.
     close(lenv(sub(m.coords("e2"), mirror(m.coords("s1"), s, e))), 0, 1e-6, "start ↔ end");
     close(lenv(sub(m.coords("s2"), mirror(m.coords("e1"), s, e))), 0, 1e-6, "end ↔ start");
-    assert.ok(free - m.diagnose().dof >= (dim === 2 ? 5 : 8) - 0, `takes ${free - m.diagnose().dof}`);
+    // A centre (two on the plane), a radius, an angle for each end. In 3D no
+    // more: an arc's ends on its rim and on the plane already set its normal.
+    assert.equal(free - m.diagnose().dof, 5, "the freedoms it takes");
     del(m, r);
     assert.equal(m.diagnose().dof, free);
   });
@@ -377,11 +410,14 @@ for (const dim of [2, 3] as const) {
     intersection(m, "p", "l1", "e1");
     solved(m);
     const q = m.coords("p");
-    // On the line, and on the ellipse: (x/6)² + (y/3)² = 1 in its own frame.
+    // On the line, and on the ellipse: (x/a)² + (y/b)² = 1 in its own frame,
+    // a and b as they are now — the solve may have moved them too.
     const [c, mj] = [m.coords("ec"), m.coords("em")];
+    const { a, b } = semiAxes(m, "e1");
     const u = sub(mj, c).map((v) => v / lenv(sub(mj, c)));
     const x = dotv(sub(q, c), u), y2 = dotv(sub(q, c), sub(q, c)) - x * x;
-    close((x / 6) ** 2 + y2 / 9, 1, 1e-6, "on the ellipse");
+    close((x / a) ** 2 + y2 / (b * b), 1, 1e-6, "on the ellipse");
+    close(off(q, m.coords("l1a"), m.coords("l1b")), 0, 1e-6, "on the line");
     if (dim === 3) {
       // A spline through the sketch plane, and the point where it pierces it.
       m.addPoint(xy(0, 0).map((v, i) => v + [0, 0, -4][i]), "z0");
@@ -391,8 +427,7 @@ for (const dim of [2, 3] as const) {
       m.addPoint(xy(1, 1), "pp");
       pierce(m, "pp", "s1", "t");
       solved(m);
-      const t = m.frame("t");
-      assert.ok(t);
+      close(dotv(sub(m.coords("pp"), m.coords("t_o")), tiltedNormal(m)), 0, 1e-6, "on the sketch plane");
     }
   });
 }

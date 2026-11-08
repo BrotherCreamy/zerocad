@@ -420,6 +420,9 @@
     #options .ocmd{width:100%;padding:0 4px;font-family:inherit;text-align:left;background:transparent;border:1px solid transparent;border-radius:3px;cursor:default}
     #options .ocmd:hover{background:#20303f;color:#d5e1ec;border-color:#223041}
     #options .ocmd .olabel{flex:none;color:inherit}
+    /* Greyed: the relation cannot apply as the drawing stands, and says why where its line would be. */
+    #options .ocmd.off,#options .ocmd.off:hover{color:#56697b;background:transparent;border-color:transparent}
+    #options .ocmd.off .ocmdtext{font-style:italic;color:#475868}
     #options .ocmdtext{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#56697b;text-align:right}
     #options .oval{flex:none;width:calc(64px * var(--ui));height:calc(18px * var(--ui));padding:0 5px;font-family:inherit;font-size:calc(11px * var(--ui));color:#d5e1ec;
       background:#0a0e13;border:1px solid #223041;border-radius:3px;outline:none;text-align:right}

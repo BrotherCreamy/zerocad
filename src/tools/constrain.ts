@@ -1,24 +1,71 @@
 // The constrain tool: pick what to relate, then choose the relation from the
-// list of those that apply (docs/plans/sketch-relations.md).
+// list of those that apply (docs/plans/sketch-relations.md,
+// docs/plans/relations-complete.md).
 //
 // Onshape's constraint toolbar, as one button: with two lines picked the
 // options panel lists Parallel, Perpendicular, Equal, Collinear and Angle;
 // with a point and a line, On, Midpoint and Distance; with two circles,
-// Concentric, Equal and Tangent; and so on (`constraintsFor`, the same list
-// the context menu shows on a selection). One press types one relation —
-// `par("l1", "l2")` — through the command line, so the log, the journal and the
-// undo step are the typed call's.
+// Concentric, Coradial, Equal and Tangent; with five lines, Equal for all five
+// at once; and so on (`constraintsFor`, the same list the context menu shows
+// on a selection). One press types one line — `par("l1", "l2")`, or for many
+// at once `eq("l1", "l2"); eq("l1", "l3")` — through the command line, so the
+// log, the journal and the undo step are the typed line's. A row greyed in
+// the panel says why it cannot apply, and a press on it types nothing.
 //
 // **Armed on a selection, it starts from it**: select two lines with nothing
 // armed, press Constrain, and the list is already there. Armed on nothing,
 // click (or tap) what to relate; a click on a picked one drops it, a click on
 // empty canvas drops them all. After a relation is applied the picks are spent
 // and the tool stays armed for the next.
+//
+// What a click can pick, beyond the drawing's own points and curves: **a
+// frame's arm**, which is that axis (`"f1.y"`; the z arm, in 3D, its plane);
+// and on a solid, **a flat face**, as the three of its own points sketch on
+// face names it by (`"p1.p2.p3"`) — or, where the face or edge is the
+// kernel's own (a fillet's), its kernel name, which the list greys with the
+// reason. A solid's vertices and the edges along its sketch are the model's
+// points and lines, and pick as any do. That last part is `solidRefAt` below,
+// on its own so a fuller picker can take its place.
 
-import { defineTool, press, type Hand, type PointerInfo, type RenderContext, type ToolCommand } from "./tool.ts";
+import { defineTool, press, type Hand, type PointerInfo, type RenderContext, type ToolCommand, type ToolContext } from "./tool.ts";
 import { Tool } from "./tool.ts";
 import { constraintsFor } from "../dimensioning.ts";
+import { sketchFrameFor } from "../sketchface.ts";
+import { parsePointTriple } from "../model.ts";
 import { markPicked } from "./picked.ts";
+
+/**
+ * **The minimal solid picker** (docs/plans/relations-complete.md): what of a
+ * solid is under `screen`, where the drawing's own entities found nothing —
+ * as a name `constraintsFor` reads. A flat face whose region the model's
+ * points bound is its plane through three of them, the plane reference sketch
+ * on face writes (sketchface.ts; a face bounded only by a circle comes back
+ * as the circle, which is the plane reference it has); anything else the
+ * kernel answers for — an edge no model line lies along, a curved face, a
+ * face a fillet made — is its kernel name, which the list greys. Null where
+ * there is no solid, or no kernel.
+ *
+ * Kept to one function on purpose: smart-dimension.md is building the
+ * reusable picker for a solid's faces, edges and vertices, and this is the
+ * one place that swaps for it.
+ */
+export function solidRefAt(ctx: ToolContext, screen: [number, number]): string | null {
+  const solids = ctx.solids;
+  if (!solids) return null;
+  const edge = solids.edgeAt(screen);
+  if (edge) return edge.name;
+  const face = solids.faceAt(screen);
+  if (!face) return null;
+  const region = face.planar ? ctx.regionAt?.(screen) ?? null : null;
+  if (region) {
+    try {
+      return sketchFrameFor(ctx.model, region.loops[region.index], region.toward);
+    } catch {
+      // A face seen edge-on, or no three points off a line: the kernel's name, greyed.
+    }
+  }
+  return face.name;
+}
 
 export class ConstrainTool extends Tool {
   static readonly summary = "Relates what you pick: choose from the relations that apply";
@@ -36,12 +83,12 @@ export class ConstrainTool extends Tool {
   /** What to pick, then a relation from the panel's list. */
   next(hand: Hand): string {
     if (!this.picks.length) return `${press(hand)} what to relate`;
-    return this.commands().length ? "choose a relation in the panel, or pick more" : `${press(hand)} something else to relate`;
+    return this.commands().some((c) => !c.off) ? "choose a relation in the panel, or pick more" : `${press(hand)} something else to relate`;
   }
 
-  /** The relations the picks take, as the panel lists them. */
+  /** The relations the picks take, as the panel lists them — a greyed one with its reason. */
   commands(): ToolCommand[] {
-    return constraintsFor(this.ctx.model, this.picks).map((a) => ({ label: a.label, command: a.text }));
+    return constraintsFor(this.ctx.model, this.picks).map((a) => ({ label: a.label, command: a.text, ...(a.off ? { off: a.off } : {}) }));
   }
 
   /** One was typed: the picks are spent. */
@@ -54,6 +101,7 @@ export class ConstrainTool extends Tool {
   apply(index: number): string {
     const found = constraintsFor(this.ctx.model, this.picks)[index];
     if (!found) throw new Error(`constrain: nothing at ${index} — ${this.picks.length ? `${this.picks.join(", ")} take ${constraintsFor(this.ctx.model, this.picks).length}` : "nothing is picked"}`);
+    if (found.off) throw new Error(`constrain: ${found.label} cannot apply — ${found.off}`);
     const made = found.apply(this.ctx.model);
     this.picks = [];
     this.ctx.requestSolve();
@@ -62,18 +110,25 @@ export class ConstrainTool extends Tool {
 
   onDown(p: PointerInfo): void {
     const hit = this.ctx.pick?.(p.screen) ?? null;
-    if (!hit || hit.kind === "relation" || hit.kind === "frame") {
+    // A frame's arm is its axis; a solid under an empty pixel, what of it is there.
+    const name = !hit ? solidRefAt(this.ctx, p.screen)
+      : hit.kind === "frame" ? (hit.axis ? `${hit.name}.${hit.axis}` : null)
+        : hit.kind === "relation" ? null : hit.name;
+    if (!name) {
       if (this.picks.length) {
         this.picks = [];
         this.ctx.requestRender();
       }
       return;
     }
-    const at = this.picks.indexOf(hit.name);
+    const at = this.picks.indexOf(name);
     if (at !== -1) this.picks.splice(at, 1);
-    else this.picks.push(hit.name);
-    if (this.picks.length && !this.commands().length) {
+    else this.picks.push(name);
+    const listed = this.commands();
+    if (this.picks.length && !listed.length) {
       this.ctx.log?.(`constrain: no relation takes ${this.picks.join(", ")} — pick another`, "guide");
+    } else if (this.picks.length && listed.every((c) => c.off)) {
+      this.ctx.log?.(`constrain: ${listed[0].off}`, "guide");
     }
     this.ctx.requestRender();
   }
@@ -90,7 +145,10 @@ export class ConstrainTool extends Tool {
   }
 
   render(r: RenderContext): void {
-    markPicked(r, this.ctx.model, this.picks);
+    // A face picked is marked by the three corners that name it — which face
+    // it is, where a finger can see it; an axis is its frame's own marker.
+    const model = this.ctx.model;
+    markPicked(r, model, this.picks.flatMap((n) => model.entities.has(n) ? [n] : parsePointTriple(n) ?? []));
   }
 }
 

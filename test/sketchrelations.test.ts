@@ -558,17 +558,18 @@ test("constraintsFor lists what each selection takes", () => {
   m.addPoint([0, 0], "c0"); m.addCircle("c0", 4, null, "c1");
   m.addPoint([20, 0], "c2c"); m.addCircle("c2c", 3, null, "c2");
   const labels = (names: string[]) => constraintsFor(m, names).map((a) => a.label);
-  assert.deepEqual(labels(["l1", "l2"]), ["Parallel", "Perpendicular", "Equal", "Collinear", "Angle"]);
+  // Grown by relations-complete.md: many at once and Fix (test/relationscomplete.test.ts is the whole table).
+  assert.deepEqual(labels(["l1", "l2"]), ["Parallel", "Perpendicular", "Equal", "Collinear", "Horizontal (both)", "Vertical (both)", "Fix (both)", "Angle"]);
   assert.deepEqual(labels(["p", "l1"]), ["On", "Midpoint", "Distance"]);
-  assert.deepEqual(labels(["c1", "c2"]), ["Concentric", "Equal", "Tangent"]);
-  assert.deepEqual(labels(["l1"]), ["Horizontal", "Vertical", "Length"]);
-  assert.deepEqual(labels(["p", "l1a"]), ["Coincident", "Horizontal", "Vertical", "Distance"]);
+  assert.deepEqual(labels(["c1", "c2"]), ["Concentric", "Coradial", "Equal", "Tangent (outside)", "Tangent (inside)", "Fix (both)"]);
+  assert.deepEqual(labels(["l1"]), ["Horizontal", "Vertical", "Fix", "Length"]);
+  assert.deepEqual(labels(["p", "l1a"]), ["Coincident", "Horizontal", "Vertical", "Fix (both)", "Distance"]);
   assert.deepEqual(constraintsFor(m, ["l1", "l2"])[0].text, 'par("l1", "l2")');
   // The menu on a two-line selection carries the same list, under a heading.
   const menu = menuFor(m, { name: "l1", kind: "line", distance: 0 }, null, null, null, ["l1", "l2"]);
   const at = menu.items.findIndex((i) => i.label === "Constrain");
   assert.ok(at > 0, "a Constrain heading");
-  assert.deepEqual(menu.items.slice(at + 1, at + 6).map((i) => i.action.do === "run" ? i.action.command : ""),
+  assert.deepEqual(menu.items.slice(at + 1, at + 9).map((i) => i.action.do === "run" ? i.action.command : ""),
     constraintsFor(m, ["l1", "l2"]).map((a) => a.text));
 });
 
@@ -636,7 +637,7 @@ test("the constrain tool starts from the selection and applies the relation chos
   const { ctx } = scripted(m, [], {}, ["l1", "l2"]);
   const tool = new ConstrainTool(ctx);
   tool.onArmed();
-  assert.deepEqual(tool.commands().map((c) => c.label), ["Parallel", "Perpendicular", "Equal", "Collinear", "Angle"]);
+  assert.deepEqual(tool.commands().map((c) => c.label), ["Parallel", "Perpendicular", "Equal", "Collinear", "Horizontal (both)", "Vertical (both)", "Fix (both)", "Angle"]);
   const r = tool.apply(0);
   assert.equal(m.relations.get(r)!.op, "parallel");
   assert.deepEqual(tool.picks, []);

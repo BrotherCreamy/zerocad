@@ -3975,10 +3975,14 @@ export interface DialogState {
 export interface PanelCommand {
   label: string;
   command: string;
+  /** Greyed, with why (`ToolCommand.off`): shown, and a press says why rather than typing. */
+  off?: string;
 }
 
 /** What the options panel needs of its host. */
 export interface OptionsHost {
+  /** Says a line in the log, as guidance — what a greyed command row says when pressed. */
+  note?(text: string): void;
   /**
    * The armed tool's registered name and its declared options — and, for a
    * tool that makes a feature, the state of its ✓ — or null when none is armed
@@ -4089,7 +4093,7 @@ export class OptionsPanel {
     const commands = a?.commands ?? [];
     const key = a
       ? [a.tool, a.dialog ? "dialog" : "", ...a.rows.map((r) => `${r.name}\t${typeof r.value}\t${r.label}\t${r.unit}\t${r.choices?.flat().join("\t") ?? ""}`),
-        ...commands.map((c) => `cmd\t${c.label}\t${c.command}`)].join("\n")
+        ...commands.map((c) => `cmd\t${c.label}\t${c.command}\t${c.off ?? ""}`)].join("\n")
       : "";
     const shaped = key !== this.key;
     if (shaped) {
@@ -4153,18 +4157,26 @@ export class OptionsPanel {
   private commandRow(c: PanelCommand): HTMLElement {
     const b = document.createElement("button");
     b.type = "button";
-    b.className = "orow ocmd";
+    b.className = c.off ? "orow ocmd off" : "orow ocmd";
     b.dataset.command = c.command;
     const label = document.createElement("span");
     label.className = "olabel";
     label.textContent = c.label;
     const cmd = document.createElement("span");
     cmd.className = "ocmdtext";
-    cmd.textContent = c.command;
+    // A greyed row shows why where its command would be, as a disabled
+    // tooltip does (`Tip.off`) — and says it whole in the log when pressed,
+    // which is where a phone, with no hover, can read all of it.
+    cmd.textContent = c.off ?? c.command;
     b.append(label, cmd);
-    b.title = `${c.label} — ${c.command}`;
+    b.title = c.off ? `${c.label} — ${c.off}` : `${c.label} — ${c.command}`;
+    if (c.off) b.setAttribute("aria-disabled", "true");
     b.addEventListener("mousedown", (e) => e.preventDefault());
     b.addEventListener("click", () => {
+      if (c.off) {
+        this.host.note?.(`${c.label}: ${c.off}`);
+        return;
+      }
       void (this.host.command ? this.host.command(c.command) : this.host.run(c.command));
     });
     return b;
