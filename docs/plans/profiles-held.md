@@ -1,6 +1,7 @@
-# Plan: what is sketched on the ground stays on it, and an extrude's profile stays on its plane
+# Plan: a feature's entities are related to each other — a prism stays a prism, whichever corner is dragged
 
-**Status: queued** (2026-11-08). The owner: *"Why is it that after I extrude
+
+**Status: queued** (2026-11-08; rewritten the same day, see below). The owner: *"Why is it that after I extrude
 I can drag a corner of the extrude and it deforms the solid? I think it's
 missing adding in relations"*.
 
@@ -14,12 +15,7 @@ missing adding in relations"*.
    r3 perp(l1, l2)
    d1 extrusion(origin, 10, p2→p5, p1→p6, p4→p7, p3→p8)
    ```
-   There is no `onPlane`: in a fresh document nothing is chosen to sketch on,
-   and `holdOnSketchPlane` (`src/tools/place.ts`) holds nothing then — *"a
-   point drawn on the ground in a fresh document stays free, as it always
-   did"*. That rule is a leftover of the app's 2D-first days, not an owner
-   decision. The owner's sketch-mode words, *"It should just add 'on plane'
-   relations to each entity as it gets sketched"*, say otherwise.
+   There is no `onPlane`, and that is not the problem (see below).
 2. Drag the lid corner p5 by 60×30 px. `extrusion` holds each twin at base +
    depth·z, so p5 drags its base p2 with it, and nothing holds p2 on the
    ground:
@@ -29,8 +25,11 @@ missing adding in relations"*.
    p3  [36.7, −26.7, 0] → [44.6, −31.1, −6.3]
    p4  [−30, −26.7, 0]  → [−31.7, −22.8, 5.7]
    ```
-   The base is no longer planar, so the walls are twisted, and the status still
-   says SOLVED. TODO.md already had the small symptom: a `set` of the depth
+   The base is still a planar parallelogram, now tilted, while every wall still
+   runs along the world's z, because `extrusion` puts twin = base + depth·(the
+   frame's z), a fixed datum direction. The prism is skewed, and the status
+   still says SOLVED. For a profile of five or more free points, the base
+   would not even stay planar: nothing among its own points says it is flat. TODO.md already had the small symptom: a `set` of the depth
    moved the base by 0.0143 (solid-tools-intuitive.md's "base rectangle
    drifts").
 
@@ -45,71 +44,87 @@ built: the named planes, `"origin"` is Top), `frameless-curves.md`,
 `src/relations/extrusion.ts`, `revolution.ts`, `src/operations.ts`
 (`extrude`, `revolve`, deletion), and `test/sketchmode.test.ts`.
 
+**The first version of this plan was wrong.** It held what is sketched to the
+ground, and the profile to a datum. The owner: *"It's not about being tied to
+the ground plane, it's about correct relationships BETWEEN entities. Part of
+the concept of this CAD is to have bidirectional relationships everywhere by
+default."* So nothing here ties anything to a datum the user didn't choose.
+
 ## Design
 
-1. **The ground is a sketch plane when nothing else is chosen.** In a 3D model
-   with no work plane and no default frame, a drawing tool holds what it makes
-   on Top (`"origin"`) with `onPlane`, as it does on any chosen plane. This
-   covers every drawing tool and the copies offset, mirror and pattern make:
-   `test/sketchmode.test.ts`'s table gains "fresh document, nothing chosen" as
-   a plane. Typed commands (`pt(…)`, `ln(…)`) stay free: the command line is
-   the expert's, and free-entities.md's examples depend on it.
-2. **A feature holds its own profile on its plane.** Extrude and revolve (and
-   cut) hold every profile point that is not already held on that plane. The
-   holds are **owned by the feature**, as its twins are, so:
-   - they leave when it is deleted and the sketch goes back to what it was;
-   - they are never named in a conflict (conflict-detection.md: feature-held
-     relations are background);
-   - a profile typed by hand is protected too.
+1. **An extrusion relates its own entities, not a datum.**
+   - **The profile is flat among its own points.** Every profile point is
+     coplanar with the others. Use a relation the feature owns: a normal of
+     its own (unit, held by the profile's own points), or points held on the
+     plane of three of them. Choose by conditioning and degeneracy, and say
+     why.
+   - **The direction is the profile's own normal**, not the frame's z: twin =
+     base + depth·n, n from the profile. The walls are then perpendicular to
+     base and lid, and the lid is parallel to the base and the same shape,
+     because each is a relation between the feature's entities.
+   - **A profile the user held on a plane** (sketch mode's `onPlane`, a face)
+     stays there because of the user's own relation, and n follows that
+     plane. The result is the same as today for every sketch-mode drawing.
+     Measure that it is.
+   - **Bidirectional.** A drag of a lid corner moves base and lid as one
+     prism, and so does a drag of a base corner. With nothing else holding it,
+     the solid may move, turn or tilt, but never skew. A dimension on the lid
+     drives the base, and one on the base drives the lid.
+   - Keep the frame argument in the journal for old files and for the sign
+     (which side of the profile +depth is). Decide whether "along origin"
+     stays meaningful when the profile isn't on origin's plane, and say so.
+2. **The same audit for every operation that makes geometry from other
+   geometry.** Write a table in the spec of what each leaves behind, and make
+   every row hold both ways:
+   - extrude, cut, revolve (axis, angle, the swept points' circles);
+   - symmetric and through-all ends;
+   - sketch fillet and chamfer;
+   - offset (is the copy held at its distance from the original?);
+   - mirror (`sym`); linear and circular pattern (`translated`/`rotated`);
+   - trim's kept piece; the lid's twins.
 
-   "Already held" means an `onPlane` to the same ref, or one the conflict
-   search would call redundant. Don't add a second hold that diagnosis then
-   reports orange. If adding them makes anything report redundant on an
-   ordinary drawing, that's a bug in this plan; say so.
-
-   This is the TODO's proposal: *"the extrude's profile held onPlane its
-   sketch plane when the plane is a datum"*. A profile in no datum's plane
-   (three of its corners) is held to that triple. Say what you chose for it.
-3. **Dragging an extruded solid's lid corner** then reshapes the profile in
-   its plane, and the solid follows as a prism. That is the house's direct
-   editing, and it stays. It must never leave the plane. Say in help() what a
-   lid drag does.
-4. **Old files**: a file saved with free ground points opens as it did. The
-   feature-held profile hold arrives on regeneration or replay of the extrude
-   (decide which, and say why), so an old file's solids also stop deforming.
-   Make sure the journal replays byte-for-byte where it must; bump the format
-   version only if you have to, and say why.
+   Where a row holds only one way, or not at all, fix it with a relation
+   between the entities, owned by the operation where it is the operation's
+   doing. Where a fix is large, write it down and leave it.
+3. **Feature-owned relations** are background to the conflict search
+   (conflict-detection.md), never named, and leave with the feature.
+4. **No redundant verdicts on ordinary drawings.** A sketch-mode profile
+   already on a plane plus the profile's own coplanarity must not read
+   orange. If it does, the relation is wrong-shaped: one plane hold the user
+   made, plus coplanarity the feature owns, is consistent by construction.
+   Make the diagnosis agree, or choose the coplanarity's form so it does.
+5. **Old files**: they open and regenerate under the new relation, and their
+   solids stop skewing. Bump the format only if replay needs it; say why.
 
 ## Tests
 
 - **Unit, 3D**:
-  - A fresh document with the rectangle tool: every corner held `onPlane`
-    origin.
-  - The table over every drawing tool, with nothing chosen.
-  - A typed `pt` stays free.
-  - Extrude of a typed profile: the profile is held, by the feature, and
-    deleting the extrude frees it again.
-  - A sketch-mode profile (already held) gains no second hold, and nothing
-    reports redundant.
-  - Revolve and cut likewise.
-  - Old fixtures open and regenerate; their solids hold.
-  - `set` of the depth moves no base point (the 0.0143 case, now 0).
+  - The owner's rectangle extruded, then a lid corner pulled anywhere: base
+    planar, every wall perpendicular to the base and of length = depth, lid
+    the base translated. The same when a base corner is pulled.
+  - A free pentagon profile extruded and pulled: still planar.
+  - A sketch-mode (onPlane) profile: the same solid as before this change, to
+    1e-9, and nothing redundant.
+  - Each operation in the audit table: a test per row that it holds both
+    ways.
+  - Old fixtures open, regenerate and hold.
+  - Conflicts on a drawing with features name no feature-owned relation.
 - **E2E, mouse and iPhone 13**:
-  - The owner's case: rectangle, extrude, orbit, drag a lid corner. Every base
-    point keeps z = 0 to 1e-9, the solid stays a prism, and the status is
-    SOLVED.
-  - LOOK at a picture before and after the drag.
-  - The probe's numbers from before your change go in the spec.
+  - The owner's case: rectangle, extrude, orbit, drag a lid corner. The solid
+    stays a right prism (assert walls ⟂ base, wall lengths = depth, base
+    planar) and the status reads SOLVED.
+  - LOOK at pictures before and after.
+  - The probe's before-numbers go into the spec.
 
 ## Docs
 
-- CHANGELOG at the top, quoting the owner.
+- CHANGELOG at the top, quoting the owner (both messages).
 - STATUS.
-- ARCHITECTURE: the ground as the default sketch plane, and feature-held
-  profile holds.
-- The register: the ground rule, feature-owned holds, the off-datum profile,
-  old files.
-- Tick the TODO item "A rectangle drawn on the ground is held there by
-  nothing".
+- ARCHITECTURE: what an extrusion relates now, and the audit table's
+  principle ("bidirectional relationships everywhere by default").
+- The register: the coplanarity's form, the direction from the profile, the
+  frame argument's meaning, every audit-table fix.
+- The TODO item "A rectangle drawn on the ground is held there by nothing":
+  closed by this, the reason being the prism, not the ground.
 - `help()`.
-- The spec marked built.
+- The spec marked built, with the table.

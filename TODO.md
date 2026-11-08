@@ -2079,9 +2079,14 @@ are flagged as such.
   relations"*). Measured: in a fresh document the drawing tools hold nothing
   on the ground, and the extrusion ties twins to bases but no base to its
   plane, so a lid drag tipped the base corners to z = −18.2…+5.7 and the
-  status said SOLVED. Spec: [`profiles-held.md`](docs/plans/profiles-held.md)
-  — the ground as the default sketch plane for the tools, and every feature
-  holding its own profile on its plane. In flight.
+  status said SOLVED. Spec: [`profiles-held.md`](docs/plans/profiles-held.md).
+  First written as "hold it to the ground"; the owner: *"It's not about being
+  tied to the ground plane, it's about correct relationships BETWEEN
+  entities. Part of the concept of this CAD is to have bidirectional
+  relationships everywhere by default."* Rewritten: the extrusion relates its
+  own entities (profile coplanar, direction its own normal), and every
+  operation that makes geometry from geometry is audited for holding both
+  ways. In flight.
 
 - [ ] **The constrain list covers what it is about, on a phone** (found
   merging smart dimension, 2026-11-08). Two circles list seven rows, two
