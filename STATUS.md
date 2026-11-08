@@ -32,8 +32,8 @@ etc).
   `fdist(face, b, d)`. An extrude's lid and its base are its depth, opened
   to set. A dimension that would be redundant or a conflict is made driven
   (`measure(…)`) and the log says so; what only the kernel knows is driven.
-  Double-click or double-tap a label to set it; `measure only` and
-  `measureOf(…)` read without making. The four new relations are the
+  Double-click or double-tap a label to set it;
+  `measureOf(…)` reads without making. The four new relations are the
   **dimensions** module's, in every workbench.
 - **The spline** (docs/plans/spline.md, built). The owner: *"give me better
   sketch tools, relations, trim, slot... all the usual"*. A cubic B-spline

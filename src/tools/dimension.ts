@@ -33,7 +33,7 @@
 // picks that are a dimension the drawing already has — an extrude's lid and
 // its own base, which are its depth — make nothing: the depth's value is
 // opened to be typed, as Set value… opens it. With `driven` it is always the
-// reference; with `measure` the reading is said in the log and nothing is made.
+// reference. `measureOf(…)`, typed, says the reading and makes nothing.
 //
 // **The gesture**: click (or tap) each thing to measure — a second click on a
 // picked one drops it — and the number is previewed beside the cursor; then
@@ -69,8 +69,9 @@ export class DimensionTool extends Tool {
     // SolidWorks': a whole circle's diameter, an arc's radius — vetoable (TODO.md).
     radial: { default: "auto", label: "circle size", choices: { auto: "⌀ circle, R arc", radius: "R", diameter: "⌀" } },
     driven: { default: false, label: "driven" },
-    // Say what it measures, make nothing (`measureOf`).
-    measure: { default: false, label: "measure only", remember: false },
+    // No "measure only" row: on an iPhone a third row put the panel over the
+    // drawing a tap was aimed at (sketchrelations.e2e). `measureOf(…)`, typed,
+    // says the reading and makes nothing.
   };
   static readonly summary = "Dimensions what you click, a solid's faces too; a click places it";
   readonly name = "dimension";
@@ -85,13 +86,12 @@ export class DimensionTool extends Tool {
   /** The last commit, once it has run — what a test (and nothing else) waits on. */
   settled: Promise<void> = Promise.resolve();
 
-  private opts(): DimensionOptions & { measure: boolean } {
+  private opts(): DimensionOptions {
     const o = this.ctx.options;
     const radial = o.radial === "radius" || o.radial === "diameter" ? o.radial : "auto";
     return {
       radial: o.diameter === true ? "diameter" : radial,
       driven: o.driven === true,
-      measure: o.measure === true,
     };
   }
 
@@ -173,10 +173,6 @@ export class DimensionTool extends Tool {
     this.at = null;
     this.hovered = null;
     this.ctx.requestRender();
-    if (opts.measure) {
-      this.ctx.log?.(`${plan.label.replace(/ \(driven\)$/, "")}: ${(plan.reading ?? "").replace(/^\((.*)\)$/, "$1")}`, "done");
-      return;
-    }
     if (plan.edits) {
       this.ctx.log?.(`dimension: that is ${plan.label.toLowerCase()} = ${plan.reading} — type its new value`, "done");
       this.ctx.editDimension?.(plan.edits);

@@ -59,8 +59,9 @@ double-tap the label to set its value.
   its minor where the label is put nearer that axis. Horizontal or vertical
   is `along`, a distance along the drawing's x or y, chosen by putting the
   label beyond both points.
-- **`measure only`** (the option) and `measureOf(…)` say the reading and make
-  nothing.
+- **`measureOf(…)`** says the reading and makes nothing. A `measure only`
+  row in the options was tried and taken out: on an iPhone a third row put
+  the panel over the drawing a test's tap was aimed at.
 - **Faces pick only for a tool that asks** (`ctx.pickSolid`,
   `src/solidpick.ts`): the ordinary pick first, then the front face under the
   pixel, occlusion's `nearestFace`. Hover, selection and the menu still never

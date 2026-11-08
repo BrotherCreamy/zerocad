@@ -197,9 +197,11 @@ Every new relation is dimension-generic where it can be (`along`, `ang3`,
 - **A face dimension mapped to sketch lines is labelled on the sketch**, which
   the solid can hide — seen after setting the step to 30
   (`docs/images/323`). Filed.
-- **Measure** is the `measure only` option (the reading said in the log,
-  nothing made) and the `measureOf(…)` command; no menu item yet — the
-  selection menu is the relations package's `constraintsFor` list this week.
+- **Measure** is the `measureOf(…)` command (the reading said in the log,
+  nothing made). A `measure only` option was built and taken out: on an
+  iPhone a third row of the options panel covered the drawing a tap was aimed
+  at (sketchrelations.e2e). No menu item yet: the selection menu is the
+  relations package's `constraintsFor` list this week.
 
 ### Pictures (docs/images/)
 
