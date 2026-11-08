@@ -2073,6 +2073,16 @@ are flagged as such.
 
 ## Next up
 
+- [ ] **An extruded solid deforms when its corner is dragged** (the owner,
+  2026-11-08: *"Why is it that after I extrude I can drag a corner of the
+  extrude and it deforms the solid? I think it's missing adding in
+  relations"*). Measured: in a fresh document the drawing tools hold nothing
+  on the ground, and the extrusion ties twins to bases but no base to its
+  plane, so a lid drag tipped the base corners to z = −18.2…+5.7 and the
+  status said SOLVED. Spec: [`profiles-held.md`](docs/plans/profiles-held.md)
+  — the ground as the default sketch plane for the tools, and every feature
+  holding its own profile on its plane. In flight.
+
 - [ ] **The constrain list covers what it is about, on a phone** (found
   merging smart dimension, 2026-11-08). Two circles list seven rows, two
   lines eight; on an iPhone 13 the options pane then covers the second
