@@ -166,7 +166,7 @@ Found, and fixed:
   dots (the polygon is drawn now); trim's glyph read as a plus sign on the
   iPhone (the piece is struck out now).
 
-**Verification** is in the PR and CHANGELOG.md: the counts before and after,
+**Verification** is in CHANGELOG.md's entry: the counts before and after,
 and the full `npm run test:all` at the end.
 
 Pictures, each looked at: 360 the ellipse's piece red under the cursor; 361

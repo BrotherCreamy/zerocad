@@ -64,6 +64,21 @@ crosses, and the modify button's face is trim (docs/plans/trim-everything.md).
   representation), a revolve of an elliptical arc, part of either piece in a
   region, trim to closest and extend by shift (no need found). Each is in
   TODO.md.
+- **Verification** (on a shared four-core box at load 13–39):
+  - `npm run typecheck`: 0 errors, as before.
+  - `npm test`: 1787 tests, 1786 pass, against 1755/1755 before. The one
+    failure is `conflicts.test.ts`'s cost test, whose search is bounded by
+    500 ms. It passed alone three times out of three.
+  - `npm run test:kernel`: 11/11.
+  - `npm run test:e2e`: 721 tests, 700 pass, 19 fail, 2 skipped.
+    - Eleven failures read the modify button's old face (fillet). They were
+      fixed, and those four files pass 67/67.
+    - The rest are finger and timing tests. Each passed alone: regionsops
+      3/3, sketchrelations 3 of 4, touchdensity 3/3. overlaylock failed
+      alone at load 35–39, a different test each run (one run hung), and
+      passed 14/14 twice at load 9. The base branch passed it 14/14 once at
+      load 13.
+  - `trimeverything.e2e.ts`: 4/4.
 - **Tests**: `test/trimeverything.test.ts` (each kind trimmed by each kind,
   2D and on a tilted plane in 3D, the kept piece checked against the curve
   as it was; each kind's own rules; power trim's typing), `test/
