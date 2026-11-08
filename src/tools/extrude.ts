@@ -138,6 +138,12 @@ export class ExtrudeTool extends FeatureTool {
     return this.dragged === null ? v : { ...v, depth: this.dragged };
   }
 
+  /** "✓ to cut" when the mode row says Cut — the chip said "✓ to extrude" whatever it would do (W8). */
+  protected get verb(): string {
+    const m = this.values().mode;
+    return m === "cut" ? "cut" : m === "intersect" ? "intersect" : "extrude";
+  }
+
   /** Whether a screen point is on the handle: its shaft, its head, or its label, a finger's reach. */
   private onHandle(at: [number, number]): boolean {
     const h = this.handle;

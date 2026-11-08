@@ -41,7 +41,7 @@
 //     about as the drawing solves being the obvious one).
 
 import { addEllipse, checkEllipse, ellipseOf, semiAxes } from "./kinds/ellipse.ts";
-import { parseAxisRef, referentsOf, type Model, type RelationEntry } from "./model.ts";
+import { extrudeOfDepth, parseAxisRef, referentsOf, type Model, type RelationEntry } from "./model.ts";
 import { uiOf, viewAxes, worldToScreen, type View } from "./view.ts";
 import { dot3, lift3, sub3 } from "./vec3.ts";
 import { curveFrame, curvePath, curvePlaneOf } from "./curveplane.ts";
@@ -852,7 +852,10 @@ export function placeGlyphs(model: Model, view: View, occ: Occlusion | null = nu
     }
     let label: string | null;
     try {
-      label = r.op === "measure" ? drivenLabel(model, r.args) : labelFor(r.op, r.args);
+      label = r.op === "measure" ? drivenLabel(model, r.args)
+        // A through-all depth keeps only its sign: its number would be a lie (solid-tools-intuitive.md).
+        : r.op === "extrusion" && extrudeOfDepth(model, r.name)?.extent === "through" ? "through all"
+        : labelFor(r.op, r.args);
     } catch {
       continue;
     }

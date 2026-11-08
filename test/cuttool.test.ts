@@ -23,6 +23,9 @@ import { getToolCtor } from "../src/tools/tool.ts";
 import type { RegionHit, ToolContext } from "../src/tools/tool.ts";
 import { L, T, circleOn, loadSolver, onTop, plate, type Plate } from "./solids/scene.ts";
 import { featureHost } from "./featurectx.ts";
+import { menuFor } from "../src/menu.ts";
+import { set } from "../src/operations.ts";
+import { insideFeature } from "../src/modes.ts";
 
 /** The region whose loop holds `at`, as a click there finds it with the viewer looking along −`toward`. */
 function hitOn(m: Model, at: number[], toward: number[]): RegionHit {
@@ -153,6 +156,24 @@ test("the edit dialog's end row types setEnd before the depth, and nothing when 
   assert.deepEqual(lines("blind", -4), [], "nothing changed, nothing typed");
   assert.deepEqual(lines("through", -4), ['setEnd("e2", "through")']);
   assert.deepEqual(lines("through", 4), ['setEnd("e2", "through")', `set("${f.depth}.value", 4)`], "the flip is the depth negated");
+});
+
+test("the menu: Flip direction on an extrude's depth dimension and on its face, typing the depth negated — and run, it flips", async () => {
+  await loadSolver();
+  const { m, p } = scene();
+  const f = m.featureOf(p.feature, "extrude");
+  const flip = (pick: { name: string; kind: string }) => menuFor(m, pick as never).items.find((i) => /^Flip/.test(i.label));
+  const onDimension = flip({ name: f.depth, kind: "relation" });
+  assert.deepEqual(onDimension && [onDimension.label, onDimension.action], ["Flip direction", { do: "run", command: `set("${f.depth}.value", -${T})` }]);
+  const onFace = flip({ name: f.twins[0][0], kind: "line" });
+  assert.deepEqual(onFace && [onFace.label, onFace.action], ["Flip direction", { do: "run", command: `set("${f.depth}.value", -${T})` }],
+    "on a piece of the solid, beside Edit e1");
+  // No flip on a dimension with no direction: a fillet's radius, a dist.
+  const d = m.relation("dist", [p.base[0], p.base[1], 100], () => {});
+  assert.equal(flip({ name: d, kind: "relation" }), undefined);
+  set(m, `${f.depth}.value`, -T);
+  m.solve();
+  assert.ok(insideFeature(m, f)(p.t.at(50, 30, -5)) && !insideFeature(m, f)(p.t.at(50, 30, 5)), "flipped: below its sketch");
 });
 
 test("the depth handle's arithmetic: deeper along it, shallower against, through zero a flip, snapped to round values and never 0", () => {

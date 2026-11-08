@@ -365,7 +365,24 @@ function setValueItem(model: Model, name: string): MenuItem[] {
   return [{
     label: "Set value…",
     action: { do: "type", text: `set(${quoted(`${name}.${SETTABLE_PROPERTY}`)}, ` },
-  }];
+  }, ...flipItem(model, name)];
+}
+
+/**
+ * **Flip direction** on a direction's dimension — an extrude's depth, a
+ * revolve's angle (docs/plans/solid-tools-intuitive.md; the owner: *"Flip
+ * button."*): `set("d1.value", -10)`, the value negated, typed and run as one
+ * step, so the log shows it and one undo takes it back. Nothing on any other
+ * dimension — a radius has no other way — nor on a full turn's angle, which a
+ * `set` refuses.
+ */
+function flipItem(model: Model, name: string): MenuItem[] {
+  const r = model.relations.get(name);
+  if (!r || (r.op !== "extrusion" && r.op !== "revolution")) return [];
+  const v = r.args[1];
+  if (typeof v !== "number" || v === 0) return [];
+  if (r.op === "revolution" && [...model.features.values()].some((f) => f.kind === "revolve" && f.angle === name && f.twins.length === 0)) return [];
+  return [{ label: "Flip direction", action: { do: "run", command: `set(${quoted(`${name}.${SETTABLE_PROPERTY}`)}, ${String(-v)})` } }];
 }
 
 /**
@@ -583,9 +600,13 @@ function holeItems(model: Model, name: string): MenuItem[] {
  */
 function editItems(model: Model, names: readonly string[]): MenuItem[] {
   if (!names.length) return [];
-  return [...model.features.values()]
-    .filter((f) => names.every((n) => f.names.includes(n)))
-    .map((f) => ({ label: `Edit ${f.name}`, action: { do: "run", command: `edit(${quoted(f.name)})` } }));
+  const mine = [...model.features.values()].filter((f) => names.every((n) => f.names.includes(n)));
+  return mine.flatMap((f) => [
+    { label: `Edit ${f.name}`, action: { do: "run", command: `edit(${quoted(f.name)})` } },
+    // Beside it, the feature's direction turned over — its depth's (or
+    // angle's) Flip direction, named for the feature where several stand.
+    ...flipItem(model, f.kind === "extrude" ? f.depth : f.angle).map((item) => (mine.length > 1 ? { ...item, label: `Flip ${f.name}` } : item)),
+  ] as MenuItem[]);
 }
 
 /**
