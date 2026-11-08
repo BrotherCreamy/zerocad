@@ -293,7 +293,7 @@ test("v4 and v5 2D files open lifted: depth zero, a y-ref per frame, the same me
     assert.equal(m.byKind.arc, 1, "the fillet re-expanded in 3D");
   }
   const saved = JSON.parse((await app.repl("save()")).value as string);
-  assert.equal(saved.version, 18); // the current version
+  assert.equal(saved.version, 19); // the current version
   assert.equal(saved.dim, 3, "and saves back as what it now is");
   // The fillet's arc was given the side of the frame the 2D drawing was in —
   // the only one it had, whose +z is the lifted kernel's — and its entry says
