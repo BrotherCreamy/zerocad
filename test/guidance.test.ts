@@ -109,6 +109,23 @@ test("the axes lit for a revolve are exactly the ones it would turn about: in th
   assert.ok(!axes.includes(`${g}.y`) && !axes.includes(`${g}.x`), "not an arm through it");
 });
 
+test("the origin's own arms are axes a revolve is offered — it is a frame with no entity behind it", async () => {
+  // Found by walking the revolve on a phone (docs/plans/solid-tools-intuitive.md,
+  // W9): a rectangle beside the origin's y axis lit no axis at all, and a tap
+  // on the origin's y arm was refused as "not in its plane" — the tool asked
+  // only the frames that are entities, while `revolve(…, "origin.y")` typed works.
+  await loadKernel();
+  const m = new Model(3);
+  const pts = [[10, -5, 0], [20, -5, 0], [20, 5, 0], [10, 5, 0]].map((c) => m.addPoint(c).name);
+  const lines = pts.map((p, i) => m.addLine(p, pts[(i + 1) % 4]).name);
+  const loops = findLoops(m);
+  const index = loops.findIndex((l) => l.members.every((x) => lines.includes(x.name)));
+  const axes = revolveAxes(m, { loops, index });
+  assert.ok(axes.includes("origin.y"), `the origin's y arm, beside it in its plane: ${axes}`);
+  assert.ok(!axes.includes("origin.x"), "not the x arm, which runs through it");
+  assert.ok(!axes.includes("origin.z"), "nor the z arm, out of its plane");
+});
+
 // --- what is said -----------------------------------------------------------------
 
 test("extrude and sketch, a click on no region: guidance, the tool still armed — and, with nothing closed at all, what to do first", async () => {
