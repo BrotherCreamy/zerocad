@@ -42,6 +42,17 @@ async function shot(name: string): Promise<void> {
 
 /** Arms a tool the way a newcomer does: its toolbar button, clicked. */
 async function press(tool: string): Promise<void> {
+  // The fillet is behind trim's face on the modify button since trim
+  // everything (docs/plans/trim-everything.md): a newcomer hovers the button and
+  // clicks it in the flyout.
+  if (!(await app.page.$(`#toolbar button[data-tool="${tool}"]`))) {
+    const g = await app.page.$eval('#toolbar button[data-group="modify"]', (el) => { const r = el.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; });
+    await app.page.mouse.move(g.x, g.y, { steps: 2 });
+    await app.page.waitForSelector(`#flyout:not([hidden]) button[data-tool="${tool}"]`);
+    await app.page.click(`#flyout button[data-tool="${tool}"]`);
+    await app.page.waitForTimeout(120);
+    return;
+  }
   const b = await app.page.$eval(`#toolbar button[data-tool="${tool}"]`, (el) => {
     const r = el.getBoundingClientRect();
     return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
