@@ -119,12 +119,15 @@ function isSolidFace(model: Model, members: readonly { name: string }[]): boolea
  *    `sketchFrameFor`'s three points facing the viewer, or a circle's;
  * 3. else the origin's x–y plane, where the click landed.
  *
- * Every click of the gesture is read on that plane (`settle`), and the commit
- * holds the curve there with **ordinary, visible, deletable relations** — its
- * centre `onplane` (unless a snap already pinned it, or it was held as it was
- * placed) and its normal `par` to the plane's (`hold`). Delete the `par` and the
- * circle is free to turn in space; constrain its normal to a line instead and
- * it follows the line.
+ * Every click of the gesture is read on that plane (`settle`). **Only where the
+ * plane is case 1, one the user picked**, the commit holds the curve there with
+ * ordinary, visible, deletable relations — its centre `onplane` (unless a snap
+ * already pinned it, or it was held as it was placed) and its normal `par` to
+ * the plane's (`hold`). Delete the `par` and the circle is free to turn in
+ * space; constrain its normal to a line instead and it follows the line. In
+ * cases 2 and 3 nothing is held: the face or the ground is where the curve was
+ * drawn, not a relation (the owner: *"every sketch is a 3D sketch, unless you
+ * enter into active on-plane constraint"*, docs/plans/profiles-held.md).
  */
 export class CurvePlane {
   private ctx: ToolContext;
@@ -237,7 +240,11 @@ export class CurvePlane {
  * the plane is held.
  */
 export function holdCurve(m: Model, curve: string, centre: string, ref: string): string[] {
-  if (m.dim !== 3) return [];
+  // Nothing picked, nothing held: the owner's "every sketch is a 3D sketch,
+  // unless you enter into active on-plane constraint". The gesture's plane
+  // (the ground, a face under the cursor) still lays the curve out and seeds
+  // its normal; it is a position, not a relation (docs/plans/profiles-held.md).
+  if (m.dim !== 3 || sketchPlaneRef(m) === null) return [];
   const on = planeOfRef(m, ref);
   if (!on) return [];
   const made: string[] = [];
@@ -282,10 +289,12 @@ export function asArmed(ctx: ToolContext, ...curves: string[]): void {
  * work plane or the default frame (`sketchPlaneRef`), or `plane` when the
  * caller says which (a curve tool's gesture plane, which may be a solid's
  * face) — if this is a 3D model and the point is on it. Returns the relation's
- * name, or null when nothing applied. With no plane chosen and none given,
- * nothing: a point drawn on the ground in a fresh document stays free, as it
- * always did, and only a curve — which needs its orientation held by
- * something — is held there (`CurvePlane.hold`).
+ * name, or null when nothing applied. **With no plane chosen, nothing**, given
+ * or not: the owner's *"the default for sketch entities is no plane. Every
+ * sketch is a 3D sketch, unless you enter into active on-plane constraint."*
+ * A point or a curve drawn on the ground in a fresh document stays free; a
+ * curve's orientation is its own normal, seeded facing the plane the click
+ * landed on and held by nothing (docs/plans/profiles-held.md).
  *
  * Exported for the points a tool makes *without* a click of their own — a
  * rectangle's two derived corners, a three-point circle's centre — which are
@@ -293,6 +302,9 @@ export function asArmed(ctx: ToolContext, ...curves: string[]): void {
  * the same reason the clicked ones do.
  */
 export function holdOnSketchPlane(model: Model, pointName: string, given?: string | null): string | null {
+  // Only on a plane the user picked (see `holdCurve`): `given` says which of
+  // the gesture's planes, and with nothing picked there is none to hold to.
+  if (sketchPlaneRef(model) === null) return null;
   const ref = given ?? sketchPlaneRef(model);
   if (ref === null || model.dim !== 3) return null;
   const plane = planeOfRef(model, ref);

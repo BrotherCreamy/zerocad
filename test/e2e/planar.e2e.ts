@@ -89,7 +89,9 @@ test("with no frame, the circle tool draws on the origin's ground and makes noth
   assert.equal(m.byKind.frame ?? 0, 0, "and no frame");
   const k = await circleOf(m.circles[0].name);
   assert.ok(Math.abs(k.center[2]) < 1e-9 && parallelTo(k.normal, [0, 0, 1]), `on the ground: ${k.center}, facing ${k.normal}`);
-  assert.deepEqual(k.held, ["origin.z"], "held there by a par of its own");
+  // Laid out on the ground, where the press landed, and held there by nothing:
+  // no plane was picked (docs/plans/profiles-held.md). It was par(c, origin.z).
+  assert.deepEqual(k.held, [], "no plane picked, so no par");
   assert.equal(await app.status(), "SOLVED");
 
   const at = await app.at(500, 300);
@@ -103,7 +105,7 @@ test("with no frame, the circle tool draws on the origin's ground and makes noth
   assert.deepEqual(off, [], "nothing greyed");
   await app.page.keyboard.press("Escape");
 
-  // The circle and its hold: one gesture, one step.
+  // The circle: one gesture, one step.
   await app.page.fill("#cmd", "");
   await app.page.keyboard.press("Control+z");
   await app.page.waitForTimeout(200);

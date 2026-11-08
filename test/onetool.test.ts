@@ -47,7 +47,23 @@ const view = FIXTURE.view;
 // current version. Version 14 (docs/plans/solids-kernel.md) added a feature's
 // mode and changed nothing a curve tool writes, so this is the one byte that
 // may differ — and the fixtures stay what the old build wrote.
-const current = (file: string) => file.replace('"version": 13,', `"version": ${VERSION},`);
+const stamped = (file: string) => file.replace('"version": 13,', `"version": ${VERSION},`);
+/**
+ * What today's tool writes for the gesture: the old file, stamped, and in 3D
+ * **without the ground holds** — the old tools held every curve drawn in a
+ * fresh document to the origin's plane (`onPlane(p, "origin")`, `par(c,
+ * "origin.z")`), and the owner's rule (docs/plans/profiles-held.md) is that
+ * nothing is held to a plane nobody picked. Nothing else in the file may
+ * differ: the same entities, the same other relations, the same positions.
+ * Opening the old files still gives them back byte for byte (below) — an
+ * old file's holds are its own, and stay.
+ */
+const current = (file: string) => {
+  const saved = JSON.parse(stamped(file)) as { dim: number; journal: { op: string; args: unknown[] }[] };
+  if (saved.dim !== 3) return stamped(file);
+  const ground = (e: { op: string; args: unknown[] }) => (e.op === "onPlane" && e.args[1] === "origin") || (e.op === "parallel" && e.args[1] === "origin.z");
+  return JSON.stringify({ ...saved, journal: saved.journal.filter((e) => !ground(e)) }, null, 2);
+};
 
 function ctxFor(m: Model, options: Record<string, unknown> = {}) {
   const said: string[] = [];
@@ -154,7 +170,7 @@ test("old files open as they were: what the old tools wrote reopens to itself an
   await loadKernel();
   for (const [name, file] of Object.entries(FIXTURE.files)) {
     const m = open(file);
-    assert.equal(save(m), current(file), `${name} reopens to itself`);
+    assert.equal(save(m), stamped(file), `${name} reopens to itself`);
     const before = save(m);
     assert.equal(m.solve().solved, true, name);
     assert.equal(save(m), before, `${name} solves without moving`);

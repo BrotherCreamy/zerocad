@@ -123,7 +123,7 @@ test("a fresh document: nothing in it, and the origin drawn in RGB from the star
 
 let circle = "";
 
-test("a circle drawn on a fresh document is one circle and no frame, on the origin's ground, held by onplane and par", async () => {
+test("a circle drawn on a fresh document is one circle and no frame, on the origin's ground, and held there by nothing", async () => {
   await fresh();
   await app.type("orbit(0.3, 0.8)");
   await app.type("circle");
@@ -136,19 +136,19 @@ test("a circle drawn on a fresh document is one circle and no frame, on the orig
   assert.ok(Math.abs(m.points[centre][2]) < 1e-9, `the centre is on the ground: ${m.points[centre]}`);
   const normal = (await value(`model.normalOf("${circle}")`)) as number[];
   assert.ok(parallelTo(normal, [0, 0, 1]), `facing the ground's normal: ${normal}`);
-  // The hold is two ordinary relations, the same kinds a user writes.
-  assert.deepEqual((await relationsOn(centre)).map(([op, args]) => [op, args]), [["onPlane", [centre, "origin"]]]);
-  const pars = (await relationsOn(circle)).filter(([op]) => op === "parallel");
-  assert.deepEqual(pars.map(([, args]) => args), [[circle, "origin.z"]]);
+  // Nothing holds it there: no plane was picked, and the ground is only where
+  // the press landed (docs/plans/profiles-held.md — the owner's "every sketch
+  // is a 3D sketch, unless you enter into active on-plane constraint"). It
+  // used to come with onPlane(centre, origin) and par(circle, origin.z).
+  assert.deepEqual((await relationsOn(centre)).map(([op, args]) => [op, args]), []);
+  assert.deepEqual((await relationsOn(circle)).filter(([op]) => op === "parallel"), []);
   assert.equal(await app.status(), "SOLVED");
   await shot("ground");
 
-  // Delete the par, and the circle is free to turn: stand it square to a line
-  // leaning 45° out of the ground and it follows — its centre still on the
-  // ground. (Not to an axis at right angles to where it faces: a wedge is at
-  // its maximum there, with no gradient to start the turn — `par` of two lines
-  // at exactly 90° is the same.)
-  await app.type(`del("${pars[0][2]}")`);
+  // So the circle is free to turn: stand it square to a line leaning 45° out
+  // of the ground and it follows, its centre where it was. (Not to an axis at
+  // right angles to where it faces: a wedge is at its maximum there, with no
+  // gradient to start the turn — `par` of two lines at exactly 90° is the same.)
   // The line fixed — in the origin's coordinates, with no frame of our own —
   // so it is the circle that turns, not the line.
   await app.type(`la = pt(-40, 0, 0); lb = pt(-30, 0, 10); fix(la, [-40, 0, 0]); fix(lb, [-30, 0, 10]); lean = ln(la, lb)`);
@@ -157,7 +157,7 @@ test("a circle drawn on a fresh document is one circle and no frame, on the orig
   const turned = (await value(`model.normalOf("${circle}")`)) as number[];
   assert.ok(parallelTo(turned, [1, 0, 1]), `turned to face along the line: ${turned}`);
   const at = (await app.model()).points[centre];
-  assert.ok(Math.abs(at[2]) < 1e-9, "its centre still held on the ground");
+  assert.ok(Math.abs(at[2]) < 1e-9, "its centre where it was: the turn asked nothing of it");
   assert.equal((await app.model()).byKind.frame, undefined, "and still no frame");
   await shot("ground-turned");
 });
@@ -182,11 +182,21 @@ test("drawn over a solid's lid, a circle lands on the lid — not the ground und
   const centre = m.points[c.center];
   assert.ok(near(centre, [20, 15, 20], 0.6), `on the lid where it was clicked: ${centre}`);
   assert.ok(parallelTo((await value(`model.normalOf("${c.name}")`)) as number[], [0, 0, 1]), "facing up, as the lid does");
-  // Held on the lid's own points — the plane follows the solid.
-  const on = (await relationsOn(c.center)).find(([op]) => op === "onPlane");
+  // Nothing picked, so the lid is where it landed and nothing holds it there.
+  assert.deepEqual((await relationsOn(c.center)).filter(([op]) => op === "onPlane"), [], "held by nothing: no plane picked");
+  // The lid picked — sketch on face, its own corners — and drawn again: held
+  // on the lid's points, so the plane follows the solid.
+  await value(`del("${c.name}"); const f = model.featureOf("e1", "extrude"); const [a, b] = model.line(f.twins[0][0]).refs; `
+    + 'workplane(`${a}.${b}.${model.line(f.twins[0][3]).refs[0]}`); "picked"');
+  await look(app, 0.5, 0.7);
+  await app.type("circle");
+  await drag([cx, cy], [rx, ry]);
+  await app.type("cancel()");
+  const c2 = (await app.model()).circles[0];
+  const on = (await relationsOn(c2.center)).find(([op]) => op === "onPlane");
   assert.ok(on && /^p\d+\.p\d+\.p\d+$/.test(String(on[1][1])), `held on three of the lid's points: ${JSON.stringify(on)}`);
   await value('set(model.featureOf("e1", "extrude").depth + ".value", 35); solve(); refresh(); "ok"');
-  const grown = (await app.model()).points[c.center];
+  const grown = (await app.model()).points[c2.center];
   assert.ok(Math.abs(grown[2] - 35) < 1e-6, `the box grew and the circle rode up with the lid: ${grown}`);
   await value('set(model.featureOf("e1", "extrude").depth + ".value", 20); solve(); refresh(); "ok"');
   await shot("face");

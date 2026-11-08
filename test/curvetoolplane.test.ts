@@ -5,8 +5,12 @@
 //
 // A circle or arc carries its own normal. A tool's circle lies where the click
 // is — on the plane being sketched on, else a solid's face under the cursor,
-// else the origin's ground — and is held there by two ordinary relations it can
-// see and delete: `onplane` on its centre and `par` on its normal. These used
+// else the origin's ground. **Only on a plane the user picked** is it held
+// there, by two ordinary relations it can see and delete: `onplane` on its
+// centre and `par` on its normal. With nothing picked it is held by nothing but
+// its own definition — the owner: *"the default for sketch entities is no
+// plane. Every sketch is a 3D sketch, unless you enter into active on-plane
+// constraint"* (docs/plans/profiles-held.md). These used
 // to type `plane(pt(…), null, null, { look: false })` first, in a fresh model,
 // and a fillet a plane of its corner's points; nothing is typed now, and a
 // fresh document drawn in gets one circle and nothing else.
@@ -83,7 +87,7 @@ function toolCtx(m: Model, view: View) {
 
 // --- a fresh document --------------------------------------------------------------
 
-test("the circle tool in a fresh document makes one circle and no frame — on the origin's ground, held by relations it can see", async () => {
+test("the circle tool in a fresh document makes one circle and no frame — on the origin's ground, and held there by nothing", async () => {
   await loadKernel();
   const m = new Model(3);
   const view = flatView();
@@ -102,14 +106,15 @@ test("the circle tool in a fresh document makes one circle and no frame — on t
   assert.deepEqual(m.normalOf(circle), [0, 0, 1], "facing up, off the origin's x–y plane");
   assert.ok(Math.abs(m.coords(centre)[2]) < 1e-12, "its centre on the ground");
   assert.ok(Math.abs(m.radius(circle) - 10) < 1e-9, "20 px at 2 px a unit");
-  assert.deepEqual(relationsOf(m), [["onPlane", [centre, "origin"]], ["parallel", [circle, "origin.z"]]],
-    "its centre on the origin's plane and its normal par to the origin's +z");
+  // Until 2026-11-08: onPlane(centre, origin) and par(circle, origin.z). The
+  // ground was where the click landed, never a plane the user picked.
+  assert.deepEqual(relationsOf(m), [], "no plane picked, so no plane held: a 3D sketch");
   assert.equal(m.solve().solved, true);
   const file = save(m);
   assert.equal(save(open(file)), file, "and the file reopens to itself");
 });
 
-test("deleting a drawn circle's par lets it turn in space; constrained to a line instead, it follows the line", async () => {
+test("a circle drawn with nothing picked is free to turn in space; constrained to a line, it follows the line", async () => {
   await loadKernel();
   const m = new Model(3);
   const { ctx, at } = toolCtx(m, flatView());
@@ -117,8 +122,8 @@ test("deleting a drawn circle's par lets it turn in space; constrained to a line
   tool.onDown(at(400, 300));
   tool.onUp(at(420, 300));
   const circle = [...m.entities.values()].find((e) => e.kind === "circle")!.name;
-  const par = [...m.relations.values()].find((r) => r.op === "parallel")!.name;
-  del(m, par);
+  // No par to delete first: nothing holds it to the ground (it once took a `del`).
+  assert.equal([...m.relations.values()].filter((r) => r.op === "parallel").length, 0);
   // A line standing up through the centre, and the circle told to face along it.
   const s = neocadScope({ model: m }) as Record<string, (...a: unknown[]) => unknown>;
   const ends = [s.pt(0, 0, 0) as string, s.pt(0, 6, 8) as string];
@@ -148,7 +153,7 @@ test("in a turned view the clicks still land on the ground: the 3-point circle l
   assert.deepEqual(m.normalOf(circle), [0, 0, 1]);
 });
 
-test("the centre-point arc and the 3-point arc make no frame either: each faces the ground and is held there", async () => {
+test("the centre-point arc and the 3-point arc make no frame either: each faces the ground, held there by nothing", async () => {
   await loadKernel();
   for (const Tool of [ArcTool, Arc3Tool]) {
     const m = new Model(3);
@@ -159,7 +164,8 @@ test("the centre-point arc and the 3-point arc make no frame either: each faces 
     assert.deepEqual(frames(m), [], Tool.name);
     const arc = [...m.entities.values()].find((e) => e.kind === "arc")!.name;
     assert.deepEqual(m.normalOf(arc), [0, 0, 1]);
-    assert.ok(relationsOf(m).some(([op, args]) => op === "parallel" && JSON.stringify(args) === JSON.stringify([arc, "origin.z"])), Tool.name);
+    // Its own definition only (arcends), no plane: nothing was picked.
+    assert.ok(!relationsOf(m).some(([op]) => op === "parallel" || op === "onPlane"), `${Tool.name}: ${JSON.stringify(relationsOf(m))}`);
     assert.equal(m.solve().solved, true);
   }
 });
@@ -188,18 +194,32 @@ async function block() {
   return { m, e };
 }
 
-test("a circle drawn over a solid's top face lies on the face — held to the face's own points, and following it", async () => {
+test("a circle drawn over a solid's top face lies on the face; held to the face's own points, and following it, once the face is picked", async () => {
   await loadKernel();
   const { m, e } = await block();
   const view = flatView();
   const { ctx, at } = toolCtx(m, view);
-  const tool = new CircleTool(ctx);
   // Over the middle of the top, as seen from above.
   const [sx, sy] = worldToScreen(view, [20, 15, 10]);
-  tool.onDown(at(sx, sy));
-  tool.onUp(at(sx + 10, sy));
+  const draw = () => {
+    const before = new Set(m.entities.keys());
+    const tool = new CircleTool(ctx);
+    tool.onDown(at(sx, sy));
+    tool.onUp(at(sx + 10, sy));
+    return [...m.entities.values()].find((x) => x.kind === "circle" && !before.has(x.name))!.name;
+  };
+  // Nothing picked: the face is where the click landed, laid out on it and held by nothing.
+  const loose = draw();
   assert.deepEqual(frames(m), [], "no frame for the face either");
-  const circle = [...m.entities.values()].find((x) => x.kind === "circle")!.name;
+  assert.ok(near(m.coords(m.circle(loose).center), [20, 15, 10], 1e-6), `on the top, not the ground: ${m.coords(m.circle(loose).center)}`);
+  assert.ok(Math.abs(dot(m.normalOf(loose), [0, 0, 1]) - 1) < 1e-9, "facing out of the top");
+  assert.deepEqual(relationsOf(m).filter(([, args]) => (args as unknown[]).includes(loose) || (args as unknown[]).includes(m.circle(loose).center)), []);
+  del(m, loose);
+  // The face picked, as sketch on face picks it: the lid's own corners.
+  const f0 = m.featureOf(e, "extrude");
+  const [a0, b0] = m.line(f0.twins[0][0]).refs;
+  m.setWorkPlane(`${a0}.${b0}.${m.line(f0.twins[0][3]).refs[0]}`);
+  const circle = draw();
   const centre = m.circle(circle).center;
   assert.ok(near(m.coords(centre), [20, 15, 10], 1e-6), `on the top, not the ground: ${m.coords(centre)}`);
   const held = [...m.relations.values()].filter((r) => r.args.includes(centre) || r.args.includes(circle));
@@ -216,7 +236,7 @@ test("a circle drawn over a solid's top face lies on the face — held to the fa
   assert.ok(Math.abs(m.coords(centre)[2] - lidZ) < 1e-6, `followed the lid: ${m.coords(centre)} at ${lidZ}`);
 });
 
-test("a circle over a plain sketch region lies on the ground — only a solid's face is a place a click lands on", async () => {
+test("a circle over a plain sketch region lies on the ground — only a solid's face is a place a click lands on — and is held by nothing", async () => {
   await loadKernel();
   const m = new Model(3);
   const s = neocadScope({ model: m }) as Record<string, (...a: unknown[]) => unknown>;
@@ -228,7 +248,9 @@ test("a circle over a plain sketch region lies on the ground — only a solid's 
   const [sx, sy] = worldToScreen(view, [20, 15, 0]);
   tool.onDown(at(sx, sy));
   tool.onUp(at(sx + 10, sy));
-  assert.ok(relationsOf(m).some(([op, args]) => op === "onPlane" && (args as unknown[])[1] === "origin"));
+  const circle = [...m.entities.values()].find((x) => x.kind === "circle")!.name;
+  assert.ok(Math.abs(m.coords(m.circle(circle).center)[2]) < 1e-12, "on the ground");
+  assert.ok(!relationsOf(m).some(([op]) => op === "onPlane" || op === "parallel"), "a position, not a relation: nothing was picked");
 });
 
 test("with the work plane set to a face, every click lands on it — what sketch on face is for", async () => {
