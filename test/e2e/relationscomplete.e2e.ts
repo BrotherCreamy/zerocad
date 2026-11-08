@@ -198,6 +198,14 @@ const state = (app: AppContext) => app.page.evaluate(() => {
   return JSON.stringify({ armed: e.armed?.name ?? null, picks: e.active?.picks ?? null });
 });
 
+/** The picking green (tools/region.ts's REGION_GREEN), within two pixels of `at` on the drawing. */
+async function greenNear(app: AppContext, [x, y]: [number, number]): Promise<boolean> {
+  const at: [number, number][] = [];
+  for (let dx = -2; dx <= 2; dx++) for (let dy = -2; dy <= 2; dy++) at.push([Math.round(x) + dx, Math.round(y) + dy]);
+  const px = await app.pixels("drawing", at);
+  return px.some((p) => Math.hypot(p[0] - 0x55, p[1] - 0xc0, p[2] - 0x7a) < 40);
+}
+
 /** A name the command line bound, as the model calls it. */
 const named = async (app: AppContext, v: string) => (await app.repl(v)).value as string;
 
@@ -321,7 +329,12 @@ for (const which of ["desktop", "iphone"] as const) {
     await h.press(await curvePixel(h.app, a, [-20 + 20 * Math.SQRT1_2, 20 * Math.SQRT1_2, 0]));
     // On the spline, between its first two through-points (a press on one of
     // them would pick the point).
-    await h.press(await curvePixel(h.app, sp, [12, -8, 0]));
+    const onSpline = await curvePixel(h.app, sp, [12, -8, 0]);
+    await h.press(onSpline);
+    // A picked spline is marked in the picking green, as a picked arc is (it
+    // drew nothing — bug 53, found by looking at this test's iPhone picture).
+    await h.app.page.mouse.move(2, 2);
+    assert.ok(await greenNear(h.app, onSpline), "the spline drawn in the picking green");
     const listed = await rows(h.app);
     assert.deepEqual(listed.map((r) => r.label), ["Tangent"], await state(h.app));
     assert.equal(listed[0].off, false);

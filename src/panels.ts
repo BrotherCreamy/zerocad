@@ -3967,6 +3967,9 @@ export interface DialogState {
   choice?: { option: string; resolved: string | null; offer: string | null } | null;
 }
 
+/** How many rows' height a greyed command row takes: its label, and two lines of why. */
+export const OFF_ROWS = 3;
+
 /**
  * A command a tool offers on its panel, one row each: the label, and the line
  * the row types when pressed. This file's own shape, as `DialogState` is — it
@@ -4099,7 +4102,10 @@ export class OptionsPanel {
     if (shaped) {
       this.key = key;
       this.tool = a?.tool ?? "";
-      this.count = a ? a.rows.length + (a.dialog ? 1 : 0) + commands.length : null;
+      // A greyed command row is three rows tall: its label, and its reason on
+      // two lines under it — where a phone, too narrow for it beside the label,
+      // can read it (index.html's `.ocmd.off`).
+      this.count = a ? a.rows.length + (a.dialog ? 1 : 0) + commands.reduce((n, c) => n + (c.off ? OFF_ROWS : 1), 0) : null;
       this.body.textContent = "";
       this.ok = null;
       if (this.strip) this.strip.textContent = a ? a.tool : "";
