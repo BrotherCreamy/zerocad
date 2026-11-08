@@ -50,6 +50,17 @@ the ground plane, it's about correct relationships BETWEEN entities. Part of
 the concept of this CAD is to have bidirectional relationships everywhere by
 default."* So nothing here ties anything to a datum the user didn't choose.
 
+## The owner's direction on the extrusion's form (2026-11-08, open)
+
+*"I think extrude should create an identical copy of the originating
+profile's geometry, with relations and all, then chord edges connecting each
+corner of one profile to the other, and then the edges become extruded
+surfaces. Edge extrude is a fundamental feature. Have to think about how an
+edge extrude relation would work."* Also: *"the default for sketch entities is
+no plane. Every sketch is a 3D sketch, unless you enter into active on-plane
+constraint."* The edge-extrude relation's design is being proposed to the
+owner. Design 1 below waits on it; Design 2–5 go ahead.
+
 ## Design
 
 1. **An extrusion relates its own entities, not a datum.**
