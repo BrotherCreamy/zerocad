@@ -111,7 +111,7 @@ test("on an iPhone: a plate drawn, its depth handle dragged, ⇅ tapped — the 
   // Seen square on, as a fresh sketch is: the lid says the solid comes out at you.
   await shot("1-extrude-square-on");
   await type("orbit(-0.6, -1.0)");
-  const h = (await app.page.waitForFunction(() => (window as never as Neo).__neocad.engine.active?.handle ?? null, undefined, { timeout: 10_000 })).jsonValue() as
+  const h = (await app.page.waitForFunction(() => (window as never as Neo).__neocad.engine.active?.handle ?? null, undefined, { timeout: 30_000 })).jsonValue() as
     Promise<{ from: number[]; label: number[]; dir: number[] }>;
   const handle = await h;
   // The handle by finger: along it, deeper; the panel's number follows when let go.

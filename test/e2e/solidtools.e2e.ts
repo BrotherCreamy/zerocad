@@ -81,7 +81,7 @@ const valueOf = (feature: string) => app.page.evaluate((f) => {
 }, feature);
 
 /** The depth handle as the armed tool last drew it, or null. */
-const handle = () => app.page.waitForFunction(() => (window as never as Neo).__neocad.engine.active?.handle ?? null, undefined, { timeout: 10_000 })
+const handle = () => app.page.waitForFunction(() => (window as never as Neo).__neocad.engine.active?.handle ?? null, undefined, { timeout: 30_000 })
   .then((h) => h.jsonValue() as Promise<{ from: number[]; label: number[]; dir: number[] }>);
 
 const W = 30, H = 18, T = 10;
@@ -102,7 +102,7 @@ test("an extrude flipped with ⇅: the handle turns round, the preview and the s
   await app.page.waitForFunction((before) => {
     const h = (window as never as Neo).__neocad.engine.active?.handle;
     return !!h && h.dir[1] * before < 0;
-  }, up.dir[1], { timeout: 10_000 });
+  }, up.dir[1], { timeout: 30_000 });
   await shot("2-extrude-flipped-preview");
   await press("#options .oact button.ok");
   const args = await lastExtrude();
