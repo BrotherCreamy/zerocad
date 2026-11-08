@@ -118,7 +118,10 @@ test("extrude and sketch, a click on no region: guidance, the tool still armed �
     const ctx = toolCtx(m, ABOVE);
     const tool = new Tool(ctx);
     tool.onDown(at([90, 90, 0]));
-    assert.deepEqual(ctx.said, [{ line: `${tool.name}: click inside a closed outline — the ones I can see are lit`, outcome: "guide" }]);
+    // The sketch tool can take the ground's named planes as well as a face (docs/plans/sketch-mode.md), so its miss says so.
+    const missed = tool.name === "sketch" ? "click inside a lit face, or a lit plane — or choose Top, Front or Right in the options"
+      : "click inside a closed outline — the ones I can see are lit";
+    assert.deepEqual(ctx.said, [{ line: `${tool.name}: ${missed}`, outcome: "guide" }]);
     assert.equal(ctx.finished, false, `${tool.name} stays armed`);
   }
   const bare = new Model(3);

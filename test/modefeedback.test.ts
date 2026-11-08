@@ -370,7 +370,7 @@ test("the polygon, the slot and the ellipse: their two places, then the slot's w
 test("the point, the sketch tool, the dimension and constrain tools say what to click", async () => {
   const { m } = await drawn(...PLATE);
   assert.equal(new PointTool(ctxFor(m)).next!("finger"), "tap where the point goes");
-  assert.equal(new SketchTool(ctxFor(m)).next!("mouse"), "click inside a lit face to sketch on it");
+  assert.equal(new SketchTool(ctxFor(m)).next!("mouse"), "click a lit face or plane to sketch on it");
   const d = new DimensionTool(ctxFor(m));
   assert.equal(d.next!("mouse"), "click what to dimension");
   d.picks = ["l1"];

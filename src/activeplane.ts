@@ -26,7 +26,7 @@ import { featureFaces, loopOutlines, type Face } from "./faces.ts";
 import { findLoops, type Loop } from "./loops.ts";
 import { planeAxes } from "./curveplane.ts";
 import { regionOf } from "./operations.ts";
-import { planeNormalRef, sketchPlaneRef } from "./workplane.ts";
+import { planeLabel, planeNormalRef, sketchPlaneRef } from "./workplane.ts";
 
 /** The plane being sketched on, as drawn and named. */
 export interface ActivePlane {
@@ -168,7 +168,7 @@ export function activePlane(model: Model, scale: number, ref: string | null = sk
   if (!axes) return null;
   const { origin, u, v, n } = { origin: lift(axes.origin), u: lift(axes.u), v: lift(axes.v), n: lift(axes.n) };
   const base = { ref, origin, u, v, n, feature: null, side: null, members: [] as string[] };
-  if (!anchors) return { ...base, kind: model.isFrame(ref) ? "frame" : "plane", label: ref, outlines: null };
+  if (!anchors) return { ...base, kind: model.isFrame(ref) ? "frame" : "plane", label: planeLabel(ref), outlines: null };
 
   for (const f of model.features.values()) {
     if (model.hidden.has(f.name)) continue;

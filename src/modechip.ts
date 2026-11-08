@@ -10,8 +10,9 @@
 //   * **where** — the plane being sketched on, named (activeplane.ts): a face
 //     by its feature and side, a frame by its name — or nothing at all, since
 //     drawing on the ground is not a mode and must not look like one. A tap
-//     opens the plane's menu (Look at, Change…, Done) and a **Done** beside it
-//     ends the plane in one tap;
+//     opens the plane's menu (Look at, Change…, Done); a **⟂** beside it looks
+//     at the plane square-on again (Normal To) and a **Done** ends the plane,
+//     each in one tap;
 //   * **what** — the armed tool, or Select (or the Hand): a tap opens the
 //     tool's options panel, where it has one;
 //   * **next** — the gesture's next step, from the tool (`Tool.next`), and
@@ -108,12 +109,25 @@ export function planeMenu(model: Model, plane: ActivePlane): Menu {
   };
 }
 
+/**
+ * The line the chip's ⟂ types: `lookAt(ref)`, square-on to the plane being
+ * sketched on — SolidWorks' Normal To, for when the view has been orbited away
+ * (docs/plans/sketch-mode.md). Null with no plane chosen.
+ */
+export function lookCommand(model: Model): string | null {
+  if (model.dim !== 3) return null;
+  const ref = model.workPlane ?? model.defaultFrame;
+  return ref === null ? null : `lookAt(${JSON.stringify(ref)})`;
+}
+
 /** What the chip's DOM half asks of the host. */
 export interface ChipHost {
   /** The first part was tapped: open the plane's menu under it (`anchor`, in the page's pixels). */
   planeMenu(anchor: DOMRect): void;
   /** Done was tapped: type `doneCommand`. */
   done(): void;
+  /** ⟂ was tapped: type `lookCommand`. */
+  look(): void;
   /** The second part was tapped: open the armed tool's options panel. */
   options(): void;
 }
@@ -129,6 +143,7 @@ export class ModeChip {
   private host: ChipHost;
   private shown = "";
   private where: HTMLButtonElement;
+  private look: HTMLButtonElement;
   private done: HTMLButtonElement;
   private what: HTMLButtonElement;
   private next: HTMLSpanElement;
@@ -144,6 +159,10 @@ export class ModeChip {
       return b;
     };
     this.where = part("where", "the sketch plane — its menu");
+    // ⟂, Normal To: one tap back to square-on, beside the plane it looks at.
+    this.look = part("look", "Look at the plane — square to it");
+    this.look.textContent = "⟂";
+    this.look.title = "Look at the plane (Normal To)";
     this.done = part("done", "Done — end the sketch plane");
     this.done.textContent = "Done";
     this.what = part("what", "the tool in hand — its options");
@@ -157,11 +176,12 @@ export class ModeChip {
     };
     const plane = document.createElement("span");
     plane.className = "plane";
-    plane.append(this.where, this.done, sep("psep"));
+    plane.append(this.where, this.look, this.done, sep("psep"));
     el.append(plane, this.what, sep("nsep"), this.next);
     // A press on the chip is the chip's: never a gesture on the canvas under it.
     el.addEventListener("pointerdown", (e) => e.stopPropagation());
     this.where.addEventListener("click", () => this.host.planeMenu(this.where.getBoundingClientRect()));
+    this.look.addEventListener("click", () => this.host.look());
     this.done.addEventListener("click", () => this.host.done());
     this.what.addEventListener("click", () => this.host.options());
   }

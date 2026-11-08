@@ -412,7 +412,8 @@ test("the sketch tool: a click on nothing is refused aloud and it stays armed; a
   assert.equal(tool.snaps, false, "it chooses a face, not a place");
 
   tool.onDown(info(worldToScreen(view, t.at(80, -40, 5))));
-  assert.match(log.join("\n"), /^sketch: click inside a closed outline — the ones I can see are lit$/);
+  // In 3D the ground's named planes are there to take too (docs/plans/sketch-mode.md), so the miss says so.
+  assert.match(log.join("\n"), /^sketch: click inside a lit face, or a lit plane — or choose Top, Front or Right in the options$/);
   assert.equal(ctx.finished, false);
   assert.deepEqual(typed, []);
 
