@@ -292,7 +292,7 @@ test("refusals say what to do, before anything is made", async () => {
   assert.throws(() => s.surface(l, 0), /a number other than 0/);
   // Not a surface: the sketch's trim, which says what it takes. (A name that
   // reads as a surface's, s9, is refused as one: the test above.)
-  assert.throws(() => s.trim("q9", l, [0, 0, 0]), /trim takes a line, an arc or a circle/);
+  assert.throws(() => s.trim("q9", l, [0, 0, 0]), /trim takes a curve — a line, an arc, a circle, an ellipse or a spline/);
   s.surface(l, 10);
   assert.throws(() => s.trim("s1", "s1", [0, 0, 0]), /cannot trim itself/);
   assert.throws(() => s.trim("s1", l, [0, 0]), /\[x, y, z\]/);

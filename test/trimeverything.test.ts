@@ -248,12 +248,30 @@ test("an ellipse under an extrude that a trim would leave without its profile: r
   const m = new Model(3);
   const el = addEllipse(m, m.addPoint([0, 0, 0]).name, m.addPoint([20, 0, 0]).name, 10).name;
   extrude(m, el, 5);
-  seg(m, [-30, 4], [30, 4]);
+  // Two stubs, each crossing the rim once: the arc left would close on nothing.
+  seg(m, [-25, -3], [-15, -3]);
+  seg(m, [15, -3], [25, -3]);
   const was = save(m, false), entries = m.journal.length;
   assert.throws(() => trim(m, el, [0, -10, 0]), /trimming that piece of el1 leaves a feature nothing to stand on/);
   assert.equal(save(m, false), was, "nothing changed — the ellipse is an ellipse again");
   assert.equal(m.entities.get(el)!.kind, "ellipse");
   assert.equal(m.journal.length, entries, "nothing journalled");
+});
+
+test("an ellipse under an extrude trimmed by a chord: the solid regenerates onto the elliptical arc and the chord, one typed call", () => {
+  const m = new Model(3);
+  const el = addEllipse(m, m.addPoint([0, 0, 0]).name, m.addPoint([20, 0, 0]).name, 10).name;
+  extrude(m, el, 5);
+  const chord = seg(m, [-30, 4], [30, 4]);
+  solved(m);
+  const entries = m.journal.length;
+  trim(m, el, [0, -10, 0]);
+  assert.equal(m.journal[entries].op, "trim");
+  assert.equal(m.entities.get(el)!.kind, "earc");
+  const loop = m.featureOf("e1", "extrude").loops[0].map((x) => (typeof x === "string" ? x : x.name));
+  assert.deepEqual([...loop].sort(), [chord, el].sort(), `the solid stands on the cap: ${loop}`);
+  solved(m);
+  replays(m);
 });
 
 // --- the spline --------------------------------------------------------------------
