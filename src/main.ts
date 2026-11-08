@@ -1031,6 +1031,21 @@ async function main() {
         // itself as, which is what picking aims at (projection.ts).
         const pts = sampledWorld(model, e, view.scale);
         if (pts) strokeEdge(pts, false, stroke(e.name));
+        // A spline of control points (docs/plans/trim-everything.md) shows its
+        // control polygon, thin and dashed: its points off the curve are what
+        // shapes it, and without the polygon they read as stray dots (looked at).
+        if (e.kind === "bspline" && !casing) {
+          const poly = e.points.map((p) => engine.worldToScreen(model.coords(p)));
+          g.save();
+          g.lineWidth = 1;
+          g.setLineDash([3 * uiOf(view), 3 * uiOf(view)]);
+          g.strokeStyle = CONSTRUCTION;
+          g.beginPath();
+          g.moveTo(...poly[0]);
+          for (const q of poly.slice(1)) g.lineTo(...q);
+          g.stroke();
+          g.restore();
+        }
       }
     }
 
@@ -2698,7 +2713,10 @@ async function main() {
         syncToolbar();
         return TYPED_REFUSAL;
       }
-      syncToolbar();
+      // A frame, not only the toolbar: the chip is synced in the draw pass, and
+      // without one it said Select under a tool just armed by name until the
+      // next pointer event (found by trimeverything.e2e.ts, mouse and finger).
+      render();
       return null;
     }
 

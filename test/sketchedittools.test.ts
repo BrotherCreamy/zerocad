@@ -87,7 +87,7 @@ test("the trim tool: a click on a piece types trim with the place, rounded; a cu
   t.onUp(press([105, 0, 0]));
   assert.equal(h.ran.length, 1, "nothing typed");
   assert.match(h.said.at(-1)!, /^trim: nothing cuts/);
-  assert.equal(t.next("finger"), "tap the piece to trim away, or drag a finger across pieces");
+  assert.equal(t.next("finger"), "tap a piece to trim it, or drag across pieces");
 });
 
 test("the trim tool takes the edge, not the corner, when a corner's point wins the pick", async () => {

@@ -236,7 +236,10 @@ defineModule("sketch", {
     // corner cut straight; trim and extend are a line meeting a wall, the
     // piece past it gone (dotted) or the gap to it bridged (dotted, arrowed).
     bevel: svg("bevel", `<path d="M3 13.5V7.5L7.5 3H13.5"/>`),
-    trim: svg("trim", `<path d="M9 2.5v11M2.5 8H9"/><path d="M9 8h4.5" stroke-dasharray="1.2 1.6"/>`),
+    // Trim's piece past the wall is struck out, not dotted: as the modify
+    // button's face (docs/plans/trim-everything.md) the dotted arm read as a
+    // plus sign on the iPhone (looked at, picture 369).
+    trim: svg("trim", `<path d="M8.5 2.5v11M2.5 8h6"/><path d="M10.8 6.4l3.2 3.2M14 6.4l-3.2 3.2"/>`),
     extend: svg("extend", `<path d="M13.5 2.5v11M2.5 8H7"/><path d="M7 8h4.5" stroke-dasharray="1.2 1.6"/><path d="M9.8 6.2 11.6 8 9.8 9.8"/>`),
     // A corner and its parallel copy inside it, dotted: what an offset adds.
     offset: svg("offset", `<path d="M2.5 13.5V6.5a4 4 0 0 1 4-4h7"/><path d="M5.5 13.5V8a2.5 2.5 0 0 1 2.5-2.5h5.5" stroke-dasharray="1.4 1.3"/>`),

@@ -110,10 +110,10 @@ export class TrimTool extends Tool {
 
   next(hand: Hand): string {
     if (this.held) return `${press(hand)} the curve or surface to trim ${this.held.surface} by`;
-    const across = hand === "finger" ? "or drag a finger across pieces" : "or drag across pieces";
+    // Short: the phone's chip is one line (docs/plans/spline.md found a longer one wrapped).
     // A surface is offered only where there is one to trim.
-    if (this.ctx.model.surfaces.size) return `${press(hand)} the piece to trim away, ${across}, or a surface where it is kept`;
-    return `${press(hand)} the piece to trim away, ${across}`;
+    if (this.ctx.model.surfaces.size) return `${press(hand)} a piece to trim it, drag across pieces, or a surface where it is kept`;
+    return `${press(hand)} a piece to trim it, or drag across pieces`;
   }
 
   /** The surface under a pixel, if a surface's face is the nearest thing there. */
