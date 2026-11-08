@@ -59,7 +59,10 @@ export function modeOptions(values: Record<string, unknown>): FeatureOptions | n
  * for. Not remembered: a hole through one plate is not the next boss's.
  */
 export const END_OPTION = {
-  default: "blind", choices: { blind: "Blind", through: "Through all", symmetric: "Symmetric" }, buttons: true, remember: false, label: "end",
+  default: "blind", choices: { blind: "Blind", through: "Through all", symmetric: "Symmetric" }, buttons: true, remember: false,
+  // No label: the two words say what the row is, and beside them "end" was cut
+  // to one letter on an iPhone (looked at, as the region tool's Subtract was).
+  label: "",
 } as const;
 
 /** An extrude's depth: negative is the other way along the sketch's normal, zero no solid; flipped by the panel's ⇅. */
@@ -169,6 +172,10 @@ export abstract class FeatureTool extends Tool {
   private told = "";
   /** Set while a confirm's lines go in: a second Enter must not type them twice. */
   private committing = false;
+  /** Whether a confirm's lines are going in: the model is half-way to what it will be, and asks of it now would read that. */
+  protected get busy(): boolean {
+    return this.committing;
+  }
   /** What the mode left at auto comes to for the preview up — and a choice to offer — or null. */
   private hint: FeatureDialog["choice"] = null;
 

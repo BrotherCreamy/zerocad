@@ -15,7 +15,7 @@ import { neocadScope } from "../src/replenv.ts";
 import { open, save } from "../src/persist.ts";
 import { findLoops, loopAround } from "../src/loops.ts";
 import "../src/modules/builtin.ts"; // the tools registered, as the app does
-import { CutTool, ExtrudeTool, cutWay } from "../src/tools/extrude.ts";
+import { CutTool, ExtrudeTool, cutWay, depthStep, draggedDepth } from "../src/tools/extrude.ts";
 import { RevolveTool } from "../src/tools/revolve.ts";
 import { EditExtrudeTool, EditRevolveTool, editSteps } from "../src/tools/edit.ts";
 import { declaredOptions } from "../src/tools/options.ts";
@@ -153,6 +153,20 @@ test("the edit dialog's end row types setEnd before the depth, and nothing when 
   assert.deepEqual(lines("blind", -4), [], "nothing changed, nothing typed");
   assert.deepEqual(lines("through", -4), ['setEnd("e2", "through")']);
   assert.deepEqual(lines("through", 4), ['setEnd("e2", "through")', `set("${f.depth}.value", 4)`], "the flip is the depth negated");
+});
+
+test("the depth handle's arithmetic: deeper along it, shallower against, through zero a flip, snapped to round values and never 0", () => {
+  // Four pixels a unit: the step is the first of 1, 2, 5 × 10ⁿ that is six pixels or more.
+  assert.equal(depthStep(4), 2);
+  assert.equal(depthStep(40), 0.2);
+  assert.equal(depthStep(0.5), 20);
+  assert.equal(draggedDepth(10, 3.2, 1), 13, "along the arrow: deeper");
+  assert.equal(draggedDepth(10, -3.2, 1), 7, "against it: shallower");
+  assert.equal(draggedDepth(-10, 3.2, 1), -13, "a negative depth deepens the other way, along its own arrow");
+  assert.equal(draggedDepth(10, -14, 1), -4, "through zero: flipped");
+  assert.equal(draggedDepth(10, -10.2, 1), -1, "never 0: a step on, the way the drag went");
+  assert.equal(draggedDepth(10, -9.8, 1), 1);
+  assert.equal(draggedDepth(10, 0.04, 0.2), 10);
 });
 
 test("Cut with nothing to cut into: the depth's own way, and the tool says it reaches no solid, muted", async () => {

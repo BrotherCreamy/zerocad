@@ -58,10 +58,11 @@ defineModule("solids", {
     // edges that can be seen, and the base's two front edges — the back two are
     // behind the slab, and drawn they cross its front face.
     extrude: svg("extrude", `<path d="M2 7.5h7l5-3.5H7zM2 7.5v6h7l5-3.5V4M9 7.5v6"/>`),
-    // The same slab with a hole going down into its top: the hole's rim on the
-    // top face, and inside it the far wall falling away — what Cut takes away.
-    cut: svg("cut", `<path d="M2 7.5h7l5-3.5H7zM2 7.5v6h7l5-3.5V4M9 7.5v6"/><ellipse cx="8" cy="5.75" rx="2.4" ry="1.05"/>` +
-      `<path d="M5.7 6.1a2.4 1.05 0 0 0 4.6 0"/>`),
+    // The same slab, lower, with a hole in its top and an arrow going down into
+    // it — what Cut takes away. (The hole's rim alone, at 16 px, read as the
+    // extrude's box: looked at in the flyout beside it.)
+    cut: svg("cut", `<path d="M2 9.5h7l5-3H7zM2 9.5v4h7l5-3v-4M9 9.5v4"/><ellipse cx="8" cy="8" rx="2.3" ry="0.9"/>` +
+      `<path d="M8 1.5v5M6.3 4.9 8 6.6l1.7-1.7"/>`),
     // A profile inside the turn that sweeps it: three quarters of a circle,
     // arrowed so it reads as a motion rather than a third shape. (An axis drawn
     // through it, and the turn as a foreshortened ellipse, were tried first: at
