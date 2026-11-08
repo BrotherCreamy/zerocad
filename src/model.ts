@@ -1069,6 +1069,13 @@ export class Model {
    * solve it was handed and a report it never made falls back to its blocks.
    */
   private solves = new WeakMap<SolveReport, SolveContext>();
+  /**
+   * The conflict search's wall-clock budget, in ms (`SEARCH_MS`). A field,
+   * not only the constant, so a test of *what* the search names can lift it:
+   * on a loaded machine the budget runs out and the old naming comes back,
+   * which is the bound doing its job, not the answer being wrong.
+   */
+  searchMs = SEARCH_MS;
 
   /**
    * How this model was built, in order — every entity created, every
@@ -3128,7 +3135,7 @@ export class Model {
         const order = new Map(inPart.map((r, i) => [r.name, i]));
         const byNearness = (rs: RelationEntry[]) => [...rs].sort((a, b) => rank(a) - rank(b) || order.get(b.name)! - order.get(a.name)!);
         const conflicts = (rels: readonly RelationEntry[], background: readonly BlockHandle[]): boolean => {
-          if (++trials > SEARCH_TRIALS || performance.now() - t0 > SEARCH_MS) throw SEARCH_SPENT;
+          if (++trials > SEARCH_TRIALS || performance.now() - t0 > this.searchMs) throw SEARCH_SPENT;
           const t = this.trial(ctx, part, rels, background);
           return t.fails || t.fell.some((k) => !ctx.exempt.has(k));
         };

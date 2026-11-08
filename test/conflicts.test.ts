@@ -440,6 +440,10 @@ test("the cost: the check on every solve, and the search, on the largest fixture
     const lines = [...m.entities.values()].filter((e) => e.kind === "line").map((e) => m.line(e.name));
     const pair = lines.flatMap((a) => lines.filter((b) => b !== a && b.refs.some((p) => a.refs.includes(p))).map((b) => [a.name, b.name]))[0];
     const made = [parallel(m, pair[0], pair[1]), perpendicular(m, pair[0], pair[1])];
+    // What is named is asked of the trials, not of the clock: under load the
+    // 500 ms budget ran out and the fallback named others (found merging
+    // #86, 1 run in 3 alone at load ~18). The time is still measured.
+    m.searchMs = Infinity;
     let t0 = performance.now();
     const report = m.solve();
     const solveMs = performance.now() - t0;

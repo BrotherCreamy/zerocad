@@ -7,6 +7,20 @@ decisions.
 
 ---
 
+## 2026-11-08 — the conflict search's naming test no longer reads the clock
+
+Found merging #86 (sketch mode): `test/conflicts.test.ts`'s cost test
+failed one run in three *alone*, at a load of ~18 on four cores, naming
+`r5 r1 r2 r27` where it expected the made `par`. The search has two bounds,
+200 trials and 500 ms (`SEARCH_MS`); under load the clock ran out first
+and the fallback named every block that stayed large, which is the bound
+doing its job. The test was asking the clock what the answer is. The budget
+is now a field (`Model.searchMs`, defaulting to `SEARCH_MS`), and the
+fixture part of the test lifts it, so what is named depends on the trials
+alone; the time is still measured and printed. 3/3 alone after, at the
+same load. The 40-rectangle part keeps the budget, since that part tests
+the bound.
+
 ## Sketch mode: any plane, every point held on it, square to it on entering
 
 The owner (2026-11-08): *"Not sure how it works right now but I need a way to
