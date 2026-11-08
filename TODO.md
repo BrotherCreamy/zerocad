@@ -1850,6 +1850,31 @@ are flagged as such.
 
 ## Next up
 
+- [ ] **Five packages, in flight in parallel (2026-11-08).** The owner:
+  *"Flip button. Also need to figure out a way to do all the standard
+  relations. Also need trim for sketch entities. … I need a way to natively
+  sketch on a plane without it being a special feature … I'm still not clear
+  on how to use the extrude cut tool … Make it more intuitive, along with the
+  other solid tools. Dim tool needs to be similar in functionality to
+  Solidworks smart dimension … Go now and don't ask questions"*. Each has a
+  spec and a worker, branch named after it:
+  - [ ] [`solid-tools-intuitive.md`](docs/plans/solid-tools-intuitive.md):
+        a Flip control, Cut as a tool of its own (into the material by
+        default), end conditions (through all, up to face, symmetric), a
+        depth handle, and a first-time-user walkthrough of every solid tool.
+  - [ ] [`smart-dimension.md`](docs/plans/smart-dimension.md): one
+        dimension tool for anything, solid faces and edges included; driven
+        where it cannot drive.
+  - [ ] [`relations-complete.md`](docs/plans/relations-complete.md): the
+        full SolidWorks/Onshape relation table, offered for any pick, many at
+        once, Fix, and relations to solid edges and faces.
+  - [ ] [`trim-everything.md`](docs/plans/trim-everything.md): ellipse and
+        spline trim (an elliptical arc kind, a control-point spline), power
+        trim by dragging across.
+  - [ ] [`sketch-mode.md`](docs/plans/sketch-mode.md): sketch on any plane
+        or face (Top/Front/Right, kernel faces), every tool holding every
+        point `onPlane`, normal-to on entering, an explicit exit.
+
 - [x] **Conflicts the solver satisfied by collapsing geometry** (the owner,
   2026-11-07: *"I'm able to add a parallel relation to a set of perpendicular
   relation lines. This is a bug … should be able to catch that for any chain
