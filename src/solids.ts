@@ -39,7 +39,8 @@
 // is the one place readers differ, and two halves are read by everything. So
 // no face here has a seam and no edge is used twice by one face.
 
-import { memberName, type FeatureEntry, type Model, type ProfileMember } from "./model.ts";
+import { defineThroughReach, lidReach, memberName, type ExtrudeFeature, type FeatureEntry, type Model, type ProfileMember } from "./model.ts";
+import { memberPoints } from "./solids/profile.ts";
 import { portionAngles } from "./arcgeom.ts";
 import { curveFrame, curvePath, featurePlane } from "./curveplane.ts";
 import { derivs, domain, nearestParam, nurbsOf, pointAt as pathPoint, subCurve, type BSpline } from "./bspline.ts";
@@ -601,27 +602,29 @@ function profileWalks(model: Model, f: FeatureEntry): Walk[] {
 function extrudeBodies(model: Model, f: Extract<FeatureEntry, { kind: "extrude" }>): Body[] {
   const plane = featurePlane(model, f);
   if (!plane) throw new Error("its sketch plane has collapsed");
-  const depth = model.relations.get(f.depth)?.args[1];
-  if (typeof depth !== "number" || !Number.isFinite(depth) || depth === 0) throw new Error("it has no depth");
+  const { start, depth } = extrudeSpan(model, f);
   // The lid is the profile moved by the depth along the plane's normal — the
   // definition the extrusion dimension holds the twins to, so the lid is
   // exactly parallel and every wall exactly ruled, however nearly the solve
-  // has got the twins there.
-  const D = plane.n.map((c) => c * depth);
+  // has got the twins there. A symmetric extrude's base stands as far below
+  // the sketch as its lid above (`extrudeSpan`).
+  const n = unit3(plane.n) ?? plane.n;
+  const D = n.map((c) => c * depth);
   const e = unit3(D)!;
   const { walks, regions, areas } = orientAndGroup(profileWalks(model, f), e);
-  const lid = shifted(D);
+  const bottom = start === 0 ? still : shifted(n.map((c) => c * start));
+  const lid = shifted(n.map((c) => c * (start + depth)));
   const name = (r: number) => (r === 0 ? f.name : `${f.name}.${r + 1}`);
 
   return regions.map((region, r) => {
     const t = new Topology();
     const loops = [region.outline, ...region.holes];
-    const vb = (i: number, j: number) => t.vertex(`b${jointKey(i, j)}`, () => walks[i].joints[j]);
+    const vb = (i: number, j: number) => t.vertex(`b${jointKey(i, j)}`, () => bottom.point(walks[i].joints[j]));
     const vt = (i: number, j: number) => t.vertex(`t${jointKey(i, j)}`, () => lid.point(walks[i].joints[j]));
     const edgeOf = (i: number, k: number, top: boolean) => t.edge(`${top ? "T" : "B"}${jointKey(i, k)}`, () => {
       const [s, en] = ownEnds(walks[i], k);
       const v = top ? vt : vb;
-      return { start: v(i, s), end: v(i, en), curve: curveOf(walks[i].pieces[k], top ? lid : still) };
+      return { start: v(i, s), end: v(i, en), curve: curveOf(walks[i].pieces[k], top ? lid : bottom) };
     });
     const wallLine = (i: number, j: number) => t.edge(`V${jointKey(i, j)}`, () => ({ start: vb(i, j), end: vt(i, j), curve: { kind: "line" } }));
 
@@ -632,7 +635,7 @@ function extrudeBodies(model: Model, f: Extract<FeatureEntry, { kind: "extrude" 
       return { outer: n === 0, uses: top ? uses : uses.reverse() };
     });
     const o = walks[region.outline].joints[0];
-    faces.push(face({ kind: "plane", origin: o, axis: e.map((c) => -c), ref: square(e) }, cap(false), o, e.map((c) => -c)));
+    faces.push(face({ kind: "plane", origin: bottom.point(o), axis: e.map((c) => -c), ref: square(e) }, cap(false), bottom.point(o), e.map((c) => -c)));
     faces.push(face({ kind: "plane", origin: lid.point(o), axis: e, ref: square(e) }, cap(true), lid.point(o), e));
 
     for (const i of loops) {
@@ -648,7 +651,7 @@ function extrudeBodies(model: Model, f: Extract<FeatureEntry, { kind: "extrude" 
         ];
         const tangent = pieceTangent(p, 0.5).map((c) => (w.forward[k] ? c : -c));
         const out = unit3(cross3(tangent, e))!;
-        const mid = pieceAt(p, 0.5).map((c, x) => c + D[x] / 2);
+        const mid = bottom.point(pieceAt(p, 0.5)).map((c, x) => c + D[x] / 2);
         // An ellipse's wall is its curve swept along the depth, exactly
         // (docs/plans/sketch-shapes.md); a circle's a cylinder.
         // A B-spline's wall is its curve swept along the depth, exactly, as an ellipse's is.
@@ -665,7 +668,7 @@ function extrudeBodies(model: Model, f: Extract<FeatureEntry, { kind: "extrude" 
     const area = loops.reduce((s, i) => s + areas[i], 0);
     return {
       name: name(r), feature: f.name, outer: { faces }, voids: [], volume: area * Math.abs(depth),
-      box: extent(loops.flatMap((i) => walks[i].pieces), (p, dir) => Math.max(dot3(p, dir), dot3(lid.point(p), dir))),
+      box: extent(loops.flatMap((i) => walks[i].pieces), (p, dir) => Math.max(dot3(bottom.point(p), dir), dot3(lid.point(p), dir))),
     };
   });
 }
@@ -894,6 +897,85 @@ function extent(pieces: Piece[], reach: (p: number[], dir: number[]) => number):
 // ---- for the solid kernel ------------------------------------------------------------
 
 /**
+ * Where an extrude's solid runs along its sketch's normal: from `start` (0,
+ * the sketch, for blind and through; minus half the depth for symmetric) for
+ * `depth` (signed, the way it goes). Read off the depth dimension and the
+ * record's end condition (`Extent`) — through all's from the geometry made
+ * before it, as the dimension holds its lid (`lidReach`) — and nothing else,
+ * so the kernel, the insideness the modes ask and the exported B-rep all build
+ * what the lid bounds. Throws for a dimension with no depth.
+ */
+export function extrudeSpan(model: Model, f: ExtrudeFeature): { start: number; depth: number } {
+  const d = model.relations.get(f.depth)?.args[1];
+  if (typeof d !== "number" || !Number.isFinite(d) || d === 0) throw new Error("it has no depth");
+  if (f.extent === "symmetric") return { start: -d / 2, depth: d };
+  return { start: 0, depth: lidReach(model, f.depth, d) };
+}
+
+/**
+ * How far past the far side of everything made before it a through-all lid
+ * stands: a tenth of the way again, and at least one unit — never flush with a
+ * face, which a boolean meets edge-on (docs/plans/solid-tools-intuitive.md,
+ * vetoable).
+ */
+const THROUGH_PAST = 0.1;
+const THROUGH_LEAST = 1;
+
+/**
+ * A through-all extrude's reach, signed as `depth`: the farthest any solid
+ * made before `f` stands off `f`'s sketch along the depth's way, sampled off
+ * each one's own sweep (`kernelSweep`) — an extrude's profile at its base and
+ * at its lid, a revolve's profile points each by the circle it turns through —
+ * and a little past (`THROUGH_PAST`). Where nothing stands that way, the
+ * depth itself: a through cut into nothing is the blind cut it was typed as,
+ * and the tool says it reaches no solid. Registered with the model below, so
+ * the depth dimension holds the lid here at every solve (`lidReach`).
+ */
+export function throughReach(model: Model, f: ExtrudeFeature, depth: number): number {
+  let plane;
+  try {
+    plane = kernelProfile(model, featurePlane(model, f), f.loops);
+  } catch {
+    return depth;
+  }
+  const way = plane.n.map((c) => Math.sign(depth) * c);
+  const off = (p: number[]) => dot3(sub3(p, plane.at.origin), way);
+  let far = -Infinity;
+  for (const g of model.features.values()) {
+    if (g === f) break; // only what was made before it
+    let sw;
+    try {
+      sw = kernelSweep(model, g);
+    } catch {
+      continue; // a feature that cannot be laid out stands nowhere
+    }
+    const z = cross3(sw.at.x, sw.at.y);
+    const world = (q: number[], h = 0) => [0, 1, 2].map((i) => sw.at.origin[i] + q[0] * sw.at.x[i] + q[1] * sw.at.y[i] + h * z[i]);
+    const pts = sw.profile.loops.flat().flatMap((m) => memberPoints(m, 16));
+    if (sw.sweep.kind === "extrude") {
+      for (const q of pts) far = Math.max(far, off(world(q)), off(world(q, sw.sweep.depth)));
+      continue;
+    }
+    // A revolve: each profile point turns through a circle about the axis,
+    // which stands as far along `way` as its centre's foot does plus its
+    // radius times how square the axis is to `way`.
+    const O = world(sw.sweep.point);
+    const k = unit3(sub3(world([sw.sweep.point[0] + sw.sweep.dir[0], sw.sweep.point[1] + sw.sweep.dir[1]]), O));
+    if (!k) continue;
+    const across = Math.sqrt(Math.max(0, 1 - dot3(k, way) ** 2));
+    for (const q of pts) {
+      const p = world(q);
+      const c = O.map((x, i) => x + dot3(sub3(p, O), k) * k[i]);
+      far = Math.max(far, off(c) + Math.hypot(...sub3(p, c)) * across);
+    }
+  }
+  if (!(far > 1e-9)) return depth;
+  return Math.sign(depth) * (far + Math.max(THROUGH_LEAST, THROUGH_PAST * far));
+}
+
+defineThroughReach(throughReach);
+
+/**
  * A feature's sweep as the solid kernel takes it (src/solids/): its profile as
  * plain curves in its own plane, where that plane is, and the depth or the axis
  * and angle — every number read from the live, solved geometry through the
@@ -913,11 +995,13 @@ function extent(pieces: Piece[], reach: (p: number[], dir: number[]) => number):
  * its axis taken with the angle's sign, as `revolveBodies` does.
  */
 export function kernelSweep(model: Model, f: FeatureEntry): { at: KernelPlacement; profile: KernelProfile; sweep: Sweep } {
-  const { at, profile, local } = kernelProfile(model, featurePlane(model, f), f.loops);
+  const { at, profile, local, n } = kernelProfile(model, featurePlane(model, f), f.loops);
   if (f.kind === "extrude") {
-    const depth = model.relations.get(f.depth)?.args[1];
-    if (typeof depth !== "number" || !Number.isFinite(depth) || depth === 0) throw new Error("it has no depth");
-    return { at, profile, sweep: { kind: "extrude", depth } };
+    const { start, depth } = extrudeSpan(model, f);
+    // A symmetric extrude is swept from as far below its sketch as its lid is
+    // above: the placement moved down, the profile in it the same.
+    const origin: typeof at.origin = start === 0 ? at.origin : [0, 1, 2].map((i) => at.origin[i] + start * n[i]) as typeof at.origin;
+    return { at: { ...at, origin }, profile, sweep: { kind: "extrude", depth } };
   }
   const theta = model.relations.get(f.angle)?.args[1];
   if (typeof theta !== "number" || !Number.isFinite(theta) || theta === 0) throw new Error("it has no angle");
@@ -1012,17 +1096,21 @@ export function roleSurface(model: Model, f: FeatureEntry, role: "base" | "lid" 
   const members = f.loops.flat();
   if (f.kind === "extrude") {
     const plane = featurePlane(model, f);
-    const depth = model.relations.get(f.depth)?.args[1];
-    if (!plane || typeof depth !== "number" || depth === 0) return null;
-    const n = unit3(plane.n);
+    let span: { start: number; depth: number };
+    try {
+      span = extrudeSpan(model, f);
+    } catch {
+      return null;
+    }
+    const n = plane ? unit3(plane.n) : null;
     if (!n) return null;
-    const e = n.map((c) => Math.sign(depth) * c);
-    const D = n.map((c) => c * depth);
+    const e = n.map((c) => Math.sign(span.depth) * c);
     const first = members[0];
     if (first === undefined) return null;
     const o = piecesOf(model, first)[0].a;
-    if (role === "base") return { kind: "plane", origin: o, axis: e.map((c) => -c), ref: square(e) };
-    if (role === "lid") return { kind: "plane", origin: o.map((c, i) => c + D[i]), axis: e, ref: square(e) };
+    const at = (h: number) => o.map((c, i) => c + h * n[i]);
+    if (role === "base") return { kind: "plane", origin: at(span.start), axis: e.map((c) => -c), ref: square(e) };
+    if (role === "lid") return { kind: "plane", origin: at(span.start + span.depth), axis: e, ref: square(e) };
     const m = members[role];
     if (m === undefined) return null;
     const p = piecesOf(model, m)[0];

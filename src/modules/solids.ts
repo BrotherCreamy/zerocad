@@ -6,7 +6,7 @@
 
 import { defineModule } from "../modules.ts";
 import { defineDimension } from "../model.ts";
-import { defineRebuild, extrude, regen, revolve } from "../operations.ts";
+import { defineRebuild, extrude, regen, revolve, setEnd } from "../operations.ts";
 import { chamferEdges, filletEdges, setEdges } from "../blends.ts";
 import { chamferSetback, filletRadius } from "../relations/blend.ts";
 
@@ -85,6 +85,9 @@ defineModule("solids", {
     filletEdges,
     chamferEdges,
     setEdges,
+    // How an extrude ends, changed afterwards (docs/plans/solid-tools-intuitive.md):
+    // the edit dialog's end row types it.
+    setEnd,
   },
   help: [
     'solids     extrude(region, depth?, frame?) — a solid of a region (see',

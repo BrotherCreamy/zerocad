@@ -23,7 +23,7 @@ import * as geom from "./relations/geometry.ts";
 import { measure } from "./relations/measure.ts";
 import {
   add, construction, del, extrude, fillet, hole, intersect, loopOfMember, orientingPlane, peelOptions, regen, region,
-  regionText, revolve, set, subtract, unhole,
+  regionText, revolve, set, setEnd, subtract, unhole,
 } from "./operations.ts";
 import { chamferEdges, describeBlend, filletEdges, setEdges } from "./blends.ts";
 import { describeSurface, noSuchSurface, surfaceBlend } from "./surfaces.ts";
@@ -706,6 +706,8 @@ export function neocadScope(h: EnvHandles): Bag {
         : (noSuchSurface(model, "chamfer", a), Array.isArray(b)) ? chamferEdges(model, a, b, c) : sketchChamfer(model, a, b, c, (d as number | null | undefined) ?? null, regenerated),
     /** A fillet's or chamfer's edges, replaced in place: `setEdges("e3", [...])` — the feature dialog's ✓. */
     setEdges: (feature: string, edges: string[]) => setEdges(model, feature, edges),
+    /** How an extrude ends, changed afterwards: `setEnd("e2", "through")` — "blind", "through" or "symmetric"; the edit dialog's end row. */
+    setEnd: (feature: string, end: unknown) => setEnd(model, feature, end),
     /**
      * Brings a feature back into step with its profile as it is now —
      * `regen("e1")` — keeping every twin and wall whose vertex or member is
