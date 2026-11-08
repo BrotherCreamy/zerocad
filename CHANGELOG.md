@@ -70,9 +70,12 @@ origin's own axis (a bug).
   the hole, [317](docs/images/317-desktop-through-all-built-plate-set-deeper.png)
   through all built, the plate set to 20.
 
-Tests: unit 1755 → see the PR (+`test/extrudeends.test.ts`,
-`test/cuttool.test.ts`); e2e `test/e2e/solidtools.e2e.ts` (mouse, 5) and
-`test/e2e/solidtoolsphone.e2e.ts` (iPhone 13 by finger, 3). Four more bugs
+Tests: unit 1755 → 1772 on this branch (+17: `test/extrudeends.test.ts` 7,
+`test/cuttool.test.ts` 10); e2e +8, `test/e2e/solidtools.e2e.ts` (mouse, 5)
+and `test/e2e/solidtoolsphone.e2e.ts` (iPhone 13 by finger, 3). Merged with
+relations complete, trim everything, sketch mode and smart dimension, the
+one full `npm run test:all`: typecheck 0, unit 1863/1863, kernel 11/11, e2e
+766 passed, 0 failed, 2 skipped (the picture-taking tests, off unless asked). Four more bugs
 the unit suite passed and the browser showed (ARCHITECTURE, 66–69).
 
 ## 2026-11-08 — merging smart dimension: two bugs where packages met
