@@ -1232,6 +1232,30 @@ function frameOver(model: Model, base: string, classOf: Map<string, number>,
   return { frame: made(model.addFrame(o, x, y).name), own };
 }
 
+/**
+ * A whole revolve's profile as the angle names it: each joined class's first
+ * point, and each member with a normal of its own, paired with itself — the
+ * walk's order, as `twinPoints` meets them (docs/plans/profiles-held.md). A
+ * whole turn takes every one onto itself, so the pair is the honest shape of
+ * "this is the profile", and `revolution` reads it as nothing to twin.
+ */
+function selfPairs(model: Model, plan: SweepPlan, real: (v: string) => string): string[] {
+  const seen = new Map<number | string, string>();
+  const take = (p: string) => {
+    const k = classKey(plan.classOf, p);
+    if (!seen.has(k)) seen.set(k, p);
+    return p;
+  };
+  const curves: string[] = [];
+  for (const loop of plan.walked) {
+    for (const m of loop) {
+      twinPoints(model, m, real, take);
+      if (m.kind !== "line" && !curves.includes(m.name)) curves.push(m.name);
+    }
+  }
+  return [...seen.values(), ...curves].flatMap((n) => [n, n]);
+}
+
 /** Twins a member's points as the walk meets them — its from, its centre if it has one, its to — so they are named in that order. */
 function twinPoints(model: Model, m: Walked, real: (v: string) => string, twinOf: (p: string) => string): void {
   const e = model.entities.get(m.name)!;
@@ -1632,7 +1656,9 @@ function revolveBody(model: Model, member: string, axis: string, angle: number, 
   const base = [...builtOn(plan), ...planeNames(model, frame), ...planeNames(model, axisOn)];
 
   if (isFullTurn(angle)) {
-    const held = made(revolution(model, axis, angle));
+    // No end face to twin onto: the profile named by itself, so the angle can
+    // hold it in a plane with the axis (`revolution`'s `profileFlat`).
+    const held = made(revolution(model, axis, angle, ...selfPairs(model, plan, real)));
     return model.addFeature({
       kind: "revolve", member, frame, axis, angle: held, loops, twins: [], end: null, expansion: x,
       names: [...new Set([...base, ...owns])], owns,
@@ -2299,6 +2325,9 @@ function rebuildBody(model: Model, f: FeatureEntry, plan: SweepPlan): { loops: P
     for (const { base, twin } of byClass.values()) pairs.push(base, twin);
     walked.forEach((loop, i) => loop.forEach((m, j) => { if (m.kind !== "line") pairs.push(m.name, twins[i][j]); }));
     pairs.push(...framePairs);
+  } else {
+    // A whole revolve: its new profile, each entity paired with itself, as `revolveBody` names it.
+    pairs.push(...selfPairs(model, plan, real));
   }
 
   owns.push(dimName);

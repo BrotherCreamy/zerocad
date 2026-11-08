@@ -348,7 +348,9 @@ export function describeRelation(r: RelationEntry): string {
   if (r.op === "revolution") {
     const a = r.args[1];
     const deg = typeof a === "number" ? ` (${Math.round((a * 180) / Math.PI * 1000) / 1000}°)` : "";
-    const pairs = (r.args.length - 2) / 2;
+    // A whole turn names its profile paired with itself (profiles-held.md): those are no end face's pairs.
+    let pairs = 0;
+    for (let i = 2; i + 1 < r.args.length; i += 2) if (r.args[i] !== r.args[i + 1]) pairs++;
     return `${r.name}  revolution ${arg(a)}${deg} about ${arg(r.args[0])}, ${pairs ? `${pairs} pairs` : "a full turn"}`;
   }
   return `${r.name}  ${SHORT_OP[r.op] ?? r.op} ${r.args.map(arg).join(" ")}`.trimEnd();

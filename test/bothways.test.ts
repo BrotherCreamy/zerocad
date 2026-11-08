@@ -289,3 +289,49 @@ test("revolve, partial and whole: the axis stays in the profile's plane when a p
     }
   }
 });
+
+test("a revolve of a sketch-mode profile — every corner onPlane its frame — reads nothing redundant, partial or whole, and a regenerated whole one keeps its profile held", async () => {
+  await loadKernel();
+  const { tiltedFrame } = await import("./frames.ts");
+  const { polygon } = await import("./profiles.ts");
+  const { fillet } = await import("../src/operations.ts");
+  for (const angle of [1.2, null]) {
+    const m = new Model(3);
+    const t = tiltedFrame(m);
+    const { lines } = polygon(m, t, [[4, 0], [24, 0], [24, 16], [4, 16]]);
+    const e = revolve(m, lines[0], "t.y", ...(angle === null ? [] : [angle]));
+    assert.equal(m.solve().solved, true);
+    // The angle's rows say again what the onplanes say; the angle is the feature's, so it is never the one named.
+    assert.deepEqual(m.diagnose().redundant, [], `${angle ?? "whole"}: nothing redundant`);
+    // A corner filleted: the profile regenerates, and a whole turn names its new profile — the arc's points too.
+    fillet(m, lines[1], lines[2], 3);
+    assert.equal(m.solve().solved, true);
+    const f = m.featureOf(e, "revolve");
+    const named = new Set((m.relationOf(f.angle).args.slice(2) as string[]));
+    const arc = [...m.entities.values()].find((x) => x.kind === "arc")!;
+    assert.ok(named.has(arc.name) && named.has((arc as { center: string }).center), `${angle ?? "whole"}: the regenerated profile is named: ${[...named]}`);
+    assert.deepEqual(m.diagnose().redundant, [], `${angle ?? "whole"}: still nothing redundant`);
+  }
+});
+
+test("a whole revolve whose free profile has turned about its axis is laid out for the kernel where the profile is, not where its frame is", async () => {
+  await loadKernel();
+  const { kernelSweep } = await import("../src/solids.ts");
+  const m = new Model(3);
+  const { P, L } = besideAxis(m);
+  const e = revolve(m, L[0], "origin.y");
+  assert.equal(m.solve().solved, true);
+  // Pulled off its plane: the profile turns about the axis as a whole (the axis held in its plane).
+  assert.equal(drag(m, P[2], [0, 0, 12]), true);
+  assert.ok(Math.abs(C(m, P[2])[2]) > 4, `it turned: ${C(m, P[2])}`);
+  const { at, profile } = kernelSweep(m, m.featureOf(e, "revolve"));
+  const world = (q: readonly number[]) => at.origin.map((o, i) => o + q[0] * at.x[i] + q[1] * at.y[i]);
+  // Every corner the kernel is handed is a corner of the profile where it stands.
+  const handed = profile.loops.flat().flatMap((mm) => (mm.kind === "line" ? [mm.from, mm.to] : []));
+  assert.ok(handed.length >= 4);
+  for (const q of handed) {
+    const w = world(q);
+    const nearest = Math.min(...P.map((p) => len(sub(C(m, p), w))));
+    assert.ok(nearest <= 1e-7, `a corner the kernel is handed, ${w}, is ${nearest} from the profile's nearest`);
+  }
+});

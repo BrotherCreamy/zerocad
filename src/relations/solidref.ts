@@ -40,7 +40,7 @@ import type { Dual } from "../kernel/dual.ts";
 import { Dual as D } from "../kernel/dual.ts";
 import { memberName, type FeatureEntry, type Model, type ProfileMember } from "../model.ts";
 import { planeBasis, unitDuals } from "./refs.ts";
-import { axisReader, turnMatrix } from "./revolution.ts";
+import { axisReader, revolveProfilePlane, turnMatrix } from "./revolution.ts";
 import { dot, vecSub } from "./vec.ts";
 
 export type FaceRole = "base" | "lid" | "member";
@@ -147,7 +147,9 @@ export function capPoints(model: Model, f: FeatureEntry, which: "base" | "lid"):
  * cap's points are what a relation on it moves.
  */
 function capNormal(model: Model, f: FeatureEntry, which: "base" | "lid"): number[] {
-  const n = planeBasis(model, f.frame)().n;
+  const frame = planeBasis(model, f.frame)();
+  // A revolve's profile may have turned about its axis off its frame: its own plane, then (profiles-held.md).
+  const n = f.kind === "revolve" ? revolveProfilePlane(model, f, frame).n : frame.n;
   if (f.kind === "extrude" || which === "base") return n;
   const theta = model.relations.get(f.angle)?.args[1];
   const ax = axisReader(model, f.axis).read();

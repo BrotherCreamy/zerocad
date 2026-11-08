@@ -3057,7 +3057,8 @@ export class Model {
    * is the one just added. A relation with some rows new and some implied
    * (a 3D `par`'s third wedge component, an `oncircle`'s plane row beside an
    * `onplane`) is not redundant — only the whole relation is a thing a person
-   * can delete.
+   * can delete. And a feature's own relation (an extrude's depth, a revolve's
+   * angle) is never named: it is background, as in the conflict search.
    *
    * Asked after a solve, not during a drag: it costs one Jacobian and two
    * eliminations (`ms` says how long), which is several solves' worth.
@@ -3113,6 +3114,13 @@ export class Model {
     }
     for (const r of this.relations.values()) {
       if (!r.blocks.length) continue;
+      // A feature's own relation is background, here as in the conflict search
+      // (docs/plans/profiles-held.md): its rows hold the feature's entities to
+      // each other, and where the user's relations already say part of that —
+      // a profile on a sketch plane, flat by its own onplanes — the feature
+      // saying it too is the feature being consistent, not something a person
+      // can or should delete. Only a relation a person made is named redundant.
+      if (!this.removable(r.name)) continue;
       if (folded.size && r.blocks.some((b) => this.problem.varsOf(b).some((v) => folded.has(v)))) continue;
       if (r.blocks.every((b) => { const d = dependent.get(b); return d !== undefined && d.dependent === d.rows; })) {
         redundant.push(r.name);

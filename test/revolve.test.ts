@@ -119,11 +119,11 @@ test("a partial revolve: a twin of every corner and edge, no frame, one angle di
   assert.deepEqual(m.journal.at(-1), { op: "revolve", args: ["rg1", "t.y", QUARTER, "t", [lines]] });
 });
 
-test("a full revolve makes nothing: one dimension holding nothing, a whole turn — and that is what no angle means", async () => {
+test("a full revolve makes nothing: one dimension holding its profile on the axis's plane, a whole turn — and that is what no angle means", async () => {
   await loadKernel();
   const m = new Model(3);
   const t = tiltedFrame(m);
-  const { lines } = polygon(m, t, BLOCK);
+  const { points, lines } = polygon(m, t, BLOCK);
   const ents = m.entities.size;
   const f = m.featureOf(revolve(m, lines[0], "t.y"), "revolve");
   assert.equal(m.entities.size, ents, "no twins, no end frame");
@@ -132,8 +132,16 @@ test("a full revolve makes nothing: one dimension holding nothing, a whole turn 
   assert.deepEqual(f.owns, [f.angle]);
   const r = m.relationOf(f.angle);
   assert.equal(r.op, "revolution");
-  assert.deepEqual(r.args, ["t.y", 2 * Math.PI]);
-  assert.deepEqual(r.blocks, [], "a label, holding nothing");
+  // Until profiles-held.md it held nothing, and its args were the axis and the
+  // angle alone. Now it names its profile, each point paired with itself (a
+  // whole turn takes each onto itself), and holds those points in the plane
+  // through the axis: one row a point but the farthest from the axis.
+  assert.equal(r.args[0], "t.y");
+  assert.equal(r.args[1], 2 * Math.PI);
+  const named = r.args.slice(2) as string[];
+  for (let i = 0; i < named.length; i += 2) assert.equal(named[i], named[i + 1], "each paired with itself");
+  assert.deepEqual(new Set(named), new Set(points), "the profile's corners");
+  assert.equal(r.blocks.length, points.length - 1, "the profile held on the axis's plane, nothing twinned");
   assert.deepEqual(m.journal.at(-1), { op: "revolve", args: ["rg1", "t.y", 2 * Math.PI, "t", [lines]] });
   // The other way round is a whole turn too.
   assert.equal(m.featureOf(revolve(m, lines[0], "t.y", -2 * Math.PI), "revolve").end, null);

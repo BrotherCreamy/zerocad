@@ -18,6 +18,7 @@
 // normal" is.
 
 import { spanOf, type Entity, type FeatureEntry, type Model } from "./model.ts";
+import { revolveProfilePlane } from "./relations/revolution.ts";
 import { frameBasis, planeBasis } from "./relations/refs.ts";
 import { arcFrame, circleFrame, type ArcFrame } from "./arcgeom.ts";
 import type { BSpline } from "./bspline.ts";
@@ -70,7 +71,10 @@ export function planeAxes(model: Model, ref: string): (CurvePlane & { origin: nu
  */
 export function featurePlane(model: Model, feature: FeatureEntry): CurvePlane | null {
   const p = planeAxes(model, feature.frame);
-  return p ? { u: p.u, v: p.v, n: p.n } : null;
+  if (!p) return null;
+  const plane = { u: p.u, v: p.v, n: p.n };
+  // A revolve's where its profile has turned to about the axis (relations/revolution.ts).
+  return feature.kind === "revolve" ? revolveProfilePlane(model, feature, plane) : plane;
 }
 
 /**

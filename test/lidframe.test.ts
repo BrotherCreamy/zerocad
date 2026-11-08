@@ -227,7 +227,11 @@ test("a partial revolve's end frame stands on the end twins: no point of its own
   const u = tiltedFrame(n);
   const q = polygon(n, u, [[10, 0], [30, 0], [30, 20], [10, 20]]);
   const g = n.featureOf(revolve(n, q.lines[0], `${u.name}.y`, Math.PI / 2, null, null, 10), "revolve") as RevolveFeature;
-  assert.equal(n.relationOf(g.angle).blocks.length, 4 + 3);
+  // Four corners, three end-frame points — and, since profiles-held.md, three
+  // rows holding the profile in one plane with the axis: each corner but the
+  // one farthest from it. (Above, three corners are the sketch frame's own, a
+  // datum, so the one left has nothing to be flat with.)
+  assert.equal(n.relationOf(g.angle).blocks.length, 4 + 3 + 3);
   assert.equal(n.solve().solved, true);
   assert.deepEqual(coincident(n), []);
   // Left as it was, and written down in TODO.md: turned about the sketch

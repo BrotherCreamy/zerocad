@@ -15,7 +15,7 @@
 // seam, rather than a guess at the caller's intent from the size of a number.
 
 import type { Dual } from "../kernel/dual.ts";
-import { ORIGIN, parseAxisRef, type Model } from "../model.ts";
+import { ORIGIN, memberName, parseAxisRef, type FeatureEntry, type Model } from "../model.ts";
 import { curveNormal, frameBasis, joinVars, unitDuals } from "./refs.ts";
 
 /** A whole turn, and how close to one an angle must be to be one. */
@@ -166,11 +166,16 @@ export function revolution(model: Model, axis: string, angle: number, ...pairs: 
   }
   if (pairs.length % 2 !== 0) throw new Error("a revolution takes base/twin pairs");
   const reader = axisReader(model, axis);
-  if (pairs.length === 0 && !isFullTurn(angle)) {
+  // A pair of a thing with itself is a profile entity a whole turn takes onto
+  // itself: what a full revolve names its profile by, with no end face to twin
+  // it onto (see `profileFlat`). Only a pair of two is an end face's.
+  let twinned = false;
+  for (let i = 0; i < pairs.length; i += 2) if (pairs[i] !== pairs[i + 1]) twinned = true;
+  if (!twinned && !isFullTurn(angle)) {
     throw new Error("a full revolve has no end face for an angle to swing — a partial revolve is a new feature, not "
       + `a new value: del the revolve, then revolve its profile again about ${axis} with the angle, in radians`);
   }
-  if (pairs.length > 0 && isFullTurn(angle)) {
+  if (twinned && isFullTurn(angle)) {
     throw new Error("a partial revolve's end face cannot be turned all the way round onto its start — a whole turn has "
       + "no end face: del the revolve and revolve again with no angle for a full one");
   }
@@ -180,6 +185,7 @@ export function revolution(model: Model, axis: string, angle: number, ...pairs: 
       const be = model.entities.get(pairs[i]);
       if (be?.kind === "frame") for (const p of model.refsOf(be)) datum.add(p);
     }
+    profileFlat(model, reader, pairs, datum);
     // The turned position of a base, given it as Duals (a variable) or numbers (a datum).
     const turned = (base: (k: number) => Dual | number, l: Dual[], at: number): Dual[] => {
       const { origin: o, dir } = reader.read();
@@ -215,6 +221,7 @@ export function revolution(model: Model, axis: string, angle: number, ...pairs: 
     }
     for (let i = 0; i < pairs.length; i += 2) {
       const [b, t] = [pairs[i], pairs[i + 1]];
+      if (b === t) continue; // a full revolve's profile entity: held flat above, and twinned onto nothing
       const be = model.entities.get(b), te = model.entities.get(t);
       if (be?.kind === "point" && te?.kind === "point") {
         holdPoint(b, t);
@@ -253,3 +260,144 @@ export function revolution(model: Model, axis: string, angle: number, ...pairs: 
     }
   });
 }
+
+/**
+ * **The axis stays in the profile's plane** (docs/plans/profiles-held.md, the
+ * audit). A revolve is only a solid of revolution of its profile while the
+ * axis lies in the profile's plane, which `revolve` checks once, at the call;
+ * nothing held it after. Measured before this: a corner of a free rectangle
+ * pulled 8 off its plane took the plane 5.3 off the axis, partial or whole,
+ * and the drawn surface was then of nothing the profile could sweep.
+ *
+ * The rows: every profile point `p` in the plane through the axis and one
+ * profile point `r` — `(p − o)·n̂ = 0`, `n̂ = unit(k × (r − o))` — and every
+ * profile curve with a normal square to that plane, `û × n̂ = 0`. `r` is the
+ * profile point farthest from the axis when the relation is made, which is
+ * the best-conditioned choice (the rows divide by its distance from the axis)
+ * and changes nothing they say if a rebuild chooses another. Linear in each
+ * point, nothing squared.
+ *
+ * **The profile is pushed, and the axis is not**: the axis is a datum, read as
+ * numbers, as every row of the revolve reads it (`axisReader`) — a frame's axis
+ * or the user's own line, which a feature built on it never moves. So with
+ * nothing else holding it the profile may turn about the axis as a whole,
+ * which is still the same solid turned, and never leave it. The axis's own
+ * points (a profile edge on the axis) and a frame's points are a datum too,
+ * and on the axis already, so they take no row. Vetoable (TODO.md's register).
+ *
+ * The profile is the bases of the pairs: an end face's bases for a partial
+ * turn, and for a whole turn — which twins nothing — its entities paired with
+ * themselves.
+ */
+function profileFlat(model: Model, reader: ReturnType<typeof axisReader>, pairs: readonly string[], datum: ReadonlySet<string>): void {
+  const points: string[] = [], curves: string[] = [];
+  for (let i = 0; i < pairs.length; i += 2) {
+    const b = pairs[i];
+    const e = model.entities.get(b);
+    if (e?.kind === "point") {
+      if (!datum.has(b) && !points.includes(b)) points.push(b);
+    } else if (e && (e.kind === "circle" || e.kind === "arc" || e.kind === "ellipse" || e.kind === "earc") && !curves.includes(b)) {
+      curves.push(b);
+    }
+  }
+  const at = reader.read();
+  const offAxis = (p: string) => {
+    const v = model.coords(p).map((c, i) => c - at.origin[i]);
+    const along = v.reduce((s, c, i) => s + c * at.dir[i], 0);
+    return Math.hypot(...v.map((c, i) => c - along * at.dir[i]));
+  };
+  let ref: string | null = null;
+  for (const p of points) if (offAxis(p) > (ref === null ? 1e-9 : offAxis(ref))) ref = p;
+  if (ref === null) return; // every point on the axis: a profile already refused by `revolve`
+  const r = ref;
+  const rv = model.point(r).varIndices;
+  /** n̂ = unit(k × (r − o)), the plane's normal, as Duals over r's three locals at `at0`. */
+  const normal = (l: Dual[], at0: number): Dual[] => {
+    const { origin: o, dir: k } = reader.read();
+    const w = [0, 1, 2].map((i) => l[at0 + i].sub(o[i]));
+    return unitDuals([
+      w[2].mul(k[1]).sub(w[1].mul(k[2])),
+      w[0].mul(k[2]).sub(w[2].mul(k[0])),
+      w[1].mul(k[0]).sub(w[0].mul(k[1])),
+    ]);
+  };
+  for (const p of points) {
+    if (p === r) continue;
+    model.addResidual([...rv, ...model.point(p).varIndices], (l) => {
+      const n = normal(l, 0);
+      const o = reader.read().origin;
+      let s = n[0].mul(l[3].sub(o[0]));
+      for (let i = 1; i < 3; i++) s = s.add(n[i].mul(l[3 + i].sub(o[i])));
+      return [s];
+    }, `revolution.flat(${p})`);
+  }
+  for (const c of curves) {
+    const cn = curveNormal(model, c);
+    if (!cn) continue;
+    model.addResidual(joinVars(rv, cn), (l) => {
+      const n = normal(l, 0);
+      const u = unitDuals(l.slice(3, 6));
+      return [
+        u[1].mul(n[2]).sub(u[2].mul(n[1])),
+        u[2].mul(n[0]).sub(u[0].mul(n[2])),
+        u[0].mul(n[1]).sub(u[1].mul(n[0])),
+      ];
+    }, `revolution.flat(${c})`);
+  }
+}
+
+/**
+ * A revolve's profile plane **where the profile is**: the plane through its axis
+ * and its profile (docs/plans/profiles-held.md). The angle holds the profile in
+ * one plane with the axis, but not on its frame — a free profile may turn about
+ * the axis as a whole — so the frame's plane is only where it started. Exactly
+ * the frame's plane while the profile is still in it, which is every sketch-mode
+ * revolve, so nothing already drawn is laid out anew; otherwise the frame's
+ * axes carried into the profile's plane, its normal the side the frame's was
+ * on. That side is read against the frame's normal, so a free profile turned
+ * more than a right angle from its frame is read with its normal the other way
+ * round. A revolve's solid does not depend on it — the kernel's plane is
+ * right-handed either way, and the turn is about the axis in the world — but
+ * which way its start cap is said to face does. Written down in TODO.md.
+ * Read by the kernel's layout (curveplane.ts's `featurePlane`) and the caps' facing (solidref.ts).
+ */
+export function revolveProfilePlane(model: Model, f: Extract<FeatureEntry, { kind: "revolve" }>, frame: { u: number[]; v: number[]; n: number[] }):
+  { u: number[]; v: number[]; n: number[] } {
+  let axis;
+  try {
+    axis = axisReader(model, f.axis).read();
+  } catch {
+    return frame;
+  }
+  const k = axis.dir;
+  if (k.every((c) => c === 0)) return frame;
+  // The profile point farthest off the axis: the plane's best-conditioned witness, as `revolution` takes it.
+  let side: number[] | null = null, far = 1e-9;
+  for (const loop of f.loops) {
+    for (const m of loop) {
+      const e = model.entities.get(memberName(m));
+      if (!e) continue;
+      for (const p of model.refsOf(e)) {
+        if (model.entities.get(p)?.kind !== "point") continue;
+        const x = model.coords(p);
+        const w = [0, 1, 2].map((i) => (x[i] ?? 0) - axis.origin[i]);
+        const along = w.reduce((s, c, i) => s + c * k[i], 0);
+        const off = w.map((c, i) => c - along * k[i]);
+        const d = Math.hypot(...off);
+        if (d > far) { far = d; side = off; }
+      }
+    }
+  }
+  if (!side) return frame;
+  let n = unitOf(crossOf(k, side));
+  if (!n) return frame;
+  const agree = n.reduce((s, c, i) => s + c * frame.n[i], 0);
+  if (agree < 0) n = n.map((c) => -c);
+  if (1 - Math.abs(agree) < 1e-12) return frame;
+  const along = frame.u.reduce((s, c, i) => s + c * n![i], 0);
+  const u = unitOf(frame.u.map((c, i) => c - along * n![i])) ?? unitOf(side)!;
+  return { u, v: crossOf(n, u), n };
+}
+
+const crossOf = (a: number[], b: number[]) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+const unitOf = (v: number[]): number[] | null => { const l = Math.hypot(...v); return l > 1e-12 ? v.map((c) => c / l) : null; };
