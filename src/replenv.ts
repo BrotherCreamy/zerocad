@@ -1113,7 +1113,8 @@ export function neocadScope(h: EnvHandles): Bag {
       if (!h.arm) throw new Error("no viewport in this environment");
       const f = model.featureOf(feature);
       const value = model.relationOf(f.kind === "extrude" ? f.depth : f.angle).args[1] as number;
-      h.arm(`edit ${f.kind}`, { [f.kind === "extrude" ? "depth" : "angle"]: value }, feature);
+      // An extrude's end condition rides along, so its row shows how it ends now.
+      h.arm(`edit ${f.kind}`, f.kind === "extrude" ? { depth: value, end: f.extent ?? "blind" } : { angle: value }, feature);
       return `editing ${feature}`;
     },
     cancel: () => { h.cancel?.(); return "cancelled"; },

@@ -57,10 +57,13 @@
 
 import { defineTool, type FeatureStep, type PointerInfo, type RegionHit, type RenderContext } from "./tool.ts";
 import type { OptionSpecs } from "./options.ts";
-import { DEFAULT_DEPTH, extrude, extrudeProfile, orientingPlane, profileOf, profileOfLoops, regionNaming, regionOf } from "../operations.ts";
+import { DEFAULT_DEPTH, extrude, extrudeProfile, orientingPlane, profileOf, profileOfLoops, regionNaming, regionOf, regionProfile } from "../operations.ts";
+import { materialWay } from "../modes.ts";
+import { planeAxes } from "../curveplane.ts";
+import type { Model } from "../model.ts";
 import { memberName } from "../model.ts";
 import { drawHit, lightRegions, missedRegion, namedRegionAt, outlineLoops, regionKey } from "./region.ts";
-import { FeatureTool, MODE_OPTION, callText, foundRegion, modeOptions } from "./feature.ts";
+import { DEPTH_OPTION, END_OPTION, FeatureTool, MODE_OPTION, callText, featureOptions, foundRegion } from "./feature.ts";
 import type { FeatureOptions } from "../operations.ts";
 import { RegionSelection, leftOut } from "./selection.ts";
 
@@ -102,14 +105,15 @@ export function extrudeSteps(region: RegionHit, depth: number, typed: boolean, w
 }
 
 export class ExtrudeTool extends FeatureTool {
-  // Negative is allowed — the other way along +z, as the typed call takes it;
-  // zero is no solid at all.
+  // Negative is allowed — the other way along +z, as the typed call takes it,
+  // and what the panel's ⇅ types; zero is no solid at all.
   static readonly options: OptionSpecs = {
-    depth: { default: DEFAULT_DEPTH, unit: "length", check: (v) => (v === 0 ? "cannot be 0" : null) },
+    depth: DEPTH_OPTION,
+    end: END_OPTION,
     mode: MODE_OPTION,
   };
-  static readonly summary = "Pulls a closed shape into a solid: click inside it, then ✓";
-  readonly name = "extrude";
+  static readonly summary: string = "Pulls a closed shape into a solid: click inside it, then ✓";
+  readonly name: string = "extrude";
   private under: RegionHit | null = null;
   /** The regions picked, in the order picked. */
   readonly picks = new RegionSelection();
@@ -132,7 +136,7 @@ export class ExtrudeTool extends FeatureTool {
     if (!this.picks.size) return null;
     const depth = this.depthOf(values);
     const typed = !!this.ctx.perform;
-    const options = modeOptions(values);
+    const options = featureOptions(values);
     // Two clicks inside one named region are one region, extruded once.
     const seen = new Set<string>();
     return this.picks.regions.flatMap((r, i) => {
@@ -197,3 +201,132 @@ export class ExtrudeTool extends FeatureTool {
   }
 }
 
+
+// ---- Cut ---------------------------------------------------------------------
+
+/**
+ * The diagonal of everything drawn, and a unit more: how far a through-all
+ * cut's probes walk, when the reach it will have is only known once it is made.
+ */
+function drawingSpan(m: Model): number {
+  const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+  for (const e of m.entities.values()) {
+    if (e.kind !== "point") continue;
+    m.coords(e.name).forEach((c, i) => { lo[i] = Math.min(lo[i], c); hi[i] = Math.max(hi[i], c); });
+  }
+  return Number.isFinite(lo[0]) ? Math.hypot(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]) + 1 : 1;
+}
+
+/**
+ * Which way a cut of `region` goes into the material, `depth` deep and ending
+ * as `end` says, on the model as it stands — `materialWay` asked of the profile
+ * the extrude would take, along the plane it would run along (a named region's
+ * own, else `orientingPlane`'s with the viewer's side, as `extrudeSteps` types
+ * it). `+1` along that plane's normal, `-1` against; `reaches` false when no
+ * way meets any solid. A symmetric cut goes both ways, so only whether it
+ * reaches anything is asked.
+ */
+export function cutWay(m: Model, region: RegionHit, depth: number, end: unknown): { way: 1 | -1; reaches: boolean } {
+  let r: RegionHit, profile;
+  try {
+    r = foundRegion(m, region);
+    const named = namedRegionAt(m, r);
+    profile = named ? regionProfile(m, named) : profileOf(m, r.loops, r.index, orientingPlane(m, r.loops[r.index], region.toward));
+  } catch {
+    return { way: 1, reaches: false };
+  }
+  const plane = planeAxes(m, profile.frame);
+  if (!plane) return { way: 1, reaches: false };
+  const reach = end === "through" ? drawingSpan(m) : end === "symmetric" ? Math.abs(depth) / 2 : Math.abs(depth);
+  const found = materialWay(m, plane, profile.loops, r.at, reach);
+  return end === "symmetric" ? { way: 1, reaches: found.reaches } : found;
+}
+
+/** What the Cut tool says, muted, when a cut it would make meets no solid — before ✓, not after. */
+export const CUT_REACHES_NOTHING = "this cut doesn't reach any solid — flip it, or make it deeper";
+
+/**
+ * **Cut**, a tool of its own (docs/plans/solid-tools-intuitive.md; the owner:
+ * *"I'm still not clear on how to use the extrude cut tool. It doesn't make
+ * sense to me."*) — SolidWorks' Extruded Cut, Onshape's Remove — beside
+ * Extrude on its button (the sweep group). Armed, it lights regions as the
+ * extrude does and toggles them in the same way; its preview is the volume to
+ * be removed, in the cut's red, drawn over the body it goes into.
+ *
+ * **The direction defaults into the material**: its depth is how far *into*
+ * the solid, and which way that is along the sketch's normal is read off the
+ * bodies (`cutWay`): a circle on a lid cuts down into the plate, one on the
+ * ground under a block up into it — no minus sign to know about. ⇅ still flips
+ * it (a negative depth goes out of the material). A cut that reaches no solid
+ * says so before ✓, in the muted guidance line, and ✓ still builds it: it is
+ * guidance, not a refusal.
+ *
+ * **What it types is the extrude call** — `extrude("c1", -10, { mode: "cut" })`,
+ * with `end` when it is through all or symmetric — so files, replay and undo
+ * are exactly an extrude's. The extrude's mode row stays, the expert's way.
+ */
+export class CutTool extends ExtrudeTool {
+  static readonly options: OptionSpecs = {
+    depth: { ...DEPTH_OPTION, label: "depth" },
+    end: END_OPTION,
+  };
+  static readonly summary = "Cuts a hole or a pocket into a solid: click a closed shape, then ✓";
+  readonly name: string = "cut";
+  /** The picks, values and model a reach was last worked out for, and whether every cut reached a solid. */
+  private reachKey = "";
+  private reachesAll = true;
+  /** The picks and values the guidance last spoke for. */
+  private toldKey = "";
+
+  protected get verb(): string {
+    return "cut";
+  }
+
+  protected plan(values: Record<string, unknown>): FeatureStep[] | null {
+    if (!this.picks.size) return null;
+    const d = values.depth;
+    const depth = typeof d === "number" && Number.isFinite(d) && d !== 0 ? d : DEFAULT_DEPTH;
+    const typed = !!this.ctx.perform;
+    const end = values.end;
+    const options: FeatureOptions = { mode: "cut", ...(end === "through" || end === "symmetric" ? { end } : {}) };
+    const seen = new Set<string>();
+    return this.picks.regions.flatMap((r, i) => {
+      const named = namedRegionAt(this.ctx.model, r);
+      if (named) {
+        if (seen.has(named)) return [];
+        seen.add(named);
+      }
+      const without = this.picks.without(i);
+      // Asked of the model as the step finds it — after a plane the step
+      // before typed — which way is into the material, and the depth signed so.
+      const step: FeatureStep = (m) => extrudeSteps(r, cutWay(m, r, depth, end).way * depth, typed, without, options)[0](m);
+      return [step];
+    });
+  }
+
+  /** Whether every picked region's cut reaches a solid, worked out once per picks, values and model. */
+  private reaches(): boolean {
+    const m = this.ctx.model;
+    const v = this.values();
+    const key = `${this.picksKey()}\n${JSON.stringify(v)}\n${m.journal.length}:${m.entities.size}`;
+    if (key !== this.reachKey) {
+      this.reachKey = key;
+      const d = typeof v.depth === "number" && v.depth !== 0 ? v.depth : DEFAULT_DEPTH;
+      this.reachesAll = this.picks.refresh(m).every((r) => cutWay(m, r, d, v.end).reaches);
+    }
+    return this.reachesAll;
+  }
+
+  render(r: RenderContext): void {
+    super.render(r);
+    if (!this.picks.size) {
+      this.toldKey = "";
+      return;
+    }
+    // Said once for what is picked as it is now — the guidance line, never red.
+    if (!this.reaches() && this.toldKey !== this.reachKey && this.ctx.log) {
+      this.toldKey = this.reachKey;
+      this.ctx.log(`${this.name}: ${CUT_REACHES_NOTHING}`, "guide");
+    }
+  }
+}

@@ -20,7 +20,7 @@ defineDimension("chamferSetback", 0);
 defineRebuild("filletRadius", (m, a) => void filletRadius(m, a[0] as number));
 defineRebuild("chamferSetback", (m, a) => void chamferSetback(m, a[0] as number));
 import { svg } from "../tools/icons.ts";
-import { ExtrudeTool } from "../tools/extrude.ts";
+import { CutTool, ExtrudeTool } from "../tools/extrude.ts";
 import { RevolveTool } from "../tools/revolve.ts";
 import { SketchTool } from "../tools/sketch.ts";
 import { EditExtrudeTool, EditRevolveTool } from "../tools/edit.ts";
@@ -30,6 +30,9 @@ defineModule("solids", {
   label: "Solids: extrude, revolve, sketch on a face, bodies, fillets and chamfers of their edges",
   tools: {
     extrude: ExtrudeTool,
+    // Extrude's cut, a tool of its own (docs/plans/solid-tools-intuitive.md): into
+    // the material by default, typed as the extrude it is.
+    cut: CutTool,
     revolve: RevolveTool,
     sketch: SketchTool,
     // A dialog armed on a feature (`edit("e1")`), never from the tray.
@@ -45,12 +48,20 @@ defineModule("solids", {
   },
   groups: {
     modify: ["round", "chamfer"],
+    // Cut beside Extrude on one button, as SolidWorks puts Extruded Cut beside
+    // Extruded Boss — no button of its own, so an iPhone's column keeps its
+    // thirteen. The surfaces module adds its surface after them.
+    sweep: ["extrude", "cut"],
   },
   icons: {
     // A slab seen from above: the face raised off its base, the three vertical
     // edges that can be seen, and the base's two front edges — the back two are
     // behind the slab, and drawn they cross its front face.
     extrude: svg("extrude", `<path d="M2 7.5h7l5-3.5H7zM2 7.5v6h7l5-3.5V4M9 7.5v6"/>`),
+    // The same slab with a hole going down into its top: the hole's rim on the
+    // top face, and inside it the far wall falling away — what Cut takes away.
+    cut: svg("cut", `<path d="M2 7.5h7l5-3.5H7zM2 7.5v6h7l5-3.5V4M9 7.5v6"/><ellipse cx="8" cy="5.75" rx="2.4" ry="1.05"/>` +
+      `<path d="M5.7 6.1a2.4 1.05 0 0 0 4.6 0"/>`),
     // A profile inside the turn that sweeps it: three quarters of a circle,
     // arrowed so it reads as a motion rather than a third shape. (An axis drawn
     // through it, and the turn as a foreshortened ellipse, were tried first: at

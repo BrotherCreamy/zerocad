@@ -443,6 +443,12 @@
     #options .ochoose[aria-pressed="true"]{background:#e8a33d33;border-color:#e8a33d;color:#e8a33d}
     #options .ochoose.resolved{background:#16212c;border-color:#46586a;color:#d5e1ec}
     #options .ochoose.offer{border-color:#e8a33d;color:#e8a33d}
+    /* A direction's flip (an extrude's depth, a revolve's angle): one button
+       after the unit, the size of a mode button, a finger's one tap. */
+    #options .oflip{flex:none;width:calc(22px * var(--ui));height:calc(18px * var(--ui));padding:0;font-family:inherit;font-size:calc(12px * var(--ui));
+      background:transparent;border:1px solid #223041;border-radius:3px;cursor:default;color:#8fa7bb}
+    #options .oflip:hover{background:#20303f;color:#d5e1ec}
+    #options .oflip:active{border-color:#e8a33d;color:#e8a33d}
     #options .oact{justify-content:flex-end;gap:4px}
     #options .oact button{flex:none;width:calc(28px * var(--ui));height:calc(18px * var(--ui));padding:0;font-family:inherit;font-size:calc(12px * var(--ui));line-height:calc(16px * var(--ui));
       background:transparent;border:1px solid #223041;border-radius:3px;cursor:default;color:#8fa7bb}

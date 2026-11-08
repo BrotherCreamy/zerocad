@@ -34,7 +34,7 @@ test("the built-in modules load in order, and the tables are filled from them in
   // The tray: core's tools, then the sketch module's, then the solids', then the surfaces' (docs/plans/surfaces.md).
   // The spline after the ellipse, on the curves button (docs/plans/spline.md).
   assert.deepEqual(listTools(), ["point", "line", "rectangle", "polygon", "slot", "region", "circle", "arc", "ellipse", "spline", "fillet",
-    "bevel", "trim", "extend", "offset", "mirror", "pattern", "dimension", "constrain", "extrude", "revolve", "sketch", "round", "chamfer",
+    "bevel", "trim", "extend", "offset", "mirror", "pattern", "dimension", "constrain", "extrude", "cut", "revolve", "sketch", "round", "chamfer",
     "surface"]);
   // The menu's tool items and the File items, module by module.
   assert.deepEqual(menuToolItems().map((i) => i.tool), ["point", "line", "rectangle", "circle", "arc", "ellipse", "spline", "fillet"]);

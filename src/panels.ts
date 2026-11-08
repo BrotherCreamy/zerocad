@@ -3949,7 +3949,12 @@ export interface OptionRow {
   read?: string | null;
   /** A choice drawn as buttons, one per word but the first, rather than a drop-down (an extrude's mode). */
   buttons?: boolean;
+  /** A number whose sign is a direction: a ⇅ button beside its field types it negated (an extrude's depth). */
+  flip?: boolean;
 }
+
+/** The flip button's name, in the words a SolidWorks user looks for (docs/plans/solid-tools-intuitive.md). */
+export const FLIP_LABEL = "Flip direction";
 
 /**
  * A feature tool's ✓ and ✗, as the panel shows them: whether ✓ would do
@@ -4088,7 +4093,7 @@ export class OptionsPanel {
     const a = this.host.armed();
     const commands = a?.commands ?? [];
     const key = a
-      ? [a.tool, a.dialog ? "dialog" : "", ...a.rows.map((r) => `${r.name}\t${typeof r.value}\t${r.label}\t${r.unit}\t${r.choices?.flat().join("\t") ?? ""}`),
+      ? [a.tool, a.dialog ? "dialog" : "", ...a.rows.map((r) => `${r.name}\t${typeof r.value}\t${r.label}\t${r.unit}\t${r.flip ? "flip" : ""}\t${r.choices?.flat().join("\t") ?? ""}`),
         ...commands.map((c) => `cmd\t${c.label}\t${c.command}`)].join("\n")
       : "";
     const shaped = key !== this.key;
@@ -4282,7 +4287,40 @@ export class OptionsPanel {
       field.addEventListener("blur", () => { void this.commit(field); });
     }
     line.append(label, field, unit);
+    if (r.flip && typeof r.value === "number") line.append(this.flipButton(r));
     return line;
+  }
+
+  /**
+   * The ⇅ beside a direction's field: one press types the value negated —
+   * `arm("extrude", {depth: -10})` — so the preview turns at once and the
+   * confirm types the negated call. Reads the value at the press, not when
+   * built, and a field left mid-edit is committed first (the capture every
+   * press gets), so a flip after typing 25 gives -25. Never takes the focus.
+   */
+  private flipButton(r: OptionRow): HTMLButtonElement {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "oflip";
+    b.dataset.flip = r.name;
+    b.textContent = "⇅";
+    b.setAttribute("aria-label", FLIP_LABEL);
+    const tool = this.tool;
+    const now = () => this.host.armed()?.rows.find((x) => x.name === r.name)?.value;
+    giveTip(b, () => {
+      const v = now();
+      return {
+        name: FLIP_LABEL,
+        summary: `Turns the ${r.label} the other way`,
+        command: typeof v === "number" ? optionCommand(tool, r.name, -v) : null,
+      };
+    }, this.host.tooltip);
+    b.addEventListener("mousedown", (e) => e.preventDefault());
+    b.addEventListener("click", () => {
+      const v = now();
+      if (typeof v === "number" && v !== 0) void this.type(tool, r.name, -v);
+    });
+    return b;
   }
 
   /**

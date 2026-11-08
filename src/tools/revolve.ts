@@ -124,9 +124,10 @@ export function revolveSteps(region: RegionHit, axis: string, angle: number, typ
 
 export class RevolveTool extends FeatureTool {
   // Radians, as everywhere a revolve takes an angle; the operation's own range.
+  // ⇅ turns the sweep the other way round its axis (docs/plans/solid-tools-intuitive.md).
   static readonly options: OptionSpecs = {
     angle: {
-      default: FULL_TURN, unit: "angle",
+      default: FULL_TURN, unit: "angle", flip: true,
       check: (v) => (v === 0 || Math.abs(v as number) > FULL_TURN ? "must be within a whole turn (±6.283185) and not 0" : null),
     },
     mode: MODE_OPTION,

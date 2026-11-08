@@ -56,7 +56,7 @@ test("the button list is thirteen today, with these names in this order — a gr
   assert.equal(buttons.length, 13);
   assert.deepEqual(buttons.map((b) => b.group ?? b.tools[0]),
     ["select", "hand", "point", "line", "shapes", "circle", "arc", "curves", "modify", "relate", "sweep", "revolve", "sketch"]);
-  assert.deepEqual(buttons.find((b) => b.group === "sweep")!.tools, ["extrude", "surface"]);
+  assert.deepEqual(buttons.find((b) => b.group === "sweep")!.tools, ["extrude", "cut", "surface"]);
   assert.deepEqual(buttons.find((b) => b.group === "shapes")!.tools, ["rectangle", "polygon", "slot", "region"]);
   // The spline joins the ellipse there (docs/plans/spline.md): still thirteen.
   assert.deepEqual(buttons.find((b) => b.group === "curves")!.tools, ["ellipse", "spline"]);
@@ -82,7 +82,7 @@ test("grouping is the table: shapes, curves, modify and relate, in their order; 
   assert.equal(toolGroup("rectangle"), "shapes");
   assert.equal(toolGroup("fillet"), "modify");
   assert.equal(toolGroup("constrain"), "relate");
-  assert.deepEqual(TOOL_GROUPS.sweep, ["extrude", "surface"]);
+  assert.deepEqual(TOOL_GROUPS.sweep, ["extrude", "cut", "surface"]);
   for (const alone of ["select", "hand", "point", "line", "circle", "arc", "revolve", "sketch"]) {
     assert.equal(toolGroup(alone), null, alone);
   }
@@ -360,7 +360,7 @@ test("help() says which tools share a button, how to open it, and how a tool joi
   const help = (await repl.eval("help()")).value as string;
   assert.match(help, /rectangle +.*\[shapes\]/);
   // The curves group shares its button since the spline joined the ellipse (docs/plans/spline.md).
-  assert.match(help, /Sharing a button now: rectangle \/ polygon \/ slot \/ region \/ t_stamp; ellipse \/ spline; fillet \/ bevel \/ trim \/ extend \/ offset \/ mirror \/ pattern \/ round \/ chamfer \/ t_late \/ t_base; dimension \/ constrain; extrude \/ surface\./);
+  assert.match(help, /Sharing a button now: rectangle \/ polygon \/ slot \/ region \/ t_stamp; ellipse \/ spline; fillet \/ bevel \/ trim \/ extend \/ offset \/ mirror \/ pattern \/ round \/ chamfer \/ t_late \/ t_base; dimension \/ constrain; extrude \/ cut \/ surface\./);
   assert.match(help, /static group = "shapes"/);
   assert.match(help, /slides off it onto one and lifts/);
   const tools = (await repl.eval("tools()")).value as string[];

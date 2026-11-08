@@ -34,7 +34,7 @@ import { arcSamples, arcSegments, frameReach } from "../arcgeom.ts";
 import { REGION_GREEN } from "./region.ts";
 import { refind } from "./selection.ts";
 import { defaultMode, modeOf } from "../modes.ts";
-import type { FeatureOptions } from "../operations.ts";
+import { DEFAULT_DEPTH, type FeatureOptions } from "../operations.ts";
 
 /**
  * The option every feature tool that makes a body takes (docs/plans/
@@ -50,6 +50,28 @@ export const MODE_OPTION = {
 export function modeOptions(values: Record<string, unknown>): FeatureOptions | null {
   const m = values.mode;
   return m === "new" || m === "add" || m === "cut" || m === "intersect" ? { mode: m } : null;
+}
+
+/**
+ * How an extrude ends (docs/plans/solid-tools-intuitive.md): a row of buttons,
+ * none pressed meaning **Blind** — the depth, as an extrude has always been —
+ * then **Through all** and **Symmetric**, in the words a SolidWorks user looks
+ * for. Not remembered: a hole through one plate is not the next boss's.
+ */
+export const END_OPTION = {
+  default: "blind", choices: { blind: "Blind", through: "Through all", symmetric: "Symmetric" }, buttons: true, remember: false, label: "end",
+} as const;
+
+/** An extrude's depth: negative is the other way along the sketch's normal, zero no solid; flipped by the panel's ⇅. */
+export const DEPTH_OPTION = {
+  default: DEFAULT_DEPTH, unit: "length", flip: true, check: (v: unknown) => (v === 0 ? "cannot be 0" : null),
+} as const;
+
+/** A tool's mode and end options as one call's options — nothing for auto and blind, which leave the call as it always was. */
+export function featureOptions(values: Record<string, unknown>): FeatureOptions | null {
+  const end: FeatureOptions["end"] | null = values.end === "through" || values.end === "symmetric" ? values.end : null;
+  const o: FeatureOptions = { ...(modeOptions(values) ?? {}), ...(end ? { end } : {}) };
+  return Object.keys(o).length ? o : null;
 }
 
 /** A cut's previewed tool solid: a warm red, edge-on to square-on, as faceColour runs a body's tones. */

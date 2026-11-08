@@ -31,8 +31,8 @@
 // Pure: a function of the model, at the operations' height (operations.ts
 // asks it inside `extrude` and `revolve`).
 
-import type { BlendFeature, FeatureEntry, FeatureMode, Model } from "./model.ts";
-import { kernelSweep } from "./solids.ts";
+import type { BlendFeature, FeatureEntry, FeatureMode, Model, ProfileMember } from "./model.ts";
+import { kernelProfile, kernelSweep } from "./solids.ts";
 import { insideProfile, memberPoints } from "./solids/profile.ts";
 import type { V2 } from "./solids/kernel.ts";
 import { cross3, dot3, sub3, unit3 } from "./vec3.ts";
@@ -303,6 +303,65 @@ export function resolveMode(model: Model, f: FeatureEntry, mode: FeatureMode, in
     throw new Error(`${op} ${mode === "cut" ? "cuts from" : "intersects"} a body, and this one touches none — say which with { mode: "${mode}", into: "e1" }`);
   }
   return { mode, into: found.into };
+}
+
+// ---- which way is into the material -----------------------------------------
+
+/** Where along a sweep a cut's probes stand, as fractions of its reach: just off the sketch, and on through it. */
+const PROBE_ALONG = [0.02, 0.25, 0.5, 0.75, 0.98];
+
+/**
+ * Which way a cut of a profile goes **into the material** — the Cut tool's
+ * default direction (docs/plans/solid-tools-intuitive.md, vetoable): `+1`
+ * along the plane's normal `n`, `-1` against it, whichever has more of every
+ * body's material along it, `reach` deep (interior points of the profile, a
+ * grid as `probes` lays one, each walked along both ways). A profile on a
+ * lid cuts down into its body, one on the ground under a body up into it,
+ * with no minus sign to know about. `reaches` is false when neither way meets
+ * any material — a profile beside every body — and the way is then `+1`, the
+ * typed call's own default. Even, both ways inside material (a sketch plane
+ * through the middle of a body): `-1`, away from the viewer when the plane
+ * faces them, as a sketch on a face does.
+ *
+ * `loops` are the profile as a feature would take it, in `plane`; a profile
+ * that cannot be laid out (a crossing not yet a point) is probed from `at`,
+ * the point the click landed on, alone.
+ */
+export function materialWay(model: Model, plane: { u: number[]; n: number[] }, loops: readonly (readonly ProfileMember[])[],
+                            at: number[], reach: number): { way: 1 | -1; reaches: boolean } {
+  const bodies = chainsOf(model).bodies.map((c) => insideBody(model, c));
+  const n = unit3(plane.n);
+  if (!bodies.length || !n || !(reach > 0)) return { way: 1, reaches: false };
+  let starts: number[][] = [];
+  try {
+    const { at: placed, profile } = kernelProfile(model, plane, loops);
+    const pts = profile.loops.flat().flatMap((m) => memberPoints(m, 16));
+    const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
+    const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+    const N = 7;
+    for (let i = 0; i < N; i++) {
+      for (let j = 0; j < N; j++) {
+        const p: V2 = [x0 + ((i + 0.5) / N) * (x1 - x0), y0 + ((j + 0.5) / N) * (y1 - y0)];
+        if (insideProfile(profile, p)) starts.push([0, 1, 2].map((k) => placed.origin[k] + p[0] * placed.x[k] + p[1] * placed.y[k]));
+      }
+    }
+  } catch {
+    starts = [];
+  }
+  if (!starts.length) starts = [at];
+  const along = (s: number) => {
+    let hits = 0;
+    for (const p of starts) {
+      for (const t of PROBE_ALONG) {
+        const q = p.map((c, k) => c + s * t * reach * n[k]);
+        if (bodies.some((inside) => inside(q))) hits++;
+      }
+    }
+    return hits;
+  };
+  const [up, down] = [along(1), along(-1)];
+  if (up === 0 && down === 0) return { way: 1, reaches: false };
+  return { way: up > down ? 1 : -1, reaches: true };
 }
 
 /** A unit direction, for callers that want the sweep's way without the rest. */
