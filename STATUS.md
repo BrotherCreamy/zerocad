@@ -16,6 +16,24 @@ etc).
   on every push to the working branch. Called NeoCAD until 0.1.0; the
   internal code name stays in identifiers, the file format tag and storage
   keys (see TODO.md's register).
+- **Solid tools a first-time user can use** (docs/plans/solid-tools-intuitive.md,
+  built but Up to face). The owner: *"Flip button."* and *"I'm still not
+  clear on how to use the extrude cut tool."* **Flip**: a ⇅ beside the depth
+  (a revolve's angle) in the options panel and both edit dialogs, typing the
+  value negated; the menu's **Flip direction** on a depth or angle dimension
+  and on any piece of a solid. **Cut**, a tool of its own on the extrude's
+  button (hold it): click a closed shape, ✓ — it goes into the material by
+  default (`materialWay`), types `extrude("c1", -10, {"mode":"cut"})`, says
+  before ✓ when it reaches no solid. **End conditions** on extrude, cut and
+  the edit dialog (a drop-down in the depth's row): Blind, **Through all** (past everything made before, held
+  there by the depth dimension at every solve, so it follows a body set
+  deeper; label "through all"), **Symmetric** (half each side), `{ end }` in
+  the call, `setEnd("e2", …)` afterwards; journalled, replayed, regenerated.
+  **A depth handle** on the previewed lid: drag it, round steps, through
+  zero to flip; ⊙/⊗ when seen square on. The revolve takes the origin's own
+  axes (a bug). On a face the menu's face items come first. Unit:
+  `test/extrudeends.test.ts`, `test/cuttool.test.ts`; e2e:
+  `solidtools.e2e.ts` (mouse), `solidtoolsphone.e2e.ts` (iPhone 13, finger).
 - **Smart dimension** (docs/plans/smart-dimension.md, built). The owner:
   *"Dim tool needs to be similar in functionality to Solidworks smart
   dimension … Distance between two faces of a solid, or angle"*. The
@@ -336,7 +354,8 @@ etc).
   `src/solids/client.ts`, which replaces it on a crash, after 30 s without an
   answer, or past 256 MB.
   - **Modes.** `extrude` and `revolve` take `{ mode: "new" | "add" | "cut" |
-    "intersect", into }`; the tools have a mode row (New Add Cut ∩).
+    "intersect", into }`; the tools have a mode row (New Add Cut ∩), and Cut
+    is a tool of its own too (solid-tools-intuitive.md).
     - The default, decided at the call and journalled resolved
       (`src/modes.ts`), is Add when the solid touches or overlaps a body, and
       New otherwise.

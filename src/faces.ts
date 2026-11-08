@@ -434,7 +434,15 @@ function extrudeFaces(model: Model, f: Extract<FeatureEntry, { kind: "extrude" }
   const z = axes.n;
   const paths = profilePaths(model, f.loops, f.twins, scale);
   if (!paths) return [];
-  const [base, lid] = [paths.base, paths.twin!];
+  const lid = paths.twin!;
+  // A symmetric extrude's lid stands half its depth above the sketch, and its
+  // base as far below: each base sample mirrored through the sketch from its
+  // twin's (docs/plans/solid-tools-intuitive.md). The base cap has no entities
+  // of its own — the sketch is the mid-plane — so it is drawn, never stored,
+  // as a revolve's surface is.
+  const base = f.extent === "symmetric"
+    ? paths.base.map((loop, i) => loop.map((path, j) => path.map((p, k) => p.map((c, x) => 2 * c - lid[i][j][k][x]))))
+    : paths.base;
   const flips = base.map(orient);
   const baseOutlines = base.map((p, i) => joined(p, flips[i]));
   const lidOutlines = lid.map((p, i) => joined(p, flips[i]));

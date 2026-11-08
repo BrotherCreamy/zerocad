@@ -9,6 +9,56 @@ For the itemized technical state see `STATUS.md`, for what's next see
 `TODO.md`, for a shorter screenshot-carrying version of this story see
 `CHANGELOG.md`, and for the project pitch see `README.md`.
 
+
+## 2026-11-08 — the solid tools, for someone who has not used them
+
+The owner: *"Flip button."* and *"I'm still not clear on how to use the
+extrude cut tool. It doesn't make sense to me. Make it more intuitive, along
+with the other solid tools."* — and *"Go now and don't ask questions"*, so
+every choice below is in TODO's register to veto.
+
+**Walked first.** Every solid tool by finger on an emulated iPhone 13, every
+step pictured and looked at, before anything changed. The list of sixteen
+(the spec's *Walkthrough*) decided what to build: the owner's Cut confusion
+was three things at once — Cut hidden in a row, the sign of a number deciding
+the direction, and ✓ building a cut that cut nothing with only a log line
+afterwards. A Cut tool alone would have fixed the first.
+
+**Why Cut's direction is read off the bodies, not the viewer.** The obvious
+default is "into the screen", and on a lid seen from above it is the same
+answer. It is a different answer for a circle on the ground under a block,
+for a lid seen from below, and for a face seen edge-on. What a user means by
+Cut is "take material away", so the tool asks where the material is. Rejected:
+a second preview at the other sign when the first reached nothing (two
+previews per pick, and a flicker as the second replaced the first).
+
+**Why through all is relational, through a hook.** A through depth captured
+once as a number stops being through when the plate is made deeper, and the
+spec says it must follow. Routing only through-all features to the kernel was
+tried on paper and rejected: the preview and a one-feature body are drawn by
+faces.ts off the twins, so the twins must stand where the solid ends. So the
+depth dimension holds the lid at a reach read live — but a relation may not
+know what a body is, so the solids layer registers the reach with the model
+(`defineThroughReach`), as a module registers a rebuild.
+
+**Up to face, left.** Its relation is the same shape (a reach to a plane,
+read live), and a face of entities is a plane already; the work is the second
+pick and a stable name for a face only the kernel made — which sketch-mode is
+building in parallel. Shipping a half (faces of entities only, no kernel
+faces) would have been the one end condition that silently does nothing on a
+filleted body.
+
+**What the browser found that the unit suite passed**: the origin's axes
+missing from the revolve; Cut's "reaches nothing" said after every cut (the
+render between a confirm's lines asked the half-built model); the face's menu
+items below a screenful of tools on a phone — the e2e that asked for them
+found them, and only the picture showed where; the end row's label cut to
+"e.", and then — the full suite's touch test — the row itself one too many
+for an iPhone held sideways, so the end condition became a drop-down in the
+depth's row, as SolidWorks lays it out. And one about the workshop: a dev server started by hand in a worktree
+serves the code it started with, because vite.config ignores `.claude/`, which
+is the whole tree there (TODO).
+
 ## Where this came from
 
 The conversation started as ongoing work on `cellwork`, a single-file

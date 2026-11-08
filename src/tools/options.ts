@@ -71,6 +71,22 @@ export interface OptionSpec {
    * default at every arm, whatever the last one was.
    */
   remember?: boolean;
+  /**
+   * A number whose sign is a direction — an extrude's depth, a revolve's
+   * angle (docs/plans/solid-tools-intuitive.md; the owner: *"Flip button."*).
+   * The panel draws a ⇅ button beside the field that types the value negated,
+   * `arm("extrude", {depth: -10})`, so a flip is one tap and one typed line
+   * rather than a keyboard raised for a minus sign. For numbers only.
+   */
+  flip?: boolean;
+  /**
+   * For a choice: drawn in place of another option's label, as a drop-down —
+   * an extrude's end condition beside its depth, "Blind ▾ [10] ⇅", as
+   * SolidWorks lays out its Direction 1 — so it costs the panel no row of its
+   * own (docs/plans/solid-tools-intuitive.md: a row more and an iPhone held
+   * sideways had no layout that fit).
+   */
+  beside?: string;
 }
 
 export type OptionSpecs = Readonly<Record<string, OptionSpec>>;
@@ -137,6 +153,12 @@ export function declaredOptions(ctor: unknown, tool = "the tool"): OptionSpecs {
     if (s.unit !== undefined && typeof s.unit !== "string") throw new Error(`${tool}'s option ${name}: unit is text`);
     if (s.label !== undefined && typeof s.label !== "string") throw new Error(`${tool}'s option ${name}: label is text`);
     if (s.check !== undefined && typeof s.check !== "function") throw new Error(`${tool}'s option ${name}: check is a function`);
+    if (s.beside !== undefined && (typeof s.beside !== "string" || typeof d !== "string" || !Object.hasOwn(raw as object, s.beside))) {
+      throw new Error(`${tool}'s option ${name}: beside names another of its options, and only a choice stands beside one`);
+    }
+    if (s.flip !== undefined && (typeof s.flip !== "boolean" || (s.flip && typeof d !== "number"))) {
+      throw new Error(`${tool}'s option ${name}: flip is true or false, and only for a number — the sign it turns over`);
+    }
   }
   return raw as OptionSpecs;
 }

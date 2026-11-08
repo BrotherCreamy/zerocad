@@ -111,7 +111,7 @@ test("nothing armed, no options panel; the point tool, which has none, shows non
   assert.equal((await app.model()).byKind.line, 4);
 });
 
-test("arming extrude by its button shows the options panel beside the tray: depth, 10, the mode row, ✓ and ✗, no grips", async () => {
+test("arming extrude by its button shows the options panel beside the tray: Blind ▾, 10, ⇅, the mode row, ✓ and ✗, no grips", async () => {
   await press("extrude");
   assert.equal(await visible(), true);
   assert.equal(await strip(), "extrude", "the strip names the tool");
@@ -119,14 +119,19 @@ test("arming extrude by its button shows the options panel beside the tray: dept
   const labels = await app.page.$$eval(`${PANEL} .olabel`, (els) => els.map((el) => el.textContent));
   // And what the solid does to a body (docs/plans/solids-kernel.md): a row of
   // buttons, none pressed — `auto`, which lets the call decide.
-  assert.deepEqual(labels, ["depth", "mode"]);
+  // And how it ends (docs/plans/solid-tools-intuitive.md): a drop-down where the
+  // depth's label was — Blind — and the depth's ⇅; no row of its own.
+  assert.deepEqual(labels, ["mode"]);
+  assert.deepEqual(await app.page.$eval(`${PANEL} select.obeside`, (s) => [(s as HTMLSelectElement).value, Array.from((s as HTMLSelectElement).options, (o) => o.textContent)]),
+    ["blind", ["Blind", "Through all", "Symmetric"]]);
   assert.deepEqual(await app.page.$$eval(`${PANEL} .ochoose`, (els) => els.map((el) => [el.textContent, el.getAttribute("aria-pressed")])),
     [["New", "false"], ["Add", "false"], ["Cut", "false"], ["∩", "false"]]);
+  assert.equal(await app.page.$eval(`${PANEL} button.oflip`, (b) => b.getAttribute("aria-label")), "Flip direction");
   const tb = await rectOf('.panel[data-panel="toolbar"]');
   const op = await rectOf(PANEL);
   assert.equal(op.x, tb.x + tb.width + 8, "beside the column, a margin off it, on its free side");
   assert.equal(op.y, tb.y, "lined up with its top");
-  assert.equal(op.height, 16 + 8 + 3 * 22, "strip, padding, border, the depth's row, the mode's and the ✓ ✗ row");
+  assert.equal(op.height, 16 + 8 + 3 * 22, "strip, padding, border, the depth's row (its end beside it), the mode's and the ✓ ✗ row");
   assert.deepEqual(await app.page.$$eval(`${PANEL} .oact button`, (els) => els.map((el) => el.textContent)), ["✓", "✗"]);
   assert.equal(await app.page.$$eval(`${PANEL} > .pgrip`, (els) => els.length), 0, "not resizable");
   await shot("armed");
@@ -143,7 +148,7 @@ test("25 typed in the field and Enter: the log shows the arm line it typed, and 
   assert.equal(await field("depth"), "25");
   assert.equal((await app.model()).activeTool, "extrude", "still armed");
   const listed = (await app.repl("tools()")).value as string[];
-  assert.deepEqual(listed.filter((t) => t.startsWith("extrude")).map((t) => t.replace(/  — .*$/, "")), ['extrude  { depth: 25, mode: "auto" }  (default { depth: 10, mode: "auto" })'],
+  assert.deepEqual(listed.filter((t) => t.startsWith("extrude")).map((t) => t.replace(/  — .*$/, "")), ['extrude  { depth: 25, end: "blind", mode: "auto" }  (default { depth: 10, end: "blind", mode: "auto" })'],
     "tools() lists what arm would use now");
   await shot("typed");
 
@@ -185,7 +190,7 @@ test("arm typed by hand shows in the panel, and a refused one leaves the panel a
   assert.equal(await field("depth"), "40");
   await app.type('arm("extrude", { dpth: 3 })');
   const last = (await logLines()).at(-1)!;
-  assert.match(last.text, /extrude has no option "dpth" — its options are \{ depth: 10, mode: "auto" \}/);
+  assert.match(last.text, /extrude has no option "dpth" — its options are \{ depth: 10, end: "blind", mode: "auto" \}/);
   assert.equal(await field("depth"), "40");
   assert.equal((await app.model()).activeTool, "extrude", "a typo did not disarm it");
 });

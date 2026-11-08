@@ -1256,6 +1256,24 @@ replaces it on a crash (an abort in SMLib is fatal to its module), on 30 s
 without an answer, and past 256 MB (the fillet leak the spike measured). The
 next request starts a fresh one, and the log says each time.
 
+**How an extrude ends is the record's, and the lid is where it says**
+(docs/plans/solid-tools-intuitive.md). A feature used to be a profile and a
+depth: blind. An extrude's record now carries `extent` — `"through"` or
+`"symmetric"`, absent for blind — journalled in the call's options beside
+the mode (`{ mode: "cut", end: "through" }`) and changed by `setEnd`. The
+depth dimension still holds every twin to its base, but at `lidReach` of
+its value rather than the value: half of it for symmetric, and for through
+all past the far side of everything made before the feature, read off their
+sweeps every evaluation as a datum, the way a frame is read and never
+pushed. So the lid stands where the solid ends — faces.ts draws the solid
+off the twins, the preview is faces.ts, and both are right — and a cut
+through a plate follows the plate set deeper by the solve alone. The
+relation cannot know what a body is, so the solids layer registers the
+reach (`defineThroughReach`, model.ts); the kernel, the exact B-rep and the
+closed-form insideness all read the span through one function
+(`extrudeSpan`, solids.ts), and a symmetric extrude's base, which has no
+entities, is drawn and built as far below the sketch as the lid is above.
+
 **A fillet is a step of the chain, and an edge is its name**
 (docs/plans/solid-fillets.md). A fillet or chamfer is a `BlendFeature` in
 `model.blends`: the body it rounds, its edges by name, and the dimension
@@ -2077,7 +2095,7 @@ until the next action went unrecorded.
 
 ## Why there is an end-to-end suite
 
-Sixty-five bugs so far were invisible to the unit tests and obvious within seconds
+Sixty-nine bugs so far were invisible to the unit tests and obvious within seconds
 of running the app:
 
 1. a status readout that went stale, so a conflict could be introduced from
@@ -2391,6 +2409,26 @@ of running the app:
    Found when the iPhone's seven-row list for two circles covered the line,
    so the test had to pick it first. The mirror is now whichever pick is the
    line, in any order.
+66. The revolve tool never offered the origin's own axes: it asked only the
+   frames that are entities, and the origin is none, so a rectangle beside
+   the origin's y axis lit no axis and a tap on the arm was refused as "not
+   in its plane" — while `revolve(…, "origin.y")` typed worked. Found by
+   walking the revolve on a phone (docs/plans/solid-tools-intuitive.md, W9).
+67. The Cut tool's "this cut doesn't reach any solid" said once after every
+   confirm: the render between the confirm's lines asked the model half-way
+   — the cut already made, its material gone. Found reading the log of the
+   first iPhone run; the question now waits while a confirm's lines go in.
+68. On a phone, a held finger on a solid's face opened the empty-canvas menu
+   with the tool list first, filling the screen, and the face's own Sketch on
+   this face, Edit e1 and Flip direction below it, out of sight. The test that
+   asked for the items found them; only the picture showed where they were.
+   On a face they come first now.
+69. The extrude's new end-condition row: its label cut to "e." beside
+   "Through all" and "Symmetric" on an iPhone (#13 again, found by looking),
+   and, the row being one more, no panel layout fitting an iPhone held
+   sideways — found by the full suite's touch.e2e.ts, every unit test passing.
+   The end condition is a drop-down where the depth's label was now,
+   SolidWorks' "Blind ▾ [10]", and costs no row.
 
 None of these are mathematics. They are all *assembly*. Hence `npm run
 test:e2e`, and hence the expectation that anything touching the app is checked

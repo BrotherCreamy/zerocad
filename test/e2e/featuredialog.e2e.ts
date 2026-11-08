@@ -129,7 +129,7 @@ const mid = (r: [[number, number], [number, number]]): [number, number] => [(r[0
 const PARK: [number, number] = [760, 250];
 
 /** Each rectangle's middle in the world, on its base — read once both are drawn. */
-let base1: number[] = [], base2: number[] = [];
+let base1: number[] = [], base2: number[] = [], corner1: number[] = [];
 const lift = (p: number[], z: number) => [p[0], p[1], z];
 
 test("two rectangles from the rectangle tool, the view turned so a lid is not over its base", async () => {
@@ -144,6 +144,7 @@ test("two rectangles from the rectangle tool, the view turned so a lid is not ov
   const left = [...new Set(pts)].filter((p) => m.points[p][0] < 0);
   const right = [...new Set(pts)].filter((p) => m.points[p][0] > 0);
   base1 = [...centre(left), 0];
+  corner1 = m.points[left[0]];
   base2 = [...centre(right), 0];
   await app.type("orbit(0.4, 1)");
   await park();
@@ -172,12 +173,15 @@ test("extrude armed by its button; a click in each rectangle picks both and prev
 });
 
 test("typing 25 in the depth field moves the previewed lids; Enter in the field commits it and confirms — two solids, two typed lines, one undo step", async () => {
-  assert.equal(await previewed(lift(base1, 25)), false, "nothing yet where a 25-deep lid would be");
+  // Asked half way from the middle to a corner: the depth handle (solid-tools-intuitive.md)
+  // stands on the lid's middle and runs up the very line a 25-deep middle is on.
+  const offAxis = (z: number) => lift([0, 1].map((i) => (base1[i] + corner1[i]) / 2), z);
+  assert.equal(await previewed(offAxis(25)), false, "nothing yet where a 25-deep lid would be");
   await app.page.click('#options input.oval[data-option="depth"]', { clickCount: 3 });
   await app.page.keyboard.type("25");
   await app.page.waitForTimeout(400);
   await park();
-  assert.ok(await previewed(lift(base1, 25)), "the lid moved up to 25 as it was typed");
+  assert.ok(await previewed(offAxis(25)), "the lid moved up to 25 as it was typed");
   assert.ok(await previewed(lift(base2, 25)));
   const typedBefore = (await logLines()).length;
   assert.deepEqual(await typedSince(typedBefore), []);

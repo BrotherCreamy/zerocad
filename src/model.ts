@@ -706,6 +706,8 @@ export interface ExtrudeFeature {
   /** What it does to a body, and which body. See `FeatureMode`. */
   mode?: FeatureMode;
   into?: string;
+  /** How it ends, when not blind — through all, or half each side of its sketch. See `Extent`. */
+  extent?: Extent;
   /**
    * The region it stands on (`RegionEntry`, docs/plans/regions-as-operations.md):
    * what its profile is regenerated from when the region is edited. Every
@@ -845,6 +847,61 @@ export function isBlendFeature(f: FeatureEntry | BlendFeature): f is BlendFeatur
  */
 export type FeatureMode = "new" | "add" | "cut" | "intersect";
 export const FEATURE_MODES: readonly FeatureMode[] = ["new", "add", "cut", "intersect"];
+
+/**
+ * How an extrude ends when it is not **blind** — its depth from the sketch,
+ * which is what a record with no `extent` is (docs/plans/solid-tools-intuitive.md;
+ * the owner: *"I'm still not clear on how to use the extrude cut tool"*):
+ *
+ * - **through** — through all: past the far side of everything made before
+ *   it, along the depth's sign. Relational: the lid is held there by the depth
+ *   dimension, which reads how far that is off the live geometry every solve
+ *   (`lidReach`), so a cut through a plate follows the plate when it is made
+ *   deeper. The dimension's number keeps only its sign — which way.
+ * - **symmetric** — half the depth each side of the sketch plane: the lid
+ *   held at half the depth, the base cap drawn as far the other way (faces.ts)
+ *   and built so (solids.ts). The dimension's number is the whole depth, as
+ *   SolidWorks' mid plane and Onshape's symmetric both read it.
+ *
+ * A record's, journalled in the call's options (`{ end: "through" }`) like
+ * its mode, so a replay builds it as it was made; changed afterwards by
+ * `setEnd`. An extrude's only: a revolve's end is its angle.
+ */
+export type Extent = "through" | "symmetric";
+export const EXTENTS: readonly Extent[] = ["through", "symmetric"];
+
+/** The extrude whose depth dimension `relation` is, or null — what a depth reads its end condition off. */
+export function extrudeOfDepth(model: Model, relation: string): ExtrudeFeature | null {
+  for (const f of model.features.values()) if (f.kind === "extrude" && f.depth === relation) return f;
+  return null;
+}
+
+/**
+ * How far a through-all extrude's lid stands off its sketch, signed as its
+ * depth: what the solids layer works out from the geometry made before it
+ * (solids.ts, `throughReach`), registered there because only it knows a
+ * feature's solid. Until it is, through all reads as blind.
+ */
+type ThroughReach = (model: Model, f: ExtrudeFeature, depth: number) => number;
+let throughReach: ThroughReach | null = null;
+
+export function defineThroughReach(reach: ThroughReach): void {
+  throughReach = reach;
+}
+
+/**
+ * Where an extrusion holds its lid, along the sketch's normal, for a depth
+ * dimension of value `depth`: the depth itself (blind), half of it
+ * (symmetric), or past everything made before (through). Asked by the
+ * `extrusion` relation at every evaluation — so the lid follows what it reads
+ * — and by the solids layer when it builds the solid the lid bounds.
+ */
+export function lidReach(model: Model, relation: string, depth: number): number {
+  const f = extrudeOfDepth(model, relation);
+  if (!f?.extent) return depth;
+  if (f.extent === "symmetric") return depth / 2;
+  return throughReach ? throughReach(model, f, depth) : depth;
+}
 
 /**
  * Which expansion of an extrude or revolve call a feature was made by: `11`,

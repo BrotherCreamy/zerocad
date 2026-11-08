@@ -1,6 +1,8 @@
 # Plan: solid tools a first-time user can use — a flip, a Cut you can find, and end conditions
 
-**Status: queued** (2026-11-08). The owner: *"Flip button."* and *"I'm still
+**Status: built** (2026-11-08), branch `claude/solid-tools-intuitive`, PR
+against `claude/resume-tasks-o7q02e` — except Up to face, a follow-up (see
+*As built*). The owner: *"Flip button."* and *"I'm still
 not clear on how to use the extrude cut tool. It doesn't make sense to me.
 Make it more intuitive, along with the other solid tools."*
 
@@ -40,6 +42,75 @@ Take a picture at every step and look at it. Write each place you had to know
 something the screen did not tell you into the spec's *Walkthrough* section.
 That list is what the rest of this plan must remove. Add to it; don't stop at
 the items below.
+
+## Walkthrough (2026-11-08, before any change)
+
+Walked on an emulated iPhone 13 by finger (Chromium; `test/e2e/` harness,
+the toolbar's buttons tapped, the options panel's fields and buttons tapped)
+and checked by mouse where the phone and the desk differ. Every step was
+pictured and looked at; four of the pictures are kept as 300–303. Each line
+is a place the screen did not tell me something I had to know.
+
+**Extrude**
+- W1. Armed and tapped, a region seen square on — the default for a fresh
+  rectangle, and what *sketch on a face* turns the view to — previews as a
+  flat fill (300). Nothing says which way the solid goes or how far; you must
+  orbit to find out, and on a phone that is a gesture nobody has told you.
+- W2. The direction is the sign of a number. To flip it you raise the
+  keyboard, find the minus key and type `-10`. There is no flip.
+- W3. The mode row reads `New Add Cut ∩`; `∩` is a symbol, not a word.
+
+**Cut a hole** (a circle on the lid of a 10-deep plate)
+- W4. Nothing on the toolbar says Cut. Cut is the third button of a row in
+  the extrude panel, which you only see once Extrude is armed.
+- W5. Pressing Cut with the default depth (+10, *out* of the face) previews a
+  red solid standing on the lid, in the air (301); ✓ is lit and the chip says
+  "✓ to extrude"; ✓ builds `extrude("c1", 10, {"mode":"cut"})`, a feature that
+  removes nothing, and only then does the log say "e2 cuts nothing from e1 —
+  it does not reach it".
+- W6. The hint "this runs into e1 — choose Cut to take it away" appears only
+  after you have already typed the minus sign, and it stays in the chip after
+  you have pressed Cut.
+- W7. A hole right through needs you to know the plate is 10 deep and type
+  at least that: blind is the only end condition.
+- W8. The chip says "✓ to extrude" whether the extrude adds or cuts.
+
+**Revolve** (a rectangle beside the origin's y axis)
+- W9. **Bug: the origin's own axes cannot be picked.** With the profile
+  tapped, nothing is lit (the origin's arms are not offered) and a tap on the
+  origin's y arm says "origin.y is not in its plane, or crosses it — click a
+  lit one" (302) — though `revolve("l1", "origin.y")` typed works. The tool
+  asked only the frames that are entities, and the origin is not one. So a
+  revolve about the obvious axis needed a line drawn first.
+- W10. The angle is in radians: "6.283185 rad". A half turn is 3.14159 typed.
+  The dimension it leaves reads degrees.
+- W11. No flip for the sweep's direction, as W2.
+
+**Fillet and chamfer a solid edge**
+- W12. The solid's fillet and chamfer are the 8th and 9th of nine unlabelled
+  icons in the modify flyout, and their two glyphs are near twins of each
+  other and of the extrude's box. The tool is called "round" on the panel and
+  in `arm`, "fillet" in the chip ("✓ to fillet").
+- W13. A chamfer tapped on an edge that meets the fillet took three edges (the
+  tangent chain, `tangent` ticked by default) and the kernel refused in its own
+  words: "the kernel could not chamfer those 3 edges at setback 2 — … (chamfer
+  failed (status 1001))" (303). The reason and the way out (untick tangent, or
+  add the edge to the fillet) are not said.
+- W14. The radius label (R2) can be dragged, but nothing says so until you
+  read the chip.
+
+**Edit a feature afterwards**
+- W15. A long press on the plate's front face opened a menu for `r1 par l1 l3`
+  — a constraint whose glyph is quiet (not drawn) but still within a finger's
+  reach — with Delete, Undo and Redo; no Edit e1. Edit is reached from a press
+  well inside a face, or the organiser.
+- W16. The edit dialog has the depth field but no flip and no end condition.
+
+What this plan removes: W1 (the depth handle's arrow shows the way, and the
+preview of a cut is drawn inside the body), W2/W11 (Flip), W4–W8 (a Cut
+tool, into the material by default, saying before ✓ when it reaches
+nothing), W7 (Through all), W9 (fixed), W16 (Flip and the end row in the
+dialog). What it leaves, written into TODO with a proposal: W3, W10, W12–W15.
 
 ## Design
 
@@ -124,3 +195,58 @@ the items below.
   - revolve cut, yes or no.
 - `help()`, and the spec marked built with its *Walkthrough* and deviations.
 - ARCHITECTURE if end conditions change what a feature is.
+
+## As built (2026-11-08)
+
+The walkthrough came first (above, W1–W16, pictures 300–303); then, each in
+its own tested commit:
+
+- **W9, a bug**: the revolve tool asked only the frames that are entities,
+  and the origin is none — its arms are offered and taken now
+  (`revolveAxes`), the walkthrough's case a unit test that failed before.
+- **Flip** — an option may declare `flip: true` (tools/options.ts), and the
+  panel draws ⇅ after its field ("Flip direction"), typing the value
+  negated: `arm("extrude", {depth: -10})`. On the extrude's and cut's depth,
+  the revolve's angle, and both edit dialogs'. The menu has **Flip
+  direction** on an extrude's depth dimension and a partial revolve's angle
+  (beside Set value…) and on any piece of a solid (beside Edit e1), running
+  `set("d1.value", -10)`.
+- **Cut** (`CutTool`, tools/extrude.ts) on the extrude's button, between
+  Extrude and Surface. Its depth is how far into the material; the way is
+  `materialWay` (modes.ts) on the profile the extrude would take. The
+  preview is the extrude's, which draws a cut's solid in the cut's red over
+  the body; the chip says "✓ to cut"; a cut that reaches nothing says so
+  before ✓. It types `extrude("c1", -10, {"mode":"cut"})`.
+- **End conditions**: in the panel a drop-down where the depth's label was
+  ("Blind ▾ [10] ⇅", SolidWorks' Direction 1: a row of its own did not fit an
+  iPhone held sideways); `ExtrudeFeature.extent` ("through" | "symmetric"),
+  the call's `{ end }`, `setEnd("e2", end)`; the depth dimension holds the
+  lid at `lidReach` (model.ts), the solids layer's `throughReach` for through
+  all (solids.ts); `extrudeSpan` for the kernel, the B-rep and insideness;
+  faces.ts mirrors a symmetric base. Saved, opened, regenerated and set,
+  each tested; the kernel's volumes checked.
+- **The depth handle**: an arrow off the previewed lid, its depth on a
+  label, dragged along its own line in round steps and through zero; ⊙ or
+  ⊗ when the lid is seen square on (W1). None for through all.
+- **Words**: help()'s solids text (Cut, Flip direction, the handle, Blind,
+  Through all, Symmetric, setEnd), the tools' summaries, "through all" on a
+  through depth's label, "✓ to cut".
+- **On a face the menu's face items come first** — found by looking at the
+  iPhone picture (the items were there, below a screenful of tools).
+
+### Deviations
+
+- **Up to face is not built**: a follow-up in TODO with a proposal. The
+  relational half is the same shape as through all (a reach read live from
+  a plane), and a face of entities already is a plane reference; what is
+  missing is the tool's second pick stage, and a name for a kernel-only face.
+- **Revolve cut: no.** The walkthrough did not show a need (TODO register).
+- **No key for Flip**: none is free (TODO register).
+- **The panel's number follows the handle when it is let go**, not during the
+  drag; during it the number is on the handle's label.
+- **W3, W10, W12–W15 are left as written proposals** in TODO, not
+  half-built: the mode row's `∩`, radians in the angle field, the solid
+  fillet's and chamfer's glyphs, names and refusal, and Edit e1 behind a
+  quiet glyph under a finger.
+- **A symmetric extrude's far cap has no entities** (drawn and built only).
+

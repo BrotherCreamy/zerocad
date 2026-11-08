@@ -16,7 +16,7 @@
 
 import type { Model } from "../model.ts";
 import { curveNormal, joinVars, planeBasis, unitDuals } from "./refs.ts";
-import { ORIGIN, referentsOf } from "../model.ts";
+import { ORIGIN, lidReach, referentsOf } from "../model.ts";
 
 /**
  * Holds each `twin` at its `base` plus `depth` along `frame`'s +z.
@@ -45,6 +45,12 @@ import { ORIGIN, referentsOf } from "../model.ts";
  * and refs (today's extrude makes no lid frame) — is read as plain numbers
  * too, so that lid frame follows the sketch frame and can never drag it.
  *
+ * **The lid stands where the extrude's end condition says** (`lidReach`): at
+ * the depth for a blind extrude, at half of it for a symmetric one, and past
+ * everything made before it for a through-all one — read at every evaluation,
+ * by the relation's own name, so a lid through all follows the body it goes
+ * through, and a datum as the frame is: what it reads is never pushed.
+ *
  * 3D only: in 2D there is no direction out of the plane to offset along.
  * Refuses a depth of zero (a lid on its base is no solid) and anything not a
  * finite number — and because `set` rebuilds through here, a refused value
@@ -62,7 +68,10 @@ export function extrusion(model: Model, frame: string, depth: number, ...pairs: 
   // (docs/plans/frameless-curves.md). The name stays: it is the argument that
   // always said which way.
   const kind = model.planeKind(frame); // fail now, not at the first solve
-  return model.relation("extrusion", [frame, depth, ...pairs], () => {
+  // The relation's own name, known once it is made: what the end condition is read by.
+  let self = "";
+  const reach = () => lidReach(model, self, depth);
+  self = model.relation("extrusion", [frame, depth, ...pairs], () => {
     const plane = planeBasis(model, frame);
     const basis = () => ({ uz: plane().n });
     // A base that is the plane's own point is a datum, as a frame's points
@@ -80,12 +89,14 @@ export function extrusion(model: Model, frame: string, depth: number, ...pairs: 
           model.addResidual(tv, (l) => {
             const uz = lift(basis().uz);
             const at = model.coords(b);
-            return [0, 1, 2].map((k) => l[k].sub(at[k] + depth * uz[k]));
+            const d = reach();
+            return [0, 1, 2].map((k) => l[k].sub(at[k] + d * uz[k]));
           }, `extrusion(${b},${t})`);
         } else {
           model.addResidual([...be.varIndices, ...tv], (l) => {
             const uz = lift(basis().uz);
-            return [0, 1, 2].map((k) => l[3 + k].sub(l[k]).sub(depth * uz[k]));
+            const d = reach();
+            return [0, 1, 2].map((k) => l[3 + k].sub(l[k]).sub(d * uz[k]));
           }, `extrusion(${b},${t})`);
         }
       } else if ((be?.kind === "circle" || be?.kind === "arc") && (te?.kind === "circle" || te?.kind === "arc")) {
@@ -123,4 +134,5 @@ export function extrusion(model: Model, frame: string, depth: number, ...pairs: 
       }
     }
   });
+  return self;
 }

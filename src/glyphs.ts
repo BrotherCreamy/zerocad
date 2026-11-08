@@ -41,7 +41,7 @@
 //     about as the drawing solves being the obvious one).
 
 import { addEllipse, checkEllipse, ellipseOf, semiAxes } from "./kinds/ellipse.ts";
-import { parseAxisRef, referentsOf, type Model, type RelationEntry } from "./model.ts";
+import { extrudeOfDepth, parseAxisRef, referentsOf, type Model, type RelationEntry } from "./model.ts";
 import { uiOf, viewAxes, worldToScreen, type View } from "./view.ts";
 import { dot3, lift3, sub3 } from "./vec3.ts";
 import { curveFrame, curvePath, curvePlaneOf } from "./curveplane.ts";
@@ -695,6 +695,8 @@ function labelOf(model: Model, r: RelationEntry): string | null {
     }
     return drivenLabel(model, r.args);
   }
+  // A through-all depth keeps only its sign: its number would be a lie (solid-tools-intuitive.md).
+  if (r.op === "extrusion" && extrudeOfDepth(model, r.name)?.extent === "through") return "through all";
   const own = LABELS.get(r.op);
   return own ? own(model, r) : labelFor(r.op, r.args);
 }

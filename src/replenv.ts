@@ -23,7 +23,7 @@ import * as geom from "./relations/geometry.ts";
 import { measure } from "./relations/measure.ts";
 import {
   add, construction, del, extrude, fillet, hole, intersect, loopOfMember, orientingPlane, peelOptions, regen, region,
-  regionText, revolve, set, subtract, unhole,
+  regionText, revolve, set, setEnd, subtract, unhole,
 } from "./operations.ts";
 import { chamferEdges, describeBlend, filletEdges, setEdges } from "./blends.ts";
 import { describeSurface, noSuchSurface, surfaceBlend } from "./surfaces.ts";
@@ -724,6 +724,8 @@ export function neocadScope(h: EnvHandles): Bag {
         : (noSuchSurface(model, "chamfer", a), Array.isArray(b)) ? chamferEdges(model, a, b, c) : sketchChamfer(model, a, b, c, (d as number | null | undefined) ?? null, regenerated),
     /** A fillet's or chamfer's edges, replaced in place: `setEdges("e3", [...])` — the feature dialog's ✓. */
     setEdges: (feature: string, edges: string[]) => setEdges(model, feature, edges),
+    /** How an extrude ends, changed afterwards: `setEnd("e2", "through")` — "blind", "through" or "symmetric"; the edit dialog's end row. */
+    setEnd: (feature: string, end: unknown) => setEnd(model, feature, end),
     /**
      * Brings a feature back into step with its profile as it is now —
      * `regen("e1")` — keeping every twin and wall whose vertex or member is
@@ -1129,7 +1131,8 @@ export function neocadScope(h: EnvHandles): Bag {
       if (!h.arm) throw new Error("no viewport in this environment");
       const f = model.featureOf(feature);
       const value = model.relationOf(f.kind === "extrude" ? f.depth : f.angle).args[1] as number;
-      h.arm(`edit ${f.kind}`, { [f.kind === "extrude" ? "depth" : "angle"]: value }, feature);
+      // An extrude's end condition rides along, so its row shows how it ends now.
+      h.arm(`edit ${f.kind}`, f.kind === "extrude" ? { depth: value, end: f.extent ?? "blind" } : { angle: value }, feature);
       return `editing ${feature}`;
     },
     cancel: () => { h.cancel?.(); return "cancelled"; },

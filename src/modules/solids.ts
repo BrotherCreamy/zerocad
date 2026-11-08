@@ -6,7 +6,7 @@
 
 import { defineModule } from "../modules.ts";
 import { defineDimension } from "../model.ts";
-import { defineRebuild, extrude, regen, revolve } from "../operations.ts";
+import { defineRebuild, extrude, regen, revolve, setEnd } from "../operations.ts";
 import { chamferEdges, filletEdges, setEdges } from "../blends.ts";
 import { chamferSetback, filletRadius } from "../relations/blend.ts";
 
@@ -20,7 +20,7 @@ defineDimension("chamferSetback", 0);
 defineRebuild("filletRadius", (m, a) => void filletRadius(m, a[0] as number));
 defineRebuild("chamferSetback", (m, a) => void chamferSetback(m, a[0] as number));
 import { svg } from "../tools/icons.ts";
-import { ExtrudeTool } from "../tools/extrude.ts";
+import { CutTool, ExtrudeTool } from "../tools/extrude.ts";
 import { RevolveTool } from "../tools/revolve.ts";
 import { SketchTool } from "../tools/sketch.ts";
 import { EditExtrudeTool, EditRevolveTool } from "../tools/edit.ts";
@@ -30,6 +30,9 @@ defineModule("solids", {
   label: "Solids: extrude, revolve, sketch on a face, bodies, fillets and chamfers of their edges",
   tools: {
     extrude: ExtrudeTool,
+    // Extrude's cut, a tool of its own (docs/plans/solid-tools-intuitive.md): into
+    // the material by default, typed as the extrude it is.
+    cut: CutTool,
     revolve: RevolveTool,
     sketch: SketchTool,
     // A dialog armed on a feature (`edit("e1")`), never from the tray.
@@ -45,12 +48,21 @@ defineModule("solids", {
   },
   groups: {
     modify: ["round", "chamfer"],
+    // Cut beside Extrude on one button, as SolidWorks puts Extruded Cut beside
+    // Extruded Boss — no button of its own, so an iPhone's column keeps its
+    // thirteen. The surfaces module adds its surface after them.
+    sweep: ["extrude", "cut"],
   },
   icons: {
     // A slab seen from above: the face raised off its base, the three vertical
     // edges that can be seen, and the base's two front edges — the back two are
     // behind the slab, and drawn they cross its front face.
     extrude: svg("extrude", `<path d="M2 7.5h7l5-3.5H7zM2 7.5v6h7l5-3.5V4M9 7.5v6"/>`),
+    // The same slab, lower, with a hole in its top and an arrow going down into
+    // it — what Cut takes away. (The hole's rim alone, at 16 px, read as the
+    // extrude's box: looked at in the flyout beside it.)
+    cut: svg("cut", `<path d="M2 9.5h7l5-3H7zM2 9.5v4h7l5-3v-4M9 9.5v4"/><ellipse cx="8" cy="8" rx="2.3" ry="0.9"/>` +
+      `<path d="M8 1.5v5M6.3 4.9 8 6.6l1.7-1.7"/>`),
     // A profile inside the turn that sweeps it: three quarters of a circle,
     // arrowed so it reads as a motion rather than a third shape. (An axis drawn
     // through it, and the turn as a foreshortened ellipse, were tried first: at
@@ -85,6 +97,9 @@ defineModule("solids", {
     filletEdges,
     chamferEdges,
     setEdges,
+    // How an extrude ends, changed afterwards (docs/plans/solid-tools-intuitive.md):
+    // the edit dialog's end row types it.
+    setEnd,
   },
   help: [
     'solids     extrude(region, depth?, frame?) — a solid of a region (see',
@@ -101,11 +116,27 @@ defineModule("solids", {
     '           its corners facing you ("p1.p2.p4"). No frame is made for any of',
     "           them. Revolve does the same.",
     "           Bodies: a solid touching or overlapping a body adds to it; one",
-    '           touching none is a body of its own. Cut is chosen: extrude("c1",',
-    '           -10, { mode: "cut" }) — a hole — and { mode: "add" | "new" |',
-    '           "intersect", into: "e1" } names it all. The dialog has a mode',
-    "           row (New Add Cut ∩): left alone it shows what it will do, and",
-    "           offers Cut when the solid runs into a body. Bodies of two or",
+    "           touching none is a body of its own. Cut — the Cut tool, beside",
+    "           Extrude on its button (hold it) — takes material away: click a",
+    "           closed shape on or beside a solid, ✓; it goes into the material",
+    '           by default, and types extrude("c1", -10, { mode: "cut" }) — a',
+    "           hole, no minus sign to know about; it says so before ✓ when it",
+    '           reaches no solid. { mode: "add" | "new" | "intersect", into:',
+    '           "e1" } names it all; the extrude\'s mode row (New Add Cut ∩) is',
+    "           the same, the expert's way: left alone it shows what it will do,",
+    "           and offers Cut when the solid runs into a body.",
+    "           Flip direction: the ⇅ beside the depth (a revolve's angle) in the",
+    "           panel turns it the other way — the depth negated, typed as arm;",
+    '           on a solid, the menu\'s Flip direction types set("d1.value", -10).',
+    "           Or drag the arrow on the preview's lid: the depth follows, in",
+    "           round steps, and through zero it flips. Square on, the lid shows",
+    "           ⊙ (towards you) or ⊗ (away). End conditions, the drop-down",
+    "           in the depth's row of the panel:",
+    "           Blind (none pressed, the depth), Through all (past everything",
+    '           made before — { end: "through" }; it follows the body made',
+    '           deeper), Symmetric (half each side — { end: "symmetric" }).',
+    '           setEnd("e2", "through" | "symmetric" | "blind") changes it',
+    "           afterwards — the edit dialog's row types it. Bodies of two or",
     "           more features are built by the solid kernel (NVIDIA SMLib, in a",
     "           Worker): drawn when it answers, the last good body shown until",
     "           then, a refusal said in the log. The organiser lists Bodies;",

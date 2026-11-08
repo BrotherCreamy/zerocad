@@ -3949,7 +3949,14 @@ export interface OptionRow {
   read?: string | null;
   /** A choice drawn as buttons, one per word but the first, rather than a drop-down (an extrude's mode). */
   buttons?: boolean;
+  /** A number whose sign is a direction: a ⇅ button beside its field types it negated (an extrude's depth). */
+  flip?: boolean;
+  /** A choice drawn as a drop-down in place of this other row's label, and no row of its own (an extrude's end, beside its depth). */
+  beside?: string;
 }
+
+/** The flip button's name, in the words a SolidWorks user looks for (docs/plans/solid-tools-intuitive.md). */
+export const FLIP_LABEL = "Flip direction";
 
 /**
  * A feature tool's ✓ and ✗, as the panel shows them: whether ✓ would do
@@ -4095,7 +4102,7 @@ export class OptionsPanel {
     const a = this.host.armed();
     const commands = a?.commands ?? [];
     const key = a
-      ? [a.tool, a.dialog ? "dialog" : "", ...a.rows.map((r) => `${r.name}\t${typeof r.value}\t${r.label}\t${r.unit}\t${r.choices?.flat().join("\t") ?? ""}`),
+      ? [a.tool, a.dialog ? "dialog" : "", ...a.rows.map((r) => `${r.name}\t${typeof r.value}\t${r.label}\t${r.unit}\t${r.flip ? "flip" : ""}\t${r.beside ?? ""}\t${r.choices?.flat().join("\t") ?? ""}`),
         ...commands.map((c) => `cmd\t${c.label}\t${c.command}\t${c.off ?? ""}`)].join("\n")
       : "";
     const shaped = key !== this.key;
@@ -4105,11 +4112,11 @@ export class OptionsPanel {
       // A greyed command row is three rows tall: its label, and its reason on
       // two lines under it — where a phone, too narrow for it beside the label,
       // can read it (index.html's `.ocmd.off`).
-      this.count = a ? a.rows.length + (a.dialog ? 1 : 0) + commands.reduce((n, c) => n + (c.off ? OFF_ROWS : 1), 0) : null;
+      this.count = a ? a.rows.filter((r) => !r.beside).length + (a.dialog ? 1 : 0) + commands.reduce((n, c) => n + (c.off ? OFF_ROWS : 1), 0) : null;
       this.body.textContent = "";
       this.ok = null;
       if (this.strip) this.strip.textContent = a ? a.tool : "";
-      for (const row of a?.rows ?? []) this.body.appendChild(this.row(row));
+      for (const row of a?.rows ?? []) if (!row.beside) this.body.appendChild(this.row(row, a!.rows.find((x) => x.beside === row.name) ?? null));
       for (const c of commands) this.body.appendChild(this.commandRow(c));
       if (a?.dialog) this.body.appendChild(this.actions());
     }
@@ -4223,7 +4230,28 @@ export class OptionsPanel {
     return line;
   }
 
-  private row(r: OptionRow): HTMLElement {
+  /**
+   * A choice that stands beside another option (`beside`): a drop-down where
+   * that row's label would be, picking one types its arm line. Class `obeside`,
+   * not `oval`: the rows' fields are counted in order, and this is no row's own.
+   */
+  private besideChoice(c: OptionRow): HTMLSelectElement {
+    const pick = document.createElement("select");
+    pick.className = "obeside";
+    pick.dataset.option = c.name;
+    pick.dataset.tool = this.tool;
+    pick.setAttribute("aria-label", c.label);
+    for (const [value, text] of c.choices ?? []) {
+      const o = document.createElement("option");
+      o.value = value;
+      o.textContent = text;
+      pick.append(o);
+    }
+    pick.addEventListener("change", () => this.type(pick.dataset.tool!, c.name, pick.value));
+    return pick;
+  }
+
+  private row(r: OptionRow, beside: OptionRow | null = null): HTMLElement {
     if (r.choices && r.buttons) return this.choiceRow(r);
     const line = document.createElement("label");
     line.className = "orow";
@@ -4299,8 +4327,41 @@ export class OptionsPanel {
       field.addEventListener("input", () => this.host.trial?.(r.name, parseField(field.value)));
       field.addEventListener("blur", () => { void this.commit(field); });
     }
-    line.append(label, field, unit);
+    line.append(beside ? this.besideChoice(beside) : label, field, unit);
+    if (r.flip && typeof r.value === "number") line.append(this.flipButton(r));
     return line;
+  }
+
+  /**
+   * The ⇅ beside a direction's field: one press types the value negated —
+   * `arm("extrude", {depth: -10})` — so the preview turns at once and the
+   * confirm types the negated call. Reads the value at the press, not when
+   * built, and a field left mid-edit is committed first (the capture every
+   * press gets), so a flip after typing 25 gives -25. Never takes the focus.
+   */
+  private flipButton(r: OptionRow): HTMLButtonElement {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "oflip";
+    b.dataset.flip = r.name;
+    b.textContent = "⇅";
+    b.setAttribute("aria-label", FLIP_LABEL);
+    const tool = this.tool;
+    const now = () => this.host.armed()?.rows.find((x) => x.name === r.name)?.value;
+    giveTip(b, () => {
+      const v = now();
+      return {
+        name: FLIP_LABEL,
+        summary: `Turns the ${r.label} the other way`,
+        command: typeof v === "number" ? optionCommand(tool, r.name, -v) : null,
+      };
+    }, this.host.tooltip);
+    b.addEventListener("mousedown", (e) => e.preventDefault());
+    b.addEventListener("click", () => {
+      const v = now();
+      if (typeof v === "number" && v !== 0) void this.type(tool, r.name, -v);
+    });
+    return b;
   }
 
   /**
@@ -4334,6 +4395,11 @@ export class OptionsPanel {
     // A row of buttons has no field, so fields are counted, not indexed by row.
     let next = 0;
     rows.forEach((r) => {
+      if (r.beside) {
+        const pick = this.body.querySelector<HTMLSelectElement>(`select.obeside[data-option="${r.name}"]`);
+        if (pick && pick.value !== String(r.value)) pick.value = String(r.value);
+        return;
+      }
       if (r.choices && r.buttons) {
         const line = this.body.querySelector<HTMLElement>(`.ochoice[data-option="${r.name}"]`);
         if (!line) return;

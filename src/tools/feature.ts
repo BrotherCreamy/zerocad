@@ -34,7 +34,7 @@ import { arcSamples, arcSegments, frameReach } from "../arcgeom.ts";
 import { REGION_GREEN } from "./region.ts";
 import { refind } from "./selection.ts";
 import { defaultMode, modeOf } from "../modes.ts";
-import type { FeatureOptions } from "../operations.ts";
+import { DEFAULT_DEPTH, type FeatureOptions } from "../operations.ts";
 
 /**
  * The option every feature tool that makes a body takes (docs/plans/
@@ -50,6 +50,32 @@ export const MODE_OPTION = {
 export function modeOptions(values: Record<string, unknown>): FeatureOptions | null {
   const m = values.mode;
   return m === "new" || m === "add" || m === "cut" || m === "intersect" ? { mode: m } : null;
+}
+
+/**
+ * How an extrude ends (docs/plans/solid-tools-intuitive.md): **Blind** — the
+ * depth, as an extrude has always been — **Through all** or **Symmetric**, in
+ * the words a SolidWorks user looks for, a drop-down in the depth's row. Not
+ * remembered: a hole through one plate is not the next boss's.
+ */
+export const END_OPTION = {
+  default: "blind", choices: { blind: "Blind", through: "Through all", symmetric: "Symmetric" }, remember: false, label: "end",
+  // A drop-down where the depth's label was — "Blind ▾ [10] ⇅", SolidWorks'
+  // Direction 1 — not a row of its own: as a row of buttons it cost the panel a
+  // row, and an iPhone held sideways then had no layout that fit (touch.e2e.ts).
+  beside: "depth",
+} as const;
+
+/** An extrude's depth: negative is the other way along the sketch's normal, zero no solid; flipped by the panel's ⇅. */
+export const DEPTH_OPTION = {
+  default: DEFAULT_DEPTH, unit: "length", flip: true, check: (v: unknown) => (v === 0 ? "cannot be 0" : null),
+} as const;
+
+/** A tool's mode and end options as one call's options — nothing for auto and blind, which leave the call as it always was. */
+export function featureOptions(values: Record<string, unknown>): FeatureOptions | null {
+  const end: FeatureOptions["end"] | null = values.end === "through" || values.end === "symmetric" ? values.end : null;
+  const o: FeatureOptions = { ...(modeOptions(values) ?? {}), ...(end ? { end } : {}) };
+  return Object.keys(o).length ? o : null;
 }
 
 /** A cut's previewed tool solid: a warm red, edge-on to square-on, as faceColour runs a body's tones. */
@@ -147,6 +173,10 @@ export abstract class FeatureTool extends Tool {
   private told = "";
   /** Set while a confirm's lines go in: a second Enter must not type them twice. */
   private committing = false;
+  /** Whether a confirm's lines are going in: the model is half-way to what it will be, and asks of it now would read that. */
+  protected get busy(): boolean {
+    return this.committing;
+  }
   /** What the mode left at auto comes to for the preview up — and a choice to offer — or null. */
   private hint: FeatureDialog["choice"] = null;
 

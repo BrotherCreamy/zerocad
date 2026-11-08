@@ -450,6 +450,26 @@
     #options .ochoose[aria-pressed="true"]{background:#e8a33d33;border-color:#e8a33d;color:#e8a33d}
     #options .ochoose.resolved{background:#16212c;border-color:#46586a;color:#d5e1ec}
     #options .ochoose.offer{border-color:#e8a33d;color:#e8a33d}
+    /* A direction's flip (an extrude's depth, a revolve's angle): one button
+       after the unit, the size of a mode button, a finger's one tap. */
+    #options .oflip{flex:none;width:calc(20px * var(--ui));height:calc(18px * var(--ui));padding:0;font-family:inherit;font-size:calc(12px * var(--ui));
+      background:transparent;border:1px solid #223041;border-radius:3px;cursor:default;color:#8fa7bb}
+    #options .oflip:hover{background:#20303f;color:#d5e1ec}
+    #options .oflip:active{border-color:#e8a33d;color:#e8a33d}
+    /* Beside a flip the unit gives up its reserved width: with both, "depth"
+       was cut to "de…" on the desk's narrower panel (looked at). */
+    #options .orow:has(.oflip){gap:3px}
+    /* An end condition where the depth's label was: a drop-down the label's width,
+       and the depth's field narrower beside it — a depth is a short number, and
+       at full width "Through all" was cut to "Throug" (looked at). */
+    #options .orow:has(.obeside) .oval{width:calc(34px * var(--ui));padding:0 3px}
+    /* Its own narrow chevron, not the native arrow: the native one took the
+       room the last letters needed on a desk ("Through al", looked at). */
+    #options .obeside{flex:1;min-width:0;height:calc(18px * var(--ui));padding:0 calc(11px * var(--ui)) 0 3px;font-family:inherit;font-size:calc(11px * var(--ui));
+      color:#d5e1ec;border:1px solid #223041;border-radius:3px;outline:none;appearance:none;-webkit-appearance:none;
+      background:#0a0e13 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 5'%3E%3Cpath d='M1 1l3 3 3-3' fill='none' stroke='%238fa7bb' stroke-width='1.2'/%3E%3C/svg%3E") no-repeat right calc(3px * var(--ui)) center/calc(7px * var(--ui)) auto}
+    #options .obeside:focus{border-color:#e8a33d80}
+    #options .orow:has(.oflip) .ounit{min-width:0}
     #options .oact{justify-content:flex-end;gap:4px}
     #options .oact button{flex:none;width:calc(28px * var(--ui));height:calc(18px * var(--ui));padding:0;font-family:inherit;font-size:calc(12px * var(--ui));line-height:calc(16px * var(--ui));
       background:transparent;border:1px solid #223041;border-radius:3px;cursor:default;color:#8fa7bb}

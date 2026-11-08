@@ -408,7 +408,7 @@ test("edit(\"e1\") arms the dialog on the feature with its value; help lists hol
   const repl = new Repl(neocadScope({ model: m, arm: (...a: unknown[]) => { armed.push(a); } }));
   const r = await repl.eval('edit("e1")');
   assert.equal(r.ok, true, `${r.error?.message}`);
-  assert.deepEqual(armed, [["edit extrude", { depth: 12 }, "e1"]]);
+  assert.deepEqual(armed, [["edit extrude", { depth: 12, end: "blind" }, "e1"]]);
   assert.equal((await repl.eval('edit("l1")')).ok, false);
   const help = (await repl.eval("help()")).value as string;
   for (const word of ['hole("e1"', "unhole(", 'edit("e1")']) assert.ok(help.includes(word), `help mentions ${word}`);

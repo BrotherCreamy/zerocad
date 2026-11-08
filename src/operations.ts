@@ -11,7 +11,7 @@ import { addBSpline, splineOf } from "./kinds/spline.ts";
 import { addSpline } from "./relations/spline.ts";
 import {
   Model, ORIGIN, SETTABLE_PROPERTY, entityKind, isClosedEntity, isCurveKind, memberName, parseValueRef, referentOf, referentsOf, valueArgIndex,
-  FEATURE_MODES, type Entity, type Expansion, type FeatureEntry, type FeatureMode, type Portion, type ProfileMember,
+  EXTENTS, FEATURE_MODES, type Entity, type Expansion, type Extent, type FeatureEntry, type FeatureMode, type Portion, type ProfileMember,
   type RegionEntry, type RegionOp, type RegionStep,
 } from "./model.ts";
 import { defaultMode, resolveMode } from "./modes.ts";
@@ -405,6 +405,12 @@ function featureProfile(model: Model, r: string, frame: string | null | undefine
 export interface FeatureOptions {
   mode?: FeatureMode;
   into?: string;
+  /**
+   * How an extrude ends when not blind: `"through"` (through all) or
+   * `"symmetric"` (half each side) — `Extent`. An extrude's only; journalled
+   * as given, beside the mode (docs/plans/solid-tools-intuitive.md).
+   */
+  end?: Extent;
 }
 
 /**
@@ -422,8 +428,9 @@ export function peelOptions(rest: readonly unknown[], op: string, positional: nu
   }
   if (at !== end - 1) throw new Error(`${op}'s options — { mode: "cut" } — come last`);
   const raw = rest[at] as Record<string, unknown>;
+  const keys = op === "extrude" ? ["mode", "into", "end"] : ["mode", "into"];
   for (const k of Object.keys(raw)) {
-    if (k !== "mode" && k !== "into") throw new Error(`${op} has no option ${JSON.stringify(k)} — its options are { mode, into }`);
+    if (!keys.includes(k)) throw new Error(`${op} has no option ${JSON.stringify(k)} — its options are { ${keys.join(", ")} }`);
   }
   const options: FeatureOptions = {};
   if (raw.mode !== undefined && raw.mode !== null) {
@@ -435,6 +442,12 @@ export function peelOptions(rest: readonly unknown[], op: string, positional: nu
   if (raw.into !== undefined && raw.into !== null) {
     if (typeof raw.into !== "string") throw new Error(`${op}'s into names a feature of the body — "e1" — not ${JSON.stringify(raw.into)}`);
     options.into = raw.into;
+  }
+  if (raw.end !== undefined && raw.end !== null && raw.end !== "blind") {
+    if (typeof raw.end !== "string" || !(EXTENTS as readonly string[]).includes(raw.end)) {
+      throw new Error(`${op}'s end is "blind" (the depth), "through" (through all) or "symmetric" (half each side) — not ${JSON.stringify(raw.end)}`);
+    }
+    options.end = raw.end as Extent;
   }
   return { args: rest.slice(0, Math.min(at, positional)), options };
 }
@@ -568,12 +581,23 @@ function extruded(model: Model, head: string, d: number, profile: Profile, x: Ex
   const z = planeAxes(model, profile.frame)!.n;
   const live = model.journalling;
   let chosen: FeatureOptions[] = [];
+  // The end condition rides with the mode in one options object — a new body's
+  // has no mode to say, but a through or symmetric one still says how it ends.
+  const said = (): FeatureOptions[] => {
+    const o = { ...(chosen[0] ?? {}), ...(options.end ? { end: options.end } : {}) };
+    return Object.keys(o).length ? [o] : [];
+  };
   // Options after the expansion: written out when there are options, so they do not land in its place.
-  const tail = () => (chosen.length ? [x === EXPANSION.extrude ? null : x, ...chosen] : expansionArgs(x, "extrude"));
+  const tail = () => (said().length ? [x === EXPANSION.extrude ? null : x, ...said()] : expansionArgs(x, "extrude"));
   return model.asOperation("extrude", () => [head, d, plan.frame, resolvedLoops(plan), ...tail()],
     () => {
-      const name = extrudeBody(model, member, d, plan, z, x);
-      if (region !== null) model.featureOf(name).region = region;
+      // Seeded where the lid will stand when it is symmetric; a through lid's
+      // reach needs the record, and the solve after the call puts it there.
+      const name = extrudeBody(model, member, d, plan, z, x, options.end === "symmetric" ? d / 2 : d);
+      const f = model.featureOf(name, "extrude");
+      if (region !== null) f.region = region;
+      // Before the mode is chosen: the default reads the solid the end condition makes.
+      if (options.end) f.extent = options.end;
       chosen = chooseMode(model, name, options, "extrude", live);
       return name;
     });
@@ -1288,7 +1312,7 @@ function builtOn(plan: SweepPlan): string[] {
  * the twins, standing on them where it can (`frameOver`); version 9's before
  * them, all three of its points its own.
  */
-function extrudeBody(model: Model, member: string, depth: number, plan: SweepPlan, z: number[], x: Expansion): string {
+function extrudeBody(model: Model, member: string, depth: number, plan: SweepPlan, z: number[], x: Expansion, seed = depth): string {
   const { frame, walked, classOf } = plan;
   const owns: string[] = [];
   const made = (name: string) => { owns.push(name); return name; };
@@ -1296,7 +1320,7 @@ function extrudeBody(model: Model, member: string, depth: number, plan: SweepPla
   const real = (v: string) => plan.made.get(v) ?? v;
   // Seeds only: the depth relation is what holds them, and the solve after the
   // call settles any frame that has turned since the plan was made.
-  const lifted = (p: string) => model.coords(p).map((c, i) => c + depth * z[i]);
+  const lifted = (p: string) => model.coords(p).map((c, i) => c + seed * z[i]);
 
   // An old file's lid frame: the sketch frame, moved. Its own points are held
   // there by the depth's pairs — read as a datum, so the lid can never turn the
@@ -2308,11 +2332,37 @@ function rebuildBody(model: Model, f: FeatureEntry, plan: SweepPlan): { loops: P
  * still a cut of the same body. And its region: a regenerated feature still
  * stands on the region it was made from.
  */
-function modeFields(f: FeatureEntry): Pick<FeatureEntry, "mode" | "into" | "region"> {
+function modeFields(f: FeatureEntry): Pick<FeatureEntry, "mode" | "into" | "region"> & { extent?: Extent } {
   return {
     ...(f.mode === undefined ? {} : { mode: f.mode }), ...(f.into === undefined ? {} : { into: f.into }),
     ...(f.region === undefined ? {} : { region: f.region }),
+    ...(f.kind === "extrude" && f.extent !== undefined ? { extent: f.extent } : {}),
   };
+}
+
+/**
+ * How an extrude ends, changed afterwards — `setEnd("e2", "through")`, what
+ * the edit dialog's end row types (docs/plans/solid-tools-intuitive.md):
+ * `"blind"` (its depth), `"through"` (through all) or `"symmetric"` (half
+ * each side). The record's `extent` and nothing else: the depth dimension reads
+ * it at every evaluation (`lidReach`), so the next solve moves the lid, and the
+ * dimension keeps its value — a through cut set back to blind is as deep as it
+ * was before. An operation, journalled as the call; refuses a name that is no
+ * extrude, or an end that is none, before it changes anything. Returns the
+ * feature's name.
+ */
+export function setEnd(model: Model, feature: string, end: unknown): string {
+  checkFeatureName(model, feature, "setEnd");
+  const f = model.featureOf(feature);
+  if (f.kind !== "extrude") throw new Error(`setEnd changes how an extrude ends — ${feature} is a revolve, whose end is its angle`);
+  if (end !== "blind" && !(typeof end === "string" && (EXTENTS as readonly string[]).includes(end))) {
+    throw new Error(`setEnd's end is "blind" (the depth), "through" (through all) or "symmetric" (half each side) — not ${JSON.stringify(end)}`);
+  }
+  return model.asOperation("setEnd", [feature, end], () => {
+    if (end === "blind") delete f.extent;
+    else f.extent = end as Extent;
+    return feature;
+  });
 }
 
 /**

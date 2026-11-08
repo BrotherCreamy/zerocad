@@ -92,6 +92,7 @@ const NOT_DRAWN: Record<string, string> = {
   dimension: "makes relations, no point",
   constrain: "makes relations, no point",
   extrude: "a solid feature: its points are the profile's, moved",
+  cut: "the extrude's cut, a tool of its own (solid-tools-intuitive.md): its points are the profile's, moved",
   revolve: "a solid feature: its points are the profile's, turned",
   sketch: "chooses the plane; draws nothing",
   round: "a solid's edge fillet: the kernel's, no model point",

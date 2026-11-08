@@ -34,12 +34,12 @@ import type { OptionSpecs } from "./options.ts";
 import type { FeatureEntry, Model } from "../model.ts";
 import { loopAround } from "../loops.ts";
 import {
-  DEFAULT_DEPTH, depthBelow, featureRegion, hole, holeNaming, regionOf, set, unhole, unholeNaming,
+  depthBelow, featureRegion, hole, holeNaming, regionOf, set, setEnd, unhole, unholeNaming,
   type FeatureRegion,
 } from "../operations.ts";
 import { FULL_TURN } from "../relations/revolution.ts";
 import { drawLoops, outlineLoops } from "./region.ts";
-import { FeatureTool, callText } from "./feature.ts";
+import { DEPTH_OPTION, END_OPTION, FeatureTool, callText } from "./feature.ts";
 
 /** The value a feature's dimension holds now: its depth, or its angle. */
 function valueOf(model: Model, f: FeatureEntry): number {
@@ -53,7 +53,7 @@ function valueOf(model: Model, f: FeatureEntry): number {
  * `set` on the dimension when `value` is not what it holds. Empty when nothing
  * changes.
  */
-export function editSteps(feature: string, toggled: readonly number[][], value: number | null): FeatureStep[] {
+export function editSteps(feature: string, toggled: readonly number[][], value: number | null, end: string | null = null): FeatureStep[] {
   const steps: FeatureStep[] = toggled.map((at) => (m) => {
     const f = m.featureOf(feature);
     const r = featureRegion(m, f);
@@ -68,6 +68,15 @@ export function editSteps(feature: string, toggled: readonly number[][], value: 
     const op = k >= 0 ? unhole : hole;
     return { text: callText(k >= 0 ? "unhole" : "hole", [feature, n]), direct: () => op(m, feature, n) };
   });
+  // How an extrude ends, when the dialog's end row changed it: `setEnd`, before
+  // the depth, so a set after it reads the end it will hold the lid by.
+  if (end !== null) {
+    steps.push((m) => {
+      const f = m.featureOf(feature);
+      if (f.kind !== "extrude" || (f.extent ?? "blind") === end) return null;
+      return { text: callText("setEnd", [feature, end]), direct: () => setEnd(m, feature, end) };
+    });
+  }
   if (value !== null) {
     steps.push((m) => {
       const f = m.featureOf(feature);
@@ -121,7 +130,8 @@ abstract class EditTool extends FeatureTool {
     const f = this.feature;
     if (!f) return null;
     const v = values[this.option];
-    return editSteps(f.name, this.toggled, typeof v === "number" && Number.isFinite(v) ? v : null);
+    const end = typeof values.end === "string" ? values.end : null;
+    return editSteps(f.name, this.toggled, typeof v === "number" && Number.isFinite(v) ? v : null, end);
   }
 
   protected picksKey(): string {
@@ -222,10 +232,13 @@ abstract class EditTool extends FeatureTool {
 }
 
 export class EditExtrudeTool extends EditTool {
+  // The creating dialog's depth, ⇅ and end row (docs/plans/solid-tools-intuitive.md):
+  // a flip is `set` with the depth negated, an end changed `setEnd`.
   static readonly options: OptionSpecs = {
-    depth: { default: DEFAULT_DEPTH, unit: "length", check: (v) => (v === 0 ? "cannot be 0" : null) },
+    depth: DEPTH_OPTION,
+    end: END_OPTION,
   };
-  static readonly summary = "Changes an extrude: click holes in or out, or change the depth";
+  static readonly summary = "Changes an extrude: holes in or out, its depth, its way, how it ends";
   readonly name = "edit extrude";
   protected readonly option = "depth";
 }
@@ -233,7 +246,7 @@ export class EditExtrudeTool extends EditTool {
 export class EditRevolveTool extends EditTool {
   static readonly options: OptionSpecs = {
     angle: {
-      default: FULL_TURN, unit: "angle",
+      default: FULL_TURN, unit: "angle", flip: true,
       check: (v) => (v === 0 || Math.abs(v as number) > FULL_TURN ? "must be within a whole turn (±6.283185) and not 0" : null),
     },
   };

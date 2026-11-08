@@ -142,13 +142,14 @@ test("the toolbar has a button per registered tool: its icon, with a tooltip and
   // and the solids module's round and chamfer behind the fillet's, the
   // modify group's (docs/plans/solid-fillets.md), as are the sketch edits
   // (docs/plans/sketch-edit.md), and the surface behind the extrude's, the
-  // sweep group's (docs/plans/surfaces.md), and the spline behind the
+  // sweep group's (docs/plans/surfaces.md), the cut there too (solid-tools-
+  // intuitive.md), and the spline behind the
   // ellipse's, the curves group's (docs/plans/spline.md). Trim heads the
   // modify group since trim everything, so the fillet is behind its face
   // (docs/plans/trim-everything.md).
   const tools = ((await app.repl("tools()")).value as string[]).map((t) => t.split(" ")[0])
     .filter((t) => !["circle3", "arc3", "polygon", "slot", "region", "constrain", "round", "chamfer",
-      "bevel", "fillet", "extend", "offset", "mirror", "pattern", "surface", "spline"].includes(t));
+      "bevel", "fillet", "extend", "offset", "mirror", "pattern", "cut", "surface", "spline"].includes(t));
   const buttons = await app.page.$$eval("#toolbar button", (els) =>
     els.map((el) => ({
       tool: (el as HTMLElement).dataset.tool,

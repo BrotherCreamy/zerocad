@@ -35,7 +35,7 @@ import {
   checkRevolve, checkRevolveRegion, orientingPlane, profileOfLoops, regionNaming, regionOf, regionProfile, revolve, revolveProfile,
   revolveProfileOf,
 } from "../operations.ts";
-import { memberName } from "../model.ts";
+import { ORIGIN, memberName } from "../model.ts";
 import type { Pick } from "../picking.ts";
 import { FULL_TURN, axisReader } from "../relations/revolution.ts";
 import { FRAME_ARM_PX } from "../framemarker.ts";
@@ -50,15 +50,20 @@ import { RegionSelection, leftOut } from "./selection.ts";
  * The axes a revolve of `region` could turn about: every line, and every arm
  * of every frame, that lies in the region's plane with the region to one side
  * of it — `checkRevolveRegion`'s own question, asked of each, so what is lit is
- * exactly what a click would be let revolve about. In creation order, a
- * frame's arms x, y, then z. Pure: model and region in, axis names out.
+ * exactly what a click would be let revolve about. The origin's arms first,
+ * then in creation order, a frame's arms x, y, then z. Pure: model and region in, axis names out.
  */
 export function revolveAxes(model: Model, region: Region): string[] {
   const found: string[] = [];
-  for (const e of model.entities.values()) {
-    const axes = e.kind === "line" ? [e.name]
-      : e.kind === "frame" ? (model.dim === 3 ? ["x", "y", "z"] : ["x", "y"]).map((a) => `${e.name}.${a}`)
-      : [];
+  const arms = (frame: string) => (model.dim === 3 ? ["x", "y", "z"] : ["x", "y"]).map((a) => `${frame}.${a}`);
+  // The origin is a frame with no entity behind it (picking.ts picks its arms
+  // the same way), so asking only the entities left the most obvious axis of
+  // all unlit and refused — found on a phone, W9 of solid-tools-intuitive.md.
+  const candidates = [
+    ...(model.isFrame(ORIGIN) ? [arms(ORIGIN)] : []),
+    ...[...model.entities.values()].map((e) => (e.kind === "line" ? [e.name] : e.kind === "frame" ? arms(e.name) : [])),
+  ];
+  for (const axes of candidates) {
     for (const axis of axes) {
       try {
         checkRevolveRegion(model, region.loops, region.index, axis);
@@ -119,9 +124,10 @@ export function revolveSteps(region: RegionHit, axis: string, angle: number, typ
 
 export class RevolveTool extends FeatureTool {
   // Radians, as everywhere a revolve takes an angle; the operation's own range.
+  // ⇅ turns the sweep the other way round its axis (docs/plans/solid-tools-intuitive.md).
   static readonly options: OptionSpecs = {
     angle: {
-      default: FULL_TURN, unit: "angle",
+      default: FULL_TURN, unit: "angle", flip: true,
       check: (v) => (v === 0 || Math.abs(v as number) > FULL_TURN ? "must be within a whole turn (±6.283185) and not 0" : null),
     },
     mode: MODE_OPTION,
