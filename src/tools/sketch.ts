@@ -46,6 +46,7 @@ import type { OptionSpecs } from "./options.ts";
 import type { Model } from "../model.ts";
 import { sketchOnFaceCommand } from "../sketchface.ts";
 import { refind } from "./selection.ts";
+import { loopAround } from "../loops.ts";
 import { kernelFacePlane, kernelPlaneCommand } from "../kernelplane.ts";
 import { NAMED_PLANES } from "../workplane.ts";
 import { cross3, dot3, lift3, sub3 } from "../vec3.ts";
@@ -153,12 +154,31 @@ export class SketchTool extends Tool {
 
   /** What a click at `screen` would sketch on: a face first, then a flat kernel face no loop bounds, then a named plane. */
   private at(screen: [number, number]): Under | null {
-    const hit = this.ctx.regionAt?.(screen) ?? null;
+    let hit = this.ctx.regionAt?.(screen) ?? null;
+    const solid = this.ctx.solids?.faceAt(screen) ?? null;
+    // A loop made only of a body's skeleton — a lid the kernel chamfered or
+    // filleted along an edge — still spans the corner the kernel cut away, so
+    // the region answer there is the lid seen through a chamfer or a round
+    // that is in front of it. Where the kernel's face under the pixel is not
+    // in that loop's plane, the kernel's face is what is seen (found: a click
+    // on a chamfer sketched on the lid).
+    if (hit && solid && this.skeletonLoop(hit) && !inPlane(hit, solid)) {
+      if (!solid.planar) return null; // a round: no plane to sketch on
+      const around = loopAround(this.ctx.model, solid.at, hit.loops);
+      hit = around ? { ...hit, index: hit.loops.indexOf(around), at: solid.at } : null;
+    }
     if (hit) return { kind: "face", hit };
     const kernel = this.kernelAt(screen);
     if (kernel) return kernel;
+    if (solid) return null; // on a body, and no plane there: not the ground behind it
     const named = this.namedAt(screen);
     return named ? { kind: "named", plane: named } : null;
+  }
+
+  /** Whether every member of the loop under a hit is a kernel body's skeleton, drawn by the kernel in its stead. */
+  private skeletonLoop(hit: RegionHit): boolean {
+    const s = this.ctx.solids;
+    return !!s && hit.loops[hit.index].members.every((m) => s.skeleton(m.name));
   }
 
   /** A flat face of a body under the pixel, as the frame the tool would make there — or null. */
@@ -296,6 +316,14 @@ export class SketchTool extends Tool {
       r.g.restore();
     }
   }
+}
+
+/** Whether a kernel face under the pixel lies in the plane of the loop a region hit found there. */
+function inPlane(hit: RegionHit, solid: { at: number[]; normal: number[] }): boolean {
+  const plane = hit.loops[hit.index].plane;
+  const size = Math.max(1, Math.sqrt(Math.abs(hit.loops[hit.index].area)));
+  return Math.abs(Math.abs(dot3(solid.normal, plane.normal)) - 1) < 1e-6
+    && Math.abs(dot3(sub3(lift3(solid.at), plane.origin), plane.normal)) < 1e-6 * size;
 }
 
 /** The line that sketches on a plane reference. */

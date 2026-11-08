@@ -2783,8 +2783,12 @@ async function main() {
   function escape() {
     // With nothing in hand and nothing selected, Escape leaves the sketch — the
     // chip's Done, typed (docs/plans/sketch-mode.md). Only then: with a tool
-    // armed it drops the gesture first, as it always has.
-    const leaving = !engine.active && !engine.hand && engine.selection.size === 0 ? doneCommand(model) : null;
+    // armed it drops the gesture first, as it always has. Only a work plane
+    // (sketch mode): a default frame is a plane chosen for the document with
+    // plane() and stays until Done, since the Escape that releases a finished
+    // tool arrives with nothing armed and would otherwise drop it unasked.
+    const idle = !engine.active && !engine.hand && engine.selection.size === 0;
+    const leaving = idle && model.workPlane !== null ? doneCommand(model) : null;
     if (leaving) {
       void submit(leaving);
       return;

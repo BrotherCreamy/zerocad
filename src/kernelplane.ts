@@ -38,8 +38,8 @@ const FLAT_COS = 1 - 1e-6;
  * line of sight back at the viewer), or null when the face is not flat — a
  * fillet's round, a cone — or has no triangles in this answer.
  *
- * The origin is the middle of the face's vertices, so the frame's marker stands
- * on the face; `u` runs along the face's **longest boundary edge** (an edge of
+ * The origin is the face's middle by area, so the frame's marker stands on
+ * the face; `u` runs along the face's **longest boundary edge** (an edge of
  * exactly one of its triangles), so looking at the plane square-on shows the
  * face level, as sketch on face shows a wall (sketchface.ts) — a chamfer's
  * strip comes up as a strip, not tipped; `v` is `n × u`.
@@ -65,8 +65,17 @@ export function kernelFacePlane(body: BodyView, face: number, toward: number[]):
       else edges.set(k, { a: p, b: q, count: 1 });
     }
   }
-  const all = [...pts.values()];
-  const origin = [0, 1, 2].map((i) => all.reduce((s, p) => s + p[i], 0) / all.length);
+  // The face's own middle, by area: its vertices crowd where it meets a round
+  // (the kernel tessellates the round finely), so their mean would not be.
+  let area = 0;
+  const sum = [0, 0, 0];
+  for (const t of tris) {
+    const [a, b, c] = t.outlines[0];
+    const w = Math.hypot(...cross3(sub3(b, a), sub3(c, a))) / 2;
+    area += w;
+    for (let i = 0; i < 3; i++) sum[i] += (w * (a[i] + b[i] + c[i])) / 3;
+  }
+  const origin = area > 0 ? sum.map((x) => x / area) : [...pts.values()][0];
   let longest: number[] | null = null, best = 0;
   for (const e of edges.values()) {
     if (e.count !== 1) continue;
