@@ -12,7 +12,12 @@ import { SUBTRACT_RED } from "./regiontool.ts";
 import { curveUnder, ringAt, strokeWorld } from "./editdraw.ts";
 import { extend, extendReach } from "../sketchedit.ts";
 import { curveFrame } from "../curveplane.ts";
-import { arcPoint } from "../arcgeom.ts";
+import { arcPoint, eccentricAnomaly } from "../arcgeom.ts";
+import { curveEnds } from "../sketchgeom.ts";
+import type { Entity } from "../model.ts";
+
+/** What extend takes: a line, an arc, an elliptical arc (docs/plans/trim-everything.md). */
+const extendable = (e: Entity | undefined) => !!e && (e.kind === "line" || e.kind === "arc" || e.kind === "earc");
 
 interface Hover {
   curve: string;
@@ -34,10 +39,10 @@ export class ExtendTool extends Tool {
 
   private look(p: PointerInfo): Hover | null {
     const model = this.ctx.model;
-    const curve = curveUnder(this.ctx, p);
+    const curve = curveUnder(this.ctx, p, extendable);
     const e = curve ? model.entities.get(curve) : undefined;
-    if (!e || (e.kind !== "line" && e.kind !== "arc")) return null;
-    const ends = e.kind === "line" ? e.refs : [e.start, e.end];
+    if (!e || !extendable(e)) return null;
+    const ends = curveEnds(e);
     const d = ends.map((q) => Math.hypot(...model.coords(q).map((v, i) => v - p.world[i])));
     const point = d[0] <= d[1] ? ends[0] : ends[1];
     try {
@@ -101,14 +106,14 @@ export class ExtendTool extends Tool {
     }
     const e = model.entities.get(h.curve)!;
     let pts: number[][] = [from, h.reach.at];
-    if (e.kind === "arc") {
+    if (e.kind === "arc" || e.kind === "earc") {
       const f = curveFrame(model, e)!;
+      // From the arc's own start, as `arcPoint` reads it (an elliptical arc's eccentric anomaly past its `t0`).
       const angle = (x: number[]) => {
-        const d = [0, 1, 2].map((i) => (x[i] ?? 0) - f.center[i]);
-        const t = Math.atan2(d.reduce((s, v, i) => s + v * f.v[i], 0), d.reduce((s, v, i) => s + v * f.u[i], 0));
+        const t = eccentricAnomaly(f, x) - (f.t0 ?? 0);
         return ((t % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
       };
-      const atEnd = h.point === e.end;
+      const atEnd = h.point === curveEnds(e)[1];
       const t0 = atEnd ? f.sweep : 0;
       let t1 = angle(h.reach.at);
       if (atEnd && t1 < t0) t1 += 2 * Math.PI;

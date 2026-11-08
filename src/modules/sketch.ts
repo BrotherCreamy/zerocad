@@ -7,13 +7,13 @@
 // with the explicit regions' `hole` and `unhole` their aliases. With core it is the sketch
 // workbench; with solids and step, the part workbench.
 
-import { ELLIPSE_STRUCTURE, addEllipse, checkEllipse, ellipseOf, semiAxes } from "../kinds/ellipse.ts";
-import { SPLINE_STRUCTURE, splineCurve, splineOf } from "../kinds/spline.ts";
+import { EARC_STRUCTURE, ELLIPSE_STRUCTURE, addEllipse, addEllipticArc, checkEllipse, ellipseOf, semiAxes, type EllipticArcEntity } from "../kinds/ellipse.ts";
+import { BSPLINE_STRUCTURE, SPLINE_STRUCTURE, addBSpline, bsplineCurve, bsplineOf, splineCurve, splineOf } from "../kinds/spline.ts";
 import { addSpline, onSpline } from "../relations/spline.ts";
 import { addThrough, removeThrough } from "../splineedit.ts";
 import { defineModule, type EntityDecl } from "../modules.ts";
 import type { Entity, Model } from "../model.ts";
-import { ellipseFrame, type ArcFrame } from "../arcgeom.ts";
+import { ellipseFrame, ellipticArcFrame, type ArcFrame } from "../arcgeom.ts";
 import { cross3, lift3, unit3 } from "../vec3.ts";
 import { spanOf, unitOf } from "../model.ts";
 import { slots } from "../clauses.ts";
@@ -94,6 +94,28 @@ const ELLIPSE: EntityDecl = {
 };
 
 /**
+ * **The elliptical arc** (docs/plans/trim-everything.md): the piece of an
+ * ellipse a trim leaves, laid out by the ellipse's own frame from its start's
+ * eccentric anomaly (`ArcFrame.t0`) round to its end's — so everything that
+ * draws, boxes, loops, shades and picks an arc by its frame takes it, and its
+ * edge in a solid or a STEP file is an ellipse's, between two vertices.
+ */
+const EARC: EntityDecl = {
+  ...EARC_STRUCTURE,
+  add: { op: "addEllipticArc", fn: addEllipticArc },
+  frame: (model, e) => {
+    const whole = ellipseFrameOf(model, e);
+    const a = e as EllipticArcEntity;
+    return whole ? ellipticArcFrame(whole, model.coords(a.start), model.coords(a.end)) : null;
+  },
+  describe: (model, name, n) => {
+    const { a, b } = semiAxes(model, name);
+    const e = ellipseOf(model, name) as EllipticArcEntity;
+    return `${name}  elliptical arc  ${e.start}→${e.end}  a ${n(a)}  b ${n(b)}`;
+  },
+};
+
+/**
  * **The spline, through the same extension point** (docs/plans/spline.md):
  * its structure (kinds/spline.ts), its constructor — the entity and the
  * equations it owns, relations/spline.ts — and the exact B-spline it is,
@@ -112,6 +134,23 @@ const SPLINE: EntityDecl = {
     const s = splineOf(model, name);
     const shown = s.points.length > 6 ? [...s.points.slice(0, 3), "…", ...s.points.slice(-2)] : s.points;
     return `${name}  spline through ${shown.join(" ")}${s.closed ? "  closed" : ""}`;
+  },
+};
+
+/**
+ * **The piece of a spline** (docs/plans/trim-everything.md): a spline of
+ * control points — ordinary points and fixed knots — laid out by the exact
+ * B-spline it is (curveplane.ts's `curvePath`), so it is drawn, picked,
+ * looped, extruded and written to STEP as a spline is.
+ */
+const BSPLINE: EntityDecl = {
+  ...BSPLINE_STRUCTURE,
+  add: { op: "addBSpline", fn: addBSpline },
+  path: (model, e) => ({ curve: bsplineCurve(model, e.name), closed: false }),
+  describe: (model, name) => {
+    const s = bsplineOf(model, name);
+    const shown = s.points.length > 6 ? [...s.points.slice(0, 3), "…", ...s.points.slice(-2)] : s.points;
+    return `${name}  spline, control points ${shown.join(" ")}`;
   },
 };
 
@@ -210,7 +249,7 @@ defineModule("sketch", {
   },
   // The ellipse (docs/plans/sketch-shapes.md, format 15): an entity kind of
   // this module's, declared above.
-  entities: [ELLIPSE, SPLINE],
+  entities: [ELLIPSE, SPLINE, EARC, BSPLINE],
   replay: {
     addCircle: bound("addCircle"),
     addArc: bound("addArc"),

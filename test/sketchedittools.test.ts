@@ -73,16 +73,21 @@ test("the trim tool: a click on a piece types trim with the place, rounded; a cu
   const t = new TrimTool(h.ctx);
   h.at("line", "l1");
   t.onMove(press([30.123456, 0, 0]));
+  // A click is a press and a release in one place: the trim lands on the release
+  // (docs/plans/trim-everything.md — a press may yet become a power-trim stroke).
   t.onDown(press([30.123456, 0, 0]));
+  assert.equal(h.ran.length, 0, "nothing typed on the press");
+  t.onUp(press([30.123456, 0, 0]));
   await h.settled();
   assert.deepEqual(h.ran, ['trim("l1", [30.1235,0,0])']);
   assert.equal(m.journal.at(-1)!.op, "trim");
   const lone = (await repl.eval("ln(pt(100, 0, 0), pt(110, 0, 0))")).value as string;
   h.at("line", lone);
   t.onDown(press([105, 0, 0]));
+  t.onUp(press([105, 0, 0]));
   assert.equal(h.ran.length, 1, "nothing typed");
   assert.match(h.said.at(-1)!, /^trim: nothing cuts/);
-  assert.equal(t.next("finger"), "tap the piece to trim away");
+  assert.equal(t.next("finger"), "tap the piece to trim away, or drag a finger across pieces");
 });
 
 test("the trim tool takes the edge, not the corner, when a corner's point wins the pick", async () => {
@@ -92,6 +97,7 @@ test("the trim tool takes the edge, not the corner, when a corner's point wins t
   const t = new TrimTool(h.ctx);
   h.at("point", m.line("l1").refs[1]); // the bottom-right corner, pressed just left of it along l1
   t.onDown(press([38.5, 0.3, 0]));
+  t.onUp(press([38.5, 0.3, 0]));
   await h.settled();
   assert.match(h.ran[0], /^trim\("l1", /);
 });

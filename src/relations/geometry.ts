@@ -15,13 +15,13 @@
 // the relations taking them are generic, with the wedge simply growing from one
 // component to three.
 
-import { addEllipse, checkEllipse, ellipseOf, semiAxes } from "../kinds/ellipse.ts";
+import { addEllipse, checkEllipse, ellipseOf, isConic, semiAxes } from "../kinds/ellipse.ts";
 import { parseAxisRef, type Model } from "../model.ts";
 import { Dual } from "../kernel/dual.ts";
 import { dot, norm, vecSub, wedge, wedgeNorm } from "./vec.ts";
 import { chunk, curveNormal, directionOf, directionOfPoints, ellipseAxes, frameBasis, joinVars, lineVars, unitDuals, type DirectionRef } from "./refs.ts";
 import { coincident, onPlane } from "./basic.ts";
-import { tangentSpline } from "./spline.ts";
+import { isPathCurve, tangentSpline } from "./spline.ts";
 
 // --- the direction relations -----------------------------------------------
 //
@@ -414,8 +414,29 @@ export function concentric(model: Model, c1: string, c2: string): string {
   });
 }
 
-/** Two circles/arcs have the same radius. */
+/**
+ * Two circles/arcs have the same radius — or two ellipses (an elliptical arc
+ * either) the same semi-axes: what holds the second piece of an elliptical arc
+ * a trim cut out of the middle to the first (docs/plans/trim-everything.md),
+ * as it holds an arc's. The major is a distance minus a distance and the minor
+ * a variable minus a variable, neither a square; two that share their centre
+ * and major end share their major already, and only the minor is said.
+ */
 export function equalRadius(model: Model, c1: string, c2: string): string {
+  if (isConic(model, c1) || isConic(model, c2)) {
+    const [a, b] = [ellipseOf(model, c1), ellipseOf(model, c2)];
+    return model.relation("equalRadius", [c1, c2], () => {
+      const label = `eqrad(${c1},${c2})`;
+      model.addResidual(() => [ellipseOf(model, c1).minorVar, ellipseOf(model, c2).minorVar], (l) => [l[0].sub(l[1])], label);
+      if (a.center === b.center && a.major === b.major) return;
+      const dim = model.dim;
+      const ends = (n: string) => { const e = ellipseOf(model, n); return [...model.point(e.center).varIndices, ...model.point(e.major).varIndices]; };
+      model.addResidual(() => [...ends(c1), ...ends(c2)], (l) => {
+        const [p, q, r, s] = chunk(l, dim, 4);
+        return [norm(vecSub(q, p)).sub(norm(vecSub(s, r)))];
+      }, `${label}|major`);
+    });
+  }
   return model.relation("equalRadius", [c1, c2], () => {
     const a = model.circular(c1), b = model.circular(c2);
     model.addResidual([a.radiusVar, b.radiusVar], (l) => [l[0].sub(l[1])], `eqrad(${c1},${c2})`);
@@ -463,9 +484,9 @@ export function tangent(model: Model, a: string, b: string, side?: string | null
   const kind = (n: string) => model.entities.get(n)?.kind;
   // At a spline's end (docs/plans/spline.md, relations/spline.ts): the third
   // argument is then which end, and a fourth the second spline's.
-  if (kind(a) === "spline" || kind(b) === "spline") return tangentSpline(model, a, b, side, end2);
+  if (isPathCurve(kind(a)) || isPathCurve(kind(b))) return tangentSpline(model, a, b, side, end2);
   if (end2 != null) throw new Error("tan takes a fourth argument only between two splines — the second one's end");
-  if (kind(a) === "ellipse" || kind(b) === "ellipse") return tangentEllipse(model, a, b, side);
+  if (isConic(model, a) || isConic(model, b)) return tangentEllipse(model, a, b, side);
   const isCurve = (n: string) => kind(n) === "circle" || kind(n) === "arc";
   if (isCurve(a) && isCurve(b)) return tangentCircles(model, a, b, side);
   if (side != null) throw new Error(`tan takes a side ("outside" or "inside") only between two circles — ${a} and ${b} are not both`);
@@ -666,7 +687,7 @@ export function onEllipse(model: Model, pointName: string, ellipseName: string):
  */
 function tangentEllipse(model: Model, a: string, b: string, side?: string | null): string {
   const kind = (n: string) => model.entities.get(n)?.kind;
-  const [lineName, ellipseName] = kind(a) === "ellipse" ? [b, a] : [a, b];
+  const [lineName, ellipseName] = isConic(model, a) ? [b, a] : [a, b];
   if (kind(lineName) !== "line") {
     throw new Error(`tan takes an ellipse with a line — "${lineName}" is ${kind(lineName) ? `a ${kind(lineName)}` : "not there"}; `
       + "an ellipse tangent to a circle or another ellipse is not supported");

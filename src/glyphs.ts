@@ -46,6 +46,7 @@ import { uiOf, viewAxes, worldToScreen, type View } from "./view.ts";
 import { dot3, lift3, sub3 } from "./vec3.ts";
 import { curveFrame, curvePath, curvePlaneOf } from "./curveplane.ts";
 import { derivs, domain } from "./bspline.ts";
+import { arcPoint } from "./arcgeom.ts";
 import { axisReader, turnPoint } from "./relations/revolution.ts";
 import { inSight, type Occlusion } from "./occlusion.ts";
 import { measured } from "./relations/measure.ts";
@@ -606,8 +607,18 @@ function atEntity(model: Model, view: View, name: string): Anchor {
     case "ellipse": return atRim(model, view, name, Math.PI / 4);
     // A frame is its origin, as far as a mark beside it is concerned.
     case "frame": return atPoint(model, e.origin);
-    // A spline: halfway along its parameter, nudged off it on screen.
-    case "spline": return atPathMiddle(model, view, name);
+    // A spline: halfway along its parameter, nudged off it on screen — and the
+    // piece of one a trim leaves, likewise (docs/plans/trim-everything.md).
+    case "spline":
+    case "bspline": return atPathMiddle(model, view, name);
+    // An elliptical arc: halfway round its sweep, which is on it — a fixed
+    // angle round its ellipse may be on the piece the trim took.
+    case "earc": {
+      const f = curveFrame(model, e);
+      if (!f) return atPoint(model, e.start);
+      const world = arcPoint(f, f.sweep / 2).slice(0, model.dim);
+      return { world, dir: DOWN_RIGHT, about: [name] };
+    }
   }
 }
 

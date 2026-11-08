@@ -55,7 +55,7 @@ const call = (op: string, args: (string | number | { raw: string })[]) =>
 // taken from the context menu. A row for it is a follow-up in TODO.md.
 // The spline (docs/plans/spline.md) likewise: its points are dimensioned as any
 // points are, and the curve itself takes no dimension.
-type Kind = "point" | "line" | "circle" | "arc" | "frame" | "ellipse" | "spline";
+type Kind = "point" | "line" | "circle" | "arc" | "frame" | "ellipse" | "spline" | "earc" | "bspline";
 const kindOf = (model: Model, n: string): Kind | undefined => model.entities.get(n)?.kind;
 const isCurve = (k: Kind | undefined) => k === "circle" || k === "arc";
 

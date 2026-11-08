@@ -351,6 +351,15 @@ function collect(model: Model, classOf: Map<string, number>): { edges: Edge[]; c
         if (!ends) continue;
         const at: [number, number] = [classOf.get(ends[0])!, classOf.get(ends[1])!];
         if (at[0] !== at[1]) edges.push({ name: e.name, kind: "path", order, ends: [ends[0], ends[1]], at });
+      } else if (laid) {
+        // A declared open curve laid out by a frame — an elliptical arc
+        // (docs/plans/trim-everything.md) — is an edge between its two ends,
+        // walked as an arc is, when it sweeps anything.
+        const ends = k.ends?.(e);
+        const f = curveFrame(model, e);
+        if (!ends || !f || !(f.sweep > 1e-12)) continue;
+        const at: [number, number] = [classOf.get(ends[0])!, classOf.get(ends[1])!];
+        if (at[0] !== at[1]) edges.push({ name: e.name, kind: "arc", order, ends: [ends[0], ends[1]], at });
       }
     }
   }
@@ -404,7 +413,7 @@ function candidatePlanes(model: Model, edges: Edge[], circles: CircleRef[]): Gro
     add(lift3(model.coords(model.oriented(c.name).center)), curvePlaneOf(model, c.name).n);
   }
   for (const e of edges) {
-    if (e.kind === "arc") add(lift3(model.coords(model.arc(e.name).center)), curvePlaneOf(model, e.name).n);
+    if (e.kind === "arc") add(lift3(model.coords(model.oriented(e.name).center)), curvePlaneOf(model, e.name).n);
     if (e.kind === "path") pathPlane(e.name);
   }
   const incident = new Map<number, { at: number[]; dir: number[] }[]>();
@@ -778,7 +787,9 @@ function pieceOf(model: Model, name: string, plane: LoopPlane): Piece {
     const m = toPlane(plane, [0, 1, 2].map((i) => f.center[i] + f.u[i]));
     const len = Math.hypot(m[0] - c[0], m[1] - c[1]);
     const dir: P2 = [(m[0] - c[0]) / len, (m[1] - c[1]) / len];
-    return arcLike({ kind: "arc", p: c, q: c, c, r: f.r, t0: 0, sweep: 0, b: f.rv ?? f.r, dir }, 0, side * TAU);
+    // An elliptical arc from its own start through its own sweep (`ArcFrame.t0`).
+    return arcLike({ kind: "arc", p: c, q: c, c, r: f.r, t0: 0, sweep: 0, b: f.rv ?? f.r, dir },
+      side * (f.t0 ?? 0), side * (isClosedEntity(e) ? TAU : f.sweep));
   }
   const s = toPlane(plane, [0, 1, 2].map((i) => f.center[i] + f.r * f.u[i]));
   return arcPiece(c, f.r, Math.atan2(s[1] - c[1], s[0] - c[0]), side * (e.kind === "circle" ? TAU : f.sweep));

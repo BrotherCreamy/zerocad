@@ -187,3 +187,121 @@ export function splineVars(model: Model, name: string): number[] {
   return splineOf(model, name).ctrl;
 }
 
+// --- the piece of a spline: a spline of control points ---------------------------
+
+/**
+ * **A spline of control points** (docs/plans/trim-everything.md): the piece of
+ * a spline a trim leaves. The piece of an interpolating spline is no
+ * interpolant of any points of its own — it is exactly a clamped cubic
+ * B-spline, its control points found by inserting its ends as knots (Boehm,
+ * ../bspline.ts's `subCurve`). So it is that: **ordinary points** for its
+ * control polygon, first and last its two ends (the curve is clamped, so it
+ * passes through them), and the knots it was cut with, fixed numbers.
+ *
+ * Its points are the user's, as a line's are: dragged, snapped, `coin`ed and
+ * dimensioned, and deleting one takes the curve. It owns no variables and no
+ * equations — a control point is held by nothing but what a person puts on
+ * it, which is Onshape's control-point spline. The shape it had at the trim,
+ * it keeps until a point is moved. Named `bs1`, `bs2`, … when a trim makes a
+ * second piece; a trimmed spline keeps its own name.
+ */
+export interface BSplineEntity {
+  kind: "bspline";
+  name: string;
+  /** The control points, first and last its ends. */
+  points: string[];
+  /** The clamped knot vector: `points.length + DEGREE + 1` numbers, the first and last `DEGREE + 1` each one value. */
+  knots: number[];
+  construction?: true;
+}
+
+declare module "../model.ts" {
+  interface EntityTypes {
+    bspline: BSplineEntity;
+  }
+}
+
+/** The control-point spline's structure: open, its ends its first and last points — the only ones on it by definition. */
+export const BSPLINE_STRUCTURE: EntityKindSpec = {
+  kind: "bspline",
+  noun: "a spline of control points",
+  refs: (e) => [...new Set((e as BSplineEntity).points)],
+  curve: true,
+  closed: false,
+  ends: (e) => { const s = e as BSplineEntity; return [s.points[0], s.points[s.points.length - 1]]; },
+  heldBy: ["onSpline"],
+  through: (e) => { const s = e as BSplineEntity; return [s.points[0], s.points[s.points.length - 1]]; },
+  // Its control polygon's length: a control point dragged onto its neighbour
+  // leaves a curve still, so no one spacing is a fold; the whole polygon at a
+  // point is (docs/plans/conflict-detection.md).
+  measures: (model, e) => {
+    const s = e as BSplineEntity;
+    const dim = model.dim;
+    return [{
+      vars: s.points.flatMap((p) => model.point(p).varIndices),
+      size: (l) => {
+        let sum = l[0].mul(0);
+        for (let k = 0; k + 1 < s.points.length; k++) {
+          const d = Array.from({ length: dim }, (_, i) => l[(k + 1) * dim + i].sub(l[k * dim + i]));
+          sum = sum.add(d.reduce((a, x) => a.add(x.mul(x)), l[0].mul(0)).add(1e-300).sqrt());
+        }
+        return sum;
+      },
+    }];
+  },
+};
+
+/** The control-point spline called `name`, or a refusal saying it is not one. */
+export function bsplineOf(model: Model, name: string): BSplineEntity {
+  const e = model.entities.get(name);
+  if (!e || e.kind !== "bspline") throw new Error(`"${name}" is not a spline of control points`);
+  return e;
+}
+
+/** The refusals a new control-point spline makes about its points and knots, before it makes anything. */
+export function checkBSpline(model: Model, points: unknown, knots: unknown): void {
+  if (!Array.isArray(points) || points.some((p) => typeof p !== "string")) {
+    throw new Error(`a spline of control points takes its points by name, got ${JSON.stringify(points)}`);
+  }
+  if (points.length < DEGREE + 1) throw new Error(`a cubic spline of control points has at least ${DEGREE + 1} — ${points.length} given`);
+  for (const p of points as string[]) model.point(p);
+  if (points[0] === points[points.length - 1]) throw new Error("a spline of control points runs between two different ends");
+  const n = points.length;
+  const ok = Array.isArray(knots) && knots.length === n + DEGREE + 1 && knots.every((k) => typeof k === "number" && Number.isFinite(k))
+    && knots.every((k, i) => i === 0 || k >= knots[i - 1])
+    && knots.slice(0, DEGREE + 1).every((k) => k === knots[0]) && knots.slice(-DEGREE - 1).every((k) => k === knots[knots.length - 1])
+    && knots[knots.length - 1] > knots[0];
+  if (!ok) {
+    throw new Error(`a spline of ${n} control points takes ${n + DEGREE + 1} knots, rising, its first ${DEGREE + 1} and last ${DEGREE + 1} each one value — got ${JSON.stringify(knots)}`);
+  }
+  if (model.dim < 2) throw new Error(`a spline is a curve — a ${model.dim}D model has no room to bend one`);
+  if (!entityKind("bspline")) throw new Error("the spline is the sketch module's, and it is not loaded");
+}
+
+/**
+ * A control-point spline on ordinary points with fixed knots — the structure,
+ * which is all it is. Journalled as `addBSpline(points, knots, name)`. What a
+ * trim of a spline makes; a constructor, so it holds nothing.
+ */
+export function addBSpline(model: Model, points: string[], knots: number[], name?: string | null): BSplineEntity {
+  checkBSpline(model, points, knots);
+  const [nm] = model.claimFirst("bs", name, () => null);
+  const ent: BSplineEntity = { kind: "bspline", name: nm, points: [...points], knots: [...knots] };
+  model.place(ent as unknown as Entity);
+  model.record("addBSpline", [[...points], [...knots], nm]);
+  return ent;
+}
+
+/** The control-point spline as it stands, as a plain B-spline in the model's coordinates. */
+export function bsplineCurve(model: Model, name: string): BSpline {
+  const s = bsplineOf(model, name);
+  return { degree: DEGREE, knots: s.knots.slice(), ctrl: s.points.map((p) => model.coords(p)) };
+}
+
+/** Either spline kind as a plain B-spline as it stands — an interpolant's, a control-point spline's — and whether it closes. */
+export function pathCurveOf(model: Model, name: string): BSpline & { closed: boolean } {
+  const e = model.entities.get(name);
+  if (e?.kind === "bspline") return { ...bsplineCurve(model, name), closed: false };
+  return splineCurve(model, name);
+}
+
