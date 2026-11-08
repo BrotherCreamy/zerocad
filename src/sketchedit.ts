@@ -951,7 +951,85 @@ function buildOffset(model: Model, plan: OffsetPlan, d: number, construction: bo
       perpendicular(model, orig, p, w.name);
     }
   }
+  // An offset lies in its chain's plane, so a plane holding every point of the
+  // chain holds every vertex of the copy: each vertex paired with a point of the
+  // chain that is held there (the plane's test is the chain's, not the copy's).
+  const chainPoints = [...new Set(walk.flatMap((w) => model.refsOf(model.entities.get(w.name)!)))];
+  const common = chainPoints.length
+    ? planesHolding(model, chainPoints[0]).filter((ref) => chainPoints.every((p) => planesHolding(model, p).includes(ref)))
+    : [];
+  if (common.length) holdCopiesOnPlanes(model, pts.map((v) => [chainPoints[0], v] as [string, string]), (ref) => common.includes(ref));
   return copies;
+}
+
+// --- copies stay on the sketch plane ------------------------------------------
+
+/**
+ * The planes `p` is held on by `onPlane` — the sketch planes it was drawn on.
+ */
+function planesHolding(model: Model, p: string): string[] {
+  return [...model.relations.values()]
+    .filter((r) => r.op === "onPlane" && r.args[0] === p && typeof r.args[1] === "string")
+    .map((r) => r.args[1] as string);
+}
+
+/**
+ * **A copy of something drawn on a sketch plane is held on that plane, one
+ * `onPlane` per copied point** (docs/plans/sketch-mode.md: "copies made by
+ * offset, mirror and pattern of on-plane geometry are held to the same
+ * plane"). For each original point and its copy, every plane the original is
+ * held on by `onPlane` that the operation maps onto itself (`keeps`) holds the
+ * copy too — unless the copy is the original (a point on a mirror line) or is
+ * held there already.
+ *
+ * Generic over what is copied: it reads points and their copies, never which
+ * curve they belong to, so a curve kind a module adds is held by the same rule.
+ * For a mirror and the patterns the copy is in the plane already by its own
+ * relations (`sym`, `translated`, `rotated`), and the `onPlane` is the same
+ * claim said where the focus, the hover and `del` read it; for an offset it is
+ * the only thing that holds the copy there — `par` and `dist` alone let a
+ * copied rectangle slide off along the normal (found by pushing one off).
+ */
+function holdCopiesOnPlanes(model: Model, pairs: Iterable<[string, string]>, keeps: (ref: string) => boolean): void {
+  if (model.dim !== 3) return;
+  const kept = new Map<string, boolean>();
+  const keep = (ref: string) => {
+    if (!kept.has(ref)) {
+      let ok = false;
+      try { ok = model.planeValues(ref) !== null && keeps(ref); } catch { ok = false; }
+      kept.set(ref, ok);
+    }
+    return kept.get(ref)!;
+  };
+  for (const [p, copy] of pairs) {
+    if (p === copy) continue;
+    const already = new Set(planesHolding(model, copy));
+    for (const ref of planesHolding(model, p)) {
+      if (already.has(ref) || !keep(ref)) continue;
+      onPlane(model, copy, ref);
+      already.add(ref);
+    }
+  }
+}
+
+/** Whether a direction lies along a plane (square to its normal), to a part in a million. */
+function along(model: Model, ref: string, dir: number[]): boolean {
+  const n = model.planeValues(ref)!.n;
+  const d = unit3(lift3(dir));
+  return !d || Math.abs(dot3(d, n)) <= 1e-6;
+}
+
+/** Whether a direction is square to a plane (along its normal), to a part in a million. */
+function across(model: Model, ref: string, dir: number[]): boolean {
+  const n = model.planeValues(ref)!.n;
+  const d = unit3(lift3(dir));
+  return !!d && Math.abs(Math.abs(dot3(d, n)) - 1) <= 1e-6;
+}
+
+/** Whether a world point lies on a plane, to a part in a million of the drawing's size. */
+function lies(model: Model, ref: string, at: number[], scale: number): boolean {
+  const pv = model.planeValues(ref)!;
+  return Math.abs(dot3(sub3(lift3(at), lift3(pv.origin)), pv.n)) <= 1e-6 * Math.max(1, scale);
 }
 
 // --- mirror and the patterns: copies of a set of entities ---------------------
@@ -1112,6 +1190,9 @@ export function mirror(model: Model, names: string | string[], line: string, res
       symmetric(model, p, copyOf.get(p)!, line);
     }
     copied.forEach((c, i) => holdCopy(model, c, made[i], r.level.includes(c)));
+    // A half-turn about a line in the plane, or square to it, maps the plane onto itself.
+    holdCopiesOnPlanes(model, copyOf, (ref) =>
+      (along(model, ref, u) && lies(model, ref, o, scale)) || across(model, ref, u));
     return [...made, ...points.filter((p) => !shared.has(p)).map(map)];
   });
 }
@@ -1211,6 +1292,8 @@ export function linear(model: Model, names: string | string[], dx: number, dy: n
     }
     let at = 0;
     for (let k = 0; k < copies.length; k++) for (const c of curves) holdCopy(model, c, made[at++], true);
+    // A step along the plane carries the plane onto itself.
+    holdCopiesOnPlanes(model, copies.flatMap((m) => [...m.entries()]), (ref) => along(model, ref, r.step));
     return [...made, ...copies.flatMap((m) => [...m.values()]), lead];
   });
 }
@@ -1319,6 +1402,8 @@ export function circular(model: Model, names: string | string[], centre: string,
     }
     let at = 0;
     for (let k = 0; k < copies.length; k++) for (const c of curves) holdCopy(model, c, made[at++], true);
+    // A turn about an axis square to the plane carries the plane onto itself.
+    holdCopiesOnPlanes(model, copies.flatMap((m) => [...m.entries()]), (ref) => model.dim === 3 && across(model, ref, axis));
     return [...made, ...copies.flatMap((m) => [...m.values()].filter((p) => p !== centre))];
   });
 }

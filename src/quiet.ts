@@ -176,10 +176,13 @@ export interface Anchored {
   about: string[];
   /** A dimension's value: always drawn. */
   isLabel: boolean;
+  /** The relation's op, where the rule asks it: an `onPlane` mark is drawn only when asked for. */
+  op?: string;
 }
 
 /**
- * Whether a constraint glyph is drawn. **A glyph follows its anchor**: one on
+ * Whether a constraint glyph is drawn. An `onPlane` mark only when its point
+ * is revealed (below). Otherwise **a glyph follows its anchor**: one on
  * quiet geometry is quiet with it, and drawn while any entity it is on is
  * drawn — revealed, or not quiet at all. **Dimensions are always drawn**: they
  * are the values the user edits (`set`, the menu's Set value). A glyph that is
@@ -191,5 +194,11 @@ export interface Anchored {
 export function glyphDrawn(gl: Anchored, quiet: ReadonlySet<string>, shown: ReadonlySet<string>,
                            hovered: string | null): boolean {
   if (gl.isLabel || gl.relation === hovered || gl.about.length === 0) return true;
+  // **An `onPlane` mark is drawn only when asked** (docs/plans/sketch-mode.md):
+  // every point drawn on a sketch plane carries one, so a ▱ beside every
+  // vertex would be the clutter the glyphs package fought. It is there when
+  // its point is revealed — hovered, selected, just placed — and is picked,
+  // deleted and listed like any relation throughout.
+  if (gl.op === "onPlane") return gl.about.some((n) => shown.has(n));
   return gl.about.some((n) => drawn(n, quiet, shown));
 }

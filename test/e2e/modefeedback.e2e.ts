@@ -76,7 +76,7 @@ test("the sketch tool clicked on the lid: the lid tinted, the chip says on e1's 
     "no plane: the chip's first part is empty — drawing on the ground is not a mode");
   assert.equal((await tint(app, [0, 0, 20]))[3], 0, "and nothing is tinted");
   await app.page.click('#toolbar button[data-tool="sketch"]');
-  assert.equal((await chip(app)).next, "click inside a lit face to sketch on it");
+  assert.equal((await chip(app)).next, "click a lit face or plane to sketch on it");
   const [x, y] = await app.screenOf([0, 0, 20]);
   await clickAt(app, x, y);
   assert.match(await app.log(), /> workplane\("p\d+\.p\d+\.p\d+"\)/, "typed, as the sketch tool always has");

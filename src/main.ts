@@ -61,7 +61,7 @@ import { hiddenInk, inSight, inkRuns, occlusion, type Occlusion } from "./occlus
 import { VIEW_MODES, drawsFaces, isViewMode, opaque, recallViewMode, rememberViewMode, viewModeError, type ViewMode } from "./viewmode.ts";
 import { entityDrawn, glyphDrawn, quietEntities, revealed, solidEdges } from "./quiet.ts";
 import { activePlane, focusOf, outOfFocusInk, planePatch, type ActivePlane } from "./activeplane.ts";
-import { ModeChip, chipParts, doneCommand, guideText, planeMenu } from "./modechip.ts";
+import { ModeChip, chipParts, doneCommand, guideText, lookCommand, planeMenu } from "./modechip.ts";
 import { frameBasis } from "./relations/refs.ts";
 import { lockPage } from "./pagelock.ts";
 import { BackStack } from "./backstack.ts";
@@ -2044,6 +2044,10 @@ async function main() {
       const line = doneCommand(model);
       if (line) void submit(line);
     },
+    look: () => {
+      const line = lookCommand(model);
+      if (line) void submit(line);
+    },
     options: () => {
       if (optionsPanel.size() === null) return;
       panels.setShown("options", true);
@@ -2777,6 +2781,18 @@ async function main() {
    * armed), then the tool — see `ToolEngine.escape`.
    */
   function escape() {
+    // With nothing in hand and nothing selected, Escape leaves the sketch — the
+    // chip's Done, typed (docs/plans/sketch-mode.md). Only then: with a tool
+    // armed it drops the gesture first, as it always has. Only a work plane
+    // (sketch mode): a default frame is a plane chosen for the document with
+    // plane() and stays until Done, since the Escape that releases a finished
+    // tool arrives with nothing armed and would otherwise drop it unasked.
+    const idle = !engine.active && !engine.hand && engine.selection.size === 0;
+    const leaving = idle && model.workPlane !== null ? doneCommand(model) : null;
+    if (leaving) {
+      void submit(leaving);
+      return;
+    }
     const did = engine.escape();
     syncToolbar();
     log(did === "cleared" ? "selection cleared" : "cancelled", "out");

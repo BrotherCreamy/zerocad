@@ -32,9 +32,47 @@
 // is when it seeds a free entity. Above relations, because reading a plane is
 // `planeBasis`'s job and nobody else's.
 
-import type { Model } from "./model.ts";
+import { parseFramePlane, type Model } from "./model.ts";
 import { planeAxes } from "./curveplane.ts";
 import { cameraPlane, screenToPlane, type Plane, type View } from "./view.ts";
+
+/**
+ * **The ground's three named planes** (docs/plans/sketch-mode.md), by the word
+ * the sketch tool's options and its patches use: Top is the origin's x–y plane,
+ * Front its x–z, Right its y–z — the SolidWorks and Onshape names, for a world
+ * whose +z is up. Plane references, so choosing one makes nothing: the owner's
+ * "without it being a special feature".
+ */
+export const NAMED_PLANES: Readonly<Record<"top" | "front" | "right", { ref: string; label: string }>> = {
+  top: { ref: "origin", label: "Top" },
+  front: { ref: "origin.xz", label: "Front" },
+  right: { ref: "origin.yz", label: "Right" },
+};
+
+/** What a plane reference is called where a person reads it: Top, Front, Right for the ground's, else the reference itself. */
+export function planeLabel(ref: string): string {
+  for (const p of Object.values(NAMED_PLANES)) if (p.ref === ref) return p.label;
+  return ref;
+}
+
+/**
+ * The direction reference for a plane's normal — what `par` holds a curve's
+ * normal to so the curve stays in the plane: a frame's `"f1.z"` (the origin's
+ * `"origin.z"`), a frame's x–z or y–z plane's own frame axis along its normal
+ * (`"origin.y"` for Front, `"origin.x"` for Right), and a curve or a face's
+ * `"p1.p2.p3"` as themselves (relations/refs.ts reads both as their normals).
+ * Here, below the tools and the drawing pass, because both ask it: a curve
+ * tool holds a curve by it, and the focus reads a held curve by it.
+ */
+export function planeNormalRef(model: Model, ref: string): string {
+  const kind = model.planeKind(ref);
+  if (kind === "frame") return `${ref}.z`;
+  if (kind === "framePlane") {
+    const side = parseFramePlane(ref)!;
+    return `${side.frame}.${side.normal}`;
+  }
+  return ref;
+}
 
 /** A plane reference as view.ts's Plane, or null when it has collapsed past having one. */
 export function planeOfRef(model: Model, ref: string): Plane | null {

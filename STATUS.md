@@ -16,6 +16,21 @@ etc).
   on every push to the working branch. Called NeoCAD until 0.1.0; the
   internal code name stays in identifiers, the file format tag and storage
   keys (see TODO.md's register).
+- **Sketch mode** (docs/plans/sketch-mode.md, built). The owner: *"sketch
+  on a plane without it being a special feature … add 'on plane' relations
+  to each entity as it gets sketched … go normal to the plane/face"*. A mode,
+  not a feature: the work plane set (`workplane(ref)`), the view square to
+  it, every point every drawing tool makes held by one `onPlane`
+  (`test/sketchmode.test.ts` checks it over the tool registry, on nine kinds
+  of plane). The **sketch tool** picks a face, a flat kernel face no loop
+  bounds (a frame made there, `src/kernelplane.ts`), or the ground's **Top,
+  Front, Right** — `"origin"`, `"origin.xz"`, `"origin.yz"`, plane
+  references (`parseFramePlane`, model.ts; any frame's `"f1.xz"`/`"f1.yz"`)
+  — as patches while armed and as buttons in its options, or a selected
+  frame or three points. Copies by offset, mirror and the patterns are held
+  on the plane point by point. The chip's **⊥** is Normal To; **Done**, or
+  Escape with nothing armed, leaves a work plane, the view where it is. The
+  `onPlane` mark is drawn only when its point is revealed.
 - **The spline** (docs/plans/spline.md, built). The owner: *"give me better
   sketch tools, relations, trim, slot... all the usual"*. A cubic B-spline
   **through** points you click and drag (Onshape's, not a control polygon),

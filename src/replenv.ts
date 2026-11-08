@@ -12,7 +12,7 @@
 
 import { addEllipse, checkEllipse, ellipseOf, semiAxes } from "./kinds/ellipse.ts";
 import { Dual } from "./kernel/dual.ts";
-import { Model, spanOf, unitOf, type Entity, type ProfileMember } from "./model.ts";
+import { Model, parsePointTriple, spanOf, unitOf, type Entity, type ProfileMember } from "./model.ts";
 import * as shapes from "./tools/shapes.ts";
 import { describeFeature, describeRelation } from "./picking.ts";
 import type { SolveReport } from "./kernel/problem.ts";
@@ -33,8 +33,8 @@ import { save as saveModel, savedTools } from "./persist.ts";
 import { fileNameFor } from "./files.ts";
 import { STEP_TYPE, stepExport, stepFileName, type KernelSolid } from "./step.ts";
 import { carryIntoSession, toolSources, type ToolSourceStore } from "./toolsource.ts";
-import { alignView, assignView, orbitBy, panBy, screenToWorld, viewAxes, zoomAbout, type View } from "./view.ts";
-import { pointOnWorkingPlane } from "./workplane.ts";
+import { alignView, assignView, orbitBy, panBy, screenToWorld, viewAxes, worldToScreen, zoomAbout, type View } from "./view.ts";
+import { planeNormalRef, pointOnWorkingPlane } from "./workplane.ts";
 import { frameBasis } from "./relations/refs.ts";
 import { describeLoop, findLoops, type Loop } from "./loops.ts";
 import { _, checkClauses, checkOrdinary, slots, splitClauses, subjectable, type Clause, type Slot } from "./clauses.ts";
@@ -417,7 +417,20 @@ export function neocadScope(h: EnvHandles): Bag {
     const name = frame ?? model.drawingPlane();
     const axes = planeAxes(model, name);
     if (!axes) throw new Error(`"${name}" has collapsed — it has no plane to look at`);
-    assignView(h.view, alignView(h.view, axes.u, axes.v, axes.origin));
+    // Turned about the middle of the plane's own points — a face's three, not
+    // its first corner — so the face stays about where it was seen; and, if
+    // that still lands off the canvas, brought to its middle. Found on an
+    // iPhone 13: a wall picked at the right of the screen turned about its far
+    // corner and ended half off it, out of reach of the finger that would draw
+    // on it (docs/plans/sketch-mode.md).
+    const pts = parsePointTriple(name);
+    const pivot = pts ? [0, 1, 2].map((i) => pts.reduce((sum, p) => sum + (model.coords(p)[i] ?? 0), 0) / 3) : axes.origin;
+    assignView(h.view, alignView(h.view, axes.u, axes.v, pivot));
+    const size = h.viewSize?.();
+    if (size) {
+      const [sx, sy] = worldToScreen(h.view, pivot);
+      if (!(sx >= 0 && sy >= 0 && sx <= size[0] && sy <= size[1])) assignView(h.view, panBy(h.view, size[0] / 2 - sx, size[1] / 2 - sy));
+    }
     h.refresh?.();
     return `looking at ${name}`;
   }
@@ -447,9 +460,8 @@ export function neocadScope(h: EnvHandles): Bag {
   function curveFacing(plane: unknown): { seed: number[] | null; hold: string | null } {
     if (plane == null || typeof plane !== "string") return { seed: (plane as number[] | null) ?? null, hold: null };
     if (model.dim !== 3) throw new Error(`a ${model.dim}D curve lies in the one plane a ${model.dim}D model has — it takes no plane`);
-    const kind = model.planeKind(plane);
     const axes = planeAxes(model, plane);
-    return { seed: axes?.n ?? null, hold: kind === "frame" ? `${plane}.z` : plane };
+    return { seed: axes?.n ?? null, hold: planeNormalRef(model, plane) };
   }
 
   const geometry: Bag = {

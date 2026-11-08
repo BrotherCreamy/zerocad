@@ -7,6 +7,70 @@ decisions.
 
 ---
 
+## Sketch mode: any plane, every point held on it, square to it on entering
+
+The owner (2026-11-08): *"Not sure how it works right now but I need a way to
+natively sketch on a plane without it being a special feature. It should
+just add 'on plane' relations to each entity as it gets sketched. Also when
+I select this mode it should go normal to the plane/face."*
+(docs/plans/sketch-mode.md)
+
+**Most of it was already true, and is now true everywhere.** Measured
+first: on the ground, a block's top and wall, a revolve's end, a cylinder's
+top, a tilted frame and three points at an angle, every drawing tool held
+every point it made with exactly one `onPlane` — 1 for the point, 3 for a
+two-segment line, 4 for the rectangle, 7 for the hexagon, 6 for the slot,
+1 and 4 for the two circles, 3 and 3 for the two arcs, 2 for the ellipse, 4
+for a four-point spline. What was missing was the planes and the way in.
+
+| | |
+|---|---|
+| ![Before: the sketch tool armed in a fresh document. Nothing is lit; the canvas says Nothing drawn yet, and a click would answer "no closed outline yet"](docs/images/380-before-the-sketch-tool-in-a-fresh-document-takes-nothing.png) | ![Before: a rectangle and a spline drawn on the ground's plane. The rectangle is in full ink; the spline is dimmed, and its two middle points each wear a ▱ mark](docs/images/381-before-on-the-ground-the-spline-dimmed-and-a-plane-mark-on-its-points.png) |
+| ![After: the sketch tool armed in a fresh document. A dashed green square labelled Top round the origin, and the options pane reads plane: Top, Front, Right](docs/images/382-the-sketch-tool-lights-top-and-offers-top-front-right.png) | ![Front picked from the options: the chip reads on Front ⊥ Done, the view looks along +y with x right and z up, a green grid patch round the origin](docs/images/383-front-picked-the-view-square-to-it.png) |
+| ![A rectangle and a spline drawn on Front, then orbited: both stand in the tilted Front patch, the spline now in full ink and no ▱ anywhere](docs/images/384-a-rectangle-and-a-spline-on-front-orbited.png) | ![The chip's ⊥ pressed: square to Front again, lookAt("origin.xz") in the log](docs/images/385-normal-to-square-to-front-again.png) |
+| ![Escape with nothing armed: workplane(null) typed, the patch and the chip's plane gone, the view left as it was](docs/images/386-escape-left-the-sketch-the-view-where-it-was.png) | ![A 60 × 40 × 20 block with its right lid edge filleted R6 and its front lid edge chamfered C6 by the kernel](docs/images/387-a-block-filleted-and-chamfered.png) |
+| ![The block's filleted side wall picked: the chip reads on e1's side, the wall tinted square-on with the fillet's band across its top, a small circle drawn on it](docs/images/388-a-circle-on-the-filleted-blocks-side-wall.png) | ![The sketch tool armed over the block: Top, Front and Right drawn as faint dashed patches through it, the chamfer's face under the cursor](docs/images/389-the-chamfers-face-lit-the-named-planes-behind.png) |
+| ![The chamfer's face picked: a frame f1 made at its middle, the view square to the 45° face, the chamfer's strip between the lid and the front wall](docs/images/390-on-a-frame-made-at-the-chamfers-face.png) | ![iPhone 13: the sketch tool armed, the options pane at the bottom reading plane Top Front Right, the Top patch round the origin](docs/images/391-iphone-the-sketch-tools-options-top-front-right.png) |
+| ![iPhone 13: on Front, a rectangle dragged and a spline tapped out and ended with ✓](docs/images/392-iphone-a-rectangle-and-a-spline-on-front.png) | ![iPhone 13: orbited, the rectangle and the spline still standing in the Front patch](docs/images/393-iphone-orbited-still-on-front.png) |
+| ![iPhone 13: the chip's ⊥ tapped, square to Front again](docs/images/394-iphone-normal-to.png) | ![iPhone 13: a filleted block's side wall tapped with the sketch tool, square-on in the middle of the screen, a circle dragged on it](docs/images/395-iphone-a-circle-on-the-filleted-wall.png) |
+
+- **Front and Right have names now**: `"origin.xz"` and `"origin.yz"`, plane
+  references like Top's `"origin"`, and any frame's `"f1.xz"`/`"f1.yz"`.
+  Choosing one makes nothing. The chip says on Top, on Front, on Right.
+- **The sketch tool takes any planar thing**: a face (held by its own
+  points, as before), a flat face the kernel made that no loop bounds (a
+  chamfer's: a plain frame made there, `kernelplane.ts`), Top, Front and
+  Right (faint patches while it is armed, and one-tap buttons in its
+  options), or a frame or three points selected before arming. Each is one
+  typed `workplane(…)`, one undo step.
+- **Copies stay on the plane**: offset, mirror and both patterns hold every
+  copied point with its own `onPlane`. An offset copy used to float: pushed
+  off the plane, it stayed off.
+- **Normal To** is ⊥ in the chip. **Leaving** is the chip's Done or Escape
+  with nothing armed; the view stays where it is.
+- **Quieter**: the ▱ of an `onPlane` shows only while its point is hovered,
+  selected or just placed. **A spline on the plane is in focus**, and so is
+  any kind a module adds, by its points.
+- **Discoverable**: the sketch button's tooltip reads "Sketch on a face or
+  Top, Front, Right: all you draw stays on it", and help() says what sketch
+  mode is.
+- **Four bugs the browser found** (ARCHITECTURE, 51–54; the count is
+  fifty-four now): the spline dimmed on its own plane; a click on a chamfer
+  sketched on the lid behind it; on the iPhone a picked wall turned half off
+  the screen; Escape dropping a plane made with `plane()`.
+- **The hidden view's golden picture is re-recorded** (`test/e2e/golden/
+  hidden-plain-sketch.png`): the old one drew a ▱ beside six points, which
+  this package makes quiet on purpose. Looked at side by side, the new one
+  differs only there.
+- Tests: unit 1755 → 1769 (`sketchmode.test.ts`, 14: every tool on nine
+  planes, copies, focus, Front and Right, the named-plane picks, a kernel
+  face, following the block, save and open, the chip), kernel 11 → 11, e2e
+  717 → 728 (`sketchmode.e2e.ts` 7 by mouse, `sketchmodephone.e2e.ts` 4 on an
+  iPhone 13). The one full run, at load 35–40 on the shared box, failed 9;
+  the golden above was mine, and the rest are load (TODO.md has which, and
+  what each did alone).
+
+
 ## A conflict is a conflict even when a collapse satisfies it
 
 The owner (2026-11-07): *"Just noticed I'm able to add a parallel relation to

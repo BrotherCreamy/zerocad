@@ -26,7 +26,7 @@ import { featureFaces, loopOutlines, type Face } from "./faces.ts";
 import { findLoops, type Loop } from "./loops.ts";
 import { planeAxes } from "./curveplane.ts";
 import { regionOf } from "./operations.ts";
-import { sketchPlaneRef } from "./workplane.ts";
+import { planeLabel, planeNormalRef, sketchPlaneRef } from "./workplane.ts";
 
 /** The plane being sketched on, as drawn and named. */
 export interface ActivePlane {
@@ -168,7 +168,7 @@ export function activePlane(model: Model, scale: number, ref: string | null = sk
   if (!axes) return null;
   const { origin, u, v, n } = { origin: lift(axes.origin), u: lift(axes.u), v: lift(axes.v), n: lift(axes.n) };
   const base = { ref, origin, u, v, n, feature: null, side: null, members: [] as string[] };
-  if (!anchors) return { ...base, kind: model.isFrame(ref) ? "frame" : "plane", label: ref, outlines: null };
+  if (!anchors) return { ...base, kind: model.isFrame(ref) ? "frame" : "plane", label: planeLabel(ref), outlines: null };
 
   for (const f of model.features.values()) {
     if (model.hidden.has(f.name)) continue;
@@ -280,7 +280,7 @@ export function focusOf(model: Model, plane: ActivePlane | null): Set<string> | 
   };
   for (const r of referentsOf(ref)) pointsOf(r);
   if (model.isFrame(ref)) focus.add(ref);
-  const normals = new Set([ref, `${ref}.z`]);
+  const normals = new Set([ref, `${ref}.z`, planeNormalRef(model, ref)]);
   const heldCurves = new Set<string>();
   for (const r of model.relations.values()) {
     if (r.op === "onPlane" && r.args[1] === ref && typeof r.args[0] === "string") focus.add(r.args[0]);
@@ -297,6 +297,14 @@ export function focusOf(model: Model, plane: ActivePlane | null): Set<string> | 
   for (const e of model.entities.values()) {
     if (e.kind === "line" && focus.has(e.refs[0]) && focus.has(e.refs[1])) focus.add(e.name);
     else if ((e.kind === "circle" || e.kind === "arc" || e.kind === "ellipse") && (focus.has(e.center) || heldCurves.has(e.name))) focus.add(e.name);
+    // Any other curve — a spline, and whatever kind a module declares — by the
+    // points it is built of (`refsOf`), every one of them in focus: a spline
+    // drawn on the plane was dimmed for want of a line here (found in the
+    // sketch-mode walkthrough). Points and frames have their own rules above.
+    else if (e.kind !== "point" && e.kind !== "frame" && !focus.has(e.name)) {
+      const refs = model.refsOf(e);
+      if (refs.length && refs.every((p) => focus.has(p))) focus.add(e.name);
+    }
   }
   return focus;
 }
