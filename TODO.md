@@ -1943,7 +1943,12 @@ are flagged as such.
           (modefeedback.e2e.ts; 2 of 8 on the base commit, 1 of 8 on this
           branch, in a probe repeating the test's tap), and overlaylock.e2e.ts's
           see-through log line fades before it is sampled (1 failure on the
-          base, 6 and 2 on this branch, the same assertion).
+          base, 6 and 2 on this branch, the same assertion). The rest of
+          that run's failures, each file alone three times:
+          sketchmodephone and solidfilletsphone 3 of 3; sketchrelations 2 of
+          3 (the third lost the taps after arming the dimension tool, the
+          same signature); touchdensity 2 of 3 (the third timed out waiting
+          for selectors, 30 s).
 
 - [x] **Conflicts the solver satisfied by collapsing geometry** (the owner,
   2026-11-07: *"I'm able to add a parallel relation to a set of perpendicular
