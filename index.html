@@ -445,10 +445,14 @@
     #options .ochoose.offer{border-color:#e8a33d;color:#e8a33d}
     /* A direction's flip (an extrude's depth, a revolve's angle): one button
        after the unit, the size of a mode button, a finger's one tap. */
-    #options .oflip{flex:none;width:calc(22px * var(--ui));height:calc(18px * var(--ui));padding:0;font-family:inherit;font-size:calc(12px * var(--ui));
+    #options .oflip{flex:none;width:calc(20px * var(--ui));height:calc(18px * var(--ui));padding:0;font-family:inherit;font-size:calc(12px * var(--ui));
       background:transparent;border:1px solid #223041;border-radius:3px;cursor:default;color:#8fa7bb}
     #options .oflip:hover{background:#20303f;color:#d5e1ec}
     #options .oflip:active{border-color:#e8a33d;color:#e8a33d}
+    /* Beside a flip the unit gives up its reserved width: with both, "depth"
+       was cut to "de…" on the desk's narrower panel (looked at). */
+    #options .orow:has(.oflip){gap:3px}
+    #options .orow:has(.oflip) .ounit{min-width:0}
     #options .oact{justify-content:flex-end;gap:4px}
     #options .oact button{flex:none;width:calc(28px * var(--ui));height:calc(18px * var(--ui));padding:0;font-family:inherit;font-size:calc(12px * var(--ui));line-height:calc(16px * var(--ui));
       background:transparent;border:1px solid #223041;border-radius:3px;cursor:default;color:#8fa7bb}

@@ -26,6 +26,47 @@ otherwise.
 
 ## Decisions made so far — veto here if any are wrong
 
+- **The solid tools, made for a first-time user** (the owner, 2026-11-08:
+  *"Flip button."* and *"I'm still not clear on how to use the extrude cut
+  tool. It doesn't make sense to me. Make it more intuitive, along with the
+  other solid tools."*; docs/plans/solid-tools-intuitive.md). Each vetoable:
+  - **Cut's default direction is into the material**: its depth is how far
+    into the solid, and which way that is along the sketch's normal is
+    whichever has more of every body's material along it (interior points of
+    the profile walked both ways, `materialWay`). Neither way meeting any
+    material: the typed call's own way (+), and the tool says "this cut
+    doesn't reach any solid — flip it, or make it deeper" before ✓, muted,
+    ✓ still building it. Both ways in material (a sketch through the middle
+    of a body): away from the viewer.
+  - **Cut is a member of the extrude's button** (the sweep group: extrude,
+    cut, surface), not a fourteenth button: the iPhone's column holds
+    thirteen. A hold opens it, as every group's.
+  - **The handle snaps** to the first of 1, 2, 5 × 10ⁿ that is six pixels or
+    more on screen at the zoom (so zoomed out it goes in fives or tens, in
+    tenths zoomed in), passes through zero to flip, never stops at 0. The
+    panel's number follows when the drag is let go (it types the arm line);
+    during the drag the number is on the handle's label.
+  - **No key for Flip.** Every printable key with nothing focused types into
+    the command line, and Tab is focus; there is no free key a tool could
+    read without taking one from typing. ⇅, the menu's Flip direction and the
+    handle are the ways; typed, it is the depth negated.
+  - **No revolve cut tool.** The walkthrough's revolve troubles were the
+    axis (a bug, fixed), the radians and the missing flip (added); none was
+    finding Cut, which the revolve's mode row has. Revolve gets ⇅ and keeps
+    its own button.
+  - **Through all is past everything made before the feature**, wherever it
+    stands across the sketch, and a tenth more (at least one unit) so its
+    lid is never flush with a face; into nothing it is the blind depth it
+    was typed as. Its label reads "through all"; the dimension keeps only
+    its sign.
+  - **Symmetric's number is the whole depth** (SolidWorks' mid plane and
+    Onshape's symmetric read it so): half each side.
+  - **The end row has no label** ("Through all", "Symmetric"; none pressed is
+    Blind) — beside the two words "end" was cut to "e." on an iPhone.
+  - **On a face the menu's face items come first** (Sketch on this face,
+    Edit e1, Flip direction), the tools under a Tools heading: on an iPhone
+    the tool list filled the screen and hid them.
+
 - **A solve that collapses geometry is a CONFLICT** (the owner, 2026-11-07:
   *"I'm able to add a parallel relation to a set of perpendicular relation
   lines. This is a bug"*; docs/plans/conflict-detection.md). Four choices in
@@ -1858,10 +1899,58 @@ are flagged as such.
   other solid tools. Dim tool needs to be similar in functionality to
   Solidworks smart dimension … Go now and don't ask questions"*. Each has a
   spec and a worker, branch named after it:
-  - [ ] [`solid-tools-intuitive.md`](docs/plans/solid-tools-intuitive.md):
+  - [x] [`solid-tools-intuitive.md`](docs/plans/solid-tools-intuitive.md):
         a Flip control, Cut as a tool of its own (into the material by
         default), end conditions (through all, up to face, symmetric), a
         depth handle, and a first-time-user walkthrough of every solid tool.
+        **Built** (2026-11-08), branch `claude/solid-tools-intuitive`: the
+        walkthrough (W1–W16 in the spec), ⇅ in the panel, the dialog and the
+        menu, the Cut tool, Blind/Through all/Symmetric with `setEnd`, the
+        depth handle with ⊙/⊗ square on, the origin's axes for a revolve (a
+        bug), the face's menu items first. Left, each with a proposal:
+    - [ ] **Up to face.** Through all and symmetric are relational through
+          the depth dimension's reach (`lidReach`); up to face is the same
+          shape — the reach the distance from the sketch to a plane, read
+          live — and a planar face of a sweep already is a plane reference
+          (its three points, as sketch on a face makes). What is not built
+          is the pick: a second stage in the extrude tool ("Up to face",
+          then a click on a face), and a kernel face (a fillet's, a
+          boolean's) has no entity points to name. Proposal: `{ end: {
+          upTo: "p5.p6.p8" } }` for a face of entities first, kernel faces
+          once sketch-mode's face picking lands.
+    - [ ] **W3: `∩` is a symbol.** The mode row's four buttons are a finger's
+          width each on an iPhone; "Intersect" does not fit. Proposal:
+          "Keep" (Onshape's word for intersect is "Intersect"; SolidWorks has
+          none in the extrude), or a tooltip on the button. Owner's call.
+    - [ ] **W10: a revolve's angle is typed in radians** ("6.283185 rad")
+          while its dimension reads degrees — the `ang` seam, an owner
+          decision already filed. Proposal: the panel's field in degrees for
+          angles, the typed line in radians as now.
+    - [ ] **W12–W14: the solid fillet and chamfer.** Their glyphs are near
+          twins of each other and of the extrude's box, ninth and tenth in an
+          unlabelled flyout; "round" in the panel, "fillet" in the chip; a
+          chamfer running into a fillet's tangent chain refused with the
+          kernel's status code; the R label draggable with nothing saying so.
+          Proposal: labels under the flyout's icons on a phone, "Fillet" for
+          the round tool's panel title, the refusal as "untick tangent, or add
+          the edge to e2", and a ↔ on the label. A redesign, not half-built here.
+    - [ ] **W15: Edit e1 by a press on a face** opens the face's menu only
+          where the press misses every quiet glyph — a constraint's box is a
+          finger's reach and wins. Proposal: on a phone, a quiet glyph yields
+          to the face under it (picking.ts; sketch-mode's area).
+    - [ ] **A rectangle drawn on the ground is held there by nothing**
+          (free-entities.md), so a `set` of its extrude's depth moves the base
+          off the ground a little too (measured 0.0143 for a change of 15 on
+          the phone run). Proposal: the extrude's profile held `onPlane` its
+          sketch plane when the plane is a datum (sketch-mode's rule).
+    - [ ] **A symmetric extrude's far cap has no entities**: drawn and built,
+          but a sketch on it, the wire view and a constraint to its edges have
+          nothing to stand on. Proposal: twins on both sides when symmetric.
+    - [ ] **The dev server in a worktree never sees an edit**: vite.config's
+          `watch.ignored: ["**/.claude/**"]` ignores the whole tree when the
+          tree is itself under `.claude/worktrees/`. `npm run test:e2e` starts
+          its own server and is right; a hand-started one serves the code it
+          started with. Proposal: ignore `.claude/` relative to the root.
   - [ ] [`smart-dimension.md`](docs/plans/smart-dimension.md): one
         dimension tool for anything, solid faces and edges included; driven
         where it cannot drive.

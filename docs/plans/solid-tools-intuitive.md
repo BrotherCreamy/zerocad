@@ -1,6 +1,8 @@
 # Plan: solid tools a first-time user can use — a flip, a Cut you can find, and end conditions
 
-**Status: queued** (2026-11-08). The owner: *"Flip button."* and *"I'm still
+**Status: built** (2026-11-08), branch `claude/solid-tools-intuitive`, PR
+against `claude/resume-tasks-o7q02e` — except Up to face, a follow-up (see
+*As built*). The owner: *"Flip button."* and *"I'm still
 not clear on how to use the extrude cut tool. It doesn't make sense to me.
 Make it more intuitive, along with the other solid tools."*
 
@@ -193,3 +195,56 @@ dialog). What it leaves, written into TODO with a proposal: W3, W10, W12–W15.
   - revolve cut, yes or no.
 - `help()`, and the spec marked built with its *Walkthrough* and deviations.
 - ARCHITECTURE if end conditions change what a feature is.
+
+## As built (2026-11-08)
+
+The walkthrough came first (above, W1–W16, pictures 300–303); then, each in
+its own tested commit:
+
+- **W9, a bug**: the revolve tool asked only the frames that are entities,
+  and the origin is none — its arms are offered and taken now
+  (`revolveAxes`), the walkthrough's case a unit test that failed before.
+- **Flip** — an option may declare `flip: true` (tools/options.ts), and the
+  panel draws ⇅ after its field ("Flip direction"), typing the value
+  negated: `arm("extrude", {depth: -10})`. On the extrude's and cut's depth,
+  the revolve's angle, and both edit dialogs'. The menu has **Flip
+  direction** on an extrude's depth dimension and a partial revolve's angle
+  (beside Set value…) and on any piece of a solid (beside Edit e1), running
+  `set("d1.value", -10)`.
+- **Cut** (`CutTool`, tools/extrude.ts) on the extrude's button, between
+  Extrude and Surface. Its depth is how far into the material; the way is
+  `materialWay` (modes.ts) on the profile the extrude would take. The
+  preview is the extrude's, which draws a cut's solid in the cut's red over
+  the body; the chip says "✓ to cut"; a cut that reaches nothing says so
+  before ✓. It types `extrude("c1", -10, {"mode":"cut"})`.
+- **End conditions**: `ExtrudeFeature.extent` ("through" | "symmetric"),
+  the call's `{ end }`, `setEnd("e2", end)`; the depth dimension holds the
+  lid at `lidReach` (model.ts), the solids layer's `throughReach` for through
+  all (solids.ts); `extrudeSpan` for the kernel, the B-rep and insideness;
+  faces.ts mirrors a symmetric base. Saved, opened, regenerated and set,
+  each tested; the kernel's volumes checked.
+- **The depth handle**: an arrow off the previewed lid, its depth on a
+  label, dragged along its own line in round steps and through zero; ⊙ or
+  ⊗ when the lid is seen square on (W1). None for through all.
+- **Words**: help()'s solids text (Cut, Flip direction, the handle, Blind,
+  Through all, Symmetric, setEnd), the tools' summaries, "through all" on a
+  through depth's label, "✓ to cut".
+- **On a face the menu's face items come first** — found by looking at the
+  iPhone picture (the items were there, below a screenful of tools).
+
+### Deviations
+
+- **Up to face is not built**: a follow-up in TODO with a proposal. The
+  relational half is the same shape as through all (a reach read live from
+  a plane), and a face of entities already is a plane reference; what is
+  missing is the tool's second pick stage, and a name for a kernel-only face.
+- **Revolve cut: no.** The walkthrough did not show a need (TODO register).
+- **No key for Flip**: none is free (TODO register).
+- **The panel's number follows the handle when it is let go**, not during the
+  drag; during it the number is on the handle's label.
+- **W3, W10, W12–W15 are left as written proposals** in TODO, not
+  half-built: the mode row's `∩`, radians in the angle field, the solid
+  fillet's and chamfer's glyphs, names and refusal, and Edit e1 behind a
+  quiet glyph under a finger.
+- **A symmetric extrude's far cap has no entities** (drawn and built only).
+

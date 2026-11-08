@@ -7,6 +7,72 @@ decisions.
 
 ---
 
+## Solid tools a first-time user can use: Flip, Cut, Through all, a depth handle
+
+The owner (2026-11-08): *"Flip button."* and *"I'm still not clear on how to
+use the extrude cut tool. It doesn't make sense to me. Make it more
+intuitive, along with the other solid tools."* Walked first, as a first-time
+user, by finger on an iPhone 13 and by mouse, every step pictured
+(docs/plans/solid-tools-intuitive.md, *Walkthrough*): sixteen places the
+screen did not say what had to be known — among them that the direction was
+the sign of a typed number, that Cut was the third button of a row only the
+armed extrude shows, that Cut pressed with the default depth previewed a red
+solid standing in the air with ✓ lit, and that a revolve could not use the
+origin's own axis (a bug).
+
+| | |
+|---|---|
+| ![Before, on an iPhone: a circle on the lid, the extrude armed, Cut pressed with depth 10. The red solid stands on the lid, out of the plate; ✓ is lit and the chip says ✓ to extrude](docs/images/301-before-iphone-cut-pressed-the-red-solid-stands-on-the-lid-and-check-is-lit.png) | ![After: the Cut tool, held out of the extrude's button, the circle tapped. The red cylinder goes down into the plate, an arrow from its end with 10 on its label, the panel reads cut · depth 10 ⇅ · Through all · Symmetric, the chip ✓ to cut](docs/images/309-iphone-the-cut-tool-goes-into-the-plate.png) |
+| ![The extrude's button held open: Extrude, Cut (a slab with a hole and an arrow into it) and Surface](docs/images/308-iphone-cut-beside-extrude-in-its-flyout.png) | ![Through all tapped: the whole of the cut's red goes through the plate, the Through all button down in amber](docs/images/310-iphone-through-all.png) |
+| ![A plate's region tapped, seen square on: the lid shows ⊙ and 10 — the solid comes out at you](docs/images/304-iphone-square-on-the-lid-says-towards-you.png) | ![⇅ tapped: depth -25, the preview below the sketch](docs/images/306-iphone-flipped.png) |
+| ![A held finger on the plate's face: Sketch on this face, Edit e1 and Flip direction first, the tools under them](docs/images/307-iphone-the-faces-menu-flip-direction-first.png) | ![The two holes, one blind-through, one through all, the plate set deeper: both still through](docs/images/311-iphone-two-holes-through.png) |
+| ![By mouse: a boss on a plate, a circle on its top, Cut with Through all: the red tool runs through the boss and the plate below it](docs/images/316-desktop-through-all-on-a-stepped-body.png) | ![A revolve about the origin's own y axis, a half turn, ⇅ pressed: the sweep goes the other way round the dashed axis](docs/images/318-desktop-a-revolve-about-the-origins-axis-flipped.png) |
+
+- **Flip.** ⇅ after the depth in the panel ("Flip direction"), and after the
+  revolve's angle and in both edit dialogs, types the value negated —
+  `arm("extrude", {depth: -10})` — so the preview turns at once and ✓ types
+  the negated call. The menu's **Flip direction**, on a depth or partial
+  angle dimension and on any piece of a solid, runs `set("d1.value", -10)`.
+  No key: every printable key types into the command line.
+- **Cut, a tool of its own**, beside Extrude on its button (a hold opens it;
+  still thirteen buttons on an iPhone). Its depth is how far *into* the
+  material; which way along the sketch's normal is read off the bodies —
+  interior points of the profile walked both ways, whichever meets more
+  material — so a circle on a lid cuts down and one on the ground under a
+  block cuts up, no minus sign. ⇅ still flips it. A cut that reaches no
+  solid says so before ✓, muted. It types the extrude call, so files, replay
+  and undo are an extrude's; the mode row stays on the extrude.
+- **End conditions**: Blind, **Through all**, **Symmetric** — a row in the
+  panel and the edit dialog, `{ end: "through" | "symmetric" }` in the call,
+  `setEnd("e2", …)` afterwards. Through all is relational: the depth
+  dimension holds the lid past everything made before the feature at every
+  solve, so a hole through a plate is still through when the plate is set
+  deeper (by the solve alone; the kernel's volume checks it). Symmetric is
+  half each side, the dimension the whole depth. Journalled, saved, opened,
+  regenerated: tested. **Up to face** is a follow-up (TODO).
+- **A depth handle**: an arrow off the previewed lid, the depth on its label;
+  drag it by mouse or finger, in round steps, through zero to flip. Seen
+  square on, ⊙ (towards you) or ⊗ (away).
+- **Revolve takes the origin's own axes** — it asked only the frames that
+  are entities (a bug, W9).
+- **On a face, the menu's face items come first**: on an iPhone the tool
+  list had filled the screen above them.
+- **Words**: help()'s solids text, "✓ to cut", "through all" on a through
+  depth's label.
+- More pictures: [305](docs/images/305-iphone-the-depth-handle-dragged-by-a-finger.png)
+  the handle dragged by a finger to 25 (its label under the organiser pane,
+  left), [312](docs/images/312-iphone-a-revolve-about-the-origins-axis-flipped.png)
+  the revolve flipped on the phone, [313](docs/images/313-desktop-the-depth-handle-on-the-preview.png)
+  and [314](docs/images/314-desktop-flipped-the-handle-points-down.png) the
+  handle up and then down by mouse, [315](docs/images/315-desktop-the-hole-cut-no-minus-sign.png)
+  the hole, [317](docs/images/317-desktop-through-all-built-plate-set-deeper.png)
+  through all built, the plate set to 20.
+
+Tests: unit 1755 → see the PR (+`test/extrudeends.test.ts`,
+`test/cuttool.test.ts`); e2e `test/e2e/solidtools.e2e.ts` (mouse, 5) and
+`test/e2e/solidtoolsphone.e2e.ts` (iPhone 13 by finger, 3). Four more bugs
+the unit suite passed and the browser showed (ARCHITECTURE, 51–54).
+
 ## A conflict is a conflict even when a collapse satisfies it
 
 The owner (2026-11-07): *"Just noticed I'm able to add a parallel relation to

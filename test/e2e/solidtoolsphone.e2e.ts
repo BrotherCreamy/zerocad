@@ -107,7 +107,10 @@ test("on an iPhone: a plate drawn, its depth handle dragged, ⇅ tapped — the 
   await tapButton('#toolbar button[data-group="shapes"]');
   await dragOn([-W, -H, 0], [W, H, 0]);
   await tapButton('#toolbar button[data-group="sweep"]');
-  await tapAt([0, 0, 0]);
+  // Off the origin, whose marker is under the middle: the plate, not an arm.
+  await tapAt([12, 6, 0]);
+  await app.page.waitForFunction(() => ((window as never as { __neocad: { engine: { active: { picks?: { size: number } } | null } } }).__neocad.engine.active?.picks?.size ?? 0) === 1,
+    undefined, { timeout: 30_000 });
   // Seen square on, as a fresh sketch is: the lid says the solid comes out at you.
   await shot("1-extrude-square-on");
   await type("orbit(-0.6, -1.0)");
