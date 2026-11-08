@@ -23,7 +23,7 @@
 // takes (relations/pattern.ts).
 
 import {
-  type ArcEntity, type Entity, type FeatureDraft, type Model, ORIGIN, entityKind, isClosedEntity, parseAxisRef, referentsOf, spanOf, unitOf,
+  type ArcEntity, type Entity, type FeatureDraft, type Model, ORIGIN, entityKind, isClosedEntity, parseAxisRef, spanOf, unitOf,
 } from "./model.ts";
 import { dist, onPlane } from "./relations/basic.ts";
 import {
@@ -321,8 +321,7 @@ function planTidy(model: Model, curve: string, lo: CutSpec | null, hi: CutSpec |
     const ends = new Set(endsOf(e));
     for (const p of new Set(e.points)) {
       if (ends.has(p) || cutPoints.has(p)) continue;
-      const used = model.dependents(p).some((d) => d.name !== curve)
-        || [...model.relations.values()].some((r) => referentsOf(r).includes(p));
+      const used = model.dependents(p).some((d) => d.name !== curve) || model.relationsNaming(p).length > 0;
       if (!used) loose.push(p);
       else if (!inside(p)) keep.push(p);
     }
