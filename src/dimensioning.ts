@@ -282,7 +282,9 @@ export function constraintsFor(model: Model, names: readonly string[]): Applicab
   const is = (want: string) => (x: PickClass | undefined) => x === want;
   const isPoint = is("point"), isLine = is("line"), isAxis = is("axis"), isFace = is("face");
   const isCircular = (x: PickClass | undefined) => x === "circle" || x === "arc";
-  const isEntity = (x: PickClass | undefined) => x !== undefined && x !== "axis" && x !== "face";
+  // Geometry a relation can move: not a reference, and not a frame — a frame is a
+  // datum, picked by its arm as an axis, and nothing here fixes or chains one.
+  const isEntity = (x: PickClass | undefined) => x !== undefined && x !== "axis" && x !== "face" && x !== "frame";
   // A curve a point can be on: a line, or any kind that says what holds a point on it.
   const isCurve = (x: PickClass | undefined) => isLine(x) || isCircular(x) || (x !== undefined && !!entityKind(x)?.heldBy?.length);
   // Anything with a centre (`Model.oriented`): concentric takes it.

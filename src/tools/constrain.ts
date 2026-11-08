@@ -43,28 +43,42 @@ import { markPicked } from "./picked.ts";
  * as the circle, which is the plane reference it has); anything else the
  * kernel answers for — an edge no model line lies along, a curved face, a
  * face a fillet made — is its kernel name, which the list greys. Null where
- * there is no solid, or no kernel.
+ * there is no solid there.
+ *
+ * Two kinds of solid answer: a body the solid kernel built (its edges and
+ * faces through `ctx.solids`), and an extrude or revolve the kernel was never
+ * asked for — a plain box is drawn from its features, its faces the loops of
+ * its own profile, twins and walls. A region under the pixel is a face only
+ * when it is one of those (`onSolid`): inside a rectangle that was only ever
+ * sketched is still empty canvas, and drops the picks as it always did.
  *
  * Kept to one function on purpose: smart-dimension.md is building the
  * reusable picker for a solid's faces, edges and vertices, and this is the
  * one place that swaps for it.
  */
 export function solidRefAt(ctx: ToolContext, screen: [number, number]): string | null {
-  const solids = ctx.solids;
-  if (!solids) return null;
-  const edge = solids.edgeAt(screen);
+  const edge = ctx.solids?.edgeAt(screen) ?? null;
   if (edge) return edge.name;
-  const face = solids.faceAt(screen);
-  if (!face) return null;
-  const region = face.planar ? ctx.regionAt?.(screen) ?? null : null;
-  if (region) {
+  const face = ctx.solids?.faceAt(screen) ?? null;
+  if (face && !face.planar) return face.name;
+  const region = ctx.regionAt?.(screen) ?? null;
+  const loop = region ? region.loops[region.index] : null;
+  if (region && loop && (face || onSolid(ctx.model, loop.members.map((m) => m.name)))) {
     try {
-      return sketchFrameFor(ctx.model, region.loops[region.index], region.toward);
+      return sketchFrameFor(ctx.model, loop, region.toward);
     } catch {
-      // A face seen edge-on, or no three points off a line: the kernel's name, greyed.
+      // A face seen edge-on, or no three points off a line: the kernel's name, greyed, or nothing.
     }
   }
-  return face.name;
+  return face ? face.name : null;
+}
+
+/** Whether a loop's members are all a solid feature's own — its profile, or the twins and walls it made. */
+function onSolid(model: ToolContext["model"], members: string[]): boolean {
+  return [...model.features.values()].some((f) => {
+    const own = new Set([...f.names, ...f.loops.flat().map((m) => (typeof m === "string" ? m : m.name))]);
+    return members.every((m) => own.has(m));
+  });
 }
 
 export class ConstrainTool extends Tool {

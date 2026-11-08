@@ -294,7 +294,8 @@ function meetingEnd(model: Model, spline: string, other: string, given: unknown)
   const both = ENDS.filter(meets);
   if (both.length === 1) return both[0];
   if (both.length === 2) throw new Error(`both ends of "${spline}" meet "${other}" — say which: tan(…, "start") or tan(…, "end")`);
-  throw new Error(`tan holds a spline at an end that meets the other curve — neither end of "${spline}" meets "${other}" `
+  // The particular first: a greyed Tangent shows the start of this on a phone (relations-complete.md).
+  throw new Error(`neither end of "${spline}" meets "${other}" — tan holds a spline at an end that meets the other curve `
     + "(share the point, or coin it)");
 }
 

@@ -74,6 +74,9 @@ function fixture(dim: 2 | 3): Model {
   P("e1c", 0, -20); P("e1m", 6, -20); addEllipse(m, "e1c", "e1m", 3, null, "e1");
   P("e2c", 20, -20); P("e2m", 25, -20); addEllipse(m, "e2c", "e2m", 2, null, "e2");
   if (dim === 3) { P("k0", 0, 0, 5); P("k1", 10, 0, 5); P("k2", 0, 10, 5); }
+  // A frame of the user's, not the default: a datum, picked by its arms.
+  P("fo", 60, 60); P("fx", 70, 62); P("fy", 58, 70);
+  m.addFrame("fo", "fx", dim === 3 ? "fy" : null, "f1");
   return m;
 }
 
@@ -93,6 +96,8 @@ const TABLE: [string[], string[], (2 | 3)[]?][] = [
   [["e1"], ["Fix"]],
   [["s1"], ["Fix"]],
   [["origin.x"], []],
+  [["f1"], []],
+  [["f1", "l1"], []],
   // two picks
   [["p", "q"], ["Coincident", "Horizontal", "Vertical", "Fix (both)", "Distance"]],
   [["p", "l1"], ["On", "Midpoint", "Distance"], [2]],
@@ -110,6 +115,7 @@ const TABLE: [string[], string[], (2 | 3)[]?][] = [
   [["p", "k0.k1.k2"], ["On face"], [3]],
   [["l1", "l2"], ["Parallel", "Perpendicular", "Equal", "Collinear", "Horizontal (both)", "Vertical (both)", "Fix (both)", "Angle"]],
   [["l1", "origin.y"], ["Parallel", "Perpendicular"]],
+  [["l1", "f1.x"], ["Parallel", "Perpendicular"]],
   [["l1", "origin.z"], ["Normal to plane", "Parallel to plane"], [3]],
   [["l1", "k0.k1.k2"], ["Normal to face", "Parallel to face"], [3]],
   [["l1", "c1"], ["Tangent"]],
