@@ -15,7 +15,7 @@
 // imports it back.
 
 import { Dual } from "../kernel/dual.ts";
-import { ORIGIN, parseAxisRef, parsePointTriple, spanOf, type Model } from "../model.ts";
+import { ORIGIN, parseAxisRef, parseFramePlane, parsePointTriple, spanOf, type Model } from "../model.ts";
 import { vecSub } from "./vec.ts";
 
 /**
@@ -266,6 +266,18 @@ export function planeBasis(model: Model, ref: string): () => PlaneBasis {
       return { origin: lift(b.origin), u: lift(b.ux), v: lift(b.uy), n: b.uz ? lift(b.uz) : [0, 0, 1] };
     };
   }
+  if (kind === "framePlane") {
+    // Two of the frame's three axes (`parseFramePlane`), read through
+    // `frameBasis` like the frame's own plane, so it moves with the frame.
+    const side = parseFramePlane(ref)!;
+    const basis = frameBasis(model, side.frame);
+    return () => {
+      const b = basis();
+      const axis = { x: lift(b.ux), y: lift(b.uy), z: b.uz ? lift(b.uz) : [0, 0, 1] };
+      const [u, v] = [axis[side.u], axis[side.v]];
+      return { origin: lift(b.origin), u, v, n: cross(u, v) };
+    };
+  }
   if (kind === "curve") {
     return () => {
       const n = model.normalOf(ref);
@@ -348,7 +360,8 @@ export function directionOf(model: Model, ref: string): DirectionRef {
   // A plane through three points is a direction too — its normal — and a
   // datum, as a frame's axis is: `par("c2", "p1.p2.p3")` is a circle drawn on
   // a face, its normal held to the face's (tools/place.ts).
-  if (parsePointTriple(ref)) {
+  // So is a frame's x–z or y–z plane (`"origin.xz"`): the frame's axis along its normal.
+  if (parsePointTriple(ref) || (parseFramePlane(ref) && model.planeKind(ref) === "framePlane")) {
     const basis = planeBasis(model, ref);
     return { width: 0, vars: () => [], direction: () => basis().n.map((c) => Dual.constant(c)), frame: ref };
   }

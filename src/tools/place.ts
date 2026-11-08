@@ -47,7 +47,7 @@ import type { Snap } from "../snapping.ts";
 import { coincident, midpoint, onPlane } from "../relations/basic.ts";
 import { onCircle, onEllipse, pointOnLine } from "../relations/geometry.ts";
 import { onSpline } from "../relations/spline.ts";
-import { planeOfRef, sketchPlaneRef } from "../workplane.ts";
+import { planeNormalRef, planeOfRef, sketchPlaneRef } from "../workplane.ts";
 import { sketchFrameFor } from "../sketchface.ts";
 import { parallel } from "../relations/geometry.ts";
 import type { Plane } from "../view.ts";
@@ -249,12 +249,11 @@ export function holdCurve(m: Model, curve: string, centre: string, ref: string):
 
 /**
  * The direction reference for a plane's normal — what `par` takes to hold a
- * curve's normal to it: a frame's `"f1.z"` (the origin's `"origin.z"`), and a
- * curve or a face's `"p1.p2.p3"` as themselves (relations/refs.ts reads both
- * as their normals).
+ * curve's normal to it: workplane.ts's `planeNormalRef`, under the name the
+ * tools have always called it by.
  */
 export function normalRef(model: Model, ref: string): string {
-  return model.planeKind(ref) === "frame" ? `${ref}.z` : ref;
+  return planeNormalRef(model, ref);
 }
 
 /**

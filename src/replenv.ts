@@ -34,7 +34,7 @@ import { fileNameFor } from "./files.ts";
 import { STEP_TYPE, stepExport, stepFileName, type KernelSolid } from "./step.ts";
 import { carryIntoSession, toolSources, type ToolSourceStore } from "./toolsource.ts";
 import { alignView, assignView, orbitBy, panBy, screenToWorld, viewAxes, zoomAbout, type View } from "./view.ts";
-import { pointOnWorkingPlane } from "./workplane.ts";
+import { planeNormalRef, pointOnWorkingPlane } from "./workplane.ts";
 import { frameBasis } from "./relations/refs.ts";
 import { describeLoop, findLoops, type Loop } from "./loops.ts";
 import { _, checkClauses, checkOrdinary, slots, splitClauses, subjectable, type Clause, type Slot } from "./clauses.ts";
@@ -447,9 +447,8 @@ export function neocadScope(h: EnvHandles): Bag {
   function curveFacing(plane: unknown): { seed: number[] | null; hold: string | null } {
     if (plane == null || typeof plane !== "string") return { seed: (plane as number[] | null) ?? null, hold: null };
     if (model.dim !== 3) throw new Error(`a ${model.dim}D curve lies in the one plane a ${model.dim}D model has — it takes no plane`);
-    const kind = model.planeKind(plane);
     const axes = planeAxes(model, plane);
-    return { seed: axes?.n ?? null, hold: kind === "frame" ? `${plane}.z` : plane };
+    return { seed: axes?.n ?? null, hold: planeNormalRef(model, plane) };
   }
 
   const geometry: Bag = {
