@@ -1865,6 +1865,7 @@ async function main() {
         name, label: s.label ?? name, unit: unitSymbol(s.unit), value: a.options[name] as OptionValue,
         ...(s.choices ? { choices: Object.entries(s.choices), read: s.choices[read[name]] ?? null, ...(s.buttons ? { buttons: true } : {}) } : {}),
         ...(s.flip ? { flip: true } : {}),
+        ...(s.beside ? { beside: s.beside } : {}),
       }));
       const dialog = engine.dialog();
       // A tool's commands (the constrain tool's relations), a row each.

@@ -2202,9 +2202,12 @@ of running the app:
    this face, Edit e1 and Flip direction below it, out of sight. The test that
    asked for the items found them; only the picture showed where they were.
    On a face they come first now.
-54. The extrude's new end-condition row, its label cut to "e." beside
-   "Through all" and "Symmetric" on an iPhone — #13 again, a new row. Found
-   by looking; the row has no label, as the region tool's mode row has none.
+54. The extrude's new end-condition row: its label cut to "e." beside
+   "Through all" and "Symmetric" on an iPhone (#13 again, found by looking),
+   and, the row being one more, no panel layout fitting an iPhone held
+   sideways — found by the full suite's touch.e2e.ts, every unit test passing.
+   The end condition is a drop-down where the depth's label was now,
+   SolidWorks' "Blind ▾ [10]", and costs no row.
 
 None of these are mathematics. They are all *assembly*. Hence `npm run
 test:e2e`, and hence the expectation that anything touching the app is checked

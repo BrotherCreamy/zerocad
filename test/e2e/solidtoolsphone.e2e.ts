@@ -4,7 +4,7 @@
 // its depth handle dragged, ⇅ tapped — the preview and the solid the other
 // way — and flipped back from the menu on its face; a circle on its lid, Cut
 // held out of the extrude's button and tapped, ✓ — a hole with no minus sign;
-// Through all tapped for a second; a revolve about the origin's own axis,
+// Through all picked for a second; a revolve about the origin's own axis,
 // flipped. Set NEOCAD_E2E_SHOTS to keep the pictures; look at them.
 
 import { test, before, after } from "node:test";
@@ -178,8 +178,13 @@ test("on an iPhone: a circle on the lid, Cut held out of the extrude's button, �
   assert.equal((await app.model()).circles.length, circlesBefore + 1, `a second circle drawn by the finger: ${(await app.log()).slice(-300)}`);
   await type('arm("cut")');
   await tapAt([10, 0, 10]);
-  await tapButton('#options .ochoose[data-choice="through"]');
-  assert.equal(await app.page.$eval('#options .ochoose[data-choice="through"]', (x) => x.getAttribute("aria-pressed")), "true");
+  // The end drop-down in the depth's row, a finger's width: the native picker's
+  // choice made as the picker makes it.
+  const pick = await app.page.$eval('#options select.obeside[data-option="end"]', (b) => { const r = b.getBoundingClientRect(); return [r.width, r.height]; });
+  assert.ok(pick[0] >= 44 && pick[1] >= 18, `the end drop-down is a finger's target: ${pick}`);
+  await app.page.selectOption('#options select.obeside[data-option="end"]', "through");
+  await app.page.waitForTimeout(350);
+  assert.equal(await app.page.$eval('#options select.obeside[data-option="end"]', (x) => (x as HTMLSelectElement).value), "through");
   await shot("7-through-all-preview");
   await tapButton("#options .oact button.ok");
   assert.deepEqual((await lastExtrude())?.at(-1), { mode: "cut", into: "e1", end: "through" });

@@ -452,6 +452,9 @@
     /* Beside a flip the unit gives up its reserved width: with both, "depth"
        was cut to "de…" on the desk's narrower panel (looked at). */
     #options .orow:has(.oflip){gap:3px}
+    /* An end condition where the depth's label was: a drop-down the label's width. */
+    #options .obeside{flex:1;min-width:0;height:calc(18px * var(--ui));padding:0 2px;font-family:inherit;font-size:calc(11px * var(--ui));
+      color:#d5e1ec;background:#0a0e13;border:1px solid #223041;border-radius:3px;outline:none}
     #options .orow:has(.oflip) .ounit{min-width:0}
     #options .oact{justify-content:flex-end;gap:4px}
     #options .oact button{flex:none;width:calc(28px * var(--ui));height:calc(18px * var(--ui));padding:0;font-family:inherit;font-size:calc(12px * var(--ui));line-height:calc(16px * var(--ui));

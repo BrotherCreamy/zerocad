@@ -217,7 +217,9 @@ its own tested commit:
   preview is the extrude's, which draws a cut's solid in the cut's red over
   the body; the chip says "✓ to cut"; a cut that reaches nothing says so
   before ✓. It types `extrude("c1", -10, {"mode":"cut"})`.
-- **End conditions**: `ExtrudeFeature.extent` ("through" | "symmetric"),
+- **End conditions**: in the panel a drop-down where the depth's label was
+  ("Blind ▾ [10] ⇅", SolidWorks' Direction 1: a row of its own did not fit an
+  iPhone held sideways); `ExtrudeFeature.extent` ("through" | "symmetric"),
   the call's `{ end }`, `setEnd("e2", end)`; the depth dimension holds the
   lid at `lidReach` (model.ts), the solids layer's `throughReach` for through
   all (solids.ts); `extrudeSpan` for the kernel, the B-rep and insideness;

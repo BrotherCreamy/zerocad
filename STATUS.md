@@ -25,7 +25,7 @@ etc).
   button (hold it): click a closed shape, ✓ — it goes into the material by
   default (`materialWay`), types `extrude("c1", -10, {"mode":"cut"})`, says
   before ✓ when it reaches no solid. **End conditions** on extrude, cut and
-  the edit dialog: Blind, **Through all** (past everything made before, held
+  the edit dialog (a drop-down in the depth's row): Blind, **Through all** (past everything made before, held
   there by the depth dimension at every solve, so it follows a body set
   deeper; label "through all"), **Symmetric** (half each side), `{ end }` in
   the call, `setEnd("e2", …)` afterwards; journalled, replayed, regenerated.

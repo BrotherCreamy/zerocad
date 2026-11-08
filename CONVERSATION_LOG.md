@@ -53,7 +53,9 @@ missing from the revolve; Cut's "reaches nothing" said after every cut (the
 render between a confirm's lines asked the half-built model); the face's menu
 items below a screenful of tools on a phone — the e2e that asked for them
 found them, and only the picture showed where; the end row's label cut to
-"e.". And one about the workshop: a dev server started by hand in a worktree
+"e.", and then — the full suite's touch test — the row itself one too many
+for an iPhone held sideways, so the end condition became a drop-down in the
+depth's row, as SolidWorks lays it out. And one about the workshop: a dev server started by hand in a worktree
 serves the code it started with, because vite.config ignores `.claude/`, which
 is the whole tree there (TODO).
 

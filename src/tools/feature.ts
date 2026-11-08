@@ -53,16 +53,17 @@ export function modeOptions(values: Record<string, unknown>): FeatureOptions | n
 }
 
 /**
- * How an extrude ends (docs/plans/solid-tools-intuitive.md): a row of buttons,
- * none pressed meaning **Blind** — the depth, as an extrude has always been —
- * then **Through all** and **Symmetric**, in the words a SolidWorks user looks
- * for. Not remembered: a hole through one plate is not the next boss's.
+ * How an extrude ends (docs/plans/solid-tools-intuitive.md): **Blind** — the
+ * depth, as an extrude has always been — **Through all** or **Symmetric**, in
+ * the words a SolidWorks user looks for, a drop-down in the depth's row. Not
+ * remembered: a hole through one plate is not the next boss's.
  */
 export const END_OPTION = {
-  default: "blind", choices: { blind: "Blind", through: "Through all", symmetric: "Symmetric" }, buttons: true, remember: false,
-  // No label: the two words say what the row is, and beside them "end" was cut
-  // to one letter on an iPhone (looked at, as the region tool's Subtract was).
-  label: "",
+  default: "blind", choices: { blind: "Blind", through: "Through all", symmetric: "Symmetric" }, remember: false, label: "end",
+  // A drop-down where the depth's label was — "Blind ▾ [10] ⇅", SolidWorks'
+  // Direction 1 — not a row of its own: as a row of buttons it cost the panel a
+  // row, and an iPhone held sideways then had no layout that fit (touch.e2e.ts).
+  beside: "depth",
 } as const;
 
 /** An extrude's depth: negative is the other way along the sketch's normal, zero no solid; flipped by the panel's ⇅. */

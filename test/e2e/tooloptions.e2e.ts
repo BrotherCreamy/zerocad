@@ -111,7 +111,7 @@ test("nothing armed, no options panel; the point tool, which has none, shows non
   assert.equal((await app.model()).byKind.line, 4);
 });
 
-test("arming extrude by its button shows the options panel beside the tray: depth, 10, ⇅, the end row, the mode row, ✓ and ✗, no grips", async () => {
+test("arming extrude by its button shows the options panel beside the tray: Blind ▾, 10, ⇅, the mode row, ✓ and ✗, no grips", async () => {
   await press("extrude");
   assert.equal(await visible(), true);
   assert.equal(await strip(), "extrude", "the strip names the tool");
@@ -119,17 +119,19 @@ test("arming extrude by its button shows the options panel beside the tray: dept
   const labels = await app.page.$$eval(`${PANEL} .olabel`, (els) => els.map((el) => el.textContent));
   // And what the solid does to a body (docs/plans/solids-kernel.md): a row of
   // buttons, none pressed — `auto`, which lets the call decide.
-  // And how it ends (docs/plans/solid-tools-intuitive.md): a row with no label,
-  // none pressed — Blind — and the depth's ⇅.
-  assert.deepEqual(labels, ["depth", "", "mode"]);
+  // And how it ends (docs/plans/solid-tools-intuitive.md): a drop-down where the
+  // depth's label was — Blind — and the depth's ⇅; no row of its own.
+  assert.deepEqual(labels, ["mode"]);
+  assert.deepEqual(await app.page.$eval(`${PANEL} select.obeside`, (s) => [(s as HTMLSelectElement).value, Array.from((s as HTMLSelectElement).options, (o) => o.textContent)]),
+    ["blind", ["Blind", "Through all", "Symmetric"]]);
   assert.deepEqual(await app.page.$$eval(`${PANEL} .ochoose`, (els) => els.map((el) => [el.textContent, el.getAttribute("aria-pressed")])),
-    [["Through all", "false"], ["Symmetric", "false"], ["New", "false"], ["Add", "false"], ["Cut", "false"], ["∩", "false"]]);
+    [["New", "false"], ["Add", "false"], ["Cut", "false"], ["∩", "false"]]);
   assert.equal(await app.page.$eval(`${PANEL} button.oflip`, (b) => b.getAttribute("aria-label")), "Flip direction");
   const tb = await rectOf('.panel[data-panel="toolbar"]');
   const op = await rectOf(PANEL);
   assert.equal(op.x, tb.x + tb.width + 8, "beside the column, a margin off it, on its free side");
   assert.equal(op.y, tb.y, "lined up with its top");
-  assert.equal(op.height, 16 + 8 + 4 * 22, "strip, padding, border, the depth's row, the end's, the mode's and the ✓ ✗ row");
+  assert.equal(op.height, 16 + 8 + 3 * 22, "strip, padding, border, the depth's row (its end beside it), the mode's and the ✓ ✗ row");
   assert.deepEqual(await app.page.$$eval(`${PANEL} .oact button`, (els) => els.map((el) => el.textContent)), ["✓", "✗"]);
   assert.equal(await app.page.$$eval(`${PANEL} > .pgrip`, (els) => els.length), 0, "not resizable");
   await shot("armed");

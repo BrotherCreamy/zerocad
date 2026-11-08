@@ -42,8 +42,10 @@ origin's own axis (a bug).
   block cuts up, no minus sign. ⇅ still flips it. A cut that reaches no
   solid says so before ✓, muted. It types the extrude call, so files, replay
   and undo are an extrude's; the mode row stays on the extrude.
-- **End conditions**: Blind, **Through all**, **Symmetric** — a row in the
-  panel and the edit dialog, `{ end: "through" | "symmetric" }` in the call,
+- **End conditions**: Blind, **Through all**, **Symmetric** — a drop-down
+  where the depth's label was ("Blind ▾ [10] ⇅", as SolidWorks lays it out;
+  a row of its own did not fit an iPhone held sideways), in the panel and
+  the edit dialog, `{ end: "through" | "symmetric" }` in the call,
   `setEnd("e2", …)` afterwards. Through all is relational: the depth
   dimension holds the lid past everything made before the feature at every
   solve, so a hole through a plate is still through when the plate is set

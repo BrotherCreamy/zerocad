@@ -61,8 +61,11 @@ otherwise.
     its sign.
   - **Symmetric's number is the whole depth** (SolidWorks' mid plane and
     Onshape's symmetric read it so): half each side.
-  - **The end row has no label** ("Through all", "Symmetric"; none pressed is
-    Blind) — beside the two words "end" was cut to "e." on an iPhone.
+  - **The end condition is a drop-down where the depth's label was** —
+    "Blind ▾ [10] ⇅", SolidWorks' Direction 1 — not a row of its own. As a row
+    of buttons it was one row more, and an iPhone held sideways (750×342) then
+    had no layout that fit (touch.e2e.ts, 3/3 alone); first its label had been
+    cut to "e." beside the two words.
   - **On a face the menu's face items come first** (Sketch on this face,
     Edit e1, Flip direction), the tools under a Tools heading: on an iPhone
     the tool list filled the screen and hid them.

@@ -169,8 +169,11 @@ test("Through all on a stepped body: a boss on the plate, a hole from the boss's
   await app.type("orbit(-0.6, -1.0)");
   await app.type('arm("cut")');
   await clickWorld([15, 0, T + 15]);
-  await press('#options .ochoose[data-choice="through"]');
-  assert.equal(await app.page.$eval('#options .ochoose[data-choice="through"]', (x) => x.getAttribute("aria-pressed")), "true");
+  // The end condition, a drop-down where the depth's label is: "Blind ▾".
+  assert.equal(await app.page.$eval('#options select.obeside[data-option="end"]', (x) => (x as HTMLSelectElement).value), "blind");
+  await app.page.selectOption('#options select.obeside[data-option="end"]', "through");
+  await app.page.waitForTimeout(300);
+  assert.equal(await app.page.$eval('#options select.obeside[data-option="end"]', (x) => (x as HTMLSelectElement).value), "through");
   await shot("6-through-all-preview");
   await press("#options .oact button.ok");
   const args = await lastExtrude();
