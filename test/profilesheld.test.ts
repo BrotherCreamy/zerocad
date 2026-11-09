@@ -231,3 +231,54 @@ test("a conflict on an extruded drawing names the user's relations, never the ex
   assert.ok(named.includes(bad), `the new perp is named: ${named}`);
   assert.ok(!named.includes(f.depth) && !named.some((r) => r.endsWith("_perp")), `the extrude's own are not: ${named}`);
 });
+
+test("a fillet on a corner of a free extruded rectangle rounds it where it is: the block does not turn, and the solve has nothing left to do", async () => {
+  // Found by the first-run walkthrough in the browser: with the direction no
+  // longer a datum, the twin a fillet's trim left behind was pulled back by a
+  // minimum-norm solve shared over every free variable — the block's turn
+  // among them — and the lid came back 0.29 higher at one corner than the
+  // other. The regeneration now seats every twin at the chord the solid has.
+  const { m, e, f } = await ownersBlock();
+  const top = Math.max(...[...m.entities.values()].filter((x) => x.kind === "point").map((x) => m.coords(x.name)[2]));
+  const [l1, l2] = f.loops[0] as string[];
+  (neocadScope({ model: m }) as Record<string, (...a: unknown[]) => unknown>).fillet(l1, l2, 5);
+  const report = m.solve();
+  assert.equal(report.solved, true);
+  assert.equal(report.iterations, 0, "seated: nothing for the solve to do");
+  const zs = [...m.entities.values()].filter((x) => x.kind === "point").map((x) => m.coords(x.name)[2]);
+  for (const z of zs) assert.ok(Math.abs(z) < 1e-9 || Math.abs(z - top) < 1e-9, `every point on the base or the lid, level: ${z}`);
+  assertPrism(m, e, "after the fillet");
+});
+
+test("a par across a corner of a four-perp rectangle names that corner's perp and the par — and the par deleted clears it, the perp alone not", async () => {
+  // Measured in the browser (conflicts.e2e.ts): QuickXplain's minimal set was
+  // the par and the two far corners' perps, which fold the far side between
+  // them — true, but three names for what reads as one contradiction at one
+  // corner. The search now tries the newest of a larger set against each
+  // candidate alone, and names the two. Either way the redundancy the owner
+  // asked for has a price, written down in TODO.md: the other three perps
+  // imply the named one, so deleting it alone leaves the CONFLICT; the par is
+  // the one to delete.
+  await loadKernel();
+  const m = new Model(3);
+  const view: View = { ox: 400, oy: 300, scale: 3 };
+  const { ctx, at } = host(m, view);
+  const t = new (getToolCtor("rectangle")!)(ctx) as Tool;
+  const [a, b] = [at(300, 220), at(500, 380)];
+  t.onDown?.(a); t.onMove?.(b); t.onUp?.(b);
+  const lines = [...m.entities.values()].filter((e) => e.kind === "line").map((e) => e.name);
+  const corner = [...m.relations.values()].find((r) => r.op === "perpendicular" && r.args[0] === lines[0] && r.args[1] === lines[1])!.name;
+  const par = parallel(m, lines[0], lines[1]);
+  const report = m.solve();
+  assert.equal(report.solved, false);
+  assert.deepEqual(m.conflicting(report).relations.sort(), [corner, par].sort());
+  for (const gone of [corner, par]) {
+    const m2 = new Model(3);
+    const h = host(m2, view);
+    const t2 = new (getToolCtor("rectangle")!)(h.ctx) as Tool;
+    t2.onDown?.(h.at(300, 220)); t2.onMove?.(h.at(500, 380)); t2.onUp?.(h.at(500, 380));
+    const p2 = parallel(m2, lines[0], lines[1]);
+    del(m2, gone === par ? p2 : corner);
+    assert.equal(m2.solve().solved, gone === par, gone === par ? "the par deleted: it solves" : "the corner's perp alone deleted: the other three still say it");
+  }
+});

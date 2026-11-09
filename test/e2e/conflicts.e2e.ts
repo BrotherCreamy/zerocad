@@ -142,8 +142,11 @@ async function drawRectangle(app: AppContext): Promise<Drawn> {
   const lines = (await app.model()).lines.map((l) => l.name);
   assert.equal(lines.length, 4);
   const perps = (await relations(app)).filter((r) => r.op === "perpendicular");
-  assert.equal(perps.length, 1, "the tool's right angle");
-  assert.deepEqual(perps[0].args, [lines[0], lines[1]], "on the first corner");
+  // A right angle at every corner since profiles-held.md (the owner: "4 perps
+  // so that all the edges are identical"); the one the par contradicts is the
+  // first corner's — the fewest that cannot hold are that perp and the par.
+  assert.equal(perps.length, 4, "the tool's right angles, one a corner");
+  assert.deepEqual(perps.map((r) => r.args), lines.map((l, i) => [l, lines[(i + 1) % 4]]), "corner by corner");
   return { lines, perp: perps[0].name, before: await lengths(app, lines) };
 }
 
@@ -189,7 +192,9 @@ test("desktop: Parallel across the rectangle tool's right angle — CONFLICT, bo
   const drawn = await drawRectangle(desk);
   const par = await parallelFromConstrain(desk, drawn.lines);
   await assertConflict(desk, drawn, [drawn.perp, par]);
-  assert.match(await desk.log(), /CONFLICT — these cannot all hold without collapsing l\d:/, "the log says what would have folded");
+  // Two sides since the rectangle is a perp at every corner: a par across one
+  // corner folds the side it names and the one across from it.
+  assert.match(await desk.log(), /CONFLICT — these cannot all hold without collapsing l\d(, l\d)*:/, "the log says what would have folded");
   await shot(desk, "1-parallel-across-a-right-angle");
 
   // The par, clicked in the status and deleted.
@@ -296,7 +301,7 @@ test("iPhone 13: a rectangle drawn with a finger, two sides tapped, Parallel tap
   await phone.page.waitForSelector(row, { state: "visible", timeout: 3000 });
   await tap(await middleOf(row), true);
   await phone.page.waitForFunction(() => [...(window as never as Probe).__neocad.model.relations.values()].some((r) => r.op === "parallel"
-    && (r.args as string[]).length === 2 && [...(window as never as Probe).__neocad.model.relations.values()].filter((x) => x.op === "parallel").length === 3));
+    && (r.args as string[]).length === 2 && [...(window as never as Probe).__neocad.model.relations.values()].filter((x) => x.op === "parallel").length === 1));
   const par = (await relations(phone)).find((r) => r.op === "parallel" && r.args[0] === lines[0] && r.args[1] === lines[1])!.name;
   await assertConflict(phone, drawn, [perp, par]);
   await shot(phone, "3-iphone-parallel-across-a-right-angle");

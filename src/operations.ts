@@ -1418,6 +1418,51 @@ export function reseatLid(model: Model, depth: string, reachWas: number): void {
   }
 }
 
+/**
+ * The chord most of an extrusion's point pairs agree on now, or null for one
+ * with none. Not the chord pair's alone: an operation on the profile — a
+ * fillet trimming a corner, a regeneration re-pointing an edge — may have just
+ * moved that very base, and then its twin is the one pair that disagrees.
+ */
+function sharedChord(model: Model, depth: string): number[] | null {
+  const r = model.relations.get(depth);
+  if (!r || r.op !== "extrusion") return null;
+  const pairs = r.args.slice(2) as string[];
+  const offsets: number[][] = [];
+  for (let i = 0; i < pairs.length; i += 2) {
+    if (model.entities.get(pairs[i])?.kind !== "point" || model.entities.get(pairs[i + 1])?.kind !== "point") continue;
+    const [b, t] = [model.coords(pairs[i]), model.coords(pairs[i + 1])];
+    offsets.push(t.map((c, k) => c - b[k]));
+  }
+  let best: number[] | null = null, votes = 0;
+  for (const c of offsets) {
+    const tol = 1e-7 * Math.max(1, Math.hypot(...c));
+    const n = offsets.filter((d) => Math.hypot(...d.map((x, k) => x - c[k])) <= tol).length;
+    if (n > votes) { votes = n; best = c; }
+  }
+  return best;
+}
+
+/**
+ * Every twin of an extrusion seated at its base plus `chord`, before the solve
+ * after a regeneration: **seeds, as the expansion's own are**. Left to the
+ * solve, a twin a fillet's trim left behind would be pulled back by a
+ * minimum-norm step shared out over every free variable — the solid's turn
+ * among them — and a block filleted at a corner came back tilted 0.3 in 10
+ * (measured, the first-run walkthrough's rectangle). Seated, nothing is left
+ * for the solve but what the fillet itself asks.
+ */
+function seatTwins(model: Model, depth: string, chord: number[]): void {
+  const r = model.relations.get(depth);
+  if (!r || r.op !== "extrusion") return;
+  const pairs = r.args.slice(2) as string[];
+  for (let i = 0; i < pairs.length; i += 2) {
+    const [b, t] = [pairs[i], pairs[i + 1]];
+    if (model.entities.get(b)?.kind !== "point" || model.entities.get(t)?.kind !== "point") continue;
+    model.setCoords(t, model.coords(b).map((c, k) => c + chord[k]));
+  }
+}
+
 /** The name an extrude's (or edge extrude's) perpendicular goes by: its record's, so it claims no `r`. */
 export function perpName(record: string): string {
   return `${record}_perp`;
@@ -2192,6 +2237,7 @@ function rebuildBody(model: Model, f: FeatureEntry, plan: SweepPlan): { loops: P
   const pairs: string[] = [];
   const framePairs: string[] = [];
   let end: string | null = null;
+  let chordNow: number[] | null = null;
 
   if (twinned) {
     // Whether the feature's frames stand on its twins (see `Expansion`). A
@@ -2256,8 +2302,13 @@ function rebuildBody(model: Model, f: FeatureEntry, plan: SweepPlan): { loops: P
     // moved as the twin is — and then held by the dimension, rebuilt below.
     let normalFor: (c: string) => number[];
     if (f.kind === "extrude") {
+      // The chord as most of the solid has it now — the frame's z only for a
+      // lid that has none — so a solid turned since it was made gains its new
+      // twins where its lid is, not where the frame would put them.
       const z = planeAxes(model, frame)!.n;
-      place = (p) => model.coords(p).map((c, i) => c + value * z[i]);
+      const c = sharedChord(model, dimName) ?? z.map((q) => value * q);
+      chordNow = c;
+      place = (p) => model.coords(p).map((q, i) => q + c[i]);
       // Today's extrude has no lid frame; an old file's lid frame is kept as
       // that file made it.
       const top = f.top;
@@ -2388,6 +2439,7 @@ function rebuildBody(model: Model, f: FeatureEntry, plan: SweepPlan): { loops: P
   const args = [dim.args[0], value, ...pairs];
   const rebuild = REBUILD[dim.op];
   model.rebuildRelation(dimName, dim.op, args, () => rebuild(model, args));
+  if (chordNow) seatTwins(model, dimName, chordNow);
 
   const on = [...builtOn(plan), ...planeNames(model, frame), ...(f.kind === "revolve" ? planeNames(model, f.axis) : [])];
   const names = [...new Set([...on, ...owns])];

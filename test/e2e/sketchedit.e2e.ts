@@ -165,7 +165,11 @@ test("extrude the bevelled outline, then trim across it: the click on the piece 
   const outline = await value(app, 'model.featureOf("e1").loops[0].map((m) => typeof m === "string" ? m : m.name)') as string[];
   assert.ok(outline.includes(bottom) && outline.includes(top), `the solid stands on what is left: ${outline}`);
   assert.ok(outline.some((n) => n !== bottom && n !== top && n.startsWith("l")), "along the cutter");
-  assert.deepEqual(await value(app, "model.diagnose().redundant"), [], "nothing said twice: the crossing the extrude made real is a corner of the sketch now");
+  // The one thing said twice is the rectangle's fourth right angle, implied by
+  // the other three and said so, muted (profiles-held.md) — nothing the
+  // extrude or the trim made: the crossing the extrude made real is a corner
+  // of the sketch now.
+  assert.deepEqual(await value(app, "model.diagnose().redundant"), ["r8"], `only the rectangle's fourth perp — ${JSON.stringify(await value(app, "rels()"))}`);
   await key("Escape");
   await app.page.mouse.move(10, 10);
   await shot(app, "6-trimmed-solid-regenerated");

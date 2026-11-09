@@ -3296,6 +3296,21 @@ export class Model {
             tried = ring.length;
             if (conflicts(ring, background)) {
               found = quickXplain(ring, (s) => conflicts(s, background));
+              // **Two where two will do.** QuickXplain's set is minimal — take
+              // any one away and the rest can hold — but not the smallest
+              // there is, and where relations agree redundantly there are
+              // several: a rectangle held by a perp at every corner, told
+              // `par` across one of them, named the par and the two far
+              // corners' perps, which fold the far side between them —
+              // three names for what a person reads as one contradiction at
+              // one corner. So when the set is larger than two, the newest of
+              // it is tried against each candidate alone, nearest first, and
+              // a pair found is named instead (profiles-held.md).
+              if (found.length > 2) {
+                const newest = [...found].sort((a, b) => order.get(b.name)! - order.get(a.name)!)[0];
+                const pair = candidates.find((c) => c !== newest && conflicts([newest, c], background));
+                if (pair) found = [pair, newest];
+              }
               break;
             }
           }

@@ -99,20 +99,22 @@ test("the corner a tool inferred names its constraint on the hover tag", async (
   assert.equal(await app.status(), "SOLVED");
 
   // Nobody typed this constraint; the tool inferred it. Now it has a name, and
-  // the name is on the tag under the cursor. r4, not r5: a rectangle is three
-  // intrinsic relations — par, par, perp — rather than four hor/vers.
-  assert.deepEqual((await app.repl('rels("p3")')).value, ["r4  coin p5 p3"]);
+  // the name is on the tag under the cursor. r6: a rectangle drawn with
+  // nothing picked is a perp at every corner and one coplanar holding its
+  // last corner in the plane of the other three (profiles-held.md), r1–r5 —
+  // and the coplanar names p3, the third of those.
+  assert.deepEqual((await app.repl('rels("p3")')).value, ["r5  coplanar p4 p1 p2 p3", "r6  coin p5 p3"]);
   const tag = await hoverTag("p3");
-  assert.match(tag, /^p3\s+[-\d.,\s]+·\s+r4$/, `hover tag was ${JSON.stringify(tag)}`);
+  assert.match(tag, /^p3\s+[-\d.,\s]+·\s+r5\s+r6$/, `hover tag was ${JSON.stringify(tag)}`);
 
   attached = await saved();
 });
 
 test("deleting it lets the corners come apart, and two undos put them back", async () => {
-  assert.deepEqual(removedNames(await typeAndRead('del("r4")')), ["r4"],
+  assert.deepEqual(removedNames(await typeAndRead('del("r6")')), ["r6"],
     "a relation takes nothing else with it");
   assert.equal(await app.status(), "SOLVED", "and the header is not left reading the old verdict");
-  assert.deepEqual((await app.repl('rels("p3")')).value, [], "nothing constrains that corner now");
+  assert.deepEqual((await app.repl('rels("p3")')).value, ["r5  coplanar p4 p1 p2 p3"], "nothing ties that corner to the other rectangle now");
 
   const [sx, sy] = await screenOf("p3");
   await dragFromTo([sx, sy], [sx - 70, sy - 55]);
@@ -126,7 +128,7 @@ test("deleting it lets the corners come apart, and two undos put them back", asy
   await undoKey();
   await undoKey();
   assert.equal(await saved(), attached, "geometry and journal both back, to the byte");
-  assert.deepEqual((await app.repl('rels("p3")')).value, ["r4  coin p5 p3"],
+  assert.deepEqual((await app.repl('rels("p3")')).value, ["r5  coplanar p4 p1 p2 p3", "r6  coin p5 p3"],
     "and the registry with them — it is rebuilt by the same replay");
 
   const back = await app.model();

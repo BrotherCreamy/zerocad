@@ -135,18 +135,19 @@ test("a drawing wears one glyph per constraint, including the ones nobody typed"
   const rels = (await app.repl("rels()")).value as string[];
   // Every relation wears a mark — counted by relation rather than by glyph,
   // because a relation that is a claim about *two* things marks both of them:
-  // an intrinsic rectangle's `par` and `perp` each draw twice, on purpose, so
-  // that "parallel to what?" has an answer on the canvas.
+  // an intrinsic rectangle's `perp`s each draw twice, on purpose, so
+  // that "square to what?" has an answer on the canvas.
   const marked = new Set(all.map((g) => g.relation));
   assert.deepEqual([...marked].sort(), rels.map((r) => r.split(/\s+/)[0]).sort(),
     `${rels.length} relations drew marks for ${marked.size} of them`);
 
   const coin = await coinGlyph();
-  // The eighth relation: the fixture frame is the default and the app is 3D,
+  // The ninth relation: the fixture frame is the default and the app is 3D,
   // so the first rectangle's four corners are each held on its plane (r1–r4,
-  // `onPlane`) before its par, par, perp (r5–r7). The second rectangle's first
-  // corner snapped onto a vertex, which pins it outright — no plane on top.
-  assert.equal(coin.relation, "r8");
+  // `onPlane`) before its perp at every corner (r5–r8, profiles-held.md; a
+  // plane picked, so no coplanar). The second rectangle's first corner
+  // snapped onto a vertex, which pins it outright — no plane on top.
+  assert.equal(coin.relation, "r9");
   assert.deepEqual(coin.highlights, ["p5", "p3"], "it is about both corners");
 
   // The mark sits beside the corner, not on top of it.
@@ -161,8 +162,8 @@ test("hovering the glyph names the relation and lights up both corners", async (
   await hoverAt(...coin.screen);
 
   assert.deepEqual(await app.page.evaluate(() => (window as never as Probe).__neocad.engine.hover),
-    { name: "r8", kind: "relation", distance: 0 });
-  assert.equal(await hoverTag(), "r8  coin p5 p3",
+    { name: "r9", kind: "relation", distance: 0 });
+  assert.equal(await hoverTag(), "r9  coin p5 p3",
     "the tag names the relation exactly as rels() would");
 
   // p3 and p5 are coincident, so "both corners" is one place on screen — and
@@ -180,12 +181,11 @@ test("hovering the glyph names the relation and lights up both corners", async (
 });
 
 test("hovering an edge's glyph lights up that edge", async () => {
-  // The rectangle tool says "rectangle" intrinsically — par, par, perp — and
+  // The rectangle tool says "rectangle" intrinsically — a perp at each corner — and
   // no longer claims any edge is level, so being level is something this test
   // now asks for out loud, against the frame the fixture made.
   await app.type('par("l1", xaxis())');
-  // The rectangle tool already laid down `par(l1, l3)`, so pick out the one
-  // whose other side is the *frame* — that is the one just asked for.
+  // Pick out the par whose other side is the *frame* — the one just asked for.
   const level = (await glyphs()).find((g) => g.op === "parallel" && g.highlights.includes("f"));
   assert.ok(level, "the edge that was just told to be level is constrained");
   const line = level.highlights[0];
@@ -210,27 +210,27 @@ test("clicking a glyph selects it, and with a command being written drops its na
   await app.page.fill("#cmd", "");
   const coin = await coinGlyph();
   await clickAt(...coin.screen);
-  assert.deepEqual(await app.selection(), ["r8"],
+  assert.deepEqual(await app.selection(), ["r9"],
     "exactly what clicking geometry does — there is no second selection model");
   await app.page.fill("#cmd", "del(");
   await clickAt(...coin.screen);
-  assert.equal(await app.page.inputValue("#cmd"), 'del("r8"', "with text in the line, the name is an argument");
+  assert.equal(await app.page.inputValue("#cmd"), 'del("r9"', "with text in the line, the name is an argument");
   await app.page.fill("#cmd", "");
   await app.repl("select()");
 });
 
 test("deleting the relation takes its mark off the canvas, and undo brings it back", async () => {
   const before = (await glyphs()).length;
-  await app.type('del("r8")');
+  await app.type('del("r9")');
   const after = await glyphs();
   assert.equal(after.length, before - 1);
-  assert.equal(after.find((g) => g.relation === "r8"), undefined, "the mark is gone");
+  assert.equal(after.find((g) => g.relation === "r9"), undefined, "the mark is gone");
   assert.equal(after.find((g) => g.op === "coincident"), undefined);
 
   await undoKey();
   const back = await glyphs();
   assert.equal(back.length, before);
-  assert.equal((await coinGlyph()).relation, "r8", "and it is the same constraint, not a new one");
+  assert.equal((await coinGlyph()).relation, "r9", "and it is the same constraint, not a new one");
 });
 
 test("a glyph outranks a point sitting right on top of it", async () => {
@@ -245,12 +245,12 @@ test("a glyph outranks a point sitting right on top of it", async () => {
   await app.type(`pt(${world[0]}, ${world[1]})`);
 
   const at = await pickAt(...coin.screen);
-  assert.deepEqual(at, { name: "r8", kind: "relation", distance: 0 },
+  assert.deepEqual(at, { name: "r9", kind: "relation", distance: 0 },
     "the glyph wins outright, the way a point wins over a line it sits on");
 
   await app.page.fill("#cmd", "");
   await clickAt(...coin.screen);
-  assert.deepEqual(await app.selection(), ["r8"], "and a real click agrees");
+  assert.deepEqual(await app.selection(), ["r9"], "and a real click agrees");
   await app.repl("select()");
 });
 
