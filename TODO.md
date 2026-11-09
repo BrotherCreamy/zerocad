@@ -2315,6 +2315,13 @@ are flagged as such.
     - [ ] **The hover tag names nothing while a tool is armed** (as before);
           the face's name is the chip's and the mark's. A tag by the cursor
           would say it a third time.
+    - [ ] **`del` of a circle leaves its free centre, hold and all** (as it
+          always did): a centre held `onplane` a lid, orphaned, then pulls
+          the lid back a ninth of the way when the depth is set (a wall's
+          hold is both ways, the base free). Found updating
+          `test/curvetoolplane.test.ts`, which deletes the centre too. A
+          circle's auto-made centre could go with it when nothing else
+          names it.
 
 - [ ] **An extruded solid deforms when its corner is dragged** (the owner,
   2026-11-08: *"Why is it that after I extrude I can drag a corner of the
