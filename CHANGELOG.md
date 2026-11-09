@@ -7,6 +7,13 @@ decisions.
 
 ---
 
+## 2026-11-09 — three-finger orbit removed
+
+The owner: *"3 finger orbit works but actually i decided i dont like it.
+please get rid of it"*. Reverted d4bb71f's code, tests and help: a third
+finger drops whatever the hand was doing and the hand is spent until it
+lifts, as before. The 2026-11-07 entry below stays as history.
+
 ## Solid tools a first-time user can use: Flip, Cut, Through all, a depth handle
 
 The owner (2026-11-08): *"Flip button."* and *"I'm still not clear on how to
