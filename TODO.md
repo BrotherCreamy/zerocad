@@ -102,7 +102,10 @@ otherwise.
   weak and should change, in this order unless the owner says otherwise:
   1. [ ] normalise the direction residuals (`par`, `perp`, `tan`), so a
          collapsed line no longer satisfies them; keep collapse detection as
-         the backstop;
+         the backstop. Seen again building the palette (2026-11-09): a
+         `par` typed between two free 60-long lines leaves them 8.8 and 1.2
+         long, headless and in the browser (docs/images/422), SOLVED — a
+         shrink, not a collapse, so nothing catches it;
   2. [x] redundancy counted, not blamed on the newest relation; the status
          note "redundant rN" goes, the palette shows the agreeing set —
          built with the constraints palette (2026-11-09): the status says
