@@ -302,10 +302,11 @@ etc).
   line) and the relations they already have (the glyph's own mark, the
   name, what it says, a dimension's value in a field typing `set`, × typing
   `del`; a tap selects); nothing selected, every relation newest first and
-  the agreeing sets. Shown from the start on a desktop (right edge, above
-  the organiser); on a phone hidden until the constrain tool summons it
-  (bottom, above the command line; at the side on its side), gone when the
-  tool is put down unless shown from Panes. Rows that do not fit collapse
+  the agreeing sets. Hidden from the start, everywhere; the constrain tool
+  summons it while armed (a desktop's right edge above the organiser; a
+  phone's bottom above the command line, or the left under the logo on its
+  side), gone when the tool is put down unless shown from Panes, when it
+  stays. Rows that do not fit collapse
   to the likeliest and *more…*. The constrain tool's options pane lists the
   relations only where the module is off the workbench. The pure half is
   `paletteFor`; `test/constraints.test.ts`, `test/e2e/constraintspalette.e2e.ts`.

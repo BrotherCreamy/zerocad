@@ -372,10 +372,13 @@ const panels = new Panels(
   {
     check: Boolean((import.meta as { env?: { DEV?: boolean } }).env?.DEV),
     fitted: { options: { size: () => optionsShown(), beside: "toolbar" } },
-    // The palette starts hidden under a finger — shown, it is a third of a
-    // phone's drawing — and comes up with the constrain tool; on a desktop it
-    // is up from the start, up the right edge (docs/plans/constraints-palette.md).
-    startHidden: coarse ? ["constraints"] : [],
+    // The palette starts hidden and comes up with the constrain tool
+    // (docs/plans/constraints-palette.md): under a finger it is a third of a
+    // phone's drawing, and on a desktop its default place — the right edge
+    // under the logo's row — is drawing that twenty-five of the e2e suite's
+    // tests click in, which is to say drawing a person uses. Shown from
+    // Panes, it stays. One word here if the owner wants it up from the start.
+    startHidden: ["constraints"],
     summoned: { constraints: () => paletteSummoned() },
     present: { constraints: () => paletteOnWorkbench() },
     metrics,

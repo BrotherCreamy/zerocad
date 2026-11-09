@@ -28,8 +28,9 @@ defineModule("constraints", {
     "           status counts them (0 free · 4 agreeing). Where its rows do not",
     "           fit, the likeliest show and more… opens the rest. A pane like",
     "           the organiser: dragged, docked, remembered; the app menu's",
-    "           Panes shows and hides it (ui({ show: \"constraints\" })). On a",
-    "           phone it starts hidden and comes up with the constrain tool.",
+    "           Panes shows and hides it (ui({ show: \"constraints\" })). It",
+    "           starts hidden and comes up with the constrain tool, gone when",
+    "           the tool is put down; shown from Panes, it stays.",
     "           A module: a workbench that does not name it has no palette.",
   ],
 });

@@ -112,21 +112,38 @@ async function noOverlap(app: AppContext): Promise<void> {
 
 // ---- a mouse -------------------------------------------------------------------
 
-test("desktop: the palette is up from the start, up the right edge, listing the drawing's relations — none yet", async () => {
+test("desktop: hidden from the start; the constrain tool brings it up at the right edge, Escape takes it away with the tool, and shown by hand it stays", async () => {
   await fresh(desk);
-  assert.equal(await hidden(desk), false, "shown from the start on a desktop");
+  assert.equal(await hidden(desk), true, "hidden from the start — its place is drawing (the register)");
+  await type(desk, "constrain");
+  await desk.page.waitForTimeout(300);
+  await settled(desk.page);
+  assert.equal(await hidden(desk), false, "summoned by the tool");
   const vp = desk.page.viewportSize()!;
   const p = await paneBox(desk);
   assert.ok(p.x + p.w > vp.width - 20, `against the right edge: ${JSON.stringify(p)}`);
   assert.ok(p.y < 100, `under the logo's row: ${JSON.stringify(p)}`);
+  assert.match(await desk.page.$eval("#constraints .cnone", (el) => el.textContent ?? ""), /^pick what to relate/);
+  await noOverlap(desk);
+  await shot(desk, "1-desktop-summoned");
+  await desk.page.keyboard.press("Escape");
+  await desk.page.waitForTimeout(300);
+  await settled(desk.page);
+  assert.equal(await hidden(desk), true, "gone with the tool");
+  await type(desk, 'ui({ show: "constraints" })');
+  await settled(desk.page);
+  assert.equal(await hidden(desk), false, "kept, shown by hand");
   assert.deepEqual(await sectionIds(desk), ["all"]);
   assert.match(await desk.page.$eval("#constraints .cnone", (el) => el.textContent ?? ""), /none — select something/);
-  await noOverlap(desk);
-  await shot(desk, "1-desktop-fresh");
+  await type(desk, "constrain");
+  await desk.page.keyboard.press("Escape");
+  await desk.page.waitForTimeout(300);
+  assert.equal(await hidden(desk), false, "the tool's going does not take a pane the viewer showed");
 });
 
 test("desktop: two lines selected with nothing armed feed the palette; Parallel pressed types its line, the selection stays, and the held list shows // with ×", async () => {
   await fresh(desk);
+  await type(desk, 'ui({ show: "constraints" })');
   await type(desk, "ln(pt(-30, 0), pt(30, 4)); ln(pt(-30, 25), pt(30, 15))");
   await click(desk, await along(desk, "l1", 0.3));
   await click(desk, await along(desk, "l2", 0.3), true);
@@ -157,6 +174,7 @@ test("desktop: two lines selected with nothing armed feed the palette; Parallel 
 
 test("desktop: a dimension edited from the palette — 30 typed as 45 types set, and the line is 45 long; a tap on the row selects the relation", async () => {
   await fresh(desk);
+  await type(desk, 'ui({ show: "constraints" })');
   await type(desk, 'a = pt(-15, 0); b = pt(15, 0); ln(a, b); dist(a, b, 30)');
   await type(desk, 'select("l1")');
   const held = await heldRows(desk);
@@ -187,6 +205,7 @@ test("desktop: a dimension edited from the palette — 30 typed as 45 types set,
 
 test("desktop: a rectangle's four right angles are one agreeing set — counted in the status, named in the palette, none blamed", async () => {
   await fresh(desk);
+  await type(desk, 'ui({ show: "constraints" })');
   await type(desk, 'a = pt(0, 0); b = pt(40, 0); c = pt(40, 25); d = pt(0, 25); ln(a, b); ln(b, c); ln(c, d); ln(d, a); '
     + 'perp("l1", "l2"); perp("l2", "l3"); perp("l3", "l4"); perp("l4", "l1")');
   assert.equal(await desk.status(), "SOLVED");
@@ -206,23 +225,27 @@ test("desktop: a rectangle's four right angles are one agreeing set — counted 
   await desk.page.keyboard.press("Escape");
 });
 
-test("desktop: the pane is in the app menu's Panes, and hides and shows from there", async () => {
+test("desktop: the pane is in the app menu's Panes, unticked at the start, and shows and hides from there", async () => {
   await fresh(desk);
   await desk.page.click("#logo");
   const listed = await desk.page.$$eval("#appmenu .item.check[data-pane]", (els) => els.map((e) => (e as HTMLElement).dataset.pane));
   assert.ok(listed.includes("constraints"), listed.join(", "));
+  assert.equal(await desk.page.$eval('#appmenu .item.check[data-pane="constraints"] input', (el) => (el as HTMLInputElement).checked), false, "unticked: hidden from the start");
+  await desk.page.click('#appmenu .item.check[data-pane="constraints"] input');
+  await desk.page.waitForTimeout(150);
+  assert.equal(await hidden(desk), false);
+  assert.equal(await lastTyped(desk), 'ui({ show: "constraints" })');
   await desk.page.click('#appmenu .item.check[data-pane="constraints"] input');
   await desk.page.waitForTimeout(150);
   assert.equal(await hidden(desk), true);
   assert.equal(await lastTyped(desk), 'ui({ hide: "constraints" })');
-  await desk.page.click('#appmenu .item.check[data-pane="constraints"] input');
-  await desk.page.waitForTimeout(150);
-  assert.equal(await hidden(desk), false);
   await desk.page.keyboard.press("Escape");
 });
 
 test("desktop: a workbench without the constraints module has no palette; the constrain tool lists in its options pane as it did; back in part the palette returns", async () => {
   await fresh(desk);
+  await type(desk, 'ui({ show: "constraints" })');
+  assert.equal(await hidden(desk), false);
   await type(desk, 'defineWorkbench("bare", { label: "Bare", modules: ["core", "sketch"] })');
   await type(desk, 'workbench("bare")');
   await desk.page.waitForTimeout(200);

@@ -20,18 +20,22 @@ counted, not blamed on the newest relation") as part of it, since the palette
 is where the agreeing set is shown. The choices are in TODO.md's register;
 this is why they were made.
 
-**Hidden from the start on a phone, shown on a desktop.** The spec says the
-palette docks at the bottom on an upright phone and at the side on its side,
-and the owner's words for the organiser were *"show from start"*. Measured on
-the iPhone 13 emulation (390 × 664): a row under a finger is a target tall,
-44 px, and a strip's hit box reaches another target up over the drawing, so a
-pane of three rows is 190 px of a 664-px screen — a third of the drawing,
-permanently, for a list that is only wanted when something is selected to
-relate. So the pane starts hidden there and the constrain tool summons it
-while armed (gone again when the tool is put down), and a viewer who wants it
-always shows it from Panes, after which it stays. A desktop has the room and
-starts with it up. Written down as the first vetoable choice: if the owner
-says "show from start" of this pane too, it is one array in main.ts.
+**Hidden from the start, everywhere.** The spec says the palette docks at the
+bottom on an upright phone and at the side on its side, and the owner's words
+for the organiser were *"show from start"*. Measured on the iPhone 13
+emulation (390 × 664): a row under a finger is a target tall, 44 px, and a
+strip's hit box reaches another target up over the drawing, so a pane of three
+rows is 190 px of a 664-px screen — a third of the drawing, permanently, for a
+list that is only wanted when something is selected to relate. So the pane
+starts hidden there and the constrain tool summons it while armed (gone again
+when the tool is put down), and a viewer who wants it always shows it from
+Panes, after which it stays. The desktop was going to start with it up — it
+has the room — until the first full run of the suite: twenty-five tests
+clicked drawing under the pane's default place at the right edge, every one
+refused by the harness's `at`. Those clicks are where people draw; the pane
+starts hidden on a desktop too, and the behaviour is one story on every
+device. Written down as the first vetoable choice: if the owner says "show
+from start" of this pane too, it is one array in main.ts.
 
 **Three rows, not the spec's four.** Four rows plus the strip's reach put the
 pane's influence over the lower part of what the relation tests pick — a fifth

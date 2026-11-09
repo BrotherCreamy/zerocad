@@ -1576,9 +1576,9 @@ does: `main.ts` builds it, from the model, the selection and the last
 diagnosis, through `src/constraints.ts`'s pure `paletteFor` and a thin DOM
 half, and the panel manager is told three things it did not know before —
 a pane that is `present` only while a predicate holds, one that starts
-hidden on this device (`startHidden`: a phone, where the pane is a third of
-the drawing), and one `summoned` while a predicate holds (the constrain
-tool armed) although hidden. All three are predicates the host hands in, so
+hidden (`startHidden`: on a phone the pane is a third of the drawing, on a
+desktop its place is drawing people click in), and one `summoned` while a
+predicate holds (the constrain tool armed) although hidden. All three are predicates the host hands in, so
 `panels.ts` still imports nothing from the model or the tools. The
 constrain tool is the way to pick by clicking and nothing more: its picks
 reach the palette as names (`Tool.related`), and its options pane lists the
@@ -1957,10 +1957,11 @@ lived in that options panel until the owner asked for *"a separate
 constraints palette"*: it was up only while the tool was armed, and on an
 iPhone it covered what had been picked. The palette is a panel like the
 organiser — grips, a stored place, Panes — and it lists for the selection
-too, with nothing armed. Where it is placed by default is the one thing
-device-shaped about it: a desktop's right edge above the organiser; an
-upright phone's bottom, above the command line, where it starts hidden and
-the constrain tool summons it; a phone on its side, the left under the logo.
+too, with nothing armed. It starts hidden, everywhere: the constrain tool
+summons it while armed, and a viewer who shows it from Panes keeps it.
+Where it is placed is the one thing device-shaped about it: a desktop's
+right edge above the organiser; an upright phone's bottom, above the
+command line; a phone on its side, the left under the logo.
 A phone's rows are a target tall and a strip's hit box reaches a target up
 over the drawing, so the pane is sized to three rows there, and where its
 rows do not fit the likeliest show and a *more…* row opens the rest —

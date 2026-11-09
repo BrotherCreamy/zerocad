@@ -1796,10 +1796,11 @@ export function defaultLayout(area: Size, tools: number, m: Metrics = FINE, hidd
     // wherever along the top it is pushed.
     organiser,
     // The constraints palette (docs/plans/constraints-palette.md) up the
-    // right edge above the organiser, under the logo's row: the other corner
-    // nothing else defaults to, so a drawing seeded in the middle is clear of
-    // both. A desktop has the room, so it is wider than the organiser — a
-    // relation's row is its mark, its name, what it says and a field — and
+    // right edge above the organiser, under the logo's row, when it is shown
+    // — it starts hidden, and comes up with the constrain tool: the other
+    // corner nothing else defaults to, so a drawing seeded in the middle is
+    // clear of both. A desktop has the room, so it is wider than the organiser
+    // — a relation's row is its mark, its name, what it says and a field — and
     // tall enough for a two-line selection's eight rows; never into the organiser.
     constraints: {
       x: area.w - GAP - Math.round(PALETTE_W * m.scale), y: top, w: Math.round(PALETTE_W * m.scale),
@@ -2798,9 +2799,10 @@ export class Panels {
       onRefused?: (text: string) => void;
       onLocked?: (text: string) => void; onRefit?: (text: string) => void;
       /**
-       * Panes that start hidden on this device until the viewer shows them —
-       * the constraints palette on a phone (docs/plans/constraints-palette.md),
-       * where it would take a third of the drawing from the start.
+       * Panes that start hidden until the viewer shows them — the
+       * constraints palette (docs/plans/constraints-palette.md), which on a
+       * phone would take a third of the drawing from the start and on a
+       * desktop sits over drawing people use.
        */
       startHidden?: readonly string[];
       /**

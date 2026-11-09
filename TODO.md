@@ -50,13 +50,17 @@ otherwise.
   docs/plans/constraints-palette.md).** The owner decided the palette and
   that it is a workbench module; these are the choices made building it,
   each vetoable:
-  - **Shown from the start on a desktop, hidden from the start on a
-    phone.** On a phone its rows are a finger's target tall and the pane is
-    a third of the drawing; so it starts hidden there and the **constrain
-    tool summons it** while armed (panels.ts's `summoned`), gone again when
-    the tool is put down — unless the viewer showed it from Panes, when it
-    stays. The owner's *"show from start"* was said of the organiser; said
-    of this pane too, drop `startHidden` in main.ts.
+  - **Hidden from the start, everywhere.** On a phone its rows are a
+    finger's target tall and the pane is a third of the drawing; on a desktop
+    its place, the right edge under the logo's row, is drawing twenty-five
+    e2e tests click in (the first full run: every one of them refused by the
+    harness's `at`, "under the constraints panel"). So it starts hidden and
+    the **constrain tool summons it** while armed (panels.ts's `summoned`),
+    gone again when the tool is put down — unless the viewer showed it from
+    Panes or `ui({ show: "constraints" })`, when it stays. A selection made
+    with nothing armed feeds it only once it is up. The owner's *"show from
+    start"* was said of the organiser; said of this pane too, empty
+    `startHidden` in main.ts.
   - **Its place**: a desktop's right edge above the organiser, 240 × 300 at
     100 %; an upright phone's bottom, above the command line and right of
     the tray (the options box's bottom, which shrinks over it); a phone on

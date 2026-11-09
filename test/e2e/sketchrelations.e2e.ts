@@ -272,6 +272,7 @@ test("desktop: two relations that agree are counted, muted, named by neither, an
   assert.match(await diagnosisText(desk), /free · 2 agreeing$/);
   assert.equal(await desk.page.$eval("#diagnosis", (el) => el.className), "agreeing");
   // The palette names them, with nothing selected, as one agreeing set.
+  await desk.type('ui({ show: "constraints" })');
   await desk.type("select");
   const agreeing = await desk.page.$$eval('#constraints [data-section="agreeing"] .crow', (els) => els.map((e) => (e as HTMLElement).dataset.name));
   assert.deepEqual(agreeing, ["r1", "r2"]);

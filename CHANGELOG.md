@@ -20,7 +20,7 @@ now, like the organiser, and a module a workbench names or does not.
 
 | | |
 |---|---|
-| ![A fresh desktop: the constraints palette up the right edge from the start, above the organiser, saying there are no relations yet](docs/images/420-the-constraints-palette-up-the-right-edge-from-the-start.png) | ![Two lines selected with nothing armed: the palette lists Parallel, Perpendicular, Equal, Collinear, Horizontal (both), Vertical (both), Fix (both) and Angle, each with the line it types](docs/images/421-two-lines-selected-no-tool-the-palette-lists-what-they-take.png) |
+| ![A desktop, the constrain tool armed: the constraints palette summoned up the right edge above the organiser, saying pick what to relate](docs/images/420-the-constrain-tool-summons-the-palette-up-the-right-edge.png) | ![Two lines selected with nothing armed, the palette shown from Panes: it lists Parallel, Perpendicular, Equal, Collinear, Horizontal (both), Vertical (both), Fix (both) and Angle, each with the line it types](docs/images/421-two-lines-selected-no-tool-the-palette-lists-what-they-take.png) |
 | ![Parallel pressed: the held list shows // r1 par l1 l2 with its ×, the selection kept, the status 7 free. The lines themselves have shrunk — an un-normalised par between two free lines, the register's item 1, pre-existing](docs/images/422-parallel-pressed-the-held-list-shows-it-with-a-delete.png) | ![A dimension edited from the palette: the line's dist, 30 in its field, typed as 45 — set("d1.value", 45) in the log, the line 45 long](docs/images/423-a-dimension-edited-from-the-palette-30-typed-as-45.png) |
 | ![A rectangle of four right angles with nothing selected: the status reads 5 free · 4 agreeing, the palette lists the four relations and, under Agreeing, the same four — none of them blamed](docs/images/424-a-rectangles-four-right-angles-one-agreeing-set-the-status-counts-them.png) | ![A workbench defined without the constraints module: no palette, and the constrain tool's options pane lists the relations as it did before](docs/images/425-a-workbench-without-the-module-the-options-pane-lists-as-before.png) |
 | ![iPhone 13: the constrain tool armed brings the palette up, docked at the bottom above the command line, saying pick what to relate; the two lines in the middle whole](docs/images/426-iphone-constrain-armed-the-palette-up-at-the-bottom.png) | ![iPhone 13: two lines tapped — Parallel and 7 more…, the rows a finger's target tall, the lines still in sight](docs/images/427-iphone-two-lines-tapped-parallel-and-7-more.png) |
@@ -41,16 +41,17 @@ now, like the organiser, and a module a workbench names or does not.
   A workbench without it has no pane — out of the layout and Panes,
   `ui({ show: "constraints" })` refused by name — and the constrain tool's
   options pane lists the relations there as it did everywhere before.
-- **Room on a phone.** Shown from the start on a desktop (right edge, above
-  the organiser); on a phone hidden from the start — under a finger a row is
-  a target tall, and three rows are a third of the drawing — and **summoned
-  by the constrain tool** while armed, gone when the tool is put down unless
-  shown from Panes. Docked at the bottom upright, at the left under the logo
-  on its side. The rows that do not fit collapse to the likeliest and a
-  *more…* row, measured against the pane's real height. Measured, the
-  owner's case: two circles picked, the palette up, both circles and the
-  mirror line in sight (`relationscomplete.e2e.ts` picks the circles first
-  again).
+- **Hidden from the start, summoned by the constrain tool** while armed,
+  gone when the tool is put down unless shown from Panes, when it stays. On
+  a phone a row under a finger is a target tall and three rows are a third
+  of the drawing; on a desktop its place — the right edge above the
+  organiser — is drawing people click in (the first full run: twenty-five
+  tests refused there). Docked at the bottom on an upright phone, at the
+  left under the logo on its side. The rows that do not fit collapse to the
+  likeliest and a *more…* row, measured against the pane's real height.
+  Measured, the owner's case: two circles picked, the palette up, both
+  circles and the mirror line in sight (`relationscomplete.e2e.ts` picks the
+  circles first again).
 - **Redundancy counted, not blamed** (the register's item 2). The status
   used to say `redundant r4`, naming whichever agreeing relation was stored
   last. The kernel's `null_support` already flagged every row in the left

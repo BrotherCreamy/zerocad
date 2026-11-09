@@ -86,10 +86,12 @@ decisions, each also in TODO.md's register as vetoable:
    options pane lists them as before. A row pressed with nothing armed
    **keeps the selection** (Onshape clears it) so the held list shows the
    new relation and a second needs no reselecting.
-3. **Room on a phone — deviations.** *Hidden from the start on a phone*,
+3. **Room on a phone — deviations.** *Hidden from the start, everywhere*,
    summoned by the constrain tool (panels.ts `startHidden`, `summoned`),
-   gone when the tool is put down unless shown from Panes; shown from the
-   start on a desktop (right edge above the organiser, 240 × 300). *Three
+   gone when the tool is put down unless shown from Panes. A desktop was to
+   start with it up (right edge above the organiser, 240 × 300, where it
+   goes when shown), until the first full run found twenty-five e2e tests
+   clicking drawing there. *Three
    rows, not four*: a row is a target tall and a strip's hit box reaches a
    target up over the drawing, and four put that reach over the lower part
    of what the relation tests pick. *Landscape at the left under the logo*,
