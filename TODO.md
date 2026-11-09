@@ -33,6 +33,37 @@ otherwise.
 
 ## Decisions made so far — veto here if any are wrong
 
+- **Decided by the owner (2026-11-09), to build:**
+  - **An extrude's two profiles are peers, related "kind of like mirror
+    relations"**; *"i don't like the idea of anything being 'consumed' as
+    this implies unidirectional hierarchy"*. Spec:
+    [`linked-profiles.md`](docs/plans/linked-profiles.md), queued with four
+    questions for the owner (Q-A–Q-D there).
+  - **3D fillets keep the original geometry as construction, unmodified**,
+    and a fillet on one end only is ordinary (same spec, Design 3).
+  - **The constraint list is its own palette, installed as a workbench**,
+    not a row of the tool options pane. Spec:
+    [`constraints-palette.md`](docs/plans/constraints-palette.md), queued.
+- **Reviewed against the owner's principle (2026-11-09; CONVERSATION_LOG has
+  the reasoning)** — *a relation between entities, never an owner; both
+  ways; agreeing over-constraint is normal* — these register entries are
+  weak and should change, in this order unless the owner says otherwise:
+  1. [ ] normalise the direction residuals (`par`, `perp`, `tan`), so a
+         collapsed line no longer satisfies them; keep collapse detection as
+         the backstop;
+  2. [ ] redundancy counted, not blamed on the newest relation; the status
+         note "redundant rN" goes, the palette shows the agreeing set;
+  3. [ ] a conflict names the relation whose addition made it, with the set
+         it disagrees with (replaces "two of a set");
+  4. [ ] features relate, they do not own: `deleteFeature`'s cascade, the
+         undeletable feature-held relations, `edgeExtrude` owning entities
+         (linked-profiles.md starts this for the extrude);
+  5. [ ] many-at-once as one n-ary relation, not a star on the first pick;
+  6. [ ] `fdist` and `ang3` name entities, lazily, not wall indices or
+         points;
+  7. [ ] a chamfer face's sketch plane follows the solid or is refused;
+  8. [ ] Through all as a relation to the far face's geometry, not a hook.
+
 - **A prism stays a prism: relations between a feature's entities, both
   ways** (the owner, 2026-11-08/09: *"Why is it that after I extrude I can
   drag a corner of the extrude and it deforms the solid? I think it's

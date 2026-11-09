@@ -10,6 +10,60 @@ For the itemized technical state see `STATUS.md`, for what's next see
 `CHANGELOG.md`, and for the project pitch see `README.md`.
 
 
+## 2026-11-09 — the owner's principle, and a review of the decisions against it
+
+The owner, on the extrude's two profiles: *"i mean kind of like mirror
+relations"*, and *"in retrospect, i don't like the idea of anything being
+'consumed' as this implies unidirectional hierarchy"*. On 3D fillets: *"they
+ought to keep the original geometry as construction without modification. of
+course it would be silly not to allow fillets on one end only."* On the
+constrain list: *"it should be a separate constraints palette … still be
+installed as a workbench"*. And: *"please weigh in on the prior decisions as
+some have been not very good"*.
+
+The principle, stated once so later work can be checked against it: **a
+relation between entities, never an owner; both ways, never a source and a
+derivative; agreeing over-constraint is normal.** Read against it, these
+decisions in the register are weak, and are now listed there as such:
+
+1. **Conflicts found by heuristics rather than by fixing the residuals.**
+   `par`/`perp`/`tan` are satisfied by a collapsed line because their
+   residuals are products of raw vectors; the plan rejected normalising them
+   as "changing every drawing's solving", but a unit-direction residual has
+   the same roots minus the spurious one. The push/steer detection (SUSPECT,
+   NUDGE_ITER, 30 iterations, tuned) is a backstop, not the fix.
+2. **Redundancy blamed on the newest relation** (`diagnose`: implied by rows
+   stored *before* it). Storage order is a hierarchy. With agreeing
+   over-constraint normal, the status should count agreeing extras, and the
+   constraints palette show the agreeing set; no culprit.
+3. **Conflict naming by "two of a set"** (#87) patches 2's symptom. Name the
+   relation whose addition made the conflict, with the set it disagrees
+   with.
+4. **Features own entities and relations** (an extrude owns its lid and
+   walls; `edgeExtrude` owns what it makes; feature-held relations cannot be
+   deleted; `deleteFeature` cascades). Ownership is the hierarchy the owner
+   rejects. linked-profiles.md reverses it for the extrude.
+5. **Many-at-once as a star** gives the first pick n−1 glyphs: a mild
+   source. An n-ary relation (`eq(l1, …, l5)` as one entry) is symmetric and
+   names once in a conflict.
+6. **Smart dimension's `fdist` stores a wall index** (`e1.m3`) that a
+   regeneration renumbers, and **`ang3` on walls holds points, not lines**.
+   Both should name entities and take lines lazily.
+7. **A chamfer face's sketch plane is a frame that does not follow the
+   solid** (sketch-mode): a one-way tie. Hold it to what defines the face,
+   or refuse until that exists.
+8. **`defineThroughReach`**: a relation reading kernel geometry through a
+   hook keeps the layer rule's letter; Through all should be a relation to
+   the far face's defining geometry.
+
+Fine, read against the principle: collapse-as-CONFLICT with rollback;
+feature-held relations as background to the search (until 4 is undone);
+Cut's direction read off the bodies; a deletable `e1_perp`; the four-perp
+rectangle with one flat (redundancy being normal ink); derived names that
+keep old files' r-names; ⌀ for a circle, R for an arc; driven-when-redundant
+(the user may still flip it to driving and let the conflict machinery say
+so); a datum picked by the user staying a datum.
+
 ## 2026-11-09 — a prism stays a prism
 
 The owner: *"Why is it that after I extrude I can drag a corner of the
