@@ -3832,6 +3832,14 @@ extended the way `defineTool` extends the tool registry would close it.
   one edge; whichever is right, the other should change. The walk is kept
   over the four panes it was written over, so the palette is out of it.
 
+- [ ] **The phone palette wastes a row (2026-11-09, review of #88).** Pictures
+  427, 431 and 432: one applicable row, a blank row, then "N more…". The fit
+  budget in `src/constraints.ts` `sync` (`room = clientHeight − rest −
+  oneRow`) leaves a whole row unused on a three-row pane, so the likeliest
+  two should show and only one does. Find the slack (a margin on the
+  more-row or the empty-section line, probably) and measure on the iPhone 13
+  picture: one more row is Symmetric without a second tap.
+
 - [x] **Pages reloading mid-test when a worker checks out a worktree
   (2026-11-05).** "Execution context was destroyed, most likely because of a
   navigation" across three gates; Vite reloads every page on any `.html`
