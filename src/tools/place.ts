@@ -86,11 +86,12 @@ export function placePoint(ctx: ToolContext, info: PointerInfo, name?: string, p
   if (!free) return placed;
   const own = info.face?.flat ? info.face.name : null;
   holdOnSketchPlane(ctx.model, placed, own ?? plane);
-  // A round face: the point is where the click landed, and nothing holds it
-  // there — said, so the owner's "constrain to the plane i am hovering over"
-  // is not quietly half-kept (TODO.md files the `onsurface` it would take).
+  // A round face, or one only the kernel knows (a fillet's): the point is
+  // where the click landed, and nothing holds it there — said, so the owner's
+  // "constrain to the plane i am hovering over" is not quietly half-kept
+  // (TODO.md files the `onsurface` it would take).
   if (info.face && !info.face.flat) {
-    ctx.log?.(`${placed} placed on ${info.face.name}, a round face — nothing holds it there yet`, "guide");
+    ctx.log?.(`${placed} placed on ${info.face.name} — a round face, or one only the kernel knows: nothing holds it there yet`, "guide");
   }
   return placed;
 }

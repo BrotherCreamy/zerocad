@@ -1829,7 +1829,9 @@ export class ToolEngine {
     if (!land || !this.active) return;
     const g = this.g;
     const k = uiOf(this.view);
-    const text = land.flat ? `▱ ${land.face}` : `${land.face} · round, not held`;
+    // A face no point can be held to — round, or only the kernel's — is named
+    // without the mark, and says so: the click will land, and hold nothing.
+    const text = land.flat ? `▱ ${land.face}` : `${land.face} · not held`;
     g.save();
     g.font = `${11 * k}px "IBM Plex Mono", ui-monospace, Menlo, monospace`;
     // A dark rim under the words, as a point's name wears over a light face

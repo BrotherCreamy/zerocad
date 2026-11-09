@@ -73,13 +73,14 @@ export function chipParts(plane: string | null, what: string, next: string | nul
 
 /**
  * What the chip's first part says of the face the next click lands on
- * (docs/plans/click-on-face.md): the face's name, and that it is round where
- * it is — a point on a round face is placed and held by nothing, which the
- * eye should know before the click. Null for no face.
+ * (docs/plans/click-on-face.md): the face's name, and that nothing will hold
+ * a point to it where that is so — a round face, or one only the kernel
+ * knows (a fillet's) — which the eye should know before the click. Null for
+ * no face.
  */
 export function landingLabel(landing: { face: string; flat: boolean } | null): string | null {
   if (!landing) return null;
-  return landing.flat ? landing.face : `${landing.face}, round`;
+  return landing.flat ? landing.face : `${landing.face}, not held`;
 }
 
 /** The chip as one line of text: `on e1's top · circle · drag the radius` — its parts that are there, in order. */

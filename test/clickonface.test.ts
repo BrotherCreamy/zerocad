@@ -192,7 +192,7 @@ test("a round face holds nothing: onplane refuses it with the reason, and a poin
   const p = placePoint(ctx, { world: [15, 0, 5], screen: [0, 0], face: { name: wall, flat: false } });
   assert.equal(m.relations.size, before, "nothing holds it");
   assert.deepEqual(m.coords(p), [15, 0, 5], "placed where the click landed");
-  assert.match(said.join("\n"), /round face — nothing holds it/);
+  assert.match(said.join("\n"), /round face, or one only the kernel knows: nothing holds it/);
 });
 
 test("par(c, \"e1.m3\") holds a circle's normal to a wall's; par to a cap is a datum, two datums refused", () => {
@@ -399,7 +399,7 @@ test("the chip: where the next click lands is said, not offered; a round face sa
   assert.equal(land.landing, true);
   assert.equal(chipParts("e1's top", "circle", "x", null).landing, false, "a chosen plane is a mode");
   assert.equal(chipParts(null, "circle", "x", null, true).landing, false);
-  assert.equal(landingLabel({ face: "e1.m0", flat: false }), "e1.m0, round");
+  assert.equal(landingLabel({ face: "e1.m0", flat: false }), "e1.m0, not held");
   assert.equal(landingLabel({ face: "e1.lid", flat: true }), "e1.lid");
   assert.equal(landingLabel(null), null);
 });

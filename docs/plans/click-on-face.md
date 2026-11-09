@@ -145,9 +145,10 @@ it was the snap, not the entity, that lost the face.
   rim beside the mouse's ghost or a finger's lifted mark
   (`renderLandingName`), and the chip's first part `on e1.m3` in amber with
   no menu, ⟂ or Done (`chipParts(…, landing)`, `landingLabel`).
-- **A round face**: `on e1.m0, round` in the chip, `e1.m0 · round, not held`
-  by the hand, the point placed on the piece drawn under the pixel, and the
-  log: `p9 placed on e1.m0, a round face — nothing holds it there yet`.
+- **A round face, or one only the kernel knows**: `on e1.m0, not held` in
+  the chip, `e1.m0 · not held` by the hand (no ▱), the point placed on the
+  piece drawn under the pixel, and the log: `p9 placed on e1.m0 — a round
+  face, or one only the kernel knows: nothing holds it there yet`.
 - **Finish redraws**: `ctx.finish` requests a render, so a tool that commits
   on its press leaves no stale frame (the lit face, the armed chip) behind —
   seen in the picture of a three-point circle just made.

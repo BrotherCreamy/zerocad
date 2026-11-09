@@ -55,8 +55,8 @@ before i click (and highlight the plane i am hovering over)"*
 - **Before the click**: the face lit amber where it is in front, `▱ e1.m3`
   with a dark rim beside the mouse's ghost or a finger's lifted mark, and
   the chip's first part `on e1.m3` in amber — said, not offered: no plane
-  menu, ⟂ or Done. A round face: `on e1.m0, round`, the point placed and
-  nothing held, said in the log.
+  menu, ⟂ or Done. A round face, or one only the kernel knows: `on e1.m0,
+  not held`, the point placed and nothing held, said in the log.
 - **The chosen plane still wins** (case 1): with a work plane or a default
   frame set no face is asked about. The ground is still where a click lands
   with nothing else there, and holds nothing.

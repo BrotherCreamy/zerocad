@@ -72,10 +72,11 @@ otherwise.
     holds nothing**: it is the pointer's plane, not a relation (the owner's
     "every sketch is a 3D sketch").
   - **A round face places and holds nothing**, said in the log line (`p9
-    placed on e1.m0, a round face — nothing holds it there yet`) and in the
-    chip (`on e1.m0, round`); the click lands on the piece of it drawn under
-    the pixel. An `onsurface` relation is filed below.
-  - **A face only the kernel knows** (a fillet's, a boolean's) is round to
+    placed on e1.m0 — a round face, or one only the kernel knows: nothing
+    holds it there yet`), in the chip (`on e1.m0, not held`) and by the hand
+    (`e1.m0 · not held`, no ▱); the click lands on the piece of it drawn
+    under the pixel. An `onsurface` relation is filed below.
+  - **A face only the kernel knows** (a fillet's, a boolean's) is the same to
     this: placed, not held — nothing in the model holds such a face.
   - **Faces land only where they are drawn**: in the wire view no faces are
     drawn and a click lands on the ground, as a dimension picks no face
