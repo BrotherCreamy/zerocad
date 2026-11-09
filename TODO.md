@@ -80,6 +80,15 @@ otherwise.
     about its seed's own plane.
   - **No plane unless one is picked**: a drawing tool holds to a plane only
     when sketch mode or a default frame sets `sketchPlaneRef` (the owner).
+  - **A regeneration seats the twins** at the chord most of the solid's pairs
+    agree on, before the solve (`sharedChord`, `seatTwins`): found by the
+    first-run walkthrough in the browser, where a fillet on a free block's
+    corner tilted it 0.29 in 10. A seed; every relation still both ways.
+  - **A conflict names two where two will do**: when QuickXplain's minimal
+    set is larger than two, its newest member is tried against each
+    candidate alone, and a pair is named if one exists. Found by a par across
+    a corner of the four-perp rectangle, which was named with the two far
+    corners' perps.
 
 - **The solid tools, made for a first-time user** (the owner, 2026-11-08:
   *"Flip button."* and *"I'm still not clear on how to use the extrude cut
@@ -2220,6 +2229,11 @@ are flagged as such.
           chord that never turned, and the collapse check reads lengths, not
           areas. A rectangle (four perps) cannot; a typed quad of free points
           can. Found turning the frame in `extrude.test.ts`.
+    - [ ] **The four perps' redundancy has a price in a conflict**: a `par`
+          across a corner is named with that corner's perp, but the other three
+          imply it, so deleting the perp alone leaves the CONFLICT — the par is
+          the one to delete (`profilesheld.test.ts` says so). The diagnosis
+          could say "and r2 · r3 · r4 say it too"; nothing does yet.
     - [ ] **An edge extrude's ends joined only by a `coin`** each get a copy and
           a chord of their own, held together by the coin's translation —
           right, but two chords where a shared point would have one.
