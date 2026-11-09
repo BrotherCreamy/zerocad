@@ -10,6 +10,25 @@ etc).
 
 ## What's working right now
 
+- **A click on a face lands on that face, is held there, and says so before
+  the click** (docs/plans/click-on-face.md, built). The owner: *"if i am
+  hovering over a face without an active on-plane constraint, it should
+  constrain to the plane i am hovering over … it should come up with an
+  on-plane constraint indicator before i click (and highlight the plane i am
+  hovering over)"*. With no sketch plane chosen, every pointer event of a
+  tool that places points is read on the solid's face drawn under the pixel
+  (`PointerInfo.face`, the engine), the snap restricted to that face; a point
+  placed on a flat face is held by `onplane(p, "e1.m3")` — the face named as
+  the kernel names it and read off its feature's record (solidref.ts), so it
+  follows a `set` of the depth and goes with the feature — and a curve drawn
+  wholly on one face gets `par(c, "e1.m3")` too. Each click its own face: a
+  three-point circle through three faces, a line from a wall onto the lid.
+  Before the click the face is lit amber, `▱ e1.m3` sits by the cursor (by
+  the lifted mark under a finger) and the chip says `on e1.m3`. A round face
+  places and holds nothing, and says so. Bug 72: a click on a face was
+  swallowed as a zero-length drag, and a snapped press never asked its face.
+  Unit: `test/clickonface.test.ts`; e2e: `clickonface.e2e.ts` (mouse and
+  iPhone 13).
 - **Version 0.1.0, hosted** at https://brothercreamy.github.io/zerocad/ — an
   installable app (manifest, icons, an offline cache) published from the
   public repository `BrotherCreamy/zerocad` by `.github/workflows/pages.yml`

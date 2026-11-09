@@ -713,12 +713,35 @@ grabbed parallel to the plane its press landed on, fixed for the gesture.
 `placePoint` holds a point it places on a plane you *chose* with `onPlane` —
 only where a snap has not already pinned it, and only when it is actually on
 the plane; the ground holds nothing, so a rectangle drawn in a fresh document
-is as free as it always was. **The curve tools ask one question more**
-(`CurvePlane` in `tools/place.ts`): with no plane chosen, the first click on
-a solid's face draws on that face — the plane of three of its own points,
-facing the viewer, which follows the solid when it changes — and whatever
-plane the curve is drawn on, it is held there by an `onPlane` on its centre
-and a `par` on its normal.
+is as free as it always was.
+
+**With no plane chosen, a click on a solid's face lands on the face**
+(docs/plans/click-on-face.md; the owner: *"if i am hovering over a face
+without an active on-plane constraint, it should constrain to the plane i am
+hovering over"*). The engine asks, for every pointer event of a tool that
+places points, which face is drawn under the pixel — solidpick.ts's
+`faceUnder`, the dimension tool's own question, asked of the faces the frame
+drew — and reads the event on that face's plane, facing the viewer, naming
+the face to the tool (`PointerInfo.face`, `e1.m3`). **Each click decides its
+own face**: a three-point circle may have a point on each of three faces; a
+shape dragged out — a rectangle, a slot, a circle's radius — is laid out on
+the face its first press landed on (`CurvePlane` in `tools/place.ts`, whose
+`settle` reads a later click back onto the gesture's plane and whose
+`settleOwn` keeps a click that is a point of its own). A point placed on a
+flat face is held there by `onplane(p, "e1.m3")`, and a curve drawn wholly on
+one face has its normal `par` to it besides — the face is a relation now,
+where before it was only where the first click happened to land. The snap is
+restricted to the face while one is under the hand: its edges and vertices
+and what lies in it, never a ground entity behind it, a snap to the face's
+own edge still winning over the face. Before the click the face is lit (as
+the dimension tool lights one) and named beside the hand with the mark the
+relation will wear, `▱ e1.m3`, and the chip says `on e1.m3` — said, not
+offered: no plane's menu, no Done, because nothing was chosen. A round face
+(a cylinder's wall) places the point and holds nothing, and the log says so.
+With a sketch plane chosen none of this is asked: every click lands on that
+plane, whatever is under it (Onshape's rule). It used to be the curve tools'
+question alone, answered at the gesture's first click by the loop under the
+pixel, and skipped whenever the press had snapped — bug 72.
 
 **Picking, snapping and box select stay in screen space**; what changed is what
 each entity looks like there and which world point a pixel on it *is*
@@ -904,13 +927,28 @@ the second is the reason for the first.
 
 **No plane unless one is picked.** *"The default for sketch entities is no
 plane. Every sketch is a 3D sketch, unless you enter into active on-plane
-constraint."* Where a click lands — the ground in a fresh document, a solid's
-face under the cursor — is a position, never a relation. A drawing tool holds
-what it makes to a plane only when sketch mode's work plane or a default
-frame is set (`holdOnSketchPlane`, `holdCurve`, both keyed on
-`sketchPlaneRef`); otherwise a curve is held by nothing but its own
-definition, its normal seeded facing the plane it was drawn on.
-`test/noplanedefault.test.ts` walks every drawing tool.
+constraint."* Where a click lands on the ground in a fresh document is a
+position, never a relation. A drawing tool holds what it makes to a plane
+only when sketch mode's work plane or a default frame is set, **or when the
+click landed on a solid's flat face** (`holdOnSketchPlane`, `holdCurve`: a
+chosen plane by `sketchPlaneRef`, a face by its name — the owner's later
+*"it should constrain to the plane i am hovering over"*,
+docs/plans/click-on-face.md); otherwise a curve is held by nothing but its
+own definition, its normal seeded facing the plane it was drawn on.
+`test/noplanedefault.test.ts` walks every drawing tool on the ground, and
+`test/clickonface.test.ts` on a face.
+
+**A face a click lands on is held by what made it**, as a face dimensioned
+is (below): `onplane(p, "e1.m3")` reads the wall's line and the extrusion's
+way off the feature's record at every evaluation (`relations/solidref.ts`),
+the line's two ends as variables — so a point held on a wall can pull the
+wall, and the solid with it, as much as the wall holds the point. With
+nothing holding the base, that is what happens: a `set` of the depth with a
+circle pinned to three faces lets the minimum-norm solve share the change
+between the points and the solid (measured: the lid's point rose 9.3 of 10,
+the solid moved the rest). Both ways, by the owner's rule; a base the user
+holds (sketch mode's `onplane`s, a `fix`) stays, and then the point rides the
+full distance.
 
 **Relations between entities, both ways, by default.** *"It's not about
 being tied to the ground plane, it's about correct relationships BETWEEN
@@ -2246,7 +2284,7 @@ until the next action went unrecorded.
 
 ## Why there is an end-to-end suite
 
-Seventy-one bugs so far were invisible to the unit tests and obvious within seconds
+Seventy-two bugs so far were invisible to the unit tests and obvious within seconds
 of running the app:
 
 1. a status readout that went stale, so a conflict could be introduced from
@@ -2597,6 +2635,20 @@ of running the app:
    palette e2e's first run; the pane is sized to three rows there, and `at`
    now refuses a point within a strip's reach under a finger
    (docs/plans/constraints-palette.md).
+72. A click on a solid's face with the circle tool drew nothing, or drew on
+   the ground: the owner's *"it still draws the circle on the XY plane"*
+   (docs/plans/click-on-face.md). Two legs, both only visible assembled. A
+   press on a face was settled onto the face by the tool and its release
+   compared against it raw, at the same pixel but on the ground behind — so
+   every click on a face read as a drag to a point a world apart, with a
+   radius of zero, and the gesture quietly started over. And a press that
+   snapped to one of the face's own edges — on a phone's small face, a
+   finger's reach makes that the usual press — never asked what face it was
+   on, and laid the circle on the ground through a point of the wall. The
+   unit tests drove the tools with clicks already on the plane and passed;
+   the reproduction (`test/e2e/clickonface.e2e.ts`) made zero circles, then
+   one facing +z. The engine lands every drawing tool's event on the face
+   drawn under the pixel now, snap or no snap, and says which.
 
 None of these are mathematics. They are all *assembly*. Hence `npm run
 test:e2e`, and hence the expectation that anything touching the app is checked

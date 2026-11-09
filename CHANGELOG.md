@@ -7,6 +7,66 @@ decisions.
 
 ---
 
+## 2026-11-09 — a click on a face lands on that face, is held there, and says so before the click
+
+The owner: *"when i make a rectangular prism, i attempt to draw an e.g.
+circle on another face, but it still draws the circle on the XY plane. Why?
+if i am hovering over a face without an active on-plane constraint, it should
+constrain to the plane i am hovering over. like i should be able to do a 3
+point circle with each point on a different face of the rect prism, by just
+orbiting around. it should come up with an on-plane constraint indicator
+before i click (and highlight the plane i am hovering over)"*
+(docs/plans/click-on-face.md).
+
+| | |
+|---|---|
+| ![Desktop, the three-point circle armed, the mouse over the right wall: the wall lit amber with its edges stroked, ▱ e1.m3 beside the green ghost, the chip reading on e1.m3 · circle · click the first point](docs/images/433-a-wall-lit-and-named-under-the-circle-tool.png) | ![A centre-radius circle drawn on the wall by two clicks: its // glyph and its centre p9, held by onplane(p9, e1.m3) and par(c1, e1.m3)](docs/images/434-a-circle-on-the-wall-held-by-onplane-and-par.png) |
+| ![Two points clicked on two walls, marked +, and the mouse over the lid: the lid lit, ▱ e1.lid by the cursor, the preview circle through all three](docs/images/435-two-points-on-two-walls-the-third-over-the-lid.png) | ![The circle through three faces: p9 on the right wall, p10 on the front wall, p11 on the lid, each wearing its ▱](docs/images/436-the-circle-through-three-faces.png) |
+| ![set("d1.value", 20): the block twice as deep, the three points ridden along, each still on its face, the circle still through them](docs/images/437-the-depth-set-to-20-the-points-ride-along.png) | ![A rectangle dragged on the wall, its four right angles, and a line from the wall up onto the lid, an end held on each](docs/images/438-a-rectangle-on-the-wall-a-line-up-onto-the-lid.png) |
+| ![iPhone 13, a finger on the front wall: the wall lit, ▱ e1.m0 beside the lifted mark above the finger, the chip reading on e1.m0 · circle · press at the centre](docs/images/439-iphone-a-finger-on-a-wall-lit-and-named.png) | ![iPhone 13: the circle on the wall by two taps, its // glyph and its centre p9](docs/images/440-iphone-the-circle-on-the-wall.png) |
+| ![iPhone 13, a finger on the lid with the three-point circle armed: the lid lit, ▱ e1.lid by the lifted mark, the chip reading on e1.lid · circle · tap the first point](docs/images/441-iphone-a-finger-on-the-lid-three-point-circle-armed.png) | ![iPhone 13: the circle through three faces by three taps, p9, p10 and p11 each on its own face with its ▱](docs/images/442-iphone-the-circle-through-three-faces.png) |
+
+- **Bug 72, reproduced first** (`test/e2e/clickonface.e2e.ts`), in two legs.
+  A click on a face was swallowed: the circle tool settled its press onto the
+  face and compared the release against it raw — same pixel, the ground
+  behind — so every click on a face read as a zero-length drag and the
+  gesture started over; only a drag drew. And a press that snapped to one of
+  the face's own edges (a finger's usual press on a phone's small face) never
+  asked what face it was on, and laid the circle on the ground through a
+  point of the wall: the owner's words. Before the fix the reproduction made
+  zero circles, then one facing +z.
+- **A click lands on the face drawn under it** (`ToolEngine.toolEvent`,
+  `landingAt`): with no sketch plane chosen, every pointer event of a tool
+  that places points is read on the solid's face under the pixel —
+  solidpick.ts's `faceUnder`, the dimension tool's own pick — facing the
+  viewer, and the tool is told which (`PointerInfo.face`). The snap is
+  restricted to the face: its edges, vertices and what lies in it, never a
+  ground entity behind; a snap to the face's own edge still wins. **Each
+  click its own face**: a three-point circle through three faces, a line
+  from a wall onto the lid, a spline point by point; a shape dragged out
+  lays out on its first press's face (`CurvePlane.settle` / `settleOwn`).
+- **Held, visibly**: `onplane(p, "e1.m3")` — the face named as the kernel
+  names it, the same op, ▱ and `del` as any onplane, read off the feature's
+  record (relations/solidref.ts's `onFace`, as `fdist` reads a face) so it
+  follows a `set` of the depth and goes with the feature; a curve wholly on
+  one face gets `par(c, "e1.m3")` on its normal (`faceDirection`). A wall's
+  hold is both ways: its line's ends are variables. A face name is no axis
+  (`parseFaceName` in model.ts).
+- **Before the click**: the face lit amber where it is in front, `▱ e1.m3`
+  with a dark rim beside the mouse's ghost or a finger's lifted mark, and
+  the chip's first part `on e1.m3` in amber — said, not offered: no plane
+  menu, ⟂ or Done. A round face: `on e1.m0, round`, the point placed and
+  nothing held, said in the log.
+- **The chosen plane still wins** (case 1): with a work plane or a default
+  frame set no face is asked about. The ground is still where a click lands
+  with nothing else there, and holds nothing.
+- **`finish` redraws**: a tool that commits on its press left the frame its
+  solve drew — the face lit, the chip armed — until the next pointer event.
+- Unit: `test/clickonface.test.ts` (the relation, `set`, save/open, the
+  cascade, a round face, `par`, the tools by hand, snaps on a face, the
+  engine, the chip). E2E, mouse and iPhone 13: `clickonface.e2e.ts`.
+  Decisions in TODO.md's register; the why in CONVERSATION_LOG.md.
+
 ## 2026-11-09 — the constraints palette: a pane of its own, installed as a workbench module; redundancy counted, not blamed
 
 The owner: *"the constraint list should not be on the features palette, it

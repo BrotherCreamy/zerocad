@@ -10,6 +10,86 @@ For the itemized technical state see `STATUS.md`, for what's next see
 `CHANGELOG.md`, and for the project pitch see `README.md`.
 
 
+## 2026-11-09 — a click on a face lands on it, is held there, and says so first
+
+The owner: *"when i make a rectangular prism, i attempt to draw an e.g.
+circle on another face, but it still draws the circle on the XY plane. Why?
+if i am hovering over a face without an active on-plane constraint, it should
+constrain to the plane i am hovering over."* Built on `claude/click-on-face`
+from docs/plans/click-on-face.md. The register has the choices; this is why.
+
+**Reproduced first, and the bug was not where the spec guessed.** The spec
+suspected `isSolidFace` after #87, or a snap to a ground entity behind the
+face. Driving the real app showed the face's loop was found fine. What
+failed was two things. A *click* on a face never registered: the circle tool
+settled its press onto the face's plane and then asked `pressMoved(press,
+release)` with the release still on the ground behind — same pixel, worlds
+apart — so every click read as a drag of zero radius and the gesture quietly
+reset. Only a drag drew, and the owner, clicking, saw nothing or saw the
+next press start over. And a press that *snapped* — to one of the face's own
+edges, which on a phone's small face a finger's reach makes nearly every
+press — skipped the face question outright (`!p.snap`), so the circle was
+laid on the ground through a point of the wall: the owner's words exactly.
+Both are assembly: the unit tests drove the tools with clicks already on the
+plane and passed. Bug 72, with both legs written down.
+
+**Landing in the engine, not in the tools.** The old design asked the face
+question inside `CurvePlane.begin`, once per gesture, of the loop under the
+pixel. Moving it to the engine — every pointer event of a tool that places
+points is read on the face drawn under the pixel, and told which — gave
+per-click surfaces to every tool at once (point, line, spline, the shapes)
+and let the snap be restricted to the face before the tool sees it, which is
+the only place that restriction can live. It also made the press and the
+release agree by construction. The face is the one the frame drew, asked
+through `faceUnder`, the dimension tool's own question: so the face lit, the
+face named and the face landed on are one face.
+
+**The existing `onplane`, extended, rather than a new op.** A face name has
+one dot, like an axis reference, and `parseAxisRef` threw on it — found by
+the e2e's page errors: the `par(c, "e1.m2")` glyph asked whether its last
+argument was an axis. The face's shape (`e1.lid`, `e1.m3`) moved into
+model.ts beside `parseAxisRef`, where the namespace is owned, and solidref.ts
+re-exports it; `onPlane` hands a face name to `onFace` in solidref.ts, which
+reads the face as `fdist` does. The reward is everything that already knew
+`onPlane`: the ▱ glyph, the palette's rows, `del`, the deletion cascade (a
+face's referent is its feature, so `del("e1")` takes the relation), the
+copies offset and mirror make, the journal and the replay. The cost is one
+branch at the top of `onPlane`.
+
+**A wall's hold is both ways, and that shows under `set`.** `readPlane`
+reads a wall's line as variables, so a point held on a wall can pull the
+wall. Measured: with nothing holding the base, a point put 5 off a wall met
+it halfway — the wall came 2.5 and the point went 2.5. And a `set` of the
+depth with a circle pinned to three faces moved the solid 0.7 of the 10 the
+lid rose, the minimum-norm solve sharing the change. Correct by the owner's
+"bidirectional relationships everywhere"; surprising if you think of the
+solid as fixed. Written into the register as a question about free bases,
+not about faces: a base held (sketch mode, `fix`) stays put and the point
+rides the whole way, which the unit test shows both ways.
+
+**Rejected: the chip's first part as a button.** `on e1.m3` is the same
+question the chip's `where` answers for a chosen plane, so it goes in the
+same place — but a face under the hand is no mode: nothing to look at, end
+or change. The part is text in the hover's amber while it is a landing, and
+the ⟂ and Done are hidden. Rejected too: the hover tag, which is hidden while
+a tool is armed on purpose (the snap marker says the useful thing then); the
+face's name is the mark's and the chip's.
+
+**Rejected: a snap to an edge of the face suppressing the face hold.** The
+spec's "a snap to a vertex or edge still wins over the face" is read as the
+snap being taken rather than refused: a vertex snap pins the point and gets
+no onplane (as a chosen plane never gets one on a pinned point); a snap along
+an edge gets the edge's `on` *and* the face's `onplane`, as a sketch plane
+does today — an agreeing pair, counted and not blamed.
+
+**The pictures found the phone's snaps.** On the iPhone at the phone's own
+scale a wall is sixty pixels across and its edge midpoints are inside a
+finger's midpoint snap of its middle, so the first finger tests pinned their
+centres to edges, correctly, and failed the face assertion. The e2e zooms in
+and says why. And a finger held on a face for a picture ran into the
+long-press and opened the menu, which the next tap closed: the look is a
+short press now, Escape after it, the tool armed afresh.
+
 ## 2026-11-09 — the constraints palette, and redundancy counted rather than blamed
 
 The owner: *"the constraint list should not be on the features palette, it

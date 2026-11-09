@@ -33,6 +33,63 @@ otherwise.
 
 ## Decisions made so far — veto here if any are wrong
 
+- **A click on a face lands on that face, is held there, and says so before
+  the click** (the owner, 2026-11-09: *"if i am hovering over a face without
+  an active on-plane constraint, it should constrain to the plane i am
+  hovering over … it should come up with an on-plane constraint indicator
+  before i click (and highlight the plane i am hovering over)"*;
+  docs/plans/click-on-face.md, built). The choices made building it, each
+  vetoable:
+  - **Per click, not per gesture**: every pointer event of a tool that
+    places points is landed on the face drawn under the pixel, so a
+    three-point circle's three points, a line's two ends and a spline's
+    points each take their own face. A shape dragged out — a rectangle, a
+    slot, a polygon, an ellipse, a circle's radius, an arc — is laid out on
+    the face its first press landed on, the rest of the gesture read back
+    onto it; a drag that runs off the face's edge stays on the face.
+  - **The face is held by the existing `onplane`**, naming the face as the
+    kernel names it — `onplane("p9", "e1.m3")` — read off the feature's
+    record as `fdist` reads it (relations/solidref.ts): a cap by its first
+    point and the sketch plane's normal, a wall by its line's two ends as
+    variables. No second relation op, so the palette, the ▱ glyph, `del`
+    and the deletion cascade (a face's referent is its feature) all come for
+    free. A wall's hold is both ways: a point held on a wall can pull the
+    wall and the solid with it, where nothing holds the base.
+  - **A curve wholly on one face gets `par(c, "e1.m3")`** on its normal, as a
+    curve on a chosen plane does; a circle through three faces lies in none
+    and gets no `par`, its normal seeded as the plane through its three
+    points.
+  - **Snaps on a face are the face's**: the face's plane is handed to the
+    snap as the sketch plane is, so only its edges, vertices and what lies
+    in it are offered as themselves, and a point off it only at its
+    projection (which infers nothing). A snap to the face's own edge still
+    wins over the face: the point is on the edge and on the face.
+  - **The chosen plane still wins** (case 1, sketch-mode.md): with a work
+    plane or a default frame set, every click lands on it whatever is under
+    the pointer, and no face is asked about. The spec's design 1 listed the
+    face first and its design 5 the plane first; the plane, Onshape's rule.
+  - **The ground is where a click lands when nothing else is there, and
+    holds nothing**: it is the pointer's plane, not a relation (the owner's
+    "every sketch is a 3D sketch").
+  - **A round face places and holds nothing**, said in the log line (`p9
+    placed on e1.m0, a round face — nothing holds it there yet`) and in the
+    chip (`on e1.m0, round`); the click lands on the piece of it drawn under
+    the pixel. An `onsurface` relation is filed below.
+  - **A face only the kernel knows** (a fillet's, a boolean's) is round to
+    this: placed, not held — nothing in the model holds such a face.
+  - **Faces land only where they are drawn**: in the wire view no faces are
+    drawn and a click lands on the ground, as a dimension picks no face
+    there. The curve tools' old first-click `regionAt` path is gone.
+  - **The indicator is the relation's own mark**, `▱ e1.m3`, in the tools'
+    green beside the mouse's ghost (above and right; left at the canvas's
+    edge) and beside a finger's lifted mark (under the snap's words when
+    there are any); the face is lit in the hover's amber as the dimension
+    tool lights one. The chip's first part says `on e1.m3` in that amber,
+    with no menu, ⟂ or Done: where the click lands is said, not offered.
+  - **Moved is asked of like against like**: a tool's press and release are
+    compared as both are read on the gesture's plane (or both on their own
+    face), never settled against raw — the half of bug 72 that swallowed
+    every click on a face.
 - **Decided by the owner (2026-11-09), to build:**
   - **An extrude's two profiles are peers, related "kind of like mirror
     relations"**; *"i don't like the idea of anything being 'consumed' as
@@ -2229,6 +2286,34 @@ are flagged as such.
          **Built** (2026-10-22) — see Done.
 
 ## Next up
+
+- [x] **A click on a face draws on the ground; nothing says where a click
+  will land** (the owner, 2026-11-09: *"when i make a rectangular prism, i
+  attempt to draw an e.g. circle on another face, but it still draws the
+  circle on the XY plane"*). Spec: [`click-on-face.md`](docs/plans/click-on-face.md).
+  **Built** (2026-11-09, branch `claude/click-on-face`): bug 72 (two legs:
+  a click on a face swallowed as a zero-length drag; a snapped press never
+  asking its face), the engine landing every drawing tool's event on the
+  face drawn under the pixel, `onplane(p, "e1.m3")` and `par(c, "e1.m3")`
+  through solidref.ts, the face lit and named before the click, snaps the
+  face's. Decisions in the register above. Left:
+    - [ ] **`onsurface(p, "e1.m0")`**: a point held on a round face (a
+          cylinder's wall: |q − axis| = r, read off the circle and the
+          extrusion). Today a click on one places the point and says that
+          nothing holds it.
+    - [ ] **A kernel-only face** (a fillet's, a boolean's) has nothing in the
+          model to hold a point to; placed, not held, like a round one.
+          Would take a plane reference for a kernel face that follows the
+          body (sketch-mode.md's kernel-face frame does not).
+    - [ ] **A `set` of the depth with a circle pinned to three faces of a free
+          prism moves the prism a little** (the minimum-norm solve shares the
+          change; measured 0.7 of 10). Correct by the bidirectional rule;
+          surprising to a user who thinks of the solid as fixed. A base held
+          (sketch mode, `fix`) stays. If the owner wants the solid to stay by
+          default, that is a decision about free bases, not about faces.
+    - [ ] **The hover tag names nothing while a tool is armed** (as before);
+          the face's name is the chip's and the mark's. A tag by the cursor
+          would say it a third time.
 
 - [ ] **An extruded solid deforms when its corner is dragged** (the owner,
   2026-11-08: *"Why is it that after I extrude I can drag a corner of the
