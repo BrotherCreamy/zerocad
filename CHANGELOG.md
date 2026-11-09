@@ -60,8 +60,9 @@ before i click (and highlight the plane i am hovering over)"*
 - **The chosen plane still wins** (case 1): with a work plane or a default
   frame set no face is asked about. The ground is still where a click lands
   with nothing else there, and holds nothing.
-- **`finish` redraws**: a tool that commits on its press left the frame its
-  solve drew — the face lit, the chip armed — until the next pointer event.
+- **`finish` redraws** (bug 73): a tool that commits on its press left the
+  frame its solve drew — the face lit, the chip armed, the button lit —
+  until the next pointer event; modefeedback.e2e had asserted the stale chip.
 - Unit: `test/clickonface.test.ts` (the relation, `set`, save/open, the
   cascade, a round face, `par`, the tools by hand, snaps on a face, the
   engine, the chip). E2E, mouse and iPhone 13: `clickonface.e2e.ts`.

@@ -149,9 +149,12 @@ it was the snap, not the entity, that lost the face.
   the chip, `e1.m0 · not held` by the hand (no ▱), the point placed on the
   piece drawn under the pixel, and the log: `p9 placed on e1.m0 — a round
   face, or one only the kernel knows: nothing holds it there yet`.
-- **Finish redraws**: `ctx.finish` requests a render, so a tool that commits
-  on its press leaves no stale frame (the lit face, the armed chip) behind —
-  seen in the picture of a three-point circle just made.
+- **Finish redraws** (bug 73): `ctx.finish` requests a render, so a tool
+  that commits on its press leaves no stale frame (the lit face, the armed
+  chip, the lit button) behind — seen in the picture of a three-point circle
+  just made; modefeedback.e2e had asserted the stale chip as "the next
+  circle", and frameless.e2e that a circle over a lid was held by nothing;
+  both say the new truth.
 
 ### Deviations from the design, and decisions (each in TODO.md's register)
 

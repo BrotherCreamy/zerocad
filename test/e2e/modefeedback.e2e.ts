@@ -119,7 +119,11 @@ test("a circle armed: the chip says the stage — press at the centre, drag the 
   await app.page.mouse.up();
   await app.page.waitForTimeout(200);
   assert.equal((await app.model()).byKind.circle, 1);
-  assert.equal((await chip(app)).next, "press at the centre, or click 3 points", "the next circle");
+  // The circle made, the tool is put down, and the chip says so at once:
+  // it used to keep "press at the centre" — the frame the solve drew still
+  // had the tool armed, and nothing redrew after finish (bug 73).
+  assert.equal((await chip(app)).what, "select", "the tool put down after its circle");
+  assert.equal((await chip(app)).next, "click a thing, or drag to box", "the chip says so without waiting for the next move");
 });
 
 test("what is held on the plane is in full ink, the rest one step dimmed — drawing only, the pick unchanged", async () => {

@@ -2284,7 +2284,7 @@ until the next action went unrecorded.
 
 ## Why there is an end-to-end suite
 
-Seventy-two bugs so far were invisible to the unit tests and obvious within seconds
+Seventy-three bugs so far were invisible to the unit tests and obvious within seconds
 of running the app:
 
 1. a status readout that went stale, so a conflict could be introduced from
@@ -2649,6 +2649,15 @@ of running the app:
    the reproduction (`test/e2e/clickonface.e2e.ts`) made zero circles, then
    one facing +z. The engine lands every drawing tool's event on the face
    drawn under the pixel now, snap or no snap, and says which.
+73. A tool that commits on its press — the three-point circle, every tool
+   whose last click builds — left the frame its solve drew on screen until
+   the next pointer event: the toolbar button still lit, the chip still
+   saying `circle · press at the centre`, and now the face it was landing on
+   still lit, with the tool already put down. `finish` cleared the tool and
+   redrew nothing. The e2e suite had asserted the stale chip as "the next
+   circle" (modefeedback.e2e) and passed for weeks; the picture of a
+   three-point circle just made, the lid still amber under no tool, found
+   it. `finish` redraws.
 
 None of these are mathematics. They are all *assembly*. Hence `npm run
 test:e2e`, and hence the expectation that anything touching the app is checked
