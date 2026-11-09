@@ -23,6 +23,10 @@ otherwise.
   Always"*). The review artifact is **retired** (the owner, 2026-11-06:
   *"You don't need to update the artifact any more, just commit to main repo
   and mirror"*): the hosted app on Pages is the review copy now.
+- **Standing duty**: every message to the owner ends with the list of
+  questions outstanding for them, and is as concise as possible (the owner,
+  2026-11-09: *"at the end of every message to me, include a list of the
+  outstanding questions you have for me"*, *"concise as possible"*).
 
 ## Decisions made so far — veto here if any are wrong
 
