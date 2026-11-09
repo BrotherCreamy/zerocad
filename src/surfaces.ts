@@ -25,11 +25,14 @@
 // At the operations' height: it reads the model, its loops and its chains, and
 // the kernel only as the program it hands it.
 
-import { memberName, SURFACE_HEADS, type Model, type ProfileMember, type SurfaceEntry } from "./model.ts";
+import { memberName, SURFACE_HEADS, valueArgIndex, type Model, type ProfileMember, type SurfaceEntry } from "./model.ts";
 import { chainThrough, walkChain } from "./sketchedit.ts";
 import { findLoops, isVirtual, type Loop } from "./loops.ts";
 import { orientingPlane, profileOfLoops, regionProfile } from "./operations.ts";
-import { planeAxes } from "./curveplane.ts";
+import { chordPlane, planeAxes } from "./curveplane.ts";
+import { extrusion } from "./relations/extrusion.ts";
+import { perpendicular } from "./relations/geometry.ts";
+import { addSpline } from "./relations/spline.ts";
 import { kernelProfile, revolveSweep } from "./solids.ts";
 import { chamferSetback, filletRadius } from "./relations/blend.ts";
 import { surfaceAngle, surfaceDepth, surfaceDistance } from "./relations/surface.ts";
@@ -172,10 +175,20 @@ export interface SurfacePrograms {
   skipped: { feature: string; why: string }[];
 }
 
-/** The value a record's dimension holds now, or NaN. */
+/**
+ * The value a record's dimension holds now, or NaN. Where the dimension keeps
+ * it (`valueArgIndex`): a surface's own sizes at 0, an edge extrude's
+ * `extrusion` at 1, after its frame.
+ */
 function sizeOf(model: Model, s: SurfaceEntry): number {
-  const v = s.size === undefined ? undefined : model.relations.get(s.size)?.args[0];
+  const r = s.size === undefined ? undefined : model.relations.get(s.size);
+  const v = r ? r.args[valueArgIndex(r.op) ?? 0] : undefined;
   return typeof v === "number" ? v : NaN;
+}
+
+/** Whether a record is an edge extrude: its depth an `extrusion`, holding twins of its own (`edgeExtrude`). */
+export function isEdgeExtrude(model: Model, s: SurfaceEntry): boolean {
+  return s.kind === "extrude" && s.size !== undefined && model.relations.get(s.size)?.op === "extrusion";
 }
 
 /**
@@ -344,8 +357,15 @@ export function nextSurfaceId(model: Model): number {
 
 /** An extruded or revolved surface's sheet, its extends applied: the profile lengthened at an end, the sweep at its start or end. */
 function sweepNode(model: Model, s: SurfaceEntry, id: number, extends_: SurfaceEntry[]): SurfaceNode {
-  const plane = planeAxes(model, s.frame!);
+  const axes = planeAxes(model, s.frame!);
   const members: ProfileMember[] = (s.loops ?? [s.curves ?? []])[0];
+  // An edge extrude's sheet runs along its chord, wherever its curves and the
+  // chord have been turned to — the plane it was made on is only where it
+  // started (as an extrude's, curveplane.ts's `featurePlane`); and, as an
+  // extrude's, the kernel sweeps only square, so a chord let lean is drawn and
+  // not built.
+  const plane = axes && isEdgeExtrude(model, s) ? { ...axes, ...chordPlane(model, s.size!, axes) } : axes;
+  if (plane && isEdgeExtrude(model, s)) refuseLeaning(model, members, plane.n);
   const { at, profile, local } = kernelProfile(model, plane, [members]);
   const value = sizeOf(model, s);
   if (!Number.isFinite(value) || value === 0) throw new Error(`its ${s.kind === "extrude" ? "depth" : "angle"} is ${value}`);
@@ -519,6 +539,99 @@ export function surfaceExtrude(model: Model, curves: string | string[], depth: n
     const d = surfaceDepth(model, depth);
     return model.addSurface({ kind: "extrude", curves: names, loops: [members], frame: plane, size: d, names: [...names, d], owns: [d] }).name;
   });
+}
+
+/**
+ * An **edge extrude** (docs/plans/profiles-held.md) — the primitive an extrude
+ * is made of. The owner: *"extrude should create an identical copy of the
+ * originating profile's geometry, with relations and all, then chord edges
+ * connecting each corner of one profile to the other, and then the edges
+ * become extruded surfaces. Edge extrude is a fundamental feature."*
+ *
+ * So, unlike every other record here, it **makes entities**: each curve's
+ * copy E′ — every point of it moved by one chord, every size and normal the
+ * same — and an end chord, base to copy, at every end of the chain (a wall,
+ * as an extrude's). One `extrusion` holds them, the dimension `set` edits, and
+ * beside it `s1_perp`, the chord square to the curves: the same pair an
+ * extrude is held by, so a profile extrude is exactly the edge extrude of
+ * every edge of its profile sharing one chord. The sheet between E and E′ is
+ * derived — built by the kernel from the curves and the chord, stored nowhere.
+ * Both ways, as everything is: a copy's corner dragged drags its base.
+ *
+ * A curve is twinned whole — lines, arcs, circles and splines, as the surface
+ * sweep takes. A chain's ends joined by a shared point twin once; two ends
+ * joined only by a `coin` each have a twin and a wall of their own, held
+ * together by that coin's translation (written down in TODO.md, left).
+ *
+ * `edgeExtrude("l1", 20)` the chain through l1; `edgeExtrude(["l1", "a2"],
+ * 20)` just those. Journalled as `edgeExtrude` with the chain and plane
+ * resolved, replayed name for name. Returns the record's name.
+ */
+export function edgeExtrude(model: Model, curves: string | string[], depth: number, frame?: string | null, resolved?: unknown): string {
+  need3d(model, "edgeExtrude");
+  const { names, members } = resolved != null && Array.isArray(resolved)
+    ? { names: (resolved as ProfileMember[]).map(memberName), members: resolved as ProfileMember[] }
+    : sweptCurves(model, curves, "edgeExtrude");
+  if (typeof depth !== "number" || !Number.isFinite(depth) || depth === 0) {
+    throw new Error(`edgeExtrude moves its curves a depth — a number other than 0, got ${quoted(depth)}`);
+  }
+  const plane = curvesPlane(model, names, frame, "edgeExtrude");
+  return model.asOperation("edgeExtrude", [curves, depth, plane, members], () => {
+    const axes = planeAxes(model, plane);
+    if (!axes) throw new Error(`edgeExtrude: the plane ${plane} has collapsed`);
+    const z = unit3(axes.n)!;
+    const owns: string[] = [];
+    const made = (n: string) => { owns.push(n); return n; };
+    const twinOf = new Map<string, string>();
+    const twin = (p: string) => {
+      let t = twinOf.get(p);
+      if (!t) { t = made(model.addPoint(model.coords(p).map((c, i) => c + depth * z[i])).name); twinOf.set(p, t); }
+      return t;
+    };
+    const ends: string[] = [];
+    const curvePairs: string[] = [];
+    for (const c of names) {
+      const e = model.entities.get(c)!;
+      if (e.kind === "line") {
+        const [a, b] = e.refs.map(twin);
+        made(model.addLine(a, b).name);
+        ends.push(...e.refs);
+      } else if (e.kind === "arc") {
+        const [s, x] = [twin(e.start), twin(e.end)];
+        curvePairs.push(c, made(model.addArc(twin(e.center), s, x, model.radius(c), model.normalOf(c)).name));
+        ends.push(e.start, e.end);
+      } else if (e.kind === "circle") {
+        curvePairs.push(c, made(model.addCircle(twin(e.center), model.radius(c), model.normalOf(c)).name));
+      } else if (e.kind === "spline") {
+        made(addSpline(model, e.points.map(twin), e.closed === true));
+        if (e.closed !== true) ends.push(e.points[0], e.points[e.points.length - 1]);
+      }
+    }
+    // An end chord at every end the chain has — once at a joint two curves share.
+    for (const p of new Set(ends)) made(model.addLine(p, twinOf.get(p)!).name);
+    const pairs = [...twinOf].flat();
+    const held = made(extrusion(model, plane, depth, ...pairs, ...curvePairs));
+    const record = model.addSurface({ kind: "extrude", curves: names, loops: [members], frame: plane, size: held, names: [...names, ...owns], owns }).name;
+    // The chord square to the curves: its own relation, deletable, named for
+    // the record so it claims no `r` (as an extrude's `e1_perp`).
+    const [base, top] = pairs;
+    model.namedRelation(`${record}_perp`, () => perpendicular(model, base, top, record));
+    return record;
+  });
+}
+
+/** The kernel sweeps square: an edge extrude whose curves stand off the plane square to its chord is drawn from its copies, not built. */
+function refuseLeaning(model: Model, members: readonly ProfileMember[], n: number[]): void {
+  const u = unit3(n);
+  if (!u) return;
+  const pts = [...new Set(members.flatMap((m) => {
+    const e = model.entities.get(memberName(m));
+    return e ? model.refsOf(e).filter((p) => model.entities.get(p)?.kind === "point") : [];
+  }))].map((p) => model.coords(p));
+  if (pts.length < 2) return;
+  const size = Math.max(1, ...pts.map((p) => Math.hypot(...p)));
+  const off = Math.max(...pts.map((p) => Math.abs(dot3(sub3(p, pts[0]), u))));
+  if (off > 1e-6 * size) throw new Error("its chord is not square to its curves — an oblique edge extrude is drawn, and the kernel only sweeps square");
 }
 
 /**
@@ -810,7 +923,9 @@ export function describeSurface(model: Model, s: SurfaceEntry): string {
   const v = sizeOf(model, s);
   const n = Number.isFinite(v) ? ` = ${Math.round(v * 1000) / 1000}` : "";
   switch (s.kind) {
-    case "extrude": return `${s.name}  surface extruded from ${(s.curves ?? []).join(" ")}, depth ${s.size}${n}`;
+    case "extrude": return isEdgeExtrude(model, s)
+      ? `${s.name}  edge extrude of ${(s.curves ?? []).join(" ")}, depth ${s.size}${n}`
+      : `${s.name}  surface extruded from ${(s.curves ?? []).join(" ")}, depth ${s.size}${n}`;
     case "revolve": return `${s.name}  surface revolved from ${(s.curves ?? []).join(" ")} about ${s.axis}, angle ${s.size}${n}`;
     case "planar": return `${s.name}  planar surface of ${(s.curves ?? []).join(" ")}`;
     case "face": return `${s.name}  surface of the face ${s.of}`;

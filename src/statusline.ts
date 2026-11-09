@@ -105,8 +105,9 @@ export class StatusLine {
  * tested without a browser.
  *
  * - a conflict: the relations that cannot all hold — `d1 · d2 cannot all hold`;
- * - solved with redundancy: the count, then the redundant ones, in the softer
- *   word — `3 free · redundant r5` — never blocking;
+ * - solved with redundancy: the count, then the redundant ones, muted as the
+ *   count is — `3 free · redundant r5` — never blocking, never a warning
+ *   (an agreeing relation is no fault: docs/plans/profiles-held.md);
  * - solved: how many ways the drawing can still move — `3 free`, `0 free`.
  */
 export type DiagnosisPart = string | { relation: string };

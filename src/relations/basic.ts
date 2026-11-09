@@ -172,6 +172,50 @@ export function onPlane(model: Model, pointName: string, planeName?: string | nu
   });
 }
 
+/**
+ * `coplanar(p, a, b, c)`: the point `p` lies in the plane through `a`, `b` and
+ * `c` — **all four of them points that move**, so it holds both ways
+ * (docs/plans/profiles-held.md: the owner's "bidirectional relationships
+ * everywhere by default"). Where `onPlane(p, "a.b.c")` reads the three as a
+ * datum the point follows and never pushes, this one is a relation between
+ * entities: pull `p` off the plane and the plane tilts to keep it, as far as
+ * nothing else holds the three.
+ *
+ * One row, `(p − a)·n̂`, `n̂ = unit((b − a) × (c − a))`: linear in `p`, a
+ * distance (not its square), and scale-free in the three. Its conditioning is
+ * the triangle's, so a caller picks three that span the plane well — an
+ * offset takes the three of its chain that make the largest triangle. 3D only;
+ * refuses four points that are not four, and three in one line.
+ */
+export function coplanar(model: Model, pName: string, aName: string, bName: string, cName: string): string {
+  if (model.dim !== 3) throw new Error("coplanar needs a 3D model — in 2D every point lies in the one plane there is");
+  const names = [pName, aName, bName, cName];
+  if (new Set(names).size < 4) throw new Error("coplanar needs four different points: the point, and three that make the plane");
+  const vars = names.map((n) => model.point(n).varIndices);
+  const [a, b, c] = [aName, bName, cName].map((n) => model.coords(n));
+  const cr = crossNumbers(b.map((x, i) => x - a[i]), c.map((x, i) => x - a[i]));
+  if (!(Math.hypot(...cr) > 1e-12 * Math.max(1, Math.hypot(...b.map((x, i) => x - a[i])) ** 2))) {
+    throw new Error(`${aName}, ${bName} and ${cName} lie in one line — they make no plane for ${pName} to lie in`);
+  }
+  return model.relation("coplanar", names, () => {
+    model.addResidual(vars.flat(), (l) => {
+      const [p, q, r, s] = chunk(l, 3, 4);
+      const u = vecSub(r, q), v = vecSub(s, q);
+      const n = unitDuals([
+        u[1].mul(v[2]).sub(u[2].mul(v[1])),
+        u[2].mul(v[0]).sub(u[0].mul(v[2])),
+        u[0].mul(v[1]).sub(u[1].mul(v[0])),
+      ]);
+      const d = vecSub(p, q);
+      return [n[0].mul(d[0]).add(n[1].mul(d[1])).add(n[2].mul(d[2]))];
+    }, `coplanar(${pName},${aName},${bName},${cName})`);
+  });
+}
+
+function crossNumbers(a: number[], b: number[]): number[] {
+  return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+}
+
 /** a and b occupy the same point, coordinate by coordinate */
 export function coincident(model: Model, aName: string, bName: string): string {
   return model.relation("coincident", [aName, bName], () => {

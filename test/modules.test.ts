@@ -35,7 +35,7 @@ test("the built-in modules load in order, and the tables are filled from them in
   // The spline after the ellipse, on the curves button (docs/plans/spline.md).
   assert.deepEqual(listTools(), ["point", "line", "rectangle", "polygon", "slot", "region", "circle", "arc", "ellipse", "spline", "fillet",
     "bevel", "trim", "extend", "offset", "mirror", "pattern", "dimension", "constrain", "extrude", "cut", "revolve", "sketch", "round", "chamfer",
-    "surface"]);
+    "surface", "edge"]);
   // The menu's tool items and the File items, module by module.
   assert.deepEqual(menuToolItems().map((i) => i.tool), ["point", "line", "rectangle", "circle", "arc", "ellipse", "spline", "fillet"]);
   assert.deepEqual(fileMenuItems().map((i) => i.label), ["New", "Open…", "Save", "Share…", "Export STEP…"]);
@@ -136,7 +136,7 @@ test("a file written before the re-cut — every sketch-shapes piece and an extr
   // 18 brought the spline (docs/plans/spline.md), which a file with none of
   // its own writes nothing for.
   const want = JSON.parse(text);
-  want.version = 18;
+  want.version = 19;
   const at = want.journal.findIndex((e: { op: string }) => e.op === "extrude");
   const [member, , frame, loops] = want.journal[at].args;
   want.journal.splice(at, 1, { op: "region", args: [member, frame, loops[0]] },

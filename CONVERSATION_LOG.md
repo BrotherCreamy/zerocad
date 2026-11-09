@@ -10,6 +10,65 @@ For the itemized technical state see `STATUS.md`, for what's next see
 `CHANGELOG.md`, and for the project pitch see `README.md`.
 
 
+## 2026-11-09 — a prism stays a prism
+
+The owner: *"Why is it that after I extrude I can drag a corner of the
+extrude and it deforms the solid? I think it's missing adding in
+relations"*. The cause was one line of `extrusion`: twin = base + depth along
+the frame's +z, a datum. A drag on a lid corner could only move the base, and
+the base tilted under walls that could not.
+
+**Rejected first: holding the sketch to the ground.** The first plan held a
+profile drawn on the ground `onPlane` the ground, which fixes the drag by
+making the base immovable. The owner: *"It's not about being tied to the
+ground plane, it's about correct relationships BETWEEN entities."* — and then
+*"the default for sketch entities is no plane."* So the fix had to make the
+solid's own entities agree with each other, and nothing agree with a datum
+nobody picked.
+
+**Rejected second: the profile's own normal inside the extrusion.** The
+natural form — a unit normal of the profile's, the twins at base + depth·n —
+was proposed, and the owner asked instead for an edge extrude as the
+primitive, and for the squareness to be *"its own deletable relation"*:
+*"how could you have a relation inside an extrude? that doesnt really make
+sense to me"*. That turned out better than the normal: the extrusion is then
+only a translation (linear, both ways, nothing squared), `perp(chord, e1)` is
+an ordinary relation with a name and a `del`, and an `ang` in its place is a
+draft — a thing the normal-inside form could never have offered.
+
+**Why a derived name, `e1_perp`.** Relation names come from a counter, and
+an operation that makes one more relation than it used to shifts every later
+`r` in an old file by one: `del("r7")` in its journal would then delete the
+wrong thing. A name taken from the record claims no counter, so old files
+replay name for name and gain the perpendicular — their solids stop skewing
+without a format bump.
+
+**Why `set` seats the lid first.** With no direction read, a depth changed
+from 10 to 25 leaves the solve to find where the extra 15 goes, and a
+minimum-norm Levenberg–Marquardt step shares it between base and lid:
+measured, a free rectangle's base dropped 5.9 and tilted. Seating the twins
+at the new depth first leaves the solve nothing to do (0 iterations). It is a
+seed, as the operation's own are, and every relation still holds both ways.
+The same move handles a depth set across zero, which would otherwise fold
+every wall through nothing.
+
+**Why the angle seeds.** Deleting `e1_perp` and typing `ang(wall, e1, 0.3)`
+did nothing at first: an unsigned angle is a function of the angle alone, so
+at 0 its gradient vanishes by symmetry however it is written. `ang` seats the
+chord at θ toward the first edge when it finds it standing exactly square.
+
+**Why four perps need a coplanar.** The owner wanted four so that every edge
+is held alike. Measured, four right angles do flatten a quadrilateral — a
+skew one's angles sum to less than 2π — but only to second order: a corner
+dragged out of plane came back 2.9e-4 off. A `coplanar` makes it first
+order, 9e-13. The fourth perp is then implied, and the owner's point 4 — an
+agreeing redundancy in ordinary ink, muted — is what lets that be the
+default rather than an orange mark on every rectangle.
+
+**Left on hold**: the owner's point 2, linked twin relations on the lid, so
+that *"it should be impossible to tell which was the original and which is
+the derivative"*. Nothing extra is on the lid meanwhile; TODO.md says so.
+
 ## 2026-11-08 — the solid tools, for someone who has not used them
 
 The owner: *"Flip button."* and *"I'm still not clear on how to use the

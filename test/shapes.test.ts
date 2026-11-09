@@ -300,7 +300,7 @@ test("an ellipse replays from its file: format 15, minors and normals saved, a v
   const text = save(m);
   const saved = JSON.parse(text);
   assert.equal(saved.version, VERSION);
-  assert.equal(VERSION, 18); // 15 brought the ellipse; 16 the head's workbench and modules; 17 regions; 18 the spline
+  assert.equal(VERSION, 19); // 15 brought the ellipse; 16 the head's workbench and modules; 17 regions; 18 the spline; 19 an offset held in its plane
   assert.ok(Math.abs(saved.values.minors[e] - 3) < 1e-9);
   assert.equal(saved.values.normals[e].length, 3);
   const back = open(text);
@@ -403,26 +403,33 @@ for (const circumscribed of [true, false]) {
   }
 }
 
-test("polygon in 3D: laid out on a tilted plane and held there — derived corners onplane, the circle onplane and par", async () => {
+test("polygon in 3D: laid out on a tilted plane — and, the plane picked, held there: derived corners onplane, the circle onplane and par", async () => {
   await loadKernel();
-  const m = new Model(3);
-  const t = 0.5;
-  const tri = [m.addPoint([0, 0, 0]).name, m.addPoint([1, 0, 0]).name, m.addPoint([0, Math.cos(t), Math.sin(t)]).name];
-  for (const q of tri) fix(m, q, m.coords(q));
-  const plane = tri.join(".");
-  const n = [0, -Math.sin(t), Math.cos(t)];
-  const c = m.addPoint([1, 2 * Math.cos(t), 2 * Math.sin(t)]).name;
-  const v = m.addPoint([6, 2 * Math.cos(t), 2 * Math.sin(t)]).name;
-  onPlane(m, c, plane);
-  onPlane(m, v, plane);
-  const parts = polygon(m, c, v, 5, true, plane);
-  ok(m);
-  for (const p of parts.vertices) assert.ok(Math.abs(dot(m.coords(p), n)) < 1e-9, `${p} on the plane`);
-  assertRegular(m, c, parts.vertices, "3D");
-  const ops = [...m.relations.values()].map((r) => r.op);
-  assert.equal(ops.filter((o) => o === "onPlane").length, 2 + 4, "the two clicked points and the four derived corners");
-  assert.ok(ops.includes("parallel"), "the circle's normal held to the plane's");
-  assert.deepEqual(m.normalOf(parts.circle).map((x) => Math.round(x * 1e9) / 1e9), n.map((x) => Math.round(x * 1e9) / 1e9));
+  // Picked (sketch mode on it) and not: the layout is the same, and only a
+  // picked plane holds anything (the owner's "every sketch is a 3D sketch,
+  // unless you enter into active on-plane constraint", profiles-held.md).
+  for (const picked of [true, false]) {
+    const m = new Model(3);
+    const t = 0.5;
+    const tri = [m.addPoint([0, 0, 0]).name, m.addPoint([1, 0, 0]).name, m.addPoint([0, Math.cos(t), Math.sin(t)]).name];
+    for (const q of tri) fix(m, q, m.coords(q));
+    const plane = tri.join(".");
+    if (picked) m.setWorkPlane(plane);
+    const n = [0, -Math.sin(t), Math.cos(t)];
+    const c = m.addPoint([1, 2 * Math.cos(t), 2 * Math.sin(t)]).name;
+    const v = m.addPoint([6, 2 * Math.cos(t), 2 * Math.sin(t)]).name;
+    onPlane(m, c, plane);
+    onPlane(m, v, plane);
+    const parts = polygon(m, c, v, 5, true, plane);
+    ok(m);
+    for (const p of parts.vertices) assert.ok(Math.abs(dot(m.coords(p), n)) < 1e-9, `${p} on the plane`);
+    assertRegular(m, c, parts.vertices, "3D");
+    const ops = [...m.relations.values()].map((r) => r.op);
+    assert.equal(ops.filter((o) => o === "onPlane").length, picked ? 2 + 4 : 2,
+      picked ? "the two clicked points and the four derived corners" : "only the two the test held itself");
+    assert.equal(ops.includes("parallel"), picked, "the circle's normal held to the plane's only where it was picked");
+    assert.deepEqual(m.normalOf(parts.circle).map((x) => Math.round(x * 1e9) / 1e9), n.map((x) => Math.round(x * 1e9) / 1e9));
+  }
 });
 
 test("polygon(...) replays as its pieces: no polygon in the journal, a save/open round trip gives the same model", async () => {

@@ -47,7 +47,7 @@ import { dot3, lift3, sub3 } from "./vec3.ts";
 import { curveFrame, curvePath, curvePlaneOf } from "./curveplane.ts";
 import { derivs, domain } from "./bspline.ts";
 import { arcPoint } from "./arcgeom.ts";
-import { axisReader, turnPoint } from "./relations/revolution.ts";
+import { axisReader, isFullTurn, turnPoint } from "./relations/revolution.ts";
 import { inSight, type Occlusion } from "./occlusion.ts";
 import { measured } from "./relations/measure.ts";
 
@@ -185,6 +185,8 @@ export const GLYPH_SYMBOL: Record<string, string> = {
   // thing seen at an angle. Deferred from the model half of 3D phase 1 until
   // there was a 3D drawing to look at it in.
   onPlane: "▱",
+  // The point in the plane of three others (profiles-held.md): the same flat thing.
+  coplanar: "▱",
   // The sketch relations (docs/plans/sketch-relations.md). A `par` against a
   // frame's x or y axis — what `horizontal` and `vertical` expand to — wears
   // `—` or `|` instead of `//` (see `symbolOf`); these two are here so the
@@ -595,7 +597,8 @@ function atVertex(model: Model, view: View, l1Name: string, l2Name: string): Anc
  */
 function atRevolution(model: Model, view: View, axis: string, angle: unknown, first: unknown): Anchor {
   const ax = axisReader(model, axis).read();
-  if (typeof angle === "number" && typeof first === "string" && model.entities.get(first)?.kind === "point") {
+  // A whole turn's first "pair" is its profile named by itself (profiles-held.md): its label sits at the axis, as it did.
+  if (typeof angle === "number" && !isFullTurn(angle) && typeof first === "string" && model.entities.get(first)?.kind === "point") {
     const p = model.coords(first);
     const world = turnPoint(p, ax, angle / 2);
     const v = sub3(lift3(world), ax.origin);

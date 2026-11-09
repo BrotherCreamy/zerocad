@@ -543,6 +543,11 @@ function entityMenu(model: Model, pick: Pick): Menu {
   }
   if (pick.kind === "point") items.push(fixItem(model, pick.name));
   if (pick.kind === "frame") items.push(sketchOnItem(model, pick.name));
+  // A curve in 3D: an edge extrude of the chain it is in (docs/plans/profiles-held.md),
+  // typed for the depth to be finished — the menu cannot know how far.
+  if (model.dim === 3 && ["line", "arc", "circle", "spline"].includes(pick.kind) && !model.isConstruction(pick.name)) {
+    items.push({ label: "Extrude edge…", action: { do: "type", text: `edgeExtrude(${quoted(pick.name)}, ` } });
+  }
   items.push(...constructionItems(model, [pick.name]));
   items.push(...holeItems(model, pick.name), ...editItems(model, [pick.name]));
   return { header: describePick(model, pick), items };

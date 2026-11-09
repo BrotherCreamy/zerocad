@@ -72,7 +72,7 @@
 
 import { isClosedEntity, type FeatureEntry, type Model, type Portion, type ProfileMember } from "./model.ts";
 import { arcPoint, arcSamples, arcSegments, frameReach, portionAngles } from "./arcgeom.ts";
-import { curveFrame, curvePath, planeAxes } from "./curveplane.ts";
+import { curveFrame, curvePath, featurePlane, planeAxes } from "./curveplane.ts";
 import { domain, pointAt, sampleParams } from "./bspline.ts";
 import { axisReader, turnMatrix } from "./relations/revolution.ts";
 import { depth, viewAxes, worldToScreen, type View } from "./view.ts";
@@ -429,7 +429,7 @@ function memberFace(f: FeatureEntry, i: number, j: number): string {
 
 /** An extrude's faces: the profile's cap, the lid's, and a wall per member piece. */
 function extrudeFaces(model: Model, f: Extract<FeatureEntry, { kind: "extrude" }>, scale: number): Face[] {
-  const axes = planeAxes(model, f.frame);
+  const axes = featurePlane(model, f); // the solid's own plane, square to its chord (profiles-held.md)
   if (!axes) return [];
   const z = axes.n;
   const paths = profilePaths(model, f.loops, f.twins, scale);
@@ -506,7 +506,7 @@ function extrudeFaces(model: Model, f: Extract<FeatureEntry, { kind: "extrude" }
  * surface meets the edges drawn over it however the end face got where it is.
  */
 function revolveFaces(model: Model, f: Extract<FeatureEntry, { kind: "revolve" }>, scale: number): Face[] {
-  const plane = planeAxes(model, f.frame);
+  const plane = featurePlane(model, f);
   if (!plane) return [];
   const theta = model.relations.get(f.angle)?.args[1];
   if (typeof theta !== "number" || !Number.isFinite(theta) || theta === 0) return [];

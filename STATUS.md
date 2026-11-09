@@ -330,11 +330,25 @@ etc).
     frame that would fold something stops where the last one was. Kernel
     additions, geometry-free: `solve({ only })`, `snapshot`/`restore`,
     `varsOf`, `connected`, `reach`.
+  - **A prism stays a prism** (docs/plans/profiles-held.md): an extrude's
+    `extrusion` holds every twin at its base plus **one chord**, the depth
+    long, reading no direction; `e1_perp` — `perp(chord, e1)`, an ordinary,
+    deletable relation named for the record — holds the chord square to the
+    profile, and `ang(wall, e1, θ)` in its place leans it (drawn; the kernel
+    refuses an oblique body by name). **`edgeExtrude(curves, depth)`** and
+    the `edge` tool (the extrude button's flyout) make a chain's copy, a
+    chord at each end and the sheet between, held by the same pair.
+    `EntityKindSpec.sizes` declares a kind's sizes for its twin to match.
+    The rectangle tool makes four perps and, with no plane picked, one
+    `coplanar`; an agreeing redundancy is drawn in ordinary ink and said
+    muted. `test/profilesheld.test.ts`, `test/edgeextrude.test.ts`,
+    `test/e2e/profilesheld.e2e.ts` (mouse and iPhone 13).
   - **In the app**, after each solve and never per drag frame: free
     entities in a blue ink, held ones in the sketch's; `#diagnosis` beside
     the verdict says `5 free`, `d1 · d2 cannot all hold` (red, names
-    clickable to select, then Delete) or `· redundant r5` (orange); a
-    conflicting or redundant relation's glyph wears that ink. 2.1 ms on the
+    clickable to select, then Delete) or `· redundant r5` (muted grey,
+    since profiles-held: it agrees, so it is no warning); a conflicting
+    relation's glyph wears the red, a redundant one the ordinary ink. 2.1 ms on the
     biggest fixture.
   - **Relations**: `col`, `intersection`, `pierce` (3D), `spacing`, `dia`
     (a dimension), `measure` (driven: no blocks, drawn in parentheses, live),
@@ -520,7 +534,9 @@ etc).
   is what sketch on face sets; `drawingPlane()` is it, else the default, else
   the origin. **The curve tools** (`CurvePlane` in `tools/place.ts`) draw on
   the chosen plane, else the solid face under the first click, else the
-  ground, and hold the curve there with `onPlane` and `par`. **Features**:
+  ground, and hold the curve there with `onPlane` and `par` **only on a
+  chosen plane** (since profiles-held.md: with nothing picked, a curve is
+  held by nothing but its own definition). **Features**:
   `orientingPlane` picks extrude's and revolve's plane and makes nothing;
   extrusion and revolution pair twin rims' normals (a `.n` block); `fillet`
   takes a side vector, not a frame; a revolve makes no end frames (expansion
@@ -637,8 +653,9 @@ replacing) the system Node other projects on this machine may depend on.
   dashed preview from the tool's own in-progress state, and `onUp` is
   the only place anything is committed — four points, four lines,
   the relations that make it a rectangle, one solve. (Those were `hor`/`ver`
-  until coordinate frames arrived; they are `par`/`par`/`perp` now — see the
-  coordinate-frames entry below.)
+  until coordinate frames arrived; they were `par`/`par`/`perp` then — see the
+  coordinate-frames entry below — and are four `perp`s, one at each corner,
+  and in 3D with no plane picked one `coplanar`, since profiles-held.)
 - **Verified with a real mouse drag**, not just unit tests: armed the
   rectangle tool through the command input (a tool-name-only stand-in
   at that point; the real REPL landed later, see below),

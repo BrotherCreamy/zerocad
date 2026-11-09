@@ -42,7 +42,7 @@
 import { defineThroughReach, entityKind, isClosedEntity, lidReach, memberName, type ExtrudeFeature, type FeatureEntry, type Model, type ProfileMember } from "./model.ts";
 import { memberPoints } from "./solids/profile.ts";
 import { portionAngles } from "./arcgeom.ts";
-import { curveFrame, curvePath, featurePlane } from "./curveplane.ts";
+import { curveFrame, curvePath, featurePlane, planeAxes as refPlaneAxes } from "./curveplane.ts";
 import { derivs, domain, nearestParam, nurbsOf, pointAt as pathPoint, subCurve, type BSpline } from "./bspline.ts";
 import { axisReader, isFullTurn, turnMatrix } from "./relations/revolution.ts";
 import { cross3, dot3, lift3, sub3, unit3 } from "./vec3.ts";
@@ -915,8 +915,32 @@ function extent(pieces: Piece[], reach: (p: number[], dir: number[]) => number):
 export function extrudeSpan(model: Model, f: ExtrudeFeature): { start: number; depth: number } {
   const d = model.relations.get(f.depth)?.args[1];
   if (typeof d !== "number" || !Number.isFinite(d) || d === 0) throw new Error("it has no depth");
+  refuseOblique(model, f);
   if (f.extent === "symmetric") return { start: -d / 2, depth: d };
   return { start: 0, depth: lidReach(model, f.depth, d) };
+}
+
+/**
+ * **An oblique extrude is drawn, not built** (docs/plans/profiles-held.md):
+ * the kernel sweeps a profile square to its plane, and an extrude whose
+ * perpendicular was replaced by an `ang` — or deleted, and the chord let lean —
+ * has its chord off the profile's normal. Refused here, by name, so its body
+ * says why and is drawn from its twins (faces.ts), rather than built as the
+ * right prism it is not. Written down in TODO.md.
+ */
+function refuseOblique(model: Model, f: ExtrudeFeature): void {
+  const plane = featurePlane(model, f);
+  if (!plane) return;
+  const n = unit3(plane.n);
+  if (!n) return;
+  const pts = [...new Set(f.loops.flat().flatMap((m) => {
+    const e = model.entities.get(memberName(m));
+    return e ? model.refsOf(e).filter((p) => model.entities.get(p)?.kind === "point") : [];
+  }))].map((p) => model.coords(p));
+  if (pts.length < 2) return;
+  const size = Math.max(1, ...pts.map((p) => Math.hypot(...p)));
+  const off = Math.max(...pts.map((p) => Math.abs(dot3(sub3(p, pts[0]), n))));
+  if (off > 1e-6 * size) throw new Error("its chord is not square to its profile — an oblique extrude is drawn, and the kernel only sweeps square");
 }
 
 /**
@@ -941,7 +965,11 @@ const THROUGH_LEAST = 1;
 export function throughReach(model: Model, f: ExtrudeFeature, depth: number): number {
   let plane;
   try {
-    plane = kernelProfile(model, featurePlane(model, f), f.loops);
+    // The way read off its frame, not its chord (profiles-held.md): the reach
+    // holds the chord's length, and a way read off the chord would move with
+    // every step the solve takes toward it — measured, a cut through a plate
+    // set deeper leaned and never settled.
+    plane = kernelProfile(model, refPlaneAxes(model, f.frame), f.loops);
   } catch {
     return depth;
   }

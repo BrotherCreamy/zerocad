@@ -23,12 +23,13 @@ import { defineDimension } from "../model.ts";
 import { defineRebuild } from "../operations.ts";
 import { surfaceAngle, surfaceDepth, surfaceDistance } from "../relations/surface.ts";
 import {
-  extendSurface, knit, noSuchSurface, offsetSurface, solidify, surface, surfaceBlend, surfaceExtrude, surfaceFace, surfacePlanar,
+  edgeExtrude, extendSurface, knit, noSuchSurface, offsetSurface, solidify, surface, surfaceBlend, surfaceExtrude, surfaceFace, surfacePlanar,
   surfaceRevolve, thicken, trimSurface,
 } from "../surfaces.ts";
 import { extend, offset, trim } from "../sketchedit.ts";
 import { svg } from "../tools/icons.ts";
 import { SurfaceTool } from "../tools/surface.ts";
+import { EdgeExtrudeTool } from "../tools/edgeextrude.ts";
 
 // The numbers a surface is held by: dimensions with no equation, as a fillet's
 // radius is — `set("d5.value", 30)` re-runs them, in place.
@@ -48,20 +49,30 @@ defineModule("surfaces", {
     // button, beside the extrude that sweeps a region into a solid — no button
     // of its own, so an iPhone's column keeps its thirteen.
     surface: SurfaceTool,
+    // Its copy and the chords between, held, and the sheet between them
+    // (docs/plans/profiles-held.md): the primitive an extrude is made of, a
+    // tool of its own beside the sheet-only sweep — on the same flyout, so
+    // the column keeps its thirteen.
+    edge: EdgeExtrudeTool,
   },
   groups: {
-    sweep: ["extrude", "surface"],
+    sweep: ["extrude", "surface", "edge"],
   },
   icons: {
     // A sheet standing on a curve: the curve's S, and the same S raised over
     // it, joined at the ends — open, so it reads as no slab.
     surface: svg("surface", `<path d="M2 13.5c2-3 4 0 6-2.5s3-3 6-2.5"/><path d="M2 7.5c2-3 4 0 6-2.5s3-3 6-2.5" stroke-dasharray="1.4 1.3"/><path d="M2 13.5v-6M14 8.5v-6"/>`),
+    // One edge and its copy, solid both — the copy is geometry — and the two
+    // chords between: a frame, not a sheet, where the surface's copy is dashed.
+    edge: svg("edge", `<path d="M2.5 13.5h8"/><path d="M5.5 6.5h8"/><path d="M2.5 13.5l3-7M10.5 13.5l3-7"/>`),
   },
   operations: {
     // Each journalled as its typed call with what it read off positions
     // resolved beside it; a replay asks no kernel.
     surfaceExtrude: (model, curves: string | string[], depth: number, frame?: string | null, resolved?: unknown) =>
       surfaceExtrude(model, curves, depth, frame, resolved),
+    edgeExtrude: (model, curves: string | string[], depth: number, frame?: string | null, resolved?: unknown) =>
+      edgeExtrude(model, curves, depth, frame, resolved),
     surfaceRevolve: (model, curves: string | string[], axis: string, angle?: number | null, frame?: string | null, resolved?: unknown) =>
       surfaceRevolve(model, curves, axis, angle, frame, resolved),
     surfacePlanar: (model, member: string, frame?: string | null, loops?: unknown) => surfacePlanar(model, member, frame, loops),
@@ -77,6 +88,8 @@ defineModule("surfaces", {
   },
   commands: (kit) => ({
     surface: (what: unknown, ...rest: unknown[]) => surface(kit.model, what, ...rest),
+    edgeExtrude: (curves: string | string[], depth: number, frame?: string | null, resolved?: unknown) =>
+      edgeExtrude(kit.model, curves, depth, frame, resolved),
     knit: (s: unknown, ...rest: unknown[]) => knit(kit.model, s, ...rest),
     thicken: (s: unknown, d: unknown) => thicken(kit.model, s, d),
     solidify: (s: unknown) => solidify(kit.model, s),
@@ -125,6 +138,15 @@ defineModule("surfaces", {
     '           is the planar face a region or a loop bounds; surface("e1.lid")',
     "           a body's face on its own. The surface tool (the extrude",
     "           button's flyout): click curves, set the depth, ✓.",
+    '           edgeExtrude("l1", 20) — an edge extrude: the chain through l1',
+    "           copied 20 along its plane's normal, a chord from each end to its",
+    "           copy's, and the surface between. The copy is geometry, held as",
+    "           an extrude's lid is: one depth (set its .value) moving every",
+    "           point by one chord, both ways, and s1_perp holding the chord",
+    "           square to the curves — delete it, or put an ang(chord, s1, θ) in",
+    "           its place, to lean it (drawn, not built: the kernel sweeps",
+    "           square). An extrude is the edge extrude of its whole profile.",
+    "           The edge tool, on the same flyout: click a curve, ✓.",
     '           trim("s1", "l5", [x, y, z]) cuts s1 by a curve projected along',
     "           its plane's normal, or by another surface where it crosses,",
     "           keeping the side the point is on; the trim tool: press on the",

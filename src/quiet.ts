@@ -199,6 +199,6 @@ export function glyphDrawn(gl: Anchored, quiet: ReadonlySet<string>, shown: Read
   // vertex would be the clutter the glyphs package fought. It is there when
   // its point is revealed — hovered, selected, just placed — and is picked,
   // deleted and listed like any relation throughout.
-  if (gl.op === "onPlane") return gl.about.some((n) => shown.has(n));
+  if (gl.op === "onPlane" || gl.op === "coplanar") return gl.about.some((n) => shown.has(n));
   return gl.about.some((n) => drawn(n, quiet, shown));
 }

@@ -881,6 +881,102 @@ knows, so a module's curve kind is copied onto the plane by the same code.
 name, a `del` and a glyph, but the glyph is drawn only while its point is
 revealed: one ▱ per sketched point is the clutter the glyph work removed.
 
+## Every sketch is a 3D sketch, and every operation holds both ways
+
+Two rules from the owner, the same day (docs/plans/profiles-held.md), and
+the second is the reason for the first.
+
+**No plane unless one is picked.** *"The default for sketch entities is no
+plane. Every sketch is a 3D sketch, unless you enter into active on-plane
+constraint."* Where a click lands — the ground in a fresh document, a solid's
+face under the cursor — is a position, never a relation. A drawing tool holds
+what it makes to a plane only when sketch mode's work plane or a default
+frame is set (`holdOnSketchPlane`, `holdCurve`, both keyed on
+`sketchPlaneRef`); otherwise a curve is held by nothing but its own
+definition, its normal seeded facing the plane it was drawn on.
+`test/noplanedefault.test.ts` walks every drawing tool.
+
+**Relations between entities, both ways, by default.** *"It's not about
+being tied to the ground plane, it's about correct relationships BETWEEN
+entities. Part of the concept of this CAD is to have bidirectional
+relationships everywhere by default."* So an operation that makes geometry
+from geometry says what it means as a relation between the new entities and
+the old, with **both sides variables**, so a drag on either moves the other.
+A datum — read as numbers, never pushed — is only ever something the user
+picked: a frame, a frame's axis, a plane chosen to sketch on. The audit
+that applied this to every such operation is a table in the spec, and
+`test/bothways.test.ts` has a row for each, dragging the copy and the
+original in the plane and out of it:
+
+- a **revolve** holds its profile in the plane through its axis (one row a
+  point but the farthest from it); a frame's axis is a datum, a line the user
+  drew is read as the line's points, so a profile drag can move it;
+- an **offset**'s copy is held in its chain's plane by `coplanar` — a point in
+  the plane of three others, all four moving, unlike `onPlane(p, "a.b.c")`,
+  which reads the three as a datum — on one vertex per run nothing else
+  holds, and a round copy nothing turns is `par` to its original;
+- a **circular pattern** with nothing picked turns about its seed's own
+  plane, three seed points read as variables, rather than the ground's z;
+- the **extrusion** itself — the owner's measured case, a lid corner dragged
+  skewing the prism — is below.
+
+**An extrude is an edge extrude of its whole profile, sharing one chord.**
+The owner: *"Edge extrude is a fundamental feature."* An edge E and a chord
+c give E′ = E + c: every point moved by c, every size (`Model.sizesOf`: a
+radius, an ellipse's minor, whatever a module's kind declares with
+`EntityKindSpec.sizes`) and every normal the same. That is the whole of the
+`extrusion` relation now: each twin is its base plus the chord of the first
+pair, and the chord is as long as the depth reaches — **no direction read
+from anything**. Until 2026-11-09 every twin sat at base + depth along the
+frame's +z, a datum, so a lid corner dragged tilted the base while every
+wall kept the frame's z: a skewed prism, SOLVED. `edgeExtrude` (the `edge`
+tool) makes the same pair for any chain of curves, and its sheet is a
+surface record that, unlike every other, owns entities.
+
+**Which way the chord points is an ordinary relation beside it**, the
+operation's and anyone's to delete: `perp(chord, e1)`, named `e1_perp` — the
+chord square to every edge of the record's profile, read off the record at
+every evaluation, so a regenerated profile is the one held. The owner: *"how
+could you have a relation inside an extrude? that doesnt really make sense
+to me."* An `ang(wall, e1, θ)` in its place makes a drafted or oblique
+extrude; the kernel sweeps only square, so that one is drawn and its body
+refuses, by name. The name is derived from the record and claims no counter
+(`Model.namedRelation`), so an old file opened today gains the perpendicular
+and every name it had stays its: its journal and values re-save byte for
+byte, and its solids stop skewing.
+
+**The sign is the geometry's.** With no direction read, which side the lid
+is on is where its twins are: seeded on the depth's side by the operation,
+and moved across by `set` when a depth changes sign (`reseatLid`, which also
+seats the lid at a new depth before the solve, so a minimum-norm solve does
+not share the change between base and lid). The plane a solid is laid out
+in (`featurePlane`) is square to the chord and signed by the depth — never by
+the reach, which for a through-all end is read off the bodies' planes and
+would read itself.
+
+**A rectangle is four perps and, with no plane picked, one `coplanar`.** The
+owner: *"i was thinking 4 perps so that all the edges are identical to one
+another."* Four right angles do force a quadrilateral flat, but only to
+second order: measured, a corner dragged 7 out of the plane came back 2.9e-4
+off it; with the coplanar, 9e-13. The fourth perp is implied by the other
+three, and the diagnosis says so — which is why **an agreeing redundancy is
+drawn in the ordinary ink**, and said in the status's muted grey, never
+orange (the owner's decision). A conflict stays red.
+
+**Fewer relations, not more.** Each of these was first written holding
+everything and read orange: a rectangle's offset held at four corners
+reads three redundant, because a line's copy is `par` to an in-plane line
+and one held end carries the other. The rule that came out of it: hold
+what nothing else holds, and check with `diagnose`, never by counting.
+
+**A feature's own relations are never named redundant** (`Model.diagnose`
+skips what `removable` refuses, as the conflict search already did). A
+revolve of a sketch-mode profile says "these points are in one plane with
+the axis" where the user's onplanes already say "these points are on this
+plane"; that is the feature being consistent, and a person can neither
+delete nor fix it. Measured with the line taken out: a whole revolve's
+angle read orange.
+
 ## Tools are not privileged
 
 A tool is a class with `onDown` / `onMove` / `onUp` / `onCancel` / `render`,
@@ -2095,7 +2191,7 @@ until the next action went unrecorded.
 
 ## Why there is an end-to-end suite
 
-Sixty-nine bugs so far were invisible to the unit tests and obvious within seconds
+Seventy bugs so far were invisible to the unit tests and obvious within seconds
 of running the app:
 
 1. a status readout that went stale, so a conflict could be introduced from
@@ -2429,6 +2525,13 @@ of running the app:
    sideways — found by the full suite's touch.e2e.ts, every unit test passing.
    The end condition is a drop-down where the depth's label was now,
    SolidWorks' "Blind ▾ [10]", and costs no row.
+70. A lid corner of an extruded rectangle dragged in the browser skewed the
+   solid — the base tilted, every wall still along the world's z — and the
+   status said SOLVED; the owner saw it at once. No unit test had ever
+   dragged a lid: each asked of the relation what it said, twin = base +
+   depth·z, and it said that exactly. The tests now ask the solid's
+   properties (flat, square, the depth long, translated), whichever corner
+   moved (docs/plans/profiles-held.md).
 
 None of these are mathematics. They are all *assembly*. Hence `npm run
 test:e2e`, and hence the expectation that anything touching the app is checked

@@ -107,7 +107,9 @@ for (const [name, lifted] of [["curves-v12", false], ["features-v12", false], ["
     for (const [n, k] of was) assert.equal(m.entities.get(n)!.kind, k, n);
     assert.deepEqual([...m.features.keys()], want.features);
     // Every relation it had, under the name it had, and the pars after them.
-    assert.deepEqual([...m.relations.keys()].slice(0, want.relations.length), want.relations, "no name shifted");
+    // Each extrude now has its chord's perpendicular too, named for it (`e1_perp`,
+    // profiles-held.md) so it claims no r: every name the file had is still its.
+    assert.deepEqual([...m.relations.keys()].filter((n) => !n.endsWith("_perp")).slice(0, want.relations.length), want.relations, "no name shifted");
 
     // Every curve the file drew on a frame follows that frame now by a par.
     const kept = following(m);
@@ -126,7 +128,7 @@ for (const [name, lifted] of [["curves-v12", false], ["features-v12", false], ["
     sameGeometry(m, solvedGeometry(name, want), 1e-6, "regenerated");
 
     const once = save(m);
-    assert.equal(JSON.parse(once).version, 18);
+    assert.equal(JSON.parse(once).version, 19);
     const back = open(once);
     assert.equal(save(back), once, "re-saves stably as the current format");
     sameGeometry(back, solvedGeometry(name, want), 1e-6, "reopened");
@@ -159,7 +161,7 @@ test("a fresh document's file is the current format (17), its curves frameless, 
   m.addCircle(m.addPoint([1, 2, 0]).name, 4);
   const text = save(m);
   const saved = JSON.parse(text);
-  assert.equal(saved.version, 18);
+  assert.equal(saved.version, 19);
   assert.deepEqual(saved.journal[1], { op: "addCircle", args: ["p1", 4, null, "c1"] });
   assert.deepEqual(saved.values.normals, { c1: [0, 0, 1] });
   assert.equal(save(open(text)), text);

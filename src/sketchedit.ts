@@ -25,7 +25,7 @@
 import {
   type ArcEntity, type Entity, type FeatureDraft, type Model, ORIGIN, entityKind, isClosedEntity, parseAxisRef, spanOf, unitOf,
 } from "./model.ts";
-import { dist, onPlane } from "./relations/basic.ts";
+import { coplanar, dist, onPlane } from "./relations/basic.ts";
 import {
   angle as angleRel, arcEndpoints, collinear, equalRadius, equalSpacing, intersection, onCircle, onEllipse, parallel,
   perpendicular, pointOnLine, radius as radiusRel, symmetric, tangent,
@@ -951,6 +951,15 @@ interface OffsetResolved {
   side: 1 | -1;
   radii: (number | null)[];
   smooth: boolean[];
+  /**
+   * Three of the chain's points the copy is held in the plane of, both ways
+   * (`coplanar`), where no sketch plane holds the chain (docs/plans/
+   * profiles-held.md). Only in 3D, only where there are three that make a
+   * plane, and only written then — so a 2D offset, or one on a sketch plane,
+   * journals exactly what it did, and an offset from before format 19 has none
+   * and replays as it was made.
+   */
+  flat?: [string, string, string] | [];
 }
 
 /** A member's carrier, its direction of travel as walked, and the left normal (in the plane `n`) at a vertex. */
@@ -1109,7 +1118,37 @@ export function planOffset(model: Model, names: readonly string[], d: number, re
     const t = travel(model, walk[walk.length - 1], n, false);
     vertices.push(t.pos.map((x, k) => x + s * t.left[k]));
   }
-  return { walk, closed, normal: n, vertices, resolved: { side, radii, smooth } };
+  const flat = resolved ? resolved.flat : chainTriple(model, walk);
+  return { walk, closed, normal: n, vertices, resolved: { side, radii, smooth, ...(flat ? { flat } : {}) } };
+}
+
+/**
+ * The three points of a chain an offset's copy is held in the plane of
+ * (`OffsetResolved.flat`): in 3D, where no plane holds every point of the chain
+ * by `onPlane` already (sketch mode's copies are held on its plane by
+ * `holdCopiesOnPlanes`, and saying it twice would read orange), the three of
+ * the chain's points that make the largest triangle — the best-conditioned
+ * plane (`coplanar` divides by its area). None where the chain's points are in
+ * one line: a single line's offset has no plane of its own, and is written down
+ * as left (TODO.md).
+ */
+function chainTriple(model: Model, walk: readonly Walked[]): [string, string, string] | [] | undefined {
+  if (model.dim !== 3) return undefined;
+  const pts = [...new Set(walk.flatMap((w) => model.refsOf(model.entities.get(w.name)!)))]
+    .filter((p) => model.entities.get(p)?.kind === "point");
+  const common = pts.length ? planesHolding(model, pts[0]).filter((ref) => pts.every((p) => planesHolding(model, p).includes(ref))) : [];
+  if (common.length) return undefined;
+  // No three that make a plane (a circle's centre, a line's two ends): `[]`,
+  // which still says "held by relations of its own" — a round copy's `par`.
+  if (pts.length < 3) return [];
+  const X = pts.map((p) => lift3(model.coords(p)));
+  const scale = Math.max(1, ...X.map((x) => Math.hypot(...x)));
+  let best: [string, string, string] | undefined, area = 1e-9 * scale * scale;
+  for (let i = 0; i < pts.length; i++) for (let j = i + 1; j < pts.length; j++) for (let k = j + 1; k < pts.length; k++) {
+    const a = Math.hypot(...cross3(sub3(X[j], X[i]), sub3(X[k], X[i])));
+    if (a > area) { area = a; best = [pts[i], pts[j], pts[k]]; }
+  }
+  return best ?? [];
 }
 
 /** A journal's resolved offset, checked for shape. */
@@ -1117,8 +1156,10 @@ function givenOffset(resolved: unknown, members: number): OffsetResolved {
   const r = resolved as OffsetResolved;
   const ok = r && typeof r === "object" && (r.side === 1 || r.side === -1) && Array.isArray(r.radii) && r.radii.length === members
     && r.radii.every((x) => x === null || typeof x === "number") && Array.isArray(r.smooth) && r.smooth.every((x) => typeof x === "boolean");
-  if (!ok) throw new Error("offset's resolved part is { side: 1 or -1, radii: [...], smooth: [...] }");
-  return { side: r.side, radii: [...r.radii], smooth: [...r.smooth] };
+  const flat = r && (r as { flat?: unknown }).flat;
+  const flatOk = flat === undefined || (Array.isArray(flat) && (flat.length === 3 || flat.length === 0) && flat.every((x) => typeof x === "string"));
+  if (!ok || !flatOk) throw new Error("offset's resolved part is { side: 1 or -1, radii: [...], smooth: [...], flat?: [three points, or none] }");
+  return { side: r.side, radii: [...r.radii], smooth: [...r.smooth], ...(flat ? { flat: [...flat] as [string, string, string] | [] } : {}) };
 }
 
 /** Options an offset takes. */
@@ -1170,6 +1211,9 @@ function buildOffset(model: Model, plan: OffsetPlan, d: number, construction: bo
   const from = (i: number) => (closed ? pts[i] : pts[i]);
   const to = (i: number) => (closed ? pts[(i + 1) % walk.length] : pts[i + 1]);
   const copies: string[] = [];
+  // The round copies nothing turns into the chain's plane: a circle's, and an
+  // arc's held by its radius rather than a tangent to a line's copy.
+  const loose: number[] = [];
   walk.forEach((w, i) => {
     const e = model.entities.get(w.name)!;
     let copy: string;
@@ -1198,6 +1242,7 @@ function buildOffset(model: Model, plan: OffsetPlan, d: number, construction: bo
     }
     if (e.kind === "circle") {
       radiusRel(model, copy, resolved.radii[i]!);
+      loose.push(i);
       return;
     }
     arcEndpoints(model, copy);
@@ -1212,7 +1257,7 @@ function buildOffset(model: Model, plan: OffsetPlan, d: number, construction: bo
       tangent(model, copies[k], copy);
       held = true;
     });
-    if (!held) radiusRel(model, copy, resolved.radii[i]!);
+    if (!held) { radiusRel(model, copy, resolved.radii[i]!); loose.push(i); }
   });
   if (!closed) {
     const ends: [Walked, string, boolean][] = [[walk[0], pts[0], true], [walk[walk.length - 1], pts[pts.length - 1], false]];
@@ -1230,7 +1275,49 @@ function buildOffset(model: Model, plan: OffsetPlan, d: number, construction: bo
     ? planesHolding(model, chainPoints[0]).filter((ref) => chainPoints.every((p) => planesHolding(model, p).includes(ref)))
     : [];
   if (common.length) holdCopiesOnPlanes(model, pts.map((v) => [chainPoints[0], v] as [string, string]), (ref) => common.includes(ref));
+  // Where no sketch plane holds the chain, the copy is held in the chain's own
+  // plane by a relation between them, both ways (`coplanar`): par and dist
+  // alone let it slide off along the normal — measured 3.2 off for a pull of 9
+  // (docs/plans/profiles-held.md). Only the vertices nothing else puts there
+  // (`heldVertices`), so none reads redundant.
+  const flat = resolved.flat;
+  if (flat && model.dim === 3) {
+    // A round copy nothing else turns faces as its original does: `par` of the
+    // two normals, both ways (measured: a circle's copy turned 24° off its
+    // original under a pull on its rim). Its centre is the original's own
+    // point, so that is the whole of its plane, and of its ends'. One held by a
+    // tangent to a line's copy is turned into the plane by that already — a
+    // `par` there read orange.
+    for (const i of loose) parallel(model, copies[i], walk[i].name);
+    if (flat.length === 3) for (const v of heldVertices(model, walk, copies, pts)) coplanar(model, v, ...flat);
+  }
   return copies;
+}
+
+/**
+ * Which of an offset's copy vertices take a `coplanar`: one in each run of the
+ * copy that nothing else puts in the plane. A line's copy is `par` to a line in
+ * the plane, so once one of its ends is in the plane the other is too; an arc's
+ * copy is about the original's own centre and `par` to it, so it and both its
+ * ends are in the plane already. A hold on any of those would say it again and
+ * read orange — measured: a rectangle's copy held at all four corners read
+ * three of them redundant. So one vertex in each run joined by copies, and none
+ * in a run with a round copy in it.
+ */
+function heldVertices(model: Model, walk: readonly Walked[], copies: readonly string[], pts: readonly string[]): string[] {
+  const parent = new Map(pts.map((p) => [p, p]));
+  const find = (p: string): string => { let q = p; while (parent.get(q) !== q) q = parent.get(q)!; return q; };
+  const anchored = new Set<string>();
+  walk.forEach((w, i) => {
+    const e = model.entities.get(copies[i]);
+    if (!e || (e.kind !== "line" && e.kind !== "arc")) return;
+    const [a, b] = e.kind === "line" ? e.refs : [e.start, e.end];
+    const [ra, rb] = [find(a), find(b)];
+    if (ra !== rb) parent.set(rb, ra);
+    if (e.kind === "arc") anchored.add(a);
+  });
+  const done = new Set([...anchored].map(find));
+  return pts.filter((p) => { const r = find(p); if (done.has(r)) return false; done.add(r); return true; });
 }
 
 // --- copies stay on the sketch plane ------------------------------------------
@@ -1591,6 +1678,41 @@ function holdDirection(model: Model, lead: string, dx: number, dy: number, plane
 interface CircularResolved {
   first: string;
   plane: string | null;
+  /**
+   * The plane is the seed's own — three of its points, or a curve of it — and
+   * read as the variables it is, so the turn's axis is the seed's normal and
+   * holds both ways (docs/plans/profiles-held.md). Written only then: a
+   * pattern on a picked plane, or from before format 19, turns about that
+   * plane as a datum, as it always did.
+   */
+  own?: true;
+}
+
+/**
+ * The plane a circular pattern's seed lies in, as a reference its turn can read
+ * as variables (`CircularResolved.own`): the three of its points that make the
+ * largest triangle — the best-conditioned plane — else a curve of it with a
+ * normal of its own, else two of its points and the centre; else null, a seed
+ * with no plane (a point, or a line through the centre).
+ */
+function seedPlane(model: Model, points: readonly string[], curves: readonly string[], centre: string): string | null {
+  const largest = (pts: readonly string[]): string | null => {
+    const X = pts.map((p) => lift3(model.coords(p)));
+    const scale = Math.max(1, ...X.map((x) => Math.hypot(...x)));
+    let best: string | null = null, area = 1e-9 * scale * scale;
+    for (let i = 0; i < pts.length; i++) for (let j = i + 1; j < pts.length; j++) for (let k = j + 1; k < pts.length; k++) {
+      const a = Math.hypot(...cross3(sub3(X[j], X[i]), sub3(X[k], X[i])));
+      if (a > area) { area = a; best = `${pts[i]}.${pts[j]}.${pts[k]}`; }
+    }
+    return best;
+  };
+  // The seed's own points first: the turn is about the seed's normal, so its
+  // copies keep their heights off its plane — in it — wherever the centre is.
+  // The centre joins them only for a seed in one line, which has no plane alone.
+  const own = largest(points.filter((p) => p !== centre));
+  if (own) return own;
+  const curve = curves.find((c) => { const k = model.entities.get(c)?.kind; return k === "circle" || k === "arc"; });
+  return curve ?? largest([...new Set([...points, centre])]);
 }
 
 /**
@@ -1631,12 +1753,15 @@ export function circular(model: Model, names: string | string[], centre: string,
   if (resolved != null) {
     const g = resolved as CircularResolved;
     if (!g || typeof g.first !== "string" || !points.includes(g.first)) throw new Error("circular's resolved part is { first: a seed point, plane }");
-    r = { first: g.first, plane: g.plane ?? null };
+    r = { first: g.first, plane: g.plane ?? null, ...((g as { own?: unknown }).own === true ? { own: true as const } : {}) };
   } else {
     const scale = Math.max(1, ...points.map((p) => Math.hypot(...model.coords(p))));
     const first = points.find((p) => Math.hypot(...model.coords(p).map((v, i) => v - c0[i])) > 1e-6 * scale);
     if (!first) throw new Error(`everything given to circular sits on ${centre} — there is nothing to turn about it`);
-    r = { first, plane: model.dim === 3 ? model.drawingPlane() : null };
+    // The plane the user picked, as a datum; else the seed's own, pushed; else, a seed with no plane of
+    // its own (one point, one line through the centre), the drawing plane as before.
+    const own = model.dim === 3 && (model.workPlane ?? model.defaultFrame) == null ? seedPlane(model, points, curves, centre) : null;
+    r = own ? { first, plane: own, own: true } : { first, plane: model.dim === 3 ? model.drawingPlane() : null };
   }
   const axis = model.dim === 3 ? model.planeValues(r.plane!)!.n : [0, 0, 1];
   const turnBy = (x: number[], a: number) => {
@@ -1663,12 +1788,12 @@ export function circular(model: Model, names: string | string[], centre: string,
     }
     const p0 = r.first;
     const first = copies[0].get(p0)!;
-    rotation(model, p0, first, centre, step, r.plane);
+    rotation(model, p0, first, centre, step, r.plane, r.own ?? null);
     for (let k = 0; k < copies.length; k++) {
       for (const p of points) {
         if (k === 0 && p === p0) continue;
         const prev = k === 0 ? p : copies[k - 1].get(p)!;
-        rotated(model, prev, copies[k].get(p)!, centre, p0, first, r.plane);
+        rotated(model, prev, copies[k].get(p)!, centre, p0, first, r.plane, r.own ?? null);
       }
     }
     let at = 0;

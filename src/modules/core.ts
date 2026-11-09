@@ -108,6 +108,9 @@ defineModule("core", {
     },
     // 3D only: the point lies in the frame's plane. Frame-relative like `fix`.
     onPlane: { names: ["onplane", "onPlane"], slots: slots("point", "frame"), fn: basic.onPlane },
+    // 3D only: the point in the plane of three others, all four moving — the
+    // both-ways hold an offset keeps its copy in its chain's plane by (profiles-held.md).
+    coplanar: { names: ["coplanar"], slots: slots("point", "a", "b", "c"), fn: basic.coplanar },
     coincident: { names: ["coin", "coincident"], slots: slots("a", "b"), fn: basic.coincident },
     midpoint: { names: ["mid", "midpoint"], slots: slots("midpoint", "a", "b"), fn: basic.midpoint },
     // relations/geometry.ts. `par`, `perp` and `ang` additionally take a
@@ -187,6 +190,9 @@ defineModule("core", {
     "           default frame's, else the origin's. There is no hor/ver:",
     '           par(l, yaxis()) is vertical, par(l, xaxis()) is level, and',
     '           par/perp/ang take any axis by name — par("l1", "f2.x").',
+    '           perp("l9", "e1") holds a chord square to an extrude\'s profile;',
+    '           ang("l9", "e1", θ) at θ off its normal. coplanar(p, a, b, c)',
+    "           holds p in the plane of a, b and c, all four moving.",
     "           A frame draws as an axes marker at its origin, in SolidWorks'",
     "           colours — x red, y green, z blue, each lettered — heavier when",
     "           it is the default; drag the marker to move it, or its x-ref to turn",
@@ -232,7 +238,8 @@ defineModule("core", {
     "           that cannot hold: take any one away and the rest can. A size",
     "           your own relation sets to zero (dist(p, q, 0)) is no collapse.",
     "           A relation the earlier ones already imply is",
-    "           redundant — said in orange, never refused. Not during a drag.",
+    "           redundant — said muted, drawn in ordinary ink, never refused.",
+    "           Not during a drag.",
     "           freeink(false) draws every entity in the sketch's ink.",
     "           arm(\"dimension\") clicks a line, two points, a point and a line,",
     "           two lines or a circle, then empty canvas to place: dist, ang, rad",

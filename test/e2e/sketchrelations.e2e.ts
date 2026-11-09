@@ -135,10 +135,11 @@ test("desktop: a drawn rectangle is free ink until fixed and dimensioned, the st
   const lines = (await desk.model()).lines.map((l) => l.name);
   assert.equal(lines.length, 4, "a rectangle");
   let d = (await diag(desk))!;
-  // The tool's rectangle is two pairs of parallel sides and a right angle —
-  // not held level — so it can move (2), turn (1), and stretch both ways (2).
+  // The tool's rectangle is a right angle at every corner — not held level —
+  // so it can move (2), turn (1), and stretch both ways (2). The fourth right
+  // angle is implied by the other three, and said so, muted (profiles-held.md).
   assert.equal(d.dof, 5, `where it is, which way, how big: ${JSON.stringify(d)}`);
-  assert.match(await diagnosisText(desk), /^5 free$/);
+  assert.match(await diagnosisText(desk), /^5 free · redundant r4$/);
   await park(desk);
   assert.ok(close(await inkNear(desk, await along(desk, lines[0], 0.3), FREE), FREE), "an edge in the free ink");
   await shot(desk, "1-free-rectangle");
@@ -168,7 +169,7 @@ test("desktop: a drawn rectangle is free ink until fixed and dimensioned, the st
   d = (await diag(desk))!;
   assert.equal(d.dof, 0, JSON.stringify(d));
   assert.deepEqual(d.free, []);
-  assert.match(await diagnosisText(desk), /^0 free$/);
+  assert.match(await diagnosisText(desk), /^0 free · redundant r4$/);
   await desk.type("select");
   await park(desk);
   assert.ok(close(await inkNear(desk, await along(desk, lines[2], 0.3), HELD), HELD), "and now in the held ink");
@@ -260,12 +261,14 @@ test("desktop: a conflict names its relations, draws them red, and one is select
   await shot(desk, "6-conflict-deleted");
 });
 
-test("desktop: a redundant relation is said in the softer word and fails nothing", async () => {
+test("desktop: a redundant relation is said, muted, and fails nothing", async () => {
   await fresh(desk);
   await desk.type('a = pt(0, 0); b = pt(30, 0); c = pt(0, 20); ln(a, b); ln(a, c); perp("l1", "l2"); perp("l2", "l1")');
   assert.equal(await desk.status(), "SOLVED");
   assert.match(await diagnosisText(desk), /free · redundant r2$/);
   assert.equal(await desk.page.$eval("#diagnosis", (el) => el.className), "redundant");
+  // Muted as a count is, never orange: it agrees (docs/plans/profiles-held.md).
+  assert.equal(await desk.page.$eval("#diagnosis", (el) => getComputedStyle(el).color), "rgb(122, 139, 155)");
 });
 
 test("no uncaught page errors on the desktop", () => {

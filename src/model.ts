@@ -176,6 +176,15 @@ export interface EntityKindSpec {
   refs(e: Entity): string[];
   /** The variables it owns — not its points'. */
   vars?(e: Entity): number[];
+  /**
+   * The **sizes** that make one what it is beyond its points — a conic's
+   * minor semi-axis — as the variables holding them: what a translation keeps
+   * equal, so an edge extrude holds a twin of any kind the size of its base
+   * (relations/extrusion.ts, docs/plans/profiles-held.md). Its points are
+   * `refs`, and its normal `plane`; a kind whose shape is all points (a
+   * spline) has none.
+   */
+  sizes?(e: Entity): number[];
   /** A curve: bounds regions, and can be construction geometry. */
   curve?: boolean;
   /**
@@ -1124,6 +1133,39 @@ export class Model {
    * presence is also what tells a nested relation call that it is nested.
    */
   private building: { name: string; blocks: BlockHandle[]; vars: number[] } | null = null;
+
+  /**
+   * The name the next relation made at the top level takes, instead of a
+   * claimed `rN` — set by `namedRelation`. Null nearly always.
+   */
+  private pendingName: string | null = null;
+
+  /**
+   * Runs `make` — one relation call — under the name `name` rather than the
+   * next `rN`. For a relation an operation makes as part of what it is, under
+   * a name derived from the operation's own (an extrude's `e1_perp`,
+   * docs/plans/profiles-held.md): **it claims no counter**, so an old file
+   * whose extrudes now make one replays every later `r` under the name it had.
+   * Refuses a name already taken.
+   */
+  namedRelation(name: string, make: () => string): string {
+    if (this.has(name)) throw new Error(`"${name}" already exists`);
+    const was = this.pendingName;
+    this.pendingName = name;
+    try {
+      return make();
+    } finally {
+      this.pendingName = was;
+    }
+  }
+
+  /**
+   * The name of the relation whose body is running — a fresh one's, or the one
+   * `rebuildRelation` is re-running in place — or null outside a body.
+   */
+  get relationBeingBuilt(): string | null {
+    return this.building?.name ?? null;
+  }
   /**
    * What each solve's report needs to be explained later: the state before
    * it, and what was collapsed and what was the user's own zero then. Keyed
@@ -1349,7 +1391,10 @@ export class Model {
     // below has to put back. Reading "r" here while claiming "d" would leave a
     // failed `dist` having quietly shifted every later dimension's name.
     const counterWas = this.counters.get(prefix);
-    const name = this.claimName(prefix);
+    // A name given (`namedRelation`) claims nothing, and is used once.
+    const given = this.pendingName;
+    this.pendingName = null;
+    const name = given ?? this.claimName(prefix);
     const building = { name, blocks: [] as BlockHandle[], vars: [] as number[] };
     this.building = building;
     try {
@@ -3012,6 +3057,20 @@ export class Model {
     }
   }
 
+  /**
+   * The variables holding an entity's **sizes** — what makes one what it is
+   * beyond its points and its normal, and what a translation keeps equal: a
+   * circle's or an arc's radius, and whatever a declared kind says
+   * (`EntityKindSpec.sizes`, a conic's second semi-axis). A point, a line and a frame
+   * have none. What an edge extrude holds a twin of any kind by
+   * (relations/extrusion.ts).
+   */
+  sizesOf(e: Entity): number[] {
+    if (e.kind === "circle" || e.kind === "arc") return [e.radiusVar];
+    if (e.kind === "point" || e.kind === "line" || e.kind === "frame") return [];
+    return entityKind((e as { kind: string }).kind)?.sizes?.(e) ?? [];
+  }
+
   /** Which variables each entity owns — its own, not those of the points it refers to. */
   private ownVars(e: Entity): number[] {
     switch (e.kind) {
@@ -3057,7 +3116,8 @@ export class Model {
    * is the one just added. A relation with some rows new and some implied
    * (a 3D `par`'s third wedge component, an `oncircle`'s plane row beside an
    * `onplane`) is not redundant — only the whole relation is a thing a person
-   * can delete.
+   * can delete. And a feature's own relation (an extrude's depth, a revolve's
+   * angle) is never named: it is background, as in the conflict search.
    *
    * Asked after a solve, not during a drag: it costs one Jacobian and two
    * eliminations (`ms` says how long), which is several solves' worth.
@@ -3113,6 +3173,13 @@ export class Model {
     }
     for (const r of this.relations.values()) {
       if (!r.blocks.length) continue;
+      // A feature's own relation is background, here as in the conflict search
+      // (docs/plans/profiles-held.md): its rows hold the feature's entities to
+      // each other, and where the user's relations already say part of that —
+      // a profile on a sketch plane, flat by its own onplanes — the feature
+      // saying it too is the feature being consistent, not something a person
+      // can or should delete. Only a relation a person made is named redundant.
+      if (!this.removable(r.name)) continue;
       if (folded.size && r.blocks.some((b) => this.problem.varsOf(b).some((v) => folded.has(v)))) continue;
       if (r.blocks.every((b) => { const d = dependent.get(b); return d !== undefined && d.dependent === d.rows; })) {
         redundant.push(r.name);
@@ -3229,6 +3296,21 @@ export class Model {
             tried = ring.length;
             if (conflicts(ring, background)) {
               found = quickXplain(ring, (s) => conflicts(s, background));
+              // **Two where two will do.** QuickXplain's set is minimal — take
+              // any one away and the rest can hold — but not the smallest
+              // there is, and where relations agree redundantly there are
+              // several: a rectangle held by a perp at every corner, told
+              // `par` across one of them, named the par and the two far
+              // corners' perps, which fold the far side between them —
+              // three names for what a person reads as one contradiction at
+              // one corner. So when the set is larger than two, the newest of
+              // it is tried against each candidate alone, nearest first, and
+              // a pair found is named instead (profiles-held.md).
+              if (found.length > 2) {
+                const newest = [...found].sort((a, b) => order.get(b.name)! - order.get(a.name)!)[0];
+                const pair = candidates.find((c) => c !== newest && conflicts([newest, c], background));
+                if (pair) found = [pair, newest];
+              }
               break;
             }
           }

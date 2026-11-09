@@ -299,13 +299,14 @@ async function glyphInk(app: AppContext, [x, y]: [number, number]): Promise<numb
   return (await box(app, x - 4, y - 3, x + 4, y + 3)).filter((p) => p[3] > 150).length;
 }
 
-test("a // mark on a profile line is quiet until that line is hovered; the depth's value is drawn throughout", async () => {
+test("a ⊥ mark on a profile line is quiet until that line is hovered; the depth's value is drawn throughout", async () => {
   const app = await fresh();
   const { lines } = await drawRectangle(app);
   const front = lines[0];
   const before = await glyphs(app);
-  const mark = before.find((g) => g.op === "parallel" && g.about.includes(front));
-  assert.ok(mark, `a // on ${front}: ${JSON.stringify(before)}`);
+  // A ⊥ since the rectangle is a perp at every corner (profiles-held.md); it was a //.
+  const mark = before.find((g) => g.op === "perpendicular" && g.about.includes(front));
+  assert.ok(mark, `a ⊥ on ${front}: ${JSON.stringify(before)}`);
   assert.ok(await glyphInk(app, mark!.screen) > 30, "on a sketch, the mark is drawn");
   await app.repl(`extrude("${front}", 20)`);
   await lookAlong(app, [1, -2, 1.5]);
@@ -315,7 +316,7 @@ test("a // mark on a profile line is quiet until that line is hovered; the depth
   const depth = marks.find((g) => g.op === "extrusion")!;
   assert.ok(par && depth, JSON.stringify(marks));
   await shot(app, "glyph-quiet");
-  assert.equal(await glyphInk(app, par.screen), 0, "on the solid's edge, the // is quiet");
+  assert.equal(await glyphInk(app, par.screen), 0, "on the solid's edge, the ⊥ is quiet");
   assert.ok(await glyphInk(app, depth.screen) > 30, "the depth's value is drawn");
 
   // Hover the line it is on: the mark is drawn.
@@ -323,7 +324,7 @@ test("a // mark on a profile line is quiet until that line is hovered; the depth
   await hoverAt(app, await app.screenOf(g.a.map((v, i) => v + 0.35 * (g.b[i] - v))));
   assert.equal((await app.repl("hover()")).value, front);
   await shot(app, "glyph-hover-line");
-  assert.ok(await glyphInk(app, par.screen) > 30, "the line hovered, its // is drawn");
+  assert.ok(await glyphInk(app, par.screen) > 30, "the line hovered, its ⊥ is drawn");
   assert.ok(await glyphInk(app, depth.screen) > 30, "the depth's value still");
   // The mark itself is still under the hand, as a quiet corner is: hovered, it stays.
   await hoverAt(app, par.screen);

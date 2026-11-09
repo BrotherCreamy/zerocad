@@ -21,6 +21,7 @@ import { Dual } from "../kernel/dual.ts";
 import { dot, norm, vecSub, wedge, wedgeNorm } from "./vec.ts";
 import { chunk, curveNormal, directionOf, directionOfPoints, ellipseAxes, frameBasis, joinVars, lineVars, unitDuals, type DirectionRef } from "./refs.ts";
 import { coincident, onPlane } from "./basic.ts";
+import { angleToProfile, leanOffNormal, profileMembers, squareToProfile } from "./profilesquare.ts";
 import { isPathCurve, onSpline, tangentSpline } from "./spline.ts";
 
 // --- the direction relations -----------------------------------------------
@@ -116,6 +117,17 @@ export function parallel(model: Model, l1: string, l2: string, l3?: string | nul
  * forms as `parallel`.
  */
 export function perpendicular(model: Model, l1: string, l2: string, l3?: string | null): string {
+  // **Square to a profile** (docs/plans/profiles-held.md): `perp(chord, e1)` or
+  // `perp(p1, p5, e1)`, the last argument an extrude's (or an edge extrude's)
+  // record — what an extrude makes beside its translation, and anyone can
+  // delete for an `ang` (relations/profilesquare.ts).
+  const last = l3 ?? l2;
+  if (typeof last === "string" && profileMembers(model, last)) {
+    const chord = l3 != null ? directionOfPoints(model, l1, l2) : directionOf(model, l1);
+    if (chord.frame) throw new Error(`perp to a profile takes a chord — a line or two points — and "${l1}" is a frame's axis`);
+    const args = l3 != null ? [l1, l2, l3] : [l1, l2];
+    return model.relation("perpendicular", args, () => squareToProfile(model, chord, last, `perp(${args.join(",")})`));
+  }
   return directionRelation(model, "perpendicular", "perp", l1, l2, l3, (u, v) => [dot(u, v)]);
 }
 
@@ -133,6 +145,17 @@ export function perpendicular(model: Model, l1: string, l2: string, l3?: string 
  * has asked for is not worth an ambiguity.
  */
 export function angle(model: Model, l1: string, l2: string, radians: number): string {
+  // A chord at an angle to a profile: a drafted or oblique extrude, where its
+  // `perp(chord, e1)` was (relations/profilesquare.ts).
+  if (typeof l2 === "string" && profileMembers(model, l2)) {
+    if (typeof radians !== "number" || !Number.isFinite(radians)) throw new Error(`ang needs an angle in radians, got ${JSON.stringify(radians)}`);
+    const chord = directionOf(model, l1);
+    if (chord.frame) throw new Error(`ang to a profile takes a chord — a line — and "${l1}" is a frame's axis`);
+    const made = model.relation("angle", [l1, l2, radians], () => angleToProfile(model, chord, l2, radians, `ang(${l1},${l2})`));
+    const ends = model.entities.get(l1)?.kind === "line" ? model.line(l1).refs : null;
+    if (ends) leanOffNormal(model, ends[0], ends[1], l2, radians);
+    return made;
+  }
   const u = directionOf(model, l1), v = directionOf(model, l2);
   if (u.frame && v.frame) {
     throw new Error(`ang needs something it can move: "${l1}" and "${l2}" are both frame axes`);

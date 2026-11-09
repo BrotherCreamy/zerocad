@@ -20,7 +20,7 @@ import { readFile } from "node:fs/promises";
 import { ensureKernelLoaded } from "../src/kernel/problem.ts";
 import { Model } from "../src/model.ts";
 import { coincident, dist, fix, onPlane } from "../src/relations/basic.ts";
-import { parallel } from "../src/relations/geometry.ts";
+import { parallel, perpendicular } from "../src/relations/geometry.ts";
 import { extrusion } from "../src/relations/extrusion.ts";
 import { DEFAULT_DEPTH, del, extrude, fillet, hole, set } from "../src/operations.ts";
 import { open, save } from "../src/persist.ts";
@@ -61,7 +61,10 @@ test("a rectangle: four twins, four twin edges, four walls, one depth, one featu
   // Four corner twins, four twin edges and four walls — and no lid frame, so no
   // point that is no corner (docs/plans/no-lid-frame.md).
   assert.equal(m.entities.size - before, 4 + 4 + 4);
-  assert.equal(m.relations.size - relsBefore, 1, "one relation: the depth");
+  // The depth, and beside it the chord held square to the profile — its own
+  // relation, named for the feature so it claims no r (profiles-held.md).
+  assert.equal(m.relations.size - relsBefore, 2, "two relations: the depth, and the chord square to the profile");
+  assert.deepEqual(m.relationOf("e1_perp").args, [m.line(f.walls[0]).refs[0], m.line(f.walls[0]).refs[1], "e1"]);
   assert.equal(f.depth, "d1", "a dimension, d-named");
   assert.equal(m.relationOf("d1").op, "extrusion");
   assert.deepEqual(f.loops, [lines]);
@@ -292,7 +295,7 @@ test("set on the depth moves the whole lid by exactly the difference along +z, a
   set(m, `${f.depth}.value`, -10);
   assert.equal(m.solve().solved, true);
   const [twin, base] = [...baseOf(m, f.depth)][0];
-  assert.ok(Math.abs(dot(sub(m.coords(twin), m.coords(base)), t.uz) + 10) < 1e-9);
+  assert.ok(Math.abs(dot(sub(m.coords(twin), m.coords(base)), t.uz) + 10) < 1e-9, `${dot(sub(m.coords(twin), m.coords(base)), t.uz)}`);
 });
 
 test("the twins are ordinary geometry: a diagonal held to 50 and the depth set, the free width gives way — √(50² − h² − d²)", async () => {
@@ -324,11 +327,21 @@ test("the twins are ordinary geometry: a diagonal held to 50 and the depth set, 
   assert.ok(Math.abs(m.coords(twinOf.get(p[0])!)[2] - 30) < 1e-9, "and the lid is at the new depth");
 });
 
-test("the sketch frame is the depth's datum: pulling a lid corner never turns the sketch frame, and turning the frame carries the lid", async () => {
+test("the sketch frame is a datum: pulling a lid corner never turns it, and turning it carries a rectangle's lid", async () => {
   await loadKernel();
   const m = new Model(3);
   const t = tiltedFrame(m);
   const { lines } = polygon(m, t, [[0, 0], [W, 0], [W, H], [0, H]]);
+  // A rectangle, as the tool's relations make one. Since profiles-held.md the
+  // frame holds no direction of the extrude's — the profile is held to it by
+  // its own onplanes, and the chord square to the profile by e1_perp — so a
+  // turned frame turns the profile and the profile the lid. Four free points
+  // could instead fold into one line across the turned plane, every edge then
+  // square to a chord that never turned: the collapse check reads lengths, not
+  // areas (written down in TODO.md, left).
+  parallel(m, lines[0], lines[2]);
+  parallel(m, lines[1], lines[3]);
+  perpendicular(m, lines[0], lines[1]);
   const f = m.featureOf(extrude(m, lines[0], 20), "extrude");
   const bases = baseOf(m, f.depth);
   const [corner, base] = [...bases][0];
@@ -371,7 +384,8 @@ test('del("e1") takes the lid, the walls and the depth, and leaves the sketch ex
 
   assert.equal(removed[0], e, "the record first");
   assert.equal(removed[1], f.depth);
-  assert.deepEqual(new Set(removed), new Set([e, ...f.owns]), "exactly what the feature made");
+  // And the chord's perpendicular, which names the record (profiles-held.md).
+  assert.deepEqual(new Set(removed), new Set([e, ...f.owns, "e1_perp"]), "exactly what the feature made, and its perpendicular");
   assert.deepEqual([...m.entities.keys()], entities, "the sketch, entity for entity");
   assert.deepEqual([...m.relations.keys()], relations);
   assert.equal(m.features.size, 0);
@@ -379,7 +393,7 @@ test('del("e1") takes the lid, the walls and the depth, and leaves the sketch ex
   for (const [n, c] of coords) assert.ok(near(m.coords(n), c), `${n} did not move`);
   // Journalled as its expansion, one primitive per name, the record first.
   assert.deepEqual(m.journal.slice(journalAt).map((j) => j.op),
-    ["deleteFeature", "deleteRelation", ...removed.slice(2).map(() => "deleteEntity")]);
+    ["deleteFeature", "deleteRelation", "deleteRelation", ...removed.slice(3).map(() => "deleteEntity")]);
 });
 
 test("deleting a piece of a feature — a profile edge, a lid edge, a wall, the depth — takes its record and nothing more", async () => {
@@ -398,7 +412,8 @@ test("deleting a piece of a feature — a profile edge, a lid edge, a wall, the 
     const { m, lines, f } = build();
     // And the region whose first face it bounded (regions-as-operations.md),
     // as the record whose outline it was.
-    assert.deepEqual(del(m, lines[2]), [f.name, lines[2], "rg1"]);
+    // The perpendicular names the record, so it goes with it (profiles-held.md).
+    assert.deepEqual(del(m, lines[2]), [f.name, "e1_perp", lines[2], "rg1"]);
     assert.equal(m.features.size, 0);
     assert.equal(m.regions.size, 0);
     for (const n of f.owns) assert.ok(m.has(n), `${n} stayed`);
@@ -407,13 +422,13 @@ test("deleting a piece of a feature — a profile edge, a lid edge, a wall, the 
   // A wall.
   {
     const { m, f } = build();
-    assert.deepEqual(del(m, f.walls[1]), [f.name, f.walls[1]]);
+    assert.deepEqual(del(m, f.walls[1]), [f.name, "e1_perp", f.walls[1]]);
     assert.ok(m.relations.has(f.depth));
   }
   // The depth: the record goes and the lid is free.
   {
     const { m, f } = build();
-    assert.deepEqual(del(m, f.depth), [f.name, f.depth]);
+    assert.deepEqual(del(m, f.depth), [f.name, f.depth, "e1_perp"]);
     assert.equal(m.solve().solved, true);
   }
   // A lid corner: its edges and wall go with it (they need it), the depth names
@@ -655,7 +670,8 @@ test("the command line: extrude returns the feature, ls() lists it, rels() and t
   assert.equal(ls.at(-1), `    13 made — members("e1") lists them`);
   // A lid corner is held by the depth and nothing else.
   const corner = m.line(f.walls[0]).refs[1];
-  assert.deepEqual((scope.rels as (n?: string) => string[])(corner), ["d1  extrusion 20 along t.z, 4 pairs"]);
+  // And, the first corner, the chord's perpendicular too.
+  assert.deepEqual((scope.rels as (n?: string) => string[])(corner), ["d1  extrusion 20 along t.z, 4 pairs", "e1_perp  perp p1 p5 e1"]);
   assert.equal(describePick(m, { name: "d1", kind: "relation", distance: 0 }), "d1  extrusion 20 along t.z, 4 pairs  ·  e1");
   assert.match(describePick(m, { name: f.walls[0], kind: "line", distance: 0 }), /·\s+e1$/);
   assert.match((scope.help as () => string)(), /extrude\(region, depth\?, frame\?\)/);

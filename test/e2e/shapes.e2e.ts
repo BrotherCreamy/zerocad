@@ -98,7 +98,7 @@ async function savedRoundTrip(app: AppContext): Promise<void> {
   const before = await app.repl("save()");
   assert.equal(before.ok, true, before.error ?? "");
   const text = before.value as string;
-  assert.match(text, /"version": 18/);
+  assert.match(text, /"version": 19/);
   const was = await relations(app);
   await app.type("pt(0, 0); pt(5, 5)"); // something to lose
   await app.repl(`SAVED = ${JSON.stringify(text)}`);
@@ -251,7 +251,9 @@ test("desktop: the ellipse — dragged centre to major end, a click for the mino
   const want = Math.abs(-3 * -u[1] + 9 * u[0]);
   assert.ok(Math.abs(b - want) < 0.6, `the minor from the click: ${b} against ${want}`);
   const o = await ops(desk);
-  assert.deepEqual([count(o, "onPlane"), count(o, "parallel")], [2, 1], "held on the ground: centre and major end onplane, normal par");
+  // Laid out on the ground and held there by nothing: no plane was picked
+  // (docs/plans/profiles-held.md). It was [2, 1] — centre and major end onplane, normal par.
+  assert.deepEqual([count(o, "onPlane"), count(o, "parallel")], [0, 0], "no plane picked, so nothing held to one");
   await desk.page.keyboard.press("Escape");
   await shot(desk, "desk-ellipse");
 
