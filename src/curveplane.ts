@@ -89,8 +89,17 @@ export function featurePlane(model: Model, feature: FeatureEntry): CurvePlane | 
  * the frame's axes carried into the plane square to the chord.
  */
 function extrudePlane(model: Model, f: Extract<FeatureEntry, { kind: "extrude" }>, frame: CurvePlane): CurvePlane {
-  const chord = extrusionChord(model, f.depth);
-  const d = model.relations.get(f.depth)?.args[1];
+  return chordPlane(model, f.depth, frame);
+}
+
+/**
+ * The plane square to an `extrusion`'s chord, laid out from `frame`'s axes,
+ * its normal the way +depth stands — `extrudePlane`'s, for any record held by
+ * one: an extrude, an edge extrude (surfaces.ts).
+ */
+export function chordPlane(model: Model, depth: string, frame: CurvePlane): CurvePlane {
+  const chord = extrusionChord(model, depth);
+  const d = model.relations.get(depth)?.args[1];
   if (!chord || typeof d !== "number") return frame;
   // Which way the lid stands is the depth's sign, whatever the end condition
   // (half of it, or through all, keeps it). Never the reach itself: a

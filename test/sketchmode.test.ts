@@ -98,6 +98,7 @@ const NOT_DRAWN: Record<string, string> = {
   round: "a solid's edge fillet: the kernel's, no model point",
   chamfer: "a solid's edge chamfer: the kernel's, no model point",
   surface: "a surface of faces already drawn — no point",
+  edge: "an edge extrude: its points are the curves', moved by one chord (profiles-held.md)",
 };
 
 test("every registered tool is either a drawing tool with a gesture here, or says why it makes no point of its own", () => {
