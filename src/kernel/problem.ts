@@ -109,7 +109,26 @@ export interface Analysis {
    * block all of whose rows are dependent says nothing new: redundant.
    */
   dependent: { block: BlockHandle; rows: number; dependent: number }[];
+  /**
+   * For each block whose every row is dependent — asked for with `agreeing`
+   * — the blocks it agrees with: those without any one of which it would no
+   * longer be implied, or, where no single one is needed (a row said three
+   * times), every block that takes part in a dependency with it. Who said it
+   * first is not recorded: the set is what is said twice, not who to blame.
+   */
+  agreeing: { block: BlockHandle; with: BlockHandle[] }[];
 }
+
+/**
+ * How many blocks the agreeing search tries per implied block, and how long
+ * it may take in all. Past either, the implied block's set is every block in
+ * the support — correct as "these take part in saying something twice",
+ * wider than the least set. A drawing with hundreds of agreeing relations is
+ * the one that would pay for exactness, and it is the one least able to read
+ * the answer.
+ */
+export const AGREEING_TRIALS = 40;
+export const AGREEING_MS = 150;
 
 /** Relative rank tolerance for `analyse`: a column counts when its remainder is above this share of its norm. */
 const RANK_TOL = 1e-9;
@@ -429,7 +448,7 @@ export class Problem {
    * Point-blind like the rest of this file: columns are variables and rows
    * residuals. What a variable *is* is the caller's to say.
    */
-  analyse(opts: { vars?: number[]; gauge?: GaugeRow[] } = {}): Analysis {
+  analyse(opts: { vars?: number[]; gauge?: GaugeRow[]; agreeing?: boolean } = {}): Analysis {
     const { rows, cols, vals, storedRows, owners } = this.evaluate();
     const all = this.values.length;
     const live = opts.vars
@@ -468,15 +487,55 @@ export class Problem {
     );
     const dependent: Analysis["dependent"] = [];
     let last: Analysis["dependent"][number] | null = null;
+    // Every block with a row in the left null space's support — a pivot some
+    // null vector moves (1) or a non-pivot (2): the blocks that take part in
+    // saying something twice, whichever of them was said first.
+    const support: BlockHandle[] = [];
     for (let i = 0; i < storedRows; i++) {
       const owner = owners[i];
       if (!last || last.block !== owner) {
         last = { block: owner, rows: 0, dependent: 0 };
         dependent.push(last);
       }
+      if (outT[i + 1] !== 0 && support[support.length - 1] !== owner) support.push(owner);
       last.rows++;
       if (outT[i + 1] === 2) last.dependent++;
     }
-    return { rank, dof: n - rank, free, dependent: dependent.filter((d) => d.dependent > 0) };
+    const implied = dependent.filter((d) => d.dependent > 0);
+    const agreeing: Analysis["agreeing"] = [];
+    if (opts.agreeing) {
+      const t0 = performance.now();
+      let trials = 0;
+      const rowsOf = new Map<BlockHandle, number[]>();
+      for (let i = 0; i < storedRows; i++) {
+        const list = rowsOf.get(owners[i]);
+        if (list) list.push(i); else rowsOf.set(owners[i], [i]);
+      }
+      // Whether `target`'s rows are all still implied with `without`'s rows
+      // taken out of Jᵀ — its columns left empty, which the elimination reads
+      // as non-pivots of their own and which cost the target nothing.
+      const stillImplied = (target: BlockHandle, without: BlockHandle): boolean => {
+        const gone = new Set(rowsOf.get(without) ?? []);
+        const tc: number[] = [], tr: number[] = [], tv: number[] = [];
+        for (let k = 0; k < stored; k++) {
+          if (gone.has(jr[k])) continue;
+          tc.push(jc[k]); tr.push(jr[k]); tv.push(jv[k]);
+        }
+        const out = null_support(new Uint32Array(tc), new Uint32Array(tr), new Float64Array(tv), n, storedRows, RANK_TOL);
+        return (rowsOf.get(target) ?? []).every((i) => out[i + 1] === 2);
+      };
+      for (const d of implied) {
+        if (d.dependent !== d.rows) continue;
+        const candidates = support.filter((b) => b !== d.block);
+        let needed: BlockHandle[] | null = [];
+        for (const c of candidates) {
+          if (trials >= AGREEING_TRIALS || performance.now() - t0 > AGREEING_MS) { needed = null; break; }
+          trials++;
+          if (!stillImplied(d.block, c)) needed.push(c);
+        }
+        agreeing.push({ block: d.block, with: needed === null || needed.length === 0 ? candidates : needed });
+      }
+    }
+    return { rank, dof: n - rank, free, dependent: implied, agreeing };
   }
 }

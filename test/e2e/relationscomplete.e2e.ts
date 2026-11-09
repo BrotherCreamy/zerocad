@@ -63,7 +63,7 @@ let mouse: Hand, finger: Hand;
 
 /** A row's middle, in canvas pixels — what a finger is given. */
 const rowAt = (app: AppContext, label: string) => app.page.evaluate((want) => {
-  const row = Array.from(document.querySelectorAll<HTMLElement>("#options .ocmd")).find((r) => r.querySelector(".olabel")?.textContent === want);
+  const row = Array.from(document.querySelectorAll<HTMLElement>("#constraints .ocmd")).find((r) => r.querySelector(".olabel")?.textContent === want);
   if (!row) return null;
   const r = row.getBoundingClientRect(), c = document.getElementById("cv")!.getBoundingClientRect();
   return [r.x + r.width / 2 - c.x, r.y + r.height / 2 - c.y] as [number, number];
@@ -83,7 +83,7 @@ before(async () => {
     async row(label) {
       // The mouse itself, at the row's middle: a greyed row is aria-disabled, which
       // a locator refuses to click and a hand does not.
-      const box = await desk.page.locator("#options .ocmd", { has: desk.page.locator(".olabel", { hasText: new RegExp(`^${label.replace(/[()]/g, "\\$&")}$`) }) }).boundingBox();
+      const box = await desk.page.locator("#constraints .ocmd", { has: desk.page.locator(".olabel", { hasText: new RegExp(`^${label.replace(/[()]/g, "\\$&")}$`) }) }).boundingBox();
       assert.ok(box, `a row labelled ${label}`);
       await desk.page.mouse.click(box!.x + box!.width / 2, box!.y + box!.height / 2);
       await desk.page.waitForTimeout(300);
@@ -154,8 +154,9 @@ const relations = (app: AppContext): Promise<Rel[]> => app.page.evaluate(() =>
   [...(window as never as Probe).__neocad.model.relations.entries()].map(([name, r]) => ({ name, op: r.op, args: r.args })));
 const coords = (app: AppContext, n: string): Promise<number[]> => app.page.evaluate((p) => (window as never as Probe).__neocad.model.coords(p), n);
 const glyphs = (app: AppContext) => app.page.evaluate(() => (window as never as Probe).__neocad.engine.glyphs());
-const rows = (app: AppContext) => app.page.$$eval("#options .ocmd", (els) => els.map((e) => ({
+const rows = (app: AppContext) => app.page.$$eval("#constraints .ocmd", (els) => els.map((e) => ({
   label: e.querySelector(".olabel")?.textContent ?? "", command: (e as HTMLElement).dataset.command ?? "", off: e.classList.contains("off"),
+  more: e.classList.contains("more"),
 })));
 
 /** A point along a line, `t` of the way from its first end, in canvas pixels. */
@@ -233,7 +234,7 @@ async function armConstrain(hand: Hand): Promise<void> {
 
 /** Every row of the options panel wholly on screen — what "the list fits" means. */
 async function rowsFit(app: AppContext): Promise<{ fit: boolean; rows: number; bottom: number; height: number }> {
-  return app.page.$$eval("#options .ocmd", (els) => {
+  return app.page.$$eval("#constraints .ocmd", (els) => {
     const rs = els.map((e) => e.getBoundingClientRect());
     const fit = rs.every((r) => r.top >= 0 && r.bottom <= innerHeight && r.left >= 0 && r.right <= innerWidth && r.height >= 14);
     return { fit, rows: rs.length, bottom: Math.max(...rs.map((r) => r.bottom)), height: innerHeight };
@@ -248,15 +249,26 @@ for (const which of ["desktop", "iphone"] as const) {
   test(`${which}: five lines picked, Equal (all 5) — four eqs against the first, one undo step`, async () => {
     const h = hand();
     await fresh(h);
-    await type(h, "ln(pt(-45, 30), pt(-5, 32)); ln(pt(-45, 18), pt(-15, 20)); ln(pt(-45, 6), pt(-2, 4)); ln(pt(-45, -6), pt(-20, -9)); ln(pt(-45, -18), pt(-18, -20))");
+    // Spaced to the room an iPhone 13 has between its panes: the constraints
+    // palette docks at the bottom while the constrain tool is armed, and its
+    // strip's hit box reaches a target up over the drawing (index.html) — a
+    // fifth line at y −18 was under that reach — while a first line at y 36
+    // was a finger's radius from the organiser's bottom edge, and the tap was
+    // the organiser's (docs/plans/constraints-palette.md; harness.ts's `at`).
+    await type(h, "ln(pt(-45, 30), pt(-5, 32)); ln(pt(-45, 20), pt(-15, 22)); ln(pt(-45, 10), pt(-2, 8)); ln(pt(-45, 0), pt(-20, -3)); ln(pt(-45, -10), pt(-18, -12))");
     await armConstrain(h);
     for (const l of ["l1", "l2", "l3", "l4", "l5"]) await h.press(await along(h.app, l, 0.5));
-    const listed = await rows(h.app);
+    let listed = await rows(h.app);
+    assert.equal(listed[0]?.label, "Equal (all 5)", await state(h.app));
+    const fits = await rowsFit(h.app);
+    assert.ok(fits.fit, `every row shown is on screen: ${JSON.stringify(fits)}`);
+    await shot(h, "1-five-lines-picked");
+    // On a phone the palette shows the likeliest and a more… row (the two
+    // lines' test below measures that); opened, the list is the whole one.
+    const more = listed.find((r) => r.more);
+    if (more) { await h.row(more.label); listed = await rows(h.app); }
     assert.deepEqual(listed.map((r) => r.label), ["Equal (all 5)", "Parallel (all 5)", "Horizontal (all 5)", "Vertical (all 5)", "Fix (all 5)"], await state(h.app));
     assert.equal(listed[0].command, 'eq("l1", "l2"); eq("l1", "l3"); eq("l1", "l4"); eq("l1", "l5")');
-    const fits = await rowsFit(h.app);
-    assert.ok(fits.fit, `every row on screen: ${JSON.stringify(fits)}`);
-    await shot(h, "1-five-lines-picked");
     await h.row("Equal (all 5)");
     const eqs = (await relations(h.app)).filter((r) => r.op === "equalLength");
     assert.deepEqual(eqs.map((r) => r.args), [["l1", "l2"], ["l1", "l3"], ["l1", "l4"], ["l1", "l5"]]);
@@ -273,18 +285,43 @@ for (const which of ["desktop", "iphone"] as const) {
     assert.equal((await relations(h.app)).filter((r) => r.op === "equalLength").length, 0, "one undo step takes all four");
   });
 
-  test(`${which}: two lines' list fits — eight rows, most likely first`, async () => {
+  test(`${which}: two lines' list — eight rows, most likely first; on a phone the likeliest, and more… opens the rest`, async () => {
     const h = hand();
     await fresh(h);
     await type(h, "ln(pt(-30, 0), pt(30, 4)); ln(pt(-30, 25), pt(30, 15))");
     await type(h, "constrain");
     await h.press(await along(h.app, "l1", 0.3));
     await h.press(await along(h.app, "l2", 0.3));
-    const listed = await rows(h.app);
-    assert.deepEqual(listed.map((r) => r.label),
-      ["Parallel", "Perpendicular", "Equal", "Collinear", "Horizontal (both)", "Vertical (both)", "Fix (both)", "Angle"]);
+    const all = ["Parallel", "Perpendicular", "Equal", "Collinear", "Horizontal (both)", "Vertical (both)", "Fix (both)", "Angle"];
+    let listed = await rows(h.app);
     const fits = await rowsFit(h.app);
-    assert.ok(fits.fit, `every row on screen: ${JSON.stringify(fits)}`);
+    assert.ok(fits.fit, `every row shown is on screen: ${JSON.stringify(fits)}`);
+    if (which === "desktop") {
+      assert.deepEqual(listed.map((r) => r.label), all);
+    } else {
+      // The palette's rows are a finger's target tall, and the pane docked at
+      // the bottom holds a few of them: the likeliest show, most likely first,
+      // and the more… row opens the rest (docs/plans/constraints-palette.md).
+      const more = listed.find((r) => r.more);
+      assert.ok(more, `a more… row: ${JSON.stringify(listed)}`);
+      const shown = listed.filter((r) => !r.more).map((r) => r.label);
+      assert.ok(shown.length >= 1 && shown.length < all.length, `some but not all: ${shown}`);
+      assert.deepEqual(shown, all.slice(0, shown.length), "the likeliest, in order");
+      assert.match(more!.label, new RegExp(`^${all.length - shown.length} more…$`));
+      await shot(h, "3a-two-lines-the-likeliest-and-more");
+      await h.row(more!.label);
+      listed = await rows(h.app);
+      assert.deepEqual(listed.map((r) => r.label), all, "more… opened the rest");
+      // Opened, the pane scrolls: its last row can be brought wholly into its box.
+      const reach = await h.app.page.evaluate(() => {
+        const rows = Array.from(document.querySelectorAll<HTMLElement>("#constraints .ocmd"));
+        const last = rows[rows.length - 1];
+        last.scrollIntoView({ block: "end" });
+        const r = last.getBoundingClientRect(), p = document.getElementById("constraints")!.getBoundingClientRect();
+        return { ok: r.top >= p.top - 0.5 && r.bottom <= p.bottom + 0.5, r: [r.top, r.bottom], p: [p.top, p.bottom] };
+      });
+      assert.ok(reach.ok, `the last row reachable by a scroll: ${JSON.stringify(reach)}`);
+    }
     await shot(h, "3-two-lines-list");
   });
 
@@ -356,12 +393,23 @@ for (const which of ["desktop", "iphone"] as const) {
     await fresh(h);
     await type(h, "circ(pt(-22, 8), 10); circ(pt(16, 14), 8); ln(pt(0, -25), pt(0, 35))");
     await type(h, "constrain");
-    // The mirror line first: two circles' list is seven rows since smart
-    // dimension added Centre distance, and on an iPhone it covers the line
-    // (TODO.md: the list covers the picks). A line and a circle list two.
-    await h.press(await along(h.app, "l1", 0.85));
+    // The owner's order: the two circles first, then the mirror line. Two
+    // circles' list is seven rows, and when it was the options pane it covered
+    // the second circle and the line on an iPhone (TODO.md, 2026-11-08). The
+    // constraints palette is docked at the bottom instead
+    // (docs/plans/constraints-palette.md): with both circles picked, both
+    // rims and the line's upper half are clear of every pane — `at` throws
+    // for a pixel a pane would take — and the list shows its likeliest rows.
     await h.press(await curvePixel(h.app, "c1", [-22, 18, 0]));
     await h.press(await curvePixel(h.app, "c2", [16, 22, 0]));
+    const two = await rows(h.app);
+    assert.equal(two[0]?.label, "Concentric", await state(h.app));
+    for (const w of [[-22, 18, 0], [-32, 8, 0], [-22, -2, 0], [16, 22, 0], [24, 14, 0], [16, 6, 0], [0, 30, 0], [0, 10, 0]]) {
+      const [sx, sy] = await h.app.screenOf(w);
+      await h.app.at(sx, sy);
+    }
+    await shot(h, "7a-two-circles-picked-the-palette-up-the-line-in-sight");
+    await h.press(await along(h.app, "l1", 0.85));
     const listed = await rows(h.app);
     assert.deepEqual(listed.map((r) => r.label), ["Symmetric"], await state(h.app));
     assert.equal(listed[0].command, 'sym("c1", "c2", "l1")');

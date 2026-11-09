@@ -163,7 +163,7 @@ async function parallelFromConstrain(app: AppContext, lines: string[]): Promise<
   await app.page.hover('#toolbar button[data-group="relate"]');
   await app.page.waitForSelector('#flyout button[data-tool="constrain"]', { state: "visible", timeout: 3000 });
   await app.page.click('#flyout button[data-tool="constrain"]');
-  const row = `#options .ocmd[data-command='par("${lines[0]}", "${lines[1]}")']`;
+  const row = `#constraints .ocmd[data-command='par("${lines[0]}", "${lines[1]}")']`;
   await app.page.waitForSelector(row, { state: "visible", timeout: 3000 });
   await app.page.click(row);
   await app.page.waitForFunction(() => [...(window as never as Probe).__neocad.model.relations.values()].some((r) => r.op === "parallel"
@@ -297,7 +297,7 @@ test("iPhone 13: a rectangle drawn with a finger, two sides tapped, Parallel tap
   await f.hold(...await middleOf('#toolbar button[data-group="relate"]'), 700);
   await phone.page.waitForSelector('#flyout button[data-tool="constrain"]', { state: "visible", timeout: 3000 });
   await tap(await middleOf('#flyout button[data-tool="constrain"]'), true);
-  const row = `#options .ocmd[data-command='par("${lines[0]}", "${lines[1]}")']`;
+  const row = `#constraints .ocmd[data-command='par("${lines[0]}", "${lines[1]}")']`;
   await phone.page.waitForSelector(row, { state: "visible", timeout: 3000 });
   await tap(await middleOf(row), true);
   await phone.page.waitForFunction(() => [...(window as never as Probe).__neocad.model.relations.values()].some((r) => r.op === "parallel"

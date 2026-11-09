@@ -43,6 +43,7 @@ import { GUIDE_NOTE_MS, STATUS_FADE_MS, STEP_NOTE_MS, StatusLine, diagnosisLine 
 import { AppMenu, UNTITLED } from "./appmenu.ts";
 import { LogTail } from "./logtail.ts";
 import { Organiser, organiserSections, rowMenu, surfaceMenu } from "./organiser.ts";
+import { ConstraintsPalette, paletteFor } from "./constraints.ts";
 import { surfaceNameOf } from "./surfaces.ts";
 import { logoSvg } from "./logo.ts";
 import { GroupMemory, OptionMemory, declaredOptions, unitSymbol, type OptionValue } from "./tools/options.ts";
@@ -353,14 +354,33 @@ function trayButtons(): ToolbarButton[] {
   return toolbarButtons((t) => onWorkbench(bench, t));
 }
 
+/**
+ * The constraints palette's standing (docs/plans/constraints-palette.md), as
+ * the panels ask it: whether the constrain tool is armed, which brings the
+ * palette up wherever it is hidden, and whether the active workbench has the
+ * palette's module at all. Both are answered by things built further down
+ * (the engine, the workbench), so each is a variable the wiring below fills.
+ */
+let paletteSummoned: () => boolean = () => false;
+let paletteOnWorkbench: () => boolean = () => true;
+
 const panels = new Panels(
   document.getElementById("viewwrap")!,
-  (area) => defaultLayout(area, trayButtons().length, metrics),
+  (area, hidden) => defaultLayout(area, trayButtons().length, metrics, hidden),
   browserStorage(),
   { toolbar: () => trayButtons().length, ...(actionsEl ? { actions: () => ACTIONS.length } : {}) },
   {
     check: Boolean((import.meta as { env?: { DEV?: boolean } }).env?.DEV),
     fitted: { options: { size: () => optionsShown(), beside: "toolbar" } },
+    // The palette starts hidden and comes up with the constrain tool
+    // (docs/plans/constraints-palette.md): under a finger it is a third of a
+    // phone's drawing, and on a desktop its default place — the right edge
+    // under the logo's row — is drawing that twenty-five of the e2e suite's
+    // tests click in, which is to say drawing a person uses. Shown from
+    // Panes, it stays. One word here if the owner wants it up from the start.
+    startHidden: ["constraints"],
+    summoned: { constraints: () => paletteSummoned() },
+    present: { constraints: () => paletteOnWorkbench() },
     metrics,
     // The logo is a panel nothing moves: what is pushed into the corner stops
     // against it, and the way into the app menu is never under anything.
@@ -508,6 +528,10 @@ async function main() {
   let model = restored?.value ?? new Model(APP_DIM);
   /** The organiser pane, once it is built below; the drawing pass syncs it (`syncOrganiser`). */
   let organiser: Organiser | null = null;
+  /** The constraints palette, once it is built below; the drawing pass syncs it (`syncPalette`). */
+  let constraintsPane: ConstraintsPalette | null = null;
+  /** Whether the palette was summoned at the last sync — a change lays the panels out again. */
+  let paletteUp = false;
   if (restored) {
     const r = restored.record;
     log(`restored ${r.name}${r.dirty ? " (unsaved changes)" : ""} — autosaved on this device`, "out");
@@ -721,6 +745,7 @@ async function main() {
     }
     syncToolbar();
     syncOrganiser();
+    syncPalette();
     syncChip();
   }
 
@@ -980,6 +1005,20 @@ async function main() {
    * redraw, which every edit, selection and undo ends in. The pane rebuilds
    * only when what it shows differs, so a drag's frames cost a comparison.
    */
+  /**
+   * The palette's rows after every frame, and the panels laid out again when
+   * the constrain tool has just been armed or put down — the one moment its
+   * being summoned changes (panels.ts's `summoned`).
+   */
+  function syncPalette() {
+    const up = paletteSummoned();
+    if (up !== paletteUp) {
+      paletteUp = up;
+      panels.apply();
+    }
+    constraintsPane?.sync();
+  }
+
   function syncOrganiser() {
     organiser?.sync();
     // Short — the marker and the name, the pane's own — because it never
@@ -1581,7 +1620,7 @@ async function main() {
   function showDiagnosis(solved: boolean, conflicts: string[], unowned: string[]) {
     const line = model.entities.size === 0 && solved
       ? { cls: "" as const, parts: [], fades: true }
-      : diagnosisLine(solved, diagnosis?.dof ?? null, conflicts, unowned, solved ? diagnosis?.redundant ?? [] : []);
+      : diagnosisLine(solved, diagnosis?.dof ?? null, conflicts, unowned, solved ? diagnosis?.agreeing ?? [] : []);
     diagnosisEl.textContent = "";
     diagnosisEl.className = line.cls;
     for (const part of line.parts) {
@@ -1912,12 +1951,15 @@ async function main() {
         ...(s.beside ? { beside: s.beside } : {}),
       }));
       const dialog = engine.dialog();
-      // A tool's commands (the constrain tool's relations), a row each.
-      const commands = engine.active?.commands?.() ?? [];
-      // The constrain tool shows its panel with nothing picked yet: it says
-      // there is nothing to list rather than vanishing (and coming back
-      // somewhere else) at the first pick.
-      const wantsPanel = rows.length || dialog || commands.length || engine.active?.commands !== undefined;
+      // A tool's commands (the constrain tool's relations), a row each — only
+      // where the constraints palette is off the workbench, which otherwise
+      // lists them (docs/plans/constraints-palette.md).
+      const listsHere = !paletteOnWorkbench();
+      const commands = listsHere ? engine.active?.commands?.() ?? [] : [];
+      // Listing here, the constrain tool shows its panel with nothing picked
+      // yet: it says there is nothing to list rather than vanishing (and
+      // coming back somewhere else) at the first pick.
+      const wantsPanel = rows.length || dialog || commands.length || (listsHere && engine.active?.commands !== undefined);
       return wantsPanel ? { tool: a.name, rows, dialog, commands } : null;
     },
     run: (command) => submit(command),
@@ -2178,6 +2220,47 @@ async function main() {
       run: (command) => void submit(command),
       tooltip,
       tree: document.getElementById("otree"),
+    });
+  }
+
+  /**
+   * The constraints palette (docs/plans/constraints-palette.md), through the
+   * same seam: it is about the constrain tool's picks while that tool is armed
+   * (`Tool.related`), else the selection's entities; an apply row types its
+   * line and tells the tool it ran, as the options pane's row did; a held
+   * row's controls type `select`, `set` and `del`. It is summoned by the
+   * constrain tool wherever it is hidden, and is a pane only on a workbench
+   * whose modules include `constraints` (panels.ts's `present`).
+   */
+  paletteSummoned = () => engine.active?.related !== undefined;
+  paletteOnWorkbench = () => getWorkbench(activeWorkbench())?.modules.includes("constraints") ?? true;
+  const constraintsEl = document.getElementById("constraints");
+  const paletteNames = (): readonly string[] => {
+    const picked = engine.active?.related?.();
+    return picked ? [...picked] : engine.selection.prune(model).filter((n) => model.entities.has(n));
+  };
+  if (constraintsEl) {
+    constraintsPane = new ConstraintsPalette(constraintsEl, {
+      sections: () => paletteFor(model, paletteNames(), engine.selection.prune(model), diagnosis?.agreeing ?? [], paletteSummoned()),
+      run: (command) => void submit(command),
+      note: (text) => log(text, "guide"),
+      // Typed like any line, and then the tool hears it ran — its picks are
+      // spent — after the line's own undo step, as the options pane did it.
+      command: async (command) => {
+        const tool = engine.active;
+        await submit(command);
+        tool?.ran?.(command);
+        render();
+      },
+      menu: (name) => (model.relations.has(name)
+        ? menuFor(model, { name, kind: "relation", distance: 0 }, null, { canUndo: undoStack.canUndo, canRedo: undoStack.canRedo }, viewMode, engine.selection.prune(model))
+        : null),
+      showMenu: (m, x, y) => {
+        hoverEl.hidden = true;
+        const wrap = menuEl.parentElement!.getBoundingClientRect();
+        menu.show(m, x - wrap.left, y - wrap.top);
+      },
+      tooltip,
     });
   }
 

@@ -1775,8 +1775,8 @@ const CORNER_W = 120;
  * there. The bottom pair is anchored to the area's bottom edge, so an
  * untouched layout follows the window as it is resized.
  */
-export function defaultLayout(area: Size, tools: number, m: Metrics = FINE): Layout {
-  if (m.coarse) return touchLayout(area, tools, m);
+export function defaultLayout(area: Size, tools: number, m: Metrics = FINE, hidden?: readonly string[]): Layout {
+  if (m.coarse) return touchLayout(area, tools, m, hidden);
   // Under the logo, a margin clear of it: touching it, the tray would be
   // against it, and the first sideways drag would turn it into a row.
   const top = logoBox(m).h + GAP;
@@ -1784,6 +1784,9 @@ export function defaultLayout(area: Size, tools: number, m: Metrics = FINE): Lay
   const cmdH = m.title + m.line;
   const logH = Math.round(LOG_H * m.scale);
   const cmdY = area.h - GAP - cmdH;
+  const orgW = Math.round(ORGANISER_W * m.scale);
+  const organiser = organiserAt(area, orgW, Math.round(ORGANISER_H * m.scale),
+    Math.max(top, area.h - GAP - Math.round(ORGANISER_H * m.scale)), area.h - GAP);
   return {
     toolbar: { x: GAP, y: top, ...traySize(tools, "column", m, trayRoom(area, "column", m)), orient: "column" },
     log: { x: GAP, y: cmdY - GAP / 2 - logH, w, h: logH },
@@ -1791,9 +1794,42 @@ export function defaultLayout(area: Size, tools: number, m: Metrics = FINE): Lay
     // Bottom right, level with the log and the command line: the corner
     // nothing else defaults to, clear of the drawing's middle and of the tray
     // wherever along the top it is pushed.
-    organiser: organiserAt(area, Math.round(ORGANISER_W * m.scale), Math.round(ORGANISER_H * m.scale),
-      Math.max(top, area.h - GAP - Math.round(ORGANISER_H * m.scale)), area.h - GAP),
+    organiser,
+    // The constraints palette (docs/plans/constraints-palette.md) up the
+    // right edge above the organiser, under the logo's row, when it is shown
+    // — it starts hidden, and comes up with the constrain tool: the other
+    // corner nothing else defaults to, so a drawing seeded in the middle is
+    // clear of both. A desktop has the room, so it is wider than the organiser
+    // — a relation's row is its mark, its name, what it says and a field — and
+    // tall enough for a two-line selection's eight rows; never into the organiser.
+    constraints: {
+      x: area.w - GAP - Math.round(PALETTE_W * m.scale), y: top, w: Math.round(PALETTE_W * m.scale),
+      h: Math.max(0, Math.min(Math.round(PALETTE_H * m.scale), organiser.y - GAP - top)),
+    },
   };
+}
+
+/** The constraints palette's default size on a desktop, at 100 %. */
+const PALETTE_W = 240;
+const PALETTE_H = 300;
+
+/**
+ * The constraints palette's default height on a phone: its strip, a section's
+ * heading and `PALETTE_ROWS` rows — the likeliest relations for what is picked
+ * and a "more…" row under them (docs/plans/constraints-palette.md: *if 8 rows
+ * cannot fit, the likeliest show and a "more…" row opens the rest*). Under a
+ * finger a row is a target tall, and a strip's hit box reaches a target up
+ * over the drawing besides (index.html), so each row is 44 px of a phone's
+ * drawing gone while the constrain tool is armed. Three: measured on an
+ * iPhone 13 upright, four put the strip's reach over the lower part of what
+ * the relation tests pick (a fifth line at y −18, an arc's lower end), and
+ * three leaves the owner's two circles and their mirror line whole in sight.
+ */
+export const PALETTE_ROWS = 3;
+/** A section heading in the palette, at 100 %: the organiser's `ohead`, about. */
+const PALETTE_HEAD = 20;
+export function paletteHeight(m: Metrics): number {
+  return m.title + 8 + Math.round(PALETTE_HEAD * m.scale) + PALETTE_ROWS * m.optionRow;
 }
 
 /** The organiser against the area's right edge from `top`, held above `bottom`. */
@@ -1859,7 +1895,15 @@ export function cornerBox(m: Metrics): Rect {
   return { x: 0, y: 0, w: logo.w + Math.round(CORNER_W * m.scale), h: logo.h };
 }
 
-function touchLayout(area: Size, tools: number, m: Metrics): Layout {
+function touchLayout(area: Size, tools: number, m: Metrics, hidden?: readonly string[]): Layout {
+  // The constraints palette (docs/plans/constraints-palette.md) starts hidden
+  // on a phone and comes up with the constrain tool; shown, it takes room the
+  // options box (portrait) or the drawing beside the column (landscape)
+  // otherwise has, and hidden it takes none — so the defaults are asked with
+  // what is hidden now, and asked without it (a test's fresh screen) lay out
+  // the start, where it is hidden.
+  const palette = hidden !== undefined && !hidden.includes("constraints");
+  const palW = Math.round(ORGANISER_W * m.scale);
   const cmdH = m.title + m.line;
   const logH = m.title + m.logLine;
   const logo = logoBox(m);
@@ -1901,6 +1945,17 @@ function touchLayout(area: Size, tools: number, m: Metrics): Layout {
       // The rest of the column, down to the bottom margin.
       organiser: { x: colX, y: orgY, w: colW, h: Math.max(orgMin.h, Math.min(orgH, area.h - GAP - orgY)) },
       toolbar: { x: GAP, y: area.h - bar.h, ...bar, orient: "row", ...(lines > 1 ? { lines } : {}) },
+      // The palette at the side: the left side, under the logo, from the
+      // strip's line down to the tray's row — the one stretch of a landscape
+      // phone nothing else defaults to. Beside the right-hand column it was
+      // tried first, and lay over the drawing's middle (measured: two lines
+      // drawn at the middle were under it, and a tap on them was the pane's).
+      // Under the command line where that shares the logo's row, which it
+      // does on every phone wide enough for it.
+      ...(palette ? (() => {
+        const y = Math.max(stripTop, cmd.y + cmd.h + GAP);
+        return { constraints: { x: GAP, y, w: Math.min(palW, colX - 3 * GAP), h: Math.max(0, area.h - bar.h - GAP - y) } };
+      })() : {}),
     };
   }
   const bar = traySize(tools, "column", m, trayRoom(area, "column", m));
@@ -1930,6 +1985,13 @@ function touchLayout(area: Size, tools: number, m: Metrics): Layout {
     organiser = { x: area.w - GAP - w, y, w, h: Math.max(orgMin.h, Math.min(orgH, upper - y)) };
   }
   const below = Math.max(log.y + log.h, organiser.y + organiser.h) + GAP;
+  // The palette docked at the bottom, above the command line and right of the
+  // tray — the box the options panel has, from its bottom up by its rows — so
+  // what is picked in the drawing's middle stays in sight above it (the
+  // owner's case, measured in relationscomplete.e2e.ts: two circles and the
+  // mirror line). The options box is what is left above it.
+  const palH = palette ? Math.min(paletteHeight(m), Math.max(0, cmdY - GAP - below)) : 0;
+  const boxBottom = cmdY - GAP - (palette ? palH + GAP : 0);
   return {
     toolbar: { x: GAP, y: top, ...bar, orient: "column" },
     actions,
@@ -1941,7 +2003,8 @@ function touchLayout(area: Size, tools: number, m: Metrics): Layout {
     // aimed at). So it gets the space right of the tray, between the panes at
     // the top and the command line, and sits in that box's bottom-right
     // corner — just above the line, its ✓ under the same thumb (`inCorner`).
-    options: { x: left, y: below, w: area.w - GAP - left, h: Math.max(0, cmdY - GAP - below) },
+    options: { x: left, y: below, w: area.w - GAP - left, h: Math.max(0, boxBottom - below) },
+    ...(palette ? { constraints: { x: left, y: cmdY - GAP - palH, w: area.w - GAP - left, h: palH } } : {}),
   };
 }
 
@@ -1950,6 +2013,8 @@ function minOfPanel(id: string, m: Metrics): Size {
   if (id === "log") return { w: 160, h: m.title + m.logLine };
   if (id === "cmd") return { w: 160, h: m.title + m.line };
   if (id === "organiser") return { w: 110, h: m.title + Math.round(40 * m.scale) };
+  // The palette: a heading and one row, the least that still says something.
+  if (id === "constraints") return { w: 110, h: m.title + 8 + Math.round(PALETTE_HEAD * m.scale) + m.optionRow };
   return { w: 80, h: m.title + 20 };
 }
 
@@ -2662,8 +2727,13 @@ export function stripTip(label: string, tray: boolean, locked = false): Tip {
  */
 export const HAND_LINGER_MS = 150;
 
-/** The panes that are never see-through: the options panel (and the feature dialog it holds) is read and typed into, not looked through. */
-export const OPAQUE_PANES: readonly string[] = ["options"];
+/**
+ * The panes that are never see-through: the options panel (and the feature
+ * dialog it holds) is read and typed into, not looked through — and so is the
+ * constraints palette, a list of rows to press and a dimension's value to
+ * type (docs/plans/constraints-palette.md).
+ */
+export const OPAQUE_PANES: readonly string[] = ["options", "constraints"];
 
 /** One panel as the app menu lists it: its id, the name it shows, and whether it is shown. */
 export interface Pane { id: string; label: string; shown: boolean }
@@ -2671,7 +2741,10 @@ export interface Pane { id: string; label: string; shown: boolean }
 export class Panels {
   private area: HTMLElement;
   private storage: StorageLike | null;
-  private defaults: (area: Size) => Layout;
+  private defaults: (area: Size, hidden: readonly string[]) => Layout;
+  private startHidden: readonly string[];
+  private summoned: Record<string, () => boolean>;
+  private present: Record<string, () => boolean>;
   private trays: Record<string, () => number>;
   private fitted: Record<string, Fitted>;
   private fixed: Record<string, Fixed>;
@@ -2717,7 +2790,7 @@ export class Panels {
   private lingers = new Map<string, ReturnType<typeof setTimeout>>();
 
   constructor(
-    area: HTMLElement, defaults: (area: Size) => Layout, storage: StorageLike | null,
+    area: HTMLElement, defaults: (area: Size, hidden: readonly string[]) => Layout, storage: StorageLike | null,
     trays: Record<string, () => number> = {},
     options: {
       check?: boolean; fitted?: Record<string, Fitted>; metrics?: Metrics;
@@ -2725,8 +2798,32 @@ export class Panels {
       tooltip?: AttachTip; onShow?: (layout: Layout, area: Size, insets: Insets) => void;
       onRefused?: (text: string) => void;
       onLocked?: (text: string) => void; onRefit?: (text: string) => void;
+      /**
+       * Panes that start hidden until the viewer shows them — the
+       * constraints palette (docs/plans/constraints-palette.md), which on a
+       * phone would take a third of the drawing from the start and on a
+       * desktop sits over drawing people use.
+       */
+      startHidden?: readonly string[];
+      /**
+       * A pane shown while its predicate holds although it is hidden — by
+       * default or by the viewer — and hidden again when it stops: the
+       * constraints palette while the constrain tool is armed, which has no
+       * other list to offer its relations in. The host applies the layout
+       * again when a predicate may have changed.
+       */
+      summoned?: Record<string, () => boolean>;
+      /**
+       * A pane that is only there while its predicate holds — out of the
+       * layout and out of `panes` otherwise, and `setShown` refuses it: the
+       * constraints palette on a workbench without its module.
+       */
+      present?: Record<string, () => boolean>;
     } = {},
   ) {
+    this.startHidden = options.startHidden ?? [];
+    this.summoned = options.summoned ?? {};
+    this.present = options.present ?? {};
     this.tooltip = options.tooltip;
     this.onRefused = options.onRefused;
     this.onLocked = options.onLocked;
@@ -2792,7 +2889,18 @@ export class Panels {
    * for it in both orientations.
    */
   private hiddenByViewer(id: string): boolean {
-    return this.stored[id]?.hidden ?? false;
+    return this.stored[id]?.hidden ?? this.startHidden.includes(id);
+  }
+
+  /** Whether `id` is a pane of this page now — see the constructor's `present`. */
+  private isPresent(id: string): boolean {
+    return this.present[id]?.() ?? true;
+  }
+
+  /** Whether `id` is out of the layout: not present, or hidden and not summoned. */
+  private isOff(id: string): boolean {
+    if (!this.isPresent(id)) return true;
+    return this.hiddenByViewer(id) && !(this.summoned[id]?.() ?? false);
   }
 
   /**
@@ -2819,12 +2927,13 @@ export class Panels {
     const order: string[] = [];
     const later: string[] = [];
     const sizes: Record<string, Size> = {};
+    const hidden: string[] = [];
     for (const [id, el] of this.els) {
       const f = this.fitted[id];
       const size = f ? f.size() : undefined;
-      const off = this.hiddenByViewer(id) || size === null;
+      const off = this.isOff(id) || size === null;
       el.hidden = off;
-      if (off) { delete this.shown[id]; continue; }
+      if (off) { delete this.shown[id]; hidden.push(id); continue; }
       if (!f) { order.push(id); continue; }
       sizes[id] = size!;
       later.push(id);
@@ -2842,7 +2951,7 @@ export class Panels {
     let wanted: Layout = {};
     const attempt = (keep: readonly string[]) => {
       const recs = Object.fromEntries(keep.map((id) => [id, stored[id]]));
-      defaults = this.defaults(area);
+      defaults = this.defaults(area, hidden);
       const relay = (base: Layout) => relaid(recs, base, area, this.m.scale, sizeOf, minOf);
       const unstored = (ids: string[], from: Layout) =>
         Object.fromEntries(ids.filter((id) => !recs[id] && from[id]).map((id) => [id, from[id]]));
@@ -3025,7 +3134,7 @@ export class Panels {
 
   /** Every panel there is, in the page's order, with the name it shows and whether it is shown — the app menu's Panes. */
   panes(): Pane[] {
-    return [...this.els.keys()].map((id) => {
+    return [...this.els.keys()].filter((id) => this.isPresent(id)).map((id) => {
       const el = this.els.get(id)!;
       const strip = el.querySelector<HTMLElement>(":scope > .ptitle");
       const label = el.dataset.label ?? strip?.title ?? strip?.textContent ?? id;
@@ -3043,8 +3152,11 @@ export class Panels {
     if (!this.els.has(id)) {
       throw new Error(`there is no "${id}" pane — the panes are ${[...this.els.keys()].map((k) => JSON.stringify(k)).join(", ")}`);
     }
+    if (!this.isPresent(id)) throw new Error(`the "${id}" pane is not on this workbench — its module is not among the workbench's`);
     const entry = { ...this.stored[id] };
-    if (shown) delete entry.hidden;
+    // A pane that starts hidden here is stored as shown explicitly; one that
+    // starts shown goes back to no entry, as it always did.
+    if (shown) { if (this.startHidden.includes(id)) entry.hidden = false; else delete entry.hidden; }
     else entry.hidden = true;
     if (entry.at || entry.hidden !== undefined) this.stored[id] = entry;
     else delete this.stored[id];

@@ -2,7 +2,7 @@
 // against a real dev server.
 //
 // These exist because a good deal of what this project does is only wrong
-// once it is assembled. Seventy bugs so far were invisible to the unit tests and
+// once it is assembled. Seventy-one bugs so far were invisible to the unit tests and
 // obvious within seconds of running the thing: a status readout that went
 // stale, a fillet that satisfied every constraint to six decimal places while
 // drawing a broken rectangle, an auto-naming loop that hung the tab, and a
@@ -349,10 +349,43 @@ export async function openApp(options: OpenOptions = {}): Promise<AppContext> {
     async at(sx, sy) {
       const { box, panel } = await page.$eval("#cv", (el, [sx, sy]) => {
         const r = el.getBoundingClientRect();
-        const top = document.elementFromPoint(r.x + sx, r.y + sy);
+        const [px, py] = [r.x + sx, r.y + sy];
+        const top = document.elementFromPoint(px, py);
         // A panel, or the logo — the one piece of chrome in the corner that
         // takes a press.
-        const covering = top?.closest<HTMLElement>(".panel[data-panel], #logo");
+        let covering = top?.closest<HTMLElement>(".panel[data-panel], #logo") ?? null;
+        // Under a finger a strip's hit box reaches up over the drawing to a
+        // whole target (index.html's `.ptitle::before`), and Chromium's touch
+        // adjustment snaps a tap within the finger's radius (fingers.ts, 8 px)
+        // onto it — so a point just above a pane is the pane's too. Found by
+        // the constraints palette docked at a phone's bottom: the first tap on
+        // a line above it went to the strip, and `elementFromPoint` had said
+        // the canvas.
+        if (!covering && matchMedia("(pointer: coarse)").matches) {
+          const target = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--target")) || 44;
+          const radius = 8;
+          // A pane's own edge, too: a tap with its centre on the organiser's
+          // bottom edge went to its "none —" line (the five-lines test, with
+          // the lines drawn higher). Only the edge: three pixels off it the
+          // canvas wins, as the touch suite's taps beside the organiser show —
+          // the adjustment prefers the node under the centre, and reaches
+          // further only for a strip (below), which is a drag handle.
+          const edge = 1;
+          for (const pane of Array.from(document.querySelectorAll<HTMLElement>(".panel[data-panel]:not([hidden])"))) {
+            const b = pane.getBoundingClientRect();
+            if (px + edge > b.left && px - edge < b.right && py + edge > b.top && py - edge < b.bottom) { covering = pane; break; }
+          }
+          for (const strip of covering ? [] : Array.from(document.querySelectorAll<HTMLElement>(".panel[data-panel]:not([hidden]) > .ptitle"))) {
+            const s = strip.getBoundingClientRect();
+            const reach = Math.max(s.height, target);
+            const wide = Math.max(s.width, target);
+            const band = { left: s.left + s.width / 2 - wide / 2, right: s.left + s.width / 2 + wide / 2, top: s.bottom - reach, bottom: s.bottom };
+            if (px + radius > band.left && px - radius < band.right && py + radius > band.top && py - radius < band.bottom) {
+              covering = strip.parentElement as HTMLElement;
+              break;
+            }
+          }
+        }
         return {
           box: { x: r.x, y: r.y, width: r.width, height: r.height },
           panel: covering ? covering.dataset.panel ?? covering.id ?? "?" : null,

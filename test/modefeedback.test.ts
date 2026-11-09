@@ -378,7 +378,9 @@ test("the point, the sketch tool, the dimension and constrain tools say what to 
   const k = new ConstrainTool(ctxFor(m));
   assert.equal(k.next!("mouse"), "click what to relate");
   k.picks = ["l1", "l2"];
-  assert.equal(k.next!("mouse"), "choose a relation in the panel, or pick more");
+  // "from the list": the constraints palette's, or on a workbench without
+  // the palette's module the options pane's (docs/plans/constraints-palette.md).
+  assert.equal(k.next!("mouse"), "choose a relation from the list, or pick more");
 });
 
 test("the extrude tool: a region, then ✓ to extrude; the fillet: a lit corner, a line that meets it, ✓", async () => {

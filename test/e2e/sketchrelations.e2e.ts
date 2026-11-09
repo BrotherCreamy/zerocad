@@ -136,10 +136,12 @@ test("desktop: a drawn rectangle is free ink until fixed and dimensioned, the st
   assert.equal(lines.length, 4, "a rectangle");
   let d = (await diag(desk))!;
   // The tool's rectangle is a right angle at every corner — not held level —
-  // so it can move (2), turn (1), and stretch both ways (2). The fourth right
-  // angle is implied by the other three, and said so, muted (profiles-held.md).
+  // so it can move (2), turn (1), and stretch both ways (2). The four right
+  // angles say one thing more than once, and the status counts them, muted,
+  // naming none (profiles-held.md; the register's "redundancy counted, not
+  // blamed on the newest relation" — it used to say `redundant r4`).
   assert.equal(d.dof, 5, `where it is, which way, how big: ${JSON.stringify(d)}`);
-  assert.match(await diagnosisText(desk), /^5 free · redundant r4$/);
+  assert.match(await diagnosisText(desk), /^5 free · 4 agreeing$/);
   await park(desk);
   assert.ok(close(await inkNear(desk, await along(desk, lines[0], 0.3), FREE), FREE), "an edge in the free ink");
   await shot(desk, "1-free-rectangle");
@@ -153,7 +155,7 @@ test("desktop: a drawn rectangle is free ink until fixed and dimensioned, the st
   // Level it with the constrain tool: its bottom edge, then Horizontal.
   await pressButton(desk, "constrain");
   await click(desk, await along(desk, lines[0], 0.3));
-  await desk.page.click(`#options .ocmd[data-command='horizontal("${lines[0]}")']`);
+  await desk.page.click(`#constraints .ocmd[data-command='horizontal("${lines[0]}")']`);
   await desk.page.waitForTimeout(250);
   d = (await diag(desk))!;
   assert.equal(d.dof, 2, "its width and height");
@@ -169,7 +171,7 @@ test("desktop: a drawn rectangle is free ink until fixed and dimensioned, the st
   d = (await diag(desk))!;
   assert.equal(d.dof, 0, JSON.stringify(d));
   assert.deepEqual(d.free, []);
-  assert.match(await diagnosisText(desk), /^0 free · redundant r4$/);
+  assert.match(await diagnosisText(desk), /^0 free · 4 agreeing$/);
   await desk.type("select");
   await park(desk);
   assert.ok(close(await inkNear(desk, await along(desk, lines[2], 0.3), HELD), HELD), "and now in the held ink");
@@ -222,10 +224,10 @@ test("desktop: two lines selected, constrain from the relate button's flyout lis
   await click(desk, await along(desk, "l2", 0.3), true);
   assert.deepEqual((await desk.selection()).sort(), ["l1", "l2"]);
   await pressButton(desk, "constrain");
-  const rows = await desk.page.$$eval("#options .ocmd", (els) => els.map((e) => (e as HTMLElement).dataset.command));
+  const rows = await desk.page.$$eval("#constraints .ocmd", (els) => els.map((e) => (e as HTMLElement).dataset.command));
   assert.deepEqual(rows.slice(0, 4), ['par("l1", "l2")', 'perp("l1", "l2")', 'eq("l1", "l2")', 'col("l1", "l2")']);
   await shot(desk, "4-constrain-panel");
-  await desk.page.click('#options .ocmd[data-command="par(\\"l1\\", \\"l2\\")"]');
+  await desk.page.click('#constraints .ocmd[data-command="par(\\"l1\\", \\"l2\\")"]');
   await desk.page.waitForTimeout(250);
   const par = (await relations(desk)).filter((r) => r.op === "parallel");
   assert.deepEqual(par.map((r) => r.args), [["l1", "l2"]]);
@@ -233,7 +235,7 @@ test("desktop: two lines selected, constrain from the relate button's flyout lis
   const dir = (n: string) => { const l = m.lines.find((x) => x.name === n)!; const [p, q] = [m.points[l.refs[0]], m.points[l.refs[1]]]; return [q[0] - p[0], q[1] - p[1]]; };
   const [u, v] = [dir("l1"), dir("l2")];
   assert.ok(Math.abs(u[0] * v[1] - u[1] * v[0]) < 1e-6, "parallel");
-  assert.equal(await desk.page.$$eval("#options .ocmd", (els) => els.length), 0, "the picks are spent");
+  assert.equal(await desk.page.$$eval("#constraints .ocmd", (els) => els.length), 0, "the picks are spent");
   assert.equal((await desk.repl("undo()")).ok, true);
   assert.equal((await relations(desk)).filter((r) => r.op === "parallel").length, 0, "one undo step");
 });
@@ -261,12 +263,19 @@ test("desktop: a conflict names its relations, draws them red, and one is select
   await shot(desk, "6-conflict-deleted");
 });
 
-test("desktop: a redundant relation is said, muted, and fails nothing", async () => {
+test("desktop: two relations that agree are counted, muted, named by neither, and fail nothing", async () => {
   await fresh(desk);
   await desk.type('a = pt(0, 0); b = pt(30, 0); c = pt(0, 20); ln(a, b); ln(a, c); perp("l1", "l2"); perp("l2", "l1")');
   assert.equal(await desk.status(), "SOLVED");
-  assert.match(await diagnosisText(desk), /free · redundant r2$/);
-  assert.equal(await desk.page.$eval("#diagnosis", (el) => el.className), "redundant");
+  // It used to read `redundant r2` — the second perp blamed for agreeing with
+  // the first (the register, 2026-11-09: redundancy counted, not blamed).
+  assert.match(await diagnosisText(desk), /free · 2 agreeing$/);
+  assert.equal(await desk.page.$eval("#diagnosis", (el) => el.className), "agreeing");
+  // The palette names them, with nothing selected, as one agreeing set.
+  await desk.type('ui({ show: "constraints" })');
+  await desk.type("select");
+  const agreeing = await desk.page.$$eval('#constraints [data-section="agreeing"] .crow', (els) => els.map((e) => (e as HTMLElement).dataset.name));
+  assert.deepEqual(agreeing, ["r1", "r2"]);
   // Muted as a count is, never orange: it agrees (docs/plans/profiles-held.md).
   assert.equal(await desk.page.$eval("#diagnosis", (el) => getComputedStyle(el).color), "rgb(122, 139, 155)");
 });
@@ -332,10 +341,10 @@ test("iPhone 13: two lines tapped, constrain from the relate button's flyout, a 
   await f.hold(...await middleOf('#toolbar button[data-group="relate"]'), 700);
   await phone.page.waitForSelector('#flyout button[data-tool="constrain"]', { state: "visible", timeout: 3000 });
   await tap(await middleOf('#flyout button[data-tool="constrain"]'), true);
-  const rows = await phone.page.$$eval("#options .ocmd", (els) => els.map((e) => (e as HTMLElement).dataset.command));
+  const rows = await phone.page.$$eval("#constraints .ocmd", (els) => els.map((e) => (e as HTMLElement).dataset.command));
   assert.equal(rows[0], 'par("l1", "l2")');
   await shot(phone, "8-phone-constrain-panel");
-  await tap(await middleOf('#options .ocmd[data-command="par(\\"l1\\", \\"l2\\")"]'), true);
+  await tap(await middleOf('#constraints .ocmd[data-command="par(\\"l1\\", \\"l2\\")"]'), true);
   assert.deepEqual((await relations(phone)).filter((r) => r.op === "parallel").map((r) => r.args), [["l1", "l2"]]);
 });
 

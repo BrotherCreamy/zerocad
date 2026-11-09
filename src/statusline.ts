@@ -105,22 +105,26 @@ export class StatusLine {
  * tested without a browser.
  *
  * - a conflict: the relations that cannot all hold — `d1 · d2 cannot all hold`;
- * - solved with redundancy: the count, then the redundant ones, muted as the
- *   count is — `3 free · redundant r5` — never blocking, never a warning
- *   (an agreeing relation is no fault: docs/plans/profiles-held.md);
+ * - solved with agreement: the count of what is free, then how many relations
+ *   say one thing together, muted as the count is — `3 free · 4 agreeing` —
+ *   never blocking, never a warning, and **naming none**: an agreeing relation
+ *   is no fault (docs/plans/profiles-held.md), and the one added last is not
+ *   the one to blame (TODO.md's register; the owner's principle). Which they
+ *   are, the constraints palette lists (docs/plans/constraints-palette.md).
  * - solved: how many ways the drawing can still move — `3 free`, `0 free`.
  */
 export type DiagnosisPart = string | { relation: string };
 
 export interface DiagnosisLine {
-  cls: "" | "conflict" | "redundant";
+  cls: "" | "conflict" | "agreeing";
   parts: DiagnosisPart[];
   /** Whether it fades with SOLVED: only when it says nothing is wrong. */
   fades: boolean;
 }
 
 export function diagnosisLine(
-  solved: boolean, dof: number | null, conflicts: readonly string[], unowned: readonly string[], redundant: readonly string[],
+  solved: boolean, dof: number | null, conflicts: readonly string[], unowned: readonly string[],
+  agreeing: readonly (readonly string[])[],
 ): DiagnosisLine {
   const names = (rs: readonly string[]): DiagnosisPart[] => rs.flatMap((r, i) => (i ? [" · ", { relation: r }] : [{ relation: r }]));
   if (!solved) {
@@ -131,8 +135,9 @@ export function diagnosisLine(
     return { cls: "conflict", parts, fades: false };
   }
   const count: DiagnosisPart[] = dof === null ? [] : [`${dof} free`];
-  if (redundant.length) {
-    return { cls: "redundant", parts: [...count, ...(count.length ? [" · "] : []), "redundant ", ...names(redundant)], fades: false };
+  const together = new Set(agreeing.flat()).size;
+  if (together) {
+    return { cls: "agreeing", parts: [...count, ...(count.length ? [" · "] : []), `${together} agreeing`], fades: false };
   }
   return { cls: "", parts: count, fades: true };
 }

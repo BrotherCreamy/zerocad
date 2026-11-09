@@ -10,6 +10,77 @@ For the itemized technical state see `STATUS.md`, for what's next see
 `CHANGELOG.md`, and for the project pitch see `README.md`.
 
 
+## 2026-11-09 — the constraints palette, and redundancy counted rather than blamed
+
+The owner: *"the constraint list should not be on the features palette, it
+should be a separate constraints palette. although i think it should still
+be installed as a workbench."* Built on `claude/constraints-palette` from
+docs/plans/constraints-palette.md, with the register's item 2 ("redundancy
+counted, not blamed on the newest relation") as part of it, since the palette
+is where the agreeing set is shown. The choices are in TODO.md's register;
+this is why they were made.
+
+**Hidden from the start, everywhere.** The spec says the palette docks at the
+bottom on an upright phone and at the side on its side, and the owner's words
+for the organiser were *"show from start"*. Measured on the iPhone 13
+emulation (390 × 664): a row under a finger is a target tall, 44 px, and a
+strip's hit box reaches another target up over the drawing, so a pane of three
+rows is 190 px of a 664-px screen — a third of the drawing, permanently, for a
+list that is only wanted when something is selected to relate. So the pane
+starts hidden there and the constrain tool summons it while armed (gone again
+when the tool is put down), and a viewer who wants it always shows it from
+Panes, after which it stays. The desktop was going to start with it up — it
+has the room — until the first full run of the suite: twenty-five tests
+clicked drawing under the pane's default place at the right edge, every one
+refused by the harness's `at`. Those clicks are where people draw; the pane
+starts hidden on a desktop too, and the behaviour is one story on every
+device. Written down as the first vetoable choice: if the owner says "show
+from start" of this pane too, it is one array in main.ts.
+
+**Three rows, not the spec's four.** Four rows plus the strip's reach put the
+pane's influence over the lower part of what the relation tests pick — a fifth
+line at y −18, an arc's lower end — and two circles at the drawing's middle
+would have had their lower rims under it. Three leaves the owner's case whole:
+both circles and the mirror line in sight with the two circles picked. The
+rows shown are not a fixed count anyway: each build measures the pane's real
+height and shows the likeliest rows that fit with a *more…* row, so a pane the
+viewer makes taller shows more.
+
+**Landscape went left, not beside the column.** The first layout put the
+palette as a second column left of the right-hand one; measured, it lay over
+the drawing's middle — two lines drawn there were under it, and a tap on them
+was the pane's. The left side under the logo is the one stretch of a landscape
+phone nothing else defaults to, and the drawing's middle stays clear.
+
+**Bug 71, and a harness blind spot.** The first tap after arming was lost on
+the phone: the palette at the bottom, the strip's `::before` reaching 44 px up,
+and Chromium's touch adjustment snapping a tap within the finger's 8-px radius
+onto it, so a line 30 px above the pane was the pane's. `elementFromPoint`
+said the canvas, so the harness's `at` let the press through, and no rectangle
+overlapped, so the layout tests saw nothing. `at` now refuses a point within a
+strip's reach under a finger, which is what the real finger meets.
+
+**The agreeing set is found, not guessed.** The kernel's `null_support` was
+already flagging every row in the left null space's support; `analyse` only
+ever read the non-pivots, which is what made "redundant rN" blame the newest.
+The union support alone was rejected as the set — a tool-drawn 3D arc's
+`onplane` and `oncircle` plane row agree in one row with no whole relation
+implied, and in a drawing with a redundant rectangle they would have been
+listed with it. So for each wholly implied block the candidates are tried one
+at a time with their rows left out, and kept when the block is then no longer
+implied; where no single one is needed (a row said three times) the whole
+support stands. Bounded like the conflict search. The status counts the
+union's size and names none; `redundant` is kept, unsaid, because the
+dimension tool's "already held" is a question about the later one.
+
+**Rejected: the status's count opening the palette.** A tap on `4 agreeing`
+typing `ui({ show: "constraints" })` would be one line, but the status's
+buttons are the relation-selecting kind, and a count is not a relation.
+
+**Rejected: a right-hand column on an upright phone.** It would keep the
+left of the drawing tappable as the old options pane did, but the owner's
+two circles sit at the middle and the right one would be under it entirely.
+
 ## 2026-11-09 — the owner's principle, and a review of the decisions against it
 
 The owner, on the extrude's two profiles: *"i mean kind of like mirror

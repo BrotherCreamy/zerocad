@@ -7,6 +7,79 @@ decisions.
 
 ---
 
+## 2026-11-09 — the constraints palette: a pane of its own, installed as a workbench module; redundancy counted, not blamed
+
+The owner: *"the constraint list should not be on the features palette, it
+should be a separate constraints palette. although i think it should still
+be installed as a workbench."* (docs/plans/constraints-palette.md.)
+
+The constrain tool's list of relations was its options pane — up only while
+the tool was armed, and on an iPhone tall enough to cover the second circle
+and the mirror line a Symmetric needs (TODO.md, 2026-11-08). It is a panel
+now, like the organiser, and a module a workbench names or does not.
+
+| | |
+|---|---|
+| ![A desktop, the constrain tool armed: the constraints palette summoned up the right edge above the organiser, saying pick what to relate](docs/images/420-the-constrain-tool-summons-the-palette-up-the-right-edge.png) | ![Two lines selected with nothing armed, the palette shown from Panes: it lists Parallel, Perpendicular, Equal, Collinear, Horizontal (both), Vertical (both), Fix (both) and Angle, each with the line it types](docs/images/421-two-lines-selected-no-tool-the-palette-lists-what-they-take.png) |
+| ![Parallel pressed: the held list shows // r1 par l1 l2 with its ×, the selection kept, the status 7 free. The lines themselves have shrunk — an un-normalised par between two free lines, the register's item 1, pre-existing](docs/images/422-parallel-pressed-the-held-list-shows-it-with-a-delete.png) | ![A dimension edited from the palette: the line's dist, 30 in its field, typed as 45 — set("d1.value", 45) in the log, the line 45 long](docs/images/423-a-dimension-edited-from-the-palette-30-typed-as-45.png) |
+| ![A rectangle of four right angles with nothing selected: the status reads 5 free · 4 agreeing, the palette lists the four relations and, under Agreeing, the same four — none of them blamed](docs/images/424-a-rectangles-four-right-angles-one-agreeing-set-the-status-counts-them.png) | ![A workbench defined without the constraints module: no palette, and the constrain tool's options pane lists the relations as it did before](docs/images/425-a-workbench-without-the-module-the-options-pane-lists-as-before.png) |
+| ![iPhone 13: the constrain tool armed brings the palette up, docked at the bottom above the command line, saying pick what to relate; the two lines in the middle whole](docs/images/426-iphone-constrain-armed-the-palette-up-at-the-bottom.png) | ![iPhone 13: two lines tapped — Parallel and 7 more…, the rows a finger's target tall, the lines still in sight](docs/images/427-iphone-two-lines-tapped-parallel-and-7-more.png) |
+| ![iPhone 13: the owner's case — two circles picked, the palette up with Concentric and 6 more…, both circles and the mirror line in sight](docs/images/431-iphone-two-circles-picked-the-palette-up-the-mirror-line-in-sight.png) | ![iPhone 13: a dimension edited by finger — the field a target tall, 45 typed, the line 45 long](docs/images/429-iphone-a-dimension-edited-by-finger.png) |
+| ![iPhone 13 on its side: the palette at the left under the logo, the two lines picked at the middle clear of it](docs/images/430-iphone-landscape-the-palette-at-the-left-under-the-logo.png) | ![iPhone 13: shown from Panes the palette stays with the tool down, listing the drawing's relations](docs/images/428-iphone-shown-from-panes-it-stays.png) |
+
+- **A palette, not a tool pane** (`src/constraints.ts`). For the constrain
+  tool's picks, or else the selection's entities, it lists the relations that
+  apply (`constraintsFor`, a row each; a greyed row says why not; a press
+  types the line) and the relations they already have — the glyph's own mark,
+  the name, what it says, a dimension's value in a field that types
+  `set("d1.value", 45)`, × that types `del`; a tap types `select`; a
+  right-click or a held finger opens the glyph's menu. Nothing selected, it
+  lists every relation newest first and the **agreeing sets**. The constrain
+  tool armed with nothing picked says *pick what to relate*.
+- **A workbench module** (`src/modules/constraints.ts`): it registers only
+  its help; what it does is put the pane on `part`, `sketch` and `surfaces`.
+  A workbench without it has no pane — out of the layout and Panes,
+  `ui({ show: "constraints" })` refused by name — and the constrain tool's
+  options pane lists the relations there as it did everywhere before.
+- **Hidden from the start, summoned by the constrain tool** while armed,
+  gone when the tool is put down unless shown from Panes, when it stays. On
+  a phone a row under a finger is a target tall and three rows are a third
+  of the drawing; on a desktop its place — the right edge above the
+  organiser — is drawing people click in (the first full run: twenty-five
+  tests refused there). Docked at the bottom on an upright phone, at the
+  left under the logo on its side. The rows that do not fit collapse to the
+  likeliest and a *more…* row, measured against the pane's real height.
+  Measured, the owner's case: two circles picked, the palette up, both
+  circles and the mirror line in sight (`relationscomplete.e2e.ts` picks the
+  circles first again).
+- **Redundancy counted, not blamed** (the register's item 2). The status
+  used to say `redundant r4`, naming whichever agreeing relation was stored
+  last. The kernel's `null_support` already flagged every row in the left
+  null space's support; `Problem.analyse({ agreeing })` now finds, for each
+  wholly implied block, the least set that implies it (each candidate tried
+  with its rows left out; the whole support where no single one is needed;
+  bounded like the conflict search), and `Model.diagnose().agreeing` names
+  the sets, merged where they overlap. The status reads `0 free · 4
+  agreeing`, muted, naming none; the palette lists each set under *none is
+  wrong*. `redundant` is kept, unsaid, for the dimension tool's "already
+  held".
+- **Panels learned three predicates** the host hands in (`present`,
+  `startHidden`, `summoned`), so `panels.ts` still imports nothing from the
+  model or the tools; `Tool.related()` hands a tool's picks to the palette.
+- **Bug 71** (docs/ARCHITECTURE.md): the first tap after arming was lost on
+  the phone — a strip's hit box reaches a target up over the drawing and
+  Chromium's touch adjustment snapped a tap 30 px above the pane onto it,
+  while `elementFromPoint` said the canvas. The harness's `at` now refuses a
+  point within a finger's radius of a pane or a strip's reach.
+- **Expectations changed**: the three `redundant rN` status matches and the
+  `#diagnosis` class (`agreeing`); `#options .ocmd` → `#constraints .ocmd`;
+  the built-in module order; the five-lines test's drawing spaced to the
+  phone's room; the two-lines test on the phone reads the likeliest rows and
+  opens *more…*.
+- **Seen, left alone**: `par` between two free lines shrinks them (60 to 8.8
+  and 1.2 headless, the picture above) — the register's item 1, not this
+  package's.
+
 ## 2026-11-09 — a prism stays a prism: an extrude is an edge extrude, its chord held square by a relation of its own
 
 The owner: *"Why is it that after I extrude I can drag a corner of the

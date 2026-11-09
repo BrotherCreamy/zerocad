@@ -43,16 +43,81 @@ otherwise.
     and a fillet on one end only is ordinary (same spec, Design 3).
   - **The constraint list is its own palette, installed as a workbench**,
     not a row of the tool options pane. Spec:
-    [`constraints-palette.md`](docs/plans/constraints-palette.md), queued.
+    [`constraints-palette.md`](docs/plans/constraints-palette.md), **built**
+    (2026-11-09, `claude/constraints-palette`; the choices made building it
+    are the register entry below).
+- **The constraints palette, as built (2026-11-09;
+  docs/plans/constraints-palette.md).** The owner decided the palette and
+  that it is a workbench module; these are the choices made building it,
+  each vetoable:
+  - **Hidden from the start, everywhere.** On a phone its rows are a
+    finger's target tall and the pane is a third of the drawing; on a desktop
+    its place, the right edge under the logo's row, is drawing twenty-five
+    e2e tests click in (the first full run: every one of them refused by the
+    harness's `at`, "under the constraints panel"). So it starts hidden and
+    the **constrain tool summons it** while armed (panels.ts's `summoned`),
+    gone again when the tool is put down — unless the viewer showed it from
+    Panes or `ui({ show: "constraints" })`, when it stays. A selection made
+    with nothing armed feeds it only once it is up. The owner's *"show from
+    start"* was said of the organiser; said of this pane too, empty
+    `startHidden` in main.ts.
+  - **Its place**: a desktop's right edge above the organiser, 240 × 300 at
+    100 %; an upright phone's bottom, above the command line and right of
+    the tray (the options box's bottom, which shrinks over it); a phone on
+    its side, a second column left of the first, from the strip's line to
+    the tray's row. Positions only; the viewer moves it.
+  - **The likeliest rows that fit, and more…** — measured against the
+    pane's real height each build, not a fixed four: on an iPhone 13
+    upright two circles show Concentric and Coradial and *5 more…*; a taller
+    pane shows more. A greyed row counts three rows, as it is drawn.
+  - **What "the selection has" means**: a relation naming the entity *or a
+    point it is built of* — a line's `dist` between its ends, a circle's
+    `fix` on its centre — through `constrainedBy`, the same answer a hovered
+    glyph lights. A relation's name in the selection is a lit row, not a
+    thing to relate.
+  - **A row pressed keeps the selection** (Onshape clears it): the held list
+    then shows the new relation at once, and a second relation needs no
+    reselecting. The constrain tool's picks are spent, as before.
+  - **A dimension's field shows what `set` takes** — radians for an angle,
+    `rad` after it — as the options panel's fields do; its label on the
+    drawing still reads degrees.
+  - **Opaque see-through**, like the options panel: it is read and typed
+    into. The organiser's tree form has no counterpart here.
+  - **A workbench without the module has no pane**: out of the layout, out
+    of Panes, `ui({ show: "constraints" })` refuses by name; the constrain
+    tool's options pane lists the relations there as it did everywhere
+    before (`ConstrainTool.commands` stays for it). `part`, `sketch` and
+    `surfaces` all name it.
+  - **The agreeing set is the least set that implies the implied relation**
+    — each candidate tried by one more elimination with its rows left out
+    (`Problem.analyse({ agreeing })`), bounded by 40 trials and 150 ms like
+    the conflict search; past the bound, or where no single candidate is
+    needed (a row said three times), the whole support. Sets sharing a
+    member are merged. The status counts the union's size, muted, and
+    names none; the palette lists each set with nothing selected, under a
+    heading saying none is wrong. A set of one (a relation agreeing only
+    with a feature's own) is still listed.
+  - **The status does not open the palette**: `4 agreeing` is text. A tap
+    on it that typed `ui({ show: "constraints" })` would be one line; not
+    done, to keep the status's buttons the relation-selecting kind.
 - **Reviewed against the owner's principle (2026-11-09; CONVERSATION_LOG has
   the reasoning)** — *a relation between entities, never an owner; both
   ways; agreeing over-constraint is normal* — these register entries are
   weak and should change, in this order unless the owner says otherwise:
   1. [ ] normalise the direction residuals (`par`, `perp`, `tan`), so a
          collapsed line no longer satisfies them; keep collapse detection as
-         the backstop;
-  2. [ ] redundancy counted, not blamed on the newest relation; the status
-         note "redundant rN" goes, the palette shows the agreeing set;
+         the backstop. Seen again building the palette (2026-11-09): a
+         `par` typed between two free 60-long lines leaves them 8.8 and 1.2
+         long, headless and in the browser (docs/images/422), SOLVED — a
+         shrink, not a collapse, so nothing catches it;
+  2. [x] redundancy counted, not blamed on the newest relation; the status
+         note "redundant rN" goes, the palette shows the agreeing set —
+         built with the constraints palette (2026-11-09): the status says
+         `0 free · 4 agreeing` and names none; the palette lists each
+         agreeing set with nothing selected; `Diagnosis.agreeing` and the
+         kernel's `analyse({ agreeing })` are in the register entry below.
+         `Diagnosis.redundant` stays, unsaid, for the dimension tool's
+         "already held";
   3. [ ] a conflict names the relation whose addition made it, with the set
          it disagrees with (replaces "two of a set");
   4. [ ] features relate, they do not own: `deleteFeature`'s cascade, the
@@ -2180,15 +2245,18 @@ are flagged as such.
   operation that makes geometry from geometry is audited for holding both
   ways. In flight.
 
-- [ ] **The constrain list covers what it is about, on a phone** (found
+- [x] **The constrain list covers what it is about, on a phone** (found
   merging smart dimension, 2026-11-08). Two circles list seven rows, two
   lines eight; on an iPhone 13 the options pane then covers the second
   circle and the mirror line a Symmetric needs (picture
   `relations-iphone-probe-two-circles`, regenerate with NEOCAD_E2E_SHOTS).
   The panes' make-room places the pane but never against the picks. Either
   the pane keeps clear of the picked entities, or the list collapses to the
-  likeliest rows with a "more…" row. Not decided; the e2e now picks the
-  line first, which works but is not what a person will always do.
+  likeliest rows with a "more…" row. **Both, 2026-11-09**
+  (docs/plans/constraints-palette.md): the list is the constraints palette,
+  docked at the bottom on an upright phone, and it shows the likeliest rows
+  that fit with a more… row. The e2e picks the circles first again, as a
+  person does, and asserts both rims and the line are clear of every pane.
 
 - [ ] **Five packages, in flight in parallel (2026-11-08).** The owner:
   *"Flip button. Also need to figure out a way to do all the standard
@@ -3754,6 +3822,15 @@ the same shape as "tools are not privileged", and a menu that could be
 extended the way `defineTool` extends the tool registry would close it.
 
 ## Smaller things
+
+- [ ] **`pushed` and the random walk's oracle disagree on one push** (found
+  2026-11-09 adding the constraints palette to the desktop defaults, which
+  changed `test/panels.test.ts`'s seeded walk): at its 731st drag the
+  organiser, 1100 wide, dragged 75 px down onto the toolbar and the command
+  line with the log under both, moved nothing, while the oracle (`room`)
+  finds 28 px of travel before the log meets the bottom edge. Two chains to
+  one edge; whichever is right, the other should change. The walk is kept
+  over the four panes it was written over, so the palette is out of it.
 
 - [x] **Pages reloading mid-test when a worker checks out a worktree
   (2026-11-05).** "Execution context was destroyed, most likely because of a
