@@ -260,12 +260,14 @@ test("desktop: a conflict names its relations, draws them red, and one is select
   await shot(desk, "6-conflict-deleted");
 });
 
-test("desktop: a redundant relation is said in the softer word and fails nothing", async () => {
+test("desktop: a redundant relation is said, muted, and fails nothing", async () => {
   await fresh(desk);
   await desk.type('a = pt(0, 0); b = pt(30, 0); c = pt(0, 20); ln(a, b); ln(a, c); perp("l1", "l2"); perp("l2", "l1")');
   assert.equal(await desk.status(), "SOLVED");
   assert.match(await diagnosisText(desk), /free · redundant r2$/);
   assert.equal(await desk.page.$eval("#diagnosis", (el) => el.className), "redundant");
+  // Muted as a count is, never orange: it agrees (docs/plans/profiles-held.md).
+  assert.equal(await desk.page.$eval("#diagnosis", (el) => getComputedStyle(el).color), "rgb(122, 139, 155)");
 });
 
 test("no uncaught page errors on the desktop", () => {

@@ -63,13 +63,15 @@
     #status.solved{color:#55c07a}
     #status.bad{color:#e0605c}
     /* The diagnosis beside the verdict: muted while it only counts what is
-       free (and fading with SOLVED), red for a conflict and a soft orange for
-       a redundancy, which stay. A relation it names takes a click: it selects
-       it, and Delete removes it. */
+       free (and fading with SOLVED), red for a conflict, which stays. A
+       redundancy is said in the same muted grey and stays too — it agrees
+       with the rest, so it is information, never a warning
+       (docs/plans/profiles-held.md). A relation it names takes a click: it
+       selects it, and Delete removes it. */
     #diagnosis{color:#7a8b9b}
     #diagnosis[data-faded]{opacity:0;display:none}
     #diagnosis.conflict{color:#e0605c}
-    #diagnosis.redundant{color:#d99a6c}
+    #diagnosis.redundant{color:#7a8b9b}
     #diagnosis .rel{pointer-events:auto;cursor:pointer;font:inherit;color:inherit;background:none;border:none;padding:0 2px;
       text-decoration:underline dotted;text-underline-offset:2px}
     #diagnosis .rel:hover{color:#e8a33d}

@@ -7,8 +7,8 @@
 // rectangle, then a solve. Nothing here is special-cased by the engine; it's
 // exactly the same Tool subclass + defineTool call any other tool uses.
 //
-// **The relations are intrinsic — `par` on each pair of opposite edges and
-// one `perp` at a corner — rather than the `hor`/`ver` this used to apply.**
+// **The relations are intrinsic — a `perp` at every corner — rather than the
+// `hor`/`ver` this used to apply.**
 // It had to become so with the arrival of coordinate frames: `hor` means
 // "level with *a frame*" now, there is no world frame to fall back on, and a
 // tool that could not draw a rectangle until you had made a frame would be a
@@ -23,10 +23,26 @@
 // are x and y, exactly the 2D layout. Its two derived corners are held on the
 // sketch plane like the clicked ones (see place.ts), or a rectangle drawn on a
 // plane could fold about its own diagonal. The relations need nothing new:
-// `par` and `perp` were always dimension-generic.
+// `perp` was always dimension-generic.
+//
+// **Four perps, one at each corner, and the corners coplanar when no plane
+// holds them** (docs/plans/profiles-held.md, the owner: *"i was thinking 4
+// perps so that all the edges are identical to one another"*). Until then it
+// was `par`, `par`, `perp` — the fewest that make a rectangle, and so one
+// corner and two edges held differently from the rest. Four perps say the
+// same thing of every edge; the fourth is then implied by the other three, and
+// the diagnosis says so, muted, in ordinary ink (an agreeing relation is no
+// fault). In 3D four right angles do force a quadrilateral flat — a skew one's
+// angles sum to less than 2π — but only to second order: measured, a corner
+// dragged 7 out of the plane came back 2.9e-4 off it, the solve stopping on a
+// gradient that vanishes as the fold does. So with no plane picked the four
+// corners are also held `coplanar`, which is first order: 9e-13 off, the same
+// drag. With a plane picked every corner is on it already, and that is the
+// flatness.
 
 import { Tool, defineTool, type Hand, type PointerInfo, type RenderContext } from "./tool.ts";
-import { parallel, perpendicular } from "../relations/geometry.ts";
+import { perpendicular } from "../relations/geometry.ts";
+import { coplanar } from "../relations/basic.ts";
 import { DRAWING_OPTIONS, asArmed, holdOnSketchPlane, placePoint, requirePlanar } from "./place.ts";
 import type { OptionSpecs } from "./options.ts";
 import type { Plane } from "../view.ts";
@@ -93,10 +109,10 @@ export class RectangleTool extends Tool {
     const [bAt, dAt] = otherCorners(from.world, p.world, from.plane);
     const a = placePoint(this.ctx, from);
     const b = m.addPoint(bAt).name;
-    holdOnSketchPlane(m, b);
+    const bHeld = holdOnSketchPlane(m, b);
     const c = placePoint(this.ctx, p);
     const d = m.addPoint(dAt).name;
-    holdOnSketchPlane(m, d);
+    const dHeld = holdOnSketchPlane(m, d);
     const ab = m.addLine(a, b);
     const bc = m.addLine(b, c);
     const cd = m.addLine(c, d);
@@ -106,13 +122,20 @@ export class RectangleTool extends Tool {
     // box when an operation later re-points an edge — filleting a corner, for
     // one.
     //
-    // Three relations, not four: two pairs of parallel sides make a
-    // parallelogram (the closure of the four directions forces the opposite
-    // sides equal as well as parallel), and one right angle makes that
-    // parallelogram a rectangle. The fourth would be redundant.
-    parallel(m, ab.name, cd.name);
-    parallel(m, bc.name, da.name);
+    // A right angle at every corner, so every edge is held as every other is
+    // (see the header: the fourth is implied, and said so, muted).
     perpendicular(m, ab.name, bc.name);
+    perpendicular(m, bc.name, cd.name);
+    perpendicular(m, cd.name, da.name);
+    perpendicular(m, da.name, ab.name);
+    // Flat to first order where no plane is: four right angles only fold it
+    // back to second (the header's measurement).
+    // A box dragged flat along one axis has corners in one line and no plane
+    // to be flat in: coplanar refuses it, and the box is built as it always
+    // was, rather than half-built by the refusal.
+    if (m.dim === 3 && (bHeld === null || dHeld === null)) {
+      try { coplanar(m, d, a, b, c); } catch { /* no plane to hold it in: see above */ }
+    }
     asArmed(this.ctx, ab.name, bc.name, cd.name, da.name);
 
     this.ctx.requestSolve();

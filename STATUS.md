@@ -333,8 +333,9 @@ etc).
   - **In the app**, after each solve and never per drag frame: free
     entities in a blue ink, held ones in the sketch's; `#diagnosis` beside
     the verdict says `5 free`, `d1 · d2 cannot all hold` (red, names
-    clickable to select, then Delete) or `· redundant r5` (orange); a
-    conflicting or redundant relation's glyph wears that ink. 2.1 ms on the
+    clickable to select, then Delete) or `· redundant r5` (muted grey,
+    since profiles-held: it agrees, so it is no warning); a conflicting
+    relation's glyph wears the red, a redundant one the ordinary ink. 2.1 ms on the
     biggest fixture.
   - **Relations**: `col`, `intersection`, `pierce` (3D), `spacing`, `dia`
     (a dimension), `measure` (driven: no blocks, drawn in parentheses, live),
@@ -639,8 +640,9 @@ replacing) the system Node other projects on this machine may depend on.
   dashed preview from the tool's own in-progress state, and `onUp` is
   the only place anything is committed — four points, four lines,
   the relations that make it a rectangle, one solve. (Those were `hor`/`ver`
-  until coordinate frames arrived; they are `par`/`par`/`perp` now — see the
-  coordinate-frames entry below.)
+  until coordinate frames arrived; they were `par`/`par`/`perp` then — see the
+  coordinate-frames entry below — and are four `perp`s, one at each corner,
+  and in 3D with no plane picked one `coplanar`, since profiles-held.)
 - **Verified with a real mouse drag**, not just unit tests: armed the
   rectangle tool through the command input (a tool-name-only stand-in
   at that point; the real REPL landed later, see below),

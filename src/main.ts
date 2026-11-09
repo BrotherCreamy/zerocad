@@ -464,8 +464,6 @@ const FREE = "#5aa2ff";
 const HELD = "#afc6d9";
 /** A glyph whose relation cannot hold with the others: the conflict's red, the status's. */
 const CONFLICT_INK = "#e0605c";
-/** A redundant relation's glyph: the softer orange the status says it in. */
-const REDUNDANT_INK = "#d99a6c";
 /**
  * **The mode's accent** (docs/plans/mode-feedback.md): the tools' green
  * (region.ts's `REGION_GREEN`, the snap marker's), which is the sketch tool's
@@ -1423,11 +1421,14 @@ async function main() {
       // heavier: the mark is the whole of what a relation looks like.
       const picked = !on && chosen.has(mark.relation);
       // A relation the last solve said cannot hold with the others wears the
-      // conflict's red, box and mark; a redundant one the softer orange
-      // (docs/plans/sketch-relations.md). Hover and selection still outrank
-      // both, so the one being aimed at reads as aimed at.
-      const verdict = conflicted.has(mark.relation) ? CONFLICT_INK
-        : diagnosis?.redundant.includes(mark.relation) ? REDUNDANT_INK : null;
+      // conflict's red, box and mark (docs/plans/sketch-relations.md). A
+      // redundant one is drawn in the ordinary ink: it agrees with the rest,
+      // and a drawing made the way the owner wants — four perps on a
+      // rectangle so every edge is held alike — is redundant by design, so an
+      // orange glyph would be saying "wrong" about something right (the
+      // owner's decision, docs/plans/profiles-held.md). Hover and selection
+      // still outrank the red, so the one being aimed at reads as aimed at.
+      const verdict = conflicted.has(mark.relation) ? CONFLICT_INK : null;
       const [x, y] = mark.screen;
       roundedBox(x - mark.halfW, y - mark.halfH, mark.halfW * 2, mark.halfH * 2, 3 * k);
       g.fillStyle = on ? "#20303f" : "#0e141bee";
