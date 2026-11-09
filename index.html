@@ -107,6 +107,9 @@
     #mode .plane{display:inline-flex;flex-wrap:wrap;align-items:baseline;column-gap:2px}
     #mode .plane[hidden],#mode .sep[hidden]{display:none}
     #mode .where{color:#8fe0a8}
+    /* Where the next click lands (a face under the hand): said in the hover's amber, and no button. */
+    #mode.landing .where{color:#e8a33d;cursor:default}
+    #mode.landing .where:hover{background:none}
     #mode .look{color:#8fe0a8;border:1px solid #2f5a3e;padding:0 5px}
     #mode .done{color:#0a0e13;background:#55c07a;padding:0 6px;margin:0 2px}
     #mode .done:hover{background:#7cd59a}

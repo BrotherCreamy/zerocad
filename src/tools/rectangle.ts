@@ -43,7 +43,7 @@
 import { Tool, defineTool, type Hand, type PointerInfo, type RenderContext } from "./tool.ts";
 import { perpendicular } from "../relations/geometry.ts";
 import { coplanar } from "../relations/basic.ts";
-import { DRAWING_OPTIONS, asArmed, holdOnSketchPlane, placePoint, requirePlanar } from "./place.ts";
+import { CurvePlane, DRAWING_OPTIONS, asArmed, holdOnSketchPlane, placePoint, requirePlanar } from "./place.ts";
 import type { OptionSpecs } from "./options.ts";
 import type { Plane } from "../view.ts";
 
@@ -72,6 +72,14 @@ export class RectangleTool extends Tool {
    */
   private from: PointerInfo | null = null;
   private current: number[] | null = null;
+  /**
+   * The plane the box is drawn on, decided at the press: a chosen sketch
+   * plane, else the solid's face the press landed on, else the ground
+   * (place.ts, docs/plans/click-on-face.md). The release is read on it, so a
+   * drag that runs off the face's edge still lays the box out on the face,
+   * and all four corners are held there.
+   */
+  private plane = new CurvePlane(this.ctx, this.name);
 
   /** One stage: a press at a corner, held and dragged to the opposite one (a click alone builds nothing). */
   next(_hand: Hand): string {
@@ -80,14 +88,15 @@ export class RectangleTool extends Tool {
 
   onDown(p: PointerInfo): void {
     requirePlanar(this.ctx.model, this.name);
-    this.from = p;
-    this.current = p.world;
+    this.plane.begin(p);
+    this.from = this.plane.settle(p);
+    this.current = this.from.world;
     this.ctx.requestRender();
   }
 
   onMove(p: PointerInfo): void {
     if (!this.from) return;
-    this.current = p.world;
+    this.current = this.plane.settle(p).world;
     this.ctx.requestRender();
   }
 
@@ -96,6 +105,7 @@ export class RectangleTool extends Tool {
     const from = this.from;
     this.from = null;
     this.current = null;
+    p = this.plane.settle(p);
 
     if (Math.hypot(...p.world.map((v, i) => v - from.world[i])) < 1e-6) {
       this.ctx.requestRender();
@@ -103,16 +113,17 @@ export class RectangleTool extends Tool {
     }
 
     const m = this.ctx.model;
+    const on = this.plane.plane;
     // The two corners the user actually pointed at carry their inference; the
     // other two are derived, and nothing was clicked there to infer from —
-    // except the sketch plane they were laid out on.
+    // except the plane they were laid out on: the sketch plane, or the face.
     const [bAt, dAt] = otherCorners(from.world, p.world, from.plane);
-    const a = placePoint(this.ctx, from);
+    const a = placePoint(this.ctx, from, undefined, on);
     const b = m.addPoint(bAt).name;
-    const bHeld = holdOnSketchPlane(m, b);
-    const c = placePoint(this.ctx, p);
+    const bHeld = holdOnSketchPlane(m, b, on);
+    const c = placePoint(this.ctx, p, undefined, on);
     const d = m.addPoint(dAt).name;
-    const dHeld = holdOnSketchPlane(m, d);
+    const dHeld = holdOnSketchPlane(m, d, on);
     const ab = m.addLine(a, b);
     const bc = m.addLine(b, c);
     const cd = m.addLine(c, d);
@@ -145,6 +156,7 @@ export class RectangleTool extends Tool {
   onCancel(): void {
     this.from = null;
     this.current = null;
+    this.plane.cancel();
     this.ctx.requestRender();
   }
 

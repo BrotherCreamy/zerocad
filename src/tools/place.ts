@@ -28,16 +28,25 @@
 // anything moves, and the crossing it was placed at is gone. Constrained to
 // both curves it *is* the crossing, and drag either curve and it rides.
 //
-// **In 3D there is one more row: the sketch plane.** With a default frame set,
-// a click lands on that frame's plane (see ../workplane.ts), and the point it
-// makes is held there with `onPlane` — the same "the sketch you are drawing
-// on" every Onshape point has without saying so. Only where the snap leaves the
-// point anywhere to go: a click in empty space, along a curve, or at the
-// projection of a point off the sketch (which pins nothing). A snap to a
-// vertex, a midpoint or a crossing already pins the point outright, so a plane
-// on top would be redundant where it agreed and a conflict where it did not.
-// And only when the point really is on the plane — a snap can carry a click to
-// geometry off it, and the snap wins (it is what was aimed at).
+// **In 3D there are two more rows: the sketch plane, and the face.** With a
+// sketch plane chosen, a click lands on that plane (see ../workplane.ts), and
+// the point it makes is held there with `onPlane` — the same "the sketch you
+// are drawing on" every Onshape point has without saying so. With none chosen,
+// a click on a solid's **face** lands on the face (the engine reads it there,
+// `PointerInfo.face`), and a point placed on a flat face is held to it with
+// `onPlane(p, "e1.m3")`, the face named as the kernel names it and read off
+// its feature's record (relations/solidref.ts) — docs/plans/click-on-face.md;
+// the owner: *"if i am hovering over a face without an active on-plane
+// constraint, it should constrain to the plane i am hovering over"*. Each
+// click decides its own face, so a three-point circle can have a point on
+// each of three faces. Either hold only where the snap leaves the point
+// anywhere to go: a click in empty space, along a curve, or at the projection
+// of a point off the sketch (which pins nothing). A snap to a vertex, a
+// midpoint or a crossing already pins the point outright, so a plane on top
+// would be redundant where it agreed and a conflict where it did not. And
+// only when the point really is on the plane — a snap can carry a click to
+// geometry off it, and the snap wins (it is what was aimed at). A round face
+// (a cylinder's wall) places the point and holds nothing, and says so.
 
 import type { PointerInfo, ToolContext } from "./tool.ts";
 import type { OptionSpecs } from "./options.ts";
@@ -47,8 +56,7 @@ import type { Snap } from "../snapping.ts";
 import { coincident, midpoint, onPlane } from "../relations/basic.ts";
 import { onCircle, onEllipse, pointOnLine } from "../relations/geometry.ts";
 import { onSpline } from "../relations/spline.ts";
-import { planeNormalRef, planeOfRef, sketchPlaneRef } from "../workplane.ts";
-import { sketchFrameFor } from "../sketchface.ts";
+import { isFacePlane, planeNormalRef, planeOfRef, sketchPlaneRef } from "../workplane.ts";
 import { parallel } from "../relations/geometry.ts";
 import type { Plane } from "../view.ts";
 import { liesOn } from "../view.ts";
@@ -61,6 +69,12 @@ import { cross3, dot3, lift3, unit3 } from "../vec3.ts";
  * Every tool that puts a point where the user clicked should go through here
  * rather than calling `model.addPoint` directly — that is the whole of what
  * makes a drawn shape actually attach to the one it was drawn onto.
+ *
+ * `plane` is the gesture's plane (`CurvePlane.plane`) for a tool that has
+ * one — a sketch plane, a face, or the ground — and what a point the gesture
+ * re-read onto it is held to. A click that landed on a face of its own
+ * (`info.face`, kept by `CurvePlane.settleOwn`) is held to that face instead:
+ * each click decides its own surface (docs/plans/click-on-face.md).
  */
 export function placePoint(ctx: ToolContext, info: PointerInfo, name?: string, plane?: string | null): string {
   const placed = ctx.model.addPoint(info.world, name).name;
@@ -69,7 +83,15 @@ export function placePoint(ctx: ToolContext, info: PointerInfo, name?: string, p
   // the sketch, at a position borrowed from something that is not — so it is
   // held on the plane exactly as a click in empty space would be.
   const free = !info.snap || info.snap.kind === "curve" || info.snap.kind === "projected";
-  if (free) holdOnSketchPlane(ctx.model, placed, plane);
+  if (!free) return placed;
+  const own = info.face?.flat ? info.face.name : null;
+  holdOnSketchPlane(ctx.model, placed, own ?? plane);
+  // A round face: the point is where the click landed, and nothing holds it
+  // there — said, so the owner's "constrain to the plane i am hovering over"
+  // is not quietly half-kept (TODO.md files the `onsurface` it would take).
+  if (info.face && !info.face.flat) {
+    ctx.log?.(`${placed} placed on ${info.face.name}, a round face — nothing holds it there yet`, "guide");
+  }
   return placed;
 }
 
@@ -86,22 +108,6 @@ export function requirePlanar(model: Model, tool: string): void {
 }
 
 /**
- * Whether the region under a click is **a solid's face** — a loop every member
- * of which one feature names (its profile, its lid's twins, a wall's quad) —
- * and so a plane a curve drawn there lies on. A plain sketch loop is not one:
- * a circle drawn inside a rectangle on the ground lies on the ground already.
- */
-function isSolidFace(model: Model, members: readonly { name: string }[]): boolean {
-  if (!members.length) return false;
-  let common: string[] = model.featuresNaming(members[0].name).map((f) => f.name);
-  for (const m of members.slice(1)) {
-    const mine = model.featuresNaming(m.name).map((f) => f.name);
-    common = common.filter((f) => mine.includes(f));
-  }
-  return common.length > 0;
-}
-
-/**
  * The plane a curve tool's gesture stands on, and the two relations that hold
  * the curve there. **No frame is made for it** — a circle carries its own
  * normal (see `CircleEntity`); the owner, twice: *"why does it first create a
@@ -109,29 +115,34 @@ function isSolidFace(model: Model, members: readonly { name: string }[]): boolea
  * (docs/plans/frameless-curves.md).
  *
  * Where the curve lies is decided at the gesture's first click, as a plane
- * reference (`Model.planeKind`):
+ * reference (`Model.planeKind`, or a face's name):
  *
  * 1. the plane the user chose to sketch on — the work plane (sketch on face)
  *    or the default frame (`sketchPlaneRef`) — when there is one: a sketch is
  *    drawn on its own plane, as in Onshape, whatever is under the cursor;
- * 2. else **the face of a solid under the cursor** (`regionAt`, the nearest loop
- *    at the pixel, every member of it one feature's): its own plane,
- *    `sketchFrameFor`'s three points facing the viewer, or a circle's;
+ * 2. else **the face of a solid the click landed on** (`PointerInfo.face`,
+ *    read by the engine off the faces drawn this frame): the face's own
+ *    plane, facing the viewer, named as the kernel names it (`e1.m3`);
  * 3. else the origin's x–y plane, where the click landed.
  *
- * Every click of the gesture is read on that plane (`settle`). **Only where the
- * plane is case 1, one the user picked**, the commit holds the curve there with
- * ordinary, visible, deletable relations — its centre `onplane` (unless a snap
- * already pinned it, or it was held as it was placed) and its normal `par` to
- * the plane's (`hold`). Delete the `par` and the circle is free to turn in
- * space; constrain its normal to a line instead and it follows the line. In
- * cases 2 and 3 nothing is held: the face or the ground is where the curve was
- * drawn, not a relation (the owner: *"every sketch is a 3D sketch, unless you
- * enter into active on-plane constraint"*, docs/plans/profiles-held.md).
+ * Every later click of a *shape* gesture — a drag's rim, a slot's second
+ * centre — is read on that plane (`settle`); a click that is a point of its
+ * own — a three-point circle's, a spline's — keeps the face it landed on
+ * (`settleOwn`), so the circle may pass through three faces. The commit holds
+ * the curve where it lies with ordinary, visible, deletable relations: its
+ * centre `onplane` (unless a snap already pinned it, or it was held as it was
+ * placed) and its normal `par` to the plane's (`hold`) — on a chosen plane
+ * (case 1), and on a flat face (case 2: `onplane(p, "e1.m3")`,
+ * `par(c, "e1.m3")`, docs/plans/click-on-face.md). Delete the `par` and the
+ * circle is free to turn in space; constrain its normal to a line instead and
+ * it follows the line. On the ground (case 3) nothing is held: the ground is
+ * where the curve was drawn, not a relation (the owner: *"every sketch is a 3D
+ * sketch, unless you enter into active on-plane constraint"*,
+ * docs/plans/profiles-held.md).
  */
 export class CurvePlane {
   private ctx: ToolContext;
-  /** The plane the gesture stands on: its reference, and as view.ts's Plane. */
+  /** The plane the gesture stands on: its reference (a face's name, a plane reference, or null for a round face), and as view.ts's Plane. */
   private ref: string | null = null;
   private on: Plane | null = null;
 
@@ -145,25 +156,22 @@ export class CurvePlane {
     this.ref = null;
     this.on = null;
     if (m.dim !== 3) return true;
-    let ref = sketchPlaneRef(m);
-    if (ref === null && !p.snap) {
-      const hit = this.ctx.regionAt?.(p.screen) ?? null;
-      const loop = hit ? hit.loops[hit.index] : null;
-      if (hit && loop && isSolidFace(m, loop.members)) {
-        try {
-          ref = sketchFrameFor(m, loop, hit.toward);
-        } catch {
-          ref = null; // a face no plane can be made of: the ground, then
-        }
-      }
+    const chosen = sketchPlaneRef(m);
+    if (chosen === null && p.face && p.plane) {
+      // The face the click landed on, as the engine read it — facing the
+      // viewer. A round face has a plane to lay the gesture out on (the piece
+      // of it under the pixel) and no reference to hold anything to.
+      this.on = p.plane;
+      this.ref = p.face.flat ? p.face.name : null;
+      return true;
     }
-    ref ??= m.drawingPlane();
+    const ref = chosen ?? m.drawingPlane();
     this.ref = ref;
     this.on = planeOfRef(m, ref);
     return true;
   }
 
-  /** The plane reference the gesture stands on, or null in 2D. */
+  /** The plane reference the gesture stands on, or null in 2D (and on a round face, which holds nothing). */
   get plane(): string | null {
     return this.ref;
   }
@@ -189,8 +197,10 @@ export class CurvePlane {
 
   /**
    * `info` as the commit should read it: on the gesture's plane. A click that
-   * landed on another plane (the ground, under a face) is read again on this
-   * one, at the same pixel; a snapped click is where it was aimed, and stays.
+   * landed on another plane (the ground under a face, another face) is read
+   * again on this one, at the same pixel — and loses the face it landed on,
+   * since it is no longer on it; a snapped click is where it was aimed, and
+   * stays.
    */
   settle(info: PointerInfo): PointerInfo {
     const plane = this.on;
@@ -204,7 +214,20 @@ export class CurvePlane {
     // Read again on this plane, turned to face the way the engine's plane did.
     const was = info.plane;
     const flip = was && dot3(cross3(lift3(was.u), lift3(was.v)), cross3(lift3(plane.u), lift3(plane.v))) < 0;
-    return { ...info, world: w, plane: flip ? { ...plane, v: plane.v.map((c) => -c) } : plane };
+    const { face: _face, ...rest } = info;
+    return { ...rest, world: w, plane: flip ? { ...plane, v: plane.v.map((c) => -c) } : plane };
+  }
+
+  /**
+   * `info` as a click that is **a point of its own** reads it: kept where it
+   * landed when that was a solid's face — its own surface, which the point is
+   * then held to — else on the gesture's plane as `settle` reads it. For the
+   * clicks of a three-point circle, a spline's points: *"a 3 point circle with
+   * each point on a different face of the rect prism"* (the owner,
+   * docs/plans/click-on-face.md).
+   */
+  settleOwn(info: PointerInfo): PointerInfo {
+    return info.face ? info : this.settle(info);
   }
 
   /** Runs `commit` — at once: there is never a typed plane to wait for. */
@@ -217,7 +240,7 @@ export class CurvePlane {
    * centre is already held on it, or a snap put it somewhere off it (the snap
    * wins: it is what was aimed at) — and its normal `par` to the plane's.
    * Returns the relations made. Nothing in 2D, whose curves lie in the one
-   * plane there is.
+   * plane there is; nothing on the ground, or on a round face.
    */
   hold(curve: string, centre: string): string[] {
     if (!this.ref || !this.on) return [];
@@ -238,13 +261,16 @@ export class CurvePlane {
  * 2D. `CurvePlane.hold`'s body, shared with the composites (shapes.ts), which
  * hold their construction circle and their arcs exactly as a circle drawn on
  * the plane is held.
+ *
+ * On a plane the user chose, or on a solid's flat face (`"e1.m3"`): the two
+ * places a curve is held (docs/plans/click-on-face.md). Nowhere else:
+ * the owner's "every sketch is a 3D sketch, unless you enter into active
+ * on-plane constraint" — the ground lays the curve out and seeds its normal;
+ * it is a position, not a relation (docs/plans/profiles-held.md).
  */
 export function holdCurve(m: Model, curve: string, centre: string, ref: string): string[] {
-  // Nothing picked, nothing held: the owner's "every sketch is a 3D sketch,
-  // unless you enter into active on-plane constraint". The gesture's plane
-  // (the ground, a face under the cursor) still lays the curve out and seeds
-  // its normal; it is a position, not a relation (docs/plans/profiles-held.md).
-  if (m.dim !== 3 || sketchPlaneRef(m) === null) return [];
+  if (m.dim !== 3) return [];
+  if (!isFacePlane(m, ref) && sketchPlaneRef(m) === null) return [];
   const on = planeOfRef(m, ref);
   if (!on) return [];
   const made: string[] = [];
@@ -285,28 +311,34 @@ export function asArmed(ctx: ToolContext, ...curves: string[]): void {
 }
 
 /**
- * Holds a point on the plane the user chose to sketch on with `onPlane` — the
- * work plane or the default frame (`sketchPlaneRef`), or `plane` when the
- * caller says which (a curve tool's gesture plane, which may be a solid's
- * face) — if this is a 3D model and the point is on it. Returns the relation's
- * name, or null when nothing applied. **With no plane chosen, nothing**, given
- * or not: the owner's *"the default for sketch entities is no plane. Every
- * sketch is a 3D sketch, unless you enter into active on-plane constraint."*
- * A point or a curve drawn on the ground in a fresh document stays free; a
- * curve's orientation is its own normal, seeded facing the plane the click
- * landed on and held by nothing (docs/plans/profiles-held.md).
+ * Holds a point on the plane it was placed on with `onPlane`, if this is a 3D
+ * model and the point is on it. Returns the relation's name, or null when
+ * nothing applied. The plane is `given` — a curve tool's gesture plane, which
+ * may be a solid's flat face (`"e1.m3"`, docs/plans/click-on-face.md), a
+ * plane the user chose, or the ground — else the plane the user chose to
+ * sketch on (the work plane or the default frame, `sketchPlaneRef`).
+ *
+ * **A face holds; the ground never does**: with no plane chosen and no face,
+ * nothing, given or not — the owner's *"the default for sketch entities is no
+ * plane. Every sketch is a 3D sketch, unless you enter into active on-plane
+ * constraint."* A point or a curve drawn on the ground in a fresh document
+ * stays free; a curve's orientation is its own normal, seeded facing the
+ * plane the click landed on and held by nothing (docs/plans/profiles-held.md).
  *
  * Exported for the points a tool makes *without* a click of their own — a
- * rectangle's two derived corners, a three-point circle's centre — which are
- * on the sketch because they were laid out there, and have to stay on it for
- * the same reason the clicked ones do.
+ * rectangle's two derived corners, a polygon's other vertices — which are
+ * on the surface because they were laid out there, and have to stay on it
+ * for the same reason the clicked ones do.
  */
 export function holdOnSketchPlane(model: Model, pointName: string, given?: string | null): string | null {
-  // Only on a plane the user picked (see `holdCurve`): `given` says which of
-  // the gesture's planes, and with nothing picked there is none to hold to.
-  if (sketchPlaneRef(model) === null) return null;
-  const ref = given ?? sketchPlaneRef(model);
-  if (ref === null || model.dim !== 3) return null;
+  if (model.dim !== 3) return null;
+  // A face is a plane to hold to whether or not one was chosen (the owner's
+  // "constrain to the plane i am hovering over"); anything else only on a
+  // plane the user picked (see `holdCurve`).
+  const face = isFacePlane(model, given);
+  if (!face && sketchPlaneRef(model) === null) return null;
+  const ref = face ? given : given ?? sketchPlaneRef(model);
+  if (ref === null || ref === undefined) return null;
   const plane = planeOfRef(model, ref);
   if (!plane || !liesOn(plane, model.coords(pointName))) return null;
   return onPlane(model, pointName, ref);

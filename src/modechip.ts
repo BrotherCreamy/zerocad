@@ -37,6 +37,14 @@ import type { ActivePlane } from "./activeplane.ts";
 export interface ChipParts {
   /** `on e1's top`, `on f1` — or null with no plane chosen, and then not shown at all. */
   where: string | null;
+  /**
+   * Whether `where` is **where the next click lands** rather than a plane
+   * chosen — the solid's face under the hand, `on e1.m3`, with no sketch
+   * plane set (docs/plans/click-on-face.md). Said in the same place, since it
+   * answers the same question, but it is no mode: nothing to look at, end or
+   * change, so the first part is words and not a button then.
+   */
+  landing: boolean;
   /** The armed tool's name, or `select` or `hand`. */
   what: string;
   /** The next step, or the fresh guidance — null for a tool that says nothing. */
@@ -50,15 +58,28 @@ export interface ChipParts {
  * — the armed tool by the name it was armed under, `select` or `hand` — the
  * tool's next step, and a guidance line still fresh, which outranks the step
  * while it is (it says why the last click did nothing, which is what the eye
- * wants first).
+ * wants first). `landing` says the plane is the face the next click lands on,
+ * not one chosen (`ChipParts.landing`).
  */
-export function chipParts(plane: string | null, what: string, next: string | null, guide: string | null): ChipParts {
+export function chipParts(plane: string | null, what: string, next: string | null, guide: string | null, landing = false): ChipParts {
   return {
     where: plane === null ? null : `on ${plane}`,
+    landing: plane !== null && landing,
     what,
     next: guide ?? next,
     guiding: guide !== null,
   };
+}
+
+/**
+ * What the chip's first part says of the face the next click lands on
+ * (docs/plans/click-on-face.md): the face's name, and that it is round where
+ * it is — a point on a round face is placed and held by nothing, which the
+ * eye should know before the click. Null for no face.
+ */
+export function landingLabel(landing: { face: string; flat: boolean } | null): string | null {
+  if (!landing) return null;
+  return landing.flat ? landing.face : `${landing.face}, round`;
 }
 
 /** The chip as one line of text: `on e1's top · circle · drag the radius` — its parts that are there, in order. */
@@ -197,6 +218,11 @@ export class ModeChip {
     const plane = this.where.parentElement!;
     plane.hidden = p.where === null;
     this.where.textContent = p.where ?? "";
+    // Where the click lands is said, not offered: no plane's menu, no ⟂, no Done.
+    this.where.disabled = p.landing;
+    this.look.hidden = p.landing;
+    this.done.hidden = p.landing;
+    this.el.classList.toggle("landing", p.landing);
     this.what.textContent = p.what;
     this.what.disabled = !options;
     this.next.textContent = p.next ?? "";
@@ -204,6 +230,7 @@ export class ModeChip {
     // The separator before an empty next would point at nothing.
     (this.next.previousElementSibling as HTMLElement).hidden = !p.next;
     this.el.dataset.where = p.where ?? "";
+    this.el.dataset.landing = p.landing ? "true" : "false";
     this.el.dataset.what = p.what;
     this.el.dataset.next = p.next ?? "";
     this.el.dataset.guiding = p.guiding ? "true" : "false";

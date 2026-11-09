@@ -68,9 +68,9 @@
 // whatever is armed (`hold`): the tool stays armed, untouched, under it, and
 // is simply back when Space is let go — nothing was put down to come back.
 
-import { valueArgIndex, type Model } from "../model.ts";
-import { faceShade, pickSolid, type DrawnFaces } from "../solidpick.ts";
-import { describeFace } from "../relations/solidref.ts";
+import { spanOf, valueArgIndex, type Model } from "../model.ts";
+import { faceShade, faceUnder, pickSolid, SHADE_PX, type DrawnFaces } from "../solidpick.ts";
+import { describeFace, isPlanarFace, planeNow } from "../relations/solidref.ts";
 import type { ResidualBlock } from "../kernel/problem.ts";
 import {
   HAND, SELECT, engineNext, getToolCtor, toolAlias, type FeatureDialog, type FeaturePreview, type FeatureStep, type Hand, type Tool, type ToolContext,
@@ -125,6 +125,15 @@ export const LIFT = 56;
 
 /** The ghost of the point about to be placed, at the mouse: the tools' green, the snap marker's. */
 export const GHOST = "#55c07a";
+
+/**
+ * The face a click will land on, lit: the hover's amber, as the dimension tool
+ * lights a face under the hand — what is about to be acted on, not yet chosen
+ * (green is for what is picked and placed). Filled faintly: a lid is pale
+ * already, and a stronger wash hid the sketch drawn on it.
+ */
+const LANDING_INK = "#e8a33d";
+const LANDING_FILL_ALPHA = 0.3;
 
 /**
  * How hard a drag pulls the grabbed point toward the cursor, relative to a
@@ -341,6 +350,17 @@ export class ToolEngine {
    */
   cursorAt: [number, number] | null = null;
   /**
+   * **The solid's face the armed tool's next click would land on**
+   * (docs/plans/click-on-face.md): named as the kernel names it, flat or
+   * round, with its plane facing the viewer and the pixel it was found under.
+   * Set by every pointer event a drawing tool gets in a 3D model with no
+   * sketch plane chosen, null otherwise — the ground, a chosen plane, nothing
+   * armed, the pointer off the canvas or the finger lifted. What the overlay
+   * lights and names before the click (`renderLanding`), and what the host's
+   * chip says `on e1.m3` of.
+   */
+  landing: { face: string; flat: boolean; plane: Plane; at: [number, number] } | null = null;
+  /**
    * **The hand last on the canvas** — a finger's touch, or a mouse or a pen —
    * which is the hand the mode chip's words are for: "tap the third point"
    * under a finger, "click" under a mouse. Set by every pointer event; the host
@@ -507,8 +527,8 @@ export class ToolEngine {
     // the pointerup by then, and nothing on the canvas listens for clicks.
     canvas.addEventListener("touchend", (e) => { if (e.cancelable) e.preventDefault(); });
     canvas.addEventListener("pointerleave", () => {
-      if (this.hover || this.armedUnder || this.cursorAt) {
-        this.hover = null; this.armedUnder = null; this.cursorAt = null; this.onRenderOnly();
+      if (this.hover || this.armedUnder || this.cursorAt || this.landing) {
+        this.hover = null; this.armedUnder = null; this.cursorAt = null; this.landing = null; this.onRenderOnly();
       }
     });
     canvas.addEventListener("pointerdown", (e) => this.dispatch("down", e));
@@ -853,6 +873,12 @@ export class ToolEngine {
       finish: () => {
         this.active = null;
         this.snap = null;
+        this.landing = null;
+        // Drawn again at once: a tool that commits on a press and finishes
+        // there gets no event after it to redraw on, and the frame its solve
+        // drew still had it armed — the face it was landing on lit, the chip
+        // saying so. Found in the picture of a three-point circle just made.
+        this.onRenderOnly();
       },
       pick: ([sx, sy]) => hitTest(this.model, this.view, sx, sy, this.occlusion, this.reach),
       // A vertex before an edge before a face (docs/plans/smart-dimension.md).
@@ -892,6 +918,7 @@ export class ToolEngine {
     this.active?.onCancel();
     this.active = null;
     this.snap = null;
+    this.landing = null;
     this.armedUnder = null;
     this.cursorAt = null;
     this.touchTool = null;
@@ -1066,6 +1093,7 @@ export class ToolEngine {
     this.idle = null;
     this.box = null;
     this.snap = null;
+    this.landing = null;
     this.cursorAt = null;
     // Fingers still down when everything is dropped are spent until they lift:
     // the gesture they were making is gone, and their next move must not
@@ -1219,6 +1247,16 @@ export class ToolEngine {
    */
   private toolEvent(kind: "down" | "move" | "up", sx: number, sy: number): void {
     const tool = this.active!;
+    // **A click on a solid's face lands on the face** (docs/plans/
+    // click-on-face.md): for a tool that places points, in a 3D model with no
+    // sketch plane chosen, the face drawn under the pixel is where the pixel's
+    // ray meets it — not the ground behind it — and the tool is told which
+    // face (`PointerInfo.face`), so a point it places there is held to it.
+    // With a sketch plane chosen every click lands on that plane, whatever is
+    // under it (case 1, sketch-mode.md), and this is not asked.
+    const chosen = sketchPlane(this.model);
+    const landing = tool.snaps && this.model.dim === 3 && chosen === null ? this.landingAt(sx, sy) : null;
+    this.landing = landing ? { ...landing, at: [sx, sy] } : null;
     // The tool is handed a *snapped* world coordinate, and the snap that
     // produced it. A tool that only reads `world` behaves exactly as it did
     // before — it is about its own gesture, not about how precise the cursor
@@ -1226,21 +1264,25 @@ export class ToolEngine {
     // constraint the user was aiming for (see place.ts). Inference is
     // downstream of snapping, so `snapping(false)` turns off both.
     // Only places on the sketch plane are offered while there is one — see
-    // findSnap for the stack of geometry a square-on view hides behind it.
+    // findSnap for the stack of geometry a square-on view hides behind it —
+    // and, with a face under the pixel, only places on the face: its edges
+    // and vertices and what lies in it, never a ground entity behind it. A
+    // snap to a vertex or an edge of the face still wins over the face.
     // A tool that chooses regions rather than places points opts out
     // (`Tool.snaps`), and gets neither the pull nor the marker.
     this.snap = this.snapping && tool.snaps
-      ? findSnap(this.model, this.view, sx, sy, sketchPlane(this.model), this.occlusion, this.reach) : null;
+      ? findSnap(this.model, this.view, sx, sy, landing?.plane ?? chosen, this.occlusion, this.reach) : null;
     // The plane is reported even when a snap moved the point off it: it is
     // what the gesture is being drawn on, and a tool laying out a shape from
     // a snapped corner still lays it out along that plane's axes.
-    const at = this.pointAt(sx, sy);
+    const at = landing ? { world: screenToPlane(this.view, sx, sy, landing.plane) ?? this.pointAt(sx, sy).world, plane: landing.plane } : this.pointAt(sx, sy);
     const world = this.snap ? this.snap.world : at.world;
     const info: PointerInfo = {
       world,
       screen: [sx, sy],
       ...(this.snap ? { snap: this.snap } : {}),
       ...(at.plane ? { plane: at.plane } : {}),
+      ...(landing ? { face: { name: landing.face, flat: landing.flat } } : {}),
     };
 
     // A press or a release is one thing the user did; a move is part of one.
@@ -1260,6 +1302,31 @@ export class ToolEngine {
     } finally {
       this.endUserAction();
     }
+  }
+
+  /**
+   * **The face under a pixel, as a place to land on**: the front face drawn
+   * there (solidpick.ts's `faceUnder`, the same answer a dimension tool's
+   * pick gets), named, with its plane turned to face the viewer. A flat face
+   * of a feature the model holds is its own plane, read off the record
+   * (solidref.ts) so the click lands exactly where the solid is; a round face
+   * (a cylinder's wall), or one only the kernel knows (a fillet's), is the
+   * plane of the piece drawn under the pixel — the click lands on what is
+   * seen, to the tessellation's accuracy, and nothing holds it (`flat`
+   * false). Null off every face, and in the wire view, where no faces are
+   * drawn.
+   */
+  private landingAt(sx: number, sy: number): { face: string; flat: boolean; plane: Plane } | null {
+    const under = faceUnder(this.drawnFaces, sx, sy);
+    if (!under) return null;
+    const toward = viewAxes(this.view).toward;
+    const facing = (n: number[]) => (n[0] * toward[0] + n[1] * toward[1] + n[2] * toward[2] >= 0 ? n : n.map((c) => -c));
+    const flat = isPlanarFace(this.model, under.name);
+    const now = flat ? planeNow(this.model, under.name) : null;
+    const n = facing(now ? now.n : under.normal);
+    const origin = now ? now.p : under.at;
+    const [u, v] = spanOf(n);
+    return { face: under.name, flat: now !== null, plane: { origin, u, v } };
   }
 
   /**
@@ -1418,6 +1485,7 @@ export class ToolEngine {
       this.hover = null;
       this.armedUnder = null;
       if (this.active) this.snap = null;
+      this.landing = null;
       this.onRenderOnly();
     };
     return {
@@ -1705,11 +1773,92 @@ export class ToolEngine {
     // context drew last; a tool that wants a dashed guide sets one itself.
     this.g.save();
     this.g.setLineDash([]);
+    // The face the next click lands on, lit under the tool's own preview: the
+    // preview is what the click builds, and belongs on top of where.
+    this.renderLandingFace(r);
     this.active.render(r);
     this.g.restore();
     this.renderSnapMarker();
     if (this.contact) this.renderLift();
     else this.renderGhost();
+    this.renderLandingName();
+  }
+
+  /**
+   * **The face the next click lands on, lit** (docs/plans/click-on-face.md;
+   * the owner: *"it should come up with an on-plane constraint indicator
+   * before i click (and highlight the plane i am hovering over)"*): filled
+   * faintly in the hover's amber only in the cells where it is in front
+   * (solidpick.ts's `faceShade`, as the dimension tool lights a face), its
+   * edges in sight stroked. The name goes beside the hand (`renderLandingName`).
+   */
+  private renderLandingFace(r: RenderContext): void {
+    const land = this.landing;
+    if (!land || !this.active) return;
+    const { cells, runs } = faceShade(this.drawnFaces, land.face, this.view);
+    if (!cells.length && !runs.length) return;
+    const g = this.g;
+    const k = r.ui ?? 1;
+    g.save();
+    g.beginPath();
+    for (const [x, y] of cells) g.rect(x, y, SHADE_PX, SHADE_PX);
+    g.globalAlpha = LANDING_FILL_ALPHA;
+    g.fillStyle = LANDING_INK;
+    g.fill();
+    g.globalAlpha = 1;
+    g.strokeStyle = LANDING_INK;
+    g.lineWidth = 1.5 * k;
+    g.beginPath();
+    for (const run of runs) run.forEach(([x, y], i) => (i === 0 ? g.moveTo(x, y) : g.lineTo(x, y)));
+    g.stroke();
+    g.restore();
+  }
+
+  /**
+   * **The on-plane mark and the face's name beside the hand** — `▱ e1.m3`,
+   * the glyph the relation the click makes will wear (glyphs.ts), so what is
+   * about to be held is said in the drawing's own sign; a round face is named
+   * without the mark, since nothing holds a point to it, and says so. Above
+   * and right of the mouse's ghost, clear of the hover tag's corner; by a
+   * finger, right of the lifted mark (or left of it at the canvas's edge),
+   * under the snap's own words where there are any — the finger covers what
+   * is under it, and the lifted mark is already where the eye is.
+   */
+  private renderLandingName(): void {
+    const land = this.landing;
+    if (!land || !this.active) return;
+    const g = this.g;
+    const k = uiOf(this.view);
+    const text = land.flat ? `▱ ${land.face}` : `${land.face} · round, not held`;
+    g.save();
+    g.font = `${11 * k}px "IBM Plex Mono", ui-monospace, Menlo, monospace`;
+    // A dark rim under the words, as a point's name wears over a light face
+    // (main.ts): amber on a pale lid was faint at a desktop's size.
+    g.strokeStyle = "#0a0e13";
+    g.lineWidth = 3 * k;
+    g.lineJoin = "round";
+    g.fillStyle = LANDING_INK;
+    const write = (x: number, y: number) => { g.strokeText(text, x, y); g.fillText(text, x, y); };
+    const width = this.canvas.getBoundingClientRect().width;
+    if (this.contact) {
+      // Beside the lifted mark (`renderLift`): the same disc, the same side rule.
+      const [px, py] = this.snap ? this.snap.screen : this.contact;
+      const disc = 13 * k;
+      const ly = py - LIFT >= 16 ? py - LIFT : py + LIFT;
+      const gap = disc + 4 * k;
+      const right = px + gap + g.measureText(text).width <= width - 4;
+      g.textAlign = right ? "left" : "right";
+      g.textBaseline = "middle";
+      // The snap's words sit on the disc's line; this goes on the line below them.
+      write(right ? px + gap : px - gap, this.snap ? ly + 14 * k : ly);
+    } else {
+      const [x, y] = this.snap ? this.snap.screen : land.at;
+      const right = x + 10 * k + g.measureText(text).width <= width - 4;
+      g.textAlign = right ? "left" : "right";
+      g.textBaseline = "bottom";
+      write(right ? x + 10 * k : x - 10 * k, y - 9 * k);
+    }
+    g.restore();
   }
 
   /**
