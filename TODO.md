@@ -3819,6 +3819,15 @@ extended the way `defineTool` extends the tool registry would close it.
 
 ## Smaller things
 
+- [ ] **`pushed` and the random walk's oracle disagree on one push** (found
+  2026-11-09 adding the constraints palette to the desktop defaults, which
+  changed `test/panels.test.ts`'s seeded walk): at its 731st drag the
+  organiser, 1100 wide, dragged 75 px down onto the toolbar and the command
+  line with the log under both, moved nothing, while the oracle (`room`)
+  finds 28 px of travel before the log meets the bottom edge. Two chains to
+  one edge; whichever is right, the other should change. The walk is kept
+  over the four panes it was written over, so the palette is out of it.
+
 - [x] **Pages reloading mid-test when a worker checks out a worktree
   (2026-11-05).** "Execution context was destroyed, most likely because of a
   navigation" across three gates; Vite reloads every page on any `.html`

@@ -99,14 +99,17 @@ export class ConstrainTool extends Tool {
 
   onArmed(): void {
     this.picks = [...(this.ctx.prenamed ?? [])];
-    if (!this.picks.length) this.ctx.log?.("constrain: click what to relate — the relations that apply are listed in the constraints palette", "guide");
+    // "The list", not "the palette": on a workbench without the palette's
+    // module the list is this tool's options pane (main.ts), and the tool
+    // does not know which it is.
+    if (!this.picks.length) this.ctx.log?.("constrain: click what to relate — the relations that apply are listed", "guide");
     this.ctx.requestRender();
   }
 
-  /** What to pick, then a relation from the palette's list. */
+  /** What to pick, then a relation from the list. */
   next(hand: Hand): string {
     if (!this.picks.length) return `${press(hand)} what to relate`;
-    return this.commands().some((c) => !c.off) ? "choose a relation in the palette, or pick more" : `${press(hand)} something else to relate`;
+    return this.commands().some((c) => !c.off) ? "choose a relation from the list, or pick more" : `${press(hand)} something else to relate`;
   }
 
   /** The picks, for the constraints palette to list relations for (`Tool.related`). */
