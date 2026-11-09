@@ -32,8 +32,9 @@
 // is when it seeds a free entity. Above relations, because reading a plane is
 // `planeBasis`'s job and nobody else's.
 
-import { parseFramePlane, type Model } from "./model.ts";
+import { parseFramePlane, spanOf, type Model } from "./model.ts";
 import { planeAxes } from "./curveplane.ts";
+import { isPlanarFace, parseFaceName, planeNow } from "./relations/solidref.ts";
 import { cameraPlane, screenToPlane, type Plane, type View } from "./view.ts";
 
 /**
@@ -65,6 +66,9 @@ export function planeLabel(ref: string): string {
  * tool holds a curve by it, and the focus reads a held curve by it.
  */
 export function planeNormalRef(model: Model, ref: string): string {
+  // A solid's flat face (`"e1.m3"`, docs/plans/click-on-face.md) is read as
+  // its own normal by `par` (solidref.ts's `faceDirection`), as a triple is.
+  if (parseFaceName(ref)) return ref;
   const kind = model.planeKind(ref);
   if (kind === "frame") return `${ref}.z`;
   if (kind === "framePlane") {
@@ -74,10 +78,26 @@ export function planeNormalRef(model: Model, ref: string): string {
   return ref;
 }
 
-/** A plane reference as view.ts's Plane, or null when it has collapsed past having one. */
+/**
+ * A plane reference as view.ts's Plane, or null when it has collapsed past
+ * having one. A solid's flat face by name (`"e1.m3"`) is one too — its plane
+ * now, read off the feature's record (solidref.ts), its +z the face's
+ * outward normal — and null for a face that is not flat or not the model's.
+ */
 export function planeOfRef(model: Model, ref: string): Plane | null {
+  if (parseFaceName(ref)) {
+    const now = isPlanarFace(model, ref) ? planeNow(model, ref) : null;
+    if (!now) return null;
+    const [u, v] = spanOf(now.n);
+    return { origin: now.p, u, v };
+  }
   const p = planeAxes(model, ref);
   return p ? { origin: p.origin, u: p.u, v: p.v } : null;
+}
+
+/** Whether `ref` names a solid's flat face the model holds (`"e1.lid"`, `"e1.m3"`) — a plane a point can be held on (docs/plans/click-on-face.md). */
+export function isFacePlane(model: Model, ref: string | null | undefined): ref is string {
+  return typeof ref === "string" && parseFaceName(ref) !== null && isPlanarFace(model, ref);
 }
 
 /**

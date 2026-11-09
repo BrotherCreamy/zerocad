@@ -23,6 +23,7 @@ import { chunk, curveNormal, directionOf, directionOfPoints, ellipseAxes, frameB
 import { coincident, onPlane } from "./basic.ts";
 import { angleToProfile, leanOffNormal, profileMembers, squareToProfile } from "./profilesquare.ts";
 import { isPathCurve, onSpline, tangentSpline } from "./spline.ts";
+import { faceDirection } from "./solidref.ts";
 
 // --- the direction relations -----------------------------------------------
 //
@@ -61,15 +62,19 @@ import { isPathCurve, onSpline, tangentSpline } from "./spline.ts";
  */
 function directionSides(model: Model, op: string, a: string, b: string, c?: string | null):
   { u: DirectionRef; v: DirectionRef; args: string[] } {
+  // A solid's flat face, by name, is a direction too — its normal, read off
+  // the feature's record (solidref.ts): `par("c1", "e1.m3")` holds a circle
+  // drawn on a wall in the wall (docs/plans/click-on-face.md).
+  const dir = (ref: string) => faceDirection(model, ref) ?? directionOf(model, ref);
   const sides = (): { u: DirectionRef; v: DirectionRef; args: string[] } => {
     if (model.entities.get(a)?.kind === "point") {
       if (b == null || c == null) {
         throw new Error(`"${a}" is a point: give the second point and what the pair is relative to`);
       }
-      return { u: directionOfPoints(model, a, b), v: directionOf(model, c), args: [a, b, c] };
+      return { u: directionOfPoints(model, a, b), v: dir(c), args: [a, b, c] };
     }
     if (c != null) throw new Error(`"${a}" is not a point, so this takes two references, not three`);
-    return { u: directionOf(model, a), v: directionOf(model, b), args: [a, b] };
+    return { u: dir(a), v: dir(b), args: [a, b] };
   };
   const made = sides();
   // Two frame axes are two datums, and a datum is read and never pushed — so

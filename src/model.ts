@@ -341,8 +341,9 @@ export function parseAxisRef(ref: string): { frame: string; axis: AxisName } | n
   const dot = ref.indexOf(".");
   if (dot < 0) return null;
   // Two dots is a plane through three points (`parsePointTriple`), not an axis;
-  // `.xz` and `.yz` are a frame's other two planes (`parseFramePlane`).
-  if (parsePointTriple(ref) || parseFramePlane(ref)) return null;
+  // `.xz` and `.yz` are a frame's other two planes (`parseFramePlane`); and a
+  // solid's face (`parseFaceName`, `e1.lid`) is a feature's, not a frame's.
+  if (parsePointTriple(ref) || parseFramePlane(ref) || parseFaceName(ref)) return null;
   const frame = ref.slice(0, dot);
   const axis = ref.slice(dot + 1);
   if (axis !== "x" && axis !== "y" && axis !== "z") {
@@ -489,6 +490,33 @@ export function referentsOf(arg: unknown): string[] {
 /** Whether one recorded argument refers to the entity called `name`. */
 export function argRefersTo(arg: unknown, name: string): boolean {
   return referentsOf(arg).includes(name);
+}
+
+/** A face's name, parsed: whose feature, and which face — a cap, or the wall one member swept (`member`, loop by loop; -1 for a cap). */
+export interface FaceName {
+  feature: string;
+  role: "base" | "lid" | "member";
+  member: number;
+}
+
+/**
+ * The shape of a solid's face's name, as the solid kernel names one
+ * (src/solids/naming.ts): `e1.base`, `e1.lid`, `e1.m3` for the wall the
+ * profile's fourth member swept. Here, where the namespace is owned
+ * (`claimName` refuses a dot in any name), so that `parseAxisRef` can tell a
+ * face from a mistyped axis and `referentOf` reads the feature behind it; what
+ * a face is *made of* is the relations layer's (relations/solidref.ts).
+ */
+const FACE_NAME = /^(e\d+)\.(base|lid|m(\d+))$/;
+
+/** `e1.lid` → `{ feature: "e1", role: "lid" }`, `e1.m3` → the fourth member's wall, or null for anything else. */
+export function parseFaceName(name: unknown): FaceName | null {
+  if (typeof name !== "string") return null;
+  const m = FACE_NAME.exec(name);
+  if (!m) return null;
+  return m[2] === "base" || m[2] === "lid"
+    ? { feature: m[1], role: m[2], member: -1 }
+    : { feature: m[1], role: "member", member: Number(m[3]) };
 }
 
 /**
