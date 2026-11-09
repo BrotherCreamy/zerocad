@@ -26,7 +26,10 @@ otherwise.
 - **Standing duty**: every message to the owner ends with the list of
   questions outstanding for them, and is as concise as possible (the owner,
   2026-11-09: *"at the end of every message to me, include a list of the
-  outstanding questions you have for me"*, *"concise as possible"*).
+  outstanding questions you have for me"*, *"concise as possible"*). Each
+  question carries its full context, so it can be answered without reading
+  back (the owner, 2026-11-09: *"With your questions that you write at the
+  end, please give full context in the questions"*).
 
 ## Decisions made so far — veto here if any are wrong
 
