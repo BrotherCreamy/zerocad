@@ -364,7 +364,14 @@ export async function openApp(options: OpenOptions = {}): Promise<AppContext> {
         if (!covering && matchMedia("(pointer: coarse)").matches) {
           const target = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--target")) || 44;
           const radius = 8;
-          for (const strip of Array.from(document.querySelectorAll<HTMLElement>(".panel[data-panel]:not([hidden]) > .ptitle"))) {
+          // A pane's own box within the finger's radius, too: a tap on the
+          // canvas a pixel below the organiser went to its "none —" line
+          // (the five-lines test, with the lines drawn higher).
+          for (const pane of Array.from(document.querySelectorAll<HTMLElement>(".panel[data-panel]:not([hidden])"))) {
+            const b = pane.getBoundingClientRect();
+            if (px + radius > b.left && px - radius < b.right && py + radius > b.top && py - radius < b.bottom) { covering = pane; break; }
+          }
+          for (const strip of covering ? [] : Array.from(document.querySelectorAll<HTMLElement>(".panel[data-panel]:not([hidden]) > .ptitle"))) {
             const s = strip.getBoundingClientRect();
             const reach = Math.max(s.height, target);
             const wide = Math.max(s.width, target);

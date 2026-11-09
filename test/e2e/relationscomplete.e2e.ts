@@ -249,19 +249,26 @@ for (const which of ["desktop", "iphone"] as const) {
   test(`${which}: five lines picked, Equal (all 5) — four eqs against the first, one undo step`, async () => {
     const h = hand();
     await fresh(h);
-    // Drawn a little above the middle: on an iPhone 13 the constraints palette
-    // docks at the bottom while the constrain tool is armed, and its strip's
-    // hit box reaches a target up over the drawing (index.html) — the fifth
-    // line at y −18 was under that reach (docs/plans/constraints-palette.md).
-    await type(h, "ln(pt(-45, 36), pt(-5, 38)); ln(pt(-45, 24), pt(-15, 26)); ln(pt(-45, 12), pt(-2, 10)); ln(pt(-45, 0), pt(-20, -3)); ln(pt(-45, -12), pt(-18, -14))");
+    // Spaced to the room an iPhone 13 has between its panes: the constraints
+    // palette docks at the bottom while the constrain tool is armed, and its
+    // strip's hit box reaches a target up over the drawing (index.html) — a
+    // fifth line at y −18 was under that reach — while a first line at y 36
+    // was a finger's radius from the organiser's bottom edge, and the tap was
+    // the organiser's (docs/plans/constraints-palette.md; harness.ts's `at`).
+    await type(h, "ln(pt(-45, 30), pt(-5, 32)); ln(pt(-45, 20), pt(-15, 22)); ln(pt(-45, 10), pt(-2, 8)); ln(pt(-45, 0), pt(-20, -3)); ln(pt(-45, -10), pt(-18, -12))");
     await armConstrain(h);
     for (const l of ["l1", "l2", "l3", "l4", "l5"]) await h.press(await along(h.app, l, 0.5));
-    const listed = await rows(h.app);
+    let listed = await rows(h.app);
+    assert.equal(listed[0]?.label, "Equal (all 5)", await state(h.app));
+    const fits = await rowsFit(h.app);
+    assert.ok(fits.fit, `every row shown is on screen: ${JSON.stringify(fits)}`);
+    await shot(h, "1-five-lines-picked");
+    // On a phone the palette shows the likeliest and a more… row (the two
+    // lines' test below measures that); opened, the list is the whole one.
+    const more = listed.find((r) => r.more);
+    if (more) { await h.row(more.label); listed = await rows(h.app); }
     assert.deepEqual(listed.map((r) => r.label), ["Equal (all 5)", "Parallel (all 5)", "Horizontal (all 5)", "Vertical (all 5)", "Fix (all 5)"], await state(h.app));
     assert.equal(listed[0].command, 'eq("l1", "l2"); eq("l1", "l3"); eq("l1", "l4"); eq("l1", "l5")');
-    const fits = await rowsFit(h.app);
-    assert.ok(fits.fit, `every row on screen: ${JSON.stringify(fits)}`);
-    await shot(h, "1-five-lines-picked");
     await h.row("Equal (all 5)");
     const eqs = (await relations(h.app)).filter((r) => r.op === "equalLength");
     assert.deepEqual(eqs.map((r) => r.args), [["l1", "l2"], ["l1", "l3"], ["l1", "l4"], ["l1", "l5"]]);

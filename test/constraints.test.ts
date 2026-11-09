@@ -100,7 +100,7 @@ test("nothing selected: every relation newest first, and the agreeing sets under
   assert.deepEqual((sections[0].rows as HeldRow[]).map((r) => r.name), [d, ...perps.slice().reverse()]);
   assert.equal(sections[0].note, "5");
   assert.deepEqual((sections[1].rows as HeldRow[]).map((r) => r.name).sort(), perps.slice().sort(), "the four right angles agree");
-  assert.match(sections[1].note, /^4 say one thing together/);
+  assert.match(sections[1].note, /^4 say one thing — none is wrong$/);
   // No agreeing set, no section.
   assert.deepEqual(paletteFor(m, [], [], []).map((s) => s.id), ["all"]);
 });

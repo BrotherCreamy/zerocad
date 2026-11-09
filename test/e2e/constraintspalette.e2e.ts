@@ -195,7 +195,7 @@ test("desktop: a rectangle's four right angles are one agreeing set — counted 
   assert.deepEqual(await sectionIds(desk), ["all", "agreeing"]);
   const set = await heldRows(desk, "agreeing");
   assert.deepEqual(set.map((r) => r.name), ["r1", "r2", "r3", "r4"]);
-  assert.match(await desk.page.$eval('#constraints [data-section="agreeing"] .chead', (el) => el.textContent ?? ""), /4 say one thing together — none is wrong/);
+  assert.match(await desk.page.$eval('#constraints [data-section="agreeing"] .chead', (el) => el.textContent ?? ""), /4 say one thing — none is wrong/);
   await shot(desk, "5-desktop-agreeing-set");
   // A right-click on a row is the relation's menu: Delete on it.
   const r = await box(desk, '#constraints .crow[data-name="r2"]');

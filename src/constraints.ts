@@ -156,7 +156,8 @@ export function paletteFor(
   ];
   for (const set of agreeing) {
     const rows = set.filter((n) => model.relations.has(n)).map((n) => heldRow(model, model.relationOf(n), selection));
-    if (rows.length) sections.push({ id: "agreeing", title: "agreeing", note: `${rows.length} say one thing together — none is wrong`, rows, empty: null });
+    // Short enough for the pane at its default width: "4 say one thing together — none is wrong" was cut at "no…".
+    if (rows.length) sections.push({ id: "agreeing", title: "agreeing", note: `${rows.length} say one thing — none is wrong`, rows, empty: null });
   }
   return sections;
 }
