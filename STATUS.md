@@ -520,7 +520,9 @@ etc).
   is what sketch on face sets; `drawingPlane()` is it, else the default, else
   the origin. **The curve tools** (`CurvePlane` in `tools/place.ts`) draw on
   the chosen plane, else the solid face under the first click, else the
-  ground, and hold the curve there with `onPlane` and `par`. **Features**:
+  ground, and hold the curve there with `onPlane` and `par` **only on a
+  chosen plane** (since profiles-held.md: with nothing picked, a curve is
+  held by nothing but its own definition). **Features**:
   `orientingPlane` picks extrude's and revolve's plane and makes nothing;
   extrusion and revolution pair twin rims' normals (a `.n` block); `fillet`
   takes a side vector, not a frame; a revolve makes no end frames (expansion

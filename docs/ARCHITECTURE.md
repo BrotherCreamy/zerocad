@@ -881,6 +881,63 @@ knows, so a module's curve kind is copied onto the plane by the same code.
 name, a `del` and a glyph, but the glyph is drawn only while its point is
 revealed: one ▱ per sketched point is the clutter the glyph work removed.
 
+## Every sketch is a 3D sketch, and every operation holds both ways
+
+Two rules from the owner, the same day (docs/plans/profiles-held.md), and
+the second is the reason for the first.
+
+**No plane unless one is picked.** *"The default for sketch entities is no
+plane. Every sketch is a 3D sketch, unless you enter into active on-plane
+constraint."* Where a click lands — the ground in a fresh document, a solid's
+face under the cursor — is a position, never a relation. A drawing tool holds
+what it makes to a plane only when sketch mode's work plane or a default
+frame is set (`holdOnSketchPlane`, `holdCurve`, both keyed on
+`sketchPlaneRef`); otherwise a curve is held by nothing but its own
+definition, its normal seeded facing the plane it was drawn on.
+`test/noplanedefault.test.ts` walks every drawing tool.
+
+**Relations between entities, both ways, by default.** *"It's not about
+being tied to the ground plane, it's about correct relationships BETWEEN
+entities. Part of the concept of this CAD is to have bidirectional
+relationships everywhere by default."* So an operation that makes geometry
+from geometry says what it means as a relation between the new entities and
+the old, with **both sides variables**, so a drag on either moves the other.
+A datum — read as numbers, never pushed — is only ever something the user
+picked: a frame, a frame's axis, a plane chosen to sketch on. The audit
+that applied this to every such operation is a table in the spec, and
+`test/bothways.test.ts` has a row for each, dragging the copy and the
+original in the plane and out of it:
+
+- a **revolve** holds its profile in the plane through its axis (one row a
+  point but the farthest from it); a frame's axis is a datum, a line the user
+  drew is read as the line's points, so a profile drag can move it;
+- an **offset**'s copy is held in its chain's plane by `coplanar` — a point in
+  the plane of three others, all four moving, unlike `onPlane(p, "a.b.c")`,
+  which reads the three as a datum — on one vertex per run nothing else
+  holds, and a round copy nothing turns is `par` to its original;
+- a **circular pattern** with nothing picked turns about its seed's own
+  plane, three seed points read as variables, rather than the ground's z;
+- the **extrusion** itself — the owner's measured case, a lid corner dragged
+  skewing the prism — waits on the owner's choice of its form (the spec's
+  open *direction*: an edge extrude as the primitive, a shared chord, the
+  profile's perpendicularity a relation of its own). Until then it holds twin
+  = base + depth along its frame's +z, one way, and the failing tests in
+  `test/profilesheld.test.ts` and `test/e2e/profilesheld.e2e.ts` say so.
+
+**Fewer relations, not more.** Each of these was first written holding
+everything and read orange: a rectangle's offset held at four corners
+reads three redundant, because a line's copy is `par` to an in-plane line
+and one held end carries the other. The rule that came out of it: hold
+what nothing else holds, and check with `diagnose`, never by counting.
+
+**A feature's own relations are never named redundant** (`Model.diagnose`
+skips what `removable` refuses, as the conflict search already did). A
+revolve of a sketch-mode profile says "these points are in one plane with
+the axis" where the user's onplanes already say "these points are on this
+plane"; that is the feature being consistent, and a person can neither
+delete nor fix it. Measured with the line taken out: a whole revolve's
+angle read orange.
+
 ## Tools are not privileged
 
 A tool is a class with `onDown` / `onMove` / `onUp` / `onCancel` / `render`,
