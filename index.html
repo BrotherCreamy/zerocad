@@ -410,6 +410,42 @@
     #organiser .oopen{color:#46586a}
     #organiser .orow[data-open] .oopen,#organiser .orow[data-open] .oopen:hover{color:#e8a33d}
     #organiser .oeye[data-eye="hidden"]{color:#46586a}
+    /* The constraints palette (src/constraints.ts): sections headed as the
+       organiser's are; a relation that applies is a row-wide button with its
+       command dim beside it (the options panel's command row, moved here); a
+       relation the selection has is its glyph, its name, what it says, a
+       dimension's value in a field, and × to delete it. A greyed row says why
+       under its label, on two lines, where a phone can read it. */
+    #constraints{overflow-y:auto;overflow-x:hidden;padding:1px 0 4px;font-size:calc(11px * var(--ui));color:#8fa7bb;touch-action:pan-y;
+      overscroll-behavior:contain}
+    #constraints .chead{display:flex;align-items:baseline;gap:6px;padding:calc(4px * var(--ui)) 8px calc(1px * var(--ui));font-size:calc(9px * var(--ui));letter-spacing:.07em;
+      color:#46586a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    #constraints .chead .cnote{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;text-transform:none;letter-spacing:0;color:#3a4b5c}
+    #constraints .cnone{padding:0 8px calc(3px * var(--ui));font-size:calc(10px * var(--ui));color:#46586a}
+    #constraints .ocmd{display:flex;align-items:center;gap:6px;width:100%;height:var(--orow);padding:0 8px;font-family:inherit;font-size:inherit;
+      text-align:left;color:#8fa7bb;background:transparent;border:1px solid transparent;border-radius:3px;cursor:default}
+    #constraints .ocmd:hover{background:#20303f;color:#d5e1ec;border-color:#223041}
+    #constraints .ocmd .olabel{flex:none;color:inherit;white-space:nowrap}
+    #constraints .ocmdtext{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#56697b;text-align:right}
+    #constraints .ocmd.off,#constraints .ocmd.off:hover{color:#56697b;background:transparent;border-color:transparent;
+      flex-direction:column;align-items:stretch;justify-content:center;gap:0;height:calc(var(--orow) * 3)}
+    #constraints .ocmd.off .ocmdtext{flex:none;font-style:italic;color:#475868;white-space:normal;text-align:left;line-height:1.3;
+      display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+    #constraints .ocmd.more .olabel{color:#e8a33d}
+    #constraints .crow{display:flex;align-items:center;gap:calc(4px * var(--ui));height:var(--orow);padding:0 4px 0 8px;cursor:default}
+    #constraints .crow:hover{background:#16212c}
+    #constraints .crow.on{background:#c46cff1f}
+    #constraints .crow.on .cname{color:#dcb6ff}
+    #constraints .cglyph{flex:none;min-width:calc(20px * var(--ui));text-align:center;font-family:ui-monospace,Menlo,Consolas,monospace;color:#d5e1ec}
+    #constraints .cname{flex:none;color:#d5e1ec}
+    #constraints .cdesc{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#56697b}
+    #constraints .cval{flex:none;width:calc(58px * var(--ui));height:calc(18px * var(--ui));padding:0 5px;font-family:inherit;font-size:calc(11px * var(--ui));
+      color:#d5e1ec;background:#0b1016;border:1px solid #223041;border-radius:3px;text-align:right}
+    #constraints .cval:focus{outline:none;border-color:#e8a33d80;color:#e8a33d}
+    #constraints .cunit{flex:none;color:#46586a}
+    #constraints .cdel{flex:none;display:flex;align-items:center;justify-content:center;width:calc(16px * var(--ui));height:calc(16px * var(--ui));padding:0;
+      font-family:inherit;font-size:calc(12px * var(--ui));color:#46586a;background:transparent;border:none;border-radius:3px;cursor:default}
+    #constraints .cdel:hover{background:#20303f;color:#e0605c}
     /* The armed tool's options, one 22px row each (OPTION_ROW in panels.ts,
        which sizes the panel to match: strip, 3px padding, border, rows). The
        strip names the tool. A row is the label, a field and the unit — the
@@ -635,9 +671,11 @@
          the plane's part, Done above all, is stacked over the tool's, so a
          tap on Done is Done (found on the landscape phone). */
       #mode .plane{position:relative;z-index:1}
-      #organiser button,.panel>.ptitle .padd{position:relative}
-      #organiser button::before,.panel>.ptitle .padd::before{content:"";position:absolute;left:50%;top:50%;
+      #organiser button,#constraints .cdel,.panel>.ptitle .padd{position:relative}
+      #organiser button::before,#constraints .cdel::before,.panel>.ptitle .padd::before{content:"";position:absolute;left:50%;top:50%;
         width:max(100%,var(--target));height:max(100%,var(--target));transform:translate(-50%,-50%)}
+      /* The palette's value field: a target tall to tap into, drawn no wider. */
+      #constraints .cval{height:var(--target)}
       :is(#ctxmenu,#appmenu) .head{padding:calc(6px * var(--ui)) 14px}
       #appmenu .head{padding:calc(6px * var(--ui)) 14px calc(2px * var(--ui))}
       :is(#ctxmenu,#appmenu) .item{min-height:var(--target);align-items:center;padding:0 14px}
@@ -697,6 +735,12 @@
         <div id="organiser" class="pbody"></div>
         <!-- See-through, the organiser is a tree hugging its corner (src/organiser.ts's organiserTree). -->
         <div id="otree" class="otree"></div>
+      </div>
+      <!-- The constraints palette (src/constraints.ts; docs/plans/constraints-palette.md):
+           the relations the selection takes, and the ones it already has. -->
+      <div class="panel" data-panel="constraints" data-label="Constraints">
+        <div class="ptitle">constraints</div>
+        <div id="constraints" class="pbody"></div>
       </div>
       <div class="panel" data-panel="options" data-label="Tool options" hidden>
         <div class="ptitle">options</div>

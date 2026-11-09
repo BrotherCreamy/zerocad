@@ -291,9 +291,28 @@ etc).
   and the fillet lights its corners (`Tool.takes`, `Tool.placed`). The
   verdict is never cut for the chip, and the chip is over no pane on any
   iPhone in the table.
+- **The constraints palette, a workbench module**
+  (docs/plans/constraints-palette.md, built). The owner: *"the constraint
+  list should not be on the features palette, it should be a separate
+  constraints palette. although i think it should still be installed as a
+  workbench."* A pane like the organiser (`src/constraints.ts`; the module
+  `src/modules/constraints.ts`, named by `part`, `sketch` and `surfaces`):
+  for the constrain tool's picks, else the selection's entities, the
+  relations that apply (`constraintsFor`, a row each, a press types the
+  line) and the relations they already have (the glyph's own mark, the
+  name, what it says, a dimension's value in a field typing `set`, × typing
+  `del`; a tap selects); nothing selected, every relation newest first and
+  the agreeing sets. Shown from the start on a desktop (right edge, above
+  the organiser); on a phone hidden until the constrain tool summons it
+  (bottom, above the command line; at the side on its side), gone when the
+  tool is put down unless shown from Panes. Rows that do not fit collapse
+  to the likeliest and *more…*. The constrain tool's options pane lists the
+  relations only where the module is off the workbench. The pure half is
+  `paletteFor`; `test/constraints.test.ts`, `test/e2e/constraintspalette.e2e.ts`.
 - **Every standard relation, for whatever is picked**
   (docs/plans/relations-complete.md, built; its *As built* is the table).
-  The constrain tool and the context menu offer SolidWorks' and Onshape's
+  The constraints palette, the constrain tool and the context menu offer
+  SolidWorks' and Onshape's
   relations for any selection of points, lines, circles, arcs, ellipses,
   splines, a frame's arm (an axis; in 3D the z arm is the frame's plane), a
   solid's vertices and edges (the model's points and lines) and flat faces
@@ -315,7 +334,12 @@ etc).
     (kernel-rs/src/analysis.rs: per-component dense elimination) for the
     Jacobian's rank: free variables from J (with gauge rows), redundant rows
     from Jᵀ. `Model.diagnose` maps them to entities (`free`, `dof`) and
-    relations (`redundant`). Not counted free: a curve's normal length; a
+    relations (`redundant`, and `agreeing` — the sets that say one thing
+    together, each the least set that implies the implied relation, found
+    by `analyse({ agreeing })` trying each candidate with its rows left out;
+    docs/plans/constraints-palette.md). The status counts the agreeing
+    relations (`0 free · 4 agreeing`) and names none; the palette lists the
+    sets. Not counted free: a curve's normal length; a
     point lying on the drawing plane or the ground.
   - **Conflicts** (docs/plans/conflict-detection.md, built). `Model.solve`
     refuses a solution that collapses a measure (a line's length, a radius, a
@@ -357,8 +381,10 @@ etc).
     frame's axis; an axis `par` wears `—`/`|`); `deg(x)`. `tan` at a shared
     end is a join form (exact, where the distance form was a double root).
   - **Tools**: `dimension` (pick, then empty canvas; options diameter,
-    driven) and `constrain` (picks or the selection; the options panel lists
-    `constraintsFor` as rows), each its own button — thirteen buttons. One
+    driven) and `constrain` (picks or the selection; the constraints palette
+    lists `constraintsFor` as rows — the tool's options panel did until
+    docs/plans/constraints-palette.md, and still does on a workbench without
+    the palette's module), each its own button — thirteen buttons. One
     rounding for the tool and the menu (`dimensioning.ts`). The selection's
     context menu has the same Constrain list.
 - **Solids on SMLib: bodies that add, cut and intersect**

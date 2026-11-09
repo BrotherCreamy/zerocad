@@ -248,7 +248,13 @@ knows variables and rows, nothing else.
 caller supplies (plain linear rows over variable indices), it gives the free
 variables and the count of independent motions. Of Jᵀ, over the stored rows
 only, it gives the rows each implied by the rows before it — so "redundant"
-means the later of two ways of saying one thing. `SolveReport.blocks` names
+means the later of two ways of saying one thing — and, asked with
+`agreeing`, for each block every row of which is implied, the blocks it is
+implied *by*: each block in the left null space's support tried once more
+with its rows left out, and kept when the implied block is then implied no
+longer (where no single one is needed, a row said three times, the whole
+support). Bounded by trials and milliseconds, like the conflict search;
+past the bound the support stands. `SolveReport.blocks` names
 the blocks whose residual stayed large after a failed solve; at a
 least-squares minimum the residual lies in Jᵀ's null space, so those are
 rows in a dependency. All of it is handles and indices: `problem.ts` still
@@ -260,7 +266,17 @@ are gauges rather than freedoms (a curve's normal length; a point lying on
 the drawing plane or the ground, off it), maps free variables back to the
 entities that own or refer to them, and maps blocks back to the relations
 whose `model.relation` collected them (`Model.conflicting`). A relation is
-redundant only when every one of its rows is implied.
+redundant only when every one of its rows is implied — and what is *said* of
+it is not its name but its **agreeing set** (`Diagnosis.agreeing`; the
+owner's principle, TODO.md's register: *agreeing over-constraint is
+normal*): the relations it says one thing with, by the kernel's answer
+above, kept to the ones a person made, sets merged where they share a
+member. A rectangle's four right angles are one set of four, none of them
+"the redundant one" — which is stored last is an accident of order, not a
+property of the drawing. The status counts the set (`0 free · 4 agreeing`),
+muted, and names none; the constraints palette lists it
+(docs/plans/constraints-palette.md). `redundant` itself is kept, unsaid,
+for the dimension tool's "already held".
 
 **main.ts** asks once per solve that the user caused — a commit, an entry,
 an undo, the end of a drag — never per drag frame, which draws with the last
@@ -1546,6 +1562,28 @@ head (format 16) and read back — but not the journal's and not the undo
 snapshot's: switching is no edit to the drawing, so it is no undo step,
 exactly as the camera is not.
 
+**A pane can be a module.** The constraints palette
+(docs/plans/constraints-palette.md; the owner: *"it should be a separate
+constraints palette. although i think it should still be installed as a
+workbench"*) is a panel like the organiser — titled, docked, dragged,
+remembered, in the app menu's Panes — and a module, `constraints`
+(`src/modules/constraints.ts`), that registers nothing but its help. What
+the module does is put the pane on a workbench: `part`, `sketch` and
+`surfaces` name it, and a workbench that does not has no palette — out of
+the layout, out of Panes, `ui({ show: "constraints" })` refused by name
+(`Panels`' `present`). The pane itself stays the host's, as the organiser's
+does: `main.ts` builds it, from the model, the selection and the last
+diagnosis, through `src/constraints.ts`'s pure `paletteFor` and a thin DOM
+half, and the panel manager is told three things it did not know before —
+a pane that is `present` only while a predicate holds, one that starts
+hidden on this device (`startHidden`: a phone, where the pane is a third of
+the drawing), and one `summoned` while a predicate holds (the constrain
+tool armed) although hidden. All three are predicates the host hands in, so
+`panels.ts` still imports nothing from the model or the tools. The
+constrain tool is the way to pick by clicking and nothing more: its picks
+reach the palette as names (`Tool.related`), and its options pane lists the
+relations only where the module is off the workbench.
+
 **Add workbench… is the paste rule with a file.** A workbench file is one
 `.zerocad.js` whose top is a manifest comment saying what it registers. The
 app reads the manifest *without running the file*, shows it, and asks — that
@@ -1913,6 +1951,22 @@ drawing. The panel comes and goes with the tool, so it is the one panel
 grips, and it is placed after every other panel so that it is the one moved
 out of the way.
 
+**The constraints palette is a pane, not a tool pane**
+(docs/plans/constraints-palette.md). The constrain tool's list of relations
+lived in that options panel until the owner asked for *"a separate
+constraints palette"*: it was up only while the tool was armed, and on an
+iPhone it covered what had been picked. The palette is a panel like the
+organiser — grips, a stored place, Panes — and it lists for the selection
+too, with nothing armed. Where it is placed by default is the one thing
+device-shaped about it: a desktop's right edge above the organiser; an
+upright phone's bottom, above the command line, where it starts hidden and
+the constrain tool summons it; a phone on its side, the left under the logo.
+A phone's rows are a target tall and a strip's hit box reaches a target up
+over the drawing, so the pane is sized to three rows there, and where its
+rows do not fit the likeliest show and a *more…* row opens the rest —
+measured against the pane's real height on each build, so a pane the viewer
+made taller shows more.
+
 No button is greyed. One used to be, for a tool the model could not run;
 since every tool makes what it needs and answers a click it cannot use with
 guidance, the toolbar no longer asks `toolUnavailable` at all.
@@ -2191,7 +2245,7 @@ until the next action went unrecorded.
 
 ## Why there is an end-to-end suite
 
-Seventy bugs so far were invisible to the unit tests and obvious within seconds
+Seventy-one bugs so far were invisible to the unit tests and obvious within seconds
 of running the app:
 
 1. a status readout that went stale, so a conflict could be introduced from
@@ -2532,6 +2586,16 @@ of running the app:
    depth·z, and it said that exactly. The tests now ask the solid's
    properties (flat, square, the depth long, translated), whichever corner
    moved (docs/plans/profiles-held.md).
+71. The constraints palette docked at an iPhone's bottom took the first tap
+   on a line drawn just above it: a strip's hit box reaches a whole target up
+   over the drawing (index.html's `.ptitle::before`), and Chromium's touch
+   adjustment snaps a tap within the finger's radius onto it, so a line 30 px
+   above the pane was the pane's. `elementFromPoint` said the canvas, so the
+   harness's `at` let the press through, and the unit layout tests — which
+   check rectangles — saw no overlap because there was none. Found by the
+   palette e2e's first run; the pane is sized to three rows there, and `at`
+   now refuses a point within a strip's reach under a finger
+   (docs/plans/constraints-palette.md).
 
 None of these are mathematics. They are all *assembly*. Hence `npm run
 test:e2e`, and hence the expectation that anything touching the app is checked

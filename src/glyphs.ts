@@ -688,6 +688,22 @@ export function defineGlyphLabel(op: string, label: (model: Model, r: RelationEn
   LABELS.set(op, label);
 }
 
+/**
+ * The text a relation's mark shows — its label (a dimension's value, `50`,
+ * `R22`, `30°`) where it has one, else its symbol — so the constraints
+ * palette (constraints.ts) shows each relation by the very mark it wears on
+ * the drawing, and the two cannot disagree. Throws as `labelOf` does for a
+ * relation whose label cannot be read; the caller falls back to the symbol.
+ */
+export function glyphText(model: Model, r: RelationEntry): string {
+  return labelOf(model, r) ?? symbolOf(r);
+}
+
+/** A relation's symbol alone, without its label. */
+export function glyphSymbol(r: RelationEntry): string {
+  return symbolOf(r);
+}
+
 /** A relation's label: a module's, else a driven dimension's, else `labelFor`'s. */
 function labelOf(model: Model, r: RelationEntry): string | null {
   if (r.op === "measure") {

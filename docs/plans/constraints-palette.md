@@ -1,6 +1,7 @@
 # Plan: a constraints palette of its own, as a workbench
 
-**Status: queued** (2026-11-09). The owner: *"the constraint list should not be
+**Status: built** (2026-11-09, `claude/constraints-palette`; see *As built*
+at the end for every deviation). The owner: *"the constraint list should not be
 on the features palette, it should be a separate constraints palette. although
 i think it should still be installed as a workbench."*
 
@@ -63,3 +64,56 @@ how panes find room), `relations-complete.md`, `tool-options.md`,
 CHANGELOG top, quoting the owner; STATUS; ARCHITECTURE (palettes as modules);
 the register; `help()`; the TODO item "the constrain list covers what it is
 about, on a phone" ticked; the spec marked built.
+
+## As built (2026-11-09)
+
+Every point of the design above is built, with these deviations and
+decisions, each also in TODO.md's register as vetoable:
+
+1. **Palette** (`src/constraints.ts`, pure `paletteFor` + a thin DOM half;
+   the pane in index.html as `data-panel="constraints"`). Sections: *relate
+   l1, l2* (the `constraintsFor` rows, a greyed one with its reason, a press
+   types the line), *l1, l2 have* (the relations naming them or a point they
+   are built of — `constrainedBy`, so a line's `dist` between its ends is the
+   line's — newest first: the glyph's own mark via `glyphText`, the name,
+   what it says, a dimension's value in a field typing `set`, × typing
+   `del`; a tap types `select`, a right-click or a held finger opens the
+   glyph's menu), and with nothing selected *relations* (all, newest first)
+   and *agreeing* (one section per set, `Diagnosis.agreeing`). The constrain
+   tool armed with nothing picked says *pick what to relate*.
+2. **The constrain tool stays**; `Tool.related()` hands its picks to the
+   palette; `commands()` stays for a workbench without the module, where the
+   options pane lists them as before. A row pressed with nothing armed
+   **keeps the selection** (Onshape clears it) so the held list shows the
+   new relation and a second needs no reselecting.
+3. **Room on a phone — deviations.** *Hidden from the start on a phone*,
+   summoned by the constrain tool (panels.ts `startHidden`, `summoned`),
+   gone when the tool is put down unless shown from Panes; shown from the
+   start on a desktop (right edge above the organiser, 240 × 300). *Three
+   rows, not four*: a row is a target tall and a strip's hit box reaches a
+   target up over the drawing, and four put that reach over the lower part
+   of what the relation tests pick. *Landscape at the left under the logo*,
+   not beside the right-hand column, which lay over the drawing's middle.
+   The rows shown are measured against the pane's real height on each build
+   — the likeliest that fit and *N more…* — so the viewer's taller pane shows
+   more. Measured, the owner's case: two circles picked on an iPhone 13
+   upright, the palette up, both rims and the mirror line clear of every
+   pane (`relationscomplete.e2e.ts`, which now picks the circles first).
+4. **A workbench module** (`src/modules/constraints.ts`, help only); `part`,
+   `sketch` and `surfaces` name it; a workbench that does not has no pane
+   (`Panels`' `present`: out of the layout and Panes, `ui({ show })` refused
+   by name). The constrain tool cannot summon a pane that is not there.
+5. **The context menu's Constrain heading** is untouched.
+6. **The register's item 2**, built here: `Problem.analyse({ agreeing })`
+   finds each implied block's least implying set (one elimination per
+   candidate with its rows left out; the whole support where no single one
+   is needed; bounded by 40 trials / 150 ms); `Model.diagnose().agreeing`
+   names the sets, merged where they overlap; the status reads
+   `0 free · 4 agreeing`, muted, naming none; `redundant` is kept, unsaid,
+   for the dimension tool's "already held". Expectations changed: the three
+   `redundant rN` status matches and the `#diagnosis` class (`agreeing`).
+7. **Bug 71**: the first tap after arming was lost on the phone — the strip's
+   reach plus touch adjustment took a tap 30 px above the pane. The harness's
+   `at` now refuses a point within a strip's reach under a finger; the
+   five-lines test draws a little higher.
+8. **Opaque see-through**, as the options panel: read and typed into.

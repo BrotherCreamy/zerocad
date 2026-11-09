@@ -406,6 +406,13 @@ export abstract class Tool {
   /** One of `commands` was typed and has run: the tool's picks are spent. */
   ran?(command: string): void;
   /**
+   * What the tool has picked to relate (the constrain tool's picks), in the
+   * order picked — what the constraints palette lists relations for while the
+   * tool is armed, in place of the canvas's selection
+   * (docs/plans/constraints-palette.md). Absent: the palette reads the selection.
+   */
+  related?(): readonly string[];
+  /**
    * Features whose faces the host leaves undrawn while this tool is armed,
    * because the tool draws them itself, as they will be — the edit dialog's
    * preview of the feature it edits. Without it the solid as it is would sit

@@ -3,14 +3,23 @@
 // docs/plans/relations-complete.md).
 //
 // Onshape's constraint toolbar, as one button: with two lines picked the
-// options panel lists Parallel, Perpendicular, Equal, Collinear and Angle;
-// with a point and a line, On, Midpoint and Distance; with two circles,
-// Concentric, Coradial, Equal and Tangent; with five lines, Equal for all five
-// at once; and so on (`constraintsFor`, the same list the context menu shows
-// on a selection). One press types one line — `par("l1", "l2")`, or for many
-// at once `eq("l1", "l2"); eq("l1", "l3")` — through the command line, so the
-// log, the journal and the undo step are the typed line's. A row greyed in
-// the panel says why it cannot apply, and a press on it types nothing.
+// **constraints palette** (constraints.ts; docs/plans/constraints-palette.md)
+// lists Parallel, Perpendicular, Equal, Collinear and Angle; with a point and
+// a line, On, Midpoint and Distance; with two circles, Concentric, Coradial,
+// Equal and Tangent; with five lines, Equal for all five at once; and so on
+// (`constraintsFor`, the same list the context menu shows on a selection).
+// One press types one line — `par("l1", "l2")`, or for many at once
+// `eq("l1", "l2"); eq("l1", "l3")` — through the command line, so the log,
+// the journal and the undo step are the typed line's. A row greyed in the
+// palette says why it cannot apply, and a press on it types nothing.
+//
+// The list used to be this tool's options pane (the owner: *"the constraint
+// list should not be on the features palette, it should be a separate
+// constraints palette"*). The tool is now the way to **pick by clicking**:
+// `related()` hands its picks to the palette, which otherwise reads the
+// canvas's selection, and arming it brings the palette up where it is
+// hidden. `commands()` stays for a workbench without the palette's module,
+// where the options pane lists them as it did.
 //
 // **Armed on a selection, it starts from it**: select two lines with nothing
 // armed, press Constrain, and the list is already there. Armed on nothing,
@@ -90,17 +99,26 @@ export class ConstrainTool extends Tool {
 
   onArmed(): void {
     this.picks = [...(this.ctx.prenamed ?? [])];
-    if (!this.picks.length) this.ctx.log?.("constrain: click what to relate — the relations that apply are listed in the panel", "guide");
+    if (!this.picks.length) this.ctx.log?.("constrain: click what to relate — the relations that apply are listed in the constraints palette", "guide");
     this.ctx.requestRender();
   }
 
-  /** What to pick, then a relation from the panel's list. */
+  /** What to pick, then a relation from the palette's list. */
   next(hand: Hand): string {
     if (!this.picks.length) return `${press(hand)} what to relate`;
-    return this.commands().some((c) => !c.off) ? "choose a relation in the panel, or pick more" : `${press(hand)} something else to relate`;
+    return this.commands().some((c) => !c.off) ? "choose a relation in the palette, or pick more" : `${press(hand)} something else to relate`;
   }
 
-  /** The relations the picks take, as the panel lists them — a greyed one with its reason. */
+  /** The picks, for the constraints palette to list relations for (`Tool.related`). */
+  related(): readonly string[] {
+    return this.picks;
+  }
+
+  /**
+   * The relations the picks take, as a list of commands — a greyed one with
+   * its reason. The palette reads `constraintsFor` itself; this is for a
+   * workbench without the palette's module, where the options pane lists them.
+   */
   commands(): ToolCommand[] {
     return constraintsFor(this.ctx.model, this.picks).map((a) => ({ label: a.label, command: a.text, ...(a.off ? { off: a.off } : {}) }));
   }
