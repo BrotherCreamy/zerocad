@@ -63,7 +63,7 @@ import { hiddenInk, inSight, inkRuns, occlusion, type Occlusion } from "./occlus
 import { VIEW_MODES, drawsFaces, isViewMode, opaque, recallViewMode, rememberViewMode, viewModeError, type ViewMode } from "./viewmode.ts";
 import { entityDrawn, glyphDrawn, quietEntities, revealed, solidEdges } from "./quiet.ts";
 import { activePlane, focusOf, outOfFocusInk, planePatch, type ActivePlane } from "./activeplane.ts";
-import { ModeChip, chipParts, doneCommand, guideText, lookCommand, planeMenu } from "./modechip.ts";
+import { ModeChip, chipParts, doneCommand, guideText, landingLabel, lookCommand, planeMenu } from "./modechip.ts";
 import { frameBasis } from "./relations/refs.ts";
 import { lockPage } from "./pagelock.ts";
 import { BackStack } from "./backstack.ts";
@@ -858,7 +858,11 @@ async function main() {
       clearTimeout(chipGuide.timer);
       chipGuide = null;
     }
-    if (chip.show(chipParts(named?.label ?? null, what, next, chipGuide?.text ?? null), optionsPanel.size() !== null)) fitChip();
+    // With no plane chosen, where the next click lands — the solid's face
+    // under the hand, `on e1.m3` — takes the first part, said and not offered
+    // (docs/plans/click-on-face.md).
+    const land = named ? null : landingLabel(engine.landing);
+    if (chip.show(chipParts(named?.label ?? land, what, next, chipGuide?.text ?? null, land !== null), optionsPanel.size() !== null)) fitChip();
   }
 
   /**

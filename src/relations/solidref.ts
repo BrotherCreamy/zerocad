@@ -38,33 +38,18 @@
 
 import type { Dual } from "../kernel/dual.ts";
 import { Dual as D } from "../kernel/dual.ts";
-import { memberName, type FeatureEntry, type Model, type ProfileMember } from "../model.ts";
+import { memberName, parseFaceName, type FaceName, type FeatureEntry, type Model, type ProfileMember } from "../model.ts";
 import { extrusionChord } from "./extrusion.ts";
-import { planeBasis, unitDuals } from "./refs.ts";
+import { planeBasis, unitDuals, type DirectionRef } from "./refs.ts";
 import { axisReader, revolveProfilePlane, turnMatrix } from "./revolution.ts";
 import { dot, vecSub } from "./vec.ts";
 
-export type FaceRole = "base" | "lid" | "member";
+export type FaceRole = FaceName["role"];
 
-/** A face's name, parsed: whose, and which. */
-export interface FaceName {
-  feature: string;
-  role: FaceRole;
-  /** The member's index, loop by loop, for a wall; -1 for a cap. */
-  member: number;
-}
-
-const FACE = /^(e\d+)\.(base|lid|m(\d+))$/;
-
-/** `e1.lid` → `{ feature: "e1", role: "lid" }`, or null for anything else. */
-export function parseFaceName(name: unknown): FaceName | null {
-  if (typeof name !== "string") return null;
-  const m = FACE.exec(name);
-  if (!m) return null;
-  return m[2] === "base" || m[2] === "lid"
-    ? { feature: m[1], role: m[2], member: -1 }
-    : { feature: m[1], role: "member", member: Number(m[3]) };
-}
+// The name's shape is the model's (`parseFaceName`, model.ts — the namespace's
+// owner, so `parseAxisRef` can tell a face from a mistyped axis); re-exported
+// here, where everything that reads what a face is made of imports it from.
+export { parseFaceName, type FaceName };
 
 /** A kernel edge's two face names (`e1.lid|e1.m0`), or null. */
 export function parseEdgeName(name: unknown): [string, string] | null {
@@ -342,6 +327,70 @@ export function faceDistance(model: Model, a: string, b: string, target: number)
       return [(d.val < 0 ? d.neg() : d).sub(target)];
     }, `fdist(${a},${b})`);
   });
+}
+
+/**
+ * **`onplane(p, "e1.m3")`** — a point held on a solid's flat face
+ * (docs/plans/click-on-face.md; the owner: *"if i am hovering over a face
+ * without an active on-plane constraint, it should constrain to the plane i
+ * am hovering over"*). The same op, journal entry, glyph (▱) and `del` as an
+ * `onplane` on a frame or three points — `basic.onPlane` hands a face name
+ * here — so a point a click put on a face is held exactly as a point drawn in
+ * sketch mode is, by a relation the user can see and delete.
+ *
+ * The residual is (q − p) · n̂: q the point, p and n̂ the face read **lazily**
+ * through the feature's record (`readPlane`), as `fdist` reads it, so the hold
+ * follows a lid a `set` of the depth moved and a profile a fillet regenerated.
+ * A cap's normal is a datum and its point one of the profile's; a wall's
+ * normal is its line turned square to the extrusion, as Duals — so pulling a
+ * point held on a wall can turn the wall, and the solid with it: a relation
+ * between entities, both ways (profiles-held.md). Linear in q and not a
+ * square. Refuses a face that is not flat, or that the model has no source
+ * for (a fillet's), with the reason: nothing in the model holds such a face,
+ * so nothing could hold a point to it.
+ */
+export function onFace(model: Model, pointName: string, face: string): string {
+  if (model.dim !== 3) throw new Error("onplane on a solid's face needs a 3D model");
+  const p = model.point(pointName);
+  const s = faceSource(model, face);
+  if (!s) throw new Error(`"${face}" is no face of a feature this drawing holds — a face is named e1.lid, e1.base or e1.m3`);
+  if (!(s.kind === "cap" || s.shape === "plane")) {
+    throw new Error(`"${face}" is not flat — it is swept from ${s.entity}, and no relation holds a point on a round face yet (TODO.md: onsurface)`);
+  }
+  readPlane(model, face); // refuses now, where it was typed, a face with no point to stand on
+  return model.relation("onPlane", [pointName, face], () => {
+    model.addResidual(() => [...p.varIndices, ...readPlane(model, face).vars], (l) => {
+      const plane = readPlane(model, face);
+      const q = l.slice(0, 3);
+      const { p: at, n } = plane.plane(l.slice(3));
+      return [dot(vecSub(q, at), n)];
+    }, `onplane(${pointName},${face})`);
+  });
+}
+
+/**
+ * A flat face as a **direction** — its normal — for `par`, `perp` and `ang`:
+ * `par("c1", "e1.m3")` holds a circle's normal to a wall's, which is how a
+ * curve drawn on a face is kept in it (tools/place.ts's `holdCurve`), as
+ * `par("c1", "p1.p2.p3")` keeps one on three points' plane. Null for anything
+ * that is not a flat face of a feature the model holds. A cap's normal is a
+ * datum (`frame` set, so two datums are refused as they are for axes); a
+ * wall's is its line's two ends as variables, read through `readPlane` at
+ * every evaluation, so the wall can turn to meet the curve as well.
+ */
+export function faceDirection(model: Model, ref: string): DirectionRef | null {
+  if (!isPlanarFace(model, ref)) return null;
+  const s = faceSource(model, ref)!;
+  if (s.kind === "cap") {
+    return { width: 0, vars: () => [], direction: () => readPlane(model, ref).plane([]).n, frame: ref };
+  }
+  // A wall: the line's two ends, six variables, and nothing else is read.
+  return {
+    width: 6,
+    vars: () => readPlane(model, ref).vars,
+    direction: (own) => readPlane(model, ref).plane(own).n,
+    frame: null,
+  };
 }
 
 /** How far `b` is square to face `a` (either may be the face), now — what `fdist` holds. NaN where neither is a flat face. */

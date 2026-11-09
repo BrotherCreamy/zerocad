@@ -64,25 +64,28 @@ export class SplineTool extends Tool {
     return Math.hypot(a[0] - b[0], a[1] - b[1]) <= (this.finger ? SAME_POINT_FINGER_PX : SAME_POINT_PX);
   }
 
+  // Each point of a spline is a point of its own, and keeps the face it landed
+  // on (`settleOwn`, docs/plans/click-on-face.md): a spline may run from one
+  // face of a solid onto the next, each point held to its own.
   onDown(p: PointerInfo): void {
-    this.hover = this.laid.length ? this.plane.settle(p) : p;
+    this.hover = this.laid.length ? this.plane.settleOwn(p) : p;
     this.ctx.requestRender();
   }
 
   onMove(p: PointerInfo): void {
-    this.hover = this.laid.length ? this.plane.settle(p) : p;
+    this.hover = this.laid.length ? this.plane.settleOwn(p) : p;
     this.ctx.requestRender();
   }
 
   onUp(p: PointerInfo): void {
     if (this.laid.length === 0) {
       this.plane.begin(p);
-      this.laid.push(this.plane.settle(p));
+      this.laid.push(this.plane.settleOwn(p));
       this.hover = null;
       this.ctx.requestRender();
       return;
     }
-    const at = this.plane.settle(p);
+    const at = this.plane.settleOwn(p);
     const last = this.laid[this.laid.length - 1];
     // A second click on the last point: the end, open.
     if (this.near(at.screen, last.screen)) {

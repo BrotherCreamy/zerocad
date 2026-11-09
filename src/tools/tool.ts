@@ -38,6 +38,17 @@ export interface PointerInfo {
    * in 2D. Absent in a 2D model, whose plane is the whole world.
    */
   plane?: Plane;
+  /**
+   * **The solid's face the pixel landed on** (docs/plans/click-on-face.md),
+   * in a 3D model with no sketch plane chosen: named as the kernel names it
+   * (`e1.lid`, `e1.m3`), and whether it is flat. `world` is on it, and
+   * `plane` is its plane facing the viewer. A point placed on a flat face is
+   * held there — `onplane(p, "e1.m3")`, place.ts — and on a round one only
+   * placed. Absent on the ground, and whenever a sketch plane is chosen,
+   * where every click lands on that plane whatever is under it (case 1,
+   * sketch-mode.md).
+   */
+  face?: { name: string; flat: boolean };
 }
 
 export interface RenderContext {

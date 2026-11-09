@@ -182,8 +182,10 @@ test("drawn over a solid's lid, a circle lands on the lid — not the ground und
   const centre = m.points[c.center];
   assert.ok(near(centre, [20, 15, 20], 0.6), `on the lid where it was clicked: ${centre}`);
   assert.ok(parallelTo((await value(`model.normalOf("${c.name}")`)) as number[], [0, 0, 1]), "facing up, as the lid does");
-  // Nothing picked, so the lid is where it landed and nothing holds it there.
-  assert.deepEqual((await relationsOn(c.center)).filter(([op]) => op === "onPlane"), [], "held by nothing: no plane picked");
+  // Nothing picked, so the lid is the face the click landed on — and it is
+  // held there by name (docs/plans/click-on-face.md): onplane on the lid,
+  // as the kernel names it, not on three of its points.
+  assert.deepEqual((await relationsOn(c.center)).filter(([op]) => op === "onPlane").map(([, args]) => args), [[c.center, "e1.lid"]], "held on the lid by name");
   // The lid picked — sketch on face, its own corners — and drawn again: held
   // on the lid's points, so the plane follows the solid.
   await value(`del("${c.name}"); const f = model.featureOf("e1", "extrude"); const [a, b] = model.line(f.twins[0][0]).refs; `

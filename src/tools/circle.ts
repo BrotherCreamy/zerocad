@@ -49,7 +49,14 @@ import { circumcircle, PREVIEW_MAX_R } from "./circumcircle.ts";
 import { AUTO, Sheet, fitCircle, guide, methodOf, methodOption, pressMoved, touchedCurve, touchingRadius, type Fit, type Touch } from "./curvemethod.ts";
 import { arcSamples, arcSegments, circleFrame } from "../arcgeom.ts";
 import { liesOn } from "../view.ts";
-import { dot3 } from "../vec3.ts";
+import { cross3, dot3, lift3, sub3, unit3 } from "../vec3.ts";
+
+/** The unit normal of the plane through three clicks, or null when they are on one line (or in 2D). */
+function throughNormal(clicks: PointerInfo[]): number[] | null {
+  if (clicks[0].world.length < 3) return null;
+  const [a, b, c] = clicks.map((k) => lift3(k.world));
+  return unit3(cross3(sub3(b, a), sub3(c, a)));
+}
 
 /** The locks, by the name `arm` takes, with the words the panel shows. */
 export const CIRCLE_METHODS: Readonly<Record<string, string>> = {
@@ -123,7 +130,11 @@ export class CircleTool extends Tool {
     // A press with no release before it was a click (a script's presses alone).
     if (this.press) this.still(this.press);
     if (!this.clicks.length && !this.press && !this.plane.begin(p)) return;
-    p = this.plane.settle(p);
+    // A press is a point of its own until a drag says it is a radius: it keeps
+    // the face it landed on (docs/plans/click-on-face.md: *"a 3 point circle
+    // with each point on a different face"*); a drag's rim is read on the
+    // gesture's plane (`onUp`).
+    p = this.plane.settleOwn(p);
     this.hover = p;
     const method = this.method;
     // The three-click ways, and auto's third click, decide on the press — as
@@ -140,19 +151,32 @@ export class CircleTool extends Tool {
 
   onMove(p: PointerInfo): void {
     if (!this.clicks.length && !this.press) return;
+    if (this.press && !this.dragged && pressMoved(this.press, this.plane.settleOwn(p))) this.dragged = true;
     // The rim's snap is kept — a drag let go along an edge is a tangency, and
     // the preview has to show it — except under the centre lock, which is the
     // old drag-out circle exactly: a radius, nothing inferred at the rim.
-    this.hover = this.plane.settle(this.method === "centre" ? { ...p, snap: undefined } : p);
-    if (this.press && !this.dragged && pressMoved(this.press, p)) this.dragged = true;
+    // A radius is read on the gesture's plane; a point that would be the
+    // circle's own — the next of three clicks — where it lands.
+    this.hover = this.radiusNext()
+      ? this.plane.settle(this.method === "centre" ? { ...p, snap: undefined } : p)
+      : this.plane.settleOwn(p);
     this.ctx.requestRender();
+  }
+
+  /** Whether the pointer is choosing a radius now — a drag out from the centre, or the centre lock's rim click. */
+  private radiusNext(): boolean {
+    return (this.press !== null && this.dragged && this.clicks.length < 2) || this.method === "centre";
   }
 
   onUp(p: PointerInfo): void {
     const pressed = this.press;
     if (!pressed) return;
     this.press = null;
-    if (this.dragged || pressMoved(pressed, p)) {
+    // Moved is asked of the release read as the press was — on its own face —
+    // or a click on a face would read as a drag to where the same pixel lands
+    // on the plane behind it, and be swallowed as a zero radius (bug 72,
+    // docs/ARCHITECTURE.md).
+    if (this.dragged || pressMoved(pressed, this.plane.settleOwn(p))) {
       this.dragged = false;
       const rim = this.plane.settle(this.method === "centre" ? { ...p, snap: undefined } : p);
       // A drag after one click is that click's radius: the click was the centre.
@@ -255,14 +279,17 @@ export class CircleTool extends Tool {
     const sheet = this.sheet();
     // The rim points first, so their auto-names come before the circle's own
     // centre and a replay hands out the same ones — the journal the 3-point
-    // tool always wrote.
+    // tool always wrote. Each is held to the face it landed on, if one.
     const rim = clicks.map((info, i) => (roles[i] ? null : placePoint(this.ctx, info, undefined, this.plane.plane)));
-    // A *free* circle: its centre and radius are seeds, the relations below its
-    // whole definition — seeded at the answer (the circumcircle, or the fit
-    // that touches), so the solver starts where the drawing is.
-    const circle = m.addCircle(null, found.fit.radius, this.plane.normal());
+    // **One face, or none**: the circle is held in the gesture's plane only
+    // when every click is on it — three clicks on three faces make a circle
+    // through them, held by its three rim points and nothing more, its normal
+    // seeded as the plane through the three (docs/plans/click-on-face.md).
+    const faces = clicks.map((c) => c.face?.name ?? null);
+    const oneSurface = faces.every((f) => f === faces[0]);
+    const circle = m.addCircle(null, found.fit.radius, oneSurface ? this.plane.normal() : throughNormal(clicks) ?? this.plane.normal());
     m.setCoords(circle.center, roles.some(Boolean) ? sheet.from(found.fit.center) : found.circum.center);
-    this.plane.hold(circle.name, circle.center);
+    if (oneSurface) this.plane.hold(circle.name, circle.center);
     clicks.forEach((_, i) => {
       const touches = roles[i];
       if (touches) tangent(m, touches, circle.name);

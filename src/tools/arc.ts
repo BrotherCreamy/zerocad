@@ -217,12 +217,15 @@ export class ArcTool extends Tool {
     const pressed = this.press;
     if (!pressed) return;
     this.press = null;
-    if (!(this.dragged || pressMoved(pressed, p))) {
+    // Moved is asked of the release read as the press was — on the gesture's
+    // plane — or a click on a solid's face would read as a drag to where the
+    // same pixel lands behind it, and be swallowed (bug 72, docs/ARCHITECTURE.md).
+    const end = this.plane.settle(p);
+    if (!(this.dragged || pressMoved(pressed, end))) {
       this.still(pressed);
       return;
     }
     this.dragged = false;
-    const end = this.plane.settle(p);
     const s = this.stage;
     if (s.kind === "centre") {
       // From the centre, a stroke from start to end: the whole sweep at once.

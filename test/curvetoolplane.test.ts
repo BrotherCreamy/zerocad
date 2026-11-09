@@ -4,13 +4,14 @@
 // circle or whatever in space?"*
 //
 // A circle or arc carries its own normal. A tool's circle lies where the click
-// is — on the plane being sketched on, else a solid's face under the cursor,
-// else the origin's ground. **Only on a plane the user picked** is it held
-// there, by two ordinary relations it can see and delete: `onplane` on its
-// centre and `par` on its normal. With nothing picked it is held by nothing but
-// its own definition — the owner: *"the default for sketch entities is no
-// plane. Every sketch is a 3D sketch, unless you enter into active on-plane
-// constraint"* (docs/plans/profiles-held.md). These used
+// is — on the plane being sketched on, else a solid's face the engine landed
+// the click on, else the origin's ground. On a plane the user picked, or on a
+// solid's flat face (docs/plans/click-on-face.md), it is held there by two
+// ordinary relations it can see and delete: `onplane` on its centre and `par`
+// on its normal. On the ground it is held by nothing but its own definition —
+// the owner: *"the default for sketch entities is no plane. Every sketch is a
+// 3D sketch, unless you enter into active on-plane constraint"*
+// (docs/plans/profiles-held.md). These used
 // to type `plane(pt(…), null, null, { look: false })` first, in a fresh model,
 // and a fillet a plane of its corner's points; nothing is typed now, and a
 // fresh document drawn in gets one circle and nothing else.
@@ -24,7 +25,7 @@ import { extrude, del, set } from "../src/operations.ts";
 import { open, save } from "../src/persist.ts";
 import { neocadScope } from "../src/replenv.ts";
 import { Repl } from "../src/repl.ts";
-import { pointOnWorkingPlane } from "../src/workplane.ts";
+import { planeOfRef, pointOnWorkingPlane } from "../src/workplane.ts";
 import { orbitBy, screenToPlane, worldToScreen, type View } from "../src/view.ts";
 import { CircleTool } from "../src/tools/circle.ts";
 import { Circle3Tool } from "./lockedtools.ts";
@@ -194,32 +195,47 @@ async function block() {
   return { m, e };
 }
 
-test("a circle drawn over a solid's top face lies on the face; held to the face's own points, and following it, once the face is picked", async () => {
+test("a circle drawn over a solid's top face lies on the face, held to it by name; held to the face's own points, and following it, once the face is picked", async () => {
   await loadKernel();
   const { m, e } = await block();
   const view = flatView();
   const { ctx, at } = toolCtx(m, view);
   // Over the middle of the top, as seen from above.
   const [sx, sy] = worldToScreen(view, [20, 15, 10]);
-  const draw = () => {
+  const draw = (click: (x: number, y: number) => PointerInfo) => {
     const before = new Set(m.entities.keys());
     const tool = new CircleTool(ctx);
-    tool.onDown(at(sx, sy));
-    tool.onUp(at(sx + 10, sy));
+    tool.onDown(click(sx, sy));
+    tool.onUp(click(sx + 10, sy));
     return [...m.entities.values()].find((x) => x.kind === "circle" && !before.has(x.name))!.name;
   };
-  // Nothing picked: the face is where the click landed, laid out on it and held by nothing.
-  const loose = draw();
+  // Nothing picked, the click landed on the lid as the engine lands it
+  // (docs/plans/click-on-face.md: the face drawn under the pixel, named):
+  // laid out on the face and held to it by name — onplane on the centre, par
+  // on the normal — with no frame made.
+  const lid = planeOfRef(m, `${e}.lid`)!;
+  const onLid = (x: number, y: number): PointerInfo =>
+    ({ world: screenToPlane(view, x, y, lid)!, screen: [x, y], plane: lid, face: { name: `${e}.lid`, flat: true } });
+  const loose = draw(onLid);
   assert.deepEqual(frames(m), [], "no frame for the face either");
   assert.ok(near(m.coords(m.circle(loose).center), [20, 15, 10], 1e-6), `on the top, not the ground: ${m.coords(m.circle(loose).center)}`);
   assert.ok(Math.abs(dot(m.normalOf(loose), [0, 0, 1]) - 1) < 1e-9, "facing out of the top");
-  assert.deepEqual(relationsOf(m).filter(([, args]) => (args as unknown[]).includes(loose) || (args as unknown[]).includes(m.circle(loose).center)), []);
-  del(m, loose);
+  assert.deepEqual(relationsOf(m).filter(([, args]) => (args as unknown[]).includes(loose) || (args as unknown[]).includes(m.circle(loose).center)).map(([op, args]) => [op, (args as unknown[])[1]]).sort(),
+    [["onPlane", `${e}.lid`], ["parallel", `${e}.lid`]], "held to the lid by name");
+  // The centre too: del of a circle leaves its free centre, and a point left
+  // held on the lid would pull the lid back a ninth of the way when the depth
+  // is set below (a wall's hold is both ways; the base is free here).
+  del(m, loose, m.circle(loose).center);
+  // A click the engine did not land on a face — headless, the working plane — is the ground's, held by nothing.
+  const ground = draw(at);
+  assert.ok(Math.abs(m.coords(m.circle(ground).center)[2]) < 1e-9, "on the ground");
+  assert.deepEqual(relationsOf(m).filter(([, args]) => (args as unknown[]).includes(ground) || (args as unknown[]).includes(m.circle(ground).center)), []);
+  del(m, ground, m.circle(ground).center);
   // The face picked, as sketch on face picks it: the lid's own corners.
   const f0 = m.featureOf(e, "extrude");
   const [a0, b0] = m.line(f0.twins[0][0]).refs;
   m.setWorkPlane(`${a0}.${b0}.${m.line(f0.twins[0][3]).refs[0]}`);
-  const circle = draw();
+  const circle = draw(at);
   const centre = m.circle(circle).center;
   assert.ok(near(m.coords(centre), [20, 15, 10], 1e-6), `on the top, not the ground: ${m.coords(centre)}`);
   const held = [...m.relations.values()].filter((r) => r.args.includes(centre) || r.args.includes(circle));

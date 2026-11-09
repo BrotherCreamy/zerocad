@@ -33,13 +33,18 @@ export interface DrawnFaces {
   occ: Occlusion;
 }
 
-/** The named face nearest the viewer under (sx, sy), or null. */
-export function faceUnder(drawn: DrawnFaces | null, sx: number, sy: number): { name: string; feature: string; normal: number[] } | null {
+/**
+ * The named face nearest the viewer under (sx, sy), or null — with its outward
+ * normal and a point of the piece drawn there (`at`, a corner of its outline),
+ * which together are the piece's plane: where a click on a round face lands
+ * (docs/plans/click-on-face.md).
+ */
+export function faceUnder(drawn: DrawnFaces | null, sx: number, sy: number): { name: string; feature: string; normal: number[]; at: number[] } | null {
   if (!drawn) return null;
   const hit = nearestFace(drawn.occ, sx, sy);
   if (!hit) return null;
   const f = drawn.faces[hit.index];
-  return f?.name ? { name: f.name, feature: f.feature, normal: f.normal } : null;
+  return f?.name ? { name: f.name, feature: f.feature, normal: f.normal, at: f.outlines[0][0] } : null;
 }
 
 /**

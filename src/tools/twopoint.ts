@@ -82,7 +82,10 @@ export class TwoPoint {
     this.press = null;
     const to = this.plane.settle(p);
     this.hover = to;
-    const moved = this.dragged || pressMoved(pressed, p);
+    // Against the release as read on the gesture's plane, as the press was —
+    // or a click on a solid's face reads as a drag to the ground behind it
+    // (bug 72, docs/ARCHITECTURE.md).
+    const moved = this.dragged || pressMoved(pressed, to);
     this.dragged = false;
     // The first press lifted where it landed: a click, and the second place
     // is the next one.
