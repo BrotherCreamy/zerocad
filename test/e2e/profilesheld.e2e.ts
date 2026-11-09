@@ -84,6 +84,18 @@ async function shot(a: AppContext, name: string): Promise<void> {
   await a.page.screenshot({ path: join(SHOTS, `profilesheld-${name}.png`) });
 }
 
+/**
+ * What the status says beside the verdict, and in what colour: an agreeing
+ * relation — the rectangle's fourth perp — is said in the muted grey, never
+ * orange (docs/plans/profiles-held.md, the owner's point 4), and nothing
+ * conflicts.
+ */
+async function assertNothingOrange(a: AppContext, what: string): Promise<void> {
+  const d = await a.page.$eval("#diagnosis", (el) => ({ cls: el.className, color: getComputedStyle(el).color }));
+  assert.notEqual(d.cls, "conflict", `${what}: no conflict`);
+  assert.equal(d.color, "rgb(122, 139, 155)", `${what}: said muted, if said at all`);
+}
+
 /** The lid corner nearest the viewer's top right — the one the owner would grab — and where it is drawn. */
 async function lidCorner(a: AppContext): Promise<{ name: string; at: [number, number]; was: number[] }> {
   const s = await solid(a);
@@ -127,6 +139,7 @@ test("by mouse: a rectangle extruded, the view orbited, a lid corner dragged —
   assert.ok(len(sub(moved, lid.was)) > 1, `the corner moved: ${JSON.stringify(lid.was)} → ${JSON.stringify(moved)}`);
   assertPrism(after, "after the lid corner's drag");
   assert.match(await a.status(), /SOLVED/);
+  await assertNothingOrange(a, "mouse");
   assert.deepEqual(a.pageErrors, []);
 }));
 
@@ -162,5 +175,100 @@ test("on an iPhone 13, by finger: a rectangle extruded, a lid corner dragged —
   assert.ok(len(sub(moved, lid.was)) > 1, `the finger moved the corner: ${JSON.stringify(lid.was)} → ${JSON.stringify(moved)}`);
   assertPrism(after, "after the finger's drag");
   assert.match(await a.status(), /SOLVED/);
+  await assertNothingOrange(a, "iPhone");
   assert.deepEqual(a.pageErrors, []);
 }));
+
+// --- the edge extrude: the primitive, a tool of its own -------------------------
+
+type NeoS = { __neocad: { model: {
+  surfaces: Map<string, { size?: string; curves?: string[] }>;
+  relations: Map<string, { op: string; args: unknown[] }>;
+  entities: Map<string, { kind: string; refs?: string[] }>;
+  coords(p: string): number[];
+} } };
+
+/** s1's base/copy point pairs, and its curves' directions, as they stand. */
+const edges = (a: AppContext) => a.page.evaluate(() => {
+  const m = (window as never as NeoS).__neocad.model;
+  const s = m.surfaces.get("s1");
+  if (!s) return null;
+  const args = m.relations.get(s.size!)!.args;
+  const pairs: [number[], number[], string, string][] = [];
+  for (let i = 2; i < args.length; i += 2) {
+    const [b, t] = [args[i] as string, args[i + 1] as string];
+    if (m.entities.get(b)?.kind === "point" && m.entities.get(t)?.kind === "point") pairs.push([m.coords(b), m.coords(t), b, t]);
+  }
+  const dirs = (s.curves ?? []).map((c) => { const [p, q] = m.entities.get(c)!.refs!.map((x) => m.coords(x)); return q.map((v, i) => v - p[i]); });
+  return { depth: args[1] as number, pairs, dirs, perp: m.relations.get("s1_perp")?.op ?? null };
+});
+
+function assertEdgeExtrude(s: NonNullable<Awaited<ReturnType<typeof edges>>>, what: string): void {
+  const chords = s.pairs.map(([b, t]) => sub(t, b));
+  const worst = {
+    translated: Math.max(...chords.map((c) => len(sub(c, chords[0])))),
+    square: Math.max(...chords.flatMap((c) => s.dirs.map((u) => Math.abs(dot(c, u)) / len(u)))),
+    depth: Math.max(...chords.map((c) => Math.abs(len(c) - Math.abs(s.depth)))),
+  };
+  for (const [k, v] of Object.entries(worst)) assert.ok(v <= 1e-6, `${what}: ${k} off by ${v} — ${JSON.stringify(worst)}`);
+}
+
+/** The edge tool on an L of two lines, then a copy's far corner dragged: one chord still, square, the depth long. */
+async function edgeCase(a: AppContext, device: "mouse" | "iPhone"): Promise<void> {
+  await a.type("p = pt(0, 0, 0); q = pt(30, 0, 0); r = pt(30, 20, 0); ln(p, q); ln(q, r)");
+  await a.type('arm("edge")');
+  await a.page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  const [x, y] = await a.screenOf([15, 0, 0]);
+  if (device === "mouse") {
+    const c = await a.at(x, y);
+    await a.page.mouse.click(c.x, c.y);
+    await a.page.waitForTimeout(300);
+    await confirmAndRelease(a);
+  } else {
+    const hand = await fingers(a);
+    await a.at(x, y);
+    await hand.tap(x, y);
+    await a.page.waitForTimeout(400);
+    await a.page.tap("#options .oact button.ok");
+    await a.page.waitForTimeout(350);
+  }
+  await a.type("orbit(-0.6, -1.0)");
+  await a.type('arm("select")');
+  await a.page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  const made = await edges(a);
+  assert.ok(made, "s1 made");
+  assert.equal(made.pairs.length, 3, "three points copied");
+  assert.equal(made.perp, "perpendicular", "s1_perp beside it");
+  assertEdgeExtrude(made, `${device}: as made`);
+  await shot(a, `edge-${device}-0-before`);
+  // The copy of r, the L's far end: pulled across, it must take every copy and every base with it.
+  const far = made.pairs.find((p) => len(sub(p[0], [30, 20, 0])) < 1e-9)!;
+  const at = await a.screenOf(far[1]);
+  if (device === "mouse") {
+    const [from, to] = [await a.at(...at), await a.at(at[0] + 50, at[1] + 30)];
+    await a.page.mouse.move(from.x, from.y, { steps: 3 });
+    await a.page.waitForTimeout(80);
+    await a.page.mouse.down();
+    await a.page.mouse.move(to.x, to.y, { steps: 10 });
+    await a.page.mouse.up();
+  } else {
+    const hand = await fingers(a);
+    await a.at(...at);
+    await hand.drag(at, [at[0] + 40, at[1] + 20], 12);
+  }
+  await a.page.waitForTimeout(500);
+  await shot(a, `edge-${device}-1-after`);
+  const after = (await edges(a))!;
+  const moved = after.pairs.find((p) => p[3] === far[3])![1];
+  assert.ok(len(sub(moved, far[1])) > 1, `${device}: the copy's corner moved: ${JSON.stringify(far[1])} → ${JSON.stringify(moved)}`);
+  assertEdgeExtrude(after, `${device}: after the copy's corner was dragged`);
+  assert.match(await a.status(), /SOLVED/);
+  await assertNothingOrange(a, `${device} edge`);
+  assert.deepEqual(a.pageErrors, []);
+}
+
+test("by mouse: the edge tool on an L of two lines, a copy's corner dragged — one chord, square, the depth long, SOLVED", () =>
+  withApp({}, (a) => edgeCase(a, "mouse")));
+
+test("on an iPhone 13, by finger: the edge tool on an L, a copy's corner dragged — one chord, square, SOLVED", () =>
+  withApp({ device: "iPhone 13" }, (a) => edgeCase(a, "iPhone")));
