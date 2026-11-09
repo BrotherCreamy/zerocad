@@ -39,6 +39,7 @@
 import type { Dual } from "../kernel/dual.ts";
 import { Dual as D } from "../kernel/dual.ts";
 import { memberName, type FeatureEntry, type Model, type ProfileMember } from "../model.ts";
+import { extrusionChord } from "./extrusion.ts";
 import { planeBasis, unitDuals } from "./refs.ts";
 import { axisReader, revolveProfilePlane, turnMatrix } from "./revolution.ts";
 import { dot, vecSub } from "./vec.ts";
@@ -149,12 +150,28 @@ export function capPoints(model: Model, f: FeatureEntry, which: "base" | "lid"):
 function capNormal(model: Model, f: FeatureEntry, which: "base" | "lid"): number[] {
   const frame = planeBasis(model, f.frame)();
   // A revolve's profile may have turned about its axis off its frame: its own plane, then (profiles-held.md).
-  const n = f.kind === "revolve" ? revolveProfilePlane(model, f, frame).n : frame.n;
+  const n = f.kind === "revolve" ? revolveProfilePlane(model, f, frame).n : extrudeNormal(model, f.depth, frame.n);
   if (f.kind === "extrude" || which === "base") return n;
   const theta = model.relations.get(f.angle)?.args[1];
   const ax = axisReader(model, f.axis).read();
   const r = turnMatrix(ax.dir, typeof theta === "number" ? theta : 0);
   return [0, 1, 2].map((i) => r[i][0] * n[0] + r[i][1] * n[1] + r[i][2] * n[2]);
+}
+
+/**
+ * An extrude's way, as numbers: its chord over its reach (relations/extrusion.ts),
+ * which way ever the solid has turned off its frame — the frame's own normal
+ * while the chord is still along it, so nothing already dimensioned reads anew.
+ */
+function extrudeNormal(model: Model, depth: string, frameN: number[]): number[] {
+  const chord = extrusionChord(model, depth);
+  const d = model.relations.get(depth)?.args[1];
+  if (!chord || typeof d !== "number") return frameN;
+  // The depth's sign, never the reach: a through-all reach reads the bodies, which read this.
+  const len = Math.hypot(...chord);
+  if (!(len > 1e-12) || d === 0) return frameN;
+  const n = chord.map((c) => (Math.sign(d) * c) / len);
+  return Math.hypot(...n.map((c, i) => c - frameN[i])) < 1e-9 ? frameN : n;
 }
 
 /** A variable layout and what it reads: the plane's point and unit normal, as Duals. */

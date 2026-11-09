@@ -10,17 +10,17 @@ import { addEllipse, addEllipticArc, checkEllipse, ellipseOf, semiAxes } from ".
 import { addBSpline, splineOf } from "./kinds/spline.ts";
 import { addSpline } from "./relations/spline.ts";
 import {
-  Model, ORIGIN, SETTABLE_PROPERTY, entityKind, isClosedEntity, isCurveKind, memberName, parseValueRef, referentOf, referentsOf, valueArgIndex,
+  Model, ORIGIN, SETTABLE_PROPERTY, entityKind, lidReach, isClosedEntity, isCurveKind, memberName, parseValueRef, referentOf, referentsOf, valueArgIndex,
   EXTENTS, FEATURE_MODES, type Entity, type Expansion, type Extent, type FeatureEntry, type FeatureMode, type Portion, type ProfileMember,
   type RegionEntry, type RegionOp, type RegionStep,
 } from "./model.ts";
 import { defaultMode, resolveMode } from "./modes.ts";
 import { dist } from "./relations/basic.ts";
-import { angle, arcEndpoints, diameter, majorAxis, minorAxis, onCircle, onEllipse, pointOnLine, radius, tangent } from "./relations/geometry.ts";
-import { extrusion } from "./relations/extrusion.ts";
+import { angle, arcEndpoints, diameter, majorAxis, minorAxis, onCircle, onEllipse, perpendicular, pointOnLine, radius, tangent } from "./relations/geometry.ts";
+import { chordPair, extrusion } from "./relations/extrusion.ts";
 import { FULL_TURN, axisReader, isFullTurn, revolution, turnPoint } from "./relations/revolution.ts";
 import { arcPoint, portionAngles, sweepsAs } from "./arcgeom.ts";
-import { curveFrame, framePlaneAxes, planeAxes } from "./curveplane.ts";
+import { curveFrame, featurePlane, framePlaneAxes, planeAxes } from "./curveplane.ts";
 import { sketchFrameFor } from "./sketchface.ts";
 import {
   describeLoop, findLoops, heldOnCurves, insideLoop, isVirtual, joinClasses, loopAround, memberLabel, parallel, type Held,
@@ -1383,11 +1383,62 @@ function extrudeBody(model: Model, member: string, depth: number, plan: SweepPla
   pairs.push(...(lid?.own ?? []));
   const held = made(extrusion(model, frame, depth, ...pairs));
 
-  return model.addFeature({
+  const name = model.addFeature({
     kind: "extrude", member, frame, ...(top === undefined ? {} : { top }), depth: held, expansion: x,
     loops: resolvedLoops(plan), twins, walls,
     names: [...new Set([...builtOn(plan), ...planeNames(model, frame), ...owns])], owns,
   }).name;
+  squareChord(model, name, held);
+  return name;
+}
+
+/**
+ * Moves an extrude's twins to where its depth, just set, puts them: each
+ * pair's offset scaled from the reach it stood at to the reach it stands at
+ * now, sign and all. **Seeds only, as the extrude's own are**: the chord holds
+ * its length, not its side or which end gives (relations/extrusion.ts), so a
+ * solve left to find the new depth from the old one would share it between
+ * base and lid — measured: a free rectangle's base dropped 5.9 and tilted for
+ * a depth set from 10 to 25 — and a depth set across zero would fold every
+ * wall through nothing to reach the other side. Seated first, nothing has
+ * anything left to do but the lid, as a dimension edit means. Every relation
+ * still holds both ways: this is where the solve starts, not what it may do.
+ */
+export function reseatLid(model: Model, depth: string, reachWas: number): void {
+  const r = model.relations.get(depth);
+  if (!r || r.op !== "extrusion" || !(Math.abs(reachWas) > 0)) return;
+  const k = lidReach(model, depth, r.args[1] as number) / reachWas;
+  if (!Number.isFinite(k) || k === 1) return;
+  const pairs = r.args.slice(2) as string[];
+  for (let i = 0; i < pairs.length; i += 2) {
+    const [b, t] = [pairs[i], pairs[i + 1]];
+    if (model.entities.get(b)?.kind !== "point" || model.entities.get(t)?.kind !== "point") continue;
+    const [B, T] = [model.coords(b), model.coords(t)];
+    model.setCoords(t, B.map((c, j) => c + k * (T[j] - c)));
+  }
+}
+
+/** The name an extrude's (or edge extrude's) perpendicular goes by: its record's, so it claims no `r`. */
+export function perpName(record: string): string {
+  return `${record}_perp`;
+}
+
+/**
+ * The extrude's chord held square to its profile — `perp(b₀, t₀, e1)`, named
+ * `e1_perp` (docs/plans/profiles-held.md, the owner: *"how could you have a
+ * relation inside an extrude? that doesnt really make sense to me"*). An
+ * ordinary relation, visible and deletable: deleted, the chord is free to
+ * lean, and an `ang(wall, e1, θ)` makes the extrude drafted or oblique. The
+ * chord's pair of points rather than a wall line, so a circle's extrude,
+ * which has no wall, has one too. **Named for the record, claiming no
+ * counter**, so a file from before it replays every later `r` under the name
+ * it had and gains the perpendicular all the same: its solids stop skewing.
+ */
+function squareChord(model: Model, record: string, depth: string): void {
+  const d = model.relationOf(depth);
+  const pair = chordPair(model, d.args[0] as string, d.args.slice(2) as string[]);
+  if (!pair || model.has(perpName(record))) return;
+  model.namedRelation(perpName(record), () => perpendicular(model, pair.base, pair.twin, record));
 }
 
 // --- revolve ----------------------------------------------------------------
@@ -1905,7 +1956,9 @@ export interface FeatureRegion {
 }
 
 export function featureRegion(model: Model, f: FeatureEntry, all: Loop[] = findLoops(model)): FeatureRegion {
-  const axes = planeAxes(model, f.frame);
+  // Where the profile is, not where its frame is: a free profile's solid may
+  // have turned off its frame, both ways (docs/plans/profiles-held.md).
+  const axes = featurePlane(model, f);
   if (!axes) throw new Error(`"${f.frame}" has collapsed — ${f.name}'s profile has no plane to be found in`);
   const mine = all.map((_, i) => i)
     .filter((i) => parallel(all[i].plane.normal, axes.n) && all[i].members.some((m) => m.name === f.member));
@@ -2112,6 +2165,7 @@ function rebuildBody(model: Model, f: FeatureEntry, plan: SweepPlan): { loops: P
   const { frame, walked, classOf } = plan;
   const dimName = f.kind === "extrude" ? f.depth : f.angle;
   const dim = model.relationOf(dimName);
+  const hadPerp = model.relations.has(perpName(f.name));
   const value = dim.args[1] as number;
   const kindOf = (n: string) => model.entities.get(n)?.kind;
   const owns: string[] = [];
@@ -2353,6 +2407,10 @@ function rebuildBody(model: Model, f: FeatureEntry, plan: SweepPlan): { loops: P
   // cascade takes it and whatever needed it, and leaves the feature be.
   const keep = new Set(owns);
   for (const n of f.owns) if (!keep.has(n) && model.has(n)) delOne(model, n);
+  // The perpendicular stands on the chord's pair; if what went took a point of
+  // it, it is made again on the new chord — it was the feature's, not deleted
+  // by anyone. One the user had deleted stays deleted.
+  if (f.kind === "extrude" && hadPerp && !model.relations.has(perpName(f.name))) squareChord(model, f.name, dimName);
   return { loops: resolvedLoops(plan), touched };
 }
 
@@ -2388,8 +2446,11 @@ export function setEnd(model: Model, feature: string, end: unknown): string {
     throw new Error(`setEnd's end is "blind" (the depth), "through" (through all) or "symmetric" (half each side) — not ${JSON.stringify(end)}`);
   }
   return model.asOperation("setEnd", [feature, end], () => {
+    const reachWas = lidReach(model, f.depth, model.relationOf(f.depth).args[1] as number);
     if (end === "blind") delete f.extent;
     else f.extent = end as Extent;
+    // The lid seated at its new reach before the solve, as a depth set is (`reseatLid`).
+    reseatLid(model, f.depth, reachWas);
     return feature;
   });
 }
@@ -2519,6 +2580,31 @@ function coplanarLoops(a: Loop, b: Loop): boolean {
 }
 
 /** The normal of a region's plane, or the refusal for a plane that has collapsed. */
+/**
+ * The normal of the plane a face's members lie in **now**, from three of their
+ * points that make the largest triangle — or null when they make none, or do
+ * not lie in one plane. What a region's first face is looked for by once it
+ * has turned off its frame (a free profile under a bidirectional extrude, docs/
+ * plans/profiles-held.md): a loop through the member parallel to that, and never
+ * one across it — a wall's loop shares the profile's edge too.
+ */
+function faceNormalNow(model: Model, face: readonly ProfileMember[]): number[] | null {
+  const pts = [...new Set(face.flatMap((m) => {
+    const e = model.entities.get(memberName(m));
+    return e ? model.refsOf(e).filter((p) => model.entities.get(p)?.kind === "point") : [];
+  }))].map((p) => lift3(model.coords(p)));
+  let best: number[] | null = null, area = 1e-12;
+  for (let i = 0; i < pts.length; i++) for (let j = i + 1; j < pts.length; j++) for (let k = j + 1; k < pts.length; k++) {
+    const c = cross3(sub3(pts[j], pts[i]), sub3(pts[k], pts[i]));
+    const a = Math.hypot(...c);
+    if (a > area) { area = a; best = c.map((x) => x / a); }
+  }
+  if (!best) return null;
+  const size = Math.max(1, ...pts.map((p) => Math.hypot(...p)));
+  const n = best;
+  return pts.every((p) => Math.abs(dot3(sub3(p, pts[0]), n)) <= 1e-6 * size) ? n : null;
+}
+
 function regionNormal(model: Model, r: RegionEntry): number[] {
   const axes = planeAxes(model, r.frame);
   if (!axes) throw new Error(`"${r.frame}" has collapsed — ${r.name} has no plane for its faces to lie in`);
@@ -2618,12 +2704,17 @@ export function regionValue(model: Model, name: string, all: Loop[] = findLoops(
                             steps?: readonly RegionStep[]): RegionValue {
   const r = model.regionEntry(name);
   const chain = steps ?? r.steps;
-  const n = regionNormal(model, r);
-  const base = faceLoop(all, n, r, chain[0], null);
-  if (base === null) {
+  // The first face is found wherever it now lies — a free profile may have
+  // turned off the frame it was found on, both ways (docs/plans/profiles-held.md)
+  // — and the later faces in its plane.
+  const turned = faceNormalNow(model, chain[0].face);
+  const first = faceLoop(all, regionNormal(model, r), r, chain[0], null) ?? (turned ? faceLoop(all, turned, r, chain[0], null) : null);
+  if (first === null) {
     throw new Error(`${r.name}'s first face ${loopLabel(chain[0].face)} is gone — "${chain[0].member}" is in no closed loop `
       + `parallel to ${r.frame} now. Close the loop again, or del("${r.name}")`);
   }
+  const base = first;
+  const n = all[base].plane.normal;
   const faces: (number | null)[] = [base, ...chain.slice(1).map((step) => faceLoop(all, n, r, step, all[base]))];
   return { all, faces, ...foldFaces(model, all, chain.map((s) => s.op), faces) };
 }
@@ -3666,7 +3757,9 @@ export function set(model: Model, path: string, value: number): string {
   const rebuild = REBUILD[entry.op];
   if (!rebuild) throw new Error(`"${entry.op}" cannot be rebuilt`); // unreachable: DIMENSION_OPS and REBUILD agree
   return model.asOperation("set", [path, value], () => {
+    const reachWas = entry.op === "extrusion" ? lidReach(model, name, entry.args[1] as number) : 0;
     model.rebuildRelation(name, entry.op, args, () => rebuild(model, args));
+    if (entry.op === "extrusion") reseatLid(model, name, reachWas);
     return name;
   });
 }

@@ -360,7 +360,7 @@ test('del("e1") takes exactly what it made — the twins its frame stands on onc
   const f = m.featureOf("e1", "extrude");
   const removed = del(m, "e1");
   assert.equal(removed.length, new Set(removed).size);
-  assert.deepEqual(new Set(removed), new Set(["e1", ...f.owns]), "the record and what it owns, each once");
+  assert.deepEqual(new Set(removed), new Set(["e1", ...f.owns, "e1_perp"]), "the record and what it owns, each once, and its perpendicular (profiles-held.md)");
   // A frameless sketch runs along the origin's +z, and no frame is made for it
   // (docs/plans/frameless-curves.md): the sketch is all that is left.
   assert.equal(f.frame, "origin");

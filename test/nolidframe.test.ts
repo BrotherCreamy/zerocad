@@ -207,7 +207,7 @@ test('del("e1") takes exactly what it made — twins, walls, depth, no frame —
   assert.deepEqual(f.owns.map((n) => m.entities.get(n)?.kind ?? m.relationOf(n).op).sort(),
     [...Array(4).fill("point"), ...Array(8).fill("line"), "extrusion"].sort(), "four twins, four twin edges, four walls, the depth");
   const removed = del(m, "e1");
-  assert.deepEqual(new Set(removed), new Set(["e1", ...f.owns]));
+  assert.deepEqual(new Set(removed), new Set(["e1", ...f.owns, "e1_perp"]), "and the chord's perpendicular, which names the record (profiles-held.md)");
   assert.equal(removed.length, new Set(removed).size);
   assert.equal(f.frame, "origin");
   assert.deepEqual([...m.entities.keys()], entities, "the sketch, and nothing the call made");

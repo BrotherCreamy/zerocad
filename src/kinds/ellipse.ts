@@ -99,6 +99,8 @@ export const ELLIPSE_STRUCTURE: EntityKindSpec = {
   // normal are (before the extension point they were not, and an ellipse whose
   // minor nothing held read as held).
   vars: (e) => { const el = e as EllipseEntity; return [el.minorVar, ...(el.normal ?? [])]; },
+  // What a translation keeps equal beyond its points: the minor (profiles-held.md).
+  sizes: (e) => [(e as EllipseEntity).minorVar],
   curve: true,
   closed: true,
   plane: (e) => { const el = e as EllipseEntity; return { center: el.center, normal: el.normal, straighten: el.major }; },
@@ -123,6 +125,7 @@ export const EARC_STRUCTURE: EntityKindSpec = {
   noun: "an elliptical arc",
   refs: (e) => { const el = e as EllipticArcEntity; return [el.center, el.major, el.start, el.end]; },
   vars: (e) => { const el = e as EllipticArcEntity; return [el.minorVar, ...(el.normal ?? [])]; },
+  sizes: (e) => [(e as EllipticArcEntity).minorVar],
   curve: true,
   closed: false,
   ends: (e) => { const el = e as EllipticArcEntity; return [el.start, el.end]; },

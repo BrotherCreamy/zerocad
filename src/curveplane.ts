@@ -19,6 +19,7 @@
 
 import { spanOf, type Entity, type FeatureEntry, type Model } from "./model.ts";
 import { revolveProfilePlane } from "./relations/revolution.ts";
+import { extrusionChord } from "./relations/extrusion.ts";
 import { frameBasis, planeBasis } from "./relations/refs.ts";
 import { arcFrame, circleFrame, type ArcFrame } from "./arcgeom.ts";
 import type { BSpline } from "./bspline.ts";
@@ -73,8 +74,34 @@ export function featurePlane(model: Model, feature: FeatureEntry): CurvePlane | 
   const p = planeAxes(model, feature.frame);
   if (!p) return null;
   const plane = { u: p.u, v: p.v, n: p.n };
-  // A revolve's where its profile has turned to about the axis (relations/revolution.ts).
-  return feature.kind === "revolve" ? revolveProfilePlane(model, feature, plane) : plane;
+  // A revolve's where its profile has turned to about the axis (relations/revolution.ts);
+  // an extrude's square to its chord, which way ever the solid has turned.
+  return feature.kind === "revolve" ? revolveProfilePlane(model, feature, plane) : extrudePlane(model, feature, plane);
+}
+
+/**
+ * An extrude's plane **where its solid is** (docs/plans/profiles-held.md):
+ * square to its chord, the normal the way the lid stands (`chord / reach`).
+ * The chord is held square to the profile by the extrude's perpendicular, so
+ * this is the profile's plane; the frame's is only where it started. Exactly
+ * the frame's while the chord is still along the frame's normal — every
+ * sketch-mode extrude — so nothing already built is laid out anew; otherwise
+ * the frame's axes carried into the plane square to the chord.
+ */
+function extrudePlane(model: Model, f: Extract<FeatureEntry, { kind: "extrude" }>, frame: CurvePlane): CurvePlane {
+  const chord = extrusionChord(model, f.depth);
+  const d = model.relations.get(f.depth)?.args[1];
+  if (!chord || typeof d !== "number") return frame;
+  // Which way the lid stands is the depth's sign, whatever the end condition
+  // (half of it, or through all, keeps it). Never the reach itself: a
+  // through-all reach is read off the bodies' planes, which are read here.
+  const len = Math.hypot(...chord);
+  if (!(len > 1e-12) || d === 0) return frame;
+  const n = chord.map((c) => (Math.sign(d) * c) / len);
+  if (Math.hypot(...n.map((c, i) => c - frame.n[i])) < 1e-9) return frame;
+  const along = frame.u.reduce((acc, c, i) => acc + c * n[i], 0);
+  const u = unit3(frame.u.map((c, i) => c - along * n[i])) ?? unit3(cross3(n, [1, 0, 0])) ?? [0, 1, 0];
+  return { u, v: cross3(n, u), n };
 }
 
 /**

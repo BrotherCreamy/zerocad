@@ -20,7 +20,8 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { ensureKernelLoaded } from "../src/kernel/problem.ts";
 import { Model } from "../src/model.ts";
-import { extrude } from "../src/operations.ts";
+import { del, extrude, set } from "../src/operations.ts";
+import { angle, parallel, perpendicular } from "../src/relations/geometry.ts";
 import { neocadScope } from "../src/replenv.ts";
 import { Repl } from "../src/repl.ts";
 import { pointOnWorkingPlane } from "../src/workplane.ts";
@@ -167,4 +168,66 @@ test("a sketch-mode profile (every point onPlane a tilted frame) makes the same 
   check("as made");
   assert.equal(drag(m, twinOf.get(points[1])!, [5, 3, 4]), true);
   check("after a lid corner is pulled");
+});
+
+// --- the perpendicular is its own relation -------------------------------------
+
+test("the chord's perpendicular is an ordinary relation, e1_perp: deleted, the chord may lean; an ang in its place makes the extrude oblique", async () => {
+  const { m, e, f } = await ownersBlock();
+  const perp = m.relationOf(`${e}_perp`);
+  assert.equal(perp.op, "perpendicular");
+  assert.equal(perp.args.at(-1), e, "the chord against the feature's profile");
+  // Deletable, as any relation: the record stays, and the solid with it.
+  assert.deepEqual(del(m, `${e}_perp`), [`${e}_perp`]);
+  assert.ok(m.features.has(e));
+  // An angle in its place: the chord 0.3 off the profile's normal.
+  const wall = f.walls[0];
+  const a = angle(m, wall, e, 0.3);
+  assert.equal(m.solve().solved, true);
+  // The profile's normal as it stands — the profile may turn as the chord leans.
+  const normal = () => {
+    const pts = m.line(f.loops[0][0] as string).refs.concat(m.line(f.loops[0][1] as string).refs).map((p) => m.coords(p));
+    const c = cross(sub(pts[1], pts[0]), sub(pts[3], pts[2]));
+    return c.map((x) => x / len(c));
+  };
+  const n = normal();
+  const [b0, t0] = m.line(wall).refs.map((p) => m.coords(p));
+  const c = sub(t0, b0);
+  assert.ok(Math.abs(Math.abs(dot(c, n)) / len(c) - Math.cos(0.3)) < 1e-7, `the chord 0.3 off the normal: ${Math.acos(Math.abs(dot(c, n)) / len(c))}`);
+  assert.ok(Math.abs(len(c) - 10) < 1e-7, "and still the depth long");
+  // Every twin is still its base moved by the one chord: the lid is the base translated.
+  assert.ok(prismError(m, e).translated < 1e-7);
+  // A dimension like any: set it, and the extrude leans further.
+  set(m, `${a}.value`, 0.5);
+  assert.equal(m.solve().solved, true);
+  const c2 = sub(...(m.line(wall).refs.map((p) => m.coords(p)).reverse() as [number[], number[]]));
+  assert.ok(Math.abs(Math.abs(dot(c2, normal())) / len(c2) - Math.cos(0.5)) < 1e-7);
+  // The kernel sweeps square, so an oblique extrude is drawn and its body says why.
+  const { extrudeSpan } = await import("../src/solids.ts");
+  assert.throws(() => extrudeSpan(m, m.featureOf(e, "extrude")), /oblique/);
+});
+
+test("a depth set across zero puts the lid on the other side, and set back puts it back — the base where it was", async () => {
+  const { m, f } = await ownersBlock();
+  const corner = m.line(f.loops[0][0] as string).refs[0];
+  const was = m.coords(corner);
+  for (const d of [-10, 25, -3]) {
+    set(m, `${f.depth}.value`, d);
+    assert.equal(m.solve().solved, true);
+    const twin = new Map([...baseOf(m, f.depth)].map(([t, b]) => [b, t])).get(corner)!;
+    assert.ok(Math.abs(m.coords(twin)[2] - m.coords(corner)[2] - d) < 1e-9, `${d}: the lid ${d} along z`);
+    assert.ok(len(sub(m.coords(corner), was)) < 1e-9, `${d}: the base did not move`);
+  }
+});
+
+test("a conflict on an extruded drawing names the user's relations, never the extrude's own", async () => {
+  const { m, f } = await ownersBlock();
+  // The rectangle's own par across its sides, contradicted: one side made square to its opposite.
+  const [l1, , l3] = f.loops[0] as string[];
+  const bad = perpendicular(m, l1, l3);
+  const report = m.solve();
+  assert.equal(report.solved, false);
+  const named = m.conflicting(report).relations;
+  assert.ok(named.includes(bad), `the new perp is named: ${named}`);
+  assert.ok(!named.includes(f.depth) && !named.some((r) => r.endsWith("_perp")), `the extrude's own are not: ${named}`);
 });

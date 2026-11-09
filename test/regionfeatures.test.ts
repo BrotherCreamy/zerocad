@@ -101,9 +101,9 @@ test("the stepped block: each half of one sketch extruded to its own depth — t
   assert.deepEqual(m.relationOf(e1.owns[5]).args, [x2, l3]);
   assert.ok(near(m.coords(x1), t.at(15, 0)) && near(m.coords(x2), t.at(15, 30)), "seeded at the crossings");
   // Four twins, four twin lines, four walls, two crossings and their four
-  // holds, one depth — and no lid frame.
+  // holds, one depth and its chord's perpendicular (profiles-held.md) — and no lid frame.
   assert.equal(m.entities.size - before.entities, 2 + 4 + 4 + 4);
-  assert.equal(m.relations.size - before.relations, 4 + 1);
+  assert.equal(m.relations.size - before.relations, 4 + 1 + 1);
   assert.deepEqual(e1.twins[0].map((n) => m.entities.get(n)?.kind), ["line", "line", "line", "line"]);
   assert.equal(e1.walls.length, 4);
   // The journal names the points, never the keys.
@@ -169,7 +169,7 @@ test("del: the second step takes nothing of the first; the first takes its cross
     const e2 = m.featureOf(extrude(m, lines[1], 20), "extrude");
     const [x1, x2] = materialised(m, "e1");
     const removed = del(m, "e2");
-    assert.deepEqual(removed.slice().sort(), ["e2", ...e2.owns].sort(), "the record and what it made");
+    assert.deepEqual(removed.slice().sort(), ["e2", ...e2.owns, "e2_perp"].sort(), "the record and what it made, and its perpendicular");
     assert.ok(m.features.has("e1") && m.entities.has(x1) && m.entities.has(x2));
   }
   {
@@ -364,7 +364,7 @@ test("a region cut by Ts is extruded between the held points it already had — 
   const f = m.featureOf(extrude(m, lines[3], 10), "extrude");
   assert.deepEqual(f.loops, [[{ name: lines[0], from: points[0], to: a }, stem, { name: lines[2], from: b, to: points[3] }, lines[3]]]);
   assert.deepEqual(materialised(m, f.name), []);
-  assert.equal(m.relations.size, relations + 1, "the depth and nothing else");
+  assert.equal(m.relations.size, relations + 2, "the depth and the chord's perpendicular (profiles-held.md), nothing else");
   assert.ok(f.names.includes(a) && f.names.includes(b));
   assert.ok(del(m, a).includes(f.name));
 });

@@ -107,7 +107,9 @@ for (const [name, lifted] of [["curves-v12", false], ["features-v12", false], ["
     for (const [n, k] of was) assert.equal(m.entities.get(n)!.kind, k, n);
     assert.deepEqual([...m.features.keys()], want.features);
     // Every relation it had, under the name it had, and the pars after them.
-    assert.deepEqual([...m.relations.keys()].slice(0, want.relations.length), want.relations, "no name shifted");
+    // Each extrude now has its chord's perpendicular too, named for it (`e1_perp`,
+    // profiles-held.md) so it claims no r: every name the file had is still its.
+    assert.deepEqual([...m.relations.keys()].filter((n) => !n.endsWith("_perp")).slice(0, want.relations.length), want.relations, "no name shifted");
 
     // Every curve the file drew on a frame follows that frame now by a par.
     const kept = following(m);
