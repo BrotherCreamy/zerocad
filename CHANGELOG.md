@@ -7,6 +7,66 @@ decisions.
 
 ---
 
+## 2026-11-09 — a prism stays a prism: an extrude is an edge extrude, its chord held square by a relation of its own
+
+The owner: *"Why is it that after I extrude I can drag a corner of the
+extrude and it deforms the solid? I think it's missing adding in
+relations"* — and, of the first plan, which tied what is sketched to the
+ground: *"It's not about being tied to the ground plane, it's about correct
+relationships BETWEEN entities. Part of the concept of this CAD is to have
+bidirectional relationships everywhere by default."*
+(docs/plans/profiles-held.md.)
+
+Measured before, in the browser: a lid corner of an extruded rectangle
+dragged 60×30 px took its base corner from z 0 to −18.2, the base tilted
+while every wall stayed along the world's z, and the status said SOLVED.
+Now the same drag, by mouse and by finger, leaves a right prism — base flat,
+walls square to it and the depth long, the lid the base translated, each to
+about 1e-11 — and nothing is said in orange.
+
+| | |
+|---|---|
+| ![Before: the block after a lid corner was dragged — its end face skewed, the base tilted under walls still along the world's z; the status says SOLVED, 8 free](docs/images/401-before-a-lid-corner-dragged-skews-the-block.png) | ![After: the same drag by mouse — the block has moved and turned, its end faces square; SOLVED · 8 free · redundant r4 in the muted grey](docs/images/403-after-a-lid-corner-dragged-the-block-stays-a-right-prism.png) |
+| ![Before, iPhone 13: the same drag by finger skews it](docs/images/402-before-iphone-the-same-drag-by-finger-skews-it.png) | ![After, iPhone 13: the finger's drag leaves a right prism](docs/images/404-after-iphone-the-same-drag-by-finger-a-right-prism.png) |
+| ![The edge tool on an L of two lines: its copy, the chords from each end, the two walls of sheet between, depth 20](docs/images/405-edge-extrude-an-l-of-two-lines-its-copy-and-chords.png) | ![A copy's far corner dragged by finger: the whole L and its copy turned together, one chord, still square](docs/images/407-edge-extrude-iphone-a-copy-corner-dragged-by-finger.png) |
+
+- **An extrude is the edge extrude of its whole profile, sharing one chord**
+  (the owner: *"Edge extrude is a fundamental feature."*). The `extrusion`
+  relation holds every twin at its base plus the chord of its first pair, the
+  chord as long as the depth, curve twins the same size
+  (`EntityKindSpec.sizes`, new) and facing. It reads no direction: until now
+  it put twins at base + depth along the frame's +z, a datum, which is the
+  whole of the owner's bug.
+- **`e1_perp`, the chord square to the profile, is an ordinary relation**
+  beside the extrude (the owner: *"how could you have a relation inside an
+  extrude? that doesnt really make sense to me"*): visible, deletable,
+  replaceable by `ang(wall, e1, θ)` for a drafted or oblique extrude, which
+  is drawn and refused by the kernel by name (it sweeps square). Named for
+  the record, claiming no `r`, so old files open with every name they had and
+  gain it.
+- **`edgeExtrude("l1", 20)` and the `edge` tool** (the extrude button's
+  flyout; a curve's menu has *Extrude edge…*): any chain of curves, its copy,
+  a chord at each end and the sheet between; held by the same pair.
+- **The rectangle is four perps** (the owner: *"i was thinking 4 perps so
+  that all the edges are identical to one another"*) and, with no plane
+  picked, one `coplanar`: four right angles flatten a quadrilateral only to
+  second order (a corner dragged 7 out of plane came back 2.9e-4 off; with
+  the coplanar, 9e-13).
+- **An agreeing redundancy is drawn in ordinary ink**, said in the status's
+  muted grey — never orange. CONFLICT stays red.
+- **The audit** — every operation that makes geometry from geometry, dragged
+  both ways in and out of its plane: revolve's profile held in its axis's
+  plane (a line the user drew as the axis is pushed both ways, a frame's axis
+  stays a datum); an offset copy held in its chain's plane by `coplanar`
+  (new, format 19); a circular pattern with nothing picked turns about its
+  seed's own plane. **No plane unless one is picked**: a drawing tool holds
+  to a plane only in sketch mode or on a default frame (the owner: *"the
+  default for sketch entities is no plane. Every sketch is a 3D sketch,
+  unless you enter into active on-plane constraint."*).
+- Left, written down in TODO.md: the linked twin relations on the lid (the
+  owner's point 2, on hold); an oblique extrude is drawn, not built; four
+  free points can fold into a line under a turned frame.
+
 ## 2026-11-09 — three-finger orbit removed
 
 The owner: *"3 finger orbit works but actually i decided i dont like it.

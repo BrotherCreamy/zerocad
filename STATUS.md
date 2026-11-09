@@ -330,6 +330,19 @@ etc).
     frame that would fold something stops where the last one was. Kernel
     additions, geometry-free: `solve({ only })`, `snapshot`/`restore`,
     `varsOf`, `connected`, `reach`.
+  - **A prism stays a prism** (docs/plans/profiles-held.md): an extrude's
+    `extrusion` holds every twin at its base plus **one chord**, the depth
+    long, reading no direction; `e1_perp` — `perp(chord, e1)`, an ordinary,
+    deletable relation named for the record — holds the chord square to the
+    profile, and `ang(wall, e1, θ)` in its place leans it (drawn; the kernel
+    refuses an oblique body by name). **`edgeExtrude(curves, depth)`** and
+    the `edge` tool (the extrude button's flyout) make a chain's copy, a
+    chord at each end and the sheet between, held by the same pair.
+    `EntityKindSpec.sizes` declares a kind's sizes for its twin to match.
+    The rectangle tool makes four perps and, with no plane picked, one
+    `coplanar`; an agreeing redundancy is drawn in ordinary ink and said
+    muted. `test/profilesheld.test.ts`, `test/edgeextrude.test.ts`,
+    `test/e2e/profilesheld.e2e.ts` (mouse and iPhone 13).
   - **In the app**, after each solve and never per drag frame: free
     entities in a blue ink, held ones in the sketch's; `#diagnosis` beside
     the verdict says `5 free`, `d1 · d2 cannot all hold` (red, names

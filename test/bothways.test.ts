@@ -47,7 +47,7 @@ function drag(m: Model, p: string, by: number[]): boolean {
   return m.solve().solved;
 }
 
-/** A rectangle as the tool draws one with nothing picked: four free points, par, par, perp. */
+/** A rectangle held par, par, perp — the tool's form until profiles-held made it four perps and a coplanar; a rectangle all the same. */
 function rect(m: Model, at = [0, 0, 0], w = 40, h = 30) {
   const P = [[0, 0], [w, 0], [w, h], [0, h]].map(([x, y]) => m.addPoint([at[0] + x, at[1] + y, at[2]]).name);
   const L = P.map((p, i) => m.addLine(p, P[(i + 1) % 4]).name);

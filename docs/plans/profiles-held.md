@@ -1,7 +1,10 @@
 # Plan: a feature's entities are related to each other — a prism stays a prism, whichever corner is dragged
 
 
-**Status: queued** (2026-11-08; rewritten the same day, see below). The owner: *"Why is it that after I extrude
+**Status: built** (2026-11-09, branch `claude/profiles-held`; queued
+2026-11-08, rewritten the same day, see below — and built to the owner's
+decisions, *The owner's decisions*, with the owner's point 2 on hold). The
+audit and the measurements are at the end, *As built*. The owner: *"Why is it that after I extrude
 I can drag a corner of the extrude and it deforms the solid? I think it's
 missing adding in relations"*.
 
@@ -50,7 +53,7 @@ the ground plane, it's about correct relationships BETWEEN entities. Part of
 the concept of this CAD is to have bidirectional relationships everywhere by
 default."* So nothing here ties anything to a datum the user didn't choose.
 
-## The owner's direction on the extrusion's form (2026-11-08, open)
+## The owner's direction on the extrusion's form (2026-11-08)
 
 *"I think extrude should create an identical copy of the originating
 profile's geometry, with relations and all, then chord edges connecting each
@@ -58,8 +61,32 @@ corner of one profile to the other, and then the edges become extruded
 surfaces. Edge extrude is a fundamental feature. Have to think about how an
 edge extrude relation would work."* Also: *"the default for sketch entities is
 no plane. Every sketch is a 3D sketch, unless you enter into active on-plane
-constraint."* The edge-extrude relation's design is being proposed to the
-owner. Design 1 below waits on it; Design 2–5 go ahead.
+constraint."* The edge-extrude relation's design was proposed to the owner,
+and he answered point by point:
+
+## The owner's decisions (2026-11-09)
+
+1. **Edge extrude is the primitive, and a tool of its own.** An edge E and a
+   chord give E′ = E shifted by the chord, the end chords, and the swept
+   surface derived. A profile extrude is the edge extrude of every edge of
+   the profile sharing one chord. A kind declares its sizes
+   (`EntityKindSpec.sizes`) so its twin can match them. In his words: *"Edge
+   extrude is a fundamental feature."* **Built.**
+2. **The lid's relations: linked twins.** *"linked, but i want it to be
+   bidirectionally linked somehow, so the originating sketch is no different
+   from the derivative sketch... after extrude, it should be impossible to
+   tell which was the original and which is the derivative."* **On hold**:
+   the lid gets nothing extra meanwhile (TODO.md).
+3. **The perpendicular is its own deletable relation**, `perp(chord,
+   profile)`, replaceable by an angle: *"how could you have a relation inside
+   an extrude? that doesnt really make sense to me"*. **Built**: `e1_perp`.
+4. **Agreeing redundancy is drawn in normal ink, not orange**; a status
+   mention is muted at most. CONFLICT stays red; the smart dimension's
+   driven-when-redundant rule stays. **Built.**
+5. **The rectangle: four perps, plus one coplanar on its four corners**: *"i
+   was thinking 4 perps so that all the edges are identical to one
+   another"*. A drag out of plane must come back planar to ~1e-12 with
+   nothing orange. **Built**: 9.2e-13, measured below.
 
 ## Design
 
@@ -139,3 +166,71 @@ owner. Design 1 below waits on it; Design 2–5 go ahead.
   closed by this, the reason being the prism, not the ground.
 - `help()`.
 - The spec marked built, with the table.
+
+## As built
+
+### The owner's drag, before and after
+
+The probe (the browser, a fresh document, the rectangle tool, the extrude
+tool at 10, `orbit(-0.6, -1.0)`, the lid corner nearest the top right
+dragged 60×30 px):
+
+| | before | after |
+|---|---|---|
+| base corner p2 | [36.7, 26.7, 0] → [48.4, 21.3, −18.2] | moves with the lid, as one solid |
+| walls | all still along the world's z, the base tilted under them | square to the base, to ~1e-12 |
+| the solid | a skewed prism | a right prism: base flat, walls square and the depth long, the lid the base translated — each to 1e-11 or better (`test/e2e/profilesheld.e2e.ts` asserts 1e-6, mouse and iPhone 13) |
+| status | SOLVED | SOLVED · 8 free · redundant r4, in the muted grey |
+
+Pictures: 400–402 before (desktop as made, desktop dragged, iPhone dragged),
+403–404 after (the same drags, mouse and finger), 405–407 the edge tool
+(an L of two lines; a copy's corner dragged by mouse and by finger).
+
+### The rectangle, measured (a corner dragged [3, 4, 7] out of plane)
+
+| relations | off its plane after | redundant |
+|---|---|---|
+| par, par, perp (before) | 1.8e-16 | none |
+| four perps | 2.9e-4 — four right angles flatten a quadrilateral only to second order | r4 |
+| four perps + coplanar (built) | 9.2e-13 | r4, said muted, drawn in ordinary ink |
+
+### The audit
+
+Each row was measured in a fresh 3D document (nothing picked to sketch on,
+so under the owner's rule nothing is held to any plane), by dragging the
+copy and then the original 12 frames, in the plane and out of it. After each
+drag the operation's own property was checked in closed form
+(`test/bothways.test.ts`, `test/profilesheld.test.ts`).
+
+| operation | what it leaves | before | now |
+|---|---|---|---|
+| extrude, blind | twins at base + depth·(frame's z), the z a datum | **one way**: a lid corner pulled [12,−6,−8] left the walls 1.50 off square to the base; a free pentagon's base went 7.4 off flat | one shared chord, `e1_perp` square to the profile. Lid corner [12,−6,−8], then base corner [3,−2,9]: flat 6e-12, square 4e-12, translated 4e-11 |
+| extrude, symmetric | the same, reach ½·depth | **one way**, walls 0.22 off square | the same: flat 1e-11, square 6e-12, translated 3e-11 |
+| extrude, through all (cut) | the same, reach past the bodies | **one way** | the same: flat 9e-12, square 1e-12, translated 2e-11; its reach's direction read from the frame, not the chord, so it does not read itself |
+| edge extrude (new) | — | — | the same pair: the copy is its base moved by one chord, square to the curves (`test/edgeextrude.test.ts`, 1e-7, both ways) |
+| revolve, partial and whole | the end face's twins turned about the axis, the axis a datum | **broken**: a profile corner pulled 8 off took the axis 5.3 out of the profile's plane | the profile held in the plane through the axis (a row per point but the farthest); a whole turn names its profile by self-pairs. A frame's axis is a datum; a line the user drew is pushed both ways |
+| sketch fillet | arc, arcends, tan ×2, rad | holds both ways, to 1e-13 | unchanged (guard test) |
+| sketch chamfer | intersection, dist, equal spacing | holds both ways, to 1e-10 | unchanged (guard test) |
+| offset | par + dist per line copy, rad per round copy; onPlane only on a sketch plane | **broken off a sketch plane**: the copy left its original's plane by 3.2–3.6; a circle's copy turned 24° off its original | `coplanar` (new, all four points moving) on one vertex per run nothing else holds; `par` from each round copy nothing turns; format 19. Left: a round copy's radius is its own dimension (r ± d), so a pull on the original's rim changes the gap |
+| mirror (`sym`) | the half-turn about the line, per pair | holds both ways, to 1e-13 | unchanged (guard test) |
+| linear pattern | `translated` per copy point | holds both ways, to 5e-11 | unchanged (guard test) |
+| circular pattern | `rotation` + `rotated` about the drawing plane's normal, a datum | **tied to an axis nobody picked**: a tilted seed's copies stood 22–29 off its plane | the seed's own plane (three seed points, read as variables), with nothing picked; a picked plane is still a datum |
+| trim's kept piece | the cut end held on the cutting curve | holds both ways | unchanged (guard test) |
+| the lid's twins | twin curves: radius equal, normal equal | holds both ways | sizes through `Model.sizesOf` (an ellipse's minor too), normals equal |
+
+### What the design questions came to
+
+- **The coplanarity's form**: none of the extrude's own. The profile is held
+  flat by `e1_perp` (every edge square to one chord), and a rectangle by its
+  own `coplanar`; the extrude adds no flatness the user did not ask for, so
+  a sketch-mode profile reads nothing redundant (measured: nothing).
+- **The direction**: the chord's, held by `e1_perp`, which the user can
+  delete. Not the profile's normal as a variable: that would be a direction
+  inside the extrude, which the owner ruled out.
+- **The frame argument** stays in the journal: where +depth was seeded, and
+  what old files named. "Along origin" in `describe` is where it was made.
+- **Format**: 19 for the offset's `flat` (replay needs it); the extrude needs
+  no bump — `e1_perp` is made at replay under a derived name.
+- **Feature-owned relations** are never named redundant or in a conflict;
+  `e1_perp` is not feature-owned (it is the user's to delete) and is named
+  like any relation.

@@ -918,11 +918,50 @@ original in the plane and out of it:
 - a **circular pattern** with nothing picked turns about its seed's own
   plane, three seed points read as variables, rather than the ground's z;
 - the **extrusion** itself — the owner's measured case, a lid corner dragged
-  skewing the prism — waits on the owner's choice of its form (the spec's
-  open *direction*: an edge extrude as the primitive, a shared chord, the
-  profile's perpendicularity a relation of its own). Until then it holds twin
-  = base + depth along its frame's +z, one way, and the failing tests in
-  `test/profilesheld.test.ts` and `test/e2e/profilesheld.e2e.ts` say so.
+  skewing the prism — is below.
+
+**An extrude is an edge extrude of its whole profile, sharing one chord.**
+The owner: *"Edge extrude is a fundamental feature."* An edge E and a chord
+c give E′ = E + c: every point moved by c, every size (`Model.sizesOf`: a
+radius, an ellipse's minor, whatever a module's kind declares with
+`EntityKindSpec.sizes`) and every normal the same. That is the whole of the
+`extrusion` relation now: each twin is its base plus the chord of the first
+pair, and the chord is as long as the depth reaches — **no direction read
+from anything**. Until 2026-11-09 every twin sat at base + depth along the
+frame's +z, a datum, so a lid corner dragged tilted the base while every
+wall kept the frame's z: a skewed prism, SOLVED. `edgeExtrude` (the `edge`
+tool) makes the same pair for any chain of curves, and its sheet is a
+surface record that, unlike every other, owns entities.
+
+**Which way the chord points is an ordinary relation beside it**, the
+operation's and anyone's to delete: `perp(chord, e1)`, named `e1_perp` — the
+chord square to every edge of the record's profile, read off the record at
+every evaluation, so a regenerated profile is the one held. The owner: *"how
+could you have a relation inside an extrude? that doesnt really make sense
+to me."* An `ang(wall, e1, θ)` in its place makes a drafted or oblique
+extrude; the kernel sweeps only square, so that one is drawn and its body
+refuses, by name. The name is derived from the record and claims no counter
+(`Model.namedRelation`), so an old file opened today gains the perpendicular
+and every name it had stays its: its journal and values re-save byte for
+byte, and its solids stop skewing.
+
+**The sign is the geometry's.** With no direction read, which side the lid
+is on is where its twins are: seeded on the depth's side by the operation,
+and moved across by `set` when a depth changes sign (`reseatLid`, which also
+seats the lid at a new depth before the solve, so a minimum-norm solve does
+not share the change between base and lid). The plane a solid is laid out
+in (`featurePlane`) is square to the chord and signed by the depth — never by
+the reach, which for a through-all end is read off the bodies' planes and
+would read itself.
+
+**A rectangle is four perps and, with no plane picked, one `coplanar`.** The
+owner: *"i was thinking 4 perps so that all the edges are identical to one
+another."* Four right angles do force a quadrilateral flat, but only to
+second order: measured, a corner dragged 7 out of the plane came back 2.9e-4
+off it; with the coplanar, 9e-13. The fourth perp is implied by the other
+three, and the diagnosis says so — which is why **an agreeing redundancy is
+drawn in the ordinary ink**, and said in the status's muted grey, never
+orange (the owner's decision). A conflict stays red.
 
 **Fewer relations, not more.** Each of these was first written holding
 everything and read orange: a rectangle's offset held at four corners
@@ -2152,7 +2191,7 @@ until the next action went unrecorded.
 
 ## Why there is an end-to-end suite
 
-Sixty-nine bugs so far were invisible to the unit tests and obvious within seconds
+Seventy bugs so far were invisible to the unit tests and obvious within seconds
 of running the app:
 
 1. a status readout that went stale, so a conflict could be introduced from
@@ -2486,6 +2525,13 @@ of running the app:
    sideways — found by the full suite's touch.e2e.ts, every unit test passing.
    The end condition is a drop-down where the depth's label was now,
    SolidWorks' "Blind ▾ [10]", and costs no row.
+70. A lid corner of an extruded rectangle dragged in the browser skewed the
+   solid — the base tilted, every wall still along the world's z — and the
+   status said SOLVED; the owner saw it at once. No unit test had ever
+   dragged a lid: each asked of the relation what it said, twin = base +
+   depth·z, and it said that exactly. The tests now ask the solid's
+   properties (flat, square, the depth long, translated), whichever corner
+   moved (docs/plans/profiles-held.md).
 
 None of these are mathematics. They are all *assembly*. Hence `npm run
 test:e2e`, and hence the expectation that anything touching the app is checked

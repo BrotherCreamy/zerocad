@@ -30,6 +30,57 @@ otherwise.
 
 ## Decisions made so far — veto here if any are wrong
 
+- **A prism stays a prism: relations between a feature's entities, both
+  ways** (the owner, 2026-11-08/09: *"Why is it that after I extrude I can
+  drag a corner of the extrude and it deforms the solid? I think it's
+  missing adding in relations"*, *"bidirectional relationships everywhere by
+  default"*; docs/plans/profiles-held.md). The owner decided the extrude's
+  form, the perpendicular, the ink and the rectangle; these are the choices
+  made building them. Each vetoable:
+  - **The extrusion reads no direction**: one chord, the first point pair
+    whose base is no frame's (`chordPair`), every other twin its base plus
+    that chord, the chord `|reach|` long. Its sign is the geometry's — the
+    side the twins were seeded on — so `set` across zero reseats them
+    (`reseatLid`) after a rebuild that succeeds, and a refused value moves
+    nothing. The frame argument stays in the journal: where +depth was
+    seeded, what old files named, and nothing more.
+  - **`e1_perp` is a derived name**, not an `r`: so an old file replays every
+    later name as it had it and gains the perpendicular (its journal and
+    values re-save byte for byte, `oldfiles13.test.ts`). It is written as a
+    point pair (the chord pair's base and twin), not a wall line, so a
+    circle's extrude, which has no wall, has one too.
+  - **`perp(chord, e1)`'s rows are in lengths**: each straight edge's run
+    along the unit chord, a curve's normal crossed with it. A cosine row left
+    corners ~1e-9 off on a 40-long edge.
+  - **`ang(wall, e1, θ)` seats the chord at θ toward the profile's first
+    edge** when it is made on a chord that stands exactly square (where a
+    deleted `e1_perp` leaves it): an unsigned angle is stationary there
+    whichever way it is written, and the solve would not move. A seed, never
+    a relation; nothing moves when the chord already leans.
+  - **An oblique extrude is drawn and not built**: its body refuses with
+    "its chord is not square to its profile". The kernel sweeps square; an
+    oblique sweep is SMLib work not taken on here.
+  - **The edge extrude is a surface record that owns entities** (kind
+    `extrude`, its `size` the `extrusion`), journalled as `edgeExtrude`. The
+    tool is `edge` — tool names are lower case, a glyph's name being its
+    tool's — on the extrude button's flyout after `surface`, and a curve's
+    menu offers *Extrude edge…*, typed for the depth.
+  - **The fourth perp is the one said redundant**, muted — kept in the status
+    rather than dropped, so a user who types `perp` twice still learns it
+    said nothing new. Every rectangle shows `· redundant r4` in grey.
+  - **The rectangle's `coplanar` is `coplanar(d, a, b, c)`**, the last corner
+    in the plane of the other three, only where no plane is picked; with one
+    picked, every corner's `onPlane` already is the flatness. A box dragged
+    flat along one axis (corners in one line) gets no coplanar rather than a
+    refusal halfway through building it.
+  - **The audit's fixes** (the spec's table): a revolve's profile held in its
+    axis's plane, a line axis pushed both ways, a frame's axis a datum;
+    `coplanar` (new) holding an offset copy on one vertex per run nothing
+    else holds, format 19; a circular pattern with nothing picked turning
+    about its seed's own plane.
+  - **No plane unless one is picked**: a drawing tool holds to a plane only
+    when sketch mode or a default frame sets `sketchPlaneRef` (the owner).
+
 - **The solid tools, made for a first-time user** (the owner, 2026-11-08:
   *"Flip button."* and *"I'm still not clear on how to use the extrude cut
   tool. It doesn't make sense to me. Make it more intuitive, along with the
@@ -2143,11 +2194,35 @@ are flagged as such.
           where the press misses every quiet glyph — a constraint's box is a
           finger's reach and wins. Proposal: on a phone, a quiet glyph yields
           to the face under it (picking.ts; sketch-mode's area).
-    - [ ] **A rectangle drawn on the ground is held there by nothing**
+    - [x] **A rectangle drawn on the ground is held there by nothing**
           (free-entities.md), so a `set` of its extrude's depth moves the base
           off the ground a little too (measured 0.0143 for a change of 15 on
-          the phone run). Proposal: the extrude's profile held `onPlane` its
-          sketch plane when the plane is a datum (sketch-mode's rule).
+          the phone run). Closed by profiles-held.md — the reason being the
+          prism, not the ground: the owner rejected holding a sketch to a
+          plane nobody picked, and `set` now seats the lid before the solve
+          (`reseatLid`), so the base does not move at all (0 to 1e-9, every
+          sign of depth, `profilesheld.test.ts`).
+    - [ ] **Linked twin relations on the lid** (profiles-held.md, the owner's
+          point 2, **on hold** for his decision): *"linked, but i want it to be
+          bidirectionally linked somehow, so the originating sketch is no
+          different from the derivative sketch... after extrude, it should be
+          impossible to tell which was the original and which is the
+          derivative."* Today the lid carries none of the base's relations of
+          its own — the extrusion holds it to the base, which is enough to keep
+          it the same shape, but a `del` of a base relation is not mirrored by
+          anything on the lid because there is nothing there.
+    - [ ] **An oblique extrude is drawn, not built** (profiles-held.md): an
+          `ang(wall, e1, θ)` in place of `e1_perp` leans the twins, and the
+          body refuses — the kernel sweeps a profile square to its plane. The
+          kernel's sweep along a vector would close it.
+    - [ ] **Four free points can fold into a line** under a turned frame with
+          nothing but an extrude holding them: every edge then square to a
+          chord that never turned, and the collapse check reads lengths, not
+          areas. A rectangle (four perps) cannot; a typed quad of free points
+          can. Found turning the frame in `extrude.test.ts`.
+    - [ ] **An edge extrude's ends joined only by a `coin`** each get a copy and
+          a chord of their own, held together by the coin's translation —
+          right, but two chords where a shared point would have one.
     - [ ] **A symmetric extrude's far cap has no entities**: drawn and built,
           but a sketch on it, the wire view and a constraint to its edges have
           nothing to stand on. Proposal: twins on both sides when symmetric.

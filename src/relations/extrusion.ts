@@ -23,7 +23,7 @@
 // a translation turning nothing. The end chords, base to twin, are walls; the
 // surface between E and E′ is derived (drawn and built, never stored). A
 // profile extrude is the edge extrude of every edge of the profile **sharing
-// one chord**. Nothing here reads a direction: until 2026-11-08 the twins sat
+// one chord**. Nothing here reads a direction: until 2026-11-09 the twins sat
 // at base + depth along the sketch frame's +z, a datum, so a drag on a lid
 // corner tilted the base while every wall kept the frame's z — a skewed prism,
 // SOLVED. Which way the chord points is the user's to say, by an ordinary
