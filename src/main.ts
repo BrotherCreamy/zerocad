@@ -1581,7 +1581,7 @@ async function main() {
   function showDiagnosis(solved: boolean, conflicts: string[], unowned: string[]) {
     const line = model.entities.size === 0 && solved
       ? { cls: "" as const, parts: [], fades: true }
-      : diagnosisLine(solved, diagnosis?.dof ?? null, conflicts, unowned, solved ? diagnosis?.redundant ?? [] : []);
+      : diagnosisLine(solved, diagnosis?.dof ?? null, conflicts, unowned, solved ? diagnosis?.agreeing ?? [] : []);
     diagnosisEl.textContent = "";
     diagnosisEl.className = line.cls;
     for (const part of line.parts) {

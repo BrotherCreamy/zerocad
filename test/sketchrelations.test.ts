@@ -692,14 +692,17 @@ test("the analysis costs milliseconds on a large sketch, and is never asked duri
 
 // --- what the status says, and the marks -------------------------------------
 
-test("the diagnosis line: a count that fades, a conflict that names, a redundancy in the softer word", () => {
+test("the diagnosis line: a count that fades, a conflict that names, an agreement counted and not blamed", () => {
   assert.deepEqual(diagnosisLine(true, 3, [], [], []), { cls: "", parts: ["3 free"], fades: true });
   assert.deepEqual(diagnosisLine(true, 0, [], [], []).parts, ["0 free"]);
   assert.deepEqual(diagnosisLine(false, null, ["d1", "d2"], [], []),
     { cls: "conflict", parts: [{ relation: "d1" }, " · ", { relation: "d2" }, " cannot all hold"], fades: false });
   assert.deepEqual(diagnosisLine(false, null, [], ["mine"], []).parts, ["mine", " cannot hold"]);
-  assert.deepEqual(diagnosisLine(true, 2, [], [], ["r5"]),
-    { cls: "redundant", parts: ["2 free", " · ", "redundant ", { relation: "r5" }], fades: false });
+  // It used to say `redundant r5`, naming the relation added last; the owner's
+  // principle (TODO.md's register, 2026-11-09) counts the set instead and
+  // leaves the naming to the constraints palette (test/agreeing.test.ts).
+  assert.deepEqual(diagnosisLine(true, 2, [], [], [["r2", "r5"]]),
+    { cls: "agreeing", parts: ["2 free", " · ", "2 agreeing"], fades: false });
 });
 
 test("a par between two lines keeps //; against an axis it is — or |", () => {

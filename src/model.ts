@@ -3150,7 +3150,7 @@ export class Model {
     // A relation's own variables (a point's parameter along a spline) are
     // freedoms like any entity's: its rows hold them, or they are free.
     for (const r of this.relations.values()) if (r.vars) live.push(...r.vars);
-    const a = this.problem.analyse({ vars: live, gauge });
+    const a = this.problem.analyse({ vars: live, gauge, agreeing: true });
     const freeVars = new Set(a.free);
     const pointFree = (name: string) => this.entities.get(name)?.kind === "point"
       && (this.entities.get(name) as PointEntity).varIndices.some((i) => freeVars.has(i));
@@ -3171,6 +3171,10 @@ export class Model {
     for (const e of this.entities.values()) {
       if (e.kind !== "point" && this.measuresOf(e).some((m) => !(this.sizeAt(m) > floor))) for (const v of this.varsOfEntity(e.name)) folded.add(v);
     }
+    // A relation a person made, reading nothing folded — the only kind that
+    // is named, redundant or agreeing.
+    const nameable = (r: RelationEntry) => this.removable(r.name)
+      && !(folded.size && r.blocks.some((b) => this.problem.varsOf(b).some((v) => folded.has(v))));
     for (const r of this.relations.values()) {
       if (!r.blocks.length) continue;
       // A feature's own relation is background, here as in the conflict search
@@ -3179,13 +3183,33 @@ export class Model {
       // a profile on a sketch plane, flat by its own onplanes — the feature
       // saying it too is the feature being consistent, not something a person
       // can or should delete. Only a relation a person made is named redundant.
-      if (!this.removable(r.name)) continue;
-      if (folded.size && r.blocks.some((b) => this.problem.varsOf(b).some((v) => folded.has(v)))) continue;
+      if (!nameable(r)) continue;
       if (r.blocks.every((b) => { const d = dependent.get(b); return d !== undefined && d.dependent === d.rows; })) {
         redundant.push(r.name);
       }
     }
-    return { dof: a.dof, free, redundant, ms: performance.now() - t0 };
+    // The agreeing sets (TODO.md's register: *redundancy counted, not blamed
+    // on the newest relation*): each redundant relation with the relations
+    // whose rows imply it, by block owner, kept to the nameable ones, then
+    // merged where two sets share a member — a rectangle's fourth right angle
+    // and an eq it also implies are one set, not two that overlap.
+    const owner = this.blockOwners();
+    const sets: Set<string>[] = [];
+    for (const ag of a.agreeing) {
+      const of = owner.get(ag.block);
+      if (of === undefined || !redundant.includes(of)) continue;
+      const members = new Set<string>([of]);
+      for (const b of ag.with) {
+        const n = owner.get(b);
+        if (n !== undefined && nameable(this.relations.get(n)!)) members.add(n);
+      }
+      const touching = sets.filter((s) => [...s].some((n) => members.has(n)));
+      for (const s of touching) { for (const n of s) members.add(n); sets.splice(sets.indexOf(s), 1); }
+      sets.push(members);
+    }
+    const order = [...this.relations.keys()];
+    const agreeing = sets.map((s) => [...s].sort((x, y) => order.indexOf(x) - order.indexOf(y)));
+    return { dof: a.dof, free, redundant, agreeing, ms: performance.now() - t0 };
   }
 
   /** The planes a point lying in is not counted free off: the drawing plane, and the ground. See `diagnose`. */
@@ -3450,6 +3474,15 @@ export interface Diagnosis {
   free: Set<string>;
   /** Relations every row of which the relations before them already imply. */
   redundant: string[];
+  /**
+   * The **agreeing sets**: for each of `redundant`, the relations it says one
+   * thing with — itself and those it is implied by, the set merged with any
+   * other it shares a member with — named without blame (the owner's
+   * principle, TODO.md: *agreeing over-constraint is normal*). A rectangle's
+   * four right angles are one set of four; `perp` typed twice, a set of two.
+   * Only relations a person made are named, as in `redundant`.
+   */
+  agreeing: string[][];
   /** How long it took, in milliseconds. */
   ms: number;
 }
