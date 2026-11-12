@@ -2030,14 +2030,17 @@ async function main() {
     }
     const again = tipsShown.has(c.tool);
     const tip = { ...toolTip(c.tool, toolSummary(c.tool), null, toolHow(c.tool, "finger", howOptions(c.tool))), also: groupAlso(c.siblings, c.tool) };
-    // Beside a column there is only the room the tray leaves — less the
-    // fingertip, where it has just lifted off the tray itself (off a flyout's
-    // item it is out in the drawing, and the tip goes above or below it).
+    // A fingertip that lifted off the tray is over the tray, which the tip
+    // keeps a gap off already: asking a fingertip's clearance of it as well
+    // only narrowed the tip by a character and wrapped a line more (looked
+    // at, iPhone 13). Off a flyout's item the finger is out over the drawing,
+    // and the tip keeps clear of it.
     const onTray = !!tray && !!lastTouch && lastTouch.x >= tray.x && lastTouch.x <= tray.x + tray.w
       && lastTouch.y >= tray.y && lastTouch.y <= tray.y + tray.h;
     const shown = tooltips.announce(tip, {
-      again, anchor: box(c.button), finger: lastTouch, keep, free, controls,
-      room: tray && along === "column" ? roomBeside(tray, tooltipBounds(), onTray ? lastTouch : null) : null,
+      again, anchor: box(c.button), finger: onTray ? null : lastTouch, keep, free, controls,
+      // Beside a column there is only the room the tray leaves.
+      room: tray && along === "column" ? roomBeside(tray, tooltipBounds()) : null,
     });
     if (shown) { tipsShown.add(c.tool); chosenTool = c.tool; }
   }

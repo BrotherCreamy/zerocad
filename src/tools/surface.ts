@@ -30,9 +30,8 @@ export class SurfaceTool extends FeatureTool {
   };
   static readonly summary = "Sweeps curves into a surface: click a curve, set the depth, ✓";
   static readonly how: How = [
-    "{Tap} a curve to sweep its chain up into a sheet.",
-    "Or {tap} inside a closed outline for a flat sheet.",
-    "Set the depth in the options. ✓ makes it.",
+    "{Tap} a curve — or inside a closed outline, for a flat sheet.",
+    "Set the depth in the options, then ✓.",
   ];
   readonly name = "surface";
   chain: string[] = [];

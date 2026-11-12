@@ -31,8 +31,7 @@ export class EdgeExtrudeTool extends FeatureTool {
   static readonly summary = "Extrudes an edge: a copy of the curve, chords to it, the surface";
   static readonly how: How = [
     "{Tap} a curve: its whole chain comes with it.",
-    "A copy is made a depth away, joined at each end.",
-    "Set the depth in the options. ✓ makes it.",
+    "Set the depth in the options, then ✓.",
   ];
   // Lower case, as every tool's name is (a glyph's name is the tool's); typed
   // bare, `edge` arms it, and `edgeExtrude(…)` is the call it types.

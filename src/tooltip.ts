@@ -171,10 +171,12 @@ export function rememberTips(storage: TipStorage | null, on: boolean): boolean {
 /** What a square pixel of the tip costs by what it lies over, bare drawing being 1: the middle this much more, a control this much. */
 export const COST_MIDDLE = 3;
 export const COST_CONTROL = 0.5;
+/** How much more than the least a place may hide, as a share of the tip's area, and still be taken for being the first reading down. */
+export const STAY = 1 / 3;
 
 /** What a chosen tool's tip is laid out round: every box in the bounds' coordinates. */
 export interface ChosenAsk {
-  /** The control chosen — where the tip stays near, all else equal. */
+  /** The control chosen: a place against it, or level with it, is one of those tried. */
   anchor: Box;
   /** Where the finger was, if a finger chose it: the tip keeps `FINGER_CLEAR` off it. */
   finger?: At | null;
@@ -203,10 +205,13 @@ export function middleOf(bounds: Box): Box {
  * matters**: every square pixel over bare drawing costs 1, over the drawing's
  * middle (`middleOf`) `COST_MIDDLE` more, over a control `COST_CONTROL`, over
  * a pane that only says things nothing — and never over `keep`, nor within a
- * fingertip of the finger. Of places that cost the same, the nearest the
- * control chosen.
+ * fingertip of the finger. **And it keeps to one place**: of the places that
+ * hide no more than a third of a tip's area (`STAY`) over the least, the
+ * first reading down, then the cheaper, then the leftmost — so a tall tip and
+ * a short one start at the same line, and the eye knows where to look.
  *
- * The places tried are the ones that can be best: against each edge of the
+ * `anchor` is the control chosen: its edges are places tried, as every
+ * box's are. The places tried are the ones that can be best: against each edge of the
  * bounds, and against and level with each edge of every box named. `clear`
  * is false where none of them is clear of `keep` — a window too small — and
  * the tip is then held inside the bounds, at their start.
@@ -228,8 +233,7 @@ export function chosenPlacement(size: Size, bounds: Box, ask: ChosenAsk): At & {
     for (const x of [b.x, b.x + b.w - size.w, b.x + b.w + GAP, b.x - GAP - size.w]) xs.add(x);
     for (const y of [b.y, b.y + b.h - size.h, b.y + b.h + GAP, b.y - GAP - size.h]) ys.add(y);
   }
-  const [ax, ay] = [ask.anchor.x + ask.anchor.w / 2, ask.anchor.y + ask.anchor.h / 2];
-  let best: (At & { cost: number; dist: number }) | null = null;
+  const found: (At & { cost: number })[] = [];
   for (const x of xs) {
     if (x < left - 0.5 || x + size.w > right + 0.5) continue;
     for (const y of ys) {
@@ -241,11 +245,18 @@ export function chosenPlacement(size: Size, bounds: Box, ask: ChosenAsk): At & {
       const overControls = controls.reduce((a, b) => a + boxOverlap(r, b), 0);
       const paned = free.reduce((a, b) => a + boxOverlap(r, b), 0) + overControls;
       const cost = Math.max(0, size.w * size.h - paned) + COST_MIDDLE * boxOverlap(r, middle) + COST_CONTROL * overControls;
-      const dist = Math.hypot(x + size.w / 2 - ax, y + size.h / 2 - ay);
-      if (!best || cost < best.cost - 0.5 || (Math.abs(cost - best.cost) <= 0.5 && dist < best.dist)) best = { x, y, cost, dist };
+      found.push({ x, y, cost });
     }
   }
-  if (best) return { x: best.x, y: best.y, cost: best.cost, clear: true };
+  if (found.length) {
+    // The first place, reading down, of those about as good as the best: a
+    // tip that is 80 px tall and one that is 180 would otherwise settle a
+    // pane's edge apart, and a tip is found by being where the last one was.
+    const least = Math.min(...found.map((p) => p.cost));
+    const near = found.filter((p) => p.cost <= least + STAY * size.w * size.h + 0.5);
+    near.sort((p, q) => p.y - q.y || p.cost - q.cost || p.x - q.x);
+    return { x: near[0].x, y: near[0].y, cost: near[0].cost, clear: true };
+  }
   return { x: Math.min(left, Math.max(bounds.x, right - size.w)), y: Math.min(top, Math.max(bounds.y, bottom - size.h)), cost: Infinity, clear: false };
 }
 

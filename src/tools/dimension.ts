@@ -76,8 +76,8 @@ export class DimensionTool extends Tool {
   static readonly summary = "Dimensions what you click, a solid's faces too; a click places it";
   static readonly how: How = [
     "{Tap} what to measure: a line, a circle, two points…",
-    "Then {tap} empty space to place the dimension.",
-    "Double-{tap} its number to change it.",
+    "Then {tap} empty space to place it.",
+    "Double-{tap} the number to edit it.",
   ];
   readonly name = "dimension";
   // Its picks are entities, not places: a snap marker would promise a point.

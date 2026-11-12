@@ -56,8 +56,8 @@ export class OffsetTool extends FeatureTool {
   static readonly summary = "Offsets a curve or chain: click it, choose a side, ✓ — or drag it";
   static readonly how: How = [
     "{Tap} a curve: its whole chain comes with it.",
-    "Press beside the chain and drag the copy out.",
-    "✓ makes it. The distance is in the options too.",
+    "Drag beside it to pull the copy out.",
+    "✓ makes it.",
   ];
   readonly name = "offset";
   chain: string[] = [];

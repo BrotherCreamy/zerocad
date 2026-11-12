@@ -26,7 +26,10 @@
 //
 // **Room on a phone.** Where its rows do not fit the pane, the likeliest
 // relations show and a "more…" row opens the rest — measured against the
-// pane's real height, so a pane the viewer made taller shows more.
+// pane's real height, so a pane the viewer made taller shows more. A section
+// with nothing in it ("l1, l2 have / no relation yet") gives way before any
+// row does: on an iPhone 13 that is the second relation's room
+// (docs/plans/tool-howto.md).
 //
 // The split is the organiser's: what the pane shows is pure (`paletteFor`),
 // tested without a DOM; the DOM half is thin, and **every control types its

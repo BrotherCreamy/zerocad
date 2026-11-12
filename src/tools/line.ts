@@ -102,7 +102,7 @@ export class LineTool extends Tool {
   static readonly how: How = [
     "{Tap} the start, then the end of each line in turn.",
     "Start or end on a point or a line to join it.",
-    { mouse: "Esc ends the chain.", finger: "Cancel, the ✕ at the top, ends the chain." },
+    { mouse: "Esc ends the chain.", finger: "Cancel (✕) ends the chain." },
   ];
   readonly name = "line";
   /** The first click of a fresh chain — kept whole, so its snap survives to commit. */
