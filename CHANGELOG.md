@@ -7,6 +7,68 @@ decisions.
 
 ---
 
+## 2026-11-12 — a tool says how to use it: on a hover, and on a phone as it is chosen
+
+The owner, asked to try adding a parallel relation: *"I don't even know how
+to add a parallel relation. Maybe a little tooltip should pop up when I hover
+over (desktop) or select (phone) a tool."* (docs/plans/tool-howto.md).
+
+| | |
+|---|---|
+| ![iPhone 13, Constrain just chosen from behind the Dimension button: its tip beside the tray's top, over the organiser, the strip and the log — Constrain, what it does, two steps (tap the things to relate; then choose from the list), and Hold this button for Dimension; the palette below saying what can be picked](docs/images/480-iphone-constrain-chosen-its-tip-says-how.png) | ![Two lines tapped, one of them through the tip, which has gone: the palette lists Parallel, Perpendicular and 6 more…, the section that said "no relation yet" gone to make the room](docs/images/481-iphone-two-lines-tapped-parallel-and-perpendicular-no-more-needed.png) |
+| ![Parallel pressed: par("l2", "l1") in the log, a // glyph on each line — and both lines shrunk to a few pixels, which is the solver's open fault, not this package's (see below)](docs/images/482-iphone-parallel-pressed-the-two-lines-parallel.png) | ![Desktop, the mouse on Constrain in the relate button's flyout: the tooltip under the flyout with the two steps in a mouse's words between what it does and arm("constrain")](docs/images/483-desktop-hovering-constrain-the-tooltip-with-its-steps.png) |
+| ![iPhone 13, Extrude chosen: its tip at the top — tap inside a closed outline; set the depth in the options, ⇅ turns it the other way; ✓ builds the solid; hold this button for Cut, Surface, Edge — and the options pane it speaks of clear below, the rectangle clear between](docs/images/484-iphone-extrude-chosen-its-tip-clear-of-its-options-pane.png) | ![The line tool chosen a second time: the three steps alone, no name, starting at the same line as the first](docs/images/485-iphone-the-second-time-the-steps-alone.png) |
+| ![iPhone 13, a tap on the relate button, whose face is Dimension: its tip, ending Hold this button for Constrain](docs/images/486-iphone-dimension-chosen-its-tip-says-constrain-is-behind-the-button.png) | ![iPhone 13 on its side: the tip at the top right, over the command line's end, the strip, the log and the organiser's top — and over the right-hand ends of the two lines, the limitation filed](docs/images/487-iphone-landscape-the-tip-over-the-organiser-and-the-drawings-corner.png) |
+
+- **Every tool declares how it is used** (`static how`, tools/tool.ts): the
+  steps, three lines at most, in the words of someone doing them — `{tap}`
+  reads *click* under a mouse and *tap* under a finger, a line may be one for
+  each hand where they really differ (a chain ended by Esc or by Cancel), and
+  a tool whose gesture depends on how it is armed says the armed one (a
+  circle locked to 3 points never says to drag). `defineTool` refuses a how
+  that is not lines of text, or is more than three. Select and the Hand have
+  theirs (`ENGINE_HOW`). **Each line was written by doing it in the browser,
+  mouse and finger** — which is how the lines differ from the files' own
+  comments: a rectangle is a drag (two clicks do nothing), a point puts the
+  tool down, a confirm puts a feature tool down. The whole table is in the
+  spec's *As built*.
+- **On a phone, choosing a tool shows its tip** (`Tooltips.announce`): name,
+  what it does, how, and for a button that holds several tools what else is
+  there — *Hold this button for Constrain.* **Constrain shares Dimension's
+  button**; a tap arms the face, and until now nothing on the screen said the
+  button held anything else. The tip takes no touch (no pointer events: a tap
+  on it picks the line under it, e2e-asserted), goes at the next press, when
+  the tool is put down, or once read (a second and 40 ms a character, 3–10 s),
+  and the second time a tool is chosen in a session it is the steps alone
+  (5 s at most). Holding a button still shows the full tooltip without arming.
+- **Where it goes** (`chosenPlacement`, pure): the place that hides least of
+  what matters — over the log and the organiser for nothing, the action strip
+  and the command line at half the drawing's price, the drawing's middle
+  third at four times it — never over the tray, the tool's own options pane,
+  the palette or the logo's corner; and of places about as good, the first
+  reading down, so every tip starts at the same line. On an upright iPhone 13
+  that is beside the tray's top; no tip is taller than 187 px there.
+- **On a desktop the hover's tooltip has the steps**, between what the tool
+  does and its command; a click shows nothing more.
+- **The parallel case**: with two lines tapped the palette shows Parallel
+  *and* Perpendicular, then "6 more…" — the wasted row (TODO, review of #88)
+  was the section under the rows, "l1, l2 have / no relation yet", 39 px of a
+  164 px pane; where the rows overflow, a section with nothing in it now
+  gives way first. And the palette's empty state says what to pick and what
+  will be offered.
+- **The setting**: `ui({ tips: false })`, and *Tips when a tool is chosen* in
+  the logo menu's View; the viewer's, stored, never journalled.
+- **Bug 74**, found pressing ✓ in the browser: its tooltip said "the tool
+  stays armed", and a confirm has put the tool down since the opaque-solids
+  merge. It says what happens.
+- **Seen and not this package's**: `par` on two free lines shrinks both to a
+  few pixels and reads SOLVED (picture 482; already in picture 422, unseen).
+  It is `review-solver.md`'s, in flight; the e2e here asserts the directions,
+  which hold either way, and the picture wants retaking once that lands.
+- Tests: `test/toolhowto.test.ts` (15) and `test/e2e/toolhowto.e2e.ts` (12:
+  eight under fingers — every tool on the tray and behind it chosen in turn —
+  one in landscape, three with a mouse). No existing test changed.
+
 ## 2026-11-09 — a click on a face lands on that face, is held there, and says so before the click
 
 The owner: *"when i make a rectangular prism, i attempt to draw an e.g.

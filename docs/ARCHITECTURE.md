@@ -2132,6 +2132,39 @@ never finished once a panel could sit on top of it. The capture lives in
 `main.ts` rather than the engine because it is a fact about the page (there are
 things over the canvas), not about gestures.
 
+**A tip is handed in, and a tool's says how it is used**
+(docs/plans/tool-howto.md; the owner: *"I don't even know how to add a
+parallel relation. Maybe a little tooltip should pop up when I hover over
+(desktop) or select (phone) a tool."*). `tooltip.ts` imports nothing: a
+control is attached with a function answering its `Tip` — name, what it does,
+`how` (the steps), `also`, the command, a key — and what the tip says is the
+business of whoever attaches it. A tool's steps are its own (`static how` in
+tools/tool.ts, read by `toolHow` under the hand on the screen and with the
+options the tool is, or would be, armed with — main.ts's `howOptions`, since
+the last values used are the viewer's), handed through the toolbar's host as
+its summary is. There are **two elements, because there are two things**:
+
+- `#tooltip` is a *tooltip*: it describes the control under a pointer, a
+  hover or a held finger asks for it, Escape and any press close it, and the
+  control is `aria-describedby` it. It is one of the things "open"
+  (main.ts's `openings`), which Escape and Android's back close in turn.
+- `#chosentip` is a *status*: what a tool says as a finger chooses it
+  (`Tooltips.announce`, told by the toolbar's `chosen` just before the `run`
+  that arms it, shown once that line has run). Nobody asked for it, so it
+  **takes no touch** (no pointer events; a tap on it reaches what is under
+  it), it is never one of the things open, and it goes on its own — the next
+  press, the tool put down, or the time it takes to read (`readingMs`).
+
+Where the second goes is `chosenPlacement`, pure and tested without a DOM:
+boxes in, a place out. The host says which boxes are *kept* (the tray, the
+chosen tool's options pane, the constraints palette, the logo's corner),
+which are *free* to lie over (panes that only say things: the log, the
+organiser) and which are *controls* (the strip, the command line — they work
+through the tip but cannot be seen); bare drawing costs 1 a pixel, a control
+half, the drawing's middle third four, and of the places within a third of a
+tip of the least the first reading down wins, so tips of every height start
+at one line. The numbers are in TODO.md's register, each vetoable.
+
 ## The REPL is scoped, not sandboxed
 
 An entry runs inside a `with` block over a Proxy whose `has` trap claims every
@@ -2284,7 +2317,7 @@ until the next action went unrecorded.
 
 ## Why there is an end-to-end suite
 
-Seventy-three bugs so far were invisible to the unit tests and obvious within seconds
+Seventy-four bugs so far were invisible to the unit tests and obvious within seconds
 of running the app:
 
 1. a status readout that went stale, so a conflict could be introduced from
@@ -2658,6 +2691,15 @@ of running the app:
    circle" (modefeedback.e2e) and passed for weeks; the picture of a
    three-point circle just made, the lid still amber under no tool, found
    it. `finish` redraws.
+74. The ✓'s own tooltip said *"Builds what the preview shows; the tool stays
+   armed"*, and a confirm has put the tool down since the opaque-solids
+   merge (feature.ts's `done`, changed for a reason of its own; the sentence
+   in panels.ts was nobody's test). Found writing each tool's steps by doing
+   them in the browser (docs/plans/tool-howto.md): ✓ pressed, the chip read
+   `select`, and the tip had just promised otherwise. A sentence the app
+   says about itself is behaviour, and only using the app checks it. It
+   says what happens, and `toolhowto.e2e.ts` reads the sentence and then
+   presses the button.
 
 None of these are mathematics. They are all *assembly*. Hence `npm run
 test:e2e`, and hence the expectation that anything touching the app is checked
