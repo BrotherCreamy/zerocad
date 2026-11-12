@@ -18,7 +18,7 @@
 // the straight slot's composition, for a shape the owner did not name. Left
 // for later (TODO.md).
 
-import { Tool, defineTool, press, type Hand, type PointerInfo, type RenderContext } from "./tool.ts";
+import { Tool, defineTool, press, type Hand, type PointerInfo, type RenderContext, type How } from "./tool.ts";
 import { DRAWING_OPTIONS, asArmed, placePoint } from "./place.ts";
 import type { OptionSpecs } from "./options.ts";
 import { TwoPoint, halfWidth, twoPointNext, unsnapped } from "./twopoint.ts";
@@ -51,6 +51,10 @@ export class SlotTool extends Tool {
     },
   };
   static readonly summary = "Draws a slot: drag between its two centres, then click its width";
+  static readonly how: How = (o) => [
+    "Press at one end's centre, drag to the other's.",
+    typeof o.width === "number" && o.width > 0 ? "Its width is the one set in the options." : "Then {tap} to one side to set its width.",
+  ];
   readonly name = "slot";
   private stage = new TwoPoint(this.ctx, this.name);
   /** The two centres, once the first stage is done; the second stage chooses the width. */

@@ -36,7 +36,7 @@
 // points and lines, and pick as any do. That last part is `solidRefAt` below,
 // on its own so a fuller picker can take its place.
 
-import { defineTool, press, type Hand, type PointerInfo, type RenderContext, type ToolCommand, type ToolContext } from "./tool.ts";
+import { defineTool, press, type Hand, type PointerInfo, type RenderContext, type ToolCommand, type ToolContext, type How } from "./tool.ts";
 import { Tool } from "./tool.ts";
 import { constraintsFor } from "../dimensioning.ts";
 import { sketchFrameFor } from "../sketchface.ts";
@@ -92,6 +92,10 @@ function onSolid(model: ToolContext["model"], members: string[]): boolean {
 
 export class ConstrainTool extends Tool {
   static readonly summary = "Relates what you pick: choose from the relations that apply";
+  static readonly how: How = [
+    "{Tap} the things to relate: two lines, a line and a circle…",
+    "Then choose from the list: Parallel, Tangent, Equal…",
+  ];
   readonly name = "constrain";
   readonly snaps = false;
   /** What is picked, in the order picked. */

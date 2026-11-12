@@ -5,7 +5,7 @@
 // nothing that way) is said muted at the click, and drawn red at the hover.
 // Like trim, one click and no ✓.
 
-import { Tool, press, type Hand, type PointerInfo, type RenderContext } from "./tool.ts";
+import { Tool, press, type Hand, type PointerInfo, type RenderContext, type How } from "./tool.ts";
 import { callText } from "./feature.ts";
 import { REGION_GREEN } from "./region.ts";
 import { SUBTRACT_RED } from "./regiontool.ts";
@@ -29,6 +29,10 @@ interface Hover {
 
 export class ExtendTool extends Tool {
   static readonly summary = "Extends a line or arc to the next curve: click near the end";
+  static readonly how: How = [
+    "{Tap} a line or an arc near the end to lengthen.",
+    "It grows to the next curve in its way.",
+  ];
   readonly name = "extend";
   readonly snaps = false;
   private hover: Hover | null = null;

@@ -15,7 +15,7 @@
 // circle drawn there carries. The whole gesture is one undo step.
 
 import { addEllipse, checkEllipse, ellipseOf, semiAxes } from "../kinds/ellipse.ts";
-import { Tool, defineTool, press, type Hand, type PointerInfo, type RenderContext } from "./tool.ts";
+import { Tool, defineTool, press, type Hand, type PointerInfo, type RenderContext, type How } from "./tool.ts";
 import { DRAWING_OPTIONS, asArmed, holdOnSketchPlane, placePoint } from "./place.ts";
 import type { OptionSpecs } from "./options.ts";
 import { TwoPoint, halfWidth, twoPointNext, unsnapped } from "./twopoint.ts";
@@ -37,6 +37,10 @@ export function ellipsePreview(c: number[], m: number[], b: number, normal: numb
 export class EllipseTool extends Tool {
   static readonly options: OptionSpecs = DRAWING_OPTIONS;
   static readonly summary = "Draws an ellipse: drag out its major axis, then click its minor";
+  static readonly how: How = [
+    "Press at the centre, drag out along the long axis.",
+    "Then {tap} where the short axis ends.",
+  ];
   readonly name = "ellipse";
   private stage = new TwoPoint(this.ctx, this.name);
   /** The centre and the major end, once the first stage is done; the second chooses the minor. */

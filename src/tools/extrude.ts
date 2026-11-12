@@ -55,7 +55,7 @@
 // inside a closed outline — the ones I can see are lit" — muted, the tool still
 // armed.
 
-import { defineTool, type FeatureStep, type PointerInfo, type RegionHit, type RenderContext } from "./tool.ts";
+import { defineTool, type FeatureStep, type PointerInfo, type RegionHit, type RenderContext, type How } from "./tool.ts";
 import { formatValue, type OptionSpecs } from "./options.ts";
 import { DEFAULT_DEPTH, extrude, extrudeProfile, orientingPlane, profileOf, profileOfLoops, regionNaming, regionOf, regionProfile } from "../operations.ts";
 import { materialWay } from "../modes.ts";
@@ -117,6 +117,11 @@ export class ExtrudeTool extends FeatureTool {
     mode: MODE_OPTION,
   };
   static readonly summary: string = "Pulls a closed shape into a solid: click inside it, then ✓";
+  static readonly how: How = [
+    "{Tap} inside a closed outline.",
+    "Set the depth in the options; ⇅ turns it the other way.",
+    "✓ builds the solid.",
+  ];
   readonly name: string = "extrude";
   private under: RegionHit | null = null;
   /** The regions picked, in the order picked. */
@@ -487,6 +492,11 @@ export class CutTool extends ExtrudeTool {
     end: END_OPTION,
   };
   static readonly summary = "Cuts a hole or a pocket into a solid: click a closed shape, then ✓";
+  static readonly how: How = [
+    "{Tap} inside a closed outline drawn on a solid.",
+    "Set how deep in the options.",
+    "✓ cuts it out.",
+  ];
   readonly name: string = "cut";
   /** The picks, values and model a reach was last worked out for, and whether every cut reached a solid. */
   private reachKey = "";

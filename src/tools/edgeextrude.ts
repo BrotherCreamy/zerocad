@@ -11,7 +11,7 @@
 // chords, entities that stay and are held, and the sheet between them. The
 // owner: *"Edge extrude is a fundamental feature."*
 
-import { press, type FeatureStep, type Hand, type PointerInfo, type RenderContext } from "./tool.ts";
+import { press, type FeatureStep, type Hand, type PointerInfo, type RenderContext, type How } from "./tool.ts";
 import type { OptionSpecs } from "./options.ts";
 import { FeatureTool, callText } from "./feature.ts";
 import { REGION_GREEN } from "./region.ts";
@@ -29,6 +29,11 @@ export class EdgeExtrudeTool extends FeatureTool {
     chain: { default: true, label: "chain" },
   };
   static readonly summary = "Extrudes an edge: a copy of the curve, chords to it, the surface";
+  static readonly how: How = [
+    "{Tap} a curve: its whole chain comes with it.",
+    "A copy is made a depth away, joined at each end.",
+    "Set the depth in the options. ✓ makes it.",
+  ];
   // Lower case, as every tool's name is (a glyph's name is the tool's); typed
   // bare, `edge` arms it, and `edgeExtrude(…)` is the call it types.
   readonly name = "edge";

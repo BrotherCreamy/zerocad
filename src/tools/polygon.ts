@@ -13,7 +13,7 @@
 // on — the sketch plane, a solid's face, the ground — as a circle does
 // (`CurvePlane`). The whole gesture is one undo step.
 
-import { Tool, defineTool, type Hand, type PointerInfo, type RenderContext } from "./tool.ts";
+import { Tool, defineTool, type Hand, type PointerInfo, type RenderContext, type How } from "./tool.ts";
 import { DRAWING_OPTIONS, asArmed, placePoint } from "./place.ts";
 import type { OptionSpecs } from "./options.ts";
 import { TwoPoint, twoPointNext } from "./twopoint.ts";
@@ -47,6 +47,10 @@ export class PolygonTool extends Tool {
     circumscribed: { default: true },
   };
   static readonly summary = "Draws a regular polygon: drag from its centre to a corner";
+  static readonly how: How = [
+    "Press at the centre, drag out to a corner.",
+    "The number of sides is in the options.",
+  ];
   readonly name = "polygon";
   private stage = new TwoPoint(this.ctx, this.name);
 

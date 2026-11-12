@@ -11,7 +11,7 @@
 // solid's by its second argument (two lines, not a list of edges), as the
 // typed `fillet` tells the corner from the edges.
 
-import type { FeatureStep } from "./tool.ts";
+import type { FeatureStep, How } from "./tool.ts";
 import type { OptionSpecs } from "./options.ts";
 import { FilletTool } from "./fillet.ts";
 import { callText } from "./feature.ts";
@@ -33,6 +33,10 @@ export class BevelTool extends FilletTool {
     other: { default: 0, unit: "length", label: "second", check: (v) => ((v as number) >= 0 ? null : "must be 0 (the same) or more") },
   };
   static readonly summary = "Chamfers a sketch corner: click two lines that meet, or their corner";
+  static readonly how: How = [
+    "{Tap} a corner, or the two lines that meet at it.",
+    "Set the setback in the options, then ✓.",
+  ];
   readonly name = "bevel";
 
   protected plan(values: Record<string, unknown>): FeatureStep[] | null {

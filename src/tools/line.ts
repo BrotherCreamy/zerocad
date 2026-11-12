@@ -47,7 +47,7 @@
 // seen square-on the two are the same angle, and seen obliquely the plane's
 // own angle is the one the constraint that lands will hold.
 
-import { Tool, defineTool, press, type Hand, type PointerInfo, type RenderContext } from "./tool.ts";
+import { Tool, defineTool, press, type Hand, type PointerInfo, type RenderContext, type How } from "./tool.ts";
 import { parallel } from "../relations/geometry.ts";
 import { frameBasis } from "../relations/refs.ts";
 import { DRAWING_OPTIONS, asArmed, placePoint } from "./place.ts";
@@ -99,6 +99,11 @@ interface Aim {
 export class LineTool extends Tool {
   static readonly options: OptionSpecs = DRAWING_OPTIONS;
   static readonly summary = "Draws lines: click the start, then the end of each in turn";
+  static readonly how: How = [
+    "{Tap} the start, then the end of each line in turn.",
+    "Start or end on a point or a line to join it.",
+    { mouse: "Esc ends the chain.", finger: "Cancel, the ✕ at the top, ends the chain." },
+  ];
   readonly name = "line";
   /** The first click of a fresh chain — kept whole, so its snap survives to commit. */
   private pending: PointerInfo | null = null;

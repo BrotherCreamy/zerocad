@@ -11,7 +11,7 @@
 // Under the extrude button, beside the extrude that sweeps a region into a
 // solid: one tool sweeping curves into a sheet, no button of its own.
 
-import { press, type FeatureStep, type Hand, type PointerInfo, type RenderContext } from "./tool.ts";
+import { press, type FeatureStep, type Hand, type PointerInfo, type RenderContext, type How } from "./tool.ts";
 import type { OptionSpecs } from "./options.ts";
 import { FeatureTool, callText } from "./feature.ts";
 import { REGION_GREEN } from "./region.ts";
@@ -29,6 +29,11 @@ export class SurfaceTool extends FeatureTool {
     chain: { default: true, label: "chain" },
   };
   static readonly summary = "Sweeps curves into a surface: click a curve, set the depth, ✓";
+  static readonly how: How = [
+    "{Tap} a curve to sweep its chain up into a sheet.",
+    "Or {tap} inside a closed outline for a flat sheet.",
+    "Set the depth in the options. ✓ makes it.",
+  ];
   readonly name = "surface";
   chain: string[] = [];
   /** A closed loop clicked inside instead: the planar surface it bounds, by a member of it. */

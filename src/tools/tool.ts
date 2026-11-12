@@ -344,6 +344,30 @@ export abstract class Tool {
    */
   static readonly summary?: string;
   /**
+   * **How the tool is used**: the steps, in the words of someone doing them,
+   * three lines at most — `static how = ["{Tap} a corner, or the two lines
+   * that meet at it", …]` (docs/plans/tool-howto.md; the owner: *"I don't
+   * even know how to add a parallel relation. Maybe a little tooltip should
+   * pop up when I hover over (desktop) or select (phone) a tool."*). The
+   * summary says what the tool *is*; this says what to *do*. The one place it
+   * is written — the tooltip a hover or a held finger shows, and the tip a
+   * phone shows as the tool is chosen, both read it (`toolHow`).
+   *
+   * A line is text, with `{tap}` and `{Tap}` standing for the press under
+   * the hand — *click* under a mouse, *tap* under a finger — or, where the
+   * two hands genuinely do different things (a chain ended by Esc or by the
+   * strip's Cancel), `{ mouse: "…", finger: "…" }`. A tool whose gesture
+   * depends on how it is armed (the circle locked to three points) declares a
+   * function of its options instead, so the tip never describes a gesture
+   * the tool will not take: **a how line that is wrong is worse than none**.
+   *
+   * Read only from the class itself, never inherited, as `summary` is — a
+   * subclass registered under another name may be used another way.
+   * Optional: a tool defined at the command line without one has a tip
+   * without steps.
+   */
+  static readonly how?: How;
+  /**
    * The toolbar group the tool's button is in: `static group = "shapes"`
    * (docs/plans/toolbar-groups.md) — one of `TOOL_GROUPS`' names, so a tool
    * defined at the command line can share a family's button. A built-in's
@@ -543,6 +567,86 @@ function ownSummary(ctor: ToolCtor): string | null {
   return typeof s === "string" && s.trim() ? s.trim() : null;
 }
 
+// ---- how a tool is used (docs/plans/tool-howto.md) ---------------------------
+
+/** One step of a tool's how: text for both hands, or a line for each where they differ. */
+export type HowLine = string | { readonly mouse: string; readonly finger: string };
+
+/**
+ * A tool's how: its lines, or — for a tool whose gesture depends on how it is
+ * armed — a function of the options it is (or would be) armed with.
+ */
+export type How = readonly HowLine[] | ((options: Readonly<Record<string, unknown>>) => readonly HowLine[]);
+
+/** The most lines a how may have: a tip is read at a glance, with a tool in the hand. */
+export const HOW_MAX_LINES = 3;
+
+/**
+ * How Select and the Hand are used — here beside `ENGINE_SUMMARIES`, because
+ * neither is a class with a static to carry it. Each line was written by
+ * doing it in the browser, by mouse and by finger (docs/plans/tool-howto.md).
+ */
+export const ENGINE_HOW: Readonly<Record<string, readonly HowLine[]>> = {
+  [SELECT]: [
+    { mouse: "Click a thing to select it; Shift-click adds more.", finger: "Tap a thing to select it; tap more to add them." },
+    { mouse: "Drag a thing to move it; drag from empty space to box several.", finger: "Drag a thing to move it. Hold, then drag, to box several." },
+    { mouse: "Right-click a thing for its menu.", finger: "Hold still on a thing for its menu." },
+  ],
+  [HAND]: [
+    "Drag anywhere to slide the view, over the drawing too.",
+    "A {tap} on a thing still selects it.",
+    { mouse: "Holding Space is the hand, whatever tool is chosen.", finger: "Two fingers pan and zoom with any tool." },
+  ],
+};
+
+/** One line as `hand` reads it: its own text for that hand, `{tap}` and `{Tap}` filled in. */
+export function howText(line: HowLine, hand: Hand): string {
+  const text = typeof line === "string" ? line : line[hand];
+  const verb = press(hand);
+  return text.replaceAll("{tap}", verb).replaceAll("{Tap}", verb[0].toUpperCase() + verb.slice(1)).trim();
+}
+
+/** Whether `v` is a how's line: text, or text for each hand. */
+function isHowLine(v: unknown): v is HowLine {
+  if (typeof v === "string") return true;
+  if (!v || typeof v !== "object") return false;
+  const o = v as { mouse?: unknown; finger?: unknown };
+  return typeof o.mouse === "string" && typeof o.finger === "string";
+}
+
+/** The class's own `how`, not one it inherits — see `Tool.how`. Undefined when it declares none. */
+function ownHow(ctor: ToolCtor): unknown {
+  return Object.hasOwn(ctor, "how") ? (ctor as unknown as { how?: unknown }).how : undefined;
+}
+
+/**
+ * **How `name` is used, under `hand`**: its lines as that hand reads them, or
+ * null for a tool that declares none (or no tool at all). `options` is what
+ * the tool is armed with — or would be: the host's business, since the last
+ * values used are the viewer's (options.ts) — for a how that depends on them.
+ *
+ * Never throws and never says more than `HOW_MAX_LINES`: a how that is a
+ * function is the tool author's code, run to draw a tooltip, and one that
+ * throws or answers something else is simply a tip without steps.
+ */
+export function toolHow(name: string, hand: Hand, options: Readonly<Record<string, unknown>> = {}): string[] | null {
+  let how: unknown = Object.hasOwn(ENGINE_HOW, name) ? ENGINE_HOW[name] : undefined;
+  if (how === undefined) {
+    const ctor = registry.get(name);
+    how = ctor ? ownHow(ctor) : undefined;
+  }
+  if (typeof how === "function") {
+    try {
+      how = (how as (o: Readonly<Record<string, unknown>>) => unknown)(options);
+    } catch {
+      return null;
+    }
+  }
+  if (!Array.isArray(how)) return null;
+  const lines = how.filter(isHowLine).slice(0, HOW_MAX_LINES).map((l) => howText(l, hand)).filter((l) => l);
+  return lines.length ? lines : null;
+}
+
 /** What the toolbar shows, in its order: Select, the Hand, then every listed tool. */
 export function toolbarTools(): string[] {
   return [...ENGINE_TOOLS, ...listTools()];
@@ -727,6 +831,18 @@ export function defineTool(name: string, ctor: ToolCtor, { listed = true }: { li
     const s = (ctor as unknown as { summary?: unknown }).summary;
     if (s !== undefined && typeof s !== "string") {
       throw new Error(`${name}'s static summary must be one line of text, like "Draws a rectangle: drag from corner to corner"`);
+    }
+  }
+  // And a how that is not lines of text — or is more of them than a tip holds:
+  // said where it is written, as the summary's is. A how that is a function
+  // is asked when its tip shows (`toolHow`), not here: it reads options.
+  const how = ownHow(ctor);
+  if (how !== undefined && typeof how !== "function") {
+    if (!Array.isArray(how) || !how.every(isHowLine)) {
+      throw new Error(`${name}'s static how must be a list of lines of text, like ["{Tap} where the stamp goes"] — {tap} reads click or tap; a line may be { mouse: "…", finger: "…" }`);
+    }
+    if (how.length > HOW_MAX_LINES) {
+      throw new Error(`${name}'s static how has ${how.length} lines — a tip holds ${HOW_MAX_LINES} at most`);
     }
   }
   // Likewise a group that is not a name: `static group = 3` would otherwise

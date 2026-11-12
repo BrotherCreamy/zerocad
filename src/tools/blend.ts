@@ -33,7 +33,7 @@
 // `fillet("s1", "s2", 3, [[…], […]])`. A surface's boundary edge (one face) is
 // never picked: there is nothing on its other side to round to.
 
-import { press, type FeatureDialog, type FeatureStep, type Hand, type PointerInfo, type RenderContext } from "./tool.ts";
+import { press, type FeatureDialog, type FeatureStep, type Hand, type PointerInfo, type RenderContext, type How } from "./tool.ts";
 import type { OptionSpecs } from "./options.ts";
 import { FeatureTool, callText } from "./feature.ts";
 import { REGION_GREEN } from "./region.ts";
@@ -535,6 +535,11 @@ export class EdgeFilletTool extends NewBlendTool {
     tangent: { default: true, label: "tangent" },
   };
   static readonly summary = "Fillets a solid's edges: click edges or a face, see it, then ✓";
+  static readonly how: How = [
+    "{Tap} edges of a solid; a face takes all its edges.",
+    "Set the radius in the options.",
+    "✓ rounds them.",
+  ];
   readonly name = "round";
   protected readonly kind = "fillet";
 }
@@ -545,6 +550,11 @@ export class EdgeChamferTool extends NewBlendTool {
     tangent: { default: true, label: "tangent" },
   };
   static readonly summary = "Chamfers a solid's edges, one setback: click edges or a face, then ✓";
+  static readonly how: How = [
+    "{Tap} edges of a solid; a face takes all its edges.",
+    "Set the setback in the options.",
+    "✓ cuts them back.",
+  ];
   readonly name = "chamfer";
   protected readonly kind = "chamfer";
 }

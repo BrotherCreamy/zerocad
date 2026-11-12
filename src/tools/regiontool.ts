@@ -34,7 +34,7 @@
 // the journal holds what the typed call journals. A refusal (a face that
 // takes nothing away) is guidance, muted, and the region stays in hand.
 
-import { Tool, press, type Hand, type PointerInfo, type RegionHit, type RenderContext, type ToolContext } from "./tool.ts";
+import { Tool, press, type Hand, type PointerInfo, type RegionHit, type RenderContext, type ToolContext, type How } from "./tool.ts";
 import type { OptionSpecs } from "./options.ts";
 import { drawNamedRegion, drawRegion, lightRegions, missedRegion, regionKey } from "./region.ts";
 import { callText } from "./feature.ts";
@@ -57,6 +57,10 @@ const VERB: Record<RegionMode, string> = { new: "make a region of", add: "add", 
 
 export class RegionTool extends Tool {
   static readonly summary = "Combines faces into a region: click a face, then faces to subtract";
+  static readonly how: How = [
+    "{Tap} inside a closed outline to make a region of it.",
+    "Then {tap} outlines inside it to cut them out.",
+  ];
   static readonly options: OptionSpecs = {
     // No label: the row is the panel's only one, and "Subtract" is the long
     // word the extrude's Cut is not — beside it the label was cut to one
