@@ -10,6 +10,208 @@ For the itemized technical state see `STATUS.md`, for what's next see
 `CHANGELOG.md`, and for the project pitch see `README.md`.
 
 
+## 2026-11-12 — a direction relation turns a line and never scales it; a conflict names what made it
+
+Review items 1 and 3 of the register, built on `claude/review-solver` from
+docs/plans/review-solver.md. The register has every choice as one line; this
+is why each was made, and what was tried first.
+
+**The bug, as a test, before anything changed.** `par` between two free
+lines 60.1 and 60.8 long: 8.763 and 1.183 long after, SOLVED, in 2D and 3D
+alike. The row was |u||v|·sin θ and the solve paid for the parallel mostly
+in length. The same script then measured every row of that shape — `perp`
+left the pair 56 and 87 long, `col` 17 and 3, `on` shortened the line the
+point was put on from 60 to 21, `sym` its mirror line to 37 — so the fix was
+never going to be three relations.
+
+**The spec's design did not survive measuring, in four places.** It said:
+divide by the lengths, multiply by the model's length scale, fall back to
+the un-normalised row below the collapse threshold. Each of those was built
+first and each was wrong for a reason only the numbers showed.
+
+1. *The model's length scale.* On the forty chained rectangles of the cost
+   test the drawing is two thousand across and a side is forty, so a
+   direction row scaled by the drawing was fifty times a `dist` row beside
+   it. The normal equations were that much worse conditioned and the solve
+   took 23 iterations where it had taken 8. The multiplier is the longer of
+   the row's own lines **as it was when the solve began** — a plain number
+   read from a snapshot `Model.solve` already takes, so still no variable of
+   the row, and the row is exactly as large as the one it replaces was at
+   that moment. **Rejected**: the line's live length read as a number each
+   evaluation, which is the same magnitude and simpler; its Jacobian is then
+   wrong by the residual times the length's gradient, and a finite-difference
+   check of the row fails, which the spec asks for.
+2. *A sine and a cosine.* L·sin θ has no gradient at 90°: `par` typed on two
+   lines exactly square — a rectangle's adjacent sides, the commonest pair
+   there is — did not move and read CONFLICT. The raw row never showed this
+   because at 90° its whole gradient is along the lines: the only way down
+   was shorter, **which is the owner's first bug seen from the other side**.
+   Normalising closed that way out and left nothing. So the rows are the
+   angle itself: the turn that would make the two parallel (`turnToParallel`,
+   the wedge scaled so its length is the angle, folded to ±90° because a
+   line has no front), the same less a right angle (`turnToSquare`), the
+   angle less the one asked for (`ang`). The slope is the same everywhere,
+   and a Gauss–Newton step is the turn needed rather than its sine's guess
+   (a cosine linearised at 13° asks for a turn of 4.3 radians where 1.3 are
+   needed, which is part of how `perp` got to 169). Exactly along
+   one line the wedge's length is a cone's tip with no derivative; a way to
+   turn is chosen there from the values (`angleBetween`), which also retires
+   the reason `ang` on a profile needed its seed. **Rejected**: a nudge in
+   `Model.solve` when a direction row is unmet and flat — `leanOffNormal`'s
+   move, generalised. It is a second mechanism to remember and the row would
+   still be wrong.
+3. *The collapse threshold as the floor.* A unit direction's gradient is one
+   over the line's length. A triangle given two right angles has only one
+   answer, a side of no length, and under the normalised rows it crept toward
+   it: sixty iterations to 2e-6 of the drawing, the rows a million times
+   stiffer than their neighbours, the kernel's per-coordinate damping letting
+   nothing near them move, and the push that is meant to tell a collapse from
+   a small size moving it another 15% in thirty iterations. It was called
+   solved. The floor is a thousandth of the drawing's size instead
+   (`DIRECTIONLESS`); under it a row runs down to nothing with the line, as
+   the raw one did, and the collapse is found as before.
+4. *Zero gradient is enough.* It is not, and this is the one that matters.
+   With every row's gradient along its lines exactly zero, `par` between the
+   two free lines left them 61.0 and 62.4 long and `perp` left them **169**.
+   The kernel's step moves each end along a straight line, and a straight
+   move that turns a line stretches it — at first order, not second, because
+   the damping is weighted per coordinate (λ·(1 + diag JᵀJ)) and so is not a
+   rotation's. No row can fix what the step does. So `Model.solve` asks, of
+   every line a direction block says it turns, whether its length changed,
+   and if so solves on with those lengths pulled back and then released
+   (`keptSizes`): 1e-10 of their length on all six relations.
+
+**What "a line it turns" had to mean.** The first gate was *only when a
+direction block was unmet as the solve began*, so that a `coin` on a free
+line's end still stretched the line. That left a level line whose one end
+was pinned thirty higher with its far end slid 5e-4 sideways — a length no
+relation asked to change, in a solve a `fix` began — and
+`test/line.test.ts`, which is older than all of this, said so. The gate
+went: every solve keeps the length of every line some relation reads for its
+direction, unless a relation changes it. A line no relation reads so still
+stretches to a `coin`, which is what it did before and what a draughtsman
+expects of a bare line. A rectangle pinned by one corner now moves whole
+rather than stretching toward the pin; I think that is right, and it is in
+the register to veto.
+
+**Why a drag is not steered.** A pull on a size in a frame would be
+satisfied exactly by moving a free rectangle whole under a dragged corner,
+and the corner drag is how a rectangle is resized. So a frame is the rows
+alone: a drag of one end of a par pair costs the other line 3.1% where it
+cost 47%. The remainder is the kernel's step, written down in TODO.md with
+the measurement; changing the kernel's damping to a rotation-friendly one
+would touch every solve in the app and is not this package's to do.
+
+**A failed solve is put back.** This followed from the rows and was not in
+the spec. Once a direction row cannot be met by shortening, a `par` and a
+`perp` on one pair have no answer at all — which is the honest state — and
+least squares ends at the compromise between them: the owner's rectangle
+sheared 45°. Left there, the user has a conflict to read *and* a drawing to
+undo, and every later solve starts from a state no relation described. So
+the part a row stayed large in goes back as a collapsed part does, after one
+more solve from where it stopped (sixty iterations is a bound, not a
+verdict). Two things fell out of it: a drag on a drawing holding a conflict
+has to leave that part out of the frame explicitly (it used to stop because
+the frame folded a side, and no longer folds), and a relation that does not
+hold must not be called redundant — a `par` and a `perp` on one pair are the
+same row to first order now, and the rank analysis called the conflict an
+agreement.
+
+**The culprit is known, not found.** I had first thought of finding it: the
+relation in every irreducible conflict, the one whose removal clears the
+part. That is n trials and it is wrong on a drawing with two conflicts. The
+drawing solved before the edit that broke it, so the model only has to
+remember which relations have held in a solve (`settled`); the one in the
+failed part that has not is the edit. That needs no trial, survives the
+search's bound, and is right when the corner's perp is then deleted and the
+par is found against two others instead. **Rejected**: the journal's last
+entry — it is the culprit only until the next thing is drawn, and the status
+would flip from `r7 — against r1` to `r1 · r7 cannot all hold` under the
+user's hand.
+
+**One relation before any larger set.** With the culprit fixed, QuickXplain
+over the rest returned whichever irreducible set its order met first, and on
+a four-perp rectangle a `par` disagrees with its own corner's perp alone and
+with the two far ones together. Each of the nearest dozen is tried alone
+first. This replaces #87's "two where two will do" for a conflict with a
+culprit; that patch stays for the sets with none.
+
+**The spec's e2e says "the two perps".** On a rectangle of four perps the
+least set a corner's `par` cannot hold with is that corner's one perp, and
+that is what is named; delete it and the two far perps are named next. The
+spec's line reads like the three-perp rectangle of the original bug, where
+the set was also one. Said in the register.
+
+**The inks.** The first idea was a second hue. There is none free: amber is
+the hover and what just happened, violet the selection, blue what is free,
+green the tools. So the quieter ink is the conflict's red let down toward
+grey (#b98a86), and because two reds on a dozen pixels are one red, the
+difference is carried by shape as well: the culprit's box is filled and its
+mark cut out dark, what it is against is an outline. Looked at on the canvas
+and over a solid's lit face, by mouse and at an iPhone's size; the filled
+block is the one thing on the drawing that is solid red.
+
+**Bug 74.** Reading the inks over a solid's lit face, every glyph read plain
+under a CONFLICT verdict: a glyph follows its anchor, a solid's edges are
+quiet until hovered, and so a conflict on a solid drew nothing red at all.
+A relation in a conflict is always drawn now.
+
+**Measured under load, and said so.** Three other packages were building on
+the same four cores; the load average was thirty. Every time in the spec's
+table is the best of three, and the e2e lifts the search's clock from the
+page's model, because at that load the 500 ms bound ran out on a rectangle's
+extrude and the status read "against a set not found in time" — the bound
+doing its job, which has its own unit test.
+
+**review-relations went in first, and this was measured again on the two
+together.** Its author had said a relation among many would need no second
+edit, the rows being the pair's own inside one relation, and that held:
+`par` among four free lines left them 41, 31, 89 and 123 long on that branch
+and leaves each as it was on this one. What did need an edit was the row
+that branch added, `corner` — the angle between the lines two walls are
+swept from, u·w − |u||w| cos θ, written while this package was still
+removing every row of that shape. It is in `src/relations/`, so it was
+changed here rather than handed back: `ang`'s row on the two rays out of the
+corner.
+
+The culprit needed no change for a relation among many, because it is found
+by relation and never by block; and a `join` rewrites a relation's members,
+so "has not held as it stands" already says the joined relation made the
+conflict. Writing that test in 3D found something that was this package's
+own. The failing solve folded the rectangle's far side instead of stopping,
+the first ring the search tries is then the relations that name what folded,
+and the rule "one relation before any larger set" had been written against
+that ring. The answer — the two far corners' perps — is a true irreducible
+set and the wrong thing to read: the corner's own perp, alone, is outside
+the ring. The singles are asked of the nearest dozen of everything now.
+
+**The gate found what my batch had not.** While iterating I ran the unit
+files and fourteen e2e files I judged solver-sensitive; `revolve.e2e.ts` was
+not among them, and the full run failed it: a revolve's angle set from 270°
+to 180° slid its profile six units. The base slid it 0.2 and shrank an edge
+by 1% on the same edit, which nothing asserted. The reason it was small is
+the reason this package exists: the sketch's direction rows were products of
+lengths, so the sketch was twenty times stiffer than the revolve's rows and
+the feature gave way. I measured the obvious repair — the product of both
+lengths, frozen, as the multiplier, so every row is the size it was — and it
+restores the anchor and the bug together: `perp` 74 and 64, the drag 47%.
+The stiffness and the shrinking are one thing. So the row stays a length,
+and who gives way is said where it is known: `set` seats the revolve's end
+face before the solve, which is what `set` has done for an extrude's lid
+since someone measured "a free rectangle's base dropped 5.9" there. That
+put one call in operations.ts, another package's file this cycle; the
+function is in relations/revolution.ts.
+
+Then the question the failure raises: what else leaned on a stiff sketch.
+Every dimension of every fixture, set up and down, 64 edits, compared with
+review-relations alone by how far the whole drawing moves: nothing moves
+further by more than 5%, most the same or less. Drags were not compared
+that way and are filed.
+
+Not built: saying which member of a relation among many is the one that
+cannot hold. `r5 par l1 l2 m1 — against r1` fills three glyphs where one
+line is at fault. Filed.
+
 ## 2026-11-12 — one relation among equals, and a wall named by its line
 
 Review items 5 and 6, built on `claude/review-relations` from

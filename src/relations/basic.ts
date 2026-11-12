@@ -42,7 +42,9 @@ export function dist(model: Model, aName: string, bName: string, target: number)
           const [a, b, c, d] = chunk(l, dim, 4);
           const q = c.map((ci, i) => ci.add(d[i]).div(2));
           return [offLine(q, a, b).sub(target)];
-        }, label);
+          // Both read as lines without length: the first for where it lies, the
+          // second for its middle (`Model.addResidual`'s `turns`).
+        }, label, [aName, bName]);
         return;
       }
       const [p, line] = kind(aName) === "line" ? [bName, aName] : [aName, bName];
@@ -50,7 +52,7 @@ export function dist(model: Model, aName: string, bName: string, target: number)
       model.addResidual(joinVars(pt.varIndices, lineVars(model, line)), (l) => {
         const [q, a, b] = chunk(l, dim, 3);
         return [offLine(q, a, b).sub(target)];
-      }, label);
+      }, label, [line]);
       return;
     }
     const a = model.point(aName), b = model.point(bName);

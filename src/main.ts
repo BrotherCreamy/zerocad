@@ -43,7 +43,7 @@ import { GUIDE_NOTE_MS, STATUS_FADE_MS, STEP_NOTE_MS, StatusLine, diagnosisLine 
 import { AppMenu, UNTITLED } from "./appmenu.ts";
 import { LogTail } from "./logtail.ts";
 import { Organiser, organiserSections, rowMenu, surfaceMenu } from "./organiser.ts";
-import { ConstraintsPalette, paletteFor } from "./constraints.ts";
+import { ConstraintsPalette, conflictRoles, paletteFor, type ConflictRole } from "./constraints.ts";
 import { surfaceNameOf } from "./surfaces.ts";
 import { logoSvg } from "./logo.ts";
 import { GroupMemory, OptionMemory, declaredOptions, unitSymbol, type OptionValue } from "./tools/options.ts";
@@ -69,7 +69,7 @@ import { lockPage } from "./pagelock.ts";
 import { BackStack } from "./backstack.ts";
 import { keyboardTop, lifted } from "./keyboard.ts";
 import { Installer, type InstallWindow } from "./install.ts";
-import type { Diagnosis, Entity } from "./model.ts";
+import type { Conflict, Diagnosis, Entity } from "./model.ts";
 // The app is its modules (docs/plans/workbenches.md): every built-in module,
 // in the order that orders the tray, the menu, the replay table and help()
 // (modules/builtin.ts). A workbench added from the device is one more, loaded
@@ -89,8 +89,14 @@ const modeEl = document.getElementById("mode")!;
 let diagnosisFade: ReturnType<typeof setTimeout> | undefined;
 /** The last diagnosis (`Model.diagnose`), read by the drawing: what is free. Null before the first solve. */
 let diagnosis: Diagnosis | null = null;
-/** The relations the last solve said cannot all hold: drawn in the conflict ink. */
-let conflicted = new Set<string>();
+/**
+ * Each relation's part in what the last solve said cannot all hold, for the
+ * drawing's inks (`conflictRoles`): the one that made a conflict, one it is
+ * against, or one of a set with none singled out. Empty when it solved.
+ */
+let conflicted = new Map<string, ConflictRole>();
+/** The last solve's conflicts as `Model.conflicting` gave them: what the constraints palette lists first. */
+let standing: Conflict[] = [];
 /** What the log last said about a conflict, so a re-solve does not say it again. */
 let conflictSaid = "";
 /** Whether free entities wear the free ink (`freeink(false)` turns it off, as `glyphs(false)` the marks). */
@@ -484,6 +490,19 @@ const FREE = "#5aa2ff";
 const HELD = "#afc6d9";
 /** A glyph whose relation cannot hold with the others: the conflict's red, the status's. */
 const CONFLICT_INK = "#e0605c";
+/**
+ * **The quieter ink of what a conflict's culprit is against**
+ * (docs/plans/review-solver.md): the conflict's red let down toward the
+ * sketch's grey — the same family, so it reads as part of the conflict, and
+ * plainly not the same red. The two are told apart by more than hue, because
+ * on a phone a glyph is a dozen pixels and two reds are one red: the culprit's
+ * box is **filled** with the conflict's ink, its mark cut out of it dark; what
+ * it is against is an outline and a mark in this, as every other glyph is an
+ * outline and a mark.
+ */
+const AGAINST_INK = "#b98a86";
+/** A culprit's mark, on its filled box: the canvas's own dark. */
+const ON_CONFLICT = "#0a0e13";
 /**
  * **The mode's accent** (docs/plans/mode-feedback.md): the tools' green
  * (region.ts's `REGION_GREEN`, the snap marker's), which is the sketch tool's
@@ -1448,7 +1467,13 @@ async function main() {
     // edge is drawn when that is (quiet.ts) — or when it is itself selected.
     // Only the drawing leaves it out: the engine still picks it, as it still
     // picks the corner.
-    const marks = engine.glyphs().filter((m) => chosen.has(m.relation) || glyphDrawn(m, quiet, shown, hoveredRelation));
+    //
+    // **A relation in a conflict is always drawn**, quiet anchor or not: the
+    // status names it, and the drawing has to show which one that is. On a
+    // solid's edges — quiet until hovered — a conflict's glyphs were not drawn
+    // at all, so CONFLICT stood over a picture with nothing red in it (found
+    // by reviewsolver.e2e.ts reading the inks over a lit face; bug 74).
+    const marks = engine.glyphs().filter((m) => chosen.has(m.relation) || conflicted.has(m.relation) || glyphDrawn(m, quiet, shown, hoveredRelation));
     if (!marks.length) return;
     const k = uiOf(view);
     g.save();
@@ -1471,10 +1496,18 @@ async function main() {
       // orange glyph would be saying "wrong" about something right (the
       // owner's decision, docs/plans/profiles-held.md). Hover and selection
       // still outrank the red, so the one being aimed at reads as aimed at.
-      const verdict = conflicted.has(mark.relation) ? CONFLICT_INK : null;
+      //
+      // **Who made it, and what it is against** (docs/plans/review-solver.md):
+      // the culprit's box is filled with the conflict's ink and its mark cut
+      // out dark — the one solid block of red on the drawing — and what it
+      // cannot hold with is outlined in the quieter ink. A set with none
+      // singled out keeps the red outline every one of them had.
+      const role = conflicted.get(mark.relation);
+      const verdict = role === undefined ? null : role === "against" ? AGAINST_INK : CONFLICT_INK;
+      const filled = role === "culprit" && !on && !picked;
       const [x, y] = mark.screen;
       roundedBox(x - mark.halfW, y - mark.halfH, mark.halfW * 2, mark.halfH * 2, 3 * k);
-      g.fillStyle = on ? "#20303f" : "#0e141bee";
+      g.fillStyle = on ? "#20303f" : filled ? CONFLICT_INK : "#0e141bee";
       g.fill();
       g.strokeStyle = on ? "#e8a33d" : picked ? SELECTION : verdict ?? "#2c3d4f";
       g.lineWidth = picked || verdict ? 1.6 : 1;
@@ -1483,7 +1516,7 @@ async function main() {
       // something the user asked for, where `∥` states something they may only
       // have implied. Onshape draws its dimensions the same way — a value
       // reads as part of the drawing, an inferred mark as a note about it.
-      g.fillStyle = on ? "#e8a33d" : picked ? SELECTION : verdict ?? (mark.isLabel ? "#cfe0ee" : "#8fa7bb");
+      g.fillStyle = on ? "#e8a33d" : picked ? SELECTION : filled ? ON_CONFLICT : verdict ?? (mark.isLabel ? "#cfe0ee" : "#8fa7bb");
       // Nudged down a hair: several of these marks (— ∥ ⊥ ∴) sit high in their
       // em box, and centring by metrics leaves them looking as though they are
       // escaping upward out of the box.
@@ -1580,8 +1613,9 @@ async function main() {
     // Which relations cannot all hold (model.ts's `conflicting`), by name, as
     // the hover tag and `rels()` name them — the verdict used to list their
     // blocks' labels.
-    const c = report.solved ? { relations: [], unowned: [] } : model.conflicting(report);
-    conflicted = new Set(c.relations);
+    const c = report.solved ? { relations: [], unowned: [], conflicts: [] } : model.conflicting(report);
+    standing = c.conflicts;
+    conflicted = conflictRoles(c.conflicts);
     if (report.solved) statusLine.show("solved", "SOLVED");
     // The verdict alone: the names it accuses are the diagnosis beside it, each
     // one a thing to click (`showDiagnosis`), so they are not said twice.
@@ -1596,15 +1630,23 @@ async function main() {
       diagnosis = null;
       console.warn("diagnosis failed", err);
     }
-    showDiagnosis(report.solved, c.relations, c.unowned);
-    const said = c.relations.join(" ");
-    if (said && said !== conflictSaid) {
+    showDiagnosis(report.solved, c.conflicts, c.unowned);
+    const said = JSON.stringify(c.conflicts);
+    if (c.conflicts.length && said !== conflictSaid) {
       // A collapse says what would have folded: the relations hold only if it
       // goes to nothing, which is why the drawing did not move.
       const folds = report.collapsed.length ? ` without collapsing ${report.collapsed.join(", ")}` : "";
-      log(`CONFLICT — these cannot all hold${folds}: ${c.relations.map((r) => describeRelation(model.relationOf(r))).join(" · ")}`, "err");
+      const words = (r: string) => describeRelation(model.relationOf(r));
+      for (const k of c.conflicts) {
+        // The relation that made it first, by what it says, then what it
+        // cannot hold with — or the set, where none is singled out.
+        if (k.culprit === null) log(`CONFLICT — these cannot all hold${folds}: ${k.set.map(words).join(" · ")}`, "err");
+        else if (!k.found) log(`CONFLICT — ${words(k.culprit)} made it; what it cannot hold with was not found in time`, "err");
+        else if (!k.set.length) log(`CONFLICT — ${words(k.culprit)} cannot hold${folds}`, "err");
+        else log(`CONFLICT — ${words(k.culprit)} made it: it cannot hold against ${k.set.map(words).join(" · ")}${folds}`, "err");
+      }
     }
-    conflictSaid = said;
+    conflictSaid = c.conflicts.length ? said : "";
     render();
     return report;
   }
@@ -1619,12 +1661,15 @@ async function main() {
    * words, and each relation it names as a button that selects it — so a
    * conflict is clicked, then Delete takes it away (constraint-deletion.md).
    * It fades with SOLVED when it only counts what is free; a conflict and a
-   * redundancy stay until the next solve replaces them.
+   * redundancy stay until the next solve replaces them. A conflict's culprit
+   * is said with what it says (`par l1 l2`), in the conflict's ink, and what
+   * it is against in the quieter one (index.html's `.rel.against`).
    */
-  function showDiagnosis(solved: boolean, conflicts: string[], unowned: string[]) {
+  function showDiagnosis(solved: boolean, conflicts: Conflict[], unowned: string[]) {
+    const says = (r: string) => (model.relations.has(r) ? describeRelation(model.relationOf(r)).slice(r.length).trim() : "");
     const line = model.entities.size === 0 && solved
       ? { cls: "" as const, parts: [], fades: true }
-      : diagnosisLine(solved, diagnosis?.dof ?? null, conflicts, unowned, solved ? diagnosis?.agreeing ?? [] : []);
+      : diagnosisLine(solved, diagnosis?.dof ?? null, conflicts, unowned, solved ? diagnosis?.agreeing ?? [] : [], says);
     diagnosisEl.textContent = "";
     diagnosisEl.className = line.cls;
     for (const part of line.parts) {
@@ -1634,7 +1679,7 @@ async function main() {
       }
       const b = document.createElement("button");
       b.type = "button";
-      b.className = "rel";
+      b.className = part.role ? `rel ${part.role}` : "rel";
       b.dataset.relation = part.relation;
       b.textContent = part.relation;
       b.title = `${model.relations.has(part.relation) ? describeRelation(model.relationOf(part.relation)) : part.relation} — click to select it, then Delete removes it`;
@@ -1822,7 +1867,12 @@ async function main() {
       // (it cancels any gesture, which can close a user action), and the flag has
       // to already be set by the time it does.
       movedHistory = true;
-      swapModel(openModelText(target, APP_DIM));
+      // The model an undo or a redo opens is told which relations had held in
+      // the one it replaces, so a redone conflict is laid to the relation
+      // that made it as it was the first time (`Model.inheritHeld`).
+      const next = openModelText(target, APP_DIM);
+      next.inheritHeld(model);
+      swapModel(next);
     }
     if (armed) {
       const why = toolUnavailable(model, armed.name);
@@ -2245,7 +2295,7 @@ async function main() {
   };
   if (constraintsEl) {
     constraintsPane = new ConstraintsPalette(constraintsEl, {
-      sections: () => paletteFor(model, paletteNames(), engine.selection.prune(model), diagnosis?.agreeing ?? [], paletteSummoned()),
+      sections: () => paletteFor(model, paletteNames(), engine.selection.prune(model), diagnosis?.agreeing ?? [], paletteSummoned(), standing),
       run: (command) => void submit(command),
       note: (text) => log(text, "guide"),
       // Typed like any line, and then the tool hears it ran — its picks are

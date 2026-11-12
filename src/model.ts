@@ -1245,6 +1245,32 @@ export class Model {
    * which is the bound doing its job, not the answer being wrong.
    */
   searchMs = SEARCH_MS;
+  /** Every variable's value as the last solve began (`valueBefore`), or null before any row has asked. */
+  private frozen: number[] | null = null;
+  /**
+   * Each relation as it stood the last time a solve solved its part of the
+   * drawing: the relations that **have held** (`hasHeld`). One that is not
+   * here as it now is — just added, or its value just `set` — is what a
+   * conflict is laid to (`conflicting`). Not saved: a file opened holds
+   * nothing that has held here.
+   */
+  private settled = new Map<string, RelationEntry>();
+  /**
+   * The part of the drawing the last `solve` could not solve and put back —
+   * its variables and its blocks — or null when it solved. What a drag's
+   * frame leaves where it is (`solveFrame`).
+   */
+  private stuck: { vars: Set<number>; blocks: Set<BlockHandle> } | null = null;
+  /** What `lengthFloor` hands out, as the last solve began, or null before any row has asked. */
+  private floor: number | null = null;
+  /**
+   * The blocks that read an entity **for its direction and not its size**
+   * (`addResidual`'s `turns`), each with the entities it reads so: a `par`'s
+   * two lines, the line an `on` holds a point to, a mirror's line. What
+   * `solve` keeps the size of while such a block is being met (`keptSizes`).
+   * A block that is gone leaves its entry behind, which names nothing.
+   */
+  private turning = new Map<BlockHandle, readonly string[]>();
 
   /**
    * How this model was built, in order — every entity created, every
@@ -1525,10 +1551,18 @@ export class Model {
    * Adds a residual block, remembering it as part of the relation currently
    * being built. Identical to `problem.addResidual` outside a `relation()`
    * body, so it is always the safe one to call.
+   *
+   * `turns` names the entities this block reads **for their direction only**
+   * — a `par`'s lines, the line an `on` holds a point to. Such a block cannot
+   * be met by changing those entities' size, and `solve` then sees that
+   * meeting it does not change them either (`keptSizes`,
+   * docs/plans/review-solver.md). Bookkeeping, not an equation: the block's
+   * mathematics is its `fn`, whatever is said here.
    */
-  addResidual(varIndices: VarRefs, fn: (locals: Dual[]) => Dual[], label?: string): BlockHandle {
+  addResidual(varIndices: VarRefs, fn: (locals: Dual[]) => Dual[], label?: string, turns?: readonly string[]): BlockHandle {
     const handle = this.problem.addResidual(varIndices, fn, label);
     this.building?.blocks.push(handle);
+    if (turns?.length) this.turning.set(handle, turns);
     return handle;
   }
 
@@ -2820,15 +2854,33 @@ export class Model {
    * does not visibly fold. The rest of the drawing keeps what the solve did:
    * a component shares no variable with another, so its answer is the same
    * either way. `conflicting(report)` then names the relations.
+   *
+   * **A solve that fails outright is put back the same way**
+   * (docs/plans/review-solver.md). Since a direction row can no longer be met
+   * by shortening a line, most of what used to fold now simply has no answer:
+   * a `par` and a `perp` on one pair of lines end as the least-squares
+   * compromise between them, a rectangle sheared 45°. A drawing left there
+   * would be a conflict the user has to undo as well as read, and every later
+   * solve and every trial of the search would start from a state no relation
+   * described. So the part a row stayed large in goes back to where it was,
+   * the relation stays, and the verdict is CONFLICT — what a collapse already
+   * did. A failure is first solved on once from where it stopped: sixty
+   * iterations is a bound, not a verdict, and a slow solve that would have
+   * finished must not be thrown away for being slow.
    */
   solve(): ModelSolveReport {
     const ctx: SolveContext = { before: this.problem.snapshot(), L: this.extent(), exempt: new Set() };
+    this.freeze(ctx);
     let out: ModelSolveReport = { ...this.problem.solve(), collapsed: [] };
+    if (!out.solved) {
+      const more = this.problem.solve();
+      out = { ...more, iterations: out.iterations + more.iterations, collapsed: [] };
+    }
     let fell = this.collapsedNow(ctx);
     if (fell.length) {
       const part = this.problem.connected(this.varsOfKeys(fell));
       this.problem.restore(ctx.before, part.vars);
-      this.steered(ctx, new Set(part.blocks), this.entitiesIn(new Set(part.vars)));
+      this.steered(ctx, new Set(part.blocks), this.entitiesIn(new Set(part.vars)), RETRY_ITER);
       // A whole solve from there: the parts already settled do not move, and
       // the report is the drawing's as it now stands.
       out = { ...this.problem.solve(), collapsed: [] };
@@ -2842,18 +2894,130 @@ export class Model {
       out.collapsed = [...new Set(fell.map(measureEntity))];
       out.solved = false;
       this.problem.restore(ctx.before, this.problem.connected(this.varsOfKeys(fell)).vars);
+    } else if (out.solved) {
+      out = this.keptSizes(ctx, out);
     }
+    // What a row stayed large in goes back too, collapse or none beside it.
+    if (!out.solved && out.blocks.length) {
+      this.problem.restore(ctx.before, this.problem.connected(out.blocks.flatMap((b) => this.problem.varsOf(b))).vars);
+    }
+    // The part that holds the conflict, for the drag frames that follow (`solveFrame`).
+    this.stuck = null;
+    if (!out.solved) {
+      const part = this.problem.connected([...out.blocks.flatMap((b) => this.problem.varsOf(b)), ...this.varsOfKeys(fell)]);
+      if (part.vars.length) this.stuck = { vars: new Set(part.vars), blocks: new Set(part.blocks) };
+    }
+    // Every relation outside that part has now held (`conflicting`'s culprit is one that has not).
+    this.settle(this.stuck);
     this.solves.set(out, ctx);
     return out;
+  }
+
+  /**
+   * **A relation that turns a line does not also change its length**
+   * (docs/plans/review-solver.md). A direction row is blind to its lines'
+   * lengths (`unit`, vec.ts), so nothing in it asks for a change of length;
+   * but the solver's step is a straight move of each end, and a straight
+   * move that turns a line also stretches it — measured, a `perp` between two
+   * free 60-long lines left them 169 long with the rows normalised, and a
+   * `par` 61 and 62. So where a solve changed the size of something a
+   * direction block reads for its direction (`turning`), the part is solved
+   * on from the answer, **steered** as `steered` steers: those sizes pulled
+   * toward what they were, then released. Kept if it solves, folds nothing
+   * and changes those sizes less; else the first answer stands.
+   *
+   * Only what a direction block reads so is pulled: a line no relation reads
+   * for its direction still stretches to a `coin` on its end, and a `dist`
+   * still sets a length — a size the relations really do change (a side a
+   * dimension was just put on) is changed by the release, as in every steered
+   * solve. And it is asked of every solve, not only one a direction relation
+   * began: a level line whose one end is pinned somewhere else is carried
+   * there whole, as it was when its row was linear and could do nothing else.
+   *
+   * Not asked on a drag's frame (`solveFrame`): a frame is one solve, and a
+   * pull on a size there would move a free rectangle whole under a dragged
+   * corner instead of resizing it.
+   */
+  private keptSizes(ctx: SolveContext, plain: ModelSolveReport): ModelSolveReport {
+    if (!this.turning.size) return plain;
+    const floor = COLLAPSE * ctx.L;
+    // The sizes direction blocks read past, each with what it was before the
+    // solve; and how far those of `names` have drifted from that, in all.
+    const sizes = (names: Iterable<string>): { m: Measure; was: number; name: string }[] => {
+      const out: { m: Measure; was: number; name: string }[] = [];
+      for (const name of names) {
+        const e = this.entities.get(name);
+        if (!e) continue;
+        for (const m of this.measuresOf(e)) {
+          if (m.vars.some((v) => v >= ctx.before.length)) continue;
+          const was = this.sizeAt(m, ctx.before);
+          if (was > floor) out.push({ m, was, name });
+        }
+      }
+      return out;
+    };
+    const off = (s: { m: Measure; was: number }) => Math.abs(this.sizeAt(s.m) - s.was) / s.was;
+    // Only an entity one of whose points the solve moved is measured: a solve
+    // that moved nothing costs a comparison a variable here.
+    const moved = (v: number) => v < ctx.before.length && ctx.before[v] !== this.problem.getVar(v);
+    const turned = new Set<string>();
+    for (const names of this.turning.values()) {
+      for (const n of names) if (!turned.has(n) && this.varsOfEntity(n).some(moved)) turned.add(n);
+    }
+    const drifted = sizes(turned).filter((s) => off(s) > KEPT);
+    if (!drifted.length) return plain;
+    const after = this.problem.snapshot();
+    const part = this.problem.connected(drifted.flatMap((s) => s.m.vars));
+    const blocks = new Set(part.blocks);
+    const names = new Set<string>();
+    for (const b of part.blocks) for (const n of this.turning.get(b) ?? []) names.add(n);
+    const held = sizes(names);
+    const before = held.reduce((sum, s) => sum + off(s), 0);
+    // From the answer just found, not from where the solve began: the
+    // relations hold here already, and only the sizes are to come back.
+    const pull = (of: readonly { m: Measure; was: number }[]): ResidualBlock[] =>
+      of.map(({ m, was }) => ({ varIndices: m.vars, fn: (l) => [m.size(l).sub(was).mul(STEER / was)] }));
+    let spent = this.problem.solve({ only: blocks, extra: pull(held), maxIter: NUDGE_ITER, stall: SETTLED }).iterations;
+    let released = this.problem.solve({ only: blocks });
+    spent += released.iterations;
+    // **What the relations changed anyway is theirs** (a side a dimension was
+    // just put on): against it the pull was a compromise, and the release
+    // from a compromise leaves the sizes beside it a little off as well
+    // (measured, a rectangle's height 1e-6 out when its width was set). So
+    // those are let go and the rest pulled once more, this time to rest.
+    const rest = held.filter((s) => off(s) <= CHANGED);
+    if (released.solved && rest.length < held.length && rest.some((s) => off(s) > KEPT)) {
+      spent += this.problem.solve({ only: blocks, extra: pull(rest), maxIter: NUDGE_ITER, stall: SETTLED }).iterations;
+      released = this.problem.solve({ only: blocks });
+      spent += released.iterations;
+    }
+    const folded = this.shrunk(ctx, SUSPECT, this.entitiesIn(new Set(part.vars))).length > 0;
+    if (!released.solved || folded || !(held.reduce((sum, s) => sum + off(s), 0) < before)) {
+      this.problem.restore(after);
+      return plain;
+    }
+    const whole = this.problem.solve();
+    if (!whole.solved) {
+      this.problem.restore(after);
+      return plain;
+    }
+    return { ...whole, iterations: plain.iterations + spent + whole.iterations, collapsed: [] };
   }
 
   /**
    * One frame of a drag: a solve with `extra` pulls (`Problem.solve`), and
    * **a frame that would collapse something stops where the last one was**,
    * so a drag folds nothing. Only what can move with the collapse is put back;
-   * the rest of the frame stands. A drawing that already holds a conflict
-   * does not move in that part while it does, which is what the conflict ink
-   * is there to say.
+   * the rest of the frame stands.
+   *
+   * **A drawing that holds a conflict does not move in that part while it
+   * does**, which is what the conflict ink is there to say. The part the last
+   * `solve` put back (`stuck`) is left out of the frame — its blocks, and any
+   * pull on a point of it — rather than solved and put back again: its rows
+   * cannot be met, so with them in every frame would run to its last
+   * iteration and end at the least-squares compromise between them, a
+   * rectangle sheared under the hand. (Before the direction rows were
+   * normalised the same drawing stopped because such a frame folded a side.)
    *
    * Cheaper than `solve`'s check, as a frame must be: a measure that shrank
    * past `SUSPECT`·L is enough to stop the frame, with no polish to tell a
@@ -2863,7 +3027,14 @@ export class Model {
    */
   solveFrame(extra: ResidualBlock[]): SolveReport {
     const ctx: SolveContext = { before: this.problem.snapshot(), L: this.extent(), exempt: new Set() };
-    const report = this.problem.solve({ extra });
+    this.freeze(ctx);
+    const held = this.stuck;
+    const report = held
+      ? this.problem.solve({
+        extra: extra.filter((b) => !(typeof b.varIndices === "function" ? b.varIndices() : b.varIndices).some((v) => held.vars.has(v))),
+        only: new Set(this.problem.handles().filter((h) => !held.blocks.has(h))),
+      })
+      : this.problem.solve({ extra });
     const fell = this.shrunk(ctx, SUSPECT);
     if (fell.length) this.problem.restore(ctx.before, this.problem.connected(this.varsOfKeys(fell)).vars);
     return report;
@@ -2936,6 +3107,46 @@ export class Model {
     }
     const diagonal = Math.hypot(...lo.map((v, i) => hi[i] - v));
     return Math.max(Number.isFinite(diagonal) ? diagonal : 0, largest);
+  }
+
+  /**
+   * **What a direction row is scaled by: a variable's value as the solve
+   * began** (docs/plans/review-solver.md). A row that reads a line for its
+   * direction reads it at unit length, so it cannot be met by making the line
+   * shorter, and is then multiplied by how long its lines **were when the
+   * solve began** (`rowLength`, refs.ts) so that it is still a length: the
+   * kernel's tolerances are lengths, and a bare cosine of 1e-10 would leave
+   * the end of a 40-long edge 4e-9 off. A plain number, held still for the
+   * whole of a solve, so it is no variable of any row and every Jacobian
+   * stays exact; and the row is as large as the one it replaces was at that
+   * moment, so the solve is conditioned as it was.
+   *
+   * `solve` and `solveFrame` take the values as they begin. A model nothing
+   * has solved that way yet (a bare `problem.solve()` in a test) has them
+   * taken the first time a row asks, and a variable made since is added as it
+   * then stands.
+   */
+  valueBefore(i: number): number {
+    const f = (this.frozen ??= this.problem.snapshot());
+    while (f.length <= i) f.push(this.problem.getVar(f.length));
+    return f[i];
+  }
+
+  /**
+   * **The length under which a line has no direction to give**: a
+   * thousandth of the drawing's size (`DIRECTIONLESS`, `extent`), as the last
+   * solve began. Under it a direction row falls back to its un-normalised
+   * form (`unit`, vec.ts), so its Jacobian stays finite and a point drawn on
+   * another still satisfies it; the collapse check stays the backstop.
+   */
+  lengthFloor(): number {
+    return this.floor ??= DIRECTIONLESS * this.extent();
+  }
+
+  /** Holds still, for the solve about to run, what its direction rows are scaled by. */
+  private freeze(ctx: SolveContext): void {
+    this.frozen = ctx.before.slice();
+    this.floor = DIRECTIONLESS * ctx.L;
   }
 
   /** Every variable an entity reads: its own and its points'. */
@@ -3015,9 +3226,30 @@ export class Model {
       pushes.push({ varIndices: m.vars, fn: (l) => [m.size(l).mul(PUSH / ctx.L)] });
     }
     this.problem.solve({ only: blocks, extra: pushes, maxIter: NUDGE_ITER });
-    this.problem.solve({ only: blocks });
+    const released = this.problem.solve({ only: blocks });
     const fell = this.shrunk(ctx, COLLAPSE, who);
     if (fell.some((k) => !deep.has(k))) return fell;
+    // **Still small, in a solve still moving**: a suspect the release did not
+    // settle is on its way down, however far it has got. A direction row is
+    // an angle, and near a side of no length an angle is stiff — the same
+    // triangle that stalled at 4e-5·L under the raw rows creeps under these,
+    // and the push, a weak pull beside rows that stiff, moves it little
+    // (docs/plans/review-solver.md). A size a relation really set is one the
+    // release converges at; this one it has not converged at.
+    if (released.maxResidual > UNSETTLED) {
+      const still = this.shrunk(ctx, SUSPECT, who);
+      if (still.length) return [...new Set([...deep, ...still])];
+    }
+    // **Pushed down, and it stayed down**: a size a relation set comes back to
+    // where the solve had it; one that ends under half of that had nothing
+    // holding it up, whether or not it got as far as ε·L before the release
+    // stopped (under the floor a faded row is the square of the side, and the
+    // solve stalls where it can no longer see it).
+    const sank = shallow.filter((k) => {
+      const m = this.measuresOf(this.entities.get(measureEntity(k))!)[Number(k.slice(k.lastIndexOf("#") + 1))];
+      return this.sizeAt(m) < SANK * this.sizeAt(m, solved);
+    });
+    if (sank.length) return [...new Set([...deep, ...sank])];
     // The push cleared every suspect it was given: a size that is small and
     // real is the solve's answer, not the push's, so the solve's state comes back.
     this.problem.restore(solved);
@@ -3030,9 +3262,11 @@ export class Model {
    * pulled toward that size, then released. The pull keeps the solver off a
    * collapse while it finds what else would do, and the release lets the
    * relations have the last word, so a size a relation really does change is
-   * not held back. Returns the release's report.
+   * not held back. Returns the release's report. `maxIter` is how long the
+   * pull may take: a trial's is short (`NUDGE_ITER`), the user's own solve's
+   * longer (`RETRY_ITER`).
    */
-  private steered(ctx: SolveContext, only: ReadonlySet<BlockHandle>, entities: readonly string[]): SolveReport {
+  private steered(ctx: SolveContext, only: ReadonlySet<BlockHandle>, entities: readonly string[], maxIter = NUDGE_ITER): SolveReport {
     const floor = COLLAPSE * ctx.L;
     const pulls: ResidualBlock[] = [];
     for (const n of entities) {
@@ -3046,7 +3280,7 @@ export class Model {
         pulls.push({ varIndices: m.vars, fn: (l) => [m.size(l).sub(was).mul(STEER / was)] });
       }
     }
-    this.problem.solve({ only, extra: pulls, maxIter: NUDGE_ITER });
+    this.problem.solve({ only, extra: pulls, maxIter });
     return this.problem.solve({ only });
   }
 
@@ -3240,9 +3474,17 @@ export class Model {
     for (const e of this.entities.values()) {
       if (e.kind !== "point" && this.measuresOf(e).some((m) => !(this.sizeAt(m) > floor))) for (const v of this.varsOfEntity(e.name)) folded.add(v);
     }
-    // A relation a person made, reading nothing folded — the only kind that
-    // is named, redundant or agreeing.
+    // **Nor of a relation that does not hold.** Implied is a statement about
+    // gradients, and two relations can pull one way while asking for
+    // different things: a `par` and a `perp` on one pair of lines are both
+    // the angle between them, so their rows are one row to first order — and
+    // they are a conflict, not an agreement (docs/plans/review-solver.md;
+    // the raw rows' gradients differed, so this never came up).
+    const unmet = new Set(this.problem.unmet(UNSETTLED));
+    // A relation a person made, reading nothing folded, and holding — the only
+    // kind that is named, redundant or agreeing.
     const nameable = (r: RelationEntry) => this.removable(r.name)
+      && !r.blocks.some((b) => unmet.has(b))
       && !(folded.size && r.blocks.some((b) => this.problem.varsOf(b).some((v) => folded.has(v))));
     for (const r of this.relations.values()) {
       if (!r.blocks.length) continue;
@@ -3324,8 +3566,24 @@ export class Model {
    * way too. A block no relation owns (one added straight to the problem at
    * the command line) is named by its label in `unowned`. The values are left
    * exactly as the solve left them.
+   *
+   * **The relation that made it, and what it disagrees with**
+   * (docs/plans/review-solver.md). A drawing that solved and then did not was
+   * broken by what changed in between, and that is known without a search:
+   * the one relation in the failed part that has not yet held in a solve
+   * (`settled`) — a relation just added, or a dimension just `set`. It is the
+   * **culprit**, and the search is then only for the least set of the others
+   * it cannot hold with: the culprit is kept in every trial and QuickXplain
+   * asks about the rest, nearest first, a single relation before any larger
+   * set. `conflicts` says so, a part at a time: `r7`, against `r1`. Past the
+   * bound the culprit is still named — it needed no search — and its set is
+   * not (`found` false).
+   *
+   * No relation is singled out where none can be: a file opened in conflict
+   * (nothing in it has held in a solve here), or an edit that was more than
+   * one relation. The part is then named as one irreducible set, as above.
    */
-  conflicting(report: SolveReport): { relations: string[]; unowned: string[] } {
+  conflicting(report: SolveReport): { relations: string[]; unowned: string[]; conflicts: Conflict[] } {
     const owner = this.blockOwners();
     const unowned = [...new Set(report.blocks.filter((b) => !owner.has(b)).map((b) => this.problem.labelOf(b) ?? `block ${b}`))];
     const accused = (blocks: Iterable<BlockHandle>) => {
@@ -3338,11 +3596,16 @@ export class Model {
     };
     const ctx = this.solves.get(report);
     const collapsed = (report as Partial<ModelSolveReport>).collapsed ?? [];
-    if (!ctx || report.solved) return { relations: accused(report.blocks), unowned };
+    if (!ctx || report.solved) {
+      const named = accused(report.blocks);
+      return { relations: named, unowned, conflicts: named.length ? [{ culprit: null, set: named, found: false }] : [] };
+    }
     const now = this.problem.snapshot();
     const t0 = performance.now();
     let trials = 0;
     const relations: string[] = [];
+    const conflictsFound: Conflict[] = [];
+    const name = (rs: readonly RelationEntry[]) => { for (const r of rs) if (!relations.includes(r.name)) relations.push(r.name); };
     const seeds = [...report.blocks.map((b) => this.problem.varsOf(b)), ...collapsed.map((n) => this.varsOfEntity(n))];
     try {
       for (const part of this.failedParts(seeds)) {
@@ -3365,6 +3628,46 @@ export class Model {
           const mine = new Set(rels.flatMap((r) => r.blocks));
           return part.blocks.filter((b) => !mine.has(b));
         };
+        // **The culprit**: the one relation of the part that has not held in
+        // a solve yet. Known before any trial is run.
+        const fresh = inPart.filter((r) => !this.hasHeld(r));
+        if (fresh.length === 1) {
+          const culprit = fresh[0];
+          const others = byNearness(inPart.filter((r) => r !== culprit && this.removable(r.name)));
+          const beside = outside([...others, culprit]);
+          const clash = (rs: readonly RelationEntry[]) => conflicts([culprit, ...rs], beside);
+          let against: RelationEntry[] | null = null;
+          try {
+            // Against nothing a person can delete: it cannot hold by itself
+            // (`perp` of a line with itself), or not with what a feature holds.
+            if (clash([])) against = [];
+            const ranksOf = others.map(rank);
+            const far = Math.max(-1, ...ranksOf.filter(Number.isFinite)) + 1;
+            const ranks = ranksOf.map((r) => (Number.isFinite(r) ? r : far));
+            let tried = 0;
+            for (let t = -1; against === null && tried < others.length; t = t < 1 ? t + 1 : t * 2) {
+              const ring = t >= far ? others : others.filter((_, i) => ranks[i] <= t);
+              if (ring.length <= tried) continue;
+              tried = ring.length;
+              if (!clash(ring)) continue;
+              // One relation before any larger set: QuickXplain's answer is
+              // irreducible but not the smallest, and a rectangle held by a
+              // perp at every corner disagrees with a `par` across one corner
+              // both in that corner's perp and in the two far ones together.
+              // Asked of the nearest of all the others, not of the ring alone:
+              // where the solve folded a side, the ring is the relations
+              // naming that side — the two far perps — and the corner's own
+              // perp, the one a person reads, lies outside it.
+              const one = others.slice(0, SINGLES).find((c) => clash([c]));
+              against = one ? [one] : quickXplain(ring, clash);
+            }
+          } catch (e) {
+            if (e !== SEARCH_SPENT) throw e;
+          }
+          name([culprit, ...(against ?? [])]);
+          conflictsFound.push({ culprit: culprit.name, set: (against ?? []).map((r) => r.name), found: against !== null });
+          continue;
+        }
         let candidates = byNearness(inPart.filter((r) => this.removable(r.name)));
         let background = outside(candidates);
         let found: RelationEntry[] | null = null;
@@ -3411,7 +3714,8 @@ export class Model {
           if (e !== SEARCH_SPENT) throw e;
         }
         if (found) {
-          for (const r of found) if (!relations.includes(r.name)) relations.push(r.name);
+          name(found);
+          conflictsFound.push({ culprit: null, set: found.map((r) => r.name), found: true });
           continue;
         }
         // Past the bound, or not reproduced alone: named as before the search.
@@ -3421,11 +3725,49 @@ export class Model {
           ...inPart.filter((r) => this.removable(r.name) && r.blocks.some((b) => this.problem.varsOf(b).some((v) => touching.has(v)))).map((r) => r.name),
         ];
         for (const n of fallback) if (!relations.includes(n)) relations.push(n);
+        conflictsFound.push({ culprit: null, set: [...new Set(fallback)], found: false });
       }
     } finally {
       this.problem.restore(now);
     }
-    return { relations, unowned };
+    return { relations, unowned, conflicts: conflictsFound };
+  }
+
+  /**
+   * Whether `r` **has held**: it stood as it is — the same call, the same
+   * value — in a solve that solved its part of the drawing (`settled`). A
+   * relation just added has not, nor has a dimension whose value was just
+   * `set`; either is what `conflicting` calls the culprit when the solve that
+   * follows fails.
+   */
+  private hasHeld(r: RelationEntry): boolean {
+    const was = this.settled.get(r.name);
+    if (was === undefined) return false;
+    if (was === r) return true;
+    // Re-run in place with nothing changed (a regeneration): still the relation that held.
+    return was.op === r.op && JSON.stringify(was.args) === JSON.stringify(r.args);
+  }
+
+  /** Marks as having held every relation outside `stuck`, the part a solve could not solve (null: all of them). */
+  private settle(stuck: { blocks: Set<BlockHandle> } | null): void {
+    for (const r of this.relations.values()) {
+      if (stuck && r.blocks.some((b) => stuck.blocks.has(b))) continue;
+      this.settled.set(r.name, r);
+    }
+  }
+
+  /**
+   * Takes over from `prev` what it knew to have held, for the relations this
+   * model has as `prev` had them. What an undo or a redo hands on: each is a
+   * new model opened from a snapshot, and without this a redone `par` would
+   * read as a file opened in conflict — a set, with nothing said to have made
+   * it — where a moment before it was named as what did.
+   */
+  inheritHeld(prev: Model): void {
+    for (const [n, was] of prev.settled) {
+      const r = this.relations.get(n);
+      if (r && r.op === was.op && JSON.stringify(r.args) === JSON.stringify(was.args)) this.settled.set(n, r);
+    }
   }
 
   /**
@@ -3464,6 +3806,52 @@ export const COLLAPSE = 1e-6;
  */
 export const SUSPECT = 1e-2;
 
+/**
+ * Below this share of L a line has **no direction to turn by**, and a row
+ * that reads it for one reads it un-normalised (`Model.lengthFloor`; `unit`,
+ * vec.ts). Not ε: a unit direction's gradient is one over the line's length,
+ * so the rows of a line run down to ε·L are a million times stiffer than
+ * their neighbours', and the solver's per-coordinate damping then lets
+ * nothing near it move. Measured on a triangle given two right angles, whose
+ * only answer is a side of no length: with the floor at ε the solve crept
+ * (sixty iterations to 2e-6·L, the push another thirty to no effect) and
+ * called it solved; at a thousandth the side fades out as it did before the
+ * rows were normalised and the collapse is found. A tenth of a millimetre on
+ * a hundred: under any side a person draws, and a suspect (`SUSPECT`) well
+ * before it.
+ */
+const DIRECTIONLESS = 1e-3;
+
+/**
+ * How far off a row may be left by the release after a push for the push's
+ * suspect to count as settled (`collapsedNow`): a thousand times the solve's
+ * own tolerance. A solve that converged is under it by orders; the creeping
+ * collapses measured (a triangle's two right angles, a par on a lid against a
+ * perp on its base) end between 7e-6 and 3e-4.
+ */
+const UNSETTLED = 1e-6;
+
+/** The share of its solved size a pushed suspect must come back above to be a real size (`collapsedNow`). A size a relation set comes back whole. */
+const SANK = 0.5;
+
+/**
+ * How much of its size a direction block's entity may change, as a share of
+ * that size, before `keptSizes` asks whether it had to: a thousandth of the
+ * 1e-6 docs/plans/review-solver.md asks lengths be kept to.
+ */
+const KEPT = 1e-9;
+
+/** The share of its size a pulled size is still off by for `keptSizes` to take the change as the relations' own doing, and stop pulling on it. */
+const CHANGED = 1e-3;
+
+/**
+ * When `keptSizes`' pull has settled: a step that lowers the residual by less
+ * than this share of it. Where every size can come back the pull runs to
+ * zero long before; where one cannot (a side a dimension changed) it is a
+ * compromise that never does, and the release that follows finishes it.
+ */
+const SETTLED = 1e-3;
+
 /** How far a suspect must have fallen, as a share of what it was. */
 const SHRINK = 0.1;
 
@@ -3478,8 +3866,28 @@ const PUSH = 1;
  */
 const NUDGE_ITER = 30;
 
+/**
+ * The iterations the steer may take when it is the user's own solve that
+ * folded (`Model.solve`), not a trial of the search. Measured
+ * (test/extrude.test.ts: a rectangle's extrude whose sketch frame is turned
+ * 76° in one move): with the direction rows normalised the bare solve folds
+ * the rectangle across the turned plane, and the steer finds the turned prism
+ * at its 77th iteration, most of them spent creeping out of the fold. A
+ * collapse is rare and is followed by a search costing far more, so the one
+ * retry it gets is given room.
+ */
+const RETRY_ITER = 120;
+
 /** How hard `steered` pulls each size toward what it was: a relative change of 1 weighs as a residual of 1. */
 const STEER = 1;
+
+/**
+ * How many of the nearest relations are each tried alone against a culprit
+ * before QuickXplain is asked for a larger set (`Model.conflicting`): the
+ * common conflict is with one relation on the same two entities, and a trial
+ * of two relations is cheap, but a ring on a large sketch is not short.
+ */
+const SINGLES = 12;
 
 /** The conflict search's bounds: trial solves, and milliseconds, per `conflicting` call. */
 export const SEARCH_TRIALS = 200;
@@ -3527,6 +3935,24 @@ interface Part {
   varSet: Set<number>;
   blocks: BlockHandle[];
   entities: string[];
+}
+
+/**
+ * One conflict, in one part of the drawing (`Model.conflicting`).
+ *
+ * With a `culprit` — the relation whose addition, or whose value's `set`,
+ * made it — `set` is the least set of the others it cannot hold with: empty
+ * when it cannot hold by itself or not with what a feature holds, and empty
+ * with `found` false when the search ran out of trials or time before it
+ * could say. With none, `set` is the part's irreducible conflicting set, no
+ * member of it singled out (a file opened in conflict; an edit that was more
+ * than one relation), or — `found` false — the relations left unmet, as a
+ * conflict was named before there was a search.
+ */
+export interface Conflict {
+  culprit: string | null;
+  set: string[];
+  found: boolean;
 }
 
 /** What `Model.solve` found: the kernel's report, and what the solve would have collapsed. */

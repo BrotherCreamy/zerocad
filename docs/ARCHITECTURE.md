@@ -266,7 +266,10 @@ are gauges rather than freedoms (a curve's normal length; a point lying on
 the drawing plane or the ground, off it), maps free variables back to the
 entities that own or refer to them, and maps blocks back to the relations
 whose `model.relation` collected them (`Model.conflicting`). A relation is
-redundant only when every one of its rows is implied — and what is *said* of
+redundant only when every one of its rows is implied **and it holds**
+(`Problem.unmet`): implied is a statement about gradients, and a `par` and a
+`perp` on one pair of lines are both the angle between them — one row to
+first order, and a conflict, not an agreement. What is *said* of
 it is not its name but its **agreeing set** (`Diagnosis.agreeing`; the
 owner's principle, TODO.md's register: *agreeing over-constraint is
 normal*): the relations it says one thing with, by the kernel's answer
@@ -320,6 +323,13 @@ gets decided where what a line *is* is known: `Model.solve`, not the kernel
   back as it was. Other components keep their answer, since they share no
   variable. The relation stays, as Onshape keeps a conflicting constraint.
   Redundancy is never said of a relation reading a folded entity.
+- **A solve that fails outright is put back the same way** (since the
+  direction rows were normalised, below). Most of what used to fold now has
+  no answer at all, and least squares ends at the compromise — a rectangle
+  sheared 45° between a `par` and a `perp`. That is neither what the user
+  drew nor anything a relation describes, so the component a row stayed
+  large in goes back to where it was, after being solved on once from where
+  it stopped: sixty iterations is a bound, not a verdict.
 - **Naming it minimally.** `Model.conflicting` names an irreducible set, for a
   collapse and a failed solve alike. It runs QuickXplain over the deletable
   relations of the failed component, each question a trial solve of that
@@ -330,12 +340,133 @@ gets decided where what a line *is* is known: `Model.solve`, not the kernel
   named. The search is bounded by trials and milliseconds, and past the bound
   the component is named as before, by its large rows.
 - **A drag frame** that would fold something stops where the last frame was,
-  for the component that would fold. So a drawing that holds a conflict does
-  not move in that part until the conflict is deleted.
+  for the component that would fold. And the component the last solve put
+  back is **left out of the frame** — its blocks, and any pull on a point of
+  it (`Model.stuck`) — so a drawing that holds a conflict does not move in
+  that part until the conflict is deleted. (It used to stand still because
+  every frame folded a side; with rows that cannot be met by folding, a frame
+  would end at the sheared compromise instead.)
+- **Two more ways to know a collapse**, both from the rows being stiff near a
+  side of no length: a suspect the release after the push did not settle
+  (`UNSETTLED`), and one that was pushed down and stayed under half its size
+  (`SANK`). A size a relation set is one the release converges at, back
+  where the solve had it.
 
 The kernel learned only geometry-free things for this: `solve({ only })`,
-`snapshot`/`restore`, `varsOf`, `connected` and `reach`. It still has never
-heard of a point.
+`snapshot`/`restore`, `varsOf`, `connected` and `reach` — and, for what
+follows, `solve({ stall })`, `unmet` and `handles`. It still has never heard
+of a point.
+
+### A direction relation turns a line and never scales it
+
+The collapse above was a symptom. `par`, `perp`, `ang` and every row of
+their shape were products of raw `b − a` — |u||v|·sin θ, |u||v|·cos θ — so a
+shorter line was a smaller residual and the solve paid for a direction
+partly in length: `par` typed between two free lines 60 long left them 8.8
+and 1.2 long, SOLVED (docs/images/422; docs/plans/review-solver.md has every
+measurement). Four things make a direction row turn a line and nothing else,
+and each was arrived at by measuring the simpler thing first.
+
+- **Unit directions.** A row reads a line's direction through `unit` (vec.ts):
+  `b − a` over its own length, the derivative the chain rule written once,
+  (I − ûûᵀ)/|u|. The row's gradient along the line is then exactly zero, and
+  no change of length can lower it. `on`, `sym` and `col`'s position row read
+  û and are plain distances off an infinite line.
+- **An angle, not a sine.** A sine is flat where it is largest: two lines
+  exactly square have no way to turn that lowers it. The raw row hid that
+  because at 90° its whole gradient ran along the lines — the only way down
+  was shorter, which is how a rectangle's side folded. So the row is the
+  turn itself: the wedge scaled so its length is the angle between the two
+  as undirected lines (`turnToParallel`), that angle less a right angle
+  (`turnToSquare`), or less the one asked for (`ang`). The slope is the same
+  at every angle. Exactly along one line the wedge's length has no
+  derivative; `angleBetween` picks a way to turn from the values.
+- **Times a length that is no variable.** The kernel's tolerances are
+  lengths, so a bare angle of 1e-10 would leave the end of a 40-long edge
+  4e-9 off. Each row is multiplied by the longer of its own lines **as it
+  was when the solve began** (`Model.valueBefore`, read from the snapshot
+  `solve` already takes): a plain number, so the Jacobian stays exact, and
+  the row is a length — how far the far end of the longer line is off. For
+  a line against an axis that is the size the raw row had. For two lines it
+  is smaller by the shorter line's length, and that is deliberate and has a
+  consequence: **a sketch is no longer stiffer than what is built on it.**
+  The raw rows made a 18 × 30 profile's right angles some twenty times
+  stiffer than a revolve's rows, so a solve that had far to go moved the
+  feature and hardly the sketch, by accident of scale. Giving the rows that
+  scale back was measured (the product of both lengths as the solve began):
+  the sketch anchors again, and `perp` between two free lines leaves them 74
+  and 64 long and a drag costs 47% — the stiffness is what made the rows pay
+  in length. So who gives way is said where it is known instead: an edit of
+  a feature's dimension seats the feature before the solve (`reseatLid` for
+  a depth, `seatTurned` for an angle), and the solve begins at a root.
+  Under a thousandth of the drawing's size
+  a line has no direction to turn by and its rows run down to nothing with
+  it, as the raw rows did — which is where a collapse is still found.
+- **And the solve keeps the length too.** Zero gradient is not enough: the
+  kernel's step moves each end along a straight line, damped per
+  coordinate, and a straight move that turns a line stretches it. With the
+  rows above and nothing else, `perp` between those two lines left them 169
+  long. `model.ts` holds no equations, but it knows what a line is, so the
+  fix is there: a block says which entities it reads for their direction
+  only (`addResidual`'s `turns`), and after a solve that changed the length
+  of any of them `Model.keptSizes` solves on with those lengths pulled back
+  to what they were and then released. What a relation really changes — a
+  side a dimension was just put on — is changed by the release; the rest
+  comes back to 1e-10 of itself. A drag's frame is not steered (a pull on a
+  size there would move a free rectangle whole under a dragged corner), so a
+  drag still costs a turned line a little: 3% where it cost 47%.
+
+The residual's form is not journalled, so no file changed: a unit-direction
+row has the roots the raw one had, less the collapsed one, and every fixture
+reopens to the shape it was saved as.
+
+**A new row that reads a line for its direction** is written the same way or
+it brings the bug back: `corner`, the angle between the lines two walls are
+swept from, arrived as u·w − |u||w| cos θ and left two free lines 69 and 89
+long. The form is `unit` of each line, the angle between them
+(`angleBetween`, `turnToParallel`, `turnToSquare`), times `rowLength` of
+`lengthBefore`, `fadeUnder` the floor, and the lines named as `turns`; and
+`test/directionrows.test.ts`'s `checkRows` asks of any row that its gradient
+along its lines is zero. A relation among many needs nothing: its rows are
+the pair's.
+
+### A conflict names the relation that made it
+
+A minimal set is true and unhelpful: `r1 · r5 cannot all hold` leaves the
+reader to work out which of them they just did. The drawing solved before
+the edit that broke it, so the edit is the culprit, and that is **known, not
+searched for**: `Model` remembers each relation as it stood the last time a
+solve solved its part of the drawing (`settled`), and the one relation of a
+failed part that has not held — just added, or its value just `set` — is it.
+The search (`Model.conflicting`) is then only for what it cannot hold with:
+the culprit is in every trial, QuickXplain asks about the rest nearest
+first, and one relation is tried alone before any larger set — the nearest
+dozen of all of them, whichever ring first clashed. Past the search's bound
+the culprit is still named and its set is not.
+
+The culprit is a relation, never a row block: one relation among many
+(`par("l1", "l2", "l3")`, relations/among.ts) owns a block for each member
+with the first and is named once, with every member. And "has held" is of
+the relation as it stands — the same call, the same arguments — so one a
+line has just joined has not, and is what made the conflict the join makes.
+
+None is singled out where none can be: a file opened in conflict (nothing in
+it has held here), or an edit of more than one relation. An undo and a redo
+each open a new model from a snapshot, and hand on what had held
+(`inheritHeld`), so a redone `par` is named as it was the first time.
+
+It is said three ways, and each tells the culprit from its set by more than
+a hue — on a phone a glyph is a dozen pixels, and two reds there are one:
+the status reads `r7 par l1 l2 — against r1, r2` with the culprit on a pill
+of the conflict's ink; the culprit's glyph is its box filled with that ink,
+what it is against outlined in a quieter one; and the constraints palette
+lists the conflict first, whatever is selected, the culprit first, a delete
+on each. A relation in a conflict is always drawn, quiet anchor or not.
+
+A feature's own relations are still background to the search — in every
+trial, in no answer — because they cannot be deleted alone. When features
+relate rather than own, that changes; `test/culprit.test.ts` has a test
+written to fail then.
 
 ## Structure and equations are separate
 
@@ -2363,7 +2494,7 @@ until the next action went unrecorded.
 
 ## Why there is an end-to-end suite
 
-Seventy-three bugs so far were invisible to the unit tests and obvious within seconds
+Seventy-five bugs so far were invisible to the unit tests and obvious within seconds
 of running the app:
 
 1. a status readout that went stale, so a conflict could be introduced from
@@ -2737,6 +2868,27 @@ of running the app:
    circle" (modefeedback.e2e) and passed for weeks; the picture of a
    three-point circle just made, the lid still amber under no tool, found
    it. `finish` redraws.
+74. A conflict on a solid's edges drew nothing red. A glyph follows its
+   anchor, and a solid's edges are quiet until hovered, so the glyphs of the
+   relations a CONFLICT named were not drawn at all: the status accused two
+   relations over a picture that showed neither. Every unit test of what a
+   conflict names passed, as they do not draw. Found by
+   `reviewsolver.e2e.ts` reading the two conflict inks off the drawing over
+   a lid's lit face and getting the plain ink for all of them. A relation in
+   a conflict is always drawn.
+75. Setting a revolve's angle slid its profile six units toward the axis.
+   The unit suite has "set swings the end face to exactly the new angle and
+   moves nothing else at all" — on a profile with every corner fixed, so
+   that "nothing else" would be exact; `revolve.e2e.ts` draws as a person
+   does, with the rectangle tool, fixed nowhere, and its sample points on
+   the start cap were no longer on the cap. A quarter-turn swing left to the
+   solve is shared between the end face and the profile; it always had been
+   (0.2, and an edge 1% short), and was small only while the sketch's rows
+   were products of its lines' lengths and so twenty times stiffer than the
+   feature's. With those rows at their proper size (*A direction relation
+   turns a line and never scales it*) it was six. `set` seats the end face
+   where the new angle puts it before the solve (`seatTurned`), as it seats
+   an extrude's lid, and the unit suite now has the drawing a person makes.
 
 None of these are mathematics. They are all *assembly*. Hence `npm run
 test:e2e`, and hence the expectation that anything touching the app is checked

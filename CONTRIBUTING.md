@@ -61,7 +61,7 @@ never registered on the dev server, which would otherwise serve yesterday's
 code from its cache.
 
 **Run the e2e suite for anything that touches the app**, not just when it
-feels risky. Seventy-three bugs so far (the count is kept honest in docs/ARCHITECTURE.md) passed the entire unit suite and were obvious
+feels risky. Seventy-five bugs so far (the count is kept honest in docs/ARCHITECTURE.md) passed the entire unit suite and were obvious
 within seconds of opening the page — the list is in
 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). The unit tests cover the
 mathematics; they cannot see a stale readout or an event that never fires.
@@ -122,7 +122,7 @@ A relation written in terms of another one — `concentric` calls `coincident`
 — just calls it: the inner call's blocks join your entry, and it neither
 journals nor takes a name of its own. One user-level call is one relation.
 
-Three things that are easy to get wrong:
+Four things that are easy to get wrong:
 
 - **Take variables lazily** (`lineVars`) for anything expressed in terms of a
   *line*, so the relation follows that line if an operation re-points it.
@@ -136,6 +136,18 @@ Three things that are easy to get wrong:
 - **Never make a residual that is already a square.** Its gradient vanishes at
   its own root, so least-squares ends up minimising a fourth power and
   converges badly. Use the wedge's components, not their sum of squares.
+- **A row that reads a line for its direction reads it at unit length, and
+  says so.** A product with a raw `b − a` is a product with the line's
+  length, and the solve will pay for the relation by shortening the line
+  (`par` between two free 60-long lines left them 8.8 and 1.2 long;
+  docs/plans/review-solver.md). Use `unit(vecSub(b, a), model.lengthFloor())`
+  (vec.ts), prefer the angle (`turnToParallel`, `turnToSquare`,
+  `angleBetween`) to a sine or a cosine, which are flat where they are
+  largest, multiply by `rowLength(lengthBefore(model, vars))` so the row is a
+  length again, and pass the lines' names as `model.addResidual`'s last
+  argument (`turns`) so a solve that meets the row keeps their lengths. A
+  test that the row's gradient along each of its lines is zero is ten lines
+  (`test/directionrows.test.ts`'s `checkRows`).
 
 Then register it in **its module's `relations`** (`src/modules/core.ts` or
 `sketch.ts`, or your own module — see *Adding a module*), keyed by the op it
