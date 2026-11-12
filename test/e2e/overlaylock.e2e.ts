@@ -32,6 +32,7 @@ import { join } from "node:path";
 import { openApp, settled, type AppContext, type OpenOptions } from "./harness.ts";
 import { build, look, lookAlong } from "./scenes.ts";
 import { fingers, type Fingers } from "./fingers.ts";
+import { TAIL_HOLD_MS, TAIL_LIFE_MS, tailOpacity } from "../../src/logtail.ts";
 
 const SHOTS = process.env.NEOCAD_E2E_SHOTS;
 const apps: AppContext[] = [];
@@ -609,16 +610,34 @@ test("mouse: the log's see-through lines fade with age and are gone after ten se
   await app.type("panels({ overlay: true })");
   for (const src of ["1 + 1", "2 + 2"]) await app.type(src);
   await app.page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
-  const tail = () => app.page.$$eval(".otail .tline", (ls) => ls.map((l) => ({ text: l.textContent, opacity: Number(getComputedStyle(l).opacity) })));
+  // Each tail line with its opacity as drawn and its age as the docked log
+  // stamps it, read in one go. **The fade is checked against the age, not
+  // the clock**: under load (28 on four cores) the two typed lines took over
+  // 3 s to land, and a line read as "new" was 4.2 s old and fading, exactly
+  // as it should have been — the rule held and the test failed.
+  const tail = () => app.page.$$eval(".otail .tline", (ls) => {
+    const stamps = Array.from(document.querySelectorAll<HTMLElement>("#log > div")).slice(-ls.length).map((d) => Number(d.dataset.at));
+    return ls.map((l, i) => ({ text: l.textContent, opacity: Number(getComputedStyle(l).opacity), age: Date.now() - stamps[i] }));
+  });
+  const byTheRule = (lines: { text: string | null; opacity: number; age: number }[], what: string) => {
+    for (const l of lines) assert.ok(Math.abs(l.opacity - tailOpacity(l.age)) < 0.1, `${what}: ${JSON.stringify(l)} — the rule says ${tailOpacity(l.age).toFixed(2)} at ${l.age} ms`);
+  };
   const now = await tail();
   assert.equal(now.length, 3, "three lines");
   assert.deepEqual(now.map((l) => l.text), (await app.page.$$eval("#log > div", (ds) => ds.slice(-3).map((d) => d.textContent))), "the docked log's last three");
-  assert.ok(now.every((l) => l.opacity > 0.95), `new, whole: ${JSON.stringify(now)}`);
+  byTheRule(now, "new");
+  for (const l of now) if (l.age < TAIL_HOLD_MS) assert.ok(l.opacity > 0.95, `whole within the hold: ${JSON.stringify(l)}`);
   await shot(app, "mouse-log-tail");
   await app.page.waitForTimeout(6_500);
   const later = await tail();
-  assert.ok(later.every((l) => l.opacity < 0.8 && l.opacity > 0.1), `fading: ${JSON.stringify(later)}`);
-  // A click on a line: the whole log, docked, until a click outside.
+  byTheRule(later, "later");
+  assert.ok(later.every((l) => l.age > TAIL_HOLD_MS && l.opacity < 1), `fading: ${JSON.stringify(later)}`);
+  // A click on a line: the whole log, docked, until a click outside. The
+  // line clicked is a fresh one if the two above have aged out meanwhile.
+  if (!(await app.page.$(".otail .tline:last-child"))) {
+    await app.type("3 + 3");
+    await app.page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  }
   const line = await app.page.$eval(".otail .tline:last-child", (el) => { const r = el.getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; });
   await app.page.mouse.click(line[0], line[1]);
   await app.page.mouse.move(line[0] + 400, line[1] - 300);
@@ -628,7 +647,12 @@ test("mouse: the log's see-through lines fade with age and are gone after ten se
   await app.page.mouse.click(line[0] + 400, line[1] - 300);
   await app.page.waitForTimeout(300);
   assert.equal(await app.page.$eval('.panel[data-panel="log"]', (el) => el.classList.contains("pinned")), false, "a click outside puts it back");
-  await app.page.waitForTimeout(4_000);
+  // Gone at ten seconds: once the newest line is past its life (and the
+  // 20 ms the tail gives itself to take it off), the tail is empty.
+  await app.page.waitForFunction((past) => {
+    const last = document.querySelector<HTMLElement>("#log > div:last-child");
+    return !!last && Date.now() - Number(last.dataset.at) > past;
+  }, TAIL_LIFE_MS + 300, { timeout: TAIL_LIFE_MS + 5000 });
   assert.deepEqual(await tail(), [], "ten seconds on, the tail is empty");
   assert.deepEqual(app.pageErrors, []);
 });
