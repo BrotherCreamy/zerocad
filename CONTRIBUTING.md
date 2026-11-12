@@ -27,10 +27,14 @@ Two things about the toolchain that will otherwise cost you an afternoon:
   source*. That filled a 92GB disk to 20MB free once already; the incident note
   is at the bottom of [`STATUS.md`](STATUS.md).
 - **`npm run build:kernel` downloads binaryen** for the `wasm-opt` pass. If
-  that download is blocked, `npm run build:kernel:dev` skips the pass and
-  produces a working (larger) kernel. Don't disable `wasm-opt` in `Cargo.toml`
-  to work around a local network problem — that would deoptimise everyone's
-  build.
+  that download is blocked, `npm run build:kernel:noopt` builds the release
+  kernel and skips only that pass (a working kernel, ~32 KB instead of ~25).
+  `npm run build:kernel:dev` also works but is a **debug build**: ~148 KB,
+  and its linear algebra runs ten times slower (a kernel step on forty
+  rectangles mid-drag: 1.7 ms against 0.09), so **time nothing on it** — the
+  measure scripts print which kernel they were given. Don't disable
+  `wasm-opt` in `Cargo.toml` to work around a local network problem — that
+  would deoptimise everyone's build.
 
 Node is pinned by `.nvmrc`. Playwright's browser comes from
 `npx playwright install chromium`; the e2e harness also finds a chromium
